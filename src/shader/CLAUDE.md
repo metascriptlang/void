@@ -102,6 +102,20 @@ hand-written one in a single expression in every backend source, the size read t
 types it: `ivec2(uvec2(textureSize(…)))` for `textureSize(…)` (`uint2(int2(…))` in HLSL). With
 `textureSize` left signed the seven sources are byte-identical (`out/shdcProbe/withReturn.glsl`).
 
+The image, 2026-10-13, tree `f7a7b18c9183` (code as tree of `08794fe4`), BUILD `9a4775dc`, Windows x64, one
+quiet GPU window:
+
+- **D3D11**: `GATE_SKIP_ANDROID=1 GATE_SKIP_BENCH=1 GATE_SKIP_CHURN=1 sh scripts/gate3d.sh` exit 0,
+  363 PASS, 0 FAIL; every capture row "4 frames byte-identical" to `docs/baselines3d.sha256`,
+  among them the forward-preset rows that draw through Copy (`texturedCapture`, `gltfCapture`,
+  `perspectiveCapture`). The two pending rows (`campfireForwardCapture`, `campfireAnchorCapture`)
+  matched their held fingerprints.
+- **WebGL2**: `sh scripts/web3d.sh` 17 of 17 with origin's `16a6ea60` (web runtime kept alive)
+  applied to the tree; 0 of 17 without it, every run `Uncaught ExitStatus`, which is the base
+  (`24183064` lacks that commit) and not the shader. All nine checks build a `ForwardRenderer`.
+- **WebGPU**: the `wgpu` build of `tests/integration/renderOrder.ms` passes; no capture exists for
+  it (`scripts/web3d.sh` header). Not run: GLES3 on a device, Metal.
+
 ## Rejected
 
 - **Own HLSL/MSL/GLSL backends, as shady has.** About 1000 of the 1817 lines of shady's `shared.nim` are
