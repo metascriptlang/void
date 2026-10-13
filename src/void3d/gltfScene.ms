@@ -76,6 +76,11 @@ export struct GltfMeshBinding {
 	material: MaterialId;
 }
 
+export struct GltfNodeBinding {
+	nodes: Vec<NodeId3D>;
+	count: int32;
+}
+
 // `block` is the lit block every material starts from, a preset's floats included (RAMP_LEVELS);
 // `pass` gives culling, depth test and colour mask, the material's kind its blend and depth write.
 export struct GltfMaterialSetup {
@@ -384,6 +389,16 @@ export function addGltfNodes(
 	data: GltfData,
 	bindings: Readonly<Span<GltfMeshBinding>>,
 ): Result<int32, GltfSceneError> {
+	const added = try addGltfBoundNodes(scene, parent, data, bindings);
+	return Result.ok(added.count);
+}
+
+export function addGltfBoundNodes(
+	scene: Scene3D,
+	parent: NodeId3D,
+	data: GltfData,
+	bindings: Readonly<Span<GltfMeshBinding>>,
+): Result<GltfNodeBinding, GltfSceneError> {
 	const _under: int32 = scene.liveRow(parent, "addGltfNodes");
 	const context: DrawContext = scene.context;
 	context.requireOpen("addGltfNodes");
@@ -407,7 +422,8 @@ export function addGltfNodes(
 		nodes.push(data.sceneRoots[i]);
 		parents.push(parent);
 	}
-	let count: int32 = 0;
+	let mapped: GltfNodeBinding = { nodes: [], count: 0 };
+	for (let index = 0; index < data.nodes.length; index++) { mapped.nodes.push(NO_NODE_ID); }
 	while ((nodes.length as int32) > 0) {
 		const last: int32 = (nodes.length as int32) - 1;
 		const index: int32 = nodes[last];
@@ -427,12 +443,13 @@ export function addGltfNodes(
 			id = added.value;
 		}
 		setName(scene, id, data.nodes[index].name);
-		count = count + 1;
+		mapped.nodes[index] = id;
+		mapped.count++;
 		const childCount: int32 = data.nodes[index].children.length as int32;
 		for (let i = childCount - 1; i >= 0; i--) {
 			nodes.push(data.nodes[index].children[i]);
 			parents.push(id);
 		}
 	}
-	return Result.ok(count);
+	return Result.ok(move mapped);
 }
