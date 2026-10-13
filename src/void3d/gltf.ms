@@ -1,10 +1,3 @@
-// glTF 2.0 subset loader: position, normal, COLOR_0, TEXCOORD_0 and TANGENT; materials with a
-// base colour, emissive and normal texture and one KHR_texture_transform they share, each image
-// a PNG or JPEG in the buffer. One buffer,
-// one buffer view per accessor, FLOAT32 attributes, UNSIGNED_SHORT indices, node TRS, triangle
-// primitives. Not loaded: skins, animations, cameras, morph targets, sparse accessors,
-// interleaved buffer views, more than one buffer, images by URI, occlusion textures.
-//
 // A mesh with several primitives decodes into one drawable `MeshData` per primitive, and its
 // node into a group whose children are one mesh node per primitive: three.js d4ea9b9
 // GLTFLoader.js:4035-4053 returns the mesh itself for one primitive and a Group of them otherwise.
@@ -23,10 +16,20 @@ import { vec3, Vec3, Quat, identityQuat, linearToSrgb } from "../math/math3d";
 import { decodeImage, imageFormatOf, ImageError, ImageFormat, Pixels } from "../assets/image";
 import { FilterMode, Wrap } from "../gpu/state";
 import { float32At } from "./gltfDecode";
+import {
+	GltfAccessorBuffer,
+	GltfAccessorView,
+	GltfAccessorSource,
+	GltfAccessorShape,
+	GltfAccessorRole,
+	GltfSparseSource,
+} from "./gltfAccessor";
+import { GltfColour, GltfColourError, GltfLinearRgba, fromAccessor } from "./gltfColour";
 import { TextureData } from "./texture";
 import {
 	MeshData,
 	MeshError,
+	MAX_MESH_VERTICES,
 	Rgba,
 	Uv,
 	addVertex,
@@ -411,6 +414,90 @@ function pushTangent(
 	return Result.ok(i);
 }
 
+function hasField(obj: JsonValue, key: string): boolean {
+	if (obj === null || obj.kind != JsonKind.Object) { return false; }
+	for (const name of obj.keys) { if (name == key) { return true; } }
+	return false;
+}
+
+function colourIntField(obj: JsonValue, key: string, fallback: int32): Result<int32, GltfError> {
+	if (!hasField(obj, key)) { return Result.ok(fallback); }
+	const value: int32 = intValue(fieldOf(obj, key));
+	if (value == INVALID_INT) { return Result.err(GltfError.Unsupported); }
+	return Result.ok(value);
+}
+
+function colourOptionalInt(obj: JsonValue, key: string): Result<int32 | null, GltfError> {
+	if (!hasField(obj, key)) { return Result.ok(null); }
+	const value: int32 = try colourIntField(obj, key, 0);
+	return Result.ok(value as (int32 | null));
+}
+
+function colourAccessorViews(views: JsonValue, bufferLength: int32): Result<Vec<GltfAccessorView>, GltfError> {
+	let result: Vec<GltfAccessorView> = [];
+	for (let i = 0; i < countOf(views); i++) {
+		const view: JsonValue = views.at(i);
+		if (view === null || view.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+		const buffer: int32 = try colourIntField(view, "buffer", -1);
+		if (buffer != 0) { return Result.err(GltfError.Unsupported); }
+		const offset: int32 = try colourIntField(view, "byteOffset", 0);
+		const length: int32 = try colourIntField(view, "byteLength", -1);
+		if (offset < 0 || length < 0 || offset > bufferLength || length > bufferLength - offset) {
+			return Result.err(GltfError.OutOfRange);
+		}
+		result.push({
+			buffer: buffer, byteOffset: offset, byteLength: length,
+			byteStride: try colourOptionalInt(view, "byteStride"),
+			target: try colourOptionalInt(view, "target"),
+		});
+	}
+	return Result.ok(move result);
+}
+
+function colourAccessorSource(accessors: JsonValue, index: int32): Result<GltfAccessorSource, GltfError> {
+	if (index < 0 || index >= countOf(accessors)) { return Result.err(GltfError.Unsupported); }
+	const accessor: JsonValue = accessors.at(index);
+	if (accessor === null || accessor.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	const shape: JsonValue = fieldOf(accessor, "type");
+	if (shape === null || shape.kind != JsonKind.String
+		|| (shape.strVal != "VEC3" && shape.strVal != "VEC4")) {
+		return Result.err(GltfError.Unsupported);
+	}
+	let normalized: boolean = false;
+	if (hasField(accessor, "normalized")) {
+		const value: JsonValue = fieldOf(accessor, "normalized");
+		if (value === null || value.kind != JsonKind.Bool) { return Result.err(GltfError.Unsupported); }
+		normalized = value.boolVal;
+	}
+	let sparse: GltfSparseSource | null = null;
+	if (hasField(accessor, "sparse")) {
+		const value: JsonValue = fieldOf(accessor, "sparse");
+		if (value === null || value.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+		const indices: JsonValue = fieldOf(value, "indices");
+		const replacements: JsonValue = fieldOf(value, "values");
+		if (indices === null || indices.kind != JsonKind.Object
+			|| replacements === null || replacements.kind != JsonKind.Object) {
+			return Result.err(GltfError.Unsupported);
+		}
+		sparse = {
+			count: try colourIntField(value, "count", -1),
+			indicesView: try colourIntField(indices, "bufferView", -1),
+			indicesByteOffset: try colourIntField(indices, "byteOffset", 0),
+			indicesComponentType: try colourIntField(indices, "componentType", -1),
+			valuesView: try colourIntField(replacements, "bufferView", -1),
+			valuesByteOffset: try colourIntField(replacements, "byteOffset", 0),
+		};
+	}
+	return Result.ok({
+		bufferView: try colourOptionalInt(accessor, "bufferView"),
+		byteOffset: try colourOptionalInt(accessor, "byteOffset"),
+		componentType: try colourIntField(accessor, "componentType", -1),
+		shape: shape.strVal == "VEC3" ? GltfAccessorShape.Vec3 : GltfAccessorShape.Vec4,
+		normalized: normalized, count: try colourIntField(accessor, "count", -1),
+		role: GltfAccessorRole.Attribute, sparse: sparse,
+	});
+}
+
 function loadMesh(
 	primitive: JsonValue,
 	read: MaterialRead,
@@ -418,6 +505,8 @@ function loadMesh(
 	views: JsonValue,
 	buffer: Readonly<Span<uint8>>,
 	bufferLength: int32,
+	ref colourBuffers: Vec<GltfAccessorBuffer>,
+	ref colourViews: Vec<GltfAccessorView>,
 ): Result<MeshData, GltfError> {
 	if (!isNull(fieldOf(primitive, "targets"))) {
 		return Result.err(GltfError.Unsupported);
@@ -440,18 +529,31 @@ function loadMesh(
 	if (normals.value.count != positions.value.count) {
 		return Result.err(GltfError.CountMismatch);
 	}
-	const colors: JsonValue = fieldOf(attributes, "COLOR_0");
-	let colorView: AccessorView = { offset: 0, count: 0 };
-	if (!isNull(colors)) {
-		const decoded: Result<AccessorView, GltfError> = accessorView(
-			accessors, views, bufferLength,
-			intField(attributes, "COLOR_0", -1), COMPONENT_FLOAT, "VEC3", 3,
-		);
-		if (!decoded.ok) { return Result.err(decoded.error); }
-		if (decoded.value.count != positions.value.count) {
-			return Result.err(GltfError.CountMismatch);
+	let colors: Vec<GltfLinearRgba> = [];
+	if (hasField(attributes, "COLOR_0")) {
+		if (positions.value.count > MAX_MESH_VERTICES) { return Result.err(GltfError.MeshTooLarge); }
+		const source: GltfAccessorSource = try colourAccessorSource(accessors,
+			try colourIntField(attributes, "COLOR_0", -1));
+		if (source.count < 1) { return Result.err(GltfError.OutOfRange); }
+		const denseView = source.bufferView;
+		if (denseView !== null && (denseView < 0 || denseView >= countOf(views))) {
+			return Result.err(GltfError.Unsupported);
 		}
-		colorView = decoded.value;
+		if (colourBuffers.length == 0) {
+			colourViews = try colourAccessorViews(views, bufferLength);
+			let bytes: Vec<uint8> = new Array(bufferLength);
+			for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
+			colourBuffers.push({ bytes: move bytes, byteLength: bufferLength });
+		}
+		const decoded = GltfColour.fromAccessor(source, colourBuffers, colourViews, positions.value.count);
+		if (!decoded.ok) {
+			if (decoded.error == GltfColourError.Count) { return Result.err(GltfError.CountMismatch); }
+			if (decoded.error == GltfColourError.Bounds || decoded.error == GltfColourError.NonFinite) {
+				return Result.err(GltfError.OutOfRange);
+			}
+			return Result.err(GltfError.Unsupported);
+		}
+		colors = decoded.value.values;
 	}
 	const textured: boolean = read.material.texture != NO_TEXTURE_INDEX;
 	let uvView: AccessorView = { offset: 0, count: 0 };
@@ -489,21 +591,14 @@ function loadMesh(
 	for (let i = 0; i < count; i++) {
 		const position: Vec3 = vec3At(buffer, positions.value.offset, i);
 		const normal: Vec3 = vec3At(buffer, normals.value.offset, i);
-		const rgb: Vec3 = colorView.count > 0
-			? vec3At(buffer, colorView.offset, i)
-			: vec3(1.0, 1.0, 1.0);
-		if (!isFiniteVec3(position) || !isFiniteVec3(normal) || !isFiniteVec3(rgb)) {
+		const rgba: GltfLinearRgba = colors.length > 0
+			? colors[i] : { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+		if (!isFiniteVec3(position) || !isFiniteVec3(normal)) {
 			return Result.err(GltfError.OutOfRange);
 		}
 		const uv: Uv = read.realUvs ? uvAt(buffer, uvView.offset, i) : { u: 0.0, v: 0.0 };
 		if (uv.u - uv.u != 0.0 || uv.v - uv.v != 0.0) {
 			return Result.err(GltfError.OutOfRange);
-		}
-		if (colorView.count > 0
-			&& (rgb.x < 0.0 || rgb.x > 1.0
-				|| rgb.y < 0.0 || rgb.y > 1.0
-				|| rgb.z < 0.0 || rgb.z > 1.0)) {
-			return Result.err(GltfError.Unsupported);
 		}
 		const normalLength: float32 =
 			normal.x * normal.x + normal.y * normal.y + normal.z * normal.z;
@@ -512,10 +607,10 @@ function loadMesh(
 		}
 		// glTF's COLOR_0 and baseColorFactor are linear; the API's colours are gamma-encoded.
 		const color: Rgba = {
-			red: linearToSrgb(rgb.x * read.factor.red),
-			green: linearToSrgb(rgb.y * read.factor.green),
-			blue: linearToSrgb(rgb.z * read.factor.blue),
-			alpha: read.material.alphaMode == GltfAlphaMode.Opaque ? 1.0 : read.factor.alpha,
+			red: linearToSrgb(rgba.red * read.factor.red),
+			green: linearToSrgb(rgba.green * read.factor.green),
+			blue: linearToSrgb(rgba.blue * read.factor.blue),
+			alpha: read.material.alphaMode == GltfAlphaMode.Opaque ? 1.0 : rgba.alpha * read.factor.alpha,
 		};
 		const added: Result<int32, MeshError> = textured
 			? addTexturedVertex(data, position, normal, uv, color)
@@ -1179,6 +1274,8 @@ function decodeGltf(
 		if (!(try keepsAlpha(data.materials, i))) { forceOpaque(data.textures[i].pixels); }
 	}
 	const _whites: int32 = try substituteWhites(data, reads);
+	let colourBuffers: Vec<GltfAccessorBuffer> = [];
+	let colourViews: Vec<GltfAccessorView> = [];
 	let runs: Vec<PrimitiveRun> = [];
 	let usedNames: Vec<string> = [];
 	let usedCounts: Vec<int32> = [];
@@ -1200,7 +1297,7 @@ function decodeGltf(
 			const read: MaterialRead =
 				material == DEFAULT_MATERIAL ? DEFAULT_READ : reads[material];
 			const mesh: Result<MeshData, GltfError> =
-				loadMesh(primitive, read, accessors, views, buffer, declaredLength);
+				loadMesh(primitive, read, accessors, views, buffer, declaredLength, colourBuffers, colourViews);
 			if (!mesh.ok) { return Result.err(mesh.error); }
 			data.meshes.push(mesh.value);
 			data.meshMaterials.push(material);
