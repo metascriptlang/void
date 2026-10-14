@@ -156,6 +156,7 @@ export macro glsl(entry: Node): Node {
 	let features: string[] = [];
 
 	let globals: string[] = [];
+	let locals: string[] = [];
 	function claim(name: string, at: Node): void {
 		if (globals.indexOf(name) >= 0) { fail(at, "'" + name + "' names two things in one stage"); }
 		globals.push(name);
@@ -359,6 +360,11 @@ export macro glsl(entry: Node): Node {
 		return expr(n);
 	}
 
+	function global(name: string, at: Node): string {
+		if (locals.includes(name)) { fail(at, "local '" + name + "' hides the stage's '" + name + "'"); }
+		return name;
+	}
+
 	function expr(n: Node): string {
 		if (n.kind == NodeKind.NumberLiteral) { return number(n); }
 		if (n.kind == NodeKind.BooleanLiteral) { return n.boolValue ? "true" : "false"; }
@@ -388,15 +394,15 @@ export macro glsl(entry: Node): Node {
 				const b = builtinInputNames.indexOf(n.property);
 				if (b >= 0) { return builtinInputs[b]; }
 				use(n.property);
-				return n.property;
+				return global(n.property, n);
 			}
 			if (isType(object, bindingsType)) {
 				use(n.property);
-				return n.property;
+				return global(n.property, n);
 			}
 			if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
 				use(object.property);
-				return n.property;
+				return global(n.property, n);
 			}
 			if (isType(object, keyType)) {
 				fail(n, "a program key feature is read only as an if condition");
@@ -450,8 +456,6 @@ export macro glsl(entry: Node): Node {
 		return "#ifdef " + feature + "\n" + text + "#endif\n";
 	}
 
-	let locals: string[] = [];
-
 	function assignment(n: Node): string {
 		const target = n.kind == NodeKind.UpdateExpr ? n.updateArg : n.left;
 		if (target.kind != NodeKind.Identifier || !locals.includes(target.name)) {
@@ -487,9 +491,6 @@ export macro glsl(entry: Node): Node {
 			fail(n, "this statement has no GLSL form yet (node kind " + String(n.kind) + ")");
 		}
 		if (n.initializer == null) { fail(n, "a shader local is declared with its value"); }
-		if (globals.indexOf(n.declName) >= 0) {
-			fail(n, "local '" + n.declName + "' hides a stage interface name");
-		}
 		const text = glslType(getType(n.initializer), n) + " " + n.declName + " = " +
 			value(n.initializer);
 		locals.push(n.declName);
