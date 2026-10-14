@@ -70,6 +70,7 @@ import "./layoutCheck";
 import "./billboardCheck";
 import "./shaderCheck";
 import "./shaderInterfaceCheck";
+import "./shaderEmitCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
