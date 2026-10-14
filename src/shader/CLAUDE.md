@@ -20,16 +20,34 @@ later replaces the hand-written GLSL source of each base.
   author's code: textures and samplers are separate; uniform block members are only float, int,
   vec2–4, ivec2–4, mat3, mat4, and arrays only vec4, ivec4 or mat4; no recursion. The emitter packs an
   author's struct into those types, so a uniform block's layout comes from one MetaScript struct.
-- **Vocabulary is TypeGPU's** ([docs/VOCABULARY.md](../../docs/VOCABULARY.md)): `Vec4f`, `Vec2i`/`vec2i`,
-  `textureLoad`, `textureDimensions`, `@builtin(position)`. `std.ms` declares it with CPU
-  meaning; the emitter spells each declaration in GLSL.
-- **Entry convention** (TypeGPU's `fragmentFn`, approved 2026-10-13; it replaces the shady `out`
-  parameter approved 2026-10-10). The stage input is one struct parameter and the colour is the
-  return value, so an entry writes to nothing it was handed and the CPU call is the GPU call. A field
-  decorated `@builtin(position)` reads `gl_FragCoord`. `Texture2d` and `Sampler` parameters are
-  separate uniforms, bindings counted per kind in parameter order. The stage and program name are the
-  generator's (`@fs copyFs`), not the function's. Written `fragColor = value; return;`, the output
-  compiles to the same seven backend sources as a hand-written assignment (measured below).
+- **Vocabulary is TypeGPU's** ([docs/VOCABULARY.md](../../docs/VOCABULARY.md)): `Vec3f`/`vec3f`,
+  `Mat4x4f`, `textureLoad`, `select`, `@builtin(position)`, `@binding(n)`. `std.ms` declares it with
+  CPU meaning; the emitter spells each declaration in GLSL, and a `std.ms` name without a GLSL
+  spelling is an error, not a guess.
+- **Entry convention** (TypeGPU's `vertexFn`/`fragmentFn`; approved 2026-10-13, it replaces the
+  shady `out` parameter of 2026-10-10). An entry writes to nothing it was handed, so the CPU call is
+  the GPU call. Its stage follows from its return: a struct with a `@builtin(position)` field is a
+  vertex entry, anything else a fragment entry. Each parameter is one of three structs, at most one
+  of each:
+  - **the stage input**: vertex attributes, or a fragment's varyings and builtins
+    (`@builtin(position)` reads `gl_FragCoord`, `@builtin(frontFacing)` `gl_FrontFacing`);
+  - **the bindings** (WGSL's `@binding(n)` on each field): a struct field is a uniform block named
+    as the field, its members the struct's fields, so the C struct shdc writes keeps that name; a
+    `Texture2d` or `Sampler` field is a separate texture or sampler, with `@sampleType(...)` or
+    `@samplerType(...)` when WebGPU's layout needs one;
+  - **the program key**: booleans marked `@feature(CUTOUT)`, read only as an `if` condition, which
+    emits `#ifdef CUTOUT`, so one function serves every row of `src/void3d/programKeys.txt`.
+  The return is the stage output: a fragment's vector is `fragColor`; a struct names each output
+  `@location(n)`, and `@feature(NAME)` declares one only under that feature; `void` writes none.
+  `discard()` is WGSL's. The stage and program name are the generator's (`@fs litFs`).
+- **Each declaration sits under the features of all its reads, and an unread one is left out.**
+  A uniform or texture a variant does not read is still one its draw would have to bind, and shdc
+  would reflect it. A helper is written once with no features on; its reads are replayed at each
+  call under the features around the call, and the helper itself is gated the same way.
+- **Varyings match by position.** Every varying is declared, read or not, because shdc numbers them
+  in declaration order; the vertex output struct and the fragment input struct list them in the
+  same order (lit's `LitVaryings` and `LitFragmentInput`). Nothing checks the two against each other
+  yet: the next program whose stages are written apart gets that check in the generator.
 - **Builtins by declaring module.** A call to a function declared in `std.ms` is a builtin; a struct
   getter declared there emits as the swizzle it names. The walk sits in nested functions of the
   macro body: a top-level helper cannot read `Node` fields.
@@ -45,7 +63,9 @@ later replaces the hand-written GLSL source of each base.
 - **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the stages and
   `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, whose stages join
   `shader3d.glsl`'s for every program key; `--check` reports a stale file. Runtime modules never
-  call `glsl`, so no binary carries GLSL text.
+  call `glsl`, so no binary carries GLSL text. `shader3dBlocks.glsl` is included only into a program
+  that still has a hand-written stage: a generated stage defines what it calls, and a texture tag in
+  an included block would name its texture twice.
 - **CPU oracle within a tolerance, never pixel-exact.** GLSL allows contraction and looser ULP bounds,
   and `sin`/`exp` are implementation-defined. shady's own tests use `1e-4`. Pixel truth is
   the readback in `tests/capture3d/capture.c`.

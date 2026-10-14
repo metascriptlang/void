@@ -77,6 +77,18 @@ the hand-written expression, `textureSize(…)` with no conversion around it.
 Where MetaScript's convention and TypeGPU's spelling differ, MetaScript's holds for the type name
 and TypeGPU's for the constructor: `Vec4f` the struct, `vec4f(…)` the function.
 
+Where WGSL has no name for what a shader needs, Void names it and takes no WGSL name for it:
+`upperLeft3x3(m)` is GLSL's `mat3(m4)`, which WGSL has no constructor for. Where WGSL leaves a
+result undefined, the CPU meaning refuses that operand instead of returning a plausible number:
+`pow` of a negative base, or of 0 to a power ≤ 0, stops with `unreachable`.
+
+A shader's interface uses WGSL's attribute names as MetaScript field decorators: `@builtin(…)`,
+`@location(n)` and `@binding(n)`. Two come from WebGPU's bind group layout, where a texture or
+sampler states its binding type: `@sampleType(unfilterable_float)`, `@samplerType(nonfiltering)`.
+One is Void's, the program key: `@feature(CUTOUT)` marks a boolean as the feature of that name,
+read only as an `if` condition. That is Heaps' `@const` (one program per value) in the place
+TypeGPU's slots take, since Void builds its variants offline by key.
+
 ## GPU layer
 
 `src/gpu` and `src/sokol` take WebGPU's names where a concept maps one to one and the name is the
