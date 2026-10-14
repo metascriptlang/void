@@ -71,6 +71,7 @@ import "./billboardCheck";
 import "./shaderCheck";
 import "./shaderInterfaceCheck";
 import "./shaderEmitCheck";
+import "./shaderStdCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
