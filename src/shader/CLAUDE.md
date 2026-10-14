@@ -31,9 +31,17 @@ later replaces the hand-written GLSL source of each base.
   generator's (`@fs copyFs`), not the function's. Written `fragColor = value; return;`, the output
   compiles to the same seven backend sources as a hand-written assignment (measured below).
 - **Builtins by declaring module.** A call to a function declared in `std.ms` is a builtin; a struct
-  getter declared there emits as the swizzle it names. Any other callee is the user's (slice 2:
-  emitted transitively). The walk sits in nested functions of the macro body: a top-level helper
-  cannot read `Node` fields.
+  getter declared there emits as the swizzle it names. The walk sits in nested functions of the
+  macro body: a top-level helper cannot read `Node` fields.
+- **The author's functions and module constants are gathered as shady's `gatherFunction` does.**
+  Each one the entry reaches is defined above `main()` once, after what it reads; a module `const`
+  becomes a GLSL `const`, so its name survives into the source. A definition is known by its
+  declaration (module, line, column), so an overload pair stays two GLSL overloads. Recursion, a
+  module `let` and a constant initialized by a call are errors at the author's code.
+- **A name GLSL already holds is renamed, as TypeGPU's strict naming does** (`resolutionCtx.ts`
+  `makeUniqueIdentifier`): a keyword, a builtin, or a name another definition took gets `_1`,
+  `_2`, …; a local is also kept apart from every defined name, so it never hides one it reads.
+  A name GLSL cannot spell (`__`, `gl_`, a character outside letters, digits and `_`) is an error.
 - **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the stages and
   `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, whose stages join
   `shader3d.glsl`'s for every program key; `--check` reports a stale file. Runtime modules never
@@ -53,6 +61,10 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
   resolved to: an imported helper, a same-named helper under an alias, the winning overload, an
   imported module constant. Never look a callee up by its spelling.
 - **Declaration order.** A body read before its declaration comes back checked.
+- **Declaration identity.** `getImpl` returns a fresh copy each call, so nodes do not compare,
+  and `resolvedSym` carries `name`, `modulePath` and `symbolKind` but no `item`, `disamb`,
+  `overloadIdx` or `Global` flag; a declaration's `line` and `column` tell it apart, and a
+  parameter has no declaration (measured 2026-10-15, BUILD `9cf5708c`).
 - **Swizzles.** `get xy()` in a struct body: `v.xy` is a value read with no heap object, and a
   receiver with side effects runs once.
 - **Macro output keeps its symbols**; a local placed outside its own function is an error.
