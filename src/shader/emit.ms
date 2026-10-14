@@ -333,7 +333,7 @@ export macro glsl(entry: Node): Node {
 				if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
 			} else if (op == "%" || op == "/" && integer(n.left)) {
 				fail(n, "'" + op + "' has no GLSL form: GLSL does not truncate as MetaScript does");
-			} else if (op != "+" && op != "-" && op != "*") {
+			} else if (op != "+" && op != "-" && op != "*" && op != "/") {
 				fail(n, "operator '" + op + "' has no GLSL form yet");
 			}
 			return expr(n.left) + " " + op + " " + expr(n.right);

@@ -7,6 +7,7 @@ import {
 	Sampler,
 	Texture2d,
 	Vec4f,
+	binding,
 	builtin,
 	clamp,
 	dot,
@@ -32,13 +33,18 @@ export struct ProbeInput {
 	@builtin(position) position: Vec4f;
 }
 
-export function probeFs(input: ProbeInput, shadowMap: Texture2d, shadowSampler: Sampler): Vec4f {
+export struct ProbeBindings {
+	@binding(0) shadowMap: Texture2d;
+	@binding(0) shadowSampler: Sampler;
+}
+
+export function probeFs(input: ProbeInput, b: ProbeBindings): Vec4f {
 	const p = input.position;
 	const model = mat4x4f(p, p, p, vec4f(0.0, 0.0, 0.0, 1.0));
 	const world = model * model * vec4f(p.xyz, 1.0);
 	const n = normalize(upperLeft3x3(model) * world.xyz);
 	const basis = mat3x3f(n, vec3f(0.0, 1.0, 0.0), vec3f(1.0));
-	const uv = p.xy * vec2f(textureDimensions(shadowMap, shadowSampler, 0));
+	const uv = p.xy * vec2f(textureDimensions(b.shadowMap, b.shadowSampler, 0));
 	const up = basis * vec3f(0.0, 1.0, 0.0);
 	const lambert = max(dot(n, up), 0.0) * p.w / length(n);
 	const light = pow(max(n * 0.5 + 0.5, vec3f(0.0)), vec3f(2.4)) - 1.0;
@@ -46,7 +52,7 @@ export function probeFs(input: ProbeInput, shadowMap: Texture2d, shadowSampler: 
 	const curved = mix(clamp(light, vec3f(0.0), vec3f(1.0)), bright, min(lambert, 1.0));
 	const facing = select(n, light - n, p.z > 0.5);
 	const shade = select(1.0, clamp(uv.x, 0.0, 1.0), uv.y > 1.0);
-	const texel = textureLoad(shadowMap, shadowSampler, vec2i(uv), 0);
+	const texel = textureLoad(b.shadowMap, b.shadowSampler, vec2i(uv), 0);
 	return vec4f(curved * facing * shade + texel.rgb * texel.r, texel.a);
 }
 
@@ -58,14 +64,14 @@ test "glsl spells every std name in its GLSL form" {
 		"void main() {\n" +
 		"    vec4 p = gl_FragCoord;\n" +
 		"    mat4 model = mat4(p, p, p, vec4(0.0, 0.0, 0.0, 1.0));\n" +
-		"    vec4 world = ((model * model) * vec4(p.xyz, 1.0));\n" +
+		"    vec4 world = (model * model) * vec4(p.xyz, 1.0);\n" +
 		"    vec3 n = normalize((mat3(model) * world.xyz));\n" +
 		"    mat3 basis = mat3(n, vec3(0.0, 1.0, 0.0), vec3(1.0));\n" +
-		"    vec2 uv = (p.xy * vec2(textureSize(sampler2D(shadowMap, shadowSampler), 0)));\n" +
-		"    vec3 up = (basis * vec3(0.0, 1.0, 0.0));\n" +
-		"    float lambert = ((max(dot(n, up), 0.0) * p.w) / length(n));\n" +
-		"    vec3 light = (pow(max(((n * 0.5) + 0.5), vec3(0.0)), vec3(2.4)) - 1.0);\n" +
-		"    vec3 bright = ((2.0 * light) / n);\n" +
+		"    vec2 uv = p.xy * vec2(textureSize(sampler2D(shadowMap, shadowSampler), 0));\n" +
+		"    vec3 up = basis * vec3(0.0, 1.0, 0.0);\n" +
+		"    float lambert = (max(dot(n, up), 0.0) * p.w) / length(n);\n" +
+		"    vec3 light = pow(max(((n * 0.5) + 0.5), vec3(0.0)), vec3(2.4)) - 1.0;\n" +
+		"    vec3 bright = (2.0 * light) / n;\n" +
 		"    vec3 curved = mix(clamp(light, vec3(0.0), vec3(1.0)), bright, min(lambert, 1.0));\n" +
 		"    vec3 facing = ((p.z > 0.5) ? (light - n) : n);\n" +
 		"    float shade = ((uv.y > 1.0) ? clamp(uv.x, 0.0, 1.0) : 1.0);\n" +
