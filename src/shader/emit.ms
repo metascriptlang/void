@@ -16,10 +16,13 @@ import {
 	typeKind,
 } from "std/meta";
 import {
+	Mat3x3f,
+	Mat4x4f,
 	Sampler,
 	Texture2d,
 	Vec2f,
 	Vec2i,
+	Vec3f,
 	Vec4f,
 	textureLoad,
 } from "./std";
@@ -38,10 +41,13 @@ export macro glsl(entry: Node): Node {
 	const samplerType = getTypeImpl(Sampler);
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
+		getTypeImpl(Vec3f),
 		getTypeImpl(Vec4f),
 		getTypeImpl(Vec2i),
+		getTypeImpl(Mat3x3f),
+		getTypeImpl(Mat4x4f),
 	];
-	const vectorNames = ["vec2", "vec4", "ivec2"];
+	const vectorNames = ["vec2", "vec3", "vec4", "ivec2", "mat3", "mat4"];
 
 	function glslType(t: Node | null, at: Node): string {
 		if (t == null) { fail(at, "the expression has no type"); }
@@ -56,7 +62,7 @@ export macro glsl(entry: Node): Node {
 		for (let i = 0; i < vectorTypes.length; i++) {
 			if (sameType(t, vectorTypes[i])) { return vectorNames[i]; }
 		}
-		fail(at, "a shader value is float32, int32, uint32, boolean or a vector of ./std");
+		fail(at, "a shader value is float32, int32, uint32, boolean, or a ./std vector or matrix");
 	}
 
 	function decorator(decorators: Node[], name: string): Node | null {
@@ -409,12 +415,21 @@ export macro glsl(entry: Node): Node {
 			}
 			let args: string[] = [];
 			for (const a of n.arguments) { args.push(expr(a)); }
+			const listed = "(" + args.join(", ") + ")";
 			const sampled = args.length >= 2 ? "sampler2D(" + args[0] + ", " + args[1] + ")" : "";
 			return match (impl.fnName) {
-				"vec2i" => "ivec2(" + args.join(", ") + ")",
+				"max" | "min" | "clamp" | "mix" | "pow" | "dot" | "length" | "normalize" =>
+					impl.fnName + listed,
+				"vec2f" => "vec2" + listed,
+				"vec3f" => "vec3" + listed,
+				"vec4f" => "vec4" + listed,
+				"vec2i" => "ivec2" + listed,
+				"mat3x3f" | "upperLeft3x3" => "mat3" + listed,
+				"mat4x4f" => "mat4" + listed,
+				"select" => "(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
 				"textureDimensions" => "textureSize(" + sampled + ", " + args[2] + ")",
 				"textureLoad" => "texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",
-				_ => impl.fnName + "(" + args.join(", ") + ")",
+				_ => fail(n, "./std's '" + impl.fnName + "' has no GLSL spelling"),
 			};
 		}
 		fail(n, "this expression has no GLSL form yet (node kind " + String(n.kind) + ")");
