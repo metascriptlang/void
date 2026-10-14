@@ -205,6 +205,39 @@ test "gltfAccessor index source width survives u16 boundary and high u32 bit" {
 	assert !GltfAccessorIndices.fromAccessor(wideSource, wideSentinel, wideViews, maximum).ok;
 }
 
+test "gltfAccessor byte and short RGBA attributes require a declared stride" {
+	const buffers: Vec<GltfAccessorBuffer> = [{
+		bytes: [255, 255, 255, 255, 255, 255, 255, 255], byteLength: 8,
+	}];
+	const views: Vec<GltfAccessorView> = [packedView(8)];
+	const source: GltfAccessorSource = {
+		bufferView: 0, byteOffset: 0, componentType: 5121,
+		shape: GltfAccessorShape.Vec4, normalized: true, count: 1,
+		role: GltfAccessorRole.Attribute, sparse: null,
+	};
+	const packedByte = GltfAccessorValues.decode(source, buffers, views);
+	assert !packedByte.ok;
+	if (!packedByte.ok) { assert packedByte.error == GltfAccessorError.Alignment; }
+	const byteViews: Vec<GltfAccessorView> = [{ ...views[0], byteStride: 4 }];
+	const byte = GltfAccessorValues.decode(source, buffers, byteViews);
+	assert byte.ok;
+	if (byte.ok) {
+		assert byte.value.values.length == 4;
+		for (const value of byte.value.values) { assert value == 1.0; }
+	}
+	const shortSource: GltfAccessorSource = { ...source, componentType: 5123 };
+	const packedShort = GltfAccessorValues.decode(shortSource, buffers, views);
+	assert !packedShort.ok;
+	if (!packedShort.ok) { assert packedShort.error == GltfAccessorError.Alignment; }
+	const shortViews: Vec<GltfAccessorView> = [{ ...views[0], byteStride: 8 }];
+	const short = GltfAccessorValues.decode(shortSource, buffers, shortViews);
+	assert short.ok;
+	if (short.ok) {
+		assert short.value.values.length == 4;
+		for (const value of short.value.values) { assert value == 1.0; }
+	}
+}
+
 test "gltfAccessor refuses malformed metadata before component reads" {
 	const buffers: Vec<GltfAccessorBuffer> = [{ bytes: [0, 0, 128, 63], byteLength: 4 }];
 	const views: Vec<GltfAccessorView> = [packedView(4)];
