@@ -50,6 +50,9 @@ export macro glsl(entry: Node): Node {
 		if (kind == TypeKind.Int32) { return "int"; }
 		if (kind == TypeKind.Uint32) { return "uint"; }
 		if (kind == TypeKind.Boolean) { return "bool"; }
+		if (kind == TypeKind.SizedArray) {
+			return glslType(t.typExprElement, at) + "[" + String(t.typExprSize) + "]";
+		}
 		for (let i = 0; i < vectorTypes.length; i++) {
 			if (sameType(t, vectorTypes[i])) { return vectorNames[i]; }
 		}
@@ -296,11 +299,79 @@ export macro glsl(entry: Node): Node {
 		return argumentName(feature, n);
 	}
 
+	function kindOf(n: Node): TypeKind { return typeKind(getType(n)); }
+
+	function scalar(n: Node): boolean {
+		const kind = kindOf(n);
+		return kind == TypeKind.Float32 || kind == TypeKind.Int32 || kind == TypeKind.Uint32 ||
+			kind == TypeKind.Boolean;
+	}
+
+	function integer(n: Node): boolean {
+		return kindOf(n) == TypeKind.Int32 || kindOf(n) == TypeKind.Uint32;
+	}
+
+	function condition(n: Node): string {
+		if (kindOf(n) != TypeKind.Boolean) { fail(n, "a shader condition is a boolean"); }
+		return value(n);
+	}
+
+	function value(n: Node): string {
+		if (n.kind == NodeKind.BinaryExpr) {
+			const op = n.operator == "===" ? "==" : n.operator == "!==" ? "!=" : n.operator;
+			if (["&&", "||"].includes(op)) {
+				if (kindOf(n.left) != TypeKind.Boolean || kindOf(n.right) != TypeKind.Boolean) {
+					fail(n, "'" + op + "' takes booleans in a shader");
+				}
+			} else if (["<", "<=", ">", ">=", "==", "!="].includes(op)) {
+				if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
+			} else if (op == "%" || op == "/" && integer(n.left)) {
+				fail(n, "'" + op + "' has no GLSL form: GLSL does not truncate as MetaScript does");
+			} else if (op != "+" && op != "-" && op != "*") {
+				fail(n, "operator '" + op + "' has no GLSL form yet");
+			}
+			return expr(n.left) + " " + op + " " + expr(n.right);
+		}
+		if (n.kind == NodeKind.UnaryExpr) {
+			const op = n.unaryOp;
+			if (op == "!" && kindOf(n.operand) == TypeKind.Boolean ||
+				op == "-" && kindOf(n.operand) != TypeKind.Uint32) {
+				return op + expr(n.operand);
+			}
+			fail(n, "unary '" + op + "' has no GLSL form yet");
+		}
+		if (n.kind == NodeKind.ConditionalExpr) {
+			if (kindOf(n.ternaryCondition) != TypeKind.Boolean) {
+				fail(n, "a shader condition is a boolean");
+			}
+			return expr(n.ternaryCondition) + " ? " + expr(n.ternaryConsequent) + " : " +
+				expr(n.ternaryAlternate);
+		}
+		return expr(n);
+	}
+
 	function expr(n: Node): string {
 		if (n.kind == NodeKind.NumberLiteral) { return number(n); }
+		if (n.kind == NodeKind.BooleanLiteral) { return n.boolValue ? "true" : "false"; }
 		if (n.kind == NodeKind.Identifier) { return n.name; }
-		if (n.kind == NodeKind.BinaryExpr) {
-			return "(" + expr(n.left) + " " + n.operator + " " + expr(n.right) + ")";
+		if (n.kind == NodeKind.BinaryExpr || n.kind == NodeKind.UnaryExpr ||
+			n.kind == NodeKind.ConditionalExpr) {
+			return "(" + value(n) + ")";
+		}
+		if (n.kind == NodeKind.ArrayAccess) { return expr(n.array) + "[" + value(n.index) + "]"; }
+		if (n.kind == NodeKind.ArrayLiteral) {
+			let elements: string[] = [];
+			for (const e of n.elements) { elements.push(expr(e)); }
+			return glslType(getType(n), n) + "(" + elements.join(", ") + ")";
+		}
+		if (n.kind == NodeKind.TypeAssertion) {
+			const from = kindOf(n.asExpr);
+			const to = kindOf(n);
+			if ((from == TypeKind.Float32 || from == TypeKind.Int32) &&
+				(to == TypeKind.Float32 || to == TypeKind.Int32)) {
+				return glslType(getType(n), n) + "(" + value(n.asExpr) + ")";
+			}
+			fail(n, "'as' converts between float32 and int32 only in a shader");
 		}
 		if (n.kind == NodeKind.MemberExpr) {
 			const object = n.object;
@@ -349,65 +420,136 @@ export macro glsl(entry: Node): Node {
 		fail(n, "this expression has no GLSL form yet (node kind " + String(n.kind) + ")");
 	}
 
-	function output(name: string, value: Node): string {
+	function output(name: string, value: Node, indent: string): string {
 		const o = outputNames.indexOf(name);
 		const target = outputTargets[o];
 		const feature = outputFeatures[o];
 		if (feature != "") { features.push(feature); }
 		use(target);
-		const text = "    " + target + " = " + expr(value) + ";\n";
+		const text = indent + target + " = " + expr(value) + ";\n";
 		if (feature == "") { return text; }
 		features.pop();
 		return "#ifdef " + feature + "\n" + text + "#endif\n";
 	}
 
-	function stmt(n: Node): string {
-		if (n.kind == NodeKind.BlockStmt) {
-			let out = "";
-			for (const s of n.statements) { out += stmt(s); }
+	let locals: string[] = [];
+
+	function assignment(n: Node): string {
+		const target = n.kind == NodeKind.UpdateExpr ? n.updateArg : n.left;
+		if (target.kind != NodeKind.Identifier || !locals.includes(target.name)) {
+			fail(n, "a shader assigns only to its own locals");
+		}
+		if (n.kind == NodeKind.UpdateExpr) { return target.name + n.updateOp; }
+		if (n.operator == "/=" && integer(target)) {
+			fail(n, "'/=' has no GLSL form: GLSL does not truncate as MetaScript does");
+		}
+		if (!["=", "+=", "-=", "*=", "/="].includes(n.operator)) {
+			fail(n, "operator '" + n.operator + "' has no GLSL form yet");
+		}
+		return target.name + " " + n.operator + " " + value(n.right);
+	}
+
+	function simple(n: Node): string {
+		if (n.kind == NodeKind.ExprStmt) {
+			const e = n.expr;
+			if (e.kind != NodeKind.UpdateExpr && e.kind != NodeKind.BinaryExpr) {
+				fail(n, "a shader statement is an assignment, not a value (node kind " +
+					String(e.kind) + ")");
+			}
+			return assignment(e);
+		}
+		if (n.kind != NodeKind.VariableDecl) {
+			fail(n, "this statement has no GLSL form yet (node kind " + String(n.kind) + ")");
+		}
+		if (n.initializer == null) { fail(n, "a shader local is declared with its value"); }
+		if (globals.indexOf(n.declName) >= 0) {
+			fail(n, "local '" + n.declName + "' hides a stage interface name");
+		}
+		const text = glslType(getType(n.initializer), n) + " " + n.declName + " = " +
+			value(n.initializer);
+		locals.push(n.declName);
+		return text;
+	}
+
+	function body(n: Node, indent: string): string {
+		const outer = locals.length;
+		let out = "";
+		const statements = n.kind == NodeKind.BlockStmt ? n.statements : [n];
+		for (const s of statements) { out += stmt(s, indent); }
+		while (locals.length > outer) { locals.pop(); }
+		return out;
+	}
+
+	function branches(n: Node, indent: string): string {
+		const inner = indent + "    ";
+		const out = "if (" + condition(n.condition) + ") {\n" + body(n.consequent, inner) +
+			indent + "}";
+		const other = n.alternate;
+		if (other == null || other.kind == NodeKind.BlockStmt && other.statements.length == 0) {
 			return out;
 		}
-		if (n.kind == NodeKind.VariableDecl) {
-			if (globals.indexOf(n.declName) >= 0) {
-				fail(n, "local '" + n.declName + "' hides a stage interface name");
-			}
-			return "    " + glslType(getType(n.initializer), n) + " " + n.declName + " = " +
-				expr(n.initializer) + ";\n";
+		if (other.kind == NodeKind.IfStmt) { return out + " else " + branches(other, indent); }
+		return out + " else {\n" + body(other, inner) + indent + "}";
+	}
+
+	function stmt(n: Node, indent: string): string {
+		const inner = indent + "    ";
+		if (n.kind == NodeKind.BlockStmt) {
+			return indent + "{\n" + body(n, inner) + indent + "}\n";
 		}
-		if (n.kind == NodeKind.IfStmt) {
+		if (n.kind == NodeKind.IfStmt && featureOf(n.condition) != "") {
 			const feature = featureOf(n.condition);
-			if (feature == "") { fail(n, "an if has no GLSL form yet unless it reads a program key"); }
 			features.push(feature);
-			let text = "#ifdef " + feature + "\n" + stmt(n.consequent);
+			let text = "#ifdef " + feature + "\n" + body(n.consequent, indent);
 			features.pop();
 			if (n.alternate != null) {
 				features.push("!" + feature);
-				const otherwise = stmt(n.alternate);
+				const otherwise = body(n.alternate, indent);
 				features.pop();
 				if (otherwise != "") { text += "#else\n" + otherwise; }
 			}
 			return text + "#endif\n";
 		}
+		if (n.kind == NodeKind.IfStmt) { return indent + branches(n, indent) + "\n"; }
+		if (n.kind == NodeKind.WhileStmt) {
+			if (n.whileLabel != "") { fail(n, "GLSL has no labelled loops"); }
+			return indent + "while (" + condition(n.whileCondition) + ") {\n" +
+				body(n.whileBody, inner) + indent + "}\n";
+		}
+		if (n.kind == NodeKind.ForStmt) {
+			if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
+			const outer = locals.length;
+			const head = "for (" + simple(n.forInit) + "; " + condition(n.forCondition) + "; " +
+				assignment(n.forUpdate) + ") {\n";
+			const out = indent + head + body(n.forBody, inner) + indent + "}\n";
+			while (locals.length > outer) { locals.pop(); }
+			return out;
+		}
+		if (n.kind == NodeKind.BreakStmt || n.kind == NodeKind.ContinueStmt) {
+			const label = n.kind == NodeKind.BreakStmt ? n.breakLabel : n.continueLabel;
+			if (label != "") { fail(n, "GLSL has no labelled loops"); }
+			return indent + (n.kind == NodeKind.BreakStmt ? "break" : "continue") + ";\n";
+		}
 		if (n.kind == NodeKind.ReturnStmt) {
-			const value = n.argument;
-			if (value == null) { fail(n, "an entry returns its stage output"); }
+			const result = n.argument;
+			if (result == null) { fail(n, "an entry returns its stage output"); }
 			if (outputs == null) {
 				use("fragColor");
-				return "    fragColor = " + expr(value) + ";\n    return;\n";
+				return indent + "fragColor = " + value(result) + ";\n" + indent + "return;\n";
 			}
-			if (value.kind != NodeKind.ObjectLiteral) {
+			if (result.kind != NodeKind.ObjectLiteral) {
 				fail(n, "a struct stage output is returned as an object literal");
 			}
 			let text = "";
-			for (let k = 0; k < value.keys.length; k++) {
-				text += output(value.keys[k], value.properties[k]);
+			for (let k = 0; k < result.keys.length; k++) {
+				text += output(result.keys[k], result.properties[k], indent);
 			}
-			return text + "    return;\n";
+			return text + indent + "return;\n";
 		}
-		fail(n, "this statement has no GLSL form yet (node kind " + String(n.kind) + ")");
+		return indent + simple(n) + ";\n";
 	}
 
-	const body = stmt(fn.fnBody);
+	const main = body(fn.fnBody, "    ");
 	let header = "";
 	for (let i = 0; i < declNames.length; i++) {
 		if (!declUsed[i] && !declAlways[i]) { continue; }
@@ -419,6 +561,6 @@ export macro glsl(entry: Node): Node {
 		}
 		header += text;
 	}
-	const source = header + "void main() {\n" + body + "}\n";
+	const source = header + "void main() {\n" + main + "}\n";
 	return { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: source };
 }
