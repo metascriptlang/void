@@ -8,24 +8,6 @@ vec3 pointLightAt(int i, vec3 position, vec3 normal) {
 }
 @end
 
-@vs litVs
-@include_block vertexUniforms
-@include_block modelUniforms
-in vec3 position;
-in vec3 normal;
-in vec4 color;
-out vec3 worldPosition;
-out vec3 worldNormal;
-out vec4 baseColor;
-void main() {
-    vec4 world = model * vec4(position, 1.0);
-    worldPosition = world.xyz;
-    worldNormal = mat3(normalModel) * normal;
-    baseColor = color;
-    gl_Position = viewProj * world;
-}
-@end
-
 @block litShade
 vec4 litShade(vec3 n) {
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
@@ -38,42 +20,6 @@ vec4 litShade(vec3 n) {
     }
     vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y));
     return vec4(linearToSrgb(surface * light), baseColor.a);
-}
-@end
-
-@fs litFs
-// PENDING3D: material-saturation-only
-@include_block materialUniforms
-@include_block lightUniforms
-@include_block colorSpace
-@include_block frameUniforms
-@include_block toneMap
-@include_block pointLight
-@include_block saturation
-@include_block facingNormal
-#ifdef SHADOWED
-@include_block dirShadow
-#endif
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec4 baseColor;
-out vec4 fragColor;
-#ifdef NORMAL_MRT
-layout(location=1) out vec4 fragNormal;
-#endif
-@include_block litShade
-void main() {
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    fragColor = litShade(n);
-#ifdef CUTOUT
-    if (fragColor.a < material.w) {
-        discard;
-    }
-#endif
-#ifdef NORMAL_MRT
-    fragNormal = vec4(n * 0.5 + 0.5, 1.0);
-#endif
-    fragColor.rgb = toneMapped(fragColor.rgb);
 }
 @end
 
@@ -323,22 +269,6 @@ void main() {
 @end
 
 // h3d.pass.Shadows writes depth only; a cutout caster discards at its colour program's alpha.
-@fs shadowLitFs
-#ifdef CUTOUT
-@include_block materialUniforms
-#endif
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec4 baseColor;
-void main() {
-#ifdef CUTOUT
-    if (baseColor.a < material.w) {
-        discard;
-    }
-#endif
-}
-@end
-
 @fs shadowLitTexturedFs
 #ifdef DISSOLVE
 @include_block movingMaterialUniforms
