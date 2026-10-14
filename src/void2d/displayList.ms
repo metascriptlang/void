@@ -28,6 +28,7 @@ import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX, writeColorMatrix, readColorMatrix } from "./effect";
 import { BlendMode } from "../gpu/state";
 import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
+import "./face";
 import { UI_PARAM_MODE, UiInstance } from "./instance";
 import {
 	UI_STRIDE, SPRITE_STRIDE,
