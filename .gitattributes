@@ -1,3 +1,5 @@
+* text=auto eol=lf
+*.bat text eol=crlf
 # Goldens are compared byte for byte; autocrlf must never touch them.
 *.png binary
 *.ppm binary
