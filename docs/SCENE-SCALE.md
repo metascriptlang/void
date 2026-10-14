@@ -335,3 +335,74 @@ Reproduction: `python out/tmp/dirtyTree/runV3.py ab`, `checkV3Pixels.py`, `verif
 The epoch guards cover derived state, not pre-existing queued-stamp rollover pixels. Android
 build success is not device rendering; web Yoga, current-Zed/editor/terminal performance,
 GPU execution time and latency remain separate acceptance work.
+
+## Fixed-mask causal wall profile
+
+Measured on tree `f81ed75aa87561f4885238a2c05b5a5bff57486a`, installed msc BUILD
+`f0fd027d`, Windows/D3D11/RTX 5090, 1280×720, DPI1/MSAA1, default108-byte UI stride.
+This isolates fixed axis-aligned, opaque, unstyled boxes:256 masks plus256 oversized children
+against256 groups plus256 preintersected children,512 explicit nodes each. Only child colours
+change; mask bounds do not. Flat256 rectangles are an unmatched upper bound, not a paired engine.
+No production renderer change or GPUI timing follows from replacing this fixture's geometry.
+
+One fresh command, `python out/tmp/maskCausal/runTiming.py`, completed20 serial processes:
+18 cells in three rotated rounds plus two independent masked-prefix A/A bookends;
+8400 raw/7200 selected software frames. Each process has unchanged/sparse/full phases,
+140 frames each,20 warm then120 selected; sparse changes2/256 leaves, prefix or strided.
+Times below are **non-Present wall milliseconds**: mutation+prepare+draw+commit−Present.
+Present remains inside commit's bracket. Not GPU elapsed time, FPS, CPU-bound proof or bandwidth.
+
+Each entry lists three rounds in order, p50 / nearest-rank p95:
+
+| Sparse layout / phase | Masked | Preclipped |
+|---|---|---|
+| Prefix / unchanged | .1161,.1130,.0987 / .1525,.1453,.1455 | .0146,.0117,.0113 / .0291,.0308,.0259 |
+| Prefix / sparse | .1045,.0892,.0886 / .1421,.1533,.1549 | .0199,.0151,.0166 / .0316,.0284,.0312 |
+| Prefix / full | .2883,.1638,.1702 / .3220,.3064,.3029 | .1584,.0948,.1184 / .1923,.1867,.1951 |
+| Strided / unchanged | .1082,.0962,.0965 / .1417,.1410,.1454 | .0117,.0110,.0123 / .0318,.0233,.0273 |
+| Strided / sparse | .1146,.0901,.0843 / .1418,.1537,.1570 | .0170,.0153,.0170 / .0310,.0290,.0314 |
+| Strided / full | .1917,.1583,.1764 / .3106,.3033,.3231 | .1179,.1148,.1178 / .1935,.1916,.1969 |
+
+Preclipped p50 is lower in all18 matched phase/round pairs, including12 unchanged/sparse pairs.
+Current timing reports256 versus1 draw calls; both changed cohorts upload27648 UI bytes/frame,
+unchanged0. Cached masked-prefix draw wall p50 is .09475–.11330 ms, prepare .0028–.0029 ms.
+The matched case points toward draw/state churn, not reduced upload volume; equal bytes do not
+measure GPU bandwidth or rule out waits. Full repaint/prepare still needs separate profiling.
+Flat full-change p50: prefix .0980,.0978,.0950; strided .1169,.1108,.1174 ms.
+
+A/A masked-prefix before→after p50/p95:
+
+| Phase | p50 | p95 |
+|---|---:|---:|
+| Unchanged | .109700→.108450 (−1.14%) | .136600→.154000 |
+| Sparse | .116400→.128700 (+10.57%) | .146500→.155000 |
+| Full | .264400→.166500 (**−37.03%**) | .310200→.313700 |
+
+Full-change p50 drift is large: **no full-change speedup factor or stability/equivalence claim**.
+`GetThreadTimes` produced zero non-Present thread CPU for7198/7200 selected frames; all60 phase
+CPU p50 values are zero. This instrument cannot establish a CPU-bound versus GPU-wait split.
+A future split needs a finer producer or per-cell batch total, not interpretation of these zeros.
+
+Fresh BEGIN/END each collected10 whole-machine CPU samples at1-second intervals: medians
+4.9454%/4.2919%, no observed compiler jobs/HCR watchers. Manager confirmed no queue/sync activity;
+peer confirmed its pause held. Endpoint samples and owner acknowledgements do not certify WSL
+contents or unknown non-msc load throughout. Named access-unavailable processes and vmmemWSL
+remain in raw telemetry; top consumers are nonexhaustive.
+
+Pixel/counter pilot belongs to **BUILD26150233**, not f0fd027d:19 opaque RGB captures
+(18 exact plus intentional width69 negative), six rebuild pairs and five420-frame counter runs.
+That pilot measured512→2 uniform calls/53248→208 uniform bytes; current timing does not query
+those GPU statistics. No fresh-f0 pixel proof, alpha, real-font, backend or current-GPUI claim.
+
+Original timing attempt stopped after1/20 when an empty-stderr premise rejected existing HLSL
+warnings. Its partial data is preserved and excluded. Retry accepts the entire known visible
+warning payload, anonymising only shader addresses; extra/missing/changed/empty payload fails.
+Sokol's512-byte log buffer truncates one diagnostic, so visible equality is not full compiler-log
+certification. No shader/vendor change entered timing; actual uninitialized values are unproved.
+
+Independent raw audit: `out/tmp/maskCausal/auditTiming.py`, `timingParentAudit.json`;
+per-round p50/p95 and components: `timingPerCell.tsv`; A/A: `timingBrief.json`;
+quantization: `timingCpuQuantization.json`. `timingInputs.json` freezes2204 inputs, separate
+fresh timing/legacy pilot executables and actual authorization. `timingAttempt1PathMapping.json`
+preserves original failed bytes; source/raw replay, warning negatives and old-red/fixed-green
+sampler CPU mocks precede retry. No averaged partials, hidden warning suppression or extra run.
