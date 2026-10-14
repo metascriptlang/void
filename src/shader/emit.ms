@@ -1,18 +1,24 @@
 // glsl(fn) reads a vertex or fragment entry function and returns it as Vulkan-style GLSL 450 for
-// sokol-shdc: the signature becomes the stage's interface, the body becomes main().
+// sokol-shdc: the signature becomes the stage's interface, the body becomes main(), and each
+// function and module constant the body reaches is defined above main(), after what it reads.
 // The node walk sits in functions nested in the macro body: only there are Node fields readable.
 
 import {
+	DeclKind,
 	Node,
 	NodeKind,
+	SymbolKind,
 	TypeKind,
 	bindSym,
+	childAt,
+	childCount,
 	floatValue,
 	getImpl,
 	getType,
 	getTypeImpl,
 	intValue,
 	sameType,
+	symKind,
 	typeKind,
 } from "std/meta";
 import {
@@ -26,6 +32,88 @@ import {
 	Vec4f,
 	textureLoad,
 } from "./std";
+
+// GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
+// texture and sampler types of Vulkan GLSL.
+function glslReservedWords(): string[] {
+	let words = [
+		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
+		"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
+		"noperspective", "patch", "sample", "invariant", "precise", "break", "continue", "do",
+		"for", "while", "switch", "case", "default", "if", "else", "subroutine", "in", "out",
+		"inout", "float", "double", "int", "uint", "void", "bool", "true", "false", "discard",
+		"return", "lowp", "mediump", "highp", "precision", "struct", "sampler", "common",
+		"partition", "active", "asm", "class", "union", "enum", "typedef", "template", "this",
+		"resource", "goto", "inline", "noinline", "public", "static", "extern", "external",
+		"interface", "long", "short", "half", "fixed", "unsigned", "superp", "input", "output",
+		"hvec2", "hvec3", "hvec4", "fvec2", "fvec3", "fvec4", "sampler3DRect", "filter", "sizeof",
+		"cast", "namespace", "using",
+		"radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
+		"asinh", "acosh", "atanh", "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt",
+		"abs", "sign", "floor", "trunc", "round", "roundEven", "ceil", "fract", "mod", "modf",
+		"min", "max", "clamp", "mix", "step", "smoothstep", "isnan", "isinf", "floatBitsToInt",
+		"floatBitsToUint", "intBitsToFloat", "uintBitsToFloat", "fma", "frexp", "ldexp",
+		"packUnorm2x16", "packSnorm2x16", "packUnorm4x8", "packSnorm4x8", "unpackUnorm2x16",
+		"unpackSnorm2x16", "unpackUnorm4x8", "unpackSnorm4x8", "packHalf2x16", "unpackHalf2x16",
+		"packDouble2x32", "unpackDouble2x32", "length", "distance", "dot", "cross", "normalize",
+		"ftransform", "faceforward", "reflect", "refract", "matrixCompMult", "outerProduct",
+		"transpose", "determinant", "inverse", "lessThan", "lessThanEqual", "greaterThan",
+		"greaterThanEqual", "equal", "notEqual", "any", "all", "not", "uaddCarry", "usubBorrow",
+		"umulExtended", "imulExtended", "bitfieldExtract", "bitfieldInsert", "bitfieldReverse",
+		"bitCount", "findLSB", "findMSB", "textureSize", "textureQueryLod", "textureQueryLevels",
+		"textureSamples", "texture", "textureProj", "textureLod", "textureOffset", "texelFetch",
+		"texelFetchOffset", "textureProjOffset", "textureLodOffset", "textureProjLod",
+		"textureProjLodOffset", "textureGrad", "textureGradOffset", "textureProjGrad",
+		"textureProjGradOffset", "textureGather", "textureGatherOffset", "textureGatherOffsets",
+		"atomicCounterIncrement", "atomicCounterDecrement", "atomicCounter", "atomicAdd",
+		"atomicMin", "atomicMax", "atomicAnd", "atomicOr", "atomicXor", "atomicExchange",
+		"atomicCompSwap", "imageSize", "imageSamples", "imageLoad", "imageStore",
+		"imageAtomicAdd", "imageAtomicMin", "imageAtomicMax", "imageAtomicAnd", "imageAtomicOr",
+		"imageAtomicXor", "imageAtomicExchange", "imageAtomicCompSwap", "EmitStreamVertex",
+		"EndStreamPrimitive", "EmitVertex", "EndPrimitive", "dFdx", "dFdy", "dFdxFine",
+		"dFdyFine", "dFdxCoarse", "dFdyCoarse", "fwidth", "fwidthFine", "fwidthCoarse",
+		"interpolateAtCentroid", "interpolateAtSample", "interpolateAtOffset", "noise1",
+		"noise2", "noise3", "noise4", "barrier", "memoryBarrier", "memoryBarrierAtomicCounter",
+		"memoryBarrierBuffer", "memoryBarrierShared", "memoryBarrierImage",
+		"groupMemoryBarrier", "subpassLoad",
+	];
+	for (const prefix of ["", "b", "i", "u", "d"]) {
+		for (let n = 2; n <= 4; n++) { words.push(prefix + "vec" + String(n)); }
+	}
+	for (const prefix of ["", "d"]) {
+		for (let n = 2; n <= 4; n++) {
+			words.push(prefix + "mat" + String(n));
+			for (let m = 2; m <= 4; m++) {
+				words.push(prefix + "mat" + String(n) + "x" + String(m));
+			}
+		}
+	}
+	const shapes = [
+		"1D", "2D", "3D", "Cube", "2DRect", "1DArray", "2DArray", "CubeArray", "Buffer", "2DMS",
+		"2DMSArray",
+	];
+	for (const prefix of ["", "i", "u"]) {
+		for (const opaque of ["sampler", "texture", "image"]) {
+			for (const shape of shapes) { words.push(prefix + opaque + shape); }
+		}
+		words.push(prefix + "subpassInput");
+		words.push(prefix + "subpassInputMS");
+	}
+	for (const shape of ["", "1D", "2D", "Cube", "2DRect", "1DArray", "2DArray", "CubeArray"]) {
+		words.push("sampler" + shape + "Shadow");
+	}
+	return words;
+}
+
+function isGlslIdentifier(name: string): boolean {
+	if (name.startsWith("gl_") || name.indexOf("__") >= 0) { return false; }
+	for (let i = 0; i < name.length; i++) {
+		const c = name.charCodeAt(i);
+		const letter = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
+		if (!letter && !(i > 0 && c >= 48 && c <= 57)) { return false; }
+	}
+	return true;
+}
 
 export macro glsl(entry: Node): Node {
 	function fail(n: Node, msg: string): never {
@@ -105,7 +193,7 @@ export macro glsl(entry: Node): Node {
 	const fn = getImpl(entry);
 	const signature = getType(entry);
 	if (fn == null || fn.kind != NodeKind.FunctionDecl || signature == null ||
-		signature.kind != NodeKind.TypeFunction) {
+		signature.kind != NodeKind.TypeFunction || entry.resolvedSym == null) {
 		fail(entry, "the entry must be a function");
 	}
 
@@ -154,6 +242,23 @@ export macro glsl(entry: Node): Node {
 	let declUsed: boolean[] = [];
 	let declAlways: boolean[] = [];
 	let features: string[] = [];
+	const reservedWords = glslReservedWords();
+	let valueNames = ["main", "fragColor"];
+	let functionNames: string[] = [];
+	let functionSignatures: string[] = [];
+	let functionKeys: string[] = [];
+	let openKeys: string[] = [];
+	let constantNames: string[] = [];
+	let constantKeys: string[] = [];
+	let constants = "";
+	let functions = "";
+	let scopeModule = "";
+	let paramNames: string[] = [];
+	let paramGlslNames: string[] = [];
+	let localKeys: string[] = [];
+	let localGlslNames: string[] = [];
+	let inHelper = false;
+
 
 	let globals: string[] = [];
 	let locals: string[] = [];
@@ -171,19 +276,55 @@ export macro glsl(entry: Node): Node {
 		declAlways.push(always);
 	}
 
-	function use(name: string): void {
+	function useUnder(name: string, gates: string[]): void {
 		const i = declNames.indexOf(name);
 		if (i < 0) { return; }
 		if (!declUsed[i]) {
 			declUsed[i] = true;
-			declGates[i] = features.slice(0);
+			declGates[i] = gates;
 			return;
 		}
 		let common: string[] = [];
 		for (const g of declGates[i]) {
-			if (features.indexOf(g) >= 0) { common.push(g); }
+			if (gates.indexOf(g) >= 0) { common.push(g); }
 		}
 		declGates[i] = common;
+	}
+
+	// A helper's body is written once, with no features on; what it reads is kept as a record
+	// and counted at each call, under the features around that call.
+	let recordKeys: string[] = [];
+	let records: string[][] = [];
+	let recording = -1;
+
+	function use(name: string): void {
+		if (recording >= 0) {
+			records[recording].push(name + "|" + features.join(","));
+			return;
+		}
+		useUnder(name, features.slice(0));
+	}
+
+	function union(a: string[], b: string[]): string[] {
+		let all = a.slice(0);
+		for (const g of b) {
+			if (g != "" && all.indexOf(g) < 0) { all.push(g); }
+		}
+		return all;
+	}
+
+	function replay(key: string, gates: string[]): void {
+		useUnder("call:" + key, gates);
+		for (const item of records[recordKeys.indexOf(key)]) {
+			const bar = item.indexOf("|");
+			const name = item.slice(0, bar);
+			const under = union(gates, item.slice(bar + 1).split(","));
+			if (name.startsWith("call:")) {
+				replay(name.replace("call:", ""), under);
+			} else {
+				useUnder(name, under);
+			}
+		}
 	}
 
 	function member(t: Node, name: string, at: Node): string {
@@ -291,6 +432,176 @@ export macro glsl(entry: Node): Node {
 		}
 	}
 
+	function isInterface(t: Node | null): boolean {
+		if (t == null) { return false; }
+		for (const own of [inputType, bindingsType, keyType]) {
+			if (own != null && sameType(t, own)) { return true; }
+		}
+		return false;
+	}
+
+	function declKey(module: string, decl: Node): string {
+		return module + ":" + String(decl.line) + ":" + String(decl.column);
+	}
+
+	function declaration(n: Node): Node {
+		const decl = getImpl(n);
+		if (decl == null) { fail(n, "'" + n.name + "' has no declaration"); }
+		return decl;
+	}
+
+	function isTaken(name: string, parameterTypes: string, local: boolean): boolean {
+		if (reservedWords.includes(name) || valueNames.includes(name) || globals.includes(name)) {
+			return true;
+		}
+		if (parameterTypes != "") { return functionSignatures.includes(name + parameterTypes); }
+		if (functionNames.includes(name) || constantNames.includes(name)) { return true; }
+		return local && (paramGlslNames.includes(name) || localGlslNames.includes(name));
+	}
+
+	function glslName(name: string, at: Node, parameterTypes: string, local: boolean): string {
+		if (!isGlslIdentifier(name)) {
+			fail(at, "'" + name + "' is no GLSL name: only letters, digits and '_', " +
+				"without '__' or the prefix 'gl_'");
+		}
+		let unique = name;
+		let suffix = 0;
+		while (isTaken(unique, parameterTypes, local)) {
+			suffix += 1;
+			unique = name + "_" + String(suffix);
+		}
+		return unique;
+	}
+
+	function gather(n: Node, module: string, locals: string[], constant: Node | null): void {
+		if (n.kind == NodeKind.VariableDecl) { locals.push(declKey(module, n)); }
+		if (n.kind == NodeKind.Identifier && n.resolvedSym != null &&
+			n.resolvedSym.modulePath != stdModule) {
+			const kind = symKind(n);
+			if (kind == SymbolKind.Function) {
+				if (constant != null) {
+					fail(constant, "module constant '" + constant.declName + "' calls '" + n.name +
+						"', and a GLSL constant takes a constant expression");
+				}
+				defineFunction(n);
+			} else if (kind == SymbolKind.Variable &&
+				!locals.includes(declKey(n.resolvedSym.modulePath, declaration(n)))) {
+				defineConstant(n);
+			}
+		}
+		for (let i = 0; i < childCount(n); i++) { gather(childAt(n, i), module, locals, constant); }
+	}
+
+	function defineConstant(n: Node): void {
+		const decl = declaration(n);
+		const module = n.resolvedSym.modulePath;
+		const key = declKey(module, decl);
+		if (constantKeys.includes(key)) { return; }
+		if (decl.declKind != DeclKind.Const) {
+			fail(n, "'" + n.name + "' is a module variable: a shader reads only module constants");
+		}
+		gather(decl.initializer, module, [], decl);
+		const name = glslName(decl.declName, n, "", false);
+		declare("const:" + key, "const " + glslType(getType(n), n) + " " + name + " = " +
+			expr(decl.initializer) + ";\n", true);
+		constantKeys.push(key);
+		constantNames.push(name);
+	}
+
+	function defineFunction(callee: Node): void {
+		const helper = getImpl(callee);
+		const helperType = getType(callee);
+		if (helper == null || helper.kind != NodeKind.FunctionDecl || helperType == null ||
+			helperType.kind != NodeKind.TypeFunction) {
+			fail(callee, "'" + callee.name + "' is not a function");
+		}
+		const module = callee.resolvedSym.modulePath;
+		const key = declKey(module, helper);
+		if (openKeys.includes(key)) {
+			fail(callee, "'" + helper.fnName + "' calls itself, and GLSL has no recursion");
+		}
+		if (functionKeys.includes(key)) { return; }
+		openKeys.push(key);
+		gather(helper.fnBody, module, [], null);
+		openKeys.pop();
+
+		let types: string[] = [];
+		let kept: string[] = [];
+		for (let i = 0; i < helperType.typExprParams.length; i++) {
+			const t = helperType.typExprParams[i];
+			if (isInterface(t)) { continue; }
+			types.push(glslType(t, callee));
+			kept.push(helperType.typExprParamNames[i]);
+		}
+		const parameterTypes = "(" + types.join(", ") + ")";
+		const name = glslName(helper.fnName, callee, parameterTypes, false);
+		functionKeys.push(key);
+		functionNames.push(name);
+		functionSignatures.push(name + parameterTypes);
+
+		enterScope(module, kept);
+		let params: string[] = [];
+		for (let i = 0; i < types.length; i++) {
+			paramGlslNames.push(glslName(paramNames[i], callee, "", true));
+			params.push(types[i] + " " + paramGlslNames[i]);
+		}
+		recordKeys.push(key);
+		records.push([]);
+		const outer = recording;
+		recording = records.length - 1;
+		inHelper = true;
+		const text = body(helper.fnBody, "    ");
+		inHelper = false;
+		recording = outer;
+		declare("call:" + key, glslType(helperType.typExprReturn, callee) + " " + name + "(" +
+			params.join(", ") + ") {\n" + text + "}\n", false);
+	}
+
+	function enterScope(module: string, names: string[]): void {
+		scopeModule = module;
+		paramNames = names;
+		paramGlslNames = [];
+		localKeys = [];
+		localGlslNames = [];
+	}
+
+	function local(n: Node): string {
+		const name = glslName(n.declName, n, "", true);
+		localKeys.push(declKey(scopeModule, n));
+		localGlslNames.push(name);
+		return name;
+	}
+
+	function identifier(n: Node): string {
+		const kind = symKind(n);
+		if (kind == SymbolKind.Parameter && paramNames.includes(n.name)) {
+			return paramGlslNames[paramNames.indexOf(n.name)];
+		}
+		if (kind == SymbolKind.Variable && n.resolvedSym != null) {
+			const key = declKey(n.resolvedSym.modulePath, declaration(n));
+			if (localKeys.includes(key)) { return localGlslNames[localKeys.indexOf(key)]; }
+			if (constantKeys.includes(key)) { return constantNames[constantKeys.indexOf(key)]; }
+		}
+		fail(n, "'" + n.name + "' has no GLSL form yet");
+	}
+
+	function call(n: Node, callee: Node, impl: Node): string {
+		const key = declKey(callee.resolvedSym.modulePath, impl);
+		if (callee.kind != NodeKind.Identifier || !functionKeys.includes(key)) {
+			fail(n, "method calls have no GLSL form yet");
+		}
+		if (recording >= 0) {
+			records[recording].push("call:" + key + "|" + features.join(","));
+		} else {
+			replay(key, features.slice(0));
+		}
+		let args: string[] = [];
+		for (const a of n.arguments) {
+			if (!isInterface(getType(a))) { args.push(expr(a)); }
+		}
+		return functionNames[functionKeys.indexOf(key)] + "(" + args.join(", ") + ")";
+	}
+
 	function number(n: Node): string {
 		const kind = typeKind(getType(n));
 		if (kind == TypeKind.Float32 || kind == TypeKind.Float64) {
@@ -360,15 +671,10 @@ export macro glsl(entry: Node): Node {
 		return expr(n);
 	}
 
-	function global(name: string, at: Node): string {
-		if (locals.includes(name)) { fail(at, "local '" + name + "' hides the stage's '" + name + "'"); }
-		return name;
-	}
-
 	function expr(n: Node): string {
 		if (n.kind == NodeKind.NumberLiteral) { return number(n); }
 		if (n.kind == NodeKind.BooleanLiteral) { return n.boolValue ? "true" : "false"; }
-		if (n.kind == NodeKind.Identifier) { return n.name; }
+		if (n.kind == NodeKind.Identifier) { return identifier(n); }
 		if (n.kind == NodeKind.BinaryExpr || n.kind == NodeKind.UnaryExpr ||
 			n.kind == NodeKind.ConditionalExpr) {
 			return "(" + value(n) + ")";
@@ -394,15 +700,15 @@ export macro glsl(entry: Node): Node {
 				const b = builtinInputNames.indexOf(n.property);
 				if (b >= 0) { return builtinInputs[b]; }
 				use(n.property);
-				return global(n.property, n);
+				return n.property;
 			}
 			if (isType(object, bindingsType)) {
 				use(n.property);
-				return global(n.property, n);
+				return n.property;
 			}
 			if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
 				use(object.property);
-				return global(n.property, n);
+				return n.property;
 			}
 			if (isType(object, keyType)) {
 				fail(n, "a program key feature is read only as an if condition");
@@ -412,10 +718,10 @@ export macro glsl(entry: Node): Node {
 		if (n.kind == NodeKind.CallExpr) {
 			const callee = n.callee;
 			const impl = getImpl(callee);
-			if (callee.resolvedSym == null || callee.resolvedSym.modulePath != stdModule ||
-				impl == null || impl.kind != NodeKind.FunctionDecl) {
-				fail(n, "only functions of ./std can be called from a shader yet");
+			if (callee.resolvedSym == null || impl == null || impl.kind != NodeKind.FunctionDecl) {
+				fail(n, "a shader calls only functions");
 			}
+			if (callee.resolvedSym.modulePath != stdModule) { return call(n, callee, impl); }
 			if (callee.kind == NodeKind.MemberExpr) {
 				if (!impl.fnName.startsWith("get_")) {
 					fail(n, "method calls have no GLSL form yet");
@@ -461,14 +767,15 @@ export macro glsl(entry: Node): Node {
 		if (target.kind != NodeKind.Identifier || !locals.includes(target.name)) {
 			fail(n, "a shader assigns only to its own locals");
 		}
-		if (n.kind == NodeKind.UpdateExpr) { return target.name + n.updateOp; }
+		const name = identifier(target);
+		if (n.kind == NodeKind.UpdateExpr) { return name + n.updateOp; }
 		if (n.operator == "/=" && integer(target)) {
 			fail(n, "'/=' has no GLSL form: GLSL does not truncate as MetaScript does");
 		}
 		if (!["=", "+=", "-=", "*=", "/="].includes(n.operator)) {
 			fail(n, "operator '" + n.operator + "' has no GLSL form yet");
 		}
-		return target.name + " " + n.operator + " " + value(n.right);
+		return name + " " + n.operator + " " + value(n.right);
 	}
 
 	function isDiscard(callee: Node): boolean {
@@ -491,10 +798,10 @@ export macro glsl(entry: Node): Node {
 			fail(n, "this statement has no GLSL form yet (node kind " + String(n.kind) + ")");
 		}
 		if (n.initializer == null) { fail(n, "a shader local is declared with its value"); }
-		const text = glslType(getType(n.initializer), n) + " " + n.declName + " = " +
-			value(n.initializer);
+		const type = glslType(getType(n.initializer), n);
+		const initial = value(n.initializer);
 		locals.push(n.declName);
-		return text;
+		return type + " " + local(n) + " = " + initial;
 	}
 
 	function body(n: Node, indent: string): string {
@@ -558,6 +865,10 @@ export macro glsl(entry: Node): Node {
 		}
 		if (n.kind == NodeKind.ReturnStmt) {
 			const result = n.argument;
+			if (inHelper) {
+				if (result == null) { fail(n, "a shader function returns a value"); }
+				return indent + "return " + value(result) + ";\n";
+			}
 			if (noOutput && result == null) { return indent + "return;\n"; }
 			if (result == null) { fail(n, "an entry returns its stage output"); }
 			if (outputs == null) {
@@ -576,6 +887,9 @@ export macro glsl(entry: Node): Node {
 		return indent + simple(n) + ";\n";
 	}
 
+	gather(fn.fnBody, entry.resolvedSym.modulePath, [], null);
+	enterScope(entry.resolvedSym.modulePath, signature.typExprParamNames);
+	paramGlslNames = signature.typExprParamNames;
 	const main = body(fn.fnBody, "    ");
 	let header = "";
 	for (let i = 0; i < declNames.length; i++) {
