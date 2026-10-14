@@ -142,9 +142,14 @@ regenKeys() {
 			defines="--defines=$features"
 		fi
 		input="$work/$module.glsl"
+		# The blocks are for hand-written stages; a generated stage defines what it calls, and a
+		# texture tag in an included block would name its texture twice.
+		hand=$(stagesOf "$src" "$vs" "$fs")
 		{
-			echo "@include $ROOT/src/void3d/shader3dBlocks.glsl"
-			stagesOf "$src" "$vs" "$fs"
+			if echo "$hand" | grep -qE "^@(vs|fs) "; then
+				echo "@include $ROOT/src/void3d/shader3dBlocks.glsl"
+			fi
+			echo "$hand"
 			case "$src" in "$GENERATED_FOR") stagesOf "$GENERATED" "$vs" "$fs" ;; esac
 			echo "@program program $vs $fs"
 		} > "$input"
