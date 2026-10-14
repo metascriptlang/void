@@ -213,7 +213,8 @@ export macro glsl(entry: Node): Node {
 		const t = signature.typExprParams[i];
 		const fields = fieldsOf(t);
 		if (fields == null) {
-			fail(entry, "parameter '" + name + "' is not the input, bindings or program key struct");
+			fail(entry, "parameter '" + name +
+				"' is not the input, bindings or program key struct");
 		}
 		if (hasDecorator(fields, "binding")) {
 			if (bindingsType != null) { fail(entry, "two bindings structs: '" + name + "'"); }
@@ -263,7 +264,9 @@ export macro glsl(entry: Node): Node {
 	let globals: string[] = [];
 	let locals: string[] = [];
 	function claim(name: string, at: Node): void {
-		if (globals.indexOf(name) >= 0) { fail(at, "'" + name + "' names two things in one stage"); }
+		if (globals.indexOf(name) >= 0) {
+			fail(at, "'" + name + "' names two things in one stage");
+		}
 		globals.push(name);
 	}
 
@@ -356,7 +359,8 @@ export macro glsl(entry: Node): Node {
 			} else {
 				const block = fieldsOf(t);
 				if (block == null) {
-					fail(entry, "binding '" + name + "' is not a texture, a sampler or a uniform struct");
+					fail(entry, "binding '" + name +
+						"' is not a texture, a sampler or a uniform struct");
 				}
 				let text = slot + name + " {\n";
 				for (let m = 0; m < block.typExprFieldNames.length; m++) {
@@ -379,14 +383,16 @@ export macro glsl(entry: Node): Node {
 			const builtin = decorator(inputs.typExprFieldDecorators[f], "builtin");
 			if (builtin == null) {
 				// Every input is declared, read or not: shdc numbers them in declaration order.
-				declare(name, "in " + member(inputs.typExprFieldTypes[f], name, entry) + ";\n", true);
+				const varying = member(inputs.typExprFieldTypes[f], name, entry);
+				declare(name, "in " + varying + ";\n", true);
 				continue;
 			}
 			const which = argumentName(builtin, entry);
 			const glslName = vertex ? "" : which == "position" ? "gl_FragCoord" :
 				which == "frontFacing" ? "gl_FrontFacing" : "";
 			if (glslName == "") {
-				fail(entry, "input field '" + name + "': @builtin(" + which + ") has no GLSL form yet");
+				fail(entry, "input field '" + name + "': @builtin(" + which +
+					") has no GLSL form yet");
 			}
 			builtinInputs.push(glslName);
 			builtinInputNames.push(name);
@@ -412,7 +418,8 @@ export macro glsl(entry: Node): Node {
 			const builtin = decorator(decorators, "builtin");
 			if (builtin != null) {
 				if (!vertex || argumentName(builtin, entry) != "position") {
-					fail(entry, "output field '" + name + "': only a vertex @builtin(position) yet");
+					fail(entry, "output field '" + name +
+						"': only a vertex @builtin(position) yet");
 				}
 				outputTargets.push("gl_Position");
 				continue;
@@ -897,7 +904,8 @@ export macro glsl(entry: Node): Node {
 		let text = declTexts[i];
 		for (let g = declAlways[i] ? -1 : declGates[i].length - 1; g >= 0; g--) {
 			const gate = declGates[i][g];
-			const open = gate.startsWith("!") ? "#ifndef " + gate.replace("!", "") : "#ifdef " + gate;
+			const open = gate.startsWith("!") ? "#ifndef " + gate.replace("!", "") :
+				"#ifdef " + gate;
 			text = open + "\n" + text + "#endif\n";
 		}
 		header += text;
