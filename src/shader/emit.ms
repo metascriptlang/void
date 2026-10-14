@@ -254,7 +254,10 @@ export macro glsl(entry: Node): Node {
 	let outputNames: string[] = [];
 	let outputTargets: string[] = [];
 	let outputFeatures: string[] = [];
-	if (outputs == null) {
+	const noOutput = outputType != null && typeKind(outputType) == TypeKind.Void;
+	if (noOutput) {
+		if (vertex) { fail(entry, "a vertex entry returns its outputs"); }
+	} else if (outputs == null) {
 		const colour = glslType(outputType, entry);
 		declare("fragColor", "layout(location=0) out " + colour + " fragColor;\n", true);
 	} else {
@@ -464,9 +467,16 @@ export macro glsl(entry: Node): Node {
 		return target.name + " " + n.operator + " " + value(n.right);
 	}
 
+	function isDiscard(callee: Node): boolean {
+		const impl = getImpl(callee);
+		return callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule &&
+			impl != null && impl.fnName == "discard";
+	}
+
 	function simple(n: Node): string {
 		if (n.kind == NodeKind.ExprStmt) {
 			const e = n.expr;
+			if (e.kind == NodeKind.CallExpr && isDiscard(e.callee)) { return "discard"; }
 			if (e.kind != NodeKind.UpdateExpr && e.kind != NodeKind.BinaryExpr) {
 				fail(n, "a shader statement is an assignment, not a value (node kind " +
 					String(e.kind) + ")");
@@ -547,6 +557,7 @@ export macro glsl(entry: Node): Node {
 		}
 		if (n.kind == NodeKind.ReturnStmt) {
 			const result = n.argument;
+			if (noOutput && result == null) { return indent + "return;\n"; }
 			if (result == null) { fail(n, "an entry returns its stage output"); }
 			if (outputs == null) {
 				use("fragColor");
@@ -569,7 +580,7 @@ export macro glsl(entry: Node): Node {
 	for (let i = 0; i < declNames.length; i++) {
 		if (!declUsed[i] && !declAlways[i]) { continue; }
 		let text = declTexts[i];
-		for (let g = declGates[i].length - 1; g >= 0; g--) {
+		for (let g = declAlways[i] ? -1 : declGates[i].length - 1; g >= 0; g--) {
 			const gate = declGates[i][g];
 			const open = gate.startsWith("!") ? "#ifndef " + gate.replace("!", "") : "#ifdef " + gate;
 			text = open + "\n" + text + "#endif\n";

@@ -169,6 +169,11 @@ export function sampleType(): void {}
 export function samplerType(): void {}
 export function feature(): void {}
 
+// WGSL's discard: the fragment writes nothing. Like TypeGPU's, it has no CPU meaning.
+export function discard(): never {
+	unreachable "discard: a fragment is discarded only on the GPU";
+}
+
 export struct Texture2d {
 	width: int32;
 	height: int32;

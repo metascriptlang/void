@@ -4,7 +4,7 @@
 import { glsl } from "../shader/emit";
 import {
 	Sampler, Texture2d, Vec2f, Vec4f, binding, builtin, feature, location, sampleType, samplerType,
-	textureLoad, vec2i,
+	textureLoad, vec2i, discard,
 } from "../shader/std";
 
 struct Attributes {
@@ -57,6 +57,22 @@ function probeFs(input: Varyings, b: ProbeBindings, key: ProbeKey): ProbeOutput 
 	return { color: shade, normal: input.tint };
 }
 
+
+struct CutoutBindings {
+	@binding(3) materialParams: ShadowParams;
+}
+
+struct CutoutKey {
+	@feature(CUTOUT) cutout: boolean;
+}
+
+function cutoutFs(input: Varyings, b: CutoutBindings, key: CutoutKey): void {
+	if (key.cutout) {
+		if (input.tint.w < b.materialParams.shadow.w) {
+			discard();
+		}
+	}
+}
 
 test "a vertex entry declares its attributes, its varyings and the blocks it reads" {
 	assert glsl(probeVs) ==
@@ -114,5 +130,23 @@ test "a fragment entry declares each binding and output under the features that 
 		"    normal = tint;\n" +
 		"#endif\n" +
 		"    return;\n" +
+		"}\n";
+}
+
+test "a fragment entry without outputs discards under its feature" {
+	assert glsl(cutoutFs) ==
+		"#ifdef CUTOUT\n" +
+		"layout(binding=3) uniform materialParams {\n" +
+		"    vec4 shadow;\n" +
+		"};\n" +
+		"#endif\n" +
+		"in vec2 uv;\n" +
+		"in vec4 tint;\n" +
+		"void main() {\n" +
+		"#ifdef CUTOUT\n" +
+		"    if (tint.w < shadow.w) {\n" +
+		"        discard;\n" +
+		"    }\n" +
+		"#endif\n" +
 		"}\n";
 }
