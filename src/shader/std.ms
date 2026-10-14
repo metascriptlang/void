@@ -32,9 +32,16 @@ export function clamp(v: Vec2i, low: Vec2i, high: Vec2i): Vec2i {
 	};
 }
 
-// The field decorator of a stage input struct: `@builtin(position) position: Vec4f`, as WGSL
-// writes it.
+// Field decorators of a stage's structs, named as WGSL names its attributes: `@builtin(position)`,
+// `@location(1)` on an output, `@binding(3)` on a binding. `@sampleType` and `@samplerType` give
+// a texture or sampler the binding type WebGPU's layout needs (`unfilterable_float`,
+// `nonfiltering`). `@feature(CUTOUT)` marks a boolean as the program key feature of that name.
 export function builtin(): void {}
+export function location(): void {}
+export function binding(): void {}
+export function sampleType(): void {}
+export function samplerType(): void {}
+export function feature(): void {}
 
 export struct Texture2d {
 	width: int32;

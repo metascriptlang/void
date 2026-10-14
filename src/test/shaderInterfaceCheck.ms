@@ -1,0 +1,118 @@
+// The stage interface glsl reads from a signature: attributes, varyings, bindings, a program key
+// and several outputs, each declaration gated by the features that read it.
+
+import { glsl } from "../shader/emit";
+import {
+	Sampler, Texture2d, Vec2f, Vec4f, binding, builtin, feature, location, sampleType, samplerType,
+	textureLoad, vec2i,
+} from "../shader/std";
+
+struct Attributes {
+	position: Vec4f;
+	texcoord: Vec2f;
+}
+
+struct Varyings {
+	@builtin(position) clip: Vec4f;
+	uv: Vec2f;
+	tint: Vec4f;
+}
+
+struct ViewParams {
+	scale: Vec4f;
+	lights: Vec4f[4];
+}
+
+struct ShadowParams {
+	shadow: Vec4f;
+}
+
+struct ProbeBindings {
+	@binding(0) viewParams: ViewParams;
+	@binding(5) shadowParams: ShadowParams;
+	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2d;
+	@binding(2) @samplerType(nonfiltering) shadowSampler: Sampler;
+}
+
+struct ProbeKey {
+	@feature(SHADOWED) shadowed: boolean;
+	@feature(NORMAL_MRT) normalMrt: boolean;
+}
+
+struct ProbeOutput {
+	@location(0) color: Vec4f;
+	@location(1) @feature(NORMAL_MRT) normal: Vec4f;
+}
+
+function probeVs(input: Attributes, b: ProbeBindings): Varyings {
+	return { clip: input.position, uv: input.texcoord, tint: b.viewParams.scale };
+}
+
+function probeFs(input: Varyings, b: ProbeBindings, key: ProbeKey): ProbeOutput {
+	const shade = input.tint;
+	if (key.shadowed) {
+		const s = textureLoad(b.shadowMap, b.shadowSampler, vec2i(0, 0), 0);
+		return { color: s, normal: b.shadowParams.shadow };
+	}
+	return { color: shade, normal: input.tint };
+}
+
+
+test "a vertex entry declares its attributes, its varyings and the blocks it reads" {
+	assert glsl(probeVs) ==
+		"layout(binding=0) uniform viewParams {\n" +
+		"    vec4 scale;\n" +
+		"    vec4 lights[4];\n" +
+		"};\n" +
+		"in vec4 position;\n" +
+		"in vec2 texcoord;\n" +
+		"out vec2 uv;\n" +
+		"out vec4 tint;\n" +
+		"void main() {\n" +
+		"    gl_Position = position;\n" +
+		"    uv = texcoord;\n" +
+		"    tint = scale;\n" +
+		"    return;\n" +
+		"}\n";
+}
+
+test "a fragment entry declares each binding and output under the features that read it" {
+	assert glsl(probeFs) ==
+		"#ifdef SHADOWED\n" +
+		"#ifdef NORMAL_MRT\n" +
+		"layout(binding=5) uniform shadowParams {\n" +
+		"    vec4 shadow;\n" +
+		"};\n" +
+		"#endif\n" +
+		"#endif\n" +
+		"#ifdef SHADOWED\n" +
+		"@image_sample_type shadowMap unfilterable_float\n" +
+		"layout(binding=4) uniform texture2D shadowMap;\n" +
+		"#endif\n" +
+		"#ifdef SHADOWED\n" +
+		"@sampler_type shadowSampler nonfiltering\n" +
+		"layout(binding=2) uniform sampler shadowSampler;\n" +
+		"#endif\n" +
+		"in vec2 uv;\n" +
+		"in vec4 tint;\n" +
+		"layout(location=0) out vec4 color;\n" +
+		"#ifdef NORMAL_MRT\n" +
+		"layout(location=1) out vec4 normal;\n" +
+		"#endif\n" +
+		"void main() {\n" +
+		"    vec4 shade = tint;\n" +
+		"#ifdef SHADOWED\n" +
+		"    vec4 s = texelFetch(sampler2D(shadowMap, shadowSampler), ivec2(0, 0), 0);\n" +
+		"    color = s;\n" +
+		"#ifdef NORMAL_MRT\n" +
+		"    normal = shadow;\n" +
+		"#endif\n" +
+		"    return;\n" +
+		"#endif\n" +
+		"    color = shade;\n" +
+		"#ifdef NORMAL_MRT\n" +
+		"    normal = tint;\n" +
+		"#endif\n" +
+		"    return;\n" +
+		"}\n";
+}
