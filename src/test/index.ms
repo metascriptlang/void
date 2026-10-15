@@ -82,6 +82,7 @@ import "./shaderStdCheck";
 import "./shaderCalleeCheck";
 import "./shaderStatementCheck";
 import "./shaderComputeCheck";
+import "./shadyExamplesCheck";
 import "./litShaderCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
