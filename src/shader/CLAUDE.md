@@ -44,10 +44,14 @@ later replaces the hand-written GLSL source of each base.
   A uniform or texture a variant does not read is still one its draw would have to bind, and shdc
   would reflect it. A helper is written once with no features on; its reads are replayed at each
   call under the features around the call, and the helper itself is gated the same way.
-- **Varyings match by position.** Every varying is declared, read or not, because shdc numbers them
-  in declaration order; the vertex output struct and the fragment input struct list them in the
-  same order (lit's `LitVaryings` and `LitFragmentInput`). Nothing checks the two against each other
-  yet: the next program whose stages are written apart gets that check in the generator.
+- **Varyings match by position, so a fragment names its vertex entry** (TypeGPU's pipeline pairs
+  `withVertex` and `withFragment` the same way). shdc numbers varyings in declaration order, so
+  every one is declared, read or not. `glslLinked(litFs, litVs)` checks the fragment input's
+  non-builtin fields against the vertex output's, by name, type and order, and fails at the
+  fragment naming the first difference; `glsl` refuses a fragment that reads varyings. Measured
+  2026-10-15 (BUILD `a2b3e36a`, probes `out/linkProbe/`): a swapped pair, a changed type and an
+  unlinked fragment are each refused with that message. `glsl` and `glslLinked` expand to
+  `glslStage`, which emits the stage.
 - **Builtins by declaring module.** A call to a function declared in `std.ms` is a builtin; a struct
   getter declared there emits as the swizzle it names. The walk sits in nested functions of the
   macro body: a top-level helper cannot read `Node` fields.
