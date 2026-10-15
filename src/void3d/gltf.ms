@@ -1310,6 +1310,37 @@ export function validateGltfGraph(data: GltfData): Result<int32, GltfError> {
 	return Result.ok(count);
 }
 
+function validateAttributeStrides(
+	meshes: JsonValue,
+	accessors: JsonValue,
+	views: JsonValue,
+): Result<void, GltfError> {
+	let owners: Vec<int32> = [];
+	for (let view = 0; view < countOf(views); view++) { owners.push(-1); }
+	for (let mesh = 0; mesh < countOf(meshes); mesh++) {
+		const primitives = arrayOf(meshes.at(mesh), "primitives");
+		for (let primitive = 0; primitive < countOf(primitives); primitive++) {
+			const attributes = fieldOf(primitives.at(primitive), "attributes");
+			if (attributes === null || attributes.kind != JsonKind.Object) { continue; }
+			for (const value of attributes.values) {
+				const accessor: int32 = intValue(value);
+				if (accessor < 0 || accessor >= countOf(accessors)) {
+					return Result.err(GltfError.Unsupported);
+				}
+				const view: int32 = intField(accessors.at(accessor), "bufferView", -1);
+				if (view < 0) { continue; }
+				if (view >= countOf(views)) { return Result.err(GltfError.Unsupported); }
+				if (intField(views.at(view), "byteStride", 0) > 0) { continue; }
+				if (owners[view] >= 0 && owners[view] != accessor) {
+					return Result.err(GltfError.Unsupported);
+				}
+				owners[view] = accessor;
+			}
+		}
+	}
+	return Result.ok(null);
+}
+
 function decodeGltf(
 	json: string,
 	buffer: Readonly<Span<uint8>>,
@@ -1357,6 +1388,8 @@ function decodeGltf(
 		animations: [],
 	};
 	const meshArray: JsonValue = arrayOf(root, "meshes");
+	const strides = validateAttributeStrides(meshArray, accessors, views);
+	if (!strides.ok) { return Result.err(strides.error); }
 	const meshCount: int32 = countOf(meshArray);
 	const imageArray: JsonValue = arrayOf(root, "images");
 	const imageCount: int32 = countOf(imageArray);

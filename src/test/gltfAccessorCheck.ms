@@ -24,6 +24,30 @@ function packedView(length: int32): GltfAccessorView {
 	};
 }
 
+test "gltfAccessor packed byte and short VEC4 use element stride not component size" {
+	for (const wide of [false, true]) {
+		const size: int32 = wide ? 16 : 8;
+		let bytes: Vec<uint8> = [];
+		for (let i = 0; i < size; i++) { bytes.push(i as uint8); }
+		const buffers: Vec<GltfAccessorBuffer> = [{ bytes: bytes, byteLength: size }];
+		const views: Vec<GltfAccessorView> = [packedView(size)];
+		const source: GltfAccessorSource = {
+			...scalarFixture(wide ? 5123 : 5121, 2),
+			byteOffset: 0, shape: GltfAccessorShape.Vec4, role: GltfAccessorRole.Attribute,
+		};
+		const made = GltfAccessorLayout.fromSource(source, buffers, views);
+		assert made.ok;
+		if (!made.ok) { return; }
+		assert made.value.stride == (wide ? 8 : 4);
+		const misaligned: GltfAccessorSource = { ...source, byteOffset: 1 };
+		assert !GltfAccessorLayout.fromSource(misaligned, buffers, views).ok;
+		const triples: GltfAccessorSource = { ...source, shape: GltfAccessorShape.Vec3 };
+		const bad = GltfAccessorLayout.fromSource(triples, buffers, views);
+		assert !bad.ok;
+		if (!bad.ok) { assert bad.error == GltfAccessorError.Alignment; }
+	}
+}
+
 test "gltfAccessor final strided element needs no trailing stride padding" {
 	const buffers: Vec<GltfAccessorBuffer> = [{
 		bytes: [90, 91, 92, 93, 1, 2, 3, 88, 80, 81, 82, 83, 4, 5, 6],
@@ -205,7 +229,7 @@ test "gltfAccessor index source width survives u16 boundary and high u32 bit" {
 	assert !GltfAccessorIndices.fromAccessor(wideSource, wideSentinel, wideViews, maximum).ok;
 }
 
-test "gltfAccessor byte and short RGBA attributes require a declared stride" {
+test "gltfAccessor byte and short RGBA decode packed or declared stride identically" {
 	const buffers: Vec<GltfAccessorBuffer> = [{
 		bytes: [255, 255, 255, 255, 255, 255, 255, 255], byteLength: 8,
 	}];
@@ -216,8 +240,10 @@ test "gltfAccessor byte and short RGBA attributes require a declared stride" {
 		role: GltfAccessorRole.Attribute, sparse: null,
 	};
 	const packedByte = GltfAccessorValues.decode(source, buffers, views);
-	assert !packedByte.ok;
-	if (!packedByte.ok) { assert packedByte.error == GltfAccessorError.Alignment; }
+	assert packedByte.ok;
+	if (packedByte.ok) {
+		for (const value of packedByte.value.values) { assert value == 1.0; }
+	}
 	const byteViews: Vec<GltfAccessorView> = [{ ...views[0], byteStride: 4 }];
 	const byte = GltfAccessorValues.decode(source, buffers, byteViews);
 	assert byte.ok;
@@ -227,8 +253,10 @@ test "gltfAccessor byte and short RGBA attributes require a declared stride" {
 	}
 	const shortSource: GltfAccessorSource = { ...source, componentType: 5123 };
 	const packedShort = GltfAccessorValues.decode(shortSource, buffers, views);
-	assert !packedShort.ok;
-	if (!packedShort.ok) { assert packedShort.error == GltfAccessorError.Alignment; }
+	assert packedShort.ok;
+	if (packedShort.ok) {
+		for (const value of packedShort.value.values) { assert value == 1.0; }
+	}
 	const shortViews: Vec<GltfAccessorView> = [{ ...views[0], byteStride: 8 }];
 	const short = GltfAccessorValues.decode(shortSource, buffers, shortViews);
 	assert short.ok;

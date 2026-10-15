@@ -37,11 +37,18 @@ function triangleBuffer(): Vec<uint8> {
 	return out;
 }
 
-function colourGltf(accessor: string, views: string, length: int32, mode: string): string {
+function colourGltf(
+	accessor: string,
+	views: string,
+	length: int32,
+	mode: string,
+	extraAttributes: string = "",
+): string {
 	return "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[0]}]," +
 		"\"nodes\":[{\"name\":\"tri\",\"mesh\":0}]," +
 		"\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1" +
-		(accessor == "" ? "" : ",\"COLOR_0\":3") + "},\"indices\":2,\"material\":0}]}]," +
+		(accessor == "" ? "" : ",\"COLOR_0\":3") + extraAttributes +
+		"},\"indices\":2,\"material\":0}]}]," +
 		"\"materials\":[{\"alphaMode\":\"" + mode + "\",\"alphaCutoff\":0.2," +
 		"\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.5,0.25,1.0,0.5]}}]," +
 		"\"accessors\":[" +
@@ -332,9 +339,66 @@ test "real colour adapter refuses explicit null and wrong encoding instead of de
 	}
 }
 
+function strideFixture(
+	shared: boolean,
+	declared: boolean,
+	reused: boolean = false,
+): Result<GltfData, GltfError> {
+	let bytes = triangleBuffer();
+	for (let vertex = 0; vertex < 3; vertex++) {
+		for (const value of [255, 128, 64, 255]) { bytes.push(value as uint8); }
+		if (shared) {
+			for (const value of [0, 255, 0, 0]) { bytes.push(value as uint8); }
+		}
+	}
+	const length: int32 = shared ? 24 : 12;
+	const stride: int32 = shared ? 8 : 4;
+	const view: string = `{"buffer":0,"byteOffset":80,"byteLength":${length}`
+		+ (declared ? `,"byteStride":${stride}}` : "}");
+	const accessor: string = U8_ACCESSOR + (shared ?
+		`,{"bufferView":3,"byteOffset":4,"componentType":5121,`
+		+ `"normalized":true,"count":3,"type":"VEC4"}` : "");
+	const extra: string = shared ? ',"COLOR_1":4' : reused ? ',"COLOR_1":3' : "";
+	return loadGltf(colourGltf(accessor, view, 80 + length, "BLEND", extra), bytes);
+}
+
+test "own attribute view with no stride is tightly packed like Khronos Validator" {
+	const loaded = strideFixture(false, false);
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	for (let vertex = 0; vertex < 3; vertex++) {
+		assert approx(loaded.value.meshes[0].vertices[vertex * 10 + 7],
+			linearToSrgb(128.0 / 255.0 * 0.25));
+	}
+}
+
+test "own attribute view with explicit stride preserves decoded colour" {
+	assert strideFixture(false, true).ok;
+}
+
+test "shared vertex accessor view without byteStride remains refused" {
+	const loaded = strideFixture(true, false);
+	assert !loaded.ok;
+	if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
+}
+
+test "shared vertex accessor view with byteStride preserves interleaved values" {
+	const loaded = strideFixture(true, true);
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	for (let vertex = 0; vertex < 3; vertex++) {
+		assert approx(loaded.value.meshes[0].vertices[vertex * 10 + 7],
+			linearToSrgb(128.0 / 255.0 * 0.25));
+	}
+}
+
+test "reusing one accessor as two attributes does not make two accessor view owners" {
+	assert strideFixture(false, false, true).ok;
+}
+
 test "real colour adapter keeps attribute stride alignment target and metadata refusal" {
 	const views: Vec<string> = [
-		"{\"buffer\":0,\"byteOffset\":80,\"byteLength\":24}",
+		"{\"buffer\":0,\"byteOffset\":80,\"byteLength\":24,\"byteStride\":2}",
 		"{\"buffer\":0,\"byteOffset\":80,\"byteLength\":24,\"byteStride\":6}",
 		"{\"buffer\":0,\"byteOffset\":80,\"byteLength\":24,\"byteStride\":8,\"target\":34963}",
 		"{\"buffer\":0,\"byteOffset\":80,\"byteLength\":24,\"byteStride\":null}",

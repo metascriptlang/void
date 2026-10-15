@@ -175,7 +175,7 @@ function checkedRange(
 		stride = declaredStride;
 	}
 	if (role == GltfAccessorRole.Attribute &&
-		(offset % 4 != 0 || (componentBytes % 4 != 0 && declaredStride === null))) {
+		(offset % 4 != 0 || stride % 4 != 0)) {
 		return Result.err(GltfAccessorError.Alignment);
 	}
 	if (offset > view.byteLength || elementBytes > view.byteLength - offset ||
