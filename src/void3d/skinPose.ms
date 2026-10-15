@@ -1,5 +1,5 @@
 import { Mat4, identity } from "../math/math3d";
-import { Scene3D, NodeId3D, isLive, syncWorld } from "./scene";
+import { Scene3D, NodeId3D, isLive, syncWorld, worldOf } from "./scene";
 import { SkinPalette, SKIN_PALETTE_FLOATS, create, writePalette } from "./skinPalette";
 
 export enum SkinPoseError {
@@ -75,7 +75,9 @@ export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> 
 		return Result.err(SkinPoseError.Shape);
 	}
 	for (const joint of pose.joints) {
-		if (!isLive(pose.scene, joint)) { return Result.err(SkinPoseError.Target); }
+		if (!isLive(pose.scene, joint) || !worldOf(pose.scene, joint).ok) {
+			return Result.err(SkinPoseError.Target);
+		}
 	}
 	const _synced: int32 = syncWorld(pose.scene);
 	for (let i = 0; i < count; i++) {

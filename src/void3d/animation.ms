@@ -410,7 +410,9 @@ function frameError(error: SceneError): AnimationError {
 		SceneError.StaleMesh => AnimationError.StaleMesh,
 		SceneError.ForeignMesh => AnimationError.ForeignMesh,
 		SceneError.StaleNode | SceneError.NodeNotFound | SceneError.StaleMaterial |
-			SceneError.ForeignMaterial | SceneError.DetachedNode => stopOnFrameError(error),
+			SceneError.ForeignMaterial | SceneError.DetachedNode | SceneError.ForeignSkin |
+			SceneError.SkinPalette | SceneError.SkinMesh | SceneError.DrawRange =>
+				stopOnFrameError(error),
 	};
 }
 

@@ -19,11 +19,15 @@ import {
 	Vec3, vec3, transformDirection, normalized, Quat, identityQuat, Mat4, identity,
 	composeTransform, multiplyAffine,
 } from "../math/math3d";
-import { MAX_POINT_LIGHTS } from "./gpu3d";
+import { MAX_POINT_LIGHTS, declares, vertexLayoutOf } from "./gpu3d";
+import { SkinGeometry, SkinGeometryError, deformPublished } from "./skinGeometry";
+import { syncSkinPose } from "./skinPose";
+import { MeshData, stride, vertexCount, isIndexed, indexCount } from "./meshData";
 import { PassState, passState } from "../gpu/door";
 import {
 	DrawContext,
 	DrawItem,
+	DrawRange,
 	MeshId,
 	MaterialId,
 	HandleError,
@@ -91,6 +95,10 @@ export enum SceneError {
 	ForeignMesh,
 	ForeignMaterial,
 	DetachedNode,
+	ForeignSkin,
+	SkinPalette,
+	SkinMesh,
+	DrawRange,
 }
 
 export enum LightError {
@@ -140,6 +148,9 @@ export struct Object3D {
 export struct MeshInstance {
 	mesh: MeshId;
 	material: MaterialId;
+	skinGeometry: SkinGeometry | null;
+	skinPalette: int32;
+	range: DrawRange | null;
 }
 
 export struct SceneCamera {
@@ -154,6 +165,7 @@ export interface Scene3D {
 	nodes: Vec<Object3D>;
 	slots: Slots;
 	meshes: Vec<MeshInstance>;
+	skinNodes: int32;
 	lights: Vec<LightInstance>;
 	cameras: Vec<SceneCamera>;
 	activeCamera: NodeId3D | null;
@@ -276,6 +288,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		nodes: [],
 		slots: Slots.empty(),
 		meshes: [],
+		skinNodes: 0,
 		lights: [],
 		cameras: [],
 		activeCamera: null,
@@ -376,7 +389,8 @@ export function addMeshNode(
 	const pinnedMaterial: Result<int32, HandleError> = pinMaterial(context, material);
 	if (!pinnedMesh.ok || !pinnedMaterial.ok) { unreachable; }
 	const payload: int32 = scene.meshes.length as int32;
-	scene.meshes.push({ mesh: mesh, material: material });
+	scene.meshes.push({ mesh: mesh, material: material,
+		skinGeometry: null, skinPalette: 0, range: null });
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Mesh,
 		flags: freshFlags(),
@@ -392,6 +406,95 @@ export function addMeshNode(
 	scene.meshOwners.push(id.index);
 	linkChild(scene, under, id.index);
 	return Result.ok(id);
+}
+
+function validateSkinMesh(
+	scene: Scene3D, mesh: MeshId, material: MaterialId,
+	geometry: Readonly<SkinGeometry>, palette: int32, range: DrawRange | null,
+): Result<int32, SceneError> {
+	const context = scene.context;
+	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
+	if (!context.hasMaterial(material)) {
+		return Result.err(context.issuedMaterial(material)
+			? SceneError.StaleMaterial : SceneError.ForeignMaterial);
+	}
+	if (geometry.pose.scene.serial != scene.serial) { return Result.err(SceneError.ForeignSkin); }
+	if (palette < 0 || palette >= geometry.pose.palettes.length) {
+		return Result.err(SceneError.SkinPalette);
+	}
+	const key = context.materials[material.index].program;
+	const count: int32 = geometry.source.vertexCount();
+	const total: int32 = context.meshes[mesh.index].elementCount();
+	if (!key.skinned || !declares(key) || !geometry.source.hasSkin ||
+		context.meshes[mesh.index].layout != vertexLayoutOf(key) ||
+		context.meshes[mesh.index].vertexCount != count ||
+		context.meshes[mesh.index].isIndexed() != geometry.source.isIndexed() ||
+		count < 1 || geometry.source.indices.length > 0x7fffffff ||
+		geometry.source.vertices.length != count * geometry.source.stride() ||
+		geometry.influences.joints.length != count * 4 ||
+		geometry.influences.weights.length != count * 4 ||
+		context.meshData[mesh.index].vertices.length != geometry.source.vertices.length ||
+		context.meshData[mesh.index].indices.length != geometry.source.indices.length ||
+		context.meshData[mesh.index].hasSkin != geometry.source.hasSkin ||
+		context.meshData[mesh.index].hasUvs != geometry.source.hasUvs ||
+		context.meshData[mesh.index].hasTangents != geometry.source.hasTangents ||
+		total != (geometry.source.isIndexed() ? geometry.source.indexCount() : count)) {
+		return Result.err(SceneError.SkinMesh);
+	}
+	const base: int32 = range === null ? 0 : range.base;
+	const elements: int32 = range === null ? total : range.count;
+	if (base < 0 || elements < 0 || base % 3 != 0 || elements % 3 != 0 ||
+		base > total || elements > total - base) { return Result.err(SceneError.DrawRange); }
+	for (let i = 0; i < geometry.source.vertices.length; i++) {
+		if (context.meshData[mesh.index].vertices[i] != geometry.source.vertices[i]) {
+			return Result.err(SceneError.SkinMesh);
+		}
+	}
+	for (let i = 0; i < geometry.source.indices.length; i++) {
+		if (context.meshData[mesh.index].indices[i] != geometry.source.indices[i]) {
+			return Result.err(SceneError.SkinMesh);
+		}
+	}
+	const stride: int32 = geometry.source.stride();
+	for (let element = base; element < base + elements; element++) {
+		const vertex: int32 = geometry.source.isIndexed()
+			? geometry.source.indices[element] as int32 : element;
+		if (vertex < 0 || vertex >= count) { return Result.err(SceneError.SkinMesh); }
+		for (let influence = 0; influence < 4; influence++) {
+			const at: int32 = vertex * 4 + influence;
+			if (geometry.source.vertices[vertex * stride + stride - 4 + influence] !=
+				geometry.influences.weights[at]) {
+				return Result.err(SceneError.SkinMesh);
+			}
+			if (geometry.influences.weights[at] == 0) { continue; }
+			const slot: float32 =
+				geometry.source.vertices[vertex * stride + stride - 8 + influence];
+			if (!Number.isFinite(slot) || slot < 0 ||
+				slot >= geometry.pose.palettes[palette].joints.length || Math.floor(slot) != slot ||
+				geometry.pose.palettes[palette].joints[slot as int32] !=
+				geometry.influences.joints[at]) {
+				return Result.err(SceneError.SkinMesh);
+			}
+		}
+	}
+	return Result.ok(total);
+}
+
+export function addSkinMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, geometry: SkinGeometry,
+	palette: int32, range: DrawRange | null,
+): Result<NodeId3D, SceneError> {
+	scene.requireOpen("addSkinMeshNode");
+	scene.context.requireOpen("addSkinMeshNode");
+	const _valid: int32 = try validateSkinMesh(scene, mesh, material, geometry, palette, range);
+	const node: NodeId3D = try addMeshNode(scene, parent, local, mesh, material);
+	const row: int32 = scene.nodes[node.index].payload;
+	scene.meshes[row].skinGeometry = geometry;
+	scene.meshes[row].skinPalette = palette;
+	scene.meshes[row].range = range;
+	scene.skinNodes += 1;
+	return Result.ok(node);
 }
 
 // h3d.scene.Light: an object whose payload is a light rather than a drawable. Named with the
@@ -610,6 +713,7 @@ function releasePayload(scene: Scene3D, index: int32): void {
 	match (scene.nodes[index].kind) {
 		NodeKind.Mesh => {
 			const instance: MeshInstance = scene.meshes[row];
+			if (instance.skinGeometry !== null) { scene.skinNodes -= 1; }
 			if (context.hasMesh(instance.mesh) && !unpinMesh(context, instance.mesh).ok) {
 				unreachable;
 			}
@@ -794,6 +898,11 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	context.requireOpen("setMeshOf");
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
+	const geometry = scene.meshes[row].skinGeometry;
+	if (geometry !== null) {
+		const _valid: int32 = try validateSkinMesh(scene, mesh, scene.meshes[row].material,
+			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range);
+	}
 	const holds: boolean = context.hasMesh(shown);
 	if (holds && context.meshPinned(shown) < 1) { stopOnPinTaken("setMeshOf"); }
 	if (!pinMesh(context, mesh).ok) { return Result.err(meshError(context, mesh)); }
@@ -897,6 +1006,8 @@ export function syncWorld(scene: Scene3D): int32 {
 // into `items`, which the caller owns and keeps, so a steady frame allocates nothing.
 export function collectDrawList(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.closed) { stopOnClosed("collectDrawList"); }
+	const skins = syncSceneSkinGeometry(scene);
+	if (!skins.ok) { stopOnSkinError("collectDrawList", skins.error); }
 	const count: int32 = fillDrawList(scene, activeLayers(scene), items);
 	scene.structureChanged = false;
 	return count;
@@ -906,6 +1017,8 @@ export function collectDrawListFor(
 	scene: Scene3D, camera: NodeId3D, ref items: Vec<DrawItem>,
 ): int32 {
 	if (scene.closed) { stopOnClosed("collectDrawListFor"); }
+	const skins = syncSceneSkinGeometry(scene);
+	if (!skins.ok) { stopOnSkinError("collectDrawListFor", skins.error); }
 	return fillDrawList(scene, cameraLayersOf(scene, camera), items);
 }
 
@@ -930,6 +1043,8 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 				material: instance.material,
 				world: scene.nodes[index].world,
 				order: scene.nodes[index].renderOrder,
+				skin: null, skinGeometry: instance.skinGeometry,
+				skinPalette: instance.skinPalette, range: instance.range,
 			});
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
@@ -946,12 +1061,67 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 
 // Each frame: sync the matrices, and rebuild the list only when the structure moved. A steady
 // frame with a moving node rewrites `world` in place rather than walking the tree again.
+export function syncSceneSkinGeometry(scene: Scene3D): Result<int32, SkinGeometryError> {
+	scene.requireOpen("syncSceneSkinGeometry");
+	if (scene.skinNodes < 0) { return Result.err(SkinGeometryError.Shape); }
+	if (scene.skinNodes == 0) { return Result.ok(0); }
+	for (const instance of scene.meshes) {
+		const geometry = instance.skinGeometry;
+		if (geometry !== null) { geometry.ready = false; }
+	}
+	for (let i = 0; i < scene.meshes.length; i++) {
+		const geometry = scene.meshes[i].skinGeometry;
+		if (geometry === null) { continue; }
+		if (geometry.pose.scene.serial != scene.serial) {
+			return Result.err(SkinGeometryError.Pose);
+		}
+		let seen: boolean = false;
+		for (let previous = 0; previous < i; previous++) {
+			const earlier = scene.meshes[previous].skinGeometry;
+			if (earlier !== null && earlier.pose === geometry.pose) { seen = true; break; }
+		}
+		if (!seen && !geometry.pose.syncSkinPose().ok) {
+			return Result.err(SkinGeometryError.Pose);
+		}
+	}
+	let deformed: int32 = 0;
+	for (const instance of scene.meshes) {
+		const geometry = instance.skinGeometry;
+		if (geometry === null || geometry.ready) { continue; }
+		const _vertices: int32 = try geometry.deformPublished();
+		deformed += 1;
+	}
+	return Result.ok(deformed);
+}
+
+function stopOnSkinError(call: string, error: SkinGeometryError): void {
+	console.log(`void3d: ${call} cannot publish skin geometry: ${error.toString()}`);
+	unreachable;
+}
+
 export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.closed) { stopOnClosed("refresh"); }
-	if (scene.root == NO_NODE_3D) { return 0; }
+	const updated = refreshChecked(scene, items);
+	if (updated.ok) { return updated.value; }
+	stopOnSkinError("refresh", updated.error);
+	unreachable;
+}
+
+export function refreshChecked(
+	scene: Scene3D, ref items: Vec<DrawItem>,
+): Result<int32, SkinGeometryError> {
+	if (scene.closed) { stopOnClosed("refreshChecked"); }
+	if (scene.root == NO_NODE_3D) { return Result.ok(0); }
 	const _synced: int32 = syncWorld(scene);
+	const _skins: int32 = try syncSceneSkinGeometry(scene);
+	return Result.ok(refreshItemsSynced(scene, items));
+}
+
+function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.structureChanged) {
-		return collectDrawList(scene, items);
+		const count: int32 = fillDrawList(scene, activeLayers(scene), items);
+		scene.structureChanged = false;
+		return count;
 	}
 	// The tree and the list are in the same order, so one pass rewrites every item in place.
 	// This runs on every steady frame rather than only when something moved, which is what
@@ -979,12 +1149,18 @@ export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 					items[at].mesh = instance.mesh;
 					items[at].material = instance.material;
 					items[at].order = scene.nodes[index].renderOrder;
+					items[at].skin = null;
+					items[at].skinGeometry = instance.skinGeometry;
+					items[at].skinPalette = instance.skinPalette;
+					items[at].range = instance.range;
 				} else {
 					items.push({
 						mesh: instance.mesh,
 						material: instance.material,
 						world: scene.nodes[index].world,
 						order: scene.nodes[index].renderOrder,
+						skin: null, skinGeometry: instance.skinGeometry,
+						skinPalette: instance.skinPalette, range: instance.range,
 					});
 				}
 				at = at + 1;

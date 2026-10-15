@@ -5,6 +5,7 @@
 import { Vec3, Mat4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
 import { MeshData, MeshRayHit, Uv } from "./meshData";
+import { SkinGeometry, rayIntersection, rayIntersectionElements } from "./skinGeometry";
 import { DrawContext } from "./draw";
 import { Face } from "../gpu/state";
 import { Ray } from "./ray";
@@ -17,6 +18,7 @@ import {
 	NO_NODE_3D,
 	NO_NODE_ID,
 	syncWorld,
+	syncSceneSkinGeometry,
 } from "./scene";
 
 export struct PickHit {
@@ -29,6 +31,7 @@ export struct PickHit {
 
 export enum PickError {
 	NothingHit,
+	SkinGeometry,
 }
 
 struct MeshHit {
@@ -51,6 +54,8 @@ export function pickNearestOn(
 ): Result<PickHit, PickError> {
 	scene.requireOpen("pickNearestOn");
 	const _synced: int32 = syncWorld(scene);
+	const skins = syncSceneSkinGeometry(scene);
+	if (!skins.ok) { return Result.err(PickError.SkinGeometry); }
 	const context: DrawContext = scene.context;
 	let best: PickHit = {
 		owner: NO_NODE_ID,
@@ -71,13 +76,27 @@ export function pickNearestOn(
 			? scene.pickableOwner(index)
 			: NO_NODE_3D;
 		if (owner != NO_NODE_3D) {
-			const mesh: int32 = scene.meshes[scene.nodes[index].payload].mesh.index;
-			const material: int32 = scene.meshes[scene.nodes[index].payload].material.index;
-			const hit: MeshHit = context.meshData[mesh].meshHit(
-				context.materials[material].pass.culling,
-				scene.nodes[index].world,
-				ray,
-			);
+			const instance = scene.meshes[scene.nodes[index].payload];
+			const geometry = instance.skinGeometry;
+			let hit: MeshHit = MISS;
+			if (geometry !== null) {
+				const face: Face = context.materials[instance.material.index].pass.culling;
+				const range = instance.range;
+				const posed = range === null ? geometry.rayIntersection(ray, face)
+					: geometry.rayIntersectionElements(ray, face, range.base, range.count);
+				if (!posed.ok) { return Result.err(PickError.SkinGeometry); }
+				if (posed.value.distance >= 0) {
+					const point: Vec3 = ray.pointAt(posed.value.distance);
+					hit = {
+						distance: (point - ray.origin).length(), point: point, uv: posed.value.uv
+					};
+				}
+			} else {
+				hit = context.meshData[instance.mesh.index].meshHit(
+					context.materials[instance.material.index].pass.culling,
+					scene.nodes[index].world, ray,
+				);
+			}
 			const nearer: boolean = best.distance < 0.0 || hit.distance < best.distance;
 			if (hit.distance >= 0.0 && nearer) {
 				best = {
