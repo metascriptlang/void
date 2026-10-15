@@ -24,6 +24,12 @@ sokol is a dependency we own a stake in, not a black box.
 5. **When upstream merges, move the pin back to floooh/sokol** at a commit that contains the change, and drop the local commit. The goal is a fork with zero local commits.
 6. **Never edit `deps/sokol` without committing it to the fork.** An uncommitted change in `deps/` is lost on the next `setup.sh`.
 
+### Void-local patches on the fork's `void` branch
+
+| Commit | Patch | Void need | Upstream |
+|---|---|---|---|
+| `7b7a84d5` | `sapp_skip_present()`: a frame that calls it is not presented, and the D3D11 window keeps its previous picture; the skipped frame waits for the vblanks `Present` would have waited for, so the frame loop stays paced. Other backends ignore the call. | Neon's canvas skips idle frames; on D3D11 `FLIP_DISCARD` each unpresented frame flipped the undrawn back buffer, so the window alternated between its last two pictures. `bridgeWin.c` calls it when a frame made no `voidCommit`. | Not sent yet; a PR after a Windows run proves it, with the GL, Vulkan and WebGPU present paths added for upstream. |
+
 ### Where Void is likely to need sokol changes
 
 Ordered by how soon Void hits them. None is started; each waits for the Void need that asks for it.

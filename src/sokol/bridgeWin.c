@@ -54,9 +54,13 @@ static void restoreContext(void) {
 }
 
 static void _init(void) { call0(s_init); }
+static bool s_committed;
+
 static void _frame(void) {
 	if (s_contextLost) restoreContext();
+	s_committed = false;
 	call0(s_frame);
+	if (!s_committed) sapp_skip_present();
 }
 
 static void _event(const sapp_event *e) {
@@ -304,5 +308,6 @@ sg_swapchain voidDriverSwapchain(void) {
 }
 
 void voidDriverPresent(void) {
+	if (s_driver == DRIVER_WINDOW) s_committed = true;
 	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
 }
