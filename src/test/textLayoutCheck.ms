@@ -503,6 +503,18 @@ test "a width change wraps the shaped glyphs again and looks no glyph up" {
 	assert (one.lines.length as int32) == 1 && (narrow.lines.length as int32) > 1;
 }
 
+test "a text that fits its width keeps a line per paragraph and finds no break" {
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const wide: TextStyle = { ...style(), maxWidth: widthOf("aa bb", style()) + 1.0 };
+	const shaped = shapedOf("aa bb\ncc", wide, noRuns, noBreaks);
+	const fits = wrapText(shaped, wide, PLAIN_LINES);
+	assert (fits.lines.length as int32) == 2 && (shaped.breaks.length as int32) == 0;
+	const room: float32 = widthOf("aa", style()) + 1.0;
+	const narrow = wrapText(shaped, { ...wide, maxWidth: room }, PLAIN_LINES);
+	assert (narrow.lines.length as int32) == 3 && (shaped.breaks.length as int32) > 0;
+}
+
 test "a tab on a wrapped line finds its stop from that line's start" {
 	const stop: float32 = (TAB_STOP_SPACES as float32) * advanceOf(32);
 	const l = wrapped("aa bb\tc", widthOf("aa", style()) + 1.0, PLAIN_LINES);

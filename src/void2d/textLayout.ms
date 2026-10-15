@@ -524,6 +524,23 @@ function breakAfter(shaped: ShapedText, from: int32, to: int32, room: float32): 
 	return whole;
 }
 
+function fitsUnbroken(shaped: ShapedText, room: float32): boolean {
+	const count: int32 = shaped.glyphs.length as int32;
+	let delta: float32 = count > 0 ? -shaped.glyphs[0].x : 0.0;
+	for (let k = 0; k < count; k++) {
+		const g: LaidGlyph = shaped.glyphs[k];
+		if (g.codepoint == NEWLINE) {
+			if (k + 1 < count) { delta = -shaped.glyphs[k + 1].x; }
+			continue;
+		}
+		const x: float32 = g.x + delta;
+		const advance: float32 = g.rowAdvance(x, shaped.tabStop);
+		delta = delta + advance - g.advance;
+		if (g.codepoint != SPACE && x + advance > room) { return false; }
+	}
+	return true;
+}
+
 function tallestFaces(
 	glyphs: Readonly<Span<LaidGlyph>>, primary: int32, style: TextStyle,
 ): FaceMetrics {
@@ -1313,7 +1330,8 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 	const metrics = faceMetrics(primary, style.size);
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
 	const truncating: boolean = style.maxWidth > 0.0 && options.truncate != Truncate.None;
-	const wrapping: boolean = style.maxWidth > 0.0 && !truncating;
+	const wrapping: boolean = style.maxWidth > 0.0 && !truncating &&
+		!fitsUnbroken(shaped, style.maxWidth);
 	const count: int32 = shaped.glyphs.length as int32;
 	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
 		shaped.breaks = lineBreaks(shaped.values);
