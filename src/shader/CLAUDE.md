@@ -30,20 +30,27 @@ later replaces the hand-written GLSL source of each base.
   vertex entry, anything else a fragment entry. Each parameter is one of three structs, at most one
   of each:
   - **the stage input**: vertex attributes, or a fragment's varyings and builtins
-    (`@builtin(position)` reads `gl_FragCoord`, `@builtin(frontFacing)` `gl_FrontFacing`);
+    (`@builtin(position)` reads `gl_FragCoord`, `@builtin(frontFacing)` `gl_FrontFacing`); a field
+    marked `@feature(NORMAL_MAP)` exists only in that feature's programs, as `tangent` does;
   - **the bindings** (WGSL's `@binding(n)` on each field): a struct field is a uniform block named
     as the field, its members the struct's fields, so the C struct shdc writes keeps that name; a
     `Texture2d` or `Sampler` field is a separate texture or sampler, with `@sampleType(...)` or
-    `@samplerType(...)` when WebGPU's layout needs one;
-  - **the program key**: booleans marked `@feature(CUTOUT)`, read only as an `if` condition, which
-    emits `#ifdef CUTOUT`, so one function serves every row of `src/void3d/programKeys.txt`.
+    `@samplerType(...)` when WebGPU's layout needs one. Blocks at one `@binding` are the layouts a
+    program key chooses between (`materialParams`, `movingMaterialParams`, …, all at 3) and may
+    share member names; a reader picks one under the key's conditions (`materialOf`);
+  - **the program key**: a struct whose every field is a boolean marked `@feature(CUTOUT)`, read
+    only in an `if` condition, alone or joined by `!`, `&&` and `||`; it emits `#ifdef CUTOUT` or
+    `#if defined(A) || defined(B)`, so one function serves every row of
+    `src/void3d/programKeys.txt` (Heaps' `@const`).
   The return is the stage output: a fragment's vector is `fragColor`; a struct names each output
   `@location(n)`, and `@feature(NAME)` declares one only under that feature; `void` writes none.
   `discard()` is WGSL's. The stage and program name are the generator's (`@fs litFs`).
-- **Each declaration sits under the features of all its reads, and an unread one is left out.**
-  A uniform or texture a variant does not read is still one its draw would have to bind, and shdc
-  would reflect it. A helper is written once with no features on; its reads are replayed at each
-  call under the features around the call, and the helper itself is gated the same way.
+- **Each declaration sits under the conditions its reads run under, and an unread one is left
+  out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
+  shdc would reflect it. The condition is the `||` of every distinct context a read runs in. A
+  helper is written once with no features on; its reads are replayed at each call under the
+  features around the call, and the helper itself is gated the same way. A read of a gated input
+  outside its feature reaches shdc as an undeclared name, at regeneration.
 - **Varyings match by position, so a fragment names its vertex entry** (TypeGPU's pipeline pairs
   `withVertex` and `withFragment` the same way). shdc numbers varyings in declaration order, so
   every one is declared, read or not. `glslLinked(litFs, litVs)` checks the fragment input's
