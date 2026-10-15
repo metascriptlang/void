@@ -264,7 +264,7 @@ test "every core normal MRT mesh key retains its skinned palette and separate fe
 	let checked: int32 = 0;
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
 		for (let features = 0; features < 256; features++) {
-			const key = {
+			const key: ProgramKey = {
 				...ProgramKey.of(program), normalMrt: true,
 				premultiplied: (features & 1) != 0, cutout: (features & 2) != 0,
 				shadowed: (features & 4) != 0, uvTransform: (features & 8) != 0,
