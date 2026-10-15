@@ -18,6 +18,7 @@ when (macos) {
 when (windows && !voidGlCore) {
 	@compile("./sokolWin.c");
 	@compile("./bridgeWin.c");
+	@compile("./appWindow.c");
 	@compile("./views.c");
 	@compile("./bridge.c");
 	@passL("-ld3d11");
@@ -30,6 +31,7 @@ when (windows && !voidGlCore) {
 when (windows && voidGlCore) {
 	@compile("./sokolWin.c");
 	@compile("./bridgeWeb.c");
+	@compile("./appWindow.c");
 	@compile("./bridge.c");
 	@passL("-lopengl32");
 	@passL("-luser32");

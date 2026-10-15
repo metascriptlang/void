@@ -17,6 +17,7 @@
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"
+#include "appWindow.h"
 #ifdef VOID_PROFILER
 #include "../void2d/frameClock.h"
 #endif
@@ -45,11 +46,12 @@ static void _event(const sapp_event *e) {
 	}
 #endif
 	if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
-		if (e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
 		s_keys[e->key_code] = true;
 	} else if (e->type == SAPP_EVENTTYPE_KEY_UP) {
 		s_keys[e->key_code] = false;
 	}
+	if (voidAppEventDeliver(e)) return;
+	if (e->type == SAPP_EVENTTYPE_KEY_DOWN && e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
 }
 
 static void _cleanup(void) { sg_shutdown(); }

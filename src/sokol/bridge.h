@@ -29,6 +29,25 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 // is the truth a frame must follow, and this getter only lets a test compare the two.
 void voidRequestedSize(int *w, int *h);
 
+// The sokol_app window (bridgeWin.c, bridgeWeb.c). Once a handler is set, every sapp_event
+// calls it and Escape no longer quits; the voidEvent* getters read the event it was called
+// for.
+void voidSetEventHandler(msClosure handler);
+int voidEventType(void);
+int voidEventKeyCode(void);
+uint32_t voidEventCharCode(void);
+int voidEventKeyRepeat(void);
+uint32_t voidEventModifiers(void);
+int voidEventMouseButton(void);
+float voidEventMouseX(void);
+float voidEventMouseY(void);
+float voidEventMouseDx(void);
+float voidEventMouseDy(void);
+float voidEventScrollX(void);
+float voidEventScrollY(void);
+int voidEventFramebufferWidth(void);
+int voidEventFramebufferHeight(void);
+
 typedef int VoidViewId;
 void voidEmbedRegister(msClosure init, msClosure frame);
 void voidViewsSetSampleCount(int count);

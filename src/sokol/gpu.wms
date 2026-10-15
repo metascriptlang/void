@@ -5,6 +5,7 @@
 @include("bridge.h");
 @compile("./bridge.c");
 @compile("./bridgeWeb.c");
+@compile("./appWindow.c");
 @compile("./sokolWeb.c");
 
 when (webgpu) {
