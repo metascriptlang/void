@@ -21,7 +21,7 @@
 set -e
 cd "$(dirname "$0")"
 
-SOKOL_REV="2e75443dbd4940b5aa8d76a8e479f8e4b270b9a3"            # 2026-09-14
+SOKOL_REV="7b7a84d52f741c21eb06b8b1b4f1a09afa01ba16"            # fork `void`: 2026-09-14 + sapp_skip_present
 SOKOL_TOOLS_REV="11d0cf678105d614d675e6d9bd2aaf3eeff12f8c"
 STB_REV="2c980bb59875b0d32144a71867fbdebb2f77cd20"
 FREETYPE_REV="42608f77f20749dd6ddc9e0536788eaad70ea4b5"      # VER-2-13-3
