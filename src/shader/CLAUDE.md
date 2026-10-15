@@ -71,6 +71,21 @@ later replaces the hand-written GLSL source of each base.
   `makeUniqueIdentifier`): a keyword, a builtin, or a name another definition took gets `_1`,
   `_2`, …; a local is also kept apart from every defined name, so it never hides one it reads.
   A name GLSL cannot spell (`__`, `gl_`, a character outside letters, digits and `_`) is an error.
+- **Statements keep MetaScript's meaning.** A MetaScript `switch` never falls through (a case body
+  that reaches its end does not compile), so each case is a braced GLSL case ending in `break`. A
+  statement `match` on an integer is the same switch, an or-pattern one case's labels, `_` its
+  `default`; a `break` in a match arm leaves the loop around the match, where GLSL's would leave only
+  the switch, so it is refused, as is a `when` guard. An empty `case` before another is refused while
+  msc runs nothing for it (`~/metascript/.inbox/compiler/2026-10-15-empty-switch-case-does-not-group.md`).
+  `%` is emitted for uint32 operands only, where C, JS and GLSL truncate alike.
+- **An author struct is a GLSL struct**, declared once before its first reader under the naming
+  rule; an object literal is its constructor in field order. A field named as a GLSL word gets a
+  suffix, where TypeGPU refuses the key: TypeGPU's struct is also the host's buffer layout, and a
+  value struct here never reaches the interface. A struct is no attribute, varying or block member,
+  and holds no texture or sampler. An integer varying is `flat` on both sides (glslang refuses it
+  otherwise). Measured 2026-10-15, `out/stmtProbe/shdc/`: array varyings pass all five shdc
+  outputs, an array vertex attribute fails GLES3 (SPIRV-Cross "OpenGL ES doesn't support array input
+  variables in vertex shader"), so the emitter refuses it.
 - **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the stages and
   `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, whose stages join
   `shader3d.glsl`'s for every program key; `--check` reports a stale file. Runtime modules never
@@ -111,6 +126,11 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
   with `macroName` and unevaluated `macroArgs`, C and JS. It carries no symbol, so the decorator is
   known by name, as the language defines field decorators. A type alias cannot mark a builtin: the
   field of `type BuiltinPosition = Vec4f` comes back as `Vec4f`.
+- **A type names no module.** `getType` of a struct value is a `TypeObject` with no `resolvedSym`
+  and no location, and `bindSym(name)` resolves at the expansion site (measured 2026-10-15, BUILD
+  `a2b3e36a`, `out/stmtProbe/typeModUse.ms`). So a `./std` struct is told from the author's by
+  `sameType` against the types the emitter spells: one `./std` adds without a spelling would be
+  emitted as an author struct until the type carries its module.
 
 ## Measured — sokol-shdc coverage
 
