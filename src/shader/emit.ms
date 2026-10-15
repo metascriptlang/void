@@ -328,6 +328,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 		"mat3", "mat4",
 	];
 
+	function matrixColumns(n: Node): boolean {
+		if (n.kind != NodeKind.MemberExpr || n.property != "columns") { return false; }
+		const t = getType(n.object);
+		for (let i = vectorNames.indexOf("mat2"); i < vectorTypes.length; i++) {
+			if (t != null && sameType(t, vectorTypes[i])) { return true; }
+		}
+		return false;
+	}
+
 	function glslType(t: Node | null, at: Node): string {
 		if (t == null) { fail(at, "the expression has no type"); }
 		const kind = typeKind(t);
@@ -1159,7 +1168,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			n.kind == NodeKind.ConditionalExpr) {
 			return "(" + value(n) + ")";
 		}
-		if (n.kind == NodeKind.ArrayAccess) { return expr(n.array) + "[" + value(n.index) + "]"; }
+		if (n.kind == NodeKind.ArrayAccess) {
+			const array = matrixColumns(n.array) ? n.array.object : n.array;
+			return expr(array) + "[" + value(n.index) + "]";
+		}
 		if (n.kind == NodeKind.ArrayLiteral) {
 			let elements: string[] = [];
 			for (const e of n.elements) { elements.push(expr(e)); }
@@ -1200,6 +1212,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			}
 			if (isType(object, keyType)) {
 				fail(n, "a program key feature is read only as an if condition");
+			}
+			if (matrixColumns(n)) {
+				fail(n, "a matrix's columns are read one at a time, as m.columns[i]: GLSL has " +
+					"no array of a matrix's columns");
 			}
 			return expr(object) + "." + field(n);
 		}
@@ -1291,7 +1307,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			return assignee(target.object, n) + "." + field(target);
 		}
 		if (target.kind == NodeKind.ArrayAccess) {
-			return assignee(target.array, n) + "[" + value(target.index) + "]";
+			const array = matrixColumns(target.array) ? target.array.object : target.array;
+			return assignee(array, n) + "[" + value(target.index) + "]";
 		}
 		fail(n, "a shader assigns only to its own locals, their fields and their elements");
 	}

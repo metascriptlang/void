@@ -358,6 +358,33 @@ test "glsl spells the geometric, matrix, derivative and integer vector names in 
 	assert glsl(shapeProbeFs) == expected;
 }
 
+export function columnProbeFs(input: ProbeInput): Vec4f {
+	const p = input.position;
+	let frame = mat3x3f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, p.x, p.y, 1.0);
+	frame.columns[1] = frame.columns[2] * 2.0;
+	return vec4f(frame.columns[1] + frame.columns[0], 1.0);
+}
+
+test "a matrix column is m[i] in GLSL, read and written, as WGSL's m[i]" {
+	assert glsl(columnProbeFs) == "layout(location=0) out vec4 fragColor;
+" +
+		"void main() {
+" +
+		"    vec4 p = gl_FragCoord;
+" +
+		"    mat3 frame = mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, p.x, p.y, 1.0);
+" +
+		"    frame[1] = frame[2] * 2.0;
+" +
+		"    fragColor = vec4((frame[1] + frame[0]), 1.0);
+" +
+		"    return;
+" +
+		"}
+";
+	assert columnProbeFs({ position: vec4f(3.0, 4.0, 0.0, 1.0) }) == vec4f(7.0, 8.0, 2.0, 1.0);
+}
+
 function near(a: float32, b: float32): boolean { return Math.abs(a - b) < 1.0e-5; }
 
 function near(a: Vec4f, b: Vec4f): boolean {
