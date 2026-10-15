@@ -1757,9 +1757,6 @@ export struct Sampler {
 	wrap: Wrap;
 }
 
-// WGSL's textureDimensions and textureLoad take no sampler. These do: sokol-shdc cannot fetch
-// without one (src/shader/CLAUDE.md, "shdc's own limits"). The size is signed, as the texel
-// coordinate it bounds is (docs/VOCABULARY.md, "A name brings its meaning").
 // WGSL's texture_storage_2d: a compute entry writes it texel by texel (textureStore). Its texel
 // format is the binding's @format, so on the CPU it holds four floats per texel like Texture2d.
 export struct StorageTexture2d {
@@ -1783,6 +1780,9 @@ export function textureStore(texture: StorageTexture2d, at: Vec2i, value: Vec4f)
 	texture.texels[first + 3] = value.w;
 }
 
+// WGSL's textureDimensions and textureLoad take no sampler. These do: sokol-shdc cannot fetch
+// without one (src/shader/CLAUDE.md, "shdc's own limits"). The size is signed, as the texel
+// coordinate it bounds is (docs/VOCABULARY.md, "A name brings its meaning").
 export function textureDimensions(texture: Texture2d, sampler: Sampler, level: int32): Vec2i {
 	if (level != 0) { unreachable "textureDimensions: the CPU texture has no mip levels"; }
 	return { x: texture.width, y: texture.height };
@@ -1794,6 +1794,63 @@ export function textureLoad(texture: Texture2d, sampler: Sampler, at: Vec2i, lev
 		unreachable "textureLoad: the texel is outside the texture";
 	}
 	return texelAt(texture, at.x, at.y);
+}
+
+// WGSL's texture_2d<u32>: four uint32 a texel, fetched, never filtered.
+export struct Texture2dU32 {
+	width: int32;
+	height: int32;
+	texels: uint32[];
+}
+
+export function textureLoad(
+	texture: Texture2dU32,
+	sampler: Sampler,
+	at: Vec2i,
+	level: int32,
+): Vec4u {
+	if (level != 0) { unreachable "textureLoad: the CPU texture has no mip levels"; }
+	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
+		unreachable "textureLoad: the texel is outside the texture";
+	}
+	const first = (at.y * texture.width + at.x) * 4;
+	const t = texture.texels;
+	return { x: t[first], y: t[first + 1], z: t[first + 2], w: t[first + 3] };
+}
+
+// WGSL's texture_2d_array<f32>: layers of one size, one picked by its index.
+export struct Texture2dArray {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: float32[];
+}
+
+function layerOf(texture: Texture2dArray, layer: int32): Texture2d {
+	if (layer < 0 || layer >= texture.layers) { unreachable "the layer is outside the texture"; }
+	const size = texture.width * texture.height * 4;
+	let texels: float32[] = [];
+	for (let i = 0; i < size; i++) { texels.push(texture.texels[layer * size + i]); }
+	return { width: texture.width, height: texture.height, texels };
+}
+
+export function textureLoad(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	at: Vec2i,
+	layer: int32,
+	level: int32,
+): Vec4f {
+	return textureLoad(layerOf(texture, layer), sampler, at, level);
+}
+
+export function textureSample(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+): Vec4f {
+	return textureSample(layerOf(texture, layer), sampler, uv);
 }
 
 function texelAt(texture: Texture2d, x: int32, y: int32): Vec4f {

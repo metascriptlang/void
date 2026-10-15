@@ -31,6 +31,8 @@ import {
 	Sampler,
 	StorageTexture2d,
 	Texture2d,
+	Texture2dArray,
+	Texture2dU32,
 	Vec2f,
 	Vec2i,
 	Vec2u,
@@ -167,7 +169,7 @@ export macro glsl(entry: Node): Node {
 		column: entry.column,
 		callee: bindSym("glslStage"),
 		arguments: [entry, { kind: NodeKind.ArrayLiteral, line: entry.line, column: entry.column,
-			elements: [] }],
+			elements: [] }, entry],
 	};
 }
 
@@ -271,7 +273,7 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 		column: fragment.column,
 		callee: bindSym("glslStage"),
 		arguments: [fragment, { kind: NodeKind.ArrayLiteral, line: fragment.line,
-			column: fragment.column, elements: [] }],
+			column: fragment.column, elements: [] }, vertex],
 	};
 }
 
@@ -287,12 +289,12 @@ export macro glslCompute(entry: Node, workgroupSize: Node): Node {
 		line: entry.line,
 		column: entry.column,
 		callee: bindSym("glslStage"),
-		arguments: [entry, workgroupSize],
+		arguments: [entry, workgroupSize, entry],
 	};
 }
 
 // The stage both glsl and glslLinked expand to, once their checks hold.
-export macro glslStage(entry: Node, workgroupSize: Node): Node {
+export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
 	}
@@ -305,6 +307,8 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	const textureType = getTypeImpl(Texture2d);
 	const samplerType = getTypeImpl(Sampler);
 	const storageTextureType = getTypeImpl(StorageTexture2d);
+	const uintTextureType = getTypeImpl(Texture2dU32);
+	const arrayTextureType = getTypeImpl(Texture2dArray);
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
 		getTypeImpl(Vec3f),
@@ -387,7 +391,9 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 
 	function isAuthorStruct(t: Node | null): boolean {
 		if (t == null || fieldsOf(t) == null) { return false; }
-		for (const own of vectorTypes.concat([textureType, samplerType, storageTextureType])) {
+		const opaque = [textureType, samplerType, storageTextureType, uintTextureType,
+			arrayTextureType];
+		for (const own of vectorTypes.concat(opaque)) {
 			if (sameType(t, own)) { return false; }
 		}
 		return true;
@@ -659,7 +665,12 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 					spellings[at] + ") uniform " + mode + "image2D " + name + ";\n", false);
 				continue;
 			}
-			if (sameType(t, textureType)) {
+			if (sameType(t, uintTextureType) || sameType(t, arrayTextureType)) {
+				const uint = sameType(t, uintTextureType);
+				const tag = uint ? "@image_sample_type " + name + " uint\n" : "";
+				const kind = uint ? "utexture2D " : "texture2DArray ";
+				declare(name, tag + slot + kind + name + ";\n", false);
+			} else if (sameType(t, textureType)) {
 				const tag = sampleType == null ? "" : "@image_sample_type " + name + " " +
 					argumentName(sampleType, entry) + "\n";
 				declare(name, tag + slot + "texture2D " + name + ";\n", false);
@@ -688,6 +699,35 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	const inputs = fieldsOf(inputType);
 	let builtinInputs: string[] = [];
 	let builtinInputNames: string[] = [];
+	let attributeNames: string[] = [];
+	const feederType = getType(feeder);
+	if (feederType != null && feederType.kind == NodeKind.TypeFunction) {
+		const fedOutputs = fieldsOf(feederType.typExprReturn);
+		const feedsFragments = fedOutputs != null && hasDecorator(fedOutputs, "builtin");
+		for (const t of feedsFragments ? feederType.typExprParams : []) {
+			const fields = fieldsOf(t);
+			if (fields == null || hasDecorator(fields, "binding") ||
+				fields.typExprFieldNames.length > 0 && everyDecorated(fields, "feature")) {
+				continue;
+			}
+			for (let f = 0; f < fields.typExprFieldNames.length; f++) {
+				if (decorator(fields.typExprFieldDecorators[f], "builtin") == null) {
+					attributeNames.push(fields.typExprFieldNames[f]);
+				}
+			}
+		}
+	}
+
+	function varyingName(name: string): string {
+		let unique = name;
+		let suffix = 0;
+		while (attributeNames.indexOf(unique) >= 0) {
+			suffix += 1;
+			unique = name + "_" + String(suffix);
+		}
+		return unique;
+	}
+
 	if (inputs != null) {
 		for (let f = 0; f < inputs.typExprFieldNames.length; f++) {
 			const name = inputs.typExprFieldNames[f];
@@ -698,10 +738,11 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 					fail(entry, "attribute '" + name + "' is an array, and shdc's GLES3 " +
 						"(WebGL2) output has no array vertex inputs: declare one attribute each");
 				}
-				const varying = member(inputs.typExprFieldTypes[f], name, entry);
+				const glslName = vertex ? name : varyingName(name);
+				const varying = member(inputs.typExprFieldTypes[f], glslName, entry);
 				const gate = featureCondition(inputs.typExprFieldDecorators[f], entry);
 				const qualifier = vertex ? "" : interpolation(inputs.typExprFieldTypes[f]);
-				declareUnder(name, qualifier + "in " + varying + ";\n", gate);
+				declareUnder(glslName, qualifier + "in " + varying + ";\n", gate);
 				continue;
 			}
 			const which = argumentName(builtin, entry);
@@ -746,13 +787,15 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 				outputTargets.push("gl_Position");
 				continue;
 			}
-			outputTargets.push(name);
 			const t = outputs.typExprFieldTypes[f];
 			if (vertex) {
-				const varying = member(t, name, entry);
-				declareUnder(name, interpolation(t) + "out " + varying + ";\n", gate);
+				const glslName = varyingName(name);
+				outputTargets.push(glslName);
+				const varying = member(t, glslName, entry);
+				declareUnder(glslName, interpolation(t) + "out " + varying + ";\n", gate);
 				continue;
 			}
+			outputTargets.push(name);
 			const location = decorator(decorators, "location");
 			if (location == null) {
 				fail(entry, "fragment output '" + name + "' has no @location(n)");
@@ -1079,7 +1122,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			} else if (op == "%" && integer(n.left) && !unsigned(n)) {
 				fail(n, "'%' has a GLSL form for uint32 operands only: GLSL leaves a negative " +
 					"int32 operand undefined");
-			} else if (op == "/" && integer(n.left)) {
+			} else if (op == "/" && integer(n.left) && !unsigned(n)) {
 				fail(n, "'/' has no GLSL form: GLSL does not truncate as MetaScript does");
 			} else if (op == "%" && !integer(n.left)) {
 				const a = expr(n.left);
@@ -1125,19 +1168,23 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		if (n.kind == NodeKind.TypeAssertion) {
 			const from = kindOf(n.asExpr);
 			const to = kindOf(n);
-			if ((from == TypeKind.Float32 || from == TypeKind.Int32) &&
-				(to == TypeKind.Float32 || to == TypeKind.Int32)) {
+			const exact = (from == TypeKind.Float32 || from == TypeKind.Int32) &&
+				(to == TypeKind.Float32 || to == TypeKind.Int32) ||
+				from == TypeKind.Uint32 && to == TypeKind.Float32;
+			if (exact) {
 				return glslType(getType(n), n) + "(" + value(n.asExpr) + ")";
 			}
-			fail(n, "'as' converts between float32 and int32 only in a shader");
+			fail(n, "'as' converts float32 and int32 both ways and uint32 to float32 in a " +
+				"shader; int32 and uint32 convert by their bits through vec2i/vec2u");
 		}
 		if (n.kind == NodeKind.MemberExpr) {
 			const object = n.object;
 			if (isType(object, inputType)) {
 				const b = builtinInputNames.indexOf(n.property);
 				if (b >= 0) { return builtinInputs[b]; }
-				use(n.property);
-				return n.property;
+				const read = vertex ? n.property : varyingName(n.property);
+				use(read);
+				return read;
 			}
 			if (isType(object, bindingsType)) {
 				if (isAuthorStruct(getType(n))) {
@@ -1173,7 +1220,13 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			let args: string[] = [];
 			for (const a of n.arguments) { args.push(expr(a)); }
 			const listed = "(" + args.join(", ") + ")";
-			const sampled = args.length >= 2 ? "sampler2D(" + args[0] + ", " + args[1] + ")" : "";
+			const first = n.arguments.length > 0 ? getType(n.arguments[0]) : null;
+			const uintTexture = first != null && sameType(first, uintTextureType);
+			const arrayTexture = first != null && sameType(first, arrayTextureType);
+			const shape = uintTexture ? "usampler2D(" : arrayTexture ? "sampler2DArray(" :
+				"sampler2D(";
+			const layered = shape == "sampler2DArray(";
+			const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 			return match (impl.fnName) {
 				"abs" | "sign" | "floor" | "ceil" | "trunc" | "fract" | "sqrt" | "exp" | "exp2" |
 				"log" | "log2" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" |
@@ -1205,9 +1258,12 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 				"textureDimensions" => args.length == 1 ? "imageSize(" + args[0] + ")" :
 					"textureSize(" + sampled + ", " + args[2] + ")",
 				"textureStore" => "imageStore(" + args.join(", ") + ")",
-				"textureLoad" => "texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",
+				"textureLoad" => layered ?
+					"texelFetch(" + sampled + ", ivec3(" + args[2] + ", " + args[3] + "), " + args[4] + ")" :
+					"texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",
 				"textureSample" => vertex || compute ?
 					fail(n, "textureSample samples only in a fragment entry, as WGSL's does") :
+					layered ? "texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 					"texture(" + sampled + ", " + args[2] + ")",
 				_ => fail(n, "./std's '" + impl.fnName + "' has no GLSL spelling"),
 			};
