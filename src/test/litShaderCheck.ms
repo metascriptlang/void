@@ -2,16 +2,31 @@
 // (src/math/math3d.ms) and to the identities a lit draw must keep.
 
 import { linearToSrgb as channelToSrgb, srgbToLinear as channelToLinear } from "../math/math3d";
-import { Mat4x4f, Vec3f, Vec4f, mat4x4f, vec3f, vec4f } from "../shader/std";
+import {
+	Mat4x4f,
+	Texture2d,
+	Vec2f,
+	Vec3f,
+	Vec4f,
+	mat4x4f,
+	vec2f,
+	vec3f,
+	vec4f,
+} from "../shader/std";
 import {
 	LitBindings,
 	LitKey,
+	UnlitBindings,
 	linearToSrgb,
 	litFs,
+	litTexturedFs,
 	litVs,
+	movedUv,
 	saturated,
 	srgbToLinear,
+	straightTexel,
 	toneCurved,
+	unlitTexturedFs,
 } from "../void3d/shader3d";
 
 function within(a: float32, b: float32): boolean {
@@ -35,6 +50,14 @@ function none(): Vec4f {
 	return vec4f(0.0, 0.0, 0.0, 0.0);
 }
 
+function white(): Texture2d {
+	return { width: 1, height: 1, texels: [1.0, 1.0, 1.0, 1.0] };
+}
+
+function nearUv(a: Vec2f, b: Vec2f): boolean {
+	return within(a.x, b.x) && within(a.y, b.y);
+}
+
 // White ambient light, no directional or point light, no saturation, exposure 0, linear curve.
 function plainBindings(): LitBindings {
 	return {
@@ -48,8 +71,31 @@ function plainBindings(): LitBindings {
 		},
 		frameParams: { frame: vec4f(0.0, 1.0, 0.0, 0.0) },
 		shadowParams: { shadowMatrix: identity(), shadow: none() },
-		shadowMap: { width: 1, height: 1, texels: [1.0, 1.0, 1.0, 1.0] },
+		shadowMap: white(),
 		shadowSampler: { nearest: true },
+		baseTexture: white(),
+		baseSampler: { nearest: true },
+		backTexture: white(),
+		dissolveTexture: white(),
+		dissolveSampler: { nearest: true },
+		emissiveTexture: white(),
+		normalTexture: white(),
+	};
+}
+
+// The unlit counterpart: a white material colour, the same frame.
+function plainUnlitBindings(): UnlitBindings {
+	return {
+		unlitMaterialParams: {
+			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
+		},
+		frameParams: { frame: vec4f(0.0, 1.0, 0.0, 0.0) },
+		baseTexture: white(),
+		baseSampler: { nearest: true },
+		backTexture: white(),
+		dissolveTexture: white(),
+		dissolveSampler: { nearest: true },
 	};
 }
 
@@ -107,4 +153,47 @@ test "under white ambient light alone a surface keeps its colour; the normal tar
 	);
 	assert near(out.color.rgb, vec3f(0.8, 0.4, 0.1)) && within(out.color.a, 0.75);
 	assert near(out.normal.xyz, vec3f(0.5, 0.5, 1.0)) && within(out.normal.w, 1.0);
+}
+
+test "a white texel leaves the lit and the unlit surface as the vertex colour" {
+	const colour = vec4f(0.8, 0.4, 0.1, 0.75);
+	const lit = litTexturedFs(
+		{
+			worldTangent: none(),
+			worldPosition: vec3f(0.0, 0.0, 0.0),
+			worldNormal: vec3f(0.0, 0.0, 1.0),
+			surfaceUv: vec2f(0.5, 0.5),
+			baseColor: colour,
+			frontFacing: true,
+		},
+		plainBindings(),
+		plainKey(),
+	);
+	assert near(lit.color.rgb, colour.rgb) && within(lit.color.a, 0.75);
+	const unlit = unlitTexturedFs(
+		{
+			worldNormal: vec3f(0.0, 0.0, 1.0),
+			surfaceUv: vec2f(0.5, 0.5),
+			baseColor: colour,
+			frontFacing: true,
+		},
+		plainUnlitBindings(),
+		plainKey(),
+	);
+	assert near(unlit.color.rgb, colour.rgb) && within(unlit.color.a, 0.75);
+}
+
+test "a moved uv is the matrix times the uv, then the offset and the motion over time" {
+	const swap = vec4f(0.0, 1.0, 1.0, 0.0);
+	const offset = vec4f(0.5, 0.0, 0.0, 0.0);
+	assert nearUv(movedUv(vec2f(0.25, 0.75), swap, offset, 0.0), vec2f(1.25, 0.25));
+	const scroll = vec4f(0.0, 0.0, 0.25, 0.0);
+	const identityUv = vec4f(1.0, 0.0, 0.0, 1.0);
+	assert nearUv(movedUv(vec2f(0.0, 0.0), identityUv, scroll, 2.0), vec2f(0.5, 0.0));
+}
+
+test "a straight texel divides the colour by its alpha, and a clear texel stays clear" {
+	const t = straightTexel(vec4f(0.25, 0.5, 0.125, 0.5));
+	assert near(t.rgb, vec3f(0.5, 1.0, 0.25)) && within(t.a, 0.5);
+	assert near(straightTexel(vec4f(0.3, 0.2, 0.1, 0.0)).rgb, vec3f(0.0));
 }
