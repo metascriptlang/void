@@ -508,6 +508,27 @@ for program in tests/aborts/*.ms; do
 	fi
 done
 
+root=$(pwd -W 2>/dev/null || pwd)
+for program in tests/refusals/*.ms; do
+	name=$(basename "$program" .ms)
+	expected=$(sed -n '1s#^// expect: ##p' "$program")
+	log="out/gate-refusal-$name.log"
+	status=0
+	"$MSC" check "$program" > "$log" 2>&1 || status=$?
+	plain=$(sed 's/\[[0-9;]*m//g' "$log")
+	message=$(echo "$plain" | grep -m1 "Macro '" || true)
+	at=$(echo "$plain" | grep -m1 -- "-->" | sed 's/.*--> //' || true)
+	if [ "$expected" = "ok" ]; then
+		if [ "$status" -eq 0 ]; then pass "$name is accepted"
+		else fail "$name was refused: $at $message — see $log"; fi
+	elif [ "$status" -ne 0 ] && echo "$message" | grep -qF -- "${expected#* }" &&
+		[ "$at" = "$root/$program:${expected%% *}" ]; then
+		pass "$name is refused at ${expected%% *}: ${expected#* }"
+	else
+		fail "$name was not refused at '$expected', got $at $message — see $log"
+	fi
+done
+
 echo
 echo "=== 4. T2 — golden images, D3D11 ======================================"
 # The runner's own verdict logic first, against known inputs, and before it is trusted to say

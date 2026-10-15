@@ -49,8 +49,10 @@ later replaces the hand-written GLSL source of each base.
   out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
   shdc would reflect it. The condition is the `||` of every distinct context a read runs in. A
   helper is written once with no features on; its reads are replayed at each call under the
-  features around the call, and the helper itself is gated the same way. A read of a gated input
-  outside its feature reaches shdc as an undeclared name, at regeneration.
+  features around the call, and the helper itself is gated the same way. A `@feature(F)` input
+  exists only in F's programs, so a read of it runs under a condition whose `&&` includes F; any
+  other read is refused at the read, or at the entry's call that reaches a helper's read, naming
+  the field and F. Before, shdc found it at regeneration as an undeclared name.
 - **Varyings match by position, so a fragment names its vertex entry** (TypeGPU's pipeline pairs
   `withVertex` and `withFragment` the same way). shdc numbers varyings in declaration order, so
   every one is declared, read or not. `glslLinked(litFs, litVs)` checks the fragment input's
@@ -59,6 +61,16 @@ later replaces the hand-written GLSL source of each base.
   2026-10-15 (BUILD `a2b3e36a`, probes `out/linkProbe/`): a swapped pair, a changed type and an
   unlinked fragment are each refused with that message. `glsl` and `glslLinked` expand to
   `glslStage`, which emits the stage.
+- **Errors point at the author's node**, not at the `glsl(...)` call: a body error at its
+  expression, an interface field at its first decorator (the type nodes `getType` returns sit at
+  the expansion site), a field with none and a signature error at the entry's declaration. Only
+  what is wired at the call stays there: `glsl` on a fragment that reads varyings, `glslLinked`'s
+  pairing, `glslCompute`'s size, a compute entry passed to `glsl`. The file shown is the expansion
+  site's, so a shader in another module prints its line under the caller's file
+  (`~/metascript/.inbox/compiler/2026-10-16-macro-error-loses-node-file.md`). Measured 2026-10-16,
+  BUILD `fd03df3e`: the `tests/refusals/` loop of `scripts/gate.sh` (each file's first line the
+  expected `line:col` and message) passes 13 of 13 on this emitter, 1 of 13 (the control that must
+  pass) on the emitter of tree `8f8ab730`.
 - **Builtins by declaring module.** A call to a function declared in `std.ms` is a builtin; a struct
   getter declared there emits as the swizzle it names. The walk sits in nested functions of the
   macro body: a top-level helper cannot read `Node` fields.
@@ -129,8 +141,11 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
 - **A type names no module.** `getType` of a struct value is a `TypeObject` with no `resolvedSym`
   and no location, and `bindSym(name)` resolves at the expansion site (measured 2026-10-15, BUILD
   `a2b3e36a`, `out/stmtProbe/typeModUse.ms`). So a `./std` struct is told from the author's by
-  `sameType` against the types the emitter spells: one `./std` adds without a spelling would be
-  emitted as an author struct until the type carries its module.
+  `sameType` against the types the emitter spells (`isAuthorStruct`): one `./std` adds without a
+  spelling would be emitted as an author struct until the type carries its module. Re-measured
+  2026-10-16, BUILD `fd03df3e` (`out/typeModuleProbe/`, `out/compilerCards/typeModule.ms`): still
+  no `resolvedSym`, for a local, an imported and a `./std` struct
+  (`~/metascript/.inbox/compiler/2026-10-16-type-node-names-no-module.md`).
 
 ## Measured — sokol-shdc coverage
 
