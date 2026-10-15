@@ -133,6 +133,11 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
 - **Walls neither shdc nor self-emitting can pass**: sokol API (spec constants compile, but sokol has
   no field for them, so the default always wins; push constants; framebuffer fetch degrades to a
   texture read; bindless; indirect) and platform floors (WebGL2, WebGPU core, D3D11 SM5).
+- **The std builtins compile on all five** (measured 2026-10-15, BUILD `a2b3e36a`, probe
+  `out/stdProbe/probe.glsl` from `mathProbeFs` and `shapeProbeFs` in `src/test/shaderStdCheck.ms`):
+  `inverse` of mat3 and mat4 reaches HLSL, MSL and WGSL as SPIRV-Cross's `spvInverse3x3` and
+  `spvInverse4x4` helpers; `fma`, `roundEven`, `trunc`, `dFdx`, `fwidth` and `uvec`/`ivec`
+  conversions pass on `glsl300es` too.
 - **Precision**: the `precision mediump float;` line in shdc's ES output is only the default.
   SPIRV-Cross qualifies every variable, varying, uniform and sampler `highp`. `precision highp float;`
   in the source changes nothing. Only `precision mediump float;` in the source drops the qualifiers.

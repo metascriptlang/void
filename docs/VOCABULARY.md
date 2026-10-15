@@ -82,6 +82,33 @@ Where WGSL has no name for what a shader needs, Void names it and takes no WGSL 
 result undefined, the CPU meaning refuses that operand instead of returning a plausible number:
 `pow` of a negative base, or of 0 to a power ≤ 0, stops with `unreachable`.
 
+Decided 2026-10-15 when `std.ms` grew to what shady's tests and examples use (shady `c899f7c`
+`tests/test_shady.nim`, `examples/{circle,colors,flare,mandelbrot}.nim`):
+
+- **The remainder is `%`, WGSL's truncated `x - y * trunc(x / y)`**, emitted as that expression;
+  MetaScript's own `%` computes it on the CPU. Void takes no `mod`. TypeGPU's `mod` is this `%`
+  (`std/operators.ts`), but HXSL's, GLSL's and shady's floor (`shared.nim` `fmod` is
+  `x - y * floor(x / y)`, and its test holds `fmod(-0.5, 1.0) == 0.5`), so the name carries two
+  results to the readers Void has. A port of shady's `fmod` writes `x - y * floor(x / y)`.
+- **`inverse` takes GLSL's name**: WGSL and TypeGPU have no matrix inverse, so, as with
+  `upperLeft3x3`, the name is Void's to give, and GLSL's is the one shady's test calls
+  (HXSL has none either, `hxsl/Ast.hx` `TGlobal`).
+- **Spelled apart**: `round` is `roundEven` (GLSL's `round` leaves a tie to the implementation),
+  `atan2(y, x)` is `atan(y, x)`, `inverseSqrt` `inversesqrt`, `faceForward` `faceforward`,
+  `saturate(x)` `clamp(x, 0.0, 1.0)`, `dpdx` `dFdx`, `dpdy` `dFdy`.
+- **Refused where GLSL or Metal leave undefined what WGSL defines**, since the emitted program
+  cannot promise WGSL's result there: `clamp` with low > high, `smoothstep` with low ≥ high. And
+  where WGSL itself leaves it undefined: `sqrt` below 0, `inverseSqrt`, `log` and `log2` at or
+  below 0, `asin` and `acos` past ±1, `atan2(0, 0)`, `normalize` of a zero vector, `inverse` of a
+  singular matrix, a float outside the int32 range into an int vector.
+- **Swizzles: every one WGSL spells on a float vector** (2 to 4 of `xyzw`, or of `rgba`, and the
+  single `r` `g` `b` `a`), **and `xy`, `xyz` on an integer vector**. Each is a getter `msc` checks in
+  every program that imports `std.ms`. Measured 2026-10-15 on BUILD `a2b3e36a`, base tree
+  `70081fc2`, `msc check --time src/void3d/shader3d.ms` with the machine at 13% CPU, two runs
+  each: 0.37 s at the base, 0.41 s with the new builtins and the old swizzles, 0.80 s with
+  this set, 2.36 s with every swizzle on all nine vector types. Integer vectors are indexed
+  and converted more than swizzled, so their full set was not worth 1.5 s on each compile.
+
 A shader's interface uses WGSL's attribute names as MetaScript field decorators: `@builtin(…)`,
 `@location(n)` and `@binding(n)`. Two come from WebGPU's bind group layout, where a texture or
 sampler states its binding type: `@sampleType(unfilterable_float)`, `@samplerType(nonfiltering)`.
