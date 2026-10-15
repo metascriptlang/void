@@ -10,8 +10,10 @@ import {
 	binding,
 	builtin,
 	clamp,
+	cross,
 	dot,
 	length,
+	mat2x2f,
 	mat3x3f,
 	mat4x4f,
 	max,
@@ -109,6 +111,12 @@ test "a matrix is its columns: m * v weighs column i by component i" {
 	assert (counting() * scaleThenMove) * p == counting() * (scaleThenMove * p);
 }
 
+test "a 2x2 matrix is its columns too, and cross follows the right-hand rule" {
+	assert mat2x2f(vec2f(1.0, 2.0), vec2f(3.0, 4.0)) * vec2f(5.0, 6.0) == vec2f(23.0, 34.0);
+	assert cross(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0)) == vec3f(0.0, 0.0, 1.0);
+	assert cross(vec3f(1.0, 2.0, 3.0), vec3f(4.0, 5.0, 6.0)) == vec3f(-3.0, 6.0, -3.0);
+}
+
 test "upperLeft3x3 keeps the first three rows of the first three columns, as GLSL mat3(m)" {
 	const m = upperLeft3x3(counting());
 	assert m == mat3x3f(vec3f(1.0, 2.0, 3.0), vec3f(5.0, 6.0, 7.0), vec3f(9.0, 10.0, 11.0));
@@ -117,6 +125,7 @@ test "upperLeft3x3 keeps the first three rows of the first three columns, as GLS
 
 test "constructors splat, extend and convert" {
 	assert vec3f(2.0) == vec3f(2.0, 2.0, 2.0);
+	assert vec4f(2.0) == vec4f(2.0, 2.0, 2.0, 2.0);
 	assert vec4f(vec3f(1.0, 2.0, 3.0), 4.0) == vec4f(1.0, 2.0, 3.0, 4.0);
 	assert vec2f(vec2i(-3, 2)) == vec2f(-3.0, 2.0);
 }
@@ -124,6 +133,7 @@ test "constructors splat, extend and convert" {
 test "swizzles read the components they name" {
 	const c = vec4f(1.0, 2.0, 3.0, 4.0);
 	assert c.rgb == vec3f(1.0, 2.0, 3.0) && c.xyz == c.rgb && c.xy == vec2f(1.0, 2.0);
+	assert c.zw == vec2f(3.0, 4.0);
 	assert c.r == 1.0 && c.g == 2.0 && c.b == 3.0 && c.a == 4.0;
 	const v = c.xyz;
 	assert v.r == 1.0 && v.g == 2.0 && v.b == 3.0 && v.xy == vec2f(1.0, 2.0);
@@ -137,6 +147,8 @@ test "vector arithmetic is componentwise, a scalar operand applies to every comp
 	assert v * 2.0 == 2.0 * v && v / 2.0 == vec3f(0.5, 1.0, 2.0);
 	assert -v == vec3f(-1.0, -2.0, -4.0);
 	assert vec2f(2.0, 3.0) * vec2f(4.0, 5.0) == vec2f(8.0, 15.0);
+	assert vec2f(2.0, 3.0) + vec2f(4.0, 5.0) == vec2f(6.0, 8.0);
+	assert vec2f(2.0, 3.0) * 2.0 == vec2f(4.0, 6.0);
 	let sum = v;
 	sum += v;
 	assert sum == v * 2.0;

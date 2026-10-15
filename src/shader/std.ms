@@ -23,6 +23,7 @@ export struct Vec4f {
 	z: float32;
 	w: float32;
 	get xy(): Vec2f { return { x: this.x, y: this.y }; }
+	get zw(): Vec2f { return { x: this.z, y: this.w }; }
 	get xyz(): Vec3f { return { x: this.x, y: this.y, z: this.z }; }
 	get rgb(): Vec3f { return { x: this.x, y: this.y, z: this.z }; }
 	get r(): float32 { return this.x; }
@@ -34,6 +35,10 @@ export struct Vec4f {
 export struct Vec2i {
 	x: int32;
 	y: int32;
+}
+
+export struct Mat2x2f {
+	columns: Vec2f[2];
 }
 
 export struct Mat3x3f {
@@ -51,10 +56,12 @@ export function vec3f(s: float32): Vec3f { return { x: s, y: s, z: s }; }
 export function vec4f(x: float32, y: float32, z: float32, w: float32): Vec4f {
 	return { x, y, z, w };
 }
+export function vec4f(s: float32): Vec4f { return { x: s, y: s, z: s, w: s }; }
 export function vec4f(v: Vec3f, w: float32): Vec4f { return { x: v.x, y: v.y, z: v.z, w }; }
 export function vec2i(x: int32, y: int32): Vec2i { return { x, y }; }
 export function vec2i(v: Vec2f): Vec2i { return { x: v.x as int32, y: v.y as int32 }; }
 
+export function mat2x2f(c0: Vec2f, c1: Vec2f): Mat2x2f { return { columns: [c0, c1] }; }
 export function mat3x3f(c0: Vec3f, c1: Vec3f, c2: Vec3f): Mat3x3f {
 	return { columns: [c0, c1, c2] };
 }
@@ -93,9 +100,14 @@ export function `/`(this a: Vec3f, s: float32): Vec3f {
 }
 export function `*`(this s: float32, a: Vec3f): Vec3f { return a * s; }
 export function `-`(this a: Vec3f): Vec3f { return { x: -a.x, y: -a.y, z: -a.z }; }
+export function `+`(this a: Vec2f, b: Vec2f): Vec2f { return { x: a.x + b.x, y: a.y + b.y }; }
 export function `*`(this a: Vec2f, b: Vec2f): Vec2f { return { x: a.x * b.x, y: a.y * b.y }; }
+export function `*`(this a: Vec2f, s: float32): Vec2f { return { x: a.x * s, y: a.y * s }; }
 export function `-`(this a: Vec2i, b: Vec2i): Vec2i { return { x: a.x - b.x, y: a.y - b.y }; }
 
+export function `*`(this m: Mat2x2f, v: Vec2f): Vec2f {
+	return m.columns[0] * v.x + m.columns[1] * v.y;
+}
 export function `*`(this m: Mat3x3f, v: Vec3f): Vec3f {
 	return m.columns[0] * v.x + m.columns[1] * v.y + m.columns[2] * v.z;
 }
@@ -151,6 +163,9 @@ export function pow(base: Vec3f, exponent: Vec3f): Vec3f {
 }
 
 export function dot(a: Vec3f, b: Vec3f): float32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+export function cross(a: Vec3f, b: Vec3f): Vec3f {
+	return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+}
 export function length(v: Vec3f): float32 { return Math.sqrt(dot(v, v)) as float32; }
 export function normalize(v: Vec3f): Vec3f { return v / length(v); }
 

@@ -25,6 +25,7 @@ import {
 	typeKind,
 } from "std/meta";
 import {
+	Mat2x2f,
 	Mat3x3f,
 	Mat4x4f,
 	Sampler,
@@ -279,10 +280,11 @@ export macro glslStage(entry: Node): Node {
 		getTypeImpl(Vec3f),
 		getTypeImpl(Vec4f),
 		getTypeImpl(Vec2i),
+		getTypeImpl(Mat2x2f),
 		getTypeImpl(Mat3x3f),
 		getTypeImpl(Mat4x4f),
 	];
-	const vectorNames = ["vec2", "vec3", "vec4", "ivec2", "mat3", "mat4"];
+	const vectorNames = ["vec2", "vec3", "vec4", "ivec2", "mat2", "mat3", "mat4"];
 
 	function glslType(t: Node | null, at: Node): string {
 		if (t == null) { fail(at, "the expression has no type"); }
@@ -939,12 +941,13 @@ export macro glslStage(entry: Node): Node {
 			const listed = "(" + args.join(", ") + ")";
 			const sampled = args.length >= 2 ? "sampler2D(" + args[0] + ", " + args[1] + ")" : "";
 			return match (impl.fnName) {
-				"max" | "min" | "clamp" | "mix" | "pow" | "dot" | "length" | "normalize" =>
-					impl.fnName + listed,
+				"max" | "min" | "clamp" | "mix" | "pow" | "dot" | "cross" | "length" |
+				"normalize" => impl.fnName + listed,
 				"vec2f" => "vec2" + listed,
 				"vec3f" => "vec3" + listed,
 				"vec4f" => "vec4" + listed,
 				"vec2i" => "ivec2" + listed,
+				"mat2x2f" => "mat2" + listed,
 				"mat3x3f" | "upperLeft3x3" => "mat3" + listed,
 				"mat4x4f" => "mat4" + listed,
 				"select" => "(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
