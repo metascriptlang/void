@@ -387,7 +387,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 
 	function isAuthorStruct(t: Node | null): boolean {
 		if (t == null || fieldsOf(t) == null) { return false; }
-		for (const own of vectorTypes.concat([textureType, samplerType])) {
+		for (const own of vectorTypes.concat([textureType, samplerType, storageTextureType])) {
 			if (sameType(t, own)) { return false; }
 		}
 		return true;
@@ -484,6 +484,9 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	let structGlslFields: string[][] = [];
 
 	let globals: string[] = [];
+	let storageNames: string[] = [];
+	let storageElements: Node[] = [];
+	let storageHeads: string[] = [];
 	let locals: string[] = [];
 	let memberNames: string[] = [];
 	let memberSlots: string[] = [];
@@ -621,16 +624,16 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 				argumentName(access, entry) != "write") {
 				fail(entry, "binding '" + name + "': @access is read, write or read_write");
 			}
-			if (t.kind == NodeKind.TypeArray && t.typExprSize < 0) {
+			const shape = getTypeImpl(t);
+			if (shape != null && shape.kind == NodeKind.TypeArray && shape.typExprSize < 0) {
 				if (writes && !compute) {
 					fail(entry, "storage buffer '" + name + "' is written only in a compute entry");
 				}
-				const element = glslType(t.typExprElement, entry);
-				const mode = writes ? "" : "readonly ";
-				const items = element + " " + name + "[];\n";
-				const block = "buffer " + name + "Buffer {\n    " + items + "};\n";
-				const storage = "layout(binding=" + argumentNumber(binding, entry) + ") ";
-				declare(name, storage + mode + block, false);
+				storageNames.push(name);
+				storageElements.push(shape.typExprElement);
+				storageHeads.push("layout(binding=" + argumentNumber(binding, entry) + ") " +
+					(writes ? "" : "readonly ") + "buffer " + name + "Buffer {\n    ");
+				declare(name, "", false);
 				continue;
 			}
 			if (sameType(t, storageTextureType)) {
@@ -1183,7 +1186,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 				"atan2" => "atan" + listed,
 				"faceForward" => "faceforward" + listed,
 				"saturate" => "clamp(" + args[0] + ", 0.0, 1.0)",
-				"dpdx" | "dpdy" | "fwidth" => vertex ?
+				"dpdx" | "dpdy" | "fwidth" => vertex || compute ?
 					fail(n, impl.fnName + " exists only in a fragment entry, as WGSL's does") :
 					impl.fnName.replace("dpdx", "dFdx").replace("dpdy", "dFdy") + listed,
 				"vec2f" => "vec2" + listed,
@@ -1203,7 +1206,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 					"textureSize(" + sampled + ", " + args[2] + ")",
 				"textureStore" => "imageStore(" + args.join(", ") + ")",
 				"textureLoad" => "texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",
-				"textureSample" => vertex ?
+				"textureSample" => vertex || compute ?
 					fail(n, "textureSample samples only in a fragment entry, as WGSL's does") :
 					"texture(" + sampled + ", " + args[2] + ")",
 				_ => fail(n, "./std's '" + impl.fnName + "' has no GLSL spelling"),
@@ -1457,7 +1460,17 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	enterScope(entry.resolvedSym.modulePath, signature.typExprParamNames);
 	paramGlslNames = signature.typExprParamNames;
 	const main = body(fn.fnBody, "    ");
+	for (let s = 0; s < storageNames.length; s++) {
+		const element = storageElements[s];
+		if (!isAuthorStruct(element)) {
+			fail(entry, "storage buffer '" + storageNames[s] + "' holds an author struct: shdc " +
+				"takes one flexible array of structs per buffer");
+		}
+		declTexts[declNames.indexOf(storageNames[s])] = storageHeads[s] +
+			structName(element, entry) + " " + storageNames[s] + "[];\n};\n";
+	}
 	let header = "";
+	let structs = "";
 	for (let i = 0; i < declNames.length; i++) {
 		const contexts = declContexts[i];
 		if (!declAlways[i] && declFixed[i] == "" && contexts.length == 0) { continue; }
@@ -1467,7 +1480,12 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			for (const c of contexts) { any.push(contexts.length == 1 ? c : grouped(c)); }
 			gate = any.join(" || ");
 		}
-		header += gate == "" ? declTexts[i] : opening(gate) + "\n" + declTexts[i] + "#endif\n";
+		const text = gate == "" ? declTexts[i] : opening(gate) + "\n" + declTexts[i] + "#endif\n";
+		if (declNames[i].startsWith("struct:")) {
+			structs += text;
+		} else {
+			header += text;
+		}
 	}
 	let size = "";
 	if (compute) {
@@ -1480,8 +1498,13 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			size += (a == 0 ? "" : ", ") + "local_size_" + axes[a] + "=" +
 				(n == null ? "1" : String(intValue(n)));
 		}
+		let invocations: int64 = 1;
+		for (const n of workgroupSize.elements) { invocations *= intValue(n); }
+		if (invocations % 32 != 0) {
+			fail(workgroupSize, "a workgroup is a multiple of 32 invocations, as shdc requires");
+		}
 		size = "layout(" + size + ") in;\n";
 	}
-	const source = size + header + "void main() {\n" + main + "}\n";
+	const source = size + structs + header + "void main() {\n" + main + "}\n";
 	return { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: source };
 }

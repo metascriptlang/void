@@ -126,7 +126,8 @@ function cellAt(cell: uint32): CellVaryings {
 }
 
 test "switch ends every case in a break, and a break inside a case leaves the switch" {
-	assert glsl(switchFs) == "layout(location=0) out float fragColor;\n" +
+	assert glsl(switchFs) ==
+		"layout(location=0) out float fragColor;\n" +
 		"void main() {\n" +
 		"    int column = int(gl_FragCoord.x);\n" +
 		"    float shade = 0.0;\n" +
@@ -160,7 +161,8 @@ test "switch ends every case in a break, and a break inside a case leaves the sw
 }
 
 test "a statement match is a switch whose or-pattern shares one case, a continue passes through" {
-	assert glsl(matchFs) == "layout(location=0) out float fragColor;\n" +
+	assert glsl(matchFs) ==
+		"layout(location=0) out float fragColor;\n" +
 		"void main() {\n" +
 		"    int column = int(gl_FragCoord.x);\n" +
 		"    float shade = 0.0;\n" +
@@ -189,17 +191,11 @@ test "a statement match is a switch whose or-pattern shares one case, a continue
 }
 
 test "an author struct is declared before its first reader and built in field order" {
-	assert glsl(structFs) == "layout(location=0) out float fragColor;\n" +
+	assert glsl(structFs) ==
 		"struct Light {\n" +
 		"    vec3 direction;\n" +
 		"    float intensity;\n" +
 		"};\n" +
-		"Light keyLight(float intensity) {\n" +
-		"    return Light(vec3(0.0, 0.0, 1.0), intensity);\n" +
-		"}\n" +
-		"float lit(Light light, vec3 normal) {\n" +
-		"    return max(dot(light.direction, normal), 0.0) * light.intensity;\n" +
-		"}\n" +
 		"struct Rig {\n" +
 		"    Light key;\n" +
 		"    Light fill;\n" +
@@ -209,9 +205,15 @@ test "an author struct is declared before its first reader and built in field or
 		"    float sample_1;\n" +
 		"    ivec2 offset;\n" +
 		"};\n" +
+		"layout(location=0) out float fragColor;\n" +
+		"Light keyLight(float intensity) {\n" +
+		"    return Light(vec3(0.0, 0.0, 1.0), intensity);\n" +
+		"}\n" +
+		"float lit(Light light, vec3 normal) {\n" +
+		"    return max(dot(light.direction, normal), 0.0) * light.intensity;\n" +
+		"}\n" +
 		"void main() {\n" +
-		"    Rig rig = Rig(keyLight(gl_FragCoord.x), Light(vec3(0.0, 1.0, 0.0), 0.5), " +
-		"float[2](1.0, 0.5));\n" +
+		"    Rig rig = Rig(keyLight(gl_FragCoord.x), Light(vec3(0.0, 1.0, 0.0), 0.5), float[2](1.0, 0.5));\n" +
 		"    rig.fill.intensity += 0.25;\n" +
 		"    rig.weights[1] = 0.5 * rig.weights[1];\n" +
 		"    vec3 normal = vec3(0.0, 0.0, 1.0);\n" +
@@ -219,8 +221,7 @@ test "an author struct is declared before its first reader and built in field or
 		"    Light[2] pair = Light[2](rig.key, rig.fill);\n" +
 		"    Tap tap = Tap(1.0, ivec2(0, 0));\n" +
 		"    tap.offset.x = 2;\n" +
-		"    fragColor = ((lit(pair[0], normal) * rig.weights[0]) + " +
-		"(lit(pair[1], normal) * rig.weights[1])) + (tap.sample_1 * float(tap.offset.x));\n" +
+		"    fragColor = ((lit(pair[0], normal) * rig.weights[0]) + (lit(pair[1], normal) * rig.weights[1])) + (tap.sample_1 * float(tap.offset.x));\n" +
 		"    return;\n" +
 		"}\n";
 	assert structFs(at(2.0, 0.0)) == 4.1875;
