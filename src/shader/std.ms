@@ -1077,7 +1077,7 @@ export function vec4f(v: Vec4u): Vec4f {
 // WGSL saturates a float out of the integer range, GLSL leaves the result undefined.
 function int32Of(x: float32): int32 {
 	if (!(x >= -2147483648.0 && x < 2147483648.0)) {
-		unreachable "an int vector of a float: it is not finite, or outside the int32 range";
+		unreachable("an int vector of a float: it is not finite, or outside the int32 range");
 	}
 	return x as int32;
 }
@@ -1302,7 +1302,7 @@ export function determinant(m: Mat4x4f): float32 { return inverseParts(m).det; }
 // WGSL has no matrix inverse, so the name is GLSL's. A singular matrix has none, and GLSL's
 // result for one is undefined.
 function invertible(det: float32): float32 {
-	if (det == 0.0) { unreachable "inverse: the matrix is singular"; }
+	if (det == 0.0) { unreachable("inverse: the matrix is singular"); }
 	return det;
 }
 
@@ -1371,21 +1371,21 @@ export function round(x: float32): float32 {
 }
 
 export function sqrt(x: float32): float32 {
-	if (!(x >= 0.0)) { unreachable "sqrt: the GPU result is undefined below 0"; }
+	if (!(x >= 0.0)) { unreachable("sqrt: the GPU result is undefined below 0"); }
 	return Math.sqrt(x) as float32;
 }
 export function inverseSqrt(x: float32): float32 {
-	if (!(x > 0.0)) { unreachable "inverseSqrt: the GPU result is undefined at or below 0"; }
+	if (!(x > 0.0)) { unreachable("inverseSqrt: the GPU result is undefined at or below 0"); }
 	return (1.0 / Math.sqrt(x)) as float32;
 }
 export function exp(x: float32): float32 { return Math.exp(x) as float32; }
 export function exp2(x: float32): float32 { return Math.pow(2.0, x) as float32; }
 export function log(x: float32): float32 {
-	if (!(x > 0.0)) { unreachable "log: the GPU result is undefined at or below 0"; }
+	if (!(x > 0.0)) { unreachable("log: the GPU result is undefined at or below 0"); }
 	return Math.log(x) as float32;
 }
 export function log2(x: float32): float32 {
-	if (!(x > 0.0)) { unreachable "log2: the GPU result is undefined at or below 0"; }
+	if (!(x > 0.0)) { unreachable("log2: the GPU result is undefined at or below 0"); }
 	return Math.log2(x) as float32;
 }
 
@@ -1393,16 +1393,16 @@ export function sin(x: float32): float32 { return Math.sin(x) as float32; }
 export function cos(x: float32): float32 { return Math.cos(x) as float32; }
 export function tan(x: float32): float32 { return Math.tan(x) as float32; }
 export function asin(x: float32): float32 {
-	if (!(Math.abs(x) <= 1.0)) { unreachable "asin: the GPU result is undefined past -1 or 1"; }
+	if (!(Math.abs(x) <= 1.0)) { unreachable("asin: the GPU result is undefined past -1 or 1"); }
 	return Math.asin(x) as float32;
 }
 export function acos(x: float32): float32 {
-	if (!(Math.abs(x) <= 1.0)) { unreachable "acos: the GPU result is undefined past -1 or 1"; }
+	if (!(Math.abs(x) <= 1.0)) { unreachable("acos: the GPU result is undefined past -1 or 1"); }
 	return Math.acos(x) as float32;
 }
 export function atan(x: float32): float32 { return Math.atan(x) as float32; }
 export function atan2(y: float32, x: float32): float32 {
-	if (x == 0.0 && y == 0.0) { unreachable "atan2: the GPU result is undefined at (0, 0)"; }
+	if (x == 0.0 && y == 0.0) { unreachable("atan2: the GPU result is undefined at (0, 0)"); }
 	return Math.atan2(y, x) as float32;
 }
 export function sinh(x: float32): float32 { return Math.sinh(x) as float32; }
@@ -1414,14 +1414,14 @@ export function radians(x: float32): float32 { return (x * Math.PI / 180.0) as f
 export function max(a: float32, b: float32): float32 { return a < b ? b : a; }
 export function min(a: float32, b: float32): float32 { return b < a ? b : a; }
 export function clamp(v: float32, low: float32, high: float32): float32 {
-	if (low > high) { unreachable "clamp: the GPU result is undefined when low > high"; }
+	if (low > high) { unreachable("clamp: the GPU result is undefined when low > high"); }
 	return min(max(v, low), high);
 }
 export function saturate(x: float32): float32 { return clamp(x, 0.0, 1.0); }
 export function mix(a: float32, b: float32, t: float32): float32 { return a * (1.0 - t) + b * t; }
 export function step(edge: float32, x: float32): float32 { return edge <= x ? 1.0 : 0.0; }
 export function smoothstep(low: float32, high: float32, x: float32): float32 {
-	if (!(low < high)) { unreachable "smoothstep: the GPU result is undefined when low >= high"; }
+	if (!(low < high)) { unreachable("smoothstep: the GPU result is undefined when low >= high"); }
 	const t = clamp((x - low) / (high - low), 0.0, 1.0);
 	return t * t * (3.0 - 2.0 * t);
 }
@@ -1431,7 +1431,7 @@ export function fma(a: float32, b: float32, c: float32): float32 {
 
 export function pow(base: float32, exponent: float32): float32 {
 	if (base < 0.0 || (base == 0.0 && exponent <= 0.0)) {
-		unreachable "pow: the GPU result is undefined for a negative base, or 0 to a power <= 0";
+		unreachable("pow: the GPU result is undefined for a negative base, or 0 to a power <= 0");
 	}
 	return Math.pow(base, exponent) as float32;
 }
@@ -1441,13 +1441,13 @@ export function sign(x: int32): int32 { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 export function max(a: int32, b: int32): int32 { return a < b ? b : a; }
 export function min(a: int32, b: int32): int32 { return b < a ? b : a; }
 export function clamp(v: int32, low: int32, high: int32): int32 {
-	if (low > high) { unreachable "clamp: the GPU result is undefined when low > high"; }
+	if (low > high) { unreachable("clamp: the GPU result is undefined when low > high"); }
 	return min(max(v, low), high);
 }
 export function max(a: uint32, b: uint32): uint32 { return a < b ? b : a; }
 export function min(a: uint32, b: uint32): uint32 { return b < a ? b : a; }
 export function clamp(v: uint32, low: uint32, high: uint32): uint32 {
-	if (low > high) { unreachable "clamp: the GPU result is undefined when low > high"; }
+	if (low > high) { unreachable("clamp: the GPU result is undefined when low > high"); }
 	return min(max(v, low), high);
 }
 export function clamp(v: Vec2i, low: Vec2i, high: Vec2i): Vec2i {
@@ -1669,7 +1669,7 @@ export function distance(a: Vec3f, b: Vec3f): float32 { return length(a - b); }
 export function distance(a: Vec4f, b: Vec4f): float32 { return length(a - b); }
 
 function directionLength(size: float32): float32 {
-	if (size == 0.0) { unreachable "normalize: the GPU result is undefined for a zero vector"; }
+	if (size == 0.0) { unreachable("normalize: the GPU result is undefined for a zero vector"); }
 	return size;
 }
 export function normalize(v: Vec2f): Vec2f { return v / directionLength(length(v)); }
@@ -1707,18 +1707,18 @@ export function faceForward(e1: Vec4f, e2: Vec4f, e3: Vec4f): Vec4f {
 }
 
 // WGSL's derivatives, taken across a fragment quad. Like TypeGPU's, they have no CPU meaning.
-export function dpdx(v: float32): float32 { unreachable "dpdx: only a GPU fragment has one"; }
-export function dpdx(v: Vec2f): Vec2f { unreachable "dpdx: only a GPU fragment has one"; }
-export function dpdx(v: Vec3f): Vec3f { unreachable "dpdx: only a GPU fragment has one"; }
-export function dpdx(v: Vec4f): Vec4f { unreachable "dpdx: only a GPU fragment has one"; }
-export function dpdy(v: float32): float32 { unreachable "dpdy: only a GPU fragment has one"; }
-export function dpdy(v: Vec2f): Vec2f { unreachable "dpdy: only a GPU fragment has one"; }
-export function dpdy(v: Vec3f): Vec3f { unreachable "dpdy: only a GPU fragment has one"; }
-export function dpdy(v: Vec4f): Vec4f { unreachable "dpdy: only a GPU fragment has one"; }
-export function fwidth(v: float32): float32 { unreachable "fwidth: only a GPU fragment has one"; }
-export function fwidth(v: Vec2f): Vec2f { unreachable "fwidth: only a GPU fragment has one"; }
-export function fwidth(v: Vec3f): Vec3f { unreachable "fwidth: only a GPU fragment has one"; }
-export function fwidth(v: Vec4f): Vec4f { unreachable "fwidth: only a GPU fragment has one"; }
+export function dpdx(v: float32): float32 { unreachable("dpdx: only a GPU fragment has one"); }
+export function dpdx(v: Vec2f): Vec2f { unreachable("dpdx: only a GPU fragment has one"); }
+export function dpdx(v: Vec3f): Vec3f { unreachable("dpdx: only a GPU fragment has one"); }
+export function dpdx(v: Vec4f): Vec4f { unreachable("dpdx: only a GPU fragment has one"); }
+export function dpdy(v: float32): float32 { unreachable("dpdy: only a GPU fragment has one"); }
+export function dpdy(v: Vec2f): Vec2f { unreachable("dpdy: only a GPU fragment has one"); }
+export function dpdy(v: Vec3f): Vec3f { unreachable("dpdy: only a GPU fragment has one"); }
+export function dpdy(v: Vec4f): Vec4f { unreachable("dpdy: only a GPU fragment has one"); }
+export function fwidth(v: float32): float32 { unreachable("fwidth: only a GPU fragment has one"); }
+export function fwidth(v: Vec2f): Vec2f { unreachable("fwidth: only a GPU fragment has one"); }
+export function fwidth(v: Vec3f): Vec3f { unreachable("fwidth: only a GPU fragment has one"); }
+export function fwidth(v: Vec4f): Vec4f { unreachable("fwidth: only a GPU fragment has one"); }
 
 // WGSL's operand order: the value when false comes first.
 export function select(f: float32, t: float32, cond: boolean): float32 { return cond ? t : f; }
@@ -1741,7 +1741,7 @@ export function format(): void {}
 
 // WGSL's discard: the fragment writes nothing. Like TypeGPU's, it has no CPU meaning.
 export function discard(): never {
-	unreachable "discard: a fragment is discarded only on the GPU";
+	unreachable("discard: a fragment is discarded only on the GPU");
 }
 
 export struct Texture2d {
@@ -1771,7 +1771,7 @@ export function textureDimensions(texture: StorageTexture2d): Vec2i {
 
 export function textureStore(texture: StorageTexture2d, at: Vec2i, value: Vec4f): void {
 	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
-		unreachable "textureStore: the texel is outside the texture";
+		unreachable("textureStore: the texel is outside the texture");
 	}
 	const first = (at.y * texture.width + at.x) * 4;
 	texture.texels[first] = value.x;
@@ -1784,14 +1784,14 @@ export function textureStore(texture: StorageTexture2d, at: Vec2i, value: Vec4f)
 // without one (src/shader/CLAUDE.md, "shdc's own limits"). The size is signed, as the texel
 // coordinate it bounds is (docs/VOCABULARY.md, "A name brings its meaning").
 export function textureDimensions(texture: Texture2d, sampler: Sampler, level: int32): Vec2i {
-	if (level != 0) { unreachable "textureDimensions: the CPU texture has no mip levels"; }
+	if (level != 0) { unreachable("textureDimensions: the CPU texture has no mip levels"); }
 	return { x: texture.width, y: texture.height };
 }
 
 export function textureLoad(texture: Texture2d, sampler: Sampler, at: Vec2i, level: int32): Vec4f {
-	if (level != 0) { unreachable "textureLoad: the CPU texture has no mip levels"; }
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
 	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
-		unreachable "textureLoad: the texel is outside the texture";
+		unreachable("textureLoad: the texel is outside the texture");
 	}
 	return texelAt(texture, at.x, at.y);
 }
@@ -1809,9 +1809,9 @@ export function textureLoad(
 	at: Vec2i,
 	level: int32,
 ): Vec4u {
-	if (level != 0) { unreachable "textureLoad: the CPU texture has no mip levels"; }
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
 	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
-		unreachable "textureLoad: the texel is outside the texture";
+		unreachable("textureLoad: the texel is outside the texture");
 	}
 	const first = (at.y * texture.width + at.x) * 4;
 	const t = texture.texels;
@@ -1827,7 +1827,7 @@ export struct Texture2dArray {
 }
 
 function layerOf(texture: Texture2dArray, layer: int32): Texture2d {
-	if (layer < 0 || layer >= texture.layers) { unreachable "the layer is outside the texture"; }
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
 	const size = texture.width * texture.height * 4;
 	let texels: float32[] = [];
 	for (let i = 0; i < size; i++) { texels.push(texture.texels[layer * size + i]); }
@@ -1873,7 +1873,7 @@ function mirrored(a: int32, size: int32): int32 { return size - 1 - (a >= 0 ? a 
 function texelIndex(at: float32): int32 {
 	const i = Math.floor(at);
 	if (!(Math.abs(i) < 1.0e9)) {
-		unreachable "textureSample: the coordinate is not finite, or past any texel index";
+		unreachable("textureSample: the coordinate is not finite, or past any texel index");
 	}
 	return i as int32;
 }
