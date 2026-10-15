@@ -136,17 +136,20 @@ export macro glsl(entry: Node): Node {
 	for (const t of signature.typExprParams) {
 		const fields = getTypeImpl(t);
 		if (vertex || fields == null || fields.kind != NodeKind.TypeObject) { continue; }
-		let interfaceOnly = true;
+		let bindings = false;
+		let features = 0;
 		let varyings = 0;
 		for (const decorators of fields.typExprFieldDecorators) {
 			let builtin = false;
 			for (const d of decorators) {
-				if (d.macroName == "binding" || d.macroName == "feature") { interfaceOnly = false; }
+				if (d.macroName == "binding") { bindings = true; }
+				if (d.macroName == "feature") { features += 1; }
 				if (d.macroName == "builtin") { builtin = true; }
 			}
 			if (!builtin) { varyings += 1; }
 		}
-		if (interfaceOnly && varyings > 0) {
+		const key = features == fields.typExprFieldNames.length;
+		if (!bindings && !key && varyings > 0) {
 			error("glsl: a fragment entry that reads varyings is written " +
 				"glslLinked(fragment, vertex), so its varyings are checked against the vertex " +
 				"outputs", entry);
@@ -222,13 +225,15 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 	for (const t of fs.typExprParams) {
 		const fields = getTypeImpl(t);
 		if (fields == null || fields.kind != NodeKind.TypeObject) { continue; }
-		let interfaceOnly = true;
+		let bindings = false;
+		let features = 0;
 		for (const decorators of fields.typExprFieldDecorators) {
 			for (const d of decorators) {
-				if (d.macroName == "binding" || d.macroName == "feature") { interfaceOnly = false; }
+				if (d.macroName == "binding") { bindings = true; }
+				if (d.macroName == "feature") { features += 1; }
 			}
 		}
-		if (interfaceOnly) { input = t; }
+		if (!bindings && features < fields.typExprFieldNames.length) { input = t; }
 	}
 	const reads = varyingNames(input, fragment);
 	const writes = varyingNames(vs.typExprReturn, vertex);
@@ -332,6 +337,13 @@ export macro glslStage(entry: Node): Node {
 		return fields != null && fields.kind == NodeKind.TypeObject ? fields : null;
 	}
 
+	function everyDecorated(fields: Node, name: string): boolean {
+		for (const decorators of fields.typExprFieldDecorators) {
+			if (decorator(decorators, name) == null) { return false; }
+		}
+		return true;
+	}
+
 	function hasDecorator(fields: Node, name: string): boolean {
 		for (const decorators of fields.typExprFieldDecorators) {
 			if (decorator(decorators, name) != null) { return true; }
@@ -368,7 +380,7 @@ export macro glslStage(entry: Node): Node {
 		if (hasDecorator(fields, "binding")) {
 			if (bindingsType != null) { fail(entry, "two bindings structs: '" + name + "'"); }
 			bindingsType = t;
-		} else if (hasDecorator(fields, "feature")) {
+		} else if (fields.typExprFieldNames.length > 0 && everyDecorated(fields, "feature")) {
 			if (keyType != null) { fail(entry, "two program key structs: '" + name + "'"); }
 			keyType = t;
 		} else {
@@ -445,10 +457,16 @@ export macro glslStage(entry: Node): Node {
 		declFixed[declFixed.length - 1] = condition;
 	}
 
+	function grouped(condition: string): string {
+		return condition.indexOf(" ") < 0 ? condition : "(" + condition + ")";
+	}
+
 	function useUnder(name: string, gates: string[]): void {
 		const i = declNames.indexOf(name);
 		if (i < 0 || declFixed[i] != "") { return; }
-		const context = gates.join(" && ");
+		let clauses: string[] = [];
+		for (const g of gates) { clauses.push(grouped(g)); }
+		const context = clauses.join(" && ");
 		if (declContexts[i].indexOf(context) < 0) { declContexts[i].push(context); }
 	}
 
@@ -490,10 +508,6 @@ export macro glslStage(entry: Node): Node {
 				useUnder(name, under);
 			}
 		}
-	}
-
-	function grouped(condition: string): string {
-		return condition.indexOf(" ") < 0 ? condition : "(" + condition + ")";
 	}
 
 	function opening(condition: string): string {
