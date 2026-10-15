@@ -180,6 +180,16 @@ GLSL (parentheses, renamed locals, helpers in call order), so the programs were 
   hand-written programs that share it; a deliberate `pointColor: Vec4f[3]` fails them.
 - Not run: GLES3 on a device, Metal.
 
+## Measured — the textured families generated
+
+2026-10-15, BUILD `a2b3e36a`, HEAD `725f7d15`, one quiet GPU window (`shader-tex-gate-1`, receipts in
+`out/shaderTex/`). `litTexturedVs`, `litTexturedFs`, `unlitTexturedVs`, `unlitTexturedFs`,
+`shadowLitTexturedFs` and `shadowUnlitTexturedFs` are generated for every core and shadow row that
+uses them, and their GLSL is gone; the lit family's text changed with them (its helpers take
+values now). gate3d 369 PASS / 0 FAIL / the six known skips, all 24 capture rows byte-identical;
+`scripts/web3d.sh` 20 of 20 with forwardOutline. A native build compiles `programTable.h`'s
+layout asserts, the emissive-dissolve block-head assert among them.
+
 ## Rejected
 
 - **Own HLSL/MSL/GLSL backends, as shady has.** About 1000 of the 1817 lines of shady's `shared.nim` are
