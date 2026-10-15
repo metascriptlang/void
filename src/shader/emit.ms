@@ -586,6 +586,13 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		return feature == null ? "" : "defined(" + argumentName(feature, at) + ")";
 	}
 
+	function interpolation(t: Node): string {
+		const spelled = glslType(t.kind == NodeKind.TypeArray ? t.typExprElement : t, entry);
+		const integral = spelled.startsWith("int") || spelled.startsWith("uint") ||
+			spelled.startsWith("ivec") || spelled.startsWith("uvec");
+		return integral ? "flat " : "";
+	}
+
 	function member(t: Node, name: string, at: Node): string {
 		if (isAuthorStruct(t.kind == NodeKind.TypeArray ? t.typExprElement : t)) {
 			fail(at, "interface field '" + name + "' is a struct: a uniform block member, " +
@@ -684,9 +691,14 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			const builtin = decorator(inputs.typExprFieldDecorators[f], "builtin");
 			if (builtin == null) {
 				// Every input is declared, read or not: shdc numbers them in declaration order.
+				if (vertex && inputs.typExprFieldTypes[f].kind == NodeKind.TypeArray) {
+					fail(entry, "attribute '" + name + "' is an array, and shdc's GLES3 " +
+						"(WebGL2) output has no array vertex inputs: declare one attribute each");
+				}
 				const varying = member(inputs.typExprFieldTypes[f], name, entry);
 				const gate = featureCondition(inputs.typExprFieldDecorators[f], entry);
-				declareUnder(name, "in " + varying + ";\n", gate);
+				const qualifier = vertex ? "" : interpolation(inputs.typExprFieldTypes[f]);
+				declareUnder(name, qualifier + "in " + varying + ";\n", gate);
 				continue;
 			}
 			const which = argumentName(builtin, entry);
@@ -734,7 +746,8 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			outputTargets.push(name);
 			const t = outputs.typExprFieldTypes[f];
 			if (vertex) {
-				declareUnder(name, "out " + member(t, name, entry) + ";\n", gate);
+				const varying = member(t, name, entry);
+				declareUnder(name, interpolation(t) + "out " + varying + ";\n", gate);
 				continue;
 			}
 			const location = decorator(decorators, "location");
@@ -1042,6 +1055,10 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		return kindOf(n) == TypeKind.Int32 || kindOf(n) == TypeKind.Uint32;
 	}
 
+	function unsigned(n: Node): boolean {
+		return kindOf(n.left) == TypeKind.Uint32 && kindOf(n.right) == TypeKind.Uint32;
+	}
+
 	function condition(n: Node): string {
 		if (kindOf(n) != TypeKind.Boolean) { fail(n, "a shader condition is a boolean"); }
 		return value(n);
@@ -1056,13 +1073,16 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 				}
 			} else if (["<", "<=", ">", ">=", "==", "!="].includes(op)) {
 				if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
-			} else if ((op == "%" || op == "/") && integer(n.left)) {
-				fail(n, "'" + op + "' has no GLSL form: GLSL does not truncate as MetaScript does");
-			} else if (op == "%") {
+			} else if (op == "%" && integer(n.left) && !unsigned(n)) {
+				fail(n, "'%' has a GLSL form for uint32 operands only: GLSL leaves a negative " +
+					"int32 operand undefined");
+			} else if (op == "/" && integer(n.left)) {
+				fail(n, "'/' has no GLSL form: GLSL does not truncate as MetaScript does");
+			} else if (op == "%" && !integer(n.left)) {
 				const a = expr(n.left);
 				const b = expr(n.right);
 				return a + " - " + b + " * trunc(" + a + " / " + b + ")";
-			} else if (op != "+" && op != "-" && op != "*" && op != "/") {
+			} else if (op != "+" && op != "-" && op != "*" && op != "/" && op != "%") {
 				fail(n, "operator '" + op + "' has no GLSL form yet");
 			}
 			return expr(n.left) + " " + op + " " + expr(n.right);
@@ -1224,7 +1244,11 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		if (n.operator == "/=" && integer(target)) {
 			fail(n, "'/=' has no GLSL form: GLSL does not truncate as MetaScript does");
 		}
-		if (!["=", "+=", "-=", "*=", "/="].includes(n.operator)) {
+		if (n.operator == "%=" && !unsigned(n)) {
+			fail(n, "'%=' has a GLSL form for uint32 operands only: GLSL leaves a negative " +
+				"int32 operand undefined and has no float '%'");
+		}
+		if (!["=", "+=", "-=", "*=", "/=", "%="].includes(n.operator)) {
 			fail(n, "operator '" + n.operator + "' has no GLSL form yet");
 		}
 		return name + " " + n.operator + " " + value(n.right);
