@@ -132,7 +132,10 @@ function hermite(
 		seconds * (cube - square) * (incoming as float64)) as float32;
 }
 
-export function sample(this curve: Readonly<GltfCurve>, seconds: float64): Result<Vec4, GltfCurveError> {
+export function sample(
+	this curve: Readonly<GltfCurve>,
+	seconds: float64,
+): Result<Vec4, GltfCurveError> {
 	if (!Number.isFinite(seconds)) { return Result.err(GltfCurveError.NonFinite); }
 	const stride: int32 = curve.keyStride();
 	if (curve.times.length < 1 || stride < 1 || curve.times.length > 0x7fffffff / stride ||
