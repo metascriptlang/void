@@ -1,9 +1,14 @@
 // The sokol_app window's app-facing half, shared by the window drivers (bridgeWin.c and
-// bridgeWeb.c): the event closure with its getters.
+// bridgeWeb.c): the event closure with its getters, and the title.
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "backend.h"
 #include "bridge.h"
@@ -52,3 +57,27 @@ float voidEventScrollX(void) { return current("ScrollX")->scroll_x; }
 float voidEventScrollY(void) { return current("ScrollY")->scroll_y; }
 int voidEventFramebufferWidth(void) { return current("FramebufferWidth")->framebuffer_width; }
 int voidEventFramebufferHeight(void) { return current("FramebufferHeight")->framebuffer_height; }
+
+static char s_title[256] = "Void — sokol";
+static bool s_titleSet = false;
+
+#if defined(__EMSCRIPTEN__)
+EM_JS(void, voidJsSetDocumentTitle, (const char *title), {
+	document.title = UTF8ToString(Number(title));
+});
+#endif
+
+void voidSetWindowTitle(const char *title) {
+	if (strlen(title) >= sizeof s_title) fail("voidSetWindowTitle: the title is %d bytes; at most %d fit", (int)strlen(title), (int)sizeof s_title - 1);
+	strcpy(s_title, title);
+	s_titleSet = true;
+	if (!sapp_isvalid()) return;
+#if defined(__EMSCRIPTEN__)
+	voidJsSetDocumentTitle(s_title);
+#else
+	sapp_set_window_title(s_title);
+#endif
+}
+
+const char *voidWindowTitle(void) { return s_title; }
+int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }

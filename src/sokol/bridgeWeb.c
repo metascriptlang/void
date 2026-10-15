@@ -77,7 +77,8 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	d.sample_count = sampleCount;
 	d.high_dpi = highDpi != 0;
 	d.composite_mode = SAPP_COMPOSITEMODE_PREMULTIPLIED;
-	d.window_title = "Void — sokol";
+	d.window_title = voidWindowTitle();
+	d.html5.update_document_title = voidWindowTitleSet() != 0;
 	d.logger.func = slog_func;
 	sapp_run(&d);
 	leaveCallerSuspendedWhileFramesRun();

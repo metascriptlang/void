@@ -1,4 +1,4 @@
-// The sokol_app window's events, on the window drivers: Windows (D3D11 and
+// The sokol_app window's events and title, on the window drivers: Windows (D3D11 and
 // -d:voidGlCore) and the browser. Import beside ./gpu, which compiles their C.
 
 @include("bridge.h");
@@ -18,6 +18,7 @@ extern function voidEventScrollX(): float32;
 extern function voidEventScrollY(): float32;
 extern function voidEventFramebufferWidth(): int32;
 extern function voidEventFramebufferHeight(): int32;
+extern function voidSetWindowTitle(title: cstring): void;
 
 // The ordinals of sokol_app.h's sapp_event_type: keep the order.
 export enum AppEventType {
@@ -95,3 +96,5 @@ export function onAppEvent(handler: (e: AppEvent) => void): void {
 	_handler = handler;
 	voidSetEventHandler(dispatchEvent);
 }
+
+export function setWindowTitle(title: string): void { voidSetWindowTitle(title); }

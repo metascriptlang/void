@@ -31,7 +31,7 @@ void voidRequestedSize(int *w, int *h);
 
 // The sokol_app window (bridgeWin.c, bridgeWeb.c). Once a handler is set, every sapp_event
 // calls it and Escape no longer quits; the voidEvent* getters read the event it was called
-// for.
+// for. The title may be set before or after voidRun.
 void voidSetEventHandler(msClosure handler);
 int voidEventType(void);
 int voidEventKeyCode(void);
@@ -47,6 +47,7 @@ float voidEventScrollX(void);
 float voidEventScrollY(void);
 int voidEventFramebufferWidth(void);
 int voidEventFramebufferHeight(void);
+void voidSetWindowTitle(const char *title);
 
 typedef int VoidViewId;
 void voidEmbedRegister(msClosure init, msClosure frame);

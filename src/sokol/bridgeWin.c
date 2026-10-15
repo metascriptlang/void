@@ -94,7 +94,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	d.height = h;
 	d.sample_count = sampleCount;
 	d.high_dpi = highDpi != 0;
-	d.window_title = "Void — sokol";
+	d.window_title = voidWindowTitle();
 	d.logger.func = slog_func;
 	sapp_run(&d);
 }
