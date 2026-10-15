@@ -33,8 +33,13 @@ import {
 	Texture2d,
 	Vec2f,
 	Vec2i,
+	Vec2u,
 	Vec3f,
+	Vec3i,
+	Vec3u,
 	Vec4f,
+	Vec4i,
+	Vec4u,
 	textureLoad,
 } from "./std";
 
@@ -305,11 +310,19 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		getTypeImpl(Vec3f),
 		getTypeImpl(Vec4f),
 		getTypeImpl(Vec2i),
+		getTypeImpl(Vec3i),
+		getTypeImpl(Vec4i),
+		getTypeImpl(Vec2u),
+		getTypeImpl(Vec3u),
+		getTypeImpl(Vec4u),
 		getTypeImpl(Mat2x2f),
 		getTypeImpl(Mat3x3f),
 		getTypeImpl(Mat4x4f),
 	];
-	const vectorNames = ["vec2", "vec3", "vec4", "ivec2", "mat2", "mat3", "mat4"];
+	const vectorNames = [
+		"vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4", "mat2",
+		"mat3", "mat4",
+	];
 
 	function glslType(t: Node | null, at: Node): string {
 		if (t == null) { fail(at, "the expression has no type"); }
@@ -948,8 +961,12 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 				}
 			} else if (["<", "<=", ">", ">=", "==", "!="].includes(op)) {
 				if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
-			} else if (op == "%" || op == "/" && integer(n.left)) {
+			} else if ((op == "%" || op == "/") && integer(n.left)) {
 				fail(n, "'" + op + "' has no GLSL form: GLSL does not truncate as MetaScript does");
+			} else if (op == "%") {
+				const a = expr(n.left);
+				const b = expr(n.right);
+				return a + " - " + b + " * trunc(" + a + " / " + b + ")";
 			} else if (op != "+" && op != "-" && op != "*" && op != "/") {
 				fail(n, "operator '" + op + "' has no GLSL form yet");
 			}
@@ -1035,12 +1052,29 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			const listed = "(" + args.join(", ") + ")";
 			const sampled = args.length >= 2 ? "sampler2D(" + args[0] + ", " + args[1] + ")" : "";
 			return match (impl.fnName) {
-				"max" | "min" | "clamp" | "mix" | "pow" | "dot" | "cross" | "length" |
-				"normalize" => impl.fnName + listed,
+				"abs" | "sign" | "floor" | "ceil" | "trunc" | "fract" | "sqrt" | "exp" | "exp2" |
+				"log" | "log2" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" |
+				"cosh" | "tanh" | "degrees" | "radians" | "max" | "min" | "clamp" | "mix" | "step" |
+				"smoothstep" | "fma" | "pow" | "dot" | "cross" | "length" | "distance" |
+				"normalize" | "reflect" | "refract" | "transpose" | "determinant" |
+				"inverse" => impl.fnName + listed,
+				"round" => "roundEven" + listed,
+				"inverseSqrt" => "inversesqrt" + listed,
+				"atan2" => "atan" + listed,
+				"faceForward" => "faceforward" + listed,
+				"saturate" => "clamp(" + args[0] + ", 0.0, 1.0)",
+				"dpdx" | "dpdy" | "fwidth" => vertex ?
+					fail(n, impl.fnName + " exists only in a fragment entry, as WGSL's does") :
+					impl.fnName.replace("dpdx", "dFdx").replace("dpdy", "dFdy") + listed,
 				"vec2f" => "vec2" + listed,
 				"vec3f" => "vec3" + listed,
 				"vec4f" => "vec4" + listed,
 				"vec2i" => "ivec2" + listed,
+				"vec3i" => "ivec3" + listed,
+				"vec4i" => "ivec4" + listed,
+				"vec2u" => "uvec2" + listed,
+				"vec3u" => "uvec3" + listed,
+				"vec4u" => "uvec4" + listed,
 				"mat2x2f" => "mat2" + listed,
 				"mat3x3f" | "upperLeft3x3" => "mat3" + listed,
 				"mat4x4f" => "mat4" + listed,
