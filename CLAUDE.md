@@ -108,11 +108,9 @@ Done: sokol + fontstash headers vendored (`deps/sokol/`, `deps/fontstash/`); C b
 
 ## Git and the gate
 
-Void follows the worktree playbook enabled by `~/metascript/CLAUDE.md` and uses `~/nerdtools/claude/tools/wt.sh` with both gates below. Shared session context reads this repo's card and `~/metascript/.inbox/void/`. A compiler or runtime limitation follows the workspace compiler boundary: repro, card in `~/metascript/.inbox/compiler/`, park, move on.
+Void follows the worktree playbook enabled by `~/metascript/CLAUDE.md` and uses `~/nerdtools/claude/tools/wt.sh` with the gate below. Shared session context reads this repo's card and `~/metascript/.inbox/void/`. A compiler or runtime limitation follows the workspace compiler boundary: repro, card in `~/metascript/.inbox/compiler/`, park, move on.
 
-The gate is both test entries, native: `msc test src/test/index.ms` (scene, node, transform, graphics, effect, text, tile) and `msc test tests/layout.test.ms` (yoga through `deps/yoga`). A change to the GPU or web path also runs `scripts/build-web.sh` and is looked at on the page: green on native Metal is not evidence for emcc, which is stricter.
-
-Measured 2026-09-20 on `msc` build `94c23bfd`: **both entries are red**, one void-side (`src/void2d/render.ms:297` mutates the value parameter `out`), one a compiler internal error; both are in `~/metascript/.inbox/void/2026-09-20-agent-setup-review.md`. Until they are fixed, a commit here carries the evidence it can run and says which entry it could not.
+The gate is `scripts/gate.sh` (`docs/TESTING.md` "The gate"): its T0 runs `msc test src/test/index.ms` with module stages all-off and all-on, Yoga layout included (`src/test/layoutCheck.ms`), then the golden suite and the bench. A land runs the whole gate. Before that, choose checks by the change's effect: the index covers logic, and a change to the GPU or web path also runs `scripts/build-web.sh` and is looked at on the page, because green on native is not evidence for emcc, which is stricter.
 
 ## Known Limitations / Considerations (sokol)
 
