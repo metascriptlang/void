@@ -23,6 +23,8 @@ when (windows && !voidGlCore) {
 	@compile("./bridge.c");
 	@passL("-ld3d11");
 	@passL("-ldxgi");
+	@passL("-limm32");
+	@passL("-lcomctl32");
 	@passL("-luser32");
 	@passL("-lgdi32");
 	@passL("-lshell32");

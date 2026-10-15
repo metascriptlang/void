@@ -1,6 +1,8 @@
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <commctrl.h>
+#include <imm.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <stdint.h>
@@ -53,7 +55,118 @@ static void restoreContext(void) {
 	s_contextLost = 0;
 }
 
-static void _init(void) { call0(s_init); }
+static int s_textInput = -1;
+static RECT s_imeRect;
+static bool s_preeditActive;
+
+static HWND windowHwnd(void) {
+	return s_driver == DRIVER_WINDOW && sapp_isvalid() ? (HWND)sapp_win32_get_hwnd() : NULL;
+}
+
+static bool imeTaken(void) { return s_textInput == 1 && voidAppEventHandlerSet(); }
+
+static void imePlace(HWND hwnd) {
+	HIMC himc = ImmGetContext(hwnd);
+	if (himc == NULL) return;
+	COMPOSITIONFORM cf;
+	ZeroMemory(&cf, sizeof cf);
+	cf.dwStyle = CFS_POINT;
+	cf.ptCurrentPos.x = s_imeRect.left;
+	cf.ptCurrentPos.y = s_imeRect.top;
+	ImmSetCompositionWindow(himc, &cf);
+	CANDIDATEFORM cand;
+	ZeroMemory(&cand, sizeof cand);
+	cand.dwIndex = 0;
+	cand.dwStyle = CFS_EXCLUDE;
+	cand.ptCurrentPos.x = s_imeRect.left;
+	cand.ptCurrentPos.y = s_imeRect.bottom;
+	cand.rcArea = s_imeRect;
+	ImmSetCandidateWindow(himc, &cand);
+	ImmReleaseContext(hwnd, himc);
+}
+
+static int imeString(HIMC himc, DWORD kind, char *utf8, int cap) {
+	static WCHAR wide[512];
+	LONG bytes = ImmGetCompositionStringW(himc, kind, NULL, 0);
+	int n = bytes > 0 ? (int)(bytes / (LONG)sizeof(WCHAR)) : 0;
+	if (n > 512) voidFail("IME %s is %d UTF-16 units; at most 512 fit", kind == GCS_RESULTSTR ? "result" : "composition", n);
+	if (n > 0) ImmGetCompositionStringW(himc, kind, wide, (DWORD)(n * (int)sizeof(WCHAR)));
+	int len = n > 0 ? WideCharToMultiByte(CP_UTF8, 0, wide, n, utf8, cap - 1, NULL, NULL) : 0;
+	utf8[len] = '\0';
+	return n;
+}
+
+static void imePreedit(const char *utf8, int cursor) {
+	voidAppTextDeliver(VOID_EVENT_PREEDIT, utf8, cursor);
+	s_preeditActive = utf8[0] != '\0';
+}
+
+static void imeComposition(HWND hwnd, LPARAM lParam) {
+	static char utf8[2048];
+	HIMC himc = ImmGetContext(hwnd);
+	if (himc == NULL) return;
+	if (lParam & GCS_RESULTSTR) {
+		imeString(himc, GCS_RESULTSTR, utf8, sizeof utf8);
+		if (s_preeditActive) imePreedit("", 0);
+		if (utf8[0] != '\0') voidAppTextDeliver(VOID_EVENT_TEXT_INPUT, utf8, 0);
+	}
+	if (lParam & GCS_COMPSTR) {
+		int n = imeString(himc, GCS_COMPSTR, utf8, sizeof utf8);
+		LONG cursor = (lParam & GCS_CURSORPOS) ? ImmGetCompositionStringW(himc, GCS_CURSORPOS, NULL, 0) : n;
+		imePreedit(utf8, cursor < 0 || cursor > n ? n : (int)cursor);
+	}
+	if (lParam == 0 && s_preeditActive) imePreedit("", 0);
+	ImmReleaseContext(hwnd, himc);
+}
+
+// Handled here, WM_IME_COMPOSITION never reaches DefWindowProc, so Windows posts no
+// WM_IME_CHAR/WM_CHAR for the result and sokol_app sends no Char for committed text.
+static LRESULT CALLBACK imeProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
+	(void)id;
+	(void)data;
+	if (imeTaken()) {
+		switch (msg) {
+			case WM_IME_STARTCOMPOSITION: imePlace(hwnd); return 0;
+			case WM_IME_COMPOSITION: imeComposition(hwnd, lParam); return 0;
+			case WM_IME_ENDCOMPOSITION:
+				if (s_preeditActive) imePreedit("", 0);
+				return 0;
+			case WM_KEYDOWN:
+				if (wParam == VK_PROCESSKEY) return DefWindowProcW(hwnd, msg, wParam, lParam);
+				break;
+			default: break;
+		}
+	}
+	return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+static void applyTextInput(HWND hwnd) {
+	if (s_textInput == -1) return;
+	ImmAssociateContextEx(hwnd, NULL, s_textInput == 1 ? IACE_DEFAULT : 0);
+	if (s_textInput == 1 && GetFocus() == hwnd) imePlace(hwnd);
+}
+
+void voidSetTextInput(int on) {
+	s_textInput = on != 0;
+	HWND hwnd = windowHwnd();
+	if (hwnd != NULL) applyTextInput(hwnd);
+}
+
+void voidSetImeRect(int x, int y, int w, int h) {
+	s_imeRect.left = x;
+	s_imeRect.top = y;
+	s_imeRect.right = x + w;
+	s_imeRect.bottom = y + h;
+	HWND hwnd = windowHwnd();
+	if (hwnd != NULL && imeTaken() && GetFocus() == hwnd) imePlace(hwnd);
+}
+
+static void _init(void) {
+	HWND hwnd = (HWND)sapp_win32_get_hwnd();
+	if (!SetWindowSubclass(hwnd, imeProc, 1, 0)) voidFail("SetWindowSubclass on the sokol_app window failed");
+	applyTextInput(hwnd);
+	call0(s_init);
+}
 static bool s_committed;
 
 static void _frame(void) {

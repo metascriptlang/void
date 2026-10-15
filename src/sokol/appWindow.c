@@ -1,5 +1,5 @@
 // The sokol_app window's app-facing half, shared by the window drivers (bridgeWin.c and
-// bridgeWeb.c): the event closure with its getters, and the title.
+// bridgeWeb.c): the event closure with its getters, the IME events, and the title.
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
@@ -13,6 +13,9 @@
 #include "backend.h"
 #include "bridge.h"
 #include "appWindow.h"
+#include "appText.h"
+
+_Static_assert(VOID_EVENT_PREEDIT == _SAPP_EVENTTYPE_NUM, "sokol_app added event types: renumber VOID_EVENT_* and AppEventType in window.ms");
 
 __attribute__((noreturn)) static void fail(const char *fmt, ...) {
 	va_list args;
@@ -27,7 +30,11 @@ __attribute__((noreturn)) static void fail(const char *fmt, ...) {
 static msClosure s_handler;
 static const sapp_event *s_event;
 
+static const char *s_text = "";
+static int s_cursor = 0;
+
 void voidSetEventHandler(msClosure handler) { s_handler = handler; }
+int voidAppEventHandlerSet(void) { return s_handler.fn != NULL; }
 
 int voidAppEventDeliver(const sapp_event *e) {
 	if (!s_handler.fn) return 0;
@@ -57,6 +64,35 @@ float voidEventScrollX(void) { return current("ScrollX")->scroll_x; }
 float voidEventScrollY(void) { return current("ScrollY")->scroll_y; }
 int voidEventFramebufferWidth(void) { return current("FramebufferWidth")->framebuffer_width; }
 int voidEventFramebufferHeight(void) { return current("FramebufferHeight")->framebuffer_height; }
+int voidEventCursor(void) {
+	current("Cursor");
+	return s_cursor;
+}
+
+msString voidEventText(void) {
+	current("Text");
+	if (s_text[0] == '\0') {
+		msString empty;
+		empty.len = 0;
+		empty.p = NULL;
+		return empty;
+	}
+	return msStringFromCStr(s_text);
+}
+
+void voidAppTextDeliver(int type, const char *utf8, int cursor) {
+	sapp_event e;
+	memset(&e, 0, sizeof e);
+	e.type = (sapp_event_type)type;
+	e.frame_count = sapp_frame_count();
+	e.framebuffer_width = sapp_width();
+	e.framebuffer_height = sapp_height();
+	s_text = utf8;
+	s_cursor = cursor;
+	voidAppEventDeliver(&e);
+	s_text = "";
+	s_cursor = 0;
+}
 
 static char s_title[256] = "Void — sokol";
 static bool s_titleSet = false;
