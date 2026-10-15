@@ -151,6 +151,24 @@ so they also cover the path from the generator through shdc:
 - **WebGPU**: the `wgpu` build of `tests/integration/renderOrder.ms` passes; no capture exists for
   it (`scripts/web3d.sh` header). Not run: GLES3 on a device, Metal.
 
+## Measured — the lit family generated
+
+2026-10-15, BUILD `cf18cd1d`, HEAD `90833c08`, Windows x64, one quiet GPU window (`shader-lit-gate-3`;
+receipt in `out/shaderLit3/`). `litVs`, `litFs` and `shadowLitFs` are generated for all 14 program
+rows that use them and their hand-written GLSL is gone. The emitted text differs from the deleted
+GLSL (parentheses, renamed locals, helpers in call order), so the programs were judged by image:
+
+- **D3D11**: `GATE_SKIP_ANDROID=1 GATE_SKIP_BENCH=1 GATE_SKIP_CHURN=1 sh scripts/gate3d.sh` exit 0,
+  369 PASS, 0 FAIL, the six known skips; all 24 capture rows byte-identical to
+  `docs/baselines3d.sha256`.
+- **WebGL2**: `scripts/web3d.sh` with `forwardOutline` taken out of a scratch copy, 18 of 18 runs.
+  `forwardOutline` does not link for the web on main either (`tests/integration/forwardOutline.ms`
+  imports `std/fs`, whose natives are C-only); not shader evidence either way.
+- **WebGPU**: the `wgpu` build of `tests/integration/dirShadow.ms` passes; no capture exists for it.
+- **Uniform layout**: `programTable.h`'s `_Static_assert`s compare every generated block with the
+  hand-written programs that share it; a deliberate `pointColor: Vec4f[3]` fails them.
+- Not run: GLES3 on a device, Metal.
+
 ## Rejected
 
 - **Own HLSL/MSL/GLSL backends, as shady has.** About 1000 of the 1817 lines of shady's `shared.nim` are
