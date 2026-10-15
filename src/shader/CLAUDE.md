@@ -215,6 +215,28 @@ values now). gate3d 369 PASS / 0 FAIL / the six known skips, all 24 capture rows
 `scripts/web3d.sh` 20 of 20 with forwardOutline. A native build compiles `programTable.h`'s
 layout asserts, the emissive-dissolve block-head assert among them.
 
+## Measured — coverage against shady
+
+2026-10-15, BUILD `a2b3e36a`. Every case of `~/projects/shady/tests/test_shady.nim` and the
+shader-toy and compute examples (`circle`, `colors`, `flare`, `mandelbrot`, `compute1`) is written
+as a Void stage in `src/test/shadyTestsCheck.ms`, `shadyExamplesCheck.ms` and `shaderComputeCheck.ms`:
+its GLSL pinned, run on the CPU where it computes something, and the 14 programs plus the compute
+one compiled by sokol-shdc to `glsl430:glsl300es:hlsl5:metal_macos:wgsl` (compute without
+`glsl300es`, which has none). Where a case is written differently:
+
+| shady | Void |
+|---|---|
+| `var` output parameters, `gl_FragColor.x = …` | the returned colour or output struct |
+| `Uniform[T]` parameter | a field of the bindings struct's uniform block |
+| `SamplerBuffer` + `texelFetch`, `ImageBuffer` + `imageStore` | a storage buffer of structs, a storage texture and `textureStore` (shdc has no buffer textures) |
+| `fmod` (GLSL's floored `mod`) | `x - y * floor(x / y)`; Void's `%` is WGSL's truncated one |
+| `c[i] = …` on a vector | a component write (`c.x = …`) per index |
+| `array[2, uint16]` vertex attribute | refused: shdc's GLES3 output has no array vertex inputs |
+| `gl_VertexID mod 2`, `div 2` | `@builtin(vertexIndex)` (uint32) with uint `%` and `/` |
+| `USampler2d`, `Sampler2dArray` | `Texture2dU32`, `Texture2dArray` (WGSL's `texture_2d<u32>`, `texture_2d_array`) |
+| a varying named as an attribute (`color` in, `color` out) | renamed on both sides (`color_1`), `glslLinked` passing the vertex entry |
+| GLSL 4.10 / 3.30 / ES 3.0, HLSL, MSL backends | one GLSL 450 for shdc, which writes every backend and WGSL |
+
 ## Rejected
 
 - **Own HLSL/MSL/GLSL backends, as shady has.** About 1000 of the 1817 lines of shady's `shared.nim` are
