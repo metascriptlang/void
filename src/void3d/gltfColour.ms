@@ -49,8 +49,12 @@ export function fromAccessor(
 	}
 	const decoded = GltfAccessorValues.decode(source, buffers, views);
 	if (!decoded.ok) {
-		if (decoded.error == GltfAccessorError.Bounds) { return Result.err(GltfColourError.Bounds); }
-		if (decoded.error == GltfAccessorError.NonFinite) { return Result.err(GltfColourError.NonFinite); }
+		if (decoded.error == GltfAccessorError.Bounds) {
+			return Result.err(GltfColourError.Bounds);
+		}
+		if (decoded.error == GltfAccessorError.NonFinite) {
+			return Result.err(GltfColourError.NonFinite);
+		}
 		return Result.err(GltfColourError.Accessor);
 	}
 	const data = decoded.value;

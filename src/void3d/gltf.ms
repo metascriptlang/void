@@ -433,11 +433,16 @@ function colourOptionalInt(obj: JsonValue, key: string): Result<int32 | null, Gl
 	return Result.ok(value as (int32 | null));
 }
 
-function colourAccessorViews(views: JsonValue, bufferLength: int32): Result<Vec<GltfAccessorView>, GltfError> {
+function colourAccessorViews(
+	views: JsonValue,
+	bufferLength: int32,
+): Result<Vec<GltfAccessorView>, GltfError> {
 	let result: Vec<GltfAccessorView> = [];
 	for (let i = 0; i < countOf(views); i++) {
 		const view: JsonValue = views.at(i);
-		if (view === null || view.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+		if (view === null || view.kind != JsonKind.Object) {
+			return Result.err(GltfError.Unsupported);
+		}
 		const buffer: int32 = try colourIntField(view, "buffer", -1);
 		if (buffer != 0) { return Result.err(GltfError.Unsupported); }
 		const offset: int32 = try colourIntField(view, "byteOffset", 0);
@@ -454,10 +459,15 @@ function colourAccessorViews(views: JsonValue, bufferLength: int32): Result<Vec<
 	return Result.ok(move result);
 }
 
-function colourAccessorSource(accessors: JsonValue, index: int32): Result<GltfAccessorSource, GltfError> {
+function colourAccessorSource(
+	accessors: JsonValue,
+	index: int32,
+): Result<GltfAccessorSource, GltfError> {
 	if (index < 0 || index >= countOf(accessors)) { return Result.err(GltfError.Unsupported); }
 	const accessor: JsonValue = accessors.at(index);
-	if (accessor === null || accessor.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (accessor === null || accessor.kind != JsonKind.Object) {
+		return Result.err(GltfError.Unsupported);
+	}
 	const shape: JsonValue = fieldOf(accessor, "type");
 	if (shape === null || shape.kind != JsonKind.String
 		|| (shape.strVal != "VEC3" && shape.strVal != "VEC4")) {
@@ -466,13 +476,17 @@ function colourAccessorSource(accessors: JsonValue, index: int32): Result<GltfAc
 	let normalized: boolean = false;
 	if (hasField(accessor, "normalized")) {
 		const value: JsonValue = fieldOf(accessor, "normalized");
-		if (value === null || value.kind != JsonKind.Bool) { return Result.err(GltfError.Unsupported); }
+		if (value === null || value.kind != JsonKind.Bool) {
+			return Result.err(GltfError.Unsupported);
+		}
 		normalized = value.boolVal;
 	}
 	let sparse: GltfSparseSource | null = null;
 	if (hasField(accessor, "sparse")) {
 		const value: JsonValue = fieldOf(accessor, "sparse");
-		if (value === null || value.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+		if (value === null || value.kind != JsonKind.Object) {
+			return Result.err(GltfError.Unsupported);
+		}
 		const indices: JsonValue = fieldOf(value, "indices");
 		const replacements: JsonValue = fieldOf(value, "values");
 		if (indices === null || indices.kind != JsonKind.Object
@@ -531,7 +545,9 @@ function loadMesh(
 	}
 	let colors: Vec<GltfLinearRgba> = [];
 	if (hasField(attributes, "COLOR_0")) {
-		if (positions.value.count > MAX_MESH_VERTICES) { return Result.err(GltfError.MeshTooLarge); }
+		if (positions.value.count > MAX_MESH_VERTICES) {
+			return Result.err(GltfError.MeshTooLarge);
+		}
 		const source: GltfAccessorSource = try colourAccessorSource(accessors,
 			try colourIntField(attributes, "COLOR_0", -1));
 		if (source.count < 1) { return Result.err(GltfError.OutOfRange); }
@@ -545,10 +561,18 @@ function loadMesh(
 			for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
 			colourBuffers.push({ bytes: move bytes, byteLength: bufferLength });
 		}
-		const decoded = GltfColour.fromAccessor(source, colourBuffers, colourViews, positions.value.count);
+		const decoded = GltfColour.fromAccessor(
+			source,
+			colourBuffers,
+			colourViews,
+			positions.value.count,
+		);
 		if (!decoded.ok) {
-			if (decoded.error == GltfColourError.Count) { return Result.err(GltfError.CountMismatch); }
-			if (decoded.error == GltfColourError.Bounds || decoded.error == GltfColourError.NonFinite) {
+			if (decoded.error == GltfColourError.Count) {
+				return Result.err(GltfError.CountMismatch);
+			}
+			if (decoded.error == GltfColourError.Bounds ||
+				decoded.error == GltfColourError.NonFinite) {
 				return Result.err(GltfError.OutOfRange);
 			}
 			return Result.err(GltfError.Unsupported);
@@ -610,7 +634,9 @@ function loadMesh(
 			red: linearToSrgb(rgba.red * read.factor.red),
 			green: linearToSrgb(rgba.green * read.factor.green),
 			blue: linearToSrgb(rgba.blue * read.factor.blue),
-			alpha: read.material.alphaMode == GltfAlphaMode.Opaque ? 1.0 : rgba.alpha * read.factor.alpha,
+			alpha: read.material.alphaMode == GltfAlphaMode.Opaque
+				? 1.0
+				: rgba.alpha * read.factor.alpha,
 		};
 		const added: Result<int32, MeshError> = textured
 			? addTexturedVertex(data, position, normal, uv, color)
@@ -1297,7 +1323,16 @@ function decodeGltf(
 			const read: MaterialRead =
 				material == DEFAULT_MATERIAL ? DEFAULT_READ : reads[material];
 			const mesh: Result<MeshData, GltfError> =
-				loadMesh(primitive, read, accessors, views, buffer, declaredLength, colourBuffers, colourViews);
+				loadMesh(
+					primitive,
+					read,
+					accessors,
+					views,
+					buffer,
+					declaredLength,
+					colourBuffers,
+					colourViews,
+				);
 			if (!mesh.ok) { return Result.err(mesh.error); }
 			data.meshes.push(mesh.value);
 			data.meshMaterials.push(material);
