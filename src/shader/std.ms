@@ -179,12 +179,16 @@ export function select(f: Vec3f, t: Vec3f, cond: boolean): Vec3f { return cond ?
 // `@location(1)` on an output, `@binding(3)` on a binding. `@sampleType` and `@samplerType` give
 // a texture or sampler the binding type WebGPU's layout needs (`unfilterable_float`,
 // `nonfiltering`). `@feature(CUTOUT)` marks a boolean as the program key feature of that name.
+// `@access(read_write)` lets a compute entry write a storage buffer or texture (WGSL's access
+// mode), and `@format(rgba8unorm)` is a storage texture's texel format.
 export function builtin(): void {}
 export function location(): void {}
 export function binding(): void {}
 export function sampleType(): void {}
 export function samplerType(): void {}
 export function feature(): void {}
+export function access(): void {}
+export function format(): void {}
 
 // WGSL's discard: the fragment writes nothing. Like TypeGPU's, it has no CPU meaning.
 export function discard(): never {
@@ -207,6 +211,29 @@ export struct Sampler {
 // WGSL's textureDimensions and textureLoad take no sampler. These do: sokol-shdc cannot fetch
 // without one (src/shader/CLAUDE.md, "shdc's own limits"). The size is signed, as the texel
 // coordinate it bounds is (docs/VOCABULARY.md, "A name brings its meaning").
+// WGSL's texture_storage_2d: a compute entry writes it texel by texel (textureStore). Its texel
+// format is the binding's @format, so on the CPU it holds four floats per texel like Texture2d.
+export struct StorageTexture2d {
+	width: int32;
+	height: int32;
+	texels: float32[];
+}
+
+export function textureDimensions(texture: StorageTexture2d): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(texture: StorageTexture2d, at: Vec2i, value: Vec4f): void {
+	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
+		unreachable "textureStore: the texel is outside the texture";
+	}
+	const first = (at.y * texture.width + at.x) * 4;
+	texture.texels[first] = value.x;
+	texture.texels[first + 1] = value.y;
+	texture.texels[first + 2] = value.z;
+	texture.texels[first + 3] = value.w;
+}
+
 export function textureDimensions(texture: Texture2d, sampler: Sampler, level: int32): Vec2i {
 	if (level != 0) { unreachable "textureDimensions: the CPU texture has no mip levels"; }
 	return { x: texture.width, y: texture.height };

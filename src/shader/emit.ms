@@ -29,6 +29,7 @@ import {
 	Mat3x3f,
 	Mat4x4f,
 	Sampler,
+	StorageTexture2d,
 	Texture2d,
 	Vec2f,
 	Vec2i,
@@ -160,7 +161,8 @@ export macro glsl(entry: Node): Node {
 		line: entry.line,
 		column: entry.column,
 		callee: bindSym("glslStage"),
-		arguments: [entry],
+		arguments: [entry, { kind: NodeKind.ArrayLiteral, line: entry.line, column: entry.column,
+			elements: [] }],
 	};
 }
 
@@ -263,12 +265,29 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 		line: fragment.line,
 		column: fragment.column,
 		callee: bindSym("glslStage"),
-		arguments: [fragment],
+		arguments: [fragment, { kind: NodeKind.ArrayLiteral, line: fragment.line,
+			column: fragment.column, elements: [] }],
+	};
+}
+
+// glslCompute(entry, [x, y, z]) for a compute entry: its workgroup size is WGSL's
+// @workgroup_size, written where the stage is generated as shdc's local_size.
+export macro glslCompute(entry: Node, workgroupSize: Node): Node {
+	if (workgroupSize.kind != NodeKind.ArrayLiteral || workgroupSize.elements.length < 1 ||
+		workgroupSize.elements.length > 3) {
+		error("glslCompute: the workgroup size is an array of one to three numbers", workgroupSize);
+	}
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslStage"),
+		arguments: [entry, workgroupSize],
 	};
 }
 
 // The stage both glsl and glslLinked expand to, once their checks hold.
-export macro glslStage(entry: Node): Node {
+export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
 	}
@@ -280,6 +299,7 @@ export macro glslStage(entry: Node): Node {
 	const stdModule = stdSymbol.resolvedSym.modulePath;
 	const textureType = getTypeImpl(Texture2d);
 	const samplerType = getTypeImpl(Sampler);
+	const storageTextureType = getTypeImpl(StorageTexture2d);
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
 		getTypeImpl(Vec3f),
@@ -365,6 +385,11 @@ export macro glslStage(entry: Node): Node {
 	}
 	const outputs = vectorOutput ? null : fieldsOf(outputType);
 	const vertex = outputs != null && hasDecorator(outputs, "builtin");
+	const computeBuiltins = ["globalInvocationId", "localInvocationId", "localInvocationIndex",
+		"workgroupId", "numWorkgroups"];
+	const computeNames = ["gl_GlobalInvocationID", "gl_LocalInvocationID",
+		"gl_LocalInvocationIndex", "gl_WorkGroupID", "gl_NumWorkGroups"];
+	let compute = workgroupSize.elements.length > 0;
 
 	let inputType: Node | null = null;
 	let bindingsType: Node | null = null;
@@ -376,6 +401,15 @@ export macro glslStage(entry: Node): Node {
 		if (fields == null) {
 			fail(entry, "parameter '" + name +
 				"' is not the input, bindings or program key struct");
+		}
+		for (const decorators of fields.typExprFieldDecorators) {
+			const builtin = decorator(decorators, "builtin");
+			if (builtin != null && computeBuiltins.indexOf(argumentName(builtin, entry)) >= 0) {
+				if (!compute) {
+					fail(entry, "a compute entry is written glslCompute(entry, [x, y, z]), " +
+						"with its workgroup size");
+				}
+			}
 		}
 		if (hasDecorator(fields, "binding")) {
 			if (bindingsType != null) { fail(entry, "two bindings structs: '" + name + "'"); }
@@ -544,6 +578,47 @@ export macro glslStage(entry: Node): Node {
 			const slot = "layout(binding=" + argumentNumber(binding, entry) + ") uniform ";
 			const sampleType = decorator(decorators, "sampleType");
 			const samplerKind = decorator(decorators, "samplerType");
+			const access = decorator(decorators, "access");
+			const writes = access != null && argumentName(access, entry) == "read_write";
+			if (access != null && !writes && argumentName(access, entry) != "read" &&
+				argumentName(access, entry) != "write") {
+				fail(entry, "binding '" + name + "': @access is read, write or read_write");
+			}
+			if (t.kind == NodeKind.TypeArray && t.typExprSize < 0) {
+				if (writes && !compute) {
+					fail(entry, "storage buffer '" + name + "' is written only in a compute entry");
+				}
+				const element = glslType(t.typExprElement, entry);
+				const mode = writes ? "" : "readonly ";
+				const items = element + " " + name + "[];\n";
+				const block = "buffer " + name + "Buffer {\n    " + items + "};\n";
+				const storage = "layout(binding=" + argumentNumber(binding, entry) + ") ";
+				declare(name, storage + mode + block, false);
+				continue;
+			}
+			if (sameType(t, storageTextureType)) {
+				if (!compute) {
+					fail(entry, "storage texture '" + name + "' is a compute binding");
+				}
+				const format = decorator(decorators, "format");
+				if (format == null) {
+					fail(entry, "storage texture '" + name + "' has no @format(texel format)");
+				}
+				const texel = argumentName(format, entry);
+				const formats = ["rgba8unorm", "rgba8snorm", "rgba8uint", "rgba16float",
+					"rgba32float", "r32float", "r32uint", "rg32float"];
+				const spellings = ["rgba8", "rgba8_snorm", "rgba8ui", "rgba16f", "rgba32f", "r32f",
+					"r32ui", "rg32f"];
+				const at = formats.indexOf(texel);
+				if (at < 0) {
+					fail(entry, "storage texture format '" + texel + "' has no GLSL form yet");
+				}
+				const writeOnly = access == null || argumentName(access, entry) == "write";
+				const mode = writeOnly ? "writeonly " : writes ? "" : "readonly ";
+				declare(name, "layout(binding=" + argumentNumber(binding, entry) + ", " +
+					spellings[at] + ") uniform " + mode + "image2D " + name + ";\n", false);
+				continue;
+			}
 			if (sameType(t, textureType)) {
 				const tag = sampleType == null ? "" : "@image_sample_type " + name + " " +
 					argumentName(sampleType, entry) + "\n";
@@ -585,7 +660,11 @@ export macro glslStage(entry: Node): Node {
 				continue;
 			}
 			const which = argumentName(builtin, entry);
-			const glslName = vertex ? "" : which == "position" ? "gl_FragCoord" :
+			const computeAt = computeBuiltins.indexOf(which);
+			const glslName = compute ? (computeAt >= 0 ? computeNames[computeAt] : "") :
+				vertex ? (which == "vertexIndex" ? "gl_VertexIndex" :
+					which == "instanceIndex" ? "gl_InstanceIndex" : "") :
+				which == "position" ? "gl_FragCoord" :
 				which == "frontFacing" ? "gl_FrontFacing" : "";
 			if (glslName == "") {
 				fail(entry, "input field '" + name + "': @builtin(" + which +
@@ -600,6 +679,7 @@ export macro glslStage(entry: Node): Node {
 	let outputTargets: string[] = [];
 	let outputFeatures: string[] = [];
 	const noOutput = outputType != null && typeKind(outputType) == TypeKind.Void;
+	if (compute && !noOutput) { fail(entry, "a compute entry returns nothing"); }
 	if (noOutput) {
 		if (vertex) { fail(entry, "a vertex entry returns its outputs"); }
 	} else if (outputs == null) {
@@ -965,7 +1045,9 @@ export macro glslStage(entry: Node): Node {
 				"mat3x3f" | "upperLeft3x3" => "mat3" + listed,
 				"mat4x4f" => "mat4" + listed,
 				"select" => "(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
-				"textureDimensions" => "textureSize(" + sampled + ", " + args[2] + ")",
+				"textureDimensions" => args.length == 1 ? "imageSize(" + args[0] + ")" :
+					"textureSize(" + sampled + ", " + args[2] + ")",
+				"textureStore" => "imageStore(" + args.join(", ") + ")",
 				"textureLoad" => "texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",
 				"textureSample" => vertex ?
 					fail(n, "textureSample samples only in a fragment entry, as WGSL's does") :
@@ -1014,6 +1096,9 @@ export macro glslStage(entry: Node): Node {
 		if (n.kind == NodeKind.ExprStmt) {
 			const e = n.expr;
 			if (e.kind == NodeKind.CallExpr && isDiscard(e.callee)) { return "discard"; }
+			if (e.kind == NodeKind.CallExpr && typeKind(getType(e)) == TypeKind.Void) {
+				return expr(e);
+			}
 			if (e.kind != NodeKind.UpdateExpr && e.kind != NodeKind.BinaryExpr) {
 				fail(n, "a shader statement is an assignment, not a value (node kind " +
 					String(e.kind) + ")");
@@ -1129,6 +1214,19 @@ export macro glslStage(entry: Node): Node {
 		}
 		header += gate == "" ? declTexts[i] : opening(gate) + "\n" + declTexts[i] + "#endif\n";
 	}
-	const source = header + "void main() {\n" + main + "}\n";
+	let size = "";
+	if (compute) {
+		const axes = ["x", "y", "z"];
+		for (let a = 0; a < 3; a++) {
+			const n = a < workgroupSize.elements.length ? workgroupSize.elements[a] : null;
+			if (n != null && n.kind != NodeKind.NumberLiteral) {
+				fail(workgroupSize, "a workgroup size is three numbers");
+			}
+			size += (a == 0 ? "" : ", ") + "local_size_" + axes[a] + "=" +
+				(n == null ? "1" : String(intValue(n)));
+		}
+		size = "layout(" + size + ") in;\n";
+	}
+	const source = size + header + "void main() {\n" + main + "}\n";
 	return { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: source };
 }
