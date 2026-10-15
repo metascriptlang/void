@@ -135,10 +135,7 @@ test "vector arithmetic is componentwise, a scalar operand applies to every comp
 	assert v * v == vec3f(1.0, 4.0, 16.0) && v / vec3f(1.0, 2.0, 4.0) == vec3f(1.0);
 	assert v + 1.0 == vec3f(2.0, 3.0, 5.0) && v - 1.0 == vec3f(0.0, 1.0, 3.0);
 	assert v * 2.0 == 2.0 * v && v / 2.0 == vec3f(0.5, 1.0, 2.0);
-	// Parked: `-v == x` fails in clang, card
-	// ~/metascript/.inbox/compiler/2026-10-15-unary-overload-result-in-struct-equality.md
-	const negated = -v;
-	assert negated == vec3f(-1.0, -2.0, -4.0);
+	assert -v == vec3f(-1.0, -2.0, -4.0);
 	assert vec2f(2.0, 3.0) * vec2f(4.0, 5.0) == vec2f(8.0, 15.0);
 	let sum = v;
 	sum += v;
