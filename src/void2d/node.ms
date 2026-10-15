@@ -1508,7 +1508,13 @@ export function setMaxWidth(this n: NodeRef, width: float32): NodeRef {
 }
 
 export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): NodeRef {
-	setLabelRuns(textChanged(n, "setTextRuns"), runs);
+	const i: int32 = n.labelRow("setTextRuns");
+	const reshapes: boolean = setLabelRuns(n.scene.payloads[i], runs);
+	if (reshapes) {
+		textChanged(n, "setTextRuns");
+	} else {
+		n.scene.markChanged(i, Changed.Paint);
+	}
 	return n;
 }
 

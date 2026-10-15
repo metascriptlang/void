@@ -425,11 +425,26 @@ function lineDecorations(
 	}
 }
 
-export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): void {
+function shapesAlike(stored: Readonly<Span<TextRun>>, runs: Readonly<Span<TextRun>>): boolean {
+	if (stored.length != runs.length) { return false; }
+	for (let r: int32 = 0; r < (runs.length as int32); r++) {
+		if (stored[r].len != runs[r].len || stored[r].font != runs[r].font) { return false; }
+	}
+	return true;
+}
+
+export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): boolean {
+	const entry: LabelText = labelTexts[index];
+	const reshapes: boolean = !shapesAlike(entry.runs, runs);
 	let kept: Vec<TextRun> = new Array(0);
 	for (const run of runs) { kept.push(run); }
-	labelTexts[index].runs = kept;
-	labelTexts[index].reshape = true;
+	entry.runs = kept;
+	if (reshapes) {
+		entry.reshape = true;
+	} else {
+		entry.decorations = entry.layout.runDecorations(entry.runs, entry.style.size);
+	}
+	return reshapes;
 }
 
 export function setLabelShapingBreaks(index: int32, breaks: Readonly<Span<int32>>): void {

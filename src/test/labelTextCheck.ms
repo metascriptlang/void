@@ -1,5 +1,5 @@
 import { Align, TextRun, Truncate } from "../void2d/textLayout";
-import { DEFAULT_FONT, fontFace } from "../void2d/font";
+import { DEFAULT_FONT, FontId, addFont, fontFace } from "../void2d/font";
 import { decorationMetrics, faceMetrics, glyphLookups } from "../void2d/face";
 
 when (voidSprites) {
@@ -27,7 +27,7 @@ import {
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba, identity2d, emptyBounds } from "../void2d/types";
 import { begin2d, frameEnd } from "../void2d/draw";
-import { NodeRef, Scene2D } from "../void2d/node";
+import { Changed, NodeRef, Scene2D } from "../void2d/node";
 import "../void2d/scene";
 import { renderTargetsAlive, segmentBox } from "../void2d/render";
 import { approx } from "./helpers";
@@ -286,6 +286,51 @@ test "setTextRuns styles a label, and each placed glyph carries its run" {
 	assert n.textWidth() > 0.0;
 	const placed = placeLabel(payloadOf(n), identity2d(), 1.0).placed;
 	assert placed[0].run == 0 && placed[1].run == 1;
+	n.dispose();
+}
+
+test "a run change that keeps each run's length and font repaints without shaping again" {
+	const n = s.label("abcd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const green = rgba(0.0, 1.0, 0.0, 1.0);
+	const before: TextRun[] = [plainRun(2), { ...plainRun(2), underline: green }];
+	n.setTextRuns(before);
+	n.sync(identity2d(), false);
+	s.clearChanges();
+	const lookups: uint32 = glyphLookups();
+	const red = rgba(1.0, 0.0, 0.0, 1.0);
+	const after: TextRun[] = [{ ...plainRun(2), color: red }, { ...plainRun(2), underline: red }];
+	n.setTextRuns(after);
+	const e = labelTexts[payloadOf(n)];
+	assert !e.stale && !e.reshape;
+	assert s.changed[n.id.index].has(Changed.Paint) && !s.changed[n.id.index].has(Changed.Text);
+	assert e.runs[0].color == red;
+	assert (e.decorations.length as int32) == 1 && e.decorations[0].color == red;
+	n.sync(identity2d(), false);
+	assert glyphLookups() == lookups;
+	n.dispose();
+}
+
+function hebrewFont(): FontId {
+	const added = addFont("tests/fonts/notoSansHebrewSubset.ttf");
+	if (added.ok) { return added.value; }
+	console.log("the Hebrew subset did not load");
+	unreachable;
+}
+
+test "a run change of a length or a font shapes the label again" {
+	const n = s.label("abcd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const halves: TextRun[] = [plainRun(2), plainRun(2)];
+	n.setTextRuns(halves);
+	n.sync(identity2d(), false);
+	s.clearChanges();
+	const lengths: TextRun[] = [plainRun(1), plainRun(3)];
+	n.setTextRuns(lengths);
+	assert labelTexts[payloadOf(n)].reshape && s.changed[n.id.index].has(Changed.Text);
+	n.sync(identity2d(), false);
+	s.clearChanges();
+	const fonts: TextRun[] = [plainRun(1), { ...plainRun(3), font: hebrewFont() }];
+	n.setTextRuns(fonts);
+	assert labelTexts[payloadOf(n)].reshape && s.changed[n.id.index].has(Changed.Text);
 	n.dispose();
 }
 
