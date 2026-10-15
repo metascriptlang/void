@@ -1436,7 +1436,7 @@ export function pow(base: float32, exponent: float32): float32 {
 	return Math.pow(base, exponent) as float32;
 }
 
-export function abs(x: int32): int32 { return x < 0 ? -x : x; }
+export function abs(x: int32): int32 { return x < 0 && x != -2147483648 ? -x : x; }
 export function sign(x: int32): int32 { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 export function max(a: int32, b: int32): int32 { return a < b ? b : a; }
 export function min(a: int32, b: int32): int32 { return b < a ? b : a; }

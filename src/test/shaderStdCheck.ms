@@ -405,6 +405,11 @@ test "sign is 0 at 0, and floor, ceil, trunc and fract part at a negative operan
 	assert sign(vec3f(-2.0, 0.0, 2.0)) == vec3f(-1.0, 0.0, 1.0);
 }
 
+test "abs of the least int32 is that value, as WGSL's, where negating it overflows" {
+	const least: int32 = -2147483648;
+	assert abs(least) == least && abs(least + 1) == 2147483647;
+}
+
 test "atan2 takes y first and answers in the quadrant of (x, y)" {
 	assert near(atan2(1.0, -1.0), 2.3561945) && near(atan2(-1.0, -1.0), -2.3561945);
 	assert near(atan2(1.0, 0.0), 1.5707964) && atan2(0.0, 1.0) == 0.0;
