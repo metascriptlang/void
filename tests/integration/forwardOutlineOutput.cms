@@ -1,0 +1,7 @@
+import { ensureDir } from "std/fs";
+
+export function prepareOutlineOutput(): Result<void, string> {
+	const directory = ensureDir("out/tmp/forwardOutline/referenceSampler");
+	if (!directory.ok) { return Result.err("diagnostic output directory creation refused"); }
+	return Result.ok(null);
+}
