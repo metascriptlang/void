@@ -241,7 +241,7 @@ one compiled by sokol-shdc to `glsl430:glsl300es:hlsl5:metal_macos:wgsl` (comput
 
 - **Own HLSL/MSL/GLSL backends, as shady has.** About 1000 of the 1817 lines of shady's `shared.nim` are
   per-backend layout, and it has no WGSL. Every wall above is in sokol or the platform, not in shdc.
-- **A GLSL backend inside msc** (what docs/SHADER.md Tier 3 still says). The macro already reads the
+- **A GLSL backend inside msc** (docs/SHADER.md Tier 3's first plan). The macro already reads the
   typed body, so only the callee gap needs the compiler.
 
 ## Reference

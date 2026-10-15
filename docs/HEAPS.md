@@ -128,7 +128,7 @@ mainPass.addShader(bloomShader);        // post-process
 
 The linker merges these into a single GPU shader program. This is how Heaps avoids a combinatorial explosion of hand-written shader variants.
 
-For Void: shader composability is **deferred to a material system** (Tier 3 in `docs/SHADER.md`). The pragmatic path is an über-shader with uniforms (`color` multiply, `colorAdd`, `colorMatrix`, `colorKey` — the Heaps `h2d.Drawable` color pipeline) landed as Tier 2 first; true fragment linking only if/when variant explosion bites.
+For Void: the `h2d.Drawable` color pipeline (`color` multiply, `colorAdd`, `colorMatrix`, `colorKey`) is Tier 2's über-shader in void2d, and 3D composition happens at build time: shaders are MetaScript functions that compose by calls, with `@feature` program keys for variants (Tier 3 in `docs/SHADER.md`). HXSL's runtime fragment linking is not adopted.
 
 ### ~~Shader caching~~
 
@@ -351,7 +351,7 @@ Missing from void2d today:
 
 1. **Separate 2D + 3D scenes, composited** — ADOPT. Clean separation, 2D always on top.
 2. **Pass-based materials** — ADOPT. Decouple shader from render state (blend, depth, cull).
-3. **Composable shader fragments** — DEFER. Pragmatic path is a Tier 2 über-shader + uniforms (closes the Heaps `h2d.Drawable` color-depth gap); true fragment linking only if variant explosion bites. See `docs/SHADER.md`.
+3. **Composable shader fragments** — ADOPTED at build time. Tier 2 über-shader in void2d (the Heaps `h2d.Drawable` color depth); Tier 3 MetaScript shader functions with `@feature` program keys in void3d. No runtime fragment linking. See `docs/SHADER.md`.
 4. ~~**Virtual filesystem**~~ — SKIP for now. Direct file loading. Add VFS when we need prod packaging.
 5. **Interactive objects** — ADOPT LATER. Input routing to scene objects via hit testing. Needs scene graph first.
 6. **Lazy transform evaluation** — ADOPT. Cache matrices, recompute only on change. Critical for performance.

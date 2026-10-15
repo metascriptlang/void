@@ -32,7 +32,7 @@ Kept from Heaps: row-vector matrices and `local * parent` world transforms; the 
 Changed on purpose:
 
 - **Y up, right-handed** (Heaps: Z up, left-handed). glTF, the Blender exporter and the spike are Y up.
-- **Fixed sokol-shdc programs instead of hxsl shader lists.** A Material names one program and carries its uniform values. Composable fragments stay deferred (`docs/SHADER.md` Tier 3).
+- **Fixed sokol-shdc programs instead of hxsl shader lists.** A Material names one program and carries its uniform values. Programs are composed at build time from MetaScript shader functions (`docs/SHADER.md` Tier 3), not from a runtime shader list.
 - **The renderer consumes a draw list, not the scene tree.** Heaps' `emitRec` fills per-pass object lists during the walk; here the scene flattens to `Vec<DrawItem>` only when its structure changes, and each frame only rewrites world matrices. The renderer works (and is tested) with no scene at all.
 
 Not ported: `hxsl`, `h3d/impl`, PBR (`scene/pbr`, `shader/pbr`), shadow maps beyond M35's one directional map, skinning (`anim/Skin`, `scene/Skin`), `World`/`HierarchicalWorld`, `GpuParticles`, `MeshBatch`/`Batcher` beyond instanced billboards, `RenderGraph`, `CameraController`.
