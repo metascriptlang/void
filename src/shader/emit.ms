@@ -185,6 +185,23 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 		return names;
 	}
 
+	function varyingFeatures(t: Node | null, at: Node): string[] {
+		const fields = fieldsAt(t, at);
+		let gates: string[] = [];
+		for (let f = 0; f < fields.typExprFieldNames.length; f++) {
+			if (!isVarying(fields, f)) { continue; }
+			let gate = "";
+			for (const d of fields.typExprFieldDecorators[f]) {
+				if (d.macroName == "feature" && d.macroArgs.length == 1 &&
+					d.macroArgs[0].kind == NodeKind.Identifier) {
+					gate = d.macroArgs[0].name;
+				}
+			}
+			gates.push(gate);
+		}
+		return gates;
+	}
+
 	function varyingTypes(t: Node | null, at: Node): Node[] {
 		const fields = fieldsAt(t, at);
 		let types: Node[] = [];
@@ -216,6 +233,8 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 	const writes = varyingNames(vs.typExprReturn, vertex);
 	const readTypes = varyingTypes(input, fragment);
 	const writeTypes = varyingTypes(vs.typExprReturn, vertex);
+	const readGates = varyingFeatures(input, fragment);
+	const writeGates = varyingFeatures(vs.typExprReturn, vertex);
 	for (let i = 0; i < reads.length || i < writes.length; i++) {
 		const read = i < reads.length ? reads[i] : "";
 		const written = i < writes.length ? writes[i] : "";
@@ -227,6 +246,10 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 		if (!sameType(readTypes[i], writeTypes[i])) {
 			error("glslLinked: varying '" + read + "' has another type in the vertex output",
 				fragment);
+		}
+		if (readGates[i] != writeGates[i]) {
+			error("glslLinked: varying '" + read + "' is declared under another @feature in the " +
+				"vertex output", fragment);
 		}
 	}
 	return {
