@@ -3,9 +3,9 @@
 
 @passC("-I../../deps/sokol");
 @include("bridge.h");
-@compile("src/sokol/bridge.c");
-@compile("src/sokol/bridgeWeb.c");
-@compile("src/sokol/sokolWeb.c");
+@compile("./bridge.c");
+@compile("./bridgeWeb.c");
+@compile("./sokolWeb.c");
 
 when (webgpu) {
 	@passC("--use-port=emdawnwebgpu");
