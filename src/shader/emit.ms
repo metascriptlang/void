@@ -953,6 +953,9 @@ export macro glslStage(entry: Node): Node {
 				"select" => "(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
 				"textureDimensions" => "textureSize(" + sampled + ", " + args[2] + ")",
 				"textureLoad" => "texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",
+				"textureSample" => vertex ?
+					fail(n, "textureSample samples only in a fragment entry, as WGSL's does") :
+					"texture(" + sampled + ", " + args[2] + ")",
 				_ => fail(n, "./std's '" + impl.fnName + "' has no GLSL spelling"),
 			};
 		}

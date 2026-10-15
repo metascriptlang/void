@@ -1,6 +1,7 @@
 // The CPU meaning of ./shader/std where its GLSL spelling or meaning parts from WGSL's
 // (docs/VOCABULARY.md, "A name brings its meaning"), and the GLSL the glsl macro spells for it.
 
+import { Wrap } from "../gpu/state";
 import { glsl } from "../shader/emit";
 import {
 	Mat4x4f,
@@ -24,6 +25,7 @@ import {
 	select,
 	textureDimensions,
 	textureLoad,
+	textureSample,
 	upperLeft3x3,
 	vec2f,
 	vec2i,
@@ -82,6 +84,68 @@ test "glsl spells every std name in its GLSL form" {
 		"    return;\n" +
 		"}\n";
 	assert glsl(probeFs) == expected;
+}
+
+export struct TexturedProbeBindings {
+	@binding(0) baseTexture: Texture2d;
+	@binding(0) baseSampler: Sampler;
+}
+
+export function texturedProbeFs(input: ProbeInput, b: TexturedProbeBindings): Vec4f {
+	const p = input.position;
+	const uv = mat2x2f(p.xy, p.zw) * p.xy + p.zw * 0.5;
+	const texel = textureSample(b.baseTexture, b.baseSampler, uv);
+	const n = cross(texel.xyz, p.xyz);
+	return texel.a > 0.5 ? vec4f(n, 1.0) : vec4f(0.0);
+}
+
+test "glsl spells the textured family's std names in their GLSL form" {
+	const expected =
+		"layout(binding=0) uniform texture2D baseTexture;\n" +
+		"layout(binding=0) uniform sampler baseSampler;\n" +
+		"layout(location=0) out vec4 fragColor;\n" +
+		"void main() {\n" +
+		"    vec4 p = gl_FragCoord;\n" +
+		"    vec2 uv = (mat2(p.xy, p.zw) * p.xy) + (p.zw * 0.5);\n" +
+		"    vec4 texel = texture(sampler2D(baseTexture, baseSampler), uv);\n" +
+		"    vec3 n = cross(texel.xyz, p.xyz);\n" +
+		"    fragColor = (texel.a > 0.5) ? vec4(n, 1.0) : vec4(0.0);\n" +
+		"    return;\n" +
+		"}\n";
+	assert glsl(texturedProbeFs) == expected;
+}
+
+// Four texels in a row, the red channel of each its index.
+function ramp(): Texture2d {
+	return {
+		width: 4,
+		height: 1,
+		texels: [0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 1.0, 3.0, 0.0, 0.0, 1.0],
+	};
+}
+
+function sampledAt(x: float32, nearest: boolean, wrap: Wrap): float32 {
+	return textureSample(ramp(), { nearest, wrap }, vec2f(x, 0.5)).r;
+}
+
+test "textureSample's nearest filter takes the texel holding the coordinate, an edge the next one" {
+	assert textureSample(ramp(), { nearest: true }, vec2f(0.375, 0.5)) == vec4f(1.0, 0.0, 0.0, 1.0);
+	assert sampledAt(0.5, true, Wrap.Clamp) == 2.0 && sampledAt(0.999, true, Wrap.Clamp) == 3.0;
+}
+
+test "textureSample's linear filter weighs the two texels whose centres surround it" {
+	assert sampledAt(0.375, false, Wrap.Clamp) == 1.0;
+	assert sampledAt(0.25, false, Wrap.Clamp) == 0.5 && sampledAt(0.5, false, Wrap.Clamp) == 1.5;
+	assert textureSample(ramp(), { nearest: false }, vec2f(0.625, 0.25)).a == 1.0;
+}
+
+test "textureSample wraps a texel index past the edge as the sampler's wrap says" {
+	assert sampledAt(1.25, true, Wrap.Clamp) == 3.0 && sampledAt(-0.375, true, Wrap.Clamp) == 0.0;
+	assert sampledAt(1.25, true, Wrap.Repeat) == 1.0 && sampledAt(-0.375, true, Wrap.Repeat) == 2.0;
+	assert sampledAt(1.25, true, Wrap.Mirror) == 2.0 && sampledAt(-0.375, true, Wrap.Mirror) == 1.0;
+	assert sampledAt(-0.125, true, Wrap.Mirror) == 0.0 && sampledAt(1.0, true, Wrap.Mirror) == 3.0;
+	assert sampledAt(0.0, false, Wrap.Clamp) == 0.0 && sampledAt(0.0, false, Wrap.Repeat) == 1.5;
+	assert sampledAt(0.0, false, Wrap.Mirror) == 0.0 && sampledAt(1.0, false, Wrap.Repeat) == 1.5;
 }
 
 test "select returns its second operand when the condition holds, as WGSL orders them" {

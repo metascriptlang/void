@@ -2,6 +2,8 @@
 // meaning on the CPU what the GPU computes. The glsl macro (./emit.ms) knows a call into this
 // module by the module, and emits it under the GLSL spelling of the declaration's name.
 
+import { Wrap } from "../gpu/state";
+
 export struct Vec2f {
 	x: float32;
 	y: float32;
@@ -195,8 +197,11 @@ export struct Texture2d {
 	texels: float32[];
 }
 
+// The sampler a void3d texture is drawn with (src/gpu/door.c doorMakeSampler): one filter for
+// magnifying and minifying, one wrap for both axes, no mip levels.
 export struct Sampler {
 	nearest: boolean;
+	wrap: Wrap;
 }
 
 // WGSL's textureDimensions and textureLoad take no sampler. These do: sokol-shdc cannot fetch
@@ -212,7 +217,62 @@ export function textureLoad(texture: Texture2d, sampler: Sampler, at: Vec2i, lev
 	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
 		unreachable "textureLoad: the texel is outside the texture";
 	}
-	const first = (at.y * texture.width + at.x) * 4;
+	return texelAt(texture, at.x, at.y);
+}
+
+function texelAt(texture: Texture2d, x: int32, y: int32): Vec4f {
+	const first = (y * texture.width + x) * 4;
 	const t = texture.texels;
 	return { x: t[first], y: t[first + 1], z: t[first + 2], w: t[first + 3] };
+}
+
+// The Vulkan specification's "Wrapping Operation", on a texel index.
+function wrapped(i: int32, size: int32, wrap: Wrap): int32 {
+	return match (wrap) {
+		Wrap.Clamp => Math.min(Math.max(i, 0), size - 1),
+		Wrap.Repeat => (i % size + size) % size,
+		Wrap.Mirror => mirrored((i % (2 * size) + 2 * size) % (2 * size) - size, size),
+	};
+}
+
+function mirrored(a: int32, size: int32): int32 { return size - 1 - (a >= 0 ? a : -(1 + a)); }
+
+function texelIndex(at: float32): int32 {
+	const i = Math.floor(at);
+	if (!(Math.abs(i) < 1.0e9)) {
+		unreachable "textureSample: the coordinate is not finite, or past any texel index";
+	}
+	return i as int32;
+}
+
+function lerp(a: Vec4f, b: Vec4f, t: float32): Vec4f {
+	return {
+		x: a.x + (b.x - a.x) * t,
+		y: a.y + (b.y - a.y) * t,
+		z: a.z + (b.z - a.z) * t,
+		w: a.w + (b.w - a.w) * t,
+	};
+}
+
+// WGSL's textureSample on a texture of one mip level, as void3d's are.
+export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): Vec4f {
+	const w = texture.width;
+	const h = texture.height;
+	const wrap = sampler.wrap;
+	if (sampler.nearest) {
+		const x = wrapped(texelIndex(uv.x * (w as float32)), w, wrap);
+		return texelAt(texture, x, wrapped(texelIndex(uv.y * (h as float32)), h, wrap));
+	}
+	const u: float32 = uv.x * (w as float32) - 0.5;
+	const v: float32 = uv.y * (h as float32) - 0.5;
+	const i = texelIndex(u);
+	const j = texelIndex(v);
+	const x0 = wrapped(i, w, wrap);
+	const x1 = wrapped(i + 1, w, wrap);
+	const y0 = wrapped(j, h, wrap);
+	const y1 = wrapped(j + 1, h, wrap);
+	const a: float32 = u - (i as float32);
+	const b: float32 = v - (j as float32);
+	const top = lerp(texelAt(texture, x0, y0), texelAt(texture, x1, y0), a);
+	return lerp(top, lerp(texelAt(texture, x0, y1), texelAt(texture, x1, y1), a), b);
 }
