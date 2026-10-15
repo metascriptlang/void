@@ -337,7 +337,8 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		for (let i = 0; i < vectorTypes.length; i++) {
 			if (sameType(t, vectorTypes[i])) { return vectorNames[i]; }
 		}
-		fail(at, "a shader value is float32, int32, uint32, boolean, or a ./std vector or matrix");
+		fail(at, "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
+			"or a struct of those");
 	}
 
 	function decorator(decorators: Node[], name: string): Node | null {
@@ -382,6 +383,14 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			if (decorator(decorators, name) != null) { return true; }
 		}
 		return false;
+	}
+
+	function isAuthorStruct(t: Node | null): boolean {
+		if (t == null || fieldsOf(t) == null) { return false; }
+		for (const own of vectorTypes.concat([textureType, samplerType])) {
+			if (sameType(t, own)) { return false; }
+		}
+		return true;
 	}
 
 	const fn = getImpl(entry);
@@ -468,7 +477,10 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	let localKeys: string[] = [];
 	let localGlslNames: string[] = [];
 	let inHelper = false;
-
+	let structTypes: Node[] = [];
+	let structNames: string[] = [];
+	let structFields: string[][] = [];
+	let structGlslFields: string[][] = [];
 
 	let globals: string[] = [];
 	let locals: string[] = [];
@@ -574,6 +586,10 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	}
 
 	function member(t: Node, name: string, at: Node): string {
+		if (isAuthorStruct(t.kind == NodeKind.TypeArray ? t.typExprElement : t)) {
+			fail(at, "interface field '" + name + "' is a struct: a uniform block member, " +
+				"attribute, varying or output is a scalar, vector or matrix");
+		}
 		if (t.kind == NodeKind.TypeArray && t.typExprSize > 0) {
 			return glslType(t.typExprElement, at) + " " + name + "[" + String(t.typExprSize) + "]";
 		}
@@ -770,6 +786,84 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		return unique;
 	}
 
+	function valueType(t: Node | null, at: Node): string {
+		if (t != null && typeKind(t) == TypeKind.SizedArray) {
+			return valueType(t.typExprElement, at) + "[" + String(t.typExprSize) + "]";
+		}
+		return t != null && isAuthorStruct(t) ? structName(t, at) : glslType(t, at);
+	}
+
+	function structName(t: Node, at: Node): string {
+		for (let i = 0; i < structTypes.length; i++) {
+			if (sameType(t, structTypes[i])) { return structNames[i]; }
+		}
+		const fields = fieldsOf(t);
+		const typeName = fields.typExprTypeName;
+		if (isInterface(t)) {
+			fail(at, "'" + typeName + "' is a stage interface struct, read one field at a time");
+		}
+		let glslFields: string[] = [];
+		let text = "";
+		for (let f = 0; f < fields.typExprFieldNames.length; f++) {
+			const name = fields.typExprFieldNames[f];
+			const ft = fields.typExprFieldTypes[f];
+			const element = ft.kind == NodeKind.TypeArray ? ft.typExprElement : ft;
+			if (sameType(element, textureType) || sameType(element, samplerType)) {
+				fail(at, "struct '" + typeName + "' holds the texture or sampler '" + name +
+					"': a GLSL struct holds values, so a binding is passed on its own");
+			}
+			if (!isGlslIdentifier(name)) {
+				fail(at, "field '" + name + "' of struct '" + typeName + "' is no GLSL name");
+			}
+			let unique = name;
+			let suffix = 0;
+			while (reservedWords.includes(unique) || glslFields.includes(unique) ||
+				unique != name && fields.typExprFieldNames.includes(unique)) {
+				suffix += 1;
+				unique = name + "_" + String(suffix);
+			}
+			glslFields.push(unique);
+			text += "    " + valueType(ft, at) + " " + unique + ";\n";
+		}
+		const spelled = glslName(typeName, at, "", false);
+		valueNames.push(spelled);
+		structTypes.push(t);
+		structNames.push(spelled);
+		structFields.push(fields.typExprFieldNames);
+		structGlslFields.push(glslFields);
+		declare("struct:" + spelled, "struct " + spelled + " {\n" + text + "};\n", true);
+		return spelled;
+	}
+
+	function field(n: Node): string {
+		const t = getType(n.object);
+		if (t == null || !isAuthorStruct(t)) { return n.property; }
+		const s = structNames.indexOf(structName(t, n));
+		return structGlslFields[s][structFields[s].indexOf(n.property)];
+	}
+
+	function construction(n: Node): string {
+		const t = getType(n);
+		const type = valueType(t, n);
+		const fields = fieldsOf(t);
+		let args: string[] = [];
+		for (let f = 0; f < fields.typExprFieldNames.length; f++) {
+			const name = fields.typExprFieldNames[f];
+			const k = n.keys.indexOf(name);
+			if (k < 0) {
+				fail(n, "the literal leaves out field '" + name +
+					"', and GLSL constructs a struct from every field");
+			}
+			const kind = typeKind(fields.typExprFieldTypes[f]);
+			if (!isAuthorStruct(t) && kind != TypeKind.Float32 && kind != TypeKind.Int32 &&
+				kind != TypeKind.Uint32 && kind != TypeKind.Boolean) {
+				fail(n, "a ./std matrix is built with its constructor, as mat4x4f(...)");
+			}
+			args.push(expr(n.properties[k]));
+		}
+		return type + "(" + args.join(", ") + ")";
+	}
+
 	function gather(n: Node, module: string, locals: string[], constant: Node | null): void {
 		if (n.kind == NodeKind.VariableDecl) { locals.push(declKey(module, n)); }
 		if (n.kind == NodeKind.Identifier && n.resolvedSym != null &&
@@ -799,7 +893,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		}
 		gather(decl.initializer, module, [], decl);
 		const name = glslName(decl.declName, n, "", false);
-		declare("const:" + key, "const " + glslType(getType(n), n) + " " + name + " = " +
+		declare("const:" + key, "const " + valueType(getType(n), n) + " " + name + " = " +
 			expr(decl.initializer) + ";\n", true);
 		constantKeys.push(key);
 		constantNames.push(name);
@@ -827,7 +921,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		for (let i = 0; i < helperType.typExprParams.length; i++) {
 			const t = helperType.typExprParams[i];
 			if (isInterface(t)) { continue; }
-			types.push(glslType(t, callee));
+			types.push(valueType(t, callee));
 			kept.push(helperType.typExprParamNames[i]);
 		}
 		const parameterTypes = "(" + types.join(", ") + ")";
@@ -850,7 +944,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		const text = body(helper.fnBody, "    ");
 		inHelper = false;
 		recording = outer;
-		declare("call:" + key, glslType(helperType.typExprReturn, callee) + " " + name + "(" +
+		declare("call:" + key, valueType(helperType.typExprReturn, callee) + " " + name + "(" +
 			params.join(", ") + ") {\n" + text + "}\n", false);
 	}
 
@@ -1002,7 +1096,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		if (n.kind == NodeKind.ArrayLiteral) {
 			let elements: string[] = [];
 			for (const e of n.elements) { elements.push(expr(e)); }
-			return glslType(getType(n), n) + "(" + elements.join(", ") + ")";
+			return valueType(getType(n), n) + "(" + elements.join(", ") + ")";
 		}
 		if (n.kind == NodeKind.TypeAssertion) {
 			const from = kindOf(n.asExpr);
@@ -1022,6 +1116,10 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 				return n.property;
 			}
 			if (isType(object, bindingsType)) {
+				if (isAuthorStruct(getType(n))) {
+					fail(n, "uniform block '" + n.property + "' is read one member at a time: " +
+						"GLSL declares the block's members, not a value of the block");
+				}
 				use(n.property);
 				return n.property;
 			}
@@ -1032,8 +1130,9 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			if (isType(object, keyType)) {
 				fail(n, "a program key feature is read only as an if condition");
 			}
-			return expr(object) + "." + n.property;
+			return expr(object) + "." + field(n);
 		}
+		if (n.kind == NodeKind.ObjectLiteral) { return construction(n); }
 		if (n.kind == NodeKind.CallExpr) {
 			const callee = n.callee;
 			const impl = getImpl(callee);
@@ -1104,12 +1203,22 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		return opening(gate) + "\n" + text + "#endif\n";
 	}
 
+	function assignee(target: Node, n: Node): string {
+		if (target.kind == NodeKind.Identifier && locals.includes(target.name)) {
+			return identifier(target);
+		}
+		if (target.kind == NodeKind.MemberExpr) {
+			return assignee(target.object, n) + "." + field(target);
+		}
+		if (target.kind == NodeKind.ArrayAccess) {
+			return assignee(target.array, n) + "[" + value(target.index) + "]";
+		}
+		fail(n, "a shader assigns only to its own locals, their fields and their elements");
+	}
+
 	function assignment(n: Node): string {
 		const target = n.kind == NodeKind.UpdateExpr ? n.updateArg : n.left;
-		if (target.kind != NodeKind.Identifier || !locals.includes(target.name)) {
-			fail(n, "a shader assigns only to its own locals");
-		}
-		const name = identifier(target);
+		const name = assignee(target, n);
 		if (n.kind == NodeKind.UpdateExpr) { return name + n.updateOp; }
 		if (n.operator == "/=" && integer(target)) {
 			fail(n, "'/=' has no GLSL form: GLSL does not truncate as MetaScript does");
@@ -1143,7 +1252,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 			fail(n, "this statement has no GLSL form yet (node kind " + String(n.kind) + ")");
 		}
 		if (n.initializer == null) { fail(n, "a shader local is declared with its value"); }
-		const type = glslType(getType(n.initializer), n);
+		const type = valueType(getType(n.initializer), n);
 		const initial = value(n.initializer);
 		locals.push(n.declName);
 		return type + " " + local(n) + " = " + initial;
