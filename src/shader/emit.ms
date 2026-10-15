@@ -477,6 +477,7 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	let localKeys: string[] = [];
 	let localGlslNames: string[] = [];
 	let inHelper = false;
+	let breakOwners: string[] = [];
 	let structTypes: Node[] = [];
 	let structNames: string[] = [];
 	let structFields: string[][] = [];
@@ -1259,12 +1260,90 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 	}
 
 	function body(n: Node, indent: string): string {
+		return block(n.kind == NodeKind.BlockStmt ? n.statements : [n], indent);
+	}
+
+	function block(statements: Node[], indent: string): string {
 		const outer = locals.length;
 		let out = "";
-		const statements = n.kind == NodeKind.BlockStmt ? n.statements : [n];
 		for (const s of statements) { out += stmt(s, indent); }
 		while (locals.length > outer) { locals.pop(); }
 		return out;
+	}
+
+	function loopBody(n: Node, indent: string): string {
+		breakOwners.push("loop");
+		const text = body(n, indent);
+		breakOwners.pop();
+		return text;
+	}
+
+	function caseLabel(test: Node): string {
+		const literal = test.kind == NodeKind.NumberLiteral || test.kind == NodeKind.UnaryExpr &&
+			test.unaryOp == "-" && test.operand.kind == NodeKind.NumberLiteral;
+		const text = value(test);
+		if (!integer(test) || !literal &&
+			!(test.kind == NodeKind.Identifier && constantNames.includes(text))) {
+			fail(test, "a case is an integer literal or module constant: GLSL takes a " +
+				"constant expression");
+		}
+		return "case " + text + ":";
+	}
+
+	function caseBody(statements: Node[], owner: string, indent: string): string {
+		let kept = statements.slice(0);
+		while (owner == "switch" && kept.length > 0 &&
+			kept[kept.length - 1].kind == NodeKind.BreakStmt &&
+			kept[kept.length - 1].breakLabel == "") {
+			kept.pop();
+		}
+		breakOwners.push(owner);
+		let text = block(kept, indent);
+		breakOwners.pop();
+		const last = kept.length > 0 ? kept[kept.length - 1].kind : NodeKind.BlockStmt;
+		if (last != NodeKind.ReturnStmt && last != NodeKind.ContinueStmt) {
+			text += indent + "break;\n";
+		}
+		return text;
+	}
+
+	function choice(n: Node, indent: string): string {
+		const isMatch = n.kind == NodeKind.MatchExpr;
+		const scrutinee = isMatch ? n.matchDisc : n.switchDisc;
+		if (!integer(scrutinee)) { fail(n, "a shader switch or match takes an int32 or uint32"); }
+		const inner = indent + "    ";
+		let text = indent + "switch (" + value(scrutinee) + ") {\n";
+		const cases: Node[] = isMatch ? n.matchCases : n.switchCases;
+		for (let k = 0; k < cases.length; k++) {
+			const c = cases[k];
+			let labels: string[] = [];
+			let statements: Node[] = [];
+			if (isMatch) {
+				if (c.caseGuard != null) {
+					fail(c, "a match arm with 'when' has no GLSL switch form; write an if");
+				}
+				for (const p of c.casePatterns) {
+					labels.push(p.kind == NodeKind.Identifier && p.name == "_" ? "default:" :
+						caseLabel(p));
+				}
+				const arm = c.caseBody;
+				statements = arm.kind == NodeKind.BlockStmt ? arm.statements :
+					[{ kind: NodeKind.ExprStmt, line: arm.line, column: arm.column, expr: arm }];
+			} else {
+				if (c.caseStmts.length == 0 && k + 1 < cases.length) {
+					fail(c, "an empty case runs nothing in msc, where TypeScript runs the next " +
+						"case's body (~/metascript/.inbox/compiler/" +
+						"2026-10-15-empty-switch-case-does-not-group.md); write the labels as " +
+						"one match arm, 1 | 2 => { ... }");
+				}
+				if (c.isDefault) { labels.push("default:"); }
+				for (const t of c.caseTests) { labels.push(caseLabel(t)); }
+				statements = c.caseStmts;
+			}
+			text += inner + labels.join(" ") + " {\n" +
+				caseBody(statements, isMatch ? "match" : "switch", inner + "    ") + inner + "}\n";
+		}
+		return text + indent + "}\n";
 	}
 
 	function branches(n: Node, indent: string): string {
@@ -1301,21 +1380,30 @@ export macro glslStage(entry: Node, workgroupSize: Node): Node {
 		if (n.kind == NodeKind.WhileStmt) {
 			if (n.whileLabel != "") { fail(n, "GLSL has no labelled loops"); }
 			return indent + "while (" + condition(n.whileCondition) + ") {\n" +
-				body(n.whileBody, inner) + indent + "}\n";
+				loopBody(n.whileBody, inner) + indent + "}\n";
 		}
 		if (n.kind == NodeKind.ForStmt) {
 			if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
 			const outer = locals.length;
 			const head = "for (" + simple(n.forInit) + "; " + condition(n.forCondition) + "; " +
 				assignment(n.forUpdate) + ") {\n";
-			const out = indent + head + body(n.forBody, inner) + indent + "}\n";
+			const out = indent + head + loopBody(n.forBody, inner) + indent + "}\n";
 			while (locals.length > outer) { locals.pop(); }
 			return out;
 		}
 		if (n.kind == NodeKind.BreakStmt || n.kind == NodeKind.ContinueStmt) {
 			const label = n.kind == NodeKind.BreakStmt ? n.breakLabel : n.continueLabel;
 			if (label != "") { fail(n, "GLSL has no labelled loops"); }
+			if (n.kind == NodeKind.BreakStmt && breakOwners.length > 0 &&
+				breakOwners[breakOwners.length - 1] == "match") {
+				fail(n, "a break in a match arm leaves the loop or switch around the match, " +
+					"and in the GLSL switch it would leave only the match; write an if");
+			}
 			return indent + (n.kind == NodeKind.BreakStmt ? "break" : "continue") + ";\n";
+		}
+		if (n.kind == NodeKind.SwitchStmt) { return choice(n, indent); }
+		if (n.kind == NodeKind.ExprStmt && n.expr.kind == NodeKind.MatchExpr) {
+			return choice(n.expr, indent);
 		}
 		if (n.kind == NodeKind.ReturnStmt) {
 			const result = n.argument;
