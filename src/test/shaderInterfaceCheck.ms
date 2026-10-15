@@ -1,7 +1,7 @@
 // The stage interface glsl reads from a signature: attributes, varyings, bindings, a program key
 // and several outputs, each declaration gated by the features that read it.
 
-import { glsl } from "../shader/emit";
+import { glsl, glslLinked } from "../shader/emit";
 import {
 	Sampler, Texture2d, Vec2f, Vec4f, binding, builtin, feature, location, sampleType, samplerType,
 	textureLoad, vec2i, discard,
@@ -93,7 +93,7 @@ test "a vertex entry declares its attributes, its varyings and the blocks it rea
 }
 
 test "a fragment entry declares each binding and output under the features that read it" {
-	assert glsl(probeFs) ==
+	assert glslLinked(probeFs, probeVs) ==
 		"#ifdef SHADOWED\n" +
 		"#ifdef NORMAL_MRT\n" +
 		"layout(binding=5) uniform shadowParams {\n" +
@@ -134,7 +134,7 @@ test "a fragment entry declares each binding and output under the features that 
 }
 
 test "a fragment entry without outputs discards under its feature" {
-	assert glsl(cutoutFs) ==
+	assert glslLinked(cutoutFs, probeVs) ==
 		"#ifdef CUTOUT\n" +
 		"layout(binding=3) uniform materialParams {\n" +
 		"    vec4 shadow;\n" +

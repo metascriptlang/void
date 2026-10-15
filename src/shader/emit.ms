@@ -1,6 +1,9 @@
-// glsl(fn) reads a vertex or fragment entry function and returns it as Vulkan-style GLSL 450 for
-// sokol-shdc: the signature becomes the stage's interface, the body becomes main(), and each
-// function and module constant the body reaches is defined above main(), after what it reads.
+// glsl(entry) reads a vertex entry, or a fragment entry that reads no varyings, and returns it as
+// Vulkan-style GLSL 450 for sokol-shdc: the signature becomes the stage's interface, the body
+// becomes main(), and each function and module constant the body reaches is defined above main(),
+// after what it reads. glslLinked(fragment, vertex) does the same for a fragment fed by that vertex
+// entry, after checking its varyings are the vertex outputs: shdc numbers varyings in declaration
+// order, so a name, type or place that differs would read another output with no error.
 // The node walk sits in functions nested in the macro body: only there are Node fields readable.
 
 import {
@@ -116,6 +119,127 @@ function isGlslIdentifier(name: string): boolean {
 }
 
 export macro glsl(entry: Node): Node {
+	const signature = getType(entry);
+	if (signature == null || signature.kind != NodeKind.TypeFunction) {
+		error("glsl: the entry must be a function", entry);
+	}
+	const output = getTypeImpl(signature.typExprReturn);
+	let vertex = false;
+	if (output != null && output.kind == NodeKind.TypeObject) {
+		for (const decorators of output.typExprFieldDecorators) {
+			for (const d of decorators) {
+				if (d.macroName == "builtin") { vertex = true; }
+			}
+		}
+	}
+	for (const t of signature.typExprParams) {
+		const fields = getTypeImpl(t);
+		if (vertex || fields == null || fields.kind != NodeKind.TypeObject) { continue; }
+		let interfaceOnly = true;
+		let varyings = 0;
+		for (const decorators of fields.typExprFieldDecorators) {
+			let builtin = false;
+			for (const d of decorators) {
+				if (d.macroName == "binding" || d.macroName == "feature") { interfaceOnly = false; }
+				if (d.macroName == "builtin") { builtin = true; }
+			}
+			if (!builtin) { varyings += 1; }
+		}
+		if (interfaceOnly && varyings > 0) {
+			error("glsl: a fragment entry that reads varyings is written " +
+				"glslLinked(fragment, vertex), so its varyings are checked against the vertex " +
+				"outputs", entry);
+		}
+	}
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslStage"),
+		arguments: [entry],
+	};
+}
+
+export macro glslLinked(fragment: Node, vertex: Node): Node {
+	function fieldsAt(t: Node | null, at: Node): Node {
+		const fields = t == null ? null : getTypeImpl(t);
+		if (fields == null || fields.kind != NodeKind.TypeObject) {
+			error("glslLinked: the stage interface is not a struct", at);
+		}
+		return fields;
+	}
+
+	function isVarying(fields: Node, f: number): boolean {
+		for (const d of fields.typExprFieldDecorators[f]) {
+			if (d.macroName == "builtin") { return false; }
+		}
+		return true;
+	}
+
+	function varyingNames(t: Node | null, at: Node): string[] {
+		const fields = fieldsAt(t, at);
+		let names: string[] = [];
+		for (let f = 0; f < fields.typExprFieldNames.length; f++) {
+			if (isVarying(fields, f)) { names.push(fields.typExprFieldNames[f]); }
+		}
+		return names;
+	}
+
+	function varyingTypes(t: Node | null, at: Node): Node[] {
+		const fields = fieldsAt(t, at);
+		let types: Node[] = [];
+		for (let f = 0; f < fields.typExprFieldNames.length; f++) {
+			if (isVarying(fields, f)) { types.push(fields.typExprFieldTypes[f]); }
+		}
+		return types;
+	}
+
+	const fs = getType(fragment);
+	const vs = getType(vertex);
+	if (fs == null || fs.kind != NodeKind.TypeFunction || vs == null ||
+		vs.kind != NodeKind.TypeFunction) {
+		error("glslLinked: both stages must be functions", fragment);
+	}
+	let input: Node | null = null;
+	for (const t of fs.typExprParams) {
+		const fields = getTypeImpl(t);
+		if (fields == null || fields.kind != NodeKind.TypeObject) { continue; }
+		let interfaceOnly = true;
+		for (const decorators of fields.typExprFieldDecorators) {
+			for (const d of decorators) {
+				if (d.macroName == "binding" || d.macroName == "feature") { interfaceOnly = false; }
+			}
+		}
+		if (interfaceOnly) { input = t; }
+	}
+	const reads = varyingNames(input, fragment);
+	const writes = varyingNames(vs.typExprReturn, vertex);
+	const readTypes = varyingTypes(input, fragment);
+	const writeTypes = varyingTypes(vs.typExprReturn, vertex);
+	for (let i = 0; i < reads.length || i < writes.length; i++) {
+		const read = i < reads.length ? reads[i] : "";
+		const written = i < writes.length ? writes[i] : "";
+		if (read != written) {
+			error("glslLinked: varying " + String(i) + " is '" + read +
+				"' in the fragment input and '" + written +
+				"' in the vertex output; they match by name, type and order", fragment);
+		}
+		if (!sameType(readTypes[i], writeTypes[i])) {
+			error("glslLinked: varying '" + read + "' has another type in the vertex output",
+				fragment);
+		}
+	}
+	return {
+		kind: NodeKind.CallExpr,
+		line: fragment.line,
+		column: fragment.column,
+		callee: bindSym("glslStage"),
+		arguments: [fragment],
+	};
+}
+
+// The stage both glsl and glslLinked expand to, once their checks hold.
+export macro glslStage(entry: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
 	}
