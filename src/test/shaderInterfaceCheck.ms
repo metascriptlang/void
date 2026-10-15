@@ -94,12 +94,10 @@ test "a vertex entry declares its attributes, its varyings and the blocks it rea
 
 test "a fragment entry declares each binding and output under the features that read it" {
 	assert glslLinked(probeFs, probeVs) ==
-		"#ifdef SHADOWED\n" +
-		"#ifdef NORMAL_MRT\n" +
+		"#if defined(SHADOWED) && defined(NORMAL_MRT)\n" +
 		"layout(binding=5) uniform shadowParams {\n" +
 		"    vec4 shadow;\n" +
 		"};\n" +
-		"#endif\n" +
 		"#endif\n" +
 		"#ifdef SHADOWED\n" +
 		"@image_sample_type shadowMap unfilterable_float\n" +

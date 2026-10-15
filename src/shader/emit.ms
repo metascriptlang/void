@@ -358,14 +358,15 @@ export macro glslStage(entry: Node): Node {
 		return own != null && sameType(own, t);
 	}
 
-	// Declarations come out in interface order, each inside the #ifdef of every program key
-	// feature all its reads sit under, and left out when nothing reads it: a declared but unread
-	// uniform or texture is still one the draw must bind.
+	// Declarations come out in interface order, each under the conditions its reads run under, and
+	// are left out when nothing reads them: a declared but unread uniform or texture is still one
+	// the draw must bind. A condition is a preprocessor expression over the program key's
+	// features; `features` holds the clauses around the code being written.
 	let declNames: string[] = [];
 	let declTexts: string[] = [];
-	let declGates: string[][] = [];
-	let declUsed: boolean[] = [];
+	let declContexts: string[][] = [];
 	let declAlways: boolean[] = [];
+	let declFixed: string[] = [];
 	let features: string[] = [];
 	const reservedWords = glslReservedWords();
 	let valueNames = ["main", "fragColor"];
@@ -387,6 +388,8 @@ export macro glslStage(entry: Node): Node {
 
 	let globals: string[] = [];
 	let locals: string[] = [];
+	let memberNames: string[] = [];
+	let memberSlots: string[] = [];
 	function claim(name: string, at: Node): void {
 		if (globals.indexOf(name) >= 0) {
 			fail(at, "'" + name + "' names two things in one stage");
@@ -394,28 +397,34 @@ export macro glslStage(entry: Node): Node {
 		globals.push(name);
 	}
 
+	// Blocks at one binding are alternatives a variant chooses between, so they may share members.
+	function claimMember(name: string, slot: string, at: Node): void {
+		const m = memberNames.indexOf(name);
+		if (m >= 0 && memberSlots[m] == slot) { return; }
+		claim(name, at);
+		memberNames.push(name);
+		memberSlots.push(slot);
+	}
+
 	function declare(name: string, text: string, always: boolean): void {
 		claim(name, entry);
 		declNames.push(name);
 		declTexts.push(text);
-		declGates.push([]);
-		declUsed.push(false);
+		declContexts.push([]);
 		declAlways.push(always);
+		declFixed.push("");
+	}
+
+	function declareUnder(name: string, text: string, condition: string): void {
+		declare(name, text, condition == "");
+		declFixed[declFixed.length - 1] = condition;
 	}
 
 	function useUnder(name: string, gates: string[]): void {
 		const i = declNames.indexOf(name);
-		if (i < 0) { return; }
-		if (!declUsed[i]) {
-			declUsed[i] = true;
-			declGates[i] = gates;
-			return;
-		}
-		let common: string[] = [];
-		for (const g of declGates[i]) {
-			if (gates.indexOf(g) >= 0) { common.push(g); }
-		}
-		declGates[i] = common;
+		if (i < 0 || declFixed[i] != "") { return; }
+		const context = gates.join(" && ");
+		if (declContexts[i].indexOf(context) < 0) { declContexts[i].push(context); }
 	}
 
 	// A helper's body is written once, with no features on; what it reads is kept as a record
@@ -424,9 +433,13 @@ export macro glslStage(entry: Node): Node {
 	let records: string[][] = [];
 	let recording = -1;
 
+	function record(name: string): void {
+		records[recording].push(name + "\t" + features.join(";;"));
+	}
+
 	function use(name: string): void {
 		if (recording >= 0) {
-			records[recording].push(name + "|" + features.join(","));
+			record(name);
 			return;
 		}
 		useUnder(name, features.slice(0));
@@ -443,15 +456,35 @@ export macro glslStage(entry: Node): Node {
 	function replay(key: string, gates: string[]): void {
 		useUnder("call:" + key, gates);
 		for (const item of records[recordKeys.indexOf(key)]) {
-			const bar = item.indexOf("|");
-			const name = item.slice(0, bar);
-			const under = union(gates, item.slice(bar + 1).split(","));
+			const tab = item.indexOf("\t");
+			const name = item.slice(0, tab);
+			const under = union(gates, item.slice(tab + 1).split(";;"));
 			if (name.startsWith("call:")) {
 				replay(name.replace("call:", ""), under);
 			} else {
 				useUnder(name, under);
 			}
 		}
+	}
+
+	function grouped(condition: string): string {
+		return condition.indexOf(" ") < 0 ? condition : "(" + condition + ")";
+	}
+
+	function opening(condition: string): string {
+		const simple = condition.indexOf(" ") < 0 && condition.endsWith(")");
+		if (simple && condition.startsWith("defined(")) {
+			return "#ifdef " + condition.slice(8, condition.length - 1);
+		}
+		if (simple && condition.startsWith("!defined(")) {
+			return "#ifndef " + condition.slice(9, condition.length - 1);
+		}
+		return "#if " + condition;
+	}
+
+	function featureCondition(decorators: Node[], at: Node): string {
+		const feature = decorator(decorators, "feature");
+		return feature == null ? "" : "defined(" + argumentName(feature, at) + ")";
 	}
 
 	function member(t: Node, name: string, at: Node): string {
@@ -489,7 +522,7 @@ export macro glslStage(entry: Node): Node {
 				let text = slot + name + " {\n";
 				for (let m = 0; m < block.typExprFieldNames.length; m++) {
 					const memberName = block.typExprFieldNames[m];
-					claim(memberName, entry);
+					claimMember(memberName, slot, entry);
 					const blockMember = member(block.typExprFieldTypes[m], memberName, entry);
 					text += "    " + blockMember + ";\n";
 				}
@@ -508,7 +541,8 @@ export macro glslStage(entry: Node): Node {
 			if (builtin == null) {
 				// Every input is declared, read or not: shdc numbers them in declaration order.
 				const varying = member(inputs.typExprFieldTypes[f], name, entry);
-				declare(name, "in " + varying + ";\n", true);
+				const gate = featureCondition(inputs.typExprFieldDecorators[f], entry);
+				declareUnder(name, "in " + varying + ";\n", gate);
 				continue;
 			}
 			const which = argumentName(builtin, entry);
@@ -536,9 +570,9 @@ export macro glslStage(entry: Node): Node {
 		for (let f = 0; f < outputs.typExprFieldNames.length; f++) {
 			const name = outputs.typExprFieldNames[f];
 			const decorators = outputs.typExprFieldDecorators[f];
-			const feature = decorator(decorators, "feature");
+			const gate = featureCondition(decorators, entry);
 			outputNames.push(name);
-			outputFeatures.push(feature == null ? "" : argumentName(feature, entry));
+			outputFeatures.push(gate);
 			const builtin = decorator(decorators, "builtin");
 			if (builtin != null) {
 				if (!vertex || argumentName(builtin, entry) != "position") {
@@ -551,7 +585,7 @@ export macro glslStage(entry: Node): Node {
 			outputTargets.push(name);
 			const t = outputs.typExprFieldTypes[f];
 			if (vertex) {
-				declare(name, "out " + member(t, name, entry) + ";\n", true);
+				declareUnder(name, "out " + member(t, name, entry) + ";\n", gate);
 				continue;
 			}
 			const location = decorator(decorators, "location");
@@ -559,7 +593,7 @@ export macro glslStage(entry: Node): Node {
 				fail(entry, "fragment output '" + name + "' has no @location(n)");
 			}
 			const slot = "layout(location=" + argumentNumber(location, entry) + ") out ";
-			declare(name, slot + member(t, name, entry) + ";\n", feature == null);
+			declareUnder(name, slot + member(t, name, entry) + ";\n", gate);
 		}
 	}
 
@@ -722,7 +756,7 @@ export macro glslStage(entry: Node): Node {
 			fail(n, "method calls have no GLSL form yet");
 		}
 		if (recording >= 0) {
-			records[recording].push("call:" + key + "|" + features.join(","));
+			record("call:" + key);
 		} else {
 			replay(key, features.slice(0));
 		}
@@ -743,12 +777,30 @@ export macro glslStage(entry: Node): Node {
 	}
 
 	function featureOf(n: Node): string {
-		if (n.kind != NodeKind.MemberExpr || !isType(n.object, keyType)) { return ""; }
-		const keys = fieldsOf(keyType);
-		const f = keys.typExprFieldNames.indexOf(n.property);
-		const feature = decorator(keys.typExprFieldDecorators[f], "feature");
-		if (feature == null) { fail(n, "key field '" + n.property + "' has no @feature(NAME)"); }
-		return argumentName(feature, n);
+		if (n.kind == NodeKind.MemberExpr && isType(n.object, keyType)) {
+			const keys = fieldsOf(keyType);
+			const f = keys.typExprFieldNames.indexOf(n.property);
+			const feature = decorator(keys.typExprFieldDecorators[f], "feature");
+			if (feature == null) {
+				fail(n, "key field '" + n.property + "' has no @feature(NAME)");
+			}
+			return "defined(" + argumentName(feature, n) + ")";
+		}
+		if (n.kind == NodeKind.UnaryExpr && n.unaryOp == "!") {
+			const inner = featureOf(n.operand);
+			return inner == "" ? "" : "!" + grouped(inner);
+		}
+		if (n.kind == NodeKind.BinaryExpr && (n.operator == "&&" || n.operator == "||")) {
+			const left = featureOf(n.left);
+			const right = featureOf(n.right);
+			if (left == "" && right == "") { return ""; }
+			if (left == "" || right == "") {
+				fail(n, "a condition reads program key features and values together; " +
+					"write the key's part as its own if");
+			}
+			return grouped(left) + " " + n.operator + " " + grouped(right);
+		}
+		return "";
 	}
 
 	function kindOf(n: Node): TypeKind { return typeKind(getType(n)); }
@@ -884,13 +936,13 @@ export macro glslStage(entry: Node): Node {
 	function output(name: string, value: Node, indent: string): string {
 		const o = outputNames.indexOf(name);
 		const target = outputTargets[o];
-		const feature = outputFeatures[o];
-		if (feature != "") { features.push(feature); }
+		const gate = outputFeatures[o];
+		if (gate != "") { features.push(gate); }
 		use(target);
 		const text = indent + target + " = " + expr(value) + ";\n";
-		if (feature == "") { return text; }
+		if (gate == "") { return text; }
 		features.pop();
-		return "#ifdef " + feature + "\n" + text + "#endif\n";
+		return opening(gate) + "\n" + text + "#endif\n";
 	}
 
 	function assignment(n: Node): string {
@@ -962,12 +1014,12 @@ export macro glslStage(entry: Node): Node {
 			return indent + "{\n" + body(n, inner) + indent + "}\n";
 		}
 		if (n.kind == NodeKind.IfStmt && featureOf(n.condition) != "") {
-			const feature = featureOf(n.condition);
-			features.push(feature);
-			let text = "#ifdef " + feature + "\n" + body(n.consequent, indent);
+			const gate = featureOf(n.condition);
+			features.push(gate);
+			let text = opening(gate) + "\n" + body(n.consequent, indent);
 			features.pop();
 			if (n.alternate != null) {
-				features.push("!" + feature);
+				features.push("!" + grouped(gate));
 				const otherwise = body(n.alternate, indent);
 				features.pop();
 				if (otherwise != "") { text += "#else\n" + otherwise; }
@@ -1024,15 +1076,15 @@ export macro glslStage(entry: Node): Node {
 	const main = body(fn.fnBody, "    ");
 	let header = "";
 	for (let i = 0; i < declNames.length; i++) {
-		if (!declUsed[i] && !declAlways[i]) { continue; }
-		let text = declTexts[i];
-		for (let g = declAlways[i] ? -1 : declGates[i].length - 1; g >= 0; g--) {
-			const gate = declGates[i][g];
-			const open = gate.startsWith("!") ? "#ifndef " + gate.replace("!", "") :
-				"#ifdef " + gate;
-			text = open + "\n" + text + "#endif\n";
+		const contexts = declContexts[i];
+		if (!declAlways[i] && declFixed[i] == "" && contexts.length == 0) { continue; }
+		let gate = declFixed[i];
+		if (!declAlways[i] && gate == "" && contexts.indexOf("") < 0) {
+			let any: string[] = [];
+			for (const c of contexts) { any.push(contexts.length == 1 ? c : grouped(c)); }
+			gate = any.join(" || ");
 		}
-		header += text;
+		header += gate == "" ? declTexts[i] : opening(gate) + "\n" + declTexts[i] + "#endif\n";
 	}
 	const source = header + "void main() {\n" + main + "}\n";
 	return { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: source };
