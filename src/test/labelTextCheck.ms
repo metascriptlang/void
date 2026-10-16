@@ -1,4 +1,4 @@
-import { Align, TextRun, Truncate } from "../void2d/textLayout";
+import { Align, TextRun, Truncate, UnderlineStyle } from "../void2d/textLayout";
 import { DEFAULT_FONT, fontFace } from "../void2d/font";
 import { decorationMetrics, faceMetrics, glyphLookups } from "../void2d/face";
 
@@ -176,7 +176,7 @@ const CLEAR = rgba(0.0, 0.0, 0.0, 0.0);
 function plainRun(len: int32): TextRun {
 	return {
 		len: len, font: DEFAULT_FONT, color: rgba(1.0, 1.0, 1.0, 1.0), background: CLEAR,
-		underline: CLEAR, wavy: false, strikethrough: CLEAR,
+		underline: CLEAR, underlineStyle: UnderlineStyle.Solid, strikethrough: CLEAR,
 	};
 }
 
@@ -184,7 +184,11 @@ test "run decorations: a background fills the line box, lines sit on the face's 
 	const index = allocateLabelText();
 	const runs: TextRun[] = [
 		{ ...plainRun(3), background: rgba(0.0, 0.0, 1.0, 1.0) },
-		{ ...plainRun(3), underline: rgba(0.0, 1.0, 0.0, 1.0), wavy: true },
+		{
+			...plainRun(3),
+			underline: rgba(0.0, 1.0, 0.0, 1.0),
+			underlineStyle: UnderlineStyle.Wavy,
+		},
 		{ ...plainRun(2), strikethrough: rgba(1.0, 0.0, 0.0, 1.0) },
 	];
 	setLabelRuns(index, runs);
@@ -219,8 +223,13 @@ test "a decoration runs on across the runs that share it, as GPUI's does" {
 	const index = allocateLabelText();
 	const squiggle = rgba(1.0, 0.2, 0.2, 1.0);
 	const runs: TextRun[] = [
-		{ ...plainRun(2), color: rgba(0.8, 0.5, 1.0, 1.0), underline: squiggle, wavy: true },
-		{ ...plainRun(3), underline: squiggle, wavy: true },
+		{
+			...plainRun(2),
+			color: rgba(0.8, 0.5, 1.0, 1.0),
+			underline: squiggle,
+			underlineStyle: UnderlineStyle.Wavy,
+		},
+		{ ...plainRun(3), underline: squiggle, underlineStyle: UnderlineStyle.Wavy },
 		{ ...plainRun(2), underline: squiggle },
 		plainRun(1),
 	];
@@ -239,6 +248,43 @@ test "a decoration runs on across the runs that share it, as GPUI's does" {
 	assert e.decorations[0].kind == DecorationKind.WavyUnderline;
 	assert approx(e.decorations[0].w, g[4].x + g[4].advance - g[0].x);
 	assert e.decorations[1].kind == DecorationKind.Underline && e.decorations[1].x == g[5].x;
+	releaseLabelText(index);
+}
+
+test "a run underlines double, dotted or dashed in a colour of its own" {
+	const index = allocateLabelText();
+	const red = rgba(1.0, 0.0, 0.0, 1.0);
+	const green = rgba(0.0, 1.0, 0.0, 1.0);
+	const runs: TextRun[] = [
+		{ ...plainRun(2), underline: red, underlineStyle: UnderlineStyle.Double },
+		{ ...plainRun(2), underline: red, underlineStyle: UnderlineStyle.Dotted },
+		{ ...plainRun(2), underline: green, underlineStyle: UnderlineStyle.Dashed },
+		{ ...plainRun(2), underline: green, underlineStyle: UnderlineStyle.Dashed },
+	];
+	setLabelRuns(index, runs);
+	shapeLabel(index, "abcdefgh", {
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
+	});
+	const e = labelTexts[index];
+	const g = e.layout.glyphs;
+	const line = e.layout.lines[0];
+	const deco = decorationMetrics(fontFace(DEFAULT_FONT), 13.0);
+	assert (e.decorations.length as int32) == 3;
+	assert e.decorations[0].kind == DecorationKind.DoubleUnderline;
+	assert e.decorations[1].kind == DecorationKind.DottedUnderline;
+	assert e.decorations[2].kind == DecorationKind.DashedUnderline;
+	assert e.decorations[0].color == red && e.decorations[2].color == green;
+	assert e.decorations[1].x == g[2].x;
+	assert approx(e.decorations[2].w, g[7].x + g[7].advance - g[4].x);
+	for (const d of e.decorations) {
+		assert approx(d.y, line.baseline + deco.underlineTop);
+		assert d.h == deco.underlineThickness;
+	}
 	releaseLabelText(index);
 }
 

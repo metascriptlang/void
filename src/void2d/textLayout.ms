@@ -201,13 +201,21 @@ export struct LaidGlyph {
 
 export const NO_RUN: int32 = -1;
 
+export enum UnderlineStyle {
+	Solid,
+	Wavy,
+	Double,
+	Dotted,
+	Dashed,
+}
+
 export struct TextRun {
 	len: int32;
 	font: FontId;
 	color: Color;
 	background: Color;
 	underline: Color;
-	wavy: boolean;
+	underlineStyle: UnderlineStyle;
 	strikethrough: Color;
 }
 

@@ -130,11 +130,11 @@ test "run decorations are walked in visual order, so a reflected run gets two se
 	const second: Color = rgba(0.0, 1.0, 0.0, 1.0);
 	const third: Color = rgba(0.0, 0.0, 1.0, 1.0);
 	const runs: TextRun[] = [
-		{ len: 4, font: font, color: clear, background: first, underline: clear, wavy: false,
+		{ len: 4, font: font, color: clear, background: first, underline: clear,
 			strikethrough: clear },
-		{ len: 1, font: font, color: clear, background: second, underline: clear, wavy: false,
+		{ len: 1, font: font, color: clear, background: second, underline: clear,
 			strikethrough: clear },
-		{ len: 4, font: font, color: clear, background: third, underline: clear, wavy: false,
+		{ len: 4, font: font, color: clear, background: third, underline: clear,
 			strikethrough: clear },
 	];
 	n.setTextRuns(runs);

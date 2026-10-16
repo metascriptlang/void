@@ -13,11 +13,11 @@ const white = rgba(1.0, 1.0, 1.0, 1.0);
 const runs: TextRun[] = [
 	{
 		len: 2, font: DEFAULT_FONT, color: white, background: clear, underline: clear,
-		wavy: false, strikethrough: clear,
+		strikethrough: clear,
 	},
 	{
 		len: 2, font: DEFAULT_FONT, color: white, background: clear, underline: clear,
-		wavy: false, strikethrough: clear,
+		strikethrough: clear,
 	},
 ];
 const n = s.label("a😀b", 13.0, white);

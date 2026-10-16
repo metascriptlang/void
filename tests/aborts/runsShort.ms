@@ -11,7 +11,7 @@ const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 const clear = rgba(0.0, 0.0, 0.0, 0.0);
 const runs: TextRun[] = [{
 	len: 2, font: DEFAULT_FONT, color: rgba(1.0, 1.0, 1.0, 1.0), background: clear,
-	underline: clear, wavy: false, strikethrough: clear,
+	underline: clear, strikethrough: clear,
 }];
 const n = s.label("abc", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 n.setTextRuns(runs);

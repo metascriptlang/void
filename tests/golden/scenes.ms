@@ -8,7 +8,7 @@
 // regenerate exactly that group and nothing else.
 
 import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
-import { Align, TextRun, Truncate } from "../../src/void2d/textLayout";
+import { Align, TextRun, Truncate, UnderlineStyle } from "../../src/void2d/textLayout";
 import { TextDirection } from "../../src/void2d/textDirection";
 import {
 	addFont, addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature,
@@ -844,7 +844,7 @@ function decoratedRun(len: int32, color: Color): TextRun {
 	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	return {
 		len: len, font: DEFAULT_FONT, color: color, background: clear, underline: clear,
-		wavy: false, strikethrough: clear,
+		strikethrough: clear,
 	};
 }
 
@@ -862,7 +862,11 @@ function textDecorations(): Scene2D {
 	s.add(s.label("let total = 42;", 13.0, white).setTextRuns(code).at(10.3, 8.3));
 	const wavy: TextRun[] = [
 		decoratedRun(5, plain),
-		{ ...decoratedRun(5, plain), underline: rgba(0.95, 0.35, 0.30, 1.0), wavy: true },
+		{
+			...decoratedRun(5, plain),
+			underline: rgba(0.95, 0.35, 0.30, 1.0),
+			underlineStyle: UnderlineStyle.Wavy,
+		},
 		decoratedRun(5, plain),
 	];
 	s.add(s.label("wavy error here", 16.0, white).setTextRuns(wavy).at(10.0, 40.0));
@@ -926,7 +930,7 @@ function textLigature(): Scene2D {
 	for (let i: int32 = 0; i < LIGATURE_TEXT.length; i++) {
 		split.push({
 			len: 1, font: font, color: i % 2 == 0 ? warm : cool, background: clear,
-			underline: clear, wavy: false, strikethrough: clear,
+			underline: clear, strikethrough: clear,
 		});
 	}
 	s.add(
@@ -1029,7 +1033,7 @@ function spriteRun(length: int32, ink: Color, behind: Color): TextRun {
 	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	return {
 		len: length, font: DEFAULT_FONT, color: ink, background: behind, underline: clear,
-		wavy: false, strikethrough: clear,
+		strikethrough: clear,
 	};
 }
 
@@ -1130,7 +1134,7 @@ function bidiRun(len: int32, font: FontId, background: Color): TextRun {
 	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	return {
 		len: len, font: font, color: BIDI_INK, background: background, underline: clear,
-		wavy: false, strikethrough: clear,
+		strikethrough: clear,
 	};
 }
 
@@ -1231,7 +1235,11 @@ function textBidiDecorations(): Scene2D {
 	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	const runs: TextRun[] = [
 		bidiRun(4, font, rgba(0.30, 0.34, 0.46, 1.0)),
-		{ ...bidiRun(1, font, clear), underline: rgba(0.95, 0.35, 0.30, 1.0), wavy: true },
+		{
+			...bidiRun(1, font, clear),
+			underline: rgba(0.95, 0.35, 0.30, 1.0),
+			underlineStyle: UnderlineStyle.Wavy,
+		},
 		bidiRun(4, font, rgba(0.38, 0.30, 0.20, 1.0)),
 		{ ...bidiRun(3, font, clear), strikethrough: rgba(0.95, 0.60, 0.40, 1.0) },
 		bidiRun(2, font, clear),

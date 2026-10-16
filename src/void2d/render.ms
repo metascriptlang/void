@@ -113,6 +113,7 @@ import {
 	NO_GLYPH,
 	NO_RUN,
 	TextError,
+	UnderlineStyle,
 	shapeText,
 	wrapText,
 } from "./textLayout";
@@ -519,21 +520,32 @@ function emitRunBox(
 		uiInstance(InstanceMode.Box, world, origin.x, origin.y, w, h, fill));
 }
 
+export function lineShape(kind: DecorationKind): UnderlineStyle {
+	return match (kind) {
+		DecorationKind.WavyUnderline => UnderlineStyle.Wavy,
+		DecorationKind.DoubleUnderline => UnderlineStyle.Double,
+		DecorationKind.DottedUnderline => UnderlineStyle.Dotted,
+		DecorationKind.DashedUnderline => UnderlineStyle.Dashed,
+		_ => UnderlineStyle.Solid,
+	};
+}
+
 function emitRunLine(
 	blend: BlendMode,
 	world: Transform2D,
 	box: [float32, float32, float32, float32],
-	wavy: boolean,
+	shape: UnderlineStyle,
 	fill: Color,
 ): void {
 	const [x, y, w, h] = box;
 	if (w <= 0.0 || h <= 0.0) { return; }
-	const quadY: float32 = wavy ? y - h : y;
-	const quadH: float32 = wavy ? h * 3.0 : h;
+	const patterned: boolean = shape != UnderlineStyle.Solid;
+	const quadY: float32 = patterned ? y - h : y;
+	const quadH: float32 = patterned ? h * 3.0 : h;
 	const origin = vec2(x, quadY) * world;
 	drawUiInstance(sharedGlyphView(), blend, {
 		...uiInstance(InstanceMode.Underline, world, origin.x, origin.y, w, quadH, fill),
-		borders: [h, wavy ? 1.0 : 0.0, 0.0, 0.0],
+		borders: [h, (shape as int32) as float32, 0.0, 0.0],
 	});
 }
 
@@ -553,8 +565,7 @@ function emitDecorations(
 		if (background) {
 			emitRunBox(blend, world, box, d.color.faded(na));
 		} else {
-			const wavy: boolean = d.kind == DecorationKind.WavyUnderline;
-			emitRunLine(blend, world, box, wavy, d.color.faded(na));
+			emitRunLine(blend, world, box, lineShape(d.kind), d.color.faded(na));
 		}
 	}
 }

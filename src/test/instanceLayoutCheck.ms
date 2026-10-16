@@ -10,6 +10,9 @@ import {
 	InstanceMode, UI_MODE_COUNT, MAX_WEB_STRIDE, LEGACY_QUAD_BYTES,
 	uiInstanceBytes, spriteInstanceBytes, oneStrideFitsWeb, packChannel,
 } from "../void2d/instance";
+import { UnderlineStyle } from "../void2d/textLayout";
+import { DecorationKind } from "../void2d/labelText";
+import { lineShape } from "../void2d/render";
 import {
 	UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
 	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, UI_STRIDE, UI_ATTRIBUTES,
@@ -114,6 +117,16 @@ test "the modes are the six the roadmap lists, distinct and dense from zero" {
 	assert (InstanceMode.Selection as int32) == 5;
 	assert UI_MODE_COUNT == 6;
 	assert (InstanceMode.Selection as int32) == UI_MODE_COUNT - 1;
+}
+
+test "an underline's shape is the code shader2d.glsl branches on in its underline mode" {
+	assert (UnderlineStyle.Solid as int32) == 0;
+	assert (UnderlineStyle.Wavy as int32) == 1;
+	assert (UnderlineStyle.Double as int32) == 2;
+	assert (UnderlineStyle.Dotted as int32) == 3;
+	assert (UnderlineStyle.Dashed as int32) == 4;
+	assert lineShape(DecorationKind.DashedUnderline) == UnderlineStyle.Dashed;
+	assert lineShape(DecorationKind.Strikethrough) == UnderlineStyle.Solid;
 }
 
 // ---------------------------------------------------------------------------------------

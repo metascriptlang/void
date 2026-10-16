@@ -94,6 +94,34 @@ export function wavyUnderlineDistance(
 	return (ad - thickness * 0.5) as float32;
 }
 
+// Ghostty's underline sprites (font/sprite/draw/special.zig), on the same three-thickness quad
+// as the wavy line: `px` from the quad's left edge, `py` from its centre, which is the centre
+// of the single underline. Double puts a stroke one thickness above and one below it; dotted
+// gives dots a diameter of sqrt2 thicknesses, one diameter apart. Ghostty sizes a dash from
+// the cell (width / 3 + 1); a label has no cell, so a dash and a gap are three thicknesses.
+export function doubleUnderlineDistance(py: float32, thickness: float32): float32 {
+	const ay: float32 = py < 0.0 ? -py : py;
+	const d: float32 = ay - thickness;
+	return (d < 0.0 ? -d : d) - thickness * 0.5;
+}
+
+export function dottedUnderlineDistance(px: float32, py: float32, thickness: float32): float32 {
+	const radius: float32 = (Math.SQRT1_2 as float32) * thickness;
+	const period: float32 = 4.0 * radius;
+	const dx: float32 = px - (Math.floor((px / period) as float64) as float32) * period -
+		period * 0.5;
+	return (Math.sqrt((dx * dx + py * py) as float64) as float32) - radius;
+}
+
+export function dashedUnderlineDistance(px: float32, py: float32, thickness: float32): float32 {
+	const dash: float32 = 3.0 * thickness;
+	const q: float32 = px - (Math.floor((px / (2.0 * dash)) as float64) as float32) * 2.0 * dash;
+	const dq: float32 = q - dash * 0.5;
+	const across: float32 = (dq < 0.0 ? -dq : dq) - dash * 0.5;
+	const ay: float32 = py < 0.0 ? -py : py;
+	const down: float32 = ay - thickness * 0.5;
+	return across > down ? across : down;
+}
 
 // ===== the analytic shadow: GPUI's erf integral, ported =====
 //

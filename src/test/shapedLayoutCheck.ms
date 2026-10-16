@@ -294,7 +294,7 @@ function runOf(len: int32, font: FontId): TextRun {
 	const clear = rgba(0.0, 0.0, 0.0, 0.0);
 	return {
 		len: len, font: font, color: rgba(1.0, 1.0, 1.0, 1.0), background: clear,
-		underline: clear, wavy: false, strikethrough: clear,
+		underline: clear, strikethrough: clear,
 	};
 }
 

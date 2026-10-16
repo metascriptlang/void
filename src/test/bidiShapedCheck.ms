@@ -143,7 +143,7 @@ function plainRun(len: int32, font: FontId): TextRun {
 	const ink: Color = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
 	const clear: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
 	return {
-		len: len, font: font, color: ink, background: clear, underline: clear, wavy: false,
+		len: len, font: font, color: ink, background: clear, underline: clear,
 		strikethrough: clear,
 	};
 }

@@ -709,8 +709,10 @@ void main() {
 
     if (mode == 4) {
         float thickness = vBorders.x;
+        int shape = int(vBorders.y + 0.5);
+        float x = p.x + half_.x;
         float d;
-        if (vBorders.y > 0.5) {
+        if (shape == 1) {
             float height = half_.y * 2.0;
             float frequency = 6.283185307179586 * thickness / height;
             float amplitude = thickness * 0.8 / height;
@@ -719,6 +721,16 @@ void main() {
             float distance = (p.y / height - sin(phase) * amplitude)
                 * height / sqrt(1.0 + slope * slope);
             d = abs(distance) - thickness * 0.5;
+        } else if (shape == 2) {
+            d = abs(abs(p.y) - thickness) - thickness * 0.5;
+        } else if (shape == 3) {
+            float radius = 0.7071067811865476 * thickness;
+            float period = 4.0 * radius;
+            d = length(vec2(x - floor(x / period) * period - period * 0.5, p.y)) - radius;
+        } else if (shape == 4) {
+            float dash = 3.0 * thickness;
+            float q = x - floor(x / (2.0 * dash)) * 2.0 * dash;
+            d = max(abs(q - dash * 0.5) - dash * 0.5, abs(p.y) - thickness * 0.5);
         } else {
             d = roundedRectDistance(p, half_, 0.0);
         }

@@ -1,6 +1,7 @@
 import {
 	roundedRectDistance, coverageFromDistance, aaWidthForAffine,
 	smoothUnionDistance, wavyUnderlineDistance,
+	doubleUnderlineDistance, dottedUnderlineDistance, dashedUnderlineDistance,
 	erfApprox, shadowCoverage, insetShadowCoverage,
 } from "../void2d/sdf";
 import { trs2d } from "../void2d/types";
@@ -102,6 +103,32 @@ test "wavy underline distance follows the sine centreline" {
 	assert approx(wavyUnderlineDistance(0.0, 0.0, height, thickness), -1.0);
 	assert approx(wavyUnderlineDistance(peakX, 1.6, height, thickness), -1.0);
 	assert wavyUnderlineDistance(peakX, 0.0, height, thickness) > 0.0;
+}
+
+test "a double underline is two strokes a thickness either side of the single one" {
+	const thickness: float32 = 2.0;
+	assert approx(doubleUnderlineDistance(-2.0, thickness), -1.0);
+	assert approx(doubleUnderlineDistance(2.0, thickness), -1.0);
+	assert approx(doubleUnderlineDistance(0.0, thickness), 1.0);
+	assert approx(doubleUnderlineDistance(3.0, thickness), 0.0);
+}
+
+test "a dotted underline spaces dots of diameter sqrt2 thickness one diameter apart" {
+	const thickness: float32 = 2.0;
+	const radius: float32 = (Math.SQRT1_2 as float32) * thickness;
+	const period: float32 = 4.0 * radius;
+	assert approx(dottedUnderlineDistance(period * 0.5, 0.0, thickness), -radius);
+	assert approx(dottedUnderlineDistance(period * 1.5, 0.0, thickness), -radius);
+	assert approx(dottedUnderlineDistance(0.0, 0.0, thickness), radius);
+	assert approx(dottedUnderlineDistance(period * 0.5, radius, thickness), 0.0);
+}
+
+test "a dashed underline alternates dashes and gaps of three thicknesses" {
+	const thickness: float32 = 2.0;
+	assert approx(dashedUnderlineDistance(3.0, 0.0, thickness), -1.0);
+	assert approx(dashedUnderlineDistance(9.0, 0.0, thickness), 3.0);
+	assert approx(dashedUnderlineDistance(15.0, 0.0, thickness), -1.0);
+	assert approx(dashedUnderlineDistance(3.0, 1.0, thickness), 0.0);
 }
 
 test "analytic coverage equals true area across a straight edge" {

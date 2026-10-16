@@ -32,6 +32,7 @@ import {
 	shapeText,
 	textShapingOn,
 	wrapText,
+	UnderlineStyle,
 } from "./textLayout";
 import {
 	ColourGlyph,
@@ -105,7 +106,20 @@ export enum DecorationKind {
 	Background,
 	Underline,
 	WavyUnderline,
+	DoubleUnderline,
+	DottedUnderline,
+	DashedUnderline,
 	Strikethrough,
+}
+
+function underlineKind(style: UnderlineStyle): DecorationKind {
+	return match (style) {
+		UnderlineStyle.Solid => DecorationKind.Underline,
+		UnderlineStyle.Wavy => DecorationKind.WavyUnderline,
+		UnderlineStyle.Double => DecorationKind.DoubleUnderline,
+		UnderlineStyle.Dotted => DecorationKind.DottedUnderline,
+		UnderlineStyle.Dashed => DecorationKind.DashedUnderline,
+	};
 }
 
 export struct Decoration {
@@ -396,7 +410,7 @@ function lineDecorations(
 				color = style.background;
 			} else if (slot == DecorationKind.Underline) {
 				color = style.underline;
-				kind = style.wavy ? DecorationKind.WavyUnderline : DecorationKind.Underline;
+				kind = underlineKind(style.underlineStyle);
 				y = line.baseline + deco.underlineTop;
 				h = deco.underlineThickness;
 			} else {
