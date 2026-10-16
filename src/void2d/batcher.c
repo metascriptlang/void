@@ -1059,10 +1059,12 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
 	size_t spriteBytes = (size_t)spriteInstanceCount * sizeof(void2dSpriteInstance);
 	size_t uiBytes = (size_t)uiInstanceCount * sizeof(void2dUiInstance);
 	if (vertexDirty && !writeListBuffer(l, LIST_VERTEX, vertices, vertexBytes)) {
+		l->stale = 1;
 		s_droppedFrames++;
 		return 0;
 	}
 	if (spriteDirty && !writeListBuffer(l, LIST_SPRITE, spriteInstances, spriteBytes)) {
+		l->stale = 1;
 		s_droppedFrames++;
 		return 0;
 	}
@@ -1071,6 +1073,7 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
 			void2dUiInstance *grown = (void2dUiInstance *)realloc(
 				l->stage, (size_t)uiInstanceCount * sizeof(void2dUiInstance));
 			if (!grown) {
+				l->stale = 1;
 				s_droppedFrames++;
 				fprintf(stderr, "void2d: no room to stage %d UI instances — frame dropped\n",
 					uiInstanceCount);
@@ -1089,6 +1092,7 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
 			}
 		}
 		if (!writeListBuffer(l, LIST_UI, l->stage, uiBytes)) {
+			l->stale = 1;
 			s_droppedFrames++;
 			return 0;
 		}
