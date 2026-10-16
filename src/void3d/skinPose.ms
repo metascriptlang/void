@@ -104,15 +104,15 @@ export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> 
 			pose.pendingWorlds[joint],
 		);
 	}
-	const oldMatrices = pose.jointMatrices;
-	pose.jointMatrices = pose.pendingJointMatrices;
-	pose.pendingJointMatrices = oldMatrices;
-	const oldWorlds = pose.worlds;
-	pose.worlds = pose.pendingWorlds;
-	pose.pendingWorlds = oldWorlds;
-	const oldBlocks = pose.blocks;
-	pose.blocks = pose.pendingBlocks;
-	pose.pendingBlocks = oldBlocks;
+	const oldMatrices = move pose.jointMatrices;
+	pose.jointMatrices = move pose.pendingJointMatrices;
+	pose.pendingJointMatrices = move oldMatrices;
+	const oldWorlds = move pose.worlds;
+	pose.worlds = move pose.pendingWorlds;
+	pose.pendingWorlds = move oldWorlds;
+	const oldBlocks = move pose.blocks;
+	pose.blocks = move pose.pendingBlocks;
+	pose.pendingBlocks = move oldBlocks;
 	pose.revision += 1;
 	pose.ready = true;
 	return Result.ok(pose.palettes.length as int32);
