@@ -456,8 +456,8 @@ test "silkyVertTest" {
 		"in vec2 position;\n" +
 		"out vec2 fragmentUv;\n" +
 		"void main() {\n" +
-		"    float cornerX = float(gl_VertexIndex % 2);\n" +
-		"    float cornerY = float(gl_VertexIndex / 2);\n" +
+		"    float cornerX = float(uint(gl_VertexIndex) % 2);\n" +
+		"    float cornerY = float(uint(gl_VertexIndex) / 2);\n" +
 		"    float dx = position.x + (cornerX * 10.0);\n" +
 		"    float dy = position.y + (cornerY * 10.0);\n" +
 		"    fragmentUv = (vec2(dx, dy) / atlasSize.xy);\n" +

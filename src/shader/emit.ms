@@ -757,8 +757,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			const which = argumentName(builtin, entry);
 			const computeAt = computeBuiltins.indexOf(which);
 			const glslName = compute ? (computeAt >= 0 ? computeNames[computeAt] : "") :
-				vertex ? (which == "vertexIndex" ? "gl_VertexIndex" :
-					which == "instanceIndex" ? "gl_InstanceIndex" : "") :
+				vertex ? (which == "vertexIndex" ? "uint(gl_VertexIndex)" :
+					which == "instanceIndex" ? "uint(gl_InstanceIndex)" : "") :
 				which == "position" ? "gl_FragCoord" :
 				which == "frontFacing" ? "gl_FrontFacing" : "";
 			if (glslName == "") {
