@@ -1016,7 +1016,9 @@ run_style() {
 # no gate. Read C emitted from the bench entry into fixed names, never the object cache by
 # mtime, which can hold another entry's or a reverted build. A `Vec` of structs with owned
 # fields copies through `<T>ArrayCopy`, not `msArrayCopy`.
-FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:collectLights
+FRAME_PATH_FUNCTIONS="scene:syncWorld scene:refresh scene:refreshChecked
+	scene:refreshItemsSynced scene:fillDrawList scene:syncSceneSkinGeometry scene:collectLights
+	skin80ose:syncSkinPose skin71eometry:deformPublished skin80alette:writePalette
 	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow scene:requireOpen scene:requireOwn
 	draw:requireOpen animation:requirePaired animation:update animation:keys animation:blendTo
 	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
@@ -1091,7 +1093,7 @@ RENDER_ORDER_PATH_FUNCTIONS="scene:setRenderOrder scene:refresh scene:liveRow
 
 # Every `*Copy(` counts, because a struct copy duplicates its Vec (M38 TurbulenceCopy); list a
 # copy here only for a struct that holds no Vec, with its reason.
-VEC_FREE_COPIES=""
+VEC_FREE_COPIES="scene:MeshInstance draw:DrawItem"
 
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
@@ -1114,8 +1116,8 @@ check_array_copies() {
 		fi
 		body=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted")
 		found=""
-		for copyName in $(echo "$body" | grep -oE '[A-Za-z0-9_]*Copy\(' |
-			sed -E 's/^(.*)__M.*Z([A-Za-z0-9]+)O[a-z]+(_v[0-9]+)?Copy\($/\2:\1/;s/\($//'); do
+		for copyName in $(echo "$body" | grep -oE '[A-Za-z0-9_]*Copy(__M[A-Za-z0-9_]+)?\(' |
+			sed -E 's/^(.*)__M.*Z([A-Za-z0-9]+)O[a-z]+(_v[0-9]+)?Copy\($/\2:\1/;s/(__M[A-Za-z0-9_]+)?\($//'); do
 			case " $VEC_FREE_COPIES " in
 			*" $copyName "*) ;;
 			*) found="$found $copyName" ;;
