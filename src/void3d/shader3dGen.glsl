@@ -126,7 +126,7 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     vec3 a = cross(linear[1], linear[2]);
     vec3 b = cross(linear[2], linear[0]);
     vec3 c = cross(linear[0], linear[1]);
-    float direction = (dot(linear[0], a) < 0.0) ? (-1.0) : 1.0;
+    float direction = (dot(linear[0], a) < 0.0) ? -1.0 : 1.0;
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
 }
 #endif
@@ -459,7 +459,7 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     vec3 a = cross(linear[1], linear[2]);
     vec3 b = cross(linear[2], linear[0]);
     vec3 c = cross(linear[0], linear[1]);
-    float direction = (dot(linear[0], a) < 0.0) ? (-1.0) : 1.0;
+    float direction = (dot(linear[0], a) < 0.0) ? -1.0 : 1.0;
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
 }
 #endif
@@ -467,7 +467,7 @@ void main() {
 #ifdef SKINNED
     mat4 matrix = skinWorld(skinJoints, skinWeights);
     vec4 world = matrix * vec4(position, 1.0);
-    float handedness = (determinant(mat3(matrix)) < 0.0) ? (-1.0) : 1.0;
+    float handedness = (determinant(mat3(matrix)) < 0.0) ? -1.0 : 1.0;
     worldPosition = world.xyz;
     worldNormal = skinNormal(matrix, normal);
 #ifdef NORMAL_MAP
@@ -659,13 +659,13 @@ vec3 facingNormal(vec3 normal_1, float doubleSided, bool frontFacing) {
 }
 #ifdef NORMAL_MAP
 float faceOf(float doubleSided, bool frontFacing) {
-    return ((doubleSided > 0.5) && (!frontFacing)) ? (-1.0) : 1.0;
+    return ((doubleSided > 0.5) && (!frontFacing)) ? -1.0 : 1.0;
 }
 #endif
 #ifdef NORMAL_MAP
 vec3 mappedNormal(vec3 normal_1, vec4 tangent, float face, vec3 texel) {
     vec3 t = normalize(tangent.xyz);
-    float sign_1 = (tangent.w < 0.0) ? (-1.0) : 1.0;
+    float sign_1 = (tangent.w < 0.0) ? -1.0 : 1.0;
     vec3 bitangent = normalize(cross(normal_1, t)) * sign_1;
     vec3 mapped = (texel * 2.0) - 1.0;
     return normalize((((mapped.x * t) + (mapped.y * bitangent)) + (mapped.z * normal_1))) * face;
@@ -999,7 +999,7 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     vec3 a = cross(linear[1], linear[2]);
     vec3 b = cross(linear[2], linear[0]);
     vec3 c = cross(linear[0], linear[1]);
-    float direction = (dot(linear[0], a) < 0.0) ? (-1.0) : 1.0;
+    float direction = (dot(linear[0], a) < 0.0) ? -1.0 : 1.0;
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
 }
 #endif
