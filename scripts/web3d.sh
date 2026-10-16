@@ -21,6 +21,7 @@ WEB_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_
 
 [ -x "$CHROME" ] || { echo "SKIP web3d: no Chrome at $CHROME"; exit 0; }
 command -v python >/dev/null || { echo "SKIP web3d: no python to serve $OUT"; exit 0; }
+node --test scripts/web3d.test.mjs
 
 runs=""
 for entry in $WEB_CHECKS; do
@@ -40,8 +41,11 @@ done
 server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT
 sleep 2
-node scripts/web3d.mjs "http://127.0.0.1:$PORT" $runs | tee "$OUT.log"
+runnerStatus=0
+node scripts/web3d.mjs "http://127.0.0.1:$PORT" $runs > "$OUT.log" 2>&1 || runnerStatus=$?
+cat "$OUT.log"
+[ "$runnerStatus" -eq 0 ] || exit "$runnerStatus"
 total=$(echo $runs | wc -w)
-passed=$(grep -c "	PASS " "$OUT.log" || true)
+passed=$(grep -c "^RESULT .* PASS$" "$OUT.log" || true)
 echo "web3d webgl2: $passed of $total runs pass"
 [ "$passed" -eq "$total" ]

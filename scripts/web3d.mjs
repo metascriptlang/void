@@ -79,6 +79,11 @@ async function run(spec) {
 	}
 	if (done === null) console.log(`RUN ${spec} timed out after ${runTimeoutMs} ms`);
 	else console.log(`RUN ${spec} exited ${done}`);
+	const failed = s.logs.some((line) => /^FAIL /.test(line)
+		|| (/^EXCEPTION /.test(line) && line !== 'EXCEPTION Uncaught ExitStatus'));
+	const passed = done === 0 && !failed && s.logs.some((line) => /^PASS /.test(line));
+	console.log(`RESULT ${spec} ${passed ? 'PASS' : 'FAIL'}`);
+	if (!passed) process.exitCode = 1;
 	s.close();
 	await fetch(`http://127.0.0.1:${port}/json/close/${created.id}`);
 }
