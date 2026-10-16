@@ -92,8 +92,7 @@ test "bloom's first downsample averages fireflies per group, then thresholds" {
 	assert near(above, vec4f(0.0, 0.0, 0.0, 1.0));
 }
 
-// A 4x1 target: a surface facing the camera on the left half, nothing on the right.
-function outlineOf(width: float32): OutlineMaskBindings {
+function leftSurfaceOf(width: float32): OutlineMaskBindings {
 	let normal = filled(4, 1, vec4f(0.5, 0.5, 1.0, 1.0));
 	for (let i = 8; i < 16; i++) { normal.texels[i] = 0.0; }
 	return {
@@ -109,10 +108,10 @@ function outlineOf(width: float32): OutlineMaskBindings {
 }
 
 test "the outline mask covers a surface pixel whose neighbour is empty, and no other" {
-	assert outlineMaskFs(at(1.5, 0.5), outlineOf(1.0)) == vec4f(1.0);
-	assert outlineMaskFs(at(0.5, 0.5), outlineOf(1.0)) == vec4f(0.0);
-	assert outlineMaskFs(at(2.5, 0.5), outlineOf(1.0)) == vec4f(0.0);
-	assert outlineMaskFs(at(0.5, 0.5), outlineOf(2.0)) == vec4f(1.0);
+	assert outlineMaskFs(at(1.5, 0.5), leftSurfaceOf(1.0)) == vec4f(1.0);
+	assert outlineMaskFs(at(0.5, 0.5), leftSurfaceOf(1.0)) == vec4f(0.0);
+	assert outlineMaskFs(at(2.5, 0.5), leftSurfaceOf(1.0)) == vec4f(0.0);
+	assert outlineMaskFs(at(0.5, 0.5), leftSurfaceOf(2.0)) == vec4f(1.0);
 }
 
 function mixOf(blend: float32): Vec4f {
@@ -126,6 +125,24 @@ function mixOf(blend: float32): Vec4f {
 			outlineMix: vec4f(blend, 0.0, 0.0, 0.0),
 		},
 	});
+}
+
+function facesMeetingAt4Of(width: float32): OutlineMaskBindings {
+	let normal = filled(8, 1, vec4f(0.5, 0.5, 1.0, 1.0));
+	for (let i = 4; i < 8; i++) {
+		normal.texels[i * 4] = 1.0;
+		normal.texels[i * 4 + 2] = 0.5;
+	}
+	let b = leftSurfaceOf(width);
+	b.outlineNormal = normal;
+	b.outlineDepth = filled(8, 1, vec4f(0.5, 0.0, 0.0, 1.0));
+	return b;
+}
+
+test "the outline's crease reach rounds a tie to even, as WGSL's round does" {
+	assert outlineMaskFs(at(1.5, 0.5), facesMeetingAt4Of(5.0)) == vec4f(0.0);
+	assert outlineMaskFs(at(1.5, 0.5), facesMeetingAt4Of(6.0)) == vec4f(1.0);
+	assert outlineMaskFs(at(2.5, 0.5), facesMeetingAt4Of(5.0)) == vec4f(1.0);
 }
 
 test "the outline mix blends the outline colour over the lit target by the mask" {
