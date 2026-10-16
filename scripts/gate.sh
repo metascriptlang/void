@@ -842,7 +842,7 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 else
 	fail "module off: mainSokol2d.exe did not build both ways — see out/gate-module-off.log"
 fi
-skip "wasm size budget: the web build cannot link Yoga, so no linked wasm number exists to gate — tests/PENDING.md wasm:budget"
+skip "wasm size budget: no linked wasm number is recorded to gate yet — tests/PENDING.md wasm:budget"
 
 # The graduation rule for a conformance row: every scene it lists must still fail, and a clean
 # run with the row still present fails too. $1 backend, $2 its golden log, $3 the PENDING id.

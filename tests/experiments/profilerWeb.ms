@@ -1,6 +1,3 @@
-// Imports no node.ms: Yoga has no web branch yet
-// (~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md).
-
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../src/sokol/gpu";
 import { beginScreenPass } from "../../src/gpu/target";
 import { endPass, commit } from "../../src/gpu/door";

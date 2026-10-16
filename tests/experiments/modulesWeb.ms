@@ -1,5 +1,3 @@
-// Imports no node.ms: Yoga has no web branch yet
-// (~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md).
 // Shapes one label and places it under a turn and a zoom every frame, so the shaper (-d:voidShaper)
 // and the SDF generator (-d:voidSdfText) are linked when their flag is on and absent when it is
 // off.
