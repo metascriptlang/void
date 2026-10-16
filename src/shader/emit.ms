@@ -400,12 +400,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 
 	function isAuthorStruct(t: Node | null): boolean {
 		if (t == null || fieldsOf(t) == null) { return false; }
-		const opaque = [textureType, samplerType, storageTextureType, uintTextureType,
-			arrayTextureType];
-		for (const own of vectorTypes.concat(opaque)) {
-			if (sameType(t, own)) { return false; }
-		}
-		return true;
+		return t.resolvedSym != null && t.resolvedSym.modulePath != stdModule;
 	}
 
 	const fn = getImpl(entry);

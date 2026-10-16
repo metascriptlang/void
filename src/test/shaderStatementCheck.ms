@@ -227,6 +227,31 @@ test "an author struct is declared before its first reader and built in field or
 	assert structFs(at(2.0, 0.0)) == 4.1875;
 }
 
+struct Vec2f {
+	x: float32;
+	y: float32;
+}
+
+function twinFs(input: ProbeInput): float32 {
+	const t: Vec2f = { x: input.position.x, y: 2.0 };
+	return t.x * t.y;
+}
+
+test "a struct named like a ./std type is the author's, told apart by its module" {
+	assert glsl(twinFs) ==
+		"struct Vec2f {\n" +
+		"    float x;\n" +
+		"    float y;\n" +
+		"};\n" +
+		"layout(location=0) out float fragColor;\n" +
+		"void main() {\n" +
+		"    Vec2f t = Vec2f(gl_FragCoord.x, 2.0);\n" +
+		"    fragColor = t.x * t.y;\n" +
+		"    return;\n" +
+		"}\n";
+	assert twinFs(at(3.0, 0.0)) == 6.0;
+}
+
 test "integer varyings are flat on both sides, and uint32 takes '%' and '%='" {
 	assert glsl(cellVs) ==
 		"in vec4 position;\n" +

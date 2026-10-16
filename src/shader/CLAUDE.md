@@ -138,14 +138,11 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
   with `macroName` and unevaluated `macroArgs`, C and JS. It carries no symbol, so the decorator is
   known by name, as the language defines field decorators. A type alias cannot mark a builtin: the
   field of `type BuiltinPosition = Vec4f` comes back as `Vec4f`.
-- **A type names no module.** `getType` of a struct value is a `TypeObject` with no `resolvedSym`
-  and no location, and `bindSym(name)` resolves at the expansion site (measured 2026-10-15, BUILD
-  `a2b3e36a`, `out/stmtProbe/typeModUse.ms`). So a `./std` struct is told from the author's by
-  `sameType` against the types the emitter spells (`isAuthorStruct`): one `./std` adds without a
-  spelling would be emitted as an author struct until the type carries its module. Re-measured
-  2026-10-16, BUILD `fd03df3e` (`out/typeModuleProbe/`, `out/compilerCards/typeModule.ms`): still
-  no `resolvedSym`, for a local, an imported and a `./std` struct
-  (`~/metascript/.inbox/compiler/2026-10-16-type-node-names-no-module.md`).
+- **A struct type names its module.** `getType` and `getTypeImpl` of a struct give a `TypeObject`
+  whose `resolvedSym.modulePath` is the declaring module, so `isAuthorStruct` tells a `./std` struct
+  from the author's by that path, and an author struct named like a `./std` type stays the author's
+  (pinned in `shaderStatementCheck.ms`; BUILD `5631dd3e5`). An enum type node still carries no
+  `resolvedSym`.
 
 ## Measured — sokol-shdc coverage
 
