@@ -57,13 +57,19 @@ drivers.
 
 The view driver creates one `ID3D11Device` (feature levels 11.1 then 11.0, like sokol_app),
 and one `IDXGISwapChain1` per view through `CreateSwapChainForComposition`: B8G8R8A8,
-premultiplied alpha, flip-sequential, two buffers, `DXGI_SCALING_STRETCH`. This is the
-contract Ion's `renderSurfaceAttachSwapChain` takes (`ion/src/renderSurface.ms`, and the
-reference consumer `ion/examples/surfaceD3D11/d3d.c`). Each view presents with sync interval
-1. With two views redrawn in the same tick, each `Present` waits for vblank, and that has not
-been measured. Ion's frame clock brief (`.wt/ion-frame-clock-prompt.md`) owns pacing.
+premultiplied alpha, flip-sequential, two buffers, `DXGI_SCALING_STRETCH`. Ion creates no surface
+for it: a window is an empty DirectComposition root (`ionWindowRoot`, `ionWindowDevice` and
+`ionWindowCommit` in `ion/src/platform/bridge.h`; why, in `ion/docs/WINDOW-CONTENT.md`). The host
+creates a visual on `windowDevice(win)`, `SetContent`s the view's `viewSwapChain` onto it, parents
+it under `windowRoot(win)` and calls `commit(win)`: `swapChainVisualAttach` in
+`examples/swapChainVisual.cpp`, and Neon's `voidVisualAttach` in
+`neon/src/platform/ion/voidVisual.cpp`. `AddVisual` with a NULL reference inverts `insertAbove`
+(Ion's "Traps"), so `FALSE` puts the new visual in front of its siblings. Each view presents with
+sync interval 1. With two views redrawn in the same tick, each `Present` waits for vblank, and
+that has not been measured. Ion's per-window frame clock (`setFramePolicy`, `requestFrame`,
+`onFrame`) owns pacing.
 
-A view's clear alpha reaches the compositor. Clear to `rgba(0, 0, 0, 0)` to let the surfaces
+A view's clear alpha reaches the compositor. Clear to `rgba(0, 0, 0, 0)` to let the visuals
 below show through, as the overlay in `examples/ionViews.ms` does.
 
 ## macOS: two drivers in one binary
@@ -92,10 +98,12 @@ pixel readback because the Metal capture path is a stub.
 - The readback uses **buffer 1**. After `Present` on a two-buffer flip-sequential swapchain,
   buffer 0 read back as all zeros and buffer 1 held the frame just presented (measured on this
   box, D3D11, 2026-09-24).
-- `examples/ionViews.ms` is the Ion host: a board of tiles and an overlay panel on two surfaces
-  of one window. Each redraws only when a click changes it or the surface resizes. Driven by
-  synthetic clicks and `SetWindowPos` from 1000×640 to 700×820 on 2026-09-24, both views
-  followed the resize, and the board's 3 px edge frame stayed on the window's edges.
+- `examples/ionViews.ms` is the Ion host: a board of tiles and an overlay panel, two views whose
+  visuals sit under one window's root. Each redraws only when a click changes it or the window
+  resizes. On Ion's earlier render-surface API, driven by synthetic clicks and `SetWindowPos` from
+  1000×640 to 700×820 on 2026-09-24, both views followed the resize, and the board's 3 px edge
+  frame stayed on the window's edges. On the window-root API it builds (msc v0.3.4, BUILD
+  `5631dd3e5`, ion `b9b5e8b`, 2026-10-16) and has not been run.
 
 Not verified:
 
