@@ -357,6 +357,15 @@ test "particleVisual emitter updates ratio rotation and wrapped frame on life ti
 	emitter.emitCount = 1;
 	assert updateEmitter(emitter, 0, identity()).ok;
 	assert emitter.count == 1 && emitter.particles[0].frame == 0;
+	emitter.state.frame = { kind: ValueKind.Poly, values: [0.0, 1.0] };
+	for (let step = 1; step <= 4; step++) {
+		assert updateEmitter(emitter, 0.25, identity()).ok;
+		assert emitter.particles[0].frame == step % 4;
+	}
+	const frame = emitter.state.frame;
+	assert frame !== null && frame.kind == ValueKind.Poly;
+	assert frame.values.length == 2 && frame.values[0] == 0 && frame.values[1] == 1;
+	assert emitter.sequence.state == 7;
 }
 
 test "particleVisual retained draws follow ratio rotation light alpha frame order" {

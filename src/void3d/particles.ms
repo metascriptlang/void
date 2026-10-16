@@ -371,7 +371,11 @@ function emitterValue(ref emitter: ParticleEmitter, v: ParticleValue, time: floa
 	return v.evaluate(time, random);
 }
 
-// Particle.eval with Particle.rand.
+function stopOnRandomSlot(index: int32): void {
+	console.error(`particleValue: random slot ${index} outside ${PARTICLE_RANDOM_SLOTS}`);
+	unreachable;
+}
+
 function particleValue(
 	ref emitter: ParticleEmitter,
 	slot: int32,
@@ -380,10 +384,7 @@ function particleValue(
 ): float32 {
 	if (!v.drawsRandom()) { return v.evaluate(time, 0.0); }
 	const index: int32 = emitter.particles[slot].randomIndex;
-	if (index < 0 || index >= PARTICLE_RANDOM_SLOTS) {
-		console.error(`particleValue: random slot ${index} outside ${PARTICLE_RANDOM_SLOTS}`);
-		unreachable;
-	}
+	if (index < 0 || index >= PARTICLE_RANDOM_SLOTS) { stopOnRandomSlot(index); }
 	const at: int32 = slot * PARTICLE_RANDOM_SLOTS + index;
 	if (index >= emitter.particles[slot].randomsDrawn) {
 		emitter.randoms[at] = nextUnit(emitter.sequence);
@@ -722,9 +723,8 @@ function stepParticle(
 	const light: float32 = particleValue(emitter, slot, emitter.state.light, life);
 	colorAt(emitter, slot, light);
 	emitter.particles[slot].alpha = particleValue(emitter, slot, emitter.state.alpha, life);
-	const frame = emitter.state.frame;
-	if (frame !== null) {
-		const value: float32 = particleValue(emitter, slot, frame, life);
+	if (emitter.state.frame !== null) {
+		const value: float32 = particleValue(emitter, slot, emitter.state.frame, life);
 		const wrapped = particleVisualFrameIndex(value as float64, emitter.state.frameCount);
 		if (!wrapped.ok) { return Result.err(ParticleError.NonFiniteVisual); }
 		emitter.particles[slot].frame = wrapped.value;
