@@ -196,6 +196,7 @@ export struct LaidGlyph {
 	shapeStart: boolean;
 	offsetX: float32;
 	offsetY: float32;
+	wide: boolean;
 }
 
 export const NO_RUN: int32 = -1;
@@ -276,6 +277,7 @@ struct Codepoint {
 	scale: float32;
 	clusterStart: boolean;
 	shapingBreak: boolean;
+	wide: boolean;
 }
 
 enum GraphemeCoverage {
@@ -310,6 +312,7 @@ function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
 			value: value, shown: value, joining: false, index: index, byteStart: i,
 			byteEnd: i + length, font: font,
 			run: NO_RUN, face: -1, scale: 1.0, clusterStart: false, shapingBreak: false,
+			wide: false,
 		});
 		index = index + (value >= 0x10000 ? 2 : 1);
 		i = i + length;
@@ -606,28 +609,38 @@ function assignRuns(cps: Span<Codepoint>, runs: Readonly<Span<TextRun>>, units: 
 	}
 }
 
-function markShapingBreaks(cps: Span<Codepoint>, breaks: Readonly<Span<int32>>): void {
+function codepointAtUnit(cps: Readonly<Span<Codepoint>>, at: int32, what: string): int32 {
 	const count: int32 = cps.length as int32;
 	const units: int32 = count > 0 ? cps[count - 1].unitEnd() : 0;
-	for (const at of breaks) {
-		if (at < 0 || at >= units) {
-			console.log(`void2d: shaping break ${at} falls outside the text's ${units} UTF-16 units`);
+	if (at < 0 || at >= units) {
+		console.log(`void2d: ${what} ${at} falls outside the text's ${units} UTF-16 units`);
+		unreachable;
+	}
+	let lo: int32 = 0;
+	let hi: int32 = count;
+	while (lo < hi) {
+		const mid: int32 = (lo + hi) >> 1;
+		if (cps[mid].index < at) { lo = mid + 1; } else { hi = mid; }
+	}
+	if (lo >= count || cps[lo].index != at) {
+		console.log(`void2d: ${what} ${at} falls inside the surrogate pair at ${cps[lo - 1].index}`);
+		unreachable;
+	}
+	return lo;
+}
+
+function markShapingBreaks(cps: Span<Codepoint>, breaks: Readonly<Span<int32>>): void {
+	for (const at of breaks) { cps[codepointAtUnit(cps, at, "shaping break")].shapingBreak = true; }
+}
+
+function markWideClusters(cps: Span<Codepoint>, starts: Readonly<Span<int32>>): void {
+	for (const at of starts) {
+		const k: int32 = codepointAtUnit(cps, at, "wide cluster");
+		if (!cps[k].clusterStart) {
+			console.log(`void2d: wide cluster ${at} does not start a grapheme cluster`);
 			unreachable;
 		}
-		let lo: int32 = 0;
-		let hi: int32 = count;
-		while (lo < hi) {
-			const mid: int32 = (lo + hi) >> 1;
-			if (cps[mid].index < at) { lo = mid + 1; } else { hi = mid; }
-		}
-		if (lo < count && cps[lo].index == at) {
-			cps[lo].shapingBreak = true;
-		} else if (lo > 0 && cps[lo - 1].unitEnd() > at) {
-			console.log(
-				`void2d: shaping break ${at} falls inside the surrogate pair at ${cps[lo - 1].index}`,
-			);
-			unreachable;
-		}
+		cps[k].wide = true;
 	}
 }
 
@@ -946,6 +959,7 @@ export function shapeText(
 	style: TextStyle,
 	runs: Readonly<Span<TextRun>>,
 	shapingBreaks: Readonly<Span<int32>>,
+	wideClusters: Readonly<Span<int32>>,
 	direction: TextDirection = TextDirection.Auto,
 ): Result<ShapedText, TextError> {
 	let cps: Vec<Codepoint> = decodeUtf8(text, style.font);
@@ -955,6 +969,7 @@ export function shapeText(
 	if (runs.length > 0) { assignRuns(cps, runs, units); }
 	markShapingBreaks(cps, shapingBreaks);
 	assignFaces(cps);
+	markWideClusters(cps, wideClusters);
 	let bidi: BidiRuns = { levels: new Array(0), resets: new Array(0), paragraphs: new Array(0) };
 	resolveBidi(cps, direction, bidi);
 	const stop: float32 = hasTab(cps) ? style.tabStop() : 0.0;
@@ -1002,6 +1017,7 @@ export function shapeText(
 			shapeStart: cell.shapeStart,
 			offsetX: cell.offsetX,
 			offsetY: cell.offsetY,
+			wide: cp.wide,
 		});
 		if (cp.value == NEWLINE) {
 			pen = 0.0;
@@ -1169,10 +1185,11 @@ function forceCells(glyphs: Span<LaidGlyph>, first: int32, cell: float32): float
 			if (Math.abs(shaped - forced) > 1.0 || isSpriteFace(glyphs[k].face)) {
 				glyphs[k].x = forced;
 			}
-			glyphs[k].advance = cell;
+			const span: int32 = glyphs[k].wide ? 2 : 1;
+			glyphs[k].advance = (span as float32) * cell;
 			lastShaped = shaped;
 			lastActual = glyphs[k].x;
-			cells = cells + 1;
+			cells = cells + span;
 		} else {
 			glyphs[k].x = lastActual + (shaped - lastShaped);
 		}
@@ -1430,7 +1447,7 @@ export function layoutRuns(
 	direction: TextDirection = TextDirection.Auto,
 ): Result<TextLayout, TextError> {
 	const noBreaks: Vec<int32> = new Array(0);
-	const shaped = try shapeText(text, style, runs, noBreaks, direction);
+	const shaped = try shapeText(text, style, runs, noBreaks, noBreaks, direction);
 	return Result.ok(wrapText(shaped, style, PLAIN_LINES));
 }
 

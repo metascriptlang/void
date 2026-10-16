@@ -44,6 +44,7 @@ import {
 	releaseLabelGlyphs,
 	setLabelRuns,
 	setLabelShapingBreaks,
+	setLabelWideClusters,
 	setLabelDirection,
 	labelDirection,
 	setLabelLines,
@@ -1514,6 +1515,11 @@ export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): Nod
 
 export function setShapingBreaks(this n: NodeRef, breaks: Readonly<Span<int32>>): NodeRef {
 	setLabelShapingBreaks(textChanged(n, "setShapingBreaks"), breaks);
+	return n;
+}
+
+export function setWideClusters(this n: NodeRef, starts: Readonly<Span<int32>>): NodeRef {
+	setLabelWideClusters(textChanged(n, "setWideClusters"), starts);
 	return n;
 }
 

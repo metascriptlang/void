@@ -141,6 +141,7 @@ export interface LabelText {
 	textRefusal: TextError;
 	options: LineOptions;
 	shapingBreaks: Vec<int32>;
+	wideClusters: Vec<int32>;
 	selectionStart: int32;
 	selectionLength: int32;
 	selectionColor: Color;
@@ -225,7 +226,7 @@ function emptyLayout(): TextLayout {
 function emptyShaped(style: TextStyle): ShapedText {
 	const noRuns: Vec<TextRun> = new Array(0);
 	const noBreaks: Vec<int32> = new Array(0);
-	const shaped = shapeText("", style, noRuns, noBreaks);
+	const shaped = shapeText("", style, noRuns, noBreaks, noBreaks);
 	if (shaped.ok) { return shaped.value; }
 	console.log(`void2d: the empty text was refused: ${shaped.error.describe()}`);
 	unreachable;
@@ -264,6 +265,7 @@ export function allocateLabelText(): int32 {
 		textRefusal: { kind: TextErrorKind.RightToLeftNeedsBidi, index: 0 },
 		options: PLAIN_LINES,
 		shapingBreaks: new Array(0),
+		wideClusters: new Array(0),
 		selectionStart: 0,
 		selectionLength: 0,
 		selectionColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
@@ -321,7 +323,9 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
 	releasePlacement(entry);
 	if (shapeStale(entry, text, style)) {
-		const shaped = shapeText(text, style, entry.runs, entry.shapingBreaks, entry.direction);
+		const shaped = shapeText(
+			text, style, entry.runs, entry.shapingBreaks, entry.wideClusters, entry.direction,
+		);
 		entry.shapedText = text;
 		entry.shapedWithShaping = textShapingOn();
 		entry.reshape = false;
@@ -333,6 +337,10 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 			entry.shaped = emptyShaped(style);
 			console.log(`void2d: label text is not drawn: ${shaped.error.describe()}`);
 		}
+	}
+	if (entry.wideClusters.length > 0 && entry.options.forceWidth <= 0.0) {
+		console.log("void2d: wide clusters span two cells, and a label without setForceWidth has none");
+		unreachable;
 	}
 	entry.style = style;
 	entry.selectionStale = true;
@@ -436,6 +444,13 @@ export function setLabelShapingBreaks(index: int32, breaks: Readonly<Span<int32>
 	let kept: Vec<int32> = new Array(0);
 	for (const at of breaks) { kept.push(at); }
 	labelTexts[index].shapingBreaks = kept;
+	labelTexts[index].reshape = true;
+}
+
+export function setLabelWideClusters(index: int32, starts: Readonly<Span<int32>>): void {
+	let kept: Vec<int32> = new Array(0);
+	for (const at of starts) { kept.push(at); }
+	labelTexts[index].wideClusters = kept;
 	labelTexts[index].reshape = true;
 }
 

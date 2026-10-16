@@ -2161,7 +2161,7 @@ function layoutLike(
 	const options: LineOptions = payload == NO_LABEL_TEXT ? PLAIN_LINES : labelLines(payload);
 	const direction: TextDirection =
 		payload == NO_LABEL_TEXT ? TextDirection.Auto : labelTexts[payload].direction;
-	const shaped = try shapeText(text, style, noRuns, noBreaks, direction);
+	const shaped = try shapeText(text, style, noRuns, noBreaks, noBreaks, direction);
 	return Result.ok(wrapText(shaped, style, options));
 }
 

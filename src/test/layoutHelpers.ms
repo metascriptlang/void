@@ -36,7 +36,8 @@ export function shapedOf(
 	runs: Readonly<Span<TextRun>>,
 	breaks: Readonly<Span<int32>>,
 ): ShapedText {
-	const shaped = shapeText(text, style, runs, breaks);
+	const notWide: Vec<int32> = new Array(0);
+	const shaped = shapeText(text, style, runs, breaks, notWide);
 	if (shaped.ok) { return shaped.value; }
 	stopped(shaped.error);
 	unreachable;
@@ -47,7 +48,7 @@ export function shapedIn(
 ): ShapedText {
 	const noRuns: Vec<TextRun> = new Array(0);
 	const noBreaks: Vec<int32> = new Array(0);
-	const shaped = shapeText(text, style, noRuns, noBreaks, direction);
+	const shaped = shapeText(text, style, noRuns, noBreaks, noBreaks, direction);
 	if (shaped.ok) { return shaped.value; }
 	stopped(shaped.error);
 	unreachable;

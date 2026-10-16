@@ -266,6 +266,29 @@ test "calcTextWidth and splitText lay other text out with the label's line optio
 	n.dispose();
 }
 
+test "under setForceWidth a wide cluster spans two cells and the next starts after them" {
+	const n = s.label("a中b\u{1F600}c", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.setForceWidth(10.0);
+	const wide: int32[] = [1, 3];
+	n.setWideClusters(wide);
+	const runs: TextRun[] = [{ ...plainRun(6), underline: rgba(0.0, 1.0, 0.0, 1.0) }];
+	n.setTextRuns(runs);
+	n.sync(identity2d(), false);
+	const l = n.textLayout();
+	const expected: float32[] = [0.0, 10.0, 30.0, 40.0, 60.0];
+	const advances: float32[] = [10.0, 20.0, 10.0, 20.0, 10.0];
+	for (let k = 0; k < 5; k++) {
+		assert Math.abs(l.glyphs[k].x - expected[k]) <= 1.0;
+		assert l.glyphs[k].advance == advances[k];
+	}
+	assert l.lines[0].width == 70.0;
+	assert l.xForIndex(5) == 60.0;
+	const e = labelTexts[payloadOf(n)];
+	assert (e.decorations.length as int32) == 1;
+	assert approx(e.decorations[0].x + e.decorations[0].w, l.glyphs[4].x + 10.0);
+	n.dispose();
+}
+
 test "a run background over trailing spaces stays inside the label's bounds" {
 	const n = s.label("ab  ", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const runs: TextRun[] = [{ ...plainRun(4), background: rgba(0.0, 0.0, 1.0, 1.0) }];
