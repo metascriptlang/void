@@ -366,22 +366,15 @@ export function columnProbeFs(input: ProbeInput): Vec4f {
 }
 
 test "a matrix column is m[i] in GLSL, read and written, as WGSL's m[i]" {
-	assert glsl(columnProbeFs) == "layout(location=0) out vec4 fragColor;
-" +
-		"void main() {
-" +
-		"    vec4 p = gl_FragCoord;
-" +
-		"    mat3 frame = mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, p.x, p.y, 1.0);
-" +
-		"    frame[1] = frame[2] * 2.0;
-" +
-		"    fragColor = vec4((frame[1] + frame[0]), 1.0);
-" +
-		"    return;
-" +
-		"}
-";
+	assert glsl(columnProbeFs) ==
+		"layout(location=0) out vec4 fragColor;\n" +
+		"void main() {\n" +
+		"    vec4 p = gl_FragCoord;\n" +
+		"    mat3 frame = mat3(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, p.x, p.y, 1.0);\n" +
+		"    frame[1] = frame[2] * 2.0;\n" +
+		"    fragColor = vec4((frame[1] + frame[0]), 1.0);\n" +
+		"    return;\n" +
+		"}\n";
 	assert columnProbeFs({ position: vec4f(3.0, 4.0, 0.0, 1.0) }) == vec4f(7.0, 8.0, 2.0, 1.0);
 }
 
