@@ -44,7 +44,7 @@ test "typed particle VS rotates asymmetric anchored tile in world camera basis" 
 test "typed particle VS emits constant corners and ordered handwritten FS varyings" {
 	const source: string = glsl(particleVisualVs);
 	assert source.includes("const vec2[6] PARTICLE_CORNERS = vec2[6](");
-	assert source.includes("PARTICLE_CORNERS[gl_VertexIndex % 6]");
+	assert source.includes("PARTICLE_CORNERS[uint(gl_VertexIndex) % 6]");
 	const world = source.indexOf("out vec3 worldPosition;");
 	const normal = source.indexOf("out vec3 towardCamera;");
 	const uv = source.indexOf("out vec2 uv;");
@@ -59,5 +59,5 @@ test "typed particle pixel-art VS keeps root and clip-z FS varying contract" {
 	const color = source.indexOf("out vec4 instanceColor;");
 	const depth = source.indexOf("out float depth01;");
 	assert uv >= 0 && root > uv && color > root && depth > color;
-	assert source.includes("PARTICLE_CORNERS[gl_VertexIndex % 6]");
+	assert source.includes("PARTICLE_CORNERS[uint(gl_VertexIndex) % 6]");
 }

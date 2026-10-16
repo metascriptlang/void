@@ -33,7 +33,7 @@ vec3 particleVisualPoint(vec4 root_1, vec4 shape_1, vec2 corner, vec3 right, vec
     return (root_1.xyz + (right * ((x * c) + (y * s)))) + (up * ((y * c) - (x * s)));
 }
 void main() {
-    vec2 corner = PARTICLE_CORNERS[gl_VertexIndex % 6];
+    vec2 corner = PARTICLE_CORNERS[uint(gl_VertexIndex) % 6];
     vec3 world = particleVisualPoint(root, shape, corner, cameraRight.xyz, cameraUp.xyz);
     worldPosition = world;
     towardCamera = cross(cameraRight.xyz, cameraUp.xyz);
@@ -67,7 +67,7 @@ vec3 particleVisualPoint(vec4 root_1, vec4 shape_1, vec2 corner, vec3 right, vec
     return (root_1.xyz + (right * ((x * c) + (y * s)))) + (up * ((y * c) - (x * s)));
 }
 void main() {
-    vec2 corner = PARTICLE_CORNERS[gl_VertexIndex % 6];
+    vec2 corner = PARTICLE_CORNERS[uint(gl_VertexIndex) % 6];
     vec3 world = particleVisualPoint(root, shape, corner, cameraRight.xyz, cameraUp.xyz);
     vec4 clip = viewProj * vec4(world, 1.0);
     uv = vec2(((corner.x > 0.0) ? tile.z : tile.x), ((corner.y > 0.0) ? tile.y : tile.w));
