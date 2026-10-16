@@ -885,6 +885,23 @@ export function shadowCoverage(
 	return coverage;
 }
 
+// The underline's signed distance: shape.x the thickness, shape.y above 0.5 a wavy line, else the
+// straight bar filling the quad.
+export function underlineDistance(p: Vec2f, half: Vec2f, shape: Vec4f): float32 {
+	const thickness = shape.x;
+	if (shape.y > 0.5) {
+		const height = half.y * 2.0;
+		const frequency = 6.283185307179586 * thickness / height;
+		const amplitude = thickness * 0.8 / height;
+		const phase = ((p.x + half.x) / height) * frequency;
+		const slope = cos(phase) * amplitude * frequency;
+		const distance = (p.y / height - sin(phase) * amplitude) * height /
+			sqrt(1.0 + slope * slope);
+		return abs(distance) - thickness * 0.5;
+	}
+	return roundedRectDistance(p, half, 0.0);
+}
+
 export function uiFs(input: UiInput, b: UiBindings): Vec4f {
 	const uvDx = dpdx(input.vUvAa.xy);
 	const uvDy = dpdy(input.vUvAa.xy);
@@ -913,21 +930,7 @@ export function uiFs(input: UiInput, b: UiBindings): Vec4f {
 		return withEffect(b, vec4f(rgb, alpha), keyTexel);
 	}
 	if (mode == 4) {
-		const thickness = input.vBorders.x;
-		let line: float32 = 0.0;
-		if (input.vBorders.y > 0.5) {
-			const height = half.y * 2.0;
-			const frequency = 6.283185307179586 * thickness / height;
-			const amplitude = thickness * 0.8 / height;
-			const phase = ((p.x + half.x) / height) * frequency;
-			const slope = cos(phase) * amplitude * frequency;
-			const distance = (p.y / height - sin(phase) * amplitude) * height /
-				sqrt(1.0 + slope * slope);
-			line = abs(distance) - thickness * 0.5;
-		} else {
-			line = roundedRectDistance(p, half, 0.0);
-		}
-		const coverage = coverageFromDistance(line, aa);
+		const coverage = coverageFromDistance(underlineDistance(p, half, input.vBorders), aa);
 		const alpha = input.vFill.w * coverage;
 		return withEffect(b, vec4f(input.vFill.xyz * alpha, alpha), vec3f(1.0));
 	}

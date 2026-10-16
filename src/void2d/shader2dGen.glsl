@@ -449,6 +449,19 @@ vec4 withEffect(vec4 p, vec3 keyTexel) {
     s = (colorMatrix * s) + colorAdd;
     return vec4((s.xyz * s.w), s.w);
 }
+float underlineDistance(vec2 p, vec2 half_1, vec4 shape) {
+    float thickness = shape.x;
+    if (shape.y > 0.5) {
+        float height = half_1.y * 2.0;
+        float frequency = (6.283185307179586 * thickness) / height;
+        float amplitude = (thickness * 0.8) / height;
+        float phase = ((p.x + half_1.x) / height) * frequency;
+        float slope = (cos(phase) * amplitude) * frequency;
+        float distance_1 = (((p.y / height) - (sin(phase) * amplitude)) * height) / sqrt((1.0 + (slope * slope)));
+        return abs(distance_1) - (thickness * 0.5);
+    }
+    return roundedRectDistance(p, half_1, 0.0);
+}
 float smoothUnionDistance(float a, float b, float k) {
     if (k <= 0.0) {
         return min(a, b);
@@ -768,20 +781,7 @@ void main() {
         return;
     }
     if (mode == 4) {
-        float thickness = vBorders.x;
-        float line = 0.0;
-        if (vBorders.y > 0.5) {
-            float height = half_1.y * 2.0;
-            float frequency = (6.283185307179586 * thickness) / height;
-            float amplitude = (thickness * 0.8) / height;
-            float phase = ((p.x + half_1.x) / height) * frequency;
-            float slope = (cos(phase) * amplitude) * frequency;
-            float distance_1 = (((p.y / height) - (sin(phase) * amplitude)) * height) / sqrt((1.0 + (slope * slope)));
-            line = abs(distance_1) - (thickness * 0.5);
-        } else {
-            line = roundedRectDistance(p, half_1, 0.0);
-        }
-        float coverage_1 = coverageFromDistance(line, aa);
+        float coverage_1 = coverageFromDistance(underlineDistance(p, half_1, vBorders), aa);
         float alpha_1 = vFill.w * coverage_1;
         fragColor = withEffect(vec4((vFill.xyz * alpha_1), alpha_1), vec3(1.0));
         return;
@@ -791,18 +791,18 @@ void main() {
         float radius = vBorders.z;
         float gloopiness = vBorders.w;
         vec4 params = vParams1;
-        float distance_2 = roundedRectDistance(p, boxHalf, radius);
+        float distance_1 = roundedRectDistance(p, boxHalf, radius);
         if (params.y > 0.0) {
             vec2 prevCenter = vec2(((params.x + (params.y * 0.5)) - boxHalf.x), ((-boxHalf.y) * 2.0));
             float prev = roundedRectDistance((p - prevCenter), vec2((params.y * 0.5), boxHalf.y), radius);
-            distance_2 = smoothUnionDistance(distance_2, prev, gloopiness);
+            distance_1 = smoothUnionDistance(distance_1, prev, gloopiness);
         }
         if (params.w > 0.0) {
             vec2 nextCenter = vec2(((params.z + (params.w * 0.5)) - boxHalf.x), (boxHalf.y * 2.0));
             float next = roundedRectDistance((p - nextCenter), vec2((params.w * 0.5), boxHalf.y), radius);
-            distance_2 = smoothUnionDistance(distance_2, next, gloopiness);
+            distance_1 = smoothUnionDistance(distance_1, next, gloopiness);
         }
-        float coverage_2 = coverageFromDistance(distance_2, aa);
+        float coverage_2 = coverageFromDistance(distance_1, aa);
         float alpha_2 = vFill.w * coverage_2;
         fragColor = withEffect(vec4((vFill.xyz * alpha_2), alpha_2), vec3(1.0));
         return;

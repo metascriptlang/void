@@ -20,6 +20,7 @@ import {
 	smoothUnionDistance,
 	spriteFs,
 	uiVs,
+	underlineDistance,
 } from "../void2d/shader2d";
 
 function near(a: float32, b: float32): boolean { return Math.abs(a - b) < 1.0e-5; }
@@ -144,4 +145,12 @@ test "the blur's taps sum to one and a sprite premultiplies a straight source" {
 	assert Math.abs(blurred.x - 0.4) < 1.0e-5 && Math.abs(blurred.w - 1.0) < 1.0e-5;
 	assert near(spriteOf(0.0), vec4f(0.4, 0.2, 0.1, 0.5));
 	assert near(spriteOf(1.0), vec4f(0.4, 0.2, 0.1, 0.5));
+}
+
+test "an underline is the straight bar, or a wave centred on the quad's left edge" {
+	const half = vec2f(20.0, 3.0);
+	const p = vec2f(4.0, 1.0);
+	assert underlineDistance(p, half, vec4f(1.5, 0.0, 0.0, 0.0)) ==
+		roundedRectDistance(p, half, 0.0);
+	assert near(underlineDistance(vec2f(-20.0, 0.0), half, vec4f(1.5, 1.0, 0.0, 0.0)), -0.75);
 }
