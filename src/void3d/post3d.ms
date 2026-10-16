@@ -310,7 +310,8 @@ export function outlineWidthFs(input: PostInput, b: OutlineWidthBindings): Vec4f
 	for (let i = 0; i < 48; i++) {
 		angle += 6.283185307179586 / 48.0;
 		const displacement = vec2f(cos(angle), sin(angle)) * width.x * delta;
-		const current = textureSample(b.outlineWidthMask, b.outlineWidthSampler, uv + displacement).x;
+		const current =
+			textureSample(b.outlineWidthMask, b.outlineWidthSampler, uv + displacement).x;
 		maximum = max(maximum, width.y > 0.5 ? 1.0 - current : current);
 	}
 	const coverage = width.y > 0.5 ? 1.0 - maximum : maximum;
