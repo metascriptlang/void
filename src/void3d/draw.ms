@@ -606,24 +606,34 @@ export function isStream(this mesh: GpuMesh): boolean {
 	return mesh.instanceCapacity > 0;
 }
 
+function streamStride(layout: VertexLayout): int32 {
+	if (layout == VertexLayout.Particle) { return STREAM_INSTANCE_STRIDE; }
+	if (layout == VertexLayout.ParticleVisual) { return 16; }
+	console.error(`void3d: ${layout.toString()} is not a particle stream layout`);
+	unreachable;
+}
+
 export function streamMesh(
 	this typeof GpuMesh,
 	capacity: int32,
 	instanceBuffer: uint32,
 	generation: int32,
+	layout: VertexLayout = VertexLayout.Particle,
 ): GpuMesh {
-	return quadMesh(VertexLayout.Particle, instanceBuffer, 0, capacity, generation);
+	const _stride = streamStride(layout);
+	return quadMesh(layout, instanceBuffer, 0, capacity, generation);
 }
 
 function remakeStream(context: DrawContext, index: int32): Result<int32, StreamError> {
 	doomBuffersOf(context, context.meshes[index]);
 	const capacity: int32 = context.meshes[index].instanceCapacity;
-	const instances: uint32 = makeStreamBuffer(capacity * STREAM_INSTANCE_STRIDE);
+	const layout = context.meshes[index].layout;
+	const instances: uint32 = makeStreamBuffer(capacity * streamStride(layout));
 	if (instances == 0) {
-		context.meshes[index] = GpuMesh.streamMesh(capacity, 0, 0);
+		context.meshes[index] = GpuMesh.streamMesh(capacity, 0, 0, layout);
 		return Result.err(StreamError.BufferRefused);
 	}
-	context.meshes[index] = GpuMesh.streamMesh(capacity, instances, contextGeneration());
+	context.meshes[index] = GpuMesh.streamMesh(capacity, instances, contextGeneration(), layout);
 	return Result.ok(index);
 }
 
@@ -631,10 +641,15 @@ function remakeStream(context: DrawContext, index: int32): Result<int32, StreamE
 export function addStreamMesh(
 	context: DrawContext,
 	capacity: int32,
+	layout: VertexLayout = VertexLayout.Particle,
 ): Result<MeshId, StreamError> {
 	if (context.closed) { stopOnClosedContext("addStreamMesh"); }
-	if (capacity <= 0) { return Result.err(StreamError.OverCapacity); }
-	const id: MeshId = newMesh(context, GpuMesh.streamMesh(capacity, 0, 0), MeshData.empty());
+	if (capacity <= 0 || capacity > 2147483647 / streamStride(layout)) {
+		return Result.err(StreamError.OverCapacity);
+	}
+	const id: MeshId = newMesh(
+		context, GpuMesh.streamMesh(capacity, 0, 0, layout), MeshData.empty(),
+	);
 	const made: Result<int32, StreamError> = remakeStream(context, id.index);
 	if (!made.ok) {
 		freeMesh(context, id.index);
@@ -661,7 +676,7 @@ export function writeStream(
 	if (count < 0 || count > context.meshes[index].instanceCapacity) {
 		return Result.err(StreamError.OverCapacity);
 	}
-	const length: int32 = count * STREAM_INSTANCE_STRIDE;
+	const length: int32 = count * streamStride(context.meshes[index].layout);
 	if ((instances.length as int32) < length) { return Result.err(StreamError.ShortInstances); }
 	if (context.meshes[index].isStale(contextGeneration())) {
 		const _remade: int32 = try remakeStream(context, index);
@@ -917,7 +932,8 @@ export function addMaterial(
 		return Result.err(MaterialError.StraightBlend);
 	}
 	const fixedCut: boolean = material.program.program == Program.Billboard ||
-		material.program.program == Program.Particle;
+		material.program.program == Program.Particle ||
+		material.program.program == Program.ParticleVisual;
 	if (material.program.cutout && !fixedCut && !context.cutsAbove(material.uniforms)) {
 		return Result.err(MaterialError.NoAlphaKill);
 	}

@@ -727,6 +727,7 @@ function rampsHaveLevels(
 			Program.Lit => levelsAt(context, material.uniforms, RAMP_LEVELS),
 			Program.LitTextured => levelsAt(context, material.uniforms, RAMP_LEVELS),
 			Program.Billboard => billboardLevels(context, material.uniforms),
+			Program.ParticleVisual => billboardLevels(context, material.uniforms),
 			Program.Particle => true,
 			Program.UnlitTextured => true,
 			Program.Copy => true,

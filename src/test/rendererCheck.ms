@@ -133,6 +133,7 @@ function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
 	const mesh: GpuMesh = match (vertexLayoutOf(program)) {
 		VertexLayout.Lit => litShape(),
 		VertexLayout.Particle => GpuMesh.streamMesh(1, 0, 0),
+		VertexLayout.ParticleVisual => GpuMesh.streamMesh(1, 0, 0, VertexLayout.ParticleVisual),
 		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
 		VertexLayout.LitTextured => ({ ...litShape(), layout: VertexLayout.LitTextured }),

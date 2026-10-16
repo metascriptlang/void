@@ -7,6 +7,12 @@ lit                                     LIT             CORE      -             
 particle                                PARTICLE        CORE      -                                            particleVs      particleFs            PARTICLE
 particleCutout                          PARTICLE        CORE      CUTOUT                                       particleVs      particleFs            PARTICLE
 billboard                               BILLBOARD       CORE      -                                            billboardVs     billboardFs           BILLBOARD
+particleVisual                          PARTICLE_VISUAL CORE      -                                            particleVisualVs billboardFs          PARTICLE_VISUAL
+particleVisualPremultiplied              PARTICLE_VISUAL CORE      PREMULTIPLIED                                particleVisualVs billboardFs          PARTICLE_VISUAL
+particleVisualCutout                     PARTICLE_VISUAL CORE      CUTOUT                                       particleVisualVs billboardFs          PARTICLE_VISUAL
+pixelArtParticleVisual                   PARTICLE_VISUAL PIXEL_ART -                                            particleVisualPixelArtVs billboardFs  PARTICLE_VISUAL
+pixelArtParticleVisualPremultiplied       PARTICLE_VISUAL PIXEL_ART PREMULTIPLIED                                particleVisualPixelArtVs billboardFs  PARTICLE_VISUAL
+pixelArtParticleVisualCutout              PARTICLE_VISUAL PIXEL_ART CUTOUT                                       particleVisualPixelArtVs billboardFs  PARTICLE_VISUAL
 copy                                    COPY            CORE      -                                            fullscreenVs    copyFs                FULLSCREEN
 pixelArtLit                             LIT             PIXEL_ART -                                            litVs           litFs                 LIT
 pixelArtParticle                        PARTICLE        PIXEL_ART -                                            particleVs      particleFs            PARTICLE

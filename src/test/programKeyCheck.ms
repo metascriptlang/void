@@ -7,6 +7,7 @@ import {
 	SKIN_UNIFORM_SLOT,
 	SKIN_UNIFORM_LENGTH,
 	layoutFloats,
+	layoutPerInstance,
 	Preset,
 	ProgramError,
 	VertexLayout,
@@ -45,9 +46,11 @@ import {
 	MATERIAL_ALPHA_KILL,
 } from "../void3d/gpu3d";
 import { UNIFORM_SLOTS } from "../gpu/door";
-import { RenderState, BlendMode } from "../gpu/state";
+import { RenderState, BlendMode, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
-import { Material, Phase, UniformBlock, NO_UNIFORMS, movingDefaults } from "../void3d/material";
+import {
+	Material, MaterialKind, Phase, UniformBlock, NO_UNIFORMS, movingDefaults,
+} from "../void3d/material";
 import {
 	DrawContext,
 	DrawItem,
@@ -154,11 +157,12 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
 	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
-	Program.OutlineWidth,
+	Program.OutlineWidth, Program.ParticleVisual,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.LitTextured, Program.UnlitTextured,
+	Program.ParticleVisual,
 ];
 
 function layoutFor(key: ProgramKey): VertexLayout {
@@ -171,6 +175,7 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.Lit => VertexLayout.Lit,
 		Program.Particle => VertexLayout.Particle,
 		Program.Billboard => VertexLayout.Billboard,
+		Program.ParticleVisual => VertexLayout.ParticleVisual,
 		Program.Copy => VertexLayout.Fullscreen,
 		Program.Post => VertexLayout.Fullscreen,
 		Program.Blit => VertexLayout.Fullscreen,
@@ -223,7 +228,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 174;
+	assert declared == 174 + 6;
 }
 
 test "skin programs own slot7, omit mesh model and keep matching colour/shadow layouts" {
@@ -1049,4 +1054,32 @@ test "the frame block carries Heaps' exposure as its multiplier, exactly 1 at st
 	assert core.exposure == 0.5;
 	setExposure(core, 0.0);
 	assert core.exposure == 0.0;
+}
+
+test "particleVisual declares additive program14 layout9 with original billboard FS ABI" {
+	assert (Program.ParticleVisual as int32) == 14;
+	assert (VertexLayout.ParticleVisual as int32) == 9;
+	const presets: Vec<Preset> = [Preset.Core, Preset.PixelArt];
+	for (const preset of presets) {
+		const key = ProgramKey.of(Program.ParticleVisual).withPreset(preset);
+		assert declares(key) && declares(key.withCutout()) && declares(key.withPremultiplied());
+		assert vertexLayoutOf(key) == VertexLayout.ParticleVisual;
+		assert layoutFloats(VertexLayout.ParticleVisual, 0) == 16;
+		assert layoutPerInstance(VertexLayout.ParticleVisual);
+		assert uniformBlockLength(key, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
+		assert uniformBlockLength(key, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;
+		assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+		assert uniformBlockLength(key, 4) == 0 && uniformBlockLength(key, SKIN_UNIFORM_SLOT) == 0;
+		assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
+		const skin: ProgramKey = { ...key, skinned: true };
+		assert !declares(skin);
+	}
+	const material = Material.ofKind(Program.ParticleVisual, MaterialKind.Alpha);
+	assert material.pass.culling == Face.None && !material.pass.depthWrite;
+	assert !castIn(material.program).ok;
+	const mesh = GpuMesh.streamMesh(5, 17, 3, VertexLayout.ParticleVisual);
+	assert mesh.layout == VertexLayout.ParticleVisual && mesh.instanceCapacity == 5;
+	assert mesh.vertexCount == 6 && mesh.isStream();
+	assert layoutFloats(VertexLayout.Particle, 0) == 8;
+	assert layoutFloats(VertexLayout.Billboard, 0) == 15;
 }

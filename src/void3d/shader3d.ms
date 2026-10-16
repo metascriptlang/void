@@ -11,6 +11,7 @@ import {
 	binding,
 	builtin,
 	clamp,
+	cos,
 	cross,
 	determinant,
 	discard,
@@ -27,6 +28,7 @@ import {
 	pow,
 	sampleType,
 	samplerType,
+	sin,
 	textureDimensions,
 	textureLoad,
 	textureSample,
@@ -52,6 +54,35 @@ export function copyFs(input: CopyInput, b: CopyBindings): Vec4f {
 	const size = textureDimensions(b.sourceTexture, b.pointSampler, 0);
 	const p = clamp(vec2i(input.position.xy), vec2i(0, 0), size - vec2i(1, 1));
 	return textureLoad(b.sourceTexture, b.pointSampler, p, 0);
+}
+
+const PARTICLE_CORNERS: Vec2f[6] = [
+	vec2f(-0.5, -0.5), vec2f(0.5, -0.5), vec2f(0.5, 0.5),
+	vec2f(-0.5, -0.5), vec2f(0.5, 0.5), vec2f(-0.5, 0.5),
+];
+
+export struct ParticleVisualAttributes {
+	root: Vec4f;
+	shape: Vec4f;
+	tile: Vec4f;
+	color: Vec4f;
+	@builtin(vertexIndex) index: uint32;
+}
+
+export struct ParticleVisualVaryings {
+	worldPosition: Vec3f;
+	towardCamera: Vec3f;
+	uv: Vec2f;
+	instanceColor: Vec4f;
+	@builtin(position) clip: Vec4f;
+}
+
+export struct ParticleVisualPixelArtVaryings {
+	uv: Vec2f;
+	rootPosition: Vec3f;
+	instanceColor: Vec4f;
+	depth01: float32;
+	@builtin(position) clip: Vec4f;
 }
 
 export struct LitAttributes {
@@ -279,6 +310,49 @@ function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
 	const c = cross(linear.columns[0], linear.columns[1]);
 	const direction: float32 = dot(linear.columns[0], a) < 0.0 ? -1.0 : 1.0;
 	return (a * normal.x + b * normal.y + c * normal.z) * direction;
+}
+
+function particleVisualPoint(
+	root: Vec4f, shape: Vec4f, corner: Vec2f, right: Vec3f, up: Vec3f,
+): Vec3f {
+	const x = (corner.x - shape.y) * root.w;
+	const y = (corner.y - shape.z) * shape.x;
+	const c = cos(shape.w);
+	const s = sin(shape.w);
+	return root.xyz + right * (x * c + y * s) + up * (y * c - x * s);
+}
+
+export function particleVisualPixelArtVs(
+	input: ParticleVisualAttributes, b: VertexBindings,
+): ParticleVisualPixelArtVaryings {
+	const corner = PARTICLE_CORNERS[input.index % 6];
+	const world = particleVisualPoint(input.root, input.shape, corner,
+		b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz);
+	const clip = b.vertexParams.viewProj * vec4f(world, 1.0);
+	return {
+		uv: vec2f(corner.x > 0.0 ? input.tile.z : input.tile.x,
+			corner.y > 0.0 ? input.tile.y : input.tile.w),
+		rootPosition: input.root.xyz,
+		instanceColor: input.color,
+		depth01: clip.z,
+		clip: clip,
+	};
+}
+
+export function particleVisualVs(
+	input: ParticleVisualAttributes, b: VertexBindings,
+): ParticleVisualVaryings {
+	const corner = PARTICLE_CORNERS[input.index % 6];
+	const world = particleVisualPoint(input.root, input.shape, corner,
+		b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz);
+	return {
+		worldPosition: world,
+		towardCamera: cross(b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz),
+		uv: vec2f(corner.x > 0.0 ? input.tile.z : input.tile.x,
+			corner.y > 0.0 ? input.tile.y : input.tile.w),
+		instanceColor: input.color,
+		clip: b.vertexParams.viewProj * vec4f(world, 1.0),
+	};
 }
 
 export function litVs(input: LitAttributes, b: VertexBindings, key: LitKey): LitVaryings {

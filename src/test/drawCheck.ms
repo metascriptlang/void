@@ -14,7 +14,7 @@ import {
 	addPlane,
 	addVertex,
 } from "../void3d/meshData";
-import { PARTICLE_INSTANCE_STRIDE } from "../void3d/particles";
+import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "../void3d/particles";
 import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
 import { added } from "./drawHelpers";
 import {
@@ -27,6 +27,7 @@ import {
 	releaseMesh,
 	staleMeshes,
 	writeStream,
+	addStreamMesh,
 } from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -158,6 +159,7 @@ test "the quad layouts are the layouts whose one buffer steps per instance" {
 		VertexLayout.Lit,
 		VertexLayout.Particle,
 		VertexLayout.Billboard,
+		VertexLayout.ParticleVisual,
 		VertexLayout.Fullscreen,
 		VertexLayout.LitTextured,
 	];
@@ -196,6 +198,7 @@ test "every vertex layout carries the floats its writers write, per vertex and p
 	assert layoutFloats(VertexLayout.LitTextured, 0) == LIT_TEXTURED_VERTEX_STRIDE;
 	assert layoutFloats(VertexLayout.Particle, 0) == STREAM_INSTANCE_STRIDE;
 	assert layoutFloats(VertexLayout.Particle, 0) == PARTICLE_INSTANCE_STRIDE;
+	assert layoutFloats(VertexLayout.ParticleVisual, 0) == PARTICLE_VISUAL_INSTANCE_STRIDE;
 	assert layoutFloats(VertexLayout.Billboard, 0) == BILLBOARD_INSTANCE_STRIDE;
 	assert layoutFloats(VertexLayout.Fullscreen, 0) == 2;
 }
@@ -203,4 +206,15 @@ test "every vertex layout carries the floats its writers write, per vertex and p
 test "a mesh uploaded from data with uvs is drawn on the LitTextured layout, without on Lit" {
 	assert MeshData.withUvs().meshFor(1, 2, 1).layout == VertexLayout.LitTextured;
 	assert MeshData.empty().meshFor(1, 2, 1).layout == VertexLayout.Lit;
+}
+
+test "particleVisual streams reject eight-float writes and overflowing capacity before GPU" {
+	let context = DrawContext.withUniformCapacity(8);
+	const stream = added(context, GpuMesh.streamMesh(2, 12, 1, VertexLayout.ParticleVisual));
+	const oldRows: Vec<float32> = new Array(16);
+	assert streamError(writeStream(context, stream, oldRows, 2)) == StreamError.ShortInstances;
+	assert context.meshes[stream.index].layout == VertexLayout.ParticleVisual;
+	assert context.meshes[stream.index].instanceCount == 0;
+	const excessive = addStreamMesh(context, 134217728, VertexLayout.ParticleVisual);
+	assert !excessive.ok && excessive.error == StreamError.OverCapacity;
 }

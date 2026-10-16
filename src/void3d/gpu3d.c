@@ -23,6 +23,7 @@ enum {
 	LAYOUT_SKIN_LIT,
 	LAYOUT_SKIN_LIT_TEXTURED,
 	LAYOUT_SKIN_LIT_TEXTURED_TANGENT,
+	LAYOUT_PARTICLE_VISUAL,
 	LAYOUT_COUNT,
 };
 
@@ -43,6 +44,7 @@ enum {
 	GPU3D_PROGRAM_OUTLINE_MASK,
 	GPU3D_PROGRAM_OUTLINE_MIX,
 	GPU3D_PROGRAM_OUTLINE_WIDTH,
+	GPU3D_PROGRAM_PARTICLE_VISUAL,
 };
 
 enum {
@@ -91,6 +93,13 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_billboard_program_anchor].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_billboard_program_tile].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_billboard_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
+	case LAYOUT_PARTICLE_VISUAL:
+		out->buffers[0].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+		out->attrs[ATTR_particleVisual_program_root].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particleVisual_program_shape].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particleVisual_program_tile].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particleVisual_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		break;
 	case LAYOUT_LIT_TEXTURED:
 		out->attrs[ATTR_litTextured_program_position].format = SG_VERTEXFORMAT_FLOAT3;

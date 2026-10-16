@@ -57,6 +57,7 @@ export enum Program {
 	OutlineMask,
 	OutlineMix,
 	OutlineWidth,
+	ParticleVisual,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -107,14 +108,16 @@ function stopOnFeature(key: ProgramKey, feature: string): ProgramKey {
 }
 
 export function withPremultiplied(this key: ProgramKey): ProgramKey {
-	if (key.program != Program.Billboard) { stopOnUntextured(key, "premultiplied"); }
+	if (key.program != Program.Billboard && key.program != Program.ParticleVisual) {
+		stopOnUntextured(key, "premultiplied");
+	}
 	return { ...key, premultiplied: true };
 }
 
 export function withCutout(this key: ProgramKey): ProgramKey {
 	const cuts: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
 		key.program == Program.UnlitTextured || key.program == Program.Billboard ||
-		key.program == Program.Particle;
+		key.program == Program.Particle || key.program == Program.ParticleVisual;
 	if (!cuts) { return stopOnFeature(key, "cutout"); }
 	return { ...key, cutout: true };
 }
@@ -256,6 +259,7 @@ export function isScreenProgram(program: Program): boolean {
 		Program.Lit => false,
 		Program.Particle => false,
 		Program.Billboard => false,
+		Program.ParticleVisual => false,
 		Program.Copy => true,
 		Program.Post => true,
 		Program.Blit => true,
@@ -317,6 +321,7 @@ export enum VertexLayout {
 	SkinLit,
 	SkinLitTextured,
 	SkinLitTexturedTangent,
+	ParticleVisual,
 }
 
 export function vertexLayoutOf(program: ProgramKey): VertexLayout {
@@ -328,6 +333,7 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Lit => false,
 		VertexLayout.Particle => true,
 		VertexLayout.Billboard => true,
+		VertexLayout.ParticleVisual => true,
 		VertexLayout.Fullscreen => false,
 		VertexLayout.LitTextured => false,
 		VertexLayout.LitTexturedTangent => false,

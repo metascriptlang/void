@@ -3,6 +3,8 @@
 
 import { Vec3, vec3, Vec4, vec4, Mat4, identity, transformDirection, cross } from "../math/math3d";
 import { noiseDirection, shaderNoiseScale } from "./particleNoise";
+import { particleVisualFrameIndex, ParticleVisualFrame, validPixelFrame } from "./particleVisual";
+import { Anchor, ANCHOR_CENTER } from "./billboard";
 
 export enum ValueKind {
 	Const,
@@ -120,6 +122,10 @@ export struct EmitterState {
 	globalSize: ParticleValue;
 	life: ParticleValue;
 	size: ParticleValue;
+	ratio: ParticleValue;
+	rotation: ParticleValue;
+	frame: ParticleValue | null;
+	frameCount: int32;
 	speed: ParticleValue;
 	// Godot's `initial_linear_velocity` (particle_process_material.cpp:204-205, 576, 893): a speed
 	// along the emission direction drawn once at spawn, which seeds the velocity that damping and
@@ -142,6 +148,9 @@ export struct Particle {
 	time: float64;
 	lifeTimeFactor: float64;
 	size: float32;
+	ratio: float32;
+	rotation: float32;
+	frame: int32;
 	red: float32;
 	green: float32;
 	blue: float32;
@@ -178,12 +187,15 @@ export enum ParticleError {
 	NonFiniteStep,
 	ShortInstances,
 	NeedsView,
+	NoFrames,
+	NonFiniteVisual,
+	InvalidFrame,
+	FrameCountMismatch,
 }
 
-// Per-particle draws per update: force x, y, z, gravity, damping, turbulence, speed, size,
-// light, alpha.
-export const PARTICLE_RANDOM_SLOTS: int32 = 10;
+export const PARTICLE_RANDOM_SLOTS: int32 = 13;
 export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
+export const PARTICLE_VISUAL_INSTANCE_STRIDE: int32 = 16;
 
 const TWO_PI: float64 = 6.283185307179586;
 const UNIT_SCALE: float32 = 1.0 / 16777216.0;
@@ -211,6 +223,10 @@ export function defaults(this typeof EmitterState): EmitterState {
 		globalSize: constant(1.0),
 		life: constant(1.0),
 		size: constant(1.0),
+		ratio: constant(1.0),
+		rotation: constant(0.0),
+		frame: null,
+		frameCount: 0,
 		speed: constant(0.1),
 		initialSpeed: constant(0.0),
 		gravity: constant(0.0),
@@ -284,8 +300,13 @@ export function create(
 	state: EmitterState,
 	seed: uint32,
 ): Result<ParticleEmitter, ParticleError> {
-	if (state.maxParts <= 0) { return Result.err(ParticleError.NoCapacity); }
+	if (state.maxParts <= 0 || state.maxParts > 2147483647 / PARTICLE_RANDOM_SLOTS) {
+		return Result.err(ParticleError.NoCapacity);
+	}
 	if (!(state.globalLife > 0.0)) { return Result.err(ParticleError.NonPositiveLife); }
+	if (state.frame !== null && state.frameCount <= 0) {
+		return Result.err(ParticleError.NoFrames);
+	}
 	const idle: Particle = {
 		position: vec3(0.0, 0.0, 0.0),
 		direction: vec3(0.0, 0.0, 0.0),
@@ -293,6 +314,9 @@ export function create(
 		time: 0.0,
 		lifeTimeFactor: 0.0,
 		size: 0.0,
+		ratio: 1.0,
+		rotation: 0.0,
+		frame: 0,
 		red: 1.0,
 		green: 1.0,
 		blue: 1.0,
@@ -356,6 +380,10 @@ function particleValue(
 ): float32 {
 	if (!v.drawsRandom()) { return v.evaluate(time, 0.0); }
 	const index: int32 = emitter.particles[slot].randomIndex;
+	if (index < 0 || index >= PARTICLE_RANDOM_SLOTS) {
+		console.error(`particleValue: random slot ${index} outside ${PARTICLE_RANDOM_SLOTS}`);
+		unreachable;
+	}
 	const at: int32 = slot * PARTICLE_RANDOM_SLOTS + index;
 	if (index >= emitter.particles[slot].randomsDrawn) {
 		emitter.randoms[at] = nextUnit(emitter.sequence);
@@ -513,6 +541,9 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 	emitter.count = slot + 1;
 	// PENDING3D: particle-random-per-life
 	emitter.particles[slot].randomsDrawn = 0;
+	emitter.particles[slot].ratio = 1.0;
+	emitter.particles[slot].rotation = 0.0;
+	emitter.particles[slot].frame = 0;
 	const time: float32 = emitter.time as float32;
 	const shell: boolean = emitter.state.emitFromShell;
 	let position: Vec3 = vec3(0.0, 0.0, 0.0);
@@ -623,11 +654,13 @@ function colorAt(ref emitter: ParticleEmitter, slot: int32, light: float32): voi
 }
 
 // Emitter.updateParticle: false when the particle's life is over.
-function stepParticle(ref emitter: ParticleEmitter, slot: int32, step: float64): boolean {
+function stepParticle(
+	ref emitter: ParticleEmitter, slot: int32, step: float64,
+): Result<boolean, ParticleError> {
 	const lived: float64 =
 		emitter.particles[slot].time + step * emitter.particles[slot].lifeTimeFactor;
 	emitter.particles[slot].time = lived;
-	if (lived > 1.0) { return false; }
+	if (lived > 1.0) { return Result.ok(false); }
 	const life: float32 = lived as float32;
 	const dt: float32 = step as float32;
 	emitter.particles[slot].randomIndex = 0;
@@ -680,10 +713,23 @@ function stepParticle(ref emitter: ParticleEmitter, slot: int32, step: float64):
 		);
 	}
 	emitter.particles[slot].size = particleValue(emitter, slot, emitter.state.size, life);
+	emitter.particles[slot].ratio = particleValue(emitter, slot, emitter.state.ratio, life);
+	emitter.particles[slot].rotation = particleValue(emitter, slot, emitter.state.rotation, life);
+	if (!Number.isFinite(emitter.particles[slot].ratio)
+		|| !Number.isFinite(emitter.particles[slot].rotation)) {
+		return Result.err(ParticleError.NonFiniteVisual);
+	}
 	const light: float32 = particleValue(emitter, slot, emitter.state.light, life);
 	colorAt(emitter, slot, light);
 	emitter.particles[slot].alpha = particleValue(emitter, slot, emitter.state.alpha, life);
-	return true;
+	const frame = emitter.state.frame;
+	if (frame !== null) {
+		const value: float32 = particleValue(emitter, slot, frame, life);
+		const wrapped = particleVisualFrameIndex(value as float64, emitter.state.frameCount);
+		if (!wrapped.ok) { return Result.err(ParticleError.NonFiniteVisual); }
+		emitter.particles[slot].frame = wrapped.value;
+	}
+	return Result.ok(true);
 }
 
 // Godot's damping (cpp:993-1011): the speed falls by `loss`, along its own direction, to a stop.
@@ -719,6 +765,9 @@ export function updateEmitter(
 	world: Mat4,
 ): Result<int32, ParticleError> {
 	if (!Number.isFinite(dt)) { return Result.err(ParticleError.NonFiniteStep); }
+	if (emitter.state.frame !== null && emitter.state.frameCount <= 0) {
+		return Result.err(ParticleError.NoFrames);
+	}
 	const old: float64 = emitter.time;
 	const life: float64 = emitter.state.globalLife as float64;
 	const rate: float32 = emitterValue(emitter, emitter.state.globalSpeed, old as float32);
@@ -743,7 +792,8 @@ export function updateEmitter(
 	}
 	let kept: int32 = 0;
 	for (let i = 0; i < emitter.count; i++) {
-		if (!stepParticle(emitter, i, elapsed)) { continue; }
+		const live: boolean = try stepParticle(emitter, i, elapsed);
+		if (!live) { continue; }
 		if (kept != i) { moveParticle(emitter, i, kept); }
 		kept = kept + 1;
 	}
@@ -773,6 +823,17 @@ export function writeSortedInstances(
 	out: Span<float32>,
 ): Result<int32, ParticleError> {
 	return writeOrdered(emitter, world, viewProjection, out);
+}
+
+export function writeVisualInstances(
+	ref emitter: ParticleEmitter,
+	world: Mat4,
+	viewProjection: Mat4,
+	frames: Vec<ParticleVisualFrame>,
+	anchor: Anchor,
+	out: Span<float32>,
+): Result<int32, ParticleError> {
+	return writeOrdered(emitter, world, viewProjection, out, true, frames, anchor);
 }
 
 function placeOf(ref emitter: ParticleEmitter, world: Mat4, slot: int32): Vec3 {
@@ -814,12 +875,27 @@ function writeOrdered(
 	world: Mat4,
 	viewProjection: Mat4,
 	out: Span<float32>,
+	visual: boolean = false,
+	frames: Vec<ParticleVisualFrame> = [],
+	anchor: Anchor = ANCHOR_CENTER,
 ): Result<int32, ParticleError> {
 	const count: int32 = emitter.count;
-	if ((out.length as int32) < count * PARTICLE_INSTANCE_STRIDE) {
+	const stride: int32 = visual ? PARTICLE_VISUAL_INSTANCE_STRIDE : PARTICLE_INSTANCE_STRIDE;
+	if (count > 2147483647 / stride || (out.length as int32) < count * stride) {
 		return Result.err(ParticleError.ShortInstances);
 	}
-	// PENDING3D: particle-size-world-units
+	if (visual) {
+		if (frames.length == 0) { return Result.err(ParticleError.NoFrames); }
+		if (emitter.state.frame !== null && emitter.state.frameCount != frames.length) {
+			return Result.err(ParticleError.FrameCountMismatch);
+		}
+		if (!Number.isFinite(anchor.x) || !Number.isFinite(anchor.y)) {
+			return Result.err(ParticleError.NonFiniteVisual);
+		}
+		for (const frame of frames) {
+			if (!frame.validPixelFrame()) { return Result.err(ParticleError.InvalidFrame); }
+		}
+	}
 	const cycle: float32 = emitter.time as float32;
 	const scale: float32 = emitterValue(emitter, emitter.state.globalSize, cycle);
 	if (count == 0) { return Result.ok(0); }
@@ -834,18 +910,49 @@ function writeOrdered(
 		}
 		sortByDepth(emitter);
 	}
+	if (visual) {
+		for (let slot = 0; slot < count; slot++) {
+			const particle = emitter.particles[slot];
+			const position = placeOf(emitter, world, slot);
+			const frame = frames[particle.frame < 0 || particle.frame >= frames.length
+				? 0 : particle.frame];
+			const width: float32 = particle.size * scale;
+			const height: float32 = width * particle.ratio * (frame.pixelHeight / frame.pixelWidth);
+			if (!Number.isFinite(position.x) || !Number.isFinite(position.y)
+				|| !Number.isFinite(position.z) || !Number.isFinite(width)
+				|| !Number.isFinite(height) || !Number.isFinite(particle.rotation)
+				|| !Number.isFinite(particle.red) || !Number.isFinite(particle.green)
+				|| !Number.isFinite(particle.blue) || !Number.isFinite(particle.alpha)) {
+				return Result.err(ParticleError.NonFiniteVisual);
+			}
+		}
+	}
 	for (let i = 0; i < count; i++) {
 		const slot: int32 = emitter.order[i];
 		const position: Vec3 = placeOf(emitter, world, slot);
-		const at: int32 = i * PARTICLE_INSTANCE_STRIDE;
+		const at: int32 = i * stride;
 		out[at] = position.x;
 		out[at + 1] = position.y;
 		out[at + 2] = position.z;
 		out[at + 3] = emitter.particles[slot].size * scale;
-		out[at + 4] = emitter.particles[slot].red;
-		out[at + 5] = emitter.particles[slot].green;
-		out[at + 6] = emitter.particles[slot].blue;
-		out[at + 7] = emitter.particles[slot].alpha;
+		const colorAt: int32 = visual ? at + 12 : at + 4;
+		out[colorAt] = emitter.particles[slot].red;
+		out[colorAt + 1] = emitter.particles[slot].green;
+		out[colorAt + 2] = emitter.particles[slot].blue;
+		out[colorAt + 3] = emitter.particles[slot].alpha;
+		if (visual) {
+			const selected: int32 = emitter.particles[slot].frame;
+			const frame = frames[selected < 0 || selected >= frames.length ? 0 : selected];
+			out[at + 4] = out[at + 3] * emitter.particles[slot].ratio
+				* (frame.pixelHeight / frame.pixelWidth);
+			out[at + 5] = anchor.x;
+			out[at + 6] = anchor.y;
+			out[at + 7] = emitter.particles[slot].rotation;
+			out[at + 8] = frame.tile.u;
+			out[at + 9] = frame.tile.v;
+			out[at + 10] = frame.tile.u2;
+			out[at + 11] = frame.tile.v2;
+		}
 	}
 	return Result.ok(count);
 }

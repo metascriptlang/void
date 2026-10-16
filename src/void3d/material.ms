@@ -138,6 +138,7 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.UnlitTextured => ProgramKey.of(program).withCutout(),
 		Program.Billboard => ProgramKey.of(program).withCutout(),
 		Program.Particle => ProgramKey.of(program).withCutout(),
+		Program.ParticleVisual => ProgramKey.of(program).withCutout(),
 		Program.Copy => stopOnNoCutout(program),
 		Program.Post => stopOnNoCutout(program),
 		Program.Blit => stopOnNoCutout(program),
@@ -165,7 +166,8 @@ function castsByDefault(program: Program): boolean {
 // Material.getDefaultProps("particles3D") has `culling: false` beside `shadows: false`
 // (h3d/mat/Material.hx:240-246): the quads of a particle or a billboard are seen from either side.
 function culledByDefault(program: Program): boolean {
-	return program != Program.Billboard && program != Program.Particle;
+	return program != Program.Billboard && program != Program.Particle &&
+		program != Program.ParticleVisual;
 }
 
 // The caller writes alphaKillFor(kind) into the material block, as every other uniform value.
@@ -176,7 +178,10 @@ export function ofKind(this typeof Material, program: Program, kind: MaterialKin
 	const faces: RenderState = culledByDefault(program) ?
 		RenderState.defaults() : RenderState.defaults().withCulling(Face.None);
 	const pass: RenderState = passFor(kind, faces);
-	const particleAlpha: boolean = program == Program.Particle && kind == MaterialKind.Alpha;
+	const particleAlpha: boolean = (
+		program == Program.Particle || program == Program.ParticleVisual
+	)
+		&& kind == MaterialKind.Alpha;
 	const material: Material = Material.keyed(key,
 		particleAlpha ? pass.withDepth(false, pass.depthTest) : pass, phaseFor(kind));
 	const cast: ShadowCasting = castsByDefault(program) ? ShadowCasting.On : ShadowCasting.Off;

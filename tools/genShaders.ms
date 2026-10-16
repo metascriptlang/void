@@ -8,6 +8,8 @@ import {
 	litTexturedFs,
 	litTexturedVs,
 	litVs,
+	particleVisualVs,
+	particleVisualPixelArtVs,
 	shadowLitFs,
 	shadowLitTexturedFs,
 	shadowUnlitTexturedFs,
@@ -20,6 +22,8 @@ function stage(kind: string, name: string, source: string): string {
 }
 
 console.log(stage("fs", "copyFs", glsl(copyFs)));
+console.log(stage("vs", "particleVisualVs", glsl(particleVisualVs)));
+console.log(stage("vs", "particleVisualPixelArtVs", glsl(particleVisualPixelArtVs)));
 console.log(stage("vs", "litVs", glsl(litVs)));
 console.log(stage("fs", "litFs", glslLinked(litFs, litVs)));
 console.log(stage("fs", "shadowLitFs", glslLinked(shadowLitFs, litVs)));

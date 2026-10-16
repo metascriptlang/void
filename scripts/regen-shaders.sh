@@ -78,6 +78,7 @@ attributesOf() {
 	case "$1" in
 		LIT)          echo "position normal color" ;;
 		PARTICLE)     echo "root color" ;;
+		PARTICLE_VISUAL) echo "root shape tile color" ;;
 		BILLBOARD)    echo "position size anchor tile color" ;;
 		LIT_TEXTURED) echo "position normal uv color" ;;
 		LIT_TEXTURED_TANGENT) echo "position normal uv color tangent" ;;
@@ -155,7 +156,11 @@ regenKeys() {
 				echo "@include $ROOT/src/void3d/shader3dBlocks.glsl"
 			fi
 			echo "$hand"
-			case "$src" in "$GENERATED_FOR") stagesOf "$GENERATED" "$vs" "$fs" ;; esac
+			case "$src:$vs" in
+				"$GENERATED_FOR:"*|*:particleVisualVs|*:particleVisualPixelArtVs)
+					stagesOf "$GENERATED" "$vs" "$fs" ;;
+
+			esac
 			echo "@program program $vs $fs"
 		} > "$input"
 		for feature in $(echo "$features" | tr ':' ' '); do

@@ -10,6 +10,75 @@ void main() {
 }
 @end
 
+@vs particleVisualVs
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+};
+in vec4 root;
+in vec4 shape;
+in vec4 tile;
+in vec4 color;
+out vec3 worldPosition;
+out vec3 towardCamera;
+out vec2 uv;
+out vec4 instanceColor;
+const vec2[6] PARTICLE_CORNERS = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
+vec3 particleVisualPoint(vec4 root_1, vec4 shape_1, vec2 corner, vec3 right, vec3 up) {
+    float x = (corner.x - shape_1.y) * root_1.w;
+    float y = (corner.y - shape_1.z) * shape_1.x;
+    float c = cos(shape_1.w);
+    float s = sin(shape_1.w);
+    return (root_1.xyz + (right * ((x * c) + (y * s)))) + (up * ((y * c) - (x * s)));
+}
+void main() {
+    vec2 corner = PARTICLE_CORNERS[gl_VertexIndex % 6];
+    vec3 world = particleVisualPoint(root, shape, corner, cameraRight.xyz, cameraUp.xyz);
+    worldPosition = world;
+    towardCamera = cross(cameraRight.xyz, cameraUp.xyz);
+    uv = vec2(((corner.x > 0.0) ? tile.z : tile.x), ((corner.y > 0.0) ? tile.y : tile.w));
+    instanceColor = color;
+    gl_Position = (viewProj * vec4(world, 1.0));
+    return;
+}
+@end
+
+@vs particleVisualPixelArtVs
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+};
+in vec4 root;
+in vec4 shape;
+in vec4 tile;
+in vec4 color;
+out vec2 uv;
+out vec3 rootPosition;
+out vec4 instanceColor;
+out float depth01;
+const vec2[6] PARTICLE_CORNERS = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
+vec3 particleVisualPoint(vec4 root_1, vec4 shape_1, vec2 corner, vec3 right, vec3 up) {
+    float x = (corner.x - shape_1.y) * root_1.w;
+    float y = (corner.y - shape_1.z) * shape_1.x;
+    float c = cos(shape_1.w);
+    float s = sin(shape_1.w);
+    return (root_1.xyz + (right * ((x * c) + (y * s)))) + (up * ((y * c) - (x * s)));
+}
+void main() {
+    vec2 corner = PARTICLE_CORNERS[gl_VertexIndex % 6];
+    vec3 world = particleVisualPoint(root, shape, corner, cameraRight.xyz, cameraUp.xyz);
+    vec4 clip = viewProj * vec4(world, 1.0);
+    uv = vec2(((corner.x > 0.0) ? tile.z : tile.x), ((corner.y > 0.0) ? tile.y : tile.w));
+    rootPosition = root.xyz;
+    instanceColor = color;
+    depth01 = clip.z;
+    gl_Position = clip;
+    return;
+}
+@end
+
 @vs litVs
 #if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {

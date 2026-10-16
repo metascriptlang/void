@@ -83,6 +83,8 @@ import "./layersCheck";
 import "./renderOrderCheck";
 import "./particlesCheck";
 import "./particleFadeCheck";
+import "./particleVisualCheck";
+import "./particleShaderCheck";
 import "./layoutCheck";
 import "./billboardCheck";
 import "./shaderCheck";
