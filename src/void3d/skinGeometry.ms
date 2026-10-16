@@ -57,7 +57,8 @@ export function bind(
 			const at: int32 = vertex * 4 + slot;
 			const joint: int32 = influences.joints[at];
 			const weight: float32 = influences.weights[at];
-			if (joint < 0 || joint >= pose.joints.length || !Number.isFinite(weight) || weight < 0) {
+			if (joint < 0 || joint >= pose.joints.length || !Number.isFinite(weight)
+				|| weight < 0) {
 				return Result.err(SkinGeometryError.Influence);
 			}
 			sum += weight as float64;
@@ -88,7 +89,8 @@ export function deformPublished(this geometry: SkinGeometry): Result<int32, Skin
 	const count: int32 = geometry.source.vertexCount();
 	const stride: int32 = geometry.source.stride();
 	if (geometry.pending.vertices.length != geometry.source.vertices.length ||
-		geometry.influences.joints.length != count * 4 || geometry.influences.weights.length != count * 4) {
+		geometry.influences.joints.length != count * 4
+		|| geometry.influences.weights.length != count * 4) {
 		return Result.err(SkinGeometryError.Shape);
 	}
 	let bounds = Bounds3D.empty();
@@ -102,13 +104,16 @@ export function deformPublished(this geometry: SkinGeometry): Result<int32, Skin
 			const weight: float32 = geometry.influences.weights[influence];
 			if (weight == 0) { continue; }
 			const joint: int32 = geometry.influences.joints[influence];
-			const matrix = geometry.pose.inverseBindMatrices[joint].multiplyAffine(geometry.pose.worlds[joint]);
+			const matrix = geometry.pose.inverseBindMatrices[joint].multiplyAffine(
+				geometry.pose.worlds[joint],
+			);
 			const transformed: Vec3 = point * matrix;
 			result.x += transformed.x * weight;
 			result.y += transformed.y * weight;
 			result.z += transformed.z * weight;
 		}
-		if (!Number.isFinite(result.x) || !Number.isFinite(result.y) || !Number.isFinite(result.z)) {
+		if (!Number.isFinite(result.x) || !Number.isFinite(result.y)
+			|| !Number.isFinite(result.z)) {
 			return Result.err(SkinGeometryError.NonFinite);
 		}
 		geometry.pending.vertices[at] = result.x;

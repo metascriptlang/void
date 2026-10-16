@@ -1,4 +1,7 @@
-import { SkinGeometry, SkinGeometryError, bind, syncGeometry, deformPublished, spatialReady, rayIntersection as intersectSkin } from "../void3d/skinGeometry";
+import {
+	SkinGeometry, SkinGeometryError, bind, syncGeometry, deformPublished, spatialReady,
+	rayIntersection as intersectSkin,
+} from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose, syncSkinPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
 import { MeshData, addVertex, addTriangle, rayIntersection } from "../void3d/meshData";
@@ -16,7 +19,9 @@ import { Ray } from "../void3d/ray";
 function triangle(): MeshData {
 	let mesh = MeshData.empty();
 	for (const point of [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)]) {
-		const _vertex = addVertex(mesh, point, vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 });
+		const _vertex = addVertex(
+			mesh, point, vec3(0, 0, 1), { red: 1, green: 1, blue: 1, alpha: 1 },
+		);
 	}
 	const _triangle = addTriangle(mesh, 0, 1, 2);
 	return move mesh;
@@ -38,7 +43,9 @@ test "posed bounds and triangle picking use canonical joints, not GPU palette sl
 	const palette = SkinPalette.create([1, 0]);
 	assert palette.ok;
 	if (!palette.ok) { return; }
-	const pose = SkinPose.bindPose(scene, [0, 1], [first, second], [identity(), identity()], [palette.value]);
+	const pose = SkinPose.bindPose(
+		scene, [0, 1], [first, second], [identity(), identity()], [palette.value],
+	);
 	assert pose.ok;
 	if (!pose.ok) { return; }
 	const geometry = SkinGeometry.bind(triangle(), influences(), pose.value);
@@ -75,7 +82,9 @@ test "late nonfinite deformation preserves published vertices and invalidates sp
 	if (!geometry.ok) { return; }
 	assert geometry.value.syncGeometry().ok;
 	assert geometry.value.spatialReady();
-	setLocal(scene, bone, { ...Transform3D.identity(), position: vec3(2, 0, 0), scale: vec3(10, 1, 1) });
+	setLocal(scene, bone, {
+		...Transform3D.identity(), position: vec3(2, 0, 0), scale: vec3(10, 1, 1),
+	});
 	const failed = geometry.value.syncGeometry();
 	assert !failed.ok && failed.error == SkinGeometryError.NonFinite;
 	assert !geometry.value.spatialReady();
@@ -110,7 +119,7 @@ test "published pose revisions and recycled joints invalidate cached geometry" {
 	assert !geometry.value.deformPublished().ok;
 }
 
-test "skin draw validation and frustum filtering consume published world bounds without mesh model" {
+test "skin draw validation and frustum filtering use published world bounds without mesh model" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const bone = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const palette = SkinPalette.create([0]);
@@ -144,7 +153,11 @@ test "skin draw validation and frustum filtering consume published world bounds 
 	assert geometry.value.syncGeometry().ok;
 	item.world = translation(1000, 0, -1000);
 	const other: DrawItem = { ...item, skinGeometry: null, world: translation(0, 0, 3) };
-	list.indices = [0, 1]; list.depths = [0, 0]; list.layers = [0, 0]; list.orders = [0, 0]; list.count = 2;
+	list.indices = [0, 1];
+	list.depths = [0, 0];
+	list.layers = [0, 0];
+	list.orders = [0, 0];
+	list.count = 2;
 	const camera: Vec<float32> = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 	sortBackToFront(list, [item, other], camera);
 	assert list.indices[0] == 0 && list.depths[0] == 10;

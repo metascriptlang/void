@@ -439,7 +439,9 @@ export function recomputeBounds(ref data: MeshData): void {
 }
 
 // PENDING3D: pick-culling-follows-material
-export function rayIntersection(this data: Readonly<MeshData>, ray: Ray, culling: Face): MeshRayHit {
+export function rayIntersection(
+	this data: Readonly<MeshData>, ray: Ray, culling: Face,
+): MeshRayHit {
 	return intersectTriangles(data, ray, culling, 0, data.triangleCount());
 }
 

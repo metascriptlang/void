@@ -76,7 +76,9 @@ test "element offsets above uint16 remain wide and malformed ranges refuse" {
 		{ base: 0, count: 4 }, { base: 70002, count: 3 },
 		{ base: 0x7ffffffe, count: 6 },
 	]) {
-		const invalid = rayIntersectionElements(data, nearRay(), Face.None, range.base, range.count);
+		const invalid = rayIntersectionElements(
+			data, nearRay(), Face.None, range.base, range.count,
+		);
 		assert !invalid.ok;
 		if (!invalid.ok) { assert invalid.error == MeshError.DrawRange; }
 	}

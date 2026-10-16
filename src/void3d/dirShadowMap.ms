@@ -230,7 +230,9 @@ function casterBounds(
 		const item: Readonly<DrawItem> = items[shadow.casters.indices[i]];
 		const geometry = item.skinGeometry;
 		if (geometry !== null) {
-			if (!geometry.mesh.bounds.isEmpty()) { addBounds(bounds, geometry.mesh.bounds.transformed(toLight)); }
+			if (!geometry.mesh.bounds.isEmpty()) {
+				addBounds(bounds, geometry.mesh.bounds.transformed(toLight));
+			}
 		} else {
 			const local: Bounds3D = context.meshData[item.mesh.index].bounds;
 			if (local.isEmpty()) { continue; }
