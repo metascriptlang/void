@@ -252,6 +252,28 @@ test "a struct named like a ./std type is the author's, told apart by its module
 	assert twinFs(at(3.0, 0.0)) == 6.0;
 }
 
+function negateFs(input: ProbeInput): float32 {
+	const x = input.position.x;
+	const a = -(-x);
+	const b = x - -2.5;
+	const c: float32 = -(-3.0);
+	return a + b + c;
+}
+
+test "a negated literal is written as one, and a negation of a negation keeps its parentheses" {
+	assert glsl(negateFs) ==
+		"layout(location=0) out float fragColor;\n" +
+		"void main() {\n" +
+		"    float x = gl_FragCoord.x;\n" +
+		"    float a = -(-x);\n" +
+		"    float b = x - -2.5;\n" +
+		"    float c = -(-3.0);\n" +
+		"    fragColor = (a + b) + c;\n" +
+		"    return;\n" +
+		"}\n";
+	assert negateFs(at(1.0, 0.0)) == 7.5;
+}
+
 test "integer varyings are flat on both sides, and uint32 takes '%' and '%='" {
 	assert glsl(cellVs) ==
 		"in vec4 position;\n" +

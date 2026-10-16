@@ -1186,7 +1186,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			const op = n.unaryOp;
 			if (op == "!" && kindOf(n.operand) == TypeKind.Boolean ||
 				op == "-" && kindOf(n.operand) != TypeKind.Uint32) {
-				return op + expr(n.operand);
+				return op + (n.operand.kind == NodeKind.UnaryExpr ? "(" + value(n.operand) + ")" :
+					expr(n.operand));
 			}
 			fail(n, "unary '" + op + "' has no GLSL form yet");
 		}
@@ -1202,6 +1203,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 
 	function expr(n: Node): string {
 		if (n.kind == NodeKind.NumberLiteral) { return number(n); }
+		if (n.kind == NodeKind.UnaryExpr && n.unaryOp == "-" &&
+			n.operand.kind == NodeKind.NumberLiteral && kindOf(n.operand) != TypeKind.Uint32) {
+			return "-" + number(n.operand);
+		}
 		if (n.kind == NodeKind.BooleanLiteral) { return n.boolValue ? "true" : "false"; }
 		if (n.kind == NodeKind.Identifier) { return identifier(n); }
 		if (n.kind == NodeKind.BinaryExpr || n.kind == NodeKind.UnaryExpr ||

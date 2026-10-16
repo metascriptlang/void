@@ -143,6 +143,9 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
   from the author's by that path, and an author struct named like a `./std` type stays the author's
   (pinned in `shaderStatementCheck.ms`; BUILD `5631dd3e5`). An enum type node still carries no
   `resolvedSym`.
+- **A negated literal is a `UnaryExpr`.** Since BUILD `5631dd3e5` `-0.5` reaches the emitter as `-`
+  over a `NumberLiteral`, as TypeScript parses it; the emitter writes it as one literal, `-0.5`, and
+  parenthesizes only a negation of a negation, so `- -x` never becomes GLSL's `--`.
 
 ## Measured — sokol-shdc coverage
 
