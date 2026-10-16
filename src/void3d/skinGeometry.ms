@@ -1,4 +1,4 @@
-import { vec3, Vec3, multiplyAffine } from "../math/math3d";
+import { vec3, Vec3 } from "../math/math3d";
 import {
 	MeshData, MeshRayHit, stride, vertexCount, rayIntersection as intersectMesh,
 	rayIntersectionElements as intersectElements,
@@ -82,7 +82,9 @@ export function syncGeometry(this geometry: SkinGeometry): Result<int32, SkinGeo
 
 export function deformPublished(this geometry: SkinGeometry): Result<int32, SkinGeometryError> {
 	geometry.ready = false;
-	if (!geometry.pose.ready) { return Result.err(SkinGeometryError.Pose); }
+	if (!geometry.pose.ready || geometry.pose.jointMatrices.length != geometry.pose.joints.length) {
+		return Result.err(SkinGeometryError.Pose);
+	}
 	for (const joint of geometry.pose.joints) {
 		if (!isLive(geometry.pose.scene, joint)) { return Result.err(SkinGeometryError.Pose); }
 	}
@@ -104,9 +106,7 @@ export function deformPublished(this geometry: SkinGeometry): Result<int32, Skin
 			const weight: float32 = geometry.influences.weights[influence];
 			if (weight == 0) { continue; }
 			const joint: int32 = geometry.influences.joints[influence];
-			const matrix = geometry.pose.inverseBindMatrices[joint].multiplyAffine(
-				geometry.pose.worlds[joint],
-			);
+			const matrix = geometry.pose.jointMatrices[joint];
 			const transformed: Vec3 = point * matrix;
 			result.x += transformed.x * weight;
 			result.y += transformed.y * weight;

@@ -1,4 +1,4 @@
-import { Mat4, identity } from "../math/math3d";
+import { Mat4, identity, multiplyAffine } from "../math/math3d";
 import { Scene3D, NodeId3D, isLive, syncWorld, worldOf } from "./scene";
 import { SkinPalette, SKIN_PALETTE_FLOATS, create, writePalette } from "./skinPalette";
 
@@ -15,6 +15,8 @@ export interface SkinPose {
 	palettes: Vec<SkinPalette>;
 	worlds: Vec<Mat4>;
 	pendingWorlds: Vec<Mat4>;
+	jointMatrices: Vec<Mat4>;
+	pendingJointMatrices: Vec<Mat4>;
 	blocks: Vec<Vec<float32>>;
 	pendingBlocks: Vec<Vec<float32>>;
 	ready: boolean;
@@ -41,7 +43,8 @@ export function bind(
 	}
 	let pose: SkinPose = {
 		scene: scene, joints: [], inverseBindMatrices: [], palettes: [],
-		worlds: [], pendingWorlds: [], blocks: [], pendingBlocks: [], ready: false, revision: 0,
+		worlds: [], pendingWorlds: [], jointMatrices: [], pendingJointMatrices: [],
+		blocks: [], pendingBlocks: [], ready: false, revision: 0,
 	};
 	for (const source of sourceJoints) {
 		if (source < 0 || source >= mappedNodes.length || !isLive(scene, mappedNodes[source])) {
@@ -50,6 +53,8 @@ export function bind(
 		pose.joints.push(mappedNodes[source]);
 		pose.worlds.push(identity());
 		pose.pendingWorlds.push(identity());
+		pose.jointMatrices.push(identity());
+		pose.pendingJointMatrices.push(identity());
 	}
 	for (const matrix of inverseBindMatrices) { pose.inverseBindMatrices.push({ ...matrix }); }
 	for (const palette of palettes) {
@@ -70,7 +75,8 @@ export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> 
 	if (pose.revision == (0xffffffffffffffff as uint64)) { return Result.err(SkinPoseError.Shape); }
 	const count: int32 = pose.joints.length as int32;
 	if (count < 1 || pose.inverseBindMatrices.length != count || pose.worlds.length != count ||
-		pose.pendingWorlds.length != count || pose.palettes.length != pose.blocks.length ||
+		pose.pendingWorlds.length != count || pose.jointMatrices.length != count ||
+		pose.pendingJointMatrices.length != count || pose.palettes.length != pose.blocks.length ||
 		pose.blocks.length != pose.pendingBlocks.length) {
 		return Result.err(SkinPoseError.Shape);
 	}
@@ -93,6 +99,14 @@ export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> 
 		);
 		if (!written.ok) { return Result.err(SkinPoseError.Palette); }
 	}
+	for (let joint = 0; joint < count; joint++) {
+		pose.pendingJointMatrices[joint] = pose.inverseBindMatrices[joint].multiplyAffine(
+			pose.pendingWorlds[joint],
+		);
+	}
+	const oldMatrices = pose.jointMatrices;
+	pose.jointMatrices = pose.pendingJointMatrices;
+	pose.pendingJointMatrices = oldMatrices;
 	const oldWorlds = pose.worlds;
 	pose.worlds = pose.pendingWorlds;
 	pose.pendingWorlds = oldWorlds;

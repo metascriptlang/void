@@ -49,6 +49,10 @@ test "instances own palette outputs even when definitions and materials are shar
 	assert second.value.syncSkinPose().ok;
 	assert approx(first.value.blocks[0][3], 0.0);
 	assert approx(second.value.blocks[0][3], 5.0);
+	assert first.value.jointMatrices[0].m41 == 0 && second.value.jointMatrices[0].m41 == 5;
+	setLocal(scene, a, { ...Transform3D.identity(), position: { x: 3.0, y: 0.0, z: 0.0 } });
+	assert first.value.syncSkinPose().ok;
+	assert first.value.jointMatrices[0].m41 == 3 && second.value.jointMatrices[0].m41 == 5;
 }
 
 test "a failed later palette publishes neither earlier palette nor pending joint worlds" {
@@ -72,6 +76,10 @@ test "a failed later palette publishes neither earlier palette nor pending joint
 	if (!failed.ok) { assert failed.error == SkinPoseError.Palette; }
 	assert !pose.value.ready;
 	assert pose.value.blocks[0][3] == 0.0 && pose.value.worlds[0].m41 == 0.0;
+	assert pose.value.jointMatrices[0].m41 == 0;
+	pose.value.inverseBindMatrices[1] = identity();
+	assert pose.value.syncSkinPose().ok;
+	assert pose.value.jointMatrices[0].m41 == 7 && pose.value.blocks[0][3] == 7;
 }
 
 test "stale joint ids invalidate the pose before a recycled node can be read" {
@@ -90,4 +98,22 @@ test "stale joint ids invalidate the pose before a recycled node can be read" {
 	assert !failed.ok;
 	if (!failed.ok) { assert failed.error == SkinPoseError.Target; }
 	assert !pose.value.ready;
+}
+
+test "invalid pending joint cache shape fails without repairing or publishing it" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const bone = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const palette = SkinPalette.create([0]);
+	assert palette.ok;
+	if (!palette.ok) { return; }
+	const pose = SkinPose.bind(scene, [0], [bone], [identity()], [palette.value]);
+	assert pose.ok;
+	if (!pose.ok) { return; }
+	assert pose.value.syncSkinPose().ok;
+	const revision: uint64 = pose.value.revision;
+	pose.value.pendingJointMatrices.pop();
+	const failed = pose.value.syncSkinPose();
+	assert !failed.ok && failed.error == SkinPoseError.Shape;
+	assert !pose.value.ready && pose.value.revision == revision;
+	assert pose.value.jointMatrices.length == 1 && pose.value.pendingJointMatrices.length == 0;
 }
