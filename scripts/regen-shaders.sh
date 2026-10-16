@@ -242,13 +242,15 @@ regenKeys() {
 GENERATED=src/void3d/shader3dGen.glsl
 GENERATED_FOR=src/void3d/shader3d.glsl
 generate() {
-	"${MSC:-msc}" run tools/genShaders.ms > "$SCRATCH/shader3dGen.glsl" 2> "$SCRATCH/genShaders.log" ||
-		{ cat "$SCRATCH/genShaders.log"; echo "tools/genShaders.ms failed"; exit 1; }
-	settle "$SCRATCH/shader3dGen.glsl" "$GENERATED"
+	out="$SCRATCH/$(basename "$2")"
+	"${MSC:-msc}" run "$1" > "$out" 2> "$SCRATCH/generate.log" ||
+		{ cat "$SCRATCH/generate.log"; echo "$1 failed"; exit 1; }
+	settle "$out" "$2"
 }
 
 [ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
-generate
+generate tools/genShaders.ms "$GENERATED"
+generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
 regenKeys
 regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"
