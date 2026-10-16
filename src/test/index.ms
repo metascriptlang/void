@@ -97,6 +97,7 @@ import "./shaderComputeCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
 import "./litShaderCheck";
+import "./post3dCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";

@@ -1,3 +1,11 @@
+@vs fullscreenVs
+in vec2 position;
+void main() {
+    gl_Position = vec4(position, 0.5, 1.0);
+    return;
+}
+@end
+
 @fs copyFs
 layout(binding=0) uniform texture2D sourceTexture;
 layout(binding=0) uniform sampler pointSampler;
@@ -6,6 +14,327 @@ void main() {
     ivec2 size = textureSize(sampler2D(sourceTexture, pointSampler), 0);
     ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), (size - ivec2(1, 1)));
     fragColor = texelFetch(sampler2D(sourceTexture, pointSampler), p, 0);
+    return;
+}
+@end
+
+@fs toneMapFs
+layout(binding=0) uniform texture2D hdrTexture;
+layout(binding=0) uniform sampler pointSampler;
+layout(binding=0) uniform toneMapParams {
+    vec4 toneMap;
+};
+layout(location=0) out vec4 fragColor;
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec3 toneCurved(vec3 exposed, float mode) {
+    if (mode == 1.0) {
+        return exposed / (exposed + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        vec3 a = exposed * ((2.51 * exposed) + 0.03);
+        vec3 b = (exposed * ((2.43 * exposed) + 0.59)) + 0.14;
+        return clamp((a / b), vec3(0.0), vec3(1.0));
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.76;
+        float desaturation = 0.15;
+        float x = min(exposed.x, min(exposed.y, exposed.z));
+        float offset = (x < 0.08) ? (x - ((6.25 * x) * x)) : 0.04;
+        vec3 color = exposed - offset;
+        float peak = max(color.x, max(color.y, color.z));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - ((d * d) / ((peak + d) - startCompression));
+            color = color * (newPeak / peak);
+            float g = 1.0 - (1.0 / ((desaturation * (peak - newPeak)) + 1.0));
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(exposed, vec3(0.0), vec3(1.0));
+}
+void main() {
+    ivec2 size = textureSize(sampler2D(hdrTexture, pointSampler), 0);
+    ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), (size - ivec2(1, 1)));
+    vec4 texel = texelFetch(sampler2D(hdrTexture, pointSampler), p, 0);
+    float alpha = clamp(texel.w, 0.0, 1.0);
+    if (alpha <= 0.0) {
+        fragColor = vec4(0.0);
+        return;
+    }
+    vec3 straight = texel.xyz / alpha;
+    vec4 tone = toneMap;
+    fragColor = vec4((linearToSrgb(toneCurved((straight * tone.x), tone.y)) * alpha), alpha);
+    return;
+}
+@end
+
+@fs bloomDownsampleFirstFs
+layout(binding=0) uniform texture2D bloomSource;
+layout(binding=0) uniform sampler bloomSampler;
+layout(binding=0) uniform bloomParams {
+    vec4 bloomTexel;
+    vec4 bloomBlend;
+    vec4 bloomThreshold;
+};
+layout(location=0) out vec4 fragColor;
+vec3 bloomTap(vec2 uv, vec2 offset) {
+    vec2 at = uv + (offset * bloomTexel.xy);
+    return texture(sampler2D(bloomSource, bloomSampler), at).xyz;
+}
+float bloomKaris(vec3 color) {
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722)) / 4.0;
+    return 1.0 / (1.0 + luma);
+}
+vec3 bloom13(vec2 uv, bool karis) {
+    vec3 a = bloomTap(uv, vec2(-2.0, 2.0));
+    vec3 bb = bloomTap(uv, vec2(0.0, 2.0));
+    vec3 c = bloomTap(uv, vec2(2.0, 2.0));
+    vec3 d = bloomTap(uv, vec2(-2.0, 0.0));
+    vec3 e = bloomTap(uv, vec2(0.0, 0.0));
+    vec3 f = bloomTap(uv, vec2(2.0, 0.0));
+    vec3 g = bloomTap(uv, vec2(-2.0, -2.0));
+    vec3 h = bloomTap(uv, vec2(0.0, -2.0));
+    vec3 i = bloomTap(uv, vec2(2.0, -2.0));
+    vec3 j = bloomTap(uv, vec2(-1.0, 1.0));
+    vec3 k = bloomTap(uv, vec2(1.0, 1.0));
+    vec3 l = bloomTap(uv, vec2(-1.0, -1.0));
+    vec3 m = bloomTap(uv, vec2(1.0, -1.0));
+    if (karis) {
+        vec3 group0 = (((a + bb) + d) + e) * (0.125 / 4.0);
+        vec3 group1 = (((bb + c) + e) + f) * (0.125 / 4.0);
+        vec3 group2 = (((d + e) + g) + h) * (0.125 / 4.0);
+        vec3 group3 = (((e + f) + h) + i) * (0.125 / 4.0);
+        vec3 group4 = (((j + k) + l) + m) * (0.5 / 4.0);
+        group0 = group0 * bloomKaris(group0);
+        group1 = group1 * bloomKaris(group1);
+        group2 = group2 * bloomKaris(group2);
+        group3 = group3 * bloomKaris(group3);
+        group4 = group4 * bloomKaris(group4);
+        return (((group0 + group1) + group2) + group3) + group4;
+    }
+    vec3 sum = (((a + c) + g) + i) * 0.03125;
+    sum = sum + ((((bb + d) + f) + h) * 0.0625);
+    sum = sum + (((((e + j) + k) + l) + m) * 0.125);
+    return sum;
+}
+vec3 softThreshold(vec3 color) {
+    vec4 threshold = bloomThreshold;
+    float brightness = max(color.x, max(color.y, color.z));
+    float softness = clamp((brightness - threshold.y), 0.0, threshold.z);
+    softness = (softness * softness) * threshold.w;
+    float contribution = max((brightness - threshold.x), softness);
+    return color * (contribution / max(brightness, 0.00001));
+}
+void main() {
+    vec2 uv = gl_FragCoord.xy * bloomTexel.zw;
+    vec3 sum = clamp(bloom13(uv, true), vec3(0.0001), vec3(3.40282347e+37));
+    if (bloomThreshold.x > 0.0) {
+        sum = softThreshold(sum);
+    }
+    fragColor = vec4(sum, 1.0);
+    return;
+}
+@end
+
+@fs bloomDownsampleFs
+layout(binding=0) uniform texture2D bloomSource;
+layout(binding=0) uniform sampler bloomSampler;
+layout(binding=0) uniform bloomParams {
+    vec4 bloomTexel;
+    vec4 bloomBlend;
+    vec4 bloomThreshold;
+};
+layout(location=0) out vec4 fragColor;
+vec3 bloomTap(vec2 uv, vec2 offset) {
+    vec2 at = uv + (offset * bloomTexel.xy);
+    return texture(sampler2D(bloomSource, bloomSampler), at).xyz;
+}
+float bloomKaris(vec3 color) {
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722)) / 4.0;
+    return 1.0 / (1.0 + luma);
+}
+vec3 bloom13(vec2 uv, bool karis) {
+    vec3 a = bloomTap(uv, vec2(-2.0, 2.0));
+    vec3 bb = bloomTap(uv, vec2(0.0, 2.0));
+    vec3 c = bloomTap(uv, vec2(2.0, 2.0));
+    vec3 d = bloomTap(uv, vec2(-2.0, 0.0));
+    vec3 e = bloomTap(uv, vec2(0.0, 0.0));
+    vec3 f = bloomTap(uv, vec2(2.0, 0.0));
+    vec3 g = bloomTap(uv, vec2(-2.0, -2.0));
+    vec3 h = bloomTap(uv, vec2(0.0, -2.0));
+    vec3 i = bloomTap(uv, vec2(2.0, -2.0));
+    vec3 j = bloomTap(uv, vec2(-1.0, 1.0));
+    vec3 k = bloomTap(uv, vec2(1.0, 1.0));
+    vec3 l = bloomTap(uv, vec2(-1.0, -1.0));
+    vec3 m = bloomTap(uv, vec2(1.0, -1.0));
+    if (karis) {
+        vec3 group0 = (((a + bb) + d) + e) * (0.125 / 4.0);
+        vec3 group1 = (((bb + c) + e) + f) * (0.125 / 4.0);
+        vec3 group2 = (((d + e) + g) + h) * (0.125 / 4.0);
+        vec3 group3 = (((e + f) + h) + i) * (0.125 / 4.0);
+        vec3 group4 = (((j + k) + l) + m) * (0.5 / 4.0);
+        group0 = group0 * bloomKaris(group0);
+        group1 = group1 * bloomKaris(group1);
+        group2 = group2 * bloomKaris(group2);
+        group3 = group3 * bloomKaris(group3);
+        group4 = group4 * bloomKaris(group4);
+        return (((group0 + group1) + group2) + group3) + group4;
+    }
+    vec3 sum = (((a + c) + g) + i) * 0.03125;
+    sum = sum + ((((bb + d) + f) + h) * 0.0625);
+    sum = sum + (((((e + j) + k) + l) + m) * 0.125);
+    return sum;
+}
+void main() {
+    fragColor = vec4(bloom13((gl_FragCoord.xy * bloomTexel.zw), false), 1.0);
+    return;
+}
+@end
+
+@fs bloomUpsampleFs
+layout(binding=0) uniform texture2D bloomSource;
+layout(binding=0) uniform sampler bloomSampler;
+layout(binding=0) uniform bloomParams {
+    vec4 bloomTexel;
+    vec4 bloomBlend;
+    vec4 bloomThreshold;
+};
+layout(location=0) out vec4 fragColor;
+vec3 bloomTap(vec2 uv, vec2 offset) {
+    vec2 at = uv + (offset * bloomTexel.xy);
+    return texture(sampler2D(bloomSource, bloomSampler), at).xyz;
+}
+void main() {
+    vec2 uv = gl_FragCoord.xy * bloomTexel.zw;
+    vec3 sum = bloomTap(uv, vec2(0.0, 0.0)) * 0.25;
+    sum = sum + ((((bloomTap(uv, vec2(0.0, 1.0)) + bloomTap(uv, vec2(-1.0, 0.0))) + bloomTap(uv, vec2(1.0, 0.0))) + bloomTap(uv, vec2(0.0, -1.0))) * 0.125);
+    sum = sum + ((((bloomTap(uv, vec2(-1.0, 1.0)) + bloomTap(uv, vec2(1.0, 1.0))) + bloomTap(uv, vec2(-1.0, -1.0))) + bloomTap(uv, vec2(1.0, -1.0))) * 0.0625);
+    float factor = bloomBlend.x;
+    fragColor = vec4((sum * factor), factor);
+    return;
+}
+@end
+
+@fs outlineMaskFs
+layout(binding=0) uniform texture2D outlineNormal;
+@image_sample_type outlineDepth unfilterable_float
+layout(binding=1) uniform texture2D outlineDepth;
+layout(binding=0) uniform sampler outlinePointSampler;
+@sampler_type outlineDepthSampler nonfiltering
+layout(binding=1) uniform sampler outlineDepthSampler;
+layout(binding=0) uniform outlineMaskParams {
+    vec4 outlineEdge;
+    vec4 outlineDepthMap;
+};
+layout(location=0) out vec4 fragColor;
+vec4 outlineNormalAt(ivec2 p) {
+    return texelFetch(sampler2D(outlineNormal, outlinePointSampler), p, 0);
+}
+ivec2 outlinePixel(ivec2 p, ivec2 size) {
+    return clamp(p, ivec2(0, 0), (size - ivec2(1, 1)));
+}
+float outlineDepthAt(ivec2 p, ivec2 size) {
+    return (texelFetch(sampler2D(outlineDepth, outlineDepthSampler), outlinePixel(p, size), 0).x * outlineEdge.w) + outlineDepthMap.x;
+}
+const ivec2[4] OUTLINE_OFFSETS = ivec2[4](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
+void main() {
+    vec4 edge = outlineEdge;
+    ivec2 size = textureSize(sampler2D(outlineNormal, outlinePointSampler), 0);
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    vec4 center = outlineNormalAt(p);
+    float coverage = 0.0;
+    vec3 n = (center.w > 0.5) ? normalize(((center.xyz * 2.0) - 1.0)) : vec3(0.0);
+    float depth = outlineDepthAt(p, size);
+    for (int i = 0; i < 4; i++) {
+        ivec2 silhouette = p + ivec2(roundEven((vec2(OUTLINE_OFFSETS[i]) * edge.x)));
+        float silhouetteDelta = outlineDepthAt(silhouette, size) - depth;
+        vec4 silhouetteNormal = outlineNormalAt(outlinePixel(silhouette, size));
+        ivec2 crease = p + ivec2(roundEven((vec2(OUTLINE_OFFSETS[i]) * max(1.0, (edge.x * 0.5)))));
+        vec4 neighbor = outlineNormalAt(outlinePixel(crease, size));
+        float creaseDelta = outlineDepthAt(crease, size) - depth;
+        vec3 nq = (neighbor.w > 0.5) ? normalize(((neighbor.xyz * 2.0) - 1.0)) : vec3(0.0);
+        bool distinctNormal = ((center.x != neighbor.x) || (center.y != neighbor.y)) || (center.z != neighbor.z);
+        if ((center.w > 0.5) && (((silhouetteNormal.w < 0.5) || (silhouetteDelta > edge.y)) || ((((neighbor.w > 0.5) && (abs(creaseDelta) < edge.y)) && distinctNormal) && (dot(n, nq) < edge.z)))) {
+            coverage = 1.0;
+        }
+    }
+    fragColor = vec4(coverage);
+    return;
+}
+@end
+
+@fs outlineMixFs
+layout(binding=0) uniform texture2D outlineLit;
+layout(binding=1) uniform texture2D outlineMask;
+layout(binding=0) uniform sampler outlineLitSampler;
+layout(binding=1) uniform sampler outlineLinearSampler;
+layout(binding=0) uniform outlineMixParams {
+    vec4 outlineColor;
+    vec4 outlineMix;
+};
+layout(location=0) out vec4 fragColor;
+vec3 maskTap(vec2 uv) {
+    return texture(sampler2D(outlineMask, outlineLinearSampler), uv).xyz;
+}
+void main() {
+    ivec2 size = textureSize(sampler2D(outlineMask, outlineLinearSampler), 0);
+    vec2 delta = 1.0 / vec2(size);
+    vec2 tuv = gl_FragCoord.xy * delta;
+    vec3 nw = maskTap((tuv + (vec2(-1.0, -1.0) * delta)));
+    vec3 ne = maskTap((tuv + (vec2(1.0, -1.0) * delta)));
+    vec3 sw = maskTap((tuv + (vec2(-1.0, 1.0) * delta)));
+    vec3 se = maskTap((tuv + (vec2(1.0, 1.0) * delta)));
+    vec3 mid = maskTap(tuv);
+    vec3 lumA = vec3(0.299, 0.587, 0.114);
+    float lumNW = dot(nw, lumA);
+    float lumNE = dot(ne, lumA);
+    float lumSW = dot(sw, lumA);
+    float lumSE = dot(se, lumA);
+    float lumMid = dot(mid, lumA);
+    float lumMin = min(lumMid, min(min(lumNW, lumNE), min(lumSW, lumSE)));
+    float lumMax = max(lumMid, max(max(lumNW, lumNE), max(lumSW, lumSE)));
+    vec2 dir = vec2((-((lumNW + lumNE) - (lumSW + lumSE))), ((lumNW + lumSW) - (lumNE + lumSE)));
+    float dirReduce = max(((((lumNW + lumNE) + lumSW) + lumSE) * 0.001953125), 0.125);
+    float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+    dir = min(vec2(8.0), max(vec2(-8.0), (dir * rcpDirMin))) * delta;
+    vec3 rgbA = (maskTap((tuv + (dir * ((1.0 / 3.0) - 0.5)))) + maskTap((tuv + (dir * ((2.0 / 3.0) - 0.5))))) * 0.5;
+    vec3 rgbB = (rgbA * 0.5) + ((maskTap((tuv + (dir * -0.5))) + maskTap((tuv + (dir * 0.5)))) * 0.25);
+    float lumB = dot(rgbB, lumA);
+    float inRange = ((lumB > lumMin) && ((-lumB) > (-lumMax))) ? 1.0 : 0.0;
+    vec3 filtered = mix(rgbA, rgbB, inRange);
+    vec4 lit = texelFetch(sampler2D(outlineLit, outlineLitSampler), ivec2(gl_FragCoord.xy), 0);
+    fragColor = mix(lit, (outlineColor * filtered.x), outlineMix.x);
+    return;
+}
+@end
+
+@fs outlineWidthFs
+layout(binding=0) uniform texture2D outlineWidthMask;
+layout(binding=0) uniform sampler outlineWidthSampler;
+layout(binding=0) uniform outlineWidthParams {
+    vec4 outlineWidth;
+};
+layout(location=0) out vec4 fragColor;
+void main() {
+    vec4 width = outlineWidth;
+    vec2 delta = 1.0 / vec2(textureSize(sampler2D(outlineWidthMask, outlineWidthSampler), 0));
+    vec2 uv = gl_FragCoord.xy * delta;
+    float own = texture(sampler2D(outlineWidthMask, outlineWidthSampler), uv).x;
+    float maximum = (width.y > 0.5) ? (1.0 - own) : own;
+    float angle = 0.0;
+    for (int i = 0; i < 48; i++) {
+        angle += 0.1308996938995747;
+        vec2 displacement = (vec2(cos(angle), sin(angle)) * width.x) * delta;
+        float current = texture(sampler2D(outlineWidthMask, outlineWidthSampler), (uv + displacement)).x;
+        maximum = max(maximum, ((width.y > 0.5) ? (1.0 - current) : current));
+    }
+    float coverage = (width.y > 0.5) ? (1.0 - maximum) : maximum;
+    fragColor = vec4(coverage);
     return;
 }
 @end

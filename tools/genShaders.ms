@@ -16,12 +16,30 @@ import {
 	unlitTexturedFs,
 	unlitTexturedVs,
 } from "../src/void3d/shader3d";
+import {
+	bloomDownsampleFirstFs,
+	bloomDownsampleFs,
+	bloomUpsampleFs,
+	fullscreenVs,
+	outlineMaskFs,
+	outlineMixFs,
+	outlineWidthFs,
+	toneMapFs,
+} from "../src/void3d/post3d";
 
 function stage(kind: string, name: string, source: string): string {
 	return "@" + kind + " " + name + "\n" + source + "@end\n";
 }
 
+console.log(stage("vs", "fullscreenVs", glsl(fullscreenVs)));
 console.log(stage("fs", "copyFs", glsl(copyFs)));
+console.log(stage("fs", "toneMapFs", glsl(toneMapFs)));
+console.log(stage("fs", "bloomDownsampleFirstFs", glsl(bloomDownsampleFirstFs)));
+console.log(stage("fs", "bloomDownsampleFs", glsl(bloomDownsampleFs)));
+console.log(stage("fs", "bloomUpsampleFs", glsl(bloomUpsampleFs)));
+console.log(stage("fs", "outlineMaskFs", glsl(outlineMaskFs)));
+console.log(stage("fs", "outlineMixFs", glsl(outlineMixFs)));
+console.log(stage("fs", "outlineWidthFs", glsl(outlineWidthFs)));
 console.log(stage("vs", "particleVisualVs", glsl(particleVisualVs)));
 console.log(stage("vs", "particleVisualPixelArtVs", glsl(particleVisualPixelArtVs)));
 console.log(stage("vs", "litVs", glsl(litVs)));
