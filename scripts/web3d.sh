@@ -11,14 +11,12 @@ PORT="${VOID_WEB_PORT:-8751}"
 OUT=out/web3d
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
 
-# name:pixel-art setting, or name:- for a check with only the core run. cardTable, worldLabel and
-# targetTexture draw void2d text and link yoga, which the web build cannot: wasm-ld stops on
-# undefined YGNodeGetParent, YGNodeRemoveChild and YGNodeFreeRecursive
-# (~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md).
+# name:pixel-art setting, or name:- for a check with only the core run.
 WEB_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_BLEND_PIXEL_ART=1
-	dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
+	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
-	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 exposure:VOID_EXPOSURE_PIXEL_ART=1
+	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1
 	copyAlpha:- forwardOutline:VOID_OUTLINE_FRAMEBUFFER_FACTOR=2"
 
 [ -x "$CHROME" ] || { echo "SKIP web3d: no Chrome at $CHROME"; exit 0; }
