@@ -90,6 +90,14 @@ later replaces the hand-written GLSL source of each base.
   the switch, so it is refused, as is a `when` guard. An empty `case` before another is refused while
   msc runs nothing for it (`~/metascript/.inbox/compiler/2026-10-15-empty-switch-case-does-not-group.md`).
   `%` is emitted for uint32 operands only, where C, JS and GLSL truncate alike.
+- **Integer overflow keeps the language's meaning on the CPU.** WGSL wraps i32 and u32; on the CPU a
+  uint32 wraps the same (a PCG-style hash gives the GPU's bits), and an int32 overflow traps, as
+  every MetaScript int32 does (measured 2026-10-16, BUILD `5631dd3e5`, `out/wrapProbe/`: `x *
+  747796405 + 2891336453` on uint32 prints `3719402245`; `65536 * 65536` on int32 panics "signed
+  integer overflow"). So the oracle refuses an int32 shader that relies on wrap, where the GPU would
+  return the wrapped value; write hashes and bit mixing in uint32. Only `std.ms`'s own `abs` of the
+  least int32 returns it unnegated, as WGSL's does. `as uint32` takes a non-negative literal
+  (`6u`); any other int32 converts by its bits through `vec2u`.
 - **An author struct is a GLSL struct**, declared once before its first reader under the naming
   rule; an object literal is its constructor in field order. A field named as a GLSL word gets a
   suffix, where TypeGPU refuses the key: TypeGPU's struct is also the host's buffer layout, and a

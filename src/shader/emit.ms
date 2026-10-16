@@ -1231,8 +1231,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			if (exact) {
 				return glslType(getType(n), n) + "(" + value(n.asExpr) + ")";
 			}
-			fail(n, "'as' converts float32 and int32 both ways and uint32 to float32 in a " +
-				"shader; int32 and uint32 convert by their bits through vec2i/vec2u");
+			if (to == TypeKind.Uint32 && n.asExpr.kind == NodeKind.NumberLiteral &&
+				from != TypeKind.Float32 && from != TypeKind.Float64 && intValue(n.asExpr) >= 0) {
+				return String(intValue(n.asExpr)) + "u";
+			}
+			fail(n, "'as' converts float32 and int32 both ways, uint32 to float32 and a " +
+				"non-negative literal to uint32 in a shader; int32 and uint32 convert by their " +
+				"bits through vec2i/vec2u");
 		}
 		if (n.kind == NodeKind.MemberExpr) {
 			const object = n.object;

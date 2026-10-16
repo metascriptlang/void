@@ -274,6 +274,24 @@ test "a negated literal is written as one, and a negation of a negation keeps it
 	assert negateFs(at(1.0, 0.0)) == 7.5;
 }
 
+function countFs(input: ProbeInput): float32 {
+	const n = 6 as uint32;
+	const m = n % (4 as uint32);
+	return m as float32 + input.position.x;
+}
+
+test "a non-negative literal 'as uint32' is a uint literal" {
+	assert glsl(countFs) ==
+		"layout(location=0) out float fragColor;\n" +
+		"void main() {\n" +
+		"    uint n = 6u;\n" +
+		"    uint m = n % 4u;\n" +
+		"    fragColor = float(m) + gl_FragCoord.x;\n" +
+		"    return;\n" +
+		"}\n";
+	assert countFs(at(1.0, 0.0)) == 3.0;
+}
+
 test "integer varyings are flat on both sides, and uint32 takes '%' and '%='" {
 	assert glsl(cellVs) ==
 		"in vec4 position;\n" +
