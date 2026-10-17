@@ -112,8 +112,8 @@ export function outlineWidthCoverage(
 	for (let i = 0; i < OUTLINE_WIDTH_SAMPLES; i++) {
 		angle += step;
 		const value: float32 = sample(
-			x + (Math.cos(angle) * radius) as float32,
-			y + (Math.sin(angle) * radius) as float32,
+			x + ((Math.cos(angle) * radius) as float32),
+			y + ((Math.sin(angle) * radius) as float32),
 		);
 		maximum = Math.max(maximum, complement ? 1.0 - value : value);
 	}

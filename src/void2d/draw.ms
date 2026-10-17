@@ -773,8 +773,8 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 		if (next.x1 < x1) { x1 = next.x1; }
 		if (next.y1 < y1) { y1 = next.y1; }
 	}
-	while (ctx.clipDepth >= ctx.clipStack.length as int32) { ctx.clipStack.push(NO_MASK_CLIP); }
-	while (ctx.clipDepth >= ctx.maskIndices.length as int32) { ctx.maskIndices.push(NO_MASK); }
+	while (ctx.clipDepth >= (ctx.clipStack.length as int32)) { ctx.clipStack.push(NO_MASK_CLIP); }
+	while (ctx.clipDepth >= (ctx.maskIndices.length as int32)) { ctx.maskIndices.push(NO_MASK); }
 	const d: int32 = ctx.clipDepth;
 
 	const ex: float32 = tr.x - tl.x;

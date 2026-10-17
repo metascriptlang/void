@@ -424,7 +424,7 @@ function meshBounds(s: Scene2D, i: int32): void {
 	let yMin: float32 = 1e30;
 	let xMax: float32 = -1e30;
 	let yMax: float32 = -1e30;
-	for (let mi: int32 = 0; mi + 8 <= m.mesh.length as int32; mi += 8) {
+	for (let mi: int32 = 0; mi + 8 <= (m.mesh.length as int32); mi += 8) {
 		const mx: float32 = m.mesh[mi];
 		const my: float32 = m.mesh[mi + 1];
 		if (mx < xMin) { xMin = mx; }

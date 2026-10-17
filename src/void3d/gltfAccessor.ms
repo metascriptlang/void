@@ -261,7 +261,7 @@ export function fromSource(
 			const index = unsignedAt(
 				buffers[indices.buffer].bytes, indices.byteOffset + i * indexSize, indexSize,
 			);
-			if (index >= source.count as uint32 || (i > 0 && index <= previous)) {
+			if (index >= (source.count as uint32) || (i > 0 && index <= previous)) {
 				return Result.err(GltfAccessorError.SparseOrder);
 			}
 			previous = index;
@@ -369,7 +369,7 @@ export function fromAccessor(
 	};
 	let values: Vec<uint32> = [];
 	for (const value of decoded.values) {
-		if (value == maximum || value >= vertexCount as float64) {
+		if (value == maximum || value >= (vertexCount as float64)) {
 			return Result.err(GltfAccessorError.Index);
 		}
 		values.push(value as uint32);
