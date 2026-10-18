@@ -854,7 +854,7 @@ export function scanlineHalf(hx: float32, hy: float32, ay: float32, r: float32):
 export function blurredCoverage(c: Vec2f, half: Vec2f, rr: Vec4f, sigma: float32): float32 {
 	const low = c.y - half.y;
 	const high = c.y + half.y;
-	const start = clamp((-3.0 as float32) * sigma, low, high);
+	const start = clamp(-3.0 * sigma, low, high);
 	const end = clamp(3.0 * sigma, low, high);
 	const stepY = (end - start) / 4.0;
 	const k = sqrt(0.5) / sigma;

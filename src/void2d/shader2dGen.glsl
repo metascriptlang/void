@@ -488,7 +488,7 @@ float gaussianPdf(float x, float sigma) {
 float blurredCoverage(vec2 c, vec2 half_1, vec4 rr, float sigma) {
     float low = c.y - half_1.y;
     float high = c.y + half_1.y;
-    float start = clamp((float(-3.0) * sigma), low, high);
+    float start = clamp((-3.0 * sigma), low, high);
     float end = clamp((3.0 * sigma), low, high);
     float stepY = (end - start) / 4.0;
     float k = sqrt(0.5) / sigma;
