@@ -466,6 +466,32 @@ test "under force_width a row that ends in a mark ends at its last cell" {
 	assert l.xForIndex(3) == 20.0;
 }
 
+function cellRow(): TextStyle {
+	return { ...style(), size: 20.0, maxWidth: 944.0 };
+}
+
+function laidInCells(text: string): TextLayout {
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const cells: LineOptions = { ...PLAIN_LINES, forceWidth: 8.0 };
+	return wrapText(shapedOf(text, cellRow(), noRuns, noBreaks), cellRow(), cells);
+}
+
+test "under force_width a row of 118 cells fits 118 cells, whatever the face's advances" {
+	const text: string = "word ".repeat(23) + "wor";
+	assert widthOf(text, cellRow()) > 944.0;
+	const l = laidInCells(text);
+	assert (l.lines.length as int32) == 1;
+	assert l.lines[0].width == 944.0;
+}
+
+test "under force_width a row one cell too long breaks at the space its cells reach" {
+	const l = laidInCells("word ".repeat(23) + "word");
+	assert (l.lines.length as int32) == 2;
+	assert l.lines[0].charEnd == 114 && l.lines[1].charStart == 115;
+	assert l.lines[0].width == 912.0;
+}
+
 test "splitAt cuts one line without shaping it again" {
 	const l = laid("abcdef", style());
 	const [left, right] = l.splitAt(3);
