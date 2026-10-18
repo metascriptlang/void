@@ -46,6 +46,17 @@ function switchFs(input: ProbeInput): float32 {
 	return shade;
 }
 
+function stackedFs(input: ProbeInput): float32 {
+	switch (input.position.x as int32) {
+		case 1:
+		case 2:
+			return 0.5;
+		case 3:
+		default:
+			return 1.0;
+	}
+}
+
 function matchFs(input: ProbeInput): float32 {
 	const column = input.position.x as int32;
 	let shade: float32 = 0.0;
@@ -170,6 +181,25 @@ test "switch ends every case in a break, and a break inside a case leaves the sw
 	assert switchFs(at(0.5, 0.0)) == 0.25 && switchFs(at(2.2, 0.0)) == 0.5;
 	assert switchFs(at(2.7, 0.0)) == 0.0 && switchFs(at(-1.5, 0.0)) == 2.0;
 	assert switchFs(at(5.5, 0.0)) == 1.0;
+}
+
+test "stacked case labels are one GLSL case that runs for each label" {
+	assert glsl(stackedFs) ==
+		"layout(location=0) out float fragColor;\n" +
+		"void main() {\n" +
+		"    switch (int(gl_FragCoord.x)) {\n" +
+		"        case 1: case 2: {\n" +
+		"            fragColor = 0.5;\n" +
+		"            return;\n" +
+		"        }\n" +
+		"        default: case 3: {\n" +
+		"            fragColor = 1.0;\n" +
+		"            return;\n" +
+		"        }\n" +
+		"    }\n" +
+		"}\n";
+	assert stackedFs(at(1.5, 0.0)) == 0.5 && stackedFs(at(2.5, 0.0)) == 0.5;
+	assert stackedFs(at(3.5, 0.0)) == 1.0 && stackedFs(at(7.5, 0.0)) == 1.0;
 }
 
 test "a statement match is a switch whose or-pattern shares one case, a continue passes through" {

@@ -1487,12 +1487,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 				statements = arm.kind == NodeKind.BlockStmt ? arm.statements :
 					[{ kind: NodeKind.ExprStmt, line: arm.line, column: arm.column, expr: arm }];
 			} else {
-				if (c.caseStmts.length == 0 && k + 1 < cases.length) {
-					fail(c, "an empty case runs nothing in msc, where TypeScript runs the next " +
-						"case's body (~/metascript/.inbox/compiler/" +
-						"2026-10-15-empty-switch-case-does-not-group.md); write the labels as " +
-						"one match arm, 1 | 2 => { ... }");
-				}
 				if (c.isDefault) { labels.push("default:"); }
 				for (const t of c.caseTests) { labels.push(caseLabel(t)); }
 				statements = c.caseStmts;

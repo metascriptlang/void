@@ -87,8 +87,8 @@ later replaces the hand-written GLSL source of each base.
   that reaches its end does not compile), so each case is a braced GLSL case ending in `break`. A
   statement `match` on an integer is the same switch, an or-pattern one case's labels, `_` its
   `default`; a `break` in a match arm leaves the loop around the match, where GLSL's would leave only
-  the switch, so it is refused, as is a `when` guard. An empty `case` before another is refused while
-  msc runs nothing for it (`~/metascript/.inbox/compiler/2026-10-15-empty-switch-case-does-not-group.md`).
+  the switch, so it is refused, as is a `when` guard. Stacked labels (`case 1: case 2:`) are one case,
+  in msc as in TypeScript, and one GLSL case.
   `%` is emitted for uint32 operands only, where C, JS and GLSL truncate alike.
 - **Integer overflow keeps the language's meaning on the CPU.** WGSL wraps i32 and u32; on the CPU a
   uint32 wraps the same (a PCG-style hash gives the GPU's bits), and an int32 overflow traps, as
