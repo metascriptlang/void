@@ -8,19 +8,20 @@
 set -e
 cd "$(dirname "$0")/.."
 MSC="${MSC:-msc}"
+. scripts/goldenDefines.sh
 PORT="${VOID_WEB_PORT:-8741}"
 OUT=out/web-golden
 
 if [ "${1:-}" != "--compare" ]; then
 	rm -rf "$OUT" out/golden/webgl2
 	VOID_WEB_ENTRY=tests/golden/runner.ms VOID_WEB_DEST="$OUT" VOID_WEB_BACKENDS=gl \
-		VOID_WEB_MSCFLAGS="${VOID_WEB_MSCFLAGS--d:voidProfiler}" \
+		VOID_WEB_MSCFLAGS="${VOID_WEB_MSCFLAGS-$GOLDEN_DEFINES}" \
 		VOID_WEB_PRELOAD="--preload-file assets --preload-file tests/fonts" \
 		sh scripts/build-web.sh > out/golden-web-build.log 2>&1 \
 		|| { echo "FAIL the web runner does not build — see out/golden-web-build.log"; exit 1; }
 	cp tests/golden/web/runner.html "$OUT/gl/runner.html"
 
-	[ -x out/goldenRunner.exe ] || "$MSC" build tests/golden/runner.ms --output=out/goldenRunner.exe > /dev/null 2>&1
+	[ -x out/goldenRunner.exe ] || "$MSC" build $GOLDEN_DEFINES tests/golden/runner.ms --release --output=out/goldenRunner.exe > /dev/null 2>&1
 	VOID_SCENE_LIST=1 out/goldenRunner.exe > out/web-golden/scenes.tsv
 
 	( cd "$OUT/gl" && exec python -m http.server "$PORT" > /dev/null 2>&1 ) &
