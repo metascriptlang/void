@@ -25,7 +25,7 @@ killTree() {
 # waitShot <pid> <png> <seconds>: 0 the shot exited, 1 it wrote the PNG and was stopped,
 # 2 it wrote none within the bound and was stopped.
 waitShot() {
-	elapsed=0
+	began=$(date +%s)
 	last=-1
 	while kill -0 "$1" 2> /dev/null; do
 		if [ -s "$2" ]; then
@@ -37,13 +37,12 @@ waitShot() {
 			fi
 			last=$size
 		fi
-		if [ "$elapsed" -ge "$3" ]; then
+		if [ $(($(date +%s) - began)) -ge "$3" ]; then
 			killTree "$1"
 			wait "$1" 2> /dev/null || true
 			return 2
 		fi
 		sleep 1
-		elapsed=$((elapsed + 1))
 	done
 	return 0
 }

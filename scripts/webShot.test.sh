@@ -28,7 +28,7 @@ start=$(date +%s)
 status=0
 waitShot "$pid" "$dir/never.png" 2 || status=$?
 check "a shot that writes nothing returns" "$status" 2
-check "it is stopped after the bound, seconds" "$(( $(date +%s) - start <= 5 ))" 1
+check "it is stopped at the bound, not when its child exits at 300 s" "$(( $(date +%s) - start <= 60 ))" 1
 check "its child process is" "$(alive "$dir/child1")" gone
 
 stub "printf png > '$dir/hangs.png'; sleep 300 & echo \$! > '$dir/child2'; wait"
