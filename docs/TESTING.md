@@ -377,7 +377,11 @@ for the web today is liveness, not conformance: `scripts/web-liveness.sh` loads 
 demo in headless Chrome and checks that the canvas is not blank. Measured 2026-09-20:
 **WebGL2 draws the demo; WebGPU builds and runs but headless Chrome hands it no adapter**
 (both `--use-angle=swiftshader` and the real adapter give a black canvas), so WebGPU
-liveness is unproven headless and is reported as a SKIP, not a pass.
+liveness is unproven headless and is reported as a SKIP, not a pass. Measured 2026-10-18: headless
+Chrome can write its screenshot and never exit, so `scripts/webShot.sh` ends a shot once its
+PNG stops growing, or after `VOID_WEB_SHOT_SECONDS` (30 s) with none, which is a FAIL for WebGL2
+and a SKIP for WebGPU; either way the shot's process tree is killed. `scripts/webShot.test.sh`
+pins this on every liveness run.
 
 **The design: one golden set, authored on D3D11; five backends compared against it.** Not five golden sets — five golden sets would record five different renderers and prove exactly nothing. The output is a per-backend conformance report: scenes identical, scenes within a stated bound, scenes failing, and a pass rate. That report *is* guardrail 9, and it belongs in VOID2D.md as a number that moves per phase.
 
