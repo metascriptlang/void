@@ -129,8 +129,12 @@ later replaces the hand-written GLSL source of each base.
   (`tests/refusals/shdcRefused.ms`, a block at `@binding(9)`); a missing binary says "did not
   start" with the path it looked at (measured 2026-10-18, BUILD `4fe2a5eec`, a copy of `program.ms`
   under `out/missingShdc/`, whose deps path does not exist; no pin, since it needs shdc gone).
-  Not yet run: a GPU draw of such a program and an emcc build, where `std/process`'s module init
-  reaches the app.
+  Its first consumer is `tests/integration/forwardOutlineReference.ms`, drawn through
+  `src/gpu/draw.ms` (measured 2026-10-18, BUILD `4fe2a5eec`): D3D11 `forwardOutline` PASS at
+  framebuffer factor 1 and 2, 33 of 33 reference comparisons with 0 errors each; both emcc
+  backends build on attempt 1, so `std/process`'s module init links for the web, and
+  `scripts/web3d.sh` passes 27 of 27 on WebGL2 with the same partial and motion numbers as
+  native. WebGPU is built, not captured.
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
