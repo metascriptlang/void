@@ -12,7 +12,7 @@ static const int32_t DRAW_BINDING_SAMPLER = 9;
 static const int32_t DRAW_BINDING_SAMPLERS = 3;
 static const int32_t DRAW_BINDING_LENGTH = 12;
 
-// A length <= 0 returns 0: sokol _SG_PANICs on an empty buffer instead of returning an
+// A refused length returns 0: sokol _SG_PANICs on an empty buffer instead of returning an
 // invalid id (sokol_gfx.h _sg_validate_buffer_desc).
 uint32_t drawMakeVertexBuffer(const float *data, int64_t length);
 uint32_t drawMakeIndexBuffer(const uint16_t *data, int64_t length);

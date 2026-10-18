@@ -4,7 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static size_t sizeOf(int64_t length, size_t element) {
+	if (length <= 0 || length > INT32_MAX || (uint64_t)length > SIZE_MAX / element) return 0;
+	return (size_t)length * element;
+}
+
 static uint32_t madeBuffer(const void *data, size_t size, int index, int dynamic) {
+	if (size == 0) return SG_INVALID_ID;
 	sg_buffer_desc desc = {0};
 	desc.usage.vertex_buffer = !index;
 	desc.usage.index_buffer = index;
@@ -19,29 +25,29 @@ static uint32_t madeBuffer(const void *data, size_t size, int index, int dynamic
 }
 
 uint32_t drawMakeVertexBuffer(const float *data, int64_t length) {
-	if (length <= 0) return SG_INVALID_ID;
-	return madeBuffer(data, (size_t)length * sizeof(float), 0, 0);
+	if (data == NULL) return SG_INVALID_ID;
+	return madeBuffer(data, sizeOf(length, sizeof(float)), 0, 0);
 }
 
 uint32_t drawMakeIndexBuffer(const uint16_t *data, int64_t length) {
-	if (length <= 0) return SG_INVALID_ID;
-	return madeBuffer(data, (size_t)length * sizeof(uint16_t), 1, 0);
+	if (data == NULL) return SG_INVALID_ID;
+	return madeBuffer(data, sizeOf(length, sizeof(uint16_t)), 1, 0);
 }
 
 uint32_t drawMakeIndexBuffer32(const uint32_t *data, int64_t length) {
-	if (length <= 0) return SG_INVALID_ID;
-	return madeBuffer(data, (size_t)length * sizeof(uint32_t), 1, 0);
+	if (data == NULL) return SG_INVALID_ID;
+	return madeBuffer(data, sizeOf(length, sizeof(uint32_t)), 1, 0);
 }
 
 uint32_t drawMakeStreamBuffer(int64_t length) {
-	if (length <= 0) return SG_INVALID_ID;
-	return madeBuffer(NULL, (size_t)length * sizeof(float), 0, 1);
+	return madeBuffer(NULL, sizeOf(length, sizeof(float)), 0, 1);
 }
 
 int32_t drawUpdateBuffer(uint32_t buffer, const float *data, int64_t length) {
 	sg_buffer handle = {.id = buffer};
-	if (length <= 0 || sg_query_buffer_state(handle) != SG_RESOURCESTATE_VALID) return 0;
-	const size_t size = (size_t)length * sizeof(float);
+	const size_t size = sizeOf(length, sizeof(float));
+	if (data == NULL || size == 0) return 0;
+	if (sg_query_buffer_state(handle) != SG_RESOURCESTATE_VALID) return 0;
 	if (size > sg_query_buffer_size(handle)) return 0;
 	sg_update_buffer(handle, &(sg_range){.ptr = data, .size = size});
 	return 1;
