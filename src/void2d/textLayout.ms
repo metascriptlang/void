@@ -502,12 +502,15 @@ function breakAt(glyphs: Readonly<Span<LaidGlyph>>, next: int32): LineBreak {
 	return { end: end, next: next };
 }
 
-function breakAfter(shaped: ShapedText, from: int32, to: int32, room: float32): LineBreak {
+function breakAfter(
+	shaped: ShapedText, from: int32, to: int32, room: float32, cell: float32,
+): LineBreak {
 	const whole: LineBreak = { end: to, next: to };
 	if (from >= to) { return whole; }
 	let delta: float32 = -shaped.glyphs[from].x;
 	let candidate: int32 = -1;
 	let inked: boolean = false;
+	let cells: int32 = 0;
 	for (let k = from; k < to; k++) {
 		const g: LaidGlyph = shaped.glyphs[k];
 		const value: int32 = g.codepoint;
@@ -515,7 +518,8 @@ function breakAfter(shaped: ShapedText, from: int32, to: int32, room: float32): 
 		const x: float32 = g.x + delta;
 		const advance: float32 = g.rowAdvance(x, shaped.tabStop);
 		delta = delta + advance - g.advance;
-		const right: float32 = x + advance;
+		if (cells == 0 || g.clusterStart) { cells = cells + 1; }
+		const right: float32 = cell > 0.0 ? (cells as float32) * cell : x + advance;
 		if (value != SPACE && candidate > from && right > room) {
 			return breakAt(shaped.glyphs, candidate);
 		}
@@ -524,19 +528,23 @@ function breakAfter(shaped: ShapedText, from: int32, to: int32, room: float32): 
 	return whole;
 }
 
-function fitsUnbroken(shaped: ShapedText, room: float32): boolean {
+function fitsUnbroken(shaped: ShapedText, room: float32, cell: float32): boolean {
 	const count: int32 = shaped.glyphs.length as int32;
 	let delta: float32 = count > 0 ? -shaped.glyphs[0].x : 0.0;
+	let cells: int32 = 0;
 	for (let k = 0; k < count; k++) {
 		const g: LaidGlyph = shaped.glyphs[k];
 		if (g.codepoint == NEWLINE) {
 			if (k + 1 < count) { delta = -shaped.glyphs[k + 1].x; }
+			cells = 0;
 			continue;
 		}
 		const x: float32 = g.x + delta;
 		const advance: float32 = g.rowAdvance(x, shaped.tabStop);
 		delta = delta + advance - g.advance;
-		if (g.codepoint != SPACE && x + advance > room) { return false; }
+		if (cells == 0 || g.clusterStart) { cells = cells + 1; }
+		const right: float32 = cell > 0.0 ? (cells as float32) * cell : x + advance;
+		if (g.codepoint != SPACE && right > room) { return false; }
 	}
 	return true;
 }
@@ -1331,7 +1339,7 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
 	const truncating: boolean = style.maxWidth > 0.0 && options.truncate != Truncate.None;
 	const wrapping: boolean = style.maxWidth > 0.0 && !truncating &&
-		!fitsUnbroken(shaped, style.maxWidth);
+		!fitsUnbroken(shaped, style.maxWidth, options.forceWidth);
 	const count: int32 = shaped.glyphs.length as int32;
 	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
 		shaped.breaks = lineBreaks(shaped.values);
@@ -1359,8 +1367,9 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 		let continuation: boolean = false;
 		while (true) {
 			const indent: float32 = continuation ? options.hangingIndent : 0.0;
+			const room: float32 = style.maxWidth - indent;
 			const lineBreak: LineBreak = wrapping
-				? breakAfter(shaped, lineStart, paragraphEnd, style.maxWidth - indent)
+				? breakAfter(shaped, lineStart, paragraphEnd, room, options.forceWidth)
 				: { end: paragraphEnd, next: paragraphEnd };
 			const end: int32 = lineBreak.end;
 			const lineIndex: int32 = lines.length as int32;
