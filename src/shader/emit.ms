@@ -245,15 +245,19 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 		}
 		if (!bindings && features < fields.typExprFieldNames.length) { input = t; }
 	}
-	const reads = varyingNames(input, fragment);
+	const reads = input == null ? [] : varyingNames(input, fragment);
 	const writes = varyingNames(vs.typExprReturn, vertex);
-	const readTypes = varyingTypes(input, fragment);
+	const readTypes = input == null ? [] : varyingTypes(input, fragment);
 	const writeTypes = varyingTypes(vs.typExprReturn, vertex);
-	const readGates = varyingFeatures(input, fragment);
+	const readGates = input == null ? [] : varyingFeatures(input, fragment);
 	const writeGates = varyingFeatures(vs.typExprReturn, vertex);
 	for (let i = 0; i < reads.length || i < writes.length; i++) {
 		const read = i < reads.length ? reads[i] : "";
 		const written = i < writes.length ? writes[i] : "";
+		if (read == "") {
+			error("glslLinked: the fragment input does not declare varying '" + written +
+				"' of the vertex output; every varying is declared, read or not", fragment);
+		}
 		if (read != written) {
 			error("glslLinked: varying " + String(i) + " is '" + read +
 				"' in the fragment input and '" + written +
