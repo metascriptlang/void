@@ -36,6 +36,7 @@ import {
 	Vec2f,
 	Vec2i,
 	Vec2u,
+	Vec3b,
 	Vec3f,
 	Vec3i,
 	Vec3u,
@@ -309,6 +310,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 	const storageTextureType = getTypeImpl(StorageTexture2d);
 	const uintTextureType = getTypeImpl(Texture2dU32);
 	const arrayTextureType = getTypeImpl(Texture2dArray);
+	const boolVectorType = getTypeImpl(Vec3b);
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
 		getTypeImpl(Vec3f),
@@ -319,13 +321,14 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 		getTypeImpl(Vec2u),
 		getTypeImpl(Vec3u),
 		getTypeImpl(Vec4u),
+		boolVectorType,
 		getTypeImpl(Mat2x2f),
 		getTypeImpl(Mat3x3f),
 		getTypeImpl(Mat4x4f),
 	];
 	const vectorNames = [
-		"vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4", "mat2",
-		"mat3", "mat4",
+		"vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4", "bvec3",
+		"mat2", "mat3", "mat4",
 	];
 
 	function matrixColumns(n: Node): boolean {
@@ -1177,7 +1180,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 				const a = expr(n.left);
 				const b = expr(n.right);
 				return a + " - " + b + " * trunc(" + a + " / " + b + ")";
-			} else if (op != "+" && op != "-" && op != "*" && op != "/" && op != "%") {
+			} else if (op == "&" && !integer(n.left)) {
+				fail(n, "'&' takes integers in a shader");
+			} else if (op != "+" && op != "-" && op != "*" && op != "/" && op != "%" && op != "&") {
 				fail(n, "operator '" + op + "' has no GLSL form yet");
 			}
 			return expr(n.left) + " " + op + " " + expr(n.right);
@@ -1320,7 +1325,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 				"mat2x2f" => "mat2" + listed,
 				"mat3x3f" | "upperLeft3x3" => "mat3" + listed,
 				"mat4x4f" => "mat4" + listed,
-				"select" => "(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
+				"select" => sameType(getType(n.arguments[2]), boolVectorType) ? "mix" + listed :
+					"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
+				"le" => "lessThanEqual" + listed,
 				"textureDimensions" => args.length == 1 ? "imageSize(" + args[0] + ")" :
 					"textureSize(" + sampled + ", " + args[2] + ")",
 				"textureStore" => "imageStore(" + args.join(", ") + ")",

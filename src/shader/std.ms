@@ -1723,6 +1723,19 @@ export function fwidth(v: Vec4f): Vec4f { unreachable("fwidth: only a GPU fragme
 // WGSL's operand order: the value when false comes first.
 export function select(f: float32, t: float32, cond: boolean): float32 { return cond ? t : f; }
 export function select(f: Vec3f, t: Vec3f, cond: boolean): Vec3f { return cond ? t : f; }
+export function select(f: Vec3f, t: Vec3f, cond: Vec3b): Vec3f {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+
+export struct Vec3b {
+	x: boolean;
+	y: boolean;
+	z: boolean;
+}
+
+export function le(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
+}
 
 // Field decorators of a stage's structs, named as WGSL names its attributes: `@builtin(position)`,
 // `@location(1)` on an output, `@binding(3)` on a binding. `@sampleType` and `@samplerType` give

@@ -3,7 +3,19 @@
 // GLSL text and run on the CPU.
 
 import { glsl, glslLinked } from "../shader/emit";
-import { Vec2i, Vec3f, Vec4f, builtin, dot, max, vec2i, vec3f, vec4f } from "../shader/std";
+import {
+	Vec2i,
+	Vec3f,
+	Vec4f,
+	builtin,
+	dot,
+	le,
+	max,
+	select,
+	vec2i,
+	vec3f,
+	vec4f,
+} from "../shader/std";
 
 struct ProbeInput {
 	@builtin(position) position: Vec4f;
@@ -290,6 +302,27 @@ test "a non-negative literal 'as uint32' is a uint literal" {
 		"    return;\n" +
 		"}\n";
 	assert countFs(at(1.0, 0.0)) == 3.0;
+}
+
+function maskFs(input: ProbeInput): float32 {
+	const cell = (input.position.x as int32) & 3;
+	const level = vec3f(input.position.y);
+	const picked = select(vec3f(2.0), level, le(level, vec3f(0.5)));
+	return cell as float32 + picked.x + picked.z;
+}
+
+test "'&' masks an int32 by its bits, and select picks per component where le holds" {
+	assert glsl(maskFs) ==
+		"layout(location=0) out float fragColor;\n" +
+		"void main() {\n" +
+		"    int cell = int(gl_FragCoord.x) & 3;\n" +
+		"    vec3 level = vec3(gl_FragCoord.y);\n" +
+		"    vec3 picked = mix(vec3(2.0), level, lessThanEqual(level, vec3(0.5)));\n" +
+		"    fragColor = (float(cell) + picked.x) + picked.z;\n" +
+		"    return;\n" +
+		"}\n";
+	assert maskFs(at(-1.0, 0.25)) == 3.5;
+	assert maskFs(at(6.0, 0.75)) == 6.0;
 }
 
 test "integer varyings are flat on both sides, and uint32 takes '%' and '%='" {

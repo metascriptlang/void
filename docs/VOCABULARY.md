@@ -109,6 +109,15 @@ Decided 2026-10-15 when `std.ms` grew to what shady's tests and examples use (sh
   this set, 2.36 s with every swizzle on all nine vector types. Integer vectors are indexed
   and converted more than swizzled, so their full set was not worth 1.5 s on each compile.
 
+Added 2026-10-18 for void2d's sRGB conversion, which the hand-written stage wrote as
+`mix(hi, lo, lessThanEqual(c, k))`:
+
+- **A comparison per component is TypeGPU's `le(a, b)`**, returning `Vec3b` (WGSL's `vec3<bool>`),
+  and `select(f, t, cond)` takes it as WGSL's does; they emit as `lessThanEqual` and
+  `mix(f, t, cond)`. Only the `Vec3f` pair a shader uses exists so far.
+- **`&` on integers** is WGSL's and C's bitwise and, so `(floor(x) as int32) & 3` is the floored
+  remainder by 4 for a negative `x` too.
+
 A shader's interface uses WGSL's attribute names as MetaScript field decorators: `@builtin(…)`,
 `@location(n)` and `@binding(n)`. Two come from WebGPU's bind group layout, where a texture or
 sampler states its binding type: `@sampleType(unfilterable_float)`, `@samplerType(nonfiltering)`.
