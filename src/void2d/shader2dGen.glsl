@@ -17,26 +17,26 @@ out float srcPremult;
 out float coverageTexture;
 out vec4 clipDistance;
 out vec2 pixel;
-vec4 clipDistanceOf(vec2 world, vec4 clipU_1, vec4 clipV_1) {
-    if (clipU_1.w > clipU_1.z) {
-        float cu = dot(world, clipU_1.xy);
-        float cv = dot(world, clipV_1.xy);
-        return vec4((cu - clipU_1.z), (clipU_1.w - cu), (cv - clipV_1.z), (clipV_1.w - cv));
-    }
-    return vec4(1.0);
-}
 void main() {
     vec4 model0_1 = model0;
     vec4 model1_1 = model1;
     vec4 viewport_1 = viewport;
     vec2 world = vec2((((model0_1.x * pos.x) + (model0_1.z * pos.y)) + model1_1.x), (((model0_1.y * pos.x) + (model0_1.w * pos.y)) + model1_1.y));
     vec2 moved = world + shift.xy;
+    vec4 clipU_1 = clipU;
+    vec4 clipV_1 = clipV;
+    vec4 clipDistance_1 = vec4(1.0);
+    if (clipU_1.w > clipU_1.z) {
+        float cu = dot(world, clipU_1.xy);
+        float cv = dot(world, clipV_1.xy);
+        clipDistance_1 = vec4((cu - clipU_1.z), (clipU_1.w - cu), (cv - clipV_1.z), (clipV_1.w - cv));
+    }
     vec2 ndc = vec2((((moved.x / viewport_1.x) * 2.0) - 1.0), (1.0 - ((moved.y / viewport_1.y) * 2.0)));
     uv = ((viewport_1.z > 0.5) ? vec2(uv0.x, (1.0 - uv0.y)) : uv0);
     color = (color0 * globalColor);
     srcPremult = viewport_1.w;
     coverageTexture = model1_1.z;
-    clipDistance = clipDistanceOf(world, clipU, clipV);
+    clipDistance = clipDistance_1;
     pixel = (moved * model1_1.w);
     gl_Position = vec4(ndc, 0.0, 1.0);
     return;
@@ -74,12 +74,12 @@ vec3 linearToOklab(vec3 c) {
 vec3 srgbToLinear(vec3 c) {
     vec3 lo = c / 12.92;
     vec3 hi = pow(((c + vec3(0.055)) / 1.055), vec3(2.4));
-    return vec3(((c.x <= 0.04045) ? lo.x : hi.x), ((c.y <= 0.04045) ? lo.y : hi.y), ((c.z <= 0.04045) ? lo.z : hi.z));
+    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));
 }
 vec3 linearToSrgb(vec3 c) {
     vec3 lo = c * 12.92;
     vec3 hi = (vec3(1.055) * pow(max(c, vec3(0.0)), vec3(0.4166666666666667))) - vec3(0.055);
-    return vec3(((c.x <= 0.0031308) ? lo.x : hi.x), ((c.y <= 0.0031308) ? lo.y : hi.y), ((c.z <= 0.0031308) ? lo.z : hi.z));
+    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
 }
 vec3 oklabToLinear(vec3 c) {
     vec3 lms = vec3(((c.x + (0.3963377774 * c.y)) + (0.2158037573 * c.z)), ((c.x - (0.1055613458 * c.y)) - (0.0638541728 * c.z)), ((c.x - (0.0894841775 * c.y)) - (1.291485548 * c.z)));
@@ -112,12 +112,9 @@ vec4 gradientAt(float t) {
     }
     return mixGradient(c0, c1, t);
 }
-float floorMod(float x, float y) {
-    return x - (y * floor((x / y)));
-}
 float bayer4(vec2 pixel_1) {
-    int x = int(floorMod(floor(pixel_1.x), 4.0));
-    int y = int(floorMod(floor(pixel_1.y), 4.0));
+    int x = int(floor(pixel_1.x)) & 3;
+    int y = int(floor(pixel_1.y)) & 3;
     if (y == 0) {
         if (x == 0) {
             return 0.0;
@@ -170,6 +167,9 @@ vec3 ditherRgb(vec3 rgb, vec2 pixel_1) {
     return clamp((rgb + vec3(noise)), vec3(0.0), vec3(1.0));
 }
 const float PATTERN_TIE_BIAS = 0.015625;
+float floorMod(float x, float y) {
+    return x - (y * floor((x / y)));
+}
 const float SDF_EDGE = 0.7490196078431373;
 const float SDF_RADIUS = 8.0;
 float sdfCoverage(float sampled, float texelsPerPixel) {
@@ -262,25 +262,25 @@ out vec2 uv;
 out vec4 color;
 out float srcPremult;
 out vec4 clipDistance;
-vec4 clipDistanceOf(vec2 world, vec4 clipU_1, vec4 clipV_1) {
-    if (clipU_1.w > clipU_1.z) {
-        float cu = dot(world, clipU_1.xy);
-        float cv = dot(world, clipV_1.xy);
-        return vec4((cu - clipU_1.z), (clipU_1.w - cu), (cv - clipV_1.z), (clipV_1.w - cv));
-    }
-    return vec4(1.0);
-}
 void main() {
     vec2 local = corner * iOriginSize.zw;
     vec2 world = vec2((((iAffine.x * local.x) + (iAffine.z * local.y)) + iOriginSize.x), (((iAffine.y * local.x) + (iAffine.w * local.y)) + iOriginSize.y));
     vec4 viewport_1 = viewport;
     vec2 moved = world + shift.xy;
+    vec4 clipU_1 = clipU;
+    vec4 clipV_1 = clipV;
+    vec4 clipDistance_1 = vec4(1.0);
+    if (clipU_1.w > clipU_1.z) {
+        float cu = dot(world, clipU_1.xy);
+        float cv = dot(world, clipV_1.xy);
+        clipDistance_1 = vec4((cu - clipU_1.z), (clipU_1.w - cu), (cv - clipV_1.z), (clipV_1.w - cv));
+    }
     vec2 ndc = vec2((((moved.x / viewport_1.x) * 2.0) - 1.0), (1.0 - ((moved.y / viewport_1.y) * 2.0)));
     vec2 t = mix(iUv.xy, iUv.zw, corner);
     uv = ((viewport_1.z > 0.5) ? vec2(t.x, (1.0 - t.y)) : t);
     color = iColor;
     srcPremult = viewport_1.w;
-    clipDistance = clipDistanceOf(world, clipU, clipV);
+    clipDistance = clipDistance_1;
     gl_Position = vec4(ndc, 0.0, 1.0);
     return;
 }
@@ -352,15 +352,7 @@ vec3 linearToOklab(vec3 c) {
 vec3 srgbToLinear(vec3 c) {
     vec3 lo = c / 12.92;
     vec3 hi = pow(((c + vec3(0.055)) / 1.055), vec3(2.4));
-    return vec3(((c.x <= 0.04045) ? lo.x : hi.x), ((c.y <= 0.04045) ? lo.y : hi.y), ((c.z <= 0.04045) ? lo.z : hi.z));
-}
-vec4 clipDistanceOf(vec2 world, vec4 clipU_1, vec4 clipV_1) {
-    if (clipU_1.w > clipU_1.z) {
-        float cu = dot(world, clipU_1.xy);
-        float cv = dot(world, clipV_1.xy);
-        return vec4((cu - clipU_1.z), (clipU_1.w - cu), (cv - clipV_1.z), (clipV_1.w - cv));
-    }
-    return vec4(1.0);
+    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));
 }
 void main() {
     vec4 viewport_1 = viewport;
@@ -374,6 +366,14 @@ void main() {
     vec2 local = (corner * (size + (2.0 * inflate))) - inflate;
     vec2 world = vec2((((iAffine.x * local.x) + (iAffine.z * local.y)) + iOriginSize.x), (((iAffine.y * local.x) + (iAffine.w * local.y)) + iOriginSize.y));
     vec2 moved = world + shift.xy;
+    vec4 clipU_1 = clipU;
+    vec4 clipV_1 = clipV;
+    vec4 clipDistance_1 = vec4(1.0);
+    if (clipU_1.w > clipU_1.z) {
+        float cu = dot(world, clipU_1.xy);
+        float cv = dot(world, clipV_1.xy);
+        clipDistance_1 = vec4((cu - clipU_1.z), (clipU_1.w - cu), (cv - clipV_1.z), (clipV_1.w - cv));
+    }
     vec2 ndc = vec2((((moved.x / viewport_1.x) * 2.0) - 1.0), (1.0 - ((moved.y / viewport_1.y) * 2.0)));
     vec4 clip = vec4(ndc, 0.0, 1.0);
     vec2 t = mix(iUvRadii.xy, iUvRadii.zw, (((size.x > 0.0) && (size.y > 0.0)) ? (local / size) : vec2(0.0)));
@@ -390,7 +390,7 @@ void main() {
     vFill = (oklabFill ? vec4(linearToOklab(srgbToLinear(fill.xyz)), fill.w) : fill);
     vBorder = iColorBorder;
     vExtra = (oklabFill ? vec4(linearToOklab(srgbToLinear(extra.xyz)), extra.w) : extra);
-    clipDistance = clipDistanceOf(world, clipU, clipV);
+    clipDistance = clipDistance_1;
     vPixel = (moved * viewport_1.w);
     gl_Position = clip;
     return;
@@ -635,7 +635,7 @@ float dashedBorderAlpha(vec2 p, vec2 half_1, vec4 rawRadii, vec4 borders, float 
 vec3 linearToSrgb(vec3 c) {
     vec3 lo = c * 12.92;
     vec3 hi = (vec3(1.055) * pow(max(c, vec3(0.0)), vec3(0.4166666666666667))) - vec3(0.055);
-    return vec3(((c.x <= 0.0031308) ? lo.x : hi.x), ((c.y <= 0.0031308) ? lo.y : hi.y), ((c.z <= 0.0031308) ? lo.z : hi.z));
+    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
 }
 vec3 oklabToLinear(vec3 c) {
     vec3 lms = vec3(((c.x + (0.3963377774 * c.y)) + (0.2158037573 * c.z)), ((c.x - (0.1055613458 * c.y)) - (0.0638541728 * c.z)), ((c.x - (0.0894841775 * c.y)) - (1.291485548 * c.z)));
@@ -643,8 +643,8 @@ vec3 oklabToLinear(vec3 c) {
     return vec3((((4.0767416621 * lms.x) - (3.3077115913 * lms.y)) + (0.2309699292 * lms.z)), (((-1.2684380046 * lms.x) + (2.6097574011 * lms.y)) - (0.3413193965 * lms.z)), (((-0.0041960863 * lms.x) - (0.7034186147 * lms.y)) + (1.707614701 * lms.z)));
 }
 float bayer4(vec2 pixel) {
-    int x = int(floorMod(floor(pixel.x), 4.0));
-    int y = int(floorMod(floor(pixel.y), 4.0));
+    int x = int(floor(pixel.x)) & 3;
+    int y = int(floor(pixel.y)) & 3;
     if (y == 0) {
         if (x == 0) {
             return 0.0;

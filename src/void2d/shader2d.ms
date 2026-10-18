@@ -22,11 +22,13 @@ import {
 	exp,
 	floor,
 	fwidth,
+	le,
 	length,
 	max,
 	min,
 	mix,
 	pow,
+	select,
 	sign,
 	sin,
 	sqrt,
@@ -123,15 +125,6 @@ export struct SpriteBindings {
 	@binding(0) spriteSmp: Sampler;
 }
 
-function clipDistanceOf(world: Vec2f, clipU: Vec4f, clipV: Vec4f): Vec4f {
-	if (clipU.w > clipU.z) {
-		const cu = dot(world, clipU.xy);
-		const cv = dot(world, clipV.xy);
-		return vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
-	}
-	return vec4f(1.0);
-}
-
 // The flat sprite pipeline (VOID2D.md "P2"): one 64-byte instance per quad and no SDF maths, so a
 // sprite-only scene never pays for the UI pipeline. The affine rides per instance instead of being
 // applied on the CPU, which keeps the instance bytes unchanged from frame to frame.
@@ -143,13 +136,21 @@ export function spriteVs(input: SpriteAttributes, b: SpriteVertexBindings): Spri
 	);
 	const viewport = b.sprite_params.viewport;
 	const moved = world + b.sprite_params.shift.xy;
+	const clipU = b.sprite_params.clipU;
+	const clipV = b.sprite_params.clipV;
+	let clipDistance = vec4f(1.0);
+	if (clipU.w > clipU.z) {
+		const cu = dot(world, clipU.xy);
+		const cv = dot(world, clipV.xy);
+		clipDistance = vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
+	}
 	const ndc = vec2f(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
 	const t = mix(input.iUv.xy, input.iUv.zw, input.corner);
 	return {
 		uv: viewport.z > 0.5 ? vec2f(t.x, 1.0 - t.y) : t,
 		color: input.iColor,
 		srcPremult: viewport.w,
-		clipDistance: clipDistanceOf(world, b.sprite_params.clipU, b.sprite_params.clipV),
+		clipDistance: clipDistance,
 		clip: vec4f(ndc, 0.0, 1.0),
 	};
 }
@@ -201,21 +202,13 @@ export function sdfTexelsPerPixel(uvDx: Vec2f, uvDy: Vec2f, pageSize: Vec2f): fl
 export function srgbToLinear(c: Vec3f): Vec3f {
 	const lo = c / 12.92;
 	const hi = pow((c + vec3f(0.055)) / 1.055, vec3f(2.4));
-	return vec3f(
-		c.x <= 0.04045 ? lo.x : hi.x,
-		c.y <= 0.04045 ? lo.y : hi.y,
-		c.z <= 0.04045 ? lo.z : hi.z,
-	);
+	return select(hi, lo, le(c, vec3f(0.04045)));
 }
 
 export function linearToSrgb(c: Vec3f): Vec3f {
 	const lo = c * 12.92;
 	const hi = vec3f(1.055) * pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.4)) - vec3f(0.055);
-	return vec3f(
-		c.x <= 0.0031308 ? lo.x : hi.x,
-		c.y <= 0.0031308 ? lo.y : hi.y,
-		c.z <= 0.0031308 ? lo.z : hi.z,
-	);
+	return select(hi, lo, le(c, vec3f(0.0031308)));
 }
 
 export function linearToOklab(c: Vec3f): Vec3f {
@@ -259,8 +252,8 @@ export function mixColorSpace(a: Vec4f, b: Vec4f, t: float32, oklab: boolean): V
 }
 
 export function bayer4(pixel: Vec2f): float32 {
-	const x = floorMod(floor(pixel.x), 4.0) as int32;
-	const y = floorMod(floor(pixel.y), 4.0) as int32;
+	const x = (floor(pixel.x) as int32) & 3;
+	const y = (floor(pixel.y) as int32) & 3;
 	if (y == 0) {
 		if (x == 0) { return 0.0; }
 		if (x == 1) { return 8.0; }
@@ -367,13 +360,21 @@ export function vs(input: BatchAttributes, b: BatchVertexBindings): BatchVarying
 		model0.y * input.pos.x + model0.w * input.pos.y + model1.y,
 	);
 	const moved = world + b.void2d_params.shift.xy;
+	const clipU = b.void2d_params.clipU;
+	const clipV = b.void2d_params.clipV;
+	let clipDistance = vec4f(1.0);
+	if (clipU.w > clipU.z) {
+		const cu = dot(world, clipU.xy);
+		const cv = dot(world, clipV.xy);
+		clipDistance = vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
+	}
 	const ndc = vec2f(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
 	return {
 		uv: viewport.z > 0.5 ? vec2f(input.uv0.x, 1.0 - input.uv0.y) : input.uv0,
 		color: input.color0 * b.void2d_params.globalColor,
 		srcPremult: viewport.w,
 		coverageTexture: model1.z,
-		clipDistance: clipDistanceOf(world, b.void2d_params.clipU, b.void2d_params.clipV),
+		clipDistance: clipDistance,
 		pixel: moved * model1.w,
 		clip: vec4f(ndc, 0.0, 1.0),
 	};
@@ -562,6 +563,14 @@ export function uiVs(input: UiAttributes, b: UiVertexBindings): UiVaryings {
 		input.iAffine.y * local.x + input.iAffine.w * local.y + input.iOriginSize.y,
 	);
 	const moved = world + b.ui_params.shift.xy;
+	const clipU = b.ui_params.clipU;
+	const clipV = b.ui_params.clipV;
+	let clipDistance = vec4f(1.0);
+	if (clipU.w > clipU.z) {
+		const cu = dot(world, clipU.xy);
+		const cv = dot(world, clipV.xy);
+		clipDistance = vec4f(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
+	}
 	const ndc = vec2f(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
 	const clip = vec4f(ndc, 0.0, 1.0);
 	const t = mix(input.iUvRadii.xy, input.iUvRadii.zw,
@@ -588,7 +597,7 @@ export function uiVs(input: UiAttributes, b: UiVertexBindings): UiVaryings {
 		vFill: oklabFill ? vec4f(linearToOklab(srgbToLinear(fill.xyz)), fill.w) : fill,
 		vBorder: input.iColorBorder,
 		vExtra: oklabFill ? vec4f(linearToOklab(srgbToLinear(extra.xyz)), extra.w) : extra,
-		clipDistance: clipDistanceOf(world, b.ui_params.clipU, b.ui_params.clipV),
+		clipDistance: clipDistance,
 		vPixel: moved * viewport.w,
 		clip,
 	};

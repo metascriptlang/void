@@ -115,6 +115,13 @@ later replaces the hand-written GLSL source of each base.
   call `glsl`, so no binary carries GLSL text. `shader3dBlocks.glsl` is included only into a program
   that still has a hand-written stage: a generated stage defines what it calls, and a texture tag in
   an included block would name its texture twice.
+- **A helper call costs a copy of each argument.** glslang passes every argument through a
+  variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
+  a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
+  emitter keeps a helper a function. void2d's shader text counts against the default-layer size
+  budget (`tests/bench/wasm.json` "delta"), so its vertex entries compute the clip distance where
+  they use it, as the hand-written stages did. Measured 2026-10-18 against the hand-written
+  stages: the port first grew the text by 2438 B (GLSL ES) and 1150 B (HLSL), past the budget.
 - **CPU oracle within a tolerance, never pixel-exact.** GLSL allows contraction and looser ULP bounds,
   and `sin`/`exp` are implementation-defined. shady's own tests use `1e-4`. Pixel truth is
   the readback in `tests/capture3d/capture.c`.
