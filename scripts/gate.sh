@@ -100,6 +100,12 @@ if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.l
 else
 	fail "colour memory recovery — see out/gate-colour-memory.log"
 fi
+if MSC="$MSC" "${PYTHON:-python}" tests/isolated/rangeSpan.py > out/gate-range-span.log 2>&1 \
+		&& grep -q '^PASS noteRange spans:' out/gate-range-span.log; then
+	pass "noteRange rejects truncated current and saved UI spans in debug/release"
+else
+	fail "noteRange span refusal — see out/gate-range-span.log"
+fi
 for isolated in tests/isolated/*.ms; do
 	log="out/gate-isolated-$(basename "$isolated" .ms).log"
 	"$MSC" test "$isolated" > "$log" 2>&1 || true

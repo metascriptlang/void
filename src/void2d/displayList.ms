@@ -645,7 +645,20 @@ function addDirtyUi(from: int32, to: int32): void {
 	activeContext.dirtyUiTotal = pairs + 1;
 }
 
+const NOTE_FLOAT_INDEX_MAX: int64 = 2147483647;
+
 export function noteRange(a: PaintIndex, b: PaintIndex): void {
+	if (b.uiInstances > a.uiInstances) {
+		const uiEnd: int64 = (b.uiInstances as int64) * REC_UI_FLOATS;
+		const savedUiEnd: int64 =
+			((b.uiInstances as int64) - (a.uiInstances as int64)) * REC_UI_FLOATS;
+		if (a.uiInstances < 0 || uiEnd > NOTE_FLOAT_INDEX_MAX ||
+			savedUiEnd > NOTE_FLOAT_INDEX_MAX || uiEnd > activeContext.uiInstances.length ||
+			savedUiEnd > activeContext.saved.length) {
+			console.log("void2d: incomplete or unaddressable UI span in noteRange");
+			unreachable;
+		}
+	}
 	let k: int32 = 0;
 	let first: int32 = -1;
 	let last: int32 = -1;
@@ -654,6 +667,8 @@ export function noteRange(a: PaintIndex, b: PaintIndex): void {
 			if (activeContext.saved[k] != activeContext.uiInstances[r * REC_UI_FLOATS + f]) {
 				if (first < 0) { first = r; }
 				last = r;
+				k = k + (REC_UI_FLOATS - f);
+				break;
 			}
 			k = k + 1;
 		}
