@@ -49,6 +49,7 @@ import "./uiPipelineCheck";
 import "./snapCheck";
 import "./rendererCheck";
 import "./programKeyCheck";
+import "./drawSurfaceCheck";
 import "./bloomCheck";
 import "./bloomKernelCheck";
 import "./dirShadowCheck";
