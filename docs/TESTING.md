@@ -479,6 +479,30 @@ colour 1 page/4 MiB, 40 sweep rasterizations and 0 steady; SDF 1 page/1 MiB, 40 
 0 sweep coverage rasterizations and 0 steady work; outline 3662 sweep tiles, 6 pages/6 MiB,
 0 steady outline or coverage rasterizations. These are counters, not performance timings.
 
+### Linked wasm text modules — measured 2026-10-19
+
+`sh scripts/experiment-modulesWeb.sh shaper sdf bidi`, tree
+`89a52cba3ab971ce56c8ccfc0daf57bc7a97a85c`, binary/support BUILD `4fe2a5eec`, emscripten 5.0.5.
+Eight actual compiler calls succeeded on their first attempts with inputs unchanged. This is
+`build-web.sh`'s shipped profile: `--os=emcc`, **no `--release`**; the output directory's name is
+not an optimization setting. The entry is `tests/experiments/modulesWeb.ms`, not the demo.
+
+Uncompressed wasm bytes, with one module enabled at a time:
+
+| Module | WebGPU on | WebGL2 on | WebGPU delta | WebGL2 delta |
+|---|---:|---:|---:|---:|
+| All three off | 440879 | 329558 | 0 | 0 |
+| Shaper | 981537 | 870234 | 540658 | 540676 |
+| SDF text | 459244 | 347907 | 18365 | 18349 |
+| BiDi | 467813 | 356492 | 26934 | 26934 |
+
+`tests/bench/wasmBudget.txt` records these rows for the existing script's budget check.
+Each bundle also carried 434183 B of preloaded data and 288156 B WebGPU / 283812 B WebGL2 JS;
+those bytes are not hidden in the wasm column. No compression, startup, memory or GPU time was
+measured. Unused-import diagnostics were retained, not asserted baseline-equal. Colour,
+sprites, outline and the demo's off/each-on linked sizes remain: these six rows do not close
+`tests/PENDING.md` `wasm:budget`. No browser/GPU was run and no renderer policy changed.
+
 ## Where each tier lands
 
 | Phase | Tier work landing in it |

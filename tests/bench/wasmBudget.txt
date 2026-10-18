@@ -1,0 +1,8 @@
+profile scripts/build-web.sh --os=emcc no --release
+measured BUILD 4fe2a5eec emscripten 5.0.5 tree 89a52cba3ab971ce56c8ccfc0daf57bc7a97a85c
+modulesWeb-shaper wgpu off 440879 on 981537
+modulesWeb-shaper gl off 329558 on 870234
+modulesWeb-sdf wgpu off 440879 on 459244
+modulesWeb-sdf gl off 329558 on 347907
+modulesWeb-bidi wgpu off 440879 on 467813
+modulesWeb-bidi gl off 329558 on 356492
