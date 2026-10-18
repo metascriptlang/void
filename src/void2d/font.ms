@@ -129,6 +129,7 @@ let fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
 let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
+let defaultLoads: int32 = 0;
 
 function faceAtPath(path: string): Result<int32, FaceError> {
 	for (let i: int32 = 0; i < (loadedPaths.length as int32); i++) {
@@ -229,6 +230,7 @@ function ensureDefaultFont(): void {
 		style: FontStyle.Normal,
 	});
 	const loaded = faceAtPath(DEFAULT_PATH);
+	defaultLoads = defaultLoads + 1;
 	if (!loaded.ok) {
 		console.log(
 			`void2d: the default font ${DEFAULT_PATH} did not load ` +
@@ -452,6 +454,10 @@ export function fallbackFacesLoaded(): int32 {
 
 export function fallbackProbes(): int32 {
 	return coverageProbes;
+}
+
+export function defaultFaceLoads(): int32 {
+	return defaultLoads;
 }
 
 function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): float32 {
