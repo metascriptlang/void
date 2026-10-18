@@ -26,6 +26,10 @@ const char *voidCaptureRenderer(void);
 // Returns 1 on success, 0 when this build has no readback path or the read failed.
 int voidCaptureGrab(int slot);
 
+// Windows only: what the compositor shows in the window's client area (PrintWindow) rather
+// than the swapchain, so it sees whether a frame was presented. 0 elsewhere.
+int voidCaptureGrabWindow(int slot);
+
 // D3D11 only: read buffer `buffer` of an IDXGISwapChain1 the caller owns (a host view's).
 int voidCaptureGrabSwapChain(int slot, long long swapChain, int buffer);
 

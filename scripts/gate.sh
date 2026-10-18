@@ -248,6 +248,22 @@ for glyph_backend in $glyph_backends; do
 		fail "glyph clip $glyph_backend build — see out/gate-glyph-clip-$glyph_backend-build.log"
 	fi
 done
+for present_backend in $glyph_backends; do
+	present_flags=""
+	[ "$present_backend" != gl ] || present_flags="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+	present_log="out/gate-skipped-frame-$present_backend.log"
+	if "$MSC" build $present_flags tests/integration/skippedFrame.ms --release \
+			--output="out/skippedFrame-$present_backend.exe" > "$present_log" 2>&1 \
+			&& timeout 60 "out/skippedFrame-$present_backend.exe" >> "$present_log" 2>&1; then
+		if grep -q '^PASS skipped frame:' "$present_log"; then
+			pass "skipped frame $present_backend: an undrawn frame keeps the previous picture, paced"
+		else
+			skip "skipped frame $present_backend: this OS has no window capture"
+		fi
+	else
+		fail "skipped frame $present_backend — see $present_log"
+	fi
+done
 
 for misuse in unprepared twice no-pass nested consumed expired size; do
 	case "$misuse" in

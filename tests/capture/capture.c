@@ -192,6 +192,58 @@ int voidCaptureGrab(int slot) {
 #endif
 }
 
+#if defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#ifndef PW_RENDERFULLCONTENT
+#define PW_RENDERFULLCONTENT 0x00000002
+#endif
+const void *sapp_win32_get_hwnd(void);
+int voidCaptureGrabWindow(int slot) {
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
+	HWND hwnd = (HWND)sapp_win32_get_hwnd();
+	RECT client;
+	if (hwnd == NULL || !GetClientRect(hwnd, &client)) return 0;
+	int width = client.right - client.left;
+	int height = client.bottom - client.top;
+	if (width <= 0 || height <= 0) return 0;
+	uint8_t *out = slotResize(slot, width, height);
+	if (out == NULL) return 0;
+	BITMAPINFO info = {0};
+	info.bmiHeader.biSize = sizeof(info.bmiHeader);
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	HDC dc = CreateCompatibleDC(NULL);
+	void *bits = NULL;
+	HBITMAP bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, NULL, 0);
+	if (dc == NULL || bitmap == NULL) {
+		if (bitmap != NULL) DeleteObject(bitmap);
+		if (dc != NULL) DeleteDC(dc);
+		return 0;
+	}
+	HGDIOBJ previous = SelectObject(dc, bitmap);
+	BOOL printed = PrintWindow(hwnd, dc, PW_CLIENTONLY | PW_RENDERFULLCONTENT);
+	GdiFlush();
+	const uint8_t *bgra = (const uint8_t *)bits;
+	for (size_t i = 0; i < (size_t)width * (size_t)height; i++) {
+		out[i * 4u + 0] = bgra[i * 4u + 2];
+		out[i * 4u + 1] = bgra[i * 4u + 1];
+		out[i * 4u + 2] = bgra[i * 4u + 0];
+		out[i * 4u + 3] = 0xFF;
+	}
+	SelectObject(dc, previous);
+	DeleteObject(bitmap);
+	DeleteDC(dc);
+	return printed ? 1 : 0;
+}
+#else
+int voidCaptureGrabWindow(int slot) {
+	(void)slot;
+	return 0;
+}
+#endif
+
 int voidCaptureGrabSwapChain(int slot, long long swapChain, int buffer) {
 	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
 #if defined(VOID_CAPTURE_D3D11)
