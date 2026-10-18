@@ -97,6 +97,15 @@ renderer cannot produce. The phase that lands the feature adds the row to
 |---|---|---|---|---|
 | bidi:weak-caret-and-visual-motion | T1 | a second (weak) caret at a direction boundary and cursor motion in visual order are not built: `xForIndex` and `indexAt` answer the strong caret only (VOID2D.md P7, mechanism C), and a boundary between a Latin and a Hebrew run has a second position that nothing can reach. The references are Pango's `get_cursor_pos` (strong and weak) and cosmic-text's `Affinity`; GPUI and Makepad have neither. New public surface with no rendering-layer reference, so the human decides whether Neon needs it; Neon owns focus and key handling. Closes when the human says yes and the surface is specified, or says no and the row is deleted | human | 2026-10-08 |
 
+## Human inputs for end-game verification
+
+These are missing comparison inputs, not renderer passes or automatic-test failures.
+
+| id | tier | reason | phase | date |
+|---|---|---|---|---|
+| gpui:current-editor-terminal | T4 | Current-local GPUI comparison has no approved runnable workspace/toolchain. Needs the user's decision 8: authorize restoring the GPUI workspace/sparse checkout, installing Rust `1.98.1-x86_64-pc-windows-msvc` alongside existing toolchains without changing the global default, and fetching the workspace's locked dependencies without changing its lockfile. Then pin the actual GPUI source/build and matching font bytes, features/AA, viewport, DPI, theme and editor/terminal workload; run matched correctness and separately scoped timing. Closes with those measured receipts, not old GPUI 0.2.2 primitive timings or a source-only comparison | human | 2026-10-19 |
+| font:real13-human-look | T5 | The 13 logical px Inter/Cascadia native panel in `tests/integration/fontPanel.ms` has agent-inspected D3D11/GL captures at DPI 1/1.5/2/3, not human quality acceptance. Needs the human's target device/OS/backend/GPU and DPI, the actual font bytes/features, AA, gamma/contrast, line height and theme, plus a recorded review of dark/light stems, counters, spacing, fractional origins and transformed SDF. If judging Zed parity, supply the current Zed build and identical settings too. Closes with an explicit human accept/reject and the named captures/settings; cross-backend agreement, a demo screenshot or an agent's look does not close it | human | 2026-10-19 |
+
 ## Known defects with no pixels to capture
 
 Every line of [docs/VOID2D.md](../docs/VOID2D.md) "Known defects" is listed somewhere on
