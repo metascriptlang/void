@@ -115,6 +115,17 @@ later replaces the hand-written GLSL source of each base.
   call `glsl`, so no binary carries GLSL text. `shader3dBlocks.glsl` is included only into a program
   that still has a hand-written stage: a generated stage defines what it calls, and a texture tag in
   an included block would name its texture twice.
+- **An app's own program is built while msc compiles it** (`shaderProgram` in `program.ms`, the
+  person's "viết → chạy", 2026-10-18). The statement splices three declarations: an `@emit` that
+  includes the generated header, the extern `<name>ShaderProgram()` defined in it, and `const
+  <name>: int32` initialized by `shaderBuild`, which writes `<name>.glsl` and runs sokol-shdc into
+  `.shaders/` beside the caller (gitignored, rewritten on every compile), then appends the door
+  registration. Its limits, each refused or stated: one program, so no `@feature` field in either
+  entry (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in
+  declaration order with no padding, `@builtin` inputs skipped; `float32`, `int32`, `uint32` and
+  their `./std` vectors only. A fragment without an input links to a vertex entry that writes no
+  varyings. Not yet run: a GPU draw of such a program and an emcc build, where `std/process`'s
+  module init reaches the app.
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
@@ -161,6 +172,15 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
   from the author's by that path, and an author struct named like a `./std` type stays the author's
   (pinned in `shaderStatementCheck.ms`; BUILD `5631dd3e5`). An enum type node still carries no
   `resolvedSym`.
+- **A macro declares module names through `SpliceMany`** (measured 2026-10-18, BUILD `4fe2a5eec`,
+  `shaderProgram`). A bare macro statement returning `NodeKind.SpliceMany` with `spliceNodes`
+  declares each node at module level; a `BlockStmt` scopes them instead, and a `quote` cannot
+  splice a declaration's name (`const ${x}: T` does not parse), so the nodes are built by hand.
+  `@emit("/*INCLUDESECTION*/#include …")` lands in the C headers section. Arguments arrive
+  expanded, and only a nested macro sees an entry typed: `getType` on the identifier passed to
+  the statement macro is "node has no type", so `vertexFormats` reads the signatures.
+  `bindSym` resolves only a literal string (a variable gives null). Macros run at compile time
+  with `std/fs` and `std/process` (`execFileResult`, `platform` "windows"/"darwin"/"linux").
 - **A negated literal is a `UnaryExpr`.** Since BUILD `5631dd3e5` `-0.5` reaches the emitter as `-`
   over a `NumberLiteral`, as TypeScript parses it; the emitter writes it as one literal, `-0.5`, and
   parenthesizes only a negation of a negation, so `- -x` never becomes GLSL's `--`.

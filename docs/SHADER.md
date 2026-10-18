@@ -40,6 +40,8 @@ A shader is an ordinary MetaScript function. The macro `glsl(fn)` (`src/shader/e
 
 **Composition is function calls.** HXSL needs a macro to merge N shaders into one. Here an entry calls helpers, and the emitter defines each helper it reaches once, above `main()`. Feature variants come from one function too: a `@feature` program key emits `#ifdef` blocks, so one entry serves every row of `src/void3d/programKeys.txt`.
 
+**Write → run for an app's own program.** `shaderProgram(wave, waveVs, waveFs);` (`src/shader/program.ms`) runs the emitter, sokol-shdc and the door's registration while msc compiles the app, and declares `wave`, the program id a pipeline names; no regen step and no generated file to commit. It builds one program, so a `@feature` family stays on the generator; src/shader/CLAUDE.md "Design" has its limits.
+
 **Subset, refused loudly.** A shader is the GLSL-expressible subset of MetaScript, and the emitter checks shdc's dialect at the author's code; src/shader/CLAUDE.md "Design" lists the rules.
 
 **Coverage against shady.** Every case of shady's tests and shader-toy/compute examples has a Void stage, run on the CPU and pinned as GLSL; the case-by-case table, with what Void writes differently, is src/shader/CLAUDE.md "Measured — coverage against shady".
