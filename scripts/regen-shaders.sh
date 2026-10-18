@@ -254,7 +254,6 @@ generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
 regenKeys
 regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"
-regen tests/integration/forwardOutlineReference.glsl tests/integration/forwardOutlineReference.glsl.h "$LANGS_IOS"
 
 [ "$CHECK" = 1 ] && exit "$STALE"
 echo "OK: shader headers regenerated"

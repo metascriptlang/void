@@ -6,7 +6,7 @@ import { endPass, commit } from "../../src/gpu/door";
 import { PipelineCache, pipelineFor, closePipelines } from "../../src/gpu/pipeline";
 import { RenderTarget, NO_DEPTH, beginPass } from "../../src/gpu/target";
 import { PixelFormat, LoadAction } from "../../src/gpu/door";
-import { outlineReferenceProgram, outlineReferenceLayout, outlineReferenceDraw, outlineReferenceClose } from "./forwardOutlineReference.h";
+import { outlineReferenceProgram, outlineReferenceLayout, outlineReferenceDraw, outlineReferenceClose } from "./forwardOutlineReference";
 import { SWAPCHAIN_LAYOUT, beginScreenPass } from "../../src/gpu/target";
 import { drawScreen, closePrepare, openScreen } from "../../src/void3d/renderer";
 import { screenState } from "../../src/void3d/screenFx";
