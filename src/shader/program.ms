@@ -110,8 +110,9 @@ export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node
 	const run = execFileResult(shdc, ["-i", source, "-o", header, "-l", SHDC_LANGUAGES,
 		"-f", "sokol", "--ifdef", "--no-log-cmdline"]);
 	if (!run.started || run.exitCode != 0) {
-		error("shaderProgram: " + shdc + (run.started ? " exited " + String(run.exitCode) :
-			" did not start") + " on " + source + "\n" + run.output + run.errorOutput, name);
+		error("shaderProgram '" + base + "': sokol-shdc " + (run.started ? "exited " +
+			String(run.exitCode) : "did not start") + "\n" + run.output + run.errorOutput +
+			"\n(" + shdc + " on " + source + ")", name);
 	}
 	let attributes = "";
 	let offset = 0;
