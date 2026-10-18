@@ -10,6 +10,7 @@ set -e
 cd "$(dirname "$0")/.."
 OUT=out/experiments/modulesWeb
 mkdir -p "$OUT"
+sh scripts/wasmBudget.test.sh
 export MSC_NO_GLOBAL_CACHE=1
 modules="${*:-shaper sdf bidi}"
 
@@ -43,6 +44,11 @@ for module in $modules; do
 			recorded=$(grep -E "^modulesWeb-$module $backend off " tests/bench/wasmBudget.txt | head -1 || true)
 			if [ -z "$recorded" ]; then
 				echo "BUDGET $module $backend: no modulesWeb-$module row in tests/bench/wasmBudget.txt"
+				continue
+			fi
+			if ! printf '%s\n' "$recorded" | tr -d '\r' | grep -qE "^modulesWeb-$module $backend off [0-9]+ on [0-9]+$"; then
+				echo "FAIL $module $backend: unreadable modulesWeb budget row"
+				status=1
 				continue
 			fi
 			budgetOff=$(echo "$recorded" | awk '{ print $4 }' | tr -d '\r')
