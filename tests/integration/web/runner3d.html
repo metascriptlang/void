@@ -15,9 +15,10 @@
   const factor = query.get('VOID_OUTLINE_FRAMEBUFFER_FACTOR');
   const canvas = document.getElementById('canvas');
   const framebufferFactor = factor === '2' ? 2 : 1;
-  const copyAlpha = query.get('entry') === 'copyAlpha';
-  canvas.width = copyAlpha ? 160 : 320 * framebufferFactor;
-  canvas.height = copyAlpha ? 120 : 240 * framebufferFactor;
+  const sizes = { copyAlpha: [160, 120], cardTable: [640, 480] };
+  const [width, height] = sizes[query.get('entry')] ?? [320 * framebufferFactor, 240 * framebufferFactor];
+  canvas.width = width;
+  canvas.height = height;
   canvas.style.width = canvas.width + 'px';
   canvas.style.height = canvas.height + 'px';
   window.voidDone = null;
