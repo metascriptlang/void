@@ -14,12 +14,16 @@ set -e
 cd "$(dirname "$0")/.."
 
 PORT="${VOID_WEB_PORT:-8731}"
+BOUND="${VOID_WEB_SHOT_SECONDS:-30}"
 SHOTS=out/webshot
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
 
 [ -f web/gl/mainSokol2d.wasm ] || { echo "SKIP web liveness: run scripts/build-web.sh first"; exit 0; }
 [ -x "$CHROME" ] || { echo "SKIP web liveness: no Chrome at $CHROME"; exit 0; }
 command -v python >/dev/null || { echo "SKIP web liveness: no python to serve web/"; exit 0; }
+
+. scripts/webShot.sh
+sh scripts/webShot.test.sh
 
 mkdir -p "$SHOTS"
 ( cd web && exec python -m http.server "$PORT" >/dev/null 2>&1 ) &
@@ -29,8 +33,10 @@ server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT
 sleep 2
 
+failed=0
 shot() {
 	backend="$1"
+	hung="$2"
 	# Chrome on Windows will not write to an MSYS-style path.
 	if command -v cygpath >/dev/null; then
 		out="$(cygpath -w "$PWD/$SHOTS")\\$backend.png"
@@ -43,7 +49,14 @@ shot() {
 	rm -f "$SHOTS/$backend.png"
 	"$CHROME" --headless=new --enable-unsafe-webgpu --use-angle=swiftshader \
 		--virtual-time-budget=8000 --window-size=800,600 \
-		--screenshot="$out" "http://localhost:$PORT/void2d.html?$backend" >/dev/null 2>&1 || true
+		--screenshot="$out" "http://localhost:$PORT/void2d.html?$backend" >/dev/null 2>&1 &
+	status=0
+	waitShot $! "$SHOTS/$backend.png" "$BOUND" || status=$?
+	if [ "$status" -eq 2 ]; then
+		echo "$hung  web liveness $backend: headless Chrome wrote no screenshot within ${BOUND}s; stopped its process tree"
+		[ "$hung" = SKIP ] || failed=1
+		return
+	fi
 	bytes=$(wc -c < "$SHOTS/$backend.png" 2>/dev/null || echo 0)
 	# A canvas that drew nothing compresses to a few kilobytes; the demo is over 100 KB.
 	if [ "$bytes" -gt 40000 ]; then
@@ -53,5 +66,6 @@ shot() {
 	fi
 }
 
-shot gl
-shot wgpu
+shot gl FAIL
+shot wgpu SKIP
+exit "$failed"

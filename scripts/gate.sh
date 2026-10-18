@@ -918,11 +918,12 @@ fi
 if [ "$WEB" -eq 1 ]; then
 	if sh scripts/build-web.sh > out/gate-web.log 2>&1; then
 		pass "web build: both backends build ($(wc -c < web/wgpu/mainSokol2d.wasm) B wgpu, $(wc -c < web/gl/mainSokol2d.wasm) B gl)"
-		# Liveness prints its own PASS/SKIP per backend, with the reason. Its skips have to
-		# reach $skips or the summary undercounts what was not run.
+		# Liveness prints its own PASS/SKIP/FAIL per backend, with the reason. Its skips and
+		# fails have to reach the counters or the summary undercounts them.
 		sh scripts/web-liveness.sh > out/gate-liveness.log 2>&1 || true
 		sed 's/^/      /' out/gate-liveness.log
 		skips=$((skips + $(grep -c '^SKIP' out/gate-liveness.log || true)))
+		fails=$((fails + $(grep -c '^FAIL' out/gate-liveness.log || true)))
 	else
 		fail "web build — see out/gate-web.log"
 	fi
