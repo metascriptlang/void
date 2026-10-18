@@ -124,8 +124,13 @@ later replaces the hand-written GLSL source of each base.
   entry (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in
   declaration order with no padding, `@builtin` inputs skipped; `float32`, `int32`, `uint32` and
   their `./std` vectors only. A fragment without an input links to a vertex entry that writes no
-  varyings. Not yet run: a GPU draw of such a program and an emcc build, where `std/process`'s
-  module init reaches the app.
+  varyings. A sokol-shdc that refuses or does not start stops the compile at the program's name,
+  never skips it: shdc's own message follows "shaderProgram '<name>': sokol-shdc exited N"
+  (`tests/refusals/shdcRefused.ms`, a block at `@binding(9)`); a missing binary says "did not
+  start" with the path it looked at (measured 2026-10-18, BUILD `4fe2a5eec`, a copy of `program.ms`
+  under `out/missingShdc/`, whose deps path does not exist; no pin, since it needs shdc gone).
+  Not yet run: a GPU draw of such a program and an emcc build, where `std/process`'s module init
+  reaches the app.
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the
