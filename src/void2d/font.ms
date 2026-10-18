@@ -229,6 +229,10 @@ function ensureDefaultFont(): void {
 		weight: 400,
 		style: FontStyle.Normal,
 	});
+	fonts.push(plainFont(NOT_LOADED, DEFAULT_PATH));
+}
+
+function defaultFace(): int32 {
 	const loaded = faceAtPath(DEFAULT_PATH);
 	defaultLoads = defaultLoads + 1;
 	if (!loaded.ok) {
@@ -236,10 +240,9 @@ function ensureDefaultFont(): void {
 			`void2d: the default font ${DEFAULT_PATH} did not load ` +
 			`(${loaded.error.toString()}); text in it draws nothing`,
 		);
-		fonts.push(plainFont(NO_FACE, DEFAULT_PATH));
-		return;
+		return LOAD_FAILED;
 	}
-	fonts.push(plainFont(loaded.value, DEFAULT_PATH));
+	return loaded.value;
 }
 
 export function registerFace(path: string, family: string, weight: int32, style: FontStyle): void {
@@ -437,7 +440,9 @@ function fontIndex(font: FontId): int32 {
 }
 
 export function fontFace(font: FontId): int32 {
-	return fonts[fontIndex(font)].face;
+	const index: int32 = fontIndex(font);
+	if (fonts[index].face == NOT_LOADED) { fonts[index].face = defaultFace(); }
+	return fonts[index].face;
 }
 
 export function fontFeatures(font: FontId): FontFeature[] {
