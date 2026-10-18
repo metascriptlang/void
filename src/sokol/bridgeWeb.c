@@ -150,7 +150,13 @@ static void _init(void) {
 	imeSetup();
 	call0(s_init);
 }
-static void _frame(void) { call0(s_frame); }
+static bool s_committed;
+
+static void _frame(void) {
+	s_committed = false;
+	call0(s_frame);
+	if (!s_committed) sapp_skip_present();
+}
 
 static int s_reqW = 0;
 static int s_reqH = 0;
@@ -229,4 +235,4 @@ int voidKeyDown(int keycode) {
 
 sg_swapchain voidDriverSwapchain(void) { return sglue_swapchain(); }
 
-void voidDriverPresent(void) {}
+void voidDriverPresent(void) { s_committed = true; }
