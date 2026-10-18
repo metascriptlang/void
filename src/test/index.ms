@@ -95,6 +95,7 @@ import "./shaderStdCheck";
 import "./shader2dCheck";
 import "./shaderCalleeCheck";
 import "./shaderStatementCheck";
+import "./shaderProgramCheck";
 import "./shaderComputeCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
