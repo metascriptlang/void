@@ -13,12 +13,6 @@
 #   1. Module off: no object of the default layer refers to a void2dColour symbol, and no
 #      translation unit outside the module holds a stb_image implementation. The control is the
 #      same glyph.c built with -DVOID2D_COLOUR_EMOJI, which must refer to them.
-#   2. Cost: code plus data bytes of each translation unit, x86-64 and wasm32 (clang -O2 against
-#      the libc-free headers in scripts/wasmShim). The default-layer delta is the module-off
-#      objects now against the same files at the commit before the colour item's first
-#      default-layer slice, so it counts the colour item's hooks and nothing else. A wasm32
-#      object is not a linked, garbage-collected module: the number the web build gives is owed
-#      to scripts/build-web.sh (tests/PENDING.md wasm:budget).
 set -e
 cd "$(dirname "$0")/.."
 

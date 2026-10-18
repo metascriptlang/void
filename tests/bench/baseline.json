@@ -127,8 +127,8 @@
   "outlineBounds": { "sweepOutlineRasterizations": 4000, "outlineRasterizationsSteady": 0, "glyphRasterizationsSteady": 0, "glyphPages": 8, "glyphBytes": 8388608 },
   "sdfBounds": { "sdfPages": 1, "sdfBytes": 1048576, "sweepSdfGenerations": 40, "sdfGenerationsSteady": 0, "sweepRasterizations": 40, "glyphRasterizationsSteady": 0 },
   "colourBounds": {
-    "colourPages": 2,
-    "colourBytes": 8388608,
+    "colourPages": 1,
+    "colourBytes": 4194304,
     "sweepColourRasterizations": 40,
     "colourRasterizationsSteady": 0
   },

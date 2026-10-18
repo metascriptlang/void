@@ -1855,19 +1855,18 @@ changes described above on today's compiler; the P4 web archive also takes its r
   most 1 SDF page of 1 MiB, at most 40 SDF generations over the sweeps (the code line has 40
   distinct glyphs, one generation each), 0 generations and 0 coverage rasterizations in the
   measured frames, and at most 40 coverage rasterizations over the sweeps (the zoom sweep of the
-  coverage regime is 3 907). A run that draws no SDF glyph fails. The bounds are the claims, not
-  measurements: the bench has not run (`tests/PENDING.md sdf:bench-bounds`). Weight, as objects
+  coverage regime is 3 907). A run that draws no SDF glyph fails. These bounds passed in both
+  normal and Profiler native runs on BUILD `4fe2a5eec`; TESTING.md "Real-font native panel" owns
+  the measured counters and source tree. Weight, as objects
   from `sh scripts/wasmModuleDelta.sh` (clang 23.1.0 -O2, code plus data, before any link):
   `glyph.c` built with `-DVOID2D_SDF_TEXT` against without it is +8,016 B as wasm32 and +11,684 B
   as x86-64, recorded in `tests/bench/wasm.json`; the spec's scratch figure for stb's SDF code
   alone, linked with `emcc -Oz`, was +11.3 KB. The shader's one extra branch per backend text is
   not measured. With the module off no default-layer object names a `void2dGlyphSdf` symbol
-  (the same script, with the module-on object as the control). The linked wasm per backend is
-  owed: `sh scripts/experiment-modulesWeb.sh sdf` builds `tests/experiments/modulesWeb.ms`, which
-  links no `node.ms` and so no Yoga, off and on (`tests/PENDING.md wasm:budget`); the Yoga web
-  blocker (`~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`)
-  still stops the whole-demo number. Not run here: `benchTextSdf.exe` (the native gate),
-  `scripts/experiment-modulesWeb.sh` (emsdk), the Profiler variant of the bench.
+  (the same script, with the module-on object as the control). The linked experiment and demo
+  are now measured on BUILD `4fe2a5eec`, emsdk 5.0.5: see TESTING.md "Linked wasm text modules"
+  and `tests/bench/wasmBudget.txt` for both entries/backends, provenance and profile. Yoga no
+  longer blocks the demo link. Those linked records are separate from these object figures.
 - **Shaper wasm weight, built 2026-10-08 (slice 8).** `shaper.c` with the vendored
   `kb_text_shape.h` is one object of 518,961 B as wasm32 and 534,608 B as x86-64 (code plus data
   at -O2, `scripts/wasmModuleDelta.sh`, recorded as `shaper` in `tests/bench/wasm.json`); the
@@ -1967,10 +1966,11 @@ changes described above on today's compiler; the P4 web archive also takes its r
   module-on object as control. The ten `text/outline*` rows are captured on D3D11 (2026-10-08);
   the three `outlineSdf*` scenes first drew nothing, because their builders asked
   `sdfLabelCases` for the outline rows' names, and now take the SDF rows' labels.
-  **Owed, each a row in `tests/PENDING.md`**: the bench bounds
-  (`outline:bench-bounds`, `benchTextOutline.ms`), the native gate with the flag
-  (`outline:native-gate`), the other backends (`outline:backends`), a judge on the SDF captures
-  (`outline:capture-oracle`) and a look (`outline:look`).
+  **Native bench and gate measured 2026-10-19**: both bench variants satisfy their bounds,
+  and the full native all-on gate, aborts and module-off checks pass on BUILD `4fe2a5eec`
+  (TESTING.md "Real-font native panel"). Still owed in `tests/PENDING.md`: unmeasured backend
+  evidence (`outline:backends`), a judge on the SDF captures (`outline:capture-oracle`) and a
+  human look (`outline:look`).
 - **Glyph page reclamation** (2026-10-08, NEW MECHANISM, void manager's GO). `glyph.c`'s page
   table is process-wide and capped at the renderer's 64 view slots; a page was never returned, so
   every atlas a test created spent slots for the life of the process (58 of 64 at the end of the
@@ -2033,8 +2033,9 @@ changes described above on today's compiler; the P4 web archive also takes its r
   return to identity rasterize nothing. T4: `tests/bench/benchTextEmoji.ms`, the text scene with an
   emoji line every eighth line built with `-d:voidColourEmoji`, reports `colourPages`,
   `colourBytes`, `sweepColourRasterizations` and `colourRasterizationsSteady`; `check.ms` holds
-  them to the `colourBounds` in `baseline.json` (2 pages, 8 MiB, 40 rasterizations, 0 steady) as
-  bounds, not as measured values, because the bench has not been run (owed, `tests/PENDING.md colour:bench-bounds`). `glyphPages` and
+  them to the `colourBounds` in `baseline.json`: tightened to the measured 1 page, 4 MiB,
+  40 sweep rasterizations and 0 steady after both native variants passed on BUILD `4fe2a5eec`
+  (TESTING.md "Real-font native panel"). `glyphPages` and
   `glyphBytes` now count the coverage pages only, so they keep their meaning beside an RGBA page.
   Device loss and occlusion: `forgetContextResources` already marks every page dirty whatever its
   kind and the page mirror is four bytes a texel, so an RGBA page re-uploads whole with no new code;
@@ -2042,7 +2043,9 @@ changes described above on today's compiler; the P4 web archive also takes its r
   upload again, with the same mirror and size, and a `MarkDirty` that skipped RGBA pages fails
   it). The GPU half is two gate stages that build `tests/integration/deviceLoss.ms` and
   `sceneOcclusion.ms` with `-d:voidColourEmoji`, each with an emoji label beside the text one,
-  and require the colour page to exist (owed, native: neither stage has run, `tests/PENDING.md colour:native-gate`).
+  and require the colour page to exist. Both passed in the native `35b8128b` gate on BUILD
+  `4fe2a5eec`; `tests/PENDING.md colour:native-gate` now isolates the remaining zoomed-sampler
+  pixel check, not those completed device-loss/occlusion stages.
   Module off (guardrail 6), measured 2026-10-08 with `sh scripts/wasmModuleDelta.sh` (clang 23.1.0,
   -O2, objects, code plus data bytes, before any link or garbage collection): with the module off
   no default-layer object (`glyph.c`, `grapheme.c`, `batcher.c`, `sfnt.c`) names a `void2dColour`
@@ -2052,12 +2055,13 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `691586c`; every default-layer commit since is the colour item's) is +1,567 B as wasm32 objects
   and +1,909 B as x86-64 objects, +1,540 B and +27 B of the wasm32 figure in `glyph.c` and
   `batcher.c`. The gate also checks the module-off executable for a `void2dColour` symbol
-  (owed, native). The module is `colourFace.c` 42,189 B as a wasm32 object (36,046 B
+  (verified in the native `35b8128b` gate). The module is `colourFace.c` 42,189 B as a wasm32 object (36,046 B
   code, 6,143 B data, the PNG decoder among them) and 43,625 B as an x86-64 object, plus 3,273 B
   (wasm32) of hooks in `glyph.c`; the spec's estimate for the module's C was 25 to 39 KB with the
-  decoder shared. These are object sizes: the linked, garbage-collected wasm of the demo with each
-  module off and on needs the web build, which cannot link Yoga (`tests/PENDING.md wasm:budget`),
-  so no wasm budget is gated and the gate says so. `tests/bench/wasm.json` records the numbers, and
+  decoder shared. These are object sizes: linked experiment/demo rows are separate in
+  `tests/bench/wasmBudget.txt`, measured under TESTING.md "Linked wasm text modules". The native
+  gate validates their declarations; re-linking is the experiment script's check.
+  `tests/bench/wasm.json` records these object numbers, and
   the script fails on growth past ten percent. The gate also builds `mainSokol2d.ms` both ways
   and requires the colour build to be the larger executable (owed, native).
   Sequences: with `-d:voidShaper` a ZWJ sequence the face ligates draws as one colour glyph
@@ -2075,7 +2079,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   capture and the twice-run determinism at DPI 1.0, 1.25 and 1.5 (golden capture forbidden in that
   worktree); the draw count of an alternating label (a headless view is 0); the device-loss and
   occlusion stages and the `benchTextEmoji` rows (native runs); WebGL2 and WebGPU for the new scene
-  and the linked wasm bytes (the web build cannot link Yoga, `tests/PENDING.md wasm:budget`); Metal
+  and the linked wasm bytes were owed at that closure. Linked bytes and WebGL2 conformance have
+  since been measured (TESTING.md "Linked wasm text modules" and "Guardrail 9"); Metal
   and Android (no hardware); sbix on a real Apple face (proprietary, `tests/PENDING.md
   font-sbix-apple`); the halo check of Image mode on an integer-aligned quad, which the capture at
   DPI 1.0, 1.25 and 1.5 is to show.
@@ -2360,7 +2365,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   Ghostty's 36 reference PNGs only (78,166 B, MIT, `tests/oracle/ghostty/`); no third-party code
   was added.
   **Module size, 2026-10-08 (`scripts/wasmModuleDelta.sh`, `tests/bench/wasm.json`, clang
-  23.1.0 -O2 objects; the linked module is still owed to `wasm:budget`).** Before the
+  23.1.0 -O2 objects; later linked records are in `tests/bench/wasmBudget.txt`).** Before the
   rasterizer swap, with the sprites in the default layer: `spriteGlyph.c` 34,553 B native and
   36,709 B wasm32, its `glyph.c` hooks 2,997 B and 2,902 B. After the swap, as a module:
   `spriteGlyph.c` **33,757 B native, 35,647 B wasm32** (-796 B and -1,062 B, the accumulator
@@ -2645,7 +2650,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 - The editor scene shows `calt` ligatures; the shaper's pass rate against the HarfBuzz oracle is printed and its PENDING list is explicit.
 - Text at 4× zoom and under rotation is crisp through the SDF regime, and the atlas does not grow with the zoom level.
-- Every module's wasm delta is recorded per backend and gated against a committed budget; a build with all modules off is measured too, and is the number guardrail 6 is about. **Status 2026-10-08: not met as written.** What exists is object bytes per module (clang -O2, x86-64 and wasm32) in `tests/bench/wasm.json`, gated at 10% growth by `scripts/wasmModuleDelta.sh` in every gate, and the default layer's delta against the base; the linked module per backend and the all-off build wait on `web:runs` and `wasm:budget`, and the gate prints that SKIP.
+- Every module's wasm delta is recorded per backend and gated against a committed budget; a build with all modules off is measured too, and is the number guardrail 6 is about. **Status 2026-10-19:** six text modules have 24 linked experiment/demo rows, including each entry's all-off baseline, in `tests/bench/wasmBudget.txt` (TESTING.md "Linked wasm text modules", BUILD `4fe2a5eec`, emsdk 5.0.5, shipped `--os=emcc` profile without `--release`). The experiment script enforces those linked budgets when it builds; the native gate checks the declarations, not a fresh link. The object budgets in `tests/bench/wasm.json` remain gated at 10% growth by `scripts/wasmModuleDelta.sh`. This is the six-text-module scope, not an unmeasured cost claim for every optional feature.
 - The fault-injection switch loses the device mid-frame and the next frame is correct.
 - `sample_count > 1` works on the iOS and Android bridges without breaking void3d's pipelines.
 - Guardrail 9 prints a pass rate for GL core 4.3 desktop (glsl430) and WebGPU instead of a SKIP. **Status 2026-10-08:** the GL surface is built (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`, gate section 7) and measured 115 / 115 (91 byte-identical, 24 within the cross-backend bound, 0 structural, 2 void3d scenes excluded by name); it reads GL core 4.3 and not GLES3 because sokol_app's Win32 list has no GLES3. WebGPU is still a SKIP, owned by `web:runs`; this exit is met for GL core 4.3 only.
@@ -2661,7 +2666,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 
 
-**Text outline rows, owed to the human on 2026-10-08:** `outline:bench-bounds`, `outline:native-gate`, `outline:backends`, `outline:capture-oracle` and `outline:look`; `outline:sprite-glyph` and `outline:colour-glyph` are declared design choices and stay.
+**Text outline rows, updated 2026-10-19:** native bench bounds and the full native gate are measured (TESTING.md "Real-font native panel"). `outline:backends`, `outline:capture-oracle` and `outline:look` remain; `outline:sprite-glyph` and `outline:colour-glyph` are declared design choices and stay.
 
 **Re-owned to the human on 2026-10-08, each naming the run that is missing** (decision of the void manager; the Exit line above allows a SKIP that names it): `backend:metal-macos`, `backend:metal-ios`, `backend:gles3-android`, `macos:voidRunConfigured` and `macos:view-api` need a Mac, an iPhone or an Android device that the box owning this code does not have. Each row in `tests/PENDING.md` states the run that closes it, and `scripts/gate.sh` section 7 keeps printing a SKIP for the three backends until that run reports a pass rate.
 

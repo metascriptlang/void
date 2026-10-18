@@ -848,7 +848,11 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 else
 	fail "module off: mainSokol2d.exe did not build both ways — see out/gate-module-off.log"
 fi
-skip "wasm size budget: no linked wasm number is recorded to gate yet — tests/PENDING.md wasm:budget"
+if sh scripts/wasmBudget.test.sh --record > out/gate-wasm-budget-record.log 2>&1; then
+	pass "linked wasm budgets: 24 measured declarations valid; remeasure with scripts/experiment-modulesWeb.sh (not linked again by this native stage)"
+else
+	fail "linked wasm budget declarations — see out/gate-wasm-budget-record.log"
+fi
 
 # The graduation rule for a conformance row: every scene it lists must still fail, and a clean
 # run with the row still present fails too. $1 backend, $2 its golden log, $3 the PENDING id.

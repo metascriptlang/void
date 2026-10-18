@@ -1910,14 +1910,17 @@ The record is not reconciled with `tests/PENDING.md`:
 - **B4** Exit 8 (a deferred CJK or emoji family answers coverage without loading) has no test.
 - `docs/TESTING.md` and `VOID2D.md` cite `sdf-non-uniform-bound`, closed by `78795b3`.
 
-Not trusted until measured: the atlas bounds (`sdf:`, `colour:`, `outline:bench-bounds`), any WebGL2
-statement after P3, the mobile `sample_count` claim.
+At that review, atlas bounds, WebGL2 after P3 and mobile `sample_count` lacked measurements.
+Later native atlas counters and linked wasm budgets are recorded in TESTING.md "Real-font
+native panel" / "Linked wasm text modules"; its "Guardrail 9" records WebGL2. Mobile device
+claims still need their own runs.
 
 ### Owners and the way back
 
 The builder fixes D2-D7 and B1-B4 on `wt/void2d-gpui`, each with its pin, verifies D8-D12 or
-records them as declared with the reason, and asks for a re-review. The web runs stay owned by
-`compiler:bool-span-web` and `wasm:budget`.
+records them as declared with the reason, and asks for a re-review. The web runs stayed owned by
+`compiler:bool-span-web` and the linked-budget work. The later linked measurements are recorded
+in `tests/bench/wasmBudget.txt` and TESTING.md "Linked wasm text modules".
 
 ### Resolutions, before the re-review (2026-10-08)
 

@@ -6,3 +6,22 @@ modulesWeb-sdf wgpu off 440879 on 459244
 modulesWeb-sdf gl off 329558 on 347907
 modulesWeb-bidi wgpu off 440879 on 467813
 modulesWeb-bidi gl off 329558 on 356492
+measured additional BUILD 4fe2a5eec emscripten 5.0.5 tree 20ad6d286fcf45c668c55600c05a909a13d5081c
+modulesWeb-colour wgpu off 440879 on 489069
+modulesWeb-colour gl off 329558 on 381996
+modulesWeb-sprites wgpu off 440879 on 479839
+modulesWeb-sprites gl off 329558 on 371985
+modulesWeb-outline wgpu off 440879 on 461126
+modulesWeb-outline gl off 329558 on 349773
+mainSokol2d-shaper wgpu off 974297 on 1514985
+mainSokol2d-shaper gl off 869347 on 1410043
+mainSokol2d-sdf wgpu off 974297 on 984405
+mainSokol2d-sdf gl off 869347 on 879456
+mainSokol2d-bidi wgpu off 974297 on 1005722
+mainSokol2d-bidi gl off 869347 on 900772
+mainSokol2d-colour wgpu off 974297 on 1021556
+mainSokol2d-colour gl off 869347 on 916591
+mainSokol2d-sprites wgpu off 974297 on 1013273
+mainSokol2d-sprites gl off 869347 on 908314
+mainSokol2d-outline wgpu off 974297 on 988656
+mainSokol2d-outline gl off 869347 on 883708

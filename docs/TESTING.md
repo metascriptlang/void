@@ -499,9 +499,33 @@ Uncompressed wasm bytes, with one module enabled at a time:
 `tests/bench/wasmBudget.txt` records these rows for the existing script's budget check.
 Each bundle also carried 434183 B of preloaded data and 288156 B WebGPU / 283812 B WebGL2 JS;
 those bytes are not hidden in the wasm column. No compression, startup, memory or GPU time was
-measured. Unused-import diagnostics were retained, not asserted baseline-equal. Colour,
-sprites, outline and the demo's off/each-on linked sizes remain: these six rows do not close
-`tests/PENDING.md` `wasm:budget`. No browser/GPU was run and no renderer policy changed.
+measured. Unused-import diagnostics were retained, not asserted baseline-equal.
+
+The continuation, working-source tree `20ad6d286fcf45c668c55600c05a909a13d5081c` on the same
+BUILD/toolchain/profile, built colour/sprites/outline for that entry and all six modules one at
+a time for the demo (`VOID_WEB_ENTRY=src/examples/mainSokol2d.ms`). Twenty new compiler calls
+succeeded on their first attempts. The initial experiment's off bundles were reused only after
+hashing the unchanged entry/runtime/assets/compiler inputs; they were not compiled for a new
+timestamp. Demo all-off was a new consumer: 974297 B WebGPU, 869347 B WebGL2.
+
+| Demo module | WebGPU delta B | WebGL2 delta B |
+|---|---:|---:|
+| Shaper | 540688 | 540696 |
+| SDF text | 10108 | 10109 |
+| BiDi | 31425 | 31425 |
+| Colour emoji | 47259 | 47244 |
+| Sprites | 38976 | 38967 |
+| Outline | 14359 | 14361 |
+
+All 24 experiment/demo rows, including on/off byte counts, are in `tests/bench/wasmBudget.txt`.
+The existing experiment script compares linked artifacts with those budgets. A malformed numeric
+row used to emit an arithmetic diagnostic but return success; full-row validation now refuses
+it before arithmetic. `scripts/wasmBudget.test.sh` holds wrong-byte/malformed-row controls and
+checks the 24 declarations for shape, completeness, uniqueness and consistent off baselines.
+The native gate checks those declarations, **not a fresh link**; object-size growth checks still
+run. Re-run the producer when compiler, flags, entry or other measured inputs change. This
+closes the recorded six-text-module `wasm:budget` row, not a claim about every optional feature.
+No browser/GPU was run and no renderer policy changed.
 
 ## Where each tier lands
 
