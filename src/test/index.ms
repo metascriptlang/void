@@ -170,3 +170,6 @@ import "../../tests/displayList/snapshot";
 import "../../tests/displayList/retain";
 import "../../tests/displayList/rangeCompare";
 import "../../tests/isolated/displayListLink";
+when (testBuild && voidSdfText && voidShaper) {
+	import "../../tests/integration/fontPanel";
+}
