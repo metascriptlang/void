@@ -420,6 +420,65 @@ about where they came from.
 
 **Cross-backend tolerance is not the same as within-backend tolerance.** Different GPUs round rasterization and interpolation differently. The starting bound is: delta ≤ 1 ignored, fail at max delta ≥ 4 or above 0.05% of pixels at delta 2–3; every scene that cannot meet it gets a PENDING entry naming the backend and the cause. A scene that differs **structurally** between backends — a glyph one pixel over, a border one device pixel wide instead of two, a gradient banded on one backend and dithered on another — is not a tolerance question and never gets a budget. That is the class of bug guardrail 9 exists to catch, and it is the class that hand-ported shaders produce in all three references (GPUI's gradients and dither, Ghostty's cursor colour, Makepad's `modf` — VOID2D.md "Frame shape").
 
+## Real-font native panel — measured 2026-10-18 UTC
+
+`tests/integration/fontPanel.ms` holds the CPU cases and native consumer. The measured panel
+used 13 logical px Inter and Cascadia, regular faces from the checked-in fonts, integer and
+half-logical origins, dark/light backgrounds, coverage and genuinely rotated SDF. Windows,
+MSAA 1, high-DPI off, gamma 1.8/contrast 1.0, `voidSdfText` and `voidShaper`; GL core reported
+`NVIDIA GeForce RTX 5090/PCIe/SSE2`. Binary and support BUILD were both
+`4fe2a5eec 2026-10-18T15:46:29+07:00`. These are correctness captures, not timing runs.
+
+| DPI | Physical panel | D3D11 vs GL core differing pixels | Maximum channel delta | Pixels over delta 1 |
+|---|---|---|---|---|
+| 1 | 576×224 | 0 | 0 | 0 |
+| 1.5 | 864×336 | 0 | 0 | 0 |
+| 2 | 1152×448 | 6 | 1 | 0 |
+| 3 | 1728×672 | 10 | 1 | 0 |
+
+All four pairs meet the existing `tests/golden/compare.ms` cross-backend bound, unchanged.
+The eight native panels contain 64 checked cells. Each process draws three frames; the last
+two captures must be byte-identical. Logical widths/carets/glyph counts matched across the
+matrix, SDF raw-tile checksums stayed fixed, warm replay generated/rasterized nothing, and
+all cells contained ink. The three standalone CPU cases passed 319 tests in 17 files.
+Every native panel was inspected by the parent agent; this is not human T5 sign-off, an
+independent AA-quality oracle, current-GPUI parity, or a GPU/FPS measurement.
+
+Measured working-source trees (including the then-untracked fixture): first D3D11 DPI1.5
+`13c99082133e569759c6e7a484a5faa2f4383aa8`; other D3D11 DPIs
+`004eff2e4320ab7b6755e843232cf15bcc563233`; GL core
+`4dc698ba2a14fd198bfeca114179d006ee1f51f1`. The GL fixture adds only the backend-predicate
+regression and a pre-graphics expected-backend check; the font construction, placement,
+inspection and frame bodies are unchanged. Old captures were not rerun or retagged.
+
+The first controller incorrectly rejected existing FXC X3571 `pow` and X4000 `boxFillAt`
+warnings: the same messages, source coordinates and logger id occur in the earlier main gate.
+Its exit 1 is retained; the checker now accepts only that exact pair or an empty stream,
+normalizing only runtime shader addresses. A later `-d:gl` attempt actually ran D3D11 and was
+rejected, not counted as GL. Copy the GL descriptor from `scripts/golden.sh`: both the
+MetaScript flag and C define are required. `tests/capture/capture.c` reports GL core as 4,
+not generic GL's 2. The fixture refuses a backend mismatch before graphics setup or output.
+
+Reproduce from the repository root, with the normal buildslot/native-window admission:
+
+```sh
+msc build -d:voidSdfText -d:voidShaper tests/integration/fontPanel.ms --release --output=out/fontPanelD3d.exe
+msc build -d:voidSdfText -d:voidShaper -d:voidGlCore --passC=-DSOKOL_GLCORE tests/integration/fontPanel.ms --release --output=out/fontPanelGl.exe
+for dpi in 100 150 200 300; do FONT_PANEL_BACKEND=1 FONT_PANEL_DPI100=$dpi out/fontPanelD3d.exe; done
+for dpi in 100 150 200 300; do FONT_PANEL_BACKEND=4 FONT_PANEL_DPI100=$dpi out/fontPanelGl.exe; done
+```
+
+WebGL2 full-feature font conformance, WebGPU readback, Metal/mobile, proprietary Apple emoji,
+weak-caret navigation and a current-GPUI comparison are not proved by this native panel.
+Default-font browser-demo liveness is a different check. No rasterizer, fallback policy,
+readback mechanism or tolerance was changed to obtain these results.
+
+The earlier full native gate, tree `892cd527b2991482dadfd43906b20144df66f7f6` on the same BUILD,
+also measured the existing text budgets identically in normal and Profiler variants:
+colour 1 page/4 MiB, 40 sweep rasterizations and 0 steady; SDF 1 page/1 MiB, 40 generations,
+0 sweep coverage rasterizations and 0 steady work; outline 3662 sweep tiles, 6 pages/6 MiB,
+0 steady outline or coverage rasterizations. These are counters, not performance timings.
+
 ## Where each tier lands
 
 | Phase | Tier work landing in it |
@@ -440,6 +499,6 @@ about where they came from.
 | T1 | the snapshots in `tests/displayList/` plus no-GPU reachability and invariant assertions |
 | T2 | the scenes of `tests/golden/table.ms`, D3D11, byte-identical, zero budgets; the per-backend numbers are in "Guardrail 9" |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
-| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene, plus `textEmoji`'s colour pages, bytes and rasterizations held to the bounds in `baseline.json` `colourBounds` (written, not yet run), plus `textSdf`'s SDF pages, bytes, generations and coverage rasterizations held to `sdfBounds` (written, not yet run); the `allocation` stage over the emitted C (`scripts/allocation.awk`), reading the functions it names and every void2d function they call, each held to its caller's rule unless a list names it, and naming the call chain of a failure; it does not see stream growth, allocation inside C, or a function no bench reaches; `present` and `firstPaint` milliseconds reported; wasm budget SKIPs |
+| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene, plus `textEmoji`'s colour pages, bytes and rasterizations held to the bounds in `baseline.json` `colourBounds` (native measurements above), plus `textSdf`'s SDF pages, bytes, generations and coverage rasterizations held to `sdfBounds` (native measurements above); the `allocation` stage over the emitted C (`scripts/allocation.awk`), reading the functions it names and every void2d function they call, each held to its caller's rule unless a list names it, and naming the call chain of a failure; it does not see stream growth, allocation inside C, or a function no bench reaches; `present` and `firstPaint` milliseconds reported; wasm budget SKIPs |
 | T5 | human only |
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".
