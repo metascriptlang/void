@@ -406,3 +406,52 @@ quantization: `timingCpuQuantization.json`. `timingInputs.json` freezes2204 inpu
 fresh timing/legacy pilot executables and actual authorization. `timingAttempt1PathMapping.json`
 preserves original failed bytes; source/raw replay, warning negatives and old-red/fixed-green
 sampler CPU mocks precede retry. No averaged partials, hidden warning suppression or extra run.
+
+## Guarded UI-record comparison
+
+Measured 2026-10-18, Windows x64, native release BUILD `4fe2a5eec`. Base tree
+`c8d136641e8874217efceb809f2010fc2dd20091`; measured working-source trees A
+`d1185de58bc63db6ad09bc5e44f461f282a483d0` and B
+`b334ba2fae933ded04980d42220baaced78b0e52`. The immutable executable SHA-256 values were
+A `5794cb54061ba3915bca829465c27506599cfebf20a3f8120bcb12d0eb6e38ba` and
+B `64eb947dad3b65fde4f2eba033ec26ea6805efef6d7746ef2fed0ee800ff89fc`.
+Main later advanced to `82b84827`; those are not binaries compiled from that main.
+
+`python out/tmp/paintCompare/runRepaintTiming.py` ran 20 serial processes: nine local A/B
+pairs with alternating order, bracketed by two separate baseline A/A processes. Each process
+records 100,000 opaque 2×2 Rect nodes through the real `Scene2D.paint`: unchanged, first-1%
+colour changes, all-colour changes, and all-node writes undone before paint. Each phase has
+20 warm plus 120 selected frames: 11,200 raw / 9,600 selected rows overall. QPC brackets the
+mutation loop and `Scene2D.paint` separately; frame cleanup, assertions and logging are outside
+those brackets. No prepare/upload/GPU draw/Present, GPU elapsed or FPS result follows from these times.
+
+The table reports the median of nine **per-process paired percentage differences**, not a
+ratio of pooled frame medians. Negative means B is faster; A/A is before-to-after drift.
+
+| Phase | Paint p50 delta | Paint p95 delta | A/A paint p50 drift |
+|---|---:|---:|---:|
+| First 1% changed | -3.261650% | -4.017065% | -0.362057% |
+| All colours changed | -2.577104% | -4.321401% | -0.366989% |
+| All writes undone | -1.398714% | -2.502375% | -0.962596% |
+
+Sparse and full paint p50 improve in all nine pairs, each beyond that phase's A/A drift.
+UNDO improves in eight; its worst pair is +0.122509%, below its A/A drift magnitude. Keep the
+bounded early exit in `src/void2d/displayList.ms` `noteRange`: no material UNDO loss was observed.
+Unchanged-frame paint p50 is about 100 ns and quantized; no idle percentage gain is established.
+Mutation-loop paired median deltas are -1.365186% / -0.552712% / -1.429463% for sparse/full/UNDO;
+this run does not isolate pure comparator instruction cost from code layout or host effects.
+
+BEGIN/END each sampled ten whole-machine CPU values one second apart: medians 5.328253% /
+1.163677%, with zero observed MSC jobs, including HCR. Queue/registry/SDK checks and coordinator
+watching held; endpoints alone do not prove continuous quiet. A prior admission was correctly
+blocked by a foreign MSC test before any timed process; all zero-process failure receipts remain
+separate. Native A2 and the ten B correctness stages passed independent raw audits; the first B
+controller's stale 321 expectation remains a recorded failure, reconciled against the added std
+NaN-key test without rerunning its successful 322-test child.
+
+The unguarded early-exit variant was rejected: it accepted truncated backing spans. Guards are
+pinned by `tests/isolated/rangeSpan.py`; valid mixed-stream behaviour by
+`tests/displayList/rangeCompare.ms`. Raw timing and the AA-aware decision are retained locally in
+`out/tmp/paintCompare/epochs/4fe2a5eec/timing/` and
+`out/tmp/paintCompare/recovered/repaintTimingGo1755/parentAudit.json`. This is a flat-Rect CPU
+recording result, not realistic editor/terminal, current-GPUI, GPU or cross-backend parity.
