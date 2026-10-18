@@ -27,7 +27,8 @@ const char *voidCaptureRenderer(void);
 int voidCaptureGrab(int slot);
 
 // Windows only: what the compositor shows in the window's client area (PrintWindow) rather
-// than the swapchain, so it sees whether a frame was presented. 0 elsewhere.
+// than the swapchain, so it sees whether a frame was presented. 1 on success, -1 when the
+// read failed, 0 off Windows.
 int voidCaptureGrabWindow(int slot);
 
 // D3D11 only: read buffer `buffer` of an IDXGISwapChain1 the caller owns (a host view's).

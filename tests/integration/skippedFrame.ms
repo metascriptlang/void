@@ -50,10 +50,12 @@ function frame(): void {
 		return;
 	}
 	if (frameIndex <= GREEN_FRAME + IDLE_BEFORE_CAPTURE) { return; }
-	if (voidCaptureGrabWindow(0) == 0) {
+	const grabbed: int32 = voidCaptureGrabWindow(0);
+	if (grabbed == 0) {
 		console.log("SKIP skipped frame: this build has no window capture (Windows only)");
 		voidCaptureExit(0);
 	}
+	if (grabbed < 0) { fail(`idle frame ${frameIndex}: the window capture failed`); }
 	const rgb: int64 = voidCapturePixel(0, voidCaptureWidth(0) / 2, voidCaptureHeight(0) / 2) >> 8;
 	if (rgb == RED_RGB) { fail(`idle frame ${frameIndex} shows the red frame before the last drawn one`); }
 	if (rgb != GREEN_RGB) { fail(`idle frame ${frameIndex} shows ${rgb}, expected the green frame ${GREEN_RGB}`); }

@@ -198,15 +198,15 @@ int voidCaptureGrab(int slot) {
 #endif
 const void *sapp_win32_get_hwnd(void);
 int voidCaptureGrabWindow(int slot) {
-	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return -1;
 	HWND hwnd = (HWND)sapp_win32_get_hwnd();
 	RECT client;
-	if (hwnd == NULL || !GetClientRect(hwnd, &client)) return 0;
+	if (hwnd == NULL || !GetClientRect(hwnd, &client)) return -1;
 	int width = client.right - client.left;
 	int height = client.bottom - client.top;
-	if (width <= 0 || height <= 0) return 0;
+	if (width <= 0 || height <= 0) return -1;
 	uint8_t *out = slotResize(slot, width, height);
-	if (out == NULL) return 0;
+	if (out == NULL) return -1;
 	BITMAPINFO info = {0};
 	info.bmiHeader.biSize = sizeof(info.bmiHeader);
 	info.bmiHeader.biWidth = width;
@@ -220,7 +220,7 @@ int voidCaptureGrabWindow(int slot) {
 	if (dc == NULL || bitmap == NULL) {
 		if (bitmap != NULL) DeleteObject(bitmap);
 		if (dc != NULL) DeleteDC(dc);
-		return 0;
+		return -1;
 	}
 	HGDIOBJ previous = SelectObject(dc, bitmap);
 	BOOL printed = PrintWindow(hwnd, dc, PW_CLIENTONLY | PW_RENDERFULLCONTENT);
@@ -235,7 +235,7 @@ int voidCaptureGrabWindow(int slot) {
 	SelectObject(dc, previous);
 	DeleteObject(bitmap);
 	DeleteDC(dc);
-	return printed ? 1 : 0;
+	return printed ? 1 : -1;
 }
 #else
 int voidCaptureGrabWindow(int slot) {
