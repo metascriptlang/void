@@ -310,6 +310,39 @@ test "a run change that keeps each run's length and font repaints without shapin
 	n.dispose();
 }
 
+test "setTextRuns with the runs a label already holds marks nothing, one field off still does" {
+	const n = s.label("abcd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const green = rgba(0.0, 1.0, 0.0, 1.0);
+	const red = rgba(1.0, 0.0, 0.0, 1.0);
+	const runs: TextRun[] = [plainRun(2), { ...plainRun(2), underline: green }];
+	n.setTextRuns(runs);
+	n.sync(identity2d(), false);
+	s.clearChanges();
+	const same: TextRun[] = [plainRun(2), { ...plainRun(2), underline: green }];
+	n.setTextRuns(same);
+	assert s.changed[n.id.index].isEmpty() && (s.dirty.length as int32) == 0;
+	const recoloured: TextRun[] = [
+		{ ...plainRun(2), color: red }, { ...plainRun(2), underline: green },
+	];
+	n.setTextRuns(recoloured);
+	assert s.changed[n.id.index].has(Changed.Paint) && !s.changed[n.id.index].has(Changed.Text);
+	s.clearChanges();
+	const wavy: TextRun[] = [
+		{ ...plainRun(2), color: red }, { ...plainRun(2), underline: green, wavy: true },
+	];
+	n.setTextRuns(wavy);
+	assert s.changed[n.id.index].has(Changed.Paint) && !s.changed[n.id.index].has(Changed.Text);
+	assert labelTexts[payloadOf(n)].decorations[0].kind == DecorationKind.WavyUnderline;
+	s.clearChanges();
+	const refont: TextRun[] = [
+		{ ...plainRun(2), color: red },
+		{ ...plainRun(2), underline: green, wavy: true, font: hebrewFont() },
+	];
+	n.setTextRuns(refont);
+	assert labelTexts[payloadOf(n)].reshape && s.changed[n.id.index].has(Changed.Text);
+	n.dispose();
+}
+
 function hebrewFont(): FontId {
 	const added = addFont("tests/fonts/notoSansHebrewSubset.ttf");
 	if (added.ok) { return added.value; }
