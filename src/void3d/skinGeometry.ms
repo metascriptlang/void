@@ -36,6 +36,11 @@ function copied(source: Readonly<MeshData>): MeshData {
 	mesh.bounds = source.bounds;
 	for (const value of source.vertices) { mesh.vertices.push(value); }
 	for (const index of source.indices) { mesh.indices.push(index); }
+	if (source.wideIndices !== null) {
+		let wide: Vec<uint32> = [];
+		for (const index of source.wideIndices) { wide.push(index); }
+		mesh.wideIndices = move wide;
+	}
 	return move mesh;
 }
 
@@ -46,7 +51,8 @@ export function bind(
 	pose: SkinPose,
 ): Result<SkinGeometry, SkinGeometryError> {
 	const count: int32 = source.vertexCount();
-	if (count < 1 || source.vertices.length != count * source.stride() ||
+	if (count < 1 || !source.validIndices() ||
+		source.vertices.length != count * source.stride() ||
 		influences.joints.length != count * 4 || influences.weights.length != count * 4) {
 		return Result.err(SkinGeometryError.Shape);
 	}

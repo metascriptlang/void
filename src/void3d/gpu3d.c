@@ -225,6 +225,16 @@ uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length) {
 	return sg_make_buffer(&desc).id;
 }
 
+uint32_t gpu3dMakeIndexBuffer32(const uint32_t *data, int64_t length) {
+	if (!data || length <= 0 || length > INT32_MAX ||
+		(uint64_t)length > SIZE_MAX / sizeof(uint32_t)) return SG_INVALID_ID;
+	sg_buffer_desc desc = {0};
+	desc.usage.index_buffer = true;
+	desc.data.ptr = data;
+	desc.data.size = (size_t)length * sizeof(uint32_t);
+	return sg_make_buffer(&desc).id;
+}
+
 uint32_t gpu3dMakeStreamBuffer(int64_t length) {
 	if (length <= 0) return SG_INVALID_ID;
 	sg_buffer_desc desc = {0};

@@ -9,6 +9,7 @@ import {
 } from "../gpu/door";
 import {
 	PipelineCache,
+	IndexType,
 	pipelineFor as pipelineForIds,
 } from "../gpu/pipeline";
 import { RenderState } from "../gpu/state";
@@ -32,6 +33,7 @@ import {
 // one-element copy (docs/VOID3D.md, Compiler notes).
 extern function gpu3dMakeVertexBuffer(data: Readonly<Span<float32>>): uint32;
 extern function gpu3dMakeIndexBuffer(data: Readonly<Span<uint16>>): uint32;
+extern function gpu3dMakeIndexBuffer32(data: Readonly<Span<uint32>>): uint32;
 extern function gpu3dMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
 extern function gpu3dUpdateImage(image: uint32, rgba: Readonly<Span<uint32>>): void;
 extern function gpu3dUpdateBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32;
@@ -465,6 +467,7 @@ export function pipelineFor(
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
+	format: IndexType = IndexType.Uint16,
 ): uint32 {
 	return pipelineForIds(
 		cache,
@@ -473,6 +476,7 @@ export function pipelineFor(
 		indexed,
 		state,
 		targets,
+		format,
 	);
 }
 
@@ -484,6 +488,10 @@ export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
 // Three uint16 per triangle. sokol copies the data, so the Vec it came from may move after.
 export function makeIndexBuffer(data: Readonly<Span<uint16>>): uint32 {
 	return gpu3dMakeIndexBuffer(data);
+}
+
+export function makeIndexBuffer32(data: Readonly<Span<uint32>>): uint32 {
+	return gpu3dMakeIndexBuffer32(data);
 }
 
 export function makeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32 {

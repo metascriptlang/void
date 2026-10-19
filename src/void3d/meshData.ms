@@ -13,7 +13,7 @@
 // `Polygon.getBounds`: the builders are the only writers, so the bounds cannot go stale, and
 // nothing later has to remember to ask.
 //
-// MeshData is a value struct holding two `Vec`s, so **assigning it to a local copies both
+// MeshData is a value struct holding owned `Vec`s, so **assigning it to a local copies its
 // arrays**. Reach one through its table by index (`context.meshData[i].bounds`) or take it by
 // `ref`; never `const data: MeshData = table[i]` (CODE-STYLE §5, the copy trap).
 
@@ -24,6 +24,13 @@ extern function void3dMikkTangents(
 	vertices: Readonly<Span<float32>>,
 	stride: int32,
 	indices: Readonly<Span<uint16>>,
+	corners: Span<float32>,
+): int32;
+
+extern function void3dMikkTangents32(
+	vertices: Readonly<Span<float32>>,
+	stride: int32,
+	indices: Readonly<Span<uint32>>,
 	corners: Span<float32>,
 ): int32;
 
@@ -41,10 +48,7 @@ export const LIT_TEXTURED_VERTEX_STRIDE: int32 = 12;
 // takes; the `LitTexturedTangent` layout a normal-mapped key reads.
 export const LIT_TEXTURED_TANGENT_VERTEX_STRIDE: int32 = 16;
 
-// uint16 indices, so one MeshData holds at most 65536 vertices. The content budget this port
-// was sized against is three orders of magnitude under that (RENDERER-BRIEF §4.4); a mesh that
-// does not fit is a content constraint, not a reason to widen the format.
-export const MAX_MESH_VERTICES: int32 = 65536;
+export const MAX_MESH_VERTICES: int32 = 0x7fffffff;
 
 export struct Rgba {
 	red: float32;
@@ -62,6 +66,7 @@ export struct Uv {
 export struct MeshData {
 	vertices: Vec<float32>;
 	indices: Vec<uint16>;
+	wideIndices: Vec<uint32> | null;
 	bounds: Bounds3D;
 	hasUvs: boolean;
 	hasTangents: boolean;
@@ -84,6 +89,7 @@ export enum MeshError {
 	SkinJoint,
 	SkinWeight,
 	DrawRange,
+	IndexStorage,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -115,7 +121,9 @@ export function addSkinAttributes(
 	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	const count: int32 = data.vertexCount();
 	const base: int32 = data.stride();
-	if (count > MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
+	if (count > MAX_MESH_VERTICES / (base + 8)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
 	if (count < 1 || data.vertices.length != count * base ||
 		joints.length != count * 4 || weights.length != joints.length) {
 		return Result.err(MeshError.SkinCount);
@@ -153,22 +161,59 @@ export function vertexCount(this data: Readonly<MeshData>): int32 {
 	return (data.vertices.length as int32) / data.stride();
 }
 
+export function validIndexStorage(this data: Readonly<MeshData>): boolean {
+	return data.indices.length <= 0x7fffffff &&
+		(data.wideIndices === null ||
+			(data.indices.length == 0 && data.wideIndices.length <= 0x7fffffff));
+}
+
 export function indexCount(this data: Readonly<MeshData>): int32 {
+	if (!data.validIndexStorage()) {
+		console.log("void3d: MeshData has mixed or oversized index storage");
+		unreachable;
+	}
+	if (data.wideIndices !== null) { return data.wideIndices.length as int32; }
 	return data.indices.length as int32;
 }
 
+export function validIndices(this data: Readonly<MeshData>): boolean {
+	if (!data.validIndexStorage() || data.vertices.length > 0x7fffffff ||
+		data.vertices.length % data.stride() != 0) { return false; }
+	const count: uint32 = data.vertexCount() as uint32;
+	for (let i = 0; i < data.indexCount(); i++) {
+		const index: uint32 = data.indexAt(i);
+		if (index >= count || (data.wideIndices === null && index == 65535)) { return false; }
+	}
+	return true;
+}
+
+export function indexAt(this data: Readonly<MeshData>, index: int32): uint32 {
+	if (data.wideIndices !== null) { return data.wideIndices[index]; }
+	return data.indices[index] as uint32;
+}
+
 export function isIndexed(this data: Readonly<MeshData>): boolean {
-	return data.indices.length > 0;
+	return data.indexCount() > 0;
+}
+
+function appendIndex(ref data: MeshData, index: uint32): void {
+	if (data.wideIndices === null && index >= 65535) {
+		let wide: Vec<uint32> = [];
+		for (const previous of data.indices) { wide.push(previous as uint32); }
+		data.wideIndices = move wide;
+		data.indices = [];
+	}
+	if (data.wideIndices !== null) { data.wideIndices.push(index); }
+	else { data.indices.push(index as uint16); }
 }
 
 // h3d.prim.Primitive.triCount: the index count when indexed, the vertex count otherwise.
 export function triangleCount(this data: Readonly<MeshData>): int32 {
-	if (data.isIndexed()) { return (data.indices.length as int32) / 3; }
+	if (data.isIndexed()) { return data.indexCount() / 3; }
 	return data.vertexCount() / 3;
 }
 
-// Appends one vertex and returns its index, growing the bounds. Fails rather than truncating
-// when the mesh would outgrow a uint16 index.
+// Appends one vertex and returns its index, growing the bounds.
 export function addVertex(
 	ref data: MeshData,
 	position: Vec3,
@@ -178,7 +223,7 @@ export function addVertex(
 	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	const index: int32 = data.vertexCount();
-	if (index >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
+	if (!data.hasRoomFor(1)) { return Result.err(MeshError.TooManyVertices); }
 	data.vertices.push(position.x);
 	data.vertices.push(position.y);
 	data.vertices.push(position.z);
@@ -204,7 +249,7 @@ export function addTexturedVertex(
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
 	let index: int32 = data.vertexCount();
-	if (index >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
+	if (!data.hasRoomFor(1)) { return Result.err(MeshError.TooManyVertices); }
 	data.vertices.push(position.x);
 	data.vertices.push(position.y);
 	data.vertices.push(position.z);
@@ -221,12 +266,10 @@ export function addTexturedVertex(
 	return Result.ok(index);
 }
 
-// Whether `count` more vertices would still fit a uint16 index. The builders below ask before
-// they push anything, because `try` propagates out of a half-written quad: a failure partway
-// through would leave loose vertices in `vertices` and in `bounds` that no triangle refers to,
-// and every caller reads an `err` as "nothing was added".
 export function hasRoomFor(this data: MeshData, count: int32): boolean {
-	return data.vertexCount() + count <= MAX_MESH_VERTICES;
+	const width: int32 = data.stride();
+	return count >= 0 && data.vertices.length <= MAX_MESH_VERTICES &&
+		count <= (MAX_MESH_VERTICES - data.vertices.length) / width;
 }
 
 // Three vertex indices, counter-clockwise as seen from the front (door.c sets CCW winding).
@@ -237,13 +280,15 @@ export function addTriangle(
 	b: int32,
 	c: int32,
 ): Result<int32, MeshError> {
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
 	const count: int32 = data.vertexCount();
 	if (a < 0 || b < 0 || c < 0 || a >= count || b >= count || c >= count) {
 		return Result.err(MeshError.IndexOutOfRange);
 	}
-	data.indices.push(a as uint16);
-	data.indices.push(b as uint16);
-	data.indices.push(c as uint16);
+	if (data.indexCount() > 0x7fffffff - 3) { return Result.err(MeshError.DrawRange); }
+	appendIndex(data, a as uint32);
+	appendIndex(data, b as uint32);
+	appendIndex(data, c as uint32);
 	return Result.ok(data.triangleCount() - 1);
 }
 
@@ -306,8 +351,15 @@ export function addTangentsWithSources(
 	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
 	const count: int32 = data.vertexCount();
 	const cornerCount: int32 = data.triangleCount() * 3;
+	if (cornerCount > 0x7fffffff / 4) { return Result.err(MeshError.TooManyVertices); }
+	for (let i = 0; i < data.indexCount(); i++) {
+		if (data.indexAt(i) >= (count as uint32)) {
+			return Result.err(MeshError.IndexOutOfRange);
+		}
+	}
 	let corners: Vec<float32> = new Array(cornerCount * 4);
 	if (data.mikkCorners(corners) == 0) {
 		console.log("void3d: addTangents: MikkTSpace could not allocate its working arrays");
@@ -318,9 +370,10 @@ export function addTangentsWithSources(
 	let filled: Vec<uint8> = new Array(count);
 	let nextSplit: Vec<int32> = new Array(count);
 	let sources: Vec<int32> = [];
-	let indices: Vec<uint16> = [];
+	let remapped = MeshData.empty();
+	if (data.wideIndices !== null) { remapped.wideIndices = []; }
 	for (let corner = 0; corner < cornerCount; corner++) {
-		const vertex: int32 = indexed ? (data.indices[corner] as int32) : corner;
+		const vertex: int32 = indexed ? (data.indexAt(corner) as int32) : corner;
 		let at: int32 = vertex;
 		if (filled[vertex] == 0) {
 			filled[vertex] = 1;
@@ -331,7 +384,9 @@ export function addTangentsWithSources(
 			}
 			if (!sameTangent(tangents, at, corners, corner)) {
 				const split: int32 = count + (sources.length as int32);
-				if (split >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
+				if (split >= MAX_MESH_VERTICES / LIT_TEXTURED_TANGENT_VERTEX_STRIDE) {
+					return Result.err(MeshError.TooManyVertices);
+				}
 				nextSplit[at] = split + 1;
 				nextSplit.push(0);
 				sources.push(vertex);
@@ -339,7 +394,7 @@ export function addTangentsWithSources(
 				at = split;
 			}
 		}
-		if (indexed) { indices.push(at as uint16); }
+		if (indexed) { appendIndex(remapped, at as uint32); }
 	}
 	for (let i = 0; i < count; i++) {
 		if (filled[i] != 0) { continue; }
@@ -353,17 +408,25 @@ export function addTangentsWithSources(
 		tangents[i * 4 + 3] = 1.0;
 	}
 	if (indexed) {
-		for (let i = cornerCount; i < (data.indices.length as int32); i++) {
-			indices.push(data.indices[i]);
+		for (let i = cornerCount; i < data.indexCount(); i++) {
+			appendIndex(remapped, data.indexAt(i));
 		}
-		data.indices = indices;
 	}
 	const total: int32 = try interleaveTangents(data, tangents, sources);
+	if (indexed) {
+		data.indices = move remapped.indices;
+		data.wideIndices = move remapped.wideIndices;
+	}
 	appendedSources = move sources;
 	return Result.ok(total);
 }
 
 function mikkCorners(this data: Readonly<MeshData>, corners: Span<float32>): int32 {
+	if (data.wideIndices !== null) {
+		return void3dMikkTangents32(
+			data.vertices, LIT_TEXTURED_VERTEX_STRIDE, data.wideIndices, corners,
+		);
+	}
 	return void3dMikkTangents(data.vertices, LIT_TEXTURED_VERTEX_STRIDE, data.indices, corners);
 }
 
@@ -402,6 +465,9 @@ function interleaveTangents(
 ): Result<int32, MeshError> {
 	const count: int32 = data.vertexCount();
 	const total: int32 = count + (sources.length as int32);
+	if (total > MAX_MESH_VERTICES / LIT_TEXTURED_TANGENT_VERTEX_STRIDE) {
+		return Result.err(MeshError.TooManyVertices);
+	}
 	let vertices: Vec<float32> = [];
 	for (let i = 0; i < total; i++) {
 		const source: int32 = i < count ? i : sources[i - count];
@@ -448,7 +514,9 @@ export function rayIntersection(
 export function rayIntersectionElements(
 	this data: Readonly<MeshData>, ray: Ray, culling: Face, base: int32, count: int32,
 ): Result<MeshRayHit, MeshError> {
-	if (data.indices.length > 0x7fffffff || data.vertices.length > 0x7fffffff) {
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.indices.length > 0x7fffffff || data.vertices.length > 0x7fffffff ||
+		(data.wideIndices !== null && data.wideIndices.length > 0x7fffffff)) {
 		return Result.err(MeshError.DrawRange);
 	}
 	const total: int32 = data.isIndexed() ? data.indexCount() : data.vertexCount();
@@ -499,9 +567,9 @@ function interpolateUv(this data: Readonly<MeshData>, triangle: int32, u: float3
 	const at: int32 = triangle * 3;
 	const stride: int32 = data.stride();
 	const indexed: boolean = data.isIndexed();
-	const a: int32 = (indexed ? (data.indices[at] as int32) : at) * stride + 6;
-	const b: int32 = (indexed ? (data.indices[at + 1] as int32) : at + 1) * stride + 6;
-	const c: int32 = (indexed ? (data.indices[at + 2] as int32) : at + 2) * stride + 6;
+	const a: int32 = (indexed ? (data.indexAt(at) as int32) : at) * stride + 6;
+	const b: int32 = (indexed ? (data.indexAt(at + 1) as int32) : at + 1) * stride + 6;
+	const c: int32 = (indexed ? (data.indexAt(at + 2) as int32) : at + 2) * stride + 6;
 	const w: float32 = 1.0 - u - v;
 	return {
 		u: data.vertices[a] * w + data.vertices[b] * u + data.vertices[c] * v,
@@ -522,7 +590,7 @@ function facesKept(det: float32, culling: Face): boolean {
 
 function cornerOf(this data: Readonly<MeshData>, triangle: int32, corner: int32): Vec3 {
 	const at: int32 = triangle * 3 + corner;
-	const vertex: int32 = data.isIndexed() ? (data.indices[at] as int32) : at;
+	const vertex: int32 = data.isIndexed() ? (data.indexAt(at) as int32) : at;
 	const base: int32 = vertex * data.stride();
 	return vec3(data.vertices[base], data.vertices[base + 1], data.vertices[base + 2]);
 }

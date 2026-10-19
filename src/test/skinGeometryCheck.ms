@@ -56,6 +56,39 @@ function uncachedReferencePoint(geometry: SkinGeometry, vertex: int32): Vec3 {
 	return result;
 }
 
+test "skin source publication and pending copies retain independent uint32 topology" {
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const bone = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const palette = SkinPalette.create([0]);
+	assert palette.ok;
+	if (!palette.ok) { return; }
+	const pose = SkinPose.bindPose(scene, [0], [bone], [identity()], [palette.value]);
+	assert pose.ok;
+	if (!pose.ok) { return; }
+	let source = MeshData.empty();
+	source.vertices = new Array(65539 * 10);
+	source.vertices[65537 * 10] = 1.0;
+	source.vertices[65538 * 10 + 1] = 1.0;
+	assert addTriangle(source, 65536, 65537, 65538).ok;
+	let values: SkinInfluences = {
+		joints: new Array(65539 * 4), weights: new Array(65539 * 4),
+	};
+	for (let vertex = 0; vertex < 65539; vertex++) { values.weights[vertex * 4] = 1.0; }
+	const first = SkinGeometry.bind(source, values, pose.value);
+	const second = SkinGeometry.bind(source, values, pose.value);
+	assert first.ok && second.ok;
+	if (!first.ok || !second.ok) { return; }
+	if (source.wideIndices !== null) { source.wideIndices[0] = 0; }
+	assert first.value.source.indexAt(0) == 65536;
+	assert pose.value.syncSkinPose().ok;
+	assert first.value.deformPublished().ok && second.value.deformPublished().ok;
+	assert first.value.mesh.indexAt(0) == 65536 && first.value.pending.indexAt(0) == 65536;
+	const ray: Ray = { origin: vec3(0.25, 0.25, 1.0), direction: vec3(0.0, 0.0, -1.0) };
+	assert first.value.mesh.rayIntersection(ray, Face.None).distance == 1.0;
+	if (first.value.pending.wideIndices !== null) { first.value.pending.wideIndices[0] = 1; }
+	assert second.value.pending.indexAt(0) == 65536 && first.value.mesh.indexAt(0) == 65536;
+}
+
 test "posed bounds and triangle picking use canonical joints, not GPU palette slots or mesh world" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const first = addGroup(scene, scene.rootId(), {

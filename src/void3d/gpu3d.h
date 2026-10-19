@@ -30,6 +30,7 @@ int32_t gpu3dProgramKey(int32_t index);
 
 uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length);
 uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length);
+uint32_t gpu3dMakeIndexBuffer32(const uint32_t *data, int64_t length);
 uint32_t gpu3dMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
 // An RGBA8 image whose pixels are replaced from the CPU (the palette LUT); starts undefined.
 uint32_t gpu3dMakeDynamicImage(int32_t width, int32_t height);

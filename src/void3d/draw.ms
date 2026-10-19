@@ -22,6 +22,7 @@ import {
 	draw,
 	makeVertexBuffer,
 	makeIndexBuffer,
+	makeIndexBuffer32,
 	makeStreamBuffer,
 	updateBuffer,
 	destroyBuffer,
@@ -84,7 +85,7 @@ import {
 	colorRole,
 } from "./material";
 import { MeshData } from "./meshData";
-import { PipelineCache, closePipelines } from "../gpu/pipeline";
+import { PipelineCache, IndexType, closePipelines } from "../gpu/pipeline";
 import { pipelineFor } from "./gpu3d";
 import { TargetLayout, RenderTarget } from "../gpu/target";
 import {
@@ -116,6 +117,7 @@ export struct GpuMesh {
 	vertexBuffer: uint32;
 	instanceBuffer: uint32;
 	indexBuffer: uint32;
+	index32: boolean;
 	vertexCount: int32;
 	indexCount: int32;
 	instanceCount: int32;
@@ -135,6 +137,11 @@ export function logicalElementCount(this context: DrawContext, index: int32): in
 
 export function isIndexed(this mesh: GpuMesh): boolean {
 	return mesh.indexBuffer != 0;
+}
+
+export function indexType(this mesh: GpuMesh): IndexType {
+	if (!mesh.isIndexed()) { return IndexType.None; }
+	return mesh.index32 ? IndexType.Uint32 : IndexType.Uint16;
 }
 
 // What sg_draw counts: index elements when indexed, vertices otherwise.
@@ -257,6 +264,7 @@ export enum MeshUploadError {
 	VertexBufferRefused,
 	IndexBufferRefused,
 	Unrebuildable,
+	InvalidIndices,
 }
 
 export enum HandleError {
@@ -443,6 +451,7 @@ export function meshFor(
 		vertexBuffer: vertexBuffer,
 		instanceBuffer: 0,
 		indexBuffer: data.isIndexed() ? indexBuffer : (0 as uint32),
+		index32: data.wideIndices !== null,
 		vertexCount: data.vertexCount(),
 		indexCount: data.indexCount(),
 		instanceCount: 1,
@@ -545,6 +554,10 @@ function drawsNothing(this mesh: GpuMesh): GpuMesh {
 // triangles instead of 292 right ones, with no diagnostic. The mesh is emptied instead.
 function uploadMesh(context: DrawContext, index: int32): Result<int32, MeshUploadError> {
 	doomBuffersOf(context, context.meshes[index]);
+	if (!context.meshData[index].validIndices()) {
+		context.meshes[index] = context.meshes[index].drawsNothing();
+		return Result.err(MeshUploadError.InvalidIndices);
+	}
 	// sokol validates a buffer's size > 0 and panics rather than returning an invalid id, so an
 	// empty mesh must never reach the driver.
 	if (context.meshData[index].vertexCount() == 0) {
@@ -554,7 +567,11 @@ function uploadMesh(context: DrawContext, index: int32): Result<int32, MeshUploa
 	const vertexBuffer: uint32 = makeVertexBuffer(context.meshData[index].vertices);
 	let indexBuffer: uint32 = 0;
 	if (context.meshData[index].isIndexed()) {
-		indexBuffer = makeIndexBuffer(context.meshData[index].indices);
+		if (context.meshData[index].wideIndices !== null) {
+			indexBuffer = makeIndexBuffer32(context.meshData[index].wideIndices);
+		} else {
+			indexBuffer = makeIndexBuffer(context.meshData[index].indices);
+		}
 	}
 	if (vertexBuffer == 0) {
 		if (indexBuffer != 0) { destroyBuffer(indexBuffer); }
@@ -581,6 +598,7 @@ export function addMeshData(
 	data: MeshData,
 ): Result<MeshId, MeshUploadError> {
 	if (context.closed) { stopOnClosedContext("addMeshData"); }
+	if (!data.validIndexStorage()) { return Result.err(MeshUploadError.InvalidIndices); }
 	const id: MeshId = newMesh(context, data.meshFor(0, 0, 0), data);
 	const uploaded: Result<int32, MeshUploadError> = uploadMesh(context, id.index);
 	if (!uploaded.ok) {
@@ -1575,6 +1593,7 @@ export function drawItemWith(
 		mesh.isIndexed(),
 		state,
 		targets,
+		mesh.indexType(),
 	);
 	applyPipeline(pipeline);
 	bindItem(context, mesh, material, scene);

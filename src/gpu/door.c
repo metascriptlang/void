@@ -101,10 +101,10 @@ static const sg_store_action STORE_ACTIONS[] = {
 	SG_STOREACTION_DONTCARE,
 };
 
-// IndexType: uint16 only, which caps a mesh at 65536 vertices (meshData.ms).
 static const sg_index_type INDEX_TYPES[] = {
 	SG_INDEXTYPE_NONE,
 	SG_INDEXTYPE_UINT16,
+	SG_INDEXTYPE_UINT32,
 };
 
 // FilterMode, Wrap (h3d.mat.Data)
@@ -127,7 +127,7 @@ _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in 
 _Static_assert(COUNT(STORE_ACTIONS) == 2, "STORE_ACTIONS must match StoreAction in door.ms");
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match FilterMode in door.ms");
 _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in door.ms");
-_Static_assert(COUNT(INDEX_TYPES) == 2, "INDEX_TYPES must match IndexType in pipeline.ms");
+_Static_assert(COUNT(INDEX_TYPES) == 3, "INDEX_TYPES must match IndexType in pipeline.ms");
 _Static_assert(DOOR_UNIFORM_SLOT_TABLE_LENGTH == SG_MAX_UNIFORMBLOCK_BINDSLOTS,
 	"DOOR_UNIFORM_SLOTS must be sokol's uniform block slot count");
 

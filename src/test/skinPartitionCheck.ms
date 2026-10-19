@@ -148,6 +148,34 @@ test "palette-joint and material loss controls fail the consumer correspondence 
 	assert !data.matchesPartition(wrongMaterial);
 }
 
+test "uint32 triangle vertices keep canonical joint identities above 65535" {
+	let joints: Vec<int32> = new Array(65539 * 4);
+	let weights: Vec<float32> = new Array(65539 * 4);
+	for (let vertex = 0; vertex < 65539; vertex++) { weights[vertex * 4] = 1.0; }
+	joints[65536 * 4] = 64;
+	joints[65537 * 4] = 1;
+	joints[65538 * 4] = 2;
+	const wide: Vec<uint32> = [65536, 65537, 65538];
+	const made = SkinPartition.fromTriangles(joints, weights, [], 65, [7], wide);
+	assert made.ok;
+	if (!made.ok) { return; }
+	assert made.value.parts.length == 1 && made.value.parts[0].material == 7;
+	const slot: int32 = made.value.remappedJoints[65536 * 4];
+	assert slot >= 0 && slot < 64;
+	assert made.value.parts[0].palette.joints[slot] == 64;
+	assert made.value.triangleGroups.length == 1 && made.value.triangleGroups[0] == 0;
+}
+
+test "wide partition bounds are checked before signed narrowing and mixed storage is refused" {
+	const data = rigFixture(4);
+	const outside: Vec<uint32> = [0, 1, 0xffffffff as uint32];
+	const bad = SkinPartition.fromTriangles(data.joints, data.weights, [], 4, [], outside);
+	assert !bad.ok && bad.error == SkinPartitionError.IndexOutOfRange;
+	const mixed = SkinPartition.fromTriangles(data.joints, data.weights, [0, 1, 2], 4,
+		[], [0, 1, 2]);
+	assert !mixed.ok && mixed.error == SkinPartitionError.TriangleLength;
+}
+
 test "malformed influence and triangle inputs refuse before partition construction" {
 	const data = rigFixture(4);
 	const badJoint = SkinPartition.fromTriangles(data.joints, data.weights, data.indices, 3);

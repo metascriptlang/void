@@ -209,18 +209,23 @@ export function fromTriangles(
 	indices: Readonly<Span<uint16>>,
 	jointCount: int32,
 	materials: Readonly<Span<int32>> = [],
+	wideIndices: Readonly<Span<uint32>> = [],
 ): Result<SkinPartition, SkinPartitionError> {
-	if (jointCount < 1 || jointIndices.length < 4 || indices.length < 3) {
+	if (indices.length != 0 && wideIndices.length != 0) {
+		return Result.err(SkinPartitionError.TriangleLength);
+	}
+	const corners: int64 = wideIndices.length > 0 ? wideIndices.length : indices.length;
+	if (jointCount < 1 || jointIndices.length < 4 || corners < 3) {
 		return Result.err(SkinPartitionError.Empty);
 	}
 	if (jointIndices.length > 0x7fffffff ||
 		jointIndices.length != weights.length || jointIndices.length % 4 != 0) {
 		return Result.err(SkinPartitionError.InfluenceLength);
 	}
-	if (indices.length > 0x7fffffff || indices.length % 3 != 0) {
+	if (corners > 0x7fffffff || corners % 3 != 0) {
 		return Result.err(SkinPartitionError.TriangleLength);
 	}
-	const triangles: int32 = (indices.length as int32) / 3;
+	const triangles: int32 = (corners as int32) / 3;
 	if (materials.length != 0 && materials.length != triangles) {
 		return Result.err(SkinPartitionError.MaterialLength);
 	}
@@ -248,10 +253,13 @@ export function fromTriangles(
 	for (let triangle = 0; triangle < triangles; triangle++) {
 		let joints: Vec<int32> = [];
 		for (let corner = 0; corner < 3; corner++) {
-			const vertex: int32 = indices[triangle * 3 + corner] as int32;
-			if (vertex >= jointIndices.length / 4) {
+			const element: int32 = triangle * 3 + corner;
+			const index: uint32 = wideIndices.length > 0
+				? wideIndices[element] : (indices[element] as uint32);
+			if ((index as int64) >= jointIndices.length / 4) {
 				return Result.err(SkinPartitionError.IndexOutOfRange);
 			}
+			const vertex: int32 = index as int32;
 			for (let influence = 0; influence < 4; influence++) {
 				const at: int32 = vertex * 4 + influence;
 				if (weights[at] > 0.0) { addSortedJoint(joints, jointIndices[at]); }
