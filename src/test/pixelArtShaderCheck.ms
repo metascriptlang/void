@@ -192,7 +192,8 @@ test "blit reads the scene texel under the scaled fragment, clamped, alpha 1" {
 		}
 	}
 	let b: BlitBindings = {
-		blitParams: { pixel: vec4f(2, 2, 0, 0) }, sceneTexture: scene, pointSampler: { nearest: true },
+		blitParams: { pixel: vec4f(2, 2, 0, 0) }, sceneTexture: scene,
+		pointSampler: { nearest: true },
 	};
 	const texel = blitFs({ position: vec4f(5.5, 3.5, 0.5, 1.0) }, b);
 	assert texel.x == 0.5 && texel.y == 0.25 && texel.w == 1.0;

@@ -95,7 +95,9 @@ function plainBillboard(): BillboardBindings {
 }
 
 test "particle VS spans the root size along the camera basis and keeps its colour" {
-	const input: ParticleAttributes = { root: vec4f(1, 2, 3, 2), color: vec4f(1, 0.5, 0.25, 0.75), index: 2 };
+	const input: ParticleAttributes = {
+		root: vec4f(1, 2, 3, 2), color: vec4f(1, 0.5, 0.25, 0.75), index: 2,
+	};
 	const point = particleVs(input, upright());
 	assert point.clip.x == 2 && point.clip.y == 3 && point.clip.z == 3 && point.clip.w == 1;
 	assert point.particleColor.y == 0.5 && point.particleColor.w == 0.75;
@@ -108,8 +110,8 @@ test "particle FS keeps a solid colour under cutout and tones it" {
 	const kept = particleFs({ particleColor: color }, { frameParams: { frame: vec4f(0, 1, 0, 0) } },
 		{ cutout: true });
 	assert kept.x == 0.5 && kept.y == 0.25 && kept.w == 0.75;
-	const linear = particleFs({ particleColor: color }, { frameParams: { frame: vec4f(0, 1, 1, 0) } },
-		{ cutout: false });
+	const linear = particleFs({ particleColor: color },
+		{ frameParams: { frame: vec4f(0, 1, 1, 0) } }, { cutout: false });
 	assert Math.abs(linear.x - channelToLinear(0.5)) < 1e-4 && linear.w == 0.75;
 }
 

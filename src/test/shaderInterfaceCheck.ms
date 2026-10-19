@@ -177,7 +177,7 @@ function branchFs(input: Varyings, b: BranchBindings, key: ProbeKey): Vec4f {
 	return color;
 }
 
-test "a declaration read under a feature and its negation, or under an absorbed one, is gated simply" {
+test "a read under a feature and its negation, or under an absorbed term, gates simply" {
 	const source: string = glslLinked(branchFs, probeVs);
 	assert source.startsWith("layout(binding=0) uniform viewParams {\n");
 	assert source.includes("#ifdef SHADOWED\nlayout(binding=5) uniform shadowParams {\n");
