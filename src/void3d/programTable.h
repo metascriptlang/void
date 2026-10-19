@@ -785,38 +785,38 @@ _Static_assert(sizeof(particleCutout_frameParams_t) == sizeof(lit_frameParams_t)
 	"particleCutout must take frameParams as lit does");
 _Static_assert(sizeof(billboard_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboard_vertexParams == UB_lit_vertexParams,
 	"billboard must take vertexParams as lit does");
-_Static_assert(sizeof(billboard_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboard_frameParams == UB_lit_frameParams,
-	"billboard must take frameParams as lit does");
 _Static_assert(sizeof(billboard_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboard_lightParams == UB_lit_lightParams,
 	"billboard must take lightParams as lit does");
+_Static_assert(sizeof(billboard_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboard_frameParams == UB_lit_frameParams,
+	"billboard must take frameParams as lit does");
 _Static_assert(sizeof(particleVisual_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_particleVisual_vertexParams == UB_lit_vertexParams,
 	"particleVisual must take vertexParams as lit does");
-_Static_assert(sizeof(particleVisual_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisual_frameParams == UB_lit_frameParams,
-	"particleVisual must take frameParams as lit does");
-_Static_assert(sizeof(particleVisual_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisual_lightParams == UB_lit_lightParams,
-	"particleVisual must take lightParams as lit does");
 _Static_assert(sizeof(particleVisual_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisual_billboardParams == UB_billboard_billboardParams,
 	"particleVisual must take billboardParams as billboard does");
+_Static_assert(sizeof(particleVisual_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisual_lightParams == UB_lit_lightParams,
+	"particleVisual must take lightParams as lit does");
+_Static_assert(sizeof(particleVisual_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisual_frameParams == UB_lit_frameParams,
+	"particleVisual must take frameParams as lit does");
 _Static_assert(ATTR_particleVisualPremultiplied_program_root == ATTR_particleVisual_program_root && ATTR_particleVisualPremultiplied_program_shape == ATTR_particleVisual_program_shape && ATTR_particleVisualPremultiplied_program_tile == ATTR_particleVisual_program_tile && ATTR_particleVisualPremultiplied_program_color == ATTR_particleVisual_program_color,
 	"particleVisualPremultiplied must take the PARTICLE_VISUAL layout as particleVisual does");
 _Static_assert(sizeof(particleVisualPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_particleVisualPremultiplied_vertexParams == UB_lit_vertexParams,
 	"particleVisualPremultiplied must take vertexParams as lit does");
-_Static_assert(sizeof(particleVisualPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisualPremultiplied_frameParams == UB_lit_frameParams,
-	"particleVisualPremultiplied must take frameParams as lit does");
-_Static_assert(sizeof(particleVisualPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisualPremultiplied_lightParams == UB_lit_lightParams,
-	"particleVisualPremultiplied must take lightParams as lit does");
 _Static_assert(sizeof(particleVisualPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisualPremultiplied_billboardParams == UB_billboard_billboardParams,
 	"particleVisualPremultiplied must take billboardParams as billboard does");
+_Static_assert(sizeof(particleVisualPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisualPremultiplied_lightParams == UB_lit_lightParams,
+	"particleVisualPremultiplied must take lightParams as lit does");
+_Static_assert(sizeof(particleVisualPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisualPremultiplied_frameParams == UB_lit_frameParams,
+	"particleVisualPremultiplied must take frameParams as lit does");
 _Static_assert(ATTR_particleVisualCutout_program_root == ATTR_particleVisual_program_root && ATTR_particleVisualCutout_program_shape == ATTR_particleVisual_program_shape && ATTR_particleVisualCutout_program_tile == ATTR_particleVisual_program_tile && ATTR_particleVisualCutout_program_color == ATTR_particleVisual_program_color,
 	"particleVisualCutout must take the PARTICLE_VISUAL layout as particleVisual does");
 _Static_assert(sizeof(particleVisualCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_particleVisualCutout_vertexParams == UB_lit_vertexParams,
 	"particleVisualCutout must take vertexParams as lit does");
-_Static_assert(sizeof(particleVisualCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisualCutout_frameParams == UB_lit_frameParams,
-	"particleVisualCutout must take frameParams as lit does");
-_Static_assert(sizeof(particleVisualCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisualCutout_lightParams == UB_lit_lightParams,
-	"particleVisualCutout must take lightParams as lit does");
 _Static_assert(sizeof(particleVisualCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisualCutout_billboardParams == UB_billboard_billboardParams,
 	"particleVisualCutout must take billboardParams as billboard does");
+_Static_assert(sizeof(particleVisualCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisualCutout_lightParams == UB_lit_lightParams,
+	"particleVisualCutout must take lightParams as lit does");
+_Static_assert(sizeof(particleVisualCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisualCutout_frameParams == UB_lit_frameParams,
+	"particleVisualCutout must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtParticleVisual_program_root == ATTR_particleVisual_program_root && ATTR_pixelArtParticleVisual_program_shape == ATTR_particleVisual_program_shape && ATTR_pixelArtParticleVisual_program_tile == ATTR_particleVisual_program_tile && ATTR_pixelArtParticleVisual_program_color == ATTR_particleVisual_program_color,
 	"pixelArtParticleVisual must take the PARTICLE_VISUAL layout as particleVisual does");
 _Static_assert(sizeof(pixelArtParticleVisual_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtParticleVisual_vertexParams == UB_lit_vertexParams,
@@ -1717,12 +1717,12 @@ _Static_assert(ATTR_billboardPremultiplied_program_position == ATTR_billboard_pr
 	"billboardPremultiplied must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(billboardPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboardPremultiplied_vertexParams == UB_lit_vertexParams,
 	"billboardPremultiplied must take vertexParams as lit does");
-_Static_assert(sizeof(billboardPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardPremultiplied_frameParams == UB_lit_frameParams,
-	"billboardPremultiplied must take frameParams as lit does");
-_Static_assert(sizeof(billboardPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardPremultiplied_lightParams == UB_lit_lightParams,
-	"billboardPremultiplied must take lightParams as lit does");
 _Static_assert(sizeof(billboardPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardPremultiplied_billboardParams == UB_billboard_billboardParams,
 	"billboardPremultiplied must take billboardParams as billboard does");
+_Static_assert(sizeof(billboardPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardPremultiplied_lightParams == UB_lit_lightParams,
+	"billboardPremultiplied must take lightParams as lit does");
+_Static_assert(sizeof(billboardPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardPremultiplied_frameParams == UB_lit_frameParams,
+	"billboardPremultiplied must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtBillboardPremultiplied_program_position == ATTR_billboard_program_position && ATTR_pixelArtBillboardPremultiplied_program_size == ATTR_billboard_program_size && ATTR_pixelArtBillboardPremultiplied_program_anchor == ATTR_billboard_program_anchor && ATTR_pixelArtBillboardPremultiplied_program_tile == ATTR_billboard_program_tile && ATTR_pixelArtBillboardPremultiplied_program_color == ATTR_billboard_program_color,
 	"pixelArtBillboardPremultiplied must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(pixelArtBillboardPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtBillboardPremultiplied_vertexParams == UB_lit_vertexParams,
@@ -1757,12 +1757,12 @@ _Static_assert(ATTR_billboardCutout_program_position == ATTR_billboard_program_p
 	"billboardCutout must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(billboardCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboardCutout_vertexParams == UB_lit_vertexParams,
 	"billboardCutout must take vertexParams as lit does");
-_Static_assert(sizeof(billboardCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardCutout_frameParams == UB_lit_frameParams,
-	"billboardCutout must take frameParams as lit does");
-_Static_assert(sizeof(billboardCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardCutout_lightParams == UB_lit_lightParams,
-	"billboardCutout must take lightParams as lit does");
 _Static_assert(sizeof(billboardCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardCutout_billboardParams == UB_billboard_billboardParams,
 	"billboardCutout must take billboardParams as billboard does");
+_Static_assert(sizeof(billboardCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardCutout_lightParams == UB_lit_lightParams,
+	"billboardCutout must take lightParams as lit does");
+_Static_assert(sizeof(billboardCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardCutout_frameParams == UB_lit_frameParams,
+	"billboardCutout must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtBillboardCutout_program_position == ATTR_billboard_program_position && ATTR_pixelArtBillboardCutout_program_size == ATTR_billboard_program_size && ATTR_pixelArtBillboardCutout_program_anchor == ATTR_billboard_program_anchor && ATTR_pixelArtBillboardCutout_program_tile == ATTR_billboard_program_tile && ATTR_pixelArtBillboardCutout_program_color == ATTR_billboard_program_color,
 	"pixelArtBillboardCutout must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(pixelArtBillboardCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtBillboardCutout_vertexParams == UB_lit_vertexParams,

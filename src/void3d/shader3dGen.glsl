@@ -408,6 +408,236 @@ void main() {
 }
 @end
 
+@vs particleVs
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+};
+in vec4 root;
+in vec4 color;
+out vec4 particleColor;
+const vec2[6] PARTICLE_CORNERS = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
+void main() {
+    vec2 corner = PARTICLE_CORNERS[uint(gl_VertexIndex) % 6];
+    vec3 right = cameraRight.xyz;
+    vec3 up = cameraUp.xyz;
+    vec3 world = (root.xyz + (right * (corner.x * root.w))) + (up * (corner.y * root.w));
+    particleColor = color;
+    gl_Position = (viewProj * vec4(world, 1.0));
+    return;
+}
+@end
+
+@fs particleFs
+layout(binding=6) uniform frameParams {
+    vec4 frame;
+};
+in vec4 particleColor;
+layout(location=0) out vec4 fragColor;
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec3 toneCurved(vec3 exposed, float mode) {
+    if (mode == 1.0) {
+        return exposed / (exposed + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        vec3 a = exposed * ((2.51 * exposed) + 0.03);
+        vec3 b = (exposed * ((2.43 * exposed) + 0.59)) + 0.14;
+        return clamp((a / b), vec3(0.0), vec3(1.0));
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.76;
+        float desaturation = 0.15;
+        float x = min(exposed.x, min(exposed.y, exposed.z));
+        float offset = (x < 0.08) ? (x - ((6.25 * x) * x)) : 0.04;
+        vec3 color = exposed - offset;
+        float peak = max(color.x, max(color.y, color.z));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - ((d * d) / ((peak + d) - startCompression));
+            color = color * (newPeak / peak);
+            float g = 1.0 - (1.0 / ((desaturation * (peak - newPeak)) + 1.0));
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(exposed, vec3(0.0), vec3(1.0));
+}
+vec3 toneMapped(vec3 rgb, vec4 tone) {
+    if (tone.z == 1.0) {
+        return srgbToLinear(rgb);
+    }
+    if ((tone.y == 1.0) && (tone.w == 0.0)) {
+        return rgb;
+    }
+    return linearToSrgb(toneCurved((srgbToLinear(rgb) * tone.y), tone.w));
+}
+void main() {
+    vec4 color = particleColor;
+#ifdef CUTOUT
+    if (color.a < 0.5) {
+        discard;
+    }
+#endif
+    fragColor = vec4(toneMapped(color.rgb, frame), color.a);
+    return;
+}
+@end
+
+@vs billboardVs
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+};
+in vec3 position;
+in vec2 size;
+in vec2 anchor;
+in vec4 tile;
+in vec4 color;
+out vec3 worldPosition;
+out vec3 towardCamera;
+out vec2 uv;
+out vec4 instanceColor;
+const vec2[6] PARTICLE_CORNERS = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
+vec3 billboardPoint(vec3 position_1, vec2 size_1, vec2 anchor_1, vec2 corner, vec3 right, vec3 up) {
+    vec2 offset = corner - anchor_1;
+    return (position_1 + (right * (offset.x * size_1.x))) + (up * (offset.y * size_1.y));
+}
+void main() {
+    vec2 corner = PARTICLE_CORNERS[uint(gl_VertexIndex) % 6];
+    vec3 right = cameraRight.xyz;
+    vec3 up = cameraUp.xyz;
+    vec3 world = billboardPoint(position, size, anchor, corner, right, up);
+    worldPosition = world;
+    towardCamera = cross(right, up);
+    uv = vec2(((corner.x > 0.0) ? tile.z : tile.x), ((corner.y > 0.0) ? tile.y : tile.w));
+    instanceColor = color;
+    gl_Position = (viewProj * vec4(world, 1.0));
+    return;
+}
+@end
+
+@fs billboardFs
+layout(binding=2) uniform billboardParams {
+    vec4 billboardColor;
+    vec4 billboard;
+};
+layout(binding=1) uniform lightParams {
+    vec4 ambient;
+    vec4 dirLight;
+    vec4 dirColor;
+    vec4 pointLight[4];
+    vec4 pointColor[4];
+};
+layout(binding=6) uniform frameParams {
+    vec4 frame;
+};
+layout(binding=0) uniform texture2D billboardTexture;
+layout(binding=0) uniform sampler billboardSampler;
+in vec3 worldPosition;
+in vec3 towardCamera;
+in vec2 uv;
+in vec4 instanceColor;
+layout(location=0) out vec4 fragColor;
+#ifdef PREMULTIPLIED
+vec4 straightTexel(vec4 texel) {
+    return (texel.a > 0.0) ? vec4((texel.rgb / texel.a), texel.a) : vec4(0.0);
+}
+#endif
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 pointLightAt(vec3 position, vec3 normal, vec4 at, vec4 tint) {
+    vec3 toLight = at.xyz - position;
+    float distance_1 = length(toLight);
+    float falloff = clamp((1.0 - (distance_1 / tint.a)), 0.0, 1.0);
+    float facing = max(dot(normal, (toLight / max(distance_1, 0.0001))), 0.0);
+    return srgbToLinear(tint.rgb) * (((falloff * falloff) * facing) * at.w);
+}
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec3 toneCurved(vec3 exposed, float mode) {
+    if (mode == 1.0) {
+        return exposed / (exposed + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        vec3 a = exposed * ((2.51 * exposed) + 0.03);
+        vec3 b = (exposed * ((2.43 * exposed) + 0.59)) + 0.14;
+        return clamp((a / b), vec3(0.0), vec3(1.0));
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.76;
+        float desaturation = 0.15;
+        float x = min(exposed.x, min(exposed.y, exposed.z));
+        float offset = (x < 0.08) ? (x - ((6.25 * x) * x)) : 0.04;
+        vec3 color = exposed - offset;
+        float peak = max(color.x, max(color.y, color.z));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - ((d * d) / ((peak + d) - startCompression));
+            color = color * (newPeak / peak);
+            float g = 1.0 - (1.0 / ((desaturation * (peak - newPeak)) + 1.0));
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(exposed, vec3(0.0), vec3(1.0));
+}
+vec3 toneMapped(vec3 rgb, vec4 tone) {
+    if (tone.z == 1.0) {
+        return srgbToLinear(rgb);
+    }
+    if ((tone.y == 1.0) && (tone.w == 0.0)) {
+        return rgb;
+    }
+    return linearToSrgb(toneCurved((srgbToLinear(rgb) * tone.y), tone.w));
+}
+void main() {
+    vec4 texel = texture(sampler2D(billboardTexture, billboardSampler), uv);
+#ifdef PREMULTIPLIED
+    texel = straightTexel(texel);
+#endif
+    vec4 pixel = (billboardColor * texel) * instanceColor;
+#ifdef CUTOUT
+    if (pixel.a < 0.5) {
+        discard;
+    }
+#endif
+    if (billboard.y != 0.0) {
+        vec3 n = normalize(towardCamera);
+        vec4 dir = dirLight;
+        float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
+        vec3 light = srgbToLinear(ambient.rgb) + (srgbToLinear(dirColor.rgb) * lambert);
+        for (int i = 0; i < int(ambient.a + 0.5); i++) {
+            vec4 at = pointLight[i];
+            light = light + pointLightAt(worldPosition, n, at, pointColor[i]);
+        }
+        pixel = vec4(linearToSrgb((srgbToLinear(pixel.rgb) * light)), pixel.a);
+    }
+    pixel = vec4(toneMapped(pixel.rgb, frame), pixel.a);
+#ifdef PREMULTIPLIED
+    pixel = vec4((pixel.rgb * pixel.a), pixel.a);
+#endif
+    fragColor = pixel;
+    return;
+}
+@end
+
 @vs litVs
 #if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
