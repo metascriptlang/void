@@ -24,7 +24,7 @@ export enum Converge {
 
 // h3d.parts.Data.Value without VCustom. Poly is VPoly without its `points`, which only the editor
 // reads (Data.hx:193 evaluates `values` alone).
-export type ParticleValue = match (kind: ValueKind) {
+export struct ParticleValue = match (kind: ValueKind) {
 	ValueKind.Const => { value: float32 },
 	ValueKind.Linear => { start: float32, length: float32 },
 	ValueKind.Pow => { start: float32, length: float32, power: float32 },
@@ -59,7 +59,7 @@ export enum ShapeKind {
 // (particle_process_material.cpp: point 642-644, box 659-661, ring 668-695). Box `extents` are
 // half-widths, as Godot's `emission_box_extents`. Ring is Godot's `emission_ring_*`: `height`
 // along `axis`, `coneAngle` in degrees (90 is a cylinder).
-export type EmitterShape = match (kind: ShapeKind) {
+export struct EmitterShape = match (kind: ShapeKind) {
 	ShapeKind.Line => { size: ParticleValue },
 	ShapeKind.Sphere => { radius: ParticleValue },
 	ShapeKind.Cone => { radius: ParticleValue, angle: ParticleValue },

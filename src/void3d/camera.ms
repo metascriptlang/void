@@ -11,7 +11,7 @@ export enum ProjectionKind {
 	Perspective,
 }
 
-export type CameraProjection = match (kind: ProjectionKind) {
+export struct CameraProjection = match (kind: ProjectionKind) {
 	ProjectionKind.Orthographic => { worldPerTexel: float32, snap: boolean },
 	ProjectionKind.Perspective => { fovY: float32 },
 };
