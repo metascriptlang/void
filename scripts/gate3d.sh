@@ -1238,7 +1238,7 @@ run_mesh_lod() {
 				VOID_MESH_LOD_CONTROL=$control VOID_MESH_LOD_INDEX32=$index32 \
 					VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
 				if [ "$status" -ne 1 ] || ! grep -qE \
-					'^FAIL mesh LOD: (silhouette did not match LOD/culling|material was replaced)' \
+					'^FAIL mesh LOD: stage .* (silhouette did not match|material was replaced)' \
 					"$log"; then
 					fail "mesh-lod: control $control did not fail its pixel assertion — see $log"
 					return

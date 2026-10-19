@@ -83,3 +83,28 @@ test('WebGL2 matrix registers narrow and wide LOD with and without outline', () 
 	]);
 	assert.equal(runs.length, 31);
 });
+
+test('native LOD controls require staged pixel failures and exit one', () => {
+	const native = readFileSync(new URL('./gate3d.sh', import.meta.url), 'utf8');
+	const start = native.indexOf('if [ "$status" -ne 1 ] || ! grep -qE');
+	const end = native.indexOf('\n\t\t\t\t\tfail "mesh-lod: control', start);
+	assert(start >= 0 && end > start, 'native LOD verdict boundary changed');
+	const command = 'status="$1"\nlog=-\n' + native.slice(start, end) +
+		'\nexit 1\nfi';
+	const pixel = 'FAIL mesh LOD: stage 1: group 0 silhouette did not match LOD/culling: 16724761';
+	for (const [status, message, expected] of [
+		[1, pixel, 0],
+		[1, 'FAIL mesh LOD: stage 0: colored material was replaced', 0],
+		[1, 'FAIL mesh LOD: stage 0: desaturated material was replaced', 0],
+		[1, 'FAIL mesh LOD: stage 2: outline group 0 silhouette did not match selected LOD: 0', 0],
+		[0, pixel, 1],
+		[2, pixel, 1],
+		[1, 'FAIL mesh LOD: stage 0: uploaded mesh lost index width', 1],
+		[1, 'FAIL mesh LOD: stage 0: outline changed selected range', 1],
+	]) {
+		const result = spawnSync('sh', ['-c', command, 'lod-control', String(status)], {
+			input: message + '\n', encoding: 'utf8',
+		});
+		assert.equal(result.status, expected, `${status}: ${message}\n${result.stderr}`);
+	}
+});
