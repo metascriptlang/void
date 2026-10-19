@@ -261,7 +261,7 @@ export function fromSource(
 			const index = unsignedAt(
 				buffers[indices.buffer].bytes, indices.byteOffset + i * indexSize, indexSize,
 			);
-			if (index >= source.count as uint32 || (i > 0 && index <= previous)) {
+			if (index >= (source.count as uint32) || (i > 0 && index <= previous)) {
 				return Result.err(GltfAccessorError.SparseOrder);
 			}
 			previous = index;
