@@ -369,7 +369,7 @@ export function fromAccessor(
 	};
 	let values: Vec<uint32> = [];
 	for (const value of decoded.values) {
-		if (value == maximum || value >= vertexCount as float64) {
+		if (value == maximum || value >= (vertexCount as float64)) {
 			return Result.err(GltfAccessorError.Index);
 		}
 		values.push(value as uint32);

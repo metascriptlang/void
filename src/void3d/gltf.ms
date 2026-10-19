@@ -105,7 +105,7 @@ function isNull(v: JsonValue): boolean {
 function intValue(v: JsonValue): int32 {
 	if (v === null || v.kind != JsonKind.Int
 		|| v.intVal < (-2147483647 as int64) - 1
-		|| v.intVal > 2147483647 as int64) {
+		|| v.intVal > (2147483647 as int64)) {
 		return INVALID_INT;
 	}
 	return v.intVal as int32;
