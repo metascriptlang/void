@@ -38,7 +38,7 @@ import {
 	withUvTransform,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
-import { MeshData, stride, vertexCount } from "../void3d/meshData";
+import { MeshData, stride, vertexCount, indexAt, indexCount } from "../void3d/meshData";
 import { UniformError } from "../void3d/uniformPool";
 import { rgbaPng, twoBlockJpeg } from "./imageBytes";
 import { approx } from "./helpers";
@@ -967,4 +967,83 @@ test "extensionsRequired may name KHR_texture_transform, and nothing else" {
 	);
 	assert !unknown.ok;
 	if (!unknown.ok) { assert unknown.error == GltfError.Unsupported; }
+}
+
+test "generated tangent splits preserve skin source ids across both index widths" {
+	for (const index32 of [false, true]) {
+		let bytes = quadBuffer();
+		bytes[123] = 0x40 as uint8;
+		while (bytes.length % 4 != 0) { bytes.push(0); }
+		const joints: int32 = bytes.length as int32;
+		for (let vertex = 0; vertex < 4; vertex++) {
+			for (let slot = 0; slot < 4; slot++) {
+				bytes.push((slot == 0 ? vertex : 0) as uint8);
+			}
+		}
+		const weights: int32 = bytes.length as int32;
+		for (let vertex = 0; vertex < 4; vertex++) {
+			pushFloats(bytes, [F32_ONE, F32_ZERO, F32_ZERO, F32_ZERO]);
+		}
+		const indices: int32 = bytes.length as int32;
+		for (const vertex of [0, 1, 2, 0, 2, 3]) { pushLe32(bytes, vertex as uint32); }
+		let document = documentOf({
+			...texturedParts(), materials: NORMAL_BASE,
+			attributes: ALL_ATTRIBUTES + ",\"JOINTS_0\":7,\"WEIGHTS_0\":8",
+		});
+		document = document.replaceAll("\"nodes\":[{\"name\":\"quad\",\"mesh\":0}],",
+			"\"nodes\":[{\"name\":\"quad\",\"mesh\":0,\"skin\":0,\"children\":[1,2,3,4]}," +
+			"{},{},{},{}],\"skins\":[{\"joints\":[1,2,3,4]}],");
+		document = document.replaceAll("],\"bufferViews\":[",
+			",{\"bufferView\":8,\"componentType\":5121,\"count\":4,\"type\":\"VEC4\"}," +
+			"{\"bufferView\":9,\"componentType\":5126,\"count\":4,\"type\":\"VEC4\"}]," +
+			"\"bufferViews\":[");
+		document = document.replaceAll("],\"buffers\":[",
+			`,{"buffer":0,"byteOffset":${joints},"byteLength":16},` +
+			`{"buffer":0,"byteOffset":${weights},"byteLength":64},` +
+			`{"buffer":0,"byteOffset":${indices},"byteLength":24}],"buffers":[`);
+		document = document.replaceAll(
+			`"buffers":[{"byteLength":${tangentOffset() + 64}}]`,
+			`"buffers":[{"byteLength":${bytes.length}}]`,
+		);
+		if (index32) {
+			document = document.replaceAll(
+				"\"bufferView\":4,\"componentType\":5123,\"count\":6",
+				"\"bufferView\":10,\"componentType\":5125,\"count\":6",
+			);
+		}
+		assert document.includes("\"skin\":0") && document.includes("\"bufferView\":8");
+		const loaded = loadGltf(document, bytes);
+		assert loaded.ok;
+		if (!loaded.ok) { return; }
+		const source = loaded.value.skinMeshes[0];
+		assert source !== null;
+		if (source === null) { return; }
+		assert source.mesh.hasSkin && source.mesh.hasTangents && source.mesh.stride() == 24;
+		assert source.mesh.vertexCount() == 6 && source.mesh.indexCount() == 6;
+		assert source.vertexSources.length == 6 && source.partition.parts.length == 1;
+		assert (source.mesh.wideIndices !== null) == index32;
+		let positive: boolean = false;
+		let negative: boolean = false;
+		for (let vertex = 0; vertex < 6; vertex++) {
+			const original: int32 = source.vertexSources[vertex];
+			assert original >= 0 && original < 4;
+			assert source.influences.joints[vertex * 4] == original;
+			assert source.influences.weights[vertex * 4] == 1.0;
+			const palette: int32 = source.mesh.vertices[vertex * 24 + 16] as int32;
+			assert source.partition.parts[0].palette.joints[palette] == original;
+			assert source.mesh.vertices[vertex * 24 + 20] == 1.0;
+			positive = positive || source.mesh.vertices[vertex * 24 + 15] == 1.0;
+			negative = negative || source.mesh.vertices[vertex * 24 + 15] == -1.0;
+		}
+		assert positive && negative;
+		const corners: Vec<int32> = [0, 1, 2, 0, 2, 3];
+		const triangles = source.partition.parts[0].triangles;
+		assert triangles.length == 2 && triangles[0] != triangles[1];
+		for (let corner = 0; corner < 6; corner++) {
+			const triangle: int32 = triangles[corner < 3 ? 0 : 1];
+			assert triangle >= 0 && triangle < 2;
+			const original: int32 = triangle * 3 + corner % 3;
+			assert source.vertexSources[source.mesh.indexAt(corner) as int32] == corners[original];
+		}
+	}
 }

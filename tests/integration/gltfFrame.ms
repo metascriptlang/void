@@ -21,7 +21,7 @@ import {
 } from "../../src/void3d/gpu3d";
 import { DrawContext, DrawItem, HandleError, buryDoomed } from "../../src/void3d/draw";
 import { textureViewAt, loseTextureAt, textureGenerationAt } from "../../src/test/drawHelpers";
-import { GltfData, GltfError, loadGlb } from "../../src/void3d/gltf";
+import { GltfData, GltfDiagnostic, loadGlbDetailed, describe } from "../../src/void3d/gltf";
 import {
 	GltfAssets,
 	GltfSceneError,
@@ -153,9 +153,9 @@ function decoded(): GltfData {
 		unreachable;
 	}
 	const bytes: Vec<uint8> = [...file.value.asBytes()];
-	let data: Result<GltfData, GltfError> = loadGlb(bytes);
+	let data: Result<GltfData, GltfDiagnostic> = loadGlbDetailed(bytes, FIXTURE);
 	if (data.ok) { return data.value; }
-	fail(`the fixture was refused: ${data.error.toString()}`);
+	fail(data.error.describe());
 	unreachable;
 }
 
