@@ -63,7 +63,7 @@ ${shell.slice(commandStart, commandEnd)}`], { encoding: 'utf8' });
 	}
 });
 
-test('WebGL2 matrix registers narrow and wide LOD with and without outline', () => {
+test('WebGL2 matrix registers wide LOD and posed skin shadow variants', () => {
 	const declarationStart = shell.indexOf('WEB_CHECKS="');
 	const declarationEnd = shell.indexOf('\n\n', declarationStart);
 	const loopStart = shell.indexOf('runs=""');
@@ -81,7 +81,17 @@ test('WebGL2 matrix registers narrow and wide LOD with and without outline', () 
 		'meshLod:VOID_MESH_LOD_OUTLINE=1',
 		'meshLod:VOID_MESH_LOD_INDEX32=1&VOID_MESH_LOD_OUTLINE=1',
 	]);
-	assert.equal(runs.length, 31);
+	assert.deepEqual(runs.filter((run) => run.split(':')[0] === 'dirShadow'), [
+		'dirShadow',
+		'dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=14',
+		'dirShadow:VOID_DIR_SHADOW_CASE=14&VOID_DIR_SHADOW_PIXEL_ART=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=15',
+		'dirShadow:VOID_DIR_SHADOW_CASE=15&VOID_DIR_SHADOW_PIXEL_ART=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=14&VOID_DIR_SHADOW_PERSPECTIVE=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=15&VOID_DIR_SHADOW_PERSPECTIVE=1',
+	]);
+	assert.equal(runs.length, 37);
 });
 
 test('native LOD controls require staged pixel failures and exit one', () => {

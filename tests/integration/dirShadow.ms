@@ -1,27 +1,36 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
-import { Vec3, Vec4, vec3, quatBetween } from "../../src/math/math3d";
+import { Vec3, Vec4, vec3, quatBetween, identity } from "../../src/math/math3d";
 import {
 	Material, MaterialKind, Phase, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
 	withShadowCulling,
 } from "../../src/void3d/material";
-import { MeshData, MeshError, Rgba, addQuad, addTexturedQuad } from "../../src/void3d/meshData";
+import {
+	MeshData, MeshError, Rgba, LIT_VERTEX_STRIDE, addQuad, addTexturedQuad,
+	addSkinAttributes, vertexCount,
+} from "../../src/void3d/meshData";
 import {
 	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH, MOVING_MATERIAL_UNIFORM_LENGTH, MOVING_DISSOLVE_THRESHOLD, movingBase,
-	EMISSIVE_COLOR, EMISSIVE_STRENGTH, MATERIAL_ALPHA_KILL, emissiveBase,
+	EMISSIVE_COLOR, EMISSIVE_STRENGTH, MATERIAL_ALPHA_KILL, emissiveBase, withSkin,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
-	addMeshData, addMaterial, addTexture, reserveUniforms, writeUniforms,
+	addMeshData, addMaterial, addTexture, reserveUniforms, writeUniforms, rebuildMeshes,
 } from "../../src/void3d/draw";
 import { TextureId, TextureUploadError, NO_TEXTURE } from "../../src/void3d/texture";
 import { FilterMode, Wrap, RenderState, BlendMode } from "../../src/gpu/state";
+import { contextGeneration } from "../../src/gpu/door";
 import { UniformError } from "../../src/void3d/uniformPool";
 import { textureViewAt } from "../../src/test/drawHelpers";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, LightKind, LightInstance, LightError,
-	addMeshNode, addLightNode, setAmbient, refresh, collectLights,
+	addMeshNode, addLightNode, addGroup, addSkinMeshNode, setLocal,
+	setAmbient, refresh, collectLights,
 } from "../../src/void3d/scene";
+import { SkinPose, bind as bindSkinPose } from "../../src/void3d/skinPose";
+import { SkinGeometry, bind as bindSkinGeometry } from "../../src/void3d/skinGeometry";
+import { SkinPalette, create as createPalette } from "../../src/void3d/skinPalette";
+import { SkinInfluences } from "../../src/void3d/skinInfluences";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
 import { Renderer, attachShadow } from "../../src/void3d/renderer";
@@ -67,6 +76,8 @@ enum Case {
 	// the head (draw.ms applyBlockHead); 13 dissolves a premultiplied card.
 	DissolveEmissive,
 	DissolvePremultiplied,
+	SkinNarrow,
+	SkinWide,
 }
 
 const WIDTH: int32 = 320;
@@ -98,6 +109,11 @@ let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
+let skinControl: int32 = voidCaptureEnvInt("VOID_DIR_SHADOW_SKIN_CONTROL", 0);
+let skinBones: Vec<NodeId3D> = [];
+let skinMeshes: Vec<MeshId> = [];
+let skinGeometries: Vec<SkinGeometry> = [];
+const SKIN_HALF: float32 = 0.25;
 
 function fail(message: string): void {
 	const presetName: string = pixelArt ? "pixel-art" : "forward";
@@ -140,15 +156,17 @@ function material(
 	cast: ShadowCasting,
 	receive: boolean,
 	culling: ShadowCulling,
+	skinned: boolean = false,
 ): MaterialId {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
 	const values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
+	const base = Material.ofKind(Program.Lit, MaterialKind.Opaque).withShadows(cast, receive)
+		.withShadowCulling(culling);
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.ofKind(Program.Lit, MaterialKind.Opaque).withShadows(cast, receive)
-			.withShadowCulling(culling),
+		...base, program: skinned ? base.program.withSkin() : base.program,
 		uniforms: reserved.value,
 	});
 	if (added.ok) { return added.value; }
@@ -291,6 +309,64 @@ function premultipliedCard(): void {
 	if (!placed.ok) { unreachable; }
 }
 
+function isSkin(): boolean {
+	return shadowCase == Case.SkinNarrow || shadowCase == Case.SkinWide;
+}
+
+function skinnedCasters(): void {
+	let data = MeshData.empty();
+	if (shadowCase == Case.SkinWide) {
+		data.vertices = new Array(65536 * LIT_VERTEX_STRIDE);
+	}
+	if (!addQuad(data, vec3(-SKIN_HALF, 1, SKIN_HALF), vec3(SKIN_HALF, 1, SKIN_HALF),
+		vec3(SKIN_HALF, 1, -SKIN_HALF), vec3(-SKIN_HALF, 1, -SKIN_HALF),
+		vec3(0, 1, 0), RED).ok) { unreachable; }
+	let influences: SkinInfluences = {
+		joints: new Array(data.vertexCount() * 4), weights: new Array(data.vertexCount() * 4),
+	};
+	for (let vertex = 0; vertex < data.vertexCount(); vertex++) {
+		influences.weights[vertex * 4] = 1.0;
+	}
+	if (!addSkinAttributes(data, influences.joints, influences.weights).ok) { unreachable; }
+	const uploaded = addMeshData(context, data);
+	if (!uploaded.ok) { fail("skin mesh upload refused"); unreachable; }
+	skinMeshes.push(uploaded.value);
+	const made = material(ShadowCasting.On, true, ShadowCulling.Main, true);
+	const palette = SkinPalette.createPalette([0]);
+	if (!palette.ok) { unreachable; }
+	for (const x of [-1.0, 1.0]) {
+		const root = addGroup(scene, scene.rootId(), {
+			...Transform3D.identity(), position: vec3(x as float32, 0, 0),
+		});
+		const bone = addGroup(scene, root, Transform3D.identity());
+		const pose = SkinPose.bindSkinPose(scene, [0], [bone], [identity()], [palette.value]);
+		if (!pose.ok) { fail("skin pose refused"); unreachable; }
+		const geometry = SkinGeometry.bindSkinGeometry(data, influences, pose.value);
+		if (!geometry.ok) { fail("skin geometry refused"); unreachable; }
+		const added = addSkinMeshNode(scene, root, {
+			...Transform3D.identity(), position: vec3(0, 100, 0),
+		}, uploaded.value, made, geometry.value, 0, null);
+		if (!added.ok) { fail("skin node refused"); unreachable; }
+		skinBones.push(bone);
+		skinGeometries.push(geometry.value);
+	}
+}
+
+function reuploadSkin(): void {
+	const mesh = skinMeshes[0];
+	const old = context.meshes[mesh.index];
+	const generation = contextGeneration();
+	context.doomed.push({ buffer: old.vertexBuffer, generation: generation });
+	context.doomed.push({ buffer: old.indexBuffer, generation: generation });
+	context.meshes[mesh.index] = { ...old, vertexBuffer: 0, indexBuffer: 0, generation: 0 };
+	if (rebuildMeshes(context) != 1) { fail("skin reupload did not rebuild one shared mesh"); }
+	if (context.meshes[mesh.index].vertexBuffer == old.vertexBuffer ||
+		context.meshes[mesh.index].indexBuffer == old.indexBuffer ||
+		context.meshes[mesh.index].index32 != (shadowCase == Case.SkinWide)) {
+		fail("skin reupload lost buffers or index width");
+	}
+}
+
 function isCard(): boolean {
 	return shadowCase == Case.CutCard || shadowCase == Case.CutCardWhole ||
 		shadowCase == Case.DissolvePremultiplied;
@@ -314,11 +390,18 @@ function init(): void {
 		Case.CutCardWhole => ShadowCasting.On,
 		Case.DissolveEmissive => ShadowCasting.On,
 		Case.DissolvePremultiplied => ShadowCasting.On,
+		Case.SkinNarrow => ShadowCasting.On,
+		Case.SkinWide => ShadowCasting.On,
 	};
-	const ground: MaterialId =
-		material(ShadowCasting.On, shadowCase != Case.ReceiveOff, ShadowCulling.Main);
+	if (skinControl < 0 || skinControl > 2 || (!isSkin() && skinControl != 0)) {
+		fail("unknown skin control");
+	}
+	const ground: MaterialId = material(isSkin() ? ShadowCasting.Off : ShadowCasting.On,
+		shadowCase != Case.ReceiveOff, ShadowCulling.Main);
 	horizontal(GROUND_HALF, 0.0, WHITE, ground, true);
-	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl ||
+	if (isSkin()) {
+		skinnedCasters();
+	} else if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl ||
 		shadowCase == Case.DissolveEmissive) {
 		dissolvingCaster();
 	} else if (isCard()) {
@@ -340,6 +423,7 @@ function init(): void {
 	}, sun);
 	setAmbient(scene, vec3(0.3, 0.3, 0.3));
 	if (shadowCase == Case.HalfOpacity) { shadow.opacity = 0.5; }
+	if (isSkin() && skinControl == 2) { shadow.opacity = 0.0; }
 	if (shadowCase != Case.Detached) {
 		const core: Renderer = pixelArt ? preset.core : forward.core;
 		attachShadow(core, shadow);
@@ -382,7 +466,28 @@ function checkDissolve(view: CameraView): void {
 	if ((goneTop >> 16) > 200 && green(goneTop) < 60) { fail("the dissolved half drew red"); }
 }
 
+function checkSkins(view: CameraView): void {
+	for (let actor = 0; actor < 2; actor++) {
+		const x: float32 = actor == 0 ? -1.0 : (stage == 0 ? 1.0 : 1.75);
+		const under = rgbAt(view, vec3(x - 0.5, 0, 0));
+		if (green(under) > 100) { fail(`no skinned shadow at actor ${actor}: ${under}`); }
+		const top = rgbAt(view, vec3(x, 1, 0));
+		if ((top >> 16) < 200 || green(top) > 60) {
+			fail(`skinned colour did not match actor ${actor}: ${top}`);
+		}
+		const bounds = skinGeometries[actor].mesh.bounds;
+		if (Math.abs(bounds.max.x - x - SKIN_HALF) > 0.0001 || bounds.max.y != 1.0) {
+			fail(`skinned bounds did not match actor ${actor}`);
+		}
+	}
+	if (stage > 0 && green(rgbAt(view, vec3(0.5, 0, 0))) < 240) {
+		fail("stale skinned shadow remained at the old pose");
+	}
+	if (shadow.casterCount != 2) { fail("skin shadow lost an independent actor"); }
+}
+
 function check(view: CameraView): void {
+	if (isSkin()) { checkSkins(view); return; }
 	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl ||
 		shadowCase == Case.DissolveEmissive || isCard()) {
 		checkDissolve(view);
@@ -413,7 +518,13 @@ function check(view: CameraView): void {
 
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
-	if (refresh(scene, items) != 2) { fail("the scene does not draw its two meshes"); }
+	if (isSkin() && stage == 1 && skinControl != 1) {
+		setLocal(scene, skinBones[1], Transform3D.fromTranslation(vec3(0.75, 0, 0)));
+	}
+	if (isSkin() && stage == 2) { reuploadSkin(); }
+	if (refresh(scene, items) != (isSkin() ? 3 : 2)) {
+		fail("the scene lost its expected meshes");
+	}
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
 	const view: CameraView = viewOf();
