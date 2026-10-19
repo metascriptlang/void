@@ -148,3 +148,39 @@ test "a fragment entry without outputs discards under its feature" {
 		"#endif\n" +
 		"}\n";
 }
+
+struct MaterialParams {
+	material: Vec4f;
+}
+
+struct BranchBindings {
+	@binding(0) viewParams: ViewParams;
+	@binding(5) shadowParams: ShadowParams;
+	@binding(3) materialParams: MaterialParams;
+}
+
+function branchFs(input: Varyings, b: BranchBindings, key: ProbeKey): Vec4f {
+	let color = input.tint;
+	if (key.shadowed) {
+		color = b.viewParams.scale;
+		if (key.normalMrt) {
+			color = b.shadowParams.shadow;
+		} else {
+			color = color + b.shadowParams.shadow;
+		}
+	} else {
+		color = b.viewParams.scale + b.materialParams.material;
+		if (key.normalMrt) {
+			color = b.materialParams.material;
+		}
+	}
+	return color;
+}
+
+test "a declaration read under a feature and its negation, or under an absorbed one, is gated simply" {
+	const source: string = glslLinked(branchFs, probeVs);
+	assert source.startsWith("layout(binding=0) uniform viewParams {\n");
+	assert source.includes("#ifdef SHADOWED\nlayout(binding=5) uniform shadowParams {\n");
+	assert source.includes("#ifndef SHADOWED\nlayout(binding=3) uniform materialParams {\n");
+	assert !source.includes("|| !defined(SHADOWED)") && !source.includes("NORMAL_MRT) ||");
+}
