@@ -387,7 +387,9 @@ export function particleVs(input: ParticleAttributes, b: VertexBindings): Partic
 	return { particleColor: input.color, clip: b.vertexParams.viewProj * vec4f(world, 1.0) };
 }
 
-export function particleFs(input: ParticleFragmentInput, b: ParticleBindings, key: ParticleKey): Vec4f {
+export function particleFs(
+	input: ParticleFragmentInput, b: ParticleBindings, key: ParticleKey,
+): Vec4f {
 	const color = input.particleColor;
 	if (key.cutout) {
 		if (color.a < 0.5) {

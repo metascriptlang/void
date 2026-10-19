@@ -221,7 +221,9 @@ export function toonShade(
 		srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
 	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
 		const at = b.lightParams.pointLight[i];
-		light = light + toonPointLightAt(position, n, at, b.lightParams.pointColor[i], 1.0, params.x);
+		light = light + toonPointLightAt(
+			position, n, at, b.lightParams.pointColor[i], 1.0, params.x,
+		);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, params.y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);
@@ -487,7 +489,9 @@ export function pixelArtBillboardFs(
 		for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
 			const at = b.lightParams.pointLight[i];
 			const up = vec3f(0.0, 1.0, 0.0);
-			points = points + toonPointLightAt(lightPoint, up, at, b.lightParams.pointColor[i], 0.0, shape.x);
+			points = points + toonPointLightAt(
+				lightPoint, up, at, b.lightParams.pointColor[i], 0.0, shape.x,
+			);
 		}
 		rgb = linearToSrgb(srgbToLinear(rgb) + points);
 	}
@@ -502,7 +506,9 @@ export function pixelArtBillboardFs(
 	return { color: color, normal: vec4f(0.5, 1.0, 0.5, input.depth01) };
 }
 
-export function pixelArtParticleVs(input: ParticleAttributes, b: VertexBindings): PixelArtParticleVaryings {
+export function pixelArtParticleVs(
+	input: ParticleAttributes, b: VertexBindings,
+): PixelArtParticleVaryings {
 	const corner = PARTICLE_CORNERS[input.index % 6];
 	const right = b.vertexParams.cameraRight.xyz;
 	const up = b.vertexParams.cameraUp.xyz;
@@ -531,7 +537,9 @@ export function pixelArtParticleFs(
 }
 
 function postNormalAt(b: PostBindings, p: Vec2i, size: Vec2i): Vec4f {
-	return textureLoad(b.normalTexture, b.pointSampler, clamp(p, vec2i(0, 0), size - vec2i(1, 1)), 0);
+	return textureLoad(
+		b.normalTexture, b.pointSampler, clamp(p, vec2i(0, 0), size - vec2i(1, 1)), 0,
+	);
 }
 
 // features.z picks the depth: the scene's depth attachment, unpacked to the depth the scene
