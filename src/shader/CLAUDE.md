@@ -47,8 +47,10 @@ later replaces the hand-written GLSL source of each base.
   `discard()` is WGSL's. The stage and program name are the generator's (`@fs litFs`).
 - **Each declaration sits under the conditions its reads run under, and an unread one is left
   out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
-  shdc would reflect it. The condition is the `||` of every distinct context a read runs in. A
-  helper is written once with no features on; its reads are replayed at each call under the
+  shdc would reflect it. The condition is the `||` of every distinct context a read runs in,
+  reduced the way a reader would write it: a context another one covers is dropped, two that
+  differ only in `F` and `!F` join, and a condition true under every feature set leaves the
+  declaration bare. A helper is written once with no features on; its reads are replayed at each call under the
   features around the call, and the helper itself is gated the same way. A `@feature(F)` input
   exists only in F's programs, so a read of it runs under a condition whose `&&` includes F; any
   other read is refused at the read, or at the entry's call that reaches a helper's read, naming
