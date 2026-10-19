@@ -103,6 +103,7 @@ import "./shaderComputeCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
 import "./litShaderCheck";
+import "./pixelArtShaderCheck";
 import "./post3dCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
