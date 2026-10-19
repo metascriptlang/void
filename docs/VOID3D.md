@@ -3747,16 +3747,21 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
-### glTF skinning, traced CPU foundation
+### glTF skinning, integration and historical CPU foundation
 
-**Not yet a rendering feature.** `loadGltf` still explicitly refuses a skin binding;
-no skin program or animation importer is accepted yet. CPU source-node binding,
-TRS sampling and per-instance skin-palette ownership are built, not wired into rendering. The first CPU
-foundation is `skinPalette.ms`: an owned palette map, IBM-before-world matrix order,
-three affine columns per joint and a full declared-size output. `skinPartition.ms` ports
-Heaps' material-preserving joint-set merge and shared-slot assignment. Skinning's trace verdict
-is **DIVERGE-INCOMPLETE**: follow Heaps' LBS and palette splitting, not merely loosen the
-importer's gate or impose a 64-joint rig cutoff.
+**Current integration:** tree `f955fd7c2fe6311614b38bba4c61bbd95388943c`
+(commit `3f9d01d8`), binary/support BUILD `8a9fc02dd`. Actual imported skinning and u32 indices
+are landed. `scripts/gate.sh` passed OFF1839/ON2226, D3D11 120/120, GL430 94 pass/26 pending;
+its seven known skips remain. Full `scripts/gate3d.sh` passed with three known skips;
+`scripts/web3d.sh` passed 37/37 real WebGL2 runs. `tests/integration/dirShadow.ms` covers
+independent u16/u32 actors across colour, shadow, bounds and buffer reupload, with eight
+intended negative controls. Reupload is not device loss; no physical GLES/Metal, heap/fence
+or current performance acceptance follows. Gate log: `out/m5SkinShadowLand20261019.log`.
+
+**Historical foundation follows.** Refusals, incomplete verdicts and NOTRUN statements below
+belong to their recorded trees, not the current importer. The original foundation follows
+Heaps' LBS and material-preserving palette splitting, with a per-draw palette rather than
+a 64-joint rig cutoff.
 
 **Read and measured.** Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`,
 `scene/Skin.hx:56-78` builds `inverseBind * jointWorld` in row-vector order;
