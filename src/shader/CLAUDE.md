@@ -107,8 +107,8 @@ later replaces the hand-written GLSL source of each base.
   outputs, an array vertex attribute fails GLES3 (SPIRV-Cross "OpenGL ES doesn't support array input
   variables in vertex shader"), so the emitter refuses it.
 - **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the stages and
-  `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, whose stages join
-  `shader3d.glsl`'s for every program key; `tools/genShaders2d.ms` writes void2d's to
+  `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, the source of every core
+  and shadow program key; `tools/genShaders2d.ms` writes void2d's to
   `src/void2d/shader2dGen.glsl`, which `shader2d.glsl` `@include`s under its `@program` lines;
   `--check` reports a stale file. No derivative runs on the CPU, so a fragment that takes `dpdx`
   (void2d's `fs` and `uiFs`) is checked through its helpers and pixel goldens, not as a whole. Runtime modules never
