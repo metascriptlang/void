@@ -18,7 +18,9 @@ WEB_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
 	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1
 	copyAlpha:- forwardOutline:VOID_OUTLINE_FRAMEBUFFER_FACTOR=2
-	particleVisual:VOID_PARTICLE_VISUAL_PIXEL_ART=1"
+	particleVisual:VOID_PARTICLE_VISUAL_PIXEL_ART=1
+	meshLod:VOID_MESH_LOD_INDEX32=1,VOID_MESH_LOD_OUTLINE=1,\
+VOID_MESH_LOD_INDEX32=1&VOID_MESH_LOD_OUTLINE=1"
 
 [ -x "$CHROME" ] || { echo "SKIP web3d: no Chrome at $CHROME"; exit 0; }
 command -v python >/dev/null || { echo "SKIP web3d: no python to serve $OUT"; exit 0; }
@@ -27,7 +29,7 @@ node --test scripts/web3d.test.mjs
 runs=""
 for entry in $WEB_CHECKS; do
 	name=${entry%%:*}
-	pixel=${entry#*:}
+	settingsCsv=${entry#*:}
 	if [ "${1:-}" != "--run" ]; then
 		VOID_WEB_ENTRY=tests/integration/$name.ms VOID_WEB_DEST="$OUT/$name" VOID_WEB_BACKENDS=gl \
 			sh scripts/build-web.sh > "$OUT.$name.build.log" 2>&1 \
@@ -35,7 +37,11 @@ for entry in $WEB_CHECKS; do
 		cp tests/integration/web/runner3d.html "$OUT/$name/gl/runner3d.html"
 	fi
 	runs="$runs $name"
-	[ "$pixel" = "-" ] || runs="$runs $name:$pixel"
+	if [ "$settingsCsv" != "-" ]; then
+		for setting in $(printf '%s' "$settingsCsv" | tr ',' ' '); do
+			runs="$runs $name:$setting"
+		done
+	fi
 done
 
 ( cd "$OUT" && exec python -m http.server "$PORT" > /dev/null 2>&1 ) &

@@ -62,3 +62,24 @@ ${shell.slice(commandStart, commandEnd)}`], { encoding: 'utf8' });
 		rmSync(folder, { recursive: true });
 	}
 });
+
+test('WebGL2 matrix registers narrow and wide LOD with and without outline', () => {
+	const declarationStart = shell.indexOf('WEB_CHECKS="');
+	const declarationEnd = shell.indexOf('\n\n', declarationStart);
+	const loopStart = shell.indexOf('runs=""');
+	const loopEnd = shell.indexOf('\n\n(', loopStart);
+	assert(declarationStart >= 0 && declarationEnd > declarationStart);
+	assert(loopStart >= 0 && loopEnd > loopStart);
+	const result = spawnSync('sh', ['-c', `set -e\nset -- --run\n` +
+		shell.slice(declarationStart, declarationEnd) + '\n' + shell.slice(loopStart, loopEnd) +
+		'\nprintf "%s\\n" "$runs"'], { encoding: 'utf8' });
+	assert.equal(result.status, 0, result.stdout + result.stderr);
+	const runs = result.stdout.trim().split(/\s+/);
+	assert.deepEqual(runs.filter((run) => run.split(':')[0] === 'meshLod'), [
+		'meshLod',
+		'meshLod:VOID_MESH_LOD_INDEX32=1',
+		'meshLod:VOID_MESH_LOD_OUTLINE=1',
+		'meshLod:VOID_MESH_LOD_INDEX32=1&VOID_MESH_LOD_OUTLINE=1',
+	]);
+	assert.equal(runs.length, 31);
+});

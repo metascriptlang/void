@@ -1215,27 +1215,38 @@ run_mesh_lod() {
 		fail "mesh-lod: build refused — see $WORK/meshLod.build.log"
 		return
 	fi
-	status=0
-	VOID_MESH_LOD_CONTROL=0 "$exe" > "$WORK/meshLod.0.log" 2>&1 || status=$?
-	if [ "$status" -eq 3 ]; then
-		skip "mesh-lod: no readback backend"
-		return
-	fi
-	if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$WORK/meshLod.0.log"; then
-		fail "mesh-lod: ranges/materials/culling/reupload/pins/close — see $WORK/meshLod.0.log"
-		return
-	fi
-	for control in 1 2 3 4 5; do
-		status=0
-		log="$WORK/meshLod.$control.log"
-		VOID_MESH_LOD_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
-		if [ "$status" -eq 0 ] || ! grep -qE \
-			'^FAIL mesh LOD:.*(silhouette did not match LOD/culling|material was replaced)' "$log"; then
-			fail "mesh-lod: control $control did not fail its pixel assertion — see $log"
-			return
-		fi
+	for index32 in 0 1; do
+		for outline in 0 1; do
+			status=0
+			log="$WORK/meshLod.$index32.$outline.0.log"
+			VOID_MESH_LOD_CONTROL=0 VOID_MESH_LOD_INDEX32=$index32 \
+				VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+			if [ "$status" -eq 3 ]; then
+				skip "mesh-lod: no readback backend"
+				return
+			fi
+			if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$log"; then
+				fail "mesh-lod: index32=$index32 outline=$outline — see $log"
+				return
+			fi
+			controls=""
+			if [ "$index32" = "1" ]; then controls="6 7"
+			elif [ "$outline" = "0" ]; then controls="1 2 3 4 5"; fi
+			for control in $controls; do
+				status=0
+				log="$WORK/meshLod.$index32.$outline.$control.log"
+				VOID_MESH_LOD_CONTROL=$control VOID_MESH_LOD_INDEX32=$index32 \
+					VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+				if [ "$status" -ne 1 ] || ! grep -qE \
+					'^FAIL mesh LOD: (silhouette did not match LOD/culling|material was replaced)' \
+					"$log"; then
+					fail "mesh-lod: control $control did not fail its pixel assertion — see $log"
+					return
+				fi
+			done
+		done
 	done
-	pass "mesh-lod: wide ranges/materials, LOD/culling, reupload/pins/close, five controls red"
+	pass "mesh-lod: u16/u32, outline, ranges/materials, LOD/reupload/pins/close; nine controls red"
 }
 
 run_particle_fade() {

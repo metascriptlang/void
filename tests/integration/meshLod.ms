@@ -1,6 +1,7 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState, Face } from "../../src/gpu/state";
+import { IndexType } from "../../src/gpu/pipeline";
 import {
 	liveBuffers, liveImages, liveViews, liveSamplers, liveShaders, livePipelines, contextGeneration,
 } from "../../src/gpu/door";
@@ -49,6 +50,7 @@ const SURFACE: Rgba = { red: 1.0, green: 0.2, blue: 0.1, alpha: 1.0 };
 const SCREEN: LowResView = { width: WIDTH, height: HEIGHT, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 let control: int32 = voidCaptureEnvInt("VOID_MESH_LOD_CONTROL", 0);
 let outlined: boolean = voidCaptureEnvInt("VOID_MESH_LOD_OUTLINE", 0) != 0;
+let wide: boolean = voidCaptureEnvInt("VOID_MESH_LOD_INDEX32", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	(outlined ? FORWARD_OUTLINE_UNIFORM_LENGTH : FORWARD_UNIFORM_LENGTH) +
 	2 * MATERIAL_UNIFORM_LENGTH,
@@ -139,13 +141,21 @@ function materialAt(amount: float32): MaterialId {
 
 function init(): void {
 	if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
-	if (control < 0 || control > 5) { fail("unknown control"); }
+	if (control < 0 || control > 7 || (!wide && control > 5)) { fail("unknown control"); }
 	gfxSetup();
 	let data: MeshData = MeshData.empty();
+	const vertexBase: int32 = wide ? 65536 : 0;
+	for (let i = 0; i < vertexBase; i++) {
+		if (!addVertex(data, vec3(0, 0, 0), vec3(0, 0, 1), SURFACE).ok) { unreachable; }
+	}
+	if (wide) { data.wideIndices = []; }
 	for (let group = 0; group < 4; group++) { appendGroup(data, group); }
-	for (let i = 0; i < FIRST_ELEMENT; i++) { data.indices.push(0); }
+	for (let i = 0; i < FIRST_ELEMENT; i++) {
+		if (data.wideIndices !== null) { data.wideIndices.push(0); }
+		else { data.indices.push(0); }
+	}
 	for (let group = 0; group < 4; group++) {
-		const base: int32 = group * 3;
+		const base: int32 = (control == 7 ? 0 : vertexBase) + group * 3;
 		if (!addTriangle(data, base, base + 1, base + 2).ok) { unreachable; }
 	}
 	radius = data.bounds.originRadius();
@@ -293,11 +303,19 @@ function reuploadSameContext(): void {
 		fail("reupload did not replace buffers in current generation");
 	}
 	if (context.meshPinned(mesh) != 2) { fail("reupload changed retained mesh pins"); }
+	if (rebuilt.indexType() != (wide ? IndexType.Uint32 : IndexType.Uint16)) {
+		fail("reupload changed index width");
+	}
 }
 
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("framebuffer size changed"); }
 	if (stage == 2) { reuploadSameContext(); }
+	if (control != 6 &&
+		context.meshes[mesh.index].indexType() != (wide ? IndexType.Uint32 : IndexType.Uint16)) {
+		fail("uploaded mesh lost index width");
+	}
+	if (control == 6) { context.meshes[mesh.index].index32 = false; }
 	if (stage == 3) {
 		if (remove(scene, nodes[0]) != 1 || context.meshPinned(mesh) != 1) {
 			fail("removing one consumer released the shared mesh");
