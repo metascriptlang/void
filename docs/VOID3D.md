@@ -3762,8 +3762,8 @@ CPU source tree `fe826d082151b894ba89ce175fa286e196b42c07`, BUILD `8a9fc02dd`:
 327 pass/2 intended failures. Creation (LDR/HDR), direct mutation, disabled post, finite/order
 failures and valid strength-zero retry are pinned. Building `tests/aborts3d/cases/pixelArtCases.ms`
 and running its eight `fog.*` cases gives exit1 with the expected setter/writer diagnostic.
-Logs: `out/m5FogRange{Red,Green,CheckGreen,BuildGreen}20261020.log`. New GPU/web acceptance waits
-for the combined gate/land window; the 21 fog-off fixture edits are not a fresh pixel verdict.
+Logs: `out/m5FogRange{Red,Green,CheckGreen,BuildGreen}20261020.log`.
+The combined gate/land below subsequently verified the corrected fog-off integration fixtures.
 
 ### glTF interleaved and sparse geometry, CPU acceptance
 
@@ -3780,7 +3780,15 @@ On CPU source tree `9a0dfa866990a81bd1fad81b6985fa030f96ec57`, BUILD `8a9fc02dd`
 `3f9d01d8` report 309/4 and 330/3 pass/fail: seven intended assertions, no compile failures.
 Dense/interleaved/sparse geometry, sparse base overrides, malformed inputs, supplied/generated
 UV tangents and dense/strided skin source IDs at both index widths are pinned. Logs:
-`out/m5Accessor{Check,Material}Reboot1Green20261020.log`. No new GPU/web/device verdict.
+`out/m5Accessor{Check,Material}Reboot1Green20261020.log`.
+
+Combined acceptance with FogRange, after the shader port: tree
+`69c238654b5f6edb6e45c18f848732a1d1befb8f` (`bb0513d0`), BUILD `8a9fc02dd`.
+Full `scripts/gate.sh` reports **1860/1860 OFF, 2247/2247 ON**; full `scripts/gate3d.sh`
+is green; `scripts/web3d.sh` reports **37/37 real WebGL2 runs**. Land exit 0;
+`out/m5AccessorFogLand20261020.{log,exit}`. Seven native and three gate3D skips remain,
+with no new reds. This is integrated regression acceptance, not a new rendered sparse-asset
+fixture, WebGPU/physical-device run, real device-loss proof or performance-parity claim.
 
 ### glTF skinning, integration and historical CPU foundation
 
