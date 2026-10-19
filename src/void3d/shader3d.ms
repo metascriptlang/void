@@ -56,7 +56,7 @@ export function copyFs(input: CopyInput, b: CopyBindings): Vec4f {
 	return textureLoad(b.sourceTexture, b.pointSampler, p, 0);
 }
 
-const PARTICLE_CORNERS: Vec2f[6] = [
+export const PARTICLE_CORNERS: Vec2f[6] = [
 	vec2f(-0.5, -0.5), vec2f(0.5, -0.5), vec2f(0.5, 0.5),
 	vec2f(-0.5, -0.5), vec2f(0.5, 0.5), vec2f(-0.5, 0.5),
 ];
@@ -296,14 +296,14 @@ function skinRow(b: VertexBindings, joints: Vec4f, weights: Vec4f, column: int32
 		b.skinParams.skinRows[(joints.w as int32) * 3 + column] * weights.w;
 }
 
-function skinWorld(b: VertexBindings, joints: Vec4f, weights: Vec4f): Mat4x4f {
+export function skinWorld(b: VertexBindings, joints: Vec4f, weights: Vec4f): Mat4x4f {
 	return transpose(mat4x4f(
 		skinRow(b, joints, weights, 0), skinRow(b, joints, weights, 1),
 		skinRow(b, joints, weights, 2), vec4f(0.0, 0.0, 0.0, 1.0),
 	));
 }
 
-function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
+export function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
 	const linear = upperLeft3x3(world);
 	const a = cross(linear.columns[1], linear.columns[2]);
 	const b = cross(linear.columns[2], linear.columns[0]);
