@@ -353,7 +353,7 @@ export function resolve(
 // ---- Uniforms ----
 
 // The scene programs' camera block: viewProj in upload order, then the world-space right and up
-// the billboard program builds its quads from (shader3d.glsl `vertexParams`).
+// the billboard program builds its quads from (shader3d.ms `VertexParams`).
 export function writeCameraBlock(this view: CameraView, out: Span<float32>): void {
 	view.viewProj.writeTo(out, 0);
 	out[16] = view.basis.right.x;

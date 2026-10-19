@@ -63,7 +63,7 @@ export function natural(this typeof BloomSettings): BloomSettings {
 	};
 }
 
-// shader3d.glsl bloomParams: one texel of the source, then of the target; the upsample's blend
+// post3d.ms bloomParams: one texel of the source, then of the target; the upsample's blend
 // factor; the soft threshold's precomputations.
 export const BLOOM_UNIFORM_SLOT: int32 = 0;
 export const BLOOM_UNIFORM_LENGTH: int32 = 12;

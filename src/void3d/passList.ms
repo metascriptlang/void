@@ -17,7 +17,7 @@ import { identity } from "../math/math3d";
 import { center } from "./bounds";
 
 // Float offsets of the view-projection column that yields clip z, in the camera block
-// (shader3dBlocks.glsl `vertexParams`, viewProj first): Heaps' cam._13, _23, _33, _43.
+// (shader3d.ms `VertexParams`, viewProj first): Heaps' cam._13, _23, _33, _43.
 const CLIP_Z_X: int32 = 2;
 const CLIP_Z_Y: int32 = 6;
 const CLIP_Z_Z: int32 = 10;

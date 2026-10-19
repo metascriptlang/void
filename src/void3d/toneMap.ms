@@ -22,7 +22,7 @@ import { BloomPass, BLOOM_UNIFORM_LENGTH, BLOOM_PASS_UNIFORM_LENGTH } from "./bl
 import { screenState } from "./screenFx";
 import { Renderer, RendererError, ToneMode, drawScreen, exposureMultiplier } from "./renderer";
 
-// The tone map's block (shader3d.glsl toneMapFs `toneMapParams`): the exposure multiplier, then
+// The tone map's block (post3d.ms toneMapFs `toneMapParams`): the exposure multiplier, then
 // the curve.
 export const TONE_MAP_UNIFORM_SLOT: int32 = 0;
 export const TONE_MAP_UNIFORM_LENGTH: int32 = 4;
@@ -80,7 +80,7 @@ export function toneMappedBackground(background: Vec4, multiplier: float32, mode
 	};
 }
 
-// shader3dBlocks.glsl toneCurve on the CPU, line for line: an exposed linear colour through
+// shader3d.ms toneCurved on the CPU, line for line: an exposed linear colour through
 // h3d.shader.pbr.ToneMapping's `mode`, the alpha untouched.
 export function toneCurved(color: Vec4, mode: ToneMode): Vec4 {
 	return match (mode) {

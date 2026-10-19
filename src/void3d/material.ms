@@ -105,7 +105,7 @@ export struct Material {
 	pass: RenderState;
 	phase: Phase;
 	// Texture views for view slots 0 to 3 and samplers for sampler slots 0 and 1 (the
-	// `binding=` numbers in shader3d.glsl); 0 where the program samples nothing.
+	// `@binding` numbers in shader3d.ms); 0 where the program samples nothing.
 	texture0: uint32;
 	texture1: uint32;
 	texture2: uint32;

@@ -206,7 +206,7 @@ export function validSkin(this item: Readonly<DrawItem>, program: ProgramKey): b
 	return pose.blocks[item.skinPalette].length == SKIN_UNIFORM_LENGTH;
 }
 
-// Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no
+// Slot 4, matching `@binding(4) modelParams` in shader3d.ms, a slot no
 // other block uses: a program gets the model matrix exactly when it declares that slot.
 export const MODEL_SLOT: int32 = 4;
 export const MODEL_LENGTH: int32 = 32;
@@ -467,7 +467,7 @@ export function meshFor(
 // silently zero at a hand-written literal (docs/VOID3D.md, Compiler notes).
 export const EXTERNAL_GENERATION: int32 = -1;
 
-// The vertices a quad layout draws per instance: QUAD_CORNERS in shader3dBlocks.glsl.
+// The vertices a quad layout draws per instance: PARTICLE_CORNERS in shader3d.ms.
 export const QUAD_VERTEX_COUNT: int32 = 6;
 
 export function fullscreen(

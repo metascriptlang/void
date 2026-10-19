@@ -1,6 +1,6 @@
 // Port of h3d.pass.DirShadowMap as h3d.pass.DefaultShadowMap uses it (Dynamic mode, autoShrink,
 // SAMPLING_NONE): a depth-only pass from the directional light into a square target the caller
-// sizes, which every shadowed lit program samples (shader3dBlocks.glsl dirShadow).
+// sizes, which every shadowed lit program samples (shader3d.ms dirShadowAt).
 
 import { Vec3, Mat4, vec3, identity } from "../math/math3d";
 import {

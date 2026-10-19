@@ -4,7 +4,7 @@
 // palettes, look and settings come from the caller.
 //
 //   Scene  low-res MRT: color + normal (depth packed in its alpha) + depth attachment,
-//          drawing the core's opaque list with the preset's own programs (pixelArt3d.glsl) in
+//          drawing the core's opaque list with the preset's own programs (pixelArt3d.ms) in
 //          place of the ones materials name: the toon ramp and the normal target are its look;
 //          then the alpha and additive lists into color + depth alone, as fwd.Renderer draws
 //          them into its default pass while depth and normal maps come from their own passes
@@ -314,7 +314,7 @@ function flag(on: boolean): float32 {
 	return on ? ON : OFF;
 }
 
-// The post pass uniform block (shader3d.glsl postParams). `zeroToOne` is gpu3d's
+// The post pass uniform block (pixelArt3d.ms PostParams). `zeroToOne` is gpu3d's
 // depthZeroToOne: GL stores clip z as (z + 1) / 2, which the unpack undoes.
 export function writePostParams(
 	this look: PixelArtLook,
@@ -746,7 +746,7 @@ function rampsHaveLevels(
 }
 
 // One frame: `items` index the meshes and materials of the context the preset was made on;
-// `camera` and `lights` are the scene programs' uniform blocks (shader3dBlocks.glsl
+// `camera` and `lights` are the scene programs' uniform blocks (shader3d.ms
 // vertexParams, lightParams); `view` comes from viewFor. Answers how many items it was given.
 // Allocates nothing unless the item count grew. An item the preset cannot draw, or whose ramp
 // has no levels, refuses the frame before anything changes.
