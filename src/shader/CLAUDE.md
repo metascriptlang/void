@@ -106,15 +106,15 @@ later replaces the hand-written GLSL source of each base.
   otherwise). Measured 2026-10-15, `out/stmtProbe/shdc/`: array varyings pass all five shdc
   outputs, an array vertex attribute fails GLES3 (SPIRV-Cross "OpenGL ES doesn't support array input
   variables in vertex shader"), so the emitter refuses it.
-- **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the stages and
+- **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the core's stages and
   `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, the source of every core
-  and shadow program key; `tools/genShaders2d.ms` writes void2d's to
+  and shadow program key; `tools/genShadersPixelArt.ms` writes the pixel-art preset's to
+  `src/void3d/pixelArt3dGen.glsl` under the stage names `programKeys.txt` gives them;
+  `tools/genShaders2d.ms` writes void2d's to
   `src/void2d/shader2dGen.glsl`, which `shader2d.glsl` `@include`s under its `@program` lines;
   `--check` reports a stale file. No derivative runs on the CPU, so a fragment that takes `dpdx`
   (void2d's `fs` and `uiFs`) is checked through its helpers and pixel goldens, not as a whole. Runtime modules never
-  call `glsl`, so no binary carries GLSL text. `shader3dBlocks.glsl` is included only into a program
-  that still has a hand-written stage: a generated stage defines what it calls, and a texture tag in
-  an included block would name its texture twice.
+  call `glsl`, so no binary carries GLSL text.
 - **An app's own program is built while msc compiles it** (`shaderProgram` in `program.ms`, the
   person's "viết → chạy", 2026-10-18). The statement splices three declarations: an `@emit` that
   includes the generated header, the extern `<name>ShaderProgram()` defined in it, and `const

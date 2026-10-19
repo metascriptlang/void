@@ -508,7 +508,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 
 ### M14 as built
 
-- **The core and the pixel-art preset each have their own programs.** Three GLSL files replace one:
+- **The core and the pixel-art preset each have their own programs.** Three GLSL files replace one. Since then every stage is MetaScript (`shader3d.ms`, `post3d.ms`, `pixelArt3d.ms`, [SHADER.md](SHADER.md) Tier 3) and the three files are gone; the split below is the one they keep:
   - `shader3dBlocks.glsl`, included by both, holds every uniform block the CPU writes, so each layout has one definition.
   - `shader3d.glsl` is the core's.
     - `Lit` shades the way Heaps' forward renderer does, into one colour output: the (saturated) material colour times the ambient, Lambert and the point lights, the point lights no longer stepped. Their curve is still the spike's window, `(1 − d/radius)²`, not Heaps' `params` attenuation (`light-params-divergence`).
