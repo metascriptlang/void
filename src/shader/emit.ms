@@ -544,7 +544,194 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 	}
 
 	function grouped(condition: string): string {
-		return condition.indexOf(" ") < 0 ? condition : "(" + condition + ")";
+		return whole(condition) ? condition : "(" + condition + ")";
+	}
+
+	// One operand as written: a name, a negated operand, or a parenthesis that closes at the end.
+	function whole(condition: string): boolean {
+		if (condition.indexOf(" ") < 0) { return true; }
+		if (condition.startsWith("!")) { return whole(condition.slice(1)); }
+		if (!condition.startsWith("(")) { return false; }
+		let depth = 0;
+		for (let i = 0; i < condition.length; i++) {
+			const c = condition.slice(i, i + 1);
+			if (c == "(") { depth += 1; }
+			if (c == ")") {
+				depth -= 1;
+				if (depth == 0) { return i == condition.length - 1; }
+			}
+		}
+		return false;
+	}
+
+	function negated(condition: string): string {
+		if (condition.startsWith("!") && whole(condition.slice(1))) { return condition.slice(1); }
+		return "!" + grouped(condition);
+	}
+
+	function conjuncts(context: string): string[] {
+		let clauses: string[] = [];
+		let depth = 0;
+		let start = 0;
+		for (let i = 0; i < context.length; i++) {
+			const c = context.slice(i, i + 1);
+			if (c == "(") { depth += 1; }
+			if (c == ")") { depth -= 1; }
+			if (depth == 0 && context.slice(i, i + 4) == " && ") {
+				clauses.push(context.slice(start, i));
+				start = i + 4;
+			}
+		}
+		clauses.push(context.slice(start));
+		return clauses;
+	}
+
+	function covers(a: string[], b: string[]): boolean {
+		for (const clause of a) {
+			if (b.indexOf(clause) < 0) { return false; }
+		}
+		return true;
+	}
+
+	// a without the one clause whose negation is b's only other clause, or null.
+	function joined(a: string[], b: string[]): string[] | null {
+		if (a.length != b.length) { return null; }
+		let own: string[] = [];
+		let other: string[] = [];
+		for (const clause of a) { if (b.indexOf(clause) < 0) { own.push(clause); } }
+		for (const clause of b) { if (a.indexOf(clause) < 0) { other.push(clause); } }
+		if (own.length != 1 || other.length != 1 || other[0] != negated(own[0])) { return null; }
+		return a.filter((clause) => clause != own[0]);
+	}
+
+	// A condition the emitter printed, evaluated with the features in `on` defined.
+	let scanText = "";
+	let scanAt = 0;
+	let scanOn: string[] = [];
+
+	function scanAny(): boolean {
+		let value = scanAll();
+		while (scanText.slice(scanAt, scanAt + 4) == " || ") {
+			scanAt += 4;
+			const next = scanAll();
+			value = value || next;
+		}
+		return value;
+	}
+
+	function scanAll(): boolean {
+		let value = scanOperand();
+		while (scanText.slice(scanAt, scanAt + 4) == " && ") {
+			scanAt += 4;
+			const next = scanOperand();
+			value = value && next;
+		}
+		return value;
+	}
+
+	function scanOperand(): boolean {
+		if (scanText.slice(scanAt, scanAt + 1) == "!") {
+			scanAt += 1;
+			return !scanOperand();
+		}
+		if (scanText.slice(scanAt, scanAt + 1) == "(") {
+			scanAt += 1;
+			const value = scanAny();
+			scanAt += 1;
+			return value;
+		}
+		if (scanText.slice(scanAt, scanAt + 8) != "defined(") {
+			fail(entry, "condition '" + scanText + "' has no operand at " + String(scanAt));
+		}
+		const close = scanText.indexOf(")", scanAt);
+		const name = scanText.slice(scanAt + 8, close);
+		scanAt = close + 1;
+		return scanOn.indexOf(name) >= 0;
+	}
+
+	function holds(condition: string, on: string[]): boolean {
+		if (condition == "") { return true; }
+		scanText = condition;
+		scanAt = 0;
+		scanOn = on;
+		return scanAny();
+	}
+
+	function featureNames(products: string[][]): string[] {
+		let names: string[] = [];
+		for (const p of products) {
+			const text = p.join(" && ");
+			let at = text.indexOf("defined(");
+			while (at >= 0) {
+				const name = text.slice(at + 8, text.indexOf(")", at));
+				if (names.indexOf(name) < 0) { names.push(name); }
+				at = text.indexOf("defined(", at + 8);
+			}
+		}
+		return names;
+	}
+
+	// Every set of the names' features, as the list of those defined.
+	function featureSets(names: string[]): string[][] {
+		let sets: string[][] = [[]];
+		for (const name of names) {
+			const count = sets.length;
+			for (let k = 0; k < count; k++) {
+				let grown = sets[k].slice(0);
+				grown.push(name);
+				sets.push(grown);
+			}
+		}
+		return sets;
+	}
+
+	function anyHolds(products: string[][], on: string[]): boolean {
+		for (const p of products) {
+			if (holds(p.join(" && "), on)) { return true; }
+		}
+		return false;
+	}
+
+	// The products a declaration is read under, by two laws: one that holds another's every clause
+	// adds nothing (c || c && x is c), and two that differ only in a clause and its negation are
+	// their common part (c && x || c && !x is c). Then, over every set of the features named, a
+	// product the others already hold is dropped, the last read first, and products that hold
+	// always are the empty product, which reads always.
+	function simplest(contexts: string[]): string[][] {
+		let products: string[][] = [];
+		for (const c of contexts) { products.push(c == "" ? [] : conjuncts(c)); }
+		let changed = true;
+		while (changed) {
+			changed = false;
+			for (let i = 0; i < products.length && !changed; i++) {
+				for (let j = 0; j < products.length && !changed; j++) {
+					if (i == j) { continue; }
+					const join = joined(products[i], products[j]);
+					if (covers(products[i], products[j])) {
+						products.splice(j, 1);
+						changed = true;
+					} else if (join != null) {
+						products[i] = join;
+						products.splice(j, 1);
+						changed = true;
+					}
+				}
+			}
+		}
+		const sets = featureSets(featureNames(products));
+		for (let i = products.length - 1; i >= 0 && products.length > 1; i--) {
+			const others = products.filter((p, k) => k != i);
+			let held = true;
+			for (const on of sets) {
+				if (holds(products[i].join(" && "), on) && !anyHolds(others, on)) { held = false; }
+			}
+			if (held) { products.splice(i, 1); }
+		}
+		let always = true;
+		for (const on of sets) {
+			if (!anyHolds(products, on)) { always = false; }
+		}
+		return always ? [[]] : products;
 	}
 
 	function conjunctOf(condition: string, gate: string): boolean {
@@ -1130,7 +1317,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 		}
 		if (n.kind == NodeKind.UnaryExpr && n.unaryOp == "!") {
 			const inner = featureOf(n.operand);
-			return inner == "" ? "" : "!" + grouped(inner);
+			return inner == "" ? "" : negated(inner);
 		}
 		if (n.kind == NodeKind.BinaryExpr && (n.operator == "&&" || n.operator == "||")) {
 			const left = featureOf(n.left);
@@ -1524,7 +1711,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			let text = opening(gate) + "\n" + body(n.consequent, indent);
 			features.pop();
 			if (n.alternate != null) {
-				features.push("!" + grouped(gate));
+				features.push(negated(gate));
 				const otherwise = body(n.alternate, indent);
 				features.pop();
 				if (otherwise != "") { text += "#else\n" + otherwise; }
@@ -1603,10 +1790,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 		const contexts = declContexts[i];
 		if (!declAlways[i] && declFixed[i] == "" && contexts.length == 0) { continue; }
 		let gate = declFixed[i];
-		if (!declAlways[i] && gate == "" && contexts.indexOf("") < 0) {
+		if (!declAlways[i] && gate == "") {
+			const products = simplest(contexts);
 			let any: string[] = [];
-			for (const c of contexts) { any.push(contexts.length == 1 ? c : grouped(c)); }
-			gate = any.join(" || ");
+			for (const p of products) {
+				const lone = p.length == 1 && p[0].startsWith("(") && whole(p[0]);
+				const product = lone ? p[0].slice(1, p[0].length - 1) : p.join(" && ");
+				any.push(products.length == 1 ? product : grouped(product));
+			}
+			gate = products.some((p) => p.length == 0) ? "" : any.join(" || ");
 		}
 		const text = gate == "" ? declTexts[i] : opening(gate) + "\n" + declTexts[i] + "#endif\n";
 		if (declNames[i].startsWith("struct:")) {

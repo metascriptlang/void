@@ -386,13 +386,11 @@ void main() {
 @end
 
 @vs litVs
-#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
-#endif
 #ifndef SKINNED
 layout(binding=4) uniform modelParams {
     mat4 model;
@@ -462,7 +460,7 @@ void main() {
 @end
 
 @fs litFs
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && !defined(EMISSIVE)
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
@@ -478,7 +476,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && defined(EMISSIVE)
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
@@ -651,14 +649,12 @@ void main() {
 @end
 
 @vs litTexturedVs
-#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
-#endif
-#if !defined(SKINNED) || (!defined(SKINNED) && defined(NORMAL_MAP))
+#ifndef SKINNED
 layout(binding=4) uniform modelParams {
     mat4 model;
     mat4 normalModel;
@@ -744,12 +740,12 @@ void main() {
 @end
 
 @fs litTexturedFs
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && !defined(EMISSIVE)
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if (((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)) || (defined(UV_TRANSFORM) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
+#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -760,13 +756,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if ((!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && defined(EMISSIVE)) || (defined(EMISSIVE) && (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))))
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if (((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)) || (defined(UV_TRANSFORM) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE)) || (defined(EMISSIVE) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)))
+#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -1096,13 +1092,11 @@ void main() {
 @end
 
 @vs unlitTexturedVs
-#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
-#endif
 #ifndef SKINNED
 layout(binding=4) uniform modelParams {
     mat4 model;
@@ -1174,13 +1168,13 @@ void main() {
 @end
 
 @fs unlitTexturedFs
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)))
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))
 layout(binding=3) uniform unlitMaterialParams {
     vec4 material;
     vec4 materialColor;
 };
 #endif
-#if (((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) || defined(UV_TRANSFORM) || defined(BACK_TEXTURE) || defined(DISSOLVE)
+#if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 material;
     vec4 materialColor;
