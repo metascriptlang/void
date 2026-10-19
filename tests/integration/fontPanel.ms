@@ -259,9 +259,9 @@ function frame(): void {
 			const background: Color = row.row % 2 == 0 ? DARK : LIGHT;
 			let ink: int32 = 0;
 			for (let y: int32 = (((row.row * 48 + 4) as float32) * DPI) as int32;
-				y < (((row.row * 48 + 44) as float32) * DPI) as int32; y++) {
+				y < ((((row.row * 48 + 44) as float32) * DPI) as int32); y++) {
 				for (let x: int32 = (((row.column * 288 + 8) as float32) * DPI) as int32;
-					x < (((row.column * 288 + 280) as float32) * DPI) as int32; x++) {
+					x < ((((row.column * 288 + 280) as float32) * DPI) as int32); x++) {
 					const pixel: int64 = voidCapturePixel(1, x, y);
 					require(pixel >= 0, "pixel read fell outside capture");
 					const red: float32 = ((pixel >> 24) & 255) as float32;
