@@ -487,6 +487,38 @@ colour 1 page/4 MiB, 40 sweep rasterizations and 0 steady; SDF 1 page/1 MiB, 40 
 0 sweep coverage rasterizations and 0 steady work; outline 3662 sweep tiles, 6 pages/6 MiB,
 0 steady outline or coverage rasterizations. These are counters, not performance timings.
 
+### Colour sampler — measured 2026-10-19
+
+`tests/integration/colourSampler.ms`, working-source tree
+`09d651d1eaa2dad47ad0d7721357500c30725b20`, binary/support BUILD `4fe2a5eec`: Windows,
+D3D11 and GL core (`NVIDIA GeForce RTX 5090/PCIe/SSE2`), MSAA 1, high-DPI off,
+`--release -d:voidColourEmoji`; GL adds `-d:voidGlCore --passC=-DSOKOL_GLCORE`.
+Noto Color Emoji's checked-in grin at 16 logical px, zooms 1.37 and 0.63, DPI 1 and 2,
+over black with scene smoothing off. These are correctness captures, not timings.
+
+Reference read before writing the check: GPUI `b961b4950febbc050081554bafe976b5d1b93f39`,
+`crates/gpui_windows/src/directx_renderer.rs` `DirectXGlobalElements::new` (linear sampler),
+`shaders.hlsl` `polychrome_sprite_fragment`, and the WGPU equivalents
+`wgpu_renderer.rs` `atlas_sampler` / `shaders.wgsl` `fs_poly_sprite`. They sample polychrome
+sprites through linear min/mag filtering. This tests Void's existing scaled-RGBA path;
+it changes no renderer or sampling policy and is not a GPUI pixel-parity claim.
+
+Three compiler calls and all eight GPU processes completed: four positives, four intended
+pixel refusals. The independent four-texel oracle reads the premultiplied RGBA CPU mirror;
+its predeclared maximum RGB error was 2 bytes, measured worst 1.047496. Every zoom/DPI case
+had 128–1123 channels whose bilinear and nearest expectations differed by at least 8 bytes,
+so a flat or uninformative tile could not pass. Following checker sprites matched nearest
+sampling exactly; warm frames were byte-identical and rasterized no glyphs. Parent inspection
+and decoded RGB comparison found D3D11/GL images identical at both DPIs.
+
+Recorder-only all-nearest mutants exited 1 at `bilinear pixel 16,10 lane 0`; all-linear
+mutants exited 1 at `nearest reset pixel 76,9`, on both backends. Incidental errors are not
+accepted as these refusals. The first CPU attempt instead stopped before codegen on two
+fixture shift-width errors; matching RHS casts fixed those, with no oracle/bound change.
+The two pure oracle guards then passed in a 379-test, 20-file focused run. The gate's
+native stages run the positive and wrong-sampler controls; the CPU guards join all-on T0.
+No T5, other-device, AA-quality or performance conclusion follows from this check.
+
 ### Linked wasm text modules — measured 2026-10-19
 
 `sh scripts/experiment-modulesWeb.sh shaper sdf bidi`, tree

@@ -2044,8 +2044,10 @@ changes described above on today's compiler; the P4 web archive also takes its r
   it). The GPU half is two gate stages that build `tests/integration/deviceLoss.ms` and
   `sceneOcclusion.ms` with `-d:voidColourEmoji`, each with an emoji label beside the text one,
   and require the colour page to exist. Both passed in the native `35b8128b` gate on BUILD
-  `4fe2a5eec`; `tests/PENDING.md colour:native-gate` now isolates the remaining zoomed-sampler
-  pixel check, not those completed device-loss/occlusion stages.
+  `4fe2a5eec`. The remaining zoomed-sampler pixel check passed on D3D11 and GL core on the
+  same BUILD; `tests/integration/colourSampler.ms` holds that check and its wrong-sampler
+  controls. TESTING.md "Colour sampler" records the bounded measurement; T5 and other devices
+  remain separate.
   Module off (guardrail 6), measured 2026-10-08 with `sh scripts/wasmModuleDelta.sh` (clang 23.1.0,
   -O2, objects, code plus data bytes, before any link or garbage collection): with the module off
   no default-layer object (`glyph.c`, `grapheme.c`, `batcher.c`, `sfnt.c`) names a `void2dColour`
@@ -2654,7 +2656,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - The fault-injection switch loses the device mid-frame and the next frame is correct.
 - `sample_count > 1` works on the iOS and Android bridges without breaking void3d's pipelines.
 - Guardrail 9 prints a pass rate for GL core 4.3 desktop (glsl430) and WebGPU instead of a SKIP. **Status 2026-10-08:** the GL surface is built (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`, gate section 7) and measured 115 / 115 (91 byte-identical, 24 within the cross-backend bound, 0 structural, 2 void3d scenes excluded by name); it reads GL core 4.3 and not GLES3 because sokol_app's Win32 list has no GLES3. WebGPU is still a SKIP, owned by `web:runs`; this exit is met for GL core 4.3 only.
-- The colour-emoji line (TESTING.md `text/`) draws in colour through the module, presentation selectors pick text or emoji per grapheme, and a build with the module off pays none of it. **Status 2026-10-08:** built, measured headless and captured on D3D11 (`text/colourEmoji`); the native gate stages are owed (see "Colour emoji" under Built); the module-off proof is by symbol on objects.
+- The colour-emoji line (TESTING.md `text/`) draws in colour through the module, presentation selectors pick text or emoji per grapheme, and a build with the module off pays none of it. **Status 2026-10-19:** native colour stages, counters and real-GPU zoom-sampler pixels are measured (TESTING.md "Real-font native panel" and "Colour sampler"); module-off symbols and linked wasm budgets are checked separately. T5 and other-device evidence remain unclaimed.
 - A deferred CJK or emoji family answers coverage without loading, with the module on or off. **Status:** held by `src/test/fontCheck.ms` "coverage of a fallback is answered from its summary, with no face loaded" and its two colour-module rows.
 - WebGL2 and GL core 4.3 desktop (glsl430) show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
 - Metal macOS, Metal iOS and GLES3 Android have their readbacks written, and each reports a pass rate from a run on the human's hardware or stays a SKIP that names the missing run.

@@ -139,6 +139,9 @@ when (voidColourEmoji) {
 	import "./glyphColourAtlasCheck";
 	import "./colourFaceCheck";
 	import "./labelTextColourCheck";
+	when (testBuild) {
+		import "../../tests/integration/colourSampler";
+	}
 } else {
 	import "./glyphColourOffCheck";
 }
