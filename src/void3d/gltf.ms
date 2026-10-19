@@ -18,6 +18,7 @@ import { FilterMode, Wrap } from "../gpu/state";
 import { float32At } from "./gltfDecode";
 import {
 	GltfAccessorBuffer,
+	GltfAccessorError,
 	GltfAccessorView,
 	GltfAccessorSource,
 	GltfAccessorShape,
@@ -34,7 +35,6 @@ import { TextureData } from "./texture";
 import {
 	MeshData,
 	MeshError,
-	MAX_MESH_VERTICES,
 	Rgba,
 	Uv,
 	addVertex,
@@ -470,9 +470,9 @@ function loadAnimations(
 	return Result.ok(move clips);
 }
 
-function vec3At(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): Vec3 {
-	const at: int32 = offset + i * 12;
-	return vec3(float32At(buffer, at), float32At(buffer, at + 4), float32At(buffer, at + 8));
+function vec3At(values: Readonly<Span<float64>>, i: int32): Vec3 {
+	const at: int32 = i * 3;
+	return vec3(values[at] as float32, values[at + 1] as float32, values[at + 2] as float32);
 }
 
 function isFiniteVec3(value: Vec3): boolean {
@@ -482,9 +482,9 @@ function isFiniteVec3(value: Vec3): boolean {
 }
 
 
-function uvAt(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): Uv {
-	const at: int32 = offset + i * 8;
-	return { u: float32At(buffer, at), v: float32At(buffer, at + 4) };
+function uvAt(values: Readonly<Span<float64>>, i: int32): Uv {
+	const at: int32 = i * 2;
+	return { u: values[at] as float32, v: values[at + 1] as float32 };
 }
 
 function primitivesOf(mesh: JsonValue): Result<JsonValue, GltfError> {
@@ -576,13 +576,14 @@ function materialIndexOf(primitive: JsonValue, materialCount: int32): Result<int
 // glTF 2.0 §3.7.2.1 TANGENT: xyz a unit vector, w the bitangent's sign, +1 or -1.
 function pushTangent(
 	ref tangents: Vec<float32>,
-	buffer: Readonly<Span<uint8>>,
-	offset: int32,
+	values: Readonly<Span<float64>>,
 	i: int32,
 ): Result<int32, GltfError> {
-	const at: int32 = offset + i * 16;
-	const direction: Vec3 = vec3At(buffer, at, 0);
-	const sign: float32 = float32At(buffer, at + 12);
+	const at: int32 = i * 4;
+	const direction: Vec3 = vec3(
+		values[at] as float32, values[at + 1] as float32, values[at + 2] as float32,
+	);
+	const sign: float32 = values[at + 3] as float32;
 	if (!isFiniteVec3(direction)) { return Result.err(GltfError.OutOfRange); }
 	const lengthSquared: float32 =
 		direction.x * direction.x + direction.y * direction.y + direction.z * direction.z;
@@ -653,7 +654,8 @@ function accessorSource(
 	}
 	const shape: JsonValue = fieldOf(accessor, "type");
 	if (shape === null || shape.kind != JsonKind.String
-		|| (shape.strVal != "VEC3" && shape.strVal != "VEC4" && shape.strVal != "MAT4")) {
+		|| (shape.strVal != "VEC2" && shape.strVal != "VEC3" &&
+			shape.strVal != "VEC4" && shape.strVal != "MAT4")) {
 		return Result.err(GltfError.Unsupported);
 	}
 	let normalized: boolean = false;
@@ -689,8 +691,12 @@ function accessorSource(
 		bufferView: try colourOptionalInt(accessor, "bufferView"),
 		byteOffset: try colourOptionalInt(accessor, "byteOffset"),
 		componentType: try colourIntField(accessor, "componentType", -1),
-		shape: shape.strVal == "VEC3" ? GltfAccessorShape.Vec3 :
-			shape.strVal == "VEC4" ? GltfAccessorShape.Vec4 : GltfAccessorShape.Mat4,
+		shape: match (shape.strVal) {
+			"VEC2" => GltfAccessorShape.Vec2,
+			"VEC3" => GltfAccessorShape.Vec3,
+			"VEC4" => GltfAccessorShape.Vec4,
+			_ => GltfAccessorShape.Mat4,
+		},
 		normalized: normalized, count: try colourIntField(accessor, "count", -1),
 		role: role, sparse: sparse,
 	});
@@ -887,6 +893,42 @@ function loadSkinMesh(
 	return Result.ok(skin as (GltfSkinMesh | null));
 }
 
+function floatAttribute(
+	this source: GltfAccessorSource,
+	shape: GltfAccessorShape,
+	count: int32,
+	views: JsonValue,
+	buffer: Readonly<Span<uint8>>,
+	bufferLength: int32,
+	ref buffers: Vec<GltfAccessorBuffer>,
+	ref accessorViews: Vec<GltfAccessorView>,
+): Result<GltfAccessorValues, GltfError> {
+	if (source.componentType != COMPONENT_FLOAT || source.normalized || source.shape != shape) {
+		return Result.err(GltfError.Unsupported);
+	}
+	if (source.count < 1) { return Result.err(GltfError.OutOfRange); }
+	if (source.count != count) { return Result.err(GltfError.CountMismatch); }
+	const dense = source.bufferView;
+	if (dense !== null && (dense < 0 || dense >= countOf(views))) {
+		return Result.err(GltfError.Unsupported);
+	}
+	if (buffers.length == 0) {
+		accessorViews = try colourAccessorViews(views, bufferLength);
+		let bytes: Vec<uint8> = new Array(bufferLength);
+		for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
+		buffers.push({ bytes: move bytes, byteLength: bufferLength });
+	}
+	let decoded = GltfAccessorValues.decode(source, buffers, accessorViews);
+	if (!decoded.ok) {
+		return Result.err(match (decoded.error) {
+			GltfAccessorError.Bounds | GltfAccessorError.NonFinite | GltfAccessorError.Count =>
+				GltfError.OutOfRange,
+			_ => GltfError.Unsupported,
+		});
+	}
+	return Result.ok(move decoded.value);
+}
+
 function loadMesh(
 	primitive: JsonValue,
 	read: MaterialRead,
@@ -906,24 +948,21 @@ function loadMesh(
 	}
 	const attributes: JsonValue = fieldOf(primitive, "attributes");
 	if (isNull(attributes)) { return Result.err(GltfError.Unsupported); }
-	const positions: Result<AccessorView, GltfError> = accessorView(
-		accessors, views, bufferLength,
-		intField(attributes, "POSITION", -1), COMPONENT_FLOAT, "VEC3", 3,
-	);
-	if (!positions.ok) { return Result.err(positions.error); }
-	const normals: Result<AccessorView, GltfError> = accessorView(
-		accessors, views, bufferLength,
-		intField(attributes, "NORMAL", -1), COMPONENT_FLOAT, "VEC3", 3,
-	);
-	if (!normals.ok) { return Result.err(normals.error); }
-	if (normals.value.count != positions.value.count) {
-		return Result.err(GltfError.CountMismatch);
-	}
+	const positionSource = try accessorSource(accessors,
+		try colourIntField(attributes, "POSITION", -1));
+	const count = positionSource.count;
+	if (count < 1) { return Result.err(GltfError.OutOfRange); }
+	const textured: boolean = read.material.texture != NO_TEXTURE_INDEX;
+	let data: MeshData = textured ? MeshData.withUvs() : MeshData.empty();
+	if (!data.hasRoomFor(count)) { return Result.err(GltfError.MeshTooLarge); }
+	const positions = try positionSource.floatAttribute(GltfAccessorShape.Vec3, count,
+		views, buffer, bufferLength, colourBuffers, colourViews);
+	const normalSource = try accessorSource(accessors,
+		try colourIntField(attributes, "NORMAL", -1));
+	const normals = try normalSource.floatAttribute(GltfAccessorShape.Vec3, count,
+		views, buffer, bufferLength, colourBuffers, colourViews);
 	let colors: Vec<GltfLinearRgba> = [];
 	if (hasField(attributes, "COLOR_0")) {
-		if (positions.value.count > MAX_MESH_VERTICES) {
-			return Result.err(GltfError.MeshTooLarge);
-		}
 		const source: GltfAccessorSource = try accessorSource(accessors,
 			try colourIntField(attributes, "COLOR_0", -1));
 		if (source.count < 1) { return Result.err(GltfError.OutOfRange); }
@@ -931,18 +970,7 @@ function loadMesh(
 		if (denseView !== null && (denseView < 0 || denseView >= countOf(views))) {
 			return Result.err(GltfError.Unsupported);
 		}
-		if (colourBuffers.length == 0) {
-			colourViews = try colourAccessorViews(views, bufferLength);
-			let bytes: Vec<uint8> = new Array(bufferLength);
-			for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
-			colourBuffers.push({ bytes: move bytes, byteLength: bufferLength });
-		}
-		const decoded = GltfColour.fromAccessor(
-			source,
-			colourBuffers,
-			colourViews,
-			positions.value.count,
-		);
+		const decoded = GltfColour.fromAccessor(source, colourBuffers, colourViews, count);
 		if (!decoded.ok) {
 			if (decoded.error == GltfColourError.Count) {
 				return Result.err(GltfError.CountMismatch);
@@ -955,48 +983,36 @@ function loadMesh(
 		}
 		colors = decoded.value.values;
 	}
-	const textured: boolean = read.material.texture != NO_TEXTURE_INDEX;
-	let uvView: AccessorView = { offset: 0, count: 0 };
+	let uvValues: Vec<float64> = [];
 	if (read.realUvs) {
 		if (isNull(fieldOf(attributes, "TEXCOORD_0"))) {
 			return Result.err(GltfError.MissingTexCoord);
 		}
-		const decoded: Result<AccessorView, GltfError> = accessorView(
-			accessors, views, bufferLength,
-			intField(attributes, "TEXCOORD_0", -1), COMPONENT_FLOAT, "VEC2", 2,
-		);
-		if (!decoded.ok) { return Result.err(decoded.error); }
-		if (decoded.value.count != positions.value.count) {
-			return Result.err(GltfError.CountMismatch);
-		}
-		uvView = decoded.value;
+		const source = try accessorSource(accessors,
+			try colourIntField(attributes, "TEXCOORD_0", -1));
+		let decoded = try source.floatAttribute(GltfAccessorShape.Vec2, count,
+			views, buffer, bufferLength, colourBuffers, colourViews);
+		uvValues = move decoded.values;
 	}
 	const tangented: boolean = read.material.normalTexture != NO_TEXTURE_INDEX;
-	let tangentView: AccessorView = { offset: 0, count: 0 };
+	let tangentValues: Vec<float64> = [];
 	if (tangented && !isNull(fieldOf(attributes, "TANGENT"))) {
-		const decoded: Result<AccessorView, GltfError> = accessorView(
-			accessors, views, bufferLength,
-			intField(attributes, "TANGENT", -1), COMPONENT_FLOAT, "VEC4", 4,
-		);
-		if (!decoded.ok) { return Result.err(decoded.error); }
-		if (decoded.value.count != positions.value.count) {
-			return Result.err(GltfError.CountMismatch);
-		}
-		tangentView = decoded.value;
+		const source = try accessorSource(accessors,
+			try colourIntField(attributes, "TANGENT", -1));
+		let decoded = try source.floatAttribute(GltfAccessorShape.Vec4, count,
+			views, buffer, bufferLength, colourBuffers, colourViews);
+		tangentValues = move decoded.values;
 	}
-	const count: int32 = positions.value.count;
 	let tangents: Vec<float32> = [];
-	let data: MeshData = textured ? MeshData.withUvs() : MeshData.empty();
-	if (!data.hasRoomFor(count)) { return Result.err(GltfError.MeshTooLarge); }
 	for (let i = 0; i < count; i++) {
-		const position: Vec3 = vec3At(buffer, positions.value.offset, i);
-		const normal: Vec3 = vec3At(buffer, normals.value.offset, i);
+		const position: Vec3 = vec3At(positions.values, i);
+		const normal: Vec3 = vec3At(normals.values, i);
 		const rgba: GltfLinearRgba = colors.length > 0
 			? colors[i] : { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 		if (!isFiniteVec3(position) || !isFiniteVec3(normal)) {
 			return Result.err(GltfError.OutOfRange);
 		}
-		const uv: Uv = read.realUvs ? uvAt(buffer, uvView.offset, i) : { u: 0.0, v: 0.0 };
+		const uv: Uv = read.realUvs ? uvAt(uvValues, i) : { u: 0.0, v: 0.0 };
 		if (uv.u - uv.u != 0.0 || uv.v - uv.v != 0.0) {
 			return Result.err(GltfError.OutOfRange);
 		}
@@ -1018,9 +1034,8 @@ function loadMesh(
 			? addTexturedVertex(data, position, normal, uv, color)
 			: addVertex(data, position, normal, color);
 		if (!added.ok) { return Result.err(GltfError.MeshTooLarge); }
-		if (tangentView.count > 0) {
-			const tangent: Result<int32, GltfError> =
-				pushTangent(tangents, buffer, tangentView.offset, i);
+		if (tangentValues.length > 0) {
+			const tangent: Result<int32, GltfError> = pushTangent(tangents, tangentValues, i);
 			if (!tangent.ok) { return Result.err(tangent.error); }
 		}
 	}
@@ -1059,7 +1074,7 @@ function loadMesh(
 	}
 	if (tangented) {
 		const closed: Result<int32, MeshError> =
-			tangentView.count > 0 ? addGivenTangents(data, tangents) :
+			tangentValues.length > 0 ? addGivenTangents(data, tangents) :
 				addTangentsWithSources(data, tangentSources);
 		if (!closed.ok) { return Result.err(GltfError.Unsupported); }
 	}

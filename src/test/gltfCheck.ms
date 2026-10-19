@@ -5,7 +5,7 @@ import { Mat4 } from "../math/math3d";
 import { loadGltf, GltfError } from "../void3d/gltf";
 import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
 import { Scene3D, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
-import { vertexCount, triangleCount } from "../void3d/meshData";
+import { MeshData, vertexCount, triangleCount } from "../void3d/meshData";
 // The buffer a test builds by hand, in the bit patterns the decoder must see: every float
 // here is 0.0 (0x00000000) or 1.0 (0x3F800000), so the bytes below are the IEEE-754
 // little-endian encodings of those two values and nothing else.
@@ -85,6 +85,136 @@ function nodeOnlyGltf(node: string, root: string = "0"): string {
 		+ "\"bufferViews\":[],\"buffers\":[]}";
 }
 
+
+function interleavedTriangleBuffer(): Vec<uint8> {
+	const source = triangleBuffer();
+	let out: Vec<uint8> = [];
+	for (let i = 0; i < 3; i++) {
+		for (let j = 0; j < 12; j++) { out.push(source[i * 12 + j]); }
+		for (let j = 0; j < 12; j++) { out.push(source[36 + i * 12 + j]); }
+	}
+	for (let i = 72; i < source.length; i++) { out.push(source[i]); }
+	return out;
+}
+
+function interleavedTriangleGltf(): string {
+	return triangleGltf()
+		.replace(`{"bufferView":1,"componentType":5126`,
+			`{"bufferView":0,"byteOffset":12,"componentType":5126`)
+		.replace(`"byteOffset":0,"byteLength":36`,
+			`"byteOffset":0,"byteLength":72,"byteStride":24`);
+}
+
+function sparseTriangleGltf(): string {
+	return triangleGltf()
+		.replace(`{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}`,
+			`{"componentType":5126,"count":3,"type":"VEC3","sparse":{"count":3,` +
+			`"indices":{"bufferView":4,"componentType":5121},"values":{"bufferView":0}}}`)
+		.replace(`{"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"}`,
+			`{"componentType":5126,"count":3,"type":"VEC3","sparse":{"count":3,` +
+			`"indices":{"bufferView":4,"componentType":5121},"values":{"bufferView":1}}}`)
+		.replace(`"byteOffset":108,"byteLength":6}]`,
+			`"byteOffset":108,"byteLength":6},` +
+			`{"buffer":0,"byteOffset":114,"byteLength":3}]`)
+		.replace(`"buffers":[{"byteLength":114}]`, `"buffers":[{"byteLength":117}]`);
+}
+
+function sparseTriangleBuffer(): Vec<uint8> {
+	let out = triangleBuffer();
+	for (let i = 0; i < 3; i++) { out.push(i as uint8); }
+	return out;
+}
+
+function sameTriangle(this actual: MeshData, expected: MeshData): boolean {
+	if (actual.vertices.length != expected.vertices.length ||
+		actual.indices.length != expected.indices.length) { return false; }
+	for (let i = 0; i < actual.vertices.length; i++) {
+		if (actual.vertices[i] != expected.vertices[i]) { return false; }
+	}
+	for (let i = 0; i < actual.indices.length; i++) {
+		if (actual.indices[i] != expected.indices[i]) { return false; }
+	}
+	return actual.hasUvs == expected.hasUvs && actual.hasTangents == expected.hasTangents;
+}
+
+test "loadGltf interleaved and sparse positions and normals match the dense consumer" {
+	const dense = loadGltf(triangleGltf(), triangleBuffer());
+	assert dense.ok;
+	if (!dense.ok) { return; }
+	for (const sparse of [false, true]) {
+		const json = sparse ? sparseTriangleGltf() : interleavedTriangleGltf();
+		const bytes = sparse ? sparseTriangleBuffer() : interleavedTriangleBuffer();
+		const loaded = loadGltf(json, bytes);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		assert loaded.value.meshes[0].sameTriangle(dense.value.meshes[0]);
+		assert loaded.value.nodes[0].name == "tri" && loaded.value.nodes[0].mesh == 0;
+	}
+}
+
+test "loadGltf sparse replacements override an existing position base" {
+	const dense = loadGltf(triangleGltf(), triangleBuffer());
+	assert dense.ok;
+	if (!dense.ok) { return; }
+	const source = triangleBuffer();
+	let bytes = triangleBuffer();
+	for (let i = 12; i < 36; i++) { bytes[i] = 0 as uint8; }
+	bytes.push(1 as uint8);
+	bytes.push(2 as uint8);
+	for (let i = 12; i < 36; i++) { bytes.push(source[i]); }
+	const json = triangleGltf()
+		.replace(`{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}`,
+			`{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3",` +
+			`"sparse":{"count":2,"indices":{"bufferView":4,"componentType":5121},` +
+			`"values":{"bufferView":5}}}`)
+		.replace(`"byteOffset":108,"byteLength":6}]`,
+			`"byteOffset":108,"byteLength":6},` +
+			`{"buffer":0,"byteOffset":114,"byteLength":2},` +
+			`{"buffer":0,"byteOffset":116,"byteLength":24}]`)
+		.replace(`"buffers":[{"byteLength":114}]`, `"buffers":[{"byteLength":140}]`);
+	const loaded = loadGltf(json, bytes);
+	assert loaded.ok;
+	if (loaded.ok) { assert loaded.value.meshes[0].sameTriangle(dense.value.meshes[0]); }
+}
+
+test "loadGltf interleaved attributes still reject invalid stride bounds count and encoding" {
+	const json = interleavedTriangleGltf();
+	const bytes = interleavedTriangleBuffer();
+	for (const bad of [
+		json.replace(`"byteStride":24`, `"byteStride":23`),
+		json.replace(`"byteStride":24`, `"byteStride":8`),
+		json.replace(`"byteOffset":12,`, `"byteOffset":12,"normalized":true,`),
+		json.replace(`"componentType":5126`, `"componentType":5123`),
+	]) {
+		const loaded = loadGltf(bad, bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
+	}
+	const short = loadGltf(json.replace(`"byteLength":72`, `"byteLength":71`), bytes);
+	assert !short.ok;
+	if (!short.ok) { assert short.error == GltfError.OutOfRange; }
+	const count = loadGltf(json.replace(`"byteOffset":12,"componentType":5126,"count":3`,
+		`"byteOffset":12,"componentType":5126,"count":2`), bytes);
+	assert !count.ok;
+	if (!count.ok) { assert count.error == GltfError.CountMismatch; }
+}
+
+test "loadGltf sparse geometry rejects duplicate outside indices and nonfinite replacements" {
+	const json = sparseTriangleGltf();
+	for (const index of [0, 3]) {
+		let bytes = sparseTriangleBuffer();
+		bytes[115] = index as uint8;
+		const loaded = loadGltf(json, bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
+	}
+	let bytes = sparseTriangleBuffer();
+	bytes[2] = 0xc0 as uint8;
+	bytes[3] = 0x7f as uint8;
+	const nonfinite = loadGltf(json, bytes);
+	assert !nonfinite.ok;
+	if (!nonfinite.ok) { assert nonfinite.error == GltfError.OutOfRange; }
+}
 
 test "loadGltf decodes a hand-built triangle into one indexed MeshData" {
 	const loaded = loadGltf(triangleGltf(), triangleBuffer());

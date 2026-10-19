@@ -3747,6 +3747,23 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF interleaved and sparse geometry, CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` reads input offsets within a vertex
+stride. Bevy `157e1ce6` `bevy_gltf/src/loader/mod.rs` calls `convert_attribute`, whose
+`vertex_attributes.rs` `BufferAccessor.iter` delegates accessor layout to the glTF iterator.
+Void reuses `gltfAccessor.ms` `GltfAccessorValues.decode` in `gltf.ms` `loadMesh`; float
+attribute format checks, material groups, Mikk splits and canonical skin source IDs remain.
+This loosens the dense-only geometry gate, not the supported semantic/format contract.
+
+On CPU source tree `9a0dfa866990a81bd1fad81b6985fa030f96ec57`, BUILD `8a9fc02dd`,
+`msc test src/test/gltfCheck.ms` reports **313 passed (313)** and
+`msc test src/test/gltfMaterialCheck.ms` reports **333 passed (333)**. The same tests on old
+`3f9d01d8` report 309/4 and 330/3 pass/fail: seven intended assertions, no compile failures.
+Dense/interleaved/sparse geometry, sparse base overrides, malformed inputs, supplied/generated
+UV tangents and dense/strided skin source IDs at both index widths are pinned. Logs:
+`out/m5Accessor{Check,Material}Reboot1Green20261020.log`. No new GPU/web/device verdict.
+
 ### glTF skinning, integration and historical CPU foundation
 
 **Current integration:** tree `f955fd7c2fe6311614b38bba4c61bbd95388943c`

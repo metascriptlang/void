@@ -716,6 +716,89 @@ const NORMAL_MAP: string = "\"normalTexture\":{\"index\":0}";
 const NORMAL_BASE: string = "{" + NORMAL_MAP + TEXTURED_BASE + "}";
 const WITH_TANGENTS: string = ALL_ATTRIBUTES + ",\"TANGENT\":6";
 
+function mappedAttributeBuffer(sparse: boolean): Vec<uint8> {
+	let out = quadBuffer();
+	if (sparse) {
+		for (let i = 0; i < 4; i++) { out.push(i as uint8); }
+	} else {
+		const source = quadBuffer();
+		for (let i = 0; i < 4; i++) {
+			for (let j = 0; j < 8; j++) { out.push(source[96 + i * 8 + j]); }
+			for (let j = 0; j < 16; j++) { out.push(source[tangentOffset() + i * 16 + j]); }
+		}
+	}
+	return out;
+}
+
+function mappedAttributeDocument(sparse: boolean): string {
+	const end = tangentOffset() + 64;
+	const extra = sparse ? 4 : 96;
+	const view = `{"buffer":0,"byteOffset":${end},"byteLength":${extra}` +
+		(sparse ? "}" : `,"byteStride":24}`);
+	const uv = sparse
+		? `{"componentType":5126,"count":4,"type":"VEC2","sparse":{"count":4,` +
+			`"indices":{"bufferView":8,"componentType":5121},"values":{"bufferView":2}}}`
+		: `{"bufferView":8,"componentType":5126,"count":4,"type":"VEC2"}`;
+	const tangent = sparse
+		? `{"componentType":5126,"count":4,"type":"VEC4","sparse":{"count":4,` +
+			`"indices":{"bufferView":8,"componentType":5121},"values":{"bufferView":7}}}`
+		: `{"bufferView":8,"byteOffset":8,"componentType":5126,"count":4,"type":"VEC4"}`;
+	return documentOf({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE })
+		.replace(`{"bufferView":2,"componentType":5126,"count":4,"type":"VEC2"}`, uv)
+		.replace(`{"bufferView":7,"componentType":5126,"count":4,"type":"VEC4"}`, tangent)
+		.replace(`"byteLength":64}]`, `"byteLength":64},${view}]`)
+		.replace(`"buffers":[{"byteLength":${end}}]`,
+			`"buffers":[{"byteLength":${end + extra}}]`);
+}
+
+test "glTF interleaved and sparse UVs preserve supplied and Mikk-generated tangent meshes" {
+	for (const supplied of [false, true]) {
+		const dense = loaded({ ...texturedParts(),
+			attributes: supplied ? WITH_TANGENTS : ALL_ATTRIBUTES, materials: NORMAL_BASE });
+		assert dense.ok;
+		if (!dense.ok) { continue; }
+		for (const sparse of [false, true]) {
+			const document = mappedAttributeDocument(sparse);
+			const json = supplied ? document : document.replace(`,"TANGENT":6`, "");
+			const read = loadGltf(json, mappedAttributeBuffer(sparse));
+			assert read.ok;
+			if (!read.ok) { continue; }
+			const actual = read.value.meshes[0];
+			const expected = dense.value.meshes[0];
+			assert actual.hasUvs && actual.hasTangents && actual.stride() == expected.stride();
+			assert actual.vertices.length == expected.vertices.length;
+			assert actual.indexCount() == expected.indexCount();
+			for (let i = 0; i < actual.vertices.length; i++) {
+				assert actual.vertices[i] == expected.vertices[i];
+			}
+			for (let i = 0; i < actual.indexCount(); i++) {
+				assert actual.indexAt(i) == expected.indexAt(i);
+			}
+			assert read.value.materials[0].normalTexture == dense.value.materials[0].normalTexture;
+		}
+	}
+}
+
+test "glTF non-dense tangent attributes retain their sign and encoding validation" {
+	const json = mappedAttributeDocument(false);
+	let bytes = mappedAttributeBuffer(false);
+	const sign = tangentOffset() + 64 + 20;
+	for (let i = 0; i < 4; i++) { bytes[sign + i] = 0 as uint8; }
+	const badSign = loadGltf(json, bytes);
+	assert !badSign.ok;
+	if (!badSign.ok) { assert badSign.error == GltfError.Unsupported; }
+	const integer = json.replace(`"byteOffset":8,"componentType":5126`,
+		`"byteOffset":8,"componentType":5123`);
+	const badEncoding = loadGltf(integer, mappedAttributeBuffer(false));
+	assert !badEncoding.ok;
+	if (!badEncoding.ok) { assert badEncoding.error == GltfError.Unsupported; }
+	const short = json.replace(`"byteOffset":8,"componentType":5126,"count":4`,
+		`"byteOffset":8,"componentType":5126,"count":3`);
+	const badCount = loadGltf(short, mappedAttributeBuffer(false));
+	assert !badCount.ok;
+	if (!badCount.ok) { assert badCount.error == GltfError.CountMismatch; }
+}
+
 test "a normal map takes the file's TANGENT as it comes, with its sign" {
 	const read = loaded({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE });
 	assert read.ok;
@@ -969,10 +1052,19 @@ test "extensionsRequired may name KHR_texture_transform, and nothing else" {
 	if (!unknown.ok) { assert unknown.error == GltfError.Unsupported; }
 }
 
-test "generated tangent splits preserve skin source ids across both index widths" {
-	for (const index32 of [false, true]) {
+test "tangent splits preserve skin source ids from dense and strided UVs at both index widths" {
+	for (const variant of [0, 1, 2, 3]) {
+		const index32 = variant % 2 == 1;
+		const interleaved = variant >= 2;
 		let bytes = quadBuffer();
 		bytes[123] = 0x40 as uint8;
+		const uvOffset = bytes.length as int32;
+		if (interleaved) {
+			for (let vertex = 0; vertex < 4; vertex++) {
+				for (let j = 0; j < 8; j++) { bytes.push(bytes[96 + vertex * 8 + j]); }
+				pushLe32(bytes, 0x7fc00000 as uint32);
+			}
+		}
 		while (bytes.length % 4 != 0) { bytes.push(0); }
 		const joints: int32 = bytes.length as int32;
 		for (let vertex = 0; vertex < 4; vertex++) {
@@ -990,6 +1082,10 @@ test "generated tangent splits preserve skin source ids across both index widths
 			...texturedParts(), materials: NORMAL_BASE,
 			attributes: ALL_ATTRIBUTES + ",\"JOINTS_0\":7,\"WEIGHTS_0\":8",
 		});
+		if (interleaved) {
+			document = document.replace(`"byteOffset":96,"byteLength":32`,
+				`"byteOffset":${uvOffset},"byteLength":48,"byteStride":12`);
+		}
 		document = document.replaceAll("\"nodes\":[{\"name\":\"quad\",\"mesh\":0}],",
 			"\"nodes\":[{\"name\":\"quad\",\"mesh\":0,\"skin\":0,\"children\":[1,2,3,4]}," +
 			"{},{},{},{}],\"skins\":[{\"joints\":[1,2,3,4]}],");
