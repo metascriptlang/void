@@ -1,5 +1,13 @@
 import { Texture } from "../gpu/texture";
-import { DEFAULT_FONT, addFallbackFont } from "../void2d/font";
+import { exists } from "std/fs";
+import { env } from "std/process";
+import {
+	DEFAULT_FONT,
+	FontId,
+	addFont,
+	addFallbackFont,
+	fallbackFacesLoaded,
+} from "../void2d/font";
 // void2d frame budget (docs/TESTING.md "T4"): a UI scene of 10 000 cards, each a Rect with
 // a Label child — box/text alternation in tree order — and a sprite-only scene of the same
 // size. tests/bench/bench{Ui,Sprites}.ms are the entries; each prints one machine-readable
@@ -23,6 +31,7 @@ import {
 	recordedUiInstanceCount,
 	recordedSpriteInstanceCount,
 	droppedFrames,
+	glyphUploadBytes,
 } from "../void2d/draw";
 import { renderTargetsAlive } from "../void2d/render";
 import { glyphAtlas, glyphRasterizations } from "../void2d/labelText";
@@ -33,6 +42,7 @@ import { Color, rgba, tile } from "../void2d/types";
 import { Align, TextRun, calcTextWidth, describe } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
+import { percentileOf } from "../void2d/profiler";
 when (voidProfiler) {
 	import { frameStats, profilerCollect } from "../void2d/frameMarks";
 	import { ringCount, ringPercentile } from "../void2d/profiler";
@@ -50,6 +60,7 @@ export enum BenchKind {
 	TextEmoji,
 	TextSdf,
 	TextOutline,
+	Terminal,
 }
 
 const COLUMNS: int32 = 100;
@@ -80,11 +91,108 @@ const EDITOR_BODY: string = "total = compute(alpha, beta) + table[index] * 3; ";
 const EDITOR_COMMENT: string = "// line of an editor buffer";
 
 function editorRun(len: int32, color: Color): TextRun {
+	return fontRun(len, DEFAULT_FONT, color);
+}
+
+function fontRun(len: int32, font: FontId, color: Color): TextRun {
 	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	return {
-		len: len, font: DEFAULT_FONT, color: color, background: clear, underline: clear,
+		len: len, font: font, color: color, background: clear, underline: clear,
 		wavy: false, strikethrough: clear,
 	};
+}
+
+const TERMINAL_ROWS: int32 = 50;
+const TERMINAL_COLUMNS: int32 = 120;
+const TERMINAL_CHANGED_ROWS: int32 = 3;
+const TERMINAL_CELL_W: float32 = 7.2;
+const TERMINAL_ROW_H: float32 = 14.0;
+const TERMINAL_FONT_SIZE: float32 = 12.0;
+const TERMINAL_FACE: string = "tests/fonts/cascadiaSubset.ttf";
+const TERMINAL_PROMPT: string = "user@haro:~/src$ ";
+const TERMINAL_TAIL: string = " [ok 100%]";
+const TERMINAL_BODY: string =
+	"cc -O2 -c src/node.c -o out/obj/node.o; cc -O2 -c src/draw.c -o out/obj/draw.o; ";
+const TERMINAL_CJK: string = "\u{4E2D}\u{6587}";
+
+let terminalFont: FontId = DEFAULT_FONT;
+let terminalGrid: NodeRef | null = null;
+let terminalSerial: int32 = 0;
+let terminalNextRow: int32 = 0;
+let terminalFrameNs: number[] = [];
+let terminalLookups: int32 = 0;
+let terminalLookupsMax: int32 = 0;
+let terminalUploadBytes: int32 = 0;
+let terminalUploadBytesMax: int32 = 0;
+let terminalGlyphUploadBytes: int32 = 0;
+let terminalFallbackMs: float64 = 0.0;
+let terminalFallbackLookups: int32 = 0;
+
+function terminalCommand(serial: int32): string {
+	return `build ${100000 + serial % 900000} `;
+}
+
+function terminalBodyLength(): int32 {
+	return TERMINAL_COLUMNS - (TERMINAL_PROMPT.length as int32) -
+		(terminalCommand(0).length as int32) - (TERMINAL_TAIL.length as int32);
+}
+
+function terminalRow(serial: int32, cjk: boolean): string {
+	const shift: int32 = serial % (TERMINAL_BODY.length as int32);
+	const turned: string = TERMINAL_BODY.slice(shift) + TERMINAL_BODY.slice(0, shift);
+	let body: string = turned.slice(0, terminalBodyLength());
+	if (cjk) { body = TERMINAL_CJK + body.slice(TERMINAL_CJK.length as int32); }
+	return TERMINAL_PROMPT + terminalCommand(serial) + body + TERMINAL_TAIL;
+}
+
+function terminalRuns(): TextRun[] {
+	return [
+		fontRun(TERMINAL_PROMPT.length as int32, terminalFont, rgba(0.45, 0.85, 0.45, 1.0)),
+		fontRun(terminalCommand(0).length as int32, terminalFont, rgba(0.95, 0.80, 0.35, 1.0)),
+		fontRun(terminalBodyLength(), terminalFont, rgba(0.86, 0.90, 0.98, 1.0)),
+		fontRun(TERMINAL_TAIL.length as int32, terminalFont, rgba(0.40, 0.65, 1.0, 1.0)),
+	];
+}
+
+// Haro's host path for a changed row (neon src/platform/void/host.ms): setText, then setTextRuns.
+function terminalWrite(label: NodeRef, cjk: boolean): void {
+	terminalSerial = terminalSerial + 1;
+	label.setText(terminalRow(terminalSerial, cjk));
+	label.setTextRuns(terminalRuns());
+}
+
+function terminalStep(cjk: boolean): void {
+	if (terminalGrid === null) { return; }
+	for (let k: int32 = 0; k < TERMINAL_CHANGED_ROWS; k++) {
+		terminalWrite(terminalGrid.getChildAt(terminalNextRow), cjk && k == 0);
+		terminalNextRow = (terminalNextRow + 1) % TERMINAL_ROWS;
+	}
+}
+
+function terminalScene(s: Scene2D): NodeRef {
+	const fallback: string = `${env.get("WINDIR")}/Fonts/msyh.ttc`;
+	if (!exists(fallback)) {
+		console.log(`bench2d: SKIP terminal: ${fallback} is missing, and the scene measures ` +
+			"Haro's CJK fallback face (Microsoft YaHei) loading mid-run");
+		process.exit(0);
+	}
+	const added = addFont(TERMINAL_FACE);
+	if (!added.ok) {
+		console.log(`bench2d: the terminal face ${TERMINAL_FACE} did not load`);
+		unreachable;
+	}
+	terminalFont = added.value;
+	addFallbackFont(terminalFont, fallback);
+	const grid = s.group().at(8.0, 8.0);
+	for (let row: int32 = 0; row < TERMINAL_ROWS; row++) {
+		const label = s.label("", TERMINAL_FONT_SIZE, rgba(1.0, 1.0, 1.0, 1.0))
+			.at(0.0, (row as float32) * TERMINAL_ROW_H);
+		label.setFont(terminalFont);
+		label.setForceWidth(TERMINAL_CELL_W);
+		terminalWrite(label, false);
+		grid.addChild(label);
+	}
+	return grid;
 }
 
 // 200 lines of 80 columns, three syntax colours per line, a selection over 12 rows and a
@@ -210,6 +318,11 @@ export function benchInit(kind: BenchKind): void {
 		s.add(block);
 		codeBlock = block;
 		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
+	} else if (kind === BenchKind.Terminal) {
+		benchName = "terminal";
+		const grid = terminalScene(s);
+		s.add(grid);
+		terminalGrid = grid;
 	} else {
 		benchName = "sprites";
 		const pixels = loadImageSync("assets/test.png", 4);
@@ -239,6 +352,9 @@ export function benchInit(kind: BenchKind): void {
 		kind === BenchKind.TextSdf || kind === BenchKind.TextOutline) {
 		nodeCount = CODE_LINES + 1;
 		retainedNodeCount = CODE_LINES;
+	} else if (kind === BenchKind.Terminal) {
+		nodeCount = TERMINAL_ROWS + 1;
+		retainedNodeCount = TERMINAL_ROWS;
 	} else {
 		nodeCount = ROWS * COLUMNS;
 		retainedNodeCount = 0;
@@ -309,6 +425,27 @@ function report(): void {
 		console.log(`${benchName}.lineWidth ${first.textWidth()}`);
 		console.log(`${benchName}.lineHeight ${first.textHeight()}`);
 	}
+	if (terminalGrid !== null) { reportTerminal(); }
+}
+
+function reportTerminal(): void {
+	const frames: float64 = MEASURED_FRAMES as float64;
+	terminalFrameNs.sort();
+	const p50: float64 = milliseconds(percentileOf(terminalFrameNs, 50));
+	const p99: float64 = milliseconds(percentileOf(terminalFrameNs, 99));
+	const max: float64 = milliseconds(percentileOf(terminalFrameNs, 100));
+	console.log(`${benchName}.rowsPerFrame ${TERMINAL_CHANGED_ROWS}`);
+	console.log(`${benchName}.frameP50.ms ${p50}`);
+	console.log(`${benchName}.frameP99.ms ${p99}`);
+	console.log(`${benchName}.frameMax.ms ${max}`);
+	console.log(`${benchName}.glyphLookupsPerFrame ${(terminalLookups as float64) / frames}`);
+	console.log(`${benchName}.glyphLookupsMaxFrame ${terminalLookupsMax}`);
+	console.log(`${benchName}.uploadBytesPerFrame ${(terminalUploadBytes as float64) / frames}`);
+	console.log(`${benchName}.uploadBytesMaxFrame ${terminalUploadBytesMax}`);
+	console.log(`${benchName}.glyphUploadBytesMeasured ${terminalGlyphUploadBytes}`);
+	console.log(`${benchName}.fallbackFacesLoaded ${fallbackFacesLoaded()}`);
+	console.log(`${benchName}.fallbackFrame.ms ${terminalFallbackMs}`);
+	console.log(`${benchName}.fallbackFrameGlyphLookups ${terminalFallbackLookups}`);
 }
 
 function sdfGenerations(): int32 {
@@ -403,15 +540,35 @@ export function benchFrame(): void {
 		colourBeforeMeasure = glyphAtlas.colourRasterizations;
 		sdfBeforeMeasure = sdfGenerations();
 		outlineBeforeMeasure = glyphAtlas.outlineRasterizations;
+		terminalStep(false);
 		return;
 	}
 	benchScene.tick(FRAME_DT);
+	const fallbackFrame: boolean = frameIndex == warmupFrames + MEASURED_FRAMES / 2;
+	const lookupsBefore: uint32 = glyphLookups();
+	const frameStarted: float64 = performance.now();
+	terminalStep(fallbackFrame);
 	if (scrollArea !== null) {
 		(scrollArea as NodeRef).scrollTo(0.0, ((frameIndex * 37) % 2600) as float32);
 	}
 	const started: float64 = performance.now();
 	benchScene.present();
-	presentMs = presentMs + (performance.now() - started);
+	const took: float64 = performance.now() - started;
+	presentMs = presentMs + took;
+	if (terminalGrid !== null) {
+		const lookups: int32 = (glyphLookups() - lookupsBefore) as int32;
+		const frameMs: float64 = performance.now() - frameStarted;
+		terminalFrameNs.push(frameMs * 1000000.0);
+		terminalLookups = terminalLookups + lookups;
+		if (lookups > terminalLookupsMax) { terminalLookupsMax = lookups; }
+		terminalUploadBytes = terminalUploadBytes + uploadBytes();
+		if (uploadBytes() > terminalUploadBytesMax) { terminalUploadBytesMax = uploadBytes(); }
+		terminalGlyphUploadBytes = terminalGlyphUploadBytes + glyphUploadBytes();
+		if (fallbackFrame) {
+			terminalFallbackMs = frameMs;
+			terminalFallbackLookups = lookups;
+		}
+	}
 	if (frameIndex == warmupFrames + MEASURED_FRAMES) {
 		report();
 		process.exit(0);
