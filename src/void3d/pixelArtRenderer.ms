@@ -165,6 +165,17 @@ export struct PixelArtLook {
 	saturation: float32;
 }
 
+function hasValidRange(this fog: Fog): boolean {
+	return Number.isFinite(fog.start) && Number.isFinite(fog.end) && fog.start < fog.end;
+}
+
+function requireFogRange(this look: PixelArtLook, call: string): void {
+	if (!look.fog.hasValidRange()) {
+		console.log(`void3d: ${call} requires finite fog.start < fog.end`);
+		unreachable;
+	}
+}
+
 export enum PixelArtError {
 	UniformPoolFull,
 	PaletteLevels,
@@ -191,6 +202,7 @@ export enum PixelArtError {
 	TranslucentDepthWrite,
 	// As ForwardError.HdrUnsupported.
 	HdrUnsupported,
+	FogRange,
 }
 
 export interface PixelArtRenderer {
@@ -323,6 +335,7 @@ export function writePostParams(
 	zeroToOne: boolean,
 	out: Span<float32>,
 ): void {
+	look.requireFogRange("writePostParams");
 	out[0] = look.outline.depthThreshold;
 	out[1] = look.outline.normalThreshold;
 	out[2] = look.outline.depthShade;
@@ -410,6 +423,7 @@ function make(
 	look: PixelArtLook,
 	hdr: boolean,
 ): Result<PixelArtRenderer, PixelArtError> {
+	if (!look.fog.hasValidRange()) { return Result.err(PixelArtError.FogRange); }
 	let blocks: Vec<int32> = [
 		VERTEX_UNIFORM_LENGTH,
 		LIGHT_UNIFORM_LENGTH,
@@ -497,6 +511,7 @@ function sceneColor(renderer: PixelArtRenderer, load: LoadAction, clear: Vec4): 
 
 export function setLook(renderer: PixelArtRenderer, look: PixelArtLook): void {
 	if (renderer.closed) { stopOnClosed("setLook"); }
+	look.requireFogRange("setLook");
 	renderer.look = look;
 	renderer.sceneColors[0] = sceneColor(renderer, LoadAction.Clear, look.background);
 	renderer.core.changed = true;
@@ -759,6 +774,7 @@ export function prepareFrame(
 ): Result<int32, PixelArtError> {
 	if (renderer.closed) { stopOnClosed("prepareFrame"); }
 	renderer.core.openPrepare();
+	if (!renderer.look.fog.hasValidRange()) { return Result.err(PixelArtError.FogRange); }
 	const context: DrawContext = renderer.core.context;
 	const screens: boolean =
 		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);

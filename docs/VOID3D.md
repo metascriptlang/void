@@ -3747,6 +3747,24 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### Pixel-art Fog range refusal
+
+A disabled fog still reaches the post shader's `smoothstep`; strength zero does not define
+invalid edges. Heaps `b9aa6dcb` has no tracked fog implementation under `h3d`/`hxd`.
+Bevy `157e1ce6` `bevy_pbr/src/render/fog.wesl` `linear_fog` uses world-distance linear falloff,
+not this preset's clip-depth curve. The look stays unchanged; CPU preflight requires finite
+`start < end`, without clamping, auto-repair or an arbitrary minimum width.
+`pixelArtRenderer.ms` returns `FogRange` from creation/frame preparation; its void setter and
+parameter writer stop by name before writes. Fog-off callers use a valid range and strength zero.
+
+CPU source tree `fe826d082151b894ba89ce175fa286e196b42c07`, BUILD `8a9fc02dd`:
+`msc test src/test/rendererCheck.ms` reports **329 passed (329)**, against the missing guard's
+327 pass/2 intended failures. Creation (LDR/HDR), direct mutation, disabled post, finite/order
+failures and valid strength-zero retry are pinned. Building `tests/aborts3d/cases/pixelArtCases.ms`
+and running its eight `fog.*` cases gives exit1 with the expected setter/writer diagnostic.
+Logs: `out/m5FogRange{Red,Green,CheckGreen,BuildGreen}20261020.log`. New GPU/web acceptance waits
+for the combined gate/land window; the 21 fog-off fixture edits are not a fresh pixel verdict.
+
 ### glTF interleaved and sparse geometry, CPU acceptance
 
 Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` reads input offsets within a vertex

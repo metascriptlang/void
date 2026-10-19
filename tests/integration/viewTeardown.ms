@@ -145,7 +145,7 @@ function pixelArtOf(context: DrawContext): PixelArtRenderer {
 			depthShade: 0.55,
 			normalShade: 1.35,
 		},
-		fog: { start: 1.0, end: 1.0, strength: 0.0, color: BACKGROUND },
+		fog: { start: 0.0, end: 1.0, strength: 0.0, color: BACKGROUND },
 		saturation: 0.0,
 	};
 	let made: Result<PixelArtRenderer, PixelArtError> =
