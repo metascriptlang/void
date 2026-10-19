@@ -243,7 +243,14 @@ Most of the gating half is assertable with no GPU at all, in T1. That is the poi
 
 **The frame profiler's rows (P6).** A bench entry built with `-d:voidProfiler` also prints `<scene>.profileFrames` and, in milliseconds, `profileDrawP50.ms`, `profileDrawP99.ms`, `profileDrawMax.ms`, `profileDirtyP50.ms` and `profileDirtyMax.ms` (CPU draw time from the first bracket to commit, and first invalidation to present end). `tests/bench/check.ms` reports them and gates none. The gate builds the five entries a second time as `out/bench<Scene>Profiler.exe` with the overlay left hidden and runs `BENCH_SUFFIX=Profiler out/benchCheck.exe` against the same baseline: a module that is compiled in changes no counter. The overhead in milliseconds is `AB_SUFFIX_B=Profiler sh scripts/bench-ab.sh . . 6 Ui`, the plain and the flagged binary of one tree as the two arms.
 
-**wasm.** `scripts/wasmModuleDelta.sh` records the object bytes of the colour, SDF and shaper modules in `tests/bench/wasm.json`, and `scripts/experiment-modulesWeb.sh` builds an entry that links no Yoga off and on per module (run owed). `scripts/build-web.sh` already builds both backends; the gate adds a size row per backend and per module against a committed budget, which is how guardrail 6 ("text is where the weight goes, so it is modular") stops being an intention.
+**wasm.** Keep object growth separate from linked entry size. `scripts/wasmModuleDelta.sh`
+uses the pre-link code-plus-data records in `tests/bench/wasm.json` (`tool` and `meaning`),
+not final wasm bytes. `scripts/experiment-modulesWeb.sh` isolates text cost with its default
+`tests/experiments/modulesWeb.ms` entry, avoiding `node.ms` and its Yoga dependency; the demo
+entry `src/examples/mainSokol2d.ms` includes that retained-scene path. Their linked budgets
+and measured conditions are in "Linked wasm text modules" below and `tests/bench/wasmBudget.txt`.
+The experiment enforces artifact sizes; the native gate validates those declarations, not a
+fresh link. Neither replaces the object-growth checks.
 
 ## T5 — judgement
 
@@ -315,7 +322,8 @@ number typed into the script.
    `N px differ, max delta M, bbox` and a pass rate.
 5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
-   reported with a warn threshold. Plus a SKIP for the wasm budget, which P6 owns.
+   reported with a warn threshold. Object-growth checks and linked wasm budget declarations
+   also gate; declaration validation does not re-link the measured entries.
 7. Guardrail 9: the D3D11 conformance line, then one named SKIP per backend that has no
    readback. With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
 8. The tier table, the PENDING count, and the SKIP and FAIL totals.
@@ -547,6 +555,6 @@ No browser/GPU was run and no renderer policy changed.
 | T1 | the snapshots in `tests/displayList/` plus no-GPU reachability and invariant assertions |
 | T2 | the scenes of `tests/golden/table.ms`, D3D11, byte-identical, zero budgets; the per-backend numbers are in "Guardrail 9" |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
-| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene, plus `textEmoji`'s colour pages, bytes and rasterizations held to the bounds in `baseline.json` `colourBounds` (native measurements above), plus `textSdf`'s SDF pages, bytes, generations and coverage rasterizations held to `sdfBounds` (native measurements above); the `allocation` stage over the emitted C (`scripts/allocation.awk`), reading the functions it names and every void2d function they call, each held to its caller's rule unless a list names it, and naming the call chain of a failure; it does not see stream growth, allocation inside C, or a function no bench reaches; `present` and `firstPaint` milliseconds reported; wasm budget SKIPs |
+| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene, plus `textEmoji`'s colour pages, bytes and rasterizations held to the bounds in `baseline.json` `colourBounds` (native measurements above), plus `textSdf`'s SDF pages, bytes, generations and coverage rasterizations held to `sdfBounds` (native measurements above); the `allocation` stage over the emitted C (`scripts/allocation.awk`), reading the functions it names and every void2d function they call, each held to its caller's rule unless a list names it, and naming the call chain of a failure; it does not see stream growth, allocation inside C, or a function no bench reaches; `present` and `firstPaint` milliseconds reported; wasm object growth and linked-budget declarations checked, not fresh links (measured conditions above) |
 | T5 | human only |
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".
