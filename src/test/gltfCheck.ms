@@ -1,7 +1,7 @@
 import { approx } from "./helpers";
 import { contextOf } from "./drawHelpers";
 import { DrawContext, MeshId, releaseMesh } from "../void3d/draw";
-import { Mat4 } from "../math/math3d";
+import { Mat4, composeTransform, writeTo } from "../math/math3d";
 import { loadGltf, GltfError } from "../void3d/gltf";
 import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
 import { Scene3D, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
@@ -432,11 +432,75 @@ test "malformed TRS, cyclic nodes and accessors past their buffer view fail loud
 	assert !misaligned.ok;
 }
 
+test "glTF matrix nodes round trip identity, rotations and nonuniform scales" {
+	const matrices: Vec<Vec<float32>> = [
+		[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+		[0, 2, 0, 0, -3, 0, 0, 0, 0, 0, 4, 0, 5, 6, 7, 1],
+		[0.72, 1.6, -0.96, 0, -1.44, 1.8, 1.92, 0, 3.2, 0, 2.4, 0, 5, 6, 7, 1],
+		[2, 0, 0, 0, 0, -3, 0, 0, 0, 0, -4, 0, 5, 6, 7, 1],
+		[-2, 0, 0, 0, 0, 3, 0, 0, 0, 0, -4, 0, 5, 6, 7, 1],
+		[-2, 0, 0, 0, 0, -3, 0, 0, 0, 0, 4, 0, 5, 6, 7, 1],
+		[1e20, 0, 0, 0, 0, 1e-10, 0, 0, 0, 0, 1, 0, 5, 6, 7, 1],
+	];
+	for (const values of matrices) {
+		let text: string = "";
+		for (let i = 0; i < 16; i++) {
+			if (i != 0) { text += ","; }
+			text += values[i].toString();
+		}
+		const loaded = loadGltf(nodeOnlyGltf("{\"matrix\":[" + text + "]}"), []);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		const local = loaded.value.nodes[0].local;
+		let actual: Vec<float32> = new Array(16);
+		composeTransform(local.position, local.rotation, local.scale).writeTo(actual, 0);
+		for (let i = 0; i < 16; i++) {
+			const tolerance: float32 = (Math.abs(values[i]) * 0.00001) as float32;
+			assert Math.abs(actual[i] - values[i]) <= (values[i] == 0 ? 0.00001 : tolerance);
+		}
+	}
+}
+
+test "glTF matrix parent reaches retained child world transform" {
+	const json = "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"matrix\":[0,2,0,0,-3,0,0,0,0,0,4,0,5,6,7,1],\"children\":[1]},"
+		+ "{\"name\":\"child\",\"translation\":[1,2,3]}],\"meshes\":[],\"buffers\":[]}";
+	const loaded = loadGltf(json, []);
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	const scene = Scene3D.create(contextOf(0, 0));
+	assert addGltfNodes(scene, scene.rootId(), loaded.value, []).ok;
+	assert syncWorld(scene) == 3;
+	const child = scene.findByName(scene.rootId(), "child");
+	assert child.ok;
+	if (!child.ok) { return; }
+	const world = scene.worldOf(child.value);
+	assert world.ok;
+	if (!world.ok) { return; }
+	assert approx(world.value.m41, -1.0);
+	assert approx(world.value.m42, 8.0);
+	assert approx(world.value.m43, 19.0);
+}
+
+test "glTF matrix nodes refuse nonaffine shear singular mirrored and mixed TRS input" {
+	const invalid: Vec<string> = [
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,2]}",
+		"{\"matrix\":[1,0,0,0.1,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1,0.01,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1,0.0001,0,0,0,1,0,0,0,0,1,0,1e20,0,0,1]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1]}",
+		"{\"matrix\":[-1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1e-4,0,0,0,0,1e-4,0,0,0,0,1e-4,0,0,0,0,1]}",
+		"{\"matrix\":[1e999,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"translation\":[0,0,0]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"rotation\":[0,0,0,1]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"scale\":[1,1,1]}",
+	];
+	for (const node of invalid) { assert !loadGltf(nodeOnlyGltf(node), []).ok; }
+}
+
 test "unsupported transforms, deformation and non-indexed geometry fail loudly" {
-	const matrixNode = loadGltf(
-		nodeOnlyGltf("{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}"), [],
-	);
-	assert !matrixNode.ok;
 	const skinned = loadGltf(nodeOnlyGltf("{\"skin\":0}"), []);
 	assert !skinned.ok;
 	const zeroScale = loadGltf(nodeOnlyGltf("{\"scale\":[1,1,0]}"), []);

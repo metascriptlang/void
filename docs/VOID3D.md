@@ -3747,6 +3747,26 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF matrix node CPU acceptance
+
+`gltf.ms` `matrixTransform` follows Heaps `b9aa6dcb` `Matrix.getScale/decomposeMatrix`
+and Bevy `157e1ce6` `gltf_ext/scene.rs` `node_transform` through
+`Transform.from_matrix` / glam 0.33.9 `to_scale_rotation_translation`.
+It reuses `math3d.ms` `quatOfRotation`, not a second scene transform representation.
+The existing mirrored/singular import refusal remains. glTF's affine/no-shear and matrix/TRS
+exclusion rules apply; TRS animation cannot target a matrix-defined node (glTF `b43260ee`,
+node transformations and animation channel targets).
+Normalized-axis reconstruction permits float32 rounding within 1e-5, not translation-scaled
+shear tolerance. Non-axis rotations pass; shear 1e-4 with translation 1e20 is refused.
+
+CPU source tree `709a2de63db665723ae770ded7210523bd072e51`, BUILD `8a9fc02dd`:
+`msc test src/test/gltfCheck.ms` **316/316**, `gltfAnimationCheck.ms` **307/307**,
+`gltfSkinCheck.ms` **308/308**. The baseline matrix visibility probe had two intended
+assertion reds after equivalent TRS controls passed. Retained parent/child and independent
+skin pose/bounds/pick consumers cover matrix roots/joints, both index and joint widths.
+Logs: `out/m5Matrix{Check,SkinCheck}Final20261020.log`,
+`out/m5MatrixAnimationCheckGreenA20261020.log`. No new matrix GPU/device acceptance yet.
+
 ### Pixel-art Fog range refusal
 
 A disabled fog still reaches the post shader's `smoothstep`; strength zero does not define

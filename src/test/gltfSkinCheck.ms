@@ -188,10 +188,18 @@ test "glTF UINT32 skin indices keep explicit width for byte and short joint acce
 
 test "imported skin Scene rolls back missing bindings and keeps independent world poses" {
 	for (const index32 of [false, true]) {
-		for (const wide of [false, true]) {
-			const loaded = loadGltf(
-				document(wide, true, true, "[2,3]", 2, index32), payload(wide, true, index32),
-			);
+		for (let variant = 0; variant < 4; variant++) {
+			const wide: boolean = variant % 2 != 0;
+			let json = document(wide, true, true, "[2,3]", 2, index32);
+			if (variant >= 2) {
+				json = json.replaceAll('"translation":[3,0,0]',
+					'"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,3,0,0,1]');
+				json = json.replaceAll('"translation":[1,0,0]',
+					'"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,1,0,0,1]');
+				json = json.replaceAll('"translation":[0,2,0]',
+					'"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0,2,0,1]');
+			}
+			const loaded = loadGltf(json, payload(wide, true, index32));
 			assert loaded.ok;
 			if (!loaded.ok) { return; }
 			const source = loaded.value.skinMeshes[0];

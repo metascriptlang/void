@@ -21,12 +21,12 @@ function bytes(): Vec<uint8> {
 }
 
 function document(interpolation: string, node: int32 = 1, path: string = "translation",
-	extraChannel: string = "", cubic: boolean = false): string {
+	extraChannel: string = "", cubic: boolean = false, secondTransform: string = ""): string {
 	const count: int32 = cubic ? 6 : 2;
 	const components: int32 = path == "rotation" ? 4 : 3;
 	const outputBytes: int32 = count * components * 4;
 	return `{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],`
-		+ `"nodes":[{"name":"same","children":[1]},{"name":"same"}],`
+		+ `"nodes":[{"name":"same","children":[1]},{"name":"same"${secondTransform}}],`
 		+ `"buffers":[{"byteLength":${8 + outputBytes}}],`
 		+ `"bufferViews":[{"buffer":0,"byteLength":8},`
 		+ `{"buffer":0,"byteOffset":8,"byteLength":${outputBytes}}],"accessors":[`
@@ -125,6 +125,22 @@ test "glTF rotation output is four components and samples unit SLERP" {
 	if (value.ok) {
 		assert Math.abs(value.value.z - 0.70710678) < 0.00001;
 		assert Math.abs(value.value.w - 0.70710678) < 0.00001;
+	}
+}
+
+test "glTF TRS channels refuse matrix targets but allow other targets beside matrix nodes" {
+	const transform = ',"matrix":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]';
+	for (const path of ["translation", "rotation", "scale"]) {
+		let buffer = bytes();
+		if (path == "rotation") {
+			buffer = [];
+			for (let i = 0; i < 40; i++) { buffer.push(0); }
+			buffer[6] = 128; buffer[7] = 63;
+			buffer[22] = 128; buffer[23] = 63;
+			buffer[38] = 128; buffer[39] = 63;
+		}
+		assert loadGltf(document("", 0, path, "", false, transform), buffer).ok;
+		assert !loadGltf(document("", 1, path, "", false, transform), buffer).ok;
 	}
 }
 

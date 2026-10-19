@@ -12,7 +12,10 @@ import { parseJson } from "std/serialize/json/parser";
 import { jsonNull } from "std/serialize/json/builder";
 import { asString, asNumber, at } from "std/serialize/json/accessors";
 import { JsonKind, JsonValue } from "std/serialize/json/types";
-import { vec3, Vec3, Quat, Mat4, identity, identityQuat, linearToSrgb } from "../math/math3d";
+import {
+	vec3, Vec3, Quat, Mat4, identity, identityQuat, linearToSrgb,
+	quatOfRotation, determinant3x3, toMatrix, writeTo,
+} from "../math/math3d";
 import { decodeImage, imageFormatOf, ImageError, ImageFormat, Pixels } from "../assets/image";
 import { FilterMode, Wrap } from "../gpu/state";
 import { float32At } from "./gltfDecode";
@@ -450,6 +453,9 @@ function loadAnimations(
 				return Result.err(GltfError.BadReference);
 			}
 			const path = try animationPath(fieldOf(target, "path"));
+			if (hasField(arrayOf(root, "nodes").at(node), "matrix")) {
+				return Result.err(GltfError.Unsupported);
+			}
 			for (const previous of clip.tracks) {
 				if (previous.sourceNode == node && previous.curve.path == path) {
 					return Result.err(GltfError.Unsupported);
@@ -1109,11 +1115,67 @@ function numberOf(value: JsonValue): Result<float32, GltfError> {
 	return Result.ok(narrowed);
 }
 
+const MATRIX_ROUNDTRIP_TOLERANCE: float32 = 0.00001;
+
+function matrixTransform(value: JsonValue): Result<GltfTransform, GltfError> {
+	if (value === null || value.kind != JsonKind.Array || countOf(value) != 16) {
+		return Result.err(GltfError.Unsupported);
+	}
+	let values: Vec<float32> = [];
+	for (let i = 0; i < 16; i++) { values.push(try numberAt(value, i)); }
+	if (values[3] != 0 || values[7] != 0 || values[11] != 0 || values[15] != 1) {
+		return Result.err(GltfError.Unsupported);
+	}
+	let scales: Vec<float32> = [];
+	for (let axis = 0; axis < 3; axis++) {
+		let squared: float64 = 0;
+		for (let component = 0; component < 3; component++) {
+			const element: float64 = values[axis * 4 + component] as float64;
+			squared += element * element;
+		}
+		const scale: float32 = Math.sqrt(squared) as float32;
+		if (!Number.isFinite(scale) || scale <= 0) {
+			return Result.err(GltfError.Unsupported);
+		}
+		scales.push(scale);
+		for (let component = 0; component < 3; component++) {
+			values[axis * 4 + component] /= scale;
+		}
+	}
+	const scaleProduct: float32 = scales[0] * scales[1] * scales[2];
+	if (!Number.isFinite(scaleProduct) || scaleProduct <= 1e-10) {
+		return Result.err(GltfError.Unsupported);
+	}
+	const axes: Mat4 = {
+		m11: values[0], m12: values[1], m13: values[2], m14: 0,
+		m21: values[4], m22: values[5], m23: values[6], m24: 0,
+		m31: values[8], m32: values[9], m33: values[10], m34: 0,
+		m41: 0, m42: 0, m43: 0, m44: 1,
+	};
+	if (axes.determinant3x3() <= 0) { return Result.err(GltfError.Unsupported); }
+	const rotation = quatOfRotation(axes);
+	let rebuilt: Vec<float32> = new Array(16);
+	rotation.toMatrix().writeTo(rebuilt, 0);
+	for (let i = 0; i < 12; i++) {
+		if (!Number.isFinite(rebuilt[i]) ||
+			Math.abs(rebuilt[i] - values[i]) > MATRIX_ROUNDTRIP_TOLERANCE) {
+			return Result.err(GltfError.Unsupported);
+		}
+	}
+	return Result.ok({
+		position: vec3(values[12], values[13], values[14]),
+		rotation: rotation, scale: vec3(scales[0], scales[1], scales[2]),
+	});
+}
+
 function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 	if (node === null || node.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(node, "matrix")) || !isNull(fieldOf(node, "weights"))) {
+	if (!isNull(fieldOf(node, "weights"))) { return Result.err(GltfError.Unsupported); }
+	const hasMatrix: boolean = hasField(node, "matrix");
+	if (hasMatrix && (hasField(node, "translation") || hasField(node, "rotation") ||
+		hasField(node, "scale"))) {
 		return Result.err(GltfError.Unsupported);
 	}
 	let local: GltfTransform = {
@@ -1121,6 +1183,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 		rotation: identityQuat(),
 		scale: vec3(1.0, 1.0, 1.0),
 	};
+	if (hasMatrix) { local = try matrixTransform(fieldOf(node, "matrix")); }
 	const translation: JsonValue = fieldOf(node, "translation");
 	if (!isNull(translation)) {
 		if (translation.kind != JsonKind.Array || countOf(translation) != 3) {
