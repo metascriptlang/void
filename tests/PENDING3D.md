@@ -92,6 +92,42 @@ The original hashes in `docs/baselines3d.sha256` remain unchanged for these conf
 | `m16anchor_11.ppm` | `c8afb551f907543a3640792f4a855dbb318ea0c8a9ad2063b68ce190576bd820` | `08a9f74b152a9c444673b0fb389ac8499ef7799bfa0b17b006dc7c772fb21d4c` |
 | `m16anchor_16.ppm` | `2413c186a2bd9f05c5d25cda8ffd56f11ac8edf6ecb24ce966393f9a28aa50aa` | `a6e07a48a3f265346fe7d493bb7420fbc695f697b1414ce9a620c647526fd679` |
 
+## Deferred measurement: generic rigid mesh instancing
+
+This is a workload measurement, not a sentinel-enforced divergence row. At source tree
+`69c238654b5f6edb6e45c18f848732a1d1befb8f` (2026-10-20), source allocation counting in
+`src/examples/campfireScene.ms` (`layoutStones`, `buildScene`, `setupDraws`, `placeBakedStone`)
+and `draw.ms` `addMeshData` gives **30 distinct rigid MeshIds, zero same-mesh multi-item runs**:
+26 stones, three logs and one ground. One stone swaps baked frames; it still has one node.
+Distinct IDs cannot become a batch by sorting or culling. Grass/flame/particle instancing
+already exists and is not evidence for generic rigid batching. This count is source-derived,
+not a new GPU capture or an instrumented runtime pass-list measurement.
+
+Read-only GLB JSON traversal of Crown's three private alternative character recipes gives
+one mesh-bearing node per recipe, each skinned with 18 joints. Their primitive counts are
+12, 11 and 12, with 12, 11 and 12 materials respectively: **zero rigid items and zero rigid
+batch runs**. These are alternatives, not three simultaneous actors, and Crown has no native
+3D composition workload yet. No private asset is included here.
+
+The same tree's completed `gate.sh -> gate3d.sh -> web3d.sh` land on BUILD `8a9fc02dd` reports
+**34 drawItems, 0.252020333 ms CPU/frame over 300 frames**, no frame-state growth. Receipt:
+`out/m5AccessorFogLand20261020.log`, exit 0. This is whole-frame CPU time including existing
+particle/billboard work, not isolated per-draw cost, an instancing A/B, or Bevy parity.
+No additional GPU timing was run; zero compatible runs supplies no present saving to measure.
+
+Keep ProgramKey bit 16 and KEY_LIMIT expansion unimplemented. Upgrade trigger: a real scene
+(foliage, rigid crowds or debris) produces adjacent compatible runs of the same mesh/material/
+range after sorting and culling, and measured savings at run length N exceed collection,
+packing/upload and shader-variant costs. **N is unmeasured**, not an invented fixed threshold.
+Measure on that consumer before adding the axis; do not deduplicate or clone these scenes to
+manufacture payoff. Independent skinned actors are not eligible rigid instances.
+
+Reference shape remains bounded uniform batches indexed by instance ID: Heaps `b9aa6dcb`
+`h3d/prim/Instanced.hx`, `h3d/scene/MeshBatch.hx`, and Bevy `157e1ce6`
+`GpuArrayBuffer`'s uniform fallback. Bevy's `render/skin.rs` `no_automatic_skin_batching`
+explicitly excludes uniform-buffer skins. No ECS, storage-buffer or indirect-draw extension
+is required for the rigid shape; shader/emitter changes are not justified by these counts.
+
 ## Not covered here, deliberately
 
 `docs/VOID3D.md` "Still missing" carries narrative gaps that are future work rather than
