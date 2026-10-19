@@ -433,6 +433,14 @@ function shapesAlike(stored: Readonly<Span<TextRun>>, runs: Readonly<Span<TextRu
 	return true;
 }
 
+export function sameRuns(stored: Readonly<Span<TextRun>>, runs: Readonly<Span<TextRun>>): boolean {
+	if (stored.length != runs.length) { return false; }
+	for (let r: int32 = 0; r < (runs.length as int32); r++) {
+		if (stored[r] != runs[r]) { return false; }
+	}
+	return true;
+}
+
 export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): boolean {
 	const entry: LabelText = labelTexts[index];
 	const reshapes: boolean = !shapesAlike(entry.runs, runs);

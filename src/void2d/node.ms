@@ -43,6 +43,7 @@ import {
 	releaseLabelText,
 	releaseLabelGlyphs,
 	setLabelRuns,
+	sameRuns,
 	setLabelShapingBreaks,
 	setLabelDirection,
 	labelDirection,
@@ -1509,6 +1510,7 @@ export function setMaxWidth(this n: NodeRef, width: float32): NodeRef {
 
 export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): NodeRef {
 	const i: int32 = n.labelRow("setTextRuns");
+	if (sameRuns(labelTexts[n.scene.payloads[i]].runs, runs)) { return n; }
 	const reshapes: boolean = setLabelRuns(n.scene.payloads[i], runs);
 	if (reshapes) {
 		textChanged(n, "setTextRuns");
