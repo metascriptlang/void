@@ -18,7 +18,6 @@ import {
 } from "../math/math3d";
 import { decodeImage, imageFormatOf, ImageError, ImageFormat, Pixels } from "../assets/image";
 import { FilterMode, Wrap } from "../gpu/state";
-import { float32At } from "./gltfDecode";
 import {
 	GltfAccessorBuffer,
 	GltfAccessorError,
@@ -317,70 +316,6 @@ const DEFAULT_READ: MaterialRead = {
 };
 
 
-// What a decoded accessor claims: where its floats start in the buffer and how many
-// elements it holds. The subset's element types are checked before this is built, so
-// the decode loops below only multiply.
-struct AccessorView {
-	offset: int32;
-	count: int32;
-}
-
-function accessorView(
-	accessors: JsonValue,
-	views: JsonValue,
-	bufferLength: int32,
-	index: int32,
-	component: int32,
-	typeName: string,
-	components: int32,
-): Result<AccessorView, GltfError> {
-	if (index < 0 || index >= countOf(accessors)) {
-		return Result.err(GltfError.Unsupported);
-	}
-	const accessor: JsonValue = accessors.at(index);
-	if (isNull(accessor)) { return Result.err(GltfError.Unsupported); }
-	if (intField(accessor, "componentType", 0) != component) {
-		return Result.err(GltfError.Unsupported);
-	}
-	const typeField: JsonValue = fieldOf(accessor, "type");
-	if (typeField.asString() != typeName) { return Result.err(GltfError.Unsupported); }
-	if (!isNull(fieldOf(accessor, "sparse"))) { return Result.err(GltfError.Unsupported); }
-	const count: int32 = intField(accessor, "count", -1);
-	const viewIndex: int32 = intField(accessor, "bufferView", -1);
-	if (viewIndex < 0 || viewIndex >= countOf(views)) {
-		return Result.err(GltfError.Unsupported);
-	}
-	const view: JsonValue = views.at(viewIndex);
-	if (isNull(view)) { return Result.err(GltfError.Unsupported); }
-	if (intField(view, "buffer", 0) != 0) { return Result.err(GltfError.Unsupported); }
-	const componentBytes: int32 = component == COMPONENT_UNSIGNED_BYTE ? 1 :
-		(component == COMPONENT_UNSIGNED_SHORT ? 2 : 4);
-	const elementBytes: int32 = componentBytes * components;
-	const stride: int32 = intField(view, "byteStride", 0);
-	if ((component != COMPONENT_FLOAT && stride != 0)
-		|| (stride != 0 && stride != elementBytes)) {
-		return Result.err(GltfError.Unsupported);
-	}
-	const viewOffset: int32 = intField(view, "byteOffset", 0);
-	const viewLength: int32 = intField(view, "byteLength", -1);
-	const accessorOffset: int32 = intField(accessor, "byteOffset", 0);
-	if (viewOffset < 0 || viewLength < 0 || accessorOffset < 0 || count <= 0) {
-		return Result.err(GltfError.OutOfRange);
-	}
-	if (viewOffset > bufferLength || viewLength > bufferLength - viewOffset) {
-		return Result.err(GltfError.OutOfRange);
-	}
-	if (accessorOffset > viewLength
-		|| count > (viewLength - accessorOffset) / elementBytes) {
-		return Result.err(GltfError.OutOfRange);
-	}
-	if (viewOffset % componentBytes != 0 || accessorOffset % componentBytes != 0) {
-		return Result.err(GltfError.Unsupported);
-	}
-	const out: AccessorView = { offset: viewOffset + accessorOffset, count: count };
-	return Result.ok(out);
-}
-
 function animationPath(value: JsonValue): Result<GltfCurvePath, GltfError> {
 	if (value.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
 	return match (value.strVal) {
@@ -405,33 +340,37 @@ function animationMode(value: JsonValue): Result<GltfCurveMode, GltfError> {
 function animationValues(
 	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
 	bufferLength: int32, index: int32, components: int32,
+	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
 ): Result<Vec<float32>, GltfError> {
-	const normalized = fieldOf(accessors.at(index), "normalized");
-	if (!isNull(normalized) && (normalized.kind != JsonKind.Bool || normalized.boolVal)) {
+	const source = try accessorSource(accessors, index, GltfAccessorRole.Other);
+	const shape = components == 1 ? GltfAccessorShape.Scalar :
+		(components == 3 ? GltfAccessorShape.Vec3 : GltfAccessorShape.Vec4);
+	if (source.componentType != COMPONENT_FLOAT || source.normalized || source.shape != shape ||
+		(components == 1 && source.sparse !== null)) {
 		return Result.err(GltfError.Unsupported);
 	}
-	const name: string = components == 1 ? "SCALAR" : (components == 3 ? "VEC3" : "VEC4");
-	const view = try accessorView(
-		accessors,
-		views,
-		bufferLength,
-		index,
-		COMPONENT_FLOAT,
-		name,
-		components,
-	);
-	let values: Vec<float32> = [];
-	for (let element = 0; element < view.count; element++) {
-		for (let component = 0; component < components; component++) {
-			values.push(float32At(buffer, view.offset + (element * components + component) * 4));
-		}
+	if (buffers.length == 0) {
+		accessorViews = try colourAccessorViews(views, bufferLength);
+		let bytes: Vec<uint8> = new Array(bufferLength);
+		for (let i = 0; i < bufferLength; i++) { bytes[i] = buffer[i]; }
+		buffers.push({ bytes: move bytes, byteLength: bufferLength });
 	}
+	const decoded = GltfAccessorValues.decode(source, buffers, accessorViews);
+	if (!decoded.ok) {
+		return Result.err(match (decoded.error) {
+			GltfAccessorError.Bounds | GltfAccessorError.Count => GltfError.OutOfRange,
+			_ => GltfError.Unsupported,
+		});
+	}
+	let values: Vec<float32> = [];
+	for (const value of decoded.value.values) { values.push(value as float32); }
 	return Result.ok(move values);
 }
 
 function loadAnimations(
 	root: JsonValue, accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
 	bufferLength: int32, nodeCount: int32,
+	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
 ): Result<Vec<GltfAnimation>, GltfError> {
 	let clips: Vec<GltfAnimation> = [];
 	const animations = arrayOf(root, "animations");
@@ -466,9 +405,10 @@ function loadAnimations(
 			const sampler = samplers.at(samplerIndex);
 			const mode = try animationMode(fieldOf(sampler, "interpolation"));
 			const times = try animationValues(accessors, views, buffer, bufferLength,
-				intField(sampler, "input", -1), 1);
+				intField(sampler, "input", -1), 1, buffers, accessorViews);
 			const values = try animationValues(accessors, views, buffer, bufferLength,
-				intField(sampler, "output", -1), path == GltfCurvePath.Rotation ? 4 : 3);
+				intField(sampler, "output", -1), path == GltfCurvePath.Rotation ? 4 : 3,
+				buffers, accessorViews);
 			const curve = GltfCurve.forValues(path, mode, times, values);
 			if (!curve.ok) { return Result.err(GltfError.Unsupported); }
 			clip.tracks.push({ sourceNode: node, curve: curve.value });
@@ -1979,7 +1919,8 @@ function decodeGltf(
 	}
 	data.skins = try loadSkins(root, accessors, views, buffer, declaredLength, nodeCount,
 		colourBuffers, colourViews, source);
-	let animations = loadAnimations(root, accessors, views, buffer, declaredLength, nodeCount);
+	let animations = loadAnimations(root, accessors, views, buffer, declaredLength, nodeCount,
+		colourBuffers, colourViews);
 	if (!animations.ok) {
 		return Result.err(gltfFailure(animations.error, source, "$.animations"));
 	}

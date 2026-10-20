@@ -3747,6 +3747,29 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF sparse animation-output CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `makeLinearAnimation` reads packed HMD frames
+using frame count and sampling rate, including reconstructed quaternion W. It has no sparse
+accessor stream; that is a format difference, not evidence that Heaps rejects glTF sparse data.
+Do not replace glTF timestamp/quaternion semantics with that HMD representation.
+Bevy `157e1ce6` glTF loader explicitly skips sparse sampler inputs, while its output reader
+uses accessor iterators. glTF-rs 1.4.1 `animation/util/mod.rs` `Reader.read_outputs` routes TRS
+outputs through `accessor::Iter.new`. This slice keeps Void's explicit sparse-input refusal
+and existing float-only TRS format, decoding output storage before `GltfCurve.forValues`.
+Morph tracks and normalized integer rotations remain separate work; no interpolation change.
+
+CPU source tree `147e8c2ef3cef60bea757a1e6917c01b89d1fcad`, BUILD `3c5ca8377` (v0.3.4):
+`msc test src/test/gltfAnimationCheck.ms` **311/311**, `gltfCheck.ms` **316/316**,
+`gltfSkinCheck.ms` **308/308**, `gltfComposeSceneCheck.ms` **305/305**; all exits 0.
+The initial two positive pins failed on both BUILD `8a9fc02dd` and `3c5ca8377`, each with
+**307 pass / 2 fail**. The newer BUILD's red was rerun before its green; old green results
+were not carried across the compiler sync. `gltfAnimationCheck.ms` owns dense-equivalent curves,
+independent bound poses, input refusal and malformed output controls.
+Receipts: `out/m5SparseAnimationRed3c5ca837720261020.log` and
+`out/m5SparseAnimation<test-name>Green3c5ca837720261020.{log,exit}`.
+No new sparse-animation rendered, browser or physical-device acceptance from these CPU checks.
+
 ### glTF sparse triangle-index CPU acceptance
 
 Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` preserves indexed material ranges;
