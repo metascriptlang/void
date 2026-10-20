@@ -3778,7 +3778,7 @@ Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
 not triangle fans. Its `crates/bevy_mesh/src/mesh.rs` `Mesh::triangles` visits overlapping
 three-index windows and swaps the first two indices on odd windows, for both index widths.
 The glTF `b43260ee1291134a94b3098d415f54f479a59508` "Topology and Connectivity" strip
-rule gives the same winding by cyclic permutation; it requires at least three vertices.
+rule gives the same winding by cyclic permutation; it requires at least three corners.
 These are source traces, not executed Bevy or imported-asset acceptance.
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Primitive.hx` `triCount` and
@@ -3790,7 +3790,33 @@ whose colour, shadow, picking and skin consumers could disagree.
 
 Canonical storage costs `3 * (n - 2)` indices for an `n`-corner strip, bounded by the existing
 signed draw-count limit. This is an allocation formula, not a performance measurement.
-Strip import does not imply fan, line or point support; no GPU ABI extension is proposed.
+Strip import does not imply fan, line or point support; no GPU ABI extension was added.
+
+### glTF triangle-strip CPU acceptance
+
+On 2026-10-21, Windows native `msc test src/test/<name>.ms`, through default buildslot,
+with installed binary/support BUILD `b1f63337f`: visibility reds were index **316 pass/5 fail**
+and material **335 pass/2 fail**, both exit 1 at the intended strip assertions. The pre-reboot
+attempt was cancelled before admission (137); neither suite ran in that attempt.
+
+After `gltf.ms` `loadMesh` integration, index **321/321**, material **337/337**, glTF **316/316**
+and skin **309/309** passed, four exits 0 plus aggregate 0. The capacity-edge pins use short
+buffers, so they test pre-decode refusal/boundary routing, not enormous allocations.
+
+The diagnostic consumer then exposed an owned wording regression: **307 pass/1 fail**, exit 1,
+because the new count message omitted `index count`. Its correction preserves that phrase
+without claiming every topology needs a count divisible by three. `gltfDiagnosticCheck.ms`
+now covers both mode 4 and 5 and passed **308/308**, exit 0. Only that suite reran: the prior
+four consume `loadGltf` enum errors, not diagnostic causes; their topology/data paths did not
+change. Final CPU source tree: `1e44f9acf6c6bb1cca860335485efc1d9cec0d32`.
+
+M6 receipts: `out/m6Strip{name}RedB1f63337f20261021Retry1.{log,exit}` for index/material,
+`out/m6Strip{name}GreenB1f63337f20261021.{log,exit}` for the four checks, and
+`out/m6StripDiagnostic{Before,Green}B1f63337f20261021.{log,exit}`. The empty name is the
+serial producer's aggregate where present. Original failures/cancellation remain intact.
+
+These are synthetic importer/consumer fixtures, not executed Bevy comparisons, external-asset
+renders or performance evidence. Full native/gate3D/web acceptance for this stack is pending.
 
 ### glTF explicit primitive-mode CPU acceptance
 
