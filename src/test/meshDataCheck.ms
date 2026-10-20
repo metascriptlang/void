@@ -23,6 +23,7 @@ import {
 	addBox,
 	addPlane,
 	addSphere,
+	addCylinderSides,
 	recomputeBounds,
 	addTangents,
 	addTangentsWithSources,
@@ -145,6 +146,82 @@ test "sphere dimensions and capacity fail before writing any vertices indices or
 		assert !addSphere(data, radius as float32, WHITE, 8, 6).ok;
 		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
 	}
+}
+
+test "cylinder sides retain smooth radial normals open ends and centered placement" {
+	for (const textured of [false, true]) {
+		for (const centered of [false, true]) {
+			let data = textured ? MeshData.withUvs() : MeshData.empty();
+			const made = addCylinderSides(data, 2.0, 3.0, centered, WHITE, 8);
+			assert made.ok;
+			if (!made.ok) { continue; }
+			assert made.value == 0 && data.vertexCount() == 32 && data.triangleCount() == 16;
+			assert data.validIndices();
+			const low: float32 = centered ? -1.5 : 0.0;
+			assert near(data.bounds.min, -2.0, low, -2.0);
+			assert near(data.bounds.max, 2.0, low + 3.0, 2.0);
+			const width = data.stride();
+			for (let i = 0; i < data.vertexCount(); i++) {
+				const at = i * width;
+				const point = vec3(data.vertices[at], 0.0, data.vertices[at + 2]);
+				const normal = vec3(data.vertices[at + 3], data.vertices[at + 4],
+					data.vertices[at + 5]);
+				assert approx(point.length(), 2.0) && approx(point.dot(normal), 2.0);
+				assert normal.y == 0.0 && approx(normal.length(), 1.0);
+				assert data.vertices[at + 1] == (i % 4 < 2 ? low : low + 3.0);
+				if (textured) {
+					assert data.vertices[at + 6] >= 0.0 && data.vertices[at + 6] <= 1.0;
+					assert data.vertices[at + 7] == (i % 4 < 2 ? 1.0 : 0.0);
+				}
+			}
+			const front = Ray.fromPoints(vec3(0.0, low + 1.5, 6.0), vec3(0.0, low + 1.5, 0.0));
+			assert approx(data.rayIntersection(front, Face.Back).distance, 4.0);
+			const axis = Ray.fromPoints(vec3(0.0, 6.0, 0.0), vec3(0.0, 0.0, 0.0));
+			assert data.rayIntersection(axis, Face.None).distance == -1.0;
+			for (let i = 0; i < data.indexCount(); i += 3) {
+				const a = data.indexAt(i) as int32 * width;
+				const b = data.indexAt(i + 1) as int32 * width;
+				const c = data.indexAt(i + 2) as int32 * width;
+				const p = vec3(data.vertices[a], data.vertices[a + 1], data.vertices[a + 2]);
+				const q = vec3(data.vertices[b], data.vertices[b + 1], data.vertices[b + 2]);
+				const r = vec3(data.vertices[c], data.vertices[c + 1], data.vertices[c + 2]);
+				assert (q - p).cross(r - p).dot(vec3(p.x + q.x + r.x, 0.0, p.z + q.z + r.z)) > 0.0;
+			}
+		}
+	}
+}
+
+test "cylinder side append keeps old triangles and promotes high vertex ids" {
+	let data = MeshData.empty();
+	data.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(data, 0, 1, 2).ok;
+	const made = addCylinderSides(data, 1.0, 2.0, false, WHITE, 3);
+	assert made.ok;
+	if (made.ok) { assert made.value == 65535; }
+	assert data.vertexCount() == 65547 && data.indexCount() == 21;
+	assert data.wideIndices !== null && data.validIndices();
+	assert data.indexAt(0) == 0 && data.indexAt(1) == 1 && data.indexAt(2) == 2;
+	for (let i = 3; i < data.indexCount(); i++) { assert data.indexAt(i) >= 65535; }
+}
+
+test "invalid cylinder dimensions and unindexed append leave the receiver unchanged" {
+	for (const sectors of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addCylinderSides(data, 1.0, 2.0, false, WHITE, sectors).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const invalid of [0.0, -1.0]) {
+		let data = MeshData.withUvs();
+		assert !addCylinderSides(data, invalid as float32, 2.0, false, WHITE, 8).ok;
+		assert !addCylinderSides(data, 1.0, invalid as float32, false, WHITE, 8).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let data = MeshData.empty();
+	assert addVertex(data, vec3(0.0, 0.0, 0.0), UP, WHITE).ok;
+	const refused = addCylinderSides(data, 1.0, 2.0, false, WHITE, 8);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UnindexedAppend; }
+	assert data.vertexCount() == 1 && data.indexCount() == 0;
 }
 
 test "an empty mesh has no vertices, no indices and empty bounds" {
