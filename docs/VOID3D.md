@@ -3818,6 +3818,29 @@ serial producer's aggregate where present. Original failures/cancellation remain
 These are synthetic importer/consumer fixtures, not executed Bevy comparisons, external-asset
 renders or performance evidence. Full native/gate3D/web acceptance for this stack is pending.
 
+### glTF required emission declaration, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`
+`h3d/shader/pbr/PropsValues.hx` carries `emissiveValue` through `__init__` and `fragment`.
+This establishes its existing scalar-emission mechanism, not glTF extension declarations.
+Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_gltf/src/loader/mod.rs` `load_material` multiplies linear `emissive_factor` by
+`emissive_strength().unwrap_or(1.0)`; its crate manifest enables that glTF extension feature.
+No exact gltf-rs lock resolution or executed Bevy comparison is claimed.
+
+Khronos glTF `b43260ee1291134a94b3098d415f54f479a59508`, "Specifying Extensions", requires
+required names to appear in `extensionsUsed`. At the same revision,
+`extensions/2.0/Khronos/KHR_materials_emissive_strength/README.md` supplies a unitless multiplier,
+default 1; it does not forbid declaring this extension required. Its exclusion of use with
+`KHR_materials_unlit` is not permission to introduce unlit rendering here.
+
+The bounded next row is declaration parity for emission already interpreted by `gltf.ms`
+`emissiveStrengthOf` / `loadEmission`: a required declaration must not discard those semantics.
+Reuse `decodeGltf`'s existing required-name gate, not a registry, new material model or shader.
+Keep unknown required names and existing material refusals; do not reopen production PBR.
+The existing fixture and `gltfProgramOf` / `gltfBlockOf` consumers in `gltfMaterialCheck.ms`
+carry the pins. This is test/reference preparation only; production is unchanged.
+
 ### glTF explicit primitive-mode CPU acceptance
 
 Heaps `b9aa6dcb` `Primitive.render` dispatches triangle draws, not glTF JSON defaults.
