@@ -377,19 +377,21 @@ in the same change as the fix.
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
-| WebGPU | no readback in the wasm build, and headless Chrome has no adapter here, so the run is headed. P6 | SKIP |
+| WebGPU | no readback in the wasm build. P6. Headless Chrome does hand it the real adapter here (2026-10-20); liveness only, below | SKIP |
 | WebGL2 | **120 / 120**: 88 byte-identical, 32 within the cross-backend bound, 0 structural failures; measured 2026-10-19, BUILD `4fe2a5eec`, with the runner built on the same module defines as D3D11 (`scripts/goldenDefines.sh`). Before that the web runner carried only `voidProfiler`, so 37 scenes of the text, SVG, emoji and sprite modules failed for want of their module, not for WebGL2; `conformance:webgl2-pixel-centre` is deleted, its four scenes passing. ANGLE on D3D11 on the same GPU proves the GLSL ES path and GL conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web` |
 
 So guardrail 9 is a number now, and the number is **3 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
-for the web today is liveness, not conformance: `scripts/web-liveness.sh` loads the built
-demo in headless Chrome and checks that the canvas is not blank. Measured 2026-09-20:
-**WebGL2 draws the demo; WebGPU builds and runs but headless Chrome hands it no adapter**
-(both `--use-angle=swiftshader` and the real adapter give a black canvas), so WebGPU
-liveness is unproven headless and is reported as a SKIP, not a pass. Measured 2026-10-18: headless
-Chrome can write its screenshot and never exit, so `scripts/webShot.sh` ends a shot once its
-PNG stops growing, or after `VOID_WEB_SHOT_SECONDS` (30 s) with none, which is a FAIL for WebGL2
-and a SKIP for WebGPU; either way the shot's process tree is killed. `scripts/webShot.test.sh`
-pins this on every liveness run.
+for WebGPU today is liveness, not conformance: `scripts/webPresent.mjs` loads a built page in
+headless Chrome over DevTools, counts the frames it presents (WebGPU: a rAF tick that took the
+canvas texture and submitted; WebGL2: a draw or clear on the default framebuffer), and screenshots
+the canvas after three. It fails a page that presents fewer in 30 s, reports a GPU error, loses its
+device or throws, or whose canvas is one colour; it skips only when `requestAdapter` returns null.
+`scripts/web-liveness.sh` runs it on the 2D demo for both backends in the gate's `--web` stage, and
+`scripts/web3d.sh` on `mainCampfire` for WebGPU; `scripts/webPresent.test.mjs` pins the PNG decode
+and the verdicts. The 2026-09-20 reading that headless Chrome hands WebGPU no adapter was a
+fixed-time screenshot taken before anything presented: on 2026-10-20 `--headless=new` with no ANGLE
+or unsafe flag rendered the campfire on the NVIDIA adapter, while a harness that slept a fixed 8 s
+returned it black (`~/metascript/.inbox/void/2026-10-20-webgpu-coverage-gap.md`).
 
 **The design: one golden set, authored on D3D11; five backends compared against it.** Not five golden sets — five golden sets would record five different renderers and prove exactly nothing. The output is a per-backend conformance report: scenes identical, scenes within a stated bound, scenes failing, and a pass rate. That report *is* guardrail 9, and it belongs in VOID2D.md as a number that moves per phase.
 
