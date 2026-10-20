@@ -1092,7 +1092,7 @@ VEC_FREE_COPIES="scene:MeshInstance draw:DrawItem"
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
 check_array_copies() {
-	rm -f out/debug/*ZsrcZgpuZ*Oms.c out/debug/*ZsrcZvoid3dZ*Oms.c out/debug/*ZsrcZexamplesZ*Oms.c
+	rm -f out/debug/*srcZgpuZ*Oms.c out/debug/*srcZvoid3dZ*Oms.c out/debug/*srcZexamplesZ*Oms.c
 	if ! msc build "$1" --emit=c > "$WORK/allocation.log" 2>&1; then
 		fail "allocation: emitting C for $1 failed; see $WORK/allocation.log"
 		return 1
@@ -1102,8 +1102,8 @@ check_array_copies() {
 	for entry in $3; do
 		module=${entry%%:*}
 		fn=${entry#*:}
-		emitted=$({ ls out/debug/*ZsrcZvoid3dZ${module}Oms.c; ls out/debug/*ZsrcZgpuZ${module}Oms.c;
-			ls out/debug/*ZsrcZexamplesZ${module}Oms.c; } 2>/dev/null | head -1)
+		emitted=$({ ls out/debug/*srcZvoid3dZ${module}Oms.c; ls out/debug/*srcZgpuZ${module}Oms.c;
+			ls out/debug/*srcZexamplesZ${module}Oms.c; } 2>/dev/null | head -1)
 		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1
