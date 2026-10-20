@@ -236,7 +236,7 @@ Every claim in this document about what Heaps does used to rest on somebody havi
 
 A case may declare `diverges=<PENDING3D row>`, and those are checked **in both directions**: a declared divergence that starts agreeing fails the run and names the row to reconcile, exactly as a PENDING3D sentinel does. Verified by making `size()` answer Heaps' −2e20 and watching two cases graduate.
 
-**Its first two runs corrected this document, which is the point of building it.** `bounds-sphere-rescale` was written up as a divergence; the answers agree to 4.6e-9 relative, so it is a divergence in method forced by float32 and not a difference in behaviour. And `bounds-transformed-or` was described as applying to a box "empty on one axis" — but a *flat* axis (min == max) is empty under neither Heaps' rule nor this port's, so the real divergence needs a genuinely negative extent: with one, Heaps answers `10 -1 0` where this port answers `0 0 0`. Thirty-three cases over two files now: thirty agree, three diverge as declared.
+**Its first two runs corrected this document, which is the point of building it.** The initial `bounds-sphere-rescale` row was method-only: answers agreed to 4.6e-9 relative. M6 later returned the calculation to Heaps' float64 intermediates and removed that row after measured range failures; see the bounding-sphere precision acceptance below. And `bounds-transformed-or` was described as applying to a box "empty on one axis" — but a *flat* axis (min == max) is empty under neither Heaps' rule nor this port's, so the real divergence needs a genuinely negative extent: with one, Heaps answers `10 -1 0` where this port answers `0 0 0`. At that first checkpoint, thirty-three cases over two files gave thirty agreements and three declared differences.
 
 **The scene tree is measured too, and it is where the M6 claims were.** `tests/oracle/scene3d.cases` is sixteen cases against a bare `h3d.scene.Object` tree, and all sixteen agree. They cover what M6 asserted only against itself: that `world` is `local * parent` and not the reverse (a quarter turn about Y on the parent takes a child at +X to −1 on Z, and the child's *basis* turns with it, not only its position); that the product associates the same way three levels deep; that `Transform3D.scale` composes as `S * R` and not `R * S`, which no test and no production caller had exercised at all; that `math3d.eulerQuat` is `h3d.Quat.initRotation` to nine matrix entries at three angles at once; and that a write to one node reaches its whole subtree, four levels down, without reaching a sibling subtree or its own parent.
 
@@ -3865,6 +3865,44 @@ all three exits 0 plus aggregate 0. CPU source tree:
 material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
+
+### Bounding-sphere precision: back on the Heaps calculation
+
+On 2026-10-21, three new native tests demonstrated valid finite boxes producing nonfinite
+`boundingSphereRadius` results: **321 passed / 3 failed**, exit 1. Both C and JS print probes
+confirmed `NaN, NaN, NaN, Infinity` for subnormal line/flat extents, a wide line whose float32
+edge difference overflows, and a wide cube whose diagonal overflows before the final half.
+The final four radii themselves fit float32. This is not a request for a wider public API.
+
+The fix follows Heaps `b9aa6dcb`, `h3d/col/Bounds.hx:393`: widen endpoints before subtraction,
+compute squared diagonal/square root/half in float64, narrow once at return. Emitted C before
+and after is retained under `out/tmp/boundsSpherePrecision/{before,after}.c`; the export stays
+`float`, while the repaired edge intermediates are `double`. Bevy `157e1ce6`,
+`bevy_shape/src/bounding/bounded3d/mod.rs::Aabb3d::bounding_sphere`, also defines radius as half
+the diagonal; no Bevy numeric or performance comparison was executed. No new mechanism.
+
+**324/324 native tests passed**, exit 0. Repaired C and JS probes both exited 0 and printed
+identical four finite radii; a separate check matched each to the expected float32-rounded
+float64 calculation. Actual Heaps regeneration/check then exited 0/0: **21 cases, 18 AGREES
+and 3 existing declared differences**, including all four new radius cases. Their normalized
+outputs use tolerance 1e-5 and map a nonfinite result to a failing negative sentinel, not NaN.
+The obsolete `bounds-sphere-rescale` row and source marker were removed together; a targeted
+row/tag audit exited 0 with no unlisted source markers. CPU source tree
+`68ff77537f9e7ae8bb6a3a8e9bcd043dddd3d5c7`, implementation `56b24fa2`, binary/support `b1f63337f`.
+
+Receipts use prefix `out/m6BoundsSphere`: `BoundsRedB1f63337f20261021`,
+`{Repro,Js}RedB1f63337f20261021Retry1`, `{Repro,Js,Bounds}GreenB1f63337f20261021`,
+`{Heaps,Oracle}GreenB1f63337f20261021Retry1`, `OracleRetry1B1f63337f20261021`, and
+`{CrossBackend,Pending}GreenB1f63337f20261021`, each with `.log`/`.exit`. Original setup failures
+remain: the first print source omitted its top-level call (no numeric execution); the first
+oracle attempt referenced nonexistent `emit2` and stopped before codegen. Corrected fixture
+uses existing `emit1`; the original green-attempt aggregate remains exit 1, not overwritten.
+
+Only tests/oracle call this public radius method in the current source. Frustum/picking
+algorithms, Bounds layout and other accessors are unchanged, so their suites and capture
+controls had no new contract to observe and were not rerun. Full gate/GPU/web remain held.
+The result type remains float32: final radii outside its range still need a separately chosen
+wider API if a consumer requires them. No all-input finite-result or speed claim is made.
 
 ### Weighted-quaternion frontier: reference safety boundary
 
