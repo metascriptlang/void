@@ -3866,6 +3866,30 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Full disc primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Disc.hx` constructs an outer
+ring plus a center vertex, one triangle per segment and radial UVs `(x/r+1,y/r+1)/2`.
+Bevy `157e1ce6` `crates/bevy_mesh/src/primitives/dim2.rs` `CircleMeshBuilder::build`
+delegates to `EllipseMeshBuilder`, which instead triangulates from one perimeter vertex.
+Use Heaps' fan and UV convention, not Bevy's distinct vertex count/orientation.
+
+`meshData.ms` `addDisc` is a full XZ-plane/up-normal mesh through existing primitive writers;
+Y/Z conversion requires reversing the source triangle winding. No arc, annulus, ellipse,
+collider or glTF TRIANGLE_FAN support is implied. Positive radius and at least three segments
+are required rather than silently clamping the caller's requested resolution as Heaps does;
+this preserves the existing fallible geometry-builder contract. The named pins in
+`meshDataCheck.ms` exercise both layouts, surface-versus-square picking, normals/UV, wide
+index append and preflight, without relying on Mikk's currently blocked path.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addDisc`, no codegen.
+After implementation, serial mesh **351/351**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `1f4c64f5a8576b7befe02e78343c56c451b498ce`.
+Receipts: `out/m6DiscRedB1f63337f20261021.{log,exit}` and
+`out/m6Disc{name}GreenB1f63337f20261021.{log,exit}`. No Mikk, GPU, arc or performance acceptance.
+The shared sphere append guard/error keeps this row above the held split point.
+
 ### Open cylinder sides, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Cylinder.hx` builds four
