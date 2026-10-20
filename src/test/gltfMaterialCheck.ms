@@ -1297,6 +1297,39 @@ test "required emissive strength preserves payload and unknown-extension refusal
 	if (!invalid.ok) { assert invalid.error == GltfError.OutOfRange; }
 }
 
+test "material factor and map descriptors reject explicit null instead of disappearing" {
+	for (const material of [
+		"{\"pbrMetallicRoughness\":null}",
+		"{\"pbrMetallicRoughness\":{\"baseColorFactor\":null}}",
+		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":null}}",
+		"{\"emissiveFactor\":null}",
+		"{\"emissiveTexture\":null}",
+		"{\"normalTexture\":null}",
+		"{\"normalTexture\":{\"index\":0,\"scale\":null}}",
+	]) {
+		const read = loaded({ ...texturedParts(), materials: material });
+		assert !read.ok;
+		if (!read.ok) { assert read.error == GltfError.Unsupported; }
+	}
+}
+
+test "map and factor omissions retain defaults and unsupported occlusion stays refused" {
+	for (const material of ["{}", "{\"pbrMetallicRoughness\":{}}",
+		"{\"emissiveFactor\":[0.0,0.0,0.0]}",
+	]) {
+		const read = loaded({ ...texturedParts(), materials: material });
+		assert read.ok;
+		if (read.ok) {
+			const actual = read.value.materials[0];
+			assert actual.texture == -1 && actual.normalTexture == -1;
+			assert actual.emissiveTexture == -1;
+		}
+	}
+	const occlusion = loaded({ ...texturedParts(), materials: "{\"occlusionTexture\":null}" });
+	assert !occlusion.ok;
+	if (!occlusion.ok) { assert occlusion.error == GltfError.UnsupportedMaterial; }
+}
+
 test "material alpha and sidedness defaults distinguish absence from explicit null" {
 	const absent = kindOf("{}");
 	assert absent.ok;
