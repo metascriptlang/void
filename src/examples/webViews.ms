@@ -4,11 +4,19 @@
 import { embedRegister, currentView } from "../sokol/gpu";
 import { beginScreenPassWith, endPass, commit } from "../gpu/door";
 
-function init(): void {}
+let clears: Vec<float32> = [0.9, 0.4, 0.1];
+
+function init(): void {
+	if (clears.length == 3) {
+		clears.push(0.1);
+		clears.push(0.4);
+		clears.push(0.9);
+	}
+}
 
 function frame(): void {
-	const odd = (currentView() & 1) == 1;
-	beginScreenPassWith(odd ? 0.9 : 0.1, 0.4, odd ? 0.1 : 0.9, 1.0);
+	const at: int32 = (currentView() & 1) == 1 ? 0 : 3;
+	beginScreenPassWith(clears[at], clears[at + 1], clears[at + 2], 1.0);
 	endPass();
 	commit();
 }
