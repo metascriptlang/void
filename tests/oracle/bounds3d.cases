@@ -28,13 +28,6 @@ case empty-dimension tol=1e-6 diverges=bounds-empty-size-zero
 haxe> var b2 = new Bounds(); b2.empty(); emit("empty-dimension", [b2.dimension()]);
 ms> let e2: Bounds3D = Bounds3D.empty(); emit1("empty-dimension", e2.dimension());
 
-# This one was declared as a divergence and the oracle disagreed on its first run, which is
-# what it is for. Heaps squares the extent directly, which is finite in float64 and infinity in
-# float32, so this port scales by the longest edge before squaring. That is a divergence in
-# *method*, forced by the float width — the *answers* agree to 4.6e-9 relative, well inside
-# float32 epsilon. So it is not a divergence in behaviour and is not declared as one; the
-# PENDING3D row stays, because someone simplifying the code back to Heaps' form would get
-# infinity, and this case is what would then go red.
 case unbounded-sphere tol=1e-6
 haxe> var b3 = Bounds.fromValues(-1e20, -1e20, -1e20, 2e20, 2e20, 2e20); emit("unbounded-sphere", [b3.toSphere().r]);
 ms> let a3: Bounds3D = Bounds3D.all(); emit1("unbounded-sphere", a3.boundingSphereRadius());
@@ -105,3 +98,39 @@ ms> const ca: Bounds3D = Bounds3D.fromValues(0.0,0.0,0.0,2.0,3.0,4.0); const ta:
 case translation-moves-the-corner tol=1e-5
 haxe> var cb = Bounds.fromValues(0,0,0,2,3,4); var mb = h3d.Matrix.I(); mb.initTranslation(10,-5,2); cb.transform(mb); emit("translation-moves-the-corner", [cb.xMin, cb.yMin, cb.zMin]);
 ms> const cb: Bounds3D = Bounds3D.fromValues(0.0,0.0,0.0,2.0,3.0,4.0); const tb: Bounds3D = cb.transformed(translation(10.0,-5.0,2.0)); emit3("translation-moves-the-corner", tb.min.x, tb.min.y, tb.min.z);
+
+case sphere-subnormal-line tol=1e-5
+haxe> var bs1 = Bounds.fromValues(0,0,0,1e-40,0,0);
+haxe> var rs1 = bs1.getBoundingSphereRadius();
+haxe> emit("sphere-subnormal-line",[Math.isFinite(rs1) ? rs1/1e-40 : -1.0]);
+ms> const tinyEdge: float32 = 1.0e-40;
+ms> const bs1 = Bounds3D.fromPoints(vec3(0.0,0.0,0.0),vec3(tinyEdge,0.0,0.0));
+ms> const rs1: float32 = bs1.boundingSphereRadius();
+ms> emit1("sphere-subnormal-line",Number.isFinite(rs1) ? rs1/tinyEdge : -1.0);
+
+case sphere-subnormal-flat tol=1e-5
+haxe> var bs2 = Bounds.fromValues(0,0,0,1e-40,1e-40,0);
+haxe> var rs2 = bs2.getBoundingSphereRadius();
+haxe> emit("sphere-subnormal-flat",[Math.isFinite(rs2) ? rs2/1e-40 : -1.0]);
+ms> const bs2 = Bounds3D.fromPoints(vec3(0.0,0.0,0.0),vec3(tinyEdge,tinyEdge,0.0));
+ms> const rs2: float32 = bs2.boundingSphereRadius();
+ms> emit1("sphere-subnormal-flat",Number.isFinite(rs2) ? rs2/tinyEdge : -1.0);
+
+case sphere-wide-line tol=1e-5
+haxe> var bs3 = Bounds.fromValues(-3e38,0,0,6e38,0,0);
+haxe> var rs3 = bs3.getBoundingSphereRadius();
+haxe> emit("sphere-wide-line",[Math.isFinite(rs3) ? rs3/3e38 : -1.0]);
+ms> const wideEdge: float32 = 3.0e38;
+ms> const bs3 = Bounds3D.fromPoints(vec3(-wideEdge,0.0,0.0),vec3(wideEdge,0.0,0.0));
+ms> const rs3: float32 = bs3.boundingSphereRadius();
+ms> emit1("sphere-wide-line",Number.isFinite(rs3) ? rs3/wideEdge : -1.0);
+
+case sphere-wide-cube tol=1e-5
+haxe> var bs4 = Bounds.fromValues(-1e38,-1e38,-1e38,2e38,2e38,2e38);
+haxe> var rs4 = bs4.getBoundingSphereRadius();
+haxe> emit("sphere-wide-cube",[Math.isFinite(rs4) ? rs4/1e38 : -1.0]);
+ms> const cubeEdge: float32 = 1.0e38;
+ms> const bs4 = Bounds3D.fromPoints(vec3(-cubeEdge,-cubeEdge,-cubeEdge),
+ms> vec3(cubeEdge,cubeEdge,cubeEdge));
+ms> const rs4: float32 = bs4.boundingSphereRadius();
+ms> emit1("sphere-wide-cube",Number.isFinite(rs4) ? rs4/cubeEdge : -1.0);
