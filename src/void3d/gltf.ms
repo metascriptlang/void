@@ -1501,10 +1501,14 @@ function shareTransform(info: JsonValue, ref read: MaterialRead): Result<boolean
 // so a factor of 0 emits nothing whatever the map is (three.js GLTFLoader.js:3774-3784 sets the
 // same two terms). KHR_materials_emissive_strength scales it (GLTFLoader.js:878).
 function emissiveStrengthOf(material: JsonValue): Result<float32, GltfError> {
+	if (!hasField(material, "extensions")) { return Result.ok(1.0); }
 	const extensions: JsonValue = fieldOf(material, "extensions");
+	if (extensions.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (!hasField(extensions, "KHR_materials_emissive_strength")) { return Result.ok(1.0); }
 	const extension: JsonValue = fieldOf(extensions, "KHR_materials_emissive_strength");
+	if (extension.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (!hasField(extension, "emissiveStrength")) { return Result.ok(1.0); }
 	const strength: JsonValue = fieldOf(extension, "emissiveStrength");
-	if (isNull(strength)) { return Result.ok(1.0); }
 	const value: float32 = try numberOf(strength);
 	if (value < 0.0) { return Result.err(GltfError.OutOfRange); }
 	return Result.ok(value);
