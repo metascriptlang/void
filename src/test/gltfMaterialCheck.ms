@@ -1297,6 +1297,84 @@ test "required emissive strength preserves payload and unknown-extension refusal
 	if (!invalid.ok) { assert invalid.error == GltfError.OutOfRange; }
 }
 
+test "texture coordinate override selects UV0 before rejecting a fallback set" {
+	const transform = transformed(SCALED_SHIFTED.replace("{", "{\"texCoord\":0,"));
+	for (const attributes of [ALL_ATTRIBUTES, WITH_TANGENTS]) {
+		for (const material of [
+			baseWith(transform),
+			"{\"normalTexture\":{\"index\":0" + transform + "}}",
+			emitting("[1.0,0.25,0.0]", ",\"emissiveTexture\":{\"index\":0" + transform + "}"),
+		]) {
+			const parts: Parts = {
+				...texturedParts(), attributes: attributes, materials: material,
+			};
+			const baseline = loaded(parts);
+			assert baseline.ok;
+			if (!baseline.ok) { continue; }
+			for (const fallback of [1, 2]) {
+				const redirected: Parts = {
+					...parts, materials: material.replace("\"index\":0",
+						`"index":0,"texCoord":${fallback}`),
+				};
+				const read = loadGltf(requiringExtensions(documentOf(redirected),
+					"\"KHR_texture_transform\""), quadBuffer());
+				assert read.ok;
+				if (!read.ok) { continue; }
+				const expected = baseline.value.materials[0];
+				const actual = read.value.materials[0];
+				assert actual.uvTransform == expected.uvTransform;
+				const key = gltfProgramOf(actual);
+				assert key == gltfProgramOf(expected);
+				const wanted = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), expected, key);
+				const block = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), actual, key);
+				assert block.length == wanted.length;
+				for (let i = 0; i < block.length; i++) { assert block[i] == wanted[i]; }
+				const mesh = read.value.meshes[0];
+				const before = baseline.value.meshes[0];
+				assert mesh.vertices.length == before.vertices.length;
+				for (let i = 0; i < mesh.vertices.length; i++) {
+					assert mesh.vertices[i] == before.vertices[i];
+				}
+				assert mesh.indexCount() == before.indexCount();
+				for (let i = 0; i < mesh.indexCount(); i++) {
+					assert mesh.indexAt(i) == before.indexAt(i);
+				}
+			}
+		}
+	}
+}
+
+test "texture coordinate selectors reject malformed values and active nonzero sets" {
+	for (const extra of [
+		",\"texCoord\":1" + transformed("{}"),
+		transformed("{\"texCoord\":1}"),
+		",\"texCoord\":1" + transformed("{\"texCoord\":2}"),
+	]) {
+		assert refusedAs({ ...texturedParts(), materials: baseWith(extra) },
+			GltfError.UnsupportedMaterial);
+	}
+	for (const invalid of ["null", "true", "\"0\"", "0.5", "-1", "2147483648"]) {
+		for (const extra of [
+			",\"texCoord\":" + invalid + transformed("{\"texCoord\":0}"),
+			transformed("{\"texCoord\":" + invalid + "}"),
+		]) {
+			const read = loaded({ ...texturedParts(), materials: baseWith(extra) });
+			assert !read.ok;
+		}
+	}
+}
+
+test "a texture coordinate override still requires its selected UV0 attribute" {
+	const parts: Parts = {
+		...texturedParts(), attributes: WITHOUT_UVS,
+		materials: baseWith(",\"texCoord\":2" + transformed("{\"texCoord\":0}")),
+	};
+	const read = loadGltf(requiringExtensions(documentOf(parts),
+		"\"KHR_texture_transform\""), quadBuffer());
+	assert !read.ok;
+	if (!read.ok) { assert read.error == GltfError.MissingTexCoord; }
+}
+
 test "tangent splits preserve skin source ids across UV encodings index widths and strips" {
 	for (const variant of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
 		const index32 = variant % 2 == 1;
