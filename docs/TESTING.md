@@ -391,7 +391,10 @@ device or throws, or whose canvas is one colour; it skips only when `requestAdap
 and the verdicts. The 2026-09-20 reading that headless Chrome hands WebGPU no adapter was a
 fixed-time screenshot taken before anything presented: on 2026-10-20 `--headless=new` with no ANGLE
 or unsafe flag rendered the campfire on the NVIDIA adapter, while a harness that slept a fixed 8 s
-returned it black (`~/metascript/.inbox/void/2026-10-20-webgpu-coverage-gap.md`).
+returned it black (`~/metascript/.inbox/void/2026-10-20-webgpu-coverage-gap.md`). Measured 2026-10-21, BUILD
+`3c5ca8377`, through `web-liveness.sh`: the demo presents on WebGL2 (39.0% of pixels off the clear colour) and on
+WebGPU (37.7%); a WebGPU build that sets up gfx and never draws FAILs with "presented 0 frames in 30 s, with a WebGPU
+adapter"; the WebGPU campfire presents with 91.0% off the clear colour.
 
 **The design: one golden set, authored on D3D11; five backends compared against it.** Not five golden sets — five golden sets would record five different renderers and prove exactly nothing. The output is a per-backend conformance report: scenes identical, scenes within a stated bound, scenes failing, and a pass rate. That report *is* guardrail 9, and it belongs in VOID2D.md as a number that moves per phase.
 
