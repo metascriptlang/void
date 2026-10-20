@@ -3866,6 +3866,36 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Vertical capsule primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Capsule.hx` constructor
+builds two half-sphere grids and an axial cylinder, with radial normals. Axis.Z followed by
+Void's Y/Z mapping gives the vertical form; straight length is the distance between cap
+centers, not the total tip-to-tip height. For `s` segments its source construction has
+`2*(s+1)^2 + 4*s + 2` vertices and `4*s*s` triangles, including degenerate cylinder triangles
+when straight length is zero (sphere geometry). Both source axes and winding must be mapped.
+
+Bevy `157e1ce6` `crates/bevy_mesh/src/primitives/dim3/capsule.rs` `Capsule3dMeshBuilder`
+uses the same two-hemisphere/cylinder construction and straight-length meaning, with separate
+Aspect/Uniform/Fixed UV policies. Heaps' `defaultUnitCapsule` requests no UVs; its inherited
+`Polygon.addUVs` is planar, not one of Bevy's profiles. `addCapsuleY` therefore extends existing
+Lit geometry builders only, refusing textured receivers with existing `UvMismatch` instead of
+inventing a UV policy. No additional axes, UV profile, collider or physics API is claimed.
+
+`meshDataCheck.ms` pins radial distance from the center segment, normals, winding, zero-length
+shape, curved-versus-box picking, appended wide IDs and preflight. Squaring signed maximum
+segment counts fits int64, but multiplying that square by two or twelve need not: reject the
+square against existing capacity before either expansion. Finite parameters also need a
+finite combined cap extent; finite radius and straight length alone are insufficient.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addCapsuleY`, no codegen.
+After implementation, serial mesh **354/354**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `27d237f529b051aaec64ab898b48d715499ca70f`.
+Receipts: `out/m6CapsuleRedB1f63337f20261021.{log,exit}` and
+`out/m6Capsule{name}GreenB1f63337f20261021.{log,exit}`. No textured capsule, collider, GPU,
+Mikk or performance acceptance. This remains above the sphere-dependent split point.
+
 ### Full disc primitive, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Disc.hx` constructs an outer
