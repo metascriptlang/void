@@ -19,3 +19,7 @@ union-of-two-boxes 3 3 3
 quarter-turn-swaps-extents 4 3 2.0000000000000004
 translation-keeps-size 2 3 4
 translation-moves-the-corner 10 -5 2
+sphere-subnormal-line 0.5
+sphere-subnormal-flat 0.7071067811865475
+sphere-wide-line 1
+sphere-wide-cube 1.7320508075688772

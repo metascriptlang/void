@@ -158,6 +158,34 @@ test "the bounding sphere is half the diagonal" {
 	assert approx(box.boundingSphereRadius(), 3.5);
 }
 
+test "bounding sphere radii stay finite for subnormal extents" {
+	const edge: float32 = 1.0e-40;
+	const line = Bounds3D.fromPoints(vec3(0.0, 0.0, 0.0), vec3(edge, 0.0, 0.0));
+	const flat = Bounds3D.fromPoints(vec3(0.0, 0.0, 0.0), vec3(edge, edge, 0.0));
+	const lineRadius: float32 = line.boundingSphereRadius();
+	const flatRadius: float32 = flat.boundingSphereRadius();
+	assert Number.isFinite(lineRadius) && lineRadius > 0.0;
+	assert Number.isFinite(flatRadius) && flatRadius > 0.0;
+	assert approx(lineRadius / edge, 0.5);
+	assert approx(flatRadius / edge, 0.70710678);
+}
+
+test "bounding sphere radius survives an overflowing float32 edge difference" {
+	const limit: float32 = 3.0e38;
+	const box = Bounds3D.fromPoints(vec3(-limit, 0.0, 0.0), vec3(limit, 0.0, 0.0));
+	const radius: float32 = box.boundingSphereRadius();
+	assert Number.isFinite(radius);
+	assert approx(radius / limit, 1.0);
+}
+
+test "bounding sphere radius halves the diagonal before narrowing to float32" {
+	const extent: float32 = 1.0e38;
+	const box = Bounds3D.fromPoints(vec3(-extent, -extent, -extent), vec3(extent, extent, extent));
+	const radius: float32 = box.boundingSphereRadius();
+	assert Number.isFinite(radius);
+	assert approx(radius / extent, 1.7320508);
+}
+
 test "closestPoint clamps into the box and leaves inside points alone" {
 	const box: Bounds3D = unitBox();
 	assert near(box.closestPoint(vec3(5.0, -5.0, 1.0)), 1.0, 0.0, 1.0);

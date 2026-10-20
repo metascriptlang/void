@@ -25,8 +25,8 @@ naming a sentinel nobody wrote fails rather than being skipped.
 
 **How far that reaches, measured rather than implied.** The `pending` stage observes that a
 **sentinel is present**, not that the **divergence still holds**. Those are different claims,
-and nine oracle rows below have the second one enforced: `bounds-transformed-or`,
-`bounds-empty-size-zero` and `bounds-sphere-rescale` each carry a `diverges=` case in
+and eight oracle rows below have the second one enforced: `bounds-transformed-or` and
+`bounds-empty-size-zero` each carry a `diverges=` case in
 `tests/oracle/bounds3d.cases`, `anim-never-extrapolates` and `anim-pose-replaces-local` one in
 `tests/oracle/anim3d.cases`, `ray-bounds-parallel-on-face` two, and `pick-origin-inside-bounds`
 and `pick-culling-follows-material` one each in `tests/oracle/ray3d.cases`, and `particle-random-per-life` one in `tests/oracle/particles3d.cases`, which the `oracle`
@@ -40,7 +40,7 @@ The original two prose-sentinel rows are weaker still: they track the prose, so 
 reddens the gate and changing the world behind it does not.
 
 Where a row can be given a behavioural sentinel, it should be. That is what an oracle case is
-for, and it is why the three bounds rows are the ones to copy.
+for, and it is why the two bounds divergence rows are the ones to copy.
 
 ## Rows
 
@@ -48,7 +48,6 @@ for, and it is why the three bounds rows are the ones to copy.
 |---|---|---|---|
 | `bounds-transformed-or` | `transformed` treats a box empty on **any** axis as empty, where Heaps (`Bounds.hx:159`) tests all three with AND and transforms it anyway. **Measured against real Heaps** (`tests/oracle/bounds3d.cases`, `negative-axis-transformed`): a box with a negative size on one axis, translated by +10x, gives Heaps `10 -1 0` and this port `0 0 0`. Narrower than first written — a *flat* axis (min == max) is empty under neither rule, so the divergence needs a genuinely negative extent. | `src/void3d/bounds.ms` | deliberate — deleted only if Heaps parity is chosen over it |
 | `bounds-empty-size-zero` | `size()` and `dimension()` answer zero on an empty box; Heaps answers −2e20 per axis. **Measured, not cited**: real Heaps at `2b84cc2` returns `-200000000000000000000` for both (`tests/oracle/bounds3d.snapshot`). | `src/void3d/bounds.ms` | deliberate |
-| `bounds-sphere-rescale` | `boundingSphereRadius` scales by the longest edge before squaring, because `Bounds3D.all()` spans 2e20 and its square is infinity in float32; Heaps squares directly on float64. **The oracle corrected this row**: the two *answers* agree to 4.6e-9 relative (`1.7320508075688775e20` against `1.7320508156113480e20`), so this is a divergence in method and not in behaviour. The row stays because simplifying the code back to Heaps' form returns infinity, and `unbounded-sphere` is the case that would then go red. | `src/void3d/bounds.ms` | deliberate |
 | `mesh-node-name-collision` | The scene's mesh writer is `addMeshNode` rather than Heaps' name, because two free functions with one name collide: with a `ref` first parameter on both, the call resolves to the wrong one **silently** (compiler card `2026-09-20-ref-receiver-not-an-extension.md`); since M24 `draw.ms`'s `addMesh` takes the context by value, and the call is refused instead (`out/tmp/overload/value`). | `src/void3d/scene.ms` | when a `ref this` receiver parses |
 | `nested-loop-narrowing-bound` | The campfire example's `buildGrass` binds `AtlasTile.split`'s result to a local after checking it, instead of reading `tiles.value[variant]` in its loops, because a `Result` narrowed by an early return or an `if (r.ok)` is not narrowed inside a loop nested in a loop (compiler card `2026-09-26-narrowing-lost-two-loops-deep.md`); one loop deep it is. | `src/examples/campfireScene.ms` | when the card's "Done when" holds on the installed `msc` |
 | `light-params-divergence` | A light node carries `radius` and `power` where Heaps' fwd PointLight carries `params` (constant, linear, quadratic attenuation) and its DirLight folds intensity into color. The directional light's `power` is only a field Heaps does not have: `color × max(n·l, 0) × power` is Heaps' product with the power folded in. The point light is a different curve, not only a different field: `color × (1 − d/radius)² × facing × power`, the spike's window that reaches zero at `radius`, where Heaps' `PointLight.calcLighting` divides by `params · (d, d², d³)` and never reaches zero. The pixel-art preset also quantizes a point light's energy before it multiplies the colour (pixelArt3d.ms `toonPointLightAt`), and folding the power in would quantize at a different place. The block holds one directional and four point slots, and a scene past that is an error rather than the silent top-N drop fwd.LightSystem does. | `src/void3d/scene.ms` | deliberate |

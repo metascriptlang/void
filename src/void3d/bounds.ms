@@ -189,19 +189,12 @@ export function dimension(this bounds: Bounds3D): float32 {
 	return longest;
 }
 
-// Half the diagonal, computed on the extent scaled down by its longest edge. Heaps squares the
-// edges directly (Bounds.hx getBoundingSphereRadius) because its floats are 64-bit; here
-// Bounds3D.all() spans 2e20 per axis and (2e20)² is infinity in float32 long before the square
-// root could bring it back.
-// PENDING3D: bounds-sphere-rescale
 export function boundingSphereRadius(this bounds: Bounds3D): float32 {
 	if (bounds.isEmpty()) { return 0.0; }
-	const longest: float32 = bounds.dimension();
-	if (longest == 0.0) { return 0.0; }
-	const one: float32 = 1.0;
-	const half: float32 = 0.5;
-	const unit: Vec3 = bounds.size().scaled(one / longest);
-	return longest * unit.length() * half;
+	const dx: float64 = (bounds.max.x as float64) - (bounds.min.x as float64);
+	const dy: float64 = (bounds.max.y as float64) - (bounds.min.y as float64);
+	const dz: float64 = (bounds.max.z as float64) - (bounds.min.z as float64);
+	return (Math.sqrt(dx * dx + dy * dy + dz * dz) * 0.5) as float32;
 }
 
 // Zero for an empty box, as `size` and `center` answer, rather than clamping to the +1e20
