@@ -111,6 +111,60 @@ test "point containment does not require normalized stored planes" {
 	assert !frustum.containsPoint(vec3(0.0, 0.0, -0.01));
 }
 
+test "sphere culling includes contact and rejects separation at all six planes" {
+	const frustum = Frustum3D.fromMatrix(identity());
+	let contacts: Vec<Vec3> = [
+		vec3(-1.25, 0.0, 0.5), vec3(1.25, 0.0, 0.5),
+		vec3(0.0, -1.25, 0.5), vec3(0.0, 1.25, 0.5),
+		vec3(0.0, 0.0, -0.25), vec3(0.0, 0.0, 1.25),
+	];
+	let outside: Vec<Vec3> = [
+		vec3(-1.26, 0.0, 0.5), vec3(1.26, 0.0, 0.5),
+		vec3(0.0, -1.26, 0.5), vec3(0.0, 1.26, 0.5),
+		vec3(0.0, 0.0, -0.26), vec3(0.0, 0.0, 1.26),
+	];
+	for (let i = 0; i < contacts.length; i++) {
+		assert !frustum.containsPoint(contacts[i]);
+		assert frustum.intersectsSphere(contacts[i], 0.25);
+		assert !frustum.intersectsSphere(outside[i], 0.25);
+	}
+}
+
+test "zero radius sphere culling agrees with world point containment" {
+	const frustum = Frustum3D.fromMatrix(identity());
+	let points: Vec<Vec3> = [
+		vec3(0.0, 0.0, 0.5), vec3(-1.0, -1.0, 0.0), vec3(1.0, 1.0, 1.0),
+		vec3(0.0, 0.0, -0.01), vec3(1.01, 0.0, 0.5),
+	];
+	for (let i = 0; i < points.length; i++) {
+		assert frustum.intersectsSphere(points[i], 0.0) == frustum.containsPoint(points[i]);
+	}
+}
+
+test "sphere culling compensates perspective plane normals and camera movement" {
+	const frustum = Frustum3D.fromMatrix(perspective());
+	assert frustum.intersectsSphere(vec3(-3.0, 0.0, -2.0), 0.75);
+	assert frustum.intersectsSphere(vec3(0.0, 3.0, -2.0), 0.75);
+	assert !frustum.intersectsSphere(vec3(-3.1, 0.0, -2.0), 0.75);
+	assert frustum.intersectsSphere(vec3(0.0, 0.0, -0.75), 0.25);
+	assert frustum.intersectsSphere(vec3(0.0, 0.0, -9.25), 0.25);
+	assert !frustum.intersectsSphere(vec3(0.0, 0.0, -9.26), 0.25);
+	assert !frustum.intersectsSphere(vec3(4.0, 0.0, -2.0), 0.25);
+	const moved = Frustum3D.fromMatrix(translation(-4.0, 0.0, 0.0) * perspective());
+	assert moved.intersectsSphere(vec3(4.0, 0.0, -2.0), 0.25);
+	assert !moved.intersectsSphere(vec3(0.0, 0.0, -2.0), 0.25);
+}
+
+test "sphere culling preserves radii under nonunit stored planes" {
+	const frustum = Frustum3D.fromMatrix(scaling(2.0, 3.0, 4.0));
+	assert frustum.intersectsSphere(vec3(0.75, 0.0, 0.1), 0.25);
+	assert !frustum.intersectsSphere(vec3(0.751, 0.0, 0.1), 0.25);
+	assert frustum.intersectsSphere(vec3(0.0, 0.5, 0.1), 0.25);
+	assert !frustum.intersectsSphere(vec3(0.0, 0.6, 0.1), 0.25);
+	assert frustum.intersectsSphere(vec3(0.0, 0.0, 0.5), 0.25);
+	assert !frustum.intersectsSphere(vec3(0.0, 0.0, 0.51), 0.25);
+}
+
 test "transformed local bounds keep reflected nonuniform scale and shear extents" {
 	let frustum: Frustum3D = Frustum3D.fromMatrix(identity());
 	assert frustum.intersectsBounds(cube(), scaling(-2.0, 0.5, 1.0) * translation(1.4, 0.0, 0.5));

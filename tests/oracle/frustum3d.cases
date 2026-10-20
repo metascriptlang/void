@@ -2,9 +2,14 @@
 # haxe-prelude: import h3d.Matrix;
 # haxe-prelude: import h3d.col.Frustum;
 # haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Sphere;
 # haxe-prelude: class H {
 # haxe-prelude: public static function at(f: Frustum,x: Float,y: Float,z: Float): Float {
 # haxe-prelude: return f.hasPoint(new Point(x,y,z)) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: public static function sphere(f: Frustum,x: Float,y: Float,z: Float,
+# haxe-prelude: r: Float): Float {
+# haxe-prelude: return f.hasSphere(new Sphere(x,y,z,r)) ? 1.0 : 0.0;
 # haxe-prelude: }
 # haxe-prelude: public static function perspective(): Matrix {
 # haxe-prelude: var m = Matrix.I();
@@ -16,6 +21,9 @@
 # ms-prelude: import { Frustum3D } from "../../../src/void3d/frustum";
 # ms-prelude: function at(f: Frustum3D,x: float32,y: float32,z: float32): float32 {
 # ms-prelude: return f.containsPoint(vec3(x,y,z)) ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function sphereAt(f: Frustum3D,x: float32,y: float32,z: float32,r: float32): float32 {
+# ms-prelude: return f.intersectsSphere(vec3(x,y,z),r) ? 1.0 : 0.0;
 # ms-prelude: }
 # ms-prelude: function perspective(): Mat4 {
 # ms-prelude: return {
@@ -66,3 +74,57 @@ ms> emit3("point-nonunit-planes",at(fs,0.5,0.0,0.25),at(fs,0.51,0.0,0.1),at(fs,0
 case point-scaled-depth tol=0
 haxe> emit("point-scaled-depth",[H.at(fs,0,0,0.25),H.at(fs,0,0,0.26),H.at(fs,0,0,-0.01)]);
 ms> emit3("point-scaled-depth",at(fs,0.0,0.0,0.25),at(fs,0.0,0.0,0.26),at(fs,0.0,0.0,-0.01));
+
+case sphere-tangent-xy tol=0
+haxe> emit("sphere-tangent-xy",[H.sphere(fi,-1.25,0,0.5,0.25),
+haxe> H.sphere(fi,1.25,0,0.5,0.25),H.sphere(fi,0,-1.25,0.5,0.25)]);
+ms> emit3("sphere-tangent-xy",sphereAt(fi,-1.25,0.0,0.5,0.25),
+ms> sphereAt(fi,1.25,0.0,0.5,0.25),sphereAt(fi,0.0,-1.25,0.5,0.25));
+
+case sphere-tangent-yz tol=0
+haxe> emit("sphere-tangent-yz",[H.sphere(fi,0,1.25,0.5,0.25),
+haxe> H.sphere(fi,0,0,-0.25,0.25),H.sphere(fi,0,0,1.25,0.25)]);
+ms> emit3("sphere-tangent-yz",sphereAt(fi,0.0,1.25,0.5,0.25),
+ms> sphereAt(fi,0.0,0.0,-0.25,0.25),sphereAt(fi,0.0,0.0,1.25,0.25));
+
+case sphere-separated tol=0
+haxe> emit("sphere-separated",[H.sphere(fi,-1.26,0,0.5,0.25),
+haxe> H.sphere(fi,0,0,-0.26,0.25),H.sphere(fi,0,0,1.26,0.25)]);
+ms> emit3("sphere-separated",sphereAt(fi,-1.26,0.0,0.5,0.25),
+ms> sphereAt(fi,0.0,0.0,-0.26,0.25),sphereAt(fi,0.0,0.0,1.26,0.25));
+
+case sphere-zero-radius tol=0
+haxe> emit("sphere-zero-radius",[H.sphere(fi,-1,-1,0,0),
+haxe> H.sphere(fi,1,1,1,0),H.sphere(fi,0,0,-0.01,0)]);
+ms> emit3("sphere-zero-radius",sphereAt(fi,-1.0,-1.0,0.0,0.0),
+ms> sphereAt(fi,1.0,1.0,1.0,0.0),sphereAt(fi,0.0,0.0,-0.01,0.0));
+
+case perspective-sphere-slopes tol=0
+haxe> emit("perspective-sphere-slopes",[H.sphere(fp,-3,0,-2,0.75),
+haxe> H.sphere(fp,0,3,-2,0.75),H.sphere(fp,-3.1,0,-2,0.75)]);
+ms> emit3("perspective-sphere-slopes",sphereAt(fp,-3.0,0.0,-2.0,0.75),
+ms> sphereAt(fp,0.0,3.0,-2.0,0.75),sphereAt(fp,-3.1,0.0,-2.0,0.75));
+
+case perspective-sphere-depth tol=0
+haxe> emit("perspective-sphere-depth",[H.sphere(fp,0,0,-0.75,0.25),
+haxe> H.sphere(fp,0,0,-9.25,0.25),H.sphere(fp,0,0,-9.26,0.25)]);
+ms> emit3("perspective-sphere-depth",sphereAt(fp,0.0,0.0,-0.75,0.25),
+ms> sphereAt(fp,0.0,0.0,-9.25,0.25),sphereAt(fp,0.0,0.0,-9.26,0.25));
+
+case world-sphere-camera-movement tol=0
+haxe> emit("world-sphere-camera-movement",[H.sphere(fp,4,0,-2,0.25),
+haxe> H.sphere(fm,4,0,-2,0.25),H.sphere(fm,0,0,-2,0.25)]);
+ms> emit3("world-sphere-camera-movement",sphereAt(fp,4.0,0.0,-2.0,0.25),
+ms> sphereAt(fm,4.0,0.0,-2.0,0.25),sphereAt(fm,0.0,0.0,-2.0,0.25));
+
+case sphere-nonunit-planes tol=0
+haxe> emit("sphere-nonunit-planes",[H.sphere(fs,0.75,0,0.1,0.25),
+haxe> H.sphere(fs,0.751,0,0.1,0.25),H.sphere(fs,0,0,0.5,0.25)]);
+ms> emit3("sphere-nonunit-planes",sphereAt(fs,0.75,0.0,0.1,0.25),
+ms> sphereAt(fs,0.751,0.0,0.1,0.25),sphereAt(fs,0.0,0.0,0.5,0.25));
+
+case sphere-scaled-separation tol=0
+haxe> emit("sphere-scaled-separation",[H.sphere(fs,0,0.5,0.1,0.25),
+haxe> H.sphere(fs,0,0.6,0.1,0.25),H.sphere(fs,0,0,0.51,0.25)]);
+ms> emit3("sphere-scaled-separation",sphereAt(fs,0.0,0.5,0.1,0.25),
+ms> sphereAt(fs,0.0,0.6,0.1,0.25),sphereAt(fs,0.0,0.0,0.51,0.25));
