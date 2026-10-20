@@ -95,6 +95,7 @@ export enum MeshError {
 	CylinderParameters,
 	DiscParameters,
 	CapsuleParameters,
+	GridParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -935,6 +936,58 @@ export function addCapsuleY(
 		const v0: int32 = base + y * 2;
 		const _a = try addTriangle(data, v0, v0 + 2, v0 + 1);
 		const _b = try addTriangle(data, v0 + 1, v0 + 2, v0 + 3);
+	}
+	return Result.ok(first);
+}
+
+export function addGrid(
+	ref data: MeshData,
+	columns: int32,
+	rows: int32,
+	cellWidth: float32,
+	cellDepth: float32,
+	color: Rgba,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	const extentX: float32 = cellWidth * (columns as float32);
+	const extentZ: float32 = cellDepth * (rows as float32);
+	if (columns < 1 || rows < 1 || cellWidth <= 0.0 || cellDepth <= 0.0
+		|| extentX - extentX != 0.0 || extentZ - extentZ != 0.0) {
+		return Result.err(MeshError.GridParameters);
+	}
+	const vertices: int64 = ((columns as int64) + 1) * ((rows as int64) + 1);
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((columns as int64) * (rows as int64) * 6
+		> (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const normal: Vec3 = vec3(0.0, 1.0, 0.0);
+	for (let y = 0; y <= rows; y++) {
+		for (let x = 0; x <= columns; x++) {
+			const point: Vec3 = vec3((x as float32) * cellWidth, 0.0, (y as float32) * cellDepth);
+			const added = data.hasUvs ? addTexturedVertex(data, point, normal,
+				{ u: (x as float32) / (columns as float32),
+					v: (y as float32) / (rows as float32) }, color)
+				: addVertex(data, point, normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+	}
+	for (let y = 0; y < rows; y++) {
+		for (let x = 0; x < columns; x++) {
+			const a: int32 = first + x + y * (columns + 1);
+			const b: int32 = a + 1;
+			const c: int32 = a + columns + 1;
+			const _first = try addTriangle(data, a, c, b);
+			const _second = try addTriangle(data, b, c, c + 1);
+		}
 	}
 	return Result.ok(first);
 }
