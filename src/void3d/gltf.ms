@@ -1767,7 +1767,8 @@ function decodeGltf(
 		}
 		for (let i = 0; i < countOf(requiredExtensions); i++) {
 			const name: JsonValue = at(requiredExtensions, i);
-			if (name.kind != JsonKind.String || name.strVal != "KHR_texture_transform") {
+			if (name.kind != JsonKind.String || (name.strVal != "KHR_texture_transform"
+				&& name.strVal != "KHR_materials_emissive_strength")) {
 				return Result.err(gltfFailure(GltfError.Unsupported, source,
 					`$.extensionsRequired[${i}]`, name.asString()));
 			}
