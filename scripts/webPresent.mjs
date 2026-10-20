@@ -120,7 +120,10 @@ export function differingShare({ width, height, channels, pixels }) {
 export function verdict({ label, backend, presented, adapter, errors, share }) {
 	if (backend === 'wgpu' && adapter === false) return `SKIP  ${label}: this Chrome hands WebGPU no adapter`;
 	if (errors.length > 0) return `FAIL  ${label}: ${errors[0]}`;
-	if (presented < framesWanted) return `FAIL  ${label}: presented ${presented} frames in ${presentTimeoutMs / 1000} s`;
+	if (presented < framesWanted) {
+		const device = backend !== 'wgpu' ? '' : adapter === null ? ', WebGPU never requested an adapter' : ', with a WebGPU adapter';
+		return `FAIL  ${label}: presented ${presented} frames in ${presentTimeoutMs / 1000} s${device}`;
+	}
 	if (share < minDifferingShare) {
 		return `FAIL  ${label}: presented ${presented} frames, but the canvas is one colour (${(share * 100).toFixed(2)}% of pixels differ)`;
 	}

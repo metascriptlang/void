@@ -84,7 +84,8 @@ test('differingShare is zero for one colour and counts the rest', () => {
 test('verdict refuses an unpresented or one-colour canvas and skips only a missing WebGPU adapter', () => {
 	const ok = { label: 'x', backend: 'wgpu', presented: 3, adapter: true, errors: [], share: 0.2 };
 	assert.match(verdict(ok), /^PASS/);
-	assert.match(verdict({ ...ok, presented: 0 }), /^FAIL .*presented 0 frames/);
+	assert.match(verdict({ ...ok, presented: 0 }), /^FAIL .*presented 0 frames.*with a WebGPU adapter/);
+	assert.match(verdict({ ...ok, presented: 0, adapter: null }), /^FAIL .*never requested an adapter/);
 	assert.match(verdict({ ...ok, share: 0 }), /^FAIL .*one colour/);
 	assert.match(verdict({ ...ok, errors: ['device lost'] }), /^FAIL .*device lost/);
 	assert.match(verdict({ ...ok, adapter: false, presented: 0 }), /^SKIP/);
