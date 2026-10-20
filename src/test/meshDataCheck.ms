@@ -27,6 +27,7 @@ import {
 	addDisc,
 	addCapsuleY,
 	addGrid,
+	addGeoSphere,
 	recomputeBounds,
 	addTangents,
 	addTangentsWithSources,
@@ -455,6 +456,79 @@ test "grid preflight refuses invalid cell counts sizes or overflowing extents at
 	let data = MeshData.empty();
 	assert !addGrid(data, 2, 2, 3.0e38, 1.0, WHITE).ok;
 	assert !addGrid(data, 2, 2, 1.0, 3.0e38, WHITE).ok;
+	assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+}
+
+test "a Heaps geosphere retains octahedral subdivision counts and per-source normals" {
+	let factor: int32 = 1;
+	for (const subdivisions of [0, 1, 2, 3]) {
+		let data = MeshData.empty();
+		const made = addGeoSphere(data, 2.0, WHITE, subdivisions);
+		assert made.ok;
+		if (!made.ok) { continue; }
+		assert made.value == 0;
+		assert data.vertexCount() == 8 * factor - 2 && data.triangleCount() == 8 * factor;
+		assert data.validIndices();
+		for (let i = 0; i < data.vertexCount(); i++) {
+			const point = positionAt(data, i);
+			const normal = normalAt(data, i);
+			assert approx(point.length(), 2.0) && approx(normal.length(), 1.0);
+			assert point.dot(normal) > 0.0;
+		}
+		for (let i = 0; i < data.indexCount(); i += 3) {
+			const p = positionAt(data, data.indexAt(i) as int32);
+			const q = positionAt(data, data.indexAt(i + 1) as int32);
+			const r = positionAt(data, data.indexAt(i + 2) as int32);
+			assert (q - p).cross(r - p).dot(p + q + r) > 0.0;
+		}
+		if (subdivisions == 0) {
+			assert near(data.bounds.min, -1.41421356, -2.0, -1.41421356);
+			assert near(data.bounds.max, 1.41421356, 2.0, 1.41421356);
+		} else {
+			assert near(data.bounds.min, -2.0, -2.0, -2.0);
+			assert near(data.bounds.max, 2.0, 2.0, 2.0);
+		}
+		if (subdivisions == 1) {
+			assert near(positionAt(data, 6), 1.0, 1.41421356, -1.0);
+			assert near(normalAt(data, 6), 0.774596669, 0.623347261, -0.106949482);
+		}
+		factor *= 4;
+	}
+}
+
+test "geosphere triangles reach picking and append without replacing old ids" {
+	let data = MeshData.empty();
+	assert addGeoSphere(data, 2.0, WHITE, 2).ok;
+	const above = Ray.fromPoints(vec3(0.0, 6.0, 0.0), vec3(0.0, 0.0, 0.0));
+	assert approx(data.rayIntersection(above, Face.Back).distance, 4.0);
+	const outside = Ray.fromPoints(vec3(1.8, 1.8, 6.0), vec3(1.8, 1.8, 0.0));
+	assert data.rayIntersection(outside, Face.Back).distance == -1.0;
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const appended = addGeoSphere(wide, 1.0, WHITE, 0);
+	assert appended.ok;
+	if (appended.ok) { assert appended.value == 65535; }
+	assert wide.vertexCount() == 65541 && wide.indexCount() == 27;
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+}
+
+test "geosphere preflight bounds subdivision growth and refuses unsupported layouts" {
+	for (const subdivisions of [-1, 20, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addGeoSphere(data, 1.0, WHITE, subdivisions).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let textured = MeshData.withUvs();
+	const refused = addGeoSphere(textured, 1.0, WHITE, 1);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UvMismatch; }
+	assert textured.vertexCount() == 0 && textured.indexCount() == 0;
+	let data = MeshData.empty();
+	assert !addGeoSphere(data, 0.0, WHITE, 1).ok;
+	assert !addGeoSphere(data, -1.0, WHITE, 1).ok;
 	assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
 }
 
