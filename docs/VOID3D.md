@@ -3858,6 +3858,29 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Bounds intersection, Heaps capability acceptance
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/col/Bounds.hx` `intersection`
+uses componentwise max of the two minimums and min of their maximums. It leaves separated
+intervals inverted rather than clamping them into touching geometry. Bevy `157e1ce6`
+`crates/bevy_shape/src/bounding/bounded3d/mod.rs` `Aabb3d` `IntersectsVolume::intersects`
+confirms that contact counts as intersection; no speculative Bevy intersection-result API
+is claimed. This is Euclidean interval intersection, not a glTF feature.
+
+`bounds.ms` `intersection` reuses Bounds3D's value-return idiom, not a collider hierarchy.
+`boundsCheck.ms` pins operand immutability, symmetry, containment, clipped ray queries,
+face/edge/point contact, separated/empty sets and the existing all-bounds sentinel.
+`contains` remains half-open; contact's zero-size result is nonempty under existing `isEmpty`.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/boundsCheck.ms` first exited 1 with seven missing-`intersection` diagnostics
+and no codegen/tests. This is the missing API red, not the particles union compiler blocker.
+After implementation, serial bounds **321/321**, frustum **310/310**, picking **329/329**,
+all three exits and aggregate 0; the latter two import Bounds3D through actual culling/picking
+consumers. CPU source tree `c0d350d4720e076cee5f13ea56dfa424a1ddc3c7`.
+Receipts: `out/m6BoundsIntersectionRedB1f63337f20261021.{log,exit}` and
+`out/m6BoundsIntersection{name}GreenB1f63337f20261021.{log,exit}`. No new GPU or performance claim.
+
 ### glTF material descriptor shapes, sweep boundary
 
 Heaps `b9aa6dcb` `h3d/shader/Texture.hx` and `PropsValues.hx` consume the selected texture
