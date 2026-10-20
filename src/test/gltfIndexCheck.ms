@@ -66,6 +66,29 @@ function indexFixture(
 	return { json: json, bytes: move bytes };
 }
 
+function stripFixture(
+	count: int32,
+	component: int32,
+	indices: Readonly<Span<uint32>>,
+	sparseSlots: Readonly<Span<uint32>>,
+	zeroBase: boolean,
+): IndexFixture {
+	let fixture = indexFixture(count, component, indices, sparseSlots, zeroBase);
+	const first: int32 = count > 65536 ? 65536 : 0;
+	const rows: Vec<uint32> = [0, 0x3f800000, 0x40000000];
+	for (let vertex = 0; vertex < 6 && first + vertex < count; vertex++) {
+		const bits: Vec<uint32> = [vertex % 2 == 0 ? 0 : 0x3f800000, rows[vertex / 2], 0];
+		for (let axis = 0; axis < 3; axis++) {
+			for (let byte = 0; byte < 4; byte++) {
+				fixture.bytes[(first + vertex) * 12 + axis * 4 + byte] =
+					((bits[axis] >> ((byte * 8) as uint32)) & 255) as uint8;
+			}
+		}
+	}
+	fixture.json = fixture.json.replace(`"attributes":`, `"mode":5,"attributes":`);
+	return fixture;
+}
+
 function indexedFixture(
 	count: int32,
 	component: int32,
@@ -210,6 +233,121 @@ test "glTF explicit invalid primitive modes never default to triangles" {
 			assert !loaded.ok;
 			if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
 		}
+	}
+}
+
+test "glTF strips preserve winding across dense and sparse index widths" {
+	const expected: Vec<uint32> = [0, 1, 2, 2, 1, 3, 2, 3, 4, 4, 3, 5];
+	for (const component of [5121, 5123, 5125]) {
+		for (const layout of [0, 1, 2]) {
+			const slots: Vec<uint32> = layout == 0 ? [] : [1, 2, 3, 4, 5];
+			const fixture = stripFixture(6, component, [0, 1, 2, 3, 4, 5], slots, layout == 2);
+			const loaded = loadGltf(fixture.json, fixture.bytes);
+			assert loaded.ok;
+			if (!loaded.ok) { continue; }
+			const mesh = loaded.value.meshes[0];
+			assert mesh.vertexCount() == 6 && mesh.indexCount() == 12;
+			assert (mesh.wideIndices !== null) == (component == 5125);
+			for (let i = 0; i < expected.length; i++) {
+				assert mesh.indexAt(i as int32) == expected[i];
+			}
+			for (const row of [0, 1]) {
+				for (const offset of [0.25 as float32, 0.75 as float32]) {
+					const ray: Ray = {
+						origin: vec3(offset, (row as float32) + offset, 1),
+						direction: vec3(0, 0, -1),
+					};
+					assert mesh.rayIntersection(ray, Face.Back).distance == 1;
+					assert mesh.rayIntersection(ray, Face.Front).distance < 0;
+				}
+			}
+		}
+	}
+}
+
+test "glTF implicit strips promote at the existing narrow index boundary" {
+	for (const count of [3, 4, 6, 65535, 65536]) {
+		const fixture = stripFixture(count, 5123, [0, 1, 2], [], false);
+		const loaded = loadGltf(fixture.json.replace(`,"indices":2`, ""), fixture.bytes);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		const mesh = loaded.value.meshes[0];
+		assert mesh.vertexCount() == count && mesh.indexCount() == (count - 2) * 3;
+		assert (mesh.wideIndices !== null) == (count == 65536);
+		for (let triangle = 0; triangle < count - 2; triangle++) {
+			const first = triangle % 2 == 0 ? triangle : triangle + 1;
+			const second = triangle % 2 == 0 ? triangle + 1 : triangle;
+			assert mesh.indexAt(triangle * 3) == first as uint32;
+			assert mesh.indexAt(triangle * 3 + 1) == second as uint32;
+			assert mesh.indexAt(triangle * 3 + 2) == (triangle + 2) as uint32;
+		}
+	}
+}
+
+test "glTF uint32 strips retain high source ids and odd-triangle picking" {
+	const indices: Vec<uint32> = [65536, 65537, 65538, 65539];
+	const expected: Vec<uint32> = [65536, 65537, 65538, 65538, 65537, 65539];
+	for (const zeroBase of [false, true]) {
+		const fixture = stripFixture(65540, 5125, indices, [0, 1, 2, 3], zeroBase);
+		const loaded = loadGltf(fixture.json, fixture.bytes);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		const mesh = loaded.value.meshes[0];
+		assert mesh.wideIndices !== null && mesh.indexCount() == 6;
+		for (let i = 0; i < expected.length; i++) {
+			assert mesh.indexAt(i as int32) == expected[i];
+		}
+		const ray: Ray = { origin: vec3(0.75, 0.75, 1), direction: vec3(0, 0, -1) };
+		assert mesh.rayIntersection(ray, Face.Back).distance == 1;
+	}
+}
+
+test "glTF strip degenerate windows retain parity for later faces" {
+	const fixture = stripFixture(4, 5123, [0, 1, 2, 1, 3], [], false);
+	const expected: Vec<uint32> = [0, 1, 2, 2, 1, 1, 2, 1, 3];
+	const loaded = loadGltf(fixture.json, fixture.bytes);
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	const mesh = loaded.value.meshes[0];
+	assert mesh.indexCount() == expected.length;
+	for (let i = 0; i < expected.length; i++) {
+		assert mesh.indexAt(i as int32) == expected[i];
+	}
+	const ray: Ray = { origin: vec3(0.75, 0.75, 1), direction: vec3(0, 0, -1) };
+	assert mesh.rayIntersection(ray, Face.Back).distance == 1;
+	assert mesh.rayIntersection(ray, Face.Front).distance < 0;
+}
+
+test "glTF strips still reject short streams malformed indices and restart sentinels" {
+	const short = stripFixture(2, 5123, [0, 1], [], false);
+	for (const indexed of [false, true]) {
+		const json = indexed ? short.json : short.json.replace(`,"indices":2`, "");
+		const loaded = loadGltf(json, short.bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.CountMismatch; }
+	}
+	const fixture = stripFixture(4, 5123, [0, 1, 2, 3], [], false);
+	for (const value of ["null", "-1", "99", "1.5", "true"]) {
+		assert !loadGltf(fixture.json.replace(`"indices":2`, `"indices":${value}`),
+			fixture.bytes).ok;
+	}
+	for (const component of [5121, 5123, 5125]) {
+		const maximum: uint32 = component == 5121 ? 255 :
+			(component == 5123 ? 65535 : 0xffffffff);
+		const bad = stripFixture(4, component, [0, 1, 2, maximum], [3], false);
+		const loaded = loadGltf(bad.json, bad.bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.BadIndex; }
+	}
+	const oversized = loadGltf(fixture.json.replace(`"type":"SCALAR","count":4`,
+		`"type":"SCALAR","count":715827885`), fixture.bytes);
+	assert !oversized.ok;
+	if (!oversized.ok) { assert oversized.error == GltfError.MeshTooLarge; }
+	for (const mode of [0, 1, 2, 3, 6]) {
+		const loaded = loadGltf(fixture.json.replace(`"mode":5`, `"mode":${mode}`),
+			fixture.bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
 	}
 }
 
