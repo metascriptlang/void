@@ -6,6 +6,8 @@
 # haxe-prelude: import h3d.prim.Disc;
 # haxe-prelude: import h3d.prim.Capsule;
 # haxe-prelude: import h3d.prim.Capsule.Axis;
+# haxe-prelude: import h3d.prim.Cylinder;
+# haxe-prelude: import h3d.prim.Quads;
 # haxe-prelude: class H {
 # haxe-prelude: public static function sample(p: Polygon, i: Int, v: Bool): Array<Float> {
 # haxe-prelude: var a = p.points[i]; var n = p.normals[i];
@@ -14,10 +16,21 @@
 # haxe-prelude: var uv = p.uvs == null ? -1.0 : (v ? p.uvs[i].v : p.uvs[i].u);
 # haxe-prelude: return [p.points.length,p.idx.length/3,a.x,a.z,a.y,n.x/l,n.z/l,n.y/l,uv];
 # haxe-prelude: }
+# haxe-prelude: public static function sampleQuad(p: Quads, i: Int, v: Bool): Array<Float> {
+# haxe-prelude: var points = @:privateAccess p.pts;
+# haxe-prelude: var normals = @:privateAccess p.normals;
+# haxe-prelude: var uvs = @:privateAccess p.uvs;
+# haxe-prelude: var a = points[i]; var n = normals[i];
+# haxe-prelude: var l = Math.sqrt(n.x*n.x+n.y*n.y+n.z*n.z);
+# haxe-prelude: if (!(l > 0) || !Math.isFinite(l)) throw "invalid reference normal";
+# haxe-prelude: var uv = v ? uvs[i].v : uvs[i].u;
+# haxe-prelude: return [points.length,points.length/2,a.x,a.z,a.y,n.x/l,n.z/l,n.y/l,uv];
+# haxe-prelude: }
 # haxe-prelude: }
 # ms-prelude: import { vec3 } from "../../../src/math/math3d";
 # ms-prelude: import {
 # ms-prelude: MeshData, Rgba, addGrid, addGeoSphere, addSphere, addDisc, addCapsuleY,
+# ms-prelude: addCylinderSides,
 # ms-prelude: } from "../../../src/void3d/meshData";
 # ms-prelude: import { Bounds3D } from "../../../src/void3d/bounds";
 # ms-prelude: const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -83,6 +96,20 @@ haxe> var c2 = new Capsule(1,0,8,Axis.Z);
 haxe> emit("capsule-zero-length",H.sample(c2,40,false));
 ms> let c2 = MeshData.empty(); if (!addCapsuleY(c2,1.0,0.0,WHITE,8).ok) { return 1; }
 ms> sample("capsule-zero-length",c2,40,false);
+
+case cylinder-centered tol=1e-5
+haxe> var cy1 = new Cylinder(8,2,3,true); cy1.addUVs();
+haxe> emit("cylinder-centered",H.sampleQuad(cy1,1,false));
+ms> let cy1 = MeshData.withUvs();
+ms> if (!addCylinderSides(cy1,2.0,3.0,true,WHITE,8).ok) { return 1; }
+ms> sample("cylinder-centered",cy1,1,false);
+
+case cylinder-bottom-origin tol=1e-5
+haxe> var cy2 = new Cylinder(8,2,3,false); cy2.addUVs();
+haxe> emit("cylinder-bottom-origin",H.sampleQuad(cy2,2,true));
+ms> let cy2 = MeshData.withUvs();
+ms> if (!addCylinderSides(cy2,2.0,3.0,false,WHITE,8).ok) { return 1; }
+ms> sample("cylinder-bottom-origin",cy2,2,true);
 
 case bounds-intersection tol=1e-5
 haxe> var a = h3d.col.Bounds.fromValues(0,0,0,1,2,3);
