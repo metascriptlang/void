@@ -3858,6 +3858,50 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### glTF material descriptor shapes, sweep boundary
+
+Heaps `b9aa6dcb` `h3d/shader/Texture.hx` and `PropsValues.hx` consume the selected texture
+and scalar values; Bevy `157e1ce6` `load_material` uses parsed optional maps, factors and normal
+scale. Khronos `b43260ee` `material.schema.json`, `material.pbrMetallicRoughness.schema.json`,
+`textureInfo.schema.json` and `material.normalTextureInfo.schema.json` distinguish omitted
+properties from explicit null: map descriptors/PBR are objects, factors are fixed numeric
+arrays and normal scale is numeric. None of these defaults admits null.
+
+`gltf.ms` `loadMaterial`, `loadEmission`, `loadNormalTexture` already reject nonnull malformed
+values; use their existing `hasField` gates for explicit null too. Unsupported occlusion stays
+refused, not silently dropped. No numeric metallic/roughness semantics, PBR model or map role
+is introduced. `gltfMaterialCheck.ms` pins the descriptors and absence controls. This closes
+the bounded material-shape sweep; more refusal-only rows are not the next capability work.
+
+Windows native CPU, 2026-10-21, unchanged binary/support BUILD `b1f63337f`, default buildslot:
+material **347 pass / 2 fail**, actual 1, then material **349/349**, importer **316/316** and
+diagnostic **308/308**, all three exits and aggregate 0. CPU source tree
+`f2e4c99f441bb3a46a1e1bd23947a93fea19fced`. Before the fix, the null PBR descriptor and null
+occlusion assertions failed; after it, the full factor/map/scale and absence matrix executed.
+Receipts: `out/m6MaterialShapesRedB1f63337f20261021.{log,exit}` and
+`out/m6MaterialShapes{name}GreenB1f63337f20261021.{log,exit}`. No rendered/full-index acceptance.
+
+### glTF alpha defaults, reference boundary
+
+Heaps `b9aa6dcb` `h3d/mat/Material.hx` `refreshProps` derives blend, culling and alpha kill
+from explicit material properties. Bevy `157e1ce6` `loader/gltf_ext/material.rs` `alpha_mode`
+matches decoded Opaque/Mask/Blend and defaults only the optional cutoff. Khronos `b43260ee`
+`specification/2.0/schema/material.schema.json` makes `alphaMode` a string (default OPAQUE),
+`doubleSided` a boolean (default false), and `alphaCutoff` a nonnegative number (default 0.5).
+Null is not absence. Its detailed cutoff rule also says to ignore cutoff outside MASK;
+the bounded fix must retain that behavior rather than introduce a global schema validator.
+
+Reuse `gltf.ms` `hasField` at the defaults in `loadMaterial` / `alphaCutoffOf`, retaining
+existing typed/range checks and enum/error surfaces. `gltfMaterialCheck.ms` carries absent,
+explicit-null/malformed and ignored-cutoff controls. No new material kind or rendering path.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+material **345 pass / 2 fail**, actual 1, at explicit-null mode and MASK cutoff; after the three
+presence-gate corrections, material **347/347**, importer **316/316**, diagnostic **308/308**,
+all exits and aggregate 0. CPU source tree `90d77a347435a914caa44296caba8d06ce73b164`.
+Receipts: `out/m6AlphaDefaultsRedB1f63337f20261021.{log,exit}` and
+`out/m6AlphaDefaults{name}GreenB1f63337f20261021.{log,exit}`. No new rendered acceptance.
+
 ### glTF emission extension shape, reference boundary
 
 Heaps `b9aa6dcb` `h3d/shader/pbr/PropsValues.hx` consumes a scalar and Bevy `157e1ce6`
