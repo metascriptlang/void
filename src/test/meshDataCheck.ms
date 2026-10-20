@@ -25,6 +25,7 @@ import {
 	addSphere,
 	addCylinderSides,
 	addDisc,
+	addCapsuleY,
 	recomputeBounds,
 	addTangents,
 	addTangentsWithSources,
@@ -297,6 +298,82 @@ test "disc append promotes indices while invalid parameters do not mutate the me
 		assert !addDisc(data, radius as float32, WHITE, 8).ok;
 		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
 	}
+}
+
+test "a vertical capsule joins two radial hemispheres with the centered cylinder" {
+	for (const segments of [4, 8]) {
+		for (const middle of [0.0, 2.0]) {
+			const length: float32 = middle as float32;
+			let data = MeshData.empty();
+			const made = addCapsuleY(data, 1.0, length, WHITE, segments);
+			assert made.ok;
+			if (!made.ok) { continue; }
+			assert made.value == 0;
+			assert data.vertexCount() == 2 * (segments + 1) * (segments + 1) + 4 * segments + 2;
+			assert data.triangleCount() == 4 * segments * segments && data.validIndices();
+			assert near(data.bounds.min, -1.0, -length * 0.5 - 1.0, -1.0);
+			assert near(data.bounds.max, 1.0, length * 0.5 + 1.0, 1.0);
+			for (let i = 0; i < data.vertexCount(); i++) {
+				const point = positionAt(data, i);
+				const normal = normalAt(data, i);
+				const centerY = Math.max(-length * 0.5, Math.min(length * 0.5, point.y));
+				const radial = point - vec3(0.0, centerY, 0.0);
+				assert approx(radial.length(), 1.0) && approx(normal.length(), 1.0);
+				assert approx(radial.dot(normal), 1.0);
+			}
+			if (length > 0.0) {
+				for (let i = 0; i < data.indexCount(); i += 3) {
+					const p = positionAt(data, data.indexAt(i) as int32);
+					const q = positionAt(data, data.indexAt(i + 1) as int32);
+					const r = positionAt(data, data.indexAt(i + 2) as int32);
+					const normals = normalAt(data, data.indexAt(i) as int32) +
+						normalAt(data, data.indexAt(i + 1) as int32) +
+						normalAt(data, data.indexAt(i + 2) as int32);
+					assert (q - p).cross(r - p).dot(normals) > 0.0;
+				}
+			}
+		}
+	}
+}
+
+test "capsule picking distinguishes its curved cap from its enclosing bounds" {
+	let data = MeshData.empty();
+	assert addCapsuleY(data, 1.0, 2.0, WHITE, 8).ok;
+	const above = Ray.fromPoints(vec3(0.0, 5.0, 0.0), vec3(0.0, 0.0, 0.0));
+	const side = Ray.fromPoints(vec3(0.0, 0.0, 5.0), vec3(0.0, 0.0, 0.0));
+	assert approx(data.rayIntersection(above, Face.Back).distance, 3.0);
+	assert approx(data.rayIntersection(side, Face.Back).distance, 4.0);
+	const outside = Ray.fromPoints(vec3(0.9, 1.9, 3.0), vec3(0.9, 1.9, 0.0));
+	assert data.rayIntersection(outside, Face.Back).distance == -1.0;
+	assert data.rayIntersection(side, Face.Back).uv === null;
+}
+
+test "capsule appends wide ids and preflights dimensions capacity and unsupported UVs" {
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const made = addCapsuleY(wide, 1.0, 2.0, WHITE, 4);
+	assert made.ok;
+	if (made.ok) { assert made.value == 65535; }
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.vertexCount() == 65603 && wide.indexCount() == 195;
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+	for (const segments of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addCapsuleY(data, 1.0, 2.0, WHITE, segments).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let data = MeshData.withUvs();
+	const refused = addCapsuleY(data, 1.0, 2.0, WHITE, 8);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UvMismatch; }
+	assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	let invalid = MeshData.empty();
+	assert !addCapsuleY(invalid, 0.0, 2.0, WHITE, 8).ok;
+	assert !addCapsuleY(invalid, 1.0, -1.0, WHITE, 8).ok;
+	assert !addCapsuleY(invalid, 3.0e38, 3.0e38, WHITE, 8).ok;
+	assert invalid.vertexCount() == 0 && invalid.indexCount() == 0 && invalid.bounds.isEmpty();
 }
 
 test "an empty mesh has no vertices, no indices and empty bounds" {
