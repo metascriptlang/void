@@ -106,6 +106,21 @@ export function collide(this bounds: Bounds3D, other: Bounds3D): boolean {
 		bounds.max.y < other.min.y || bounds.max.z < other.min.z);
 }
 
+export function intersection(this bounds: Bounds3D, other: Bounds3D): Bounds3D {
+	return {
+		min: vec3(
+			Math.max(bounds.min.x, other.min.x),
+			Math.max(bounds.min.y, other.min.y),
+			Math.max(bounds.min.z, other.min.z),
+		),
+		max: vec3(
+			Math.min(bounds.max.x, other.max.x),
+			Math.min(bounds.max.y, other.max.y),
+			Math.min(bounds.max.z, other.max.z),
+		),
+	};
+}
+
 export function offsetBy(this bounds: Bounds3D, delta: Vec3): Bounds3D {
 	return { min: bounds.min + delta, max: bounds.max + delta };
 }

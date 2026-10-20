@@ -1,6 +1,7 @@
 import { Vec3, vec3, identity, translation, scaling, rotationY } from "../math/math3d";
 import { Bounds3D, addPoint, addPos, addBounds } from "../void3d/bounds";
 import { approx, approxRel } from "./helpers";
+import { Ray } from "../void3d/ray";
 
 function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 	return approx(a.x, x) && approx(a.y, y) && approx(a.z, z);
@@ -74,6 +75,51 @@ test "collide counts touching, containsBounds does not need it" {
 	assert !box.collide(Bounds3D.fromValues(1.001, 2.0, 3.0, 1.0, 1.0, 1.0));
 	assert box.containsBounds(Bounds3D.fromValues(0.25, 0.25, 0.25, 0.5, 0.5, 0.5));
 	assert !box.containsBounds(Bounds3D.fromValues(0.25, 0.25, 0.25, 0.5, 0.5, 5.0));
+}
+
+test "intersection clips both corners without changing either input" {
+	const a = unitBox();
+	const b = Bounds3D.fromValues(0.5, -1.0, 1.0, 2.0, 2.0, 3.0);
+	const clipped = a.intersection(b);
+	assert near(clipped.min, 0.5, 0.0, 1.0);
+	assert near(clipped.max, 1.0, 1.0, 3.0);
+	const reversed = b.intersection(a);
+	assert near(reversed.min, clipped.min.x, clipped.min.y, clipped.min.z);
+	assert near(reversed.max, clipped.max.x, clipped.max.y, clipped.max.z);
+	assert near(a.min, 0.0, 0.0, 0.0) && near(a.max, 1.0, 2.0, 3.0);
+	assert near(b.min, 0.5, -1.0, 1.0) && near(b.max, 2.5, 1.0, 4.0);
+	assert a.containsBounds(clipped) && b.containsBounds(clipped);
+	const inside = Bounds3D.fromValues(0.25, 0.5, 1.0, 0.5, 1.0, 1.0);
+	const kept = a.intersection(inside);
+	assert near(kept.min, inside.min.x, inside.min.y, inside.min.z);
+	assert near(kept.max, inside.max.x, inside.max.y, inside.max.z);
+	const ray = Ray.fromPoints(vec3(0.75, 0.5, -2.0), vec3(0.75, 0.5, 0.0));
+	assert approx(clipped.rayIntersection(ray), 3.0);
+}
+
+test "intersection keeps face edge and point contacts as nonempty bounds" {
+	const box = unitBox();
+	for (const start of [vec3(1.0, 0.5, 1.0), vec3(1.0, 2.0, 1.0), vec3(1.0, 2.0, 3.0)]) {
+		const contact = box.intersection(Bounds3D.fromPoints(start, vec3(2.0, 3.0, 4.0)));
+		assert !contact.isEmpty();
+		assert near(contact.min, start.x, start.y, start.z);
+		assert near(contact.max, 1.0, 2.0, 3.0);
+	}
+}
+
+test "intersection preserves empty and separated sets without collapsing them to a point" {
+	const box = unitBox();
+	for (const other of [Bounds3D.empty(),
+		Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, -1.0, 1.0),
+		Bounds3D.fromValues(2.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+	]) {
+		const clipped = box.intersection(other);
+		assert clipped.isEmpty();
+		assert other.intersection(box).isEmpty();
+		assert near(clipped.size(), 0.0, 0.0, 0.0);
+	}
+	const retained = box.intersection(Bounds3D.all());
+	assert near(retained.min, 0.0, 0.0, 0.0) && near(retained.max, 1.0, 2.0, 3.0);
 }
 
 test "identity leaves a bounds alone and an empty one stays empty" {
