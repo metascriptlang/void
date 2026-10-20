@@ -89,8 +89,11 @@ static id g_delegate;
 static int s_reqW = 0;
 static int s_reqH = 0;
 void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
-void voidRun(int w, int h, msClosure init, msClosure frame) {
+void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
+	if (sampleCount != 1) {
+		voidFail("voidRunConfigured: the macOS window driver renders at 1 sample, not %d", sampleCount);
+	}
 	s_driver = DRIVER_WINDOW;
 	s_init = init;
 	s_reqW = w;
@@ -109,7 +112,7 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 			backing:NSBackingStoreBuffered defer:NO];
 		[win setTitle:@"Void — EMBED (no sokol_app)"];
 
-		g_dpiScale = (float)[[NSScreen mainScreen] backingScaleFactor];
+		g_dpiScale = highDpi ? (float)[[NSScreen mainScreen] backingScaleFactor] : 1.0f;
 		if (g_dpiScale < 1.0f) g_dpiScale = 1.0f;
 
 		NSView* view = [win contentView];
@@ -137,6 +140,10 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 			block:^(NSTimer* t){ (void)t; tick(); }];
 		[NSApp run];
 	}
+}
+
+void voidRun(int w, int h, msClosure init, msClosure frame) {
+	voidRunConfigured(w, h, 1, 1, init, frame);
 }
 
 static void setupMetal(int samples) {
