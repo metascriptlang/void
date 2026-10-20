@@ -3748,6 +3748,27 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF triangle-strip reference boundary
+
+Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_gltf/src/loader/gltf_ext/mesh.rs` `primitive_topology` accepts triangle strips,
+not triangle fans. Its `crates/bevy_mesh/src/mesh.rs` `Mesh::triangles` visits overlapping
+three-index windows and swaps the first two indices on odd windows, for both index widths.
+The glTF `b43260ee1291134a94b3098d415f54f479a59508` "Topology and Connectivity" strip
+rule gives the same winding by cyclic permutation; it requires at least three vertices.
+These are source traces, not executed Bevy or imported-asset acceptance.
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Primitive.hx` `triCount` and
+`render` consume triangle lists, with `h3d/prim/Polygon.hx` carrying their index buffer.
+The adapter therefore belongs before Void's existing triangle-list consumers:
+`meshData.ms` `addTangentsWithSources` and `rayIntersection`, and `skinPartition.ms`
+`fromTriangles`. Reusing `MeshData.addTriangle` avoids a second topology representation
+whose colour, shadow, picking and skin consumers could disagree.
+
+Canonical storage costs `3 * (n - 2)` indices for an `n`-corner strip, bounded by the existing
+signed draw-count limit. This is an allocation formula, not a performance measurement.
+Strip import does not imply fan, line or point support; no GPU ABI extension is proposed.
+
 ### glTF explicit primitive-mode CPU acceptance
 
 Heaps `b9aa6dcb` `Primitive.render` dispatches triangle draws, not glTF JSON defaults.
