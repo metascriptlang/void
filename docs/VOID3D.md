@@ -3866,6 +3866,32 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Shared grid primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Grid.hx` creates a shared
+`(width+1)*(height+1)` lattice, six indices per cell and UVs `(column/width,row/height)`.
+It starts at the origin with positions scaled by the requested cell dimensions. Bevy `157e1ce6`
+`crates/bevy_mesh/src/primitives/dim3/plane.rs` `PlaneMeshBuilder::build` uses the same shared
+lattice in XZ, but centers its geometry and expresses resolution as subdivisions plus two
+vertices. Use Heaps' origin/cell-count semantics, mapping its Y to Void Z and reversing
+winding so triangles agree with +Y normals. GeoSphere's octahedral subdivision is a separate
+unimplemented feature, not necessary machinery for this Grid row.
+
+`meshData.ms` `addGrid` extends the existing primitive writers and append guard. A positive
+cell count/size and finite total X/Z extents precede writes; int64 vertex preflight precedes
+the six-corners-per-cell expansion. `meshDataCheck.ms` pins both layouts, shared IDs, UV ray
+picking, winding and a generated 255x255-cell grid crossing the reserved u16 index boundary.
+This is flat mesh geometry, not terrain deformation, a scene node, collider or GPU feature.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addGrid`, no codegen.
+After implementation, serial mesh **358/358**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `ddb1a97f530512961de1f453a4a45dd310661d46`.
+The native check generated the full 65,536 vertices/390,150 indices before promoting/validating
+and appending another cell; it was not a fabricated vertex-array length. Receipts:
+`out/m6GridRedB1f63337f20261021.{log,exit}` and
+`out/m6Grid{name}GreenB1f63337f20261021.{log,exit}`. No Mikk, rendering or benchmark claim.
+
 ### Vertical capsule primitive, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Capsule.hx` constructor
