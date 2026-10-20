@@ -911,6 +911,29 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	return Result.ok(node);
 }
 
+export function setMaterialOf(scene: Scene3D, id: NodeId3D, material: MaterialId): Result<int32, SceneError> {
+	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setMaterialOf");
+	const context: DrawContext = scene.context;
+	context.requireOpen("setMaterialOf");
+	const row: int32 = scene.nodes[node].payload;
+	const shown: MaterialId = scene.meshes[row].material;
+	if (!context.hasMaterial(material)) {
+		return Result.err(context.issuedMaterial(material)
+			? SceneError.StaleMaterial : SceneError.ForeignMaterial);
+	}
+	const geometry = scene.meshes[row].skinGeometry;
+	if (geometry !== null) {
+		const _valid: int32 = try validateSkinMesh(scene, scene.meshes[row].mesh, material,
+			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range);
+	}
+	const holds: boolean = context.hasMaterial(shown);
+	if (holds && context.materialPinned(shown) < 1) { stopOnPinTaken("setMaterialOf"); }
+	if (!pinMaterial(context, material).ok) { unreachable; }
+	if (holds && !unpinMaterial(context, shown).ok) { unreachable; }
+	scene.meshes[row].material = material;
+	return Result.ok(node);
+}
+
 // The flicker path: power moves every few frames, and `collectLights` re-reads it, so nothing
 // else needs to hear about the change.
 export function setLightPower(scene: Scene3D, id: NodeId3D, power: float32): void {
