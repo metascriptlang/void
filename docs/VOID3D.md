@@ -3747,6 +3747,27 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF sparse triangle-index CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` preserves indexed material ranges;
+its HMD format is not glTF sparse storage. Bevy `157e1ce6` glTF loader `read_indices` consumes
+an accessor iterator. The glTF-rs sources inspected were `mesh/mod.rs` `Reader.read_indices`
+at 1.4.1 and `accessor/util.rs` `Iter.new` / `SparseIter.next` at 1.4.0: sparse values replace
+selected elements of a dense or zero base. Bevy declares `gltf = "1.4.0"`; its exact lock
+resolution was not checked. glTF `b43260ee` sparse accessor rules define the file contract.
+Void reuses `gltfAccessor.ms` `GltfAccessorIndices.fromAccessor`, keeping validation after
+replacement so discarded base values cannot invalidate the final draw sequence.
+
+CPU source tree `459379118c5cb50c9b68fa06ef2c967daf354810`, BUILD `8a9fc02dd`:
+`msc test src/test/gltfIndexCheck.ms` **312/312**, `gltfCheck.ms` **316/316**,
+`gltfMaterialCheck.ms` **335/335**, `gltfSkinCheck.ms` **308/308**; all exits 0.
+The initial three sparse-positive pins failed on the old importer: **308 pass / 3 fail**.
+A subsequent pin also covers addressable restart sentinels and short triangle lists.
+See `gltfIndexCheck.ms` for width, replacement, malformed-layout and picking assertions.
+Receipts: `out/m5SparseIndexRed20261020.log` and
+`out/m5SparseIndex{gltfIndexCheck,gltfCheck,gltfMaterialCheck,gltfSkinCheck}Green20261020.log`.
+No new sparse-render, browser, device or performance acceptance from these CPU checks.
+
 ### glTF normalized texture-coordinate CPU acceptance
 
 Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` converts packed attributes through

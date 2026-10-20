@@ -28,6 +28,8 @@ import {
 	GltfAccessorRole,
 	GltfSparseSource,
 	GltfAccessorValues,
+	GltfAccessorIndices,
+	fromAccessor as readIndices,
 	decode,
 } from "./gltfAccessor";
 import { GltfColour, GltfColourError, GltfLinearRgba, fromAccessor } from "./gltfColour";
@@ -660,7 +662,7 @@ function accessorSource(
 	}
 	const shape: JsonValue = fieldOf(accessor, "type");
 	if (shape === null || shape.kind != JsonKind.String
-		|| (shape.strVal != "VEC2" && shape.strVal != "VEC3" &&
+		|| (shape.strVal != "SCALAR" && shape.strVal != "VEC2" && shape.strVal != "VEC3" &&
 			shape.strVal != "VEC4" && shape.strVal != "MAT4")) {
 		return Result.err(GltfError.Unsupported);
 	}
@@ -698,6 +700,7 @@ function accessorSource(
 		byteOffset: try colourOptionalInt(accessor, "byteOffset"),
 		componentType: try colourIntField(accessor, "componentType", -1),
 		shape: match (shape.strVal) {
+			"SCALAR" => GltfAccessorShape.Scalar,
 			"VEC2" => GltfAccessorShape.Vec2,
 			"VEC3" => GltfAccessorShape.Vec3,
 			"VEC4" => GltfAccessorShape.Vec4,
@@ -1049,37 +1052,23 @@ function loadMesh(
 			if (!tangent.ok) { return Result.err(tangent.error); }
 		}
 	}
-	const indexAccessor: int32 = intField(primitive, "indices", -1);
-	if (indexAccessor < 0 || indexAccessor >= countOf(accessors)) {
-		return Result.err(GltfError.Unsupported);
+	const source = try accessorSource(accessors,
+		try colourIntField(primitive, "indices", -1), GltfAccessorRole.Indices);
+	const indices = GltfAccessorIndices.readIndices(source, colourBuffers, colourViews,
+		count as uint32);
+	if (!indices.ok) {
+		return Result.err(match (indices.error) {
+			GltfAccessorError.Index => GltfError.BadIndex,
+			GltfAccessorError.Bounds | GltfAccessorError.Count | GltfAccessorError.NonFinite =>
+				GltfError.OutOfRange,
+			_ => GltfError.Unsupported,
+		});
 	}
-	const source: JsonValue = accessors.at(indexAccessor);
-	const component: int32 = intField(source, "componentType", 0);
-	if (component != COMPONENT_UNSIGNED_BYTE && component != COMPONENT_UNSIGNED_SHORT &&
-		component != COMPONENT_UNSIGNED_INT) { return Result.err(GltfError.Unsupported); }
-	const normalized: JsonValue = fieldOf(source, "normalized");
-	if (!isNull(normalized) && (normalized.kind != JsonKind.Bool || normalized.boolVal)) {
-		return Result.err(GltfError.Unsupported);
-	}
-	const indices: Result<AccessorView, GltfError> = accessorView(
-		accessors, views, bufferLength, indexAccessor, component, "SCALAR", 1,
-	);
-	if (!indices.ok) { return Result.err(indices.error); }
-	if (indices.value.count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
-	const width: int32 = component == COMPONENT_UNSIGNED_BYTE ? 1 :
-		(component == COMPONENT_UNSIGNED_SHORT ? 2 : 4);
-	const maximum: uint32 = component == COMPONENT_UNSIGNED_BYTE ? 255 :
-		(component == COMPONENT_UNSIGNED_SHORT ? 65535 : 0xffffffff as uint32);
-	if (component == COMPONENT_UNSIGNED_INT) { data.wideIndices = []; }
-	for (let t = 0; t < indices.value.count; t += 3) {
-		const a: uint32 = unsignedIndexAt(buffer, indices.value.offset, t, width);
-		const b: uint32 = unsignedIndexAt(buffer, indices.value.offset, t + 1, width);
-		const c: uint32 = unsignedIndexAt(buffer, indices.value.offset, t + 2, width);
-		if (a == maximum || b == maximum || c == maximum ||
-			a >= (count as uint32) || b >= (count as uint32) || c >= (count as uint32)) {
-			return Result.err(GltfError.BadIndex);
-		}
-		const tri = addTriangle(data, a as int32, b as int32, c as int32);
+	if (indices.value.values.length % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+	if (source.componentType == COMPONENT_UNSIGNED_INT) { data.wideIndices = []; }
+	for (let t = 0; t < indices.value.values.length; t += 3) {
+		const tri = addTriangle(data, indices.value.values[t] as int32,
+			indices.value.values[t + 1] as int32, indices.value.values[t + 2] as int32);
 		if (!tri.ok) { return Result.err(GltfError.BadIndex); }
 	}
 	if (tangented) {
@@ -1091,17 +1080,6 @@ function loadMesh(
 	return Result.ok(data);
 }
 
-
-function unsignedIndexAt(
-	buffer: Readonly<Span<uint8>>, offset: int32, index: int32, width: int32,
-): uint32 {
-	const at: int32 = offset + index * width;
-	let value: uint32 = 0;
-	for (let byte = 0; byte < width; byte++) {
-		value |= (buffer[at + byte] as uint32) << ((byte * 8) as uint32);
-	}
-	return value;
-}
 
 function numberAt(values: JsonValue, index: int32): Result<float32, GltfError> {
 	return numberOf(at(values, index));
