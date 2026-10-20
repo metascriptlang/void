@@ -3839,7 +3839,7 @@ The bounded next row is declaration parity for emission already interpreted by `
 Reuse `decodeGltf`'s existing required-name gate, not a registry, new material model or shader.
 Keep unknown required names and existing material refusals; do not reopen production PBR.
 The existing fixture and `gltfProgramOf` / `gltfBlockOf` consumers in `gltfMaterialCheck.ms`
-carry the pins. This is test/reference preparation only; production is unchanged.
+carry the pins. Initial preparation changed no production.
 
 Visibility run, 2026-10-21: Windows native `msc test src/test/gltfMaterialCheck.ms`, serial
 through default buildslot, binary/support BUILD `b1f63337f` unchanged at admission and audit,
@@ -3848,7 +3848,15 @@ Failures were the two required-declaration successes and the negative-strength `
 expectation, all intercepted by the required-name gate. Optional controls and unknown-name
 refusals before those assertions passed; success assertions after a failed guard did not run.
 No compiler error occurred. Receipt: `out/m6RequiredEmissionRedB1f63337f20261021.{log,exit}`.
-This establishes reds, not implementation, rendered acceptance or clearance of the T0 blocker.
+This establishes reds, not rendered acceptance or clearance of the T0 blocker.
+
+The subsequent gate change passed `msc test src/test/<name>.ms` serially on the same BUILD:
+`gltfMaterialCheck` **340/340**, `gltfCheck` **316/316**, `gltfDiagnosticCheck` **308/308**,
+all three exits 0 plus aggregate 0. CPU source tree:
+`eeef701f7811e19e00d91e4b1dd3c7b7a1323fbe`. The positive matrix now executed; no payload,
+material block, renderer or shader changed. Receipts:
+`out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
+The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
 ### glTF explicit primitive-mode CPU acceptance
 
