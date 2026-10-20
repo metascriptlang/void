@@ -3841,6 +3841,15 @@ Keep unknown required names and existing material refusals; do not reopen produc
 The existing fixture and `gltfProgramOf` / `gltfBlockOf` consumers in `gltfMaterialCheck.ms`
 carry the pins. This is test/reference preparation only; production is unchanged.
 
+Visibility run, 2026-10-21: Windows native `msc test src/test/gltfMaterialCheck.ms`, serial
+through default buildslot, binary/support BUILD `b1f63337f` unchanged at admission and audit,
+tree `bd48c3baec5a008364e6ae010bc37fdbfded8cf8`: **337 pass / 3 fail**, actual exit 1.
+Failures were the two required-declaration successes and the negative-strength `OutOfRange`
+expectation, all intercepted by the required-name gate. Optional controls and unknown-name
+refusals before those assertions passed; success assertions after a failed guard did not run.
+No compiler error occurred. Receipt: `out/m6RequiredEmissionRedB1f63337f20261021.{log,exit}`.
+This establishes reds, not implementation, rendered acceptance or clearance of the T0 blocker.
+
 ### glTF explicit primitive-mode CPU acceptance
 
 Heaps `b9aa6dcb` `Primitive.render` dispatches triangle draws, not glTF JSON defaults.
