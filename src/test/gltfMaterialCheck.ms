@@ -1297,6 +1297,43 @@ test "required emissive strength preserves payload and unknown-extension refusal
 	if (!invalid.ok) { assert invalid.error == GltfError.OutOfRange; }
 }
 
+test "emissive strength defaults only when its object or scalar is absent" {
+	for (const suffix of ["", ",\"extensions\":{}",
+		",\"extensions\":{\"KHR_materials_emissive_strength\":{}}",
+	]) {
+		const read = loaded({
+			...texturedParts(), materials: emitting("[1.0,0.25,0.0]", suffix),
+		});
+		assert read.ok;
+		if (read.ok) { assert read.value.materials[0].emissiveStrength == 1.0; }
+	}
+	for (const factor of ["[0.0,0.0,0.0]", "[1.0,0.25,0.0]"]) {
+		for (const malformed of ["null", "false", "1", "\"bad\"", "[]"]) {
+			for (const suffix of [
+				",\"extensions\":" + malformed,
+				",\"extensions\":{\"KHR_materials_emissive_strength\":" + malformed + "}",
+			]) {
+				const read = loaded({
+					...texturedParts(), materials: emitting(factor, suffix),
+				});
+				assert !read.ok;
+				if (!read.ok) { assert read.error == GltfError.Unsupported; }
+			}
+		}
+	}
+}
+
+test "emissive strength rejects explicit null and malformed scalars even without emission" {
+	for (const factor of ["[0.0,0.0,0.0]", "[1.0,0.25,0.0]"]) {
+		for (const invalid of ["null", "false", "\"3\"", "[]", "{}", "-1.0", "1e100"]) {
+			const suffix = ",\"extensions\":{\"KHR_materials_emissive_strength\":"
+				+ "{\"emissiveStrength\":" + invalid + "}}";
+			const read = loaded({ ...texturedParts(), materials: emitting(factor, suffix) });
+			assert !read.ok;
+		}
+	}
+}
+
 test "texture coordinate override selects UV0 before rejecting a fallback set" {
 	const transform = transformed(SCALED_SHIFTED.replace("{", "{\"texCoord\":0,"));
 	for (const attributes of [ALL_ATTRIBUTES, WITH_TANGENTS]) {
