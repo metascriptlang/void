@@ -1,29 +1,26 @@
 #!/bin/sh
-# Load the built web demo in headless Chrome and screenshot it, per backend.
+# Load the built web demo in headless Chrome, per backend, and screenshot its canvas once it has
+# presented frames (scripts/webPresent.mjs).
 #
-# This is a LIVENESS check, not conformance. It says "the wasm module started, got a
-# context and drew something"; it does not say the pixels match the D3D11 goldens, because
-# the wasm build has no readback yet. Guardrail 9 needs `copyTextureToBuffer` + `mapAsync`
-# for WebGPU and the existing `glReadPixels` path for WebGL2, plus a way to hand the bytes
-# back out — tests/PENDING.md backend:webgpu. WebGL2 conformance is scripts/golden-web.sh.
+# This is a LIVENESS check, not conformance. It says "the wasm module started, got a device,
+# presented frames and they are not one colour"; it does not say the pixels match the D3D11
+# goldens, because the WebGPU build has no readback yet (tests/PENDING.md backend:webgpu).
+# WebGL2 conformance is scripts/golden-web.sh.
 #
-# Measured 2026-09-20 on this box: WebGL2 draws the demo. WebGPU builds and runs but
-# headless Chrome hands it no adapter (`--use-angle=swiftshader` and the real adapter both
-# give a black canvas, 4 466-byte PNG), so its liveness is unproven headless and is a SKIP.
+# WebGPU skips only when requestAdapter returns null; docs/TESTING.md says why the 2026-09-20
+# "no adapter" reading was a screenshot taken before anything presented.
 set -e
 cd "$(dirname "$0")/.."
 
 PORT="${VOID_WEB_PORT:-8731}"
-BOUND="${VOID_WEB_SHOT_SECONDS:-30}"
 SHOTS=out/webshot
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
 
 [ -f web/gl/mainSokol2d.wasm ] || { echo "SKIP web liveness: run scripts/build-web.sh first"; exit 0; }
 [ -x "$CHROME" ] || { echo "SKIP web liveness: no Chrome at $CHROME"; exit 0; }
 command -v python >/dev/null || { echo "SKIP web liveness: no python to serve web/"; exit 0; }
-
-. scripts/webShot.sh
-sh scripts/webShot.test.sh
+node --test scripts/webPresent.test.mjs > out/webPresent.test.log 2>&1 \
+	|| { echo "FAIL  web liveness: scripts/webPresent.test.mjs — see out/webPresent.test.log"; exit 1; }
 
 mkdir -p "$SHOTS"
 ( cd web && exec python -m http.server "$PORT" >/dev/null 2>&1 ) &
@@ -33,39 +30,11 @@ server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT
 sleep 2
 
+# node on Windows does not read an MSYS-style path.
+chrome=$(cygpath -m "$CHROME" 2>/dev/null || echo "$CHROME")
 failed=0
-shot() {
-	backend="$1"
-	hung="$2"
-	# Chrome on Windows will not write to an MSYS-style path.
-	if command -v cygpath >/dev/null; then
-		out="$(cygpath -w "$PWD/$SHOTS")\\$backend.png"
-	else
-		out="$PWD/$SHOTS/$backend.png"
-	fi
-	# Remove the previous run's PNG first. Chrome's exit status is not usable here, so a
-	# crash or a 404 would otherwise be measured as the last run's screenshot and reported
-	# as a pass.
-	rm -f "$SHOTS/$backend.png"
-	"$CHROME" --headless=new --enable-unsafe-webgpu --use-angle=swiftshader \
-		--virtual-time-budget=8000 --window-size=800,600 \
-		--screenshot="$out" "http://localhost:$PORT/void2d.html?$backend" >/dev/null 2>&1 &
-	status=0
-	waitShot $! "$SHOTS/$backend.png" "$BOUND" || status=$?
-	if [ "$status" -eq 2 ]; then
-		echo "$hung  web liveness $backend: headless Chrome wrote no screenshot within ${BOUND}s; stopped its process tree"
-		[ "$hung" = SKIP ] || failed=1
-		return
-	fi
-	bytes=$(wc -c < "$SHOTS/$backend.png" 2>/dev/null || echo 0)
-	# A canvas that drew nothing compresses to a few kilobytes; the demo is over 100 KB.
-	if [ "$bytes" -gt 40000 ]; then
-		echo "PASS  web liveness $backend: drew the demo ($bytes B in $SHOTS/$backend.png)"
-	else
-		echo "SKIP  web liveness $backend: blank canvas ($bytes B) — no adapter in this headless Chrome"
-	fi
-}
-
-shot gl FAIL
-shot wgpu SKIP
+for backend in gl wgpu; do
+	CHROME="$chrome" node scripts/webPresent.mjs "web liveness $backend" \
+		"http://localhost:$PORT/void2d.html?$backend" "$SHOTS/$backend.png" || failed=1
+done
 exit "$failed"
