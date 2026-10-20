@@ -50,12 +50,12 @@ int voidEventFramebufferHeight(void);
 int voidEventCursor(void);
 void voidSetWindowTitle(const char *title);
 
-// IME composition (D3D11 window and browser). While text input is on and a handler is set,
+// IME composition (Windows window and browser). While text input is on and a handler is set,
 // a composition arrives as Preedit events and its result as one TextInput event, never also
 // as Char. Off disables the IME on Windows and blurs the browser's input element. Before the
 // first call the window keeps sokol_app's default: the OS composes in its own window and the
 // result arrives as Char. The rect is the caret in framebuffer pixels; the candidate window
-// opens below it. The GL core driver keeps that default and ignores both calls.
+// opens below it.
 void voidSetTextInput(int on);
 void voidSetImeRect(int x, int y, int w, int h);
 

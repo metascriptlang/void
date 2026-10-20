@@ -8,12 +8,12 @@
 
 const void *sg_d3d11_device(void);
 const void *sg_d3d11_device_context(void);
-const void *sapp_d3d11_get_swap_chain(void);
+void *voidWindowSwapChain(void);
 
 static const GUID TEXTURE2D_IID = {0x6f15aaf2, 0xd208, 0x4e89, {0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c}};
 
 void captureSwapchain(int32_t frame) {
-	IDXGISwapChain *swapChain = (IDXGISwapChain *)sapp_d3d11_get_swap_chain();
+	IDXGISwapChain *swapChain = (IDXGISwapChain *)voidWindowSwapChain();
 	ID3D11Device *device = (ID3D11Device *)sg_d3d11_device();
 	ID3D11DeviceContext *context = (ID3D11DeviceContext *)sg_d3d11_device_context();
 	ID3D11Texture2D *back = NULL;

@@ -5,18 +5,16 @@
 #include <imm.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <dwmapi.h>
 #include <stdint.h>
 #include <stdlib.h>
 
 #include "backend.h"
 #include "bridge.h"
 #include "views.h"
+#include "windowSurface.h"
 
-#if defined(SOKOL_GLCORE)
-#error "void: bridgeWin.c is the D3D11 driver; -DSOKOL_GLCORE needs -d:voidGlCore"
-#endif
 #include "sokol_app.h"
-#include "sokol_glue.h"
 #include "sokol_log.h"
 #include "appWindow.h"
 #ifdef VOID_PROFILER
@@ -119,11 +117,15 @@ static void imeComposition(HWND hwnd, LPARAM lParam) {
 	ImmReleaseContext(hwnd, himc);
 }
 
+static bool s_sizeMove;
+
 // Handled here, WM_IME_COMPOSITION never reaches DefWindowProc, so Windows posts no
 // WM_IME_CHAR/WM_CHAR for the result and sokol_app sends no Char for committed text.
-static LRESULT CALLBACK imeProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
+static LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
 	(void)id;
 	(void)data;
+	if (msg == WM_ENTERSIZEMOVE) s_sizeMove = true;
+	if (msg == WM_EXITSIZEMOVE) s_sizeMove = false;
 	if (imeTaken()) {
 		switch (msg) {
 			case WM_IME_STARTCOMPOSITION: imePlace(hwnd); return 0;
@@ -161,9 +163,12 @@ void voidSetImeRect(int x, int y, int w, int h) {
 	if (hwnd != NULL && imeTaken() && GetFocus() == hwnd) imePlace(hwnd);
 }
 
+static int s_sampleCount;
+
 static void _init(void) {
 	HWND hwnd = (HWND)sapp_win32_get_hwnd();
-	if (!SetWindowSubclass(hwnd, imeProc, 1, 0)) voidFail("SetWindowSubclass on the sokol_app window failed");
+	voidWindowSurfaceCreate(hwnd, s_sampleCount);
+	if (!SetWindowSubclass(hwnd, windowProc, 1, 0)) voidFail("SetWindowSubclass on the sokol_app window failed");
 	applyTextInput(hwnd);
 	call0(s_init);
 }
@@ -173,7 +178,7 @@ static void _frame(void) {
 	if (s_contextLost) restoreContext();
 	s_committed = false;
 	call0(s_frame);
-	if (!s_committed) sapp_skip_present();
+	if (!s_committed && !s_sizeMove) DwmFlush();
 }
 
 static void _event(const sapp_event *e) {
@@ -193,7 +198,10 @@ static void _event(const sapp_event *e) {
 	if (e->type == SAPP_EVENTTYPE_KEY_DOWN && e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
 }
 
-static void _cleanup(void) { sg_shutdown(); }
+static void _cleanup(void) {
+	sg_shutdown();
+	voidWindowSurfaceDestroy();
+}
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	if (s_driver != DRIVER_NONE) voidFail("voidRun: this process already drives Void through host views");
@@ -202,6 +210,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	s_reqH = h;
 	s_init = init;
 	s_frame = frame;
+	s_sampleCount = sampleCount;
 	sapp_desc d = {0};
 	d.init_cb = _init;
 	d.frame_cb = _frame;
@@ -231,15 +240,16 @@ typedef struct {
 	ID3D11RenderTargetView *target;
 	ID3D11Texture2D *msaa;
 	ID3D11RenderTargetView *msaaTarget;
-	int w, h;
+	ID3D11Texture2D *depth;
+	ID3D11DepthStencilView *depthTarget;
+	int w, h, samples;
+	bool hasDepth;
 } WinSurface;
 
-void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a sokol_app window");
-	if (s_driver == DRIVER_VIEWS) return;
+static void createDevice(UINT flags) {
 	const D3D_FEATURE_LEVEL wanted[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
 	D3D_FEATURE_LEVEL level;
-	HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+	HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, flags | D3D11_CREATE_DEVICE_BGRA_SUPPORT,
 		wanted, 2, D3D11_SDK_VERSION, &s_device, &level, &s_context);
 	if (FAILED(hr)) voidFail("D3D11CreateDevice failed: 0x%08lx", (unsigned long)hr);
 	IDXGIDevice *dxgiDevice = NULL;
@@ -250,6 +260,15 @@ void voidPlatformDeviceEnsure(void) {
 	if (adapter) IDXGIAdapter_Release(adapter);
 	if (dxgiDevice) IDXGIDevice_Release(dxgiDevice);
 	if (FAILED(hr)) voidFail("the D3D11 device has no IDXGIFactory2: 0x%08lx", (unsigned long)hr);
+}
+
+void voidPlatformDeviceEnsure(void) {
+	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a sokol_app window");
+	if (s_driver == DRIVER_VIEWS) return;
+#if defined(SOKOL_GLCORE)
+	voidFail("voidViewCreate: host views on Windows render through D3D11; this is a GL core build");
+#endif
+	createDevice(0);
 	setupViewsGfx();
 	s_driver = DRIVER_VIEWS;
 }
@@ -275,26 +294,35 @@ static void makeTarget(WinSurface *s) {
 	hr = ID3D11Device_CreateRenderTargetView(s_device, (ID3D11Resource *)back, NULL, &s->target);
 	ID3D11Texture2D_Release(back);
 	if (FAILED(hr)) voidFail("CreateRenderTargetView on the back buffer failed: 0x%08lx", (unsigned long)hr);
-	const int samples = voidViewsSampleCount();
-	if (samples == 1) return;
-	UINT quality = 0;
-	hr = ID3D11Device_CheckMultisampleQualityLevels(s_device, DXGI_FORMAT_B8G8R8A8_UNORM, (UINT)samples, &quality);
-	if (FAILED(hr) || quality == 0) voidFail("the D3D11 device cannot render BGRA8 at %d samples", samples);
+	const int samples = s->samples;
 	D3D11_TEXTURE2D_DESC desc;
 	ZeroMemory(&desc, sizeof desc);
 	desc.Width = (UINT)s->w;
 	desc.Height = (UINT)s->h;
 	desc.MipLevels = 1;
 	desc.ArraySize = 1;
-	desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
 	desc.SampleDesc.Count = (UINT)samples;
-	desc.SampleDesc.Quality = (UINT)D3D11_STANDARD_MULTISAMPLE_PATTERN;
+	desc.SampleDesc.Quality = samples > 1 ? (UINT)D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
 	desc.Usage = D3D11_USAGE_DEFAULT;
-	desc.BindFlags = D3D11_BIND_RENDER_TARGET;
-	hr = ID3D11Device_CreateTexture2D(s_device, &desc, NULL, &s->msaa);
-	if (FAILED(hr)) voidFail("CreateTexture2D %dx%d at %d samples failed: 0x%08lx", s->w, s->h, samples, (unsigned long)hr);
-	hr = ID3D11Device_CreateRenderTargetView(s_device, (ID3D11Resource *)s->msaa, NULL, &s->msaaTarget);
-	if (FAILED(hr)) voidFail("CreateRenderTargetView on the %d-sample target failed: 0x%08lx", samples, (unsigned long)hr);
+	if (samples > 1) {
+		UINT quality = 0;
+		hr = ID3D11Device_CheckMultisampleQualityLevels(s_device, DXGI_FORMAT_B8G8R8A8_UNORM, (UINT)samples, &quality);
+		if (FAILED(hr) || quality == 0) voidFail("the D3D11 device cannot render BGRA8 at %d samples", samples);
+		desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+		desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+		hr = ID3D11Device_CreateTexture2D(s_device, &desc, NULL, &s->msaa);
+		if (FAILED(hr)) voidFail("CreateTexture2D %dx%d at %d samples failed: 0x%08lx", s->w, s->h, samples, (unsigned long)hr);
+		hr = ID3D11Device_CreateRenderTargetView(s_device, (ID3D11Resource *)s->msaa, NULL, &s->msaaTarget);
+		if (FAILED(hr)) voidFail("CreateRenderTargetView on the %d-sample target failed: 0x%08lx", samples, (unsigned long)hr);
+	}
+	if (s->hasDepth) {
+		desc.Format = DXGI_FORMAT_D32_FLOAT;
+		desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+		hr = ID3D11Device_CreateTexture2D(s_device, &desc, NULL, &s->depth);
+		if (FAILED(hr)) voidFail("CreateTexture2D depth %dx%d at %d samples failed: 0x%08lx", s->w, s->h, samples, (unsigned long)hr);
+		hr = ID3D11Device_CreateDepthStencilView(s_device, (ID3D11Resource *)s->depth, NULL, &s->depthTarget);
+		if (FAILED(hr)) voidFail("CreateDepthStencilView failed: 0x%08lx", (unsigned long)hr);
+	}
 }
 
 static void releaseTargets(WinSurface *s) {
@@ -303,8 +331,12 @@ static void releaseTargets(WinSurface *s) {
 	s->target = NULL;
 	if (s->msaaTarget) ID3D11RenderTargetView_Release(s->msaaTarget);
 	if (s->msaa) ID3D11Texture2D_Release(s->msaa);
+	if (s->depthTarget) ID3D11DepthStencilView_Release(s->depthTarget);
+	if (s->depth) ID3D11Texture2D_Release(s->depth);
 	s->msaaTarget = NULL;
 	s->msaa = NULL;
+	s->depthTarget = NULL;
+	s->depth = NULL;
 }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
@@ -323,6 +355,7 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	WinSurface *s = (WinSurface *)calloc(1, sizeof(WinSurface));
 	s->w = w;
 	s->h = h;
+	s->samples = voidViewsSampleCount();
 	HRESULT hr = IDXGIFactory2_CreateSwapChainForComposition(s_factory, (IUnknown *)s_device, &desc, NULL, &s->swapChain);
 	if (FAILED(hr)) voidFail("CreateSwapChainForComposition %dx%d failed: 0x%08lx", w, h, (unsigned long)hr);
 	makeTarget(s);
@@ -354,6 +387,7 @@ void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
 	} else {
 		swapchain->d3d11.render_view = s->target;
 	}
+	swapchain->d3d11.depth_stencil_view = s->depthTarget;
 }
 
 void voidPlatformSurfacePresent(void *surface) {
@@ -372,11 +406,84 @@ long long voidPlatformSurfaceNative(void *surface) {
 	return (long long)(intptr_t)((WinSurface *)surface)->swapChain;
 }
 
+#if defined(SOKOL_D3D11)
+static WinSurface s_window;
+
+void voidWindowSurfaceCreate(HWND hwnd, int samples) {
+	createDevice(D3D11_CREATE_DEVICE_SINGLETHREADED);
+	IDXGIDevice1 *dxgiDevice = NULL;
+	HRESULT hr = ID3D11Device_QueryInterface(s_device, &IID_IDXGIDevice1, (void **)&dxgiDevice);
+	if (FAILED(hr)) voidFail("the D3D11 device has no IDXGIDevice1: 0x%08lx", (unsigned long)hr);
+	IDXGIDevice1_SetMaximumFrameLatency(dxgiDevice, 1);
+	IDXGIDevice1_Release(dxgiDevice);
+	IDXGIFactory2_MakeWindowAssociation(s_factory, hwnd, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_PRINT_SCREEN);
+	s_window.w = sapp_width();
+	s_window.h = sapp_height();
+	s_window.samples = samples;
+	s_window.hasDepth = true;
+	DXGI_SWAP_CHAIN_DESC1 desc;
+	ZeroMemory(&desc, sizeof desc);
+	desc.Width = (UINT)s_window.w;
+	desc.Height = (UINT)s_window.h;
+	desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+	desc.SampleDesc.Count = 1;
+	desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	desc.BufferCount = 2;
+	desc.Scaling = DXGI_SCALING_STRETCH;
+	desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	hr = IDXGIFactory2_CreateSwapChainForHwnd(s_factory, (IUnknown *)s_device, hwnd, &desc, NULL, NULL, &s_window.swapChain);
+	if (FAILED(hr)) voidFail("CreateSwapChainForHwnd %dx%d failed: 0x%08lx", s_window.w, s_window.h, (unsigned long)hr);
+	makeTarget(&s_window);
+}
+
+sg_environment voidWindowEnvironment(void) {
+	sg_environment e = {0};
+	e.defaults.color_format = SG_PIXELFORMAT_BGRA8;
+	e.defaults.depth_format = SG_PIXELFORMAT_DEPTH;
+	e.defaults.sample_count = s_window.samples;
+	e.d3d11.device = s_device;
+	e.d3d11.device_context = s_context;
+	return e;
+}
+
+sg_swapchain voidWindowSwapchain(void) {
+	if (sapp_width() != s_window.w || sapp_height() != s_window.h) {
+		voidPlatformSurfaceResize(&s_window, sapp_width(), sapp_height());
+	}
+	sg_swapchain swapchain = {0};
+	swapchain.width = s_window.w;
+	swapchain.height = s_window.h;
+	swapchain.sample_count = s_window.samples;
+	swapchain.depth_format = SG_PIXELFORMAT_DEPTH;
+	voidPlatformSurfaceSwapchain(&s_window, &swapchain);
+	return swapchain;
+}
+
+void voidWindowPresent(bool modal) {
+	HRESULT hr = modal ? IDXGISwapChain1_Present(s_window.swapChain, 0, DXGI_PRESENT_DO_NOT_WAIT)
+		: IDXGISwapChain1_Present(s_window.swapChain, 1, 0);
+	if (FAILED(hr) && hr != DXGI_ERROR_WAS_STILL_DRAWING) {
+		voidFail("IDXGISwapChain1::Present failed: 0x%08lx", (unsigned long)hr);
+	}
+}
+
+void voidWindowSurfaceDestroy(void) {
+	releaseTargets(&s_window);
+	IDXGISwapChain1_Release(s_window.swapChain);
+	IDXGIFactory2_Release(s_factory);
+	ID3D11DeviceContext_Release(s_context);
+	ID3D11Device_Release(s_device);
+}
+
+void *voidWindowSwapChain(void) { return s_window.swapChain; }
+#endif
+
 static void setupWindowGfx(void) {
 	sg_desc d = {0};
-	d.environment = sglue_environment();
+	d.environment = voidWindowEnvironment();
 	d.logger.func = slog_func;
 	sg_setup(&d);
+	if (!sg_isvalid()) voidFail("sg_setup on the sokol_app window failed");
 }
 
 __attribute__((noreturn)) static void noDriver(const char *op) {
@@ -415,12 +522,15 @@ int voidKeyDown(int keycode) {
 }
 
 sg_swapchain voidDriverSwapchain(void) {
-	if (s_driver == DRIVER_WINDOW) return sglue_swapchain();
+	if (s_driver == DRIVER_WINDOW) return voidWindowSwapchain();
 	if (s_driver == DRIVER_NONE) noDriver("beginPass");
 	return voidViewsSwapchain();
 }
 
 void voidDriverPresent(void) {
-	if (s_driver == DRIVER_WINDOW) s_committed = true;
+	if (s_driver == DRIVER_WINDOW) {
+		voidWindowPresent(s_sizeMove);
+		s_committed = true;
+	}
 	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
 }
