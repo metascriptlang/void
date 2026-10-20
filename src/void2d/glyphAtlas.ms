@@ -28,6 +28,8 @@ export const GLYPH_PAGE_SIZE: int32 = 1024;
 
 export type GlyphPage = distinct int32;
 export type GlyphPageHandle = distinct int32;
+@delegate export function `==`(this a: GlyphPage, b: GlyphPage): boolean;
+@delegate export function `==`(this a: GlyphPageHandle, b: GlyphPageHandle): boolean;
 export const NO_GLYPH_PAGE: GlyphPage = (-1) as GlyphPage;
 export const NO_GLYPH_PAGE_HANDLE: GlyphPageHandle = (-1) as GlyphPageHandle;
 
