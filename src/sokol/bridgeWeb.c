@@ -1,19 +1,13 @@
-// The window-only driver: the browser canvas under emscripten and the desktop GL window
-// (-d:voidGlCore) through sokol_app. bridgeWin.c carries the same window path beside its
-// host views.
+// The browser driver: the canvas through sokol_app under emscripten. bridgeWin.c drives the
+// Windows window beside its host views.
 
-#if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
-#endif
 #include <stdbool.h>
 
 #include "backend.h"
 #include "bridge.h"
 #include "views.h"
 
-#if defined(_WIN32) && !defined(SOKOL_GLCORE)
-#error "void: bridgeWeb.c on Windows is the GL core driver; define SOKOL_GLCORE (golden.sh)"
-#endif
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"
@@ -34,7 +28,6 @@ static bool s_keys[SAPP_MAX_KEYCODES];
 
 static int s_textInput = -1;
 
-#if defined(__EMSCRIPTEN__)
 static int s_imeX, s_imeY, s_imeW, s_imeH;
 static bool s_imeReady;
 
@@ -138,13 +131,6 @@ static void keepKeysFromBrowser(const sapp_event *e) {
 		sapp_consume_event();
 	}
 }
-#else
-void voidSetTextInput(int on) { s_textInput = on != 0; }
-void voidSetImeRect(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; }
-static void imeSetup(void) {}
-static bool imeTookKey(const sapp_event *e) { (void)e; return false; }
-static void keepKeysFromBrowser(const sapp_event *e) { (void)e; }
-#endif
 
 static void _init(void) {
 	imeSetup();
@@ -175,11 +161,7 @@ static void _event(const sapp_event *e) {
 
 static void _cleanup(void) { sg_shutdown(); }
 
-#if defined(__EMSCRIPTEN__)
 static void leaveCallerSuspendedWhileFramesRun(void) { emscripten_exit_with_live_runtime(); }
-#else
-static void leaveCallerSuspendedWhileFramesRun(void) {}
-#endif
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	s_init = init;
