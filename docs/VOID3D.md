@@ -3878,8 +3878,20 @@ of the base selects 0, omission of the override inherits the base.
 The bounded next row resolves that precedence before the existing UV0-only gate in `gltf.ms`
 `textureInfoIndex` / `textureTransformOf`. A base set 1 or 2 overridden to 0 must not be refused
 as an active nonzero set. This does not add UV1 storage, multiple active sets, a renderer field,
-or a new transform. Malformed selectors and unsupported effective sets still fail. Reference
-preparation only: this paragraph is not a claim of implementation or executed acceptance.
+or a new transform. Malformed selectors and unsupported effective sets still fail; the existing
+signed-int parser ceiling remains, pinned by the unrepresentable selector case.
+
+CPU acceptance, 2026-10-21, Windows native, binary/support BUILD `b1f63337f`: the initial queued
+red was deliberately cancelled before admission for void2d's priority bench (actual 137, no test
+ran). Retry1 of `msc test src/test/gltfMaterialCheck.ms` observed **340 pass / 3 fail**, exit 1:
+required override success, explicit-null refusal and the missing-selected-UV0 diagnostic.
+After resolving the override with existing `hasField` / `intValue`, serial material **343/343**,
+importer **316/316** and diagnostic **308/308** passed, all three exits plus aggregate 0.
+CPU source tree: `c3b5f8bc413131cbe0a127fafc3e5523134ebe18`. The matrix reaches base/emissive/normal
+roles, supplied/Mikk tangents and identical mesh/material blocks, without adding a UV channel.
+Receipts: `out/m6UvOverrideRedB1f63337f20261021{,Retry1}.{log,exit}` and
+`out/m6UvOverride{name}GreenB1f63337f20261021.{log,exit}`; original 137 is not a red.
+No rendered acceptance, full-index clearance or performance claim follows from these checks.
 
 ### glTF explicit primitive-mode CPU acceptance
 
