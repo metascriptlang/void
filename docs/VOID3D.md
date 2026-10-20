@@ -3794,6 +3794,50 @@ Receipts: `out/m5SparseAnimationRed3c5ca837720261020.log` and
 `out/m5SparseAnimation<test-name>Green3c5ca837720261020.{log,exit}`.
 No new sparse-animation rendered, browser or physical-device acceptance from these CPU checks.
 
+### PENDING: normalized integer rotation outputs
+
+These formats are core glTF animation encodings, not dependent on `KHR_mesh_quantization`:
+glTF `b43260ee` animation sampler table permits snorm8, unorm8, snorm16 and unorm16 rotations.
+The current boundary is `gltf.ms` `animationValues` (FLOAT only), followed by
+`gltfCurve.ms` `forValues` (unit-quaternion validation). Merely admitting integer formats
+would not handle their quantization error.
+
+Arithmetic probe at source tree `a8f2354587ce1c304c9a07114d00f8790f4db0ac`, using Python
+`v = struct.unpack('<f', struct.pack('<f', n/d))[0]` and `abs(2*v*v-1)` for `(0,0,v,v)`:
+
+| Encoding | Components n/d | Squared-length error | Against current 1e-4 gate |
+|---|---|---|---|
+| snorm8 | 90/127 | 0.00440206468 | refused |
+| unorm8 | 180/255 | 0.00346015811 | refused |
+| snorm16 | 23170/32767 | 0.00002002777 | within tolerance |
+| unorm16 | 46340/65535 | 0.00001048662 | within tolerance |
+
+Receipt: `out/m5RotationQuantization20261020.log`. These are IEEE-f32 arithmetic measurements,
+not real-asset runs. The importer currently refuses all four integer encodings before this
+unit check. Passing the arithmetic threshold is not importer acceptance.
+
+Heaps `b9aa6dcb` HMD `Library.makeLinearAnimation` stores float XYZ and reconstructs W;
+it does not settle this quantized glTF boundary. Bevy `157e1ce6` glTF loader's rotation arm
+uses `into_f32().map(Quat::from_array)`. Its `animation_curves.rs`
+`AnimatableCurveEvaluator.commit` writes the sampled value unchanged; a sole STEP curve has
+no final normalization there. `bevy_animation::gltf_curves::CubicRotationCurve` normalizes
+after Hermite.
+This is a source trace, not a Bevy runtime verdict.
+
+Options for a future decision, none implemented here:
+
+- **(a) Source-width tolerance.** Loosens the unit gate; must bound quantization error while
+  still rejecting zero, nonfinite and materially non-unit keys. Tolerance alone is insufficient:
+  STEP and non-cubic endpoints would publish non-unit values under the current curve contract.
+- **(b) Renormalize at decode.** Produces unit keys, but changes cubic interpolation against
+  raw, unscaled tangents. Requires an explicit curve-semantics decision, not a silent repair.
+- **(c) Keep refusal.** Retains the current contract but excludes these core glTF encodings.
+
+Recommendation for now: **(c)**, pending a real asset carrying quantized rotation outputs.
+That asset is the upgrade trigger; use its decoded keys, tangents and interpolation modes to
+settle normalization and validation together. No global quaternion-gate change or portability
+acceptance is implied by this finding.
+
 ### glTF sparse triangle-index CPU acceptance
 
 Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` preserves indexed material ranges;
