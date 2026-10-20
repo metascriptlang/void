@@ -1,4 +1,4 @@
-import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D, NO_COLOR_MATRIX_ROW } from "../void2d/node";
+import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D, NO_COLOR_MATRIX_ROW, NO_FRAME } from "../void2d/node";
 import "../void2d/scene";
 import { sync, getBounds, hitTest } from "../void2d/render";
 import {
@@ -1023,6 +1023,68 @@ test "disposing an Anim empties its frames and its delays" {
 	a.dispose();
 	assert s.anims[slot].frames.length == 0;
 	assert s.anims[slot].delaysMs.length == 0;
+}
+
+test "setFrames restarts at frame 0, keeps the node's size and marks content" {
+	const s = fresh();
+	const a = s.anim(threeFrames(), 10.0);
+	s.add(a);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	s.clearChanges();
+	a.setFrames([whiteTile(32.0, 16.0), whiteTile(32.0, 16.0)]);
+	assert a.animFrames().frameIndex() == 0;
+	assert approx(a.animFrames().carryMs, 0.0);
+	assert marked(a, Changed.Content);
+	assert s.contents[a.id.index].w == 8.0 && s.contents[a.id.index].h == 8.0;
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 0;
+}
+
+test "setFrames empties and refills an Anim, and an empty one holds still" {
+	const s = fresh();
+	const a = s.anim(threeFrames(), 10.0);
+	s.add(a);
+	a.setFrames([]);
+	assert a.animFrames().frameIndex() == NO_FRAME;
+	s.tick(1.0);
+	assert a.animFrames().frameIndex() == NO_FRAME;
+	a.setFrames(threeFrames());
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+}
+
+test "setFrames keeps per-frame delays that still count its frames, and the paused state" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	a.setPaused(true);
+	a.setFrames(threeFrames());
+	assert a.animFrames().delaysMs.length == 3;
+	assert a.animFrames().paused;
+	a.setPaused(false);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	assert approx(a.animFrames().carryMs, 25.0);
+}
+
+test "setFps changes the rate, restarts the delay, and 0 holds the frame until it moves again" {
+	const s = fresh();
+	const a = s.anim(threeFrames(), 10.0);
+	s.add(a);
+	s.tick(0.0625);
+	a.setFps(20.0);
+	assert approx(a.animFrames().carryMs, 0.0);
+	s.tick(0.0625);
+	assert a.animFrames().frameIndex() == 1;
+	a.setFps(0.0);
+	s.tick(10.0);
+	assert a.animFrames().frameIndex() == 1;
+	a.setFps(10.0);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 2;
 }
 
 test "removing the delays returns to the constant fps" {

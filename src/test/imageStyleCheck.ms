@@ -40,6 +40,35 @@ test "ObjectFit None clips from the image origin and advances its UV" {
 	assert near(fitted.u1, 0.5) && near(fitted.v1, 0.6);
 }
 
+test "an Anim keeps its image style through setFrames and returns it once on dispose" {
+	const s: Scene2D = Scene2D.create(tileClear());
+	const a = s.anim([whiteTile(16.0, 16.0)], 10.0);
+	a.setImageStyle(imageStyle(
+		{ topLeft: 1.0, topRight: 1.0, bottomRight: 1.0, bottomLeft: 1.0 },
+		false,
+		ObjectFit.Cover,
+	));
+	const slot: int32 = s.imageStyleOf(a.id.index);
+	assert slot != NO_IMAGE_STYLE;
+	a.setFrames([whiteTile(16.0, 16.0), whiteTile(16.0, 16.0)]);
+	assert s.imageStyleOf(a.id.index) == slot;
+	a.dispose();
+	const sprite = s.sprite(whiteTile(16.0, 16.0));
+	sprite.setImageStyle(imageStyle(
+		{ topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0 },
+		false,
+		ObjectFit.Fill,
+	));
+	assert s.payloads[sprite.id.index] == slot;
+	const other = s.sprite(whiteTile(16.0, 16.0));
+	other.setImageStyle(imageStyle(
+		{ topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0 },
+		false,
+		ObjectFit.Fill,
+	));
+	assert s.payloads[other.id.index] != slot;
+}
+
 test "image styles update in place and dispose returns their side-table slot" {
 	const s: Scene2D = Scene2D.create(tileClear());
 	const first = s.sprite(whiteTile(32.0, 16.0));
