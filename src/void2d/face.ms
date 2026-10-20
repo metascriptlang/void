@@ -78,6 +78,7 @@ export enum FaceError {
 	OutOfMemory,
 	NoBaseFace,
 	BadColourTable,
+	NoRasterizerOnJs,
 }
 
 function faceResult(code: int32): Result<int32, FaceError> {
@@ -145,7 +146,11 @@ export function faceSummariesRead(): int32 {
 }
 
 export function loadFace(path: string): Result<int32, FaceError> {
-	return faceResult(void2dGlyphFaceLoad(path));
+	when (js) {
+		return Result.err(FaceError.NoRasterizerOnJs);
+	} else {
+		return faceResult(void2dGlyphFaceLoad(path));
+	}
 }
 
 export function syntheticFace(

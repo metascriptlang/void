@@ -44,6 +44,7 @@ export enum FontError {
 	NeedsShaper,
 	NotLoaded,
 	BadFeatureTag,
+	NoRasterizerOnJs,
 }
 
 export enum Presentation {
@@ -253,7 +254,10 @@ export function registerFace(path: string, family: string, weight: int32, style:
 export function addFont(path: string): Result<FontId, FontError> {
 	ensureDefaultFont();
 	const face = faceAtPath(path);
-	if (!face.ok) { return Result.err(FontError.NotLoaded); }
+	if (!face.ok) {
+		if (face.error == FaceError.NoRasterizerOnJs) { return Result.err(FontError.NoRasterizerOnJs); }
+		return Result.err(FontError.NotLoaded);
+	}
 	fonts.push(plainFont(face.value, path));
 	return Result.ok(((fonts.length as int32) - 1) as FontId);
 }
