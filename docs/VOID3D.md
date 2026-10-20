@@ -3866,6 +3866,74 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### UV sphere primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Sphere.hx` constructor,
+`addNormals` and `addUVs` define a latitude/longitude grid with a duplicate seam, radial
+normals, `u = 1 - x / sectors`, `v = y / stacks`, omitting one degenerate triangle per polar
+cell. Full-sphere counts are `(sectors + 1) * (stacks + 1)` vertices and
+`2 * sectors * (stacks - 1)` triangles. Bevy `157e1ce6`
+`crates/bevy_mesh/src/primitives/dim3/sphere.rs` `SphereMeshBuilder::uv` uses the same grid
+and polar-triangle omission, with a different UV orientation. These are source references,
+not an executed performance comparison.
+
+Reuse `meshData.ms`'s indexed primitive-builder idiom (`addTexturedCube`, `addPlane`) for a
+full sphere through existing vertex/triangle writers. Void's Y-up mapping swaps Heaps' Y/Z,
+so winding must swap too to remain outward CCW; normals come from the unit grid independent
+of radius. Exact seam/pole endpoints avoid float32 `sin(pi)` leaving a tiny inverted polar ring.
+Positive finite radius, at least 3 sectors/2 stacks, layout/storage and signed capacity checks
+precede writes; no icosphere, partial sphere, collider type or GPU representation is added.
+`meshDataCheck.ms` owns winding/grid, appended IDs/index promotion and actual ray/Mikk pins.
+Appending indexed triangles to nonempty unindexed data would silently hide the old geometry;
+the new builder refuses that ambiguous receiver instead of synthesizing or discarding topology.
+This is an additive API guard, not a change to the older primitive builders.
+
+CPU, Windows native, unchanged binary/support BUILD `b1f63337f`, 2026-10-21:
+initial `msc test src/test/meshDataCheck.ms` stopped at missing `addSphere`, exit 1.
+The first implemented run caught an owned float64 radius test-loop cast, exit 1, not a
+production failure; after correction, the real 8x6 Mikk consumer aborted (exit 3) at vendor
+`QuickSortEdges`. Picking **329/329** and importer/material **349/349** passed with sphere
+production unchanged. The same sphere core/grid/ray/wide-append checks were then isolated
+from Mikk in `meshDataCheck.ms`: **345/345**, exit 0. The exact Mikk geometry/checks remain
+in `sphereTangentsCheck.ms`, registered in `src/test/index.ms`, not skipped or removed.
+CPU source tree for core proof: `0558ca4deb777adebfe2391de9937cc26b65ac7e`.
+
+Retained receipts under `out/`, suffix `B1f63337f20261021.{log,exit}`:
+`m6SphereRed`, `m6Sphere{meshDataCheck,pickCheck,gltfMaterialCheck}Green`;
+`m6SpheremeshDataCheckGreenB1f63337f20261021Retry1` records the original Mikk abort.
+`m6SphereCoreGreen` is the independent core result. Isolating the Mikk tests first exposed
+owned `assert` placement errors in helper/probe code (exit 1, no Mikk executed); corrected
+`m6SphereTangentsRedB1f63337f20261021Retry1` and
+`m6SphereMikk16RedB1f63337f20261021Retry1` both abort 3 at vendor line 1667. The latter is
+`msc run out/m6SphereMikk16Repro.ms`, an independent 16x6 geometry. Original errors remain.
+Sphere geometry is CPU-proven; full Mikk, rendered and whole-stack acceptance remain blocked.
+
+### Mikk zero-shift UB, root and ownership boundary
+
+Void pins mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
+`mikkTangents.c` includes its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
+(line 1667) contain `(uSeed << t) | (uSeed >> (32 - t))` after `t = uSeed & 31`.
+When t is zero, the right shift is 32: undefined in C. Both sphere sizes actually reached
+the latter site; the former is the same expression by source, not a separately executed crash.
+Upstream issue [#7](https://github.com/mmikk/MikkTSpace/issues/7) reports this exact fault.
+
+Blender [c8103efbe3](https://github.com/blender/blender/commit/c8103efbe3bfa2487a2866a7cf22e3b7681338ef)
+fixes its vendored `QuickSortEdges` with masked rotation. Bevy's manifest at `157e1ce6`
+names `bevy_mikktspace` version 1; the separately inspected port at
+`9de78a281bca0505142da521eb5152146da28656` `src/mikktspace/quick_sort_legacy.rs`
+`quick_sort_by_key_with_seed` uses `wrapping_shl` / `wrapping_shr`, keeping counts in range.
+This is not proof of the manifest's resolved lock revision. Godot's local `876b2903`
+`thirdparty/misc/mikktspace.c` still has both UB expressions. Its closed issue #51767 was
+resolved by [PR #120974](https://github.com/godotengine/godot/pull/120974), commit `90616d50`,
+removing the unused C dependency, not by a demonstrated local rotate patch.
+
+Technical recommendation: a provenance-marked, licensed tracked copy of the pinned C/header,
+with defined rotation at both sites, retaining all callbacks/semantics and dropping the old
+fetch only after checking consumers. No generic dependency patch framework or sanitizer
+suppression. The port/license allows an altered copy if its origin and change are marked.
+`heaps3dParity.md` explicitly forbids vendor edits in this session; ownership/permission for
+that fix is a user decision, recorded on the M6 card. No vendor/cache/setup edit was made.
+
 ### Bounds intersection, Heaps capability acceptance
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/col/Bounds.hx` `intersection`
