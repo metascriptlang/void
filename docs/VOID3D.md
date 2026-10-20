@@ -3891,6 +3891,17 @@ case file; no new runner or bypass was added. Receipts:
 `out/m6PrimitiveOracleCheckB1f63337f20261021.{log,exit}` and aggregate
 `out/m6PrimitiveOracleB1f63337f20261021.{log,exit}`.
 
+A separate actual Haxe Cylinder constructor probe then built and ran, exits 0/0. An apparent
+source-order concern was not a bug: generated JS passes `super(pts,null,normals)` because
+Haxe resolves the skipped optional UV parameter by type. No reference patch or dynamic type
+bypass was needed. Quads was also byte-compared equal between the two Heaps pins. After
+adding centered/bottom-origin Cylinder samples (private Quads fields read only in the oracle),
+`regen`, `check` and aggregate **all exited 0**, **13/13 AGREES** on the same toolchains.
+CPU source tree `a344b43ad3627954a83bf5a6e447122485101adf`. Original 11-row receipts remain;
+new oracle receipts append `Retry1` before their extensions. Constructor receipts:
+`out/m6CylinderReference{Build,Run,}20261021.{log,exit}`. This extends sampled CPU reference
+coverage to Cylinder; it does not extend Mikk, full-buffer, rendered or performance coverage.
+
 ### Octahedral GeoSphere, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/GeoSphere.hx` starts with
