@@ -3866,6 +3866,42 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Weighted-quaternion frontier: reference safety boundary
+
+A read-only frontier probe on 2026-10-21 found that directly porting Heaps
+`h3d/Quat.hx:366` `weightedBlend` can lose a valid half-turn when equivalent input rotations
+use opposite quaternion signs. Actual registered Heaps `2b84cc23`, Haxe 4.3.7 / Node v24.18.0:
+
+| Inputs, weights 0.5/0.5, identity reference | X-axis result | Y-axis result |
+| --- | --- | --- |
+| Same half-turn quaternion twice | Correct half-turn | Correct half-turn |
+| Half-turn quaternion and its negation | Identity, wrong | Identity, wrong |
+
+These are finite unit quaternions. Only the second input's representation sign changes.
+The branch `if (mulRes.w < 0)` does not align opposite vector components when relative `w`
+is exactly zero; accumulation cancels, and `normalize` falls back to identity. Both axes
+reproduce the same invariant failure with passing same-sign controls. Haxe build exited 0;
+Node invariant probe exited 1, **2 failures / 4 cases**.
+
+A second probe crossed the real consumer boundary: public `LinearAnimation` constant curves
+-> `BlendSpace2D.createInstance` / `sync` -> animated Object's output matrix, with three
+blend-space points and an edge query yielding weights 0.5/0.5/0. The same two controls passed
+and two sign variants produced identity matrices, build 0 / invariant run 1. This was CPU
+Object animation, not a rendered or Skin/GPU test. `LinearAnimation.hx:201-219` preserves the
+sample's sign in decomposed output; `BlendSpace2D.hx:143-146` passes it to `weightedBlend`.
+Quat, LinearAnimation, BlendSpace2D and Animation source files byte-match the source-reading
+checkout `b9aa6dcb`; executed provenance remains `2b84cc23`.
+
+Probe sources are `out/tmp/weightedQuatReference/{WeightedQuatProbe,BlendSpaceProbe}.hx`;
+receipts are `out/m6{WeightedQuat,BlendSpace}Reference{Build,Run,}20261021.{log,exit}`.
+Secondary Bevy source `157e1ce6`, `crates/bevy_animation/src/animatable.rs`,
+`impl Animatable for Quat::blend`, uses iterative SLERP, not this relative normalized sum.
+No Rust execution or animation-graph weight-consumer comparison was performed; it is not a
+verified drop-in replacement. No new Void API, reference/vendor patch, intentional-divergence
+permission or failing oracle snapshot was added. Candidate multi-clip extension needs an
+approved safety contract before implementation. Existing two-clip composition is unchanged;
+primitive oracle acceptance below does not accept this candidate.
+
 ### Executed primitive samples against Heaps
 
 On 2026-10-21, the existing `scripts/oracle.sh` harness ran `regen` then `check` for
