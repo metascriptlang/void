@@ -1521,7 +1521,7 @@ function loadEmission(
 ): Result<boolean, GltfError> {
 	let factor: Vec3 = vec3(0.0, 0.0, 0.0);
 	const field: JsonValue = fieldOf(material, "emissiveFactor");
-	if (!isNull(field)) {
+	if (hasField(material, "emissiveFactor")) {
 		if (field.kind != JsonKind.Array || countOf(field) != 3) {
 			return Result.err(GltfError.Unsupported);
 		}
@@ -1533,7 +1533,7 @@ function loadEmission(
 	const strength: float32 = try emissiveStrengthOf(material);
 	let index: int32 = NO_TEXTURE_INDEX;
 	const info: JsonValue = fieldOf(material, "emissiveTexture");
-	if (!isNull(info)) { index = try textureInfoIndex(info, textureCount); }
+	if (hasField(material, "emissiveTexture")) { index = try textureInfoIndex(info, textureCount); }
 	const lit: boolean = factor.x != 0.0 || factor.y != 0.0 || factor.z != 0.0;
 	if (!lit || strength == 0.0) { return Result.ok(false); }
 	read.material.emissive = factor;
@@ -1555,10 +1555,10 @@ function loadNormalTexture(
 	ref read: MaterialRead,
 ): Result<boolean, GltfError> {
 	const info: JsonValue = fieldOf(material, "normalTexture");
-	if (isNull(info)) { return Result.ok(false); }
+	if (!hasField(material, "normalTexture")) { return Result.ok(false); }
 	const index: int32 = try textureInfoIndex(info, textureCount);
 	const scale: JsonValue = fieldOf(info, "scale");
-	if (!isNull(scale)) {
+	if (hasField(info, "scale")) {
 		const value: float32 = try numberOf(scale);
 		if (value != 1.0) { return Result.err(GltfError.UnsupportedMaterial); }
 	}
@@ -1572,7 +1572,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 	if (material === null || material.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(material, "occlusionTexture"))) {
+	if (hasField(material, "occlusionTexture")) {
 		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	let read: MaterialRead = DEFAULT_READ;
@@ -1600,10 +1600,10 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 		read.material.doubleSided = doubleSided.boolVal;
 	}
 	const pbr: JsonValue = fieldOf(material, "pbrMetallicRoughness");
-	if (isNull(pbr)) { return Result.ok(read); }
+	if (!hasField(material, "pbrMetallicRoughness")) { return Result.ok(read); }
 	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
 	const factor: JsonValue = fieldOf(pbr, "baseColorFactor");
-	if (!isNull(factor)) {
+	if (hasField(pbr, "baseColorFactor")) {
 		if (factor.kind != JsonKind.Array || countOf(factor) != 4) {
 			return Result.err(GltfError.Unsupported);
 		}
@@ -1615,7 +1615,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 		};
 	}
 	const info: JsonValue = fieldOf(pbr, "baseColorTexture");
-	if (isNull(info)) { return Result.ok(read); }
+	if (!hasField(pbr, "baseColorTexture")) { return Result.ok(read); }
 	read.material.texture = try textureInfoIndex(info, textureCount);
 	read.realUvs = true;
 	const _shared: boolean = try shareTransform(info, read);
