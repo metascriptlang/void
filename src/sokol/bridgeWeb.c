@@ -303,6 +303,7 @@ void voidWebInstall(void) {
 #else
 	voidWebInstallStart(0);
 #endif
+	leaveCallerSuspendedWhileFramesRun();
 }
 
 EMSCRIPTEN_KEEPALIVE int voidWebViewCreate(int id, int w, int h, float scale) {
