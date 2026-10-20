@@ -3858,6 +3858,31 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### glTF emission extension shape, reference boundary
+
+Heaps `b9aa6dcb` `h3d/shader/pbr/PropsValues.hx` consumes a scalar and Bevy `157e1ce6`
+`load_material` multiplies by the decoded strength. Neither shader/readback source makes
+malformed JSON equivalent to a missing property. Khronos `b43260ee`
+`specification/2.0/schema/extensions.schema.json` requires an object with object-valued entries;
+`extensions/2.0/Khronos/KHR_materials_emissive_strength/schema/`
+`material.KHR_materials_emissive_strength.schema.json` requires an object and, when present,
+a numeric nonnegative strength. Default 1 applies to absence, not explicit null or another type.
+
+Reuse `gltf.ms` `hasField`, `JsonKind.Object`, `numberOf` and the existing nonnegative check
+in `emissiveStrengthOf`; validate before the no-emission fast path. No generic extension
+registry, shader/default change or global schema validator is needed. `gltfMaterialCheck.ms`
+carries absent/default controls, malformed containers and explicit invalid scalars with both
+zero and nonzero factors. This is a boundary-validation row, not new PBR support.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`: `msc test`
+`src/test/gltfMaterialCheck.ms` observed **343 pass / 2 fail**, actual 1, on the malformed
+container/default and explicit-null assertions. Following validation, serial material
+**345/345**, importer **316/316**, diagnostic **308/308**, all three exits and aggregate 0.
+CPU source tree `936dd1b2187d2b29bd3e601b9aed1d92f3307bac`.
+Receipts: `out/m6EmissionShapeRedB1f63337f20261021.{log,exit}` and
+`out/m6EmissionShape{name}GreenB1f63337f20261021.{log,exit}`. These tests ran through default
+buildslot; no new renderer/GPU, full-index or external-asset acceptance is implied.
+
 ### glTF texture-coordinate override, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/shader/Texture.hx` `vertex` passes
