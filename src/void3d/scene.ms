@@ -941,6 +941,21 @@ export function setLightPower(scene: Scene3D, id: NodeId3D, power: float32): voi
 	scene.lights[scene.nodes[node].payload].power = power;
 }
 
+export function setLightColor(scene: Scene3D, id: NodeId3D, color: Vec3): void {
+	const node: int32 = scene.kindRow(id, NodeKind.Light, "setLightColor");
+	scene.lights[scene.nodes[node].payload].color = color;
+}
+
+export function setLightRadius(scene: Scene3D, id: NodeId3D, radius: float32): void {
+	const node: int32 = scene.kindRow(id, NodeKind.Light, "setLightRadius");
+	scene.lights[scene.nodes[node].payload].radius = radius;
+}
+
+export function setLightPriority(scene: Scene3D, id: NodeId3D, priority: int32): void {
+	const node: int32 = scene.kindRow(id, NodeKind.Light, "setLightPriority");
+	scene.lights[scene.nodes[node].payload].priority = priority;
+}
+
 export function setAmbient(scene: Scene3D, ambient: Vec3): void {
 	if (scene.closed) { stopOnClosed("setAmbient"); }
 	scene.ambientLight = ambient;
