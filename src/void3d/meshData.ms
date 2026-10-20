@@ -92,6 +92,7 @@ export enum MeshError {
 	IndexStorage,
 	SphereParameters,
 	UnindexedAppend,
+	CylinderParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -759,6 +760,55 @@ export function addSphere(
 			if (y != 0) { const _top = try addTriangle(data, v1, v4, v2); }
 			if (y != stacks - 1) { const _bottom = try addTriangle(data, v2, v4, v3); }
 		}
+	}
+	return Result.ok(first);
+}
+
+export function addCylinderSides(
+	ref data: MeshData,
+	radius: float32,
+	height: float32,
+	centered: boolean,
+	color: Rgba,
+	sectors: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || height <= 0.0
+		|| height - height != 0.0 || sectors < 3) {
+		return Result.err(MeshError.CylinderParameters);
+	}
+	const vertices: int64 = (sectors as int64) * 4;
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((sectors as int64) * 6 > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const low: float32 = centered ? -height * 0.5 : 0.0;
+	const high: float32 = centered ? height * 0.5 : height;
+	const turn: float32 = 6.283185307179586;
+	for (let s = 0; s < sectors; s++) {
+		for (let corner = 0; corner < 4; corner++) {
+			const segment: int32 = s + corner % 2;
+			const angle: float32 = segment == sectors ? 0.0
+				: turn * (segment as float32) / (sectors as float32);
+			const normal: Vec3 = vec3(cosf(angle), 0.0, sinf(angle));
+			const point: Vec3 = vec3(normal.x * radius, corner < 2 ? low : high, normal.z * radius);
+			const added = data.hasUvs ? addTexturedVertex(data, point, normal,
+				{ u: 1.0 - (segment as float32) / (sectors as float32),
+					v: corner < 2 ? 1.0 : 0.0 }, color)
+				: addVertex(data, point, normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+		const base: int32 = first + s * 4;
+		const _first = try addTriangle(data, base, base + 2, base + 1);
+		const _second = try addTriangle(data, base + 2, base + 3, base + 1);
 	}
 	return Result.ok(first);
 }
