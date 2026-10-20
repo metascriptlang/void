@@ -22,6 +22,15 @@ if [ "${1:-}" != "--run" ]; then
 		|| { echo "FAIL webViews: the entry does not build — see $OUT.build.log"; exit 1; }
 	cp tests/web/views.html "$OUT/wgpu/views.html"
 	cp tests/web/views.html "$OUT/gl/views.html"
+	root=$(pwd)
+	outside=$(mktemp -d)
+	if (cd "$outside" && "${MSC:-msc}" build "$root/src/examples/webViews.ms" --os=emcc -d:webgl2 \
+		--output="$outside/webViews.js" > "$root/$OUT.outside.log" 2>&1); then
+		echo "PASS webViews builds from outside the repo"
+	else
+		echo "FAIL webViews does not build from outside the repo — see $OUT.outside.log"
+	fi
+	rm -rf "$outside"
 fi
 
 ( cd "$OUT" && exec python -m http.server "$PORT" > /dev/null 2>&1 ) &
