@@ -904,7 +904,8 @@ function loadMesh(
 	if (!isNull(fieldOf(primitive, "targets"))) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (intField(primitive, "mode", 4) != 4) {
+	const mode: int32 = try colourIntField(primitive, "mode", 4);
+	if (mode != 4) {
 		return Result.err(GltfError.Unsupported);
 	}
 	const attributes: JsonValue = fieldOf(primitive, "attributes");

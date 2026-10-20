@@ -3747,6 +3747,24 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF explicit primitive-mode CPU acceptance
+
+Heaps `b9aa6dcb` `Primitive.render` dispatches triangle draws, not glTF JSON defaults.
+The glTF `b43260ee` `mesh.primitive.schema.json` mode enum permits integers, with default 4
+for absence; null is not an enum value. Bevy `157e1ce6` reads `primitive.mode()`;
+the inspected gltf-json 1.4.1 `mesh.rs` declares nonoptional `Primitive.mode: Checked<Mode>`
+with a serde default and `deserialize_u64` for supplied values. Exact Bevy lock resolution
+remains unverified. Void reuses `gltf.ms` `colourIntField` in `loadMesh`, preserving its
+existing integer/range validation rather than introducing another schema reader.
+
+CPU source tree `b58e6a7a93620da7c4162b029b5846911bb5a82b`, BUILD `3c5ca8377`:
+`msc test src/test/gltfIndexCheck.ms` **315 pass / 1 fail** before, **316/316** after, exits
+1 then 0. The red is the explicit-null assertion, not the absent/4 controls.
+`gltfIndexCheck.ms` owns both indexed and non-indexed mode cases. Only this check reran:
+mode-field validation is the changed contract, with no geometry, material, skin, animation
+or GPU mechanism change. Receipts: `out/m5PrimitiveMode{Red,Green}20261020.{log,exit}`.
+No full-gate or new rendered acceptance from this targeted CPU check.
+
 ### glTF non-indexed triangle CPU acceptance
 
 Heaps `b9aa6dcb` `h3d/prim/Primitive.hx` `triCount` and `render` use sequential vertex

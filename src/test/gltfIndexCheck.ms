@@ -185,6 +185,34 @@ test "glTF missing indices do not excuse incomplete triangles or invalid explici
 	}
 }
 
+test "glTF absent and explicit triangle modes preserve both index layouts" {
+	const fixture = indexFixture(3, 5123, [0, 1, 2], [], false);
+	for (const indexed of [false, true]) {
+		const json = indexed ? fixture.json : fixture.json.replace(`,"indices":2`, "");
+		for (const doc of [json, json.replace(`"attributes":`, `"mode":4,"attributes":`)]) {
+			const loaded = loadGltf(doc, fixture.bytes);
+			assert loaded.ok;
+			if (loaded.ok) {
+				assert loaded.value.meshes[0].vertexCount() == 3;
+				assert loaded.value.meshes[0].indexCount() == (indexed ? 3 : 0);
+			}
+		}
+	}
+}
+
+test "glTF explicit invalid primitive modes never default to triangles" {
+	const fixture = indexFixture(3, 5123, [0, 1, 2], [], false);
+	for (const indexed of [false, true]) {
+		const json = indexed ? fixture.json : fixture.json.replace(`,"indices":2`, "");
+		for (const mode of ["null", "true", `"4"`, "4.5", "-1", "7", "4294967300"]) {
+			const loaded = loadGltf(
+				json.replace(`"attributes":`, `"mode":${mode},"attributes":`), fixture.bytes);
+			assert !loaded.ok;
+			if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
+		}
+	}
+}
+
 test "glTF uint8 indices become narrow drawable indices" {
 	const loaded = indexedFixture(3, 5121, [0, 1, 2]);
 	assert loaded.ok;
