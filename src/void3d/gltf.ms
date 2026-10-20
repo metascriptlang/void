@@ -1437,14 +1437,17 @@ function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
 // carries one UV set, so another set is refused rather than sampled at the wrong place.
 function textureInfoIndex(info: JsonValue, textureCount: int32): Result<int32, GltfError> {
 	if (info.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
-	if (intField(info, "texCoord", 0) != 0) { return Result.err(GltfError.UnsupportedMaterial); }
+	const base: int32 = hasField(info, "texCoord") ? intValue(fieldOf(info, "texCoord")) : 0;
+	const transform: JsonValue = fieldOf(fieldOf(info, "extensions"), "KHR_texture_transform");
+	const effective: int32 = hasField(transform, "texCoord")
+		? intValue(fieldOf(transform, "texCoord")) : base;
+	if (base < 0 || effective != 0) { return Result.err(GltfError.UnsupportedMaterial); }
 	const index: int32 = intField(info, "index", INVALID_INT);
 	if (index < 0 || index >= textureCount) { return Result.err(GltfError.BadReference); }
 	return Result.ok(index);
 }
 
 // A textureInfo's KHR_texture_transform, the only extension a texture reference may carry here.
-// Its texCoord override is held to 0 like the textureInfo's own.
 function textureTransformOf(info: JsonValue): Result<GltfTextureTransform, GltfError> {
 	const extensions: JsonValue = fieldOf(info, "extensions");
 	if (isNull(extensions)) { return Result.ok(IDENTITY_TEXTURE_TRANSFORM); }
