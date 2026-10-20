@@ -57,6 +57,7 @@ export enum GltfError {
 	UnsupportedSampler,
 	UnsupportedMaterial,
 	MissingTexCoord,
+	NoImageDecoderOnJs,
 }
 
 const COMPONENT_FLOAT: int32 = 5126;
@@ -993,7 +994,10 @@ function loadTexture(
 	const format: Result<ImageFormat, ImageError> = imageFormatOf(bytes);
 	if (!format.ok || format.value != view.format) { return Result.err(GltfError.BadImage); }
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
-	if (!decoded.ok) { return Result.err(GltfError.BadImage); }
+	if (!decoded.ok) {
+		if (decoded.error == ImageError.NoDecoderOnJs) { return Result.err(GltfError.NoImageDecoderOnJs); }
+		return Result.err(GltfError.BadImage);
+	}
 	return Result.ok({
 		pixels: decoded.value.pixels,
 		width: decoded.value.width,
