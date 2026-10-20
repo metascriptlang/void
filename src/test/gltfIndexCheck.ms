@@ -160,6 +160,31 @@ test "glTF sparse triangle indices reject malformed slots counts and layouts" {
 	]) { assert !loadGltf(json, fixture.bytes).ok; }
 }
 
+test "glTF absent indices preserve sequential triangles and CPU picking" {
+	for (const count of [3, 6]) {
+		const fixture = indexFixture(count, 5123, [0, 1, 2], [], false);
+		const json = fixture.json.replace(`,"indices":2`, "");
+		const loaded = loadGltf(json, fixture.bytes);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		const mesh = loaded.value.meshes[0];
+		assert mesh.vertexCount() == count && mesh.indexCount() == 0;
+		assert mesh.wideIndices === null;
+		const ray: Ray = { origin: vec3(0.25, 0.25, 1), direction: vec3(0, 0, -1) };
+		assert mesh.rayIntersection(ray, Face.None).distance == 1;
+	}
+}
+
+test "glTF missing indices do not excuse incomplete triangles or invalid explicit indices" {
+	const short = indexFixture(4, 5123, [0, 1, 2], [], false);
+	assert !loadGltf(short.json.replace(`,"indices":2`, ""), short.bytes).ok;
+	const fixture = indexFixture(3, 5123, [0, 1, 2], [], false);
+	for (const value of ["null", "-1", "99", "1.5", "true"]) {
+		assert !loadGltf(fixture.json.replace(`"indices":2`, `"indices":${value}`),
+			fixture.bytes).ok;
+	}
+}
+
 test "glTF uint8 indices become narrow drawable indices" {
 	const loaded = indexedFixture(3, 5121, [0, 1, 2]);
 	assert loaded.ok;

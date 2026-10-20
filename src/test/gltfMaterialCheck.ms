@@ -751,6 +751,29 @@ function mappedAttributeDocument(sparse: boolean): string {
 			`"buffers":[{"byteLength":${end + extra}}]`);
 }
 
+test "nonindexed normal-mapped triangles preserve Mikk corners and supplied tangents" {
+	for (const supplied of [false, true]) {
+		const json = documentOf({ ...texturedParts(), materials: NORMAL_BASE,
+			attributes: supplied ? WITH_TANGENTS : ALL_ATTRIBUTES })
+			.replaceAll(`"count":4`, `"count":3`)
+			.replace(`"count":6,"type":"SCALAR"`, `"count":3,"type":"SCALAR"`);
+		const indexed = loadGltf(json, quadBuffer());
+		const unindexed = loadGltf(json.replace(`"indices":4,`, ""), quadBuffer());
+		assert indexed.ok && unindexed.ok;
+		if (!indexed.ok || !unindexed.ok) { continue; }
+		const expected = indexed.value.meshes[0];
+		const mesh = unindexed.value.meshes[0];
+		assert mesh.hasUvs && mesh.hasTangents && mesh.vertexCount() == 3;
+		assert expected.indexCount() == 3 && mesh.indexCount() == 0;
+		assert mesh.vertices.length == expected.vertices.length;
+		for (let i = 0; i < mesh.vertices.length; i++) {
+			assert mesh.vertices[i] == expected.vertices[i];
+		}
+		assert unindexed.value.materials[0] == indexed.value.materials[0];
+		assert gltfProgramOf(unindexed.value.materials[0]).normalMap;
+	}
+}
+
 test "glTF interleaved and sparse UVs preserve supplied and Mikk-generated tangent meshes" {
 	for (const supplied of [false, true]) {
 		const dense = loaded({ ...texturedParts(),

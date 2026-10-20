@@ -49,6 +49,7 @@ import {
 	addSkinAttributes,
 	vertexCount,
 	indexAt,
+	indexCount,
 	hasRoomFor,
 } from "./meshData";
 
@@ -816,20 +817,27 @@ function loadSkinMesh(
 	for (const joint of canonical.joints) {
 		if (joint >= jointCount) { jointCount = joint + 1; }
 	}
-	const split = source.wideIndices === null
+	let topology: MeshData = source;
+	if (topology.indexCount() == 0) {
+		for (let corner = 0; corner < topology.vertexCount(); corner += 3) {
+			const added = addTriangle(topology, corner, corner + 1, corner + 2);
+			if (!added.ok) { return Result.err(GltfError.BadIndex); }
+		}
+	}
+	const split = topology.wideIndices === null
 		? SkinPartition.fromTriangles(canonical.joints, canonical.weights,
-			source.indices, jointCount)
+			topology.indices, jointCount)
 		: SkinPartition.fromTriangles(canonical.joints, canonical.weights,
-			source.indices, jointCount, [], source.wideIndices);
+			topology.indices, jointCount, [], topology.wideIndices);
 	if (!split.ok) { return Result.err(GltfError.Unsupported); }
-	let mesh: MeshData = source;
+	let mesh: MeshData = topology;
 	mesh.indices = [];
 	if (mesh.wideIndices !== null) { mesh.wideIndices = []; }
 	for (const part of split.value.parts) {
 		for (const triangle of part.triangles) {
 			const corner: int32 = triangle * 3;
-			const added = addTriangle(mesh, source.indexAt(corner) as int32,
-				source.indexAt(corner + 1) as int32, source.indexAt(corner + 2) as int32);
+			const added = addTriangle(mesh, topology.indexAt(corner) as int32,
+				topology.indexAt(corner + 1) as int32, topology.indexAt(corner + 2) as int32);
 			if (!added.ok) { return Result.err(GltfError.BadIndex); }
 		}
 	}
@@ -992,24 +1000,28 @@ function loadMesh(
 			if (!tangent.ok) { return Result.err(tangent.error); }
 		}
 	}
-	const source = try accessorSource(accessors,
-		try colourIntField(primitive, "indices", -1), GltfAccessorRole.Indices);
-	const indices = GltfAccessorIndices.readIndices(source, colourBuffers, colourViews,
-		count as uint32);
-	if (!indices.ok) {
-		return Result.err(match (indices.error) {
-			GltfAccessorError.Index => GltfError.BadIndex,
-			GltfAccessorError.Bounds | GltfAccessorError.Count | GltfAccessorError.NonFinite =>
-				GltfError.OutOfRange,
-			_ => GltfError.Unsupported,
-		});
-	}
-	if (indices.value.values.length % 3 != 0) { return Result.err(GltfError.CountMismatch); }
-	if (source.componentType == COMPONENT_UNSIGNED_INT) { data.wideIndices = []; }
-	for (let t = 0; t < indices.value.values.length; t += 3) {
-		const tri = addTriangle(data, indices.value.values[t] as int32,
-			indices.value.values[t + 1] as int32, indices.value.values[t + 2] as int32);
-		if (!tri.ok) { return Result.err(GltfError.BadIndex); }
+	if (!hasField(primitive, "indices")) {
+		if (count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+	} else {
+		const source = try accessorSource(accessors,
+			try colourIntField(primitive, "indices", -1), GltfAccessorRole.Indices);
+		const indices = GltfAccessorIndices.readIndices(source, colourBuffers, colourViews,
+			count as uint32);
+		if (!indices.ok) {
+			return Result.err(match (indices.error) {
+				GltfAccessorError.Index => GltfError.BadIndex,
+				GltfAccessorError.Bounds | GltfAccessorError.Count | GltfAccessorError.NonFinite =>
+					GltfError.OutOfRange,
+				_ => GltfError.Unsupported,
+			});
+		}
+		if (indices.value.values.length % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		if (source.componentType == COMPONENT_UNSIGNED_INT) { data.wideIndices = []; }
+		for (let t = 0; t < indices.value.values.length; t += 3) {
+			const tri = addTriangle(data, indices.value.values[t] as int32,
+				indices.value.values[t + 1] as int32, indices.value.values[t + 2] as int32);
+			if (!tri.ok) { return Result.err(GltfError.BadIndex); }
+		}
 	}
 	if (tangented) {
 		const closed: Result<int32, MeshError> =

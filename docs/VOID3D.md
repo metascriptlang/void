@@ -3747,6 +3747,30 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF non-indexed triangle CPU acceptance
+
+Heaps `b9aa6dcb` `h3d/prim/Primitive.hx` `triCount` and `render` use sequential vertex
+triangles when `indexes` is null. Bevy `157e1ce6` `crates/bevy_gltf/src/loader/mod.rs`
+only inserts indices when `Reader.read_indices` returns them. glTF `b43260ee` "Topology and
+Connectivity" requires accessor order when `indices` is absent, not when it is malformed.
+Void's adapter is `gltf.ms` `loadMesh` / `loadSkinMesh`: plain meshes need no synthetic index
+buffer; skin palette partitioning requires explicit corners, supplied through existing
+`meshData.ms` `addTriangle`. No new topology, GPU ABI or partition representation.
+
+CPU source tree `518f6daedd767b6543e8f81b3b8f14a94d6dd5a7`, BUILD `3c5ca8377`:
+`msc test src/test/gltfIndexCheck.ms` **314/314**, `gltfSkinCheck.ms` **309/309**,
+`gltfMaterialCheck.ms` **336/336**, `gltfCheck.ms` **316/316**,
+`gltfAnimationCheck.ms` **311/311**; each has a successful exit 0.
+Visibility reds were **313 pass / 1 fail** in index and **308 pass / 1 fail** in skin.
+The first combined green attempt retained one obsolete non-indexed refusal in `gltfCheck.ms`
+(**315 pass / 1 fail**). Correcting that fixture changed no production code or inputs consumed
+by the other four checks, so only `gltfCheck.ms` reran. Its old failure log remains intact.
+Pins live in `gltfIndexCheck.ms`, `gltfSkinCheck.ms` and `gltfMaterialCheck.ms`; the last compares
+Mikk-generated and supplied tangent corners with indexed controls and checks material identity.
+Receipts: `out/m5Nonindexed<test-name>{Red,Green}20261020.{log,exit}` and
+`out/m5NonindexedgltfCheckFinal20261020.{log,exit}`.
+No new rendered, browser, physical-device or performance acceptance from these CPU checks.
+
 ### glTF sparse animation-output CPU acceptance
 
 Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `makeLinearAnimation` reads packed HMD frames

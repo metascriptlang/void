@@ -500,7 +500,7 @@ test "glTF matrix nodes refuse nonaffine shear singular mirrored and mixed TRS i
 	for (const node of invalid) { assert !loadGltf(nodeOnlyGltf(node), []).ok; }
 }
 
-test "unsupported transforms, deformation and non-indexed geometry fail loudly" {
+test "unsupported inputs fail loudly beside valid non-indexed geometry" {
 	const skinned = loadGltf(nodeOnlyGltf("{\"skin\":0}"), []);
 	assert !skinned.ok;
 	const zeroScale = loadGltf(nodeOnlyGltf("{\"scale\":[1,1,0]}"), []);
@@ -540,7 +540,11 @@ test "unsupported transforms, deformation and non-indexed geometry fail loudly" 
 		+ "\"buffers\":[{\"byteLength\":72}]}",
 		triangleBuffer(),
 	);
-	assert !noIndices.ok;
+	assert noIndices.ok;
+	if (noIndices.ok) {
+		assert noIndices.value.meshes[0].indices.length == 0;
+		assert noIndices.value.meshes[0].wideIndices === null;
+	}
 	let nonFinite = triangleBuffer();
 	nonFinite[2] = 192 as uint8;
 	nonFinite[3] = 127 as uint8;
