@@ -37,6 +37,9 @@ import {
 	collectLights,
 	refresh,
 	NO_NODE_ID,
+	setLightColor,
+	setLightRadius,
+	setLightPriority,
 } from "../void3d/scene";
 import { approx } from "./helpers";
 import { contextOf } from "./drawHelpers";
@@ -610,6 +613,40 @@ test "point lights sort by priority and keep declaration order on ties" {
 	assert approx(block[POINT_AT], 2.0);
 	assert approx(block[POINT_AT + POINT_STRIDE], 1.0);
 	assert approx(block[POINT_AT + 2 * POINT_STRIDE], 3.0);
+}
+
+test "light setters reach collectLights for that light alone" {
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const first: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(1.0, 0.0, 0.0), radius: 1.0, power: 1.0, priority: 5,
+	});
+	const _second: NodeId3D = oneLight(scene, vec3(2.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(0.0, 1.0, 0.0), radius: 2.0, power: 1.0, priority: 3,
+	});
+	setLightColor(scene, first, vec3(0.0, 0.0, 1.0));
+	setLightRadius(scene, first, 7.0);
+	setLightPriority(scene, first, 0);
+	let block: Vec<float32> = blockOf();
+	const collected: Result<int32, LightError> = collectLights(scene, block);
+	assert collected.ok;
+	if (collected.ok) { assert collected.value == 2; }
+	assert approx(block[POINT_AT], 2.0);
+	assert nearAt(block, COLOR_AT, 0.0, 1.0, 0.0);
+	assert approx(block[COLOR_AT + 3], 2.0);
+	assert approx(block[POINT_AT + POINT_STRIDE], 1.0);
+	assert nearAt(block, COLOR_AT + POINT_STRIDE, 0.0, 0.0, 1.0);
+	assert approx(block[COLOR_AT + POINT_STRIDE + 3], 7.0);
+}
+
+test "a directional light's color setter reaches its block slot" {
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const sun: NodeId3D = addLightNode(scene, scene.rootId(), Transform3D.identity(), {
+		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0), radius: 0.0, power: 0.5, priority: 0,
+	});
+	setLightColor(scene, sun, vec3(0.2, 0.3, 0.4));
+	let block: Vec<float32> = blockOf();
+	assert collectLights(scene, block).ok;
+	assert nearAt(block, DIR_COLOR_AT, 0.2, 0.3, 0.4);
 }
 
 test "a light beyond the block's slots is an error, not a silent drop" {
