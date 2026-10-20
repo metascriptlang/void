@@ -3748,6 +3748,29 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF output/topology/mode stack land acceptance
+
+On 2026-10-21, shared `wt.sh land void3d-m5` exited 0 and fast-forwarded Main from
+`7e77f01b` to `f11cef69`, source tree `95f226c8c047acd3c296a157b0db523b5eef1a7f`.
+Installed binary/support BUILD was `3c5ca8377`. This receipt covers the sparse-output,
+non-indexed-triangle and explicit-mode stack, not the later triangle-strip preparation.
+
+The chained `sh scripts/gate.sh`, `sh scripts/gate3d.sh` and `sh scripts/web3d.sh` all passed:
+module all-off **1881/1881**, all-on **2268/2268**, full native gate GREEN, gate3D GREEN,
+and **37/37** real WebGL2 `RESULT ... PASS` records. No new reds; seven native skips and
+three gate3D skips retain their prior scope (`tests/PENDING.md`, `tests/PENDING3D.md`).
+Those three are held Forward/Anchor capture fingerprints and no physical GLES3 device run.
+The separately run web37 does not accept the native gate's skipped WebGL2 conformance suite.
+
+The four-hour compiler HOLD expired during this long run and was renewed through the official
+tool. Deployment owner confirmed no SDK sync during that interval; installed BUILD remained
+unchanged at closure. The receipt does not assume a continuously active lock. Raw evidence:
+`out/m5StackLand20261020.{log,exit}` in the M5 worktree, with renewal under
+`.wt/void3d-m5.stack-hold-renew20261020.{log,exit}` in the workspace.
+
+No WebGPU, physical-device, actual device-loss or performance acceptance is added here.
+Gate elapsed time under shared machine load is not a benchmark.
+
 ### glTF triangle-strip reference boundary
 
 Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
