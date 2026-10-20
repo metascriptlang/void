@@ -323,18 +323,14 @@ typedef struct {
 	WGPUSurface surface;
 	WGPUTexture texture;
 	WGPUTextureView view;
+	WGPUTexture msaa;
+	WGPUTextureView msaaView;
 #else
 	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 #endif
 } WebSurface;
 
 static void setupViewsGfx(void);
-
-static void refuseMultisample(void) {
-	if (voidViewsSampleCount() != 1) {
-		voidFail("voidViewCreate: web views render at 1 sample, not %d", voidViewsSampleCount());
-	}
-}
 
 #if defined(SOKOL_WGPU)
 
@@ -349,7 +345,6 @@ EM_JS(int, voidWebPrefersBgra, (void), {
 void voidPlatformDeviceEnsure(void) {
 	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a sokol_app canvas");
 	if (s_driver == DRIVER_VIEWS) return;
-	refuseMultisample();
 	s_instance = wgpuCreateInstance(NULL);
 	if (!s_instance) voidFail("voidViewCreate: wgpuCreateInstance failed");
 	s_device = emscripten_webgpu_get_device();
@@ -365,7 +360,7 @@ static void setupViewsGfx(void) {
 	d.environment.defaults.color_format =
 		s_format == WGPUTextureFormat_BGRA8Unorm ? SG_PIXELFORMAT_BGRA8 : SG_PIXELFORMAT_RGBA8;
 	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
+	d.environment.defaults.sample_count = voidViewsSampleCount();
 	d.logger.func = slog_func;
 	sg_setup(&d);
 	if (!sg_isvalid()) voidFail("sg_setup on the WebGPU device failed");
@@ -383,6 +378,34 @@ static void configure(WebSurface *s) {
 	wgpuSurfaceConfigure(s->surface, &c);
 }
 
+static void dropMsaa(WebSurface *s) {
+	if (s->msaaView) wgpuTextureViewRelease(s->msaaView);
+	if (s->msaa) wgpuTextureRelease(s->msaa);
+	s->msaaView = NULL;
+	s->msaa = NULL;
+}
+
+// sokol_app's own WebGPU swapchain does the same: the pass renders into a multisampled texture
+// and resolves into the canvas texture (sokol_app.h _sapp_wgpu_create_swapchain).
+static void makeMsaa(WebSurface *s) {
+	dropMsaa(s);
+	const int samples = voidViewsSampleCount();
+	if (samples == 1) return;
+	WGPUTextureDescriptor desc = {0};
+	desc.usage = WGPUTextureUsage_RenderAttachment;
+	desc.dimension = WGPUTextureDimension_2D;
+	desc.size.width = (uint32_t)s->w;
+	desc.size.height = (uint32_t)s->h;
+	desc.size.depthOrArrayLayers = 1;
+	desc.format = s_format;
+	desc.mipLevelCount = 1;
+	desc.sampleCount = (uint32_t)samples;
+	s->msaa = wgpuDeviceCreateTexture(s_device, &desc);
+	if (!s->msaa) voidFail("the %dx%d target at %d samples failed", s->w, s->h, samples);
+	s->msaaView = wgpuTextureCreateView(s->msaa, NULL);
+	if (!s->msaaView) voidFail("the view of the %d-sample target failed", samples);
+}
+
 static bool makeSurface(WebSurface *s) {
 	WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas = {0};
 	canvas.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
@@ -392,10 +415,14 @@ static bool makeSurface(WebSurface *s) {
 	s->surface = wgpuInstanceCreateSurface(s_instance, &desc);
 	if (!s->surface) return false;
 	configure(s);
+	makeMsaa(s);
 	return true;
 }
 
-static void resizeSurface(WebSurface *s) { configure(s); }
+static void resizeSurface(WebSurface *s) {
+	configure(s);
+	makeMsaa(s);
+}
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
@@ -414,7 +441,9 @@ int voidPlatformSurfaceAcquire(void *surface) {
 void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
 	swapchain->color_format =
 		s_format == WGPUTextureFormat_BGRA8Unorm ? SG_PIXELFORMAT_BGRA8 : SG_PIXELFORMAT_RGBA8;
-	swapchain->wgpu.render_view = ((WebSurface *)surface)->view;
+	WebSurface *s = (WebSurface *)surface;
+	swapchain->wgpu.render_view = s->msaaView ? s->msaaView : s->view;
+	swapchain->wgpu.resolve_view = s->msaaView ? s->view : NULL;
 }
 
 void voidPlatformSurfacePresent(void *surface) {
@@ -426,6 +455,7 @@ void voidPlatformSurfacePresent(void *surface) {
 }
 
 static void dropSurface(WebSurface *s) {
+	dropMsaa(s);
 	wgpuSurfaceUnconfigure(s->surface);
 	wgpuSurfaceRelease(s->surface);
 }
@@ -438,7 +468,6 @@ static bool s_glEverSetUp = false;
 void voidPlatformDeviceEnsure(void) {
 	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a sokol_app canvas");
 	if (s_driver == DRIVER_VIEWS) return;
-	refuseMultisample();
 	s_driver = DRIVER_VIEWS;
 }
 
@@ -446,7 +475,7 @@ static void setupViewsGfx(void) {
 	sg_desc d = {0};
 	d.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
 	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
+	d.environment.defaults.sample_count = voidViewsSampleCount();
 	d.logger.func = slog_func;
 	sg_setup(&d);
 	if (!sg_isvalid()) voidFail("sg_setup on the WebGL2 context failed");
@@ -465,7 +494,7 @@ static bool makeSurface(WebSurface *s) {
 	attrs.majorVersion = 2;
 	attrs.alpha = true;
 	attrs.premultipliedAlpha = true;
-	attrs.antialias = false;
+	attrs.antialias = voidViewsSampleCount() > 1;
 	attrs.depth = false;
 	attrs.stencil = false;
 	s->context = emscripten_webgl_create_context(s->selector, &attrs);
