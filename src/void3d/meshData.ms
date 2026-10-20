@@ -96,6 +96,7 @@ export enum MeshError {
 	DiscParameters,
 	CapsuleParameters,
 	GridParameters,
+	GeoSphereParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -988,6 +989,95 @@ export function addGrid(
 			const _first = try addTriangle(data, a, c, b);
 			const _second = try addTriangle(data, b, c, c + 1);
 		}
+	}
+	return Result.ok(first);
+}
+
+export function addGeoSphere(
+	ref data: MeshData,
+	radius: float32,
+	color: Rgba,
+	subdivisions: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || subdivisions < 0) {
+		return Result.err(MeshError.GeoSphereParameters);
+	}
+	let plannedVertices: int64 = 6;
+	let plannedTriangles: int64 = 8;
+	for (let level = 0; level <= subdivisions; level++) {
+		if (plannedVertices > (MAX_MESH_VERTICES as int64)
+			|| !data.hasRoomFor(plannedVertices as int32)) {
+			return Result.err(MeshError.TooManyVertices);
+		}
+		if (plannedTriangles * 3 > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+			return Result.err(MeshError.DrawRange);
+		}
+		if (level != subdivisions) {
+			plannedVertices += plannedTriangles * 3;
+			plannedTriangles *= 4;
+		}
+	}
+	const diagonal: float32 = 0.7071067811865476;
+	let points: Vec<Vec3> = [
+		vec3(0.0, 1.0, 0.0), vec3(0.0, -1.0, 0.0),
+		vec3(-diagonal, 0.0, -diagonal), vec3(diagonal, 0.0, -diagonal),
+		vec3(diagonal, 0.0, diagonal), vec3(-diagonal, 0.0, diagonal),
+	];
+	let faces: Vec<int32> = [
+		0, 3, 4, 0, 4, 5, 0, 5, 2, 0, 2, 3,
+		1, 4, 3, 1, 5, 4, 1, 2, 5, 1, 3, 2,
+	];
+	for (let level = 0; level < subdivisions; level++) {
+		let next: Vec<int32> = [];
+		for (let i = 0; i < faces.length; i += 3) {
+			const a: int32 = faces[i];
+			const b: int32 = faces[i + 1];
+			const c: int32 = faces[i + 2];
+			const start: int32 = points.length as int32;
+			points.push((points[a] + points[b]).normalized());
+			points.push((points[b] + points[c]).normalized());
+			points.push((points[c] + points[a]).normalized());
+			next.push(start);
+			next.push(start + 1);
+			next.push(start + 2);
+			next.push(a);
+			next.push(start);
+			next.push(start + 2);
+			next.push(start);
+			next.push(b);
+			next.push(start + 1);
+			next.push(start + 1);
+			next.push(c);
+			next.push(start + 2);
+		}
+		faces = move next;
+	}
+	let normals: Vec<Vec3> = [];
+	for (let i = 0; i < points.length; i++) { normals.push(vec3(0.0, 0.0, 0.0)); }
+	for (let i = 0; i < faces.length; i += 3) {
+		const a: int32 = faces[i];
+		const b: int32 = faces[i + 2];
+		const c: int32 = faces[i + 1];
+		const normal: Vec3 = (points[b] - points[a]).cross(points[c] - points[a]);
+		normals[a] = normals[a] + normal;
+		normals[b] = normals[b] + normal;
+		normals[c] = normals[c] + normal;
+	}
+	const first: int32 = data.vertexCount();
+	for (let i = 0; i < points.length; i++) {
+		const _vertex = try addVertex(data,
+			points[i].scaled(radius), normals[i].normalized(), color);
+	}
+	for (let i = 0; i < faces.length; i += 3) {
+		const _triangle = try addTriangle(data,
+			first + faces[i], first + faces[i + 2], first + faces[i + 1]);
 	}
 	return Result.ok(first);
 }
