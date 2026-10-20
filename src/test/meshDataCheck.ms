@@ -22,6 +22,7 @@ import {
 	addQuad,
 	addBox,
 	addPlane,
+	addSphere,
 	recomputeBounds,
 	addTangents,
 	addTangentsWithSources,
@@ -54,6 +55,108 @@ function plainBox(height: float32): Box {
 		tilt: 0.0,
 		color: WHITE,
 	};
+}
+
+test "a UV sphere shares indexed rings with outward unit normals and exact seam poles" {
+	for (const textured of [false, true]) {
+		for (const sectors of [3, 8, 16]) {
+			let data = textured ? MeshData.withUvs() : MeshData.empty();
+			const added = addSphere(data, 2.0, WHITE, sectors, 6);
+			assert added.ok;
+			if (!added.ok) { continue; }
+			assert added.value == 0;
+			assert data.vertexCount() == (sectors + 1) * 7;
+			assert data.triangleCount() == sectors * 10 && data.validIndices();
+			const width = data.stride();
+			for (let i = 0; i < data.vertexCount(); i++) {
+				const at = i * width;
+				const point = vec3(data.vertices[at], data.vertices[at + 1], data.vertices[at + 2]);
+				const normal = vec3(data.vertices[at + 3], data.vertices[at + 4],
+					data.vertices[at + 5]);
+				assert approx(point.length(), 2.0) && approx(normal.length(), 1.0);
+				assert approx(point.dot(normal), 2.0);
+				if (textured) {
+					const u: float32 =
+						1.0 - ((i % (sectors + 1)) as float32) / (sectors as float32);
+					assert approx(data.vertices[at + 6], u);
+					assert data.vertices[at + 7] >= 0.0 && data.vertices[at + 7] <= 1.0;
+				}
+			}
+			for (let ring = 0; ring <= 6; ring++) {
+				const first = ring * (sectors + 1) * width;
+				const last = first + sectors * width;
+				for (let i = 0; i < 6; i++) {
+					assert data.vertices[first + i] == data.vertices[last + i];
+				}
+				if (ring == 0 || ring == 6) {
+					assert data.vertices[first] == 0.0 && data.vertices[first + 2] == 0.0;
+					assert data.vertices[first + 1] == (ring == 0 ? 2.0 : -2.0);
+				}
+			}
+			for (let i = 0; i < data.indexCount(); i += 3) {
+				const a = data.indexAt(i) as int32 * width;
+				const b = data.indexAt(i + 1) as int32 * width;
+				const c = data.indexAt(i + 2) as int32 * width;
+				const p = vec3(data.vertices[a], data.vertices[a + 1], data.vertices[a + 2]);
+				const q = vec3(data.vertices[b], data.vertices[b + 1], data.vertices[b + 2]);
+				const r = vec3(data.vertices[c], data.vertices[c + 1], data.vertices[c + 2]);
+				assert (q - p).cross(r - p).dot(p + q + r) > 0.0;
+			}
+		}
+	}
+}
+
+test "sphere geometry reaches UV picking Mikk tangents and automatic wide index append" {
+	let data = MeshData.withUvs();
+	assert addSphere(data, 2.0, WHITE, 8, 6).ok;
+	const ray = Ray.fromPoints(vec3(0.0, 0.0, 6.0), vec3(0.0, 0.0, 0.0));
+	const hit = data.rayIntersection(ray, Face.Back);
+	assert approx(hit.distance, 4.0) && hit.uv !== null;
+	assert addTangents(data).ok;
+	assert data.hasTangents && data.validIndices();
+	for (let i = 0; i < data.vertexCount(); i++) {
+		const n = i * data.stride() + 3;
+		const normal = vec3(data.vertices[n], data.vertices[n + 1], data.vertices[n + 2]);
+		const tangent = tangentAt(data, i);
+		assert approx(tangent.length(), 1.0);
+		assert Math.abs(normal.dot(tangent)) < 0.001;
+	}
+	const previous = data.vertices.length;
+	assert !addSphere(data, 1.0, WHITE, 8, 6).ok;
+	assert data.vertices.length == previous;
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const appended = addSphere(wide, 1.0, WHITE, 3, 2);
+	assert appended.ok;
+	if (appended.ok) { assert appended.value == 65535; }
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+	let unindexed = MeshData.empty();
+	assert addVertex(unindexed, vec3(0.0, 0.0, 0.0), UP, WHITE).ok;
+	const refused = addSphere(unindexed, 1.0, WHITE, 8, 6);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UnindexedAppend; }
+	assert unindexed.vertexCount() == 1 && unindexed.indexCount() == 0;
+}
+
+test "sphere dimensions and capacity fail before writing any vertices indices or bounds" {
+	for (const sectors of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addSphere(data, 1.0, WHITE, sectors, 6).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const stacks of [-1, 0, 1, 2147483647]) {
+		let data = MeshData.withUvs();
+		assert !addSphere(data, 1.0, WHITE, 8, stacks).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const radius of [0.0, -1.0]) {
+		let data = MeshData.empty();
+		assert !addSphere(data, radius as float32, WHITE, 8, 6).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
 }
 
 test "an empty mesh has no vertices, no indices and empty bounds" {
