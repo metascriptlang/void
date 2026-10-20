@@ -2217,7 +2217,9 @@ changes described above on today's compiler; the P4 web archive also takes its r
   reused and a registration is permanent, since nothing in a scene frees the parsed icon;
   a build without `-d:voidSvg` stops by name at the first call,
   `tests/aborts/iconOff.ms`) and each node's retained placement, which re-acquires its tile when
-  the raster size changes and gives it back when the node leaves the tree.
+  the raster size changes and gives it back when the node leaves the tree. `node.setIcon(id)`
+  switches the icon in place, as Heaps' `Bitmap.tile` setter does: the hold moves to the new
+  id and the old mask goes back to the atlas.
   - **The Mask page kind is real.** `PageKind.Mask` is built under `VOID2D_SVG` (the
     `svgMaskSwitch.ms` import, as `textSdfSwitch.ms` does for Sdf), an R8 page with its own
     blit `void2dGlyphPageBlitMask` that stops by name on a page of another kind or a tile past
