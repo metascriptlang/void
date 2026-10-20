@@ -1297,6 +1297,40 @@ test "required emissive strength preserves payload and unknown-extension refusal
 	if (!invalid.ok) { assert invalid.error == GltfError.OutOfRange; }
 }
 
+test "material alpha and sidedness defaults distinguish absence from explicit null" {
+	const absent = kindOf("{}");
+	assert absent.ok;
+	if (absent.ok) {
+		assert absent.value.alphaMode == GltfAlphaMode.Opaque;
+		assert !absent.value.doubleSided;
+	}
+	for (const malformed of ["null", "false", "1", "[]", "{}"]) {
+		const read = kindOf("{\"alphaMode\":" + malformed + "}");
+		assert !read.ok;
+		if (!read.ok) { assert read.error == GltfError.Unsupported; }
+	}
+	for (const malformed of ["null", "\"false\"", "1", "[]", "{}"]) {
+		const read = kindOf("{\"doubleSided\":" + malformed + "}");
+		assert !read.ok;
+		if (!read.ok) { assert read.error == GltfError.Unsupported; }
+	}
+}
+
+test "MASK cutoff defaults only when absent while other alpha modes ignore it" {
+	const absent = kindOf("{\"alphaMode\":\"MASK\"}");
+	assert absent.ok;
+	if (absent.ok) { assert absent.value.alphaKill == 0.5; }
+	for (const invalid of ["null", "false", "\"0.5\"", "[]", "{}", "-1", "1e100"]) {
+		const read = kindOf("{\"alphaMode\":\"MASK\",\"alphaCutoff\":" + invalid + "}");
+		assert !read.ok;
+	}
+	for (const mode of ["OPAQUE", "BLEND"]) {
+		const read = kindOf(`{"alphaMode":"${mode}","alphaCutoff":null}`);
+		assert read.ok;
+		if (read.ok) { assert read.value.alphaKill == 0.0; }
+	}
+}
+
 test "emissive strength defaults only when its object or scalar is absent" {
 	for (const suffix of ["", ",\"extensions\":{}",
 		",\"extensions\":{\"KHR_materials_emissive_strength\":{}}",

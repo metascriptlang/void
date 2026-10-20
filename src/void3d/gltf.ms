@@ -1426,8 +1426,8 @@ function forceOpaque(texels: Span<uint32>): void {
 }
 
 function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
+	if (!hasField(material, "alphaCutoff")) { return Result.ok(GLTF_DEFAULT_CUTOFF); }
 	const cutoff: JsonValue = fieldOf(material, "alphaCutoff");
-	if (isNull(cutoff)) { return Result.ok(GLTF_DEFAULT_CUTOFF); }
 	const value: float32 = try numberOf(cutoff);
 	if (value < 0.0) { return Result.err(GltfError.OutOfRange); }
 	return Result.ok(value);
@@ -1579,7 +1579,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 	const _emits: boolean = try loadEmission(material, textureCount, read);
 	const _normals: boolean = try loadNormalTexture(material, textureCount, read);
 	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
-	if (!isNull(alphaMode)) {
+	if (hasField(material, "alphaMode")) {
 		if (alphaMode.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
 		const mode: string = alphaMode.strVal;
 		if (mode == "MASK") {
@@ -1595,7 +1595,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 		if (read.material.alphaKill == 0.0) { read.material.alphaMode = GltfAlphaMode.Opaque; }
 	}
 	const doubleSided: JsonValue = fieldOf(material, "doubleSided");
-	if (!isNull(doubleSided)) {
+	if (hasField(material, "doubleSided")) {
 		if (doubleSided.kind != JsonKind.Bool) { return Result.err(GltfError.Unsupported); }
 		read.material.doubleSided = doubleSided.boolVal;
 	}
