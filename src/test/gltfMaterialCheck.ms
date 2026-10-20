@@ -1207,7 +1207,7 @@ test "the textures of one material share its transform, and one that differs is 
 	);
 }
 
-test "extensionsRequired may name KHR_texture_transform, and nothing else" {
+test "extensionsRequired accepts texture transforms and rejects unknown names" {
 	const parts: Parts = { ...texturedParts(), materials: baseWith(transformed(SCALED_SHIFTED)) };
 	const document: string = documentOf(parts);
 	const tail: string = document.slice(1);
@@ -1220,6 +1220,81 @@ test "extensionsRequired may name KHR_texture_transform, and nothing else" {
 	);
 	assert !unknown.ok;
 	if (!unknown.ok) { assert unknown.error == GltfError.Unsupported; }
+}
+
+function requiringExtensions(document: string, names: string): string {
+	return "{\"extensionsUsed\":[" + names + "],\"extensionsRequired\":[" + names + "],"
+		+ document.slice(1);
+}
+
+test "required emissive strength keeps optional material and block semantics" {
+	for (const map of ["", EMISSIVE_MAP]) {
+		for (const payload of ["{}", "{\"emissiveStrength\":0.0}", "{\"emissiveStrength\":3.0}"]) {
+			const parts: Parts = {
+				...texturedParts(),
+				materials: emitting("[1.0,0.25,0.0]", map + ",\"extensions\":{"
+					+ "\"KHR_materials_emissive_strength\":" + payload + "}", TEXTURED_BASE),
+			};
+			const optional = loaded(parts);
+			assert optional.ok;
+			if (!optional.ok) { continue; }
+			const required = loadGltf(requiringExtensions(documentOf(parts),
+				"\"KHR_materials_emissive_strength\""), quadBuffer());
+			assert required.ok;
+			if (!required.ok) { continue; }
+			const expected: GltfMaterial = optional.value.materials[0];
+			const actual: GltfMaterial = required.value.materials[0];
+			assert actual.texture == expected.texture;
+			assert actual.emissiveTexture == expected.emissiveTexture;
+			assert actual.emissiveStrength == expected.emissiveStrength;
+			assert required.value.textures.length == optional.value.textures.length;
+			const key = gltfProgramOf(actual);
+			assert key == gltfProgramOf(expected);
+			const wanted = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), expected, key);
+			const block = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), actual, key);
+			assert block.length == wanted.length;
+			for (let i = 0; i < block.length; i++) { assert block[i] == wanted[i]; }
+		}
+	}
+}
+
+test "required emissive strength composes with required texture transforms in either order" {
+	const base: string = ",\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0"
+		+ transformed(SCALED_SHIFTED) + "}}";
+	const parts: Parts = {
+		...texturedParts(), materials: emitting("[1.0,0.25,0.0]", STRENGTH_THREE, base),
+	};
+	const optional = loaded(parts);
+	assert optional.ok;
+	if (!optional.ok) { return; }
+	const wanted = gltfProgramOf(optional.value.materials[0]);
+	assert wanted.emissive && wanted.uvTransform;
+	for (const names of [
+		"\"KHR_texture_transform\",\"KHR_materials_emissive_strength\"",
+		"\"KHR_materials_emissive_strength\",\"KHR_texture_transform\"",
+	]) {
+		const required = loadGltf(requiringExtensions(documentOf(parts), names), quadBuffer());
+		assert required.ok;
+		if (required.ok) { assert gltfProgramOf(required.value.materials[0]) == wanted; }
+	}
+}
+
+test "required emissive strength preserves payload and unknown-extension refusals" {
+	const parts: Parts = texturedParts();
+	const negative: Parts = {
+		...parts, materials: emitting("[1.0,0.0,0.0]", STRENGTH_THREE.replace("3.0", "-1.0")),
+	};
+	assert refusedAs(negative, GltfError.OutOfRange);
+	for (const unknown of ["\"KHR_draco_mesh_compression\"", "\"\"", "7", "null", "{}"]) {
+		const refused = loadGltf(requiringExtensions(documentOf(parts),
+			"\"KHR_materials_emissive_strength\"," + unknown), quadBuffer());
+		assert !refused.ok;
+		if (!refused.ok) { assert refused.error == GltfError.Unsupported; }
+	}
+	const invalid = loadGltf(requiringExtensions(documentOf(negative),
+		"\"KHR_materials_emissive_strength\""), quadBuffer());
+	assert !invalid.ok;
+	if (!invalid.ok) { assert invalid.error == GltfError.OutOfRange; }
 }
 
 test "tangent splits preserve skin source ids across UV encodings index widths and strips" {
