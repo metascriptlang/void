@@ -2,7 +2,7 @@ function keyOf(call,    i, name, module) {
 	i = index(call, "__")
 	name = substr(call, 1, i - 1)
 	module = call
-	sub(/^.*ZsrcZvoid2dZ/, "", module)
+	sub(/^.*srcZvoid2dZ/, "", module)
 	sub(/Oms_u[0-9]+\($/, "", module)
 	return module ":" name
 }
@@ -24,13 +24,13 @@ BEGIN {
 	nn = split(named, list, " ")
 	for (i = 1; i <= nn; i++) if (list[i] != "") isNamed[list[i]] = 1
 	nb = split(forbidden, banned, " ")
-	callRe = "[A-Za-z_][A-Za-z0-9_]*__M?[A-Za-z0-9]*ZsrcZvoid2dZ[A-Za-z0-9]+Oms_u[0-9]+\\("
+	callRe = "[A-Za-z_][A-Za-z0-9_]*__M?[A-Za-z0-9]*srcZvoid2dZ[A-Za-z0-9]+Oms_u[0-9]+\\("
 	defRe = "^[A-Za-z_][A-Za-z0-9_ ]*[* ]+[A-Za-z_][A-Za-z0-9_]*__M?[A-Za-z0-9_]*\\(.*\\{[[:space:]]*$"
 }
 
 FNR == 1 {
 	module = FILENAME
-	sub(/^.*ZsrcZvoid2dZ/, "", module)
+	sub(/^.*srcZvoid2dZ/, "", module)
 	sub(/Oms\.c$/, "", module)
 	current = ""
 }

@@ -798,14 +798,14 @@ unreachable=""
 # $1 bench entry; $2 functions that copy nothing and build no array; $3 that copy nothing and
 # call no function named in $4 (textLayout returns the whole layout by value: REVIEWS.md P3 F2).
 read_emitted_c() {
-	rm -f "out/debug/$(basename "$1" .ms).exe" out/debug/*ZsrcZvoid2dZ*Oms.c
+	rm -f "out/debug/$(basename "$1" .ms).exe" out/debug/*srcZvoid2dZ*Oms.c
 	if ! "$MSC" build "$1" --emit=c -d:voidBidi >> out/gate-allocation.log 2>&1; then
 		unreachable="$unreachable (emitting C for $1 failed)"
 		return 0
 	fi
 	awk -v frame="$(echo $2)" -v copyOnly="$(echo $3)" -v forbidden="$4" \
 		-v named="$(echo $FRAME_PATH $REBUILD_PATH $MEASURE_PATH)" \
-		-f scripts/allocation.awk out/debug/*ZsrcZvoid2dZ*Oms.c > out/gate-allocation-rows.log
+		-f scripts/allocation.awk out/debug/*srcZvoid2dZ*Oms.c > out/gate-allocation-rows.log
 	cat out/gate-allocation-rows.log >> out/gate-allocation.log
 	while read -r kind what; do
 		case "$kind" in
