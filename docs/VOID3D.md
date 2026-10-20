@@ -3866,6 +3866,38 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Octahedral GeoSphere, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/GeoSphere.hx` starts with
+six octahedron vertices/eight faces, creates three normalized midpoint vertices per face
+without welding neighboring faces, and replaces each face with four. At subdivision level n,
+counts are `8*4^n - 2` vertices and `8*4^n` triangles. This is not Bevy's icosphere:
+`157e1ce6` `SphereMeshBuilder::ico` uses `hexasphere::IcoSphere`, a different base/subdivision
+contract and radial normals. Equal subdivision parameters are not equivalent geometry or
+valid performance controls.
+
+Heaps GeoSphere does not override `Polygon.addNormals`; when supplying Lit normals, follow
+that source's area-weighted per-index accumulation and normalize last. Welding midpoint IDs
+or substituting radial Sphere normals would change its shading. The source-arithmetic pin at
+level 1, ID 6 has mapped unit position `(0.5,0.707106781,-0.5)` and normal
+`(0.774596669,0.623347261,-0.106949482)`, not the radial vector. This anchor was calculated
+from the read source; no executed Heaps comparison is claimed.
+
+`meshData.ms` `addGeoSphere` reuses existing geometry writers, Y/Z mapping and reversed winding.
+It generates Lit-only data rather than inventing a spherical UV profile over Heaps' inherited
+planar UV fallback. Iterative int64 count preflight checks each level before multiplying the
+next one, so even signed-maximum requested subdivisions refuse without a huge loop/allocation.
+`meshDataCheck.ms` pins counts, source IDs/normals, winding, picking and wide append.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addGeoSphere`, no codegen.
+After implementation, serial mesh **361/361**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `e1333e9b47b1662f371f93618d6dd0430c789503`.
+Levels 0 through 3 and the nonradial normal anchor actually ran. Receipts:
+`out/m6GeoSphereRedB1f63337f20261021.{log,exit}` and
+`out/m6GeoSphere{name}GreenB1f63337f20261021.{log,exit}`. No UV, Mikk, GPU or speed claim.
+This remains above the sphere-dependent split point.
+
 ### Shared grid primitive, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Grid.hx` creates a shared
