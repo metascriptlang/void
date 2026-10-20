@@ -38,7 +38,10 @@ import {
 	withUvTransform,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
-import { MeshData, stride, vertexCount, indexAt, indexCount } from "../void3d/meshData";
+import {
+	MeshData, stride, vertexCount, indexAt, indexCount, rayIntersection,
+} from "../void3d/meshData";
+import { Ray } from "../void3d/ray";
 import { UniformError } from "../void3d/uniformPool";
 import { rgbaPng, twoBlockJpeg } from "./imageBytes";
 import { approx } from "./helpers";
@@ -774,6 +777,48 @@ test "nonindexed normal-mapped triangles preserve Mikk corners and supplied tang
 	}
 }
 
+test "glTF strips preserve materials Mikk tangents and picked UVs against triangle lists" {
+	const corners: Vec<uint32> = [0, 1, 2, 2, 1, 3];
+	for (const supplied of [false, true]) {
+		const document = documentOf({ ...texturedParts(), materials: NORMAL_BASE,
+			attributes: supplied ? WITH_TANGENTS : ALL_ATTRIBUTES });
+		let listBytes = quadBuffer();
+		for (let i = 0; i < corners.length; i++) {
+			listBytes[176 + i * 2] = corners[i] as uint8;
+		}
+		const control = loadGltf(document, listBytes);
+		assert control.ok;
+		if (!control.ok) { continue; }
+		let stripBytes = quadBuffer();
+		for (let i = 0; i < 4; i++) { stripBytes[176 + i * 2] = i as uint8; }
+		const stripDocument = document.replace(`"attributes":`, `"mode":5,"attributes":`)
+			.replace(`"count":6,"type":"SCALAR"`, `"count":4,"type":"SCALAR"`);
+		for (const indexed of [false, true]) {
+			const json = indexed ? stripDocument : stripDocument.replace(`"indices":4,`, "");
+			const loaded = loadGltf(json, stripBytes);
+			assert loaded.ok;
+			if (!loaded.ok) { continue; }
+			const expected = control.value.meshes[0];
+			const mesh = loaded.value.meshes[0];
+			assert mesh.hasUvs && mesh.hasTangents && mesh.indexCount() == 6;
+			assert mesh.vertices.length == expected.vertices.length;
+			for (let i = 0; i < mesh.vertices.length; i++) {
+				assert mesh.vertices[i] == expected.vertices[i];
+			}
+			for (let i = 0; i < 6; i++) { assert mesh.indexAt(i) == expected.indexAt(i); }
+			assert loaded.value.materials[0] == control.value.materials[0];
+			assert gltfProgramOf(loaded.value.materials[0]).normalMap;
+			const ray: Ray = { origin: vec3(0.25, 0.875, 1), direction: vec3(0, 0, -1) };
+			const hit = mesh.rayIntersection(ray, Face.None);
+			const reference = expected.rayIntersection(ray, Face.None);
+			assert hit.distance == 1 && hit.uv !== null && reference.uv !== null;
+			if (hit.uv !== null && reference.uv !== null) {
+				assert hit.uv.u == reference.uv.u && hit.uv.v == reference.uv.v;
+			}
+		}
+	}
+}
+
 test "glTF interleaved and sparse UVs preserve supplied and Mikk-generated tangent meshes" {
 	for (const supplied of [false, true]) {
 		const dense = loaded({ ...texturedParts(),
@@ -1177,13 +1222,19 @@ test "extensionsRequired may name KHR_texture_transform, and nothing else" {
 	if (!unknown.ok) { assert unknown.error == GltfError.Unsupported; }
 }
 
-test "tangent splits preserve skin source ids across UV encodings and both index widths" {
-	for (const variant of [0, 1, 2, 3, 4, 5, 6, 7]) {
+test "tangent splits preserve skin source ids across UV encodings index widths and strips" {
+	for (const variant of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
 		const index32 = variant % 2 == 1;
 		const interleaved = variant == 2 || variant == 3;
 		const normalized = variant >= 4;
 		const wide = variant >= 6;
+		const strip = variant >= 8;
+		const wideJoints = variant >= 10;
+		const sourceIndices: Vec<uint32> = strip ? [1, 2, 0, 3] : [0, 1, 2, 0, 2, 3];
 		let bytes = quadBuffer();
+		for (let i = 0; i < sourceIndices.length; i++) {
+			bytes[176 + i * 2] = sourceIndices[i] as uint8;
+		}
 		bytes[123] = 0x40 as uint8;
 		if (normalized) {
 			const size = wide ? 2 : 1;
@@ -1206,6 +1257,7 @@ test "tangent splits preserve skin source ids across UV encodings and both index
 		for (let vertex = 0; vertex < 4; vertex++) {
 			for (let slot = 0; slot < 4; slot++) {
 				bytes.push((slot == 0 ? vertex : 0) as uint8);
+				if (wideJoints) { bytes.push(0); }
 			}
 		}
 		const weights: int32 = bytes.length as int32;
@@ -1213,7 +1265,7 @@ test "tangent splits preserve skin source ids across UV encodings and both index
 			pushFloats(bytes, [F32_ONE, F32_ZERO, F32_ZERO, F32_ZERO]);
 		}
 		const indices: int32 = bytes.length as int32;
-		for (const vertex of [0, 1, 2, 0, 2, 3]) { pushLe32(bytes, vertex as uint32); }
+		for (const vertex of sourceIndices) { pushLe32(bytes, vertex); }
 		let document = documentOf({
 			...texturedParts(), materials: NORMAL_BASE,
 			attributes: ALL_ATTRIBUTES + ",\"JOINTS_0\":7,\"WEIGHTS_0\":8",
@@ -1239,9 +1291,10 @@ test "tangent splits preserve skin source ids across UV encodings and both index
 			"{\"bufferView\":9,\"componentType\":5126,\"count\":4,\"type\":\"VEC4\"}]," +
 			"\"bufferViews\":[");
 		document = document.replaceAll("],\"buffers\":[",
-			`,{"buffer":0,"byteOffset":${joints},"byteLength":16},` +
+			`,{"buffer":0,"byteOffset":${joints},"byteLength":${wideJoints ? 32 : 16}},` +
 			`{"buffer":0,"byteOffset":${weights},"byteLength":64},` +
-			`{"buffer":0,"byteOffset":${indices},"byteLength":24}],"buffers":[`);
+			`{"buffer":0,"byteOffset":${indices},` +
+			`"byteLength":${sourceIndices.length * 4}}],"buffers":[`);
 		document = document.replaceAll(
 			`"buffers":[{"byteLength":${tangentOffset() + 64}}]`,
 			`"buffers":[{"byteLength":${bytes.length}}]`,
@@ -1251,6 +1304,14 @@ test "tangent splits preserve skin source ids across UV encodings and both index
 				"\"bufferView\":4,\"componentType\":5123,\"count\":6",
 				"\"bufferView\":10,\"componentType\":5125,\"count\":6",
 			);
+		}
+		if (strip) {
+			document = document.replace(`"attributes":`, `"mode":5,"attributes":`)
+				.replace(`"count":6,"type":"SCALAR"`, `"count":4,"type":"SCALAR"`);
+		}
+		if (wideJoints) {
+			document = document.replace(`"bufferView":8,"componentType":5121`,
+				`"bufferView":8,"componentType":5123`);
 		}
 		assert document.includes("\"skin\":0") && document.includes("\"bufferView\":8");
 		const loaded = loadGltf(document, bytes);
@@ -1277,7 +1338,7 @@ test "tangent splits preserve skin source ids across UV encodings and both index
 			negative = negative || source.mesh.vertices[vertex * 24 + 15] == -1.0;
 		}
 		assert positive && negative;
-		const corners: Vec<int32> = [0, 1, 2, 0, 2, 3];
+		const corners: Vec<int32> = strip ? [1, 2, 0, 0, 2, 3] : [0, 1, 2, 0, 2, 3];
 		const triangles = source.partition.parts[0].triangles;
 		assert triangles.length == 2 && triangles[0] != triangles[1];
 		for (let corner = 0; corner < 6; corner++) {
