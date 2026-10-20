@@ -475,6 +475,14 @@ else
 	fail "two host views in one process — see out/gate-two-views.log, out/gate-two-views-run.log and .err"
 	grep -E '^FAIL' out/gate-two-views-run.log | sed 's/^/      /' || true
 fi
+if [ "$(uname -s)" = Darwin ] && [ -x out/twoViews.exe ]; then
+	OBJC_DEBUG_MISSING_POOLS=YES out/twoViews.exe > /dev/null 2> out/gate-two-views-pools.err || true
+	if grep -q 'of class CAMetalDrawable autoreleased with no pool' out/gate-two-views-pools.err; then
+		fail "a view frame autoreleases its drawable with no pool in place — see out/gate-two-views-pools.err"
+	else
+		pass "a view frame releases its drawable in its own autorelease pool"
+	fi
+fi
 outside_status=0
 VOID_VIEWS_OUTSIDE=1 out/twoViews.exe > out/gate-two-views-outside.log 2>&1 || outside_status=$?
 if [ "$outside_status" -ne 0 ] && grep -q 'fbWidth outside a view frame' out/gate-two-views-outside.log; then
