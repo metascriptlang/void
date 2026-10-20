@@ -184,9 +184,49 @@ async function run(backend) {
 	}
 }
 
+// Chrome on some Macs rejects requestDevice (docs/EMBED.md "Web"); voidStart must hand that to
+// its caller and start no view.
+async function refused() {
+	const created = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
+	const s = session(created.webSocketDebuggerUrl);
+	await s.open;
+	await s.send('Runtime.enable');
+	const fail = (what) => { console.log(`FAIL wgpu refused device: ${what}`); process.exitCode = 1; };
+	try {
+		await s.send('Page.navigate', { url: `${baseUrl}/wgpu/views.html` });
+		let ready = false;
+		for (let waited = 0; waited < 30000 && !ready; waited += 100) {
+			await sleep(100);
+			ready = (await evaluate(s, 'window.voidReady === true')) === true;
+		}
+		if (!ready) return fail('Module.voidStart was never installed');
+		await evaluate(s, `GPUAdapter.prototype.requestDevice = () => Promise.reject(new Error('Failed to create MTLSharedEvent'));
+			window.rafAtStart = window.rafCalls;
+			Module.voidStart(place('refused', 0), (e) => { window.refusal = e.message; }); true`);
+		let refusal = null;
+		for (let waited = 0; waited < 10000 && refusal === null; waited += 100) {
+			await sleep(100);
+			refusal = await evaluate(s, 'window.refusal ?? null');
+		}
+		if (refusal && refusal.includes('Failed to create MTLSharedEvent')) console.log(`PASS wgpu refused device reaches onError: ${refusal}`);
+		else fail(`onError got ${refusal}`);
+		const frames = await evaluate(s, 'window.rafCalls - window.rafAtStart');
+		if (frames === 0) console.log('PASS wgpu refused device starts no view');
+		else fail(`${frames} animation frames requested`);
+		await evaluate(s, `Module.voidStart(place('unhandled', 220)); true`);
+		await sleep(500);
+		if (s.logs.some((line) => line.startsWith('void: this browser gave no WebGPU device'))) console.log('PASS wgpu refused device without onError is logged');
+		else fail('nothing logged without onError');
+	} finally {
+		s.close();
+		await fetch(`http://127.0.0.1:${port}/json/close/${created.id}`);
+	}
+}
+
 try {
 	await waitForBrowser();
 	for (const backend of backends) await run(backend);
+	if (backends.includes('wgpu')) await refused();
 } catch (error) {
 	console.log(`FAIL webViews: ${error.message}`);
 	process.exitCode = 1;
