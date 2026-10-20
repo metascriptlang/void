@@ -106,6 +106,11 @@ second runtime per mount, which none of R3F, Three.js or Heaps does.
   `Module.preinitializedWebGPUDevice` unless the page put one there, and read by
   `emscripten_webgpu_get_device()` (emdawnwebgpu `library_webgpu.js:650`). Each view configures
   its own canvas surface; `stop` unconfigures it.
+- A browser can list WebGPU and still give no device: Chrome on some Macs rejects
+  `requestDevice()` with "Failed to create MTLSharedEvent" (Geass, 2026-10-20). `voidStart(canvas,
+  onError)` then calls `onError` with an `Error` naming the cause and starts nothing, so the page
+  can load the WebGL2 build instead; without `onError` the cause goes to `console.error`. The
+  WebGPU build cannot fall back by itself, because sokol fixes its backend at compile time.
 - WebGL2: a context belongs to its canvas, so the device is the one live view's context, and a
   second live view aborts by name. `stop` shuts sokol down, calls
   `WEBGL_lose_context.loseContext()` and destroys the context. The next view sets sokol up on its

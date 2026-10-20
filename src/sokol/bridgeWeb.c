@@ -267,15 +267,23 @@ EM_JS(void, voidWebInstallStart, (int needsDevice), {
 		live.set(id, { canvas: canvas, key: key, view: view, w: size.w, h: size.h, dpr: size.dpr });
 		if (!pending) pending = requestAnimationFrame(tick);
 	}
-	Module.voidStart = function(canvas) {
+	Module.voidStart = function(canvas, onError) {
 		var id = nextId++;
 		var stopped = false;
 		if (needsDevice && !Module.preinitializedWebGPUDevice) {
-			navigator.gpu.requestAdapter()
-				.then(function(adapter) { return adapter.requestDevice(); })
+			Promise.resolve()
+				.then(function() { return navigator.gpu.requestAdapter(); })
+				.then(function(adapter) {
+					if (!adapter) throw new Error('navigator.gpu.requestAdapter() gave no adapter');
+					return adapter.requestDevice();
+				})
 				.then(function(device) {
 					Module.preinitializedWebGPUDevice = Module.preinitializedWebGPUDevice || device;
 					if (!stopped) begin(id, canvas);
+				}, function(error) {
+					if (stopped) return;
+					var failure = new Error('void: this browser gave no WebGPU device: ' + (error && error.message || error));
+					if (onError) onError(failure); else console.error(failure.message);
 				});
 		} else {
 			begin(id, canvas);
