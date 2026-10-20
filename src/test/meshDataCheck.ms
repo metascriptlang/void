@@ -24,6 +24,7 @@ import {
 	addPlane,
 	addSphere,
 	addCylinderSides,
+	addDisc,
 	recomputeBounds,
 	addTangents,
 	addTangentsWithSources,
@@ -222,6 +223,80 @@ test "invalid cylinder dimensions and unindexed append leave the receiver unchan
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == MeshError.UnindexedAppend; }
 	assert data.vertexCount() == 1 && data.indexCount() == 0;
+}
+
+test "a full disc is an upward center fan with radial UVs in both layouts" {
+	for (const textured of [false, true]) {
+		for (const segments of [3, 8, 16]) {
+			let data = textured ? MeshData.withUvs() : MeshData.empty();
+			const made = addDisc(data, 2.0, WHITE, segments);
+			assert made.ok;
+			if (!made.ok) { continue; }
+			assert made.value == 0 && data.vertexCount() == segments + 1;
+			assert data.triangleCount() == segments && data.validIndices();
+			const width = data.stride();
+			for (let i = 0; i <= segments; i++) {
+				const at = i * width;
+				const point = vec3(data.vertices[at], data.vertices[at + 1], data.vertices[at + 2]);
+				assert point.y == 0.0 && approx(point.length(), i == segments ? 0.0 : 2.0);
+				assert data.vertices[at + 3] == 0.0 && data.vertices[at + 4] == 1.0;
+				assert data.vertices[at + 5] == 0.0;
+				if (textured) {
+					assert approx(data.vertices[at + 6], (point.x / 2.0 + 1.0) * 0.5);
+					assert approx(data.vertices[at + 7], (point.z / 2.0 + 1.0) * 0.5);
+				}
+			}
+			for (let i = 0; i < segments; i++) {
+				assert data.indexAt(i * 3) == (i as uint32);
+				assert data.indexAt(i * 3 + 1) == (segments as uint32);
+				const a = data.indexAt(i * 3) as int32 * width;
+				const b = data.indexAt(i * 3 + 2) as int32 * width;
+				const p = vec3(data.vertices[a], 0.0, data.vertices[a + 2]);
+				const q = vec3(data.vertices[b], 0.0, data.vertices[b + 2]);
+				assert (vec3(0.0, 0.0, 0.0) - p).cross(q - p).y > 0.0;
+			}
+			if (segments == 8) {
+				assert near(data.bounds.min, -2.0, 0.0, -2.0);
+				assert near(data.bounds.max, 2.0, 0.0, 2.0);
+			}
+		}
+	}
+}
+
+test "disc UV picking uses its generated surface rather than the containing square" {
+	let data = MeshData.withUvs();
+	assert addDisc(data, 2.0, WHITE, 8).ok;
+	const ray = Ray.fromPoints(vec3(0.0, 3.0, 0.0), vec3(0.0, 0.0, 0.0));
+	const hit = data.rayIntersection(ray, Face.Back);
+	assert approx(hit.distance, 3.0);
+	const uv = hit.uv;
+	assert uv !== null;
+	if (uv !== null) { assert approx(uv.u, 0.5) && approx(uv.v, 0.5); }
+	const corner = Ray.fromPoints(vec3(1.9, 3.0, 1.9), vec3(1.9, 0.0, 1.9));
+	assert data.rayIntersection(corner, Face.Back).distance == -1.0;
+}
+
+test "disc append promotes indices while invalid parameters do not mutate the mesh" {
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const added = addDisc(wide, 2.0, WHITE, 8);
+	assert added.ok;
+	if (added.ok) { assert added.value == 65535; }
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.vertexCount() == 65544 && wide.indexCount() == 27;
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+	for (const segments of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addDisc(data, 1.0, WHITE, segments).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const radius of [0.0, -1.0]) {
+		let data = MeshData.withUvs();
+		assert !addDisc(data, radius as float32, WHITE, 8).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
 }
 
 test "an empty mesh has no vertices, no indices and empty bounds" {

@@ -93,6 +93,7 @@ export enum MeshError {
 	SphereParameters,
 	UnindexedAppend,
 	CylinderParameters,
+	DiscParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -809,6 +810,47 @@ export function addCylinderSides(
 		const base: int32 = first + s * 4;
 		const _first = try addTriangle(data, base, base + 2, base + 1);
 		const _second = try addTriangle(data, base + 2, base + 3, base + 1);
+	}
+	return Result.ok(first);
+}
+
+export function addDisc(
+	ref data: MeshData,
+	radius: float32,
+	color: Rgba,
+	segments: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || segments < 3) {
+		return Result.err(MeshError.DiscParameters);
+	}
+	const vertices: int64 = (segments as int64) + 1;
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((segments as int64) * 3 > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const turn: float32 = 6.283185307179586;
+	const normal: Vec3 = vec3(0.0, 1.0, 0.0);
+	for (let i = 0; i <= segments; i++) {
+		const angle: float32 = turn * (i as float32) / (segments as float32);
+		const radial: float32 = i == segments ? 0.0 : radius;
+		const point: Vec3 = vec3(radial * cosf(angle), 0.0, radial * sinf(angle));
+		const added = data.hasUvs ? addTexturedVertex(data, point, normal,
+			{ u: (point.x / radius + 1.0) * 0.5, v: (point.z / radius + 1.0) * 0.5 }, color)
+			: addVertex(data, point, normal, color);
+		if (!added.ok) { return Result.err(added.error); }
+	}
+	for (let i = 0; i < segments; i++) {
+		const _triangle = try addTriangle(data, first + i, first + segments,
+			first + (i + 1) % segments);
 	}
 	return Result.ok(first);
 }
