@@ -112,6 +112,9 @@ second runtime per mount, which none of R3F, Three.js or Heaps does.
   own context and bumps the GPU generation, as Android's context restore does
   (`bridgeAndroid.c` `restore_context`): `contextGeneration()` owners drop their old ids.
 - The view's pixel size follows the canvas's CSS size times `devicePixelRatio`, read every frame.
+- `embedRegister` does not return on the web. Like `voidRun`, it ends in
+  `emscripten_exit_with_live_runtime()`: a `main` that returns destroys the program's module
+  globals before the first `voidStart`, and the first `init` that touches one fails.
 
 ## What proves it
 
@@ -136,16 +139,18 @@ second runtime per mount, which none of R3F, Three.js or Heaps does.
   `tests/web/views.html` in headless Chrome: a view started, stopped, then started on a second
   canvas. Each view must show its clear colour in a screenshot, and each stop must leave no
   animation frame requested in 300 ms and the canvas context released (WebGL2 `isContextLost()`,
-  WebGPU `getCurrentTexture()` throwing). 12 of 12 passed on 2026-10-20 (msc BUILD `177f04c27`,
+  WebGPU `getCurrentTexture()` throwing). The entry keeps its colours in a module global that
+  `init` extends and the second view's frame reads; without the live runtime both backends end in
+  `Uncaught ExitStatus` before the first frame. 12 of 12 passed on 2026-10-20 (msc BUILD `177f04c27`,
   emscripten 5.0.5, Chrome 155 on macOS). Headless Chrome on macOS hands out neither WebGL2 nor a
   WebGPU adapter except on SwiftShader, so the run uses it, and SwiftShader takes seconds to hand
   out the WebGPU device. With `stop` no longer destroying the view, 5 checks went red.
 
 Not verified:
 
-- A view that draws more than a clear across a WebGL2 restart. The web test's views only clear,
-  so the GPU-generation rebuild of void2d and void3d resources after a second WebGL2 setup is
-  covered only by the Android context-loss path.
+- A view that draws more than a clear across a WebGL2 restart, in a Void test. The web test's
+  views only clear. Outside this repo, geass-3d's mech redrew its void3d scene after a WebGL2
+  restart in headless Chrome (2026-10-20, void `b464abd` with the live runtime added by hand).
 
 - A live DPI change. This box has one monitor at 96 DPI. The scale path is covered only by
   `twoViews` at 1.25 and 1.5.
