@@ -343,6 +343,12 @@ test "glTF strips still reject short streams malformed indices and restart senti
 		`"type":"SCALAR","count":715827885`), fixture.bytes);
 	assert !oversized.ok;
 	if (!oversized.ok) { assert oversized.error == GltfError.MeshTooLarge; }
+	for (const count of ["-2147483648", "0", "715827884"]) {
+		const loaded = loadGltf(fixture.json.replace(`"type":"SCALAR","count":4`,
+			`"type":"SCALAR","count":${count}`), fixture.bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.OutOfRange; }
+	}
 	for (const mode of [0, 1, 2, 3, 6]) {
 		const loaded = loadGltf(fixture.json.replace(`"mode":5`, `"mode":${mode}`),
 			fixture.bytes);

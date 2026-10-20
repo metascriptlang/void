@@ -91,8 +91,8 @@ function gltfCause(code: GltfError): string {
 		GltfError.NotGltf => "glTF 2.0 asset or selected scene is missing or invalid",
 		GltfError.Unsupported => "feature, accessor component, shape, or layout is unsupported",
 		GltfError.OutOfRange => "buffer range or accessor count exceeds available bytes",
-		GltfError.CountMismatch => "attribute counts differ or index count is not divisible by 3",
-		GltfError.MeshTooLarge => "vertex storage exceeds packed mesh capacity",
+		GltfError.CountMismatch => "attribute counts differ or vertex/index count is incomplete",
+		GltfError.MeshTooLarge => "mesh exceeds vertex storage or index draw capacity",
 		GltfError.BadIndex => "index >= vertex count or equals component maximum restart value",
 		GltfError.BadNode => "node transform is invalid or not representable",
 		GltfError.NotGlb => "GLB header or aligned JSON/BIN chunk layout is invalid",
@@ -907,7 +907,8 @@ function loadMesh(
 		return Result.err(GltfError.Unsupported);
 	}
 	const mode: int32 = try colourIntField(primitive, "mode", 4);
-	if (mode != 4) {
+	const strip: boolean = mode == 5;
+	if (mode != 4 && !strip) {
 		return Result.err(GltfError.Unsupported);
 	}
 	const attributes: JsonValue = fieldOf(primitive, "attributes");
@@ -1004,10 +1005,20 @@ function loadMesh(
 		}
 	}
 	if (!hasField(primitive, "indices")) {
-		if (count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		if (strip ? count < 3 : count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		if (strip) {
+			for (let t = 0; t < count - 2; t++) {
+				const odd: int32 = t % 2;
+				const tri = addTriangle(data, t + odd, t + 1 - odd, t + 2);
+				if (!tri.ok) { return Result.err(GltfError.BadIndex); }
+			}
+		}
 	} else {
 		const source = try accessorSource(accessors,
 			try colourIntField(primitive, "indices", -1), GltfAccessorRole.Indices);
+		if (strip && source.count > 0x7fffffff / 3 + 2) {
+			return Result.err(GltfError.MeshTooLarge);
+		}
 		const indices = GltfAccessorIndices.readIndices(source, colourBuffers, colourViews,
 			count as uint32);
 		if (!indices.ok) {
@@ -1018,11 +1029,16 @@ function loadMesh(
 				_ => GltfError.Unsupported,
 			});
 		}
-		if (indices.value.values.length % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		const corners: int32 = indices.value.values.length as int32;
+		if (strip ? corners < 3 : corners % 3 != 0) {
+			return Result.err(GltfError.CountMismatch);
+		}
 		if (source.componentType == COMPONENT_UNSIGNED_INT) { data.wideIndices = []; }
-		for (let t = 0; t < indices.value.values.length; t += 3) {
-			const tri = addTriangle(data, indices.value.values[t] as int32,
-				indices.value.values[t + 1] as int32, indices.value.values[t + 2] as int32);
+		const step: int32 = strip ? 1 : 3;
+		for (let t = 0; t < corners - 2; t += step) {
+			const odd: int32 = strip ? t % 2 : 0;
+			const tri = addTriangle(data, indices.value.values[t + odd] as int32,
+				indices.value.values[t + 1 - odd] as int32, indices.value.values[t + 2] as int32);
 			if (!tri.ok) { return Result.err(GltfError.BadIndex); }
 		}
 	}
