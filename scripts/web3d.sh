@@ -1,7 +1,8 @@
 #!/bin/sh
 # void3d on WebGL2: each readback check built for the browser (build-web.sh, gl backend) and run in
 # headless Chrome by scripts/web3d.mjs, judged by its own thresholds as on GL core, not by D3D11
-# bytes. WebGPU has no readback in the capture library, so it is not judged here.
+# bytes. WebGPU has no readback in the capture library, so its run is a liveness look: the campfire
+# example built for WebGPU must present frames that are not one colour (scripts/webPresent.mjs).
 #
 #   sh scripts/web3d.sh            build, then run every check in both presets
 #   sh scripts/web3d.sh --run      run what out/web3d already holds
@@ -31,6 +32,13 @@ VOID_MESH_LOD_INDEX32=1&VOID_MESH_LOD_OUTLINE=1"
 command -v python >/dev/null || { echo "SKIP web3d: no python to serve $OUT"; exit 0; }
 node --test scripts/web3d.test.mjs
 
+if [ "${1:-}" != "--run" ]; then
+	VOID_WEB_ENTRY=src/examples/mainCampfire.ms VOID_WEB_DEST="$OUT/campfire" VOID_WEB_BACKENDS=wgpu \
+		sh scripts/build-web.sh > "$OUT.campfire.build.log" 2>&1 \
+		|| { echo "FAIL web3d: mainCampfire does not build for WebGPU — see $OUT.campfire.build.log"; exit 1; }
+	cp web/void2d.html "$OUT/campfire/void2d.html"
+fi
+
 runs=""
 for entry in $WEB_CHECKS; do
 	name=${entry%%:*}
@@ -56,8 +64,13 @@ sleep 2
 runnerStatus=0
 node scripts/web3d.mjs "http://127.0.0.1:$PORT" $runs > "$OUT.log" 2>&1 || runnerStatus=$?
 cat "$OUT.log"
+# node on Windows does not read an MSYS-style path.
+chrome=$(cygpath -m "$CHROME" 2>/dev/null || echo "$CHROME")
+lookStatus=0
+CHROME="$chrome" node scripts/webPresent.mjs "web3d webgpu campfire" \
+	"http://127.0.0.1:$PORT/campfire/void2d.html?wgpu&entry=mainCampfire" "$OUT/campfire.png" || lookStatus=$?
 [ "$runnerStatus" -eq 0 ] || exit "$runnerStatus"
 total=$(echo $runs | wc -w)
 passed=$(grep -c "^RESULT .* PASS$" "$OUT.log" || true)
 echo "web3d webgl2: $passed of $total runs pass"
-[ "$passed" -eq "$total" ]
+[ "$passed" -eq "$total" ] && [ "$lookStatus" -eq 0 ]
