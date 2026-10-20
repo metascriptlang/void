@@ -90,6 +90,8 @@ export enum MeshError {
 	SkinWeight,
 	DrawRange,
 	IndexStorage,
+	SphereParameters,
+	UnindexedAppend,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -705,6 +707,60 @@ export function addPlane(
 		vec3(0.0, 1.0, 0.0),
 		color,
 	);
+}
+
+export function addSphere(
+	ref data: MeshData,
+	radius: float32,
+	color: Rgba,
+	sectors: int32,
+	stacks: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || sectors < 3 || stacks < 2) {
+		return Result.err(MeshError.SphereParameters);
+	}
+	const vertices: int64 = ((sectors as int64) + 1) * ((stacks as int64) + 1);
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	const corners: int64 = (sectors as int64) * ((stacks as int64) - 1) * 6;
+	if (corners > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const pi: float32 = 3.141592653589793;
+	for (let y = 0; y <= stacks; y++) {
+		const latitude: float32 = pi * (y as float32) / (stacks as float32);
+		const radial: float32 = y == 0 || y == stacks ? 0.0 : sinf(latitude);
+		const vertical: float32 = y == 0 ? 1.0 : (y == stacks ? -1.0 : cosf(latitude));
+		for (let x = 0; x <= sectors; x++) {
+			const longitude: float32 = x == sectors ? 0.0
+				: 2.0 * pi * (x as float32) / (sectors as float32);
+			const normal: Vec3 = vec3(radial * cosf(longitude), vertical, radial * sinf(longitude));
+			const added = data.hasUvs ? addTexturedVertex(data, normal.scaled(radius), normal,
+				{ u: 1.0 - (x as float32) / (sectors as float32),
+					v: (y as float32) / (stacks as float32) }, color)
+				: addVertex(data, normal.scaled(radius), normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+	}
+	for (let y = 0; y < stacks; y++) {
+		for (let x = 0; x < sectors; x++) {
+			const v2: int32 = first + x + y * (sectors + 1);
+			const v1: int32 = v2 + 1;
+			const v3: int32 = v2 + sectors + 1;
+			const v4: int32 = v3 + 1;
+			if (y != 0) { const _top = try addTriangle(data, v1, v4, v2); }
+			if (y != stacks - 1) { const _bottom = try addTriangle(data, v2, v4, v3); }
+		}
+	}
+	return Result.ok(first);
 }
 
 export const CUBE_VERTICES: int32 = 24;
