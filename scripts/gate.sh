@@ -959,10 +959,11 @@ echo
 # SHAs: read out EMPTY. One direction only, deliberately - a skip naming a dead row is always
 # wrong, while "a new row no skip names yet" is the normal state of a row added before its
 # gate line, and making that red is a contract change that belongs to the phase review.
+grep -oE '^\| [a-z-]+:[a-zA-Z0-9/-]+' tests/PENDING.md | sed 's/^| //' | sort -u > out/pendingIds.txt
 dead_refs=$(grep -vE '^[[:space:]]*#' scripts/gate.sh \
 	| grep -oE 'tests/PENDING\.md [a-z-]+:[a-zA-Z0-9/-]+' \
 	| awk '{ print $2 }' | sort -u \
-	| comm -23 - <(grep -oE '^\| [a-z-]+:[a-zA-Z0-9/-]+' tests/PENDING.md | sed 's/^| //' | sort -u))
+	| comm -23 - out/pendingIds.txt)
 if [ -z "$dead_refs" ]; then
 	pass "every PENDING id the skip lines name exists in tests/PENDING.md"
 else
