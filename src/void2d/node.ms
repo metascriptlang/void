@@ -1319,6 +1319,34 @@ export function setFrameDelays(this n: NodeRef, delaysMs: Vec<int32>): NodeRef {
 	return n;
 }
 
+export function setFrames(this n: NodeRef, frames: Tile[]): NodeRef {
+	const i: int32 = n.liveRow("setFrames");
+	requireKind(n, i, DrawKind.Anim, "setFrames", "frames");
+	const s: Scene2D = n.scene;
+	const row: AnimFrames = s.anims[s.payloads[i]];
+	const delays: int32 = row.delaysMs.length as int32;
+	const len: int32 = frames.length as int32;
+	if (delays != 0 && delays != len) {
+		console.log(`void2d: setFrames got ${len} frames for an Anim holding ${delays} frame delays`);
+		unreachable;
+	}
+	s.anims[s.payloads[i]] = { ...row, frames: frames, current: 0, carryMs: 0.0 };
+	s.markChanged(i, Changed.Content);
+	return n;
+}
+
+export function setFps(this n: NodeRef, fps: float32): NodeRef {
+	const i: int32 = n.liveRow("setFps");
+	requireKind(n, i, DrawKind.Anim, "setFps", "frames");
+	if (!(fps >= 0.0)) {
+		console.log(`void2d: setFps(${fps}) on an Anim; a frame rate is 0 or more`);
+		unreachable;
+	}
+	const s: Scene2D = n.scene;
+	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], fps: fps, carryMs: 0.0 };
+	return n;
+}
+
 export function setSpeed(this n: NodeRef, speed: float32): NodeRef {
 	const i: int32 = n.liveRow("setSpeed");
 	requireKind(n, i, DrawKind.Anim, "setSpeed", "frames");
