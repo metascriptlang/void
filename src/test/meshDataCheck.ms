@@ -26,6 +26,7 @@ import {
 	addCylinderSides,
 	addDisc,
 	addCapsuleY,
+	addGrid,
 	recomputeBounds,
 	addTangents,
 	addTangentsWithSources,
@@ -374,6 +375,87 @@ test "capsule appends wide ids and preflights dimensions capacity and unsupporte
 	assert !addCapsuleY(invalid, 1.0, -1.0, WHITE, 8).ok;
 	assert !addCapsuleY(invalid, 3.0e38, 3.0e38, WHITE, 8).ok;
 	assert invalid.vertexCount() == 0 && invalid.indexCount() == 0 && invalid.bounds.isEmpty();
+}
+
+test "a rectangular grid shares row vertices with upward triangles and normalized UVs" {
+	for (const textured of [false, true]) {
+		let data = textured ? MeshData.withUvs() : MeshData.empty();
+		const made = addGrid(data, 2, 3, 1.5, 0.5, WHITE);
+		assert made.ok;
+		if (!made.ok) { continue; }
+		assert made.value == 0 && data.vertexCount() == 12 && data.triangleCount() == 12;
+		assert data.validIndices() && data.wideIndices === null;
+		assert near(data.bounds.min, 0.0, 0.0, 0.0) && near(data.bounds.max, 3.0, 0.0, 1.5);
+		const width = data.stride();
+		for (let y = 0; y <= 3; y++) {
+			for (let x = 0; x <= 2; x++) {
+				const at = (x + y * 3) * width;
+				assert approx(data.vertices[at], (x as float32) * 1.5);
+				assert data.vertices[at + 1] == 0.0;
+				assert approx(data.vertices[at + 2], (y as float32) * 0.5);
+				assert data.vertices[at + 3] == 0.0 && data.vertices[at + 4] == 1.0;
+				assert data.vertices[at + 5] == 0.0;
+				if (textured) {
+					assert approx(data.vertices[at + 6], (x as float32) / 2.0);
+					assert approx(data.vertices[at + 7], (y as float32) / 3.0);
+				}
+			}
+		}
+		for (let i = 0; i < data.indexCount(); i += 3) {
+			const a = data.indexAt(i) as int32 * width;
+			const b = data.indexAt(i + 1) as int32 * width;
+			const c = data.indexAt(i + 2) as int32 * width;
+			const p = vec3(data.vertices[a], 0.0, data.vertices[a + 2]);
+			const q = vec3(data.vertices[b], 0.0, data.vertices[b + 2]);
+			const r = vec3(data.vertices[c], 0.0, data.vertices[c + 2]);
+			assert (q - p).cross(r - p).y > 0.0;
+		}
+	}
+}
+
+test "grid picking reaches normalized UVs and excludes points beyond the tiled extent" {
+	let data = MeshData.withUvs();
+	assert addGrid(data, 2, 3, 1.5, 0.5, WHITE).ok;
+	const ray = Ray.fromPoints(vec3(1.5, 3.0, 0.75), vec3(1.5, 0.0, 0.75));
+	const hit = data.rayIntersection(ray, Face.Back);
+	assert approx(hit.distance, 3.0);
+	const uv = hit.uv;
+	assert uv !== null;
+	if (uv !== null) { assert approx(uv.u, 0.5) && approx(uv.v, 0.5); }
+	const outside = Ray.fromPoints(vec3(3.1, 3.0, 0.75), vec3(3.1, 0.0, 0.75));
+	assert data.rayIntersection(outside, Face.Back).distance == -1.0;
+}
+
+test "a generated grid promotes its own high index and can append another primitive" {
+	let data = MeshData.empty();
+	assert addGrid(data, 255, 255, 1.0, 1.0, WHITE).ok;
+	assert data.vertexCount() == 65536 && data.indexCount() == 255 * 255 * 6;
+	assert data.wideIndices !== null && data.validIndices();
+	const previous = data.indexCount();
+	const appended = addGrid(data, 1, 1, 1.0, 1.0, WHITE);
+	assert appended.ok;
+	if (appended.ok) { assert appended.value == 65536; }
+	assert data.vertexCount() == 65540 && data.indexCount() == previous + 6;
+	for (let i = previous; i < data.indexCount(); i++) { assert data.indexAt(i) >= 65536; }
+}
+
+test "grid preflight refuses invalid cell counts sizes or overflowing extents atomically" {
+	for (const dimension of [0, -1, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addGrid(data, dimension, 2, 1.0, 1.0, WHITE).ok;
+		assert !addGrid(data, 2, dimension, 1.0, 1.0, WHITE).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const size of [0.0, -1.0]) {
+		let data = MeshData.withUvs();
+		assert !addGrid(data, 2, 2, size as float32, 1.0, WHITE).ok;
+		assert !addGrid(data, 2, 2, 1.0, size as float32, WHITE).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let data = MeshData.empty();
+	assert !addGrid(data, 2, 2, 3.0e38, 1.0, WHITE).ok;
+	assert !addGrid(data, 2, 2, 1.0, 3.0e38, WHITE).ok;
+	assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
 }
 
 test "an empty mesh has no vertices, no indices and empty bounds" {
