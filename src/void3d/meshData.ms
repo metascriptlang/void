@@ -94,6 +94,7 @@ export enum MeshError {
 	UnindexedAppend,
 	CylinderParameters,
 	DiscParameters,
+	CapsuleParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -851,6 +852,89 @@ export function addDisc(
 	for (let i = 0; i < segments; i++) {
 		const _triangle = try addTriangle(data, first + i, first + segments,
 			first + (i + 1) % segments);
+	}
+	return Result.ok(first);
+}
+
+export function addCapsuleY(
+	ref data: MeshData,
+	radius: float32,
+	length: float32,
+	color: Rgba,
+	segments: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	const extent: float32 = radius + length * 0.5;
+	if (radius <= 0.0 || radius - radius != 0.0 || length < 0.0 || length - length != 0.0
+		|| extent - extent != 0.0 || segments < 3) {
+		return Result.err(MeshError.CapsuleParameters);
+	}
+	const ring: int64 = (segments as int64) + 1;
+	const square: int64 = ring * ring;
+	if (square > (MAX_MESH_VERTICES as int64) / 2) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	const vertices: int64 = 2 * square + (segments as int64) * 4 + 2;
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((segments as int64) * (segments as int64) * 12
+		> (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const pi: float32 = 3.141592653589793;
+	const halfLength: float32 = length * 0.5;
+	for (let half = 0; half < 2; half++) {
+		const offset: float32 = half == 0 ? halfLength : -halfLength;
+		const phase: float32 = half == 0 ? pi * 0.5 : -pi * 0.5;
+		const base: int32 = data.vertexCount();
+		for (let y = 0; y <= segments; y++) {
+			const latitude: float32 = pi * (y as float32) / (segments as float32);
+			const radial: float32 = y == 0 || y == segments ? 0.0 : sinf(latitude);
+			const vertical: float32 = y == 0 ? 1.0 : (y == segments ? -1.0 : cosf(latitude));
+			for (let x = 0; x <= segments; x++) {
+				const longitude: float32 = phase + pi * (x as float32) / (segments as float32);
+				const edge: boolean = x == 0 || x == segments;
+				const c: float32 = edge ? 0.0 : cosf(longitude);
+				const s: float32 = edge ? ((x == 0) == (half == 0) ? 1.0 : -1.0)
+					: sinf(longitude);
+				const normal: Vec3 = vec3(vertical, -radial * c, radial * s);
+				const _vertex = try addVertex(data,
+					normal.scaled(radius) + vec3(0.0, offset, 0.0), normal, color);
+			}
+		}
+		for (let y = 0; y < segments; y++) {
+			for (let x = 0; x < segments; x++) {
+				const v2: int32 = base + x + y * (segments + 1);
+				const v1: int32 = v2 + 1;
+				const v3: int32 = v2 + segments + 1;
+				const v4: int32 = v3 + 1;
+				if (y != 0) { const _a = try addTriangle(data, v1, v4, v2); }
+				if (y != segments - 1) { const _b = try addTriangle(data, v2, v4, v3); }
+			}
+		}
+	}
+	const base: int32 = data.vertexCount();
+	for (let y = 0; y <= segments * 2; y++) {
+		const angle: float32 = y == segments * 2 ? 0.0
+			: pi * (y as float32) / (segments as float32);
+		const normal: Vec3 = vec3(cosf(angle), 0.0, sinf(angle));
+		const _a = try addVertex(data,
+			vec3(normal.x * radius, halfLength, normal.z * radius), normal, color);
+		const _b = try addVertex(data,
+			vec3(normal.x * radius, -halfLength, normal.z * radius), normal, color);
+	}
+	for (let y = 0; y < segments * 2; y++) {
+		const v0: int32 = base + y * 2;
+		const _a = try addTriangle(data, v0, v0 + 2, v0 + 1);
+		const _b = try addTriangle(data, v0 + 1, v0 + 2, v0 + 3);
 	}
 	return Result.ok(first);
 }
