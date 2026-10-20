@@ -168,6 +168,18 @@ function dropTile(index: int32): void {
 
 export function releaseIconTile(index: int32): void { dropTile(index); }
 
+export function retargetIconPlacement(index: int32, icon: IconId): boolean {
+	requireIcon(icon, "setIcon");
+	const old: int32 = placements[index].icon as int32;
+	if (old == (icon as int32)) { return false; }
+	icons[icon as int32].held = icons[icon as int32].held + 1;
+	icons[old].held = icons[old].held - 1;
+	dropTile(index);
+	placements[index].icon = icon;
+	placements[index].refusal = "";
+	return true;
+}
+
 export function releaseIconPlacement(index: int32): void {
 	dropTile(index);
 	const icon: int32 = placements[index].icon as int32;

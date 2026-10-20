@@ -58,6 +58,7 @@ import {
 	allocateIconPlacement,
 	releaseIconPlacement,
 	releaseIconTile,
+	retargetIconPlacement,
 } from "./icon";
 import { FontId } from "./font";
 import { Align, TextRun, TextStyle, Truncate } from "./textLayout";
@@ -921,6 +922,13 @@ export function icon(this s: Scene2D, id: IconId, w: float32, h: float32, color:
 	const i: int32 = s.sized(DrawKind.Icon, allocateIconPlacement(id), w, h);
 	s.paints[i] = { ...s.paints[i], color: color };
 	return s.refOf(i);
+}
+
+export function setIcon(this n: NodeRef, id: IconId): NodeRef {
+	const i: int32 = n.liveRow("setIcon");
+	requireKind(n, i, DrawKind.Icon, "setIcon", "an icon");
+	if (retargetIconPlacement(n.scene.payloads[i], id)) { n.scene.markChanged(i, Changed.Content); }
+	return n;
 }
 
 export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
