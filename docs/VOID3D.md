@@ -3866,6 +3866,39 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### World-sphere frustum culling
+
+Apps can test a world-space volume, not just its center:
+`frustum.intersectsSphere(worldCenter, worldRadius)`. A sphere touching/crossing a camera
+plane can remain a candidate even when `containsPoint(worldCenter)` is false. This follows
+Heaps `b9aa6dcb`, `h3d/col/Frustum.hx::hasSphere`, and the center/radius data consumed from
+`h3d/col/Sphere.hx`. It is the same conservative six-plane culling test, not a narrow-phase
+sphere/frustum collision solver; corner false positives can remain. No collider or physics.
+
+Heaps normalizes its planes on load. `Frustum3D` retains its existing unnormalized Vec4
+representation, so the rejection test compares signed plane distance against
+`-radius * length(normal.xyz)`, in float64. Only spatial normal components participate.
+The shared distance helper keeps the previous point predicate unchanged. Contact and radius
+zero follow Heaps; Bevy's related sphere predicate rejects contact instead. Near/far both
+participate. Callers supply world-space spheres: no new model-transform/radius-scaling policy,
+renderer filtering switch, layout/ABI change or automatic culling integration was added.
+
+Actual missing-API red: **18 property diagnostics**, exit 1 before codegen, not an executed
+test verdict. After `d44cef04`, **317/317 native tests passed**, exit 0. Four new groups cover
+six-plane contact/separation, radius-zero point agreement, perspective slopes/depth/camera
+movement, and stored nonunit planes. Actual Heaps regeneration/check both exited 0;
+Frustum/Sphere source matches `b9aa6dcb`, executed pin remains registered `2b84cc23` with
+Haxe 4.3.7 / Node v24.18.0. **17/17 oracle rows agree**. C, JS and the real-Heaps snapshot
+match exactly for **51/51 classifications**, including the prior eight point rows unchanged.
+Calibration covers finite world-space centers/nonnegative radii; no GPU or speed proof.
+CPU source tree `369a5676de22053c1037b5686514452d19aeea55`, binary/support BUILD `b1f63337f`.
+
+Receipts: `out/m6FrustumSphereRedB1f63337f20261021.{log,exit}` and
+`out/m6FrustumSphere{Tests,Heaps,Oracle,Js,CrossBackend}GreenB1f63337f20261021.{log,exit}`;
+aggregate `out/m6FrustumSphereGreenB1f63337f20261021.{log,exit}`, actual 0. Existing oracle
+retention option kept the generated source for the JS run. Existing Bounds/list filtering
+still uses its unchanged predicate; the native suite retains its old consumer checks too.
+
 ### World-point frustum containment
 
 World-space anchors/markers can ask whether their point lies in the camera volume without
