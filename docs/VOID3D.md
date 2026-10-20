@@ -3866,6 +3866,31 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Executed primitive samples against Heaps
+
+On 2026-10-21, the existing `scripts/oracle.sh` harness ran `regen` then `check` for
+`tests/oracle/primitives3d.cases`, serial default buildslot. Both and aggregate exited 0:
+**11/11 AGREES**, no declared divergence. Windows native MetaScript binary/support BUILD
+`b1f63337f`; actual Haxe 4.3.7 / Node v24.18.0 and registered Heaps `2b84cc23` are recorded in
+the generated snapshot. CPU source tree `6185562952832e4dce27ea1d285390f7c5b70e26`.
+
+Registered haxelib is not the source-reading checkout at `b9aa6dcb`. Grid, GeoSphere, Sphere,
+Cylinder, Disc, Capsule, Polygon, Bounds, Point and UV files were byte-compared between those
+two checkouts and matched; no global haxelib configuration was changed. Executed provenance
+remains `2b84cc23`, not a claim that the whole newer checkout ran.
+
+Rows cover selected positions, unit-normal components, counts/UVs for Grid, GeoSphere, Sphere,
+Disc, vertical Capsule (including zero length), plus Bounds intersection. Reference normal
+components are normalized without mutating `Sphere.normals`, which aliases its positions:
+this compares the unit-normal output contract, not the unnormalized source buffer's length.
+The nonradial GeoSphere ID-6 anchor was confirmed by actual Heaps execution. Per-row tolerance
+is 1e-5; these finite selected samples are not full-buffer, rendered, Mikk or speed comparisons.
+Cylinder is not in this executed matrix. `gate3d.sh`'s existing oracle glob discovers the new
+case file; no new runner or bypass was added. Receipts:
+`out/m6PrimitiveOracleRegen20261021.{log,exit}`,
+`out/m6PrimitiveOracleCheckB1f63337f20261021.{log,exit}` and aggregate
+`out/m6PrimitiveOracleB1f63337f20261021.{log,exit}`.
+
 ### Octahedral GeoSphere, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/GeoSphere.hx` starts with
