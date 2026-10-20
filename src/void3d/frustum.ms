@@ -21,6 +21,20 @@ export function fromMatrix(this typeof Frustum3D, m: Mat4): Frustum3D {
 	};
 }
 
+function outsidePlane(plane: Vec4, point: Vec3): boolean {
+	const distance: float64 =
+		(plane.x as float64) * (point.x as float64) +
+		(plane.y as float64) * (point.y as float64) +
+		(plane.z as float64) * (point.z as float64) + (plane.w as float64);
+	return distance < 0.0;
+}
+
+export function containsPoint(this frustum: Frustum3D, point: Vec3): boolean {
+	return !outsidePlane(frustum.left, point) && !outsidePlane(frustum.right, point) &&
+		!outsidePlane(frustum.bottom, point) && !outsidePlane(frustum.top, point) &&
+		!outsidePlane(frustum.nearPlane, point) && !outsidePlane(frustum.farPlane, point);
+}
+
 function absolute(value: float32): float32 {
 	return value < 0.0 ? -value : value;
 }

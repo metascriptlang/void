@@ -1,0 +1,68 @@
+# lib: heaps format
+# haxe-prelude: import h3d.Matrix;
+# haxe-prelude: import h3d.col.Frustum;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: class H {
+# haxe-prelude: public static function at(f: Frustum,x: Float,y: Float,z: Float): Float {
+# haxe-prelude: return f.hasPoint(new Point(x,y,z)) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: public static function perspective(): Matrix {
+# haxe-prelude: var m = Matrix.I();
+# haxe-prelude: m._33 = -1.125; m._34 = -1; m._43 = -1.125; m._44 = 0;
+# haxe-prelude: return m;
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Mat4,vec3,identity,scaling,translation } from "../../../src/math/math3d";
+# ms-prelude: import { Frustum3D } from "../../../src/void3d/frustum";
+# ms-prelude: function at(f: Frustum3D,x: float32,y: float32,z: float32): float32 {
+# ms-prelude: return f.containsPoint(vec3(x,y,z)) ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function perspective(): Mat4 {
+# ms-prelude: return {
+# ms-prelude: m11:1.0,m12:0.0,m13:0.0,m14:0.0,m21:0.0,m22:1.0,m23:0.0,m24:0.0,
+# ms-prelude: m31:0.0,m32:0.0,m33:-1.125,m34:-1.0,m41:0.0,m42:0.0,m43:-1.125,m44:0.0,
+# ms-prelude: };
+# ms-prelude: }
+
+case point-contact tol=0
+haxe> var fi = new Frustum(Matrix.I());
+haxe> emit("point-contact",[H.at(fi,0,0,0.5),H.at(fi,-1,-1,0),H.at(fi,1,1,1)]);
+ms> const fi = Frustum3D.fromMatrix(identity());
+ms> emit3("point-contact",at(fi,0.0,0.0,0.5),at(fi,-1.0,-1.0,0.0),at(fi,1.0,1.0,1.0));
+
+case point-outside-xy tol=0
+haxe> emit("point-outside-xy",[H.at(fi,-1.01,0,0.5),H.at(fi,1.01,0,0.5),H.at(fi,0,-1.01,0.5)]);
+ms> emit3("point-outside-xy",at(fi,-1.01,0.0,0.5),at(fi,1.01,0.0,0.5),at(fi,0.0,-1.01,0.5));
+
+case point-outside-yz tol=0
+haxe> emit("point-outside-yz",[H.at(fi,0,1.01,0.5),H.at(fi,0,0,-0.01),H.at(fi,0,0,1.01)]);
+ms> emit3("point-outside-yz",at(fi,0.0,1.01,0.5),at(fi,0.0,0.0,-0.01),at(fi,0.0,0.0,1.01));
+
+case perspective-point-depth tol=0
+haxe> var fp = new Frustum(H.perspective());
+haxe> emit("perspective-point-depth",[H.at(fp,0,0,-1),H.at(fp,0,0,-9),H.at(fp,0,0,1)]);
+ms> const fp = Frustum3D.fromMatrix(perspective());
+ms> emit3("perspective-point-depth",at(fp,0.0,0.0,-1.0),at(fp,0.0,0.0,-9.0),at(fp,0.0,0.0,1.0));
+
+case perspective-point-width tol=0
+haxe> emit("perspective-point-width",[H.at(fp,3,0,-4),H.at(fp,3,0,-2),H.at(fp,-2,0,-2)]);
+ms> emit3("perspective-point-width",at(fp,3.0,0.0,-4.0),at(fp,3.0,0.0,-2.0),at(fp,-2.0,0.0,-2.0));
+
+case world-point-camera-movement tol=0
+haxe> var view = Matrix.I(); view.initTranslation(-4,0,0);
+haxe> var mvp = new Matrix(); mvp.multiply(view,H.perspective());
+haxe> var fm = new Frustum(mvp);
+haxe> emit("world-point-camera-movement",[H.at(fp,0,0,-2),H.at(fm,0,0,-2),H.at(fm,4,0,-2)]);
+ms> const fm = Frustum3D.fromMatrix(translation(-4.0,0.0,0.0)*perspective());
+ms> emit3("world-point-camera-movement",at(fp,0.0,0.0,-2.0),
+ms> at(fm,0.0,0.0,-2.0),at(fm,4.0,0.0,-2.0));
+
+case point-nonunit-planes tol=0
+haxe> var scale = Matrix.I(); scale.initScale(2,3,4); var fs = new Frustum(scale);
+haxe> emit("point-nonunit-planes",[H.at(fs,0.5,0,0.25),H.at(fs,0.51,0,0.1),H.at(fs,0,0.34,0.1)]);
+ms> const fs = Frustum3D.fromMatrix(scaling(2.0,3.0,4.0));
+ms> emit3("point-nonunit-planes",at(fs,0.5,0.0,0.25),at(fs,0.51,0.0,0.1),at(fs,0.0,0.34,0.1));
+
+case point-scaled-depth tol=0
+haxe> emit("point-scaled-depth",[H.at(fs,0,0,0.25),H.at(fs,0,0,0.26),H.at(fs,0,0,-0.01)]);
+ms> emit3("point-scaled-depth",at(fs,0.0,0.0,0.25),at(fs,0.0,0.0,0.26),at(fs,0.0,0.0,-0.01));
