@@ -3,7 +3,6 @@ import "./textOutlineSwitch";
 import "./textColourSwitch";
 import "./svgMaskSwitch";
 import {
-	void2dGlyphBox,
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
 	void2dGlyphPageRelease,
@@ -14,6 +13,7 @@ import {
 	void2dGlyphPageTakeUpload,
 	void2dGlyphPagesFrameBegin,
 } from "./glyph.h";
+import { glyphBox } from "./glyphBoxes";
 
 when (voidSvg) {
 	extern function void2dGlyphPageBlitMask(
@@ -477,7 +477,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 	if (key.outline != 0) { return Result.err(AtlasError.KindNotBuilt); }
 	if (!key.fitsKey()) {
 		if (!onlyOversize(key)) { return Result.err(AtlasError.TooLarge); }
-		const huge: Ptr<int32> = void2dGlyphBox(key.face, key.glyph, key.sizePx, 0.0);
+		const huge = glyphBox(key.face, key.glyph, key.sizePx, 0.0);
 		if (huge[2] > huge[0] && huge[3] > huge[1]) { return Result.err(AtlasError.TooLarge); }
 		return Result.ok(atlas.retainEmpty());
 	}
@@ -490,7 +490,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 	const known = atlas.refused.get(packedKey);
 	if (known.present) { return Result.err(known.value); }
 	const shift: float32 = (key.variant as float32) / (SUBPIXEL_VARIANTS as float32);
-	const box: Ptr<int32> = void2dGlyphBox(key.face, key.glyph, key.sizePx, shift);
+	const box = glyphBox(key.face, key.glyph, key.sizePx, shift);
 	const left: int32 = box[0];
 	const top: int32 = box[1];
 	const width: int32 = box[2] - left;
@@ -678,7 +678,8 @@ function record(this atlas: GlyphAtlas, packedKey: uint64, tile: GlyphTile): int
 }
 
 when (voidTextOutline) {
-	import { void2dGlyphOutlineBox, void2dGlyphOutlineRasterize } from "./glyph.h";
+	import { void2dGlyphOutlineRasterize } from "./glyph.h";
+	import { glyphOutlineBox } from "./glyphBoxes";
 
 	function outlineRasterRefusal(code: int32): AtlasError {
 		if (code == 1) { return AtlasError.OutlineBadHandle; }
@@ -704,8 +705,7 @@ when (voidTextOutline) {
 		const shift: float32 = (key.variant as float32) / (SUBPIXEL_VARIANTS as float32);
 		if (!key.fitsKey()) {
 			if (!onlyOversize(key)) { return Result.err(AtlasError.TooLarge); }
-			const huge: Ptr<int32> =
-				void2dGlyphOutlineBox(key.face, key.glyph, key.sizePx, 0.0, widthPx);
+			const huge = glyphOutlineBox(key.face, key.glyph, key.sizePx, 0.0, widthPx);
 			if (huge[4] != 0) { return Result.err(AtlasError.OutlineFaceRefused); }
 			if (huge[2] > huge[0] && huge[3] > huge[1]) { return Result.err(AtlasError.TooLarge); }
 			return Result.ok(atlas.retainEmpty());
@@ -718,8 +718,7 @@ when (voidTextOutline) {
 		}
 		const known = atlas.refused.get(packedKey);
 		if (known.present) { return Result.err(known.value); }
-		const box: Ptr<int32> =
-			void2dGlyphOutlineBox(key.face, key.glyph, key.sizePx, shift, widthPx);
+		const box = glyphOutlineBox(key.face, key.glyph, key.sizePx, shift, widthPx);
 		if (box[4] != 0) { return Result.err(AtlasError.OutlineFaceRefused); }
 		const left: int32 = box[0];
 		const top: int32 = box[1];
@@ -755,9 +754,9 @@ when (voidTextOutline) {
 
 when (voidSdfText) {
 	import {
-		void2dGlyphSdfBox,
 		void2dGlyphSdfRasterize,
 	} from "./glyph.h";
+	import { glyphSdfBox } from "./glyphBoxes";
 
 	const SDF_RASTER_BAD_HANDLE: int32 = 1;
 	const SDF_RASTER_WRONG_PAGE_KIND: int32 = 2;
@@ -794,7 +793,7 @@ when (voidSdfText) {
 		}
 		const known = atlas.refused.get(packedKey);
 		if (known.present) { return Result.err(known.value); }
-		const box: Ptr<int32> = void2dGlyphSdfBox(face, glyph);
+		const box = glyphSdfBox(face, glyph);
 		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
 		const left: int32 = box[0];
 		const top: int32 = box[1];
@@ -828,7 +827,8 @@ when (voidSdfText) {
 }
 
 when (voidSdfText && voidTextOutline) {
-	import { void2dGlyphSdfOutlineBox, void2dGlyphSdfOutlineRasterize } from "./glyph.h";
+	import { void2dGlyphSdfOutlineRasterize } from "./glyph.h";
+	import { glyphSdfOutlineBox } from "./glyphBoxes";
 
 	export function acquireSdfOutline(
 		this atlas: GlyphAtlas,
@@ -847,7 +847,7 @@ when (voidSdfText && voidTextOutline) {
 		const known = atlas.refused.get(packedKey);
 		if (known.present) { return Result.err(known.value); }
 		const texels: float32 = (lane as float32) / SDF_OUTLINE_PER_TEXEL;
-		const box: Ptr<int32> = void2dGlyphSdfOutlineBox(face, glyph, texels);
+		const box = glyphSdfOutlineBox(face, glyph, texels);
 		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
 		const left: int32 = box[0];
 		const top: int32 = box[1];

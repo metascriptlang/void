@@ -293,7 +293,12 @@ int void2dShapeCount(void) {
 	return s_glyphCount;
 }
 
-int *void2dShapeGlyph(int index) {
-	if (index < 0 || index >= s_glyphCount) { return 0; }
-	return s_glyphs + (size_t)index * VOID2D_SHAPE_GLYPH_FIELDS;
+void void2dShapeGlyph(int index, int *out, int64_t slots) {
+	if (index < 0 || index >= s_glyphCount || slots < VOID2D_SHAPE_GLYPH_FIELDS) {
+		fprintf(stderr, "void2d: shaped glyph %d of %d into a span of %lld\n", index, s_glyphCount,
+			(long long)slots);
+		abort();
+	}
+	const int *glyph = s_glyphs + (size_t)index * VOID2D_SHAPE_GLYPH_FIELDS;
+	for (int k = 0; k < VOID2D_SHAPE_GLYPH_FIELDS; k++) { out[k] = glyph[k]; }
 }

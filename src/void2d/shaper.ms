@@ -25,8 +25,11 @@ when (voidShaper) {
 		void2dShapeBreak,
 		void2dShapeEnd,
 		void2dShapeCount,
-		void2dShapeGlyph,
 	} from "./shaper.h";
+
+	extern function void2dShapeGlyph(index: int32, out: Span<int32>): void;
+
+	let shapedSlots: Vec<int32> = [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 	function shapeStatus(code: int32, what: string): int32 {
 		if (code >= 0) { return code; }
@@ -98,17 +101,17 @@ when (voidShaper) {
 			console.log(`void2d shaper: glyph ${index} is outside the ${count} of the last pass`);
 			unreachable;
 		}
-		const g: Ptr<int32> = void2dShapeGlyph(index);
+		void2dShapeGlyph(index, shapedSlots);
 		return {
-			glyph: g[0],
-			advanceX: g[1],
-			advanceY: g[2],
-			offsetX: g[3],
-			offsetY: g[4],
-			index: g[5],
-			codepoint: g[6],
-			direction: g[7] as ShapeDirection,
-			run: g[8],
+			glyph: shapedSlots[0],
+			advanceX: shapedSlots[1],
+			advanceY: shapedSlots[2],
+			offsetX: shapedSlots[3],
+			offsetY: shapedSlots[4],
+			index: shapedSlots[5],
+			codepoint: shapedSlots[6],
+			direction: shapedSlots[7] as ShapeDirection,
+			run: shapedSlots[8],
 		};
 	}
 } else {
