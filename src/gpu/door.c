@@ -630,7 +630,7 @@ int32_t doorFormatRenderable(int32_t format) {
 }
 
 int32_t doorContextGeneration(void) {
-#if defined(__ANDROID__) || (defined(_WIN32) && defined(SOKOL_D3D11))
+#if defined(__ANDROID__) || (defined(_WIN32) && defined(SOKOL_D3D11)) || defined(__EMSCRIPTEN__)
 	return voidGpuGeneration();
 #else
 	return 1;

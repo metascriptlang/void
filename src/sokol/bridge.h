@@ -77,6 +77,9 @@ void voidEmbedLoseContext(void);
 void voidEmbedDetach(void);
 void voidEmbedSetAssetRoot(const char *path);
 
+// Browser only: defines Module.voidStart(canvas), which returns a stop (bridgeWeb.c).
+void voidWebInstall(void);
+
 void voidGfxSetup(void);
 int voidFbWidth(void);
 int voidFbHeight(void);

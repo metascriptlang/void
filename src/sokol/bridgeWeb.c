@@ -1,11 +1,19 @@
-// The window-only driver: the browser canvas under emscripten and the desktop GL window
-// (-d:voidGlCore) through sokol_app. bridgeWin.c carries the same window path beside its
-// host views.
+// The browser canvas under emscripten and the desktop GL window (-d:voidGlCore). Two drivers,
+// as in bridgeWin.c: the sokol_app window (voidRun) and, in the browser, host views, one per
+// canvas a page hands to Module.voidStart (docs/EMBED.md "Web"). The first of voidRun or
+// voidViewCreate chooses the driver for the document.
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
+#include <emscripten/html5.h>
+#include <stdio.h>
 #endif
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#if defined(__EMSCRIPTEN__) && defined(SOKOL_WGPU)
+#include <webgpu/webgpu.h>
+#endif
 
 #include "backend.h"
 #include "bridge.h"
@@ -21,6 +29,12 @@
 #ifdef VOID_PROFILER
 #include "../void2d/frameClock.h"
 #endif
+
+typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
+static VoidDriver s_driver = DRIVER_NONE;
+static int s_generation = 1;
+
+int voidGpuGeneration(void) { return s_generation; }
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -182,6 +196,8 @@ static void leaveCallerSuspendedWhileFramesRun(void) {}
 #endif
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
+	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this document already drives Void through host views");
+	s_driver = DRIVER_WINDOW;
 	s_init = init;
 	s_reqW = w;
 	s_reqH = h;
@@ -211,22 +227,374 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	voidRunConfigured(w, h, 4, 1, init, frame);
 }
 
-void voidGfxSetup(void) {
-	sg_desc d = {0};
-	d.environment = sglue_environment();
-	d.logger.func = slog_func;
-	sg_setup(&d);
+#if defined(__EMSCRIPTEN__)
+
+// R3F's shape (react-three-fiber d604b18): one runtime per document, a root per canvas, one
+// animation-frame loop over the live roots that cancels itself when none is left
+// (core/loop.ts:95-130), and a stop that releases the renderer's context
+// (core/renderer.ts:22-42). The canvas reaches C as an id whose selector
+// '#void-view-<id>' resolves through emscripten's specialHTMLTargets.
+EM_JS(void, voidWebInstallStart, (int needsDevice), {
+	if (Module.voidStart) return;
+	var live = new Map();
+	var nextId = 1;
+	var pending = 0;
+	function measure(canvas) {
+		var dpr = window.devicePixelRatio || 1;
+		return {
+			w: Math.max(1, Math.round(canvas.clientWidth * dpr)),
+			h: Math.max(1, Math.round(canvas.clientHeight * dpr)),
+			dpr: dpr,
+		};
+	}
+	function tick() {
+		pending = 0;
+		live.forEach(function(v) {
+			var size = measure(v.canvas);
+			if (size.w != v.w || size.h != v.h || size.dpr != v.dpr) {
+				_voidWebViewResize(v.view, size.w, size.h, size.dpr);
+				v.w = size.w; v.h = size.h; v.dpr = size.dpr;
+			}
+			_voidWebViewFrame(v.view);
+		});
+		if (live.size) pending = requestAnimationFrame(tick);
+	}
+	function begin(id, canvas) {
+		var key = '#void-view-' + id;
+		specialHTMLTargets[key] = canvas;
+		var size = measure(canvas);
+		var view = _voidWebViewCreate(id, size.w, size.h, size.dpr);
+		live.set(id, { canvas: canvas, key: key, view: view, w: size.w, h: size.h, dpr: size.dpr });
+		if (!pending) pending = requestAnimationFrame(tick);
+	}
+	Module.voidStart = function(canvas) {
+		var id = nextId++;
+		var stopped = false;
+		if (needsDevice && !Module.preinitializedWebGPUDevice) {
+			navigator.gpu.requestAdapter()
+				.then(function(adapter) { return adapter.requestDevice(); })
+				.then(function(device) {
+					Module.preinitializedWebGPUDevice = Module.preinitializedWebGPUDevice || device;
+					if (!stopped) begin(id, canvas);
+				});
+		} else {
+			begin(id, canvas);
+		}
+		return function stop() {
+			if (stopped) return;
+			stopped = true;
+			var v = live.get(id);
+			if (!v) return;
+			live.delete(id);
+			_voidWebViewDestroy(v.view);
+			delete specialHTMLTargets[v.key];
+			if (!live.size && pending) {
+				cancelAnimationFrame(pending);
+				pending = 0;
+			}
+		};
+	};
+	if (Module.onVoidReady) Module.onVoidReady();
+});
+
+void voidWebInstall(void) {
+#if defined(SOKOL_WGPU)
+	voidWebInstallStart(1);
+#else
+	voidWebInstallStart(0);
+#endif
 }
 
-int voidFbWidth(void) { return sapp_width(); }
-int voidFbHeight(void) { return sapp_height(); }
-float voidDpiScale(void) { return sapp_dpi_scale(); }
+EMSCRIPTEN_KEEPALIVE int voidWebViewCreate(int id, int w, int h, float scale) {
+	return voidViewCreate(id, w, h, scale);
+}
+EMSCRIPTEN_KEEPALIVE void voidWebViewResize(int view, int w, int h, float scale) {
+	voidViewResize(view, w, h, scale);
+}
+EMSCRIPTEN_KEEPALIVE int voidWebViewFrame(int view) { return voidViewFrame(view); }
+EMSCRIPTEN_KEEPALIVE void voidWebViewDestroy(int view) { voidViewDestroy(view); }
+
+typedef struct {
+	int id;
+	char selector[32];
+	int w, h;
+#if defined(SOKOL_WGPU)
+	WGPUSurface surface;
+	WGPUTexture texture;
+	WGPUTextureView view;
+#else
+	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
+#endif
+} WebSurface;
+
+static void setupViewsGfx(void);
+
+static void refuseMultisample(void) {
+	if (voidViewsSampleCount() != 1) {
+		voidFail("voidViewCreate: web views render at 1 sample, not %d", voidViewsSampleCount());
+	}
+}
+
+#if defined(SOKOL_WGPU)
+
+static WGPUInstance s_instance;
+static WGPUDevice s_device;
+static WGPUTextureFormat s_format;
+
+EM_JS(int, voidWebPrefersBgra, (void), {
+	return navigator.gpu.getPreferredCanvasFormat() == 'bgra8unorm' ? 1 : 0;
+});
+
+void voidPlatformDeviceEnsure(void) {
+	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a sokol_app canvas");
+	if (s_driver == DRIVER_VIEWS) return;
+	refuseMultisample();
+	s_instance = wgpuCreateInstance(NULL);
+	if (!s_instance) voidFail("voidViewCreate: wgpuCreateInstance failed");
+	s_device = emscripten_webgpu_get_device();
+	if (!s_device) voidFail("voidViewCreate: no WebGPU device; Module.voidStart requests one");
+	s_format = voidWebPrefersBgra() ? WGPUTextureFormat_BGRA8Unorm : WGPUTextureFormat_RGBA8Unorm;
+	setupViewsGfx();
+	s_driver = DRIVER_VIEWS;
+}
+
+static void setupViewsGfx(void) {
+	sg_desc d = {0};
+	d.environment.wgpu.device = s_device;
+	d.environment.defaults.color_format =
+		s_format == WGPUTextureFormat_BGRA8Unorm ? SG_PIXELFORMAT_BGRA8 : SG_PIXELFORMAT_RGBA8;
+	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
+	d.environment.defaults.sample_count = 1;
+	d.logger.func = slog_func;
+	sg_setup(&d);
+	if (!sg_isvalid()) voidFail("sg_setup on the WebGPU device failed");
+}
+
+static void configure(WebSurface *s) {
+	WGPUSurfaceConfiguration c = {0};
+	c.device = s_device;
+	c.format = s_format;
+	c.usage = WGPUTextureUsage_RenderAttachment;
+	c.width = (uint32_t)s->w;
+	c.height = (uint32_t)s->h;
+	c.alphaMode = WGPUCompositeAlphaMode_Premultiplied;
+	c.presentMode = WGPUPresentMode_Fifo;
+	wgpuSurfaceConfigure(s->surface, &c);
+}
+
+static bool makeSurface(WebSurface *s) {
+	WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas = {0};
+	canvas.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
+	canvas.selector = (WGPUStringView){ .data = s->selector, .length = WGPU_STRLEN };
+	WGPUSurfaceDescriptor desc = {0};
+	desc.nextInChain = &canvas.chain;
+	s->surface = wgpuInstanceCreateSurface(s_instance, &desc);
+	if (!s->surface) return false;
+	configure(s);
+	return true;
+}
+
+static void resizeSurface(WebSurface *s) { configure(s); }
+
+int voidPlatformSurfaceAcquire(void *surface) {
+	WebSurface *s = (WebSurface *)surface;
+	WGPUSurfaceTexture current = {0};
+	wgpuSurfaceGetCurrentTexture(s->surface, &current);
+	if (current.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
+		&& current.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
+		if (current.texture) wgpuTextureRelease(current.texture);
+		return 0;
+	}
+	s->texture = current.texture;
+	s->view = wgpuTextureCreateView(current.texture, NULL);
+	return 1;
+}
+
+void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
+	swapchain->color_format =
+		s_format == WGPUTextureFormat_BGRA8Unorm ? SG_PIXELFORMAT_BGRA8 : SG_PIXELFORMAT_RGBA8;
+	swapchain->wgpu.render_view = ((WebSurface *)surface)->view;
+}
+
+void voidPlatformSurfacePresent(void *surface) {
+	WebSurface *s = (WebSurface *)surface;
+	if (s->view) wgpuTextureViewRelease(s->view);
+	if (s->texture) wgpuTextureRelease(s->texture);
+	s->view = NULL;
+	s->texture = NULL;
+}
+
+static void dropSurface(WebSurface *s) {
+	wgpuSurfaceUnconfigure(s->surface);
+	wgpuSurfaceRelease(s->surface);
+}
+
+#else // SOKOL_GLES3
+
+static WebSurface *s_glView = NULL;
+static bool s_glEverSetUp = false;
+
+void voidPlatformDeviceEnsure(void) {
+	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a sokol_app canvas");
+	if (s_driver == DRIVER_VIEWS) return;
+	refuseMultisample();
+	s_driver = DRIVER_VIEWS;
+}
+
+static void setupViewsGfx(void) {
+	sg_desc d = {0};
+	d.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
+	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
+	d.environment.defaults.sample_count = 1;
+	d.logger.func = slog_func;
+	sg_setup(&d);
+	if (!sg_isvalid()) voidFail("sg_setup on the WebGL2 context failed");
+}
+
+// A WebGL2 context belongs to its canvas, so the device of this driver is the one live view's
+// context: a second live view is refused, and a view made after a stop sets sokol up again on
+// its own context and bumps the GPU generation, whose owners drop the old ids (bridgeAndroid.c
+// restore_context, src/gpu/door.c doorContextGeneration).
+static bool makeSurface(WebSurface *s) {
+	if (s_glView) {
+		voidFail("voidViewCreate: WebGL2 runs one view at a time; stop view %d first", s_glView->id);
+	}
+	EmscriptenWebGLContextAttributes attrs;
+	emscripten_webgl_init_context_attributes(&attrs);
+	attrs.majorVersion = 2;
+	attrs.alpha = true;
+	attrs.premultipliedAlpha = true;
+	attrs.antialias = false;
+	attrs.depth = false;
+	attrs.stencil = false;
+	s->context = emscripten_webgl_create_context(s->selector, &attrs);
+	if (s->context <= 0) return false;
+	emscripten_webgl_make_context_current(s->context);
+	emscripten_set_canvas_element_size(s->selector, s->w, s->h);
+	setupViewsGfx();
+	if (s_glEverSetUp) s_generation++;
+	s_glEverSetUp = true;
+	s_glView = s;
+	return true;
+}
+
+static void resizeSurface(WebSurface *s) { emscripten_set_canvas_element_size(s->selector, s->w, s->h); }
+
+int voidPlatformSurfaceAcquire(void *surface) {
+	WebSurface *s = (WebSurface *)surface;
+	if (emscripten_is_webgl_context_lost(s->context)) return 0;
+	emscripten_webgl_make_context_current(s->context);
+	return 1;
+}
+
+void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
+	(void)surface;
+	swapchain->color_format = SG_PIXELFORMAT_RGBA8;
+	swapchain->gl.framebuffer = 0;
+}
+
+void voidPlatformSurfacePresent(void *surface) { (void)surface; }
+
+EM_JS(void, voidWebLoseContext, (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE handle), {
+	var gl = GL.getContext(handle).GLctx;
+	var lose = gl.getExtension('WEBGL_lose_context');
+	if (lose) lose.loseContext();
+});
+
+static void dropSurface(WebSurface *s) {
+	emscripten_webgl_make_context_current(s->context);
+	sg_shutdown();
+	voidWebLoseContext(s->context);
+	emscripten_webgl_destroy_context(s->context);
+	s_glView = NULL;
+}
+
+#endif
+
+void voidPlatformRunInit(msClosure init) { call0(init); }
+
+void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
+	WebSurface *s = (WebSurface *)calloc(1, sizeof(WebSurface));
+	if (!s) voidFail("voidViewCreate: out of memory for a web surface");
+	s->id = (int)(intptr_t)native;
+	snprintf(s->selector, sizeof s->selector, "#void-view-%d", s->id);
+	s->w = w;
+	s->h = h;
+	if (!makeSurface(s)) {
+		free(s);
+		return NULL;
+	}
+	return s;
+}
+
+void voidPlatformSurfaceResize(void *surface, int w, int h) {
+	WebSurface *s = (WebSurface *)surface;
+	s->w = w;
+	s->h = h;
+	resizeSurface(s);
+}
+
+void voidPlatformSurfaceDestroy(void *surface) {
+	WebSurface *s = (WebSurface *)surface;
+	dropSurface(s);
+	free(s);
+}
+
+long long voidPlatformSurfaceNative(void *surface) { return ((WebSurface *)surface)->id; }
+
+#endif // __EMSCRIPTEN__
+
+__attribute__((noreturn)) static void noDriver(const char *op) {
+	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
+}
+
+void voidGfxSetup(void) {
+	switch (s_driver) {
+		case DRIVER_WINDOW: {
+			sg_desc d = {0};
+			d.environment = sglue_environment();
+			d.logger.func = slog_func;
+			sg_setup(&d);
+			break;
+		}
+		case DRIVER_VIEWS: break;
+		case DRIVER_NONE: noDriver("gfxSetup");
+	}
+}
+
+#if defined(__EMSCRIPTEN__)
+#define VIEWS_OR(call, fallback) (s_driver == DRIVER_VIEWS ? (call) : (fallback))
+#else
+#define VIEWS_OR(call, fallback) (fallback)
+#endif
+
+int voidFbWidth(void) {
+	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
+	return VIEWS_OR(voidViewsFbWidth(), sapp_width());
+}
+
+int voidFbHeight(void) {
+	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
+	return VIEWS_OR(voidViewsFbHeight(), sapp_height());
+}
+
+float voidDpiScale(void) {
+	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
+	return VIEWS_OR(voidViewsDpiScale(), sapp_dpi_scale());
+}
 
 int voidKeyDown(int keycode) {
-	if (keycode < 0 || keycode >= SAPP_MAX_KEYCODES) return 0;
+	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= SAPP_MAX_KEYCODES) return 0;
 	return s_keys[keycode] ? 1 : 0;
 }
 
-sg_swapchain voidDriverSwapchain(void) { return sglue_swapchain(); }
+sg_swapchain voidDriverSwapchain(void) {
+	if (s_driver == DRIVER_NONE) noDriver("beginPass");
+	return VIEWS_OR(voidViewsSwapchain(), sglue_swapchain());
+}
 
-void voidDriverPresent(void) {}
+void voidDriverPresent(void) {
+#if defined(__EMSCRIPTEN__)
+	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
+#endif
+}

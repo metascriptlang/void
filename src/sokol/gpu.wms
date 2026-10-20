@@ -5,6 +5,7 @@
 @include("bridge.h");
 @compile("./bridge.c");
 @compile("./bridgeWeb.c");
+@compile("./views.c");
 @compile("./appWindow.c");
 @compile("./sokolWeb.c");
 
@@ -17,6 +18,22 @@ when (webgpu) {
 	@passL("-sFULL_ES3=1");
 	@passL("-sMAX_WEBGL_VERSION=2");
 }
+
+extern function voidEmbedRegister(init: () => void, frame: () => void): void;
+extern function voidWebInstall(): void;
+extern function voidViewsSetSampleCount(count: int32): void;
+extern function voidCurrentView(): int32;
+
+export type ViewId = int32;
+export const ViewInvalid: ViewId = 0 as int32;
+
+// The page starts and stops views itself: Module.voidStart(canvas) returns a stop.
+export function embedRegister(init: () => void, frame: () => void): void {
+	voidEmbedRegister(init, frame);
+	voidWebInstall();
+}
+export function setViewSampleCount(count: int32): void { voidViewsSetSampleCount(count); }
+export function currentView(): ViewId { return voidCurrentView(); }
 
 extern function voidGfxSetup(): void;
 extern function voidFbWidth(): int32;
