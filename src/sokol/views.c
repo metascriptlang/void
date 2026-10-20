@@ -5,6 +5,27 @@
 
 #include "views.h"
 
+#ifdef __APPLE__
+extern void *objc_autoreleasePoolPush(void);
+extern void objc_autoreleasePoolPop(void *pool);
+#endif
+
+static void *poolPush(void) {
+#ifdef __APPLE__
+	return objc_autoreleasePoolPush();
+#else
+	return NULL;
+#endif
+}
+
+static void poolPop(void *pool) {
+#ifdef __APPLE__
+	objc_autoreleasePoolPop(pool);
+#else
+	(void)pool;
+#endif
+}
+
 #define VOID_MAX_VIEWS 16
 #define VIEW_SLOT_BITS 5
 #define VIEW_SLOT_MASK ((1 << VIEW_SLOT_BITS) - 1)
@@ -85,7 +106,7 @@ int voidViewsSampleCount(void) { return s_sampleCount; }
 void voidEmbedSetMessagePump(msClosure pump) { s_pump = pump; }
 void voidEmbedPumpMessages(void) { call0(s_pump); }
 
-VoidViewId voidViewCreate(long long native, int w, int h, float scale) {
+static VoidViewId createView(long long native, int w, int h, float scale) {
 	if (w <= 0 || h <= 0 || scale <= 0.0f) voidFail("voidViewCreate: %dx%d at scale %g is not a drawable size", w, h, scale);
 	int slot = -1;
 	for (int i = 0; i < VOID_MAX_VIEWS; i++) {
@@ -107,7 +128,14 @@ VoidViewId voidViewCreate(long long native, int w, int h, float scale) {
 	return (generation << VIEW_SLOT_BITS) | (slot + 1);
 }
 
-void voidViewResize(VoidViewId v, int w, int h, float scale) {
+VoidViewId voidViewCreate(long long native, int w, int h, float scale) {
+	void *pool = poolPush();
+	const VoidViewId v = createView(native, w, h, scale);
+	poolPop(pool);
+	return v;
+}
+
+static void resizeView(VoidViewId v, int w, int h, float scale) {
 	VoidViewSlot *s = slotOf(v, "voidViewResize");
 	if (s_current != 0) voidFail("voidViewResize(%d) inside the frame of view %d", v, s_current);
 	if (w <= 0 || h <= 0 || scale <= 0.0f) voidFail("voidViewResize(%d): %dx%d at scale %g is not a drawable size", v, w, h, scale);
@@ -117,7 +145,13 @@ void voidViewResize(VoidViewId v, int w, int h, float scale) {
 	s->scale = scale;
 }
 
-int voidViewFrame(VoidViewId v) {
+void voidViewResize(VoidViewId v, int w, int h, float scale) {
+	void *pool = poolPush();
+	resizeView(v, w, h, scale);
+	poolPop(pool);
+}
+
+static int frameView(VoidViewId v) {
 	VoidViewSlot *s = slotOf(v, "voidViewFrame");
 	if (s_current != 0) voidFail("voidViewFrame(%d) inside the frame of view %d", v, s_current);
 	voidEmbedPumpMessages();
@@ -128,12 +162,25 @@ int voidViewFrame(VoidViewId v) {
 	return 1;
 }
 
-void voidViewDestroy(VoidViewId v) {
+int voidViewFrame(VoidViewId v) {
+	void *pool = poolPush();
+	const int drawn = frameView(v);
+	poolPop(pool);
+	return drawn;
+}
+
+static void destroyView(VoidViewId v) {
 	VoidViewSlot *s = slotOf(v, "voidViewDestroy");
 	if (s_current != 0) voidFail("voidViewDestroy(%d) inside the frame of view %d", v, s_current);
 	voidPlatformSurfaceDestroy(s->surface);
 	const int next = s->generation == VOID_VIEW_LAST_GENERATION ? 0 : s->generation + 1;
 	*s = (VoidViewSlot){.retired = next == 0, .generation = next};
+}
+
+void voidViewDestroy(VoidViewId v) {
+	void *pool = poolPush();
+	destroyView(v);
+	poolPop(pool);
 }
 
 long long voidViewSwapChain(VoidViewId v) {
