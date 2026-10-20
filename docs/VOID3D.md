@@ -3866,6 +3866,30 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Open cylinder sides, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Cylinder.hx` builds four
+vertices per side segment, smooth radial normals and UVs `(1-u,1)` / `(1-u,0)`; it has no caps.
+Its centered flag moves the axial interval from `[0,height]` to `[-height/2,height/2]`.
+Bevy `157e1ce6` `crates/bevy_mesh/src/primitives/dim3/cylinder.rs` `CylinderMeshBuilder`
+explicitly separates barrel and caps and offers `without_caps`; its Y-up barrel uses outward
+CCW triangles. Void's `addCylinderSides` names that open-surface boundary, not a closed solid.
+
+Reuse the existing MeshData vertex/triangle and new primitive append guards, preserving old
+indices and automatic width promotion. Swap Heaps' Y/Z axis convention and corresponding
+winding, as with sphere; no cap policy, collider, new storage or GPU program is introduced.
+`meshDataCheck.ms` pins both layouts, centered/bottom placement, radial normals, open-axis
+ray miss, side hit, winding, appended IDs and preflight. Mikk acceptance is independently
+blocked by the recorded vendor issue, not claimed by ordinary geometry checks.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addCylinderSides`, no codegen.
+After implementation, serial mesh **348/348**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `6dc64cbc80b15bd6ab80a5f4534947b2ccf96b36`.
+Receipts: `out/m6CylinderRedB1f63337f20261021.{log,exit}` and
+`out/m6Cylinder{name}GreenB1f63337f20261021.{log,exit}`. No Mikk, GPU or performance acceptance
+is added. This row depends on sphere's append guard/error, so remains above the M6 split point.
+
 ### UV sphere primitive, reference boundary
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Sphere.hx` constructor,
