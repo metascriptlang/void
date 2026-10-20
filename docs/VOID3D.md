@@ -3747,6 +3747,24 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF normalized texture-coordinate CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` converts packed attributes through
+`hxd/BufferFormat.hx` `floatU8to32` (divide by 255). For glTF's exact formats, Bevy `157e1ce6`
+`vertex_attributes.rs` `into_tex_coord_values` converts normalized U8/U16 VEC2 to Float32x2;
+glTF `b43260ee` mesh primitive attributes permits both. Void uses its existing
+`gltfAccessor.ms` decoder through `gltf.ms` `geometryAttribute`, not another unpacker.
+The geometry-format gate remains stricter than the generic decoder: accepting signed UVs or
+normalized integer positions would require a separate format/extension contract.
+
+CPU source tree `ef8e69ff9ed9a41b5371cfd2eedd25ab1fcf92d7`, BUILD `8a9fc02dd`:
+`msc test src/test/gltfMaterialCheck.ms` **335/335**, `msc test src/test/gltfCheck.ms` **316/316**.
+Before the importer change, the same two new positive tests failed with **333 pass / 2 fail**.
+Pins in `gltfMaterialCheck.ms` exercise decoded meshes and retained skin source identity,
+not only decoder output. Logs: `out/m5NormalizedUvRed20261020.log`,
+`out/m5NormalizedUv{gltfMaterialCheck,gltfCheck}Green20261020.log`.
+No new rendered, browser or physical-device acceptance from these CPU checks.
+
 ### glTF matrix node CPU acceptance
 
 `gltf.ms` `matrixTransform` follows Heaps `b9aa6dcb` `Matrix.getScale/decomposeMatrix`

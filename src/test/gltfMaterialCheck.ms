@@ -141,7 +141,7 @@ function documentOf(parts: Parts, bufferExtra: string = ""): string {
 		+ "{\"bufferView\":2,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"},"
 		+ "{\"bufferView\":3,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
 		+ "{\"bufferView\":4,\"componentType\":5123,\"count\":6,\"type\":\"SCALAR\"},"
-		+ "{\"bufferView\":2,\"componentType\":5123,\"normalized\":true,\"count\":4,"
+		+ "{\"bufferView\":2,\"componentType\":5123,\"normalized\":false,\"count\":4,"
 		+ "\"type\":\"VEC2\"},"
 		+ "{\"bufferView\":7,\"componentType\":5126,\"count\":4,\"type\":\"VEC4\"}],"
 		+ "\"bufferViews\":["
@@ -779,6 +779,108 @@ test "glTF interleaved and sparse UVs preserve supplied and Mikk-generated tange
 	}
 }
 
+function normalizedUvBuffer(wide: boolean, layout: string): Vec<uint8> {
+	let bytes = quadBuffer();
+	const size = wide ? 2 : 1;
+	const stride = layout == "sparse" ? size * 2 : (layout == "strided" ? 8 : 4);
+	const values: Vec<int32> = [0, 1, 1, 1, 1, 0, 0, 0];
+	for (let i = 0; i < 8; i++) {
+		const offset = 96 + (i / 2) * stride + (i % 2) * size;
+		for (let j = 0; j < size; j++) {
+			bytes[offset + j] = (values[i] * 255) as uint8;
+		}
+	}
+	if (layout == "sparse") {
+		for (let i = 0; i < 4; i++) { bytes.push(i as uint8); }
+	}
+	return bytes;
+}
+
+function normalizedUvDocument(wide: boolean, layout: string): string {
+	const component = wide ? 5123 : 5121;
+	const end = tangentOffset() + 64;
+	const source = layout == "sparse"
+		? `"sparse":{"count":4,"indices":{"bufferView":8,"componentType":5121},` +
+			`"values":{"bufferView":2}},`
+		: `"bufferView":2,`;
+	let json = documentOf({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE })
+		.replace(`{"bufferView":2,"componentType":5126,"count":4,"type":"VEC2"}`,
+			`{${source}"componentType":${component},"normalized":true,"count":4,"type":"VEC2"}`);
+	if (layout == "sparse") {
+		json = json.replace(`"byteLength":64}]`,
+			`"byteLength":64},{"buffer":0,"byteOffset":${end},"byteLength":4}]`)
+			.replace(`"buffers":[{"byteLength":${end}}]`,
+				`"buffers":[{"byteLength":${end + 4}}]`);
+	} else if (!wide || layout == "strided") {
+		const stride = layout == "strided" ? 8 : 4;
+		json = json.replace(`"byteOffset":96,"byteLength":32`,
+			`"byteOffset":96,"byteLength":32,"byteStride":${stride}`);
+	}
+	return json;
+}
+
+test "normalized byte and short UVs preserve dense strided and sparse tangent meshes" {
+	for (const supplied of [false, true]) {
+		const dense = loaded({ ...texturedParts(),
+			attributes: supplied ? WITH_TANGENTS : ALL_ATTRIBUTES, materials: NORMAL_BASE });
+		assert dense.ok;
+		if (!dense.ok) { continue; }
+		for (const wide of [false, true]) {
+			for (const layout of ["dense", "strided", "sparse"]) {
+				const document = normalizedUvDocument(wide, layout);
+				const json = supplied ? document : document.replace(`,"TANGENT":6`, "");
+				const read = loadGltf(json, normalizedUvBuffer(wide, layout));
+				assert read.ok;
+				if (!read.ok) { continue; }
+				const actual = read.value.meshes[0];
+				const expected = dense.value.meshes[0];
+				assert actual.vertices.length == expected.vertices.length;
+				for (let i = 0; i < actual.vertices.length; i++) {
+					assert actual.vertices[i] == expected.vertices[i];
+				}
+				assert actual.indexCount() == expected.indexCount();
+				for (let i = 0; i < actual.indexCount(); i++) {
+					assert actual.indexAt(i) == expected.indexAt(i);
+				}
+				assert read.value.materials[0] == dense.value.materials[0];
+			}
+		}
+	}
+}
+
+test "normalized UVs divide by component maximum and refuse unnormalized integers" {
+	for (const wide of [false, true]) {
+		const json = normalizedUvDocument(wide, "dense");
+		let bytes = normalizedUvBuffer(wide, "dense");
+		bytes[96] = 85 as uint8;
+		if (wide) { bytes[97] = 85 as uint8; }
+		const read = loadGltf(json, bytes);
+		assert read.ok;
+		if (read.ok) { assert approx(read.value.meshes[0].vertices[6], 1.0 / 3.0); }
+		const component = wide ? 5123 : 5121;
+		for (const invalid of [
+			json.replace(`"normalized":true`, `"normalized":false`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5120,"normalized":true`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5122,"normalized":true`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5125,"normalized":true`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5126,"normalized":true`),
+			json.replace(`"count":4,"type":"VEC2"`, `"count":4,"type":"VEC3"`),
+		]) {
+			const bad = loadGltf(invalid, bytes);
+			assert !bad.ok;
+			if (!bad.ok) { assert bad.error == GltfError.Unsupported; }
+		}
+		const short = loadGltf(json.replace(`"count":4,"type":"VEC2"`,
+			`"count":3,"type":"VEC2"`), bytes);
+		assert !short.ok;
+		if (!short.ok) { assert short.error == GltfError.CountMismatch; }
+	}
+}
+
 test "glTF non-dense tangent attributes retain their sign and encoding validation" {
 	const json = mappedAttributeDocument(false);
 	let bytes = mappedAttributeBuffer(false);
@@ -1052,12 +1154,23 @@ test "extensionsRequired may name KHR_texture_transform, and nothing else" {
 	if (!unknown.ok) { assert unknown.error == GltfError.Unsupported; }
 }
 
-test "tangent splits preserve skin source ids from dense and strided UVs at both index widths" {
-	for (const variant of [0, 1, 2, 3]) {
+test "tangent splits preserve skin source ids across UV encodings and both index widths" {
+	for (const variant of [0, 1, 2, 3, 4, 5, 6, 7]) {
 		const index32 = variant % 2 == 1;
-		const interleaved = variant >= 2;
+		const interleaved = variant == 2 || variant == 3;
+		const normalized = variant >= 4;
+		const wide = variant >= 6;
 		let bytes = quadBuffer();
 		bytes[123] = 0x40 as uint8;
+		if (normalized) {
+			const size = wide ? 2 : 1;
+			const values: Vec<uint8> = [0, 127, 127, 127, 127, 0, 255, 255];
+			for (let i = 0; i < 8; i++) {
+				for (let j = 0; j < size; j++) {
+					bytes[96 + (i / 2) * 4 + (i % 2) * size + j] = values[i];
+				}
+			}
+		}
 		const uvOffset = bytes.length as int32;
 		if (interleaved) {
 			for (let vertex = 0; vertex < 4; vertex++) {
@@ -1085,6 +1198,15 @@ test "tangent splits preserve skin source ids from dense and strided UVs at both
 		if (interleaved) {
 			document = document.replace(`"byteOffset":96,"byteLength":32`,
 				`"byteOffset":${uvOffset},"byteLength":48,"byteStride":12`);
+		}
+		if (normalized) {
+			const component = wide ? 5123 : 5121;
+			document = document.replace(`"bufferView":2,"componentType":5126`,
+				`"bufferView":2,"componentType":${component},"normalized":true`);
+			if (!wide) {
+				document = document.replace(`"byteOffset":96,"byteLength":32`,
+					`"byteOffset":96,"byteLength":32,"byteStride":4`);
+			}
 		}
 		document = document.replaceAll("\"nodes\":[{\"name\":\"quad\",\"mesh\":0}],",
 			"\"nodes\":[{\"name\":\"quad\",\"mesh\":0,\"skin\":0,\"children\":[1,2,3,4]}," +

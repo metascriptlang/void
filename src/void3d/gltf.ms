@@ -899,7 +899,7 @@ function loadSkinMesh(
 	return Result.ok(skin as (GltfSkinMesh | null));
 }
 
-function floatAttribute(
+function geometryAttribute(
 	this source: GltfAccessorSource,
 	shape: GltfAccessorShape,
 	count: int32,
@@ -909,7 +909,11 @@ function floatAttribute(
 	ref buffers: Vec<GltfAccessorBuffer>,
 	ref accessorViews: Vec<GltfAccessorView>,
 ): Result<GltfAccessorValues, GltfError> {
-	if (source.componentType != COMPONENT_FLOAT || source.normalized || source.shape != shape) {
+	const floats = source.componentType == COMPONENT_FLOAT && !source.normalized;
+	const normalizedUvs = shape == GltfAccessorShape.Vec2 && source.normalized &&
+		(source.componentType == COMPONENT_UNSIGNED_BYTE ||
+			source.componentType == COMPONENT_UNSIGNED_SHORT);
+	if (source.shape != shape || (!floats && !normalizedUvs)) {
 		return Result.err(GltfError.Unsupported);
 	}
 	if (source.count < 1) { return Result.err(GltfError.OutOfRange); }
@@ -961,11 +965,11 @@ function loadMesh(
 	const textured: boolean = read.material.texture != NO_TEXTURE_INDEX;
 	let data: MeshData = textured ? MeshData.withUvs() : MeshData.empty();
 	if (!data.hasRoomFor(count)) { return Result.err(GltfError.MeshTooLarge); }
-	const positions = try positionSource.floatAttribute(GltfAccessorShape.Vec3, count,
+	const positions = try positionSource.geometryAttribute(GltfAccessorShape.Vec3, count,
 		views, buffer, bufferLength, colourBuffers, colourViews);
 	const normalSource = try accessorSource(accessors,
 		try colourIntField(attributes, "NORMAL", -1));
-	const normals = try normalSource.floatAttribute(GltfAccessorShape.Vec3, count,
+	const normals = try normalSource.geometryAttribute(GltfAccessorShape.Vec3, count,
 		views, buffer, bufferLength, colourBuffers, colourViews);
 	let colors: Vec<GltfLinearRgba> = [];
 	if (hasField(attributes, "COLOR_0")) {
@@ -996,7 +1000,7 @@ function loadMesh(
 		}
 		const source = try accessorSource(accessors,
 			try colourIntField(attributes, "TEXCOORD_0", -1));
-		let decoded = try source.floatAttribute(GltfAccessorShape.Vec2, count,
+		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec2, count,
 			views, buffer, bufferLength, colourBuffers, colourViews);
 		uvValues = move decoded.values;
 	}
@@ -1005,7 +1009,7 @@ function loadMesh(
 	if (tangented && !isNull(fieldOf(attributes, "TANGENT"))) {
 		const source = try accessorSource(accessors,
 			try colourIntField(attributes, "TANGENT", -1));
-		let decoded = try source.floatAttribute(GltfAccessorShape.Vec4, count,
+		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec4, count,
 			views, buffer, bufferLength, colourBuffers, colourViews);
 		tangentValues = move decoded.values;
 	}
