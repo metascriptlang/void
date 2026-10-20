@@ -21,18 +21,38 @@ export function fromMatrix(this typeof Frustum3D, m: Mat4): Frustum3D {
 	};
 }
 
-function outsidePlane(plane: Vec4, point: Vec3): boolean {
-	const distance: float64 =
-		(plane.x as float64) * (point.x as float64) +
+function planeDistance(plane: Vec4, point: Vec3): float64 {
+	return (plane.x as float64) * (point.x as float64) +
 		(plane.y as float64) * (point.y as float64) +
 		(plane.z as float64) * (point.z as float64) + (plane.w as float64);
-	return distance < 0.0;
+}
+
+function outsidePlane(plane: Vec4, point: Vec3): boolean {
+	return planeDistance(plane, point) < 0.0;
 }
 
 export function containsPoint(this frustum: Frustum3D, point: Vec3): boolean {
 	return !outsidePlane(frustum.left, point) && !outsidePlane(frustum.right, point) &&
 		!outsidePlane(frustum.bottom, point) && !outsidePlane(frustum.top, point) &&
 		!outsidePlane(frustum.nearPlane, point) && !outsidePlane(frustum.farPlane, point);
+}
+
+function sphereOutsidePlane(plane: Vec4, center: Vec3, radius: float64): boolean {
+	const nx: float64 = plane.x as float64;
+	const ny: float64 = plane.y as float64;
+	const nz: float64 = plane.z as float64;
+	const normalLength: float64 = Math.sqrt(nx * nx + ny * ny + nz * nz);
+	return planeDistance(plane, center) < -radius * normalLength;
+}
+
+export function intersectsSphere(this frustum: Frustum3D, center: Vec3, radius: float32): boolean {
+	const r: float64 = radius as float64;
+	return !sphereOutsidePlane(frustum.left, center, r) &&
+		!sphereOutsidePlane(frustum.right, center, r) &&
+		!sphereOutsidePlane(frustum.bottom, center, r) &&
+		!sphereOutsidePlane(frustum.top, center, r) &&
+		!sphereOutsidePlane(frustum.nearPlane, center, r) &&
+		!sphereOutsidePlane(frustum.farPlane, center, r);
 }
 
 function absolute(value: float32): float32 {
