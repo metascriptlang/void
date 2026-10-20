@@ -1266,10 +1266,14 @@ export function setScrollBounds(this n: NodeRef, bounds: Bounds2D | null): NodeR
 }
 
 export function childWorld(this s: Scene2D, up: int32): Transform2D {
-	if (s.kinds[up] !== DrawKind.Mask || s.payloads[up] == NO_PAYLOAD) { return s.worlds[up]; }
-	if (s.scrollScope(up)) { return s.worlds[up]; }
+	return s.childWorldOf(up, s.worlds[up]);
+}
+
+export function childWorldOf(this s: Scene2D, up: int32, world: Transform2D): Transform2D {
+	if (s.kinds[up] !== DrawKind.Mask || s.payloads[up] == NO_PAYLOAD) { return world; }
+	if (s.scrollScope(up)) { return world; }
 	const sc: Scroll2D = s.scrolls[s.payloads[up]];
-	return s.worlds[up] * trs2d(-sc.x, -sc.y, 0.0, 1.0, 1.0);
+	return world * trs2d(-sc.x, -sc.y, 0.0, 1.0, 1.0);
 }
 
 export function animFrames(this n: NodeRef): AnimFrames {
