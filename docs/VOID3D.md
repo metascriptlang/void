@@ -3858,6 +3858,29 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### glTF texture-coordinate override, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/shader/Texture.hx` `vertex` passes
+`input.uv` to `calculatedUV`; this is the existing single-UV consumer, not a glTF selector.
+Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_gltf/src/loader/gltf_ext/material.rs` `uv_channel` maps the supplied set to UV0/UV1
+and warns/falls back for larger indices. Its `load_material` callers pass `info.tex_coord()`;
+these source reads do not establish extension-override precedence in the resolved dependency.
+Void must not copy the fallback: its existing unsupported-active-set refusal stays.
+
+Khronos `b43260ee1291134a94b3098d415f54f479a59508`
+`extensions/2.0/Khronos/KHR_texture_transform/README.md` explicitly makes extension `texCoord`
+override textureInfo `texCoord`. It recommends a post-transform fallback set in textureInfo and
+a pre-transform set in the extension; when omitting the fallback, declare the extension required.
+Both `textureInfo.schema.json` and the extension schema require nonnegative integers; omission
+of the base selects 0, omission of the override inherits the base.
+
+The bounded next row resolves that precedence before the existing UV0-only gate in `gltf.ms`
+`textureInfoIndex` / `textureTransformOf`. A base set 1 or 2 overridden to 0 must not be refused
+as an active nonzero set. This does not add UV1 storage, multiple active sets, a renderer field,
+or a new transform. Malformed selectors and unsupported effective sets still fail. Reference
+preparation only: this paragraph is not a claim of implementation or executed acceptance.
+
 ### glTF explicit primitive-mode CPU acceptance
 
 Heaps `b9aa6dcb` `Primitive.render` dispatches triangle draws, not glTF JSON defaults.
