@@ -118,9 +118,13 @@ async function centre(s, left) {
 	return [pixels[0], pixels[1], pixels[2]];
 }
 
-// src/examples/webViews.ms clears an odd view id to (0.9, 0.4, 0.1) and an even one to
-// (0.1, 0.4, 0.9); either way green is 102 and one of red or blue is bright.
-const cleared = ([r, g, b]) => Math.abs(g - 102) <= 8 && Math.max(r, b) >= 220 && Math.min(r, b) <= 40;
+// src/examples/webViews.ms clears every view to (0.1, 0.4, 0.9).
+const cleared = ([r, g, b]) => r <= 40 && Math.abs(g - 102) <= 8 && b >= 220;
+
+const multisampled = {
+	gl: (id) => `document.getElementById('${id}').getContext('webgl2').getContextAttributes().antialias`,
+	wgpu: () => 'window.msaaTargets > 0',
+};
 
 const released = {
 	gl: (id) => `document.getElementById('${id}').getContext('webgl2').isContextLost()`,
@@ -160,6 +164,8 @@ async function run(backend) {
 			const pixel = await centre(s, left);
 			if (cleared(pixel)) console.log(`PASS ${backend} ${id} view shows its clear colour ${pixel}`);
 			else fail(`${id} view shows ${pixel}, not its clear colour`);
+			if (await evaluate(s, multisampled[backend](id))) console.log(`PASS ${backend} ${id} view renders multisampled`);
+			else fail(`${id} view renders at 1 sample`);
 
 			await evaluate(s, `window.stop(); window.rafAtStop = window.rafCalls; true`);
 			await sleep(300);
