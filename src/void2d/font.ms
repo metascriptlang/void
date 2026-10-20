@@ -36,6 +36,7 @@ export struct Font {
 }
 
 export type FontId = distinct int32;
+@delegate export function `==`(this a: FontId, b: FontId): boolean;
 export const DEFAULT_FONT: FontId = 0 as FontId;
 
 export enum FontError {

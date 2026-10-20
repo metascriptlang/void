@@ -3,6 +3,7 @@ import {
 	GlyphAtlas,
 	GlyphKey,
 	GlyphTile,
+	NO_GLYPH_PAGE,
 	NO_GLYPH_PAGE_HANDLE,
 	PageKind,
 	maskKey,
@@ -87,7 +88,7 @@ test "the same icon at the same mask size is one tile and the second costs no ra
 	if (first.ok && second.ok) {
 		assert first.value == second.value;
 		assert atlas.tile(first.value).refs == 2;
-		assert atlas.tile(first.value).page != (-1);
+		assert atlas.tile(first.value).page != NO_GLYPH_PAGE;
 	}
 }
 

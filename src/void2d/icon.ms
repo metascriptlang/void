@@ -18,6 +18,7 @@ import {
 } from "./svgMask";
 
 export type IconId = distinct int32;
+@delegate export function `==`(this a: IconId, b: IconId): boolean;
 export const NO_ICON_PLACEMENT: int32 = -1;
 export const MAX_ICONS: int32 = 65535;
 export const ICON_SUPERSAMPLE: int32 = 2;
