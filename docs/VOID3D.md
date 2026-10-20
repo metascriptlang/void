@@ -3866,6 +3866,43 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### World-point frustum containment
+
+World-space anchors/markers can ask whether their point lies in the camera volume without
+constructing geometry: `frustum.containsPoint(worldAnchor)`. This is frustum containment,
+not occlusion, material visibility or an automatic change to renderer filtering.
+
+Primary Heaps `b9aa6dcb`, `h3d/col/Frustum.hx:91` `hasPoint`, checks its six signed half-spaces
+and includes contact. The new method uses existing `Frustum3D` Vec4 planes and the same
+`normal dot point + w` sign, evaluating it in float64. Positive plane normalization cannot
+change this sign, so stored planes need not be normalized. Near and far both participate,
+matching Heaps' default `checkNearFar=true`; no skip-depth option or new plane type was added.
+Secondary Bevy `157e1ce6`, `bevy_camera/src/primitives.rs::Frustum::intersects_sphere`, uses
+`<= 0` rejection for its zero-radius sphere, excluding contact. This port follows Heaps and
+its existing closed-contact Bounds culling policy, not a claim of Bevy contact parity.
+
+Actual missing-API red: 20 property diagnostics, exit 1 before codegen, not an executed test
+verdict. After `fe08b437`, **313/313 native tests passed**, exit 0. Three new groups cover all
+six outside planes/contact, perspective width/near/far/behind-eye, camera translation and
+unnormalized stored planes. Actual registered Heaps `2b84cc23` / Haxe 4.3.7 / Node v24.18.0
+regenerated the new oracle; its Frustum source byte-matches `b9aa6dcb`. **8/8 oracle rows agree**.
+The same generated query program ran on JS; a separate check compared C, JS and the generated
+Heaps snapshot exactly: **24/24 point classifications equal**, tolerance 0.
+CPU source tree `210d2125e91c92ec3ddfbf5f4a517207520b2624`, binary/support BUILD `b1f63337f`.
+
+Receipts: `out/m6FrustumPointRedB1f63337f20261021.{log,exit}`,
+`out/m6FrustumPoint{Tests,Heaps,Oracle}GreenB1f63337f20261021.{log,exit}`,
+`out/m6FrustumPoint{Oracle,Js}GreenB1f63337f20261021Retry1.{log,exit}`,
+`out/m6FrustumPointRetry1B1f63337f20261021.{log,exit}` and
+`out/m6FrustumPointCrossBackendGreenB1f63337f20261021.{log,exit}`. Retry aggregate exited 0.
+Original aggregate remains 1: the JS invocation followed oracle cleanup of its generated
+source and reported file-not-found, not a compiler/geometry failure. The retry uses the
+harness's existing `ORACLE_KEEP=1` retention option; no new runner or bypass.
+
+Existing Frustum layout, extraction, Bounds filtering and renderer/ABI are unchanged. Tests
+exercise existing list consumers too; no GPU/web capture, performance or whole-index acceptance
+is implied. The new case file is discovered by the existing gate3D oracle glob.
+
 ### Bounding-sphere precision: back on the Heaps calculation
 
 On 2026-10-21, three new native tests demonstrated valid finite boxes producing nonfinite
