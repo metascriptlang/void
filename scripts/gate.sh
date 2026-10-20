@@ -928,6 +928,11 @@ if [ "$WEB" -eq 1 ]; then
 		sed 's/^/      /' out/gate-liveness.log
 		skips=$((skips + $(grep -c '^SKIP' out/gate-liveness.log || true)))
 		fails=$((fails + $(grep -c '^FAIL' out/gate-liveness.log || true)))
+		sh scripts/webViews.sh > out/gate-webViews.log 2>&1 || true
+		sed 's/^/      /' out/gate-webViews.log
+		skips=$((skips + $(grep -c '^SKIP' out/gate-webViews.log || true)))
+		fails=$((fails + $(grep -c '^FAIL' out/gate-webViews.log || true)))
+		grep -qE '^(PASS|SKIP)' out/gate-webViews.log || fail "web views did not run — see out/gate-webViews.log"
 	else
 		fail "web build — see out/gate-web.log"
 	fi
