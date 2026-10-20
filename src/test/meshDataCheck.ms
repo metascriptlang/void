@@ -106,24 +106,12 @@ test "a UV sphere shares indexed rings with outward unit normals and exact seam 
 	}
 }
 
-test "sphere geometry reaches UV picking Mikk tangents and automatic wide index append" {
+test "sphere geometry reaches UV picking and automatic wide index append" {
 	let data = MeshData.withUvs();
 	assert addSphere(data, 2.0, WHITE, 8, 6).ok;
 	const ray = Ray.fromPoints(vec3(0.0, 0.0, 6.0), vec3(0.0, 0.0, 0.0));
 	const hit = data.rayIntersection(ray, Face.Back);
 	assert approx(hit.distance, 4.0) && hit.uv !== null;
-	assert addTangents(data).ok;
-	assert data.hasTangents && data.validIndices();
-	for (let i = 0; i < data.vertexCount(); i++) {
-		const n = i * data.stride() + 3;
-		const normal = vec3(data.vertices[n], data.vertices[n + 1], data.vertices[n + 2]);
-		const tangent = tangentAt(data, i);
-		assert approx(tangent.length(), 1.0);
-		assert Math.abs(normal.dot(tangent)) < 0.001;
-	}
-	const previous = data.vertices.length;
-	assert !addSphere(data, 1.0, WHITE, 8, 6).ok;
-	assert data.vertices.length == previous;
 	let wide = MeshData.empty();
 	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
 	assert addTriangle(wide, 0, 1, 2).ok;
