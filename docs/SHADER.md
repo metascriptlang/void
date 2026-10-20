@@ -24,7 +24,7 @@ sokol picks its backend at **compile time**, and sokol-shdc cross-compiles **off
 
 ## Tier 1 — hand-written GLSL
 
-Annotated GLSL (`@vs` / `@fs` / `@cs`, separate `texture` + `sampler`), cross-compiled by `scripts/regen-shaders.sh` to a generated `*.glsl.h` desc header. It still holds every stage Tier 3 has not taken: the cube's `src/sokol/shader.glsl`.
+Annotated GLSL (`@vs` / `@fs` / `@cs`, separate `texture` + `sampler`), cross-compiled by `scripts/regen-shaders.sh` to a generated `*.glsl.h` desc header. Tier 3 has taken every stage: what stays hand-written is the frame around the generated programs, `src/void2d/shader2d.glsl`'s `@program` lines and includes.
 
 void2d runs **one shader × pipeline-per-blend-mode** (`VOID2D_BLEND_COUNT` in `src/void2d/batcher.c`), flushing the batcher on a blend or view change. A new effect is a new pipeline variant, not a new architecture.
 
