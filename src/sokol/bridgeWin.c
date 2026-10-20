@@ -178,7 +178,8 @@ static void _frame(void) {
 	if (s_contextLost) restoreContext();
 	s_committed = false;
 	call0(s_frame);
-	if (!s_committed && !s_sizeMove) DwmFlush();
+	if (s_committed) voidWindowPresent(s_sizeMove);
+	else if (!s_sizeMove) DwmFlush();
 }
 
 static void _event(const sapp_event *e) {
@@ -528,9 +529,6 @@ sg_swapchain voidDriverSwapchain(void) {
 }
 
 void voidDriverPresent(void) {
-	if (s_driver == DRIVER_WINDOW) {
-		voidWindowPresent(s_sizeMove);
-		s_committed = true;
-	}
+	if (s_driver == DRIVER_WINDOW) s_committed = true;
 	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
 }
