@@ -307,7 +307,9 @@ number typed into the script.
    machine-wide object cache is switched off for the run, not deleted.
 2. `msc test src/test/index.ms` — T0 and T1; then each `tests/isolated/*.ms` in a process of its
    own, for a test that exhausts process-wide state (the glyph page table) and would starve the
-   tests after it.
+   tests after it. Then `msc test --target=js tests/js/targetCheck.ms` with every module flag off
+   and on: Void compiles on JS, and what needs C (decoding images, loading fonts) answers with a
+   named error there, because JS has no C to call.
 3. The demo entry builds.
 4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then

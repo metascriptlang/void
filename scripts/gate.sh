@@ -94,6 +94,16 @@ if "$MSC" test $moduleDefines src/test/index.ms > out/gate-t0-modules.log 2>&1; 
 else
 	fail "module stage all-on: msc test$moduleDefines src/test/index.ms — see out/gate-t0-modules.log"
 fi
+for jsStage in off on; do
+	jsDefines=""
+	[ "$jsStage" = off ] || jsDefines="$moduleDefines"
+	if "$MSC" test --target=js $jsDefines tests/js/targetCheck.ms > "out/gate-js-$jsStage.log" 2>&1 \
+			&& sed 's/\x1b\[[0-9;]*m//g' "out/gate-js-$jsStage.log" | grep -qE '^\s+Tests +[0-9]+ passed \([0-9]+\)$'; then
+		pass "JS target, module stage all-$jsStage: Void compiles and refuses C-only work by name"
+	else
+		fail "JS target, module stage all-$jsStage: msc test --target=js tests/js/targetCheck.ms — see out/gate-js-$jsStage.log"
+	fi
+done
 if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.log 2>&1 \
 		&& grep -q '^PASS colour memory:' out/gate-colour-memory.log; then
 	pass "colour allocation failures recover without retrying permanent PNG refusals"
