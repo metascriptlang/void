@@ -98,6 +98,7 @@ export enum MeshError {
 	PositionRange,
 	UvScaleParameters,
 	UvRange,
+	ScaleParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -527,6 +528,31 @@ export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshEr
 			((data.vertices[at + 1] as float64) + (offset.y as float64)) as float32;
 		data.vertices[at + 2] =
 			((data.vertices[at + 2] as float64) + (offset.z as float64)) as float32;
+	}
+	recomputeBounds(data);
+	return Result.ok(null);
+}
+
+export function scaleUniform(ref data: MeshData, factor: float32): Result<void, MeshError> {
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!Number.isFinite(factor)) { return Result.err(MeshError.ScaleParameters); }
+	for (let at = 0; at < data.vertices.length; at += width) {
+		const x: float64 = (data.vertices[at] as float64) * (factor as float64);
+		const y: float64 = (data.vertices[at + 1] as float64) * (factor as float64);
+		const z: float64 = (data.vertices[at + 2] as float64) * (factor as float64);
+		if (!coordinateInRange(x) || !coordinateInRange(y) || !coordinateInRange(z)) {
+			return Result.err(MeshError.PositionRange);
+		}
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		data.vertices[at] = ((data.vertices[at] as float64) * (factor as float64)) as float32;
+		data.vertices[at + 1] =
+			((data.vertices[at + 1] as float64) * (factor as float64)) as float32;
+		data.vertices[at + 2] =
+			((data.vertices[at + 2] as float64) * (factor as float64)) as float32;
 	}
 	recomputeBounds(data);
 	return Result.ok(null);

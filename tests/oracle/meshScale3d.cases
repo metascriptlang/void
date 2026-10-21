@@ -1,0 +1,52 @@
+# lib: heaps format
+# haxe-prelude: import h3d.prim.Polygon;
+# haxe-prelude: import h3d.prim.UV;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: class H {
+# haxe-prelude: public static function sample(factor: Float): Array<Float> {
+# haxe-prelude: var indices = new hxd.IndexBuffer(); for (i in 0...3) indices.push(i);
+# haxe-prelude: var p = new Polygon([new Point(),new Point(1,0,0),new Point(0,1,0)],indices);
+# haxe-prelude: p.normals = [for (i in 0...3) new Point(0,0,1)];
+# haxe-prelude: p.tangents = [for (i in 0...3) new Point(1,0,0)];
+# haxe-prelude: p.uvs = [for (i in 0...3) new UV(0.25,0.75)];
+# haxe-prelude: p.scale(factor); var b = p.getBounds(); var cpu = p.getCPUBuffer();
+# haxe-prelude: return [b.xMin,b.yMin,b.zMin,b.xMax,b.yMax,b.zMax,cpu[5],cpu[6],cpu[9]];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { vec3 } from "../../../src/math/math3d";
+# ms-prelude: import {
+# ms-prelude: MeshData, MeshError, addTexturedVertex, addTriangle, addGivenTangents, scaleUniform,
+# ms-prelude: } from "../../../src/void3d/meshData";
+# ms-prelude: function scaledTriangle(factor: float32): Result<MeshData,MeshError> {
+# ms-prelude: let data = MeshData.withUvs();
+# ms-prelude: for (let i = 0; i < 3; i++) {
+# ms-prelude: const point = vec3(i == 1 ? 1.0 : 0.0,i == 2 ? 1.0 : 0.0,0.0);
+# ms-prelude: const _vertex = try addTexturedVertex(data,point,vec3(0.0,0.0,1.0),
+# ms-prelude: { u: 0.25, v: 0.75 },{ red: 0.25, green: 0.5, blue: 0.75, alpha: 1.0 });
+# ms-prelude: }
+# ms-prelude: const _triangle = try addTriangle(data,0,1,2);
+# ms-prelude: const _tangents = try addGivenTangents(data,[1.0,0.0,0.0,1.0,1.0,0.0,0.0,1.0,
+# ms-prelude: 1.0,0.0,0.0,1.0]);
+# ms-prelude: const _scaled = try scaleUniform(data,factor);
+# ms-prelude: return Result.ok(data);
+# ms-prelude: }
+# ms-prelude: function sampleScale(id: string,data: MeshData): void {
+# ms-prelude: const b = data.bounds;
+# ms-prelude: emit9(id,b.min.x,b.min.y,b.min.z,b.max.x,b.max.y,b.max.z,
+# ms-prelude: data.vertices[5],data.vertices[12],data.vertices[6]);
+# ms-prelude: }
+
+case scale-positive tol=0
+haxe> emit("scale-positive",H.sample(2));
+ms> const positive = scaledTriangle(2.0); if (!positive.ok) { return 1; }
+ms> sampleScale("scale-positive",positive.value);
+
+case scale-negative tol=0
+haxe> emit("scale-negative",H.sample(-2));
+ms> const negative = scaledTriangle(-2.0); if (!negative.ok) { return 1; }
+ms> sampleScale("scale-negative",negative.value);
+
+case scale-zero tol=0
+haxe> emit("scale-zero",H.sample(0));
+ms> const zero = scaledTriangle(0.0); if (!zero.ok) { return 1; }
+ms> sampleScale("scale-zero",zero.value);
