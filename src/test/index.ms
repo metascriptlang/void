@@ -72,6 +72,7 @@ import "./gltfIndexCheck";
 import "./gltfDiagnosticCheck";
 import "./gltfSkinCheck";
 import "./gltfMaterialCheck";
+import "./gltfEmbeddedImageCheck";
 import "./gltfCurveCheck";
 import "./gltfPoseCheck";
 import "./gltfComposeSceneCheck";

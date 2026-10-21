@@ -8,6 +8,7 @@
 // a loader that reads files it has never seen is a claim this port does not make.
 // PENDING3D: gltf-real-export-not-exercised
 
+import { Buffer } from "std/core/buffer";
 import { parseJson } from "std/serialize/json/parser";
 import { jsonNull } from "std/serialize/json/builder";
 import { asString, asNumber, at } from "std/serialize/json/accessors";
@@ -97,7 +98,8 @@ function gltfCause(code: GltfError): string {
 		GltfError.BadNode => "node transform is invalid or not representable",
 		GltfError.NotGlb => "GLB header or aligned JSON/BIN chunk layout is invalid",
 		GltfError.BadReference => "node, mesh, material, texture, or graph reference is invalid",
-		GltfError.ImageByUri => "URI image loading is not supported; supply an embedded image",
+		GltfError.ImageByUri => "External URI image loading is not supported; " +
+			"supply an embedded image",
 		GltfError.BadImage => "embedded PNG/JPEG bytes or image dimensions are invalid",
 		GltfError.UnsupportedSampler => "sampler filter or wrap is unsupported or incompatible",
 		GltfError.UnsupportedMaterial => "material property or texture combination is unsupported",
@@ -297,6 +299,7 @@ struct ImageView {
 	offset: int32;
 	length: int32;
 	format: ImageFormat;
+	inlineBytes: Vec<uint8>;
 }
 
 struct Sampling {
@@ -1270,6 +1273,49 @@ function loadSampler(sampler: JsonValue): Result<Sampling, GltfError> {
 	return Result.ok(out);
 }
 
+function formatForMime(mime: string): Result<ImageFormat, GltfError> {
+	return match (mime) {
+		"image/png" => Result.ok(ImageFormat.Png),
+		"image/jpeg" => Result.ok(ImageFormat.Jpeg),
+		_ => Result.err(GltfError.BadImage),
+	};
+}
+
+function loadInlineImage(uri: string, image: JsonValue): Result<ImageView, GltfError> {
+	const comma: int32 = uri.indexOf(",") as int32;
+	if (comma < 5) { return Result.err(GltfError.BadImage); }
+	const header: string = uri.substring(5, comma);
+	if (!header.endsWith(";base64")) { return Result.err(GltfError.Unsupported); }
+	const format: ImageFormat = try formatForMime(header.substring(0, header.length - 7));
+	if (hasField(image, "mimeType")) {
+		const declared: ImageFormat = try formatForMime(fieldOf(image, "mimeType").asString());
+		if (declared != format) { return Result.err(GltfError.BadImage); }
+	}
+	const payload: string = uri.substring(comma + 1);
+	const chars: int64 = payload.length as int64;
+	if (chars > 2147483647) { return Result.err(GltfError.OutOfRange); }
+	if (chars == 0 || chars % 4 != 0) { return Result.err(GltfError.BadImage); }
+	const padding: int32 = payload.endsWith("==") ? 2 : (payload.endsWith("=") ? 1 : 0);
+	const contentChars: int32 = (chars as int32) - padding;
+	for (let i = 0; i < contentChars; i++) {
+		const code: int32 = payload.charCodeAt(i) as int32;
+		if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+			|| (code >= 48 && code <= 57) || code == 43 || code == 47)) {
+			return Result.err(GltfError.BadImage);
+		}
+	}
+	const count: int32 = ((chars / 4) * 3) as int32 - padding;
+	const decoded = Buffer.fromString(payload, "base64");
+	if (decoded.toStringEncoded("base64", 0.0, count as float64) != payload) {
+		return Result.err(GltfError.BadImage);
+	}
+	let inlineBytes: Vec<uint8> = new Array(count);
+	for (let i = 0; i < count; i++) {
+		inlineBytes[i] = decoded.readUInt8(i as float64) as uint8;
+	}
+	return Result.ok({ offset: 0, length: count, format: format, inlineBytes: move inlineBytes });
+}
+
 function loadImageView(
 	image: JsonValue,
 	views: JsonValue,
@@ -1278,16 +1324,18 @@ function loadImageView(
 	if (image === null || image.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(image, "uri"))) { return Result.err(GltfError.ImageByUri); }
+	if (hasField(image, "uri")) {
+		if (hasField(image, "bufferView")) { return Result.err(GltfError.Unsupported); }
+		const uri: JsonValue = fieldOf(image, "uri");
+		if (uri === null || uri.kind != JsonKind.String) { return Result.err(GltfError.BadImage); }
+		if (!uri.strVal.startsWith("data:")) { return Result.err(GltfError.ImageByUri); }
+		return loadInlineImage(uri.strVal, image);
+	}
 	const viewIndex: int32 = intField(image, "bufferView", INVALID_INT);
 	if (viewIndex < 0 || viewIndex >= countOf(views)) {
 		return Result.err(GltfError.BadReference);
 	}
-	const format: Result<ImageFormat, GltfError> = match (fieldOf(image, "mimeType").asString()) {
-		"image/png" => Result.ok(ImageFormat.Png),
-		"image/jpeg" => Result.ok(ImageFormat.Jpeg),
-		_ => Result.err(GltfError.BadImage),
-	};
+	const format = formatForMime(fieldOf(image, "mimeType").asString());
 	if (!format.ok) { return Result.err(format.error); }
 	const view: JsonValue = views.at(viewIndex);
 	if (isNull(view) || intField(view, "buffer", 0) != 0
@@ -1299,7 +1347,9 @@ function loadImageView(
 	if (offset < 0 || length <= 0 || offset > bufferLength || length > bufferLength - offset) {
 		return Result.err(GltfError.OutOfRange);
 	}
-	const out: ImageView = { offset: offset, length: length, format: format.value };
+	const out: ImageView = {
+		offset: offset, length: length, format: format.value, inlineBytes: [],
+	};
 	return Result.ok(out);
 }
 
@@ -1325,10 +1375,13 @@ function loadTexture(
 		}
 		sampling = samplers[index];
 	}
-	const view: ImageView = images[source];
-	const bytes: Readonly<Span<uint8>> = buffer[view.offset..view.offset + view.length];
+	const bytes: Readonly<Span<uint8>> = images[source].inlineBytes.length > 0
+		? images[source].inlineBytes
+		: buffer[images[source].offset..images[source].offset + images[source].length];
 	const format: Result<ImageFormat, ImageError> = imageFormatOf(bytes);
-	if (!format.ok || format.value != view.format) { return Result.err(GltfError.BadImage); }
+	if (!format.ok || format.value != images[source].format) {
+		return Result.err(GltfError.BadImage);
+	}
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
 	if (!decoded.ok) {
 		if (decoded.error == ImageError.NoDecoderOnJs) { return Result.err(GltfError.NoImageDecoderOnJs); }
@@ -1822,9 +1875,9 @@ function decodeGltf(
 	const imageCount: int32 = countOf(imageArray);
 	const buffers: JsonValue = arrayOf(root, "buffers");
 	const bufferCount: int32 = countOf(buffers);
-	if (bufferCount > 1 || ((meshCount > 0 || imageCount > 0) && bufferCount != 1)) {
+	if (bufferCount > 1 || (meshCount > 0 && bufferCount != 1)) {
 		return Result.err(gltfFailure(GltfError.Unsupported, source, "$.buffers", "",
-			"this loader requires one supplied buffer for meshes or images"));
+			"this loader accepts at most one supplied buffer and requires it for meshes"));
 	}
 	let declaredLength: int32 = 0;
 	if (bufferCount == 1) {
