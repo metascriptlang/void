@@ -3916,6 +3916,43 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Subtree mesh enumeration: native/reference checkpoint, CLIJS startup held
+
+Primary Heaps `h3d/scene/Object.hx::getMeshes` at `b9aa6dcb` includes self when it is a Mesh,
+then children depth-first in insertion order, without visibility filtering. Executed
+Heaps `2b84cc23` Object/Mesh files are byte-identical. Real headless Mesh construction and
+`getMeshes` ran without a Window or renderer; no substitute reference scene walk was used.
+Secondary Bevy `157e1ce6`,
+`bevy_ecs/src/relationship/relationship_query.rs::DescendantDepthFirstIter`, uses a stack
+with reversed child pushes for the same descendant order but excludes the starting root.
+Root inclusion here follows primary Heaps, not Bevy's descendants-only iterator.
+
+`src/void3d/scene.ms::getMeshes` reuses `findByName`'s stack and generation/liveness gates.
+The fresh-list query returns existing node identifiers; it does not add another scene,
+ECS query, renderer walk, world sync or resource-pin ownership model. Live detached
+subtrees remain queryable because traversal needs no world transform. The optional
+append-to-an-existing-array overload of Heaps is not exposed by this fresh-value entry.
+
+On binary/support `b1f63337f`, source tree `995d7a8b6cc0f93ea4664a6522740abb07623e5f`,
+actual red **18 missing-method diagnostics**, exit1; native **305/305** and existing Scene
+**344/344**, both0. New tests cover self/order, hidden/layered nodes, reparent/reorder,
+unchanged prior results, detached/empty/group/light roots and stale/foreign/reused/closed
+identifiers. Actual Heaps **6/6** and C oracle0; independent comparison finds all
+**6 rows / 18 count/order fields exactly equal**. No geometry-buffer or render equality claim.
+
+CLIJS new unit, old Scene control and generated oracle each abort with the same
+`ReferenceError: DOOR_UNIFORM_SLOTS is not defined` before query execution. This is the
+existing GPU-door/platform dependency of Scene, not a passed JS query or a new compiler
+diagnosis. No import substitution or platform stub was added to obtain acceptance.
+
+Commands: `msc test [--target=js] src/test/sceneMeshesCheck.ms`, existing `scene3dCheck.ms`,
+existing oracle regen/check and generated-source JS attempt. Receipts
+`out/m6SceneMeshes*B1f63337f20261021*`; `ReferenceFields` is native/reference only.
+Aggregate1 retained. First read-only red classification missed ANSI-prefixed diagnostics;
+`AuditFirstAttempt` retains that failed bookkeeping step, `RedClassification...Retry1`
+strips ANSI and confirms only missing getMeshes. No API/test rewrite or new build was needed.
+No GPU/browser/full-gate, performance, SDK sync or empty-overlap decision change.
+
 ### Sphere bounds accumulation: native checkpoint, rich-assert JS held
 
 Primary `h3d/col/Bounds.hx::addSpherePos` at inspected Heaps `b9aa6dcb` grows each endpoint
