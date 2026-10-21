@@ -3866,6 +3866,33 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Sphere point/pair predicates
+
+`src/void3d/sphere.ms` `Sphere3D` adds point membership and pair overlap in the same value-
+geometry idiom as Bounds3D, not a collider hierarchy, physics system or scene integration.
+Primary Heaps `b9aa6dcb`, `h3d/col/Sphere.hx::contains` / `inSphere`, uses strict squared-
+distance thresholds. Surface points and pair tangency therefore do not count. Radius zero
+keeps Heaps' exact predicates: point membership and zero/zero overlap are false, while a
+zero-radius center inside a positive-radius sphere satisfies the pair threshold.
+Secondary Bevy `157e1ce6`, `bevy_shape/src/bounding/bounded3d/mod.rs`,
+`BoundingSphere::intersects`, uses `<=` and includes tangency; this port follows Heaps, not
+that contact policy. Internal distances/combined radius use float64; no normalization or
+new renderer/ABI/model-transform policy is involved.
+
+Actual API red: unresolved sphere module, exit 1 before codegen. After `339e06de`, native
+**303/303** and JS **65/65** tests passed, both exit 0. Four groups cover translated centers,
+all axis surfaces/interior/diagonal separation, pair symmetry/nesting/tangency and radius zero.
+Actual Heaps `2b84cc23`, Haxe 4.3.7 / Node v24.18.0, regenerated/checked **8/8 AGREES**.
+C/JS/Heaps match **24/24 classifications exactly**, tolerance 0. Sphere reference source
+byte-matches `b9aa6dcb`; source tree `5664e77aa8563f35a63472c798da4bb7dd921604`, binary/support
+`b1f63337f`. These independent predicates do not replace the original Vec3 normalizer or
+claim to unpark the Ray/Plane JS compiler failure.
+
+Receipts: `out/m6SphereQueryRedB1f63337f20261021.{log,exit}` and
+`out/m6SphereQuery{Tests,JsTests,Heaps,Oracle,Js,CrossBackend}GreenB1f63337f20261021.{log,exit}`;
+aggregate `out/m6SphereQueryGreenB1f63337f20261021.{log,exit}`, actual 0. Tests are registered
+in the existing index and the oracle glob. No GPU, performance or whole-index claim.
+
 ### Full sphere containment in Bounds
 
 Zone/region code can ask whether the **whole** sphere fits:
