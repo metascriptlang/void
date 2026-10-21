@@ -159,6 +159,9 @@ export function getCurrentTexture(swapchain: GPUNativeSwapchain): GPUTexture {
 	return backend.swapchainTexture(swapchain);
 }
 
+// The depth attachment the window adds to the canvas; valid after getCurrentTexture this frame.
+export function getCurrentDepthTexture(): GPUTexture { return backend.swapchainDepthTexture(); }
+
 export function getCanvasConfiguration(this self: GPUDevice): GPUCanvasConfiguration {
 	return backend.canvasConfiguration();
 }
