@@ -47,6 +47,12 @@ else
 fi
 
 echo
+if sh scripts/oracle.test.sh > out/gate-oracle-ids.log 2>&1; then
+	pass "oracle case IDs: invalid and duplicate IDs fail closed"
+else
+	fail "oracle case ID checks — see out/gate-oracle-ids.log"
+fi
+
 echo "=== 1. evict the caches ==============================================="
 # msc answers "Up to date" after a header that a compiled .c includes has changed, and the
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
