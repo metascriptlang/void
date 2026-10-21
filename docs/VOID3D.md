@@ -3866,6 +3866,36 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Full sphere containment in Bounds
+
+Zone/region code can ask whether the **whole** sphere fits:
+`bounds.containsSphere(center, radius)`, with all inputs in the same coordinate space.
+A center inside the box is insufficient when its radius crosses a face. Primary Heaps
+`b9aa6dcb`, `h3d/col/Bounds.hx:201`, checks center-minus/plus-radius against all six limits.
+Both limits are closed, like `containsBounds`: a radius-zero sphere on a max face is contained,
+although the existing half-open point `contains` predicate rejects that face. No automatic
+coordinate transform, Sphere object, scene trigger or physics policy was added.
+
+Secondary Bevy `157e1ce6`, `bevy_shape/src/bounding/bounded3d/mod.rs`, has closed AABB
+containment but its cross-type Sphere method is intersection via closest point, not full
+sphere containment; no direct `contains_sphere` appears there. This port follows Heaps'
+full-volume predicate using existing Bounds/Vec3/scalar data and float64 comparison arithmetic.
+
+Actual missing-API red: **10 property diagnostics**, exit 1 before codegen. After `33874910`,
+**327/327 native tests passed**, exit 0. Three new groups cover center-vs-volume, all min/max
+face contacts/crossings, empty/degenerate boxes and radius zero. Actual Heaps regenerated
+and checked **28 rows: 25 AGREES + 3 existing declared differences**, exits 0/0. Executed pin
+`2b84cc23`, Haxe 4.3.7 / Node v24.18.0, unchanged binary/support `b1f63337f`.
+The C and JS programs match on all 28 rows; all **7 new rows / 21 volume classifications**
+also match Heaps exactly, tolerance 0. Prior 21 reference rows are unchanged. CPU source tree
+`bb8d1510d2f12faf64d14f8e03c0ecea4782a63b`.
+
+Receipts: `out/m6BoundsContainsSphereRedB1f63337f20261021.{log,exit}` and
+`out/m6BoundsContainsSphere{Tests,Heaps,Oracle,Js,CrossBackend}GreenB1f63337f20261021.{log,exit}`;
+aggregate `out/m6BoundsContainsSphereGreenB1f63337f20261021.{log,exit}`, actual 0. Pure JS
+oracle clients avoid native-only GPU fixture imports; no existing test/normalization producer
+was renamed or bypassed. No renderer/ABI change, GPU capture, speed or whole-index claim.
+
 ### Line/plane world hit: native checkpoint, JS producer blocked
 
 `ray.linePlaneIntersection(plane)` returns `Result<Vec3 | null, RayPlaneError>` using existing
