@@ -1,0 +1,110 @@
+# lib: heaps format
+# haxe-prelude: @:access(h3d.prim.DynamicPrimitive)
+# haxe-prelude: class Capture extends h3d.prim.DynamicPrimitive {
+# haxe-prelude:  public function new() { super(hxd.BufferFormat.POS3D_NORMAL_UV); }
+# haxe-prelude:  override public function flush() {}
+# haxe-prelude:  public function packet(): Array<Float> { return [vsize, isize, vbuf[0], vbuf[2], vbuf[1], vbuf[3], vbuf[5], vbuf[4], vbuf[6]]; }
+# haxe-prelude:  public function tail(): Array<Float> { return [vbuf[9], vbuf[14], vbuf[15], vbuf[16], vbuf[18], vbuf[17], ibuf[0], ibuf[1], ibuf[2]]; }
+# haxe-prelude: }
+# haxe-prelude: @:access(h3d.scene.Trail)
+# haxe-prelude: class H {
+# haxe-prelude:  public static function make(): h3d.scene.Trail {
+# haxe-prelude:   var t = new h3d.scene.Trail(); t.dprim = new Capture(); t.primitive = t.dprim; return t;
+# haxe-prelude:  }
+# haxe-prelude:  public static function sample(t: h3d.scene.Trail, x: Float, time: Float, roll: Float = 0, z: Float = 0, axis: Int = 0): Void {
+# haxe-prelude:   var ctx: h3d.scene.RenderContext = Type.createEmptyInstance(h3d.scene.RenderContext);
+# haxe-prelude:   ctx.elapsedTime = 0.125; ctx.visibleFlag = true; ctx.time = time;
+# haxe-prelude:   var q = new h3d.Quat(); q.initRotation(axis == 0 ? roll : 0, axis == 1 ? roll : 0, axis == 2 ? roll : 0); q.toMatrix(t.absPos); t.absPos._41 = x; t.absPos._42 = z; t.sync(ctx);
+# haxe-prelude:  }
+# haxe-prelude:  public static function history(t: h3d.scene.Trail): Array<Float> {
+# haxe-prelude:   var p = t.points[t.points.length - 1];
+# haxe-prelude:   return [t.points.length, t.pending.size, p.x, p.z, p.y, p.t, t.points[0].t, t.pending.size == 0 ? 0 : t.pending.x, t.pending.size == 0 ? 0 : t.pending.t];
+# haxe-prelude:  }
+# haxe-prelude:  public static function curve(t: h3d.scene.Trail, n: Int): Array<Float> { var p = t.points[n]; return [p.x, p.t, p.size]; }
+# haxe-prelude:  public static function bend(t: h3d.scene.Trail): Array<Float> { var p = t.points[2]; var m = p.q.toMatrix(); return [p.x, p.z, p.y, p.t, p.size, m._33, m._32, m._23, m._22]; }
+# haxe-prelude:  public static function packet(t: h3d.scene.Trail): Array<Float> { return (cast t.dprim: Capture).packet(); }
+# haxe-prelude:  public static function tail(t: h3d.scene.Trail): Array<Float> { return (cast t.dprim: Capture).tail(); }
+# haxe-prelude: }
+# ms-prelude: import { rotationX, rotationY, rotationZ, toMatrix } from "../../../src/math/math3d";
+# ms-prelude: import { Trail, TrailSettings, sampleTrail, buildTrailMesh, clearTrail } from "../../../src/void3d/trail";
+# ms-prelude: import { vertexCount, indexCount } from "../../../src/void3d/meshData";
+# ms-prelude: function make(): Trail {
+# ms-prelude:  const made = Trail.create(TrailSettings.defaults());
+# ms-prelude:  if (!made.ok) { unreachable; }
+# ms-prelude:  return made.value;
+# ms-prelude: }
+# ms-prelude: function sample(ref trail: Trail, x: float32, time: float64, roll: float32 = 0, z: float32 = 0, axis: int32 = 0): void {
+# ms-prelude:  let world = axis == 1 ? rotationZ(-roll) : (axis == 2 ? rotationY(-roll) : rotationX(-roll)); world.m41 = x; world.m43 = z;
+# ms-prelude:  const result = sampleTrail(trail, world, time);
+# ms-prelude:  if (!result.ok) { unreachable; }
+# ms-prelude: }
+# ms-prelude: function history(name: string, trail: Trail): void {
+# ms-prelude:  const p = trail.points[trail.points.length - 1];
+# ms-prelude:  emit9(name, trail.points.length as float32, trail.pending.size, p.x as float32, p.y as float32, p.z as float32, p.t as float32, trail.points[0].t as float32, trail.pending.size == 0 ? 0.0 : trail.pending.x as float32, trail.pending.size == 0 ? 0.0 : trail.pending.t as float32);
+# ms-prelude: }
+# ms-prelude: function packet(name: string, trail: Trail, time: float64): void {
+# ms-prelude:  const made = buildTrailMesh(trail, time); if (!made.ok) { unreachable; }
+# ms-prelude:  const m = made.value;
+# ms-prelude:  emit9(name, m.vertexCount() as float32, m.indexCount() as float32, m.vertices[0], m.vertices[1], m.vertices[2], m.vertices[3], m.vertices[4], m.vertices[5], m.vertices[6]);
+# ms-prelude: }
+# ms-prelude: function tail(name: string, trail: Trail, time: float64): void {
+# ms-prelude:  const made = buildTrailMesh(trail, time); if (!made.ok) { unreachable; }
+# ms-prelude:  const m = made.value;
+# ms-prelude:  emit9(name, m.vertices[14], m.vertices[18], m.vertices[19], m.vertices[24], m.vertices[25], m.vertices[26], m.indices[0] as float32, m.indices[1] as float32, m.indices[2] as float32);
+# ms-prelude: }
+
+case ribbon-packet tol=1e-5
+haxe> var t1 = H.make(); t1.duration = 1; for (i in 0...3) H.sample(t1, i * 0.25, i * 0.125); emit("ribbon-packet", H.packet(t1));
+ms> let t1 = make(); t1.settings.duration = 1; for (let i = 0; i < 3; i++) { sample(t1, (i as float32) * 0.25, (i as float64) * 0.125); } packet("ribbon-packet", t1, 0.25);
+
+case ribbon-tail-uv-connectivity tol=1e-5
+haxe> var t2 = H.make(); t2.duration = 1; for (i in 0...3) H.sample(t2, i * 0.25, i * 0.125); emit("ribbon-tail-uv-connectivity", H.tail(t2));
+ms> let t2 = make(); t2.settings.duration = 1; for (let i = 0; i < 3; i++) { sample(t2, (i as float32) * 0.25, (i as float64) * 0.125); } tail("ribbon-tail-uv-connectivity", t2, 0.25);
+
+case rotated-ribbon tol=1e-5
+haxe> var t3 = H.make(); t3.duration = 1; for (i in 0...3) H.sample(t3, i * 0.25, i * 0.125, Math.PI / 2); emit("rotated-ribbon", H.packet(t3));
+ms> let t3 = make(); t3.settings.duration = 1; for (let i = 0; i < 3; i++) { sample(t3, (i as float32) * 0.25, (i as float64) * 0.125, 1.5707963267948966); } packet("rotated-ribbon", t3, 0.25);
+
+case angle-ribbon tol=1e-5
+haxe> var t4 = H.make(); t4.duration = 1; t4.angle = Math.PI / 4; for (i in 0...3) H.sample(t4, i * 0.25, i * 0.125); emit("angle-ribbon", H.packet(t4));
+ms> let t4 = make(); t4.settings.duration = 1; t4.settings.angle = 0.7853981633974483; for (let i = 0; i < 3; i++) { sample(t4, (i as float32) * 0.25, (i as float64) * 0.125); } packet("angle-ribbon", t4, 0.25);
+
+case stationary-tail tol=0
+haxe> var t5 = H.make(); t5.duration = 100; for (i in 0...20) H.sample(t5, 0, i); emit("stationary-tail", H.history(t5));
+ms> let t5 = make(); t5.settings.duration = 100; for (let i = 0; i < 20; i++) { sample(t5, 0, i as float64); } history("stationary-tail", t5);
+
+case pending-at-max tol=0
+haxe> var t6 = H.make(); H.sample(t6, 0, 0); H.sample(t6, 0.5, 0.25); emit("pending-at-max", H.history(t6));
+ms> let t6 = make(); sample(t6, 0, 0); sample(t6, 0.5, 0.25); history("pending-at-max", t6);
+
+case split-cap-history tol=1e-5
+haxe> var t7 = H.make(); t7.duration = 100; H.sample(t7, 0, 0); H.sample(t7, 16, 1); H.sample(t7, 16.25, 2); emit("split-cap-history", H.history(t7));
+ms> let t7 = make(); t7.settings.duration = 100; sample(t7, 0, 0); sample(t7, 16, 1); sample(t7, 16.25, 2); history("split-cap-history", t7);
+
+case split-cap-curve tol=1e-5
+haxe> var t8 = H.make(); t8.duration = 100; H.sample(t8, 0, 0); H.sample(t8, 16, 1); H.sample(t8, 16.25, 2); emit("split-cap-curve", H.curve(t8, 10));
+ms> let t8 = make(); t8.settings.duration = 100; sample(t8, 0, 0); sample(t8, 16, 1); sample(t8, 16.25, 2); const p8 = t8.points[10]; emit3("split-cap-curve", p8.x as float32, p8.t as float32, p8.size);
+
+case strict-expiration tol=0
+haxe> var t9 = H.make(); H.sample(t9, 0, 0); H.sample(t9, 0.25, 0.25); H.sample(t9, 0.375, 0.5); emit("strict-expiration", H.history(t9));
+ms> let t9 = make(); sample(t9, 0, 0); sample(t9, 0.25, 0.25); sample(t9, 0.375, 0.5); history("strict-expiration", t9);
+
+case curved-slerp tol=1e-5
+haxe> var t11 = H.make(); t11.duration = 2; H.sample(t11, 0, 0); H.sample(t11, 2, 0.25, Math.PI / 2); H.sample(t11, 2, 0.5, 0, 2); emit("curved-slerp", H.bend(t11));
+ms> let t11 = make(); t11.settings.duration = 2; sample(t11, 0, 0); sample(t11, 2, 0.25, 1.5707963267948966); sample(t11, 2, 0.5, 0, 2); const p11 = t11.points[2]; const m11 = p11.q.toMatrix(); emit9("curved-slerp", p11.x as float32, p11.y as float32, p11.z as float32, p11.t as float32, p11.size, m11.m22, m11.m23, m11.m32, m11.m33);
+
+case half-turn-x tol=1e-5
+haxe> var t12 = H.make(); t12.duration = 1; for (i in 0...3) H.sample(t12, i * 0.25, i * 0.125, Math.PI); emit("half-turn-x", H.packet(t12));
+ms> let t12 = make(); t12.settings.duration = 1; for (let i = 0; i < 3; i++) { sample(t12, (i as float32) * 0.25, (i as float64) * 0.125, 3.141592653589793); } packet("half-turn-x", t12, 0.25);
+
+case half-turn-heaps-y tol=1e-5
+haxe> var t13 = H.make(); t13.duration = 1; for (i in 0...3) H.sample(t13, i * 0.25, i * 0.125, Math.PI, 0, 1); emit("half-turn-heaps-y", H.packet(t13));
+ms> let t13 = make(); t13.settings.duration = 1; for (let i = 0; i < 3; i++) { sample(t13, (i as float32) * 0.25, (i as float64) * 0.125, 3.141592653589793, 0, 1); } packet("half-turn-heaps-y", t13, 0.25);
+
+case half-turn-heaps-z tol=1e-5
+haxe> var t14 = H.make(); t14.duration = 1; for (i in 0...3) H.sample(t14, i * 0.25, i * 0.125, Math.PI, 0, 2); emit("half-turn-heaps-z", H.packet(t14));
+ms> let t14 = make(); t14.settings.duration = 1; for (let i = 0; i < 3; i++) { sample(t14, (i as float32) * 0.25, (i as float64) * 0.125, 3.141592653589793, 0, 2); } packet("half-turn-heaps-z", t14, 0.25);
+
+case clear-pending tol=0
+haxe> var t10 = H.make(); H.sample(t10, 0, 0); H.sample(t10, 1, 0.25); t10.clear(); H.sample(t10, 2, 0.5); emit("clear-pending", H.history(t10));
+ms> let t10 = make(); sample(t10, 0, 0); sample(t10, 1, 0.25); clearTrail(t10); sample(t10, 2, 0.5); history("clear-pending", t10);

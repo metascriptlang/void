@@ -87,6 +87,7 @@ import "./pickCheck";
 import "./layersCheck";
 import "./renderOrderCheck";
 import "./particleFadeCheck";
+import "./trailCheck";
 import "./particleShaderCheck";
 import "./particleCurveCheck";
 import "./particleSystemCheck";
