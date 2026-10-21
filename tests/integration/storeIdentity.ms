@@ -73,11 +73,8 @@ import {
 	voidCapturePixel,
 } from "../capture/capture.h";
 
-@compile("./storeIdentity.c");
-@include("./storeIdentity.h");
+import { doorBufferAlive as storeBufferLive, doorViewAlive as storeViewLive } from "../../src/gpu/doorGpu.ms";
 @include("../../src/sokol/bridge.h");
-extern function storeViewLive(view: uint32): int32;
-extern function storeBufferLive(buffer: uint32): int32;
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
