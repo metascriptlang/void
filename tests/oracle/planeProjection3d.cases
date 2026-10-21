@@ -1,0 +1,47 @@
+# lib: heaps format
+# haxe-prelude: class H {
+# haxe-prelude:  public static function project(nx: Float, ny: Float, nz: Float, w: Float, x: Float, y: Float, z: Float, into: Bool = false): Array<Float> {
+# haxe-prelude:   var plane = new h3d.col.Plane(nx, ny, nz, -w); var point = new h3d.col.Point(x, y, z); var projected = new h3d.col.Point();
+# haxe-prelude:   if (into) plane.projectTo(point, projected); else projected = plane.project(point);
+# haxe-prelude:   return [projected.x, projected.y, projected.z, plane.distance(point)];
+# haxe-prelude:  }
+# haxe-prelude: }
+# ms-prelude: import { Vec4, Vec3, vec3, vec4 } from "../../../src/math/math3d";
+# ms-prelude: import { signedPlaneDistance, projectPointToPlane } from "../../../src/void3d/plane";
+# ms-prelude: function project(name: string, plane: Vec4, point: Vec3): void {
+# ms-prelude:  const projected = projectPointToPlane(plane, point); const distance = signedPlaneDistance(plane, point);
+# ms-prelude:  if (!projected.ok || !distance.ok) { unreachable; }
+# ms-prelude:  emit4(name, projected.value.x, projected.value.y, projected.value.z, distance.value as float32);
+# ms-prelude: }
+
+case above-y tol=0
+haxe> emit("above-y", H.project(0,1,0,-2,3,5,7));
+ms> project("above-y", vec4(0,1,0,-2), vec3(3,5,7));
+
+case below-y tol=0
+haxe> emit("below-y", H.project(0,1,0,-2,3,-1,7));
+ms> project("below-y", vec4(0,1,0,-2), vec3(3,-1,7));
+
+case reversed-x tol=0
+haxe> emit("reversed-x", H.project(-1,0,0,4,1,2,3));
+ms> project("reversed-x", vec4(-1,0,0,4), vec3(1,2,3));
+
+case oblique-xy tol=1e-5
+haxe> emit("oblique-xy", H.project(0.6,0.8,0,-2,4,1,3));
+ms> project("oblique-xy", vec4(0.6,0.8,0,-2), vec3(4,1,3));
+
+case oblique-xyz tol=1e-5
+haxe> var s = 1 / Math.sqrt(3); emit("oblique-xyz", H.project(s,s,s,-2,4,-1,6));
+ms> project("oblique-xyz", vec4(0.5773502691896258,0.5773502691896258,0.5773502691896258,-2), vec3(4,-1,6));
+
+case on-plane tol=0
+haxe> emit("on-plane", H.project(0,1,0,-2,1,2,3));
+ms> project("on-plane", vec4(0,1,0,-2), vec3(1,2,3));
+
+case negative-z-offset tol=0
+haxe> emit("negative-z-offset", H.project(0,0,1,4,-2,3,2));
+ms> project("negative-z-offset", vec4(0,0,1,4), vec3(-2,3,2));
+
+case project-into tol=1e-5
+haxe> emit("project-into", H.project(0.6,0.8,0,-2,-1,4,2,true));
+ms> project("project-into", vec4(0.6,0.8,0,-2), vec3(-1,4,2));
