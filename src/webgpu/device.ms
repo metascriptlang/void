@@ -30,7 +30,9 @@ import {
 	GPUTextureViewDescriptor,
 } from "./types.ms";
 
-when (windows && !voidGlCore) {
+when (webgpu) {
+	import * as backend from "./wgpu/backend.ms";
+} else when (windows && !voidGlCore) {
 	import * as backend from "./d3d11/backend.ms";
 } else when (voidGlCore) {
 	import * as backend from "./gl/backend.ms";
