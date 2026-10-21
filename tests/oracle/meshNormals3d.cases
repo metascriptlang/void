@@ -1,0 +1,82 @@
+# lib: heaps format
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.prim.Polygon;
+# haxe-prelude: class H {
+# haxe-prelude: public static function mesh(kind: Int): Polygon {
+# haxe-prelude: var o = new Point(), a = new Point(2,0,0);
+# haxe-prelude: var b = new Point(0,2,0), c = new Point(0,0,1);
+# haxe-prelude: if (kind >= 3) {
+# haxe-prelude: var e = haxe.io.FPHelper.i32ToFloat(haxe.io.FPHelper.floatToI32(kind==3?1e20:1e-6));
+# haxe-prelude: a.x=e; b.y=e;
+# haxe-prelude: }
+# haxe-prelude: var points = kind==1?[o,a,b,o,c,a]:[o,a,b,c];
+# haxe-prelude: var indices: hxd.IndexBuffer = null;
+# haxe-prelude: if (kind!=1) {
+# haxe-prelude: indices=new hxd.IndexBuffer();
+# haxe-prelude: var ids=kind==0?[0,1,2,0,3,1]:(kind==2?[0,1,2,0,2,1,0,0,1]:[0,1,2]);
+# haxe-prelude: for (i in ids) indices.push(i);
+# haxe-prelude: }
+# haxe-prelude: var p = new Polygon(points,indices); p.addNormals(); return p;
+# haxe-prelude: }
+# haxe-prelude: public static function row(p: Polygon,b: Int,c: Int): Array<Float> {
+# haxe-prelude: var a=p.normals[0], n=p.normals[b], m=p.normals[c];
+# haxe-prelude: return [a.x,a.y,a.z,n.x,n.y,n.z,m.x,m.y,m.z];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { vec3, Vec3 } from "../../../src/math/math3d";
+# ms-prelude: import {
+# ms-prelude: MeshData, MeshError, addVertex, addTriangle, recomputeNormals,
+# ms-prelude: } from "../../../src/void3d/meshData";
+# ms-prelude: function normalData(kind: int32): Result<MeshData,MeshError> {
+# ms-prelude: if (kind < 0 || kind > 4) { unreachable; }
+# ms-prelude: const extent: float32 = kind==3?1.0e20:(kind==4?1.0e-6:2.0);
+# ms-prelude: const o=vec3(0,0,0), a=vec3(extent,0,0);
+# ms-prelude: const b=vec3(0,extent,0), c=vec3(0,0,1);
+# ms-prelude: const points: Vec<Vec3> = kind==1?[o,a,b,o,c,a]:[o,a,b,c];
+# ms-prelude: let data=MeshData.empty();
+# ms-prelude: for (const point of points) {
+# ms-prelude: const _vertex=try addVertex(data,point,vec3(1,0,0),
+# ms-prelude: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 });
+# ms-prelude: }
+# ms-prelude: if (kind!=1) {
+# ms-prelude: const ids: Vec<int32> = kind==0?[0,1,2,0,3,1]:
+# ms-prelude: (kind==2?[0,1,2,0,2,1,0,0,1]:[0,1,2]);
+# ms-prelude: for (let i=0;i<ids.length;i+=3) {
+# ms-prelude: const _triangle=try addTriangle(data,ids[i],ids[i+1],ids[i+2]);
+# ms-prelude: }
+# ms-prelude: }
+# ms-prelude: const _normal=try recomputeNormals(data); return Result.ok(data);
+# ms-prelude: }
+# ms-prelude: function emitNormals(id: string,data: Readonly<MeshData>,b: int32,c: int32): void {
+# ms-prelude: const width=data.stride();
+# ms-prelude: emit9(id,data.vertices[3],data.vertices[4],data.vertices[5],
+# ms-prelude: data.vertices[b*width+3],data.vertices[b*width+4],data.vertices[b*width+5],
+# ms-prelude: data.vertices[c*width+3],data.vertices[c*width+4],data.vertices[c*width+5]);
+# ms-prelude: }
+
+case area-weighted tol=0.000001
+haxe> emit("area-weighted",H.row(H.mesh(0),2,3));
+ms> const area=normalData(0); if (!area.ok) { return 1; }
+ms> emitNormals("area-weighted",area.value,2,3);
+
+case unwelded-corners tol=0
+haxe> emit("unwelded-corners",H.row(H.mesh(1),3,4));
+ms> const corners=normalData(1); if (!corners.ok) { return 1; }
+ms> emitNormals("unwelded-corners",corners.value,3,4);
+
+case cancelled-faces tol=0
+haxe> var cancel=H.mesh(2).normals[0]; emit("cancelled-faces",[cancel.x,cancel.y,cancel.z]);
+ms> const cancel=normalData(2); if (!cancel.ok) { return 1; }
+ms> emit3("cancelled-faces",cancel.value.vertices[3],cancel.value.vertices[4],
+ms> cancel.value.vertices[5]);
+
+case wide-cross-product tol=0
+haxe> var wide=H.mesh(3).normals[0]; emit("wide-cross-product",[wide.x,wide.y,wide.z]);
+ms> const wide=normalData(3); if (!wide.ok) { return 1; }
+ms> emit3("wide-cross-product",wide.value.vertices[3],wide.value.vertices[4],
+ms> wide.value.vertices[5]);
+
+case primary-epsilon tol=0
+haxe> var tiny=H.mesh(4).normals[0]; emit("primary-epsilon",[tiny.x,tiny.y,tiny.z]);
+ms> const tiny=normalData(4); if (!tiny.ok) { return 1; }
+ms> emit3("primary-epsilon",tiny.value.vertices[3],tiny.value.vertices[4],tiny.value.vertices[5]);

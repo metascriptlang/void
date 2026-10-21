@@ -3916,6 +3916,42 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Area-weighted normal rebuilding: native checkpoint, oracle held
+
+`meshData.ms::recomputeNormals` ports primary Heaps `b9aa6dcb`
+`h3d/prim/Polygon.hx::addNormals`, `h3d/Vector.hx::normalize`, `hxd/Math.hx::EPSILON2`
+through the existing
+interleaved writer/area-sum idioms. Stored vertex IDs determine smoothing, not positional
+welding. Primary accumulation is Float64 with squared-length cutoff1e-20 before narrowing
+normal words. The general float32 Vec3 normalizer has different intermediate range and
+cutoff semantics, so it is not substituted; its old JS capture site remains unchanged.
+Secondary Bevy `157e1ce6`, `Mesh::try_compute_area_weighted_normals` and its shared custom
+normal path, accumulates face-area normals and changes only NORMAL. Default smooth normals
+are angle-weighted, not this operation. Existing tangent attributes are retained by both
+reference paths; no automatic tangent-frame, morph/skin rebuild or GPU update is claimed.
+
+On binary/support `b1f63337f`, missing-export red1 before codegen. Native **305/305**,
+MeshData **361/361**, Pick **329/329**, all0. New unit executes18 layout/skin/index variants,
+attribute/topology/bounds preservation, winding cancellation, degenerate/unused vertices,
+wide intermediates, primary cutoff and atomic invalid-input guards. JS **66pass/1fail(67)**:
+only the retained direct rich-assert call loses its ref mutation. Its actual emission copies
+MeshData into `__pa_0` and calls `recomputeNormals([__pa_0,0])`; no Vec aliasing or source
+workaround. Existing `2026-10-21-js-rich-assert-ref-argument-mutates-temporary.md` records
+this additional real consumer; a candidate guard is not installed-consumer acceptance.
+
+Actual Heaps `2b84cc23` reference side executes **5rows**, exit0, Haxe4.3.7/Nodev24.18.0;
+five relevant primary files byte-match the inspected pin. **C/JS oracle comparison is held**:
+unchanged `meshNormals3d.cases::normalData` comma declaration lists stop shared parsing.
+Reduced const/let lists fail C/JS; split-statement controls pass both, and Node runs the exact
+original source. No intentional refusal was found in LANG/STYLE/TSG-REF/NIM-REF; compiler
+card `2026-10-21-comma-variable-declaration-list-parse.md` owns the parked port. No splitting
+or alternate oracle was used. Native aggregate and overall batch remain1, not green.
+
+Checked source/index tree `419185862182da60b1db12f3b9be641283b27102`. Receipts
+`out/m6MeshNormals*B1f63337f20261021*`, `out/m6CommaDecl*B1f63337f20261021*`; original packets
+`out/tmp/meshNormalsOracleParseCapture/`, `out/tmp/meshNormalsJsCapture/`. No full JS-oracle,
+browser/emcc, GPU, performance, full-index or whole-stack acceptance.
+
 ### Embedded image data: native checkpoint
 
 `gltf.ms::loadInlineImage/loadImageView/loadTexture` extends the existing byte-image path,

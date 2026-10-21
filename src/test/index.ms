@@ -63,6 +63,7 @@ import "./meshDataCheck";
 import "./meshTranslationCheck";
 import "./meshUvScaleCheck";
 import "./meshScaleCheck";
+import "./meshNormalsCheck";
 import "./sphereTangentsCheck";
 import "./meshLodCheck";
 import "./meshLodDrawCheck";
