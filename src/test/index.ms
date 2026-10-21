@@ -104,6 +104,7 @@ import "./renderOrderCheck";
 import "./particlesCheck";
 import "./particleFadeCheck";
 import "./particleVisualCheck";
+import "./trailCheck";
 import "./particleShaderCheck";
 import "./layoutCheck";
 import "./billboardCheck";
