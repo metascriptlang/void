@@ -3314,7 +3314,7 @@ platform table gives Linux, where every such build used to stop at `src/void3d/s
 Build with void2d's flags, `-d:voidGlCore --passC=-DSOKOL_GLCORE` (`scripts/golden.sh --backend gl`).
 
 **Mechanism: the existing one.** `scripts/regen-shaders.sh` adds `glsl430` to void3d's language
-list (`LANGS_IOS`), so `shader3d.glsl.h`, `pixelArt3d.glsl.h` and `gpuCopy.glsl.h` carry a GL core
+list (`LANGS`, read from `SHDC_LANGUAGES` in `src/shader/program.ms`), so `shader3d.glsl.h`, `pixelArt3d.glsl.h` and `gpuCopy.glsl.h` carry a GL core
 program for every declared key; sokol-shdc's `--ifdef` output keeps each backend's text behind its
 own define, so other backends compile nothing more. Every array the headers held before is
 byte-identical (an array-by-array diff); only glsl430 arrays were added. The backend differences the
