@@ -4572,6 +4572,37 @@ Text shares **one** glyph layer with void2d — see [VOID2D.md → Text design](
 - **3D-text consumer = billboard or text-mesh.** Start with billboard; mesh only if a use case demands it.
 - **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected. void2d's SDF page kind and shader ramp exist behind `-d:voidSdfText`; the void3d program, the glyph-layer import and flat world text are deferred by name, each with its reopening condition, in [VOID2D.md](VOID2D.md) P6 "Deferred out of P6".
 
+### Graphics3D: default screen-line CPU encoding only
+
+`graphics3d.ms` ports default `h3d.scene.Graphics` (`is3D=false`) **CPU input encoding**, not
+rendering: four coincident roots, endpoint delta in NORMAL, UV corners, per-segment RGBA,
+primary index connectivity and centerline endpoint bounds. `width` is global for the whole
+mesh: later positive `lineStyle` changes it for all segments; nonpositive sizes retain it.
+Clear retains cursor/style. The safe constructor explicitly initializes the black style,
+equivalent to reference construction followed by `lineStyle()`, not uninitialized channels.
+
+**Not ordinary LitTextured geometry.** The existing 12-float storage is reused, but normals
+contain directions and positions do not yet contain expanded corners/endpoints. Do not draw
+it with Lit, recompute its normals, or claim triangle picking from those coincident roots.
+Heaps `LineShader.hx` supplies endpoint extension and pixel/depth-dependent expansion.
+That program is not implemented here yet. `is3D=true` world-width XY-plane miter is a separate
+future row; no world-width substitute, h2d rectangle or filled polygon was added.
+
+Actual missing-module exit1 precedes implementation. Native **308/308**, CLIJS **70/70**,
+actual Heaps **13/13**, **117 fields Haxe/C/JS exactly equal**. Coverage includes all four
+UV corners, directions, color/alpha, indices, bounds, chain/move breaks, global width,
+nonpositive style sizes, clear, signed float colors and finite zero-length encoding.
+The separate wide-index test uses MeshData promotion beyond 65K; it does not claim Heaps'
+BigPrimitive batch behavior there. Zero-length CPU encoding is not GPU normalization proof.
+
+The actual Heaps Graphics writes through captured BigPrimitive, with only GPU `flush`
+intercepted. Three reference files byte-equal between inspected/executed checkouts. SDK
+`afcd22f19` unchanged. `out/m6Graphics3d*Afcd22f1920261021Retry{1,2}*` and kept
+`out/tmp/graphics3d/oracleRetry1/` contain receipts; initial void-Result constructor type
+errors are retained, corrected to existing `Result.ok(null)` idiom. Retry2 adds only shape
+unit coverage; production/oracle inputs and prior 13-case evidence are unchanged.
+No shader/program/ABI, whole-index, gate3d, GPU, web or land acceptance for this CPU stage.
+
 ### Trail: CPU history and ribbon checkpoint
 
 Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
