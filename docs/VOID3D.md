@@ -3914,6 +3914,47 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### CPU UV0 scaling: slot/reference proof, JS picker held
+
+`meshData.ms::scaleUvs` extends the same interleaved CPU writer used for position baking.
+Primary Heaps `b9aa6dcb`, `h3d/prim/Polygon.hx::uvScale`, rejects missing UVs and scales
+shared UV objects once through an identity map. Void stores a separate value slot per
+vertex, so each UV0 slot is updated once; equal values are not deduplicated. Like that
+reference operation, normals/tangents/other attributes stay unchanged; this is not tangent
+regeneration or a new material transform policy. Secondary Bevy `157e1ce6`,
+`bevy_mesh/src/mesh.rs::ATTRIBUTE_UV_0/try_attribute_mut`, supplies Float32x2 attribute editing;
+no dedicated UV-scale helper was found or executed there. No extra UV sets or GPU upload.
+
+Actual red: **3 missing-API/type diagnostics**, exit1 before codegen. With `0455905f`, native
+new suite **304/304**, shared translation **304/304**, MeshData **361/361**, Pick **329/329**,
+all0. JS new suite **65pass/1fail (66)**: its separate36-case signed/zero-factor, layout,
+skin and index-storage slot matrix passes, as do failure guards; only real CPU picked-UV
+consumer fails on the already parked `interpolateUv` stride TDZ. The top-level mutating
+assertion also retains rich-assert's copied-ref emission, currently masked by that stride
+error before UV comparison. Both compiler cards name the site; neither call moved outside
+assert nor the original stride local was renamed. Test remains in the existing index.
+
+Existing oracle runner: actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0,
+**3/3 AGREES**, tolerance0. C/JS/Heaps **3rows/27 named fields exactly equal**, separately
+compared. `tests/oracle/meshUvScale3d.cases` uses shared UV objects in the real reference,
+then compares getCPUBuffer UV values and retained normal/tangent/index samples with the
+actual packed writer. It is not whole-buffer, rendered-normal-map or GPU equivalence.
+Three relevant source files byte-match across pins. Binary/support `b1f63337f`, source tree
+`e81c096e78bc94ac8a3364920418183c98ccc3d1`.
+
+`src/test/meshUvScaleCheck.ms` owns preservation, picking and atomic/error pins. Its UV-only
+writes leave position bounds unchanged; preflight rejects missing UVs, malformed storage,
+nonfinite factors and unrepresentable targets before publishing any mutation. The existing
+coordinate-range helper now serves XYZ and UV consumers, hence the translation regression
+check. This is behavior coverage, not a float-precision or performance campaign.
+
+Receipts `out/m6MeshUvScale{Red,Heaps,RedReference}B1f63337f20261021.{log,exit}` and
+`out/m6MeshUvScale{Tests,JsTests,Translation,MeshData,Pick,Oracle,Js}GreenB1f63337f20261021`.
+Aggregate Green is1 because JS picker fails; arithmetic/reference checks are0. Exact field
+audit `out/m6MeshUvScaleCrossBackendB1f63337f20261021.log`; actual test ESM preserved at
+`out/tmp/meshUvScaleJsCapture/unit.emitted.js`. No SDK/compiler/vendor edits, source-level
+workaround, full JS-consumer, GPU/browser/full-index/performance or full-stack acceptance.
+
 ### Mesh position baking: native/reference checkpoint, JS consumers held
 
 `meshData.ms::translate` extends the existing CPU geometry-writer idiom, not node placement
