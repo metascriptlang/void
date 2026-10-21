@@ -96,6 +96,8 @@ export enum MeshError {
 	VertexStorage,
 	TranslationOffset,
 	PositionRange,
+	UvScaleParameters,
+	UvRange,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -499,7 +501,7 @@ function orthogonalTangent(normal: Vec3, tangent: Vec3): Vec3 {
 
 const FLOAT32_MAX: float64 = 3.4028234663852886e38;
 
-function positionInRange(value: float64): boolean {
+function coordinateInRange(value: float64): boolean {
 	return value >= -FLOAT32_MAX && value <= FLOAT32_MAX;
 }
 
@@ -515,7 +517,7 @@ export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshEr
 		const x: float64 = (data.vertices[at] as float64) + (offset.x as float64);
 		const y: float64 = (data.vertices[at + 1] as float64) + (offset.y as float64);
 		const z: float64 = (data.vertices[at + 2] as float64) + (offset.z as float64);
-		if (!positionInRange(x) || !positionInRange(y) || !positionInRange(z)) {
+		if (!coordinateInRange(x) || !coordinateInRange(y) || !coordinateInRange(z)) {
 			return Result.err(MeshError.PositionRange);
 		}
 	}
@@ -527,6 +529,29 @@ export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshEr
 			((data.vertices[at + 2] as float64) + (offset.z as float64)) as float32;
 	}
 	recomputeBounds(data);
+	return Result.ok(null);
+}
+
+export function scaleUvs(ref data: MeshData, su: float32, sv: float32): Result<void, MeshError> {
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!Number.isFinite(su) || !Number.isFinite(sv)) {
+		return Result.err(MeshError.UvScaleParameters);
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		const u: float64 = (data.vertices[at + 6] as float64) * (su as float64);
+		const v: float64 = (data.vertices[at + 7] as float64) * (sv as float64);
+		if (!coordinateInRange(u) || !coordinateInRange(v)) {
+			return Result.err(MeshError.UvRange);
+		}
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		data.vertices[at + 6] = ((data.vertices[at + 6] as float64) * (su as float64)) as float32;
+		data.vertices[at + 7] = ((data.vertices[at + 7] as float64) * (sv as float64)) as float32;
+	}
 	return Result.ok(null);
 }
 
