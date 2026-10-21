@@ -16,6 +16,16 @@ export struct CameraProjection = match (kind: ProjectionKind) {
 	ProjectionKind.Perspective => { fovY: float32 },
 };
 
+export function `==`(this a: CameraProjection, b: CameraProjection): boolean {
+	if (a.kind == ProjectionKind.Perspective && b.kind == ProjectionKind.Perspective) {
+		return a.fovY == b.fovY;
+	}
+	if (a.kind == ProjectionKind.Orthographic && b.kind == ProjectionKind.Orthographic) {
+		return a.worldPerTexel == b.worldPerTexel && a.snap == b.snap;
+	}
+	return false;
+}
+
 export struct Camera3D {
 	position: Vec3;
 	yaw: float32;
