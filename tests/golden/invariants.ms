@@ -84,7 +84,7 @@ function filteredTextMatchesPlain(): int32 {
 	const shift: int32 = Math.floor(FILTERED_TEXT_SHIFT * FILTERED_TEXT_DPI) as int32;
 	const width: int32 = (FILTERED_TEXT_W * FILTERED_TEXT_DPI) as int32;
 	const x1: int32 = Math.min(x0 + width, voidPngWidth(SLOT));
-	const y1: int32 = y0 + (FILTERED_TEXT_H * FILTERED_TEXT_DPI) as int32;
+	const y1: int32 = y0 + ((FILTERED_TEXT_H * FILTERED_TEXT_DPI) as int32);
 	if (y1 + shift > voidPngHeight(SLOT)) {
 		console.log(`FAIL ${FILTERED_TEXT_SCENE}: the filtered copy runs off the capture`);
 		return 1;

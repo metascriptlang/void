@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Void web views — start, stop, start again</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; }
+  canvas { position: absolute; top: 0; width: 200px; height: 200px; }
+</style>
+</head>
+<body>
+<script>
+  // scripts/webViews.mjs drives this page: it starts and stops views through Module.voidStart and
+  // reads their pixels from a screenshot. Every animation frame the page asks for is counted, so
+  // a stopped view that keeps its loop shows up.
+  window.rafCalls = 0;
+  const request = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (callback) => { window.rafCalls++; return request(callback); };
+  window.place = (id, left) => {
+    const canvas = document.createElement('canvas');
+    canvas.id = id;
+    canvas.style.left = left + 'px';
+    document.body.appendChild(canvas);
+    return canvas;
+  };
+  window.Module = { onVoidReady: () => { window.voidReady = true; } };
+</script>
+<script src="webViews.js"></script>
+</body>
+</html>

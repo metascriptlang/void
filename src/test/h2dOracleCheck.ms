@@ -1,7 +1,7 @@
 import { readFile } from "std/fs";
 import { JsonValue } from "std/serialize/json/types";
-import { add, paint, setScaleMode, sceneViewMatrix } from "../void2d/scene";
-import { Scene2D, NodeRef, TileCell } from "../void2d/node";
+import { add, paint, setScaleMode, sceneViewMatrix, close } from "../void2d/scene";
+import { Scene2D, NodeRef, TileCell, addChild, setPosition } from "../void2d/node";
 import { getBounds } from "../void2d/render";
 import { frameEnd } from "../void2d/draw";
 import {
@@ -104,6 +104,22 @@ function pendingIds(): string {
 	return text.ok ? text.value : "";
 }
 
+function boundsAgree(name: string, nodes: Vec<NodeRef>, results: JsonValue): boolean {
+	let same: boolean = true;
+	for (let k: int32 = 0; k < (nodes.length as int32); k++) {
+		let b: Bounds2D = emptyBounds();
+		nodes[k].getBounds(b);
+		const oracle = results.at(k).getDynamicField("bounds");
+		const where: string = `${name} node ${k} getBounds`;
+		const x0: boolean = agree(where, oracle, 0, b.xMin);
+		const y0: boolean = agree(where, oracle, 1, b.yMin);
+		const x1: boolean = agree(where, oracle, 2, b.xMax);
+		const y1: boolean = agree(where, oracle, 3, b.yMax);
+		if (!(x0 && y0 && x1 && y1)) { same = false; }
+	}
+	return same;
+}
+
 test "h2d's getBounds, localToGlobal and globalToLocal, over Heaps compiled to JS" {
 	const text = readFile(ORACLE_PATH);
 	assert text.ok;
@@ -133,20 +149,11 @@ test "h2d's getBounds, localToGlobal and globalToLocal, over Heaps compiled to J
 			if (!agreePoint(`${where} globalToLocal(20,30)`, r.getDynamicField("local"),
 				nodes[k].globalToLocal(vec2(20.0, 30.0)))) { same = false; }
 		}
+		if (!boundsAgree(`${name} before a frame`, nodes, results)) { same = false; }
 		s.paint(VIEW_W, VIEW_H, 1.0);
 		frameEnd();
 		s.clearChanges();
-		for (let k: int32 = 0; k < (nodes.length as int32); k++) {
-			let b: Bounds2D = emptyBounds();
-			nodes[k].getBounds(b);
-			const oracle = results.at(k).getDynamicField("bounds");
-			const where: string = `${name} node ${k} getBounds`;
-			const x0: boolean = agree(where, oracle, 0, b.xMin);
-			const y0: boolean = agree(where, oracle, 1, b.yMin);
-			const x1: boolean = agree(where, oracle, 2, b.xMax);
-			const y1: boolean = agree(where, oracle, 3, b.yMax);
-			if (!(x0 && y0 && x1 && y1)) { same = false; }
-		}
+		if (!boundsAgree(name, nodes, results)) { same = false; }
 		const listed: boolean = pending.includes(`| h2d:${name} |`);
 		if (same) { agreeing = agreeing + 1; }
 		if (same && listed) {
@@ -221,4 +228,21 @@ test "h2d's scale modes map the scene onto the window as checkResize does" {
 		`compared`);
 	assert unlisted == 0;
 	assert graduated == 0;
+}
+
+test "getBounds after a move answers before the next frame, as Heaps' syncPos does" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const parent = s.group().setPosition(10.0, 20.0);
+	s.add(parent);
+	const child = s.rect(4.0, 6.0, rgba(1.0, 1.0, 1.0, 1.0)).setPosition(5.0, 7.0);
+	parent.addChild(child);
+	s.paint(VIEW_W, VIEW_H, 1.0);
+	frameEnd();
+	s.clearChanges();
+	parent.setPosition(30.0, 40.0);
+	let b: Bounds2D = emptyBounds();
+	child.getBounds(b);
+	assert b.xMin == 35.0 && b.yMin == 47.0 && b.xMax == 39.0 && b.yMax == 53.0,
+		`${b.xMin} ${b.yMin} ${b.xMax} ${b.yMax}`;
+	s.close();
 }

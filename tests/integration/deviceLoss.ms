@@ -36,7 +36,7 @@ const s: Scene2D = Scene2D.create(CLEAR);
 let stage: int32 = 0;
 let firstGeneration: int32 = 0;
 let hookCalls: int32 = 0;
-let decoys: Vec<Texture> = new Array(0);
+let decoys: Vec<Texture> = [];
 
 function colourPagesBuilt(): boolean {
 	when (voidColourEmoji) { return true; } else { return false; }

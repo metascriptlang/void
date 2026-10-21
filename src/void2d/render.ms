@@ -1394,7 +1394,7 @@ export function snappedShift(v: float32, scale: float32): float32 {
 }
 
 function localShift(s: Scene2D, i: int32, scale: float32): Vec2 {
-	const by: Vec2 = scopeShift(s, i);
+	const by: Vec2 = scopeShift(s, i, s.worlds[i]);
 	return vec2(snappedShift(by.x, scale), snappedShift(by.y, scale));
 }
 
@@ -1486,7 +1486,7 @@ when (debug) {
 			const c: int32 = s.children[parent][k];
 			if (!s.orders[c].visible) { continue; }
 			let b: Bounds2D = emptyBounds();
-			shiftedBounds(s, c, b, vec2(0.0, 0.0), true, false);
+			shiftedBounds(s, c, b, vec2(0.0, 0.0), true, false, s.worlds[c]);
 			if (b.xMax <= b.xMin || b.yMax <= b.yMin) { continue; }
 			overlapRows.push(c);
 			overlapBoxes.push(b);
@@ -1989,20 +1989,38 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 		rgba(1.0, 1.0, 1.0, na), blend);
 }
 
-function scopeShift(s: Scene2D, i: int32): Vec2 {
+function scopeShift(s: Scene2D, i: int32, world: Transform2D): Vec2 {
 	const sc: Scroll2D = s.scrolls[s.payloads[i]];
-	return vec2(-sc.x * s.worlds[i].a, -sc.y * s.worlds[i].d);
+	return vec2(-sc.x * world.a, -sc.y * world.d);
+}
+
+// The world a query sees: composed from the live locals as syncOrder composes them, so a bounds
+// query before a frame answers as Heaps' getBounds does after its syncPos (h2d/Object.hx:146,
+// 631 at 25f9a88f). It leaves s.worlds alone: descend reads a world that differs from the cached
+// one as a move to repaint.
+function liveWorld(s: Scene2D, i: int32): Transform2D {
+	const up: int32 = s.parents[i];
+	if (up != NO_NODE_2D) { return s.childWorldOf(up, liveWorld(s, up)) * s.localMatrices[i]; }
+	if (i == s.root) { return s.viewMat * s.localMatrices[i]; }
+	return s.localMatrices[i];
+}
+
+function childWorldFor(
+	s: Scene2D, i: int32, child: int32, world: Transform2D, query: boolean,
+): Transform2D {
+	if (!query) { return s.worlds[child]; }
+	return s.childWorldOf(i, world) * s.localMatrices[child];
 }
 
 function boundsRow(s: Scene2D, i: int32, ref out: Bounds2D): void {
-	shiftedBounds(s, i, out, vec2(0.0, 0.0), false, false);
+	shiftedBounds(s, i, out, vec2(0.0, 0.0), false, false, s.worlds[i]);
 }
 
 function shiftedBounds(
 	s: Scene2D, i: int32, ref out: Bounds2D, shift: Vec2, scoped: boolean, query: boolean,
+	world: Transform2D,
 ): void {
 	const lb = localBounds(s, i, query);
-	const world = s.worlds[i];
 	if (scoped && s.kinds[i] === DrawKind.Mask) {
 		maskedBounds(s, i, out, shift, lb, world, query);
 		return;
@@ -2024,12 +2042,15 @@ function shiftedBounds(
 	}
 	let inner: Vec2 = shift;
 	if (scoped && s.scrollScope(i)) {
-		const by: Vec2 = scopeShift(s, i);
+		const by: Vec2 = scopeShift(s, i, world);
 		inner = vec2(shift.x + by.x, shift.y + by.y);
 	}
 	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 		const child: int32 = s.children[i][k];
-		if (s.orders[child].visible) { shiftedBounds(s, child, out, inner, scoped, query); }
+		if (s.orders[child].visible) {
+			const childWorld: Transform2D = childWorldFor(s, i, child, world, query);
+			shiftedBounds(s, child, out, inner, scoped, query, childWorld);
+		}
 	}
 }
 
@@ -2039,13 +2060,16 @@ function maskedBounds(
 ): void {
 	let inner: Vec2 = shift;
 	if (s.scrollScope(i)) {
-		const by: Vec2 = scopeShift(s, i);
+		const by: Vec2 = scopeShift(s, i, world);
 		inner = vec2(shift.x + by.x, shift.y + by.y);
 	}
 	let content: Bounds2D = emptyBounds();
 	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 		const child: int32 = s.children[i][k];
-		if (s.orders[child].visible) { shiftedBounds(s, child, content, inner, true, query); }
+		if (s.orders[child].visible) {
+			const childWorld: Transform2D = childWorldFor(s, i, child, world, query);
+			shiftedBounds(s, child, content, inner, true, query, childWorld);
+		}
 	}
 	const mtl = vec2(lb.xMin, lb.yMin) * world;
 	const mtr = vec2(lb.xMax, lb.yMin) * world;
@@ -2074,7 +2098,7 @@ export function getBounds(this n: NodeRef, ref out: Bounds2D): void {
 	let up: int32 = s.parents[i];
 	while (up != NO_NODE_2D) {
 		if (s.scrollScope(up)) {
-			const by: Vec2 = scopeShift(s, up);
+			const by: Vec2 = scopeShift(s, up, liveWorld(s, up));
 			shift = vec2(shift.x + by.x, shift.y + by.y);
 		}
 		top = up;
@@ -2082,9 +2106,10 @@ export function getBounds(this n: NodeRef, ref out: Bounds2D): void {
 	}
 	if (top == s.root) { shift = vec2(shift.x + s.viewShift.x, shift.y + s.viewShift.y); }
 	out = emptyBounds();
-	shiftedBounds(s, i, out, shift, true, true);
+	const world: Transform2D = liveWorld(s, i);
+	shiftedBounds(s, i, out, shift, true, true, world);
 	if (out.xMax <= out.xMin || out.yMax <= out.yMin) {
-		const origin: Vec2 = vec2(0.0, 0.0) * ownWorld(s, i);
+		const origin: Vec2 = vec2(0.0, 0.0) * ownWorld(s, i, world);
 		out = {
 			xMin: origin.x + shift.x, yMin: origin.y + shift.y,
 			xMax: origin.x + shift.x, yMax: origin.y + shift.y,
@@ -2129,10 +2154,10 @@ export function hitTest(this n: NodeRef, p: Vec2): boolean {
 		local.x >= lb.xMin && local.x <= lb.xMax && local.y >= lb.yMin && local.y <= lb.yMax;
 }
 
-function ownWorld(s: Scene2D, i: int32): Transform2D {
+function ownWorld(s: Scene2D, i: int32, world: Transform2D): Transform2D {
 	const by: Vec2 = s.ownScroll(i);
-	if (by.x == 0.0 && by.y == 0.0) { return s.worlds[i]; }
-	return s.worlds[i] * trs2d(-by.x, -by.y, 0.0, 1.0, 1.0);
+	if (by.x == 0.0 && by.y == 0.0) { return world; }
+	return world * trs2d(-by.x, -by.y, 0.0, 1.0, 1.0);
 }
 
 function shapedPayload(n: NodeRef, call: string): int32 {

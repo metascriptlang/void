@@ -6,7 +6,7 @@ A host that owns the window and the frame clock (Ion on Windows and macOS, a Rea
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
 reaches them through `src/sokol/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
 `src/sokol/views.c`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
-`bridgeIos.m`, `bridgeEmbed.m` (macOS) and `bridgeAndroid.c`.
+`bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser).
 
 The split follows `neon/docs/VISION.md` "Many Void areas in one app": the device, pipelines,
 shaders, glyph atlas and textures exist once per process, and each view owns its surface, its
@@ -86,6 +86,33 @@ the `IDXGISwapChain1*` on Windows, and the host adds it to its own layer tree. `
 pixels. `tests/integration/macViews.ms` creates both and checks sizes, resize and destroy, with no
 pixel readback because the Metal capture path is a stub.
 
+## Web: a view per canvas
+
+`bridgeWeb.c` follows `bridgeWin.c` too: the sokol_app canvas (`voidRun`) and the host-view
+driver share one document, and the first chooses. A page does not call `viewCreate` itself.
+The entry calls `embedRegister` (`gpu.wms`), which also defines `Module.voidStart(canvas)`; that
+starts a view on the canvas and returns its `stop`. A page may start and stop views any number
+of times in one document, as a Neon route does when it is left and entered again.
+
+The shape is React Three Fiber's (d604b18): one runtime per document, one root per canvas
+(`core/root.tsx:31,235-260`), one animation-frame loop over the live roots that cancels itself
+when none is left (`core/loop.ts:95-130`), and an unmount that disposes the renderer and forces
+its context lost (`core/renderer.ts:22-42`). Emscripten's `MODULARIZE` was rejected: it builds a
+second runtime per mount, which none of R3F, Three.js or Heaps does.
+
+- The canvas reaches C as an id. `voidStart` registers it in emscripten's `specialHTMLTargets`
+  under `#void-view-<id>`, the selector both the WebGPU surface and the WebGL2 context resolve.
+- WebGPU: one device for the document, requested by `voidStart` into
+  `Module.preinitializedWebGPUDevice` unless the page put one there, and read by
+  `emscripten_webgpu_get_device()` (emdawnwebgpu `library_webgpu.js:650`). Each view configures
+  its own canvas surface; `stop` unconfigures it.
+- WebGL2: a context belongs to its canvas, so the device is the one live view's context, and a
+  second live view aborts by name. `stop` shuts sokol down, calls
+  `WEBGL_lose_context.loseContext()` and destroys the context. The next view sets sokol up on its
+  own context and bumps the GPU generation, as Android's context restore does
+  (`bridgeAndroid.c` `restore_context`): `contextGeneration()` owners drop their old ids.
+- The view's pixel size follows the canvas's CSS size times `devicePixelRatio`, read every frame.
+
 ## What proves it
 
 - `tests/integration/twoViews.ms` in the gate: two windowless views (480×300 at scale 1.0,
@@ -105,7 +132,20 @@ pixel readback because the Metal capture path is a stub.
   frame stayed on the window's edges. On the window-root API it builds (msc v0.3.4, BUILD
   `5631dd3e5`, ion `b9b5e8b`, 2026-10-16) and has not been run.
 
+- `sh scripts/webViews.sh` builds `src/examples/webViews.ms` for WebGPU and WebGL2 and runs
+  `tests/web/views.html` in headless Chrome: a view started, stopped, then started on a second
+  canvas. Each view must show its clear colour in a screenshot, and each stop must leave no
+  animation frame requested in 300 ms and the canvas context released (WebGL2 `isContextLost()`,
+  WebGPU `getCurrentTexture()` throwing). 12 of 12 passed on 2026-10-20 (msc BUILD `177f04c27`,
+  emscripten 5.0.5, Chrome 155 on macOS). Headless Chrome on macOS hands out neither WebGL2 nor a
+  WebGPU adapter except on SwiftShader, so the run uses it, and SwiftShader takes seconds to hand
+  out the WebGPU device. With `stop` no longer destroying the view, 5 checks went red.
+
 Not verified:
+
+- A view that draws more than a clear across a WebGL2 restart. The web test's views only clear,
+  so the GPU-generation rebuild of void2d and void3d resources after a second WebGL2 setup is
+  covered only by the Android context-loss path.
 
 - A live DPI change. This box has one monitor at 96 DPI. The scale path is covered only by
   `twoViews` at 1.25 and 1.5.
