@@ -13,6 +13,7 @@
 #include "views.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
+#include "androidApp.h"
 
 static EGLDisplay g_dpy = EGL_NO_DISPLAY;
 static EGLContext g_ctx = EGL_NO_CONTEXT;
@@ -198,10 +199,9 @@ void voidGfxSetup(void) {
 	if (!doorValid()) voidFail("gfxSetup before voidViewCreate made the EGL context");
 }
 
-int voidFbWidth(void) { return voidViewsFbWidth(); }
-int voidFbHeight(void) { return voidViewsFbHeight(); }
-void voidRequestedSize(int *w, int *h) { *w = 0; *h = 0; }
-float voidDpiScale(void) { return voidViewsDpiScale(); }
+int voidFbWidth(void) { return voidAndroidAppFbWidth(); }
+int voidFbHeight(void) { return voidAndroidAppFbHeight(); }
+float voidDpiScale(void) { return voidAndroidAppDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
 
 // The screen pass draws into the current view's EGL surface, which is framebuffer 0 on GL and

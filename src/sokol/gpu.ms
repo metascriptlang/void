@@ -38,6 +38,8 @@ when (windows && voidGlCore) {
 
 when (android) {
 	@compile("./bridgeAndroid.c");
+	@compile("./bridgeAndroidApp.c");
+	@compile("./appWindow.c");
 	@compile("./views.c");
 	@compile("./bridge.c");
 	@passL("-lEGL");
