@@ -435,7 +435,7 @@ function shapesAlike(stored: Readonly<Span<TextRun>>, runs: Readonly<Span<TextRu
 
 export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): boolean {
 	const entry: LabelText = labelTexts[index];
-	const reshapes: boolean = !shapesAlike(entry.runs, runs);
+	const reshapes: boolean = entry.reshape || !shapesAlike(entry.runs, runs);
 	let kept: Vec<TextRun> = new Array(0);
 	for (const run of runs) { kept.push(run); }
 	entry.runs = kept;

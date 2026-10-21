@@ -180,6 +180,63 @@ function plainRun(len: int32): TextRun {
 	};
 }
 
+function shapedFourRuns(): int32 {
+	const index = shaped("abcdefgh");
+	setLabelRuns(index, [plainRun(2), plainRun(2), plainRun(2), plainRun(2)]);
+	shapeLabel(index, "abcdefgh", labelTexts[index].style);
+	return index;
+}
+
+test "pending reshape survives four runs becoming three and an alike update" {
+	const index = shapedFourRuns();
+	const entry = labelTexts[index];
+	const blue = rgba(0.0, 0.0, 1.0, 1.0);
+	const runs: TextRun[] = [plainRun(3), plainRun(3), { ...plainRun(2), background: blue }];
+	assert setLabelRuns(index, runs);
+	assert setLabelRuns(index, runs);
+	assert entry.reshape && entry.layout.glyphs[7].run == 3;
+	shapeLabel(index, "abcdefgh", entry.style);
+	assert !entry.reshape && entry.layout.glyphs[7].run == 2;
+	assert (entry.decorations.length as int32) == 1;
+	assert entry.decorations[0].color == blue;
+	assert entry.decorations[0].x == entry.layout.glyphs[6].x;
+	releaseLabelText(index);
+}
+
+test "pending reshape survives four runs becoming two then three and an alike update" {
+	const index = shapedFourRuns();
+	const entry = labelTexts[index];
+	assert setLabelRuns(index, [plainRun(4), plainRun(4)]);
+	const runs: TextRun[] = [plainRun(3), plainRun(3), plainRun(2)];
+	assert setLabelRuns(index, runs);
+	assert setLabelRuns(index, runs);
+	assert entry.reshape && entry.layout.glyphs[7].run == 3;
+	shapeLabel(index, "abcdefgh", entry.style);
+	assert !entry.reshape;
+	assert entry.layout.glyphs[2].run == 0 && entry.layout.glyphs[3].run == 1;
+	assert entry.layout.glyphs[5].run == 1 && entry.layout.glyphs[6].run == 2;
+	assert entry.layout.glyphs[7].run == 2;
+	releaseLabelText(index);
+}
+
+test "an alike run update after reshaping stays paint only" {
+	const index = shapedFourRuns();
+	const entry = labelTexts[index];
+	assert setLabelRuns(index, [plainRun(3), plainRun(3), plainRun(2)]);
+	shapeLabel(index, "abcdefgh", entry.style);
+	const lookups: uint32 = glyphLookups();
+	const blue = rgba(0.0, 0.0, 1.0, 1.0);
+	const runs: TextRun[] = [{ ...plainRun(3), background: blue }, plainRun(3), plainRun(2)];
+	assert !setLabelRuns(index, runs);
+	assert !entry.reshape && glyphLookups() == lookups;
+	assert entry.layout.glyphs[7].run == 2;
+	assert (entry.decorations.length as int32) == 1;
+	assert entry.decorations[0].color == blue;
+	assert approx(entry.decorations[0].w,
+		entry.layout.glyphs[2].x + entry.layout.glyphs[2].advance - entry.layout.glyphs[0].x);
+	releaseLabelText(index);
+}
+
 test "run decorations: a background fills the line box, lines sit on the face's metrics" {
 	const index = allocateLabelText();
 	const runs: TextRun[] = [
