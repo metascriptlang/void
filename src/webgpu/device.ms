@@ -92,6 +92,8 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function size(this self: GPUBuffer): int64 { return backend.bufferSize(self); }
 @inline export function width(this self: GPUTexture): int32 { return backend.textureWidth(self); }
 @inline export function height(this self: GPUTexture): int32 { return backend.textureHeight(self); }
+@inline export function usage(this self: GPUTexture): int32 { return backend.textureUsage(self); }
+@inline export function format(this self: GPUTexture): GPUTextureFormat { return backend.textureFormat(self); }
 @inline export function texture(this self: GPUTextureView): GPUTexture { return backend.viewTexture(self); }
 
 @inline export function writeBuffer<T>(this self: GPUQueue, buffer: GPUBuffer, bufferOffset: int64, data: Readonly<Span<T>>): void {

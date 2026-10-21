@@ -935,6 +935,8 @@ export function destroyTexture(texture: GPUTexture): void {
 
 export function textureWidth(texture: GPUTexture): int32 { return textures[textureIndex(texture.id)].width; }
 export function textureHeight(texture: GPUTexture): int32 { return textures[textureIndex(texture.id)].height; }
+export function textureUsage(texture: GPUTexture): int32 { return textures[textureIndex(texture.id)].usage; }
+export function textureFormat(texture: GPUTexture): GPUTextureFormat { return textures[textureIndex(texture.id)].format; }
 
 export function nativeTexture(texture: GPUTexture): Ptr<void> {
 	return d3dTextureNative(textures[textureIndex(texture.id)].native);
