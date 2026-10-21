@@ -102,6 +102,7 @@ function gltfCause(code: GltfError): string {
 		GltfError.UnsupportedSampler => "sampler filter or wrap is unsupported or incompatible",
 		GltfError.UnsupportedMaterial => "material property or texture combination is unsupported",
 		GltfError.MissingTexCoord => "textured material requires a valid TEXCOORD_0 attribute",
+		GltfError.NoImageDecoderOnJs => "embedded images cannot be decoded on the JS target",
 	};
 }
 
@@ -1075,7 +1076,8 @@ function matrixTransform(value: JsonValue): Result<GltfTransform, GltfError> {
 		}
 		scales.push(scale);
 		for (let component = 0; component < 3; component++) {
-			values[axis * 4 + component] /= scale;
+			const at: int32 = axis * 4 + component;
+			values[at] /= scale;
 		}
 	}
 	const scaleProduct: float32 = scales[0] * scales[1] * scales[2];
