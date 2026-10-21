@@ -1,0 +1,72 @@
+# lib: heaps format
+# haxe-prelude: class H {
+# haxe-prelude: public static var png =
+# haxe-prelude: "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNBAw"
+# haxe-prelude: + "NAAAR0sIeRPxYNAAAAAASUVORK5CYII=";
+# haxe-prelude: public static var jpg =
+# haxe-prelude: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+# haxe-prelude: + "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEB"
+# haxe-prelude: + "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAAR"
+# haxe-prelude: + "CAAIABADAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAABv/EABQQAQAAAAAAAAAAAAAA"
+# haxe-prelude: + "AAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAJCv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAM"
+# haxe-prelude: + "AwEAAhEDEQA/AD4rzYHCuBCO/9k=";
+# haxe-prelude: public static function image(payload: String, name: String): hxd.Pixels {
+# haxe-prelude: var bytes = haxe.crypto.Base64.decode(payload);
+# haxe-prelude: return hxd.res.Any.fromBytes(name,bytes).toImage().getPixels(hxd.PixelFormat.RGBA);
+# haxe-prelude: }
+# haxe-prelude: public static function c(p: hxd.Pixels, i: Int): Int {
+# haxe-prelude: return p.bytes.get(p.offset+i);
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { loadGltf, GltfData, GltfError } from "../../../src/void3d/gltf";
+# ms-prelude: const PNG: string =
+# ms-prelude: "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNBAw"
+# ms-prelude: + "NAAAR0sIeRPxYNAAAAAASUVORK5CYII=";
+# ms-prelude: const JPEG: string =
+# ms-prelude: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+# ms-prelude: + "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEB"
+# ms-prelude: + "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAAR"
+# ms-prelude: + "CAAIABADAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAABv/EABQQAQAAAAAAAAAAAAAA"
+# ms-prelude: + "AAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAJCv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAM"
+# ms-prelude: + "AwEAAhEDEQA/AD4rzYHCuBCO/9k=";
+# ms-prelude: function inlineData(payload: string,mime: string): Result<GltfData,GltfError> {
+# ms-prelude: const json = '{"asset":{"version":"2.0"},"scenes":[{}],"images":[{"uri":"data:'
+# ms-prelude: + mime + ';base64,' + payload + '"}],"textures":[{"source":0}],"materials":['
+# ms-prelude: + '{"alphaMode":"BLEND","pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}]}';
+# ms-prelude: return loadGltf(json,[]);
+# ms-prelude: }
+# ms-prelude: function channel(word: uint32,shift: uint32): float32 {
+# ms-prelude: return ((word >> shift) & (0xFF as uint32)) as float32;
+# ms-prelude: }
+
+case png-top tol=0
+haxe> var png = H.image(H.png,"inline.png");
+haxe> emit("png-top",[png.width,H.c(png,0),H.c(png,1),H.c(png,2),H.c(png,3),
+haxe> H.c(png,4),H.c(png,5),H.c(png,6),H.c(png,7)]);
+ms> const readPng = inlineData(PNG,"image/png"); if (!readPng.ok) { return 1; }
+ms> const p = readPng.value.textures[0];
+ms> emit9("png-top",p.width as float32,channel(p.pixels[0],0),channel(p.pixels[0],8),
+ms> channel(p.pixels[0],16),
+ms> channel(p.pixels[0],24),channel(p.pixels[1],0),channel(p.pixels[1],8),
+ms> channel(p.pixels[1],16),channel(p.pixels[1],24));
+
+case png-bottom tol=0
+haxe> emit("png-bottom",[png.height,H.c(png,8),H.c(png,9),H.c(png,10),H.c(png,11),
+haxe> H.c(png,12),H.c(png,13),H.c(png,14),H.c(png,15)]);
+ms> emit9("png-bottom",p.height as float32,channel(p.pixels[2],0),channel(p.pixels[2],8),
+ms> channel(p.pixels[2],16),channel(p.pixels[2],24),channel(p.pixels[3],0),
+ms> channel(p.pixels[3],8),channel(p.pixels[3],16),channel(p.pixels[3],24));
+
+case jpeg-size tol=0
+haxe> var jpeg = H.image(H.jpg,"inline.jpg");
+haxe> emit("jpeg-size",[jpeg.width,jpeg.height,jpeg.bytes.length/4]);
+ms> const readJpeg = inlineData(JPEG,"image/jpeg"); if (!readJpeg.ok) { return 1; }
+ms> const j = readJpeg.value.textures[0];
+ms> emit3("jpeg-size",j.width as float32,j.height as float32,j.pixels.length as float32);
+
+case jpeg-colours tol=2
+haxe> emit("jpeg-colours",[H.c(jpeg,0),H.c(jpeg,1),H.c(jpeg,2),
+haxe> H.c(jpeg,32),H.c(jpeg,33),H.c(jpeg,34),H.c(jpeg,508),H.c(jpeg,509),H.c(jpeg,510)]);
+ms> emit9("jpeg-colours",channel(j.pixels[0],0),channel(j.pixels[0],8),channel(j.pixels[0],16),
+ms> channel(j.pixels[8],0),channel(j.pixels[8],8),channel(j.pixels[8],16),
+ms> channel(j.pixels[127],0),channel(j.pixels[127],8),channel(j.pixels[127],16));
