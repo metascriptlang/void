@@ -118,25 +118,29 @@ later replaces the hand-written GLSL source of each base.
   (void2d's `fs` and `uiFs`) is checked through its helpers and pixel goldens, not as a whole. Runtime modules never
   call `glsl`, so no binary carries GLSL text.
 - **An app's own program is built while msc compiles it** (`shaderProgram` in `program.ms`, the
-  person's "viết → chạy", 2026-10-18). The statement splices three declarations: an `@emit` that
-  includes the generated header, the extern `<name>ShaderProgram()` defined in it, and `const
-  <name>: int32` initialized by `shaderBuild`, which writes `<name>.glsl` and runs sokol-shdc into
-  `.shaders/` beside the caller (gitignored, rewritten on every compile), then appends the door
-  registration. Its limits, each refused or stated: one program, so no `@feature` field in either
-  entry (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in
-  declaration order with no padding, `@builtin` inputs skipped; `float32`, `int32`, `uint32` and
-  their `./std` vectors only. A fragment without an input links to a vertex entry that writes no
-  varyings. A sokol-shdc that refuses or does not start stops the compile at the program's name,
-  never skips it: shdc's own message follows "shaderProgram '<name>': sokol-shdc exited N"
-  (`tests/refusals/shdcRefused.ms`, a block at `@binding(9)`); a missing binary says "did not
-  start" with the path it looked at (measured 2026-10-18, BUILD `4fe2a5eec`, a copy of `program.ms`
-  under `out/missingShdc/`, whose deps path does not exist; no pin, since it needs shdc gone).
-  Its first consumer is `tests/integration/forwardOutlineReference.ms`, drawn through
-  `src/gpu/draw.ms` (measured 2026-10-18, BUILD `4fe2a5eec`): D3D11 `forwardOutline` PASS at
-  framebuffer factor 1 and 2, 33 of 33 reference comparisons with 0 errors each; both emcc
-  backends build on attempt 1, so `std/process`'s module init links for the web, and
-  `scripts/web3d.sh` passes 27 of 27 on WebGL2 with the same partial and motion numbers as
-  native. WebGPU is built, not captured.
+  person's "viết → chạy", 2026-10-18). The statement splices one declaration, `const <name>:
+  int32`, initialized by `shaderBuild`: it writes `<name>.glsl`, runs sokol-shdc `-f bare_yaml`
+  into `.shaders/` beside the caller (gitignored, rewritten on every compile), and returns a call
+  of `shaderProgramRegister` on two literals, the target's `GPUShaderModuleDescriptor` (built as
+  `shaderModule` builds it) and a one-buffer `DoorLayout`, which registers them through
+  `doorRegisterLayouts` and `doorRegisterPrograms` of `src/gpu/doorGpu.ms`; no C, no `@emit`.
+  Attribute locations come from the reflection's `glsl430` program, matched by field name. Its
+  limits, each refused or stated: one program, so no `@feature` field in either entry
+  (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in declaration
+  order with no padding, `@builtin` inputs skipped; `float32` and its `./std` vectors only, since
+  `GPUVertexFormat` has no integer format (an `int32` or `uint32` field is refused at the statement,
+  `tests/refusals/programIntAttribute.ms`). A
+  fragment without an input links to a vertex entry that writes no varyings. A sokol-shdc that
+  refuses or does not start stops the compile at the program's name, never skips it: shdc's own
+  message follows "shaderProgram '<name>': sokol-shdc exited N" (`tests/refusals/shdcRefused.ms`,
+  a block at `@binding(9)`, measured on the door path 2026-10-22, BUILD `afcd22f19`); a missing
+  binary says "did not start" with the path it looked at (measured on the C path 2026-10-18,
+  BUILD `4fe2a5eec`, a copy of `program.ms` under `out/missingShdc/`; no pin, since it needs shdc
+  gone). `src/test/shaderProgramCheck.ms` reads the registered layout and masks back through
+  `src/gpu/door.ms`. Its first consumer, `tests/integration/forwardOutlineReference.ms`, builds
+  on the door path (2026-10-22, BUILD `afcd22f19`) and has not been drawn since; on the C path it
+  passed D3D11 `forwardOutline` at framebuffer factor 1 and 2, 33 of 33 reference comparisons,
+  and `scripts/web3d.sh` 27 of 27 on WebGL2 (2026-10-18, BUILD `4fe2a5eec`).
 - **A helper call costs a copy of each argument.** glslang passes every argument through a
   variable, and SPIRV-Cross prints it at each call (`highp vec4 param_1 = ui_params[1];`), where
   a GLSL builtin or code at the call site costs none. Neither shady nor TypeGPU inlines, so the

@@ -18,6 +18,7 @@ import { arch, execFileResult, platform } from "std/process";
 import { glsl, glslLinked } from "./emit";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
 import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
+import { DoorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
 
 const VOID_ROOT: string = @comptime {
 	return join(dirname(expansionFile()), "../..").replaceAll("\\", "/");
@@ -112,6 +113,11 @@ export function shaderModuleOf(descriptor: GPUShaderModuleDescriptor): GPUShader
 	return descriptor;
 }
 
+export function shaderProgramRegister(descriptor: GPUShaderModuleDescriptor, layout: DoorLayout): int32 {
+	const layoutId = doorRegisterLayouts([layout]);
+	return doorRegisterPrograms((index: int32): GPUShaderModuleDescriptor => descriptor, [layoutId]);
+}
+
 export macro vertexFormats(vertex: Node, fragment: Node): Node {
 	function refuseFeatures(fields: Node | null): void {
 		if (fields == null || fields.kind != NodeKind.TypeObject) { return; }
@@ -135,21 +141,20 @@ export macro vertexFormats(vertex: Node, fragment: Node): Node {
 	}
 	function formatOf(t: Node, at: Node): string {
 		const kind = typeKind(t);
-		if (kind == TypeKind.Float32) { return "FLOAT 4"; }
-		if (kind == TypeKind.Int32) { return "INT 4"; }
-		if (kind == TypeKind.Uint32) { return "UINT 4"; }
+		if (kind == TypeKind.Float32) { return "float32 4"; }
 		const impl = getTypeImpl(t);
-		if (sameType(impl, getTypeImpl(Vec2f))) { return "FLOAT2 8"; }
-		if (sameType(impl, getTypeImpl(Vec3f))) { return "FLOAT3 12"; }
-		if (sameType(impl, getTypeImpl(Vec4f))) { return "FLOAT4 16"; }
-		if (sameType(impl, getTypeImpl(Vec2i))) { return "INT2 8"; }
-		if (sameType(impl, getTypeImpl(Vec3i))) { return "INT3 12"; }
-		if (sameType(impl, getTypeImpl(Vec4i))) { return "INT4 16"; }
-		if (sameType(impl, getTypeImpl(Vec2u))) { return "UINT2 8"; }
-		if (sameType(impl, getTypeImpl(Vec3u))) { return "UINT3 12"; }
-		if (sameType(impl, getTypeImpl(Vec4u))) { return "UINT4 16"; }
-		error("shaderProgram: a vertex attribute is float32, int32, uint32 or a ./std vector " +
-			"of them", at);
+		if (sameType(impl, getTypeImpl(Vec2f))) { return "float32x2 8"; }
+		if (sameType(impl, getTypeImpl(Vec3f))) { return "float32x3 12"; }
+		if (sameType(impl, getTypeImpl(Vec4f))) { return "float32x4 16"; }
+		const integer = kind == TypeKind.Int32 || kind == TypeKind.Uint32 ||
+			sameType(impl, getTypeImpl(Vec2i)) || sameType(impl, getTypeImpl(Vec3i)) ||
+			sameType(impl, getTypeImpl(Vec4i)) || sameType(impl, getTypeImpl(Vec2u)) ||
+			sameType(impl, getTypeImpl(Vec3u)) || sameType(impl, getTypeImpl(Vec4u));
+		if (integer) {
+			error("shaderProgram: an int32 or uint32 vertex attribute has no GPUVertexFormat " +
+				"(src/webgpu/types.ms); take float32 or a ./std float vector", at);
+		}
+		error("shaderProgram: a vertex attribute is float32 or a ./std float vector of it", at);
 	}
 
 	refuseFamily(vertex);
@@ -179,59 +184,6 @@ export macro vertexFormats(vertex: Node, fragment: Node): Node {
 	return { kind: NodeKind.StringLiteral, line: vertex.line, column: vertex.column, value: text };
 }
 
-export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node): Node {
-	function written(path: string, text: string): void {
-		const result = writeFile(path, text);
-		if (!result.ok) { error("shaderProgram: cannot write " + path, name); }
-	}
-
-	const base = stringValue(name);
-	const dir = join(dirname(expansionFile()), ".shaders");
-	if (!ensureDir(dir).ok) { error("shaderProgram: cannot create " + dir, name); }
-	const source = join(dir, base + ".glsl");
-	const header = join(dir, base + ".glsl.h");
-	written(source, shaderSource(base, stringValue(vertex), stringValue(fragment)));
-	const shdc = shdcPath();
-	const run = execFileResult(shdc, ["-i", source, "-o", header, "-l", SHDC_LANGUAGES,
-		"-f", "sokol", "--ifdef", "--no-log-cmdline"]);
-	if (!run.started || run.exitCode != 0) {
-		error("shaderProgram '" + base + "': sokol-shdc " + (run.started ? "exited " +
-			String(run.exitCode) : "did not start") + "\n" + run.output + run.errorOutput +
-			"\n(" + shdc + " on " + source + ")", name);
-	}
-	let attributes = "";
-	let offset = 0;
-	for (const line of stringValue(formats).split("\n")) {
-		if (line == "") { continue; }
-		const parts = line.split(" ");
-		const slot = "layout.attrs[ATTR_" + base + "_" + parts[0] + "]";
-		attributes = attributes + "#ifdef ATTR_" + base + "_" + parts[0] + "\n" +
-			"\t" + slot + ".format = SG_VERTEXFORMAT_" + parts[1] + ";\n" +
-			"\t" + slot + ".offset = " + String(offset) + ";\n#endif\n";
-		offset += Number(parts[2]) as int32;
-	}
-	const reflected = readFile(header);
-	if (!reflected.ok) { error("shaderProgram: sokol-shdc wrote no " + header, name); }
-	written(header, reflected.value + "\nstatic int32_t " + base + "ShaderProgram(void) {\n" +
-		"\tsg_vertex_layout_state layout = {0};\n" +
-		"\tlayout.buffers[0].stride = " + String(offset) + ";\n" + attributes +
-		"\tconst int32_t layoutId = doorRegisterLayouts(&layout, 1);\n" +
-		"\tdoor_shader_fn shader = " + base + "_shader_desc;\n" +
-		"\treturn doorRegisterPrograms(&shader, &layoutId, 1);\n}\n");
-	return {
-		kind: NodeKind.CallExpr,
-		line: name.line,
-		column: name.column,
-		callee: {
-			kind: NodeKind.Identifier,
-			line: name.line,
-			column: name.column,
-			name: base + "ShaderProgram",
-		},
-		arguments: [],
-	};
-}
-
 export macro shaderProgram(name: Node, vertex: Node, fragment: Node): Node {
 	function literal(text: string): Node {
 		return { kind: NodeKind.StringLiteral, line: name.line, column: name.column, value: text };
@@ -252,47 +204,11 @@ export macro shaderProgram(name: Node, vertex: Node, fragment: Node): Node {
 		error("shaderProgram: the first argument names the program it declares", name);
 	}
 	const base = name.name;
-	const header = join(join(dirname(expansionFile()), ".shaders"), base + ".glsl.h")
-		.replaceAll("\\", "/");
-	const includes = "/*INCLUDESECTION*/#include \"" + VOID_ROOT + "/src/sokol/backend.h\"\n" +
-		"#include \"" + VOID_ROOT + "/src/gpu/door.h\"\n#include \"" + header + "\"";
 	return {
 		kind: NodeKind.SpliceMany,
 		line: name.line,
 		column: name.column,
 		spliceNodes: [
-			{
-				kind: NodeKind.ExprStmt,
-				line: name.line,
-				column: name.column,
-				expr: {
-					kind: NodeKind.MacroInvocation,
-					line: name.line,
-					column: name.column,
-					macroName: "emit",
-					macroArgs: [literal(includes)],
-					macroHasParens: true,
-				},
-			},
-			{
-				kind: NodeKind.FunctionDecl,
-				line: name.line,
-				column: name.column,
-				fnName: base + "ShaderProgram",
-				params: [],
-				fnParamTypes: [],
-				fnBody: {
-					kind: NodeKind.BlockStmt,
-					line: name.line,
-					column: name.column,
-					statements: [],
-				},
-				fnFlags: "extern",
-				fnReturnType: "int32",
-				fnDefaults: [],
-				nativeName: "",
-				nameLocation: { line: name.line, column: name.column },
-			},
 			{
 				kind: NodeKind.VariableDecl,
 				line: name.line,
@@ -304,6 +220,7 @@ export macro shaderProgram(name: Node, vertex: Node, fragment: Node): Node {
 					called(bindSym("glsl"), [vertex]),
 					called(bindSym("glslLinked"), [fragment, vertex]),
 					called(bindSym("vertexFormats"), [vertex, fragment]),
+					literal("shaderProgram"),
 				]),
 				declKind: DeclKind.Const,
 				nameLocation: { line: name.line, column: name.column },
@@ -312,7 +229,8 @@ export macro shaderProgram(name: Node, vertex: Node, fragment: Node): Node {
 	};
 }
 
-export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
+export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node, product: Node): Node {
+	const kind = stringValue(product);
 	function readReflection(lines: string[], cursor: int32[], indent: int32): Reflection {
 		const node = new Reflection();
 		while (cursor[0] < lines.length && indentOf(lines[cursor[0]]) == indent) {
@@ -320,7 +238,7 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 			const text = line.trim();
 			if (text == "-") { break; }
 			const colon = text.indexOf(":");
-			if (colon < 0) { error("shaderModule: no key in sokol-shdc reflection line '" + text + "'"); }
+			if (colon < 0) { error(kind + ": no key in sokol-shdc reflection line '" + text + "'"); }
 			const key = text.substring(0, colon);
 			const value = text.substring(colon + 1).trim();
 			cursor[0]++;
@@ -347,14 +265,14 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 
 	function scalar(node: Reflection, key: string): string {
 		const value = scalarOr(node, key, "\n");
-		if (value == "\n") { error("shaderModule: sokol-shdc reflection has no '" + key + "'"); }
+		if (value == "\n") { error(kind + ": sokol-shdc reflection has no '" + key + "'"); }
 		return value;
 	}
 
 	function stageSource(stage: Reflection): string {
 		const path = scalar(stage, "path");
 		const text = readFile(path);
-		if (!text.ok) { error("shaderModule: sokol-shdc wrote no " + path); }
+		if (!text.ok) { error(kind + ": sokol-shdc wrote no " + path); }
 		const body: string = text.value;
 		return body.replaceAll("\r", "");
 	}
@@ -363,14 +281,14 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 		const t = scalar(texture, "sample_type");
 		if (t == "float") { return "float"; }
 		if (t == "unfilterable_float") { return "unfilterable-float"; }
-		error("shaderModule: sample_type '" + t + "' has no WebGPU texture sample type here");
+		error(kind + ": sample_type '" + t + "' has no WebGPU texture sample type here");
 	}
 
 	function samplerTypeOf(sampler: Reflection): string {
 		const t = scalar(sampler, "sampler_type");
 		if (t == "filtering") { return "filtering"; }
 		if (t == "nonfiltering") { return "non-filtering"; }
-		error("shaderModule: sampler_type '" + t + "' has no WebGPU sampler binding type here");
+		error(kind + ": sampler_type '" + t + "' has no WebGPU sampler binding type here");
 	}
 
 	function targetLanguage(): string {
@@ -380,12 +298,12 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 		if (define("macos") != "") { return "metal_macos"; }
 		if (define("voidGlCore") != "" || define("linux") != "") { return "glsl430"; }
 		if (define("windows") != "") { return "hlsl5"; }
-		error("shaderModule: no sokol-shdc language for this build's target");
+		error(kind + ": no sokol-shdc language for this build's target");
 	}
 
 	function reflectedModule(yamlPath: string, language: string): ReflectedModule {
 		const text = readFile(yamlPath);
-		if (!text.ok) { error("shaderModule: sokol-shdc wrote no " + yamlPath); }
+		if (!text.ok) { error(kind + ": sokol-shdc wrote no " + yamlPath); }
 		const body: string = text.value;
 		const lines = body.replaceAll("\r", "").split("\n").filter((l) => l.trim() != "");
 		const root = readReflection(lines, [0], 0);
@@ -436,7 +354,7 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 					m.bindings.push(b);
 				}
 			}
-			if (m.bindings.length > 24) { error("shaderModule: a program has more than 24 bindings"); }
+			if (m.bindings.length > 24) { error(kind + ": a program has more than 24 bindings"); }
 			for (const a of childOf(p, "attrs").items) {
 				m.attributeSlots.push(Number(scalar(a, "slot")) as int32);
 				m.attributeNames.push(gl ? scalar(a, "glsl_name") : "");
@@ -444,7 +362,7 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 			}
 			return m;
 		}
-		error("shaderModule: sokol-shdc wrote no " + language + " program into " + yamlPath);
+		error(kind + ": sokol-shdc wrote no " + language + " program into " + yamlPath);
 	}
 
 	function text(value: string): Node {
@@ -477,23 +395,29 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 	function array(elements: Node[]): Node {
 		return { kind: NodeKind.ArrayLiteral, line: name.line, column: name.column, elements: elements };
 	}
+	function called(callee: string, args: Node[]): Node {
+		const symbol = callee == "shaderModuleOf" ? bindSym("shaderModuleOf") : bindSym("shaderProgramRegister");
+		if (symbol == null) { error(kind + ": " + callee + " is not in scope", name); }
+		return { kind: NodeKind.CallExpr, line: name.line, column: name.column, callee: symbol, arguments: args };
+	}
 
 	const base = stringValue(name);
 	const dir = join(dirname(expansionFile()), ".shaders");
-	if (!ensureDir(dir).ok) { error("shaderModule: cannot create " + dir, name); }
+	if (!ensureDir(dir).ok) { error(kind + ": cannot create " + dir, name); }
 	const source = join(dir, base + ".glsl");
 	if (!writeFile(source, shaderSource(base, stringValue(vertex), stringValue(fragment))).ok) {
-		error("shaderModule: cannot write " + source, name);
+		error(kind + ": cannot write " + source, name);
 	}
 	const shdc = shdcPath();
 	const output = join(dir, base + "Module");
 	const run = execFileResult(shdc, ["-i", source, "-o", output, "-l", SHDC_LANGUAGES, "-f", "bare_yaml"]);
 	if (!run.started || run.exitCode != 0) {
-		error("shaderModule '" + base + "': sokol-shdc " + (run.started ? "exited " +
+		error(kind + " '" + base + "': sokol-shdc " + (run.started ? "exited " +
 			String(run.exitCode) : "did not start") + "\n" + run.output + run.errorOutput +
 			"\n(" + shdc + " on " + source + ")", name);
 	}
-	const reflected = reflectedModule(output + "_reflection.yaml", targetLanguage());
+	const reflection = output + "_reflection.yaml";
+	const reflected = reflectedModule(reflection, targetLanguage());
 	const bindings: Node[] = [];
 	for (const b of reflected.bindings) {
 		const keys = ["group", "binding", "kind", "stage", "size"];
@@ -528,26 +452,35 @@ export macro shaderModuleBuild(name: Node, vertex: Node, fragment: Node): Node {
 		values.push(integer(reflected.attributeSemantics[i]));
 		attributes.push(object(keys, values));
 	}
-	const callee = bindSym("shaderModuleOf");
-	if (callee == null) { error("shaderModule: shaderModuleOf is not in scope", name); }
-	return {
-		kind: NodeKind.CallExpr,
-		line: name.line,
-		column: name.column,
-		callee: callee,
-		arguments: [object(
-			["label", "vertexCode", "vertexEntryPoint", "fragmentCode", "fragmentEntryPoint", "bindings", "attributes"],
-			[
-				text(base),
-				text(reflected.vertexCode),
-				text(reflected.vertexEntryPoint),
-				text(reflected.fragmentCode),
-				text(reflected.fragmentEntryPoint),
-				array(bindings),
-				array(attributes),
-			],
-		)],
-	};
+	const descriptor = object(
+		["label", "vertexCode", "vertexEntryPoint", "fragmentCode", "fragmentEntryPoint", "bindings", "attributes"],
+		[
+			text(base),
+			text(reflected.vertexCode),
+			text(reflected.vertexEntryPoint),
+			text(reflected.fragmentCode),
+			text(reflected.fragmentEntryPoint),
+			array(bindings),
+			array(attributes),
+		],
+	);
+	if (kind == "shaderModule") { return called("shaderModuleOf", [descriptor]); }
+	const named = reflectedModule(reflection, "glsl430");
+	const vertexAttributes: Node[] = [];
+	let offset = 0;
+	for (const line of stringValue(formats).split("\n")) {
+		if (line == "") { continue; }
+		const parts = line.split(" ");
+		for (let i = 0; i < named.attributeNames.length; i++) {
+			if (named.attributeNames[i] != parts[0]) { continue; }
+			vertexAttributes.push(object(["format", "offset", "shaderLocation"],
+				[text(parts[1]), integer(offset), integer(named.attributeSlots[i])]));
+		}
+		offset += Number(parts[2]) as int32;
+	}
+	const buffer = object(["arrayStride", "stepMode", "attributes"],
+		[integer(offset), text("vertex"), array(vertexAttributes)]);
+	return called("shaderProgramRegister", [descriptor, object(["buffers"], [array([buffer])])]);
 }
 
 export macro shaderModule(name: Node, vertex: Node, fragment: Node): Node {
@@ -581,10 +514,12 @@ export macro shaderModule(name: Node, vertex: Node, fragment: Node): Node {
 				column: name.column,
 				declName: base + "Module",
 				declType: "",
-				initializer: called(bindSym("shaderModuleBuild"), [
+				initializer: called(bindSym("shaderBuild"), [
 					literal(base),
 					called(bindSym("glsl"), [vertex]),
 					called(bindSym("glslLinked"), [fragment, vertex]),
+					literal(""),
+					literal("shaderModule"),
 				]),
 				declKind: DeclKind.Const,
 				nameLocation: { line: name.line, column: name.column },

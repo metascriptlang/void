@@ -44,6 +44,7 @@ import {
 	voidSwapchainSampleCount,
 	voidSwapchainWidth,
 } from "../platform/swapchain.h";
+import "../sokol/gpu";
 import { exit } from "std/process";
 
 export const DOOR_UNIFORM_SLOTS = 8;
