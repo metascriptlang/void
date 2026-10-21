@@ -230,8 +230,33 @@ static door_shader_fn shaderOf(int32_t program) {
 	return g_programs[programIndex(program)].shader;
 }
 
+static const char *backendName(sg_backend backend) {
+	switch (backend) {
+		case SG_BACKEND_GLCORE: return "GL core";
+		case SG_BACKEND_GLES3: return "GLES3";
+		case SG_BACKEND_D3D11: return "D3D11";
+		case SG_BACKEND_METAL_IOS: return "Metal iOS";
+		case SG_BACKEND_METAL_MACOS: return "Metal macOS";
+		case SG_BACKEND_METAL_SIMULATOR: return "Metal simulator";
+		case SG_BACKEND_WGPU: return "WebGPU";
+		case SG_BACKEND_VULKAN: return "Vulkan";
+		default: return "dummy";
+	}
+}
+
+static const sg_shader_desc *liveDesc(int32_t program) {
+	const sg_backend backend = sg_query_backend();
+	const sg_shader_desc *desc = shaderOf(program)(backend);
+	if (desc == 0) {
+		fprintf(stderr, "gpu door: program %d has no %s shader; scripts/regen-shaders.sh generates "
+			"every target in src/shader/program.ms SHDC_LANGUAGES\n", (int)program, backendName(backend));
+		abort();
+	}
+	return desc;
+}
+
 uint32_t doorMakeShader(int32_t program) {
-	sg_shader shader = sg_make_shader(shaderOf(program)(sg_query_backend()));
+	sg_shader shader = sg_make_shader(liveDesc(program));
 	if (sg_query_shader_state(shader) != SG_RESOURCESTATE_VALID) {
 		sg_destroy_shader(shader);
 		return SG_INVALID_ID;
@@ -240,7 +265,7 @@ uint32_t doorMakeShader(int32_t program) {
 }
 
 uint32_t doorUniformSlotMask(int32_t program) {
-	const sg_shader_desc *desc = shaderOf(program)(sg_query_backend());
+	const sg_shader_desc *desc = liveDesc(program);
 	uint32_t mask = 0;
 	for (int slot = 0; slot < SG_MAX_UNIFORMBLOCK_BINDSLOTS; slot++) {
 		if (desc->uniform_blocks[slot].stage != SG_SHADERSTAGE_NONE) mask |= 1u << slot;
