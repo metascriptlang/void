@@ -1,7 +1,9 @@
 // Void sokol GPU — native, per-OS backend. @platform blocks pick the native deps
 // (Metal on macOS/iOS, GLES3+EGL on Android); the extern surface is backend-agnostic.
 
-@passC("-I../../deps/sokol");
+when (!windows) {
+	@passC("-I../../deps/sokol");
+}
 @include("bridge.h");
 
 when (macos) {
