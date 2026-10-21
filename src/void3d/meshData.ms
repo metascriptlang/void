@@ -506,6 +506,62 @@ function coordinateInRange(value: float64): boolean {
 	return value >= -FLOAT32_MAX && value <= FLOAT32_MAX;
 }
 
+export function recomputeNormals(ref data: MeshData): Result<void, MeshError> {
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (!data.validIndices()) { return Result.err(MeshError.IndexOutOfRange); }
+	for (let at = 0; at < data.vertices.length; at += width) {
+		if (!Number.isFinite(data.vertices[at]) || !Number.isFinite(data.vertices[at + 1])
+			|| !Number.isFinite(data.vertices[at + 2])) {
+			return Result.err(MeshError.PositionRange);
+		}
+	}
+	const count: int32 = data.vertexCount();
+	let normals: Vec<float64> = new Array(count * 3);
+	const indexed: boolean = data.isIndexed();
+	const faces: int32 = data.triangleCount();
+	for (let face = 0; face < faces; face++) {
+		const corner: int32 = face * 3;
+		const a: int32 = indexed ? data.indexAt(corner) as int32 : corner;
+		const b: int32 = indexed ? data.indexAt(corner + 1) as int32 : corner + 1;
+		const c: int32 = indexed ? data.indexAt(corner + 2) as int32 : corner + 2;
+		const at: int32 = a * width;
+		const bt: int32 = b * width;
+		const ct: int32 = c * width;
+		const ux: float64 = (data.vertices[bt] as float64) - (data.vertices[at] as float64);
+		const uy: float64 = (data.vertices[bt + 1] as float64) - (data.vertices[at + 1] as float64);
+		const uz: float64 = (data.vertices[bt + 2] as float64) - (data.vertices[at + 2] as float64);
+		const vx: float64 = (data.vertices[ct] as float64) - (data.vertices[at] as float64);
+		const vy: float64 = (data.vertices[ct + 1] as float64) - (data.vertices[at + 1] as float64);
+		const vz: float64 = (data.vertices[ct + 2] as float64) - (data.vertices[at + 2] as float64);
+		const nx: float64 = uy * vz - uz * vy;
+		const ny: float64 = uz * vx - ux * vz;
+		const nz: float64 = ux * vy - uy * vx;
+		for (let vertex = 0; vertex < 3; vertex++) {
+			const normalAt: int32 = (vertex == 0 ? a : (vertex == 1 ? b : c)) * 3;
+			normals[normalAt] += nx;
+			normals[normalAt + 1] += ny;
+			normals[normalAt + 2] += nz;
+		}
+	}
+	for (let vertex = 0; vertex < count; vertex++) {
+		const normalAt: int32 = vertex * 3;
+		const nx: float64 = normals[normalAt];
+		const ny: float64 = normals[normalAt + 1];
+		const nz: float64 = normals[normalAt + 2];
+		const squared: float64 = nx * nx + ny * ny + nz * nz;
+		const inverse: float64 = squared < 1.0e-20 ? 0.0 : 1.0 / Math.sqrt(squared);
+		const at: int32 = vertex * width;
+		data.vertices[at + 3] = (nx * inverse) as float32;
+		data.vertices[at + 4] = (ny * inverse) as float32;
+		data.vertices[at + 5] = (nz * inverse) as float32;
+	}
+	return Result.ok(null);
+}
+
 export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshError> {
 	const width: int32 = data.stride();
 	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
