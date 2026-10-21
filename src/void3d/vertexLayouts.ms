@@ -4,7 +4,7 @@
 
 import { GPUVertexBufferLayout, GPUVertexFormat, GPUVertexStepMode } from "../webgpu/types.ms";
 
-const LAYOUT_COUNT: int32 = 10;
+export const LAYOUT_COUNT: int32 = 10;
 
 function byteSize(format: GPUVertexFormat): int32 {
 	return match (format) {

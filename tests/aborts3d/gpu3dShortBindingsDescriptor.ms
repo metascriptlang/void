@@ -1,6 +1,6 @@
-// expect: void3d: applyBindings descriptor holds 11 of 12 words
+// expect: gpu door: applyBindings descriptor holds 11 of 12 words
 import { gfxSetup } from "../../src/sokol/gpu";
-import { GPU3D_BINDING_LENGTH } from "../../src/void3d/gpu3d.h";
+import { BINDING_LENGTH as GPU3D_BINDING_LENGTH } from "../../src/gpu/draw";
 import { applyBindings } from "../../src/void3d/gpu3d";
 @include("../../src/sokol/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
