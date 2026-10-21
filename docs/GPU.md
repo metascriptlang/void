@@ -100,9 +100,10 @@ The device and the per-frame target were already Void's on every platform except
 `sokol_app` drove the Windows window (`SOKOL_NOAPI`, `docs/SOKOL.md`) and the web window path
 (with `sokol_glue`). The Windows window is ported from `sokol_app.h` (Win32 `:8635-10514`) into
 `src/platform/win32/`, keeping `sapp_event`'s fields and ordinals in `src/platform/appEvent.h`
-because `src/sokol/window.ms` `AppEventType` mirrors them; its clock is `QueryPerformanceCounter`
-(`src/platform/win32/clock.h`). The web window (`:7792-8350`) and the other clocks
-(`mach_absolute_time`, `clock_gettime`, `performance.now`) are still sokol's.
+because `src/sokol/window.ms` `AppEventType` mirrors them. The frame clock is
+`src/platform/clock.h`, sokol_time's four readings (`QueryPerformanceCounter`,
+`mach_absolute_time`, `emscripten_get_now`, `clock_gettime`) behind one function. The web window
+(`:7792-8350`) is still sokol's.
 
 ## The door on this layer
 
@@ -117,6 +118,16 @@ sokol's WebGPU backend does for it:
 - **Textures and samplers** of a draw become a group 1 bind group looked up in a cache keyed
   by the pipeline and the bound ids; a collision replaces the entry, as sokol's
   `_sg_wgpu_bindgroups_cache` does (`:18462-18763`).
+- **Frame statistics** (draws, pipelines, passes, uploaded bytes) are counted through a frame and
+  handed over at commit, sokol's `prev_frame` (`_sg_update_stats`); `src/void2d/frameClock.c`
+  reads them through `doorFrameStat`.
+
+C reaches the door through `@exportName` functions, whose prototypes are `door.h`. A C unit that
+writes a uniform block takes its struct and slot numbers from a header generated from the same
+GLSL the shader is built from (`tools/shaderSlots.ms`, `src/void2d/shader2dSlots.h`), so no C
+includes `sokol_gfx.h`. Programs register with a function from index to
+`GPUShaderModuleDescriptor` (`doorRegisterPrograms`), which void3d's generated
+`gpu3dShaderModule` is.
 
 ## Native calls
 
