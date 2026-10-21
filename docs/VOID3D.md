@@ -3916,6 +3916,40 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Subtree material collection: native/reference checkpoint
+
+Primary Heaps `b9aa6dcb`, `h3d/scene/Object.hx::getMaterials` and
+`h3d/scene/Mesh.hx::getMaterials`, appends each mesh's material once by object identity,
+self before children; recursive=false includes only the starting mesh. Visibility is not
+a filter. Executed Heaps `2b84cc23` Object/Mesh sources are byte-identical. Secondary Bevy
+`157e1ce6`, `bevy_asset/src/handle.rs::PartialEq for Handle<A>`, compares asset IDs rather
+than contents; source-only identity comparison, not an equivalent subtree collector claim.
+
+`src/void3d/scene.ms::getMaterials` extends the existing fresh-result/liveness/handle model
+and reuses `getMeshes`; it adds no traversal framework or GPU metadata provider. Distinct
+material handles remain distinct even when values match. This is the fresh-list branch of
+Heaps' query; the optional caller-array append overload is not exposed. Results borrow no
+resource hold from the scene, and queries do not acquire pins.
+
+On installed binary/support `b1f63337f`, source tree
+`2402f7ce922637b9c5c2969689f1247b1557ed12`, actual corrected red **12 missing-method
+diagnostics**, exit1; native **304/304**, existing Scene **344/344**, prior mesh enumeration
+**305/305**, all0. Actual Heaps **6/6**, C oracle0; independent comparison finds all
+**6 rows / 18 count/identity/order fields exactly equal**. Tests additionally pin unchanged
+material pin counts, owned results, detached/hidden/layered nodes and stale/foreign/closed
+handles. Final native fixture formatting rerun `TestsGreen...Retry1` remains304/304.
+
+CLIJS unit and generated oracle each abort at the already traced missing Void provider
+`DOOR_UNIFORM_SLOTS` before query execution. No JS acceptance, stub, dependency removal,
+SDK/compiler fix or provider-scope approval is claimed; aggregate1 is retained.
+
+Commands: `msc test [--target=js] src/test/sceneMaterialsCheck.ms`, existing Scene/mesh tests,
+existing oracle regen/check and generated-source JS attempt. Receipts
+`out/m6SceneMaterials*B1f63337f20261021*`; `ReferenceFields` is C/Heaps only. The first red
+also had two fixture errors from an omitted `bits` extension import; Retry1 adds that
+ordinary dependency (LANG extension visibility), leaving method calls/assertions unchanged
+and isolating only missing getMaterials. No GPU/browser/full gate or performance verdict.
+
 ### CLIJS GPU-door startup: missing Void provider, not a compiler regression
 
 This startup failure has no entry in `tests/PENDING.md` or `tests/PENDING3D.md`; no known-red
