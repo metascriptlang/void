@@ -60,6 +60,7 @@ import "./rayPlaneCheck";
 import "./boundsCheck";
 import "./sphereQueryCheck";
 import "./meshDataCheck";
+import "./meshTranslationCheck";
 import "./sphereTangentsCheck";
 import "./meshLodCheck";
 import "./meshLodDrawCheck";

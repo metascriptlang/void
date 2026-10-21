@@ -9,10 +9,6 @@
 // uvs, `LitTextured` (position 3, normal 3, uv 2, rgba 4: `getBufferFormat`'s order). The fixed
 // sokol-shdc programs read exactly those two, so four arrays would buy nothing.
 //
-// Bounds are maintained as vertices arrive rather than computed on demand as in Heaps'
-// `Polygon.getBounds`: the builders are the only writers, so the bounds cannot go stale, and
-// nothing later has to remember to ask.
-//
 // MeshData is a value struct holding owned `Vec`s, so **assigning it to a local copies its
 // arrays**. Reach one through its table by index (`context.meshData[i].bounds`) or take it by
 // `ref`; never `const data: MeshData = table[i]` (CODE-STYLE §5, the copy trap).
@@ -97,6 +93,9 @@ export enum MeshError {
 	CapsuleParameters,
 	GridParameters,
 	GeoSphereParameters,
+	VertexStorage,
+	TranslationOffset,
+	PositionRange,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -496,6 +495,39 @@ function orthogonalTangent(normal: Vec3, tangent: Vec3): Vec3 {
 	if (along.lengthSquared() > 1e-12) { return along.normalized(); }
 	const axis: Vec3 = normal.x * normal.x < 0.5 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
 	return (axis - normal.scaled(normal.dot(axis))).normalized();
+}
+
+const FLOAT32_MAX: float64 = 3.4028234663852886e38;
+
+function positionInRange(value: float64): boolean {
+	return value >= -FLOAT32_MAX && value <= FLOAT32_MAX;
+}
+
+export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshError> {
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!Number.isFinite(offset.x) || !Number.isFinite(offset.y) || !Number.isFinite(offset.z)) {
+		return Result.err(MeshError.TranslationOffset);
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		const x: float64 = (data.vertices[at] as float64) + (offset.x as float64);
+		const y: float64 = (data.vertices[at + 1] as float64) + (offset.y as float64);
+		const z: float64 = (data.vertices[at + 2] as float64) + (offset.z as float64);
+		if (!positionInRange(x) || !positionInRange(y) || !positionInRange(z)) {
+			return Result.err(MeshError.PositionRange);
+		}
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		data.vertices[at] = ((data.vertices[at] as float64) + (offset.x as float64)) as float32;
+		data.vertices[at + 1] =
+			((data.vertices[at + 1] as float64) + (offset.y as float64)) as float32;
+		data.vertices[at + 2] =
+			((data.vertices[at + 2] as float64) + (offset.z as float64)) as float32;
+	}
+	recomputeBounds(data);
+	return Result.ok(null);
 }
 
 // Recomputes the bounds from the vertices, h3d.prim.Polygon.getBounds. The builders keep the
