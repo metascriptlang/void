@@ -4572,6 +4572,35 @@ Text shares **one** glyph layer with void2d — see [VOID2D.md → Text design](
 - **3D-text consumer = billboard or text-mesh.** Start with billboard; mesh only if a use case demands it.
 - **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected. void2d's SDF page kind and shader ramp exist behind `-d:voidSdfText`; the void3d program, the glyph-layer import and flat world text are deferred by name, each with its reopening condition, in [VOID2D.md](VOID2D.md) P6 "Deferred out of P6".
 
+### Plane point projection: CPU query checkpoint
+
+`plane.ms` reuses existing `Vec4` plane convention **normal dot point + w = 0**, so Heaps'
+`d` becomes `-w`. Primary `h3d/col/Plane.hx::distance/project/projectTo` explicitly requires a
+normalized normal. That precondition is checked, not silently repaired; raw unnormalized
+frustum planes cannot be passed as though already normalized. Signed distance returns
+float64; projection keeps float64 intermediates and refuses an unrepresentable Vec3.
+No new plane object, collider hierarchy, empty-volume or overlap policy.
+
+Actual missing-module red1 precedes the helpers. Installed binary/support `afcd22f19`:
+native **306/306**, CLIJS **68/68**, actual Heaps **8/8**, **32 fields** C/JS exactly equal;
+max Heaps delta **2.1769374747293568e-7** within declared `1e-5` (axis cases use zero).
+Axes, reversed normal, oblique planes, point on plane, negative offset and primary projectTo
+are measured; local tests additionally pin nonfinite/unit-normal/range refusal and widened
+distance above float32 range. Reference Plane file byte-equal inspected/executed. Receipts
+`out/m6PlaneProjection*Afcd22f1920261021.*`, generated oracle packet
+`out/tmp/planeProjection/oracle/`; SDK unchanged. No GPU/gate/whole-index/land run.
+
+**Why this missing query, not another triangle raycaster.** Current MeshData already has
+Moller-Trumbore nearest hits, UVs, culling, u16/u32/nonindexed and element ranges; pick and
+SkinGeometry consume it, including broad/narrow and transforms. That covers the relevant
+Polygon/PolygonBuffer/Object/Transform/Optimized/Skin ray use cases, not every Collider API.
+Point/FPoint arithmetic is Vec3. Capsule/Cylinder/Seg and triangle closest-point source
+raise zero-axis/empty/degenerate-shape questions; these were deferred rather than reopen
+that parked policy family. HeightMap's stale bisection variable and OBB pair SAT remain
+separate source frontiers, not new implementations or measured acceptance. No new
+shape-policy divergence was approved. The bounded independent addition here is
+normalized-plane point projection only.
+
 ### Graphics3D: default screen-line CPU encoding only
 
 `graphics3d.ms` ports default `h3d.scene.Graphics` (`is3D=false`) **CPU input encoding**, not
