@@ -84,7 +84,7 @@ sublayer of the view's layer (it sets `wantsLayer`), sized to the view's bounds 
 makes the layer and attaches it nowhere: `viewSwapChain` returns the `CAMetalLayer*`, as it returns
 the `IDXGISwapChain1*` on Windows, and the host adds it to its own layer tree. `w` and `h` are
 pixels. `tests/integration/macViews.ms` creates both and checks sizes, resize and destroy, with no
-pixel readback because the Metal capture path is a stub.
+pixel readback, because the Metal readback reads only the window driver's drawable.
 
 ## iOS: an app driver on the host views
 
