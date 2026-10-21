@@ -1,5 +1,5 @@
 // The sokol_app window's events, IME and title, on the window drivers: Windows (D3D11 and
-// -d:voidGlCore), the browser and the iOS app. Import beside ./gpu, which compiles their C.
+// -d:voidGlCore), the browser and the iOS and Android apps. Import beside ./gpu, which compiles their C.
 
 @include("bridge.h");
 @include("appText.h");

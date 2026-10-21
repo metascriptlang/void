@@ -13,6 +13,7 @@
 
 #include "bridge.h"
 #include "views.h"
+#include "androidApp.h"
 #include "sokol_log.h"
 
 static EGLDisplay g_dpy = EGL_NO_DISPLAY;
@@ -208,10 +209,9 @@ void voidGfxSetup(void) {
 	if (!sg_isvalid()) voidFail("gfxSetup before voidViewCreate made the EGL context");
 }
 
-int voidFbWidth(void) { return voidViewsFbWidth(); }
-int voidFbHeight(void) { return voidViewsFbHeight(); }
-void voidRequestedSize(int *w, int *h) { *w = 0; *h = 0; }
-float voidDpiScale(void) { return voidViewsDpiScale(); }
+int voidFbWidth(void) { return voidAndroidAppFbWidth(); }
+int voidFbHeight(void) { return voidAndroidAppFbHeight(); }
+float voidDpiScale(void) { return voidAndroidAppDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
 sg_swapchain voidDriverSwapchain(void) { return voidViewsSwapchain(); }
 void voidDriverPresent(void) { voidViewsPresent(); }

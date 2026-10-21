@@ -1,0 +1,10 @@
+plugins {
+	id 'com.android.library'
+}
+
+android {
+	namespace = 'dev.metascript.voidapp'
+	defaultConfig {
+		consumerProguardFiles 'consumer-rules.pro'
+	}
+}
