@@ -32,6 +32,8 @@ import {
 
 when (windows && !voidGlCore) {
 	import * as backend from "./d3d11/backend.ms";
+} else when (voidGlCore) {
+	import * as backend from "./gl/backend.ms";
 }
 
 export type GPUNativeEnvironment = backend.NativeEnvironment;
