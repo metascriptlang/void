@@ -3914,6 +3914,57 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Mesh position baking: native/reference checkpoint, JS consumers held
+
+`meshData.ms::translate` extends the existing CPU geometry-writer idiom, not node placement
+or automatic GPU resource updates. Primary Heaps `b9aa6dcb`,
+`h3d/prim/Polygon.hx::translate/getCPUBuffer/getBounds`, shifts positions while retaining the
+other attribute arrays and computes bounds from the shifted points. Secondary Bevy
+`157e1ce6`, `bevy_mesh/src/mesh.rs::try_translate_by`, also edits positions only; it warns that
+entity AABBs are not updated automatically. Void's owned MeshData bounds already belong to
+its writers, so this operation uses existing `recomputeBounds` rather than leaving that cache
+stale. `draw.ms::newMesh/addMeshData` owns GPU upload/CPU-copy lifetime separately. Ordinary
+placement still uses existing node transforms; this helper is explicit pre-upload baking.
+No skeleton/IBM retargeting, posed-skin integration or normal/tangent transform policy is added.
+
+Prerequisite public vertex/tangent/skin/index writers ran on C/JS, both0, producing
+`3 3 24 1` (vertices,indices,stride,tangentW). The first red mixed missing API with owned
+fixture mistakes (`assert` in a non-test helper and a missing bounds-extension import);
+those outputs remain. Corrected Retry1 isolates **4 missing-API/type diagnostics**, exit1
+before codegen, not an executed test verdict. After `56800619`, native **304/304**,
+existing MeshData **361/361** and Pick **329/329**, all0. New native coverage uses18 layout/
+skin/index combinations, CPU picking, owned-copy/empty cases and atomic failure guards.
+`src/test/meshTranslationCheck.ms` owns those conditions. Input/target coordinates are
+preflighted before any write, then existing bounds recomputation runs; no speed claim.
+
+Existing oracle runner executes actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0:
+**3/3 AGREES**, tolerance0. C/JS/Heaps **3rows/27 named fields exactly equal**, independently
+compared, including translated getCPUBuffer positions, getBounds and retained attributes.
+`tests/oracle/meshTranslation3d.cases` adapts Heaps' CPU attribute order to Void's interleave;
+this is not whole-buffer identity or GPU acceptance. Five relevant Heaps files byte-match
+across pins. Binary/support `b1f63337f`, source tree `70dc7c57cd66cb5fb7a314721944667a77eafc6a`.
+
+Full JS unit is **64pass/2fail (66)**, exit1, and stays registered unchanged:
+- Existing `meshData.ms::interpolateUv` has `const stride=data.stride()`, emitted as
+  `const stride=stride(data)`, so textured CPU picking reaches the known extension/local TDZ.
+  Existing compiler card `2026-10-16-js-extension-local-name-capture.md` owns this sighting.
+- `assert translate(copy,...).ok` is rich-decomposed into a copied ref-argument temporary;
+  translation succeeds on that temporary but the caller's copy is unchanged. This is NOT
+  struct/Vec aliasing; that initial attribution was retracted after reading emitted code.
+  New compiler card `2026-10-21-js-rich-assert-ref-argument-mutates-temporary.md` retains the
+  reduction: C305/305, JS64pass/3fail(67), with scalar Result/bool/owned-Vec triggers and
+  ordinary-call, loop/plain-assert and deep-copy controls passing. No ref-call movement,
+  clone wrapper, stride rename, weaker assertion or skip was applied.
+
+Receipts `out/m6MeshTranslation{PrerequisiteC,PrerequisiteJs,Red,Heaps}B1f63337f20261021`,
+isolated red `out/m6MeshTranslationRedB1f63337f20261021Retry1`, and
+`out/m6MeshTranslation{Tests,JsTests,MeshData,Pick,Oracle,Js}GreenB1f63337f20261021.{log,exit}`.
+Aggregate Green is1 because the JS unit fails; exact field comparison is
+`out/m6MeshTranslationCrossBackendB1f63337f20261021.log`. Rich-assert receipts
+`out/m6RichAssertRefProbe{C,Js,}B1f63337f20261021.{log,exit}`; emitted test/reduction saved in
+`out/tmp/meshTranslationJsCapture/` (meshData.afterOracle is explicitly a later emission).
+No SDK/compiler edits, GPU/browser/performance/full-index or full JS-consumer acceptance.
+
 ### Frustum bounds frontier: reference probe only
 
 Heaps `b9aa6dcb` `h3d/col/Frustum.hx::intersectPlanes/getBounds` intersects eight named
