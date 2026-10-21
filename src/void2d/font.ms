@@ -35,6 +35,15 @@ export struct Font {
 	sizeAdjust: SizeAdjust;
 }
 
+export struct FaceQuery {
+	codepoint: int32;
+	presentation: Presentation;
+	weight: int32;
+	style: FontStyle;
+}
+
+export type FaceResolver = (query: FaceQuery) => string | null;
+
 export type FontId = distinct int32;
 @delegate export function `==`(this a: FontId, b: FontId): boolean;
 export const DEFAULT_FONT: FontId = 0 as FontId;
@@ -129,6 +138,9 @@ when (voidSprites) {
 let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
+let faceResolver: FaceResolver | null = null;
+let discovered: Map<uint64, string> = new Map<uint64, string>();
+let discoveryAsks: int32 = 0;
 let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
 let defaultLoads: int32 = 0;
@@ -434,6 +446,47 @@ export function addFallbackFont(font: FontId, path: string): void {
 	resolved = new Map<uint64, int32>();
 }
 
+export function setFaceResolver(resolver: FaceResolver | null): void {
+	faceResolver = resolver;
+	discovered = new Map<uint64, string>();
+	resolved = new Map<uint64, int32>();
+}
+
+export function faceDiscoveryAsks(): int32 {
+	return discoveryAsks;
+}
+
+function discoveredPath(font: FontId, codepoint: int32, want: Presentation): string {
+	const resolver = faceResolver;
+	if (resolver === null) { return ""; }
+	const entry: FontEntry = fonts[fontIndex(font)];
+	const weight: int32 = entry.described ? entry.description.weight : 400;
+	const style: FontStyle = entry.described ? entry.description.style : FontStyle.Normal;
+	const key: uint64 = ((weight as uint64) << 32) | (((style as int32) as uint64) << 28) |
+		(((want as int32) as uint64) << 24) | (codepoint as uint64);
+	const hit = discovered.get(key);
+	if (hit.present) { return hit.value; }
+	discoveryAsks = discoveryAsks + 1;
+	const answer = resolver({ codepoint: codepoint, presentation: want, weight: weight, style: style });
+	const path: string = answer !== null && coversAtPath(answer, codepoint) &&
+		presentationOfPath(answer) == want ? answer : "";
+	discovered.set(key, path);
+	return path;
+}
+
+function discoveredSlot(font: FontId, codepoint: int32, want: Presentation): int32 {
+	const path: string = discoveredPath(font, codepoint, want);
+	if (path.length == 0) { return PRIMARY_SLOT; }
+	for (let i: int32 = 0; i < (fallbacks.length as int32); i++) {
+		if (fallbacks[i].font == font && fallbacks[i].path.equals(path)) {
+			return fallbackUsable(i) ? i : PRIMARY_SLOT;
+		}
+	}
+	fallbacks.push({ font: font, path: path, bold: false, italic: false, face: NOT_LOADED, scale: 1.0 });
+	const slot: int32 = (fallbacks.length as int32) - 1;
+	return fallbackUsable(slot) ? slot : PRIMARY_SLOT;
+}
+
 function fontIndex(font: FontId): int32 {
 	ensureDefaultFont();
 	const index: int32 = font as int32;
@@ -573,6 +626,10 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 				slot = i;
 				found = true;
 			}
+		}
+		if (!found) {
+			slot = discoveredSlot(font, codepoint, want);
+			found = slot != PRIMARY_SLOT;
 		}
 	}
 	if (!found && glyphIndex(fontFace(font), codepoint) != 0) { found = true; }
