@@ -244,11 +244,26 @@ generate() {
 	settle "$out" "$2"
 }
 
+# The same programs as data for src/webgpu: shdc's bare output read by tools/shaderTables.ms
+# (docs/GPU.md "Shaders"). Its work directory is relative, because the tool is a native binary
+# that cannot open an MSYS /tmp path.
+tables() {
+	work="out/shaderTables"
+	mkdir -p "$work"
+	yaml="$work/$(basename "$1" .glsl)"
+	"$SHDC" -i "$1" -o "$yaml" -l "$3" -f bare_yaml >/dev/null
+	out="$SCRATCH/$(basename "$2")"
+	"${MSC:-msc}" run tools/shaderTables.ms -- "${yaml}_reflection.yaml" "$work/$(basename "$2")" "$4" 		> "$SCRATCH/tables.log" 2>&1 || { cat "$SCRATCH/tables.log"; echo "shaderTables $1 failed"; exit 1; }
+	mv "$work/$(basename "$2")" "$out"
+	settle "$out" "$2"
+}
+
 [ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
 generate tools/genShaders.ms "$GENERATED"
 generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
 generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
+tables src/void2d/shader2d.glsl src/void2d/shader2dModules.ms "$LANGS_IOS" ../webgpu/types.ms
 regenKeys
 regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"
 
