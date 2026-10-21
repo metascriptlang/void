@@ -3,10 +3,11 @@
 #include <string.h>
 #include "gl.h"
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#define OGL_GLES 1
 #include <GLES3/gl3.h>
 #elif !defined(_WIN32)
-#error "the GL backend loads GL through WGL or takes WebGL2 from emscripten; another platform needs its GL headers and loader here"
+#error "the GL backend loads GL through WGL or takes GLES3 from emscripten or Android; another platform needs its GL headers and loader here"
 #else
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -185,7 +186,7 @@ void oglUnload(void) {
 
 #endif
 
-#if defined(__EMSCRIPTEN__)
+#if defined(OGL_GLES)
 static char s_log[4096];
 
 int32_t oglLoad(void) { return 1; }
@@ -246,7 +247,7 @@ void oglTexStorage2D(int32_t target, int32_t internalFormat, int32_t width, int3
 	glTexStorage2D((GLenum)target, 1, (GLenum)internalFormat, width, height);
 }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(OGL_GLES)
 void oglTexStorage2DMultisample(int32_t target, int32_t samples, int32_t internalFormat, int32_t width, int32_t height) {
 	glTexStorage2DMultisample((GLenum)target, samples, (GLenum)internalFormat, width, height, GL_TRUE);
 }
@@ -292,7 +293,7 @@ uint32_t oglCreateSampler(void) {
 void oglSamplerParameteri(uint32_t sampler, int32_t name, int32_t value) { glSamplerParameteri(sampler, (GLenum)name, value); }
 void oglSamplerParameterf(uint32_t sampler, int32_t name, double value) { glSamplerParameterf(sampler, (GLenum)name, (GLfloat)value); }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(OGL_GLES)
 void oglSamplerBorderColor(uint32_t sampler, double r, double g, double b, double a) {
 	const GLfloat border[4] = { (GLfloat)r, (GLfloat)g, (GLfloat)b, (GLfloat)a };
 	glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, border);
@@ -363,7 +364,7 @@ void oglColorMask(int32_t mask) {
 	glColorMask((mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0);
 }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(OGL_GLES)
 void oglColorMaski(int32_t index, int32_t mask) {
 	glColorMaski((GLuint)index, (mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0);
 }
@@ -436,7 +437,7 @@ void oglDrawArraysInstanced(int32_t mode, int32_t first, int32_t count, int32_t 
 	glDrawArraysInstanced((GLenum)mode, first, count, instances);
 }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(OGL_GLES)
 void oglDrawArraysInstancedBaseInstance(int32_t mode, int32_t first, int32_t count, int32_t instances, int32_t baseInstance) {
 	glDrawArraysInstancedBaseInstance((GLenum)mode, first, count, instances, (GLuint)baseInstance);
 }
@@ -447,7 +448,7 @@ void oglDrawElements(int32_t mode, int32_t count, int32_t type, int64_t offset) 
 	glDrawElements((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset);
 }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(OGL_GLES)
 void oglDrawElementsBaseVertex(int32_t mode, int32_t count, int32_t type, int64_t offset, int32_t baseVertex) {
 	glDrawElementsBaseVertex((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset, baseVertex);
 }
@@ -458,7 +459,7 @@ void oglDrawElementsInstanced(int32_t mode, int32_t count, int32_t type, int64_t
 	glDrawElementsInstanced((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset, instances);
 }
 
-#if !defined(__EMSCRIPTEN__)
+#if !defined(OGL_GLES)
 void oglDrawElementsInstancedBaseVertex(int32_t mode, int32_t count, int32_t type, int64_t offset, int32_t instances, int32_t baseVertex) {
 	glDrawElementsInstancedBaseVertex((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset, instances, baseVertex);
 }

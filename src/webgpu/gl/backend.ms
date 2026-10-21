@@ -118,7 +118,7 @@ import {
 	oglViewport,
 } from "./gl.h";
 
-when (!webgl2) {
+when (!webgl2 && !android) {
 	import {
 		oglColorMaski,
 		oglDrawArraysInstancedBaseInstance,
@@ -836,7 +836,7 @@ function cacheClearUnits(force: boolean): void {
 		if (force || cachedUnits[i].texture != 0) {
 			oglActiveTexture(i);
 			oglBindTexture(GL_TEXTURE_2D, 0);
-			when (!webgl2) { oglBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0); }
+			when (!webgl2 && !android) { oglBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0); }
 			oglBindSampler(i, 0);
 			cachedUnits[i] = { target: 0, texture: 0, sampler: 0 };
 			cache.activeTexture = i;
@@ -935,7 +935,7 @@ function resetStateCache(): void {
 	oglEnable(GL_SCISSOR_TEST);
 	oglDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 	oglEnable(GL_DITHER);
-	when (!webgl2) {
+	when (!webgl2 && !android) {
 		oglEnable(GL_MULTISAMPLE);
 		oglEnable(GL_PROGRAM_POINT_SIZE);
 	}
@@ -947,8 +947,8 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 		stop(`requestDevice needs a current GL context; ${missing} did not load`);
 	}
 	const version = oglGetInteger(GL_MAJOR_VERSION) * 100 + oglGetInteger(GL_MINOR_VERSION) * 10;
-	when (webgl2) {
-		if (version < 300) { stop(`the current context is GLES ${version}; the WebGL2 backend needs 300`); }
+	when (webgl2 || android) {
+		if (version < 300) { stop(`the current context is GLES ${version}; the GLES3 backend needs 300`); }
 	} else {
 		if (version < 430) { stop(`the current context is GL ${version}; the GL backend needs 430`); }
 	}
@@ -958,7 +958,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	oglBindVertexArray(vertexArray);
 	framebuffer = oglCreateFramebuffer();
 	oglPixelStore(GL_UNPACK_ALIGNMENT, 1);
-	when (!webgl2) { oglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS); }
+	when (!webgl2 && !android) { oglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS); }
 	resetStateCache();
 	checkError("setup");
 	frame = 0;
@@ -1242,7 +1242,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		cacheStoreUnit0();
 		cacheBindTextureSampler(0, slot.target, name, 0);
 		if (sampleCount > 1) {
-			when (!webgl2) { oglTexStorage2DMultisample(slot.target, sampleCount, info.internalFormat, width, height); }
+			when (!webgl2 && !android) { oglTexStorage2DMultisample(slot.target, sampleCount, info.internalFormat, width, height); }
 		} else {
 			oglTexStorage2D(slot.target, info.internalFormat, width, height);
 		}
@@ -1254,9 +1254,10 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	return { id: id };
 }
 
-// WebGL2 has no multisampled texture, so a multisampled attachment is a renderbuffer, as sokol makes it.
+// GLES3 has no multisampled texture binding, so a multisampled attachment is a renderbuffer, as
+// sokol makes it.
 function multisampleTarget(): int32 {
-	when (webgl2) { return GL_RENDERBUFFER; } else { return GL_TEXTURE_2D_MULTISAMPLE; }
+	when (webgl2 || android) { return GL_RENDERBUFFER; } else { return GL_TEXTURE_2D_MULTISAMPLE; }
 }
 
 export function destroyTexture(texture: GPUTexture): void {
@@ -1398,7 +1399,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_S, addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"));
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_T, addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"));
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-	when (!webgl2) { oglSamplerBorderColor(native, 0, 0, 0, 1); }
+	when (!webgl2 && !android) { oglSamplerBorderColor(native, 0, 0, 0, 1); }
 	oglSamplerParameteri(native, GL_TEXTURE_COMPARE_MODE, 0);
 	checkError(`createSampler of ${labelOf(descriptor.label)}`);
 	const id = allocateId(samplerQueue);
@@ -1615,9 +1616,9 @@ function describeBlend(descriptor: GPURenderPipelineDescriptor, ref slot: Pipeli
 		formatInfo(descriptor.fragment.targets[i].format, `fragment.targets[${i}].format`);
 		const writeMask = descriptor.fragment.targets[i].writeMask;
 		slot.writeMasks[i] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
-		when (webgl2) {
+		when (webgl2 || android) {
 			if (first != -1 && slot.writeMasks[i] != slot.writeMasks[first]) {
-				stop(`fragment.targets[${i}].writeMask differs from target ${first}; WebGL2 masks every target alike`);
+				stop(`fragment.targets[${i}].writeMask differs from target ${first}; GLES3 masks every target alike`);
 			}
 		}
 		slot.colorCount = i + 1;
@@ -1805,7 +1806,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		stop("a render pass mixes the canvas with offscreen attachments; GL draws the canvas through framebuffer 0");
 	}
 	if (pass.swapchain) {
-		when (!webgl2) { oglDisable(GL_FRAMEBUFFER_SRGB); }
+		when (!webgl2 && !android) { oglDisable(GL_FRAMEBUFFER_SRGB); }
 		oglBindFramebuffer(GL_FRAMEBUFFER, 0);
 	} else {
 		bindOffscreenFramebuffer(colorMask, depthView != 0 ? depthTexture : -1, depthStencil);
@@ -1822,7 +1823,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 }
 
 function bindOffscreenFramebuffer(colorMask: int32, depthTexture: int32, depthStencil: boolean): void {
-	when (!webgl2) { oglEnable(GL_FRAMEBUFFER_SRGB); }
+	when (!webgl2 && !android) { oglEnable(GL_FRAMEBUFFER_SRGB); }
 	oglBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = GL_COLOR_ATTACHMENT0 + i;
@@ -2021,8 +2022,8 @@ export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int3
 		if (firstInstance == 0) {
 			oglDrawArraysInstanced(GL_TRIANGLES, firstVertex, vertexCount, instanceCount);
 		} else {
-			when (webgl2) {
-				stop(`draw with firstInstance ${firstInstance}: WebGL2 has no base instance`);
+			when (webgl2 || android) {
+				stop(`draw with firstInstance ${firstInstance}: GLES3 has no base instance`);
 			} else {
 				oglDrawArraysInstancedBaseInstance(GL_TRIANGLES, firstVertex, vertexCount, instanceCount, firstInstance);
 			}
@@ -2051,8 +2052,8 @@ export function drawIndexed(
 		}
 		return;
 	}
-	when (webgl2) {
-		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: WebGL2 has neither`);
+	when (webgl2 || android) {
+		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: GLES3 has neither`);
 	} else {
 		if (instanceCount > 1 || bound.instanced) {
 			if (firstInstance == 0) {
@@ -2103,7 +2104,7 @@ function applyPipeline(): void {
 	}
 	if (pipelines[p].sampleCount != cache.sampleCount) {
 		cache.sampleCount = pipelines[p].sampleCount;
-		when (!webgl2) {
+		when (!webgl2 && !android) {
 			if (cache.sampleCount > 1) { oglEnable(GL_MULTISAMPLE); } else { oglDisable(GL_MULTISAMPLE); }
 		}
 	}
@@ -2150,7 +2151,7 @@ function applyBlendState(p: int32): void {
 	for (let i = 0; i < pipelines[p].colorCount; i++) {
 		if (pipelines[p].writeMasks[i] != cache.writeMasks[i]) {
 			cache.writeMasks[i] = pipelines[p].writeMasks[i];
-			when (webgl2) {
+			when (webgl2 || android) {
 				if (i == 0) { oglColorMask(cache.writeMasks[0]); }
 			} else {
 				oglColorMaski(i, cache.writeMasks[i]);
