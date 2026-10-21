@@ -1,4 +1,5 @@
 import { Vec3, vec3 } from "../math/math3d";
+import { Ray } from "./ray";
 
 export struct Sphere3D {
 	center: Vec3;
@@ -6,6 +7,11 @@ export struct Sphere3D {
 }
 
 export enum SpherePointError {
+	NonFinite,
+	OutOfRange,
+}
+
+export enum SphereRayError {
 	NonFinite,
 	OutOfRange,
 }
@@ -37,6 +43,29 @@ export function closestPoint(this sphere: Sphere3D, point: Vec3): Result<Vec3, S
 		return Result.err(SpherePointError.OutOfRange);
 	}
 	return Result.ok(vec3(x as float32, y as float32, z as float32));
+}
+
+export function rayIntersection(this sphere: Sphere3D, ray: Ray): Result<float32, SphereRayError> {
+	if (!Number.isFinite(sphere.center.x) || !Number.isFinite(sphere.center.y)
+		|| !Number.isFinite(sphere.center.z) || !Number.isFinite(sphere.radius)
+		|| !Number.isFinite(ray.origin.x) || !Number.isFinite(ray.origin.y)
+		|| !Number.isFinite(ray.origin.z) || !Number.isFinite(ray.direction.x)
+		|| !Number.isFinite(ray.direction.y) || !Number.isFinite(ray.direction.z)) {
+		return Result.err(SphereRayError.NonFinite);
+	}
+	const mx: float64 = (ray.origin.x as float64) - (sphere.center.x as float64);
+	const my: float64 = (ray.origin.y as float64) - (sphere.center.y as float64);
+	const mz: float64 = (ray.origin.z as float64) - (sphere.center.z as float64);
+	const b: float64 = mx * (ray.direction.x as float64)
+		+ my * (ray.direction.y as float64) + mz * (ray.direction.z as float64);
+	const radius: float64 = sphere.radius as float64;
+	const c: float64 = mx * mx + my * my + mz * mz - radius * radius;
+	if (c > 0.0 && b > 0.0) { return Result.ok(-1.0); }
+	const discriminant: float64 = b * b - c;
+	if (discriminant < 0.0) { return Result.ok(-1.0); }
+	const distance: float64 = Math.max(0.0, -b - Math.sqrt(discriminant));
+	if (distance > 3.4028234663852886e38) { return Result.err(SphereRayError.OutOfRange); }
+	return Result.ok(distance as float32);
 }
 
 export function contains(this sphere: Sphere3D, point: Vec3): boolean {
