@@ -80,6 +80,7 @@ import "./textureCheck";
 import "./imageDecodeCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
+import "./lightColorCheck";
 import "./animationCheck";
 import "./animationComposeCheck";
 import "./pickCheck";
