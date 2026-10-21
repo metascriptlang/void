@@ -16,7 +16,8 @@
   // WebGPU-first, WebGL2 fallback. Each backend is a self-contained emscripten
   // build in its own dir (the .js hardcodes its .wasm/.data names).
   const status = document.getElementById('status');
-  // ?gl / ?wgpu force a backend; otherwise WebGPU-first with WebGL2 fallback.
+  // ?gl / ?wgpu force a backend; otherwise WebGPU-first with WebGL2 fallback. ?entry=<name> loads
+  // another entry built beside this page (default mainSokol2d).
   const p = new URLSearchParams(location.search);
   const force = p.has('gl') ? 'gl' : p.has('wgpu') ? 'wgpu' : null;
   const useWgpu = force ? force === 'wgpu' : !!navigator.gpu;
@@ -27,7 +28,7 @@
     locateFile: (path) => dir + '/' + path,
   };
   const s = document.createElement('script');
-  s.src = dir + '/mainSokol2d.js';
+  s.src = dir + '/' + (p.get('entry') || 'mainSokol2d') + '.js';
   s.onerror = () => { status.textContent = 'failed to load ' + s.src; };
   document.body.appendChild(s);
 </script>

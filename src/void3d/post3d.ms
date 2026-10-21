@@ -195,7 +195,7 @@ export struct OutlineMaskBindings {
 	@binding(0) outlineMaskParams: OutlineMaskParams;
 }
 
-const OUTLINE_OFFSETS: Vec2i[4] = [vec2i(1, 0), vec2i(-1, 0), vec2i(0, 1), vec2i(0, -1)];
+export const OUTLINE_OFFSETS: Vec2i[4] = [vec2i(1, 0), vec2i(-1, 0), vec2i(0, 1), vec2i(0, -1)];
 
 function outlinePixel(p: Vec2i, size: Vec2i): Vec2i {
 	return clamp(p, vec2i(0, 0), size - vec2i(1, 1));

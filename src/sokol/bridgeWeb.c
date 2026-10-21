@@ -1,13 +1,6 @@
-// The browser canvas under emscripten and the desktop GL window (-d:voidGlCore). Two drivers,
-// as in bridgeWin.c: the sokol_app window (voidRun) and, in the browser, host views, one per
-// canvas a page hands to Module.voidStart (docs/EMBED.md "Web"). The first of voidRun or
-// voidViewCreate chooses the driver for the document.
-
-#if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <stdio.h>
-#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -19,9 +12,6 @@
 #include "bridge.h"
 #include "views.h"
 
-#if defined(_WIN32) && !defined(SOKOL_GLCORE)
-#error "void: bridgeWeb.c on Windows is the GL core driver; define SOKOL_GLCORE (golden.sh)"
-#endif
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"
@@ -48,7 +38,6 @@ static bool s_keys[SAPP_MAX_KEYCODES];
 
 static int s_textInput = -1;
 
-#if defined(__EMSCRIPTEN__)
 static int s_imeX, s_imeY, s_imeW, s_imeH;
 static bool s_imeReady;
 
@@ -152,13 +141,6 @@ static void keepKeysFromBrowser(const sapp_event *e) {
 		sapp_consume_event();
 	}
 }
-#else
-void voidSetTextInput(int on) { s_textInput = on != 0; }
-void voidSetImeRect(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; }
-static void imeSetup(void) {}
-static bool imeTookKey(const sapp_event *e) { (void)e; return false; }
-static void keepKeysFromBrowser(const sapp_event *e) { (void)e; }
-#endif
 
 static void _init(void) {
 	imeSetup();
@@ -189,11 +171,7 @@ static void _event(const sapp_event *e) {
 
 static void _cleanup(void) { sg_shutdown(); }
 
-#if defined(__EMSCRIPTEN__)
 static void leaveCallerSuspendedWhileFramesRun(void) { emscripten_exit_with_live_runtime(); }
-#else
-static void leaveCallerSuspendedWhileFramesRun(void) {}
-#endif
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this document already drives Void through host views");

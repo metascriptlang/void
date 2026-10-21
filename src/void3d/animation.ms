@@ -441,15 +441,17 @@ export function syncMeshFrame(
 export function checkBakedFrames(frames: Readonly<Span<MeshData>>): Result<int32, AnimationError> {
 	const count: int32 = frames.length as int32;
 	if (count < 1) { return Result.err(AnimationError.NoFrames); }
+	if (!frames[0].validIndices()) { return Result.err(AnimationError.FrameTopology); }
 	const vertices: int32 = frames[0].vertexCount();
 	const indices: int32 = frames[0].indexCount();
 	if (vertices == 0) { return Result.err(AnimationError.FrameTopology); }
 	for (let f = 1; f < count; f++) {
-		if (frames[f].vertexCount() != vertices || frames[f].indexCount() != indices) {
+		if (!frames[f].validIndices() || frames[f].vertexCount() != vertices ||
+			frames[f].indexCount() != indices) {
 			return Result.err(AnimationError.FrameTopology);
 		}
 		for (let i = 0; i < indices; i++) {
-			if (frames[f].indices[i] != frames[0].indices[i]) {
+			if (frames[f].indexAt(i) != frames[0].indexAt(i)) {
 				return Result.err(AnimationError.FrameTopology);
 			}
 		}

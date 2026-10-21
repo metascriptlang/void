@@ -97,7 +97,7 @@ function init(): void {
 			outline: {
 				depthThreshold: 0.006, normalThreshold: 0.6, depthShade: 0.55, normalShade: 1.35,
 			},
-			fog: { start: 1, end: 1, strength: 0, color: GREY }, saturation: 0,
+			fog: { start: 0, end: 1, strength: 0, color: GREY }, saturation: 0,
 		};
 		const made = PixelArtRenderer.create(context, settings, look);
 		if (!made.ok) { fail("pixel-art renderer refused"); }

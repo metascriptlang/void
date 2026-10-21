@@ -7,6 +7,7 @@ import {
 import {
 	DrawContext,
 	MeshId,
+	DrawRange,
 	MaterialId,
 	MaterialError,
 	MeshUploadError,
@@ -41,9 +42,14 @@ import {
 	withEmissive,
 	withNormalMap,
 	withUvTransform,
+	withSkin,
 } from "./gpu3d";
 import { Material, MaterialKind, UniformBlock, passFor } from "./material";
-import { vec3, linearToSrgb } from "../math/math3d";
+import { vec3, identityQuat, linearToSrgb } from "../math/math3d";
+import { SkinPose, bind as bindSkinPose } from "./skinPose";
+import { SkinGeometry, bind as bindSkinGeometry } from "./skinGeometry";
+import { SkinPalette } from "./skinPalette";
+import { MeshData } from "./meshData";
 import { sinf, cosf } from "../math/mat4";
 import { TextureId, TextureUploadError, NO_TEXTURE } from "./texture";
 import { UniformError } from "./uniformPool";
@@ -54,6 +60,9 @@ import {
 	Transform3D,
 	addGroup,
 	addMeshNode,
+	addSkinMeshNode,
+	isLive,
+	remove,
 	setName,
 	NO_NODE_ID,
 } from "./scene";
@@ -72,6 +81,8 @@ export enum GltfSceneError {
 }
 
 export struct GltfMeshBinding {
+	skinMesh: MeshId | null;
+	skinMaterial: MaterialId | null;
 	mesh: MeshId;
 	material: MaterialId;
 }
@@ -228,8 +239,10 @@ function madeMaterial(
 	texture: TextureId,
 	emissive: TextureId,
 	normal: TextureId,
+	skinned: boolean = false,
 ): Result<MaterialId, GltfSceneError> {
-	const program: ProgramKey = gltfProgramOf(source);
+	let program: ProgramKey = gltfProgramOf(source);
+	if (skinned) { program = program.withSkin(); }
 	const doubleSided: boolean = source.doubleSided;
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, blockLength(program));
@@ -284,6 +297,33 @@ export function addGltfAssets(
 		return Result.err(GltfSceneError.BadSetup);
 	}
 	if (!isConsistent(data)) { return Result.err(GltfSceneError.InvalidData); }
+	let usage: Vec<int32> = [];
+	for (let mesh = 0; mesh < data.meshes.length; mesh++) { usage.push(0); }
+	let hasSkin: boolean = false;
+	for (const node of data.nodes) {
+		if (node.skin === null) {
+			if (node.mesh >= 0 && node.mesh < usage.length) { usage[node.mesh] |= 1; }
+			continue;
+		}
+		hasSkin = true;
+		for (const mesh of node.skinMeshes) {
+			if (mesh < 0 || mesh >= usage.length || mesh >= data.skinMeshes.length) {
+				return Result.err(GltfSceneError.InvalidData);
+			}
+			if (data.skinMeshes[mesh] === null) { return Result.err(GltfSceneError.InvalidData); }
+			usage[mesh] |= 2;
+		}
+	}
+	if (hasSkin && !validateGltfGraph(data).ok) { return Result.err(GltfSceneError.InvalidData); }
+	for (let mesh = 0; mesh < usage.length; mesh++) {
+		if ((usage[mesh] & 2) == 0) { continue; }
+		const material: int32 = data.meshMaterials[mesh];
+		const source: GltfMaterial = material == DEFAULT_MATERIAL
+			? DEFAULT_SOURCE : data.materials[material];
+		if (!declares(gltfProgramOf(source).withSkin())) {
+			return Result.err(GltfSceneError.UndeclaredProgram);
+		}
+	}
 	for (const material of data.materials) {
 		const key: ProgramKey = gltfProgramOf(material);
 		if (!declares(key)) { return Result.err(GltfSceneError.UndeclaredProgram); }
@@ -323,13 +363,58 @@ export function addGltfAssets(
 		if (!made.ok) { return undone(context, assets, made.error); }
 		assets.materials.push(made.value);
 	}
+	let skinMaterials: Vec<MaterialId | null> = [];
+	for (let material = 0; material < assets.materials.length; material++) {
+		skinMaterials.push(null);
+	}
 	for (let i = 0; i < (data.meshes.length as int32); i++) {
-		const added: Result<MeshId, MeshUploadError> = addMeshData(context, data.meshes[i]);
-		if (!added.ok) { return undone(context, assets, GltfSceneError.MeshRefused); }
-		assets.meshes.push(added.value);
 		const material: int32 = data.meshMaterials[i];
 		const index: int32 = material == DEFAULT_MATERIAL ? defaultIndex : material;
-		assets.bindings.push({ mesh: added.value, material: assets.materials[index] });
+		let skinMaterial: MaterialId | null = null;
+		let skinMesh: MeshId | null = null;
+		if ((usage[i] & 2) != 0) {
+			const cached = skinMaterials[index];
+			if (cached !== null) {
+				skinMaterial = cached;
+			} else {
+				const source: GltfMaterial = material == DEFAULT_MATERIAL
+					? DEFAULT_SOURCE : data.materials[material];
+				const base = context.materials[assets.materials[index].index];
+				const made = madeMaterial(context, setup, source,
+					base.texture, base.emissiveTexture, base.normalTexture, true);
+				if (!made.ok) { return undone(context, assets, made.error); }
+				skinMaterials[index] = made.value;
+				assets.materials.push(made.value);
+				skinMaterial = made.value;
+			}
+		}
+		let primary: MeshData = data.meshes[i];
+		let primaryMaterial: MaterialId = assets.materials[index];
+		if (usage[i] == 2) {
+			const source = data.skinMeshes[i];
+			if (source === null || skinMaterial === null) {
+				return undone(context, assets, GltfSceneError.InvalidData);
+			}
+			primary = source.mesh;
+			primaryMaterial = skinMaterial;
+		}
+		const added: Result<MeshId, MeshUploadError> = addMeshData(context, primary);
+		if (!added.ok) { return undone(context, assets, GltfSceneError.MeshRefused); }
+		assets.meshes.push(added.value);
+		if (usage[i] == 2) {
+			skinMesh = added.value;
+		} else if ((usage[i] & 2) != 0) {
+			const source = data.skinMeshes[i];
+			if (source === null) { return undone(context, assets, GltfSceneError.InvalidData); }
+			const uploaded = addMeshData(context, source.mesh);
+			if (!uploaded.ok) { return undone(context, assets, GltfSceneError.MeshRefused); }
+			assets.meshes.push(uploaded.value);
+			skinMesh = uploaded.value;
+		}
+		assets.bindings.push({
+			mesh: added.value, material: primaryMaterial,
+			skinMesh: skinMesh, skinMaterial: skinMaterial,
+		});
 	}
 	return Result.ok(assets);
 }
@@ -393,6 +478,71 @@ export function addGltfNodes(
 	return Result.ok(added.count);
 }
 
+function failedGltfNodes(
+	scene: Scene3D,
+	data: GltfData,
+	mapped: GltfNodeBinding,
+	error: GltfSceneError,
+): Result<GltfNodeBinding, GltfSceneError> {
+	for (const root of data.sceneRoots) {
+		if (root >= 0 && root < mapped.nodes.length && isLive(scene, mapped.nodes[root])) {
+			remove(scene, mapped.nodes[root]);
+		}
+	}
+	return Result.err(error);
+}
+
+function attachGltfSkins(
+	scene: Scene3D,
+	data: GltfData,
+	bindings: Readonly<Span<GltfMeshBinding>>,
+	mapped: GltfNodeBinding,
+): Result<int32, GltfSceneError> {
+	let addedCount: int32 = 0;
+	for (let node = 0; node < data.nodes.length; node++) {
+		const skinIndex = data.nodes[node].skin;
+		if (skinIndex === null || !isLive(scene, mapped.nodes[node])) { continue; }
+		const sourceSkin = data.skins[skinIndex];
+		let palettes: Vec<SkinPalette> = [];
+		for (const mesh of data.nodes[node].skinMeshes) {
+			const source = data.skinMeshes[mesh];
+			if (source === null) { return Result.err(GltfSceneError.InvalidData); }
+			for (const part of source.partition.parts) { palettes.push(part.palette); }
+		}
+		const pose = SkinPose.bindSkinPose(scene, sourceSkin.joints, mapped.nodes,
+			sourceSkin.inverseBindMatrices, palettes);
+		if (!pose.ok) { return Result.err(GltfSceneError.SceneRefused); }
+		let palette: int32 = 0;
+		for (const mesh of data.nodes[node].skinMeshes) {
+			const source = data.skinMeshes[mesh];
+			const skinMesh = bindings[mesh].skinMesh;
+			const skinMaterial = bindings[mesh].skinMaterial;
+			if (source === null || skinMesh === null || skinMaterial === null) {
+				return Result.err(GltfSceneError.BadMeshBinding);
+			}
+			const geometry = SkinGeometry.bindSkinGeometry(
+				source.mesh, source.influences, pose.value,
+			);
+			if (!geometry.ok) { return Result.err(GltfSceneError.SceneRefused); }
+			let base: int32 = 0;
+			for (const part of source.partition.parts) {
+				const count: int32 = part.triangles.length as int32 * 3;
+				const range: DrawRange = { base: base, count: count };
+				const local: Transform3D = {
+					position: vec3(0, 0, 0), rotation: identityQuat(), scale: vec3(1, 1, 1),
+				};
+				const added = addSkinMeshNode(scene, mapped.nodes[node], local,
+					skinMesh, skinMaterial, geometry.value, palette, range);
+				if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }
+				addedCount++;
+				palette++;
+				base += count;
+			}
+		}
+	}
+	return Result.ok(addedCount);
+}
+
 export function addGltfBoundNodes(
 	scene: Scene3D,
 	parent: NodeId3D,
@@ -406,6 +556,15 @@ export function addGltfBoundNodes(
 		return Result.err(GltfSceneError.BadMeshBinding);
 	}
 	for (const binding of bindings) {
+		const skinMesh = binding.skinMesh;
+		const skinMaterial = binding.skinMaterial;
+		if ((skinMesh === null) != (skinMaterial === null)) {
+			return Result.err(GltfSceneError.BadMeshBinding);
+		}
+		if (skinMesh !== null && skinMaterial !== null
+			&& (!context.hasMesh(skinMesh) || !context.hasMaterial(skinMaterial))) {
+			return Result.err(GltfSceneError.BadMeshBinding);
+		}
 		if (!context.hasMesh(binding.mesh) || !context.hasMaterial(binding.material)) {
 			const issued: boolean =
 				context.issuedMesh(binding.mesh) && context.issuedMaterial(binding.material);
@@ -439,7 +598,9 @@ export function addGltfBoundNodes(
 				scene, under, transformOf(data, index),
 				bindings[mesh].mesh, bindings[mesh].material,
 			);
-			if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }
+			if (!added.ok) {
+				return failedGltfNodes(scene, data, mapped, GltfSceneError.SceneRefused);
+			}
 			id = added.value;
 		}
 		setName(scene, id, data.nodes[index].name);
@@ -451,5 +612,8 @@ export function addGltfBoundNodes(
 			parents.push(id);
 		}
 	}
+	const attached = attachGltfSkins(scene, data, bindings, mapped);
+	if (!attached.ok) { return failedGltfNodes(scene, data, mapped, attached.error); }
+	mapped.count += attached.value;
 	return Result.ok(move mapped);
 }

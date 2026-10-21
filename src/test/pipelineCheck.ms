@@ -227,6 +227,32 @@ function sameWords(a: Readonly<Span<uint32>>, b: Readonly<Span<uint32>>): boolea
 	return true;
 }
 
+test "uint32 width participates in keys while legacy ordinals and descriptor words stay fixed" {
+	assert (IndexType.None as int32) == 0 && (IndexType.Uint16 as int32) == 1;
+	assert (IndexType.Uint32 as int32) == 2;
+	const program: int32 = doorProgram(ProgramKey.of(Program.Lit));
+	const layout: int32 = doorLayout(VertexLayout.Lit);
+	const state = sceneState();
+	const targets = sceneLayout();
+	const narrow = pipelineKey(program, layout, true, state, targets);
+	const wide = pipelineKey(program, layout, true, state, targets, IndexType.Uint32);
+	assert narrow.indexType == IndexType.Uint16 && wide.indexType == IndexType.Uint32;
+	assert narrow != wide;
+	assert pipelineKey(program, layout, false, state, targets, IndexType.Uint32).indexType ==
+		IndexType.None;
+	let legacy: Vec<uint32> = new Array(19);
+	let explicit16: Vec<uint32> = new Array(19);
+	let explicit32: Vec<uint32> = new Array(19);
+	describePipeline(legacy, 7, layout, true, state, targets);
+	describePipeline(explicit16, 7, layout, true, state, targets, IndexType.Uint16);
+	describePipeline(explicit32, 7, layout, true, state, targets, IndexType.Uint32);
+	assert sameWords(legacy, explicit16);
+	for (let word = 0; word < 19; word++) {
+		assert word == 18 ? explicit32[word] == 2 : explicit32[word] == legacy[word];
+	}
+	assert legacy[18] == 1;
+}
+
 test "pipeline descriptor follows the key" {
 	const rebuilt: RenderState = RenderState.defaults()
 		.withBlendMode(BlendMode.Alpha)

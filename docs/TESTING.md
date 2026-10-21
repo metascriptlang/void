@@ -73,7 +73,7 @@ tests/golden/compare.ms           diff, tolerance policy, report
 tests/golden/d3d11/<scene>.png    the goldens
 ```
 
-`out/tmp/capture/capture.c` moves in unchanged: it reads the resolved D3D11 swapchain through sokol's native-handle getters (`sg_d3d11_device()`, `sapp_d3d11_get_swap_chain()`), clones the backbuffer desc as `D3D11_USAGE_STAGING | D3D11_CPU_ACCESS_READ`, `CopyResource`, `Map`. sokol has no readback API and async `read-buffer`/`read-image` is only announced (docs/SOKOL.md:34), so this stays hand-written per backend for now.
+`out/tmp/capture/capture.c` moves in unchanged: it reads the resolved D3D11 swapchain through sokol's native-handle getters (`sg_d3d11_device()`, and `voidWindowSwapChain()` from `bridgeWin.c` since the window owns its swapchain, docs/SOKOL.md), clones the backbuffer desc as `D3D11_USAGE_STAGING | D3D11_CPU_ACCESS_READ`, `CopyResource`, `Map`. sokol has no readback API and async `read-buffer`/`read-image` is only announced (docs/SOKOL.md:34), so this stays hand-written per backend for now.
 
 **PNG, not PPM.** A committed 800×600 `P6` is 1.44 MB and `out/tmp/capture` holds twelve of them. The scenes below are 256²–512×256; PNG at that size is 3–15 KB for flat UI, so the whole suite fits in well under a megabyte. `deps/stb/stb_image_write.h` is already fetched by `setup.sh`, so the writer is one include and the gate stays on one toolchain. `cmp.py`'s hand-rolled PNG writer becomes a dev tool for diff masks, not a gate dependency.
 
@@ -243,7 +243,14 @@ Most of the gating half is assertable with no GPU at all, in T1. That is the poi
 
 **The frame profiler's rows (P6).** A bench entry built with `-d:voidProfiler` also prints `<scene>.profileFrames` and, in milliseconds, `profileDrawP50.ms`, `profileDrawP99.ms`, `profileDrawMax.ms`, `profileDirtyP50.ms` and `profileDirtyMax.ms` (CPU draw time from the first bracket to commit, and first invalidation to present end). `tests/bench/check.ms` reports them and gates none. The gate builds the five entries a second time as `out/bench<Scene>Profiler.exe` with the overlay left hidden and runs `BENCH_SUFFIX=Profiler out/benchCheck.exe` against the same baseline: a module that is compiled in changes no counter. The overhead in milliseconds is `AB_SUFFIX_B=Profiler sh scripts/bench-ab.sh . . 6 Ui`, the plain and the flagged binary of one tree as the two arms.
 
-**wasm.** `scripts/wasmModuleDelta.sh` records the object bytes of the colour, SDF and shaper modules in `tests/bench/wasm.json`, and `scripts/experiment-modulesWeb.sh` builds an entry that links no Yoga off and on per module (run owed). `scripts/build-web.sh` already builds both backends; the gate adds a size row per backend and per module against a committed budget, which is how guardrail 6 ("text is where the weight goes, so it is modular") stops being an intention.
+**wasm.** Keep object growth separate from linked entry size. `scripts/wasmModuleDelta.sh`
+uses the pre-link code-plus-data records in `tests/bench/wasm.json` (`tool` and `meaning`),
+not final wasm bytes. `scripts/experiment-modulesWeb.sh` isolates text cost with its default
+`tests/experiments/modulesWeb.ms` entry, avoiding `node.ms` and its Yoga dependency; the demo
+entry `src/examples/mainSokol2d.ms` includes that retained-scene path. Their linked budgets
+and measured conditions are in "Linked wasm text modules" below and `tests/bench/wasmBudget.txt`.
+The experiment enforces artifact sizes; the native gate validates those declarations, not a
+fresh link. Neither replaces the object-growth checks.
 
 ## T5 — judgement
 
@@ -317,7 +324,8 @@ number typed into the script.
    `N px differ, max delta M, bbox` and a pass rate.
 5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
-   reported with a warn threshold. Plus a SKIP for the wasm budget, which P6 owns.
+   reported with a warn threshold. Object-growth checks and linked wasm budget declarations
+   also gate; declaration validation does not re-link the measured entries.
 7. Guardrail 9: the D3D11 conformance line, then one named SKIP per backend that has no
    readback. With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
 8. The tier table, the PENDING count, and the SKIP and FAIL totals.
@@ -371,19 +379,24 @@ in the same change as the fix.
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
-| WebGPU | no readback in the wasm build, and headless Chrome has no adapter here, so the run is headed. P6 | SKIP |
+| WebGPU | no readback in the wasm build. P6. Headless Chrome does hand it the real adapter here (2026-10-20); liveness only, below | SKIP |
 | WebGL2 | **120 / 120**: 88 byte-identical, 32 within the cross-backend bound, 0 structural failures; measured 2026-10-19, BUILD `4fe2a5eec`, with the runner built on the same module defines as D3D11 (`scripts/goldenDefines.sh`). Before that the web runner carried only `voidProfiler`, so 37 scenes of the text, SVG, emoji and sprite modules failed for want of their module, not for WebGL2; `conformance:webgl2-pixel-centre` is deleted, its four scenes passing. ANGLE on D3D11 on the same GPU proves the GLSL ES path and GL conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web` |
 
 So guardrail 9 is a number now, and the number is **3 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
-for the web today is liveness, not conformance: `scripts/web-liveness.sh` loads the built
-demo in headless Chrome and checks that the canvas is not blank. Measured 2026-09-20:
-**WebGL2 draws the demo; WebGPU builds and runs but headless Chrome hands it no adapter**
-(both `--use-angle=swiftshader` and the real adapter give a black canvas), so WebGPU
-liveness is unproven headless and is reported as a SKIP, not a pass. Measured 2026-10-18: headless
-Chrome can write its screenshot and never exit, so `scripts/webShot.sh` ends a shot once its
-PNG stops growing, or after `VOID_WEB_SHOT_SECONDS` (30 s) with none, which is a FAIL for WebGL2
-and a SKIP for WebGPU; either way the shot's process tree is killed. `scripts/webShot.test.sh`
-pins this on every liveness run.
+for WebGPU today is liveness, not conformance: `scripts/webPresent.mjs` loads a built page in
+headless Chrome over DevTools, counts the frames it presents (WebGPU: a rAF tick that took the
+canvas texture and submitted; WebGL2: a draw or clear on the default framebuffer), and screenshots
+the canvas after three. It fails a page that presents fewer in 30 s, reports a GPU error, loses its
+device or throws, or whose canvas is one colour; it skips only when `requestAdapter` returns null.
+`scripts/web-liveness.sh` runs it on the 2D demo for both backends in the gate's `--web` stage, and
+`scripts/web3d.sh` on `mainCampfire` for WebGPU; `scripts/webPresent.test.mjs` pins the PNG decode
+and the verdicts. The 2026-09-20 reading that headless Chrome hands WebGPU no adapter was a
+fixed-time screenshot taken before anything presented: on 2026-10-20 `--headless=new` with no ANGLE
+or unsafe flag rendered the campfire on the NVIDIA adapter, while a harness that slept a fixed 8 s
+returned it black (`~/metascript/.inbox/void/2026-10-20-webgpu-coverage-gap.md`). Measured 2026-10-21, BUILD
+`3c5ca8377`, through `web-liveness.sh`: the demo presents on WebGL2 (39.0% of pixels off the clear colour) and on
+WebGPU (37.7%); a WebGPU build that sets up gfx and never draws FAILs with "presented 0 frames in 30 s, with a WebGPU
+adapter"; the WebGPU campfire presents with 91.0% off the clear colour.
 
 **The design: one golden set, authored on D3D11; five backends compared against it.** Not five golden sets — five golden sets would record five different renderers and prove exactly nothing. The output is a per-backend conformance report: scenes identical, scenes within a stated bound, scenes failing, and a pass rate. That report *is* guardrail 9, and it belongs in VOID2D.md as a number that moves per phase.
 
@@ -481,6 +494,38 @@ colour 1 page/4 MiB, 40 sweep rasterizations and 0 steady; SDF 1 page/1 MiB, 40 
 0 sweep coverage rasterizations and 0 steady work; outline 3662 sweep tiles, 6 pages/6 MiB,
 0 steady outline or coverage rasterizations. These are counters, not performance timings.
 
+### Colour sampler — measured 2026-10-19
+
+`tests/integration/colourSampler.ms`, working-source tree
+`09d651d1eaa2dad47ad0d7721357500c30725b20`, binary/support BUILD `4fe2a5eec`: Windows,
+D3D11 and GL core (`NVIDIA GeForce RTX 5090/PCIe/SSE2`), MSAA 1, high-DPI off,
+`--release -d:voidColourEmoji`; GL adds `-d:voidGlCore --passC=-DSOKOL_GLCORE`.
+Noto Color Emoji's checked-in grin at 16 logical px, zooms 1.37 and 0.63, DPI 1 and 2,
+over black with scene smoothing off. These are correctness captures, not timings.
+
+Reference read before writing the check: GPUI `b961b4950febbc050081554bafe976b5d1b93f39`,
+`crates/gpui_windows/src/directx_renderer.rs` `DirectXGlobalElements::new` (linear sampler),
+`shaders.hlsl` `polychrome_sprite_fragment`, and the WGPU equivalents
+`wgpu_renderer.rs` `atlas_sampler` / `shaders.wgsl` `fs_poly_sprite`. They sample polychrome
+sprites through linear min/mag filtering. This tests Void's existing scaled-RGBA path;
+it changes no renderer or sampling policy and is not a GPUI pixel-parity claim.
+
+Three compiler calls and all eight GPU processes completed: four positives, four intended
+pixel refusals. The independent four-texel oracle reads the premultiplied RGBA CPU mirror;
+its predeclared maximum RGB error was 2 bytes, measured worst 1.047496. Every zoom/DPI case
+had 128–1123 channels whose bilinear and nearest expectations differed by at least 8 bytes,
+so a flat or uninformative tile could not pass. Following checker sprites matched nearest
+sampling exactly; warm frames were byte-identical and rasterized no glyphs. Parent inspection
+and decoded RGB comparison found D3D11/GL images identical at both DPIs.
+
+Recorder-only all-nearest mutants exited 1 at `bilinear pixel 16,10 lane 0`; all-linear
+mutants exited 1 at `nearest reset pixel 76,9`, on both backends. Incidental errors are not
+accepted as these refusals. The first CPU attempt instead stopped before codegen on two
+fixture shift-width errors; matching RHS casts fixed those, with no oracle/bound change.
+The two pure oracle guards then passed in a 379-test, 20-file focused run. The gate's
+native stages run the positive and wrong-sampler controls; the CPU guards join all-on T0.
+No T5, other-device, AA-quality or performance conclusion follows from this check.
+
 ### Linked wasm text modules — measured 2026-10-19
 
 `sh scripts/experiment-modulesWeb.sh shaper sdf bidi`, tree
@@ -549,6 +594,6 @@ No browser/GPU was run and no renderer policy changed.
 | T1 | the snapshots in `tests/displayList/` plus no-GPU reachability and invariant assertions |
 | T2 | the scenes of `tests/golden/table.ms`, D3D11, byte-identical, zero budgets; the per-backend numbers are in "Guardrail 9" |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
-| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene, plus `textEmoji`'s colour pages, bytes and rasterizations held to the bounds in `baseline.json` `colourBounds` (native measurements above), plus `textSdf`'s SDF pages, bytes, generations and coverage rasterizations held to `sdfBounds` (native measurements above); the `allocation` stage over the emitted C (`scripts/allocation.awk`), reading the functions it names and every void2d function they call, each held to its caller's rule unless a list names it, and naming the call chain of a failure; it does not see stream growth, allocation inside C, or a function no bench reaches; `present` and `firstPaint` milliseconds reported; wasm budget SKIPs |
+| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene, plus `textEmoji`'s colour pages, bytes and rasterizations held to the bounds in `baseline.json` `colourBounds` (native measurements above), plus `textSdf`'s SDF pages, bytes, generations and coverage rasterizations held to `sdfBounds` (native measurements above); the `allocation` stage over the emitted C (`scripts/allocation.awk`), reading the functions it names and every void2d function they call, each held to its caller's rule unless a list names it, and naming the call chain of a failure; it does not see stream growth, allocation inside C, or a function no bench reaches; `present` and `firstPaint` milliseconds reported; wasm object growth and linked-budget declarations checked, not fresh links (measured conditions above) |
 | T5 | human only |
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".

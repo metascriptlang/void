@@ -4,7 +4,7 @@
 // palettes, look and settings come from the caller.
 //
 //   Scene  low-res MRT: color + normal (depth packed in its alpha) + depth attachment,
-//          drawing the core's opaque list with the preset's own programs (pixelArt3d.glsl) in
+//          drawing the core's opaque list with the preset's own programs (pixelArt3d.ms) in
 //          place of the ones materials name: the toon ramp and the normal target are its look;
 //          then the alpha and additive lists into color + depth alone, as fwd.Renderer draws
 //          them into its default pass while depth and normal maps come from their own passes
@@ -165,6 +165,17 @@ export struct PixelArtLook {
 	saturation: float32;
 }
 
+function hasValidRange(this fog: Fog): boolean {
+	return Number.isFinite(fog.start) && Number.isFinite(fog.end) && fog.start < fog.end;
+}
+
+function requireFogRange(this look: PixelArtLook, call: string): void {
+	if (!look.fog.hasValidRange()) {
+		console.log(`void3d: ${call} requires finite fog.start < fog.end`);
+		unreachable;
+	}
+}
+
 export enum PixelArtError {
 	UniformPoolFull,
 	PaletteLevels,
@@ -191,6 +202,7 @@ export enum PixelArtError {
 	TranslucentDepthWrite,
 	// As ForwardError.HdrUnsupported.
 	HdrUnsupported,
+	FogRange,
 }
 
 export interface PixelArtRenderer {
@@ -314,7 +326,7 @@ function flag(on: boolean): float32 {
 	return on ? ON : OFF;
 }
 
-// The post pass uniform block (shader3d.glsl postParams). `zeroToOne` is gpu3d's
+// The post pass uniform block (pixelArt3d.ms PostParams). `zeroToOne` is gpu3d's
 // depthZeroToOne: GL stores clip z as (z + 1) / 2, which the unpack undoes.
 export function writePostParams(
 	this look: PixelArtLook,
@@ -323,6 +335,7 @@ export function writePostParams(
 	zeroToOne: boolean,
 	out: Span<float32>,
 ): void {
+	look.requireFogRange("writePostParams");
 	out[0] = look.outline.depthThreshold;
 	out[1] = look.outline.normalThreshold;
 	out[2] = look.outline.depthShade;
@@ -410,6 +423,7 @@ function make(
 	look: PixelArtLook,
 	hdr: boolean,
 ): Result<PixelArtRenderer, PixelArtError> {
+	if (!look.fog.hasValidRange()) { return Result.err(PixelArtError.FogRange); }
 	let blocks: Vec<int32> = [
 		VERTEX_UNIFORM_LENGTH,
 		LIGHT_UNIFORM_LENGTH,
@@ -497,6 +511,7 @@ function sceneColor(renderer: PixelArtRenderer, load: LoadAction, clear: Vec4): 
 
 export function setLook(renderer: PixelArtRenderer, look: PixelArtLook): void {
 	if (renderer.closed) { stopOnClosed("setLook"); }
+	look.requireFogRange("setLook");
 	renderer.look = look;
 	renderer.sceneColors[0] = sceneColor(renderer, LoadAction.Clear, look.background);
 	renderer.core.changed = true;
@@ -746,7 +761,7 @@ function rampsHaveLevels(
 }
 
 // One frame: `items` index the meshes and materials of the context the preset was made on;
-// `camera` and `lights` are the scene programs' uniform blocks (shader3dBlocks.glsl
+// `camera` and `lights` are the scene programs' uniform blocks (shader3d.ms
 // vertexParams, lightParams); `view` comes from viewFor. Answers how many items it was given.
 // Allocates nothing unless the item count grew. An item the preset cannot draw, or whose ramp
 // has no levels, refuses the frame before anything changes.
@@ -759,6 +774,7 @@ export function prepareFrame(
 ): Result<int32, PixelArtError> {
 	if (renderer.closed) { stopOnClosed("prepareFrame"); }
 	renderer.core.openPrepare();
+	if (!renderer.look.fog.hasValidRange()) { return Result.err(PixelArtError.FogRange); }
 	const context: DrawContext = renderer.core.context;
 	const screens: boolean =
 		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);

@@ -1,11 +1,11 @@
 import { approx } from "./helpers";
 import { contextOf } from "./drawHelpers";
 import { DrawContext, MeshId, releaseMesh } from "../void3d/draw";
-import { Mat4 } from "../math/math3d";
+import { Mat4, composeTransform, writeTo } from "../math/math3d";
 import { loadGltf, GltfError } from "../void3d/gltf";
 import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
 import { Scene3D, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
-import { vertexCount, triangleCount } from "../void3d/meshData";
+import { MeshData, vertexCount, triangleCount } from "../void3d/meshData";
 // The buffer a test builds by hand, in the bit patterns the decoder must see: every float
 // here is 0.0 (0x00000000) or 1.0 (0x3F800000), so the bytes below are the IEEE-754
 // little-endian encodings of those two values and nothing else.
@@ -85,6 +85,136 @@ function nodeOnlyGltf(node: string, root: string = "0"): string {
 		+ "\"bufferViews\":[],\"buffers\":[]}";
 }
 
+
+function interleavedTriangleBuffer(): Vec<uint8> {
+	const source = triangleBuffer();
+	let out: Vec<uint8> = [];
+	for (let i = 0; i < 3; i++) {
+		for (let j = 0; j < 12; j++) { out.push(source[i * 12 + j]); }
+		for (let j = 0; j < 12; j++) { out.push(source[36 + i * 12 + j]); }
+	}
+	for (let i = 72; i < source.length; i++) { out.push(source[i]); }
+	return out;
+}
+
+function interleavedTriangleGltf(): string {
+	return triangleGltf()
+		.replace(`{"bufferView":1,"componentType":5126`,
+			`{"bufferView":0,"byteOffset":12,"componentType":5126`)
+		.replace(`"byteOffset":0,"byteLength":36`,
+			`"byteOffset":0,"byteLength":72,"byteStride":24`);
+}
+
+function sparseTriangleGltf(): string {
+	return triangleGltf()
+		.replace(`{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}`,
+			`{"componentType":5126,"count":3,"type":"VEC3","sparse":{"count":3,` +
+			`"indices":{"bufferView":4,"componentType":5121},"values":{"bufferView":0}}}`)
+		.replace(`{"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"}`,
+			`{"componentType":5126,"count":3,"type":"VEC3","sparse":{"count":3,` +
+			`"indices":{"bufferView":4,"componentType":5121},"values":{"bufferView":1}}}`)
+		.replace(`"byteOffset":108,"byteLength":6}]`,
+			`"byteOffset":108,"byteLength":6},` +
+			`{"buffer":0,"byteOffset":114,"byteLength":3}]`)
+		.replace(`"buffers":[{"byteLength":114}]`, `"buffers":[{"byteLength":117}]`);
+}
+
+function sparseTriangleBuffer(): Vec<uint8> {
+	let out = triangleBuffer();
+	for (let i = 0; i < 3; i++) { out.push(i as uint8); }
+	return out;
+}
+
+function sameTriangle(this actual: MeshData, expected: MeshData): boolean {
+	if (actual.vertices.length != expected.vertices.length ||
+		actual.indices.length != expected.indices.length) { return false; }
+	for (let i = 0; i < actual.vertices.length; i++) {
+		if (actual.vertices[i] != expected.vertices[i]) { return false; }
+	}
+	for (let i = 0; i < actual.indices.length; i++) {
+		if (actual.indices[i] != expected.indices[i]) { return false; }
+	}
+	return actual.hasUvs == expected.hasUvs && actual.hasTangents == expected.hasTangents;
+}
+
+test "loadGltf interleaved and sparse positions and normals match the dense consumer" {
+	const dense = loadGltf(triangleGltf(), triangleBuffer());
+	assert dense.ok;
+	if (!dense.ok) { return; }
+	for (const sparse of [false, true]) {
+		const json = sparse ? sparseTriangleGltf() : interleavedTriangleGltf();
+		const bytes = sparse ? sparseTriangleBuffer() : interleavedTriangleBuffer();
+		const loaded = loadGltf(json, bytes);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		assert loaded.value.meshes[0].sameTriangle(dense.value.meshes[0]);
+		assert loaded.value.nodes[0].name == "tri" && loaded.value.nodes[0].mesh == 0;
+	}
+}
+
+test "loadGltf sparse replacements override an existing position base" {
+	const dense = loadGltf(triangleGltf(), triangleBuffer());
+	assert dense.ok;
+	if (!dense.ok) { return; }
+	const source = triangleBuffer();
+	let bytes = triangleBuffer();
+	for (let i = 12; i < 36; i++) { bytes[i] = 0 as uint8; }
+	bytes.push(1 as uint8);
+	bytes.push(2 as uint8);
+	for (let i = 12; i < 36; i++) { bytes.push(source[i]); }
+	const json = triangleGltf()
+		.replace(`{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}`,
+			`{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3",` +
+			`"sparse":{"count":2,"indices":{"bufferView":4,"componentType":5121},` +
+			`"values":{"bufferView":5}}}`)
+		.replace(`"byteOffset":108,"byteLength":6}]`,
+			`"byteOffset":108,"byteLength":6},` +
+			`{"buffer":0,"byteOffset":114,"byteLength":2},` +
+			`{"buffer":0,"byteOffset":116,"byteLength":24}]`)
+		.replace(`"buffers":[{"byteLength":114}]`, `"buffers":[{"byteLength":140}]`);
+	const loaded = loadGltf(json, bytes);
+	assert loaded.ok;
+	if (loaded.ok) { assert loaded.value.meshes[0].sameTriangle(dense.value.meshes[0]); }
+}
+
+test "loadGltf interleaved attributes still reject invalid stride bounds count and encoding" {
+	const json = interleavedTriangleGltf();
+	const bytes = interleavedTriangleBuffer();
+	for (const bad of [
+		json.replace(`"byteStride":24`, `"byteStride":23`),
+		json.replace(`"byteStride":24`, `"byteStride":8`),
+		json.replace(`"byteOffset":12,`, `"byteOffset":12,"normalized":true,`),
+		json.replace(`"componentType":5126`, `"componentType":5123`),
+	]) {
+		const loaded = loadGltf(bad, bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
+	}
+	const short = loadGltf(json.replace(`"byteLength":72`, `"byteLength":71`), bytes);
+	assert !short.ok;
+	if (!short.ok) { assert short.error == GltfError.OutOfRange; }
+	const count = loadGltf(json.replace(`"byteOffset":12,"componentType":5126,"count":3`,
+		`"byteOffset":12,"componentType":5126,"count":2`), bytes);
+	assert !count.ok;
+	if (!count.ok) { assert count.error == GltfError.CountMismatch; }
+}
+
+test "loadGltf sparse geometry rejects duplicate outside indices and nonfinite replacements" {
+	const json = sparseTriangleGltf();
+	for (const index of [0, 3]) {
+		let bytes = sparseTriangleBuffer();
+		bytes[115] = index as uint8;
+		const loaded = loadGltf(json, bytes);
+		assert !loaded.ok;
+		if (!loaded.ok) { assert loaded.error == GltfError.Unsupported; }
+	}
+	let bytes = sparseTriangleBuffer();
+	bytes[2] = 0xc0 as uint8;
+	bytes[3] = 0x7f as uint8;
+	const nonfinite = loadGltf(json, bytes);
+	assert !nonfinite.ok;
+	if (!nonfinite.ok) { assert nonfinite.error == GltfError.OutOfRange; }
+}
 
 test "loadGltf decodes a hand-built triangle into one indexed MeshData" {
 	const loaded = loadGltf(triangleGltf(), triangleBuffer());
@@ -302,11 +432,75 @@ test "malformed TRS, cyclic nodes and accessors past their buffer view fail loud
 	assert !misaligned.ok;
 }
 
-test "unsupported transforms, deformation and non-indexed geometry fail loudly" {
-	const matrixNode = loadGltf(
-		nodeOnlyGltf("{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}"), [],
-	);
-	assert !matrixNode.ok;
+test "glTF matrix nodes round trip identity, rotations and nonuniform scales" {
+	const matrices: Vec<Vec<float32>> = [
+		[1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+		[0, 2, 0, 0, -3, 0, 0, 0, 0, 0, 4, 0, 5, 6, 7, 1],
+		[0.72, 1.6, -0.96, 0, -1.44, 1.8, 1.92, 0, 3.2, 0, 2.4, 0, 5, 6, 7, 1],
+		[2, 0, 0, 0, 0, -3, 0, 0, 0, 0, -4, 0, 5, 6, 7, 1],
+		[-2, 0, 0, 0, 0, 3, 0, 0, 0, 0, -4, 0, 5, 6, 7, 1],
+		[-2, 0, 0, 0, 0, -3, 0, 0, 0, 0, 4, 0, 5, 6, 7, 1],
+		[1e20, 0, 0, 0, 0, 1e-10, 0, 0, 0, 0, 1, 0, 5, 6, 7, 1],
+	];
+	for (const values of matrices) {
+		let text: string = "";
+		for (let i = 0; i < 16; i++) {
+			if (i != 0) { text += ","; }
+			text += values[i].toString();
+		}
+		const loaded = loadGltf(nodeOnlyGltf("{\"matrix\":[" + text + "]}"), []);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		const local = loaded.value.nodes[0].local;
+		let actual: Vec<float32> = new Array(16);
+		composeTransform(local.position, local.rotation, local.scale).writeTo(actual, 0);
+		for (let i = 0; i < 16; i++) {
+			const tolerance: float32 = (Math.abs(values[i]) * 0.00001) as float32;
+			assert Math.abs(actual[i] - values[i]) <= (values[i] == 0 ? 0.00001 : tolerance);
+		}
+	}
+}
+
+test "glTF matrix parent reaches retained child world transform" {
+	const json = "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"matrix\":[0,2,0,0,-3,0,0,0,0,0,4,0,5,6,7,1],\"children\":[1]},"
+		+ "{\"name\":\"child\",\"translation\":[1,2,3]}],\"meshes\":[],\"buffers\":[]}";
+	const loaded = loadGltf(json, []);
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	const scene = Scene3D.create(contextOf(0, 0));
+	assert addGltfNodes(scene, scene.rootId(), loaded.value, []).ok;
+	assert syncWorld(scene) == 3;
+	const child = scene.findByName(scene.rootId(), "child");
+	assert child.ok;
+	if (!child.ok) { return; }
+	const world = scene.worldOf(child.value);
+	assert world.ok;
+	if (!world.ok) { return; }
+	assert approx(world.value.m41, -1.0);
+	assert approx(world.value.m42, 8.0);
+	assert approx(world.value.m43, 19.0);
+}
+
+test "glTF matrix nodes refuse nonaffine shear singular mirrored and mixed TRS input" {
+	const invalid: Vec<string> = [
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,2]}",
+		"{\"matrix\":[1,0,0,0.1,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1,0.01,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1,0.0001,0,0,0,1,0,0,0,0,1,0,1e20,0,0,1]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1]}",
+		"{\"matrix\":[-1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1e-4,0,0,0,0,1e-4,0,0,0,0,1e-4,0,0,0,0,1]}",
+		"{\"matrix\":[1e999,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"translation\":[0,0,0]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"rotation\":[0,0,0,1]}",
+		"{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],\"scale\":[1,1,1]}",
+	];
+	for (const node of invalid) { assert !loadGltf(nodeOnlyGltf(node), []).ok; }
+}
+
+test "unsupported inputs fail loudly beside valid non-indexed geometry" {
 	const skinned = loadGltf(nodeOnlyGltf("{\"skin\":0}"), []);
 	assert !skinned.ok;
 	const zeroScale = loadGltf(nodeOnlyGltf("{\"scale\":[1,1,0]}"), []);
@@ -346,7 +540,11 @@ test "unsupported transforms, deformation and non-indexed geometry fail loudly" 
 		+ "\"buffers\":[{\"byteLength\":72}]}",
 		triangleBuffer(),
 	);
-	assert !noIndices.ok;
+	assert noIndices.ok;
+	if (noIndices.ok) {
+		assert noIndices.value.meshes[0].indices.length == 0;
+		assert noIndices.value.meshes[0].wideIndices === null;
+	}
 	let nonFinite = triangleBuffer();
 	nonFinite[2] = 192 as uint8;
 	nonFinite[3] = 127 as uint8;

@@ -15,14 +15,16 @@ when (macos) {
 	@compile("./bridge.c");
 }
 
-when (windows && !voidGlCore) {
+when (windows) {
 	@compile("./sokolWin.c");
+	@compile("./sokolAppWin.c");
 	@compile("./bridgeWin.c");
 	@compile("./appWindow.c");
 	@compile("./views.c");
 	@compile("./bridge.c");
 	@passL("-ld3d11");
 	@passL("-ldxgi");
+	@passL("-ldwmapi");
 	@passL("-limm32");
 	@passL("-lcomctl32");
 	@passL("-luser32");
@@ -31,14 +33,8 @@ when (windows && !voidGlCore) {
 }
 
 when (windows && voidGlCore) {
-	@compile("./sokolWin.c");
-	@compile("./bridgeWeb.c");
-	@compile("./appWindow.c");
-	@compile("./bridge.c");
+	@compile("./windowGl.c");
 	@passL("-lopengl32");
-	@passL("-luser32");
-	@passL("-lgdi32");
-	@passL("-lshell32");
 }
 
 when (android) {

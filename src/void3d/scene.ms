@@ -423,18 +423,23 @@ function validateSkinMesh(
 		return Result.err(SceneError.SkinPalette);
 	}
 	const key = context.materials[material.index].program;
+	if (!geometry.source.validIndexStorage() ||
+		!context.meshData[mesh.index].validIndexStorage()) {
+		return Result.err(SceneError.SkinMesh);
+	}
 	const count: int32 = geometry.source.vertexCount();
 	const total: int32 = context.meshes[mesh.index].elementCount();
 	if (!key.skinned || !declares(key) || !geometry.source.hasSkin ||
 		context.meshes[mesh.index].layout != vertexLayoutOf(key) ||
 		context.meshes[mesh.index].vertexCount != count ||
 		context.meshes[mesh.index].isIndexed() != geometry.source.isIndexed() ||
-		count < 1 || geometry.source.indices.length > 0x7fffffff ||
+		count < 1 ||
 		geometry.source.vertices.length != count * geometry.source.stride() ||
 		geometry.influences.joints.length != count * 4 ||
 		geometry.influences.weights.length != count * 4 ||
 		context.meshData[mesh.index].vertices.length != geometry.source.vertices.length ||
-		context.meshData[mesh.index].indices.length != geometry.source.indices.length ||
+		context.meshData[mesh.index].indexCount() != geometry.source.indexCount() ||
+		context.meshes[mesh.index].index32 != (geometry.source.wideIndices !== null) ||
 		context.meshData[mesh.index].hasSkin != geometry.source.hasSkin ||
 		context.meshData[mesh.index].hasUvs != geometry.source.hasUvs ||
 		context.meshData[mesh.index].hasTangents != geometry.source.hasTangents ||
@@ -450,16 +455,17 @@ function validateSkinMesh(
 			return Result.err(SceneError.SkinMesh);
 		}
 	}
-	for (let i = 0; i < geometry.source.indices.length; i++) {
-		if (context.meshData[mesh.index].indices[i] != geometry.source.indices[i]) {
+	for (let i = 0; i < geometry.source.indexCount(); i++) {
+		if (context.meshData[mesh.index].indexAt(i) != geometry.source.indexAt(i)) {
 			return Result.err(SceneError.SkinMesh);
 		}
 	}
 	const stride: int32 = geometry.source.stride();
 	for (let element = base; element < base + elements; element++) {
-		const vertex: int32 = geometry.source.isIndexed()
-			? geometry.source.indices[element] as int32 : element;
-		if (vertex < 0 || vertex >= count) { return Result.err(SceneError.SkinMesh); }
+		const sourceIndex: uint32 = geometry.source.isIndexed()
+			? geometry.source.indexAt(element) : (element as uint32);
+		if (sourceIndex >= (count as uint32)) { return Result.err(SceneError.SkinMesh); }
+		const vertex: int32 = sourceIndex as int32;
 		for (let influence = 0; influence < 4; influence++) {
 			const at: int32 = vertex * 4 + influence;
 			if (geometry.source.vertices[vertex * stride + stride - 4 + influence] !=

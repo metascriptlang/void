@@ -1,9 +1,6 @@
-// sokol implementation unit — Windows (D3D11, or GL core with -d:voidGlCore). Plain C,
-// compiled by gpu.ms.
+// sokol_gfx implementation unit — Windows (D3D11, or GL core with -d:voidGlCore). Plain C,
+// compiled by gpu.ms. sokol_app has its own unit, sokolAppWin.c.
 #define SOKOL_IMPL
 #include "backend.h"
-#define SOKOL_NO_ENTRY
 #include "sokol_gfx.h"
-#include "sokol_app.h"
 #include "sokol_log.h"
-#include "sokol_glue.h"

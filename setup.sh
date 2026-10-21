@@ -21,7 +21,7 @@
 set -e
 cd "$(dirname "$0")"
 
-SOKOL_REV="7b7a84d52f741c21eb06b8b1b4f1a09afa01ba16"            # fork `void`: 2026-09-14 + sapp_skip_present
+SOKOL_REV="2e75443dbd4940b5aa8d76a8e479f8e4b270b9a3"            # 2026-09-14
 SOKOL_TOOLS_REV="11d0cf678105d614d675e6d9bd2aaf3eeff12f8c"
 STB_REV="2c980bb59875b0d32144a71867fbdebb2f77cd20"
 FREETYPE_REV="42608f77f20749dd6ddc9e0536788eaad70ea4b5"      # VER-2-13-3
@@ -29,12 +29,8 @@ KB_REV="cc63806775f615908ec9562653af4726d8b895d5"                  # v2.28e, 202
 NANOSVG_REV="239e102ec2c691f2902e20ace2ed36ee4a35cfe6"            # 2026-07-10, zlib
 MIKKTSPACE_REV="3e895b49d05ea07e4c2133156cfa94369e19e409"         # 2020-03-25, zlib
 
-# Our sokol fork (docs/SOKOL.md): Void-local patches sit on its `void` branch
-# until upstream merges them, so a pin may name a commit floooh/sokol lacks.
-SOKOL_FORK="${SOKOL_FORK:-$HOME/projects/sokol}"
-
 fetch() {
-	name="$1"; repo="$2"; rev="$3"; fork="$4"
+	name="$1"; repo="$2"; rev="$3"
 	dest="deps/$name"
 	if [ ! -d "$dest/.git" ]; then
 		echo "cloning $repo"
@@ -42,10 +38,6 @@ fetch() {
 	fi
 	if [ "$(git -C "$dest" rev-parse HEAD)" != "$rev" ]; then
 		git -C "$dest" fetch -q origin
-		if [ -n "$fork" ] && ! git -C "$dest" cat-file -e "$rev^{commit}" 2>/dev/null; then
-			[ -d "$fork/.git" ] || { echo "$name: $rev is not upstream and fork $fork is missing"; exit 1; }
-			git -C "$dest" fetch -q "$fork" void
-		fi
 		git -C "$dest" checkout -q "$rev"
 	fi
 	echo "$name @ $(git -C "$dest" rev-parse --short HEAD)"
@@ -82,7 +74,7 @@ fetch_ucd() {
 }
 
 mkdir -p deps
-fetch sokol           floooh/sokol           "$SOKOL_REV" "$SOKOL_FORK"
+fetch sokol           floooh/sokol           "$SOKOL_REV"
 fetch sokol-tools-bin floooh/sokol-tools-bin "$SOKOL_TOOLS_REV"
 fetch stb             nothings/stb           "$STB_REV"
 fetch kb              JimmyLefevre/kb        "$KB_REV"

@@ -24,7 +24,7 @@ sokol picks its backend at **compile time**, and sokol-shdc cross-compiles **off
 
 ## Tier 1 — hand-written GLSL
 
-Annotated GLSL (`@vs` / `@fs` / `@cs`, separate `texture` + `sampler`), cross-compiled by `scripts/regen-shaders.sh` to a generated `*.glsl.h` desc header. It still holds every stage Tier 3 has not taken: the particle and billboard stages of `src/void3d/shader3d.glsl`, all of `src/void3d/pixelArt3d.glsl`, and the cube's `src/sokol/shader.glsl`.
+Annotated GLSL (`@vs` / `@fs` / `@cs`, separate `texture` + `sampler`), cross-compiled by `scripts/regen-shaders.sh` to a generated `*.glsl.h` desc header. Tier 3 has taken every stage: what stays hand-written is the frame around the generated programs, `src/void2d/shader2d.glsl`'s `@program` lines and includes.
 
 void2d runs **one shader × pipeline-per-blend-mode** (`VOID2D_BLEND_COUNT` in `src/void2d/batcher.c`), flushing the batcher on a blend or view change. A new effect is a new pipeline variant, not a new architecture.
 
@@ -34,7 +34,7 @@ Heaps' `h2d.Drawable` colour pipeline (`color` multiply, `colorAdd`, `colorMatri
 
 ## Tier 3 — MetaScript shader functions → GLSL (shady-style, in use)
 
-A shader is an ordinary MetaScript function. The macro `glsl(fn)` (`src/shader/emit.ms`) reads its typed body and emits GLSL 450 for sokol-shdc, and the same function runs on the CPU as a tolerance oracle in the native gate. Modeled on **[treeform/shady](https://github.com/treeform/shady)**, which does the same for Nim procs with Nim macros; the vocabulary is TypeGPU's ([VOCABULARY.md](VOCABULARY.md)). void3d's lit and textured program families (`src/void3d/shader3d.ms`) and its tone map, bloom and outline passes (`src/void3d/post3d.ms`) are written this way, generated into `src/void3d/shader3dGen.glsl`; void2d's four programs (`src/void2d/shader2d.ms`) into `src/void2d/shader2dGen.glsl`, which `shader2d.glsl` includes. Their hand-written GLSL is deleted.
+A shader is an ordinary MetaScript function. The macro `glsl(fn)` (`src/shader/emit.ms`) reads its typed body and emits GLSL 450 for sokol-shdc, and the same function runs on the CPU as a tolerance oracle in the native gate. Modeled on **[treeform/shady](https://github.com/treeform/shady)**, which does the same for Nim procs with Nim macros; the vocabulary is TypeGPU's ([VOCABULARY.md](VOCABULARY.md)). Every void3d stage is written this way: the core's programs (`src/void3d/shader3d.ms`) and its tone map, bloom and outline passes (`src/void3d/post3d.ms`), generated into `src/void3d/shader3dGen.glsl`, and the pixel-art preset's (`src/void3d/pixelArt3d.ms`) into `src/void3d/pixelArt3dGen.glsl`; void2d's four programs (`src/void2d/shader2d.ms`) into `src/void2d/shader2dGen.glsl`, which `shader2d.glsl` includes. Their hand-written GLSL is deleted.
 
 **A macro library in Void, not a compiler backend.** This doc first planned Tier 3 as a GLSL codegen target inside msc. That proved unnecessary: inside a macro, `getImpl(bindSym(...))` returns the function with checker types on every expression (first measured on msc `244ef48c`), so the emitter is a library and the compiler supplies only the macro surface listed in src/shader/CLAUDE.md, "Compiler surface the emitter relies on". Shady's own per-backend HLSL/MSL/GLSL writers were rejected for the same reason Tier 1 uses shdc; both rejections are recorded there under "Rejected".
 

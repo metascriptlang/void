@@ -1,5 +1,5 @@
 // How the low-res image maps onto the framebuffer: the integer scale, the low-res target size
-// and the offset the blit shader adds before dividing by the scale (shader3d.glsl blitFs:
+// and the offset the blit shader adds before dividing by the scale (pixelArt3d.ms blitFs:
 // texel = floor((fragment + offset) / scale)). Pure arithmetic, so it is tested headless.
 //
 // The offset has two parts. Centering: the target covers the framebuffer rounded up to whole

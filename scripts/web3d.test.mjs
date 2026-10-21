@@ -62,3 +62,59 @@ ${shell.slice(commandStart, commandEnd)}`], { encoding: 'utf8' });
 		rmSync(folder, { recursive: true });
 	}
 });
+
+test('WebGL2 matrix registers wide LOD and posed skin shadow variants', () => {
+	const declarationStart = shell.indexOf('WEB_CHECKS="');
+	const declarationEnd = shell.indexOf('\n\n', declarationStart);
+	const loopStart = shell.indexOf('runs=""');
+	const loopEnd = shell.indexOf('\n\n(', loopStart);
+	assert(declarationStart >= 0 && declarationEnd > declarationStart);
+	assert(loopStart >= 0 && loopEnd > loopStart);
+	const result = spawnSync('sh', ['-c', `set -e\nset -- --run\n` +
+		shell.slice(declarationStart, declarationEnd) + '\n' + shell.slice(loopStart, loopEnd) +
+		'\nprintf "%s\\n" "$runs"'], { encoding: 'utf8' });
+	assert.equal(result.status, 0, result.stdout + result.stderr);
+	const runs = result.stdout.trim().split(/\s+/);
+	assert.deepEqual(runs.filter((run) => run.split(':')[0] === 'meshLod'), [
+		'meshLod',
+		'meshLod:VOID_MESH_LOD_INDEX32=1',
+		'meshLod:VOID_MESH_LOD_OUTLINE=1',
+		'meshLod:VOID_MESH_LOD_INDEX32=1&VOID_MESH_LOD_OUTLINE=1',
+	]);
+	assert.deepEqual(runs.filter((run) => run.split(':')[0] === 'dirShadow'), [
+		'dirShadow',
+		'dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=14',
+		'dirShadow:VOID_DIR_SHADOW_CASE=14&VOID_DIR_SHADOW_PIXEL_ART=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=15',
+		'dirShadow:VOID_DIR_SHADOW_CASE=15&VOID_DIR_SHADOW_PIXEL_ART=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=14&VOID_DIR_SHADOW_PERSPECTIVE=1',
+		'dirShadow:VOID_DIR_SHADOW_CASE=15&VOID_DIR_SHADOW_PERSPECTIVE=1',
+	]);
+	assert.equal(runs.length, 37);
+});
+
+test('native LOD controls require staged pixel failures and exit one', () => {
+	const native = readFileSync(new URL('./gate3d.sh', import.meta.url), 'utf8');
+	const start = native.indexOf('if [ "$status" -ne 1 ] || ! grep -qE');
+	const end = native.indexOf('\n\t\t\t\t\tfail "mesh-lod: control', start);
+	assert(start >= 0 && end > start, 'native LOD verdict boundary changed');
+	const command = 'status="$1"\nlog=-\n' + native.slice(start, end) +
+		'\nexit 1\nfi';
+	const pixel = 'FAIL mesh LOD: stage 1: group 0 silhouette did not match LOD/culling: 16724761';
+	for (const [status, message, expected] of [
+		[1, pixel, 0],
+		[1, 'FAIL mesh LOD: stage 0: colored material was replaced', 0],
+		[1, 'FAIL mesh LOD: stage 0: desaturated material was replaced', 0],
+		[1, 'FAIL mesh LOD: stage 2: outline group 0 silhouette did not match selected LOD: 0', 0],
+		[0, pixel, 1],
+		[2, pixel, 1],
+		[1, 'FAIL mesh LOD: stage 0: uploaded mesh lost index width', 1],
+		[1, 'FAIL mesh LOD: stage 0: outline changed selected range', 1],
+	]) {
+		const result = spawnSync('sh', ['-c', command, 'lod-control', String(status)], {
+			input: message + '\n', encoding: 'utf8',
+		});
+		assert.equal(result.status, expected, `${status}: ${message}\n${result.stderr}`);
+	}
+});

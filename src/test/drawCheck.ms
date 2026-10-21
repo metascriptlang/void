@@ -3,6 +3,7 @@
 // tables — nothing here makes a GPU object, and the upload itself is proven by the campfire
 // readback (docs/VOID3D.md, M5 as built).
 
+import { IndexType } from "../gpu/pipeline";
 import { Vec3, vec3 } from "../math/math3d";
 import { VertexLayout, layoutFloats, layoutPerInstance, drawsQuads } from "../void3d/gpu3d";
 import {
@@ -60,6 +61,30 @@ test "a mesh built from MeshData is indexed and counts its own elements" {
 	assert mesh.instanceCount == 1;
 	assert mesh.generation == 3;
 	assert mesh.elementCount() == 6;
+}
+
+test "wide index metadata survives mesh upload description and context rebuild description" {
+	let data = MeshData.empty();
+	data.vertices = new Array(65539 * LIT_VERTEX_STRIDE);
+	data.wideIndices = [0, 1, 2, 65536, 65537, 65538];
+	const first = data.meshFor(7, 9, 3);
+	const rebuilt = data.meshFor(11, 13, 4);
+	assert first.index32 && rebuilt.index32;
+	assert first.indexType() == IndexType.Uint32 && rebuilt.indexType() == IndexType.Uint32;
+	assert first.elementCount() == 6 && rebuilt.elementCount() == 6;
+	assert rebuilt.vertexCount == 65539 && rebuilt.generation == 4 && rebuilt.indexBuffer == 13;
+	assert data.validIndices();
+}
+
+test "legacy GPU mesh literals default to uint16 and nonindexed buffers ignore width" {
+	const legacy: GpuMesh = {
+		layout: VertexLayout.Lit, vertexBuffer: 7, instanceBuffer: 0, indexBuffer: 9,
+		vertexCount: 4, indexCount: 6, instanceCount: 1, instanceCapacity: 0,
+		generation: 3, writtenFrame: 0,
+	};
+	assert !legacy.index32 && legacy.indexType() == IndexType.Uint16;
+	const unindexed: GpuMesh = { ...legacy, indexBuffer: 0, index32: true };
+	assert unindexed.indexType() == IndexType.None && unindexed.elementCount() == 4;
 }
 
 test "MeshData with no indices leaves the index buffer unbound and draws its vertices" {

@@ -57,6 +57,7 @@ import {
 	planStages,
 	closePixelArt,
 	setSettings,
+	setLook,
 	setPalette,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
@@ -314,6 +315,66 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 	assert alpha.indices[1] == 1 && alpha.indices[2] == 5;
 }
 
+
+function invalidFogLooks(): Vec<PixelArtLook> {
+	let looks: Vec<PixelArtLook> = [];
+	const ranges: Vec<Vec<float32>> = [
+		[0.5, 0.5], [0.8, 0.2], [(0.0 / 0.0) as float32, 1.0],
+		[0.0, (0.0 / 0.0) as float32], [0.0, (1.0 / 0.0) as float32],
+		[(-1.0 / 0.0) as float32, 1.0],
+	];
+	for (const edges of ranges) {
+		looks.push({ ...look(), fog: {
+			...look().fog, start: edges[0], end: edges[1], strength: 0.0,
+		} });
+	}
+	return looks;
+}
+
+test "pixel-art creation refuses undefined Fog ranges before reserving anything" {
+	for (const invalid of invalidFogLooks()) {
+		for (const hdr of [false, true]) {
+			let context = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
+			const made = hdr
+				? PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), invalid, true)
+				: PixelArtRenderer.create(context, PixelArtSettings.full(), invalid);
+			assert !made.ok;
+			if (!made.ok) { assert made.error == PixelArtError.FogRange; }
+			assert context.uniforms.used == 0 && context.liveMaterials() == 0;
+			assert context.liveMeshes() == 0 && context.liveTextures() == 0;
+		}
+	}
+}
+
+test "pixel-art frame refuses direct Fog mutations before changing context or output" {
+	for (const post of [false, true]) {
+		let context = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+		const made = PixelArtRenderer.create(context,
+			{ ...PixelArtSettings.full(), postPass: post }, look());
+		assert made.ok;
+		if (!made.ok) { continue; }
+		let renderer = made.value;
+		let values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);
+		for (let i = 0; i < values.length; i++) { values[i] = -77.0; }
+		for (const invalid of invalidFogLooks()) {
+			renderer.look = invalid;
+			const drawn = renderFrame(renderer, [], [], [], view(320, 240, 120, 0, 0));
+			assert !drawn.ok;
+			if (!drawn.ok) { assert drawn.error == PixelArtError.FogRange; }
+			assert renderer.core.generation == 0 && !renderer.core.prepared;
+			assert renderer.colorTarget.width == 0 && renderer.normalTarget.width == 0;
+			for (const value of context.uniforms.values) { assert value == 0.0; }
+		}
+		setLook(renderer, {
+			...look(), fog: { ...look().fog, start: 0.0, end: 1.0, strength: 0.0 },
+		});
+		renderer.look.writePostParams(renderer.settings, 16, true, values);
+		assert values[4] == 0.0 && values[5] == 1.0 && values[6] == 0.0;
+		const retry = renderFrame(renderer, [], [], [], view(320, 240, 120, 0, 0));
+		assert !retry.ok;
+		if (!retry.ok) { assert retry.error == PixelArtError.CameraBlockLength; }
+	}
+}
 
 test "post parameters carry the look, the switches and the depth unpack" {
 	let values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);

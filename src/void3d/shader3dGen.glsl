@@ -373,49 +373,242 @@ void main() {
 }
 @end
 
-@vs particleVisualPixelArtVs
+@vs particleVs
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
 in vec4 root;
-in vec4 shape;
-in vec4 tile;
 in vec4 color;
-out vec2 uv;
-out vec3 rootPosition;
-out vec4 instanceColor;
-out float depth01;
+out vec4 particleColor;
 const vec2[6] PARTICLE_CORNERS = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
-vec3 particleVisualPoint(vec4 root_1, vec4 shape_1, vec2 corner, vec3 right, vec3 up) {
-    float x = (corner.x - shape_1.y) * root_1.w;
-    float y = (corner.y - shape_1.z) * shape_1.x;
-    float c = cos(shape_1.w);
-    float s = sin(shape_1.w);
-    return (root_1.xyz + (right * ((x * c) + (y * s)))) + (up * ((y * c) - (x * s)));
-}
 void main() {
     vec2 corner = PARTICLE_CORNERS[uint(gl_VertexIndex) % 6];
-    vec3 world = particleVisualPoint(root, shape, corner, cameraRight.xyz, cameraUp.xyz);
-    vec4 clip = viewProj * vec4(world, 1.0);
-    uv = vec2(((corner.x > 0.0) ? tile.z : tile.x), ((corner.y > 0.0) ? tile.y : tile.w));
-    rootPosition = root.xyz;
-    instanceColor = color;
-    depth01 = clip.z;
-    gl_Position = clip;
+    vec3 right = cameraRight.xyz;
+    vec3 up = cameraUp.xyz;
+    vec3 world = (root.xyz + (right * (corner.x * root.w))) + (up * (corner.y * root.w));
+    particleColor = color;
+    gl_Position = (viewProj * vec4(world, 1.0));
     return;
 }
 @end
 
-@vs litVs
-#if defined(SKINNED) || !defined(SKINNED)
+@fs particleFs
+layout(binding=6) uniform frameParams {
+    vec4 frame;
+};
+in vec4 particleColor;
+layout(location=0) out vec4 fragColor;
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec3 toneCurved(vec3 exposed, float mode) {
+    if (mode == 1.0) {
+        return exposed / (exposed + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        vec3 a = exposed * ((2.51 * exposed) + 0.03);
+        vec3 b = (exposed * ((2.43 * exposed) + 0.59)) + 0.14;
+        return clamp((a / b), vec3(0.0), vec3(1.0));
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.76;
+        float desaturation = 0.15;
+        float x = min(exposed.x, min(exposed.y, exposed.z));
+        float offset = (x < 0.08) ? (x - ((6.25 * x) * x)) : 0.04;
+        vec3 color = exposed - offset;
+        float peak = max(color.x, max(color.y, color.z));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - ((d * d) / ((peak + d) - startCompression));
+            color = color * (newPeak / peak);
+            float g = 1.0 - (1.0 / ((desaturation * (peak - newPeak)) + 1.0));
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(exposed, vec3(0.0), vec3(1.0));
+}
+vec3 toneMapped(vec3 rgb, vec4 tone) {
+    if (tone.z == 1.0) {
+        return srgbToLinear(rgb);
+    }
+    if ((tone.y == 1.0) && (tone.w == 0.0)) {
+        return rgb;
+    }
+    return linearToSrgb(toneCurved((srgbToLinear(rgb) * tone.y), tone.w));
+}
+void main() {
+    vec4 color = particleColor;
+#ifdef CUTOUT
+    if (color.a < 0.5) {
+        discard;
+    }
+#endif
+    fragColor = vec4(toneMapped(color.rgb, frame), color.a);
+    return;
+}
+@end
+
+@vs billboardVs
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
+in vec3 position;
+in vec2 size;
+in vec2 anchor;
+in vec4 tile;
+in vec4 color;
+out vec3 worldPosition;
+out vec3 towardCamera;
+out vec2 uv;
+out vec4 instanceColor;
+const vec2[6] PARTICLE_CORNERS = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
+vec3 billboardPoint(vec3 position_1, vec2 size_1, vec2 anchor_1, vec2 corner, vec3 right, vec3 up) {
+    vec2 offset = corner - anchor_1;
+    return (position_1 + (right * (offset.x * size_1.x))) + (up * (offset.y * size_1.y));
+}
+void main() {
+    vec2 corner = PARTICLE_CORNERS[uint(gl_VertexIndex) % 6];
+    vec3 right = cameraRight.xyz;
+    vec3 up = cameraUp.xyz;
+    vec3 world = billboardPoint(position, size, anchor, corner, right, up);
+    worldPosition = world;
+    towardCamera = cross(right, up);
+    uv = vec2(((corner.x > 0.0) ? tile.z : tile.x), ((corner.y > 0.0) ? tile.y : tile.w));
+    instanceColor = color;
+    gl_Position = (viewProj * vec4(world, 1.0));
+    return;
+}
+@end
+
+@fs billboardFs
+layout(binding=2) uniform billboardParams {
+    vec4 billboardColor;
+    vec4 billboard;
+};
+layout(binding=1) uniform lightParams {
+    vec4 ambient;
+    vec4 dirLight;
+    vec4 dirColor;
+    vec4 pointLight[4];
+    vec4 pointColor[4];
+};
+layout(binding=6) uniform frameParams {
+    vec4 frame;
+};
+layout(binding=0) uniform texture2D billboardTexture;
+layout(binding=0) uniform sampler billboardSampler;
+in vec3 worldPosition;
+in vec3 towardCamera;
+in vec2 uv;
+in vec4 instanceColor;
+layout(location=0) out vec4 fragColor;
+#ifdef PREMULTIPLIED
+vec4 straightTexel(vec4 texel) {
+    return (texel.a > 0.0) ? vec4((texel.rgb / texel.a), texel.a) : vec4(0.0);
+}
 #endif
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 pointLightAt(vec3 position, vec3 normal, vec4 at, vec4 tint) {
+    vec3 toLight = at.xyz - position;
+    float distance_1 = length(toLight);
+    float falloff = clamp((1.0 - (distance_1 / tint.a)), 0.0, 1.0);
+    float facing = max(dot(normal, (toLight / max(distance_1, 0.0001))), 0.0);
+    return srgbToLinear(tint.rgb) * (((falloff * falloff) * facing) * at.w);
+}
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec3 toneCurved(vec3 exposed, float mode) {
+    if (mode == 1.0) {
+        return exposed / (exposed + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        vec3 a = exposed * ((2.51 * exposed) + 0.03);
+        vec3 b = (exposed * ((2.43 * exposed) + 0.59)) + 0.14;
+        return clamp((a / b), vec3(0.0), vec3(1.0));
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.76;
+        float desaturation = 0.15;
+        float x = min(exposed.x, min(exposed.y, exposed.z));
+        float offset = (x < 0.08) ? (x - ((6.25 * x) * x)) : 0.04;
+        vec3 color = exposed - offset;
+        float peak = max(color.x, max(color.y, color.z));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - ((d * d) / ((peak + d) - startCompression));
+            color = color * (newPeak / peak);
+            float g = 1.0 - (1.0 / ((desaturation * (peak - newPeak)) + 1.0));
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(exposed, vec3(0.0), vec3(1.0));
+}
+vec3 toneMapped(vec3 rgb, vec4 tone) {
+    if (tone.z == 1.0) {
+        return srgbToLinear(rgb);
+    }
+    if ((tone.y == 1.0) && (tone.w == 0.0)) {
+        return rgb;
+    }
+    return linearToSrgb(toneCurved((srgbToLinear(rgb) * tone.y), tone.w));
+}
+void main() {
+    vec4 texel = texture(sampler2D(billboardTexture, billboardSampler), uv);
+#ifdef PREMULTIPLIED
+    texel = straightTexel(texel);
+#endif
+    vec4 pixel = (billboardColor * texel) * instanceColor;
+#ifdef CUTOUT
+    if (pixel.a < 0.5) {
+        discard;
+    }
+#endif
+    if (billboard.y != 0.0) {
+        vec3 n = normalize(towardCamera);
+        vec4 dir = dirLight;
+        float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
+        vec3 light = srgbToLinear(ambient.rgb) + (srgbToLinear(dirColor.rgb) * lambert);
+        for (int i = 0; i < int(ambient.a + 0.5); i++) {
+            vec4 at = pointLight[i];
+            light = light + pointLightAt(worldPosition, n, at, pointColor[i]);
+        }
+        pixel = vec4(linearToSrgb((srgbToLinear(pixel.rgb) * light)), pixel.a);
+    }
+    pixel = vec4(toneMapped(pixel.rgb, frame), pixel.a);
+#ifdef PREMULTIPLIED
+    pixel = vec4((pixel.rgb * pixel.a), pixel.a);
+#endif
+    fragColor = pixel;
+    return;
+}
+@end
+
+@vs litVs
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+};
 #ifndef SKINNED
 layout(binding=4) uniform modelParams {
     mat4 model;
@@ -480,7 +673,7 @@ void main() {
 @end
 
 @fs litFs
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && !defined(EMISSIVE)
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
@@ -496,7 +689,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && defined(EMISSIVE)
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
@@ -670,7 +863,7 @@ void main() {
 @end
 
 @fs shadowLitFs
-#if defined(CUTOUT) && (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && !defined(EMISSIVE)
+#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
@@ -686,7 +879,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if defined(CUTOUT) && (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && defined(EMISSIVE)
+#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
@@ -734,14 +927,12 @@ void main() {
 @end
 
 @vs litTexturedVs
-#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
-#endif
-#if !defined(SKINNED) || (!defined(SKINNED) && defined(NORMAL_MAP))
+#ifndef SKINNED
 layout(binding=4) uniform modelParams {
     mat4 model;
     mat4 normalModel;
@@ -822,12 +1013,12 @@ void main() {
 @end
 
 @fs litTexturedFs
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && !defined(EMISSIVE)
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if (((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)) || (defined(UV_TRANSFORM) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
+#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -838,13 +1029,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if ((!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && defined(EMISSIVE)) || (defined(EMISSIVE) && (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))))
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if (((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)) || (defined(UV_TRANSFORM) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE)) || (defined(EMISSIVE) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)))
+#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -1175,7 +1366,7 @@ void main() {
 @end
 
 @fs shadowLitTexturedFs
-#if defined(CUTOUT) && (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && !defined(EMISSIVE)
+#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
@@ -1191,7 +1382,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if defined(CUTOUT) && (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) && defined(EMISSIVE)
+#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
@@ -1271,13 +1462,11 @@ void main() {
 @end
 
 @vs unlitTexturedVs
-#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
-#endif
 #if !defined(SKINNED) && defined(NORMAL_MRT)
 layout(binding=4) uniform modelParams {
     mat4 model;
@@ -1364,13 +1553,13 @@ void main() {
 @end
 
 @fs unlitTexturedFs
-#if (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)))
+#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))
 layout(binding=3) uniform unlitMaterialParams {
     vec4 material;
     vec4 materialColor;
 };
 #endif
-#if (((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))) || defined(UV_TRANSFORM) || defined(BACK_TEXTURE) || defined(DISSOLVE)
+#if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 layout(binding=3) uniform movingUnlitMaterialParams {
     vec4 material;
     vec4 materialColor;
@@ -1550,7 +1739,7 @@ void main() {
 @end
 
 @fs shadowUnlitTexturedFs
-#if defined(CUTOUT) && (!((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)))
+#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))
 layout(binding=3) uniform unlitMaterialParams {
     vec4 material;
     vec4 materialColor;

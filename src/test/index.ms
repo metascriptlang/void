@@ -61,6 +61,9 @@ import "./meshLodCheck";
 import "./meshLodDrawCheck";
 import "./drawCheck";
 import "./gltfCheck";
+import "./gltfIndexCheck";
+import "./gltfDiagnosticCheck";
+import "./gltfSkinCheck";
 import "./gltfMaterialCheck";
 import "./gltfCurveCheck";
 import "./gltfPoseCheck";
@@ -100,6 +103,7 @@ import "./shaderComputeCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
 import "./litShaderCheck";
+import "./pixelArtShaderCheck";
 import "./post3dCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
@@ -139,6 +143,9 @@ when (voidColourEmoji) {
 	import "./glyphColourAtlasCheck";
 	import "./colourFaceCheck";
 	import "./labelTextColourCheck";
+	when (testBuild) {
+		import "../../tests/integration/colourSampler";
+	}
 } else {
 	import "./glyphColourOffCheck";
 }

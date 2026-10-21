@@ -24,6 +24,7 @@ import {
 	addPlane,
 	recomputeBounds,
 	addTangents,
+	addTangentsWithSources,
 	addGivenTangents,
 } from "../void3d/meshData";
 import { approx } from "./helpers";
@@ -199,31 +200,26 @@ test "recomputeBounds agrees with the bounds the builders kept" {
 	assert near(data.bounds.max, kept.max.x, kept.max.y, kept.max.z);
 }
 
-test "hasRoomFor counts against the uint16 index cap" {
+test "hasRoomFor checks packed int32 capacity without overflow or allocation" {
 	let data: MeshData = MeshData.empty();
-	assert data.hasRoomFor(MAX_MESH_VERTICES);
-	assert !data.hasRoomFor(MAX_MESH_VERTICES + 1);
+	const capacity: int32 = MAX_MESH_VERTICES / LIT_VERTEX_STRIDE;
+	assert data.hasRoomFor(capacity);
+	assert !data.hasRoomFor(capacity + 1);
+	assert !data.hasRoomFor(-1) && !data.hasRoomFor(0x7fffffff);
 	assert addPlane(data, 1.0, WHITE).ok;
-	assert data.hasRoomFor(MAX_MESH_VERTICES - 4);
-	assert !data.hasRoomFor(MAX_MESH_VERTICES - 3);
+	assert data.hasRoomFor(capacity - 4);
+	assert !data.hasRoomFor(capacity - 3);
 }
 
-// A builder that cannot fit has to add nothing at all: `try` propagates out of a half-written
-// quad, and every caller reads an err as "nothing was added".
-test "a builder that does not fit leaves the mesh exactly as it was" {
+test "a box crossing the old uint16 vertex cap promotes indices" {
 	let data: MeshData = MeshData.empty();
-	const room: int32 = MAX_MESH_VERTICES - BOX_VERTICES + 1;
-	for (let i = 0; i < room; i++) {
-		if (!addVertex(data, vec3(0.0, 0.0, 0.0), UP, WHITE).ok) { break; }
-	}
-	assert data.vertexCount() == room;
-	const before: int32 = data.vertexCount();
-	const indicesBefore: int32 = data.indexCount();
-	const rejected: Result<int32, MeshError> = addBox(data, plainBox(1.0));
-	assert !rejected.ok;
-	if (!rejected.ok) { assert rejected.error == MeshError.TooManyVertices; }
-	assert data.vertexCount() == before;
-	assert data.indexCount() == indicesBefore;
+	const room: int32 = 65536 - BOX_VERTICES + 1;
+	data.vertices = new Array(room * LIT_VERTEX_STRIDE);
+	const added = addBox(data, plainBox(1.0));
+	assert added.ok;
+	if (added.ok) { assert added.value == room; }
+	assert data.vertexCount() == 65537 && data.indexCount() == 30;
+	assert data.wideIndices !== null && data.indices.length == 0;
 }
 
 // The byte-identity of the campfire rests on addBox producing the floats the deleted spike
@@ -381,18 +377,15 @@ test "bounds and picking read a mesh with uvs at its own stride" {
 	assert data.rayIntersection(beside, Face.Back).distance == -1.0;
 }
 
-test "a builder with uvs that does not fit leaves the mesh exactly as it was" {
+test "a textured cube crossing the old uint16 vertex cap promotes indices" {
 	let data: MeshData = MeshData.withUvs();
-	let room: int32 = MAX_MESH_VERTICES - CUBE_VERTICES + 1;
-	for (let i = 0; i < room; i++) {
-		let uv: Uv = { u: 0.0, v: 0.0 };
-		if (!addTexturedVertex(data, vec3(0.0, 0.0, 0.0), UP, uv, WHITE).ok) { break; }
-	}
-	assert data.vertexCount() == room;
-	let rejected: Result<int32, MeshError> =
-		addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE);
-	assert !rejected.ok && rejected.error == MeshError.TooManyVertices;
-	assert data.vertexCount() == room && data.indexCount() == 0;
+	const room: int32 = 65536 - CUBE_VERTICES + 1;
+	data.vertices = new Array(room * LIT_TEXTURED_VERTEX_STRIDE);
+	const added = addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE);
+	assert added.ok;
+	if (added.ok) { assert added.value == room; }
+	assert data.vertexCount() == 65537 && data.indexCount() == 36;
+	assert data.wideIndices !== null && data.indices.length == 0;
 }
 
 function tangentAt(data: MeshData, vertex: int32): Vec3 {
@@ -542,5 +535,146 @@ test "given tangents are interleaved after each vertex as they come, and counted
 	let plain: MeshData = MeshData.empty();
 	const untextured: Result<int32, MeshError> = addGivenTangents(plain, []);
 	assert !untextured.ok && untextured.error == MeshError.UvMismatch;
+}
+
+function largeIndexMesh(): MeshData {
+	return {
+		...MeshData.empty(),
+		vertices: new Array(65539 * LIT_VERTEX_STRIDE),
+	};
+}
+
+test "indices below the primitive restart value keep uint16 storage" {
+	let data = largeIndexMesh();
+	assert addTriangle(data, 65534, 1, 2).ok;
+	assert data.wideIndices === null && data.indices[0] == 65534;
+	assert data.indexAt(0) == 65534 && data.indexCount() == 3;
+}
+
+test "index 65535 promotes before narrowing and retains preceding triangles" {
+	let data = largeIndexMesh();
+	assert addTriangle(data, 3, 1, 2).ok;
+	assert addTriangle(data, 65535, 1, 2).ok;
+	assert data.wideIndices !== null && data.indices.length == 0;
+	assert data.indexAt(0) == 3 && data.indexAt(3) == 65535;
+	assert data.indexCount() == 6 && data.triangleCount() == 2;
+}
+
+test "65536 and 65537 keep source identity in each triangle corner" {
+	let data = largeIndexMesh();
+	assert addTriangle(data, 65536, 65537, 2).ok;
+	assert addTriangle(data, 0, 65536, 65537).ok;
+	assert data.indexAt(0) == 65536 && data.indexAt(1) == 65537 && data.indexAt(2) == 2;
+	assert data.indexAt(3) == 0 && data.indexAt(4) == 65536 && data.indexAt(5) == 65537;
+	assert data.wideIndices !== null && data.indices.length == 0;
+}
+
+test "wide index value copies own independent arrays" {
+	let original = largeIndexMesh();
+	assert addTriangle(original, 65536, 1, 2).ok;
+	let copied = original;
+	assert addTriangle(copied, 65537, 2, 3).ok;
+	assert original.indexCount() == 3 && copied.indexCount() == 6;
+	assert original.indexAt(0) == 65536 && copied.indexAt(3) == 65537;
+}
+
+test "bad triangles do not publish promotion or partial indices" {
+	let data = largeIndexMesh();
+	assert addTriangle(data, 0, 1, 2).ok;
+	const negative = addTriangle(data, 65536, -1, 2);
+	assert !negative.ok && negative.error == MeshError.IndexOutOfRange;
+	const outside = addTriangle(data, 65536, 1, 65539);
+	assert !outside.ok && outside.error == MeshError.IndexOutOfRange;
+	assert data.wideIndices === null && data.indexCount() == 3 && data.indexAt(0) == 0;
+}
+
+test "index upload validation refuses restart sentinels and full uint32 out of bounds" {
+	let data = largeIndexMesh();
+	data.indices = [65535, 1, 2];
+	assert !data.validIndices();
+	data.indices = [];
+	data.wideIndices = [65535, 1, 2];
+	assert data.validIndices();
+	if (data.wideIndices !== null) { data.wideIndices[0] = 0xffffffff as uint32; }
+	assert !data.validIndices();
+}
+
+test "an explicitly wide low index stream stays wide across appended triangles" {
+	let data = largeIndexMesh();
+	data.wideIndices = [0, 1, 2];
+	assert addTriangle(data, 3, 4, 5).ok;
+	assert data.wideIndices !== null && data.indices.length == 0;
+	assert data.indexCount() == 6 && data.indexAt(3) == 3;
+}
+
+test "simultaneous narrow and wide index storage is refused" {
+	let data = largeIndexMesh();
+	data.indices = [0, 1, 2];
+	data.wideIndices = [65536, 1, 2];
+	const added = addTriangle(data, 0, 1, 2);
+	assert !added.ok && added.error == MeshError.IndexStorage;
+	assert data.indices.length == 3 && data.wideIndices !== null;
+	if (data.wideIndices !== null) { assert data.wideIndices.length == 3; }
+}
+
+function highTexturedTriangle(): MeshData {
+	let data = MeshData.withUvs();
+	data.vertices = new Array(65536 * LIT_TEXTURED_VERTEX_STRIDE);
+	const normal = vec3(0.0, 0.0, 1.0);
+	if (!addTexturedVertex(data, vec3(0.0, 0.0, 0.0), normal,
+		{ u: 0.0, v: 0.0 }, WHITE).ok) { unreachable; }
+	if (!addTexturedVertex(data, vec3(1.0, 0.0, 0.0), normal,
+		{ u: 1.0, v: 0.0 }, WHITE).ok) { unreachable; }
+	if (!addTexturedVertex(data, vec3(0.0, 1.0, 0.0), normal,
+		{ u: 0.0, v: 1.0 }, WHITE).ok) { unreachable; }
+	if (!addTriangle(data, 65536, 65537, 65538).ok) { unreachable; }
+	return move data;
+}
+
+test "wide CPU picking and UV interpolation read high vertices not low decoys" {
+	const data = highTexturedTriangle();
+	const ray: Ray = { origin: vec3(0.25, 0.25, 1.0), direction: vec3(0.0, 0.0, -1.0) };
+	const hit = data.rayIntersection(ray, Face.Back);
+	assert approx(hit.distance, 1.0) && hit.uv !== null;
+	if (hit.uv !== null) { assert approx(hit.uv.u, 0.25) && approx(hit.uv.v, 0.25); }
+	const range = data.rayIntersectionElements(ray, Face.Back, 0, 3);
+	assert range.ok;
+	if (range.ok) { assert approx(range.value.distance, 1.0); }
+}
+
+test "MikkTSpace reads uint32 input without reinterpreting uint16 pointers" {
+	let data = highTexturedTriangle();
+	assert addTangents(data).ok;
+	assert data.vertexCount() == 65539 && data.indexAt(0) == 65536;
+	assert near(tangentAt(data, 65536), 1.0, 0.0, 0.0);
+	assert handednessAt(data, 65536) == -1.0;
+}
+
+test "tangent seam splits promote at 65535 and preserve source remaps" {
+	let data = MeshData.withUvs();
+	const prefix: int32 = 65529;
+	data.vertices = new Array(prefix * LIT_TEXTURED_VERTEX_STRIDE);
+	const normal = vec3(0.0, 0.0, 1.0);
+	for (let i = 0; i < 6; i++) {
+		const x: float32 = (i % 3) as float32;
+		const y: float32 = i < 3 ? 0.0 : 1.0;
+		assert addTexturedVertex(data, vec3(x, y, 0.0), normal,
+			{ u: x == 1.0 ? 0.0 : 1.0, v: 1.0 - y }, WHITE).ok;
+	}
+	assert addTriangle(data, prefix, prefix + 1, prefix + 4).ok;
+	assert addTriangle(data, prefix, prefix + 4, prefix + 3).ok;
+	assert addTriangle(data, prefix + 1, prefix + 2, prefix + 5).ok;
+	assert addTriangle(data, prefix + 1, prefix + 5, prefix + 4).ok;
+	assert data.wideIndices === null;
+	let sources: Vec<int32> = [];
+	const added = addTangentsWithSources(data, sources);
+	assert added.ok;
+	if (added.ok) { assert added.value == 65537; }
+	assert data.wideIndices !== null && data.indices.length == 0;
+	assert sources.length == 2 && sources[0] == prefix + 1 && sources[1] == prefix + 4;
+	for (let corner = 0; corner < 12; corner++) {
+		const vertex: int32 = data.indexAt(corner) as int32;
+		assert near(tangentAt(data, vertex), corner < 6 ? -1.0 : 1.0, 0.0, 0.0);
+	}
 }
 

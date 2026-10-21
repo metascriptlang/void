@@ -63,14 +63,20 @@ regen() {
 # ---- void3d: one program per declared key ----
 
 KEYS=src/void3d/programKeys.txt
-ROOT=$(pwd -W 2>/dev/null || pwd)
 
 sourceOf() {
 	case "$1" in
-		CORE)      echo src/void3d/shader3d.glsl ;;
-		SHADOW)    echo src/void3d/shader3d.glsl ;;
-		PIXEL_ART) echo src/void3d/pixelArt3d.glsl ;;
+		CORE)      echo "$GENERATED" ;;
+		SHADOW)    echo "$GENERATED" ;;
+		PIXEL_ART) echo "$GENERATED_PIXEL_ART" ;;
 		*) echo "programKeys.txt: unknown preset $1" >&2; return 1 ;;
+	esac
+}
+
+headerOf() {
+	case "$1" in
+		PIXEL_ART) echo pixelArt3d.glsl.h ;;
+		*)         echo shader3d.glsl.h ;;
 	esac
 }
 
@@ -90,7 +96,7 @@ attributesOf() {
 	esac
 }
 
-# sokol-shdc embeds every stage it is given, used or not: keep the blocks and the key's two stages.
+# sokol-shdc embeds every stage it is given, used or not: keep the key's two stages.
 stagesOf() {
 	awk -v vs="$2" -v fs="$3" '
 		{ sub(/\r$/, "") }
@@ -148,19 +154,8 @@ regenKeys() {
 			defines="--defines=$features"
 		fi
 		input="$work/$module.glsl"
-		# The blocks are for hand-written stages; a generated stage defines what it calls, and a
-		# texture tag in an included block would name its texture twice.
-		hand=$(stagesOf "$src" "$vs" "$fs")
 		{
-			if echo "$hand" | grep -qE "^@(vs|fs) "; then
-				echo "@include $ROOT/src/void3d/shader3dBlocks.glsl"
-			fi
-			echo "$hand"
-			case "$src:$vs" in
-				"$GENERATED_FOR:"*|*:particleVisualVs|*:particleVisualPixelArtVs)
-					stagesOf "$GENERATED" "$vs" "$fs" ;;
-
-			esac
+			stagesOf "$src" "$vs" "$fs"
 			echo "@program program $vs $fs"
 		} > "$input"
 		for feature in $(echo "$features" | tr ':' ' '); do
@@ -170,7 +165,7 @@ regenKeys() {
 		done
 		"$SHDC" -i "$input" -o "$work/$module.h" -l "$LANGS_IOS" -f sokol --ifdef --no-log-cmdline \
 			-m "$module" $defines >/dev/null
-		header=$(basename "$src").h
+		header=$(headerOf "$preset")
 		guard "$work/$module.h" "$header"
 		cat "$work/$module.h" >> "$work/$header"
 
@@ -238,9 +233,10 @@ regenKeys() {
 	settle "$work/programTable.h" src/void3d/programTable.h
 }
 
-# The stages written in MetaScript (src/void3d/shader3d.ms) join shader3d.glsl's as generated GLSL.
+# Every void3d stage is written in MetaScript: the core's in src/void3d/shader3d.ms and
+# post3d.ms, the pixel-art preset's in pixelArt3d.ms.
 GENERATED=src/void3d/shader3dGen.glsl
-GENERATED_FOR=src/void3d/shader3d.glsl
+GENERATED_PIXEL_ART=src/void3d/pixelArt3dGen.glsl
 generate() {
 	out="$SCRATCH/$(basename "$2")"
 	"${MSC:-msc}" run "$1" > "$out" 2> "$SCRATCH/generate.log" ||
@@ -250,6 +246,7 @@ generate() {
 
 [ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
 generate tools/genShaders.ms "$GENERATED"
+generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
 generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
 regenKeys

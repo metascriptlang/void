@@ -38,7 +38,7 @@ import {
 	withUvTransform,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
-import { MeshData, stride, vertexCount } from "../void3d/meshData";
+import { MeshData, stride, vertexCount, indexAt, indexCount } from "../void3d/meshData";
 import { UniformError } from "../void3d/uniformPool";
 import { rgbaPng, twoBlockJpeg } from "./imageBytes";
 import { approx } from "./helpers";
@@ -141,7 +141,7 @@ function documentOf(parts: Parts, bufferExtra: string = ""): string {
 		+ "{\"bufferView\":2,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"},"
 		+ "{\"bufferView\":3,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
 		+ "{\"bufferView\":4,\"componentType\":5123,\"count\":6,\"type\":\"SCALAR\"},"
-		+ "{\"bufferView\":2,\"componentType\":5123,\"normalized\":true,\"count\":4,"
+		+ "{\"bufferView\":2,\"componentType\":5123,\"normalized\":false,\"count\":4,"
 		+ "\"type\":\"VEC2\"},"
 		+ "{\"bufferView\":7,\"componentType\":5126,\"count\":4,\"type\":\"VEC4\"}],"
 		+ "\"bufferViews\":["
@@ -716,6 +716,214 @@ const NORMAL_MAP: string = "\"normalTexture\":{\"index\":0}";
 const NORMAL_BASE: string = "{" + NORMAL_MAP + TEXTURED_BASE + "}";
 const WITH_TANGENTS: string = ALL_ATTRIBUTES + ",\"TANGENT\":6";
 
+function mappedAttributeBuffer(sparse: boolean): Vec<uint8> {
+	let out = quadBuffer();
+	if (sparse) {
+		for (let i = 0; i < 4; i++) { out.push(i as uint8); }
+	} else {
+		const source = quadBuffer();
+		for (let i = 0; i < 4; i++) {
+			for (let j = 0; j < 8; j++) { out.push(source[96 + i * 8 + j]); }
+			for (let j = 0; j < 16; j++) { out.push(source[tangentOffset() + i * 16 + j]); }
+		}
+	}
+	return out;
+}
+
+function mappedAttributeDocument(sparse: boolean): string {
+	const end = tangentOffset() + 64;
+	const extra = sparse ? 4 : 96;
+	const view = `{"buffer":0,"byteOffset":${end},"byteLength":${extra}` +
+		(sparse ? "}" : `,"byteStride":24}`);
+	const uv = sparse
+		? `{"componentType":5126,"count":4,"type":"VEC2","sparse":{"count":4,` +
+			`"indices":{"bufferView":8,"componentType":5121},"values":{"bufferView":2}}}`
+		: `{"bufferView":8,"componentType":5126,"count":4,"type":"VEC2"}`;
+	const tangent = sparse
+		? `{"componentType":5126,"count":4,"type":"VEC4","sparse":{"count":4,` +
+			`"indices":{"bufferView":8,"componentType":5121},"values":{"bufferView":7}}}`
+		: `{"bufferView":8,"byteOffset":8,"componentType":5126,"count":4,"type":"VEC4"}`;
+	return documentOf({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE })
+		.replace(`{"bufferView":2,"componentType":5126,"count":4,"type":"VEC2"}`, uv)
+		.replace(`{"bufferView":7,"componentType":5126,"count":4,"type":"VEC4"}`, tangent)
+		.replace(`"byteLength":64}]`, `"byteLength":64},${view}]`)
+		.replace(`"buffers":[{"byteLength":${end}}]`,
+			`"buffers":[{"byteLength":${end + extra}}]`);
+}
+
+test "nonindexed normal-mapped triangles preserve Mikk corners and supplied tangents" {
+	for (const supplied of [false, true]) {
+		const json = documentOf({ ...texturedParts(), materials: NORMAL_BASE,
+			attributes: supplied ? WITH_TANGENTS : ALL_ATTRIBUTES })
+			.replaceAll(`"count":4`, `"count":3`)
+			.replace(`"count":6,"type":"SCALAR"`, `"count":3,"type":"SCALAR"`);
+		const indexed = loadGltf(json, quadBuffer());
+		const unindexed = loadGltf(json.replace(`"indices":4,`, ""), quadBuffer());
+		assert indexed.ok && unindexed.ok;
+		if (!indexed.ok || !unindexed.ok) { continue; }
+		const expected = indexed.value.meshes[0];
+		const mesh = unindexed.value.meshes[0];
+		assert mesh.hasUvs && mesh.hasTangents && mesh.vertexCount() == 3;
+		assert expected.indexCount() == 3 && mesh.indexCount() == 0;
+		assert mesh.vertices.length == expected.vertices.length;
+		for (let i = 0; i < mesh.vertices.length; i++) {
+			assert mesh.vertices[i] == expected.vertices[i];
+		}
+		assert unindexed.value.materials[0] == indexed.value.materials[0];
+		assert gltfProgramOf(unindexed.value.materials[0]).normalMap;
+	}
+}
+
+test "glTF interleaved and sparse UVs preserve supplied and Mikk-generated tangent meshes" {
+	for (const supplied of [false, true]) {
+		const dense = loaded({ ...texturedParts(),
+			attributes: supplied ? WITH_TANGENTS : ALL_ATTRIBUTES, materials: NORMAL_BASE });
+		assert dense.ok;
+		if (!dense.ok) { continue; }
+		for (const sparse of [false, true]) {
+			const document = mappedAttributeDocument(sparse);
+			const json = supplied ? document : document.replace(`,"TANGENT":6`, "");
+			const read = loadGltf(json, mappedAttributeBuffer(sparse));
+			assert read.ok;
+			if (!read.ok) { continue; }
+			const actual = read.value.meshes[0];
+			const expected = dense.value.meshes[0];
+			assert actual.hasUvs && actual.hasTangents && actual.stride() == expected.stride();
+			assert actual.vertices.length == expected.vertices.length;
+			assert actual.indexCount() == expected.indexCount();
+			for (let i = 0; i < actual.vertices.length; i++) {
+				assert actual.vertices[i] == expected.vertices[i];
+			}
+			for (let i = 0; i < actual.indexCount(); i++) {
+				assert actual.indexAt(i) == expected.indexAt(i);
+			}
+			assert read.value.materials[0].normalTexture == dense.value.materials[0].normalTexture;
+		}
+	}
+}
+
+function normalizedUvBuffer(wide: boolean, layout: string): Vec<uint8> {
+	let bytes = quadBuffer();
+	const size = wide ? 2 : 1;
+	const stride = layout == "sparse" ? size * 2 : (layout == "strided" ? 8 : 4);
+	const values: Vec<int32> = [0, 1, 1, 1, 1, 0, 0, 0];
+	for (let i = 0; i < 8; i++) {
+		const offset = 96 + (i / 2) * stride + (i % 2) * size;
+		for (let j = 0; j < size; j++) {
+			bytes[offset + j] = (values[i] * 255) as uint8;
+		}
+	}
+	if (layout == "sparse") {
+		for (let i = 0; i < 4; i++) { bytes.push(i as uint8); }
+	}
+	return bytes;
+}
+
+function normalizedUvDocument(wide: boolean, layout: string): string {
+	const component = wide ? 5123 : 5121;
+	const end = tangentOffset() + 64;
+	const source = layout == "sparse"
+		? `"sparse":{"count":4,"indices":{"bufferView":8,"componentType":5121},` +
+			`"values":{"bufferView":2}},`
+		: `"bufferView":2,`;
+	let json = documentOf({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE })
+		.replace(`{"bufferView":2,"componentType":5126,"count":4,"type":"VEC2"}`,
+			`{${source}"componentType":${component},"normalized":true,"count":4,"type":"VEC2"}`);
+	if (layout == "sparse") {
+		json = json.replace(`"byteLength":64}]`,
+			`"byteLength":64},{"buffer":0,"byteOffset":${end},"byteLength":4}]`)
+			.replace(`"buffers":[{"byteLength":${end}}]`,
+				`"buffers":[{"byteLength":${end + 4}}]`);
+	} else if (!wide || layout == "strided") {
+		const stride = layout == "strided" ? 8 : 4;
+		json = json.replace(`"byteOffset":96,"byteLength":32`,
+			`"byteOffset":96,"byteLength":32,"byteStride":${stride}`);
+	}
+	return json;
+}
+
+test "normalized byte and short UVs preserve dense strided and sparse tangent meshes" {
+	for (const supplied of [false, true]) {
+		const dense = loaded({ ...texturedParts(),
+			attributes: supplied ? WITH_TANGENTS : ALL_ATTRIBUTES, materials: NORMAL_BASE });
+		assert dense.ok;
+		if (!dense.ok) { continue; }
+		for (const wide of [false, true]) {
+			for (const layout of ["dense", "strided", "sparse"]) {
+				const document = normalizedUvDocument(wide, layout);
+				const json = supplied ? document : document.replace(`,"TANGENT":6`, "");
+				const read = loadGltf(json, normalizedUvBuffer(wide, layout));
+				assert read.ok;
+				if (!read.ok) { continue; }
+				const actual = read.value.meshes[0];
+				const expected = dense.value.meshes[0];
+				assert actual.vertices.length == expected.vertices.length;
+				for (let i = 0; i < actual.vertices.length; i++) {
+					assert actual.vertices[i] == expected.vertices[i];
+				}
+				assert actual.indexCount() == expected.indexCount();
+				for (let i = 0; i < actual.indexCount(); i++) {
+					assert actual.indexAt(i) == expected.indexAt(i);
+				}
+				assert read.value.materials[0] == dense.value.materials[0];
+			}
+		}
+	}
+}
+
+test "normalized UVs divide by component maximum and refuse unnormalized integers" {
+	for (const wide of [false, true]) {
+		const json = normalizedUvDocument(wide, "dense");
+		let bytes = normalizedUvBuffer(wide, "dense");
+		bytes[96] = 85 as uint8;
+		if (wide) { bytes[97] = 85 as uint8; }
+		const read = loadGltf(json, bytes);
+		assert read.ok;
+		if (read.ok) { assert approx(read.value.meshes[0].vertices[6], 1.0 / 3.0); }
+		const component = wide ? 5123 : 5121;
+		for (const invalid of [
+			json.replace(`"normalized":true`, `"normalized":false`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5120,"normalized":true`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5122,"normalized":true`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5125,"normalized":true`),
+			json.replace(`"componentType":${component},"normalized":true`,
+				`"componentType":5126,"normalized":true`),
+			json.replace(`"count":4,"type":"VEC2"`, `"count":4,"type":"VEC3"`),
+		]) {
+			const bad = loadGltf(invalid, bytes);
+			assert !bad.ok;
+			if (!bad.ok) { assert bad.error == GltfError.Unsupported; }
+		}
+		const short = loadGltf(json.replace(`"count":4,"type":"VEC2"`,
+			`"count":3,"type":"VEC2"`), bytes);
+		assert !short.ok;
+		if (!short.ok) { assert short.error == GltfError.CountMismatch; }
+	}
+}
+
+test "glTF non-dense tangent attributes retain their sign and encoding validation" {
+	const json = mappedAttributeDocument(false);
+	let bytes = mappedAttributeBuffer(false);
+	const sign = tangentOffset() + 64 + 20;
+	for (let i = 0; i < 4; i++) { bytes[sign + i] = 0 as uint8; }
+	const badSign = loadGltf(json, bytes);
+	assert !badSign.ok;
+	if (!badSign.ok) { assert badSign.error == GltfError.Unsupported; }
+	const integer = json.replace(`"byteOffset":8,"componentType":5126`,
+		`"byteOffset":8,"componentType":5123`);
+	const badEncoding = loadGltf(integer, mappedAttributeBuffer(false));
+	assert !badEncoding.ok;
+	if (!badEncoding.ok) { assert badEncoding.error == GltfError.Unsupported; }
+	const short = json.replace(`"byteOffset":8,"componentType":5126,"count":4`,
+		`"byteOffset":8,"componentType":5126,"count":3`);
+	const badCount = loadGltf(short, mappedAttributeBuffer(false));
+	assert !badCount.ok;
+	if (!badCount.ok) { assert badCount.error == GltfError.CountMismatch; }
+}
+
 test "a normal map takes the file's TANGENT as it comes, with its sign" {
 	const read = loaded({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE });
 	assert read.ok;
@@ -967,4 +1175,116 @@ test "extensionsRequired may name KHR_texture_transform, and nothing else" {
 	);
 	assert !unknown.ok;
 	if (!unknown.ok) { assert unknown.error == GltfError.Unsupported; }
+}
+
+test "tangent splits preserve skin source ids across UV encodings and both index widths" {
+	for (const variant of [0, 1, 2, 3, 4, 5, 6, 7]) {
+		const index32 = variant % 2 == 1;
+		const interleaved = variant == 2 || variant == 3;
+		const normalized = variant >= 4;
+		const wide = variant >= 6;
+		let bytes = quadBuffer();
+		bytes[123] = 0x40 as uint8;
+		if (normalized) {
+			const size = wide ? 2 : 1;
+			const values: Vec<uint8> = [0, 127, 127, 127, 127, 0, 255, 255];
+			for (let i = 0; i < 8; i++) {
+				for (let j = 0; j < size; j++) {
+					bytes[96 + (i / 2) * 4 + (i % 2) * size + j] = values[i];
+				}
+			}
+		}
+		const uvOffset = bytes.length as int32;
+		if (interleaved) {
+			for (let vertex = 0; vertex < 4; vertex++) {
+				for (let j = 0; j < 8; j++) { bytes.push(bytes[96 + vertex * 8 + j]); }
+				pushLe32(bytes, 0x7fc00000 as uint32);
+			}
+		}
+		while (bytes.length % 4 != 0) { bytes.push(0); }
+		const joints: int32 = bytes.length as int32;
+		for (let vertex = 0; vertex < 4; vertex++) {
+			for (let slot = 0; slot < 4; slot++) {
+				bytes.push((slot == 0 ? vertex : 0) as uint8);
+			}
+		}
+		const weights: int32 = bytes.length as int32;
+		for (let vertex = 0; vertex < 4; vertex++) {
+			pushFloats(bytes, [F32_ONE, F32_ZERO, F32_ZERO, F32_ZERO]);
+		}
+		const indices: int32 = bytes.length as int32;
+		for (const vertex of [0, 1, 2, 0, 2, 3]) { pushLe32(bytes, vertex as uint32); }
+		let document = documentOf({
+			...texturedParts(), materials: NORMAL_BASE,
+			attributes: ALL_ATTRIBUTES + ",\"JOINTS_0\":7,\"WEIGHTS_0\":8",
+		});
+		if (interleaved) {
+			document = document.replace(`"byteOffset":96,"byteLength":32`,
+				`"byteOffset":${uvOffset},"byteLength":48,"byteStride":12`);
+		}
+		if (normalized) {
+			const component = wide ? 5123 : 5121;
+			document = document.replace(`"bufferView":2,"componentType":5126`,
+				`"bufferView":2,"componentType":${component},"normalized":true`);
+			if (!wide) {
+				document = document.replace(`"byteOffset":96,"byteLength":32`,
+					`"byteOffset":96,"byteLength":32,"byteStride":4`);
+			}
+		}
+		document = document.replaceAll("\"nodes\":[{\"name\":\"quad\",\"mesh\":0}],",
+			"\"nodes\":[{\"name\":\"quad\",\"mesh\":0,\"skin\":0,\"children\":[1,2,3,4]}," +
+			"{},{},{},{}],\"skins\":[{\"joints\":[1,2,3,4]}],");
+		document = document.replaceAll("],\"bufferViews\":[",
+			",{\"bufferView\":8,\"componentType\":5121,\"count\":4,\"type\":\"VEC4\"}," +
+			"{\"bufferView\":9,\"componentType\":5126,\"count\":4,\"type\":\"VEC4\"}]," +
+			"\"bufferViews\":[");
+		document = document.replaceAll("],\"buffers\":[",
+			`,{"buffer":0,"byteOffset":${joints},"byteLength":16},` +
+			`{"buffer":0,"byteOffset":${weights},"byteLength":64},` +
+			`{"buffer":0,"byteOffset":${indices},"byteLength":24}],"buffers":[`);
+		document = document.replaceAll(
+			`"buffers":[{"byteLength":${tangentOffset() + 64}}]`,
+			`"buffers":[{"byteLength":${bytes.length}}]`,
+		);
+		if (index32) {
+			document = document.replaceAll(
+				"\"bufferView\":4,\"componentType\":5123,\"count\":6",
+				"\"bufferView\":10,\"componentType\":5125,\"count\":6",
+			);
+		}
+		assert document.includes("\"skin\":0") && document.includes("\"bufferView\":8");
+		const loaded = loadGltf(document, bytes);
+		assert loaded.ok;
+		if (!loaded.ok) { return; }
+		const source = loaded.value.skinMeshes[0];
+		assert source !== null;
+		if (source === null) { return; }
+		assert source.mesh.hasSkin && source.mesh.hasTangents && source.mesh.stride() == 24;
+		assert source.mesh.vertexCount() == 6 && source.mesh.indexCount() == 6;
+		assert source.vertexSources.length == 6 && source.partition.parts.length == 1;
+		assert (source.mesh.wideIndices !== null) == index32;
+		let positive: boolean = false;
+		let negative: boolean = false;
+		for (let vertex = 0; vertex < 6; vertex++) {
+			const original: int32 = source.vertexSources[vertex];
+			assert original >= 0 && original < 4;
+			assert source.influences.joints[vertex * 4] == original;
+			assert source.influences.weights[vertex * 4] == 1.0;
+			const palette: int32 = source.mesh.vertices[vertex * 24 + 16] as int32;
+			assert source.partition.parts[0].palette.joints[palette] == original;
+			assert source.mesh.vertices[vertex * 24 + 20] == 1.0;
+			positive = positive || source.mesh.vertices[vertex * 24 + 15] == 1.0;
+			negative = negative || source.mesh.vertices[vertex * 24 + 15] == -1.0;
+		}
+		assert positive && negative;
+		const corners: Vec<int32> = [0, 1, 2, 0, 2, 3];
+		const triangles = source.partition.parts[0].triangles;
+		assert triangles.length == 2 && triangles[0] != triangles[1];
+		for (let corner = 0; corner < 6; corner++) {
+			const triangle: int32 = triangles[corner < 3 ? 0 : 1];
+			assert triangle >= 0 && triangle < 2;
+			const original: int32 = triangle * 3 + corner % 3;
+			assert source.vertexSources[source.mesh.indexAt(corner) as int32] == corners[original];
+		}
+	}
 }

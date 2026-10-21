@@ -3,13 +3,16 @@
 
 import { glsl, glslLinked } from "../src/shader/emit";
 import {
+	billboardFs,
+	billboardVs,
 	copyFs,
 	litFs,
 	litTexturedFs,
 	litTexturedVs,
 	litVs,
+	particleFs,
+	particleVs,
 	particleVisualVs,
-	particleVisualPixelArtVs,
 	shadowLitFs,
 	shadowLitTexturedFs,
 	shadowUnlitTexturedFs,
@@ -41,7 +44,10 @@ console.log(stage("fs", "outlineMaskFs", glsl(outlineMaskFs)));
 console.log(stage("fs", "outlineMixFs", glsl(outlineMixFs)));
 console.log(stage("fs", "outlineWidthFs", glsl(outlineWidthFs)));
 console.log(stage("vs", "particleVisualVs", glsl(particleVisualVs)));
-console.log(stage("vs", "particleVisualPixelArtVs", glsl(particleVisualPixelArtVs)));
+console.log(stage("vs", "particleVs", glsl(particleVs)));
+console.log(stage("fs", "particleFs", glslLinked(particleFs, particleVs)));
+console.log(stage("vs", "billboardVs", glsl(billboardVs)));
+console.log(stage("fs", "billboardFs", glslLinked(billboardFs, billboardVs)));
 console.log(stage("vs", "litVs", glsl(litVs)));
 console.log(stage("fs", "litFs", glslLinked(litFs, litVs)));
 console.log(stage("fs", "shadowLitFs", glslLinked(shadowLitFs, litVs)));

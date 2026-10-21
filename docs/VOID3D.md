@@ -508,7 +508,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 
 ### M14 as built
 
-- **The core and the pixel-art preset each have their own programs.** Three GLSL files replace one:
+- **The core and the pixel-art preset each have their own programs.** Three GLSL files replace one. Since then every stage is MetaScript (`shader3d.ms`, `post3d.ms`, `pixelArt3d.ms`, [SHADER.md](SHADER.md) Tier 3) and the three files are gone; the split below is the one they keep:
   - `shader3dBlocks.glsl`, included by both, holds every uniform block the CPU writes, so each layout has one definition.
   - `shader3d.glsl` is the core's.
     - `Lit` shades the way Heaps' forward renderer does, into one colour output: the (saturated) material colour times the ambient, Lambert and the point lights, the point lights no longer stepped. Their curve is still the spike's window, `(1 − d/radius)²`, not Heaps' `params` attenuation (`light-params-divergence`).
@@ -3748,16 +3748,232 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
-### glTF skinning, traced CPU foundation
+### glTF explicit primitive-mode CPU acceptance
 
-**Not yet a rendering feature.** `loadGltf` still explicitly refuses a skin binding;
-no skin program or animation importer is accepted yet. CPU source-node binding,
-TRS sampling and per-instance skin-palette ownership are built, not wired into rendering. The first CPU
-foundation is `skinPalette.ms`: an owned palette map, IBM-before-world matrix order,
-three affine columns per joint and a full declared-size output. `skinPartition.ms` ports
-Heaps' material-preserving joint-set merge and shared-slot assignment. Skinning's trace verdict
-is **DIVERGE-INCOMPLETE**: follow Heaps' LBS and palette splitting, not merely loosen the
-importer's gate or impose a 64-joint rig cutoff.
+Heaps `b9aa6dcb` `Primitive.render` dispatches triangle draws, not glTF JSON defaults.
+The glTF `b43260ee` `mesh.primitive.schema.json` mode enum permits integers, with default 4
+for absence; null is not an enum value. Bevy `157e1ce6` reads `primitive.mode()`;
+the inspected gltf-json 1.4.1 `mesh.rs` declares nonoptional `Primitive.mode: Checked<Mode>`
+with a serde default and `deserialize_u64` for supplied values. Exact Bevy lock resolution
+remains unverified. Void reuses `gltf.ms` `colourIntField` in `loadMesh`, preserving its
+existing integer/range validation rather than introducing another schema reader.
+
+CPU source tree `b58e6a7a93620da7c4162b029b5846911bb5a82b`, BUILD `3c5ca8377`:
+`msc test src/test/gltfIndexCheck.ms` **315 pass / 1 fail** before, **316/316** after, exits
+1 then 0. The red is the explicit-null assertion, not the absent/4 controls.
+`gltfIndexCheck.ms` owns both indexed and non-indexed mode cases. Only this check reran:
+mode-field validation is the changed contract, with no geometry, material, skin, animation
+or GPU mechanism change. Receipts: `out/m5PrimitiveMode{Red,Green}20261020.{log,exit}`.
+No full-gate or new rendered acceptance from this targeted CPU check.
+
+### glTF non-indexed triangle CPU acceptance
+
+Heaps `b9aa6dcb` `h3d/prim/Primitive.hx` `triCount` and `render` use sequential vertex
+triangles when `indexes` is null. Bevy `157e1ce6` `crates/bevy_gltf/src/loader/mod.rs`
+only inserts indices when `Reader.read_indices` returns them. glTF `b43260ee` "Topology and
+Connectivity" requires accessor order when `indices` is absent, not when it is malformed.
+Void's adapter is `gltf.ms` `loadMesh` / `loadSkinMesh`: plain meshes need no synthetic index
+buffer; skin palette partitioning requires explicit corners, supplied through existing
+`meshData.ms` `addTriangle`. No new topology, GPU ABI or partition representation.
+
+CPU source tree `518f6daedd767b6543e8f81b3b8f14a94d6dd5a7`, BUILD `3c5ca8377`:
+`msc test src/test/gltfIndexCheck.ms` **314/314**, `gltfSkinCheck.ms` **309/309**,
+`gltfMaterialCheck.ms` **336/336**, `gltfCheck.ms` **316/316**,
+`gltfAnimationCheck.ms` **311/311**; each has a successful exit 0.
+Visibility reds were **313 pass / 1 fail** in index and **308 pass / 1 fail** in skin.
+The first combined green attempt retained one obsolete non-indexed refusal in `gltfCheck.ms`
+(**315 pass / 1 fail**). Correcting that fixture changed no production code or inputs consumed
+by the other four checks, so only `gltfCheck.ms` reran. Its old failure log remains intact.
+Pins live in `gltfIndexCheck.ms`, `gltfSkinCheck.ms` and `gltfMaterialCheck.ms`; the last compares
+Mikk-generated and supplied tangent corners with indexed controls and checks material identity.
+Receipts: `out/m5Nonindexed<test-name>{Red,Green}20261020.{log,exit}` and
+`out/m5NonindexedgltfCheckFinal20261020.{log,exit}`.
+No new rendered, browser, physical-device or performance acceptance from these CPU checks.
+
+### glTF sparse animation-output CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `makeLinearAnimation` reads packed HMD frames
+using frame count and sampling rate, including reconstructed quaternion W. It has no sparse
+accessor stream; that is a format difference, not evidence that Heaps rejects glTF sparse data.
+Do not replace glTF timestamp/quaternion semantics with that HMD representation.
+Bevy `157e1ce6` glTF loader explicitly skips sparse sampler inputs, while its output reader
+uses accessor iterators. glTF-rs 1.4.1 `animation/util/mod.rs` `Reader.read_outputs` routes TRS
+outputs through `accessor::Iter.new`. This slice keeps Void's explicit sparse-input refusal
+and existing float-only TRS format, decoding output storage before `GltfCurve.forValues`.
+Morph tracks and normalized integer rotations remain separate work; no interpolation change.
+
+CPU source tree `147e8c2ef3cef60bea757a1e6917c01b89d1fcad`, BUILD `3c5ca8377` (v0.3.4):
+`msc test src/test/gltfAnimationCheck.ms` **311/311**, `gltfCheck.ms` **316/316**,
+`gltfSkinCheck.ms` **308/308**, `gltfComposeSceneCheck.ms` **305/305**; all exits 0.
+The initial two positive pins failed on both BUILD `8a9fc02dd` and `3c5ca8377`, each with
+**307 pass / 2 fail**. The newer BUILD's red was rerun before its green; old green results
+were not carried across the compiler sync. `gltfAnimationCheck.ms` owns dense-equivalent curves,
+independent bound poses, input refusal and malformed output controls.
+Receipts: `out/m5SparseAnimationRed3c5ca837720261020.log` and
+`out/m5SparseAnimation<test-name>Green3c5ca837720261020.{log,exit}`.
+No new sparse-animation rendered, browser or physical-device acceptance from these CPU checks.
+
+### PENDING: normalized integer rotation outputs
+
+These formats are core glTF animation encodings, not dependent on `KHR_mesh_quantization`:
+glTF `b43260ee` animation sampler table permits snorm8, unorm8, snorm16 and unorm16 rotations.
+The current boundary is `gltf.ms` `animationValues` (FLOAT only), followed by
+`gltfCurve.ms` `forValues` (unit-quaternion validation). Merely admitting integer formats
+would not handle their quantization error.
+
+Arithmetic probe at source tree `a8f2354587ce1c304c9a07114d00f8790f4db0ac`, using Python
+`v = struct.unpack('<f', struct.pack('<f', n/d))[0]` and `abs(2*v*v-1)` for `(0,0,v,v)`:
+
+| Encoding | Components n/d | Squared-length error | Against current 1e-4 gate |
+|---|---|---|---|
+| snorm8 | 90/127 | 0.00440206468 | refused |
+| unorm8 | 180/255 | 0.00346015811 | refused |
+| snorm16 | 23170/32767 | 0.00002002777 | within tolerance |
+| unorm16 | 46340/65535 | 0.00001048662 | within tolerance |
+
+Receipt: `out/m5RotationQuantization20261020.log`. These are IEEE-f32 arithmetic measurements,
+not real-asset runs. The importer currently refuses all four integer encodings before this
+unit check. Passing the arithmetic threshold is not importer acceptance.
+
+Heaps `b9aa6dcb` HMD `Library.makeLinearAnimation` stores float XYZ and reconstructs W;
+it does not settle this quantized glTF boundary. Bevy `157e1ce6` glTF loader's rotation arm
+uses `into_f32().map(Quat::from_array)`. Its `animation_curves.rs`
+`AnimatableCurveEvaluator.commit` writes the sampled value unchanged; a sole STEP curve has
+no final normalization there. `bevy_animation::gltf_curves::CubicRotationCurve` normalizes
+after Hermite.
+This is a source trace, not a Bevy runtime verdict.
+
+Options for a future decision, none implemented here:
+
+- **(a) Source-width tolerance.** Loosens the unit gate; must bound quantization error while
+  still rejecting zero, nonfinite and materially non-unit keys. Tolerance alone is insufficient:
+  STEP and non-cubic endpoints would publish non-unit values under the current curve contract.
+- **(b) Renormalize at decode.** Produces unit keys, but changes cubic interpolation against
+  raw, unscaled tangents. Requires an explicit curve-semantics decision, not a silent repair.
+- **(c) Keep refusal.** Retains the current contract but excludes these core glTF encodings.
+
+Recommendation for now: **(c)**, pending a real asset carrying quantized rotation outputs.
+That asset is the upgrade trigger; use its decoded keys, tangents and interpolation modes to
+settle normalization and validation together. No global quaternion-gate change or portability
+acceptance is implied by this finding.
+
+### glTF sparse triangle-index CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` preserves indexed material ranges;
+its HMD format is not glTF sparse storage. Bevy `157e1ce6` glTF loader `read_indices` consumes
+an accessor iterator. The glTF-rs sources inspected were `mesh/mod.rs` `Reader.read_indices`
+at 1.4.1 and `accessor/util.rs` `Iter.new` / `SparseIter.next` at 1.4.0: sparse values replace
+selected elements of a dense or zero base. Bevy declares `gltf = "1.4.0"`; its exact lock
+resolution was not checked. glTF `b43260ee` sparse accessor rules define the file contract.
+Void reuses `gltfAccessor.ms` `GltfAccessorIndices.fromAccessor`, keeping validation after
+replacement so discarded base values cannot invalidate the final draw sequence.
+
+CPU source tree `459379118c5cb50c9b68fa06ef2c967daf354810`, BUILD `8a9fc02dd`:
+`msc test src/test/gltfIndexCheck.ms` **312/312**, `gltfCheck.ms` **316/316**,
+`gltfMaterialCheck.ms` **335/335**, `gltfSkinCheck.ms` **308/308**; all exits 0.
+The initial three sparse-positive pins failed on the old importer: **308 pass / 3 fail**.
+A subsequent pin also covers addressable restart sentinels and short triangle lists.
+See `gltfIndexCheck.ms` for width, replacement, malformed-layout and picking assertions.
+Receipts: `out/m5SparseIndexRed20261020.log` and
+`out/m5SparseIndex{gltfIndexCheck,gltfCheck,gltfMaterialCheck,gltfSkinCheck}Green20261020.log`.
+No new sparse-render, browser, device or performance acceptance from these CPU checks.
+
+### glTF normalized texture-coordinate CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` converts packed attributes through
+`hxd/BufferFormat.hx` `floatU8to32` (divide by 255). For glTF's exact formats, Bevy `157e1ce6`
+`vertex_attributes.rs` `into_tex_coord_values` converts normalized U8/U16 VEC2 to Float32x2;
+glTF `b43260ee` mesh primitive attributes permits both. Void uses its existing
+`gltfAccessor.ms` decoder through `gltf.ms` `geometryAttribute`, not another unpacker.
+The geometry-format gate remains stricter than the generic decoder: accepting signed UVs or
+normalized integer positions would require a separate format/extension contract.
+
+CPU source tree `ef8e69ff9ed9a41b5371cfd2eedd25ab1fcf92d7`, BUILD `8a9fc02dd`:
+`msc test src/test/gltfMaterialCheck.ms` **335/335**, `msc test src/test/gltfCheck.ms` **316/316**.
+Before the importer change, the same two new positive tests failed with **333 pass / 2 fail**.
+Pins in `gltfMaterialCheck.ms` exercise decoded meshes and retained skin source identity,
+not only decoder output. Logs: `out/m5NormalizedUvRed20261020.log`,
+`out/m5NormalizedUv{gltfMaterialCheck,gltfCheck}Green20261020.log`.
+No new rendered, browser or physical-device acceptance from these CPU checks.
+
+### glTF matrix node CPU acceptance
+
+`gltf.ms` `matrixTransform` follows Heaps `b9aa6dcb` `Matrix.getScale/decomposeMatrix`
+and Bevy `157e1ce6` `gltf_ext/scene.rs` `node_transform` through
+`Transform.from_matrix` / glam 0.33.9 `to_scale_rotation_translation`.
+It reuses `math3d.ms` `quatOfRotation`, not a second scene transform representation.
+The existing mirrored/singular import refusal remains. glTF's affine/no-shear and matrix/TRS
+exclusion rules apply; TRS animation cannot target a matrix-defined node (glTF `b43260ee`,
+node transformations and animation channel targets).
+Normalized-axis reconstruction permits float32 rounding within 1e-5, not translation-scaled
+shear tolerance. Non-axis rotations pass; shear 1e-4 with translation 1e20 is refused.
+
+CPU source tree `709a2de63db665723ae770ded7210523bd072e51`, BUILD `8a9fc02dd`:
+`msc test src/test/gltfCheck.ms` **316/316**, `gltfAnimationCheck.ms` **307/307**,
+`gltfSkinCheck.ms` **308/308**. The baseline matrix visibility probe had two intended
+assertion reds after equivalent TRS controls passed. Retained parent/child and independent
+skin pose/bounds/pick consumers cover matrix roots/joints, both index and joint widths.
+Logs: `out/m5Matrix{Check,SkinCheck}Final20261020.log`,
+`out/m5MatrixAnimationCheckGreenA20261020.log`. No new matrix GPU/device acceptance yet.
+
+### Pixel-art Fog range refusal
+
+A disabled fog still reaches the post shader's `smoothstep`; strength zero does not define
+invalid edges. Heaps `b9aa6dcb` has no tracked fog implementation under `h3d`/`hxd`.
+Bevy `157e1ce6` `bevy_pbr/src/render/fog.wesl` `linear_fog` uses world-distance linear falloff,
+not this preset's clip-depth curve. The look stays unchanged; CPU preflight requires finite
+`start < end`, without clamping, auto-repair or an arbitrary minimum width.
+`pixelArtRenderer.ms` returns `FogRange` from creation/frame preparation; its void setter and
+parameter writer stop by name before writes. Fog-off callers use a valid range and strength zero.
+
+CPU source tree `fe826d082151b894ba89ce175fa286e196b42c07`, BUILD `8a9fc02dd`:
+`msc test src/test/rendererCheck.ms` reports **329 passed (329)**, against the missing guard's
+327 pass/2 intended failures. Creation (LDR/HDR), direct mutation, disabled post, finite/order
+failures and valid strength-zero retry are pinned. Building `tests/aborts3d/cases/pixelArtCases.ms`
+and running its eight `fog.*` cases gives exit1 with the expected setter/writer diagnostic.
+Logs: `out/m5FogRange{Red,Green,CheckGreen,BuildGreen}20261020.log`.
+The combined gate/land below subsequently verified the corrected fog-off integration fixtures.
+
+### glTF interleaved and sparse geometry, CPU acceptance
+
+Heaps `b9aa6dcb` `hxd/fmt/hmd/Library.hx` `getBuffers` reads input offsets within a vertex
+stride. Bevy `157e1ce6` `bevy_gltf/src/loader/mod.rs` calls `convert_attribute`, whose
+`vertex_attributes.rs` `BufferAccessor.iter` delegates accessor layout to the glTF iterator.
+Void reuses `gltfAccessor.ms` `GltfAccessorValues.decode` in `gltf.ms` `loadMesh`; float
+attribute format checks, material groups, Mikk splits and canonical skin source IDs remain.
+This loosens the dense-only geometry gate, not the supported semantic/format contract.
+
+On CPU source tree `9a0dfa866990a81bd1fad81b6985fa030f96ec57`, BUILD `8a9fc02dd`,
+`msc test src/test/gltfCheck.ms` reports **313 passed (313)** and
+`msc test src/test/gltfMaterialCheck.ms` reports **333 passed (333)**. The same tests on old
+`3f9d01d8` report 309/4 and 330/3 pass/fail: seven intended assertions, no compile failures.
+Dense/interleaved/sparse geometry, sparse base overrides, malformed inputs, supplied/generated
+UV tangents and dense/strided skin source IDs at both index widths are pinned. Logs:
+`out/m5Accessor{Check,Material}Reboot1Green20261020.log`.
+
+Combined acceptance with FogRange, after the shader port: tree
+`69c238654b5f6edb6e45c18f848732a1d1befb8f` (`bb0513d0`), BUILD `8a9fc02dd`.
+Full `scripts/gate.sh` reports **1860/1860 OFF, 2247/2247 ON**; full `scripts/gate3d.sh`
+is green; `scripts/web3d.sh` reports **37/37 real WebGL2 runs**. Land exit 0;
+`out/m5AccessorFogLand20261020.{log,exit}`. Seven native and three gate3D skips remain,
+with no new reds. This is integrated regression acceptance, not a new rendered sparse-asset
+fixture, WebGPU/physical-device run, real device-loss proof or performance-parity claim.
+
+### glTF skinning, integration and historical CPU foundation
+
+**Current integration:** tree `f955fd7c2fe6311614b38bba4c61bbd95388943c`
+(commit `3f9d01d8`), binary/support BUILD `8a9fc02dd`. Actual imported skinning and u32 indices
+are landed. `scripts/gate.sh` passed OFF1839/ON2226, D3D11 120/120, GL430 94 pass/26 pending;
+its seven known skips remain. Full `scripts/gate3d.sh` passed with three known skips;
+`scripts/web3d.sh` passed 37/37 real WebGL2 runs. `tests/integration/dirShadow.ms` covers
+independent u16/u32 actors across colour, shadow, bounds and buffer reupload, with eight
+intended negative controls. Reupload is not device loss; no physical GLES/Metal, heap/fence
+or current performance acceptance follows. Gate log: `out/m5SkinShadowLand20261019.log`.
+
+**Historical foundation follows.** Refusals, incomplete verdicts and NOTRUN statements below
+belong to their recorded trees, not the current importer. The original foundation follows
+Heaps' LBS and material-preserving palette splitting, with a per-draw palette rather than
+a 64-joint rig cutoff.
 
 **Read and measured.** Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`,
 `scene/Skin.hx:56-78` builds `inverseBind * jointWorld` in row-vector order;

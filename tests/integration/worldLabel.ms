@@ -121,7 +121,7 @@ function makePreset(): PixelArtRenderer {
 		outline: {
 			depthThreshold: 0.006, normalThreshold: 0.6, depthShade: 0.55, normalShade: 1.35,
 		},
-		fog: { start: 1.0, end: 1.0, strength: 0.0, color: BLACK },
+		fog: { start: 0.0, end: 1.0, strength: 0.0, color: BLACK },
 		saturation: 0.0,
 	};
 	const made: Result<PixelArtRenderer, PixelArtError> =

@@ -11,8 +11,8 @@
 #include <stdint.h>
 
 // Bindings: 0 leaves a slot empty. View and sampler slots are the `binding=` numbers in
-// shader3d.glsl and pixelArt3d.glsl: a material's four views and two samplers, then the scene's
-// (the shadow map, shader3dBlocks.glsl dirShadow) at view 4 and sampler 2, then the normal map's
+// shader3d.ms and pixelArt3d.ms: a material's four views and two samplers, then the scene's
+// (the shadow map, shader3d.ms dirShadowAt) at view 4 and sampler 2, then the normal map's
 // view 5.
 static const int32_t GPU3D_BINDING_VERTEX_BUFFER = 0; // two
 static const int32_t GPU3D_BINDING_INDEX_BUFFER = 2;
@@ -30,6 +30,7 @@ int32_t gpu3dProgramKey(int32_t index);
 
 uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length);
 uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length);
+uint32_t gpu3dMakeIndexBuffer32(const uint32_t *data, int64_t length);
 uint32_t gpu3dMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
 // An RGBA8 image whose pixels are replaced from the CPU (the palette LUT); starts undefined.
 uint32_t gpu3dMakeDynamicImage(int32_t width, int32_t height);

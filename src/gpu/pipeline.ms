@@ -38,13 +38,10 @@ import {
 	DOOR_PIPELINE_LENGTH,
 } from "./door.h";
 
-// sokol bakes the index type into the pipeline, so a mesh drawn from an index buffer and one
-// drawn straight from its vertex buffer need different pipelines. Only uint16 is offered: it
-// caps a mesh at 65536 vertices, far above Hibernal's budget, and widening the format is a
-// decision, not a fallback (meshData.ms MAX_MESH_VERTICES).
 export enum IndexType {
 	None,
 	Uint16,
+	Uint32,
 }
 
 export struct PipelineKey {
@@ -81,17 +78,27 @@ export function empty(this typeof PipelineCache): PipelineCache {
 	};
 }
 
+function selectedIndexType(indexed: boolean, format: IndexType): IndexType {
+	if (!indexed) { return IndexType.None; }
+	if (format != IndexType.Uint16 && format != IndexType.Uint32) {
+		console.log(`gpu door: indexed pipeline with invalid index type ${format.toString()}`);
+		unreachable;
+	}
+	return format;
+}
+
 export function pipelineKey(
 	program: int32,
 	layout: int32,
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
+	format: IndexType = IndexType.Uint16,
 ): PipelineKey {
 	return {
 		program: program,
 		layout: layout,
-		indexType: indexed ? IndexType.Uint16 : IndexType.None,
+		indexType: selectedIndexType(indexed, format),
 		state: state.bits(),
 		targets: targets.formatBits(),
 	};
@@ -125,6 +132,7 @@ export function describePipeline(
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
+	format: IndexType = IndexType.Uint16,
 ): void {
 	out[DOOR_PIPELINE_SHADER] = shader;
 	out[DOOR_PIPELINE_LAYOUT] = unsigned(layout);
@@ -144,7 +152,7 @@ export function describePipeline(
 	out[DOOR_PIPELINE_COLOR_FORMAT + 3] = unsigned(targets.color3 as int32);
 	out[DOOR_PIPELINE_DEPTH_FORMAT] = unsigned(targets.depth as int32);
 	out[DOOR_PIPELINE_SAMPLE_COUNT] = unsigned(targets.sampleCount);
-	const indexType: IndexType = indexed ? IndexType.Uint16 : IndexType.None;
+	const indexType: IndexType = selectedIndexType(indexed, format);
 	out[DOOR_PIPELINE_INDEX_TYPE] = unsigned(indexType as int32);
 }
 
@@ -226,12 +234,13 @@ export function pipelineFor(
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
+	format: IndexType = IndexType.Uint16,
 ): uint32 {
 	if (cache.closed) { stopOnClosed("pipelineFor"); }
 	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
 	adoptContext(cache);
 	const concrete: TargetLayout = targets.resolved();
-	const key: PipelineKey = pipelineKey(program, layout, indexed, state, concrete);
+	const key: PipelineKey = pipelineKey(program, layout, indexed, state, concrete, format);
 	let found: int32 = cache.entries.length as int32;
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
 		if (cache.entries[i].key == key) {
@@ -240,7 +249,7 @@ export function pipelineFor(
 		}
 	}
 	const shader: uint32 = shaderFor(cache, program);
-	describePipeline(cache.descriptor, shader, layout, indexed, state, concrete);
+	describePipeline(cache.descriptor, shader, layout, indexed, state, concrete, format);
 	const pipeline: uint32 = makePipeline(cache.descriptor);
 	if (pipeline == 0) { return stopOnRefusedPipeline(key); }
 	if (found == (cache.entries.length as int32)) {

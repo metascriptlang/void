@@ -307,7 +307,7 @@ function screenMaterialError(renderer: ForwardRenderer, material: MaterialId): F
 
 // One frame at the framebuffer's `width` × `height`: `items` index the meshes and materials of
 // the context the preset was made on; `camera` and `lights` are the scene programs' uniform
-// blocks (shader3dBlocks.glsl vertexParams, lightParams). Answers how many items it was given.
+// blocks (shader3d.ms VertexParams, LightParams). Answers how many items it was given.
 // An item whose material names a program the core does not draw refuses the frame before
 // anything changes.
 export function prepareFrame(

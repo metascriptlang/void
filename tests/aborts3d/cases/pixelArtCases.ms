@@ -5,6 +5,14 @@
 // expect closed.drawToScreen: void3d: drawToScreen on a pixel-art preset that was closed
 // expect closed.closePixelArt: void3d: closePixelArt on a pixel-art preset that was closed
 // expect bloom.ldr: void3d: setBloom on a pixel-art preset made by create; bloom needs createHdr
+// expect fog.setLookEqual: void3d: setLook requires finite fog.start < fog.end
+// expect fog.setLookReverse: void3d: setLook requires finite fog.start < fog.end
+// expect fog.setLookNan: void3d: setLook requires finite fog.start < fog.end
+// expect fog.setLookInfinite: void3d: setLook requires finite fog.start < fog.end
+// expect fog.writeEqual: void3d: writePostParams requires finite fog.start < fog.end
+// expect fog.writeReverse: void3d: writePostParams requires finite fog.start < fog.end
+// expect fog.writeNan: void3d: writePostParams requires finite fog.start < fog.end
+// expect fog.writeInfinite: void3d: writePostParams requires finite fog.start < fog.end
 import { argv } from "std/process";
 import { Vec4 } from "../../../src/math/math3d";
 import { DrawContext } from "../../../src/void3d/draw";
@@ -16,6 +24,8 @@ import {
 	PixelArtLook,
 	PixelArtError,
 	PIXEL_ART_UNIFORM_LENGTH,
+	POST_UNIFORM_LENGTH,
+	writePostParams,
 	setSettings,
 	setLook,
 	setPalette,
@@ -53,7 +63,22 @@ function closedPixelArt(): PixelArtRenderer {
 
 function run(name: string): void {
 	let colors: Vec<uint32> = [0xFF000000, 0xFFFFFFFF];
-	if (name == "bloom.ldr") {
+	if (name.startsWith("fog.")) {
+		let style = look();
+		style.fog.start = 1.0;
+		style.fog.end = name.endsWith("Equal") ? 1.0 : 0.5;
+		if (name.endsWith("Nan")) { style.fog.end = (0.0 / 0.0) as float32; }
+		if (name.endsWith("Infinite")) { style.fog.end = (1.0 / 0.0) as float32; }
+		if (name.startsWith("fog.setLook")) {
+			let context = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+			const made = PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+			if (!made.ok) { unreachable; }
+			setLook(made.value, style);
+		} else {
+			let values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);
+			style.writePostParams(PixelArtSettings.full(), 16, true, values);
+		}
+	} else if (name == "bloom.ldr") {
 		let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 		const made: Result<PixelArtRenderer, PixelArtError> =
 			PixelArtRenderer.create(context, PixelArtSettings.full(), look());

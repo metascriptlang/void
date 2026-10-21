@@ -9,6 +9,7 @@ import {
 } from "../gpu/door";
 import {
 	PipelineCache,
+	IndexType,
 	pipelineFor as pipelineForIds,
 } from "../gpu/pipeline";
 import { RenderState } from "../gpu/state";
@@ -32,6 +33,7 @@ import {
 // one-element copy (docs/VOID3D.md, Compiler notes).
 extern function gpu3dMakeVertexBuffer(data: Readonly<Span<float32>>): uint32;
 extern function gpu3dMakeIndexBuffer(data: Readonly<Span<uint16>>): uint32;
+extern function gpu3dMakeIndexBuffer32(data: Readonly<Span<uint32>>): uint32;
 extern function gpu3dMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
 extern function gpu3dUpdateImage(image: uint32, rgba: Readonly<Span<uint32>>): void;
 extern function gpu3dUpdateBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32;
@@ -61,7 +63,7 @@ export enum Program {
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
-// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.glsl),
+// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.ms),
 // and Shadow, the depth h3d.pass.Shadows writes (dirShadowMap.ms).
 export enum Preset {
 	Core,
@@ -342,7 +344,7 @@ export function drawsQuads(layout: VertexLayout): boolean {
 	};
 }
 
-// Uniform block slots and sizes in floats, from the `binding=` blocks in shader3dBlocks.glsl.
+// Uniform block slots and sizes in floats, from the `@binding` blocks in shader3d.ms.
 export const SKIN_UNIFORM_SLOT: int32 = 7;
 export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
@@ -353,7 +355,7 @@ export const LIGHT_UNIFORM_SLOT: int32 = 1;
 // packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
 export const MAX_POINT_LIGHTS: int32 = 4;
 export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
-// The scene's shadow block (binding=5, shader3dBlocks.glsl dirShadow): the world-to-map
+// The scene's shadow block (binding=5, shader3d.ms ShadowParams): the world-to-map
 // matrix, then the bias and the opacity.
 export const SHADOW_UNIFORM_SLOT: int32 = 5;
 export const SHADOW_UNIFORM_LENGTH: int32 = 20;
@@ -374,7 +376,7 @@ export const MATERIAL_DOUBLE_SIDED: int32 = 2;
 export const MATERIAL_ALPHA_KILL: int32 = 3;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
-// A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3dBlocks.glsl):
+// A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3d.ms):
 // its program's block, then six vec4 at movingBase(key) plus these offsets, whichever of the
 // three features the key reads. UV transform: Bevy's Affine2, the 2x2 matrix by columns, then
 // the translation and Heaps' UVScroll speed in UV units per second of the frame's time.
@@ -404,7 +406,7 @@ export const NORMAL_VIEW_SLOT: int32 = 5;
 export const EMISSIVE_COLOR: int32 = 0;
 export const EMISSIVE_STRENGTH: int32 = 3;
 export const EMISSIVE_LENGTH: int32 = 4;
-// The scene's frame block (binding=6, shader3dBlocks.glsl frameUniforms): Heaps' `global.time`
+// The scene's frame block (binding=6, shader3d.ms FrameParams): Heaps' `global.time`
 // in seconds at FRAME_TIME, read by a key with a UV transform, and at FRAME_EXPOSURE the linear
 // multiplier every scene program's colour is exposed by (toneMap); at FRAME_LINEAR 1 when the pass
 // draws into an HDR target, where every scene program writes its colour linear and unexposed; at
@@ -465,6 +467,7 @@ export function pipelineFor(
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
+	format: IndexType = IndexType.Uint16,
 ): uint32 {
 	return pipelineForIds(
 		cache,
@@ -473,6 +476,7 @@ export function pipelineFor(
 		indexed,
 		state,
 		targets,
+		format,
 	);
 }
 
@@ -484,6 +488,10 @@ export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
 // Three uint16 per triangle. sokol copies the data, so the Vec it came from may move after.
 export function makeIndexBuffer(data: Readonly<Span<uint16>>): uint32 {
 	return gpu3dMakeIndexBuffer(data);
+}
+
+export function makeIndexBuffer32(data: Readonly<Span<uint32>>): uint32 {
+	return gpu3dMakeIndexBuffer32(data);
 }
 
 export function makeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32 {

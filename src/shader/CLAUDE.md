@@ -47,8 +47,10 @@ later replaces the hand-written GLSL source of each base.
   `discard()` is WGSL's. The stage and program name are the generator's (`@fs litFs`).
 - **Each declaration sits under the conditions its reads run under, and an unread one is left
   out.** A uniform or texture a variant does not read is still one its draw would have to bind, and
-  shdc would reflect it. The condition is the `||` of every distinct context a read runs in. A
-  helper is written once with no features on; its reads are replayed at each call under the
+  shdc would reflect it. The condition is the `||` of every distinct context a read runs in,
+  reduced the way a reader would write it: a context another one covers is dropped, two that
+  differ only in `F` and `!F` join, and a condition true under every feature set leaves the
+  declaration bare. A helper is written once with no features on; its reads are replayed at each call under the
   features around the call, and the helper itself is gated the same way. A `@feature(F)` input
   exists only in F's programs, so a read of it runs under a condition whose `&&` includes F; any
   other read is refused at the read, or at the entry's call that reaches a helper's read, naming
@@ -106,15 +108,15 @@ later replaces the hand-written GLSL source of each base.
   otherwise). Measured 2026-10-15, `out/stmtProbe/shdc/`: array varyings pass all five shdc
   outputs, an array vertex attribute fails GLES3 (SPIRV-Cross "OpenGL ES doesn't support array input
   variables in vertex shader"), so the emitter refuses it.
-- **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the stages and
-  `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, whose stages join
-  `shader3d.glsl`'s for every program key; `tools/genShaders2d.ms` writes void2d's to
+- **Generated GLSL lives on disk.** `tools/genShaders.ms` prints the core's stages and
+  `scripts/regen-shaders.sh` writes them to `src/void3d/shader3dGen.glsl`, the source of every core
+  and shadow program key; `tools/genShadersPixelArt.ms` writes the pixel-art preset's to
+  `src/void3d/pixelArt3dGen.glsl` under the stage names `programKeys.txt` gives them;
+  `tools/genShaders2d.ms` writes void2d's to
   `src/void2d/shader2dGen.glsl`, which `shader2d.glsl` `@include`s under its `@program` lines;
   `--check` reports a stale file. No derivative runs on the CPU, so a fragment that takes `dpdx`
   (void2d's `fs` and `uiFs`) is checked through its helpers and pixel goldens, not as a whole. Runtime modules never
-  call `glsl`, so no binary carries GLSL text. `shader3dBlocks.glsl` is included only into a program
-  that still has a hand-written stage: a generated stage defines what it calls, and a texture tag in
-  an included block would name its texture twice.
+  call `glsl`, so no binary carries GLSL text.
 - **An app's own program is built while msc compiles it** (`shaderProgram` in `program.ms`, the
   person's "viết → chạy", 2026-10-18). The statement splices three declarations: an `@emit` that
   includes the generated header, the extern `<name>ShaderProgram()` defined in it, and `const

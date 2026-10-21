@@ -56,7 +56,7 @@ export function copyFs(input: CopyInput, b: CopyBindings): Vec4f {
 	return textureLoad(b.sourceTexture, b.pointSampler, p, 0);
 }
 
-const PARTICLE_CORNERS: Vec2f[6] = [
+export const PARTICLE_CORNERS: Vec2f[6] = [
 	vec2f(-0.5, -0.5), vec2f(0.5, -0.5), vec2f(0.5, 0.5),
 	vec2f(-0.5, -0.5), vec2f(0.5, 0.5), vec2f(-0.5, 0.5),
 ];
@@ -296,14 +296,14 @@ function skinRow(b: VertexBindings, joints: Vec4f, weights: Vec4f, column: int32
 		b.skinParams.skinRows[(joints.w as int32) * 3 + column] * weights.w;
 }
 
-function skinWorld(b: VertexBindings, joints: Vec4f, weights: Vec4f): Mat4x4f {
+export function skinWorld(b: VertexBindings, joints: Vec4f, weights: Vec4f): Mat4x4f {
 	return transpose(mat4x4f(
 		skinRow(b, joints, weights, 0), skinRow(b, joints, weights, 1),
 		skinRow(b, joints, weights, 2), vec4f(0.0, 0.0, 0.0, 1.0),
 	));
 }
 
-function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
+export function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
 	const linear = upperLeft3x3(world);
 	const a = cross(linear.columns[1], linear.columns[2]);
 	const b = cross(linear.columns[2], linear.columns[0]);
@@ -353,6 +353,140 @@ export function particleVisualVs(
 		instanceColor: input.color,
 		clip: b.vertexParams.viewProj * vec4f(world, 1.0),
 	};
+}
+
+export struct ParticleAttributes {
+	root: Vec4f;
+	color: Vec4f;
+	@builtin(vertexIndex) index: uint32;
+}
+
+export struct ParticleVaryings {
+	particleColor: Vec4f;
+	@builtin(position) clip: Vec4f;
+}
+
+export struct ParticleFragmentInput {
+	particleColor: Vec4f;
+}
+
+export struct ParticleBindings {
+	@binding(6) frameParams: FrameParams;
+}
+
+export struct ParticleKey {
+	@feature(CUTOUT) cutout: boolean;
+}
+
+export function particleVs(input: ParticleAttributes, b: VertexBindings): ParticleVaryings {
+	const corner = PARTICLE_CORNERS[input.index % 6];
+	const right = b.vertexParams.cameraRight.xyz;
+	const up = b.vertexParams.cameraUp.xyz;
+	const world = input.root.xyz + right * (corner.x * input.root.w) +
+		up * (corner.y * input.root.w);
+	return { particleColor: input.color, clip: b.vertexParams.viewProj * vec4f(world, 1.0) };
+}
+
+export function particleFs(
+	input: ParticleFragmentInput, b: ParticleBindings, key: ParticleKey,
+): Vec4f {
+	const color = input.particleColor;
+	if (key.cutout) {
+		if (color.a < 0.5) {
+			discard();
+		}
+	}
+	return vec4f(toneMapped(color.rgb, b.frameParams.frame), color.a);
+}
+
+export struct BillboardAttributes {
+	position: Vec3f;
+	size: Vec2f;
+	anchor: Vec2f;
+	tile: Vec4f;
+	color: Vec4f;
+	@builtin(vertexIndex) index: uint32;
+}
+
+export struct BillboardFragmentInput {
+	worldPosition: Vec3f;
+	towardCamera: Vec3f;
+	uv: Vec2f;
+	instanceColor: Vec4f;
+}
+
+export struct BillboardParams {
+	billboardColor: Vec4f;
+	billboard: Vec4f;
+}
+
+export struct BillboardBindings {
+	@binding(2) billboardParams: BillboardParams;
+	@binding(1) lightParams: LightParams;
+	@binding(6) frameParams: FrameParams;
+	@binding(0) billboardTexture: Texture2d;
+	@binding(0) billboardSampler: Sampler;
+}
+
+export struct BillboardKey {
+	@feature(CUTOUT) cutout: boolean;
+	@feature(PREMULTIPLIED) premultiplied: boolean;
+}
+
+export function billboardPoint(
+	position: Vec3f, size: Vec2f, anchor: Vec2f, corner: Vec2f, right: Vec3f, up: Vec3f,
+): Vec3f {
+	const offset = corner - anchor;
+	return position + right * (offset.x * size.x) + up * (offset.y * size.y);
+}
+
+export function billboardVs(input: BillboardAttributes, b: VertexBindings): ParticleVisualVaryings {
+	const corner = PARTICLE_CORNERS[input.index % 6];
+	const right = b.vertexParams.cameraRight.xyz;
+	const up = b.vertexParams.cameraUp.xyz;
+	// PENDING3D: particle-size-world-units
+	const world = billboardPoint(input.position, input.size, input.anchor, corner, right, up);
+	return {
+		worldPosition: world,
+		// PENDING3D: billboard-normal-toward-camera
+		towardCamera: cross(right, up),
+		uv: vec2f(corner.x > 0.0 ? input.tile.z : input.tile.x,
+			corner.y > 0.0 ? input.tile.y : input.tile.w),
+		instanceColor: input.color,
+		clip: b.vertexParams.viewProj * vec4f(world, 1.0),
+	};
+}
+
+export function billboardFs(
+	input: BillboardFragmentInput, b: BillboardBindings, key: BillboardKey,
+): Vec4f {
+	let texel = textureSample(b.billboardTexture, b.billboardSampler, input.uv);
+	if (key.premultiplied) {
+		texel = straightTexel(texel);
+	}
+	let pixel = b.billboardParams.billboardColor * texel * input.instanceColor;
+	if (key.cutout) {
+		if (pixel.a < 0.5) {
+			discard();
+		}
+	}
+	if (b.billboardParams.billboard.y != 0.0) {
+		const n = normalize(input.towardCamera);
+		const dir = b.lightParams.dirLight;
+		const lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
+		let light = srgbToLinear(b.lightParams.ambient.rgb) +
+			srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
+		for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
+			const at = b.lightParams.pointLight[i];
+			light = light + pointLightAt(input.worldPosition, n, at, b.lightParams.pointColor[i]);
+		}
+		pixel = vec4f(linearToSrgb(srgbToLinear(pixel.rgb) * light), pixel.a);
+	}
+	pixel = vec4f(toneMapped(pixel.rgb, b.frameParams.frame), pixel.a);
+	if (key.premultiplied) {
+		pixel = vec4f(pixel.rgb * pixel.a, pixel.a);
+	}
+	return pixel;
 }
 
 export function litVs(input: LitAttributes, b: VertexBindings, key: LitKey): LitVaryings {

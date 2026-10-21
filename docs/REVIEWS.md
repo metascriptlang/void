@@ -1881,8 +1881,8 @@ failure is marked *plausible*.
 | D3 | `glyphAtlas.ms` `acquireSdf`, `acquireOutline`, `acquireSdfOutline` | a rasterizer refusal after `allocate` leaves the shelf space spent and no tile, so a deterministic refusal burns page space every frame; `acquireColour` discards instead | open, builder |
 | D4 | `textLayout.ms` `markShapingBreaks` | a break index outside the text is dropped silently, beside the surrogate-pair case that stops by name | open, builder |
 | D5 | `labelText.ms` `shapeStale` | ignores `textShapingOn()`, so a label refused with shaping off stays blank after `setTextShaping(true)` with the same text | open, builder |
-| D6 | `src/sokol/bridgeWeb.c` | no `voidProfileInput()` on input events, so input latency never records on the GL core and web drivers (`bridgeWin.c:66` has it) | open, builder |
-| D7 | `bridge.c` `voidCommit` | the present bracket wraps `voidDriverPresent()`, empty on the sokol_app drivers (`bridgeWeb.c:87`), so present and dirty-to-present stop at commit there | open, builder |
+| D6 | `src/sokol/bridgeWeb.c` | no `voidProfileInput()` on input events, so input latency never records on the web driver (`bridgeWin.c` `_event` has it) | open, builder; GL core moved onto `bridgeWin.c` 2026-10-20 (docs/SOKOL.md) |
+| D7 | `bridge.c` `voidCommit` | the present bracket wraps `voidDriverPresent()`, empty on the web driver (`bridgeWeb.c` `voidDriverPresent`), so present and dirty-to-present stop at commit there | open, builder; the Windows window presents inside the bracket since 2026-10-20 (docs/SOKOL.md) |
 | D8 | `profiler.ms` `invalidated` | an invalidation during `Drawing` returns without stamping, so dirtiness raised while recording is lost for the next frame | *plausible*, builder |
 | D9 | `graphics.ms` `contourFill`, `draw.ms` `edgeMove` | fills pass no inset limit, so a fill thinner than one device pixel inverts its body under the antialiasing inset | *plausible*, needs a capture, builder |
 | D10 | `glyphAtlas.ms` `allocate` | a refused page at the process cap returns `Full` without trying `reclaimPage` | *plausible*, builder |

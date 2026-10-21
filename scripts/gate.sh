@@ -344,6 +344,55 @@ for glyph_backend in $glyph_backends; do
 	else
 		fail "glyph clip $glyph_backend build — see out/gate-glyph-clip-$glyph_backend-build.log"
 	fi
+	colour_runner="out/colourSampler-$glyph_backend.exe"
+	colour_backend=0
+	case "$(uname -s):$glyph_backend" in
+		*:gl) colour_backend=4 ;;
+		MINGW*:native|MSYS*:native|CYGWIN*:native) colour_backend=1 ;;
+	esac
+	if "$MSC" build -d:voidColourEmoji $glyph_flags tests/integration/colourSampler.ms \
+			--release --output="$colour_runner" \
+			> "out/gate-colour-sampler-$glyph_backend-build.log" 2>&1; then
+		colour_supported=0
+		for dpi in 1 2; do
+			colour_log="out/gate-colour-sampler-$glyph_backend-dpi$dpi.log"
+			if COLOUR_SAMPLER_BACKEND="$colour_backend" COLOUR_SAMPLER_DPI="$dpi" \
+					COLOUR_SAMPLER_MUTANT=0 timeout 60 "$colour_runner" > "$colour_log" 2>&1; then
+				if grep -q '^PASS colourSampler backend ' "$colour_log"; then
+					colour_supported=1
+					pass "colour sampler $glyph_backend DPI$dpi: zoomed RGBA bilinear pixels, next-node nearest reset and stable warm frames"
+				elif grep -q '^SKIP colourSampler:' "$colour_log"; then
+					skip "colour sampler $glyph_backend DPI$dpi: backend has no readback path"
+				else
+					fail "colour sampler $glyph_backend DPI$dpi has no verdict — see $colour_log"
+				fi
+			else
+				fail "colour sampler $glyph_backend DPI$dpi — see $colour_log"
+			fi
+		done
+		if [ "$colour_supported" -eq 1 ]; then
+			for colour_mutant in 1 2; do
+				case "$colour_mutant" in
+					1) colour_reason='bilinear pixel' ;;
+					2) colour_reason='nearest reset pixel' ;;
+				esac
+				colour_log="out/gate-colour-sampler-$glyph_backend-mutant$colour_mutant.log"
+				colour_rc=0
+				COLOUR_SAMPLER_BACKEND="$colour_backend" COLOUR_SAMPLER_DPI=1 \
+					COLOUR_SAMPLER_MUTANT="$colour_mutant" timeout 60 "$colour_runner" \
+					> "$colour_log" 2>&1 || colour_rc=$?
+				if [ "$colour_rc" -eq 1 ] && \
+						grep -q "^FAIL colourSampler: $colour_reason " "$colour_log" && \
+						! grep -q '^PASS colourSampler ' "$colour_log"; then
+					pass "colour sampler $glyph_backend mutant$colour_mutant: refused by $colour_reason"
+				else
+					fail "colour sampler $glyph_backend mutant$colour_mutant failed for an incidental reason or passed — see $colour_log"
+				fi
+			done
+		fi
+	else
+		fail "colour sampler $glyph_backend build — see out/gate-colour-sampler-$glyph_backend-build.log"
+	fi
 done
 
 for misuse in unprepared twice no-pass nested consumed expired size; do

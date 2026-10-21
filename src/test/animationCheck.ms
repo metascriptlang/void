@@ -387,6 +387,19 @@ function fan(lift: float32, count: int32, flip: boolean): MeshData {
 	return data;
 }
 
+test "baked frames compare uint32 topology instead of empty uint16 backing" {
+	let first = MeshData.empty();
+	first.vertices = new Array(65539 * 10);
+	assert addTriangle(first, 65536, 65537, 65538).ok;
+	let same = first;
+	same.vertices[65536 * 10] = 1.0;
+	assert checkBakedFrames([first, same]).ok;
+	let changed = first;
+	if (changed.wideIndices !== null) { changed.wideIndices[0] = 65535; }
+	const rejected = checkBakedFrames([first, changed]);
+	assert !rejected.ok && rejected.error == AnimationError.FrameTopology;
+}
+
 test "baked frames share one topology and may only move their vertices" {
 	const moving: Vec<MeshData> = [fan(0.0, 4, false), fan(0.5, 4, false), fan(1.0, 4, false)];
 	const accepted: Result<int32, AnimationError> = checkBakedFrames(moving);

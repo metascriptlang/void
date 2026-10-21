@@ -5,7 +5,7 @@ import { RenderState } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
 import { endPass, commit } from "../../src/gpu/door";
 import { DrawContext, DrawItem, closeContext } from "../../src/void3d/draw";
-import { GltfData, GltfError, loadGlb } from "../../src/void3d/gltf";
+import { GltfData, GltfDiagnostic, loadGlbDetailed, describe } from "../../src/void3d/gltf";
 import {
 	GltfAssets, GltfSceneError, addGltfAssets, addGltfNodes, closeGltfAssets,
 } from "../../src/void3d/gltfScene";
@@ -82,9 +82,9 @@ function decoded(): GltfData {
 	const file = readFile(FIXTURE);
 	if (!file.ok) { fail("generated GLB missing"); unreachable; }
 	const bytes: Vec<uint8> = [...file.value.asBytes()];
-	const loaded: Result<GltfData, GltfError> = loadGlb(bytes);
+	const loaded: Result<GltfData, GltfDiagnostic> = loadGlbDetailed(bytes, FIXTURE);
 	if (loaded.ok) { return loaded.value; }
-	fail(`loadGlb refused: ${loaded.error.toString()}`);
+	fail(loaded.error.describe());
 	unreachable;
 }
 

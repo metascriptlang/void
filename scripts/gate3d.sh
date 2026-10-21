@@ -1215,27 +1215,38 @@ run_mesh_lod() {
 		fail "mesh-lod: build refused — see $WORK/meshLod.build.log"
 		return
 	fi
-	status=0
-	VOID_MESH_LOD_CONTROL=0 "$exe" > "$WORK/meshLod.0.log" 2>&1 || status=$?
-	if [ "$status" -eq 3 ]; then
-		skip "mesh-lod: no readback backend"
-		return
-	fi
-	if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$WORK/meshLod.0.log"; then
-		fail "mesh-lod: ranges/materials/culling/reupload/pins/close — see $WORK/meshLod.0.log"
-		return
-	fi
-	for control in 1 2 3 4 5; do
-		status=0
-		log="$WORK/meshLod.$control.log"
-		VOID_MESH_LOD_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
-		if [ "$status" -eq 0 ] || ! grep -qE \
-			'^FAIL mesh LOD:.*(silhouette did not match LOD/culling|material was replaced)' "$log"; then
-			fail "mesh-lod: control $control did not fail its pixel assertion — see $log"
-			return
-		fi
+	for index32 in 0 1; do
+		for outline in 0 1; do
+			status=0
+			log="$WORK/meshLod.$index32.$outline.0.log"
+			VOID_MESH_LOD_CONTROL=0 VOID_MESH_LOD_INDEX32=$index32 \
+				VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+			if [ "$status" -eq 3 ]; then
+				skip "mesh-lod: no readback backend"
+				return
+			fi
+			if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$log"; then
+				fail "mesh-lod: index32=$index32 outline=$outline — see $log"
+				return
+			fi
+			controls=""
+			if [ "$index32" = "1" ]; then controls="6 7"
+			elif [ "$outline" = "0" ]; then controls="1 2 3 4 5"; fi
+			for control in $controls; do
+				status=0
+				log="$WORK/meshLod.$index32.$outline.$control.log"
+				VOID_MESH_LOD_CONTROL=$control VOID_MESH_LOD_INDEX32=$index32 \
+					VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+				if [ "$status" -ne 1 ] || ! grep -qE \
+					'^FAIL mesh LOD: stage .* (silhouette did not match|material was replaced)' \
+					"$log"; then
+					fail "mesh-lod: control $control did not fail its pixel assertion — see $log"
+					return
+				fi
+			done
+		done
 	done
-	pass "mesh-lod: wide ranges/materials, LOD/culling, reupload/pins/close, five controls red"
+	pass "mesh-lod: u16/u32, outline, ranges/materials, LOD/reupload/pins/close; nine controls red"
 }
 
 run_particle_fade() {
@@ -2495,7 +2506,7 @@ run_map_material() {
 
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
 # 7 (DissolveControl) the control of 6 (Dissolve), and 8 (BackFace) of 9 (BackFaceBothSides);
-DIR_SHADOW_CASES="0 2 3 4 5 6 8 9"
+DIR_SHADOW_CASES="0 2 3 4 5 6 8 9 14 15"
 # The core's keys only (programKeys.txt declares them for no pixel-art row): 11 (CutCardWhole)
 # is the control of 10 (CutCard), 12 an emissive dissolve and 13 a premultiplied one.
 DIR_SHADOW_CORE_CASES="10 12 13"
@@ -2525,6 +2536,19 @@ run_dir_shadow() {
 				return
 			fi
 		done
+		for case in 14 15; do
+			for control in 1 2; do
+				log="$WORK/dirShadow.skinControl.$case.$preset.$control.log"
+				status=0
+				VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=$case \
+					VOID_DIR_SHADOW_SKIN_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
+				if [ "$status" -ne 1 ] || ! grep -q \
+					'^FAIL dir shadow: .*no skinned shadow at actor' "$log"; then
+					fail "dir-shadow: skin control $case/$preset/$control missed its pixel refusal"
+					return
+				fi
+			done
+		done
 		status=0
 		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=1 "$exe" \
 			> "$WORK/dirShadow.control.$preset.log" 2>&1 || status=$?
@@ -2538,6 +2562,16 @@ run_dir_shadow() {
 		if [ "$status" -eq 0 ] ||
 			! grep -q 'dissolved half still cast' "$WORK/dirShadow.dissolveControl.$preset.log"; then
 			fail "dir-shadow: the undissolved control in preset $preset did not shade under its left half (exit $status)"
+			return
+		fi
+	done
+	for case in 14 15; do
+		log="$WORK/dirShadow.skinPerspective.$case.log"
+		status=0
+		VOID_DIR_SHADOW_PIXEL_ART=0 VOID_DIR_SHADOW_CASE=$case \
+			VOID_DIR_SHADOW_PERSPECTIVE=1 "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS dir shadow: ' "$log"; then
+			fail "dir-shadow: perspective skin case $case (exit $status) — see $log"
 			return
 		fi
 	done
@@ -2575,6 +2609,7 @@ run_dir_shadow() {
 		return
 	fi
 	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only, half opacity, a dissolving caster, a flat caster with its own shadow culling, a cut premultiplied card and emissive and premultiplied dissolves hold; the detached, undissolved and uncut controls fail; a perspective camera shades in the core preset and its detached control fails"
+	pass "skin-shadow: u16/u32, independent poses, colour/depth/bounds/reupload; 8 controls red"
 }
 
 run_reparent() {
