@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -256,6 +256,50 @@ if "$MSC" build tests/integration/screenOver.ms --release --output=out/screenOve
 	fi
 else
 	fail "tests/integration/screenOver.ms does not build — see out/gate-screen-over.log"
+fi
+if "$MSC" build tests/integration/layerSlot.ms --release --output=out/layerSlot.exe \
+		> out/gate-layer-slot.log 2>&1; then
+	if VOID_LAYER_SLOT_HOLD=3 out/layerSlot.exe > out/gate-layer-slot-hold.log 2>&1; then
+		pass "layer slot: a scene drawn in two segments around another context's layer"
+	else
+		fail "layer slot: the segmented frame did not draw — see out/gate-layer-slot-hold.log"
+	fi
+	status=0
+	out/layerSlot.exe > out/gate-layer-slot-run.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "layer slot: no readback path (backend:metal-macos in tests/PENDING.md)"
+	elif [ "$status" -eq 0 ]; then
+		pass "layer slot: A under the layer, B and C over it"
+	else
+		fail "layer slot pixels — see out/gate-layer-slot-run.log"
+	fi
+	status=0
+	VOID_LAYER_SLOT_CONTROL=1 out/layerSlot.exe > out/gate-layer-slot-control.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "layer slot: the one-drawScreen control needs the same readback"
+	elif [ "$status" -eq 1 ] && grep -q '^FAIL layer slot: pixel' out/gate-layer-slot-control.log; then
+		pass "layer slot: the control, one drawScreen under the layer, puts B and C under it"
+	else
+		fail "layer slot: the control did not fail on a pixel (exit $status) — see out/gate-layer-slot-control.log"
+	fi
+	for misuse in not-slot foreign hidden backwards; do
+		case "$misuse" in
+			not-slot) expected='which is not a layer slot' ;;
+			foreign) expected='of another scene' ;;
+			hidden) expected='did not paint on the screen' ;;
+			backwards) expected='paints before the part already drawn' ;;
+		esac
+		status=0
+		VOID_LAYER_SLOT_MISUSE="$misuse" out/layerSlot.exe \
+			> "out/gate-layer-slot-$misuse.log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] && grep -q "$expected" "out/gate-layer-slot-$misuse.log"; then
+			pass "layer slot $misuse stops with its error"
+		else
+			fail "layer slot $misuse did not name its error"
+		fi
+	done
+else
+	fail "tests/integration/layerSlot.ms does not build — see out/gate-layer-slot.log"
 fi
 glyph_backends="native"
 case "$(uname -s)" in
