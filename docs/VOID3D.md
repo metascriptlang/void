@@ -3914,6 +3914,38 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Uniform mesh position scale: CPU/reference acceptance
+
+`meshData.ms::scaleUniform` follows primary Heaps `b9aa6dcb`
+`h3d/prim/Polygon.hx::scale/getCPUBuffer/getBounds`: uniform position multiplication,
+other packed attributes retained, bounds updated through the existing writer helper.
+Secondary Bevy `157e1ce6`, `bevy_mesh/src/mesh.rs::try_scale_by`, returns before normal/
+tangent edits when scale is uniform, including negative factors. Zero follows Heaps;
+Bevy's debug assertion rejects all-zero scale, so that case is not claimed equal to Bevy.
+This is base Polygon/value-data behavior, not Heaps' derived Sphere point/normal aliasing,
+collider metadata, nonuniform transforms, skeleton retargeting or GPU resource updates.
+
+On binary/support `b1f63337f`, actual red **2 missing-API/type diagnostics**, exit1 before
+codegen. After `08e9b034`, native **304/304**, JS **66/66**, MeshData **361/361**, Pick
+**329/329**, all0 plus aggregate0. `src/test/meshScaleCheck.ms` executes72 factor/layout/
+skin/index variants, bounds/attribute/topology preservation, positive/negative/zero Lit
+position picking and atomic failure guards. The zero-scale face is degenerate and misses
+CPU ray picking; its point bounds are not empty. Existing translation/UV bodies, common
+helpers and error ordinals did not change; their scoped prior proof is carried, not rerun.
+
+Existing oracle runner regenerated/checked actual Heaps `2b84cc23` **3/3 AGREES**, tolerance0,
+Haxe4.3.7/Nodev24.18.0. C/JS/Heaps **3rows/27 named fields exactly equal**, independently
+compared: positive, negative and zero bounds plus retained CPU attribute samples. It uses
+independent attribute arrays in base Polygon, not shared derived-object identity or whole-
+buffer/rendered equivalence. Five relevant Heaps sources byte-match across pins. Source
+tree `883f9c69847e23d6c96bef1ea7c215a66fccae0d`.
+
+Receipts `out/m6MeshScale{Red,Heaps,RedReference}B1f63337f20261021.{log,exit}`,
+`out/m6MeshScale{Tests,JsTests,MeshData,Pick,Oracle,Js,}GreenB1f63337f20261021.{log,exit}`;
+exact field audit `out/m6MeshScaleCrossBackendB1f63337f20261021.log`. No timing, GPU/browser,
+full-index or whole-stack acceptance. This independent operation does not clear the earlier
+Ray/UV interpolation or rich-assert compiler holds, whose real tests remain unchanged.
+
 ### CPU UV0 scaling: slot/reference proof, JS picker held
 
 `meshData.ms::scaleUvs` extends the same interleaved CPU writer used for position baking.
