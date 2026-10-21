@@ -1,5 +1,5 @@
 // The sokol_app window's events, IME and title, on the window drivers: Windows (D3D11 and
-// -d:voidGlCore) and the browser. Import beside ./gpu, which compiles their C.
+// -d:voidGlCore), the browser and the iOS app. Import beside ./gpu, which compiles their C.
 
 @include("bridge.h");
 @include("appText.h");
@@ -24,6 +24,15 @@ extern function voidEventCursor(): int32;
 extern function voidSetTextInput(on: int32): void;
 extern function voidSetImeRect(x: int32, y: int32, w: int32, h: int32): void;
 extern function voidSetWindowTitle(title: cstring): void;
+extern function voidEventTouchCount(): int32;
+extern function voidEventTouchId(index: int32): int64;
+extern function voidEventTouchX(index: int32): float32;
+extern function voidEventTouchY(index: int32): float32;
+extern function voidEventTouchChanged(index: int32): int32;
+extern function voidSafeAreaTop(): float32;
+extern function voidSafeAreaLeft(): float32;
+extern function voidSafeAreaBottom(): float32;
+extern function voidSafeAreaRight(): float32;
 
 // The ordinals of sokol_app.h's sapp_event_type: keep the order. Preedit and TextInput are
 // Void's, after sokol's (VOID_EVENT_* in appWindow.h).
@@ -56,6 +65,20 @@ export enum AppEventType {
 	TextInput,
 }
 
+export struct AppTouch {
+	id: int64;
+	x: float32;
+	y: float32;
+	changed: boolean;
+}
+
+export struct SafeArea {
+	top: float32;
+	left: float32;
+	bottom: float32;
+	right: float32;
+}
+
 export struct AppEvent {
 	type: AppEventType;
 	keyCode: int32;
@@ -73,9 +96,23 @@ export struct AppEvent {
 	framebufferHeight: int32;
 	text: string;
 	cursor: int32;
+	touches: AppTouch[];
 }
 
 let _handler: ((e: AppEvent) => void) | null = null;
+
+function currentTouches(): AppTouch[] {
+	const out: AppTouch[] = [];
+	for (let i: int32 = 0; i < voidEventTouchCount(); i++) {
+		out.push({
+			id: voidEventTouchId(i),
+			x: voidEventTouchX(i),
+			y: voidEventTouchY(i),
+			changed: voidEventTouchChanged(i) !== 0,
+		});
+	}
+	return out;
+}
 
 function currentEvent(): AppEvent {
 	return {
@@ -95,6 +132,7 @@ function currentEvent(): AppEvent {
 		framebufferHeight: voidEventFramebufferHeight(),
 		text: voidEventText(),
 		cursor: voidEventCursor(),
+		touches: currentTouches(),
 	};
 }
 
@@ -118,3 +156,12 @@ export function setTextInput(on: boolean): void { voidSetTextInput(on ? 1 as int
 
 // The caret the candidate window opens below, in framebuffer pixels.
 export function setImeRect(x: int32, y: int32, w: int32, h: int32): void { voidSetImeRect(x, y, w, h); }
+
+export function safeArea(): SafeArea {
+	return {
+		top: voidSafeAreaTop(),
+		left: voidSafeAreaLeft(),
+		bottom: voidSafeAreaBottom(),
+		right: voidSafeAreaRight(),
+	};
+}

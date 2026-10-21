@@ -1,5 +1,5 @@
-// The sokol_app window's app-facing half, shared by the window drivers (bridgeWin.c and
-// bridgeWeb.c): the event closure with its getters, the IME events, and the title.
+// The sokol_app window's app-facing half, shared by the window drivers (bridgeWin.c,
+// bridgeWeb.c and bridgeIosApp.m): the event closure with its getters, the IME events, and the title.
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
@@ -64,6 +64,32 @@ float voidEventScrollX(void) { return current("ScrollX")->scroll_x; }
 float voidEventScrollY(void) { return current("ScrollY")->scroll_y; }
 int voidEventFramebufferWidth(void) { return current("FramebufferWidth")->framebuffer_width; }
 int voidEventFramebufferHeight(void) { return current("FramebufferHeight")->framebuffer_height; }
+static const sapp_touchpoint *touchAt(const char *field, int index) {
+	const sapp_event *e = current(field);
+	if (index < 0 || index >= e->num_touches) fail("voidEvent%s(%d): the event has %d touch points", field, index, e->num_touches);
+	return &e->touches[index];
+}
+
+int voidEventTouchCount(void) { return current("TouchCount")->num_touches; }
+int64_t voidEventTouchId(int index) { return (int64_t)touchAt("TouchId", index)->identifier; }
+float voidEventTouchX(int index) { return touchAt("TouchX", index)->pos_x; }
+float voidEventTouchY(int index) { return touchAt("TouchY", index)->pos_y; }
+int voidEventTouchChanged(int index) { return touchAt("TouchChanged", index)->changed ? 1 : 0; }
+
+static float s_safeTop, s_safeLeft, s_safeBottom, s_safeRight;
+
+void voidAppSetSafeArea(float top, float left, float bottom, float right) {
+	s_safeTop = top;
+	s_safeLeft = left;
+	s_safeBottom = bottom;
+	s_safeRight = right;
+}
+
+float voidSafeAreaTop(void) { return s_safeTop; }
+float voidSafeAreaLeft(void) { return s_safeLeft; }
+float voidSafeAreaBottom(void) { return s_safeBottom; }
+float voidSafeAreaRight(void) { return s_safeRight; }
+
 int voidEventCursor(void) {
 	current("Cursor");
 	return s_cursor;
