@@ -3914,6 +3914,32 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### World-line miter math: independent CPU checkpoint
+
+`worldGraphicsMiter` evaluates only `h3d.scene.Graphics::flushLine`'s joined offset from
+three points and a nonnegative world width. Heaps' explicit XY restriction maps to XZ;
+height does not change the offset. Open/closed path handling, colors, indices, MeshData
+publication, bounds and a renderer are **not** implemented by this math helper. It neither
+chooses the pending world-bounds policy nor substitutes world width for default pixel lines.
+
+The join is deliberately uncapped: the actual sharp-corner offset is
+`(-20.049875259399414, 0, 1)` at width2. Existing void2d `strokePoly` caps at four and depends
+on node/draw machinery, so it is not the same primitive. Degenerate projected segments,
+exact reversals, nonfinite inputs and unrepresentable offsets return explicit errors.
+
+Actual missing-module red1, then `msc check`0, native **306/306**, CLIJS **68/68**, actual
+Heaps **8/8**, **24 fields Haxe/C/JS exactly equal**. Real Graphics world-path CPU buffers
+are captured through BigPrimitive GPU-flush interception; only host mode selection bypasses
+GPU texture setup, not the tessellation algorithm. Cases pin both axes, both turn signs,
+uncapped sharp/shallow joins, ignored height and zero width. Reference files byte-equal;
+SDK `afcd22f19` unchanged. Receipts `out/m6WorldGraphicsMiter*Afcd22f1920261021Retry1.*`,
+kept generated packet `out/tmp/worldGraphicsMiter/oracleRetry1/`.
+
+Secondary Bevy `157e1ce6`, `bevy_gizmos/src/config.rs:26,254-260`, describes Miter versus
+Bevel/Round and pixel width/perspective. It was read, not executed or ported; no Bevy
+runtime, performance, GPU, whole-index or integration claim. Full World Graphics/bounds
+and default LineShader remain separate held work; prefix2 is unchanged by this helper.
+
 ### Plane point projection: CPU query checkpoint
 
 `plane.ms` reuses existing `Vec4` plane convention **normal dot point + w = 0**, so Heaps'
