@@ -3907,6 +3907,27 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Retained light color: native/reference checkpoint
+
+`setLightColor` follows the existing light-kind/liveness gate and stored RGB packet.
+Primary Heaps `scene/fwd/{PointLight,DirLight}.hx::set_color` assigns the shader color;
+Bevy's public PointLight color is secondary source-only. Actual Haxe/Node Heaps and native
+Void `collectLights` agree on all **3 rows / 9 RGB fields exactly**: point color, black,
+directional signed/HDR color. This is numeric shader-color correspondence, not reference
+identity, gamma conversion or rendered-pixel/performance acceptance. The five relevant
+inspected/executed Heaps light/shader files were byte-equal.
+
+Actual missing-export red1 precedes the setter. On installed binary/support `afcd22f19`,
+native **303/303**, old Scene **344/344**, and all **four expected misuse aborts** pass.
+CLIJS unit/oracle and unchanged old Scene stop before logic at `DOOR_UNIFORM_SLOTS`.
+A minimal import of Door from actual main **`72c8aacf`** gives C **300/300**, JS the same
+startup failure: the existing `ca53522d` provider gap, not a new light regression. Decision10
+(provider versus explicit deferral) remains person-owned/open: **no JS acceptance or waiver**.
+Retry1's abort build succeeded but its Python relative executable path failed to launch;
+Retry2 uses the same executable's absolute path and verifies all four named messages.
+Receipts `out/m6LightColor*Afcd22f1920261021Retry{1,2}*` preserve both attempts; SDK unchanged.
+No whole-index, gate3d, GPU or land run for this row; single-entry checks only under buildslot.
+
 ### Independent M6 prefix accepted
 
 Original CPU/import prefix `42c0be54` landed as `abf2b47a` on main `3a70f335` via the shared
