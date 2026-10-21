@@ -3916,6 +3916,33 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Strict node ancestry: native/reference checkpoint
+
+Primary Heaps `b9aa6dcb`, `h3d/scene/Object.hx::contains`, follows parent links before
+comparing, so self is excluded. Executed Heaps `2b84cc23` Object source is byte-identical.
+Secondary Bevy `157e1ce6`,
+`bevy_ecs/src/relationship/relationship_query.rs::AncestorIter::next`, likewise follows
+`R::get` before yielding a parent; source-only comparison. Both assume a tree, not a cyclic
+graph. Void's existing `placeNode` cycle gate continues to protect the parent chain.
+
+`src/void3d/scene.ms::containsNode` reuses that chain and the existing liveness gate for both
+identifiers. It adds no alternate hierarchy, world/render sync, reparenting rule or query
+framework. Live detached ancestors remain meaningful; stale or foreign identifiers are not
+silently treated as a valid negative relation.
+
+On binary/support `b1f63337f`, source tree `71ce7c1a96d11c91a168eefa4ad75408a58bb03c`, actual
+red **6 missing-method diagnostics**, exit1; native **304/304**, existing Scene **344/344**,
+both0. Tests cover direct/deep/self/reverse/sibling relations, reparenting/order, detached
+subtrees, a 256-parent chain and stale/foreign/closed identifiers. Actual Heaps **6/6**, C
+oracle0; independent comparison finds all **6 rows / 18 classifications exactly equal**.
+
+CLIJS new unit and generated oracle stop at the traced missing Void provider before the
+query. Aggregate1 retained; no JS acceptance, provider workaround, SDK sync or scope choice.
+Commands: `msc test [--target=js] src/test/sceneContainsCheck.ms`, existing `scene3dCheck.ms`,
+existing oracle regen/check plus generated-source JS attempt. Receipts
+`out/m6SceneContains*B1f63337f20261021*`; `ReferenceFields` is C/Heaps only. No GPU/browser,
+full gate or performance verdict.
+
 ### Subtree material collection: native/reference checkpoint
 
 Primary Heaps `b9aa6dcb`, `h3d/scene/Object.hx::getMaterials` and
