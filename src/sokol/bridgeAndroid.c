@@ -1,19 +1,18 @@
-// Void sokol driver — Android (GLES3 via EGL). Host-driven: no sokol_app. The host (RN
-// Fabric SurfaceView, or a headless pbuffer view) owns the surface and the render loop and
-// drives the views in views.c. One EGL context is shared by every view; each view has its own
-// EGL window surface. Single sokol_gfx implementation unit on Android.
-
-#define SOKOL_IMPL
-#include "backend.h"
+// Void driver — Android (GLES3 via EGL). Host-driven: no sokol_app. The host (RN Fabric
+// SurfaceView, or a headless pbuffer view) owns the surface and the render loop and drives the
+// views in views.c. One EGL context is shared by every view; each view has its own EGL window
+// surface. The GPU door's GL backend (src/webgpu/gl, OGL_GLES) draws on that context.
 
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "bridge.h"
 #include "views.h"
-#include "sokol_log.h"
+#include "../gpu/door.h"
+#include "../platform/swapchain.h"
 
 static EGLDisplay g_dpy = EGL_NO_DISPLAY;
 static EGLContext g_ctx = EGL_NO_CONTEXT;
@@ -56,14 +55,10 @@ static int egl_boot(void) {
 	return g_ctx != EGL_NO_CONTEXT;
 }
 
-static void sokolSetup(void) {
-	sg_desc d = {0};
-	d.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
-	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = voidViewsSampleCount();
-	d.logger.func = slog_func;
-	sg_setup(&d);
-	if (!sg_isvalid()) voidFail("sg_setup on the EGL context failed");
+// The EGL config has no depth buffer, so the screen pipelines are made without depth.
+static void setupDoor(void) {
+	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
+	if (!doorValid()) voidFail("doorSetup on the EGL context failed");
 }
 
 static EGLSurface makeSurface(const AndroidSurface *s) {
@@ -103,14 +98,15 @@ void voidPlatformRunInit(msClosure init) {
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	AndroidSurface *s = (AndroidSurface *)calloc(1, sizeof(AndroidSurface));
+	if (!s) voidFail("voidViewCreate: out of memory for an EGL surface");
 	s->window = native;
 	s->w = w;
 	s->h = h;
 	s->surf = makeSurface(s);
 	if (s->surf == EGL_NO_SURFACE) voidFail("EGL could not make a %dx%d surface: 0x%04x", w, h, eglGetError());
-	if (!sg_isvalid()) {
+	if (!doorValid()) {
 		makeCurrent(s);
-		sokolSetup();
+		setupDoor();
 	}
 	return s;
 }
@@ -129,8 +125,8 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 // ---- context loss (docs/VOID3D.md, Android lifecycle) ----
 //
 // eglSwapBuffers fails with EGL_CONTEXT_LOST after a power-management event; every GL object
-// is gone. The next frame makes a new context, remakes every view's surface and sets sokol up
-// again, then counts a new generation: void3d's renderer sees it (gpu3d contextGeneration),
+// is gone. The next frame makes a new context, remakes every view's surface and sets the door
+// up again, then counts a new generation: void3d's renderer sees it (gpu3d contextGeneration),
 // drops its stale handles and rebuilds targets, samplers, pipelines and the palette LUT from
 // CPU data. The app's meshes and textures are not rebuilt yet (void3d M5), nor is void2d.
 
@@ -153,10 +149,10 @@ static void remakeSurface(void *surface) {
 }
 
 static void restore_context(AndroidSurface *current) {
-	// sokol frees its pools here; the GL deletes it issues go to the lost context, which
-	// ignores them. Stale sokol ids may be handed out again after sg_setup, so the owners of
+	// The door frees its pools here; the GL deletes it issues go to the lost context, which
+	// ignores them. Stale door ids may be handed out again after doorSetup, so the owners of
 	// the old ones must drop them without destroying (the generation tells them).
-	sg_shutdown();
+	doorShutdown();
 	eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	voidViewsEachSurface(dropSurface);
 	if (g_ctx != EGL_NO_CONTEXT) eglDestroyContext(g_dpy, g_ctx);
@@ -164,7 +160,7 @@ static void restore_context(AndroidSurface *current) {
 	if (!egl_boot()) voidFail("EGL could not rebuild the context after a loss: 0x%04x", eglGetError());
 	voidViewsEachSurface(remakeSurface);
 	makeCurrent(current);
-	sokolSetup();
+	setupDoor();
 	g_generation++;
 	g_contextLost = 0;
 }
@@ -174,12 +170,6 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	if (g_contextLost) restore_context(s);
 	makeCurrent(s);
 	return 1;
-}
-
-void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
-	(void)surface;
-	swapchain->color_format = SG_PIXELFORMAT_RGBA8;
-	swapchain->gl.framebuffer = 0;
 }
 
 void voidPlatformSurfacePresent(void *surface) {
@@ -205,7 +195,7 @@ void voidEmbedDetach(void) {
 }
 
 void voidGfxSetup(void) {
-	if (!sg_isvalid()) voidFail("gfxSetup before voidViewCreate made the EGL context");
+	if (!doorValid()) voidFail("gfxSetup before voidViewCreate made the EGL context");
 }
 
 int voidFbWidth(void) { return voidViewsFbWidth(); }
@@ -213,7 +203,16 @@ int voidFbHeight(void) { return voidViewsFbHeight(); }
 void voidRequestedSize(int *w, int *h) { *w = 0; *h = 0; }
 float voidDpiScale(void) { return voidViewsDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
-sg_swapchain voidDriverSwapchain(void) { return voidViewsSwapchain(); }
+
+// The screen pass draws into the current view's EGL surface, which is framebuffer 0 on GL and
+// has no view objects.
+int32_t voidSwapchainWidth(void) { return voidViewsFbWidth(); }
+int32_t voidSwapchainHeight(void) { return voidViewsFbHeight(); }
+int32_t voidSwapchainSampleCount(void) { return voidViewsSampleCount(); }
+void *voidSwapchainRenderView(void) { return NULL; }
+void *voidSwapchainResolveView(void) { return NULL; }
+void *voidSwapchainDepthStencilView(void) { return NULL; }
+
 void voidDriverPresent(void) { voidViewsPresent(); }
 
 // M2 readback — the surface drawn last (a pbuffer keeps it after present), RGBA8, bottom-up GL order.
