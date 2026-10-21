@@ -46,7 +46,7 @@ import {
 	MATERIAL_ALPHA_KILL,
 } from "../void3d/gpu3d";
 import { UNIFORM_SLOTS } from "../gpu/door";
-import { RenderState, BlendMode, Face } from "../gpu/state";
+import { RenderState, Blend, BlendMode, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import {
 	Material, MaterialKind, Phase, UniformBlock, NO_UNIFORMS, movingDefaults,
@@ -353,6 +353,16 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 		assert context.uniforms.used == FORWARD_UNIFORM_LENGTH;
 		assert context.materials[forward.copyMaterial.index].program ==
 			ProgramKey.of(Program.Copy);
+		const copyPass: RenderState = context.materials[forward.copyMaterial.index].pass;
+		assert copyPass.blendSource == Blend.One && copyPass.blendDestination == Blend.Zero;
+		assert context.materials[forward.overMaterial.index].program ==
+			ProgramKey.of(Program.Copy);
+		const overPass: RenderState = context.materials[forward.overMaterial.index].pass;
+		assert overPass.blendSource == Blend.One;
+		assert overPass.blendDestination == Blend.OneMinusSourceAlpha;
+		assert overPass.blendAlphaSource == Blend.One;
+		assert overPass.blendAlphaDestination == Blend.OneMinusSourceAlpha;
+		assert !overPass.depthWrite && overPass.culling == Face.None;
 		assert forward.core.preset == Preset.Core;
 		const items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -391,7 +401,7 @@ test "an HDR forward preset takes a tone map block and material, and its core wr
 		let forward: ForwardRenderer = created.value;
 		assert forward.core.linearOutput;
 		assert context.uniforms.used == FORWARD_HDR_UNIFORM_LENGTH;
-		assert context.liveMaterials() == 5;
+		assert context.liveMaterials() == 6;
 		const pass: ToneMapPass | null = forward.toneMap;
 		assert pass !== null;
 		if (pass !== null) {

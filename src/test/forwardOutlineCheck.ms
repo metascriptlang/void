@@ -159,7 +159,7 @@ test "forwardOutline lazy holders reuse ranges and settings snapshot marks chang
 			setOutlineBlend(renderer, 0.5);
 			setOutlineBlend(renderer, 0.0);
 			setOutlineBlend(renderer, 1.0);
-			assert context.uniforms.used == used && context.liveMaterials() == 4;
+			assert context.uniforms.used == used && context.liveMaterials() == 5;
 			let settings: ForwardOutlineSettings = { ...ForwardOutlineSettings.defaults(), color: LINE };
 			renderer.core.changed = false;
 			setOutlineSettings(renderer, settings);

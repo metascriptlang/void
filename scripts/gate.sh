@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -228,6 +228,34 @@ if "$MSC" build tests/integration/preparedScenes.ms --release --output=out/prepa
 	pass "prepared scenes: filtered snapshots, two DPIs and writes between frame halves"
 else
 	fail "prepared Scene2D lifecycle — see out/gate-prepared-scenes-run.log"
+fi
+if "$MSC" build tests/integration/screenOver.ms --release --output=out/screenOver.exe \
+		> out/gate-screen-over.log 2>&1; then
+	if VOID_SCREEN_OVER_HOLD=3 out/screenOver.exe > out/gate-screen-over-hold.log 2>&1; then
+		pass "screen over: two forward presets draw to the screen, the second over the first"
+	else
+		fail "screen over: the composite did not draw — see out/gate-screen-over-hold.log"
+	fi
+	status=0
+	out/screenOver.exe > out/gate-screen-over-run.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "screen over: $(grep -E '^SKIP' out/gate-screen-over-run.log | sed 's/^SKIP screen over: //') (backend:metal-macos in tests/PENDING.md)"
+	elif [ "$status" -eq 0 ]; then
+		pass "screen over: $(grep -E '^screen over:' out/gate-screen-over-run.log | sed 's/^screen over: //')"
+	else
+		fail "screen over composite — see out/gate-screen-over-run.log"
+	fi
+	status=0
+	VOID_SCREEN_OVER_REPLACE=1 out/screenOver.exe > out/gate-screen-over-replace.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "screen over: the drawToScreen control needs the same readback"
+	elif [ "$status" -eq 1 ] && grep -q '^FAIL screen over: pixel' out/gate-screen-over-replace.log; then
+		pass "screen over: the control, the second preset copied with drawToScreen, erases the first"
+	else
+		fail "screen over: the control did not fail on a pixel (exit $status) — see out/gate-screen-over-replace.log"
+	fi
+else
+	fail "tests/integration/screenOver.ms does not build — see out/gate-screen-over.log"
 fi
 glyph_backends="native"
 case "$(uname -s)" in
