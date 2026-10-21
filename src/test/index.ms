@@ -91,6 +91,7 @@ import "./textureCheck";
 import "./imageDecodeCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
+import "./sceneMeshesCheck";
 import "./animationCheck";
 import "./animationComposeCheck";
 import "./pickCheck";
