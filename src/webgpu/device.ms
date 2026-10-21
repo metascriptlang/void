@@ -1,5 +1,8 @@
 import {
 	GPUAdapterInfo,
+	GPUCanvasConfiguration,
+	GPULiveCounts,
+	GPUTextureFormat,
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
 	GPUBindGroupLayout,
@@ -155,3 +158,19 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 export function getCurrentTexture(swapchain: GPUNativeSwapchain): GPUTexture {
 	return backend.swapchainTexture(swapchain);
 }
+
+export function getCanvasConfiguration(this self: GPUDevice): GPUCanvasConfiguration {
+	return backend.canvasConfiguration();
+}
+
+export function isRenderable(this self: GPUDevice, format: GPUTextureFormat): boolean {
+	return backend.formatRenderable(format);
+}
+
+export function frameIndex(this self: GPUDevice): uint32 { return backend.frameIndex(); }
+export function liveCounts(this self: GPUDevice): GPULiveCounts { return backend.liveCounts(); }
+
+@inline export function isAlive(this self: GPUBuffer): boolean { return backend.bufferAlive(self); }
+@inline export function isAlive(this self: GPUTexture): boolean { return backend.textureAlive(self); }
+@inline export function isAlive(this self: GPUTextureView): boolean { return backend.viewAlive(self); }
+@inline export function isAlive(this self: GPUSampler): boolean { return backend.samplerAlive(self); }

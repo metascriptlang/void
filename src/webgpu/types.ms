@@ -264,3 +264,21 @@ export struct GPUAdapterInfo {
 	originTopLeft: boolean;
 	depthZeroToOne: boolean;
 }
+
+// The swapchain the platform hands over at setup: WebGPU's canvas configuration, with the depth
+// attachment and sample count Void's window adds (sokol's sg_environment defaults).
+export struct GPUCanvasConfiguration {
+	format: GPUTextureFormat;
+	depthFormat: GPUTextureFormat;
+	sampleCount: int32;
+}
+
+// Void's own queries, answered from the pools as sokol's sg_query_*_state and sg_query_stats do.
+export struct GPULiveCounts {
+	buffers: int32;
+	textures: int32;
+	views: int32;
+	samplers: int32;
+	shaderModules: int32;
+	pipelines: int32;
+}
