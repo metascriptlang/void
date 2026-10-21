@@ -8,6 +8,7 @@
 #   sh scripts/golden.sh --update        capture, then copy out/golden -> tests/golden
 #   sh scripts/golden.sh --backend gl    the GL core 4.3 desktop build (glsl430), judged against
 #                                        the D3D11 goldens under the cross-backend bound
+#   sh scripts/golden.sh --backend metal the macOS Metal window, judged the same way
 #   sh scripts/golden.sh prim/ snap/x    only the rows whose name starts with one of these
 #
 # --update is never automatic. A golden changes only inside a commit that says why, and the
@@ -51,7 +52,11 @@ case "$backend" in
 		RUNNER=out/goldenRunnerGl.exe
 		BACKEND_FLAGS="-d:voidGlCore --passC=-DSOKOL_GLCORE"
 		;;
-	*) echo "golden.sh: --backend is d3d11 or gl, not '$backend'" >&2; exit 2 ;;
+	metal)
+		BACKEND_DIR=metal
+		RUNNER=out/goldenRunnerMetal.exe
+		;;
+	*) echo "golden.sh: --backend is d3d11, gl or metal, not '$backend'" >&2; exit 2 ;;
 esac
 # The D3D11 set is the one authored golden set; another backend is only judged against it.
 if [ "$mode" = update ] && [ "$backend" != d3d11 ]; then

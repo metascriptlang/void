@@ -239,7 +239,7 @@ if "$MSC" build tests/integration/screenOver.ms --release --output=out/screenOve
 	status=0
 	out/screenOver.exe > out/gate-screen-over-run.log 2>&1 || status=$?
 	if [ "$status" -eq 3 ]; then
-		skip "screen over: $(grep -E '^SKIP' out/gate-screen-over-run.log | sed 's/^SKIP screen over: //') (backend:metal-macos in tests/PENDING.md)"
+		skip "screen over: $(grep -E '^SKIP' out/gate-screen-over-run.log | sed 's/^SKIP screen over: //') (this backend has no readback)"
 	elif [ "$status" -eq 0 ]; then
 		pass "screen over: $(grep -E '^screen over:' out/gate-screen-over-run.log | sed 's/^screen over: //')"
 	else
@@ -267,7 +267,7 @@ if "$MSC" build tests/integration/layerSlot.ms --release --output=out/layerSlot.
 	status=0
 	out/layerSlot.exe > out/gate-layer-slot-run.log 2>&1 || status=$?
 	if [ "$status" -eq 3 ]; then
-		skip "layer slot: no readback path (backend:metal-macos in tests/PENDING.md)"
+		skip "layer slot: this backend has no readback"
 	elif [ "$status" -eq 0 ]; then
 		pass "layer slot: A under the layer, B and C over it"
 	else
@@ -349,6 +349,7 @@ for glyph_backend in $glyph_backends; do
 	case "$(uname -s):$glyph_backend" in
 		*:gl) colour_backend=4 ;;
 		MINGW*:native|MSYS*:native|CYGWIN*:native) colour_backend=1 ;;
+		Darwin:native) colour_backend=5 ;;
 	esac
 	if "$MSC" build -d:voidColourEmoji $glyph_flags tests/integration/colourSampler.ms \
 			--release --output="$colour_runner" \
@@ -1056,7 +1057,20 @@ else
 		conformance_rule gl430 out/gate-golden-gl.log conformance:gl430-pixel-centre
 	fi
 fi
-skip "metal macOS: no readback (~50 lines) — tests/PENDING.md backend:metal-macos"
+if [ "$(uname -s)" != Darwin ]; then
+	skip "metal macOS: runs on a Mac only (sh scripts/golden.sh --backend metal)"
+elif [ "$QUICK" -eq 1 ]; then
+	skip "metal macOS: --quick skips the golden suites (sh scripts/golden.sh --backend metal)"
+else
+	sh scripts/golden.sh --backend metal > out/gate-golden-metal.log 2>&1 || true
+	metal_conformance="$(grep -E '^golden metal' out/gate-golden-metal.log || echo 'no conformance line — see out/gate-golden-metal.log')"
+	echo "      metal    $metal_conformance      (this Mac, every full gate)"
+	if ! echo "$metal_conformance" | grep -q '^golden metal'; then
+		fail "metal macOS conformance did not run — see out/gate-golden-metal.log"
+	else
+		conformance_rule metal out/gate-golden-metal.log conformance:metal-gpu-rounding
+	fi
+fi
 skip "metal iOS: no readback, and the first device run is T5 — tests/PENDING.md backend:metal-ios"
 skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
 skip "webgpu: blocked with the other web runs — tests/PENDING.md web:runs"
