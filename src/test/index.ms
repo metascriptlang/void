@@ -93,6 +93,7 @@ import "./imageDecodeCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
 import "./lightColorCheck";
+import "./sceneMeshesCheck";
 import "./animationCheck";
 import "./animationComposeCheck";
 import "./pickCheck";

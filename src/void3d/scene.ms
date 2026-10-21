@@ -1001,6 +1001,28 @@ export function findByName(
 	return Result.err(SceneError.NodeNotFound);
 }
 
+export function getMeshes(
+	this scene: Scene3D,
+	from: NodeId3D,
+): Result<Vec<NodeId3D>, SceneError> {
+	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
+	let found: Vec<NodeId3D> = [];
+	let stack: Vec<int32> = [from.index];
+	while ((stack.length as int32) > 0) {
+		const last: int32 = (stack.length as int32) - 1;
+		const index: int32 = stack[last];
+		stack.pop();
+		if (scene.nodes[index].kind == NodeKind.Mesh) {
+			found.push(scene.nodeIdAt(index));
+		}
+		const count: int32 = scene.nodes[index].children.length as int32;
+		for (let i = count - 1; i >= 0; i--) {
+			stack.push(scene.nodes[index].children[i]);
+		}
+	}
+	return Result.ok(found);
+}
+
 export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (!connectedRow(scene, id.index)) { return Result.err(SceneError.DetachedNode); }
