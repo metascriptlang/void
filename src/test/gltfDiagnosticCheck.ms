@@ -96,7 +96,7 @@ test "glTF index failures report named mesh primitive and concrete rejection cau
 	assert result.error.name == "BrokenMesh";
 	assert result.error.cause.includes(">= vertex count");
 	const countJson = json.replace(`"count":3,"type":"SCALAR"`, `"count":2,"type":"SCALAR"`);
-	for (const mode of [4, 5]) {
+	for (const mode of [4, 5, 6]) {
 		const mismatched = loadGltfDetailed(countJson.replace(`"attributes":`,
 			`"mode":${mode},"attributes":`), bytes, "count.gltf");
 		assert !mismatched.ok;

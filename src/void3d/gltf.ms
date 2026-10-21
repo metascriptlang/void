@@ -908,7 +908,9 @@ function loadMesh(
 	}
 	const mode: int32 = try colourIntField(primitive, "mode", 4);
 	const strip: boolean = mode == 5;
-	if (mode != 4 && !strip) {
+	const fan: boolean = mode == 6;
+	const connected: boolean = strip || fan;
+	if (mode != 4 && !connected) {
 		return Result.err(GltfError.Unsupported);
 	}
 	const attributes: JsonValue = fieldOf(primitive, "attributes");
@@ -1005,18 +1007,19 @@ function loadMesh(
 		}
 	}
 	if (!hasField(primitive, "indices")) {
-		if (strip ? count < 3 : count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
-		if (strip) {
+		if (connected ? count < 3 : count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		if (connected) {
 			for (let t = 0; t < count - 2; t++) {
-				const odd: int32 = t % 2;
-				const tri = addTriangle(data, t + odd, t + 1 - odd, t + 2);
+				const odd: int32 = strip ? t % 2 : 0;
+				const tri = addTriangle(data, fan ? t + 1 : t + odd,
+					fan ? t + 2 : t + 1 - odd, fan ? 0 : t + 2);
 				if (!tri.ok) { return Result.err(GltfError.BadIndex); }
 			}
 		}
 	} else {
 		const source = try accessorSource(accessors,
 			try colourIntField(primitive, "indices", -1), GltfAccessorRole.Indices);
-		if (strip && source.count > 0x7fffffff / 3 + 2) {
+		if (connected && source.count > 0x7fffffff / 3 + 2) {
 			return Result.err(GltfError.MeshTooLarge);
 		}
 		const indices = GltfAccessorIndices.readIndices(source, colourBuffers, colourViews,
@@ -1030,15 +1033,18 @@ function loadMesh(
 			});
 		}
 		const corners: int32 = indices.value.values.length as int32;
-		if (strip ? corners < 3 : corners % 3 != 0) {
+		if (connected ? corners < 3 : corners % 3 != 0) {
 			return Result.err(GltfError.CountMismatch);
 		}
 		if (source.componentType == COMPONENT_UNSIGNED_INT) { data.wideIndices = []; }
-		const step: int32 = strip ? 1 : 3;
+		const step: int32 = connected ? 1 : 3;
 		for (let t = 0; t < corners - 2; t += step) {
 			const odd: int32 = strip ? t % 2 : 0;
-			const tri = addTriangle(data, indices.value.values[t + odd] as int32,
-				indices.value.values[t + 1 - odd] as int32, indices.value.values[t + 2] as int32);
+			const a: int32 = fan ? t + 1 : t + odd;
+			const b: int32 = fan ? t + 2 : t + 1 - odd;
+			const c: int32 = fan ? 0 : t + 2;
+			const tri = addTriangle(data, indices.value.values[a] as int32,
+				indices.value.values[b] as int32, indices.value.values[c] as int32);
 			if (!tri.ok) { return Result.err(GltfError.BadIndex); }
 		}
 	}
