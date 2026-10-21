@@ -182,6 +182,15 @@ enum {
 	VOID_MODIFIER_MMB = 0x400,
 };
 
+#define VOID_MAX_TOUCHPOINTS 8
+
+typedef struct {
+	uintptr_t identifier;
+	float x;
+	float y;
+	bool changed;
+} VoidTouchPoint;
+
 typedef struct {
 	uint64_t frameCount;
 	VoidAppEventType type;
@@ -200,6 +209,8 @@ typedef struct {
 	int windowHeight;
 	int framebufferWidth;
 	int framebufferHeight;
+	int touchCount;
+	VoidTouchPoint touches[VOID_MAX_TOUCHPOINTS];
 } VoidAppEvent;
 
 #endif

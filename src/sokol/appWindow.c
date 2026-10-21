@@ -1,5 +1,5 @@
-// The window's app-facing half, shared by the window drivers (bridgeWin.c, bridgeLinux.c and bridgeWeb.c):
-// the event closure with its getters, the IME events, and the title.
+// The window's app-facing half, shared by the window drivers (bridgeWin.c, bridgeLinux.c,
+// bridgeWeb.c and bridgeIosApp.m): the event closure with its getters, the IME events, and the title.
 
 #if defined(__EMSCRIPTEN__)
 #include "../platform/web/window.h"
@@ -66,6 +66,32 @@ float voidEventScrollX(void) { return current("ScrollX")->scrollX; }
 float voidEventScrollY(void) { return current("ScrollY")->scrollY; }
 int voidEventFramebufferWidth(void) { return current("FramebufferWidth")->framebufferWidth; }
 int voidEventFramebufferHeight(void) { return current("FramebufferHeight")->framebufferHeight; }
+static const VoidTouchPoint *touchAt(const char *field, int index) {
+	const VoidAppEvent *e = current(field);
+	if (index < 0 || index >= e->touchCount) fail("voidEvent%s(%d): the event has %d touch points", field, index, e->touchCount);
+	return &e->touches[index];
+}
+
+int voidEventTouchCount(void) { return current("TouchCount")->touchCount; }
+int64_t voidEventTouchId(int index) { return (int64_t)touchAt("TouchId", index)->identifier; }
+float voidEventTouchX(int index) { return touchAt("TouchX", index)->x; }
+float voidEventTouchY(int index) { return touchAt("TouchY", index)->y; }
+int voidEventTouchChanged(int index) { return touchAt("TouchChanged", index)->changed ? 1 : 0; }
+
+static float s_safeTop, s_safeLeft, s_safeBottom, s_safeRight;
+
+void voidAppSetSafeArea(float top, float left, float bottom, float right) {
+	s_safeTop = top;
+	s_safeLeft = left;
+	s_safeBottom = bottom;
+	s_safeRight = right;
+}
+
+float voidSafeAreaTop(void) { return s_safeTop; }
+float voidSafeAreaLeft(void) { return s_safeLeft; }
+float voidSafeAreaBottom(void) { return s_safeBottom; }
+float voidSafeAreaRight(void) { return s_safeRight; }
+
 int voidEventCursor(void) {
 	current("Cursor");
 	return s_cursor;

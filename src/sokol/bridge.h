@@ -28,7 +28,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 // is the truth a frame must follow, and this getter only lets a test compare the two.
 void voidRequestedSize(int *w, int *h);
 
-// The window (bridgeWin.c, bridgeWeb.c). Once a handler is set, every window event
+// The window (bridgeWin.c, bridgeWeb.c, bridgeIosApp.m). Once a handler is set, every window event
 // calls it and Escape no longer quits; the voidEvent* getters read the event it was called
 // for. The title may be set before or after voidRun.
 void voidSetEventHandler(msClosure handler);
@@ -48,8 +48,21 @@ int voidEventFramebufferWidth(void);
 int voidEventFramebufferHeight(void);
 int voidEventCursor(void);
 void voidSetWindowTitle(const char *title);
+// The touch points of a Touches* event, in framebuffer pixels; `changed` is 1 for the points
+// this event began, moved, ended or cancelled.
+int voidEventTouchCount(void);
+int64_t voidEventTouchId(int index);
+float voidEventTouchX(int index);
+float voidEventTouchY(int index);
+int voidEventTouchChanged(int index);
+// The area a host keeps content off (the iOS home indicator and notch), in framebuffer pixels
+// from each edge; 0 on drivers that have none. Resized follows a change.
+float voidSafeAreaTop(void);
+float voidSafeAreaLeft(void);
+float voidSafeAreaBottom(void);
+float voidSafeAreaRight(void);
 
-// IME composition (Windows window and browser). While text input is on and a handler is set,
+// IME composition (Windows window, browser and iOS). While text input is on and a handler is set,
 // a composition arrives as Preedit events and its result as one TextInput event, never also
 // as Char. Off disables the IME on Windows and blurs the browser's input element. Before the
 // first call the window keeps the OS default: the OS composes in its own window and the
