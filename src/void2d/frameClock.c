@@ -1,10 +1,4 @@
-#if defined(_WIN32)
-#include "../platform/win32/clock.h"
-#else
-#define SOKOL_TIME_IMPL
-#include "../../deps/sokol/sokol_time.h"
-static int s_clockReady;
-#endif
+#include "../platform/clock.h"
 #include "../gpu/door.h"
 #include "../sokol/bridge.h"
 #include "frameClock.h"
@@ -22,17 +16,7 @@ static int64_t s_inputFirst;
 static int64_t s_marks[4];
 static int32_t s_counters[VOID_COUNTER_SLOTS];
 
-int64_t voidClockNow(void) {
-#if defined(_WIN32)
-	return voidWin32ClockNow();
-#else
-	if (!s_clockReady) {
-		stm_setup();
-		s_clockReady = 1;
-	}
-	return (int64_t)stm_now();
-#endif
-}
+int64_t voidClockNow(void) { return voidPlatformClockNow(); }
 
 int32_t voidProfileCompiled(void) { return 1; }
 void voidProfileSetup(void) { voidSetPresentHook(voidProfilePresent); }
