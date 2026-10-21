@@ -218,7 +218,7 @@ export function describe(this key: ProgramKey): string {
 }
 
 function stopOnTable(message: string): Vec<int32> {
-	console.log(`void3d: programTable.h ${message}`);
+	console.log(`void3d: programTableData.ms ${message}`);
 	unreachable;
 }
 
