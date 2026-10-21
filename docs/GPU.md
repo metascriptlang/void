@@ -97,11 +97,26 @@ source at load with `D3DCompile`, as sokol does (`sokol_gfx.h:14127`, `:14143`).
 ## Window, surface and time
 
 The device and the per-frame target were already Void's on every platform except two:
-`sokol_app` drives the Windows window (`SOKOL_NOAPI`, `docs/SOKOL.md`) and the web window path
-(with `sokol_glue`). Those two are ported from `sokol_app.h` (Win32 `:8635-10514`, emscripten
-`:7792-8350`) into `src/platform/`, keeping `sapp_event`'s fields and ordinals because
-`src/sokol/window.ms` `AppEventType` mirrors them. `sokol_time` becomes the platform clock
-(`QueryPerformanceCounter`, `mach_absolute_time`, `clock_gettime`, `performance.now`).
+`sokol_app` drove the Windows window (`SOKOL_NOAPI`, `docs/SOKOL.md`) and the web window path
+(with `sokol_glue`). The Windows window is ported from `sokol_app.h` (Win32 `:8635-10514`) into
+`src/platform/win32/`, keeping `sapp_event`'s fields and ordinals in `src/platform/appEvent.h`
+because `src/sokol/window.ms` `AppEventType` mirrors them; its clock is `QueryPerformanceCounter`
+(`src/platform/win32/clock.h`). The web window (`:7792-8350`) and the other clocks
+(`mach_absolute_time`, `clock_gettime`, `performance.now`) are still sokol's.
+
+## The door on this layer
+
+The render layers above keep the door's contract (`src/gpu/door.h`, `door.ms`): flat descriptor
+words, `uint32` ids, programs and layouts registered by index. `src/gpu/doorGpu.ms` carries that
+contract onto the WebGPU-shaped API, adding the two things WebGPU leaves to its caller and
+sokol's WebGPU backend does for it:
+
+- **Uniforms** go to one 4 MiB uniform buffer at 256-aligned offsets, rewound at commit, and
+  reach the shader through the pipeline's group 0 with one dynamic offset per block (sokol's
+  uniform system, `_sg_wgpu_uniform_system_*`, `sokol_gfx.h:18387`).
+- **Textures and samplers** of a draw become a group 1 bind group looked up in a cache keyed
+  by the pipeline and the bound ids; a collision replaces the entry, as sokol's
+  `_sg_wgpu_bindgroups_cache` does (`:18462-18763`).
 
 ## Native calls
 
