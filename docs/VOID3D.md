@@ -3866,6 +3866,52 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Line/plane world hit: native checkpoint, JS producer blocked
+
+`ray.linePlaneIntersection(plane)` returns `Result<Vec3 | null, RayPlaneError>` using existing
+Vec4 coefficients `normal dot point + w = 0`. The name deliberately says **line**: primary
+Heaps `b9aa6dcb`, `h3d/col/Ray.hx:83` `intersect`, accepts signed hits behind the origin and
+returns the origin for a coplanar line. Parallel separation returns null. Its absolute
+parallel/coplanar tolerance remains 1e-10. Computation stays float64 until publishing float32
+coordinates; nonfinite inputs and unrepresentable output coordinates are explicit errors.
+No separate Plane/collider type or scene picking integration was added.
+
+Secondary Bevy `157e1ce6`, `bevy_shape/src/ray.rs::Ray3d::intersect_plane` and
+`plane_intersection_point`, instead require denominator and forward distance above
+`f32::EPSILON`. This API preserves Heaps' line meaning, not Bevy's half-ray semantics.
+Before implementation, a direct nullable-Vec3 Result protocol probe passed C **302/302** and
+JS **64/64**, covering two point payloads, null miss and error. That does not close the older
+compound-result compiler card for every union/carrier.
+
+Actual API red: **13 missing enum/method diagnostics**, exit 1 before codegen. Native
+`rayPlaneCheck.ms` then passed **306/306**, exit 0. Actual registered Heaps `2b84cc23`, Haxe
+4.3.7 / Node v24.18.0, regenerated the new oracle and native check: **12/12 AGREES**, exits 0/0.
+Ray/Plane sources byte-match `b9aa6dcb`. Cases include forward/behind/zero-distance, coplanar,
+parallel, stationary, oblique, coefficient scaling and real Frustum near/far plane consumers.
+CPU source tree `c4ffe2d0c32524a4112d2bf66c9bf267efba6ce3`, checkpoint `ef4326e8`, BUILD `b1f63337f`.
+
+**JS acceptance remains blocked**, not green: **62 passed / 6 failed (68)**. The existing
+`Ray.fromPoints -> Vec3.normalized` producer emits
+`const lengthSquared = lengthSquared(a)` in `math3d.js`, causing TDZ before the six queries.
+The original local at `src/math/math3d.ms:82` is unchanged. Reduced same-source controls:
+direct Vec3 squared length and Quat normalization pass; Vec3 normalization alone fails;
+C **302/302**, JS **63/1**. This is a new same-module sighting on existing compiler card
+`../.inbox/compiler/2026-10-16-js-extension-local-name-capture.md`, now owned by Nim Audit.
+No local rename, alternate normalizer, producer bypass or JS skip. Both tests and native
+oracle remain registered. Root fix plus approved installed SDK unlocks JS remeasurement.
+
+Receipts: `out/m6RayPlaneRedB1f63337f20261021.{log,exit}`,
+`out/m6RayPlane{Tests,JsTests}GreenB1f63337f20261021Retry1.{log,exit}` (0/1),
+`out/m6RayPlaneRetry1B1f63337f20261021.{log,exit}` (aggregate 1),
+`out/m6RayPlane{HeapsNative,OracleNative,NativeReference}B1f63337f20261021.{log,exit}` (all 0),
+`out/m6RayNormalizationCapture{C,Js,}B1f63337f20261021.{log,exit}` (0/1/1).
+Repro source `out/m6RayNormalizationJsCapture20261021.ms`, emitted JS
+`out/tmp/rayPlaneJsCapture/math3d.emitted.js`. The first JS attempt stopped on an unnecessary
+C-only GPU test-helper import, a distinct setup failure retained in its original receipt.
+Deleting that unneeded dependency also strengthened the integer-axis checks to exact equality;
+it did not alter the real normalization producer or weaken the failing JS cases. No GPU,
+performance, complete JS or whole-index acceptance is claimed for this checkpoint.
+
 ### World-sphere frustum culling
 
 Apps can test a world-space volume, not just its center:
