@@ -3958,6 +3958,23 @@ First Green's missing match parentheses, Retry1's scene-less fixtures, and the f
 oracle's30 fixture-width diagnostics remain; no production gate was loosened for those.
 The retained original oracle packet is `out/tmp/embeddedImage/oracleFirstTypeRed/`.
 
+### Buffer URI source boundary: unchanged
+
+`gltf.ms::loadGltf/decodeGltf` still consumes the caller's supplied buffer, as its module
+contract states. Read-only probe on binary/support `b1f63337f`, source tree
+`b9fbe970e44604ba4321832dd79256cbe38b4d94`: C **301/301**, exit0. A data-buffer URI encoding
+a triangle of x extent1, supplied with extent2 bytes, produces extent2; supplying extent1
+produces extent1. Empty supplied bytes return `OutOfRange`, not an implicit URI decode.
+A filename or HTTPS buffer URI with supplied bytes also succeeds without resolving it.
+These buffer metadata cases differ from external **image** URIs, which remain refused.
+
+Probe `out/m6BufferUriPrecedenceProbe20261021.ms`, command
+`msc test out/m6BufferUriPrecedenceProbe20261021.ms`, receipts
+`out/m6BufferUriPrecedenceProbeB1f63337f20261021.{log,exit}`. The embedded payload was
+independently checked against72 little-endian bytes. Automatic buffer-URI decoding needs
+an explicit supplied-byte/URI contract; the reference loaders have no analogous second
+argument. No precedence, conflict-error rule or new entry point has been implemented.
+
 ### Uniform mesh position scale: CPU/reference acceptance
 
 `meshData.ms::scaleUniform` follows primary Heaps `b9aa6dcb`
