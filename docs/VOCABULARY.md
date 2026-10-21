@@ -8,7 +8,7 @@ them, it is the name TypeGPU and WebGPU already taught them.
 |---|---|---|
 | Platform | sokol_gfx + sokol-shdc | the GLSL 450 dialect, separate textures and samplers, uniform block types, what a backend can do |
 | Engine model: `src/void3d`, `src/void2d` | Heaps, with Bevy beside it | scene, material, pass, renderer, camera, light, how shaders compose into programs, and their names |
-| Author vocabulary: `src/shader`, then `src/gpu` and `src/sokol` | TypeGPU, which is WebGPU's | type names, shader std names, entry shape, GPU resource and state names |
+| Author vocabulary: `src/shader` | TypeGPU, which is WebGPU's | type names, shader std names, entry shape |
 | Shader mechanism | shady | a macro reads the typed body, gathers callees, the CPU runs the same function; no author sees it |
 
 **When two disagree, the higher row wins**: platform, then engine model, then vocabulary, then
@@ -127,8 +127,10 @@ TypeGPU's slots take, since Void builds its variants offline by key.
 
 ## GPU layer
 
-`src/gpu` and `src/sokol` take WebGPU's names where a concept maps one to one and the name is the
-clearer one: resource creation
-(`createTexture`, `createSampler`, `createRenderPipeline`), attachment load and store
-(`loadOp`, `storeOp`), render state (`cullMode`, `depthCompare`, `blend`), `vertexLayout`. Until that rename lands the layer keeps the names it has; the engine layers above it
-keep theirs for good.
+`src/gpu` and `src/sokol` keep the names of the references they port, so a port reads one to one
+against its source. Resources and passes use sokol's names (`makePipeline`, `applyBindings`, `beginPass`, `commit`,
+`LoadAction`). Render state uses Heaps' names: `RenderState` is `h3d.mat.Pass` (`culling`, `depthTest`, `depthWrite`), and
+`Face`, `Compare`, `Blend` and `Wrap` are `h3d.mat.Data`'s. No app imports this layer directly: Neon, Lightcube and
+Terminator reach it through void2d and void3d. So a WebGPU name here would teach no author anything, while
+every lookup in sokol or Heaps would need a translation. The person decided this on 2026-10-21, replacing the WebGPU rename
+planned on 2026-10-13.
