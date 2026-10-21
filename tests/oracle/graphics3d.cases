@@ -1,0 +1,86 @@
+# lib: heaps format
+# haxe-prelude: @:access(h3d.prim.BigPrimitive)
+# haxe-prelude: class Capture extends h3d.prim.BigPrimitive {
+# haxe-prelude:  public function new() { super(hxd.BufferFormat.POS3D_NORMAL_UV_RGBA); isStatic = false; }
+# haxe-prelude:  override public function flush() {}
+# haxe-prelude:  public function vertex(n: Int): Array<Float> { var b = n * 12; return [tmpBuf[b], tmpBuf[b+2], tmpBuf[b+1], tmpBuf[b+3], tmpBuf[b+5], tmpBuf[b+4], tmpBuf[b+6], tmpBuf[b+7], tmpBuf[b+8]]; }
+# haxe-prelude:  public function tail(): Array<Float> { return [tmpBuf[9], tmpBuf[10], tmpBuf[11], tmpIdx[0], tmpIdx[1], tmpIdx[2], tmpIdx[3], tmpIdx[4], tmpIdx[5]]; }
+# haxe-prelude:  public function stats(width: Float): Array<Float> { return [bounds.xMin, bounds.zMin, bounds.yMin, bounds.xMax, bounds.zMax, bounds.yMax, bufPos / 12, idxPos, width]; }
+# haxe-prelude:  public function styles(width: Float): Array<Float> { return [tmpBuf[8], tmpBuf[9], tmpBuf[10], tmpBuf[11], tmpBuf[56], tmpBuf[57], tmpBuf[58], tmpBuf[59], width]; }
+# haxe-prelude: }
+# haxe-prelude: @:access(h3d.scene.Graphics)
+# haxe-prelude: class H {
+# haxe-prelude:  public static function make(): h3d.scene.Graphics { var g = new h3d.scene.Graphics(); g.bprim = new Capture(); g.primitive = g.bprim; g.lineStyle(); return g; }
+# haxe-prelude:  public static function base(): h3d.scene.Graphics { var g = make(); g.lineStyle(2, 0x804020, 0.25); g.moveTo(1, 3, 2); g.lineTo(4, 8, 6); return g; }
+# haxe-prelude:  public static function cap(g: h3d.scene.Graphics): Capture { g.sync(Type.createEmptyInstance(h3d.scene.RenderContext)); return cast g.bprim; }
+# haxe-prelude:  public static function width(g: h3d.scene.Graphics): Float { return g.lineShader.width; }
+# haxe-prelude: }
+# ms-prelude: import { Graphics3D, moveTo, lineTo, lineStyle, clearGraphics, setGraphicsColorF } from "../../../src/void3d/graphics3d";
+# ms-prelude: import { vertexCount, indexCount } from "../../../src/void3d/meshData";
+# ms-prelude: function base(): Graphics3D {
+# ms-prelude:  let g = Graphics3D.create();
+# ms-prelude:  if (!lineStyle(g, 2, 0x804020, 0.25).ok || !moveTo(g, 1, 2, 3).ok || !lineTo(g, 4, 6, 8).ok) { unreachable; }
+# ms-prelude:  return g;
+# ms-prelude: }
+# ms-prelude: function vertex(name: string, g: Readonly<Graphics3D>, n: int32): void {
+# ms-prelude:  const b: int32 = n * 12;
+# ms-prelude:  emit9(name, g.data.vertices[b], g.data.vertices[b+1], g.data.vertices[b+2], g.data.vertices[b+3], g.data.vertices[b+4], g.data.vertices[b+5], g.data.vertices[b+6], g.data.vertices[b+7], g.data.vertices[b+8]);
+# ms-prelude: }
+# ms-prelude: function tail(name: string, g: Readonly<Graphics3D>): void {
+# ms-prelude:  emit9(name, g.data.vertices[9], g.data.vertices[10], g.data.vertices[11], g.data.indices[0] as float32, g.data.indices[1] as float32, g.data.indices[2] as float32, g.data.indices[3] as float32, g.data.indices[4] as float32, g.data.indices[5] as float32);
+# ms-prelude: }
+# ms-prelude: function stats(name: string, g: Readonly<Graphics3D>): void {
+# ms-prelude:  emit9(name, g.data.bounds.min.x, g.data.bounds.min.y, g.data.bounds.min.z, g.data.bounds.max.x, g.data.bounds.max.y, g.data.bounds.max.z, g.data.vertexCount() as float32, g.data.indexCount() as float32, g.width);
+# ms-prelude: }
+
+case vertex-root-uv00 tol=1e-6
+haxe> emit("vertex-root-uv00", H.cap(H.base()).vertex(0));
+ms> const g1 = base(); vertex("vertex-root-uv00", g1, 0);
+
+case vertex-root-uv01 tol=1e-6
+haxe> emit("vertex-root-uv01", H.cap(H.base()).vertex(1));
+ms> const g2 = base(); vertex("vertex-root-uv01", g2, 1);
+
+case vertex-root-uv10 tol=1e-6
+haxe> emit("vertex-root-uv10", H.cap(H.base()).vertex(2));
+ms> const g3 = base(); vertex("vertex-root-uv10", g3, 2);
+
+case vertex-root-uv11 tol=1e-6
+haxe> emit("vertex-root-uv11", H.cap(H.base()).vertex(3));
+ms> const g4 = base(); vertex("vertex-root-uv11", g4, 3);
+
+case color-and-connectivity tol=1e-6
+haxe> emit("color-and-connectivity", H.cap(H.base()).tail());
+ms> const g5 = base(); tail("color-and-connectivity", g5);
+
+case centerline-bounds tol=0
+haxe> var g6 = H.base(); emit("centerline-bounds", H.cap(g6).stats(H.width(g6)));
+ms> const g6 = base(); stats("centerline-bounds", g6);
+
+case chained-endpoint tol=1e-6
+haxe> var g7 = H.base(); g7.lineTo(7, 10, 9); emit("chained-endpoint", H.cap(g7).vertex(4));
+ms> let g7 = base(); const r7 = lineTo(g7, 7, 9, 10); if (!r7.ok) { unreachable; } vertex("chained-endpoint", g7, 4);
+
+case move-break tol=1e-6
+haxe> var g8 = H.base(); g8.moveTo(-2, -4, -3); g8.lineTo(-1, -2, -1); emit("move-break", H.cap(g8).vertex(4));
+ms> let g8 = base(); const a8 = moveTo(g8, -2, -3, -4); const b8 = lineTo(g8, -1, -1, -2); if (!a8.ok || !b8.ok) { unreachable; } vertex("move-break", g8, 4);
+
+case style-global-width tol=0
+haxe> var g9 = H.make(); g9.lineStyle(2, 0xff0000, 0.25); g9.lineTo(1, 0, 0); g9.lineStyle(7, 0x00ff00, 0.75); g9.lineTo(2, 0, 0); emit("style-global-width", H.cap(g9).styles(H.width(g9)));
+ms> let g9 = Graphics3D.create(); const a9 = lineStyle(g9, 2, 0xff0000, 0.25); const b9 = lineTo(g9, 1, 0, 0); const c9 = lineStyle(g9, 7, 0x00ff00, 0.75); const d9 = lineTo(g9, 2, 0, 0); if (!a9.ok || !b9.ok || !c9.ok || !d9.ok) { unreachable; } emit9("style-global-width", g9.data.vertices[8], g9.data.vertices[9], g9.data.vertices[10], g9.data.vertices[11], g9.data.vertices[56], g9.data.vertices[57], g9.data.vertices[58], g9.data.vertices[59], g9.width);
+
+case nonpositive-style tol=0
+haxe> var g10 = H.make(); g10.lineStyle(5, 0); g10.lineStyle(0, 0x0000ff); g10.lineStyle(-2, 0xff0000); g10.lineTo(1, 0, 0); emit("nonpositive-style", H.cap(g10).stats(H.width(g10)));
+ms> let g10 = Graphics3D.create(); const a10 = lineStyle(g10, 5, 0); const b10 = lineStyle(g10, 0, 0x0000ff); const c10 = lineStyle(g10, -2, 0xff0000); const d10 = lineTo(g10, 1, 0, 0); if (!a10.ok || !b10.ok || !c10.ok || !d10.ok) { unreachable; } stats("nonpositive-style", g10);
+
+case clear-keeps-cursor tol=1e-6
+haxe> var g11 = H.base(); g11.clear(); g11.lineTo(5, 9, 7); emit("clear-keeps-cursor", H.cap(g11).vertex(0));
+ms> let g11 = base(); clearGraphics(g11); const r11 = lineTo(g11, 5, 7, 9); if (!r11.ok) { unreachable; } vertex("clear-keeps-cursor", g11, 0);
+
+case signed-float-color tol=0
+haxe> var g12 = H.make(); g12.setColorF(-0.25, 2, 3.5, 0.5); g12.lineTo(1, 0, 0); emit("signed-float-color", H.cap(g12).tail());
+ms> let g12 = Graphics3D.create(); const a12 = setGraphicsColorF(g12, -0.25, 2, 3.5, 0.5); const b12 = lineTo(g12, 1, 0, 0); if (!a12.ok || !b12.ok) { unreachable; } tail("signed-float-color", g12);
+
+case zero-length-encoding tol=0
+haxe> var g13 = H.make(); g13.lineTo(0, 0, 0); emit("zero-length-encoding", H.cap(g13).vertex(0));
+ms> let g13 = Graphics3D.create(); const r13 = lineTo(g13, 0, 0, 0); if (!r13.ok) { unreachable; } vertex("zero-length-encoding", g13, 0);
