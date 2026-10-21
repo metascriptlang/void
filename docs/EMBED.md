@@ -98,7 +98,8 @@ driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `
 - `voidRun` enters `UIApplicationMain` and does not return. The app's `main()` calls `MsMain`
   (`src/examples/iosAppEntry.m`), as Neon's iOS entry does.
 - Touches arrive in framebuffer pixels in `AppEvent.touches`, with `changed` set on the touches
-  that moved; `safeArea()` gives the insets in pixels and changes with a `Resized` event.
+  that moved; `safeArea()` gives the insets in pixels and `keyboardHeight()` how far a docked
+  software keyboard covers the view (0 hidden or floating), both changing with a `Resized` event.
 - A hardware key gives `KeyDown`/`KeyUp`; Backspace repeats while held. Typed text gives `Char`
   per codepoint while text input is off, and `TextInput` plus `Preedit` for marked text while
   `setTextInput(true)`; only then does the software keyboard show.
