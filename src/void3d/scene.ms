@@ -1023,6 +1023,35 @@ export function getMeshes(
 	return Result.ok(found);
 }
 
+export function getMaterials(
+	this scene: Scene3D,
+	from: NodeId3D,
+	recursive: boolean = true,
+): Result<Vec<MaterialId>, SceneError> {
+	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
+	let found: Vec<MaterialId> = [];
+	if (!recursive) {
+		if (scene.nodes[from.index].kind == NodeKind.Mesh) {
+			found.push(scene.meshes[scene.nodes[from.index].payload].material);
+		}
+		return Result.ok(found);
+	}
+	const nodes: Vec<NodeId3D> = try scene.getMeshes(from);
+	for (const node of nodes) {
+		const material: MaterialId = scene.meshes[scene.nodes[node.index].payload].material;
+		let present: boolean = false;
+		for (const earlier of found) {
+			if (earlier.store == material.store && earlier.index == material.index
+				&& earlier.generation == material.generation) {
+				present = true;
+				break;
+			}
+		}
+		if (!present) { found.push(material); }
+	}
+	return Result.ok(found);
+}
+
 export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (!connectedRow(scene, id.index)) { return Result.err(SceneError.DetachedNode); }
