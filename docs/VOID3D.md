@@ -4565,6 +4565,31 @@ Text shares **one** glyph layer with void2d — see [VOID2D.md → Text design](
 - **3D-text consumer = billboard or text-mesh.** Start with billboard; mesh only if a use case demands it.
 - **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected. void2d's SDF page kind and shader ramp exist behind `-d:voidSdfText`; the void3d program, the glyph-layer import and flat world text are deferred by name, each with its reopening condition, in [VOID2D.md](VOID2D.md) P6 "Deferred out of P6".
 
+### Retained light color: native/reference checkpoint
+
+`setLightColor` follows the existing light-kind/liveness gate and stored RGB packet.
+Primary Heaps `scene/fwd/{PointLight,DirLight}.hx::set_color` assigns the shader color;
+Bevy's public PointLight color is secondary source-only. Actual Haxe/Node Heaps and native
+Void `collectLights` agree on all **3 rows / 9 RGB fields exactly**: point color, black,
+directional signed/HDR color. This is numeric shader-color correspondence, not reference
+identity, gamma conversion or rendered-pixel/performance acceptance. The five relevant
+inspected/executed Heaps light/shader files were byte-equal.
+
+Historical M6 missing-export red1 preceded its setter. Installed binary/support `afcd22f19`:
+native **303/303**, old Scene **344/344**, and all **four expected misuse aborts** pass.
+CLIJS unit/oracle and unchanged old Scene stop before logic at `DOOR_UNIFORM_SLOTS`.
+A minimal import of Door from then-main **`72c8aacf`** gives C **300/300**, JS the same
+startup failure: the existing `ca53522d` provider gap, not a new light regression. Decision10
+(provider versus explicit deferral) remains person-owned/open: **no JS acceptance or waiver**.
+Retry1's abort build succeeded but its Python relative executable path failed to launch;
+Retry2 uses the same executable's absolute path and verifies all four named messages.
+Receipts `out/m6LightColor*Afcd22f1920261021Retry{1,2}*` preserve both attempts; SDK unchanged.
+
+Prefix2 keeps upstream `69459fee`'s identical setter and `628c1d03`'s point/directional
+coverage, not a second implementation. Its additional unit file retains only value-copy
+and hidden/visible cases, plus the Heaps oracle and four misuse fixtures. Historical counts
+above belong to the original M6 checkpoint; prefix2 integration verification is separate.
+
 ## Reference
 
 - [HEAPS.md](HEAPS.md) — `h3d.scene` / `h3d.mat` object and material model.
