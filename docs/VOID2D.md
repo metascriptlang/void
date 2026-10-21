@@ -3024,6 +3024,18 @@ transition with captured pixels; `mixedFrame.ms` uses the immediate context halv
 The gate also exercises missing prepare, double prepare, absent/nested pass, consumed and
 expired frame errors. This reuses the existing frame mechanism, not a new scheduler.
 
+**Layer slots:** `node.setLayerSlot(true)` marks a node where another renderer's layer goes,
+and `scene.drawScreenUntil(node)` draws the prepared screen commands painted before it; the
+next `drawScreenUntil` or `drawScreen` continues from there. This is Flutter's
+`PaintingContext.addLayer`, which ends the current picture at a composited child
+(`rendering/object.dart:396-473`, flutter `f101991`). The paint walk closes its run at a
+slot, so every command lies on one side of it on full, patched and spliced frames, and each
+command carries its own clip, so a clip spanning the split holds on both sides. The layer
+drawn between segments is not clipped by the content's clips. A slot inside a `noOverlap`
+subtree stops the paint, because lanes reorder its children's draws, and a slot under a filter
+or hidden is refused by `drawScreenUntil` as not painted on the screen.
+`tests/integration/layerSlot.ms` is the pixel check, with one `drawScreen` as its control.
+
 **Measured on source tree `0410fb1d58b8295e5a12560c69544107bc943858` (D2, before this
 record update):** `sh scripts/gate.sh --web`, BUILD `35601908`, GREEN with eight explicit skips:
 1058 tests plus 299 isolated; D3D11 76/76 unchanged and three invariants; WebGL2 54 identical,
