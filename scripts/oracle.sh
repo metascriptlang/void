@@ -46,7 +46,19 @@ MS_PRELUDE=$(sed -n 's|^# ms-prelude: ||p' "$CASES")
 # every case in the file, where a prelude line can only declare.
 MS_MAIN_PRELUDE=$(sed -n 's|^# ms-main-prelude: ||p' "$CASES")
 
-case_ids() { sed -n 's|^case \([a-z0-9-]*\).*|\1|p' "$CASES"; }
+CASE_IDS=$(LC_ALL=C awk '/^case / {
+	id = $2
+	if (id !~ /^[a-z0-9-]+$/) {
+		printf "oracle: invalid case ID '\''%s'\''\n", id > "/dev/stderr"
+		exit 2
+	}
+	if (seen[id]++) {
+		printf "oracle: duplicate case ID '\''%s'\''\n", id > "/dev/stderr"
+		exit 2
+	}
+	print id
+}' "$CASES") || exit 2
+case_ids() { printf '%s\n' "$CASE_IDS"; }
 case_attr() { sed -n "s|^case $1 .*$2=\([^ ]*\).*|\1|p" "$CASES" | head -1; }
 case_body() { awk -v id="$1" -v tag="$2" '
 	$1 == "case" { active = ($2 == id) }
