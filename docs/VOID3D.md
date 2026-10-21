@@ -3916,6 +3916,36 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Sphere closest point: primary projection, C/JS acceptance
+
+`sphere.ms::closestPoint` follows primary Heaps `b9aa6dcb`
+`h3d/col/Sphere.hx::closestPoint` and `h3d/Vector.hx::normalized`: radial surface projection,
+including interior points; exact/near center returns the center under EPSILON2=1e-20.
+Signed-radius behavior is retained. This is not volume clamping: secondary Bevy `157e1ce6`,
+`bevy_shape/src/bounding/bounded3d/mod.rs::BoundingSphere::closest_point`, explicitly returns
+an interior input unchanged. That branch was read, not executed; no general Bevy equality
+is claimed. Existing Result/output-range handling is reused for the declared float32 Vec3
+surface, not an alternate general normalizer or a change to old capture sites.
+
+On binary/support `b1f63337f`, red **9 missing-API/type diagnostics**, exit1 before codegen.
+Native **302/302**, JS **64/64**; prior sphere query native **303/303**, JS **65/65**, all0.
+Actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0: sphere oracle **15/15 AGREES**, with the
+original8 rows unchanged. Independent C/JS/Heaps audit: **15rows/45 float32 fields equal**;
+new7 projection rows add21 fields. Relevant Sphere/Vector/Math sources byte-match the
+inspected pin. Checked source/index tree `1ac6c46032157b8a8dc24802ce7dbcfb0d0ab8c9`.
+
+The first exact comparison exposed a representation mismatch, not a branch mismatch:
+Heaps' raw double above-cutoff output0.9999999999999999 versus float32 output1. The
+reference adapter now narrows only projection outputs through Haxe FPHelper float32,
+matching the declared API; axis cases keep zero tolerance. Original raw packets remain at
+`out/tmp/spherePoint/unroundedReference/`. No production method/assertion was changed for
+that calibration. Off-axis comparison retains its declared1e-6 tolerance.
+
+Receipts `out/m6SpherePoint*B1f63337f20261021*`: unit/query0, original oracle1 retained,
+reference Retry1 aggregate0; independent audit `CrossBackend`. No rendered/GPU/browser,
+performance, full-index or whole-stack acceptance; older parser/rich-assert/Mikk holds
+remain independent and unchanged.
+
 ### Area-weighted normal rebuilding: native checkpoint, oracle held
 
 `meshData.ms::recomputeNormals` ports primary Heaps `b9aa6dcb`
