@@ -15,6 +15,7 @@
 
 #include "bridge.h"
 #include "views.h"
+#include "iosApp.h"
 #include "sokol_log.h"
 
 static id<MTLDevice> g_device;
@@ -142,9 +143,9 @@ void voidGfxSetup(void) {
 	if (!sg_isvalid()) voidFail("gfxSetup before voidViewCreate made the Metal device");
 }
 
-int voidFbWidth(void) { return voidViewsFbWidth(); }
-int voidFbHeight(void) { return voidViewsFbHeight(); }
-float voidDpiScale(void) { return voidViewsDpiScale(); }
+int voidFbWidth(void) { return voidIosAppFbWidth(); }
+int voidFbHeight(void) { return voidIosAppFbHeight(); }
+float voidDpiScale(void) { return voidIosAppDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
 sg_swapchain voidDriverSwapchain(void) { return voidViewsSwapchain(); }
 void voidDriverPresent(void) { voidViewsPresent(); }

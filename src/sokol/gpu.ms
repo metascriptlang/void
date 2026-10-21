@@ -49,10 +49,13 @@ when (android) {
 
 when (ios) {
 	@compile("./bridgeIos.m");
+	@compile("./bridgeIosApp.m", "-fobjc-arc");
+	@compile("./appWindow.c");
 	@compile("./views.c");
 	@compile("./bridge.c");
 	@passL("-framework Metal");
 	@passL("-framework QuartzCore");
+	@passL("-framework CoreGraphics");
 	@passL("-framework UIKit");
 	@passL("-framework Foundation");
 }
