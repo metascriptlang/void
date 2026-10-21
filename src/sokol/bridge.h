@@ -62,6 +62,9 @@ float voidSafeAreaTop(void);
 float voidSafeAreaLeft(void);
 float voidSafeAreaBottom(void);
 float voidSafeAreaRight(void);
+// How far a docked software keyboard covers the view from its bottom edge, in framebuffer
+// pixels; 0 when it is hidden or floating, and on drivers that have none. Resized follows a change.
+float voidKeyboardHeight(void);
 
 // IME composition (Windows window, browser and iOS). While text input is on and a handler is set,
 // a composition arrives as Preedit events and its result as one TextInput event, never also

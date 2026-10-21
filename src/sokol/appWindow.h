@@ -13,6 +13,7 @@ int voidAppEventHandlerSet(void);
 // An IME event: the composing text with its caret in UTF-16 units, or the committed text.
 void voidAppTextDeliver(int type, const char *utf8, int cursor);
 void voidAppSetSafeArea(float top, float left, float bottom, float right);
+void voidAppSetKeyboard(float height);
 const char *voidWindowTitle(void);
 int voidWindowTitleSet(void);
 

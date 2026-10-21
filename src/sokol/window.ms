@@ -33,6 +33,7 @@ extern function voidSafeAreaTop(): float32;
 extern function voidSafeAreaLeft(): float32;
 extern function voidSafeAreaBottom(): float32;
 extern function voidSafeAreaRight(): float32;
+extern function voidKeyboardHeight(): float32;
 
 // The ordinals of sokol_app.h's sapp_event_type: keep the order. Preedit and TextInput are
 // Void's, after sokol's (VOID_EVENT_* in appWindow.h).
@@ -156,6 +157,10 @@ export function setTextInput(on: boolean): void { voidSetTextInput(on ? 1 as int
 
 // The caret the candidate window opens below, in framebuffer pixels.
 export function setImeRect(x: int32, y: int32, w: int32, h: int32): void { voidSetImeRect(x, y, w, h); }
+
+// How far a docked software keyboard covers the window from its bottom edge, in framebuffer
+// pixels; 0 while it is hidden or floating. A change arrives as a Resized event.
+export function keyboardHeight(): float32 { return voidKeyboardHeight(); }
 
 export function safeArea(): SafeArea {
 	return {

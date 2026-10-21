@@ -90,6 +90,11 @@ float voidSafeAreaLeft(void) { return s_safeLeft; }
 float voidSafeAreaBottom(void) { return s_safeBottom; }
 float voidSafeAreaRight(void) { return s_safeRight; }
 
+static float s_keyboard;
+
+void voidAppSetKeyboard(float height) { s_keyboard = height; }
+float voidKeyboardHeight(void) { return s_keyboard; }
+
 int voidEventCursor(void) {
 	current("Cursor");
 	return s_cursor;
