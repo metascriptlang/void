@@ -3907,6 +3907,34 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Retained mesh material swaps: native/reference checkpoint
+
+Primary Heaps `b9aa6dcb`, `h3d/scene/Mesh.hx::material`, is a replaceable material reference
+applying only to that mesh, not inherited by children. Executed Heaps `2b84cc23` Object,
+Mesh and Material sources byte-match. Secondary Bevy `157e1ce6`,
+`bevy_pbr/src/mesh_material.rs::MeshMaterial3d`, stores a public asset handle; source-only
+identity comparison, not a claimed Bevy swap algorithm or lifetime measurement.
+
+`scene.ms::setMaterialOf` extends existing `setMeshOf` pin-new-before-unpin-old ownership.
+It uses existing `validateSkinMesh` before a skinned swap and existing refresh's material
+reread, without changing hierarchy/renderer/ABI or introducing another dirty mechanism.
+Skinned swaps retain the existing full mesh/range validation cost; no speed claim.
+
+On installed binary/support `afcd22f19`, source tree `2f11c1a13d65c31f3223e6f86326f1af083b7d95`,
+rigid **304/304**, skin **305/305**, existing Scene **344/344**, oracle0 and **6 expected
+aborts**, all verified. Tests cover pin transfer, only-pinned self survival/replacement
+retirement, foreign/stale generations, shared/child/detached nodes, steady draw refresh,
+skin program/layout refusal and retained geometry/range. Actual Heaps **6/6**; original
+`b1f63337f` C/reference comparison has **18 identity/count fields exactly equal** and the
+same oracle passes on afcd. Original red was missing export1 in each rigid/skin suite.
+
+CLIJS unit/oracle still stop at missing Void provider before execution. No provider stub,
+acceptance waiver, GPU/browser/full-gate or performance verdict. Receipts
+`out/m6SceneMaterialSwap*{B1f63337f,Afcd22f19}20261021*`. First abort fixture omitted the
+ordinary `std/process::argv` import; build-red retained, six-case Retry1 passes. The final
+b1 ownership rerun was refused by epoch preflight before `msc`; afcd reran that strengthened
+consumer and all native checks, rather than relabeling b1 evidence.
+
 ### Strict node ancestry: native/reference checkpoint
 
 Primary Heaps `b9aa6dcb`, `h3d/scene/Object.hx::contains`, follows parent links before
