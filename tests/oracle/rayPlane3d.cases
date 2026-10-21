@@ -1,0 +1,79 @@
+# lib: heaps format
+# haxe-prelude: import h3d.Matrix;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.Plane;
+# haxe-prelude: import h3d.col.Frustum;
+# haxe-prelude: class H {
+# haxe-prelude: public static function hit(r: Ray,p: Plane): Array<Float> {
+# haxe-prelude: var point = r.intersect(p);
+# haxe-prelude: return point == null ? [0,0,0,0] : [1,point.x,point.y,point.z];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Vec4,vec3,vec4,identity } from "../../../src/math/math3d";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import { Frustum3D } from "../../../src/void3d/frustum";
+# ms-prelude: function emitHit(id: string,ray: Ray,plane: Vec4): void {
+# ms-prelude: const hit = ray.linePlaneIntersection(plane);
+# ms-prelude: if (hit.ok) {
+# ms-prelude: if (hit.value !== null) {
+# ms-prelude: emit4(id,1.0,hit.value.x,hit.value.y,hit.value.z);
+# ms-prelude: } else { emit4(id,0.0,0.0,0.0,0.0); }
+# ms-prelude: } else { console.log("unexpected plane query rejection"); unreachable; }
+# ms-prelude: }
+
+case line-forward tol=1e-5
+haxe> var p = new Plane(0,1,0,2);
+haxe> emit("line-forward",H.hit(Ray.fromValues(1,0,3,0,1,0),p));
+ms> const p = vec4(0.0,1.0,0.0,-2.0);
+ms> const forward = Ray.fromPoints(vec3(1.0,0.0,3.0),vec3(1.0,1.0,3.0));
+ms> emitHit("line-forward",forward,p);
+
+case line-behind tol=1e-5
+haxe> emit("line-behind",H.hit(Ray.fromValues(1,4,3,0,1,0),p));
+ms> emitHit("line-behind",Ray.fromPoints(vec3(1.0,4.0,3.0),vec3(1.0,5.0,3.0)),p);
+
+case line-parallel-miss tol=1e-5
+haxe> emit("line-parallel-miss",H.hit(Ray.fromValues(1,0,3,1,0,0),p));
+ms> emitHit("line-parallel-miss",Ray.fromPoints(vec3(1.0,0.0,3.0),vec3(2.0,0.0,3.0)),p);
+
+case line-coplanar tol=1e-5
+haxe> emit("line-coplanar",H.hit(Ray.fromValues(1,2,3,1,0,0),p));
+ms> emitHit("line-coplanar",Ray.fromPoints(vec3(1.0,2.0,3.0),vec3(2.0,2.0,3.0)),p);
+
+case line-stationary-on-plane tol=1e-5
+haxe> emit("line-stationary-on-plane",H.hit(Ray.fromValues(1,2,3,0,0,0),p));
+ms> const still = Ray.fromPoints(vec3(1.0,2.0,3.0),vec3(1.0,2.0,3.0));
+ms> emitHit("line-stationary-on-plane",still,p);
+
+case line-stationary-separated tol=1e-5
+haxe> emit("line-stationary-separated",H.hit(Ray.fromValues(1,2,3,0,0,0),new Plane(0,1,0,4)));
+ms> emitHit("line-stationary-separated",still,vec4(0.0,1.0,0.0,-4.0));
+
+case line-scaled-plane tol=1e-5
+haxe> emit("line-scaled-plane",H.hit(Ray.fromValues(1,0,3,0,1,0),new Plane(0,2,0,4)));
+ms> emitHit("line-scaled-plane",forward,vec4(0.0,2.0,0.0,-4.0));
+
+case line-frustum-near tol=1e-5
+haxe> var f = new Frustum(Matrix.I()); var through = Ray.fromValues(0,0,0.5,0,0,1);
+haxe> emit("line-frustum-near",H.hit(through,f.pnear));
+ms> const f = Frustum3D.fromMatrix(identity());
+ms> const through = Ray.fromPoints(vec3(0.0,0.0,0.5),vec3(0.0,0.0,1.5));
+ms> emitHit("line-frustum-near",through,f.nearPlane);
+
+case line-frustum-far tol=1e-5
+haxe> emit("line-frustum-far",H.hit(through,f.pfar));
+ms> emitHit("line-frustum-far",through,f.farPlane);
+
+case line-oblique tol=1e-5
+haxe> emit("line-oblique",H.hit(Ray.fromValues(0,0,1,1,1,0),new Plane(1,1,0,3)));
+ms> const oblique = Ray.fromPoints(vec3(0.0,0.0,1.0),vec3(1.0,1.0,1.0));
+ms> emitHit("line-oblique",oblique,vec4(1.0,1.0,0.0,-3.0));
+
+case line-oblique-translated tol=1e-5
+haxe> emit("line-oblique-translated",H.hit(Ray.fromValues(-1,1,2,1,2,3),new Plane(1,0,0,2)));
+ms> const translated = Ray.fromPoints(vec3(-1.0,1.0,2.0),vec3(0.0,3.0,5.0));
+ms> emitHit("line-oblique-translated",translated,vec4(1.0,0.0,0.0,-2.0));
+
+case line-zero-distance tol=1e-5
+haxe> emit("line-zero-distance",H.hit(Ray.fromValues(1,2,3,0,1,0),p));
+ms> emitHit("line-zero-distance",Ray.fromPoints(vec3(1.0,2.0,3.0),vec3(1.0,3.0,3.0)),p);
