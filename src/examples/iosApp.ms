@@ -1,7 +1,7 @@
 // Void — the iOS app driver demo: a full-screen scene that logs every window event.
 
 import { gfxSetup, dpiScale } from "../sokol/gpu";
-import { onAppEvent, AppEvent, AppEventType, setTextInput, setImeRect, safeArea } from "../sokol/window";
+import { onAppEvent, AppEvent, AppEventType, setTextInput, setImeRect, safeArea, keyboardHeight } from "../sokol/window";
 import { Scene2D, NodeRef } from "../void2d/node";
 import { create, presentAt } from "../void2d/scene";
 import { setup2d } from "../void2d/draw";
@@ -29,7 +29,7 @@ function log(e: AppEvent): void {
 	} else if (e.type == AppEventType.Resized) {
 		const area = safeArea();
 		console.log(`event ${name} ${e.framebufferWidth}x${e.framebufferHeight} safe ` +
-			`${area.top} ${area.left} ${area.bottom} ${area.right}`);
+			`${area.top} ${area.left} ${area.bottom} ${area.right} keyboard ${keyboardHeight()}`);
 	} else {
 		let points: string = "";
 		for (const t of e.touches) {
