@@ -27,6 +27,7 @@ static uint64_t s_frameCount;
 static int s_fbW = 1, s_fbH = 1;
 static float s_scale = 1.0f;
 static uint32_t s_modifiers;
+static uint32_t s_heldModifiers;
 static int s_textInput;
 static CGRect s_imeRect;
 static BOOL s_backspaceHeld, s_backspaceSent;
@@ -121,6 +122,16 @@ static uint32_t modifiersOf(UIKeyModifierFlags flags) {
 	if (flags & UIKeyModifierAlternate) m |= SAPP_MODIFIER_ALT;
 	if (flags & UIKeyModifierCommand) m |= SAPP_MODIFIER_SUPER;
 	return m;
+}
+
+static uint32_t modifierOfKey(sapp_keycode code) {
+	switch (code) {
+		case SAPP_KEYCODE_LEFT_SHIFT: case SAPP_KEYCODE_RIGHT_SHIFT: return SAPP_MODIFIER_SHIFT;
+		case SAPP_KEYCODE_LEFT_CONTROL: case SAPP_KEYCODE_RIGHT_CONTROL: return SAPP_MODIFIER_CTRL;
+		case SAPP_KEYCODE_LEFT_ALT: case SAPP_KEYCODE_RIGHT_ALT: return SAPP_MODIFIER_ALT;
+		case SAPP_KEYCODE_LEFT_SUPER: case SAPP_KEYCODE_RIGHT_SUPER: return SAPP_MODIFIER_SUPER;
+		default: return 0;
+	}
 }
 
 @interface VoidTextPosition : UITextPosition
@@ -298,12 +309,14 @@ static VoidAppView *s_view;
 	[self sendTouches:touches event:event type:SAPP_EVENTTYPE_TOUCHES_CANCELLED];
 }
 
-- (void)sendPresses:(NSSet<UIPress *> *)presses down:(BOOL)down {
+- (void)sendPresses:(NSSet<UIPress *> *)presses event:(UIPressesEvent *)event down:(BOOL)down {
 	for (UIPress *press in presses) {
 		UIKey *key = press.key;
 		if (!key) continue;
-		s_modifiers = modifiersOf(key.modifierFlags);
 		const sapp_keycode code = keyOfHid((long)key.keyCode);
+		const uint32_t own = modifierOfKey(code);
+		s_heldModifiers = down ? (s_heldModifiers | own) : (s_heldModifiers & ~own);
+		s_modifiers = modifiersOf(key.modifierFlags) | modifiersOf(event.modifierFlags) | s_heldModifiers;
 		if (code == SAPP_KEYCODE_INVALID) continue;
 		if (code == SAPP_KEYCODE_BACKSPACE) {
 			if (down) {
@@ -323,15 +336,15 @@ static VoidAppView *s_view;
 }
 
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-	[self sendPresses:presses down:YES];
+	[self sendPresses:presses event:event down:YES];
 	[super pressesBegan:presses withEvent:event];
 }
 - (void)pressesEnded:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-	[self sendPresses:presses down:NO];
+	[self sendPresses:presses event:event down:NO];
 	[super pressesEnded:presses withEvent:event];
 }
 - (void)pressesCancelled:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)event {
-	[self sendPresses:presses down:NO];
+	[self sendPresses:presses event:event down:NO];
 	[super pressesCancelled:presses withEvent:event];
 }
 
@@ -374,6 +387,7 @@ static VoidAppView *s_view;
 - (BOOL)hasText { return YES; }
 
 - (void)insertText:(NSString *)text {
+	if (s_modifiers & (SAPP_MODIFIER_CTRL | SAPP_MODIFIER_SUPER)) return;
 	[self clearMarked];
 	if ([text isEqualToString:@"\n"] || [text isEqualToString:@"\r"]) {
 		if (!s_enterHeld) sendTap(SAPP_KEYCODE_ENTER);
@@ -544,6 +558,7 @@ static VoidAppView *s_view;
 }
 - (void)applicationWillResignActive:(UIApplication *)application {
 	(void)application;
+	s_heldModifiers = 0;
 	if (s_view.viewId != 0) send(SAPP_EVENTTYPE_UNFOCUSED);
 }
 - (void)applicationDidEnterBackground:(UIApplication *)application {
