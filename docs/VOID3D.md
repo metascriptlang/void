@@ -3916,6 +3916,23 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Independent M6 prefix accepted
+
+Original CPU/import prefix `42c0be54` landed as `abf2b47a` on main `3a70f335` via the shared
+worktree tool and the full `gate.sh → gate3d.sh → web3d.sh` chain. Installed binary/support
+`afcd22f19`, clean private upstream sokol `2e75443d`, tools `11d0cf67`. Actual Retry3 exits
+**0/0/0**: T0 OFF **1903/1903**, ON **2290/2290**, no new reds, seven native and three gate3d
+known skips. WebGL2 **37/37**; actual WebGPU campfire presents three frames, 91% non-clear.
+This accepts only the independent prefix, not later M6 work or held Mikk/other decisions.
+
+Initial full attempt failed the camera allocation guard. Existing upstream `72c82945`
+restores explicit value unions for camera/particle packets; the original unmodified
+allocation stage then passes all ten paths. No local allowlist or parallel packet fix was
+landed. Retry2 was aborted for a GPU collision and is **not a verdict**. Retry3 is the sole
+land verdict; SDK unchanged, own HOLD release0 and END complete. Preserved receipts, source
+packets and images are under `out/retiredPrefix20261021/`, with SHA256 manifest; original
+`m6PrefixLand*Afcd22f1920261021Retry3` logs retain the complete command/skip output. No push.
+
 ### Installed compiler unpark: M6 JS consumers verified
 
 Deployment owner installed user-approved binary/support `afcd22f19`; this lane did not sync
