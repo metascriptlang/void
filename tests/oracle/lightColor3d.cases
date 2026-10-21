@@ -1,0 +1,42 @@
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: import h3d.scene.fwd.PointLight;
+# haxe-prelude: import h3d.scene.fwd.DirLight;
+# haxe-prelude: import h3d.Vector;
+# ms-prelude: import { Scene3D,NodeId3D,Transform3D,LightKind,
+# ms-prelude: addLightNode,setLightColor,collectLights } from "../../../src/void3d/scene";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: import { LIGHT_UNIFORM_LENGTH,MAX_POINT_LIGHTS } from "../../../src/void3d/gpu3d";
+# ms-prelude: import { Vec3,vec3 } from "../../../src/math/math3d";
+# ms-prelude: function light(scene: Scene3D,kind: LightKind): NodeId3D {
+# ms-prelude: return addLightNode(scene,scene.rootId(),Transform3D.identity(),
+# ms-prelude: {kind:kind,color:vec3(1,1,1),radius:9,power:2,priority:7});
+# ms-prelude: }
+# ms-prelude: function collected(scene: Scene3D,directional: boolean): Vec3 {
+# ms-prelude: let values: Vec<float32> = [];
+# ms-prelude: for (let i=0;i<LIGHT_UNIFORM_LENGTH;i++) {values.push(0);}
+# ms-prelude: const result=collectLights(scene,values); if (!result.ok) {unreachable;}
+# ms-prelude: const at: int32=directional ? 8 : 12+MAX_POINT_LIGHTS*4;
+# ms-prelude: return vec3(values[at],values[at+1],values[at+2]);
+# ms-prelude: }
+
+case point-light-color tol=0
+haxe> var root=new Object(); var point=new PointLight(root);
+haxe> point.color=new Vector(0.25,1.5,0.75);
+haxe> emit("point-light-color",[point.color.x,point.color.y,point.color.z]);
+ms> const scene=Scene3D.create(DrawContext.withUniformCapacity(0));
+ms> const point=light(scene,LightKind.Point); setLightColor(scene,point,vec3(0.25,1.5,0.75));
+ms> const a=collected(scene,false); emit3("point-light-color",a.x,a.y,a.z);
+
+case point-light-black tol=0
+haxe> point.color=new Vector(0,0,0);
+haxe> emit("point-light-black",[point.color.x,point.color.y,point.color.z]);
+ms> setLightColor(scene,point,vec3(0,0,0));
+ms> const b=collected(scene,false); emit3("point-light-black",b.x,b.y,b.z);
+
+case directional-light-color tol=0
+haxe> var directional=new DirLight(null,root); directional.color=new Vector(-0.25,2,0.5);
+haxe> emit("directional-light-color",[directional.color.x,directional.color.y,directional.color.z]);
+ms> const directional=light(scene,LightKind.Directional);
+ms> setLightColor(scene,directional,vec3(-0.25,2,0.5));
+ms> const c=collected(scene,true); emit3("directional-light-color",c.x,c.y,c.z);
