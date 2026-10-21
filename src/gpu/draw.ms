@@ -1,64 +1,59 @@
 import "./door";
 import {
-	drawMakeStreamBuffer,
-	drawDestroyBuffer,
-	drawApplyPipeline,
-	drawElements,
-	DRAW_BINDING_VERTEX_BUFFER,
-	DRAW_BINDING_INDEX_BUFFER,
-	DRAW_BINDING_VIEW,
-	DRAW_BINDING_SAMPLER,
-	DRAW_BINDING_LENGTH,
-} from "./draw.h";
+	DOOR_BUFFER_INDEX,
+	DOOR_BUFFER_STREAM,
+	DOOR_BUFFER_VERTEX,
+	doorApplyBindings,
+	doorApplyPipeline,
+	doorApplyUniformsOf,
+	doorDestroyBuffer,
+	doorDraw,
+	doorMakeBuffer,
+	doorMakeBufferOf,
+	doorUpdateBufferOf,
+} from "./doorGpu.ms";
 
-// Declared, not imported from draw.h, for the reason door.ms gives its Span functions.
-extern function drawMakeVertexBuffer(data: Readonly<Span<float32>>): uint32;
-extern function drawMakeIndexBuffer(data: Readonly<Span<uint16>>): uint32;
-extern function drawMakeIndexBuffer32(data: Readonly<Span<uint32>>): uint32;
-extern function drawUpdateBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32;
-extern function drawApplyBindings(bindings: Readonly<Span<uint32>>): void;
-extern function drawApplyUniforms(slot: int32, data: Readonly<Span<float32>>): void;
-
-export const BINDING_VERTEX_BUFFER: int32 = DRAW_BINDING_VERTEX_BUFFER;
-export const BINDING_INDEX_BUFFER: int32 = DRAW_BINDING_INDEX_BUFFER;
-export const BINDING_VIEW: int32 = DRAW_BINDING_VIEW;
-export const BINDING_SAMPLER: int32 = DRAW_BINDING_SAMPLER;
-export const BINDING_LENGTH: int32 = DRAW_BINDING_LENGTH;
+// Words of a bindings descriptor: vertex buffers 0..1, index buffer 2, views 3..8, samplers 9..11.
+export const BINDING_VERTEX_BUFFER: int32 = 0;
+export const BINDING_INDEX_BUFFER: int32 = 2;
+export const BINDING_VIEW: int32 = 3;
+export const BINDING_SAMPLER: int32 = 9;
+export const BINDING_LENGTH: int32 = 12;
 
 export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
-	return drawMakeVertexBuffer(data);
+	return doorMakeBufferOf(DOOR_BUFFER_VERTEX, data);
 }
 
 export function makeIndexBuffer(data: Readonly<Span<uint16>>): uint32 {
-	return drawMakeIndexBuffer(data);
+	return doorMakeBufferOf(DOOR_BUFFER_INDEX, data);
 }
 
 // The pipeline that draws it selects uint32 indices.
 export function makeIndexBuffer32(data: Readonly<Span<uint32>>): uint32 {
-	return drawMakeIndexBuffer32(data);
+	return doorMakeBufferOf(DOOR_BUFFER_INDEX, data);
 }
 
 export function makeStreamBuffer(floats: int32): uint32 {
-	return drawMakeStreamBuffer(floats as int64);
+	return doorMakeBuffer(DOOR_BUFFER_VERTEX | DOOR_BUFFER_STREAM, [], (floats as int64) * 4);
 }
 
-// sokol accepts one update per buffer per frame (sokol_gfx.h VALIDATE_UPDATEBUF_ONCE).
+// One update per buffer per frame, from its start, as sokol's sg_update_buffer allows.
 export function updateBuffer(buffer: uint32, data: Readonly<Span<float32>>): boolean {
-	return drawUpdateBuffer(buffer, data) != 0;
+	return doorUpdateBufferOf(buffer, data) != 0;
 }
 
-export function destroyBuffer(buffer: uint32): void { drawDestroyBuffer(buffer); }
+export function destroyBuffer(buffer: uint32): void { doorDestroyBuffer(buffer); }
 
-export function applyPipeline(pipeline: uint32): void { drawApplyPipeline(pipeline); }
+export function applyPipeline(pipeline: uint32): void { doorApplyPipeline(pipeline); }
 
 export function applyBindings(bindings: Readonly<Span<uint32>>): void {
-	drawApplyBindings(bindings);
+	doorApplyBindings(bindings, []);
 }
 
 export function applyUniforms(slot: int32, data: Readonly<Span<float32>>): void {
-	drawApplyUniforms(slot, data);
+	doorApplyUniformsOf(slot, data);
 }
 
 export function draw(base: int32, count: int32, instances: int32): void {
-	drawElements(base, count, instances);
+	doorDraw(base, count, instances);
 }

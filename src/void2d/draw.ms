@@ -22,7 +22,7 @@ import {
 	void2dScissorMin, void2dScissorMax,
 	void2dUiInstanceStride, void2dSpriteInstanceStride,
 	void2dPackChannel,
-	void2dProgramBase, void2dLayoutBase, void2dSetPipeline,
+	void2dSetPipeline,
 } from "./batcher.h";
 import { void2dGlyphPageCount } from "./glyph.h";
 import { beginGlyphFrame, setSdfRegime } from "./labelText";
@@ -58,7 +58,8 @@ import { NO_COLOR_MATRIX } from "./effect";
 import {
 	PassState, PixelFormat, passState, frameIndex, contextGeneration, endPass, imageAlive, viewAlive,
 } from "../gpu/door";
-import { doorBeginColorPass } from "../gpu/door.h";
+import { doorBeginColorPass } from "../gpu/doorGpu.ms";
+import { programBase, layoutBase } from "./programs.ms";
 when (voidProfiler) {
 	import { profilerSetup, profilerCollect, profilerFrameOpened } from "./frameMarks";
 }
@@ -66,9 +67,6 @@ import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
 import { fbWidth, fbHeight } from "../sokol/gpu";
-
-const programBase: int32 = void2dProgramBase();
-const layoutBase: int32 = void2dLayoutBase();
 
 const OFFSCREEN_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8,

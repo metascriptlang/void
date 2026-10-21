@@ -1,9 +1,11 @@
-// Void 2D — thin sokol primitives (see batcher.h). Batcher logic is in draw.ms.
+// Void 2D — thin GPU door primitives (see batcher.h). Batcher logic is in draw.ms.
 
 #include "batcher.h"
 #include "../sokol/bridge.h"
 #include "../gpu/door.h"
 #include "shaderBackends.h"
+// shader2d.glsl.h refuses to compile without sokol_gfx.h; only its uniform structs and its
+// ATTR_/UB_/VIEW_/SMP_ slot constants are used here.
 #include "../../deps/sokol/sokol_gfx.h"
 #include "shader2d.glsl.h"
 #include "instanceLayout.h"
@@ -25,23 +27,23 @@
 // stream and the per-node static buffers (VOID2D.md "Known defects", closed here). Growth is
 // max(2x, next power of two) with no shrink, a hard cap, and a dropped frame with an error
 // past it (GPUI.md:63) — never a silent truncation, which is what the old
-// `sg_append_buffer` overflow was.
+// sokol append overflow was.
 #define VOID2D_INITIAL_BUFFER_BYTES (1 << 20)
 #define VOID2D_MAX_BUFFER_BYTES     (192 << 20)
 
-static sg_buffer s_vbuf;
+static uint32_t s_vbuf;
 static int s_vbufBytes;
 static int s_frameBaseOffset;   // where this frame's vertices start in s_vbuf
 static int s_frameUploaded;     // 0 when the frame was dropped, and then nothing may draw
 static uint32_t s_pipelines[VOID2D_PROGRAM_COUNT][2][VOID2D_BLEND_COUNT];
 static int s_uiInstanceBase;          // where this frame's UI instances start in s_vbuf
 static int s_uiInstanceCount;
-static sg_buffer s_unitQuad;          // six corners (0,0)..(1,1), made once, stepped per vertex
+static uint32_t s_unitQuad;          // six corners (0,0)..(1,1), made once, stepped per vertex
 static int s_spriteInstanceBase;      // where this frame's sprite instances start in s_vbuf
 static int s_spriteInstanceCount;
-static sg_buffer s_srcVertex;
-static sg_buffer s_srcSprite;
-static sg_buffer s_srcUi;
+static uint32_t s_srcVertex;
+static uint32_t s_srcSprite;
+static uint32_t s_srcUi;
 static int s_srcVertexBase;
 static int s_srcSpriteBase;
 static int s_srcUiBase;
@@ -52,28 +54,33 @@ void void2dSetScopes(const float *scopes, int count) {
 	s_scopes = scopes;
 	s_scopeCount = count;
 }
-// sokol's origin convention does not change after setup, and it was being queried twice per
+// The door's origin convention does not change after setup, and it was being queried twice per
 // draw command - 40 000 times a frame on the UI bench whose `present` this phase reports as
 // not met.
 static bool s_originTopLeft;
 static float s_dpiScale = 1.0f;                    // framebuffer / logical pixel ratio (retina = 2.0)
-static sg_buffer s_fsQuad;                        // fullscreen quad (pos2+uv2) for filter passes
-static sg_view s_whiteView;
+static uint32_t s_fsQuad;                        // fullscreen quad (pos2+uv2) for filter passes
+static uint32_t s_whiteView;
 // Indexed by `smooth * 2 + tileWrap`, the packing displayList.ms `samplerIndex` writes into
 // CMD_SAMPLER. Clamp is the default: a tile is a sub-rect of an atlas, so REPEAT on a tile
 // that does not fill its page wraps in a neighbour's pixels at the seam.
 #define SMP_COUNT 4
-static sg_sampler s_smp[SMP_COUNT];
+#define SAMPLER_NEAREST 0
+#define SAMPLER_LINEAR 1
+#define SAMPLER_CLAMP 0
+#define SAMPLER_REPEAT 1
+#define PIXEL_FORMAT_RGBA8 2
+static uint32_t s_smp[SMP_COUNT];
 
-static sg_image s_pageImg[VOID2D_MAX_GLYPH_PAGES];
-static sg_view s_pageView[VOID2D_MAX_GLYPH_PAGES];
+static uint32_t s_pageImg[VOID2D_MAX_GLYPH_PAGES];
+static uint32_t s_pageView[VOID2D_MAX_GLYPH_PAGES];
 static unsigned int s_pageGen[VOID2D_MAX_GLYPH_PAGES];
 static int s_atlasMade;
 static int s_glyphUploads;
 static float s_textGamma[4];
 static float s_textContrast = 1.0f;
 static int s_glyphUploadBytes;
-// Buffers this module owns, counted where sokol is actually called. It used to be
+// Buffers this module owns, counted where the door is actually called. It used to be
 // `return 3` - a literal, gated in tests/bench/baseline.json against the literal 3, so the
 // assertion compared a constant to a constant and would have kept passing if every Label
 // allocated a buffer again. It also miscounted: two of the three were buffers and the third
@@ -81,15 +88,15 @@ static int s_glyphUploadBytes;
 static int s_buffersMade;
 static int s_buffersFreed;
 
-// A sokol FRAME, which is not a bracket. `begin2d`/`flushTargets` is a bracket and a frame may
+// A GPU FRAME, which is not a bracket. `begin2d`/`flushTargets` is a bracket and a frame may
 // hold several - src/examples/renderer2d.ms runs two, the manual filter targets and then the
-// scene - while sokol resets a buffer's append cursor only once per frame, at sg_commit
-// (`sokol_gfx.h:27551`). Three things are therefore per frame and were being re-armed per
-// bracket: the append budget, the one-sg_update_image-per-image rule, and the counters.
+// scene - while the door resets a buffer's append cursor only once per frame, at submit
+// (sokol's rule, `sokol_gfx.h:27551`). Three things are therefore per frame and were being
+// re-armed per bracket: the append budget, the one-texture-update-per-image rule, and the counters.
 static int s_frameOpen;
 // Brackets opened since the last void2dFrameEnd. A frame legitimately holds a few - the demo
 // runs two - so this is not an error until it is absurd. void2dSetup registers void2dFrameEnd
-// as the bridge's commit hook; any direct sg_commit call bypasses it and leaves s_frameOpen
+// as the bridge's commit hook; any direct doorSubmit call bypasses it and leaves s_frameOpen
 // latched, so glyph pages stop uploading and retired resources stop being freed. Keep the
 // counter loud because the visible failure appears several layers from the missing frame end.
 static int s_bracketsThisFrame;
@@ -101,9 +108,9 @@ static int s_frameVertexBytes;   // bytes appended so far this FRAME, across eve
 // A vertex buffer that grew mid-frame cannot be destroyed on the spot: an earlier bracket's
 // draws are already encoded against it. Same frame-linear discipline as the retired atlases.
 #define VOID2D_MAX_RETIRED_BUFFERS 8
-static sg_buffer s_retiredBuf[VOID2D_MAX_RETIRED_BUFFERS];
+static uint32_t s_retiredBuf[VOID2D_MAX_RETIRED_BUFFERS];
 static int s_retiredBufCount;
-static sg_buffer *s_closedBuf;
+static uint32_t *s_closedBuf;
 static int s_closedBufCount;
 static int s_closedBufCap;
 
@@ -180,7 +187,7 @@ void void2dFailPendingTargets(void) {
 	abort();
 }
 
-// Every sg_buffer and sg_image this layer holds: the one vertex buffer, the fullscreen quad
+// Every buffer and image this layer holds: the one vertex buffer, the fullscreen quad
 // the filter passes draw, and the font atlas image. Constant in the node count, which is the
 // whole point of the change (VOID2D.md P1 exit).
 // Made minus freed, at the sites that make and free. Two in a steady frame: the growing
@@ -278,21 +285,21 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 // until that frame has been submitted.
 static void releaseRetiredBuffers(void) {
 	for (int i = 0; i < s_retiredBufCount; i++) {
-		sg_destroy_buffer(s_retiredBuf[i]);
+		doorDestroyBuffer(s_retiredBuf[i]);
 		s_buffersFreed++;
 	}
 	s_retiredBufCount = 0;
 	for (int i = 0; i < s_closedBufCount; i++) {
-		sg_destroy_buffer(s_closedBuf[i]);
+		doorDestroyBuffer(s_closedBuf[i]);
 		s_buffersFreed++;
 	}
 	s_closedBufCount = 0;
 }
 
-static void retireClosedBuffer(sg_buffer buf, int list) {
+static void retireClosedBuffer(uint32_t buf, int list) {
 	if (s_closedBufCount == s_closedBufCap) {
 		int want = s_closedBufCap > 0 ? s_closedBufCap * 2 : 8;
-		sg_buffer *grown = (sg_buffer *)realloc(s_closedBuf, (size_t)want * sizeof(sg_buffer));
+		uint32_t *grown = (uint32_t *)realloc(s_closedBuf, (size_t)want * sizeof(uint32_t));
 		if (!grown) {
 			fprintf(stderr, "void2d: no room to retire the buffers of closed list %d\n", list);
 			abort();
@@ -306,7 +313,7 @@ static void retireClosedBuffer(sg_buffer buf, int list) {
 
 
 
-// Allocate, or reallocate, the one vertex buffer. sokol cannot resize a buffer, so growth is
+// Allocate, or reallocate, the one vertex buffer. The door cannot resize a buffer, so growth is
 // a destroy and a make; it happens when a frame first needs more room and then never again,
 // because the buffer does not shrink.
 // The growth policy, as arithmetic and nothing else: max(2x, next power of two), no shrink,
@@ -322,10 +329,21 @@ int void2dGrowthTarget(int have, int need) {
 	return want;
 }
 
+// A buffer the door refused is a device that cannot draw this layer; it stops here, naming the
+// buffer, rather than leaving every later draw to read id 0.
+static uint32_t makeBuffer(int32_t usage, const void *data, size_t bytes, const char *what) {
+	const uint32_t id = doorMakeBuffer(usage, (const uint8_t *)data, data ? (int64_t)bytes : 0, (int64_t)bytes);
+	if (id == 0) {
+		fprintf(stderr, "void2d: the door made no %zu-byte %s buffer\n", bytes, what);
+		abort();
+	}
+	return id;
+}
+
 static int ensureVertexBuffer(int bytes) {
 	int want = void2dGrowthTarget(s_vbufBytes, bytes);
 	if (want <= s_vbufBytes) return 1;
-	if (s_vbuf.id) {
+	if (s_vbuf) {
 		// Doubling from 1 MiB through the 192 MiB cap can retire at most eight buffers in
 		// one frame. Keep every one alive until commit; destroying an encoded buffer here is
 		// a use-after-free on deferred backends.
@@ -337,81 +355,12 @@ static int ensureVertexBuffer(int bytes) {
 		s_retiredBuf[s_retiredBufCount] = s_vbuf;
 		s_retiredBufCount++;
 	}
-	sg_buffer_desc bd = {0};
-	bd.usage.vertex_buffer = true;
-	bd.usage.dynamic_update = true;
-	bd.size = (size_t)want;
-	s_vbuf = sg_make_buffer(&bd);
+	s_vbuf = makeBuffer(DOOR_BUFFER_VERTEX | DOOR_BUFFER_STREAM, NULL, (size_t)want, "frame vertex");
 	s_buffersMade++;
 	s_vbufBytes = want;
 	return 1;
 }
 
-
-static const door_shader_fn VOID2D_PROGRAMS[VOID2D_PROGRAM_COUNT] = {
-	void2d_shader_desc,
-	sprite_shader_desc,
-	ui_shader_desc,
-	blur_shader_desc,
-};
-
-static void describeLayout(int32_t program, sg_vertex_layout_state *out) {
-	sg_pipeline_desc desc = {0};
-	switch (program) {
-	case PIPELINE_VERTEX:
-		desc.layout.attrs[ATTR_void2d_pos].format = SG_VERTEXFORMAT_FLOAT2;
-		desc.layout.attrs[ATTR_void2d_uv0].format = SG_VERTEXFORMAT_FLOAT2;
-		desc.layout.attrs[ATTR_void2d_color0].format = SG_VERTEXFORMAT_FLOAT4;
-		break;
-	case PIPELINE_SPRITE:
-		desc.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
-		desc.layout.attrs[ATTR_sprite_corner].format = SG_VERTEXFORMAT_FLOAT2;
-		desc.layout.attrs[ATTR_sprite_corner].buffer_index = 0;
-		VOID2D_SPRITE_ATTRIBUTES(desc);
-		break;
-	case PIPELINE_UI:
-		desc.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
-		desc.layout.attrs[ATTR_ui_corner].format = SG_VERTEXFORMAT_FLOAT2;
-		desc.layout.attrs[ATTR_ui_corner].buffer_index = 0;
-		VOID2D_UI_ATTRIBUTES(desc);
-		break;
-	case PIPELINE_BLUR:
-		desc.layout.attrs[ATTR_blur_pos].format = SG_VERTEXFORMAT_FLOAT2;
-		desc.layout.attrs[ATTR_blur_uv0].format = SG_VERTEXFORMAT_FLOAT2;
-		break;
-	default:
-		fprintf(stderr, "void2d: no vertex layout for program %d\n", program);
-		abort();
-	}
-	*out = desc.layout;
-}
-
-static int32_t s_programBase = -1;
-static int32_t s_layoutBase = -1;
-
-static void registerOnce(void) {
-	if (s_programBase >= 0) { return; }
-	sg_vertex_layout_state layouts[VOID2D_PROGRAM_COUNT];
-	int32_t programLayouts[VOID2D_PROGRAM_COUNT];
-	for (int32_t i = 0; i < VOID2D_PROGRAM_COUNT; i++) {
-		describeLayout(i, &layouts[i]);
-	}
-	s_layoutBase = doorRegisterLayouts(layouts, VOID2D_PROGRAM_COUNT);
-	for (int32_t i = 0; i < VOID2D_PROGRAM_COUNT; i++) {
-		programLayouts[i] = s_layoutBase + i;
-	}
-	s_programBase = doorRegisterPrograms(VOID2D_PROGRAMS, programLayouts, VOID2D_PROGRAM_COUNT);
-}
-
-int32_t void2dProgramBase(void) {
-	registerOnce();
-	return s_programBase;
-}
-
-int32_t void2dLayoutBase(void) {
-	registerOnce();
-	return s_layoutBase;
-}
 
 void void2dSetPipeline(int32_t program, int32_t target, int32_t blend, uint32_t pipeline) {
 	if (program < 0 || program >= VOID2D_PROGRAM_COUNT || target < 0 || target > 1
@@ -441,12 +390,10 @@ static bool premultipliedSource(const float *cmd) {
 }
 
 static bool sampledTarget(uint32_t view) {
-	if (view == 0) { return false; }
-	const sg_image image = sg_query_view_image((sg_view){ .id = view });
-	return image.id != SG_INVALID_ID && sg_query_image_usage(image).color_attachment;
+	return doorViewIsColorAttachment(view) != 0;
 }
 
-static sg_pipeline pipelineAt(int program, int target, int blend) {
+static uint32_t pipelineAt(int program, int target, int blend) {
 	const bool inRange = program >= 0 && program < VOID2D_PROGRAM_COUNT
 		&& target >= 0 && target <= 1 && blend >= 0 && blend < VOID2D_BLEND_COUNT;
 	const uint32_t id = inRange ? s_pipelines[program][target][blend] : 0;
@@ -456,7 +403,7 @@ static sg_pipeline pipelineAt(int program, int target, int blend) {
 			program, target ? "offscreen" : "screen", blend);
 		abort();
 	}
-	return (sg_pipeline){ .id = id };
+	return id;
 }
 
 static int s_generation;
@@ -464,7 +411,7 @@ static int s_generation;
 static void makeContextResources(void) {
 	(void)ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
 
-	s_originTopLeft = sg_query_features().origin_top_left;
+	s_originTopLeft = doorOriginTopLeft() != 0;
 
 	// Six corners rather than four plus an index buffer. VOID2D.md records that the two have
 	// not been compared on a Mali or an Adreno; until they have, this is one 48-byte static
@@ -473,35 +420,24 @@ static void makeContextResources(void) {
 		0.0f, 0.0f,  1.0f, 0.0f,  1.0f, 1.0f,
 		0.0f, 0.0f,  1.0f, 1.0f,  0.0f, 1.0f,
 	};
-	sg_buffer_desc uqd = {0};
-	uqd.usage.vertex_buffer = true;
-	uqd.data = (sg_range){ .ptr = unit, .size = sizeof(unit) };
-	s_unitQuad = sg_make_buffer(&uqd);
+	s_unitQuad = makeBuffer(DOOR_BUFFER_VERTEX, unit, sizeof(unit), "unit quad");
 	s_buffersMade++;
 
 	static const float fsq[24] = {
 		-1.0f, -1.0f, 0.0f, 0.0f,   1.0f, -1.0f, 1.0f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f,
 		-1.0f, -1.0f, 0.0f, 0.0f,   1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, 1.0f,
 	};
-	sg_buffer_desc fqd = {0};
-	fqd.usage.vertex_buffer = true;
-	fqd.data = (sg_range){ .ptr = fsq, .size = sizeof(fsq) };
-	s_fsQuad = sg_make_buffer(&fqd);
+	s_fsQuad = makeBuffer(DOOR_BUFFER_VERTEX, fsq, sizeof(fsq), "fullscreen quad");
 	s_buffersMade++;
 
-	s_whiteView = (sg_view){ .id = voidMakeView(voidMakeImage(NULL, 0, 0)) };
+	s_whiteView = voidMakeView(voidMakeImage(NULL, 0, 0));
 	// Four samplers, made once: smooth * 2 + tileWrap. They are four objects and not a
-	// mutated one because sokol samplers are immutable, and four of a 128-slot pool is a
-	// constant cost that does not grow with the scene.
+	// mutated one because samplers are immutable, and four is a constant cost that does not
+	// grow with the scene.
 	for (int i = 0; i < SMP_COUNT; i++) {
 		int smooth = (i & 2) != 0;
 		int wrap = (i & 1) != 0;
-		sg_sampler_desc d = {0};
-		d.min_filter = smooth ? SG_FILTER_LINEAR : SG_FILTER_NEAREST;
-		d.mag_filter = smooth ? SG_FILTER_LINEAR : SG_FILTER_NEAREST;
-		d.wrap_u = wrap ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
-		d.wrap_v = wrap ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
-		s_smp[i] = sg_make_sampler(&d);
+		s_smp[i] = doorMakeSampler(smooth ? SAMPLER_LINEAR : SAMPLER_NEAREST, wrap ? SAMPLER_REPEAT : SAMPLER_CLAMP);
 	}
 	s_generation = doorContextGeneration();
 }
@@ -514,19 +450,19 @@ void void2dSetup(void) {
 static void adoptContext(void);
 
 
-uint32_t void2dWhiteView(void) { return s_whiteView.id; }
+uint32_t void2dWhiteView(void) { return s_whiteView; }
 static void dropReleasedPageImage(int page) {
-	if (s_pageImg[page].id == 0 || s_pageGen[page] == void2dGlyphPageGeneration(page)) { return; }
-	sg_destroy_view(s_pageView[page]);
-	sg_destroy_image(s_pageImg[page]);
-	s_pageImg[page] = (sg_image){0};
-	s_pageView[page] = (sg_view){0};
+	if (s_pageImg[page] == 0 || s_pageGen[page] == void2dGlyphPageGeneration(page)) { return; }
+	doorDestroyView(s_pageView[page]);
+	doorDestroyImage(s_pageImg[page]);
+	s_pageImg[page] = 0;
+	s_pageView[page] = 0;
 }
 
 uint32_t void2dGlyphPageView(int page) {
-	if (page < 0 || page >= VOID2D_MAX_GLYPH_PAGES || !sg_isvalid()) { return 0; }
+	if (page < 0 || page >= VOID2D_MAX_GLYPH_PAGES || !doorValid()) { return 0; }
 	dropReleasedPageImage(page);
-	if (s_pageImg[page].id == 0) {
+	if (s_pageImg[page] == 0) {
 		unsigned int generation = void2dGlyphPageGeneration(page);
 		if (generation == 0) { return 0; }
 		int size = void2dGlyphPageSize(page);
@@ -537,23 +473,19 @@ uint32_t void2dGlyphPageView(int page) {
 			fprintf(stderr, "void2d: no image format for glyph page %d of kind %d\n", page, kind);
 			return 0;
 		}
-		sg_image_desc d = {0};
-		d.width = size;
-		d.height = size;
-		d.pixel_format = kind == VOID2D_PAGE_RGBA ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
-		d.usage.dynamic_update = true;
-		s_pageImg[page] = sg_make_image(&d);
-		s_pageView[page] = (sg_view){ .id = voidMakeView(s_pageImg[page].id) };
+		s_pageImg[page] = doorMakeTexture(size, size,
+			kind == VOID2D_PAGE_RGBA ? PIXEL_FORMAT_RGBA8 : DOOR_PIXEL_FORMAT_R8, NULL, 0);
+		s_pageView[page] = voidMakeView(s_pageImg[page]);
 		s_pageGen[page] = generation;
 		s_atlasMade++;
 	}
-	return s_pageView[page].id;
+	return s_pageView[page];
 }
 
 static int glyphPageViewKind(uint32_t view) {
 	if (view == 0) { return -1; }
 	for (int i = 0; i < VOID2D_MAX_GLYPH_PAGES; i++) {
-		if (s_pageView[i].id == view) {
+		if (s_pageView[i] == view) {
 			int kind = void2dGlyphPageKind(i);
 			return kind < 0 ? -2 : kind;
 		}
@@ -593,8 +525,8 @@ static const float *scopeOf(const float *cmd) {
 }
 
 static void applyScissor(const float *cmd, float fbW, float fbH) {
-	// Floor the near edge and ceil the far edge in device pixels. Letting sokol truncate
-	// x/y/w/h independently can discard a pixel the exact clip planes accept.
+	// Floor the near edge and ceil the far edge in device pixels. Truncating x/y/w/h
+	// independently can discard a pixel the exact clip planes accept.
 	float targetScale = cmd[CMD_RT_MODE];
 	float scale = targetScale != 0.0f ? targetScale : s_dpiScale;
 	int limitW = void2dScissorMax(fbW, scale);
@@ -621,12 +553,12 @@ static void applyScissor(const float *cmd, float fbW, float fbH) {
 			h = scope[5];
 		}
 		if (w <= 0.0f || h <= 0.0f) {
-			sg_apply_scissor_rectf(0.0f, 0.0f, 0.0f, 0.0f, true);
+			doorApplyScissor(0, 0, 0, 0);
 			return;
 		}
 	}
 	if (w <= 0.0f || h <= 0.0f) {
-		sg_apply_scissor_rectf(0.0f, 0.0f, (float)limitW, (float)limitH, true);
+		doorApplyScissor(0, 0, limitW, limitH);
 		return;
 	}
 	int x0 = void2dScissorMin(x, scale);
@@ -643,21 +575,20 @@ static void applyScissor(const float *cmd, float fbW, float fbH) {
 	if (y1 > limitH) y1 = limitH;
 	if (x1 < x0) x1 = x0;
 	if (y1 < y0) y1 = y0;
-	sg_apply_scissor_rectf(
-		(float)x0, (float)y0, (float)(x1 - x0), (float)(y1 - y0), true);
+	doorApplyScissor(x0, y0, x1 - x0, y1 - y0);
 }
 
 void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
 
-// Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
+// Per-frame reset — re-arms the single texture update allowed for the font atlas.
 // Called at the top of every bracket. Only the FIRST bracket of a frame does the per-frame
-// work; `void2dFrameEnd` at sg_commit is what closes the frame and lets the next one through.
+// work; `void2dFrameEnd` at submit is what closes the frame and lets the next one through.
 void void2dFrameBegin(void) {
 	s_bracketsThisFrame++;
 	if (s_bracketsThisFrame > VOID2D_BRACKETS_BEFORE_COMPLAINT && !s_frameEndMissingReported) {
 		s_frameEndMissingReported = 1;
 		fprintf(stderr,
-			"void2d: %d brackets since the last void2dFrameEnd - is it being called after sg_commit? "
+			"void2d: %d brackets since the last void2dFrameEnd - is it being called after the submit? "
 			"until it is, the glyph atlas will not upload and retired resources will not be freed\n",
 			s_bracketsThisFrame);
 	}
@@ -679,8 +610,8 @@ void void2dFrameBegin(void) {
 	s_frameVertexBytes = 0;
 }
 
-// Runs immediately after sg_commit, as the commit hook void2dSetup registers. Everything sokol
-// resets per frame - the append cursor above all - becomes safe to reset here and nowhere else.
+// Runs immediately after doorSubmit, as the commit hook void2dSetup registers. Everything the
+// door resets per frame - the append cursor above all - becomes safe to reset here and nowhere else.
 void void2dFrameEnd(void) {
 	s_frameOpen = 0;
 	s_bracketsThisFrame = 0;
@@ -699,9 +630,9 @@ void void2dFrameEnd(void) {
 int void2dFrameSerial(void) { return s_frameSerial; }
 
 typedef struct {
-	sg_buffer srcVertex;
-	sg_buffer srcSprite;
-	sg_buffer srcUi;
+	uint32_t srcVertex;
+	uint32_t srcSprite;
+	uint32_t srcUi;
 	int srcVertexBase;
 	int srcSpriteBase;
 	int srcUiBase;
@@ -790,30 +721,40 @@ int void2dActivateContext(int id) {
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
 // 9-tap kernel offset by (dirX,dirY) in UV space. Caller runs it twice (H then V) ping-ponging
 // between two RTs. dir = (radius/texW,0) horizontal, (0,radius/texH) vertical.
+// The door's 12 binding words: vertex buffers 0..1, index buffer 2, views from 3 and samplers
+// from 9, each at the shader's slot as sg_bindings indexes them.
+#define BIND_VIEWS 3
+#define BIND_SAMPLERS 9
+#define BIND_WORDS 12
+
+static void applyBindings(uint32_t vertex0, uint32_t vertex1, int32_t offset0, int32_t offset1,
+                          int viewSlot, uint32_t view, int samplerSlot, uint32_t sampler) {
+	uint32_t words[BIND_WORDS] = {0};
+	const int32_t offsets[2] = { offset0, offset1 };
+	words[0] = vertex0;
+	words[1] = vertex1;
+	words[BIND_VIEWS + viewSlot] = view;
+	words[BIND_SAMPLERS + samplerSlot] = sampler;
+	doorApplyBindings(words, BIND_WORDS, offsets, 2);
+}
+
 static void void2dBlur(uint32_t srcView, float dirX, float dirY, int blend) {
-	sg_apply_pipeline(pipelineAt(PIPELINE_BLUR, 1, blend));
-	sg_bindings b = {0};
-	b.vertex_buffers[0] = s_fsQuad;
-	b.views[VIEW_srcTex] = (sg_view){ .id = srcView };
-	b.samplers[SMP_srcSmp] = s_smp[2];   // linear, clamp: a blur tap past the edge must not wrap
-	sg_apply_bindings(&b);
+	doorApplyPipeline(pipelineAt(PIPELINE_BLUR, 1, blend));
+	// linear, clamp: a blur tap past the edge must not wrap
+	applyBindings(s_fsQuad, 0, 0, 0, VIEW_srcTex, srcView, SMP_srcSmp, s_smp[2]);
 	blur_params_t p = {0};
 	p.dir[0] = dirX; p.dir[1] = dirY;
-	sg_range u = { .ptr = &p, .size = sizeof(p) };
-	sg_apply_uniforms(UB_blur_params, &u);
-	sg_draw(0, 6, 1);
+	doorApplyUniforms(UB_blur_params, (const uint8_t *)&p, (int64_t)sizeof(p));
+	doorDraw(0, 6, 1);
 }
 
 static void uploadGlyphPages(void) {
 	int count = void2dGlyphPageCount();
 	for (int page = 0; page < count && page < VOID2D_MAX_GLYPH_PAGES; page++) {
 		dropReleasedPageImage(page);
-		if (s_pageImg[page].id == 0 || !void2dGlyphPageTakeUpload(page)) { continue; }
+		if (s_pageImg[page] == 0 || !void2dGlyphPageTakeUpload(page)) { continue; }
 		int bytes = void2dGlyphPageBytes(page);
-		sg_image_data id = {0};
-		id.mip_levels[0].ptr = void2dGlyphPageData(page);
-		id.mip_levels[0].size = (size_t)bytes;
-		sg_update_image(s_pageImg[page], &id);
+		doorUpdateTexture(s_pageImg[page], void2dGlyphPageData(page), (int64_t)bytes);
 		s_glyphUploads++;
 		s_glyphUploadBytes += bytes;
 	}
@@ -823,11 +764,25 @@ static void runCommands(const float *commands, int commandCount,
                         const float *effects, int effectCount,
                         float fbW, float fbH);
 
+// The size check before it makes room for the frame, so a refused append is that check gone
+// wrong: the frame drops with an error rather than drawing from stale bytes.
+static int appendFrame(const void *data, size_t bytes, int *offset) {
+	const int64_t at = doorAppendBuffer(s_vbuf, (const uint8_t *)data, (int64_t)bytes);
+	if (at < 0) {
+		s_droppedFrames++;
+		fprintf(stderr, "void2d: %zu bytes did not fit the %d-byte vertex buffer after %d this frame — frame dropped\n",
+			bytes, s_vbufBytes, s_frameVertexBytes);
+		return 0;
+	}
+	*offset = (int)at;
+	return 1;
+}
+
 // Upload the frame's geometry once, then run every render-target pass to completion. Called
 // with NO pass open: each TargetBegin opens one and its TargetEnd closes it, so target passes
 // are siblings and never nest. That is what hoisting the target blocks out of the swapchain
-// list buys - sokol asserts `!_sg.cur_pass.valid` on a nested begin, which is exactly how the
-// old filter path died. Returns 0 when the frame was dropped; then nothing else may draw.
+// list buys - the door stops on a nested begin (sokol asserts `!_sg.cur_pass.valid`), which is
+// exactly how the old filter path died. Returns 0 when the frame was dropped; then nothing else may draw.
 int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
                         const float *effects, int effectCount,
                         const float *vertices, int vertexCount,
@@ -843,15 +798,13 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 	size_t vertexBytes = (size_t)vertexCount * VERTEX_FLOATS * sizeof(float);
 	size_t spriteBytes = (size_t)spriteInstanceCount * sizeof(void2dSpriteInstance);
 	size_t uiBytes = (size_t)uiInstanceCount * sizeof(void2dUiInstance);
-	// Against the FRAME's total, not this bracket's. sg_append_buffer accumulates until
-	// sg_commit, so a buffer sized for one bracket overflows on the second - and sokol's
-	// overflow copies nothing, returns a start position anyway, and leaves every draw in that
-	// bracket reading whatever was there before. Silent in release. Same mechanism as the
+	// Against the FRAME's total, not this bracket's. doorAppendBuffer accumulates until
+	// submit, so a buffer sized for one bracket overflows on the second. Same mechanism as the
 	// "per-frame vertex cap" defect this phase closed one layer down.
 	size_t frameBytes = (size_t)s_frameVertexBytes + vertexBytes + spriteBytes + uiBytes;
 	if (frameBytes > (size_t)VOID2D_MAX_BUFFER_BYTES) {
-		// A dropped frame with an error, never a silent truncation. The old path let
-		// sg_append_buffer run past the end and the rest of the scene simply vanished.
+		// A dropped frame with an error, never a silent truncation. The old path let the
+		// append run past the end and the rest of the scene simply vanished.
 		s_droppedFrames++;
 		fprintf(stderr, "void2d: frame needs %zu bytes of geometry, cap is %d — frame dropped\n",
 			frameBytes, VOID2D_MAX_BUFFER_BYTES);
@@ -867,8 +820,7 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 	// it. This is the "one upload per bracket" of VOID2D.md P1, and it is one per FRAME here
 	// because the target lists share the stream.
 	if (vertexBytes > 0) {
-		sg_range data = { .ptr = vertices, .size = vertexBytes };
-		s_frameBaseOffset = sg_append_buffer(s_vbuf, &data);
+		if (!appendFrame(vertices, vertexBytes, &s_frameBaseOffset)) { return 0; }
 		s_uploadCount++;
 		s_uploadBytes += (int)vertexBytes;
 	}
@@ -877,8 +829,7 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 	// append rather than one concatenated upload, because concatenating would mean copying the
 	// whole vertex stream through a staging buffer to save a call that costs nothing.
 	if (spriteBytes > 0) {
-		sg_range data = { .ptr = spriteInstances, .size = spriteBytes };
-		s_spriteInstanceBase = sg_append_buffer(s_vbuf, &data);
+		if (!appendFrame(spriteInstances, spriteBytes, &s_spriteInstanceBase)) { return 0; }
 		s_uploadCount++;
 		s_uploadBytes += (int)spriteBytes;
 	}
@@ -899,8 +850,7 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 			void2dPackUiInstance(s_uiStage + i,
 				uiInstances + (size_t)i * VOID2D_UI_REC_FLOATS, packColor);
 		}
-		sg_range data = { .ptr = s_uiStage, .size = uiBytes };
-		s_uiInstanceBase = sg_append_buffer(s_vbuf, &data);
+		if (!appendFrame(s_uiStage, uiBytes, &s_uiInstanceBase)) { return 0; }
 		s_uploadCount++;
 		s_uploadBytes += (int)uiBytes;
 	}
@@ -923,7 +873,7 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 #define LIST_UI 2
 
 typedef struct {
-	sg_buffer buf[3];
+	uint32_t buf[3];
 	int cap[3];
 	int updatedFrame;
 	int stale;
@@ -957,11 +907,11 @@ void void2dReleaseList(int id) {
 	if (id >= s_listCap) { return; }
 	void2dList *l = &s_lists[id];
 	for (int i = 0; i < 3; i++) {
-		if (!l->buf[i].id) { continue; }
+		if (!l->buf[i]) { continue; }
 		if (s_frameOpen) {
 			retireClosedBuffer(l->buf[i], id);
 		} else {
-			sg_destroy_buffer(l->buf[i]);
+			doorDestroyBuffer(l->buf[i]);
 			s_buffersFreed++;
 		}
 	}
@@ -971,7 +921,7 @@ void void2dReleaseList(int id) {
 }
 
 static void forgetContextResources(void) {
-	s_vbuf = (sg_buffer){0};
+	s_vbuf = 0;
 	s_vbufBytes = 0;
 	memset(s_pipelines, 0, sizeof(s_pipelines));
 	memset(s_pageImg, 0, sizeof(s_pageImg));
@@ -980,15 +930,15 @@ static void forgetContextResources(void) {
 	s_closedBufCount = 0;
 	for (int i = 0; i < s_listCap; i++) {
 		for (int which = 0; which < 3; which++) {
-			s_lists[i].buf[which] = (sg_buffer){0};
+			s_lists[i].buf[which] = 0;
 			s_lists[i].cap[which] = 0;
 		}
 		s_lists[i].stale = 1;
 	}
 	for (size_t i = 0; i < s_contextCap; i++) {
-		s_contexts[i].srcVertex = (sg_buffer){0};
-		s_contexts[i].srcSprite = (sg_buffer){0};
-		s_contexts[i].srcUi = (sg_buffer){0};
+		s_contexts[i].srcVertex = 0;
+		s_contexts[i].srcSprite = 0;
+		s_contexts[i].srcUi = 0;
 		s_contexts[i].prepared = 0;
 	}
 	s_buffersMade = 0;
@@ -1004,19 +954,15 @@ static void adoptContext(void) {
 }
 
 static int ensureListBuffer(void2dList *l, int which, int bytes) {
-	if (l->buf[which].id && bytes <= l->cap[which]) { return 1; }
+	if (l->buf[which] && bytes <= l->cap[which]) { return 1; }
 	int want = void2dGrowthTarget(l->cap[which], bytes);
 	if (want == 0) { return 0; }
-	if (l->buf[which].id) {
+	if (l->buf[which]) {
 		if (s_retiredBufCount >= VOID2D_MAX_RETIRED_BUFFERS) { return 0; }
 		s_retiredBuf[s_retiredBufCount] = l->buf[which];
 		s_retiredBufCount++;
 	}
-	sg_buffer_desc bd = {0};
-	bd.usage.vertex_buffer = true;
-	bd.usage.dynamic_update = true;
-	bd.size = (size_t)want;
-	l->buf[which] = sg_make_buffer(&bd);
+	l->buf[which] = makeBuffer(DOOR_BUFFER_VERTEX | DOOR_BUFFER_STREAM, NULL, (size_t)want, "display list");
 	s_buffersMade++;
 	l->cap[which] = want;
 	return 1;
@@ -1025,8 +971,7 @@ static int ensureListBuffer(void2dList *l, int which, int bytes) {
 static int writeListBuffer(void2dList *l, int which, const void *data, size_t bytes) {
 	if (bytes == 0) { return 1; }
 	if (!ensureListBuffer(l, which, (int)bytes)) { return 0; }
-	sg_range range = { .ptr = data, .size = bytes };
-	sg_update_buffer(l->buf[which], &range);
+	if (!doorUpdateBuffer(l->buf[which], (const uint8_t *)data, (int64_t)bytes)) { return 0; }
 	s_uploadCount++;
 	s_uploadBytes += (int)bytes;
 	return 1;
@@ -1124,7 +1069,7 @@ static void copyClipParams(float *clipU, float *clipV, const float *cmd) {
 }
 
 // One instanced sprite run: the unit quad at slot 0, this run's instances at slot 1, one
-// sg_draw for the whole run. The sprite program carries no colour pipeline, so a node with a
+// draw for the whole run. The sprite program carries no colour pipeline, so a node with a
 // colorMatrix, colorAdd or colorKey never reaches here - the emitter keeps it on the vertex
 // path and records the break, which is what makes that decision visible in a T1 snapshot
 // rather than inferred from a pixel.
@@ -1134,23 +1079,18 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	int count = (int)cmd[CMD_INSTANCE_COUNT];
 	if (count <= 0) { return; }
 
-	sg_pipeline pip = pipelineAt(PIPELINE_SPRITE, rt, blend);
-	if (pip.id != *lastPipeline) {
-		sg_apply_pipeline(pip);
-		*lastPipeline = pip.id;
+	uint32_t pip = pipelineAt(PIPELINE_SPRITE, rt, blend);
+	if (pip != *lastPipeline) {
+		doorApplyPipeline(pip);
+		*lastPipeline = pip;
 		*scissorApplied = 0;
 		*paramsValid = 0;
 		*fxValid = 0;
 	}
 
-	sg_bindings b = {0};
-	b.vertex_buffers[0] = s_unitQuad;
-	b.vertex_buffers[1] = s_srcSprite;
-	b.vertex_buffer_offsets[1] = s_srcSpriteBase
-		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dSpriteInstance);
-	b.views[VIEW_spriteTex] = (sg_view){ .id = view };
-	b.samplers[SMP_spriteSmp] = s_smp[samplerOf(cmd)];
-	sg_apply_bindings(&b);
+	applyBindings(s_unitQuad, s_srcSprite, 0,
+		s_srcSpriteBase + (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dSpriteInstance),
+		VIEW_spriteTex, view, SMP_spriteSmp, s_smp[samplerOf(cmd)]);
 
 	if (!*scissorApplied) {
 		applyScissor(cmd, fbW, fbH);
@@ -1165,17 +1105,16 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	const float *spriteScope = scopeOf(cmd);
 	if (spriteScope) { sp.shift[0] = spriteScope[0]; sp.shift[1] = spriteScope[1]; }
 	copyClipParams(sp.clipU, sp.clipV, cmd);
-	sg_range u = { .ptr = &sp, .size = sizeof(sp) };
-	sg_apply_uniforms(UB_sprite_params, &u);
+	doorApplyUniforms(UB_sprite_params, (const uint8_t *)&sp, (int64_t)sizeof(sp));
 
-	sg_draw(0, 6, count);
+	doorDraw(0, 6, count);
 	s_drawCallCount++;
 #ifdef VOID_PROFILER
 	s_frameSpriteInstances += count;
 #endif
 }
 
-// One unified-UI run: the unit quad at slot 0, this run's instances at slot 1, one sg_draw
+// One unified-UI run: the unit quad at slot 0, this run's instances at slot 1, one draw
 // for the whole run. Every mode shares this program, which is the point — a card, its label
 // and its image are one draw instead of three, and the mode lives in a per-instance lane
 // rather than in a pipeline.
@@ -1189,23 +1128,18 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	int count = (int)cmd[CMD_INSTANCE_COUNT];
 	if (count <= 0) { return; }
 
-	sg_pipeline pip = pipelineAt(PIPELINE_UI, rt, blend);
-	if (pip.id != *lastPipeline) {
-		sg_apply_pipeline(pip);
-		*lastPipeline = pip.id;
+	uint32_t pip = pipelineAt(PIPELINE_UI, rt, blend);
+	if (pip != *lastPipeline) {
+		doorApplyPipeline(pip);
+		*lastPipeline = pip;
 		*scissorApplied = 0;
 		*paramsValid = 0;
 		*fxValid = 0;
 	}
 
-	sg_bindings b = {0};
-	b.vertex_buffers[0] = s_unitQuad;
-	b.vertex_buffers[1] = s_srcUi;
-	b.vertex_buffer_offsets[1] = s_srcUiBase
-		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dUiInstance);
-	b.views[VIEW_uiTex] = (sg_view){ .id = view };
-	b.samplers[SMP_uiSmp] = s_smp[samplerOf(cmd)];
-	sg_apply_bindings(&b);
+	applyBindings(s_unitQuad, s_srcUi, 0,
+		s_srcUiBase + (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dUiInstance),
+		VIEW_uiTex, view, SMP_uiSmp, s_smp[samplerOf(cmd)]);
 
 	if (!*scissorApplied) {
 		applyScissor(cmd, fbW, fbH);
@@ -1220,8 +1154,7 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	const float *uiScope = scopeOf(cmd);
 	if (uiScope) { up.shift[0] = uiScope[0]; up.shift[1] = uiScope[1]; }
 	copyClipParams(up.clipU, up.clipV, cmd);
-	sg_range u = { .ptr = &up, .size = sizeof(up) };
-	sg_apply_uniforms(UB_ui_params, &u);
+	doorApplyUniforms(UB_ui_params, (const uint8_t *)&up, (int64_t)sizeof(up));
 	ui_fx_t tu = {0};
 	memcpy(tu.gammaRatios, s_textGamma, sizeof(tu.gammaRatios));
 	tu.textParams[0] = s_textContrast;
@@ -1233,10 +1166,9 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 		memcpy(tu.colorKey, fx + 20, sizeof(tu.colorKey));
 		tu.effectParams[0] = 1.0f;
 	}
-	sg_range t = { .ptr = &tu, .size = sizeof(tu) };
-	sg_apply_uniforms(UB_ui_fx, &t);
+	doorApplyUniforms(UB_ui_fx, (const uint8_t *)&tu, (int64_t)sizeof(tu));
 
-	sg_draw(0, 6, count);
+	doorDraw(0, 6, count);
 	s_drawCallCount++;
 #ifdef VOID_PROFILER
 	s_frameUiInstances += count;
@@ -1253,10 +1185,10 @@ static void runCommands(const float *commands, int commandCount,
 	int sizeDepth = 0;
 	const int baseTarget = doorPassState() == DOOR_PASS_TARGET;
 
-	// A uniform block that has not changed is not re-applied. On WebGPU and Metal every
-	// sg_apply_uniforms costs at least 256 bytes of the per-frame uniform buffer whatever
-	// the payload (sokol_gfx.h:2014-2023, VOID2D.md "Web and WebGPU"), and in a UI frame the
-	// viewport and the colour pipeline are the same for almost every draw. The display list
+	// A uniform block that has not changed is not re-applied. Every doorApplyUniforms costs
+	// 256 bytes of the per-frame uniform buffer whatever the payload, as sokol's WebGPU and
+	// Metal uniforms do (sokol_gfx.h:2014-2023, VOID2D.md "Web and WebGPU"), and in a UI
+	// frame the viewport and the colour pipeline are the same for almost every draw. The display list
 	// is what makes this visible: before it, each draw applied both blocks unconditionally.
 	void2d_params_t lastParams;
 	void2d_fx_t lastFx;
@@ -1283,7 +1215,7 @@ static void runCommands(const float *commands, int commandCount,
 			void2dBlur(void2dCommandView(cmd), cmd[CMD_ARG0], cmd[CMD_ARG1], (int)cmd[CMD_BLEND]);
 			// It applied its own pipeline and bindings, so everything this loop remembers about
 			// what is bound is now wrong. A Draw after a Blur in the same pass would otherwise
-			// skip its own `sg_apply_pipeline` and draw the quad with the blur pipeline.
+			// skip its own `doorApplyPipeline` and draw the quad with the blur pipeline.
 			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
 			continue;
 		}
@@ -1317,7 +1249,7 @@ static void runCommands(const float *commands, int commandCount,
 
 		int blend = (int)cmd[CMD_BLEND];
 		uint32_t view = void2dCommandView(cmd);
-		if (view == 0) view = s_whiteView.id;
+		if (view == 0) view = s_whiteView;
 
 		// The pipeline branch comes BEFORE the vertex-count guard: a sprite run carries an
 		// instance range and a vertex count of zero, so testing the vertex count first would
@@ -1336,21 +1268,18 @@ static void runCommands(const float *commands, int commandCount,
 
 		int count = (int)cmd[CMD_VERTEX_COUNT];
 		if (count <= 0) continue;
-		sg_pipeline pip = pipelineAt(PIPELINE_VERTEX, rt, blend);
-		if (pip.id != lastPipeline) {
-			sg_apply_pipeline(pip);
-			lastPipeline = pip.id;
-			// sokol resets the scissor and the bindings when a pipeline is applied.
+		uint32_t pip = pipelineAt(PIPELINE_VERTEX, rt, blend);
+		if (pip != lastPipeline) {
+			doorApplyPipeline(pip);
+			lastPipeline = pip;
+			// Applying a pipeline resets the scissor and the bindings, as sokol does.
 			scissorApplied = 0;
 			paramsValid = 0;
 			fxValid = 0;
 		}
-		sg_bindings b = {0};
-		b.vertex_buffers[0] = s_srcVertex;
-		b.vertex_buffer_offsets[0] = s_srcVertexBase + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
-		b.views[VIEW_tex] = (sg_view){ .id = view };
-		b.samplers[SMP_smp] = s_smp[samplerOf(cmd)];
-		sg_apply_bindings(&b);
+		applyBindings(s_srcVertex, 0,
+			s_srcVertexBase + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float), 0,
+			VIEW_tex, view, SMP_smp, s_smp[samplerOf(cmd)]);
 
 		// After a pipeline change the scissor is no longer in force, and the clip a command
 		// carries is the one displayList.ms recorded for it.
@@ -1387,8 +1316,7 @@ static void runCommands(const float *commands, int commandCount,
 		if (vertexScope) { vp.shift[0] = vertexScope[0]; vp.shift[1] = vertexScope[1]; }
 		copyClipParams(vp.clipU, vp.clipV, cmd);
 		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {
-			sg_range u = { .ptr = &vp, .size = sizeof(vp) };
-			sg_apply_uniforms(UB_void2d_params, &u);
+			doorApplyUniforms(UB_void2d_params, (const uint8_t *)&vp, (int64_t)sizeof(vp));
 			lastParams = vp;
 			paramsValid = 1;
 		}
@@ -1409,13 +1337,12 @@ static void runCommands(const float *commands, int commandCount,
 		fxu.textParams[0] = s_textContrast;
 		fxu.sourceParams[0] = (premultiplied && !noEffect) ? 1.0f : 0.0f;
 		if (!fxValid || memcmp(&fxu, &lastFx, sizeof(fxu)) != 0) {
-			sg_range uf = { .ptr = &fxu, .size = sizeof(fxu) };
-			sg_apply_uniforms(UB_void2d_fx, &uf);
+			doorApplyUniforms(UB_void2d_fx, (const uint8_t *)&fxu, (int64_t)sizeof(fxu));
 			lastFx = fxu;
 			fxValid = 1;
 		}
 
-		sg_draw(0, count, 1);
+		doorDraw(0, count, 1);
 		s_drawCallCount++;
 	}
 }

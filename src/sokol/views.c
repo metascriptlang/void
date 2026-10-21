@@ -146,6 +146,9 @@ int voidViewsFbWidth(void) { return currentSlot("fbWidth")->w; }
 int voidViewsFbHeight(void) { return currentSlot("fbHeight")->h; }
 float voidViewsDpiScale(void) { return currentSlot("dpiScale")->scale; }
 
+void *voidViewsCurrentSurface(void) { return currentSlot("beginPass")->surface; }
+
+#if !defined(_WIN32)
 sg_swapchain voidViewsSwapchain(void) {
 	VoidViewSlot *s = currentSlot("beginPass");
 	sg_swapchain swapchain = {0};
@@ -156,6 +159,7 @@ sg_swapchain voidViewsSwapchain(void) {
 	voidPlatformSurfaceSwapchain(s->surface, &swapchain);
 	return swapchain;
 }
+#endif
 
 void voidViewsPresent(void) {
 	VoidViewSlot *s = currentSlot("commit");

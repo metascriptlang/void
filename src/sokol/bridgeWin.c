@@ -13,8 +13,9 @@
 #include "bridge.h"
 #include "views.h"
 #include "windowSurface.h"
+#include "../gpu/door.h"
+#include "../platform/swapchain.h"
 
-#include "sokol_log.h"
 #include "appWindow.h"
 #include "../platform/win32/window.h"
 #ifdef VOID_PROFILER
@@ -39,15 +40,14 @@ static int s_reqH = 0;
 static int s_generation = 1;
 static int s_contextLost = 0;
 
-static void setupWindowGfx(void);
 static void setupViewsGfx(void);
 
 int voidGpuGeneration(void) { return s_generation; }
 void voidLoseContext(void) { s_contextLost = 1; }
 
 static void restoreContext(void) {
-	sg_shutdown();
-	if (s_driver == DRIVER_WINDOW) setupWindowGfx();
+	doorShutdown();
+	if (s_driver == DRIVER_WINDOW) voidWindowDoorSetup();
 	else setupViewsGfx();
 	s_generation++;
 	s_contextLost = 0;
@@ -200,7 +200,7 @@ static void _event(const VoidAppEvent *e) {
 }
 
 static void _cleanup(void) {
-	sg_shutdown();
+	doorShutdown();
 	voidWindowSurfaceDestroy();
 }
 
@@ -233,6 +233,20 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 static ID3D11Device *s_device;
 static ID3D11DeviceContext *s_context;
 static IDXGIFactory2 *s_factory;
+
+// What the last doorSetup made screen pipelines for; every swapchain handed to the door must match.
+static int s_doorSamples;
+static bool s_doorDepth;
+
+void *voidD3d11Device(void) { return s_device; }
+void *voidD3d11Context(void) { return s_context; }
+
+static void setupDoor(int32_t depthFormat, int samples) {
+	doorSetup(s_device, s_context, DOOR_PIXEL_FORMAT_BGRA8, depthFormat, samples);
+	if (!doorValid()) voidFail("doorSetup on the D3D11 device failed");
+	s_doorSamples = samples;
+	s_doorDepth = depthFormat != DOOR_PIXEL_FORMAT_NONE;
+}
 
 typedef struct {
 	IDXGISwapChain1 *swapChain;
@@ -273,15 +287,7 @@ void voidPlatformDeviceEnsure(void) {
 }
 
 static void setupViewsGfx(void) {
-	sg_desc d = {0};
-	d.environment.d3d11.device = s_device;
-	d.environment.d3d11.device_context = s_context;
-	d.environment.defaults.color_format = SG_PIXELFORMAT_BGRA8;
-	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = voidViewsSampleCount();
-	d.logger.func = slog_func;
-	sg_setup(&d);
-	if (!sg_isvalid()) voidFail("sg_setup on the D3D11 device failed");
+	setupDoor(DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
 }
 
 void voidPlatformRunInit(msClosure init) { call0(init); }
@@ -377,18 +383,6 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	return 1;
 }
 
-void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
-	WinSurface *s = (WinSurface *)surface;
-	swapchain->color_format = SG_PIXELFORMAT_BGRA8;
-	if (s->msaaTarget) {
-		swapchain->d3d11.render_view = s->msaaTarget;
-		swapchain->d3d11.resolve_view = s->target;
-	} else {
-		swapchain->d3d11.render_view = s->target;
-	}
-	swapchain->d3d11.depth_stencil_view = s->depthTarget;
-}
-
 void voidPlatformSurfacePresent(void *surface) {
 	HRESULT hr = IDXGISwapChain1_Present(((WinSurface *)surface)->swapChain, 1, 0);
 	if (FAILED(hr)) voidFail("IDXGISwapChain1::Present failed: 0x%08lx", (unsigned long)hr);
@@ -435,27 +429,8 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	makeTarget(&s_window);
 }
 
-sg_environment voidWindowEnvironment(void) {
-	sg_environment e = {0};
-	e.defaults.color_format = SG_PIXELFORMAT_BGRA8;
-	e.defaults.depth_format = SG_PIXELFORMAT_DEPTH;
-	e.defaults.sample_count = s_window.samples;
-	e.d3d11.device = s_device;
-	e.d3d11.device_context = s_context;
-	return e;
-}
-
-sg_swapchain voidWindowSwapchain(void) {
-	if (voidWin32Width() != s_window.w || voidWin32Height() != s_window.h) {
-		voidPlatformSurfaceResize(&s_window, voidWin32Width(), voidWin32Height());
-	}
-	sg_swapchain swapchain = {0};
-	swapchain.width = s_window.w;
-	swapchain.height = s_window.h;
-	swapchain.sample_count = s_window.samples;
-	swapchain.depth_format = SG_PIXELFORMAT_DEPTH;
-	voidPlatformSurfaceSwapchain(&s_window, &swapchain);
-	return swapchain;
+void voidWindowDoorSetup(void) {
+	setupDoor(DOOR_PIXEL_FORMAT_DEPTH, s_window.samples);
 }
 
 void voidWindowPresent(bool modal) {
@@ -477,21 +452,13 @@ void voidWindowSurfaceDestroy(void) {
 void *voidWindowSwapChain(void) { return s_window.swapChain; }
 #endif
 
-static void setupWindowGfx(void) {
-	sg_desc d = {0};
-	d.environment = voidWindowEnvironment();
-	d.logger.func = slog_func;
-	sg_setup(&d);
-	if (!sg_isvalid()) voidFail("sg_setup on the Void window failed");
-}
-
 __attribute__((noreturn)) static void noDriver(const char *op) {
 	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
 }
 
 void voidGfxSetup(void) {
 	switch (s_driver) {
-		case DRIVER_WINDOW: setupWindowGfx(); break;
+		case DRIVER_WINDOW: voidWindowDoorSetup(); break;
 		case DRIVER_VIEWS: break;
 		case DRIVER_NONE: noDriver("gfxSetup");
 	}
@@ -520,10 +487,58 @@ int voidKeyDown(int keycode) {
 	return s_keys[keycode] ? 1 : 0;
 }
 
-sg_swapchain voidDriverSwapchain(void) {
-	if (s_driver == DRIVER_WINDOW) return voidWindowSwapchain();
+// The surface the door's screen pass draws into, or NULL for the GL window, whose default
+// framebuffer has no view objects.
+static WinSurface *screenSurface(void) {
 	if (s_driver == DRIVER_NONE) noDriver("beginPass");
-	return voidViewsSwapchain();
+	WinSurface *s = NULL;
+	if (s_driver == DRIVER_VIEWS) {
+		s = (WinSurface *)voidViewsCurrentSurface();
+	} else {
+#if defined(SOKOL_D3D11)
+		if (voidWin32Width() != s_window.w || voidWin32Height() != s_window.h) {
+			voidPlatformSurfaceResize(&s_window, voidWin32Width(), voidWin32Height());
+		}
+		s = &s_window;
+#endif
+	}
+	if (s != NULL && (s->samples != s_doorSamples || (s->depthTarget != NULL) != s_doorDepth)) {
+		voidFail("the swapchain has %d samples %s depth, but screen pipelines are made for the "
+			"door's %d samples %s depth", s->samples, s->depthTarget ? "with" : "without",
+			s_doorSamples, s_doorDepth ? "with" : "without");
+	}
+	return s;
+}
+
+int32_t voidSwapchainWidth(void) {
+	const WinSurface *s = screenSurface();
+	return s ? s->w : voidWin32Width();
+}
+
+int32_t voidSwapchainHeight(void) {
+	const WinSurface *s = screenSurface();
+	return s ? s->h : voidWin32Height();
+}
+
+int32_t voidSwapchainSampleCount(void) {
+	const WinSurface *s = screenSurface();
+	return s ? s->samples : s_sampleCount;
+}
+
+void *voidSwapchainRenderView(void) {
+	const WinSurface *s = screenSurface();
+	if (s == NULL) return NULL;
+	return s->msaaTarget ? (void *)s->msaaTarget : (void *)s->target;
+}
+
+void *voidSwapchainResolveView(void) {
+	const WinSurface *s = screenSurface();
+	return s && s->msaaTarget ? (void *)s->target : NULL;
+}
+
+void *voidSwapchainDepthStencilView(void) {
+	const WinSurface *s = screenSurface();
+	return s ? (void *)s->depthTarget : NULL;
 }
 
 void voidDriverPresent(void) {

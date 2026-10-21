@@ -1,6 +1,6 @@
-// Void 2D — thin sokol primitives. The batcher LOGIC (vertex buffer,
+// Void 2D — thin GPU door primitives. The batcher LOGIC (vertex buffer,
 // quad/glyph geometry, flush orchestration) lives in MetaScript (src/void2d/draw.ms);
-// this file only exposes what FFI can't do: sokol resource calls. See docs/VOID2D.md.
+// this file only exposes the replay over the door's C ABI (src/gpu/door.h). See docs/VOID2D.md.
 #ifndef VOID2D_BATCHER_H
 #define VOID2D_BATCHER_H
 
@@ -8,16 +8,14 @@
 
 void void2dSetup(void);
 uint32_t void2dWhiteView(void);
-int32_t void2dProgramBase(void);
-int32_t void2dLayoutBase(void);
 void void2dSetPipeline(int32_t program, int32_t target, int32_t blend, uint32_t pipeline);
 
 // Replay one frame's display list (src/void2d/displayList.ms) into the pass that is already
 // open. This is the ONLY function in this file that issues a draw, and it is called once per
-// bracket, after the tree walk has finished — which is what makes "no sg_* call happens
+// bracket, after the tree walk has finished — which is what makes "no GPU call happens
 // while the tree is walked" a property of the code rather than a promise.
 //
-// The whole vertex stream is uploaded once, in a single sg_append_buffer, and each Draw
+// The whole vertex stream is uploaded once, in a single doorAppendBuffer, and each Draw
 // command is a range inside it. `commands` is commandCount records of COMMAND_FLOATS floats
 // and `effects` is effectCount records of EFFECT_FLOATS, both laid out by displayList.ms;
 // the layout constants are asserted to agree in void2dLayoutCheck below.
@@ -70,14 +68,14 @@ int void2dScissorMax(float edge, float scale);
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
 void void2dFrameBegin(void);
 
-// Runs once per sokol frame, immediately after sg_commit — void2dSetup registers it as the
+// Runs once per GPU frame, immediately after doorSubmit — void2dSetup registers it as the
 // bridge's commit hook, so no caller has to remember it. void2dFrameBegin opens a bracket and
 // a frame may hold several; only this closes the frame.
 void void2dFrameEnd(void);
 int void2dFrameSerial(void);
 
 // Frame counters, read by T1 and gated by T4 (docs/TESTING.md). GPUI counts none of them
-// (GPUI.md:62). `buffersAlive` is every sg_buffer this layer holds — one, now that the
+// (GPUI.md:62). `buffersAlive` is every buffer this layer holds — one, now that the
 // per-node static buffers are gone, which is what makes it constant in the node count.
 int void2dDrawCallCount(void);
 int void2dUploadCount(void);

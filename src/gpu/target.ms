@@ -341,7 +341,7 @@ function stopOnTooManyColors(call: string, colors: Readonly<Span<ColorAttachment
 	unreachable;
 }
 
-// Offscreen targets are single-sampled (door.c makes them with sample_count 1).
+// Offscreen targets are single-sampled (doorGpu.ms makes them with sampleCount 1).
 export function layoutOf(
 	colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment,
 ): TargetLayout {

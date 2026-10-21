@@ -6,7 +6,7 @@
 //
 // The state is a plain value; `bits()` packs it into the uint32 that the pipeline cache keys
 // on, the way Heaps' BitsBuilder packs Pass.bits, and `RenderState.fromBits` reads it back.
-// The members are sent to door.c as ordinals and mapped by its tables, in this order.
+// The members are sent to doorGpu.ms as ordinals and mapped by its tables, in this order.
 
 // h3d.mat.Data.Face; Both is not ported (sokol has no cull-all mode).
 export enum Face {
@@ -202,7 +202,7 @@ export function withBlendMode(this state: RenderState, mode: BlendMode): RenderS
 	};
 }
 
-// door.c's `blend.enabled`: keep the two rules the same.
+// doorGpu.ms's `blendEnabled`: keep the two rules the same.
 export function blends(this state: RenderState): boolean {
 	return !(state.blendSource == Blend.One && state.blendDestination == Blend.Zero
 		&& state.blendAlphaSource == Blend.One && state.blendAlphaDestination == Blend.Zero

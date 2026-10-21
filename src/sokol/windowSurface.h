@@ -8,11 +8,9 @@
 #include <windows.h>
 #include <stdbool.h>
 
-#include "sokol_gfx.h"
-
 void voidWindowSurfaceCreate(HWND hwnd, int samples);
-sg_environment voidWindowEnvironment(void);
-sg_swapchain voidWindowSwapchain(void);
+// doorSetup with this surface's device and formats.
+void voidWindowDoorSetup(void);
 void voidWindowPresent(bool modal);
 void voidWindowSurfaceDestroy(void);
 

@@ -1,6 +1,5 @@
-// Void sokol bridge — thin 1:1 wrappers over sokol_gfx and the window.
-// Render sequencing lives in MetaScript (src/void2d, src/void3d); this file only
-// builds sokol descriptor structs (which FFI can't) and maps handles ↔ uint32.
+// Void bridge — the window, the frame sequence and two resource helpers over the GPU door
+// (src/gpu/door.h). Render sequencing lives in MetaScript (src/void2d, src/void3d).
 #ifndef VOID_SOKOL_BRIDGE_H
 #define VOID_SOKOL_BRIDGE_H
 
@@ -73,6 +72,7 @@ void voidEmbedPumpMessages(void);
 
 int voidGpuGeneration(void);
 void voidLoseContext(void);
+void voidCommit(void);
 void voidEmbedLoseContext(void);
 void voidEmbedDetach(void);
 void voidEmbedSetAssetRoot(const char *path);
@@ -86,7 +86,7 @@ int voidFbHeight(void);
 float voidDpiScale(void);
 int voidKeyDown(int keycode);
 
-// Resource creation — sokol handles returned as uint32 ids (0 = invalid).
+// Resource creation — door ids (0 = invalid).
 uint32_t voidMakeImage(const void *rgba, int w, int h);
 uint32_t voidMakeView(uint32_t image);
 

@@ -5,7 +5,7 @@
 #include "../../deps/sokol/sokol_time.h"
 static int s_clockReady;
 #endif
-#include "../../deps/sokol/sokol_gfx.h"
+#include "../gpu/door.h"
 #include "../sokol/bridge.h"
 #include "frameClock.h"
 
@@ -91,15 +91,13 @@ void voidProfileCommit(int32_t serial, const int32_t *void2dCounters) {
 	s_marks[VOID_MARK_COMMIT] = voidClockNow();
 	s_serial = serial;
 	for (int i = 0; i < VOID_COUNTER_VOID2D_SLOTS; i++) { s_counters[i] = void2dCounters[i]; }
-	s_counters[VOID_COUNTER_SOKOL_MEASURED] = sg_isvalid() ? 1 : 0;
-	if (sg_isvalid()) {
-		const sg_frame_stats f = sg_query_stats().prev_frame;
-		s_counters[VOID_COUNTER_SOKOL_DRAWS] = (int32_t)f.num_draw;
-		s_counters[VOID_COUNTER_SOKOL_PIPELINES] = (int32_t)f.num_apply_pipeline;
-		s_counters[VOID_COUNTER_SOKOL_PASSES] = (int32_t)f.num_passes;
-		s_counters[VOID_COUNTER_SOKOL_BUFFER_BYTES] =
-			(int32_t)(f.size_update_buffer + f.size_append_buffer);
-		s_counters[VOID_COUNTER_SOKOL_IMAGE_BYTES] = (int32_t)f.size_update_image;
+	s_counters[VOID_COUNTER_SOKOL_MEASURED] = doorValid();
+	if (doorValid()) {
+		s_counters[VOID_COUNTER_SOKOL_DRAWS] = doorFrameStat(DOOR_STAT_DRAWS);
+		s_counters[VOID_COUNTER_SOKOL_PIPELINES] = doorFrameStat(DOOR_STAT_PIPELINES);
+		s_counters[VOID_COUNTER_SOKOL_PASSES] = doorFrameStat(DOOR_STAT_PASSES);
+		s_counters[VOID_COUNTER_SOKOL_BUFFER_BYTES] = doorFrameStat(DOOR_STAT_BUFFER_BYTES);
+		s_counters[VOID_COUNTER_SOKOL_IMAGE_BYTES] = doorFrameStat(DOOR_STAT_IMAGE_BYTES);
 	} else {
 		for (int i = VOID_COUNTER_SOKOL_DRAWS; i < VOID_COUNTER_SOKOL_MEASURED; i++) {
 			s_counters[i] = 0;

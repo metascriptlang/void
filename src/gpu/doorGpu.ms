@@ -1,4 +1,4 @@
-// The GPU door on Void's WebGPU-shaped layer (docs/GPU.md): door.c's contract, kept so the
+// The GPU door on Void's WebGPU-shaped layer (docs/GPU.md): the door's contract, kept so the
 // render layers above see no change, with sokol's own mechanisms for what WebGPU leaves to the
 // caller (uniform ring, bind group cache).
 
@@ -35,7 +35,7 @@ import {
 	GPU_UNIFORM_GROUP,
 	GPU_RESOURCE_GROUP,
 } from "../webgpu/types.ms";
-import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
+import { GPUNativeEnvironment, getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import {
 	voidSwapchainDepthStencilView,
 	voidSwapchainHeight,
@@ -57,7 +57,8 @@ const BIND_GROUP_CACHE = 1024;
 export struct DoorLayout { buffers: GPUVertexBufferLayout[2]; }
 
 export struct DoorProgram {
-	module: () => GPUShaderModuleDescriptor;
+	source: (index: int32) => GPUShaderModuleDescriptor;
+	index: int32;
 	layout: int32;
 	uniformMask: uint32;
 	uniformBytes: int32[8];
@@ -113,13 +114,9 @@ function fail(message: string): never {
 // before a new setup are stale, which doorContextGeneration tells the layers above.
 @exportName("doorSetup")
 export function doorSetup(nativeDevice: Ptr<void>, nativeContext: Ptr<void>, colorFormat: int32, depthFormat: int32, sampleCount: int32): void {
-	device = requestDevice({
-		device: nativeDevice,
-		context: nativeContext,
-		colorFormat: textureFormatOf(colorFormat),
-		depthFormat: textureFormatOf(depthFormat),
-		sampleCount,
-	});
+	let environment: GPUNativeEnvironment = { device: nativeDevice, context: nativeContext, colorFormat: textureFormatOf(colorFormat), sampleCount };
+	if (depthFormat != FORMAT_NONE) { environment.depthFormat = textureFormatOf(depthFormat); }
+	device = requestDevice(environment);
 	shaders.length = 0;
 	pipelines.length = 0;
 	bindCache.length = 0;
@@ -137,6 +134,22 @@ export function doorShutdown(): void {
 	if (device.id == 0) { return; }
 	device.destroy();
 	device = { id: 0, queue: { id: 0 } };
+}
+
+// sokol's sg_frame_stats, the members frameClock.c reads: counted through a frame and handed
+// over at commit as the previous frame's (sokol_gfx.h _sg_update_stats).
+export const DOOR_STAT_DRAWS = 0;
+export const DOOR_STAT_PIPELINES = 1;
+export const DOOR_STAT_PASSES = 2;
+export const DOOR_STAT_BUFFER_BYTES = 3;
+export const DOOR_STAT_IMAGE_BYTES = 4;
+let frameStats: int32[5] = [0, 0, 0, 0, 0];
+let lastFrameStats: int32[5] = [0, 0, 0, 0, 0];
+
+@exportName("doorFrameStat")
+export function doorFrameStat(which: int32): int32 {
+	if (which < 0 || which > DOOR_STAT_IMAGE_BYTES) { fail("no frame stat " + String(which)); }
+	return lastFrameStats[which];
 }
 
 @exportName("doorValid")
@@ -187,11 +200,11 @@ export function doorRegisterLayouts(entries: Readonly<Span<DoorLayout>>): int32 
 	return base;
 }
 
-export function doorRegisterPrograms(modules: Readonly<Span<() => GPUShaderModuleDescriptor>>, layoutIds: Readonly<Span<int32>>): int32 {
-	if (modules.length != layoutIds.length) { fail("registerPrograms got " + String(modules.length) + " modules for " + String(layoutIds.length) + " layouts"); }
+// `source(i)` builds the module of program i for i in 0..layoutIds.length.
+export function doorRegisterPrograms(source: (index: int32) => GPUShaderModuleDescriptor, layoutIds: Readonly<Span<int32>>): int32 {
 	const base = programs.length as int32;
-	for (let i = 0; i < modules.length; i++) {
-		const reflected = modules[i]();
+	for (let i = 0; i < layoutIds.length; i++) {
+		const reflected = source(i as int32);
 		let uniformMask: uint32 = 0;
 		let textureMask: uint32 = 0;
 		let samplerMask: uint32 = 0;
@@ -207,7 +220,7 @@ export function doorRegisterPrograms(modules: Readonly<Span<() => GPUShaderModul
 				samplerMask |= (1 as uint32) << ((binding.binding - 32) as uint32);
 			}
 		}
-		programs.push({ module: modules[i], layout: layoutIds[i], uniformMask, uniformBytes: bytes, textureMask, samplerMask });
+		programs.push({ source, index: i as int32, layout: layoutIds[i], uniformMask, uniformBytes: bytes, textureMask, samplerMask });
 	}
 	return base;
 }
@@ -262,7 +275,8 @@ export function doorLayoutPerInstance(layout: int32): int32 {
 // ---- resources ----
 
 export function doorMakeShader(program: int32): uint32 {
-	const module = device.createShaderModule(programAt(program).module());
+	const record = programAt(program);
+	const module = device.createShaderModule(record.source(record.index));
 	if (module.id == 0) { return 0; }
 	shaders.push({ module, program });
 	return module.id;
@@ -516,6 +530,7 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (bytes <= 0 || !buffer.isAlive() || bytes > buffer.size()) { return 0; }
 	device.queue.writeBuffer(buffer, 0, data);
+	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes as int32;
 	return 1;
 }
 
@@ -536,6 +551,7 @@ export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64
 	const bytes = data.length as int64;
 	if (offset + bytes > buffer.size()) { return -1; }
 	if (bytes > 0) { device.queue.writeBuffer(buffer, offset, data); }
+	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes as int32;
 	appendCursors[at].position = (offset + bytes + 3) & ~(3 as int64);
 	return offset;
 }
@@ -579,6 +595,7 @@ export function doorUpdateTextureOf<T>(id: uint32, data: Readonly<Span<T>>): voi
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (bytes % (height as int64) != 0) { fail("updateTexture of " + String(bytes) + " bytes is not whole rows of a texture " + String(height) + " high"); }
 	const rowBytes = bytes / (height as int64);
+	frameStats[DOOR_STAT_IMAGE_BYTES] += bytes as int32;
 	device.queue.writeTexture({ texture }, data, { offset: 0, bytesPerRow: rowBytes as int32, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 });
 }
 
@@ -591,10 +608,22 @@ export function doorViewImage(view: uint32): uint32 {
 	return v.isAlive() ? v.texture().id : 0;
 }
 
+// sokol's sg_query_image_usage(sg_query_view_image(view)).color_attachment.
+@exportName("doorViewIsColorAttachment")
+export function doorViewIsColorAttachment(view: uint32): int32 {
+	const image = doorViewImage(view);
+	if (image == 0) { return 0; }
+	const texture: GPUTexture = { id: image };
+	const format = texture.format();
+	const depth = format == "depth32float" || format == "depth24plus-stencil8";
+	return !depth && (texture.usage() & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0 ? 1 : 0;
+}
+
 // ---- draw ----
 
 @exportName("doorApplyPipeline")
 export function doorApplyPipeline(pipeline: uint32): void {
+	frameStats[DOOR_STAT_PIPELINES]++;
 	current = pipelineIndex(pipeline);
 	pass.setPipeline(pipelines[current].pipeline);
 	uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -681,6 +710,7 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 
 @exportName("doorDraw")
 export function doorDraw(base: int32, count: int32, instances: int32): void {
+	frameStats[DOOR_STAT_DRAWS]++;
 	if (current >= 0 && pipelines[current].indexed) {
 		pass.drawIndexed(count, instances, base, 0, 0);
 	} else {
@@ -736,6 +766,7 @@ export function doorBeginPass(d: Readonly<Span<uint32>>, clear: Readonly<Span<fl
 		};
 	}
 	pass = frameEncoder().beginRenderPass(descriptor);
+	frameStats[DOOR_STAT_PASSES]++;
 	openPass = DOOR_PASS_TARGET;
 	for (let i = 0; i < 4; i++) { passViews[i] = d[i]; }
 	passViews[4] = depthView;
@@ -749,6 +780,7 @@ export function doorBeginColorPass(view: uint32, red: float32, green: float32, b
 	let descriptor = { label: null } as GPURenderPassDescriptor;
 	descriptor.colorAttachments[0] = { view: { id: view }, resolveTarget: { id: 0 }, clearValue: { r: red, g: green, b: blue, a: alpha }, loadOp: "clear", storeOp: "store" };
 	pass = frameEncoder().beginRenderPass(descriptor);
+	frameStats[DOOR_STAT_PASSES]++;
 	openPass = DOOR_PASS_TARGET;
 	passViews = [view, 0, 0, 0, 0];
 	current = -1;
@@ -772,6 +804,7 @@ export function doorBeginScreenPass(red: float32, green: float32, blue: float32,
 		descriptor.depthStencilAttachment = { view: depth.createView({ label: null }), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "discard" };
 	}
 	pass = frameEncoder().beginRenderPass(descriptor);
+	frameStats[DOOR_STAT_PASSES]++;
 	openPass = DOOR_PASS_SCREEN;
 	passViews = [0, 0, 0, 0, 0];
 	current = -1;
@@ -792,6 +825,8 @@ export function doorSubmit(): void {
 	device.queue.submit(frameEncoder().finish());
 	encoder = { id: 0 };
 	uniformCursor = 0;
+	lastFrameStats = frameStats;
+	frameStats = [0, 0, 0, 0, 0];
 }
 
 @exportName("doorPassState")
@@ -811,13 +846,14 @@ export function doorFormatRenderable(format: int32): int32 {
 }
 
 function pixelFormatOf(format: GPUTextureFormat, role: string): int32 {
+	if ((format as string) == "") { return FORMAT_NONE; }
 	return match (format) {
 		"rgba8unorm" => 2,
 		"depth32float" => 3,
 		"bgra8unorm" => 4,
 		"depth24plus-stencil8" => 5,
 		"rgba16float" => 6,
-		_ => fail("the environment's default " + role + " is " + format + ", which PixelFormat does not name"),
+		_ => { fail("the environment's default " + role + " is " + format + ", which PixelFormat does not name"); },
 	};
 }
 

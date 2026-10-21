@@ -272,7 +272,7 @@ export function hasRoomFor(this data: MeshData, count: int32): boolean {
 		count <= (MAX_MESH_VERTICES - data.vertices.length) / width;
 }
 
-// Three vertex indices, counter-clockwise as seen from the front (door.c sets CCW winding).
+// Three vertex indices, counter-clockwise as seen from the front (doorGpu.ms sets CCW winding).
 // Returns the index of the triangle it added, as addVertex returns the index of its vertex.
 export function addTriangle(
 	ref data: MeshData,

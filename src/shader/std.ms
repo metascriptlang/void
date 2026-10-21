@@ -1763,7 +1763,7 @@ export struct Texture2d {
 	texels: float32[];
 }
 
-// The sampler a void3d texture is drawn with (src/gpu/door.c doorMakeSampler): one filter for
+// The sampler a void3d texture is drawn with (src/gpu/doorGpu.ms doorMakeSampler): one filter for
 // magnifying and minifying, one wrap for both axes, no mip levels.
 export struct Sampler {
 	nearest: boolean;

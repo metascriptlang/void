@@ -2,8 +2,8 @@
 // is the reason no gate of the last three sessions can be re-run by anyone (docs/TESTING.md).
 //
 // The D3D11 path is that file's, unchanged in mechanism: reach the resolved swapchain buffer
-// through sokol's native-handle getters, clone its desc as STAGING | CPU_ACCESS_READ,
-// CopyResource, Map. It runs after sg_commit(), by which point sokol_gfx has resolved the
+// through the bridge's device getters, clone its desc as STAGING | CPU_ACCESS_READ,
+// CopyResource, Map. It runs after the frame's submit, by which point the door has resolved the
 // swapchain pass into that buffer, so the bytes are the frame that was just drawn.
 //
 // The BGRA -> RGBA swizzle below is hand-written and nothing in the renderer checks it.
@@ -29,8 +29,8 @@
 	#define COBJMACROS
 	#include <d3d11.h>
 	#include <dxgi.h>
-	const void *sg_d3d11_device(void);
-	const void *sg_d3d11_device_context(void);
+	void *voidD3d11Device(void);
+	void *voidD3d11Context(void);
 	void *voidWindowSwapChain(void);
 	static const GUID VOID_TEXTURE2D_IID =
 		{0x6f15aaf2, 0xd208, 0x4e89, {0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c}};
@@ -93,8 +93,8 @@ int voidCaptureBackend(void) {
 
 #if defined(VOID_CAPTURE_D3D11)
 static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
-	ID3D11Device *device = (ID3D11Device *)sg_d3d11_device();
-	ID3D11DeviceContext *context = (ID3D11DeviceContext *)sg_d3d11_device_context();
+	ID3D11Device *device = (ID3D11Device *)voidD3d11Device();
+	ID3D11DeviceContext *context = (ID3D11DeviceContext *)voidD3d11Context();
 	if (!swapChain || !device || !context) return 0;
 	ID3D11Texture2D *back = NULL;
 	if (FAILED(IDXGISwapChain_GetBuffer(swapChain, (UINT)buffer, &VOID_TEXTURE2D_IID, (void **)&back))) return 0;

@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#include "../../deps/sokol/sokol_gfx.h"
-
 #define DOOR_UNIFORM_SLOT_TABLE_LENGTH 8
 static const int32_t DOOR_UNIFORM_SLOTS = DOOR_UNIFORM_SLOT_TABLE_LENGTH;
 
@@ -52,81 +50,60 @@ enum {
 	DOOR_PASS_SCREEN = 2,
 };
 
-typedef const sg_shader_desc *(*door_shader_fn)(sg_backend backend);
+// What C layers call; MetaScript defines each (src/gpu/doorGpu.ms, `@exportName`). A pointer
+// and int64 pair is one MetaScript Span: the length counts elements.
+static const int32_t DOOR_BUFFER_VERTEX = 1;
+static const int32_t DOOR_BUFFER_INDEX = 2;
+static const int32_t DOOR_BUFFER_STREAM = 4;
+static const int32_t DOOR_PIXEL_FORMAT_NONE = 0;
+static const int32_t DOOR_PIXEL_FORMAT_RGBA8 = 2;
+static const int32_t DOOR_PIXEL_FORMAT_DEPTH = 3;
+static const int32_t DOOR_PIXEL_FORMAT_BGRA8 = 4;
+static const int32_t DOOR_PIXEL_FORMAT_DEPTH_STENCIL = 5;
+static const int32_t DOOR_PIXEL_FORMAT_R8 = 7;
 
-// Registers `count` vertex layouts and returns the first id. Refuses (prints, aborts) when
-// the registry cannot hold them.
-int32_t doorRegisterLayouts(const sg_vertex_layout_state *layouts, int32_t count);
+// doorFrameStat: the previous frame's counts, as sokol's sg_frame_stats prev_frame.
+static const int32_t DOOR_STAT_DRAWS = 0;
+static const int32_t DOOR_STAT_PIPELINES = 1;
+static const int32_t DOOR_STAT_PASSES = 2;
+static const int32_t DOOR_STAT_BUFFER_BYTES = 3;
+static const int32_t DOOR_STAT_IMAGE_BYTES = 4;
 
-// Registers `count` programs — each a sokol-shdc table entry and the layout id it reads —
-// and returns the first program id. A program id is what a PipelineKey holds and what
-// shader making and introspection take.
-int32_t doorRegisterPrograms(const door_shader_fn *shaders, const int32_t *layouts, int32_t count);
+void doorSetup(void *device, void *context, int32_t colorFormat, int32_t depthFormat, int32_t sampleCount);
+void doorShutdown(void);
+int32_t doorValid(void);
+int32_t doorContextGeneration(void);
+int32_t doorFrameStat(int32_t which);
+int32_t doorOriginTopLeft(void);
 
-// The layout a registered program reads; the registration's own answer, so a layer's
-// MetaScript map of its programs can be held against it.
-int32_t doorProgramLayout(int32_t program);
-int32_t doorProgramCount(void);
+uint32_t doorMakeBuffer(int32_t usage, const uint8_t *data, int64_t length, int64_t size);
+int32_t doorUpdateBuffer(uint32_t buffer, const uint8_t *data, int64_t length);
+int64_t doorAppendBuffer(uint32_t buffer, const uint8_t *data, int64_t length);
+void doorDestroyBuffer(uint32_t buffer);
+int32_t doorBufferAlive(uint32_t buffer);
 
-uint32_t doorMakeShader(int32_t program);
-// Bit n set when the program declares a uniform block at slot n, read off its shader desc.
-uint32_t doorUniformSlotMask(int32_t program);
-// Bytes of the block the program declares at `slot`, 0 for none; needs no GPU.
-int32_t doorUniformBlockBytes(int32_t program, int32_t slot);
-// Bit n set when the program samples a texture at view slot n, or declares sampler slot n;
-// read off the D3D11 desc like doorUniformBlockBytes, so it needs no GPU.
-uint32_t doorTextureSlotMask(int32_t program);
-uint32_t doorSamplerSlotMask(int32_t program);
-// Floats per vertex (or per instance) of vertex buffer `buffer` in the registered layout
-// `layout`, or -1 for a format that is not float.
-int32_t doorLayoutFloats(int32_t layout, int32_t buffer);
-// 1 when the registered layout's vertex buffer 0 steps per instance (particle, billboard).
-int32_t doorLayoutPerInstance(int32_t layout);
-uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length);
-uint32_t doorMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
-uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format);
-uint32_t doorMakeAttachmentView(uint32_t image, int32_t format);
+uint32_t doorMakeTexture(int32_t width, int32_t height, int32_t format, const uint8_t *data, int64_t length);
+void doorUpdateTexture(uint32_t image, const uint8_t *data, int64_t length);
 uint32_t doorMakeTextureView(uint32_t image);
+uint32_t doorViewImage(uint32_t view);
+int32_t doorViewIsColorAttachment(uint32_t view);
 uint32_t doorMakeSampler(int32_t filter, int32_t wrap);
 int32_t doorImageAlive(uint32_t image);
 int32_t doorViewAlive(uint32_t view);
-int32_t doorSamplerAlive(uint32_t sampler);
-// Destruction of what the door makes. Buffers, plain and dynamic images and the draw-path
-// calls (apply, uniforms, draw) belong to the layer that made them (void3d: gpu3d.c).
-void doorDestroyShader(uint32_t shader);
-void doorDestroyPipeline(uint32_t pipeline);
 void doorDestroyImage(uint32_t image);
 void doorDestroyView(uint32_t view);
 void doorDestroySampler(uint32_t sampler);
 
-void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clear, int64_t clearLength);
+void doorApplyPipeline(uint32_t pipeline);
+void doorApplyBindings(const uint32_t *bindings, int64_t length, const int32_t *vertexOffsets, int64_t offsetCount);
+void doorApplyUniforms(int32_t slot, const uint8_t *data, int64_t length);
+void doorApplyScissor(int32_t x, int32_t y, int32_t width, int32_t height);
+void doorDraw(int32_t base, int32_t count, int32_t instances);
+
 void doorBeginScreenPass(float red, float green, float blue, float alpha);
 void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha);
 void doorEndPass(void);
-void doorCommit(void);
+void doorSubmit(void);
 int32_t doorPassState(void);
-int32_t doorPassAttachesView(uint32_t view);
-
-// Backend conventions the renderer adapts to: 1 when framebuffer and texture rows start at
-// the top (D3D11, Metal), 0 when at the bottom (GL); 1 when the depth buffer stores clip z
-// as is (0..1), 0 when GL maps clip z from -1..1 into it.
-int32_t doorOriginTopLeft(void);
-int32_t doorDepthZeroToOne(void);
-int32_t doorEnvironmentColorFormat(void);
-int32_t doorEnvironmentDepthFormat(void);
-int32_t doorEnvironmentSampleCount(void);
-int32_t doorFormatRenderable(int32_t format);
-// Changes when the host rebuilt a lost GPU context (only the Android bridge does); every
-// handle made before is stale then.
-int32_t doorContextGeneration(void);
-void doorLoseContext(void);
-// sokol's index of the frame being recorded, the one its update-once-per-frame rule counts in.
-uint32_t doorFrameIndex(void);
-int32_t doorLiveBuffers(void);
-int32_t doorLiveImages(void);
-int32_t doorLiveViews(void);
-int32_t doorLiveSamplers(void);
-int32_t doorLiveShaders(void);
-int32_t doorLivePipelines(void);
 
 #endif

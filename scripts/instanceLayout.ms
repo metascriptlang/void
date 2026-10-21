@@ -78,15 +78,6 @@ function cStruct(name: string, lanes: Lane[]): string {
 	return out + `} ${name};\n`;
 }
 
-function cAttributes(macro: string, program: string, lanes: Lane[]): string {
-	let out: string = `#define ${macro}(desc) \\\n`;
-	for (const l of lanes) {
-		out += `\t(desc).layout.attrs[ATTR_${program}_${l.attribute}].format = ${cFormat(l.kind)}; \\\n`;
-		out += `\t(desc).layout.attrs[ATTR_${program}_${l.attribute}].buffer_index = 1; \\\n`;
-	}
-	return out + "\t(void)0\n";
-}
-
 function cPack(name: string, instance: string, lanes: Lane[]): string {
 	let out: string = `static inline void ${name}(\n`;
 	out += `\t${instance} *dst, const float *rec, uint32_t (*packColor)(const float *)) {\n`;

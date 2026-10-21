@@ -11,6 +11,8 @@ import {
 	doorLayoutPerInstance,
 	doorProgramLayout,
 	doorProgramCount,
+	doorMakePipeline,
+	doorMakeImage,
 	doorMakeTargetImage,
 	doorMakeAttachmentView,
 	doorMakeTextureView,
@@ -23,9 +25,9 @@ import {
 	doorDestroyImage,
 	doorDestroyView,
 	doorDestroySampler,
+	doorBeginPass,
 	doorBeginScreenPass,
 	doorEndPass,
-	doorCommit,
 	doorPassState,
 	doorPassAttachesView,
 	doorOriginTopLeft,
@@ -35,7 +37,6 @@ import {
 	doorEnvironmentSampleCount,
 	doorFormatRenderable,
 	doorContextGeneration,
-	doorLoseContext,
 	doorFrameIndex,
 	doorLiveBuffers,
 	doorLiveImages,
@@ -45,17 +46,12 @@ import {
 	doorLivePipelines,
 	DOOR_MAX_COLOR_ATTACHMENTS,
 	DOOR_UNIFORM_SLOTS,
-} from "./door.h";
+} from "./doorGpu.ms";
 
-// The functions that take arrays are declared here instead: an `extern` Span<T> parameter
-// lowers to the (pointer, int64 length) pair door.h declares. Importing them from the header
-// maps the pointer to Borrow<T>, and on msc 0.2.53 `span[0]` passed there is the address of a
-// one-element copy (docs/VOID3D.md, Compiler notes).
-extern function doorMakePipeline(descriptor: Readonly<Span<uint32>>): uint32;
-extern function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
-extern function doorBeginPass(
-	descriptor: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>,
-): void;
+// The frame's end and the simulated device loss belong to the platform bridge.
+@include("../sokol/bridge.h");
+extern function voidCommit(): void;
+extern function voidLoseContext(): void;
 
 // Default is the swapchain's own format (sokol's 0), for pipelines drawn to the screen.
 export enum PixelFormat {
@@ -196,7 +192,7 @@ export function endPass(): void {
 }
 
 export function commit(): void {
-	doorCommit();
+	voidCommit();
 }
 
 // Framebuffer and texture rows start at the top (D3D11, Metal) rather than the bottom (GL).
@@ -232,7 +228,7 @@ export function contextGeneration(): int32 {
 }
 
 export function loseContext(): void {
-	doorLoseContext();
+	voidLoseContext();
 }
 
 export function frameIndex(): uint32 {

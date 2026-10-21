@@ -124,7 +124,7 @@ function unsigned(value: int32): uint32 {
 	return value as uint32;
 }
 
-// The flat sg_pipeline_desc that door.c reads (DOOR_PIPELINE_*).
+// The flat pipeline descriptor that doorGpu.ms reads (DOOR_PIPELINE_*).
 export function describePipeline(
 	out: Span<uint32>,
 	shader: uint32,

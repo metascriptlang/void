@@ -1,6 +1,7 @@
 #include "backend.h"
 #include "windowSurface.h"
 #include "views.h"
+#include "../gpu/door.h"
 #include "../platform/win32/window.h"
 
 #define WGL_DRAW_TO_WINDOW_ARB 0x2001
@@ -99,22 +100,9 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	s_swapInterval(1);
 }
 
-sg_environment voidWindowEnvironment(void) {
-	sg_environment e = {0};
-	e.defaults.color_format = SG_PIXELFORMAT_RGBA8;
-	e.defaults.depth_format = SG_PIXELFORMAT_DEPTH;
-	e.defaults.sample_count = s_samples;
-	return e;
-}
-
-sg_swapchain voidWindowSwapchain(void) {
-	sg_swapchain swapchain = {0};
-	swapchain.width = voidWin32Width();
-	swapchain.height = voidWin32Height();
-	swapchain.sample_count = s_samples;
-	swapchain.color_format = SG_PIXELFORMAT_RGBA8;
-	swapchain.depth_format = SG_PIXELFORMAT_DEPTH;
-	return swapchain;
+void voidWindowDoorSetup(void) {
+	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, s_samples);
+	if (!doorValid()) voidFail("doorSetup on the GL window failed");
 }
 
 void voidWindowPresent(bool modal) {
