@@ -3916,6 +3916,33 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Installed compiler unpark: M6 JS consumers verified
+
+Deployment owner installed user-approved binary/support `afcd22f19`; this lane did not sync
+or alter the SDK. Actual unchanged consumers ran in M6, not an archived copy:
+`meshTranslationCheck` **66/66**, `meshUvScaleCheck` **66/66**, `meshNormalsCheck` **67/67**,
+`rayPlaneCheck` **68/68**, `sphereRayCheck` **67/67**, `boundsSphereBuildCheck` **66/66** JS,
+all exit0. Original receiver calls, same-name locals and direct rich assertions remain.
+
+Original comma declarations in `meshNormals3d.cases::normalData` now execute on C and JS:
+**5 rows / 27 fields**, C-JS exactly equal, maximum Heaps difference
+**1.07096936874e-8**, within unchanged declared tolerances. No statement splitting, clone
+wrapper, alternate normalizer, import removal or weaker assertion. Installed BUILD remained
+unchanged through the batch. Receipts `out/m6PostSync*Afcd22f1920261021*`; the batch's exit1
+comes only from separately attempted C-coupled Scene/material startup, not these consumers.
+Nim Audit closed the comma/rich-assert cards after these real receipts. Historical b1
+failures below remain historical evidence, not current M6 holds for those roots.
+
+The two unchanged morph consumers were also answered: original **66pass/1fail(67)** at the
+pending-buffer assertion; M5 PositiveParent exits1 over/underflow, without a local summary.
+Neither throws TDZ. Original emission suggests in-place move-swap `msValAssign`; the parent
+limit expression suggests overflow, but neither new cause is reduced/stack-confirmed here.
+Morph remains integration-HOLD, not feature-green; no source/stash change or resumed work.
+Its card and capture card retain that distinction; the owner keeps the unpark note open.
+
+CLIJS C-host metadata/provider startup, Mikk, empty-overlap, weighted blending, GPU/browser,
+full-index and full-stack acceptance remain independent; SDK sync does not close them.
+
 ### Strict node ancestry: native/reference checkpoint
 
 Primary Heaps `b9aa6dcb`, `h3d/scene/Object.hx::contains`, follows parent links before
@@ -4021,8 +4048,8 @@ helper dependency removal, stub or new metadata format was implemented by this t
 Commands/receipts: `msc test [--target=js] out/tmp/doorConstant/{headerCheck,controlCheck}.ms`,
 `out/m6DoorConstant*B1f63337f20261021.{log,exit}`; emitted header/control modules retained
 at `out/tmp/doorConstant/emission/`. Aggregate1 is expected from the failing header cells.
-No installed SDK sync or browser/GPU rerun; previous native and emcc evidence is not recast
-as CLIJS acceptance.
+At that b1 trace, no SDK sync or browser/GPU rerun occurred; previous native and emcc
+evidence is not recast as CLIJS acceptance.
 
 ### Subtree mesh enumeration: native/reference checkpoint, CLIJS startup held
 
@@ -4061,7 +4088,7 @@ Aggregate1 retained. First read-only red classification missed ANSI-prefixed dia
 strips ANSI and confirms only missing getMeshes. No API/test rewrite or new build was needed.
 No GPU/browser/full-gate, performance, SDK sync or empty-overlap decision change.
 
-### Sphere bounds accumulation: native checkpoint, rich-assert JS held
+### Sphere bounds accumulation: historical b1 checkpoint, JS since cleared on afcd
 
 Primary `h3d/col/Bounds.hx::addSpherePos` at inspected Heaps `b9aa6dcb` grows each endpoint
 with center±radius. Actual Heaps `2b84cc23` Bounds source is byte-identical. Secondary Bevy
@@ -4077,7 +4104,7 @@ The new native tests reach the existing ray/slab consumer through accumulated ac
 Actual Heaps **10/10**; C/JS oracle0, independently **10 rows / 30 coordinates exactly equal**,
 serialized delta0. These scalar fixtures do not clear direct rich-assert ref calls.
 
-New JS unit is **63pass/3fail(66)**. Direct `assert addSpherePos(box,...).ok` copies Bounds3D
+Historical b1 JS unit was **63pass/3fail(66)**; unchanged afcd rerun is66/66 above. Direct `assert addSpherePos(box,...).ok` copies Bounds3D
 into `__pa_0` and mutates that ref instead of the original. Saved ESM15–17 proves the same
 rich-assert root already parked for mesh transforms/normals; original calls stay registered.
 Nim Audit reports its copied-tree control on builder `afcd22f19` passes JS66/66, covered by
@@ -4096,7 +4123,7 @@ existing oracle regen/check and retained generated-source JS run. Receipts
 `out/tmp/boundsSphereBuild/jsCapture/`; standalone `out/m6BoundsJsHelperImportControl*`.
 Aggregate1 retained. No GPU/browser/full gate/performance or empty-overlap approval.
 
-### Sphere ray picking: native checkpoint, camera-ray JS held
+### Sphere ray picking: historical b1 checkpoint, JS since cleared on afcd
 
 Primary `h3d/col/Sphere.hx::rayIntersection` at Heaps `b9aa6dcb` uses the unit-direction
 Ray contract, nearest nonnegative entry, −1 miss, zero for an inside/surface origin, and
@@ -4186,10 +4213,10 @@ that calibration. Off-axis comparison retains its declared1e-6 tolerance.
 
 Receipts `out/m6SpherePoint*B1f63337f20261021*`: unit/query0, original oracle1 retained,
 reference Retry1 aggregate0; independent audit `CrossBackend`. No rendered/GPU/browser,
-performance, full-index or whole-stack acceptance; older parser/rich-assert/Mikk holds
-remain independent and unchanged.
+performance, full-index or whole-stack acceptance. That b1 run did not clear older holds;
+afcd consumers above since clear parser/rich-assert roots, not Mikk.
 
-### Area-weighted normal rebuilding: native checkpoint, oracle held
+### Area-weighted normal rebuilding: historical b1 checkpoint, oracle since cleared
 
 `meshData.ms::recomputeNormals` ports primary Heaps `b9aa6dcb`
 `h3d/prim/Polygon.hx::addNormals`, `h3d/Vector.hx::normalize`, `hxd/Math.hx::EPSILON2`
@@ -4213,7 +4240,7 @@ workaround. Existing `2026-10-21-js-rich-assert-ref-argument-mutates-temporary.m
 this additional real consumer; a candidate guard is not installed-consumer acceptance.
 
 Actual Heaps `2b84cc23` reference side executes **5rows**, exit0, Haxe4.3.7/Nodev24.18.0;
-five relevant primary files byte-match the inspected pin. **C/JS oracle comparison is held**:
+five relevant primary files byte-match the inspected pin. **C/JS comparison was held on b1**:
 unchanged `meshNormals3d.cases::normalData` comma declaration lists stop shared parsing.
 Reduced const/let lists fail C/JS; split-statement controls pass both, and Node runs the exact
 original source. No intentional refusal was found in LANG/STYLE/TSG-REF/NIM-REF; compiler
@@ -4314,9 +4341,9 @@ Receipts `out/m6MeshScale{Red,Heaps,RedReference}B1f63337f20261021.{log,exit}`,
 `out/m6MeshScale{Tests,JsTests,MeshData,Pick,Oracle,Js,}GreenB1f63337f20261021.{log,exit}`;
 exact field audit `out/m6MeshScaleCrossBackendB1f63337f20261021.log`. No timing, GPU/browser,
 full-index or whole-stack acceptance. This independent operation does not clear the earlier
-Ray/UV interpolation or rich-assert compiler holds, whose real tests remain unchanged.
+Ray/UV interpolation or rich-assert holds in that b1 run; unchanged afcd consumers now pass.
 
-### CPU UV0 scaling: slot/reference proof, JS picker held
+### CPU UV0 scaling: historical b1 checkpoint, JS picker since cleared
 
 `meshData.ms::scaleUvs` extends the same interleaved CPU writer used for position baking.
 Primary Heaps `b9aa6dcb`, `h3d/prim/Polygon.hx::uvScale`, rejects missing UVs and scales
@@ -4357,7 +4384,7 @@ audit `out/m6MeshUvScaleCrossBackendB1f63337f20261021.log`; actual test ESM pres
 `out/tmp/meshUvScaleJsCapture/unit.emitted.js`. No SDK/compiler/vendor edits, source-level
 workaround, full JS-consumer, GPU/browser/full-index/performance or full-stack acceptance.
 
-### Mesh position baking: native/reference checkpoint, JS consumers held
+### Mesh position baking: historical b1 checkpoint, JS consumers since cleared
 
 `meshData.ms::translate` extends the existing CPU geometry-writer idiom, not node placement
 or automatic GPU resource updates. Primary Heaps `b9aa6dcb`,
@@ -4387,7 +4414,7 @@ compared, including translated getCPUBuffer positions, getBounds and retained at
 this is not whole-buffer identity or GPU acceptance. Five relevant Heaps files byte-match
 across pins. Binary/support `b1f63337f`, source tree `70dc7c57cd66cb5fb7a314721944667a77eafc6a`.
 
-Full JS unit is **64pass/2fail (66)**, exit1, and stays registered unchanged:
+Historical b1 full JS unit was **64pass/2fail (66)**, exit1; unchanged afcd rerun is66/66:
 - Existing `meshData.ms::interpolateUv` has `const stride=data.stride()`, emitted as
   `const stride=stride(data)`, so textured CPU picking reaches the known extension/local TDZ.
   Existing compiler card `2026-10-16-js-extension-local-name-capture.md` owns this sighting.
@@ -4517,7 +4544,7 @@ Ray/Plane sources byte-match `b9aa6dcb`. Cases include forward/behind/zero-dista
 parallel, stationary, oblique, coefficient scaling and real Frustum near/far plane consumers.
 CPU source tree `c4ffe2d0c32524a4112d2bf66c9bf267efba6ce3`, checkpoint `ef4326e8`, BUILD `b1f63337f`.
 
-**JS acceptance remains blocked**, not green: **62 passed / 6 failed (68)**. The existing
+**Historical b1 JS was blocked**: **62 passed / 6 failed (68)**; unchanged afcd rerun is68/68. The existing
 `Ray.fromPoints -> Vec3.normalized` producer emits
 `const lengthSquared = lengthSquared(a)` in `math3d.js`, causing TDZ before the six queries.
 The original local at `src/math/math3d.ms:82` is unchanged. Reduced same-source controls:
@@ -4525,7 +4552,7 @@ direct Vec3 squared length and Quat normalization pass; Vec3 normalization alone
 C **302/302**, JS **63/1**. This is a new same-module sighting on existing compiler card
 `../.inbox/compiler/2026-10-16-js-extension-local-name-capture.md`, now owned by Nim Audit.
 No local rename, alternate normalizer, producer bypass or JS skip. Both tests and native
-oracle remain registered. Root fix plus approved installed SDK unlocks JS remeasurement.
+oracle remain registered. Installed afcd remeasurement above clears this site's capture hold.
 
 Receipts: `out/m6RayPlaneRedB1f63337f20261021.{log,exit}`,
 `out/m6RayPlane{Tests,JsTests}GreenB1f63337f20261021Retry1.{log,exit}` (0/1),
