@@ -96,7 +96,8 @@ let shaders: Vec<ShaderRecord> = [];
 let pipelines: Vec<PipelineRecord> = [];
 let bindCache: Vec<BindEntry> = [];
 let appendCursors: Vec<AppendCursor> = [];
-let generation: int32 = 0;
+let generation: int32 = 1;
+let everSetUp = false;
 let uniformRing: GPUBuffer = { id: 0 };
 let uniformCursor: int64 = 0;
 let uniformOffsets: uint32[8] = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -112,7 +113,9 @@ function fail(message: string): never {
 }
 
 // The platform hands its device over once it exists, and again after a device loss; ids made
-// before a new setup are stale, which doorContextGeneration tells the layers above.
+// before a new setup are stale, which doorContextGeneration tells the layers above. It starts at
+// 1 and only a setup after the first moves it, as bridgeWin.c and bridgeWeb.c counted, so 0 stays
+// the generation nothing current carries.
 @exportName("doorSetup")
 export function doorSetup(nativeDevice: Ptr<void>, nativeContext: Ptr<void>, colorFormat: int32, depthFormat: int32, sampleCount: int32): void {
 	let environment: GPUNativeEnvironment = { device: nativeDevice, context: nativeContext, colorFormat: textureFormatOf(colorFormat), sampleCount };
@@ -127,7 +130,8 @@ export function doorSetup(nativeDevice: Ptr<void>, nativeContext: Ptr<void>, col
 	encoder = { id: 0 };
 	openPass = DOOR_PASS_NONE;
 	current = -1;
-	generation++;
+	if (everSetUp) { generation++; }
+	everSetUp = true;
 }
 
 @exportName("doorShutdown")
