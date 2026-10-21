@@ -57,6 +57,7 @@ import "./cameraCheck";
 import "./frustumCheck";
 import "./rayPlaneCheck";
 import "./boundsCheck";
+import "./sphereQueryCheck";
 import "./meshDataCheck";
 import "./sphereTangentsCheck";
 import "./meshLodCheck";
