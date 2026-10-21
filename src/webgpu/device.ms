@@ -34,7 +34,7 @@ when (webgpu) {
 	import * as backend from "./wgpu/backend.ms";
 } else when (windows && !voidGlCore) {
 	import * as backend from "./d3d11/backend.ms";
-} else when (voidGlCore) {
+} else when (voidGlCore || webgl2 || android) {
 	import * as backend from "./gl/backend.ms";
 }
 
