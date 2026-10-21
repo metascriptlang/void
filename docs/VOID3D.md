@@ -771,7 +771,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 - **Not done here.** The first three are rows of `tests/PENDING3D.md` (`screen-pass-unchecked`, `screen-output-swapchain-only`, `copy-opaque`). `screen-output-swapchain-only` closed with the M44 gaps lane: `endPrepared` ends a frame whose `colorTarget` the caller composites, and the card table sample draws its overlay preset that way.
   - **Which pass is open is not checked.** A `drawToScreen` into an offscreen pass, or a `prepareFrame` inside the screen pass, is caught only by sokol's debug validation; a release build draws the wrong image. Tracking the open pass needs every pass to open in one place, which is M20's door; void2d opens its target passes itself today.
   - **`drawToScreen` is the full swapchain only.** Heaps can render a scene into any target (`Scene.setOutputTarget`, picture-in-picture, `h3d/scene/Scene.hx:586`); a 3D view as a panel of a UI waits for M20's shared targets.
-  - **`Copy` is opaque.** A second 3D layer covers the first, so what M18 delivers is 2D over 3D. Bevy's `ClearColorConfig::None` for 3D over 3D is not delivered.
+  - **The pixel-art `Blit` is opaque.** A pixel-art layer covers the one under it. The forward preset composites a second layer with `drawOverScreen` (Heaps' `Copy.run` with a blend, premultiplied over), cleared to transparent, which is Bevy's `ClearColorConfig::None` for 3D over 3D; `tests/integration/screenOver.ms` checks its pixels where there is readback and runs it on Metal.
   - void2d's `Scene` has no halves of its own. `present()` still opens its pass and commits, so today a composing caller uses the immediate face (`begin2d` … `end2d`). A `Scene` over 3D waits for void2d's arc (P5, the host contract).
   - The embed entries draw one layer and keep `renderFrame`. A refused `renderFrame` returns without committing, and in an embedded view that aborts as "returned without commit()", which names the wrong cause. That was so before M18.
   - The screen pass still opens through the bridge's `voidBeginPass`, which always clears. M20's door owns it.
@@ -2618,8 +2618,9 @@ it drew.
   OneMinusSourceAlpha` and alpha with source `One` (`gpu/state.ms:178-182`): over a transparent
   clear a blended pixel stores rgb*a with alpha a. A background of alpha 0 must therefore have
   rgb 0, or the clear itself is not a valid premultiplied pixel.
-  `drawToScreen` is not that composite: `Copy` is opaque (M18, `copy-opaque`), so it would cover
-  the first view. Order: both `prepareFrame`s, then the caller's screen pass.
+  `drawToScreen` is not that composite: its `Copy` is opaque, so it would cover the first view;
+  `drawOverScreen` is, for a view that covers the whole screen. Order: both `prepareFrame`s, then
+  the caller's screen pass.
 - three.js renders a second camera by calling `render` again over the same canvas with
   `autoClear` off; here the second view is a target the caller composites, which the roadmap row
   asks for and Bevy's second camera with its own target does too.
