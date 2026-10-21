@@ -1,12 +1,12 @@
 import {
 	Scene3D, SceneError, Transform3D, addGroup, addSkinMeshNode, rootId, closeScene,
-	refreshChecked, setLocal, setPickable, remove,
+	refreshChecked, setLocal, setPickable, setMaterialOf, remove,
 } from "../void3d/scene";
 import { SkinGeometry, SkinGeometryError, bind, spatialReady } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
 import { MeshData, addVertex, addSkinAttributes } from "../void3d/meshData";
-import { MeshId, MaterialId, DrawItem, validSkin } from "../void3d/draw";
+import { MeshId, MaterialId, DrawItem, validSkin, addMaterial } from "../void3d/draw";
 import { Program, ProgramKey, VertexLayout, withSkin } from "../void3d/gpu3d";
 import { PickError, pickNearest } from "../void3d/pick";
 import { Ray } from "../void3d/ray";
@@ -58,6 +58,46 @@ function fixture(two: boolean = false): SkinSceneFixture {
 	if (!geometry.ok) { unreachable; }
 	return { scene: scene, geometry: geometry.value,
 		mesh: context.meshAt(0), material: context.materialAt(0) };
+}
+
+test "retained skin material swaps preflight program layout and preserve geometry and range" {
+	const f = fixture(true);
+	defer closeScene(f.scene);
+	const context = f.scene.context;
+	const made = addSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, f.geometry, 0, { base: 3, count: 3 });
+	assert made.ok;
+	if (!made.ok) { return; }
+	const good = addMaterial(context, { ...context.materials[f.material.index] });
+	const rigid = addMaterial(context, { ...context.materials[f.material.index],
+		program: ProgramKey.of(Program.Lit) });
+	const wrongLayout = addMaterial(context, { ...context.materials[f.material.index],
+		program: ProgramKey.of(Program.LitTextured).withSkin() });
+	assert good.ok && rigid.ok && wrongLayout.ok;
+	if (!good.ok || !rigid.ok || !wrongLayout.ok) { return; }
+	const rejectedRigid = setMaterialOf(f.scene, made.value, rigid.value);
+	const rejectedLayout = setMaterialOf(f.scene, made.value, wrongLayout.value);
+	assert !rejectedRigid.ok && !rejectedLayout.ok;
+	if (!rejectedRigid.ok) { assert rejectedRigid.error == SceneError.SkinMesh; }
+	if (!rejectedLayout.ok) { assert rejectedLayout.error == SceneError.SkinMesh; }
+	assert context.materialPins[f.material.index] == 1;
+	assert context.materialPins[rigid.value.index] == 0;
+	assert context.materialPins[wrongLayout.value.index] == 0;
+	assert f.scene.meshes[0].material.index == f.material.index;
+	const changed = setMaterialOf(f.scene, made.value, good.value);
+	assert changed.ok;
+	assert context.materialPins[f.material.index] == 0;
+	assert context.materialPins[good.value.index] == 1;
+	let items: Vec<DrawItem> = [];
+	const collected = refreshChecked(f.scene, items);
+	assert collected.ok;
+	if (collected.ok) { assert collected.value == 1; }
+	assert items[0].material.index == good.value.index;
+	assert items[0].skinGeometry === f.geometry;
+	assert items[0].skinPalette == 0;
+	const range = items[0].range;
+	assert range !== null;
+	if (range !== null) { assert range.base == 3 && range.count == 3; }
 }
 
 test "retained skin publishes shared pose once and emits independent geometries without model" {

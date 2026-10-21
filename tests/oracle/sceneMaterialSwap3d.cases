@@ -1,0 +1,71 @@
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: import h3d.scene.Mesh;
+# ms-prelude: import { Scene3D,NodeId3D,Transform3D,NO_NODE_ID,
+# ms-prelude: addMeshNode,setMaterialOf } from "../../../src/void3d/scene";
+# ms-prelude: import { MaterialId } from "../../../src/void3d/draw";
+# ms-prelude: import { contextOf } from "../../../src/test/drawHelpers";
+# ms-prelude: function mesh(scene: Scene3D,parent: NodeId3D|null,material: MaterialId): NodeId3D {
+# ms-prelude: const result=addMeshNode(scene,parent,Transform3D.identity(),
+# ms-prelude: scene.context.meshAt(0),material); return result.ok ? result.value : NO_NODE_ID;
+# ms-prelude: }
+# ms-prelude: function shown(scene: Scene3D,id: NodeId3D,want: MaterialId): float32 {
+# ms-prelude: const result=scene.getMaterials(id,false);
+# ms-prelude: if (!result.ok || result.value.length!=1) { return -1.0; }
+# ms-prelude: const got=result.value[0];
+# ms-prelude: return got.store==want.store && got.index==want.index &&
+# ms-prelude: got.generation==want.generation ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function count(scene: Scene3D): float32 {
+# ms-prelude: const result=scene.getMaterials(scene.rootId());
+# ms-prelude: return result.ok ? (result.value.length as float32) : -1.0;
+# ms-prelude: }
+
+case material-swap-initial tol=0
+haxe> var root=new Object(); var parent=new Mesh(null,null,root);
+haxe> var a=parent.material; var peer=new Mesh(null,null,root); var b=peer.material;
+haxe> var child=new Mesh(null,a,parent);
+haxe> emit("material-swap-initial",[parent.material==a?1:0,child.material==a?1:0,
+haxe> root.getMaterials().length]);
+ms> const context=contextOf(1,2); const scene=Scene3D.create(context);
+ms> const a=context.materialAt(0); const b=context.materialAt(1);
+ms> const parent=mesh(scene,scene.rootId(),a); const peer=mesh(scene,scene.rootId(),b);
+ms> const child=mesh(scene,parent,a);
+ms> emit3("material-swap-initial",shown(scene,parent,a),shown(scene,child,a),count(scene));
+
+case material-swap-parent tol=0
+haxe> parent.material=b;
+haxe> emit("material-swap-parent",[parent.material==b?1:0,child.material==a?1:0,
+haxe> root.getMaterials().length]);
+ms> const changed=setMaterialOf(scene,parent,b); if (!changed.ok) { unreachable; }
+ms> emit3("material-swap-parent",shown(scene,parent,b),shown(scene,child,a),count(scene));
+
+case material-swap-self tol=0
+haxe> parent.material=parent.material;
+haxe> emit("material-swap-self",[parent.material==b?1:0,child.material==a?1:0,
+haxe> root.getMaterials().length]);
+ms> const same=setMaterialOf(scene,parent,b); if (!same.ok) { unreachable; }
+ms> emit3("material-swap-self",shown(scene,parent,b),shown(scene,child,a),count(scene));
+
+case material-swap-child tol=0
+haxe> child.material=b;
+haxe> emit("material-swap-child",[parent.material==b?1:0,child.material==b?1:0,
+haxe> root.getMaterials().length]);
+ms> const childChanged=setMaterialOf(scene,child,b); if (!childChanged.ok) { unreachable; }
+ms> emit3("material-swap-child",shown(scene,parent,b),shown(scene,child,b),count(scene));
+
+case material-swap-detached tol=0
+haxe> var detached=new Mesh(null,a); detached.material=b;
+haxe> emit("material-swap-detached",[detached.material==b?1:0,child.material==b?1:0,
+haxe> root.getMaterials().length]);
+ms> const detached=mesh(scene,null,a);
+ms> const detachedChanged=setMaterialOf(scene,detached,b);
+ms> if (!detachedChanged.ok) { unreachable; }
+ms> emit3("material-swap-detached",shown(scene,detached,b),shown(scene,child,b),count(scene));
+
+case material-swap-back tol=0
+haxe> parent.material=a;
+haxe> emit("material-swap-back",[parent.material==a?1:0,child.material==b?1:0,
+haxe> root.getMaterials().length]);
+ms> const back=setMaterialOf(scene,parent,a); if (!back.ok) { unreachable; }
+ms> emit3("material-swap-back",shown(scene,parent,a),shown(scene,child,b),count(scene));
