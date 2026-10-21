@@ -3916,6 +3916,53 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### CLIJS GPU-door startup: missing Void provider, not a compiler regression
+
+This startup failure has no entry in `tests/PENDING.md` or `tests/PENDING3D.md`; no known-red
+waiver was added during this trace. The default gate does not run MetaScript's JS backend:
+`gate.sh` T0 all-off/all-on and `gate3d.sh` tests/oracles use native msc; browser coverage is
+C/emcc/WASM. Node in the web runner is automation, and Node in oracle regeneration runs
+Haxe's reference output. Those paths do not prove `msc --target=js` consumers.
+
+On binary/support `b1f63337f`, production tree `33a7b4446429cc30a4aaef17f1a900f5aee5f61b`,
+minimal `out/tmp/doorConstant/constant.h` defines a literal C static const, a macro-initialized
+one and a const alias. Importing them: native **302/302**, JS **61pass/3fail(64)**, each name
+undefined. Importing equivalent real `.ms` constants: native **302/302**, JS **64/64**, all0.
+The changes between controls are the provider language/file and its C macro/alias syntax;
+no GPU, Scene, Texture or helper module participates. This rules out a door-specific slot
+value, shader registration order or one macro expansion as the sole trigger.
+
+The mechanism is explicit, not conjectured: recompiler main `afcd22f19`,
+`src/module/cimport/emit.ms::emitVariable`, creates `extern const` declarations without
+initializers; `src/codegen/js/declarations.ms::emitImportDecl` skips `.h` imports because
+there is no JS counterpart. Nim `3525b4d`, `compiler/jsgen.nim::genVarStmt` skips variable
+initialization for `sfImportc` in the same way. NIM-REF CK-109 says C header parsing is
+MetaScript-only and the real C compiler supplies the header. An extern name needs its host
+binding; it is not a portable constant-value import. Nim Audit independently confirmed this
+ownership. No compiler inbox card, compiler patch or changed refusal policy was created.
+
+Void has no `door.jms` or `gpu3d.jms` provider. The resolver's existing JS-extension order
+falls through to `.ms`, whose C imports cannot supply those bindings in Node. Merely
+replacing slot constants would move the failure: `gpu3d.ms` eagerly calls
+`gpu3dProgramBase`/`gpu3dLayoutBase`, and `indexPrograms` reads C program count/keys at load.
+Their C provider `gpu3d.c::registerOnce` registers the actual generated layouts/programs.
+`pipeline.ms` and descriptor users also consume C header constants. These are real CPU
+metadata dependencies, not GPU calls that can honestly be replaced with zero/no-op stubs.
+
+A root JS path therefore needs real CPU metadata/bindings, preserving the authoritative
+program/ABI tables and native parity. Existing `.jms`/extern binding and shader-generation
+idioms are the candidates to extend; a Node GPU renderer is not implied. This expands the
+M6 geometry/importer lane into shared GPU-metadata ownership, so implementation waits for
+the person's scope decision. Deferring CLIJS for these C-coupled families is a different
+acceptance scope, not a green result. No provider, gate change, duplicate ABI literals,
+helper dependency removal, stub or new metadata format was implemented by this trace.
+
+Commands/receipts: `msc test [--target=js] out/tmp/doorConstant/{headerCheck,controlCheck}.ms`,
+`out/m6DoorConstant*B1f63337f20261021.{log,exit}`; emitted header/control modules retained
+at `out/tmp/doorConstant/emission/`. Aggregate1 is expected from the failing header cells.
+No installed SDK sync or browser/GPU rerun; previous native and emcc evidence is not recast
+as CLIJS acceptance.
+
 ### Subtree mesh enumeration: native/reference checkpoint, CLIJS startup held
 
 Primary Heaps `h3d/scene/Object.hx::getMeshes` at `b9aa6dcb` includes self when it is a Mesh,
