@@ -3866,6 +3866,34 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Frustum bounds frontier: reference probe only
+
+Heaps `b9aa6dcb` `h3d/col/Frustum.hx::intersectPlanes/getBounds` intersects eight named
+plane triples, transforms those points, then encloses them. Actual registered Heaps
+`2b84cc23` execution agrees on three finite controls: identity bounds `[-1,-1,0;1,1,1]`,
+90-degree/aspect-two perspective with near1/far9 `[-18,-9,1;18,9,9]`, then scale(2,3,-1)
+and translation(7,-2,4) `[-29,-29,-5;43,25,3]`. All18 coordinates agree within1e-9.
+This alone does not settle a public finite-volume contract for arbitrary raw Frustum planes:
+replacing identity's far plane with constant-positive `(0,0,0,d=-1)` gives flat z=0 bounds,
+while `hasPoint(0,0,100)` is true and the returned box excludes it. Default degenerate planes
+return Heaps' empty sentinel box. Copying nominal corner enclosure is not evidence of a
+boundedness validator or conservative enclosure of an unbounded half-space intersection.
+
+Secondary Bevy `157e1ce6`, `bevy_shape/src/view_frustum.rs::ViewFrustum::corners` and
+`half_space.rs::HalfSpace::intersection_point`, has fallible corner triples; it explicitly
+permits NaN far corners for inactive far half-spaces. Source read only, not Rust execution.
+No Void API, error/precondition policy, validator, renderer change or forced divergence was
+implemented. A later bounds API must settle canonical finite-camera input versus arbitrary
+raw half-spaces first; this candidate does not hold up other reference-settled CPU work.
+
+Five relevant Heaps files byte-match across pins. Haxe4.3.7/Nodev24.18.0, installed b1f63337f,
+source tree `8e55a66f01e48bacd29599145b875163eaa23ea0`. Probe:
+`out/tmp/frustumBoundsReference/FrustumBoundsProbeRetry1.hx`, build/run via its runRetry1.sh.
+Actual build/run/aggregate0 receipts `out/m6FrustumBoundsReference{Build,Run,}20261021Retry1`.
+Original probe printed all rows but left the Node event loop alive: owned Node was terminated,
+Run/aggregate143; original source/logs/exits preserved without Retry1 suffix. Retry1 uses the
+existing Haxe-oracle harness's explicit process exit. No port/native/JS/GPU/perf verdict.
+
 ### Sphere point/pair predicates
 
 `src/void3d/sphere.ms` `Sphere3D` adds point membership and pair overlap in the same value-
