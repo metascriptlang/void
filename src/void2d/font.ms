@@ -42,7 +42,12 @@ export struct FaceQuery {
 	style: FontStyle;
 }
 
-export type FaceResolver = (query: FaceQuery) => string | null;
+export struct FaceCandidate {
+	path: string;
+	index: int32;
+}
+
+export type FaceResolver = (query: FaceQuery) => FaceCandidate[];
 
 export type FontId = distinct int32;
 @delegate export function `==`(this a: FontId, b: FontId): boolean;
@@ -76,6 +81,7 @@ const NOT_LOADED: int32 = -1;
 const LOAD_FAILED: int32 = -2;
 const BOLD_WEIGHT: int32 = 600;
 const PRIMARY_SLOT: int32 = -1;
+const NO_CANDIDATE: FaceCandidate = { path: "", index: 0 };
 const FONT_SHIFT: uint64 = 40;
 const MODE_SHIFT: uint64 = 32;
 
@@ -88,11 +94,13 @@ struct RegisteredFace {
 
 struct LoadedPath {
 	path: string;
+	collectionIndex: int32;
 	face: Result<int32, FaceError>;
 }
 
 struct PeekedPath {
 	path: string;
+	collectionIndex: int32;
 	summary: Result<FaceSummary, SfntError>;
 }
 
@@ -122,6 +130,7 @@ struct FontEntry {
 struct Fallback {
 	font: FontId;
 	path: string;
+	collectionIndex: int32;
 	bold: boolean;
 	italic: boolean;
 	face: int32;
@@ -139,37 +148,42 @@ let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
 let faceResolver: FaceResolver | null = null;
-let discovered: Map<uint64, string> = new Map<uint64, string>();
+let discovered: Map<uint64, FaceCandidate> = new Map<uint64, FaceCandidate>();
 let discoveryAsks: int32 = 0;
 let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
 let defaultLoads: int32 = 0;
 
-function faceAtPath(path: string): Result<int32, FaceError> {
+function faceAtPath(path: string, collectionIndex: int32 = 0): Result<int32, FaceError> {
 	for (let i: int32 = 0; i < (loadedPaths.length as int32); i++) {
-		if (loadedPaths[i].path.equals(path)) { return loadedPaths[i].face; }
+		if (loadedPaths[i].path.equals(path) && loadedPaths[i].collectionIndex == collectionIndex) {
+			return loadedPaths[i].face;
+		}
 	}
-	const face = loadFace(path);
-	loadedPaths.push({ path: path, face: face });
+	const face = loadFace(path, collectionIndex);
+	loadedPaths.push({ path: path, collectionIndex: collectionIndex, face: face });
 	return face;
 }
 
-function summaryAtPath(path: string): Result<FaceSummary, SfntError> {
+function summaryAtPath(path: string, collectionIndex: int32 = 0): Result<FaceSummary, SfntError> {
 	for (let i: int32 = 0; i < (peekedPaths.length as int32); i++) {
-		if (peekedPaths[i].path.equals(path)) { return peekedPaths[i].summary; }
+		if (peekedPaths[i].path.equals(path) && peekedPaths[i].collectionIndex == collectionIndex) {
+			return peekedPaths[i].summary;
+		}
 	}
-	const summary = peekFace(path);
-	peekedPaths.push({ path: path, summary: summary });
+	const summary = peekFace(path, collectionIndex);
+	peekedPaths.push({ path: path, collectionIndex: collectionIndex, summary: summary });
 	return summary;
 }
 
-function coversAtPath(path: string, codepoint: int32): boolean {
+function coversAtPath(path: string, collectionIndex: int32, codepoint: int32): boolean {
 	for (let i: int32 = 0; i < (loadedPaths.length as int32); i++) {
-		if (loadedPaths[i].path.equals(path) && loadedPaths[i].face.ok) {
+		if (loadedPaths[i].path.equals(path) && loadedPaths[i].collectionIndex == collectionIndex &&
+			loadedPaths[i].face.ok) {
 			return glyphIndex(loadedPaths[i].face.value, codepoint) != 0;
 		}
 	}
-	const summary = summaryAtPath(path);
+	const summary = summaryAtPath(path, collectionIndex);
 	return summary.ok && summaryCovers(summary.value, codepoint);
 }
 
@@ -212,8 +226,10 @@ when (voidSprites) {
 	}
 }
 
-function styledAt(path: string, bold: boolean, italic: boolean): Result<int32, FaceError> {
-	const face: int32 = try faceAtPath(path);
+function styledAt(
+	path: string, collectionIndex: int32, bold: boolean, italic: boolean,
+): Result<int32, FaceError> {
+	const face: int32 = try faceAtPath(path, collectionIndex);
 	return styled(face, bold, italic);
 }
 
@@ -397,6 +413,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 	}
 	const face = styledAt(
 		registered[primary].path,
+		0,
 		font.needsBold(primary),
 		font.needsItalic(primary),
 	);
@@ -424,6 +441,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 		fallbacks.push({
 			font: id,
 			path: registered[m].path,
+			collectionIndex: 0,
 			bold: font.needsBold(m),
 			italic: font.needsItalic(m),
 			face: NOT_LOADED,
@@ -438,6 +456,7 @@ export function addFallbackFont(font: FontId, path: string): void {
 	fallbacks.push({
 		font: font,
 		path: path,
+		collectionIndex: 0,
 		bold: false,
 		italic: false,
 		face: NOT_LOADED,
@@ -448,7 +467,7 @@ export function addFallbackFont(font: FontId, path: string): void {
 
 export function setFaceResolver(resolver: FaceResolver | null): void {
 	faceResolver = resolver;
-	discovered = new Map<uint64, string>();
+	discovered = new Map<uint64, FaceCandidate>();
 	resolved = new Map<uint64, int32>();
 }
 
@@ -456,9 +475,9 @@ export function faceDiscoveryAsks(): int32 {
 	return discoveryAsks;
 }
 
-function discoveredPath(font: FontId, codepoint: int32, want: Presentation): string {
+function discoveredFace(font: FontId, codepoint: int32, want: Presentation): FaceCandidate {
 	const resolver = faceResolver;
-	if (resolver === null) { return ""; }
+	if (resolver === null) { return NO_CANDIDATE; }
 	const index: int32 = fontIndex(font);
 	const described: boolean = fonts[index].described;
 	const weight: int32 = described ? fonts[index].description.weight : 400;
@@ -468,22 +487,32 @@ function discoveredPath(font: FontId, codepoint: int32, want: Presentation): str
 	const hit = discovered.get(key);
 	if (hit.present) { return hit.value; }
 	discoveryAsks = discoveryAsks + 1;
-	const answer = resolver({ codepoint: codepoint, presentation: want, weight: weight, style: style });
-	const path: string = answer !== null && coversAtPath(answer, codepoint) &&
-		presentationOfPath(answer) == want ? answer : "";
-	discovered.set(key, path);
-	return path;
+	const answers = resolver({ codepoint: codepoint, presentation: want, weight: weight, style: style });
+	let chosen: FaceCandidate = NO_CANDIDATE;
+	for (const answer of answers) {
+		if (drawableAt(answer.path, answer.index) && coversAtPath(answer.path, answer.index, codepoint) &&
+			presentationOfPath(answer.path, answer.index) == want) {
+			chosen = answer;
+			break;
+		}
+	}
+	discovered.set(key, chosen);
+	return chosen;
 }
 
 function discoveredSlot(font: FontId, codepoint: int32, want: Presentation): int32 {
-	const path: string = discoveredPath(font, codepoint, want);
-	if (path.length == 0) { return PRIMARY_SLOT; }
+	const found: FaceCandidate = discoveredFace(font, codepoint, want);
+	if (found.path.length == 0) { return PRIMARY_SLOT; }
 	for (let i: int32 = 0; i < (fallbacks.length as int32); i++) {
-		if (fallbacks[i].font == font && fallbacks[i].path.equals(path)) {
+		if (fallbacks[i].font == font && fallbacks[i].path.equals(found.path) &&
+			fallbacks[i].collectionIndex == found.index) {
 			return fallbackUsable(i) ? i : PRIMARY_SLOT;
 		}
 	}
-	fallbacks.push({ font: font, path: path, bold: false, italic: false, face: NOT_LOADED, scale: 1.0 });
+	fallbacks.push({
+		font: font, path: found.path, collectionIndex: found.index,
+		bold: false, italic: false, face: NOT_LOADED, scale: 1.0,
+	});
 	const slot: int32 = (fallbacks.length as int32) - 1;
 	return fallbackUsable(slot) ? slot : PRIMARY_SLOT;
 }
@@ -548,7 +577,8 @@ function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): flo
 function fallbackFace(index: int32): int32 {
 	if (fallbacks[index].face == NOT_LOADED) {
 		const face = styledAt(
-			fallbacks[index].path, fallbacks[index].bold, fallbacks[index].italic,
+			fallbacks[index].path, fallbacks[index].collectionIndex,
+			fallbacks[index].bold, fallbacks[index].italic,
 		);
 		fallbackLoads = fallbackLoads + 1;
 		if (!face.ok) {
@@ -570,8 +600,8 @@ function fallbackFace(index: int32): int32 {
 	return fallbacks[index].face;
 }
 
-function presentationOfPath(path: string): Presentation {
-	const summary = summaryAtPath(path);
+function presentationOfPath(path: string, collectionIndex: int32 = 0): Presentation {
+	const summary = summaryAtPath(path, collectionIndex);
 	if (summary.ok && (summary.value.colourBitmap || summary.value.colourLayers)) {
 		return Presentation.Emoji;
 	}
@@ -583,13 +613,26 @@ function wantedPresentation(mode: Presentation, codepoint: int32): Presentation 
 	return graphemeProperty(codepoint).emojiPresentation ? Presentation.Emoji : Presentation.Text;
 }
 
+function drawableAt(path: string, collectionIndex: int32): boolean {
+	const summary = summaryAtPath(path, collectionIndex);
+	if (!summary.ok) { return false; }
+	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
+	return summary.value.drawable || (colour && colourBuilt());
+}
+
 function fallbackUsable(index: int32): boolean {
 	if (fallbacks[index].face == LOAD_FAILED) { return false; }
-	const summary = summaryAtPath(fallbacks[index].path);
-	if (!summary.ok || summary.value.drawable || colourBuilt()) { return true; }
+	const path: string = fallbacks[index].path;
+	const collectionIndex: int32 = fallbacks[index].collectionIndex;
+	const summary = summaryAtPath(path, collectionIndex);
+	if (!summary.ok || drawableAt(path, collectionIndex)) { return true; }
+	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
 	console.log(
-		`void2d: fallback font ${fallbacks[index].path} holds colour glyphs but no outlines, ` +
-		`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`,
+		colour
+			? `void2d: fallback font ${path} holds colour glyphs but no outlines, ` +
+				`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`
+			: `void2d: fallback font ${path} has no outlines or colour glyphs Void can draw; ` +
+				`it is skipped`,
 	);
 	fallbacks[index].face = LOAD_FAILED;
 	return false;
@@ -599,8 +642,10 @@ function fallbackAnswers(
 	font: FontId, index: int32, codepoint: int32, exact: boolean, want: Presentation,
 ): boolean {
 	if (fallbacks[index].font != font || !fallbackUsable(index)) { return false; }
-	if (!coversAtPath(fallbacks[index].path, codepoint)) { return false; }
-	return !exact || presentationOfPath(fallbacks[index].path) == want;
+	const path: string = fallbacks[index].path;
+	const collectionIndex: int32 = fallbacks[index].collectionIndex;
+	if (!coversAtPath(path, collectionIndex, codepoint)) { return false; }
+	return !exact || presentationOfPath(path, collectionIndex) == want;
 }
 
 function primaryAnswers(
