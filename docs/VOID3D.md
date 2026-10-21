@@ -3916,6 +3916,42 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Sphere ray picking: native checkpoint, camera-ray JS held
+
+Primary `h3d/col/Sphere.hx::rayIntersection` at Heaps `b9aa6dcb` uses the unit-direction
+Ray contract, nearest nonnegative entry, −1 miss, zero for an inside/surface origin, and
+includes exact tangency. Its `bestMatch` argument is unused. Executed Heaps `2b84cc23` has
+byte-identical Sphere/Ray files. Secondary Bevy `157e1ce6`,
+`bevy_shape/src/bounding/raycast3d.rs::RayCast3d::sphere_intersection_at`, also clamps inside
+hits to zero and includes contact, but additionally caps a finite cast's length. That cap
+is not part of this unbounded-ray port; no Bevy numerical execution is claimed.
+
+`src/void3d/sphere.ms::rayIntersection` reuses the existing Ray and f64/Result boundary,
+not a new collider hierarchy, arbitrary-direction solver or implicit ray normalizer.
+Unit direction remains the precondition already stated by `ray.ms`; caller-supplied
+nonunit directions are outside this acceptance, not silently repaired.
+
+On binary/support `b1f63337f`, source tree `1faac0893569cc06919dcc75392bd0283ecb64de`,
+actual corrected red **8 missing-export/API diagnostics**, exit1, then native **305/305**.
+Prior query C303/JS65 and projection C302/JS64 all0. Full new JS unit is **66pass/1fail(67)**:
+the unchanged camera-style `Ray.fromPoints` consumer throws `Cannot access 'lengthSquared'
+before initialization`. Saved math3d ESM43–44 contains the same-name local/function call;
+existing compiler capture card names this registered site. No local rename, direct-ray
+substitution, skip or approved SDK sync. Aggregate remains1, not complete JS acceptance.
+
+Actual Heaps **6/6**; literal-unit-ray oracle C0/JS0. Independent comparison finds all
+**6 rows / 18 float32 distances exactly equal**, serialized delta0, including all-axis
+forward/reverse, misses, tangency, inside/surface and translated/signed/zero-radius controls.
+This oracle does not exercise or clear the failing camera constructor.
+
+Commands: `msc test [--target=js] src/test/sphereRayCheck.ms`,
+`sh scripts/oracle.sh regen|check tests/oracle/sphereRay3d.cases`, followed by JS execution
+of the retained generated oracle source. Receipts `out/m6SphereRay*B1f63337f20261021*`;
+`CrossBackend` owns the exact comparison, `out/tmp/sphereRay/jsCapture/` owns emitted
+unit/math3d/ray packets. Original red included an out-of-test assert and missing explicit
+Infinity/NaN narrowing in the fixture; that attempt is retained, Retry1 isolates API red.
+No GPU/browser, full-stack, performance or empty-bounds divergence acceptance.
+
 ### Empty bounds query frontier: evidence only
 
 Before adding sphere/AABB overlap, the existing empty-box contract was audited. On installed
