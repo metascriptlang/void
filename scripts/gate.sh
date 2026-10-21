@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -300,6 +300,21 @@ if "$MSC" build tests/integration/layerSlot.ms --release --output=out/layerSlot.
 	done
 else
 	fail "tests/integration/layerSlot.ms does not build — see out/gate-layer-slot.log"
+fi
+if "$MSC" build tests/integration/paintedSlots.ms --release --output=out/paintedSlots.exe \
+		> out/gate-painted-slots.log 2>&1 \
+		&& out/paintedSlots.exe > out/gate-painted-slots-run.log 2>&1; then
+	pass "painted slots: paint order, zIndex, hidden and filtered left out, patched frame"
+else
+	fail "painted slots — see out/gate-painted-slots-run.log"
+fi
+status=0
+VOID_PAINTED_SLOTS_MISUSE=unprepared out/paintedSlots.exe > out/gate-painted-slots-unprepared.log 2>&1 \
+	|| status=$?
+if [ "$status" -ne 0 ] && grep -q 'paintedSlots with no prepared frame' out/gate-painted-slots-unprepared.log; then
+	pass "painted slots before prepare stops with its error"
+else
+	fail "painted slots before prepare did not name its error"
 fi
 glyph_backends="native"
 case "$(uname -s)" in
