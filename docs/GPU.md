@@ -103,7 +103,9 @@ The device and the per-frame target were already Void's on every platform except
 because `src/sokol/window.ms` `AppEventType` mirrors them. The frame clock is
 `src/platform/clock.h`, sokol_time's four readings (`QueryPerformanceCounter`,
 `mach_absolute_time`, `emscripten_get_now`, `clock_gettime`) behind one function. The web window
-(`:7792-8350`) is still sokol's.
+is ported from the emscripten backend (`:7466-8350`, the WebGPU device and surface `:3909-4366`)
+into `src/platform/web/`: it delivers `VoidAppEvent`s itself, makes the WebGPU device and surface
+or the WebGL2 context, and gives the door its swapchain views (WebGL2 draws framebuffer 0).
 
 ## The door on this layer
 
