@@ -93,6 +93,7 @@ import "./animationSheetCheck";
 import "./scene3dCheck";
 import "./sceneMeshesCheck";
 import "./sceneMaterialsCheck";
+import "./sceneContainsCheck";
 import "./animationCheck";
 import "./animationComposeCheck";
 import "./pickCheck";
