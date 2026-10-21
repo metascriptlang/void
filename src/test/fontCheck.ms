@@ -320,6 +320,20 @@ test "the resolver's first candidate Void can draw, cover and present wins, in o
 	setFaceResolver(null);
 }
 
+test "a codepoint a discovered face covers is drawn from it without asking the resolver again" {
+	const cjk = faceOfPath(CJK);
+	assert glyphIndex(cjk, 0x597D) != 0;
+	assert glyphIndex(cjk, 0x4E2D) != 0;
+	setFaceResolver((q: FaceQuery): FaceCandidate[] => [{ path: CJK, index: 0 }]);
+	const f = added(NO_LINE_HEIGHT);
+	const asks: int32 = faceDiscoveryAsks();
+	assert codepointFaceFor(f, 0x4F60, Presentation.Text).face == cjk;
+	assert codepointFaceFor(f, 0x597D, Presentation.Text).face == cjk;
+	assert codepointFaceFor(f, 0x4E2D, Presentation.Default).face == cjk;
+	assert faceDiscoveryAsks() == asks + 1;
+	setFaceResolver(null);
+}
+
 test "a candidate's index picks the face inside a collection" {
 	setFaceResolver((q: FaceQuery): FaceCandidate[] => [{ path: COLLECTION, index: 1 }]);
 	const f = added(NO_LINE_HEIGHT);
