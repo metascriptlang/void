@@ -459,9 +459,10 @@ export function faceDiscoveryAsks(): int32 {
 function discoveredPath(font: FontId, codepoint: int32, want: Presentation): string {
 	const resolver = faceResolver;
 	if (resolver === null) { return ""; }
-	const entry: FontEntry = fonts[fontIndex(font)];
-	const weight: int32 = entry.described ? entry.description.weight : 400;
-	const style: FontStyle = entry.described ? entry.description.style : FontStyle.Normal;
+	const index: int32 = fontIndex(font);
+	const described: boolean = fonts[index].described;
+	const weight: int32 = described ? fonts[index].description.weight : 400;
+	const style: FontStyle = described ? fonts[index].description.style : FontStyle.Normal;
 	const key: uint64 = ((weight as uint64) << 32) | (((style as int32) as uint64) << 28) |
 		(((want as int32) as uint64) << 24) | (codepoint as uint64);
 	const hit = discovered.get(key);
