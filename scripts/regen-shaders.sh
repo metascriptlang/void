@@ -316,7 +316,7 @@ generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 slots src/void2d/shader2dGen.glsl src/void2d/shader2dSlots.h VOID2D_SHADER2D_SLOTS_H
 tables src/void2d/shader2d.glsl src/void2d/shader2dModules.ms "$LANGS_IOS" ../webgpu/types.ms
 regenKeys
-regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"
+tables tests/integration/gpuCopy.glsl tests/integration/gpuCopyModules.ms "$LANGS_IOS" ../../src/webgpu/types.ms
 
 [ "$CHECK" = 1 ] && exit "$STALE"
 echo "OK: shader headers regenerated"
