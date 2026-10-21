@@ -26,9 +26,10 @@ case "$(uname -s)-$(uname -m)" in
 	*) echo "no sokol-shdc for $(uname -s)-$(uname -m)"; exit 1 ;;
 esac
 
-# The void3d shaders also ship to iOS (device + simulator); void2d does not.
-LANGS="metal_macos:glsl300es:glsl430:wgsl:hlsl5"
-LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5"
+# Every shader carries every target, iOS device and simulator included; src/shader/program.ms
+# compiles its programs with the same list, so this reads it from there.
+LANGS=$(sed -n 's/^const SHDC_LANGUAGES = "\(.*\)";$/\1/p' src/shader/program.ms)
+[ -n "$LANGS" ] || { echo "no SHDC_LANGUAGES line in src/shader/program.ms"; exit 1; }
 
 guard() {
 	guard="#if !defined(VOID_SOKOL_BACKEND_H)\n#error \"include src/sokol/backend.h before $2\"\n#endif"
@@ -163,7 +164,7 @@ regenKeys() {
 			grep -q "^#ifdef $feature\$" "$input" ||
 				{ echo "programKeys.txt: row $module asks for $feature, which $vs and $fs never read"; exit 1; }
 		done
-		"$SHDC" -i "$input" -o "$work/$module.h" -l "$LANGS_IOS" -f sokol --ifdef --no-log-cmdline \
+		"$SHDC" -i "$input" -o "$work/$module.h" -l "$LANGS" -f sokol --ifdef --no-log-cmdline \
 			-m "$module" $defines >/dev/null
 		header=$(headerOf "$preset")
 		guard "$work/$module.h" "$header"
@@ -250,7 +251,7 @@ generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
 generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
 regenKeys
-regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"
+regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS"
 
 [ "$CHECK" = 1 ] && exit "$STALE"
 echo "OK: shader headers regenerated"
