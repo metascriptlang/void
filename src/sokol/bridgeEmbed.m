@@ -34,49 +34,44 @@ static void call0(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
-// Read the rendered drawable back to a PPM — deterministic Stage-2 proof.
-static void captureDrawable(id<CAMetalDrawable> drawable, const char* path) {
-	id<MTLTexture> tex = drawable.texture;
-	NSUInteger w = tex.width, h = tex.height;
-	MTLTextureDescriptor* desc = [MTLTextureDescriptor
-		texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-		width:w height:h mipmapped:NO];
-	desc.storageMode = MTLStorageModeManaged;
-	desc.usage = MTLTextureUsageShaderRead;
-	id<MTLTexture> staging = [g_device newTextureWithDescriptor:desc];
-	id<MTLCommandQueue> q = [g_device newCommandQueue];
-	id<MTLCommandBuffer> cb = [q commandBuffer];
-	id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
-	[blit copyFromTexture:tex sourceSlice:0 sourceLevel:0
-		sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(w,h,1)
-		toTexture:staging destinationSlice:0 destinationLevel:0
-		destinationOrigin:MTLOriginMake(0,0,0)];
-	[blit synchronizeResource:staging];
-	[blit endEncoding];
-	[cb commit];
-	[cb waitUntilCompleted];
-	NSUInteger rowBytes = w * 4;
-	uint8_t* buf = (uint8_t*)malloc(rowBytes * h);
-	[staging getBytes:buf bytesPerRow:rowBytes
-		fromRegion:MTLRegionMake2D(0,0,w,h) mipmapLevel:0];
-	FILE* f = fopen(path, "wb");
-	fprintf(f, "P6\n%lu %lu\n255\n", (unsigned long)w, (unsigned long)h);
-	for (NSUInteger i = 0; i < w*h; i++) {
-		uint8_t b = buf[i*4+0], g = buf[i*4+1], r = buf[i*4+2];
-		fputc(r, f); fputc(g, f); fputc(b, f);
-	}
-	fclose(f);
-	free(buf);
-	NSLog(@"voidEmbed capture: wrote %s %lux%lu", path, (unsigned long)w, (unsigned long)h);
-}
-
 static void tick(void) {
 	g_drawable = [g_layer nextDrawable];
 	if (!g_drawable) return;
 	call0(s_frame);
 	s_frames++;
-	(void)captureDrawable;
 	g_drawable = nil;
+}
+
+int voidWindowReadRgba(uint8_t *out, int width, int height) {
+	if (s_driver != DRIVER_WINDOW || !g_drawable) return 0;
+	id<MTLTexture> tex = g_drawable.texture;
+	if ((int)tex.width != width || (int)tex.height != height) return 0;
+	@autoreleasepool {
+		NSUInteger rowBytes = (NSUInteger)width * 4u;
+		id<MTLBuffer> shared = [g_device newBufferWithLength:rowBytes * (NSUInteger)height
+			options:MTLResourceStorageModeShared];
+		if (!shared) return 0;
+		id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)sg_mtl_command_queue();
+		id<MTLCommandBuffer> cb = [queue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+		[blit copyFromTexture:tex sourceSlice:0 sourceLevel:0
+			sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, 1)
+			toBuffer:shared destinationOffset:0 destinationBytesPerRow:rowBytes
+			destinationBytesPerImage:rowBytes * (NSUInteger)height];
+		[blit endEncoding];
+		[cb commit];
+		[cb waitUntilCompleted];
+		int ok = cb.status == MTLCommandBufferStatusCompleted;
+		const uint8_t *bgra = (const uint8_t *)shared.contents;
+		for (size_t i = 0; ok && i < (size_t)width * (size_t)height; i++) {
+			out[i * 4 + 0] = bgra[i * 4 + 2];
+			out[i * 4 + 1] = bgra[i * 4 + 1];
+			out[i * 4 + 2] = bgra[i * 4 + 0];
+			out[i * 4 + 3] = bgra[i * 4 + 3];
+		}
+		[shared release];
+		return ok;
+	}
 }
 
 @interface VEAppDelegate : NSObject <NSApplicationDelegate>
