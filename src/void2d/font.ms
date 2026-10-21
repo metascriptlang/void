@@ -81,7 +81,7 @@ const NOT_LOADED: int32 = -1;
 const LOAD_FAILED: int32 = -2;
 const BOLD_WEIGHT: int32 = 600;
 const PRIMARY_SLOT: int32 = -1;
-const NO_CANDIDATE: FaceCandidate = { path: "", index: 0 };
+const NO_DISCOVERY: int32 = -1;
 const FONT_SHIFT: uint64 = 40;
 const MODE_SHIFT: uint64 = 32;
 
@@ -148,7 +148,8 @@ let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
 let faceResolver: FaceResolver | null = null;
-let discovered: Map<uint64, FaceCandidate> = new Map<uint64, FaceCandidate>();
+let discovered: Map<uint64, int32> = new Map<uint64, int32>();
+let discoveries: Vec<FaceCandidate> = [];
 let discoveryAsks: int32 = 0;
 let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
@@ -467,7 +468,8 @@ export function addFallbackFont(font: FontId, path: string): void {
 
 export function setFaceResolver(resolver: FaceResolver | null): void {
 	faceResolver = resolver;
-	discovered = new Map<uint64, FaceCandidate>();
+	discovered = new Map<uint64, int32>();
+	discoveries = [];
 	resolved = new Map<uint64, int32>();
 }
 
@@ -475,9 +477,9 @@ export function faceDiscoveryAsks(): int32 {
 	return discoveryAsks;
 }
 
-function discoveredFace(font: FontId, codepoint: int32, want: Presentation): FaceCandidate {
+function discoveredFace(font: FontId, codepoint: int32, want: Presentation): int32 {
 	const resolver = faceResolver;
-	if (resolver === null) { return NO_CANDIDATE; }
+	if (resolver === null) { return NO_DISCOVERY; }
 	const index: int32 = fontIndex(font);
 	const described: boolean = fonts[index].described;
 	const weight: int32 = described ? fonts[index].description.weight : 400;
@@ -488,11 +490,14 @@ function discoveredFace(font: FontId, codepoint: int32, want: Presentation): Fac
 	if (hit.present) { return hit.value; }
 	discoveryAsks = discoveryAsks + 1;
 	const answers = resolver({ codepoint: codepoint, presentation: want, weight: weight, style: style });
-	let chosen: FaceCandidate = NO_CANDIDATE;
-	for (const answer of answers) {
-		if (drawableAt(answer.path, answer.index) && coversAtPath(answer.path, answer.index, codepoint) &&
-			presentationOfPath(answer.path, answer.index) == want) {
-			chosen = answer;
+	let chosen: int32 = NO_DISCOVERY;
+	for (let k: int32 = 0; k < (answers.length as int32); k++) {
+		const path: string = answers[k].path;
+		const collectionIndex: int32 = answers[k].index;
+		if (drawableAt(path, collectionIndex) && coversAtPath(path, collectionIndex, codepoint) &&
+			presentationOfPath(path, collectionIndex) == want) {
+			discoveries.push({ path: path, index: collectionIndex });
+			chosen = (discoveries.length as int32) - 1;
 			break;
 		}
 	}
@@ -501,16 +506,18 @@ function discoveredFace(font: FontId, codepoint: int32, want: Presentation): Fac
 }
 
 function discoveredSlot(font: FontId, codepoint: int32, want: Presentation): int32 {
-	const found: FaceCandidate = discoveredFace(font, codepoint, want);
-	if (found.path.length == 0) { return PRIMARY_SLOT; }
+	const found: int32 = discoveredFace(font, codepoint, want);
+	if (found == NO_DISCOVERY) { return PRIMARY_SLOT; }
+	const path: string = discoveries[found].path;
+	const collectionIndex: int32 = discoveries[found].index;
 	for (let i: int32 = 0; i < (fallbacks.length as int32); i++) {
-		if (fallbacks[i].font == font && fallbacks[i].path.equals(found.path) &&
-			fallbacks[i].collectionIndex == found.index) {
+		if (fallbacks[i].font == font && fallbacks[i].path.equals(path) &&
+			fallbacks[i].collectionIndex == collectionIndex) {
 			return fallbackUsable(i) ? i : PRIMARY_SLOT;
 		}
 	}
 	fallbacks.push({
-		font: font, path: found.path, collectionIndex: found.index,
+		font: font, path: path, collectionIndex: collectionIndex,
 		bold: false, italic: false, face: NOT_LOADED, scale: 1.0,
 	});
 	const slot: int32 = (fallbacks.length as int32) - 1;
