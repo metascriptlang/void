@@ -3916,6 +3916,41 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Sphere bounds accumulation: native checkpoint, rich-assert JS held
+
+Primary `h3d/col/Bounds.hx::addSpherePos` at inspected Heaps `b9aa6dcb` grows each endpoint
+with center±radius. Actual Heaps `2b84cc23` Bounds source is byte-identical. Secondary Bevy
+`157e1ce6`, `bevy_shape/src/bounding/bounded3d/mod.rs::BoundingSphere::aabb_3d` followed by
+`Aabb3d::merge`, gives the same positive-radius envelope/union; source-only comparison.
+Signed and zero parameters follow primary scalar updates, not radius normalization or a
+new empty-overlap policy. No `addSphere` wrapper was needed alongside MeshData's generator.
+
+`src/void3d/bounds.ms::addSpherePos` reuses the existing ref builder and f64/Result preflight
+model. On binary/support `b1f63337f`, source tree `8f5d98cd8c2e1064b67e8dd474592969fc837d0a`,
+actual red **2 missing-export diagnostics**, exit1; native **304/304**, prior bounds **327/327**.
+The new native tests reach the existing ray/slab consumer through accumulated actor bounds.
+Actual Heaps **10/10**; C/JS oracle0, independently **10 rows / 30 coordinates exactly equal**,
+serialized delta0. These scalar fixtures do not clear direct rich-assert ref calls.
+
+New JS unit is **63pass/3fail(66)**. Direct `assert addSpherePos(box,...).ok` copies Bounds3D
+into `__pa_0` and mutates that ref instead of the original. Saved ESM15–17 proves the same
+rich-assert root already parked for mesh transforms/normals; original calls stay registered.
+Nim Audit reports its copied-tree control on builder `afcd22f19` passes JS66/66, covered by
+landed rich-assert fix `033aa30d6`; that owner result is not installed SDK acceptance here.
+
+Old `boundsCheck.ms` CLIJS additionally aborts before its geometry tests with
+`ReferenceError: DOOR_UNIFORM_SLOTS is not defined`. A minimal control importing only
+`src/test/helpers.ms::approx`, with no bounds/sphere import, reproduces the same startup1.
+Dependency read: helpers→gpu/texture→gpu/door. No helper split, import removal, runtime
+workaround or new compiler diagnosis was used to obtain a green. Native/oracle evidence
+must not be presented as full old-unit CLIJS acceptance.
+
+Commands: `msc test [--target=js] src/test/boundsSphereBuildCheck.ms`, prior `boundsCheck.ms`,
+existing oracle regen/check and retained generated-source JS run. Receipts
+`out/m6BoundsSphereBuild*B1f63337f20261021*`, exact `CrossBackend`; emitted unit/door packets
+`out/tmp/boundsSphereBuild/jsCapture/`; standalone `out/m6BoundsJsHelperImportControl*`.
+Aggregate1 retained. No GPU/browser/full gate/performance or empty-overlap approval.
+
 ### Sphere ray picking: native checkpoint, camera-ray JS held
 
 Primary `h3d/col/Sphere.hx::rayIntersection` at Heaps `b9aa6dcb` uses the unit-direction
