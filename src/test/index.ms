@@ -62,6 +62,7 @@ import "./sphereQueryCheck";
 import "./meshDataCheck";
 import "./meshTranslationCheck";
 import "./meshUvScaleCheck";
+import "./meshScaleCheck";
 import "./sphereTangentsCheck";
 import "./meshLodCheck";
 import "./meshLodDrawCheck";
