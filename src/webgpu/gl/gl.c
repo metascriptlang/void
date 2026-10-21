@@ -3,9 +3,11 @@
 #include <string.h>
 #include "gl.h"
 
-#if !defined(_WIN32)
-#error "the GL backend loads GL through WGL only; another platform needs its GL headers and loader here"
-#endif
+#if defined(__EMSCRIPTEN__)
+#include <GLES3/gl3.h>
+#elif !defined(_WIN32)
+#error "the GL backend loads GL through WGL or takes WebGL2 from emscripten; another platform needs its GL headers and loader here"
+#else
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -112,7 +114,7 @@ typedef int GLint;
 	OGL_XMACRO(glBindFramebuffer,          void, (GLenum target, GLuint framebuffer)) \
 	OGL_XMACRO(glDeleteFramebuffers,       void, (GLsizei n, const GLuint *framebuffers)) \
 	OGL_XMACRO(glFramebufferTexture2D,     void, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
-	OGL_XMACRO(glFramebufferRenderbuffer,  void, (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)) \
+	OGL_XMACRO(glFramebufferRenderbuffer,  void, (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)) 	OGL_XMACRO(glGenRenderbuffers,         void, (GLsizei n, GLuint *renderbuffers)) 	OGL_XMACRO(glBindRenderbuffer,         void, (GLenum target, GLuint renderbuffer)) 	OGL_XMACRO(glRenderbufferStorageMultisample, void, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)) 	OGL_XMACRO(glDeleteRenderbuffers,      void, (GLsizei n, const GLuint *renderbuffers)) \
 	OGL_XMACRO(glCheckFramebufferStatus,   GLenum, (GLenum target)) \
 	OGL_XMACRO(glDrawBuffers,              void, (GLsizei n, const GLenum *bufs)) \
 	OGL_XMACRO(glReadBuffer,               void, (GLenum src)) \
@@ -181,6 +183,16 @@ void oglUnload(void) {
 	s_opengl32 = NULL;
 }
 
+#endif
+
+#if defined(__EMSCRIPTEN__)
+static char s_log[4096];
+
+int32_t oglLoad(void) { return 1; }
+const char *oglLoadMissing(void) { return ""; }
+void oglUnload(void) {}
+#endif
+
 int32_t oglGetInteger(int32_t name) {
 	GLint value = 0;
 	glGetIntegerv((GLenum)name, &value);
@@ -234,8 +246,25 @@ void oglTexStorage2D(int32_t target, int32_t internalFormat, int32_t width, int3
 	glTexStorage2D((GLenum)target, 1, (GLenum)internalFormat, width, height);
 }
 
+#if !defined(__EMSCRIPTEN__)
 void oglTexStorage2DMultisample(int32_t target, int32_t samples, int32_t internalFormat, int32_t width, int32_t height) {
 	glTexStorage2DMultisample((GLenum)target, samples, (GLenum)internalFormat, width, height, GL_TRUE);
+}
+#endif
+
+uint32_t oglCreateRenderbuffer(int32_t samples, int32_t internalFormat, int32_t width, int32_t height) {
+	GLuint renderbuffer = 0;
+	glGenRenderbuffers(1, &renderbuffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
+	glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, (GLenum)internalFormat, width, height);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	return renderbuffer;
+}
+
+void oglDeleteRenderbuffer(uint32_t renderbuffer) { if (renderbuffer) glDeleteRenderbuffers(1, &renderbuffer); }
+
+void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer) {
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, (GLenum)attachment, GL_RENDERBUFFER, renderbuffer);
 }
 
 void oglTexSubImage2D(
@@ -263,10 +292,12 @@ uint32_t oglCreateSampler(void) {
 void oglSamplerParameteri(uint32_t sampler, int32_t name, int32_t value) { glSamplerParameteri(sampler, (GLenum)name, value); }
 void oglSamplerParameterf(uint32_t sampler, int32_t name, double value) { glSamplerParameterf(sampler, (GLenum)name, (GLfloat)value); }
 
+#if !defined(__EMSCRIPTEN__)
 void oglSamplerBorderColor(uint32_t sampler, double r, double g, double b, double a) {
 	const GLfloat border[4] = { (GLfloat)r, (GLfloat)g, (GLfloat)b, (GLfloat)a };
 	glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, border);
 }
+#endif
 
 void oglBindSampler(int32_t unit, uint32_t sampler) { glBindSampler((GLuint)unit, sampler); }
 void oglDeleteSampler(uint32_t sampler) { if (sampler) glDeleteSamplers(1, &sampler); }
@@ -332,9 +363,11 @@ void oglColorMask(int32_t mask) {
 	glColorMask((mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0);
 }
 
+#if !defined(__EMSCRIPTEN__)
 void oglColorMaski(int32_t index, int32_t mask) {
 	glColorMaski((GLuint)index, (mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0, (mask & 8) != 0);
 }
+#endif
 
 void oglPolygonOffset(double factor, double units) { glPolygonOffset((GLfloat)factor, (GLfloat)units); }
 void oglCullFace(int32_t face) { glCullFace((GLenum)face); }
@@ -403,22 +436,29 @@ void oglDrawArraysInstanced(int32_t mode, int32_t first, int32_t count, int32_t 
 	glDrawArraysInstanced((GLenum)mode, first, count, instances);
 }
 
+#if !defined(__EMSCRIPTEN__)
 void oglDrawArraysInstancedBaseInstance(int32_t mode, int32_t first, int32_t count, int32_t instances, int32_t baseInstance) {
 	glDrawArraysInstancedBaseInstance((GLenum)mode, first, count, instances, (GLuint)baseInstance);
 }
+
+#endif
 
 void oglDrawElements(int32_t mode, int32_t count, int32_t type, int64_t offset) {
 	glDrawElements((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset);
 }
 
+#if !defined(__EMSCRIPTEN__)
 void oglDrawElementsBaseVertex(int32_t mode, int32_t count, int32_t type, int64_t offset, int32_t baseVertex) {
 	glDrawElementsBaseVertex((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset, baseVertex);
 }
+
+#endif
 
 void oglDrawElementsInstanced(int32_t mode, int32_t count, int32_t type, int64_t offset, int32_t instances) {
 	glDrawElementsInstanced((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset, instances);
 }
 
+#if !defined(__EMSCRIPTEN__)
 void oglDrawElementsInstancedBaseVertex(int32_t mode, int32_t count, int32_t type, int64_t offset, int32_t instances, int32_t baseVertex) {
 	glDrawElementsInstancedBaseVertex((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset, instances, baseVertex);
 }
@@ -434,3 +474,4 @@ void oglDrawElementsInstancedBaseVertexBaseInstance(
 	glDrawElementsInstancedBaseVertexBaseInstance((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset,
 		instances, baseVertex, (GLuint)baseInstance);
 }
+#endif

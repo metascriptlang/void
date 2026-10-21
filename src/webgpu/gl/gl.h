@@ -27,6 +27,9 @@ void oglActiveTexture(int32_t unit);
 void oglBindTexture(int32_t target, uint32_t texture);
 void oglTexStorage2D(int32_t target, int32_t internalFormat, int32_t width, int32_t height);
 void oglTexStorage2DMultisample(int32_t target, int32_t samples, int32_t internalFormat, int32_t width, int32_t height);
+uint32_t oglCreateRenderbuffer(int32_t samples, int32_t internalFormat, int32_t width, int32_t height);
+void oglDeleteRenderbuffer(uint32_t renderbuffer);
+void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer);
 void oglTexSubImage2D(
 	int32_t target,
 	int32_t width,

@@ -59,11 +59,11 @@ import {
 	oglClearDepth,
 	oglClearDepthStencil,
 	oglColorMask,
-	oglColorMaski,
 	oglCompileShader,
 	oglCopyBytes,
 	oglCreateBuffer,
 	oglCreateFramebuffer,
+	oglCreateRenderbuffer,
 	oglCreateSampler,
 	oglCreateTexture,
 	oglCreateVertexArray,
@@ -71,6 +71,7 @@ import {
 	oglDeleteBuffer,
 	oglDeleteFramebuffer,
 	oglDeleteProgram,
+	oglDeleteRenderbuffer,
 	oglDeleteSampler,
 	oglDeleteTexture,
 	oglDeleteVertexArray,
@@ -80,16 +81,13 @@ import {
 	oglDisableVertexAttribArray,
 	oglDrawArrays,
 	oglDrawArraysInstanced,
-	oglDrawArraysInstancedBaseInstance,
 	oglDrawBuffers,
 	oglDrawElements,
-	oglDrawElementsBaseVertex,
 	oglDrawElementsInstanced,
-	oglDrawElementsInstancedBaseVertex,
-	oglDrawElementsInstancedBaseVertexBaseInstance,
 	oglEnable,
 	oglEnableVertexAttribArray,
 	oglFramebufferDetach,
+	oglFramebufferRenderbuffer,
 	oglFramebufferTexture2D,
 	oglFrontFace,
 	oglGetError,
@@ -101,7 +99,6 @@ import {
 	oglPixelStore,
 	oglPolygonOffset,
 	oglReadBuffer,
-	oglSamplerBorderColor,
 	oglSamplerParameterf,
 	oglSamplerParameteri,
 	oglScissor,
@@ -109,7 +106,6 @@ import {
 	oglStencilMask,
 	oglStencilOp,
 	oglTexStorage2D,
-	oglTexStorage2DMultisample,
 	oglTexSubImage2D,
 	oglTextureNative,
 	oglUniform1i,
@@ -121,6 +117,18 @@ import {
 	oglVertexAttribPointer,
 	oglViewport,
 } from "./gl.h";
+
+when (!webgl2) {
+	import {
+		oglColorMaski,
+		oglDrawArraysInstancedBaseInstance,
+		oglDrawElementsBaseVertex,
+		oglDrawElementsInstancedBaseVertex,
+		oglDrawElementsInstancedBaseVertexBaseInstance,
+		oglSamplerBorderColor,
+		oglTexStorage2DMultisample,
+	} from "./gl.h";
+}
 
 export struct NativeEnvironment {
 	device: Ptr<void> | null;
@@ -145,7 +153,6 @@ const INFLIGHT_SLOTS = 2;
 const MAX_TEXTURE_UNITS = 16;
 const MAX_TEXTURE_PAIRS = 16;
 const MAX_SHADER_RESOURCES = 24;
-const MIN_GL_VERSION = 430;
 const COLOR_WRITE_ALL = 0xF;
 
 const GL_ZERO = 0;
@@ -196,6 +203,7 @@ const GL_STATIC_DRAW = 0x88E4;
 const GL_DYNAMIC_DRAW = 0x88E8;
 const GL_TEXTURE_2D = 0x0DE1;
 const GL_TEXTURE_2D_MULTISAMPLE = 0x9100;
+const GL_RENDERBUFFER = 0x8D41;
 const GL_R8 = 0x8229;
 const GL_RGBA8 = 0x8058;
 const GL_RGBA16F = 0x881A;
@@ -828,7 +836,7 @@ function cacheClearUnits(force: boolean): void {
 		if (force || cachedUnits[i].texture != 0) {
 			oglActiveTexture(i);
 			oglBindTexture(GL_TEXTURE_2D, 0);
-			oglBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+			when (!webgl2) { oglBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0); }
 			oglBindSampler(i, 0);
 			cachedUnits[i] = { target: 0, texture: 0, sampler: 0 };
 			cache.activeTexture = i;
@@ -927,24 +935,30 @@ function resetStateCache(): void {
 	oglEnable(GL_SCISSOR_TEST);
 	oglDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 	oglEnable(GL_DITHER);
-	oglEnable(GL_MULTISAMPLE);
-	oglEnable(GL_PROGRAM_POINT_SIZE);
+	when (!webgl2) {
+		oglEnable(GL_MULTISAMPLE);
+		oglEnable(GL_PROGRAM_POINT_SIZE);
+	}
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (oglLoad() == 0) {
 		const missing: string = oglLoadMissing();
-		stop(`requestDevice needs a current GL 4.3 context; ${missing} did not load`);
+		stop(`requestDevice needs a current GL context; ${missing} did not load`);
 	}
 	const version = oglGetInteger(GL_MAJOR_VERSION) * 100 + oglGetInteger(GL_MINOR_VERSION) * 10;
-	if (version < MIN_GL_VERSION) { stop(`the current context is GL ${version}; the GL backend needs 430`); }
+	when (webgl2) {
+		if (version < 300) { stop(`the current context is GLES ${version}; the WebGL2 backend needs 300`); }
+	} else {
+		if (version < 430) { stop(`the current context is GL ${version}; the GL backend needs 430`); }
+	}
 	maxVertexAttributes = smaller(oglGetInteger(GL_MAX_VERTEX_ATTRIBS), GPU_MAX_VERTEX_ATTRIBUTES);
 	maxTextureUnits = smaller(oglGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS), MAX_TEXTURE_UNITS);
 	vertexArray = oglCreateVertexArray();
 	oglBindVertexArray(vertexArray);
 	framebuffer = oglCreateFramebuffer();
 	oglPixelStore(GL_UNPACK_ALIGNMENT, 1);
-	oglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+	when (!webgl2) { oglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS); }
 	resetStateCache();
 	checkError("setup");
 	frame = 0;
@@ -1102,6 +1116,9 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	if (uniform && has(usage, vertexOrIndex)) {
 		stop("a UNIFORM buffer is a CPU shadow on GL and cannot also be VERTEX or INDEX");
 	}
+	when (webgl2) {
+		if ((usage & vertexOrIndex) == vertexOrIndex) { stop("WebGL2 binds a buffer as VERTEX or as INDEX, not both"); }
+	}
 	const writable = has(usage, GPUBufferUsage.COPY_DST as int32);
 	const id = allocateId(bufferQueue);
 	let slot: BufferSlot = {
@@ -1211,18 +1228,21 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		format: descriptor.format,
 		usage: usage,
 		sampleCount: sampleCount,
-		target: sampleCount > 1 ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D,
+		target: sampleCount == 1 ? GL_TEXTURE_2D : multisampleTarget(),
 		slotCount: copyDestination ? INFLIGHT_SLOTS : 1,
 		activeSlot: 0,
 		swapchainView: 0,
 	};
-	for (let s = 0; s < slot.slotCount; s++) {
+	if (slot.target == GL_RENDERBUFFER) {
+		slot.names[0] = oglCreateRenderbuffer(sampleCount, info.internalFormat, width, height);
+	}
+	for (let s = 0; s < slot.slotCount && slot.target != GL_RENDERBUFFER; s++) {
 		const name = oglCreateTexture();
 		slot.names[s] = name;
 		cacheStoreUnit0();
 		cacheBindTextureSampler(0, slot.target, name, 0);
 		if (sampleCount > 1) {
-			oglTexStorage2DMultisample(slot.target, sampleCount, info.internalFormat, width, height);
+			when (!webgl2) { oglTexStorage2DMultisample(slot.target, sampleCount, info.internalFormat, width, height); }
 		} else {
 			oglTexStorage2D(slot.target, info.internalFormat, width, height);
 		}
@@ -1234,9 +1254,20 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	return { id: id };
 }
 
+// WebGL2 has no multisampled texture, so a multisampled attachment is a renderbuffer, as sokol makes it.
+function multisampleTarget(): int32 {
+	when (webgl2) { return GL_RENDERBUFFER; } else { return GL_TEXTURE_2D_MULTISAMPLE; }
+}
+
 export function destroyTexture(texture: GPUTexture): void {
 	const index = textureIndex(texture.id);
 	if (textures[index].swapchainView != 0) { stop("the swapchain texture belongs to the platform"); }
+	if (textures[index].target == GL_RENDERBUFFER) {
+		oglDeleteRenderbuffer(textures[index].names[0]);
+		textures[index] = { id: 0 };
+		releaseId(textureQueue, texture.id);
+		return;
+	}
 	for (let s = 0; s < textures[index].slotCount; s++) {
 		cacheInvalidateTextureSampler(textures[index].names[s], 0);
 		oglDeleteTexture(textures[index].names[s]);
@@ -1367,7 +1398,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_S, addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"));
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_T, addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"));
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-	oglSamplerBorderColor(native, 0, 0, 0, 1);
+	when (!webgl2) { oglSamplerBorderColor(native, 0, 0, 0, 1); }
 	oglSamplerParameteri(native, GL_TEXTURE_COMPARE_MODE, 0);
 	checkError(`createSampler of ${labelOf(descriptor.label)}`);
 	const id = allocateId(samplerQueue);
@@ -1584,6 +1615,11 @@ function describeBlend(descriptor: GPURenderPipelineDescriptor, ref slot: Pipeli
 		formatInfo(descriptor.fragment.targets[i].format, `fragment.targets[${i}].format`);
 		const writeMask = descriptor.fragment.targets[i].writeMask;
 		slot.writeMasks[i] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
+		when (webgl2) {
+			if (first != -1 && slot.writeMasks[i] != slot.writeMasks[first]) {
+				stop(`fragment.targets[${i}].writeMask differs from target ${first}; WebGL2 masks every target alike`);
+			}
+		}
 		slot.colorCount = i + 1;
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;
@@ -1769,7 +1805,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		stop("a render pass mixes the canvas with offscreen attachments; GL draws the canvas through framebuffer 0");
 	}
 	if (pass.swapchain) {
-		oglDisable(GL_FRAMEBUFFER_SRGB);
+		when (!webgl2) { oglDisable(GL_FRAMEBUFFER_SRGB); }
 		oglBindFramebuffer(GL_FRAMEBUFFER, 0);
 	} else {
 		bindOffscreenFramebuffer(colorMask, depthView != 0 ? depthTexture : -1, depthStencil);
@@ -1786,7 +1822,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 }
 
 function bindOffscreenFramebuffer(colorMask: int32, depthTexture: int32, depthStencil: boolean): void {
-	oglEnable(GL_FRAMEBUFFER_SRGB);
+	when (!webgl2) { oglEnable(GL_FRAMEBUFFER_SRGB); }
 	oglBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = GL_COLOR_ATTACHMENT0 + i;
@@ -1794,20 +1830,26 @@ function bindOffscreenFramebuffer(colorMask: int32, depthTexture: int32, depthSt
 			oglFramebufferDetach(attachment);
 			continue;
 		}
-		const t = textureIndex(views[viewIndex(pass.colorViews[i])].texture);
-		oglFramebufferTexture2D(attachment, textures[t].target, textures[t].names[0]);
+		attachTexture(attachment, textureIndex(views[viewIndex(pass.colorViews[i])].texture));
 	}
 	if (depthTexture >= 0) {
 		oglFramebufferDetach(GL_DEPTH_ATTACHMENT);
 		oglFramebufferDetach(GL_DEPTH_STENCIL_ATTACHMENT);
-		const attachment = depthStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-		oglFramebufferTexture2D(attachment, textures[depthTexture].target, textures[depthTexture].names[0]);
+		attachTexture(depthStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT, depthTexture);
 	} else {
 		oglFramebufferDetach(GL_DEPTH_STENCIL_ATTACHMENT);
 	}
 	const status = oglCheckFramebufferStatus();
 	if (status != GL_FRAMEBUFFER_COMPLETE) { stop(`the render pass framebuffer is incomplete (status 0x${status.toString(16)})`); }
 	oglDrawBuffers(GPU_MAX_COLOR_ATTACHMENTS, colorMask);
+}
+
+function attachTexture(attachment: int32, t: int32): void {
+	if (textures[t].target == GL_RENDERBUFFER) {
+		oglFramebufferRenderbuffer(attachment, textures[t].names[0]);
+	} else {
+		oglFramebufferTexture2D(attachment, textures[t].target, textures[t].names[0]);
+	}
 }
 
 function clearAttachments(descriptor: GPURenderPassDescriptor, hasDepth: boolean, depthStencil: boolean): void {
@@ -1979,7 +2021,11 @@ export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int3
 		if (firstInstance == 0) {
 			oglDrawArraysInstanced(GL_TRIANGLES, firstVertex, vertexCount, instanceCount);
 		} else {
-			oglDrawArraysInstancedBaseInstance(GL_TRIANGLES, firstVertex, vertexCount, instanceCount, firstInstance);
+			when (webgl2) {
+				stop(`draw with firstInstance ${firstInstance}: WebGL2 has no base instance`);
+			} else {
+				oglDrawArraysInstancedBaseInstance(GL_TRIANGLES, firstVertex, vertexCount, instanceCount, firstInstance);
+			}
 		}
 	} else {
 		oglDrawArrays(GL_TRIANGLES, firstVertex, vertexCount);
@@ -1997,18 +2043,26 @@ export function drawIndexed(
 	flush(true);
 	const offset = (firstIndex as int64) * (bound.indexSize as int64) + bound.indexOffset;
 	const indexType = bound.indexType;
-	if (instanceCount > 1 || bound.instanced) {
-		if (baseVertex == 0 && firstInstance == 0) {
+	if (baseVertex == 0 && firstInstance == 0) {
+		if (instanceCount > 1 || bound.instanced) {
 			oglDrawElementsInstanced(GL_TRIANGLES, indexCount, indexType, offset, instanceCount);
-		} else if (firstInstance == 0) {
-			oglDrawElementsInstancedBaseVertex(GL_TRIANGLES, indexCount, indexType, offset, instanceCount, baseVertex);
 		} else {
-			oglDrawElementsInstancedBaseVertexBaseInstance(GL_TRIANGLES, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
+			oglDrawElements(GL_TRIANGLES, indexCount, indexType, offset);
 		}
-	} else if (baseVertex == 0) {
-		oglDrawElements(GL_TRIANGLES, indexCount, indexType, offset);
+		return;
+	}
+	when (webgl2) {
+		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: WebGL2 has neither`);
 	} else {
-		oglDrawElementsBaseVertex(GL_TRIANGLES, indexCount, indexType, offset, baseVertex);
+		if (instanceCount > 1 || bound.instanced) {
+			if (firstInstance == 0) {
+				oglDrawElementsInstancedBaseVertex(GL_TRIANGLES, indexCount, indexType, offset, instanceCount, baseVertex);
+			} else {
+				oglDrawElementsInstancedBaseVertexBaseInstance(GL_TRIANGLES, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
+			}
+		} else {
+			oglDrawElementsBaseVertex(GL_TRIANGLES, indexCount, indexType, offset, baseVertex);
+		}
 	}
 }
 
@@ -2049,7 +2103,9 @@ function applyPipeline(): void {
 	}
 	if (pipelines[p].sampleCount != cache.sampleCount) {
 		cache.sampleCount = pipelines[p].sampleCount;
-		if (cache.sampleCount > 1) { oglEnable(GL_MULTISAMPLE); } else { oglDisable(GL_MULTISAMPLE); }
+		when (!webgl2) {
+			if (cache.sampleCount > 1) { oglEnable(GL_MULTISAMPLE); } else { oglDisable(GL_MULTISAMPLE); }
+		}
 	}
 	bound.instanced = pipelines[p].instanced;
 	bound.appliedPipeline = bound.pipeline;
@@ -2094,7 +2150,11 @@ function applyBlendState(p: int32): void {
 	for (let i = 0; i < pipelines[p].colorCount; i++) {
 		if (pipelines[p].writeMasks[i] != cache.writeMasks[i]) {
 			cache.writeMasks[i] = pipelines[p].writeMasks[i];
-			oglColorMaski(i, cache.writeMasks[i]);
+			when (webgl2) {
+				if (i == 0) { oglColorMask(cache.writeMasks[0]); }
+			} else {
+				oglColorMaski(i, cache.writeMasks[i]);
+			}
 		}
 	}
 }
