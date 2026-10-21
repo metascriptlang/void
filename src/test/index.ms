@@ -107,6 +107,7 @@ import "./particleFadeCheck";
 import "./particleVisualCheck";
 import "./trailCheck";
 import "./graphics3dCheck";
+import "./worldGraphicsMiterCheck";
 import "./particleShaderCheck";
 import "./layoutCheck";
 import "./billboardCheck";
