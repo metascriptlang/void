@@ -206,11 +206,54 @@ function readYaml(path: string): Yaml {
 class Row {
 	name: string;
 	path: string;
+	layout: string;
 	root: Yaml;
-	constructor(name: string, path: string) {
+	constructor(name: string, path: string, layout: string) {
 		this.name = name;
 		this.path = path;
+		this.layout = layout;
 		this.root = readYaml(path);
+	}
+}
+
+function glslProgram(row: Row): Yaml {
+	for (const shader of list(row.root, "shaders")) {
+		if (scalar(shader, "slang") == "glsl430") { return list(shader, "programs")[0]; }
+	}
+	fail(row.path + " has no glsl430 shader to read attribute and block names from");
+}
+
+// Every program of one vertex layout reads its attributes at the same slots, and a uniform block
+// that programs share by name has one size and one slot, so one layout and one writer serve all.
+function agree(rows: Row[]): void {
+	const layoutOwner: Map<string, string> = new Map();
+	const layoutSlots: Map<string, string> = new Map();
+	const blockOwner: Map<string, string> = new Map();
+	const blockShape: Map<string, string> = new Map();
+	for (const row of rows) {
+		const p = glslProgram(row);
+		const attributes: string[] = [];
+		for (const a of list(p, "attrs")) { attributes.push(scalar(a, "glsl_name") + "@" + scalar(a, "slot")); }
+		attributes.sort();
+		const slots = attributes.join(" ");
+		if (!layoutSlots.has(row.layout)) {
+			layoutSlots.set(row.layout, slots);
+			layoutOwner.set(row.layout, row.name);
+		} else if (layoutSlots.get(row.layout) != slots) {
+			fail(row.name + " reads layout " + row.layout + " as " + slots + ", " + layoutOwner.get(row.layout) +
+				" as " + layoutSlots.get(row.layout));
+		}
+		for (const block of list(p, "uniform_blocks")) {
+			const name = scalar(block, "struct_name");
+			const shape = scalar(block, "size") + " bytes at slot " + scalar(block, "slot");
+			if (!blockShape.has(name)) {
+				blockShape.set(name, shape);
+				blockOwner.set(name, row.name);
+			} else if (blockShape.get(name) != shape) {
+				fail(row.name + " declares " + name + " as " + shape + ", " + blockOwner.get(name) + " as " +
+					blockShape.get(name));
+			}
+		}
 	}
 }
 
@@ -273,10 +316,11 @@ function main(): void {
 		for (const line of listed.value.replaceAll("\r", "").split("\n")) {
 			if (line.trim() == "") { continue; }
 			const fields = line.trim().split(" ");
-			if (fields.length != 2) { fail("row '" + line + "' is not '<name> <reflection.yaml>'"); }
-			rows.push(new Row(fields[0], fields[1]));
+			if (fields.length != 3) { fail("row '" + line + "' is not '<name> <reflection.yaml> <vertex layout>'"); }
+			rows.push(new Row(fields[0], fields[1], fields[2]));
 		}
 		if (rows.length == 0) { fail("no rows in " + argv[argv.length - 4]); }
+		agree(rows);
 		const parts = [header(argv[argv.length - 2])];
 		for (const branch of branches(rows)) { parts.push(branch); }
 		parts.push(dispatcher(rows, argv[argv.length - 1]));
@@ -288,7 +332,7 @@ function main(): void {
 			"       shaderTables --rows <rows.txt> <output.ms> <types import path> <dispatcher name>");
 	}
 	const parts = [header(argv[argv.length - 1])];
-	for (const branch of branches([new Row("", argv[argv.length - 3])])) { parts.push(branch); }
+	for (const branch of branches([new Row("", argv[argv.length - 3], "")])) { parts.push(branch); }
 	write(argv[argv.length - 2], parts);
 }
 
