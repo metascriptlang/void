@@ -1,0 +1,54 @@
+# lib: heaps format
+# haxe-prelude: @:access(h3d.prim.BigPrimitive)
+# haxe-prelude: class Capture extends h3d.prim.BigPrimitive {
+# haxe-prelude:  public function new() { super(hxd.BufferFormat.POS3D_NORMAL_UV_RGBA); isStatic = false; }
+# haxe-prelude:  override public function flush() {}
+# haxe-prelude:  public function offset(p: h3d.col.Point): Array<Float> { return [tmpBuf[24] - p.x, tmpBuf[26] - p.z, tmpBuf[25] - p.y]; }
+# haxe-prelude: }
+# haxe-prelude: @:access(h3d.scene.Graphics)
+# haxe-prelude: class H {
+# haxe-prelude:  public static function offset(a: h3d.col.Point, b: h3d.col.Point, c: h3d.col.Point, width: Float): Array<Float> {
+# haxe-prelude:   var g = new h3d.scene.Graphics(); var cap = new Capture(); g.bprim = cap; g.primitive = cap;
+# haxe-prelude:   js.Syntax.code("{0}.is3D = true", g);
+# haxe-prelude:   g.lineStyle(width, 0xffffff); g.moveTo(a.x,a.y,a.z); g.lineTo(b.x,b.y,b.z); g.lineTo(c.x,c.y,c.z);
+# haxe-prelude:   g.sync(Type.createEmptyInstance(h3d.scene.RenderContext)); return cap.offset(b);
+# haxe-prelude:  }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { worldGraphicsMiter } from "../../../src/void3d/worldGraphicsMiter";
+# ms-prelude: function miter(name: string, a: Vec3, b: Vec3, c: Vec3, width: float32): void {
+# ms-prelude:  const result = worldGraphicsMiter(a,b,c,width); if (!result.ok) { unreachable; }
+# ms-prelude:  emit3(name,result.value.x,result.value.y,result.value.z);
+# ms-prelude: }
+
+case straight-x tol=0
+haxe> emit("straight-x", H.offset(new h3d.col.Point(-1,0,0),new h3d.col.Point(0,0,0),new h3d.col.Point(1,0,0),2));
+ms> miter("straight-x",vec3(-1,0,0),vec3(0,0,0),vec3(1,0,0),2);
+
+case straight-z tol=0
+haxe> emit("straight-z", H.offset(new h3d.col.Point(0,-1,0),new h3d.col.Point(0,0,0),new h3d.col.Point(0,1,0),4));
+ms> miter("straight-z",vec3(0,0,-1),vec3(0,0,0),vec3(0,0,1),4);
+
+case left-turn tol=1e-5
+haxe> emit("left-turn", H.offset(new h3d.col.Point(-2,0,0),new h3d.col.Point(0,0,0),new h3d.col.Point(0,2,0),2));
+ms> miter("left-turn",vec3(-2,0,0),vec3(0,0,0),vec3(0,0,2),2);
+
+case right-turn tol=1e-5
+haxe> emit("right-turn", H.offset(new h3d.col.Point(-2,0,0),new h3d.col.Point(0,0,0),new h3d.col.Point(0,-2,0),2));
+ms> miter("right-turn",vec3(-2,0,0),vec3(0,0,0),vec3(0,0,-2),2);
+
+case uncapped-corner tol=1e-5
+haxe> emit("uncapped-corner", H.offset(new h3d.col.Point(-1,0,0),new h3d.col.Point(0,0,0),new h3d.col.Point(-10,1,0),2));
+ms> miter("uncapped-corner",vec3(-1,0,0),vec3(0,0,0),vec3(-10,0,1),2);
+
+case planar-height-ignored tol=0
+haxe> emit("planar-height-ignored", H.offset(new h3d.col.Point(-1,0,-100),new h3d.col.Point(0,0,30),new h3d.col.Point(1,0,200),2));
+ms> miter("planar-height-ignored",vec3(-1,-100,0),vec3(0,30,0),vec3(1,200,0),2);
+
+case zero-width tol=0
+haxe> emit("zero-width", H.offset(new h3d.col.Point(-1,0,0),new h3d.col.Point(0,0,0),new h3d.col.Point(1,0,0),0));
+ms> miter("zero-width",vec3(-1,0,0),vec3(0,0,0),vec3(1,0,0),0);
+
+case shallow-turn tol=1e-5
+haxe> emit("shallow-turn", H.offset(new h3d.col.Point(-1,0,0),new h3d.col.Point(0,0,0),new h3d.col.Point(2,0.5,0),3));
+ms> miter("shallow-turn",vec3(-1,0,0),vec3(0,0,0),vec3(2,0,0.5),3);
