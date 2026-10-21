@@ -22,7 +22,7 @@ import {
 	contextGeneration,
 	depthZeroToOne,
 } from "../gpu/door";
-import { FilterMode, Wrap, Compare } from "../gpu/state";
+import { BlendMode, FilterMode, Wrap, Compare } from "../gpu/state";
 import { Material, Phase } from "./material";
 import {
 	RenderTarget,
@@ -83,6 +83,7 @@ export interface ForwardRenderer {
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
 	copyMaterial: MaterialId;
+	overMaterial: MaterialId;
 	outlineBlend: float32;
 	outlineSettings: ForwardOutlineSettings;
 	outline: ForwardOutlinePass | null;
@@ -209,6 +210,10 @@ function make(
 	const copy: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Copy, screenState(), Phase.Opaque));
 	if (!copy.ok) { unreachable; }
+	const over: Result<MaterialId, MaterialError> = addMaterial(context, Material.plain(
+		Program.Copy, screenState().withBlendMode(BlendMode.AlphaAdd), Phase.Opaque,
+	));
+	if (!over.ok) { unreachable; }
 	const toneMap: ToneMapPass | null = hdr ? ToneMapPass.reserve(context) : null;
 	let made: ForwardRenderer = {
 		core: core.value,
@@ -219,6 +224,7 @@ function make(
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,
+		overMaterial: over.value,
 		outlineBlend: 0.0,
 		outlineSettings: ForwardOutlineSettings.defaults(),
 		outline: null,
@@ -332,6 +338,8 @@ export function prepareFrame(
 	}
 	const copyError: ForwardError | null = screenMaterialError(renderer, renderer.copyMaterial);
 	if (copyError !== null) { return Result.err(copyError); }
+	const overError: ForwardError | null = screenMaterialError(renderer, renderer.overMaterial);
+	if (overError !== null) { return Result.err(overError); }
 	const toneMap: ToneMapPass | null = renderer.toneMap;
 	if (toneMap !== null) {
 		const toneMapError: ForwardError | null = screenMaterialError(renderer, toneMap.material);
@@ -372,6 +380,8 @@ export function prepareFrame(
 	}
 	context.materials[renderer.copyMaterial.index].texture0 = renderer.colorTarget.asTexture();
 	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.asHandle();
+	context.materials[renderer.overMaterial.index].texture0 = renderer.colorTarget.asTexture();
+	context.materials[renderer.overMaterial.index].sampler0 = renderer.sampler.asHandle();
 	if (toneMap !== null) {
 		toneMap.prepare(renderer.core, renderer.sampler.asHandle());
 	}
@@ -408,9 +418,19 @@ function stopOnScreenDraw(error: RendererError): void {
 // Copy preserves the final premultiplied RGBA, including an outlined transparent clear.
 export function drawToScreen(renderer: ForwardRenderer): void {
 	if (renderer.closed) { stopOnClosed("drawToScreen"); }
+	copyToScreen(renderer, renderer.copyMaterial);
+}
+
+// Heaps' Copy.run with a blend (h3d/pass/Copy.hx), premultiplied over the screen pass.
+export function drawOverScreen(renderer: ForwardRenderer): void {
+	if (renderer.closed) { stopOnClosed("drawOverScreen"); }
+	copyToScreen(renderer, renderer.overMaterial);
+}
+
+function copyToScreen(renderer: ForwardRenderer, material: MaterialId): void {
 	openScreen(renderer.core);
 	const copied: Result<int32, RendererError> =
-		drawScreen(renderer.core, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
+		drawScreen(renderer.core, material, SWAPCHAIN_LAYOUT);
 	if (!copied.ok) { stopOnScreenDraw(copied.error); }
 }
 
@@ -453,6 +473,12 @@ export function closeForward(renderer: ForwardRenderer): void {
 		releaseMaterial(renderer.core.context, renderer.copyMaterial);
 	if (!copy.ok) {
 		console.log(`void3d: closeForward found its copy material ${copy.error.toString()}`);
+		unreachable;
+	}
+	const over: Result<int32, HandleError> =
+		releaseMaterial(renderer.core.context, renderer.overMaterial);
+	if (!over.ok) {
+		console.log(`void3d: closeForward found its over material ${over.error.toString()}`);
 		unreachable;
 	}
 	const toneMap: ToneMapPass | null = renderer.toneMap;
