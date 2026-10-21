@@ -1,5 +1,10 @@
+#if defined(_WIN32)
+#include "../platform/win32/clock.h"
+#else
 #define SOKOL_TIME_IMPL
 #include "../../deps/sokol/sokol_time.h"
+static int s_clockReady;
+#endif
 #include "../../deps/sokol/sokol_gfx.h"
 #include "../sokol/bridge.h"
 #include "frameClock.h"
@@ -7,7 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int s_clockReady;
 static int s_state = VOID_FRAME_IDLE;
 static int s_presentStarted;
 static int32_t s_serial;
@@ -19,11 +23,15 @@ static int64_t s_marks[4];
 static int32_t s_counters[VOID_COUNTER_SLOTS];
 
 int64_t voidClockNow(void) {
+#if defined(_WIN32)
+	return voidWin32ClockNow();
+#else
 	if (!s_clockReady) {
 		stm_setup();
 		s_clockReady = 1;
 	}
 	return (int64_t)stm_now();
+#endif
 }
 
 int32_t voidProfileCompiled(void) { return 1; }

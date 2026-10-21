@@ -45,8 +45,6 @@
 	#else
 		#include <GLES3/gl3.h>
 	#endif
-	int sapp_width(void);
-	int sapp_height(void);
 #endif
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -142,17 +140,17 @@ static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
 }
 #endif
 
-extern int sapp_width(void);
 extern void voidRequestedSize(int *w, int *h);
-extern int sapp_height(void);
+extern int voidFbWidth(void);
+extern int voidFbHeight(void);
 static void stopOnClampedWindow(void) {
 	int reqW = 0, reqH = 0;
 	voidRequestedSize(&reqW, &reqH);
 	if (reqW <= 0 || reqH <= 0) return;
-	if (reqW == sapp_width() && reqH == sapp_height()) return;
+	if (reqW == voidFbWidth() && reqH == voidFbHeight()) return;
 	fprintf(stderr, "capture: the window was asked for %dx%d but the framebuffer is %dx%d; "
 		"a pixel test must read the size it asked for or use fbWidth/fbHeight\n",
-		reqW, reqH, sapp_width(), sapp_height());
+		reqW, reqH, voidFbWidth(), voidFbHeight());
 	exit(1);
 }
 
@@ -170,8 +168,8 @@ int voidCaptureGrab(int slot) {
 #if defined(VOID_CAPTURE_D3D11)
 	return grabD3D11(slot, (IDXGISwapChain *)voidWindowSwapChain(), 0);
 #elif defined(VOID_CAPTURE_GL)
-	int width = sapp_width();
-	int height = sapp_height();
+	int width = voidFbWidth();
+	int height = voidFbHeight();
 	if (width <= 0 || height <= 0) return 0;
 	uint8_t *out = slotResize(slot, width, height);
 	if (out == NULL) return 0;

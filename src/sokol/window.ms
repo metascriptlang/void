@@ -1,4 +1,4 @@
-// The sokol_app window's events, IME and title, on the window drivers: Windows (D3D11 and
+// The window's events, IME and title, on the window drivers: Windows (D3D11 and
 // -d:voidGlCore) and the browser. Import beside ./gpu, which compiles their C.
 
 @include("bridge.h");
@@ -25,8 +25,7 @@ extern function voidSetTextInput(on: int32): void;
 extern function voidSetImeRect(x: int32, y: int32, w: int32, h: int32): void;
 extern function voidSetWindowTitle(title: cstring): void;
 
-// The ordinals of sokol_app.h's sapp_event_type: keep the order. Preedit and TextInput are
-// Void's, after sokol's (VOID_EVENT_* in appWindow.h).
+// The ordinals of VoidAppEventType in src/platform/appEvent.h: keep the order.
 export enum AppEventType {
 	Invalid,
 	KeyDown,
@@ -102,7 +101,7 @@ function dispatchEvent(): void {
 	(_handler as (e: AppEvent) => void)(currentEvent());
 }
 
-// Every sokol_app event reaches `handler`, Escape included: once one is set, Escape no
+// Every window event reaches `handler`, Escape included: once one is set, Escape no
 // longer quits the app. Call it before voidRun or from its init closure.
 export function onAppEvent(handler: (e: AppEvent) => void): void {
 	_handler = handler;

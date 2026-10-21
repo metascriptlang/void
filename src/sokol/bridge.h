@@ -1,4 +1,4 @@
-// Void sokol bridge — thin 1:1 wrappers over sokol_gfx/sokol_app.
+// Void sokol bridge — thin 1:1 wrappers over sokol_gfx and the window.
 // Render sequencing lives in MetaScript (src/void2d, src/void3d); this file only
 // builds sokol descriptor structs (which FFI can't) and maps handles ↔ uint32.
 #ifndef VOID_SOKOL_BRIDGE_H
@@ -29,7 +29,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 // is the truth a frame must follow, and this getter only lets a test compare the two.
 void voidRequestedSize(int *w, int *h);
 
-// The sokol_app window (bridgeWin.c, bridgeWeb.c). Once a handler is set, every sapp_event
+// The window (bridgeWin.c, bridgeWeb.c). Once a handler is set, every window event
 // calls it and Escape no longer quits; the voidEvent* getters read the event it was called
 // for. The title may be set before or after voidRun.
 void voidSetEventHandler(msClosure handler);
@@ -53,7 +53,7 @@ void voidSetWindowTitle(const char *title);
 // IME composition (Windows window and browser). While text input is on and a handler is set,
 // a composition arrives as Preedit events and its result as one TextInput event, never also
 // as Char. Off disables the IME on Windows and blurs the browser's input element. Before the
-// first call the window keeps sokol_app's default: the OS composes in its own window and the
+// first call the window keeps the OS default: the OS composes in its own window and the
 // result arrives as Char. The rect is the caret in framebuffer pixels; the candidate window
 // opens below it.
 void voidSetTextInput(int on);

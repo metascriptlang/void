@@ -14,9 +14,9 @@
 #include "views.h"
 #include "windowSurface.h"
 
-#include "sokol_app.h"
 #include "sokol_log.h"
 #include "appWindow.h"
+#include "../platform/win32/window.h"
 #ifdef VOID_PROFILER
 #include "../void2d/frameClock.h"
 #endif
@@ -32,7 +32,7 @@ static void call0(msClosure c) {
 
 static msClosure s_init;
 static msClosure s_frame;
-static bool s_keys[SAPP_MAX_KEYCODES];
+static bool s_keys[VOID_KEY_COUNT];
 static int s_reqW = 0;
 static int s_reqH = 0;
 
@@ -58,7 +58,7 @@ static RECT s_imeRect;
 static bool s_preeditActive;
 
 static HWND windowHwnd(void) {
-	return s_driver == DRIVER_WINDOW && sapp_isvalid() ? (HWND)sapp_win32_get_hwnd() : NULL;
+	return s_driver == DRIVER_WINDOW && voidWin32Valid() ? voidWin32Hwnd() : NULL;
 }
 
 static bool imeTaken(void) { return s_textInput == 1 && voidAppEventHandlerSet(); }
@@ -120,7 +120,7 @@ static void imeComposition(HWND hwnd, LPARAM lParam) {
 static bool s_sizeMove;
 
 // Handled here, WM_IME_COMPOSITION never reaches DefWindowProc, so Windows posts no
-// WM_IME_CHAR/WM_CHAR for the result and sokol_app sends no Char for committed text.
+// WM_IME_CHAR/WM_CHAR for the result and the window sends no Char for committed text.
 static LRESULT CALLBACK windowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
 	(void)id;
 	(void)data;
@@ -166,9 +166,9 @@ void voidSetImeRect(int x, int y, int w, int h) {
 static int s_sampleCount;
 
 static void _init(void) {
-	HWND hwnd = (HWND)sapp_win32_get_hwnd();
+	HWND hwnd = voidWin32Hwnd();
 	voidWindowSurfaceCreate(hwnd, s_sampleCount);
-	if (!SetWindowSubclass(hwnd, windowProc, 1, 0)) voidFail("SetWindowSubclass on the sokol_app window failed");
+	if (!SetWindowSubclass(hwnd, windowProc, 1, 0)) voidFail("SetWindowSubclass on the Void window failed");
 	applyTextInput(hwnd);
 	call0(s_init);
 }
@@ -182,21 +182,21 @@ static void _frame(void) {
 	else if (!s_sizeMove) DwmFlush();
 }
 
-static void _event(const sapp_event *e) {
+static void _event(const VoidAppEvent *e) {
 #ifdef VOID_PROFILER
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN || e->type == SAPP_EVENTTYPE_KEY_UP
-		|| e->type == SAPP_EVENTTYPE_CHAR || e->type == SAPP_EVENTTYPE_MOUSE_DOWN
-		|| e->type == SAPP_EVENTTYPE_MOUSE_UP || e->type == SAPP_EVENTTYPE_MOUSE_SCROLL) {
+	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
+		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
+		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
 		voidProfileInput();
 	}
 #endif
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
-		s_keys[e->key_code] = true;
-	} else if (e->type == SAPP_EVENTTYPE_KEY_UP) {
-		s_keys[e->key_code] = false;
+	if (e->type == VOID_EVENT_KEY_DOWN) {
+		s_keys[e->keyCode] = true;
+	} else if (e->type == VOID_EVENT_KEY_UP) {
+		s_keys[e->keyCode] = false;
 	}
-	if (voidAppEventDeliver(e)) return;
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN && e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
+	if (voidAppDeliver(e)) return;
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWin32RequestQuit();
 }
 
 static void _cleanup(void) {
@@ -212,18 +212,16 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	s_init = init;
 	s_frame = frame;
 	s_sampleCount = sampleCount;
-	sapp_desc d = {0};
-	d.init_cb = _init;
-	d.frame_cb = _frame;
-	d.event_cb = _event;
-	d.cleanup_cb = _cleanup;
+	VoidWin32Desc d = {0};
+	d.init = _init;
+	d.frame = _frame;
+	d.event = _event;
+	d.cleanup = _cleanup;
 	d.width = w;
 	d.height = h;
-	d.sample_count = sampleCount;
-	d.high_dpi = highDpi != 0;
-	d.window_title = voidWindowTitle();
-	d.logger.func = slog_func;
-	sapp_run(&d);
+	d.highDpi = highDpi != 0;
+	d.title = voidWindowTitle();
+	voidWin32Run(&d);
 }
 
 void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
@@ -264,7 +262,7 @@ static void createDevice(UINT flags) {
 }
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a sokol_app window");
+	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Void window");
 	if (s_driver == DRIVER_VIEWS) return;
 #if defined(SOKOL_GLCORE)
 	voidFail("voidViewCreate: host views on Windows render through D3D11; this is a GL core build");
@@ -418,8 +416,8 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	IDXGIDevice1_SetMaximumFrameLatency(dxgiDevice, 1);
 	IDXGIDevice1_Release(dxgiDevice);
 	IDXGIFactory2_MakeWindowAssociation(s_factory, hwnd, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_PRINT_SCREEN);
-	s_window.w = sapp_width();
-	s_window.h = sapp_height();
+	s_window.w = voidWin32Width();
+	s_window.h = voidWin32Height();
 	s_window.samples = samples;
 	s_window.hasDepth = true;
 	DXGI_SWAP_CHAIN_DESC1 desc;
@@ -448,8 +446,8 @@ sg_environment voidWindowEnvironment(void) {
 }
 
 sg_swapchain voidWindowSwapchain(void) {
-	if (sapp_width() != s_window.w || sapp_height() != s_window.h) {
-		voidPlatformSurfaceResize(&s_window, sapp_width(), sapp_height());
+	if (voidWin32Width() != s_window.w || voidWin32Height() != s_window.h) {
+		voidPlatformSurfaceResize(&s_window, voidWin32Width(), voidWin32Height());
 	}
 	sg_swapchain swapchain = {0};
 	swapchain.width = s_window.w;
@@ -484,7 +482,7 @@ static void setupWindowGfx(void) {
 	d.environment = voidWindowEnvironment();
 	d.logger.func = slog_func;
 	sg_setup(&d);
-	if (!sg_isvalid()) voidFail("sg_setup on the sokol_app window failed");
+	if (!sg_isvalid()) voidFail("sg_setup on the Void window failed");
 }
 
 __attribute__((noreturn)) static void noDriver(const char *op) {
@@ -500,25 +498,25 @@ void voidGfxSetup(void) {
 }
 
 int voidFbWidth(void) {
-	if (s_driver == DRIVER_WINDOW) return sapp_width();
+	if (s_driver == DRIVER_WINDOW) return voidWin32Width();
 	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
 	return voidViewsFbWidth();
 }
 
 int voidFbHeight(void) {
-	if (s_driver == DRIVER_WINDOW) return sapp_height();
+	if (s_driver == DRIVER_WINDOW) return voidWin32Height();
 	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
 	return voidViewsFbHeight();
 }
 
 float voidDpiScale(void) {
-	if (s_driver == DRIVER_WINDOW) return sapp_dpi_scale();
+	if (s_driver == DRIVER_WINDOW) return voidWin32DpiScale();
 	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
 	return voidViewsDpiScale();
 }
 
 int voidKeyDown(int keycode) {
-	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= SAPP_MAX_KEYCODES) return 0;
+	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
 	return s_keys[keycode] ? 1 : 0;
 }
 

@@ -17,7 +17,7 @@ when (macos) {
 
 when (windows) {
 	@compile("./sokolWin.c");
-	@compile("./sokolAppWin.c");
+	@compile("../platform/win32/window.c");
 	@compile("./bridgeWin.c");
 	@compile("./appWindow.c");
 	@compile("./views.c");

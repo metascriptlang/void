@@ -1,7 +1,7 @@
 #include "backend.h"
 #include "windowSurface.h"
 #include "views.h"
-#include "sokol_app.h"
+#include "../platform/win32/window.h"
 
 #define WGL_DRAW_TO_WINDOW_ARB 0x2001
 #define WGL_ACCELERATION_ARB 0x2003
@@ -85,7 +85,7 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	}
 	PIXELFORMATDESCRIPTOR pfd;
 	DescribePixelFormat(s_dc, format, sizeof pfd, &pfd);
-	if (!SetPixelFormat(s_dc, format, &pfd)) voidFail("SetPixelFormat on the sokol_app window failed: %lu", GetLastError());
+	if (!SetPixelFormat(s_dc, format, &pfd)) voidFail("SetPixelFormat on the Void window failed: %lu", GetLastError());
 	const int attrs[] = {
 		WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
 		WGL_CONTEXT_MINOR_VERSION_ARB, 3,
@@ -95,7 +95,7 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	};
 	s_context = s_createContextAttribs(s_dc, NULL, attrs);
 	if (s_context == NULL) voidFail("wglCreateContextAttribsARB for GL core 4.3 failed: 0x%08lx", GetLastError());
-	if (!wglMakeCurrent(s_dc, s_context)) voidFail("wglMakeCurrent on the sokol_app window failed: %lu", GetLastError());
+	if (!wglMakeCurrent(s_dc, s_context)) voidFail("wglMakeCurrent on the Void window failed: %lu", GetLastError());
 	s_swapInterval(1);
 }
 
@@ -109,8 +109,8 @@ sg_environment voidWindowEnvironment(void) {
 
 sg_swapchain voidWindowSwapchain(void) {
 	sg_swapchain swapchain = {0};
-	swapchain.width = sapp_width();
-	swapchain.height = sapp_height();
+	swapchain.width = voidWin32Width();
+	swapchain.height = voidWin32Height();
 	swapchain.sample_count = s_samples;
 	swapchain.color_format = SG_PIXELFORMAT_RGBA8;
 	swapchain.depth_format = SG_PIXELFORMAT_DEPTH;
