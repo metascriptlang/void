@@ -308,28 +308,22 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
 # stale code is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
-# notes). gpu3d.c includes the two shader headers, programTable.h and gpu3d.h; the gate hashes
-# them and evicts what was built from them in this checkout's build cache. The machine-wide
-# cache is off for the run.
+# notes). void3d's programs and tables are MetaScript now; the C units left include door.h and
+# shader2dSlots.h, so the gate hashes those and evicts what was built from them in this
+# checkout's build cache. The machine-wide cache is off for the run.
 purge_stale_shader_objects() {
 	stamp=$WORK/shaderStamp
-	headers="src/gpu/door.h src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h
-		src/void3d/programTable.h
-		tests/integration/gpuCopy.glsl.h tests/integration/gpuRegistrationFixture.h"
+	headers="src/gpu/door.h src/void2d/shader2dSlots.h"
 	current=$(cat $headers 2>/dev/null | md5sum | cut -d' ' -f1)
-	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/pixelArt3d.glsl.h ] ||
-		[ ! -f src/void3d/programTable.h ] ||
-		[ ! -f src/void3d/gpu3d.h ] || [ ! -f src/gpu/door.h ] ||
-		[ ! -f tests/integration/gpuCopy.glsl.h ] || [ ! -f tests/integration/gpuRegistrationFixture.h ]; then
+	if [ ! -f src/gpu/door.h ] || [ ! -f src/void2d/shader2dSlots.h ]; then
 		note "capture: a shader or GPU bridge header is missing"
 		return 0
 	fi
 	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$current" ]; then
 		return 0
 	fi
-	note "capture: a header gpu3d.c or door.c includes changed since the last gate — evicting the objects built from it"
-	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* out/debug/.cache/*pixelArt3d* \
-		out/debug/.cache/*door* out/debug/.cache/*gpuRegistrationFixture* 2>/dev/null
+	note "capture: door.h or shader2dSlots.h changed since the last gate — evicting the objects built from them"
+	rm -f out/debug/.cache/*batcher* out/debug/.cache/*frameClock* out/debug/.cache/*bridge* 		out/debug/.cache/*windowGl* out/debug/.cache/*capture* 2>/dev/null
 	echo "$current" > "$stamp"
 }
 
