@@ -3916,6 +3916,31 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Oriented-box pair overlap: CPU checkpoint
+
+`orientedBounds.ms` ports `h3d.col.OrientedBounds::collideOrientedBounds`'s 15-axis SAT:
+three face normals per box and nine edge cross axes. Explicit center, unit orthogonal axes
+and nonnegative half sizes reuse Vec3; reflected frames and closed zero-size points/flat
+boxes are valid. Nonfinite values, negative half sizes and invalid frames return errors.
+No Collider hierarchy, matrix decomposition, quaternion, empty-Bounds policy or GPU path.
+
+The primary's `abs(R) + 1e-10` guard is preserved: near-contact results are conservative,
+not exact mathematical overlap. Intermediates widen before subtraction/dot products; finite
+float32 centers may differ by more than float32 can hold. Inputs are not changed.
+
+Missing-module red1 → `msc check`0, native **307/307**, CLIJS **69/69**; real Heaps
+**31 distinct cases**, **31 boolean fields Haxe/C/JS exact**, including all 15 separating
+axes, contacts, reflection, degenerate closed boxes, epsilon and widened differences.
+C/JS counterfactuals separately omit every SAT axis: **15/15 red each**, with all baseline
+controls passing. The counterfactual wrapper's log-parser error is retained; independent
+receipt review0 verifies the actual expected child failures, not a fabricated green exit.
+
+Final oracle receipts are `out/m6OrientedBounds*Afcd22f1920261021Retry2.*`; unchanged
+source/unit evidence is Retry1. Earlier Retry1 oracle had only25 distinct cases because
+uppercase IDs replayed `face`; it is not31-row acceptance. Corrected IDs reran actual
+Heaps/C/JS; kept packet `out/tmp/orientedBounds/oracleRetry2/`. SDKafcd unchanged;
+no whole-index, WebAssembly, GPU, performance, gate or land claim. Prefix2 stays unchanged.
+
 ### World-line miter math: independent CPU checkpoint
 
 `worldGraphicsMiter` evaluates only `h3d.scene.Graphics::flushLine`'s joined offset from
