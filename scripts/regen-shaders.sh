@@ -26,8 +26,7 @@ case "$(uname -s)-$(uname -m)" in
 	*) echo "no sokol-shdc for $(uname -s)-$(uname -m)"; exit 1 ;;
 esac
 
-# The void3d shaders also ship to iOS (device + simulator); void2d does not.
-LANGS="metal_macos:glsl300es:glsl430:wgsl:hlsl5"
+# Every shdc language a program ships in, iOS (device + simulator) included.
 LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5"
 
 guard() {
@@ -301,11 +300,20 @@ tables() {
 	settle "$out" "$2"
 }
 
+# The C side of a Void-emitted GLSL file (uniform block structs, slot constants) for a C consumer
+# that writes the blocks, without sokol_gfx.h.
+slots() {
+	out="$SCRATCH/$(basename "$2")"
+	"${MSC:-msc}" run tools/shaderSlots.ms -- "$1" "$3" > "$out" 2> "$SCRATCH/slots.log" ||
+		{ cat "$SCRATCH/slots.log"; echo "shaderSlots $1 failed"; exit 1; }
+	settle "$out" "$2"
+}
+
 [ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
 generate tools/genShaders.ms "$GENERATED"
 generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
 generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
-regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
+slots src/void2d/shader2dGen.glsl src/void2d/shader2dSlots.h VOID2D_SHADER2D_SLOTS_H
 tables src/void2d/shader2d.glsl src/void2d/shader2dModules.ms "$LANGS_IOS" ../webgpu/types.ms
 regenKeys
 regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"

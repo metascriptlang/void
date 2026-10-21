@@ -3,11 +3,7 @@
 #include "batcher.h"
 #include "../sokol/bridge.h"
 #include "../gpu/door.h"
-#include "shaderBackends.h"
-// shader2d.glsl.h refuses to compile without sokol_gfx.h; only its uniform structs and its
-// ATTR_/UB_/VIEW_/SMP_ slot constants are used here.
-#include "../../deps/sokol/sokol_gfx.h"
-#include "shader2d.glsl.h"
+#include "shader2dSlots.h"
 #include "instanceLayout.h"
 #include <stdio.h>
 #include <stdlib.h>
