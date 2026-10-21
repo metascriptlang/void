@@ -12,8 +12,18 @@
 #
 # lib: heaps format
 # haxe-prelude: import h3d.col.Bounds;
+# haxe-prelude: import h3d.col.Sphere;
+# haxe-prelude: class H {
+# haxe-prelude: public static function contains(b: Bounds,x: Float,y: Float,z: Float,
+# haxe-prelude: r: Float): Float {
+# haxe-prelude: return b.containsSphere(new Sphere(x,y,z,r)) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: }
 # ms-prelude: import { Vec3, vec3, Mat4, identity, rotationY, translation } from "../../../src/math/math3d";
 # ms-prelude: import { Bounds3D, addPos, addPoint } from "../../../src/void3d/bounds";
+# ms-prelude: function sphereIn(b: Bounds3D,x: float32,y: float32,z: float32,r: float32): float32 {
+# ms-prelude: return b.containsSphere(vec3(x,y,z),r) ? 1.0 : 0.0;
+# ms-prelude: }
 
 # ---- the three deliberate divergences, now measured on both sides ---------------------------
 
@@ -134,3 +144,50 @@ ms> const bs4 = Bounds3D.fromPoints(vec3(-cubeEdge,-cubeEdge,-cubeEdge),
 ms> vec3(cubeEdge,cubeEdge,cubeEdge));
 ms> const rs4: float32 = bs4.boundingSphereRadius();
 ms> emit1("sphere-wide-cube",Number.isFinite(rs4) ? rs4/cubeEdge : -1.0);
+
+case volume-sphere-inside tol=0
+haxe> var volume = Bounds.fromValues(0,0,0,1,1,1);
+haxe> emit("volume-sphere-inside",[H.contains(volume,0.5,0.5,0.5,0.25),
+haxe> H.contains(volume,0.1,0.5,0.5,0.25),H.contains(volume,1.25,0.5,0.5,0.5)]);
+ms> const volume = Bounds3D.fromValues(0.0,0.0,0.0,1.0,1.0,1.0);
+ms> emit3("volume-sphere-inside",sphereIn(volume,0.5,0.5,0.5,0.25),
+ms> sphereIn(volume,0.1,0.5,0.5,0.25),sphereIn(volume,1.25,0.5,0.5,0.5));
+
+case volume-sphere-min-contact tol=0
+haxe> emit("volume-sphere-min-contact",[H.contains(volume,0.25,0.5,0.5,0.25),
+haxe> H.contains(volume,0.5,0.25,0.5,0.25),H.contains(volume,0.5,0.5,0.25,0.25)]);
+ms> emit3("volume-sphere-min-contact",sphereIn(volume,0.25,0.5,0.5,0.25),
+ms> sphereIn(volume,0.5,0.25,0.5,0.25),sphereIn(volume,0.5,0.5,0.25,0.25));
+
+case volume-sphere-max-contact tol=0
+haxe> emit("volume-sphere-max-contact",[H.contains(volume,0.75,0.5,0.5,0.25),
+haxe> H.contains(volume,0.5,0.75,0.5,0.25),H.contains(volume,0.5,0.5,0.75,0.25)]);
+ms> emit3("volume-sphere-max-contact",sphereIn(volume,0.75,0.5,0.5,0.25),
+ms> sphereIn(volume,0.5,0.75,0.5,0.25),sphereIn(volume,0.5,0.5,0.75,0.25));
+
+case volume-sphere-min-crossing tol=0
+haxe> emit("volume-sphere-min-crossing",[H.contains(volume,0.24,0.5,0.5,0.25),
+haxe> H.contains(volume,0.5,0.24,0.5,0.25),H.contains(volume,0.5,0.5,0.24,0.25)]);
+ms> emit3("volume-sphere-min-crossing",sphereIn(volume,0.24,0.5,0.5,0.25),
+ms> sphereIn(volume,0.5,0.24,0.5,0.25),sphereIn(volume,0.5,0.5,0.24,0.25));
+
+case volume-sphere-max-crossing tol=0
+haxe> emit("volume-sphere-max-crossing",[H.contains(volume,0.76,0.5,0.5,0.25),
+haxe> H.contains(volume,0.5,0.76,0.5,0.25),H.contains(volume,0.5,0.5,0.76,0.25)]);
+ms> emit3("volume-sphere-max-crossing",sphereIn(volume,0.76,0.5,0.5,0.25),
+ms> sphereIn(volume,0.5,0.76,0.5,0.25),sphereIn(volume,0.5,0.5,0.76,0.25));
+
+case volume-sphere-zero-radius tol=0
+haxe> var emptyVolume = new Bounds(); emptyVolume.empty();
+haxe> emit("volume-sphere-zero-radius",[H.contains(volume,1,0.5,0.5,0),
+haxe> H.contains(volume,0,0,0,0),H.contains(emptyVolume,0,0,0,0)]);
+ms> emit3("volume-sphere-zero-radius",sphereIn(volume,1.0,0.5,0.5,0.0),
+ms> sphereIn(volume,0.0,0.0,0.0,0.0),sphereIn(Bounds3D.empty(),0.0,0.0,0.0,0.0));
+
+case volume-sphere-degenerate tol=0
+haxe> var pointVolume = Bounds.fromValues(2,3,4,0,0,0);
+haxe> emit("volume-sphere-degenerate",[H.contains(pointVolume,2,3,4,0),
+haxe> H.contains(pointVolume,2,3,4,0.01),H.contains(volume,0.5,0.5,0.5,0.6)]);
+ms> const pointVolume = Bounds3D.fromPoints(vec3(2.0,3.0,4.0),vec3(2.0,3.0,4.0));
+ms> emit3("volume-sphere-degenerate",sphereIn(pointVolume,2.0,3.0,4.0,0.0),
+ms> sphereIn(pointVolume,2.0,3.0,4.0,0.01),sphereIn(volume,0.5,0.5,0.5,0.6));

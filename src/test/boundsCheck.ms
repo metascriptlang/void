@@ -77,6 +77,45 @@ test "collide counts touching, containsBounds does not need it" {
 	assert !box.containsBounds(Bounds3D.fromValues(0.25, 0.25, 0.25, 0.5, 0.5, 5.0));
 }
 
+test "containsSphere requires the whole volume rather than only its center" {
+	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	assert box.containsSphere(vec3(0.5, 0.5, 0.5), 0.25);
+	assert box.contains(vec3(0.1, 0.5, 0.5));
+	assert !box.containsSphere(vec3(0.1, 0.5, 0.5), 0.25);
+	assert !box.containsSphere(vec3(1.25, 0.5, 0.5), 0.5);
+	assert !box.containsSphere(vec3(0.5, 0.5, 0.5), 0.6);
+}
+
+test "containsSphere includes all six face contacts but not crossed faces" {
+	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	let contacts: Vec<Vec3> = [
+		vec3(0.25, 0.5, 0.5), vec3(0.75, 0.5, 0.5),
+		vec3(0.5, 0.25, 0.5), vec3(0.5, 0.75, 0.5),
+		vec3(0.5, 0.5, 0.25), vec3(0.5, 0.5, 0.75),
+	];
+	let crossing: Vec<Vec3> = [
+		vec3(0.24, 0.5, 0.5), vec3(0.76, 0.5, 0.5),
+		vec3(0.5, 0.24, 0.5), vec3(0.5, 0.76, 0.5),
+		vec3(0.5, 0.5, 0.24), vec3(0.5, 0.5, 0.76),
+	];
+	for (let i = 0; i < contacts.length; i++) {
+		assert box.containsSphere(contacts[i], 0.25);
+		assert !box.containsSphere(crossing[i], 0.25);
+	}
+}
+
+test "zero radius volume containment is closed even on a max face" {
+	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	const face = vec3(1.0, 0.5, 0.5);
+	assert box.containsSphere(face, 0.0);
+	assert !box.contains(face);
+	const point = vec3(2.0, 3.0, 4.0);
+	const flat = Bounds3D.fromPoints(point, point);
+	assert flat.containsSphere(point, 0.0);
+	assert !flat.containsSphere(point, 0.01);
+	assert !Bounds3D.empty().containsSphere(vec3(0.0, 0.0, 0.0), 0.0);
+}
+
 test "intersection clips both corners without changing either input" {
 	const a = unitBox();
 	const b = Bounds3D.fromValues(0.5, -1.0, 1.0, 2.0, 2.0, 3.0);

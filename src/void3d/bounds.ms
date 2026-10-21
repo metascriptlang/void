@@ -99,6 +99,16 @@ export function containsBounds(this bounds: Bounds3D, other: Bounds3D): boolean 
 		bounds.max.y >= other.max.y && bounds.max.z >= other.max.z;
 }
 
+export function containsSphere(this bounds: Bounds3D, center: Vec3, radius: float32): boolean {
+	const x: float64 = center.x as float64;
+	const y: float64 = center.y as float64;
+	const z: float64 = center.z as float64;
+	const r: float64 = radius as float64;
+	return (bounds.min.x as float64) <= x - r && (bounds.max.x as float64) >= x + r &&
+		(bounds.min.y as float64) <= y - r && (bounds.max.y as float64) >= y + r &&
+		(bounds.min.z as float64) <= z - r && (bounds.max.z as float64) >= z + r;
+}
+
 // Heaps' collide: overlap on all three axes, touching counts.
 export function collide(this bounds: Bounds3D, other: Bounds3D): boolean {
 	return !(bounds.min.x > other.max.x || bounds.min.y > other.max.y ||
