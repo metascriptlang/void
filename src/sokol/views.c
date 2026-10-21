@@ -148,7 +148,7 @@ float voidViewsDpiScale(void) { return currentSlot("dpiScale")->scale; }
 
 void *voidViewsCurrentSurface(void) { return currentSlot("beginPass")->surface; }
 
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 sg_swapchain voidViewsSwapchain(void) {
 	VoidViewSlot *s = currentSlot("beginPass");
 	sg_swapchain swapchain = {0};

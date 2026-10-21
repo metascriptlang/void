@@ -4,18 +4,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#if defined(__EMSCRIPTEN__) && defined(SOKOL_WGPU)
+#if defined(SOKOL_WGPU)
 #include <webgpu/webgpu.h>
+#else
+#include <emscripten/html5_webgl.h>
 #endif
 
 #include "backend.h"
 #include "bridge.h"
 #include "views.h"
-
-#include "sokol_app.h"
-#include "sokol_glue.h"
-#include "sokol_log.h"
 #include "appWindow.h"
+#include "../gpu/door.h"
+#include "../platform/swapchain.h"
+#include "../platform/web/window.h"
 #ifdef VOID_PROFILER
 #include "../void2d/frameClock.h"
 #endif
@@ -23,8 +24,21 @@
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
 static int s_generation = 1;
+static int s_contextLost = 0;
+
+static void setupWindowDoor(void);
+static void setupViewsGfx(void);
 
 int voidGpuGeneration(void) { return s_generation; }
+void voidLoseContext(void) { s_contextLost = 1; }
+
+static void restoreContext(void) {
+	doorShutdown();
+	if (s_driver == DRIVER_WINDOW) setupWindowDoor();
+	else setupViewsGfx();
+	s_generation++;
+	s_contextLost = 0;
+}
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -34,7 +48,7 @@ static void call0(msClosure c) {
 
 static msClosure s_init;
 static msClosure s_frame;
-static bool s_keys[SAPP_MAX_KEYCODES];
+static bool s_keys[VOID_KEY_COUNT];
 
 static int s_textInput = -1;
 
@@ -48,10 +62,10 @@ EMSCRIPTEN_KEEPALIVE void voidWebImeText(int type, const char *utf8, int cursor)
 }
 
 // The browser composes only into a focused editable element, so a hidden textarea beside the
-// canvas takes the composition. Typing outside a composition still arrives as sokol Char
-// (its input event only empties the textarea); a composition arrives once, at compositionend.
+// canvas takes the composition. Typing outside a composition still arrives as Char (its input
+// event only empties the textarea); a composition arrives once, at compositionend.
 EM_JS(void, voidJsImeSetup, (int preedit, int textInput), {
-	const canvas = Module.sapp_emsc_target;
+	const canvas = Module.voidWebTarget;
 	const input = document.createElement('textarea');
 	for (const [name, value] of [['autocomplete', 'off'], ['autocorrect', 'off'], ['autocapitalize', 'off'],
 		['spellcheck', 'false'], ['aria-hidden', 'true'], ['tabindex', '-1']]) {
@@ -92,7 +106,7 @@ EM_JS(void, voidJsImeFocus, (int on), {
 
 EM_JS(void, voidJsImeRect, (double x, double y, double w, double h), {
 	const input = Module.voidImeInput;
-	const r = Module.sapp_emsc_target.getBoundingClientRect();
+	const r = Module.voidWebTarget.getBoundingClientRect();
 	input.style.left = (r.left + x) + 'px';
 	input.style.top = (r.top + y) + 'px';
 	input.style.width = Math.max(1, w) + 'px';
@@ -102,7 +116,7 @@ EM_JS(void, voidJsImeRect, (double x, double y, double w, double h), {
 });
 
 static void applyImeRect(void) {
-	const double scale = sapp_dpi_scale();
+	const double scale = voidWebDpiScale();
 	voidJsImeRect(s_imeX / scale, s_imeY / scale, s_imeW / scale, s_imeH / scale);
 }
 
@@ -126,19 +140,19 @@ static void imeSetup(void) {
 	if (s_textInput != -1) voidJsImeFocus(s_textInput);
 }
 
-// sokol_app is told to bubble every key so the browser can compose; until text input is on,
-// the keys sokol_app would have kept from the browser are kept here.
+// The window bubbles every key so the browser can compose; until text input is on, the keys
+// a window that keeps them would have kept from the browser are kept here.
 // A key the IME takes while composing reaches the app as neither a key nor a Char.
-static bool imeTookKey(const sapp_event *e) {
+static bool imeTookKey(const VoidAppEvent *e) {
 	return s_imeReady && voidJsComposing()
-		&& (e->type == SAPP_EVENTTYPE_KEY_DOWN || e->type == SAPP_EVENTTYPE_KEY_UP || e->type == SAPP_EVENTTYPE_CHAR);
+		&& (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP || e->type == VOID_EVENT_CHAR);
 }
 
-static void keepKeysFromBrowser(const sapp_event *e) {
+static void keepKeysFromBrowser(const VoidAppEvent *e) {
 	if (s_textInput == 1) return;
-	if (e->type == SAPP_EVENTTYPE_CHAR
-		|| ((e->type == SAPP_EVENTTYPE_KEY_DOWN || e->type == SAPP_EVENTTYPE_KEY_UP) && e->key_code >= SAPP_KEYCODE_WORLD_1)) {
-		sapp_consume_event();
+	if (e->type == VOID_EVENT_CHAR
+		|| ((e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP) && e->keyCode >= VOID_KEY_WORLD_1)) {
+		voidWebConsumeEvent();
 	}
 }
 
@@ -146,30 +160,35 @@ static void _init(void) {
 	imeSetup();
 	call0(s_init);
 }
-static void _frame(void) { call0(s_frame); }
+
+static void _frame(void) {
+	if (s_contextLost) restoreContext();
+	call0(s_frame);
+}
 
 static int s_reqW = 0;
 static int s_reqH = 0;
-static void _event(const sapp_event *e) {
+static void _event(const VoidAppEvent *e) {
 #ifdef VOID_PROFILER
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN || e->type == SAPP_EVENTTYPE_KEY_UP
-		|| e->type == SAPP_EVENTTYPE_CHAR || e->type == SAPP_EVENTTYPE_MOUSE_DOWN
-		|| e->type == SAPP_EVENTTYPE_MOUSE_UP || e->type == SAPP_EVENTTYPE_MOUSE_SCROLL) {
+	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
+		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
+		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
 		voidProfileInput();
 	}
 #endif
+	if (e->type == VOID_EVENT_RESUMED) s_contextLost = 1;
 	if (imeTookKey(e)) return;
 	keepKeysFromBrowser(e);
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
-		s_keys[e->key_code] = true;
-	} else if (e->type == SAPP_EVENTTYPE_KEY_UP) {
-		s_keys[e->key_code] = false;
+	if (e->type == VOID_EVENT_KEY_DOWN) {
+		s_keys[e->keyCode] = true;
+	} else if (e->type == VOID_EVENT_KEY_UP) {
+		s_keys[e->keyCode] = false;
 	}
-	if (voidAppEventDeliver(e)) return;
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN && e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
+	if (voidAppDeliver(e)) return;
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWebRequestQuit();
 }
 
-static void _cleanup(void) { sg_shutdown(); }
+static void _cleanup(void) { doorShutdown(); }
 
 static void leaveCallerSuspendedWhileFramesRun(void) { emscripten_exit_with_live_runtime(); }
 
@@ -180,22 +199,15 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	s_reqW = w;
 	s_reqH = h;
 	s_frame = frame;
-	sapp_desc d = {0};
-	d.init_cb = _init;
-	d.frame_cb = _frame;
-	d.event_cb = _event;
-	d.cleanup_cb = _cleanup;
-	d.width = w;
-	d.height = h;
-	d.sample_count = sampleCount;
-	d.high_dpi = highDpi != 0;
-	d.composite_mode = SAPP_COMPOSITEMODE_PREMULTIPLIED;
-	d.window_title = voidWindowTitle();
-	d.html5.update_document_title = voidWindowTitleSet() != 0;
-	d.html5.bubble_key_events = true;
-	d.html5.bubble_char_events = true;
-	d.logger.func = slog_func;
-	sapp_run(&d);
+	VoidWebDesc d = {0};
+	d.init = _init;
+	d.frame = _frame;
+	d.event = _event;
+	d.cleanup = _cleanup;
+	d.sampleCount = sampleCount;
+	d.highDpi = highDpi != 0;
+	d.title = voidWindowTitleSet() ? voidWindowTitle() : NULL;
+	voidWebRun(&d);
 	leaveCallerSuspendedWhileFramesRun();
 }
 
@@ -204,8 +216,6 @@ void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 void voidRun(int w, int h, msClosure init, msClosure frame) {
 	voidRunConfigured(w, h, 4, 1, init, frame);
 }
-
-#if defined(__EMSCRIPTEN__)
 
 // R3F's shape (react-three-fiber d604b18): one runtime per document, a root per canvas, one
 // animation-frame loop over the live roots that cancels itself when none is left
@@ -305,8 +315,6 @@ typedef struct {
 #endif
 } WebSurface;
 
-static void setupViewsGfx(void);
-
 static void refuseMultisample(void) {
 	if (voidViewsSampleCount() != 1) {
 		voidFail("voidViewCreate: web views render at 1 sample, not %d", voidViewsSampleCount());
@@ -319,12 +327,25 @@ static WGPUInstance s_instance;
 static WGPUDevice s_device;
 static WGPUTextureFormat s_format;
 
+static int32_t doorColorFormat(WGPUTextureFormat format) {
+	switch (format) {
+		case WGPUTextureFormat_RGBA8Unorm: return DOOR_PIXEL_FORMAT_RGBA8;
+		case WGPUTextureFormat_BGRA8Unorm: return DOOR_PIXEL_FORMAT_BGRA8;
+		default: voidFail("the canvas format 0x%x has no door pixel format", (unsigned)format);
+	}
+}
+
+static void setupWindowDoor(void) {
+	doorSetup(voidWebDevice(), NULL, doorColorFormat(voidWebColorFormat()), DOOR_PIXEL_FORMAT_DEPTH, voidWebSampleCount());
+	if (!doorValid()) voidFail("doorSetup on the browser window's WebGPU device failed");
+}
+
 EM_JS(int, voidWebPrefersBgra, (void), {
 	return navigator.gpu.getPreferredCanvasFormat() == 'bgra8unorm' ? 1 : 0;
 });
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a sokol_app canvas");
+	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
 	if (s_driver == DRIVER_VIEWS) return;
 	refuseMultisample();
 	s_instance = wgpuCreateInstance(NULL);
@@ -337,15 +358,8 @@ void voidPlatformDeviceEnsure(void) {
 }
 
 static void setupViewsGfx(void) {
-	sg_desc d = {0};
-	d.environment.wgpu.device = s_device;
-	d.environment.defaults.color_format =
-		s_format == WGPUTextureFormat_BGRA8Unorm ? SG_PIXELFORMAT_BGRA8 : SG_PIXELFORMAT_RGBA8;
-	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
-	d.logger.func = slog_func;
-	sg_setup(&d);
-	if (!sg_isvalid()) voidFail("sg_setup on the WebGPU device failed");
+	doorSetup(s_device, NULL, doorColorFormat(s_format), DOOR_PIXEL_FORMAT_NONE, 1);
+	if (!doorValid()) voidFail("doorSetup on the WebGPU device failed");
 }
 
 static void configure(WebSurface *s) {
@@ -376,6 +390,7 @@ static void resizeSurface(WebSurface *s) { configure(s); }
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
+	if (s_contextLost) restoreContext();
 	WGPUSurfaceTexture current = {0};
 	wgpuSurfaceGetCurrentTexture(s->surface, &current);
 	if (current.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
@@ -388,11 +403,7 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	return 1;
 }
 
-void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
-	swapchain->color_format =
-		s_format == WGPUTextureFormat_BGRA8Unorm ? SG_PIXELFORMAT_BGRA8 : SG_PIXELFORMAT_RGBA8;
-	swapchain->wgpu.render_view = ((WebSurface *)surface)->view;
-}
+static void *viewRenderView(const WebSurface *s) { return s->view; }
 
 void voidPlatformSurfacePresent(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
@@ -412,27 +423,27 @@ static void dropSurface(WebSurface *s) {
 static WebSurface *s_glView = NULL;
 static bool s_glEverSetUp = false;
 
+static void setupWindowDoor(void) {
+	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, voidWebSampleCount());
+	if (!doorValid()) voidFail("doorSetup on the browser window's WebGL2 context failed");
+}
+
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a sokol_app canvas");
+	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
 	if (s_driver == DRIVER_VIEWS) return;
 	refuseMultisample();
 	s_driver = DRIVER_VIEWS;
 }
 
 static void setupViewsGfx(void) {
-	sg_desc d = {0};
-	d.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
-	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
-	d.logger.func = slog_func;
-	sg_setup(&d);
-	if (!sg_isvalid()) voidFail("sg_setup on the WebGL2 context failed");
+	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_NONE, 1);
+	if (!doorValid()) voidFail("doorSetup on the WebGL2 context failed");
 }
 
 // A WebGL2 context belongs to its canvas, so the device of this driver is the one live view's
-// context: a second live view is refused, and a view made after a stop sets sokol up again on
-// its own context and bumps the GPU generation, whose owners drop the old ids (bridgeAndroid.c
-// restore_context, src/gpu/door.c doorContextGeneration).
+// context: a second live view is refused, and a view made after a stop sets the door up again
+// on its own context and bumps the GPU generation, whose owners drop the old ids
+// (bridgeAndroid.c restore_context, doorContextGeneration).
 static bool makeSurface(WebSurface *s) {
 	if (s_glView) {
 		voidFail("voidViewCreate: WebGL2 runs one view at a time; stop view %d first", s_glView->id);
@@ -462,13 +473,13 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
 	if (emscripten_is_webgl_context_lost(s->context)) return 0;
 	emscripten_webgl_make_context_current(s->context);
+	if (s_contextLost) restoreContext();
 	return 1;
 }
 
-void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
-	(void)surface;
-	swapchain->color_format = SG_PIXELFORMAT_RGBA8;
-	swapchain->gl.framebuffer = 0;
+static void *viewRenderView(const WebSurface *s) {
+	(void)s;
+	return NULL;
 }
 
 void voidPlatformSurfacePresent(void *surface) { (void)surface; }
@@ -481,7 +492,7 @@ EM_JS(void, voidWebLoseContext, (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE handle), {
 
 static void dropSurface(WebSurface *s) {
 	emscripten_webgl_make_context_current(s->context);
-	sg_shutdown();
+	doorShutdown();
 	voidWebLoseContext(s->context);
 	emscripten_webgl_destroy_context(s->context);
 	s_glView = NULL;
@@ -520,59 +531,82 @@ void voidPlatformSurfaceDestroy(void *surface) {
 
 long long voidPlatformSurfaceNative(void *surface) { return ((WebSurface *)surface)->id; }
 
-#endif // __EMSCRIPTEN__
-
 __attribute__((noreturn)) static void noDriver(const char *op) {
 	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
 }
 
 void voidGfxSetup(void) {
 	switch (s_driver) {
-		case DRIVER_WINDOW: {
-			sg_desc d = {0};
-			d.environment = sglue_environment();
-			d.logger.func = slog_func;
-			sg_setup(&d);
-			break;
-		}
+		case DRIVER_WINDOW: setupWindowDoor(); break;
 		case DRIVER_VIEWS: break;
 		case DRIVER_NONE: noDriver("gfxSetup");
 	}
 }
 
-#if defined(__EMSCRIPTEN__)
-#define VIEWS_OR(call, fallback) (s_driver == DRIVER_VIEWS ? (call) : (fallback))
-#else
-#define VIEWS_OR(call, fallback) (fallback)
-#endif
-
 int voidFbWidth(void) {
 	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
-	return VIEWS_OR(voidViewsFbWidth(), sapp_width());
+	return s_driver == DRIVER_VIEWS ? voidViewsFbWidth() : voidWebWidth();
 }
 
 int voidFbHeight(void) {
 	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
-	return VIEWS_OR(voidViewsFbHeight(), sapp_height());
+	return s_driver == DRIVER_VIEWS ? voidViewsFbHeight() : voidWebHeight();
 }
 
 float voidDpiScale(void) {
 	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
-	return VIEWS_OR(voidViewsDpiScale(), sapp_dpi_scale());
+	return s_driver == DRIVER_VIEWS ? voidViewsDpiScale() : voidWebDpiScale();
 }
 
 int voidKeyDown(int keycode) {
-	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= SAPP_MAX_KEYCODES) return 0;
+	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
 	return s_keys[keycode] ? 1 : 0;
 }
 
-sg_swapchain voidDriverSwapchain(void) {
+static VoidDriver screenDriver(void) {
 	if (s_driver == DRIVER_NONE) noDriver("beginPass");
-	return VIEWS_OR(voidViewsSwapchain(), sglue_swapchain());
+	return s_driver;
+}
+
+int32_t voidSwapchainWidth(void) {
+	return screenDriver() == DRIVER_VIEWS ? voidViewsFbWidth() : voidWebWidth();
+}
+
+int32_t voidSwapchainHeight(void) {
+	return screenDriver() == DRIVER_VIEWS ? voidViewsFbHeight() : voidWebHeight();
+}
+
+int32_t voidSwapchainSampleCount(void) {
+	return screenDriver() == DRIVER_VIEWS ? voidViewsSampleCount() : voidWebSampleCount();
+}
+
+void *voidSwapchainRenderView(void) {
+	if (screenDriver() == DRIVER_VIEWS) return viewRenderView((const WebSurface *)voidViewsCurrentSurface());
+#if defined(SOKOL_WGPU)
+	return voidWebRenderView();
+#else
+	return NULL;
+#endif
+}
+
+void *voidSwapchainResolveView(void) {
+	if (screenDriver() == DRIVER_VIEWS) return NULL;
+#if defined(SOKOL_WGPU)
+	return voidWebResolveView();
+#else
+	return NULL;
+#endif
+}
+
+void *voidSwapchainDepthStencilView(void) {
+	if (screenDriver() == DRIVER_VIEWS) return NULL;
+#if defined(SOKOL_WGPU)
+	return voidWebDepthStencilView();
+#else
+	return NULL;
+#endif
 }
 
 void voidDriverPresent(void) {
-#if defined(__EMSCRIPTEN__)
 	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
-#endif
 }

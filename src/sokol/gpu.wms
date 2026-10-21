@@ -1,13 +1,12 @@
-// Void sokol GPU — browser (--os=emcc). Same API as gpu.ms; sokol impl compiled
-// by emcc (sokolWeb.c). The build names the browser API with -d:webgpu or -d:webgl2.
+// Void GPU — browser (--os=emcc). Same API as gpu.ms, on Void's browser window
+// (src/platform/web). The build names the browser API with -d:webgpu or -d:webgl2.
 
-@passC("-I../../deps/sokol");
 @include("bridge.h");
 @compile("./bridge.c");
 @compile("./bridgeWeb.c");
 @compile("./views.c");
 @compile("./appWindow.c");
-@compile("./sokolWeb.c");
+@compile("../platform/web/window.c");
 
 when (webgpu) {
 	@passC("--use-port=emdawnwebgpu");

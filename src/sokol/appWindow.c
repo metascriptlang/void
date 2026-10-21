@@ -2,7 +2,7 @@
 // the event closure with its getters, the IME events, and the title.
 
 #if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
+#include "../platform/web/window.h"
 #else
 #include "../platform/win32/window.h"
 #endif
@@ -16,10 +16,6 @@
 #include "bridge.h"
 #include "appWindow.h"
 #include "appText.h"
-
-#if defined(__EMSCRIPTEN__)
-_Static_assert((int)VOID_EVENT_PREEDIT == (int)_SAPP_EVENTTYPE_NUM && (int)VOID_KEY_COUNT == (int)SAPP_MAX_KEYCODES, "sokol_app's events or keycodes no longer match src/platform/appEvent.h");
-#endif
 
 __attribute__((noreturn)) static void fail(const char *fmt, ...) {
 	va_list args;
@@ -48,31 +44,6 @@ int voidAppDeliver(const VoidAppEvent *e) {
 	s_event = NULL;
 	return 1;
 }
-
-#if defined(__EMSCRIPTEN__)
-int voidAppEventDeliver(const sapp_event *e) {
-	VoidAppEvent v;
-	memset(&v, 0, sizeof v);
-	v.frameCount = e->frame_count;
-	v.type = (VoidAppEventType)e->type;
-	v.keyCode = (VoidKeyCode)e->key_code;
-	v.charCode = e->char_code;
-	v.keyRepeat = e->key_repeat;
-	v.modifiers = e->modifiers;
-	v.mouseButton = (VoidMouseButton)e->mouse_button;
-	v.mouseX = e->mouse_x;
-	v.mouseY = e->mouse_y;
-	v.mouseDx = e->mouse_dx;
-	v.mouseDy = e->mouse_dy;
-	v.scrollX = e->scroll_x;
-	v.scrollY = e->scroll_y;
-	v.windowWidth = e->window_width;
-	v.windowHeight = e->window_height;
-	v.framebufferWidth = e->framebuffer_width;
-	v.framebufferHeight = e->framebuffer_height;
-	return voidAppDeliver(&v);
-}
-#endif
 
 static const VoidAppEvent *current(const char *field) {
 	if (!s_event) fail("voidEvent%s: read outside the event handler voidSetEventHandler registered", field);
@@ -114,9 +85,9 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	memset(&e, 0, sizeof e);
 	e.type = (VoidAppEventType)type;
 #if defined(__EMSCRIPTEN__)
-	e.frameCount = sapp_frame_count();
-	e.framebufferWidth = sapp_width();
-	e.framebufferHeight = sapp_height();
+	e.frameCount = voidWebFrameCount();
+	e.framebufferWidth = voidWebWidth();
+	e.framebufferHeight = voidWebHeight();
 #else
 	e.frameCount = voidWin32FrameCount();
 	e.framebufferWidth = voidWin32Width();
@@ -132,18 +103,12 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 static char s_title[256] = "Void — sokol";
 static bool s_titleSet = false;
 
-#if defined(__EMSCRIPTEN__)
-EM_JS(void, voidJsSetDocumentTitle, (const char *title), {
-	document.title = UTF8ToString(Number(title));
-});
-#endif
-
 void voidSetWindowTitle(const char *title) {
 	if (strlen(title) >= sizeof s_title) fail("voidSetWindowTitle: the title is %d bytes; at most %d fit", (int)strlen(title), (int)sizeof s_title - 1);
 	strcpy(s_title, title);
 	s_titleSet = true;
 #if defined(__EMSCRIPTEN__)
-	if (sapp_isvalid()) voidJsSetDocumentTitle(s_title);
+	if (voidWebValid()) voidWebSetTitle(s_title);
 #else
 	if (voidWin32Valid()) voidWin32SetTitle(s_title);
 #endif
