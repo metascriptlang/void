@@ -15,6 +15,11 @@ export struct Bounds3D {
 	max: Vec3;
 }
 
+export enum SphereBoundsError {
+	NonFinite,
+	OutOfRange,
+}
+
 // Heaps uses 1e20; float32 carries it exactly enough (max ~3.4e38) for the same role.
 const EXTENT: float32 = 1e20;
 
@@ -50,6 +55,41 @@ export function addPos(ref bounds: Bounds3D, x: float32, y: float32, z: float32)
 	if (y > bounds.max.y) { bounds.max.y = y; }
 	if (z < bounds.min.z) { bounds.min.z = z; }
 	if (z > bounds.max.z) { bounds.max.z = z; }
+}
+
+export function addSpherePos(
+	ref bounds: Bounds3D,
+	x: float32,
+	y: float32,
+	z: float32,
+	radius: float32,
+): Result<void, SphereBoundsError> {
+	if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)
+		|| !Number.isFinite(radius) || !Number.isFinite(bounds.min.x)
+		|| !Number.isFinite(bounds.min.y) || !Number.isFinite(bounds.min.z)
+		|| !Number.isFinite(bounds.max.x) || !Number.isFinite(bounds.max.y)
+		|| !Number.isFinite(bounds.max.z)) {
+		return Result.err(SphereBoundsError.NonFinite);
+	}
+	const r: float64 = radius as float64;
+	const minX: float64 = (x as float64) - r;
+	const minY: float64 = (y as float64) - r;
+	const minZ: float64 = (z as float64) - r;
+	const maxX: float64 = (x as float64) + r;
+	const maxY: float64 = (y as float64) + r;
+	const maxZ: float64 = (z as float64) + r;
+	const limit: float64 = 3.4028234663852886e38;
+	if (minX < -limit || minY < -limit || minZ < -limit
+		|| maxX > limit || maxY > limit || maxZ > limit) {
+		return Result.err(SphereBoundsError.OutOfRange);
+	}
+	if (minX < (bounds.min.x as float64)) { bounds.min.x = minX as float32; }
+	if (minY < (bounds.min.y as float64)) { bounds.min.y = minY as float32; }
+	if (minZ < (bounds.min.z as float64)) { bounds.min.z = minZ as float32; }
+	if (maxX > (bounds.max.x as float64)) { bounds.max.x = maxX as float32; }
+	if (maxY > (bounds.max.y as float64)) { bounds.max.y = maxY as float32; }
+	if (maxZ > (bounds.max.z as float64)) { bounds.max.z = maxZ as float32; }
+	return Result.ok(undefined);
 }
 
 export function addPoint(ref bounds: Bounds3D, point: Vec3): void {
