@@ -189,8 +189,31 @@ static VoidAppView *s_view;
 	self.smartQuotesType = UITextSmartQuotesTypeNo;
 	self.smartDashesType = UITextSmartDashesTypeNo;
 	self.smartInsertDeleteType = UITextSmartInsertDeleteTypeNo;
+	NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+	[center addObserver:self selector:@selector(keyboardFrame:) name:UIKeyboardWillChangeFrameNotification object:nil];
+	[center addObserver:self selector:@selector(keyboardHidden:) name:UIKeyboardWillHideNotification object:nil];
 	return self;
 }
+
+- (void)setKeyboard:(float)height {
+	if (height == voidKeyboardHeight()) return;
+	voidAppSetKeyboard(height);
+	if (self.viewId != 0) send(SAPP_EVENTTYPE_RESIZED);
+}
+
+- (void)keyboardFrame:(NSNotification *)notification {
+	UIScreen *screen = self.window ? self.window.screen : UIScreen.mainScreen;
+	const CGRect end = [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+	if (CGRectGetMaxY(end) < CGRectGetMaxY(screen.bounds)) {
+		[self setKeyboard:0];
+		return;
+	}
+	const CGRect local = [self convertRect:end fromCoordinateSpace:screen.coordinateSpace];
+	const CGFloat covered = CGRectGetMaxY(self.bounds) - MAX(CGRectGetMinY(local), CGRectGetMinY(self.bounds));
+	[self setKeyboard:(float)(MAX(0, covered) * [self pixelScale])];
+}
+
+- (void)keyboardHidden:(NSNotification *)notification { [self setKeyboard:0]; }
 
 - (BOOL)canBecomeFirstResponder { return YES; }
 - (UIView *)inputView { return s_textInput ? nil : self.noKeyboard; }
