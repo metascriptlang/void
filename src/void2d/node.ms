@@ -153,6 +153,7 @@ export struct Order2D {
 	visible: boolean;
 	name: string;
 	noOverlap: boolean;
+	layerSlot: boolean;
 }
 
 export enum Enclosure {
@@ -400,7 +401,7 @@ function localMatrix(l: Local2D): Transform2D {
 export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 	s.requireOpen("creating a node");
 	const noBounds: Bounds2D = { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 };
-	const order: Order2D = { zIndex: 0, visible: true, name: "", noOverlap: false };
+	const order: Order2D = { zIndex: 0, visible: true, name: "", noOverlap: false, layerSlot: false };
 	const reusable: int32 = s.free.length as int32;
 	if (reusable > 0) {
 		const i: int32 = s.free.pop();
@@ -825,6 +826,12 @@ export function setZIndex(this n: NodeRef, zIndex: int32): NodeRef {
 export function setNoOverlap(this n: NodeRef, promise: boolean): NodeRef {
 	const i: int32 = n.liveRow("setNoOverlap");
 	n.scene.putOrder(i, { ...n.scene.orders[i], noOverlap: promise });
+	return n;
+}
+
+export function setLayerSlot(this n: NodeRef, slot: boolean): NodeRef {
+	const i: int32 = n.liveRow("setLayerSlot");
+	n.scene.putOrder(i, { ...n.scene.orders[i], layerSlot: slot });
 	return n;
 }
 
@@ -1882,7 +1889,7 @@ function freeRow(this s: Scene2D, i: int32): void {
 	s.parents[i] = NO_NODE_2D;
 	s.children[i] = new Array(0);
 	s.paints[i] = defaultPaint();
-	s.orders[i] = { zIndex: 0, visible: true, name: "", noOverlap: false };
+	s.orders[i] = { zIndex: 0, visible: true, name: "", noOverlap: false, layerSlot: false };
 	s.layouts[i] = noLayout();
 	const generation: int32 = s.generations[i];
 	if (generation == LAST_GENERATION) {

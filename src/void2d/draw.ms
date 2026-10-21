@@ -597,21 +597,22 @@ export function prepare(this ctx: DrawContext2D): void {
 	}
 	useContext(ctx);
 	flushTargets();
+	ctx.screenCursor = 0;
 	ctx.prepared = true;
 	ctx.preparedFrame = frameIndex();
 }
 
-export function drawScreen(this ctx: DrawContext2D): void {
+function requireScreenDraw(ctx: DrawContext2D, call: string): void {
 	if (!ctx.prepared) {
-		console.log(`void2d: drawScreen context ${ctx.id} with no prepared frame`);
+		console.log(`void2d: ${call} context ${ctx.id} with no prepared frame`);
 		unreachable;
 	}
 	if (passState() != PassState.Screen) {
-		console.log(`void2d: drawScreen context ${ctx.id} outside a screen pass`);
+		console.log(`void2d: ${call} context ${ctx.id} outside a screen pass`);
 		unreachable;
 	}
 	if (ctx.preparedFrame != frameIndex()) {
-		console.log(`void2d: drawScreen context ${ctx.id} after its prepared frame expired`);
+		console.log(`void2d: ${call} context ${ctx.id} after its prepared frame expired`);
 		unreachable;
 	}
 	const screenW: int32 = fbWidth();
@@ -619,13 +620,30 @@ export function drawScreen(this ctx: DrawContext2D): void {
 	if (!(ctx.frameDpi > 0.0) || !Number.isFinite(ctx.frameDpi) ||
 		ctx.fbW != (screenW as float32) / ctx.frameDpi ||
 		ctx.fbH != (screenH as float32) / ctx.frameDpi) {
-		console.log(`void2d: drawScreen ${screenW}x${screenH} does not match prepared ` +
+		console.log(`void2d: ${call} ${screenW}x${screenH} does not match prepared ` +
 			`${ctx.fbW}x${ctx.fbH} at DPI ${ctx.frameDpi}`);
 		unreachable;
 	}
+}
+
+export function drawScreen(this ctx: DrawContext2D): void {
+	requireScreenDraw(ctx, "drawScreen");
 	ctx.prepared = false;
 	useContext(ctx);
 	end2d();
+	ctx.screenCursor = 0;
+}
+
+export function drawScreenUntil(this ctx: DrawContext2D, boundary: int32): void {
+	requireScreenDraw(ctx, "drawScreenUntil");
+	if (boundary < ctx.screenCursor || boundary > ctx.commandTotal) {
+		console.log(`void2d: drawScreenUntil context ${ctx.id} at command ${boundary}, ` +
+			`outside ${ctx.screenCursor}..${ctx.commandTotal}`);
+		unreachable;
+	}
+	useContext(ctx);
+	replayScreen(ctx, ctx.screenCursor, boundary);
+	ctx.screenCursor = boundary;
 }
 
 export function drawTarget(this ctx: DrawContext2D, target: RenderTarget, clear: Color): void {
@@ -639,6 +657,10 @@ export function drawTarget(this ctx: DrawContext2D, target: RenderTarget, clear:
 	}
 	if (ctx.preparedFrame != frameIndex()) {
 		console.log(`void2d: drawTarget context ${ctx.id} after its prepared frame expired`);
+		unreachable;
+	}
+	if (ctx.screenCursor > 0) {
+		console.log(`void2d: drawTarget context ${ctx.id} after drawScreenUntil`);
 		unreachable;
 	}
 	target.requireCurrent("drawTarget");
@@ -682,15 +704,18 @@ export function end2d(): void {
 		void2dFailPendingTargets();
 		return;
 	}
-	if (commandCount() == 0) { return; }
-	const l: DrawContext2D = currentContext();
+	replayScreen(ctx, ctx.screenCursor, commandCount());
+}
+
+function replayScreen(l: DrawContext2D, from: int32, to: int32): void {
+	if (to <= from) { return; }
 	void2dSetDpiScale(l.frameDpi);
 	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
 	if (void2dActivateContext(l.id) == 0) { return; }
 	void2dReplay(
-		l.commands[0], commandCount(),
+		l.commands[from * COMMAND_FLOATS], to - from,
 		l.effects[0], effectCount(),
-		ctx.fbW, ctx.fbH,
+		l.fbW, l.fbH,
 	);
 }
 

@@ -1656,6 +1656,13 @@ function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DrawContext2D | nu
 		} else {
 			const na: float32 = a * s.paints[i].alpha;
 			s.alphas[i] = na;
+			if (s.orders[i].layerSlot) {
+				if ((s.lanes.length as int32) > 0) {
+					console.log(`void2d: layer slot on node ${i} inside a noOverlap subtree`);
+					unreachable;
+				}
+				splitRun();
+			}
 			const start: PaintIndex = paintIndex();
 			let q: int32 = p + 1;
 			if (old !== null && reusable(s, i, old as DrawContext2D)) {
