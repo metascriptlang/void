@@ -55,6 +55,7 @@ import "./bloomKernelCheck";
 import "./dirShadowCheck";
 import "./cameraCheck";
 import "./frustumCheck";
+import "./planeProjectionCheck";
 import "./boundsCheck";
 import "./meshDataCheck";
 import "./meshLodCheck";
