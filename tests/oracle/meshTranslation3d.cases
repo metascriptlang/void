@@ -1,0 +1,60 @@
+# lib: heaps format
+# haxe-prelude: import h3d.prim.Polygon;
+# haxe-prelude: import h3d.prim.UV;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: class H {
+# haxe-prelude: public static function triangle(): Polygon {
+# haxe-prelude: var indices = new hxd.IndexBuffer();
+# haxe-prelude: for (i in 0...3) indices.push(i);
+# haxe-prelude: var p = new Polygon([new Point(),new Point(1,0,0),new Point(0,1,0)],indices);
+# haxe-prelude: p.normals = [for (i in 0...3) new Point(0,0,1)];
+# haxe-prelude: p.tangents = [for (i in 0...3) new Point(1,0,0)];
+# haxe-prelude: p.uvs = [for (i in 0...3) new UV(0.25,0.75)];
+# haxe-prelude: return p;
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { size } from "../../../src/void3d/bounds";
+# ms-prelude: import {
+# ms-prelude: MeshData, MeshError, addTexturedVertex, addTriangle, addGivenTangents, translate,
+# ms-prelude: } from "../../../src/void3d/meshData";
+# ms-prelude: function translatedTriangle(): Result<MeshData,MeshError> {
+# ms-prelude: let data = MeshData.withUvs();
+# ms-prelude: for (let i = 0; i < 3; i++) {
+# ms-prelude: const point = vec3(i == 1 ? 1.0 : 0.0,i == 2 ? 1.0 : 0.0,0.0);
+# ms-prelude: const _vertex = try addTexturedVertex(data,point,vec3(0.0,0.0,1.0),
+# ms-prelude: { u: 0.25, v: 0.75 },{ red: 0.25, green: 0.5, blue: 0.75, alpha: 1.0 });
+# ms-prelude: }
+# ms-prelude: const _triangle = try addTriangle(data,0,1,2);
+# ms-prelude: const _tangents = try addGivenTangents(data,[1.0,0.0,0.0,1.0,1.0,0.0,0.0,1.0,
+# ms-prelude: 1.0,0.0,0.0,1.0]);
+# ms-prelude: const _translated = try translate(data,vec3(3.0,-2.0,5.0));
+# ms-prelude: return Result.ok(data);
+# ms-prelude: }
+
+case translated-positions tol=0
+haxe> var p = H.triangle(); p.translate(3,-2,5); var cpu = p.getCPUBuffer();
+haxe> emit("translated-positions",[cpu[0],cpu[1],cpu[2],cpu[11],cpu[12],cpu[13],
+haxe> cpu[22],cpu[23],cpu[24]]);
+ms> const translated = translatedTriangle(); if (!translated.ok) { return 1; }
+ms> const width = translated.value.stride();
+ms> emit9("translated-positions",translated.value.vertices[0],translated.value.vertices[1],
+ms> translated.value.vertices[2],translated.value.vertices[width],
+ms> translated.value.vertices[width+1],
+ms> translated.value.vertices[width+2],translated.value.vertices[width*2],
+ms> translated.value.vertices[width*2+1],translated.value.vertices[width*2+2]);
+
+case translated-bounds tol=0
+haxe> var b = p.getBounds(); var size = b.getSize();
+haxe> emit("translated-bounds",[b.xMin,b.yMin,b.zMin,b.xMax,b.yMax,b.zMax,size.x,size.y,size.z]);
+ms> const b = translated.value.bounds; const size = b.size();
+ms> emit9("translated-bounds",b.min.x,b.min.y,b.min.z,b.max.x,b.max.y,b.max.z,
+ms> size.x,size.y,size.z);
+
+case translated-attributes tol=0
+haxe> emit("translated-attributes",[cpu[3],cpu[4],cpu[5],cpu[6],cpu[7],cpu[8],cpu[9],cpu[10],
+haxe> p.idx.length]);
+ms> emit9("translated-attributes",translated.value.vertices[3],translated.value.vertices[4],
+ms> translated.value.vertices[5],translated.value.vertices[12],translated.value.vertices[13],
+ms> translated.value.vertices[14],translated.value.vertices[6],translated.value.vertices[7],
+ms> translated.value.indexCount() as float32);
