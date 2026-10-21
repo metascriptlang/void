@@ -1,0 +1,53 @@
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# ms-prelude: import { Scene3D,NodeId3D,Transform3D,addGroup,attach }
+# ms-prelude: from "../../../src/void3d/scene";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: function relation(scene: Scene3D,a: NodeId3D,b: NodeId3D): float32 {
+# ms-prelude: const result=scene.containsNode(a,b); if (!result.ok) { return -1.0; }
+# ms-prelude: return result.value ? 1.0 : 0.0;
+# ms-prelude: }
+
+case node-contains-direct tol=0
+haxe> var r=new Object(); var a=new Object(r); var b=new Object(a); var c=new Object(b);
+haxe> var sibling=new Object(r);
+haxe> emit("node-contains-direct",[r.contains(a)?1:0,a.contains(b)?1:0,b.contains(c)?1:0]);
+ms> const scene=Scene3D.create(DrawContext.withUniformCapacity(0)); const r=scene.rootId();
+ms> const a=addGroup(scene,r,Transform3D.identity());
+ms> const b=addGroup(scene,a,Transform3D.identity());
+ms> const c=addGroup(scene,b,Transform3D.identity());
+ms> const sibling=addGroup(scene,r,Transform3D.identity());
+ms> emit3("node-contains-direct",relation(scene,r,a),relation(scene,a,b),relation(scene,b,c));
+
+case node-contains-deep-self tol=0
+haxe> emit("node-contains-deep-self",[a.contains(c)?1:0,a.contains(a)?1:0,r.contains(r)?1:0]);
+ms> emit3("node-contains-deep-self",relation(scene,a,c),relation(scene,a,a),relation(scene,r,r));
+
+case node-contains-reverse-sibling tol=0
+haxe> emit("node-contains-reverse-sibling",[c.contains(a)?1:0,
+haxe> a.contains(sibling)?1:0,sibling.contains(c)?1:0]);
+ms> emit3("node-contains-reverse-sibling",relation(scene,c,a),
+ms> relation(scene,a,sibling),relation(scene,sibling,c));
+
+case node-contains-reparent tol=0
+haxe> sibling.addChild(b);
+haxe> emit("node-contains-reparent",[a.contains(c)?1:0,sibling.contains(c)?1:0,r.contains(c)?1:0]);
+ms> attach(scene,sibling,b);
+ms> emit3("node-contains-reparent",relation(scene,a,c),relation(scene,sibling,c),relation(scene,r,c));
+
+case node-contains-detached tol=0
+haxe> var detached=new Object(); var child=new Object(detached);
+haxe> emit("node-contains-detached",[detached.contains(child)?1:0,
+haxe> r.contains(child)?1:0,detached.contains(detached)?1:0]);
+ms> const detached=addGroup(scene,null,Transform3D.identity());
+ms> const child=addGroup(scene,detached,Transform3D.identity());
+ms> emit3("node-contains-detached",relation(scene,detached,child),
+ms> relation(scene,r,child),relation(scene,detached,detached));
+
+case node-contains-attached tol=0
+haxe> r.addChild(detached);
+haxe> emit("node-contains-attached",[r.contains(child)?1:0,
+haxe> detached.contains(child)?1:0,a.contains(child)?1:0]);
+ms> attach(scene,r,detached);
+ms> emit3("node-contains-attached",relation(scene,r,child),
+ms> relation(scene,detached,child),relation(scene,a,child));

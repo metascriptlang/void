@@ -1052,6 +1052,22 @@ export function getMaterials(
 	return Result.ok(found);
 }
 
+export function containsNode(
+	this scene: Scene3D,
+	ancestor: NodeId3D,
+	node: NodeId3D,
+): Result<boolean, SceneError> {
+	if (!scene.isLive(ancestor) || !scene.isLive(node)) {
+		return Result.err(SceneError.StaleNode);
+	}
+	let at: int32 = scene.nodes[node.index].parent;
+	while (at != NO_NODE_3D) {
+		if (at == ancestor.index) { return Result.ok(true); }
+		at = scene.nodes[at].parent;
+	}
+	return Result.ok(false);
+}
+
 export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (!connectedRow(scene, id.index)) { return Result.err(SceneError.DetachedNode); }
