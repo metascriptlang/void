@@ -3798,7 +3798,8 @@ whose colour, shadow, picking and skin consumers could disagree.
 
 Canonical storage costs `3 * (n - 2)` indices for an `n`-corner strip, bounded by the existing
 signed draw-count limit. This is an allocation formula, not a performance measurement.
-Strip import does not imply fan, line or point support; no GPU ABI extension was added.
+That strip checkpoint did not accept fans, lines or points. Fan CPU acceptance below adds
+mode6 separately; neither change adds a GPU topology or ABI extension.
 
 ### glTF triangle-strip CPU acceptance
 
@@ -3814,7 +3815,7 @@ buffers, so they test pre-decode refusal/boundary routing, not enormous allocati
 The diagnostic consumer then exposed an owned wording regression: **307 pass/1 fail**, exit 1,
 because the new count message omitted `index count`. Its correction preserves that phrase
 without claiming every topology needs a count divisible by three. `gltfDiagnosticCheck.ms`
-now covers both mode 4 and 5 and passed **308/308**, exit 0. Only that suite reran: the prior
+covered mode4/5 at that checkpoint and passed **308/308**, exit0. Only that suite reran: the prior
 four consume `loadGltf` enum errors, not diagnostic causes; their topology/data paths did not
 change. Final CPU source tree: `1e44f9acf6c6bb1cca860335485efc1d9cec0d32`.
 
@@ -3825,6 +3826,53 @@ serial producer's aggregate where present. Original failures/cancellation remain
 
 These are synthetic importer/consumer fixtures, not executed Bevy comparisons, external-asset
 renders or performance evidence. Full native/gate3D/web acceptance for this stack is pending.
+
+### glTF triangle-fan reference boundary and CPU acceptance
+
+Heaps `b9aa6dcb` `h3d/prim/Disc.hx::new` emits each ring edge and a fixed center into
+Polygon's existing triangle list. Bevy `157e1ce6`
+`bevy_gltf/src/loader/gltf_ext/mesh.rs::primitive_topology` rejects fans; no Bevy loader parity
+is claimed. glTF `b43260ee`, "Topology and Connectivity", requires at least three corners
+and defines each fan triangle as `(i+1,i+2,0)`. `gltf.ms::loadMesh` reuses the existing strip
+canonicalizer before `MeshData.addTangentsWithSources` and `SkinPartition.fromTriangles`.
+Only mode6's gate is loosened: point/line modes, malformed mode values, short counts,
+pre-decode expansion limits, source index ranges/restart sentinels and storage guards remain.
+Fan winding and corner order follow the spec exactly, including degenerate faces. The
+`3*(n-2)` storage formula is unchanged; it is not a performance measurement.
+
+On Windows/binary+support `b1f63337f`, serial default buildslot: actual reds were index321/5,
+material348/2, skin309/1 and diagnostic307/1, all exit1 at new fan expectations. After
+`52eec9d4`, **index326/326, material350/350, skin310/310, glTF316/316, diagnostic308/308**,
+all exits0 plus aggregate0:9 new expected failures resolved,0 additional native failures.
+`src/test/gltfIndexCheck.ms`, `gltfMaterialCheck.ms`, `gltfSkinCheck.ms` and
+`gltfDiagnosticCheck.ms` own the buffer/layout/winding/picking/tangent/skin/diagnostic pins.
+The implicit65535/65536-vertex fixtures execute the existing u16/u32 promotion boundary;
+large accessor-count refusal still uses short buffers, not huge allocations.
+
+Existing oracle runner regenerated/checked **2/2 AGREES**, tolerance0, against actual Heaps
+`2b84cc23`, Haxe4.3.7/Nodev24.18.0. `tests/oracle/gltfFan3d.cases` passes synthetic fan data
+through real `loadGltf` and compares18 connectivity fields with Disc's triangle output after
+explicit center-last ->center-first source-ID relabeling. It compares counts/anchor frequency/
+first+last triangles, not positions, whole buffers or a Heaps glTF loader. Three relevant
+reference sources byte-match across pins. Source tree `99431b214bbc1871b7c17af99f19e07d56e7c8ac`.
+
+CLI JS acceptance is **not** green: actual oracle run exits1 with10 type diagnostics before
+codegen. `src/assets/image.jms` exposes async browser loading, not the native synchronous
+`decodeImage/imageFormatOf/ImageError/ImageFormat/Pixels` exports imported by gltf.ms; DOM,
+Readonly<ImageView> and unknown-value diagnostics accompany the export mismatch. Minimal
+`out/m6GltfJsImportControl20261021.ms` removes all fan/oracle inputs: C exits0/prints false,
+JS exits1 with the exact same10 diagnostics and locations. This scopes an existing platform
+API gap, not Ray's normalizer TDZ or a newly established compiler bug. No importer/platform
+bypass was applied. Browser emcc is a separate target, unrun here; CLI JS failure is not its
+verdict. Small passing Mikk fan fixtures do not close the held sphere-sort UB.
+
+Receipts: `out/m6Fan{Index,Material,Skin,Diagnostic,}RedB1f63337f20261021.{log,exit}`;
+`out/m6Fan{Index,Material,Skin,Gltf,Diagnostic,Heaps,Oracle,Js}GreenB1f63337f20261021.{log,exit}`.
+Native aggregate `out/m6FanGreenB1f63337f20261021` is0; reference aggregate
+`out/m6FanReferenceB1f63337f20261021` is1 because JS failed. Import controls are
+`out/m6FanJsImportControl{C,Js,}B1f63337f20261021.{log,exit}`; exact diagnostic comparison is
+`out/m6FanJsImportScopeAuditB1f63337f20261021.log`. No full-index, external-asset render,
+GPU, browser, device-loss, performance or whole-stack acceptance is added.
 
 ### glTF required emission declaration, reference boundary
 
