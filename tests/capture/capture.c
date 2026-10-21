@@ -19,10 +19,19 @@
 	#include <emscripten.h>
 #endif
 
+#if defined(__APPLE__)
+	#include <TargetConditionals.h>
+#endif
+
 #if defined(SOKOL_GLES3) || defined(SOKOL_GLCORE)
 	#define VOID_CAPTURE_GL 1
 #elif defined(_WIN32)
 	#define VOID_CAPTURE_D3D11 1
+#elif defined(__APPLE__) && TARGET_OS_OSX
+	#define VOID_CAPTURE_METAL 1
+	int voidWindowReadRgba(uint8_t *out, int width, int height);
+	int voidFbWidth(void);
+	int voidFbHeight(void);
 #endif
 
 #if defined(VOID_CAPTURE_D3D11)
@@ -88,6 +97,8 @@ int voidCaptureBackend(void) {
 	return 4;
 #elif defined(VOID_CAPTURE_GL)
 	return 2;
+#elif defined(VOID_CAPTURE_METAL)
+	return 5;
 #else
 	return 0;
 #endif
@@ -149,10 +160,15 @@ static void stopOnClampedWindow(void) {
 	int reqW = 0, reqH = 0;
 	voidRequestedSize(&reqW, &reqH);
 	if (reqW <= 0 || reqH <= 0) return;
-	if (reqW == sapp_width() && reqH == sapp_height()) return;
+#if defined(VOID_CAPTURE_METAL)
+	int fbW = voidFbWidth(), fbH = voidFbHeight();
+#else
+	int fbW = sapp_width(), fbH = sapp_height();
+#endif
+	if (reqW == fbW && reqH == fbH) return;
 	fprintf(stderr, "capture: the window was asked for %dx%d but the framebuffer is %dx%d; "
 		"a pixel test must read the size it asked for or use fbWidth/fbHeight\n",
-		reqW, reqH, sapp_width(), sapp_height());
+		reqW, reqH, fbW, fbH);
 	exit(1);
 }
 
@@ -166,6 +182,10 @@ const char *voidCaptureRenderer(void) {
 }
 
 int voidCaptureGrab(int slot) {
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) {
+		fprintf(stderr, "capture: slot %d is outside the %d capture slots\n", slot, VOID_CAPTURE_SLOTS);
+		exit(1);
+	}
 	stopOnClampedWindow();
 #if defined(VOID_CAPTURE_D3D11)
 	return grabD3D11(slot, (IDXGISwapChain *)voidWindowSwapChain(), 0);
@@ -186,6 +206,13 @@ int voidCaptureGrab(int slot) {
 	}
 	free(flip);
 	return 1;
+#elif defined(VOID_CAPTURE_METAL)
+	int width = voidFbWidth();
+	int height = voidFbHeight();
+	if (width <= 0 || height <= 0) return 0;
+	uint8_t *out = slotResize(slot, width, height);
+	if (out == NULL) return 0;
+	return voidWindowReadRgba(out, width, height);
 #else
 	(void)slot;
 	return 0;
