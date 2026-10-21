@@ -4572,6 +4572,38 @@ Text shares **one** glyph layer with void2d — see [VOID2D.md → Text design](
 - **3D-text consumer = billboard or text-mesh.** Start with billboard; mesh only if a use case demands it.
 - **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected. void2d's SDF page kind and shader ramp exist behind `-d:voidSdfText`; the void3d program, the glyph-layer import and flat world text are deferred by name, each with its reopening condition, in [VOID2D.md](VOID2D.md) P6 "Deferred out of P6".
 
+### Trail: CPU history and ribbon checkpoint
+
+Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
+`buildTrailMesh`; the host owns visibility, pause/elapsed-time policy and upload/materials.
+Geometry is **world-space**: submit with an identity model, not the sampled object's transform
+again. No Scene node kind, texture resolver, serializer, renderer or shader was added.
+
+Primary `h3d/scene/Trail.hx::sync` supplies strict movement thresholds, retained pending
+endpoint, capped 20-way Bezier subdivision, normalized quaternion slerp, strict expiration,
+zero-width tail replacement, age/width/UVs and connectivity. Y/Z mapping follows the existing
+Heaps-to-Void particle frame; normals and rotation follow it too. Existing `MeshData`'s
+12-float LitTextured format, white RGBA, index promotion and bounds own the output contract.
+No instance float, ProgramKey bit or preset shader change is required for that CPU format.
+Positive duration/movementMax and finite representable poses/corners are explicit Result
+gates; nonfinite or overflowing geometry is not published.
+
+Actual missing-module red1 preceded implementation. Installed binary/support `afcd22f19`:
+native **311/311**, CLIJS **73/73**, actual Haxe Heaps oracle **14/14**, **120 fields**;
+C/JS values exactly equal, max Heaps delta **1.6671231717335644e-7** within the predeclared
+`1e-5` numeric tolerance (strict history rows use zero). Cases include noncollinear curvature,
+changing orientation, all three half-turn extraction branches, angle, thresholds, TTL,
+pending/clear, normals, UV and indices. The reference runs actual `Trail.sync`; only
+DynamicPrimitive's GPU `flush` is intercepted, and an empty host context supplies time and
+visibility. No reference algorithm is copied into that capture adapter. Inactive pending
+coordinates are not compared. Three inspected/executed reference files were byte-equal.
+
+Receipts `out/m6Trail*Afcd22f1920261021*`, kept generated oracle packets under
+`out/tmp/trail/oracleRetry{1,2}/`; SDK unchanged. Final changes after Retry2 are two formatting
+wraps using existing syntax, checked at <=100 columns; numerical evidence scope is unchanged.
+The writer currently allocates fresh CPU mesh arrays; no frame-cost/performance claim.
+No whole-index, gate3d, upload, GPU pixels, web/device or land acceptance for this row.
+
 ### Retained light color: native/reference checkpoint
 
 `setLightColor` follows the existing light-kind/liveness gate and stored RGB packet.
