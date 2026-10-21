@@ -324,6 +324,26 @@ export function drawScreen(this s: Scene2D): void {
 	s.context.drawScreen();
 }
 
+function paintedOnScreen(s: Scene2D, i: int32): boolean {
+	const l: DrawContext2D = s.context;
+	return s.slots[i] != NO_SLOT && i < (l.paintStates.length as int32) &&
+		l.paintStates[i] == PaintState.Painted;
+}
+
+export function paintedSlots(this s: Scene2D): NodeRef[] {
+	s.requireOpen("paintedSlots");
+	if (!s.context.prepared) {
+		console.log("void2d: paintedSlots with no prepared frame");
+		unreachable;
+	}
+	const out: NodeRef[] = [];
+	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
+		const i: int32 = s.order[p];
+		if (s.orders[i].layerSlot && paintedOnScreen(s, i)) { out.push(s.refOf(i)); }
+	}
+	return out;
+}
+
 export function drawScreenUntil(this s: Scene2D, slot: NodeRef): void {
 	s.requireOpen("drawScreenUntil");
 	if (slot.scene !== s) {
@@ -336,8 +356,7 @@ export function drawScreenUntil(this s: Scene2D, slot: NodeRef): void {
 		unreachable;
 	}
 	const l: DrawContext2D = s.context;
-	if (s.slots[i] == NO_SLOT || i >= (l.paintStates.length as int32) ||
-		l.paintStates[i] != PaintState.Painted) {
+	if (!paintedOnScreen(s, i)) {
 		console.log(`void2d: drawScreenUntil on node ${i}, which the prepared frame did not paint ` +
 			"on the screen");
 		unreachable;
