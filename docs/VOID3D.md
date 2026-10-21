@@ -3916,6 +3916,145 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### World-line miter math: independent CPU checkpoint
+
+`worldGraphicsMiter` evaluates only `h3d.scene.Graphics::flushLine`'s joined offset from
+three points and a nonnegative world width. Heaps' explicit XY restriction maps to XZ;
+height does not change the offset. Open/closed path handling, colors, indices, MeshData
+publication, bounds and a renderer are **not** implemented by this math helper. It neither
+chooses the pending world-bounds policy nor substitutes world width for default pixel lines.
+
+The join is deliberately uncapped: the actual sharp-corner offset is
+`(-20.049875259399414, 0, 1)` at width2. Existing void2d `strokePoly` caps at four and depends
+on node/draw machinery, so it is not the same primitive. Degenerate projected segments,
+exact reversals, nonfinite inputs and unrepresentable offsets return explicit errors.
+
+Actual missing-module red1, then `msc check`0, native **306/306**, CLIJS **68/68**, actual
+Heaps **8/8**, **24 fields Haxe/C/JS exactly equal**. Real Graphics world-path CPU buffers
+are captured through BigPrimitive GPU-flush interception; only host mode selection bypasses
+GPU texture setup, not the tessellation algorithm. Cases pin both axes, both turn signs,
+uncapped sharp/shallow joins, ignored height and zero width. Reference files byte-equal;
+SDK `afcd22f19` unchanged. Receipts `out/m6WorldGraphicsMiter*Afcd22f1920261021Retry1.*`,
+kept generated packet `out/tmp/worldGraphicsMiter/oracleRetry1/`.
+
+Secondary Bevy `157e1ce6`, `bevy_gizmos/src/config.rs:26,254-260`, describes Miter versus
+Bevel/Round and pixel width/perspective. It was read, not executed or ported; no Bevy
+runtime, performance, GPU, whole-index or integration claim. Full World Graphics/bounds
+and default LineShader remain separate held work; prefix2 is unchanged by this helper.
+
+### Plane point projection: CPU query checkpoint
+
+`plane.ms` reuses existing `Vec4` plane convention **normal dot point + w = 0**, so Heaps'
+`d` becomes `-w`. Primary `h3d/col/Plane.hx::distance/project/projectTo` explicitly requires a
+normalized normal. That precondition is checked, not silently repaired; raw unnormalized
+frustum planes cannot be passed as though already normalized. Signed distance returns
+float64; projection keeps float64 intermediates and refuses an unrepresentable Vec3.
+No new plane object, collider hierarchy, empty-volume or overlap policy.
+
+Actual missing-module red1 precedes the helpers. Installed binary/support `afcd22f19`:
+native **306/306**, CLIJS **68/68**, actual Heaps **8/8**, **32 fields** C/JS exactly equal;
+max Heaps delta **2.1769374747293568e-7** within declared `1e-5` (axis cases use zero).
+Axes, reversed normal, oblique planes, point on plane, negative offset and primary projectTo
+are measured; local tests additionally pin nonfinite/unit-normal/range refusal and widened
+distance above float32 range. Reference Plane file byte-equal inspected/executed. Receipts
+`out/m6PlaneProjection*Afcd22f1920261021.*`, generated oracle packet
+`out/tmp/planeProjection/oracle/`; SDK unchanged. No GPU/gate/whole-index/land run.
+
+**Why this missing query, not another triangle raycaster.** Current MeshData already has
+Moller-Trumbore nearest hits, UVs, culling, u16/u32/nonindexed and element ranges; pick and
+SkinGeometry consume it, including broad/narrow and transforms. That covers the relevant
+Polygon/PolygonBuffer/Object/Transform/Optimized/Skin ray use cases, not every Collider API.
+Point/FPoint arithmetic is Vec3. Capsule/Cylinder/Seg and triangle closest-point source
+raise zero-axis/empty/degenerate-shape questions; these were deferred rather than reopen
+that parked policy family. HeightMap's stale bisection variable and OBB pair SAT remain
+separate source frontiers, not new implementations or measured acceptance. No new
+shape-policy divergence was approved. The bounded independent addition here is
+normalized-plane point projection only.
+
+### Graphics3D: default screen-line CPU encoding only
+
+`graphics3d.ms` ports default `h3d.scene.Graphics` (`is3D=false`) **CPU input encoding**, not
+rendering: four coincident roots, endpoint delta in NORMAL, UV corners, per-segment RGBA,
+primary index connectivity and centerline endpoint bounds. `width` is global for the whole
+mesh: later positive `lineStyle` changes it for all segments; nonpositive sizes retain it.
+Clear retains cursor/style. The safe constructor explicitly initializes the black style,
+equivalent to reference construction followed by `lineStyle()`, not uninitialized channels.
+
+**Not ordinary LitTextured geometry.** The existing 12-float storage is reused, but normals
+contain directions and positions do not yet contain expanded corners/endpoints. Do not draw
+it with Lit, recompute its normals, or claim triangle picking from those coincident roots.
+Heaps `LineShader.hx` supplies endpoint extension and pixel/depth-dependent expansion.
+That program is not implemented here yet. `is3D=true` world-width XY-plane miter is a separate
+future row; no world-width substitute, h2d rectangle or filled polygon was added.
+
+Actual missing-module exit1 precedes implementation. Native **308/308**, CLIJS **70/70**,
+actual Heaps **13/13**, **117 fields Haxe/C/JS exactly equal**. Coverage includes all four
+UV corners, directions, color/alpha, indices, bounds, chain/move breaks, global width,
+nonpositive style sizes, clear, signed float colors and finite zero-length encoding.
+The separate wide-index test uses MeshData promotion beyond 65K; it does not claim Heaps'
+BigPrimitive batch behavior there. Zero-length CPU encoding is not GPU normalization proof.
+
+The actual Heaps Graphics writes through captured BigPrimitive, with only GPU `flush`
+intercepted. Three reference files byte-equal between inspected/executed checkouts. SDK
+`afcd22f19` unchanged. `out/m6Graphics3d*Afcd22f1920261021Retry{1,2}*` and kept
+`out/tmp/graphics3d/oracleRetry1/` contain receipts; initial void-Result constructor type
+errors are retained, corrected to existing `Result.ok(null)` idiom. Retry2 adds only shape
+unit coverage; production/oracle inputs and prior 13-case evidence are unchanged.
+No shader/program/ABI, whole-index, gate3d, GPU, web or land acceptance for this CPU stage.
+
+### Trail: CPU history and ribbon checkpoint
+
+Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
+`buildTrailMesh`; the host owns visibility, pause/elapsed-time policy and upload/materials.
+Geometry is **world-space**: submit with an identity model, not the sampled object's transform
+again. No Scene node kind, texture resolver, serializer, renderer or shader was added.
+
+Primary `h3d/scene/Trail.hx::sync` supplies strict movement thresholds, retained pending
+endpoint, capped 20-way Bezier subdivision, normalized quaternion slerp, strict expiration,
+zero-width tail replacement, age/width/UVs and connectivity. Y/Z mapping follows the existing
+Heaps-to-Void particle frame; normals and rotation follow it too. Existing `MeshData`'s
+12-float LitTextured format, white RGBA, index promotion and bounds own the output contract.
+No instance float, ProgramKey bit or preset shader change is required for that CPU format.
+Positive duration/movementMax and finite representable poses/corners are explicit Result
+gates; nonfinite or overflowing geometry is not published.
+
+Actual missing-module red1 preceded implementation. Installed binary/support `afcd22f19`:
+native **311/311**, CLIJS **73/73**, actual Haxe Heaps oracle **14/14**, **120 fields**;
+C/JS values exactly equal, max Heaps delta **1.6671231717335644e-7** within the predeclared
+`1e-5` numeric tolerance (strict history rows use zero). Cases include noncollinear curvature,
+changing orientation, all three half-turn extraction branches, angle, thresholds, TTL,
+pending/clear, normals, UV and indices. The reference runs actual `Trail.sync`; only
+DynamicPrimitive's GPU `flush` is intercepted, and an empty host context supplies time and
+visibility. No reference algorithm is copied into that capture adapter. Inactive pending
+coordinates are not compared. Three inspected/executed reference files were byte-equal.
+
+Receipts `out/m6Trail*Afcd22f1920261021*`, kept generated oracle packets under
+`out/tmp/trail/oracleRetry{1,2}/`; SDK unchanged. Final changes after Retry2 are two formatting
+wraps using existing syntax, checked at <=100 columns; numerical evidence scope is unchanged.
+The writer currently allocates fresh CPU mesh arrays; no frame-cost/performance claim.
+No whole-index, gate3d, upload, GPU pixels, web/device or land acceptance for this row.
+
+### Retained light color: native/reference checkpoint
+
+`setLightColor` follows the existing light-kind/liveness gate and stored RGB packet.
+Primary Heaps `scene/fwd/{PointLight,DirLight}.hx::set_color` assigns the shader color;
+Bevy's public PointLight color is secondary source-only. Actual Haxe/Node Heaps and native
+Void `collectLights` agree on all **3 rows / 9 RGB fields exactly**: point color, black,
+directional signed/HDR color. This is numeric shader-color correspondence, not reference
+identity, gamma conversion or rendered-pixel/performance acceptance. The five relevant
+inspected/executed Heaps light/shader files were byte-equal.
+
+Actual missing-export red1 precedes the setter. On installed binary/support `afcd22f19`,
+native **303/303**, old Scene **344/344**, and all **four expected misuse aborts** pass.
+CLIJS unit/oracle and unchanged old Scene stop before logic at `DOOR_UNIFORM_SLOTS`.
+A minimal import of Door from actual main **`72c8aacf`** gives C **300/300**, JS the same
+startup failure: the existing `ca53522d` provider gap, not a new light regression. Decision10
+(provider versus explicit deferral) remains person-owned/open: **no JS acceptance or waiver**.
+Retry1's abort build succeeded but its Python relative executable path failed to launch;
+Retry2 uses the same executable's absolute path and verifies all four named messages.
+Receipts `out/m6LightColor*Afcd22f1920261021Retry{1,2}*` preserve both attempts; SDK unchanged.
+No whole-index, gate3d, GPU or land run for this row; single-entry checks only under buildslot.
+
 ### Independent M6 prefix accepted
 
 Original CPU/import prefix `42c0be54` landed as `abf2b47a` on main `3a70f335` via the shared
