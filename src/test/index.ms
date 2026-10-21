@@ -100,6 +100,7 @@ import "./shaderCalleeCheck";
 import "./shaderStatementCheck";
 import "./shaderProgramCheck";
 import "./shaderModuleCheck";
+import "./void3dModuleCheck";
 import "./shaderComputeCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
