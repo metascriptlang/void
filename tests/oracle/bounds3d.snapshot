@@ -23,3 +23,10 @@ sphere-subnormal-line 0.5
 sphere-subnormal-flat 0.7071067811865475
 sphere-wide-line 1
 sphere-wide-cube 1.7320508075688772
+volume-sphere-inside 1 0 0
+volume-sphere-min-contact 1 1 1
+volume-sphere-max-contact 1 1 1
+volume-sphere-min-crossing 0 0 0
+volume-sphere-max-crossing 0 0 0
+volume-sphere-zero-radius 1 1 0
+volume-sphere-degenerate 1 0 0
