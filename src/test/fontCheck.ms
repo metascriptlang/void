@@ -27,6 +27,9 @@ import {
 	Presentation,
 	codepointFaceFor,
 	faceSlotFor,
+	FaceQuery,
+	setFaceResolver,
+	faceDiscoveryAsks,
 } from "../void2d/font";
 
 when (voidSprites) {
@@ -260,6 +263,52 @@ test "a fallback of the other presentation is the last resort when nothing match
 	addFallbackFont(onlyColour, COLOUR_DRAWABLE);
 	assert codepointFaceFor(onlyColour, 0x2764, Presentation.Text).face == colour;
 	assert codepointFaceFor(onlyColour, 0x2764, Presentation.Default).face == colour;
+}
+
+test "a host resolver answers a text face no registered face has, once per codepoint" {
+	const text = faceOfPath(TEXT_SYMBOL);
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	setFaceResolver((q: FaceQuery): string | null =>
+		q.presentation == Presentation.Text ? TEXT_SYMBOL : null);
+	const f = added(NO_LINE_HEIGHT);
+	addFallbackFont(f, COLOUR_DRAWABLE);
+	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == colour;
+	const asks: int32 = faceDiscoveryAsks();
+	const probes: int32 = fallbackProbes();
+	assert codepointFaceFor(f, 0x2764, Presentation.Default).face == text;
+	assert codepointFaceFor(f, 0x2764, Presentation.Text).face == text;
+	assert faceDiscoveryAsks() == asks + 1;
+	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == colour;
+	assert fallbackProbes() == probes + 2;
+	assert codepointFaceFor(f, 0x1F600, Presentation.Text).face == text;
+	assert codepointFaceFor(f, 0x10FFF0, Presentation.Text).face == fontFace(f);
+	assert codepointFaceFor(f, 0x10FFF0, Presentation.Default).face == fontFace(f);
+	assert faceDiscoveryAsks() == asks + 2;
+	setFaceResolver(null);
+}
+
+test "a resolver answer that lacks the codepoint or presentation is a cached miss" {
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	setFaceResolver((q: FaceQuery): string | null =>
+		q.codepoint == 0x2764 ? COLOUR_DRAWABLE : "tests/fonts/absent.ttf");
+	const f = added(NO_LINE_HEIGHT);
+	addFallbackFont(f, COLOUR_DRAWABLE);
+	const asks: int32 = faceDiscoveryAsks();
+	assert codepointFaceFor(f, 0x2764, Presentation.Text).face == colour;
+	assert codepointFaceFor(f, 0x10FFF0, Presentation.Text).face == fontFace(f);
+	const g = added(NO_LINE_HEIGHT);
+	assert codepointFaceFor(g, 0x2764, Presentation.Text).face == fontFace(g);
+	assert faceDiscoveryAsks() == asks + 2;
+	setFaceResolver(null);
+}
+
+test "with no resolver installed the other presentation stays the last resort" {
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	const asks: int32 = faceDiscoveryAsks();
+	const f = added(NO_LINE_HEIGHT);
+	addFallbackFont(f, COLOUR_DRAWABLE);
+	assert codepointFaceFor(f, 0x2764, Presentation.Text).face == colour;
+	assert faceDiscoveryAsks() == asks;
 }
 
 test "the resolver answers a presentation without loading a face it does not pick" {
