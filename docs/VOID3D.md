@@ -3916,6 +3916,33 @@ material block, renderer or shader changed. Receipts:
 `out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
 The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
 
+### Empty bounds query frontier: evidence only
+
+Before adding sphere/AABB overlap, the existing empty-box contract was audited. On installed
+binary/support `b1f63337f`, source tree `f5d1391a2238f8e71bc595f9f3ec5c7dfdc9205f`, read-only
+probe C **301/301**, JS **63/63**, all0: point/positive-radius sphere containment is false;
+`closestPoint` returns zero; frustum bounds testing returns true, conservatively not culling.
+Existing raw `Bounds3D.collide(empty, Bounds3D.all())` returns true in either order. A second
+variant, negative extent on one axis inside a surrounding box, also returns true despite
+`isEmpty()`. Thus the recorded special cases do not define one universal overlap policy.
+
+Actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0, reproduces those raw box-overlap results.
+`h3d/col/Bounds.hx::inSphere` returns false for an origin sphere against the empty marker,
+but true when a positive-radius sphere is centered on the marker's min corner. A one-axis
+inverted box can also return true. The nonempty formula is squared distance from raw
+endpoint clamp **< r²**; secondary Bevy `157e1ce6` Aabb3d/BoundingSphere uses **<= r²**.
+These were source-read, not claimed to share contact semantics.
+
+A geometric overlap API must not silently bless empty occupancy. The proposed raw tests
+were reverted before implementation and retained at `out/tmp/boundsSphere/rawProposal/`.
+No overlap API, empty guard, existing-query change or approved divergence was added. Any
+choice must distinguish exact overlap from the frustum's conservative unknown-bounds rule.
+
+Commands/receipts: `msc test [--target=js] out/m6EmptyBoundsContractProbe20261021.ms`,
+`out/m6EmptyBounds*B1f63337f20261021{,Retry1}.{log,exit}`. Heaps-only reference probe uses
+existing `scripts/oracle.sh regen` on `out/tmp/boundsSphere/emptyReferenceOnly.cases`;
+its deliberately failing MS stub is unexecuted, not a port/oracle acceptance claim.
+
 ### Sphere closest point: primary projection, C/JS acceptance
 
 `sphere.ms::closestPoint` follows primary Heaps `b9aa6dcb`
