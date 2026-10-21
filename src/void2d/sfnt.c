@@ -243,7 +243,7 @@ static TableSpan findTable(const unsigned char *directory, int tables, Off fileS
 	return span;
 }
 
-int void2dSfntPeek(const char *path) {
+int void2dSfntPeek(const char *path, int index) {
 	FILE *f = fopen(path, "rb");
 	if (!f) {
 		fprintf(stderr, "void2d: cannot read font file %s\n", path);
@@ -264,12 +264,17 @@ int void2dSfntPeek(const char *path) {
 		goto done;
 	}
 	if (memcmp(head, "ttcf", 4) == 0) {
-		if (fseek(f, 12, SEEK_SET) != 0 || fread(head, 1, 4, f) != 4) { goto done; }
+		if (index < 0 || (Off)index >= fileU32(head + 8) ||
+			fseek(f, 12 + 4 * (long)index, SEEK_SET) != 0 || fread(head, 1, 4, f) != 4) {
+			goto done;
+		}
 		fontStart = fileU32(head);
 		if (fontStart > fileSize || 12 > fileSize - fontStart ||
 			fseek(f, (long)fontStart, SEEK_SET) != 0 || fread(head, 1, 12, f) != 12) {
 			goto done;
 		}
+	} else if (index != 0) {
+		goto done;
 	}
 	if (!(fileU32(head) == 0x00010000ul || memcmp(head, "OTTO", 4) == 0 ||
 		memcmp(head, "true", 4) == 0)) {

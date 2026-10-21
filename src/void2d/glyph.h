@@ -12,7 +12,7 @@
 #define VOID2D_POLYGON_TOO_LARGE 1
 #define VOID2D_POLYGON_NO_MEMORY 2
 
-int void2dGlyphFaceLoad(const char *path);
+int void2dGlyphFaceLoad(const char *path, int index);
 int void2dGlyphFaceSynthetic(int face, int bold, int italic);
 int void2dGlyphFaceSprite(int base);
 int void2dGlyphFaceIsSprite(int face);

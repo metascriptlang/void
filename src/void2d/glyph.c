@@ -544,14 +544,14 @@ static int colourOnlyInfo(unsigned char *bytes, int offset, const ColourSfnt *t,
 }
 #endif
 
-int void2dGlyphFaceLoad(const char *path) {
+int void2dGlyphFaceLoad(const char *path, int index) {
 	long size = 0;
 	unsigned char *bytes = readWholeFile(path, &size);
 	if (!bytes) {
 		fprintf(stderr, "void2d: cannot read font file %s\n", path);
 		return VOID2D_FACE_UNREADABLE;
 	}
-	int offset = stbtt_GetFontOffsetForIndex(bytes, 0);
+	int offset = stbtt_GetFontOffsetForIndex(bytes, index);
 	stbtt_fontinfo info;
 	void *colour = NULL;
 	int colourOnly = 0;

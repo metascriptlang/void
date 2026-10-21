@@ -112,8 +112,8 @@ export struct FaceSummary {
 	colourLayers: boolean;
 }
 
-export function peekFace(path: string): Result<FaceSummary, SfntError> {
-	const code: int32 = void2dSfntPeek(path);
+export function peekFace(path: string, index: int32 = 0): Result<FaceSummary, SfntError> {
+	const code: int32 = void2dSfntPeek(path, index);
 	if (code < 0) {
 		if (code < -3) { unreachable; }
 		return match (code) {
@@ -145,11 +145,11 @@ export function faceSummariesRead(): int32 {
 	return void2dSfntSummariesRead();
 }
 
-export function loadFace(path: string): Result<int32, FaceError> {
+export function loadFace(path: string, index: int32 = 0): Result<int32, FaceError> {
 	when (js) {
 		return Result.err(FaceError.NoRasterizerOnJs);
 	} else {
-		return faceResult(void2dGlyphFaceLoad(path));
+		return faceResult(void2dGlyphFaceLoad(path, index));
 	}
 }
 

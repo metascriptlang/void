@@ -13,7 +13,7 @@
 #define VOID2D_SFNT_DEFAULT_SEQUENCE 1
 #define VOID2D_SFNT_SPECIFIC_SEQUENCE 2
 
-int void2dSfntPeek(const char *path);
+int void2dSfntPeek(const char *path, int index);
 int void2dSfntCovers(int summary, int codepoint);
 int void2dSfntSequence(int summary, int codepoint, int selector);
 int void2dSfntFlags(int summary);
