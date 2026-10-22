@@ -325,8 +325,6 @@ let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let frame: int64 = 0;
 let pass: PassState = { active: false };
 let bound: BoundState = { pipeline: 0 };
-// The buffer each uniform slot holds in the open pass, so a rebind to the same buffer only moves
-// its offset (sokol binds the uniform buffer at pass begin and calls set*BufferOffset per block).
 let passVertexUniforms: Vec<Ptr<MtlBufferImpl>> = [];
 let passFragmentUniforms: Vec<Ptr<MtlBufferImpl>> = [];
 let swapchainColor: uint32 = 0;
