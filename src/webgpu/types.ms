@@ -34,6 +34,11 @@ export enum GPUBufferUsage {
 	UNIFORM = 0x40,
 }
 
+export enum GPUMapMode {
+	READ = 0x1,
+	WRITE = 0x2,
+}
+
 export enum GPUTextureUsage {
 	COPY_SRC = 0x1,
 	COPY_DST = 0x2,
@@ -371,6 +376,7 @@ export struct GPURenderPassDescriptor {
 export struct GPUOrigin3D { x: int32; y: int32; z: int32; }
 export struct GPUTexelCopyTextureInfo { texture: GPUTexture; mipLevel: int32; origin: GPUOrigin3D; }
 export struct GPUTexelCopyBufferLayout { offset: int64; bytesPerRow: int32; rowsPerImage: int32; }
+export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPerRow: int32; rowsPerImage: int32; }
 
 function stop(message: string): void {
 	console.log(`webgpu: ${message}`);
@@ -531,6 +537,101 @@ export function checkedTexelWritePitch(
 	if (layout.offset < 0 || needed > dataBytes) {
 		stop(`writeTexture needs ${needed} bytes of data and was given ${dataBytes}`);
 	}
+	return bytesPerRow;
+}
+
+export function checkedBufferCopy(
+	sourceId: uint32,
+	sourceSize: int64,
+	sourceOffset: int64,
+	destinationId: uint32,
+	destinationSize: int64,
+	destinationOffset: int64,
+	size: int64,
+): void {
+	if (size < 0 || size % 4 != 0) { stop(`copyBufferToBuffer size ${size} is not a non-negative multiple of 4`); }
+	if (sourceOffset < 0 || sourceOffset % 4 != 0) { stop(`copyBufferToBuffer sourceOffset ${sourceOffset} is not a non-negative multiple of 4`); }
+	if (destinationOffset < 0 || destinationOffset % 4 != 0) {
+		stop(`copyBufferToBuffer destinationOffset ${destinationOffset} is not a non-negative multiple of 4`);
+	}
+	if (sourceOffset + size > sourceSize) {
+		stop(`copyBufferToBuffer of ${size} bytes at sourceOffset ${sourceOffset} overruns GPUBuffer ${sourceId} of ${sourceSize}`);
+	}
+	if (destinationOffset + size > destinationSize) {
+		stop(`copyBufferToBuffer of ${size} bytes at destinationOffset ${destinationOffset} overruns GPUBuffer ${destinationId} of ${destinationSize}`);
+	}
+	if (sourceId == destinationId && sourceOffset < destinationOffset + size && destinationOffset < sourceOffset + size) {
+		stop(`copyBufferToBuffer ranges overlap inside GPUBuffer ${sourceId}`);
+	}
+}
+
+// A size of 0 means the rest of the buffer, as WebGPU's omitted size does.
+export function checkedMapRange(member: string, id: uint32, bufferSize: int64, offset: int64, size: int64): int64 {
+	if (offset < 0 || offset % 8 != 0) { stop(`${member} offset ${offset} of GPUBuffer ${id} is not a non-negative multiple of 8`); }
+	const length = size == 0 ? bufferSize - offset : size;
+	if (length <= 0 || length % 4 != 0) { stop(`${member} size ${length} of GPUBuffer ${id} is not a positive multiple of 4`); }
+	if (offset + length > bufferSize) { stop(`${member} of ${length} bytes at ${offset} overruns GPUBuffer ${id} of ${bufferSize}`); }
+	return length;
+}
+
+// `width`/`height` are mip 0; `arrayLayers` is the layer count of a 2d texture and the depth of a 3d one.
+export function checkedTexelCopyRegion(
+	member: string,
+	id: uint32,
+	width: int32,
+	height: int32,
+	mipLevelCount: int32,
+	arrayLayers: int32,
+	volume: boolean,
+	info: GPUTexelCopyTextureInfo,
+	size: GPUExtent3D,
+): void {
+	const origin = info.origin;
+	const mip = info.mipLevel;
+	if (mip < 0 || mip >= mipLevelCount) { stop(`${member}.mipLevel ${mip} of GPUTexture ${id}, which has ${mipLevelCount} mips`); }
+	const mipWidth = Math.max(1, width >> mip);
+	const mipHeight = Math.max(1, height >> mip);
+	const depth = volume ? Math.max(1, arrayLayers >> mip) : arrayLayers;
+	if (origin.z < 0 || size.depthOrArrayLayers <= 0 || origin.z + size.depthOrArrayLayers > depth) {
+		stop(`${member} origin.z ${origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers} overruns GPUTexture ${id}, which has ${depth} layers at mip ${mip}`);
+	}
+	if (size.width <= 0 || size.height <= 0) { stop(`${member} size ${size.width}x${size.height} needs a positive width and height`); }
+	if (origin.x < 0 || origin.y < 0 || origin.x + size.width > mipWidth || origin.y + size.height > mipHeight) {
+		stop(`${member} of ${size.width}x${size.height} at origin ${origin.x},${origin.y} overruns mip ${mip} of GPUTexture ${id}, ${mipWidth}x${mipHeight}`);
+	}
+}
+
+// The buffer side of a texture<->buffer copy; returns the effective bytesPerRow.
+export function checkedTexelBufferLayout(
+	member: string,
+	bytesPerPixel: int32,
+	bufferSize: int64,
+	info: GPUTexelCopyBufferInfo,
+	size: GPUExtent3D,
+): int32 {
+	const id = info.buffer.id;
+	const rowBytes = size.width * bytesPerPixel;
+	if (info.bytesPerRow != 0 && info.bytesPerRow % 256 != 0) {
+		stop(`${member}.bytesPerRow ${info.bytesPerRow} is not a multiple of 256`);
+	}
+	if ((size.height > 1 || size.depthOrArrayLayers > 1) && info.bytesPerRow == 0) {
+		stop(`${member}.bytesPerRow is required when the copy spans more than one row`);
+	}
+	const bytesPerRow = info.bytesPerRow == 0 ? rowBytes : info.bytesPerRow;
+	if (bytesPerRow < rowBytes) { stop(`${member}.bytesPerRow ${bytesPerRow} is below a row of ${rowBytes}`); }
+	if (info.offset < 0 || info.offset % bytesPerPixel != 0) {
+		stop(`${member}.offset ${info.offset} is not a non-negative multiple of the ${bytesPerPixel}-byte texel`);
+	}
+	if (info.rowsPerImage != 0 && info.rowsPerImage < size.height) {
+		stop(`${member}.rowsPerImage ${info.rowsPerImage} is below the copy height ${size.height}`);
+	}
+	if (size.depthOrArrayLayers > 1 && info.rowsPerImage == 0) {
+		stop(`${member}.rowsPerImage is required when the copy spans more than one image`);
+	}
+	const rowsPerImage = info.rowsPerImage == 0 ? size.height : info.rowsPerImage;
+	const needed = info.offset + (bytesPerRow as int64) * (rowsPerImage as int64) * ((size.depthOrArrayLayers - 1) as int64)
+		+ (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
+	if (needed > bufferSize) { stop(`${member} needs ${needed} bytes and GPUBuffer ${id} has ${bufferSize}`); }
 	return bytesPerRow;
 }
 

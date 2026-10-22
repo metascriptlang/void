@@ -23,6 +23,7 @@ import {
 	GPUSamplerDescriptor,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
 	GPUTexture,
@@ -124,6 +125,60 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function beginRenderPass(this self: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
 	return backend.beginRenderPass(self, descriptor);
 }
+
+@inline export function copyBufferToBuffer(
+	this self: GPUCommandEncoder,
+	source: GPUBuffer,
+	sourceOffset: int64,
+	destination: GPUBuffer,
+	destinationOffset: int64,
+	size: int64,
+): void {
+	backend.copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
+}
+
+@inline export function copyBufferToTexture(
+	this self: GPUCommandEncoder,
+	source: GPUTexelCopyBufferInfo,
+	destination: GPUTexelCopyTextureInfo,
+	copySize: GPUExtent3D,
+): void {
+	backend.copyBufferToTexture(source, destination, copySize);
+}
+
+@inline export function copyTextureToBuffer(
+	this self: GPUCommandEncoder,
+	source: GPUTexelCopyTextureInfo,
+	destination: GPUTexelCopyBufferInfo,
+	copySize: GPUExtent3D,
+): void {
+	backend.copyTextureToBuffer(source, destination, copySize);
+}
+
+@inline export function copyTextureToTexture(
+	this self: GPUCommandEncoder,
+	source: GPUTexelCopyTextureInfo,
+	destination: GPUTexelCopyTextureInfo,
+	copySize: GPUExtent3D,
+): void {
+	backend.copyTextureToTexture(source, destination, copySize);
+}
+
+// mapAsync blocks on native: the buffer is readable or writable on return. `size` 0 maps to the end.
+@inline export function mapAsync(this self: GPUBuffer, mode: int32, offset: int64, size: int64): void {
+	backend.mapAsync(self, mode, offset, size);
+}
+
+// A copy of the mapped bytes, not WebGPU's live ArrayBuffer view; a MAP_WRITE buffer takes writeMappedRange instead.
+@inline export function getMappedRange(this self: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
+	return backend.getMappedRange(self, offset, size);
+}
+
+@inline export function writeMappedRange<T>(this self: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
+	backend.writeMappedRange(self, offset, data);
+}
+
+@inline export function unmap(this self: GPUBuffer): void { backend.unmap(self); }
 
 @inline export function finish(this self: GPUCommandEncoder): GPUCommandBuffer { return backend.finish(self); }
 
