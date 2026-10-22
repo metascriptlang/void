@@ -280,6 +280,7 @@ struct BufferSlot {
 	activeSlot: int32;
 	shadow: Vec<uint8>;
 	writtenFrame: int64;
+	writtenEnd: int64;
 }
 
 struct TextureSlot {
@@ -1134,6 +1135,7 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		slotCount: writable ? INFLIGHT_SLOTS : 1,
 		activeSlot: 0,
 		writtenFrame: writable ? -1 : -2,
+		writtenEnd: 0,
 	};
 	if (uniform) {
 		slot.shadow = new Array(roundUp16(descriptor.size));
@@ -1180,18 +1182,23 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = writableBuffer(buffer.id, offset, bytes);
+	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${buffer.id} was created without COPY_DST`); }
+	const fresh = buffers[index].writtenFrame != frame;
+	if (!fresh && offset < buffers[index].writtenEnd) {
+		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
+	}
+	buffers[index].writtenFrame = frame;
+	buffers[index].writtenEnd = offset + bytes;
 	if (buffers[index].uniform) {
 		oglCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
 		return;
 	}
-	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${buffer.id} was created without COPY_DST`); }
-	if (offset == 0 || buffers[index].writtenFrame != frame) {
+	if (fresh) {
 		buffers[index].activeSlot = (buffers[index].activeSlot + 1) % buffers[index].slotCount;
 		bound.vertexDirty = true;
 		bound.indexDirty = true;
 	}
-	buffers[index].writtenFrame = frame;
 	const target = buffers[index].target;
 	cacheStoreBuffer(target);
 	cacheBindBuffer(target, buffers[index].names[buffers[index].activeSlot]);

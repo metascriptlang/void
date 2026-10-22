@@ -189,6 +189,8 @@ struct BufferSlot {
 	size: int64;
 	usage: int32;
 	native: Ptr<WgBufferImpl>;
+	writtenFrame: int64;
+	writtenEnd: int64;
 }
 
 struct TextureSlot {
@@ -780,7 +782,7 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	}
 	const native = wgCreateBuffer(descriptor.size, usage, labelText(descriptor.label));
 	if (native == null) { stop(`wgpuDeviceCreateBuffer failed for ${labelOf(descriptor.label)}`); }
-	const slot: BufferSlot = { id: id, size: descriptor.size, usage: usage, native: native };
+	const slot: BufferSlot = { id: id, size: descriptor.size, usage: usage, native: native, writtenFrame: -1, writtenEnd: 0 };
 	const index = slotOf(id);
 	if (index < buffers.length) { buffers[index] = slot; } else { buffers.push(slot); }
 	return { id: id };
@@ -810,6 +812,12 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${id} of ${size}`);
 	}
 	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
+	if (buffers[index].writtenFrame != frame) {
+		buffers[index].writtenFrame = frame;
+	} else if (offset < buffers[index].writtenEnd) {
+		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
+	}
+	buffers[index].writtenEnd = offset + bytes;
 	wgWriteBuffer(buffers[index].native, offset, data[0], bytes);
 }
 

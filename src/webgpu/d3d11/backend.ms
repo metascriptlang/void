@@ -237,6 +237,7 @@ struct BufferSlot {
 	native: Ptr<D3dBufferImpl>;
 	shadow: Vec<uint8>;
 	writtenFrame: int64;
+	writtenEnd: int64;
 }
 
 struct TextureSlot {
@@ -834,6 +835,7 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		uniform: uniform,
 		native: NO_BUFFER,
 		writtenFrame: has(usage, GPUBufferUsage.COPY_DST as int32) ? -1 : -2,
+		writtenEnd: 0,
 	};
 	if (uniform && offsetUniforms) {
 		slot.native = d3dCreateBuffer(device, roundUp256(descriptor.size), USAGE_DYNAMIC, BIND_CONSTANT_BUFFER, CPU_ACCESS_WRITE);
@@ -881,16 +883,21 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = writableBuffer(buffer.id, offset, bytes);
+	if (buffers[index].writtenFrame == -2) {
+		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
+	}
+	const discard = buffers[index].writtenFrame != frame;
+	if (discard) {
+		buffers[index].writtenFrame = frame;
+	} else if (offset < buffers[index].writtenEnd) {
+		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
+	}
+	buffers[index].writtenEnd = offset + bytes;
 	if (buffers[index].uniform && !offsetUniforms) {
 		d3dCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
 		return;
 	}
-	if (buffers[index].writtenFrame == -2) {
-		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
-	}
-	const discard = offset == 0 || buffers[index].writtenFrame != frame;
-	buffers[index].writtenFrame = frame;
 	const mapType = discard ? MAP_WRITE_DISCARD : MAP_WRITE_NO_OVERWRITE;
 	if (d3dMapWrite(context, buffers[index].native, mapType, offset, data[0], bytes) == 0) {
 		stop(`Map for writeBuffer failed on GPUBuffer ${buffer.id}`);
