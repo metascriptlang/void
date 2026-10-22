@@ -141,6 +141,30 @@ exit 127 with no message). The pattern: a `.h` with opaque typedefs and plain pr
 `.c` with `#define COBJMACROS` and `#include <d3d11.h>`, and `import {…} from "./x.h"` in the
 backend module. Metal follows it with a `.m`.
 
+## Metal
+
+`src/webgpu/metal/` ports `_sg_mtl_*`. Where it differs from sokol, the reason is Void's:
+
+- **Two copies of every writable resource.** A buffer created with `COPY_DST` or a texture moves
+  to its other copy at its first write of a frame, so the frame in flight keeps reading the old
+  one (sokol's `num_slots`, `_sg_mtl_update_buffer`). A second write over bytes the frame already
+  wrote, or a second `writeTexture` of one texture in a frame, stops with a message: that is
+  sokol's one-update-per-frame rule, enforced instead of assumed.
+- **CPU writes wait on the frame semaphore.** Two frames in flight; the command buffer begins at
+  the frame's first write or pass and waits for the oldest frame there, as sokol waits in
+  `_sg_mtl_begin_pass`.
+- **Command buffers retain their references** (`[queue commandBuffer]`, where sokol takes
+  `commandBufferWithUnretainedReferences`), so `destroy*` releases the object at once and needs
+  no deferred-release queue keyed on the frame.
+- **The drawable comes from the window.** The bridge hands it over with `mtlSetDrawable` when it
+  acquires; the pass that renders to the swapchain presents it at `endPass`.
+- **Uniform offsets are 256-aligned on iOS too** (sokol: 16), because the door hands every
+  backend 256-aligned offsets. It costs uniform-buffer space only.
+
+On the Apple GPU the goldens differ from the D3D11 set by up to 4 levels on text, filter and
+shadow rows; a sokol Metal build of the merge base captured the same 58 rows byte-identical to
+this backend (2026-10-22), so the difference is the GPU, not the port.
+
 The JS target calls `navigator.gpu` through `extern class` declarations in a `.jms` file. A
 `Vec<float32>` is a plain JS Array there and only a fixed `float32[N]` is a `Float32Array`, so
 `writeBuffer` copies a growable array into a typed array on JS.
