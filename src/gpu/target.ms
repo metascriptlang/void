@@ -38,7 +38,7 @@ import {
 	DOOR_PASS_LENGTH,
 	DOOR_PASS_CLEAR_DEPTH,
 	DOOR_PASS_CLEAR_LENGTH,
-} from "./door.h";
+} from "./doorWords.h";
 
 export interface RenderTarget {
 	width: int32;

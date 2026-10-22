@@ -12,13 +12,19 @@ import {
 	doorMakeBufferOf,
 	doorUpdateBufferOf,
 } from "./doorGpu.ms";
+import {
+	DOOR_BINDING_INDEX_BUFFER,
+	DOOR_BINDING_LENGTH,
+	DOOR_BINDING_SAMPLER,
+	DOOR_BINDING_VERTEX_BUFFER,
+	DOOR_BINDING_VIEW,
+} from "./doorWords.h";
 
-// Words of a bindings descriptor: vertex buffers 0..1, index buffer 2, views 3..8, samplers 9..11.
-export const BINDING_VERTEX_BUFFER: int32 = 0;
-export const BINDING_INDEX_BUFFER: int32 = 2;
-export const BINDING_VIEW: int32 = 3;
-export const BINDING_SAMPLER: int32 = 9;
-export const BINDING_LENGTH: int32 = 12;
+export const BINDING_VERTEX_BUFFER: int32 = DOOR_BINDING_VERTEX_BUFFER;
+export const BINDING_INDEX_BUFFER: int32 = DOOR_BINDING_INDEX_BUFFER;
+export const BINDING_VIEW: int32 = DOOR_BINDING_VIEW;
+export const BINDING_SAMPLER: int32 = DOOR_BINDING_SAMPLER;
+export const BINDING_LENGTH: int32 = DOOR_BINDING_LENGTH;
 
 export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
 	return doorMakeBufferOf(DOOR_BUFFER_VERTEX, data);

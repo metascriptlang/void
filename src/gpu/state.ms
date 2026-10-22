@@ -202,7 +202,6 @@ export function withBlendMode(this state: RenderState, mode: BlendMode): RenderS
 	};
 }
 
-// doorGpu.ms's `blendEnabled`: keep the two rules the same.
 export function blends(this state: RenderState): boolean {
 	return !(state.blendSource == Blend.One && state.blendDestination == Blend.Zero
 		&& state.blendAlphaSource == Blend.One && state.blendAlphaDestination == Blend.Zero

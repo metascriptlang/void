@@ -1,5 +1,6 @@
 import "../sokol/gpu";
 import { FilterMode, Wrap } from "./state";
+import { PassState, PixelFormat } from "./doorGpu.ms";
 
 import {
 	doorMakeShader,
@@ -49,40 +50,10 @@ import {
 	DOOR_UNIFORM_SLOTS,
 } from "./doorGpu.ms";
 
-// The frame's end and the simulated device loss belong to the platform bridge.
 @include("../sokol/bridge.h");
 extern function voidLoseContext(): void;
 
-// Default is the swapchain's own format (sokol's 0), for pipelines drawn to the screen.
-export enum PixelFormat {
-	None,
-	Default,
-	Rgba8,
-	Depth,
-	Bgra8,
-	DepthStencil,
-	Rgba16f,
-}
-
-export enum LoadAction {
-	Clear,
-	Load,
-	DontCare,
-}
-
-// sokol's default for a depth attachment is DontCare, which Metal and WebGPU discard at the end
-// of the pass (sokol_gfx.h _sg_pass_action_defaults): a depth read later needs Store.
-export enum StoreAction {
-	Store,
-	DontCare,
-}
-
-// Which pass the door has open; read by the render layers to stop misuse naming the call.
-export enum PassState {
-	None,
-	Target,
-	Screen,
-}
+export { PixelFormat, LoadAction, StoreAction, PassState } from "./doorGpu.ms";
 
 export const UNIFORM_SLOTS: int32 = DOOR_UNIFORM_SLOTS;
 export const MAX_COLOR_ATTACHMENTS: int32 = DOOR_MAX_COLOR_ATTACHMENTS;
@@ -156,7 +127,7 @@ export function makeSampler(filter: FilterMode, wrap: Wrap): uint32 {
 
 export function imageAlive(image: uint32): boolean { return doorImageAlive(image) != 0; }
 export function viewAlive(view: uint32): boolean { return doorViewAlive(view) != 0; }
-export function samplerAlive(sampler: uint32): boolean { return doorSamplerAlive(sampler) != 0; }
+export function samplerAlive(sampler: uint32): boolean { return doorSamplerAlive(sampler); }
 
 export function destroyShader(shader: uint32): void { doorDestroyShader(shader); }
 export function destroyPipeline(pipeline: uint32): void { doorDestroyPipeline(pipeline); }
@@ -169,7 +140,7 @@ export function passState(): PassState {
 }
 
 export function passAttachesView(view: uint32): boolean {
-	return doorPassAttachesView(view) != 0;
+	return doorPassAttachesView(view);
 }
 
 export function beginPassWith(
@@ -202,15 +173,15 @@ export function originTopLeft(): boolean {
 
 // The depth buffer holds clip z as is (0..1); GL stores (z + 1) / 2 instead.
 export function depthZeroToOne(): boolean {
-	return doorDepthZeroToOne() != 0;
+	return doorDepthZeroToOne();
 }
 
 export function environmentColorFormat(): PixelFormat {
-	return doorEnvironmentColorFormat() as PixelFormat;
+	return doorEnvironmentColorFormat();
 }
 
 export function environmentDepthFormat(): PixelFormat {
-	return doorEnvironmentDepthFormat() as PixelFormat;
+	return doorEnvironmentDepthFormat();
 }
 
 export function environmentSampleCount(): int32 {
@@ -220,7 +191,7 @@ export function environmentSampleCount(): int32 {
 // Whether this device can draw into a target of this format; Rgba16f needs a color-buffer-float
 // extension on GLES3 and WebGL2 (sokol_gfx.h _sg_gl_init_pixelformats_half_float).
 export function formatRenderable(format: PixelFormat): boolean {
-	return doorFormatRenderable(format as int32) != 0;
+	return doorFormatRenderable(format as int32);
 }
 
 export function contextGeneration(): int32 {

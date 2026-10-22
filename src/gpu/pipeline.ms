@@ -7,6 +7,7 @@
 
 import { RenderState } from "./state";
 import { TargetLayout } from "./target";
+import { IndexType } from "./doorGpu.ms";
 import {
 	makeShader,
 	uniformSlotMask,
@@ -36,13 +37,9 @@ import {
 	DOOR_PIPELINE_SAMPLE_COUNT,
 	DOOR_PIPELINE_INDEX_TYPE,
 	DOOR_PIPELINE_LENGTH,
-} from "./door.h";
+} from "./doorWords.h";
 
-export enum IndexType {
-	None,
-	Uint16,
-	Uint32,
-}
+export { IndexType } from "./doorGpu.ms";
 
 export struct PipelineKey {
 	program: int32;
