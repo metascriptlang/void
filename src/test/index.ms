@@ -94,6 +94,7 @@ import "./textureCheck";
 import "./textureMipCheck";
 import "./pbrResponseCheck";
 import "./lightShapeCheck";
+import "./morphGeometryCheck";
 import "./imageDecodeCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
