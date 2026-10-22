@@ -12,7 +12,7 @@ import {
 	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V,
 } from "../particles/system";
 import { AtlasTile } from "./billboard";
-import { PARTICLE_VISUAL_INSTANCE_STRIDE } from "./particles";
+import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "./gpu3d";
 
 export enum ParticleWriteError {
 	ShortInstances,
@@ -92,30 +92,31 @@ function placed(sys: ParticleSystem, i: int32): Vec3 {
 	return sys.asset.main.simulationSpace == SimulationSpace.Local ? p * sys.world : p;
 }
 
-// Writes `sys`'s particles into `out`, drawn first to last, seen from `eye` looking along
-// `forward`. `frames` holds one tile per sheet frame. Returns the instance count.
-export function writeParticles(
-	ref w: ParticleWriter3D, sys: ParticleSystem, frames: Readonly<Span<AtlasTile>>, eye: Vec3, forward: Vec3,
-	out: Span<float32>,
-): Result<int32, ParticleWriteError> {
+// Whether `sys` draws at all: false for RenderMode.None, an error for a mode or alignment the
+// billboard programs do not draw.
+function drawn(sys: ParticleSystem): Result<boolean, ParticleWriteError> {
 	const renderer: Borrow<RendererModule> = sys.asset.renderer;
-	if (renderer.renderMode == RenderMode.None) { return Result.ok(0); }
+	if (renderer.renderMode == RenderMode.None) { return Result.ok(false); }
 	if (renderer.renderMode != RenderMode.Billboard || renderer.alignment != RenderAlignment.View) {
 		return Result.err(ParticleWriteError.UnsupportedRenderMode);
 	}
-	const sheet: Borrow<TextureSheetAnimationModule> = sys.asset.textureSheetAnimation;
-	const wanted: int32 = sheet.enabled ? sheet.numTilesX * sheet.numTilesY : 1;
-	if ((frames.length as int32) != wanted) { return Result.err(ParticleWriteError.FrameCount); }
+	return Result.ok(true);
+}
+
+// Puts `w.order[0, count)` in the order `sys`'s renderer draws its particles, seen from `eye`
+// looking along `forward`, and refuses an `out` too short for `count` instances of `stride`.
+function drawOrder(
+	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, stride: int32, outLength: int32,
+): Result<int32, ParticleWriteError> {
 	const count: int32 = sys.count;
-	const stride: int32 = PARTICLE_VISUAL_INSTANCE_STRIDE;
-	if (count > 2147483647 / stride || (out.length as int32) < count * stride) {
+	if (count > 2147483647 / stride || outLength < count * stride) {
 		return Result.err(ParticleWriteError.ShortInstances);
 	}
 	grow(w, count);
 	const cap: int32 = sys.capacity;
 	for (let i = 0; i < count; i++) { w.order[i] = i; }
 	// Keys sort ascending, so whatever is drawn first gets the smallest key.
-	const mode: ParticleSortMode = renderer.sortMode;
+	const mode: ParticleSortMode = sys.asset.renderer.sortMode;
 	if (mode != ParticleSortMode.None) {
 		for (let i = 0; i < count; i++) {
 			const p: Vec3 = placed(sys, i);
@@ -132,6 +133,34 @@ export function writeParticles(
 		}
 		sortOrder(w, count);
 	}
+	return Result.ok(count);
+}
+
+function finite(out: Span<float32>, at: int32, stride: int32): boolean {
+	for (let c = 0; c < stride; c++) {
+		if (!Number.isFinite(out[at + c])) { return false; }
+	}
+	return true;
+}
+
+// Writes `sys`'s particles into `out`, drawn first to last, seen from `eye` looking along
+// `forward`. `frames` holds one tile per sheet frame. Returns the instance count.
+export function writeParticles(
+	ref w: ParticleWriter3D, sys: ParticleSystem, frames: Readonly<Span<AtlasTile>>, eye: Vec3, forward: Vec3,
+	out: Span<float32>,
+): Result<int32, ParticleWriteError> {
+	const visible = drawn(sys);
+	if (!visible.ok) { return Result.err(visible.error); }
+	if (!visible.value) { return Result.ok(0); }
+	const renderer: Borrow<RendererModule> = sys.asset.renderer;
+	const sheet: Borrow<TextureSheetAnimationModule> = sys.asset.textureSheetAnimation;
+	const wanted: int32 = sheet.enabled ? sheet.numTilesX * sheet.numTilesY : 1;
+	if ((frames.length as int32) != wanted) { return Result.err(ParticleWriteError.FrameCount); }
+	const stride: int32 = PARTICLE_VISUAL_INSTANCE_STRIDE;
+	const ordered = drawOrder(w, sys, eye, forward, stride, out.length as int32);
+	if (!ordered.ok) { return Result.err(ordered.error); }
+	const count: int32 = ordered.value;
+	const cap: int32 = sys.capacity;
 	const flipU: float32 = sheet.enabled ? renderer.flip.x + sheet.flipU - renderer.flip.x * sheet.flipU : renderer.flip.x;
 	const flipV: float32 = sheet.enabled ? renderer.flip.y + sheet.flipV - renderer.flip.y * sheet.flipV : renderer.flip.y;
 	const last: int32 = wanted - 1;
@@ -163,9 +192,37 @@ export function writeParticles(
 		out[at + 13] = sys.data[COLOR_G * cap + i];
 		out[at + 14] = sys.data[COLOR_B * cap + i];
 		out[at + 15] = sys.data[COLOR_A * cap + i];
-		for (let c = 0; c < stride; c++) {
-			if (!Number.isFinite(out[at + c])) { return Result.err(ParticleWriteError.NonFinite); }
-		}
+		if (!finite(out, at, stride)) { return Result.err(ParticleWriteError.NonFinite); }
+	}
+	return Result.ok(count);
+}
+
+// The same particles in the same order as `writeParticles`, as Program.Particle instances:
+// position, width and colour, with no uv, height, anchor or rotation.
+export function writeParticlePoints(
+	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, out: Span<float32>,
+): Result<int32, ParticleWriteError> {
+	const visible = drawn(sys);
+	if (!visible.ok) { return Result.err(visible.error); }
+	if (!visible.value) { return Result.ok(0); }
+	const stride: int32 = PARTICLE_INSTANCE_STRIDE;
+	const ordered = drawOrder(w, sys, eye, forward, stride, out.length as int32);
+	if (!ordered.ok) { return Result.err(ordered.error); }
+	const count: int32 = ordered.value;
+	const cap: int32 = sys.capacity;
+	for (let k = 0; k < count; k++) {
+		const i: int32 = w.order[k];
+		const p: Vec3 = placed(sys, i);
+		const at: int32 = k * stride;
+		out[at] = p.x;
+		out[at + 1] = p.y;
+		out[at + 2] = p.z;
+		out[at + 3] = sys.data[SIZE_X * cap + i];
+		out[at + 4] = sys.data[COLOR_R * cap + i];
+		out[at + 5] = sys.data[COLOR_G * cap + i];
+		out[at + 6] = sys.data[COLOR_B * cap + i];
+		out[at + 7] = sys.data[COLOR_A * cap + i];
+		if (!finite(out, at, stride)) { return Result.err(ParticleWriteError.NonFinite); }
 	}
 	return Result.ok(count);
 }

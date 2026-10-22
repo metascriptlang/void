@@ -5,7 +5,10 @@
 
 import { IndexType } from "../gpu/pipeline";
 import { Vec3, vec3 } from "../math/math3d";
-import { VertexLayout, layoutFloats, layoutPerInstance, drawsQuads } from "../void3d/gpu3d";
+import {
+	VertexLayout, layoutFloats, layoutPerInstance, drawsQuads, PARTICLE_INSTANCE_STRIDE,
+	PARTICLE_VISUAL_INSTANCE_STRIDE,
+} from "../void3d/gpu3d";
 import {
 	MeshData,
 	MeshError,
@@ -15,7 +18,6 @@ import {
 	addPlane,
 	addVertex,
 } from "../void3d/meshData";
-import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "../void3d/particles";
 import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
 import { added } from "./drawHelpers";
 import {

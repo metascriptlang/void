@@ -7,7 +7,7 @@ import { constantCurve, linearCurve, curveOf, key, gradientOf, rgbaColor, Gradie
 import { ParticleSystem, playSystem, updateSystem } from "../../src/particles/system";
 import { ParticleWriter3D, writeParticles } from "../../src/void3d/particleWriter";
 import { AtlasTile } from "../../src/void3d/billboard";
-import { PARTICLE_VISUAL_INSTANCE_STRIDE } from "../../src/void3d/particles";
+import { PARTICLE_VISUAL_INSTANCE_STRIDE } from "../../src/void3d/gpu3d";
 import { benchCounts, stepsFor, millisecondsSince, row, isHeadline, WARM_STEPS, STEP } from "./benchParticlesRows";
 
 function makeSystem(count: int32): ParticleSystem {

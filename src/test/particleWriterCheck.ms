@@ -6,8 +6,9 @@ import { constantCurve, constantColor, rgbaColor } from "../particles/curve";
 import { ParticleSystem, playSystem, updateSystem } from "../particles/system";
 import { TrailChains, buildTrails } from "../particles/trail";
 import { AtlasTile } from "../void3d/billboard";
+import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "../void3d/gpu3d";
 import {
-	ParticleWriter3D, ParticleWriteError, writeParticles, writeTrails, sheetTiles,
+	ParticleWriter3D, ParticleWriteError, writeParticles, writeParticlePoints, writeTrails, sheetTiles,
 } from "../void3d/particleWriter";
 
 const WHOLE: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };
@@ -131,6 +132,44 @@ test "the writer refuses what the visual program cannot draw and a short buffer"
 	assert !s.ok && s.error == ParticleWriteError.ShortInstances;
 	const f = writeParticles(w, sys, [WHOLE, WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
 	assert !f.ok && f.error == ParticleWriteError.FrameCount;
+}
+
+test "the point writer writes the visual writer's position, width and colour in the same order" {
+	let a = row();
+	a.renderer.sortMode = ParticleSortMode.Distance;
+	const sys = walked(a);
+	let w = ParticleWriter3D.create();
+	const eye = vec3(0.0, 0.0, -10.0);
+	const forward = vec3(0.0, 0.0, 1.0);
+	let visual: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.count);
+	let points: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE * sys.count);
+	const v = writeParticles(w, sys, [WHOLE], eye, forward, visual);
+	const p = writeParticlePoints(w, sys, eye, forward, points);
+	assert v.ok && p.ok && p.value == v.value && v.value >= 2;
+	for (let k = 0; k < v.value; k++) {
+		const from: int32 = k * PARTICLE_VISUAL_INSTANCE_STRIDE;
+		const to: int32 = k * PARTICLE_INSTANCE_STRIDE;
+		for (let c = 0; c < 4; c++) { assert near(points[to + c], visual[from + c]); }
+		for (let c = 0; c < 4; c++) { assert near(points[to + 4 + c], visual[from + 12 + c]); }
+	}
+	assert near(points[3], 2.0) && near(points[7], 0.75);
+	for (let k = 1; k < p.value; k++) { assert points[k * PARTICLE_INSTANCE_STRIDE + 2] <= points[(k - 1) * PARTICLE_INSTANCE_STRIDE + 2]; }
+}
+
+test "the point writer refuses what the visual program cannot draw and a short buffer" {
+	let a = row();
+	a.renderer.renderMode = RenderMode.Stretch;
+	const stretched = walked(a);
+	let w = ParticleWriter3D.create();
+	let out: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE * 8);
+	const eye = vec3(0.0, 0.0, 0.0);
+	const forward = vec3(0.0, 0.0, 1.0);
+	const mode = writeParticlePoints(w, stretched, eye, forward, out);
+	assert !mode.ok && mode.error == ParticleWriteError.UnsupportedRenderMode;
+	const sys = walked(row());
+	let short: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE);
+	const s = writeParticlePoints(w, sys, eye, forward, short);
+	assert !s.ok && s.error == ParticleWriteError.ShortInstances;
 }
 
 test "a trail writes one view-facing quad per segment, turned onto it" {

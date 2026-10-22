@@ -312,6 +312,11 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	return Result.ok(cast);
 }
 
+// Floats per instance of the Particle layout (position, size, rgba) and of ParticleVisual
+// (position, width, height, anchor, rotation, uv rect, rgba).
+export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
+export const PARTICLE_VISUAL_INSTANCE_STRIDE: int32 = 16;
+
 // Vertex buffer layouts gpu3d.c describes (describeLayout).
 export enum VertexLayout {
 	Lit,
