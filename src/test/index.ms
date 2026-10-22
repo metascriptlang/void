@@ -89,6 +89,7 @@ import "./particlesCheck";
 import "./particleFadeCheck";
 import "./particleVisualCheck";
 import "./particleShaderCheck";
+import "./particleCurveCheck";
 import "./layoutCheck";
 import "./billboardCheck";
 import "./shaderCheck";
