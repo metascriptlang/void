@@ -300,8 +300,12 @@ function bothSides(p: Printer, what: string, sides: ShaderExpr[]): void {
 function operand(p: Printer, e: ShaderExpr): string {
 	const text = expr(p, e);
 	const compound = e.kind == ExprKind.Binary || e.kind == ExprKind.Unary ||
-		e.kind == ExprKind.Conditional || e.kind == ExprKind.Literal || text.startsWith("-");
+		e.kind == ExprKind.Conditional || text.startsWith("-");
 	return compound ? "(" + text + ")" : text;
+}
+
+function postfixBase(p: Printer, e: ShaderExpr): string {
+	return e.kind == ExprKind.Literal ? "(" + expr(p, e) + ")" : operand(p, e);
 }
 
 function isMatrix(t: ShaderType): boolean { return t.kind == ShaderTypeKind.Matrix; }
@@ -662,11 +666,11 @@ function expr(p: Printer, e: ShaderExpr): string {
 			if (base.type.kind != ShaderTypeKind.Struct) {
 				return fail(p, "Field of a " + base.type.kind.toString());
 			}
-			return operand(p, base) + "." + p.fieldNames[base.type.structIndex][e.index];
+			return postfixBase(p, base) + "." + p.fieldNames[base.type.structIndex][e.index];
 		},
-		ExprKind.Swizzle => operand(p, e.operands[0]) + "." +
+		ExprKind.Swizzle => postfixBase(p, e.operands[0]) + "." +
 			e.components.map((c) => SWIZZLE[c]).join(""),
-		ExprKind.Index => operand(p, e.operands[0]) + "[" + expr(p, e.operands[1]) + "]",
+		ExprKind.Index => postfixBase(p, e.operands[0]) + "[" + expr(p, e.operands[1]) + "]",
 	};
 }
 
@@ -1195,7 +1199,7 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	if (constants.length > 0) { head += "\n"; }
 	let declared = "";
 	for (const r of resources) { declared += resourceText(p, r, slots); }
-	if (declared != "") { head += declared + "\n"; }
+	if (declared != "") { head += declared.endsWith("\n\n") ? declared : declared + "\n"; }
 	for (let i = 0; i < m.ios.length; i++) {
 		if (p.ioNames[i] != "") {
 			head += "static " + declaration(p, m.ios[i].type, p.ioNames[i]) + ";\n";
