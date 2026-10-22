@@ -2,7 +2,7 @@
 // and left-handed: every local axis Heaps names z is y here, and y is z.
 
 import { Vec3, vec3, Vec4, vec4, Mat4, identity, transformDirection, cross } from "../math/math3d";
-import { noiseDirection, shaderNoiseScale } from "./particleNoise";
+import { noiseDirection, shaderNoiseScale } from "../particles/noise";
 import { particleVisualFrameIndex, ParticleVisualFrame, validPixelFrame } from "./particleVisual";
 import { Anchor, ANCHOR_CENTER } from "./billboard";
 

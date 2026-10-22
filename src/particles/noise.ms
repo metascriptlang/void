@@ -91,7 +91,7 @@ export function noise4(cx: float32, cy: float32, cz: float32, cw: float32): floa
 }
 
 // `noise_3x`: three decorrelated samples, the second and third a fixed step along w.
-function noise3(px: float32, py: float32, pz: float32, pw: float32): Vec3 {
+export function noise3(px: float32, py: float32, pz: float32, pw: float32): Vec3 {
 	return vec3(
 		noise4(px, py, pz, pw),
 		noise4(px, py, pz, pw + SHEET_OFFSET),

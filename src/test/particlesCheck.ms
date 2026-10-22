@@ -20,7 +20,7 @@ import {
 	clearParticles,
 } from "../void3d/particles";
 import { approx } from "./helpers";
-import { noiseDirection, shaderNoiseScale } from "../void3d/particleNoise";
+import { noiseDirection, shaderNoiseScale } from "../particles/noise";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 
 function emitterFor(state: EmitterState, seed: uint32): ParticleEmitter {
