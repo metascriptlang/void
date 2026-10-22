@@ -1,0 +1,145 @@
+# h3d.col.Cylinder (Cylinder.hx) against src/void3d/cylinder.ms. `regen` replays the Haxe side
+# through real Heaps; `check` diffs the port against the snapshot without Haxe. A ray along the
+# axis and the bounding sphere of inFrustum/inSphere are Heaps reference bugs, declared below.
+# lib: heaps format
+# haxe-prelude: import h3d.Matrix;
+# haxe-prelude: import h3d.col.Cylinder;
+# haxe-prelude: import h3d.col.Frustum;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.Sphere;
+# haxe-prelude: class H {
+# haxe-prelude: public static function col(a:Array<Float>,b:Array<Float>,r:Float):Cylinder {
+# haxe-prelude: return new Cylinder(new Point(a[0],a[1],a[2]),new Point(b[0],b[1],b[2]),r);
+# haxe-prelude: }
+# haxe-prelude: public static function ray(c:Cylinder,o:Array<Float>,d:Array<Float>):Float {
+# haxe-prelude: return c.rayIntersection(Ray.fromValues(o[0],o[1],o[2],d[0],d[1],d[2]),true);
+# haxe-prelude: }
+# haxe-prelude: public static function frustum(c:Cylinder):Float {
+# haxe-prelude: return c.inFrustum(new Frustum(Matrix.I())) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: public static function sphere(c:Cylinder,s:Array<Float>):Float {
+# haxe-prelude: return c.inSphere(new Sphere(s[0],s[1],s[2],s[3])) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3, identity } from "../../../src/math/math3d";
+# ms-prelude: import { Cylinder3D } from "../../../src/void3d/cylinder";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import { Sphere3D } from "../../../src/void3d/sphere";
+# ms-prelude: import { Frustum3D } from "../../../src/void3d/frustum";
+# ms-prelude: function col(a:Vec3,b:Vec3,r:float32):Cylinder3D { return {a:a,b:b,radius:r}; }
+# ms-prelude: function ray(c:Cylinder3D,o:Vec3,d:Vec3):float32 {
+# ms-prelude: const r=c.rayIntersection(Ray.fromPoints(o,vec3(o.x+d.x,o.y+d.y,o.z+d.z))); if(!r.ok){unreachable;} return r.value;
+# ms-prelude: }
+# ms-prelude: function contained(c:Cylinder3D,p:Vec3):float32 {
+# ms-prelude: const r=c.contains(p); if(!r.ok){unreachable;} return r.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function frustum(c:Cylinder3D):float32 {
+# ms-prelude: const r=c.inFrustum(Frustum3D.fromMatrix(identity())); if(!r.ok){unreachable;} return r.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function sphere(c:Cylinder3D,s:Sphere3D):float32 {
+# ms-prelude: const r=c.inSphere(s); if(!r.ok){unreachable;} return r.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function size(c:Cylinder3D):float32 {
+# ms-prelude: const r=c.dimension(); if(!r.ok){unreachable;} return r.value as float32;
+# ms-prelude: }
+
+case cylinder-ray-side tol=1e-5
+haxe> emit("cylinder-ray-side",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,0,1],[1,0,0])]);
+ms> emit1("cylinder-ray-side",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,0,1),vec3(1,0,0)));
+
+case cylinder-ray-side-oblique tol=1e-5
+haxe> emit("cylinder-ray-side-oblique",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,-2,1],[1,0.4,0.0])]);
+ms> emit1("cylinder-ray-side-oblique",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,-2,1),vec3(1,0.4,0.0)));
+
+case cylinder-ray-cap-top tol=1e-5
+haxe> emit("cylinder-ray-cap-top",[H.ray(H.col([0,0,0],[0,0,2],1),[0,0,3],[0.6,0,-0.8])]);
+ms> emit1("cylinder-ray-cap-top",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,3),vec3(0.6,0,-0.8)));
+
+case cylinder-ray-cap-bottom tol=1e-5
+haxe> emit("cylinder-ray-cap-bottom",[H.ray(H.col([0,0,0],[0,0,2],1),[0,0,-1],[0.6,0,0.8])]);
+ms> emit1("cylinder-ray-cap-bottom",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,-1),vec3(0.6,0,0.8)));
+
+case cylinder-ray-above-cap-miss tol=1e-5
+haxe> emit("cylinder-ray-above-cap-miss",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,0,2.5],[1,0,0])]);
+ms> emit1("cylinder-ray-above-cap-miss",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,0,2.5),vec3(1,0,0)));
+
+case cylinder-ray-miss-beside tol=1e-5
+haxe> emit("cylinder-ray-miss-beside",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,3,1],[1,0,0])]);
+ms> emit1("cylinder-ray-miss-beside",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,3,1),vec3(1,0,0)));
+
+case cylinder-ray-behind tol=1e-5
+haxe> emit("cylinder-ray-behind",[H.ray(H.col([0,0,0],[0,0,2],1),[5,0,1],[1,0,0])]);
+ms> emit1("cylinder-ray-behind",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(5,0,1),vec3(1,0,0)));
+
+case cylinder-ray-inside tol=1e-5
+haxe> emit("cylinder-ray-inside",[H.ray(H.col([0,0,0],[0,0,2],1),[0,0,1],[1,0,0])]);
+ms> emit1("cylinder-ray-inside",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,1),vec3(1,0,0)));
+
+case cylinder-ray-perpendicular-above tol=1e-5
+haxe> emit("cylinder-ray-perpendicular-above",[H.ray(H.col([0,0,0],[0,0,2],1),[0,-5,3],[0,1,0])]);
+ms> emit1("cylinder-ray-perpendicular-above",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,-5,3),vec3(0,1,0)));
+
+case cylinder-ray-slanted-through-cap-and-side tol=1e-5
+haxe> emit("cylinder-ray-slanted-through-cap-and-side",[H.ray(H.col([0,0,0],[0,0,2],1),[-3,0,-1],[0.6,0,0.8])]);
+ms> emit1("cylinder-ray-slanted-through-cap-and-side",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-3,0,-1),vec3(0.6,0,0.8)));
+
+case cylinder-ray-oblique-axis tol=1e-5 diverges=cylinder-ray-parallel-to-axis
+haxe> emit("cylinder-ray-oblique-axis",[H.ray(H.col([0,0,0],[1,1,1],1),[-3,-3,-3],[1,1,1])]);
+ms> emit1("cylinder-ray-oblique-axis",ray(col(vec3(0,0,0),vec3(1,1,1),1.0),vec3(-3,-3,-3),vec3(1,1,1)));
+
+case cylinder-ray-along-axis-from-a tol=1e-5 diverges=cylinder-ray-parallel-to-axis
+haxe> emit("cylinder-ray-along-axis-from-a",[H.ray(H.col([0,0,0],[0,0,2],1),[0.5,0,-5],[0,0,1])]);
+ms> emit1("cylinder-ray-along-axis-from-a",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0.5,0,-5),vec3(0,0,1)));
+
+case cylinder-ray-along-axis-from-b tol=1e-5 diverges=cylinder-ray-parallel-to-axis
+haxe> emit("cylinder-ray-along-axis-from-b",[H.ray(H.col([0,0,0],[0,0,2],1),[0.5,0,5],[0,0,-1])]);
+ms> emit1("cylinder-ray-along-axis-from-b",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0.5,0,5),vec3(0,0,-1)));
+
+case cylinder-contains-body tol=0
+haxe> emit("cylinder-contains-body",[H.col([0,0,0],[0,0,2],1).contains(new Point(0.9,0,1.9))?1.:0.]);
+ms> emit1("cylinder-contains-body",contained(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0.9,0,1.9)));
+
+case cylinder-contains-past-cap tol=0
+haxe> emit("cylinder-contains-past-cap",[H.col([0,0,0],[0,0,2],1).contains(new Point(0.9,0,2.1))?1.:0.]);
+ms> emit1("cylinder-contains-past-cap",contained(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0.9,0,2.1)));
+
+case cylinder-contains-wide tol=0
+haxe> emit("cylinder-contains-wide",[H.col([0,0,0],[0,0,2],1).contains(new Point(1.1,0,1))?1.:0.]);
+ms> emit1("cylinder-contains-wide",contained(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(1.1,0,1)));
+
+case cylinder-contains-oblique tol=0
+haxe> emit("cylinder-contains-oblique",[H.col([0,0,0],[1,1,1],1).contains(new Point(0.5,0.5,0.5))?1.:0.]);
+ms> emit1("cylinder-contains-oblique",contained(col(vec3(0,0,0),vec3(1,1,1),1.0),vec3(0.5,0.5,0.5)));
+
+case cylinder-dimension tol=1e-6
+haxe> emit("cylinder-dimension",[H.col([0,0,0],[0,0,2],1).dimension()]);
+ms> emit1("cylinder-dimension",size(col(vec3(0,0,0),vec3(0,0,2),1.0)));
+
+case cylinder-dimension-oblique tol=1e-6
+haxe> emit("cylinder-dimension-oblique",[H.col([1,2,3],[4,6,3],0.5).dimension()]);
+ms> emit1("cylinder-dimension-oblique",size(col(vec3(1,2,3),vec3(4,6,3),0.5)));
+
+case cylinder-frustum-inside tol=0
+haxe> emit("cylinder-frustum-inside",[H.frustum(H.col([0,0,0.2],[0,0,0.4],0.1))]);
+ms> emit1("cylinder-frustum-inside",frustum(col(vec3(0,0,0.2),vec3(0,0,0.4),0.1)));
+
+case cylinder-frustum-outside tol=0
+haxe> emit("cylinder-frustum-outside",[H.frustum(H.col([5,0,0.5],[7,0,0.5],0.5))]);
+ms> emit1("cylinder-frustum-outside",frustum(col(vec3(5,0,0.5),vec3(7,0,0.5),0.5)));
+
+case cylinder-frustum-trailing-end-outside tol=0 diverges=cylinder-bounding-sphere-centre-at-b
+haxe> emit("cylinder-frustum-trailing-end-outside",[H.frustum(H.col([-3.2,0,0.5],[-1.2,0,0.5],0.1))]);
+ms> emit1("cylinder-frustum-trailing-end-outside",frustum(col(vec3(-3.2,0,0.5),vec3(-1.2,0,0.5),0.1)));
+
+case cylinder-sphere-apart tol=0
+haxe> emit("cylinder-sphere-apart",[H.sphere(H.col([0,0,0],[0,0,2],1),[0,0,-3.5,0.5])]);
+ms> emit1("cylinder-sphere-apart",sphere(col(vec3(0,0,0),vec3(0,0,2),1.0),{center:vec3(0,0,-3.5),radius:0.5}));
+
+case cylinder-sphere-near-b tol=0 diverges=cylinder-bounding-sphere-centre-at-b
+haxe> emit("cylinder-sphere-near-b",[H.sphere(H.col([0,0,0],[0,0,2],1),[0,0,3,0.5])]);
+ms> emit1("cylinder-sphere-near-b",sphere(col(vec3(0,0,0),vec3(0,0,2),1.0),{center:vec3(0,0,3),radius:0.5}));
+
+case cylinder-sphere-near-a tol=0 diverges=cylinder-bounding-sphere-centre-at-b
+haxe> emit("cylinder-sphere-near-a",[H.sphere(H.col([0,0,0],[0,0,2],1),[0,0,-0.8,0.5])]);
+ms> emit1("cylinder-sphere-near-a",sphere(col(vec3(0,0,0),vec3(0,0,2),1.0),{center:vec3(0,0,-0.8),radius:0.5}));
