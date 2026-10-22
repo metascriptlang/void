@@ -91,6 +91,7 @@ import "./lifetimeCheck";
 import "./storeCheck";
 import "./closeCheck";
 import "./textureCheck";
+import "./textureMipCheck";
 import "./imageDecodeCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
