@@ -1,0 +1,82 @@
+# h3d.col.HeightMap (HeightMap.hx) against src/void3d/heightMap.ms, on a flat map z = 0 and a
+# slope z = 0.5 x. `regen` replays the Haxe side through real Heaps; `check` diffs the port against
+# the snapshot without Haxe. Heaps' bisection reads the height at the interval end instead of the
+# midpoint, so with a step larger than the precision it answers the last sample before the surface;
+# a step finer than the precision hides that, and both are cases below.
+# lib: heaps format
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.HeightMap;
+# haxe-prelude: class Ground extends HeightMap {
+# haxe-prelude: var k:Float;
+# haxe-prelude: public function new(k:Float,step:Float,precision:Float) { this.k=k; this.step=step; this.precision=precision; }
+# haxe-prelude: function getZ(x:Float,y:Float):Float { return k*x; }
+# haxe-prelude: public function dimension():Float { return 0; }
+# haxe-prelude: }
+# haxe-prelude: class H {
+# haxe-prelude: public static function ray(o:Array<Float>,d:Array<Float>):Ray { return Ray.fromValues(o[0],o[1],o[2],d[0],d[1],d[2]); }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import { heightMapContains, heightMapRayIntersection } from "../../../src/void3d/heightMap";
+# ms-prelude: function flat(x:float32,y:float32):float32 { return 0.0; }
+# ms-prelude: function slope(x:float32,y:float32):float32 { return 0.5 * x; }
+# ms-prelude: function ray(o:Vec3,d:Vec3):Ray { return Ray.fromPoints(o,vec3(o.x+d.x,o.y+d.y,o.z+d.z)); }
+# ms-prelude: function flatCast(r:Ray,step:float32,precision:float32):float32 {
+# ms-prelude: const h=heightMapRayIntersection(flat,r,step,precision,100.0); if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+# ms-prelude: function slopeCast(r:Ray,step:float32,precision:float32):float32 {
+# ms-prelude: const h=heightMapRayIntersection(slope,r,step,precision,100.0); if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+
+case contains-below-slope tol=0
+haxe> emit("contains-below-slope",[new Ground(0.5,1,0.01).contains(new Point(2,0,0.5))?1.:0.]);
+ms> emitB("contains-below-slope",heightMapContains(slope,vec3(2,0,0.5)));
+
+case contains-above-slope tol=0
+haxe> emit("contains-above-slope",[new Ground(0.5,1,0.01).contains(new Point(2,0,1.5))?1.:0.]);
+ms> emitB("contains-above-slope",heightMapContains(slope,vec3(2,0,1.5)));
+
+case contains-below-flat tol=0
+haxe> emit("contains-below-flat",[new Ground(0,1,0.01).contains(new Point(3,3,-1))?1.:0.]);
+ms> emitB("contains-below-flat",heightMapContains(flat,vec3(3,3,-1)));
+
+case fine-step-flat-vertical tol=2e-3
+haxe> emit("fine-step-flat-vertical",[new Ground(0,0.001,0.01).rayIntersection(H.ray([0,0,2.5],[0,0,-1]),true)]);
+ms> emit1("fine-step-flat-vertical",flatCast(ray(vec3(0,0,2.5),vec3(0,0,-1)),0.001,0.01));
+
+case fine-step-flat-oblique tol=2e-3
+haxe> emit("fine-step-flat-oblique",[new Ground(0,0.001,0.01).rayIntersection(H.ray([0,0,4],[0.6,0,-0.8]),true)]);
+ms> emit1("fine-step-flat-oblique",flatCast(ray(vec3(0,0,4),vec3(0.6,0,-0.8)),0.001,0.01));
+
+case fine-step-slope-oblique tol=2e-3
+haxe> emit("fine-step-slope-oblique",[new Ground(0.5,0.001,0.01).rayIntersection(H.ray([0,0,1],[0.6,0,-0.8]),true)]);
+ms> emit1("fine-step-slope-oblique",slopeCast(ray(vec3(0,0,1),vec3(0.6,0,-0.8)),0.001,0.01));
+
+case fine-step-slope-facing-uphill tol=2e-3
+haxe> emit("fine-step-slope-facing-uphill",[new Ground(0.5,0.001,0.01).rayIntersection(H.ray([4,0,3],[-0.6,0,-0.8]),true)]);
+ms> emit1("fine-step-slope-facing-uphill",slopeCast(ray(vec3(4,0,3),vec3(-0.6,0,-0.8)),0.001,0.01));
+
+case coarse-step-flat-vertical tol=2e-3 diverges=heightmap-bisect-at-interval-end
+haxe> emit("coarse-step-flat-vertical",[new Ground(0,1,0.01).rayIntersection(H.ray([0,0,2.5],[0,0,-1]),true)]);
+ms> emit1("coarse-step-flat-vertical",flatCast(ray(vec3(0,0,2.5),vec3(0,0,-1)),1,0.01));
+
+case coarse-step-slope-oblique tol=2e-3 diverges=heightmap-bisect-at-interval-end
+haxe> emit("coarse-step-slope-oblique",[new Ground(0.5,0.25,0.001).rayIntersection(H.ray([0,0,1],[0.6,0,-0.8]),true)]);
+ms> emit1("coarse-step-slope-oblique",slopeCast(ray(vec3(0,0,1),vec3(0.6,0,-0.8)),0.25,0.001));
+
+case looking-up tol=2e-3
+haxe> emit("looking-up",[new Ground(0,1,0.01).rayIntersection(H.ray([0,0,2],[0,0,1]),true)]);
+ms> emit1("looking-up",flatCast(ray(vec3(0,0,2),vec3(0,0,1)),1,0.01));
+
+case level tol=2e-3
+haxe> emit("level",[new Ground(0,1,0.01).rayIntersection(H.ray([0,0,2],[1,0,0]),true)]);
+ms> emit1("level",flatCast(ray(vec3(0,0,2),vec3(1,0,0)),1,0.01));
+
+case starting-under tol=2e-3
+haxe> emit("starting-under",[new Ground(0,1,0.01).rayIntersection(H.ray([0,0,-1],[0,0,-1]),true)]);
+ms> emit1("starting-under",flatCast(ray(vec3(0,0,-1),vec3(0,0,-1)),1,0.01));
+
+case starting-under-slope tol=2e-3
+haxe> emit("starting-under-slope",[new Ground(0.5,1,0.01).rayIntersection(H.ray([4,0,1],[0,0,-1]),true)]);
+ms> emit1("starting-under-slope",slopeCast(ray(vec3(4,0,1),vec3(0,0,-1)),1,0.01));

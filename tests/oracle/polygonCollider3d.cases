@@ -1,0 +1,183 @@
+# h3d.col.Polygon and TriPlane (Polygon.hx) and PolygonBuffer.contains / closestPoint
+# (PolygonBuffer.hx) against src/void3d/polygonCollider.ms. PolygonBuffer.rayIntersection is
+# covered by ray3d.cases against meshData.ms. `regen` replays the Haxe side through real Heaps;
+# `check` diffs the port against the snapshot without Haxe.
+# lib: heaps format
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.Polygon;
+# haxe-prelude: import h3d.col.Polygon.TriPlane;
+# haxe-prelude: import h3d.col.PolygonBuffer;
+# haxe-prelude: class H {
+# haxe-prelude: static function fv(a:Array<Float>):haxe.ds.Vector<hxd.impl.Float32> {
+# haxe-prelude: var v=new haxe.ds.Vector<hxd.impl.Float32>(a.length); for(i in 0...a.length) v[i]=a[i]; return v;
+# haxe-prelude: }
+# haxe-prelude: public static function poly(o:Bool,p:Array<Float>,i:Array<Int>):Polygon {
+# haxe-prelude: var q=new Polygon(o); q.addBuffers(fv(p),haxe.ds.Vector.fromArrayCopy(i)); return q;
+# haxe-prelude: }
+# haxe-prelude: public static function buf(p:Array<Float>,i:Array<Int>):PolygonBuffer {
+# haxe-prelude: var q=new PolygonBuffer(); q.setData(fv(p),haxe.ds.Vector.fromArrayCopy(i)); return q;
+# haxe-prelude: }
+# haxe-prelude: public static function tri(o:Bool,p:Array<Float>):TriPlane {
+# haxe-prelude: var t=new TriPlane(o); t.init(new Point(p[0],p[1],p[2]),new Point(p[3],p[4],p[5]),new Point(p[6],p[7],p[8])); return t;
+# haxe-prelude: }
+# haxe-prelude: public static function ray(o:Array<Float>,d:Array<Float>):Ray {
+# haxe-prelude: return Ray.fromValues(o[0],o[1],o[2],d[0],d[1],d[2]);
+# haxe-prelude: }
+# haxe-prelude: public static function pt(p:Array<Float>):Point { return new Point(p[0],p[1],p[2]); }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import {
+# ms-prelude: Triangle3D, polygonRayIntersection, polygonContainsConvex, polygonClosestPoint,
+# ms-prelude: } from "../../../src/void3d/polygonCollider";
+# ms-prelude: function ray(o:Vec3,d:Vec3):Ray { return Ray.fromPoints(o,vec3(o.x+d.x,o.y+d.y,o.z+d.z)); }
+# ms-prelude: function tri(p:Vec<float32>):Triangle3D {
+# ms-prelude: return {p0:vec3(p[0],p[1],p[2]),p1:vec3(p[3],p[4],p[5]),p2:vec3(p[6],p[7],p[8])};
+# ms-prelude: }
+# ms-prelude: function triRay(t:Triangle3D,r:Ray,oriented:boolean):float32 {
+# ms-prelude: const h=t.rayIntersection(r,oriented); if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+# ms-prelude: function triContains(t:Triangle3D,p:Vec3):float32 {
+# ms-prelude: const h=t.containsProjected(p); if(!h.ok){unreachable;} return h.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function triClosest(t:Triangle3D,p:Vec3):Vec3 {
+# ms-prelude: const h=t.closestPoint(p); if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+# ms-prelude: function soupRay(p:Vec<float32>,i:Vec<uint32>,r:Ray,best:boolean,oriented:boolean):float32 {
+# ms-prelude: const h=polygonRayIntersection(p,i,r,best,oriented); if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+# ms-prelude: function soupContains(p:Vec<float32>,i:Vec<uint32>,q:Vec3):float32 {
+# ms-prelude: const h=polygonContainsConvex(p,i,q); if(!h.ok){unreachable;} return h.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function soupClosest(p:Vec<float32>,i:Vec<uint32>,q:Vec3):Vec3 {
+# ms-prelude: const h=polygonClosestPoint(p,i,q); if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+# ms-prelude: function emitTwo(id:string,a:float32,b:float32):void { console.log(`CASE ${id} ${a} ${b}`); }
+# ms-prelude: function emitSix(id:string,a:float32,b:float32,c:float32,d:float32,e:float32,f:float32):void {
+# ms-prelude: console.log(`CASE ${id} ${a} ${b} ${c} ${d} ${e} ${f}`);
+# ms-prelude: }
+
+case triangle-front-oriented tol=1e-6
+haxe> emit("triangle-front-oriented",[H.tri(true,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0.25,0.25,2],[0,0,-1]),true)]);
+ms> emit1("triangle-front-oriented",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0.25,0.25,2),vec3(0,0,-1)),true));
+
+case triangle-back-oriented tol=1e-6
+haxe> emit("triangle-back-oriented",[H.tri(true,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0.25,0.25,-2],[0,0,1]),true)]);
+ms> emit1("triangle-back-oriented",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0.25,0.25,-2),vec3(0,0,1)),true));
+
+case triangle-back-unoriented tol=1e-6
+haxe> emit("triangle-back-unoriented",[H.tri(false,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0.25,0.25,-2],[0,0,1]),true)]);
+ms> emit1("triangle-back-unoriented",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0.25,0.25,-2),vec3(0,0,1)),false));
+
+case triangle-behind-oriented tol=1e-6
+haxe> emit("triangle-behind-oriented",[H.tri(true,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0.25,0.25,-2],[0,0,-1]),true)]);
+ms> emit1("triangle-behind-oriented",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0.25,0.25,-2),vec3(0,0,-1)),true));
+
+case triangle-behind-unoriented tol=1e-6
+haxe> emit("triangle-behind-unoriented",[H.tri(false,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0.25,0.25,-2],[0,0,-1]),true)]);
+ms> emit1("triangle-behind-unoriented",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0.25,0.25,-2),vec3(0,0,-1)),false));
+
+case triangle-outside tol=1e-6
+haxe> emit("triangle-outside",[H.tri(false,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0.8,0.8,2],[0,0,-1]),true)]);
+ms> emit1("triangle-outside",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0.8,0.8,2),vec3(0,0,-1)),false));
+
+case triangle-edge-on tol=1e-6
+haxe> emit("triangle-edge-on",[H.tri(false,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([-1,0.25,0],[1,0,0]),true)]);
+ms> emit1("triangle-edge-on",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(-1,0.25,0),vec3(1,0,0)),false));
+
+case triangle-parallel-above tol=1e-6
+haxe> emit("triangle-parallel-above",[H.tri(false,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([-1,0.25,1],[1,0,0]),true)]);
+ms> emit1("triangle-parallel-above",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(-1,0.25,1),vec3(1,0,0)),false));
+
+case triangle-oblique-front tol=1e-6
+haxe> emit("triangle-oblique-front",[H.tri(true,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0,0,2],[0.1,0.2,-1]),true)]);
+ms> emit1("triangle-oblique-front",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0,0,2),vec3(0.1,0.2,-1)),true));
+
+case triangle-on-corner tol=1e-6
+haxe> emit("triangle-on-corner",[H.tri(true,[0,0,0,1,0,0,0,1,0]).rayIntersection(H.ray([0,0,2],[0,0,-1]),true)]);
+ms> emit1("triangle-on-corner",triRay(tri([0,0,0,1,0,0,0,1,0]),ray(vec3(0,0,2),vec3(0,0,-1)),true));
+
+case triangle-contains-projected-inside tol=0
+haxe> emit("triangle-contains-projected-inside",[H.tri(false,[0,0,0,1,0,0,0,1,0]).contains(H.pt([0.25,0.25,9]))?1.:0.]);
+ms> emit1("triangle-contains-projected-inside",triContains(tri([0,0,0,1,0,0,0,1,0]),vec3(0.25,0.25,9)));
+
+case triangle-contains-projected-outside tol=0
+haxe> emit("triangle-contains-projected-outside",[H.tri(false,[0,0,0,1,0,0,0,1,0]).contains(H.pt([0.8,0.8,0]))?1.:0.]);
+ms> emit1("triangle-contains-projected-outside",triContains(tri([0,0,0,1,0,0,0,1,0]),vec3(0.8,0.8,0)));
+
+case triangle-contains-on-edge tol=0
+haxe> emit("triangle-contains-on-edge",[H.tri(false,[0,0,0,1,0,0,0,1,0]).contains(H.pt([0.5,0.5,0]))?1.:0.]);
+ms> emit1("triangle-contains-on-edge",triContains(tri([0,0,0,1,0,0,0,1,0]),vec3(0.5,0.5,0)));
+
+case triangle-closest-inside tol=1e-6
+haxe> var c=H.tri(false,[0,0,0,1,0,0,0,1,0]).closestPoint(H.pt([0.25,0.25,3])); emit("triangle-closest-inside",[c.x,c.y,c.z]);
+ms> { const c=triClosest(tri([0,0,0,1,0,0,0,1,0]),vec3(0.25,0.25,3)); emit3("triangle-closest-inside",c.x,c.y,c.z); }
+
+case triangle-closest-corner tol=1e-6
+haxe> var c=H.tri(false,[0,0,0,1,0,0,0,1,0]).closestPoint(H.pt([2,0,1])); emit("triangle-closest-corner",[c.x,c.y,c.z]);
+ms> { const c=triClosest(tri([0,0,0,1,0,0,0,1,0]),vec3(2,0,1)); emit3("triangle-closest-corner",c.x,c.y,c.z); }
+
+case triangle-closest-edge tol=1e-6
+haxe> var c=H.tri(false,[0,0,0,1,0,0,0,1,0]).closestPoint(H.pt([-1,0.5,0])); emit("triangle-closest-edge",[c.x,c.y,c.z]);
+ms> { const c=triClosest(tri([0,0,0,1,0,0,0,1,0]),vec3(-1,0.5,0)); emit3("triangle-closest-edge",c.x,c.y,c.z); }
+
+case triangle-closest-hypotenuse tol=1e-6
+haxe> var c=H.tri(false,[0,0,0,1,0,0,0,1,0]).closestPoint(H.pt([1,1,0])); emit("triangle-closest-hypotenuse",[c.x,c.y,c.z]);
+ms> { const c=triClosest(tri([0,0,0,1,0,0,0,1,0]),vec3(1,1,0)); emit3("triangle-closest-hypotenuse",c.x,c.y,c.z); }
+
+case triangle-closest-skew tol=1e-6
+haxe> var c=H.tri(false,[0,0,0,1,0,0,0,1,0]).closestPoint(H.pt([0.7,-0.3,0.4])); emit("triangle-closest-skew",[c.x,c.y,c.z]);
+ms> { const c=triClosest(tri([0,0,0,1,0,0,0,1,0]),vec3(0.7,-0.3,0.4)); emit3("triangle-closest-skew",c.x,c.y,c.z); }
+
+case polygon-best-match-unoriented tol=1e-6
+haxe> emit("polygon-best-match-unoriented",[H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).rayIntersection(H.ray([0.25,0.25,-2],[0,0,1]),true)]);
+ms> emit1("polygon-best-match-unoriented",soupRay([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],ray(vec3(0.25,0.25,-2),vec3(0,0,1)),true,false));
+
+case polygon-first-found-unoriented tol=1e-6
+haxe> emit("polygon-first-found-unoriented",[H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).rayIntersection(H.ray([0.25,0.25,-2],[0,0,1]),false)]);
+ms> emit1("polygon-first-found-unoriented",soupRay([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],ray(vec3(0.25,0.25,-2),vec3(0,0,1)),false,false));
+
+case polygon-best-match-oriented-from-above tol=1e-6
+haxe> emit("polygon-best-match-oriented-from-above",[H.poly(true,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).rayIntersection(H.ray([0.25,0.25,3],[0,0,-1]),true)]);
+ms> emit1("polygon-best-match-oriented-from-above",soupRay([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],ray(vec3(0.25,0.25,3),vec3(0,0,-1)),true,true));
+
+case polygon-first-found-oriented-from-above tol=1e-6
+haxe> emit("polygon-first-found-oriented-from-above",[H.poly(true,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).rayIntersection(H.ray([0.25,0.25,3],[0,0,-1]),false)]);
+ms> emit1("polygon-first-found-oriented-from-above",soupRay([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],ray(vec3(0.25,0.25,3),vec3(0,0,-1)),false,true));
+
+case polygon-oriented-from-below tol=1e-6
+haxe> emit("polygon-oriented-from-below",[H.poly(true,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).rayIntersection(H.ray([0.25,0.25,-2],[0,0,1]),true)]);
+ms> emit1("polygon-oriented-from-below",soupRay([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],ray(vec3(0.25,0.25,-2),vec3(0,0,1)),true,true));
+
+case polygon-miss tol=1e-6
+haxe> emit("polygon-miss",[H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).rayIntersection(H.ray([5,5,5],[0,0,-1]),true)]);
+ms> emit1("polygon-miss",soupRay([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],ray(vec3(5,5,5),vec3(0,0,-1)),true,false));
+
+case convex-inside tol=0
+haxe> emit("convex-inside",[H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([0.1,0.1,0.1]))?1.:0.,H.buf([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([0.1,0.1,0.1]))?1.:0.]);
+ms> emitTwo("convex-inside",soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(0.1,0.1,0.1)),soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(0.1,0.1,0.1)));
+
+case convex-outside tol=0
+haxe> emit("convex-outside",[H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([1,1,1]))?1.:0.,H.buf([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([1,1,1]))?1.:0.]);
+ms> emitTwo("convex-outside",soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(1,1,1)),soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(1,1,1)));
+
+case convex-beside tol=0
+haxe> emit("convex-beside",[H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([-0.1,0.1,0.1]))?1.:0.,H.buf([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([-0.1,0.1,0.1]))?1.:0.]);
+ms> emitTwo("convex-beside",soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(-0.1,0.1,0.1)),soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(-0.1,0.1,0.1)));
+
+case convex-behind-slanted-face tol=0
+haxe> emit("convex-behind-slanted-face",[H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([0.4,0.4,0.4]))?1.:0.,H.buf([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3]).contains(H.pt([0.4,0.4,0.4]))?1.:0.]);
+ms> emitTwo("convex-behind-slanted-face",soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(0.4,0.4,0.4)),soupContains([0,0,0,1,0,0,0,1,0,0,0,1],[0,2,1,0,1,3,0,3,2,1,2,3],vec3(0.4,0.4,0.4)));
+
+case soup-closest-between tol=1e-6
+haxe> var c=H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).closestPoint(H.pt([0.25,0.25,0.8])); var d=H.buf([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).closestPoint(H.pt([0.25,0.25,0.8])); emit("soup-closest-between",[c.x,c.y,c.z,d.x,d.y,d.z]);
+ms> { const c=soupClosest([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],vec3(0.25,0.25,0.8)); emitSix("soup-closest-between",c.x,c.y,c.z,c.x,c.y,c.z); }
+
+case soup-closest-above tol=1e-6
+haxe> var c=H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).closestPoint(H.pt([0.25,0.25,3])); var d=H.buf([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).closestPoint(H.pt([0.25,0.25,3])); emit("soup-closest-above",[c.x,c.y,c.z,d.x,d.y,d.z]);
+ms> { const c=soupClosest([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],vec3(0.25,0.25,3)); emitSix("soup-closest-above",c.x,c.y,c.z,c.x,c.y,c.z); }
+
+case soup-closest-beside tol=1e-6
+haxe> var c=H.poly(false,[0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).closestPoint(H.pt([3,0,0.3])); var d=H.buf([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5]).closestPoint(H.pt([3,0,0.3])); emit("soup-closest-beside",[c.x,c.y,c.z,d.x,d.y,d.z]);
+ms> { const c=soupClosest([0,0,0,1,0,0,0,1,0,0,0,1,1,0,1,0,1,1],[0,1,2,3,4,5],vec3(3,0,0.3)); emitSix("soup-closest-beside",c.x,c.y,c.z,c.x,c.y,c.z); }
