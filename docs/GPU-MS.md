@@ -208,8 +208,8 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   |---|---|---|---|---|
   | P1 members | done | done | done | stops by name |
   | P2 copies, mapped reads | done | done | copies done; `mapAsync` stops (no ASYNCIFY) | stops |
-  | P3 compute, storage | done | in flight | in flight | stops |
-  | P4 limits, labels, debug groups, queries | done | in flight | in flight | stops |
+  | P3 compute, storage | done | done (core 4.3, GLES 3.1; WebGL2 stops) | done | stops |
+  | P4 limits, labels, debug groups, queries | done | done (WebGL2/GLES: no timestamps, occlusion 0/1) | done | stops |
 
   `mapAsync` blocks on native and `getMappedRange` returns a copy. `limits()` and `features()` are
   methods, so an unported backend stops only when asked.
@@ -283,4 +283,6 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 - Attribute order against the writers is only checked in the GL build (where modules carry
   names); the goldens catch a reorder on the other backends.
 - Android: GLES 3.2's `glColorMaski` is refused today (one mask for all targets); MSAA 2/8 untested.
-- `src/examples/androidEntry.ms` calls `voidAndroidM2Run`, which nothing defines (older than this branch).
+- Android: the app driver from `main` (`86425bf1`) delivers `VoidAppEvent` through `appWindow.c` and
+  links with NDK 28 (`msc build src/examples/androidEntry.ms --os=android --app=lib --cc=<ndk>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android26-clang.exe`);
+  it has never run on a device. Its window features other than `requestQuit` and `frameDuration` stop by name.
