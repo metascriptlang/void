@@ -3,6 +3,8 @@
 
 #if defined(__EMSCRIPTEN__)
 #include "../platform/web/window.h"
+#elif defined(__APPLE__)
+#include "iosApp.h"
 #elif defined(__linux__)
 #include "../platform/linux/window.h"
 #else
@@ -121,6 +123,10 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	e.frameCount = voidWebFrameCount();
 	e.framebufferWidth = voidWebWidth();
 	e.framebufferHeight = voidWebHeight();
+#elif defined(__APPLE__)
+	e.frameCount = voidIosFrameCount();
+	e.framebufferWidth = voidIosWidth();
+	e.framebufferHeight = voidIosHeight();
 #elif defined(__linux__)
 	e.frameCount = voidLinuxFrameCount();
 	e.framebufferWidth = voidLinuxWidth();
@@ -146,6 +152,7 @@ void voidSetWindowTitle(const char *title) {
 	s_titleSet = true;
 #if defined(__EMSCRIPTEN__)
 	if (voidWebValid()) voidWebSetTitle(s_title);
+#elif defined(__APPLE__)
 #elif defined(__linux__)
 	if (voidLinuxValid()) voidLinuxSetTitle(s_title);
 #else

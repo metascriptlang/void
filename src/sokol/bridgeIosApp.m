@@ -33,103 +33,102 @@ static CGRect s_imeRect;
 static BOOL s_backspaceHeld, s_backspaceSent;
 static BOOL s_enterHeld, s_tabHeld;
 
-uint64_t sapp_frame_count(void) { return s_frameCount; }
-int sapp_width(void) { return s_fbW; }
-int sapp_height(void) { return s_fbH; }
-bool sapp_isvalid(void) { return s_running != 0; }
-void sapp_set_window_title(const char *title) { (void)title; }
+uint64_t voidIosFrameCount(void) { return s_frameCount; }
+int voidIosWidth(void) { return s_fbW; }
+int voidIosHeight(void) { return s_fbH; }
+bool voidIosValid(void) { return s_running != 0; }
 
-static sapp_event makeEvent(sapp_event_type type) {
-	sapp_event e;
+static VoidAppEvent makeEvent(VoidAppEventType type) {
+	VoidAppEvent e;
 	memset(&e, 0, sizeof e);
 	e.type = type;
-	e.frame_count = s_frameCount;
+	e.frameCount = s_frameCount;
 	e.modifiers = s_modifiers;
-	e.framebuffer_width = s_fbW;
-	e.framebuffer_height = s_fbH;
-	e.window_width = (int)(s_fbW / s_scale);
-	e.window_height = (int)(s_fbH / s_scale);
+	e.framebufferWidth = s_fbW;
+	e.framebufferHeight = s_fbH;
+	e.windowWidth = (int)(s_fbW / s_scale);
+	e.windowHeight = (int)(s_fbH / s_scale);
 	return e;
 }
 
-static void send(sapp_event_type type) {
-	sapp_event e = makeEvent(type);
-	voidAppEventDeliver(&e);
+static void send(VoidAppEventType type) {
+	VoidAppEvent e = makeEvent(type);
+	voidAppDeliver(&e);
 }
 
-static void sendKey(sapp_event_type type, sapp_keycode code, bool repeat) {
-	sapp_event e = makeEvent(type);
-	e.key_code = code;
-	e.key_repeat = repeat;
-	voidAppEventDeliver(&e);
+static void sendKey(VoidAppEventType type, VoidKeyCode code, bool repeat) {
+	VoidAppEvent e = makeEvent(type);
+	e.keyCode = code;
+	e.keyRepeat = repeat;
+	voidAppDeliver(&e);
 }
 
-static void sendTap(sapp_keycode code) {
-	sendKey(SAPP_EVENTTYPE_KEY_DOWN, code, false);
-	sendKey(SAPP_EVENTTYPE_KEY_UP, code, false);
+static void sendTap(VoidKeyCode code) {
+	sendKey(VOID_EVENT_KEY_DOWN, code, false);
+	sendKey(VOID_EVENT_KEY_UP, code, false);
 }
 
-static sapp_keycode keyOfHid(long usage) {
-	if (usage >= 0x04 && usage <= 0x1D) return (sapp_keycode)(SAPP_KEYCODE_A + (usage - 0x04));
-	if (usage >= 0x1E && usage <= 0x26) return (sapp_keycode)(SAPP_KEYCODE_1 + (usage - 0x1E));
-	if (usage >= 0x3A && usage <= 0x45) return (sapp_keycode)(SAPP_KEYCODE_F1 + (usage - 0x3A));
+static VoidKeyCode keyOfHid(long usage) {
+	if (usage >= 0x04 && usage <= 0x1D) return (VoidKeyCode)(VOID_KEY_A + (usage - 0x04));
+	if (usage >= 0x1E && usage <= 0x26) return (VoidKeyCode)(VOID_KEY_1 + (usage - 0x1E));
+	if (usage >= 0x3A && usage <= 0x45) return (VoidKeyCode)(VOID_KEY_F1 + (usage - 0x3A));
 	switch (usage) {
-		case 0x27: return SAPP_KEYCODE_0;
-		case 0x28: return SAPP_KEYCODE_ENTER;
-		case 0x29: return SAPP_KEYCODE_ESCAPE;
-		case 0x2A: return SAPP_KEYCODE_BACKSPACE;
-		case 0x2B: return SAPP_KEYCODE_TAB;
-		case 0x2C: return SAPP_KEYCODE_SPACE;
-		case 0x2D: return SAPP_KEYCODE_MINUS;
-		case 0x2E: return SAPP_KEYCODE_EQUAL;
-		case 0x2F: return SAPP_KEYCODE_LEFT_BRACKET;
-		case 0x30: return SAPP_KEYCODE_RIGHT_BRACKET;
-		case 0x31: return SAPP_KEYCODE_BACKSLASH;
-		case 0x33: return SAPP_KEYCODE_SEMICOLON;
-		case 0x34: return SAPP_KEYCODE_APOSTROPHE;
-		case 0x35: return SAPP_KEYCODE_GRAVE_ACCENT;
-		case 0x36: return SAPP_KEYCODE_COMMA;
-		case 0x37: return SAPP_KEYCODE_PERIOD;
-		case 0x38: return SAPP_KEYCODE_SLASH;
-		case 0x39: return SAPP_KEYCODE_CAPS_LOCK;
-		case 0x49: return SAPP_KEYCODE_INSERT;
-		case 0x4A: return SAPP_KEYCODE_HOME;
-		case 0x4B: return SAPP_KEYCODE_PAGE_UP;
-		case 0x4C: return SAPP_KEYCODE_DELETE;
-		case 0x4D: return SAPP_KEYCODE_END;
-		case 0x4E: return SAPP_KEYCODE_PAGE_DOWN;
-		case 0x4F: return SAPP_KEYCODE_RIGHT;
-		case 0x50: return SAPP_KEYCODE_LEFT;
-		case 0x51: return SAPP_KEYCODE_DOWN;
-		case 0x52: return SAPP_KEYCODE_UP;
-		case 0x64: return SAPP_KEYCODE_WORLD_1;
-		case 0xE0: return SAPP_KEYCODE_LEFT_CONTROL;
-		case 0xE1: return SAPP_KEYCODE_LEFT_SHIFT;
-		case 0xE2: return SAPP_KEYCODE_LEFT_ALT;
-		case 0xE3: return SAPP_KEYCODE_LEFT_SUPER;
-		case 0xE4: return SAPP_KEYCODE_RIGHT_CONTROL;
-		case 0xE5: return SAPP_KEYCODE_RIGHT_SHIFT;
-		case 0xE6: return SAPP_KEYCODE_RIGHT_ALT;
-		case 0xE7: return SAPP_KEYCODE_RIGHT_SUPER;
-		default: return SAPP_KEYCODE_INVALID;
+		case 0x27: return VOID_KEY_0;
+		case 0x28: return VOID_KEY_ENTER;
+		case 0x29: return VOID_KEY_ESCAPE;
+		case 0x2A: return VOID_KEY_BACKSPACE;
+		case 0x2B: return VOID_KEY_TAB;
+		case 0x2C: return VOID_KEY_SPACE;
+		case 0x2D: return VOID_KEY_MINUS;
+		case 0x2E: return VOID_KEY_EQUAL;
+		case 0x2F: return VOID_KEY_LEFT_BRACKET;
+		case 0x30: return VOID_KEY_RIGHT_BRACKET;
+		case 0x31: return VOID_KEY_BACKSLASH;
+		case 0x33: return VOID_KEY_SEMICOLON;
+		case 0x34: return VOID_KEY_APOSTROPHE;
+		case 0x35: return VOID_KEY_GRAVE_ACCENT;
+		case 0x36: return VOID_KEY_COMMA;
+		case 0x37: return VOID_KEY_PERIOD;
+		case 0x38: return VOID_KEY_SLASH;
+		case 0x39: return VOID_KEY_CAPS_LOCK;
+		case 0x49: return VOID_KEY_INSERT;
+		case 0x4A: return VOID_KEY_HOME;
+		case 0x4B: return VOID_KEY_PAGE_UP;
+		case 0x4C: return VOID_KEY_DELETE;
+		case 0x4D: return VOID_KEY_END;
+		case 0x4E: return VOID_KEY_PAGE_DOWN;
+		case 0x4F: return VOID_KEY_RIGHT;
+		case 0x50: return VOID_KEY_LEFT;
+		case 0x51: return VOID_KEY_DOWN;
+		case 0x52: return VOID_KEY_UP;
+		case 0x64: return VOID_KEY_WORLD_1;
+		case 0xE0: return VOID_KEY_LEFT_CONTROL;
+		case 0xE1: return VOID_KEY_LEFT_SHIFT;
+		case 0xE2: return VOID_KEY_LEFT_ALT;
+		case 0xE3: return VOID_KEY_LEFT_SUPER;
+		case 0xE4: return VOID_KEY_RIGHT_CONTROL;
+		case 0xE5: return VOID_KEY_RIGHT_SHIFT;
+		case 0xE6: return VOID_KEY_RIGHT_ALT;
+		case 0xE7: return VOID_KEY_RIGHT_SUPER;
+		default: return VOID_KEY_INVALID;
 	}
 }
 
 static uint32_t modifiersOf(UIKeyModifierFlags flags) {
 	uint32_t m = 0;
-	if (flags & UIKeyModifierShift) m |= SAPP_MODIFIER_SHIFT;
-	if (flags & UIKeyModifierControl) m |= SAPP_MODIFIER_CTRL;
-	if (flags & UIKeyModifierAlternate) m |= SAPP_MODIFIER_ALT;
-	if (flags & UIKeyModifierCommand) m |= SAPP_MODIFIER_SUPER;
+	if (flags & UIKeyModifierShift) m |= VOID_MODIFIER_SHIFT;
+	if (flags & UIKeyModifierControl) m |= VOID_MODIFIER_CTRL;
+	if (flags & UIKeyModifierAlternate) m |= VOID_MODIFIER_ALT;
+	if (flags & UIKeyModifierCommand) m |= VOID_MODIFIER_SUPER;
 	return m;
 }
 
-static uint32_t modifierOfKey(sapp_keycode code) {
+static uint32_t modifierOfKey(VoidKeyCode code) {
 	switch (code) {
-		case SAPP_KEYCODE_LEFT_SHIFT: case SAPP_KEYCODE_RIGHT_SHIFT: return SAPP_MODIFIER_SHIFT;
-		case SAPP_KEYCODE_LEFT_CONTROL: case SAPP_KEYCODE_RIGHT_CONTROL: return SAPP_MODIFIER_CTRL;
-		case SAPP_KEYCODE_LEFT_ALT: case SAPP_KEYCODE_RIGHT_ALT: return SAPP_MODIFIER_ALT;
-		case SAPP_KEYCODE_LEFT_SUPER: case SAPP_KEYCODE_RIGHT_SUPER: return SAPP_MODIFIER_SUPER;
+		case VOID_KEY_LEFT_SHIFT: case VOID_KEY_RIGHT_SHIFT: return VOID_MODIFIER_SHIFT;
+		case VOID_KEY_LEFT_CONTROL: case VOID_KEY_RIGHT_CONTROL: return VOID_MODIFIER_CTRL;
+		case VOID_KEY_LEFT_ALT: case VOID_KEY_RIGHT_ALT: return VOID_MODIFIER_ALT;
+		case VOID_KEY_LEFT_SUPER: case VOID_KEY_RIGHT_SUPER: return VOID_MODIFIER_SUPER;
 		default: return 0;
 	}
 }
@@ -209,7 +208,7 @@ static VoidAppView *s_view;
 - (void)setKeyboard:(float)height {
 	if (height == voidKeyboardHeight()) return;
 	voidAppSetKeyboard(height);
-	if (self.viewId != 0) send(SAPP_EVENTTYPE_RESIZED);
+	if (self.viewId != 0) send(VOID_EVENT_RESIZED);
 }
 
 - (void)keyboardFrame:(NSNotification *)notification {
@@ -263,7 +262,7 @@ static VoidAppView *s_view;
 	if (w == s_fbW && h == s_fbH && UIEdgeInsetsEqualToEdgeInsets(self.insets, self.safeAreaInsets)) return;
 	self.insets = self.safeAreaInsets;
 	voidViewResize(self.viewId, s_fbW, s_fbH, s_scale);
-	send(SAPP_EVENTTYPE_RESIZED);
+	send(VOID_EVENT_RESIZED);
 }
 
 - (void)layoutSubviews {
@@ -281,57 +280,57 @@ static VoidAppView *s_view;
 	voidViewFrame(self.viewId);
 }
 
-- (void)sendTouches:(NSSet<UITouch *> *)changed event:(UIEvent *)event type:(sapp_event_type)type {
-	sapp_event e = makeEvent(type);
+- (void)sendTouches:(NSSet<UITouch *> *)changed event:(UIEvent *)event type:(VoidAppEventType)type {
+	VoidAppEvent e = makeEvent(type);
 	NSSet<UITouch *> *all = event.allTouches ? event.allTouches : changed;
 	for (UITouch *t in all) {
-		if (e.num_touches == SAPP_MAX_TOUCHPOINTS) break;
+		if (e.touchCount == VOID_MAX_TOUCHPOINTS) break;
 		const CGPoint p = [t locationInView:self];
-		sapp_touchpoint *point = &e.touches[e.num_touches++];
+		VoidTouchPoint *point = &e.touches[e.touchCount++];
 		point->identifier = (uintptr_t)(__bridge void *)t;
-		point->pos_x = (float)(p.x * s_scale);
-		point->pos_y = (float)(p.y * s_scale);
+		point->x = (float)(p.x * s_scale);
+		point->y = (float)(p.y * s_scale);
 		point->changed = [changed containsObject:t];
 	}
-	voidAppEventDeliver(&e);
+	voidAppDeliver(&e);
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self sendTouches:touches event:event type:SAPP_EVENTTYPE_TOUCHES_BEGAN];
+	[self sendTouches:touches event:event type:VOID_EVENT_TOUCHES_BEGAN];
 }
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self sendTouches:touches event:event type:SAPP_EVENTTYPE_TOUCHES_MOVED];
+	[self sendTouches:touches event:event type:VOID_EVENT_TOUCHES_MOVED];
 }
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self sendTouches:touches event:event type:SAPP_EVENTTYPE_TOUCHES_ENDED];
+	[self sendTouches:touches event:event type:VOID_EVENT_TOUCHES_ENDED];
 }
 - (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
-	[self sendTouches:touches event:event type:SAPP_EVENTTYPE_TOUCHES_CANCELLED];
+	[self sendTouches:touches event:event type:VOID_EVENT_TOUCHES_CANCELLED];
 }
 
 - (void)sendPresses:(NSSet<UIPress *> *)presses event:(UIPressesEvent *)event down:(BOOL)down {
 	for (UIPress *press in presses) {
 		UIKey *key = press.key;
 		if (!key) continue;
-		const sapp_keycode code = keyOfHid((long)key.keyCode);
+		const VoidKeyCode code = keyOfHid((long)key.keyCode);
 		const uint32_t own = modifierOfKey(code);
 		s_heldModifiers = down ? (s_heldModifiers | own) : (s_heldModifiers & ~own);
 		s_modifiers = modifiersOf(key.modifierFlags) | modifiersOf(event.modifierFlags) | s_heldModifiers;
-		if (code == SAPP_KEYCODE_INVALID) continue;
-		if (code == SAPP_KEYCODE_BACKSPACE) {
+		if (code == VOID_KEY_INVALID) continue;
+		if (code == VOID_KEY_BACKSPACE) {
 			if (down) {
 				s_backspaceHeld = YES;
 				s_backspaceSent = NO;
 				continue;
 			}
 			s_backspaceHeld = NO;
-			if (!s_backspaceSent) sendKey(SAPP_EVENTTYPE_KEY_DOWN, code, false);
-			sendKey(SAPP_EVENTTYPE_KEY_UP, code, false);
+			if (!s_backspaceSent) sendKey(VOID_EVENT_KEY_DOWN, code, false);
+			sendKey(VOID_EVENT_KEY_UP, code, false);
 			continue;
 		}
-		if (code == SAPP_KEYCODE_ENTER) s_enterHeld = down;
-		if (code == SAPP_KEYCODE_TAB) s_tabHeld = down;
-		sendKey(down ? SAPP_EVENTTYPE_KEY_DOWN : SAPP_EVENTTYPE_KEY_UP, code, false);
+		if (code == VOID_KEY_ENTER) s_enterHeld = down;
+		if (code == VOID_KEY_TAB) s_tabHeld = down;
+		sendKey(down ? VOID_EVENT_KEY_DOWN : VOID_EVENT_KEY_UP, code, false);
 	}
 }
 
@@ -369,9 +368,9 @@ static VoidAppView *s_view;
 					range:NSMakeRange(0, piece.length) remainingRange:NULL];
 				for (NSUInteger i = 0; i < used / 4; i++) {
 					if (codepoints[i] < 0x20 || codepoints[i] == 0x7F) continue;
-					sapp_event e = makeEvent(SAPP_EVENTTYPE_CHAR);
-					e.char_code = codepoints[i];
-					voidAppEventDeliver(&e);
+					VoidAppEvent e = makeEvent(VOID_EVENT_CHAR);
+					e.charCode = codepoints[i];
+					voidAppDeliver(&e);
 				}
 			}];
 	}
@@ -387,14 +386,14 @@ static VoidAppView *s_view;
 - (BOOL)hasText { return YES; }
 
 - (void)insertText:(NSString *)text {
-	if (s_modifiers & (SAPP_MODIFIER_CTRL | SAPP_MODIFIER_SUPER)) return;
+	if (s_modifiers & (VOID_MODIFIER_CTRL | VOID_MODIFIER_SUPER)) return;
 	[self clearMarked];
 	if ([text isEqualToString:@"\n"] || [text isEqualToString:@"\r"]) {
-		if (!s_enterHeld) sendTap(SAPP_KEYCODE_ENTER);
+		if (!s_enterHeld) sendTap(VOID_KEY_ENTER);
 		return;
 	}
 	if ([text isEqualToString:@"\t"]) {
-		if (!s_tabHeld) sendTap(SAPP_KEYCODE_TAB);
+		if (!s_tabHeld) sendTap(VOID_KEY_TAB);
 		return;
 	}
 	[self commit:text];
@@ -408,11 +407,11 @@ static VoidAppView *s_view;
 		[self sendPreedit];
 		return;
 	}
-	sendKey(SAPP_EVENTTYPE_KEY_DOWN, SAPP_KEYCODE_BACKSPACE, s_backspaceHeld && s_backspaceSent);
+	sendKey(VOID_EVENT_KEY_DOWN, VOID_KEY_BACKSPACE, s_backspaceHeld && s_backspaceSent);
 	if (s_backspaceHeld) {
 		s_backspaceSent = YES;
 	} else {
-		sendKey(SAPP_EVENTTYPE_KEY_UP, SAPP_KEYCODE_BACKSPACE, false);
+		sendKey(VOID_EVENT_KEY_UP, VOID_KEY_BACKSPACE, false);
 	}
 }
 
@@ -554,22 +553,22 @@ static VoidAppView *s_view;
 }
 - (void)applicationDidBecomeActive:(UIApplication *)application {
 	(void)application;
-	if (s_view.viewId != 0) send(SAPP_EVENTTYPE_FOCUSED);
+	if (s_view.viewId != 0) send(VOID_EVENT_FOCUSED);
 }
 - (void)applicationWillResignActive:(UIApplication *)application {
 	(void)application;
 	s_heldModifiers = 0;
-	if (s_view.viewId != 0) send(SAPP_EVENTTYPE_UNFOCUSED);
+	if (s_view.viewId != 0) send(VOID_EVENT_UNFOCUSED);
 }
 - (void)applicationDidEnterBackground:(UIApplication *)application {
 	(void)application;
 	s_view.link.paused = YES;
-	if (s_view.viewId != 0) send(SAPP_EVENTTYPE_SUSPENDED);
+	if (s_view.viewId != 0) send(VOID_EVENT_SUSPENDED);
 }
 - (void)applicationWillEnterForeground:(UIApplication *)application {
 	(void)application;
 	s_view.link.paused = NO;
-	if (s_view.viewId != 0) send(SAPP_EVENTTYPE_RESUMED);
+	if (s_view.viewId != 0) send(VOID_EVENT_RESUMED);
 }
 @end
 
