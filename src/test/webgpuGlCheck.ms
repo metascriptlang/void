@@ -1,10 +1,13 @@
 import {
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
+	GPUBindGroupEntry,
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
+	GPU_NO_QUERY_INDEX,
 	GPUMapMode,
+	GPURenderPassEncoder,
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
@@ -693,5 +696,300 @@ test "a buffer region at an offset with a 256-byte row copies into a texture sub
 	assert texelAt(read, 256, 6, 2) == 0x040207FF;
 	assert texelAt(read, 256, 2, 1) == 0;
 	assert texelAt(read, 256, 3, 3) == 0;
+	device.destroy();
+}
+
+const DOUBLE_GLSL = "#version 430\nlayout(local_size_x = 4) in;\nlayout(std430, binding = 0) buffer Data { uint data[]; };\nvoid main() { data[gl_GlobalInvocationID.x] *= 2u; }\n";
+const FILL_GLSL = "#version 430\nlayout(local_size_x = 4, local_size_y = 4) in;\nlayout(r32ui, binding = 0) writeonly uniform uimage2D image;\nvoid main() { imageStore(image, ivec2(gl_GlobalInvocationID.xy), uvec4(gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * 10u)); }\n";
+const STORAGE_FRAGMENT_GLSL = "#version 430\nlayout(std430, binding = 0) readonly buffer Colors { vec4 colors[]; };\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = colors[0]; }\n";
+
+function computeModule(device: GPUDevice, code: string, kind: string, workgroupX: int32, workgroupY: int32): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: code, computeEntryPoint: "" };
+	descriptor.workgroupSize = [workgroupX, workgroupY, 1];
+	if (kind == "storage-buffer") {
+		descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 0 };
+	} else {
+		descriptor.bindings[0] = {
+			group: 1,
+			binding: 0,
+			kind: "storage-texture",
+			stage: "compute",
+			storageAccess: "write-only",
+			storageFormat: "r32uint",
+			nativeSlot: 0,
+		};
+	}
+	return device.createShaderModule(descriptor);
+}
+
+function dispatchOnce(device: GPUDevice, module: GPUShaderModule, entry: GPUBindGroupEntry): void {
+	const pipeline = device.createComputePipeline({ label: "compute", compute: { module: module, entryPoint: "" } });
+	let descriptor: GPUBindGroupDescriptor = { label: "storage", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = entry;
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, device.createBindGroup(descriptor), noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.end();
+	device.queue.submit(encoder.finish());
+}
+
+test "a compute pass doubles a storage buffer, directly and through an indirect dispatch" {
+	const device = openDevice();
+	const module = computeModule(device, DOUBLE_GLSL, "storage-buffer", 4, 1);
+	const storage = device.createBuffer({
+		label: "storage",
+		size: 16,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	const values: Vec<uint32> = [1, 2, 3, 40000];
+	device.queue.writeBuffer(storage, 0, values);
+	dispatchOnce(device, module, { binding: 0, buffer: storage });
+	const readback = readbackBuffer(device, 16);
+	let encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(storage, 0, readback, 0, 16);
+	device.queue.submit(encoder.finish());
+	let read = readBack(readback);
+	assert read[0] == 2 && read[4] == 4 && read[8] == 6;
+	assert read[12] == 0x80 && read[13] == 0x38;
+
+	const pipeline = device.createComputePipeline({ label: "indirect", compute: { module: module, entryPoint: "" } });
+	let descriptor: GPUBindGroupDescriptor = { label: "storage", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = { binding: 0, buffer: storage };
+	const group = device.createBindGroup(descriptor);
+	const arguments = device.createBuffer({
+		label: "arguments",
+		size: 12,
+		usage: (GPUBufferUsage.INDIRECT as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const counts: Vec<uint32> = [1, 1, 1];
+	device.queue.writeBuffer(arguments, 0, counts);
+	const noOffsets: Vec<uint32> = [];
+	encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, group, noOffsets);
+	pass.dispatchWorkgroupsIndirect(arguments, 0);
+	pass.end();
+	encoder.copyBufferToBuffer(storage, 0, readback, 0, 16);
+	device.queue.submit(encoder.finish());
+	read = readBack(readback);
+	assert read[0] == 4 && read[4] == 8 && read[8] == 12;
+	device.destroy();
+}
+
+test "a compute pass writes a storage texture that copies back" {
+	const device = openDevice();
+	const module = computeModule(device, FILL_GLSL, "storage-texture", 4, 4);
+	const texture = device.createTexture({
+		label: "image",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "r32uint",
+		usage: (GPUTextureUsage.STORAGE_BINDING as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	dispatchOnce(device, module, { binding: 0, textureView: texture.createView({ label: null }) });
+	const readback = readbackBuffer(device, 1024);
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToBuffer(
+		{ texture: texture },
+		{ buffer: readback, offset: 0, bytesPerRow: 256, rowsPerImage: 4 },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readBack(readback);
+	assert read[0] == 0 && read[4] == 1 && read[12] == 3;
+	assert read[256] == 10 && read[3 * 256 + 3 * 4] == 33;
+	device.destroy();
+}
+
+test "a fragment shader reads a read-only storage buffer" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "storage fragment",
+		vertexCode: VERTEX_GLSL,
+		vertexEntryPoint: "",
+		fragmentCode: STORAGE_FRAGMENT_GLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = {
+		group: 1,
+		binding: 0,
+		kind: "storage-buffer",
+		stage: "fragment",
+		bufferType: "read-only-storage",
+		nativeSlot: 0,
+	};
+	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
+	const module = device.createShaderModule(descriptor);
+	const pipeline = flatPipeline(device, module, 1);
+	const colours = device.createBuffer({
+		label: "colours",
+		size: 16,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const red: Vec<float32> = [1.0, 0.0, 0.0, 1.0];
+	device.queue.writeBuffer(colours, 0, red);
+	let group: GPUBindGroupDescriptor = { label: "colours", layout: pipeline.getBindGroupLayout(1) };
+	group.entries[0] = { binding: 0, buffer: colours };
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, device.createBindGroup(group), noOffsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixelsBottomUp(target);
+	assert pixel(pixels, 0, 0) == BLUE;
+	assert pixel(pixels, 32, 32) == RED;
+	device.destroy();
+}
+
+test "the limits are the context's own and the features say what the context can do" {
+	const device = openDevice();
+	const limits = device.limits();
+	assert limits.maxTextureDimension1D > 0 && limits.maxTextureDimension2D >= 8192 && limits.maxTextureDimension3D >= 256;
+	assert limits.maxTextureArrayLayers >= 256 && limits.maxBindGroups == 2;
+	assert limits.maxSampledTexturesPerShaderStage > 0 && limits.maxSamplersPerShaderStage > 0;
+	assert limits.maxStorageBuffersPerShaderStage > 0 && limits.maxStorageTexturesPerShaderStage > 0;
+	assert limits.maxUniformBuffersPerShaderStage > 0 && limits.maxUniformBufferBindingSize >= 16384;
+	assert limits.maxStorageBufferBindingSize > 0 && limits.maxVertexBuffers > 0 && limits.maxVertexAttributes >= 16;
+	assert limits.maxColorAttachments >= 4 && limits.maxComputeWorkgroupSizeX >= 1024 && limits.maxComputeWorkgroupSizeY >= 1024;
+	assert limits.maxComputeWorkgroupSizeZ >= 64 && limits.maxComputeInvocationsPerWorkgroup >= 1024;
+	assert limits.maxComputeWorkgroupsPerDimension >= 65535;
+	assert limits.minUniformBufferOffsetAlignment == 256 && limits.minStorageBufferOffsetAlignment == 256;
+	const features = device.features();
+	assert features.has("timestamp-query") && features.has("float32-filterable") && features.has("rg11b10ufloat-renderable");
+	assert !features.has("texture-compression-bc") && !features.has("depth32float-stencil8") && !features.has("shader-f16");
+	device.destroy();
+}
+
+test "labels and debug groups balance across an encoder, a render pass and a compute pass" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "labelled texture",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: GPUTextureUsage.TEXTURE_BINDING as int32,
+	});
+	assert texture.width() == 4;
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	encoder.pushDebugGroup("frame");
+	encoder.insertDebugMarker("before");
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.pushDebugGroup("inside");
+	pass.insertDebugMarker("marker");
+	pass.popDebugGroup();
+	pass.end();
+	const compute = encoder.beginComputePass({ label: "compute" });
+	compute.pushDebugGroup("compute group");
+	compute.popDebugGroup();
+	compute.end();
+	encoder.popDebugGroup();
+	device.queue.submit(encoder.finish());
+	device.destroy();
+}
+
+function resolveBuffer(device: GPUDevice, size: int64): GPUBuffer {
+	return device.createBuffer({
+		label: "resolved",
+		size: size,
+		usage: (GPUBufferUsage.QUERY_RESOLVE as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+}
+
+function readCounters(device: GPUDevice, resolved: GPUBuffer, count: int32): Vec<uint64> {
+	const readback = readbackBuffer(device, (count as int64) * 8);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(resolved, 0, readback, 0, (count as int64) * 8);
+	device.queue.submit(encoder.finish());
+	const bytes = readBack(readback);
+	let values: Vec<uint64> = new Array(count);
+	for (let i = 0; i < count; i++) {
+		let value: uint64 = 0;
+		for (let b = 7; b >= 0; b--) { value = (value << 8) | (bytes[i * 8 + b] as uint64); }
+		values[i] = value;
+	}
+	return values;
+}
+
+function drawTriangleIn(device: GPUDevice, pipeline: GPURenderPipeline, pass: GPURenderPassEncoder): void {
+	const uniforms = colourUniforms(device);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const offsets: Vec<uint32> = [0];
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(0, uniformGroup(device, pipeline, uniforms), offsets);
+	pass.draw(3, 1, 0, 0);
+}
+
+test "two timestamps around a render pass and around a compute pass resolve to non-decreasing nanoseconds" {
+	const device = openDevice();
+	const set = device.createQuerySet({ label: "timing", type: "timestamp", count: 4 });
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const target = colourTarget(device, 1);
+	let descriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.timestampWrites = { querySet: set, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 };
+	let encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(descriptor);
+	drawTriangleIn(device, pipeline, pass);
+	pass.end();
+	const module = computeModule(device, DOUBLE_GLSL, "storage-buffer", 4, 1);
+	const storage = device.createBuffer({ label: "storage", size: 16, usage: GPUBufferUsage.STORAGE as int32 });
+	const computePipeline = device.createComputePipeline({ label: "compute", compute: { module: module, entryPoint: "" } });
+	let group: GPUBindGroupDescriptor = { label: "storage", layout: computePipeline.getBindGroupLayout(1) };
+	group.entries[0] = { binding: 0, buffer: storage };
+	const noOffsets: Vec<uint32> = [];
+	const compute = encoder.beginComputePass({
+		label: "timed compute",
+		timestampWrites: { querySet: set, beginningOfPassWriteIndex: 2, endOfPassWriteIndex: GPU_NO_QUERY_INDEX },
+	});
+	compute.setPipeline(computePipeline);
+	compute.setBindGroup(1, device.createBindGroup(group), noOffsets);
+	compute.dispatchWorkgroups(1, 1, 1);
+	compute.end();
+	const resolved = resolveBuffer(device, 24);
+	encoder.resolveQuerySet(set, 0, 3, resolved, 0);
+	device.queue.submit(encoder.finish());
+	const times = readCounters(device, resolved, 3);
+	assert times[0] > 0;
+	assert times[1] >= times[0];
+	assert times[2] >= times[1];
+	device.destroy();
+}
+
+test "an occlusion query counts samples over a drawn triangle and none over an empty pass" {
+	const device = openDevice();
+	const set = device.createQuerySet({ label: "occlusion", type: "occlusion", count: 2 });
+	const pipeline = flatPipeline(device, flatShader(device), 1);
+	const target = colourTarget(device, 1);
+	let descriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.occlusionQuerySet = set;
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(descriptor);
+	pass.beginOcclusionQuery(0);
+	drawTriangleIn(device, pipeline, pass);
+	pass.endOcclusionQuery();
+	pass.beginOcclusionQuery(1);
+	pass.endOcclusionQuery();
+	pass.end();
+	const resolved = resolveBuffer(device, 512);
+	encoder.resolveQuerySet(set, 0, 2, resolved, 256);
+	encoder.resolveQuerySet(set, 0, 1, resolved, 0);
+	device.queue.submit(encoder.finish());
+	const counts = readCounters(device, resolved, 34);
+	assert counts[0] > 0 && counts[32] == counts[0];
+	assert counts[33] == 0;
 	device.destroy();
 }
