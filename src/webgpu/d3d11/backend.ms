@@ -43,10 +43,7 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedTexelWritePitch,
-	stopOnUnportedTexelWrite,
 	stopOnUnportedShaderModule,
-	stopOnUnportedTexture,
-	stopOnUnportedView,
 } from "../types.ms";
 import {
 	D3dBlobImpl,
@@ -83,6 +80,7 @@ import {
 	d3dCreateSampler,
 	d3dCreateSrv,
 	d3dCreateTexture2D,
+	d3dCreateTexture3D,
 	d3dCreateVertexShader,
 	d3dDeviceFrom,
 	d3dDraw,
@@ -253,6 +251,13 @@ const BLEND_INV_DEST_ALPHA = 8;
 const BLEND_DEST_COLOR = 9;
 const BLEND_INV_DEST_COLOR = 10;
 const BLEND_SRC_ALPHA_SAT = 11;
+const BLEND_BLEND_FACTOR = 14;
+const BLEND_INV_BLEND_FACTOR = 15;
+const VIEW_2D = 0;
+const VIEW_2D_ARRAY = 1;
+const VIEW_CUBE = 2;
+const VIEW_CUBE_ARRAY = 3;
+const VIEW_3D = 4;
 const COLOR_WRITE_ALL = 0xF;
 
 const NO_BUFFER = null as unknown as Ptr<D3dBufferImpl>;
@@ -300,6 +305,10 @@ struct TextureSlot {
 	format: GPUTextureFormat;
 	usage: int32;
 	sampleCount: int32;
+	mipLevels: int32;
+	layers: int32;
+	volume: boolean;
+	cube: boolean;
 	native: Ptr<D3dTextureImpl>;
 	swapchainView: uint32;
 }
@@ -311,6 +320,8 @@ struct ViewSlot {
 	renderTarget: Ptr<D3dRtvImpl>;
 	depthStencil: Ptr<D3dDsvImpl>;
 	swapchainResolve: Ptr<D3dRtvImpl>;
+	baseMip: int32;
+	baseLayer: int32;
 	swapchain: boolean;
 }
 
@@ -706,6 +717,8 @@ function blendFactor(factor: string, alpha: boolean, member: string): int32 {
 		"dst-alpha" => BLEND_DEST_ALPHA,
 		"one-minus-dst-alpha" => BLEND_INV_DEST_ALPHA,
 		"src-alpha-saturated" => BLEND_SRC_ALPHA_SAT,
+		"constant" => BLEND_BLEND_FACTOR,
+		"one-minus-constant" => BLEND_INV_BLEND_FACTOR,
 		_ => stopOnMember(member, factor),
 	};
 }
@@ -1075,6 +1088,18 @@ function writableBuffer(id: uint32, offset: int64, bytes: int64): int32 {
 	return index;
 }
 
+function mipLevelCountOf(descriptor: GPUTextureDescriptor, volume: boolean, layers: int32): int32 {
+	const requested = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
+	let largest = Math.max(descriptor.size.width, descriptor.size.height);
+	if (volume) { largest = Math.max(largest, layers); }
+	let possible = 1;
+	while ((largest >> possible) > 0) { possible += 1; }
+	if (requested < 1 || requested > possible) {
+		stop(`GPUTextureDescriptor.mipLevelCount ${requested} is outside 1..${possible} for a ${descriptor.size.width}x${descriptor.size.height} texture`);
+	}
+	return requested;
+}
+
 export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const id = allocateId(textureQueue, "texture");
 	if (id == 0) { return { id: 0 }; }
@@ -1082,10 +1107,18 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const width = descriptor.size.width;
 	const height = descriptor.size.height;
 	if (width <= 0 || height <= 0) { stop("GPUTextureDescriptor.size needs a positive width and height"); }
-	stopOnUnportedTexture("d3d11", descriptor);
+	const dimension: string = descriptor.dimension;
+	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
+	const volume = dimension == "3d";
+	if (descriptor.size.depthOrArrayLayers < 0) { stop("GPUTextureDescriptor.size.depthOrArrayLayers is negative"); }
+	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
+	const mipLevels = mipLevelCountOf(descriptor, volume, layers);
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
+	}
+	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
+		stop("a multisampled texture with mips, array layers or a 3d dimension is not ported to d3d11 yet");
 	}
 	const usage = descriptor.usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
@@ -1094,19 +1127,29 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		stop("COPY_DST with RENDER_ATTACHMENT has no Void caller: a multisampled target takes no UpdateSubresource");
 	}
 	if (sampleCount > 1 && !attachment) { stop("a multisampled texture must be a RENDER_ATTACHMENT"); }
+	if (volume && (attachment || info.depth)) { stop("a 3d texture as RENDER_ATTACHMENT or with a depth format is not ported to d3d11 yet"); }
+	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
 	let bindFlags = BIND_SHADER_RESOURCE;
 	if (attachment) { bindFlags |= info.depth ? BIND_DEPTH_STENCIL : BIND_RENDER_TARGET; }
-	const native = d3dCreateTexture2D(
-		device,
-		width,
-		height,
-		info.texture,
-		USAGE_DEFAULT,
-		bindFlags,
-		0,
-		sampleCount,
-	);
-	if (native == null) { stop(`CreateTexture2D failed for ${labelOf(descriptor.label)}`); }
+	let native = NO_TEXTURE;
+	if (volume) {
+		native = d3dCreateTexture3D(device, width, height, layers, mipLevels, info.texture, USAGE_DEFAULT, bindFlags);
+	} else {
+		native = d3dCreateTexture2D(
+			device,
+			width,
+			height,
+			mipLevels,
+			layers,
+			cube ? 1 : 0,
+			info.texture,
+			USAGE_DEFAULT,
+			bindFlags,
+			0,
+			sampleCount,
+		);
+	}
+	if (native == null) { stop(`CreateTexture failed for ${labelOf(descriptor.label)}`); }
 	const slot: TextureSlot = {
 		id: id,
 		width: width,
@@ -1114,6 +1157,10 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		format: descriptor.format,
 		usage: usage,
 		sampleCount: sampleCount,
+		mipLevels: mipLevels,
+		layers: layers,
+		volume: volume,
+		cube: cube,
 		native: native,
 		swapchainView: 0,
 	};
@@ -1151,33 +1198,74 @@ export function writeTexture<T>(
 		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
 	}
 	const bytesPerPixel = formatInfo(textures[index].format, "texture format").bytesPerPixel;
-	stopOnUnportedTexelWrite("d3d11", destination, size);
+	const mip = destination.mipLevel;
+	const mips = textures[index].mipLevels;
+	const volume = textures[index].volume;
+	const depth = volume && mip >= 0 && mip < mips ? Math.max(1, textures[index].layers >> mip) : textures[index].layers;
 	const rowPitch = checkedTexelWritePitch(
 		textures[index].width,
 		textures[index].height,
-		1,
-		1,
+		mips,
+		depth,
 		bytesPerPixel,
 		bytes,
 		destination,
 		layout,
 		size,
 	);
-	d3dUpdateTexture(
-		context,
-		textures[index].native,
-		data[0],
-		layout.offset,
-		rowPitch,
-		destination.origin.x,
-		destination.origin.y,
-		size.width,
-		size.height,
-	);
+	const imageBytes = (rowPitch as int64) * (layout.rowsPerImage as int64);
+	if (volume) {
+		d3dUpdateTexture(
+			context,
+			textures[index].native,
+			data[0],
+			layout.offset,
+			rowPitch,
+			rowPitch * layout.rowsPerImage,
+			mip,
+			destination.origin.x,
+			destination.origin.y,
+			destination.origin.z,
+			size.width,
+			size.height,
+			size.depthOrArrayLayers,
+		);
+		return;
+	}
+	for (let i = 0; i < size.depthOrArrayLayers; i++) {
+		d3dUpdateTexture(
+			context,
+			textures[index].native,
+			data[0],
+			layout.offset + imageBytes * (i as int64),
+			rowPitch,
+			0,
+			mip + (destination.origin.z + i) * mips,
+			destination.origin.x,
+			destination.origin.y,
+			0,
+			size.width,
+			size.height,
+			1,
+		);
+	}
+}
+
+function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {
+	let name: string = descriptor.dimension;
+	if (name == "") { name = textures[t].volume ? "3d" : (textures[t].layers > 1 ? "2d-array" : "2d"); }
+	if ((name == "3d") != textures[t].volume) {
+		stop(`GPUTextureViewDescriptor.dimension '${name}' does not match the ${textures[t].volume ? "3d" : "2d"} GPUTexture ${textures[t].id}`);
+	}
+	if (name == "2d") { return VIEW_2D; }
+	if (name == "2d-array") { return VIEW_2D_ARRAY; }
+	if (name == "cube") { return VIEW_CUBE; }
+	if (name == "cube-array") { return VIEW_CUBE_ARRAY; }
+	if (name == "3d") { return VIEW_3D; }
+	return stopOnMember("GPUTextureViewDescriptor.dimension", name);
 }
 
 export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
-	stopOnUnportedView("d3d11", descriptor);
 	const t = textureIndex(texture.id);
 	if (textures[t].swapchainView != 0) { return { id: textures[t].swapchainView }; }
 	const id = allocateId(viewQueue, "view");
@@ -1186,6 +1274,36 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	const multisampled = textures[t].sampleCount > 1 ? 1 : 0;
 	const usage = textures[t].usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
+	const layers = textures[t].layers;
+	const baseMip = descriptor.baseMipLevel;
+	const mipCount = descriptor.mipLevelCount == 0 ? textures[t].mipLevels - baseMip : descriptor.mipLevelCount;
+	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > textures[t].mipLevels) {
+		stop(`view mips ${baseMip}+${mipCount} overrun GPUTexture ${textures[t].id}, which has ${textures[t].mipLevels} mips`);
+	}
+	let dimension = viewDimensionOf(descriptor, t);
+	let baseLayer = descriptor.baseArrayLayer;
+	let layerCount = descriptor.arrayLayerCount;
+	if (dimension == VIEW_3D) {
+		if (baseLayer != 0 || layerCount > 1) { stop("a 3d view takes no baseArrayLayer or arrayLayerCount"); }
+		baseLayer = 0;
+		layerCount = 1;
+	} else {
+		if (dimension == VIEW_2D) { layerCount = 1; }
+		if (dimension == VIEW_CUBE) { layerCount = 6; }
+		if (layerCount == 0) { layerCount = layers - baseLayer; }
+		if (baseLayer < 0 || layerCount < 1 || baseLayer + layerCount > layers) {
+			stop(`view layers ${baseLayer}+${layerCount} overrun GPUTexture ${textures[t].id}, which has ${layers} layers`);
+		}
+	}
+	if (dimension == VIEW_CUBE || dimension == VIEW_CUBE_ARRAY) {
+		if (!textures[t].cube) {
+			stop(`a cube view needs GPUTexture ${textures[t].id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
+		}
+		if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
+		if (dimension == VIEW_CUBE && baseLayer != 0) { stop("a cube view at baseArrayLayer above 0 is not ported to d3d11 yet"); }
+	}
+	const attachable = mipCount == 1 && layerCount == 1 && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY);
+	const arrayed = layers > 1 ? 1 : 0;
 	let slot: ViewSlot = {
 		id: 0,
 		texture: texture.id,
@@ -1193,19 +1311,22 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		renderTarget: NO_RTV,
 		depthStencil: NO_DSV,
 		swapchainResolve: NO_RTV,
+		baseMip: baseMip,
+		baseLayer: baseLayer,
 		swapchain: false,
 	};
 	const native = textures[t].native;
 	if (has(usage, GPUTextureUsage.TEXTURE_BINDING as int32)) {
-		slot.shaderResource = d3dCreateSrv(device, native, info.shaderResource, multisampled);
+		if (dimension == VIEW_2D && baseLayer > 0) { dimension = VIEW_2D_ARRAY; }
+		slot.shaderResource = d3dCreateSrv(device, native, info.shaderResource, multisampled, dimension, baseMip, mipCount, baseLayer, layerCount);
 		if (slot.shaderResource == null) { stop(`CreateShaderResourceView failed for ${labelOf(descriptor.label)}`); }
 	}
-	if (attachment && !info.depth) {
-		slot.renderTarget = d3dCreateRtv(device, native, info.renderTarget, multisampled);
+	if (attachment && attachable && !info.depth) {
+		slot.renderTarget = d3dCreateRtv(device, native, info.renderTarget, multisampled, arrayed, baseMip, baseLayer);
 		if (slot.renderTarget == null) { stop(`CreateRenderTargetView failed for ${labelOf(descriptor.label)}`); }
 	}
-	if (attachment && info.depth) {
-		slot.depthStencil = d3dCreateDsv(device, native, info.depthStencil, multisampled);
+	if (attachment && attachable && info.depth) {
+		slot.depthStencil = d3dCreateDsv(device, native, info.depthStencil, multisampled, arrayed, baseMip, baseLayer);
 		if (slot.depthStencil == null) { stop(`CreateDepthStencilView failed for ${labelOf(descriptor.label)}`); }
 	}
 	slot.id = id;
@@ -1646,7 +1767,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		const v = viewIndex(viewId);
 		if (views[v].renderTarget == null) { stop(`colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`); }
 		targets[i] = views[v].renderTarget;
-		passExtent(views[v].texture);
+		passExtent(views[v].texture, views[v].baseMip);
 		pass.colorViews[i] = viewId;
 		pass.resolveViews[i] = checkResolve(i, views[v].texture, descriptor.colorAttachments[i].resolveTarget.id);
 		checkStoreOp(descriptor.colorAttachments[i].storeOp, `colorAttachments[${i}].storeOp`);
@@ -1658,7 +1779,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		const v = viewIndex(depthView);
 		if (views[v].depthStencil == null) { stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"); }
 		depth = views[v].depthStencil;
-		passExtent(views[v].texture);
+		passExtent(views[v].texture, views[v].baseMip);
 		depthStencil = formatInfo(textures[textureIndex(views[v].texture)].format, "depth format").stencil;
 		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, "depthStencilAttachment.depthStoreOp");
 	}
@@ -1688,12 +1809,14 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	return { id: 1 };
 }
 
-function passExtent(texture: uint32): void {
+function passExtent(texture: uint32, baseMip: int32): void {
 	const t = textureIndex(texture);
+	const width = Math.max(1, textures[t].width >> baseMip);
+	const height = Math.max(1, textures[t].height >> baseMip);
 	if (pass.width == 0) {
-		pass.width = textures[t].width;
-		pass.height = textures[t].height;
-	} else if (pass.width != textures[t].width || pass.height != textures[t].height) {
+		pass.width = width;
+		pass.height = height;
+	} else if (pass.width != width || pass.height != height) {
 		stop("render pass attachments differ in size");
 	}
 }
@@ -1702,6 +1825,9 @@ function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32
 	if (resolveId == 0) { return 0; }
 	const r = viewIndex(resolveId);
 	const resolveTexture = textureIndex(views[r].texture);
+	if (views[r].baseMip != 0 || views[r].baseLayer != 0) {
+		stop(`colorAttachments[${attachment}].resolveTarget at baseMipLevel or baseArrayLayer above 0 is not ported to d3d11 yet`);
+	}
 	if (textures[textureIndex(colorTexture)].sampleCount == 1) {
 		stop(`colorAttachments[${attachment}].resolveTarget needs a multisampled view`);
 	}

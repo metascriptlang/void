@@ -89,6 +89,9 @@ D3dTexture d3dCreateTexture2D(
 	D3dDevice device,
 	int32_t width,
 	int32_t height,
+	int32_t mipLevels,
+	int32_t arraySize,
+	int32_t cube,
 	int32_t format,
 	int32_t usage,
 	int32_t bindFlags,
@@ -97,20 +100,43 @@ D3dTexture d3dCreateTexture2D(
 	D3D11_TEXTURE2D_DESC desc = {0};
 	desc.Width = (UINT)width;
 	desc.Height = (UINT)height;
-	desc.MipLevels = 1;
-	desc.ArraySize = 1;
+	desc.MipLevels = (UINT)mipLevels;
+	desc.ArraySize = (UINT)arraySize;
 	desc.Format = (DXGI_FORMAT)format;
 	desc.BindFlags = (UINT)bindFlags;
 	desc.Usage = (D3D11_USAGE)usage;
 	desc.CPUAccessFlags = (UINT)cpuAccess;
 	desc.SampleDesc.Count = (UINT)sampleCount;
 	desc.SampleDesc.Quality = sampleCount > 1 ? (UINT)D3D11_STANDARD_MULTISAMPLE_PATTERN : 0;
+	desc.MiscFlags = cube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0;
 	ID3D11Texture2D *texture = NULL;
 	HRESULT hr = ID3D11Device_CreateTexture2D(DEVICE(device), &desc, NULL, &texture);
 	return SUCCEEDED(hr) ? (D3dTexture)texture : NULL;
 }
 
-void d3dReleaseTexture(D3dTexture texture) { if (texture) ID3D11Texture2D_Release((ID3D11Texture2D *)texture); }
+D3dTexture d3dCreateTexture3D(
+	D3dDevice device,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t mipLevels,
+	int32_t format,
+	int32_t usage,
+	int32_t bindFlags) {
+	D3D11_TEXTURE3D_DESC desc = {0};
+	desc.Width = (UINT)width;
+	desc.Height = (UINT)height;
+	desc.Depth = (UINT)depth;
+	desc.MipLevels = (UINT)mipLevels;
+	desc.Format = (DXGI_FORMAT)format;
+	desc.BindFlags = (UINT)bindFlags;
+	desc.Usage = (D3D11_USAGE)usage;
+	ID3D11Texture3D *texture = NULL;
+	HRESULT hr = ID3D11Device_CreateTexture3D(DEVICE(device), &desc, NULL, &texture);
+	return SUCCEEDED(hr) ? (D3dTexture)texture : NULL;
+}
+
+void d3dReleaseTexture(D3dTexture texture) { if (texture) IUnknown_Release((IUnknown *)texture); }
 
 void d3dUpdateTexture(
 	D3dContext context,
@@ -118,41 +144,95 @@ void d3dUpdateTexture(
 	void *data,
 	int64_t offset,
 	int32_t sourceRowPitch,
+	int32_t sourceDepthPitch,
+	int32_t subresource,
 	int32_t x,
 	int32_t y,
+	int32_t z,
 	int32_t width,
-	int32_t height) {
-	D3D11_BOX box = { (UINT)x, (UINT)y, 0, (UINT)(x + width), (UINT)(y + height), 1 };
-	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)texture, 0, &box, (const uint8_t *)data + offset, (UINT)sourceRowPitch, 0);
+	int32_t height,
+	int32_t depth) {
+	D3D11_BOX box = { (UINT)x, (UINT)y, (UINT)z, (UINT)(x + width), (UINT)(y + height), (UINT)(z + depth) };
+	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)texture, (UINT)subresource, &box, (const uint8_t *)data + offset, (UINT)sourceRowPitch, (UINT)sourceDepthPitch);
 }
 
-D3dSrv d3dCreateSrv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled) {
+D3dSrv d3dCreateSrv(
+	D3dDevice device,
+	D3dTexture texture,
+	int32_t format,
+	int32_t multisampled,
+	int32_t dimension,
+	int32_t baseMip,
+	int32_t mipCount,
+	int32_t baseLayer,
+	int32_t layerCount) {
 	D3D11_SHADER_RESOURCE_VIEW_DESC desc = {0};
 	desc.Format = (DXGI_FORMAT)format;
 	if (multisampled) {
 		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMS;
-	} else {
+	} else if (dimension == 0) {
 		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-		desc.Texture2D.MipLevels = 1;
+		desc.Texture2D.MostDetailedMip = (UINT)baseMip;
+		desc.Texture2D.MipLevels = (UINT)mipCount;
+	} else if (dimension == 1) {
+		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MostDetailedMip = (UINT)baseMip;
+		desc.Texture2DArray.MipLevels = (UINT)mipCount;
+		desc.Texture2DArray.FirstArraySlice = (UINT)baseLayer;
+		desc.Texture2DArray.ArraySize = (UINT)layerCount;
+	} else if (dimension == 2) {
+		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+		desc.TextureCube.MostDetailedMip = (UINT)baseMip;
+		desc.TextureCube.MipLevels = (UINT)mipCount;
+	} else if (dimension == 3) {
+		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY;
+		desc.TextureCubeArray.MostDetailedMip = (UINT)baseMip;
+		desc.TextureCubeArray.MipLevels = (UINT)mipCount;
+		desc.TextureCubeArray.First2DArrayFace = (UINT)baseLayer;
+		desc.TextureCubeArray.NumCubes = (UINT)(layerCount / 6);
+	} else {
+		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE3D;
+		desc.Texture3D.MostDetailedMip = (UINT)baseMip;
+		desc.Texture3D.MipLevels = (UINT)mipCount;
 	}
 	ID3D11ShaderResourceView *view = NULL;
 	HRESULT hr = ID3D11Device_CreateShaderResourceView(DEVICE(device), (ID3D11Resource *)texture, &desc, &view);
 	return SUCCEEDED(hr) ? (D3dSrv)view : NULL;
 }
 
-D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled) {
+D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer) {
 	D3D11_RENDER_TARGET_VIEW_DESC desc = {0};
 	desc.Format = (DXGI_FORMAT)format;
-	desc.ViewDimension = multisampled ? D3D11_RTV_DIMENSION_TEXTURE2DMS : D3D11_RTV_DIMENSION_TEXTURE2D;
+	if (multisampled) {
+		desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+	} else if (arrayed) {
+		desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MipSlice = (UINT)mip;
+		desc.Texture2DArray.FirstArraySlice = (UINT)layer;
+		desc.Texture2DArray.ArraySize = 1;
+	} else {
+		desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipSlice = (UINT)mip;
+	}
 	ID3D11RenderTargetView *view = NULL;
 	HRESULT hr = ID3D11Device_CreateRenderTargetView(DEVICE(device), (ID3D11Resource *)texture, &desc, &view);
 	return SUCCEEDED(hr) ? (D3dRtv)view : NULL;
 }
 
-D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled) {
+D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer) {
 	D3D11_DEPTH_STENCIL_VIEW_DESC desc = {0};
 	desc.Format = (DXGI_FORMAT)format;
-	desc.ViewDimension = multisampled ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
+	if (multisampled) {
+		desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+	} else if (arrayed) {
+		desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MipSlice = (UINT)mip;
+		desc.Texture2DArray.FirstArraySlice = (UINT)layer;
+		desc.Texture2DArray.ArraySize = 1;
+	} else {
+		desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipSlice = (UINT)mip;
+	}
 	ID3D11DepthStencilView *view = NULL;
 	HRESULT hr = ID3D11Device_CreateDepthStencilView(DEVICE(device), (ID3D11Resource *)texture, &desc, &view);
 	return SUCCEEDED(hr) ? (D3dDsv)view : NULL;

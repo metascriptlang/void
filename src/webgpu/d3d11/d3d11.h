@@ -37,11 +37,23 @@ D3dTexture d3dCreateTexture2D(
 	D3dDevice device,
 	int32_t width,
 	int32_t height,
+	int32_t mipLevels,
+	int32_t arraySize,
+	int32_t cube,
 	int32_t format,
 	int32_t usage,
 	int32_t bindFlags,
 	int32_t cpuAccess,
 	int32_t sampleCount);
+D3dTexture d3dCreateTexture3D(
+	D3dDevice device,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t mipLevels,
+	int32_t format,
+	int32_t usage,
+	int32_t bindFlags);
 void d3dReleaseTexture(D3dTexture texture);
 void d3dUpdateTexture(
 	D3dContext context,
@@ -49,13 +61,26 @@ void d3dUpdateTexture(
 	void *data,
 	int64_t offset,
 	int32_t sourceRowPitch,
+	int32_t sourceDepthPitch,
+	int32_t subresource,
 	int32_t x,
 	int32_t y,
+	int32_t z,
 	int32_t width,
-	int32_t height);
-D3dSrv d3dCreateSrv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled);
-D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled);
-D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled);
+	int32_t height,
+	int32_t depth);
+D3dSrv d3dCreateSrv(
+	D3dDevice device,
+	D3dTexture texture,
+	int32_t format,
+	int32_t multisampled,
+	int32_t dimension,
+	int32_t baseMip,
+	int32_t mipCount,
+	int32_t baseLayer,
+	int32_t layerCount);
+D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer);
+D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer);
 void d3dReleaseSrv(D3dSrv view);
 void d3dReleaseRtv(D3dRtv view);
 void d3dReleaseDsv(D3dDsv view);
