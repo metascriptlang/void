@@ -255,8 +255,46 @@ export struct GPURenderPassDescriptor {
 	depthStencilAttachment: GPURenderPassDepthStencilAttachment;
 }
 
-export struct GPUTexelCopyTextureInfo { texture: GPUTexture; }
+export struct GPUOrigin3D { x: int32; y: int32; z: int32; }
+export struct GPUTexelCopyTextureInfo { texture: GPUTexture; mipLevel: int32; origin: GPUOrigin3D; }
 export struct GPUTexelCopyBufferLayout { offset: int64; bytesPerRow: int32; rowsPerImage: int32; }
+
+function stop(message: string): void {
+	console.log(`webgpu: ${message}`);
+	unreachable;
+}
+
+export function checkedTexelWritePitch(
+	width: int32,
+	height: int32,
+	bytesPerPixel: int32,
+	dataBytes: int64,
+	destination: GPUTexelCopyTextureInfo,
+	layout: GPUTexelCopyBufferLayout,
+	size: GPUExtent3D,
+): int32 {
+	const id = destination.texture.id;
+	const origin = destination.origin;
+	if (destination.mipLevel != 0) { stop(`writeTexture destination.mipLevel ${destination.mipLevel} of GPUTexture ${id}, which has one mip`); }
+	if (origin.z != 0 || size.depthOrArrayLayers != 1) {
+		stop(`writeTexture origin.z ${origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers} of GPUTexture ${id}, which has one layer`);
+	}
+	if (size.width <= 0 || size.height <= 0) { stop(`writeTexture size ${size.width}x${size.height} needs a positive width and height`); }
+	if (origin.x < 0 || origin.y < 0 || origin.x + size.width > width || origin.y + size.height > height) {
+		stop(`writeTexture of ${size.width}x${size.height} at origin ${origin.x},${origin.y} overruns GPUTexture ${id} of ${width}x${height}`);
+	}
+	const rowBytes = size.width * bytesPerPixel;
+	const bytesPerRow = layout.bytesPerRow == 0 ? rowBytes : layout.bytesPerRow;
+	if (bytesPerRow < rowBytes) { stop(`writeTexture bytesPerRow ${bytesPerRow} is below a row of ${rowBytes}`); }
+	if (bytesPerRow % bytesPerPixel != 0) {
+		stop(`writeTexture bytesPerRow ${bytesPerRow} is not a whole number of ${bytesPerPixel}-byte texels`);
+	}
+	const needed = layout.offset + (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
+	if (layout.offset < 0 || needed > dataBytes) {
+		stop(`writeTexture needs ${needed} bytes of data and was given ${dataBytes}`);
+	}
+	return bytesPerRow;
+}
 
 // What sokol's sg_query_features/limits/stats answered for Void (inventory E).
 export struct GPUAdapterInfo {

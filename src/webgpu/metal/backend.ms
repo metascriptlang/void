@@ -34,6 +34,7 @@ import {
 	GPUShaderModuleDescriptor,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
+	checkedTexelWritePitch,
 	GPUTexture,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
@@ -905,7 +906,7 @@ export function writeTexture<T>(
 ): void {
 	const index = textureIndex(destination.texture.id);
 	const bytes = (data.length as int64) * (sizeof T as int64);
-	const rowPitch = textureCopyPitch(index, bytes, layout, size);
+	const rowPitch = textureCopyPitch(index, bytes, destination, layout, size);
 	beginFrame();
 	if (textures[index].writtenFrame == frame) {
 		stop(`writeTexture twice in one frame on GPUTexture ${destination.texture.id} (sokol allows one update per frame)`);
@@ -927,21 +928,22 @@ function nextTextureCopy(index: int32): void {
 	bound.resourcesDirty = true;
 }
 
-function textureCopyPitch(index: int32, bytes: int64, layout: GPUTexelCopyBufferLayout, size: GPUExtent3D): int32 {
+function textureCopyPitch(
+	index: int32,
+	bytes: int64,
+	destination: GPUTexelCopyTextureInfo,
+	layout: GPUTexelCopyBufferLayout,
+	size: GPUExtent3D,
+): int32 {
 	const width = textures[index].width;
 	const height = textures[index].height;
 	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
 		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
 	}
-	if (size.width != width || size.height != height || size.depthOrArrayLayers > 1) {
-		stop("writeTexture covers the whole texture on Metal, which moves it to its next copy (sokol _sg_mtl_update_image)");
-	}
-	const rowBytes = width * formatInfo(textures[index].format, "texture format").bytesPerPixel;
-	const rowPitch = layout.bytesPerRow == 0 ? rowBytes : layout.bytesPerRow;
-	if (rowPitch < rowBytes) { stop(`writeTexture bytesPerRow ${rowPitch} is below a row of ${rowBytes}`); }
-	const needed = layout.offset + (rowPitch as int64) * ((height - 1) as int64) + (rowBytes as int64);
-	if (layout.offset < 0 || needed > bytes) {
-		stop(`writeTexture needs ${needed} bytes of data and was given ${bytes}`);
+	const bytesPerPixel = formatInfo(textures[index].format, "texture format").bytesPerPixel;
+	const rowPitch = checkedTexelWritePitch(width, height, bytesPerPixel, bytes, destination, layout, size);
+	if (destination.origin.x != 0 || destination.origin.y != 0 || size.width != width || size.height != height) {
+		stop(`writeTexture of ${size.width}x${size.height} at origin ${destination.origin.x},${destination.origin.y} on GPUTexture ${textures[index].id}: Metal writes the whole texture only`);
 	}
 	return rowPitch;
 }
