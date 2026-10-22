@@ -198,6 +198,7 @@ export enum PixelArtError {
 	SkinPose,
 	DrawRange,
 	CameraPosition,
+	MeshWrite,
 	RampLevels,
 	BlendedOpaque,
 	TranslucentDepthWrite,
@@ -685,6 +686,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.SkinPose => PixelArtError.SkinPose,
 		RendererError.DrawRange => PixelArtError.DrawRange,
 		RendererError.CameraPosition => PixelArtError.CameraPosition,
+		RendererError.MeshWrite => PixelArtError.MeshWrite,
 	};
 }
 

@@ -77,6 +77,7 @@ import {
 	buryDoomed,
 	rebuildMeshes,
 	rebuildTextures,
+	uploadDirtyMeshes,
 	reserveUniforms,
 	writeUniforms,
 	drawItem,
@@ -166,6 +167,7 @@ export enum RendererError {
 	SkinPose,
 	DrawRange,
 	CameraPosition,
+	MeshWrite,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -467,6 +469,7 @@ export function beginFrame(
 		renderer.generation = generation;
 		renderer.changed = true;
 	}
+	if (!uploadDirtyMeshes(context).ok) { return Result.err(RendererError.MeshWrite); }
 	collect(renderer.opaque, items, context.materials);
 	collect(renderer.alpha, items, context.materials);
 	collect(renderer.additive, items, context.materials);

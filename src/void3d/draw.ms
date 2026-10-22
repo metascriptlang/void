@@ -234,6 +234,7 @@ export interface DrawContext {
 	meshHolders: Vec<int32>;
 	meshPins: Vec<int32>;
 	meshTally: Vec<int32>;
+	meshStorage: Vec<VertexStorage>;
 	materials: Vec<Material>;
 	materialSlots: Slots;
 	materialHolders: Vec<int32>;
@@ -257,6 +258,24 @@ export interface DrawContext {
 	bindings: Vec<uint32>;
 	model: Vec<float32>;
 	closed: boolean;
+}
+
+// How a mesh's vertex buffer is written. A Dynamic buffer is one update per frame away from its
+// CPU data (`setMeshVertices`, `uploadDirtyMeshes`); Pending means the CPU data is newer than the
+// buffer, and drawing such a mesh is refused rather than shown stale.
+export enum VertexStorage {
+	Immutable,
+	Dynamic,
+	Pending,
+}
+
+export enum MeshWriteError {
+	StaleMesh,
+	ForeignMesh,
+	NotDynamic,
+	Shape,
+	BufferRefused,
+	WrittenThisFrame,
 }
 
 export enum MeshUploadError {
@@ -322,6 +341,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		meshHolders: [],
 		meshPins: [],
 		meshTally: [],
+		meshStorage: [],
 		materials: [],
 		materialSlots: Slots.empty(),
 		materialHolders: [],
@@ -399,12 +419,14 @@ function newMesh(context: DrawContext, mesh: GpuMesh, data: MeshData): MeshId {
 		context.meshHolders.push(1);
 		context.meshPins.push(0);
 		context.meshTally.push(0);
+		context.meshStorage.push(VertexStorage.Immutable);
 	} else {
 		context.meshes[index] = mesh;
 		context.meshData[index] = data;
 		context.meshHolders[index] = 1;
 		context.meshPins[index] = 0;
 		context.meshTally[index] = 0;
+		context.meshStorage[index] = VertexStorage.Immutable;
 	}
 	return {
 		store: context.serial,
@@ -564,7 +586,11 @@ function uploadMesh(context: DrawContext, index: int32): Result<int32, MeshUploa
 		context.meshes[index] = context.meshes[index].drawsNothing();
 		return Result.err(MeshUploadError.EmptyMesh);
 	}
-	const vertexBuffer: uint32 = makeVertexBuffer(context.meshData[index].vertices);
+	const dynamic: boolean = context.meshStorage[index] != VertexStorage.Immutable;
+	const vertexBuffer: uint32 = dynamic
+		? makeStreamBuffer(context.meshData[index].vertices.length as int32)
+		: makeVertexBuffer(context.meshData[index].vertices);
+	if (dynamic) { context.meshStorage[index] = VertexStorage.Pending; }
 	let indexBuffer: uint32 = 0;
 	if (context.meshData[index].isIndexed()) {
 		if (context.meshData[index].wideIndices !== null) {
@@ -606,6 +632,83 @@ export function addMeshData(
 		return Result.err(uploaded.error);
 	}
 	return Result.ok(id);
+}
+
+// A mesh whose vertices an app rewrites after the upload (morph targets). The buffer is made
+// empty and filled by the first `uploadDirtyMeshes`, because a dynamic sokol buffer takes no
+// initial data and one update per frame; until then the mesh is Pending and refuses to draw.
+// A lost context remakes it the same way, from the current CPU data.
+export function addDynamicMeshData(
+	context: DrawContext,
+	data: MeshData,
+): Result<MeshId, MeshUploadError> {
+	if (context.closed) { stopOnClosedContext("addDynamicMeshData"); }
+	if (!data.validIndexStorage()) { return Result.err(MeshUploadError.InvalidIndices); }
+	const id: MeshId = newMesh(context, data.meshFor(0, 0, 0), data);
+	context.meshStorage[id.index] = VertexStorage.Pending;
+	const uploaded: Result<int32, MeshUploadError> = uploadMesh(context, id.index);
+	if (!uploaded.ok) {
+		freeMesh(context, id.index);
+		return Result.err(uploaded.error);
+	}
+	return Result.ok(id);
+}
+
+// The CPU half of a dynamic mesh's update: the mesh keeps `source`'s vertices and bounds, so
+// bounds, picking, culling and a context rebuild all read what the next upload writes. The
+// indices and the vertex format cannot change.
+export function setMeshVertices(
+	context: DrawContext,
+	id: MeshId,
+	source: Readonly<MeshData>,
+): Result<int32, MeshWriteError> {
+	if (context.closed) { stopOnClosedContext("setMeshVertices"); }
+	if (!context.hasMesh(id)) {
+		return Result.err(context.issuedMesh(id) ? MeshWriteError.StaleMesh : MeshWriteError.ForeignMesh);
+	}
+	const index: int32 = id.index;
+	if (context.meshStorage[index] == VertexStorage.Immutable) {
+		return Result.err(MeshWriteError.NotDynamic);
+	}
+	if (context.meshData[index].vertices.length != source.vertices.length ||
+		context.meshData[index].indexCount() != source.indexCount() ||
+		context.meshData[index].hasUvs != source.hasUvs ||
+		context.meshData[index].hasTangents != source.hasTangents ||
+		context.meshData[index].hasSkin != source.hasSkin) {
+		return Result.err(MeshWriteError.Shape);
+	}
+	for (let i = 0; i < source.vertices.length; i++) {
+		context.meshData[index].vertices[i] = source.vertices[i];
+	}
+	context.meshData[index].bounds = source.bounds;
+	context.meshStorage[index] = VertexStorage.Pending;
+	return Result.ok(source.vertexCount());
+}
+
+// The GPU half: writes every Pending mesh's vertices into its buffer and answers how many;
+// renderer.ms beginFrame calls it after the scene refresh and before the first pass.
+export function uploadDirtyMeshes(context: DrawContext): Result<int32, MeshWriteError> {
+	if (context.closed) { stopOnClosedContext("uploadDirtyMeshes"); }
+	let written: int32 = 0;
+	for (let i = 0; i < (context.meshes.length as int32); i++) {
+		if (context.meshHolders[i] == 0 || context.meshStorage[i] != VertexStorage.Pending) {
+			continue;
+		}
+		if (context.meshes[i].isStale(contextGeneration())) {
+			if (!uploadMesh(context, i).ok) { return Result.err(MeshWriteError.BufferRefused); }
+		}
+		const frame: uint32 = frameIndex();
+		if (context.meshes[i].writtenFrame == frame) {
+			return Result.err(MeshWriteError.WrittenThisFrame);
+		}
+		if (!updateBuffer(context.meshes[i].vertexBuffer, context.meshData[i].vertices)) {
+			return Result.err(MeshWriteError.BufferRefused);
+		}
+		context.meshes[i].writtenFrame = frame;
+		context.meshStorage[i] = VertexStorage.Dynamic;
+		written = written + 1;
+	}
+	return Result.ok(written);
 }
 
 export const STREAM_INSTANCE_STRIDE: int32 = 8;
@@ -790,6 +893,7 @@ function freeMesh(context: DrawContext, index: int32): void {
 	context.meshes[index] = VACANT_MESH;
 	context.meshData[index] = MeshData.empty();
 	context.meshHolders[index] = 0;
+	context.meshStorage[index] = VertexStorage.Immutable;
 	vacate(context.meshSlots, index);
 }
 
@@ -1574,6 +1678,11 @@ export function drawItemWith(
 		unreachable;
 	}
 	if (mesh.hasNothingToDraw()) { return; }
+	if (context.meshStorage[item.mesh.index] == VertexStorage.Pending) {
+		console.log("void3d: drawItem on a dynamic mesh whose vertices were not uploaded; " +
+			"beginFrame uploads them, so this frame changed the mesh after it began");
+		unreachable;
+	}
 	const declared: TextureAlpha = material.program.premultiplied ?
 		TextureAlpha.Premultiplied : TextureAlpha.Straight;
 	// Depth has no colour to premultiply, and the alpha a caster cuts by is the same either way.

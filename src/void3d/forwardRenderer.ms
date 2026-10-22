@@ -119,6 +119,7 @@ export enum ForwardError {
 	SkinPose,
 	DrawRange,
 	CameraPosition,
+	MeshWrite,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
@@ -261,6 +262,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.SkinPose => ForwardError.SkinPose,
 		RendererError.DrawRange => ForwardError.DrawRange,
 		RendererError.CameraPosition => ForwardError.CameraPosition,
+		RendererError.MeshWrite => ForwardError.MeshWrite,
 	};
 }
 
