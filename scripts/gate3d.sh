@@ -1107,21 +1107,21 @@ check_array_copies() {
 		fn=${entry#*:}
 		emitted=$({ ls out/debug/*srcZvoid3dZ${module}Oms.c; ls out/debug/*srcZgpuZ${module}Oms.c;
 			ls out/debug/*srcZexamplesZ${module}Oms.c; } 2>/dev/null | head -1)
-		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
+		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__.*{[[:space:]]*$" "$emitted"; then
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1
 		fi
-		body=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted")
+		body=$(awk "/^[a-zA-Z_].*\y${fn}__.*\{[ \t]*\$/,/^}/" "$emitted")
 		found=""
 		for copyName in $(echo "$body" | grep -oE '[A-Za-z0-9_]*Copy(__M[A-Za-z0-9_]+)?\(' |
-			sed -E 's/^(.*)__M.*Z([A-Za-z0-9]+)O[a-z]+(_v[0-9]+)?Copy\($/\2:\1/;s/(__M[A-Za-z0-9_]+)?\($//'); do
+			sed -E 's/^(.*)__M?.*Z([A-Za-z0-9]+)O[a-z]+(_v[0-9]+)?Copy\($/\2:\1/;s/(__M[A-Za-z0-9_]+)?\($//'); do
 			case " $VEC_FREE_COPIES " in
 			*" $copyName "*) ;;
 			*) found="$found $copyName" ;;
 			esac
 		done
 		[ -n "$found" ] && offenders="$offenders ${fn}=$(echo $found | tr ' ' ',')"
-		strings=$(echo "$body" | grep -cE 'msStringConcat|msNumberToString|toString__M' || true)
+		strings=$(echo "$body" | grep -cE 'msStringConcat|msNumberToString|toString__' || true)
 		[ "$strings" -gt 0 ] && builders="$builders ${fn}=${strings}"
 	done
 	if [ -n "$offenders" ]; then
