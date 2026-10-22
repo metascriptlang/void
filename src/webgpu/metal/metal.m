@@ -9,6 +9,7 @@
 #endif
 
 static dispatch_semaphore_t s_frames;
+static int32_t s_framesInFlight;
 static char s_log[4096];
 static MTLRenderPipelineDescriptor *s_pipeline;
 static MTLRenderPassDescriptor *s_pass;
@@ -45,11 +46,12 @@ void *mtlQueueNative(MtlQueue queue) { return queue; }
 void mtlFrameSemaphoreCreate(int32_t framesInFlight) {
 	if (s_frames) dispatch_release(s_frames);
 	s_frames = dispatch_semaphore_create(framesInFlight);
+	s_framesInFlight = framesInFlight;
 }
 
-void mtlFrameSemaphoreWaitAll(int32_t framesInFlight) {
-	for (int32_t i = 0; i < framesInFlight; i++) dispatch_semaphore_wait(s_frames, DISPATCH_TIME_FOREVER);
-	for (int32_t i = 0; i < framesInFlight; i++) dispatch_semaphore_signal(s_frames);
+void mtlFrameSemaphoreWaitAll(void) {
+	for (int32_t i = 0; i < s_framesInFlight; i++) dispatch_semaphore_wait(s_frames, DISPATCH_TIME_FOREVER);
+	for (int32_t i = 0; i < s_framesInFlight; i++) dispatch_semaphore_signal(s_frames);
 }
 
 MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue) {

@@ -24,7 +24,7 @@ void *mtlTextureNative(MtlTexture texture);
 void *mtlQueueNative(MtlQueue queue);
 
 void mtlFrameSemaphoreCreate(int32_t framesInFlight);
-void mtlFrameSemaphoreWaitAll(int32_t framesInFlight);
+void mtlFrameSemaphoreWaitAll(void);
 MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue);
 void mtlCommit(MtlCommandBuffer commandBuffer);
 

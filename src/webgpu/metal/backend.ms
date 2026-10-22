@@ -709,7 +709,7 @@ export function shutdown(): void {
 		mtlCommit(commandBuffer);
 		commandBuffer = NO_COMMAND_BUFFER;
 	}
-	mtlFrameSemaphoreWaitAll(FRAMES_IN_FLIGHT);
+	mtlFrameSemaphoreWaitAll();
 	for (let i = 1; i < bindGroups.length; i++) {
 		if (bindGroups[i].id != 0) { destroyBindGroup({ id: bindGroups[i].id }); }
 	}
