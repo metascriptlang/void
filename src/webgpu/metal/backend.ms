@@ -20,6 +20,10 @@ import {
 	GPUColorWrite,
 	GPUCommandBuffer,
 	GPUCommandEncoder,
+	GPUQuerySet,
+	GPUQuerySetDescriptor,
+	GPUSupportedFeatures,
+	GPUSupportedLimits,
 	GPUComputePassDescriptor,
 	GPUComputePassEncoder,
 	GPUComputePipeline,
@@ -46,6 +50,7 @@ import {
 	stopOnUnportedPrimitive,
 	stopOnUnportedSampler,
 	stopOnUnportedTexelWrite,
+	stopOnUnportedRenderPass,
 	stopOnUnportedShaderModule,
 	stopOnUnportedTexture,
 	stopOnUnportedView,
@@ -1351,6 +1356,7 @@ function storeAction(storeOp: string, resolve: boolean, member: string): int32 {
 }
 
 export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+	stopOnUnportedRenderPass("metal", descriptor);
 	if (pass.active) { stop("beginRenderPass with a render pass already open"); }
 	pass = { active: true };
 	beginFrame();
@@ -1656,3 +1662,13 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void { stop("dispatchWorkgroups is not ported to metal yet"); }
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void { stop("dispatchWorkgroupsIndirect is not ported to metal yet"); }
 export function endComputePass(): void { stop("end on a compute pass is not ported to metal yet"); }
+export function limits(): GPUSupportedLimits { stop("limits is not ported to metal yet"); return {}; }
+export function features(): GPUSupportedFeatures { stop("features is not ported to metal yet"); return { bits: 0 }; }
+export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet { stop("GPUQuerySet is not ported to metal yet"); return { id: 0 }; }
+export function destroyQuerySet(querySet: GPUQuerySet): void { stop("GPUQuerySet is not ported to metal yet"); }
+export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void { stop("resolveQuerySet is not ported to metal yet"); }
+export function pushDebugGroup(label: string): void { stop("pushDebugGroup is not ported to metal yet"); }
+export function popDebugGroup(): void { stop("popDebugGroup is not ported to metal yet"); }
+export function insertDebugMarker(label: string): void { stop("insertDebugMarker is not ported to metal yet"); }
+export function beginOcclusionQuery(queryIndex: int32): void { stop("beginOcclusionQuery is not ported to metal yet"); }
+export function endOcclusionQuery(): void { stop("endOcclusionQuery is not ported to metal yet"); }
