@@ -230,7 +230,7 @@ reflectionOf() {
 
 # --ir writes the descriptor modules from the shader IR (tools/irPrograms.ms) into out/irModules
 # and compares their reflection with the committed sokol-shdc ones; the sources differ. The shdc
-# path stays the default until every target has a printer.
+# path stays the default until the printed sources have drawn on each backend.
 if [ "$IR" = 1 ]; then
 	ir="out/irModules"
 	"${MSC:-msc}" run tools/irPrograms.ms -- "$ir" --reflection-only 2> "$SCRATCH/ir.log" ||
