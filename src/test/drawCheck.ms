@@ -6,9 +6,9 @@
 import { IndexType } from "../gpu/pipeline";
 import { Vec3, vec3 } from "../math/math3d";
 import {
-	VertexLayout, layoutFloats, layoutPerInstance, drawsQuads, PARTICLE_INSTANCE_STRIDE,
-	PARTICLE_VISUAL_INSTANCE_STRIDE,
+	VertexLayout, layoutFloats, layoutPerInstance, drawsQuads,
 } from "../void3d/gpu3d";
+import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "../void3d/particleWriter";
 import {
 	MeshData,
 	MeshError,

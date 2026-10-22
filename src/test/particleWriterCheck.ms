@@ -6,9 +6,8 @@ import { constantCurve, constantColor, rgbaColor } from "../particles/curve";
 import { ParticleSystem, playSystem, updateSystem } from "../particles/system";
 import { TrailChains, buildTrails } from "../particles/trail";
 import { AtlasTile } from "../void3d/billboard";
-import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "../void3d/gpu3d";
 import {
-	ParticleWriter3D, ParticleWriteError, writeParticles, writeParticlePoints, writeTrails, sheetTiles,
+	ParticleWriter3D, ParticleWriteError, PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE, writeParticles, writeParticlePoints, writeTrails, sheetTiles,
 } from "../void3d/particleWriter";
 
 const WHOLE: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };

@@ -21,7 +21,6 @@ import {
 	makeImage,
 	destroyBuffer,
 	destroyImage,
-	PARTICLE_INSTANCE_STRIDE,
 } from "../void3d/gpu3d";
 import {
 	makeTextureView,
@@ -157,7 +156,7 @@ import {
 } from "../void3d/fromHeaps";
 import { ParticleSystem, ParticleSystemError, playSystem, updateSystem } from "../particles/system";
 import { ParticleSystemAsset } from "../particles/asset";
-import { ParticleWriter3D, ParticleWriteError, writeParticlePoints } from "../void3d/particleWriter";
+import { ParticleWriter3D, ParticleWriteError, writeParticlePoints, PARTICLE_INSTANCE_STRIDE } from "../void3d/particleWriter";
 
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
 const CAMERA_YAW: float32 = 0.785398;

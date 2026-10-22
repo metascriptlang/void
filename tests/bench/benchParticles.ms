@@ -5,9 +5,8 @@ import { Vec3, vec3, translation } from "../../src/math/math3d";
 import { ParticleSystemAsset, SimulationSpace, ShapeType, ParticleSortMode } from "../../src/particles/asset";
 import { constantCurve, linearCurve, curveOf, key, gradientOf, rgbaColor, GradientMode, ParticleColorSpace } from "../../src/particles/curve";
 import { ParticleSystem, playSystem, updateSystem } from "../../src/particles/system";
-import { ParticleWriter3D, writeParticles } from "../../src/void3d/particleWriter";
+import { ParticleWriter3D, writeParticles, PARTICLE_VISUAL_INSTANCE_STRIDE } from "../../src/void3d/particleWriter";
 import { AtlasTile } from "../../src/void3d/billboard";
-import { PARTICLE_VISUAL_INSTANCE_STRIDE } from "../../src/void3d/gpu3d";
 import { benchCounts, stepsFor, millisecondsSince, row, isHeadline, WARM_STEPS, STEP } from "./benchParticlesRows";
 
 function makeSystem(count: int32): ParticleSystem {

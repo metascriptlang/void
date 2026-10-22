@@ -41,7 +41,6 @@ import {
 	EMISSIVE_LENGTH,
 	movingBase,
 	emissiveBase,
-	PARTICLE_INSTANCE_STRIDE,
 } from "../void3d/gpu3d";
 import {
 	Material, Phase, MaterialKind, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
@@ -119,7 +118,7 @@ import {
 } from "../void3d/fromHeaps";
 import { ParticleSystem, ParticleSystemError, playSystem, updateSystem } from "../particles/system";
 import { ParticleSystemAsset } from "../particles/asset";
-import { ParticleWriter3D, ParticleWriteError, writeParticlePoints } from "../void3d/particleWriter";
+import { ParticleWriter3D, ParticleWriteError, writeParticlePoints, PARTICLE_INSTANCE_STRIDE } from "../void3d/particleWriter";
 import {
 	WorldLabel,
 	WorldLabelStyle,

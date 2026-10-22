@@ -12,7 +12,11 @@ import {
 	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V,
 } from "../particles/system";
 import { AtlasTile } from "./billboard";
-import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "./gpu3d";
+
+// Floats per instance of the Particle layout (position, size, rgba) and of ParticleVisual
+// (position, width, height, anchor, rotation, uv rect, rgba).
+export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
+export const PARTICLE_VISUAL_INSTANCE_STRIDE: int32 = 16;
 
 export enum ParticleWriteError {
 	ShortInstances,
