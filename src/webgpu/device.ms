@@ -16,8 +16,11 @@ import {
 	GPUComputePipeline,
 	GPUComputePipelineDescriptor,
 	GPUDevice,
+	GPUFeatureName,
 	GPUExtent3D,
 	GPUIndexFormat,
+	GPUQuerySet,
+	GPUQuerySetDescriptor,
 	GPUQueue,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
@@ -27,6 +30,8 @@ import {
 	GPUSamplerDescriptor,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUSupportedFeatures,
+	GPUSupportedLimits,
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
@@ -34,6 +39,7 @@ import {
 	GPUTextureDescriptor,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	featureBit,
 } from "./types.ms";
 
 when (webgpu) {
@@ -89,6 +95,14 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	return backend.createCommandEncoder();
 }
 
+@inline export function createQuerySet(this self: GPUDevice, descriptor: GPUQuerySetDescriptor): GPUQuerySet {
+	return backend.createQuerySet(descriptor);
+}
+
+@inline export function limits(this self: GPUDevice): GPUSupportedLimits { return backend.limits(); }
+@inline export function features(this self: GPUDevice): GPUSupportedFeatures { return backend.features(); }
+@inline export function has(this self: GPUSupportedFeatures, name: GPUFeatureName): boolean { return (self.bits & featureBit(name)) != 0; }
+
 @inline export function createView(this self: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
 	return backend.createView(self, descriptor);
 }
@@ -102,6 +116,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function destroy(this self: GPUComputePipeline): void { backend.destroyRenderPipeline({ id: self.id }); }
+@inline export function destroy(this self: GPUQuerySet): void { backend.destroyQuerySet(self); }
 @inline export function destroy(this self: GPUBuffer): void { backend.destroyBuffer(self); }
 @inline export function destroy(this self: GPUTexture): void { backend.destroyTexture(self); }
 @inline export function destroy(this self: GPUTextureView): void { backend.destroyView(self); }
@@ -198,6 +213,31 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 ): void {
 	backend.copyTextureToTexture(source, destination, copySize);
 }
+
+// Writes uint64 nanoseconds (timestamp) or samples passed (occlusion) per query; blocks on native until the GPU has them.
+@inline export function resolveQuerySet(
+	this self: GPUCommandEncoder,
+	querySet: GPUQuerySet,
+	firstQuery: int32,
+	queryCount: int32,
+	destination: GPUBuffer,
+	destinationOffset: int64,
+): void {
+	backend.resolveQuerySet(querySet, firstQuery, queryCount, destination, destinationOffset);
+}
+
+@inline export function pushDebugGroup(this self: GPUCommandEncoder, label: string): void { backend.pushDebugGroup(label); }
+@inline export function popDebugGroup(this self: GPUCommandEncoder): void { backend.popDebugGroup(); }
+@inline export function insertDebugMarker(this self: GPUCommandEncoder, label: string): void { backend.insertDebugMarker(label); }
+@inline export function pushDebugGroup(this self: GPURenderPassEncoder, label: string): void { backend.pushDebugGroup(label); }
+@inline export function popDebugGroup(this self: GPURenderPassEncoder): void { backend.popDebugGroup(); }
+@inline export function insertDebugMarker(this self: GPURenderPassEncoder, label: string): void { backend.insertDebugMarker(label); }
+@inline export function pushDebugGroup(this self: GPUComputePassEncoder, label: string): void { backend.pushDebugGroup(label); }
+@inline export function popDebugGroup(this self: GPUComputePassEncoder): void { backend.popDebugGroup(); }
+@inline export function insertDebugMarker(this self: GPUComputePassEncoder, label: string): void { backend.insertDebugMarker(label); }
+
+@inline export function beginOcclusionQuery(this self: GPURenderPassEncoder, queryIndex: int32): void { backend.beginOcclusionQuery(queryIndex); }
+@inline export function endOcclusionQuery(this self: GPURenderPassEncoder): void { backend.endOcclusionQuery(); }
 
 // mapAsync blocks on native: the buffer is readable or writable on return. `size` 0 maps to the end.
 @inline export function mapAsync(this self: GPUBuffer, mode: int32, offset: int64, size: int64): void {

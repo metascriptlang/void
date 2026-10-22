@@ -17,6 +17,7 @@ export struct GPUCommandEncoder { id: uint32; }
 export struct GPUCommandBuffer { id: uint32; }
 export struct GPURenderPassEncoder { id: uint32; }
 export struct GPUComputePassEncoder { id: uint32; }
+export struct GPUQuerySet { id: uint32; }
 
 export const GPU_MAX_COLOR_ATTACHMENTS = 4;
 export const GPU_MAX_VERTEX_BUFFERS = 2;
@@ -36,6 +37,7 @@ export enum GPUBufferUsage {
 	UNIFORM = 0x40,
 	STORAGE = 0x80,
 	INDIRECT = 0x100,
+	QUERY_RESOLVE = 0x200,
 }
 
 export enum GPUMapMode {
@@ -159,6 +161,21 @@ export type GPUVertexFormat =
 export type GPUVertexStepMode = "vertex" | "instance";
 export type GPUFilterMode = "nearest" | "linear";
 export type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
+export type GPUQueryType = "occlusion" | "timestamp";
+export type GPUFeatureName =
+	| "timestamp-query"
+	| "texture-compression-bc"
+	| "texture-compression-etc2"
+	| "texture-compression-astc"
+	| "depth32float-stencil8"
+	| "depth-clip-control"
+	| "float32-filterable"
+	| "float32-blendable"
+	| "rg11b10ufloat-renderable"
+	| "bgra8unorm-storage"
+	| "indirect-first-instance"
+	| "shader-f16"
+	| "dual-source-blending";
 export type GPUBackend = "d3d11" | "metal" | "glcore" | "gles3" | "webgpu";
 
 export function vertexFormatSize(format: GPUVertexFormat): int32 {
@@ -352,7 +369,70 @@ export struct GPUComputePipelineDescriptor {
 	compute: GPUProgrammableStage;
 }
 
-export struct GPUComputePassDescriptor { label: string | null; }
+export const GPU_NO_QUERY_INDEX = -1;
+
+// `querySet` 0 means no timestamps; an index of GPU_NO_QUERY_INDEX skips that end of the pass.
+export struct GPUPassTimestampWrites {
+	querySet: GPUQuerySet;
+	beginningOfPassWriteIndex: int32;
+	endOfPassWriteIndex: int32;
+}
+
+export struct GPUComputePassDescriptor {
+	label: string | null;
+	timestampWrites: GPUPassTimestampWrites;
+}
+
+export struct GPUQuerySetDescriptor {
+	label: string | null;
+	type: GPUQueryType;
+	count: int32;
+}
+
+export struct GPUSupportedLimits {
+	maxTextureDimension1D: int32;
+	maxTextureDimension2D: int32;
+	maxTextureDimension3D: int32;
+	maxTextureArrayLayers: int32;
+	maxBindGroups: int32;
+	maxSampledTexturesPerShaderStage: int32;
+	maxSamplersPerShaderStage: int32;
+	maxStorageBuffersPerShaderStage: int32;
+	maxStorageTexturesPerShaderStage: int32;
+	maxUniformBuffersPerShaderStage: int32;
+	maxUniformBufferBindingSize: int64;
+	maxStorageBufferBindingSize: int64;
+	maxVertexBuffers: int32;
+	maxVertexAttributes: int32;
+	maxColorAttachments: int32;
+	maxComputeWorkgroupSizeX: int32;
+	maxComputeWorkgroupSizeY: int32;
+	maxComputeWorkgroupSizeZ: int32;
+	maxComputeInvocationsPerWorkgroup: int32;
+	maxComputeWorkgroupsPerDimension: int32;
+	minUniformBufferOffsetAlignment: int32;
+	minStorageBufferOffsetAlignment: int32;
+}
+
+export struct GPUSupportedFeatures { bits: uint32; }
+
+export function featureBit(name: GPUFeatureName): uint32 {
+	return match (name) {
+		"timestamp-query" => 0x1,
+		"texture-compression-bc" => 0x2,
+		"texture-compression-etc2" => 0x4,
+		"texture-compression-astc" => 0x8,
+		"depth32float-stencil8" => 0x10,
+		"depth-clip-control" => 0x20,
+		"float32-filterable" => 0x40,
+		"float32-blendable" => 0x80,
+		"rg11b10ufloat-renderable" => 0x100,
+		"bgra8unorm-storage" => 0x200,
+		"indirect-first-instance" => 0x400,
+		"shader-f16" => 0x800,
+		"dual-source-blending" => 0x1000,
+	};
+}
 
 export struct GPUBindGroupEntry {
 	binding: int32;
@@ -388,6 +468,8 @@ export struct GPURenderPassDescriptor {
 	label: string | null;
 	colorAttachments: GPURenderPassColorAttachment[4];
 	depthStencilAttachment: GPURenderPassDepthStencilAttachment;
+	timestampWrites: GPUPassTimestampWrites;
+	occlusionQuerySet: GPUQuerySet;
 }
 
 export struct GPUOrigin3D { x: int32; y: int32; z: int32; }
@@ -416,7 +498,7 @@ export function stopOnUnportedShaderModule(backend: string, descriptor: GPUShade
 		if (stage == "compute") { stopOn(backend, `GPUShaderBinding.stage 'compute' is not ported to ${backend} yet`); }
 	}
 	stopOnUnportedShaderBindings(backend, descriptor);
-	if (backend == "gl") { return; }
+	if (backend == "gl" || backend == "wgpu") { return; }
 	for (let i = 0; i < 24; i++) {
 		const viewDimension: string = descriptor.bindings[i].viewDimension;
 		if (viewDimension != "" && viewDimension != "2d") {
@@ -436,6 +518,15 @@ export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUSha
 		if (samplerType == "comparison") { stopOn(backend, `GPUShaderBinding.samplerType 'comparison' is not ported to ${backend} yet`); }
 		if (b.multisampled) { stopOn(backend, `GPUShaderBinding.multisampled is not ported to ${backend} yet`); }
 	}
+}
+
+export function stopOnUnportedRenderPass(backend: string, descriptor: GPURenderPassDescriptor): void {
+	if (descriptor.timestampWrites.querySet.id != 0) { stopOn(backend, `GPURenderPassDescriptor.timestampWrites is not ported to ${backend} yet`); }
+	if (descriptor.occlusionQuerySet.id != 0) { stopOn(backend, `GPURenderPassDescriptor.occlusionQuerySet is not ported to ${backend} yet`); }
+}
+
+export function stopOnUnportedComputePass(backend: string, descriptor: GPUComputePassDescriptor): void {
+	if (descriptor.timestampWrites.querySet.id != 0) { stopOn(backend, `GPUComputePassDescriptor.timestampWrites is not ported to ${backend} yet`); }
 }
 
 const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
