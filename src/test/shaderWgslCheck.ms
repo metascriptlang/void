@@ -379,8 +379,8 @@ test "compute prints storage resources, builtins and its workgroup size" {
 	assert cs.includes("results[(group.x + (index + groups.y))].sum = ");
 }
 
-// One vertex and one fragment entry that between them use every intrinsic but Inverse and
-// TextureStore, every statement kind but FeatureIf, and every interpolation.
+// One vertex and one fragment entry that between them use every intrinsic but TextureStore, every
+// statement kind but FeatureIf, and every interpolation.
 function everyModule(): ShaderModule {
 	let m = new ShaderModule();
 	m.structs = [
@@ -481,7 +481,12 @@ function everyModule(): ShaderModule {
 	bind(fs, "ofDpdx", intrinsicOf(Intrinsic.Dpdx, F32, [f]));
 	bind(fs, "ofFwidth", intrinsicOf(Intrinsic.Fwidth, VEC4, [v4]));
 	bind(fs, "ofTranspose", intrinsicOf(Intrinsic.Transpose, MAT4, [m4]));
-	bind(fs, "ofUpperLeft3x3", intrinsicOf(Intrinsic.UpperLeft3x3, matrixType(3, 3), [m4]));
+	const m3 = bind(fs, "ofUpperLeft3x3", intrinsicOf(Intrinsic.UpperLeft3x3, matrixType(3, 3),
+		[m4]));
+	const m2 = exprOf(ExprKind.Construct, matrixType(2, 2), -1, [uv, uv]);
+	bind(fs, "ofInverse", intrinsicOf(Intrinsic.Inverse, MAT4, [m4]));
+	bind(fs, "ofInverse3", intrinsicOf(Intrinsic.Inverse, matrixType(3, 3), [m3]));
+	bind(fs, "ofInverse2", intrinsicOf(Intrinsic.Inverse, matrixType(2, 2), [m2]));
 	bind(fs, "ofSelect", intrinsicOf(Intrinsic.Select, VEC3, [v3, literal(VEC3, 1.0), vb]));
 	bind(fs, "ofAbsInt", intrinsicOf(Intrinsic.Abs, I32, [i]));
 	bind(fs, "ofMinUint", intrinsicOf(Intrinsic.Min, U32, [u, literal(U32, 7.0)]));
@@ -631,6 +636,12 @@ test "every intrinsic and statement prints" {
 		"fn upperLeft3x3(m : mat4x4f) -> mat3x3f {\n",
 		"  var select_1 : vec3<bool> = (v3 <= vec3f(0.5f));\n",
 		"  var ofUpperLeft3x3 : mat3x3f = upperLeft3x3(m4);\n",
+		"fn inverse2x2(m : mat2x2f) -> mat2x2f {\n  let k = 1.0f / determinant(m);\n",
+		"fn inverse3x3(m : mat3x3f) -> mat3x3f {\n",
+		"fn inverse4x4(m : mat4x4f) -> mat4x4f {\n  let a = m[0].xyz;\n",
+		"  var ofInverse : mat4x4f = inverse4x4(m4);\n",
+		"  var ofInverse3 : mat3x3f = inverse3x3(ofUpperLeft3x3);\n",
+		"  var ofInverse2 : mat2x2f = inverse2x2(mat2x2f(uv, uv));\n",
 		"  var ofSelect : vec3f = select(v3, vec3f(1f), select_1);\n",
 		"  var ofTextureSampleLayer : vec4f = textureSample(layers, albedoSampler, uv, i);\n",
 		"  var ofTextureLoadLayer : vec4f = textureLoad(layers, vec2i(uv), i, 0i);\n",
@@ -688,8 +699,8 @@ function column(matrix: ShaderExpr): ShaderExpr {
 test "what WGSL cannot say is refused by name" {
 	const fragment = ShaderStage.Fragment;
 	assert refused(tiny(fragment, column(model()))) == "printed";
-	assert refused(tiny(fragment, column(intrinsicOf(Intrinsic.Inverse, MAT4, [model()])))) ==
-		"printWgsl: inverse has no WGSL builtin";
+	assert refused(tiny(fragment, column(intrinsicOf(Intrinsic.Inverse, matrixType(4, 3),
+		[model()])))) == "printWgsl: inverse of a Matrix that is no square matrix";
 	assert refused(tiny(ShaderStage.Vertex, intrinsicOf(Intrinsic.Dpdx, VEC4,
 		[literal(VEC4, 1.0)]))) == "printWgsl: dpdx outside a fragment entry";
 	assert refused(tiny(fragment, column(literal(MAT4, 1.0)))) ==

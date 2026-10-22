@@ -144,6 +144,41 @@ function builtinName(op: Intrinsic): string {
 
 const UPPER_LEFT = "upperLeft3x3";
 
+function inverseName(n: int32): string { return "inverse" + String(n) + "x" + String(n); }
+
+function inverseText(n: int32): string {
+	const mat = "mat" + String(n) + "x" + String(n) + "f";
+	const body = match (n) {
+		2 => [
+			"let k = 1.0f / determinant(m);",
+			"return mat2x2f(m[1].y * k, -m[0].y * k, -m[1].x * k, m[0].x * k);",
+		],
+		3 => [
+			"let k = 1.0f / determinant(m);",
+			"return transpose(mat3x3f(cross(m[1], m[2]) * k, cross(m[2], m[0]) * k, " +
+				"cross(m[0], m[1]) * k));",
+		],
+		_ => [
+			"let a = m[0].xyz;",
+			"let b = m[1].xyz;",
+			"let c = m[2].xyz;",
+			"let d = m[3].xyz;",
+			"let s = cross(a, b);",
+			"let t = cross(c, d);",
+			"let u = a * m[1].w - b * m[0].w;",
+			"let v = c * m[3].w - d * m[2].w;",
+			"let k = 1.0f / (dot(s, v) + dot(t, u));",
+			"return transpose(mat4x4f(",
+			"  vec4f(cross(b, v * k) + t * k * m[1].w, -dot(b, t * k)),",
+			"  vec4f(cross(v * k, a) - t * k * m[0].w, dot(a, t * k)),",
+			"  vec4f(cross(d, u * k) + s * k * m[3].w, -dot(d, s * k)),",
+			"  vec4f(cross(u * k, c) - s * k * m[2].w, dot(c, s * k))));",
+		],
+	};
+	return "fn " + inverseName(n) + "(m : " + mat + ") -> " + mat + " {\n" +
+		body.map((line) => "  " + line + "\n").join("") + "}";
+}
+
 class Printer {
 	module: ShaderModule = new ShaderModule();
 	stage: ShaderStage = ShaderStage.Vertex;
@@ -161,6 +196,7 @@ class Printer {
 	derivatives: boolean = false;
 	error: string = "";
 	upperLeft: boolean = false;
+	inverses: int32[] = [];
 	lines: string[] = [];
 }
 
@@ -377,7 +413,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		return refusal(p, "textureLoad of a sampled texture takes a level");
 	}
 	return match (op) {
-		Intrinsic.Inverse => refusal(p, "inverse has no WGSL builtin"),
+		Intrinsic.Inverse => inverseCall(p, e),
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.LessThanEqual => "(" + exprText(p, o[0]) + " <= " + exprText(p, o[1]) + ")",
 		Intrinsic.TextureSample => "textureSampleLevel(" + argsText(p, o) + ", " +
@@ -387,6 +423,15 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
 		_ => refusal(p, op.toString() + " has no WGSL spelling"),
 	};
+}
+
+function inverseCall(p: Printer, e: ShaderExpr): string {
+	const t = e.type;
+	if (t.kind != ShaderTypeKind.Matrix || t.columns != t.rows) {
+		return refusal(p, "inverse of a " + t.kind.toString() + " that is no square matrix");
+	}
+	if (!p.inverses.includes(t.rows)) { p.inverses.push(t.rows); }
+	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
 }
 
 function dimensionsText(p: Printer, e: ShaderExpr): string {
@@ -733,7 +778,7 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	let p = new Printer();
 	p.module = m;
 	p.stage = e.stage;
-	p.taken = ["main_out", UPPER_LEFT];
+	p.taken = ["main_out", UPPER_LEFT, inverseName(2), inverseName(3), inverseName(4)];
 	for (const s of m.structs) {
 		p.structs.push(nameIn(p, p.taken, s.name));
 		let scope: string[] = [];
@@ -809,6 +854,9 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	if (p.upperLeft) {
 		decls.push("fn " + UPPER_LEFT + "(m : mat4x4f) -> mat3x3f {\n" +
 			"  return mat3x3f(m[0].xyz, m[1].xyz, m[2].xyz);\n}");
+	}
+	for (let n = 2; n <= 4; n++) {
+		if (p.inverses.includes(n as int32)) { decls.push(inverseText(n as int32)); }
 	}
 	for (const text of functions) { decls.push(text); }
 	if (outputs.length > 0) { decls.push("struct main_out {\n" + outputs.join("") + "}"); }
