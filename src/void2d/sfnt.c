@@ -197,10 +197,66 @@ static int sequenceInSpecific(const Summary *s, Off table, int codepoint) {
 	return 0;
 }
 
-static unsigned char *readRange(FILE *f, Off at, Off length) {
+typedef struct {
+	char *name;
+	unsigned char *bytes;
+	size_t length;
+} MemoryFont;
+
+static MemoryFont *s_memory;
+static int s_memoryCount;
+
+const unsigned char *void2dFontBytesFind(const char *name, size_t *length) {
+	for (int i = 0; i < s_memoryCount; i++) {
+		if (strcmp(s_memory[i].name, name) == 0) {
+			*length = s_memory[i].length;
+			return s_memory[i].bytes;
+		}
+	}
+	return NULL;
+}
+
+int void2dFontBytesAdd(const char *name, const unsigned char *bytes, int length) {
+	size_t had = 0;
+	const unsigned char *known = void2dFontBytesFind(name, &had);
+	if (known) {
+		return had == (size_t)length && memcmp(known, bytes, had) == 0 ? VOID2D_FONT_BYTES_OK
+			: VOID2D_FONT_BYTES_CONFLICT;
+	}
+	MemoryFont *grown = (MemoryFont *)realloc(s_memory, sizeof(MemoryFont) * (size_t)(s_memoryCount + 1));
+	if (!grown) { return VOID2D_SFNT_NO_MEMORY; }
+	s_memory = grown;
+	MemoryFont font = { (char *)malloc(strlen(name) + 1), (unsigned char *)malloc((size_t)length), (size_t)length };
+	if (!font.name || !font.bytes) {
+		free(font.name);
+		free(font.bytes);
+		return VOID2D_SFNT_NO_MEMORY;
+	}
+	strcpy(font.name, name);
+	memcpy(font.bytes, bytes, (size_t)length);
+	s_memory[s_memoryCount++] = font;
+	return VOID2D_FONT_BYTES_OK;
+}
+
+typedef struct {
+	FILE *file;
+	const unsigned char *bytes;
+	Off size;
+} Source;
+
+static int sourceRead(Source *src, Off at, unsigned char *out, Off length) {
+	if (src->bytes) {
+		if (at > src->size || length > src->size - at) { return 0; }
+		memcpy(out, src->bytes + at, (size_t)length);
+		return 1;
+	}
+	return fseek(src->file, (long)at, SEEK_SET) == 0 && fread(out, 1, (size_t)length, src->file) == (size_t)length;
+}
+
+static unsigned char *readRange(Source *src, Off at, Off length) {
 	unsigned char *buf = (unsigned char *)malloc((size_t)(length > 0 ? length : 1));
 	if (!buf) { return NULL; }
-	if (fseek(f, (long)at, SEEK_SET) != 0 || fread(buf, 1, (size_t)length, f) != (size_t)length) {
+	if (!sourceRead(src, at, buf, length)) {
 		free(buf);
 		return NULL;
 	}
@@ -243,15 +299,23 @@ static TableSpan findTable(const unsigned char *directory, int tables, Off fileS
 	return span;
 }
 
-int void2dSfntPeek(const char *path) {
-	FILE *f = fopen(path, "rb");
-	if (!f) {
-		fprintf(stderr, "void2d: cannot read font file %s\n", path);
-		return VOID2D_SFNT_UNREADABLE;
+int void2dSfntPeek(const char *path, int index) {
+	Source src = { NULL, NULL, 0 };
+	size_t held = 0;
+	src.bytes = void2dFontBytesFind(path, &held);
+	if (src.bytes) {
+		src.size = (Off)held;
+	} else {
+		src.file = fopen(path, "rb");
+		if (!src.file) {
+			fprintf(stderr, "void2d: cannot read font file %s\n", path);
+			return VOID2D_SFNT_UNREADABLE;
+		}
+		fseek(src.file, 0, SEEK_END);
+		long measured = ftell(src.file);
+		src.size = measured < 0 ? 0 : (Off)measured;
 	}
-	fseek(f, 0, SEEK_END);
-	long measured = ftell(f);
-	Off fileSize = measured < 0 ? 0 : (Off)measured;
+	Off fileSize = src.size;
 	unsigned char head[16];
 	Off fontStart = 0;
 	int status = VOID2D_SFNT_NOT_AN_SFNT;
@@ -260,16 +324,21 @@ int void2dSfntPeek(const char *path) {
 	unsigned char *cmap = NULL;
 	TableSpan cmapSpan, headSpan, hheaSpan, hmtxSpan, glyfSpan, locaSpan, cffSpan;
 	Summary summary;
-	if (fileSize < 12 || fseek(f, 0, SEEK_SET) != 0 || fread(head, 1, 12, f) != 12) {
+	if (fileSize < 12 || !sourceRead(&src, 0, head, 12)) {
 		goto done;
 	}
 	if (memcmp(head, "ttcf", 4) == 0) {
-		if (fseek(f, 12, SEEK_SET) != 0 || fread(head, 1, 4, f) != 4) { goto done; }
-		fontStart = fileU32(head);
-		if (fontStart > fileSize || 12 > fileSize - fontStart ||
-			fseek(f, (long)fontStart, SEEK_SET) != 0 || fread(head, 1, 12, f) != 12) {
+		if (index < 0 || (Off)index >= fileU32(head + 8) ||
+			!sourceRead(&src, 12 + 4 * (Off)index, head, 4)) {
 			goto done;
 		}
+		fontStart = fileU32(head);
+		if (fontStart > fileSize || 12 > fileSize - fontStart ||
+			!sourceRead(&src, fontStart, head, 12)) {
+			goto done;
+		}
+	} else if (index != 0) {
+		goto done;
 	}
 	if (!(fileU32(head) == 0x00010000ul || memcmp(head, "OTTO", 4) == 0 ||
 		memcmp(head, "true", 4) == 0)) {
@@ -278,7 +347,7 @@ int void2dSfntPeek(const char *path) {
 	tables = (int)(((unsigned)head[4] << 8) | head[5]);
 	if (tables == 0 || tables > SFNT_MAX_TABLES) { goto done; }
 	if (fontStart + 12 > fileSize || 16 * (Off)tables > fileSize - fontStart - 12) { goto done; }
-	directory = readRange(f, fontStart + 12, 16 * (Off)tables);
+	directory = readRange(&src, fontStart + 12, 16 * (Off)tables);
 	if (!directory) { goto done; }
 	cmapSpan = findTable(directory, tables, fileSize, "cmap");
 	headSpan = findTable(directory, tables, fileSize, "head");
@@ -288,7 +357,7 @@ int void2dSfntPeek(const char *path) {
 	locaSpan = findTable(directory, tables, fileSize, "loca");
 	cffSpan = findTable(directory, tables, fileSize, "CFF ");
 	if (!cmapSpan.found || cmapSpan.length > SFNT_MAX_CMAP) { goto done; }
-	cmap = readRange(f, cmapSpan.offset, cmapSpan.length);
+	cmap = readRange(&src, cmapSpan.offset, cmapSpan.length);
 	if (!cmap) { goto done; }
 	if (!growSummaries()) {
 		status = VOID2D_SFNT_NO_MEMORY;
@@ -300,6 +369,12 @@ int void2dSfntPeek(const char *path) {
 	if (summary.index != 0 && headSpan.found && hheaSpan.found && hmtxSpan.found &&
 		(glyfSpan.found ? locaSpan.found : cffSpan.found)) {
 		summary.flags |= VOID2D_SFNT_DRAWABLE;
+	}
+	if (summary.index != 0 && headSpan.found && hheaSpan.found && hmtxSpan.found &&
+		findTable(directory, tables, fileSize, "maxp").found &&
+		(findTable(directory, tables, fileSize, "hvgl").found ||
+			findTable(directory, tables, fileSize, "CFF2").found)) {
+		summary.flags |= VOID2D_SFNT_OS_OUTLINES;
 	}
 	if ((findTable(directory, tables, fileSize, "CBDT").found &&
 			findTable(directory, tables, fileSize, "CBLC").found) ||
@@ -317,7 +392,7 @@ int void2dSfntPeek(const char *path) {
 done:
 	free(directory);
 	free(cmap);
-	fclose(f);
+	if (src.file) { fclose(src.file); }
 	if (status == VOID2D_SFNT_NOT_AN_SFNT) {
 		fprintf(stderr, "void2d: %s is not an sfnt with a cmap table\n", path);
 	}

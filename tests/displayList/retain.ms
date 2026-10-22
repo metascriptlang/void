@@ -18,6 +18,7 @@ import {
 	uiInstanceField,
 	spriteInstanceField,
 	COMMAND_FLOATS,
+	CMD_KIND,
 	CMD_PIPELINE,
 	CMD_VIEW,
 	CMD_VIEW_HIGH,
@@ -1089,4 +1090,87 @@ test "an Anim that changes frame rewrites one sprite record and a paused one rec
 		}
 	}
 	assert changed > 0;
+}
+
+struct Stack {
+	s: Scene2D;
+	a: NodeRef;
+	b: NodeRef;
+	c: NodeRef;
+}
+
+function stack(): Stack {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const a = s.rect(60.0, 60.0, rgba(1.0, 0.0, 0.0, 1.0)).at(10.0, 10.0);
+	const b = s.rect(60.0, 60.0, rgba(0.0, 1.0, 0.0, 1.0)).at(30.0, 30.0);
+	const c = s.rect(60.0, 60.0, rgba(0.0, 0.0, 1.0, 1.0)).at(50.0, 50.0);
+	s.add(a);
+	s.add(b);
+	s.add(c);
+	return { s: s, a: a, b: b, c: c };
+}
+
+function uiDraws(): int32 {
+	let count: int32 = 0;
+	for (let k: int32 = 0; k < commandCount(); k++) {
+		if (commandField(k, CMD_KIND) == 0.0 && commandField(k, CMD_INSTANCE_COUNT) > 0.0) {
+			count = count + 1;
+		}
+	}
+	return count;
+}
+
+function splitsAt(slot: NodeRef): boolean {
+	const start: PaintIndex = paintStartOf(slot.id.index);
+	for (let k: int32 = 0; k < commandCount(); k++) {
+		if (commandField(k, CMD_KIND) != 0.0) { continue; }
+		const from: int32 = commandField(k, CMD_INSTANCE_OFFSET) as int32;
+		const to: int32 = from + (commandField(k, CMD_INSTANCE_COUNT) as int32);
+		if (k < start.commands ? to > start.uiInstances : from < start.uiInstances) { return false; }
+	}
+	return true;
+}
+
+function paintSplit(st: Stack): boolean {
+	st.s.paint(W, H, 1.0);
+	const out: boolean = splitsAt(st.b);
+	frameEnd();
+	st.s.clearChanges();
+	return out;
+}
+
+test "a layer slot ends the command before its node on a full, patched and spliced frame" {
+	const control: Stack = stack();
+	control.s.paint(W, H, 1.0);
+	assert uiDraws() == 1;
+	frameEnd();
+	const st: Stack = stack();
+	st.b.setLayerSlot(true);
+	st.s.paint(W, H, 1.0);
+	assert uiDraws() == 2;
+	assert paintStartOf(st.b.id.index).commands == 1;
+	assert paintStartOf(st.b.id.index).uiInstances == paintEndOf(st.a.id.index).uiInstances;
+	assert splitsAt(st.b);
+	frameEnd();
+	st.s.clearChanges();
+	const patches: int32 = st.s.patches;
+	st.b.setColor(rgba(0.0, 0.5, 0.0, 1.0));
+	assert paintSplit(st);
+	st.a.setColor(rgba(0.5, 0.0, 0.0, 1.0));
+	assert paintSplit(st);
+	assert st.s.patches == patches + 2;
+	const splices: int32 = st.s.splices;
+	st.s.add(st.s.rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)));
+	assert paintSplit(st);
+	st.c.setZIndex(-1);
+	st.s.paint(W, H, 1.0);
+	assert paintStartOf(st.b.id.index).commands == 1;
+	assert splitsAt(st.b);
+	frameEnd();
+	st.s.clearChanges();
+	assert st.s.splices == splices + 2;
+	st.b.setLayerSlot(false);
+	st.s.paint(W, H, 1.0);
+	assert uiDraws() == 1;
+	frameEnd();
 }

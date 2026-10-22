@@ -7,20 +7,26 @@ import {
 	void2dGlyphKern,
 	void2dGlyphEmbolden,
 	void2dGlyphScale,
-	void2dGlyphFaceMetrics,
-	void2dGlyphDecoration,
-	void2dGlyphFaceHeights,
 	void2dGlyphPageTexel,
-	void2dGlyphBox,
 	void2dGlyphColourBuilt,
 	void2dGlyphColourFace,
 	void2dGlyphColourOnly,
-	void2dGlyphColourBox,
 	void2dGlyphColourRasterize,
 	void2dGlyphColourLayerCount,
 	void2dGlyphColourLayerGlyph,
 	void2dGlyphColourLayerRgba,
 } from "./glyph.h";
+import { glyphBox } from "./glyphBoxes";
+
+extern function void2dGlyphFaceMetrics(face: int32, sizePx: float32, out: Span<float32>): void;
+extern function void2dGlyphDecoration(face: int32, sizePx: float32, out: Span<float32>): void;
+extern function void2dGlyphFaceHeights(face: int32, out: Span<float32>): void;
+extern function void2dGlyphColourBox(
+	face: int32, glyph: int32, sizePx: float32, out: Span<int32>,
+): void;
+
+let metricSlots: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+let boxSlots: Vec<int32> = [0, 0, 0, 0, 0, 0];
 import "./colourEmoji/colourEmoji";
 
 when (voidSprites) {
@@ -29,8 +35,17 @@ when (voidSprites) {
 	import {
 		void2dGlyphFaceSprite,
 		void2dGlyphFaceIsSprite,
-		void2dGlyphSpriteCell,
 	} from "./glyph.h";
+
+	extern function void2dGlyphSpriteCell(face: int32, sizePx: float32, out: Span<int32>): void;
+}
+
+when (macos || ios) {
+	@compile("./platformFaceApple.m", "-fobjc-arc");
+	@passL("-framework CoreText");
+	@passL("-framework CoreGraphics");
+	@passL("-framework CoreFoundation");
+	import { void2dGlyphFacePlatform, void2dGlyphFaceIsPlatform } from "./glyph.h";
 }
 
 import {
@@ -39,6 +54,7 @@ import {
 	void2dSfntSequence,
 	void2dSfntFlags,
 	void2dSfntSummariesRead,
+	void2dFontBytesAdd,
 } from "./sfnt.h";
 import { GlyphPageHandle } from "./glyphAtlas";
 
@@ -71,6 +87,7 @@ export enum FaceError {
 	OutOfMemory,
 	NoBaseFace,
 	BadColourTable,
+	NoRasterizerOnJs,
 }
 
 function faceResult(code: int32): Result<int32, FaceError> {
@@ -102,10 +119,30 @@ export struct FaceSummary {
 	drawable: boolean;
 	colourBitmap: boolean;
 	colourLayers: boolean;
+	osOutlines: boolean;
 }
 
-export function peekFace(path: string): Result<FaceSummary, SfntError> {
-	const code: int32 = void2dSfntPeek(path);
+export enum FaceBytesError {
+	Empty,
+	NameHeld,
+	OutOfMemory,
+}
+
+// Holds a face's bytes under `name`, which peekFace and loadFace then read in place of a file.
+// The same bytes again are accepted; other bytes under a held name are refused.
+export function holdFaceBytes(name: string, bytes: uint8[]): Result<void, FaceBytesError> {
+	if (bytes.length == 0) { return Result.err(FaceBytesError.Empty); }
+	const code: int32 = void2dFontBytesAdd(name, bytes[0], bytes.length as int32);
+	if (code != 0 && code != -3 && code != -4) { unreachable; }
+	return match (code) {
+		0 => Result.ok(null),
+		-4 => Result.err(FaceBytesError.NameHeld),
+		_ => Result.err(FaceBytesError.OutOfMemory),
+	};
+}
+
+export function peekFace(path: string, index: int32 = 0): Result<FaceSummary, SfntError> {
+	const code: int32 = void2dSfntPeek(path, index);
 	if (code < 0) {
 		if (code < -3) { unreachable; }
 		return match (code) {
@@ -120,6 +157,7 @@ export function peekFace(path: string): Result<FaceSummary, SfntError> {
 		drawable: (flags & 1) != 0,
 		colourBitmap: (flags & 2) != 0,
 		colourLayers: (flags & 4) != 0,
+		osOutlines: (flags & 8) != 0,
 	});
 }
 
@@ -137,8 +175,12 @@ export function faceSummariesRead(): int32 {
 	return void2dSfntSummariesRead();
 }
 
-export function loadFace(path: string): Result<int32, FaceError> {
-	return faceResult(void2dGlyphFaceLoad(path));
+export function loadFace(path: string, index: int32 = 0): Result<int32, FaceError> {
+	when (js) {
+		return Result.err(FaceError.NoRasterizerOnJs);
+	} else {
+		return faceResult(void2dGlyphFaceLoad(path, index));
+	}
 }
 
 export function syntheticFace(
@@ -147,6 +189,22 @@ export function syntheticFace(
 	italic: boolean,
 ): Result<int32, FaceError> {
 	return faceResult(void2dGlyphFaceSynthetic(face, bold ? 1 : 0, italic ? 1 : 0));
+}
+
+export function platformFacesBuilt(): boolean {
+	when (macos || ios) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+export function isPlatformFace(face: int32): boolean {
+	when (macos || ios) {
+		return void2dGlyphFaceIsPlatform(face) != 0;
+	} else {
+		return false;
+	}
 }
 
 export function isSpriteFace(face: int32): boolean {
@@ -170,8 +228,19 @@ when (voidSprites) {
 	}
 
 	export function spriteCell(face: int32, sizePx: float32): SpriteCell {
-		const c: Ptr<int32> = void2dGlyphSpriteCell(face, sizePx);
-		return { width: c[0], height: c[1], topToBaseline: c[2], lineThickness: c[3] };
+		void2dGlyphSpriteCell(face, sizePx, boxSlots);
+		return {
+			width: boxSlots[0],
+			height: boxSlots[1],
+			topToBaseline: boxSlots[2],
+			lineThickness: boxSlots[3],
+		};
+	}
+}
+
+when (macos || ios) {
+	export function platformFace(base: int32): Result<int32, FaceError> {
+		return faceResult(void2dGlyphFacePlatform(base));
 	}
 }
 
@@ -204,35 +273,35 @@ export function glyphInkBox(
 	glyph: int32,
 	sizePx: float32,
 ): [float32, float32, float32, float32] {
-	const box: Ptr<int32> = void2dGlyphBox(face, glyph, sizePx, 0.0);
+	const box = glyphBox(face, glyph, sizePx, 0.0);
 	return [box[0] as float32, box[1] as float32, box[2] as float32, box[3] as float32];
 }
 
 export function faceMetrics(face: int32, sizePx: float32): FaceMetrics {
-	const m: Ptr<float32> = void2dGlyphFaceMetrics(face, sizePx);
-	return { ascent: m[0], descent: m[1], lineGap: m[2] };
+	void2dGlyphFaceMetrics(face, sizePx, metricSlots);
+	return { ascent: metricSlots[0], descent: metricSlots[1], lineGap: metricSlots[2] };
 }
 
 export function decorationMetrics(face: int32, sizePx: float32): DecorationMetrics {
-	const m: Ptr<float32> = void2dGlyphDecoration(face, sizePx);
+	void2dGlyphDecoration(face, sizePx, metricSlots);
 	return {
-		underlineTop: m[0],
-		underlineThickness: m[1],
-		strikethroughTop: m[2],
-		strikethroughThickness: m[3],
+		underlineTop: metricSlots[0],
+		underlineThickness: metricSlots[1],
+		strikethroughTop: metricSlots[2],
+		strikethroughThickness: metricSlots[3],
 	};
 }
 
 export function faceHeights(face: int32): FaceHeights {
-	const m: Ptr<float32> = void2dGlyphFaceHeights(face);
+	void2dGlyphFaceHeights(face, metricSlots);
 	return {
-		icWidth: m[0],
-		exHeight: m[1],
-		capHeight: m[2],
-		icWidthEstimate: m[3],
-		exHeightEstimate: m[4],
-		capHeightEstimate: m[5],
-		lineHeight: m[6],
+		icWidth: metricSlots[0],
+		exHeight: metricSlots[1],
+		capHeight: metricSlots[2],
+		icWidthEstimate: metricSlots[3],
+		exHeightEstimate: metricSlots[4],
+		capHeightEstimate: metricSlots[5],
+		lineHeight: metricSlots[6],
 	};
 }
 
@@ -264,17 +333,17 @@ export function isColourOnly(face: int32): boolean {
 }
 
 export function colourTileBox(face: int32, glyph: int32, sizePx: float32): ColourTileBox {
-	const b: Ptr<int32> = void2dGlyphColourBox(face, glyph, sizePx);
-	const status: ColourGlyph = b[4] == 1
+	void2dGlyphColourBox(face, glyph, sizePx, boxSlots);
+	const status: ColourGlyph = boxSlots[4] == 1
 		? ColourGlyph.Present
-		: b[4] == 0 ? ColourGlyph.Absent : ColourGlyph.Refused;
+		: boxSlots[4] == 0 ? ColourGlyph.Absent : ColourGlyph.Refused;
 	return {
-		left: b[0],
-		top: b[1],
-		right: b[2],
-		bottom: b[3],
+		left: boxSlots[0],
+		top: boxSlots[1],
+		right: boxSlots[2],
+		bottom: boxSlots[3],
 		glyph: status,
-		ppem: b[5],
+		ppem: boxSlots[5],
 	};
 }
 

@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -94,6 +94,16 @@ if "$MSC" test $moduleDefines src/test/index.ms > out/gate-t0-modules.log 2>&1; 
 else
 	fail "module stage all-on: msc test$moduleDefines src/test/index.ms — see out/gate-t0-modules.log"
 fi
+for jsStage in off on; do
+	jsDefines=""
+	[ "$jsStage" = off ] || jsDefines="$moduleDefines"
+	if "$MSC" test --target=js $jsDefines tests/js/targetCheck.ms > "out/gate-js-$jsStage.log" 2>&1 \
+			&& sed 's/\x1b\[[0-9;]*m//g' "out/gate-js-$jsStage.log" | grep -qE '^\s+Tests +[0-9]+ passed \([0-9]+\)$'; then
+		pass "JS target, module stage all-$jsStage: Void compiles and refuses C-only work by name"
+	else
+		fail "JS target, module stage all-$jsStage: msc test --target=js tests/js/targetCheck.ms — see out/gate-js-$jsStage.log"
+	fi
+done
 if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.log 2>&1 \
 		&& grep -q '^PASS colour memory:' out/gate-colour-memory.log; then
 	pass "colour allocation failures recover without retrying permanent PNG refusals"
@@ -219,6 +229,93 @@ if "$MSC" build tests/integration/preparedScenes.ms --release --output=out/prepa
 else
 	fail "prepared Scene2D lifecycle — see out/gate-prepared-scenes-run.log"
 fi
+if "$MSC" build tests/integration/screenOver.ms --release --output=out/screenOver.exe \
+		> out/gate-screen-over.log 2>&1; then
+	if VOID_SCREEN_OVER_HOLD=3 out/screenOver.exe > out/gate-screen-over-hold.log 2>&1; then
+		pass "screen over: two forward presets draw to the screen, the second over the first"
+	else
+		fail "screen over: the composite did not draw — see out/gate-screen-over-hold.log"
+	fi
+	status=0
+	out/screenOver.exe > out/gate-screen-over-run.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "screen over: $(grep -E '^SKIP' out/gate-screen-over-run.log | sed 's/^SKIP screen over: //') (this backend has no readback)"
+	elif [ "$status" -eq 0 ]; then
+		pass "screen over: $(grep -E '^screen over:' out/gate-screen-over-run.log | sed 's/^screen over: //')"
+	else
+		fail "screen over composite — see out/gate-screen-over-run.log"
+	fi
+	status=0
+	VOID_SCREEN_OVER_REPLACE=1 out/screenOver.exe > out/gate-screen-over-replace.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "screen over: the drawToScreen control needs the same readback"
+	elif [ "$status" -eq 1 ] && grep -q '^FAIL screen over: pixel' out/gate-screen-over-replace.log; then
+		pass "screen over: the control, the second preset copied with drawToScreen, erases the first"
+	else
+		fail "screen over: the control did not fail on a pixel (exit $status) — see out/gate-screen-over-replace.log"
+	fi
+else
+	fail "tests/integration/screenOver.ms does not build — see out/gate-screen-over.log"
+fi
+if "$MSC" build tests/integration/layerSlot.ms --release --output=out/layerSlot.exe \
+		> out/gate-layer-slot.log 2>&1; then
+	if VOID_LAYER_SLOT_HOLD=3 out/layerSlot.exe > out/gate-layer-slot-hold.log 2>&1; then
+		pass "layer slot: a scene drawn in two segments around another context's layer"
+	else
+		fail "layer slot: the segmented frame did not draw — see out/gate-layer-slot-hold.log"
+	fi
+	status=0
+	out/layerSlot.exe > out/gate-layer-slot-run.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "layer slot: this backend has no readback"
+	elif [ "$status" -eq 0 ]; then
+		pass "layer slot: A under the layer, B and C over it"
+	else
+		fail "layer slot pixels — see out/gate-layer-slot-run.log"
+	fi
+	status=0
+	VOID_LAYER_SLOT_CONTROL=1 out/layerSlot.exe > out/gate-layer-slot-control.log 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "layer slot: the one-drawScreen control needs the same readback"
+	elif [ "$status" -eq 1 ] && grep -q '^FAIL layer slot: pixel' out/gate-layer-slot-control.log; then
+		pass "layer slot: the control, one drawScreen under the layer, puts B and C under it"
+	else
+		fail "layer slot: the control did not fail on a pixel (exit $status) — see out/gate-layer-slot-control.log"
+	fi
+	for misuse in not-slot foreign hidden backwards; do
+		case "$misuse" in
+			not-slot) expected='which is not a layer slot' ;;
+			foreign) expected='of another scene' ;;
+			hidden) expected='did not paint on the screen' ;;
+			backwards) expected='paints before the part already drawn' ;;
+		esac
+		status=0
+		VOID_LAYER_SLOT_MISUSE="$misuse" out/layerSlot.exe \
+			> "out/gate-layer-slot-$misuse.log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] && grep -q "$expected" "out/gate-layer-slot-$misuse.log"; then
+			pass "layer slot $misuse stops with its error"
+		else
+			fail "layer slot $misuse did not name its error"
+		fi
+	done
+else
+	fail "tests/integration/layerSlot.ms does not build — see out/gate-layer-slot.log"
+fi
+if "$MSC" build tests/integration/paintedSlots.ms --release --output=out/paintedSlots.exe \
+		> out/gate-painted-slots.log 2>&1 \
+		&& out/paintedSlots.exe > out/gate-painted-slots-run.log 2>&1; then
+	pass "painted slots: paint order, zIndex, hidden and filtered left out, patched frame"
+else
+	fail "painted slots — see out/gate-painted-slots-run.log"
+fi
+status=0
+VOID_PAINTED_SLOTS_MISUSE=unprepared out/paintedSlots.exe > out/gate-painted-slots-unprepared.log 2>&1 \
+	|| status=$?
+if [ "$status" -ne 0 ] && grep -q 'paintedSlots with no prepared frame' out/gate-painted-slots-unprepared.log; then
+	pass "painted slots before prepare stops with its error"
+else
+	fail "painted slots before prepare did not name its error"
+fi
 glyph_backends="native"
 case "$(uname -s)" in
 	MINGW*|MSYS*|CYGWIN*) glyph_backends="native gl" ;;
@@ -252,6 +349,7 @@ for glyph_backend in $glyph_backends; do
 	case "$(uname -s):$glyph_backend" in
 		*:gl) colour_backend=4 ;;
 		MINGW*:native|MSYS*:native|CYGWIN*:native) colour_backend=1 ;;
+		Darwin:native) colour_backend=5 ;;
 	esac
 	if "$MSC" build -d:voidColourEmoji $glyph_flags tests/integration/colourSampler.ms \
 			--release --output="$colour_runner" \
@@ -513,6 +611,23 @@ if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/ga
 else
 	fail "two host views in one process — see out/gate-two-views.log, out/gate-two-views-run.log and .err"
 	grep -E '^FAIL' out/gate-two-views-run.log | sed 's/^/      /' || true
+fi
+if [ "$(uname -s)" = Darwin ] && [ -x out/twoViews.exe ]; then
+	OBJC_DEBUG_MISSING_POOLS=YES out/twoViews.exe > /dev/null 2> out/gate-two-views-pools.err || true
+	if grep -q 'of class CAMetalDrawable autoreleased with no pool' out/gate-two-views-pools.err; then
+		fail "a view frame autoreleases its drawable with no pool in place — see out/gate-two-views-pools.err"
+	else
+		pass "a view frame releases its drawable in its own autorelease pool"
+	fi
+fi
+if [ "$(uname -s)" = Darwin ]; then
+	if "$MSC" build tests/integration/framePacing.ms --output=out/framePacing.exe > out/gate-frame-pacing.log 2>&1 \
+			&& out/framePacing.exe > out/gate-frame-pacing-run.log 2>&1; then
+		pass "$(grep -E '^PASS frame pacing' out/gate-frame-pacing-run.log | sed 's/^PASS //')"
+	else
+		fail "frame pacing — see out/gate-frame-pacing.log and out/gate-frame-pacing-run.log"
+		grep -E '^FAIL' out/gate-frame-pacing-run.log | sed 's/^/      /' || true
+	fi
 fi
 outside_status=0
 VOID_VIEWS_OUTSIDE=1 out/twoViews.exe > out/gate-two-views-outside.log 2>&1 || outside_status=$?
@@ -951,7 +1066,20 @@ else
 		conformance_rule gl430 out/gate-golden-gl.log conformance:gl430-pixel-centre
 	fi
 fi
-skip "metal macOS: no readback (~50 lines) — tests/PENDING.md backend:metal-macos"
+if [ "$(uname -s)" != Darwin ]; then
+	skip "metal macOS: runs on a Mac only (sh scripts/golden.sh --backend metal)"
+elif [ "$QUICK" -eq 1 ]; then
+	skip "metal macOS: --quick skips the golden suites (sh scripts/golden.sh --backend metal)"
+else
+	sh scripts/golden.sh --backend metal > out/gate-golden-metal.log 2>&1 || true
+	metal_conformance="$(grep -E '^golden metal' out/gate-golden-metal.log || echo 'no conformance line — see out/gate-golden-metal.log')"
+	echo "      metal    $metal_conformance      (this Mac, every full gate)"
+	if ! echo "$metal_conformance" | grep -q '^golden metal'; then
+		fail "metal macOS conformance did not run — see out/gate-golden-metal.log"
+	else
+		conformance_rule metal out/gate-golden-metal.log conformance:metal-gpu-rounding
+	fi
+fi
 skip "metal iOS: no readback, and the first device run is T5 — tests/PENDING.md backend:metal-ios"
 skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
 skip "webgpu: blocked with the other web runs — tests/PENDING.md web:runs"
@@ -998,10 +1126,11 @@ echo
 # SHAs: read out EMPTY. One direction only, deliberately - a skip naming a dead row is always
 # wrong, while "a new row no skip names yet" is the normal state of a row added before its
 # gate line, and making that red is a contract change that belongs to the phase review.
+grep -oE '^\| [a-z-]+:[a-zA-Z0-9/-]+' tests/PENDING.md | sed 's/^| //' | sort -u > out/pendingIds.txt
 dead_refs=$(grep -vE '^[[:space:]]*#' scripts/gate.sh \
 	| grep -oE 'tests/PENDING\.md [a-z-]+:[a-zA-Z0-9/-]+' \
 	| awk '{ print $2 }' | sort -u \
-	| comm -23 - <(grep -oE '^\| [a-z-]+:[a-zA-Z0-9/-]+' tests/PENDING.md | sed 's/^| //' | sort -u))
+	| comm -23 - out/pendingIds.txt)
 if [ -z "$dead_refs" ]; then
 	pass "every PENDING id the skip lines name exists in tests/PENDING.md"
 else

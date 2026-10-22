@@ -1,4 +1,4 @@
-import { Scene2D, NodeRef, DrawKind, Changed, NO_NODE_2D } from "./node";
+import { Scene2D, NodeRef, DrawKind, Changed, NO_NODE_2D, NO_SLOT } from "./node";
 import {
 	syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes, snappedShift, closeContextTargets,
 } from "./render";
@@ -11,7 +11,7 @@ import {
 	endPatch,
 	enterCamera,
 } from "./draw";
-import { DrawContext2D, NO_REPAINT, useContext, retireContext } from "./displayList";
+import { DrawContext2D, NO_REPAINT, PaintState, useContext, retireContext } from "./displayList";
 import { void2dReleaseList } from "./batcher.h";
 when (voidProfiler) {
 	import { profilerPolledDirty } from "./frameMarks";
@@ -322,6 +322,51 @@ export function prepare(this s: Scene2D, wf: float32, hf: float32, dpi: float32)
 export function drawScreen(this s: Scene2D): void {
 	s.requireOpen("drawScreen");
 	s.context.drawScreen();
+}
+
+function paintedOnScreen(s: Scene2D, i: int32): boolean {
+	const l: DrawContext2D = s.context;
+	return s.slots[i] != NO_SLOT && i < (l.paintStates.length as int32) &&
+		l.paintStates[i] == PaintState.Painted;
+}
+
+export function paintedSlots(this s: Scene2D): NodeRef[] {
+	s.requireOpen("paintedSlots");
+	if (!s.context.prepared) {
+		console.log("void2d: paintedSlots with no prepared frame");
+		unreachable;
+	}
+	const out: NodeRef[] = [];
+	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
+		const i: int32 = s.order[p];
+		if (s.orders[i].layerSlot && paintedOnScreen(s, i)) { out.push(s.refOf(i)); }
+	}
+	return out;
+}
+
+export function drawScreenUntil(this s: Scene2D, slot: NodeRef): void {
+	s.requireOpen("drawScreenUntil");
+	if (slot.scene !== s) {
+		console.log(`void2d: drawScreenUntil on node ${slot.id.index} of another scene`);
+		unreachable;
+	}
+	const i: int32 = slot.liveRow("drawScreenUntil");
+	if (!s.orders[i].layerSlot) {
+		console.log(`void2d: drawScreenUntil on node ${i}, which is not a layer slot`);
+		unreachable;
+	}
+	const l: DrawContext2D = s.context;
+	if (!paintedOnScreen(s, i)) {
+		console.log(`void2d: drawScreenUntil on node ${i}, which the prepared frame did not paint ` +
+			"on the screen");
+		unreachable;
+	}
+	const boundary: int32 = l.paintStarts[i].commands;
+	if (boundary < l.screenCursor) {
+		console.log(`void2d: drawScreenUntil on node ${i}, which paints before the part already drawn`);
+		unreachable;
+	}
+	l.drawScreenUntil(boundary);
 }
 
 export function drawTarget(this s: Scene2D, target: RenderTarget): void {

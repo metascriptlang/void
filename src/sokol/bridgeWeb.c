@@ -249,15 +249,23 @@ EM_JS(void, voidWebInstallStart, (int needsDevice), {
 		live.set(id, { canvas: canvas, key: key, view: view, w: size.w, h: size.h, dpr: size.dpr });
 		if (!pending) pending = requestAnimationFrame(tick);
 	}
-	Module.voidStart = function(canvas) {
+	Module.voidStart = function(canvas, onError) {
 		var id = nextId++;
 		var stopped = false;
 		if (needsDevice && !Module.preinitializedWebGPUDevice) {
-			navigator.gpu.requestAdapter()
-				.then(function(adapter) { return adapter.requestDevice(); })
+			Promise.resolve()
+				.then(function() { return navigator.gpu.requestAdapter(); })
+				.then(function(adapter) {
+					if (!adapter) throw new Error('navigator.gpu.requestAdapter() gave no adapter');
+					return adapter.requestDevice();
+				})
 				.then(function(device) {
 					Module.preinitializedWebGPUDevice = Module.preinitializedWebGPUDevice || device;
 					if (!stopped) begin(id, canvas);
+				}, function(error) {
+					if (stopped) return;
+					var failure = new Error('void: this browser gave no WebGPU device: ' + (error && error.message || error));
+					if (onError) onError(failure); else console.error(failure.message);
 				});
 		} else {
 			begin(id, canvas);
@@ -285,6 +293,7 @@ void voidWebInstall(void) {
 #else
 	voidWebInstallStart(0);
 #endif
+	leaveCallerSuspendedWhileFramesRun();
 }
 
 EMSCRIPTEN_KEEPALIVE int voidWebViewCreate(int id, int w, int h, float scale) {
@@ -304,16 +313,14 @@ typedef struct {
 	WGPUSurface surface;
 	WGPUTexture texture;
 	WGPUTextureView view;
+	WGPUTexture msaa;
+	WGPUTextureView msaaView;
 #else
 	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 #endif
 } WebSurface;
 
-static void refuseMultisample(void) {
-	if (voidViewsSampleCount() != 1) {
-		voidFail("voidViewCreate: web views render at 1 sample, not %d", voidViewsSampleCount());
-	}
-}
+static void setupViewsGfx(void);
 
 #if defined(VOID_WGPU)
 
@@ -341,7 +348,6 @@ EM_JS(int, voidWebPrefersBgra, (void), {
 void voidPlatformDeviceEnsure(void) {
 	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
 	if (s_driver == DRIVER_VIEWS) return;
-	refuseMultisample();
 	s_instance = wgpuCreateInstance(NULL);
 	if (!s_instance) voidFail("voidViewCreate: wgpuCreateInstance failed");
 	s_device = emscripten_webgpu_get_device();
@@ -352,7 +358,7 @@ void voidPlatformDeviceEnsure(void) {
 }
 
 static void setupViewsGfx(void) {
-	doorSetup(s_device, NULL, doorColorFormat(s_format), DOOR_PIXEL_FORMAT_NONE, 1);
+	doorSetup(s_device, NULL, doorColorFormat(s_format), DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
 	if (!doorValid()) voidFail("doorSetup on the WebGPU device failed");
 }
 
@@ -368,6 +374,34 @@ static void configure(WebSurface *s) {
 	wgpuSurfaceConfigure(s->surface, &c);
 }
 
+static void dropMsaa(WebSurface *s) {
+	if (s->msaaView) wgpuTextureViewRelease(s->msaaView);
+	if (s->msaa) wgpuTextureRelease(s->msaa);
+	s->msaaView = NULL;
+	s->msaa = NULL;
+}
+
+// sokol_app's own WebGPU swapchain does the same: the pass renders into a multisampled texture
+// and resolves into the canvas texture (sokol_app.h _sapp_wgpu_create_swapchain).
+static void makeMsaa(WebSurface *s) {
+	dropMsaa(s);
+	const int samples = voidViewsSampleCount();
+	if (samples == 1) return;
+	WGPUTextureDescriptor desc = {0};
+	desc.usage = WGPUTextureUsage_RenderAttachment;
+	desc.dimension = WGPUTextureDimension_2D;
+	desc.size.width = (uint32_t)s->w;
+	desc.size.height = (uint32_t)s->h;
+	desc.size.depthOrArrayLayers = 1;
+	desc.format = s_format;
+	desc.mipLevelCount = 1;
+	desc.sampleCount = (uint32_t)samples;
+	s->msaa = wgpuDeviceCreateTexture(s_device, &desc);
+	if (!s->msaa) voidFail("the %dx%d target at %d samples failed", s->w, s->h, samples);
+	s->msaaView = wgpuTextureCreateView(s->msaa, NULL);
+	if (!s->msaaView) voidFail("the view of the %d-sample target failed", samples);
+}
+
 static bool makeSurface(WebSurface *s) {
 	WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas = {0};
 	canvas.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
@@ -377,10 +411,16 @@ static bool makeSurface(WebSurface *s) {
 	s->surface = wgpuInstanceCreateSurface(s_instance, &desc);
 	if (!s->surface) return false;
 	configure(s);
+	makeMsaa(s);
 	return true;
 }
 
-static void resizeSurface(WebSurface *s) { configure(s); }
+static void resizeSurface(WebSurface *s) {
+	configure(s);
+	makeMsaa(s);
+}
+
+int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
@@ -397,7 +437,8 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	return 1;
 }
 
-static void *viewRenderView(const WebSurface *s) { return s->view; }
+static void *viewRenderView(const WebSurface *s) { return s->msaaView ? s->msaaView : s->view; }
+static void *viewResolveView(const WebSurface *s) { return s->msaaView ? s->view : NULL; }
 
 void voidPlatformSurfacePresent(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
@@ -408,6 +449,7 @@ void voidPlatformSurfacePresent(void *surface) {
 }
 
 static void dropSurface(WebSurface *s) {
+	dropMsaa(s);
 	wgpuSurfaceUnconfigure(s->surface);
 	wgpuSurfaceRelease(s->surface);
 }
@@ -425,12 +467,11 @@ static void setupWindowDoor(void) {
 void voidPlatformDeviceEnsure(void) {
 	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
 	if (s_driver == DRIVER_VIEWS) return;
-	refuseMultisample();
 	s_driver = DRIVER_VIEWS;
 }
 
 static void setupViewsGfx(void) {
-	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_NONE, 1);
+	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
 	if (!doorValid()) voidFail("doorSetup on the WebGL2 context failed");
 }
 
@@ -447,7 +488,7 @@ static bool makeSurface(WebSurface *s) {
 	attrs.majorVersion = 2;
 	attrs.alpha = true;
 	attrs.premultipliedAlpha = true;
-	attrs.antialias = false;
+	attrs.antialias = voidViewsSampleCount() > 1;
 	attrs.depth = false;
 	attrs.stencil = false;
 	s->context = emscripten_webgl_create_context(s->selector, &attrs);
@@ -463,6 +504,8 @@ static bool makeSurface(WebSurface *s) {
 
 static void resizeSurface(WebSurface *s) { emscripten_set_canvas_element_size(s->selector, s->w, s->h); }
 
+int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
 	if (emscripten_is_webgl_context_lost(s->context)) return 0;
@@ -472,6 +515,11 @@ int voidPlatformSurfaceAcquire(void *surface) {
 }
 
 static void *viewRenderView(const WebSurface *s) {
+	(void)s;
+	return NULL;
+}
+
+static void *viewResolveView(const WebSurface *s) {
 	(void)s;
 	return NULL;
 }
@@ -584,7 +632,7 @@ void *voidSwapchainRenderView(void) {
 }
 
 void *voidSwapchainResolveView(void) {
-	if (screenDriver() == DRIVER_VIEWS) return NULL;
+	if (screenDriver() == DRIVER_VIEWS) return viewResolveView((const WebSurface *)voidViewsCurrentSurface());
 #if defined(VOID_WGPU)
 	return voidWebResolveView();
 #else

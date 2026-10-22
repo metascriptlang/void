@@ -5,10 +5,11 @@
 // Metal readback, so no pixel is read back (tests/capture/capture.h).
 
 @include("macViewsHost.h");
-@compile("./macViewsHost.m");
+@compile("./macViewsHost.m", "-fobjc-arc");
 extern function macHostOpen(width: int32, height: int32): int64;
 extern function macHostResize(width: int32, height: int32): void;
 extern function macHostPump(): void;
+extern function macHostAwaitVsync(): void;
 extern function macHostClose(): void;
 extern function macHostBackingWidth(): int32;
 extern function macHostBackingHeight(): int32;
@@ -62,7 +63,7 @@ function frameView(): void {
 
 function drive(view: ViewId, w: int32, h: int32, scale: float32, what: string): void {
 	for (let i: int32 = 0 as int32; i < FRAMES; i++) {
-		macHostPump();
+		macHostAwaitVsync();
 		check(viewFrame(view), `${what}: viewFrame ${i} returned false`);
 		check(_seenView === view, `${what}: the frame closure saw view ${_seenView}`);
 		check(currentView() === ViewInvalid, `${what}: a view is still current after the frame`);

@@ -168,6 +168,10 @@ const char *voidCaptureRenderer(void) {
 }
 
 int voidCaptureGrab(int slot) {
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) {
+		fprintf(stderr, "capture: slot %d is outside the %d capture slots\n", slot, VOID_CAPTURE_SLOTS);
+		exit(1);
+	}
 	stopOnClampedWindow();
 #if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL)
 	int width = voidSwapchainWidth();

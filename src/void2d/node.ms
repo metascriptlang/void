@@ -58,6 +58,7 @@ import {
 	allocateIconPlacement,
 	releaseIconPlacement,
 	releaseIconTile,
+	retargetIconPlacement,
 } from "./icon";
 import { FontId } from "./font";
 import { Align, TextRun, TextStyle, Truncate } from "./textLayout";
@@ -152,6 +153,7 @@ export struct Order2D {
 	visible: boolean;
 	name: string;
 	noOverlap: boolean;
+	layerSlot: boolean;
 }
 
 export enum Enclosure {
@@ -399,7 +401,7 @@ function localMatrix(l: Local2D): Transform2D {
 export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 	s.requireOpen("creating a node");
 	const noBounds: Bounds2D = { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 };
-	const order: Order2D = { zIndex: 0, visible: true, name: "", noOverlap: false };
+	const order: Order2D = { zIndex: 0, visible: true, name: "", noOverlap: false, layerSlot: false };
 	const reusable: int32 = s.free.length as int32;
 	if (reusable > 0) {
 		const i: int32 = s.free.pop();
@@ -827,6 +829,12 @@ export function setNoOverlap(this n: NodeRef, promise: boolean): NodeRef {
 	return n;
 }
 
+export function setLayerSlot(this n: NodeRef, slot: boolean): NodeRef {
+	const i: int32 = n.liveRow("setLayerSlot");
+	n.scene.putOrder(i, { ...n.scene.orders[i], layerSlot: slot });
+	return n;
+}
+
 export function setName(this n: NodeRef, name: string): NodeRef {
 	const i: int32 = n.liveRow("setName");
 	n.scene.putOrder(i, { ...n.scene.orders[i], name: name });
@@ -921,6 +929,13 @@ export function icon(this s: Scene2D, id: IconId, w: float32, h: float32, color:
 	const i: int32 = s.sized(DrawKind.Icon, allocateIconPlacement(id), w, h);
 	s.paints[i] = { ...s.paints[i], color: color };
 	return s.refOf(i);
+}
+
+export function setIcon(this n: NodeRef, id: IconId): NodeRef {
+	const i: int32 = n.liveRow("setIcon");
+	requireKind(n, i, DrawKind.Icon, "setIcon", "an icon");
+	if (retargetIconPlacement(n.scene.payloads[i], id)) { n.scene.markChanged(i, Changed.Content); }
+	return n;
 }
 
 export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
@@ -1316,6 +1331,34 @@ export function setFrameDelays(this n: NodeRef, delaysMs: Vec<int32>): NodeRef {
 		}
 	}
 	s.anims[s.payloads[i]] = { ...row, delaysMs: delaysMs, carryMs: 0.0 };
+	return n;
+}
+
+export function setFrames(this n: NodeRef, frames: Tile[]): NodeRef {
+	const i: int32 = n.liveRow("setFrames");
+	requireKind(n, i, DrawKind.Anim, "setFrames", "frames");
+	const s: Scene2D = n.scene;
+	const row: AnimFrames = s.anims[s.payloads[i]];
+	const delays: int32 = row.delaysMs.length as int32;
+	const len: int32 = frames.length as int32;
+	if (delays != 0 && delays != len) {
+		console.log(`void2d: setFrames got ${len} frames for an Anim holding ${delays} frame delays`);
+		unreachable;
+	}
+	s.anims[s.payloads[i]] = { ...row, frames: frames, current: 0, carryMs: 0.0 };
+	s.markChanged(i, Changed.Content);
+	return n;
+}
+
+export function setFps(this n: NodeRef, fps: float32): NodeRef {
+	const i: int32 = n.liveRow("setFps");
+	requireKind(n, i, DrawKind.Anim, "setFps", "frames");
+	if (!(fps >= 0.0)) {
+		console.log(`void2d: setFps(${fps}) on an Anim; a frame rate is 0 or more`);
+		unreachable;
+	}
+	const s: Scene2D = n.scene;
+	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], fps: fps, carryMs: 0.0 };
 	return n;
 }
 
@@ -1846,7 +1889,7 @@ function freeRow(this s: Scene2D, i: int32): void {
 	s.parents[i] = NO_NODE_2D;
 	s.children[i] = new Array(0);
 	s.paints[i] = defaultPaint();
-	s.orders[i] = { zIndex: 0, visible: true, name: "", noOverlap: false };
+	s.orders[i] = { zIndex: 0, visible: true, name: "", noOverlap: false, layerSlot: false };
 	s.layouts[i] = noLayout();
 	const generation: int32 = s.generations[i];
 	if (generation == LAST_GENERATION) {

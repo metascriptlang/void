@@ -18,6 +18,9 @@ import "./glyphRetryCheck";
 import "./textMetricsCheck";
 import "./textGammaCheck";
 import "./fontCheck";
+when (macos) {
+	import "./platformFaceCheck";
+}
 import "./syntheticFaceCheck";
 when (voidSprites) {
 	import "./spriteOracleCheck";

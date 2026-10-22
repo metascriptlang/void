@@ -8,6 +8,7 @@ int voidViewsSampleCount(void);
 void voidPlatformRunInit(msClosure init);
 void *voidPlatformSurfaceCreate(const void *native, int w, int h);
 void voidPlatformSurfaceResize(void *surface, int w, int h);
+int voidPlatformSurfaceReady(void *surface);
 int voidPlatformSurfaceAcquire(void *surface);
 void voidPlatformSurfacePresent(void *surface);
 void voidPlatformSurfaceDestroy(void *surface);

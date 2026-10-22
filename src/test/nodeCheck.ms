@@ -1,4 +1,4 @@
-import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D, NO_COLOR_MATRIX_ROW } from "../void2d/node";
+import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D, NO_COLOR_MATRIX_ROW, NO_FRAME } from "../void2d/node";
 import "../void2d/scene";
 import { sync, getBounds, hitTest } from "../void2d/render";
 import {
@@ -12,7 +12,7 @@ import { BoxStyle, uniformRadii, uniformBorders, boxStyles } from "../void2d/box
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../void2d/effect";
 
 when (voidSvg) {
-	import { IconId, iconHolds, registerIcon } from "../void2d/icon";
+	import { IconId, iconHolds, iconOf, iconTile, placeIcon, registerIcon } from "../void2d/icon";
 }
 
 const HALF_PI: float32 = 1.5707963;
@@ -1025,6 +1025,68 @@ test "disposing an Anim empties its frames and its delays" {
 	assert s.anims[slot].delaysMs.length == 0;
 }
 
+test "setFrames restarts at frame 0, keeps the node's size and marks content" {
+	const s = fresh();
+	const a = s.anim(threeFrames(), 10.0);
+	s.add(a);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	s.clearChanges();
+	a.setFrames([whiteTile(32.0, 16.0), whiteTile(32.0, 16.0)]);
+	assert a.animFrames().frameIndex() == 0;
+	assert approx(a.animFrames().carryMs, 0.0);
+	assert marked(a, Changed.Content);
+	assert s.contents[a.id.index].w == 8.0 && s.contents[a.id.index].h == 8.0;
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 0;
+}
+
+test "setFrames empties and refills an Anim, and an empty one holds still" {
+	const s = fresh();
+	const a = s.anim(threeFrames(), 10.0);
+	s.add(a);
+	a.setFrames([]);
+	assert a.animFrames().frameIndex() == NO_FRAME;
+	s.tick(1.0);
+	assert a.animFrames().frameIndex() == NO_FRAME;
+	a.setFrames(threeFrames());
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+}
+
+test "setFrames keeps per-frame delays that still count its frames, and the paused state" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	a.setPaused(true);
+	a.setFrames(threeFrames());
+	assert a.animFrames().delaysMs.length == 3;
+	assert a.animFrames().paused;
+	a.setPaused(false);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	assert approx(a.animFrames().carryMs, 25.0);
+}
+
+test "setFps changes the rate, restarts the delay, and 0 holds the frame until it moves again" {
+	const s = fresh();
+	const a = s.anim(threeFrames(), 10.0);
+	s.add(a);
+	s.tick(0.0625);
+	a.setFps(20.0);
+	assert approx(a.animFrames().carryMs, 0.0);
+	s.tick(0.0625);
+	assert a.animFrames().frameIndex() == 1;
+	a.setFps(0.0);
+	s.tick(10.0);
+	assert a.animFrames().frameIndex() == 1;
+	a.setFps(10.0);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 2;
+}
+
 test "removing the delays returns to the constant fps" {
 	const s = fresh();
 	const a = delayed(s).setFrameDelays([]);
@@ -1077,6 +1139,72 @@ when (voidSvg) {
 		assert approx(n.paint().color.g, 1.0);
 		assert approx(n.paint().color.r, 0.0);
 		assert approx(n.content().w, 16.0);
+	}
+
+	test "setIcon moves the hold to the new icon and keeps the node, its box and its tint" {
+		const before: IconId = registeredIcon();
+		const after: IconId = registeredIcon();
+		const s = fresh();
+		const n = s.icon(before, 20.0, 12.0, rgba(0.5, 0.25, 0.75, 1.0));
+		const slot: int32 = s.payloads[n.id.index];
+		s.clearChanges();
+		const same = n.setIcon(after);
+		assert same.id.index == n.id.index;
+		assert s.payloads[n.id.index] == slot;
+		assert iconOf(slot) == after;
+		assert iconHolds(before) == 0;
+		assert iconHolds(after) == 1;
+		assert marked(n, Changed.Content);
+		assert approx(n.content().w, 20.0) && approx(n.content().h, 12.0);
+		assert approx(n.paint().color.b, 0.75);
+	}
+
+	test "setIcon gives back the mask of the old icon and the next placement draws the new one" {
+		const before: IconId = registeredIcon();
+		const after: IconId = registeredIcon();
+		const s = fresh();
+		const n = s.icon(before, 16.0, 16.0, white);
+		const slot: int32 = s.payloads[n.id.index];
+		const old = placeIcon(slot, 16.0, 16.0, identity2d(), 1.0);
+		assert old.drawn;
+		assert iconTile(slot) >= 0;
+		n.setIcon(after);
+		assert iconTile(slot) == -1;
+		const next = placeIcon(slot, 16.0, 16.0, identity2d(), 1.0);
+		assert next.drawn;
+		assert iconTile(slot) >= 0;
+	}
+
+	test "setIcon with the icon already shown keeps its single hold and marks nothing" {
+		const id: IconId = registeredIcon();
+		const s = fresh();
+		const n = s.icon(id, 16.0, 16.0, white);
+		s.clearChanges();
+		n.setIcon(id);
+		assert iconHolds(id) == 1;
+		assert s.changed[n.id.index].isEmpty();
+	}
+
+	test "two icons sharing an id keep their own holds when one of them switches" {
+		const shared: IconId = registeredIcon();
+		const other: IconId = registeredIcon();
+		const s = fresh();
+		const a = s.icon(shared, 8.0, 8.0, white);
+		const b = s.icon(shared, 8.0, 8.0, white);
+		a.setIcon(other);
+		assert iconHolds(shared) == 1;
+		assert iconHolds(other) == 1;
+		assert iconOf(s.payloads[b.id.index]) == shared;
+	}
+
+	test "disposing a switched icon gives back the icon it shows, not the one it started with" {
+		const before: IconId = registeredIcon();
+		const after: IconId = registeredIcon();
+		const n = fresh().icon(before, 8.0, 8.0, white);
+		n.setIcon(after);
+		n.dispose();
+		assert iconHolds(before) == 0;
+		assert iconHolds(after) == 0;
 	}
 
 	test "an icon reports its box as its bounds" {

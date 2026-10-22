@@ -1,6 +1,8 @@
 #ifndef VOID2D_SHAPER_H
 #define VOID2D_SHAPER_H
 
+#include <stdint.h>
+
 #define VOID2D_SHAPE_NO_FACE -1
 #define VOID2D_SHAPE_BAD_FONT -2
 #define VOID2D_SHAPE_NO_MEMORY -3
@@ -32,6 +34,6 @@ int void2dShapeCodepoint(int codepoint);
 int void2dShapeBreak(void);
 int void2dShapeEnd(void);
 int void2dShapeCount(void);
-int *void2dShapeGlyph(int index);
+void void2dShapeGlyph(int index, int *out, int64_t slots);
 
 #endif

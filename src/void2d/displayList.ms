@@ -320,6 +320,7 @@ export interface DrawContext2D {
 	targetsFlushed: boolean;
 	prepared: boolean;
 	preparedFrame: uint32;
+	screenCursor: int32;
 	savedView: Vec<uint32>;
 	savedRun: Vec<float32>;
 	savedSize: Vec<float32>;
@@ -426,6 +427,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		targetsFlushed: false,
 		prepared: false,
 		preparedFrame: 0,
+		screenCursor: 0,
 		savedView: new Array(TARGET_DEPTH_RESERVED),
 		savedRun: new Array(TARGET_DEPTH_RESERVED * 3),
 		savedSize: new Array(TARGET_DEPTH_RESERVED * 4),

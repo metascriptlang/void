@@ -194,6 +194,11 @@ def unloadable():
              magic=b"OTTO", outlines=(), cff=cffWithType1Charstrings())
 
 
+def noOutlines():
+    table = groups(12, [(0x4F60, 0x4F60, 1), (0x597D, 0x597D, 2)])
+    saveCmap("noOutlines.ttf", [(*UNICODE_FULL, table)], outlines=("hvgl",), usable=True)
+
+
 def joiners():
     table = groups(12, [(0x200D, 0x200D, 1), (0xFE0F, 0xFE0F, 2)])
     saveCmap("joiners.ttf", [(*UNICODE_FULL, table)], usable=True)
@@ -248,4 +253,5 @@ if __name__ == "__main__":
     hostile()
     formats()
     unloadable()
+    noOutlines()
     joiners()

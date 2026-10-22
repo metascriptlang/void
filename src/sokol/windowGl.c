@@ -105,6 +105,8 @@ void voidWindowDoorSetup(void) {
 	if (!doorValid()) voidFail("doorSetup on the GL window failed");
 }
 
+bool voidWindowAwaitFrame(void) { return true; }
+
 void voidWindowPresent(bool modal) {
 	(void)modal;
 	SwapBuffers(s_dc);

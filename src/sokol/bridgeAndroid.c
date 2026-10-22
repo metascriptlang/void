@@ -160,6 +160,8 @@ static void restore_context(AndroidSurface *current) {
 	g_contextLost = 0;
 }
 
+int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	AndroidSurface *s = (AndroidSurface *)surface;
 	if (g_contextLost) restore_context(s);

@@ -9,6 +9,9 @@ import {
 	glyphIndex,
 	faceHeights,
 	colourBuilt,
+	platformFacesBuilt,
+	FaceBytesError,
+	holdFaceBytes,
 } from "./face";
 import { graphemeProperty } from "./grapheme";
 
@@ -35,6 +38,20 @@ export struct Font {
 	sizeAdjust: SizeAdjust;
 }
 
+export struct FaceQuery {
+	codepoint: int32;
+	presentation: Presentation;
+	weight: int32;
+	style: FontStyle;
+}
+
+export struct FaceCandidate {
+	path: string;
+	index: int32;
+}
+
+export type FaceResolver = (query: FaceQuery) => FaceCandidate[];
+
 export type FontId = distinct int32;
 @delegate export function `==`(this a: FontId, b: FontId): boolean;
 export const DEFAULT_FONT: FontId = 0 as FontId;
@@ -45,6 +62,8 @@ export enum FontError {
 	NeedsShaper,
 	NotLoaded,
 	BadFeatureTag,
+	NoRasterizerOnJs,
+	NameHeld,
 }
 
 export enum Presentation {
@@ -66,6 +85,7 @@ const NOT_LOADED: int32 = -1;
 const LOAD_FAILED: int32 = -2;
 const BOLD_WEIGHT: int32 = 600;
 const PRIMARY_SLOT: int32 = -1;
+const NO_DISCOVERY: int32 = -1;
 const FONT_SHIFT: uint64 = 40;
 const MODE_SHIFT: uint64 = 32;
 
@@ -78,11 +98,13 @@ struct RegisteredFace {
 
 struct LoadedPath {
 	path: string;
+	collectionIndex: int32;
 	face: Result<int32, FaceError>;
 }
 
 struct PeekedPath {
 	path: string;
+	collectionIndex: int32;
 	summary: Result<FaceSummary, SfntError>;
 }
 
@@ -112,6 +134,7 @@ struct FontEntry {
 struct Fallback {
 	font: FontId;
 	path: string;
+	collectionIndex: int32;
 	bold: boolean;
 	italic: boolean;
 	face: int32;
@@ -121,6 +144,7 @@ struct Fallback {
 let registered: Vec<RegisteredFace> = [];
 let loadedPaths: Vec<LoadedPath> = [];
 let peekedPaths: Vec<PeekedPath> = [];
+let heldNames: Vec<string> = [];
 let synthetics: Vec<Synthetic> = [];
 when (voidSprites) {
 	let spriteFaces: Vec<SpriteOf> = [];
@@ -128,35 +152,44 @@ when (voidSprites) {
 let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
+let faceResolver: FaceResolver | null = null;
+let discovered: Map<uint64, int32> = new Map<uint64, int32>();
+let discoveries: Vec<FaceCandidate> = [];
+let discoveryAsks: int32 = 0;
 let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
 let defaultLoads: int32 = 0;
 
-function faceAtPath(path: string): Result<int32, FaceError> {
+function faceAtPath(path: string, collectionIndex: int32 = 0): Result<int32, FaceError> {
 	for (let i: int32 = 0; i < (loadedPaths.length as int32); i++) {
-		if (loadedPaths[i].path.equals(path)) { return loadedPaths[i].face; }
+		if (loadedPaths[i].path.equals(path) && loadedPaths[i].collectionIndex == collectionIndex) {
+			return loadedPaths[i].face;
+		}
 	}
-	const face = loadFace(path);
-	loadedPaths.push({ path: path, face: face });
+	const face = loadFace(path, collectionIndex);
+	loadedPaths.push({ path: path, collectionIndex: collectionIndex, face: face });
 	return face;
 }
 
-function summaryAtPath(path: string): Result<FaceSummary, SfntError> {
+function summaryAtPath(path: string, collectionIndex: int32 = 0): Result<FaceSummary, SfntError> {
 	for (let i: int32 = 0; i < (peekedPaths.length as int32); i++) {
-		if (peekedPaths[i].path.equals(path)) { return peekedPaths[i].summary; }
+		if (peekedPaths[i].path.equals(path) && peekedPaths[i].collectionIndex == collectionIndex) {
+			return peekedPaths[i].summary;
+		}
 	}
-	const summary = peekFace(path);
-	peekedPaths.push({ path: path, summary: summary });
+	const summary = peekFace(path, collectionIndex);
+	peekedPaths.push({ path: path, collectionIndex: collectionIndex, summary: summary });
 	return summary;
 }
 
-function coversAtPath(path: string, codepoint: int32): boolean {
+function coversAtPath(path: string, collectionIndex: int32, codepoint: int32): boolean {
 	for (let i: int32 = 0; i < (loadedPaths.length as int32); i++) {
-		if (loadedPaths[i].path.equals(path) && loadedPaths[i].face.ok) {
+		if (loadedPaths[i].path.equals(path) && loadedPaths[i].collectionIndex == collectionIndex &&
+			loadedPaths[i].face.ok) {
 			return glyphIndex(loadedPaths[i].face.value, codepoint) != 0;
 		}
 	}
-	const summary = summaryAtPath(path);
+	const summary = summaryAtPath(path, collectionIndex);
 	return summary.ok && summaryCovers(summary.value, codepoint);
 }
 
@@ -199,8 +232,10 @@ when (voidSprites) {
 	}
 }
 
-function styledAt(path: string, bold: boolean, italic: boolean): Result<int32, FaceError> {
-	const face: int32 = try faceAtPath(path);
+function styledAt(
+	path: string, collectionIndex: int32, bold: boolean, italic: boolean,
+): Result<int32, FaceError> {
+	const face: int32 = try faceAtPath(path, collectionIndex);
 	return styled(face, bold, italic);
 }
 
@@ -251,10 +286,56 @@ export function registerFace(path: string, family: string, weight: int32, style:
 	registered.push({ path: path, family: family, weight: weight, style: style });
 }
 
+function pathRead(path: string): boolean {
+	for (const loaded of loadedPaths) { if (loaded.path.equals(path)) { return true; } }
+	for (const peeked of peekedPaths) { if (peeked.path.equals(path)) { return true; } }
+	return false;
+}
+
+function holdBytes(name: string, bytes: uint8[]): Result<void, FontError> {
+	when (js) {
+		return Result.err(FontError.NoRasterizerOnJs);
+	} else {
+		let known: boolean = false;
+		for (const held of heldNames) { known = known || held.equals(name); }
+		if (!known && pathRead(name)) { return Result.err(FontError.NameHeld); }
+		const held = holdFaceBytes(name, bytes);
+		if (held.ok) {
+			if (!known) { heldNames.push(name); }
+			return Result.ok(null);
+		}
+		if (held.error == FaceBytesError.NameHeld) { return Result.err(FontError.NameHeld); }
+		return Result.err(FontError.NotLoaded);
+	}
+}
+
+// registerFace for a face given as bytes (an asset read from an APK); `name` stands for its path.
+export function registerFaceBytes(
+	name: string, bytes: uint8[], family: string, weight: int32, style: FontStyle,
+): Result<void, FontError> {
+	try holdBytes(name, bytes);
+	registerFace(name, family, weight, style);
+	return Result.ok(null);
+}
+
+// The default font's bytes, for an app whose assets have no file path; before any text reads it.
+export function defaultFontBytes(bytes: uint8[]): Result<void, FontError> {
+	return holdBytes(DEFAULT_PATH, bytes);
+}
+
+// addFont for a face given as bytes; `name` stands for its path.
+export function addFontBytes(name: string, bytes: uint8[]): Result<FontId, FontError> {
+	try holdBytes(name, bytes);
+	return addFont(name);
+}
+
 export function addFont(path: string): Result<FontId, FontError> {
 	ensureDefaultFont();
 	const face = faceAtPath(path);
-	if (!face.ok) { return Result.err(FontError.NotLoaded); }
+	if (!face.ok) {
+		if (face.error == FaceError.NoRasterizerOnJs) { return Result.err(FontError.NoRasterizerOnJs); }
+		return Result.err(FontError.NotLoaded);
+	}
 	fonts.push(plainFont(face.value, path));
 	return Result.ok(((fonts.length as int32) - 1) as FontId);
 }
@@ -381,6 +462,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 	}
 	const face = styledAt(
 		registered[primary].path,
+		0,
 		font.needsBold(primary),
 		font.needsItalic(primary),
 	);
@@ -408,6 +490,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 		fallbacks.push({
 			font: id,
 			path: registered[m].path,
+			collectionIndex: 0,
 			bold: font.needsBold(m),
 			italic: font.needsItalic(m),
 			face: NOT_LOADED,
@@ -422,12 +505,71 @@ export function addFallbackFont(font: FontId, path: string): void {
 	fallbacks.push({
 		font: font,
 		path: path,
+		collectionIndex: 0,
 		bold: false,
 		italic: false,
 		face: NOT_LOADED,
 		scale: 1.0,
 	});
 	resolved = new Map<uint64, int32>();
+}
+
+export function setFaceResolver(resolver: FaceResolver | null): void {
+	faceResolver = resolver;
+	discovered = new Map<uint64, int32>();
+	discoveries = [];
+	resolved = new Map<uint64, int32>();
+}
+
+export function faceDiscoveryAsks(): int32 {
+	return discoveryAsks;
+}
+
+function discoveredFace(font: FontId, codepoint: int32, want: Presentation): int32 {
+	const resolver = faceResolver;
+	if (resolver === null) { return NO_DISCOVERY; }
+	const index: int32 = fontIndex(font);
+	const described: boolean = fonts[index].described;
+	const weight: int32 = described ? fonts[index].description.weight : 400;
+	const style: FontStyle = described ? fonts[index].description.style : FontStyle.Normal;
+	const key: uint64 = ((weight as uint64) << 32) | (((style as int32) as uint64) << 28) |
+		(((want as int32) as uint64) << 24) | (codepoint as uint64);
+	const hit = discovered.get(key);
+	if (hit.present) { return hit.value; }
+	discoveryAsks = discoveryAsks + 1;
+	const answers = resolver({ codepoint: codepoint, presentation: want, weight: weight, style: style });
+	let chosen: int32 = NO_DISCOVERY;
+	for (let k: int32 = 0; k < (answers.length as int32); k++) {
+		const path: string = answers[k].path;
+		const collectionIndex: int32 = answers[k].index;
+		if (drawableAt(path, collectionIndex) && coversAtPath(path, collectionIndex, codepoint) &&
+			presentationOfPath(path, collectionIndex) == want && osOpens(path, collectionIndex)) {
+			discoveries.push({ path: path, index: collectionIndex });
+			chosen = (discoveries.length as int32) - 1;
+			break;
+		}
+	}
+	discovered.set(key, chosen);
+	return chosen;
+}
+
+function discoveredSlot(font: FontId, codepoint: int32, want: Presentation): int32 {
+	const found: int32 = discoveredFace(font, codepoint, want);
+	if (found == NO_DISCOVERY) { return PRIMARY_SLOT; }
+	const path: string = discoveries[found].path;
+	const collectionIndex: int32 = discoveries[found].index;
+	for (let i: int32 = 0; i < (fallbacks.length as int32); i++) {
+		if (fallbacks[i].font == font && fallbacks[i].path.equals(path) &&
+			fallbacks[i].collectionIndex == collectionIndex) {
+			return fallbackUsable(i) ? i : PRIMARY_SLOT;
+		}
+	}
+	fallbacks.push({
+		font: font, path: path, collectionIndex: collectionIndex,
+		bold: false, italic: false, face: NOT_LOADED, scale: 1.0,
+	});
+	const slot: int32 = (fallbacks.length as int32) - 1;
+	return fallbackUsable(slot) ? slot : PRIMARY_SLOT;
 }
 
 function fontIndex(font: FontId): int32 {
@@ -490,7 +632,8 @@ function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): flo
 function fallbackFace(index: int32): int32 {
 	if (fallbacks[index].face == NOT_LOADED) {
 		const face = styledAt(
-			fallbacks[index].path, fallbacks[index].bold, fallbacks[index].italic,
+			fallbacks[index].path, fallbacks[index].collectionIndex,
+			fallbacks[index].bold, fallbacks[index].italic,
 		);
 		fallbackLoads = fallbackLoads + 1;
 		if (!face.ok) {
@@ -512,8 +655,8 @@ function fallbackFace(index: int32): int32 {
 	return fallbacks[index].face;
 }
 
-function presentationOfPath(path: string): Presentation {
-	const summary = summaryAtPath(path);
+function presentationOfPath(path: string, collectionIndex: int32 = 0): Presentation {
+	const summary = summaryAtPath(path, collectionIndex);
 	if (summary.ok && (summary.value.colourBitmap || summary.value.colourLayers)) {
 		return Presentation.Emoji;
 	}
@@ -525,13 +668,38 @@ function wantedPresentation(mode: Presentation, codepoint: int32): Presentation 
 	return graphemeProperty(codepoint).emojiPresentation ? Presentation.Emoji : Presentation.Text;
 }
 
+function drawableAt(path: string, collectionIndex: int32): boolean {
+	const summary = summaryAtPath(path, collectionIndex);
+	if (!summary.ok) { return false; }
+	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
+	return summary.value.drawable || (colour && colourBuilt()) ||
+		(summary.value.osOutlines && platformFacesBuilt());
+}
+
+function osOpens(path: string, collectionIndex: int32): boolean {
+	const summary = summaryAtPath(path, collectionIndex);
+	if (!summary.ok || !summary.value.osOutlines || summary.value.drawable) { return true; }
+	return faceAtPath(path, collectionIndex).ok;
+}
+
 function fallbackUsable(index: int32): boolean {
 	if (fallbacks[index].face == LOAD_FAILED) { return false; }
-	const summary = summaryAtPath(fallbacks[index].path);
-	if (!summary.ok || summary.value.drawable || colourBuilt()) { return true; }
+	const path: string = fallbacks[index].path;
+	const collectionIndex: int32 = fallbacks[index].collectionIndex;
+	const summary = summaryAtPath(path, collectionIndex);
+	if (!summary.ok || (drawableAt(path, collectionIndex) && osOpens(path, collectionIndex))) {
+		return true;
+	}
+	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
 	console.log(
-		`void2d: fallback font ${fallbacks[index].path} holds colour glyphs but no outlines, ` +
-		`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`,
+		summary.value.osOutlines && platformFacesBuilt()
+			? `void2d: fallback font ${path} has outlines only the OS draws, and the OS did not ` +
+				`open it; it is skipped`
+			: colour
+			? `void2d: fallback font ${path} holds colour glyphs but no outlines, ` +
+				`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`
+			: `void2d: fallback font ${path} has no outlines or colour glyphs Void can draw; ` +
+				`it is skipped`,
 	);
 	fallbacks[index].face = LOAD_FAILED;
 	return false;
@@ -541,8 +709,10 @@ function fallbackAnswers(
 	font: FontId, index: int32, codepoint: int32, exact: boolean, want: Presentation,
 ): boolean {
 	if (fallbacks[index].font != font || !fallbackUsable(index)) { return false; }
-	if (!coversAtPath(fallbacks[index].path, codepoint)) { return false; }
-	return !exact || presentationOfPath(fallbacks[index].path) == want;
+	const path: string = fallbacks[index].path;
+	const collectionIndex: int32 = fallbacks[index].collectionIndex;
+	if (!coversAtPath(path, collectionIndex, codepoint)) { return false; }
+	return !exact || presentationOfPath(path, collectionIndex) == want;
 }
 
 function primaryAnswers(
@@ -569,6 +739,10 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 				slot = i;
 				found = true;
 			}
+		}
+		if (!found) {
+			slot = discoveredSlot(font, codepoint, want);
+			found = slot != PRIMARY_SLOT;
 		}
 	}
 	if (!found && glyphIndex(fontFace(font), codepoint) != 0) { found = true; }

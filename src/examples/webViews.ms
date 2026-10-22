@@ -1,16 +1,21 @@
-// Void — browser host-view entry: each view clears to its own colour. The page starts and stops
-// views itself: Module.voidStart(canvas) starts one and returns its stop (docs/EMBED.md "Web").
+// Void — browser host-view entry: each view clears to a colour whose last channel only init writes.
+// The page starts and stops views itself: Module.voidStart(canvas) starts one and returns its stop
+// (docs/EMBED.md "Web").
 
-import { embedRegister, currentView } from "../sokol/gpu";
+import { embedRegister, setViewSampleCount } from "../sokol/gpu";
 import { beginScreenPassWith, endPass, commit } from "../gpu/door";
 
-function init(): void {}
+let clear: Vec<float32> = [0.1, 0.4];
+
+function init(): void {
+	if (clear.length == 2) clear.push(0.9);
+}
 
 function frame(): void {
-	const odd = (currentView() & 1) == 1;
-	beginScreenPassWith(odd ? 0.9 : 0.1, 0.4, odd ? 0.1 : 0.9, 1.0);
+	beginScreenPassWith(clear[0], clear[1], clear[2], 1.0);
 	endPass();
 	commit();
 }
 
+setViewSampleCount(4);
 embedRegister(init, frame);

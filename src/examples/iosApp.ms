@@ -1,4 +1,4 @@
-// Void — the iOS app driver demo: a full-screen scene that logs every window event.
+// Void — the iOS and Android app driver demo: a full-screen scene that logs every window event.
 
 import { gfxSetup, dpiScale } from "../sokol/gpu";
 import { onAppEvent, AppEvent, AppEventType, setTextInput, setImeRect, safeArea, keyboardHeight } from "../sokol/window";
@@ -9,6 +9,10 @@ import { rgba } from "../void2d/types";
 
 when (ios) {
 	@compile("./iosAppEntry.m");
+}
+
+when (android) {
+	@compile("../sokol/androidAppEntry.c");
 }
 
 @include("../sokol/bridge.h");

@@ -155,6 +155,7 @@ static int frameView(VoidViewId v) {
 	VoidViewSlot *s = slotOf(v, "voidViewFrame");
 	if (s_current != 0) voidFail("voidViewFrame(%d) inside the frame of view %d", v, s_current);
 	voidEmbedPumpMessages();
+	if (!voidPlatformSurfaceReady(s->surface)) return 0;
 	if (!voidPlatformSurfaceAcquire(s->surface)) return 0;
 	s_current = v;
 	call0(s_frame);
@@ -167,6 +168,10 @@ int voidViewFrame(VoidViewId v) {
 	const int drawn = frameView(v);
 	poolPop(pool);
 	return drawn;
+}
+
+int voidViewReady(VoidViewId v) {
+	return voidPlatformSurfaceReady(slotOf(v, "voidViewReady")->surface);
 }
 
 static void destroyView(VoidViewId v) {

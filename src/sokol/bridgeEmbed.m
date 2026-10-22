@@ -13,6 +13,7 @@
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "../webgpu/metal/metal.h"
+#include "presentGate.h"
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
@@ -21,6 +22,7 @@ static VoidDriver s_driver = DRIVER_NONE;
 static id<MTLDevice>       g_device;
 static CAMetalLayer*       g_layer;
 static id<CAMetalDrawable> g_drawable;
+static void*              g_gate;
 static int g_w = 800, g_h = 600;
 static float g_dpiScale = 1.0f;
 
@@ -71,8 +73,10 @@ static void restoreContextIfLost(void);
 
 static void tick(void) {
 	restoreContextIfLost();
+	if (!voidPresentGateAdmits(g_gate)) return;
 	g_drawable = [g_layer nextDrawable];
 	if (!g_drawable) return;
+	voidPresentGateTrack(g_gate, (__bridge void *)g_drawable);
 	mtlSetDrawable((__bridge void *)g_drawable);
 	call0(s_frame);
 	s_frames++;
@@ -128,6 +132,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 		g_w = (int)(w * g_dpiScale);
 		g_h = (int)(h * g_dpiScale);
 		g_layer.drawableSize = CGSizeMake(g_w, g_h);
+		g_gate = voidPresentGateCreate((__bridge void *)g_layer);
 		[view setLayer:g_layer];
 
 		[win center];
@@ -201,6 +206,7 @@ void voidDriverPresent(void) {
 
 typedef struct {
 	void *layer;
+	void *gate;
 	void *view;
 	void *drawable;
 	void *msaa;
@@ -263,6 +269,7 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	MacSurface *s = (MacSurface *)calloc(1, sizeof(MacSurface));
 	s->layer = (void *)CFBridgingRetain(layer);
+	s->gate = voidPresentGateCreate(s->layer);
 	if (native != NULL) {
 		NSView *view = (__bridge NSView *)native;
 		view.wantsLayer = YES;
@@ -275,11 +282,14 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 
 void voidPlatformSurfaceResize(void *surface, int w, int h) { fitLayer((MacSurface *)surface, w, h); }
 
+int voidPlatformSurfaceReady(void *surface) { return voidPresentGateAdmits(((MacSurface *)surface)->gate); }
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	restoreContextIfLost();
 	MacSurface *s = (MacSurface *)surface;
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
+	voidPresentGateTrack(s->gate, (__bridge void *)drawable);
 	s->drawable = (void *)CFBridgingRetain(drawable);
 	mtlSetDrawable(s->drawable);
 	return 1;
@@ -297,6 +307,7 @@ void voidPlatformSurfaceDestroy(void *surface) {
 	if (s->drawable) CFRelease(s->drawable);
 	releaseMsaa(s);
 	[(__bridge CAMetalLayer *)s->layer removeFromSuperlayer];
+	voidPresentGateRelease(s->gate);
 	CFRelease(s->layer);
 	if (s->view) CFRelease(s->view);
 	free(s);

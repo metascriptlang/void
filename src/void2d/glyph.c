@@ -1,4 +1,5 @@
 #include "glyph.h"
+#include "sfnt.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,8 @@
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../deps/stb/stb_truetype.h"
+
+#include "platformFace.h"
 
 #ifdef VOID2D_SPRITES
 #include "spriteGlyph.h"
@@ -38,6 +41,7 @@ typedef struct {
 	void *colour;
 	int colourOnly;
 	int sprite;
+	void *platform;
 	float asciiUnits;
 	int glyphCount;
 	FaceHeights heights;
@@ -68,11 +72,13 @@ static GlyphPage *s_pages;
 static int s_pageCount;
 static int s_pageCapacity;
 static unsigned int s_pageGenerations;
-static float s_metrics[3];
-static float s_decoration[4];
-static float s_heights[7];
-static int s_box[4];
 static unsigned int s_glyphLookups;
+
+static void needSlots(const char *op, int64_t count, int need) {
+	if (count >= need) { return; }
+	fprintf(stderr, "void2d: %s writes %d values into a span of %lld\n", op, need, (long long)count);
+	abort();
+}
 static GlyphRasterBox s_rasterBox;
 static GlyphRasterFill s_rasterFill;
 
@@ -108,6 +114,15 @@ static int validPage(int page) {
 }
 
 static unsigned char *readWholeFile(const char *path, long *outSize) {
+	size_t held = 0;
+	const unsigned char *memory = void2dFontBytesFind(path, &held);
+	if (memory) {
+		unsigned char *copy = held > 0 ? (unsigned char *)malloc(held) : NULL;
+		if (!copy) { return NULL; }
+		memcpy(copy, memory, held);
+		*outSize = (long)held;
+		return copy;
+	}
 	FILE *f = fopen(path, "rb");
 	if (!f) { return NULL; }
 	fseek(f, 0, SEEK_END);
@@ -424,10 +439,25 @@ static int findGlyph(GlyphFace *face, int codepoint) {
 
 unsigned int void2dGlyphLookups(void) { return s_glyphLookups; }
 
+static int glyphInk(GlyphFace *face, int glyph, int *x0, int *y0, int *x1, int *y1) {
+#ifdef VOID2D_PLATFORM_FACES
+	if (face->platform) {
+		float box[4];
+		void2dPlatformFaceUnitsBox(face->platform, glyph, box);
+		*x0 = (int)floorf(box[0]);
+		*y0 = (int)floorf(box[1]);
+		*x1 = (int)ceilf(box[2]);
+		*y1 = (int)ceilf(box[3]);
+		return box[2] > box[0] && box[3] > box[1];
+	}
+#endif
+	return stbtt_GetGlyphBox(&face->info, glyph, x0, y0, x1, y1);
+}
+
 static float glyphHeight(GlyphFace *face, int codepoint) {
 	int glyph = findGlyph(face, codepoint);
 	int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-	if (glyph == 0 || !stbtt_GetGlyphBox(&face->info, glyph, &x0, &y0, &x1, &y1)) { return 0.0f; }
+	if (glyph == 0 || !glyphInk(face, glyph, &x0, &y0, &x1, &y1)) { return 0.0f; }
 	return (float)(y1 - y0);
 }
 
@@ -439,7 +469,7 @@ static void asciiExtent(GlyphFace *face, float *height, float *cellWidth) {
 		int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 		stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
 		if (advance > widest) { widest = advance; }
-		if (stbtt_GetGlyphBox(&face->info, glyph, &x0, &y0, &x1, &y1)) {
+		if (glyphInk(face, glyph, &x0, &y0, &x1, &y1)) {
 			if (y1 > top) { top = y1; }
 			if (y0 < bottom) { bottom = y0; }
 		}
@@ -453,7 +483,7 @@ static float ideographWidth(GlyphFace *face) {
 	if (glyph == 0) { return 0.0f; }
 	int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 	stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
-	if (stbtt_GetGlyphBox(&face->info, glyph, &x0, &y0, &x1, &y1) && x1 - x0 > advance) { return 0.0f; }
+	if (glyphInk(face, glyph, &x0, &y0, &x1, &y1) && x1 - x0 > advance) { return 0.0f; }
 	return (float)advance;
 }
 
@@ -502,33 +532,35 @@ static void measureFace(GlyphFace *f) {
 	f->measured = 1;
 }
 
-float *void2dGlyphFaceHeights(int face) {
-	for (int i = 0; i < 7; i++) { s_heights[i] = 0.0f; }
-	if (!validFace(face)) { return s_heights; }
+void void2dGlyphFaceHeights(int face, float *out, int64_t slots) {
+	needSlots("void2dGlyphFaceHeights", slots, 7);
+	for (int i = 0; i < 7; i++) { out[i] = 0.0f; }
+	if (!validFace(face)) { return; }
 	measureFace(&s_faces[face]);
 	const FaceHeights *h = &s_faces[face].heights;
 	float perEm = void2dGlyphScale(face, 1.0f);
-	s_heights[0] = (h->ic > 0.0f ? h->ic : 0.0f) * perEm;
-	s_heights[1] = (h->ex > 0.0f ? h->ex : 0.0f) * perEm;
-	s_heights[2] = (h->cap > 0.0f ? h->cap : 0.0f) * perEm;
-	s_heights[3] = h->icEstimate * perEm;
-	s_heights[4] = h->exEstimate * perEm;
-	s_heights[5] = h->capEstimate * perEm;
-	s_heights[6] = h->lineHeight * perEm;
-	return s_heights;
+	out[0] = (h->ic > 0.0f ? h->ic : 0.0f) * perEm;
+	out[1] = (h->ex > 0.0f ? h->ex : 0.0f) * perEm;
+	out[2] = (h->cap > 0.0f ? h->cap : 0.0f) * perEm;
+	out[3] = h->icEstimate * perEm;
+	out[4] = h->exEstimate * perEm;
+	out[5] = h->capEstimate * perEm;
+	out[6] = h->lineHeight * perEm;
+	return;
 }
 
-float *void2dGlyphDecoration(int face, float sizePx) {
-	s_decoration[0] = 0.0f; s_decoration[1] = 0.0f; s_decoration[2] = 0.0f; s_decoration[3] = 0.0f;
-	if (!validFace(face)) { return s_decoration; }
+void void2dGlyphDecoration(int face, float sizePx, float *out, int64_t slots) {
+	needSlots("void2dGlyphDecoration", slots, 4);
+	out[0] = 0.0f; out[1] = 0.0f; out[2] = 0.0f; out[3] = 0.0f;
+	if (!validFace(face)) { return; }
 	GlyphFace *f = &s_faces[face];
 	measureFace(f);
 	float scale = void2dGlyphScale(face, sizePx);
-	s_decoration[0] = -f->underlineTop * scale;
-	s_decoration[1] = f->underlineThickness * scale;
-	s_decoration[2] = -f->strikeTop * scale;
-	s_decoration[3] = f->strikeThickness * scale;
-	return s_decoration;
+	out[0] = -f->underlineTop * scale;
+	out[1] = f->underlineThickness * scale;
+	out[2] = -f->strikeTop * scale;
+	out[3] = f->strikeThickness * scale;
+	return;
 }
 
 static int growFaces(void) {
@@ -561,14 +593,94 @@ static int colourOnlyInfo(unsigned char *bytes, int offset, const ColourSfnt *t,
 }
 #endif
 
-int void2dGlyphFaceLoad(const char *path) {
+#ifdef VOID2D_PLATFORM_FACES
+static int tableInfo(unsigned char *bytes, int offset, stbtt_fontinfo *info, int *glyphCount,
+                     int *unitsPerEm) {
+	memset(info, 0, sizeof(*info));
+	info->data = bytes;
+	info->fontstart = offset;
+	info->cff = stbtt__new_buf(NULL, 0);
+	stbtt_uint32 cmap = stbtt__find_table(bytes, offset, "cmap");
+	stbtt_uint32 maxp = stbtt__find_table(bytes, offset, "maxp");
+	info->head = stbtt__find_table(bytes, offset, "head");
+	info->hhea = stbtt__find_table(bytes, offset, "hhea");
+	info->hmtx = stbtt__find_table(bytes, offset, "hmtx");
+	info->kern = stbtt__find_table(bytes, offset, "kern");
+	info->gpos = stbtt__find_table(bytes, offset, "GPOS");
+	if (!cmap || !maxp || !info->head || !info->hhea || !info->hmtx) { return 0; }
+	int encodings = ttUSHORT(bytes + cmap + 2);
+	for (int i = 0; i < encodings; i++) {
+		stbtt_uint32 record = cmap + 4 + 8 * (stbtt_uint32)i;
+		int platformId = ttUSHORT(bytes + record);
+		int encodingId = ttUSHORT(bytes + record + 2);
+		if (platformId == STBTT_PLATFORM_ID_UNICODE || (platformId == STBTT_PLATFORM_ID_MICROSOFT &&
+			(encodingId == STBTT_MS_EID_UNICODE_BMP || encodingId == STBTT_MS_EID_UNICODE_FULL))) {
+			info->index_map = cmap + ttULONG(bytes + record + 4);
+		}
+	}
+	if (info->index_map == 0) { return 0; }
+	info->numGlyphs = 0;
+	info->indexToLocFormat = ttUSHORT(bytes + info->head + 50);
+	*glyphCount = ttUSHORT(bytes + maxp + 4);
+	*unitsPerEm = ttUSHORT(bytes + info->head + 18);
+	return 1;
+}
+
+static int postScriptName(unsigned char *bytes, int offset, char *out, int capacity) {
+	out[0] = '\0';
+	stbtt_uint32 name = stbtt__find_table(bytes, offset, "name");
+	if (!name) { return 0; }
+	int count = ttUSHORT(bytes + name + 2);
+	unsigned char *strings = bytes + name + ttUSHORT(bytes + name + 4);
+	for (int i = 0; i < count; i++) {
+		unsigned char *record = bytes + name + 6 + 12 * i;
+		int platformId = ttUSHORT(record), nameId = ttUSHORT(record + 6);
+		int length = ttUSHORT(record + 8);
+		unsigned char *text = strings + ttUSHORT(record + 10);
+		if (nameId != 6 || (platformId != 1 && platformId != 3)) { continue; }
+		int step = platformId == 3 ? 2 : 1;
+		int n = 0;
+		for (int k = step - 1; k < length && n < capacity - 1; k += step) { out[n++] = (char)text[k]; }
+		out[n] = '\0';
+		if (n > 0) { return 1; }
+	}
+	return 0;
+}
+
+int void2dGlyphFacePlatform(int base) {
+	if (!validFace(base)) { return VOID2D_FACE_NO_BASE; }
+	GlyphFace *f = &s_faces[base];
+	if (f->sprite || f->colourOnly || f->platform || isSynthetic(f)) { return VOID2D_FACE_NO_BASE; }
+	stbtt_fontinfo info;
+	int glyphCount = 0, unitsPerEm = 0;
+	if (!tableInfo(f->bytes, f->info.fontstart, &info, &glyphCount, &unitsPerEm)) {
+		return VOID2D_FACE_NOT_A_FONT;
+	}
+	char name[128];
+	if (!postScriptName(f->bytes, f->info.fontstart, name, (int)sizeof(name))) {
+		return VOID2D_FACE_NOT_A_FONT;
+	}
+	void *platform = void2dPlatformFaceOpen(NULL, f->bytes, f->length, name, glyphCount, unitsPerEm);
+	if (!platform) { return VOID2D_FACE_NOT_A_FONT; }
+	if (!growFaces()) { return VOID2D_FACE_NO_MEMORY; }
+	GlyphFace face = s_faces[base];
+	face.info = info;
+	face.platform = platform;
+	face.glyphCount = glyphCount;
+	face.measured = 0;
+	s_faces[s_faceCount] = face;
+	return s_faceCount++;
+}
+#endif
+
+int void2dGlyphFaceLoad(const char *path, int index) {
 	long size = 0;
 	unsigned char *bytes = readWholeFile(path, &size);
 	if (!bytes) {
 		fprintf(stderr, "void2d: cannot read font file %s\n", path);
 		return VOID2D_FACE_UNREADABLE;
 	}
-	int offset = stbtt_GetFontOffsetForIndex(bytes, 0);
+	int offset = stbtt_GetFontOffsetForIndex(bytes, index);
 	stbtt_fontinfo info;
 	void *colour = NULL;
 	int colourOnly = 0;
@@ -602,6 +714,23 @@ int void2dGlyphFaceLoad(const char *path) {
 		}
 	}
 #endif
+#ifdef VOID2D_PLATFORM_FACES
+	void *platform = NULL;
+	int unitsPerEm = 0;
+	if (!outlines && offset >= 0 && tableInfo(bytes, offset, &info, &glyphCount, &unitsPerEm)) {
+		char name[128];
+		if (postScriptName(bytes, offset, name, (int)sizeof(name))) {
+			platform = void2dPlatformFaceOpen(path, bytes, (int)size, name, glyphCount, unitsPerEm);
+		}
+		if (!platform) {
+			fprintf(stderr, "void2d: %s has no outlines Void reads and the OS does not open face %d\n",
+				path, index);
+		}
+		outlines = platform != NULL;
+	}
+#else
+	void *platform = NULL;
+#endif
 	if (!outlines) {
 		fprintf(stderr, "void2d: %s is not a font stb_truetype can read\n", path);
 		free(bytes);
@@ -621,6 +750,7 @@ int void2dGlyphFaceLoad(const char *path) {
 	s_faces[s_faceCount].colour = colour;
 	s_faces[s_faceCount].colourOnly = colourOnly;
 	s_faces[s_faceCount].sprite = 0;
+	s_faces[s_faceCount].platform = platform;
 	s_faces[s_faceCount].asciiUnits = 0.0f;
 	s_faces[s_faceCount].glyphCount = glyphCount;
 	findKernLookups(&s_faces[s_faceCount]);
@@ -651,6 +781,7 @@ int void2dGlyphFaceSprite(int base) {
 	sprite.skew = 0.0f;
 	sprite.colour = NULL;
 	sprite.sprite = 1;
+	sprite.platform = NULL;
 	sprite.asciiUnits = 0.0f;
 	s_faces[s_faceCount] = sprite;
 	return s_faceCount++;
@@ -658,6 +789,10 @@ int void2dGlyphFaceSprite(int base) {
 
 int void2dGlyphFaceIsSprite(int face) { return validFace(face) && s_faces[face].sprite; }
 #endif
+
+int void2dGlyphFaceIsPlatform(int face) {
+	return validFace(face) && s_faces[face].platform != NULL;
+}
 
 int void2dGlyphFaceCount(void) { return s_faceCount; }
 
@@ -673,16 +808,17 @@ float void2dGlyphScale(int face, float sizePx) {
 	return stbtt_ScaleForMappingEmToPixels(&s_faces[face].info, sizePx);
 }
 
-float *void2dGlyphFaceMetrics(int face, float sizePx) {
-	s_metrics[0] = 0.0f; s_metrics[1] = 0.0f; s_metrics[2] = 0.0f;
-	if (!validFace(face)) { return s_metrics; }
+void void2dGlyphFaceMetrics(int face, float sizePx, float *out, int64_t slots) {
+	needSlots("void2dGlyphFaceMetrics", slots, 3);
+	out[0] = 0.0f; out[1] = 0.0f; out[2] = 0.0f;
+	if (!validFace(face)) { return; }
 	int ascent = 0, descent = 0, lineGap = 0;
 	stbtt_GetFontVMetrics(&s_faces[face].info, &ascent, &descent, &lineGap);
 	float scale = void2dGlyphScale(face, sizePx);
-	s_metrics[0] = (float)ascent * scale;
-	s_metrics[1] = (float)-descent * scale;
-	s_metrics[2] = (float)lineGap * scale;
-	return s_metrics;
+	out[0] = (float)ascent * scale;
+	out[1] = (float)-descent * scale;
+	out[2] = (float)lineGap * scale;
+	return;
 }
 
 const unsigned char *void2dGlyphFaceData(int face, int *length) {
@@ -731,7 +867,9 @@ static int spriteCellCompute(int face, float sizePx, int *cell) {
 	double halfGap = (double)lineGap * (double)scale / 2.0;
 	double faceBaseline = halfGap + (double)(-descent) * (double)scale;
 	double cellBaseline = floor(faceBaseline - (cellHeight - faceHeight) / 2.0 + 0.5);
-	double thickness = ceil((double)void2dGlyphDecoration(face, sizePx)[1]);
+	float decoration[4];
+	void2dGlyphDecoration(face, sizePx, decoration, 4);
+	double thickness = ceil((double)decoration[1]);
 	cell[0] = (int)floor(faceWidth + 0.5);
 	cell[1] = (int)cellHeight;
 	cell[2] = (int)cellHeight - (int)cellBaseline;
@@ -751,15 +889,14 @@ static int spriteCell(int face, float sizePx, int *cell) {
 	return s_cellOk;
 }
 
-static int s_spriteCell[4];
-
-int *void2dGlyphSpriteCell(int face, float sizePx) {
-	s_spriteCell[0] = s_spriteCell[1] = s_spriteCell[2] = s_spriteCell[3] = 0;
-	if (!void2dGlyphFaceIsSprite(face) || !(sizePx > 0.0f)) { return s_spriteCell; }
-	if (!spriteCell(face, sizePx, s_spriteCell)) {
-		s_spriteCell[0] = s_spriteCell[1] = s_spriteCell[2] = s_spriteCell[3] = 0;
+void void2dGlyphSpriteCell(int face, float sizePx, int *out, int64_t slots) {
+	needSlots("void2dGlyphSpriteCell", slots, 4);
+	out[0] = out[1] = out[2] = out[3] = 0;
+	if (!void2dGlyphFaceIsSprite(face) || !(sizePx > 0.0f)) { return; }
+	if (!spriteCell(face, sizePx, out)) {
+		out[0] = out[1] = out[2] = out[3] = 0;
 	}
-	return s_spriteCell;
+	return;
 }
 
 static int spriteInk(int face, int glyph, float sizePx, int *box, const unsigned char **rows,
@@ -796,7 +933,8 @@ float void2dGlyphAdvance(int face, int glyph, float sizePx) {
 		return spriteAsciiUnits(&s_faces[face]) * void2dGlyphScale(face, sizePx);
 	}
 #endif
-	if (s_faces[face].colourOnly && (glyph < 0 || glyph >= s_faces[face].glyphCount)) {
+	if ((s_faces[face].colourOnly || s_faces[face].platform) &&
+		(glyph < 0 || glyph >= s_faces[face].glyphCount)) {
 		return 0.0f;
 	}
 	int advance = 0, bearing = 0;
@@ -819,33 +957,40 @@ float void2dGlyphKern(int face, int left, int right, float sizePx) {
 	return (float)units * void2dGlyphScale(face, sizePx);
 }
 
-int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX) {
-	s_box[0] = 0; s_box[1] = 0; s_box[2] = 0; s_box[3] = 0;
-	if (!validFace(face)) { return s_box; }
+void void2dGlyphBox(int face, int glyph, float sizePx, float shiftX, int *out, int64_t slots) {
+	needSlots("void2dGlyphBox", slots, 4);
+	out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;
+	if (!validFace(face)) { return; }
 	float scale = void2dGlyphScale(face, sizePx);
 	GlyphFace *f = &s_faces[face];
 #ifdef VOID2D_SPRITES
 	if (f->sprite) {
 		const unsigned char *rows;
 		int stride;
-		spriteInk(face, glyph, sizePx, s_box, &rows, &stride);
-		return s_box;
+		spriteInk(face, glyph, sizePx, out, &rows, &stride);
+		return;
+	}
+#endif
+#ifdef VOID2D_PLATFORM_FACES
+	if (f->platform) {
+		void2dPlatformFaceBox(f->platform, glyph, sizePx, shiftX, f->skew, f->emboldenUnits * scale, out);
+		return;
 	}
 #endif
 	if (s_rasterBox && !isSynthetic(f)) {
-		s_rasterBox(f->bytes, f->length, glyph, sizePx, shiftX, s_box);
-		return s_box;
+		s_rasterBox(f->bytes, f->length, glyph, sizePx, shiftX, out);
+		return;
 	}
 	if (isSynthetic(f)) {
 		stbtt_vertex *vertices = NULL;
 		int count = glyphShape(f, glyph, &vertices);
-		shapeBox(vertices, count, scale, shiftX, s_box);
+		shapeBox(vertices, count, scale, shiftX, out);
 		STBTT_free(vertices, f->info.userdata);
-		return s_box;
+		return;
 	}
 	stbtt_GetGlyphBitmapBoxSubpixel(&f->info, glyph, scale, scale, shiftX, 0.0f,
-		&s_box[0], &s_box[1], &s_box[2], &s_box[3]);
-	return s_box;
+		&out[0], &out[1], &out[2], &out[3]);
+	return;
 }
 
 static const char *pageKindName(int kind) {
@@ -987,6 +1132,15 @@ int void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 		for (int row = 0; row < h; row++) {
 			memcpy(at + (size_t)row * (size_t)p->size, rows + (size_t)row * (size_t)stride,
 				(size_t)w);
+		}
+	} else
+#endif
+#ifdef VOID2D_PLATFORM_FACES
+	if (f->platform) {
+		if (!void2dPlatformFaceFill(f->platform, glyph, sizePx, shiftX, f->skew, f->emboldenUnits * scale,
+			at, w, h, p->size)) {
+			fprintf(stderr, "void2d: platform tile %dx%d does not match glyph %d's ink box\n", w, h, glyph);
+			return VOID2D_COVERAGE_RASTER_BOX_MISMATCH;
 		}
 	} else
 #endif
@@ -1177,10 +1331,10 @@ static int colourLayerBox(GlyphFace *f, int glyph, float sizePx, int *box) {
 	return VOID2D_COLOUR_PRESENT;
 }
 
-int *void2dGlyphColourBox(int face, int glyph, float sizePx) {
-	static int box[6];
+void void2dGlyphColourBox(int face, int glyph, float sizePx, int *box, int64_t slots) {
+	needSlots("void2dGlyphColourBox", slots, 6);
 	for (int i = 0; i < 6; i++) { box[i] = 0; }
-	if (!void2dGlyphColourFace(face)) { return box; }
+	if (!void2dGlyphColourFace(face)) { return; }
 	GlyphFace *f = &s_faces[face];
 	ColourBox found;
 	int status = void2dColourGlyphBox((ColourFace *)f->colour, glyph, sizePx, &found);
@@ -1196,7 +1350,6 @@ int *void2dGlyphColourBox(int face, int glyph, float sizePx) {
 		if (status != VOID2D_COLOUR_PRESENT) { box[0] = box[1] = box[2] = box[3] = 0; }
 	}
 	box[4] = status;
-	return box;
 }
 
 int void2dGlyphColourLayerCount(int face, int glyph) {
@@ -1292,10 +1445,10 @@ int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int 
 #else
 int void2dGlyphColourBuilt(void) { return 0; }
 int void2dGlyphColourFace(int face) { (void)face; return 0; }
-int *void2dGlyphColourBox(int face, int glyph, float sizePx) {
-	static int box[6];
+void void2dGlyphColourBox(int face, int glyph, float sizePx, int *box, int64_t slots) {
+	needSlots("void2dGlyphColourBox", slots, 6);
 	(void)face; (void)glyph; (void)sizePx;
-	return box;
+	for (int i = 0; i < 6; i++) { box[i] = 0; }
 }
 int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int x, int y,
                                int w, int h) {
@@ -1459,7 +1612,6 @@ static int distanceFill(const stbtt_vertex *verts, int num_verts, float scale, f
 
 #ifdef VOID2D_SDF_TEXT
 static unsigned int s_sdfGenerations;
-static int s_sdfBox[5];
 
 unsigned int void2dGlyphSdfGenerations(void) { return s_sdfGenerations; }
 
@@ -1481,29 +1633,31 @@ static void sdfBitmapBox(GlyphFace *f, int glyph, stbtt_vertex *v, int count, fl
 	box[3] += SDF_PAD;
 }
 
-int *void2dGlyphSdfBox(int face, int glyph) {
-	for (int i = 0; i < 5; i++) { s_sdfBox[i] = 0; }
-	if (!validFace(face)) { return s_sdfBox; }
+void void2dGlyphSdfBox(int face, int glyph, int *out, int64_t slots) {
+	needSlots("void2dGlyphSdfBox", slots, 5);
+	for (int i = 0; i < 5; i++) { out[i] = 0; }
+	if (!validFace(face)) { return; }
 	GlyphFace *f = &s_faces[face];
-	if (f->sprite) {
-		s_sdfBox[4] = 1;
-		return s_sdfBox;
+	if (f->sprite || f->platform) {
+		out[4] = 1;
+		return;
 	}
 	stbtt_vertex *vertices = NULL;
 	int count = glyphShape(f, glyph, &vertices);
 	if (count > 0) {
 		if (sdfHasCubic(vertices, count)) {
-			s_sdfBox[4] = 1;
+			out[4] = 1;
 		} else {
-			sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM), s_sdfBox);
+			sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM), out);
 		}
 	}
 	STBTT_free(vertices, f->info.userdata);
-	return s_sdfBox;
+	return;
 }
 
 int void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, int h) {
-	if (!validFace(face) || s_faces[face].sprite || !validPage(page) || w <= 0 || h <= 0) {
+	if (!validFace(face) || s_faces[face].sprite || s_faces[face].platform || !validPage(page) ||
+		w <= 0 || h <= 0) {
 		return VOID2D_SDF_BAD_HANDLE;
 	}
 	GlyphPage *p = &s_pages[page];
@@ -1542,7 +1696,7 @@ int void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, 
 
 int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y) {
 	if (!validFace(face) || !validPage(page) || isSynthetic(&s_faces[face]) ||
-		s_faces[face].sprite) {
+		s_faces[face].sprite || s_faces[face].platform) {
 		return -2;
 	}
 	GlyphPage *p = &s_pages[page];
@@ -1558,7 +1712,8 @@ int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y) {
 			if (p->texels[at] != reference[row * w + col]) { differing++; }
 		}
 	}
-	int *box = void2dGlyphSdfBox(face, glyph);
+	int box[5];
+	void2dGlyphSdfBox(face, glyph, box, 5);
 	if (box[0] != xoff || box[1] != yoff || box[2] - box[0] != w || box[3] - box[1] != h) {
 		differing = -3;
 	}
@@ -1569,7 +1724,6 @@ int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y) {
 
 #ifdef VOID2D_TEXT_OUTLINE
 static unsigned int s_outlineGenerations;
-static int s_outlineBox[5];
 
 unsigned int void2dGlyphOutlineGenerations(void) { return s_outlineGenerations; }
 
@@ -1666,27 +1820,29 @@ static stbtt_vertex *flattenCubics(const stbtt_vertex *in, int count, float flat
 	return out;
 }
 
-int *void2dGlyphOutlineBox(int face, int glyph, float sizePx, float shiftX, float widthPx) {
-	for (int i = 0; i < 5; i++) { s_outlineBox[i] = 0; }
-	if (!validFace(face)) { return s_outlineBox; }
+void void2dGlyphOutlineBox(int face, int glyph, float sizePx, float shiftX, float widthPx, int *out, int64_t slots) {
+	needSlots("void2dGlyphOutlineBox", slots, 5);
+	for (int i = 0; i < 5; i++) { out[i] = 0; }
+	if (!validFace(face)) { return; }
 	GlyphFace *f = &s_faces[face];
-	if (f->sprite) {
-		s_outlineBox[4] = 1;
-		return s_outlineBox;
+	if (f->sprite || f->platform) {
+		out[4] = 1;
+		return;
 	}
 	stbtt_vertex *vertices = NULL;
 	int count = glyphShape(f, glyph, &vertices);
 	if (count > 0) {
 		outlineBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, sizePx), shiftX,
-			outlinePad(widthPx), s_outlineBox);
+			outlinePad(widthPx), out);
 	}
 	STBTT_free(vertices, f->info.userdata);
-	return s_outlineBox;
+	return;
 }
 
 int void2dGlyphOutlineRasterize(int face, int glyph, float sizePx, float shiftX, float widthPx,
                                 int page, int x, int y, int w, int h) {
-	if (!validFace(face) || s_faces[face].sprite || !validPage(page) || w <= 0 || h <= 0) {
+	if (!validFace(face) || s_faces[face].sprite || s_faces[face].platform || !validPage(page) ||
+		w <= 0 || h <= 0) {
 		return VOID2D_SDF_BAD_HANDLE;
 	}
 	GlyphPage *p = &s_pages[page];
@@ -1742,40 +1898,41 @@ int void2dGlyphOutlineRasterize(int face, int glyph, float sizePx, float shiftX,
 	return result;
 }
 #ifdef VOID2D_SDF_TEXT
-static int s_sdfOutlineBox[5];
 
-int *void2dGlyphSdfOutlineBox(int face, int glyph, float biasTexels) {
-	for (int i = 0; i < 5; i++) { s_sdfOutlineBox[i] = 0; }
-	if (!validFace(face)) { return s_sdfOutlineBox; }
+void void2dGlyphSdfOutlineBox(int face, int glyph, float biasTexels, int *out, int64_t slots) {
+	needSlots("void2dGlyphSdfOutlineBox", slots, 5);
+	for (int i = 0; i < 5; i++) { out[i] = 0; }
+	if (!validFace(face)) { return; }
 	GlyphFace *f = &s_faces[face];
-	if (f->sprite) {
-		s_sdfOutlineBox[4] = 1;
-		return s_sdfOutlineBox;
+	if (f->sprite || f->platform) {
+		out[4] = 1;
+		return;
 	}
 	stbtt_vertex *vertices = NULL;
 	int count = glyphShape(f, glyph, &vertices);
 	if (count > 0) {
 		if (sdfHasCubic(vertices, count)) {
-			s_sdfOutlineBox[4] = 1;
+			out[4] = 1;
 		} else {
 			sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM),
-				s_sdfOutlineBox);
-			if (s_sdfOutlineBox[2] > s_sdfOutlineBox[0]) {
+				out);
+			if (out[2] > out[0]) {
 				int extra = (int)ceilf(biasTexels) + 2;
-				s_sdfOutlineBox[0] -= extra;
-				s_sdfOutlineBox[1] -= extra;
-				s_sdfOutlineBox[2] += extra;
-				s_sdfOutlineBox[3] += extra;
+				out[0] -= extra;
+				out[1] -= extra;
+				out[2] += extra;
+				out[3] += extra;
 			}
 		}
 	}
 	STBTT_free(vertices, f->info.userdata);
-	return s_sdfOutlineBox;
+	return;
 }
 
 int void2dGlyphSdfOutlineRasterize(int face, int glyph, float biasTexels, int page, int x, int y,
                                    int w, int h) {
-	if (!validFace(face) || s_faces[face].sprite || !validPage(page) || w <= 0 || h <= 0) {
+	if (!validFace(face) || s_faces[face].sprite || s_faces[face].platform || !validPage(page) ||
+		w <= 0 || h <= 0) {
 		return VOID2D_SDF_BAD_HANDLE;
 	}
 	GlyphPage *p = &s_pages[page];

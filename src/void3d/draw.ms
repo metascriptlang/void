@@ -844,6 +844,10 @@ export function meshPinned(this context: DrawContext, id: MeshId): int32 {
 	return context.hasMesh(id) ? context.meshPins[id.index] : 0;
 }
 
+export function materialPinned(this context: DrawContext, id: MaterialId): int32 {
+	return context.hasMaterial(id) ? context.materialPins[id.index] : 0;
+}
+
 // Counts one more holder about to unpin `id`, and answers whether its pins still cover every one
 // counted since the last clearMeshTally. A freed id counts nothing: whoever pinned it let go.
 // Linear where a pairwise count would be quadratic in the holders checked.
