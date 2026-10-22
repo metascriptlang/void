@@ -33,6 +33,7 @@ import {
 	GPUShaderAttribute,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
 	checkedTexelWritePitch,
@@ -1635,3 +1636,12 @@ function applyUniforms(): void {
 		}
 	}
 }
+
+export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void { stop("copyBufferToBuffer is not ported to metal yet"); }
+export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void { stop("copyBufferToTexture is not ported to metal yet"); }
+export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void { stop("copyTextureToBuffer is not ported to metal yet"); }
+export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void { stop("copyTextureToTexture is not ported to metal yet"); }
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void { stop("mapAsync is not ported to metal yet"); }
+export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> { stop("getMappedRange is not ported to metal yet"); return []; }
+export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void { stop("writeMappedRange is not ported to metal yet"); }
+export function unmap(buffer: GPUBuffer): void { stop("unmap is not ported to metal yet"); }
