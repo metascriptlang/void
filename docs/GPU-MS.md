@@ -20,8 +20,23 @@ MetaScript, under `src/webgpu/`. The person's terms (2026-10-22):
   decides whether the branch merges. It is an experiment: never land it into `main`, never
   rebase `main` onto it. `main` stays on sokol.
 
-Done when: no file under `src/` includes a sokol header or calls `sg_*`/`sapp_*`/`sglue_*`/`stm_*`,
-`deps/sokol` is not needed to build, and the goldens and both web backends render as on main.
+- **The end-game is better than sokol, not equal to it** (the person, 2026-10-22): Void's own
+  layer must beat sokol on performance and on the control it gives the caller. Following sokol's
+  mechanism is how a backend starts; where sokol leaves speed or control on the table, Void goes
+  further, and says so with the measurement.
+
+Replacement done when: no file under `src/` includes a sokol header or calls
+`sg_*`/`sapp_*`/`sglue_*`/`stm_*`, `deps/sokol` is not needed to build, and the goldens and both web
+backends render as on main.
+
+End-game done when, in addition:
+
+- **Performance:** every `tests/bench` row is at least as fast on this branch as on `main` (sokol),
+  same `msc`, same machine, quiet window, per backend; a row that is slower is a bug with its
+  profile.
+- **Control:** each thing a Void caller needs and sokol refuses is a WebGPU-shaped call here (for
+  example a partial `writeTexture`, a GPU→CPU readback, a buffer bound at an offset), listed in
+  docs/GPU.md with the caller that uses it.
 
 ## What the Windows half proved (as of `edeb348f`)
 
@@ -132,11 +147,12 @@ claiming "sokol-free": `nm <exe> | grep -ci " _\?\(sg\|sapp\|sglue\|stm\|slog\)_
 
 ## Known follow-ups (solidify, not blocking G6)
 
-- D3D11 uploads every uniform block when any one is dirty. Left as is: void3d re-applies every
-  block per item after `applyPipeline` (`src/void3d/draw.ms` ~1600), so it costs what sokol's
-  per-slot update costs; void2d's programs have two blocks at most. Revisit only on a profile.
-- `writeTexture` writes the whole texture only, and refuses anything else. Every caller writes
-  the whole texture (the door's `doorUpdateTexture`, sokol's `sg_update_image` contract).
+- D3D11 uploads every uniform block when any one is dirty. void3d re-applies every block per item
+  after `applyPipeline` (`src/void3d/draw.ms` ~1600), so today it costs what sokol's per-slot
+  update costs. Under the end-game it is a candidate to beat sokol: upload only the dirty block.
+- `writeTexture` writes the whole texture only, as sokol's `sg_update_image` does. A partial write
+  (WebGPU's `origin` + `size`) is control sokol lacks; build it when a caller (glyph atlas pages)
+  can use it, with the bench row it moves.
 - Attribute order against the writers is only checked in the GL build (where modules carry
   names); the goldens catch a reorder on the other backends.
 - Android: GLES 3.2's `glColorMaski` is refused today (one mask for all targets); MSAA 2/8 untested.
