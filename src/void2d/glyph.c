@@ -1,4 +1,5 @@
 #include "glyph.h"
+#include "sfnt.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,6 +90,15 @@ static int validPage(int page) {
 }
 
 static unsigned char *readWholeFile(const char *path, long *outSize) {
+	size_t held = 0;
+	const unsigned char *memory = void2dFontBytesFind(path, &held);
+	if (memory) {
+		unsigned char *copy = held > 0 ? (unsigned char *)malloc(held) : NULL;
+		if (!copy) { return NULL; }
+		memcpy(copy, memory, held);
+		*outSize = (long)held;
+		return copy;
+	}
 	FILE *f = fopen(path, "rb");
 	if (!f) { return NULL; }
 	fseek(f, 0, SEEK_END);

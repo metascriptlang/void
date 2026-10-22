@@ -46,6 +46,7 @@ import {
 	void2dSfntSequence,
 	void2dSfntFlags,
 	void2dSfntSummariesRead,
+	void2dFontBytesAdd,
 } from "./sfnt.h";
 import { GlyphPageHandle } from "./glyphAtlas";
 
@@ -110,6 +111,25 @@ export struct FaceSummary {
 	drawable: boolean;
 	colourBitmap: boolean;
 	colourLayers: boolean;
+}
+
+export enum FaceBytesError {
+	Empty,
+	NameHeld,
+	OutOfMemory,
+}
+
+// Holds a face's bytes under `name`, which peekFace and loadFace then read in place of a file.
+// The same bytes again are accepted; other bytes under a held name are refused.
+export function holdFaceBytes(name: string, bytes: uint8[]): Result<void, FaceBytesError> {
+	if (bytes.length == 0) { return Result.err(FaceBytesError.Empty); }
+	const code: int32 = void2dFontBytesAdd(name, bytes[0], bytes.length as int32);
+	if (code != 0 && code != -3 && code != -4) { unreachable; }
+	return match (code) {
+		0 => Result.ok(null),
+		-4 => Result.err(FaceBytesError.NameHeld),
+		_ => Result.err(FaceBytesError.OutOfMemory),
+	};
 }
 
 export function peekFace(path: string, index: int32 = 0): Result<FaceSummary, SfntError> {
