@@ -463,6 +463,16 @@ struct StateCache {
 let frame: int64 = 0;
 let pass: PassState = { active: false };
 let bound: BoundState = { pipeline: 0 };
+export struct BindStats {
+	vertexBuffers: int64;
+	indexBuffers: int64;
+	shaderResources: int64;
+	samplers: int64;
+}
+
+let stats: BindStats = { vertexBuffers: 0 };
+export function bindStats(): BindStats { return stats; }
+
 let cache: StateCache = { program: 0 };
 let cachedAttributes: Vec<CachedAttribute> = [];
 let cachedUnits: Vec<CachedUnit> = [];
@@ -779,6 +789,7 @@ function cacheBindBuffer(target: int32, name: uint32): void {
 	} else if (cache.indexBuffer != name) {
 		cache.indexBuffer = name;
 		oglBindBuffer(target, name);
+		stats.indexBuffers += 1;
 	}
 }
 
@@ -855,8 +866,12 @@ function cacheBindTextureSampler(unit: int32, target: int32, texture: uint32, sa
 	if (slot.target != target || slot.texture != texture || slot.sampler != sampler) {
 		cacheActiveTexture(unit);
 		if (target != slot.target && slot.target != 0) { oglBindTexture(slot.target, 0); }
-		if (target != 0) { oglBindTexture(target, texture); }
+		if (target != 0) {
+			oglBindTexture(target, texture);
+			stats.shaderResources += 1;
+		}
 		oglBindSampler(unit, sampler);
+		stats.samplers += 1;
 		cachedUnits[unit] = { target: target, texture: texture, sampler: sampler };
 	}
 }
@@ -2203,6 +2218,7 @@ function applyVertexBuffers(): void {
 		) {
 			cacheBindBuffer(GL_ARRAY_BUFFER, name);
 			oglVertexAttribPointer(i, attribute.size, attribute.attributeType, attribute.normalized, attribute.stride, offset);
+			stats.vertexBuffers += 1;
 			oglVertexAttribDivisor(i, attribute.divisor);
 			cachedAttributes[i] = {
 				enabled: cached.enabled,
