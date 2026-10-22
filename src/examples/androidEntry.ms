@@ -1,17 +1,14 @@
-// Void — Android embed entry (M2 headless render proof). Registers renderer2d's
-// init2d/frame2d, then hands control to the C driver (voidAndroidM2Run) which owns the
-// EGL pbuffer + render loop + PNG readback. The real RN path (M3) drives frames from a
-// SurfaceView instead; the MetaScript side is identical.
+// Void — Android app entry. NativeApp.start runs MsMain, whose main calls voidRun; the app driver
+// (bridgeAndroidApp.c) records the closures and returns, then adds the view that drives them.
+// Compile src/sokol/androidAppEntry.c with the app for NativeApp's JNI entry points.
 
 import { init2d, frame2d } from "./renderer2d";
 
-@include("bridge.h");
-extern function voidEmbedRegister(init: () => void, frame: () => void): void;
-extern function voidAndroidM2Run(): void;
+@include("../sokol/bridge.h");
+extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 function main(): int32 {
-	voidEmbedRegister(init2d, frame2d);
-	voidAndroidM2Run();
+	voidRun(800, 600, init2d, frame2d);
 	return 0;
 }
 
