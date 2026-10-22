@@ -62,7 +62,16 @@ void d3dReleaseDsv(D3dDsv view);
 void d3dResolveSubresource(D3dContext context, D3dTexture destination, D3dTexture source, int32_t format);
 void d3dResolveViews(D3dContext context, D3dRtv destination, D3dRtv source, int32_t format);
 
-D3dSampler d3dCreateSampler(D3dDevice device, int32_t filter, int32_t addressU, int32_t addressV, int32_t addressW);
+D3dSampler d3dCreateSampler(
+	D3dDevice device,
+	int32_t filter,
+	int32_t addressU,
+	int32_t addressV,
+	int32_t addressW,
+	int32_t maxAnisotropy,
+	int32_t comparison,
+	double minLod,
+	double maxLod);
 void d3dReleaseSampler(D3dSampler sampler);
 
 D3dBlob d3dCompile(const char *source, const char *entryPoint, const char *target);
@@ -82,9 +91,30 @@ void d3dInputElement(
 	int32_t perInstance);
 D3dInputLayout d3dCreateInputLayout(D3dDevice device, int32_t count, D3dBlob vertexBlob);
 void d3dReleaseInputLayout(D3dInputLayout layout);
-D3dRasterizerState d3dCreateRasterizerState(D3dDevice device, int32_t cullMode, int32_t frontCounterClockwise, int32_t multisample);
+D3dRasterizerState d3dCreateRasterizerState(
+	D3dDevice device,
+	int32_t cullMode,
+	int32_t frontCounterClockwise,
+	int32_t multisample,
+	int32_t depthBias,
+	double slopeScaledDepthBias,
+	double depthBiasClamp);
 void d3dReleaseRasterizerState(D3dRasterizerState state);
-D3dDepthStencilState d3dCreateDepthStencilState(D3dDevice device, int32_t depthWrite, int32_t compare);
+D3dDepthStencilState d3dCreateDepthStencilState(
+	D3dDevice device,
+	int32_t depthWrite,
+	int32_t compare,
+	int32_t stencilEnabled,
+	int32_t stencilReadMask,
+	int32_t stencilWriteMask,
+	int32_t frontFail,
+	int32_t frontDepthFail,
+	int32_t frontPass,
+	int32_t frontCompare,
+	int32_t backFail,
+	int32_t backDepthFail,
+	int32_t backPass,
+	int32_t backCompare);
 void d3dReleaseDepthStencilState(D3dDepthStencilState state);
 void d3dBlendTarget(
 	int32_t index,
@@ -100,15 +130,15 @@ D3dBlendState d3dCreateBlendState(D3dDevice device);
 void d3dReleaseBlendState(D3dBlendState state);
 
 void d3dSetRenderTargets(D3dContext context, D3dRtv color0, D3dRtv color1, D3dRtv color2, D3dRtv color3, D3dDsv depth);
-void d3dSetViewport(D3dContext context, int32_t width, int32_t height);
+void d3dSetViewport(D3dContext context, double x, double y, double width, double height, double minDepth, double maxDepth);
 void d3dSetScissorRect(D3dContext context, int32_t left, int32_t top, int32_t right, int32_t bottom);
 void d3dClearRtv(D3dContext context, D3dRtv view, double r, double g, double b, double a);
 void d3dClearDsv(D3dContext context, D3dDsv view, int32_t flags, double depth, int32_t stencil);
 void d3dClearState(D3dContext context);
 
 void d3dRsSetState(D3dContext context, D3dRasterizerState state);
-void d3dOmSetDepthStencilState(D3dContext context, D3dDepthStencilState state);
-void d3dOmSetBlendState(D3dContext context, D3dBlendState state);
+void d3dOmSetDepthStencilState(D3dContext context, D3dDepthStencilState state, int32_t stencilReference);
+void d3dOmSetBlendState(D3dContext context, D3dBlendState state, double r, double g, double b, double a);
 void d3dIaSetPrimitiveTopology(D3dContext context, int32_t topology);
 void d3dIaSetInputLayout(D3dContext context, D3dInputLayout layout);
 void d3dVsSetShader(D3dContext context, D3dVertexShader shader);

@@ -28,7 +28,9 @@ import {
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
 	GPUSampler,
+	GPUPrimitiveState,
 	GPUSamplerDescriptor,
+	GPUStencilFaceState,
 	GPUShaderAttribute,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
@@ -41,10 +43,6 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedTexelWritePitch,
-	stopOnUnportedBindEntry,
-	stopOnUnportedDepthStencil,
-	stopOnUnportedPrimitive,
-	stopOnUnportedSampler,
 	stopOnUnportedTexelWrite,
 	stopOnUnportedShaderModule,
 	stopOnUnportedTexture,
@@ -163,20 +161,53 @@ const MAX_STAGE_SAMPLERS = 16;
 
 const DXGI_UNKNOWN = 0;
 const DXGI_R32G32B32A32_FLOAT = 2;
+const DXGI_R32G32B32A32_UINT = 3;
+const DXGI_R32G32B32A32_SINT = 4;
 const DXGI_R32G32B32_FLOAT = 6;
+const DXGI_R32G32B32_UINT = 7;
+const DXGI_R32G32B32_SINT = 8;
 const DXGI_R16G16B16A16_FLOAT = 10;
+const DXGI_R16G16B16A16_UNORM = 11;
+const DXGI_R16G16B16A16_UINT = 12;
+const DXGI_R16G16B16A16_SNORM = 13;
+const DXGI_R16G16B16A16_SINT = 14;
 const DXGI_R32G32_FLOAT = 16;
+const DXGI_R32G32_UINT = 17;
+const DXGI_R32G32_SINT = 18;
 const DXGI_R32G8X24_TYPELESS = 19;
 const DXGI_D32_FLOAT_S8X24_UINT = 20;
 const DXGI_R32_FLOAT_X8X24_TYPELESS = 21;
+const DXGI_R10G10B10A2_UNORM = 24;
+const DXGI_R11G11B10_FLOAT = 26;
+const DXGI_R8G8B8A8_TYPELESS = 27;
 const DXGI_R8G8B8A8_UNORM = 28;
+const DXGI_R8G8B8A8_UNORM_SRGB = 29;
+const DXGI_R8G8B8A8_UINT = 30;
+const DXGI_R8G8B8A8_SNORM = 31;
+const DXGI_R8G8B8A8_SINT = 32;
+const DXGI_R16G16_FLOAT = 34;
+const DXGI_R16G16_UNORM = 35;
+const DXGI_R16G16_UINT = 36;
+const DXGI_R16G16_SNORM = 37;
+const DXGI_R16G16_SINT = 38;
 const DXGI_R32_TYPELESS = 39;
 const DXGI_D32_FLOAT = 40;
 const DXGI_R32_FLOAT = 41;
 const DXGI_R32_UINT = 42;
+const DXGI_R32_SINT = 43;
+const DXGI_R8G8_UNORM = 49;
+const DXGI_R8G8_UINT = 50;
+const DXGI_R8G8_SNORM = 51;
+const DXGI_R8G8_SINT = 52;
+const DXGI_R16_TYPELESS = 53;
+const DXGI_R16_FLOAT = 54;
+const DXGI_D16_UNORM = 55;
+const DXGI_R16_UNORM = 56;
 const DXGI_R16_UINT = 57;
 const DXGI_R8_UNORM = 61;
 const DXGI_B8G8R8A8_UNORM = 87;
+const DXGI_B8G8R8A8_TYPELESS = 90;
+const DXGI_B8G8R8A8_UNORM_SRGB = 91;
 
 const USAGE_DEFAULT = 0;
 const USAGE_DYNAMIC = 2;
@@ -191,12 +222,23 @@ const MAP_WRITE_DISCARD = 4;
 const MAP_WRITE_NO_OVERWRITE = 5;
 const CLEAR_DEPTH = 0x1;
 const CLEAR_STENCIL = 0x2;
+const TOPOLOGY_POINT_LIST = 1;
+const TOPOLOGY_LINE_LIST = 2;
+const TOPOLOGY_LINE_STRIP = 3;
 const TOPOLOGY_TRIANGLE_LIST = 4;
+const TOPOLOGY_TRIANGLE_STRIP = 5;
 const CULL_NONE = 1;
 const CULL_FRONT = 2;
 const CULL_BACK = 3;
+const FILTER_MIP_LINEAR = 0x01;
 const FILTER_MAG_LINEAR = 0x04;
 const FILTER_MIN_LINEAR = 0x10;
+const FILTER_COMPARISON = 0x80;
+const FILTER_ANISOTROPIC = 0x55;
+const MAX_ANISOTROPY = 16;
+const COMPARISON_NEVER = 1;
+const DEFAULT_LOD_MAX_CLAMP = 32.0;
+const STENCIL_MASK_DEFAULT: uint32 = 0xFF;
 const ADDRESS_WRAP = 1;
 const ADDRESS_MIRROR = 2;
 const ADDRESS_CLAMP = 3;
@@ -310,6 +352,8 @@ struct PipelineSlot {
 	inputLayout: Ptr<D3dInputLayoutImpl>;
 	strides: int32[2];
 	layouts: uint32[2];
+	topology: int32;
+	stripIndexFormat: int32;
 }
 
 struct LayoutSlot {
@@ -351,6 +395,8 @@ struct BoundState {
 	uniformsDirty: boolean;
 	uniformBuffer: uint32[8];
 	uniformFirst: int64[8];
+	blendConstant: GPUColor;
+	stencilReference: uint32;
 }
 
 export struct BindStats {
@@ -540,43 +586,58 @@ function bindGroupIndex(id: uint32): int32 {
 	return index;
 }
 
+function colorInfo(format: int32, bytesPerPixel: int32): FormatInfo {
+	return {
+		texture: format,
+		shaderResource: format,
+		renderTarget: format,
+		depthStencil: DXGI_UNKNOWN,
+		bytesPerPixel: bytesPerPixel,
+		depth: false,
+		stencil: false,
+	};
+}
+
+function srgbInfo(typeless: int32, format: int32): FormatInfo {
+	return {
+		texture: typeless,
+		shaderResource: format,
+		renderTarget: format,
+		depthStencil: DXGI_UNKNOWN,
+		bytesPerPixel: 4,
+		depth: false,
+		stencil: false,
+	};
+}
+
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	const value: string = format;
 	return match (value) {
-		"r8unorm" => ({
-			texture: DXGI_R8_UNORM,
-			shaderResource: DXGI_R8_UNORM,
-			renderTarget: DXGI_R8_UNORM,
-			depthStencil: DXGI_UNKNOWN,
-			bytesPerPixel: 1,
-			depth: false,
-			stencil: false,
-		}),
-		"rgba8unorm" => ({
-			texture: DXGI_R8G8B8A8_UNORM,
-			shaderResource: DXGI_R8G8B8A8_UNORM,
-			renderTarget: DXGI_R8G8B8A8_UNORM,
-			depthStencil: DXGI_UNKNOWN,
-			bytesPerPixel: 4,
-			depth: false,
-			stencil: false,
-		}),
-		"bgra8unorm" => ({
-			texture: DXGI_B8G8R8A8_UNORM,
-			shaderResource: DXGI_B8G8R8A8_UNORM,
-			renderTarget: DXGI_B8G8R8A8_UNORM,
-			depthStencil: DXGI_UNKNOWN,
-			bytesPerPixel: 4,
-			depth: false,
-			stencil: false,
-		}),
-		"rgba16float" => ({
-			texture: DXGI_R16G16B16A16_FLOAT,
-			shaderResource: DXGI_R16G16B16A16_FLOAT,
-			renderTarget: DXGI_R16G16B16A16_FLOAT,
-			depthStencil: DXGI_UNKNOWN,
-			bytesPerPixel: 8,
-			depth: false,
+		"r8unorm" => colorInfo(DXGI_R8_UNORM, 1),
+		"rg8unorm" => colorInfo(DXGI_R8G8_UNORM, 2),
+		"rgba8unorm" => colorInfo(DXGI_R8G8B8A8_UNORM, 4),
+		"rgba8unorm-srgb" => srgbInfo(DXGI_R8G8B8A8_TYPELESS, DXGI_R8G8B8A8_UNORM_SRGB),
+		"bgra8unorm" => colorInfo(DXGI_B8G8R8A8_UNORM, 4),
+		"bgra8unorm-srgb" => srgbInfo(DXGI_B8G8R8A8_TYPELESS, DXGI_B8G8R8A8_UNORM_SRGB),
+		"rgba8uint" => colorInfo(DXGI_R8G8B8A8_UINT, 4),
+		"rgba8sint" => colorInfo(DXGI_R8G8B8A8_SINT, 4),
+		"r16float" => colorInfo(DXGI_R16_FLOAT, 2),
+		"rg16float" => colorInfo(DXGI_R16G16_FLOAT, 4),
+		"rgba16float" => colorInfo(DXGI_R16G16B16A16_FLOAT, 8),
+		"rgba16uint" => colorInfo(DXGI_R16G16B16A16_UINT, 8),
+		"r32float" => colorInfo(DXGI_R32_FLOAT, 4),
+		"rg32float" => colorInfo(DXGI_R32G32_FLOAT, 8),
+		"rgba32float" => colorInfo(DXGI_R32G32B32A32_FLOAT, 16),
+		"r32uint" => colorInfo(DXGI_R32_UINT, 4),
+		"rgb10a2unorm" => colorInfo(DXGI_R10G10B10A2_UNORM, 4),
+		"rg11b10ufloat" => colorInfo(DXGI_R11G11B10_FLOAT, 4),
+		"depth16unorm" => ({
+			texture: DXGI_R16_TYPELESS,
+			shaderResource: DXGI_R16_UNORM,
+			renderTarget: DXGI_R16_UNORM,
+			depthStencil: DXGI_D16_UNORM,
+			bytesPerPixel: 2,
+			depth: true,
 			stencil: false,
 		}),
 		"depth32float" => ({
@@ -672,8 +733,58 @@ function vertexFormat(format: string): int32 {
 		"float32x2" => DXGI_R32G32_FLOAT,
 		"float32x3" => DXGI_R32G32B32_FLOAT,
 		"float32x4" => DXGI_R32G32B32A32_FLOAT,
+		"uint32" => DXGI_R32_UINT,
+		"uint32x2" => DXGI_R32G32_UINT,
+		"uint32x3" => DXGI_R32G32B32_UINT,
+		"uint32x4" => DXGI_R32G32B32A32_UINT,
+		"sint32" => DXGI_R32_SINT,
+		"sint32x2" => DXGI_R32G32_SINT,
+		"sint32x3" => DXGI_R32G32B32_SINT,
+		"sint32x4" => DXGI_R32G32B32A32_SINT,
+		"uint8x2" => DXGI_R8G8_UINT,
+		"sint8x2" => DXGI_R8G8_SINT,
+		"unorm8x2" => DXGI_R8G8_UNORM,
+		"snorm8x2" => DXGI_R8G8_SNORM,
+		"uint8x4" => DXGI_R8G8B8A8_UINT,
+		"sint8x4" => DXGI_R8G8B8A8_SINT,
 		"unorm8x4" => DXGI_R8G8B8A8_UNORM,
+		"snorm8x4" => DXGI_R8G8B8A8_SNORM,
+		"uint16x2" => DXGI_R16G16_UINT,
+		"sint16x2" => DXGI_R16G16_SINT,
+		"unorm16x2" => DXGI_R16G16_UNORM,
+		"snorm16x2" => DXGI_R16G16_SNORM,
+		"float16x2" => DXGI_R16G16_FLOAT,
+		"uint16x4" => DXGI_R16G16B16A16_UINT,
+		"sint16x4" => DXGI_R16G16B16A16_SINT,
+		"unorm16x4" => DXGI_R16G16B16A16_UNORM,
+		"snorm16x4" => DXGI_R16G16B16A16_SNORM,
+		"float16x4" => DXGI_R16G16B16A16_FLOAT,
 		_ => stopOnMember("vertex attribute format", format),
+	};
+}
+
+function primitiveTopology(topology: string): int32 {
+	return match (topology) {
+		"point-list" => TOPOLOGY_POINT_LIST,
+		"line-list" => TOPOLOGY_LINE_LIST,
+		"line-strip" => TOPOLOGY_LINE_STRIP,
+		"" | "triangle-list" => TOPOLOGY_TRIANGLE_LIST,
+		"triangle-strip" => TOPOLOGY_TRIANGLE_STRIP,
+		_ => stopOnMember("primitive.topology", topology),
+	};
+}
+
+function stencilOperation(operation: string, member: string): int32 {
+	return match (operation) {
+		"" | "keep" => 1,
+		"zero" => 2,
+		"replace" => 3,
+		"increment-clamp" => 4,
+		"decrement-clamp" => 5,
+		"invert" => 6,
+		"increment-wrap" => 7,
+		"decrement-wrap" => 8,
+		_ => stopOnMember(member, operation),
 	};
 }
 
@@ -1139,18 +1250,42 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 }
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
-	stopOnUnportedSampler("d3d11", descriptor);
 	const id = allocateId(samplerQueue, "sampler");
 	if (id == 0) { return { id: 0 }; }
+	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
+	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
+	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter");
+	const compare: string = descriptor.compare;
+	let maxAnisotropy = descriptor.maxAnisotropy;
+	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
+	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
+	if (maxAnisotropy > 1 && !(magLinear && minLinear && mipLinear)) {
+		stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter");
+	}
 	let filter = 0;
-	if (linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter")) { filter |= FILTER_MAG_LINEAR; }
-	if (linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter")) { filter |= FILTER_MIN_LINEAR; }
+	if (maxAnisotropy > 1) {
+		filter = FILTER_ANISOTROPIC;
+	} else {
+		if (mipLinear) { filter |= FILTER_MIP_LINEAR; }
+		if (magLinear) { filter |= FILTER_MAG_LINEAR; }
+		if (minLinear) { filter |= FILTER_MIN_LINEAR; }
+	}
+	if (compare != "") { filter |= FILTER_COMPARISON; }
+	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
+	const maxLod = descriptor.lodMaxClamp == 0 ? DEFAULT_LOD_MAX_CLAMP : descriptor.lodMaxClamp;
+	if (maxLod < descriptor.lodMinClamp) {
+		stop(`GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${descriptor.lodMinClamp}`);
+	}
 	const native = d3dCreateSampler(
 		device,
 		filter,
 		addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"),
 		addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"),
-		ADDRESS_CLAMP,
+		addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW"),
+		maxAnisotropy,
+		compare == "" ? COMPARISON_NEVER : compareFunction(compare, "GPUSamplerDescriptor.compare"),
+		descriptor.lodMinClamp,
+		maxLod,
 	);
 	if (native == null) { stop(`CreateSamplerState failed for ${labelOf(descriptor.label)}`); }
 	const index = slotOf(id);
@@ -1269,9 +1404,9 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on D3D11");
 	}
-	stopOnUnportedPrimitive("d3d11", descriptor.primitive);
-	stopOnUnportedDepthStencil("d3d11", descriptor.depthStencil);
 	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id };
+	slot.topology = primitiveTopology(descriptor.primitive.topology);
+	slot.stripIndexFormat = stripIndexFormatOf(descriptor.primitive, slot.topology);
 	slot.inputLayout = createInputLayout(s, descriptor, slot);
 	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
 	slot.rasterizer = d3dCreateRasterizerState(
@@ -1279,13 +1414,32 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		cullMode(descriptor.primitive.cullMode),
 		frontCounterClockwise(descriptor.primitive.frontFace),
 		sampleCount > 1 ? 1 : 0,
+		descriptor.depthStencil.depthBias,
+		descriptor.depthStencil.depthBiasSlopeScale,
+		descriptor.depthStencil.depthBiasClamp,
 	);
 	const depthFormat: string = descriptor.depthStencil.format;
-	if (depthFormat != "") { formatInfo(descriptor.depthStencil.format, "depthStencil.format"); }
+	let stencil = false;
+	if (depthFormat != "") { stencil = formatInfo(descriptor.depthStencil.format, "depthStencil.format").stencil; }
+	const front: GPUStencilFaceState = descriptor.depthStencil.stencilFront;
+	const back: GPUStencilFaceState = descriptor.depthStencil.stencilBack;
+	const readMask = descriptor.depthStencil.stencilReadMask;
+	const writeMask = descriptor.depthStencil.stencilWriteMask;
 	slot.depthStencil = d3dCreateDepthStencilState(
 		device,
 		depthFormat != "" && descriptor.depthStencil.depthWriteEnabled ? 1 : 0,
 		depthFormat == "" ? 8 : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
+		stencil ? 1 : 0,
+		(readMask == 0 ? STENCIL_MASK_DEFAULT : readMask) as int32,
+		(writeMask == 0 ? STENCIL_MASK_DEFAULT : writeMask) as int32,
+		stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
+		stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
+		stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),
+		compareFunction(front.compare, "depthStencil.stencilFront.compare"),
+		stencilOperation(back.failOp, "depthStencil.stencilBack.failOp"),
+		stencilOperation(back.depthFailOp, "depthStencil.stencilBack.depthFailOp"),
+		stencilOperation(back.passOp, "depthStencil.stencilBack.passOp"),
+		compareFunction(back.compare, "depthStencil.stencilBack.compare"),
 	);
 	describeBlendTargets(descriptor);
 	slot.blend = d3dCreateBlendState(device);
@@ -1296,6 +1450,15 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	const index = slotOf(slot.id);
 	if (index < pipelines.length) { pipelines[index] = slot; } else { pipelines.push(slot); }
 	return { id: slot.id };
+}
+
+function stripIndexFormatOf(state: GPUPrimitiveState, topology: int32): int32 {
+	const format: string = state.stripIndexFormat;
+	if (format == "") { return 0; }
+	if (topology != TOPOLOGY_LINE_STRIP && topology != TOPOLOGY_TRIANGLE_STRIP) {
+		stop(`primitive.stripIndexFormat '${format}' needs a strip topology`);
+	}
+	return indexFormat(state.stripIndexFormat);
 }
 
 function createInputLayout(
@@ -1429,7 +1592,12 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 		for (let u = 0; u < shaders[shader].uniformCount; u++) {
 			const binding = shaders[shader].uniforms[u];
 			if (binding.binding == entry.binding) {
-				stopOnUnportedBindEntry("d3d11", entry);
+				if (entry.offset < 0 || entry.offset % UNIFORM_OFFSET_ALIGNMENT != 0) {
+					stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
+				}
+				if (entry.offset + (binding.size as int64) > buffers[b].size) {
+					stop(`bind group entry ${entry.binding} offset ${entry.offset} overruns its buffer`);
+				}
 				if (entry.size != 0 && entry.size < (binding.size as int64)) {
 					stop(`bind group entry ${entry.binding} size ${entry.size} is below its block of ${binding.size}`);
 				}
@@ -1496,7 +1664,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	}
 	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	d3dSetRenderTargets(context, targets[0], targets[1], targets[2], targets[3], depth);
-	d3dSetViewport(context, pass.width, pass.height);
+	d3dSetViewport(context, 0.0, 0.0, pass.width, pass.height, 0.0, 1.0);
 	d3dSetScissorRect(context, 0, 0, pass.width, pass.height);
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (pass.colorViews[i] == 0) { continue; }
@@ -1511,6 +1679,8 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	}
 	forgetNativeBinds();
 	bound.appliedPipeline = 0;
+	bound.blendConstant = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+	bound.stencilReference = 0;
 	bound.vertexDirty = true;
 	bound.indexDirty = true;
 	bound.resourcesDirty = true;
@@ -1624,17 +1794,35 @@ export function setScissorRect(x: int32, y: int32, width: int32, height: int32):
 
 export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
 	if (!pass.active) { stop("setViewport outside a render pass"); }
-	stop("setViewport is not ported to d3d11 yet");
+	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
+		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
+	}
+	d3dSetViewport(context, x, y, width, height, minDepth, maxDepth);
 }
 
 export function setBlendConstant(color: GPUColor): void {
 	if (!pass.active) { stop("setBlendConstant outside a render pass"); }
-	stop("setBlendConstant is not ported to d3d11 yet");
+	bound.blendConstant = color;
+	if (bound.appliedPipeline != 0) { applyBlend(); }
 }
 
 export function setStencilReference(reference: uint32): void {
 	if (!pass.active) { stop("setStencilReference outside a render pass"); }
-	stop("setStencilReference is not ported to d3d11 yet");
+	bound.stencilReference = reference;
+	if (bound.appliedPipeline != 0) { applyDepthStencil(); }
+}
+
+function applyBlend(): void {
+	const color = bound.blendConstant;
+	d3dOmSetBlendState(context, pipelines[pipelineIndex(bound.appliedPipeline)].blend, color.r, color.g, color.b, color.a);
+}
+
+function applyDepthStencil(): void {
+	d3dOmSetDepthStencilState(
+		context,
+		pipelines[pipelineIndex(bound.appliedPipeline)].depthStencil,
+		bound.stencilReference as int32,
+	);
 }
 
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
@@ -1669,6 +1857,7 @@ function flush(indexed: boolean): void {
 	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(); }
 	if (bound.vertexDirty) { applyVertexBuffers(); }
 	if (indexed && bound.indexDirty) { applyIndexBuffer(); }
+	if (indexed) { checkStripIndexFormat(); }
 	if (bound.resourcesDirty) { applyResources(); }
 	if (bound.uniformsDirty) { applyUniforms(); }
 }
@@ -1680,9 +1869,10 @@ function applyPipeline(): void {
 	}
 	const s = shaderIndex(pipelines[p].shader);
 	d3dRsSetState(context, pipelines[p].rasterizer);
-	d3dOmSetDepthStencilState(context, pipelines[p].depthStencil);
-	d3dOmSetBlendState(context, pipelines[p].blend);
-	d3dIaSetPrimitiveTopology(context, TOPOLOGY_TRIANGLE_LIST);
+	bound.appliedPipeline = bound.pipeline;
+	applyDepthStencil();
+	applyBlend();
+	d3dIaSetPrimitiveTopology(context, pipelines[p].topology);
 	d3dIaSetInputLayout(context, pipelines[p].inputLayout);
 	d3dVsSetShader(context, shaders[s].vertex);
 	d3dPsSetShader(context, shaders[s].fragment);
@@ -1693,11 +1883,19 @@ function applyPipeline(): void {
 			d3dPsSetConstantBuffer(context, shaders[s].uniforms[u].nativeSlot, shaders[s].constantBuffers[u]);
 		}
 	}
-	bound.appliedPipeline = bound.pipeline;
 	forgetAppliedUniforms();
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
+}
+
+function checkStripIndexFormat(): void {
+	const p = pipelineIndex(bound.pipeline);
+	const topology = pipelines[p].topology;
+	if (topology != TOPOLOGY_LINE_STRIP && topology != TOPOLOGY_TRIANGLE_STRIP) { return; }
+	if (pipelines[p].stripIndexFormat != bound.indexFormat) {
+		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
+	}
 }
 
 function applyVertexBuffers(): void {
@@ -1785,7 +1983,7 @@ function applyUniforms(): void {
 	const g = bindGroupIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(g, shaders[s].uniforms[u].binding);
-		const offset = bound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64;
+		const offset = (bound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferIndex(bindGroups[g].entries[e].buffer.id);
 		const block = shaders[s].uniforms[u];
 		if (offset + (block.size as int64) > buffers[b].size) {

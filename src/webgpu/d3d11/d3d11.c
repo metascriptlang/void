@@ -176,17 +176,26 @@ void d3dResolveViews(D3dContext context, D3dRtv destination, D3dRtv source, int3
 	ID3D11Resource_Release(sourceResource);
 }
 
-D3dSampler d3dCreateSampler(D3dDevice device, int32_t filter, int32_t addressU, int32_t addressV, int32_t addressW) {
+D3dSampler d3dCreateSampler(
+	D3dDevice device,
+	int32_t filter,
+	int32_t addressU,
+	int32_t addressV,
+	int32_t addressW,
+	int32_t maxAnisotropy,
+	int32_t comparison,
+	double minLod,
+	double maxLod) {
 	D3D11_SAMPLER_DESC desc = {0};
 	desc.Filter = (D3D11_FILTER)filter;
 	desc.AddressU = (D3D11_TEXTURE_ADDRESS_MODE)addressU;
 	desc.AddressV = (D3D11_TEXTURE_ADDRESS_MODE)addressV;
 	desc.AddressW = (D3D11_TEXTURE_ADDRESS_MODE)addressW;
-	desc.MaxAnisotropy = 1;
-	desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+	desc.MaxAnisotropy = (UINT)maxAnisotropy;
+	desc.ComparisonFunc = (D3D11_COMPARISON_FUNC)comparison;
 	desc.BorderColor[3] = 1.0f;
-	desc.MinLOD = 0.0f;
-	desc.MaxLOD = FLT_MAX;
+	desc.MinLOD = (FLOAT)minLod;
+	desc.MaxLOD = (FLOAT)maxLod;
 	ID3D11SamplerState *sampler = NULL;
 	HRESULT hr = ID3D11Device_CreateSamplerState(DEVICE(device), &desc, &sampler);
 	return SUCCEEDED(hr) ? (D3dSampler)sampler : NULL;
@@ -278,11 +287,21 @@ D3dInputLayout d3dCreateInputLayout(D3dDevice device, int32_t count, D3dBlob ver
 
 void d3dReleaseInputLayout(D3dInputLayout layout) { if (layout) ID3D11InputLayout_Release((ID3D11InputLayout *)layout); }
 
-D3dRasterizerState d3dCreateRasterizerState(D3dDevice device, int32_t cullMode, int32_t frontCounterClockwise, int32_t multisample) {
+D3dRasterizerState d3dCreateRasterizerState(
+	D3dDevice device,
+	int32_t cullMode,
+	int32_t frontCounterClockwise,
+	int32_t multisample,
+	int32_t depthBias,
+	double slopeScaledDepthBias,
+	double depthBiasClamp) {
 	D3D11_RASTERIZER_DESC desc = {0};
 	desc.FillMode = D3D11_FILL_SOLID;
 	desc.CullMode = (D3D11_CULL_MODE)cullMode;
 	desc.FrontCounterClockwise = frontCounterClockwise ? TRUE : FALSE;
+	desc.DepthBias = (INT)depthBias;
+	desc.DepthBiasClamp = (FLOAT)depthBiasClamp;
+	desc.SlopeScaledDepthBias = (FLOAT)slopeScaledDepthBias;
 	desc.DepthClipEnable = TRUE;
 	desc.ScissorEnable = TRUE;
 	desc.MultisampleEnable = multisample ? TRUE : FALSE;
@@ -293,15 +312,36 @@ D3dRasterizerState d3dCreateRasterizerState(D3dDevice device, int32_t cullMode, 
 
 void d3dReleaseRasterizerState(D3dRasterizerState state) { if (state) ID3D11RasterizerState_Release((ID3D11RasterizerState *)state); }
 
-D3dDepthStencilState d3dCreateDepthStencilState(D3dDevice device, int32_t depthWrite, int32_t compare) {
+D3dDepthStencilState d3dCreateDepthStencilState(
+	D3dDevice device,
+	int32_t depthWrite,
+	int32_t compare,
+	int32_t stencilEnabled,
+	int32_t stencilReadMask,
+	int32_t stencilWriteMask,
+	int32_t frontFail,
+	int32_t frontDepthFail,
+	int32_t frontPass,
+	int32_t frontCompare,
+	int32_t backFail,
+	int32_t backDepthFail,
+	int32_t backPass,
+	int32_t backCompare) {
 	D3D11_DEPTH_STENCIL_DESC desc = {0};
 	desc.DepthEnable = TRUE;
 	desc.DepthWriteMask = depthWrite ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
 	desc.DepthFunc = (D3D11_COMPARISON_FUNC)compare;
-	desc.StencilEnable = FALSE;
-	desc.FrontFace.StencilFailOp = desc.FrontFace.StencilDepthFailOp = desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-	desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-	desc.BackFace = desc.FrontFace;
+	desc.StencilEnable = stencilEnabled ? TRUE : FALSE;
+	desc.StencilReadMask = (UINT8)stencilReadMask;
+	desc.StencilWriteMask = (UINT8)stencilWriteMask;
+	desc.FrontFace.StencilFailOp = (D3D11_STENCIL_OP)frontFail;
+	desc.FrontFace.StencilDepthFailOp = (D3D11_STENCIL_OP)frontDepthFail;
+	desc.FrontFace.StencilPassOp = (D3D11_STENCIL_OP)frontPass;
+	desc.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)frontCompare;
+	desc.BackFace.StencilFailOp = (D3D11_STENCIL_OP)backFail;
+	desc.BackFace.StencilDepthFailOp = (D3D11_STENCIL_OP)backDepthFail;
+	desc.BackFace.StencilPassOp = (D3D11_STENCIL_OP)backPass;
+	desc.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)backCompare;
 	ID3D11DepthStencilState *state = NULL;
 	HRESULT hr = ID3D11Device_CreateDepthStencilState(DEVICE(device), &desc, &state);
 	return SUCCEEDED(hr) ? (D3dDepthStencilState)state : NULL;
@@ -368,11 +408,14 @@ void d3dSetRenderTargets(D3dContext context, D3dRtv color0, D3dRtv color1, D3dRt
 	ID3D11DeviceContext_OMSetRenderTargets(CONTEXT(context), 4, views, (ID3D11DepthStencilView *)depth);
 }
 
-void d3dSetViewport(D3dContext context, int32_t width, int32_t height) {
+void d3dSetViewport(D3dContext context, double x, double y, double width, double height, double minDepth, double maxDepth) {
 	D3D11_VIEWPORT viewport = {0};
+	viewport.TopLeftX = (FLOAT)x;
+	viewport.TopLeftY = (FLOAT)y;
 	viewport.Width = (FLOAT)width;
 	viewport.Height = (FLOAT)height;
-	viewport.MaxDepth = 1.0f;
+	viewport.MinDepth = (FLOAT)minDepth;
+	viewport.MaxDepth = (FLOAT)maxDepth;
 	ID3D11DeviceContext_RSSetViewports(CONTEXT(context), 1, &viewport);
 }
 
@@ -396,12 +439,12 @@ void d3dRsSetState(D3dContext context, D3dRasterizerState state) {
 	ID3D11DeviceContext_RSSetState(CONTEXT(context), (ID3D11RasterizerState *)state);
 }
 
-void d3dOmSetDepthStencilState(D3dContext context, D3dDepthStencilState state) {
-	ID3D11DeviceContext_OMSetDepthStencilState(CONTEXT(context), (ID3D11DepthStencilState *)state, 0);
+void d3dOmSetDepthStencilState(D3dContext context, D3dDepthStencilState state, int32_t stencilReference) {
+	ID3D11DeviceContext_OMSetDepthStencilState(CONTEXT(context), (ID3D11DepthStencilState *)state, (UINT)stencilReference);
 }
 
-void d3dOmSetBlendState(D3dContext context, D3dBlendState state) {
-	const FLOAT blendFactor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+void d3dOmSetBlendState(D3dContext context, D3dBlendState state, double r, double g, double b, double a) {
+	const FLOAT blendFactor[4] = { (FLOAT)r, (FLOAT)g, (FLOAT)b, (FLOAT)a };
 	ID3D11DeviceContext_OMSetBlendState(CONTEXT(context), (ID3D11BlendState *)state, blendFactor, 0xFFFFFFFF);
 }
 
