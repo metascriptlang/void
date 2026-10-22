@@ -1,6 +1,7 @@
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
+	GPU_MAX_SHADER_BINDINGS,
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_MAX_VERTEX_ATTRIBUTES,
 	GPU_MAX_VERTEX_BUFFERS,
@@ -54,10 +55,32 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedBufferCopy,
-	checkedTexelBufferLayout,
+	checkedCubeView,
+	checkedDepthSlice,
 	checkedDepthTexelCopy,
+	checkedDispatch,
+	checkedDispatchIndirect,
+	checkedMipLevelCount,
+	checkedMultisample,
+	checkedNoDepthSlice,
+	checkedPassExtent,
+	checkedPopDebugGroup,
+	checkedQuerySetCount,
+	checkedResolveQuerySet,
+	checkedResolveTarget,
+	checkedSamplerAnisotropy,
+	checkedSamplerLod,
+	checkedSingleSubresource,
+	checkedTexelBufferLayout,
 	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
+	checkedTextureToTextureCopy,
+	checkedTimestampWrites,
+	checkedView3d,
+	checkedViewLayers,
+	checkedViewMips,
+	checkedViewport,
+	checkedWriteBuffer,
 	featureBit,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
@@ -80,9 +103,6 @@ import {
 	wgCopyTextureToBuffer,
 	wgCopyTextureToTexture,
 	wgBeginPass,
-	wgBindEntry,
-	wgColorAttachment,
-	wgColorTarget,
 	wgCreateBindGroup,
 	wgCreateBuffer,
 	wgCreateComputePipeline,
@@ -93,19 +113,15 @@ import {
 	wgCreateSampler,
 	wgCreateTexture,
 	wgCreateView,
-	wgDepthAttachment,
-	wgDepthStencil,
 	wgDispatch,
 	wgDispatchIndirect,
 	wgDraw,
 	wgDrawIndexed,
-	wgDynamicOffset,
 	wgEndComputePass,
 	wgEndOcclusionQuery,
 	wgEndPass,
 	wgFinish,
 	wgInsertDebugMarker,
-	wgLayoutEntry,
 	wgLimit,
 	wgMaxTextureDimension2D,
 	wgMinUniformBufferOffsetAlignment,
@@ -135,11 +151,8 @@ import {
 	wgSetup,
 	wgSetVertexBuffer,
 	wgShutdown,
-	wgStencilFace,
 	wgSubmit,
 	wgTextureNative,
-	wgVertexAttribute,
-	wgVertexBuffer,
 	wgViewFrom,
 	wgWriteBuffer,
 	wgWriteTexture,
@@ -226,8 +239,6 @@ const LIMIT_WORKGROUPS_PER_DIMENSION = 19;
 const LIMIT_UNIFORM_ALIGNMENT = 20;
 const LIMIT_STORAGE_ALIGNMENT = 21;
 
-const MAX_QUERY_COUNT = 4096;
-const RESOLVE_OFFSET_ALIGNMENT = 256;
 const QUERY_UNWRITTEN: uint8 = 0;
 const QUERY_OPEN: uint8 = 1;
 const QUERY_WRITTEN: uint8 = 2;
@@ -246,7 +257,6 @@ const VIEW_CUBE_ARRAY = 5;
 const VIEW_3D = 6;
 const MIPMAP_NEAREST = 1;
 const MIPMAP_LINEAR = 2;
-const DEFAULT_LOD_MAX_CLAMP = 32.0;
 const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 
 const STAGE_VERTEX = 0x1;
@@ -279,9 +289,71 @@ const CULL_FRONT = 2;
 const CULL_BACK = 3;
 const FRONT_CCW = 1;
 const FRONT_CW = 2;
+// Values of the WGPU enums in webgpu.h, the emdawnwebgpu port header.
+const COMPARE_NEVER = 1;
+const COMPARE_LESS = 2;
+const COMPARE_EQUAL = 3;
+const COMPARE_LESS_EQUAL = 4;
+const COMPARE_GREATER = 5;
+const COMPARE_NOT_EQUAL = 6;
+const COMPARE_GREATER_EQUAL = 7;
 const COMPARE_ALWAYS = 8;
 const BLEND_ZERO = 1;
 const BLEND_ONE = 2;
+const BLEND_SRC = 3;
+const BLEND_ONE_MINUS_SRC = 4;
+const BLEND_SRC_ALPHA = 5;
+const BLEND_ONE_MINUS_SRC_ALPHA = 6;
+const BLEND_DST = 7;
+const BLEND_ONE_MINUS_DST = 8;
+const BLEND_DST_ALPHA = 9;
+const BLEND_ONE_MINUS_DST_ALPHA = 10;
+const BLEND_SRC_ALPHA_SATURATED = 11;
+const BLEND_CONSTANT = 12;
+const BLEND_ONE_MINUS_CONSTANT = 13;
+const BLEND_OP_ADD = 1;
+const BLEND_OP_SUBTRACT = 2;
+const BLEND_OP_REVERSE_SUBTRACT = 3;
+const BLEND_OP_MIN = 4;
+const BLEND_OP_MAX = 5;
+const STENCIL_OP_KEEP = 1;
+const STENCIL_OP_ZERO = 2;
+const STENCIL_OP_REPLACE = 3;
+const STENCIL_OP_INVERT = 4;
+const STENCIL_OP_INCREMENT_CLAMP = 5;
+const STENCIL_OP_DECREMENT_CLAMP = 6;
+const STENCIL_OP_INCREMENT_WRAP = 7;
+const STENCIL_OP_DECREMENT_WRAP = 8;
+const VERTEX_FLOAT32 = 0x1C;
+const VERTEX_FLOAT32X2 = 0x1D;
+const VERTEX_FLOAT32X3 = 0x1E;
+const VERTEX_FLOAT32X4 = 0x1F;
+const VERTEX_UINT32 = 0x20;
+const VERTEX_UINT32X2 = 0x21;
+const VERTEX_UINT32X3 = 0x22;
+const VERTEX_UINT32X4 = 0x23;
+const VERTEX_SINT32 = 0x24;
+const VERTEX_SINT32X2 = 0x25;
+const VERTEX_SINT32X3 = 0x26;
+const VERTEX_SINT32X4 = 0x27;
+const VERTEX_UINT8X2 = 0x02;
+const VERTEX_UINT8X4 = 0x03;
+const VERTEX_SINT8X2 = 0x05;
+const VERTEX_SINT8X4 = 0x06;
+const VERTEX_UNORM8X2 = 0x08;
+const VERTEX_UNORM8X4 = 0x09;
+const VERTEX_SNORM8X2 = 0x0B;
+const VERTEX_SNORM8X4 = 0x0C;
+const VERTEX_UINT16X2 = 0x0E;
+const VERTEX_UINT16X4 = 0x0F;
+const VERTEX_SINT16X2 = 0x11;
+const VERTEX_SINT16X4 = 0x12;
+const VERTEX_UNORM16X2 = 0x14;
+const VERTEX_UNORM16X4 = 0x15;
+const VERTEX_SNORM16X2 = 0x17;
+const VERTEX_SNORM16X4 = 0x18;
+const VERTEX_FLOAT16X2 = 0x1A;
+const VERTEX_FLOAT16X4 = 0x1B;
 const ADDRESS_CLAMP = 1;
 const ADDRESS_REPEAT = 2;
 const ADDRESS_MIRROR = 3;
@@ -290,6 +362,40 @@ const FILTER_LINEAR = 2;
 const INDEX_UINT16 = 1;
 const INDEX_UINT32 = 2;
 const COLOR_WRITE_ALL = 0xF;
+
+const LAYOUT_STRIDE = 6;
+const PL_BUFFER_COUNT = 0;
+const PL_TARGET_COUNT = 1;
+const PL_TOPOLOGY = 2;
+const PL_STRIP_INDEX_FORMAT = 3;
+const PL_CULL_MODE = 4;
+const PL_FRONT_FACE = 5;
+const PL_SAMPLE_COUNT = 6;
+const PL_DEPTH_FORMAT = 7;
+const PL_DEPTH_WRITE = 8;
+const PL_DEPTH_COMPARE = 9;
+const PL_STENCIL_READ_MASK = 10;
+const PL_STENCIL_WRITE_MASK = 11;
+const PL_DEPTH_BIAS = 12;
+const PL_STENCIL_FRONT = 13;
+const PL_STENCIL_BACK = 17;
+const PL_BUFFERS = 21;
+const PL_BUFFER_STRIDE = 3 + GPU_MAX_VERTEX_ATTRIBUTES * 3;
+const PL_TARGETS = PL_BUFFERS + GPU_MAX_VERTEX_BUFFERS * PL_BUFFER_STRIDE;
+const PL_TARGET_STRIDE = 10;
+const PL_SIZE = PL_TARGETS + GPU_MAX_COLOR_ATTACHMENTS * PL_TARGET_STRIDE;
+const PASS_COLOR_COUNT = 0;
+const PASS_WIDTH = 1;
+const PASS_HEIGHT = 2;
+const PASS_TIMESTAMP_BEGIN = 3;
+const PASS_TIMESTAMP_END = 4;
+const PASS_DEPTH_LOAD = 5;
+const PASS_DEPTH_STORE = 6;
+const PASS_DEPTH_STENCIL = 7;
+const PASS_COLOR_OPS = 8;
+const PASS_COLOR_OP_STRIDE = 3;
+const PASS_SIZE = PASS_COLOR_OPS + GPU_MAX_COLOR_ATTACHMENTS * PASS_COLOR_OP_STRIDE;
+const PASS_DEPTH_CLEAR = GPU_MAX_COLOR_ATTACHMENTS * 4;
 
 const NO_BUFFER = null as unknown as Ptr<WgBufferImpl>;
 const NO_TEXTURE = null as unknown as Ptr<WgTextureImpl>;
@@ -528,13 +634,13 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 
 function compareFunction(compare: string, member: string): int32 {
 	return match (compare) {
-		"never" => 1,
-		"less" => 2,
-		"equal" => 3,
-		"less-equal" => 4,
-		"greater" => 5,
-		"not-equal" => 6,
-		"greater-equal" => 7,
+		"never" => COMPARE_NEVER,
+		"less" => COMPARE_LESS,
+		"equal" => COMPARE_EQUAL,
+		"less-equal" => COMPARE_LESS_EQUAL,
+		"greater" => COMPARE_GREATER,
+		"not-equal" => COMPARE_NOT_EQUAL,
+		"greater-equal" => COMPARE_GREATER_EQUAL,
 		"" | "always" => COMPARE_ALWAYS,
 		_ => stopOnMember(member, compare),
 	};
@@ -561,17 +667,17 @@ function blendFactor(factor: string, member: string): int32 {
 	return match (factor) {
 		"zero" => BLEND_ZERO,
 		"" | "one" => BLEND_ONE,
-		"src" => 3,
-		"one-minus-src" => 4,
-		"src-alpha" => 5,
-		"one-minus-src-alpha" => 6,
-		"dst" => 7,
-		"one-minus-dst" => 8,
-		"dst-alpha" => 9,
-		"one-minus-dst-alpha" => 10,
-		"src-alpha-saturated" => 11,
-		"constant" => 12,
-		"one-minus-constant" => 13,
+		"src" => BLEND_SRC,
+		"one-minus-src" => BLEND_ONE_MINUS_SRC,
+		"src-alpha" => BLEND_SRC_ALPHA,
+		"one-minus-src-alpha" => BLEND_ONE_MINUS_SRC_ALPHA,
+		"dst" => BLEND_DST,
+		"one-minus-dst" => BLEND_ONE_MINUS_DST,
+		"dst-alpha" => BLEND_DST_ALPHA,
+		"one-minus-dst-alpha" => BLEND_ONE_MINUS_DST_ALPHA,
+		"src-alpha-saturated" => BLEND_SRC_ALPHA_SATURATED,
+		"constant" => BLEND_CONSTANT,
+		"one-minus-constant" => BLEND_ONE_MINUS_CONSTANT,
 		_ => stopOnMember(member, factor),
 	};
 }
@@ -584,47 +690,47 @@ function destinationFactor(factor: string, member: string): int32 {
 
 function blendOperation(operation: string, member: string): int32 {
 	return match (operation) {
-		"" | "add" => 1,
-		"subtract" => 2,
-		"reverse-subtract" => 3,
-		"min" => 4,
-		"max" => 5,
+		"" | "add" => BLEND_OP_ADD,
+		"subtract" => BLEND_OP_SUBTRACT,
+		"reverse-subtract" => BLEND_OP_REVERSE_SUBTRACT,
+		"min" => BLEND_OP_MIN,
+		"max" => BLEND_OP_MAX,
 		_ => stopOnMember(member, operation),
 	};
 }
 
 function vertexFormat(format: string): int32 {
 	return match (format) {
-		"float32" => 0x1C,
-		"float32x2" => 0x1D,
-		"float32x3" => 0x1E,
-		"float32x4" => 0x1F,
-		"uint32" => 0x20,
-		"uint32x2" => 0x21,
-		"uint32x3" => 0x22,
-		"uint32x4" => 0x23,
-		"sint32" => 0x24,
-		"sint32x2" => 0x25,
-		"sint32x3" => 0x26,
-		"sint32x4" => 0x27,
-		"uint8x2" => 0x02,
-		"uint8x4" => 0x03,
-		"sint8x2" => 0x05,
-		"sint8x4" => 0x06,
-		"unorm8x2" => 0x08,
-		"unorm8x4" => 0x09,
-		"snorm8x2" => 0x0B,
-		"snorm8x4" => 0x0C,
-		"uint16x2" => 0x0E,
-		"uint16x4" => 0x0F,
-		"sint16x2" => 0x11,
-		"sint16x4" => 0x12,
-		"unorm16x2" => 0x14,
-		"unorm16x4" => 0x15,
-		"snorm16x2" => 0x17,
-		"snorm16x4" => 0x18,
-		"float16x2" => 0x1A,
-		"float16x4" => 0x1B,
+		"float32" => VERTEX_FLOAT32,
+		"float32x2" => VERTEX_FLOAT32X2,
+		"float32x3" => VERTEX_FLOAT32X3,
+		"float32x4" => VERTEX_FLOAT32X4,
+		"uint32" => VERTEX_UINT32,
+		"uint32x2" => VERTEX_UINT32X2,
+		"uint32x3" => VERTEX_UINT32X3,
+		"uint32x4" => VERTEX_UINT32X4,
+		"sint32" => VERTEX_SINT32,
+		"sint32x2" => VERTEX_SINT32X2,
+		"sint32x3" => VERTEX_SINT32X3,
+		"sint32x4" => VERTEX_SINT32X4,
+		"uint8x2" => VERTEX_UINT8X2,
+		"uint8x4" => VERTEX_UINT8X4,
+		"sint8x2" => VERTEX_SINT8X2,
+		"sint8x4" => VERTEX_SINT8X4,
+		"unorm8x2" => VERTEX_UNORM8X2,
+		"unorm8x4" => VERTEX_UNORM8X4,
+		"snorm8x2" => VERTEX_SNORM8X2,
+		"snorm8x4" => VERTEX_SNORM8X4,
+		"uint16x2" => VERTEX_UINT16X2,
+		"uint16x4" => VERTEX_UINT16X4,
+		"sint16x2" => VERTEX_SINT16X2,
+		"sint16x4" => VERTEX_SINT16X4,
+		"unorm16x2" => VERTEX_UNORM16X2,
+		"unorm16x4" => VERTEX_UNORM16X4,
+		"snorm16x2" => VERTEX_SNORM16X2,
+		"snorm16x4" => VERTEX_SNORM16X4,
+		"float16x2" => VERTEX_FLOAT16X2,
+		"float16x4" => VERTEX_FLOAT16X4,
 		_ => stopOnMember("vertex attribute format", format),
 	};
 }
@@ -642,14 +748,14 @@ function primitiveTopology(topology: string): int32 {
 
 function stencilOperation(operation: string, member: string): int32 {
 	return match (operation) {
-		"" | "keep" => 1,
-		"zero" => 2,
-		"replace" => 3,
-		"invert" => 4,
-		"increment-clamp" => 5,
-		"decrement-clamp" => 6,
-		"increment-wrap" => 7,
-		"decrement-wrap" => 8,
+		"" | "keep" => STENCIL_OP_KEEP,
+		"zero" => STENCIL_OP_ZERO,
+		"replace" => STENCIL_OP_REPLACE,
+		"invert" => STENCIL_OP_INVERT,
+		"increment-clamp" => STENCIL_OP_INCREMENT_CLAMP,
+		"decrement-clamp" => STENCIL_OP_DECREMENT_CLAMP,
+		"increment-wrap" => STENCIL_OP_INCREMENT_WRAP,
+		"decrement-wrap" => STENCIL_OP_DECREMENT_WRAP,
 		_ => stopOnMember(member, operation),
 	};
 }
@@ -660,18 +766,6 @@ function mipmapFilterMode(filter: string): int32 {
 		"linear" => MIPMAP_LINEAR,
 		_ => stopOnMember("GPUSamplerDescriptor.mipmapFilter", filter),
 	};
-}
-
-function mipLevelCountOf(descriptor: GPUTextureDescriptor, volume: boolean, layers: int32): int32 {
-	const requested = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
-	let largest = Math.max(descriptor.size.width, descriptor.size.height);
-	if (volume) { largest = Math.max(largest, layers); }
-	let possible = 1;
-	while ((largest >> possible) > 0) { possible += 1; }
-	if (requested < 1 || requested > possible) {
-		stop(`GPUTextureDescriptor.mipLevelCount ${requested} is outside 1..${possible} for a ${descriptor.size.width}x${descriptor.size.height} texture`);
-	}
-	return requested;
 }
 
 function stepMode(mode: string): int32 {
@@ -1000,12 +1094,7 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	if (!has(buffers.slots[index].usage, GPUBufferUsage.COPY_DST as int32)) {
 		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
 	}
-	if (offset < 0 || offset + bytes > buffers.slots[index].size) {
-		const id = buffer.id;
-		const size = buffers.slots[index].size;
-		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${id} of ${size}`);
-	}
-	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
+	checkedWriteBuffer(buffer.id, buffers.slots[index].size, offset, bytes);
 	if (buffers.slots[index].writtenFrame != frame) {
 		buffers.slots[index].writtenFrame = frame;
 	} else if (offset < buffers.slots[index].writtenEnd) {
@@ -1039,17 +1128,15 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	if (!volume && layers > deviceLimits.maxTextureArrayLayers) {
 		stop(`GPUTextureDescriptor.size.depthOrArrayLayers ${layers} exceeds maxTextureArrayLayers ${deviceLimits.maxTextureArrayLayers}`);
 	}
-	const mipLevels = mipLevelCountOf(descriptor, volume, layers);
+	const mipLevels = checkedMipLevelCount(descriptor, volume, layers);
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
-	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
-		stop("WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer");
-	}
 	const usage = descriptor.usage;
-	if (sampleCount > 1 && has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) { stop("a multisampled texture cannot be STORAGE_BINDING"); }
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
+	checkedMultisample(sampleCount, volume, layers, mipLevels, attachment);
+	if (sampleCount > 1 && has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) { stop("a multisampled texture cannot be STORAGE_BINDING"); }
 	if (volume && info.depth) { stop("WebGPU allows a depth or stencil format only on a 2d texture"); }
 	if (attachment && info.native == FORMAT_RG11B10_UFLOAT && wgHasFeature(FEATURE_RG11B10_UFLOAT_RENDERABLE) == 0) {
 		stop("rg11b10ufloat as RENDER_ATTACHMENT needs the device feature rg11b10ufloat-renderable, which this device was not created with");
@@ -1186,29 +1273,22 @@ export function createView(
 	const layers = textures.slots[t].layers;
 	const baseMip = descriptor.baseMipLevel;
 	const mipCount = descriptor.mipLevelCount == 0 ? textures.slots[t].mipLevels - baseMip : descriptor.mipLevelCount;
-	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > textures.slots[t].mipLevels) {
-		stop(`view mips ${baseMip}+${mipCount} overrun GPUTexture ${textures.slots[t].id}, which has ${textures.slots[t].mipLevels} mips`);
-	}
+	checkedViewMips(textures.slots[t].id, textures.slots[t].mipLevels, baseMip, mipCount);
 	const dimension = viewDimensionOf(descriptor, t);
 	let baseLayer = descriptor.baseArrayLayer;
 	let layerCount = descriptor.arrayLayerCount;
 	if (dimension == VIEW_3D) {
-		if (baseLayer != 0 || layerCount > 1) { stop("a 3d view takes no baseArrayLayer or arrayLayerCount"); }
+		checkedView3d(baseLayer, layerCount);
 		baseLayer = 0;
 		layerCount = 1;
 	} else {
 		if (dimension == VIEW_2D) { layerCount = 1; }
 		if (dimension == VIEW_CUBE) { layerCount = 6; }
 		if (layerCount == 0) { layerCount = layers - baseLayer; }
-		if (baseLayer < 0 || layerCount < 1 || baseLayer + layerCount > layers) {
-			stop(`view layers ${baseLayer}+${layerCount} overrun GPUTexture ${textures.slots[t].id}, which has ${layers} layers`);
-		}
+		checkedViewLayers(textures.slots[t].id, layers, baseLayer, layerCount);
 	}
 	if (dimension == VIEW_CUBE || dimension == VIEW_CUBE_ARRAY) {
-		if (!textures.slots[t].cube) {
-			stop(`a cube view needs GPUTexture ${textures.slots[t].id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
-		}
-		if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
+		checkedCubeView(textures.slots[t].id, textures.slots[t].cube, baseLayer, layerCount);
 	}
 	const native = wgCreateView(textures.slots[t].native, ASPECT_ALL, dimension, baseMip, mipCount, baseLayer, layerCount, label);
 	if (native == null) { stop(`wgpuTextureCreateView failed for ${labelOf(descriptor.label)}`); }
@@ -1284,14 +1364,9 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const mipmapFilter = mipmapFilterMode(descriptor.mipmapFilter);
 	let maxAnisotropy = descriptor.maxAnisotropy;
 	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
-	if (maxAnisotropy > 1 && !(magFilter == FILTER_LINEAR && minFilter == FILTER_LINEAR && mipmapFilter == MIPMAP_LINEAR)) {
-		stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter");
-	}
+	checkedSamplerAnisotropy(maxAnisotropy, magFilter == FILTER_LINEAR && minFilter == FILTER_LINEAR && mipmapFilter == MIPMAP_LINEAR);
 	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
-	const maxLod = descriptor.lodMaxClamp == 0 ? DEFAULT_LOD_MAX_CLAMP : descriptor.lodMaxClamp;
-	if (maxLod < descriptor.lodMinClamp) {
-		stop(`GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${descriptor.lodMinClamp}`);
-	}
+	const maxLod = checkedSamplerLod(descriptor.lodMinClamp, descriptor.lodMaxClamp);
 	const compare: string = descriptor.compare;
 	const native = wgCreateSampler(
 		addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"),
@@ -1379,11 +1454,13 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		slot.vertexEntry = entryPoint(descriptor.vertexEntryPoint);
 		slot.fragmentEntry = entryPoint(descriptor.fragmentEntryPoint);
 	}
+	const uniformEntries = new Array<int32>(GPU_MAX_SHADER_BINDINGS * LAYOUT_STRIDE);
 	for (let u = 0; u < slot.uniformCount; u++) {
 		const binding = slot.uniforms[u];
-		wgLayoutEntry(u, binding.binding, binding.visibility, LAYOUT_UNIFORM, 0, VIEW_2D, 0);
+		packLayoutEntry(uniformEntries, u, binding.binding, binding.visibility, LAYOUT_UNIFORM, 0, VIEW_2D, 0);
 	}
-	slot.groupLayouts[GPU_UNIFORM_GROUP] = wgCreateLayout(slot.uniformCount, labelText(descriptor.label));
+	slot.groupLayouts[GPU_UNIFORM_GROUP] = wgCreateLayout(uniformEntries[0], slot.uniformCount, labelText(descriptor.label));
+	const resourceEntries = new Array<int32>(GPU_MAX_SHADER_BINDINGS * LAYOUT_STRIDE);
 	for (let r = 0; r < slot.resourceCount; r++) {
 		const binding = slot.resources[r];
 		const layoutKind = match (binding.kind) {
@@ -1393,9 +1470,9 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 			BindingKind.StorageTexture => LAYOUT_STORAGE_TEXTURE,
 			BindingKind.Uniform => LAYOUT_UNIFORM,
 		};
-		wgLayoutEntry(r, binding.binding, binding.visibility, layoutKind, binding.bindingType, binding.viewDimension, binding.storageFormat);
+		packLayoutEntry(resourceEntries, r, binding.binding, binding.visibility, layoutKind, binding.bindingType, binding.viewDimension, binding.storageFormat);
 	}
-	slot.groupLayouts[GPU_RESOURCE_GROUP] = wgCreateLayout(slot.resourceCount, labelText(descriptor.label));
+	slot.groupLayouts[GPU_RESOURCE_GROUP] = wgCreateLayout(resourceEntries[0], slot.resourceCount, labelText(descriptor.label));
 	const uniformLayout = slot.groupLayouts[GPU_UNIFORM_GROUP];
 	if (uniformLayout == null || slot.groupLayouts[GPU_RESOURCE_GROUP] == null) {
 		stop(`wgpuDeviceCreateBindGroupLayout failed for ${labelOf(descriptor.label)}`);
@@ -1403,6 +1480,25 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	slot.id = id;
 	store(shaders, slot);
 	return { id: slot.id };
+}
+
+function packLayoutEntry(
+	entries: int32[],
+	index: int32,
+	binding: int32,
+	visibility: int32,
+	kind: int32,
+	bindingType: int32,
+	viewDimension: int32,
+	storageFormat: int32,
+): void {
+	const at = index * LAYOUT_STRIDE;
+	entries[at] = binding;
+	entries[at + 1] = visibility;
+	entries[at + 2] = kind;
+	entries[at + 3] = bindingType;
+	entries[at + 4] = viewDimension;
+	entries[at + 5] = storageFormat;
 }
 
 function checkBinding(native: ShaderBinding, group: int32): void {
@@ -1453,43 +1549,33 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule in Void");
 	}
+	const state = new Array<int32>(PL_SIZE);
+	let depthBias: float64[2] = [0, 0];
 	const topology = primitiveTopology(descriptor.primitive.topology);
 	const stripIndexFormat = stripIndexFormatOf(descriptor.primitive, topology);
-	const bufferCount = describeVertexBuffers(descriptor);
+	state[PL_BUFFER_COUNT] = describeVertexBuffers(descriptor, state);
 	const depthFormat: string = descriptor.depthStencil.format;
 	if (depthFormat != "") {
 		const info = formatInfo(descriptor.depthStencil.format, "depthStencil.format");
 		if (!info.depth) { stopOnMember("depthStencil.format", depthFormat); }
-		const state = descriptor.depthStencil;
-		wgDepthStencil(
-			info.native,
-			state.depthWriteEnabled ? 1 : 0,
-			compareFunction(state.depthCompare, "depthStencil.depthCompare"),
-			state.stencilReadMask == 0 ? STENCIL_MASK_ALL : state.stencilReadMask,
-			state.stencilWriteMask == 0 ? STENCIL_MASK_ALL : state.stencilWriteMask,
-			state.depthBias,
-			state.depthBiasSlopeScale,
-			state.depthBiasClamp,
-		);
-		const front: GPUStencilFaceState = state.stencilFront;
-		const back: GPUStencilFaceState = state.stencilBack;
-		wgStencilFace(
-			0,
-			compareFunction(front.compare, "depthStencil.stencilFront.compare"),
-			stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
-			stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
-			stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),
-		);
-		wgStencilFace(
-			1,
-			compareFunction(back.compare, "depthStencil.stencilBack.compare"),
-			stencilOperation(back.failOp, "depthStencil.stencilBack.failOp"),
-			stencilOperation(back.depthFailOp, "depthStencil.stencilBack.depthFailOp"),
-			stencilOperation(back.passOp, "depthStencil.stencilBack.passOp"),
-		);
+		const ds = descriptor.depthStencil;
+		state[PL_DEPTH_FORMAT] = info.native;
+		state[PL_DEPTH_WRITE] = ds.depthWriteEnabled ? 1 : 0;
+		state[PL_DEPTH_COMPARE] = compareFunction(ds.depthCompare, "depthStencil.depthCompare");
+		state[PL_STENCIL_READ_MASK] = (ds.stencilReadMask == 0 ? STENCIL_MASK_ALL : ds.stencilReadMask) as int32;
+		state[PL_STENCIL_WRITE_MASK] = (ds.stencilWriteMask == 0 ? STENCIL_MASK_ALL : ds.stencilWriteMask) as int32;
+		state[PL_DEPTH_BIAS] = ds.depthBias;
+		depthBias[0] = ds.depthBiasSlopeScale;
+		depthBias[1] = ds.depthBiasClamp;
+		packStencilFace(state, PL_STENCIL_FRONT, ds.stencilFront, "depthStencil.stencilFront");
+		packStencilFace(state, PL_STENCIL_BACK, ds.stencilBack, "depthStencil.stencilBack");
 	}
-	const targetCount = describeColorTargets(descriptor);
-	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	state[PL_TARGET_COUNT] = describeColorTargets(descriptor, state);
+	state[PL_TOPOLOGY] = topology;
+	state[PL_STRIP_INDEX_FORMAT] = stripIndexFormat;
+	state[PL_CULL_MODE] = cullMode(descriptor.primitive.cullMode);
+	state[PL_FRONT_FACE] = frontFace(descriptor.primitive.frontFace);
+	state[PL_SAMPLE_COUNT] = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
 	const native = wgCreatePipeline(
 		shaders.slots[s].vertex,
 		shaders.slots[s].vertexEntry,
@@ -1497,13 +1583,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		shaders.slots[s].fragmentEntry,
 		shaders.slots[s].groupLayouts[GPU_UNIFORM_GROUP],
 		shaders.slots[s].groupLayouts[GPU_RESOURCE_GROUP],
-		bufferCount,
-		targetCount,
-		topology,
-		stripIndexFormat,
-		cullMode(descriptor.primitive.cullMode),
-		frontFace(descriptor.primitive.frontFace),
-		sampleCount,
+		state[0],
+		depthBias[0],
 		labelText(descriptor.label),
 	);
 	if (native == null) {
@@ -1519,6 +1600,13 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	return { id: slot.id };
 }
 
+function packStencilFace(state: int32[], at: int32, face: GPUStencilFaceState, member: string): void {
+	state[at] = compareFunction(face.compare, `${member}.compare`);
+	state[at + 1] = stencilOperation(face.failOp, `${member}.failOp`);
+	state[at + 2] = stencilOperation(face.depthFailOp, `${member}.depthFailOp`);
+	state[at + 3] = stencilOperation(face.passOp, `${member}.passOp`);
+}
+
 function stripIndexFormatOf(state: GPUPrimitiveState, topology: int32): int32 {
 	const format: string = state.stripIndexFormat;
 	if (format == "") { return 0; }
@@ -1528,7 +1616,7 @@ function stripIndexFormatOf(state: GPUPrimitiveState, topology: int32): int32 {
 	return indexFormat(state.stripIndexFormat);
 }
 
-function describeVertexBuffers(descriptor: GPURenderPipelineDescriptor): int32 {
+function describeVertexBuffers(descriptor: GPURenderPipelineDescriptor, state: int32[]): int32 {
 	let count = 0;
 	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
 		const stride = descriptor.vertex.buffers[b].arrayStride;
@@ -1538,23 +1626,26 @@ function describeVertexBuffers(descriptor: GPURenderPipelineDescriptor): int32 {
 			if (format != "") { used = true; }
 		}
 		if (!used) { continue; }
-		wgVertexBuffer(b, stride, stepMode(descriptor.vertex.buffers[b].stepMode));
+		const at = PL_BUFFERS + b * PL_BUFFER_STRIDE;
+		state[at] = stride;
+		state[at + 1] = stepMode(descriptor.vertex.buffers[b].stepMode);
+		let attributes = 0;
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
 			const format: string = descriptor.vertex.buffers[b].attributes[a].format;
 			if (format == "") { continue; }
-			wgVertexAttribute(
-				b,
-				vertexFormat(format),
-				descriptor.vertex.buffers[b].attributes[a].offset,
-				descriptor.vertex.buffers[b].attributes[a].shaderLocation,
-			);
+			const to = at + 3 + attributes * 3;
+			state[to] = vertexFormat(format);
+			state[to + 1] = descriptor.vertex.buffers[b].attributes[a].offset;
+			state[to + 2] = descriptor.vertex.buffers[b].attributes[a].shaderLocation;
+			attributes += 1;
 		}
+		state[at + 2] = attributes;
 		count = b + 1;
 	}
 	return count;
 }
 
-function describeColorTargets(descriptor: GPURenderPipelineDescriptor): int32 {
+function describeColorTargets(descriptor: GPURenderPipelineDescriptor, state: int32[]): int32 {
 	let count = 0;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const format: string = descriptor.fragment.targets[i].format;
@@ -1569,18 +1660,16 @@ function describeColorTargets(descriptor: GPURenderPipelineDescriptor): int32 {
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;
 		const writeMask = descriptor.fragment.targets[i].writeMask;
-		wgColorTarget(
-			i,
-			info.native,
-			descriptor.fragment.targets[i].blendEnabled ? 1 : 0,
-			blendOperation(color.operation, "blend.color.operation"),
-			blendFactor(color.srcFactor, "blend.color.srcFactor"),
-			destinationFactor(color.dstFactor, "blend.color.dstFactor"),
-			blendOperation(alpha.operation, "blend.alpha.operation"),
-			blendFactor(alpha.srcFactor, "blend.alpha.srcFactor"),
-			destinationFactor(alpha.dstFactor, "blend.alpha.dstFactor"),
-			writeMask == 0 ? COLOR_WRITE_ALL : writeMask,
-		);
+		const at = PL_TARGETS + i * PL_TARGET_STRIDE;
+		state[at] = info.native;
+		state[at + 1] = descriptor.fragment.targets[i].blendEnabled ? 1 : 0;
+		state[at + 2] = blendOperation(color.operation, "blend.color.operation");
+		state[at + 3] = blendFactor(color.srcFactor, "blend.color.srcFactor");
+		state[at + 4] = destinationFactor(color.dstFactor, "blend.color.dstFactor");
+		state[at + 5] = blendOperation(alpha.operation, "blend.alpha.operation");
+		state[at + 6] = blendFactor(alpha.srcFactor, "blend.alpha.srcFactor");
+		state[at + 7] = destinationFactor(alpha.dstFactor, "blend.alpha.dstFactor");
+		state[at + 9] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
 		count = i + 1;
 	}
 	return count;
@@ -1627,6 +1716,11 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 	const shader = shaders.slotIndex(pipelines.slots[pipelines.slotIndex(layouts.slots[l].pipeline)].shader);
 	let slot: BindGroupSlot = { id: 0, group: group };
 	let count = 0;
+	let bindings: int32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
+	let entryBuffers: Ptr<WgBufferImpl>[GPU_MAX_BIND_GROUP_ENTRIES] = [NO_BUFFER];
+	let ranges: int64[GPU_MAX_BIND_GROUP_ENTRIES * 2] = [0];
+	let entryViews: Ptr<WgViewImpl>[GPU_MAX_BIND_GROUP_ENTRIES] = [NO_VIEW];
+	let entrySamplers: Ptr<WgSamplerImpl>[GPU_MAX_BIND_GROUP_ENTRIES] = [NO_SAMPLER];
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) {
@@ -1636,33 +1730,47 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 			const buffer = buffers.slots[buffers.slotIndex(entry.buffer.id)].native;
 			if (group == GPU_UNIFORM_GROUP) {
 				const size = uniformEntrySize(shader, entry);
-				wgBindEntry(count, entry.binding, buffer, entry.offset, size, NO_VIEW, NO_SAMPLER);
+				entryBuffers[count] = buffer;
+				ranges[count * 2] = entry.offset;
+				ranges[count * 2 + 1] = size;
 				slot.dynamicCount += 1;
 			} else {
 				const size = storageEntrySize(shader, entry);
-				wgBindEntry(count, entry.binding, buffer, entry.offset, size, NO_VIEW, NO_SAMPLER);
+				entryBuffers[count] = buffer;
+				ranges[count * 2] = entry.offset;
+				ranges[count * 2 + 1] = size;
 			}
 		} else if (entry.textureView.id != 0) {
 			const v = views.slotIndex(entry.textureView.id);
 			const r = resourceIndex(shader, entry.binding);
 			if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.StorageTexture) {
-				wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, storageView(shader, r, v, entry.binding), NO_SAMPLER);
+				entryViews[count] = storageView(shader, r, v, entry.binding);
 			} else {
 				checkResource(shader, entry.binding, BindingKind.Texture, group);
 				const view = views.slots[v].binding;
 				if (view == null) {
 					stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`);
 				}
-				wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, view, NO_SAMPLER);
+				entryViews[count] = view;
 			}
 		} else {
 			checkResource(shader, entry.binding, BindingKind.Sampler, group);
 			const sampler = samplers.slots[samplers.slotIndex(entry.sampler.id)].native;
-			wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, NO_VIEW, sampler);
+			entrySamplers[count] = sampler;
 		}
+		bindings[count] = entry.binding;
 		count += 1;
 	}
-	slot.native = wgCreateBindGroup(shaders.slots[shader].groupLayouts[group], count, labelText(descriptor.label));
+	slot.native = wgCreateBindGroup(
+		shaders.slots[shader].groupLayouts[group],
+		count,
+		bindings[0],
+		entryBuffers[0],
+		ranges[0],
+		entryViews[0],
+		entrySamplers[0],
+		labelText(descriptor.label),
+	);
 	if (slot.native == null) {
 		stop(`wgpuDeviceCreateBindGroup failed for ${labelOf(descriptor.label)}`);
 	}
@@ -1794,42 +1902,41 @@ export function beginRenderPass(
 	pass.width = 0;
 	pass.height = 0;
 	let count = 0;
+	let ints: int32[PASS_SIZE] = [0];
+	let reals: float64[PASS_DEPTH_CLEAR + 1] = [0];
+	let colorViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
+	let resolveViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
+	let depthNative = NO_VIEW;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = descriptor.colorAttachments[i];
-		if (attachment.view.id == 0) {
-			wgColorAttachment(i, NO_VIEW, NO_VIEW, 0, 0, -1, 0, 0, 0, 0);
-			continue;
-		}
+		const op = PASS_COLOR_OPS + i * PASS_COLOR_OP_STRIDE;
+		ints[op + 2] = -1;
+		if (attachment.view.id == 0) { continue; }
 		const v = views.slotIndex(attachment.view.id);
 		checkColorAttachment(i, views.slots[v].texture);
-		if (!views.slots[v].attachable) { stop(`colorAttachments[${i}].view spans several mips or layers: a render attachment is one mip of one layer`); }
+		checkedSingleSubresource(`colorAttachments[${i}].view`, views.slots[v].attachable);
 		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		const slice = attachment.depthSlice;
 		if (views.slots[v].dimension == VIEW_3D) {
 			const slices = Math.max(1, textures.slots[textures.slotIndex(views.slots[v].texture)].layers >> views.slots[v].baseMip);
-			if (slice < 0 || slice >= slices) {
-				stop(`colorAttachments[${i}].depthSlice ${slice} is outside the ${slices} slices of mip ${views.slots[v].baseMip} of GPUTexture ${views.slots[v].texture}`);
-			}
-		} else if (slice != 0) {
-			stop(`colorAttachments[${i}].depthSlice ${slice} needs a 3d view`);
+			checkedDepthSlice(i, slice, slices, views.slots[v].baseMip, views.slots[v].texture);
+		} else {
+			checkedNoDepthSlice(i, slice);
 		}
 		let resolve = views.slots[v].swapchainResolve;
 		if (attachment.resolveTarget.id != 0) {
 			resolve = checkResolve(i, views.slots[v].texture, attachment.resolveTarget.id);
 		}
 		const color = attachment.clearValue;
-		wgColorAttachment(
-			i,
-			views.slots[v].native,
-			resolve,
-			loadOp(attachment.loadOp, i, "loadOp"),
-			storeOp(attachment.storeOp, i, "storeOp"),
-			views.slots[v].dimension == VIEW_3D ? slice : -1,
-			color.r,
-			color.g,
-			color.b,
-			color.a,
-		);
+		colorViews[i] = views.slots[v].native;
+		resolveViews[i] = resolve;
+		ints[op] = loadOp(attachment.loadOp, i, "loadOp");
+		ints[op + 1] = storeOp(attachment.storeOp, i, "storeOp");
+		ints[op + 2] = views.slots[v].dimension == VIEW_3D ? slice : -1;
+		reals[i * 4] = color.r;
+		reals[i * 4 + 1] = color.g;
+		reals[i * 4 + 2] = color.b;
+		reals[i * 4 + 3] = color.a;
 		count = i + 1;
 	}
 	const depthView = descriptor.depthStencilAttachment.view.id;
@@ -1843,26 +1950,28 @@ export function beginRenderPass(
 			stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT");
 		}
 		const depth = descriptor.depthStencilAttachment;
-		wgDepthAttachment(
-			views.slots[v].native,
-			loadOp(depth.depthLoadOp, -1, "depthLoadOp"),
-			storeOp(depth.depthStoreOp, -1, "depthStoreOp"),
-			depth.depthClearValue,
-			info.stencil ? 1 : 0,
-		);
+		depthNative = views.slots[v].native;
+		ints[PASS_DEPTH_LOAD] = loadOp(depth.depthLoadOp, -1, "depthLoadOp");
+		ints[PASS_DEPTH_STORE] = storeOp(depth.depthStoreOp, -1, "depthStoreOp");
+		ints[PASS_DEPTH_STENCIL] = info.stencil ? 1 : 0;
+		reals[PASS_DEPTH_CLEAR] = depth.depthClearValue;
 	}
 	if (count == 0 && depthView == 0) { stop("beginRenderPass without an attachment"); }
 	const writes = descriptor.timestampWrites;
+	ints[PASS_COLOR_COUNT] = count;
+	ints[PASS_WIDTH] = pass.width;
+	ints[PASS_HEIGHT] = pass.height;
+	ints[PASS_TIMESTAMP_BEGIN] = writes.beginningOfPassWriteIndex;
+	ints[PASS_TIMESTAMP_END] = writes.endOfPassWriteIndex;
 	if (wgBeginPass(
-		count,
-		depthView != 0 ? 1 : 0,
-		pass.width,
-		pass.height,
+		colorViews[0],
+		resolveViews[0],
+		depthNative,
+		ints[0],
+		reals[0],
 		labelText(descriptor.label),
 		occlusionId == 0 ? NO_QUERY_SET : querySets.slots[querySets.slotIndex(occlusionId)].native,
 		timestampNative(writes),
-		writes.beginningOfPassWriteIndex,
-		writes.endOfPassWriteIndex,
 	) == 0) {
 		stop("wgpuCommandEncoderBeginRenderPass failed");
 	}
@@ -1883,12 +1992,9 @@ function passExtent(texture: uint32, baseMip: int32): void {
 	const t = textures.slotIndex(texture);
 	const width = Math.max(1, textures.slots[t].width >> baseMip);
 	const height = Math.max(1, textures.slots[t].height >> baseMip);
-	if (pass.width == 0) {
-		pass.width = width;
-		pass.height = height;
-	} else if (pass.width != width || pass.height != height) {
-		stop("render pass attachments differ in size");
-	}
+	checkedPassExtent(pass.width, pass.height, width, height);
+	pass.width = width;
+	pass.height = height;
 }
 
 function checkColorAttachment(attachment: int32, texture: uint32): void {
@@ -1902,14 +2008,20 @@ function checkColorAttachment(attachment: int32, texture: uint32): void {
 function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): Ptr<WgViewImpl> {
 	const r = views.slotIndex(resolveId);
 	const resolveTexture = textures.slotIndex(views.slots[r].texture);
-	if (textures.slots[textures.slotIndex(colorTexture)].sampleCount == 1) {
-		stop(`colorAttachments[${attachment}].resolveTarget needs a multisampled view`);
-	}
+	const color = textures.slotIndex(colorTexture);
+	checkedResolveTarget(
+		attachment,
+		textures.slots[color].sampleCount,
+		textures.slots[color].width,
+		textures.slots[color].height,
+		Math.max(1, textures.slots[resolveTexture].width >> views.slots[r].baseMip),
+		Math.max(1, textures.slots[resolveTexture].height >> views.slots[r].baseMip),
+	);
 	if (textures.slots[resolveTexture].sampleCount != 1) {
 		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample view`);
 	}
 	checkColorAttachment(attachment, views.slots[r].texture);
-	if (!views.slots[r].attachable) { stop(`colorAttachments[${attachment}].resolveTarget spans several mips or layers: a render attachment is one mip of one layer`); }
+	checkedSingleSubresource(`colorAttachments[${attachment}].resolveTarget`, views.slots[r].attachable);
 	return views.slots[r].native;
 }
 
@@ -1970,12 +2082,13 @@ function stageBindGroup(
 	if (index != GPU_UNIFORM_GROUP && index != GPU_RESOURCE_GROUP) {
 		stopOnMember("setBindGroup index", `${index}`);
 	}
+	let offsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	if (bindGroup.id == 0) {
 		if (compute) {
-			wgSetComputeBindGroup(index, NO_BIND_GROUP, 0);
+			wgSetComputeBindGroup(index, NO_BIND_GROUP, 0, offsets[0]);
 			computeBound.groupMask &= ~(1 << index);
 		} else {
-			wgSetBindGroup(index, NO_BIND_GROUP, 0);
+			wgSetBindGroup(index, NO_BIND_GROUP, 0, offsets[0]);
 		}
 		return;
 	}
@@ -1992,13 +2105,13 @@ function stageBindGroup(
 		if (dynamicOffsets[i] % (uniformAlignment as uint32) != 0) {
 			stop(`dynamic offset ${dynamicOffsets[i]} is not a multiple of ${uniformAlignment}`);
 		}
-		wgDynamicOffset(i, dynamicOffsets[i]);
+		offsets[i] = dynamicOffsets[i];
 	}
 	if (compute) {
-		wgSetComputeBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount);
+		wgSetComputeBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount, offsets[0]);
 		computeBound.groupMask |= 1 << index;
 	} else {
-		wgSetBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount);
+		wgSetBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount, offsets[0]);
 	}
 }
 
@@ -2007,11 +2120,9 @@ function stageBindGroup(
 	wgSetScissorRect(x, y, width, height);
 }
 
-export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
 	checkPass("setViewport");
-	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
-		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
-	}
+	checkedViewport(width, height, minDepth, maxDepth);
 	wgSetViewport(x, y, width, height, minDepth, maxDepth);
 }
 
@@ -2155,25 +2266,20 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	const fromFormat: string = textures.slots[from].format;
-	const toFormat: string = textures.slots[to].format;
-	if (fromFormat != toFormat) { stop(`copyTextureToTexture between formats '${fromFormat}' and '${toFormat}'`); }
-	if (textures.slots[from].volume != textures.slots[to].volume) { stop("copyTextureToTexture between a 3d and a 2d GPUTexture"); }
 	copyRegion("copyTextureToTexture source", source, from, size);
 	copyRegion("copyTextureToTexture destination", destination, to, size);
-	const mipWidth = Math.max(1, textures.slots[from].width >> source.mipLevel);
-	const mipHeight = Math.max(1, textures.slots[from].height >> source.mipLevel);
-	if (textures.slots[from].info.depth && (size.width != mipWidth || size.height != mipHeight)) {
-		stop(`copyTextureToTexture of depth GPUTexture ${source.texture.id} copies whole mips only`);
-	}
-	if (
-		from == to && source.mipLevel == destination.mipLevel
-			&& source.origin.z < destination.origin.z + size.depthOrArrayLayers && destination.origin.z < source.origin.z + size.depthOrArrayLayers
-			&& source.origin.x < destination.origin.x + size.width && destination.origin.x < source.origin.x + size.width
-			&& source.origin.y < destination.origin.y + size.height && destination.origin.y < source.origin.y + size.height
-	) {
-		stop(`copyTextureToTexture regions overlap inside mip ${source.mipLevel} of GPUTexture ${source.texture.id}`);
-	}
+	checkedTextureToTextureCopy(
+		source,
+		destination,
+		size,
+		textures.slots[from].format,
+		textures.slots[to].format,
+		textures.slots[from].volume,
+		textures.slots[to].volume,
+		textures.slots[from].info.depth,
+		textures.slots[from].width,
+		textures.slots[from].height,
+	);
 	wgCopyTextureToTexture(
 		textures.slots[from].native,
 		source.mipLevel,
@@ -2279,21 +2385,14 @@ function checkDispatch(call: string): void {
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 	checkDispatch("dispatchWorkgroups");
 	const limit = deviceLimits.maxComputeWorkgroupsPerDimension;
-	if (x < 0 || y < 0 || z < 0 || x > limit || y > limit || z > limit) {
-		stop(`dispatchWorkgroups ${x},${y},${z} is outside 0..${limit}`);
-	}
+	checkedDispatch(x, y, z, limit);
 	wgDispatch(x, y, z);
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
 	checkDispatch("dispatchWorkgroupsIndirect");
 	const b = buffers.slotIndex(buffer.id);
-	if (!has(buffers.slots[b].usage, GPUBufferUsage.INDIRECT as int32)) {
-		stop(`dispatchWorkgroupsIndirect: GPUBuffer ${buffer.id} was created without INDIRECT`);
-	}
-	if (offset < 0 || offset % 4 != 0 || offset + 12 > buffers.slots[b].size) {
-		stop(`dispatchWorkgroupsIndirect offset ${offset} is not a multiple of 4 with 12 bytes inside GPUBuffer ${buffer.id} of ${buffers.slots[b].size}`);
-	}
+	checkedDispatchIndirect(buffer.id, buffers.slots[b].usage, buffers.slots[b].size, offset);
 	wgDispatchIndirect(buffers.slots[b].native, offset);
 }
 
@@ -2310,9 +2409,7 @@ export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 	const kind: string = descriptor.type;
 	if (kind != "timestamp" && kind != "occlusion") { stopOnMember("GPUQuerySetDescriptor.type", kind); }
 	const timestamp = kind == "timestamp";
-	if (descriptor.count < 1 || descriptor.count > MAX_QUERY_COUNT) {
-		stop(`GPUQuerySetDescriptor.count ${descriptor.count} is outside 1..${MAX_QUERY_COUNT}`);
-	}
+	checkedQuerySetCount(descriptor.count);
 	if (timestamp && wgHasFeature(FEATURE_TIMESTAMP_QUERY) == 0) {
 		stop("this device has no timestamp queries: features().has('timestamp-query') is false (the window must request the feature when it creates the WGPUDevice)");
 	}
@@ -2351,35 +2448,23 @@ function markTimestamp(querySet: uint32, queryIndex: int32): void {
 function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
 	if (writes.querySet.id == 0) { return; }
 	const q = querySets.slotIndex(writes.querySet.id);
-	if (!querySets.slots[q].timestamp) { stop(`${member}.querySet is an occlusion set: a timestamp set is required`); }
-	const begin = writes.beginningOfPassWriteIndex;
-	const end = writes.endOfPassWriteIndex;
-	if (begin == end) {
-		stop(`${member} writes index ${begin} at both ends: give each end its own index, or -1 (GPU_NO_QUERY_INDEX) to skip one`);
-	}
-	if (begin < -1 || begin >= querySets.slots[q].count || end < -1 || end >= querySets.slots[q].count) {
-		stop(`${member} indices ${begin} and ${end} are outside the query set of ${querySets.slots[q].count}`);
-	}
+	checkedTimestampWrites(member, writes, querySets.slots[q].timestamp, querySets.slots[q].count);
 }
 
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
 	if (pass.active || computeBound.active) { stop("resolveQuerySet inside a pass"); }
 	if (!encoding) { stop("resolveQuerySet without createCommandEncoder"); }
 	const q = querySets.slotIndex(querySet.id);
-	if (firstQuery < 0 || queryCount < 0 || firstQuery + queryCount > querySets.slots[q].count) {
-		stop(`resolveQuerySet ${firstQuery}+${queryCount} overruns the query set of ${querySets.slots[q].count}`);
-	}
 	const b = buffers.slotIndex(destination.id);
-	if (!has(buffers.slots[b].usage, GPUBufferUsage.QUERY_RESOLVE as int32)) {
-		stop(`resolveQuerySet: GPUBuffer ${destination.id} was created without QUERY_RESOLVE`);
-	}
-	if (destinationOffset < 0 || destinationOffset % RESOLVE_OFFSET_ALIGNMENT != 0) {
-		stop(`resolveQuerySet destinationOffset ${destinationOffset} is not a multiple of ${RESOLVE_OFFSET_ALIGNMENT}`);
-	}
-	const bytes = (queryCount as int64) * 8;
-	if (destinationOffset + bytes > buffers.slots[b].size) {
-		stop(`resolveQuerySet of ${bytes} bytes at ${destinationOffset} overruns GPUBuffer ${destination.id} of ${buffers.slots[b].size}`);
-	}
+	const bytes = checkedResolveQuerySet(
+		querySets.slots[q].count,
+		firstQuery,
+		queryCount,
+		destination.id,
+		buffers.slots[b].usage,
+		buffers.slots[b].size,
+		destinationOffset,
+	);
 	if (queryCount == 0) { return; }
 	for (let i = 0; i < queryCount; i++) {
 		const state = querySets.slots[q].state[firstQuery + i];
@@ -2489,7 +2574,7 @@ export function pushDebugGroup(label: string): void {
 export function popDebugGroup(): void {
 	if (!encoding) { stop("popDebugGroup without createCommandEncoder"); }
 	const base = pass.active ? pass.groupBase : (computeBound.active ? computeBound.groupBase : 0);
-	if (groupDepth <= base) { stop("popDebugGroup without a matching pushDebugGroup"); }
+	checkedPopDebugGroup(groupDepth, base);
 	wgPopDebugGroup();
 	groupDepth -= 1;
 }

@@ -19,11 +19,12 @@ export struct GPURenderPassEncoder { id: uint32; }
 export struct GPUComputePassEncoder { id: uint32; }
 export struct GPUQuerySet { id: uint32; }
 
-export const GPU_MAX_COLOR_ATTACHMENTS = 4;
-export const GPU_MAX_VERTEX_BUFFERS = 2;
-export const GPU_MAX_VERTEX_ATTRIBUTES = 16;
-export const GPU_MAX_BIND_GROUP_ENTRIES = 8;
-export const GPU_MAX_UNIFORM_BLOCKS = 8;
+export const GPU_MAX_COLOR_ATTACHMENTS: int32 = 4;
+export const GPU_MAX_VERTEX_BUFFERS: int32 = 2;
+export const GPU_MAX_VERTEX_ATTRIBUTES: int32 = 16;
+export const GPU_MAX_BIND_GROUP_ENTRIES: int32 = 8;
+export const GPU_MAX_UNIFORM_BLOCKS: int32 = 8;
+export const GPU_MAX_SHADER_BINDINGS: int32 = 24;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
 
@@ -191,7 +192,7 @@ export function vertexFormatSize(format: GPUVertexFormat): int32 {
 	};
 }
 
-export struct GPUColor { r: number; g: number; b: number; a: number; }
+export struct GPUColor { r: float64; g: float64; b: float64; a: float64; }
 export struct GPUExtent3D { width: int32; height: int32; depthOrArrayLayers: int32; }
 
 export struct GPUBufferDescriptor {
@@ -227,8 +228,8 @@ export struct GPUSamplerDescriptor {
 	magFilter: GPUFilterMode;
 	minFilter: GPUFilterMode;
 	mipmapFilter: GPUMipmapFilterMode;
-	lodMinClamp: number;
-	lodMaxClamp: number;
+	lodMinClamp: float32;
+	lodMaxClamp: float32;
 	compare: GPUCompareFunction;
 	maxAnisotropy: int32;
 }
@@ -273,8 +274,8 @@ export struct GPUShaderModuleDescriptor {
 	computeCode: string;
 	computeEntryPoint: string;
 	workgroupSize: int32[3];
-	bindings: GPUShaderBinding[24];
-	attributes: GPUShaderAttribute[16];
+	bindings: GPUShaderBinding[GPU_MAX_SHADER_BINDINGS];
+	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
 
 export struct GPUVertexAttribute {
@@ -286,12 +287,12 @@ export struct GPUVertexAttribute {
 export struct GPUVertexBufferLayout {
 	arrayStride: int32;
 	stepMode: GPUVertexStepMode;
-	attributes: GPUVertexAttribute[16];
+	attributes: GPUVertexAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
 
 export struct GPUVertexState {
 	module: GPUShaderModule;
-	buffers: GPUVertexBufferLayout[2];
+	buffers: GPUVertexBufferLayout[GPU_MAX_VERTEX_BUFFERS];
 }
 
 export struct GPUBlendComponent {
@@ -316,7 +317,7 @@ export struct GPUColorTargetState {
 
 export struct GPUFragmentState {
 	module: GPUShaderModule;
-	targets: GPUColorTargetState[4];
+	targets: GPUColorTargetState[GPU_MAX_COLOR_ATTACHMENTS];
 }
 
 export struct GPUPrimitiveState {
@@ -342,8 +343,8 @@ export struct GPUDepthStencilState {
 	stencilReadMask: uint32;
 	stencilWriteMask: uint32;
 	depthBias: int32;
-	depthBiasSlopeScale: number;
-	depthBiasClamp: number;
+	depthBiasSlopeScale: float32;
+	depthBiasClamp: float32;
 }
 
 export struct GPUMultisampleState { count: int32; }
@@ -446,7 +447,7 @@ export struct GPUBindGroupEntry {
 export struct GPUBindGroupDescriptor {
 	label: string | null;
 	layout: GPUBindGroupLayout;
-	entries: GPUBindGroupEntry[8];
+	entries: GPUBindGroupEntry[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 export struct GPURenderPassColorAttachment {
@@ -460,14 +461,14 @@ export struct GPURenderPassColorAttachment {
 
 export struct GPURenderPassDepthStencilAttachment {
 	view: GPUTextureView;
-	depthClearValue: number;
+	depthClearValue: float32;
 	depthLoadOp: GPULoadOp;
 	depthStoreOp: GPUStoreOp;
 }
 
 export struct GPURenderPassDescriptor {
 	label: string | null;
-	colorAttachments: GPURenderPassColorAttachment[4];
+	colorAttachments: GPURenderPassColorAttachment[GPU_MAX_COLOR_ATTACHMENTS];
 	depthStencilAttachment: GPURenderPassDepthStencilAttachment;
 	timestampWrites: GPUPassTimestampWrites;
 	occlusionQuerySet: GPUQuerySet;
@@ -483,51 +484,47 @@ function stop(message: string): void {
 	unreachable;
 }
 
-function stopOn(backend: string, message: string): void {
-	console.log(`webgpu ${backend}: ${message}`);
+function stopOnUnported(backend: string, what: string): void {
+	console.log(`webgpu ${backend}: ${what} is not ported to ${backend} yet`);
 	unreachable;
 }
 
 export function stopOnUnportedShaderModule(backend: string, descriptor: GPUShaderModuleDescriptor): void {
-	if (descriptor.computeCode != "") { stopOn(backend, `GPUShaderModuleDescriptor.computeCode is not ported to ${backend} yet`); }
-	for (let i = 0; i < 24; i++) {
+	if (descriptor.computeCode != "") { stopOnUnported(backend, `GPUShaderModuleDescriptor.computeCode`); }
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const kind: string = descriptor.bindings[i].kind;
 		if (kind == "storage-buffer" || kind == "storage-texture") {
-			stopOn(backend, `GPUShaderBinding.kind '${kind}' is not ported to ${backend} yet`);
+			stopOnUnported(backend, `GPUShaderBinding.kind '${kind}'`);
 		}
 		const stage: string = descriptor.bindings[i].stage;
-		if (stage == "compute") { stopOn(backend, `GPUShaderBinding.stage 'compute' is not ported to ${backend} yet`); }
+		if (stage == "compute") { stopOnUnported(backend, `GPUShaderBinding.stage 'compute'`); }
 	}
 	stopOnUnportedShaderBindings(backend, descriptor);
 	if (backend == "gl" || backend == "wgpu") { return; }
-	for (let i = 0; i < 24; i++) {
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const viewDimension: string = descriptor.bindings[i].viewDimension;
 		if (viewDimension != "" && viewDimension != "2d") {
-			stopOn(backend, `GPUShaderBinding.viewDimension '${viewDimension}' is not ported to ${backend} yet`);
+			stopOnUnported(backend, `GPUShaderBinding.viewDimension '${viewDimension}'`);
 		}
 	}
 }
 
 export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUShaderModuleDescriptor): void {
-	for (let i = 0; i < 24; i++) {
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const b = descriptor.bindings[i];
 		const sampleType: string = b.sampleType;
 		if (sampleType != "" && sampleType != "float" && sampleType != "unfilterable-float") {
-			stopOn(backend, `GPUShaderBinding.sampleType '${sampleType}' is not ported to ${backend} yet`);
+			stopOnUnported(backend, `GPUShaderBinding.sampleType '${sampleType}'`);
 		}
 		const samplerType: string = b.samplerType;
-		if (samplerType == "comparison") { stopOn(backend, `GPUShaderBinding.samplerType 'comparison' is not ported to ${backend} yet`); }
-		if (b.multisampled) { stopOn(backend, `GPUShaderBinding.multisampled is not ported to ${backend} yet`); }
+		if (samplerType == "comparison") { stopOnUnported(backend, `GPUShaderBinding.samplerType 'comparison'`); }
+		if (b.multisampled) { stopOnUnported(backend, `GPUShaderBinding.multisampled`); }
 	}
 }
 
 export function stopOnUnportedRenderPass(backend: string, descriptor: GPURenderPassDescriptor): void {
-	if (descriptor.timestampWrites.querySet.id != 0) { stopOn(backend, `GPURenderPassDescriptor.timestampWrites is not ported to ${backend} yet`); }
-	if (descriptor.occlusionQuerySet.id != 0) { stopOn(backend, `GPURenderPassDescriptor.occlusionQuerySet is not ported to ${backend} yet`); }
-}
-
-export function stopOnUnportedComputePass(backend: string, descriptor: GPUComputePassDescriptor): void {
-	if (descriptor.timestampWrites.querySet.id != 0) { stopOn(backend, `GPUComputePassDescriptor.timestampWrites is not ported to ${backend} yet`); }
+	if (descriptor.timestampWrites.querySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.timestampWrites`); }
+	if (descriptor.occlusionQuerySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.occlusionQuerySet`); }
 }
 
 const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
@@ -536,88 +533,88 @@ const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 // at WebGPU's default passes, any other value stops naming the member, the value and the backend.
 export function stopOnUnportedTexture(backend: string, descriptor: GPUTextureDescriptor): void {
 	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d") { stopOn(backend, `GPUTextureDescriptor.dimension '${dimension}' is not ported to ${backend} yet`); }
+	if (dimension != "" && dimension != "2d") { stopOnUnported(backend, `GPUTextureDescriptor.dimension '${dimension}'`); }
 	if (descriptor.size.depthOrArrayLayers > 1) {
-		stopOn(backend, `GPUTextureDescriptor.size.depthOrArrayLayers ${descriptor.size.depthOrArrayLayers} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUTextureDescriptor.size.depthOrArrayLayers ${descriptor.size.depthOrArrayLayers}`);
 	}
 	if (descriptor.mipLevelCount > 1) {
-		stopOn(backend, `GPUTextureDescriptor.mipLevelCount ${descriptor.mipLevelCount} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUTextureDescriptor.mipLevelCount ${descriptor.mipLevelCount}`);
 	}
 }
 
 export function stopOnUnportedView(backend: string, descriptor: GPUTextureViewDescriptor): void {
 	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d") { stopOn(backend, `GPUTextureViewDescriptor.dimension '${dimension}' is not ported to ${backend} yet`); }
-	if (descriptor.baseMipLevel != 0) { stopOn(backend, `GPUTextureViewDescriptor.baseMipLevel ${descriptor.baseMipLevel} is not ported to ${backend} yet`); }
-	if (descriptor.mipLevelCount > 1) { stopOn(backend, `GPUTextureViewDescriptor.mipLevelCount ${descriptor.mipLevelCount} is not ported to ${backend} yet`); }
-	if (descriptor.baseArrayLayer != 0) { stopOn(backend, `GPUTextureViewDescriptor.baseArrayLayer ${descriptor.baseArrayLayer} is not ported to ${backend} yet`); }
-	if (descriptor.arrayLayerCount > 1) { stopOn(backend, `GPUTextureViewDescriptor.arrayLayerCount ${descriptor.arrayLayerCount} is not ported to ${backend} yet`); }
+	if (dimension != "" && dimension != "2d") { stopOnUnported(backend, `GPUTextureViewDescriptor.dimension '${dimension}'`); }
+	if (descriptor.baseMipLevel != 0) { stopOnUnported(backend, `GPUTextureViewDescriptor.baseMipLevel ${descriptor.baseMipLevel}`); }
+	if (descriptor.mipLevelCount > 1) { stopOnUnported(backend, `GPUTextureViewDescriptor.mipLevelCount ${descriptor.mipLevelCount}`); }
+	if (descriptor.baseArrayLayer != 0) { stopOnUnported(backend, `GPUTextureViewDescriptor.baseArrayLayer ${descriptor.baseArrayLayer}`); }
+	if (descriptor.arrayLayerCount > 1) { stopOnUnported(backend, `GPUTextureViewDescriptor.arrayLayerCount ${descriptor.arrayLayerCount}`); }
 }
 
 export function stopOnUnportedSampler(backend: string, descriptor: GPUSamplerDescriptor): void {
 	const addressModeW: string = descriptor.addressModeW;
 	if (addressModeW != "" && addressModeW != "clamp-to-edge") {
-		stopOn(backend, `GPUSamplerDescriptor.addressModeW '${addressModeW}' is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.addressModeW '${addressModeW}'`);
 	}
 	const mipmapFilter: string = descriptor.mipmapFilter;
 	if (mipmapFilter != "" && mipmapFilter != "nearest") {
-		stopOn(backend, `GPUSamplerDescriptor.mipmapFilter '${mipmapFilter}' is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.mipmapFilter '${mipmapFilter}'`);
 	}
-	if (descriptor.lodMinClamp != 0) { stopOn(backend, `GPUSamplerDescriptor.lodMinClamp ${descriptor.lodMinClamp} is not ported to ${backend} yet`); }
+	if (descriptor.lodMinClamp != 0) { stopOnUnported(backend, `GPUSamplerDescriptor.lodMinClamp ${descriptor.lodMinClamp}`); }
 	if (descriptor.lodMaxClamp != 0 && descriptor.lodMaxClamp != 32) {
-		stopOn(backend, `GPUSamplerDescriptor.lodMaxClamp ${descriptor.lodMaxClamp} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.lodMaxClamp ${descriptor.lodMaxClamp}`);
 	}
 	const compare: string = descriptor.compare;
-	if (compare != "") { stopOn(backend, `GPUSamplerDescriptor.compare '${compare}' is not ported to ${backend} yet`); }
+	if (compare != "") { stopOnUnported(backend, `GPUSamplerDescriptor.compare '${compare}'`); }
 	if (descriptor.maxAnisotropy > 1) {
-		stopOn(backend, `GPUSamplerDescriptor.maxAnisotropy ${descriptor.maxAnisotropy} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.maxAnisotropy ${descriptor.maxAnisotropy}`);
 	}
 }
 
 function stopOnUnportedStencilFace(backend: string, member: string, face: GPUStencilFaceState): void {
 	const compare: string = face.compare;
-	if (compare != "" && compare != "always") { stopOn(backend, `${member}.compare '${compare}' is not ported to ${backend} yet`); }
+	if (compare != "" && compare != "always") { stopOnUnported(backend, `${member}.compare '${compare}'`); }
 	const failOp: string = face.failOp;
-	if (failOp != "" && failOp != "keep") { stopOn(backend, `${member}.failOp '${failOp}' is not ported to ${backend} yet`); }
+	if (failOp != "" && failOp != "keep") { stopOnUnported(backend, `${member}.failOp '${failOp}'`); }
 	const depthFailOp: string = face.depthFailOp;
-	if (depthFailOp != "" && depthFailOp != "keep") { stopOn(backend, `${member}.depthFailOp '${depthFailOp}' is not ported to ${backend} yet`); }
+	if (depthFailOp != "" && depthFailOp != "keep") { stopOnUnported(backend, `${member}.depthFailOp '${depthFailOp}'`); }
 	const passOp: string = face.passOp;
-	if (passOp != "" && passOp != "keep") { stopOn(backend, `${member}.passOp '${passOp}' is not ported to ${backend} yet`); }
+	if (passOp != "" && passOp != "keep") { stopOnUnported(backend, `${member}.passOp '${passOp}'`); }
 }
 
 export function stopOnUnportedDepthStencil(backend: string, state: GPUDepthStencilState): void {
 	stopOnUnportedStencilFace(backend, "depthStencil.stencilFront", state.stencilFront);
 	stopOnUnportedStencilFace(backend, "depthStencil.stencilBack", state.stencilBack);
 	if (state.stencilReadMask != 0 && state.stencilReadMask != STENCIL_MASK_ALL) {
-		stopOn(backend, `depthStencil.stencilReadMask ${state.stencilReadMask} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `depthStencil.stencilReadMask ${state.stencilReadMask}`);
 	}
 	if (state.stencilWriteMask != 0 && state.stencilWriteMask != STENCIL_MASK_ALL) {
-		stopOn(backend, `depthStencil.stencilWriteMask ${state.stencilWriteMask} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `depthStencil.stencilWriteMask ${state.stencilWriteMask}`);
 	}
-	if (state.depthBias != 0) { stopOn(backend, `depthStencil.depthBias ${state.depthBias} is not ported to ${backend} yet`); }
+	if (state.depthBias != 0) { stopOnUnported(backend, `depthStencil.depthBias ${state.depthBias}`); }
 	if (state.depthBiasSlopeScale != 0) {
-		stopOn(backend, `depthStencil.depthBiasSlopeScale ${state.depthBiasSlopeScale} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `depthStencil.depthBiasSlopeScale ${state.depthBiasSlopeScale}`);
 	}
-	if (state.depthBiasClamp != 0) { stopOn(backend, `depthStencil.depthBiasClamp ${state.depthBiasClamp} is not ported to ${backend} yet`); }
+	if (state.depthBiasClamp != 0) { stopOnUnported(backend, `depthStencil.depthBiasClamp ${state.depthBiasClamp}`); }
 }
 
 export function stopOnUnportedPrimitive(backend: string, state: GPUPrimitiveState): void {
 	const topology: string = state.topology;
-	if (topology != "" && topology != "triangle-list") { stopOn(backend, `primitive.topology '${topology}' is not ported to ${backend} yet`); }
+	if (topology != "" && topology != "triangle-list") { stopOnUnported(backend, `primitive.topology '${topology}'`); }
 	const stripIndexFormat: string = state.stripIndexFormat;
-	if (stripIndexFormat != "") { stopOn(backend, `primitive.stripIndexFormat '${stripIndexFormat}' is not ported to ${backend} yet`); }
+	if (stripIndexFormat != "") { stopOnUnported(backend, `primitive.stripIndexFormat '${stripIndexFormat}'`); }
 }
 
 export function stopOnUnportedBindEntry(backend: string, entry: GPUBindGroupEntry): void {
-	if (entry.offset != 0) { stopOn(backend, `bind group entry ${entry.binding} offset ${entry.offset} is not ported to ${backend} yet`); }
+	if (entry.offset != 0) { stopOnUnported(backend, `bind group entry ${entry.binding} offset ${entry.offset}`); }
 }
 
 export function stopOnUnportedTexelWrite(backend: string, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	if (destination.mipLevel != 0) {
-		stopOn(backend, `writeTexture destination.mipLevel ${destination.mipLevel} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `writeTexture destination.mipLevel ${destination.mipLevel}`);
 	}
 	if (destination.origin.z != 0 || size.depthOrArrayLayers != 1) {
-		stopOn(backend, `writeTexture origin.z ${destination.origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `writeTexture origin.z ${destination.origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers}`);
 	}
 }
 
@@ -778,6 +775,254 @@ export function checkedTexelBufferLayout(
 		+ (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
 	if (needed > bufferSize) { stop(`${member} needs ${needed} bytes and GPUBuffer ${id} has ${bufferSize}`); }
 	return bytesPerRow;
+}
+
+// WebGPU lets a mappable buffer carry only the one copy usage that matches its map direction.
+export function checkedBufferUsage(usage: int32): void {
+	const mapRead = GPUBufferUsage.MAP_READ as int32;
+	const mapWrite = GPUBufferUsage.MAP_WRITE as int32;
+	if ((usage & mapRead) != 0 && usage != (mapRead | (GPUBufferUsage.COPY_DST as int32))) {
+		stop("GPUBufferUsage MAP_READ combines only with COPY_DST");
+	}
+	if ((usage & mapWrite) != 0 && usage != (mapWrite | (GPUBufferUsage.COPY_SRC as int32))) {
+		stop("GPUBufferUsage MAP_WRITE combines only with COPY_SRC");
+	}
+}
+
+// The mip count a descriptor asks for (0 means 1), checked against the chain its largest side allows.
+export function checkedMipLevelCount(descriptor: GPUTextureDescriptor, volume: boolean, layers: int32): int32 {
+	const requested = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
+	let largest = Math.max(descriptor.size.width, descriptor.size.height);
+	if (volume) { largest = Math.max(largest, layers); }
+	let possible = 1;
+	while ((largest >> possible) > 0) { possible += 1; }
+	if (requested < 1 || requested > possible) {
+		stop(`GPUTextureDescriptor.mipLevelCount ${requested} is outside 1..${possible} for a ${descriptor.size.width}x${descriptor.size.height} texture`);
+	}
+	return requested;
+}
+
+// `sampleCount` is already resolved (0 means 1); more than one sample is a 2d, single-mip, single-layer attachment.
+export function checkedMultisample(sampleCount: int32, volume: boolean, layers: int32, mipLevels: int32, attachment: boolean): void {
+	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
+		stop("WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer");
+	}
+	if (sampleCount > 1 && !attachment) { stop("a multisampled texture must be a RENDER_ATTACHMENT"); }
+}
+
+// `from*` describe the source texture at mip 0; the regions are already bounds-checked by checkedTexelCopyRegion.
+export function checkedTextureToTextureCopy(
+	source: GPUTexelCopyTextureInfo,
+	destination: GPUTexelCopyTextureInfo,
+	size: GPUExtent3D,
+	fromFormat: GPUTextureFormat,
+	toFormat: GPUTextureFormat,
+	fromVolume: boolean,
+	toVolume: boolean,
+	fromDepth: boolean,
+	fromWidth: int32,
+	fromHeight: int32,
+): void {
+	const fromName: string = fromFormat;
+	const toName: string = toFormat;
+	if (fromName != toName) { stop(`copyTextureToTexture between formats '${fromName}' and '${toName}'`); }
+	if (fromVolume != toVolume) { stop("copyTextureToTexture between a 3d and a 2d GPUTexture"); }
+	const mipWidth = Math.max(1, fromWidth >> source.mipLevel);
+	const mipHeight = Math.max(1, fromHeight >> source.mipLevel);
+	if (fromDepth && (size.width != mipWidth || size.height != mipHeight)) {
+		stop(`copyTextureToTexture of depth GPUTexture ${source.texture.id} copies a whole subresource in WebGPU`);
+	}
+	if (
+		source.texture.id == destination.texture.id && source.mipLevel == destination.mipLevel
+			&& source.origin.z < destination.origin.z + size.depthOrArrayLayers && destination.origin.z < source.origin.z + size.depthOrArrayLayers
+			&& source.origin.x < destination.origin.x + size.width && destination.origin.x < source.origin.x + size.width
+			&& source.origin.y < destination.origin.y + size.height && destination.origin.y < source.origin.y + size.height
+	) {
+		stop(`copyTextureToTexture regions overlap inside mip ${source.mipLevel} of GPUTexture ${source.texture.id}`);
+	}
+}
+
+// `mapMode` is the buffer's current map (0 when unmapped); returns the byte length mapped.
+export function checkedMapAsync(id: uint32, usage: int32, mapMode: int32, bufferSize: int64, mode: int32, offset: int64, size: int64): int64 {
+	const read = mode == (GPUMapMode.READ as int32);
+	if (!read && mode != (GPUMapMode.WRITE as int32)) { stop(`mapAsync mode ${mode} is not GPUMapMode READ or WRITE`); }
+	const need = read ? GPUBufferUsage.MAP_READ as int32 : GPUBufferUsage.MAP_WRITE as int32;
+	if ((usage & need) == 0) { stop(`mapAsync ${read ? "READ" : "WRITE"} on GPUBuffer ${id}, created without ${read ? "MAP_READ" : "MAP_WRITE"}`); }
+	if (mapMode != 0) { stop(`mapAsync on GPUBuffer ${id}, which is already mapped`); }
+	return checkedMapRange("mapAsync", id, bufferSize, offset, size);
+}
+
+// A size of 0 means the rest of the mapped range; returns the byte length.
+export function checkedMappedRange(
+	member: string,
+	id: uint32,
+	bufferSize: int64,
+	currentMode: int32,
+	mapOffset: int64,
+	mapSize: int64,
+	mode: int32,
+	offset: int64,
+	size: int64,
+): int64 {
+	if (currentMode != mode) { stop(`${member} on GPUBuffer ${id}, which is not mapped for ${mode == 1 ? "READ" : "WRITE"}`); }
+	const length = checkedMapRange(member, id, bufferSize, offset, size == 0 ? mapOffset + mapSize - offset : size);
+	if (offset < mapOffset || offset + length > mapOffset + mapSize) {
+		stop(`${member} of ${length} bytes at ${offset} leaves the mapped range ${mapOffset}..${mapOffset + mapSize} of GPUBuffer ${id}`);
+	}
+	return length;
+}
+
+export function checkedUnmap(id: uint32, mapMode: int32): void {
+	if (mapMode == 0) { stop(`unmap on GPUBuffer ${id}, which is not mapped`); }
+}
+
+export function checkedWriteBuffer(id: uint32, bufferSize: int64, offset: int64, bytes: int64): void {
+	if (offset < 0 || offset + bytes > bufferSize) {
+		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${id} of ${bufferSize}`);
+	}
+	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
+}
+
+export function checkedViewMips(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): void {
+	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > mipLevels) {
+		stop(`view mips ${baseMip}+${mipCount} overrun GPUTexture ${id}, which has ${mipLevels} mips`);
+	}
+}
+
+// A 3d view spans the whole volume slice stack, so it names no layer range.
+export function checkedView3d(baseLayer: int32, layerCount: int32): void {
+	if (baseLayer != 0 || layerCount > 1) { stop("a 3d view takes no baseArrayLayer or arrayLayerCount"); }
+}
+
+// `layerCount` is resolved (a 0 count already means the rest of the layers).
+export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): void {
+	if (baseLayer < 0 || layerCount < 1 || baseLayer + layerCount > layers) {
+		stop(`view layers ${baseLayer}+${layerCount} overrun GPUTexture ${id}, which has ${layers} layers`);
+	}
+}
+
+// `cubeCapable` is the texture's own square, TEXTURE_BINDING, multiple-of-6 test made at creation.
+export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void {
+	if (!cubeCapable) {
+		stop(`a cube view needs GPUTexture ${id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
+	}
+	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
+}
+
+export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
+	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
+		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
+	}
+}
+
+export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void {
+	if (x < 0 || y < 0 || z < 0 || x > limit || y > limit || z > limit) {
+		stop(`dispatchWorkgroups ${x},${y},${z} is outside 0..${limit}`);
+	}
+}
+
+// `groupBase` is the depth the open pass (or none) started at: a pass cannot pop a group it did not push.
+export function checkedPopDebugGroup(groupDepth: int32, groupBase: int32): void {
+	if (groupDepth <= groupBase) { stop("popDebugGroup without a matching pushDebugGroup"); }
+}
+
+// `slices` is the depth of the 3d view's mip.
+export function checkedDepthSlice(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): void {
+	if (slice < 0 || slice >= slices) {
+		stop(`colorAttachments[${attachment}].depthSlice ${slice} is outside the ${slices} slices of mip ${baseMip} of GPUTexture ${textureId}`);
+	}
+}
+
+export function checkedNoDepthSlice(attachment: int32, slice: int32): void {
+	if (slice != 0) { stop(`colorAttachments[${attachment}].depthSlice ${slice} needs a 3d view`); }
+}
+
+// A pass width of 0 means no attachment has set the extent yet.
+export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void {
+	if (passWidth != 0 && (passWidth != width || passHeight != height)) { stop("render pass attachments differ in size"); }
+}
+
+// `member` is the attachment's field, such as `colorAttachments[0].view`.
+export function checkedSingleSubresource(member: string, attachable: boolean): void {
+	if (!attachable) { stop(`${member} spans several mips or layers: a render attachment is one mip of one layer`); }
+}
+
+// The sizes are the color view's and the resolve view's own mip.
+export function checkedResolveTarget(
+	attachment: int32,
+	colorSamples: int32,
+	colorWidth: int32,
+	colorHeight: int32,
+	resolveWidth: int32,
+	resolveHeight: int32,
+): void {
+	if (colorSamples == 1) { stop(`colorAttachments[${attachment}].resolveTarget needs a multisampled view`); }
+	if (resolveWidth != colorWidth || resolveHeight != colorHeight) {
+		stop(`colorAttachments[${attachment}].resolveTarget differs in size from its multisampled view`);
+	}
+}
+
+export function checkedSamplerAnisotropy(maxAnisotropy: int32, allLinear: boolean): void {
+	if (maxAnisotropy > 1 && !allLinear) {
+		stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter");
+	}
+}
+
+// A lodMaxClamp of 0 means WebGPU's default of 32; returns the effective maximum.
+export function checkedSamplerLod(lodMinClamp: float32, lodMaxClamp: float32): float32 {
+	const maxLod: float32 = lodMaxClamp == 0 ? 32.0 : lodMaxClamp;
+	if (maxLod < lodMinClamp) { stop(`GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${lodMinClamp}`); }
+	return maxLod;
+}
+
+export function checkedDispatchIndirect(id: uint32, usage: int32, bufferSize: int64, offset: int64): void {
+	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { stop(`dispatchWorkgroupsIndirect: GPUBuffer ${id} was created without INDIRECT`); }
+	if (offset < 0 || offset % 4 != 0 || offset + 12 > bufferSize) {
+		stop(`dispatchWorkgroupsIndirect offset ${offset} is not a multiple of 4 with 12 bytes inside GPUBuffer ${id} of ${bufferSize}`);
+	}
+}
+
+export function checkedQuerySetCount(count: int32): void {
+	if (count < 1 || count > 4096) { stop(`GPUQuerySetDescriptor.count ${count} is outside 1..4096`); }
+}
+
+// `count` is the query set's size; an occlusion set cannot take timestamp writes.
+export function checkedTimestampWrites(member: string, writes: GPUPassTimestampWrites, timestamp: boolean, count: int32): void {
+	if (!timestamp) { stop(`${member}.querySet is an occlusion set: a timestamp set is required`); }
+	const begin = writes.beginningOfPassWriteIndex;
+	const end = writes.endOfPassWriteIndex;
+	if (begin == end) {
+		stop(`${member} writes index ${begin} at both ends: give each end its own index, or -1 (GPU_NO_QUERY_INDEX) to skip one`);
+	}
+	if (begin < -1 || begin >= count || end < -1 || end >= count) {
+		stop(`${member} indices ${begin} and ${end} are outside the query set of ${count}`);
+	}
+}
+
+// Each query resolves to 8 bytes; returns that byte length.
+export function checkedResolveQuerySet(
+	setCount: int32,
+	firstQuery: int32,
+	queryCount: int32,
+	destinationId: uint32,
+	destinationUsage: int32,
+	destinationSize: int64,
+	destinationOffset: int64,
+): int64 {
+	if (firstQuery < 0 || queryCount < 0 || firstQuery + queryCount > setCount) {
+		stop(`resolveQuerySet ${firstQuery}+${queryCount} overruns the query set of ${setCount}`);
+	}
+	if ((destinationUsage & (GPUBufferUsage.QUERY_RESOLVE as int32)) == 0) {
+		stop(`resolveQuerySet: GPUBuffer ${destinationId} was created without QUERY_RESOLVE`);
+	}
+	if (destinationOffset < 0 || destinationOffset % 256 != 0) {
+		stop(`resolveQuerySet destinationOffset ${destinationOffset} is not a multiple of 256`);
+	}
+	const bytes = (queryCount as int64) * 8;
+	if (destinationOffset + bytes > destinationSize) {
+		stop(`resolveQuerySet of ${bytes} bytes at ${destinationOffset} overruns GPUBuffer ${destinationId} of ${destinationSize}`);
+	}
+	return bytes;
 }
 
 // What sokol's sg_query_features/limits/stats answered for Void (inventory E).

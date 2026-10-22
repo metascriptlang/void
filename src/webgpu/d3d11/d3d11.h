@@ -3,6 +3,7 @@
 
 typedef struct D3dDeviceImpl *D3dDevice;
 typedef struct D3dContextImpl *D3dContext;
+typedef struct D3dContext1Impl *D3dContext1;
 typedef struct D3dBufferImpl *D3dBuffer;
 typedef struct D3dTextureImpl *D3dTexture;
 typedef struct D3dSrvImpl *D3dSrv;
@@ -34,10 +35,8 @@ D3dUav d3dCreateBufferUav(D3dDevice device, D3dBuffer buffer, int64_t offset, in
 D3dUav d3dCreateTextureUav(D3dDevice device, D3dTexture texture, int32_t format, int32_t dimension, int32_t mip, int32_t layer, int32_t layerCount);
 int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64_t offset, void *data, int64_t bytes);
 int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache, int64_t cacheOffset, uint8_t *data, int64_t dataOffset, int64_t bytes, int32_t force);
-int32_t d3dUniformOffsetting(D3dDevice device, D3dContext context);
-void d3dReleaseUniformOffsetting(void);
-void d3dVsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
-void d3dPsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
+D3dContext1 d3dUniformOffsetting(D3dDevice device, D3dContext context);
+void d3dSetConstantBufferRange(D3dContext1 context1, int32_t vertexStage, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dCopyBytes(void *destination, int64_t destinationOffset, void *source, int64_t bytes);
 void d3dUpdateBuffer(D3dContext context, D3dBuffer buffer, int64_t offset, void *data, int64_t bytes);
 void d3dCopyBuffer(D3dContext context, D3dBuffer destination, int64_t destinationOffset, D3dBuffer source, int64_t sourceOffset, int64_t bytes);
@@ -150,14 +149,7 @@ D3dVertexShader d3dCreateVertexShader(D3dDevice device, D3dBlob blob);
 D3dPixelShader d3dCreatePixelShader(D3dDevice device, D3dBlob blob);
 D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob);
 
-void d3dInputElement(
-	int32_t index,
-	int32_t semanticIndex,
-	int32_t format,
-	int32_t slot,
-	int32_t offset,
-	int32_t perInstance);
-D3dInputLayout d3dCreateInputLayout(D3dDevice device, int32_t count, D3dBlob vertexBlob);
+D3dInputLayout d3dCreateInputLayout(D3dDevice device, const int32_t *elements, int32_t count, D3dBlob vertexBlob);
 D3dRasterizerState d3dCreateRasterizerState(
 	D3dDevice device,
 	int32_t cullMode,
@@ -181,17 +173,7 @@ D3dDepthStencilState d3dCreateDepthStencilState(
 	int32_t backDepthFail,
 	int32_t backPass,
 	int32_t backCompare);
-void d3dBlendTarget(
-	int32_t index,
-	int32_t enabled,
-	int32_t sourceColor,
-	int32_t destinationColor,
-	int32_t operationColor,
-	int32_t sourceAlpha,
-	int32_t destinationAlpha,
-	int32_t operationAlpha,
-	int32_t writeMask);
-D3dBlendState d3dCreateBlendState(D3dDevice device);
+D3dBlendState d3dCreateBlendState(D3dDevice device, const int32_t *targets, int32_t count);
 
 void d3dSetRenderTargets(D3dContext context, D3dRtv color0, D3dRtv color1, D3dRtv color2, D3dRtv color3, D3dDsv depth);
 void d3dSetViewport(D3dContext context, double x, double y, double width, double height, double minDepth, double maxDepth);
@@ -207,14 +189,11 @@ void d3dIaSetPrimitiveTopology(D3dContext context, int32_t topology);
 void d3dIaSetInputLayout(D3dContext context, D3dInputLayout layout);
 void d3dVsSetShader(D3dContext context, D3dVertexShader shader);
 void d3dPsSetShader(D3dContext context, D3dPixelShader shader);
-void d3dVsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer);
-void d3dPsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer);
+void d3dSetConstantBuffer(D3dContext context, int32_t vertexStage, int32_t slot, D3dBuffer buffer);
 void d3dIaSetVertexBuffer(D3dContext context, int32_t slot, D3dBuffer buffer, int32_t stride, int32_t offset);
 void d3dIaSetIndexBuffer(D3dContext context, D3dBuffer buffer, int32_t format, int32_t offset);
-void d3dVsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view);
-void d3dPsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view);
-void d3dVsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);
-void d3dPsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);
+void d3dSetShaderResource(D3dContext context, int32_t vertexStage, int32_t slot, D3dSrv view);
+void d3dSetSampler(D3dContext context, int32_t vertexStage, int32_t slot, D3dSampler sampler);
 
 void d3dDraw(D3dContext context, int32_t vertexCount, int32_t firstVertex);
 void d3dDrawInstanced(D3dContext context, int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance);

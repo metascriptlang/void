@@ -279,12 +279,12 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function setViewport(
 	this self: GPURenderPassEncoder,
-	x: number,
-	y: number,
-	width: number,
-	height: number,
-	minDepth: number,
-	maxDepth: number,
+	x: float32,
+	y: float32,
+	width: float32,
+	height: float32,
+	minDepth: float32,
+	maxDepth: float32,
 ): void {
 	backend.setViewport(x, y, width, height, minDepth, maxDepth);
 }

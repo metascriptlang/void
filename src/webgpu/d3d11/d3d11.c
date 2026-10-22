@@ -122,37 +122,25 @@ int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache,
 	return 1;
 }
 
-static ID3D11DeviceContext1 *context1;
-
-int32_t d3dUniformOffsetting(D3dDevice device, D3dContext context) {
+D3dContext1 d3dUniformOffsetting(D3dDevice device, D3dContext context) {
 	D3D11_FEATURE_DATA_D3D11_OPTIONS options = {0};
-	if (context1) return 1;
-	if (FAILED(ID3D11DeviceContext_QueryInterface(CONTEXT(context), &IID_ID3D11DeviceContext1, (void **)&context1))) return 0;
+	ID3D11DeviceContext1 *context1 = NULL;
+	if (FAILED(ID3D11DeviceContext_QueryInterface(CONTEXT(context), &IID_ID3D11DeviceContext1, (void **)&context1))) return NULL;
 	if (FAILED(ID3D11Device_CheckFeatureSupport(DEVICE(device), D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof options)) ||
 		!options.ConstantBufferOffsetting || !options.ConstantBufferPartialUpdate ||
 		!options.MapNoOverwriteOnDynamicConstantBuffer) {
 		ID3D11DeviceContext1_Release(context1);
-		context1 = NULL;
-		return 0;
+		return NULL;
 	}
-	return 1;
+	return (D3dContext1)context1;
 }
 
-void d3dReleaseUniformOffsetting(void) {
-	if (context1) ID3D11DeviceContext1_Release(context1);
-	context1 = NULL;
-}
-
-void d3dVsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
+void d3dSetConstantBufferRange(D3dContext1 context1, int32_t vertexStage, int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
 	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
 	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
-	ID3D11DeviceContext1_VSSetConstantBuffers1(context1, (UINT)slot, 1, buffers, &first, &count);
-}
-
-void d3dPsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
-	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
-	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
-	ID3D11DeviceContext1_PSSetConstantBuffers1(context1, (UINT)slot, 1, buffers, &first, &count);
+	ID3D11DeviceContext1 *native = (ID3D11DeviceContext1 *)context1;
+	if (vertexStage) ID3D11DeviceContext1_VSSetConstantBuffers1(native, (UINT)slot, 1, buffers, &first, &count);
+	else ID3D11DeviceContext1_PSSetConstantBuffers1(native, (UINT)slot, 1, buffers, &first, &count);
 }
 
 void d3dCopyBytes(void *destination, int64_t destinationOffset, void *source, int64_t bytes) {
@@ -506,29 +494,25 @@ D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob) {
 	return SUCCEEDED(hr) ? (D3dComputeShader)shader : NULL;
 }
 
-static D3D11_INPUT_ELEMENT_DESC s_inputElements[D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
+enum { INPUT_ELEMENT_INTS = 5 };
 
-void d3dInputElement(
-	int32_t index,
-	int32_t semanticIndex,
-	int32_t format,
-	int32_t slot,
-	int32_t offset,
-	int32_t perInstance) {
-	D3D11_INPUT_ELEMENT_DESC *element = &s_inputElements[index];
-	element->SemanticName = "TEXCOORD";
-	element->SemanticIndex = (UINT)semanticIndex;
-	element->Format = (DXGI_FORMAT)format;
-	element->InputSlot = (UINT)slot;
-	element->AlignedByteOffset = (UINT)offset;
-	element->InputSlotClass = perInstance ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;
-	element->InstanceDataStepRate = perInstance ? 1 : 0;
-}
-
-D3dInputLayout d3dCreateInputLayout(D3dDevice device, int32_t count, D3dBlob vertexBlob) {
+/* elements: count records of { semanticIndex, format, slot, offset, perInstance } */
+D3dInputLayout d3dCreateInputLayout(D3dDevice device, const int32_t *elements, int32_t count, D3dBlob vertexBlob) {
 	ID3DBlob *code = (ID3DBlob *)vertexBlob;
+	D3D11_INPUT_ELEMENT_DESC descs[D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
+	if (count < 0 || count > D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT) return NULL;
+	for (int i = 0; i < count; i++) {
+		const int32_t *e = &elements[i * INPUT_ELEMENT_INTS];
+		descs[i].SemanticName = "TEXCOORD";
+		descs[i].SemanticIndex = (UINT)e[0];
+		descs[i].Format = (DXGI_FORMAT)e[1];
+		descs[i].InputSlot = (UINT)e[2];
+		descs[i].AlignedByteOffset = (UINT)e[3];
+		descs[i].InputSlotClass = e[4] ? D3D11_INPUT_PER_INSTANCE_DATA : D3D11_INPUT_PER_VERTEX_DATA;
+		descs[i].InstanceDataStepRate = e[4] ? 1 : 0;
+	}
 	ID3D11InputLayout *layout = NULL;
-	HRESULT hr = ID3D11Device_CreateInputLayout(DEVICE(device), s_inputElements, (UINT)count,
+	HRESULT hr = ID3D11Device_CreateInputLayout(DEVICE(device), descs, (UINT)count,
 		ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), &layout);
 	return SUCCEEDED(hr) ? (D3dInputLayout)layout : NULL;
 }
@@ -591,50 +575,35 @@ D3dDepthStencilState d3dCreateDepthStencilState(
 	return SUCCEEDED(hr) ? (D3dDepthStencilState)state : NULL;
 }
 
-static D3D11_BLEND_DESC s_blend;
-static int s_blendReady;
+enum { BLEND_TARGET_INTS = 9 };
 
-static void resetBlendTargets(void) {
-	memset(&s_blend, 0, sizeof s_blend);
-	s_blend.IndependentBlendEnable = TRUE;
+/* targets: count records of { index, enabled, srcColor, dstColor, opColor, srcAlpha, dstAlpha, opAlpha, writeMask }; unlisted targets stay disabled */
+D3dBlendState d3dCreateBlendState(D3dDevice device, const int32_t *targets, int32_t count) {
+	D3D11_BLEND_DESC desc = {0};
+	desc.IndependentBlendEnable = TRUE;
 	for (int i = 0; i < 8; i++) {
-		D3D11_RENDER_TARGET_BLEND_DESC *target = &s_blend.RenderTarget[i];
+		D3D11_RENDER_TARGET_BLEND_DESC *target = &desc.RenderTarget[i];
 		target->BlendEnable = FALSE;
 		target->SrcBlend = target->SrcBlendAlpha = D3D11_BLEND_ONE;
 		target->DestBlend = target->DestBlendAlpha = D3D11_BLEND_ZERO;
 		target->BlendOp = target->BlendOpAlpha = D3D11_BLEND_OP_ADD;
 		target->RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 	}
-	s_blendReady = 1;
-}
-
-void d3dBlendTarget(
-	int32_t index,
-	int32_t enabled,
-	int32_t sourceColor,
-	int32_t destinationColor,
-	int32_t operationColor,
-	int32_t sourceAlpha,
-	int32_t destinationAlpha,
-	int32_t operationAlpha,
-	int32_t writeMask) {
-	if (!s_blendReady) resetBlendTargets();
-	D3D11_RENDER_TARGET_BLEND_DESC *target = &s_blend.RenderTarget[index];
-	target->BlendEnable = enabled ? TRUE : FALSE;
-	target->SrcBlend = (D3D11_BLEND)sourceColor;
-	target->DestBlend = (D3D11_BLEND)destinationColor;
-	target->BlendOp = (D3D11_BLEND_OP)operationColor;
-	target->SrcBlendAlpha = (D3D11_BLEND)sourceAlpha;
-	target->DestBlendAlpha = (D3D11_BLEND)destinationAlpha;
-	target->BlendOpAlpha = (D3D11_BLEND_OP)operationAlpha;
-	target->RenderTargetWriteMask = (UINT8)writeMask;
-}
-
-D3dBlendState d3dCreateBlendState(D3dDevice device) {
-	if (!s_blendReady) resetBlendTargets();
+	for (int i = 0; i < count; i++) {
+		const int32_t *t = &targets[i * BLEND_TARGET_INTS];
+		if (t[0] < 0 || t[0] >= 8) return NULL;
+		D3D11_RENDER_TARGET_BLEND_DESC *target = &desc.RenderTarget[t[0]];
+		target->BlendEnable = t[1] ? TRUE : FALSE;
+		target->SrcBlend = (D3D11_BLEND)t[2];
+		target->DestBlend = (D3D11_BLEND)t[3];
+		target->BlendOp = (D3D11_BLEND_OP)t[4];
+		target->SrcBlendAlpha = (D3D11_BLEND)t[5];
+		target->DestBlendAlpha = (D3D11_BLEND)t[6];
+		target->BlendOpAlpha = (D3D11_BLEND_OP)t[7];
+		target->RenderTargetWriteMask = (UINT8)t[8];
+	}
 	ID3D11BlendState *state = NULL;
-	HRESULT hr = ID3D11Device_CreateBlendState(DEVICE(device), &s_blend, &state);
-	s_blendReady = 0;
+	HRESULT hr = ID3D11Device_CreateBlendState(DEVICE(device), &desc, &state);
 	return SUCCEEDED(hr) ? (D3dBlendState)state : NULL;
 }
 
@@ -704,14 +673,10 @@ void d3dPsSetShader(D3dContext context, D3dPixelShader shader) {
 	ID3D11DeviceContext_PSSetShader(CONTEXT(context), (ID3D11PixelShader *)shader, NULL, 0);
 }
 
-void d3dVsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer) {
+void d3dSetConstantBuffer(D3dContext context, int32_t vertexStage, int32_t slot, D3dBuffer buffer) {
 	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
-	ID3D11DeviceContext_VSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
-}
-
-void d3dPsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer) {
-	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
-	ID3D11DeviceContext_PSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
+	if (vertexStage) ID3D11DeviceContext_VSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
+	else ID3D11DeviceContext_PSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
 }
 
 void d3dIaSetVertexBuffer(D3dContext context, int32_t slot, D3dBuffer buffer, int32_t stride, int32_t offset) {
@@ -725,24 +690,16 @@ void d3dIaSetIndexBuffer(D3dContext context, D3dBuffer buffer, int32_t format, i
 	ID3D11DeviceContext_IASetIndexBuffer(CONTEXT(context), (ID3D11Buffer *)buffer, (DXGI_FORMAT)format, (UINT)offset);
 }
 
-void d3dVsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view) {
+void d3dSetShaderResource(D3dContext context, int32_t vertexStage, int32_t slot, D3dSrv view) {
 	ID3D11ShaderResourceView *views[1] = { (ID3D11ShaderResourceView *)view };
-	ID3D11DeviceContext_VSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);
+	if (vertexStage) ID3D11DeviceContext_VSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);
+	else ID3D11DeviceContext_PSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);
 }
 
-void d3dPsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view) {
-	ID3D11ShaderResourceView *views[1] = { (ID3D11ShaderResourceView *)view };
-	ID3D11DeviceContext_PSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);
-}
-
-void d3dVsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler) {
+void d3dSetSampler(D3dContext context, int32_t vertexStage, int32_t slot, D3dSampler sampler) {
 	ID3D11SamplerState *samplers[1] = { (ID3D11SamplerState *)sampler };
-	ID3D11DeviceContext_VSSetSamplers(CONTEXT(context), (UINT)slot, 1, samplers);
-}
-
-void d3dPsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler) {
-	ID3D11SamplerState *samplers[1] = { (ID3D11SamplerState *)sampler };
-	ID3D11DeviceContext_PSSetSamplers(CONTEXT(context), (UINT)slot, 1, samplers);
+	if (vertexStage) ID3D11DeviceContext_VSSetSamplers(CONTEXT(context), (UINT)slot, 1, samplers);
+	else ID3D11DeviceContext_PSSetSamplers(CONTEXT(context), (UINT)slot, 1, samplers);
 }
 
 void d3dDraw(D3dContext context, int32_t vertexCount, int32_t firstVertex) {
