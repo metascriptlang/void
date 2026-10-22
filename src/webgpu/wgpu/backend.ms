@@ -38,6 +38,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	checkedTexelWritePitch,
 } from "../types.ms";
 import {
 	WgBindGroupImpl,
@@ -901,33 +902,25 @@ export function writeTexture<T>(
 	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
 		stop(`writeTexture on GPUTexture ${destination.texture.id}, created without COPY_DST`);
 	}
-	if (size.width <= 0 || size.height <= 0 || size.depthOrArrayLayers > 1) {
-		const layers = size.depthOrArrayLayers;
-		stop(`writeTexture size ${size.width}x${size.height}x${layers} is not one 2D region`);
-	}
-	if (size.width > textures[index].width || size.height > textures[index].height) {
-		const id = destination.texture.id;
-		stop(`writeTexture of ${size.width}x${size.height} overruns GPUTexture ${id}`);
-	}
 	const info = formatInfo(textures[index].format, "texture format");
-	const rowBytes = size.width * info.bytesPerPixel;
-	const bytesPerRow = layout.bytesPerRow == 0 ? rowBytes : layout.bytesPerRow;
-	if (bytesPerRow < rowBytes) {
-		stop(`writeTexture bytesPerRow ${bytesPerRow} is below a row of ${rowBytes}`);
-	}
-	const rowsPerImage = layout.rowsPerImage == 0 ? size.height : layout.rowsPerImage;
-	const lastRow = (bytesPerRow as int64) * ((size.height - 1) as int64);
-	const needed = layout.offset + lastRow + (rowBytes as int64);
-	if (layout.offset < 0 || needed > bytes) {
-		stop(`writeTexture needs ${needed} bytes of data and was given ${bytes}`);
-	}
+	const bytesPerRow = checkedTexelWritePitch(
+		textures[index].width,
+		textures[index].height,
+		info.bytesPerPixel,
+		bytes,
+		destination,
+		layout,
+		size,
+	);
 	wgWriteTexture(
 		textures[index].native,
 		data[0],
 		bytes,
 		layout.offset,
 		bytesPerRow,
-		rowsPerImage,
+		layout.rowsPerImage == 0 ? size.height : layout.rowsPerImage,
+		destination.origin.x,
+		destination.origin.y,
 		size.width,
 		size.height,
 	);

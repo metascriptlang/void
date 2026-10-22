@@ -118,10 +118,14 @@ void wgWriteTexture(
 	int64_t offset,
 	int32_t bytesPerRow,
 	int32_t rowsPerImage,
+	int32_t x,
+	int32_t y,
 	int32_t width,
 	int32_t height) {
 	WGPUTexelCopyTextureInfo destination = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
 	destination.texture = (WGPUTexture)texture;
+	destination.origin.x = (uint32_t)x;
+	destination.origin.y = (uint32_t)y;
 	destination.aspect = WGPUTextureAspect_All;
 	WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
 	layout.offset = (uint64_t)offset;

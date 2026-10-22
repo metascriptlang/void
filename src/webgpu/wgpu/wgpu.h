@@ -36,6 +36,8 @@ void wgWriteTexture(
 	int64_t offset,
 	int32_t bytesPerRow,
 	int32_t rowsPerImage,
+	int32_t x,
+	int32_t y,
 	int32_t width,
 	int32_t height);
 WgView wgCreateView(WgTexture texture, int32_t aspect, const char *label);
