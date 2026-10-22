@@ -32,12 +32,6 @@ void voidFail(const char *fmt, ...) {
 	abort();
 }
 
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
 static bool s_running;
 static msClosure s_init;
 static msClosure s_frame;
@@ -75,12 +69,12 @@ void voidSetImeRect(int x, int y, int w, int h) {
 	(void)h;
 }
 
-static void _init(void) { call0(s_init); }
+static void _init(void) { voidCallClosure(s_init); }
 
 static void _frame(void) {
 	if (s_contextLost) restoreContext();
 	s_committed = false;
-	call0(s_frame);
+	voidCallClosure(s_frame);
 	if (s_committed) voidLinuxSwapBuffers();
 }
 

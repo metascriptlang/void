@@ -45,8 +45,7 @@ int voidAppEventHandlerSet(void) { return s_handler.fn != NULL; }
 int voidAppDeliver(const VoidAppEvent *e) {
 	if (!s_handler.fn) return 0;
 	s_event = e;
-	if (s_handler.env) ((void (*)(void *))s_handler.fn)(s_handler.env);
-	else ((void (*)(void))s_handler.fn)();
+	voidCallClosure(s_handler);
 	s_event = NULL;
 	return 1;
 }
@@ -106,15 +105,17 @@ int voidEventCursor(void) {
 	return s_cursor;
 }
 
+static msString stringOrEmpty(const char *text) {
+	if (text[0] != '\0') return msStringFromCStr(text);
+	msString empty;
+	empty.len = 0;
+	empty.p = NULL;
+	return empty;
+}
+
 msString voidEventText(void) {
 	current("Text");
-	if (s_text[0] == '\0') {
-		msString empty;
-		empty.len = 0;
-		empty.p = NULL;
-		return empty;
-	}
-	return msStringFromCStr(s_text);
+	return stringOrEmpty(s_text);
 }
 
 void voidAppTextDeliver(int type, const char *utf8, int cursor) {
@@ -244,14 +245,7 @@ void voidSetClipboard(const char *utf8) {
 
 msString voidClipboard(void) {
 	needWindow("voidClipboard");
-	const char *text = PLATFORM(Clipboard)();
-	if (text[0] == '\0') {
-		msString empty;
-		empty.len = 0;
-		empty.p = NULL;
-		return empty;
-	}
-	return msStringFromCStr(text);
+	return stringOrEmpty(PLATFORM(Clipboard)());
 }
 
 void voidSetMouseCursor(int cursor) {

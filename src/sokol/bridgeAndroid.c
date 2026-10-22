@@ -27,12 +27,6 @@ typedef struct {
 	int w, h;
 } AndroidSurface;
 
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
 static int egl_boot(void) {
 	g_dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (g_dpy == EGL_NO_DISPLAY) return 0;
@@ -93,7 +87,7 @@ void voidPlatformRunInit(msClosure init) {
 	char prev[1024];
 	const char *got = getcwd(prev, sizeof prev);
 	if (g_assetRoot[0]) chdir(g_assetRoot);
-	call0(init);
+	voidCallClosure(init);
 	if (got) chdir(prev);
 }
 

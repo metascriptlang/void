@@ -25,12 +25,6 @@
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
 
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
 static msClosure s_init;
 static msClosure s_frame;
 static bool s_keys[VOID_KEY_COUNT];
@@ -170,14 +164,14 @@ static void _init(void) {
 	voidWindowSurfaceCreate(hwnd, s_sampleCount);
 	if (!SetWindowSubclass(hwnd, windowProc, 1, 0)) voidFail("SetWindowSubclass on the Void window failed");
 	applyTextInput(hwnd);
-	call0(s_init);
+	voidCallClosure(s_init);
 }
 static bool s_committed;
 
 static void _frame(void) {
 	if (s_contextLost) restoreContext();
 	s_committed = false;
-	call0(s_frame);
+	voidCallClosure(s_frame);
 	if (s_committed) voidWindowPresent(s_sizeMove);
 	else if (!s_sizeMove) DwmFlush();
 }
@@ -290,7 +284,7 @@ static void setupViewsGfx(void) {
 	setupDoor(DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
 }
 
-void voidPlatformRunInit(msClosure init) { call0(init); }
+void voidPlatformRunInit(msClosure init) { voidCallClosure(init); }
 
 static void makeTarget(WinSurface *s) {
 	ID3D11Texture2D *back = NULL;

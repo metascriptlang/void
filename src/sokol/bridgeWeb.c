@@ -40,12 +40,6 @@ static void restoreContext(void) {
 	s_contextLost = 0;
 }
 
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
 static msClosure s_init;
 static msClosure s_frame;
 static bool s_keys[VOID_KEY_COUNT];
@@ -158,12 +152,12 @@ static void keepKeysFromBrowser(const VoidAppEvent *e) {
 
 static void _init(void) {
 	imeSetup();
-	call0(s_init);
+	voidCallClosure(s_init);
 }
 
 static void _frame(void) {
 	if (s_contextLost) restoreContext();
-	call0(s_frame);
+	voidCallClosure(s_frame);
 }
 
 static int s_reqW = 0;
@@ -500,7 +494,7 @@ static void dropSurface(WebSurface *s) {
 
 #endif
 
-void voidPlatformRunInit(msClosure init) { call0(init); }
+void voidPlatformRunInit(msClosure init) { voidCallClosure(init); }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	WebSurface *s = (WebSurface *)calloc(1, sizeof(WebSurface));

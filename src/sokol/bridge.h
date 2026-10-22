@@ -13,6 +13,12 @@ typedef struct {
 } msClosure;
 #endif
 
+static inline void voidCallClosure(msClosure c) {
+	if (!c.fn) return;
+	if (c.env) ((void (*)(void *))c.fn)(c.env);
+	else ((void (*)(void))c.fn)();
+}
+
 // Lifecycle — MetaScript main() drives via init/frame closures.
 void voidRun(int w, int h, msClosure init, msClosure frame);
 
