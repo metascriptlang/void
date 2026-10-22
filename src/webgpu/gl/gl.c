@@ -1,5 +1,7 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "gl.h"
 
@@ -8,6 +10,11 @@
 #include <GLES3/gl3.h>
 #if defined(__EMSCRIPTEN__)
 void glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+#elif __ANDROID_API__ >= 24
+#include <GLES3/gl32.h>
+#define OGL_DEBUG 1
+#else
+#include <GLES3/gl31.h>
 #endif
 #elif defined(__linux__)
 #define GL_GLEXT_PROTOTYPES
@@ -32,6 +39,9 @@ typedef char GLchar;
 typedef ptrdiff_t GLintptr;
 typedef ptrdiff_t GLsizeiptr;
 typedef unsigned char GLboolean;
+typedef unsigned char GLubyte;
+typedef long long GLint64;
+typedef unsigned long long GLuint64;
 typedef unsigned int GLbitfield;
 typedef float GLfloat;
 typedef double GLdouble;
@@ -75,6 +85,26 @@ typedef int GLint;
 #define OGL_FUNCS \
 	OGL_XMACRO(glGetError,                 GLenum, (void)) \
 	OGL_XMACRO(glGetIntegerv,              void, (GLenum pname, GLint *data)) \
+	OGL_XMACRO(glGetInteger64v,            void, (GLenum pname, GLint64 *data)) \
+	OGL_XMACRO(glGetIntegeri_v,            void, (GLenum target, GLuint index, GLint *data)) \
+	OGL_XMACRO(glGetStringi,               const GLubyte *, (GLenum name, GLuint index)) \
+	OGL_XMACRO(glGenQueries,               void, (GLsizei n, GLuint *ids)) \
+	OGL_XMACRO(glDeleteQueries,            void, (GLsizei n, const GLuint *ids)) \
+	OGL_XMACRO(glBeginQuery,               void, (GLenum target, GLuint id)) \
+	OGL_XMACRO(glEndQuery,                 void, (GLenum target)) \
+	OGL_XMACRO(glQueryCounter,             void, (GLuint id, GLenum target)) \
+	OGL_XMACRO(glGetQueryiv,               void, (GLenum target, GLenum pname, GLint *params)) \
+	OGL_XMACRO(glGetQueryObjectuiv,        void, (GLuint id, GLenum pname, GLuint *params)) \
+	OGL_XMACRO(glGetQueryObjectui64v,      void, (GLuint id, GLenum pname, GLuint64 *params)) \
+	OGL_XMACRO(glDispatchCompute,          void, (GLuint x, GLuint y, GLuint z)) \
+	OGL_XMACRO(glDispatchComputeIndirect,  void, (GLintptr indirect)) \
+	OGL_XMACRO(glMemoryBarrier,            void, (GLbitfield barriers)) \
+	OGL_XMACRO(glBindBufferRange,          void, (GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size)) \
+	OGL_XMACRO(glBindImageTexture,         void, (GLuint unit, GLuint texture, GLint level, GLboolean layered, GLint layer, GLenum access, GLenum format)) \
+	OGL_XMACRO(glPushDebugGroup,           void, (GLenum source, GLuint id, GLsizei length, const GLchar *message)) \
+	OGL_XMACRO(glPopDebugGroup,            void, (void)) \
+	OGL_XMACRO(glDebugMessageInsert,       void, (GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *buf)) \
+	OGL_XMACRO(glObjectLabel,              void, (GLenum identifier, GLuint name, GLsizei length, const GLchar *label)) \
 	OGL_XMACRO(glEnable,                   void, (GLenum cap)) \
 	OGL_XMACRO(glDisable,                  void, (GLenum cap)) \
 	OGL_XMACRO(glPixelStorei,              void, (GLenum pname, GLint param)) \
@@ -221,6 +251,45 @@ void oglUnload(void) {
 	s_opengl32 = NULL;
 }
 
+#endif
+
+#if !defined(__EMSCRIPTEN__)
+#define OGL_COMPUTE 1
+#endif
+#if !defined(OGL_GLES)
+#define OGL_DEBUG 1
+#define OGL_TIMER 1
+#endif
+
+#ifndef GL_NUM_EXTENSIONS
+#define GL_NUM_EXTENSIONS 0x821D
+#endif
+#ifndef GL_EXTENSIONS
+#define GL_EXTENSIONS 0x1F03
+#endif
+#ifndef GL_QUERY_RESULT
+#define GL_QUERY_RESULT 0x8866
+#endif
+#ifndef GL_QUERY_RESULT_AVAILABLE
+#define GL_QUERY_RESULT_AVAILABLE 0x8867
+#endif
+#ifndef GL_TIMESTAMP
+#define GL_TIMESTAMP 0x8E28
+#endif
+#ifndef GL_QUERY_COUNTER_BITS
+#define GL_QUERY_COUNTER_BITS 0x8864
+#endif
+#ifndef GL_DISPATCH_INDIRECT_BUFFER
+#define GL_DISPATCH_INDIRECT_BUFFER 0x90EE
+#endif
+#ifndef GL_DEBUG_SOURCE_APPLICATION
+#define GL_DEBUG_SOURCE_APPLICATION 0x824A
+#endif
+#ifndef GL_DEBUG_TYPE_MARKER
+#define GL_DEBUG_TYPE_MARKER 0x8268
+#endif
+#ifndef GL_DEBUG_SEVERITY_NOTIFICATION
+#define GL_DEBUG_SEVERITY_NOTIFICATION 0x826B
 #endif
 
 #if !defined(_WIN32)
@@ -727,4 +796,154 @@ void oglDrawElementsInstancedBaseVertexBaseInstance(
 	glDrawElementsInstancedBaseVertexBaseInstance((GLenum)mode, count, (GLenum)type, (const void *)(intptr_t)offset,
 		instances, baseVertex, (GLuint)baseInstance);
 }
+#endif
+
+
+int32_t oglCapabilities(void) {
+	int32_t caps = 0;
+#if defined(OGL_COMPUTE)
+	caps |= 1;
+#endif
+#if defined(OGL_DEBUG)
+	caps |= 2;
+#endif
+#if defined(OGL_TIMER)
+	caps |= 4;
+#endif
+#if !defined(OGL_GLES)
+	caps |= 8;
+#endif
+	return caps;
+}
+
+#if !defined(OGL_COMPUTE) || !defined(OGL_DEBUG) || !defined(OGL_TIMER)
+static void unavailable(const char *what) {
+	fprintf(stderr, "webgpu gl: %s is not built into this GL target; the backend checks oglCapabilities before it calls\n", what);
+	abort();
+}
+#endif
+
+int64_t oglGetInteger64(int32_t name) {
+	GLint64 value = 0;
+	glGetInteger64v((GLenum)name, &value);
+	return (int64_t)value;
+}
+
+int32_t oglHasExtension(const char *name) {
+	GLint count = 0;
+	glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+	for (GLint i = 0; i < count; i++) {
+		const char *extension = (const char *)glGetStringi(GL_EXTENSIONS, (GLuint)i);
+		if (extension != NULL && strcmp(extension, name) == 0) return 1;
+	}
+	return 0;
+}
+
+#if defined(OGL_COMPUTE)
+int32_t oglGetIntegeri(int32_t name, int32_t index) {
+	GLint value = 0;
+	glGetIntegeri_v((GLenum)name, (GLuint)index, &value);
+	return value;
+}
+
+uint32_t oglLinkComputeProgram(uint32_t computeShader) {
+	s_log[0] = 0;
+	GLuint program = glCreateProgram();
+	glAttachShader(program, computeShader);
+	glLinkProgram(program);
+	glDeleteShader(computeShader);
+	GLint status = 0;
+	glGetProgramiv(program, GL_LINK_STATUS, &status);
+	if (!status) {
+		glGetProgramInfoLog(program, (GLsizei)sizeof s_log, NULL, s_log);
+		glDeleteProgram(program);
+		return 0;
+	}
+	return program;
+}
+
+void oglDispatchCompute(int32_t x, int32_t y, int32_t z) { glDispatchCompute((GLuint)x, (GLuint)y, (GLuint)z); }
+
+void oglDispatchComputeIndirect(uint32_t buffer, int64_t offset) {
+	glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, buffer);
+	glDispatchComputeIndirect((GLintptr)offset);
+	glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+}
+
+void oglMemoryBarrier(int32_t barriers) { glMemoryBarrier((GLbitfield)barriers); }
+
+void oglBindBufferRange(int32_t target, uint32_t index, uint32_t buffer, int64_t offset, int64_t bytes) {
+	glBindBufferRange((GLenum)target, index, buffer, (GLintptr)offset, (GLsizeiptr)bytes);
+}
+
+void oglBindImageTexture(int32_t unit, uint32_t texture, int32_t level, int32_t layered, int32_t layer, int32_t access, int32_t format) {
+	glBindImageTexture((GLuint)unit, texture, level, layered ? GL_TRUE : GL_FALSE, layer, (GLenum)access, (GLenum)format);
+}
+#else
+int32_t oglGetIntegeri(int32_t name, int32_t index) { unavailable("glGetIntegeri_v"); return 0; }
+uint32_t oglLinkComputeProgram(uint32_t computeShader) { unavailable("compute shaders"); return 0; }
+void oglDispatchCompute(int32_t x, int32_t y, int32_t z) { unavailable("glDispatchCompute"); }
+void oglDispatchComputeIndirect(uint32_t buffer, int64_t offset) { unavailable("glDispatchComputeIndirect"); }
+void oglMemoryBarrier(int32_t barriers) { unavailable("glMemoryBarrier"); }
+void oglBindBufferRange(int32_t target, uint32_t index, uint32_t buffer, int64_t offset, int64_t bytes) { unavailable("glBindBufferRange"); }
+void oglBindImageTexture(int32_t unit, uint32_t texture, int32_t level, int32_t layered, int32_t layer, int32_t access, int32_t format) {
+	unavailable("glBindImageTexture");
+}
+#endif
+
+uint32_t oglCreateQuery(void) {
+	GLuint query = 0;
+	glGenQueries(1, &query);
+	return query;
+}
+
+void oglDeleteQuery(uint32_t query) { if (query) glDeleteQueries(1, &query); }
+void oglBeginQuery(int32_t target, uint32_t query) { glBeginQuery((GLenum)target, query); }
+void oglEndQuery(int32_t target) { glEndQuery((GLenum)target); }
+
+int32_t oglQueryAvailable(uint32_t query) {
+	GLuint available = 0;
+	glGetQueryObjectuiv(query, GL_QUERY_RESULT_AVAILABLE, &available);
+	return available != 0;
+}
+
+uint64_t oglQueryResult(uint32_t query) {
+#if defined(OGL_GLES)
+	GLuint result = 0;
+	glGetQueryObjectuiv(query, GL_QUERY_RESULT, &result);
+	return (uint64_t)result;
+#else
+	GLuint64 result = 0;
+	glGetQueryObjectui64v(query, GL_QUERY_RESULT, &result);
+	return (uint64_t)result;
+#endif
+}
+
+#if defined(OGL_TIMER)
+void oglQueryCounter(uint32_t query) { glQueryCounter(query, GL_TIMESTAMP); }
+
+int32_t oglQueryCounterBits(void) {
+	GLint bits = 0;
+	glGetQueryiv(GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &bits);
+	return bits;
+}
+#else
+void oglQueryCounter(uint32_t query) { unavailable("glQueryCounter"); }
+int32_t oglQueryCounterBits(void) { unavailable("glGetQueryiv(GL_TIMESTAMP)"); return 0; }
+#endif
+
+#if defined(OGL_DEBUG)
+void oglPushDebugGroup(const char *label) { glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, label); }
+void oglPopDebugGroup(void) { glPopDebugGroup(); }
+
+void oglDebugMarker(const char *label) {
+	glDebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION, GL_DEBUG_TYPE_MARKER, 0, GL_DEBUG_SEVERITY_NOTIFICATION, -1, label);
+}
+
+void oglObjectLabel(int32_t identifier, uint32_t name, const char *label) { glObjectLabel((GLenum)identifier, name, -1, label); }
+#else
+void oglPushDebugGroup(const char *label) { unavailable("glPushDebugGroup"); }
+void oglPopDebugGroup(void) { unavailable("glPopDebugGroup"); }
+void oglDebugMarker(const char *label) { unavailable("glDebugMessageInsert"); }
+void oglObjectLabel(int32_t identifier, uint32_t name, const char *label) { unavailable("glObjectLabel"); }
 #endif

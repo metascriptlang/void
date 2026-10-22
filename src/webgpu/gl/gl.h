@@ -169,3 +169,28 @@ void oglDrawElementsInstancedBaseVertexBaseInstance(
 	int32_t instances,
 	int32_t baseVertex,
 	int32_t baseInstance);
+
+int32_t oglCapabilities(void);
+int64_t oglGetInteger64(int32_t name);
+int32_t oglHasExtension(const char *name);
+int32_t oglGetIntegeri(int32_t name, int32_t index);
+uint32_t oglLinkComputeProgram(uint32_t computeShader);
+void oglDispatchCompute(int32_t x, int32_t y, int32_t z);
+void oglDispatchComputeIndirect(uint32_t buffer, int64_t offset);
+void oglMemoryBarrier(int32_t barriers);
+void oglBindBufferRange(int32_t target, uint32_t index, uint32_t buffer, int64_t offset, int64_t bytes);
+void oglBindImageTexture(int32_t unit, uint32_t texture, int32_t level, int32_t layered, int32_t layer, int32_t access, int32_t format);
+
+uint32_t oglCreateQuery(void);
+void oglDeleteQuery(uint32_t query);
+void oglBeginQuery(int32_t target, uint32_t query);
+void oglEndQuery(int32_t target);
+int32_t oglQueryAvailable(uint32_t query);
+uint64_t oglQueryResult(uint32_t query);
+void oglQueryCounter(uint32_t query);
+int32_t oglQueryCounterBits(void);
+
+void oglPushDebugGroup(const char *label);
+void oglPopDebugGroup(void);
+void oglDebugMarker(const char *label);
+void oglObjectLabel(int32_t identifier, uint32_t name, const char *label);
