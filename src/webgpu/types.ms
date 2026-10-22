@@ -8,6 +8,7 @@ export struct GPUTextureView { id: uint32; }
 export struct GPUSampler { id: uint32; }
 export struct GPUShaderModule { id: uint32; }
 export struct GPURenderPipeline { id: uint32; }
+export struct GPUComputePipeline { id: uint32; }
 export struct GPUBindGroupLayout { id: uint32; }
 export struct GPUBindGroup { id: uint32; }
 export struct GPUQueue { id: uint32; }
@@ -15,6 +16,7 @@ export struct GPUDevice { id: uint32; queue: GPUQueue; }
 export struct GPUCommandEncoder { id: uint32; }
 export struct GPUCommandBuffer { id: uint32; }
 export struct GPURenderPassEncoder { id: uint32; }
+export struct GPUComputePassEncoder { id: uint32; }
 
 export const GPU_MAX_COLOR_ATTACHMENTS = 4;
 export const GPU_MAX_VERTEX_BUFFERS = 2;
@@ -32,6 +34,8 @@ export enum GPUBufferUsage {
 	INDEX = 0x10,
 	VERTEX = 0x20,
 	UNIFORM = 0x40,
+	STORAGE = 0x80,
+	INDIRECT = 0x100,
 }
 
 export enum GPUMapMode {
@@ -43,6 +47,7 @@ export enum GPUTextureUsage {
 	COPY_SRC = 0x1,
 	COPY_DST = 0x2,
 	TEXTURE_BINDING = 0x4,
+	STORAGE_BINDING = 0x8,
 	RENDER_ATTACHMENT = 0x10,
 }
 
@@ -337,6 +342,18 @@ export struct GPURenderPipelineDescriptor {
 	fragment: GPUFragmentState;
 }
 
+export struct GPUProgrammableStage {
+	module: GPUShaderModule;
+	entryPoint: string;
+}
+
+export struct GPUComputePipelineDescriptor {
+	label: string | null;
+	compute: GPUProgrammableStage;
+}
+
+export struct GPUComputePassDescriptor { label: string | null; }
+
 export struct GPUBindGroupEntry {
 	binding: int32;
 	buffer: GPUBuffer;
@@ -391,6 +408,25 @@ function stopOn(backend: string, message: string): void {
 export function stopOnUnportedShaderModule(backend: string, descriptor: GPUShaderModuleDescriptor): void {
 	if (descriptor.computeCode != "") { stopOn(backend, `GPUShaderModuleDescriptor.computeCode is not ported to ${backend} yet`); }
 	for (let i = 0; i < 24; i++) {
+		const kind: string = descriptor.bindings[i].kind;
+		if (kind == "storage-buffer" || kind == "storage-texture") {
+			stopOn(backend, `GPUShaderBinding.kind '${kind}' is not ported to ${backend} yet`);
+		}
+		const stage: string = descriptor.bindings[i].stage;
+		if (stage == "compute") { stopOn(backend, `GPUShaderBinding.stage 'compute' is not ported to ${backend} yet`); }
+	}
+	stopOnUnportedShaderBindings(backend, descriptor);
+	if (backend == "gl") { return; }
+	for (let i = 0; i < 24; i++) {
+		const viewDimension: string = descriptor.bindings[i].viewDimension;
+		if (viewDimension != "" && viewDimension != "2d") {
+			stopOn(backend, `GPUShaderBinding.viewDimension '${viewDimension}' is not ported to ${backend} yet`);
+		}
+	}
+}
+
+export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUShaderModuleDescriptor): void {
+	for (let i = 0; i < 24; i++) {
 		const b = descriptor.bindings[i];
 		const sampleType: string = b.sampleType;
 		if (sampleType != "" && sampleType != "float" && sampleType != "unfilterable-float") {
@@ -398,10 +434,6 @@ export function stopOnUnportedShaderModule(backend: string, descriptor: GPUShade
 		}
 		const samplerType: string = b.samplerType;
 		if (samplerType == "comparison") { stopOn(backend, `GPUShaderBinding.samplerType 'comparison' is not ported to ${backend} yet`); }
-		const viewDimension: string = b.viewDimension;
-		if (viewDimension != "" && viewDimension != "2d") {
-			stopOn(backend, `GPUShaderBinding.viewDimension '${viewDimension}' is not ported to ${backend} yet`);
-		}
 		if (b.multisampled) { stopOn(backend, `GPUShaderBinding.multisampled is not ported to ${backend} yet`); }
 	}
 }

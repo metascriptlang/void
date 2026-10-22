@@ -11,6 +11,10 @@ import {
 	GPUCommandBuffer,
 	GPUColor,
 	GPUCommandEncoder,
+	GPUComputePassDescriptor,
+	GPUComputePassEncoder,
+	GPUComputePipeline,
+	GPUComputePipelineDescriptor,
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
@@ -73,6 +77,10 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	return backend.createRenderPipeline(descriptor);
 }
 
+@inline export function createComputePipeline(this self: GPUDevice, descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
+	return backend.createComputePipeline(descriptor);
+}
+
 @inline export function createBindGroup(this self: GPUDevice, descriptor: GPUBindGroupDescriptor): GPUBindGroup {
 	return backend.createBindGroup(descriptor);
 }
@@ -89,6 +97,11 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	return backend.getBindGroupLayout(self, index);
 }
 
+@inline export function getBindGroupLayout(this self: GPUComputePipeline, index: int32): GPUBindGroupLayout {
+	return backend.getBindGroupLayout({ id: self.id }, index);
+}
+
+@inline export function destroy(this self: GPUComputePipeline): void { backend.destroyRenderPipeline({ id: self.id }); }
 @inline export function destroy(this self: GPUBuffer): void { backend.destroyBuffer(self); }
 @inline export function destroy(this self: GPUTexture): void { backend.destroyTexture(self); }
 @inline export function destroy(this self: GPUTextureView): void { backend.destroyView(self); }
@@ -125,6 +138,28 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function beginRenderPass(this self: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
 	return backend.beginRenderPass(self, descriptor);
 }
+
+@inline export function beginComputePass(this self: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
+	return backend.beginComputePass(self, descriptor);
+}
+
+@inline export function setPipeline(this self: GPUComputePassEncoder, pipeline: GPUComputePipeline): void {
+	backend.setComputePipeline(pipeline);
+}
+
+@inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
+}
+
+@inline export function dispatchWorkgroups(this self: GPUComputePassEncoder, x: int32, y: int32, z: int32): void {
+	backend.dispatchWorkgroups(x, y, z);
+}
+
+@inline export function dispatchWorkgroupsIndirect(this self: GPUComputePassEncoder, buffer: GPUBuffer, offset: int64): void {
+	backend.dispatchWorkgroupsIndirect(buffer, offset);
+}
+
+@inline export function end(this self: GPUComputePassEncoder): void { backend.endComputePass(); }
 
 @inline export function copyBufferToBuffer(
 	this self: GPUCommandEncoder,
