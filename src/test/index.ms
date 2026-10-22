@@ -92,6 +92,7 @@ import "./storeCheck";
 import "./closeCheck";
 import "./textureCheck";
 import "./textureMipCheck";
+import "./pbrResponseCheck";
 import "./imageDecodeCheck";
 import "./animationSheetCheck";
 import "./scene3dCheck";
