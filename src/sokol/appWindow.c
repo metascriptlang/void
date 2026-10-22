@@ -5,6 +5,8 @@
 #include "../platform/web/window.h"
 #elif defined(__APPLE__)
 #include "iosApp.h"
+#elif defined(__ANDROID__)
+#include "androidApp.h"
 #elif defined(__linux__)
 #include "../platform/linux/window.h"
 #else
@@ -127,6 +129,10 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	e.frameCount = voidIosFrameCount();
 	e.framebufferWidth = voidIosWidth();
 	e.framebufferHeight = voidIosHeight();
+#elif defined(__ANDROID__)
+	e.frameCount = voidAndroidFrameCount();
+	e.framebufferWidth = voidAndroidWidth();
+	e.framebufferHeight = voidAndroidHeight();
 #elif defined(__linux__)
 	e.frameCount = voidLinuxFrameCount();
 	e.framebufferWidth = voidLinuxWidth();
@@ -152,7 +158,7 @@ void voidSetWindowTitle(const char *title) {
 	s_titleSet = true;
 #if defined(__EMSCRIPTEN__)
 	if (voidWebValid()) voidWebSetTitle(s_title);
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(__ANDROID__)
 #elif defined(__linux__)
 	if (voidLinuxValid()) voidLinuxSetTitle(s_title);
 #else
@@ -165,6 +171,22 @@ int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 
 #if defined(__EMSCRIPTEN__)
 #define PLATFORM(name) voidWeb##name
+#elif defined(__ANDROID__)
+#define PLATFORM(name) voidAndroid##name
+__attribute__((noreturn)) static void notPortedAndroid(const char *feature) { fail("%s is not ported to Android yet (src/sokol/appWindow.c)", feature); }
+static void voidAndroidCancelQuit(void) { notPortedAndroid("voidCancelQuit"); }
+static void voidAndroidSetClipboard(const char *utf8) { (void)utf8; notPortedAndroid("the clipboard"); }
+static const char *voidAndroidClipboard(void) { notPortedAndroid("the clipboard"); }
+static void voidAndroidSetCursor(int cursor) { (void)cursor; notPortedAndroid("the mouse cursor"); }
+static int voidAndroidCursor(void) { notPortedAndroid("the mouse cursor"); }
+static void voidAndroidShowMouse(bool shown) { (void)shown; notPortedAndroid("showing and hiding the mouse"); }
+static bool voidAndroidMouseShown(void) { notPortedAndroid("showing and hiding the mouse"); }
+static void voidAndroidLockMouse(bool locked) { (void)locked; notPortedAndroid("the mouse lock"); }
+static bool voidAndroidMouseLocked(void) { notPortedAndroid("the mouse lock"); }
+static void voidAndroidToggleFullscreen(void) { notPortedAndroid("fullscreen"); }
+static bool voidAndroidIsFullscreen(void) { notPortedAndroid("fullscreen"); }
+static int voidAndroidDroppedCount(void) { notPortedAndroid("dropped files"); }
+static const char *voidAndroidDroppedPath(int i) { (void)i; notPortedAndroid("dropped files"); }
 #elif defined(__linux__)
 #define PLATFORM(name) voidLinux##name
 #elif defined(__APPLE__)

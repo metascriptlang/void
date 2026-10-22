@@ -2,6 +2,8 @@
 #define VOID_SOKOL_ANDROID_APP_H
 
 #include <jni.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 // The Android app driver (bridgeAndroidApp.c), driven by the shell's NativeApp calls on the main
 // thread; androidAppEntry.c forwards them. start runs MsMain, whose main_ must call voidRun.
@@ -21,5 +23,13 @@ jobject voidAndroidActivity(void);
 int voidAndroidAppFbWidth(void);
 int voidAndroidAppFbHeight(void);
 float voidAndroidAppDpiScale(void);
+
+bool voidAndroidValid(void);
+int voidAndroidWidth(void);
+int voidAndroidHeight(void);
+uint64_t voidAndroidFrameCount(void);
+double voidAndroidFrameDuration(void);
+// Finishes the activity, which the shell then destroys.
+void voidAndroidRequestQuit(void);
 
 #endif

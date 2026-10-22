@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../platform/frameTiming.h"
 #include "bridge.h"
 #include "views.h"
 #include "appWindow.h"
@@ -30,12 +31,13 @@ static int s_fbW = 1, s_fbH = 1;
 static float s_scale = 1.0f;
 static uint32_t s_modifiers;
 static int s_textInput;
+static VoidFrameTiming s_timing;
 
-uint64_t sapp_frame_count(void) { return s_frameCount; }
-int sapp_width(void) { return s_fbW; }
-int sapp_height(void) { return s_fbH; }
-bool sapp_isvalid(void) { return s_running != 0; }
-void sapp_set_window_title(const char *title) { (void)title; }
+uint64_t voidAndroidFrameCount(void) { return s_frameCount; }
+int voidAndroidWidth(void) { return s_fbW; }
+int voidAndroidHeight(void) { return s_fbH; }
+bool voidAndroidValid(void) { return s_running != 0; }
+double voidAndroidFrameDuration(void) { return s_timing.smoothDt; }
 
 static void check(JNIEnv *e, const char *op) {
 	if (!(*e)->ExceptionCheck(e)) return;
@@ -43,98 +45,98 @@ static void check(JNIEnv *e, const char *op) {
 	voidFail("Android app driver: %s threw", op);
 }
 
-static sapp_event makeEvent(sapp_event_type type) {
-	sapp_event e;
+static VoidAppEvent makeEvent(VoidAppEventType type) {
+	VoidAppEvent e;
 	memset(&e, 0, sizeof e);
 	e.type = type;
-	e.frame_count = s_frameCount;
+	e.frameCount = s_frameCount;
 	e.modifiers = s_modifiers;
-	e.framebuffer_width = s_fbW;
-	e.framebuffer_height = s_fbH;
-	e.window_width = (int)(s_fbW / s_scale);
-	e.window_height = (int)(s_fbH / s_scale);
+	e.framebufferWidth = s_fbW;
+	e.framebufferHeight = s_fbH;
+	e.windowWidth = (int)(s_fbW / s_scale);
+	e.windowHeight = (int)(s_fbH / s_scale);
 	return e;
 }
 
-static void send(sapp_event_type type) {
-	sapp_event e = makeEvent(type);
-	voidAppEventDeliver(&e);
+static void send(VoidAppEventType type) {
+	VoidAppEvent e = makeEvent(type);
+	voidAppDeliver(&e);
 }
 
-static void sendKey(sapp_event_type type, sapp_keycode code, bool repeat) {
-	sapp_event e = makeEvent(type);
-	e.key_code = code;
-	e.key_repeat = repeat;
-	voidAppEventDeliver(&e);
+static void sendKey(VoidAppEventType type, VoidKeyCode code, bool repeat) {
+	VoidAppEvent e = makeEvent(type);
+	e.keyCode = code;
+	e.keyRepeat = repeat;
+	voidAppDeliver(&e);
 }
 
-static void sendTap(sapp_keycode code) {
-	sendKey(SAPP_EVENTTYPE_KEY_DOWN, code, false);
-	sendKey(SAPP_EVENTTYPE_KEY_UP, code, false);
+static void sendTap(VoidKeyCode code) {
+	sendKey(VOID_EVENT_KEY_DOWN, code, false);
+	sendKey(VOID_EVENT_KEY_UP, code, false);
 }
 
-static sapp_keycode keyOfAndroid(int code) {
-	if (code >= 29 && code <= 54) return (sapp_keycode)(SAPP_KEYCODE_A + (code - 29));
-	if (code >= 7 && code <= 16) return (sapp_keycode)(SAPP_KEYCODE_0 + (code - 7));
-	if (code >= 131 && code <= 142) return (sapp_keycode)(SAPP_KEYCODE_F1 + (code - 131));
+static VoidKeyCode keyOfAndroid(int code) {
+	if (code >= 29 && code <= 54) return (VoidKeyCode)(VOID_KEY_A + (code - 29));
+	if (code >= 7 && code <= 16) return (VoidKeyCode)(VOID_KEY_0 + (code - 7));
+	if (code >= 131 && code <= 142) return (VoidKeyCode)(VOID_KEY_F1 + (code - 131));
 	switch (code) {
-		case 19: return SAPP_KEYCODE_UP;
-		case 20: return SAPP_KEYCODE_DOWN;
-		case 21: return SAPP_KEYCODE_LEFT;
-		case 22: return SAPP_KEYCODE_RIGHT;
-		case 55: return SAPP_KEYCODE_COMMA;
-		case 56: return SAPP_KEYCODE_PERIOD;
-		case 57: return SAPP_KEYCODE_LEFT_ALT;
-		case 58: return SAPP_KEYCODE_RIGHT_ALT;
-		case 59: return SAPP_KEYCODE_LEFT_SHIFT;
-		case 60: return SAPP_KEYCODE_RIGHT_SHIFT;
-		case 61: return SAPP_KEYCODE_TAB;
-		case 62: return SAPP_KEYCODE_SPACE;
-		case 66: return SAPP_KEYCODE_ENTER;
-		case 67: return SAPP_KEYCODE_BACKSPACE;
-		case 68: return SAPP_KEYCODE_GRAVE_ACCENT;
-		case 69: return SAPP_KEYCODE_MINUS;
-		case 70: return SAPP_KEYCODE_EQUAL;
-		case 71: return SAPP_KEYCODE_LEFT_BRACKET;
-		case 72: return SAPP_KEYCODE_RIGHT_BRACKET;
-		case 73: return SAPP_KEYCODE_BACKSLASH;
-		case 74: return SAPP_KEYCODE_SEMICOLON;
-		case 75: return SAPP_KEYCODE_APOSTROPHE;
-		case 76: return SAPP_KEYCODE_SLASH;
-		case 92: return SAPP_KEYCODE_PAGE_UP;
-		case 93: return SAPP_KEYCODE_PAGE_DOWN;
-		case 111: return SAPP_KEYCODE_ESCAPE;
-		case 112: return SAPP_KEYCODE_DELETE;
-		case 113: return SAPP_KEYCODE_LEFT_CONTROL;
-		case 114: return SAPP_KEYCODE_RIGHT_CONTROL;
-		case 115: return SAPP_KEYCODE_CAPS_LOCK;
-		case 117: return SAPP_KEYCODE_LEFT_SUPER;
-		case 118: return SAPP_KEYCODE_RIGHT_SUPER;
-		case 122: return SAPP_KEYCODE_HOME;
-		case 123: return SAPP_KEYCODE_END;
-		case 124: return SAPP_KEYCODE_INSERT;
-		case 160: return SAPP_KEYCODE_KP_ENTER;
-		default: return SAPP_KEYCODE_INVALID;
+		case 19: return VOID_KEY_UP;
+		case 20: return VOID_KEY_DOWN;
+		case 21: return VOID_KEY_LEFT;
+		case 22: return VOID_KEY_RIGHT;
+		case 55: return VOID_KEY_COMMA;
+		case 56: return VOID_KEY_PERIOD;
+		case 57: return VOID_KEY_LEFT_ALT;
+		case 58: return VOID_KEY_RIGHT_ALT;
+		case 59: return VOID_KEY_LEFT_SHIFT;
+		case 60: return VOID_KEY_RIGHT_SHIFT;
+		case 61: return VOID_KEY_TAB;
+		case 62: return VOID_KEY_SPACE;
+		case 66: return VOID_KEY_ENTER;
+		case 67: return VOID_KEY_BACKSPACE;
+		case 68: return VOID_KEY_GRAVE_ACCENT;
+		case 69: return VOID_KEY_MINUS;
+		case 70: return VOID_KEY_EQUAL;
+		case 71: return VOID_KEY_LEFT_BRACKET;
+		case 72: return VOID_KEY_RIGHT_BRACKET;
+		case 73: return VOID_KEY_BACKSLASH;
+		case 74: return VOID_KEY_SEMICOLON;
+		case 75: return VOID_KEY_APOSTROPHE;
+		case 76: return VOID_KEY_SLASH;
+		case 92: return VOID_KEY_PAGE_UP;
+		case 93: return VOID_KEY_PAGE_DOWN;
+		case 111: return VOID_KEY_ESCAPE;
+		case 112: return VOID_KEY_DELETE;
+		case 113: return VOID_KEY_LEFT_CONTROL;
+		case 114: return VOID_KEY_RIGHT_CONTROL;
+		case 115: return VOID_KEY_CAPS_LOCK;
+		case 117: return VOID_KEY_LEFT_SUPER;
+		case 118: return VOID_KEY_RIGHT_SUPER;
+		case 122: return VOID_KEY_HOME;
+		case 123: return VOID_KEY_END;
+		case 124: return VOID_KEY_INSERT;
+		case 160: return VOID_KEY_KP_ENTER;
+		default: return VOID_KEY_INVALID;
 	}
 }
 
 // KeyEvent.META_SHIFT_ON, META_ALT_ON, META_CTRL_ON and META_META_ON.
 static uint32_t modifiersOf(int meta) {
 	uint32_t m = 0;
-	if (meta & 0x1) m |= SAPP_MODIFIER_SHIFT;
-	if (meta & 0x2) m |= SAPP_MODIFIER_ALT;
-	if (meta & 0x1000) m |= SAPP_MODIFIER_CTRL;
-	if (meta & 0x10000) m |= SAPP_MODIFIER_SUPER;
+	if (meta & 0x1) m |= VOID_MODIFIER_SHIFT;
+	if (meta & 0x2) m |= VOID_MODIFIER_ALT;
+	if (meta & 0x1000) m |= VOID_MODIFIER_CTRL;
+	if (meta & 0x10000) m |= VOID_MODIFIER_SUPER;
 	return m;
 }
 
-static int chordHeld(void) { return (s_modifiers & (SAPP_MODIFIER_CTRL | SAPP_MODIFIER_SUPER)) != 0; }
+static int chordHeld(void) { return (s_modifiers & (VOID_MODIFIER_CTRL | VOID_MODIFIER_SUPER)) != 0; }
 
 static void sendChar(uint32_t codepoint) {
 	if (codepoint < 0x20 || codepoint == 0x7F) return;
-	sapp_event e = makeEvent(SAPP_EVENTTYPE_CHAR);
-	e.char_code = codepoint;
-	voidAppEventDeliver(&e);
+	VoidAppEvent e = makeEvent(VOID_EVENT_CHAR);
+	e.charCode = codepoint;
+	voidAppDeliver(&e);
 }
 
 static size_t putUtf8(char *out, uint32_t c) {
@@ -193,11 +195,11 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeCommit(JNIE
 	size_t count;
 	textOf(e, text, utf8, codepoints, &count);
 	if (count == 1 && (codepoints[0] == '\n' || codepoints[0] == '\r')) {
-		sendTap(SAPP_KEYCODE_ENTER);
+		sendTap(VOID_KEY_ENTER);
 		return;
 	}
 	if (count == 1 && codepoints[0] == '\t') {
-		sendTap(SAPP_KEYCODE_TAB);
+		sendTap(VOID_KEY_TAB);
 		return;
 	}
 	commit(utf8, codepoints, count);
@@ -217,8 +219,8 @@ JNIEXPORT jboolean JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeKey(JNI
 	jboolean down, jint keyCode, jint metaState, jint repeat, jint unicode) {
 	(void)e; (void)self;
 	s_modifiers = modifiersOf(metaState);
-	const sapp_keycode code = keyOfAndroid(keyCode);
-	if (code != SAPP_KEYCODE_INVALID) sendKey(down ? SAPP_EVENTTYPE_KEY_DOWN : SAPP_EVENTTYPE_KEY_UP, code, repeat > 0);
+	const VoidKeyCode code = keyOfAndroid(keyCode);
+	if (code != VOID_KEY_INVALID) sendKey(down ? VOID_EVENT_KEY_DOWN : VOID_EVENT_KEY_UP, code, repeat > 0);
 	const int typed = down && unicode >= 0x20 && unicode != 0x7F && !chordHeld();
 	if (typed) {
 		char utf8[5];
@@ -226,34 +228,34 @@ JNIEXPORT jboolean JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeKey(JNI
 		utf8[putUtf8(utf8, c)] = '\0';
 		commit(utf8, &c, 1);
 	}
-	return code != SAPP_KEYCODE_INVALID || typed;
+	return code != VOID_KEY_INVALID || typed;
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeTouch(JNIEnv *e, jobject self,
 	jint phase, jlongArray ids, jfloatArray xs, jfloatArray ys, jint changed) {
 	(void)self;
-	static const sapp_event_type types[] = {
-		SAPP_EVENTTYPE_TOUCHES_BEGAN, SAPP_EVENTTYPE_TOUCHES_MOVED, SAPP_EVENTTYPE_TOUCHES_ENDED, SAPP_EVENTTYPE_TOUCHES_CANCELLED,
+	static const VoidAppEventType types[] = {
+		VOID_EVENT_TOUCHES_BEGAN, VOID_EVENT_TOUCHES_MOVED, VOID_EVENT_TOUCHES_ENDED, VOID_EVENT_TOUCHES_CANCELLED,
 	};
 	if (phase < 0 || phase > 3) voidFail("Android app driver: touch phase %d is not one of VoidAppView's four", phase);
-	sapp_event ev = makeEvent(types[phase]);
+	VoidAppEvent ev = makeEvent(types[phase]);
 	jsize n = (*e)->GetArrayLength(e, ids);
-	if (n > SAPP_MAX_TOUCHPOINTS) n = SAPP_MAX_TOUCHPOINTS;
+	if (n > VOID_MAX_TOUCHPOINTS) n = VOID_MAX_TOUCHPOINTS;
 	jlong *id = (*e)->GetLongArrayElements(e, ids, NULL);
 	jfloat *x = (*e)->GetFloatArrayElements(e, xs, NULL);
 	jfloat *y = (*e)->GetFloatArrayElements(e, ys, NULL);
 	for (jsize i = 0; i < n; i++) {
-		sapp_touchpoint *p = &ev.touches[i];
+		VoidTouchPoint *p = &ev.touches[i];
 		p->identifier = (uintptr_t)id[i];
-		p->pos_x = x[i];
-		p->pos_y = y[i];
+		p->x = x[i];
+		p->y = y[i];
 		p->changed = changed < 0 || changed == i;
 	}
-	ev.num_touches = n;
+	ev.touchCount = n;
 	(*e)->ReleaseLongArrayElements(e, ids, id, JNI_ABORT);
 	(*e)->ReleaseFloatArrayElements(e, xs, x, JNI_ABORT);
 	(*e)->ReleaseFloatArrayElements(e, ys, y, JNI_ABORT);
-	voidAppEventDeliver(&ev);
+	voidAppDeliver(&ev);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeInsets(JNIEnv *e, jobject self,
@@ -263,13 +265,13 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeInsets(JNIE
 		right != voidSafeAreaRight() || keyboard != voidKeyboardHeight();
 	voidAppSetSafeArea((float)top, (float)left, (float)bottom, (float)right);
 	voidAppSetKeyboard((float)keyboard);
-	if (changed && s_viewId != 0) send(SAPP_EVENTTYPE_RESIZED);
+	if (changed && s_viewId != 0) send(VOID_EVENT_RESIZED);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeFocus(JNIEnv *e, jobject self, jboolean focused) {
 	(void)e; (void)self;
 	if (!focused) s_modifiers = 0;
-	if (s_viewId != 0) send(focused ? SAPP_EVENTTYPE_FOCUSED : SAPP_EVENTTYPE_UNFOCUSED);
+	if (s_viewId != 0) send(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeSurface(JNIEnv *e, jobject self, jobject surface, jint width, jint height) {
@@ -283,7 +285,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeSurface(JNI
 	} else {
 		voidViewResize(s_viewId, s_fbW, s_fbH, s_scale);
 	}
-	send(SAPP_EVENTTYPE_RESIZED);
+	send(VOID_EVENT_RESIZED);
 }
 
 static void dropView(void) {
@@ -302,6 +304,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeFrame(JNIEn
 	(void)e; (void)self;
 	if (s_viewId == 0) return;
 	s_frameCount++;
+	voidFrameTimingUpdate(&s_timing, 0.0);
 	voidViewFrame(s_viewId);
 }
 
@@ -388,14 +391,14 @@ void voidAndroidAppPause(JNIEnv *e) {
 	if (!s_view) return;
 	(*e)->CallVoidMethod(e, s_view, s_setRunning, JNI_FALSE);
 	check(e, "VoidAppView.setRunning");
-	if (s_frameCount > 0) send(SAPP_EVENTTYPE_SUSPENDED);
+	if (s_frameCount > 0) send(VOID_EVENT_SUSPENDED);
 }
 
 void voidAndroidAppResume(JNIEnv *e) {
 	if (!s_view) return;
 	(*e)->CallVoidMethod(e, s_view, s_setRunning, JNI_TRUE);
 	check(e, "VoidAppView.setRunning");
-	if (s_frameCount > 0) send(SAPP_EVENTTYPE_RESUMED);
+	if (s_frameCount > 0) send(VOID_EVENT_RESUMED);
 }
 
 void voidAndroidAppDestroy(JNIEnv *e) {
@@ -415,6 +418,13 @@ JNIEnv *voidAndroidEnv(void) {
 	return e;
 }
 
+void voidAndroidRequestQuit(void) {
+	JNIEnv *e = voidAndroidEnv();
+	jclass cls = (*e)->GetObjectClass(e, s_activity);
+	(*e)->CallVoidMethod(e, s_activity, (*e)->GetMethodID(e, cls, "finish", "()V"));
+	check(e, "Activity.finish");
+}
+
 jobject voidAndroidClassLoader(void) { return s_loader; }
 jobject voidAndroidActivity(void) { return s_activity; }
 
@@ -425,6 +435,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	if (!s_started) voidFail("voidRun: an Android app runs from NativeApp.start; this process has no app shell");
 	if (!highDpi) voidFail("voidRunConfigured: highDpi 0 is not supported by the Android app driver");
 	s_running = 1;
+	voidFrameTimingInit(&s_timing);
 	s_reqW = w;
 	s_reqH = h;
 	voidEmbedRegister(init, frame);
