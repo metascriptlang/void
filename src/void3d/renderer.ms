@@ -98,13 +98,8 @@ import {
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
-import { DirShadowMap, castsAll, drawShadows, sceneTexture } from "./dirShadowMap";
-import {
-	shadowedSpotCount,
-	firstShadowedSpot,
-	spotShadowView,
-	sunIsLit,
-} from "./spotShadow";
+import { DirShadowMap, castsAll, drawShadows, carrySpot, sceneTexture } from "./dirShadowMap";
+import { shadowedSpotCount, firstShadowedSpot, spotShadowView } from "./spotShadow";
 
 export interface Renderer {
 	readonly context: DrawContext;
@@ -143,6 +138,7 @@ export interface Renderer {
 	// Per item of the frame, the key drawn for its material's.
 	drawn: Vec<ProgramKey>;
 	shadow: DirShadowMap | null;
+	spotShadow: DirShadowMap | null;
 	screenMesh: MeshId;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
@@ -179,13 +175,12 @@ export enum RendererError {
 	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
 	// toon term there, and drawing it as a point would light the wrong place.
 	ShapedLightPreset,
-	// Two spot slots of the light block cast: the frame's one shadow map holds one light's.
+	// Two spot slots of the light block cast: the frame has one spot shadow map.
 	TooManyShadowedSpots,
-	// The map is attached and a lit sun and a shadowing spot both want it; the sun would go
-	// unshadowed with no word, and it is the app's choice which light the map serves.
-	SpotShadowSharesSunMap,
 	// The shadowing spot's slot does not make a camera (lightShape.ms perspectiveCamera).
 	BadShadowSpot,
+	// A spot slot asks to cast and no spot map is attached (attachSpotShadow).
+	SpotShadowUnattached,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -262,6 +257,7 @@ export function createDrawing(
 		preset: preset,
 		drawn: [],
 		shadow: null,
+		spotShadow: null,
 		screenMesh: screen.value,
 		generation: 0,
 		changed: true,
@@ -292,11 +288,44 @@ export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): v
 	if (renderer.closed) { stopOnClosed("attachShadow"); }
 	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachShadow"); }
+	if (shadow !== null && shadow.spot) { stopOnWrongShadow("attachShadow", "a spot"); }
 	renderer.shadow = shadow;
-	renderer.sceneGlobals = shadow !== null ?
-		[renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, shadow.shadowBlock] :
-		[renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock];
+	renderer.sceneGlobals = shadowGlobals(renderer);
 	renderer.changed = true;
+}
+
+export function attachSpotShadow(renderer: Renderer, shadow: DirShadowMap | null): void {
+	if (renderer.closed) { stopOnClosed("attachSpotShadow"); }
+	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
+	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachSpotShadow"); }
+	if (shadow !== null && !shadow.spot) { stopOnWrongShadow("attachSpotShadow", "a sun"); }
+	renderer.spotShadow = shadow;
+	renderer.sceneGlobals = shadowGlobals(renderer);
+	renderer.changed = true;
+}
+
+function castError(error: ProgramError): RendererError {
+	return error == ProgramError.BlockShort ? RendererError.CasterBlock : RendererError.ProgramNotCast;
+}
+
+function stopOnWrongShadow(call: string, found: string): void {
+	console.log(`void3d: ${call} with ${found} shadow map; DirShadowMap.create makes the sun's ` +
+		"and createSpot the spot's");
+	unreachable;
+}
+
+// One shadow block reaches the programs, the sun's with the spot's half carried in
+// (dirShadowMap.ms carrySpot); with no sun map it is the spot map's own, whose sun half is zero.
+function shadowGlobals(renderer: Renderer): Vec<UniformBlock> {
+	const sun: DirShadowMap | null = renderer.shadow;
+	const spot: DirShadowMap | null = renderer.spotShadow;
+	if (sun !== null) {
+		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, sun.shadowBlock];
+	}
+	if (spot !== null) {
+		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, spot.shadowBlock];
+	}
+	return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock];
 }
 
 // h3d.scene.Scene.setElapsedTime: what the next beginFrame adds to the time.
@@ -393,8 +422,10 @@ export function beginFrame(
 		return Result.err(meshError(context, renderer.screenMesh));
 	}
 	const shadow: DirShadowMap | null = renderer.shadow;
+	const spotShadow: DirShadowMap | null = renderer.spotShadow;
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
-	const shadowed: boolean = shadow !== null;
+	if (spotShadow !== null && spotShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
+	const shadowed: boolean = shadow !== null || spotShadow !== null;
 	for (const item of items) {
 		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
 		if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
@@ -434,10 +465,11 @@ export function beginFrame(
 	}
 	if (shadow !== null) {
 		const cast: Result<int32, ProgramError> = shadow.castsAll(items);
-		if (!cast.ok) {
-			return Result.err(cast.error == ProgramError.BlockShort ?
-				RendererError.CasterBlock : RendererError.ProgramNotCast);
-		}
+		if (!cast.ok) { return Result.err(castError(cast.error)); }
+	}
+	if (spotShadow !== null) {
+		const cast: Result<int32, ProgramError> = spotShadow.castsAll(items);
+		if (!cast.ok) { return Result.err(castError(cast.error)); }
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
@@ -454,12 +486,11 @@ export function beginFrame(
 	}
 	if (shadowedSpotCount(lights) > 1) { return Result.err(RendererError.TooManyShadowedSpots); }
 	const shadowedSpot: int32 = firstShadowedSpot(lights);
-	if (shadowedSpot >= 0) {
-		// PENDING3D: spot-shadow-single-map
-		if (shadow !== null && sunIsLit(lights)) {
-			return Result.err(RendererError.SpotShadowSharesSunMap);
-		}
-		if (!spotShadowView(lights, shadowedSpot).ok) { return Result.err(RendererError.BadShadowSpot); }
+	if (shadowedSpot >= 0 && !spotShadowView(lights, shadowedSpot).ok) {
+		return Result.err(RendererError.BadShadowSpot);
+	}
+	if (shadowedSpot >= 0 && spotShadow === null) {
+		return Result.err(RendererError.SpotShadowUnattached);
 	}
 	const cameraWritten: Result<int32, UniformError> =
 		writeUniforms(context, renderer.cameraBlock, camera);
@@ -532,14 +563,32 @@ export function drawShadowPass(
 ): int32 {
 	if (renderer.closed) { stopOnClosed("drawShadowPass"); }
 	const shadow: DirShadowMap | null = renderer.shadow;
-	if (shadow === null) { return 0; }
-	return drawShadows(shadow, items, camera, lights);
+	const spotShadow: DirShadowMap | null = renderer.spotShadow;
+	let casters: int32 = 0;
+	if (shadow !== null) { casters = drawShadows(shadow, items, camera, lights); }
+	if (spotShadow !== null) { casters = casters + drawShadows(spotShadow, items, camera, lights); }
+	if (shadow !== null) { carrySpot(shadow, spotShadow); }
+	return casters;
 }
 
+// A frame with one of the two maps binds it at both slots: the absent light's half of the
+// block is zero, so its lookup answers lit before it reads the map.
 function sceneTextureOf(renderer: Renderer): SceneTexture {
 	const shadow: DirShadowMap | null = renderer.shadow;
-	if (shadow === null) { return NO_SCENE_TEXTURE; }
-	return shadow.sceneTexture();
+	const spotShadow: DirShadowMap | null = renderer.spotShadow;
+	if (shadow !== null) {
+		const sun: SceneTexture = shadow.sceneTexture();
+		if (spotShadow === null) {
+			return { view: sun.view, sampler: sun.sampler, spotView: sun.view, spotSampler: sun.sampler };
+		}
+		const spot: SceneTexture = spotShadow.sceneTexture();
+		return { view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler };
+	}
+	if (spotShadow !== null) {
+		const spot: SceneTexture = spotShadow.sceneTexture();
+		return { view: spot.view, sampler: spot.sampler, spotView: spot.view, spotSampler: spot.sampler };
+	}
+	return NO_SCENE_TEXTURE;
 }
 
 // fwd.Renderer's default, alpha and additive passes, into the current pass (`targets` is

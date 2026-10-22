@@ -36,6 +36,8 @@ import {
 	MATERIAL_ALPHA_KILL,
 	SHADOW_VIEW_SLOT,
 	SHADOW_SAMPLER_SLOT,
+	SPOT_SHADOW_VIEW_SLOT,
+	SPOT_SHADOW_SAMPLER_SLOT,
 	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
@@ -1638,13 +1640,16 @@ function stopOnLongBlock(program: ProgramKey, block: UniformBlock, declared: int
 	unreachable;
 }
 
-// An hxsl global texture (Heaps' `shadow.map`), bound past a material's slots.
+// An hxsl global texture (Heaps' `shadow.map`) of the sun and of the shadowing spot, bound past a
+// material's slots.
 export struct SceneTexture {
 	view: uint32;
 	sampler: uint32;
+	spotView: uint32;
+	spotSampler: uint32;
 }
 
-export const NO_SCENE_TEXTURE: SceneTexture = { view: 0, sampler: 0 };
+export const NO_SCENE_TEXTURE: SceneTexture = { view: 0, sampler: 0, spotView: 0, spotSampler: 0 };
 
 function bindItem(
 	context: DrawContext,
@@ -1675,6 +1680,8 @@ function bindItem(
 	}
 	context.bindings[GPU3D_BINDING_VIEW + SHADOW_VIEW_SLOT] = scene.view;
 	context.bindings[GPU3D_BINDING_SAMPLER + SHADOW_SAMPLER_SLOT] = scene.sampler;
+	context.bindings[GPU3D_BINDING_VIEW + SPOT_SHADOW_VIEW_SLOT] = scene.spotView;
+	context.bindings[GPU3D_BINDING_SAMPLER + SPOT_SHADOW_SAMPLER_SLOT] = scene.spotSampler;
 	applyBindings(context.bindings);
 }
 

@@ -47,6 +47,12 @@ import {
 	MATERIAL_ALPHA_KILL,
 	METAL_ROUGH_VIEW_SLOT,
 	OCCLUSION_VIEW_SLOT,
+	SHADOW_UNIFORM_SLOT,
+	SHADOW_UNIFORM_LENGTH,
+	SHADOW_VIEW_SLOT,
+	SHADOW_SAMPLER_SLOT,
+	SPOT_SHADOW_VIEW_SLOT,
+	SPOT_SHADOW_SAMPLER_SLOT,
 	withPbr,
 	withPbrMaps,
 	withShadowed,
@@ -55,6 +61,7 @@ import {
 	bits,
 } from "../void3d/gpu3d";
 import { UNIFORM_SLOTS } from "../gpu/door";
+import { GPU3D_BINDING_VIEWS, GPU3D_BINDING_SAMPLERS } from "../void3d/gpu3d.h";
 import { RenderState, Blend, BlendMode, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import {
@@ -876,6 +883,30 @@ function bit(mask: uint32, slot: int32): boolean {
 	return (mask & ((1 as uint32) << (slot as uint32))) != 0;
 }
 
+test "a shadowed key reads the sun's map at view 4 and sampler 2, a core one the spot's at view 6 and sampler 3" {
+	let shadowedKeys: int32 = 0;
+	for (const key of everyKey()) {
+		if (!declares(key)) { continue; }
+		const views: uint32 = textureSlotMask(key);
+		const samplers: uint32 = samplerSlotMask(key);
+		assert (views >> (GPU3D_BINDING_VIEWS as uint32)) == 0;
+		assert (samplers >> (GPU3D_BINDING_SAMPLERS as uint32)) == 0;
+		const sun: boolean = bit(views, SHADOW_VIEW_SLOT);
+		const spot: boolean = sun && key.preset == Preset.Core;
+		assert sun == bit(samplers, SHADOW_SAMPLER_SLOT);
+		assert spot == bit(views, SPOT_SHADOW_VIEW_SLOT);
+		assert spot == bit(samplers, SPOT_SHADOW_SAMPLER_SLOT);
+		assert uniformBlockLength(key, SHADOW_UNIFORM_SLOT) == (sun ? SHADOW_UNIFORM_LENGTH : 0);
+		if (sun) {
+			assert key.shadowed;
+			shadowedKeys = shadowedKeys + 1;
+		}
+	}
+	assert shadowedKeys > 0;
+	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6;
+	assert SHADOW_SAMPLER_SLOT == 2 && SPOT_SHADOW_SAMPLER_SLOT == 3;
+}
+
 test "a moving key reads its program's block and the moving floats, and what its features sample" {
 	for (const program of [Program.LitTextured, Program.UnlitTextured]) {
 		const unlit: boolean = program == Program.UnlitTextured;
@@ -1149,7 +1180,7 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 		}
 	}
 	assert textureSlotMask(base) == 7 && samplerSlotMask(base) == 1;
-	assert textureSlotMask(base.withShadowed()) == 23;
+	assert textureSlotMask(base.withShadowed()) == 23 + 64;
 	assert textureSlotMask(tangent) == 39;
 	assert viewSlotOf(5) == METAL_ROUGH_VIEW_SLOT && viewSlotOf(6) == OCCLUSION_VIEW_SLOT;
 	assert METAL_ROUGH_VIEW_SLOT == 1 && OCCLUSION_VIEW_SLOT == 2;

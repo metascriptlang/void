@@ -690,8 +690,8 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.MeshWrite => PixelArtError.MeshWrite,
 		RendererError.ShapedLightPreset => PixelArtError.ShapedLight,
 		RendererError.TooManyShadowedSpots => PixelArtError.ShapedLight,
-		RendererError.SpotShadowSharesSunMap => PixelArtError.ShapedLight,
 		RendererError.BadShadowSpot => PixelArtError.ShapedLight,
+		RendererError.SpotShadowUnattached => PixelArtError.ShapedLight,
 	};
 }
 

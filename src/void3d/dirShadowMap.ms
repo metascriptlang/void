@@ -1,6 +1,8 @@
 // Port of h3d.pass.DirShadowMap as h3d.pass.DefaultShadowMap uses it (Dynamic mode, autoShrink,
 // SAMPLING_NONE): a depth-only pass from the directional light into a square target the caller
-// sizes, which every shadowed lit program samples (shader3d.ms dirShadowAt).
+// sizes, which every shadowed lit program samples (shader3d.ms dirShadowAt). The same map, made
+// with createSpot, is h3d.pass.SpotShadowMap's: the shadowing spot's own map and shadow block half
+// (shader3d.ms spotShadowAt).
 
 import { Vec3, Mat4, vec3, identity } from "../math/math3d";
 import {
@@ -13,10 +15,9 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	SHADOW_UNIFORM_SLOT,
 	SHADOW_UNIFORM_LENGTH,
+	SHADOW_SPOT_BASE,
 	SHADOW_BIAS,
 	SHADOW_OPACITY,
-	SHADOW_KIND,
-	SHADOW_KIND_SPOT,
 } from "./gpu3d";
 import {
 	PixelFormat,
@@ -57,6 +58,7 @@ export interface DirShadowMap {
 	context: DrawContext;
 	// opacity is Godot's shadow_opacity; Heaps' DefaultShadowMap tints by a colour instead.
 	size: int32;
+	spot: boolean;
 	bias: float32;
 	opacity: float32;
 	depthTarget: RenderTarget;
@@ -111,6 +113,18 @@ export function create(
 	context: DrawContext,
 	size: int32,
 ): Result<DirShadowMap, ShadowError> {
+	return buildMap(context, size, false);
+}
+
+export function createSpot(
+	this typeof DirShadowMap,
+	context: DrawContext,
+	size: int32,
+): Result<DirShadowMap, ShadowError> {
+	return buildMap(context, size, true);
+}
+
+function buildMap(context: DrawContext, size: int32, spot: boolean): Result<DirShadowMap, ShadowError> {
 	context.requireOpen("DirShadowMap.create");
 	if (size <= 0) { return Result.err(ShadowError.Size); }
 	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, SHADOW_UNIFORM_LENGTH];
@@ -126,6 +140,7 @@ export function create(
 	return Result.ok({
 		context: context,
 		size: size,
+		spot: spot,
 		bias: DEFAULT_SHADOW_BIAS,
 		opacity: 1.0,
 		depthTarget: RenderTarget.unallocated(PixelFormat.Depth, true),
@@ -263,8 +278,9 @@ function stopOnPassOpen(): void {
 	unreachable;
 }
 
-// DirShadowMap.draw, or SpotShadowMap.draw (SpotShadowMap.hx:107-171) when a spot of the light
-// block casts: both fill the one map, the spot's through its perspective view-projection.
+// DirShadowMap.draw, or SpotShadowMap.draw (SpotShadowMap.hx:107-171) for a map made with
+// createSpot: the shadowing spot's perspective view-projection, or a cleared map with no shadow
+// when no spot of the light block casts.
 export function drawShadows(
 	shadow: DirShadowMap,
 	items: Readonly<Span<DrawItem>>,
@@ -273,15 +289,7 @@ export function drawShadows(
 ): int32 {
 	if (shadow.closed) { stopOnClosed("drawShadows"); }
 	if (passState() != PassState.None) { stopOnPassOpen(); }
-	const spot: int32 = firstShadowedSpot(lights);
-	if (spot >= 0) {
-		const view: Result<CameraView, SpotShadowError> = spotShadowView(lights, spot);
-		if (!view.ok) {
-			console.log(`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`);
-			unreachable;
-		}
-		return drawSpotShadows(shadow, items, view.value);
-	}
+	if (shadow.spot) { return drawSpotShadows(shadow, items, lights); }
 	const context: DrawContext = shadow.context;
 	const basis: CameraBasis = lightBasis(vec3(lights[4], lights[5], lights[6]));
 	const cameraViewProj: Mat4 = {
@@ -304,17 +312,42 @@ export function drawShadows(
 		shadow.casters.count = 0;
 	}
 	shadow.viewProj = basis.makeCameraMatrix(vec3(0.0, 0.0, 0.0)) * box.projectionMatrix();
-	return drawCasters(shadow, items, basis, 0.0);
+	return drawCasters(shadow, items, basis, shadow.opacity);
 }
 
 function drawSpotShadows(
 	shadow: DirShadowMap,
 	items: Readonly<Span<DrawItem>>,
-	view: CameraView,
+	lights: Readonly<Span<float32>>,
 ): int32 {
+	const slot: int32 = firstShadowedSpot(lights);
+	if (slot < 0) {
+		shadow.casters.count = 0;
+		shadow.viewProj = identity();
+		return drawCasters(shadow, items, lightBasis(vec3(0.0, 0.0, 0.0)), 0.0);
+	}
+	const view: Result<CameraView, SpotShadowError> = spotShadowView(lights, slot);
+	if (!view.ok) {
+		console.log(`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`);
+		unreachable;
+	}
 	collectCasters(shadow.casters, items, shadow.context.materials);
-	shadow.viewProj = view.viewProj;
-	return drawCasters(shadow, items, view.basis, SHADOW_KIND_SPOT);
+	shadow.viewProj = view.value.viewProj;
+	return drawCasters(shadow, items, view.value.basis, shadow.opacity);
+}
+
+// The frame applies one shadow block, the sun's when there is one: it takes the spot's half from
+// the spot map, or zeros it, so a spot map detached since the last frame shades nothing.
+export function carrySpot(sun: DirShadowMap, spot: DirShadowMap | null): void {
+	if (sun.closed) { stopOnClosed("carrySpot"); }
+	for (let i = 0; i < SHADOW_SPOT_BASE; i++) {
+		let value: float32 = 0.0;
+		if (spot !== null) { value = spot.shadowValues[SHADOW_SPOT_BASE + i]; }
+		sun.shadowValues[SHADOW_SPOT_BASE + i] = value;
+	}
+	const written: Result<int32, UniformError> =
+		writeUniforms(sun.context, sun.shadowBlock, sun.shadowValues);
+	if (!written.ok) { stopOnLostBlocks(); }
 }
 
 // The pass both lights share, from shadow.viewProj: the casters in its frustum, depth only.
@@ -322,7 +355,7 @@ function drawCasters(
 	shadow: DirShadowMap,
 	items: Readonly<Span<DrawItem>>,
 	basis: CameraBasis,
-	kind: float32,
+	opacity: float32,
 ): int32 {
 	const context: DrawContext = shadow.context;
 	if (shadow.casters.count > 0) {
@@ -338,10 +371,10 @@ function drawCasters(
 	shadow.cameraValues[21] = basis.up.y;
 	shadow.cameraValues[22] = basis.up.z;
 	const map: Mat4 = mapMatrix();
-	(shadow.viewProj * map).writeTo(shadow.shadowValues[0..16], 0);
-	shadow.shadowValues[SHADOW_BIAS] = shadow.bias * map.m33;
-	shadow.shadowValues[SHADOW_OPACITY] = shadow.opacity;
-	shadow.shadowValues[SHADOW_KIND] = kind;
+	const half: int32 = shadow.spot ? SHADOW_SPOT_BASE : 0;
+	(shadow.viewProj * map).writeTo(shadow.shadowValues[half..half + 16], 0);
+	shadow.shadowValues[half + SHADOW_BIAS] = shadow.bias * map.m33;
+	shadow.shadowValues[half + SHADOW_OPACITY] = opacity;
 	const cameraWritten: Result<int32, UniformError> =
 		writeUniforms(context, shadow.cameraBlock, shadow.cameraValues);
 	const shadowWritten: Result<int32, UniformError> =

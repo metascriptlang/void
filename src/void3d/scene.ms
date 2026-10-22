@@ -129,8 +129,8 @@ export struct LightInstance {
 	power: float32;
 	priority: int32;
 	shape: LightShape;
-	// A spot's shadows.enabled (LightBuffer.hx:180-186): it casts the frame's one shadow map,
-	// shared with the sun's (spotShadow.ms). Any other kind with it set is
+	// A spot's shadows.enabled (LightBuffer.hx:180-186): it casts its own shadow map, beside the
+	// sun's (spotShadow.ms). Any other kind with it set is
 	// LightError.UnshadowableLight, and a second spot with it set LightError.TooManyShadowedSpots.
 	shadows: boolean;
 }

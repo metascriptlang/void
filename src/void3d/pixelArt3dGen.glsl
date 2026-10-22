@@ -532,6 +532,8 @@ layout(binding=6) uniform frameParams {
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
     vec4 shadow;
+    mat4 spotMatrix;
+    vec4 spotShadow;
 };
 #endif
 #ifdef SHADOWED
@@ -575,28 +577,34 @@ vec3 facingNormal(vec3 normal_1, float doubleSided, bool frontFacing) {
     return ((doubleSided > 0.5) && (!frontFacing)) ? (-normal_1) : normal_1;
 }
 #ifdef SHADOWED
-float mapShadowAt(vec3 position) {
-    vec4 q = shadowMatrix * vec4(position, 1.0);
+vec4 mapCoord(vec3 position, mat4 matrix) {
+    vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
-        return 1.0;
+        return vec4(0.0, 0.0, 0.0, 0.0);
     }
     vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    return vec4(p, 1.0);
+}
+#endif
+#ifdef SHADOWED
+float mapLit(float z, float depth, float bias, float opacity) {
+    float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
+    return mix(1.0, lit, opacity);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, shadowMatrix);
+    if (p.w < 0.5) {
         return 1.0;
     }
     ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
     ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
-    return mix(1.0, lit, shadow.y);
-}
-#endif
-#ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    if (shadow.z > 0.5) {
-        return 1.0;
-    }
-    return mapShadowAt(position);
+    return mapLit(p.z, depth, shadow.x, shadow.y);
 }
 #endif
 vec3 srgbToLinear(vec3 srgb) {
@@ -850,6 +858,8 @@ layout(binding=6) uniform frameParams {
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
     vec4 shadow;
+    mat4 spotMatrix;
+    vec4 spotShadow;
 };
 #endif
 #ifdef SHADOWED
@@ -988,28 +998,34 @@ vec3 mappedNormal(vec3 normal_1, vec4 tangent, float face, vec3 texel) {
 }
 #endif
 #ifdef SHADOWED
-float mapShadowAt(vec3 position) {
-    vec4 q = shadowMatrix * vec4(position, 1.0);
+vec4 mapCoord(vec3 position, mat4 matrix) {
+    vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
-        return 1.0;
+        return vec4(0.0, 0.0, 0.0, 0.0);
     }
     vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    return vec4(p, 1.0);
+}
+#endif
+#ifdef SHADOWED
+float mapLit(float z, float depth, float bias, float opacity) {
+    float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
+    return mix(1.0, lit, opacity);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, shadowMatrix);
+    if (p.w < 0.5) {
         return 1.0;
     }
     ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
     ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
-    return mix(1.0, lit, shadow.y);
-}
-#endif
-#ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    if (shadow.z > 0.5) {
-        return 1.0;
-    }
-    return mapShadowAt(position);
+    return mapLit(p.z, depth, shadow.x, shadow.y);
 }
 #endif
 vec3 srgbToLinear(vec3 srgb) {

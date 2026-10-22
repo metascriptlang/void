@@ -1,5 +1,5 @@
 import { Vec3, Quat, Mat4, vec3, axisAngle, identityQuat } from "../math/math3d";
-import { Texture2d, Vec3f, Vec4f, mat4x4f, vec3f, vec4f } from "../shader/std";
+import { Texture2d, Vec3f, Vec4f, Mat4x4f, mat4x4f, vec3f, vec4f } from "../shader/std";
 import {
 	Scene3D,
 	NodeId3D,
@@ -13,6 +13,10 @@ import {
 } from "../void3d/scene";
 import { DrawContext, DrawItem } from "../void3d/draw";
 import {
+	SHADOW_SPOT_BASE,
+	SHADOW_BIAS,
+	SHADOW_OPACITY,
+	SHADOW_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 	LIGHT_SHAPE_BASE,
 	LIGHT_SHAPE_ARRAY_LENGTH,
@@ -25,21 +29,26 @@ import {
 	shadowedSpotCount,
 	firstShadowedSpot,
 	spotShadowView,
-	sunIsLit,
 } from "../void3d/spotShadow";
-import { DirShadowMap, ShadowError, DIR_SHADOW_UNIFORM_LENGTH } from "../void3d/dirShadowMap";
+import {
+	DirShadowMap,
+	ShadowError,
+	DIR_SHADOW_UNIFORM_LENGTH,
+	carrySpot,
+} from "../void3d/dirShadowMap";
 import {
 	Renderer,
 	RendererError,
 	RENDERER_UNIFORM_LENGTH,
 	beginFrame,
 	attachShadow,
+	attachSpotShadow,
 } from "../void3d/renderer";
 import {
 	LitBindings,
 	dirShadowAt,
 	litFs,
-	mapShadowAt,
+	spotShadowAt,
 	slotShadowAt,
 } from "../void3d/shader3d";
 
@@ -136,7 +145,6 @@ test "the shadowing spot is the slot that carries the flag, with its full angle 
 	const plain: Vec<float32> = downSpot(false);
 	assert shadowedSpotCount(plain) == 0 && firstShadowedSpot(plain) == -1;
 	assert plain[LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + 2] == 0.0;
-	assert !sunIsLit(lit);
 }
 
 test "a rectangle's right axis in the cone slot's third float is not a shadow flag" {
@@ -184,9 +192,14 @@ function depthTexture(depth: float32): Texture2d {
 	return { width: 1, height: 1, texels: [depth, depth, depth, depth] };
 }
 
+const NO_MAP: Mat4x4f = mat4x4f(
+	vec4f(0.0, 0.0, 0.0, 0.0), vec4f(0.0, 0.0, 0.0, 0.0),
+	vec4f(0.0, 0.0, 0.0, 0.0), vec4f(0.0, 0.0, 0.0, 0.0),
+);
+const NONE: Vec4f = vec4f(0.0, 0.0, 0.0, 0.0);
+
 function spotLights(values: Vec<float32>): LitBindings {
 	const colour: int32 = 12 + MAX_POINT_LIGHTS * 4;
-	const none: Vec4f = vec4f(0.0, 0.0, 0.0, 0.0);
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
@@ -195,22 +208,24 @@ function spotLights(values: Vec<float32>): LitBindings {
 		materialParams: { material: vec4f(0.0, 0.0, 0.0, 0.5) },
 		lightParams: {
 			ambient: vec4f(0.0, 0.0, 0.0, 1.0),
-			dirLight: none,
-			dirColor: none,
-			pointLight: [slotOf(values, 12), none, none, none],
-			pointColor: [slotOf(values, colour), none, none, none],
-			shapeA: [slotOf(values, LIGHT_SHAPE_BASE), none, none, none],
-			shapeB: [slotOf(values, LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH), none, none, none],
-			shapeC: [none, none, none, none],
-			shapeD: [none, none, none, none],
+			dirLight: NONE,
+			dirColor: NONE,
+			pointLight: [slotOf(values, 12), NONE, NONE, NONE],
+			pointColor: [slotOf(values, colour), NONE, NONE, NONE],
+			shapeA: [slotOf(values, LIGHT_SHAPE_BASE), NONE, NONE, NONE],
+			shapeB: [slotOf(values, LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH), NONE, NONE, NONE],
+			shapeC: [NONE, NONE, NONE, NONE],
+			shapeD: [NONE, NONE, NONE, NONE],
 		},
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),
 		},
-		shadowParams: { shadowMatrix: mat4x4f(none, none, none, none), shadow: none },
+		shadowParams: { shadowMatrix: NO_MAP, shadow: NONE, spotMatrix: NO_MAP, spotShadow: NONE },
 		shadowMap: depthTexture(1.0),
 		shadowSampler: { nearest: true },
+		spotShadowMap: depthTexture(1.0),
+		spotShadowSampler: { nearest: true },
 		baseTexture: depthTexture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: depthTexture(1.0),
@@ -223,9 +238,7 @@ function spotLights(values: Vec<float32>): LitBindings {
 	};
 }
 
-function shadowed(
-	b: LitBindings, view: CameraView, depth: float32, bias: float32, opacity: float32, kind: float32,
-): LitBindings {
+function spotMapOf(view: CameraView): Mat4x4f {
 	const map: Mat4 = {
 		m11: 0.5, m12: 0.0, m13: 0.0, m14: 0.0,
 		m21: 0.0, m22: -0.5, m23: 0.0, m24: 0.0,
@@ -233,16 +246,36 @@ function shadowed(
 		m41: 0.5, m42: 0.5, m43: 0.0, m44: 1.0,
 	};
 	const both: Mat4 = view.viewProj * map;
+	return mat4x4f(
+		vec4f(both.m11, both.m12, both.m13, both.m14),
+		vec4f(both.m21, both.m22, both.m23, both.m24),
+		vec4f(both.m31, both.m32, both.m33, both.m34),
+		vec4f(both.m41, both.m42, both.m43, both.m44),
+	);
+}
+
+function spotMapped(
+	b: LitBindings, view: CameraView, depth: float32, bias: float32, opacity: float32,
+): LitBindings {
 	return {
 		...b,
 		shadowParams: {
+			...b.shadowParams, spotMatrix: spotMapOf(view), spotShadow: vec4f(bias, opacity, 0.0, 0.0),
+		},
+		spotShadowMap: depthTexture(depth),
+	};
+}
+
+function sunMapped(b: LitBindings, depth: float32, opacity: float32): LitBindings {
+	return {
+		...b,
+		shadowParams: {
+			...b.shadowParams,
 			shadowMatrix: mat4x4f(
-				vec4f(both.m11, both.m12, both.m13, both.m14),
-				vec4f(both.m21, both.m22, both.m23, both.m24),
-				vec4f(both.m31, both.m32, both.m33, both.m34),
-				vec4f(both.m41, both.m42, both.m43, both.m44),
+				vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0),
+				vec4f(0.0, 0.0, 1.0, 0.0), vec4f(0.5, 0.5, 0.9, 1.0),
 			),
-			shadow: vec4f(bias, opacity, kind, 0.0),
+			shadow: vec4f(0.0, opacity, 0.0, 0.0),
 		},
 		shadowMap: depthTexture(depth),
 	};
@@ -258,53 +291,55 @@ test "the lookup divides by w and compares the map as SpotShadow's sampleShadow 
 	const under: Vec3f = vec3f(0.0, 2.0, 0.0);
 	const z: float32 = depthAt(2.0);
 	assert near(z, 0.8421053);
-	assert mapShadowAt(under, shadowed(base, view, 0.5, 0.0, 1.0, 1.0)) == 0.0;
-	assert mapShadowAt(under, shadowed(base, view, 0.95, 0.0, 1.0, 1.0)) == 1.0;
-	assert mapShadowAt(under, shadowed(base, view, z - 0.001, 0.0, 1.0, 1.0)) == 0.0;
-	assert mapShadowAt(under, shadowed(base, view, z - 0.001, 0.01, 1.0, 1.0)) == 1.0;
-	assert near(mapShadowAt(under, shadowed(base, view, 0.5, 0.0, 0.25, 1.0)), 0.75);
+	assert spotShadowAt(under, spotMapped(base, view, 0.5, 0.0, 1.0)) == 0.0;
+	assert spotShadowAt(under, spotMapped(base, view, 0.95, 0.0, 1.0)) == 1.0;
+	assert spotShadowAt(under, spotMapped(base, view, z - 0.001, 0.0, 1.0)) == 0.0;
+	assert spotShadowAt(under, spotMapped(base, view, z - 0.001, 0.01, 1.0)) == 1.0;
+	assert near(spotShadowAt(under, spotMapped(base, view, 0.5, 0.0, 0.25)), 0.75);
 	const outside: Vec3f = vec3f(5.0, 2.0, 0.0);
-	assert mapShadowAt(outside, shadowed(base, view, 0.0, 0.0, 1.0, 1.0)) == 1.0;
+	assert spotShadowAt(outside, spotMapped(base, view, 0.0, 0.0, 1.0)) == 1.0;
 	const behind: Vec3f = vec3f(0.0, 6.0, 0.0);
-	assert mapShadowAt(behind, shadowed(base, view, 0.0, 0.0, 1.0, 1.0)) == 1.0;
+	assert spotShadowAt(behind, spotMapped(base, view, 0.0, 0.0, 1.0)) == 1.0;
 }
 
-test "only the flagged spot slot of a spot frame reads the map, and only in a shadowed program" {
+test "a block half nobody wrote shades nothing, whatever its map holds" {
+	const base: LitBindings = spotLights(downSpot(true));
+	const empty: LitBindings = {
+		...base, shadowMap: depthTexture(0.0), spotShadowMap: depthTexture(0.0),
+	};
+	assert dirShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
+	assert spotShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
+}
+
+test "only the flagged spot slot reads the spot map, and only in a shadowed program" {
 	const view: CameraView = viewOf(downSpot(true));
-	const blocked: LitBindings = shadowed(spotLights(downSpot(true)), view, 0.0, 0.0, 1.0, 1.0);
+	const blocked: LitBindings = spotMapped(spotLights(downSpot(true)), view, 0.0, 0.0, 1.0);
 	const under: Vec3f = vec3f(0.0, 2.0, 0.0);
 	assert slotShadowAt(under, blocked, { shadowed: true }, 0) == 0.0;
 	assert slotShadowAt(under, blocked, { shadowed: false }, 0) == 1.0;
-	const sunFrame: LitBindings = shadowed(spotLights(downSpot(true)), view, 0.0, 0.0, 1.0, 0.0);
-	assert slotShadowAt(under, sunFrame, { shadowed: true }, 0) == 1.0;
-	const unflagged: LitBindings = shadowed(spotLights(downSpot(false)), view, 0.0, 0.0, 1.0, 1.0);
+	const unflagged: LitBindings = spotMapped(spotLights(downSpot(false)), view, 0.0, 0.0, 1.0);
 	assert slotShadowAt(under, unflagged, { shadowed: true }, 0) == 1.0;
-	const none: Vec4f = vec4f(0.0, 0.0, 0.0, 0.0);
 	const point: LitBindings = {
 		...blocked,
-		lightParams: { ...blocked.lightParams, shapeA: [none, none, none, none] },
+		lightParams: { ...blocked.lightParams, shapeA: [NONE, NONE, NONE, NONE] },
 	};
 	assert slotShadowAt(under, point, { shadowed: true }, 0) == 1.0;
 }
 
-test "the sun's lookup is unchanged in a sun frame and steps aside in a spot frame" {
-	const identityMap = mat4x4f(
-		vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0),
-		vec4f(0.0, 0.0, 1.0, 0.0), vec4f(0.0, 0.0, 0.0, 1.0),
-	);
-	const base: LitBindings = spotLights(downSpot(false));
-	const sun: LitBindings = {
-		...base,
-		shadowParams: { shadowMatrix: identityMap, shadow: vec4f(0.0, 1.0, 0.0, 0.0) },
-		shadowMap: depthTexture(0.5),
-	};
-	assert dirShadowAt(vec3f(0.5, 0.5, 0.9), sun) == 0.0;
-	assert dirShadowAt(vec3f(0.5, 0.5, 0.3), sun) == 1.0;
-	const spot: LitBindings = {
-		...sun,
-		shadowParams: { shadowMatrix: identityMap, shadow: vec4f(0.0, 1.0, 1.0, 0.0) },
-	};
-	assert dirShadowAt(vec3f(0.5, 0.5, 0.9), spot) == 1.0;
+test "the sun and the spot read their own blocks and maps, each ignoring the other's" {
+	const view: CameraView = viewOf(downSpot(true));
+	const at: Vec3f = vec3f(0.0, 0.0, 0.0);
+	const base: LitBindings = spotLights(downSpot(true));
+	const bothOpen: LitBindings = spotMapped(sunMapped(base, 1.0, 1.0), view, 1.0, 0.0, 1.0);
+	assert dirShadowAt(at, bothOpen) == 1.0 && spotShadowAt(at, bothOpen) == 1.0;
+	const sunBlocked: LitBindings = spotMapped(sunMapped(base, 0.5, 1.0), view, 1.0, 0.0, 1.0);
+	assert dirShadowAt(at, sunBlocked) == 0.0 && spotShadowAt(at, sunBlocked) == 1.0;
+	const spotBlocked: LitBindings = spotMapped(sunMapped(base, 1.0, 1.0), view, 0.5, 0.0, 1.0);
+	assert dirShadowAt(at, spotBlocked) == 1.0 && spotShadowAt(at, spotBlocked) == 0.0;
+	const sunOnly: LitBindings = sunMapped(base, 0.5, 0.5);
+	assert near(dirShadowAt(at, sunOnly), 0.5) && spotShadowAt(at, sunOnly) == 1.0;
+	const spotOnly: LitBindings = spotMapped(base, view, 0.5, 0.0, 0.25);
+	assert dirShadowAt(at, spotOnly) == 1.0 && near(spotShadowAt(at, spotOnly), 0.75);
 }
 
 function surface(b: LitBindings, pbr: boolean): Vec3f {
@@ -316,29 +351,56 @@ function surface(b: LitBindings, pbr: boolean): Vec3f {
 	}, b, { pbr: pbr, shadowed: true }).color.rgb;
 }
 
-test "a surface under the shadowing spot is dark where the map blocks it, lit where it does not" {
+function withSun(b: LitBindings): LitBindings {
+	return {
+		...b,
+		lightParams: {
+			...b.lightParams, dirLight: vec4f(0.0, 1.0, 0.0, 1.0), dirColor: vec4f(1.0, 1.0, 1.0, 0.0),
+		},
+	};
+}
+
+function withoutSun(b: LitBindings): LitBindings {
+	return { ...b, lightParams: { ...b.lightParams, dirColor: NONE } };
+}
+
+function withoutSpot(b: LitBindings): LitBindings {
+	return { ...b, lightParams: { ...b.lightParams, pointColor: [NONE, NONE, NONE, NONE] } };
+}
+
+test "a surface is dark where its own light's map blocks it, in both shading paths" {
 	const view: CameraView = viewOf(downSpot(true));
-	const base: LitBindings = spotLights(downSpot(true));
 	const floorZ: float32 = depthAt(4.0);
+	const lit: LitBindings = withSun(spotLights(downSpot(true)));
 	const modes: Vec<boolean> = [false, true];
 	for (const pbr of modes) {
-		const open: Vec3f = surface(shadowed(base, view, 1.0, 0.0, 1.0, 1.0), pbr);
-		const blocked: Vec3f = surface(shadowed(base, view, floorZ - 0.05, 0.0, 1.0, 1.0), pbr);
-		const sunFrame: Vec3f = surface(shadowed(base, view, floorZ - 0.05, 0.0, 1.0, 0.0), pbr);
-		assert open.x > 0.0 && blocked.x == 0.0;
-		assert near(sunFrame.x, open.x, 1e-6);
+		const open: Vec3f = surface(spotMapped(sunMapped(lit, 1.0, 1.0), view, 1.0, 0.0, 1.0), pbr);
+		const sunOut: Vec3f = surface(spotMapped(sunMapped(lit, 0.5, 1.0), view, 1.0, 0.0, 1.0), pbr);
+		const spotOut: Vec3f =
+			surface(spotMapped(sunMapped(lit, 1.0, 1.0), view, floorZ - 0.05, 0.0, 1.0), pbr);
+		const bothOut: Vec3f =
+			surface(spotMapped(sunMapped(lit, 0.5, 1.0), view, floorZ - 0.05, 0.0, 1.0), pbr);
+		const spotAlone: Vec3f = surface(withoutSun(spotMapped(lit, view, 1.0, 0.0, 1.0)), pbr);
+		const sunAlone: Vec3f = surface(withoutSpot(sunMapped(lit, 1.0, 1.0)), pbr);
+		assert open.x > 0.0 && bothOut.x == 0.0;
+		assert sunOut.x > 0.0 && sunOut.x < open.x;
+		assert spotOut.x > 0.0 && spotOut.x < open.x;
+		assert near(sunOut.x, spotAlone.x, 1e-5);
+		assert near(spotOut.x, sunAlone.x, 1e-5);
 	}
 }
 
-function refusalOf(lights: Vec<float32>, map: boolean): RendererError | null {
+function refusalOf(lights: Vec<float32>, sun: boolean, spot: boolean): RendererError | null {
 	let context: DrawContext = DrawContext.withUniformCapacity(
-		RENDERER_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH,
+		RENDERER_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH,
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
-	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
-	if (!created.ok || !made.ok) { unreachable; }
+	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
+	const spotMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createSpot(context, 64);
+	if (!created.ok || !sunMap.ok || !spotMap.ok) { unreachable; }
 	let core: Renderer = created.value;
-	if (map) { attachShadow(core, made.value); }
+	if (sun) { attachShadow(core, sunMap.value); }
+	if (spot) { attachSpotShadow(core, spotMap.value); }
 	const items: Vec<DrawItem> = [];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
@@ -350,19 +412,51 @@ test "a frame with two shadowing spot slots is refused before it writes" {
 	lights[LIGHT_SHAPE_BASE + 4 + 3] = 1.0;
 	lights[LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + 4 + 2] = 1.0;
 	assert shadowedSpotCount(lights) == 2;
-	assert refusalOf(lights, true) == RendererError.TooManyShadowedSpots;
-	assert refusalOf(lights, false) == RendererError.TooManyShadowedSpots;
-}
-
-test "a shadowing spot and a lit sun cannot share the one map" {
-	let lights: Vec<float32> = downSpot(true);
-	lights[7] = 1.0;
-	assert sunIsLit(lights);
-	assert refusalOf(lights, true) == RendererError.SpotShadowSharesSunMap;
+	assert refusalOf(lights, true, true) == RendererError.TooManyShadowedSpots;
+	assert refusalOf(lights, false, true) == RendererError.TooManyShadowedSpots;
+	assert refusalOf(lights, false, false) == RendererError.TooManyShadowedSpots;
 }
 
 test "a shadowing spot with no range is refused by the frame, not drawn from a broken camera" {
 	let lights: Vec<float32> = downSpot(true);
 	lights[12 + MAX_POINT_LIGHTS * 4 + 3] = 0.0;
-	assert refusalOf(lights, true) == RendererError.BadShadowSpot;
+	assert refusalOf(lights, true, true) == RendererError.BadShadowSpot;
+}
+
+test "a shadowing spot with no spot map attached is refused, not drawn unshadowed" {
+	assert refusalOf(downSpot(true), true, false) == RendererError.SpotShadowUnattached;
+	assert refusalOf(downSpot(true), false, false) == RendererError.SpotShadowUnattached;
+}
+
+test "the sun's map and the spot's are made apart, and a frame applies the sun's block with the spot's half" {
+	let context: DrawContext = DrawContext.withUniformCapacity(
+		RENDERER_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH,
+	);
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
+	const spotMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createSpot(context, 64);
+	if (!created.ok || !sunMap.ok || !spotMap.ok) { unreachable; }
+	let core: Renderer = created.value;
+	const sun: DirShadowMap = sunMap.value;
+	const spot: DirShadowMap = spotMap.value;
+	assert !sun.spot && spot.spot && sun.shadowBlock.length == SHADOW_UNIFORM_LENGTH;
+	attachSpotShadow(core, spot);
+	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == spot.shadowBlock;
+	attachShadow(core, sun);
+	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == sun.shadowBlock;
+	sun.shadowValues[SHADOW_BIAS] = 0.125;
+	spot.shadowValues[SHADOW_SPOT_BASE + SHADOW_BIAS] = 0.25;
+	spot.shadowValues[SHADOW_SPOT_BASE + SHADOW_OPACITY] = 0.5;
+	carrySpot(sun, spot);
+	const at: int32 = sun.shadowBlock.offset;
+	assert context.uniforms.values[at + SHADOW_BIAS] == 0.125;
+	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_BIAS] == 0.25;
+	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_OPACITY] == 0.5;
+	attachSpotShadow(core, null);
+	carrySpot(sun, null);
+	assert context.uniforms.values[at + SHADOW_BIAS] == 0.125;
+	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_BIAS] == 0.0;
+	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_OPACITY] == 0.0;
+	attachShadow(core, null);
+	assert core.sceneGlobals.length == 3;
 }

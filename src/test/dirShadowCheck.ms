@@ -20,6 +20,8 @@ import {
 	SHADOW_UNIFORM_LENGTH,
 	SHADOW_VIEW_SLOT,
 	SHADOW_SAMPLER_SLOT,
+	SPOT_SHADOW_VIEW_SLOT,
+	SPOT_SHADOW_SAMPLER_SLOT,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	MOVING_MATERIAL_UNIFORM_LENGTH,
@@ -127,9 +129,11 @@ test "a shadowed program reads the shadow block, map and sampler past a material
 			assert uniformBlockLength(shadowed, SHADOW_UNIFORM_SLOT) == SHADOW_UNIFORM_LENGTH;
 			assert uniformBlockLength(plain, SHADOW_UNIFORM_SLOT) == 0;
 			assert uniformBlockLength(shadowed, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;
-			assert textureSlotMask(shadowed) == (textureSlotMask(plain) | bit(SHADOW_VIEW_SLOT));
-			assert samplerSlotMask(shadowed) ==
-				(samplerSlotMask(plain) | bit(SHADOW_SAMPLER_SLOT));
+			const spot: boolean = preset == Preset.Core;
+			assert textureSlotMask(shadowed) == (textureSlotMask(plain) | bit(SHADOW_VIEW_SLOT) |
+				(spot ? bit(SPOT_SHADOW_VIEW_SLOT) : 0));
+			assert samplerSlotMask(shadowed) == (samplerSlotMask(plain) | bit(SHADOW_SAMPLER_SLOT) |
+				(spot ? bit(SPOT_SHADOW_SAMPLER_SLOT) : 0));
 		}
 	}
 }

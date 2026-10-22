@@ -812,11 +812,21 @@ layout(binding=6) uniform frameParams {
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
     vec4 shadow;
+    mat4 spotMatrix;
+    vec4 spotShadow;
 };
+#ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2D shadowMap;
+#endif
+#ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
+#endif
+@image_sample_type spotShadowMap unfilterable_float
+layout(binding=6) uniform texture2D spotShadowMap;
+@sampler_type spotShadowSampler nonfiltering
+layout(binding=3) uniform sampler spotShadowSampler;
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -872,27 +882,31 @@ vec3 saturated(vec3 rgb, float amount) {
     float keep = amount + 1.0;
     return (rgb * keep) + vec3((luma * (1.0 - keep)));
 }
-float mapShadowAt(vec3 position) {
-    vec4 q = shadowMatrix * vec4(position, 1.0);
+vec4 mapCoord(vec3 position, mat4 matrix) {
+    vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
-        return 1.0;
+        return vec4(0.0, 0.0, 0.0, 0.0);
     }
     vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    return vec4(p, 1.0);
+}
+float mapLit(float z, float depth, float bias, float opacity) {
+    float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
+    return mix(1.0, lit, opacity);
+}
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, shadowMatrix);
+    if (p.w < 0.5) {
         return 1.0;
     }
     ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
     ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
-    return mix(1.0, lit, shadow.y);
-}
-#ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    if (shadow.z > 0.5) {
-        return 1.0;
-    }
-    return mapShadowAt(position);
+    return mapLit(p.z, depth, shadow.x, shadow.y);
 }
 #endif
 #ifdef PBR
@@ -1039,18 +1053,25 @@ vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec
     return diffuse;
 }
 #endif
+float spotShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, spotMatrix);
+    if (p.w < 0.5) {
+        return 1.0;
+    }
+    ivec2 size = textureSize(sampler2D(spotShadowMap, spotShadowSampler), 0);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
+    float depth = texelFetch(sampler2D(spotShadowMap, spotShadowSampler), texel, 0).x;
+    return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
+}
 float slotShadowAt(vec3 position, int slot) {
 #ifndef SHADOWED
     return 1.0;
 #endif
-    if (shadow.z < 0.5) {
-        return 1.0;
-    }
     vec4 a = shapeA[slot];
     if (((a.w < 0.5) || (a.w > 1.5)) || (shapeB[slot].z < 0.5)) {
         return 1.0;
     }
-    return mapShadowAt(position);
+    return spotShadowAt(position);
 }
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
@@ -1422,11 +1443,21 @@ layout(binding=6) uniform frameParams {
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
     vec4 shadow;
+    mat4 spotMatrix;
+    vec4 spotShadow;
 };
+#ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2D shadowMap;
+#endif
+#ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
+#endif
+@image_sample_type spotShadowMap unfilterable_float
+layout(binding=6) uniform texture2D spotShadowMap;
+@sampler_type spotShadowSampler nonfiltering
+layout(binding=3) uniform sampler spotShadowSampler;
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 #ifdef BACK_TEXTURE
@@ -1591,27 +1622,31 @@ vec3 saturated(vec3 rgb, float amount) {
     float keep = amount + 1.0;
     return (rgb * keep) + vec3((luma * (1.0 - keep)));
 }
-float mapShadowAt(vec3 position) {
-    vec4 q = shadowMatrix * vec4(position, 1.0);
+vec4 mapCoord(vec3 position, mat4 matrix) {
+    vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
-        return 1.0;
+        return vec4(0.0, 0.0, 0.0, 0.0);
     }
     vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    return vec4(p, 1.0);
+}
+float mapLit(float z, float depth, float bias, float opacity) {
+    float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
+    return mix(1.0, lit, opacity);
+}
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, shadowMatrix);
+    if (p.w < 0.5) {
         return 1.0;
     }
     ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
     ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
-    return mix(1.0, lit, shadow.y);
-}
-#ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    if (shadow.z > 0.5) {
-        return 1.0;
-    }
-    return mapShadowAt(position);
+    return mapLit(p.z, depth, shadow.x, shadow.y);
 }
 #endif
 #ifdef PBR
@@ -1758,18 +1793,25 @@ vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec
     return diffuse;
 }
 #endif
+float spotShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, spotMatrix);
+    if (p.w < 0.5) {
+        return 1.0;
+    }
+    ivec2 size = textureSize(sampler2D(spotShadowMap, spotShadowSampler), 0);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
+    float depth = texelFetch(sampler2D(spotShadowMap, spotShadowSampler), texel, 0).x;
+    return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
+}
 float slotShadowAt(vec3 position, int slot) {
 #ifndef SHADOWED
     return 1.0;
 #endif
-    if (shadow.z < 0.5) {
-        return 1.0;
-    }
     vec4 a = shapeA[slot];
     if (((a.w < 0.5) || (a.w > 1.5)) || (shapeB[slot].z < 0.5)) {
         return 1.0;
     }
-    return mapShadowAt(position);
+    return spotShadowAt(position);
 }
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;

@@ -12,15 +12,15 @@
 
 // Bindings: 0 leaves a slot empty. View and sampler slots are the `binding=` numbers in
 // shader3d.ms and pixelArt3d.ms: a material's four views and two samplers, then the scene's
-// (the shadow map, shader3d.ms dirShadowAt) at view 4 and sampler 2, then the normal map's
-// view 5.
+// (the sun's shadow map, shader3d.ms dirShadowAt) at view 4 and sampler 2, then the normal map's
+// view 5, then the spot's shadow map (spotShadowAt) at view 6 and sampler 3.
 static const int32_t GPU3D_BINDING_VERTEX_BUFFER = 0; // two
 static const int32_t GPU3D_BINDING_INDEX_BUFFER = 2;
-static const int32_t GPU3D_BINDING_VIEW = 3; // six
-static const int32_t GPU3D_BINDING_VIEWS = 6;
-static const int32_t GPU3D_BINDING_SAMPLER = 9; // three
-static const int32_t GPU3D_BINDING_SAMPLERS = 3;
-static const int32_t GPU3D_BINDING_LENGTH = 12;
+static const int32_t GPU3D_BINDING_VIEW = 3; // seven
+static const int32_t GPU3D_BINDING_VIEWS = 7;
+static const int32_t GPU3D_BINDING_SAMPLER = 10; // four
+static const int32_t GPU3D_BINDING_SAMPLERS = 4;
+static const int32_t GPU3D_BINDING_LENGTH = 14;
 
 int32_t gpu3dProgramBase(void);
 int32_t gpu3dLayoutBase(void);

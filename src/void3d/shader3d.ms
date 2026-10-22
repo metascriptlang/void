@@ -247,6 +247,8 @@ export struct FrameParams {
 export struct ShadowParams {
 	shadowMatrix: Mat4x4f;
 	shadow: Vec4f;
+	spotMatrix: Mat4x4f;
+	spotShadow: Vec4f;
 }
 
 // The blocks at one binding are the layouts a program key chooses between.
@@ -273,6 +275,8 @@ export struct LitBindings {
 	@binding(5) shadowParams: ShadowParams;
 	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2d;
 	@binding(2) @samplerType(nonfiltering) shadowSampler: Sampler;
+	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2d;
+	@binding(3) @samplerType(nonfiltering) spotShadowSampler: Sampler;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
 	@binding(1) backTexture: Texture2d;
@@ -1001,51 +1005,60 @@ export function dissolveEdgeOf(b: LitBindings, key: LitKey): Vec4f {
 	}
 }
 
-// h3d.shader.ShadowSampling.sampleShadow with SAMPLING_NONE, on the map dirShadowMap.ms draws.
-// shadowMatrix takes a world position to the map's texel space and to the depth the backend
-// stores, so the compare reads the attachment as written; shadow.x is the bias in that depth,
-// shadow.y the opacity (1 a full shadow). A spot's matrix is a perspective one, so the position
-// is divided by w as spotShadowPos does (ShadowSampling.hx:49-53); a sun's w is exactly 1. A
-// position behind the spot (w <= 0) is outside its cone, which weighs the light to 0 already.
+// h3d.shader.ShadowSampling.sampleShadow with SAMPLING_NONE, on the maps dirShadowMap.ms draws. A
+// spot's matrix is perspective, so the product is divided by w (ShadowSampling.hx:49-53); a
+// position behind the spot (w <= 0), like a half of the block nobody wrote, reads lit.
 // PENDING3D: spot-shadow-behind-lit
-export function mapShadowAt(position: Vec3f, b: LitBindings): float32 {
-	const q = b.shadowParams.shadowMatrix * vec4f(position, 1.0);
+function mapCoord(position: Vec3f, matrix: Mat4x4f): Vec4f {
+	const q = matrix * vec4f(position, 1.0);
 	if (q.w <= 0.0) {
-		return 1.0;
+		return vec4f(0.0, 0.0, 0.0, 0.0);
 	}
 	const p = q.xyz / q.w;
 	if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0) {
+		return vec4f(0.0, 0.0, 0.0, 0.0);
+	}
+	return vec4f(p, 1.0);
+}
+
+function mapLit(z: float32, depth: float32, bias: float32, opacity: float32): float32 {
+	const lit: float32 = clamp(z, 0.0, 1.0) - bias > depth ? 0.0 : 1.0;
+	return mix(1.0, lit, opacity);
+}
+
+export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const p = mapCoord(position, b.shadowParams.shadowMatrix);
+	if (p.w < 0.5) {
 		return 1.0;
 	}
 	const size = textureDimensions(b.shadowMap, b.shadowSampler, 0);
 	const texel = clamp(vec2i(p.xy * vec2f(size)), vec2i(0, 0), size - vec2i(1, 1));
 	const depth = textureLoad(b.shadowMap, b.shadowSampler, texel, 0).x;
-	const lit: float32 = clamp(p.z, 0.0, 1.0) - b.shadowParams.shadow.x > depth ? 0.0 : 1.0;
-	return mix(1.0, lit, b.shadowParams.shadow.y);
+	return mapLit(p.z, depth, b.shadowParams.shadow.x, b.shadowParams.shadow.y);
 }
 
-// The sun's shadow: 1 when the frame's one map is a spot's.
-export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
-	if (b.shadowParams.shadow.z > 0.5) {
+export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const p = mapCoord(position, b.shadowParams.spotMatrix);
+	if (p.w < 0.5) {
 		return 1.0;
 	}
-	return mapShadowAt(position, b);
+	const size = textureDimensions(b.spotShadowMap, b.spotShadowSampler, 0);
+	const texel = clamp(vec2i(p.xy * vec2f(size)), vec2i(0, 0), size - vec2i(1, 1));
+	const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler, texel, 0).x;
+	return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
 }
 
-// A positioned slot's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless the
-// frame's map is a spot's and this slot is the spot that casts it (shapeB.z, scene.ms packShape).
+// A positioned slot's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless this
+// slot is the spot that casts the spot map (shapeB.z, scene.ms packShape).
 export function slotShadowAt(position: Vec3f, b: LitBindings, key: LitKey, slot: int32): float32 {
 	if (!key.shadowed) {
-		return 1.0;
-	}
-	if (b.shadowParams.shadow.z < 0.5) {
 		return 1.0;
 	}
 	const a = b.lightParams.shapeA[slot];
 	if (a.w < 0.5 || a.w > 1.5 || b.lightParams.shapeB[slot].z < 0.5) {
 		return 1.0;
 	}
-	return mapShadowAt(position, b);
+	return spotShadowAt(position, b);
 }
 
 // h3d.shader.pbr.Direct (Lighting.hx:125-145) for one light, in linear light: Cook-Torrance GGX

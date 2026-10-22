@@ -60,8 +60,12 @@ function plainLit(): LitBindings {
 			pointColor: [none(), none(), none(), none()],
 		},
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
-		shadowParams: { shadowMatrix: identity(), shadow: none() },
+		shadowParams: {
+			shadowMatrix: identity(), shadow: none(),
+			spotMatrix: identity(), spotShadow: none(),
+		},
 		shadowMap: white, shadowSampler: { nearest: true },
+		spotShadowMap: white, spotShadowSampler: { nearest: true },
 		baseTexture: white, baseSampler: { nearest: true },
 		backTexture: white, dissolveTexture: white, dissolveSampler: { nearest: true },
 		emissiveTexture: white, normalTexture: white,
