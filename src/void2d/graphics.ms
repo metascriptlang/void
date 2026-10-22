@@ -814,6 +814,21 @@ export function fillTexPolygon(
 	return g;
 }
 
+// Triangles three points at a time, each point with its own texture coordinate and colour,
+// for meshes built elsewhere (particle trails). Sets the node's view; no edge fringe.
+export function fillTexTriangles(this g: NodeRef, t: Tile, pts: Vec2[], uvs: Vec2[], colors: Color[]): NodeRef {
+	const target: GraphicsMesh = meshOf(g, "fillTexTriangles");
+	const n: int32 = pts.length as int32;
+	if (n % 3 != 0 || (uvs.length as int32) != n || (colors.length as int32) != n) {
+		console.log(`void2d: fillTexTriangles got ${n} points, ${uvs.length} uvs, ${colors.length} colours; give one uv and colour per point, three points a triangle`);
+		unreachable;
+	}
+	target.source = t.source;
+	target.alphaPremultiplied = t.alphaPremultiplied;
+	for (let k: int32 = 0; k < n; k++) { vtx(target, pts[k].x, pts[k].y, uvs[k].x, uvs[k].y, colors[k]); }
+	return g;
+}
+
 export function fillCircle(
 	this g: NodeRef,
 	cx: float32,
