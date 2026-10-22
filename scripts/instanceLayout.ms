@@ -40,10 +40,10 @@ function gpuBytes(kind: LaneKind): int32 {
 	}
 }
 
-function cFormat(kind: LaneKind): string {
+function vertexFormat(kind: LaneKind): string {
 	match (kind) {
-		LaneKind.Float4 => { return "SG_VERTEXFORMAT_FLOAT4"; },
-		LaneKind.Color => { return "SG_VERTEXFORMAT_UBYTE4N"; },
+		LaneKind.Float4 => { return "float32x4"; },
+		LaneKind.Color => { return "unorm8x4"; },
 	}
 }
 
@@ -69,6 +69,9 @@ function msConstants(prefix: string, lanes: Lane[]): string {
 		floats += 4;
 	}
 	out += `export const REC_${prefix}_FLOATS: int32 = ${floats};\n`;
+	out += `export const ${prefix}_FORMATS: GPUVertexFormat[${lanes.length}] = [`;
+	for (const l of lanes) { out += `"${vertexFormat(l.kind)}", `; }
+	out += "];\n";
 	return out;
 }
 
@@ -101,7 +104,8 @@ function recFloats(lanes: Lane[]): int32 { return (lanes.length as int32) * 4; }
 const dirSetting: string = env.get("INSTANCE_LAYOUT_DIR");
 const dir: string = dirSetting.length > 0 ? dirSetting : "src/void2d";
 
-let ms: string = msConstants("UI", uiLanes);
+let ms: string = "import { GPUVertexFormat } from \"../webgpu/types.ms\";\n\n";
+ms += msConstants("UI", uiLanes);
 ms += msConstants("SPRITE", spriteLanes);
 writeFile(`${dir}/instanceLayout.ms`, ms);
 
@@ -110,7 +114,5 @@ h += cStruct("void2dUiInstance", uiLanes) + "\n";
 h += cStruct("void2dSpriteInstance", spriteLanes) + "\n";
 h += `#define VOID2D_UI_REC_FLOATS ${recFloats(uiLanes)}\n`;
 h += `#define VOID2D_SPRITE_REC_FLOATS ${recFloats(spriteLanes)}\n\n`;
-h += cAttributes("VOID2D_UI_ATTRIBUTES", "ui", uiLanes) + "\n";
-h += cAttributes("VOID2D_SPRITE_ATTRIBUTES", "sprite", spriteLanes) + "\n";
 h += cPack("void2dPackUiInstance", "void2dUiInstance", uiLanes);
 writeFile(`${dir}/instanceLayout.h`, h);

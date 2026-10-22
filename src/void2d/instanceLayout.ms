@@ -1,3 +1,5 @@
+import { GPUVertexFormat } from "../webgpu/types.ms";
+
 export const UI_AFFINE: int32 = 0;
 export const UI_ORIGIN_SIZE: int32 = 16;
 export const UI_UV_RADII: int32 = 32;
@@ -19,6 +21,7 @@ export const REC_UI_COLOR_FILL: int32 = 24;
 export const REC_UI_COLOR_BORDER: int32 = 28;
 export const REC_UI_COLOR_EXTRA: int32 = 32;
 export const REC_UI_FLOATS: int32 = 36;
+export const UI_FORMATS: GPUVertexFormat[9] = ["float32x4", "float32x4", "float32x4", "float32x4", "float32x4", "float32x4", "unorm8x4", "unorm8x4", "unorm8x4", ];
 export const SPRITE_AFFINE: int32 = 0;
 export const SPRITE_ORIGIN_SIZE: int32 = 16;
 export const SPRITE_UV: int32 = 32;
@@ -30,3 +33,4 @@ export const REC_SPRITE_ORIGIN_SIZE: int32 = 4;
 export const REC_SPRITE_UV: int32 = 8;
 export const REC_SPRITE_COLOR: int32 = 12;
 export const REC_SPRITE_FLOATS: int32 = 16;
+export const SPRITE_FORMATS: GPUVertexFormat[4] = ["float32x4", "float32x4", "float32x4", "float32x4", ];

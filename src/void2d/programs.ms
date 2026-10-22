@@ -3,7 +3,8 @@
 // ATTR_* slots of shader2d.glsl.
 import { DoorAttribute, doorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
 import { blurShaderModule, spriteShaderModule, uiShaderModule, void2dShaderModule } from "./shader2dModules.ms";
-import { GPUShaderModuleDescriptor } from "../webgpu/types.ms";
+import { SPRITE_FORMATS, UI_FORMATS } from "./instanceLayout.ms";
+import { GPUShaderModuleDescriptor, GPUVertexFormat } from "../webgpu/types.ms";
 
 const VERTEX: DoorAttribute[3] = [
 	{ location: 0, format: "float32x2", buffer: 0 },
@@ -11,26 +12,14 @@ const VERTEX: DoorAttribute[3] = [
 	{ location: 2, format: "float32x4", buffer: 0 },
 ];
 
-const SPRITE: DoorAttribute[5] = [
-	{ location: 0, format: "float32x2", buffer: 0 },
-	{ location: 1, format: "float32x4", buffer: 1 },
-	{ location: 2, format: "float32x4", buffer: 1 },
-	{ location: 3, format: "float32x4", buffer: 1 },
-	{ location: 4, format: "float32x4", buffer: 1 },
-];
-
-const UI: DoorAttribute[10] = [
-	{ location: 0, format: "float32x2", buffer: 0 },
-	{ location: 1, format: "float32x4", buffer: 1 },
-	{ location: 2, format: "float32x4", buffer: 1 },
-	{ location: 3, format: "float32x4", buffer: 1 },
-	{ location: 4, format: "float32x4", buffer: 1 },
-	{ location: 5, format: "float32x4", buffer: 1 },
-	{ location: 6, format: "float32x4", buffer: 1 },
-	{ location: 7, format: "unorm8x4", buffer: 1 },
-	{ location: 8, format: "unorm8x4", buffer: 1 },
-	{ location: 9, format: "unorm8x4", buffer: 1 },
-];
+// The corner at location 0, then the instance lanes scripts/instanceLayout.ms generates, in order.
+function instanced(formats: Readonly<Span<GPUVertexFormat>>): DoorAttribute[] {
+	const attributes: DoorAttribute[] = [{ location: 0, format: "float32x2", buffer: 0 }];
+	for (let i = 0; i < formats.length; i++) {
+		attributes.push({ location: (i + 1) as int32, format: formats[i], buffer: 1 });
+	}
+	return attributes;
+}
 
 const BLUR: DoorAttribute[2] = [
 	{ location: 0, format: "float32x2", buffer: 0 },
@@ -39,8 +28,8 @@ const BLUR: DoorAttribute[2] = [
 
 export const layoutBase: int32 = doorRegisterLayouts([
 	doorLayout(VERTEX, ["vertex"]),
-	doorLayout(SPRITE, ["vertex", "instance"]),
-	doorLayout(UI, ["vertex", "instance"]),
+	doorLayout(instanced(SPRITE_FORMATS), ["vertex", "instance"]),
+	doorLayout(instanced(UI_FORMATS), ["vertex", "instance"]),
 	doorLayout(BLUR, ["vertex"]),
 ]);
 
