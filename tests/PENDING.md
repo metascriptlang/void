@@ -59,11 +59,31 @@ last two columns of those. Everything else on this page is for a reader.
 
 ## Image budgets
 
-None. Every scene in `tests/golden/table.ms` is byte-identical to its golden, across runs
-and across processes, and P0 found no scene that needs a tolerance.
+On D3D11 none: every scene in `tests/golden/table.ms` is byte-identical to its golden, across
+runs and across processes. The `@metal` rows hold Metal captures judged against the D3D11 set
+(`scripts/golden.sh --backend metal`) at exactly the pixels and delta measured, so any change
+to those scenes on the Apple GPU shows.
 
 | id | tier | reason | phase | date | maxPixels | maxDelta |
 |---|---|---|---|---|---|---|
+| golden:prim/shadowStack@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 12098 | 2 |
+| golden:text/caretSelection@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 7367 | 2 |
+| golden:filter/blur@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 7861 | 2 |
+| golden:filter/dropShadow@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 3860 | 2 |
+| golden:filter/afterTintedSibling@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 5014 | 2 |
+| golden:filter/maskAtDpi150@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 2479 | 2 |
+| golden:regress/atlasFull@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 17543 | 2 |
+| golden:regress/filterNestedPass@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 4660 | 2 |
+| golden:demo/frame001@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 36914 | 3 |
+| golden:demo/frame030@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 37182 | 3 |
+| golden:demo/frame090@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 37979 | 3 |
+| golden:demo/frame200@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 37281 | 3 |
+| golden:prim/effectOnUi@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 25385 | 2 |
+| golden:text/sdfZoom4@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 1244 | 4 |
+| golden:text/bidiSelection@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 4119 | 2 |
+| golden:text/outlineAlpha@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 5773 | 2 |
+| golden:text/outlineSdfZoom4@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 2365 | 4 |
+| golden:text/outlineSdfScaleDown@metal | T2 | the Apple GPU rasterizes and filters a few levels off the D3D11 golden; sokol Metal at `6d577fd` captured it byte-identical to this backend (2026-10-22) | none: D3D11 stays the authored set | 2026-10-23 | 1391 | 2 |
 
 An empty table means the graduation rule has nothing to run on, so it was exercised by hand
 at P0 and the result is written down here rather than described. Add a row to the table
