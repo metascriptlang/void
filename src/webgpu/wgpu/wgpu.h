@@ -9,9 +9,11 @@ typedef struct WgModuleImpl *WgModule;
 typedef struct WgLayoutImpl *WgLayout;
 typedef struct WgPipelineImpl *WgPipeline;
 typedef struct WgBindGroupImpl *WgBindGroup;
+typedef struct WgQuerySetImpl *WgQuerySet;
 
 int32_t wgSetup(void *device);
 void wgShutdown(void);
+int64_t wgLimit(int32_t which);
 int32_t wgMaxTextureDimension2D(void);
 int32_t wgMinUniformBufferOffsetAlignment(void);
 int32_t wgHasFeature(int32_t feature);
@@ -122,8 +124,9 @@ void wgLayoutEntry(
 	int32_t visibility,
 	int32_t kind,
 	int32_t bindingType,
-	int32_t viewDimension);
-WgLayout wgCreateLayout(int32_t count);
+	int32_t viewDimension,
+	int32_t storageFormat);
+WgLayout wgCreateLayout(int32_t count, const char *label);
 void wgReleaseLayout(WgLayout layout);
 
 void wgVertexBuffer(int32_t slot, int32_t stride, int32_t stepMode);
@@ -165,6 +168,13 @@ WgPipeline wgCreatePipeline(
 	int32_t sampleCount,
 	const char *label);
 void wgReleasePipeline(WgPipeline pipeline);
+WgPipeline wgCreateComputePipeline(
+	WgModule module,
+	const char *entry,
+	WgLayout uniformLayout,
+	WgLayout resourceLayout,
+	const char *label);
+void wgReleaseComputePipeline(WgPipeline pipeline);
 
 void wgBindEntry(
 	int32_t index,
@@ -174,7 +184,7 @@ void wgBindEntry(
 	int64_t size,
 	WgView view,
 	WgSampler sampler);
-WgBindGroup wgCreateBindGroup(WgLayout layout, int32_t count);
+WgBindGroup wgCreateBindGroup(WgLayout layout, int32_t count, const char *label);
 void wgReleaseBindGroup(WgBindGroup group);
 
 int32_t wgBeginEncoder(void);
@@ -194,7 +204,16 @@ void wgDepthAttachment(
 	int32_t storeOp,
 	double clearValue,
 	int32_t stencil);
-int32_t wgBeginPass(int32_t colorCount, int32_t depth, int32_t width, int32_t height);
+int32_t wgBeginPass(
+	int32_t colorCount,
+	int32_t depth,
+	int32_t width,
+	int32_t height,
+	const char *label,
+	WgQuerySet occlusionSet,
+	WgQuerySet timestampSet,
+	int32_t timestampBegin,
+	int32_t timestampEnd);
 void wgEndPass(void);
 int32_t wgFinish(void);
 void wgSubmit(void);
@@ -214,3 +233,20 @@ void wgDrawIndexed(
 	int32_t firstIndex,
 	int32_t baseVertex,
 	int32_t firstInstance);
+
+int32_t wgBeginComputePass(const char *label, WgQuerySet timestampSet, int32_t timestampBegin, int32_t timestampEnd);
+void wgEndComputePass(void);
+void wgSetComputePipeline(WgPipeline pipeline);
+void wgSetComputeBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount);
+void wgDispatch(int32_t x, int32_t y, int32_t z);
+void wgDispatchIndirect(WgBuffer buffer, int64_t offset);
+
+WgQuerySet wgCreateQuerySet(int32_t timestamp, int32_t count, const char *label);
+void wgReleaseQuerySet(WgQuerySet querySet);
+void wgResolveQuerySet(WgQuerySet querySet, int32_t first, int32_t count, WgBuffer destination, int64_t offset);
+void wgBeginOcclusionQuery(int32_t index);
+void wgEndOcclusionQuery(void);
+
+void wgPushDebugGroup(const char *label);
+void wgPopDebugGroup(void);
+void wgInsertDebugMarker(const char *label);

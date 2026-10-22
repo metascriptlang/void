@@ -14,6 +14,7 @@ static WGPULimits limits;
 static WGPUCommandEncoder encoder;
 static WGPUCommandBuffer commands;
 static WGPURenderPassEncoder pass;
+static WGPUComputePassEncoder computePass;
 static int32_t passWidth;
 static int32_t passHeight;
 
@@ -47,16 +48,45 @@ int32_t wgSetup(void *native) {
 
 void wgShutdown(void) {
 	if (pass) wgpuRenderPassEncoderRelease(pass);
+	if (computePass) wgpuComputePassEncoderRelease(computePass);
 	if (commands) wgpuCommandBufferRelease(commands);
 	if (encoder) wgpuCommandEncoderRelease(encoder);
 	if (queue) wgpuQueueRelease(queue);
 	pass = NULL;
+	computePass = NULL;
 	commands = NULL;
 	encoder = NULL;
 	queue = NULL;
 	device = NULL;
 }
 
+int64_t wgLimit(int32_t which) {
+	switch (which) {
+	case 0: return limits.maxTextureDimension1D;
+	case 1: return limits.maxTextureDimension2D;
+	case 2: return limits.maxTextureDimension3D;
+	case 3: return limits.maxTextureArrayLayers;
+	case 4: return limits.maxBindGroups;
+	case 5: return limits.maxSampledTexturesPerShaderStage;
+	case 6: return limits.maxSamplersPerShaderStage;
+	case 7: return limits.maxStorageBuffersPerShaderStage;
+	case 8: return limits.maxStorageTexturesPerShaderStage;
+	case 9: return limits.maxUniformBuffersPerShaderStage;
+	case 10: return (int64_t)limits.maxUniformBufferBindingSize;
+	case 11: return (int64_t)limits.maxStorageBufferBindingSize;
+	case 12: return limits.maxVertexBuffers;
+	case 13: return limits.maxVertexAttributes;
+	case 14: return limits.maxColorAttachments;
+	case 15: return limits.maxComputeWorkgroupSizeX;
+	case 16: return limits.maxComputeWorkgroupSizeY;
+	case 17: return limits.maxComputeWorkgroupSizeZ;
+	case 18: return limits.maxComputeInvocationsPerWorkgroup;
+	case 19: return limits.maxComputeWorkgroupsPerDimension;
+	case 20: return limits.minUniformBufferOffsetAlignment;
+	case 21: return limits.minStorageBufferOffsetAlignment;
+	default: return -1;
+	}
+}
 int32_t wgMaxTextureDimension2D(void) { return (int32_t)limits.maxTextureDimension2D; }
 int32_t wgMinUniformBufferOffsetAlignment(void) {
 	return (int32_t)limits.minUniformBufferOffsetAlignment;
@@ -315,7 +345,8 @@ void wgLayoutEntry(
 	int32_t visibility,
 	int32_t kind,
 	int32_t bindingType,
-	int32_t viewDimension) {
+	int32_t viewDimension,
+	int32_t storageFormat) {
 	WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
 	entry.binding = (uint32_t)binding;
 	entry.visibility = (WGPUShaderStage)visibility;
@@ -325,14 +356,21 @@ void wgLayoutEntry(
 	} else if (kind == 1) {
 		entry.texture.sampleType = (WGPUTextureSampleType)bindingType;
 		entry.texture.viewDimension = (WGPUTextureViewDimension)viewDimension;
+	} else if (kind == 3) {
+		entry.buffer.type = (WGPUBufferBindingType)bindingType;
+	} else if (kind == 4) {
+		entry.storageTexture.access = (WGPUStorageTextureAccess)bindingType;
+		entry.storageTexture.format = (WGPUTextureFormat)storageFormat;
+		entry.storageTexture.viewDimension = (WGPUTextureViewDimension)viewDimension;
 	} else {
 		entry.sampler.type = (WGPUSamplerBindingType)bindingType;
 	}
 	layoutEntries[index] = entry;
 }
 
-WgLayout wgCreateLayout(int32_t count) {
+WgLayout wgCreateLayout(int32_t count, const char *label) {
 	WGPUBindGroupLayoutDescriptor desc = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
+	desc.label = text(label);
 	desc.entryCount = (size_t)count;
 	desc.entries = layoutEntries;
 	return (WgLayout)wgpuDeviceCreateBindGroupLayout(device, &desc);
@@ -411,6 +449,17 @@ void wgStencilFace(int32_t back, int32_t compare, int32_t failOp, int32_t depthF
 	face->passOp = (WGPUStencilOperation)passOp;
 }
 
+static WGPUPipelineLayout pipelineLayoutOf(WgLayout uniformLayout, WgLayout resourceLayout, const char *label) {
+	WGPUBindGroupLayout groups[2] = {
+		(WGPUBindGroupLayout)uniformLayout,
+		(WGPUBindGroupLayout)resourceLayout};
+	WGPUPipelineLayoutDescriptor desc = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
+	desc.label = text(label);
+	desc.bindGroupLayoutCount = 2;
+	desc.bindGroupLayouts = groups;
+	return wgpuDeviceCreatePipelineLayout(device, &desc);
+}
+
 WgPipeline wgCreatePipeline(
 	WgModule vertex,
 	const char *vertexEntry,
@@ -426,13 +475,7 @@ WgPipeline wgCreatePipeline(
 	int32_t frontFace,
 	int32_t sampleCount,
 	const char *label) {
-	WGPUBindGroupLayout groups[2] = {
-		(WGPUBindGroupLayout)uniformLayout,
-		(WGPUBindGroupLayout)resourceLayout};
-	WGPUPipelineLayoutDescriptor layoutDesc = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;
-	layoutDesc.bindGroupLayoutCount = 2;
-	layoutDesc.bindGroupLayouts = groups;
-	WGPUPipelineLayout layout = wgpuDeviceCreatePipelineLayout(device, &layoutDesc);
+	WGPUPipelineLayout layout = pipelineLayoutOf(uniformLayout, resourceLayout, label);
 	WGPURenderPipeline pipeline = NULL;
 	if (layout) {
 		WGPURenderPipelineDescriptor desc = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
@@ -469,6 +512,30 @@ void wgReleasePipeline(WgPipeline pipeline) {
 	if (pipeline) wgpuRenderPipelineRelease((WGPURenderPipeline)pipeline);
 }
 
+WgPipeline wgCreateComputePipeline(
+	WgModule module,
+	const char *entry,
+	WgLayout uniformLayout,
+	WgLayout resourceLayout,
+	const char *label) {
+	WGPUPipelineLayout layout = pipelineLayoutOf(uniformLayout, resourceLayout, label);
+	WGPUComputePipeline pipeline = NULL;
+	if (layout) {
+		WGPUComputePipelineDescriptor desc = WGPU_COMPUTE_PIPELINE_DESCRIPTOR_INIT;
+		desc.label = text(label);
+		desc.layout = layout;
+		desc.compute.module = (WGPUShaderModule)module;
+		desc.compute.entryPoint = text(entry);
+		pipeline = wgpuDeviceCreateComputePipeline(device, &desc);
+		wgpuPipelineLayoutRelease(layout);
+	}
+	return (WgPipeline)pipeline;
+}
+
+void wgReleaseComputePipeline(WgPipeline pipeline) {
+	if (pipeline) wgpuComputePipelineRelease((WGPUComputePipeline)pipeline);
+}
+
 void wgBindEntry(
 	int32_t index,
 	int32_t binding,
@@ -489,8 +556,9 @@ void wgBindEntry(
 	bindEntries[index] = entry;
 }
 
-WgBindGroup wgCreateBindGroup(WgLayout layout, int32_t count) {
+WgBindGroup wgCreateBindGroup(WgLayout layout, int32_t count, const char *label) {
 	WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+	desc.label = text(label);
 	desc.layout = (WGPUBindGroupLayout)layout;
 	desc.entryCount = (size_t)count;
 	desc.entries = bindEntries;
@@ -551,10 +619,31 @@ void wgDepthAttachment(
 	depthAttachment = attachment;
 }
 
-int32_t wgBeginPass(int32_t colorCount, int32_t depth, int32_t width, int32_t height) {
+static WGPUPassTimestampWrites timestampWrites(WgQuerySet set, int32_t begin, int32_t end) {
+	WGPUPassTimestampWrites writes = WGPU_PASS_TIMESTAMP_WRITES_INIT;
+	writes.querySet = (WGPUQuerySet)set;
+	writes.beginningOfPassWriteIndex = begin < 0 ? WGPU_QUERY_SET_INDEX_UNDEFINED : (uint32_t)begin;
+	writes.endOfPassWriteIndex = end < 0 ? WGPU_QUERY_SET_INDEX_UNDEFINED : (uint32_t)end;
+	return writes;
+}
+
+int32_t wgBeginPass(
+	int32_t colorCount,
+	int32_t depth,
+	int32_t width,
+	int32_t height,
+	const char *label,
+	WgQuerySet occlusionSet,
+	WgQuerySet timestampSet,
+	int32_t timestampBegin,
+	int32_t timestampEnd) {
 	passWidth = width;
 	passHeight = height;
 	WGPURenderPassDescriptor desc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
+	desc.label = text(label);
+	desc.occlusionQuerySet = (WGPUQuerySet)occlusionSet;
+	WGPUPassTimestampWrites writes = timestampWrites(timestampSet, timestampBegin, timestampEnd);
+	if (timestampSet) desc.timestampWrites = &writes;
 	desc.colorAttachmentCount = (size_t)colorCount;
 	desc.colorAttachments = colorAttachments;
 	if (depth) desc.depthStencilAttachment = &depthAttachment;
@@ -676,4 +765,78 @@ void wgDrawIndexed(
 		(uint32_t)firstIndex,
 		baseVertex,
 		(uint32_t)firstInstance);
+}
+
+int32_t wgBeginComputePass(const char *label, WgQuerySet timestampSet, int32_t timestampBegin, int32_t timestampEnd) {
+	WGPUComputePassDescriptor desc = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
+	desc.label = text(label);
+	WGPUPassTimestampWrites writes = timestampWrites(timestampSet, timestampBegin, timestampEnd);
+	if (timestampSet) desc.timestampWrites = &writes;
+	computePass = wgpuCommandEncoderBeginComputePass(encoder, &desc);
+	return computePass ? 1 : 0;
+}
+
+void wgEndComputePass(void) {
+	wgpuComputePassEncoderEnd(computePass);
+	wgpuComputePassEncoderRelease(computePass);
+	computePass = NULL;
+}
+
+void wgSetComputePipeline(WgPipeline pipeline) {
+	wgpuComputePassEncoderSetPipeline(computePass, (WGPUComputePipeline)pipeline);
+}
+
+void wgSetComputeBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount) {
+	wgpuComputePassEncoderSetBindGroup(
+		computePass,
+		(uint32_t)index,
+		(WGPUBindGroup)group,
+		(size_t)dynamicCount,
+		dynamicOffsets);
+}
+
+void wgDispatch(int32_t x, int32_t y, int32_t z) {
+	wgpuComputePassEncoderDispatchWorkgroups(computePass, (uint32_t)x, (uint32_t)y, (uint32_t)z);
+}
+
+void wgDispatchIndirect(WgBuffer buffer, int64_t offset) {
+	wgpuComputePassEncoderDispatchWorkgroupsIndirect(computePass, (WGPUBuffer)buffer, (uint64_t)offset);
+}
+
+WgQuerySet wgCreateQuerySet(int32_t timestamp, int32_t count, const char *label) {
+	WGPUQuerySetDescriptor desc = WGPU_QUERY_SET_DESCRIPTOR_INIT;
+	desc.label = text(label);
+	desc.type = timestamp ? WGPUQueryType_Timestamp : WGPUQueryType_Occlusion;
+	desc.count = (uint32_t)count;
+	return (WgQuerySet)wgpuDeviceCreateQuerySet(device, &desc);
+}
+
+void wgReleaseQuerySet(WgQuerySet querySet) {
+	if (querySet) wgpuQuerySetRelease((WGPUQuerySet)querySet);
+}
+
+void wgResolveQuerySet(WgQuerySet querySet, int32_t first, int32_t count, WgBuffer destination, int64_t offset) {
+	wgpuCommandEncoderResolveQuerySet(
+		encoder, (WGPUQuerySet)querySet, (uint32_t)first, (uint32_t)count, (WGPUBuffer)destination, (uint64_t)offset);
+}
+
+void wgBeginOcclusionQuery(int32_t index) { wgpuRenderPassEncoderBeginOcclusionQuery(pass, (uint32_t)index); }
+void wgEndOcclusionQuery(void) { wgpuRenderPassEncoderEndOcclusionQuery(pass); }
+
+void wgPushDebugGroup(const char *label) {
+	if (pass) wgpuRenderPassEncoderPushDebugGroup(pass, text(label));
+	else if (computePass) wgpuComputePassEncoderPushDebugGroup(computePass, text(label));
+	else wgpuCommandEncoderPushDebugGroup(encoder, text(label));
+}
+
+void wgPopDebugGroup(void) {
+	if (pass) wgpuRenderPassEncoderPopDebugGroup(pass);
+	else if (computePass) wgpuComputePassEncoderPopDebugGroup(computePass);
+	else wgpuCommandEncoderPopDebugGroup(encoder);
+}
+
+void wgInsertDebugMarker(const char *label) {
+	if (pass) wgpuRenderPassEncoderInsertDebugMarker(pass, text(label));
+	else if (computePass) wgpuComputePassEncoderInsertDebugMarker(computePass, text(label));
+	else wgpuCommandEncoderInsertDebugMarker(encoder, text(label));
 }
