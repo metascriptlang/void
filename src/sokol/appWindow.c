@@ -167,6 +167,24 @@ int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 #define PLATFORM(name) voidWeb##name
 #elif defined(__linux__)
 #define PLATFORM(name) voidLinux##name
+#elif defined(__APPLE__)
+#define PLATFORM(name) voidIos##name
+__attribute__((noreturn)) static void notPortedIos(const char *feature) { fail("%s is not ported to iOS yet (src/sokol/appWindow.c)", feature); }
+static void voidIosRequestQuit(void) { notPortedIos("voidRequestQuit"); }
+static void voidIosCancelQuit(void) { notPortedIos("voidCancelQuit"); }
+static double voidIosFrameDuration(void) { notPortedIos("voidFrameDuration"); }
+static void voidIosSetClipboard(const char *utf8) { (void)utf8; notPortedIos("the clipboard"); }
+static const char *voidIosClipboard(void) { notPortedIos("the clipboard"); }
+static void voidIosSetCursor(int cursor) { (void)cursor; notPortedIos("the mouse cursor"); }
+static int voidIosCursor(void) { notPortedIos("the mouse cursor"); }
+static void voidIosShowMouse(bool shown) { (void)shown; notPortedIos("showing and hiding the mouse"); }
+static bool voidIosMouseShown(void) { notPortedIos("showing and hiding the mouse"); }
+static void voidIosLockMouse(bool locked) { (void)locked; notPortedIos("the mouse lock"); }
+static bool voidIosMouseLocked(void) { notPortedIos("the mouse lock"); }
+static void voidIosToggleFullscreen(void) { notPortedIos("fullscreen"); }
+static bool voidIosIsFullscreen(void) { notPortedIos("fullscreen"); }
+static int voidIosDroppedCount(void) { notPortedIos("dropped files"); }
+static const char *voidIosDroppedPath(int i) { (void)i; notPortedIos("dropped files"); }
 #else
 #define PLATFORM(name) voidWin32##name
 #endif
