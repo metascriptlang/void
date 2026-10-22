@@ -128,7 +128,7 @@ export struct AppEvent {
 	touches: AppTouch[];
 }
 
-let _handler: ((e: AppEvent) => void) | null = null;
+let eventHandler: ((e: AppEvent) => void) | null = null;
 
 function currentTouches(): AppTouch[] {
 	const out: AppTouch[] = [];
@@ -166,13 +166,19 @@ function currentEvent(): AppEvent {
 }
 
 function dispatchEvent(): void {
-	(_handler as (e: AppEvent) => void)(currentEvent());
+	const handler = eventHandler;
+	if (handler === null) {
+		console.log("window: an event arrived with no handler; onAppEvent sets it");
+		unreachable;
+	} else {
+		handler(currentEvent());
+	}
 }
 
 // Every window event reaches `handler`, Escape included: once one is set, Escape no
 // longer quits the app. Call it before voidRun or from its init closure.
 export function onAppEvent(handler: (e: AppEvent) => void): void {
-	_handler = handler;
+	eventHandler = handler;
 	voidSetEventHandler(dispatchEvent);
 }
 
@@ -184,7 +190,9 @@ export function setWindowTitle(title: string): void { voidSetWindowTitle(title);
 export function setTextInput(on: boolean): void { voidSetTextInput(on ? 1 as int32 : 0 as int32); }
 
 // The caret the candidate window opens below, in framebuffer pixels.
-export function setImeRect(x: int32, y: int32, w: int32, h: int32): void { voidSetImeRect(x, y, w, h); }
+export function setImeRect(x: int32, y: int32, w: int32, h: int32): void {
+	voidSetImeRect(x, y, w, h);
+}
 
 // How far a docked software keyboard covers the window from its bottom edge, in framebuffer
 // pixels; 0 while it is hidden or floating. A change arrives as a Resized event.
@@ -212,7 +220,9 @@ export function mouseCursor(): MouseCursor { return voidMouseCursor() as MouseCu
 export function showMouse(shown: boolean): void { voidShowMouse(shown ? 1 as int32 : 0 as int32); }
 export function mouseShown(): boolean { return voidMouseShown() !== 0; }
 
-export function lockMouse(locked: boolean): void { voidLockMouse(locked ? 1 as int32 : 0 as int32); }
+export function lockMouse(locked: boolean): void {
+	voidLockMouse(locked ? 1 as int32 : 0 as int32);
+}
 export function mouseLocked(): boolean { return voidMouseLocked() !== 0; }
 
 export function toggleFullscreen(): void { voidToggleFullscreen(); }
@@ -221,6 +231,11 @@ export function isFullscreen(): boolean { return voidIsFullscreen() !== 0; }
 export function droppedFiles(): string[] {
 	const paths: string[] = [];
 	const count = voidDroppedFileCount();
-	for (let i = 0 as int32; i < count; i++) paths.push(voidDroppedFilePath(i));
+	for (let i: int32 = 0; i < count; i++) { paths.push(voidDroppedFilePath(i)); }
 	return paths;
+}
+
+test "the ordinals of AppEventType and MouseCursor follow src/platform/appEvent.h" {
+	assert (AppEventType.Preedit as int32) == 24 && (AppEventType.TextInput as int32) == 25;
+	assert (MouseCursor.NotAllowed as int32) == 10;
 }
