@@ -1,0 +1,97 @@
+# lib: heaps format
+# haxe-prelude: class H {
+# haxe-prelude: public static function hit(c:Array<Float>,x:Array<Float>,y:Array<Float>,z:Array<Float>,h:Array<Float>,p:Array<Float>):Float {
+# haxe-prelude: var b=new h3d.col.OrientedBounds(); b.centerX=c[0]; b.centerY=c[1]; b.centerZ=c[2];
+# haxe-prelude: b.xx=x[0]; b.xy=x[1]; b.xz=x[2]; b.yx=y[0]; b.yy=y[1]; b.yz=y[2];
+# haxe-prelude: b.zx=z[0]; b.zy=z[1]; b.zz=z[2]; b.hx=h[0]; b.hy=h[1]; b.hz=h[2];
+# haxe-prelude: var f=new h3d.col.Frustum();
+# haxe-prelude: f.pleft=new h3d.col.Plane(p[0],p[1],p[2],-p[3]); f.pright=new h3d.col.Plane(p[4],p[5],p[6],-p[7]);
+# haxe-prelude: f.pbottom=new h3d.col.Plane(p[8],p[9],p[10],-p[11]); f.ptop=new h3d.col.Plane(p[12],p[13],p[14],-p[15]);
+# haxe-prelude: f.pnear=new h3d.col.Plane(p[16],p[17],p[18],-p[19]); f.pfar=new h3d.col.Plane(p[20],p[21],p[22],-p[23]);
+# haxe-prelude: return f.hasOrientedBounds(b)?1.:0.;
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, Vec4, vec3, vec4 } from "../../../src/math/math3d";
+# ms-prelude: import { Frustum3D, intersectsOrientedBounds } from "../../../src/void3d/frustum";
+# ms-prelude: import { OrientedBounds3D } from "../../../src/void3d/orientedBounds";
+# ms-prelude: function hit(n:string,c:Vec3,x:Vec3,y:Vec3,z:Vec3,h:Vec3,p:Vec4[]):void {
+# ms-prelude: const f: Frustum3D = { left: p[0], right: p[1], bottom: p[2], top: p[3], nearPlane: p[4], farPlane: p[5] };
+# ms-prelude: const b: OrientedBounds3D = { center: c, axisX: x, axisY: y, axisZ: z, halfSize: h };
+# ms-prelude: const r=f.intersectsOrientedBounds(b); if(!r.ok){unreachable;} emitB(n,r.value);
+# ms-prelude: }
+
+case inside tol=0
+haxe> emit("inside",[H.hit([0,0,0],[1,0,0],[0,1,0],[0,0,1],[0.25,0.25,0.25],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("inside",vec3(0,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.25,0.25,0.25),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case left-out tol=0
+haxe> emit("left-out",[H.hit([-2,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("left-out",vec3(-2,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case left-touch tol=0
+haxe> emit("left-touch",[H.hit([-1.5,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("left-touch",vec3(-1.5,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case left-straddle tol=0
+haxe> emit("left-straddle",[H.hit([-1.25,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("left-straddle",vec3(-1.25,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case right-out tol=0
+haxe> emit("right-out",[H.hit([2,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("right-out",vec3(2,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case top-out tol=0
+haxe> emit("top-out",[H.hit([0,2,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("top-out",vec3(0,2,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case bottom-out tol=0
+haxe> emit("bottom-out",[H.hit([0,-2,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("bottom-out",vec3(0,-2,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case near-out tol=0
+haxe> emit("near-out",[H.hit([0,0,-2],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("near-out",vec3(0,0,-2),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case far-out tol=0
+haxe> emit("far-out",[H.hit([0,0,2],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("far-out",vec3(0,0,2),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case rotated-reaches tol=0
+haxe> emit("rotated-reaches",[H.hit([1.2,0,0],[0.7071067811865476,0.7071067811865476,0],[-0.7071067811865476,0.7071067811865476,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("rotated-reaches",vec3(1.2,0,0),vec3(0.7071067811865476,0.7071067811865476,0),vec3(-0.7071067811865476,0.7071067811865476,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case rotated-misses tol=0
+haxe> emit("rotated-misses",[H.hit([1.75,0,0],[0.7071067811865476,0.7071067811865476,0],[-0.7071067811865476,0.7071067811865476,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("rotated-misses",vec3(1.75,0,0),vec3(0.7071067811865476,0.7071067811865476,0),vec3(-0.7071067811865476,0.7071067811865476,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case aligned-same-center-misses tol=0
+haxe> emit("aligned-same-center-misses",[H.hit([1.6,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("aligned-same-center-misses",vec3(1.6,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case rotated-same-center-reaches tol=0
+haxe> emit("rotated-same-center-reaches",[H.hit([1.6,0,0],[0.7071067811865476,0.7071067811865476,0],[-0.7071067811865476,0.7071067811865476,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("rotated-same-center-reaches",vec3(1.6,0,0),vec3(0.7071067811865476,0.7071067811865476,0),vec3(-0.7071067811865476,0.7071067811865476,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case point-inside tol=0
+haxe> emit("point-inside",[H.hit([0,0,0],[1,0,0],[0,1,0],[0,0,1],[0,0,0],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("point-inside",vec3(0,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0,0,0),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case point-outside tol=0
+haxe> emit("point-outside",[H.hit([1.01,0,0],[1,0,0],[0,1,0],[0,0,1],[0,0,0],[1,0,0,1,-1,0,0,1,0,1,0,1,0,-1,0,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("point-outside",vec3(1.01,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0,0,0),[vec4(1,0,0,1),vec4(-1,0,0,1),vec4(0,1,0,1),vec4(0,-1,0,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case distant-planes tol=0
+haxe> emit("distant-planes",[H.hit([0,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,0,0,100,-1,0,0,100,0,1,0,100,0,-1,0,100,0,0,1,100,0,0,-1,100])]);
+ms> hit("distant-planes",vec3(0,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,0,0,100),vec4(-1,0,0,100),vec4(0,1,0,100),vec4(0,-1,0,100),vec4(0,0,1,100),vec4(0,0,-1,100)]);
+
+case skew-plane-normals tol=0
+haxe> emit("skew-plane-normals",[H.hit([0,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,1,0,1,-1,1,0,1,0,1,1,1,0,-1,1,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("skew-plane-normals",vec3(0,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,1,0,1),vec4(-1,1,0,1),vec4(0,1,1,1),vec4(0,-1,1,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case skew-normals-out tol=0
+haxe> emit("skew-normals-out",[H.hit([3,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[1,1,0,1,-1,1,0,1,0,1,1,1,0,-1,1,1,0,0,1,1,0,0,-1,1])]);
+ms> hit("skew-normals-out",vec3(3,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(1,1,0,1),vec4(-1,1,0,1),vec4(0,1,1,1),vec4(0,-1,1,1),vec4(0,0,1,1),vec4(0,0,-1,1)]);
+
+case unnormalized-planes tol=0
+haxe> emit("unnormalized-planes",[H.hit([1.9,0,0],[1,0,0],[0,1,0],[0,0,1],[0.5,0.5,0.5],[2,0,0,2,-2,0,0,2,0,2,0,2,0,-2,0,2,0,0,2,2,0,0,-2,2])]);
+ms> hit("unnormalized-planes",vec3(1.9,0,0),vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),vec3(0.5,0.5,0.5),[vec4(2,0,0,2),vec4(-2,0,0,2),vec4(0,2,0,2),vec4(0,-2,0,2),vec4(0,0,2,2),vec4(0,0,-2,2)]);

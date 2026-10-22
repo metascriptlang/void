@@ -33,6 +33,15 @@ function orthonormal(b: OrientedBounds3D): boolean {
 		Math.abs(wideDot(b.axisY, b.axisZ)) <= tolerance;
 }
 
+export function validateOrientedBounds(b: OrientedBounds3D): Result<int32, OrientedBoundsError> {
+	if (!finiteBounds(b)) { return Result.err(OrientedBoundsError.NonFinite); }
+	if (b.halfSize.x < 0 || b.halfSize.y < 0 || b.halfSize.z < 0) {
+		return Result.err(OrientedBoundsError.NegativeHalfSize);
+	}
+	if (!orthonormal(b)) { return Result.err(OrientedBoundsError.NonOrthonormalAxes); }
+	return Result.ok(0);
+}
+
 export function overlapsOrientedBounds(
 	a: OrientedBounds3D, b: OrientedBounds3D,
 ): Result<boolean, OrientedBoundsError> {
