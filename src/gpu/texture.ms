@@ -4,6 +4,7 @@
 
 import {
 	makeImage,
+	makeImageMips,
 	makeTextureView,
 	destroyImage,
 	destroyView,
@@ -46,6 +47,32 @@ export function create(
 		closed: false,
 		realloc: realloc,
 	};
+}
+
+// Levels of the full chain down to 1x1, as h3d Texture.mipLevels counts them (Texture.hx:80-90).
+export function mipLevelCount(width: int32, height: int32): int32 {
+	let count: int32 = 1;
+	let largest: int32 = Math.max(width, height);
+	while (largest > 1) {
+		largest /= 2;
+		count++;
+	}
+	return count;
+}
+
+// Pixels of a chain of `levels` (1 or the full chain, as the door takes it), -1 for any other.
+export function mipChainWords(width: int32, height: int32, levels: int32): int64 {
+	if (width <= 0 || height <= 0 || levels < 1) { return -1; }
+	if (levels != 1 && levels != mipLevelCount(width, height)) { return -1; }
+	let words: int64 = 0;
+	let w: int32 = width;
+	let h: int32 = height;
+	for (let level = 0; level < levels; level++) {
+		words += (w as int64) * (h as int64);
+		w = Math.max(1, w / 2);
+		h = Math.max(1, h / 2);
+	}
+	return words;
 }
 
 function reuploadKept(pixels: Vec<uint32>): (texture: Texture) => void {
@@ -131,13 +158,21 @@ export function upload(
 	this texture: Texture,
 	pixels: Readonly<Span<uint32>>,
 ): Result<int32, TextureError> {
+	return texture.uploadMips(pixels, 1);
+}
+
+// `pixels` holds the `levels` of the chain back to back, level 0 first.
+export function uploadMips(
+	this texture: Texture,
+	pixels: Readonly<Span<uint32>>,
+	levels: int32,
+): Result<int32, TextureError> {
 	if (texture.closed) { stopOnClosed("upload"); }
 	if (!texture.owned) {
 		console.log("gpu door: upload on an adopted texture; its image is the caller's");
 		unreachable;
 	}
-	if (texture.width <= 0 || texture.height <= 0 ||
-		(pixels.length as int64) != (texture.width as int64) * (texture.height as int64)) {
+	if ((pixels.length as int64) != mipChainWords(texture.width, texture.height, levels)) {
 		return Result.err(TextureError.BadSize);
 	}
 	if (texture.holdsCurrent()) {
@@ -146,7 +181,9 @@ export function upload(
 		unreachable;
 	}
 	forgetHandles(texture);
-	const image: uint32 = makeImage(pixels, texture.width, texture.height);
+	const image: uint32 = levels == 1
+		? makeImage(pixels, texture.width, texture.height)
+		: makeImageMips(pixels, texture.width, texture.height, levels);
 	if (image == 0) { return Result.err(TextureError.ImageRefused); }
 	const view: uint32 = makeTextureView(image);
 	if (view == 0) {

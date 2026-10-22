@@ -110,6 +110,8 @@ static const sg_index_type INDEX_TYPES[] = {
 // FilterMode, Wrap (h3d.mat.Data)
 static const sg_filter FILTERS[] = { SG_FILTER_NEAREST, SG_FILTER_LINEAR };
 static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_MIRRORED_REPEAT };
+// TextureMipFilter (h3d.mat.Data MipMap): sokol has no "none", the sampler's lod range ends it
+static const sg_filter MIP_FILTERS[] = { SG_FILTER_NEAREST, SG_FILTER_NEAREST, SG_FILTER_LINEAR };
 
 #define COUNT(table) ((uint32_t)(sizeof(table) / sizeof(table[0])))
 #define LOOKUP(table, index) ((uint32_t)(index) < COUNT(table) ? table[(uint32_t)(index)] : table[0])
@@ -127,6 +129,7 @@ _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in 
 _Static_assert(COUNT(STORE_ACTIONS) == 2, "STORE_ACTIONS must match StoreAction in door.ms");
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match FilterMode in door.ms");
 _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in door.ms");
+_Static_assert(COUNT(MIP_FILTERS) == 3, "MIP_FILTERS must match TextureMipFilter in textureMip.ms");
 _Static_assert(COUNT(INDEX_TYPES) == 3, "INDEX_TYPES must match IndexType in pipeline.ms");
 _Static_assert(DOOR_UNIFORM_SLOT_TABLE_LENGTH == SG_MAX_UNIFORMBLOCK_BINDSLOTS,
 	"DOOR_UNIFORM_SLOTS must be sokol's uniform block slot count");
@@ -439,6 +442,33 @@ uint32_t doorMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int3
 	return validImage(sg_make_image(&desc));
 }
 
+uint32_t doorMakeImageMips(const uint32_t *rgba, int64_t length, int32_t width, int32_t height,
+	int32_t levels) {
+	if (width <= 0 || height <= 0 || levels < 1 || levels > SG_MAX_MIPMAPS) return SG_INVALID_ID;
+	int32_t full = 1;
+	for (int32_t largest = width > height ? width : height; largest > 1; largest /= 2) full++;
+	if (levels != 1 && levels != full) return SG_INVALID_ID;
+	sg_image_desc desc = {0};
+	desc.width = width;
+	desc.height = height;
+	desc.num_mipmaps = levels;
+	desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+	int64_t offset = 0;
+	int32_t w = width;
+	int32_t h = height;
+	for (int32_t level = 0; level < levels; level++) {
+		const int64_t words = (int64_t)w * h;
+		if (words > length - offset) return SG_INVALID_ID;
+		desc.data.mip_levels[level].ptr = rgba + offset;
+		desc.data.mip_levels[level].size = (size_t)words * 4;
+		offset += words;
+		w = w > 1 ? w / 2 : 1;
+		h = h > 1 ? h / 2 : 1;
+	}
+	if (offset != length) return SG_INVALID_ID;
+	return validImage(sg_make_image(&desc));
+}
+
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
 	if (width <= 0 || height <= 0) return SG_INVALID_ID;
 	sg_image_desc desc = {0};
@@ -477,6 +507,39 @@ uint32_t doorMakeSampler(int32_t filter, int32_t wrap) {
 	desc.wrap_u = LOOKUP(WRAPS, wrap);
 	desc.wrap_v = LOOKUP(WRAPS, wrap);
 	return sg_make_sampler(&desc).id;
+}
+
+int32_t doorAnisotropyPortable(void) {
+#if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
+	return 0;
+#else
+	return 1;
+#endif
+}
+
+uint32_t doorMakeSamplerEx(int32_t minFilter, int32_t magFilter, int32_t mipFilter, int32_t wrapU,
+	int32_t wrapV, float minLod, float maxLod, int32_t maxAnisotropy) {
+	if ((uint32_t)minFilter >= COUNT(FILTERS) || (uint32_t)magFilter >= COUNT(FILTERS) ||
+		(uint32_t)mipFilter >= COUNT(MIP_FILTERS) || (uint32_t)wrapU >= COUNT(WRAPS) ||
+		(uint32_t)wrapV >= COUNT(WRAPS)) return SG_INVALID_ID;
+	// sokol reads a max_lod of 0 as unset (FLT_MAX), so the caller names a positive one
+	if (!(minLod >= 0.0f) || !(maxLod > 0.0f) || maxLod < minLod) return SG_INVALID_ID;
+	if (maxAnisotropy < 1 || maxAnisotropy > 16) return SG_INVALID_ID;
+	if (maxAnisotropy > 1 && (!doorAnisotropyPortable() || minFilter != 1 || magFilter != 1 ||
+		mipFilter != 2)) return SG_INVALID_ID;
+	sg_sampler_desc desc = {0};
+	desc.min_filter = FILTERS[minFilter];
+	desc.mag_filter = FILTERS[magFilter];
+	desc.mipmap_filter = MIP_FILTERS[mipFilter];
+	desc.wrap_u = WRAPS[wrapU];
+	desc.wrap_v = WRAPS[wrapV];
+	desc.min_lod = minLod;
+	desc.max_lod = maxLod;
+	desc.max_anisotropy = (uint32_t)maxAnisotropy;
+	sg_sampler sampler = sg_make_sampler(&desc);
+	if (sg_query_sampler_state(sampler) == SG_RESOURCESTATE_VALID) return sampler.id;
+	sg_destroy_sampler(sampler);
+	return SG_INVALID_ID;
 }
 
 int32_t doorImageAlive(uint32_t image) {

@@ -15,6 +15,8 @@ import {
 	doorMakeAttachmentView,
 	doorMakeTextureView,
 	doorMakeSampler,
+	doorMakeSamplerEx,
+	doorAnisotropyPortable,
 	doorImageAlive,
 	doorViewAlive,
 	doorSamplerAlive,
@@ -53,6 +55,9 @@ import {
 // one-element copy (docs/VOID3D.md, Compiler notes).
 extern function doorMakePipeline(descriptor: Readonly<Span<uint32>>): uint32;
 extern function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
+extern function doorMakeImageMips(
+	rgba: Readonly<Span<uint32>>, width: int32, height: int32, levels: int32,
+): uint32;
 extern function doorBeginPass(
 	descriptor: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>,
 ): void;
@@ -142,6 +147,12 @@ export function makeImage(rgba: Readonly<Span<uint32>>, width: int32, height: in
 	return doorMakeImage(rgba, width, height);
 }
 
+export function makeImageMips(
+	rgba: Readonly<Span<uint32>>, width: int32, height: int32, levels: int32,
+): uint32 {
+	return doorMakeImageMips(rgba, width, height, levels);
+}
+
 export function makeTargetImage(width: int32, height: int32, format: PixelFormat): uint32 {
 	return doorMakeTargetImage(width, height, format as int32);
 }
@@ -156,6 +167,18 @@ export function makeTextureView(image: uint32): uint32 {
 
 export function makeSampler(filter: FilterMode, wrap: Wrap): uint32 {
 	return doorMakeSampler(filter as int32, wrap as int32);
+}
+
+export function anisotropyPortable(): boolean { return doorAnisotropyPortable() != 0; }
+
+// Ordinals of FilterMode, TextureMipFilter and Wrap (void3d/textureMip.ms `doorCall`).
+export function makeSamplerEx(
+	minFilter: int32, magFilter: int32, mipFilter: int32, wrapU: int32, wrapV: int32,
+	minLod: float32, maxLod: float32, maxAnisotropy: int32,
+): uint32 {
+	return doorMakeSamplerEx(
+		minFilter, magFilter, mipFilter, wrapU, wrapV, minLod, maxLod, maxAnisotropy,
+	);
 }
 
 export function imageAlive(image: uint32): boolean { return doorImageAlive(image) != 0; }

@@ -84,10 +84,20 @@ int32_t doorLayoutFloats(int32_t layout, int32_t buffer);
 int32_t doorLayoutPerInstance(int32_t layout);
 uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length);
 uint32_t doorMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
+// `levels` is 1 or the full chain down to 1x1 (floor halving, as h3d Texture.mipLevels); `rgba`
+// holds the levels back to back, `length` their pixel count.
+uint32_t doorMakeImageMips(const uint32_t *rgba, int64_t length, int32_t width, int32_t height,
+	int32_t levels);
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format);
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format);
 uint32_t doorMakeTextureView(uint32_t image);
 uint32_t doorMakeSampler(int32_t filter, int32_t wrap);
+// 0 on GL backends, where sokol clamps anisotropy to 1 without the extension and cannot be asked.
+int32_t doorAnisotropyPortable(void);
+// Filters, mipFilter (None, Nearest, Linear) and wraps are the MetaScript enum ordinals; 0 when
+// any is out of range, maxLod is not positive, or maxAnisotropy > 1 is not all-linear and portable.
+uint32_t doorMakeSamplerEx(int32_t minFilter, int32_t magFilter, int32_t mipFilter, int32_t wrapU,
+	int32_t wrapV, float minLod, float maxLod, int32_t maxAnisotropy);
 int32_t doorImageAlive(uint32_t image);
 int32_t doorViewAlive(uint32_t view);
 int32_t doorSamplerAlive(uint32_t sampler);
