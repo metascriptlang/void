@@ -93,6 +93,7 @@ import {
 	D3dBlendStateImpl,
 	D3dBufferImpl,
 	D3dComputeShaderImpl,
+	D3dContext1Impl,
 	D3dContextImpl,
 	D3dDepthStencilStateImpl,
 	D3dDeviceImpl,
@@ -108,7 +109,6 @@ import {
 	D3dUavImpl,
 	D3dVertexShaderImpl,
 	d3dBeginEvent,
-	d3dBlendTarget,
 	d3dClearDsv,
 	d3dClearRtv,
 	d3dClearState,
@@ -158,14 +158,10 @@ import {
 	d3dIaSetInputLayout,
 	d3dIaSetPrimitiveTopology,
 	d3dIaSetVertexBuffer,
-	d3dInputElement,
 	d3dMapWrite,
 	d3dOmSetBlendState,
 	d3dOmSetDepthStencilState,
-	d3dPsSetConstantBuffer,
-	d3dPsSetSampler,
 	d3dPsSetShader,
-	d3dPsSetShaderResource,
 	d3dReadBuffer,
 	d3dRelease,
 	d3dQueryBegin,
@@ -189,13 +185,11 @@ import {
 	d3dUpdateIfChanged,
 	d3dUpdateTexture,
 	d3dUniformOffsetting,
-	d3dReleaseUniformOffsetting,
-	d3dVsSetConstantBufferRange,
-	d3dPsSetConstantBufferRange,
-	d3dVsSetConstantBuffer,
-	d3dVsSetSampler,
+	d3dSetConstantBuffer,
+	d3dSetConstantBufferRange,
+	d3dSetShaderResource,
+	d3dSetSampler,
 	d3dVsSetShader,
-	d3dVsSetShaderResource,
 } from "./d3d11.h";
 
 export struct NativeEnvironment {
@@ -220,6 +214,8 @@ const MAX_STAGE_CONSTANT_BUFFERS = 14;
 const MAX_STAGE_SHADER_RESOURCES = 128;
 const MAX_STAGE_SAMPLERS = 16;
 const MAX_STAGE_UNORDERED_ACCESS_VIEWS = 8;
+const INPUT_ELEMENT_INTS = 5;
+const BLEND_TARGET_INTS = 9;
 const MAX_DISPATCH_GROUPS = 65535;
 const MAX_TEXTURE_DIMENSION_1D = 16384;
 const MAX_TEXTURE_DIMENSION_2D = 16384;
@@ -568,14 +564,13 @@ struct NativeBinds {
 	indexBuffer: Ptr<D3dBufferImpl>;
 	indexFormat: int32;
 	indexOffset: int32;
-	vertexShaderResource: Ptr<D3dSrvImpl>[128];
-	fragmentShaderResource: Ptr<D3dSrvImpl>[128];
-	vertexSampler: Ptr<D3dSamplerImpl>[16];
-	fragmentSampler: Ptr<D3dSamplerImpl>[16];
+	shaderResource: Ptr<D3dSrvImpl>[256];
+	sampler: Ptr<D3dSamplerImpl>[32];
 }
 
 let device: Ptr<D3dDeviceImpl> = null as unknown as Ptr<D3dDeviceImpl>;
 let context: Ptr<D3dContextImpl> = null as unknown as Ptr<D3dContextImpl>;
+let context1: Ptr<D3dContext1Impl> = null as unknown as Ptr<D3dContext1Impl>;
 let offsetUniforms = false;
 let frame: int64 = 0;
 let passSerial: int64 = 0;
@@ -891,7 +886,8 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	pass = { active: false };
 	bound = { pipeline: 0 };
 	computeBound = { active: false };
-	offsetUniforms = d3dUniformOffsetting(device, context) != 0;
+	context1 = d3dUniformOffsetting(device, context);
+	offsetUniforms = context1 != null;
 	reset(buffers);
 	reset(textures);
 	reset(views);
@@ -981,7 +977,8 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 export function shutdown(): void {
 	if (pass.active) { stop("shutdown with a render pass still open"); }
 	d3dClearState(context);
-	d3dReleaseUniformOffsetting();
+	d3dRelease(context1 as Ptr<void>);
+	context1 = null as unknown as Ptr<D3dContext1Impl>;
 	d3dReleaseAnnotation();
 	for (const id of querySets.liveIds()) { destroyQuerySet({ id: id }); }
 	for (const id of bindGroups.liveIds()) { destroyBindGroup({ id: id }); }
@@ -2083,8 +2080,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		stencilOperation(back.passOp, "depthStencil.stencilBack.passOp"),
 		compareFunction(back.compare, "depthStencil.stencilBack.compare"),
 	);
-	describeBlendTargets(descriptor);
-	slot.blend = d3dCreateBlendState(device);
+	slot.blend = createBlendState(descriptor);
 	if (slot.rasterizer == null || slot.depthStencil == null || slot.blend == null) {
 		stop(`a D3D11 state object failed for pipeline ${labelOf(descriptor.label)}`);
 	}
@@ -2112,6 +2108,7 @@ function createInputLayout(
 	ref slot: PipelineSlot,
 ): Ptr<D3dInputLayoutImpl> {
 	let count = 0;
+	let elements: int32[INPUT_ELEMENT_INTS * GPU_MAX_VERTEX_ATTRIBUTES] = [];
 	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
 		const stepMode: string = descriptor.vertex.buffers[b].stepMode;
 		if (stepMode != "" && stepMode != "vertex" && stepMode != "instance") {
@@ -2123,14 +2120,11 @@ function createInputLayout(
 			if (format == "") { continue; }
 			if (count == GPU_MAX_VERTEX_ATTRIBUTES) { stop(`a pipeline has over ${GPU_MAX_VERTEX_ATTRIBUTES} vertex attributes`); }
 			const location = descriptor.vertex.buffers[b].attributes[a].shaderLocation;
-			d3dInputElement(
-				count,
-				semanticIndexOf(shader, location),
-				vertexFormat(format),
-				b,
-				descriptor.vertex.buffers[b].attributes[a].offset,
-				perInstance,
-			);
+			elements[count * INPUT_ELEMENT_INTS] = semanticIndexOf(shader, location);
+			elements[count * INPUT_ELEMENT_INTS + 1] = vertexFormat(format);
+			elements[count * INPUT_ELEMENT_INTS + 2] = b;
+			elements[count * INPUT_ELEMENT_INTS + 3] = descriptor.vertex.buffers[b].attributes[a].offset;
+			elements[count * INPUT_ELEMENT_INTS + 4] = perInstance;
 			count += 1;
 			slot.strides[b] = descriptor.vertex.buffers[b].arrayStride;
 		}
@@ -2139,12 +2133,14 @@ function createInputLayout(
 		}
 	}
 	if (count == 0) { return null as unknown as Ptr<D3dInputLayoutImpl>; }
-	const layout = d3dCreateInputLayout(device, count, shaders.slots[shader].vertexBlob);
+	const layout = d3dCreateInputLayout(device, elements[0], count, shaders.slots[shader].vertexBlob);
 	if (layout == null) { stop(`CreateInputLayout failed for pipeline ${labelOf(descriptor.label)}`); }
 	return layout;
 }
 
-function describeBlendTargets(descriptor: GPURenderPipelineDescriptor): void {
+function createBlendState(descriptor: GPURenderPipelineDescriptor): Ptr<D3dBlendStateImpl> {
+	let count = 0;
+	let targets: int32[BLEND_TARGET_INTS * GPU_MAX_COLOR_ATTACHMENTS] = [];
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const format: string = descriptor.fragment.targets[i].format;
 		if (format == "") { continue; }
@@ -2152,18 +2148,18 @@ function describeBlendTargets(descriptor: GPURenderPipelineDescriptor): void {
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;
 		const writeMask = descriptor.fragment.targets[i].writeMask;
-		d3dBlendTarget(
-			i,
-			descriptor.fragment.targets[i].blendEnabled ? 1 : 0,
-			blendFactor(color.srcFactor, false, "blend.color.srcFactor"),
-			destinationFactor(color.dstFactor, false, "blend.color.dstFactor"),
-			blendOperation(color.operation, "blend.color.operation"),
-			blendFactor(alpha.srcFactor, true, "blend.alpha.srcFactor"),
-			destinationFactor(alpha.dstFactor, true, "blend.alpha.dstFactor"),
-			blendOperation(alpha.operation, "blend.alpha.operation"),
-			writeMask == 0 ? COLOR_WRITE_ALL : writeMask,
-		);
+		targets[count * BLEND_TARGET_INTS] = i;
+		targets[count * BLEND_TARGET_INTS + 1] = descriptor.fragment.targets[i].blendEnabled ? 1 : 0;
+		targets[count * BLEND_TARGET_INTS + 2] = blendFactor(color.srcFactor, false, "blend.color.srcFactor");
+		targets[count * BLEND_TARGET_INTS + 3] = destinationFactor(color.dstFactor, false, "blend.color.dstFactor");
+		targets[count * BLEND_TARGET_INTS + 4] = blendOperation(color.operation, "blend.color.operation");
+		targets[count * BLEND_TARGET_INTS + 5] = blendFactor(alpha.srcFactor, true, "blend.alpha.srcFactor");
+		targets[count * BLEND_TARGET_INTS + 6] = destinationFactor(alpha.dstFactor, true, "blend.alpha.dstFactor");
+		targets[count * BLEND_TARGET_INTS + 7] = blendOperation(alpha.operation, "blend.alpha.operation");
+		targets[count * BLEND_TARGET_INTS + 8] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
+		count += 1;
 	}
+	return d3dCreateBlendState(device, targets[0], count);
 }
 
 export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
@@ -2709,11 +2705,7 @@ function applyPipeline(p: int32, s: int32): void {
 	d3dVsSetShader(context, shaders.slots[s].vertex);
 	d3dPsSetShader(context, shaders.slots[s].fragment);
 	for (let u = 0; u < shaders.slots[s].uniformCount && !offsetUniforms; u++) {
-		if (shaders.slots[s].uniforms[u].vertexStage) {
-			d3dVsSetConstantBuffer(context, shaders.slots[s].uniforms[u].nativeSlot, shaders.slots[s].constantBuffers[u]);
-		} else {
-			d3dPsSetConstantBuffer(context, shaders.slots[s].uniforms[u].nativeSlot, shaders.slots[s].constantBuffers[u]);
-		}
+		d3dSetConstantBuffer(context, shaders.slots[s].uniforms[u].vertexStage ? 1 : 0, shaders.slots[s].uniforms[u].nativeSlot, shaders.slots[s].constantBuffers[u]);
 	}
 	forgetAppliedUniforms();
 	bound.vertexDirty = true;
@@ -2779,27 +2771,17 @@ function applyResources(s: int32): void {
 		if (binding.kind == BindingKind.StorageTexture) { stop("a storage texture in a render stage is not ported to d3d11"); }
 		if (binding.kind == BindingKind.Texture || binding.kind == BindingKind.StorageBuffer) {
 			const view = binding.kind == BindingKind.Texture ? views.slots[views.slotIndex(bindGroups.slots[g].entries[e].textureView.id)].shaderResource : bindGroups.slots[g].srv[e];
-			if (binding.vertexStage) {
-				if (nativeBinds.vertexShaderResource[binding.nativeSlot] == view) { continue; }
-				d3dVsSetShaderResource(context, binding.nativeSlot, view);
-				nativeBinds.vertexShaderResource[binding.nativeSlot] = view;
-			} else {
-				if (nativeBinds.fragmentShaderResource[binding.nativeSlot] == view) { continue; }
-				d3dPsSetShaderResource(context, binding.nativeSlot, view);
-				nativeBinds.fragmentShaderResource[binding.nativeSlot] = view;
-			}
+			const cached = (binding.vertexStage ? 0 : MAX_STAGE_SHADER_RESOURCES) + binding.nativeSlot;
+			if (nativeBinds.shaderResource[cached] == view) { continue; }
+			d3dSetShaderResource(context, binding.vertexStage ? 1 : 0, binding.nativeSlot, view);
+			nativeBinds.shaderResource[cached] = view;
 			stats.shaderResources += 1;
 		} else {
 			const sampler = samplers.slots[samplers.slotIndex(bindGroups.slots[g].entries[e].sampler.id)].native;
-			if (binding.vertexStage) {
-				if (nativeBinds.vertexSampler[binding.nativeSlot] == sampler) { continue; }
-				d3dVsSetSampler(context, binding.nativeSlot, sampler);
-				nativeBinds.vertexSampler[binding.nativeSlot] = sampler;
-			} else {
-				if (nativeBinds.fragmentSampler[binding.nativeSlot] == sampler) { continue; }
-				d3dPsSetSampler(context, binding.nativeSlot, sampler);
-				nativeBinds.fragmentSampler[binding.nativeSlot] = sampler;
-			}
+			const cached = (binding.vertexStage ? 0 : MAX_STAGE_SAMPLERS) + binding.nativeSlot;
+			if (nativeBinds.sampler[cached] == sampler) { continue; }
+			d3dSetSampler(context, binding.vertexStage ? 1 : 0, binding.nativeSlot, sampler);
+			nativeBinds.sampler[cached] = sampler;
 			stats.samplers += 1;
 		}
 	}
@@ -2824,11 +2806,7 @@ function applyUniforms(s: int32): void {
 			if (constants > MAX_BLOCK_CONSTANTS || offset + constants * 16 > roundUp256(buffers.slots[b].size)) {
 				stop(`uniform binding ${block.binding} of ${block.size} bytes at ${offset} does not fit one constant buffer view`);
 			}
-			if (block.vertexStage) {
-				d3dVsSetConstantBufferRange(block.nativeSlot, buffers.slots[b].native, offset / 16, constants);
-			} else {
-				d3dPsSetConstantBufferRange(block.nativeSlot, buffers.slots[b].native, offset / 16, constants);
-			}
+			d3dSetConstantBufferRange(context1, block.vertexStage ? 1 : 0, block.nativeSlot, buffers.slots[b].native, offset / 16, constants);
 			bound.uniformBuffer[u] = buffers.slots[b].id;
 			bound.uniformFirst[u] = offset;
 		} else {
