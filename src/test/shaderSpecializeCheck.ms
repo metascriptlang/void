@@ -52,7 +52,8 @@ function block(name: string, members: ShaderField[]): ShaderStruct {
 	return s;
 }
 
-function resource(kind: ResourceKind, name: string, binding: int32, type: ShaderType): ShaderResource {
+function resource(kind: ResourceKind, name: string, binding: int32,
+	type: ShaderType): ShaderResource {
 	let r = new ShaderResource();
 	r.kind = kind;
 	r.name = name;
@@ -236,12 +237,16 @@ test "a read of an input outside its feature is refused by name" {
 	m.functions[2].body = body;
 	const r = specialize(m, ["B"]);
 	assert !r.ok;
-	if (!r.ok) { assert r.error == "io 'tangent' is read in a program whose features leave it out"; }
+	if (!r.ok) {
+		assert r.error == "io 'tangent' is read in a program whose features leave it out";
+	}
 }
 
 test "reads of an unspecialized module are refused" {
 	const m = twoFeatureModule();
 	const r = readsFrom(m, 2);
 	assert !r.ok;
-	if (!r.ok) { assert r.error == "a feature branch is still undecided: specialize the module first"; }
+	if (!r.ok) {
+		assert r.error == "a feature branch is still undecided: specialize the module first";
+	}
 }
