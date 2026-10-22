@@ -82,6 +82,13 @@ int32_t warpReadbackSubresource(void *texture, int32_t subresource, void *pixels
     return 1;
 }
 
+int32_t warpObjectName(void *object, uint8_t *out, int32_t size) {
+    static const GUID name = { 0x429b8c22, 0x9188, 0x4b0c, { 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 } };
+    UINT bytes = (UINT)size;
+    if (FAILED(ID3D11DeviceChild_GetPrivateData((ID3D11DeviceChild *)object, &name, &bytes, out))) return -1;
+    return (int32_t)bytes;
+}
+
 void warpRelease(void) {
     if (context) { ID3D11DeviceContext_ClearState(context); ID3D11DeviceContext_Release(context); }
     if (device) ID3D11Device_Release(device);
