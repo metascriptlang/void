@@ -4,11 +4,12 @@
 // A system's trails draw as triangle strips into a Graphics node under its particles.
 
 import { Mat4, Vec3 } from "../math/math3d";
-import { ParticleEffect, RenderMode, TextureSheetAnimationModule } from "../particles/asset";
+import { sinf, cosf } from "../math/mat4";
+import { ParticleEffect, RenderMode, RenderAlignment, TextureSheetAnimationModule } from "../particles/asset";
 import { unitDraw } from "../particles/curve";
-import { EffectInstance, EffectError, playEffect, stopEffect, updateEffect } from "../particles/effect";
+import { EffectInstance, EffectError, EffectErrorKind, playEffect, stopEffect, updateEffect } from "../particles/effect";
 import {
-	ParticleSystem, ParticleSystemError, POS_X, POS_Y, ROT_Z, SIZE_X, SIZE_Y, COLOR_R, COLOR_G,
+	ParticleSystem, ParticleSystemError, POS_X, POS_Y, MOVE_X, MOVE_Y, ROT_Z, SIZE_X, SIZE_Y, COLOR_R, COLOR_G,
 	COLOR_B, COLOR_A, FRAME, DRAW_FLIP_U, DRAW_FLIP_V,
 } from "../particles/system";
 import { TrailChains, TrailVertex, buildTrails } from "../particles/trail";
@@ -17,6 +18,28 @@ import { fillTexTriangles } from "./graphics";
 import { Tile, Transform2D, Vec2, Color, rgba, vec2, whiteTile } from "./types";
 
 const MITER_LIMIT: float32 = 4.0;
+
+export enum Particles2DErrorKind {
+	Effect,
+	// HorizontalBillboard, VerticalBillboard and Mesh need a third axis a 2D scene does not have.
+	RenderModeNeedsThirdAxis,
+	// A Stretch system's cameraVelocityScale needs a camera velocity, and the 2D scene supplies none.
+	CameraVelocity,
+}
+
+// `effect` is meaningful only for the Effect kind.
+export struct Particles2DError {
+	kind: Particles2DErrorKind;
+	system: int32;
+	effect: EffectError;
+}
+
+function refused(kind: Particles2DErrorKind, system: int32): Particles2DError {
+	return {
+		kind: kind, system: system,
+		effect: { kind: EffectErrorKind.System, system: system, cause: ParticleSystemError.EmptyRange },
+	};
+}
 
 export struct ParticleEmitter2D {
 	effect: EffectInstance;
@@ -73,13 +96,22 @@ function sheetFrames(t: Tile, sys: ParticleSystem): Vec<Tile> {
 // An emitter of `effect` whose system k draws from `tiles[k]`, split by its texture sheet.
 export function particles(
 	this s: Scene2D, effect: ParticleEffect, tiles: Tile[], seed: uint32,
-): Result<ParticleEmitter2D, EffectError> {
+): Result<ParticleEmitter2D, Particles2DError> {
 	if ((tiles.length as int32) != (effect.systems.length as int32)) {
 		console.log(`void2d: particles got ${tiles.length} tiles for ${effect.systems.length} systems; give one tile per system`);
 		unreachable;
 	}
+	for (let k = 0; k < (effect.systems.length as int32); k++) {
+		const r = effect.systems[k].renderer;
+		if (r.renderMode == RenderMode.HorizontalBillboard || r.renderMode == RenderMode.VerticalBillboard || r.renderMode == RenderMode.Mesh) {
+			return Result.err(refused(Particles2DErrorKind.RenderModeNeedsThirdAxis, k));
+		}
+		if (r.renderMode == RenderMode.Stretch && r.cameraVelocityScale != 0.0) {
+			return Result.err(refused(Particles2DErrorKind.CameraVelocity, k));
+		}
+	}
 	const made = EffectInstance.create(effect, seed);
-	if (!made.ok) { return Result.err(made.error); }
+	if (!made.ok) { return Result.err({ kind: Particles2DErrorKind.Effect, system: made.error.system, effect: made.error }); }
 	let frames: Vec<Vec<Tile>> = [];
 	for (let k = 0; k < (tiles.length as int32); k++) { frames.push(sheetFrames(tiles[k], made.value.systems[k])); }
 	const root: NodeRef = s.group();
@@ -141,7 +173,11 @@ function redraw(this ref e: ParticleEmitter2D): void {
 		const cap: int32 = sys.capacity;
 		const frames: Vec<Tile> = e.frames[k];
 		const last: int32 = (frames.length as int32) - 1;
-		const flip = sys.asset.renderer.flip;
+		const renderer = sys.asset.renderer;
+		const flip = renderer.flip;
+		const pivot = renderer.pivot;
+		const stretch: boolean = renderer.renderMode == RenderMode.Stretch;
+		const alongVelocity: boolean = renderer.renderMode == RenderMode.Billboard && renderer.alignment == RenderAlignment.Velocity;
 		const sheet = sys.asset.textureSheetAnimation;
 		const flipU: float32 = sheet.enabled ? flip.x + sheet.flipU - flip.x * sheet.flipU : flip.x;
 		const flipV: float32 = sheet.enabled ? flip.y + sheet.flipV - flip.y * sheet.flipV : flip.y;
@@ -152,17 +188,44 @@ function redraw(this ref e: ParticleEmitter2D): void {
 			const seed: uint32 = sys.seeds[i];
 			if (unitDraw(seed, DRAW_FLIP_U) < flipU) { t = { ...t, u0: t.u1, u1: t.u0 }; }
 			if (unitDraw(seed, DRAW_FLIP_V) < flipV) { t = { ...t, v0: t.v1, v1: t.v0 }; }
+			const w: float32 = sys.data[SIZE_X * cap + i];
+			const h: float32 = sys.data[SIZE_Y * cap + i];
+			const vx: float32 = sys.data[MOVE_X * cap + i];
+			const vy: float32 = sys.data[MOVE_Y * cap + i];
+			let x: float32 = sys.data[POS_X * cap + i];
+			let y: float32 = -sys.data[POS_Y * cap + i];
+			let along: float32 = 0.0;
+			let rotation: float32 = sys.data[ROT_Z * cap + i];
+			if (stretch) {
+				// Unity's stretched quad (tests/unity/goldens/stretch_*): its head at the particle, its
+				// tail behind along the total velocity; the particle's rotation is ignored.
+				const speed: float32 = Math.sqrt((vx * vx + vy * vy) as float64) as float32;
+				if (speed == 0.0) { continue; }
+				const dx: float32 = vx / speed;
+				const dy: float32 = vy / speed;
+				along = h * renderer.lengthScale + speed * renderer.velocityScale;
+				const ahead: float32 = 2.0 * pivot.y * h - 0.5 * along;
+				x = x + pivot.x * w * dy + ahead * dx;
+				y = y + pivot.x * w * dx - ahead * dy;
+				rotation = Math.atan2(dy as float64, -dx as float64) as float32;
+			} else {
+				if (alongVelocity) { rotation = Math.atan2(-vy as float64, vx as float64) as float32; }
+				if (pivot.x != 0.0 || pivot.y != 0.0) {
+					const co: float32 = cosf(rotation);
+					const si: float32 = sinf(rotation);
+					x = x + pivot.x * w * co + pivot.y * h * si;
+					y = y + pivot.x * w * si - pivot.y * h * co;
+				}
+			}
 			e.cells.push({
-				x: sys.data[POS_X * cap + i],
-				y: -sys.data[POS_Y * cap + i],
-				tile: t,
+				x: x, y: y, tile: t,
 				color: rgba(
 					sys.data[COLOR_R * cap + i], sys.data[COLOR_G * cap + i],
 					sys.data[COLOR_B * cap + i], sys.data[COLOR_A * cap + i],
 				),
-				scaleX: sys.data[SIZE_X * cap + i] / t.w,
-				scaleY: sys.data[SIZE_Y * cap + i] / t.h,
-				rotation: sys.data[ROT_Z * cap + i],
+				scaleX: stretch ? along / t.w : w / t.w,
+				scaleY: (stretch ? w : h) / t.h,
+				rotation: rotation,
 			});
 		}
 	}
