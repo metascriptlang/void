@@ -124,6 +124,25 @@ Measured facts that shaped the code:
   4.5 ms; swap-remove brought it to 2.46 ms (about 25 ns per particle; 1.83 ms with no modules
   enabled). These are light probes on Windows with clang thin-LTO, not the bench. Without LTO the
   math3d operators are not inlined across modules: 7.6 ms against 4.5 ms before swap-remove.
+- The CPU bench (`tests/bench/benchParticles.ms`, docs/TESTING.md "Particle bench") on
+  2026-10-23, Windows, clang thin-LTO, one run each. The machine sat at 22-30 % load from other
+  sessions throughout, so these are provisional; the A/B verdict needs a window under 25 %.
+  Milliseconds per step:
+
+  | | 10k | 100k | 1M |
+  |---|---|---|---|
+  | update, SoA | 0.28 | 2.68 | 27.2 |
+  | update, the retired AoS emitter (d76e89bd) | 0.38 | 3.91 | 38.3 |
+  | sort, merge (AoS and SoA alike) | 0.56 | 8.3-9.2 | 120-199 |
+  | sort, radix | 0.10 | 1.24-1.34 | 100-108 |
+  | write, SoA (16 floats) | 0.10 | 0.90-1.08 | 11.4-12.7 |
+  | write, AoS | 0.05 | 0.55 | 10.0 |
+
+  The sort row is the sorted write less the unsorted one, so it holds the key, the sort and the
+  gather in draw order. A probe of the radix passes alone gives 0.35 ms at 100k and 4.2 ms at
+  1M, so at 1M the row is the gather: 64 MB of instances read in draw order is bound by memory
+  latency, and writing rows in slot order before permuting them measured no faster. Sorted
+  particles past about 100k per system are where the T2 GPU sort is first needed.
 
 Parity:
 - `tests/unity/goldens` (46 captures) through `src/test/particleUnityCheck.ms`. The cases left
