@@ -31,12 +31,26 @@ static void call0(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
+static void setupMetal(void) {
+	doorSetup((__bridge void *)g_device, NULL, DOOR_PIXEL_FORMAT_BGRA8, DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
+	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
+}
+
 void voidPlatformDeviceEnsure(void) {
 	if (g_device) return;
 	g_device = MTLCreateSystemDefaultDevice();
 	if (!g_device) voidFail("MTLCreateSystemDefaultDevice returned nil");
-	doorSetup((__bridge void *)g_device, NULL, DOOR_PIXEL_FORMAT_BGRA8, DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
-	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
+	setupMetal();
+}
+
+static int s_contextLost = 0;
+void voidLoseContext(void) { s_contextLost = 1; }
+
+static void restoreContextIfLost(void) {
+	if (!s_contextLost) return;
+	doorShutdown();
+	setupMetal();
+	s_contextLost = 0;
 }
 
 // Void's asset loaders use relative paths ("assets/test.png", "assets/font.ttf").
@@ -102,6 +116,7 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 }
 
 int voidPlatformSurfaceAcquire(void *surface) {
+	restoreContextIfLost();
 	IosSurface *s = (IosSurface *)surface;
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
