@@ -6,6 +6,10 @@
 #include <X11/keysym.h>
 #include <X11/Xresource.h>
 #include <X11/Xmd.h>
+#include <X11/Xatom.h>
+#include <X11/cursorfont.h>
+#include <X11/Xcursor/Xcursor.h>
+#include <X11/extensions/XInput2.h>
 #include <dlfcn.h>
 #include <limits.h>
 #include <math.h>
@@ -18,6 +22,7 @@
 #include "../frameTiming.h"
 
 #define X11_KEYCODES 256
+#define XDND_VERSION 5
 
 #define GLX_VENDOR 1
 #define GLX_RGBA_BIT 0x00000001
@@ -62,6 +67,14 @@ typedef XVisualInfo *(*GlxGetVisualFromFBConfigFn)(Display *, GLXFBConfig);
 typedef GLXWindow (*GlxCreateWindowFn)(Display *, GLXFBConfig, Window, const int *);
 typedef void (*GlxDestroyWindowFn)(Display *, GLXWindow);
 typedef GLXContext (*GlxCreateContextAttribsFn)(Display *, GLXFBConfig, GLXContext, Bool, const int *);
+
+typedef char *(*XcursorGetThemeFn)(Display *);
+typedef int (*XcursorGetDefaultSizeFn)(Display *);
+typedef XcursorImage *(*XcursorLibraryLoadImageFn)(const char *, const char *, int);
+typedef Cursor (*XcursorImageLoadCursorFn)(Display *, const XcursorImage *);
+typedef void (*XcursorImageDestroyFn)(XcursorImage *);
+typedef Status (*XiQueryVersionFn)(Display *, int *, int *);
+typedef int (*XiSelectEventsFn)(Display *, Window, XIEventMask *, int);
 
 static const struct {
 	uint16_t keysym;
@@ -922,7 +935,15 @@ static struct {
 	struct {
 		float x, y, dx, dy;
 		bool posValid;
+		bool shown;
+		bool locked;
+		bool requestedLock;
+		int cursor;
 	} mouse;
+	bool fullscreen;
+	char *clipboard;
+	int droppedCount;
+	char **droppedPaths;
 	VoidAppEvent event;
 	int16_t keycodes[X11_KEYCODES];
 	struct {
@@ -941,7 +962,26 @@ static struct {
 		Atom WM_STATE;
 		Atom NET_WM_NAME;
 		Atom NET_WM_ICON_NAME;
+		Atom NET_WM_STATE;
+		Atom NET_WM_STATE_FULLSCREEN;
+		Atom CLIPBOARD;
+		Atom TARGETS;
+		bool windowFocused;
+		Cursor standardCursors[VOID_CURSOR_COUNT];
+		Cursor hiddenCursor;
 		bool keyRepeat[X11_KEYCODES];
+		struct {
+			Atom XdndAware, XdndEnter, XdndPosition, XdndStatus, XdndActionCopy, XdndDrop, XdndFinished,
+				XdndSelection, XdndTypeList, textUriList;
+			Window source;
+			long version;
+			Atom format;
+		} xdnd;
+		struct {
+			bool available;
+			int majorOpcode, eventBase, errorBase;
+			XiSelectEventsFn SelectEvents;
+		} xi;
 	} x11;
 	struct {
 		void *libgl;
@@ -1033,6 +1073,31 @@ static void initAtoms(void) {
 	s.x11.WM_STATE = XInternAtom(s.x11.display, "WM_STATE", False);
 	s.x11.NET_WM_NAME = XInternAtom(s.x11.display, "_NET_WM_NAME", False);
 	s.x11.NET_WM_ICON_NAME = XInternAtom(s.x11.display, "_NET_WM_ICON_NAME", False);
+	s.x11.NET_WM_STATE = XInternAtom(s.x11.display, "_NET_WM_STATE", False);
+	s.x11.NET_WM_STATE_FULLSCREEN = XInternAtom(s.x11.display, "_NET_WM_STATE_FULLSCREEN", False);
+	s.x11.CLIPBOARD = XInternAtom(s.x11.display, "CLIPBOARD", False);
+	s.x11.TARGETS = XInternAtom(s.x11.display, "TARGETS", False);
+	s.x11.xdnd.XdndAware = XInternAtom(s.x11.display, "XdndAware", False);
+	s.x11.xdnd.XdndEnter = XInternAtom(s.x11.display, "XdndEnter", False);
+	s.x11.xdnd.XdndPosition = XInternAtom(s.x11.display, "XdndPosition", False);
+	s.x11.xdnd.XdndStatus = XInternAtom(s.x11.display, "XdndStatus", False);
+	s.x11.xdnd.XdndActionCopy = XInternAtom(s.x11.display, "XdndActionCopy", False);
+	s.x11.xdnd.XdndDrop = XInternAtom(s.x11.display, "XdndDrop", False);
+	s.x11.xdnd.XdndFinished = XInternAtom(s.x11.display, "XdndFinished", False);
+	s.x11.xdnd.XdndSelection = XInternAtom(s.x11.display, "XdndSelection", False);
+	s.x11.xdnd.XdndTypeList = XInternAtom(s.x11.display, "XdndTypeList", False);
+	s.x11.xdnd.textUriList = XInternAtom(s.x11.display, "text/uri-list", False);
+}
+
+static void initXinput(void) {
+	void *lib = dlopen("libXi.so.6", RTLD_LAZY | RTLD_LOCAL);
+	if (lib == NULL) return;
+	XiQueryVersionFn queryVersion = (XiQueryVersionFn)dlsym(lib, "XIQueryVersion");
+	s.x11.xi.SelectEvents = (XiSelectEventsFn)dlsym(lib, "XISelectEvents");
+	if (queryVersion == NULL || s.x11.xi.SelectEvents == NULL) return;
+	if (!XQueryExtension(s.x11.display, "XInputExtension", &s.x11.xi.majorOpcode, &s.x11.xi.eventBase, &s.x11.xi.errorBase)) return;
+	int major = 2, minor = 0;
+	s.x11.xi.available = queryVersion(s.x11.display, &major, &minor) == Success;
 }
 
 // The layout-dependent fallback for a key XKB could not name (sokol_app.h :12303).
@@ -1550,6 +1615,9 @@ static void createWindow(Visual *visual, int depth) {
 	hints->win_gravity = CenterGravity;
 	XSetWMNormalHints(s.x11.display, s.x11.window, hints);
 	XFree(hints);
+	const Atom xdndVersion = XDND_VERSION;
+	XChangeProperty(s.x11.display, s.x11.window, s.x11.xdnd.XdndAware, XA_ATOM, 32, PropModeReplace,
+		(const unsigned char *)&xdndVersion, 1);
 	updateWindowTitle(s.desc.title);
 	updateDimensionsFromWindowSize();
 }
@@ -1720,6 +1788,7 @@ static void keyreleaseRepeat(int keycode) {
 
 static void onFocus(const XEvent *event, bool focused) {
 	if (event->xfocus.mode == NotifyGrab || event->xfocus.mode == NotifyUngrab) return;
+	s.x11.windowFocused = focused;
 	appEvent(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 }
 
@@ -1731,6 +1800,7 @@ static void onKeyPress(XEvent *event) {
 	const bool repeat = keypressRepeat(keycode);
 	const uint32_t modifiers = mods(event->xkey.state) | keyModifierBit(key);
 	if (key != VOID_KEY_INVALID) keyEvent(VOID_EVENT_KEY_DOWN, key, repeat, modifiers);
+	if (key == VOID_KEY_V && modifiers == VOID_MODIFIER_CTRL) appEvent(VOID_EVENT_CLIPBOARD_PASTED);
 	KeySym keysym;
 	XLookupString(&event->xkey, NULL, 0, &keysym, NULL);
 	const int32_t c = keysymToUnicode(keysym);
@@ -1786,10 +1856,308 @@ static void onPropertyNotify(const XEvent *event) {
 	else if (state == NormalState) appEvent(VOID_EVENT_RESTORED);
 }
 
+static void sendRootClientMessage(Atom type, long a, long b) {
+	XEvent event;
+	memset(&event, 0, sizeof event);
+	event.type = ClientMessage;
+	event.xclient.window = s.x11.window;
+	event.xclient.format = 32;
+	event.xclient.message_type = type;
+	event.xclient.data.l[0] = a;
+	event.xclient.data.l[1] = b;
+	event.xclient.data.l[3] = 1;
+	XSendEvent(s.x11.display, s.x11.root, False, SubstructureNotifyMask | SubstructureRedirectMask, &event);
+}
+
+static void setFullscreen(bool enable) {
+	if (s.x11.NET_WM_STATE && s.x11.NET_WM_STATE_FULLSCREEN) {
+		sendRootClientMessage(s.x11.NET_WM_STATE, enable ? 1 : 0, (long)s.x11.NET_WM_STATE_FULLSCREEN);
+	}
+	XFlush(s.x11.display);
+}
+
+static void createStandardCursor(int cursor, const char *name, const char *theme, int size, unsigned int fallback,
+	XcursorLibraryLoadImageFn loadImage, XcursorImageLoadCursorFn loadCursor, XcursorImageDestroyFn destroyImage) {
+	if (theme != NULL) {
+		XcursorImage *img = loadImage(name, theme, size);
+		if (img != NULL) {
+			s.x11.standardCursors[cursor] = loadCursor(s.x11.display, img);
+			destroyImage(img);
+		}
+	}
+	if (s.x11.standardCursors[cursor] == 0) s.x11.standardCursors[cursor] = XCreateFontCursor(s.x11.display, fallback);
+}
+
+static void createCursors(void) {
+	const char *theme = NULL;
+	int size = 0;
+	XcursorLibraryLoadImageFn loadImage = NULL;
+	XcursorImageLoadCursorFn loadCursor = NULL;
+	XcursorImageDestroyFn destroyImage = NULL;
+	void *lib = dlopen("libXcursor.so.1", RTLD_LAZY | RTLD_LOCAL);
+	if (lib != NULL) {
+		XcursorGetThemeFn getTheme = (XcursorGetThemeFn)dlsym(lib, "XcursorGetTheme");
+		XcursorGetDefaultSizeFn getSize = (XcursorGetDefaultSizeFn)dlsym(lib, "XcursorGetDefaultSize");
+		loadImage = (XcursorLibraryLoadImageFn)dlsym(lib, "XcursorLibraryLoadImage");
+		loadCursor = (XcursorImageLoadCursorFn)dlsym(lib, "XcursorImageLoadCursor");
+		destroyImage = (XcursorImageDestroyFn)dlsym(lib, "XcursorImageDestroy");
+		if (getTheme && getSize && loadImage && loadCursor && destroyImage) {
+			theme = getTheme(s.x11.display);
+			size = getSize(s.x11.display);
+		}
+	}
+	createStandardCursor(VOID_CURSOR_ARROW, "default", theme, size, XC_left_ptr, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_IBEAM, "text", theme, size, XC_xterm, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_CROSSHAIR, "crosshair", theme, size, XC_crosshair, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_POINTING_HAND, "pointer", theme, size, XC_hand2, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_RESIZE_EW, "ew-resize", theme, size, XC_sb_h_double_arrow, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_RESIZE_NS, "ns-resize", theme, size, XC_sb_v_double_arrow, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_RESIZE_NWSE, "nwse-resize", theme, size, XC_top_left_corner, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_RESIZE_NESW, "nesw-resize", theme, size, XC_top_right_corner, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_RESIZE_ALL, "all-scroll", theme, size, XC_fleur, loadImage, loadCursor, destroyImage);
+	createStandardCursor(VOID_CURSOR_NOT_ALLOWED, "not-allowed", theme, size, XC_pirate, loadImage, loadCursor, destroyImage);
+	static const char blank[1] = { 0 };
+	Pixmap bitmap = XCreateBitmapFromData(s.x11.display, s.x11.root, blank, 1, 1);
+	XColor black;
+	memset(&black, 0, sizeof black);
+	s.x11.hiddenCursor = XCreatePixmapCursor(s.x11.display, bitmap, bitmap, &black, &black, 0, 0);
+	XFreePixmap(s.x11.display, bitmap);
+}
+
+static void destroyCursors(void) {
+	if (s.x11.hiddenCursor) XFreeCursor(s.x11.display, s.x11.hiddenCursor);
+	for (int i = 0; i < VOID_CURSOR_COUNT; i++) {
+		if (s.x11.standardCursors[i]) XFreeCursor(s.x11.display, s.x11.standardCursors[i]);
+	}
+}
+
+static void updateCursor(void) {
+	if (!s.x11.window) return;
+	if (!s.mouse.shown) XDefineCursor(s.x11.display, s.x11.window, s.x11.hiddenCursor);
+	else if (s.x11.standardCursors[s.mouse.cursor]) XDefineCursor(s.x11.display, s.x11.window, s.x11.standardCursors[s.mouse.cursor]);
+	else XUndefineCursor(s.x11.display, s.x11.window);
+	XFlush(s.x11.display);
+}
+
+static void selectRawMotion(bool enable) {
+	if (!s.x11.xi.available) return;
+	unsigned char mask[XIMaskLen(XI_RawMotion)] = { 0 };
+	if (enable) XISetMask(mask, XI_RawMotion);
+	XIEventMask em;
+	em.deviceid = XIAllMasterDevices;
+	em.mask_len = sizeof mask;
+	em.mask = mask;
+	s.x11.xi.SelectEvents(s.x11.display, s.x11.root, &em, 1);
+}
+
+static void doLockMouse(void) {
+	const int result = XGrabPointer(s.x11.display, s.x11.window, True,
+		ButtonPressMask | ButtonReleaseMask | PointerMotionMask, GrabModeAsync, GrabModeAsync, s.x11.window,
+		s.x11.hiddenCursor, CurrentTime);
+	if (result != GrabSuccess) return;
+	s.mouse.locked = true;
+	s.mouse.dx = 0.0f;
+	s.mouse.dy = 0.0f;
+	selectRawMotion(true);
+}
+
+static void doUnlockMouse(void) {
+	selectRawMotion(false);
+	s.mouse.dx = 0.0f;
+	s.mouse.dy = 0.0f;
+	s.mouse.locked = false;
+	XWarpPointer(s.x11.display, None, s.x11.window, 0, 0, 0, 0, (int)s.mouse.x, (int)s.mouse.y);
+	XUngrabPointer(s.x11.display, CurrentTime);
+}
+
+static void updateMouseLock(void) {
+	if (!s.x11.windowFocused) {
+		if (s.mouse.locked) doUnlockMouse();
+		return;
+	}
+	if (s.mouse.requestedLock == s.mouse.locked) return;
+	if (s.mouse.requestedLock) doLockMouse();
+	else doUnlockMouse();
+}
+
+static void onGenericEvent(XEvent *event) {
+	if (!s.mouse.locked || !s.x11.xi.available || event->xcookie.extension != s.x11.xi.majorOpcode) return;
+	if (!XGetEventData(s.x11.display, &event->xcookie)) return;
+	if (event->xcookie.evtype == XI_RawMotion) {
+		const XIRawEvent *raw = (const XIRawEvent *)event->xcookie.data;
+		if (raw->valuators.mask_len) {
+			const double *values = raw->raw_values;
+			if (XIMaskIsSet(raw->valuators.mask, 0)) s.mouse.dx = (float)*values++;
+			if (XIMaskIsSet(raw->valuators.mask, 1)) s.mouse.dy = (float)*values;
+			Window rootReturn, childReturn;
+			int rootX, rootY, winX, winY;
+			unsigned int state = 0;
+			XQueryPointer(s.x11.display, s.x11.window, &rootReturn, &childReturn, &rootX, &rootY, &winX, &winY, &state);
+			mouseEvent(VOID_EVENT_MOUSE_MOVE, VOID_MOUSE_INVALID, mods(state));
+		}
+	}
+	XFreeEventData(s.x11.display, &event->xcookie);
+}
+
+static unsigned long windowProperty(Window window, Atom property, Atom type, unsigned char **value) {
+	Atom actualType;
+	int actualFormat;
+	unsigned long itemCount, bytesAfter;
+	XGetWindowProperty(s.x11.display, window, property, 0, LONG_MAX, False, type, &actualType, &actualFormat,
+		&itemCount, &bytesAfter, value);
+	return itemCount;
+}
+
+static void clearDropped(void) {
+	for (int i = 0; i < s.droppedCount; i++) free(s.droppedPaths[i]);
+	free(s.droppedPaths);
+	s.droppedPaths = NULL;
+	s.droppedCount = 0;
+}
+
+static bool parseDroppedFilesList(const char *src) {
+	clearDropped();
+	size_t lines = 1;
+	for (const char *p = src; *p; p++) if (*p == '\n') lines++;
+	s.droppedPaths = (char **)calloc(lines, sizeof(char *));
+	if (s.droppedPaths == NULL) fail("calloc for the dropped file paths");
+	const char *p = src;
+	while (*p) {
+		const char *end = p;
+		while (*end && *end != '\r' && *end != '\n') end++;
+		if (end > p) {
+			if (strncmp(p, "file://", 7) != 0 || end - p < 7) {
+				fprintf(stderr, "void: a dropped file uri has the wrong scheme\n");
+				clearDropped();
+				return false;
+			}
+			char *path = (char *)malloc((size_t)(end - p) + 1);
+			if (path == NULL) fail("malloc for a dropped file path");
+			char *dst = path;
+			for (const char *c = p + 7; c < end; c++) {
+				if (*c == '%' && c + 2 < end) {
+					const char digits[3] = { c[1], c[2], 0 };
+					*dst++ = (char)strtol(digits, NULL, 16);
+					c += 2;
+				} else {
+					*dst++ = *c;
+				}
+			}
+			*dst = 0;
+			s.droppedPaths[s.droppedCount++] = path;
+		}
+		p = end;
+		while (*p == '\r' || *p == '\n') p++;
+	}
+	return true;
+}
+
+static void sendXdndReply(Atom type, long accepted, long action) {
+	XEvent reply;
+	memset(&reply, 0, sizeof reply);
+	reply.type = ClientMessage;
+	reply.xclient.window = s.x11.xdnd.source;
+	reply.xclient.message_type = type;
+	reply.xclient.format = 32;
+	reply.xclient.data.l[0] = (long)s.x11.window;
+	reply.xclient.data.l[1] = accepted;
+	if (type == s.x11.xdnd.XdndStatus) {
+		if (accepted && s.x11.xdnd.version >= 2) reply.xclient.data.l[4] = action;
+	} else {
+		reply.xclient.data.l[2] = action;
+	}
+	XSendEvent(s.x11.display, s.x11.xdnd.source, False, NoEventMask, &reply);
+	XFlush(s.x11.display);
+}
+
+static void onSelectionNotify(const XEvent *event) {
+	if (event->xselection.property != s.x11.xdnd.XdndSelection) return;
+	char *data = NULL;
+	const unsigned long result = windowProperty(event->xselection.requestor, event->xselection.property,
+		event->xselection.target, (unsigned char **)&data);
+	if (result && data != NULL && parseDroppedFilesList(data)) {
+		s.mouse.dx = 0.0f;
+		s.mouse.dy = 0.0f;
+		appEvent(VOID_EVENT_FILES_DROPPED);
+	}
+	if (s.x11.xdnd.version >= 2) sendXdndReply(s.x11.xdnd.XdndFinished, (long)result, (long)s.x11.xdnd.XdndActionCopy);
+	if (data) XFree(data);
+}
+
+static void onXdndEnter(const XEvent *event) {
+	const bool isList = (event->xclient.data.l[1] & 1) != 0;
+	s.x11.xdnd.source = (Window)event->xclient.data.l[0];
+	s.x11.xdnd.version = event->xclient.data.l[1] >> 24;
+	s.x11.xdnd.format = None;
+	if (s.x11.xdnd.version > XDND_VERSION) return;
+	unsigned long count;
+	Atom *formats = NULL;
+	if (isList) {
+		count = windowProperty(s.x11.xdnd.source, s.x11.xdnd.XdndTypeList, XA_ATOM, (unsigned char **)&formats);
+	} else {
+		count = 3;
+		formats = (Atom *)event->xclient.data.l + 2;
+	}
+	for (unsigned long i = 0; i < count; i++) {
+		if (formats[i] == s.x11.xdnd.textUriList) {
+			s.x11.xdnd.format = s.x11.xdnd.textUriList;
+			break;
+		}
+	}
+	if (isList && formats) XFree(formats);
+}
+
+static void onXdndDrop(const XEvent *event) {
+	if (s.x11.xdnd.version > XDND_VERSION) return;
+	if (s.x11.xdnd.format) {
+		const Time time = s.x11.xdnd.version >= 1 ? (Time)event->xclient.data.l[2] : CurrentTime;
+		XConvertSelection(s.x11.display, s.x11.xdnd.XdndSelection, s.x11.xdnd.format, s.x11.xdnd.XdndSelection,
+			s.x11.window, time);
+	} else if (s.x11.xdnd.version >= 2) {
+		sendXdndReply(s.x11.xdnd.XdndFinished, 0, None);
+	}
+}
+
+static void onXdndPosition(void) {
+	if (s.x11.xdnd.version > XDND_VERSION) return;
+	sendXdndReply(s.x11.xdnd.XdndStatus, s.x11.xdnd.format ? 1 : 0, (long)s.x11.xdnd.XdndActionCopy);
+}
+
+static void onSelectionRequest(const XEvent *event) {
+	const XSelectionRequestEvent *req = &event->xselectionrequest;
+	if (req->selection != s.x11.CLIPBOARD || s.clipboard == NULL) return;
+	XSelectionEvent reply;
+	memset(&reply, 0, sizeof reply);
+	reply.type = SelectionNotify;
+	reply.display = req->display;
+	reply.requestor = req->requestor;
+	reply.selection = req->selection;
+	reply.target = req->target;
+	reply.property = req->property;
+	reply.time = req->time;
+	if (req->target == s.x11.UTF8_STRING) {
+		XChangeProperty(s.x11.display, req->requestor, req->property, s.x11.UTF8_STRING, 8, PropModeReplace,
+			(const unsigned char *)s.clipboard, (int)strlen(s.clipboard));
+	} else if (req->target == s.x11.TARGETS) {
+		XChangeProperty(s.x11.display, req->requestor, req->property, XA_ATOM, 32, PropModeReplace,
+			(const unsigned char *)&s.x11.UTF8_STRING, 1);
+	} else {
+		reply.property = None;
+	}
+	XSendEvent(s.x11.display, req->requestor, False, 0, (XEvent *)&reply);
+}
+
 static void onClientMessage(XEvent *event) {
 	if (XFilterEvent(event, None)) return;
-	if (event->xclient.message_type == s.x11.WM_PROTOCOLS && (Atom)event->xclient.data.l[0] == s.x11.WM_DELETE_WINDOW) {
-		s.quitRequested = true;
+	const Atom type = event->xclient.message_type;
+	if (type == s.x11.WM_PROTOCOLS) {
+		if ((Atom)event->xclient.data.l[0] == s.x11.WM_DELETE_WINDOW) s.quitRequested = true;
+	} else if (type == s.x11.xdnd.XdndEnter) {
+		onXdndEnter(event);
+	} else if (type == s.x11.xdnd.XdndDrop) {
+		onXdndDrop(event);
+	} else if (type == s.x11.xdnd.XdndPosition) {
+		onXdndPosition();
 	}
 }
 
@@ -1804,9 +2172,13 @@ static void processEvent(XEvent *event) {
 		case EnterNotify: onCrossing(event, VOID_EVENT_MOUSE_ENTER); break;
 		case LeaveNotify: onCrossing(event, VOID_EVENT_MOUSE_LEAVE); break;
 		case MotionNotify:
+			if (s.mouse.locked) break;
 			mouseUpdate(event->xmotion.x, event->xmotion.y, false);
 			mouseEvent(VOID_EVENT_MOUSE_MOVE, VOID_MOUSE_INVALID, mods(event->xmotion.state));
 			break;
+		case GenericEvent: onGenericEvent(event); break;
+		case SelectionNotify: onSelectionNotify(event); break;
+		case SelectionRequest: onSelectionRequest(event); break;
 		case PropertyNotify: onPropertyNotify(event); break;
 		case ClientMessage: onClientMessage(event); break;
 		default: break;
@@ -1840,7 +2212,10 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	s.x11.root = DefaultRootWindow(s.x11.display);
 	querySystemDpi();
 	s.dpiScale = s.x11.dpi / 96.0f;
+	s.mouse.shown = true;
 	initAtoms();
+	initXinput();
+	createCursors();
 	XkbSetDetectableAutoRepeat(s.x11.display, True, NULL);
 	initKeytable();
 	initGlx();
@@ -1862,6 +2237,7 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 			processEvent(&event);
 		}
 		frame();
+		updateMouseLock();
 		XFlush(s.x11.display);
 		if (s.quitRequested && !s.quitOrdered) {
 			appEvent(VOID_EVENT_QUIT_REQUESTED);
@@ -1874,6 +2250,9 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	}
 	destroyContext();
 	destroyWindow();
+	destroyCursors();
+	clearDropped();
+	free(s.clipboard);
 	XCloseDisplay(s.x11.display);
 	memset(&s, 0, sizeof s);
 }
@@ -1887,22 +2266,75 @@ void voidLinuxRequestQuit(void) { s.quitRequested = true; }
 void voidLinuxSetTitle(const char *title) { updateWindowTitle(title); }
 void voidLinuxSwapBuffers(void) { s.glx.SwapBuffers(s.x11.display, s.glx.window); }
 
-__attribute__((noreturn)) static void notPorted(const char *feature) {
-	fprintf(stderr, "void: %s is not ported to Linux yet (src/platform/linux/window.c)\n", feature);
-	abort();
-}
 
 void voidLinuxCancelQuit(void) { s.quitRequested = false; }
 double voidLinuxFrameDuration(void) { return s.timing.smoothDt; }
-void voidLinuxSetClipboard(const char *utf8) { (void)utf8; notPorted("the clipboard"); }
-const char *voidLinuxClipboard(void) { notPorted("the clipboard"); }
-void voidLinuxSetCursor(int cursor) { (void)cursor; notPorted("the mouse cursor"); }
-int voidLinuxCursor(void) { notPorted("the mouse cursor"); }
-void voidLinuxShowMouse(bool shown) { (void)shown; notPorted("showing and hiding the mouse"); }
-bool voidLinuxMouseShown(void) { notPorted("showing and hiding the mouse"); }
-void voidLinuxLockMouse(bool locked) { (void)locked; notPorted("the mouse lock"); }
-bool voidLinuxMouseLocked(void) { notPorted("the mouse lock"); }
-void voidLinuxToggleFullscreen(void) { notPorted("fullscreen"); }
-bool voidLinuxIsFullscreen(void) { notPorted("fullscreen"); }
-int voidLinuxDroppedCount(void) { notPorted("dropped files"); }
-const char *voidLinuxDroppedPath(int i) { (void)i; notPorted("dropped files"); }
+void voidLinuxSetClipboard(const char *utf8) {
+	char *copy = strdup(utf8);
+	if (copy == NULL) fail("strdup for the clipboard");
+	free(s.clipboard);
+	s.clipboard = copy;
+	XSetSelectionOwner(s.x11.display, s.x11.CLIPBOARD, s.x11.window, CurrentTime);
+	if (XGetSelectionOwner(s.x11.display, s.x11.CLIPBOARD) != s.x11.window) fail("becoming the owner of the clipboard");
+}
+
+const char *voidLinuxClipboard(void) {
+	if (s.clipboard == NULL) s.clipboard = strdup("");
+	if (s.clipboard == NULL) fail("strdup for the clipboard");
+	if (XGetSelectionOwner(s.x11.display, s.x11.CLIPBOARD) == s.x11.window) return s.clipboard;
+	Atom property = XInternAtom(s.x11.display, "VOID_SELECTION", False);
+	Atom incremental = XInternAtom(s.x11.display, "INCR", False);
+	XConvertSelection(s.x11.display, s.x11.CLIPBOARD, s.x11.UTF8_STRING, property, s.x11.window, CurrentTime);
+	XEvent event;
+	if (!waitForEvent(SelectionNotify, 100000000, &event) || event.xselection.property == None) return s.clipboard;
+	char *data = NULL;
+	Atom actualType;
+	int actualFormat;
+	unsigned long itemCount, bytesAfter;
+	const int status = XGetWindowProperty(s.x11.display, event.xselection.requestor, event.xselection.property, 0,
+		LONG_MAX, True, s.x11.UTF8_STRING, &actualType, &actualFormat, &itemCount, &bytesAfter, (unsigned char **)&data);
+	if (status != Success || data == NULL) {
+		if (data) XFree(data);
+		return s.clipboard;
+	}
+	if (actualType == incremental) {
+		fprintf(stderr, "void: the clipboard owner sends its string in increments, which is not supported\n");
+	} else {
+		char *copy = strdup(data);
+		if (copy == NULL) fail("strdup for the clipboard");
+		free(s.clipboard);
+		s.clipboard = copy;
+	}
+	XFree(data);
+	return s.clipboard;
+}
+
+void voidLinuxSetCursor(int cursor) {
+	s.mouse.cursor = cursor;
+	updateCursor();
+}
+
+int voidLinuxCursor(void) { return s.mouse.cursor; }
+
+void voidLinuxShowMouse(bool shown) {
+	s.mouse.shown = shown;
+	updateCursor();
+}
+
+bool voidLinuxMouseShown(void) { return s.mouse.shown; }
+void voidLinuxLockMouse(bool locked) { s.mouse.requestedLock = locked; }
+bool voidLinuxMouseLocked(void) { return s.mouse.locked; }
+
+void voidLinuxToggleFullscreen(void) {
+	s.fullscreen = !s.fullscreen;
+	setFullscreen(s.fullscreen);
+	updateDimensionsFromWindowSize();
+}
+
+bool voidLinuxIsFullscreen(void) { return s.fullscreen; }
+int voidLinuxDroppedCount(void) { return s.droppedCount; }
+
+const char *voidLinuxDroppedPath(int i) {
+	if (i < 0 || i >= s.droppedCount) fail("the dropped file index is out of range");
+	return s.droppedPaths[i];
+}
