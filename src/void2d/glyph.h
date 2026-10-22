@@ -67,6 +67,7 @@ int void2dGlyphPageBlitMask(int page, int x, int y, int w, int h,
 const unsigned char *void2dGlyphPageData(int page);
 int void2dGlyphPageUploaded(int page);
 int void2dGlyphPageTakeUpload(int page);
+int *void2dGlyphPageUploadBox(int page);
 void void2dGlyphPagesMarkDirty(void);
 void void2dGlyphPagesFrameBegin(void);
 

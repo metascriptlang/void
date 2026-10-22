@@ -54,6 +54,8 @@ typedef struct {
 	int size;
 	int kind;
 	int dirty;
+	int dirtyBox[4];
+	int takenBox[4];
 	int uploaded;
 	int live;
 	unsigned int generation;
@@ -78,6 +80,25 @@ static int validFace(int face) { return face >= 0 && face < s_faceCount; }
 __attribute__((noinline, cold)) static int releasedPage(int page) {
 	fprintf(stderr, "void2d: glyph page %d was released\n", page);
 	return 0;
+}
+
+// The union of every texel rectangle written since the page was last taken for upload, as
+// x0, y0, x1, y1 (exclusive); a new, cleared or re-marked page is dirty whole.
+static void markDirtyBox(GlyphPage *p, int x, int y, int w, int h) {
+	if (!p->dirty) {
+		p->dirtyBox[0] = x; p->dirtyBox[1] = y; p->dirtyBox[2] = x + w; p->dirtyBox[3] = y + h;
+		p->dirty = 1;
+		return;
+	}
+	if (x < p->dirtyBox[0]) { p->dirtyBox[0] = x; }
+	if (y < p->dirtyBox[1]) { p->dirtyBox[1] = y; }
+	if (x + w > p->dirtyBox[2]) { p->dirtyBox[2] = x + w; }
+	if (y + h > p->dirtyBox[3]) { p->dirtyBox[3] = y + h; }
+}
+
+static void markDirtyWhole(GlyphPage *p) {
+	p->dirty = 0;
+	markDirtyBox(p, 0, 0, p->size, p->size);
 }
 
 static int validPage(int page) {
@@ -889,7 +910,7 @@ int void2dGlyphPageCreate(int size, int kind) {
 	s_pages[slot].texels = texels;
 	s_pages[slot].size = size;
 	s_pages[slot].kind = kind;
-	s_pages[slot].dirty = 1;
+	markDirtyWhole(&s_pages[slot]);
 	s_pages[slot].uploaded = 0;
 	s_pages[slot].live = 1;
 	s_pages[slot].generation = ++s_pageGenerations;
@@ -932,7 +953,7 @@ int void2dGlyphPageBytes(int page) {
 void void2dGlyphPageClear(int page) {
 	if (!validPage(page)) { return; }
 	memset(s_pages[page].texels, 0, pageByteCount(&s_pages[page]));
-	s_pages[page].dirty = 1;
+	markDirtyWhole(&s_pages[page]);
 }
 
 int void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
@@ -985,7 +1006,7 @@ int void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 	} else {
 		stbtt_MakeGlyphBitmapSubpixel(&f->info, at, w, h, p->size, scale, scale, shiftX, 0.0f, glyph);
 	}
-	p->dirty = 1;
+	markDirtyBox(p, x, y, w, h);
 	return 0;
 }
 
@@ -1064,7 +1085,7 @@ int void2dGlyphPageBlitRgba(int page, int x, int y, int w, int h,
 		memcpy(p->texels + ((size_t)(y + row) * (size_t)p->size + (size_t)x) * 4,
 			texels + (size_t)row * (size_t)stride, (size_t)w * 4);
 	}
-	p->dirty = 1;
+	markDirtyBox(p, x, y, w, h);
 	return VOID2D_BLIT_OK;
 }
 #endif
@@ -1090,7 +1111,7 @@ int void2dGlyphPageBlitMask(int page, int x, int y, int w, int h,
 		memcpy(p->texels + (size_t)(y + row) * (size_t)p->size + (size_t)x,
 			alpha + (size_t)row * (size_t)stride, (size_t)w);
 	}
-	p->dirty = 1;
+	markDirtyBox(p, x, y, w, h);
 	return VOID2D_BLIT_OK;
 }
 #endif
@@ -1103,13 +1124,19 @@ int void2dGlyphPageUploaded(int page) { return validPage(page) ? s_pages[page].u
 
 int void2dGlyphPageTakeUpload(int page) {
 	if (!validPage(page) || !s_pages[page].dirty || s_pages[page].uploaded) { return 0; }
+	memcpy(s_pages[page].takenBox, s_pages[page].dirtyBox, sizeof(s_pages[page].takenBox));
 	s_pages[page].dirty = 0;
 	s_pages[page].uploaded = 1;
 	return 1;
 }
 
+// The rectangle the last void2dGlyphPageTakeUpload of this page asked for.
+int *void2dGlyphPageUploadBox(int page) { return s_pages[page].takenBox; }
+
 void void2dGlyphPagesMarkDirty(void) {
-	for (int page = 0; page < s_pageCount; page++) { s_pages[page].dirty = 1; }
+	for (int page = 0; page < s_pageCount; page++) {
+		if (s_pages[page].live) { markDirtyWhole(&s_pages[page]); }
+	}
 }
 
 void void2dGlyphPagesFrameBegin(void) {
@@ -1254,12 +1281,12 @@ int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int 
 	int status = void2dColourGlyphRender((ColourFace *)f->colour, glyph, sizePx, at, p->size, w, h);
 	if (status == VOID2D_COLOUR_ABSENT && void2dColourFaceHasLayers((ColourFace *)f->colour)) {
 		int result = colourLayerRasterize(f, glyph, sizePx, at, p->size, w, h);
-		if (result == VOID2D_COLOUR_RASTER_OK) { p->dirty = 1; }
+		if (result == VOID2D_COLOUR_RASTER_OK) { markDirtyBox(p, x, y, w, h); }
 		return result;
 	}
 	if (status == VOID2D_COLOUR_NO_MEMORY) { return VOID2D_COLOUR_RASTER_NO_MEMORY; }
 	if (status != VOID2D_COLOUR_PRESENT) { return VOID2D_COLOUR_RASTER_REFUSED; }
-	p->dirty = 1;
+	markDirtyBox(p, x, y, w, h);
 	return VOID2D_COLOUR_RASTER_OK;
 }
 #else
@@ -1506,7 +1533,7 @@ int void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, 
 			p->texels + (size_t)y * (size_t)p->size + (size_t)x, p->size);
 		if (result == VOID2D_SDF_OK) {
 			s_sdfGenerations++;
-			p->dirty = 1;
+			markDirtyBox(p, x, y, w, h);
 		}
 	}
 	STBTT_free(vertices, f->info.userdata);
@@ -1708,7 +1735,7 @@ int void2dGlyphOutlineRasterize(int face, int glyph, float sizePx, float shiftX,
 		free(flat);
 		if (result == VOID2D_SDF_OK) {
 			s_outlineGenerations++;
-			p->dirty = 1;
+			markDirtyBox(p, x, y, w, h);
 		}
 	}
 	STBTT_free(vertices, f->info.userdata);
@@ -1786,7 +1813,7 @@ int void2dGlyphSdfOutlineRasterize(int face, int glyph, float biasTexels, int pa
 			biasTexels, p->texels + (size_t)y * (size_t)p->size + (size_t)x, p->size);
 		if (result == VOID2D_SDF_OK) {
 			s_outlineGenerations++;
-			p->dirty = 1;
+			markDirtyBox(p, x, y, w, h);
 		}
 	}
 	STBTT_free(vertices, f->info.userdata);

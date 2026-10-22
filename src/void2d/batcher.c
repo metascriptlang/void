@@ -750,7 +750,24 @@ static void uploadGlyphPages(void) {
 		dropReleasedPageImage(page);
 		if (s_pageImg[page] == 0 || !void2dGlyphPageTakeUpload(page)) { continue; }
 		int bytes = void2dGlyphPageBytes(page);
-		doorUpdateTexture(s_pageImg[page], void2dGlyphPageData(page), (int64_t)bytes);
+		int size = void2dGlyphPageSize(page);
+		const int *box = void2dGlyphPageUploadBox(page);
+		int w = box[2] - box[0], h = box[3] - box[1];
+		// Metal's door stops on a partial write, so it keeps the whole page.
+#ifdef __APPLE__
+		int whole = 1;
+#else
+		int whole = (w >= size && h >= size);
+#endif
+		if (whole) {
+			doorUpdateTexture(s_pageImg[page], void2dGlyphPageData(page), (int64_t)bytes);
+		} else {
+			int bpp = bytes / (size * size);
+			int stride = size * bpp;
+			const unsigned char *first = void2dGlyphPageData(page) + (size_t)box[1] * (size_t)stride + (size_t)box[0] * (size_t)bpp;
+			bytes = (h - 1) * stride + w * bpp;
+			doorUpdateTextureRect(s_pageImg[page], box[0], box[1], w, h, stride, first, (int64_t)bytes);
+		}
 		s_glyphUploads++;
 		s_glyphUploadBytes += bytes;
 	}

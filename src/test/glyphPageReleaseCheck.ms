@@ -7,6 +7,9 @@ import {
 	void2dGlyphPageRelease,
 	void2dGlyphRasterize,
 	void2dGlyphPageSize,
+	void2dGlyphPageTakeUpload,
+	void2dGlyphPageUploadBox,
+	void2dGlyphPagesFrameBegin,
 } from "../void2d/glyph.h";
 
 const RENDERER_PAGE_VIEWS: int32 = 64;
@@ -57,4 +60,23 @@ test "a released page handle is reused with a new generation and refused a secon
 	assert void2dGlyphPageGeneration(again) != made;
 	assert void2dGlyphPageSize(again) == 128;
 	assert void2dGlyphPageRelease(again) == 0;
+}
+
+test "a page's upload box is the union of the tiles written since it was last taken" {
+	const face: int32 = try loadFace("assets/font.ttf") catch -1;
+	assert face >= 0;
+	const glyph: int32 = glyphIndex(face, "g".code);
+	const page: int32 = void2dGlyphPageCreate(64, PageKind.Coverage as int32);
+	assert page >= 0;
+	assert void2dGlyphPageTakeUpload(page) == 1;
+	const whole = void2dGlyphPageUploadBox(page);
+	assert whole[0] == 0 && whole[1] == 0 && whole[2] == 64 && whole[3] == 64;
+	void2dGlyphPagesFrameBegin();
+	assert void2dGlyphPageTakeUpload(page) == 0;
+	assert void2dGlyphRasterize(face, glyph, 12.0, 0.0, page, 4, 6, 10, 10) == 0;
+	assert void2dGlyphRasterize(face, glyph, 12.0, 0.0, page, 20, 30, 8, 8) == 0;
+	assert void2dGlyphPageTakeUpload(page) == 1;
+	const dirty = void2dGlyphPageUploadBox(page);
+	assert dirty[0] == 4 && dirty[1] == 6 && dirty[2] == 28 && dirty[3] == 38;
+	assert void2dGlyphPageRelease(page) == 0;
 }
