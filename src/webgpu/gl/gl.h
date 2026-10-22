@@ -1,6 +1,11 @@
 #pragma once
 #include <stdint.h>
 
+#define OGL_CAPABILITY_COMPUTE 1
+#define OGL_CAPABILITY_DEBUG 2
+#define OGL_CAPABILITY_TIMER 4
+#define OGL_CAPABILITY_EXACT_SAMPLES 8
+
 int32_t oglLoad(void);
 const char *oglLoadMissing(void);
 void oglUnload(void);
@@ -21,8 +26,8 @@ void oglBindBuffer(int32_t target, uint32_t buffer);
 void oglBufferData(int32_t target, int64_t bytes, int32_t usage);
 void oglBufferSubData(int32_t target, int64_t offset, void *data, int64_t bytes);
 void oglDeleteBuffer(uint32_t buffer);
-void oglCopyBufferData(uint32_t source, int64_t sourceOffset, uint32_t destination, int64_t destinationOffset, int64_t bytes);
-int32_t oglGetBufferData(uint32_t buffer, int64_t offset, void *destination, int64_t bytes);
+void oglCopyBufferDataUncached(uint32_t source, int64_t sourceOffset, uint32_t destination, int64_t destinationOffset, int64_t bytes);
+int32_t oglGetBufferDataUncached(uint32_t buffer, int64_t offset, void *destination, int64_t bytes);
 
 uint32_t oglCreateTexture(void);
 void oglActiveTexture(int32_t unit);
@@ -30,7 +35,7 @@ void oglBindTexture(int32_t target, uint32_t texture);
 void oglTexStorage(int32_t target, int32_t levels, int32_t internalFormat, int32_t width, int32_t height, int32_t depth);
 void oglTexParameteri(int32_t target, int32_t name, int32_t value);
 void oglTexStorage2DMultisample(int32_t target, int32_t samples, int32_t internalFormat, int32_t width, int32_t height);
-uint32_t oglCreateRenderbuffer(int32_t samples, int32_t internalFormat, int32_t width, int32_t height);
+uint32_t oglCreateRenderbufferUncached(int32_t samples, int32_t internalFormat, int32_t width, int32_t height);
 void oglDeleteRenderbuffer(uint32_t renderbuffer);
 void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer);
 void oglTexSubImage(
@@ -45,10 +50,8 @@ void oglTexSubImage(
 	int32_t format,
 	int32_t type,
 	void *data,
-	int64_t offset,
-	int32_t rowLength,
-	int32_t imageHeight);
-void oglTexSubImageFromBuffer(
+	int64_t offset);
+void oglTexSubImageFromBufferUncached(
 	int32_t target,
 	int32_t level,
 	int32_t x,
@@ -60,10 +63,9 @@ void oglTexSubImageFromBuffer(
 	int32_t format,
 	int32_t type,
 	uint32_t buffer,
-	int64_t offset,
-	int32_t rowLength,
-	int32_t imageHeight);
-int32_t oglReadTexelsToBuffer(
+	int64_t offset);
+int32_t oglReadTexelsToBufferUncached(
+	uint32_t readFramebuffer,
 	uint32_t texture,
 	int32_t target,
 	int32_t level,
@@ -77,8 +79,9 @@ int32_t oglReadTexelsToBuffer(
 	int32_t rowLength,
 	uint32_t buffer,
 	int64_t offset);
-int32_t oglReadScreenRow(int32_t x, int32_t y, int32_t width, int32_t format, int32_t type, uint32_t buffer, int64_t offset);
+int32_t oglReadScreenRectUncached(int32_t x, int32_t y, int32_t width, int32_t height, int32_t format, int32_t type, int32_t rowLength, uint32_t buffer, int64_t offset);
 int32_t oglCopyTexels(
+	uint32_t readFramebuffer,
 	uint32_t source,
 	int32_t sourceTarget,
 	int32_t sourceLevel,
@@ -177,7 +180,7 @@ int32_t oglHasExtension(const char *name);
 int32_t oglGetIntegeri(int32_t name, int32_t index);
 uint32_t oglLinkComputeProgram(uint32_t computeShader);
 void oglDispatchCompute(int32_t x, int32_t y, int32_t z);
-void oglDispatchComputeIndirect(uint32_t buffer, int64_t offset);
+void oglDispatchComputeIndirectUncached(uint32_t buffer, int64_t offset);
 void oglMemoryBarrier(int32_t barriers);
 void oglBindBufferRange(int32_t target, uint32_t index, uint32_t buffer, int64_t offset, int64_t bytes);
 void oglBindImageTexture(int32_t unit, uint32_t texture, int32_t level, int32_t layered, int32_t layer, int32_t access, int32_t format);

@@ -347,7 +347,7 @@ void oglBufferSubData(int32_t target, int64_t offset, void *data, int64_t bytes)
 
 void oglDeleteBuffer(uint32_t buffer) { if (buffer) glDeleteBuffers(1, &buffer); }
 
-void oglCopyBufferData(uint32_t source, int64_t sourceOffset, uint32_t destination, int64_t destinationOffset, int64_t bytes) {
+void oglCopyBufferDataUncached(uint32_t source, int64_t sourceOffset, uint32_t destination, int64_t destinationOffset, int64_t bytes) {
 	glBindBuffer(GL_COPY_READ_BUFFER, source);
 	glBindBuffer(GL_COPY_WRITE_BUFFER, destination);
 	glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, (GLintptr)sourceOffset, (GLintptr)destinationOffset, (GLsizeiptr)bytes);
@@ -355,7 +355,7 @@ void oglCopyBufferData(uint32_t source, int64_t sourceOffset, uint32_t destinati
 	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
-int32_t oglGetBufferData(uint32_t buffer, int64_t offset, void *destination, int64_t bytes) {
+int32_t oglGetBufferDataUncached(uint32_t buffer, int64_t offset, void *destination, int64_t bytes) {
 	int32_t read = 1;
 	glBindBuffer(GL_COPY_READ_BUFFER, buffer);
 #if defined(OGL_GLES) && !defined(__EMSCRIPTEN__)
@@ -398,7 +398,7 @@ void oglTexStorage2DMultisample(int32_t target, int32_t samples, int32_t interna
 }
 #endif
 
-uint32_t oglCreateRenderbuffer(int32_t samples, int32_t internalFormat, int32_t width, int32_t height) {
+uint32_t oglCreateRenderbufferUncached(int32_t samples, int32_t internalFormat, int32_t width, int32_t height) {
 	GLuint renderbuffer = 0;
 	glGenRenderbuffers(1, &renderbuffer);
 	glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
@@ -424,18 +424,12 @@ static void texSubImage(
 	int32_t depth,
 	int32_t format,
 	int32_t type,
-	const void *pixels,
-	int32_t rowLength,
-	int32_t imageHeight) {
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
+	const void *pixels) {
 	if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) {
-		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, imageHeight);
 		glTexSubImage3D((GLenum)target, level, x, y, z, width, height, depth, (GLenum)format, (GLenum)type, pixels);
-		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
 	} else {
 		glTexSubImage2D((GLenum)target, level, x, y, width, height, (GLenum)format, (GLenum)type, pixels);
 	}
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 }
 
 void oglTexSubImage(
@@ -450,13 +444,11 @@ void oglTexSubImage(
 	int32_t format,
 	int32_t type,
 	void *data,
-	int64_t offset,
-	int32_t rowLength,
-	int32_t imageHeight) {
-	texSubImage(target, level, x, y, z, width, height, depth, format, type, (const uint8_t *)data + offset, rowLength, imageHeight);
+	int64_t offset) {
+	texSubImage(target, level, x, y, z, width, height, depth, format, type, (const uint8_t *)data + offset);
 }
 
-void oglTexSubImageFromBuffer(
+void oglTexSubImageFromBufferUncached(
 	int32_t target,
 	int32_t level,
 	int32_t x,
@@ -468,11 +460,9 @@ void oglTexSubImageFromBuffer(
 	int32_t format,
 	int32_t type,
 	uint32_t buffer,
-	int64_t offset,
-	int32_t rowLength,
-	int32_t imageHeight) {
+	int64_t offset) {
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, buffer);
-	texSubImage(target, level, x, y, z, width, height, depth, format, type, (const void *)(intptr_t)offset, rowLength, imageHeight);
+	texSubImage(target, level, x, y, z, width, height, depth, format, type, (const void *)(intptr_t)offset);
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
@@ -642,22 +632,20 @@ static void attachTexel(uint32_t texture, int32_t target, int32_t level, int32_t
 	}
 }
 
-static GLuint beginTexelRead(uint32_t texture, int32_t target, int32_t level, int32_t layer, GLenum attachment, GLint *previous) {
-	GLuint readFramebuffer = 0;
+static void beginTexelRead(uint32_t readFramebuffer, uint32_t texture, int32_t target, int32_t level, int32_t layer, GLenum attachment, GLint *previous) {
 	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, previous);
-	glGenFramebuffers(1, &readFramebuffer);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
 	attachTexel(texture, target, level, layer, attachment);
 	glReadBuffer(attachment == GL_COLOR_ATTACHMENT0 ? GL_COLOR_ATTACHMENT0 : GL_NONE);
-	return readFramebuffer;
 }
 
-static void endTexelRead(GLuint readFramebuffer, GLint previous) {
+static void endTexelRead(GLenum attachment, GLint previous) {
+	glFramebufferTexture2D(GL_READ_FRAMEBUFFER, attachment, GL_TEXTURE_2D, 0, 0);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)previous);
-	glDeleteFramebuffers(1, &readFramebuffer);
 }
 
-int32_t oglReadTexelsToBuffer(
+int32_t oglReadTexelsToBufferUncached(
+	uint32_t readFramebuffer,
 	uint32_t texture,
 	int32_t target,
 	int32_t level,
@@ -673,7 +661,7 @@ int32_t oglReadTexelsToBuffer(
 	int64_t offset) {
 	GLint previous = 0;
 	GLenum attachment = format == GL_DEPTH_COMPONENT ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
-	GLuint readFramebuffer = beginTexelRead(texture, target, level, layer, attachment, &previous);
+	beginTexelRead(readFramebuffer, texture, target, level, layer, attachment, &previous);
 	int32_t result = 1;
 	if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		result = 0;
@@ -688,27 +676,30 @@ int32_t oglReadTexelsToBuffer(
 		glPixelStorei(GL_PACK_ROW_LENGTH, 0);
 		glPixelStorei(GL_PACK_ALIGNMENT, 4);
 	}
-	endTexelRead(readFramebuffer, previous);
+	endTexelRead(attachment, previous);
 	return result;
 }
 
-int32_t oglReadScreenRow(int32_t x, int32_t y, int32_t width, int32_t format, int32_t type, uint32_t buffer, int64_t offset) {
+int32_t oglReadScreenRectUncached(int32_t x, int32_t y, int32_t width, int32_t height, int32_t format, int32_t type, int32_t rowLength, uint32_t buffer, int64_t offset) {
 	GLint previous = 0;
 	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previous);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 	glReadBuffer(GL_BACK);
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glPixelStorei(GL_PACK_ROW_LENGTH, rowLength);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, buffer);
 	while (glGetError() != GL_NO_ERROR) {}
-	glReadPixels(x, y, width, 1, (GLenum)format, (GLenum)type, (void *)(intptr_t)offset);
+	glReadPixels(x, y, width, height, (GLenum)format, (GLenum)type, (void *)(intptr_t)offset);
 	int32_t result = glGetError() == GL_NO_ERROR ? 1 : 0;
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	glPixelStorei(GL_PACK_ROW_LENGTH, 0);
 	glPixelStorei(GL_PACK_ALIGNMENT, 4);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)previous);
 	return result;
 }
 
 int32_t oglCopyTexels(
+	uint32_t readFramebuffer,
 	uint32_t source,
 	int32_t sourceTarget,
 	int32_t sourceLevel,
@@ -724,7 +715,7 @@ int32_t oglCopyTexels(
 	int32_t height,
 	int32_t count) {
 	GLint previous = 0;
-	GLuint readFramebuffer = beginTexelRead(source, sourceTarget, sourceLevel, sourceLayer, GL_COLOR_ATTACHMENT0, &previous);
+	beginTexelRead(readFramebuffer, source, sourceTarget, sourceLevel, sourceLayer, GL_COLOR_ATTACHMENT0, &previous);
 	int32_t result = 1;
 	if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		result = 0;
@@ -742,7 +733,7 @@ int32_t oglCopyTexels(
 			if (glGetError() != GL_NO_ERROR) result = -1;
 		}
 	}
-	endTexelRead(readFramebuffer, previous);
+	endTexelRead(GL_COLOR_ATTACHMENT0, previous);
 	return result;
 }
 
@@ -826,16 +817,16 @@ void oglDrawElementsInstancedBaseVertexBaseInstance(
 int32_t oglCapabilities(void) {
 	int32_t caps = 0;
 #if defined(OGL_COMPUTE)
-	caps |= 1;
+	caps |= OGL_CAPABILITY_COMPUTE;
 #endif
 #if defined(OGL_DEBUG)
-	caps |= 2;
+	caps |= OGL_CAPABILITY_DEBUG;
 #endif
 #if defined(OGL_TIMER)
-	caps |= 4;
+	caps |= OGL_CAPABILITY_TIMER;
 #endif
 #if !defined(OGL_GLES)
-	caps |= 8;
+	caps |= OGL_CAPABILITY_EXACT_SAMPLES;
 #endif
 	return caps;
 }
@@ -888,7 +879,7 @@ uint32_t oglLinkComputeProgram(uint32_t computeShader) {
 
 void oglDispatchCompute(int32_t x, int32_t y, int32_t z) { glDispatchCompute((GLuint)x, (GLuint)y, (GLuint)z); }
 
-void oglDispatchComputeIndirect(uint32_t buffer, int64_t offset) {
+void oglDispatchComputeIndirectUncached(uint32_t buffer, int64_t offset) {
 	glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, buffer);
 	glDispatchComputeIndirect((GLintptr)offset);
 	glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
@@ -907,7 +898,7 @@ void oglBindImageTexture(int32_t unit, uint32_t texture, int32_t level, int32_t 
 int32_t oglGetIntegeri(int32_t name, int32_t index) { unavailable("glGetIntegeri_v"); return 0; }
 uint32_t oglLinkComputeProgram(uint32_t computeShader) { unavailable("compute shaders"); return 0; }
 void oglDispatchCompute(int32_t x, int32_t y, int32_t z) { unavailable("glDispatchCompute"); }
-void oglDispatchComputeIndirect(uint32_t buffer, int64_t offset) { unavailable("glDispatchComputeIndirect"); }
+void oglDispatchComputeIndirectUncached(uint32_t buffer, int64_t offset) { unavailable("glDispatchComputeIndirect"); }
 void oglMemoryBarrier(int32_t barriers) { unavailable("glMemoryBarrier"); }
 void oglBindBufferRange(int32_t target, uint32_t index, uint32_t buffer, int64_t offset, int64_t bytes) { unavailable("glBindBufferRange"); }
 void oglBindImageTexture(int32_t unit, uint32_t texture, int32_t level, int32_t layered, int32_t layer, int32_t access, int32_t format) {

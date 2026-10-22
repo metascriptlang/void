@@ -111,13 +111,13 @@ import {
 	oglClearDepthStencil,
 	oglColorMask,
 	oglCompileShader,
-	oglCopyBufferData,
+	oglCopyBufferDataUncached,
 	oglCopyBytes,
 	oglCopyTexels,
 	oglCreateBuffer,
 	oglCreateFramebuffer,
 	oglCreateQuery,
-	oglCreateRenderbuffer,
+	oglCreateRenderbufferUncached,
 	oglCreateSampler,
 	oglCreateTexture,
 	oglCreateVertexArray,
@@ -137,7 +137,7 @@ import {
 	oglDisable,
 	oglDisableVertexAttribArray,
 	oglDispatchCompute,
-	oglDispatchComputeIndirect,
+	oglDispatchComputeIndirectUncached,
 	oglDrawArrays,
 	oglDrawArraysInstanced,
 	oglDrawBuffers,
@@ -151,7 +151,7 @@ import {
 	oglFramebufferTexture2D,
 	oglFramebufferTextureLayer,
 	oglFrontFace,
-	oglGetBufferData,
+	oglGetBufferDataUncached,
 	oglGetError,
 	oglGetInteger,
 	oglGetInteger64,
@@ -171,8 +171,8 @@ import {
 	oglQueryCounterBits,
 	oglQueryResult,
 	oglReadBuffer,
-	oglReadScreenRow,
-	oglReadTexelsToBuffer,
+	oglReadScreenRectUncached,
+	oglReadTexelsToBufferUncached,
 	oglSamplerParameterf,
 	oglSamplerParameteri,
 	oglScissor,
@@ -184,7 +184,7 @@ import {
 	oglTexParameteri,
 	oglTexStorage,
 	oglTexSubImage,
-	oglTexSubImageFromBuffer,
+	oglTexSubImageFromBufferUncached,
 	oglTextureNative,
 	oglUniform1i,
 	oglUniform4fv,
@@ -365,6 +365,12 @@ const GL_FLOAT = 0x1406;
 const GL_HALF_FLOAT = 0x140B;
 const GL_FLOAT_32_UNSIGNED_INT_24_8_REV = 0x8DAD;
 const GL_UNPACK_ALIGNMENT = 0x0CF5;
+const GL_UNPACK_ROW_LENGTH = 0x0CF2;
+const GL_UNPACK_IMAGE_HEIGHT = 0x806E;
+const OGL_CAPABILITY_COMPUTE = 1;
+const OGL_CAPABILITY_DEBUG = 2;
+const OGL_CAPABILITY_TIMER = 4;
+const OGL_CAPABILITY_EXACT_SAMPLES = 8;
 const GL_TEXTURE_MAG_FILTER = 0x2800;
 const GL_TEXTURE_MIN_FILTER = 0x2801;
 const GL_TEXTURE_WRAP_S = 0x2802;
@@ -718,6 +724,8 @@ struct StateCache {
 	cullFace: int32;
 	frontFace: int32;
 	sampleCount: int32;
+	unpackRowLength: int32;
+	unpackImageHeight: int32;
 }
 
 let frame: int64 = 0;
@@ -751,6 +759,7 @@ let cachedUnits: Vec<CachedUnit> = [];
 let vertexArray: uint32 = 0;
 let dummySampler: uint32 = 0;
 let framebuffer: uint32 = 0;
+let readFramebuffer: uint32 = 0;
 let maxVertexAttributes: int32 = 0;
 let maxTextureUnits: int32 = 0;
 let swapchainColor: uint32 = 0;
@@ -1103,6 +1112,17 @@ function cacheInvalidateBuffer(name: uint32): void {
 	}
 }
 
+function cacheUnpack(target: int32, rowLength: int32, imageHeight: int32): void {
+	if (cache.unpackRowLength != rowLength) {
+		cache.unpackRowLength = rowLength;
+		oglPixelStore(GL_UNPACK_ROW_LENGTH, rowLength);
+	}
+	if ((target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) && cache.unpackImageHeight != imageHeight) {
+		cache.unpackImageHeight = imageHeight;
+		oglPixelStore(GL_UNPACK_IMAGE_HEIGHT, imageHeight);
+	}
+}
+
 function cacheActiveTexture(unit: int32): void {
 	if (cache.activeTexture != unit) {
 		cache.activeTexture = unit;
@@ -1218,6 +1238,8 @@ function resetStateCache(): void {
 	cache.cullFace = 0;
 	cache.frontFace = GL_CW;
 	cache.sampleCount = 1;
+	oglPixelStore(GL_UNPACK_ROW_LENGTH, 0);
+	oglPixelStore(GL_UNPACK_IMAGE_HEIGHT, 0);
 	oglColorMask(COLOR_WRITE_ALL);
 	oglPolygonOffset(0, 0);
 	oglDisable(GL_POLYGON_OFFSET_FILL);
@@ -1243,15 +1265,16 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	maxTextureUnits = smaller(oglGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS), MAX_TEXTURE_UNITS);
 	contextVersion = version;
 	const capabilities = oglCapabilities();
-	computeSupported = (capabilities & 1) != 0 && version >= COMPUTE_CONTEXT_VERSION;
-	debugSupported = (capabilities & 2) != 0 && version >= DEBUG_CONTEXT_VERSION;
-	timerSupported = (capabilities & 4) != 0 && oglQueryCounterBits() > 0;
-	exactSamples = (capabilities & 8) != 0;
+	computeSupported = (capabilities & OGL_CAPABILITY_COMPUTE) != 0 && version >= COMPUTE_CONTEXT_VERSION;
+	debugSupported = (capabilities & OGL_CAPABILITY_DEBUG) != 0 && version >= DEBUG_CONTEXT_VERSION;
+	timerSupported = (capabilities & OGL_CAPABILITY_TIMER) != 0 && oglQueryCounterBits() > 0;
+	exactSamples = (capabilities & OGL_CAPABILITY_EXACT_SAMPLES) != 0;
 	deviceLimits = queryLimits();
 	deviceFeatures = queryFeatures();
 	vertexArray = oglCreateVertexArray();
 	oglBindVertexArray(vertexArray);
 	framebuffer = oglCreateFramebuffer();
+	readFramebuffer = oglCreateFramebuffer();
 	dummySampler = oglCreateSampler();
 	oglSamplerParameteri(dummySampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	oglSamplerParameteri(dummySampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -1378,8 +1401,10 @@ export function shutdown(): void {
 	oglDeleteSampler(dummySampler);
 	dummySampler = 0;
 	oglDeleteFramebuffer(framebuffer);
+	oglDeleteFramebuffer(readFramebuffer);
 	oglDeleteVertexArray(vertexArray);
 	framebuffer = 0;
+	readFramebuffer = 0;
 	vertexArray = 0;
 	oglUnload();
 	reset(buffers);
@@ -1592,7 +1617,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		swapchainView: 0,
 	};
 	if (slot.target == GL_RENDERBUFFER) {
-		slot.names[0] = oglCreateRenderbuffer(sampleCount, info.internalFormat, width, height);
+		slot.names[0] = oglCreateRenderbufferUncached(sampleCount, info.internalFormat, width, height);
 	}
 	for (let s = 0; s < slot.slotCount && slot.target != GL_RENDERBUFFER; s++) {
 		const name = oglCreateTexture();
@@ -1685,6 +1710,7 @@ export function writeTexture<T>(
 	const count = size.depthOrArrayLayers;
 	cacheStoreUnit0();
 	cacheBindTextureSampler(0, target, textures.slots[index].names[textures.slots[index].activeSlot], 0);
+	cacheUnpack(target, rowPitch / info.bytesPerPixel, rowsPerImage);
 	if (target == GL_TEXTURE_CUBE_MAP) {
 		const imageBytes = (rowPitch as int64) * (rowsPerImage as int64);
 		for (let z = 0; z < count; z++) {
@@ -1701,8 +1727,6 @@ export function writeTexture<T>(
 				info.pixelType,
 				data[0],
 				layout.offset + imageBytes * (z as int64),
-				rowPitch / info.bytesPerPixel,
-				0,
 			);
 		}
 	} else {
@@ -1719,8 +1743,6 @@ export function writeTexture<T>(
 			info.pixelType,
 			data[0],
 			layout.offset,
-			rowPitch / info.bytesPerPixel,
-			rowsPerImage,
 		);
 	}
 	cacheRestoreUnit0();
@@ -3271,8 +3293,29 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 	if (size == 0) { return; }
 	if (from == to) { stop(`copyBufferToBuffer inside GPUBuffer ${source.id} is not ported to gl yet: a written buffer rotates its in-flight copies`); }
 	claimBufferWrite(to, destinationOffset, size, "copyBufferToBuffer");
-	oglCopyBufferData(bufferName(from), sourceOffset, bufferName(to), destinationOffset, size);
+	oglCopyBufferDataUncached(bufferName(from), sourceOffset, bufferName(to), destinationOffset, size);
 	checkError("copyBufferToBuffer");
+}
+
+function flipBufferRows(index: int32, offset: int64, span: int64, rowStride: int32, rowBytes: int32, rows: int32): void {
+	if (rows < 2) { return; }
+	const bytes: Vec<uint8> = new Array(span);
+	if (oglGetBufferDataUncached(bufferName(index), offset, bytes[0], span) == 0) {
+		stop("copyTextureToBuffer: this GL target cannot read the default framebuffer rows back to flip them");
+	}
+	const swap: Vec<uint8> = new Array(rowBytes);
+	for (let top = 0; top < rows - 1 - top; top++) {
+		const upper = (top as int64) * (rowStride as int64);
+		const lower = ((rows - 1 - top) as int64) * (rowStride as int64);
+		oglCopyBytes(swap[0], 0, bytes[upper], rowBytes as int64);
+		oglCopyBytes(bytes[0], upper, bytes[lower], rowBytes as int64);
+		oglCopyBytes(bytes[0], lower, swap[0], rowBytes as int64);
+	}
+	const target = buffers.slots[index].target;
+	cacheStoreBuffer(target);
+	cacheBindBuffer(target, bufferName(index));
+	oglBufferSubData(target, offset, bytes[0], span);
+	cacheRestoreBuffer(target);
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
@@ -3291,22 +3334,24 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 	if (textures.slots[from].swapchainView != 0) {
 		const format: string = textures.slots[from].format;
 		if (format != "rgba8unorm") { stop(`copyTextureToBuffer: the default framebuffer reads as RGBA bytes, which the canvas format ${format} would mislabel`); }
-		for (let row = 0; row < size.height; row++) {
-			const read = oglReadScreenRow(
-				source.origin.x,
-				textures.slots[from].height - 1 - (source.origin.y + row),
-				size.width,
-				info.pixelFormat,
-				info.pixelType,
-				bufferName(to),
-				destination.offset + (bytesPerRow as int64) * (row as int64),
-			);
-			if (read == 0) { stop("copyTextureToBuffer: glReadPixels of the default framebuffer failed"); }
-		}
+		const read = oglReadScreenRectUncached(
+			source.origin.x,
+			textures.slots[from].height - (source.origin.y + size.height),
+			size.width,
+			size.height,
+			info.pixelFormat,
+			info.pixelType,
+			bytesPerRow / info.bytesPerPixel,
+			bufferName(to),
+			destination.offset,
+		);
+		if (read == 0) { stop("copyTextureToBuffer: glReadPixels of the default framebuffer failed"); }
+		flipBufferRows(to, destination.offset, span, bytesPerRow, size.width * info.bytesPerPixel, size.height);
 		return;
 	}
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
-		const read = oglReadTexelsToBuffer(
+		const read = oglReadTexelsToBufferUncached(
+			readFramebuffer,
 			textureName(from),
 			textures.slots[from].target,
 			source.mipLevel,
@@ -3343,9 +3388,10 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 	const first = destination.origin.z;
 	cacheStoreUnit0();
 	cacheBindTextureSampler(0, target, textureName(to), 0);
+	cacheUnpack(target, bytesPerRow / info.bytesPerPixel, rowsPerImage);
 	if (target == GL_TEXTURE_CUBE_MAP) {
 		for (let z = 0; z < size.depthOrArrayLayers; z++) {
-			oglTexSubImageFromBuffer(
+			oglTexSubImageFromBufferUncached(
 				GL_TEXTURE_CUBE_MAP_POSITIVE_X + first + z,
 				destination.mipLevel,
 				destination.origin.x,
@@ -3358,12 +3404,10 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 				info.pixelType,
 				bufferName(from),
 				source.offset + imageBytes * (z as int64),
-				bytesPerRow / info.bytesPerPixel,
-				0,
 			);
 		}
 	} else {
-		oglTexSubImageFromBuffer(
+		oglTexSubImageFromBufferUncached(
 			target,
 			destination.mipLevel,
 			destination.origin.x,
@@ -3376,8 +3420,6 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 			info.pixelType,
 			bufferName(from),
 			source.offset,
-			bytesPerRow / info.bytesPerPixel,
-			rowsPerImage,
 		);
 	}
 	cacheRestoreUnit0();
@@ -3409,6 +3451,7 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	cacheStoreUnit0();
 	cacheBindTextureSampler(0, textures.slots[to].target, textureName(to), 0);
 	const copied = oglCopyTexels(
+		readFramebuffer,
 		textureName(from),
 		textures.slots[from].target,
 		source.mipLevel,
@@ -3434,7 +3477,7 @@ export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: in
 	const read = mode == (GPUMapMode.READ as int32);
 	const length = checkedMapAsync(buffer.id, buffers.slots[index].usage, buffers.slots[index].mapMode, buffers.slots[index].size, mode, offset, size);
 	if (read) {
-		if (oglGetBufferData(bufferName(index), offset, buffers.slots[index].shadow[offset], length) == 0) {
+		if (oglGetBufferDataUncached(bufferName(index), offset, buffers.slots[index].shadow[offset], length) == 0) {
 			stop(`mapAsync READ of GPUBuffer ${buffer.id}: this GL target cannot read a buffer back`);
 		}
 		checkError("mapAsync");
@@ -3555,7 +3598,7 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 	const b = buffers.slotIndex(buffer.id);
 	checkedDispatchIndirect(buffer.id, buffers.slots[b].usage, buffers.slots[b].size, offset);
 	const s = applyCompute();
-	oglDispatchComputeIndirect(bufferName(b), offset);
+	oglDispatchComputeIndirectUncached(bufferName(b), offset);
 	if (shaders.slots[s].writes) { computeBound.pendingBarrier = true; }
 	checkError("dispatchWorkgroupsIndirect");
 }
