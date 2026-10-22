@@ -109,6 +109,7 @@ import "./void3dModuleCheck";
 import "./shaderComputeCheck";
 import "./shaderIrCheck";
 import "./shaderPrintCheck";
+import "./shaderSpecializeCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
 import "./litShaderCheck";
