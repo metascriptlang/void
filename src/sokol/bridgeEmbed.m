@@ -67,7 +67,10 @@ int voidMetalReadDrawable(uint8_t *rgba, int width, int height) {
 	return 1;
 }
 
+static void restoreContextIfLost(void);
+
 static void tick(void) {
+	restoreContextIfLost();
 	g_drawable = [g_layer nextDrawable];
 	if (!g_drawable) return;
 	mtlSetDrawable((__bridge void *)g_drawable);
@@ -146,6 +149,16 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 static void setupMetal(int samples) {
 	doorSetup((__bridge void *)g_device, NULL, DOOR_PIXEL_FORMAT_BGRA8, DOOR_PIXEL_FORMAT_NONE, samples);
 	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
+}
+
+static int s_contextLost = 0;
+void voidLoseContext(void) { s_contextLost = 1; }
+
+static void restoreContextIfLost(void) {
+	if (!s_contextLost) return;
+	doorShutdown();
+	setupMetal(s_driver == DRIVER_WINDOW ? 1 : voidViewsSampleCount());
+	s_contextLost = 0;
 }
 
 __attribute__((noreturn)) static void noDriver(const char *op) {
@@ -263,6 +276,7 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 void voidPlatformSurfaceResize(void *surface, int w, int h) { fitLayer((MacSurface *)surface, w, h); }
 
 int voidPlatformSurfaceAcquire(void *surface) {
+	restoreContextIfLost();
 	MacSurface *s = (MacSurface *)surface;
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
