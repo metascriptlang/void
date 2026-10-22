@@ -172,15 +172,13 @@ import {
 	oglViewport,
 } from "./gl.h";
 
-when (webgl2 || android) {
-	import { oglHasExtension } from "./gl.h";
-}
-
 when (webgl2) {
 	import { oglQueryAvailable } from "./gl.h";
 }
 
-when (!webgl2 && !android) {
+when (webgl2 || android) {
+	import { oglHasExtension } from "./gl.h";
+} else {
 	import {
 		oglBlendEquationSeparatei,
 		oglBlendFuncSeparatei,
@@ -474,6 +472,7 @@ struct TextureSlot {
 	width: int32;
 	height: int32;
 	format: GPUTextureFormat;
+	info: FormatInfo;
 	usage: int32;
 	sampleCount: int32;
 	mipLevels: int32;
@@ -761,7 +760,7 @@ let layouts: Vec<LayoutSlot> = [];
 let bindGroups: Vec<BindGroupSlot> = [];
 let querySets: Vec<QuerySetSlot> = [];
 
-function stop(message: string): void {
+function stop(message: string): never {
 	console.log(`webgpu gl: ${message}`);
 	unreachable;
 }
@@ -781,15 +780,14 @@ function stopOnFormat(member: string, value: string): FormatInfo {
 	unreachable;
 }
 
-function stopOnHandle(kind: string, id: uint32): int32 {
+function stopOnHandle(kind: string, id: uint32): never {
 	console.log(`webgpu gl: ${kind} ${id} is not a live handle`);
 	unreachable;
 }
 
 function nativeNameOf(name: string | null, what: string): string {
 	if (name !== null) { return name; }
-	console.log(`webgpu gl: ${what} needs its GLSL name in nativeName`);
-	unreachable;
+	stop(`${what} needs its GLSL name in nativeName`);
 }
 
 function checkError(what: string): void {
@@ -830,7 +828,7 @@ function releaseId(ref queue: SlotQueue, id: uint32): void {
 function bufferIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= buffers.length || buffers[index].id != id) {
-		return stopOnHandle("GPUBuffer", id);
+		stopOnHandle("GPUBuffer", id);
 	}
 	return index;
 }
@@ -838,7 +836,7 @@ function bufferIndex(id: uint32): int32 {
 function textureIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= textures.length || textures[index].id != id) {
-		return stopOnHandle("GPUTexture", id);
+		stopOnHandle("GPUTexture", id);
 	}
 	return index;
 }
@@ -846,7 +844,7 @@ function textureIndex(id: uint32): int32 {
 function viewIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= views.length || views[index].id != id) {
-		return stopOnHandle("GPUTextureView", id);
+		stopOnHandle("GPUTextureView", id);
 	}
 	return index;
 }
@@ -854,7 +852,7 @@ function viewIndex(id: uint32): int32 {
 function samplerIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= samplers.length || samplers[index].id != id) {
-		return stopOnHandle("GPUSampler", id);
+		stopOnHandle("GPUSampler", id);
 	}
 	return index;
 }
@@ -862,7 +860,7 @@ function samplerIndex(id: uint32): int32 {
 function shaderIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= shaders.length || shaders[index].id != id) {
-		return stopOnHandle("GPUShaderModule", id);
+		stopOnHandle("GPUShaderModule", id);
 	}
 	return index;
 }
@@ -870,7 +868,7 @@ function shaderIndex(id: uint32): int32 {
 function pipelineIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= pipelines.length || pipelines[index].id != id) {
-		return stopOnHandle("GPURenderPipeline", id);
+		stopOnHandle("GPURenderPipeline", id);
 	}
 	return index;
 }
@@ -878,7 +876,7 @@ function pipelineIndex(id: uint32): int32 {
 function querySetIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= querySets.length || querySets[index].id != id) {
-		return stopOnHandle("GPUQuerySet", id);
+		stopOnHandle("GPUQuerySet", id);
 	}
 	return index;
 }
@@ -886,7 +884,7 @@ function querySetIndex(id: uint32): int32 {
 function layoutIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= layouts.length || layouts[index].id != id) {
-		return stopOnHandle("GPUBindGroupLayout", id);
+		stopOnHandle("GPUBindGroupLayout", id);
 	}
 	return index;
 }
@@ -894,7 +892,7 @@ function layoutIndex(id: uint32): int32 {
 function bindGroupIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= bindGroups.length || bindGroups[index].id != id) {
-		return stopOnHandle("GPUBindGroup", id);
+		stopOnHandle("GPUBindGroup", id);
 	}
 	return index;
 }
@@ -1017,9 +1015,8 @@ function blendFactor(factor: string, member: string): int32 {
 }
 
 function destinationFactor(factor: string, member: string): int32 {
-	const value: string = factor;
-	if (value == "") { return GL_ZERO; }
-	return blendFactor(value, member);
+	if (factor == "") { return GL_ZERO; }
+	return blendFactor(factor, member);
 }
 
 function blendOperation(operation: string, member: string): int32 {
@@ -1215,7 +1212,7 @@ function cacheClearUnits(force: boolean): void {
 			oglBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 			oglBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 			oglBindTexture(GL_TEXTURE_3D, 0);
-			when (!webgl2 && !android) { oglBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0); }
+			unbindMultisampleTexture();
 			oglBindSampler(i, 0);
 			cachedUnits[i] = { target: 0, texture: 0, sampler: 0 };
 			cache.activeTexture = i;
@@ -1326,10 +1323,7 @@ function resetStateCache(): void {
 	oglEnable(GL_SCISSOR_TEST);
 	oglDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
 	oglEnable(GL_DITHER);
-	when (!webgl2 && !android) {
-		oglEnable(GL_MULTISAMPLE);
-		oglEnable(GL_PROGRAM_POINT_SIZE);
-	}
+	resetDesktopState();
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
@@ -1338,17 +1332,13 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 		stop(`requestDevice needs a current GL context; ${missing} did not load`);
 	}
 	const version = oglGetInteger(GL_MAJOR_VERSION) * 100 + oglGetInteger(GL_MINOR_VERSION) * 10;
-	when (webgl2 || android) {
-		if (version < 300) { stop(`the current context is GLES ${version}; the GLES3 backend needs 300`); }
-	} else {
-		if (version < 430) { stop(`the current context is GL ${version}; the GL backend needs 430`); }
-	}
+	checkContextVersion(version);
 	maxVertexAttributes = smaller(oglGetInteger(GL_MAX_VERTEX_ATTRIBS), GPU_MAX_VERTEX_ATTRIBUTES);
 	maxTextureUnits = smaller(oglGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS), MAX_TEXTURE_UNITS);
 	contextVersion = version;
 	const capabilities = oglCapabilities();
-	computeSupported = (capabilities & 1) != 0 && version >= computeContextVersion();
-	debugSupported = (capabilities & 2) != 0 && version >= debugContextVersion();
+	computeSupported = (capabilities & 1) != 0 && version >= COMPUTE_CONTEXT_VERSION;
+	debugSupported = (capabilities & 2) != 0 && version >= DEBUG_CONTEXT_VERSION;
 	timerSupported = (capabilities & 4) != 0 && oglQueryCounterBits() > 0;
 	exactSamples = (capabilities & 8) != 0;
 	deviceLimits = queryLimits();
@@ -1357,7 +1347,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	oglBindVertexArray(vertexArray);
 	framebuffer = oglCreateFramebuffer();
 	oglPixelStore(GL_UNPACK_ALIGNMENT, 1);
-	when (!webgl2 && !android) { oglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS); }
+	enableSeamlessCubemaps();
 	resetStateCache();
 	checkError("setup");
 	frame = 0;
@@ -1415,10 +1405,7 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 	const value: string = format;
 	if (value == "bgra8unorm" || value == "bgra8unorm-srgb") { return false; }
 	const info = formatInfo(format, "formatRenderable format");
-	when (webgl2 || android) {
-		if (info.needsColorBufferFloat) { return false; }
-	}
-	return !info.integer;
+	return !info.integer && !lacksColorBufferFloat(info);
 }
 
 export function frameIndex(): uint32 { return (frame + 1) as uint32; }
@@ -1717,10 +1704,8 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	if (attachment && info.integer) {
 		stop(`${descriptor.format} as RENDER_ATTACHMENT is not ported to gl: clearing an integer target needs glClearBufferuiv or glClearBufferiv`);
 	}
-	when (webgl2 || android) {
-		if (attachment && info.needsColorBufferFloat) {
-			stop(`${descriptor.format} as RENDER_ATTACHMENT needs EXT_color_buffer_float, which the GLES backend does not query yet`);
-		}
+	if (attachment && lacksColorBufferFloat(info)) {
+		stop(`${descriptor.format} as RENDER_ATTACHMENT needs EXT_color_buffer_float, which the GLES backend does not query yet`);
 	}
 	const cube = !volume && layers == 6 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
 	let target = GL_TEXTURE_2D;
@@ -1739,6 +1724,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		width: width,
 		height: height,
 		format: descriptor.format,
+		info: info,
 		usage: usage,
 		sampleCount: sampleCount,
 		mipLevels: mipLevels,
@@ -1761,7 +1747,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		cacheStoreUnit0();
 		cacheBindTextureSampler(0, slot.target, name, 0);
 		if (sampleCount > 1) {
-			when (!webgl2 && !android) { oglTexStorage2DMultisample(slot.target, sampleCount, info.internalFormat, width, height); }
+			storeMultisampleTexture(slot.target, sampleCount, info.internalFormat, width, height);
 		} else {
 			oglTexStorage(slot.target, mipLevels, info.internalFormat, width, height, layers);
 		}
@@ -1774,10 +1760,6 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const index = slotOf(id);
 	if (index < textures.length) { textures[index] = slot; } else { textures.push(slot); }
 	return { id: id };
-}
-
-function multisampleTarget(): int32 {
-	when (webgl2 || android) { return GL_RENDERBUFFER; } else { return GL_TEXTURE_2D_MULTISAMPLE; }
 }
 
 export function destroyTexture(texture: GPUTexture): void {
@@ -1828,7 +1810,7 @@ export function writeTexture<T>(
 	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
 		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
 	}
-	const info = formatInfo(textures[index].format, "texture format");
+	const info = textures[index].info;
 	const mip = destination.mipLevel;
 	const mips = textures[index].mipLevels;
 	const volume = textures[index].volume;
@@ -1909,7 +1891,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	if (textures[t].swapchainView != 0) { return { id: textures[t].swapchainView }; }
 	const id = allocateId(viewQueue, "view");
 	if (id == 0) { return { id: 0 }; }
-	const info = formatInfo(textures[t].format, "texture format");
+	const info = textures[t].info;
 	const usage = textures[t].usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	const layers = textures[t].layers;
@@ -2014,11 +1996,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	if (maxAnisotropy > 1 && !(minLinear && magLinear && mipLinear)) {
 		stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter");
 	}
-	when (webgl2 || android) {
-		if (maxAnisotropy > 1) {
-			stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs EXT_texture_filter_anisotropic, which the GLES backend does not query yet");
-		}
-	}
+	checkSamplerAnisotropy(maxAnisotropy);
 	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
 	const maxLod = descriptor.lodMaxClamp == 0 ? DEFAULT_LOD_MAX_CLAMP : descriptor.lodMaxClamp;
 	if (maxLod < descriptor.lodMinClamp) {
@@ -2034,7 +2012,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_S, addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"));
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_T, addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"));
 	oglSamplerParameteri(native, GL_TEXTURE_WRAP_R, addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW"));
-	when (!webgl2 && !android) { oglSamplerBorderColor(native, 0, 0, 0, 1); }
+	setSamplerBorderColor(native);
 	const compare: string = descriptor.compare;
 	if (compare == "") {
 		oglSamplerParameteri(native, GL_TEXTURE_COMPARE_MODE, 0);
@@ -2042,11 +2020,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 		oglSamplerParameteri(native, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 		oglSamplerParameteri(native, GL_TEXTURE_COMPARE_FUNC, compareFunction(compare, "GPUSamplerDescriptor.compare"));
 	}
-	when (!webgl2 && !android) {
-		if (maxAnisotropy > 1) {
-			oglSamplerParameteri(native, GL_TEXTURE_MAX_ANISOTROPY, smaller(maxAnisotropy, oglGetInteger(GL_MAX_TEXTURE_MAX_ANISOTROPY)));
-		}
-	}
+	setSamplerAnisotropy(native, maxAnisotropy);
 	nameObject(GL_SAMPLER, native, descriptor.label);
 	checkError(`createSampler of ${labelOf(descriptor.label)}`);
 	const index = slotOf(id);
@@ -2391,14 +2365,7 @@ function describeBlend(descriptor: GPURenderPipelineDescriptor, ref slot: Pipeli
 			destinationAlpha: destinationFactor(alpha.dstFactor, "blend.alpha.dstFactor"),
 			operationAlpha: blendOperation(alpha.operation, "blend.alpha.operation"),
 		};
-		when (webgl2 || android) {
-			if (first != -1 && slot.writeMasks[i] != slot.writeMasks[first]) {
-				stop(`fragment.targets[${i}].writeMask differs from target ${first}; GLES3 masks every target alike`);
-			}
-			if (first != -1 && !sameBlend(slot.blends[i], slot.blends[first])) {
-				stop(`fragment.targets[${i}].blend differs from target ${first}; GLES3 blends every target alike`);
-			}
-		}
+		checkTargetsAlike(slot, i, first);
 		if (first == -1) { first = i; }
 	}
 }
@@ -2634,7 +2601,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		pass.colorViews[i] = viewId;
 		pass.resolveViews[i] = checkResolve(i, views[v].texture, descriptor.colorAttachments[i].resolveTarget.id);
 		colorMask |= 1 << i;
-		checkStoreOp(descriptor.colorAttachments[i].storeOp, `colorAttachments[${i}].storeOp`);
+		checkStoreOp(descriptor.colorAttachments[i].storeOp, i, "storeOp");
 	}
 	const depthView = descriptor.depthStencilAttachment.view.id;
 	let depthTexture = 0;
@@ -2648,15 +2615,15 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		passExtent(views[v].texture, views[v].baseMip);
 		depthViewSlot = v;
 		depthTexture = textureIndex(views[v].texture);
-		depthStencil = formatInfo(textures[depthTexture].format, "depth format").stencil;
-		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, "depthStencilAttachment.depthStoreOp");
+		depthStencil = textures[depthTexture].info.stencil;
+		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, -1, "depthStoreOp");
 	}
 	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	if (pass.swapchain && offscreen) {
 		stop("a render pass mixes the canvas with offscreen attachments; GL draws the canvas through framebuffer 0");
 	}
 	if (pass.swapchain) {
-		when (!webgl2 && !android) { oglDisable(GL_FRAMEBUFFER_SRGB); }
+		setFramebufferSrgb(false);
 		oglBindFramebuffer(GL_FRAMEBUFFER, 0);
 	} else {
 		bindOffscreenFramebuffer(colorMask, depthViewSlot, depthStencil);
@@ -2682,7 +2649,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 }
 
 function bindOffscreenFramebuffer(colorMask: int32, depthView: int32, depthStencil: boolean): void {
-	when (!webgl2 && !android) { oglEnable(GL_FRAMEBUFFER_SRGB); }
+	setFramebufferSrgb(true);
 	oglBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = GL_COLOR_ATTACHMENT0 + i;
@@ -2723,11 +2690,11 @@ function attachView(attachment: int32, v: int32, layer: int32): void {
 function clearAttachments(descriptor: GPURenderPassDescriptor, hasDepth: boolean, depthStencil: boolean): void {
 	let clearAnyColor = false;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
-		if (pass.colorViews[i] != 0 && isClear(descriptor.colorAttachments[i].loadOp, `colorAttachments[${i}].loadOp`)) {
+		if (pass.colorViews[i] != 0 && isClear(descriptor.colorAttachments[i].loadOp, i, "loadOp")) {
 			clearAnyColor = true;
 		}
 	}
-	const clearDepth = hasDepth && isClear(descriptor.depthStencilAttachment.depthLoadOp, "depthStencilAttachment.depthLoadOp");
+	const clearDepth = hasDepth && isClear(descriptor.depthStencilAttachment.depthLoadOp, -1, "depthLoadOp");
 	if (clearAnyColor) {
 		let flushMask = false;
 		for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
@@ -2754,7 +2721,7 @@ function clearAttachments(descriptor: GPURenderPassDescriptor, hasDepth: boolean
 	}
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (pass.colorViews[i] == 0) { continue; }
-		if (isClear(descriptor.colorAttachments[i].loadOp, `colorAttachments[${i}].loadOp`)) {
+		if (isClear(descriptor.colorAttachments[i].loadOp, i, "loadOp")) {
 			const color = descriptor.colorAttachments[i].clearValue;
 			oglClearColor(i, color.r, color.g, color.b, color.a);
 		}
@@ -2801,17 +2768,21 @@ function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32
 	return resolveId;
 }
 
-function isClear(loadOp: string, member: string): boolean {
+function attachmentMember(index: int32, field: string): string {
+	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
+}
+
+function isClear(loadOp: string, index: int32, field: string): boolean {
 	const value = match (loadOp) {
 		"clear" => 1,
 		"load" => 0,
-		_ => stopOnMember(member, loadOp),
+		_ => stopOnMember(attachmentMember(index, field), loadOp),
 	};
 	return value == 1;
 }
 
-function checkStoreOp(storeOp: string, member: string): void {
-	if (storeOp != "store" && storeOp != "discard") { stopOnMember(member, storeOp); }
+function checkStoreOp(storeOp: string, index: int32, field: string): void {
+	if (storeOp != "store" && storeOp != "discard") { stopOnMember(attachmentMember(index, field), storeOp); }
 }
 
 export function endPass(): void {
@@ -2930,11 +2901,7 @@ export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int3
 		if (firstInstance == 0) {
 			oglDrawArraysInstanced(mode, firstVertex, vertexCount, instanceCount);
 		} else {
-			when (webgl2 || android) {
-				stop(`draw with firstInstance ${firstInstance}: GLES3 has no base instance`);
-			} else {
-				oglDrawArraysInstancedBaseInstance(mode, firstVertex, vertexCount, instanceCount, firstInstance);
-			}
+			drawArraysBaseInstance(mode, firstVertex, vertexCount, instanceCount, firstInstance);
 		}
 	} else {
 		oglDrawArrays(mode, firstVertex, vertexCount);
@@ -2965,19 +2932,7 @@ export function drawIndexed(
 		}
 		return;
 	}
-	when (webgl2 || android) {
-		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: GLES3 has neither`);
-	} else {
-		if (instanceCount > 1 || bound.instanced) {
-			if (firstInstance == 0) {
-				oglDrawElementsInstancedBaseVertex(mode, indexCount, indexType, offset, instanceCount, baseVertex);
-			} else {
-				oglDrawElementsInstancedBaseVertexBaseInstance(mode, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
-			}
-		} else {
-			oglDrawElementsBaseVertex(mode, indexCount, indexType, offset, baseVertex);
-		}
-	}
+	drawElementsBaseVertex(mode, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
 }
 
 function flush(indexed: boolean): void {
@@ -3022,9 +2977,7 @@ function applyPipeline(): void {
 	}
 	if (pipelines[p].sampleCount != cache.sampleCount) {
 		cache.sampleCount = pipelines[p].sampleCount;
-		when (!webgl2 && !android) {
-			if (cache.sampleCount > 1) { oglEnable(GL_MULTISAMPLE); } else { oglDisable(GL_MULTISAMPLE); }
-		}
+		setMultisample(cache.sampleCount);
 	}
 	bound.instanced = pipelines[p].instanced;
 	bound.appliedPipeline = bound.pipeline;
@@ -3086,18 +3039,10 @@ function applyBlendState(p: int32): void {
 	for (let i = 0; i < pipelines[p].colorCount; i++) {
 		const next: BlendState = pipelines[p].blends[i];
 		const current: BlendState = cache.blends[i];
-		when (webgl2 || android) {
-			if (i == 0) { applyBlendAll(next, current); }
-		} else {
-			applyBlendTarget(i, next, current);
-		}
+		applyBlend(i, next, current);
 		if (pipelines[p].writeMasks[i] != cache.writeMasks[i]) {
 			cache.writeMasks[i] = pipelines[p].writeMasks[i];
-			when (webgl2 || android) {
-				if (i == 0) { oglColorMask(cache.writeMasks[0]); }
-			} else {
-				oglColorMaski(i, cache.writeMasks[i]);
-			}
+			applyWriteMask(i, cache.writeMasks[i]);
 		}
 		cache.blends[i] = next;
 	}
@@ -3120,8 +3065,157 @@ function applyBlendAll(next: BlendState, current: BlendState): void {
 	}
 }
 
-when (!webgl2 && !android) {
-	function applyBlendTarget(i: int32, next: BlendState, current: BlendState): void {
+when (webgl2 || android) {
+	const COMPUTE_CONTEXT_VERSION = 310;
+	const DEBUG_CONTEXT_VERSION = 320;
+
+	function checkContextVersion(version: int32): void {
+		if (version < 300) { stop(`the current context is GLES ${version}; the GLES3 backend needs 300`); }
+	}
+
+	function multisampleTarget(): int32 { return GL_RENDERBUFFER; }
+
+	function floatFeatureBits(): uint32 {
+		if (oglHasExtension("OES_texture_float_linear") != 0) { return featureBit("float32-filterable"); }
+		return 0;
+	}
+
+	@inline function lacksColorBufferFloat(info: FormatInfo): boolean { return info.needsColorBufferFloat; }
+
+	@inline function resetDesktopState(): void {}
+
+	@inline function enableSeamlessCubemaps(): void {}
+
+	@inline function unbindMultisampleTexture(): void {}
+
+	@inline function storeMultisampleTexture(target: int32, sampleCount: int32, internalFormat: int32, width: int32, height: int32): void {}
+
+	@inline function setMultisample(sampleCount: int32): void {}
+
+	@inline function setFramebufferSrgb(on: boolean): void {}
+
+	@inline function setSamplerBorderColor(native: uint32): void {}
+
+	@inline function setSamplerAnisotropy(native: uint32, maxAnisotropy: int32): void {}
+
+	function checkSamplerAnisotropy(maxAnisotropy: int32): void {
+		if (maxAnisotropy > 1) {
+			stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs EXT_texture_filter_anisotropic, which the GLES backend does not query yet");
+		}
+	}
+
+	function checkTargetsAlike(ref slot: PipelineSlot, i: int32, first: int32): void {
+		if (first != -1 && slot.writeMasks[i] != slot.writeMasks[first]) {
+			stop(`fragment.targets[${i}].writeMask differs from target ${first}; GLES3 masks every target alike`);
+		}
+		if (first != -1 && !sameBlend(slot.blends[i], slot.blends[first])) {
+			stop(`fragment.targets[${i}].blend differs from target ${first}; GLES3 blends every target alike`);
+		}
+	}
+
+	function checkDepthReadback(info: FormatInfo): void {
+		if (info.depth) { stop("copyTextureToBuffer of a depth GPUTexture: GLES has no glReadPixels of GL_DEPTH_COMPONENT"); }
+	}
+
+	function drawArraysBaseInstance(mode: int32, firstVertex: int32, vertexCount: int32, instanceCount: int32, firstInstance: int32): void {
+		stop(`draw with firstInstance ${firstInstance}: GLES3 has no base instance`);
+	}
+
+	function drawElementsBaseVertex(
+		mode: int32,
+		indexCount: int32,
+		indexType: int32,
+		offset: int64,
+		instanceCount: int32,
+		baseVertex: int32,
+		firstInstance: int32,
+	): void {
+		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: GLES3 has neither`);
+	}
+
+	function applyBlend(i: int32, next: BlendState, current: BlendState): void {
+		if (i == 0) { applyBlendAll(next, current); }
+	}
+
+	function applyWriteMask(i: int32, mask: int32): void {
+		if (i == 0) { oglColorMask(mask); }
+	}
+} else {
+	const COMPUTE_CONTEXT_VERSION = 430;
+	const DEBUG_CONTEXT_VERSION = 430;
+
+	function checkContextVersion(version: int32): void {
+		if (version < 430) { stop(`the current context is GL ${version}; the GL backend needs 430`); }
+	}
+
+	function multisampleTarget(): int32 { return GL_TEXTURE_2D_MULTISAMPLE; }
+
+	function floatFeatureBits(): uint32 {
+		return featureBit("float32-filterable") | featureBit("float32-blendable") | featureBit("rg11b10ufloat-renderable");
+	}
+
+	@inline function lacksColorBufferFloat(info: FormatInfo): boolean { return false; }
+
+	function resetDesktopState(): void {
+		oglEnable(GL_MULTISAMPLE);
+		oglEnable(GL_PROGRAM_POINT_SIZE);
+	}
+
+	function enableSeamlessCubemaps(): void { oglEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS); }
+
+	function unbindMultisampleTexture(): void { oglBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0); }
+
+	function storeMultisampleTexture(target: int32, sampleCount: int32, internalFormat: int32, width: int32, height: int32): void {
+		oglTexStorage2DMultisample(target, sampleCount, internalFormat, width, height);
+	}
+
+	function setMultisample(sampleCount: int32): void {
+		if (sampleCount > 1) { oglEnable(GL_MULTISAMPLE); } else { oglDisable(GL_MULTISAMPLE); }
+	}
+
+	function setFramebufferSrgb(on: boolean): void {
+		if (on) { oglEnable(GL_FRAMEBUFFER_SRGB); } else { oglDisable(GL_FRAMEBUFFER_SRGB); }
+	}
+
+	function setSamplerBorderColor(native: uint32): void { oglSamplerBorderColor(native, 0, 0, 0, 1); }
+
+	function setSamplerAnisotropy(native: uint32, maxAnisotropy: int32): void {
+		if (maxAnisotropy > 1) {
+			oglSamplerParameteri(native, GL_TEXTURE_MAX_ANISOTROPY, smaller(maxAnisotropy, oglGetInteger(GL_MAX_TEXTURE_MAX_ANISOTROPY)));
+		}
+	}
+
+	@inline function checkSamplerAnisotropy(maxAnisotropy: int32): void {}
+
+	@inline function checkTargetsAlike(ref slot: PipelineSlot, i: int32, first: int32): void {}
+
+	@inline function checkDepthReadback(info: FormatInfo): void {}
+
+	function drawArraysBaseInstance(mode: int32, firstVertex: int32, vertexCount: int32, instanceCount: int32, firstInstance: int32): void {
+		oglDrawArraysInstancedBaseInstance(mode, firstVertex, vertexCount, instanceCount, firstInstance);
+	}
+
+	function drawElementsBaseVertex(
+		mode: int32,
+		indexCount: int32,
+		indexType: int32,
+		offset: int64,
+		instanceCount: int32,
+		baseVertex: int32,
+		firstInstance: int32,
+	): void {
+		if (instanceCount > 1 || bound.instanced) {
+			if (firstInstance == 0) {
+				oglDrawElementsInstancedBaseVertex(mode, indexCount, indexType, offset, instanceCount, baseVertex);
+			} else {
+				oglDrawElementsInstancedBaseVertexBaseInstance(mode, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
+			}
+		} else {
+			oglDrawElementsBaseVertex(mode, indexCount, indexType, offset, baseVertex);
+		}
+	}
+
+	function applyBlend(i: int32, next: BlendState, current: BlendState): void {
 		if (next.enabled != current.enabled) {
 			if (next.enabled) { oglEnablei(GL_BLEND, i); } else { oglDisablei(GL_BLEND, i); }
 		}
@@ -3137,6 +3231,8 @@ when (!webgl2 && !android) {
 			oglBlendEquationSeparatei(i, next.operationColor, next.operationAlpha);
 		}
 	}
+
+	function applyWriteMask(i: int32, mask: int32): void { oglColorMaski(i, mask); }
 }
 
 function applyVertexBuffers(): void {
@@ -3265,7 +3361,7 @@ function bindStorageTexture(resource: ResourceBinding, g: int32): void {
 		layered ? 1 : 0,
 		layered ? 0 : views[v].baseLayer,
 		resource.access,
-		formatInfo(textures[t].format, "storage texture format").internalFormat,
+		textures[t].info.internalFormat,
 	);
 }
 
@@ -3324,7 +3420,7 @@ function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32,
 }
 
 function texelFormatOf(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): FormatInfo {
-	const info = formatInfo(textures[index].format, "texture format");
+	const info = textures[index].info;
 	if (info.depth) {
 		checkedDepthTexelCopy(member, textures[index].id, textures[index].format, info.stencil, writes, textures[index].width, textures[index].height, copy.mipLevel, size);
 	}
@@ -3351,9 +3447,7 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 	const to = copyableBuffer(destination.buffer, "copyTextureToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
 	copyRegion("copyTextureToBuffer source", source, from, size);
 	const info = texelFormatOf(from, "copyTextureToBuffer source", false, source, size);
-	when (webgl2 || android) {
-		if (info.depth) { stop("copyTextureToBuffer of a depth GPUTexture: GLES has no glReadPixels of GL_DEPTH_COMPONENT"); }
-	}
+	checkDepthReadback(info);
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", info.bytesPerPixel, buffers[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
 	const imageBytes = (bytesPerRow as int64) * (rowsPerImage as int64);
@@ -3460,7 +3554,7 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	if (formatInfo(textures[from].format, "texture format").depth) { stop("copyTextureToTexture of a depth GPUTexture is not ported to gl yet"); }
+	if (textures[from].info.depth) { stop("copyTextureToTexture of a depth GPUTexture is not ported to gl yet"); }
 	if (textures[from].swapchainView != 0) { stop("copyTextureToTexture from the swapchain texture: the default framebuffer reads only into a buffer on gl"); }
 	const fromFormat: string = textures[from].format;
 	const toFormat: string = textures[to].format;
@@ -3669,14 +3763,6 @@ function stopOnNoCompute(what: string): void {
 	}
 }
 
-function computeContextVersion(): int32 {
-	when (webgl2 || android) { return 310; } else { return 430; }
-}
-
-function debugContextVersion(): int32 {
-	when (webgl2 || android) { return 320; } else { return 430; }
-}
-
 function nameObject(identifier: int32, name: uint32, label: string | null): void {
 	if (label === null || !debugSupported) { return; }
 	oglObjectLabel(identifier, name, label);
@@ -3730,11 +3816,7 @@ function queryLimits(): GPUSupportedLimits {
 function queryFeatures(): GPUSupportedFeatures {
 	let bits: uint32 = 0;
 	if (timerSupported) { bits |= featureBit("timestamp-query"); }
-	when (webgl2 || android) {
-		if (oglHasExtension("OES_texture_float_linear") != 0) { bits |= featureBit("float32-filterable"); }
-	} else {
-		bits |= featureBit("float32-filterable") | featureBit("float32-blendable") | featureBit("rg11b10ufloat-renderable");
-	}
+	bits |= floatFeatureBits();
 	return { bits: bits };
 }
 

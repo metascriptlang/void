@@ -183,7 +183,11 @@ typedef int GLint;
 	OGL_XMACRO(glBindFramebuffer,          void, (GLenum target, GLuint framebuffer)) \
 	OGL_XMACRO(glDeleteFramebuffers,       void, (GLsizei n, const GLuint *framebuffers)) \
 	OGL_XMACRO(glFramebufferTexture2D,     void, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
-	OGL_XMACRO(glFramebufferRenderbuffer,  void, (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)) 	OGL_XMACRO(glGenRenderbuffers,         void, (GLsizei n, GLuint *renderbuffers)) 	OGL_XMACRO(glBindRenderbuffer,         void, (GLenum target, GLuint renderbuffer)) 	OGL_XMACRO(glRenderbufferStorageMultisample, void, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)) 	OGL_XMACRO(glDeleteRenderbuffers,      void, (GLsizei n, const GLuint *renderbuffers)) \
+	OGL_XMACRO(glFramebufferRenderbuffer,  void, (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)) \
+	OGL_XMACRO(glGenRenderbuffers,         void, (GLsizei n, GLuint *renderbuffers)) \
+	OGL_XMACRO(glBindRenderbuffer,         void, (GLenum target, GLuint renderbuffer)) \
+	OGL_XMACRO(glRenderbufferStorageMultisample, void, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)) \
+	OGL_XMACRO(glDeleteRenderbuffers,      void, (GLsizei n, const GLuint *renderbuffers)) \
 	OGL_XMACRO(glFramebufferTextureLayer,  void, (GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer)) \
 	OGL_XMACRO(glCheckFramebufferStatus,   GLenum, (GLenum target)) \
 	OGL_XMACRO(glDrawBuffers,              void, (GLsizei n, const GLenum *bufs)) \
