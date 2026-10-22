@@ -31,7 +31,6 @@ import {
 	StmtKind,
 	TexelFormat,
 	TextureShape,
-	UnaryOp,
 	arrayType,
 	assignOf,
 	binaryOf,
@@ -563,6 +562,144 @@ test "the fragment probe spells every intrinsic and statement" {
 	}
 }
 
+function computeModule(): ShaderModule {
+	let m = new ShaderModule();
+	m.structs = [
+		block("Particle", [field("position", VEC3), field("mass", F32), field("velocity", VEC2)]),
+		block("Spring", [field("rest", F32), field("axis", VEC3)]),
+	];
+	let particles = resource(ResourceKind.StorageBuffer, "particles", 0,
+		arrayType(structType(0), -1));
+	particles.access = Access.ReadWrite;
+	const red = storageTextureType(TexelFormat.R32float, Access.ReadWrite);
+	const image = storageTextureType(TexelFormat.Rgba8unorm, Access.Write);
+	m.resources = [
+		particles,
+		resource(ResourceKind.StorageBuffer, "springs", 1, arrayType(structType(1), -1)),
+		resource(ResourceKind.StorageTexture, "heat", 2, red),
+		resource(ResourceKind.StorageTexture, "image", 3, image),
+	];
+	m.ios = [
+		io("global", ShaderStage.Compute, IoDirection.In, UVEC3, Builtin.GlobalInvocationId),
+		io("local", ShaderStage.Compute, IoDirection.In, UVEC3, Builtin.LocalInvocationId),
+		io("flat", ShaderStage.Compute, IoDirection.In, U32, Builtin.LocalInvocationIndex),
+		io("group", ShaderStage.Compute, IoDirection.In, UVEC3, Builtin.WorkgroupId),
+	];
+	const index = swizzle(ioRead(0, UVEC3), U32, [0]);
+	const particle = exprOf(ExprKind.Index, structType(0), -1,
+		[exprOf(ExprKind.Resource, arrayType(structType(0), -1), 0, []), index]);
+	const spring = exprOf(ExprKind.Index, structType(1), -1,
+		[exprOf(ExprKind.Resource, arrayType(structType(1), -1), 1, []), ioRead(2, U32)]);
+	const at = exprOf(ExprKind.Convert, IVEC2, -1, [swizzle(ioRead(1, UVEC3), vectorType(ScalarKind.U32, 2), [0, 1])]);
+	const heatRead = intrinsicOf(Intrinsic.TextureLoad, F32,
+		[exprOf(ExprKind.Resource, red, 2, []), at]);
+	const size = intrinsicOf(Intrinsic.TextureDimensions, IVEC2, [exprOf(ExprKind.Resource, image, 3, [])]);
+	const value = construct(VEC4, [exprOf(ExprKind.Field, VEC3, 1, [spring]), heatRead]);
+	m.functions = [shaderFunction("simulate", [field("size", IVEC2)], [
+		letOf(0, size),
+		assignOf(exprOf(ExprKind.Field, F32, 1, [particle]), binary(BinaryOp.Add, F32,
+			exprOf(ExprKind.Field, F32, 0, [spring]),
+			exprOf(ExprKind.Convert, F32, -1, [swizzle(ioRead(3, UVEC3), U32, [0])]))),
+		stmtOf(StmtKind.Call, intrinsicOf(Intrinsic.TextureStore, new ShaderType(),
+			[exprOf(ExprKind.Resource, red, 2, []), at, value]), []),
+		stmtOf(StmtKind.Call, intrinsicOf(Intrinsic.TextureStore, new ShaderType(),
+			[exprOf(ExprKind.Resource, image, 3, []),
+				binary(BinaryOp.Sub, IVEC2, swizzle(exprOf(ExprKind.Local, IVEC2, 0, []), IVEC2, [1, 0]), at), value]), []),
+		ret(),
+	])];
+	let e = entry("simulate", ShaderStage.Compute, 0);
+	e.workgroupSize = [8, 4, 1];
+	m.entries = [e];
+	return m;
+}
+
+test "the compute probe pads std430 elements and binds t and u registers" {
+	const m = computeModule();
+	assert irErrors(m).length == 0;
+	const text = printed(m, 0, [0]);
+	for (const piece of [
+		"struct Particle\n{\n    float3 position;\n    float mass;\n    float2 velocity;\n" +
+			"    uint _pad;\n    uint _pad_1;\n};\n",
+		"struct Spring\n{\n    float rest;\n    uint _pad;\n    uint _pad_1;\n    uint _pad_2;\n" +
+			"    float3 axis;\n    uint _pad_3;\n};\n",
+		"RWStructuredBuffer<Particle> particles : register(u0);\n",
+		"StructuredBuffer<Spring> springs : register(t0);\n",
+		"RWTexture2D<float> heat : register(u1);\n",
+		"RWTexture2D<unorm float4> image : register(u2);\n",
+		"int2 size = int2(imageSize(image));\n",
+		"heat[uint2(int2(local.xy))] = float4(springs[flat].axis, heat[uint2(int2(local.xy))]).x;\n",
+		"[numthreads(8, 4, 1)]\nvoid main(StageInput stage_input)\n",
+		"    uint3 global : SV_DispatchThreadID;\n    uint3 local : SV_GroupThreadID;\n" +
+			"    uint flat : SV_GroupIndex;\n    uint3 group : SV_GroupID;\n",
+	]) {
+		if (!text.includes(piece)) { console.log("missing: " + piece); }
+		assert text.includes(piece);
+	}
+}
+
+function prepend(f: ShaderFunction, s: ShaderStmt): void {
+	let body = [s];
+	for (const b of f.body) { body.push(b); }
+	f.body = body;
+}
+
+function refusal(m: ShaderModule, entryIndex: int32): string {
+	const slots = bindingSlots(m, [entryIndex], ShaderTarget.Hlsl5);
+	const text = printHlsl(m, entryIndex, slots.ok ? slots.value : []);
+	return text.ok ? "printed" : text.error;
+}
+
+test "what HLSL cannot carry is refused by name" {
+	let feature = fragmentModule();
+	feature.features = ["CUTOUT"];
+	let branch = stmtOf(StmtKind.FeatureIf, new ShaderExpr(), [single(StmtKind.Discard)]);
+	branch.condition = featureOn("CUTOUT");
+	prepend(feature.functions[0], branch);
+	assert refusal(feature, 0) == "printHlsl: a feature branch is still undecided: specialize " +
+		"the module first";
+
+	let signed = fragmentModule();
+	prepend(signed.functions[0], update(local(7), AssignOp.Mod, i32(2.0)));
+	assert refusal(signed, 0) ==
+		"printHlsl: '%' of I32: HLSL leaves a negative operand undefined";
+
+	let groups = computeModule();
+	groups.ios.push(io("groups", ShaderStage.Compute, IoDirection.In, UVEC3,
+		Builtin.NumWorkgroups));
+	assert refusal(groups, 0) == "printHlsl: NumWorkgroups has no HLSL system value";
+
+	let leaving = fragmentModule();
+	let choose = stmtOf(StmtKind.Switch, local(7), []);
+	choose.cases = [caseOf([], true, [single(StmtKind.Break)])];
+	prepend(leaving.functions[0], choose);
+	assert refusal(leaving, 0) == "printHlsl: a break inside a switch case, which HLSL reads " +
+		"as leaving the switch";
+
+	let diagonal = fragmentModule();
+	prepend(diagonal.functions[0], assignOf(local(6), construct(MAT4, [f32(1.0)])));
+	assert refusal(diagonal, 0) == "printHlsl: a matrix built from one scalar";
+
+	let effect = computeModule();
+	let writer = shaderFunction("bump", [], [
+		assignOf(exprOf(ExprKind.Field, F32, 1, [exprOf(ExprKind.Index, structType(0), -1,
+			[exprOf(ExprKind.Resource, arrayType(structType(0), -1), 0, []), literal(U32, 0.0)])]),
+			f32(1.0)),
+		stmtOf(StmtKind.Return, literal(BOOL, 1.0), []),
+	]);
+	writer.result = BOOL;
+	effect.functions.push(writer);
+	prepend(effect.functions[0], stmtOf(StmtKind.If, binary(BinaryOp.LogicalAnd, BOOL,
+		literal(BOOL, 0.0), exprOf(ExprKind.Call, BOOL, 1, [])), []));
+	assert refusal(effect, 0) == "printHlsl: '&&' evaluates every operand in HLSL, and one of " +
+		"them has an effect";
+
+	let recursive = fragmentModule();
+	prepend(recursive.functions[1], stmtOf(StmtKind.Call,
+		exprOf(ExprKind.Call, VEC3, 1, [exprOf(ExprKind.Param, VEC3, 0, []),
+			exprOf(ExprKind.Param, F32, 1, [])]), []));
+	assert refusal(recursive, 0) == "printHlsl: function 'shade' is recursive";
+}
+
 const PROBE_DIR = "out/hlslProbe";
 
 function probe(name: string, text: string): boolean {
@@ -576,4 +713,5 @@ test "printed modules are written for fxc" {
 	assert probe("blur.ps", printed(blur, 1, [0, 1]));
 	assert probe("vertex.vs", printed(vertexModule(), 0, [0]));
 	assert probe("fragment.ps", printed(fragmentModule(), 0, [0]));
+	assert probe("compute.cs", printed(computeModule(), 0, [0]));
 }
