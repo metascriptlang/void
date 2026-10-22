@@ -132,6 +132,11 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 - **Goldens:** `golden metal: 15 pass, 87 within bound, 18 fail of 120`. A sokol Metal build of
   the merge base with the same readback captured 58 of those rows byte-identical to this backend,
   so the 18 are the Apple GPU, not the port. How to record them waits for the person.
+- **Bench (2026-10-23, M1, msc `794e1579a`):** 5 interleaved pairs, sokol Metal at the merge base
+  `6d577fd` (plus `8b9c152`, which the current `msc` needs) against this backend. Every counter row
+  passes; median `present.ms` (CPU of `scene.present`, GPU time not measured): ui 0.065 → 0.059,
+  sprites 0.068 → 0.051, text 0.061 → 0.054, editor 0.064 → 0.050, scroll 0.076 → 0.077. The ranges
+  overlap, so this shows no slowdown, not a win.
 - **Shared files you pick up on rebase:**
   - "fix(gpu): leave the door's uniform ring out of the live buffer count": `doorLiveBuffers`
     leaves the door's own uniform ring out. meshLod failed on Metal with "close left GPU resources live"; the ring is a `createBuffer` on every backend, so run
