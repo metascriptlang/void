@@ -215,6 +215,8 @@ function churnErrorOf(error: GltfSceneError): ChurnError {
 		GltfSceneError.UndeclaredProgram => ChurnError.ModelRefused,
 		GltfSceneError.MorphWithSkin => ChurnError.ModelRefused,
 		GltfSceneError.MorphRefused => ChurnError.ModelRefused,
+		GltfSceneError.PbrFeatureRefused => ChurnError.ModelRefused,
+		GltfSceneError.PbrValueRefused => ChurnError.ModelRefused,
 	};
 }
 

@@ -2,6 +2,8 @@ import { FilterMode, Wrap, RenderState, Face } from "../gpu/state";
 import { linearToSrgb, vec3 } from "../math/math3d";
 import {
 	loadGltf,
+	loadGltfDetailed,
+	GltfMaterialImport,
 	loadGlb,
 	GltfData,
 	GltfError,
@@ -1650,4 +1652,60 @@ test "tangent splits preserve skin source ids across UV encodings and connected 
 			assert source.vertexSources[source.mesh.indexAt(corner) as int32] == corners[original];
 		}
 	}
+}
+
+function pbrLoaded(material: string, textures: string): Result<GltfData, GltfError> {
+	const result = loadGltfDetailed(
+		documentOf({ ...texturedParts(), materials: material, textures: textures }),
+		quadBuffer(), "maps.gltf", GltfMaterialImport.Pbr);
+	if (result.ok) { return Result.ok(result.value); }
+	return Result.err(result.error.code);
+}
+
+const TWO_TEXTURES: string = "{\"source\":0,\"sampler\":0},{\"source\":0,\"sampler\":0}";
+
+test "a Pbr import reads the metallic-roughness and occlusion maps into a pbr-maps key" {
+	const result = pbrLoaded(
+		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0},"
+		+ "\"metallicRoughnessTexture\":{\"index\":1}},"
+		+ "\"occlusionTexture\":{\"index\":0,\"strength\":0.5}}", TWO_TEXTURES);
+	assert result.ok;
+	if (!result.ok) { return; }
+	const maps = result.value.materials[0].pbrMaps;
+	assert maps !== null;
+	if (maps === null) { return; }
+	assert maps.metalRough == 1 && maps.occlusion == 0 && maps.occlusionStrength == 0.5;
+	const key = gltfProgramOf(result.value.materials[0]);
+	assert key.pbr && key.pbrMaps && declares(key);
+	assert declares({ ...key, shadowed: true }) && declares({ ...key, cutout: true });
+}
+
+test "one map alone gets white for the other, and white for a missing base texture" {
+	const result = pbrLoaded(
+		"{\"occlusionTexture\":{\"index\":0}}", "{\"source\":0,\"sampler\":0}");
+	assert result.ok;
+	if (!result.ok) { return; }
+	const material = result.value.materials[0];
+	const maps = material.pbrMaps;
+	assert maps !== null;
+	if (maps === null) { return; }
+	assert maps.occlusion == 0 && maps.occlusionStrength == 1.0;
+	assert maps.metalRough >= 1 && material.texture >= 1;
+	assert result.value.textures[maps.metalRough].pixels[0] == 0xFFFFFFFF;
+}
+
+test "an occlusion strength outside 0..1 or a missing texture is refused, and Legacy still refuses the map" {
+	const source = "{\"source\":0,\"sampler\":0}";
+	for (const strength of ["1.5", "-0.1"]) {
+		const refused = pbrLoaded(
+			"{\"occlusionTexture\":{\"index\":0,\"strength\":" + strength + "}}", source);
+		assert !refused.ok;
+		if (!refused.ok) { assert refused.error == GltfError.OutOfRange; }
+	}
+	const missing = pbrLoaded("{\"occlusionTexture\":{\"index\":3}}", source);
+	assert !missing.ok;
+	if (!missing.ok) { assert missing.error == GltfError.BadReference; }
+	const legacy = loaded({ ...texturedParts(), materials: "{\"occlusionTexture\":{\"index\":0}}" });
+	assert !legacy.ok;
+	if (!legacy.ok) { assert legacy.error == GltfError.UnsupportedMaterial; }
 }

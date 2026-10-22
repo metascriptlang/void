@@ -163,11 +163,37 @@ test "a factor outside 0..1, not a number, or roughness 0 is refused by name" {
 	assert legacyZero.ok;
 }
 
-test "a map the pbr block cannot carry is refused, not dropped" {
-	const pbr = GltfMaterialImport.Pbr;
-	assert refusedWith("{\"occlusionTexture\":{\"index\":0}}", pbr,
-		GltfError.UnsupportedMaterial, "occlusionTexture");
-	assert refusedWith(
-		"{\"pbrMetallicRoughness\":{\"metallicRoughnessTexture\":{\"index\":0}}}", pbr,
-		GltfError.UnsupportedMaterial, "metallicRoughnessTexture");
+test "a map naming a texture the file lacks is refused under Pbr, and Legacy still refuses occlusion" {
+	for (const material of [
+		"{\"occlusionTexture\":{\"index\":0}}",
+		"{\"pbrMetallicRoughness\":{\"metallicRoughnessTexture\":{\"index\":0}}}",
+	]) {
+		const result = pbrOf(material);
+		assert !result.ok;
+		if (!result.ok) { assert result.error.code == GltfError.BadReference; }
+	}
+	assert refusedWith("{\"occlusionTexture\":{\"index\":0}}", GltfMaterialImport.Legacy,
+		GltfError.UnsupportedMaterial, "unsupported");
+}
+
+function withoutMaterial(): string {
+	return documentOf("{}").replace(",\"material\":0", "");
+}
+
+test "a primitive with no material gets the glTF default under a Pbr import: metallic 1, roughness 1" {
+	assert !withoutMaterial().includes("\"material\"");
+	const pbr = loadGltfDetailed(withoutMaterial(), triangleBuffer(), "none.gltf",
+		GltfMaterialImport.Pbr);
+	assert pbr.ok;
+	if (!pbr.ok) { return; }
+	assert (pbr.value.materials.length as int32) == 2 && pbr.value.meshMaterials[0] == 1;
+	const fallback = pbr.value.materials[1].pbr;
+	assert fallback !== null;
+	if (fallback === null) { return; }
+	assert fallback.metallic == 1.0 && fallback.roughness == 1.0;
+	assert gltfProgramOf(pbr.value.materials[1]).pbr;
+	const legacy = loadGltf(withoutMaterial(), triangleBuffer());
+	assert legacy.ok;
+	if (!legacy.ok) { return; }
+	assert (legacy.value.materials.length as int32) == 1 && legacy.value.meshMaterials[0] == -1;
 }

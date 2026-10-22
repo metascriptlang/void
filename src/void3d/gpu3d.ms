@@ -95,15 +95,16 @@ export struct ProgramKey {
 	// Lights the surface with Heaps' direct BRDF (pbrDirect in shader3d.ms) from the material's
 	// metalness, roughness and occlusion (PBR_* below) instead of the legacy lambert.
 	pbr: boolean;
+	pbrMaps: boolean;
 }
 
-const KEY_LIMIT: int32 = 131072;
+const KEY_LIMIT: int32 = 262144;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
-		skinned: false, normalMrt: false, pbr: false,
+		skinned: false, normalMrt: false, pbr: false, pbrMaps: false,
 	};
 }
 
@@ -146,10 +147,12 @@ export function withUvTransform(this key: ProgramKey): ProgramKey {
 }
 
 export function withBackTexture(this key: ProgramKey): ProgramKey {
+	if (key.pbrMaps) { return stopOnFeature(key, "back texture"); }
 	return { ...stopOnUntextured(key, "back texture"), backTexture: true };
 }
 
 export function withDissolve(this key: ProgramKey): ProgramKey {
+	if (key.pbrMaps) { return stopOnFeature(key, "dissolve"); }
 	return { ...stopOnUntextured(key, "dissolve"), dissolve: true };
 }
 
@@ -179,6 +182,13 @@ export function withPbr(this key: ProgramKey): ProgramKey {
 	return { ...key, pbr: true };
 }
 
+export function withPbrMaps(this key: ProgramKey): ProgramKey {
+	if (!key.pbr || key.program != Program.LitTextured || key.backTexture || key.dissolve) {
+		return stopOnFeature(key, "pbr maps");
+	}
+	return { ...key, pbrMaps: true };
+}
+
 export function withNormalMrt(this key: ProgramKey): ProgramKey {
 	const mesh: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
 		key.program == Program.UnlitTextured;
@@ -203,7 +213,7 @@ export function bits(this key: ProgramKey): int32 {
 		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
 		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
 		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
-		((key.pbr ? 1 : 0) << 16);
+		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -217,7 +227,7 @@ export function describe(this key: ProgramKey): string {
 	const normalMap: string = key.normalMap ? " normal-map" : "";
 	const skin: string = key.skinned ? " skinned" : "";
 	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
-	const pbr: string = key.pbr ? " pbr" : "";
+	const pbr: string = (key.pbr ? " pbr" : "") + (key.pbrMaps ? " pbr-maps" : "");
 	const features: string =
 		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
 		skin + normalMrt + pbr;
@@ -318,7 +328,7 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	const cast: ProgramKey = {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
 		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
-		emissive: false, normalMrt: false, pbr: false,
+		emissive: false, normalMrt: false, pbr: false, pbrMaps: false,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);
@@ -413,6 +423,8 @@ export const DISSOLVE_VIEW_SLOT: int32 = 2;
 export const DISSOLVE_SAMPLER_SLOT: int32 = 1;
 export const EMISSIVE_VIEW_SLOT: int32 = 3;
 export const NORMAL_VIEW_SLOT: int32 = 5;
+export const METAL_ROUGH_VIEW_SLOT: int32 = 1;
+export const OCCLUSION_VIEW_SLOT: int32 = 2;
 // An emissive key's block ends in one vec4: the emitted colour, gamma-encoded, and at
 // EMISSIVE_STRENGTH the factor it is scaled by in linear light (KHR_materials_emissive_strength).
 export const EMISSIVE_COLOR: int32 = 0;
@@ -441,6 +453,7 @@ export const PBR_VALUES: int32 = MATERIAL_UNIFORM_LENGTH;
 export const PBR_METALNESS: int32 = PBR_VALUES;
 export const PBR_ROUGHNESS: int32 = PBR_VALUES + 1;
 export const PBR_OCCLUSION: int32 = PBR_VALUES + 2;
+export const PBR_OCCLUSION_STRENGTH: int32 = PBR_VALUES + 3;
 export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 4;
 
 // Where a moving key's own floats start in its material block.

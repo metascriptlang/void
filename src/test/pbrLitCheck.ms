@@ -181,6 +181,8 @@ function bindingsAt(
 		dissolveSampler: { nearest: true },
 		emissiveTexture: texture(1.0),
 		normalTexture: texture(1.0),
+		metalRoughTexture: texture(1.0),
+		occlusionTexture: texture(1.0),
 	};
 }
 

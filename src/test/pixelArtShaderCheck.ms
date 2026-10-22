@@ -65,6 +65,7 @@ function plainLit(): LitBindings {
 		baseTexture: white, baseSampler: { nearest: true },
 		backTexture: white, dissolveTexture: white, dissolveSampler: { nearest: true },
 		emissiveTexture: white, normalTexture: white,
+		metalRoughTexture: white, occlusionTexture: white,
 	};
 }
 

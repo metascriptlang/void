@@ -84,6 +84,8 @@ function plainBindings(): LitBindings {
 		dissolveSampler: { nearest: true },
 		emissiveTexture: white(),
 		normalTexture: white(),
+		metalRoughTexture: white(),
+		occlusionTexture: white(),
 	};
 }
 

@@ -16,6 +16,8 @@ import {
 	DISSOLVE_SAMPLER_SLOT,
 	EMISSIVE_VIEW_SLOT,
 	NORMAL_VIEW_SLOT,
+	METAL_ROUGH_VIEW_SLOT,
+	OCCLUSION_VIEW_SLOT,
 	movingBase,
 	uniformBlockLength,
 	MATERIAL_UNIFORM_SLOT,
@@ -127,6 +129,8 @@ export struct Material {
 	// M37's maps, read with the base texture's sampler at EMISSIVE_VIEW_SLOT and NORMAL_VIEW_SLOT.
 	emissiveTexture: TextureId;
 	normalTexture: TextureId;
+	metalRoughTexture: TextureId;
+	occlusionTexture: TextureId;
 	uniforms: UniformBlock;
 	// h3d.mat.Pass.layer: a list draws lower layers first, before any other order it has.
 	layer: int32;
@@ -251,6 +255,8 @@ export function keyed(
 		dissolveTexture: NO_TEXTURE,
 		emissiveTexture: NO_TEXTURE,
 		normalTexture: NO_TEXTURE,
+		metalRoughTexture: NO_TEXTURE,
+		occlusionTexture: NO_TEXTURE,
 		uniforms: NO_UNIFORMS,
 		layer: 0,
 		castShadows: ShadowCasting.Off,
@@ -263,21 +269,25 @@ export function namesTexture(this material: Material): boolean {
 }
 
 // A material's context textures by role: 0 `texture`, 1 `backTexture`, 2 `dissolveTexture`,
-// 3 `emissiveTexture`, 4 `normalTexture`.
-export const MATERIAL_TEXTURE_ROLES: int32 = 5;
+// 3 `emissiveTexture`, 4 `normalTexture`, 5 `metalRoughTexture`, 6 `occlusionTexture`.
+export const MATERIAL_TEXTURE_ROLES: int32 = 7;
 
 export function textureOf(this material: Material, role: int32): TextureId {
 	if (role == 0) { return material.texture; }
 	if (role == 1) { return material.backTexture; }
 	if (role == 2) { return material.dissolveTexture; }
-	return role == 3 ? material.emissiveTexture : material.normalTexture;
+	if (role == 3) { return material.emissiveTexture; }
+	if (role == 4) { return material.normalTexture; }
+	return role == 5 ? material.metalRoughTexture : material.occlusionTexture;
 }
 
 export function viewSlotOf(role: int32): int32 {
 	if (role == 0) { return 0; }
 	if (role == 1) { return BACK_VIEW_SLOT; }
 	if (role == 2) { return DISSOLVE_VIEW_SLOT; }
-	return role == 3 ? EMISSIVE_VIEW_SLOT : NORMAL_VIEW_SLOT;
+	if (role == 3) { return EMISSIVE_VIEW_SLOT; }
+	if (role == 4) { return NORMAL_VIEW_SLOT; }
+	return role == 5 ? METAL_ROUGH_VIEW_SLOT : OCCLUSION_VIEW_SLOT;
 }
 
 // The sampler slot a role binds its texture's sampler at; -1 for a role that reads with the base
@@ -287,10 +297,10 @@ export function samplerSlotOf(role: int32): int32 {
 	return role == 2 ? DISSOLVE_SAMPLER_SLOT : -1;
 }
 
-// The roles whose texels are colour, so their alpha must match the program's (M27); the noise
-// and the normal map are data.
+// The roles whose texels are colour, so their alpha must match the program's (M27); the noise,
+// the normal map and the pbr maps are data.
 export function colorRole(role: int32): boolean {
-	return role != 2 && role != 4;
+	return role != 2 && role < 4;
 }
 
 // The raw view a material binds at `slot` (texture0 to texture3, 0 past them), and its raw

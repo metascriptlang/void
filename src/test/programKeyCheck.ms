@@ -45,12 +45,21 @@ import {
 	uniformBlockLength,
 	vertexLayoutOf,
 	MATERIAL_ALPHA_KILL,
+	METAL_ROUGH_VIEW_SLOT,
+	OCCLUSION_VIEW_SLOT,
+	withPbr,
+	withPbrMaps,
+	withShadowed,
+	withNormalMap,
+	describe,
+	bits,
 } from "../void3d/gpu3d";
 import { UNIFORM_SLOTS } from "../gpu/door";
 import { RenderState, Blend, BlendMode, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import {
 	Material, MaterialKind, Phase, UniformBlock, NO_UNIFORMS, movingDefaults,
+	MATERIAL_TEXTURE_ROLES, viewSlotOf, colorRole,
 } from "../void3d/material";
 import {
 	DrawContext,
@@ -1124,4 +1133,26 @@ test "particleVisual declares additive program14 layout9 with original billboard
 	assert mesh.vertexCount == 6 && mesh.isStream();
 	assert layoutFloats(VertexLayout.Particle, 0) == 8;
 	assert layoutFloats(VertexLayout.Billboard, 0) == 15;
+}
+
+test "a pbr-maps key sets bit 17, is declared in all four variants and binds slots 0, 1 and 2" {
+	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
+	assert base.bits() == ProgramKey.of(Program.LitTextured).withPbr().bits() + 131072;
+	assert describe(base).includes("pbr-maps") && !describe(base.withPbr()).includes("pbr-maps-");
+	const tangent: ProgramKey = base.withNormalMap();
+	for (const key of [base, tangent]) {
+		for (const shadowed of [false, true]) {
+			const shaded: ProgramKey = shadowed ? key.withShadowed() : key;
+			assert declares(shaded) && declares(shaded.withCutout());
+			const cast = castIn(shaded);
+			assert !cast.ok || !cast.value.pbrMaps;
+		}
+	}
+	assert textureSlotMask(base) == 7 && samplerSlotMask(base) == 1;
+	assert textureSlotMask(base.withShadowed()) == 23;
+	assert textureSlotMask(tangent) == 39;
+	assert viewSlotOf(5) == METAL_ROUGH_VIEW_SLOT && viewSlotOf(6) == OCCLUSION_VIEW_SLOT;
+	assert METAL_ROUGH_VIEW_SLOT == 1 && OCCLUSION_VIEW_SLOT == 2;
+	assert MATERIAL_TEXTURE_ROLES == 7 && !colorRole(5) && !colorRole(6) && colorRole(0);
+	assert !declares({ ...ProgramKey.of(Program.Lit).withPbr(), pbrMaps: true });
 }

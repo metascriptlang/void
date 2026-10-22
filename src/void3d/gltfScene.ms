@@ -38,15 +38,21 @@ import {
 	MOVING_UV_MATRIX,
 	MOVING_UV_OFFSET,
 	MOVING_BACK_UV_MATRIX,
+	PBR_VALUES,
+	PBR_OCCLUSION_STRENGTH,
+	PBR_MATERIAL_UNIFORM_LENGTH,
 	declares,
 	emissiveBase,
 	movingBase,
 	withEmissive,
 	withNormalMap,
+	withPbr,
+	withPbrMaps,
 	withUvTransform,
 	withSkin,
 } from "./gpu3d";
-import { Material, MaterialKind, UniformBlock, passFor } from "./material";
+import { Material, MaterialKind, UniformBlock, passFor, pbrBlock } from "./material";
+import { PbrProperties } from "./pbrResponse";
 import { vec3, identityQuat, linearToSrgb } from "../math/math3d";
 import { SkinPose, bind as bindSkinPose } from "./skinPose";
 import { SkinGeometry, bind as bindSkinGeometry } from "./skinGeometry";
@@ -87,6 +93,8 @@ export enum GltfSceneError {
 	UndeclaredProgram,
 	MorphWithSkin,
 	MorphRefused,
+	PbrFeatureRefused,
+	PbrValueRefused,
 }
 
 export struct GltfMeshBinding {
@@ -156,6 +164,15 @@ function isConsistent(data: GltfData): boolean {
 		const maps: boolean = material.emissiveTexture != NO_TEXTURE_INDEX
 			|| material.normalTexture != NO_TEXTURE_INDEX;
 		if (maps && material.texture == NO_TEXTURE_INDEX) { return false; }
+		const packed = material.pbrMaps;
+		if (packed !== null) {
+			if (material.pbr === null || material.texture == NO_TEXTURE_INDEX) { return false; }
+			if (packed.metalRough == NO_TEXTURE_INDEX || packed.occlusion == NO_TEXTURE_INDEX
+				|| !hasTextureOrNone(packed.metalRough, textureCount)
+				|| !hasTextureOrNone(packed.occlusion, textureCount)) {
+				return false;
+			}
+		}
 	}
 	for (let i = 0; i < meshCount; i++) {
 		const material: int32 = data.meshMaterials[i];
@@ -187,7 +204,10 @@ function kindOf(mode: GltfAlphaMode): MaterialKind {
 export function gltfProgramOf(source: GltfMaterial): ProgramKey {
 	const lit: Program =
 		source.texture != NO_TEXTURE_INDEX ? Program.LitTextured : Program.Lit;
-	const key: ProgramKey = Material.ofKind(lit, kindOf(source.alphaMode)).program;
+	const plain: ProgramKey = Material.ofKind(lit, kindOf(source.alphaMode)).program;
+	const pbrKey: ProgramKey = source.pbr !== null ? plain.withPbr() : plain;
+	const key: ProgramKey = source.pbr !== null && source.pbrMaps !== null && lit == Program.LitTextured
+		? pbrKey.withPbrMaps() : pbrKey;
 	const emitting: ProgramKey =
 		source.emissiveTexture != NO_TEXTURE_INDEX ? key.withEmissive() : key;
 	const mapped: ProgramKey =
@@ -215,6 +235,23 @@ function writeUvTransform(
 	values[at + MOVING_BACK_UV_MATRIX + 3] = 1.0;
 }
 
+function pbrValuesOf(
+	source: GltfMaterial,
+	program: ProgramKey,
+): Result<Vec<float32>, GltfSceneError> {
+	const pbr = source.pbr;
+	if (pbr === null) { return Result.err(GltfSceneError.PbrValueRefused); }
+	const properties = PbrProperties.gltfMap(pbr.metallic, pbr.roughness);
+	if (!properties.ok) { return Result.err(GltfSceneError.PbrValueRefused); }
+	const block = pbrBlock(program, properties.value);
+	if (!block.ok) { return Result.err(GltfSceneError.PbrValueRefused); }
+	return Result.ok(block.value);
+}
+
+function declaresPbr(key: ProgramKey): boolean {
+	return declares(key) && declares({ ...key, shadowed: false });
+}
+
 // The material's block: the setup's floats with the double-sided flag and alpha kill written
 // over them, and an emissive key's colour and strength after them at emissiveBase.
 export function gltfBlockOf(
@@ -226,6 +263,21 @@ export function gltfBlockOf(
 	for (const value of setup.block) { values.push(value); }
 	values[MATERIAL_DOUBLE_SIDED] = source.doubleSided ? 1.0 : 0.0;
 	values[MATERIAL_ALPHA_KILL] = source.alphaKill;
+	if (program.pbr) {
+		if (program.uvTransform || program.emissive) { unreachable; }
+		const held = pbrValuesOf(source, program);
+		if (!held.ok) { unreachable; }
+		if (held.ok) {
+			for (let i = PBR_VALUES; i < PBR_MATERIAL_UNIFORM_LENGTH; i++) {
+				values.push(held.value[i]);
+			}
+			const maps = source.pbrMaps;
+			if (program.pbrMaps && maps !== null) {
+				values[PBR_OCCLUSION_STRENGTH] = maps.occlusionStrength;
+			}
+		}
+		return values;
+	}
 	if (program.uvTransform) {
 		if ((values.length as int32) != movingBase(program)) { unreachable; }
 		for (let i = 0; i < MOVING_LENGTH; i++) { values.push(0.0); }
@@ -243,13 +295,42 @@ export function gltfBlockOf(
 	return values;
 }
 
+export struct GltfTextureRoles {
+	texture: TextureId;
+	emissive: TextureId;
+	normal: TextureId;
+	metalRough: TextureId;
+	occlusion: TextureId;
+}
+
+const NO_ROLES: GltfTextureRoles = {
+	texture: NO_TEXTURE, emissive: NO_TEXTURE, normal: NO_TEXTURE,
+	metalRough: NO_TEXTURE, occlusion: NO_TEXTURE,
+};
+
+function textureAt(textures: Readonly<Span<TextureId>>, index: int32): TextureId {
+	return index == NO_TEXTURE_INDEX ? NO_TEXTURE : textures[index];
+}
+
+export function gltfTextureRoles(
+	source: GltfMaterial,
+	textures: Readonly<Span<TextureId>>,
+): GltfTextureRoles {
+	const maps = source.pbrMaps;
+	return {
+		texture: textureAt(textures, source.texture),
+		emissive: textureAt(textures, source.emissiveTexture),
+		normal: textureAt(textures, source.normalTexture),
+		metalRough: maps === null ? NO_TEXTURE : textureAt(textures, maps.metalRough),
+		occlusion: maps === null ? NO_TEXTURE : textureAt(textures, maps.occlusion),
+	};
+}
+
 function madeMaterial(
 	context: DrawContext,
 	setup: GltfMaterialSetup,
 	source: GltfMaterial,
-	texture: TextureId,
-	emissive: TextureId,
-	normal: TextureId,
+	roles: GltfTextureRoles,
 	skinned: boolean = false,
 ): Result<MaterialId, GltfSceneError> {
 	let program: ProgramKey = gltfProgramOf(source);
@@ -268,9 +349,11 @@ function madeMaterial(
 		...Material.ofKind(program.program, kind),
 		program: program,
 		pass: pass,
-		texture: texture,
-		emissiveTexture: emissive,
-		normalTexture: normal,
+		texture: roles.texture,
+		emissiveTexture: roles.emissive,
+		normalTexture: roles.normal,
+		metalRoughTexture: roles.metalRough,
+		occlusionTexture: roles.occlusion,
 		uniforms: reserved.value,
 	};
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
@@ -283,7 +366,8 @@ function madeMaterial(
 }
 
 function blockLength(program: ProgramKey): int32 {
-	return MATERIAL_UNIFORM_LENGTH + (program.emissive ? EMISSIVE_LENGTH : 0);
+	const pbr: int32 = program.pbr ? PBR_MATERIAL_UNIFORM_LENGTH - MATERIAL_UNIFORM_LENGTH : 0;
+	return MATERIAL_UNIFORM_LENGTH + pbr + (program.emissive ? EMISSIVE_LENGTH : 0);
 }
 
 function undone(
@@ -331,12 +415,20 @@ export function addGltfAssets(
 		const material: int32 = data.meshMaterials[mesh];
 		const source: GltfMaterial = material == DEFAULT_MATERIAL
 			? DEFAULT_SOURCE : data.materials[material];
+		if (source.pbr !== null) { return Result.err(GltfSceneError.PbrFeatureRefused); }
 		if (!declares(gltfProgramOf(source).withSkin())) {
 			return Result.err(GltfSceneError.UndeclaredProgram);
 		}
 	}
 	for (const material of data.materials) {
 		const key: ProgramKey = gltfProgramOf(material);
+		if (key.pbr) {
+			if (!declaresPbr(key)) { return Result.err(GltfSceneError.PbrFeatureRefused); }
+			if (!pbrValuesOf(material, key).ok) {
+				return Result.err(GltfSceneError.PbrValueRefused);
+			}
+			continue;
+		}
 		if (!declares(key)) { return Result.err(GltfSceneError.UndeclaredProgram); }
 	}
 	let assets: GltfAssets = {
@@ -353,24 +445,15 @@ export function addGltfAssets(
 		assets.textures.push(added.value);
 	}
 	for (const material of data.materials) {
-		const texture: TextureId = material.texture == NO_TEXTURE_INDEX
-			? NO_TEXTURE
-			: assets.textures[material.texture];
-		const emissive: TextureId = material.emissiveTexture == NO_TEXTURE_INDEX
-			? NO_TEXTURE
-			: assets.textures[material.emissiveTexture];
-		const normal: TextureId = material.normalTexture == NO_TEXTURE_INDEX
-			? NO_TEXTURE
-			: assets.textures[material.normalTexture];
 		const made: Result<MaterialId, GltfSceneError> =
-			madeMaterial(context, setup, material, texture, emissive, normal);
+			madeMaterial(context, setup, material, gltfTextureRoles(material, assets.textures));
 		if (!made.ok) { return undone(context, assets, made.error); }
 		assets.materials.push(made.value);
 	}
 	const defaultIndex: int32 = assets.materials.length as int32;
 	if (usesDefaultMaterial(data)) {
 		const made: Result<MaterialId, GltfSceneError> =
-			madeMaterial(context, setup, DEFAULT_SOURCE, NO_TEXTURE, NO_TEXTURE, NO_TEXTURE);
+			madeMaterial(context, setup, DEFAULT_SOURCE, NO_ROLES);
 		if (!made.ok) { return undone(context, assets, made.error); }
 		assets.materials.push(made.value);
 	}
@@ -391,8 +474,11 @@ export function addGltfAssets(
 				const source: GltfMaterial = material == DEFAULT_MATERIAL
 					? DEFAULT_SOURCE : data.materials[material];
 				const base = context.materials[assets.materials[index].index];
-				const made = madeMaterial(context, setup, source,
-					base.texture, base.emissiveTexture, base.normalTexture, true);
+				const roles: GltfTextureRoles = {
+					texture: base.texture, emissive: base.emissiveTexture, normal: base.normalTexture,
+					metalRough: base.metalRoughTexture, occlusion: base.occlusionTexture,
+				};
+				const made = madeMaterial(context, setup, source, roles, true);
 				if (!made.ok) { return undone(context, assets, made.error); }
 				skinMaterials[index] = made.value;
 				assets.materials.push(made.value);

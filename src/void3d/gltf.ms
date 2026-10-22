@@ -268,6 +268,12 @@ export struct GltfPbr {
 
 const GLTF_DEFAULT_PBR: GltfPbr = { metallic: 1.0, roughness: 1.0 };
 
+export struct GltfPbrMaps {
+	metalRough: int32;
+	occlusion: int32;
+	occlusionStrength: float32;
+}
+
 export struct GltfMaterial {
 	texture: int32;
 	doubleSided: boolean;
@@ -279,6 +285,7 @@ export struct GltfMaterial {
 	normalTexture: int32;
 	uvTransform: GltfTextureTransform;
 	pbr: GltfPbr | null;
+	pbrMaps: GltfPbrMaps | null;
 }
 
 export struct GltfAnimation {
@@ -349,7 +356,7 @@ const DEFAULT_READ: MaterialRead = {
 		alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 		emissiveTexture: NO_TEXTURE_INDEX, emissive: { x: 0.0, y: 0.0, z: 0.0 },
 		emissiveStrength: 1.0, normalTexture: NO_TEXTURE_INDEX,
-		uvTransform: IDENTITY_TEXTURE_TRANSFORM, pbr: null,
+		uvTransform: IDENTITY_TEXTURE_TRANSFORM, pbr: null, pbrMaps: null,
 	},
 	factor: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
 	realUvs: false,
@@ -1599,7 +1606,12 @@ function sharedSampling(
 ): Result<Sampling, GltfError> {
 	let shared: Sampling = { filter: FilterMode.Linear, wrap: Wrap.Clamp };
 	let found: boolean = false;
-	for (const index of [material.texture, material.emissiveTexture, material.normalTexture]) {
+	const maps = material.pbrMaps;
+	const packed: int32 = maps === null ? NO_TEXTURE_INDEX : maps.metalRough;
+	const occluding: int32 = maps === null ? NO_TEXTURE_INDEX : maps.occlusion;
+	for (const index of [
+		material.texture, material.emissiveTexture, material.normalTexture, packed, occluding,
+	]) {
 		if (index == NO_TEXTURE_INDEX) { continue; }
 		const sampling: Sampling =
 			{ filter: textures[index].filter, wrap: textures[index].wrap };
@@ -1639,12 +1651,21 @@ function substituteWhites(
 		const sampling: Sampling = try sharedSampling(data.textures, material);
 		const wantsEmissive: boolean =
 			reads[i].emits && material.emissiveTexture == NO_TEXTURE_INDEX;
-		const wantsBase: boolean = (reads[i].emits || material.normalTexture != NO_TEXTURE_INDEX)
-			&& material.texture == NO_TEXTURE_INDEX;
-		if (wantsEmissive || wantsBase) {
+		const maps = material.pbrMaps;
+		const wantsBase: boolean = (reads[i].emits || material.normalTexture != NO_TEXTURE_INDEX
+			|| maps !== null) && material.texture == NO_TEXTURE_INDEX;
+		const wantsPacked: boolean = maps !== null && maps.metalRough == NO_TEXTURE_INDEX;
+		const wantsOcclusion: boolean = maps !== null && maps.occlusion == NO_TEXTURE_INDEX;
+		if (wantsEmissive || wantsBase || wantsPacked || wantsOcclusion) {
 			const white: int32 = whiteFor(data, whites, sampling);
 			if (wantsEmissive) { data.materials[i].emissiveTexture = white; }
 			if (wantsBase) { data.materials[i].texture = white; }
+			if (wantsPacked || wantsOcclusion) {
+				let filled: GltfPbrMaps = pbrMapsOf(reads[i]);
+				if (wantsPacked) { filled.metalRough = white; }
+				if (wantsOcclusion) { filled.occlusion = white; }
+				data.materials[i].pbrMaps = filled;
+			}
 		}
 		reads[i].material = data.materials[i];
 	}
@@ -1813,11 +1834,28 @@ function pbrFactor(
 	return Result.ok(value);
 }
 
-function loadPbr(pbr: JsonValue, ref cause: string): Result<GltfPbr, GltfError> {
+function pbrMapsOf(read: MaterialRead): GltfPbrMaps {
+	const held = read.material.pbrMaps;
+	if (held === null) {
+		return { metalRough: NO_TEXTURE_INDEX, occlusion: NO_TEXTURE_INDEX, occlusionStrength: 1.0 };
+	}
+	return held;
+}
+
+function loadPbr(
+	pbr: JsonValue,
+	textureCount: int32,
+	ref read: MaterialRead,
+	ref cause: string,
+): Result<GltfPbr, GltfError> {
 	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
 	if (hasField(pbr, "metallicRoughnessTexture")) {
-		cause = "metallicRoughnessTexture has no view slot or program feature to ride yet";
-		return Result.err(GltfError.UnsupportedMaterial);
+		const info: JsonValue = fieldOf(pbr, "metallicRoughnessTexture");
+		let maps: GltfPbrMaps = pbrMapsOf(read);
+		maps.metalRough = try textureInfoIndex(info, textureCount);
+		read.material.pbrMaps = maps;
+		read.realUvs = true;
+		const _shared: boolean = try shareTransform(info, read);
 	}
 	const metallic: float32 = try pbrFactor(pbr, "metallicFactor", cause);
 	const roughness: float32 = try pbrFactor(pbr, "roughnessFactor", cause);
@@ -1826,6 +1864,30 @@ function loadPbr(pbr: JsonValue, ref cause: string): Result<GltfPbr, GltfError> 
 		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	return Result.ok({ metallic: metallic, roughness: roughness });
+}
+
+function loadOcclusion(
+	material: JsonValue,
+	textureCount: int32,
+	ref read: MaterialRead,
+	ref cause: string,
+): Result<boolean, GltfError> {
+	if (!hasField(material, "occlusionTexture")) { return Result.ok(false); }
+	const info: JsonValue = fieldOf(material, "occlusionTexture");
+	let maps: GltfPbrMaps = pbrMapsOf(read);
+	maps.occlusion = try textureInfoIndex(info, textureCount);
+	if (hasField(info, "strength")) {
+		const strength: float32 = try numberOf(fieldOf(info, "strength"));
+		if (strength < 0.0 || strength > 1.0) {
+			cause = `occlusionTexture strength ${strength} is outside 0..1`;
+			return Result.err(GltfError.OutOfRange);
+		}
+		maps.occlusionStrength = strength;
+	}
+	read.material.pbrMaps = maps;
+	read.realUvs = true;
+	const _shared: boolean = try shareTransform(info, read);
+	return Result.ok(true);
 }
 
 function loadMaterial(
@@ -1837,16 +1899,14 @@ function loadMaterial(
 	if (material === null || material.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (hasField(material, "occlusionTexture")) {
-		if (materials == GltfMaterialImport.Pbr) {
-			cause = "occlusionTexture has no view slot or program feature to ride yet";
-		}
+	if (hasField(material, "occlusionTexture") && materials != GltfMaterialImport.Pbr) {
 		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	let read: MaterialRead = DEFAULT_READ;
 	if (materials == GltfMaterialImport.Pbr) { read.material.pbr = GLTF_DEFAULT_PBR; }
 	const _emits: boolean = try loadEmission(material, textureCount, read);
 	const _normals: boolean = try loadNormalTexture(material, textureCount, read);
+	const _occludes: boolean = try loadOcclusion(material, textureCount, read, cause);
 	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
 	if (hasField(material, "alphaMode")) {
 		if (alphaMode.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
@@ -1871,7 +1931,9 @@ function loadMaterial(
 	const pbr: JsonValue = fieldOf(material, "pbrMetallicRoughness");
 	if (!hasField(material, "pbrMetallicRoughness")) { return Result.ok(read); }
 	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
-	if (materials == GltfMaterialImport.Pbr) { read.material.pbr = try loadPbr(pbr, cause); }
+	if (materials == GltfMaterialImport.Pbr) {
+		read.material.pbr = try loadPbr(pbr, textureCount, read, cause);
+	}
 	const factor: JsonValue = fieldOf(pbr, "baseColorFactor");
 	if (hasField(pbr, "baseColorFactor")) {
 		if (factor.kind != JsonKind.Array || countOf(factor) != 4) {
@@ -2157,6 +2219,7 @@ function decodeGltf(
 	let colourBuffers: Vec<GltfAccessorBuffer> = [];
 	let colourViews: Vec<GltfAccessorView> = [];
 	let runs: Vec<PrimitiveRun> = [];
+	let pbrDefault: int32 = DEFAULT_MATERIAL;
 	let usedNames: Vec<string> = [];
 	let usedCounts: Vec<int32> = [];
 	for (let i = 0; i < meshCount; i++) {
@@ -2191,7 +2254,17 @@ function decodeGltf(
 				return Result.err(gltfFailure(materialRead.error, source,
 					`$.meshes[${i}].primitives[${p}].material`, base));
 			}
-			const material: int32 = materialRead.value;
+			let material: int32 = materialRead.value;
+			if (material == DEFAULT_MATERIAL && materials == GltfMaterialImport.Pbr) {
+				if (pbrDefault == DEFAULT_MATERIAL) {
+					let fallback: MaterialRead = DEFAULT_READ;
+					fallback.material.pbr = GLTF_DEFAULT_PBR;
+					pbrDefault = reads.length as int32;
+					reads.push(fallback);
+					data.materials.push(fallback.material);
+				}
+				material = pbrDefault;
+			}
 			const read: MaterialRead =
 				material == DEFAULT_MATERIAL ? DEFAULT_READ : reads[material];
 			let tangentSources: Vec<int32> = [];

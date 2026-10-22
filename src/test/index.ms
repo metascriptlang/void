@@ -95,6 +95,7 @@ import "./textureMipCheck";
 import "./textureMipUploadCheck";
 import "./pbrResponseCheck";
 import "./pbrLitCheck";
+import "./pbrMapsCheck";
 import "./lightShapeCheck";
 import "./morphGeometryCheck";
 import "./morphSceneCheck";

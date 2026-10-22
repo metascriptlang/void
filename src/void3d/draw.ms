@@ -1168,6 +1168,8 @@ function letGoOfMaterial(context: DrawContext, index: int32): int32 {
 	context.materials[index].dissolveTexture = NO_TEXTURE;
 	context.materials[index].emissiveTexture = NO_TEXTURE;
 	context.materials[index].normalTexture = NO_TEXTURE;
+	context.materials[index].metalRoughTexture = NO_TEXTURE;
+	context.materials[index].occlusionTexture = NO_TEXTURE;
 	context.materialBlocks[index] = NO_UNIFORMS;
 	context.materialHolders[index] = 0;
 	vacate(context.materialSlots, index);

@@ -267,6 +267,8 @@ export struct LitBindings {
 	@binding(1) dissolveSampler: Sampler;
 	@binding(3) emissiveTexture: Texture2d;
 	@binding(5) normalTexture: Texture2d;
+	@binding(1) metalRoughTexture: Texture2d;
+	@binding(2) occlusionTexture: Texture2d;
 }
 
 export struct UnlitBindings {
@@ -292,6 +294,7 @@ export struct LitKey {
 	@feature(EMISSIVE) emissive: boolean;
 	@feature(NORMAL_MAP) normalMap: boolean;
 	@feature(PBR) pbr: boolean;
+	@feature(PBR_MAPS) pbrMaps: boolean;
 }
 
 export struct LitOutput {
@@ -890,6 +893,19 @@ export function pbrAmbient(
 	return ambient * albedo * (1.0 - metalness) * (1.0 - fresnel) * occlusion;
 }
 
+// Roughness floors at 0.089 as Bevy's clampedPerceptualRoughness (pbr_lighting.wesl:550): a
+// texel of 0 has no BRDF response, and a texture cannot be refused per pixel.
+export function pbrMapped(b: LitBindings, uv: Vec2f): Vec3f {
+	const metalRoughTexel = textureSample(b.metalRoughTexture, b.baseSampler, uv);
+	const occluded = textureSample(b.occlusionTexture, b.baseSampler, uv).r;
+	const values = b.pbrMaterialParams.pbr;
+	return vec3f(
+		values.x * metalRoughTexel.b,
+		max(values.y * metalRoughTexel.g, 0.089),
+		values.z * (1.0 + values.w * (occluded - 1.0)),
+	);
+}
+
 // The lit surface under the PBR path: the material's albedo (linear, saturated as the material
 // says) under the same ambient, directional and point lights litShade reads, from the camera
 // frame.cameraPosition names. The sun is shadowed, as Heaps' `shadow` scales every light of a
@@ -900,8 +916,8 @@ export function pbrShade(
 	surfaceColor: Vec4f,
 	b: LitBindings,
 	key: LitKey,
+	values: Vec3f,
 ): Vec4f {
-	const values = b.pbrMaterialParams.pbr;
 	const albedo = srgbToLinear(saturated(surfaceColor.rgb, b.pbrMaterialParams.material.y));
 	const view = b.frameParams.cameraPosition.xyz - position;
 	const dir = b.lightParams.dirLight;
@@ -955,7 +971,8 @@ export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): Lit
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
-		shaded = pbrShade(n, input.worldPosition, input.baseColor, b, key);
+		const pbrValues = b.pbrMaterialParams.pbr.xyz;
+		shaded = pbrShade(n, input.worldPosition, input.baseColor, b, key, pbrValues);
 	} else {
 		shaded = litShade(n, input.worldPosition, input.baseColor, b, key);
 	}
@@ -1015,7 +1032,11 @@ export function litTexturedFs(
 	const surfaceColor = vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a);
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
-		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key);
+		let pbrValues = b.pbrMaterialParams.pbr.xyz;
+		if (key.pbrMaps) {
+			pbrValues = pbrMapped(b, uv);
+		}
+		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key, pbrValues);
 	} else {
 		shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
 	}

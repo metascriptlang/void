@@ -840,8 +840,7 @@ vec3 linearToSrgb(vec3 rgb) {
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
 #ifdef PBR
-vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor) {
-    vec4 values = pbr;
+vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, material.y));
     vec3 view = cameraPosition.xyz - position;
     vec4 dir = dirLight;
@@ -930,7 +929,8 @@ void main() {
     vec3 n = facingNormal(normalize(worldNormal), params.z, gl_FrontFacing);
     vec4 shaded = vec4(0.0);
 #ifdef PBR
-    shaded = pbrShade(n, worldPosition, baseColor);
+    vec3 pbrValues = pbr.xyz;
+    shaded = pbrShade(n, worldPosition, baseColor, pbrValues);
 #else
     shaded = litShade(n, worldPosition, baseColor);
 #endif
@@ -1190,6 +1190,12 @@ layout(binding=3) uniform texture2D emissiveTexture;
 #ifdef NORMAL_MAP
 layout(binding=5) uniform texture2D normalTexture;
 #endif
+#if defined(PBR) && defined(PBR_MAPS)
+layout(binding=1) uniform texture2D metalRoughTexture;
+#endif
+#if defined(PBR) && defined(PBR_MAPS)
+layout(binding=2) uniform texture2D occlusionTexture;
+#endif
 #ifdef NORMAL_MAP
 in vec4 worldTangent;
 #endif
@@ -1297,6 +1303,14 @@ vec3 mappedNormal(vec3 normal_1, vec4 tangent, float face, vec3 texel) {
     return normalize((((mapped.x * t) + (mapped.y * bitangent)) + (mapped.z * normal_1))) * face;
 }
 #endif
+#if defined(PBR) && defined(PBR_MAPS)
+vec3 pbrMapped(vec2 uv) {
+    vec4 metalRoughTexel = texture(sampler2D(metalRoughTexture, baseSampler), uv);
+    float occluded = texture(sampler2D(occlusionTexture, baseSampler), uv).r;
+    vec4 values = pbr;
+    return vec3((values.x * metalRoughTexel.b), max((values.y * metalRoughTexel.g), 0.089), (values.z * (1.0 + (values.w * (occluded - 1.0)))));
+}
+#endif
 vec3 srgbToLinear(vec3 srgb) {
     vec3 low = srgb * 0.0773993808;
     vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
@@ -1368,8 +1382,7 @@ vec3 linearToSrgb(vec3 rgb) {
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
 #ifdef PBR
-vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor) {
-    vec4 values = pbr;
+vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, material.y));
     vec3 view = cameraPosition.xyz - position;
     vec4 dir = dirLight;
@@ -1515,7 +1528,11 @@ void main() {
     vec4 surfaceColor = vec4((baseColor.rgb * texel.rgb), (baseColor.a * texel.a));
     vec4 shaded = vec4(0.0);
 #ifdef PBR
-    shaded = pbrShade(n, worldPosition, surfaceColor);
+    vec3 pbrValues = pbr.xyz;
+#ifdef PBR_MAPS
+    pbrValues = pbrMapped(uv);
+#endif
+    shaded = pbrShade(n, worldPosition, surfaceColor, pbrValues);
 #else
     shaded = litShade(n, worldPosition, surfaceColor);
 #endif
