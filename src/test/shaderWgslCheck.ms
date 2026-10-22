@@ -193,13 +193,16 @@ function writeProbe(name: string, text: string): boolean {
 	return writeFile("out/wgslProbe/" + name + ".wgsl", text).ok;
 }
 
+function wgslOf(m: ShaderModule, index: int32, slots: BindingSlot[]): string {
+	const printed = printWgsl(m, index, slots);
+	if (printed.ok) { return printed.value; }
+	return printed.error;
+}
+
 function refusalOf(m: ShaderModule, index: int32, slots: BindingSlot[]): string {
-	try {
-		const _text = printWgsl(m, index, slots);
-		return "printed";
-	} catch (e) {
-		return e.message;
-	}
+	const printed = printWgsl(m, index, slots);
+	if (printed.ok) { return "printed"; }
+	return printed.error;
 }
 
 // blurVs and blurFs of src/void2d/shader2dGen.glsl, the blur weights left out.
@@ -290,8 +293,8 @@ function interfaceOf(text: string): string {
 test "blur prints the bindings and entry interface of the committed WGSL" {
 	const m = blurModule();
 	const slots = slotsOf(m, [0, 1]);
-	const vs = printWgsl(m, 0, slots);
-	const fs = printWgsl(m, 1, slots);
+	const vs = wgslOf(m, 0, slots);
+	const fs = wgslOf(m, 1, slots);
 	assert writeProbe("blurVs", vs);
 	assert writeProbe("blurFs", fs);
 	assert interfaceOf(vs) == interfaceOf(COMMITTED_BLUR_VS);
@@ -360,7 +363,7 @@ function computeModule(): ShaderModule {
 test "compute prints storage resources, builtins and its workgroup size" {
 	const m = computeModule();
 	assert irErrors(m).length == 0;
-	const cs = printWgsl(m, 0, slotsOf(m, [0]));
+	const cs = wgslOf(m, 0, slotsOf(m, [0]));
 	assert writeProbe("total", cs);
 	assert cs.includes("@binding(0) @group(1) var<storage, read> commands : array<Command>;\n");
 	assert cs.includes("@binding(1) @group(1) var<storage, read_write> results : array<Total>;\n");
@@ -604,8 +607,8 @@ test "every intrinsic and statement prints" {
 	const m = everyModule();
 	assert irErrors(m).length == 0;
 	const slots = slotsOf(m, [0, 1]);
-	const vs = printWgsl(m, 0, slots);
-	const fs = printWgsl(m, 1, slots);
+	const vs = wgslOf(m, 0, slots);
+	const fs = wgslOf(m, 1, slots);
 	assert writeProbe("everyVs", vs);
 	assert writeProbe("everyFs", fs);
 	assert !vs.includes("diagnostic") && fs.startsWith("diagnostic(off, derivative_uniformity);\n");
@@ -736,8 +739,8 @@ test "a feature branch prints only after specialize decides it" {
 	const off = specialize(m, []);
 	assert on.ok && off.ok;
 	if (on.ok && off.ok) {
-		const cut = printWgsl(on.value, 0, slotsOf(on.value, [0]));
-		const kept = printWgsl(off.value, 0, slotsOf(off.value, [0]));
+		const cut = wgslOf(on.value, 0, slotsOf(on.value, [0]));
+		const kept = wgslOf(off.value, 0, slotsOf(off.value, [0]));
 		assert cut.includes("  discard;\n") && !kept.includes("discard");
 		assert writeProbe("cutout", cut) && writeProbe("kept", kept);
 	}

@@ -159,12 +159,14 @@ class Printer {
 	params: string[] = [];
 	locals: string[] = [];
 	derivatives: boolean = false;
+	error: string = "";
 	upperLeft: boolean = false;
 	lines: string[] = [];
 }
 
-function refusal(what: string): string {
-	throw new Error("printWgsl: " + what);
+function refusal(p: Printer, what: string): string {
+	if (p.error == "") { p.error = "printWgsl: " + what; }
+	return "";
 }
 
 function isIdentifier(name: string): boolean {
@@ -177,8 +179,8 @@ function isIdentifier(name: string): boolean {
 	return true;
 }
 
-function nameIn(scope: string[], name: string): string {
-	if (!isIdentifier(name)) { return refusal("'" + name + "' is no WGSL identifier"); }
+function nameIn(p: Printer, scope: string[], name: string): string {
+	if (!isIdentifier(name)) { return refusal(p, "'" + name + "' is no WGSL identifier"); }
 	let candidate = name;
 	let n = 1;
 	while (WGSL_WORDS.includes(candidate) || scope.includes(candidate)) {
@@ -198,13 +200,13 @@ function scalarText(s: ScalarKind): string {
 	};
 }
 
-function texelText(s: ScalarKind): string {
-	if (s == ScalarKind.Bool) { return refusal("a texture of bool texels"); }
+function texelText(p: Printer, s: ScalarKind): string {
+	if (s == ScalarKind.Bool) { return refusal(p, "a texture of bool texels"); }
 	return scalarText(s);
 }
 
-function textureText(t: ShaderType): string {
-	const texel = "<" + texelText(t.scalar) + ">";
+function textureText(p: Printer, t: ShaderType): string {
+	const texel = "<" + texelText(p, t.scalar) + ">";
 	return match (t.shape) {
 		TextureShape.D2 => "texture_2d" + texel,
 		TextureShape.D2Array => "texture_2d_array" + texel,
@@ -250,40 +252,40 @@ function typeText(p: Printer, t: ShaderType): string {
 			String(t.length) + ">",
 		ShaderTypeKind.RuntimeArray => "array<" + typeText(p, t.element[0]) + ">",
 		ShaderTypeKind.Struct => p.structs[t.structIndex],
-		ShaderTypeKind.Texture => textureText(t),
+		ShaderTypeKind.Texture => textureText(p, t),
 		ShaderTypeKind.Sampler => "sampler",
 		ShaderTypeKind.StorageTexture => "texture_storage_2d<" + formatText(t.format) + ", " +
 			accessText(t.access) + ">",
-		ShaderTypeKind.Void => refusal("a value of type void"),
+		ShaderTypeKind.Void => refusal(p, "a value of type void"),
 	};
 }
 
-function numberText(value: float64): string {
+function numberText(p: Printer, value: float64): string {
 	if (value != value || value - value != 0.0) {
-		return refusal("a literal that is not finite");
+		return refusal(p, "a literal that is not finite");
 	}
 	if (value == 0.0 && 1.0 / value < 0.0) { return "-0.0"; }
 	return String(value);
 }
 
-function scalarLiteral(s: ScalarKind, value: float64): string {
+function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
 	if (s == ScalarKind.Bool) { return value != 0.0 ? "true" : "false"; }
 	if (s == ScalarKind.F32) {
-		const text = numberText(value) + "f";
+		const text = numberText(p, value) + "f";
 		return value < 0.0 || text.startsWith("-") ? "(" + text + ")" : text;
 	}
-	if (value != Math.floor(value)) { return refusal("an integer literal with a fraction"); }
+	if (value != Math.floor(value)) { return refusal(p, "an integer literal with a fraction"); }
 	if (s == ScalarKind.I32 && value == -2147483648.0) { return "(-2147483647i - 1i)"; }
 	const text = String(value as int64) + (s == ScalarKind.I32 ? "i" : "u");
 	return value < 0.0 ? "(" + text + ")" : text;
 }
 
 function literalText(p: Printer, t: ShaderType, value: float64): string {
-	if (t.kind == ShaderTypeKind.Scalar) { return scalarLiteral(t.scalar, value); }
+	if (t.kind == ShaderTypeKind.Scalar) { return scalarLiteral(p, t.scalar, value); }
 	if (t.kind == ShaderTypeKind.Vector) {
-		return typeText(p, t) + "(" + scalarLiteral(t.scalar, value) + ")";
+		return typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")";
 	}
-	return refusal("a literal of a " + t.kind.toString());
+	return refusal(p, "a literal of a " + t.kind.toString());
 }
 
 function argsText(p: Printer, args: ShaderExpr[]): string {
@@ -317,7 +319,7 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 		e.type.kind == ShaderTypeKind.Scalar;
 	if (!whole || left.type.kind == ShaderTypeKind.Scalar) { return text; }
 	if (left.type.kind != ShaderTypeKind.Vector) {
-		return refusal("'" + binaryOperator(e.binary) + "' on a " + left.type.kind.toString());
+		return refusal(p, "'" + binaryOperator(e.binary) + "' on a " + left.type.kind.toString());
 	}
 	return (e.binary == BinaryOp.Equal ? "all" : "any") + text;
 }
@@ -332,10 +334,10 @@ function hasEffect(e: ShaderExpr): boolean {
 
 function conditionalText(p: Printer, e: ShaderExpr): string {
 	if (e.type.kind != ShaderTypeKind.Scalar && e.type.kind != ShaderTypeKind.Vector) {
-		return refusal("a conditional of a " + e.type.kind.toString());
+		return refusal(p, "a conditional of a " + e.type.kind.toString());
 	}
 	if (hasEffect(e.operands[1]) || hasEffect(e.operands[2])) {
-		return refusal("a conditional whose branch calls a function");
+		return refusal(p, "a conditional whose branch calls a function");
 	}
 	return "select(" + exprText(p, e.operands[2]) + ", " + exprText(p, e.operands[1]) + ", " +
 		exprText(p, e.operands[0]) + ")";
@@ -347,7 +349,7 @@ function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
 
 function fragmentOnly(p: Printer, what: string): void {
 	if (p.stage != ShaderStage.Fragment) {
-		refusal(what + " outside a fragment entry");
+		refusal(p, what + " outside a fragment entry");
 	}
 	p.derivatives = true;
 }
@@ -372,10 +374,10 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 	}
 	if (op == Intrinsic.TextureLoad && o[0].type.kind == ShaderTypeKind.Texture &&
 		withoutSamplers(o).length < 3) {
-		return refusal("textureLoad of a sampled texture takes a level");
+		return refusal(p, "textureLoad of a sampled texture takes a level");
 	}
 	return match (op) {
-		Intrinsic.Inverse => refusal("inverse has no WGSL builtin"),
+		Intrinsic.Inverse => refusal(p, "inverse has no WGSL builtin"),
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.LessThanEqual => "(" + exprText(p, o[0]) + " <= " + exprText(p, o[1]) + ")",
 		Intrinsic.TextureSample => "textureSampleLevel(" + argsText(p, o) + ", " +
@@ -383,7 +385,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",
 		Intrinsic.TextureStore => "textureStore(" + argsText(p, o) + ")",
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
-		_ => refusal(op.toString() + " has no WGSL spelling"),
+		_ => refusal(p, op.toString() + " has no WGSL spelling"),
 	};
 }
 
@@ -394,7 +396,7 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 
 function memberName(p: Printer, t: ShaderType, member: int32): string {
 	if (t.kind != ShaderTypeKind.Struct) {
-		return refusal("a field of a " + t.kind.toString());
+		return refusal(p, "a field of a " + t.kind.toString());
 	}
 	return p.members[t.structIndex][member];
 }
@@ -406,7 +408,7 @@ function swizzleText(components: int32[]): string {
 function ioName(p: Printer, index: int32): string {
 	const io = p.module.ios[index];
 	if (io.stage != p.stage) {
-		return refusal("io '" + io.name + "' belongs to the " + io.stage.toString() + " stage");
+		return refusal(p, "io '" + io.name + "' belongs to the " + io.stage.toString() + " stage");
 	}
 	return p.ios[index];
 }
@@ -475,7 +477,7 @@ function simpleText(p: Printer, s: ShaderStmt): string {
 			exprText(p, s.target) + assignOperator(s.assign) + exprText(p, s.expr),
 		StmtKind.Call => s.expr.kind == ExprKind.Call || isVoid(s.expr) ?
 			exprText(p, s.expr) : "_ = " + exprText(p, s.expr),
-		_ => refusal(s.kind.toString() + " is no simple statement"),
+		_ => refusal(p, s.kind.toString() + " is no simple statement"),
 	};
 }
 
@@ -504,9 +506,9 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 				return;
 			}
 			if (s.assign == AssignOp.Increment || s.assign == AssignOp.Decrement) {
-				refusal("an increment of a swizzle");
+				refusal(p, "an increment of a swizzle");
 			}
-			const value = nameIn(p.scope, "swizzled");
+			const value = nameIn(p, p.scope, "swizzled");
 			const base = exprText(p, s.target.operands[0]);
 			emit(p, depth, "{");
 			emit(p, depth + 1, "let " + value + " = " + exprText(p, s.expr) + ";");
@@ -527,7 +529,7 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 			}
 			emit(p, depth, "}");
 		},
-		StmtKind.FeatureIf => refusal("a feature branch is still undecided: specialize the " +
+		StmtKind.FeatureIf => refusal(p, "a feature branch is still undecided: specialize the " +
 			"module first"),
 		StmtKind.While => {
 			emit(p, depth, "while (" + exprText(p, s.expr) + ") {");
@@ -601,8 +603,8 @@ function functionText(p: Printer, index: int32): string {
 	const f = p.module.functions[index];
 	p.fn = f;
 	p.scope = p.taken.map((n) => n);
-	p.params = f.params.map((x) => nameIn(p.scope, x.name));
-	p.locals = f.locals.map((x) => nameIn(p.scope, x.name));
+	p.params = f.params.map((x) => nameIn(p, p.scope, x.name));
+	p.locals = f.locals.map((x) => nameIn(p, p.scope, x.name));
 	let written: int32[] = [];
 	writtenParams(f.body, written);
 	let header: string[] = [];
@@ -613,7 +615,7 @@ function functionText(p: Printer, index: int32): string {
 			header.push(p.params[i] + " : " + type);
 			continue;
 		}
-		const incoming = nameIn(p.scope, f.params[i].name + "_in");
+		const incoming = nameIn(p, p.scope, f.params[i].name + "_in");
 		header.push(incoming + " : " + type);
 		emit(p, 1, "var " + p.params[i] + " : " + type + " = " + incoming + ";");
 	}
@@ -668,7 +670,7 @@ function interfaceText(p: Printer, io: ShaderIo, ordinal: int32): string {
 	if (io.builtin != Builtin.None) {
 		const wanted = builtinType(io.builtin);
 		if (!sameShaderType(io.type, wanted)) {
-			return refusal("io '" + io.name + "' is " + typeText(p, io.type) + "; @builtin(" +
+			return refusal(p, "io '" + io.name + "' is " + typeText(p, io.type) + "; @builtin(" +
 				builtinText(io.builtin) + ") is " + typeText(p, wanted));
 		}
 		return "@builtin(" + builtinText(io.builtin) + ")";
@@ -713,18 +715,19 @@ function stageText(m: ShaderModule, entry: int32): string {
 	};
 }
 
-export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]): string {
+export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]):
+	Result<string, string> {
 	if (entry < 0 || entry >= m.entries.length) {
-		return refusal("entry " + String(entry) + " is out of range");
+		return Result.err("printWgsl: entry " + String(entry) + " is out of range");
 	}
 	const e = m.entries[entry];
 	const f = m.functions[e.functionIndex];
 	if (f.params.length > 0 || f.result.kind != ShaderTypeKind.Void) {
-		return refusal("entry '" + e.name + "' takes parameters or returns a value; a stage " +
-			"reads and writes its ios");
+		return Result.err("printWgsl: entry '" + e.name + "' takes parameters or returns a " +
+			"value; a stage reads and writes its ios");
 	}
 	const read = readsFrom(m, e.functionIndex);
-	if (!read.ok) { return refusal(read.error); }
+	if (!read.ok) { return Result.err("printWgsl: " + read.error); }
 	const reads = read.value;
 
 	let p = new Printer();
@@ -732,14 +735,14 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	p.stage = e.stage;
 	p.taken = ["main_out", UPPER_LEFT];
 	for (const s of m.structs) {
-		p.structs.push(nameIn(p.taken, s.name));
+		p.structs.push(nameIn(p, p.taken, s.name));
 		let scope: string[] = [];
-		p.members.push(s.members.map((x) => nameIn(scope, x.name)));
+		p.members.push(s.members.map((x) => nameIn(p, scope, x.name)));
 	}
-	p.constants = m.constants.map((c) => nameIn(p.taken, c.name));
-	p.resources = m.resources.map((r) => nameIn(p.taken, r.name));
-	p.ios = m.ios.map((io) => io.stage == e.stage ? nameIn(p.taken, io.name) : "");
-	p.functions = m.functions.map((x) => nameIn(p.taken, x.name));
+	p.constants = m.constants.map((c) => nameIn(p, p.taken, c.name));
+	p.resources = m.resources.map((r) => nameIn(p, p.taken, r.name));
+	p.ios = m.ios.map((io) => io.stage == e.stage ? nameIn(p, p.taken, io.name) : "");
+	p.functions = m.functions.map((x) => nameIn(p, p.taken, x.name));
 
 	let functions: string[] = [];
 	for (let i = 0; i < m.functions.length; i++) {
@@ -763,7 +766,7 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 		const attribute = interfaceText(p, io, ordinals[side]);
 		if (io.builtin == Builtin.None) { ordinals[side] += 1; }
 		if (input) {
-			const param = nameIn(p.taken, p.ios[i] + "_param");
+			const param = nameIn(p, p.taken, p.ios[i] + "_param");
 			params.push(attribute + " " + param + " : " + type);
 			copies.push("  " + p.ios[i] + " = " + param + ";\n");
 		} else {
@@ -791,7 +794,8 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	}
 	for (const index of reads.resources) {
 		if (!bindings.some((s) => s.resource == index)) {
-			return refusal("resource '" + m.resources[index].name + "' has no binding slot");
+			return Result.err("printWgsl: resource '" + m.resources[index].name +
+				"' has no binding slot");
 		}
 	}
 	let declared: int32[] = [];
@@ -812,5 +816,6 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	decls.push(stageText(m, entry) + "\nfn main(" + params.join(", ") + ")" + returned + " {\n" +
 		copies.join("") + "  " + p.functions[e.functionIndex] + "();\n" +
 		(outputs.length > 0 ? "  return main_out(" + results.join(", ") + ");\n" : "") + "}");
-	return decls.join("\n\n") + "\n";
+	if (p.error != "") { return Result.err(p.error); }
+	return Result.ok(decls.join("\n\n") + "\n");
 }
