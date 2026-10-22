@@ -100,6 +100,8 @@ let noItems: Vec<DrawItem> = [];
 let items: Vec<DrawItem> = [];
 let survivorContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
 let survivor: ForwardRenderer = forwardOf(survivorContext, SURVIVOR_GREEN);
+let survivorMeshes: int32 = survivorContext.liveMeshes();
+let survivorMaterials: int32 = survivorContext.liveMaterials();
 let viewContext: DrawContext =
 	DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH);
 let viewScene: Scene3D = Scene3D.create(viewContext);
@@ -202,8 +204,10 @@ function closeView(): void {
 		viewContext.liveTextures() == 0 && viewContext.uniforms.liveRanges() == 0);
 	closeContext(viewContext);
 	check("the view's context is closed", viewContext.isClosed());
-	check("the survivor holds what it held",
-		survivorContext.liveMeshes() == 1 && survivorContext.liveMaterials() == 1 &&
+	check(`the survivor holds what it held (meshes ${survivorContext.liveMeshes()}, ` +
+		`materials ${survivorContext.liveMaterials()}, closed ${survivor.isClosed()})`,
+		survivorContext.liveMeshes() == survivorMeshes &&
+		survivorContext.liveMaterials() == survivorMaterials &&
 		!survivor.isClosed());
 }
 
