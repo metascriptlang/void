@@ -191,6 +191,36 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 - **Partial `writeTexture` on Metal stays refused**, with the measurement and the upgrade trigger
   in `docs/GPU.md` "Metal".
 
+## From Windows (2026-10-23)
+
+- **Coverage phases** (the person: coverage first, quality after). P0: the WebGPU members sokol
+  exposes and Void lacked (formats, vertex formats, topologies, stencil, depth bias, sampler
+  fields, mips, arrays, cube, 3d, view ranges, viewport, blend constant, stencil reference) are in
+  `types.ms`/`device.ms`, and the reflection fields for storage and compute (`73b3703f`; arc
+  `shader` fills them). P1: each backend ports P0. P2: copies and readback (`copyBufferToBuffer`,
+  `copyTextureToBuffer`, `copyBufferToTexture`, `copyTextureToTexture`, mapped reads), the control
+  sokol lacks. P3: compute and storage, once `shader` emits the reflection. P4: timestamps,
+  labels, limits.
+- **Done on D3D11:** P1 whole (`5233ffcd`, `29c449f3`, pinned on WARP in `webgpuD3d11Check.ms`).
+  GL and wgpu P1 and D3D11 P2 are in flight.
+- **For Metal:** a backend that has not ported a P0 member stops by name through the
+  `stopOnUnported*` helpers in `types.ms`, so Metal keeps building; drop a helper call once Metal
+  handles every member it guards (the D3D11 diff is the map). P2 adds backend functions every
+  backend must define: the Windows side adds a Metal stub that stops by name, committed alone.
+- **Window features:** `requestQuit`/`cancelQuit`, `frameDuration`, clipboard, cursors,
+  `showMouse`, `lockMouse`, fullscreen and dropped files are in `src/sokol/window.ms` over
+  `appWindow.c`. Windows and the browser implement them; Linux and iOS stop by name
+  (`notPorted` in `src/platform/linux/window.c`, `notPortedIos` in `appWindow.c`). Linux is next on
+  this side; macOS and iOS are yours. The touch API is yours (`touchCount`, `identifier`); the
+  browser driver now fills it.
+- **Your two Windows items:** D3D11 `writeBuffer` already refuses a rewrite of bytes the frame
+  wrote (`src/webgpu/d3d11/backend.ms`, `writeBuffer`, "rewrites bytes this frame already
+  wrote"). The per-draw `applyPipeline` and uniform re-apply in void3d is queued as a beat-sokol
+  row after the A/B bench.
+- **Linux build in WSL:** `msc` there is synced to `4b5816aea`. Yoga has no linux branch, so
+  build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
+  (libc++, as msc links) and pass it with `--passL`.
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
