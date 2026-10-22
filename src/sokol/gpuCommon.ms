@@ -17,8 +17,3 @@ export function makeImage(rgba: Ptr<void>, w: int32, h: int32): uint32 {
 	return voidMakeImage(rgba, w, h);
 }
 export function makeView(image: uint32): uint32 { return voidMakeView(image); }
-
-export const KEY_W: int32 = 87;
-export const KEY_A: int32 = 65;
-export const KEY_S: int32 = 83;
-export const KEY_D: int32 = 68;
