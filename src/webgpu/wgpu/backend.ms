@@ -1,6 +1,7 @@
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
+	GPU_MAX_SHADER_BINDINGS,
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_MAX_VERTEX_ATTRIBUTES,
 	GPU_MAX_VERTEX_BUFFERS,
@@ -103,8 +104,6 @@ import {
 	wgCopyTextureToTexture,
 	wgBeginPass,
 	wgBindEntry,
-	wgColorAttachment,
-	wgColorTarget,
 	wgCreateBindGroup,
 	wgCreateBuffer,
 	wgCreateComputePipeline,
@@ -115,8 +114,6 @@ import {
 	wgCreateSampler,
 	wgCreateTexture,
 	wgCreateView,
-	wgDepthAttachment,
-	wgDepthStencil,
 	wgDispatch,
 	wgDispatchIndirect,
 	wgDraw,
@@ -127,7 +124,6 @@ import {
 	wgEndPass,
 	wgFinish,
 	wgInsertDebugMarker,
-	wgLayoutEntry,
 	wgLimit,
 	wgMaxTextureDimension2D,
 	wgMinUniformBufferOffsetAlignment,
@@ -157,11 +153,8 @@ import {
 	wgSetup,
 	wgSetVertexBuffer,
 	wgShutdown,
-	wgStencilFace,
 	wgSubmit,
 	wgTextureNative,
-	wgVertexAttribute,
-	wgVertexBuffer,
 	wgViewFrom,
 	wgWriteBuffer,
 	wgWriteTexture,
@@ -298,9 +291,71 @@ const CULL_FRONT = 2;
 const CULL_BACK = 3;
 const FRONT_CCW = 1;
 const FRONT_CW = 2;
+// Values of the WGPU enums in webgpu.h, the emdawnwebgpu port header.
+const COMPARE_NEVER = 1;
+const COMPARE_LESS = 2;
+const COMPARE_EQUAL = 3;
+const COMPARE_LESS_EQUAL = 4;
+const COMPARE_GREATER = 5;
+const COMPARE_NOT_EQUAL = 6;
+const COMPARE_GREATER_EQUAL = 7;
 const COMPARE_ALWAYS = 8;
 const BLEND_ZERO = 1;
 const BLEND_ONE = 2;
+const BLEND_SRC = 3;
+const BLEND_ONE_MINUS_SRC = 4;
+const BLEND_SRC_ALPHA = 5;
+const BLEND_ONE_MINUS_SRC_ALPHA = 6;
+const BLEND_DST = 7;
+const BLEND_ONE_MINUS_DST = 8;
+const BLEND_DST_ALPHA = 9;
+const BLEND_ONE_MINUS_DST_ALPHA = 10;
+const BLEND_SRC_ALPHA_SATURATED = 11;
+const BLEND_CONSTANT = 12;
+const BLEND_ONE_MINUS_CONSTANT = 13;
+const BLEND_OP_ADD = 1;
+const BLEND_OP_SUBTRACT = 2;
+const BLEND_OP_REVERSE_SUBTRACT = 3;
+const BLEND_OP_MIN = 4;
+const BLEND_OP_MAX = 5;
+const STENCIL_OP_KEEP = 1;
+const STENCIL_OP_ZERO = 2;
+const STENCIL_OP_REPLACE = 3;
+const STENCIL_OP_INVERT = 4;
+const STENCIL_OP_INCREMENT_CLAMP = 5;
+const STENCIL_OP_DECREMENT_CLAMP = 6;
+const STENCIL_OP_INCREMENT_WRAP = 7;
+const STENCIL_OP_DECREMENT_WRAP = 8;
+const VERTEX_FLOAT32 = 0x1C;
+const VERTEX_FLOAT32X2 = 0x1D;
+const VERTEX_FLOAT32X3 = 0x1E;
+const VERTEX_FLOAT32X4 = 0x1F;
+const VERTEX_UINT32 = 0x20;
+const VERTEX_UINT32X2 = 0x21;
+const VERTEX_UINT32X3 = 0x22;
+const VERTEX_UINT32X4 = 0x23;
+const VERTEX_SINT32 = 0x24;
+const VERTEX_SINT32X2 = 0x25;
+const VERTEX_SINT32X3 = 0x26;
+const VERTEX_SINT32X4 = 0x27;
+const VERTEX_UINT8X2 = 0x02;
+const VERTEX_UINT8X4 = 0x03;
+const VERTEX_SINT8X2 = 0x05;
+const VERTEX_SINT8X4 = 0x06;
+const VERTEX_UNORM8X2 = 0x08;
+const VERTEX_UNORM8X4 = 0x09;
+const VERTEX_SNORM8X2 = 0x0B;
+const VERTEX_SNORM8X4 = 0x0C;
+const VERTEX_UINT16X2 = 0x0E;
+const VERTEX_UINT16X4 = 0x0F;
+const VERTEX_SINT16X2 = 0x11;
+const VERTEX_SINT16X4 = 0x12;
+const VERTEX_UNORM16X2 = 0x14;
+const VERTEX_UNORM16X4 = 0x15;
+const VERTEX_SNORM16X2 = 0x17;
+const VERTEX_SNORM16X4 = 0x18;
+const VERTEX_FLOAT16X2 = 0x1A;
+const VERTEX_FLOAT16X4 = 0x1B;
 const ADDRESS_CLAMP = 1;
 const ADDRESS_REPEAT = 2;
 const ADDRESS_MIRROR = 3;
@@ -309,6 +364,40 @@ const FILTER_LINEAR = 2;
 const INDEX_UINT16 = 1;
 const INDEX_UINT32 = 2;
 const COLOR_WRITE_ALL = 0xF;
+
+const LAYOUT_STRIDE = 6;
+const PL_BUFFER_COUNT = 0;
+const PL_TARGET_COUNT = 1;
+const PL_TOPOLOGY = 2;
+const PL_STRIP_INDEX_FORMAT = 3;
+const PL_CULL_MODE = 4;
+const PL_FRONT_FACE = 5;
+const PL_SAMPLE_COUNT = 6;
+const PL_DEPTH_FORMAT = 7;
+const PL_DEPTH_WRITE = 8;
+const PL_DEPTH_COMPARE = 9;
+const PL_STENCIL_READ_MASK = 10;
+const PL_STENCIL_WRITE_MASK = 11;
+const PL_DEPTH_BIAS = 12;
+const PL_STENCIL_FRONT = 13;
+const PL_STENCIL_BACK = 17;
+const PL_BUFFERS = 21;
+const PL_BUFFER_STRIDE = 3 + GPU_MAX_VERTEX_ATTRIBUTES * 3;
+const PL_TARGETS = PL_BUFFERS + GPU_MAX_VERTEX_BUFFERS * PL_BUFFER_STRIDE;
+const PL_TARGET_STRIDE = 10;
+const PL_SIZE = PL_TARGETS + GPU_MAX_COLOR_ATTACHMENTS * PL_TARGET_STRIDE;
+const PASS_COLOR_COUNT = 0;
+const PASS_WIDTH = 1;
+const PASS_HEIGHT = 2;
+const PASS_TIMESTAMP_BEGIN = 3;
+const PASS_TIMESTAMP_END = 4;
+const PASS_DEPTH_LOAD = 5;
+const PASS_DEPTH_STORE = 6;
+const PASS_DEPTH_STENCIL = 7;
+const PASS_COLOR_OPS = 8;
+const PASS_COLOR_OP_STRIDE = 3;
+const PASS_SIZE = PASS_COLOR_OPS + GPU_MAX_COLOR_ATTACHMENTS * PASS_COLOR_OP_STRIDE;
+const PASS_DEPTH_CLEAR = GPU_MAX_COLOR_ATTACHMENTS * 4;
 
 const NO_BUFFER = null as unknown as Ptr<WgBufferImpl>;
 const NO_TEXTURE = null as unknown as Ptr<WgTextureImpl>;
@@ -547,13 +636,13 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 
 function compareFunction(compare: string, member: string): int32 {
 	return match (compare) {
-		"never" => 1,
-		"less" => 2,
-		"equal" => 3,
-		"less-equal" => 4,
-		"greater" => 5,
-		"not-equal" => 6,
-		"greater-equal" => 7,
+		"never" => COMPARE_NEVER,
+		"less" => COMPARE_LESS,
+		"equal" => COMPARE_EQUAL,
+		"less-equal" => COMPARE_LESS_EQUAL,
+		"greater" => COMPARE_GREATER,
+		"not-equal" => COMPARE_NOT_EQUAL,
+		"greater-equal" => COMPARE_GREATER_EQUAL,
 		"" | "always" => COMPARE_ALWAYS,
 		_ => stopOnMember(member, compare),
 	};
@@ -580,17 +669,17 @@ function blendFactor(factor: string, member: string): int32 {
 	return match (factor) {
 		"zero" => BLEND_ZERO,
 		"" | "one" => BLEND_ONE,
-		"src" => 3,
-		"one-minus-src" => 4,
-		"src-alpha" => 5,
-		"one-minus-src-alpha" => 6,
-		"dst" => 7,
-		"one-minus-dst" => 8,
-		"dst-alpha" => 9,
-		"one-minus-dst-alpha" => 10,
-		"src-alpha-saturated" => 11,
-		"constant" => 12,
-		"one-minus-constant" => 13,
+		"src" => BLEND_SRC,
+		"one-minus-src" => BLEND_ONE_MINUS_SRC,
+		"src-alpha" => BLEND_SRC_ALPHA,
+		"one-minus-src-alpha" => BLEND_ONE_MINUS_SRC_ALPHA,
+		"dst" => BLEND_DST,
+		"one-minus-dst" => BLEND_ONE_MINUS_DST,
+		"dst-alpha" => BLEND_DST_ALPHA,
+		"one-minus-dst-alpha" => BLEND_ONE_MINUS_DST_ALPHA,
+		"src-alpha-saturated" => BLEND_SRC_ALPHA_SATURATED,
+		"constant" => BLEND_CONSTANT,
+		"one-minus-constant" => BLEND_ONE_MINUS_CONSTANT,
 		_ => stopOnMember(member, factor),
 	};
 }
@@ -603,47 +692,47 @@ function destinationFactor(factor: string, member: string): int32 {
 
 function blendOperation(operation: string, member: string): int32 {
 	return match (operation) {
-		"" | "add" => 1,
-		"subtract" => 2,
-		"reverse-subtract" => 3,
-		"min" => 4,
-		"max" => 5,
+		"" | "add" => BLEND_OP_ADD,
+		"subtract" => BLEND_OP_SUBTRACT,
+		"reverse-subtract" => BLEND_OP_REVERSE_SUBTRACT,
+		"min" => BLEND_OP_MIN,
+		"max" => BLEND_OP_MAX,
 		_ => stopOnMember(member, operation),
 	};
 }
 
 function vertexFormat(format: string): int32 {
 	return match (format) {
-		"float32" => 0x1C,
-		"float32x2" => 0x1D,
-		"float32x3" => 0x1E,
-		"float32x4" => 0x1F,
-		"uint32" => 0x20,
-		"uint32x2" => 0x21,
-		"uint32x3" => 0x22,
-		"uint32x4" => 0x23,
-		"sint32" => 0x24,
-		"sint32x2" => 0x25,
-		"sint32x3" => 0x26,
-		"sint32x4" => 0x27,
-		"uint8x2" => 0x02,
-		"uint8x4" => 0x03,
-		"sint8x2" => 0x05,
-		"sint8x4" => 0x06,
-		"unorm8x2" => 0x08,
-		"unorm8x4" => 0x09,
-		"snorm8x2" => 0x0B,
-		"snorm8x4" => 0x0C,
-		"uint16x2" => 0x0E,
-		"uint16x4" => 0x0F,
-		"sint16x2" => 0x11,
-		"sint16x4" => 0x12,
-		"unorm16x2" => 0x14,
-		"unorm16x4" => 0x15,
-		"snorm16x2" => 0x17,
-		"snorm16x4" => 0x18,
-		"float16x2" => 0x1A,
-		"float16x4" => 0x1B,
+		"float32" => VERTEX_FLOAT32,
+		"float32x2" => VERTEX_FLOAT32X2,
+		"float32x3" => VERTEX_FLOAT32X3,
+		"float32x4" => VERTEX_FLOAT32X4,
+		"uint32" => VERTEX_UINT32,
+		"uint32x2" => VERTEX_UINT32X2,
+		"uint32x3" => VERTEX_UINT32X3,
+		"uint32x4" => VERTEX_UINT32X4,
+		"sint32" => VERTEX_SINT32,
+		"sint32x2" => VERTEX_SINT32X2,
+		"sint32x3" => VERTEX_SINT32X3,
+		"sint32x4" => VERTEX_SINT32X4,
+		"uint8x2" => VERTEX_UINT8X2,
+		"uint8x4" => VERTEX_UINT8X4,
+		"sint8x2" => VERTEX_SINT8X2,
+		"sint8x4" => VERTEX_SINT8X4,
+		"unorm8x2" => VERTEX_UNORM8X2,
+		"unorm8x4" => VERTEX_UNORM8X4,
+		"snorm8x2" => VERTEX_SNORM8X2,
+		"snorm8x4" => VERTEX_SNORM8X4,
+		"uint16x2" => VERTEX_UINT16X2,
+		"uint16x4" => VERTEX_UINT16X4,
+		"sint16x2" => VERTEX_SINT16X2,
+		"sint16x4" => VERTEX_SINT16X4,
+		"unorm16x2" => VERTEX_UNORM16X2,
+		"unorm16x4" => VERTEX_UNORM16X4,
+		"snorm16x2" => VERTEX_SNORM16X2,
+		"snorm16x4" => VERTEX_SNORM16X4,
+		"float16x2" => VERTEX_FLOAT16X2,
+		"float16x4" => VERTEX_FLOAT16X4,
 		_ => stopOnMember("vertex attribute format", format),
 	};
 }
@@ -661,14 +750,14 @@ function primitiveTopology(topology: string): int32 {
 
 function stencilOperation(operation: string, member: string): int32 {
 	return match (operation) {
-		"" | "keep" => 1,
-		"zero" => 2,
-		"replace" => 3,
-		"invert" => 4,
-		"increment-clamp" => 5,
-		"decrement-clamp" => 6,
-		"increment-wrap" => 7,
-		"decrement-wrap" => 8,
+		"" | "keep" => STENCIL_OP_KEEP,
+		"zero" => STENCIL_OP_ZERO,
+		"replace" => STENCIL_OP_REPLACE,
+		"invert" => STENCIL_OP_INVERT,
+		"increment-clamp" => STENCIL_OP_INCREMENT_CLAMP,
+		"decrement-clamp" => STENCIL_OP_DECREMENT_CLAMP,
+		"increment-wrap" => STENCIL_OP_INCREMENT_WRAP,
+		"decrement-wrap" => STENCIL_OP_DECREMENT_WRAP,
 		_ => stopOnMember(member, operation),
 	};
 }
@@ -1367,11 +1456,13 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		slot.vertexEntry = entryPoint(descriptor.vertexEntryPoint);
 		slot.fragmentEntry = entryPoint(descriptor.fragmentEntryPoint);
 	}
+	const uniformEntries = new Array<int32>(GPU_MAX_SHADER_BINDINGS * LAYOUT_STRIDE);
 	for (let u = 0; u < slot.uniformCount; u++) {
 		const binding = slot.uniforms[u];
-		wgLayoutEntry(u, binding.binding, binding.visibility, LAYOUT_UNIFORM, 0, VIEW_2D, 0);
+		packLayoutEntry(uniformEntries, u, binding.binding, binding.visibility, LAYOUT_UNIFORM, 0, VIEW_2D, 0);
 	}
-	slot.groupLayouts[GPU_UNIFORM_GROUP] = wgCreateLayout(slot.uniformCount, labelText(descriptor.label));
+	slot.groupLayouts[GPU_UNIFORM_GROUP] = wgCreateLayout(uniformEntries[0], slot.uniformCount, labelText(descriptor.label));
+	const resourceEntries = new Array<int32>(GPU_MAX_SHADER_BINDINGS * LAYOUT_STRIDE);
 	for (let r = 0; r < slot.resourceCount; r++) {
 		const binding = slot.resources[r];
 		const layoutKind = match (binding.kind) {
@@ -1381,9 +1472,9 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 			BindingKind.StorageTexture => LAYOUT_STORAGE_TEXTURE,
 			BindingKind.Uniform => LAYOUT_UNIFORM,
 		};
-		wgLayoutEntry(r, binding.binding, binding.visibility, layoutKind, binding.bindingType, binding.viewDimension, binding.storageFormat);
+		packLayoutEntry(resourceEntries, r, binding.binding, binding.visibility, layoutKind, binding.bindingType, binding.viewDimension, binding.storageFormat);
 	}
-	slot.groupLayouts[GPU_RESOURCE_GROUP] = wgCreateLayout(slot.resourceCount, labelText(descriptor.label));
+	slot.groupLayouts[GPU_RESOURCE_GROUP] = wgCreateLayout(resourceEntries[0], slot.resourceCount, labelText(descriptor.label));
 	const uniformLayout = slot.groupLayouts[GPU_UNIFORM_GROUP];
 	if (uniformLayout == null || slot.groupLayouts[GPU_RESOURCE_GROUP] == null) {
 		stop(`wgpuDeviceCreateBindGroupLayout failed for ${labelOf(descriptor.label)}`);
@@ -1391,6 +1482,25 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	slot.id = id;
 	store(shaders, slot);
 	return { id: slot.id };
+}
+
+function packLayoutEntry(
+	entries: int32[],
+	index: int32,
+	binding: int32,
+	visibility: int32,
+	kind: int32,
+	bindingType: int32,
+	viewDimension: int32,
+	storageFormat: int32,
+): void {
+	const at = index * LAYOUT_STRIDE;
+	entries[at] = binding;
+	entries[at + 1] = visibility;
+	entries[at + 2] = kind;
+	entries[at + 3] = bindingType;
+	entries[at + 4] = viewDimension;
+	entries[at + 5] = storageFormat;
 }
 
 function checkBinding(native: ShaderBinding, group: int32): void {
@@ -1441,43 +1551,33 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule in Void");
 	}
+	const state = new Array<int32>(PL_SIZE);
+	let depthBias: float64[2] = [0, 0];
 	const topology = primitiveTopology(descriptor.primitive.topology);
 	const stripIndexFormat = stripIndexFormatOf(descriptor.primitive, topology);
-	const bufferCount = describeVertexBuffers(descriptor);
+	state[PL_BUFFER_COUNT] = describeVertexBuffers(descriptor, state);
 	const depthFormat: string = descriptor.depthStencil.format;
 	if (depthFormat != "") {
 		const info = formatInfo(descriptor.depthStencil.format, "depthStencil.format");
 		if (!info.depth) { stopOnMember("depthStencil.format", depthFormat); }
-		const state = descriptor.depthStencil;
-		wgDepthStencil(
-			info.native,
-			state.depthWriteEnabled ? 1 : 0,
-			compareFunction(state.depthCompare, "depthStencil.depthCompare"),
-			state.stencilReadMask == 0 ? STENCIL_MASK_ALL : state.stencilReadMask,
-			state.stencilWriteMask == 0 ? STENCIL_MASK_ALL : state.stencilWriteMask,
-			state.depthBias,
-			state.depthBiasSlopeScale,
-			state.depthBiasClamp,
-		);
-		const front: GPUStencilFaceState = state.stencilFront;
-		const back: GPUStencilFaceState = state.stencilBack;
-		wgStencilFace(
-			0,
-			compareFunction(front.compare, "depthStencil.stencilFront.compare"),
-			stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
-			stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
-			stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),
-		);
-		wgStencilFace(
-			1,
-			compareFunction(back.compare, "depthStencil.stencilBack.compare"),
-			stencilOperation(back.failOp, "depthStencil.stencilBack.failOp"),
-			stencilOperation(back.depthFailOp, "depthStencil.stencilBack.depthFailOp"),
-			stencilOperation(back.passOp, "depthStencil.stencilBack.passOp"),
-		);
+		const ds = descriptor.depthStencil;
+		state[PL_DEPTH_FORMAT] = info.native;
+		state[PL_DEPTH_WRITE] = ds.depthWriteEnabled ? 1 : 0;
+		state[PL_DEPTH_COMPARE] = compareFunction(ds.depthCompare, "depthStencil.depthCompare");
+		state[PL_STENCIL_READ_MASK] = (ds.stencilReadMask == 0 ? STENCIL_MASK_ALL : ds.stencilReadMask) as int32;
+		state[PL_STENCIL_WRITE_MASK] = (ds.stencilWriteMask == 0 ? STENCIL_MASK_ALL : ds.stencilWriteMask) as int32;
+		state[PL_DEPTH_BIAS] = ds.depthBias;
+		depthBias[0] = ds.depthBiasSlopeScale;
+		depthBias[1] = ds.depthBiasClamp;
+		packStencilFace(state, PL_STENCIL_FRONT, ds.stencilFront, "depthStencil.stencilFront");
+		packStencilFace(state, PL_STENCIL_BACK, ds.stencilBack, "depthStencil.stencilBack");
 	}
-	const targetCount = describeColorTargets(descriptor);
-	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	state[PL_TARGET_COUNT] = describeColorTargets(descriptor, state);
+	state[PL_TOPOLOGY] = topology;
+	state[PL_STRIP_INDEX_FORMAT] = stripIndexFormat;
+	state[PL_CULL_MODE] = cullMode(descriptor.primitive.cullMode);
+	state[PL_FRONT_FACE] = frontFace(descriptor.primitive.frontFace);
+	state[PL_SAMPLE_COUNT] = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
 	const native = wgCreatePipeline(
 		shaders.slots[s].vertex,
 		shaders.slots[s].vertexEntry,
@@ -1485,13 +1585,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		shaders.slots[s].fragmentEntry,
 		shaders.slots[s].groupLayouts[GPU_UNIFORM_GROUP],
 		shaders.slots[s].groupLayouts[GPU_RESOURCE_GROUP],
-		bufferCount,
-		targetCount,
-		topology,
-		stripIndexFormat,
-		cullMode(descriptor.primitive.cullMode),
-		frontFace(descriptor.primitive.frontFace),
-		sampleCount,
+		state[0],
+		depthBias[0],
 		labelText(descriptor.label),
 	);
 	if (native == null) {
@@ -1507,6 +1602,13 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	return { id: slot.id };
 }
 
+function packStencilFace(state: int32[], at: int32, face: GPUStencilFaceState, member: string): void {
+	state[at] = compareFunction(face.compare, `${member}.compare`);
+	state[at + 1] = stencilOperation(face.failOp, `${member}.failOp`);
+	state[at + 2] = stencilOperation(face.depthFailOp, `${member}.depthFailOp`);
+	state[at + 3] = stencilOperation(face.passOp, `${member}.passOp`);
+}
+
 function stripIndexFormatOf(state: GPUPrimitiveState, topology: int32): int32 {
 	const format: string = state.stripIndexFormat;
 	if (format == "") { return 0; }
@@ -1516,7 +1618,7 @@ function stripIndexFormatOf(state: GPUPrimitiveState, topology: int32): int32 {
 	return indexFormat(state.stripIndexFormat);
 }
 
-function describeVertexBuffers(descriptor: GPURenderPipelineDescriptor): int32 {
+function describeVertexBuffers(descriptor: GPURenderPipelineDescriptor, state: int32[]): int32 {
 	let count = 0;
 	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
 		const stride = descriptor.vertex.buffers[b].arrayStride;
@@ -1526,23 +1628,26 @@ function describeVertexBuffers(descriptor: GPURenderPipelineDescriptor): int32 {
 			if (format != "") { used = true; }
 		}
 		if (!used) { continue; }
-		wgVertexBuffer(b, stride, stepMode(descriptor.vertex.buffers[b].stepMode));
+		const at = PL_BUFFERS + b * PL_BUFFER_STRIDE;
+		state[at] = stride;
+		state[at + 1] = stepMode(descriptor.vertex.buffers[b].stepMode);
+		let attributes = 0;
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
 			const format: string = descriptor.vertex.buffers[b].attributes[a].format;
 			if (format == "") { continue; }
-			wgVertexAttribute(
-				b,
-				vertexFormat(format),
-				descriptor.vertex.buffers[b].attributes[a].offset,
-				descriptor.vertex.buffers[b].attributes[a].shaderLocation,
-			);
+			const to = at + 3 + attributes * 3;
+			state[to] = vertexFormat(format);
+			state[to + 1] = descriptor.vertex.buffers[b].attributes[a].offset;
+			state[to + 2] = descriptor.vertex.buffers[b].attributes[a].shaderLocation;
+			attributes += 1;
 		}
+		state[at + 2] = attributes;
 		count = b + 1;
 	}
 	return count;
 }
 
-function describeColorTargets(descriptor: GPURenderPipelineDescriptor): int32 {
+function describeColorTargets(descriptor: GPURenderPipelineDescriptor, state: int32[]): int32 {
 	let count = 0;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const format: string = descriptor.fragment.targets[i].format;
@@ -1557,18 +1662,16 @@ function describeColorTargets(descriptor: GPURenderPipelineDescriptor): int32 {
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;
 		const writeMask = descriptor.fragment.targets[i].writeMask;
-		wgColorTarget(
-			i,
-			info.native,
-			descriptor.fragment.targets[i].blendEnabled ? 1 : 0,
-			blendOperation(color.operation, "blend.color.operation"),
-			blendFactor(color.srcFactor, "blend.color.srcFactor"),
-			destinationFactor(color.dstFactor, "blend.color.dstFactor"),
-			blendOperation(alpha.operation, "blend.alpha.operation"),
-			blendFactor(alpha.srcFactor, "blend.alpha.srcFactor"),
-			destinationFactor(alpha.dstFactor, "blend.alpha.dstFactor"),
-			writeMask == 0 ? COLOR_WRITE_ALL : writeMask,
-		);
+		const at = PL_TARGETS + i * PL_TARGET_STRIDE;
+		state[at] = info.native;
+		state[at + 1] = descriptor.fragment.targets[i].blendEnabled ? 1 : 0;
+		state[at + 2] = blendOperation(color.operation, "blend.color.operation");
+		state[at + 3] = blendFactor(color.srcFactor, "blend.color.srcFactor");
+		state[at + 4] = destinationFactor(color.dstFactor, "blend.color.dstFactor");
+		state[at + 5] = blendOperation(alpha.operation, "blend.alpha.operation");
+		state[at + 6] = blendFactor(alpha.srcFactor, "blend.alpha.srcFactor");
+		state[at + 7] = destinationFactor(alpha.dstFactor, "blend.alpha.dstFactor");
+		state[at + 9] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
 		count = i + 1;
 	}
 	return count;
@@ -1782,12 +1885,16 @@ export function beginRenderPass(
 	pass.width = 0;
 	pass.height = 0;
 	let count = 0;
+	const ints = new Array<int32>(PASS_SIZE);
+	const reals = new Array<float64>(PASS_DEPTH_CLEAR + 1);
+	let colorViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
+	let resolveViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
+	let depthNative = NO_VIEW;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = descriptor.colorAttachments[i];
-		if (attachment.view.id == 0) {
-			wgColorAttachment(i, NO_VIEW, NO_VIEW, 0, 0, -1, 0, 0, 0, 0);
-			continue;
-		}
+		const op = PASS_COLOR_OPS + i * PASS_COLOR_OP_STRIDE;
+		ints[op + 2] = -1;
+		if (attachment.view.id == 0) { continue; }
 		const v = views.slotIndex(attachment.view.id);
 		checkColorAttachment(i, views.slots[v].texture);
 		checkedSingleSubresource(`colorAttachments[${i}].view`, views.slots[v].attachable);
@@ -1804,18 +1911,15 @@ export function beginRenderPass(
 			resolve = checkResolve(i, views.slots[v].texture, attachment.resolveTarget.id);
 		}
 		const color = attachment.clearValue;
-		wgColorAttachment(
-			i,
-			views.slots[v].native,
-			resolve,
-			loadOp(attachment.loadOp, i, "loadOp"),
-			storeOp(attachment.storeOp, i, "storeOp"),
-			views.slots[v].dimension == VIEW_3D ? slice : -1,
-			color.r,
-			color.g,
-			color.b,
-			color.a,
-		);
+		colorViews[i] = views.slots[v].native;
+		resolveViews[i] = resolve;
+		ints[op] = loadOp(attachment.loadOp, i, "loadOp");
+		ints[op + 1] = storeOp(attachment.storeOp, i, "storeOp");
+		ints[op + 2] = views.slots[v].dimension == VIEW_3D ? slice : -1;
+		reals[i * 4] = color.r;
+		reals[i * 4 + 1] = color.g;
+		reals[i * 4 + 2] = color.b;
+		reals[i * 4 + 3] = color.a;
 		count = i + 1;
 	}
 	const depthView = descriptor.depthStencilAttachment.view.id;
@@ -1829,26 +1933,28 @@ export function beginRenderPass(
 			stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT");
 		}
 		const depth = descriptor.depthStencilAttachment;
-		wgDepthAttachment(
-			views.slots[v].native,
-			loadOp(depth.depthLoadOp, -1, "depthLoadOp"),
-			storeOp(depth.depthStoreOp, -1, "depthStoreOp"),
-			depth.depthClearValue,
-			info.stencil ? 1 : 0,
-		);
+		depthNative = views.slots[v].native;
+		ints[PASS_DEPTH_LOAD] = loadOp(depth.depthLoadOp, -1, "depthLoadOp");
+		ints[PASS_DEPTH_STORE] = storeOp(depth.depthStoreOp, -1, "depthStoreOp");
+		ints[PASS_DEPTH_STENCIL] = info.stencil ? 1 : 0;
+		reals[PASS_DEPTH_CLEAR] = depth.depthClearValue;
 	}
 	if (count == 0 && depthView == 0) { stop("beginRenderPass without an attachment"); }
 	const writes = descriptor.timestampWrites;
+	ints[PASS_COLOR_COUNT] = count;
+	ints[PASS_WIDTH] = pass.width;
+	ints[PASS_HEIGHT] = pass.height;
+	ints[PASS_TIMESTAMP_BEGIN] = writes.beginningOfPassWriteIndex;
+	ints[PASS_TIMESTAMP_END] = writes.endOfPassWriteIndex;
 	if (wgBeginPass(
-		count,
-		depthView != 0 ? 1 : 0,
-		pass.width,
-		pass.height,
+		colorViews[0],
+		resolveViews[0],
+		depthNative,
+		ints[0],
+		reals[0],
 		labelText(descriptor.label),
 		occlusionId == 0 ? NO_QUERY_SET : querySets.slots[querySets.slotIndex(occlusionId)].native,
 		timestampNative(writes),
-		writes.beginningOfPassWriteIndex,
-		writes.endOfPassWriteIndex,
 	) == 0) {
 		stop("wgpuCommandEncoderBeginRenderPass failed");
 	}

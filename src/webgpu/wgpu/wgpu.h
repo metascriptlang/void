@@ -118,40 +118,9 @@ void wgReleaseSampler(WgSampler sampler);
 WgModule wgCreateModule(const char *code, const char *label);
 void wgReleaseModule(WgModule module);
 
-void wgLayoutEntry(
-	int32_t index,
-	int32_t binding,
-	int32_t visibility,
-	int32_t kind,
-	int32_t bindingType,
-	int32_t viewDimension,
-	int32_t storageFormat);
-WgLayout wgCreateLayout(int32_t count, const char *label);
+WgLayout wgCreateLayout(const int32_t *entries, int32_t count, const char *label);
 void wgReleaseLayout(WgLayout layout);
 
-void wgVertexBuffer(int32_t slot, int32_t stride, int32_t stepMode);
-void wgVertexAttribute(int32_t slot, int32_t format, int32_t offset, int32_t location);
-void wgColorTarget(
-	int32_t index,
-	int32_t format,
-	int32_t blendEnabled,
-	int32_t colorOperation,
-	int32_t colorSource,
-	int32_t colorDestination,
-	int32_t alphaOperation,
-	int32_t alphaSource,
-	int32_t alphaDestination,
-	int32_t writeMask);
-void wgDepthStencil(
-	int32_t format,
-	int32_t depthWriteEnabled,
-	int32_t depthCompare,
-	uint32_t stencilReadMask,
-	uint32_t stencilWriteMask,
-	int32_t depthBias,
-	double depthBiasSlopeScale,
-	double depthBiasClamp);
-void wgStencilFace(int32_t back, int32_t compare, int32_t failOp, int32_t depthFailOp, int32_t passOp);
 WgPipeline wgCreatePipeline(
 	WgModule vertex,
 	const char *vertexEntry,
@@ -159,13 +128,8 @@ WgPipeline wgCreatePipeline(
 	const char *fragmentEntry,
 	WgLayout uniformLayout,
 	WgLayout resourceLayout,
-	int32_t bufferCount,
-	int32_t targetCount,
-	int32_t topology,
-	int32_t stripIndexFormat,
-	int32_t cullMode,
-	int32_t frontFace,
-	int32_t sampleCount,
+	const int32_t *state,
+	const double *depthBias,
 	const char *label);
 void wgReleasePipeline(WgPipeline pipeline);
 WgPipeline wgCreateComputePipeline(
@@ -188,33 +152,15 @@ WgBindGroup wgCreateBindGroup(WgLayout layout, int32_t count, const char *label)
 void wgReleaseBindGroup(WgBindGroup group);
 
 int32_t wgBeginEncoder(void);
-void wgColorAttachment(
-	int32_t index,
-	WgView view,
-	WgView resolve,
-	int32_t loadOp,
-	int32_t storeOp,
-	int32_t depthSlice,
-	double r,
-	double g,
-	double b,
-	double a);
-void wgDepthAttachment(
-	WgView view,
-	int32_t loadOp,
-	int32_t storeOp,
-	double clearValue,
-	int32_t stencil);
 int32_t wgBeginPass(
-	int32_t colorCount,
-	int32_t depth,
-	int32_t width,
-	int32_t height,
+	const WgView *colorViews,
+	const WgView *resolveViews,
+	WgView depthView,
+	const int32_t *ints,
+	const double *reals,
 	const char *label,
 	WgQuerySet occlusionSet,
-	WgQuerySet timestampSet,
-	int32_t timestampBegin,
-	int32_t timestampEnd);
+	WgQuerySet timestampSet);
 void wgEndPass(void);
 int32_t wgFinish(void);
 void wgSubmit(void);

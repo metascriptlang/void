@@ -18,15 +18,7 @@ static WGPUComputePassEncoder computePass;
 static int32_t passWidth;
 static int32_t passHeight;
 
-static WGPUBindGroupLayoutEntry layoutEntries[MAX_ENTRIES];
 static WGPUBindGroupEntry bindEntries[MAX_ENTRIES];
-static WGPUVertexBufferLayout vertexBuffers[MAX_BUFFERS];
-static WGPUVertexAttribute vertexAttributes[MAX_BUFFERS][MAX_ATTRIBUTES];
-static WGPUColorTargetState colorTargets[MAX_TARGETS];
-static WGPUBlendState blendStates[MAX_TARGETS];
-static WGPUDepthStencilState depthStencil;
-static WGPURenderPassColorAttachment colorAttachments[MAX_TARGETS];
-static WGPURenderPassDepthStencilAttachment depthAttachment;
 static uint32_t dynamicOffsets[MAX_DYNAMIC_OFFSETS];
 
 static WGPUStringView text(const char *value) {
@@ -339,36 +331,34 @@ void wgReleaseModule(WgModule module) {
 	if (module) wgpuShaderModuleRelease((WGPUShaderModule)module);
 }
 
-void wgLayoutEntry(
-	int32_t index,
-	int32_t binding,
-	int32_t visibility,
-	int32_t kind,
-	int32_t bindingType,
-	int32_t viewDimension,
-	int32_t storageFormat) {
-	WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
-	entry.binding = (uint32_t)binding;
-	entry.visibility = (WGPUShaderStage)visibility;
-	if (kind == 0) {
-		entry.buffer.type = WGPUBufferBindingType_Uniform;
-		entry.buffer.hasDynamicOffset = 1;
-	} else if (kind == 1) {
-		entry.texture.sampleType = (WGPUTextureSampleType)bindingType;
-		entry.texture.viewDimension = (WGPUTextureViewDimension)viewDimension;
-	} else if (kind == 3) {
-		entry.buffer.type = (WGPUBufferBindingType)bindingType;
-	} else if (kind == 4) {
-		entry.storageTexture.access = (WGPUStorageTextureAccess)bindingType;
-		entry.storageTexture.format = (WGPUTextureFormat)storageFormat;
-		entry.storageTexture.viewDimension = (WGPUTextureViewDimension)viewDimension;
-	} else {
-		entry.sampler.type = (WGPUSamplerBindingType)bindingType;
-	}
-	layoutEntries[index] = entry;
-}
+#define LAYOUT_STRIDE 6
 
-WgLayout wgCreateLayout(int32_t count, const char *label) {
+WgLayout wgCreateLayout(const int32_t *entries, int32_t count, const char *label) {
+	WGPUBindGroupLayoutEntry layoutEntries[MAX_ENTRIES];
+	for (int32_t i = 0; i < count; i++) {
+		const int32_t *e = entries + i * LAYOUT_STRIDE;
+		int32_t kind = e[2];
+		int32_t bindingType = e[3];
+		WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+		entry.binding = (uint32_t)e[0];
+		entry.visibility = (WGPUShaderStage)e[1];
+		if (kind == 0) {
+			entry.buffer.type = WGPUBufferBindingType_Uniform;
+			entry.buffer.hasDynamicOffset = 1;
+		} else if (kind == 1) {
+			entry.texture.sampleType = (WGPUTextureSampleType)bindingType;
+			entry.texture.viewDimension = (WGPUTextureViewDimension)e[4];
+		} else if (kind == 3) {
+			entry.buffer.type = (WGPUBufferBindingType)bindingType;
+		} else if (kind == 4) {
+			entry.storageTexture.access = (WGPUStorageTextureAccess)bindingType;
+			entry.storageTexture.format = (WGPUTextureFormat)e[5];
+			entry.storageTexture.viewDimension = (WGPUTextureViewDimension)e[4];
+		} else {
+			entry.sampler.type = (WGPUSamplerBindingType)bindingType;
+		}
+		layoutEntries[i] = entry;
+	}
 	WGPUBindGroupLayoutDescriptor desc = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
 	desc.label = text(label);
 	desc.entryCount = (size_t)count;
@@ -380,73 +370,35 @@ void wgReleaseLayout(WgLayout layout) {
 	if (layout) wgpuBindGroupLayoutRelease((WGPUBindGroupLayout)layout);
 }
 
-void wgVertexBuffer(int32_t slot, int32_t stride, int32_t stepMode) {
-	vertexBuffers[slot].arrayStride = (uint64_t)stride;
-	vertexBuffers[slot].stepMode = (WGPUVertexStepMode)stepMode;
-	vertexBuffers[slot].attributes = vertexAttributes[slot];
-}
+enum {
+	PL_BUFFER_COUNT,
+	PL_TARGET_COUNT,
+	PL_TOPOLOGY,
+	PL_STRIP_INDEX_FORMAT,
+	PL_CULL_MODE,
+	PL_FRONT_FACE,
+	PL_SAMPLE_COUNT,
+	PL_DEPTH_FORMAT,
+	PL_DEPTH_WRITE,
+	PL_DEPTH_COMPARE,
+	PL_STENCIL_READ_MASK,
+	PL_STENCIL_WRITE_MASK,
+	PL_DEPTH_BIAS,
+	PL_STENCIL_FRONT,
+	PL_STENCIL_BACK = PL_STENCIL_FRONT + 4,
+	PL_BUFFERS = PL_STENCIL_BACK + 4,
+	PL_BUFFER_STRIDE = 3 + MAX_ATTRIBUTES * 3,
+	PL_TARGETS = PL_BUFFERS + MAX_BUFFERS * PL_BUFFER_STRIDE,
+	PL_TARGET_STRIDE = 10
+};
 
-void wgVertexAttribute(int32_t slot, int32_t format, int32_t offset, int32_t location) {
-	WGPUVertexAttribute *attribute = &vertexAttributes[slot][vertexBuffers[slot].attributeCount];
-	attribute->format = (WGPUVertexFormat)format;
-	attribute->offset = (uint64_t)offset;
-	attribute->shaderLocation = (uint32_t)location;
-	vertexBuffers[slot].attributeCount += 1;
-}
-
-void wgColorTarget(
-	int32_t index,
-	int32_t format,
-	int32_t blendEnabled,
-	int32_t colorOperation,
-	int32_t colorSource,
-	int32_t colorDestination,
-	int32_t alphaOperation,
-	int32_t alphaSource,
-	int32_t alphaDestination,
-	int32_t writeMask) {
-	WGPUColorTargetState target = WGPU_COLOR_TARGET_STATE_INIT;
-	target.format = (WGPUTextureFormat)format;
-	target.writeMask = (WGPUColorWriteMask)writeMask;
-	if (blendEnabled) {
-		blendStates[index].color.operation = (WGPUBlendOperation)colorOperation;
-		blendStates[index].color.srcFactor = (WGPUBlendFactor)colorSource;
-		blendStates[index].color.dstFactor = (WGPUBlendFactor)colorDestination;
-		blendStates[index].alpha.operation = (WGPUBlendOperation)alphaOperation;
-		blendStates[index].alpha.srcFactor = (WGPUBlendFactor)alphaSource;
-		blendStates[index].alpha.dstFactor = (WGPUBlendFactor)alphaDestination;
-		target.blend = &blendStates[index];
-	}
-	colorTargets[index] = target;
-}
-
-void wgDepthStencil(
-	int32_t format,
-	int32_t depthWriteEnabled,
-	int32_t depthCompare,
-	uint32_t stencilReadMask,
-	uint32_t stencilWriteMask,
-	int32_t depthBias,
-	double depthBiasSlopeScale,
-	double depthBiasClamp) {
-	depthStencil = (WGPUDepthStencilState)WGPU_DEPTH_STENCIL_STATE_INIT;
-	depthStencil.format = (WGPUTextureFormat)format;
-	depthStencil.depthWriteEnabled =
-		depthWriteEnabled ? WGPUOptionalBool_True : WGPUOptionalBool_False;
-	depthStencil.depthCompare = (WGPUCompareFunction)depthCompare;
-	depthStencil.stencilReadMask = stencilReadMask;
-	depthStencil.stencilWriteMask = stencilWriteMask;
-	depthStencil.depthBias = depthBias;
-	depthStencil.depthBiasSlopeScale = (float)depthBiasSlopeScale;
-	depthStencil.depthBiasClamp = (float)depthBiasClamp;
-}
-
-void wgStencilFace(int32_t back, int32_t compare, int32_t failOp, int32_t depthFailOp, int32_t passOp) {
-	WGPUStencilFaceState *face = back ? &depthStencil.stencilBack : &depthStencil.stencilFront;
-	face->compare = (WGPUCompareFunction)compare;
-	face->failOp = (WGPUStencilOperation)failOp;
-	face->depthFailOp = (WGPUStencilOperation)depthFailOp;
-	face->passOp = (WGPUStencilOperation)passOp;
+static WGPUStencilFaceState stencilFaceOf(const int32_t *face) {
+	WGPUStencilFaceState state = WGPU_STENCIL_FACE_STATE_INIT;
+	state.compare = (WGPUCompareFunction)face[0];
+	state.failOp = (WGPUStencilOperation)face[1];
+	state.depthFailOp = (WGPUStencilOperation)face[2];
+	state.passOp = (WGPUStencilOperation)face[3];
+	return state;
 }
 
 static WGPUPipelineLayout pipelineLayoutOf(WgLayout uniformLayout, WgLayout resourceLayout, const char *label) {
@@ -467,30 +419,77 @@ WgPipeline wgCreatePipeline(
 	const char *fragmentEntry,
 	WgLayout uniformLayout,
 	WgLayout resourceLayout,
-	int32_t bufferCount,
-	int32_t targetCount,
-	int32_t topology,
-	int32_t stripIndexFormat,
-	int32_t cullMode,
-	int32_t frontFace,
-	int32_t sampleCount,
+	const int32_t *state,
+	const double *depthBias,
 	const char *label) {
 	WGPUPipelineLayout layout = pipelineLayoutOf(uniformLayout, resourceLayout, label);
 	WGPURenderPipeline pipeline = NULL;
 	if (layout) {
+		int32_t targetCount = state[PL_TARGET_COUNT];
+		WGPUVertexBufferLayout vertexBuffers[MAX_BUFFERS];
+		WGPUVertexAttribute vertexAttributes[MAX_BUFFERS][MAX_ATTRIBUTES];
+		WGPUColorTargetState colorTargets[MAX_TARGETS];
+		WGPUBlendState blendStates[MAX_TARGETS];
+		WGPUDepthStencilState depthStencil;
+		memset(vertexBuffers, 0, sizeof(vertexBuffers));
+		memset(colorTargets, 0, sizeof(colorTargets));
+		for (int32_t b = 0; b < state[PL_BUFFER_COUNT]; b++) {
+			const int32_t *buffer = state + PL_BUFFERS + b * PL_BUFFER_STRIDE;
+			if (buffer[0] == 0 && buffer[2] == 0) continue;
+			vertexBuffers[b].arrayStride = (uint64_t)buffer[0];
+			vertexBuffers[b].stepMode = (WGPUVertexStepMode)buffer[1];
+			vertexBuffers[b].attributeCount = (size_t)buffer[2];
+			vertexBuffers[b].attributes = vertexAttributes[b];
+			for (int32_t a = 0; a < buffer[2]; a++) {
+				vertexAttributes[b][a].format = (WGPUVertexFormat)buffer[3 + a * 3];
+				vertexAttributes[b][a].offset = (uint64_t)buffer[4 + a * 3];
+				vertexAttributes[b][a].shaderLocation = (uint32_t)buffer[5 + a * 3];
+			}
+		}
+		for (int32_t i = 0; i < targetCount; i++) {
+			const int32_t *t = state + PL_TARGETS + i * PL_TARGET_STRIDE;
+			if (t[0] == 0) continue;
+			WGPUColorTargetState target = WGPU_COLOR_TARGET_STATE_INIT;
+			target.format = (WGPUTextureFormat)t[0];
+			target.writeMask = (WGPUColorWriteMask)t[9];
+			if (t[1]) {
+				blendStates[i].color.operation = (WGPUBlendOperation)t[2];
+				blendStates[i].color.srcFactor = (WGPUBlendFactor)t[3];
+				blendStates[i].color.dstFactor = (WGPUBlendFactor)t[4];
+				blendStates[i].alpha.operation = (WGPUBlendOperation)t[5];
+				blendStates[i].alpha.srcFactor = (WGPUBlendFactor)t[6];
+				blendStates[i].alpha.dstFactor = (WGPUBlendFactor)t[7];
+				target.blend = &blendStates[i];
+			}
+			colorTargets[i] = target;
+		}
 		WGPURenderPipelineDescriptor desc = WGPU_RENDER_PIPELINE_DESCRIPTOR_INIT;
 		desc.label = text(label);
 		desc.layout = layout;
 		desc.vertex.module = (WGPUShaderModule)vertex;
 		desc.vertex.entryPoint = text(vertexEntry);
-		desc.vertex.bufferCount = (size_t)bufferCount;
+		desc.vertex.bufferCount = (size_t)state[PL_BUFFER_COUNT];
 		desc.vertex.buffers = vertexBuffers;
-		desc.primitive.topology = (WGPUPrimitiveTopology)topology;
-		desc.primitive.stripIndexFormat = (WGPUIndexFormat)stripIndexFormat;
-		desc.primitive.cullMode = (WGPUCullMode)cullMode;
-		desc.primitive.frontFace = (WGPUFrontFace)frontFace;
-		if (depthStencil.format != WGPUTextureFormat_Undefined) desc.depthStencil = &depthStencil;
-		desc.multisample.count = (uint32_t)sampleCount;
+		desc.primitive.topology = (WGPUPrimitiveTopology)state[PL_TOPOLOGY];
+		desc.primitive.stripIndexFormat = (WGPUIndexFormat)state[PL_STRIP_INDEX_FORMAT];
+		desc.primitive.cullMode = (WGPUCullMode)state[PL_CULL_MODE];
+		desc.primitive.frontFace = (WGPUFrontFace)state[PL_FRONT_FACE];
+		if (state[PL_DEPTH_FORMAT] != WGPUTextureFormat_Undefined) {
+			depthStencil = (WGPUDepthStencilState)WGPU_DEPTH_STENCIL_STATE_INIT;
+			depthStencil.format = (WGPUTextureFormat)state[PL_DEPTH_FORMAT];
+			depthStencil.depthWriteEnabled =
+				state[PL_DEPTH_WRITE] ? WGPUOptionalBool_True : WGPUOptionalBool_False;
+			depthStencil.depthCompare = (WGPUCompareFunction)state[PL_DEPTH_COMPARE];
+			depthStencil.stencilReadMask = (uint32_t)state[PL_STENCIL_READ_MASK];
+			depthStencil.stencilWriteMask = (uint32_t)state[PL_STENCIL_WRITE_MASK];
+			depthStencil.depthBias = state[PL_DEPTH_BIAS];
+			depthStencil.depthBiasSlopeScale = (float)depthBias[0];
+			depthStencil.depthBiasClamp = (float)depthBias[1];
+			depthStencil.stencilFront = stencilFaceOf(state + PL_STENCIL_FRONT);
+			depthStencil.stencilBack = stencilFaceOf(state + PL_STENCIL_BACK);
+			desc.depthStencil = &depthStencil;
+		}
+		desc.multisample.count = (uint32_t)state[PL_SAMPLE_COUNT];
 		WGPUFragmentState fragmentState = WGPU_FRAGMENT_STATE_INIT;
 		if (targetCount > 0) {
 			fragmentState.module = (WGPUShaderModule)fragment;
@@ -502,9 +501,6 @@ WgPipeline wgCreatePipeline(
 		pipeline = wgpuDeviceCreateRenderPipeline(device, &desc);
 		wgpuPipelineLayoutRelease(layout);
 	}
-	memset(vertexBuffers, 0, sizeof(vertexBuffers));
-	memset(colorTargets, 0, sizeof(colorTargets));
-	memset(&depthStencil, 0, sizeof(depthStencil));
 	return (WgPipeline)pipeline;
 }
 
@@ -576,51 +572,6 @@ int32_t wgBeginEncoder(void) {
 	return encoder ? 1 : 0;
 }
 
-void wgColorAttachment(
-	int32_t index,
-	WgView view,
-	WgView resolve,
-	int32_t loadOp,
-	int32_t storeOp,
-	int32_t depthSlice,
-	double r,
-	double g,
-	double b,
-	double a) {
-	WGPURenderPassColorAttachment attachment = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
-	if (depthSlice >= 0) attachment.depthSlice = (uint32_t)depthSlice;
-	attachment.view = (WGPUTextureView)view;
-	attachment.resolveTarget = (WGPUTextureView)resolve;
-	if (view) {
-		attachment.loadOp = (WGPULoadOp)loadOp;
-		attachment.storeOp = (WGPUStoreOp)storeOp;
-	}
-	attachment.clearValue.r = r;
-	attachment.clearValue.g = g;
-	attachment.clearValue.b = b;
-	attachment.clearValue.a = a;
-	colorAttachments[index] = attachment;
-}
-
-void wgDepthAttachment(
-	WgView view,
-	int32_t loadOp,
-	int32_t storeOp,
-	double clearValue,
-	int32_t stencil) {
-	WGPURenderPassDepthStencilAttachment attachment =
-		WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
-	attachment.view = (WGPUTextureView)view;
-	attachment.depthLoadOp = (WGPULoadOp)loadOp;
-	attachment.depthStoreOp = (WGPUStoreOp)storeOp;
-	attachment.depthClearValue = (float)clearValue;
-	if (stencil) {
-		attachment.stencilLoadOp = WGPULoadOp_Clear;
-		attachment.stencilStoreOp = WGPUStoreOp_Discard;
-	}
-	depthAttachment = attachment;
-}
-
 static WGPUPassTimestampWrites timestampWrites(WgQuerySet set, int32_t begin, int32_t end) {
 	WGPUPassTimestampWrites writes = WGPU_PASS_TIMESTAMP_WRITES_INIT;
 	writes.querySet = (WGPUQuerySet)set;
@@ -629,26 +580,69 @@ static WGPUPassTimestampWrites timestampWrites(WgQuerySet set, int32_t begin, in
 	return writes;
 }
 
+enum {
+	PASS_COLOR_COUNT,
+	PASS_WIDTH,
+	PASS_HEIGHT,
+	PASS_TIMESTAMP_BEGIN,
+	PASS_TIMESTAMP_END,
+	PASS_DEPTH_LOAD,
+	PASS_DEPTH_STORE,
+	PASS_DEPTH_STENCIL,
+	PASS_COLOR_OPS,
+	PASS_COLOR_OP_STRIDE = 3
+};
+enum { PASS_DEPTH_CLEAR = MAX_TARGETS * 4 };
+
 int32_t wgBeginPass(
-	int32_t colorCount,
-	int32_t depth,
-	int32_t width,
-	int32_t height,
+	const WgView *colorViews,
+	const WgView *resolveViews,
+	WgView depthView,
+	const int32_t *ints,
+	const double *reals,
 	const char *label,
 	WgQuerySet occlusionSet,
-	WgQuerySet timestampSet,
-	int32_t timestampBegin,
-	int32_t timestampEnd) {
-	passWidth = width;
-	passHeight = height;
+	WgQuerySet timestampSet) {
+	passWidth = ints[PASS_WIDTH];
+	passHeight = ints[PASS_HEIGHT];
+	WGPURenderPassColorAttachment colorAttachments[MAX_TARGETS];
+	for (int32_t i = 0; i < ints[PASS_COLOR_COUNT]; i++) {
+		const int32_t *op = ints + PASS_COLOR_OPS + i * PASS_COLOR_OP_STRIDE;
+		WGPURenderPassColorAttachment attachment = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+		if (op[2] >= 0) attachment.depthSlice = (uint32_t)op[2];
+		attachment.view = (WGPUTextureView)colorViews[i];
+		attachment.resolveTarget = (WGPUTextureView)resolveViews[i];
+		if (colorViews[i]) {
+			attachment.loadOp = (WGPULoadOp)op[0];
+			attachment.storeOp = (WGPUStoreOp)op[1];
+		}
+		attachment.clearValue.r = reals[i * 4];
+		attachment.clearValue.g = reals[i * 4 + 1];
+		attachment.clearValue.b = reals[i * 4 + 2];
+		attachment.clearValue.a = reals[i * 4 + 3];
+		colorAttachments[i] = attachment;
+	}
+	WGPURenderPassDepthStencilAttachment depthAttachment =
+		WGPU_RENDER_PASS_DEPTH_STENCIL_ATTACHMENT_INIT;
+	if (depthView) {
+		depthAttachment.view = (WGPUTextureView)depthView;
+		depthAttachment.depthLoadOp = (WGPULoadOp)ints[PASS_DEPTH_LOAD];
+		depthAttachment.depthStoreOp = (WGPUStoreOp)ints[PASS_DEPTH_STORE];
+		depthAttachment.depthClearValue = (float)reals[PASS_DEPTH_CLEAR];
+		if (ints[PASS_DEPTH_STENCIL]) {
+			depthAttachment.stencilLoadOp = WGPULoadOp_Clear;
+			depthAttachment.stencilStoreOp = WGPUStoreOp_Discard;
+		}
+	}
 	WGPURenderPassDescriptor desc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
 	desc.label = text(label);
 	desc.occlusionQuerySet = (WGPUQuerySet)occlusionSet;
-	WGPUPassTimestampWrites writes = timestampWrites(timestampSet, timestampBegin, timestampEnd);
+	WGPUPassTimestampWrites writes =
+		timestampWrites(timestampSet, ints[PASS_TIMESTAMP_BEGIN], ints[PASS_TIMESTAMP_END]);
 	if (timestampSet) desc.timestampWrites = &writes;
-	desc.colorAttachmentCount = (size_t)colorCount;
+	desc.colorAttachmentCount = (size_t)ints[PASS_COLOR_COUNT];
 	desc.colorAttachments = colorAttachments;
-	if (depth) desc.depthStencilAttachment = &depthAttachment;
+	if (depthView) desc.depthStencilAttachment = &depthAttachment;
 	pass = wgpuCommandEncoderBeginRenderPass(encoder, &desc);
 	return pass ? 1 : 0;
 }
