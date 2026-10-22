@@ -11,11 +11,13 @@ import {
 	addTexture, releaseTexture, releaseMaterial, releaseMesh,
 	reserveUniforms, writeUniforms, closeContext,
 } from "../../src/void3d/draw";
+import { ParticleSystemAsset, SimulationSpace } from "../../src/particles/asset";
+import { constantCurve, linearCurve, curveOf, key, constantColor, rgbaColor } from "../../src/particles/curve";
 import {
-	ParticleEmitter, EmitterState, ShapeKind, ValueKind, constant, updateEmitter,
-	writeVisualInstances,
-} from "../../src/void3d/particles";
-import { ParticleVisualFrame } from "../../src/void3d/particleVisual";
+	ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, AGE, FRAME,
+} from "../../src/particles/system";
+import { AtlasTile } from "../../src/void3d/billboard";
+import { ParticleWriter3D, writeParticles } from "../../src/void3d/particleWriter";
 import { Camera3D, CameraView, ProjectionKind } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
 import {
@@ -49,11 +51,12 @@ let context = DrawContext.withUniformCapacity(
 );
 let forward: ForwardRenderer | null = null;
 let pixel: PixelArtRenderer | null = null;
-let actorA: ParticleEmitter = makeEmitter(true);
-let actorB: ParticleEmitter = makeEmitter(false);
-let frames: Vec<ParticleVisualFrame> = [
-	{ tile: { u: 0, v: 0, u2: 0.5, v2: 1 }, pixelWidth: 2, pixelHeight: 1 },
-	{ tile: { u: 0.5, v: 0, u2: 1, v2: 1 }, pixelWidth: 2, pixelHeight: 1 },
+let actorA: ParticleSystem = makeEmitter(true);
+let actorB: ParticleSystem = makeEmitter(false);
+let writer: ParticleWriter3D = ParticleWriter3D.create();
+let frames: Vec<AtlasTile> = [
+	{ u: 0, v: 0, u2: 0.5, v2: 1 },
+	{ u: 0.5, v: 0, u2: 1, v2: 1 },
 ];
 let streams: Vec<MeshId> = [];
 let items: Vec<DrawItem> = [];
@@ -70,18 +73,34 @@ function fail(message: string): void {
 	voidCaptureExit(1);
 }
 
-function makeEmitter(first: boolean): ParticleEmitter {
-	const state: EmitterState = {
-		...EmitterState.defaults(), maxParts: 1, emitRate: constant(0),
-		shape: { kind: ShapeKind.Point }, speed: constant(0), size: constant(first ? 1.2 : 1.0),
-		ratio: constant(first ? 1.5 : 1.0), alpha: constant(first ? 0.25 : 1.0),
-		rotation: constant(first && control != 1 ? 1.5707963267948966 : 0.0),
-		frame: first ? constant(0.75) : { kind: ValueKind.Linear, start: 0, length: 1 },
-		frameCount: 2,
-	};
-	const made = ParticleEmitter.create(state, first ? 19 : 37);
-	if (made.ok) { return made.value; }
-	unreachable;
+// Actor A is 1.2 wide and 0.9 high (1.2 times a ratio of 1.5 times the 2:1 texel aspect), a
+// quarter opaque, turned a quarter turn, on frame 1, anchored at (0.25, -0.5); actor B is 1 wide
+// and 0.5 high, opaque, and walks its two frames over its life.
+function makeEmitter(first: boolean): ParticleSystem {
+	let a = ParticleSystemAsset.defaults();
+	a.main.duration = 10.0;
+	a.main.maxParticles = 1;
+	a.main.startLifetime = constantCurve(1.0);
+	a.main.startSpeed = constantCurve(0.0);
+	a.main.simulationSpace = SimulationSpace.World;
+	a.main.startSize3D = true;
+	a.main.startSizeX = constantCurve(first ? 1.2 : 1.0);
+	a.main.startSizeY = constantCurve(first ? 0.9 : 0.5);
+	a.main.startRotationZ = constantCurve(first && control != 1 ? 1.5707963267948966 : 0.0);
+	a.main.startColor = constantColor(rgbaColor(1.0, 1.0, 1.0, first ? 0.25 : 1.0));
+	a.shape.enabled = false;
+	a.emission.rateOverTime = constantCurve(1000.0);
+	a.renderer.pivot = vec3(first ? -0.25 : 0.0, first ? 0.5 : 0.0, 0.0);
+	a.textureSheetAnimation.enabled = true;
+	a.textureSheetAnimation.numTilesX = 2;
+	a.textureSheetAnimation.numTilesY = 1;
+	a.textureSheetAnimation.frameOverTime = first ? constantCurve(0.75)
+		: curveOf(1.0, linearCurve([key(0.0, 0.0), key(1.0, 1.0)]));
+	const made = ParticleSystem.create(a, first ? 19 : 37);
+	if (!made.ok) { unreachable; }
+	let sys = made.value;
+	sys.clock.fixedStep = 1.0 / 60.0;
+	return sys;
 }
 
 function init(): void {
@@ -129,12 +148,20 @@ function init(): void {
 		}
 	}
 	if (!releaseTexture(context, atlas.value).ok) { fail("atlas caller lease refused"); }
-	actorA.emitCount = 1;
-	actorB.emitCount = 1;
-	if (!updateEmitter(actorA, 0, identity()).ok
-		|| !updateEmitter(actorB, 0, identity()).ok) { fail("initial particle update refused"); }
-	actorA.particles[0].position = ROOT_A;
-	actorB.particles[0].position = ROOT_B;
+	playSystem(actorA, identity());
+	playSystem(actorB, identity());
+	if (!updateSystem(actorA, 1.0 / 60.0, identity()).ok
+		|| !updateSystem(actorB, 1.0 / 60.0, identity()).ok
+		|| actorA.count != 1 || actorB.count != 1) { fail("initial particle update refused"); }
+	place(actorA, ROOT_A);
+	place(actorB, ROOT_B);
+}
+
+function place(ref sys: ParticleSystem, at: Vec3): void {
+	const cap: int32 = sys.capacity;
+	sys.data[POS_X * cap] = at.x;
+	sys.data[POS_Y * cap] = at.y;
+	sys.data[POS_Z * cap] = at.z;
 }
 
 function viewOf(): CameraView {
@@ -172,7 +199,7 @@ function blue(rgba: int64): boolean {
 
 function check(view: CameraView): string {
 	if (!blue(probe(view, ROOT_A, 0.45, 0.6))) {
-		return actorA.particles[0].frame != 1 ? "atlas frame texels" : "clockwise rotated texel";
+		return actorA.data[FRAME * actorA.capacity] != 1 ? "atlas frame texels" : "clockwise rotated texel";
 	}
 	const lower = probe(view, ROOT_A, 0.45, 0);
 	if (((lower >> 24) & 255) <= ((lower >> 8) & 255) + 10
@@ -183,7 +210,7 @@ function check(view: CameraView): string {
 	if (stage == 0) {
 		if (((second >> 24) & 255) <= ((second >> 8) & 255) + 10) { return "second initial frame"; }
 	} else if (!blue(second)) { return "second animated frame"; }
-	if (actorA.particles[0].frame != 1 || actorA.particles[0].time != 0) {
+	if (actorA.data[FRAME * actorA.capacity] != 1 || actorA.data[AGE * actorA.capacity] > 0.05) {
 		return "updating second actor mutated first";
 	}
 	return "";
@@ -191,18 +218,16 @@ function check(view: CameraView): string {
 
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("framebuffer changed"); }
-	if (stage == 1 && !updateEmitter(actorB, 0.5, identity()).ok) { fail("animation refused"); }
-	if (control == 3) { actorA.particles[0].frame = 0; }
+	if (stage == 1 && !updateSystem(actorB, 0.5, identity()).ok) { fail("animation refused"); }
+	if (control == 3) { actorA.data[FRAME * actorA.capacity] = 0.0; }
 	const view = viewOf();
 	view.writeCameraBlock(cameraValues);
-	const first = writeVisualInstances(
-		actorA, identity(), view.viewProj, frames, { x: 0.25, y: -0.5 }, valuesA,
-	);
-	const second = writeVisualInstances(
-		actorB, identity(), view.viewProj, frames, { x: 0, y: 0 }, valuesB,
-	);
+	const eye: Vec3 = vec3(0, 0, 4);
+	const lookDir: Vec3 = vec3(0, 0, -1);
+	const first = writeParticles(writer, actorA, frames, eye, lookDir, valuesA);
+	const second = writeParticles(writer, actorB, frames, eye, lookDir, valuesB);
 	if (!first.ok || !second.ok) { fail("visual instance write refused"); }
-	if (control == 2) { valuesA[4] = valuesA[3] * actorA.particles[0].ratio; }
+	if (control == 2) { valuesA[4] = valuesA[3] * 1.5; }
 	if (!writeStream(context, streams[0], valuesA, 1).ok
 		|| !writeStream(context, streams[1], valuesB, 1).ok) { fail("stream upload refused"); }
 	const art = pixel;

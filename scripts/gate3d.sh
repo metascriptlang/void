@@ -1021,12 +1021,9 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:refresh scene:refreshChecked
 	skin80ose:syncSkinPose skin71eometry:deformPublished skin80alette:writePalette
 	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow scene:requireOpen scene:requireOwn
 	draw:requireOpen animation:requirePaired animation:update animation:keys animation:blendTo
-	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
-	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
-	particles:emitterValue particles:writeInstances particles:writeOrdered particles:sortByDepth
-	particles:depthKey particles:placeOf particles:ringPoint particles:damped particles:bentToward
-	particle78oise:noiseDirection particle78oise:curl3 particle78oise:noise4 particles:boxPosition
-	particles:boxHalfExtent particles:polynomial draw:writeStream draw:pinMesh draw:unpinMesh
+	animation:syncPose animation:syncMeshFrame particle87riter:writeParticlePoints
+	particle87riter:drawOrder particle87riter:sortOrder particle87riter:placed
+	particle87riter:finite draw:writeStream draw:pinMesh draw:unpinMesh
 	draw:letGoOfMesh draw:meshPinned draw:hasMesh draw:issuedMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit draw:slotBit gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
