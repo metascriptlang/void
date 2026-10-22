@@ -5147,6 +5147,13 @@ suppression. The port/license allows an altered copy if its origin and change ar
 `heaps3dParity.md` explicitly forbids vendor edits in this session; ownership/permission for
 that fix is a user decision, recorded on the M6 card. No vendor/cache/setup edit was made.
 
+**Fixed 2026-10-23 (the person chose the tracked copy).** `src/void3d/mikktspace/` holds the pinned
+`mikktspace.c/.h`, marked as altered, with both rotations masked (`(32-t)&31`); `mikkTangents.c`
+includes it and `setup.sh` no longer fetches MikkTSpace. Red: on BUILD 4b5816aea the M5 stack's T0
+aborted at vendor line 1667 (`shift exponent 32`). Green: `sphereTangentsCheck` 2/2, after the
+check read the tangent at its real offset 12 (it read the colour at 8, never reached before the
+abort); `meshDataCheck`, `skinTangentCheck`, `gltfMaterialCheck`, `skinMeshCheck` unchanged green.
+
 ### Bounds intersection, Heaps capability acceptance
 
 Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/col/Bounds.hx` `intersection`
