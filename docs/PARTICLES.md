@@ -35,7 +35,8 @@ curve. Unity's per-particle two-mode random cannot be expressed in Heaps' `VRand
 
 **Velocity follows Unity's model.** A stored velocity (`direction * startSpeed`, plus forces and
 gravity) is combined with an animated velocity that is not stored. Godot uses the same model.
-Heaps' `speed` curve lowers to a `directionalSpeed` extra (AUTHORING §5.3).
+Heaps' `speed` curve lowers to `startSpeed` + `velocityOverLifetime.speedModifier`, which is exact
+when no force acts (AUTHORING §5.3).
 
 **One model covers 2D and 3D.** A `space2D` flag zeroes z in the integrator, following Godot's
 `PARTICLE_FLAG_DISABLE_Z` (`scene/2d/gpu_particles_2d.cpp:164-166`), so there is no second type
@@ -44,9 +45,25 @@ DrawKind. For 3D, all emitters share one stream per frame.
 
 **`EmitterState` becomes a Heaps compatibility front end.** `fromHeaps(state)` lowers it into the
 new asset. The Heaps oracle `tests/oracle/particles3d.cases` runs through that lowering
-(AUTHORING §5.5). Per-particle hash randoms break the oracle's draw-order parity, because Heaps
-draws from one stream in update order (RUNTIME §3.2). Whether those cases become declared
-divergences is open.
+(AUTHORING §5.5). The person chose per-particle hash randoms over Heaps' single stream on
+2026-10-23, for performance and the Unity ecosystem. The oracle cases that depend on Heaps'
+draw order become declared divergences. The cases without randoms still prove the lowering.
+
+**Only Unity modules are authored.** The person decided on 2026-10-23 to keep no Godot or Heaps
+extras beside them, because each extra duplicates a Unity module. That decision removes
+`turbulence`, `linearDamping`, `directionalSpeed`, `angleCurve` and `HeapsCone`. `fromHeaps`
+lowers onto the nearest Unity module:
+- Heaps' cone becomes a Unity cone with radius 0;
+- the angle curve becomes angular velocity, its derivative;
+- damping becomes `limitVelocity.drag`;
+- Godot turbulence becomes Noise.
+
+Where that lowering is not exact, the case is a declared divergence. As a result, the campfire and
+card-table effects are re-tuned on the Unity modules and no longer match URG's turbulence.
+
+**Gradients carry a `colorSpace`.** The importer reads it from the Unity project's colour space,
+a hand-written asset defaults to Linear, and `fromHeaps` sets sRGB. The person decided this on
+2026-10-23. It changes only the LUT bake.
 
 **Runtime.** The CPU simulation stores SoA columns per emitter, about 44–60 B per particle. Each
 particle carries one `uint32` seed, and its k-th random is `hash(seed, k)`; Godot and hanabi do
@@ -78,7 +95,7 @@ columns. Collision is swept, with one hit per step. An asset's `World` collision
 colliders, because Void has no physics. Triggers keep a bitmask of which particles are inside.
 Sub-emitters spawn children in the same update: parents run first, the child seed is a hash, and a
 cycle is refused when the tree is built. Orbital velocity uses Godot's exact rotation. Limit
-Velocity applies drag first, then the clamp. Unity Noise and Godot turbulence both stay. ForceField
+Velocity applies drag first, then the clamp. Unity Noise uses Godot's curl source with Unity's parameters. ForceField
 ships Godot's attractor plus the Unity names that map 1:1. SkinnedMesh shape waits until void3d
 exposes CPU skinned positions, because sokol has no readback. The fixed 15-step order is in
 SIM §6.3.
@@ -113,5 +130,6 @@ Oracles (SIM §8):
 - the Heaps oracle through `fromHeaps`;
 - the shady kernel's CPU result against the GPU result within tolerance.
 
-Unity parity needs captures recorded from a running Unity. Until those exist, each such formula is
-documented as "Unity-shaped".
+Unity parity comes from capture scenes run on this machine's Unity 6000.6.6f1 through the
+`unity` CLI in batch mode. They record per-module numbers that are committed as goldens together
+with the Unity version. Until a formula has its capture, it is documented as "Unity-shaped".
