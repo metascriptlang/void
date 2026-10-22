@@ -219,3 +219,51 @@ test "an indexed uint16 quad draws from a vertex buffer written twice in one fra
 	assert !uniforms.isAlive();
 	device.destroy();
 }
+
+test "a partial writeTexture changes only its sub-rect, read from an offset with a padded row" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "atlas",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	let grey: Vec<uint8> = new Array(SIZE * SIZE * 4);
+	for (let i = 0; i < SIZE * SIZE; i++) {
+		grey[i * 4] = 9;
+		grey[i * 4 + 1] = 9;
+		grey[i * 4 + 2] = 9;
+		grey[i * 4 + 3] = 255;
+	}
+	device.queue.writeTexture({ texture: texture }, grey, { offset: 0, bytesPerRow: SIZE * 4, rowsPerImage: SIZE }, { width: SIZE, height: SIZE, depthOrArrayLayers: 1 });
+	let patch: Vec<uint8> = new Array(48);
+	for (let i = 0; i < 48; i++) { patch[i] = 77; }
+	for (let row = 0; row < 2; row++) {
+		for (let column = 0; column < 4; column++) {
+			const at = 8 + row * 24 + column * 4;
+			patch[at] = 255;
+			patch[at + 1] = 0;
+			patch[at + 2] = 0;
+			patch[at + 3] = 255;
+		}
+	}
+	device.queue.writeTexture(
+		{ texture: texture, origin: { x: 10, y: 20, z: 0 } },
+		patch,
+		{ offset: 8, bytesPerRow: 24, rowsPerImage: 2 },
+		{ width: 4, height: 2, depthOrArrayLayers: 1 },
+	);
+	const pixels = readPixels(texture);
+	const GREY: uint32 = 0x090909FF;
+	for (let y = 20; y < 22; y++) {
+		for (let x = 10; x < 14; x++) { assert pixel(pixels, x, y) == RED; }
+	}
+	assert pixel(pixels, 9, 20) == GREY;
+	assert pixel(pixels, 14, 20) == GREY;
+	assert pixel(pixels, 10, 19) == GREY;
+	assert pixel(pixels, 13, 22) == GREY;
+	assert pixel(pixels, 0, 0) == GREY;
+	assert pixel(pixels, 63, 63) == GREY;
+	device.destroy();
+}
