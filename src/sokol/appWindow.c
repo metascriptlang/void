@@ -173,20 +173,27 @@ int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 #define PLATFORM(name) voidWeb##name
 #elif defined(__ANDROID__)
 #define PLATFORM(name) voidAndroid##name
-__attribute__((noreturn)) static void notPortedAndroid(const char *feature) { fail("%s is not ported to Android yet (src/sokol/appWindow.c)", feature); }
-static void voidAndroidCancelQuit(void) { notPortedAndroid("voidCancelQuit"); }
-static void voidAndroidSetClipboard(const char *utf8) { (void)utf8; notPortedAndroid("the clipboard"); }
-static const char *voidAndroidClipboard(void) { notPortedAndroid("the clipboard"); }
-static void voidAndroidSetCursor(int cursor) { (void)cursor; notPortedAndroid("the mouse cursor"); }
-static int voidAndroidCursor(void) { notPortedAndroid("the mouse cursor"); }
-static void voidAndroidShowMouse(bool shown) { (void)shown; notPortedAndroid("showing and hiding the mouse"); }
-static bool voidAndroidMouseShown(void) { notPortedAndroid("showing and hiding the mouse"); }
-static void voidAndroidLockMouse(bool locked) { (void)locked; notPortedAndroid("the mouse lock"); }
-static bool voidAndroidMouseLocked(void) { notPortedAndroid("the mouse lock"); }
-static void voidAndroidToggleFullscreen(void) { notPortedAndroid("fullscreen"); }
-static bool voidAndroidIsFullscreen(void) { notPortedAndroid("fullscreen"); }
-static int voidAndroidDroppedCount(void) { notPortedAndroid("dropped files"); }
-static const char *voidAndroidDroppedPath(int i) { (void)i; notPortedAndroid("dropped files"); }
+#define ANDROID_CLIPBOARD_SIZE 8192
+static char s_androidClipboard[ANDROID_CLIPBOARD_SIZE];
+static int s_androidCursor = 0;
+static bool s_androidMouseShown = true;
+static bool s_androidMouseLocked = false;
+static void voidAndroidCancelQuit(void) {}
+static void voidAndroidSetClipboard(const char *utf8) {
+	if (strlen(utf8) >= sizeof s_androidClipboard) fail("the clipboard holds at most %d bytes on Android; got %d", (int)sizeof s_androidClipboard - 1, (int)strlen(utf8));
+	strcpy(s_androidClipboard, utf8);
+}
+static const char *voidAndroidClipboard(void) { return s_androidClipboard; }
+static void voidAndroidSetCursor(int cursor) { s_androidCursor = cursor; }
+static int voidAndroidCursor(void) { return s_androidCursor; }
+static void voidAndroidShowMouse(bool shown) { s_androidMouseShown = shown; }
+static bool voidAndroidMouseShown(void) { return s_androidMouseShown; }
+static void voidAndroidLockMouse(bool locked) { s_androidMouseLocked = locked; }
+static bool voidAndroidMouseLocked(void) { return s_androidMouseLocked; }
+static void voidAndroidToggleFullscreen(void) {}
+static bool voidAndroidIsFullscreen(void) { return false; }
+static int voidAndroidDroppedCount(void) { return 0; }
+static const char *voidAndroidDroppedPath(int i) { (void)i; return ""; }
 #elif defined(__linux__)
 #define PLATFORM(name) voidLinux##name
 #elif defined(__APPLE__)
