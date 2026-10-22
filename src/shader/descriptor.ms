@@ -5,13 +5,18 @@
 import {
 	DeclarationKind,
 	ExprKind,
+	IoDirection,
 	ShaderExpr,
 	ShaderModule,
 	ShaderStage,
 	ShaderStmt,
 	ShaderType,
 	ShaderTypeKind,
+	StmtKind,
+	assignOf,
+	exprOf,
 	irErrors,
+	stmtOf,
 } from "./ir";
 import { irFromText } from "./irText";
 import { ShaderTarget, bindingSlots } from "./layout";
@@ -119,7 +124,39 @@ function stageModule(text: string, on: string[], what: string): Result<ShaderMod
 	return Result.ok(specialized.value);
 }
 
+function returnsWritten(stmts: ShaderStmt[], output: ShaderExpr): ShaderStmt[] {
+	let out: ShaderStmt[] = [];
+	for (const s of stmts) {
+		s.init = returnsWritten(s.init, output);
+		s.update = returnsWritten(s.update, output);
+		s.body = returnsWritten(s.body, output);
+		s.otherwise = returnsWritten(s.otherwise, output);
+		for (const k of s.cases) { k.body = returnsWritten(k.body, output); }
+		if (s.kind == StmtKind.Return && s.expr.type.kind != ShaderTypeKind.Void) {
+			out.push(assignOf(exprOf(ExprKind.Io, output.type, output.index, []), s.expr));
+			out.push(stmtOf(StmtKind.Return, new ShaderExpr(), []));
+		} else {
+			out.push(s);
+		}
+	}
+	return out;
+}
+
+// The IR lets an entry `return` its single colour; printGlsl450 writes it to the stage's output,
+// the HLSL and WGSL printers print what is there, so the write is spelled out here.
+function colourWritten(m: ShaderModule): void {
+	for (const e of m.entries) {
+		const index = m.ios.findIndex((io) => io.stage == e.stage &&
+			io.direction == IoDirection.Out);
+		if (index < 0) { continue; }
+		const output = exprOf(ExprKind.Io, m.ios[index].type, index as int32, []);
+		let f = m.functions[e.functionIndex];
+		f.body = returnsWritten(f.body, output);
+	}
+}
+
 function checked(m: ShaderModule, what: string): Result<ShaderModule, string> {
+	colourWritten(m);
 	const broken = irErrors(m);
 	if (broken.length > 0) { return Result.err(what + ": " + broken[0]); }
 	return Result.ok(m);
