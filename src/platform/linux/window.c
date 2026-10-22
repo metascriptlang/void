@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "../clock.h"
+#include "../frameTiming.h"
 
 #define X11_KEYCODES 256
 
@@ -911,6 +912,7 @@ static struct {
 	bool cleanupCalled;
 	bool quitRequested;
 	bool quitOrdered;
+	VoidFrameTiming timing;
 	uint64_t frameCount;
 	int windowWidth;
 	int windowHeight;
@@ -1826,6 +1828,7 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	memset(&s, 0, sizeof s);
 	s.desc = *desc;
 	s.firstFrame = true;
+	voidFrameTimingInit(&s.timing);
 	s.windowWidth = s.framebufferWidth = desc->width;
 	s.windowHeight = s.framebufferHeight = desc->height;
 	s.x11.windowState = NormalState;
@@ -1851,6 +1854,7 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	showWindow();
 	XFlush(s.x11.display);
 	while (!s.quitOrdered) {
+		voidFrameTimingUpdate(&s.timing, 0.0);
 		int count = XPending(s.x11.display);
 		while (count--) {
 			XEvent event;
@@ -1882,3 +1886,23 @@ uint64_t voidLinuxFrameCount(void) { return s.frameCount; }
 void voidLinuxRequestQuit(void) { s.quitRequested = true; }
 void voidLinuxSetTitle(const char *title) { updateWindowTitle(title); }
 void voidLinuxSwapBuffers(void) { s.glx.SwapBuffers(s.x11.display, s.glx.window); }
+
+__attribute__((noreturn)) static void notPorted(const char *feature) {
+	fprintf(stderr, "void: %s is not ported to Linux yet (src/platform/linux/window.c)\n", feature);
+	abort();
+}
+
+void voidLinuxCancelQuit(void) { s.quitRequested = false; }
+double voidLinuxFrameDuration(void) { return s.timing.smoothDt; }
+void voidLinuxSetClipboard(const char *utf8) { (void)utf8; notPorted("the clipboard"); }
+const char *voidLinuxClipboard(void) { notPorted("the clipboard"); }
+void voidLinuxSetCursor(int cursor) { (void)cursor; notPorted("the mouse cursor"); }
+int voidLinuxCursor(void) { notPorted("the mouse cursor"); }
+void voidLinuxShowMouse(bool shown) { (void)shown; notPorted("showing and hiding the mouse"); }
+bool voidLinuxMouseShown(void) { notPorted("showing and hiding the mouse"); }
+void voidLinuxLockMouse(bool locked) { (void)locked; notPorted("the mouse lock"); }
+bool voidLinuxMouseLocked(void) { notPorted("the mouse lock"); }
+void voidLinuxToggleFullscreen(void) { notPorted("fullscreen"); }
+bool voidLinuxIsFullscreen(void) { notPorted("fullscreen"); }
+int voidLinuxDroppedCount(void) { notPorted("dropped files"); }
+const char *voidLinuxDroppedPath(int i) { (void)i; notPorted("dropped files"); }

@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <shellapi.h>
+
+#include "../frameTiming.h"
 
 #define CLASS_NAME L"VOIDWINDOW"
 #define TITLE_UNITS 256
@@ -160,7 +163,22 @@ static struct {
 		bool posValid;
 		bool tracked;
 		uint8_t captureMask;
+		bool shown;
+		bool locked;
+		bool requestedLock;
+		int cursor;
+		bool lockPosValid;
+		POINT lockPos;
+		bool rawPosValid;
+		LONG rawX, rawY;
 	} mouse;
+	HCURSOR standardCursors[VOID_CURSOR_COUNT];
+	VoidFrameTiming timing;
+	bool fullscreen;
+	RECT storedWindowRect;
+	int droppedCount;
+	char **droppedPaths;
+	char *clipboard;
 	VoidAppEvent event;
 } s;
 
@@ -246,6 +264,7 @@ static void releaseMouse(uint8_t mask) {
 }
 
 static void mouseUpdate(LPARAM lParam) {
+	if (s.mouse.locked) return;
 	const float x = (float)GET_X_LPARAM(lParam) * s.dpi.mouseScale;
 	const float y = (float)GET_Y_LPARAM(lParam) * s.dpi.mouseScale;
 	if (s.mouse.posValid) {
@@ -288,6 +307,10 @@ static void keyEvent(VoidAppEventType type, int scanCode, bool repeat) {
 	s.event.keyCode = (VoidKeyCode)keyTable[scanCode];
 	s.event.keyRepeat = repeat;
 	callEvent();
+	if (type == VOID_EVENT_KEY_DOWN && s.event.modifiers == VOID_MODIFIER_CTRL && s.event.keyCode == VOID_KEY_V) {
+		initEvent(VOID_EVENT_CLIPBOARD_PASTED);
+		callEvent();
+	}
 }
 
 static void charEvent(uint32_t c, bool repeat) {
@@ -307,6 +330,24 @@ static void charEvent(uint32_t c, bool repeat) {
 	callEvent();
 }
 
+static char *wideToUtf8(const WCHAR *wide) {
+	const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+	if (bytes <= 0) fail("WideCharToMultiByte");
+	char *utf8 = (char *)malloc((size_t)bytes);
+	if (utf8 == NULL) fail("malloc for a UTF-8 string");
+	if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, bytes, NULL, NULL) == 0) fail("WideCharToMultiByte");
+	return utf8;
+}
+
+static WCHAR *utf8ToWide(const char *utf8) {
+	const int units = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+	if (units <= 0) fail("MultiByteToWideChar");
+	WCHAR *wide = (WCHAR *)malloc((size_t)units * sizeof(WCHAR));
+	if (wide == NULL) fail("malloc for a UTF-16 string");
+	if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, units) == 0) fail("MultiByteToWideChar");
+	return wide;
+}
+
 static void setScales(float windowScale) {
 	s.dpi.windowScale = windowScale;
 	s.dpi.contentScale = s.desc.highDpi ? windowScale : 1.0f;
@@ -318,6 +359,157 @@ static void dpiChanged(HWND hwnd, const RECT *proposed) {
 	setScales((float)GetDpiForWindow(hwnd) / 96.0f);
 	SetWindowPos(hwnd, NULL, proposed->left, proposed->top, proposed->right - proposed->left,
 		proposed->bottom - proposed->top, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static void setFullscreen(bool fullscreen, UINT swpFlags) {
+	HMONITOR monitor = MonitorFromWindow(s.hwnd, MONITOR_DEFAULTTONEAREST);
+	MONITORINFO minfo;
+	ZeroMemory(&minfo, sizeof minfo);
+	minfo.cbSize = sizeof minfo;
+	GetMonitorInfoW(monitor, &minfo);
+	const DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+	DWORD style;
+	RECT rect;
+	s.fullscreen = fullscreen;
+	if (!s.fullscreen) {
+		style = WS_CLIPSIBLINGS | WS_CLIPCHILDREN | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SIZEBOX;
+		rect = s.storedWindowRect;
+	} else {
+		GetWindowRect(s.hwnd, &s.storedWindowRect);
+		style = WS_POPUP | WS_SYSMENU | WS_VISIBLE;
+		rect = minfo.rcMonitor;
+		AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+	}
+	SetWindowLongPtrW(s.hwnd, GWL_STYLE, (LONG_PTR)style);
+	SetWindowPos(s.hwnd, HWND_TOP, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, swpFlags | SWP_FRAMECHANGED);
+}
+
+static void initCursors(void) {
+	static const int ids[VOID_CURSOR_COUNT] = {
+		[VOID_CURSOR_ARROW] = 32512,
+		[VOID_CURSOR_IBEAM] = 32513,
+		[VOID_CURSOR_CROSSHAIR] = 32515,
+		[VOID_CURSOR_POINTING_HAND] = 32649,
+		[VOID_CURSOR_RESIZE_EW] = 32644,
+		[VOID_CURSOR_RESIZE_NS] = 32645,
+		[VOID_CURSOR_RESIZE_NWSE] = 32642,
+		[VOID_CURSOR_RESIZE_NESW] = 32643,
+		[VOID_CURSOR_RESIZE_ALL] = 32646,
+		[VOID_CURSOR_NOT_ALLOWED] = 32648,
+	};
+	for (int i = 0; i < VOID_CURSOR_COUNT; i++) {
+		if (ids[i] != 0) s.standardCursors[i] = (HCURSOR)LoadImageW(NULL, MAKEINTRESOURCEW(ids[i]), IMAGE_CURSOR, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
+		if (s.standardCursors[i] == NULL) s.standardCursors[i] = LoadCursorW(NULL, MAKEINTRESOURCEW(32512));
+	}
+}
+
+static bool cursorInContentArea(void) {
+	POINT pos;
+	if (!GetCursorPos(&pos)) return false;
+	if (WindowFromPoint(pos) != s.hwnd) return false;
+	RECT area;
+	GetClientRect(s.hwnd, &area);
+	ClientToScreen(s.hwnd, (POINT *)&area.left);
+	ClientToScreen(s.hwnd, (POINT *)&area.right);
+	return PtInRect(&area, pos) == TRUE;
+}
+
+static void updateCursor(bool skipAreaTest) {
+	if (!skipAreaTest && !cursorInContentArea()) return;
+	SetCursor(s.mouse.shown ? s.standardCursors[s.mouse.cursor] : NULL);
+}
+
+static void doLockMouse(void) {
+	s.mouse.locked = true;
+	ShowCursor(FALSE);
+	s.mouse.dx = 0.0f;
+	s.mouse.dy = 0.0f;
+	releaseMouse(0xFF);
+	s.mouse.lockPosValid = GetCursorPos(&s.mouse.lockPos) != 0;
+	RECT client;
+	GetClientRect(s.hwnd, &client);
+	POINT mid = { (client.right - client.left) / 2, (client.bottom - client.top) / 2 };
+	ClientToScreen(s.hwnd, &mid);
+	RECT clip = { mid.x, mid.y, mid.x, mid.y };
+	ClipCursor(&clip);
+	const RAWINPUTDEVICE rid = { 0x01, 0x02, 0, s.hwnd };
+	if (!RegisterRawInputDevices(&rid, 1, sizeof rid)) fail("RegisterRawInputDevices for the mouse lock");
+	s.mouse.rawPosValid = false;
+}
+
+static void doUnlockMouse(void) {
+	s.mouse.locked = false;
+	ShowCursor(TRUE);
+	s.mouse.dx = 0.0f;
+	s.mouse.dy = 0.0f;
+	releaseMouse(0xFF);
+	const RAWINPUTDEVICE rid = { 0x01, 0x02, RIDEV_REMOVE, NULL };
+	if (!RegisterRawInputDevices(&rid, 1, sizeof rid)) fail("RegisterRawInputDevices to end the mouse lock");
+	ClipCursor(NULL);
+	if (s.mouse.lockPosValid) {
+		SetCursorPos(s.mouse.lockPos.x, s.mouse.lockPos.y);
+		s.mouse.lockPosValid = false;
+	}
+}
+
+static void updateMouseLock(void) {
+	if (s.hwnd != GetForegroundWindow()) {
+		if (s.mouse.locked) doUnlockMouse();
+		return;
+	}
+	if (s.mouse.requestedLock == s.mouse.locked) return;
+	if (s.mouse.requestedLock) doLockMouse();
+	else doUnlockMouse();
+}
+
+static void rawMouseInput(LPARAM lParam) {
+	RAWINPUT raw;
+	UINT size = sizeof raw;
+	if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, &raw, &size, sizeof(RAWINPUTHEADER)) == (UINT)-1) fail("GetRawInputData");
+	if (raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) {
+		const LONG x = raw.data.mouse.lLastX;
+		const LONG y = raw.data.mouse.lLastY;
+		if (s.mouse.rawPosValid) {
+			s.mouse.dx = (float)(x - s.mouse.rawX);
+			s.mouse.dy = (float)(y - s.mouse.rawY);
+		}
+		s.mouse.rawX = x;
+		s.mouse.rawY = y;
+		s.mouse.rawPosValid = true;
+	} else {
+		s.mouse.dx = (float)raw.data.mouse.lLastX;
+		s.mouse.dy = (float)raw.data.mouse.lLastY;
+	}
+	mouseEvent(VOID_EVENT_MOUSE_MOVE, VOID_MOUSE_INVALID);
+}
+
+static void clearDropped(void) {
+	for (int i = 0; i < s.droppedCount; i++) free(s.droppedPaths[i]);
+	free(s.droppedPaths);
+	s.droppedPaths = NULL;
+	s.droppedCount = 0;
+}
+
+static void filesDropped(HDROP hdrop) {
+	clearDropped();
+	const int count = (int)DragQueryFileW(hdrop, 0xffffffff, NULL, 0);
+	s.droppedPaths = (char **)calloc((size_t)(count > 0 ? count : 1), sizeof(char *));
+	if (s.droppedPaths == NULL) fail("calloc for the dropped file paths");
+	for (int i = 0; i < count; i++) {
+		const UINT units = DragQueryFileW(hdrop, (UINT)i, NULL, 0) + 1;
+		WCHAR *wide = (WCHAR *)calloc(units, sizeof(WCHAR));
+		if (wide == NULL) fail("calloc for a dropped file path");
+		DragQueryFileW(hdrop, (UINT)i, wide, units);
+		s.droppedPaths[i] = wideToUtf8(wide);
+		free(wide);
+	}
+	s.droppedCount = count;
+	DragFinish(hdrop);
+	if (eventsEnabled()) {
+		initEvent(VOID_EVENT_FILES_DROPPED);
+		s.event.modifiers = mods();
+		callEvent();
+	}
 }
 
 static void frame(bool fromWndProc) {
@@ -354,6 +546,16 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 			}
 			break;
 		}
+		case WM_SETCURSOR:
+			if (LOWORD(lParam) == HTCLIENT) {
+				updateCursor(true);
+				return TRUE;
+			}
+			break;
+		case WM_DROPFILES: filesDropped((HDROP)wParam); break;
+		case WM_INPUT:
+			if (s.mouse.locked) rawMouseInput(lParam);
+			break;
 		case WM_SETFOCUS: appEvent(VOID_EVENT_FOCUSED); break;
 		case WM_KILLFOCUS: appEvent(VOID_EVENT_UNFOCUSED); break;
 		case WM_DPICHANGED: dpiChanged(hwnd, (const RECT *)lParam); break;
@@ -364,6 +566,7 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 		case WM_RBUTTONUP: mouseButtonEvent(lParam, VOID_EVENT_MOUSE_UP, VOID_MOUSE_RIGHT); break;
 		case WM_MBUTTONUP: mouseButtonEvent(lParam, VOID_EVENT_MOUSE_UP, VOID_MOUSE_MIDDLE); break;
 		case WM_MOUSEMOVE:
+			if (s.mouse.locked) break;
 			mouseUpdate(lParam);
 			if (!s.mouse.tracked) {
 				s.mouse.tracked = true;
@@ -380,6 +583,7 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 			mouseEvent(VOID_EVENT_MOUSE_MOVE, VOID_MOUSE_INVALID);
 			break;
 		case WM_MOUSELEAVE:
+			if (s.mouse.locked) break;
 			s.mouse.dx = 0.0f;
 			s.mouse.dy = 0.0f;
 			s.mouse.tracked = false;
@@ -402,7 +606,10 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 			break;
 		case WM_ENTERSIZEMOVE: SetTimer(s.hwnd, 1, USER_TIMER_MINIMUM, NULL); break;
 		case WM_EXITSIZEMOVE: KillTimer(s.hwnd, 1); break;
-		case WM_TIMER: frame(true); break;
+		case WM_TIMER:
+			voidFrameTimingUpdate(&s.timing, 0.0);
+			frame(true);
+			break;
 		case WM_NCLBUTTONDOWN:
 			if (SendMessageW(s.hwnd, WM_NCHITTEST, wParam, lParam) == HTCAPTION) {
 				POINT point = { 0, 0 };
@@ -482,6 +689,7 @@ static void createWindow(void) {
 	if (s.hwnd == NULL) fail("CreateWindowExW");
 	updateDimensions();
 	ShowWindow(s.hwnd, SW_SHOW);
+	DragAcceptFiles(s.hwnd, TRUE);
 }
 
 void voidWin32Run(const VoidWin32Desc *desc) {
@@ -489,11 +697,15 @@ void voidWin32Run(const VoidWin32Desc *desc) {
 	s.desc = *desc;
 	s.windowWidth = s.framebufferWidth = desc->width;
 	s.windowHeight = s.framebufferHeight = desc->height;
+	s.mouse.shown = true;
+	voidFrameTimingInit(&s.timing);
 	initDpi();
+	initCursors();
 	createWindow();
 	s.valid = true;
 	bool done = false;
 	while (!(done || s.quitOrdered)) {
+		voidFrameTimingUpdate(&s.timing, 0.0);
 		MSG msg;
 		while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
 			if (msg.message == WM_QUIT) {
@@ -506,6 +718,7 @@ void voidWin32Run(const VoidWin32Desc *desc) {
 		frame(false);
 		if (updateDimensions()) appEvent(VOID_EVENT_RESIZED);
 		if (s.quitRequested) PostMessageW(s.hwnd, WM_CLOSE, 0, 0);
+		updateMouseLock();
 	}
 	if (!s.cleanupCalled) {
 		if (s.desc.cleanup) s.desc.cleanup();
@@ -513,6 +726,8 @@ void voidWin32Run(const VoidWin32Desc *desc) {
 	}
 	DestroyWindow(s.hwnd);
 	UnregisterClassW(CLASS_NAME, GetModuleHandleW(NULL));
+	clearDropped();
+	free(s.clipboard);
 	memset(&s, 0, sizeof s);
 }
 
@@ -529,3 +744,60 @@ void voidWin32SetTitle(const char *title) {
 	toWide(title, wide);
 	SetWindowTextW(s.hwnd, wide);
 }
+
+void voidWin32CancelQuit(void) { s.quitRequested = false; }
+double voidWin32FrameDuration(void) { return s.timing.smoothDt; }
+
+void voidWin32SetClipboard(const char *utf8) {
+	WCHAR *wide = utf8ToWide(utf8);
+	const SIZE_T bytes = (wcslen(wide) + 1) * sizeof(WCHAR);
+	bool ok = false;
+	if (OpenClipboard(s.hwnd)) {
+		HANDLE object = GlobalAlloc(GMEM_MOVEABLE, bytes);
+		WCHAR *dst = object ? (WCHAR *)GlobalLock(object) : NULL;
+		if (dst != NULL) {
+			memcpy(dst, wide, bytes);
+			GlobalUnlock(object);
+			EmptyClipboard();
+			ok = SetClipboardData(CF_UNICODETEXT, object) != NULL;
+		}
+		if (!ok && object) GlobalFree(object);
+		CloseClipboard();
+	}
+	free(wide);
+	if (!ok) fail("setting the clipboard");
+}
+
+const char *voidWin32Clipboard(void) {
+	if (s.clipboard == NULL) s.clipboard = _strdup("");
+	if (!OpenClipboard(s.hwnd)) return s.clipboard;
+	HANDLE object = GetClipboardData(CF_UNICODETEXT);
+	const WCHAR *wide = object ? (const WCHAR *)GlobalLock(object) : NULL;
+	if (wide != NULL) {
+		free(s.clipboard);
+		s.clipboard = wideToUtf8(wide);
+		GlobalUnlock(object);
+	}
+	CloseClipboard();
+	return s.clipboard;
+}
+
+void voidWin32SetCursor(int cursor) {
+	s.mouse.cursor = cursor;
+	updateCursor(false);
+}
+
+int voidWin32Cursor(void) { return s.mouse.cursor; }
+
+void voidWin32ShowMouse(bool shown) {
+	s.mouse.shown = shown;
+	updateCursor(false);
+}
+
+bool voidWin32MouseShown(void) { return s.mouse.shown; }
+void voidWin32LockMouse(bool locked) { s.mouse.requestedLock = locked; }
+bool voidWin32MouseLocked(void) { return s.mouse.locked; }
+void voidWin32ToggleFullscreen(void) { setFullscreen(!s.fullscreen, SWP_SHOWWINDOW); }
+bool voidWin32IsFullscreen(void) { return s.fullscreen; }
+int voidWin32DroppedCount(void) { return s.droppedCount; }
+const char *voidWin32DroppedPath(int i) { return s.droppedPaths[i]; }

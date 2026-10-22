@@ -65,6 +65,37 @@ float voidSafeAreaRight(void);
 // pixels; 0 when it is hidden or floating, and on drivers that have none. Resized follows a change.
 float voidKeyboardHeight(void);
 
+// What sokol_app offers beyond events (src/sokol/appWindow.c over the window drivers: Windows,
+// the browser and Linux). A feature a driver has not ported aborts naming the feature and the
+// platform. Every call needs the window to exist, so make it from the handler or after init.
+// voidRequestQuit sends QuitRequested to the handler on the next frame, and voidCancelQuit
+// from that handler (or before it arrives) keeps the app running; without a handler the app
+// quits. A browser tab has no close request, so QuitRequested there follows voidRequestQuit only.
+void voidRequestQuit(void);
+void voidCancelQuit(void);
+double voidFrameDuration(void);
+
+// The clipboard is UTF-8 text. voidClipboard is what the last ClipboardPasted event carried in
+// the browser; native it is the clipboard now. The browser can write only from an event handler.
+void voidSetClipboard(const char *utf8);
+
+// Cursor ordinals are VoidMouseCursor (src/platform/appEvent.h).
+void voidSetMouseCursor(int cursor);
+int voidMouseCursor(void);
+void voidShowMouse(int shown);
+int voidMouseShown(void);
+
+// Locked, the pointer is hidden and confined and the mouse events carry only dx and dy. The
+// browser grants a lock from a mouse button or wheel event only.
+void voidLockMouse(int locked);
+int voidMouseLocked(void);
+
+void voidToggleFullscreen(void);
+int voidIsFullscreen(void);
+
+// The files of the last FilesDropped event. The browser gives file names, not paths.
+int voidDroppedFileCount(void);
+
 // IME composition (Windows window, browser and iOS). While text input is on and a handler is set,
 // a composition arrives as Preedit events and its result as one TextInput event, never also
 // as Char. Off disables the IME on Windows and blurs the browser's input element. Before the

@@ -46,4 +46,19 @@ WGPUTextureView voidWebResolveView(void);
 WGPUTextureView voidWebDepthStencilView(void);
 #endif
 
+void voidWebCancelQuit(void);
+double voidWebFrameDuration(void);
+void voidWebSetClipboard(const char *utf8);
+const char *voidWebClipboard(void);
+void voidWebSetCursor(int cursor);
+int voidWebCursor(void);
+void voidWebShowMouse(bool shown);
+bool voidWebMouseShown(void);
+void voidWebLockMouse(bool locked);
+bool voidWebMouseLocked(void);
+void voidWebToggleFullscreen(void);
+bool voidWebIsFullscreen(void);
+int voidWebDroppedCount(void);
+const char *voidWebDroppedPath(int i);
+
 #endif

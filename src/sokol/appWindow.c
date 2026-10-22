@@ -162,3 +162,100 @@ void voidSetWindowTitle(const char *title) {
 
 const char *voidWindowTitle(void) { return s_title; }
 int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
+
+#if defined(__EMSCRIPTEN__)
+#define PLATFORM(name) voidWeb##name
+#elif defined(__linux__)
+#define PLATFORM(name) voidLinux##name
+#else
+#define PLATFORM(name) voidWin32##name
+#endif
+
+static void needWindow(const char *what) {
+	if (!PLATFORM(Valid)()) fail("%s: the window does not exist yet; call it from the event handler or after init", what);
+}
+
+void voidRequestQuit(void) {
+	needWindow("voidRequestQuit");
+	PLATFORM(RequestQuit)();
+}
+
+void voidCancelQuit(void) {
+	needWindow("voidCancelQuit");
+	PLATFORM(CancelQuit)();
+}
+
+double voidFrameDuration(void) {
+	needWindow("voidFrameDuration");
+	return PLATFORM(FrameDuration)();
+}
+
+void voidSetClipboard(const char *utf8) {
+	needWindow("voidSetClipboard");
+	PLATFORM(SetClipboard)(utf8);
+}
+
+msString voidClipboard(void) {
+	needWindow("voidClipboard");
+	const char *text = PLATFORM(Clipboard)();
+	if (text[0] == '\0') {
+		msString empty;
+		empty.len = 0;
+		empty.p = NULL;
+		return empty;
+	}
+	return msStringFromCStr(text);
+}
+
+void voidSetMouseCursor(int cursor) {
+	needWindow("voidSetMouseCursor");
+	if (cursor < 0 || cursor >= VOID_CURSOR_COUNT) fail("voidSetMouseCursor: cursor %d is not a VoidMouseCursor (0..%d)", cursor, VOID_CURSOR_COUNT - 1);
+	PLATFORM(SetCursor)(cursor);
+}
+
+int voidMouseCursor(void) {
+	needWindow("voidMouseCursor");
+	return PLATFORM(Cursor)();
+}
+
+void voidShowMouse(int shown) {
+	needWindow("voidShowMouse");
+	PLATFORM(ShowMouse)(shown != 0);
+}
+
+int voidMouseShown(void) {
+	needWindow("voidMouseShown");
+	return PLATFORM(MouseShown)() ? 1 : 0;
+}
+
+void voidLockMouse(int locked) {
+	needWindow("voidLockMouse");
+	PLATFORM(LockMouse)(locked != 0);
+}
+
+int voidMouseLocked(void) {
+	needWindow("voidMouseLocked");
+	return PLATFORM(MouseLocked)() ? 1 : 0;
+}
+
+void voidToggleFullscreen(void) {
+	needWindow("voidToggleFullscreen");
+	PLATFORM(ToggleFullscreen)();
+}
+
+int voidIsFullscreen(void) {
+	needWindow("voidIsFullscreen");
+	return PLATFORM(IsFullscreen)() ? 1 : 0;
+}
+
+int voidDroppedFileCount(void) {
+	needWindow("voidDroppedFileCount");
+	return PLATFORM(DroppedCount)();
+}
+
+msString voidDroppedFilePath(int i) {
+	needWindow("voidDroppedFilePath");
+	if (i < 0 || i >= PLATFORM(DroppedCount)()) fail("voidDroppedFilePath: index %d of %d dropped files", i, PLATFORM(DroppedCount)());
+	return msStringFromCStr(PLATFORM(DroppedPath)(i));
+}
+

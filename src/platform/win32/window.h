@@ -33,4 +33,19 @@ uint64_t voidWin32FrameCount(void);
 void voidWin32RequestQuit(void);
 void voidWin32SetTitle(const char *title);
 
+void voidWin32CancelQuit(void);
+double voidWin32FrameDuration(void);
+void voidWin32SetClipboard(const char *utf8);
+const char *voidWin32Clipboard(void);
+void voidWin32SetCursor(int cursor);
+int voidWin32Cursor(void);
+void voidWin32ShowMouse(bool shown);
+bool voidWin32MouseShown(void);
+void voidWin32LockMouse(bool locked);
+bool voidWin32MouseLocked(void);
+void voidWin32ToggleFullscreen(void);
+bool voidWin32IsFullscreen(void);
+int voidWin32DroppedCount(void);
+const char *voidWin32DroppedPath(int i);
+
 #endif

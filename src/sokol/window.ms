@@ -34,6 +34,21 @@ extern function voidSafeAreaLeft(): float32;
 extern function voidSafeAreaBottom(): float32;
 extern function voidSafeAreaRight(): float32;
 extern function voidKeyboardHeight(): float32;
+extern function voidRequestQuit(): void;
+extern function voidCancelQuit(): void;
+extern function voidFrameDuration(): float64;
+extern function voidSetClipboard(utf8: cstring): void;
+extern function voidClipboard(): string;
+extern function voidSetMouseCursor(cursor: int32): void;
+extern function voidMouseCursor(): int32;
+extern function voidShowMouse(shown: int32): void;
+extern function voidMouseShown(): int32;
+extern function voidLockMouse(locked: int32): void;
+extern function voidMouseLocked(): int32;
+extern function voidToggleFullscreen(): void;
+extern function voidIsFullscreen(): int32;
+extern function voidDroppedFileCount(): int32;
+extern function voidDroppedFilePath(i: int32): string;
 
 // The ordinals of VoidAppEventType in src/platform/appEvent.h: keep the order.
 export enum AppEventType {
@@ -63,6 +78,20 @@ export enum AppEventType {
 	FilesDropped,
 	Preedit,
 	TextInput,
+}
+
+export enum MouseCursor {
+	Default,
+	Arrow,
+	IBeam,
+	Crosshair,
+	PointingHand,
+	ResizeEW,
+	ResizeNS,
+	ResizeNWSE,
+	ResizeNESW,
+	ResizeAll,
+	NotAllowed,
 }
 
 export struct AppTouch {
@@ -168,4 +197,30 @@ export function safeArea(): SafeArea {
 		bottom: voidSafeAreaBottom(),
 		right: voidSafeAreaRight(),
 	};
+}
+
+export function requestQuit(): void { voidRequestQuit(); }
+export function cancelQuit(): void { voidCancelQuit(); }
+
+export function frameDuration(): float64 { return voidFrameDuration(); }
+
+export function setClipboard(text: string): void { voidSetClipboard(text); }
+export function clipboard(): string { return voidClipboard(); }
+
+export function setMouseCursor(cursor: MouseCursor): void { voidSetMouseCursor(cursor as int32); }
+export function mouseCursor(): MouseCursor { return voidMouseCursor() as MouseCursor; }
+export function showMouse(shown: boolean): void { voidShowMouse(shown ? 1 as int32 : 0 as int32); }
+export function mouseShown(): boolean { return voidMouseShown() !== 0; }
+
+export function lockMouse(locked: boolean): void { voidLockMouse(locked ? 1 as int32 : 0 as int32); }
+export function mouseLocked(): boolean { return voidMouseLocked() !== 0; }
+
+export function toggleFullscreen(): void { voidToggleFullscreen(); }
+export function isFullscreen(): boolean { return voidIsFullscreen() !== 0; }
+
+export function droppedFiles(): string[] {
+	const paths: string[] = [];
+	const count = voidDroppedFileCount();
+	for (let i = 0 as int32; i < count; i++) paths.push(voidDroppedFilePath(i));
+	return paths;
 }

@@ -6,5 +6,7 @@
 #include "runtime/core/string.h"
 
 msString voidEventText(void);
+msString voidClipboard(void);
+msString voidDroppedFilePath(int i);
 
 #endif

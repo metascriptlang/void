@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../frameTiming.h"
+
 #define CANVAS "#canvas"
 #define MOUSE_BUTTONS 3
 
@@ -142,7 +144,16 @@ static struct {
 	struct {
 		float x, y, dx, dy;
 		bool posValid;
+		bool shown;
+		bool locked;
+		bool requestedLock;
+		int cursor;
 	} mouse;
+	VoidFrameTiming timing;
+	bool fullscreen;
+	int droppedCount;
+	char **droppedPaths;
+	char *clipboard;
 	VoidAppEvent event;
 #if defined(VOID_WGPU)
 	struct {
@@ -480,7 +491,191 @@ static void initGpu(void) {
 
 #endif
 
-EM_JS_DEPS(voidWebWindow, "$findCanvasEventTarget,$specialHTMLTargets");
+EM_JS_DEPS(voidWebWindow, "$findCanvasEventTarget,$specialHTMLTargets,$withStackSave,$stringToUTF8OnStack");
+
+static void clearDropped(void) {
+	for (int i = 0; i < s.droppedCount; i++) free(s.droppedPaths[i]);
+	free(s.droppedPaths);
+	s.droppedPaths = NULL;
+	s.droppedCount = 0;
+}
+
+EMSCRIPTEN_KEEPALIVE void voidWebOnPaste(const char *utf8) {
+	free(s.clipboard);
+	s.clipboard = strdup(utf8);
+	if (s.clipboard == NULL) fail("strdup for the pasted text");
+	appEvent(VOID_EVENT_CLIPBOARD_PASTED);
+}
+
+EMSCRIPTEN_KEEPALIVE void voidWebBeginDrop(int count) {
+	clearDropped();
+	if (count < 0) count = 0;
+	s.droppedPaths = (char **)calloc((size_t)(count > 0 ? count : 1), sizeof(char *));
+	if (s.droppedPaths == NULL) fail("calloc for the dropped file names");
+	s.droppedCount = count;
+}
+
+EMSCRIPTEN_KEEPALIVE void voidWebDrop(int i, const char *name) {
+	if (i < 0 || i >= s.droppedCount) fail("a dropped file %d arrived of %d announced", i, s.droppedCount);
+	s.droppedPaths[i] = strdup(name);
+	if (s.droppedPaths[i] == NULL) fail("strdup for a dropped file name");
+}
+
+EMSCRIPTEN_KEEPALIVE void voidWebEndDrop(int x, int y, int dropMods) {
+	if (s.droppedCount == 0 || !eventsEnabled()) return;
+	s.mouse.x = (float)x * s.dpiScale;
+	s.mouse.y = (float)y * s.dpiScale;
+	s.mouse.dx = 0.0f;
+	s.mouse.dy = 0.0f;
+	initEvent(VOID_EVENT_FILES_DROPPED);
+	if (dropMods & 1) s.event.modifiers |= VOID_MODIFIER_SHIFT;
+	if (dropMods & 2) s.event.modifiers |= VOID_MODIFIER_CTRL;
+	if (dropMods & 4) s.event.modifiers |= VOID_MODIFIER_ALT;
+	if (dropMods & 8) s.event.modifiers |= VOID_MODIFIER_SUPER;
+	callEvent();
+}
+
+EMSCRIPTEN_KEEPALIVE void voidWebSetFullscreenFlag(int fullscreen) { s.fullscreen = fullscreen != 0; }
+
+EM_JS(void, voidJsAddClipboardListener, (void), {
+	Module.voidPaste = (event) => {
+		const text = event.clipboardData.getData('text');
+		withStackSave(() => _voidWebOnPaste(stringToUTF8OnStack(text)));
+	};
+	window.addEventListener('paste', Module.voidPaste);
+});
+
+EM_JS(void, voidJsRemoveClipboardListener, (void), {
+	window.removeEventListener('paste', Module.voidPaste);
+});
+
+EM_JS(void, voidJsWriteClipboard, (const char *utf8), {
+	const ta = document.createElement('textarea');
+	for (const [name, value] of [['autocomplete', 'off'], ['autocorrect', 'off'], ['autocapitalize', 'off'], ['spellcheck', 'false']]) {
+		ta.setAttribute(name, value);
+	}
+	ta.style.left = '-100px';
+	ta.style.top = '-100px';
+	ta.style.height = '1px';
+	ta.style.width = '1px';
+	ta.value = UTF8ToString(Number(utf8));
+	document.body.appendChild(ta);
+	ta.select();
+	document.execCommand('copy');
+	document.body.removeChild(ta);
+});
+
+EM_JS(void, voidJsSetCursor, (int cursor, int shown), {
+	const names = ['auto', 'default', 'text', 'crosshair', 'pointer', 'ew-resize', 'ns-resize', 'nwse-resize', 'nesw-resize', 'all-scroll', 'not-allowed'];
+	Module.voidWebTarget.style.cursor = shown === 0 ? 'none' : names[cursor];
+});
+
+EM_JS(void, voidJsRequestPointerLock, (void), {
+	const canvas = Module.voidWebTarget;
+	if (canvas.requestPointerLock) canvas.requestPointerLock();
+});
+
+EM_JS(void, voidJsExitPointerLock, (void), {
+	if (document.exitPointerLock) document.exitPointerLock();
+});
+
+EM_JS(void, voidJsToggleFullscreen, (void), {
+	const canvas = Module.voidWebTarget;
+	const current = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement;
+	let p;
+	if (!current) {
+		if (canvas.requestFullscreen) p = canvas.requestFullscreen();
+		else if (canvas.webkitRequestFullscreen) p = canvas.webkitRequestFullscreen();
+		else if (canvas.mozRequestFullScreen) p = canvas.mozRequestFullScreen();
+		if (p) {
+			p.catch((err) => {
+				console.warn('void: failed to enter fullscreen', err);
+				_voidWebSetFullscreenFlag(0);
+			});
+		} else {
+			console.warn('void: this browser has no requestFullscreen');
+			_voidWebSetFullscreenFlag(0);
+		}
+	} else {
+		if (document.exitFullscreen) p = document.exitFullscreen();
+		else if (document.webkitExitFullscreen) p = document.webkitExitFullscreen();
+		else if (document.mozCancelFullScreen) p = document.mozCancelFullScreen();
+		if (p) {
+			p.catch((err) => {
+				console.warn('void: failed to leave fullscreen', err);
+				_voidWebSetFullscreenFlag(1);
+			});
+		} else {
+			console.warn('void: this browser has no exitFullscreen');
+		}
+	}
+});
+
+EM_JS(void, voidJsAddDropListeners, (void), {
+	const stop = (event) => {
+		event.stopPropagation();
+		event.preventDefault();
+	};
+	Module.voidDragenter = stop;
+	Module.voidDragleave = stop;
+	Module.voidDragover = stop;
+	Module.voidDrop = (event) => {
+		stop(event);
+		const files = event.dataTransfer.files;
+		_voidWebBeginDrop(files.length);
+		for (let i = 0; i < files.length; i++) {
+			withStackSave(() => _voidWebDrop(i, stringToUTF8OnStack(files[i].name)));
+		}
+		let dropMods = 0;
+		if (event.shiftKey) dropMods |= 1;
+		if (event.ctrlKey) dropMods |= 2;
+		if (event.altKey) dropMods |= 4;
+		if (event.metaKey) dropMods |= 8;
+		_voidWebEndDrop(event.clientX, event.clientY, dropMods);
+	};
+	const canvas = Module.voidWebTarget;
+	canvas.addEventListener('dragenter', Module.voidDragenter, false);
+	canvas.addEventListener('dragleave', Module.voidDragleave, false);
+	canvas.addEventListener('dragover', Module.voidDragover, false);
+	canvas.addEventListener('drop', Module.voidDrop, false);
+});
+
+EM_JS(void, voidJsRemoveDropListeners, (void), {
+	const canvas = Module.voidWebTarget;
+	canvas.removeEventListener('dragenter', Module.voidDragenter);
+	canvas.removeEventListener('dragleave', Module.voidDragleave);
+	canvas.removeEventListener('dragover', Module.voidDragover);
+	canvas.removeEventListener('drop', Module.voidDrop);
+});
+
+static void updateMouseLockState(void) {
+	if (!s.mouse.requestedLock) return;
+	s.mouse.requestedLock = false;
+	voidJsRequestPointerLock();
+}
+
+static bool pointerLockChange(int type, const EmscriptenPointerlockChangeEvent *e, void *userData) {
+	(void)type;
+	(void)userData;
+	s.mouse.locked = e->isActive;
+	return true;
+}
+
+static bool pointerLockError(int type, const void *reserved, void *userData) {
+	(void)type;
+	(void)reserved;
+	(void)userData;
+	s.mouse.locked = false;
+	s.mouse.requestedLock = false;
+	return true;
+}
+
+static bool fullscreenChange(int type, const EmscriptenFullscreenChangeEvent *e, void *userData) {
+	(void)type;
+	(void)userData;
+	s.fullscreen = e->isFullscreen;
+	return true;
+}
 
 EM_JS(int, voidJsWebInit, (const char *selector, const char *title), {
 	if (title !== 0) document.title = UTF8ToString(Number(title));
@@ -520,15 +715,20 @@ static bool sizeChangedCallback(int type, const EmscriptenUiEvent *ui, void *use
 static bool mouseCallback(int type, const EmscriptenMouseEvent *e, void *userData) {
 	(void)userData;
 	s.mouseButtons = e->buttons;
-	const float x = (float)e->targetX * s.dpiScale;
-	const float y = (float)e->targetY * s.dpiScale;
-	if (s.mouse.posValid) {
-		s.mouse.dx = x - s.mouse.x;
-		s.mouse.dy = y - s.mouse.y;
+	if (s.mouse.locked) {
+		s.mouse.dx = (float)e->movementX;
+		s.mouse.dy = (float)e->movementY;
+	} else {
+		const float x = (float)e->targetX * s.dpiScale;
+		const float y = (float)e->targetY * s.dpiScale;
+		if (s.mouse.posValid) {
+			s.mouse.dx = x - s.mouse.x;
+			s.mouse.dy = y - s.mouse.y;
+		}
+		s.mouse.x = x;
+		s.mouse.y = y;
+		s.mouse.posValid = true;
 	}
-	s.mouse.x = x;
-	s.mouse.y = y;
-	s.mouse.posValid = true;
 	if (!eventsEnabled() || e->button < 0 || e->button >= MOUSE_BUTTONS) return true;
 	VoidAppEventType eventType;
 	bool buttonEvent = false;
@@ -550,6 +750,7 @@ static bool mouseCallback(int type, const EmscriptenMouseEvent *e, void *userDat
 		s.event.mouseButton = e->button == 0 ? VOID_MOUSE_LEFT : e->button == 1 ? VOID_MOUSE_MIDDLE : VOID_MOUSE_RIGHT;
 	}
 	callEvent();
+	if (buttonEvent) updateMouseLockState();
 	return true;
 }
 
@@ -557,7 +758,10 @@ static bool wheelCallback(int type, const EmscriptenWheelEvent *e, void *userDat
 	(void)type;
 	(void)userData;
 	s.mouseButtons = e->mouse.buttons;
-	if (!eventsEnabled()) return true;
+	if (!eventsEnabled()) {
+		updateMouseLockState();
+		return true;
+	}
 	initEvent(VOID_EVENT_MOUSE_SCROLL);
 	s.event.modifiers = mods(e->mouse.ctrlKey, e->mouse.shiftKey, e->mouse.altKey, e->mouse.metaKey);
 	float scale;
@@ -570,6 +774,7 @@ static bool wheelCallback(int type, const EmscriptenWheelEvent *e, void *userDat
 	s.event.scrollX = scale * (float)e->deltaX;
 	s.event.scrollY = scale * (float)e->deltaY;
 	callEvent();
+	updateMouseLockState();
 	return true;
 }
 
@@ -622,6 +827,14 @@ static bool touchCallback(int type, const EmscriptenTouchEvent *e, void *userDat
 	}
 	initEvent(eventType);
 	s.event.modifiers = mods(e->ctrlKey, e->shiftKey, e->altKey, e->metaKey);
+	s.event.touchCount = e->numTouches < VOID_MAX_TOUCHPOINTS ? e->numTouches : VOID_MAX_TOUCHPOINTS;
+	for (int i = 0; i < s.event.touchCount; i++) {
+		const EmscriptenTouchPoint *src = &e->touches[i];
+		s.event.touches[i].identifier = (uintptr_t)src->identifier;
+		s.event.touches[i].x = (float)src->targetX * s.dpiScale;
+		s.event.touches[i].y = (float)src->targetY * s.dpiScale;
+		s.event.touches[i].changed = src->isChanged;
+	}
 	callEvent();
 	return true;
 }
@@ -647,6 +860,16 @@ static void setEventHandlers(bool on) {
 	emscripten_set_touchmove_callback(CANVAS, 0, true, on ? touchCallback : NULL);
 	emscripten_set_touchend_callback(CANVAS, 0, true, on ? touchCallback : NULL);
 	emscripten_set_touchcancel_callback(CANVAS, 0, true, on ? touchCallback : NULL);
+	emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, 0, true, on ? pointerLockChange : NULL);
+	emscripten_set_pointerlockerror_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, 0, true, on ? pointerLockError : NULL);
+	emscripten_set_fullscreenchange_callback(CANVAS, 0, true, on ? fullscreenChange : NULL);
+	if (on) {
+		voidJsAddClipboardListener();
+		voidJsAddDropListeners();
+	} else {
+		voidJsRemoveClipboardListener();
+		voidJsRemoveDropListeners();
+	}
 	emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, on ? focusCallback : NULL);
 	emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, on ? focusCallback : NULL);
 	emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, on ? sizeChangedCallback : NULL);
@@ -666,8 +889,8 @@ static void frame(void) {
 }
 
 static bool animationFrame(double time, void *userData) {
-	(void)time;
 	(void)userData;
+	voidFrameTimingUpdate(&s.timing, time / 1000.0);
 #if defined(VOID_WGPU)
 	wgpuInstanceProcessEvents(s.wgpu.instance);
 	if (s.wgpu.initDone) {
@@ -693,6 +916,8 @@ static bool animationFrame(double time, void *userData) {
 #if defined(VOID_WGPU)
 	discardGpu();
 #endif
+	clearDropped();
+	free(s.clipboard);
 	memset(&s, 0, sizeof s);
 	return false;
 }
@@ -701,6 +926,8 @@ void voidWebRun(const VoidWebDesc *desc) {
 	if (s.valid) fail("voidWebRun: the browser window already runs");
 	memset(&s, 0, sizeof s);
 	s.desc = *desc;
+	s.mouse.shown = true;
+	voidFrameTimingInit(&s.timing);
 	if (s.desc.sampleCount <= 0) s.desc.sampleCount = 1;
 	if (!voidJsWebInit(CANVAS, desc->title)) fail("no canvas %s: Module.canvas is not an element and the page has no #canvas", CANVAS);
 	s.dpiScale = desc->highDpi ? (float)emscripten_get_device_pixel_ratio() : 1.0f;
@@ -726,3 +953,39 @@ uint64_t voidWebFrameCount(void) { return s.frameCount; }
 void voidWebRequestQuit(void) { s.quitRequested = true; }
 void voidWebConsumeEvent(void) { s.eventConsumed = true; }
 void voidWebSetTitle(const char *title) { voidJsSetDocumentTitle(title); }
+
+void voidWebCancelQuit(void) { s.quitRequested = false; }
+double voidWebFrameDuration(void) { return s.timing.smoothDt; }
+void voidWebSetClipboard(const char *utf8) { voidJsWriteClipboard(utf8); }
+
+const char *voidWebClipboard(void) { return s.clipboard ? s.clipboard : ""; }
+
+void voidWebSetCursor(int cursor) {
+	s.mouse.cursor = cursor;
+	voidJsSetCursor(cursor, s.mouse.shown ? 1 : 0);
+}
+
+int voidWebCursor(void) { return s.mouse.cursor; }
+
+void voidWebShowMouse(bool shown) {
+	s.mouse.shown = shown;
+	voidJsSetCursor(s.mouse.cursor, shown ? 1 : 0);
+}
+
+bool voidWebMouseShown(void) { return s.mouse.shown; }
+
+void voidWebLockMouse(bool locked) {
+	s.mouse.requestedLock = locked;
+	if (!locked) voidJsExitPointerLock();
+}
+
+bool voidWebMouseLocked(void) { return s.mouse.locked; }
+
+void voidWebToggleFullscreen(void) {
+	s.fullscreen = !s.fullscreen;
+	voidJsToggleFullscreen();
+}
+
+bool voidWebIsFullscreen(void) { return s.fullscreen; }
+int voidWebDroppedCount(void) { return s.droppedCount; }
+const char *voidWebDroppedPath(int i) { return s.droppedPaths[i]; }
