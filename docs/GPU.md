@@ -150,7 +150,11 @@ backend module. Metal follows it with a `.m`.
   one (sokol's `num_slots`, `_sg_mtl_update_buffer`). A second write over bytes the frame already
   wrote, or a second `writeTexture` of one texture in a frame, stops with a message: that is
   sokol's one-update-per-frame rule, enforced instead of assumed. A `writeTexture` that is not
-  the whole texture stops too, until Metal ports the partial write the other backends have.
+  the whole texture stops too, so void2d uploads whole glyph pages under `__APPLE__`
+  (`batcher.c`). A whole 1024×1024 r8 write measured 0.09 ms mean, 0.14 ms worst, on an M1
+  (2026-10-23), which does not pay for a partial path yet. Port the partial write (a blit of the
+  live copy into the other, then `replaceRegion`) when a profile shows whole-page uploads in a
+  frame, or when a consumer writes a region of a texture larger than a glyph page.
 - **CPU writes wait on the frame semaphore.** Two frames in flight; the command buffer begins at
   the frame's first write or pass and waits for the oldest frame there, as sokol waits in
   `_sg_mtl_begin_pass`.
