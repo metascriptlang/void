@@ -1,0 +1,1103 @@
+import {
+	Access,
+	AssignOp,
+	BinaryOp,
+	Builtin,
+	ExprKind,
+	Interpolation,
+	Intrinsic,
+	IoDirection,
+	ResourceKind,
+	Sampling,
+	SamplerType,
+	ScalarKind,
+	ShaderExpr,
+	ShaderFunction,
+	ShaderIo,
+	ShaderModule,
+	ShaderStage,
+	ShaderStmt,
+	ShaderType,
+	ShaderTypeKind,
+	StmtKind,
+	TexelFormat,
+	TextureShape,
+	UnaryOp,
+	sameShaderType,
+	scalarType,
+	vectorType,
+} from "./ir";
+import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
+import { readsFrom } from "./specialize";
+
+// C++14 keywords, the Metal address spaces, attributes and types, and every function this
+// printer calls.
+function mslReservedWords(): string[] {
+	let words = [
+		"alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "break",
+		"case", "catch", "char", "char16_t", "char32_t", "class", "compl", "const", "constexpr",
+		"const_cast", "continue", "decltype", "default", "delete", "do", "double", "dynamic_cast",
+		"else", "enum", "explicit", "export", "extern", "false", "final", "float", "for", "friend",
+		"goto", "if", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not",
+		"not_eq", "nullptr", "operator", "or", "or_eq", "override", "private", "protected",
+		"public", "register", "reinterpret_cast", "return", "short", "signed", "sizeof", "static",
+		"static_assert", "static_cast", "struct", "switch", "template", "this", "thread_local",
+		"throw", "true", "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
+		"virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq",
+		"metal", "std", "main", "kernel", "vertex", "fragment", "compute", "device", "constant",
+		"thread", "threadgroup", "threadgroup_imageblock", "ray_data", "object_data", "stage_in",
+		"half", "uint", "ushort", "uchar", "size_t", "ptrdiff_t", "access", "array", "vec",
+		"matrix", "packed_float2", "packed_float3", "packed_float4", "sampler", "texture1d",
+		"texture2d", "texture3d", "texturecube", "texture2d_array", "texturecube_array",
+		"texture2d_ms", "depth2d", "depth2d_array", "depthcube", "depth2d_ms", "level", "bias",
+		"discard_fragment", "select", "fmod", "rint", "rsqrt", "faceforward", "dfdx", "dfdy",
+		"all", "any", "as_type",
+	];
+	for (const scalar of ["float", "int", "uint", "bool", "half"]) {
+		for (let n = 2; n <= 4; n++) {
+			words.push(scalar + String(n));
+			if (scalar == "float" || scalar == "half") {
+				for (let r = 2; r <= 4; r++) { words.push(scalar + String(n) + "x" + String(r)); }
+			}
+		}
+	}
+	for (let i = 0; i <= (Intrinsic.TextureDimensions as int32); i++) {
+		const name = builtinName(i as Intrinsic);
+		if (name != "") { words.push(name); }
+	}
+	return words;
+}
+
+function builtinName(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.Abs => "abs",
+		Intrinsic.Floor => "floor",
+		Intrinsic.Ceil => "ceil",
+		Intrinsic.Trunc => "trunc",
+		Intrinsic.Round => "rint",
+		Intrinsic.Fract => "fract",
+		Intrinsic.Sqrt => "sqrt",
+		Intrinsic.InverseSqrt => "rsqrt",
+		Intrinsic.Exp => "exp",
+		Intrinsic.Exp2 => "exp2",
+		Intrinsic.Log => "log",
+		Intrinsic.Log2 => "log2",
+		Intrinsic.Pow => "pow",
+		Intrinsic.Sin => "sin",
+		Intrinsic.Cos => "cos",
+		Intrinsic.Tan => "tan",
+		Intrinsic.Asin => "asin",
+		Intrinsic.Acos => "acos",
+		Intrinsic.Atan => "atan",
+		Intrinsic.Atan2 => "atan2",
+		Intrinsic.Sinh => "sinh",
+		Intrinsic.Cosh => "cosh",
+		Intrinsic.Tanh => "tanh",
+		Intrinsic.Min => "min",
+		Intrinsic.Max => "max",
+		Intrinsic.Clamp => "clamp",
+		Intrinsic.Saturate => "saturate",
+		Intrinsic.Mix => "mix",
+		Intrinsic.Step => "step",
+		Intrinsic.Smoothstep => "smoothstep",
+		Intrinsic.Fma => "fma",
+		Intrinsic.Dot => "dot",
+		Intrinsic.Cross => "cross",
+		Intrinsic.Length => "length",
+		Intrinsic.Distance => "distance",
+		Intrinsic.Normalize => "normalize",
+		Intrinsic.Reflect => "reflect",
+		Intrinsic.Refract => "refract",
+		Intrinsic.FaceForward => "faceforward",
+		Intrinsic.Transpose => "transpose",
+		Intrinsic.Determinant => "determinant",
+		Intrinsic.Dpdx => "dfdx",
+		Intrinsic.Dpdy => "dfdy",
+		Intrinsic.Fwidth => "fwidth",
+		_ => "",
+	};
+}
+
+const MSL_WORDS = mslReservedWords();
+
+const UPPER_LEFT = "upperLeft3x3";
+
+function inverseName(n: int32): string { return "inverse" + String(n) + "x" + String(n); }
+
+function inverseText(n: int32): string {
+	const mat = "float" + String(n) + "x" + String(n);
+	const body = match (n) {
+		2 => [
+			"float k = 1.0 / determinant(m);",
+			"return float2x2(float2(m[1].y, -m[0].y) * k, float2(-m[1].x, m[0].x) * k);",
+		],
+		3 => [
+			"float k = 1.0 / determinant(m);",
+			"return transpose(float3x3(cross(m[1], m[2]) * k, cross(m[2], m[0]) * k, " +
+				"cross(m[0], m[1]) * k));",
+		],
+		_ => [
+			"float3 a = m[0].xyz;",
+			"float3 b = m[1].xyz;",
+			"float3 c = m[2].xyz;",
+			"float3 d = m[3].xyz;",
+			"float3 s = cross(a, b);",
+			"float3 t = cross(c, d);",
+			"float3 u = a * m[1].w - b * m[0].w;",
+			"float3 v = c * m[3].w - d * m[2].w;",
+			"float k = 1.0 / (dot(s, v) + dot(t, u));",
+			"return transpose(float4x4(",
+			"  float4(cross(b, v * k) + t * k * m[1].w, -dot(b, t * k)),",
+			"  float4(cross(v * k, a) - t * k * m[0].w, dot(a, t * k)),",
+			"  float4(cross(d, u * k) + s * k * m[3].w, -dot(d, s * k)),",
+			"  float4(cross(u * k, c) - s * k * m[2].w, dot(c, s * k))));",
+		],
+	};
+	return "static inline " + mat + " " + inverseName(n) + "(" + mat + " m) {\n" +
+		body.map((line) => "  " + line + "\n").join("") + "}";
+}
+
+// The resources and ios a function reads, through every function it calls; each becomes a
+// parameter, since MSL has no module-scope resources or stage variables.
+class Threaded {
+	stageIn: boolean = false;
+	stageOut: boolean = false;
+	builtins: int32[] = [];
+	resources: int32[] = [];
+}
+
+class Printer {
+	module: ShaderModule = new ShaderModule();
+	stage: ShaderStage = ShaderStage.Vertex;
+	taken: string[] = [];
+	structs: string[] = [];
+	members: string[][] = [];
+	constants: string[] = [];
+	resources: string[] = [];
+	ios: string[] = [];
+	functions: string[] = [];
+	threaded: Threaded[] = [];
+	fn: ShaderFunction = new ShaderFunction();
+	scope: string[] = [];
+	params: string[] = [];
+	locals: string[] = [];
+	upperLeft: boolean = false;
+	inverses: int32[] = [];
+	error: string = "";
+	lines: string[] = [];
+}
+
+function fail(p: Printer, what: string): string {
+	if (p.error == "") { p.error = "printMsl: " + what; }
+	return "";
+}
+
+function isIdentifier(name: string): boolean {
+	if (name == "" || name == "_" || name.startsWith("__")) { return false; }
+	for (let i = 0; i < name.length; i++) {
+		const c = name.charCodeAt(i);
+		const letter = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95;
+		if (!letter && !(i > 0 && c >= 48 && c <= 57)) { return false; }
+	}
+	return true;
+}
+
+function nameIn(p: Printer, scope: string[], name: string): string {
+	if (!isIdentifier(name)) { return fail(p, "'" + name + "' is no MSL identifier"); }
+	let candidate = name;
+	let n = 1;
+	while (MSL_WORDS.includes(candidate) || scope.includes(candidate)) {
+		candidate = name + "_" + String(n);
+		n++;
+	}
+	scope.push(candidate);
+	return candidate;
+}
+
+function scalarText(s: ScalarKind): string {
+	return match (s) {
+		ScalarKind.F32 => "float",
+		ScalarKind.I32 => "int",
+		ScalarKind.U32 => "uint",
+		ScalarKind.Bool => "bool",
+	};
+}
+
+function texelText(p: Printer, s: ScalarKind): string {
+	if (s == ScalarKind.Bool) { return fail(p, "a texture of bool texels"); }
+	return scalarText(s);
+}
+
+function textureText(p: Printer, t: ShaderType): string {
+	const texel = "<" + texelText(p, t.scalar) + ">";
+	return match (t.shape) {
+		TextureShape.D2 => "texture2d" + texel,
+		TextureShape.D2Array => "texture2d_array" + texel,
+		TextureShape.D3 => "texture3d" + texel,
+		TextureShape.Cube => "texturecube" + texel,
+		TextureShape.CubeArray => "texturecube_array" + texel,
+		TextureShape.Depth2d => "depth2d<float>",
+		TextureShape.Depth2dArray => "depth2d_array<float>",
+		TextureShape.DepthCube => "depthcube<float>",
+		TextureShape.Multisampled2d => "texture2d_ms" + texel,
+	};
+}
+
+function formatTexel(f: TexelFormat): string {
+	return match (f) {
+		TexelFormat.Rgba8uint | TexelFormat.R32uint => "uint",
+		TexelFormat.Rgba8unorm | TexelFormat.Rgba8snorm | TexelFormat.Rgba16float |
+			TexelFormat.Rgba32float | TexelFormat.R32float | TexelFormat.Rg32float => "float",
+	};
+}
+
+function accessText(a: Access): string {
+	return match (a) {
+		Access.Read => "access::read",
+		Access.Write => "access::write",
+		Access.ReadWrite => "access::read_write",
+	};
+}
+
+function typeText(p: Printer, t: ShaderType): string {
+	const n = String(t.rows);
+	return match (t.kind) {
+		ShaderTypeKind.Scalar => scalarText(t.scalar),
+		ShaderTypeKind.Vector => scalarText(t.scalar) + n,
+		ShaderTypeKind.Matrix => "float" + String(t.columns) + "x" + n,
+		ShaderTypeKind.Array => fail(p, "an array where only a declaration can hold one"),
+		ShaderTypeKind.RuntimeArray => fail(p, "a runtime array outside a storage buffer"),
+		ShaderTypeKind.Struct => p.structs[t.structIndex],
+		ShaderTypeKind.Texture => textureText(p, t),
+		ShaderTypeKind.Sampler => "sampler",
+		ShaderTypeKind.StorageTexture => "texture2d<" + formatTexel(t.format) + ", " +
+			accessText(t.access) + ">",
+		ShaderTypeKind.Void => "void",
+	};
+}
+
+function declText(p: Printer, t: ShaderType, name: string): string {
+	if (t.kind == ShaderTypeKind.Array) {
+		return declText(p, t.element[0], name + "[" + String(t.length) + "]");
+	}
+	if (t.kind == ShaderTypeKind.Void) { return fail(p, "a value of type void"); }
+	return typeText(p, t) + " " + name;
+}
+
+function numberText(p: Printer, value: float64): string {
+	if (value != value || value - value != 0.0) {
+		return fail(p, "a literal that is not finite");
+	}
+	if (value == 0.0 && 1.0 / value < 0.0) { return "(-0.0)"; }
+	const text = String(value);
+	const whole = text.includes(".") || text.includes("e") ? text : text + ".0";
+	return value < 0.0 ? "(" + whole + ")" : whole;
+}
+
+function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
+	if (s == ScalarKind.Bool) { return value != 0.0 ? "true" : "false"; }
+	if (s == ScalarKind.F32) { return numberText(p, value); }
+	if (value != Math.floor(value)) { return fail(p, "an integer literal with a fraction"); }
+	if (s == ScalarKind.I32 && value == -2147483648.0) { return "(-2147483647 - 1)"; }
+	const text = String(value as int64) + (s == ScalarKind.U32 ? "u" : "");
+	return value < 0.0 ? "(" + text + ")" : text;
+}
+
+function literalText(p: Printer, t: ShaderType, value: float64): string {
+	if (t.kind == ShaderTypeKind.Scalar) { return scalarLiteral(p, t.scalar, value); }
+	if (t.kind == ShaderTypeKind.Vector) {
+		return typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")";
+	}
+	return fail(p, "a literal of a " + t.kind.toString());
+}
+
+function argsText(p: Printer, args: ShaderExpr[]): string {
+	return args.map((a) => exprText(p, a)).join(", ");
+}
+
+function binaryOperator(op: BinaryOp): string {
+	return match (op) {
+		BinaryOp.Add => "+",
+		BinaryOp.Sub => "-",
+		BinaryOp.Mul => "*",
+		BinaryOp.Div => "/",
+		BinaryOp.Mod => "%",
+		BinaryOp.BitAnd => "&",
+		BinaryOp.LogicalAnd => "&&",
+		BinaryOp.LogicalOr => "||",
+		BinaryOp.Equal => "==",
+		BinaryOp.NotEqual => "!=",
+		BinaryOp.Less => "<",
+		BinaryOp.LessEqual => "<=",
+		BinaryOp.Greater => ">",
+		BinaryOp.GreaterEqual => ">=",
+	};
+}
+
+function isFloat(t: ShaderType): boolean {
+	return (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) &&
+		t.scalar == ScalarKind.F32;
+}
+
+function binaryText(p: Printer, e: ShaderExpr): string {
+	const left = e.operands[0];
+	if (e.binary == BinaryOp.Mod && isFloat(e.type)) {
+		return "fmod(" + argsText(p, e.operands) + ")";
+	}
+	const text = "(" + exprText(p, left) + " " + binaryOperator(e.binary) + " " +
+		exprText(p, e.operands[1]) + ")";
+	const whole = (e.binary == BinaryOp.Equal || e.binary == BinaryOp.NotEqual) &&
+		e.type.kind == ShaderTypeKind.Scalar;
+	if (!whole || left.type.kind == ShaderTypeKind.Scalar) { return text; }
+	if (left.type.kind != ShaderTypeKind.Vector) {
+		return fail(p, "'" + binaryOperator(e.binary) + "' on a " + left.type.kind.toString());
+	}
+	return (e.binary == BinaryOp.Equal ? "all" : "any") + text;
+}
+
+function hasEffect(e: ShaderExpr): boolean {
+	if (e.kind == ExprKind.Call ||
+		e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.TextureStore) {
+		return true;
+	}
+	return e.operands.some((o) => hasEffect(o));
+}
+
+function fragmentOnly(p: Printer, what: string): void {
+	if (p.stage != ShaderStage.Fragment) { fail(p, what + " outside a fragment entry"); }
+}
+
+function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
+	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
+}
+
+function isArrayed(t: ShaderType): boolean {
+	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
+		t.shape == TextureShape.Depth2dArray;
+}
+
+function texelCoordinate(p: Printer, at: ShaderExpr): string {
+	const rows = at.type.kind == ShaderTypeKind.Vector ? String(at.type.rows) : "";
+	return "uint" + rows + "(" + exprText(p, at) + ")";
+}
+
+function sampleText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
+		o[1].type.kind != ShaderTypeKind.Sampler) {
+		return fail(p, "TextureSample takes a texture, a sampler and coordinates");
+	}
+	const t = o[0].type;
+	if (t.shape == TextureShape.Multisampled2d) {
+		return fail(p, "TextureSample of a multisampled texture");
+	}
+	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
+	if (sampler !== null && sampler.samplerType == SamplerType.Comparison) {
+		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
+	}
+	let args = [exprText(p, o[1]), exprText(p, o[2])];
+	if (isArrayed(t)) {
+		if (o.length < 4) { return fail(p, "TextureSample of an array texture without a layer"); }
+		args.push("uint(" + exprText(p, o[3]) + ")");
+	}
+	if (p.stage != ShaderStage.Fragment) { args.push("level(0.0)"); }
+	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
+}
+
+function loadText(p: Printer, e: ShaderExpr): string {
+	const o = withoutSamplers(e.operands);
+	if (o.length < 2) { return fail(p, "TextureLoad without coordinates"); }
+	const t = o[0].type;
+	const texture = exprText(p, o[0]);
+	const at = texelCoordinate(p, o[1]);
+	if (t.kind == ShaderTypeKind.StorageTexture) {
+		if (t.access == Access.Write) { return fail(p, "TextureLoad of a write-only storage texture"); }
+		return texture + ".read(" + at + ")";
+	}
+	if (t.kind != ShaderTypeKind.Texture) { return fail(p, "TextureLoad of a " + t.kind.toString()); }
+	if (t.shape == TextureShape.Cube || t.shape == TextureShape.CubeArray ||
+		t.shape == TextureShape.DepthCube) {
+		return fail(p, "TextureLoad of a cube texture, which names no face");
+	}
+	const wanted = isArrayed(t) ? 4 : 3;
+	if (o.length < wanted) {
+		return fail(p, t.shape == TextureShape.Multisampled2d ?
+			"TextureLoad of a multisampled texture takes a sample index" :
+			"TextureLoad of a sampled texture takes a level");
+	}
+	let args = [at];
+	for (let k = 2; k < wanted; k++) { args.push("uint(" + exprText(p, o[k]) + ")"); }
+	return texture + ".read(" + args.join(", ") + ")";
+}
+
+function storeText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	if (o.length != 3 || o[0].type.kind != ShaderTypeKind.StorageTexture) {
+		return fail(p, "TextureStore takes a storage texture, coordinates and a value");
+	}
+	if (o[0].type.access == Access.Read) {
+		return fail(p, "TextureStore to a read-only storage texture");
+	}
+	return exprText(p, o[0]) + ".write(" + exprText(p, o[2]) + ", " + texelCoordinate(p, o[1]) +
+		")";
+}
+
+function dimensionsText(p: Printer, e: ShaderExpr): string {
+	const o = withoutSamplers(e.operands);
+	const t = o[0].type;
+	if (t.kind != ShaderTypeKind.Texture && t.kind != ShaderTypeKind.StorageTexture) {
+		return fail(p, "TextureDimensions of a " + t.kind.toString());
+	}
+	const levelled = t.kind == ShaderTypeKind.Texture && t.shape != TextureShape.Multisampled2d &&
+		o.length > 1;
+	if (levelled && hasEffect(o[1])) {
+		return fail(p, "TextureDimensions whose level calls a function");
+	}
+	const level = levelled ? "uint(" + exprText(p, o[1]) + ")" : "";
+	const texture = exprText(p, o[0]);
+	let sizes = [texture + ".get_width(" + level + ")", texture + ".get_height(" + level + ")"];
+	if (t.kind == ShaderTypeKind.Texture && t.shape == TextureShape.D3) {
+		sizes.push(texture + ".get_depth(" + level + ")");
+	}
+	if (e.type.kind != ShaderTypeKind.Vector || e.type.rows != sizes.length) {
+		return fail(p, "TextureDimensions of " + String(sizes.length) + " sizes into a " +
+			e.type.kind.toString());
+	}
+	return typeText(p, e.type) + "(" + sizes.join(", ") + ")";
+}
+
+function signText(p: Printer, e: ShaderExpr): string {
+	const x = e.operands[0];
+	if (isFloat(x.type)) { return "sign(" + exprText(p, x) + ")"; }
+	if (hasEffect(x)) { return fail(p, "Sign of an integer whose operand calls a function"); }
+	const zero = literalText(p, x.type, 0.0);
+	const t = typeText(p, e.type);
+	const v = exprText(p, x);
+	return "(" + t + "(" + v + " > " + zero + ") - " + t + "(" + v + " < " + zero + "))";
+}
+
+function selectText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const condition = exprText(p, o[2]);
+	const splat = o[2].type.kind == ShaderTypeKind.Scalar && e.type.kind == ShaderTypeKind.Vector;
+	return "select(" + exprText(p, o[0]) + ", " + exprText(p, o[1]) + ", " +
+		(splat ? "bool" + String(e.type.rows) + "(" + condition + ")" : condition) + ")";
+}
+
+function inverseCall(p: Printer, e: ShaderExpr): string {
+	const t = e.type;
+	if (t.kind != ShaderTypeKind.Matrix || t.columns != t.rows) {
+		return fail(p, "Inverse of a " + t.kind.toString() + " that is no square matrix");
+	}
+	if (!p.inverses.includes(t.rows)) { p.inverses.push(t.rows); }
+	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
+}
+
+function intrinsicText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const op = e.intrinsic;
+	const name = builtinName(op);
+	if (op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth) {
+		fragmentOnly(p, name);
+	}
+	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
+	if (op == Intrinsic.UpperLeft3x3) { p.upperLeft = true; }
+	return match (op) {
+		Intrinsic.Sign => signText(p, e),
+		Intrinsic.Degrees => "(" + exprText(p, o[0]) + " * 57.295779513082323)",
+		Intrinsic.Radians => "(" + exprText(p, o[0]) + " * 0.017453292519943295)",
+		Intrinsic.Inverse => inverseCall(p, e),
+		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
+		Intrinsic.Select => selectText(p, e),
+		Intrinsic.LessThanEqual => "(" + exprText(p, o[0]) + " <= " + exprText(p, o[1]) + ")",
+		Intrinsic.TextureSample => sampleText(p, e),
+		Intrinsic.TextureLoad => loadText(p, e),
+		Intrinsic.TextureStore => storeText(p, e),
+		Intrinsic.TextureDimensions => dimensionsText(p, e),
+		_ => fail(p, op.toString() + " has no MSL spelling"),
+	};
+}
+
+function constructText(p: Printer, e: ShaderExpr): string {
+	const t = e.type;
+	if (t.kind == ShaderTypeKind.Array) {
+		return fail(p, "an array value outside a local's or constant's initializer");
+	}
+	if (t.kind == ShaderTypeKind.Struct) {
+		return p.structs[t.structIndex] + "{" + argsText(p, e.operands) + "}";
+	}
+	const scalars = t.kind == ShaderTypeKind.Matrix && e.operands.length == t.columns * t.rows;
+	if (!scalars) { return typeText(p, t) + "(" + argsText(p, e.operands) + ")"; }
+	let columns: string[] = [];
+	for (let c = 0; c < t.columns; c++) {
+		const column = e.operands.slice(c * t.rows, (c + 1) * t.rows);
+		columns.push("float" + String(t.rows) + "(" + argsText(p, column) + ")");
+	}
+	return typeText(p, t) + "(" + columns.join(", ") + ")";
+}
+
+function initializerText(p: Printer, e: ShaderExpr): string {
+	if (e.type.kind == ShaderTypeKind.Array && e.kind == ExprKind.Construct) {
+		return "{" + e.operands.map((o) => initializerText(p, o)).join(", ") + "}";
+	}
+	return exprText(p, e);
+}
+
+function memberName(p: Printer, t: ShaderType, member: int32): string {
+	if (t.kind != ShaderTypeKind.Struct) { return fail(p, "a field of a " + t.kind.toString()); }
+	return p.members[t.structIndex][member];
+}
+
+function swizzleText(components: int32[]): string {
+	return components.map((c) => "xyzw".substring(c, c + 1)).join("");
+}
+
+function ioText(p: Printer, index: int32): string {
+	const io = p.module.ios[index];
+	if (io.stage != p.stage) {
+		return fail(p, "io '" + io.name + "' belongs to the " + io.stage.toString() + " stage");
+	}
+	if (io.builtin != Builtin.None && io.direction == IoDirection.In) { return p.ios[index]; }
+	return (io.direction == IoDirection.In ? "in." : "out.") + p.ios[index];
+}
+
+function threadedArgs(p: Printer, index: int32): string[] {
+	const t = p.threaded[index];
+	let args: string[] = [];
+	if (t.stageIn) { args.push("in"); }
+	if (t.stageOut) { args.push("out"); }
+	for (const b of t.builtins) { args.push(p.ios[b]); }
+	for (const r of t.resources) { args.push(p.resources[r]); }
+	return args;
+}
+
+function callText(p: Printer, e: ShaderExpr): string {
+	let args = e.operands.map((a) => exprText(p, a));
+	for (const a of threadedArgs(p, e.index)) { args.push(a); }
+	return p.functions[e.index] + "(" + args.join(", ") + ")";
+}
+
+function exprText(p: Printer, e: ShaderExpr): string {
+	const m = p.module;
+	const o = e.operands;
+	if (e.type.kind == ShaderTypeKind.Array &&
+		(e.kind == ExprKind.Conditional || e.kind == ExprKind.Call)) {
+		return fail(p, "an array value outside a local's or constant's initializer");
+	}
+	return match (e.kind) {
+		ExprKind.Literal => literalText(p, e.type, e.value),
+		ExprKind.Local => p.locals[e.index],
+		ExprKind.Param => p.params[e.index],
+		ExprKind.Constant => p.constants[e.index],
+		ExprKind.Io => ioText(p, e.index),
+		ExprKind.Resource => p.resources[e.index],
+		ExprKind.BlockMember => p.resources[e.index] + "." +
+			memberName(p, m.resources[e.index].type, e.member),
+		ExprKind.Unary => match (e.unary) {
+			UnaryOp.Negate => "(-" + exprText(p, o[0]) + ")",
+			UnaryOp.Not => (o[0].type.scalar == ScalarKind.Bool ? "(!" : "(~") +
+				exprText(p, o[0]) + ")",
+		},
+		ExprKind.Binary => binaryText(p, e),
+		ExprKind.Conditional => "(" + exprText(p, o[0]) + " ? " + exprText(p, o[1]) + " : " +
+			exprText(p, o[2]) + ")",
+		ExprKind.Call => callText(p, e),
+		ExprKind.Intrinsic => intrinsicText(p, e),
+		ExprKind.Construct => constructText(p, e),
+		ExprKind.Convert => e.type.kind == ShaderTypeKind.Matrix &&
+			!sameShaderType(e.type, o[0].type) ? fail(p, "Convert between matrix sizes") :
+			typeText(p, e.type) + "(" + exprText(p, o[0]) + ")",
+		ExprKind.Field => exprText(p, o[0]) + "." + memberName(p, o[0].type, e.index),
+		ExprKind.Swizzle => exprText(p, o[0]) + "." + swizzleText(e.components),
+		ExprKind.Index => exprText(p, o[0]) + "[" + exprText(p, o[1]) + "]",
+	};
+}
+
+function isVoid(e: ShaderExpr): boolean {
+	return e.type.kind == ShaderTypeKind.Void;
+}
+
+function emit(p: Printer, depth: int32, text: string): void {
+	p.lines.push("  ".repeat(depth) + text);
+}
+
+function assignText(p: Printer, s: ShaderStmt): string {
+	const target = exprText(p, s.target);
+	if (s.target.type.kind == ShaderTypeKind.Array) {
+		return fail(p, "an assignment of a whole array");
+	}
+	if (s.assign == AssignOp.Mod && isFloat(s.target.type)) {
+		if (hasEffect(s.target)) { return fail(p, "'%=' on a target that calls a function"); }
+		return target + " = fmod(" + target + ", " + exprText(p, s.expr) + ")";
+	}
+	return match (s.assign) {
+		AssignOp.Set => target + " = " + exprText(p, s.expr),
+		AssignOp.Add => target + " += " + exprText(p, s.expr),
+		AssignOp.Sub => target + " -= " + exprText(p, s.expr),
+		AssignOp.Mul => target + " *= " + exprText(p, s.expr),
+		AssignOp.Div => target + " /= " + exprText(p, s.expr),
+		AssignOp.Mod => target + " %= " + exprText(p, s.expr),
+		AssignOp.Increment => target + "++",
+		AssignOp.Decrement => target + "--",
+	};
+}
+
+function simpleText(p: Printer, s: ShaderStmt): string {
+	return match (s.kind) {
+		StmtKind.Let => declText(p, p.fn.locals[s.local].type, p.locals[s.local]) + " = " +
+			(isVoid(s.expr) ? "{}" : initializerText(p, s.expr)),
+		StmtKind.Assign => assignText(p, s),
+		StmtKind.Call => s.expr.kind == ExprKind.Call || isVoid(s.expr) ?
+			exprText(p, s.expr) : "(void)" + exprText(p, s.expr),
+		_ => fail(p, s.kind.toString() + " is no simple statement"),
+	};
+}
+
+function stmtsText(p: Printer, stmts: ShaderStmt[], depth: int32): void {
+	for (const s of stmts) { stmtText(p, s, depth); }
+}
+
+function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
+	match (s.kind) {
+		StmtKind.Block => {
+			emit(p, depth, "{");
+			stmtsText(p, s.body, depth + 1);
+			emit(p, depth, "}");
+		},
+		StmtKind.Let | StmtKind.Assign | StmtKind.Call => emit(p, depth, simpleText(p, s) + ";"),
+		StmtKind.If => {
+			emit(p, depth, "if (" + exprText(p, s.expr) + ") {");
+			stmtsText(p, s.body, depth + 1);
+			if (s.otherwise.length > 0) {
+				emit(p, depth, "} else {");
+				stmtsText(p, s.otherwise, depth + 1);
+			}
+			emit(p, depth, "}");
+		},
+		StmtKind.FeatureIf => {
+			fail(p, "a feature branch is still undecided: specialize the module first");
+		},
+		StmtKind.While => {
+			emit(p, depth, "while (" + exprText(p, s.expr) + ") {");
+			stmtsText(p, s.body, depth + 1);
+			emit(p, depth, "}");
+		},
+		StmtKind.For => forText(p, s, depth),
+		StmtKind.Switch => {
+			emit(p, depth, "switch (" + exprText(p, s.expr) + ") {");
+			for (const k of s.cases) {
+				let labels = k.labels.map((l) => "case " + exprText(p, l) + ":");
+				if (k.isDefault || k.labels.length == 0) { labels.push("default:"); }
+				emit(p, depth + 1, labels.join(" ") + " {");
+				stmtsText(p, k.body, depth + 2);
+				emit(p, depth + 2, "break;");
+				emit(p, depth + 1, "}");
+			}
+			emit(p, depth, "}");
+		},
+		StmtKind.Break => emit(p, depth, "break;"),
+		StmtKind.Continue => emit(p, depth, "continue;"),
+		StmtKind.Return => emit(p, depth, isVoid(s.expr) ? "return;" :
+			"return " + exprText(p, s.expr) + ";"),
+		StmtKind.Discard => {
+			fragmentOnly(p, "discard");
+			emit(p, depth, "discard_fragment();");
+		},
+	}
+}
+
+function forText(p: Printer, s: ShaderStmt, depth: int32): void {
+	const condition = isVoid(s.expr) ? "" : exprText(p, s.expr);
+	if (s.update.some((u) => u.kind != StmtKind.Assign && u.kind != StmtKind.Call)) {
+		fail(p, "a for update that is no assignment or call");
+		return;
+	}
+	const update = s.update.map((u) => simpleText(p, u)).join(", ");
+	const inHeader = s.init.length == 0 || s.init.length == 1 && (s.init[0].kind == StmtKind.Let ||
+		s.init[0].kind == StmtKind.Assign || s.init[0].kind == StmtKind.Call);
+	if (inHeader) {
+		const init = s.init.length == 0 ? "" : simpleText(p, s.init[0]);
+		emit(p, depth, "for (" + init + "; " + condition + "; " + update + ") {");
+		stmtsText(p, s.body, depth + 1);
+		emit(p, depth, "}");
+		return;
+	}
+	emit(p, depth, "{");
+	stmtsText(p, s.init, depth + 1);
+	emit(p, depth + 1, "for (; " + condition + "; " + update + ") {");
+	stmtsText(p, s.body, depth + 2);
+	emit(p, depth + 1, "}");
+	emit(p, depth, "}");
+}
+
+function resourceParam(p: Printer, index: int32): string {
+	const r = p.module.resources[index];
+	const name = p.resources[index];
+	return match (r.kind) {
+		ResourceKind.UniformBlock => "constant " + typeText(p, r.type) + "& " + name,
+		ResourceKind.StorageBuffer => (r.access == Access.Read ? "const device " : "device ") +
+			typeText(p, r.type.element[0]) + "* " + name,
+		ResourceKind.Texture | ResourceKind.Sampler | ResourceKind.StorageTexture =>
+			typeText(p, r.type) + " " + name,
+	};
+}
+
+function threadedParams(p: Printer, index: int32): string[] {
+	const t = p.threaded[index];
+	let params: string[] = [];
+	if (t.stageIn) { params.push("thread main0_in& in"); }
+	if (t.stageOut) { params.push("thread main0_out& out"); }
+	for (const b of t.builtins) {
+		params.push("thread " + typeText(p, p.module.ios[b].type) + "& " + p.ios[b]);
+	}
+	for (const r of t.resources) { params.push(resourceParam(p, r)); }
+	return params;
+}
+
+function functionText(p: Printer, index: int32): string {
+	const f = p.module.functions[index];
+	p.fn = f;
+	p.scope = p.taken.map((n) => n);
+	p.params = f.params.map((x) => nameIn(p, p.scope, x.name));
+	p.locals = f.locals.map((x) => nameIn(p, p.scope, x.name));
+	if (f.result.kind == ShaderTypeKind.Array) {
+		return fail(p, "function '" + f.name + "' returns an array");
+	}
+	let header: string[] = [];
+	for (let i = 0; i < f.params.length; i++) {
+		if (f.params[i].type.kind == ShaderTypeKind.Array) {
+			return fail(p, "function '" + f.name + "' takes an array, which MSL passes by pointer");
+		}
+		header.push(declText(p, f.params[i].type, p.params[i]));
+	}
+	for (const extra of threadedParams(p, index)) { header.push(extra); }
+	p.lines = [];
+	stmtsText(p, f.body, 1);
+	return "static inline " + typeText(p, f.result) + " " + p.functions[index] + "(" +
+		header.join(", ") + ") {\n" + p.lines.map((l) => l + "\n").join("") + "}";
+}
+
+function exprCalls(e: ShaderExpr, out: int32[]): void {
+	if (e.kind == ExprKind.Call && !out.includes(e.index)) { out.push(e.index); }
+	for (const o of e.operands) { exprCalls(o, out); }
+}
+
+function calls(stmts: ShaderStmt[], out: int32[]): void {
+	for (const s of stmts) {
+		exprCalls(s.expr, out);
+		exprCalls(s.target, out);
+		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
+		for (const k of s.cases) {
+			for (const label of k.labels) { exprCalls(label, out); }
+			calls(k.body, out);
+		}
+	}
+}
+
+function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): void {
+	if (out.includes(index)) { return; }
+	if (path.includes(index)) {
+		fail(p, "function '" + p.module.functions[index].name + "' is recursive");
+		return;
+	}
+	path.push(index);
+	let callees: int32[] = [];
+	calls(p.module.functions[index].body, callees);
+	for (const c of callees) { functionOrder(p, c, path, out); }
+	path.pop();
+	out.push(index);
+}
+
+function structOrder(p: Printer, t: ShaderType, out: int32[]): void {
+	for (const e of t.element) { structOrder(p, e, out); }
+	if (t.kind != ShaderTypeKind.Struct || out.includes(t.structIndex)) { return; }
+	for (const f of p.module.structs[t.structIndex].members) { structOrder(p, f.type, out); }
+	out.push(t.structIndex);
+}
+
+function threadedOf(p: Printer, index: int32): Threaded {
+	let t = new Threaded();
+	const read = readsFrom(p.module, index);
+	if (!read.ok) {
+		fail(p, read.error);
+		return t;
+	}
+	let ios = read.value.ios.map((n) => n);
+	ios.sort((a, b) => a - b);
+	for (const i of ios) {
+		const io = p.module.ios[i];
+		if (io.stage != p.stage) { continue; }
+		if (io.direction == IoDirection.Out) {
+			t.stageOut = true;
+		} else if (io.builtin == Builtin.None) {
+			t.stageIn = true;
+		} else {
+			t.builtins.push(i);
+		}
+	}
+	t.resources = read.value.resources.map((n) => n);
+	t.resources.sort((a, b) => a - b);
+	return t;
+}
+
+function naturalExtent(m: ShaderModule, t: ShaderType): [int32, int32] {
+	if (t.kind == ShaderTypeKind.Scalar) { return [4, 4]; }
+	if (t.kind == ShaderTypeKind.Vector) { return t.rows == 2 ? [8, 8] : [16, 16]; }
+	if (t.kind == ShaderTypeKind.Matrix) {
+		const column = t.rows == 2 ? 8 : 16;
+		return [column, column * t.columns];
+	}
+	if (t.kind == ShaderTypeKind.Array) {
+		const [align, size] = naturalExtent(m, t.element[0]);
+		return [align, size * t.length];
+	}
+	let align = 1;
+	let end = 0;
+	for (const f of m.structs[t.structIndex].members) {
+		const [a, size] = naturalExtent(m, f.type);
+		end = (end + a - 1) / a * a + size;
+		align = a > align ? a : align;
+	}
+	return [align, (end + align - 1) / align * align];
+}
+
+// A buffer's struct is the host's bytes, so each member sits where std140 or std430 put it.
+function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, owner: string,
+	sized: boolean): string {
+	const s = m.structs[structIndex];
+	let end = 0;
+	for (let k = 0; k < s.members.length; k++) {
+		const f = s.members[k];
+		if (f.type.kind == ShaderTypeKind.Struct) { return owner + " nests struct '" + f.name + "'"; }
+		const [align, size] = naturalExtent(m, f.type);
+		const offset = (end + align - 1) / align * align;
+		if (offset != layout.offsets[k]) {
+			return owner + ": member '" + f.name + "' sits at byte " + String(layout.offsets[k]) +
+				" in the host layout and " + String(offset) + " in MSL";
+		}
+		end = offset + size;
+	}
+	const [_align, natural] = naturalExtent(m, structTypeOf(structIndex));
+	if (sized && natural != layout.size) {
+		return owner + ": an element is " + String(layout.size) + " bytes in the host layout and " +
+			String(natural) + " in MSL";
+	}
+	return "";
+}
+
+function structTypeOf(index: int32): ShaderType {
+	let t = new ShaderType();
+	t.kind = ShaderTypeKind.Struct;
+	t.structIndex = index;
+	return t;
+}
+
+function bufferLayoutError(m: ShaderModule, index: int32): string {
+	const r = m.resources[index];
+	if (r.kind == ResourceKind.UniformBlock) {
+		const layout = uniformBlockLayout(m, index);
+		if (!layout.ok) { return layout.error; }
+		return layoutError(m, r.type.structIndex, layout.value, "uniform block '" + r.name + "'",
+			false);
+	}
+	if (r.kind == ResourceKind.StorageBuffer) {
+		const layout = storageElementLayout(m, index);
+		if (!layout.ok) { return layout.error; }
+		return layoutError(m, r.type.element[0].structIndex, layout.value,
+			"storage buffer '" + r.name + "'", true);
+	}
+	return "";
+}
+
+function builtinAttribute(b: Builtin): string {
+	return match (b) {
+		Builtin.None => "",
+		Builtin.VertexIndex => "vertex_id",
+		Builtin.InstanceIndex => "instance_id",
+		Builtin.Position => "position",
+		Builtin.FrontFacing => "front_facing",
+		Builtin.FragDepth => "depth(any)",
+		Builtin.LocalInvocationId => "thread_position_in_threadgroup",
+		Builtin.LocalInvocationIndex => "thread_index_in_threadgroup",
+		Builtin.GlobalInvocationId => "thread_position_in_grid",
+		Builtin.WorkgroupId => "threadgroup_position_in_grid",
+		Builtin.NumWorkgroups => "threadgroups_per_grid",
+		Builtin.SampleIndex => "sample_id",
+		Builtin.SampleMask => "sample_mask",
+	};
+}
+
+function builtinType(b: Builtin): ShaderType {
+	return match (b) {
+		Builtin.Position => vectorType(ScalarKind.F32, 4),
+		Builtin.FrontFacing => scalarType(ScalarKind.Bool),
+		Builtin.FragDepth => scalarType(ScalarKind.F32),
+		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
+			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
+		_ => scalarType(ScalarKind.U32),
+	};
+}
+
+function interpolationText(io: ShaderIo): string {
+	if (io.interpolation == Interpolation.Flat) { return ", flat"; }
+	const linear = io.interpolation == Interpolation.Linear;
+	const where = match (io.sampling) {
+		Sampling.Center => "center",
+		Sampling.Centroid => "centroid",
+		Sampling.Sample => "sample",
+	};
+	if (!linear && io.sampling == Sampling.Center) { return ""; }
+	return ", " + where + (linear ? "_no_perspective" : "_perspective");
+}
+
+function interfaceAttribute(p: Printer, io: ShaderIo, ordinal: int32): string {
+	if (io.builtin != Builtin.None) {
+		const wanted = builtinType(io.builtin);
+		if (!sameShaderType(io.type, wanted)) {
+			return fail(p, "io '" + io.name + "' is " + typeText(p, io.type) + "; [[" +
+				builtinAttribute(io.builtin) + "]] is " + typeText(p, wanted));
+		}
+		return "[[" + builtinAttribute(io.builtin) + "]]";
+	}
+	const location = String(io.location >= 0 ? io.location : ordinal);
+	if (io.stage == ShaderStage.Vertex && io.direction == IoDirection.In) {
+		return "[[attribute(" + location + ")]]";
+	}
+	if (io.stage == ShaderStage.Fragment && io.direction == IoDirection.Out) {
+		return "[[color(" + location + ")]]";
+	}
+	if (io.stage == ShaderStage.Compute) { return fail(p, "io '" + io.name + "' of a compute entry"); }
+	const varying = io.direction == IoDirection.In ? interpolationText(io) : "";
+	return "[[user(locn" + location + ")" + varying + "]]";
+}
+
+function bindingAttribute(kind: ResourceKind, slot: int32): string {
+	return match (kind) {
+		ResourceKind.UniformBlock | ResourceKind.StorageBuffer => "[[buffer(" + String(slot) + ")]]",
+		ResourceKind.Texture | ResourceKind.StorageTexture => "[[texture(" + String(slot) + ")]]",
+		ResourceKind.Sampler => "[[sampler(" + String(slot) + ")]]",
+	};
+}
+
+function stageKeyword(stage: ShaderStage): string {
+	return match (stage) {
+		ShaderStage.Vertex => "vertex",
+		ShaderStage.Fragment => "fragment",
+		ShaderStage.Compute => "kernel",
+	};
+}
+
+// The workgroup size of a compute entry is no MSL attribute: the host passes it to
+// dispatchThreadgroups, from the reflection's workgroupSize.
+export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]):
+	Result<string, string> {
+	if (entry < 0 || entry >= m.entries.length) {
+		return Result.err("printMsl: entry " + String(entry) + " is out of range");
+	}
+	const e = m.entries[entry];
+	const f = m.functions[e.functionIndex];
+	if (f.params.length > 0 || f.result.kind != ShaderTypeKind.Void) {
+		return Result.err("printMsl: entry '" + e.name + "' takes parameters or returns a " +
+			"value; a stage reads and writes its ios");
+	}
+	const read = readsFrom(m, e.functionIndex);
+	if (!read.ok) { return Result.err("printMsl: " + read.error); }
+	const reads = read.value;
+	for (const index of reads.resources) {
+		const slots = bindings.filter((s) => s.resource == index);
+		if (slots.length == 0 || slots[0].nativeSlot < 0) {
+			return Result.err("printMsl: resource '" + m.resources[index].name +
+				"' has no MSL slot");
+		}
+		const error = bufferLayoutError(m, index);
+		if (error != "") { return Result.err("printMsl: " + error); }
+	}
+
+	let p = new Printer();
+	p.module = m;
+	p.stage = e.stage;
+	p.taken = ["main0", "main0_in", "main0_out", "in", "out", UPPER_LEFT, inverseName(2),
+		inverseName(3), inverseName(4)];
+	for (const s of m.structs) {
+		p.structs.push(nameIn(p, p.taken, s.name));
+		let scope: string[] = [];
+		p.members.push(s.members.map((x) => nameIn(p, scope, x.name)));
+	}
+	p.constants = m.constants.map((c) => nameIn(p, p.taken, c.name));
+	p.resources = m.resources.map((r) => nameIn(p, p.taken, r.name));
+	p.ios = m.ios.map((io) => io.stage == e.stage ? nameIn(p, p.taken, io.name) : "");
+	p.functions = m.functions.map((x) => nameIn(p, p.taken, x.name));
+	p.threaded = m.functions.map((_x) => new Threaded());
+	for (const i of reads.functions) { p.threaded[i] = threadedOf(p, i); }
+
+	let order: int32[] = [];
+	functionOrder(p, e.functionIndex, [], order);
+	const functions = order.map((i) => functionText(p, i));
+
+	let structs: int32[] = [];
+	let reached = reads.structs.map((n) => n);
+	reached.sort((a, b) => a - b);
+	for (const i of reached) { structOrder(p, structTypeOf(i), structs); }
+	let inputs: string[] = [];
+	let outputs: string[] = [];
+	let params: string[] = [];
+	let ordinals = [0, 0];
+	for (let i = 0; i < m.ios.length; i++) {
+		const io = m.ios[i];
+		if (io.stage != e.stage) { continue; }
+		structOrder(p, io.type, structs);
+		const input = io.direction == IoDirection.In;
+		const side = input ? 0 : 1;
+		const attribute = interfaceAttribute(p, io, ordinals[side]);
+		if (io.builtin == Builtin.None) { ordinals[side] += 1; }
+		const declared = declText(p, io.type, p.ios[i]) + " " + attribute;
+		if (!input) {
+			outputs.push("  " + declared + ";\n");
+		} else if (io.builtin == Builtin.None) {
+			inputs.push("  " + declared + ";\n");
+		} else {
+			params.push(declared);
+		}
+	}
+	if (inputs.length > 0) { params.splice(0, 0, "main0_in in [[stage_in]]"); }
+	let declared: int32[] = [];
+	for (const s of bindings) {
+		if (reads.resources.includes(s.resource) && !declared.includes(s.resource)) {
+			declared.push(s.resource);
+			params.push(resourceParam(p, s.resource) + " " +
+				bindingAttribute(m.resources[s.resource].kind, s.nativeSlot));
+		}
+	}
+
+	let decls = ["#include <metal_stdlib>\n\nusing namespace metal;"];
+	for (const i of structs) {
+		let text = "struct " + p.structs[i] + " {\n";
+		for (let k = 0; k < m.structs[i].members.length; k++) {
+			text += "  " + declText(p, m.structs[i].members[k].type, p.members[i][k]) + ";\n";
+		}
+		decls.push(text + "};");
+	}
+	for (let i = 0; i < m.constants.length; i++) {
+		if (!reads.constants.includes(i)) { continue; }
+		const c = m.constants[i];
+		decls.push("constant " + declText(p, c.type, p.constants[i]) + " = " +
+			initializerText(p, c.value) + ";");
+	}
+	if (inputs.length > 0) { decls.push("struct main0_in {\n" + inputs.join("") + "};"); }
+	if (outputs.length > 0) { decls.push("struct main0_out {\n" + outputs.join("") + "};"); }
+	if (p.upperLeft) {
+		decls.push("static inline float3x3 " + UPPER_LEFT + "(float4x4 m) {\n" +
+			"  return float3x3(m[0].xyz, m[1].xyz, m[2].xyz);\n}");
+	}
+	for (let n = 2; n <= 4; n++) {
+		if (p.inverses.includes(n as int32)) { decls.push(inverseText(n as int32)); }
+	}
+	for (const text of functions) { decls.push(text); }
+	const returned = outputs.length > 0 ? "main0_out" : "void";
+	const call = "  " + p.functions[e.functionIndex] + "(" +
+		threadedArgs(p, e.functionIndex).join(", ") + ");\n";
+	decls.push(stageKeyword(e.stage) + " " + returned + " main0(" + params.join(", ") + ") {\n" +
+		(outputs.length > 0 ? "  main0_out out = {};\n" + call + "  return out;\n" : call) + "}");
+	if (p.error != "") { return Result.err(p.error); }
+	return Result.ok(decls.join("\n\n") + "\n");
+}
