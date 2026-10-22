@@ -1,7 +1,7 @@
 // Void capture — one readback signature, a backend behind it (docs/TESTING.md "T2").
 //
 // sokol has no readback API (docs/SOKOL.md:34), so every backend is hand-written here.
-// D3D11 and GLES3 exist; Metal, WebGPU and WebGL2 are stubs that report themselves as
+// D3D11, GLES3 and Metal (macOS window driver) exist; WebGPU and WebGL2 are stubs that report themselves as
 // absent, so the gate can print SKIP with a reason and never PASS for a backend it did
 // not run.
 //
@@ -15,7 +15,7 @@
 
 #define VOID_CAPTURE_SLOTS 2
 
-// 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop. Names the path
+// 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop, 5 = Metal. Names the path
 // that voidCaptureGrab would take.
 int voidCaptureBackend(void);
 

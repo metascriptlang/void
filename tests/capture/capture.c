@@ -23,6 +23,12 @@
 	#define VOID_CAPTURE_GL 1
 #elif defined(_WIN32)
 	#define VOID_CAPTURE_D3D11 1
+#elif defined(__APPLE__)
+	#include <TargetConditionals.h>
+	#if TARGET_OS_OSX
+		#define VOID_CAPTURE_METAL 1
+		int voidMetalReadDrawable(uint8_t *rgba, int width, int height);
+	#endif
 #endif
 
 #if defined(VOID_CAPTURE_D3D11)
@@ -84,6 +90,8 @@ int voidCaptureBackend(void) {
 	return 3;
 #elif defined(SOKOL_GLCORE)
 	return 4;
+#elif defined(VOID_CAPTURE_METAL)
+	return 5;
 #elif defined(VOID_CAPTURE_GL)
 	return 2;
 #else
@@ -184,6 +192,13 @@ int voidCaptureGrab(int slot) {
 	}
 	free(flip);
 	return 1;
+#elif defined(VOID_CAPTURE_METAL)
+	int width = voidFbWidth();
+	int height = voidFbHeight();
+	if (width <= 0 || height <= 0) return 0;
+	uint8_t *out = slotResize(slot, width, height);
+	if (out == NULL) return 0;
+	return voidMetalReadDrawable(out, width, height);
 #else
 	(void)slot;
 	return 0;

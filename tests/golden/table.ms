@@ -557,5 +557,6 @@ export function backendDirectory(backend: int32): string {
 	if (backend == 2) { return "gles3"; }
 	if (backend == 3) { return "webgl2"; }
 	if (backend == 4) { return "gl430"; }
+	if (backend == 5) { return "metal"; }
 	return "none";
 }
