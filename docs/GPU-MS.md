@@ -132,8 +132,12 @@ claiming "sokol-free": `nm <exe> | grep -ci " _\?\(sg\|sapp\|sglue\|stm\|slog\)_
 
 ## Known follow-ups (solidify, not blocking G6)
 
-- D3D11 uploads every uniform block when any one is dirty.
-- `writeTexture` writes the whole texture only.
-- Attribute order against the writers is only checked in the GL build (where modules carry names).
+- D3D11 uploads every uniform block when any one is dirty. Left as is: void3d re-applies every
+  block per item after `applyPipeline` (`src/void3d/draw.ms` ~1600), so it costs what sokol's
+  per-slot update costs; void2d's programs have two blocks at most. Revisit only on a profile.
+- `writeTexture` writes the whole texture only, and refuses anything else. Every caller writes
+  the whole texture (the door's `doorUpdateTexture`, sokol's `sg_update_image` contract).
+- Attribute order against the writers is only checked in the GL build (where modules carry
+  names); the goldens catch a reorder on the other backends.
 - Android: GLES 3.2's `glColorMaski` is refused today (one mask for all targets); MSAA 2/8 untested.
 - `src/examples/androidEntry.ms` calls `voidAndroidM2Run`, which nothing defines (older than this branch).
