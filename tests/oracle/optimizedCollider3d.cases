@@ -1,0 +1,107 @@
+# h3d.col.OptimizedCollider and GroupCollider (Collider.hx) against src/void3d/optimizedCollider.ms,
+# over a Bounds as the cheap collider and Spheres as the precise ones. The query ray carries no
+# bestMatch for the cheap collider and Heaps lets a NaN through; the port refuses it by name, which
+# a case cannot emit and optimizedColliderCheck.ms pins.
+# lib: heaps format
+# haxe-prelude: import h3d.col.Bounds;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.Sphere;
+# haxe-prelude: import h3d.col.Collider;
+# haxe-prelude: import h3d.col.Collider.OptimizedCollider;
+# haxe-prelude: import h3d.col.Collider.GroupCollider;
+# haxe-prelude: class H {
+# haxe-prelude: public static function oc(inside:Bool,s:Array<Float>):OptimizedCollider {
+# haxe-prelude: var o=new OptimizedCollider(Bounds.fromValues(-1,-1,-1,2,2,2),new Sphere(s[0],s[1],s[2],s[3])); o.checkInside=inside; return o;
+# haxe-prelude: }
+# haxe-prelude: public static function gc(s:Array<Array<Float>>):GroupCollider {
+# haxe-prelude: var l:Array<Collider>=[]; for(c in s) l.push(new Sphere(c[0],c[1],c[2],c[3])); return new GroupCollider(l);
+# haxe-prelude: }
+# haxe-prelude: public static function ray(o:Array<Float>,d:Array<Float>):Ray { return Ray.fromValues(o[0],o[1],o[2],d[0],d[1],d[2]); }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import { Bounds3D, fromValues, rayIntersection, contains, dimension } from "../../../src/void3d/bounds";
+# ms-prelude: import { Sphere3D } from "../../../src/void3d/sphere";
+# ms-prelude: import { optimizedRayIntersection, optimizedDimension, groupRayIntersection } from "../../../src/void3d/optimizedCollider";
+# ms-prelude: function sph(x:float32,y:float32,z:float32,r:float32):Sphere3D { return {center:vec3(x,y,z),radius:r}; }
+# ms-prelude: function ray(o:Vec3,d:Vec3):Ray { return Ray.fromPoints(o,vec3(o.x+d.x,o.y+d.y,o.z+d.z)); }
+# ms-prelude: function sphereHit(s:Sphere3D,r:Ray):float32 { const h=s.rayIntersection(r); if(!h.ok){unreachable;} return h.value; }
+# ms-prelude: function opt(inside:boolean,s:Sphere3D,r:Ray):float32 {
+# ms-prelude: const box:Bounds3D=Bounds3D.fromValues(-1,-1,-1,2,2,2);
+# ms-prelude: const h=optimizedRayIntersection((q:Ray)=>box.rayIntersection(q),(p:Vec3)=>box.contains(p),(q:Ray)=>sphereHit(s,q),inside,r);
+# ms-prelude: if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+# ms-prelude: function group(a:Sphere3D,b:Sphere3D,best:boolean,r:Ray):float32 {
+# ms-prelude: const casts=[(q:Ray)=>sphereHit(a,q),(q:Ray)=>sphereHit(b,q)];
+# ms-prelude: const h=groupRayIntersection(casts,best,r); if(!h.ok){unreachable;} return h.value;
+# ms-prelude: }
+# ms-prelude: function bigger(a:float32,b:float32):float32 { const d=optimizedDimension(a,b); if(!d.ok){unreachable;} return d.value; }
+
+case opt-through tol=1e-5
+haxe> emit("opt-through",[H.oc(false,[0,0,0,0.5]).rayIntersection(H.ray([-5,0,0],[1,0,0]),true)]);
+ms> emit1("opt-through",opt(false,sph(0,0,0,0.5),ray(vec3(-5,0,0),vec3(1,0,0))));
+
+case opt-box-miss tol=1e-5
+haxe> emit("opt-box-miss",[H.oc(false,[0,0,0,0.5]).rayIntersection(H.ray([-5,3,0],[1,0,0]),true)]);
+ms> emit1("opt-box-miss",opt(false,sph(0,0,0,0.5),ray(vec3(-5,3,0),vec3(1,0,0))));
+
+case opt-box-behind tol=1e-5
+haxe> emit("opt-box-behind",[H.oc(false,[0,0,0,0.5]).rayIntersection(H.ray([5,0,0],[1,0,0]),true)]);
+ms> emit1("opt-box-behind",opt(false,sph(0,0,0,0.5),ray(vec3(5,0,0),vec3(1,0,0))));
+
+case opt-sphere-miss tol=1e-5
+haxe> emit("opt-sphere-miss",[H.oc(false,[0,0.9,0,0.05]).rayIntersection(H.ray([-5,0,0],[1,0,0]),true)]);
+ms> emit1("opt-sphere-miss",opt(false,sph(0,0.9,0,0.05),ray(vec3(-5,0,0),vec3(1,0,0))));
+
+case opt-slanted tol=1e-5
+haxe> emit("opt-slanted",[H.oc(false,[0.2,0.2,0,0.4]).rayIntersection(H.ray([-4,-1,0],[0.8,0.3,0]),true)]);
+ms> emit1("opt-slanted",opt(false,sph(0.2,0.2,0,0.4),ray(vec3(-4,-1,0),vec3(0.8,0.3,0))));
+
+case opt-inside-unchecked tol=1e-5
+haxe> emit("opt-inside-unchecked",[H.oc(false,[0,0,0,0.5]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("opt-inside-unchecked",opt(false,sph(0,0,0,0.5),ray(vec3(0,0,0),vec3(1,0,0))));
+
+case opt-inside-checked tol=1e-5
+haxe> emit("opt-inside-checked",[H.oc(true,[0,0,0,0.5]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("opt-inside-checked",opt(true,sph(0,0,0,0.5),ray(vec3(0,0,0),vec3(1,0,0))));
+
+case opt-inside-checked-off-center tol=1e-5
+haxe> emit("opt-inside-checked-off-center",[H.oc(true,[0.5,0,0,0.3]).rayIntersection(H.ray([0.3,0,0],[1,0,0]),true)]);
+ms> emit1("opt-inside-checked-off-center",opt(true,sph(0.5,0,0,0.3),ray(vec3(0.3,0,0),vec3(1,0,0))));
+
+case opt-inside-checked-sphere-behind tol=1e-5
+haxe> emit("opt-inside-checked-sphere-behind",[H.oc(true,[-0.8,0,0,0.1]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("opt-inside-checked-sphere-behind",opt(true,sph(-0.8,0,0,0.1),ray(vec3(0,0,0),vec3(1,0,0))));
+
+case opt-outside-checked tol=1e-5
+haxe> emit("opt-outside-checked",[H.oc(true,[0,0,0,0.5]).rayIntersection(H.ray([5,0,0],[1,0,0]),true)]);
+ms> emit1("opt-outside-checked",opt(true,sph(0,0,0,0.5),ray(vec3(5,0,0),vec3(1,0,0))));
+
+case opt-box-face-origin tol=1e-5
+haxe> emit("opt-box-face-origin",[H.oc(true,[0,0,0,0.5]).rayIntersection(H.ray([-1,0,0],[1,0,0]),true)]);
+ms> emit1("opt-box-face-origin",opt(true,sph(0,0,0,0.5),ray(vec3(-1,0,0),vec3(1,0,0))));
+
+case group-first tol=1e-5
+haxe> emit("group-first",[H.gc([[6,0,0,1],[2,0,0,1]]).rayIntersection(H.ray([0,0,0],[1,0,0]),false)]);
+ms> emit1("group-first",group(sph(6,0,0,1),sph(2,0,0,1),false,ray(vec3(0,0,0),vec3(1,0,0))));
+
+case group-best tol=1e-5
+haxe> emit("group-best",[H.gc([[6,0,0,1],[2,0,0,1]]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("group-best",group(sph(6,0,0,1),sph(2,0,0,1),true,ray(vec3(0,0,0),vec3(1,0,0))));
+
+case group-first-skips-miss tol=1e-5
+haxe> emit("group-first-skips-miss",[H.gc([[0,5,0,1],[2,0,0,1]]).rayIntersection(H.ray([0,0,0],[1,0,0]),false)]);
+ms> emit1("group-first-skips-miss",group(sph(0,5,0,1),sph(2,0,0,1),false,ray(vec3(0,0,0),vec3(1,0,0))));
+
+case group-all-miss tol=1e-5
+haxe> emit("group-all-miss",[H.gc([[0,5,0,1],[0,-5,0,1]]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("group-all-miss",group(sph(0,5,0,1),sph(0,-5,0,1),true,ray(vec3(0,0,0),vec3(1,0,0))));
+
+case group-overlap-best tol=1e-5
+haxe> emit("group-overlap-best",[H.gc([[3,0,0,2],[2,0,0,1]]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("group-overlap-best",group(sph(3,0,0,2),sph(2,0,0,1),true,ray(vec3(0,0,0),vec3(1,0,0))));
+
+case opt-dimension tol=1e-6
+haxe> emit("opt-dimension",[H.oc(false,[0,0,0,0.5]).dimension()]);
+ms> emit1("opt-dimension",bigger(Bounds3D.fromValues(-1,-1,-1,2,2,2).dimension(),sph(0,0,0,0.5).radius));

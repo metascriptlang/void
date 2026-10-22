@@ -66,6 +66,8 @@ import "./cylinderCheck";
 import "./polygonColliderCheck";
 import "./heightMapCheck";
 import "./transformColliderCheck";
+import "./objectColliderCheck";
+import "./optimizedColliderCheck";
 import "./boundsSphereBuildCheck";
 import "./sphereQueryCheck";
 import "./spherePointCheck";
