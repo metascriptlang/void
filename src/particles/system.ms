@@ -216,12 +216,13 @@ const DRAW_BURST_COUNT: uint32 = 43;
 const DRAW_NOISE_OFFSET: uint32 = 44;
 const DRAW_COLLISION: uint32 = 28;
 const DRAW_BIRTH: uint32 = 29;
+export const DRAW_SUB_EMITTER: uint32 = 30;
 
 const DEGREE: float32 = 0.017453292519943295;
 const PI: float32 = 3.141592653589793;
 const DEFAULT_STEP: float64 = 1.0 / 60.0;
 
-function mix(a: uint32, b: uint32): uint32 {
+export function mix(a: uint32, b: uint32): uint32 {
 	return pcgHash(a ^ (b * 0x9E3779B9 + 0x7F4A7C15));
 }
 
@@ -689,10 +690,17 @@ function spawnAt(
 	put(sys, START_G, i, color.g);
 	put(sys, START_B, i, color.b);
 	put(sys, START_A, i, color.a);
-	put(sys, SIZE_X, i, sx);
+	startAppearance(sys, i);
 	put(sys, BIRTH_CARRY, i, 0.0);
 	put(sys, BIRTH_CARRY + 1, i, 0.0);
 	return i;
+}
+
+// A newborn shows its start colour and size until its first update, so a Birth event and the
+// collision radius of its first step read real values.
+function startAppearance(ref sys: ParticleSystem, i: int32): void {
+	for (let k = 0; k < 3; k++) { put(sys, SIZE_X + k, i, get(sys, START_SIZE_X + k, i)); }
+	for (let k = 0; k < 4; k++) { put(sys, COLOR_R + k, i, get(sys, START_R + k, i)); }
 }
 
 // Spawns a sub-emitter's children for one event of its parent, with the parent's properties the
@@ -729,8 +737,8 @@ export function spawnFromEvent(
 			put(sys, START_SIZE_X, i, get(sys, START_SIZE_X, i) * event.size.x);
 			put(sys, START_SIZE_Y, i, get(sys, START_SIZE_Y, i) * event.size.y);
 			put(sys, START_SIZE_Z, i, get(sys, START_SIZE_Z, i) * event.size.z);
-			put(sys, SIZE_X, i, get(sys, START_SIZE_X, i));
 		}
+		startAppearance(sys, i);
 		if (properties.has(SubEmitterProperty.InheritRotation)) {
 			put(sys, ROT_X, i, get(sys, ROT_X, i) + event.rotation.x);
 			put(sys, ROT_Y, i, get(sys, ROT_Y, i) + event.rotation.y);
@@ -743,7 +751,7 @@ export function spawnFromEvent(
 }
 
 // The event a particle makes, carrying the state its children may inherit.
-function eventOf(
+export function eventOf(
 	sys: ParticleSystem, i: int32, kind: SubEmitterType, position: Vec3, velocity: Vec3, before: float32,
 	ageFraction: float32,
 ): ParticleEvent {

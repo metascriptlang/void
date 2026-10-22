@@ -91,6 +91,7 @@ import "./particleVisualCheck";
 import "./particleShaderCheck";
 import "./particleCurveCheck";
 import "./particleSystemCheck";
+import "./particleEffectCheck";
 import "./layoutCheck";
 import "./billboardCheck";
 import "./shaderCheck";
