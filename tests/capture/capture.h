@@ -5,15 +5,15 @@
 // absent, so the gate can print SKIP with a reason and never PASS for a backend it did
 // not run.
 //
-// Two slots, so the caller can grab the same frame twice and prove the capture path is
+// Slots 0 and 1 let the caller grab the same frame twice and prove the capture path is
 // deterministic before either grab is compared to a golden ("distrust the harness before
-// the engine", docs/TESTING.md).
+// the engine", docs/TESTING.md). tests/integration/screenOver.ms compares three frames.
 #ifndef VOID_CAPTURE_H
 #define VOID_CAPTURE_H
 
 #include <stdint.h>
 
-#define VOID_CAPTURE_SLOTS 2
+#define VOID_CAPTURE_SLOTS 3
 
 // 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop. Names the path
 // that voidCaptureGrab would take.

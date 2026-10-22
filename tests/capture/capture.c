@@ -166,6 +166,7 @@ const char *voidCaptureRenderer(void) {
 }
 
 int voidCaptureGrab(int slot) {
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
 	stopOnClampedWindow();
 #if defined(VOID_CAPTURE_D3D11)
 	return grabD3D11(slot, (IDXGISwapChain *)voidWindowSwapChain(), 0);
