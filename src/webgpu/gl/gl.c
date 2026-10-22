@@ -6,8 +6,11 @@
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 #define OGL_GLES 1
 #include <GLES3/gl3.h>
+#elif defined(__linux__)
+#define GL_GLEXT_PROTOTYPES
+#include <GL/gl.h>
 #elif !defined(_WIN32)
-#error "the GL backend loads GL through WGL or takes GLES3 from emscripten or Android; another platform needs its GL headers and loader here"
+#error "the GL backend loads GL through WGL, links libGL on Linux or takes GLES3 from emscripten or Android; another platform needs its GL headers and loader here"
 #else
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -186,7 +189,7 @@ void oglUnload(void) {
 
 #endif
 
-#if defined(OGL_GLES)
+#if !defined(_WIN32)
 static char s_log[4096];
 
 int32_t oglLoad(void) { return 1; }

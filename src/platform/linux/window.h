@@ -1,0 +1,33 @@
+// The X11 window with its GLX context, ported from sokol_app.h's Linux backend (pin 2e75443d,
+// SOKOL_GLCORE without SOKOL_FORCE_EGL): GL core 4.3, RGBA8 with depth 24, swap interval 1.
+// The caller draws into framebuffer 0 and presents with voidLinuxSwapBuffers.
+#ifndef VOID_PLATFORM_LINUX_WINDOW_H
+#define VOID_PLATFORM_LINUX_WINDOW_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "../appEvent.h"
+
+typedef struct {
+	void (*init)(void);
+	void (*frame)(void);
+	void (*event)(const VoidAppEvent *e);
+	void (*cleanup)(void);
+	int width;
+	int height;
+	int sampleCount;
+	const char *title;
+} VoidLinuxDesc;
+
+void voidLinuxRun(const VoidLinuxDesc *desc);
+bool voidLinuxValid(void);
+int voidLinuxWidth(void);
+int voidLinuxHeight(void);
+float voidLinuxDpiScale(void);
+uint64_t voidLinuxFrameCount(void);
+void voidLinuxRequestQuit(void);
+void voidLinuxSetTitle(const char *title);
+void voidLinuxSwapBuffers(void);
+
+#endif

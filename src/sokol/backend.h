@@ -14,6 +14,8 @@
 #define SOKOL_METAL
 #elif defined(__ANDROID__)
 #define SOKOL_GLES3
+#elif defined(__linux__)
+#define SOKOL_GLCORE
 #elif defined(__EMSCRIPTEN__)
 #error "void: a browser build names its API; pass -d:webgpu or -d:webgl2 to msc"
 #else

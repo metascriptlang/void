@@ -1,8 +1,10 @@
-// The window's app-facing half, shared by the window drivers (bridgeWin.c and bridgeWeb.c):
+// The window's app-facing half, shared by the window drivers (bridgeWin.c, bridgeLinux.c and bridgeWeb.c):
 // the event closure with its getters, the IME events, and the title.
 
 #if defined(__EMSCRIPTEN__)
 #include "../platform/web/window.h"
+#elif defined(__linux__)
+#include "../platform/linux/window.h"
 #else
 #include "../platform/win32/window.h"
 #endif
@@ -88,6 +90,10 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	e.frameCount = voidWebFrameCount();
 	e.framebufferWidth = voidWebWidth();
 	e.framebufferHeight = voidWebHeight();
+#elif defined(__linux__)
+	e.frameCount = voidLinuxFrameCount();
+	e.framebufferWidth = voidLinuxWidth();
+	e.framebufferHeight = voidLinuxHeight();
 #else
 	e.frameCount = voidWin32FrameCount();
 	e.framebufferWidth = voidWin32Width();
@@ -109,6 +115,8 @@ void voidSetWindowTitle(const char *title) {
 	s_titleSet = true;
 #if defined(__EMSCRIPTEN__)
 	if (voidWebValid()) voidWebSetTitle(s_title);
+#elif defined(__linux__)
+	if (voidLinuxValid()) voidLinuxSetTitle(s_title);
 #else
 	if (voidWin32Valid()) voidWin32SetTitle(s_title);
 #endif
