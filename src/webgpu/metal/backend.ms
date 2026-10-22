@@ -373,7 +373,7 @@ function stopOnHandle(kind: string, id: uint32): int32 {
 
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function allocateId(ref queue: SlotQueue): uint32 {
+function allocateId(ref queue: SlotQueue, what: string): uint32 {
 	let index: int32 = 0;
 	if (queue.free.length > 0) {
 		index = queue.free[queue.free.length - 1];
@@ -381,7 +381,10 @@ function allocateId(ref queue: SlotQueue): uint32 {
 	} else {
 		if (queue.generations.length == 0) { queue.generations.push(0); }
 		index = queue.generations.length as int32;
-		if (index > SLOT_MASK) { stop("a resource pool is exhausted (65535 live handles)"); }
+		if (index > SLOT_MASK) {
+			console.error(`webgpu metal: ${what} pool exhausted (65535 live handles)`);
+			return 0;
+		}
 		queue.generations.push(0);
 	}
 	queue.generations[index] += 1;
@@ -695,8 +698,9 @@ export function samplerAlive(sampler: GPUSampler): boolean {
 }
 
 function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
-	const textureId = allocateId(textureQueue);
-	const viewId = allocateId(viewQueue);
+	const textureId = allocateId(textureQueue, "texture");
+	const viewId = allocateId(viewQueue, "view");
+	if (textureId == 0 || viewId == 0) { stop("the swapchain texture and view found their pools exhausted"); }
 	textures.push({
 		id: textureId,
 		format: format,
@@ -768,6 +772,8 @@ function beginFrame(): void {
 }
 
 export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
+	const id = allocateId(bufferQueue, "buffer");
+	if (id == 0) { return { id: 0 }; }
 	const usage = descriptor.usage;
 	if (descriptor.size <= 0) { stop("GPUBufferDescriptor.size must be positive"); }
 	if (has(usage, GPUBufferUsage.MAP_READ as int32) || has(usage, GPUBufferUsage.MAP_WRITE as int32)) {
@@ -775,7 +781,6 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	}
 	const native = mtlNewBuffer(device, descriptor.size, sharedStorage ? 1 : 0);
 	if (native == null) { stop(`newBufferWithLength failed for ${labelOf(descriptor.label)}`); }
-	const id = allocateId(bufferQueue);
 	const slot: BufferSlot = {
 		id: id,
 		size: descriptor.size,
@@ -838,6 +843,8 @@ function nextBufferCopy(index: int32): void {
 }
 
 export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
+	const id = allocateId(textureQueue, "texture");
+	if (id == 0) { return { id: 0 }; }
 	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
 	const width = descriptor.size.width;
 	const height = descriptor.size.height;
@@ -856,7 +863,6 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	if (sampleCount > 1 && !attachment) { stop("a multisampled texture must be a RENDER_ATTACHMENT"); }
 	const native = newTexture(width, height, info.pixel, sampleCount, attachment);
 	if (native == null) { stop(`newTextureWithDescriptor failed for ${labelOf(descriptor.label)}`); }
-	const id = allocateId(textureQueue);
 	const slot: TextureSlot = {
 		id: id,
 		width: width,
@@ -945,8 +951,10 @@ function textureCopyPitch(index: int32, bytes: int64, layout: GPUTexelCopyBuffer
 export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
 	const t = textureIndex(texture.id);
 	if (textures[t].swapchainView != 0) { return { id: textures[t].swapchainView }; }
+	const id = allocateId(viewQueue, "view");
+	if (id == 0) { return { id: 0 }; }
 	const slot: ViewSlot = {
-		id: allocateId(viewQueue),
+		id: id,
 		texture: texture.id,
 		swapchain: false,
 		swapchainTexture: NO_TEXTURE,
@@ -997,6 +1005,8 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 }
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
+	const id = allocateId(samplerQueue, "sampler");
+	if (id == 0) { return { id: 0 }; }
 	const native = mtlNewSampler(
 		device,
 		filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter"),
@@ -1005,7 +1015,6 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 		addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"),
 	);
 	if (native == null) { stop(`newSamplerStateWithDescriptor failed for ${labelOf(descriptor.label)}`); }
-	const id = allocateId(samplerQueue);
 	const index = slotOf(id);
 	const slot: SamplerSlot = { id: id, native: native };
 	if (index < samplers.length) { samplers[index] = slot; } else { samplers.push(slot); }
@@ -1036,6 +1045,8 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+	const id = allocateId(shaderQueue, "shader module");
+	if (id == 0) { return { id: 0 }; }
 	let slot: ShaderSlot = { id: 0 };
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
@@ -1063,7 +1074,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	slot.fragmentLibrary = compileLibrary(descriptor.fragmentCode, "fragment", descriptor.label);
 	slot.vertex = entryFunction(slot.vertexLibrary, descriptor.vertexEntryPoint, "vertex", descriptor.label);
 	slot.fragment = entryFunction(slot.fragmentLibrary, descriptor.fragmentEntryPoint, "fragment", descriptor.label);
-	slot.id = allocateId(shaderQueue);
+	slot.id = id;
 	const index = slotOf(slot.id);
 	if (index < shaders.length) { shaders[index] = slot; } else { shaders.push(slot); }
 	return { id: slot.id };
@@ -1105,6 +1116,8 @@ function checkAttribute(shader: int32, location: int32): void {
 }
 
 export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
+	const id = allocateId(pipelineQueue, "render pipeline");
+	if (id == 0) { return { id: 0 }; }
 	const s = shaderIndex(descriptor.vertex.module.id);
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on Metal");
@@ -1138,7 +1151,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (slot.depth == null) { stop(`newDepthStencilStateWithDescriptor failed for ${labelOf(descriptor.label)}`); }
 	slot.cullMode = cullMode(descriptor.primitive.cullMode);
 	slot.winding = winding(descriptor.primitive.frontFace);
-	slot.id = allocateId(pipelineQueue);
+	slot.id = id;
 	const index = slotOf(slot.id);
 	if (index < pipelines.length) { pipelines[index] = slot; } else { pipelines.push(slot); }
 	return { id: slot.id };
@@ -1211,7 +1224,8 @@ export function getBindGroupLayout(pipeline: GPURenderPipeline, index: int32): G
 		stopOnMember("getBindGroupLayout index", `${index}`);
 	}
 	if (pipelines[p].layouts[index] == 0) {
-		const id = allocateId(layoutQueue);
+		const id = allocateId(layoutQueue, "bind group layout");
+		if (id == 0) { return { id: 0 }; }
 		const slot: LayoutSlot = { id: id, pipeline: pipeline.id, group: index };
 		const l = slotOf(id);
 		if (l < layouts.length) { layouts[l] = slot; } else { layouts.push(slot); }
@@ -1221,6 +1235,8 @@ export function getBindGroupLayout(pipeline: GPURenderPipeline, index: int32): G
 }
 
 export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup {
+	const id = allocateId(bindGroupQueue, "bind group");
+	if (id == 0) { return { id: 0 }; }
 	const l = layoutIndex(descriptor.layout.id);
 	const group = layouts[l].group;
 	const shader = shaderIndex(pipelines[pipelineIndex(layouts[l].pipeline)].shader);
@@ -1241,7 +1257,7 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 		slot.dynamicIndex[i] = rank;
 		slot.dynamicCount += 1;
 	}
-	slot.id = allocateId(bindGroupQueue);
+	slot.id = id;
 	const index = slotOf(slot.id);
 	if (index < bindGroups.length) { bindGroups[index] = slot; } else { bindGroups.push(slot); }
 	return { id: slot.id };
