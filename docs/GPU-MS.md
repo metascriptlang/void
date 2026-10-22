@@ -107,10 +107,8 @@ Port order follows the Windows one: the backend, then the window bridges, then t
      `src/sokol/bridgeAndroid.c` (commit `7f3da43b`, a host-view driver onto the door),
      `src/sokol/bridgeWeb.c` (context loss → `doorShutdown` + `doorSetup`).
 3. **`src/sokol/bridgeIos.m`** — the same move for the React-Native host views.
-4. **`src/sokol/views.h` / `views.c`** — delete the `sg_swapchain` branch (its guard reads
-   `!_WIN32 && !__EMSCRIPTEN__ && !__ANDROID__`): Linux (`750ec157`) also reaches it, so adding
-   only `!__APPLE__` would leave a sokol include on Linux. After G6 nothing takes that branch.
-   Linux then also drops `-I../../deps/sokol` from the `when (!windows && !android)` block.
+4. **`src/sokol/views.h` / `views.c`** — delete the `sg_swapchain` branch, so no platform
+   (Linux included) reaches a sokol include.
 5. **`src/sokol/gpu.ms`** — the `when (macos)` block drops `@link("./sokol.o")`; the
    `-I../../deps/sokol` line goes. Delete `src/sokol/sokol.m` and
    `scripts/build-sokol-macos.sh`.
@@ -165,9 +163,9 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 
 ## G7 — after Metal (either side, coordinated)
 
-- Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`) and
-  `src/sokol/bridgeLinux.c` are in; `src/sokol/gpu.ms` gets a `when (linux)` block after G6
-  (`@compile` window.c, bridgeLinux.c, appWindow.c, bridge.c; `-lX11 -lGL -ldl -lm`).
+- Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
+  `src/sokol/bridgeLinux.c` and the `when (linux)` block of `src/sokol/gpu.ms`; check-only until
+  WSL has a current `msc`.
 
 - The backend selector defines are still sokol's names (`SOKOL_WGPU`, `SOKOL_GLES3`,
   `SOKOL_GLCORE`, `SOKOL_D3D11`, `SOKOL_METAL`) in `src/sokol/backend.h`, `bridgeWin.c`,
@@ -190,9 +188,9 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 
 ## Known follow-ups (solidify, not blocking G6)
 
-- D3D11 uploads every uniform block when any one is dirty. void3d re-applies every block per item
-  after `applyPipeline` (`src/void3d/draw.ms` ~1600), so today it costs what sokol's per-slot
-  update costs. Under the end-game it is a candidate to beat sokol: upload only the dirty block.
+- D3D11 binds each uniform block at its offset in the door's ring (`*SetConstantBuffers1`, no copy
+  per draw) when the device has D3D11.1 constant-buffer offsetting, else uploads only blocks whose
+  bytes changed; sokol uploads every applied block. Unmeasured until a GO.
 - `writeTexture` writes the whole texture only, as sokol's `sg_update_image` does. A partial write
   (WebGPU's `origin` + `size`) is control sokol lacks; build it when a caller (glyph atlas pages)
   can use it, with the bench row it moves.
