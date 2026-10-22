@@ -419,3 +419,63 @@ test "a bind that did not change issues no native call, and a texture rotation o
 	device.queue.submit(encoder.finish());
 	device.destroy();
 }
+
+test "a mipped texture takes a write into mip 1 and a view of that mip is a render attachment" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "mips",
+		size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		mipLevelCount: 3,
+	});
+	const texel: Vec<uint8> = new Array(64);
+	device.queue.writeTexture({ texture: texture, mipLevel: 1 }, texel, { offset: 0, bytesPerRow: 16, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	const mip1 = texture.createView({ label: null, baseMipLevel: 1, mipLevelCount: 1 });
+	assert mip1.id != 0;
+	device.destroy();
+}
+
+test "a six-layer texture is a cube map and writes one face per layer" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "cube",
+		size: { width: 2, height: 2, depthOrArrayLayers: 6 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+	});
+	const texel: Vec<uint8> = new Array(96);
+	device.queue.writeTexture({ texture: texture, origin: { x: 0, y: 0, z: 2 } }, texel, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 2 });
+	const cube = texture.createView({ label: null, dimension: "cube" });
+	assert cube.id != 0;
+	device.destroy();
+}
+
+test "a 3d texture takes a slice write and a 3d view" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "volume",
+		size: { width: 2, height: 2, depthOrArrayLayers: 2 },
+		dimension: "3d",
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+	});
+	const texel: Vec<uint8> = new Array(16);
+	device.queue.writeTexture({ texture: texture, origin: { x: 0, y: 0, z: 1 } }, texel, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	assert texture.createView({ label: null }).id != 0;
+	device.destroy();
+}
+
+test "setViewport, setBlendConstant and setStencilReference run inside a pass" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	const view = target.createView({ label: null });
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(view, { id: 0 }));
+	pass.setViewport(0, 0, SIZE / 2, SIZE, 0, 1);
+	pass.setBlendConstant({ r: 1, g: 0, b: 0, a: 1 });
+	pass.setStencilReference(1);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	device.destroy();
+}
