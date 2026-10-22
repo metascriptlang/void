@@ -111,8 +111,8 @@ function litMaterial(): MaterialId {
 }
 
 export function initPerspective(): void {
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP perspective frame: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP perspective frame: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();

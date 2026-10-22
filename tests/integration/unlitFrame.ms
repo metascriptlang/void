@@ -133,8 +133,8 @@ function madeMaterial(image: TextureId, lit: boolean, tinted: boolean): Material
 }
 
 export function initUnlit(): void {
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP unlit frame: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP unlit frame: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();

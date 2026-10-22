@@ -102,8 +102,8 @@ function boundCamera(): NodeId3D {
 }
 
 export function initCameraRig(): void {
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP camera rig: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP camera rig: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();

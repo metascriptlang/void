@@ -325,8 +325,8 @@ function report(): void {
 }
 
 function init(): void {
-	if (voidCaptureBackend() != 1) {
-		console.log("SKIP view teardown: this consumer requires D3D11 readback");
+	if (voidCaptureBackend() != 1 && voidCaptureBackend() != 5) {
+		console.log("SKIP view teardown: this consumer requires D3D11 or Metal readback");
 		voidCaptureExit(3);
 	}
 	gfxSetup();
