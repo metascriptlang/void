@@ -494,11 +494,11 @@ export function doorDestroyPipeline(pipeline: uint32): void {
 }
 
 @exportName("doorDestroyImage")
-export function doorDestroyImage(image: uint32): void { const t: GPUTexture = { id: image }; t.destroy(); }
+export function doorDestroyImage(image: uint32): void { if (image == 0) { return; } const t: GPUTexture = { id: image }; t.destroy(); }
 @exportName("doorDestroyView")
-export function doorDestroyView(view: uint32): void { const v: GPUTextureView = { id: view }; v.destroy(); }
+export function doorDestroyView(view: uint32): void { if (view == 0) { return; } const v: GPUTextureView = { id: view }; v.destroy(); }
 @exportName("doorDestroySampler")
-export function doorDestroySampler(sampler: uint32): void { const s: GPUSampler = { id: sampler }; s.destroy(); }
+export function doorDestroySampler(sampler: uint32): void { if (sampler == 0) { return; } const s: GPUSampler = { id: sampler }; s.destroy(); }
 
 // ---- buffers and textures for the C layers ----
 
@@ -564,6 +564,7 @@ export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64
 
 @exportName("doorDestroyBuffer")
 export function doorDestroyBuffer(id: uint32): void {
+	if (id == 0) { return; }
 	const buffer: GPUBuffer = { id };
 	buffer.destroy();
 	for (let i = 0; i < appendCursors.length; i++) { if (appendCursors[i].buffer == id) { appendCursors.splice(i, 1); return; } }
@@ -572,7 +573,7 @@ export function doorDestroyBuffer(id: uint32): void {
 @exportName("doorBufferAlive")
 export function doorBufferAlive(id: uint32): int32 { const b: GPUBuffer = { id }; return b.isAlive() ? 1 : 0; }
 
-export function doorBufferSize(id: uint32): int64 { const b: GPUBuffer = { id }; return b.size(); }
+export function doorBufferSize(id: uint32): int64 { if (id == 0) { return 0; } const b: GPUBuffer = { id }; return b.size(); }
 
 // A sampled texture of PixelFormat `format`; `data` empty leaves it to doorUpdateTexture.
 @exportName("doorMakeTexture")
@@ -615,8 +616,8 @@ export function doorUpdateTextureRect(id: uint32, x: int32, y: int32, width: int
 	device.queue.writeTexture({ texture, origin: { x, y, z: 0 } }, data, { offset: 0, bytesPerRow, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 });
 }
 
-export function doorTextureWidth(id: uint32): int32 { const t: GPUTexture = { id }; return t.width(); }
-export function doorTextureHeight(id: uint32): int32 { const t: GPUTexture = { id }; return t.height(); }
+export function doorTextureWidth(id: uint32): int32 { if (id == 0) { return 0; } const t: GPUTexture = { id }; return t.width(); }
+export function doorTextureHeight(id: uint32): int32 { if (id == 0) { return 0; } const t: GPUTexture = { id }; return t.height(); }
 
 @exportName("doorViewImage")
 export function doorViewImage(view: uint32): uint32 {
