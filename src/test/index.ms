@@ -182,3 +182,4 @@ import "../../tests/isolated/displayListLink";
 when (testBuild && voidSdfText && voidShaper) {
 	import "../../tests/integration/fontPanel";
 }
+import "./frameTimingCheck";
