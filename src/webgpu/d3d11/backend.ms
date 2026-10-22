@@ -57,6 +57,7 @@ import {
 	checkedBufferCopy,
 	checkedMapRange,
 	checkedTexelBufferLayout,
+	checkedDepthTexelCopy,
 	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
 	featureBit,
@@ -116,6 +117,7 @@ import {
 	d3dCreateQuery,
 	d3dCreateRasterizerState,
 	d3dCreateRtv,
+	d3dCreateRtv3d,
 	d3dCreateSampler,
 	d3dCreateSrv,
 	d3dCreateTexture2D,
@@ -166,6 +168,7 @@ import {
 	d3dResolveViews,
 	d3dRsSetState,
 	d3dRtvFrom,
+	d3dRtvTexture,
 	d3dSetRenderTargets,
 	d3dSetMarker,
 	d3dSetName,
@@ -415,6 +418,7 @@ struct ViewSlot {
 	swapchainResolve: Ptr<D3dRtvImpl>;
 	baseMip: int32;
 	baseLayer: int32;
+	volumeTarget: boolean;
 	swapchain: boolean;
 }
 
@@ -508,6 +512,7 @@ struct PassState {
 	height: int32;
 	colorViews: uint32[4];
 	resolveViews: uint32[4];
+	sliceTargets: Ptr<D3dRtvImpl>[4];
 }
 
 struct ComputeState {
@@ -1026,6 +1031,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	bindGroupQueue = { free: [], generations: [] };
 	canvas = canvasOf(environment);
 	swapchainColor = reserveSwapchainTexture(canvas.format);
+	textures[textureIndex(swapchainColor)].usage |= GPUTextureUsage.COPY_SRC as int32;
 	const depthFormat: string = canvas.depthFormat;
 	swapchainDepth = depthFormat == "" ? 0 : reserveSwapchainTexture(canvas.depthFormat);
 	return { id: 1, queue: { id: 1 } };
@@ -1099,6 +1105,8 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 		format: format,
 		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
 		sampleCount: 1,
+		mipLevels: 1,
+		layers: 1,
 		swapchainView: viewId,
 	});
 	views.push({ id: viewId, texture: textureId, swapchain: true });
@@ -1529,7 +1537,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
 	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
-		stop("a multisampled texture with mips, array layers or a 3d dimension is not ported to d3d11 yet");
+		stop("WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer");
 	}
 	const usage = descriptor.usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
@@ -1538,7 +1546,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		stop("COPY_DST with RENDER_ATTACHMENT has no Void caller: a multisampled target takes no UpdateSubresource");
 	}
 	if (sampleCount > 1 && !attachment) { stop("a multisampled texture must be a RENDER_ATTACHMENT"); }
-	if (volume && (attachment || info.depth)) { stop("a 3d texture as RENDER_ATTACHMENT or with a depth format is not ported to d3d11 yet"); }
+	if (volume && info.depth) { stop("WebGPU allows a depth or stencil format only on a 2d texture"); }
 	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
 	let bindFlags = BIND_SHADER_RESOURCE;
 	if (attachment) { bindFlags |= info.depth ? BIND_DEPTH_STENCIL : BIND_RENDER_TARGET; }
@@ -1690,6 +1698,10 @@ function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: in
 	if (pass.active || computeBound.active) { stop(`${member} inside a pass`); }
 	const index = textureIndex(info.texture.id);
 	if (!has(textures[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
+	if (textures[index].swapchainView != 0) {
+		if (textures[index].native == null) { stop(`${member}: the swapchain texture has no resolved back buffer to copy`); }
+		return index;
+	}
 	if (textures[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
 	return index;
 }
@@ -1708,11 +1720,13 @@ function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32,
 	);
 }
 
-function texelCopyBytes(index: int32, member: string): int32 {
-	const info = formatInfo(textures[index].format, "texture format");
-	if (info.depth) { stop(`${member}: depth or stencil GPUTexture ${textures[index].id} is not ported to d3d11 yet`); }
+function texelCopyBytes(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): int32 {
+	const format = formatInfo(textures[index].format, "texture format");
+	if (format.depth) {
+		checkedDepthTexelCopy(member, textures[index].id, textures[index].format, format.stencil, writes, textures[index].width, textures[index].height, copy.mipLevel, size);
+	}
 	if (textures[index].volume) { stop(`${member}: 3d GPUTexture ${textures[index].id} is not ported to d3d11 yet`); }
-	return info.bytesPerPixel;
+	return format.bytesPerPixel;
 }
 
 export function copyBufferToBuffer(
@@ -1732,8 +1746,8 @@ export function copyBufferToBuffer(
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyDestinationBuffer(destination.buffer, "copyTextureToBuffer destination");
-	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source");
 	copyRegion("copyTextureToBuffer source", source, from, size);
+	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source", false, source, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, buffers[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
 	const mips = textures[from].mipLevels;
@@ -1759,8 +1773,8 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination");
 	copyRegion("copyBufferToTexture destination", destination, to, size);
+	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination", true, destination, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, buffers[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
 	const imageBytes = (bytesPerRow as int64) * (rowsPerImage as int64);
@@ -1807,7 +1821,7 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	const mipWidth = Math.max(1, textures[from].width >> source.mipLevel);
 	const mipHeight = Math.max(1, textures[from].height >> source.mipLevel);
 	if (formatInfo(textures[from].format, "texture format").depth && (size.width != mipWidth || size.height != mipHeight)) {
-		stop(`copyTextureToTexture of depth GPUTexture ${source.texture.id} copies whole mips only on d3d11`);
+		stop(`copyTextureToTexture of depth GPUTexture ${source.texture.id} copies a whole subresource in WebGPU`);
 	}
 	if (
 		from == to && source.mipLevel == destination.mipLevel
@@ -1955,8 +1969,9 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 			stop(`a cube view needs GPUTexture ${textures[t].id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
 		}
 		if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
-		if (dimension == VIEW_CUBE && baseLayer != 0) { stop("a cube view at baseArrayLayer above 0 is not ported to d3d11 yet"); }
+		if (dimension == VIEW_CUBE && baseLayer != 0) { dimension = VIEW_CUBE_ARRAY; }
 	}
+	const volumeTarget = attachment && mipCount == 1 && dimension == VIEW_3D && !info.depth;
 	const attachable = mipCount == 1 && layerCount == 1 && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY);
 	const arrayed = layers > 1 ? 1 : 0;
 	let slot: ViewSlot = {
@@ -1969,6 +1984,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		swapchainResolve: NO_RTV,
 		baseMip: baseMip,
 		baseLayer: baseLayer,
+		volumeTarget: volumeTarget,
 		swapchain: false,
 	};
 	const native = textures[t].native;
@@ -2019,6 +2035,8 @@ export function swapchainTexture(swapchain: NativeSwapchain): GPUTexture {
 	const v = viewIndex(textures[textureIndex(swapchainColor)].swapchainView);
 	views[v].renderTarget = d3dRtvFrom(swapchain.renderView);
 	views[v].swapchainResolve = d3dRtvFrom(swapchain.resolveView);
+	const resolved = swapchain.sampleCount > 1 ? views[v].swapchainResolve : views[v].renderTarget;
+	textures[textureIndex(swapchainColor)].native = d3dRtvTexture(resolved);
 	if (swapchainDepth != 0) {
 		updateSwapchainTexture(swapchainDepth, swapchain);
 		const d = viewIndex(textures[textureIndex(swapchainDepth)].swapchainView);
@@ -2553,8 +2571,22 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		const viewId = descriptor.colorAttachments[i].view.id;
 		if (viewId == 0) { continue; }
 		const v = viewIndex(viewId);
-		if (views[v].renderTarget == null) { stop(`colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`); }
-		targets[i] = views[v].renderTarget;
+		const slice = descriptor.colorAttachments[i].depthSlice;
+		if (views[v].volumeTarget) {
+			const volume = textureIndex(views[v].texture);
+			const slices = Math.max(1, textures[volume].layers >> views[v].baseMip);
+			if (slice < 0 || slice >= slices) {
+				stop(`colorAttachments[${i}].depthSlice ${slice} is outside the ${slices} slices of mip ${views[v].baseMip} of GPUTexture ${textures[volume].id}`);
+			}
+			const format = formatInfo(textures[volume].format, "texture format").renderTarget;
+			pass.sliceTargets[i] = d3dCreateRtv3d(device, textures[volume].native, format, views[v].baseMip, slice);
+			if (pass.sliceTargets[i] == null) { stop(`CreateRenderTargetView failed for slice ${slice} of GPUTexture ${textures[volume].id}`); }
+			targets[i] = pass.sliceTargets[i];
+		} else {
+			if (views[v].renderTarget == null) { stop(`colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`); }
+			if (slice != 0) { stop(`colorAttachments[${i}].depthSlice ${slice} needs a 3d view`); }
+			targets[i] = views[v].renderTarget;
+		}
 		passExtent(views[v].texture, views[v].baseMip);
 		pass.colorViews[i] = viewId;
 		pass.resolveViews[i] = checkResolve(i, views[v].texture, descriptor.colorAttachments[i].resolveTarget.id);
@@ -2613,14 +2645,17 @@ function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32
 	if (resolveId == 0) { return 0; }
 	const r = viewIndex(resolveId);
 	const resolveTexture = textureIndex(views[r].texture);
-	if (views[r].baseMip != 0 || views[r].baseLayer != 0) {
-		stop(`colorAttachments[${attachment}].resolveTarget at baseMipLevel or baseArrayLayer above 0 is not ported to d3d11 yet`);
-	}
 	if (textures[textureIndex(colorTexture)].sampleCount == 1) {
 		stop(`colorAttachments[${attachment}].resolveTarget needs a multisampled view`);
 	}
 	if (textures[resolveTexture].sampleCount != 1 || views[r].renderTarget == null) {
 		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample color RENDER_ATTACHMENT`);
+	}
+	if (
+		Math.max(1, textures[resolveTexture].width >> views[r].baseMip) != textures[textureIndex(colorTexture)].width
+			|| Math.max(1, textures[resolveTexture].height >> views[r].baseMip) != textures[textureIndex(colorTexture)].height
+	) {
+		stop(`colorAttachments[${attachment}].resolveTarget differs in size from its multisampled view`);
 	}
 	return resolveId;
 }
@@ -2653,7 +2688,13 @@ export function endPass(): void {
 			const source = textureIndex(views[v].texture);
 			const destination = textureIndex(views[viewIndex(pass.resolveViews[i])].texture);
 			const format = formatInfo(textures[source].format, "resolve format").renderTarget;
-			d3dResolveSubresource(context, textures[destination].native, textures[source].native, format);
+			const target = viewIndex(pass.resolveViews[i]);
+			const subresource = views[target].baseMip + views[target].baseLayer * textures[destination].mipLevels;
+			d3dResolveSubresource(context, textures[destination].native, subresource, textures[source].native, format);
+		}
+		if (pass.sliceTargets[i] != null) {
+			d3dReleaseRtv(pass.sliceTargets[i]);
+			pass.sliceTargets[i] = NO_RTV;
 		}
 	}
 	if (pass.timestampSet != 0 && pass.timestampEnd >= 0) { writeTimestamp(pass.timestampSet, pass.timestampEnd); }

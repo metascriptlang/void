@@ -25,6 +25,7 @@ D3dContext d3dContextFrom(void *native);
 D3dRtv d3dRtvFrom(void *native);
 D3dDsv d3dDsvFrom(void *native);
 void *d3dTextureNative(D3dTexture texture);
+D3dTexture d3dRtvTexture(D3dRtv view);
 
 D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess, int32_t miscFlags);
 void d3dReleaseBuffer(D3dBuffer buffer);
@@ -130,11 +131,12 @@ D3dSrv d3dCreateSrv(
 	int32_t baseLayer,
 	int32_t layerCount);
 D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer);
+D3dRtv d3dCreateRtv3d(D3dDevice device, D3dTexture texture, int32_t format, int32_t mip, int32_t slice);
 D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer);
 void d3dReleaseSrv(D3dSrv view);
 void d3dReleaseRtv(D3dRtv view);
 void d3dReleaseDsv(D3dDsv view);
-void d3dResolveSubresource(D3dContext context, D3dTexture destination, D3dTexture source, int32_t format);
+void d3dResolveSubresource(D3dContext context, D3dTexture destination, int32_t destinationSubresource, D3dTexture source, int32_t format);
 void d3dResolveViews(D3dContext context, D3dRtv destination, D3dRtv source, int32_t format);
 
 D3dSampler d3dCreateSampler(

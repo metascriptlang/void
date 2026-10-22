@@ -17,6 +17,13 @@ D3dContext d3dContextFrom(void *native) { return (D3dContext)native; }
 D3dRtv d3dRtvFrom(void *native) { return (D3dRtv)native; }
 D3dDsv d3dDsvFrom(void *native) { return (D3dDsv)native; }
 void *d3dTextureNative(D3dTexture texture) { return texture; }
+D3dTexture d3dRtvTexture(D3dRtv view) {
+	if (!view) return NULL;
+	ID3D11Resource *resource = NULL;
+	ID3D11View_GetResource((ID3D11View *)view, &resource);
+	if (resource) ID3D11Resource_Release(resource);
+	return (D3dTexture)resource;
+}
 
 D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess, int32_t miscFlags) {
 	D3D11_BUFFER_DESC desc = {0};
@@ -259,6 +266,10 @@ int32_t d3dCopyTextureToBuffer(
 	int32_t rowBytes) {
 	D3D11_TEXTURE2D_DESC desc;
 	ID3D11Texture2D_GetDesc((ID3D11Texture2D *)texture, &desc);
+	UINT mip = (UINT)subresource % desc.MipLevels;
+	UINT mipWidth = desc.Width >> mip ? desc.Width >> mip : 1;
+	UINT mipHeight = desc.Height >> mip ? desc.Height >> mip : 1;
+	int whole = x == 0 && y == 0 && (UINT)width == mipWidth && (UINT)height == mipHeight;
 	desc.Width = (UINT)width;
 	desc.Height = (UINT)height;
 	desc.MipLevels = 1;
@@ -272,7 +283,7 @@ int32_t d3dCopyTextureToBuffer(
 	ID3D11Texture2D *staging = NULL;
 	if (FAILED(ID3D11Device_CreateTexture2D(DEVICE(device), &desc, NULL, &staging))) return 0;
 	D3D11_BOX box = { (UINT)x, (UINT)y, 0, (UINT)(x + width), (UINT)(y + height), 1 };
-	ID3D11DeviceContext_CopySubresourceRegion(CONTEXT(context), (ID3D11Resource *)staging, 0, 0, 0, 0, (ID3D11Resource *)texture, (UINT)subresource, &box);
+	ID3D11DeviceContext_CopySubresourceRegion(CONTEXT(context), (ID3D11Resource *)staging, 0, 0, 0, 0, (ID3D11Resource *)texture, (UINT)subresource, whole ? NULL : &box);
 	D3D11_MAPPED_SUBRESOURCE source;
 	D3D11_MAPPED_SUBRESOURCE target;
 	int32_t ok = 0;
@@ -382,6 +393,18 @@ D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_
 	return SUCCEEDED(hr) ? (D3dRtv)view : NULL;
 }
 
+D3dRtv d3dCreateRtv3d(D3dDevice device, D3dTexture texture, int32_t format, int32_t mip, int32_t slice) {
+	D3D11_RENDER_TARGET_VIEW_DESC desc = {0};
+	desc.Format = (DXGI_FORMAT)format;
+	desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE3D;
+	desc.Texture3D.MipSlice = (UINT)mip;
+	desc.Texture3D.FirstWSlice = (UINT)slice;
+	desc.Texture3D.WSize = 1;
+	ID3D11RenderTargetView *view = NULL;
+	HRESULT hr = ID3D11Device_CreateRenderTargetView(DEVICE(device), (ID3D11Resource *)texture, &desc, &view);
+	return SUCCEEDED(hr) ? (D3dRtv)view : NULL;
+}
+
 D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer) {
 	D3D11_DEPTH_STENCIL_VIEW_DESC desc = {0};
 	desc.Format = (DXGI_FORMAT)format;
@@ -405,8 +428,8 @@ void d3dReleaseSrv(D3dSrv view) { if (view) ID3D11ShaderResourceView_Release((ID
 void d3dReleaseRtv(D3dRtv view) { if (view) ID3D11RenderTargetView_Release((ID3D11RenderTargetView *)view); }
 void d3dReleaseDsv(D3dDsv view) { if (view) ID3D11DepthStencilView_Release((ID3D11DepthStencilView *)view); }
 
-void d3dResolveSubresource(D3dContext context, D3dTexture destination, D3dTexture source, int32_t format) {
-	ID3D11DeviceContext_ResolveSubresource(CONTEXT(context), (ID3D11Resource *)destination, 0, (ID3D11Resource *)source, 0, (DXGI_FORMAT)format);
+void d3dResolveSubresource(D3dContext context, D3dTexture destination, int32_t destinationSubresource, D3dTexture source, int32_t format) {
+	ID3D11DeviceContext_ResolveSubresource(CONTEXT(context), (ID3D11Resource *)destination, (UINT)destinationSubresource, (ID3D11Resource *)source, 0, (DXGI_FORMAT)format);
 }
 
 void d3dResolveViews(D3dContext context, D3dRtv destination, D3dRtv source, int32_t format) {
