@@ -9,6 +9,8 @@ import {
 	ResourceKind,
 	ScalarKind,
 	ShaderConstant,
+	ShaderDeclaration,
+	DeclarationKind,
 	ShaderEntry,
 	ShaderExpr,
 	ShaderField,
@@ -85,6 +87,20 @@ function featureIf(feature: string, body: ShaderStmt[]): ShaderStmt {
 	return s;
 }
 
+function declared(kind: DeclarationKind, index: int32): ShaderDeclaration {
+	let d = new ShaderDeclaration();
+	d.kind = kind;
+	d.index = index;
+	return d;
+}
+
+function rgbaOf(value: ShaderExpr): ShaderExpr {
+	let e = exprOf(ExprKind.Swizzle, value.type, -1, [value]);
+	e.components = [0, 1, 2, 3];
+	e.rgba = true;
+	return e;
+}
+
 function ret(value: ShaderExpr): ShaderStmt { return stmtOf(StmtKind.Return, value, []); }
 
 // A fragment entry that always reads `base`; under A a masked texture and the A-only input
@@ -151,10 +167,19 @@ function twoFeatureModule(): ShaderModule {
 			]),
 		]),
 		featureIf("B", [assignOf(c, exprOf(ExprKind.Call, vec4, 0, [c]))]),
-		assignOf(exprOf(ExprKind.Io, vec4, 2, []), c),
+		assignOf(exprOf(ExprKind.Io, vec4, 2, []), rgbaOf(c)),
 		ret(new ShaderExpr()),
 	];
 	m.functions = [fogged, unused, main];
+	m.declarations = [
+		declared(DeclarationKind.Struct, 0),
+		declared(DeclarationKind.Struct, 1),
+		declared(DeclarationKind.Struct, 2),
+		declared(DeclarationKind.Constant, 0),
+		declared(DeclarationKind.Function, 0),
+		declared(DeclarationKind.Function, 1),
+		declared(DeclarationKind.Function, 2),
+	];
 	let entry = new ShaderEntry();
 	entry.name = "mainFs";
 	entry.stage = ShaderStage.Fragment;
@@ -227,6 +252,19 @@ test "A and B together read the constant under both" {
 		assert m.resources[reads.value.pairs[0].texture].name == "maskTex";
 		assert m.resources[reads.value.pairs[0].sampler].name == "maskSmp";
 	}
+}
+
+test "the kept declarations keep their order under the new indices" {
+	const m = specialized(["B"]);
+	assert decided(m);
+	assert m.declarations.map((d) => d.kind.toString() + " " + String(d.index)).join(", ") ==
+		"Struct 0, Struct 1, Function 0, Function 1";
+}
+
+test "a colour swizzle stays a colour swizzle" {
+	const m = specialized([]);
+	const written = m.functions[m.entries[0].functionIndex].body[1].expr;
+	assert written.kind == ExprKind.Swizzle && written.rgba;
 }
 
 test "a read of an input outside its feature is refused by name" {

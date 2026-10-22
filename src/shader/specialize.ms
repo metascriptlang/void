@@ -3,6 +3,8 @@ import {
 	FeatureCondition,
 	ShaderCase,
 	ShaderConstant,
+	ShaderDeclaration,
+	DeclarationKind,
 	ShaderEntry,
 	ShaderExpr,
 	ShaderField,
@@ -214,6 +216,7 @@ function copyExpr(r: Remap, e: ShaderExpr): ShaderExpr {
 	c.binary = e.binary;
 	c.intrinsic = e.intrinsic;
 	c.components = e.components.map((n) => n);
+	c.rgba = e.rgba;
 	c.operands = e.operands.map((o) => copyExpr(r, o));
 	return c;
 }
@@ -340,6 +343,18 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 		c.functionIndex = r.functions[e.functionIndex];
 		c.workgroupSize = e.workgroupSize.map((n) => n);
 		out.entries.push(c);
+	}
+	for (const d of m.declarations) {
+		const index = match (d.kind) {
+			DeclarationKind.Struct => r.structs[d.index],
+			DeclarationKind.Constant => r.constants[d.index],
+			DeclarationKind.Function => r.functions[d.index],
+		};
+		if (index < 0) { continue; }
+		let c = new ShaderDeclaration();
+		c.kind = d.kind;
+		c.index = index;
+		out.declarations.push(c);
 	}
 	return Result.ok(out);
 }
