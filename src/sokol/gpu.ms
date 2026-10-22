@@ -56,6 +56,17 @@ when (ios) {
 	@passL("-framework Foundation");
 }
 
+when (linux) {
+	@compile("../platform/linux/window.c");
+	@compile("./bridgeLinux.c");
+	@compile("./appWindow.c");
+	@compile("./bridge.c");
+	@passL("-lX11");
+	@passL("-lGL");
+	@passL("-ldl");
+	@passL("-lm");
+}
+
 when (macos || (windows && !voidGlCore) || ios || android) {
 	extern function voidEmbedRegister(init: () => void, frame: () => void): void;
 	extern function voidViewsSetSampleCount(count: int32): void;
