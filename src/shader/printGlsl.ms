@@ -409,9 +409,9 @@ function pairOf(p: Printer, texture: ShaderExpr, sampler: ShaderExpr | null): Pa
 	const named = p.module.resources[texture.index].name;
 	for (const pair of p.pairs) {
 		if (pair.texture != texture.index) { continue; }
-		if (sampler === null || sampler.kind == ExprKind.Resource && pair.sampler == sampler.index) {
-			return pair;
-		}
+		const chosen = sampler === null ? !isComparison(p, pair) :
+			sampler.kind == ExprKind.Resource && pair.sampler == sampler.index;
+		if (chosen) { return pair; }
 	}
 	fail(p, "texture '" + named + "' has no combined sampler in this stage's binding slots");
 	return none;
@@ -491,6 +491,40 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
 	return narrowed("texture(" + pair.name + ", " + expr(p, at) + ")", e.type);
+}
+
+function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
+	const name = e.intrinsic.toString();
+	if (e.operands.length != 4) {
+		return fail(p, name + " takes a texture, a sampler, coordinates and a depth reference");
+	}
+	const [texture, sampler, at, reference] = [e.operands[0], e.operands[1], e.operands[2],
+		e.operands[3]];
+	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
+		return fail(p, name + " takes a texture and a sampler first");
+	}
+	if (!level && p.stage != ShaderStage.Fragment) {
+		return fail(p, name + " outside a fragment stage");
+	}
+	const pair = pairOf(p, texture, sampler);
+	if (!isComparison(p, pair)) {
+		return fail(p, name + " through sampler pair '" + pair.name + "', whose sampler is no " +
+			"comparison sampler");
+	}
+	const coords = expr(p, at) + ", " + expr(p, reference);
+	return match (texture.type.shape) {
+		TextureShape.Depth2d => level ?
+			"textureLod(" + pair.name + ", vec3(" + coords + "), 0.0)" :
+			"texture(" + pair.name + ", vec3(" + coords + "))",
+		TextureShape.Depth2dArray => level ?
+			"textureGrad(" + pair.name + ", vec4(" + coords + "), vec2(0.0), vec2(0.0))" :
+			"texture(" + pair.name + ", vec4(" + coords + "))",
+		TextureShape.DepthCube => level ?
+			"textureGrad(" + pair.name + ", vec4(" + coords + "), vec3(0.0), vec3(0.0))" :
+			"texture(" + pair.name + ", vec4(" + coords + "))",
+		_ => fail(p, name + " of a " + texture.type.shape.toString() + " texture, which holds " +
+			"no depth"),
+	};
 }
 
 function storeOf(p: Printer, e: ShaderExpr): string {
@@ -608,6 +642,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => loadOf(p, e),
 		Intrinsic.TextureStore => storeOf(p, e),
 		Intrinsic.TextureDimensions => sizeOf(p, e),
+		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
+		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		_ => intrinsicName(e.intrinsic) + "(" + args() + ")",
 	};
 }

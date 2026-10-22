@@ -502,6 +502,35 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + expr(p, at) + ")";
 }
 
+function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
+	const name = e.intrinsic.toString();
+	if (e.operands.length != 4) {
+		return fail(p, name + " takes a texture, a sampler, coordinates and a depth reference");
+	}
+	const [texture, sampler, at, reference] = [e.operands[0], e.operands[1], e.operands[2],
+		e.operands[3]];
+	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
+		return fail(p, name + " takes a texture and a sampler first");
+	}
+	if (!level && p.stage != ShaderStage.Fragment) {
+		return fail(p, name + " outside a fragment stage");
+	}
+	if (sampler.kind != ExprKind.Resource ||
+		p.module.resources[sampler.index].samplerType != SamplerType.Comparison) {
+		return fail(p, name + " through a sampler that is no comparison sampler binding");
+	}
+	const depth = match (texture.type.shape) {
+		TextureShape.Depth2d | TextureShape.Depth2dArray | TextureShape.DepthCube => true,
+		_ => false,
+	};
+	if (!depth) {
+		return fail(p, name + " of a " + texture.type.shape.toString() + " texture, which holds " +
+			"no depth");
+	}
+	return operand(p, texture) + (level ? ".SampleCmpLevelZero(" : ".SampleCmp(") +
+		expr(p, sampler) + ", " + expr(p, at) + ", " + expr(p, reference) + ")";
+}
+
 function storeOf(p: Printer, e: ShaderExpr): string {
 	if (e.operands.length != 3 || e.operands[0].type.kind != ShaderTypeKind.StorageTexture) {
 		return fail(p, "TextureStore takes a storage texture, coordinates and a value");
@@ -582,6 +611,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => loadOf(p, e),
 		Intrinsic.TextureStore => storeOf(p, e),
 		Intrinsic.TextureDimensions => sizeOf(p, e),
+		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
+		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		_ => intrinsicName(e.intrinsic) + "(" + args() + ")",
 	};
 }
