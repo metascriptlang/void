@@ -9,6 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// The door's GPU submit, which only voidCommit calls, so no consumer can end a frame around the
+// commit hook (door.h offers doorCommit).
+void doorSubmitFrame(void);
+
 // --- Resource creation (door ids, 0 = invalid) ---
 
 uint32_t voidMakeImage(const void *rgba, int w, int h) {
@@ -32,7 +36,7 @@ static void (*s_presentHook)(int begin);
 void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
 void voidSetPresentHook(void (*fn)(int begin)) { s_presentHook = fn; }
 void voidCommit(void) {
-	doorSubmit();
+	doorSubmitFrame();
 	if (s_commitHook) { s_commitHook(); }
 	if (s_presentHook) { s_presentHook(1); }
 	voidDriverPresent();

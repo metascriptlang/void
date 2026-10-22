@@ -824,8 +824,19 @@ export function doorEndPass(): void {
 	current = -1;
 }
 
-@exportName("doorSubmit")
-export function doorSubmit(): void {
+@include("./bridgeCommit.h");
+extern function voidCommit(): void;
+
+// The frame's end as the door's contract has it: the bridge's voidCommit submits through
+// doorSubmitFrame, then runs the commit hook and presents.
+@exportName("doorCommit")
+export function doorCommit(): void {
+	stopOnOpenPass("commit");
+	voidCommit();
+}
+
+@exportName("doorSubmitFrame")
+export function doorSubmitFrame(): void {
 	stopOnOpenPass("commit");
 	device.queue.submit(frameEncoder().finish());
 	encoder = { id: 0 };

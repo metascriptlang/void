@@ -72,7 +72,6 @@ void voidEmbedPumpMessages(void);
 
 int voidGpuGeneration(void);
 void voidLoseContext(void);
-void voidCommit(void);
 void voidEmbedLoseContext(void);
 void voidEmbedDetach(void);
 void voidEmbedSetAssetRoot(const char *path);

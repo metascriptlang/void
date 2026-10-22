@@ -37,6 +37,7 @@ import {
 	doorEnvironmentSampleCount,
 	doorFormatRenderable,
 	doorContextGeneration,
+	doorCommit,
 	doorFrameIndex,
 	doorLiveBuffers,
 	doorLiveImages,
@@ -50,7 +51,6 @@ import {
 
 // The frame's end and the simulated device loss belong to the platform bridge.
 @include("../sokol/bridge.h");
-extern function voidCommit(): void;
 extern function voidLoseContext(): void;
 
 // Default is the swapchain's own format (sokol's 0), for pipelines drawn to the screen.
@@ -192,7 +192,7 @@ export function endPass(): void {
 }
 
 export function commit(): void {
-	voidCommit();
+	doorCommit();
 }
 
 // Framebuffer and texture rows start at the top (D3D11, Metal) rather than the bottom (GL).

@@ -103,7 +103,7 @@ void doorDraw(int32_t base, int32_t count, int32_t instances);
 void doorBeginScreenPass(float red, float green, float blue, float alpha);
 void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha);
 void doorEndPass(void);
-void doorSubmit(void);
+void doorCommit(void);
 int32_t doorPassState(void);
 
 #endif

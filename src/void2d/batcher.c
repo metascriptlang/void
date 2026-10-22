@@ -92,7 +92,7 @@ static int s_buffersFreed;
 static int s_frameOpen;
 // Brackets opened since the last void2dFrameEnd. A frame legitimately holds a few - the demo
 // runs two - so this is not an error until it is absurd. void2dSetup registers void2dFrameEnd
-// as the bridge's commit hook; any direct doorSubmit call bypasses it and leaves s_frameOpen
+// as the bridge's commit hook; any direct doorSubmitFrame call bypasses it and leaves s_frameOpen
 // latched, so glyph pages stop uploading and retired resources stop being freed. Keep the
 // counter loud because the visible failure appears several layers from the missing frame end.
 static int s_bracketsThisFrame;
@@ -606,7 +606,7 @@ void void2dFrameBegin(void) {
 	s_frameVertexBytes = 0;
 }
 
-// Runs immediately after doorSubmit, as the commit hook void2dSetup registers. Everything the
+// Runs immediately after doorSubmitFrame, as the commit hook void2dSetup registers. Everything the
 // door resets per frame - the append cursor above all - becomes safe to reset here and nowhere else.
 void void2dFrameEnd(void) {
 	s_frameOpen = 0;

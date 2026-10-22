@@ -68,7 +68,7 @@ int void2dScissorMax(float edge, float scale);
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
 void void2dFrameBegin(void);
 
-// Runs once per GPU frame, immediately after doorSubmit — void2dSetup registers it as the
+// Runs once per GPU frame, immediately after doorSubmitFrame — void2dSetup registers it as the
 // bridge's commit hook, so no caller has to remember it. void2dFrameBegin opens a bracket and
 // a frame may hold several; only this closes the frame.
 void void2dFrameEnd(void);

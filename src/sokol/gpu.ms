@@ -5,6 +5,8 @@ when (!windows && !android) {
 	@passC("-I../../deps/sokol");
 }
 @include("bridge.h");
+// The C bridges below set the door up and end frames through it (door.h).
+import "../gpu/doorGpu.ms";
 
 when (macos) {
 	@passL("-framework Cocoa");
