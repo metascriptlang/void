@@ -172,6 +172,8 @@ export enum Intrinsic {
 	TextureLoad,
 	TextureStore,
 	TextureDimensions,
+	TextureSampleCompare,
+	TextureSampleCompareLevel,
 }
 
 export class ShaderExpr {
