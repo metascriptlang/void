@@ -338,6 +338,14 @@ void mtlSetFragmentBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, 
 	[(id<MTLRenderCommandEncoder>)encoder setFragmentBuffer:(id<MTLBuffer>)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index];
 }
 
+void mtlSetVertexBufferOffset(MtlEncoder encoder, int64_t offset, int32_t index) {
+	[(id<MTLRenderCommandEncoder>)encoder setVertexBufferOffset:(NSUInteger)offset atIndex:(NSUInteger)index];
+}
+
+void mtlSetFragmentBufferOffset(MtlEncoder encoder, int64_t offset, int32_t index) {
+	[(id<MTLRenderCommandEncoder>)encoder setFragmentBufferOffset:(NSUInteger)offset atIndex:(NSUInteger)index];
+}
+
 void mtlSetVertexTexture(MtlEncoder encoder, MtlTexture texture, int32_t index) {
 	[(id<MTLRenderCommandEncoder>)encoder setVertexTexture:(id<MTLTexture>)texture atIndex:(NSUInteger)index];
 }

@@ -90,11 +90,13 @@ import {
 	mtlReleaseSampler,
 	mtlReleaseTexture,
 	mtlSetFragmentBuffer,
+	mtlSetFragmentBufferOffset,
 	mtlSetFragmentSampler,
 	mtlSetFragmentTexture,
 	mtlSetPipeline,
 	mtlSetScissorRect,
 	mtlSetVertexBuffer,
+	mtlSetVertexBufferOffset,
 	mtlSetVertexSampler,
 	mtlSetVertexTexture,
 	mtlSetViewport,
@@ -323,6 +325,10 @@ let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let frame: int64 = 0;
 let pass: PassState = { active: false };
 let bound: BoundState = { pipeline: 0 };
+// The buffer each uniform slot holds in the open pass, so a rebind to the same buffer only moves
+// its offset (sokol binds the uniform buffer at pass begin and calls set*BufferOffset per block).
+let passVertexUniforms: Vec<Ptr<MtlBufferImpl>> = [];
+let passFragmentUniforms: Vec<Ptr<MtlBufferImpl>> = [];
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
 let canvas: GPUCanvasConfiguration = { format: "bgra8unorm", depthFormat: "depth32float", sampleCount: 1 };
@@ -1315,6 +1321,12 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	pass = { active: true };
 	beginFrame();
 	mtlPassReset();
+	passVertexUniforms = [];
+	passFragmentUniforms = [];
+	for (let i = 0; i < MAX_STAGE_UNIFORM_BUFFERS; i++) {
+		passVertexUniforms.push(NO_BUFFER);
+		passFragmentUniforms.push(NO_BUFFER);
+	}
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const viewId = descriptor.colorAttachments[i].view.id;
 		if (viewId == 0) { continue; }
@@ -1563,10 +1575,19 @@ function applyUniforms(): void {
 			stop(`uniform binding ${shaders[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
 		}
 		const native = buffers[b].natives[buffers[b].active];
+		const slot = shaders[s].uniforms[u].nativeSlot;
 		if (shaders[s].uniforms[u].vertexStage) {
-			mtlSetVertexBuffer(encoder, native, offset, shaders[s].uniforms[u].nativeSlot);
+			if (passVertexUniforms[slot] == native) {
+				mtlSetVertexBufferOffset(encoder, offset, slot);
+			} else {
+				mtlSetVertexBuffer(encoder, native, offset, slot);
+				passVertexUniforms[slot] = native;
+			}
+		} else if (passFragmentUniforms[slot] == native) {
+			mtlSetFragmentBufferOffset(encoder, offset, slot);
 		} else {
-			mtlSetFragmentBuffer(encoder, native, offset, shaders[s].uniforms[u].nativeSlot);
+			mtlSetFragmentBuffer(encoder, native, offset, slot);
+			passFragmentUniforms[slot] = native;
 		}
 	}
 }

@@ -100,6 +100,8 @@ void mtlSetScissorRect(MtlEncoder encoder, int32_t x, int32_t y, int32_t width, 
 void mtlSetPipeline(MtlEncoder encoder, MtlPipeline pipeline, MtlDepthState depth, int32_t cullMode, int32_t winding);
 void mtlSetVertexBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index);
 void mtlSetFragmentBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index);
+void mtlSetVertexBufferOffset(MtlEncoder encoder, int64_t offset, int32_t index);
+void mtlSetFragmentBufferOffset(MtlEncoder encoder, int64_t offset, int32_t index);
 void mtlSetVertexTexture(MtlEncoder encoder, MtlTexture texture, int32_t index);
 void mtlSetFragmentTexture(MtlEncoder encoder, MtlTexture texture, int32_t index);
 void mtlSetVertexSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index);
