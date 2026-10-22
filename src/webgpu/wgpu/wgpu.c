@@ -61,6 +61,9 @@ int32_t wgMaxTextureDimension2D(void) { return (int32_t)limits.maxTextureDimensi
 int32_t wgMinUniformBufferOffsetAlignment(void) {
 	return (int32_t)limits.minUniformBufferOffsetAlignment;
 }
+int32_t wgHasFeature(int32_t feature) {
+	return wgpuDeviceHasFeature(device, (WGPUFeatureName)feature) ? 1 : 0;
+}
 WgView wgViewFrom(void *native) { return (WgView)native; }
 void *wgTextureNative(WgTexture texture) { return texture; }
 
@@ -91,6 +94,9 @@ void wgWriteBuffer(WgBuffer buffer, int64_t offset, const void *data, int64_t by
 WgTexture wgCreateTexture(
 	int32_t width,
 	int32_t height,
+	int32_t depthOrLayers,
+	int32_t mipLevels,
+	int32_t dimension,
 	int32_t format,
 	int32_t usage,
 	int32_t sampleCount,
@@ -98,10 +104,11 @@ WgTexture wgCreateTexture(
 	WGPUTextureDescriptor desc = WGPU_TEXTURE_DESCRIPTOR_INIT;
 	desc.label = text(label);
 	desc.usage = (WGPUTextureUsage)usage;
-	desc.dimension = WGPUTextureDimension_2D;
+	desc.dimension = (WGPUTextureDimension)dimension;
 	desc.size.width = (uint32_t)width;
 	desc.size.height = (uint32_t)height;
-	desc.size.depthOrArrayLayers = 1;
+	desc.size.depthOrArrayLayers = (uint32_t)depthOrLayers;
+	desc.mipLevelCount = (uint32_t)mipLevels;
 	desc.format = (WGPUTextureFormat)format;
 	desc.sampleCount = (uint32_t)sampleCount;
 	return (WgTexture)wgpuDeviceCreateTexture(device, &desc);
@@ -118,14 +125,19 @@ void wgWriteTexture(
 	int64_t offset,
 	int32_t bytesPerRow,
 	int32_t rowsPerImage,
+	int32_t mipLevel,
 	int32_t x,
 	int32_t y,
+	int32_t z,
 	int32_t width,
-	int32_t height) {
+	int32_t height,
+	int32_t depth) {
 	WGPUTexelCopyTextureInfo destination = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
 	destination.texture = (WGPUTexture)texture;
+	destination.mipLevel = (uint32_t)mipLevel;
 	destination.origin.x = (uint32_t)x;
 	destination.origin.y = (uint32_t)y;
+	destination.origin.z = (uint32_t)z;
 	destination.aspect = WGPUTextureAspect_All;
 	WGPUTexelCopyBufferLayout layout = WGPU_TEXEL_COPY_BUFFER_LAYOUT_INIT;
 	layout.offset = (uint64_t)offset;
@@ -134,16 +146,26 @@ void wgWriteTexture(
 	WGPUExtent3D extent = WGPU_EXTENT_3D_INIT;
 	extent.width = (uint32_t)width;
 	extent.height = (uint32_t)height;
-	extent.depthOrArrayLayers = 1;
+	extent.depthOrArrayLayers = (uint32_t)depth;
 	wgpuQueueWriteTexture(queue, &destination, data, (size_t)bytes, &layout, &extent);
 }
 
-WgView wgCreateView(WgTexture texture, int32_t aspect, const char *label) {
+WgView wgCreateView(
+	WgTexture texture,
+	int32_t aspect,
+	int32_t dimension,
+	int32_t baseMip,
+	int32_t mipCount,
+	int32_t baseLayer,
+	int32_t layerCount,
+	const char *label) {
 	WGPUTextureViewDescriptor desc = WGPU_TEXTURE_VIEW_DESCRIPTOR_INIT;
 	desc.label = text(label);
-	desc.dimension = WGPUTextureViewDimension_2D;
-	desc.mipLevelCount = 1;
-	desc.arrayLayerCount = 1;
+	desc.dimension = (WGPUTextureViewDimension)dimension;
+	desc.baseMipLevel = (uint32_t)baseMip;
+	desc.mipLevelCount = (uint32_t)mipCount;
+	desc.baseArrayLayer = (uint32_t)baseLayer;
+	desc.arrayLayerCount = (uint32_t)layerCount;
 	desc.aspect = (WGPUTextureAspect)aspect;
 	return (WgView)wgpuTextureCreateView((WGPUTexture)texture, &desc);
 }
@@ -155,17 +177,27 @@ void wgReleaseView(WgView view) {
 WgSampler wgCreateSampler(
 	int32_t addressU,
 	int32_t addressV,
+	int32_t addressW,
 	int32_t magFilter,
 	int32_t minFilter,
+	int32_t mipmapFilter,
+	double lodMin,
+	double lodMax,
+	int32_t compare,
+	int32_t maxAnisotropy,
 	const char *label) {
 	WGPUSamplerDescriptor desc = WGPU_SAMPLER_DESCRIPTOR_INIT;
 	desc.label = text(label);
 	desc.addressModeU = (WGPUAddressMode)addressU;
 	desc.addressModeV = (WGPUAddressMode)addressV;
-	desc.addressModeW = WGPUAddressMode_ClampToEdge;
+	desc.addressModeW = (WGPUAddressMode)addressW;
 	desc.magFilter = (WGPUFilterMode)magFilter;
 	desc.minFilter = (WGPUFilterMode)minFilter;
-	desc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+	desc.mipmapFilter = (WGPUMipmapFilterMode)mipmapFilter;
+	desc.lodMinClamp = (float)lodMin;
+	desc.lodMaxClamp = (float)lodMax;
+	desc.compare = (WGPUCompareFunction)compare;
+	desc.maxAnisotropy = (uint16_t)maxAnisotropy;
 	return (WgSampler)wgpuDeviceCreateSampler(device, &desc);
 }
 
@@ -258,12 +290,33 @@ void wgColorTarget(
 	colorTargets[index] = target;
 }
 
-void wgDepthStencil(int32_t format, int32_t depthWriteEnabled, int32_t depthCompare) {
+void wgDepthStencil(
+	int32_t format,
+	int32_t depthWriteEnabled,
+	int32_t depthCompare,
+	uint32_t stencilReadMask,
+	uint32_t stencilWriteMask,
+	int32_t depthBias,
+	double depthBiasSlopeScale,
+	double depthBiasClamp) {
 	depthStencil = (WGPUDepthStencilState)WGPU_DEPTH_STENCIL_STATE_INIT;
 	depthStencil.format = (WGPUTextureFormat)format;
 	depthStencil.depthWriteEnabled =
 		depthWriteEnabled ? WGPUOptionalBool_True : WGPUOptionalBool_False;
 	depthStencil.depthCompare = (WGPUCompareFunction)depthCompare;
+	depthStencil.stencilReadMask = stencilReadMask;
+	depthStencil.stencilWriteMask = stencilWriteMask;
+	depthStencil.depthBias = depthBias;
+	depthStencil.depthBiasSlopeScale = (float)depthBiasSlopeScale;
+	depthStencil.depthBiasClamp = (float)depthBiasClamp;
+}
+
+void wgStencilFace(int32_t back, int32_t compare, int32_t failOp, int32_t depthFailOp, int32_t passOp) {
+	WGPUStencilFaceState *face = back ? &depthStencil.stencilBack : &depthStencil.stencilFront;
+	face->compare = (WGPUCompareFunction)compare;
+	face->failOp = (WGPUStencilOperation)failOp;
+	face->depthFailOp = (WGPUStencilOperation)depthFailOp;
+	face->passOp = (WGPUStencilOperation)passOp;
 }
 
 WgPipeline wgCreatePipeline(
@@ -275,6 +328,8 @@ WgPipeline wgCreatePipeline(
 	WgLayout resourceLayout,
 	int32_t bufferCount,
 	int32_t targetCount,
+	int32_t topology,
+	int32_t stripIndexFormat,
 	int32_t cullMode,
 	int32_t frontFace,
 	int32_t sampleCount,
@@ -295,7 +350,8 @@ WgPipeline wgCreatePipeline(
 		desc.vertex.entryPoint = text(vertexEntry);
 		desc.vertex.bufferCount = (size_t)bufferCount;
 		desc.vertex.buffers = vertexBuffers;
-		desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+		desc.primitive.topology = (WGPUPrimitiveTopology)topology;
+		desc.primitive.stripIndexFormat = (WGPUIndexFormat)stripIndexFormat;
 		desc.primitive.cullMode = (WGPUCullMode)cullMode;
 		desc.primitive.frontFace = (WGPUFrontFace)frontFace;
 		if (depthStencil.format != WGPUTextureFormat_Undefined) desc.depthStencil = &depthStencil;
@@ -325,13 +381,17 @@ void wgBindEntry(
 	int32_t index,
 	int32_t binding,
 	WgBuffer buffer,
+	int64_t offset,
 	int64_t size,
 	WgView view,
 	WgSampler sampler) {
 	WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
 	entry.binding = (uint32_t)binding;
 	entry.buffer = (WGPUBuffer)buffer;
-	if (buffer) entry.size = (uint64_t)size;
+	if (buffer) {
+		entry.offset = (uint64_t)offset;
+		entry.size = (uint64_t)size;
+	}
 	entry.textureView = (WGPUTextureView)view;
 	entry.sampler = (WGPUSampler)sampler;
 	bindEntries[index] = entry;
@@ -476,6 +536,26 @@ void wgSetScissorRect(int32_t x, int32_t y, int32_t width, int32_t height) {
 		(uint32_t)y,
 		(uint32_t)width,
 		(uint32_t)height);
+}
+
+void wgSetViewport(double x, double y, double width, double height, double minDepth, double maxDepth) {
+	wgpuRenderPassEncoderSetViewport(
+		pass,
+		(float)x,
+		(float)y,
+		(float)width,
+		(float)height,
+		(float)minDepth,
+		(float)maxDepth);
+}
+
+void wgSetBlendConstant(double r, double g, double b, double a) {
+	WGPUColor color = {r, g, b, a};
+	wgpuRenderPassEncoderSetBlendConstant(pass, &color);
+}
+
+void wgSetStencilReference(uint32_t reference) {
+	wgpuRenderPassEncoderSetStencilReference(pass, reference);
 }
 
 void wgDraw(

@@ -23,6 +23,7 @@ import {
 	GPUExtent3D,
 	GPUIndexFormat,
 	GPULiveCounts,
+	GPUPrimitiveState,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
 	GPURenderPipeline,
@@ -31,6 +32,8 @@ import {
 	GPUSamplerDescriptor,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUStencilFaceState,
+	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
 	GPUTexture,
@@ -40,14 +43,7 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedTexelWritePitch,
-	stopOnUnportedBindEntry,
-	stopOnUnportedDepthStencil,
-	stopOnUnportedPrimitive,
-	stopOnUnportedSampler,
-	stopOnUnportedTexelWrite,
 	stopOnUnportedShaderModule,
-	stopOnUnportedTexture,
-	stopOnUnportedView,
 } from "../types.ms";
 import {
 	WgBindGroupImpl,
@@ -89,13 +85,18 @@ import {
 	wgReleaseSampler,
 	wgReleaseTexture,
 	wgReleaseView,
+	wgHasFeature,
 	wgSetBindGroup,
+	wgSetBlendConstant,
 	wgSetIndexBuffer,
 	wgSetPipeline,
 	wgSetScissorRect,
+	wgSetStencilReference,
+	wgSetViewport,
 	wgSetup,
 	wgSetVertexBuffer,
 	wgShutdown,
+	wgStencilFace,
 	wgSubmit,
 	wgTextureNative,
 	wgVertexAttribute,
@@ -130,11 +131,46 @@ const MAX_UNIFORM_WGSL_BINDING = 16;
 const MAX_RESOURCE_WGSL_BINDING = 128;
 
 const FORMAT_R8_UNORM = 0x01;
+const FORMAT_R16_FLOAT = 0x09;
+const FORMAT_RG8_UNORM = 0x0A;
+const FORMAT_R32_FLOAT = 0x0E;
+const FORMAT_R32_UINT = 0x0F;
+const FORMAT_RG16_FLOAT = 0x15;
 const FORMAT_RGBA8_UNORM = 0x16;
+const FORMAT_RGBA8_UNORM_SRGB = 0x17;
+const FORMAT_RGBA8_UINT = 0x19;
+const FORMAT_RGBA8_SINT = 0x1A;
 const FORMAT_BGRA8_UNORM = 0x1B;
+const FORMAT_BGRA8_UNORM_SRGB = 0x1C;
+const FORMAT_RGB10A2_UNORM = 0x1E;
+const FORMAT_RG11B10_UFLOAT = 0x1F;
+const FORMAT_RG32_FLOAT = 0x21;
+const FORMAT_RGBA16_UINT = 0x26;
 const FORMAT_RGBA16_FLOAT = 0x28;
+const FORMAT_RGBA32_FLOAT = 0x29;
+const FORMAT_DEPTH16_UNORM = 0x2D;
 const FORMAT_DEPTH24_PLUS_STENCIL8 = 0x2F;
 const FORMAT_DEPTH32_FLOAT = 0x30;
+
+const FEATURE_RG11B10_UFLOAT_RENDERABLE = 0x0C;
+const FEATURE_FLOAT32_BLENDABLE = 0x0F;
+
+const TOPOLOGY_POINT_LIST = 1;
+const TOPOLOGY_LINE_LIST = 2;
+const TOPOLOGY_LINE_STRIP = 3;
+const TOPOLOGY_TRIANGLE_LIST = 4;
+const TOPOLOGY_TRIANGLE_STRIP = 5;
+const DIMENSION_2D = 2;
+const DIMENSION_3D = 3;
+const VIEW_2D = 2;
+const VIEW_2D_ARRAY = 3;
+const VIEW_CUBE = 4;
+const VIEW_CUBE_ARRAY = 5;
+const VIEW_3D = 6;
+const MIPMAP_NEAREST = 1;
+const MIPMAP_LINEAR = 2;
+const DEFAULT_LOD_MAX_CLAMP = 32.0;
+const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 
 const STAGE_VERTEX = 0x1;
 const STAGE_FRAGMENT = 0x2;
@@ -210,6 +246,10 @@ struct TextureSlot {
 	format: GPUTextureFormat;
 	usage: int32;
 	sampleCount: int32;
+	mipLevels: int32;
+	layers: int32;
+	volume: boolean;
+	cube: boolean;
 	native: Ptr<WgTextureImpl>;
 	swapchainView: uint32;
 }
@@ -220,6 +260,8 @@ struct ViewSlot {
 	native: Ptr<WgViewImpl>;
 	binding: Ptr<WgViewImpl>;
 	swapchainResolve: Ptr<WgViewImpl>;
+	baseMip: int32;
+	attachable: boolean;
 	swapchain: boolean;
 }
 
@@ -253,6 +295,7 @@ struct PipelineSlot {
 	id: uint32;
 	shader: uint32;
 	native: Ptr<WgPipelineImpl>;
+	stripIndexFormat: int32;
 	layouts: uint32[2];
 }
 
@@ -273,6 +316,7 @@ let frame: int64 = 0;
 let encoding = false;
 let passActive = false;
 let boundPipeline: uint32 = 0;
+let boundIndexFormat = 0;
 let passWidth = 0;
 let passHeight = 0;
 let uniformAlignment = 256;
@@ -421,9 +465,29 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	const value: string = format;
 	return match (value) {
 		"r8unorm" => colorFormat(FORMAT_R8_UNORM, 1),
+		"rg8unorm" => colorFormat(FORMAT_RG8_UNORM, 2),
 		"rgba8unorm" => colorFormat(FORMAT_RGBA8_UNORM, 4),
+		"rgba8unorm-srgb" => colorFormat(FORMAT_RGBA8_UNORM_SRGB, 4),
 		"bgra8unorm" => colorFormat(FORMAT_BGRA8_UNORM, 4),
+		"bgra8unorm-srgb" => colorFormat(FORMAT_BGRA8_UNORM_SRGB, 4),
+		"rgba8uint" => colorFormat(FORMAT_RGBA8_UINT, 4),
+		"rgba8sint" => colorFormat(FORMAT_RGBA8_SINT, 4),
+		"r16float" => colorFormat(FORMAT_R16_FLOAT, 2),
+		"rg16float" => colorFormat(FORMAT_RG16_FLOAT, 4),
 		"rgba16float" => colorFormat(FORMAT_RGBA16_FLOAT, 8),
+		"rgba16uint" => colorFormat(FORMAT_RGBA16_UINT, 8),
+		"r32float" => colorFormat(FORMAT_R32_FLOAT, 4),
+		"rg32float" => colorFormat(FORMAT_RG32_FLOAT, 8),
+		"rgba32float" => colorFormat(FORMAT_RGBA32_FLOAT, 16),
+		"r32uint" => colorFormat(FORMAT_R32_UINT, 4),
+		"rgb10a2unorm" => colorFormat(FORMAT_RGB10A2_UNORM, 4),
+		"rg11b10ufloat" => colorFormat(FORMAT_RG11B10_UFLOAT, 4),
+		"depth16unorm" => ({
+			native: FORMAT_DEPTH16_UNORM,
+			bytesPerPixel: 2,
+			depth: true,
+			stencil: false,
+		}),
 		"depth32float" => ({
 			native: FORMAT_DEPTH32_FLOAT,
 			bytesPerPixel: 4,
@@ -484,6 +548,8 @@ function blendFactor(factor: string, member: string): int32 {
 		"dst-alpha" => 9,
 		"one-minus-dst-alpha" => 10,
 		"src-alpha-saturated" => 11,
+		"constant" => 12,
+		"one-minus-constant" => 13,
 		_ => stopOnMember(member, factor),
 	};
 }
@@ -511,9 +577,79 @@ function vertexFormat(format: string): int32 {
 		"float32x2" => 0x1D,
 		"float32x3" => 0x1E,
 		"float32x4" => 0x1F,
+		"uint32" => 0x20,
+		"uint32x2" => 0x21,
+		"uint32x3" => 0x22,
+		"uint32x4" => 0x23,
+		"sint32" => 0x24,
+		"sint32x2" => 0x25,
+		"sint32x3" => 0x26,
+		"sint32x4" => 0x27,
+		"uint8x2" => 0x02,
+		"uint8x4" => 0x03,
+		"sint8x2" => 0x05,
+		"sint8x4" => 0x06,
+		"unorm8x2" => 0x08,
 		"unorm8x4" => 0x09,
+		"snorm8x2" => 0x0B,
+		"snorm8x4" => 0x0C,
+		"uint16x2" => 0x0E,
+		"uint16x4" => 0x0F,
+		"sint16x2" => 0x11,
+		"sint16x4" => 0x12,
+		"unorm16x2" => 0x14,
+		"unorm16x4" => 0x15,
+		"snorm16x2" => 0x17,
+		"snorm16x4" => 0x18,
+		"float16x2" => 0x1A,
+		"float16x4" => 0x1B,
 		_ => stopOnMember("vertex attribute format", format),
 	};
+}
+
+function primitiveTopology(topology: string): int32 {
+	return match (topology) {
+		"point-list" => TOPOLOGY_POINT_LIST,
+		"line-list" => TOPOLOGY_LINE_LIST,
+		"line-strip" => TOPOLOGY_LINE_STRIP,
+		"" | "triangle-list" => TOPOLOGY_TRIANGLE_LIST,
+		"triangle-strip" => TOPOLOGY_TRIANGLE_STRIP,
+		_ => stopOnMember("primitive.topology", topology),
+	};
+}
+
+function stencilOperation(operation: string, member: string): int32 {
+	return match (operation) {
+		"" | "keep" => 1,
+		"zero" => 2,
+		"replace" => 3,
+		"invert" => 4,
+		"increment-clamp" => 5,
+		"decrement-clamp" => 6,
+		"increment-wrap" => 7,
+		"decrement-wrap" => 8,
+		_ => stopOnMember(member, operation),
+	};
+}
+
+function mipmapFilterMode(filter: string): int32 {
+	return match (filter) {
+		"" | "nearest" => MIPMAP_NEAREST,
+		"linear" => MIPMAP_LINEAR,
+		_ => stopOnMember("GPUSamplerDescriptor.mipmapFilter", filter),
+	};
+}
+
+function mipLevelCountOf(descriptor: GPUTextureDescriptor, volume: boolean, layers: int32): int32 {
+	const requested = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
+	let largest = Math.max(descriptor.size.width, descriptor.size.height);
+	if (volume) { largest = Math.max(largest, layers); }
+	let possible = 1;
+	while ((largest >> possible) > 0) { possible += 1; }
+	if (requested < 1 || requested > possible) {
+		stop(`GPUTextureDescriptor.mipLevelCount ${requested} is outside 1..${possible} for a ${descriptor.size.width}x${descriptor.size.height} texture`);
+	}
+	return requested;
 }
 
 function stepMode(mode: string): int32 {
@@ -726,6 +862,8 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 		format: format,
 		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
 		sampleCount: 1,
+		mipLevels: 1,
+		layers: 1,
 		native: NO_TEXTURE,
 		swapchainView: viewId,
 	});
@@ -735,6 +873,7 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 		native: NO_VIEW,
 		binding: NO_VIEW,
 		swapchainResolve: NO_VIEW,
+		attachable: true,
 		swapchain: true,
 	});
 	return textureId;
@@ -844,14 +983,38 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		const limit = maxTextureDimension;
 		stop(`GPUTextureDescriptor.size ${width}x${height} exceeds maxTextureDimension2D ${limit}`);
 	}
-	stopOnUnportedTexture("wgpu", descriptor);
+	const dimension: string = descriptor.dimension;
+	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
+	const volume = dimension == "3d";
+	if (descriptor.size.depthOrArrayLayers < 0) { stop("GPUTextureDescriptor.size.depthOrArrayLayers is negative"); }
+	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
+	const mipLevels = mipLevelCountOf(descriptor, volume, layers);
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
+	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
+		stop("a multisampled texture with mips, array layers or a 3d dimension is not ported to wgpu: WebGPU takes one mip and one layer");
+	}
 	const usage = descriptor.usage;
+	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
+	if (volume && (attachment || info.depth)) { stop("a 3d texture as RENDER_ATTACHMENT or with a depth format is not ported to wgpu yet"); }
+	if (attachment && info.native == FORMAT_RG11B10_UFLOAT && wgHasFeature(FEATURE_RG11B10_UFLOAT_RENDERABLE) == 0) {
+		stop("rg11b10ufloat as RENDER_ATTACHMENT needs the device feature rg11b10ufloat-renderable, which this device was not created with");
+	}
+	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
 	const label = labelText(descriptor.label);
-	const native = wgCreateTexture(width, height, info.native, usage, sampleCount, label);
+	const native = wgCreateTexture(
+		width,
+		height,
+		layers,
+		mipLevels,
+		volume ? DIMENSION_3D : DIMENSION_2D,
+		info.native,
+		usage,
+		sampleCount,
+		label,
+	);
 	if (native == null) { stop(`wgpuDeviceCreateTexture failed for ${labelOf(descriptor.label)}`); }
 	const slot: TextureSlot = {
 		id: id,
@@ -860,6 +1023,10 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		format: descriptor.format,
 		usage: usage,
 		sampleCount: sampleCount,
+		mipLevels: mipLevels,
+		layers: layers,
+		volume: volume,
+		cube: cube,
 		native: native,
 		swapchainView: 0,
 	};
@@ -910,12 +1077,14 @@ export function writeTexture<T>(
 		stop(`writeTexture on GPUTexture ${destination.texture.id}, created without COPY_DST`);
 	}
 	const info = formatInfo(textures[index].format, "texture format");
-	stopOnUnportedTexelWrite("wgpu", destination, size);
+	const mip = destination.mipLevel;
+	const mips = textures[index].mipLevels;
+	const depth = textures[index].volume && mip >= 0 && mip < mips ? Math.max(1, textures[index].layers >> mip) : textures[index].layers;
 	const bytesPerRow = checkedTexelWritePitch(
 		textures[index].width,
 		textures[index].height,
-		1,
-		1,
+		mips,
+		depth,
 		info.bytesPerPixel,
 		bytes,
 		destination,
@@ -929,30 +1098,75 @@ export function writeTexture<T>(
 		layout.offset,
 		bytesPerRow,
 		layout.rowsPerImage == 0 ? size.height : layout.rowsPerImage,
+		mip,
 		destination.origin.x,
 		destination.origin.y,
+		destination.origin.z,
 		size.width,
 		size.height,
+		size.depthOrArrayLayers,
 	);
+}
+
+function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {
+	let name: string = descriptor.dimension;
+	if (name == "") { name = textures[t].volume ? "3d" : (textures[t].layers > 1 ? "2d-array" : "2d"); }
+	if ((name == "3d") != textures[t].volume) {
+		stop(`GPUTextureViewDescriptor.dimension '${name}' does not match the ${textures[t].volume ? "3d" : "2d"} GPUTexture ${textures[t].id}`);
+	}
+	if (name == "2d") { return VIEW_2D; }
+	if (name == "2d-array") { return VIEW_2D_ARRAY; }
+	if (name == "cube") { return VIEW_CUBE; }
+	if (name == "cube-array") { return VIEW_CUBE_ARRAY; }
+	if (name == "3d") { return VIEW_3D; }
+	return stopOnMember("GPUTextureViewDescriptor.dimension", name);
 }
 
 export function createView(
 	texture: GPUTexture,
 	descriptor: GPUTextureViewDescriptor,
 ): GPUTextureView {
-	stopOnUnportedView("wgpu", descriptor);
 	const t = textureIndex(texture.id);
 	if (textures[t].swapchainView != 0) { return { id: textures[t].swapchainView }; }
 	const id = allocateId(viewQueue, "view");
 	if (id == 0) { return { id: 0 }; }
 	const info = formatInfo(textures[t].format, "texture format");
 	const label = labelText(descriptor.label);
-	const native = wgCreateView(textures[t].native, ASPECT_ALL, label);
+	const layers = textures[t].layers;
+	const baseMip = descriptor.baseMipLevel;
+	const mipCount = descriptor.mipLevelCount == 0 ? textures[t].mipLevels - baseMip : descriptor.mipLevelCount;
+	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > textures[t].mipLevels) {
+		stop(`view mips ${baseMip}+${mipCount} overrun GPUTexture ${textures[t].id}, which has ${textures[t].mipLevels} mips`);
+	}
+	const dimension = viewDimensionOf(descriptor, t);
+	let baseLayer = descriptor.baseArrayLayer;
+	let layerCount = descriptor.arrayLayerCount;
+	if (dimension == VIEW_3D) {
+		if (baseLayer != 0 || layerCount > 1) { stop("a 3d view takes no baseArrayLayer or arrayLayerCount"); }
+		baseLayer = 0;
+		layerCount = 1;
+	} else {
+		if (dimension == VIEW_2D) { layerCount = 1; }
+		if (dimension == VIEW_CUBE) { layerCount = 6; }
+		if (layerCount == 0) { layerCount = layers - baseLayer; }
+		if (baseLayer < 0 || layerCount < 1 || baseLayer + layerCount > layers) {
+			stop(`view layers ${baseLayer}+${layerCount} overrun GPUTexture ${textures[t].id}, which has ${layers} layers`);
+		}
+	}
+	if (dimension == VIEW_CUBE || dimension == VIEW_CUBE_ARRAY) {
+		if (!textures[t].cube) {
+			stop(`a cube view needs GPUTexture ${textures[t].id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
+		}
+		if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
+	}
+	const native = wgCreateView(textures[t].native, ASPECT_ALL, dimension, baseMip, mipCount, baseLayer, layerCount, label);
 	if (native == null) { stop(`wgpuTextureCreateView failed for ${labelOf(descriptor.label)}`); }
 	let binding = NO_VIEW;
 	if (has(textures[t].usage, GPUTextureUsage.TEXTURE_BINDING as int32)) {
 		binding = native;
-		if (info.stencil) { binding = wgCreateView(textures[t].native, ASPECT_DEPTH_ONLY, label); }
+		if (info.stencil) {
+			binding = wgCreateView(textures[t].native, ASPECT_DEPTH_ONLY, dimension, baseMip, mipCount, baseLayer, layerCount, label);
+		}
 		if (binding == null) {
 			stop(`wgpuTextureCreateView (depth aspect) failed for ${labelOf(descriptor.label)}`);
 		}
@@ -963,6 +1177,8 @@ export function createView(
 		native: native,
 		binding: binding,
 		swapchainResolve: NO_VIEW,
+		baseMip: baseMip,
+		attachable: mipCount == 1 && layerCount == 1 && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY),
 		swapchain: false,
 	};
 	const index = slotOf(id);
@@ -1010,14 +1226,33 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 }
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
-	stopOnUnportedSampler("wgpu", descriptor);
 	const id = allocateId(samplerQueue, "sampler");
 	if (id == 0) { return { id: 0 }; }
+	const magFilter = filterMode(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
+	const minFilter = filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
+	const mipmapFilter = mipmapFilterMode(descriptor.mipmapFilter);
+	let maxAnisotropy = descriptor.maxAnisotropy;
+	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
+	if (maxAnisotropy > 1 && !(magFilter == FILTER_LINEAR && minFilter == FILTER_LINEAR && mipmapFilter == MIPMAP_LINEAR)) {
+		stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter");
+	}
+	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
+	const maxLod = descriptor.lodMaxClamp == 0 ? DEFAULT_LOD_MAX_CLAMP : descriptor.lodMaxClamp;
+	if (maxLod < descriptor.lodMinClamp) {
+		stop(`GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${descriptor.lodMinClamp}`);
+	}
+	const compare: string = descriptor.compare;
 	const native = wgCreateSampler(
 		addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"),
 		addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"),
-		filterMode(descriptor.magFilter, "GPUSamplerDescriptor.magFilter"),
-		filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter"),
+		addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW"),
+		magFilter,
+		minFilter,
+		mipmapFilter,
+		descriptor.lodMinClamp,
+		maxLod,
+		compare == "" ? 0 : compareFunction(compare, "GPUSamplerDescriptor.compare"),
+		maxAnisotropy,
 		labelText(descriptor.label),
 	);
 	if (native == null) { stop(`wgpuDeviceCreateSampler failed for ${labelOf(descriptor.label)}`); }
@@ -1138,17 +1373,39 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule in Void");
 	}
-	stopOnUnportedPrimitive("wgpu", descriptor.primitive);
-	stopOnUnportedDepthStencil("wgpu", descriptor.depthStencil);
+	const topology = primitiveTopology(descriptor.primitive.topology);
+	const stripIndexFormat = stripIndexFormatOf(descriptor.primitive, topology);
 	const bufferCount = describeVertexBuffers(descriptor);
 	const depthFormat: string = descriptor.depthStencil.format;
 	if (depthFormat != "") {
 		const info = formatInfo(descriptor.depthStencil.format, "depthStencil.format");
 		if (!info.depth) { stopOnMember("depthStencil.format", depthFormat); }
+		const state = descriptor.depthStencil;
 		wgDepthStencil(
 			info.native,
-			descriptor.depthStencil.depthWriteEnabled ? 1 : 0,
-			compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
+			state.depthWriteEnabled ? 1 : 0,
+			compareFunction(state.depthCompare, "depthStencil.depthCompare"),
+			state.stencilReadMask == 0 ? STENCIL_MASK_ALL : state.stencilReadMask,
+			state.stencilWriteMask == 0 ? STENCIL_MASK_ALL : state.stencilWriteMask,
+			state.depthBias,
+			state.depthBiasSlopeScale,
+			state.depthBiasClamp,
+		);
+		const front: GPUStencilFaceState = state.stencilFront;
+		const back: GPUStencilFaceState = state.stencilBack;
+		wgStencilFace(
+			0,
+			compareFunction(front.compare, "depthStencil.stencilFront.compare"),
+			stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
+			stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
+			stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),
+		);
+		wgStencilFace(
+			1,
+			compareFunction(back.compare, "depthStencil.stencilBack.compare"),
+			stencilOperation(back.failOp, "depthStencil.stencilBack.failOp"),
+			stencilOperation(back.depthFailOp, "depthStencil.stencilBack.depthFailOp"),
+			stencilOperation(back.passOp, "depthStencil.stencilBack.passOp"),
 		);
 	}
 	const targetCount = describeColorTargets(descriptor);
@@ -1162,6 +1419,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		shaders[s].groupLayouts[GPU_RESOURCE_GROUP],
 		bufferCount,
 		targetCount,
+		topology,
+		stripIndexFormat,
 		cullMode(descriptor.primitive.cullMode),
 		frontFace(descriptor.primitive.frontFace),
 		sampleCount,
@@ -1174,10 +1433,20 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		id: id,
 		shader: descriptor.vertex.module.id,
 		native: native,
+		stripIndexFormat: stripIndexFormat,
 	};
 	const index = slotOf(slot.id);
 	if (index < pipelines.length) { pipelines[index] = slot; } else { pipelines.push(slot); }
 	return { id: slot.id };
+}
+
+function stripIndexFormatOf(state: GPUPrimitiveState, topology: int32): int32 {
+	const format: string = state.stripIndexFormat;
+	if (format == "") { return 0; }
+	if (topology != TOPOLOGY_LINE_STRIP && topology != TOPOLOGY_TRIANGLE_STRIP) {
+		stop(`primitive.stripIndexFormat '${format}' needs a strip topology`);
+	}
+	return indexFormat(state.stripIndexFormat);
 }
 
 function describeVertexBuffers(descriptor: GPURenderPipelineDescriptor): int32 {
@@ -1214,6 +1483,10 @@ function describeColorTargets(descriptor: GPURenderPipelineDescriptor): int32 {
 		const member = `fragment.targets[${i}].format`;
 		const info = formatInfo(descriptor.fragment.targets[i].format, member);
 		if (info.depth) { stopOnMember(member, format); }
+		const float32 = info.native == FORMAT_R32_FLOAT || info.native == FORMAT_RG32_FLOAT || info.native == FORMAT_RGBA32_FLOAT;
+		if (float32 && descriptor.fragment.targets[i].blendEnabled && wgHasFeature(FEATURE_FLOAT32_BLENDABLE) == 0) {
+			stop(`fragment.targets[${i}] blends a ${format} target, which needs the device feature float32-blendable`);
+		}
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;
 		const writeMask = descriptor.fragment.targets[i].writeMask;
@@ -1281,7 +1554,7 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 		if (entry.buffer.id != 0) {
 			const size = uniformEntrySize(shader, entry);
 			const buffer = buffers[bufferIndex(entry.buffer.id)].native;
-			wgBindEntry(count, entry.binding, buffer, size, NO_VIEW, NO_SAMPLER);
+			wgBindEntry(count, entry.binding, buffer, entry.offset, size, NO_VIEW, NO_SAMPLER);
 			slot.dynamicCount += 1;
 		} else if (entry.textureView.id != 0) {
 			checkResource(shader, entry.binding, BindingKind.Texture, group);
@@ -1289,11 +1562,11 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 			if (view == null) {
 				stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`);
 			}
-			wgBindEntry(count, entry.binding, NO_BUFFER, 0, view, NO_SAMPLER);
+			wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, view, NO_SAMPLER);
 		} else {
 			checkResource(shader, entry.binding, BindingKind.Sampler, group);
 			const sampler = samplers[samplerIndex(entry.sampler.id)].native;
-			wgBindEntry(count, entry.binding, NO_BUFFER, 0, NO_VIEW, sampler);
+			wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, NO_VIEW, sampler);
 		}
 		count += 1;
 	}
@@ -1315,7 +1588,12 @@ function uniformEntrySize(shader: int32, entry: GPUBindGroupEntry): int64 {
 	for (let u = 0; u < shaders[shader].uniformCount; u++) {
 		const binding = shaders[shader].uniforms[u];
 		if (binding.binding == entry.binding) {
-			stopOnUnportedBindEntry("wgpu", entry);
+			if (entry.offset < 0 || entry.offset % (uniformAlignment as int64) != 0) {
+				stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${uniformAlignment}`);
+			}
+			if (entry.offset + (binding.size as int64) > buffers[b].size) {
+				stop(`bind group entry ${entry.binding} offset ${entry.offset} overruns its buffer`);
+			}
 			if (entry.size != 0 && entry.size < (binding.size as int64)) {
 				const block = binding.size;
 				const at = entry.binding;
@@ -1382,7 +1660,8 @@ export function beginRenderPass(
 		}
 		const v = viewIndex(attachment.view.id);
 		checkColorAttachment(i, views[v].texture);
-		passExtent(views[v].texture);
+		if (!views[v].attachable) { stop(`colorAttachments[${i}].view spans several mips or layers: a render attachment is one mip of one layer`); }
+		passExtent(views[v].texture, views[v].baseMip);
 		let resolve = views[v].swapchainResolve;
 		if (attachment.resolveTarget.id != 0) {
 			resolve = checkResolve(i, views[v].texture, attachment.resolveTarget.id);
@@ -1405,7 +1684,8 @@ export function beginRenderPass(
 	if (depthView != 0) {
 		const v = viewIndex(depthView);
 		const t = textureIndex(views[v].texture);
-		passExtent(views[v].texture);
+		if (!views[v].attachable) { stop("depthStencilAttachment.view spans several mips or layers: a render attachment is one mip of one layer"); }
+		passExtent(views[v].texture, views[v].baseMip);
 		const info = formatInfo(textures[t].format, "depth format");
 		if (!info.depth || !has(textures[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
 			stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT");
@@ -1425,15 +1705,18 @@ export function beginRenderPass(
 	}
 	passActive = true;
 	boundPipeline = 0;
+	boundIndexFormat = 0;
 	return { id: 1 };
 }
 
-function passExtent(texture: uint32): void {
+function passExtent(texture: uint32, baseMip: int32): void {
 	const t = textureIndex(texture);
+	const width = Math.max(1, textures[t].width >> baseMip);
+	const height = Math.max(1, textures[t].height >> baseMip);
 	if (passWidth == 0) {
-		passWidth = textures[t].width;
-		passHeight = textures[t].height;
-	} else if (passWidth != textures[t].width || passHeight != textures[t].height) {
+		passWidth = width;
+		passHeight = height;
+	} else if (passWidth != width || passHeight != height) {
 		stop("render pass attachments differ in size");
 	}
 }
@@ -1456,6 +1739,7 @@ function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32
 		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample view`);
 	}
 	checkColorAttachment(attachment, views[r].texture);
+	if (!views[r].attachable) { stop(`colorAttachments[${attachment}].resolveTarget spans several mips or layers: a render attachment is one mip of one layer`); }
 	return views[r].native;
 }
 
@@ -1489,7 +1773,8 @@ export function endPass(): void {
 	offset: int64,
 ): void {
 	checkPass("setIndexBuffer");
-	wgSetIndexBuffer(buffers[bufferIndex(buffer.id)].native, indexFormat(format), offset);
+	boundIndexFormat = indexFormat(format);
+	wgSetIndexBuffer(buffers[bufferIndex(buffer.id)].native, boundIndexFormat, offset);
 }
 
 export function setBindGroup(
@@ -1530,17 +1815,20 @@ export function setBindGroup(
 
 export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
 	checkPass("setViewport");
-	stop("setViewport is not ported to wgpu yet");
+	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
+		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
+	}
+	wgSetViewport(x, y, width, height, minDepth, maxDepth);
 }
 
 export function setBlendConstant(color: GPUColor): void {
 	checkPass("setBlendConstant");
-	stop("setBlendConstant is not ported to wgpu yet");
+	wgSetBlendConstant(color.r, color.g, color.b, color.a);
 }
 
 export function setStencilReference(reference: uint32): void {
 	checkPass("setStencilReference");
-	stop("setStencilReference is not ported to wgpu yet");
+	wgSetStencilReference(reference);
 }
 
 @inline export function draw(
@@ -1563,5 +1851,42 @@ export function setStencilReference(reference: uint32): void {
 ): void {
 	checkPass("drawIndexed");
 	if (boundPipeline == 0) { stop("drawIndexed without setPipeline"); }
+	const strip = pipelines[pipelineIndex(boundPipeline)].stripIndexFormat;
+	if (strip != 0 && strip != boundIndexFormat) {
+		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
+	}
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+}
+
+export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
+	stop("copyBufferToBuffer is not ported to wgpu yet");
+}
+
+export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	stop("copyBufferToTexture is not ported to wgpu yet");
+}
+
+export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
+	stop("copyTextureToBuffer is not ported to wgpu yet");
+}
+
+export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	stop("copyTextureToTexture is not ported to wgpu yet");
+}
+
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
+	stop("mapAsync is not ported to wgpu yet");
+}
+
+export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
+	stop("getMappedRange is not ported to wgpu yet");
+	return new Array(0);
+}
+
+export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
+	stop("writeMappedRange is not ported to wgpu yet");
+}
+
+export function unmap(buffer: GPUBuffer): void {
+	stop("unmap is not ported to wgpu yet");
 }

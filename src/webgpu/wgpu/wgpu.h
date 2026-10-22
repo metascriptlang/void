@@ -14,6 +14,7 @@ int32_t wgSetup(void *device);
 void wgShutdown(void);
 int32_t wgMaxTextureDimension2D(void);
 int32_t wgMinUniformBufferOffsetAlignment(void);
+int32_t wgHasFeature(int32_t feature);
 WgView wgViewFrom(void *native);
 void *wgTextureNative(WgTexture texture);
 
@@ -24,6 +25,9 @@ void wgWriteBuffer(WgBuffer buffer, int64_t offset, const void *data, int64_t by
 WgTexture wgCreateTexture(
 	int32_t width,
 	int32_t height,
+	int32_t depthOrLayers,
+	int32_t mipLevels,
+	int32_t dimension,
 	int32_t format,
 	int32_t usage,
 	int32_t sampleCount,
@@ -36,18 +40,35 @@ void wgWriteTexture(
 	int64_t offset,
 	int32_t bytesPerRow,
 	int32_t rowsPerImage,
+	int32_t mipLevel,
 	int32_t x,
 	int32_t y,
+	int32_t z,
 	int32_t width,
-	int32_t height);
-WgView wgCreateView(WgTexture texture, int32_t aspect, const char *label);
+	int32_t height,
+	int32_t depth);
+WgView wgCreateView(
+	WgTexture texture,
+	int32_t aspect,
+	int32_t dimension,
+	int32_t baseMip,
+	int32_t mipCount,
+	int32_t baseLayer,
+	int32_t layerCount,
+	const char *label);
 void wgReleaseView(WgView view);
 
 WgSampler wgCreateSampler(
 	int32_t addressU,
 	int32_t addressV,
+	int32_t addressW,
 	int32_t magFilter,
 	int32_t minFilter,
+	int32_t mipmapFilter,
+	double lodMin,
+	double lodMax,
+	int32_t compare,
+	int32_t maxAnisotropy,
 	const char *label);
 void wgReleaseSampler(WgSampler sampler);
 
@@ -76,7 +97,16 @@ void wgColorTarget(
 	int32_t alphaSource,
 	int32_t alphaDestination,
 	int32_t writeMask);
-void wgDepthStencil(int32_t format, int32_t depthWriteEnabled, int32_t depthCompare);
+void wgDepthStencil(
+	int32_t format,
+	int32_t depthWriteEnabled,
+	int32_t depthCompare,
+	uint32_t stencilReadMask,
+	uint32_t stencilWriteMask,
+	int32_t depthBias,
+	double depthBiasSlopeScale,
+	double depthBiasClamp);
+void wgStencilFace(int32_t back, int32_t compare, int32_t failOp, int32_t depthFailOp, int32_t passOp);
 WgPipeline wgCreatePipeline(
 	WgModule vertex,
 	const char *vertexEntry,
@@ -86,6 +116,8 @@ WgPipeline wgCreatePipeline(
 	WgLayout resourceLayout,
 	int32_t bufferCount,
 	int32_t targetCount,
+	int32_t topology,
+	int32_t stripIndexFormat,
 	int32_t cullMode,
 	int32_t frontFace,
 	int32_t sampleCount,
@@ -96,6 +128,7 @@ void wgBindEntry(
 	int32_t index,
 	int32_t binding,
 	WgBuffer buffer,
+	int64_t offset,
 	int64_t size,
 	WgView view,
 	WgSampler sampler);
@@ -129,6 +162,9 @@ void wgSetIndexBuffer(WgBuffer buffer, int32_t format, int64_t offset);
 void wgDynamicOffset(int32_t index, uint32_t offset);
 void wgSetBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount);
 void wgSetScissorRect(int32_t x, int32_t y, int32_t width, int32_t height);
+void wgSetViewport(double x, double y, double width, double height, double minDepth, double maxDepth);
+void wgSetBlendConstant(double r, double g, double b, double a);
+void wgSetStencilReference(uint32_t reference);
 void wgDraw(int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance);
 void wgDrawIndexed(
 	int32_t indexCount,
