@@ -7,6 +7,7 @@ import {
 } from "../particles/asset";
 import { constantCurve, constantColor, rgbaColor, curveOf, linearCurve, key } from "../particles/curve";
 import { NodeRef, Scene2D, TileCell } from "../void2d/node";
+import { cellMatrix } from "../void2d/render";
 import "../void2d/scene";
 import { Tile, Transform2D, rgba, tile, identity2d, trs2d, vec2 } from "../void2d/types";
 import { ParticleEmitter2D, Particles2DErrorKind, particles, play, update } from "../void2d/particles2d";
@@ -208,28 +209,13 @@ function golden(name: string): JsonValue {
 
 // The cell's corners in Unity's y-up frame, top-left first, as the baked quad lists them.
 function cellCorners(c: TileCell): float32[] {
-	const m: Transform2D = trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
+	const m: Transform2D = cellMatrix(c);
 	const t: Tile = c.tile;
 	const a = vec2(t.dx, t.dy) * m;
 	const b = vec2(t.dx + t.w, t.dy) * m;
 	const d = vec2(t.dx + t.w, t.dy + t.h) * m;
 	const e = vec2(t.dx, t.dy + t.h) * m;
 	return [a.x, -a.y, b.x, -b.y, d.x, -d.y, e.x, -e.y];
-}
-
-// The mesh of the first freeform node: the corners of its one quad, top-left first in Unity's
-// y-up frame (two triangles, TL TR BR then TL BR BL), or nothing when the mesh is not one quad.
-function meshCorners(e: ParticleEmitter2D): float32[] {
-	const g: NodeRef = e.freeformNodes[0];
-	const mesh: float32[] = g.scene.meshes[g.scene.payloads[g.id.index]].mesh;
-	if ((mesh.length as int32) != 48) { return []; }
-	return [mesh[0], -mesh[1], mesh[8], -mesh[9], mesh[16], -mesh[17], mesh[40], -mesh[41]];
-}
-
-function quadCount(e: ParticleEmitter2D, freeform: boolean): int32 {
-	if (!freeform) { return e.node.count(); }
-	const g: NodeRef = e.freeformNodes[0];
-	return (g.scene.meshes[g.scene.payloads[g.id.index]].mesh.length as int32) / 48;
 }
 
 // Replays a baked-quad golden through the 2D writer at Unity's step, 4 sub-steps per frame, and
@@ -246,9 +232,9 @@ function cornerMisses(name: string, q: UnityQuad): int32 {
 		if (!n.ok || n.value != 1) { return 1000; }
 		const baked = frames.at(k).getDynamicField("bakedQuads");
 		const wanted: int32 = baked.length() as int32;
-		if (quadCount(e, q.freeform) != wanted) { return 1000; }
+		if (e.node.count() != wanted) { return 1000; }
 		if (wanted == 0) { continue; }
-		const mine: float32[] = q.freeform ? meshCorners(e) : cellCorners(first(e));
+		const mine: float32[] = cellCorners(first(e));
 		const pos = baked.at(0).getDynamicField("pos");
 		for (let v = 0; v < 4; v++) {
 			for (let axis = 0; axis < 2; axis++) {

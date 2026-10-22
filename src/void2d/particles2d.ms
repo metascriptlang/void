@@ -54,10 +54,6 @@ export struct ParticleEmitter2D {
 	trailSystems: Vec<int32>;
 	trailNodes: Vec<NodeRef>;
 	trailTiles: Vec<Tile>;
-	// Per freeform Stretch system: its Graphics node, above the particles' node, because a stretched
-	// quad is a parallelogram and a cell cannot skew.
-	freeformSystems: Vec<int32>;
-	freeformNodes: Vec<NodeRef>;
 	chains: TrailChains;
 	points: Vec2[];
 	uvs: Vec2[];
@@ -136,19 +132,9 @@ export function particles(
 	}
 	const node: NodeRef = s.tileGroup();
 	root.addChild(node);
-	let freeformSystems: Vec<int32> = [];
-	let freeformNodes: Vec<NodeRef> = [];
-	for (let k = 0; k < (effect.systems.length as int32); k++) {
-		if (!isFreeform(effect.systems[k].renderer)) { continue; }
-		const g: NodeRef = s.graphics();
-		root.addChild(g);
-		freeformSystems.push(k);
-		freeformNodes.push(g);
-	}
 	return Result.ok({
 		effect: made.value, node: node, frames: frames, cells: [], root: root,
 		trailSystems: trailSystems, trailNodes: trailNodes, trailTiles: trailTiles,
-		freeformSystems: freeformSystems, freeformNodes: freeformNodes,
 		chains: TrailChains.create(), points: [], uvs: [], colors: [],
 	});
 }
@@ -207,7 +193,6 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
 		const freeform: boolean = isFreeform(renderer);
 		const stretch: boolean = renderer.renderMode == RenderMode.Stretch && !freeform;
 		const worldSpace: boolean = sys.asset.main.simulationSpace == SimulationSpace.World;
-		if (freeform) { e.points.length = 0; e.uvs.length = 0; e.colors.length = 0; }
 		const alongVelocity: boolean = renderer.renderMode == RenderMode.Billboard && renderer.alignment == RenderAlignment.Velocity;
 		const sheet = sys.asset.textureSheetAnimation;
 		const flipU: float32 = sheet.enabled ? flip.x + sheet.flipU - flip.x * sheet.flipU : flip.x;
@@ -230,7 +215,8 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
 			if (freeform) {
 				// Unity's freeform quad (tests/unity/goldens/stretch_freeform*): the particle's quad, its
 				// pivot shift and rotation applied, stretched about the particle along the total
-				// velocity by (size.y * lengthScale + speed * velocityScale) / size.y.
+				// velocity by (size.y * lengthScale + speed * velocityScale) / size.y. That is one affine
+				// of the particle's own axes; the cell holds it as rotate * shear * scale.
 				const speed: float32 = Math.sqrt((vx * vx + vy * vy) as float64) as float32;
 				if (speed == 0.0 || h == 0.0) { continue; }
 				const dx: float32 = vx / speed;
@@ -241,24 +227,28 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
 				const grow: float32 = renderer.lengthScale + speed * renderer.velocityScale / h - 1.0;
 				const co: float32 = cosf(turn);
 				const si: float32 = sinf(turn);
-				const hw: float32 = w * 0.5;
-				const hh: float32 = h * 0.5;
-				const ox: float32 = pivot.x * w;
-				const oy: float32 = pivot.y * h;
-				const color: Color = rgba(
-					sys.data[COLOR_R * cap + i], sys.data[COLOR_G * cap + i],
-					sys.data[COLOR_B * cap + i], sys.data[COLOR_A * cap + i],
-				);
-				const tl: Vec2 = freeformCorner(x, y, -hw + ox, hh + oy, co, si, dx, dy, grow);
-				const tr: Vec2 = freeformCorner(x, y, hw + ox, hh + oy, co, si, dx, dy, grow);
-				const br: Vec2 = freeformCorner(x, y, hw + ox, -hh + oy, co, si, dx, dy, grow);
-				const bl: Vec2 = freeformCorner(x, y, -hw + ox, -hh + oy, co, si, dx, dy, grow);
-				e.corner(tl, vec2(t.u0, t.v0), color);
-				e.corner(tr, vec2(t.u1, t.v0), color);
-				e.corner(br, vec2(t.u1, t.v1), color);
-				e.corner(tl, vec2(t.u0, t.v0), color);
-				e.corner(br, vec2(t.u1, t.v1), color);
-				e.corner(bl, vec2(t.u0, t.v1), color);
+				const g11: float32 = 1.0 + grow * dx * dx;
+				const g12: float32 = grow * dx * dy;
+				const g22: float32 = 1.0 + grow * dy * dy;
+				// The image of the tile's x and y axes on screen, y down, per tile unit.
+				const a: float32 = (g11 * co - g12 * si) * (w / t.w);
+				const b: float32 = -(g12 * co - g22 * si) * (w / t.w);
+				const c: float32 = (-g11 * si - g12 * co) * (h / t.h);
+				const d: float32 = -(-g12 * si - g22 * co) * (h / t.h);
+				const det: float32 = a * d - b * c;
+				if (det == 0.0) { continue; }
+				const across: float32 = Math.sqrt((a * a + b * b) as float64) as float32;
+				e.cells.push({
+					x: x + (a * pivot.x * t.w - c * pivot.y * t.h), y: y + (b * pivot.x * t.w - d * pivot.y * t.h),
+					tile: t,
+					color: rgba(
+						sys.data[COLOR_R * cap + i], sys.data[COLOR_G * cap + i],
+						sys.data[COLOR_B * cap + i], sys.data[COLOR_A * cap + i],
+					),
+					scaleX: across, scaleY: det / across,
+					rotation: Math.atan2(b as float64, a as float64) as float32,
+					skew: (a * c + b * d) / det,
+				});
 				continue;
 			}
 			if (stretch) {
@@ -302,33 +292,9 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
 				rotation: rotation, skew: 0.0,
 			});
 		}
-		if (freeform) { e.flushFreeform(k, frames[0]); }
 	}
 	e.node.setTiles(e.cells);
 	for (let k = 0; k < (e.trailSystems.length as int32); k++) { e.redrawTrails(k); }
-}
-
-// The corner (cx, cy) of a freeform quad about the particle at (x, y): turned clockwise by the
-// angle whose cosine and sine are co and si, then stretched by `grow` along the unit (dx, dy).
-function freeformCorner(
-	x: float32, y: float32, cx: float32, cy: float32, co: float32, si: float32,
-	dx: float32, dy: float32, grow: float32,
-): Vec2 {
-	const rx: float32 = cx * co + cy * si;
-	const ry: float32 = -cx * si + cy * co;
-	const along: float32 = (rx * dx + ry * dy) * grow;
-	return vec2(x + rx + along * dx, y - (ry + along * dy));
-}
-
-function flushFreeform(this ref e: ParticleEmitter2D, system: int32, t: Tile): void {
-	for (let k = 0; k < (e.freeformSystems.length as int32); k++) {
-		if (e.freeformSystems[k] != system) { continue; }
-		const g: NodeRef = e.freeformNodes[k];
-		g.clear();
-		if ((e.points.length as int32) > 0) { g.fillTexTriangles(t, e.points, e.uvs, e.colors); }
-		return;
-	}
-	unreachable;
 }
 
 function flat(p: Vec3): Vec2 {
