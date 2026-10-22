@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <d3dcompiler.h>
 #include <float.h>
 #include <string.h>
@@ -38,8 +39,46 @@ int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64
 	return 1;
 }
 
-void d3dUpdateSubresource(D3dContext context, D3dBuffer buffer, void *data, int64_t offset) {
-	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)buffer, 0, NULL, (uint8_t *)data + offset, 0, 0);
+int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache, int64_t cacheOffset, uint8_t *data, int64_t dataOffset, int64_t bytes, int32_t force) {
+	uint8_t *block = cache + cacheOffset;
+	uint8_t *source = data + dataOffset;
+	if (!force && memcmp(block, source, (size_t)bytes) == 0) return 0;
+	memcpy(block, source, (size_t)bytes);
+	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)buffer, 0, NULL, block, 0, 0);
+	return 1;
+}
+
+static ID3D11DeviceContext1 *context1;
+
+int32_t d3dUniformOffsetting(D3dDevice device, D3dContext context) {
+	D3D11_FEATURE_DATA_D3D11_OPTIONS options = {0};
+	if (context1) return 1;
+	if (FAILED(ID3D11DeviceContext_QueryInterface(CONTEXT(context), &IID_ID3D11DeviceContext1, (void **)&context1))) return 0;
+	if (FAILED(ID3D11Device_CheckFeatureSupport(DEVICE(device), D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof options)) ||
+		!options.ConstantBufferOffsetting || !options.ConstantBufferPartialUpdate ||
+		!options.MapNoOverwriteOnDynamicConstantBuffer) {
+		ID3D11DeviceContext1_Release(context1);
+		context1 = NULL;
+		return 0;
+	}
+	return 1;
+}
+
+void d3dReleaseUniformOffsetting(void) {
+	if (context1) ID3D11DeviceContext1_Release(context1);
+	context1 = NULL;
+}
+
+void d3dVsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
+	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
+	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
+	ID3D11DeviceContext1_VSSetConstantBuffers1(context1, (UINT)slot, 1, buffers, &first, &count);
+}
+
+void d3dPsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
+	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
+	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
+	ID3D11DeviceContext1_PSSetConstantBuffers1(context1, (UINT)slot, 1, buffers, &first, &count);
 }
 
 void d3dCopyBytes(void *destination, int64_t destinationOffset, void *source, int64_t bytes) {

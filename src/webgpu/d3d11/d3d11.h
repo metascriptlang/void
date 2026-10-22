@@ -26,7 +26,11 @@ void *d3dTextureNative(D3dTexture texture);
 D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess);
 void d3dReleaseBuffer(D3dBuffer buffer);
 int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64_t offset, void *data, int64_t bytes);
-void d3dUpdateSubresource(D3dContext context, D3dBuffer buffer, void *data, int64_t offset);
+int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache, int64_t cacheOffset, uint8_t *data, int64_t dataOffset, int64_t bytes, int32_t force);
+int32_t d3dUniformOffsetting(D3dDevice device, D3dContext context);
+void d3dReleaseUniformOffsetting(void);
+void d3dVsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
+void d3dPsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dCopyBytes(void *destination, int64_t destinationOffset, void *source, int64_t bytes);
 
 D3dTexture d3dCreateTexture2D(
