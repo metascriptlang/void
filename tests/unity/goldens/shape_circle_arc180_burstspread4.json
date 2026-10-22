@@ -1,0 +1,19 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "shape_circle_arc180_burstspread4",
+"dt": 0.0001,
+"steps": 1,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"shape": "Circle radius 1 arc 180 arcMode BurstSpread", "burst": "time 0 count 4", "startSpeed": 1},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.0001, "count": 4, "particles": [
+  {"pos": [1.0001, 0, 0], "vel": [1, 0, 0], "anim": [0, 0, 0], "total": [1, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9999, "startLifetime": 5, "seed": 692788716},
+  {"pos": [0.500049949, 0.866112053, 0], "vel": [0.49999994, 0.866025448, 0], "anim": [0, 0, 0], "total": [0.49999994, 0.866025448, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9999, "startLifetime": 5, "seed": 601952211},
+  {"pos": [-0.50005, 0.866112, 0], "vel": [-0.5, 0.8660254, 0], "anim": [0, 0, 0], "total": [-0.5, 0.8660254, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9999, "startLifetime": 5, "seed": 495557956},
+  {"pos": [-1.0001, 0, 0], "vel": [-1, 0, 0], "anim": [0, 0, 0], "total": [-1, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9999, "startLifetime": 5, "seed": 337019225}]}
+]
+}

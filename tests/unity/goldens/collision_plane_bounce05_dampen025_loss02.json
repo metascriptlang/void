@@ -1,0 +1,191 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "collision_plane_bounce05_dampen025_loss02",
+"dt": 0.0166666675,
+"steps": 120,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"space": "World", "emitter": "(0,1,0)", "startSpeed": 1, "direction": "+z", "gravityModifier": 1, "startSize": 0.02, "collision": "Planes, plane at origin (normal +y)", "bounce": 0.5, "dampen": 0.25, "lifetimeLoss": 0.2, "minKillSpeed": 0, "radiusScale": 1},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.0166666675, "count": 1, "particles": [
+  {"pos": [0, 0.997275, 0.0166666675], "vel": [0, -0.163500011, 1], "anim": [0, 0, 0], "total": [0, -0.163500011, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.98333359, "startLifetime": 5, "seed": 692788716}]},
+{"step": 2, "time": 0.0333333351, "count": 1, "particles": [
+  {"pos": [0, 0.991825, 0.0333333351], "vel": [0, -0.327000022, 1], "anim": [0, 0, 0], "total": [0, -0.327000022, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9666667, "startLifetime": 5, "seed": 692788716}]},
+{"step": 3, "time": 0.0500000045, "count": 1, "particles": [
+  {"pos": [0, 0.983649969, 0.0500000045], "vel": [0, -0.490500033, 1], "anim": [0, 0, 0], "total": [0, -0.490500033, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.95, "startLifetime": 5, "seed": 692788716}]},
+{"step": 4, "time": 0.06666667, "count": 1, "particles": [
+  {"pos": [0, 0.972749949, 0.06666667], "vel": [0, -0.654000044, 1], "anim": [0, 0, 0], "total": [0, -0.654000044, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9333334, "startLifetime": 5, "seed": 692788716}]},
+{"step": 5, "time": 0.0833333358, "count": 1, "particles": [
+  {"pos": [0, 0.9591249, 0.0833333358], "vel": [0, -0.817500055, 1], "anim": [0, 0, 0], "total": [0, -0.817500055, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.916667, "startLifetime": 5, "seed": 692788716}]},
+{"step": 6, "time": 0.1, "count": 1, "particles": [
+  {"pos": [0, 0.9427749, 0.1], "vel": [0, -0.981000066, 1], "anim": [0, 0, 0], "total": [0, -0.981000066, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9, "startLifetime": 5, "seed": 692788716}]},
+{"step": 7, "time": 0.116666667, "count": 1, "particles": [
+  {"pos": [0, 0.9236999, 0.116666667], "vel": [0, -1.1445, 1], "anim": [0, 0, 0], "total": [0, -1.1445, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.883333, "startLifetime": 5, "seed": 692788716}]},
+{"step": 8, "time": 0.13333334, "count": 1, "particles": [
+  {"pos": [0, 0.901899934, 0.13333334], "vel": [0, -1.30800009, 1], "anim": [0, 0, 0], "total": [0, -1.30800009, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.866667, "startLifetime": 5, "seed": 692788716}]},
+{"step": 9, "time": 0.15, "count": 1, "particles": [
+  {"pos": [0, 0.877374947, 0.15], "vel": [0, -1.47150016, 1], "anim": [0, 0, 0], "total": [0, -1.47150016, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.85000038, "startLifetime": 5, "seed": 692788716}]},
+{"step": 10, "time": 0.166666672, "count": 1, "particles": [
+  {"pos": [0, 0.850124955, 0.166666672], "vel": [0, -1.63500023, 1], "anim": [0, 0, 0], "total": [0, -1.63500023, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.83333349, "startLifetime": 5, "seed": 692788716}]},
+{"step": 11, "time": 0.183333337, "count": 1, "particles": [
+  {"pos": [0, 0.820149958, 0.183333337], "vel": [0, -1.7985003, 1], "anim": [0, 0, 0], "total": [0, -1.7985003, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.8166666, "startLifetime": 5, "seed": 692788716}]},
+{"step": 12, "time": 0.2, "count": 1, "particles": [
+  {"pos": [0, 0.787449956, 0.2], "vel": [0, -1.96200037, 1], "anim": [0, 0, 0], "total": [0, -1.96200037, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.79999971, "startLifetime": 5, "seed": 692788716}]},
+{"step": 13, "time": 0.216666669, "count": 1, "particles": [
+  {"pos": [0, 0.752024949, 0.216666669], "vel": [0, -2.12550044, 1], "anim": [0, 0, 0], "total": [0, -2.12550044, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.7833333, "startLifetime": 5, "seed": 692788716}]},
+{"step": 14, "time": 0.233333334, "count": 1, "particles": [
+  {"pos": [0, 0.713874936, 0.233333334], "vel": [0, -2.28900051, 1], "anim": [0, 0, 0], "total": [0, -2.28900051, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.76666641, "startLifetime": 5, "seed": 692788716}]},
+{"step": 15, "time": 0.25, "count": 1, "particles": [
+  {"pos": [0, 0.6729999, 0.25], "vel": [0, -2.45250058, 1], "anim": [0, 0, 0], "total": [0, -2.45250058, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.75, "startLifetime": 5, "seed": 692788716}]},
+{"step": 16, "time": 0.266666681, "count": 1, "particles": [
+  {"pos": [0, 0.6293999, 0.266666681], "vel": [0, -2.61600065, 1], "anim": [0, 0, 0], "total": [0, -2.61600065, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.733333, "startLifetime": 5, "seed": 692788716}]},
+{"step": 17, "time": 0.283333361, "count": 1, "particles": [
+  {"pos": [0, 0.583074868, 0.283333361], "vel": [0, -2.77950072, 1], "anim": [0, 0, 0], "total": [0, -2.77950072, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.7166667, "startLifetime": 5, "seed": 692788716}]},
+{"step": 18, "time": 0.300000042, "count": 1, "particles": [
+  {"pos": [0, 0.534024835, 0.300000042], "vel": [0, -2.94300079, 1], "anim": [0, 0, 0], "total": [0, -2.94300079, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.7, "startLifetime": 5, "seed": 692788716}]},
+{"step": 19, "time": 0.316666722, "count": 1, "particles": [
+  {"pos": [0, 0.482249826, 0.316666722], "vel": [0, -3.10650086, 1], "anim": [0, 0, 0], "total": [0, -3.10650086, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.6833334, "startLifetime": 5, "seed": 692788716}]},
+{"step": 20, "time": 0.3333334, "count": 1, "particles": [
+  {"pos": [0, 0.4277498, 0.3333334], "vel": [0, -3.270001, 1], "anim": [0, 0, 0], "total": [0, -3.270001, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.66666651, "startLifetime": 5, "seed": 692788716}]},
+{"step": 21, "time": 0.350000083, "count": 1, "particles": [
+  {"pos": [0, 0.3705248, 0.350000083], "vel": [0, -3.433501, 1], "anim": [0, 0, 0], "total": [0, -3.433501, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.65, "startLifetime": 5, "seed": 692788716}]},
+{"step": 22, "time": 0.366666764, "count": 1, "particles": [
+  {"pos": [0, 0.31057477, 0.366666764], "vel": [0, -3.597001, 1], "anim": [0, 0, 0], "total": [0, -3.597001, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.633333, "startLifetime": 5, "seed": 692788716}]},
+{"step": 23, "time": 0.383333445, "count": 1, "particles": [
+  {"pos": [0, 0.247899741, 0.383333445], "vel": [0, -3.76050115, 1], "anim": [0, 0, 0], "total": [0, -3.76050115, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.616667, "startLifetime": 5, "seed": 692788716}]},
+{"step": 24, "time": 0.400000125, "count": 1, "particles": [
+  {"pos": [0, 0.1824997, 0.400000125], "vel": [0, -3.92400122, 1], "anim": [0, 0, 0], "total": [0, -3.92400122, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.6, "startLifetime": 5, "seed": 692788716}]},
+{"step": 25, "time": 0.4166668, "count": 1, "particles": [
+  {"pos": [0, 0.114374682, 0.4166668], "vel": [0, -4.087501, 1], "anim": [0, 0, 0], "total": [0, -4.087501, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.58333349, "startLifetime": 5, "seed": 692788716}]},
+{"step": 26, "time": 0.4333335, "count": 1, "particles": [
+  {"pos": [0, 0.0435246676, 0.4333335], "vel": [0, -4.251001, 1], "anim": [0, 0, 0], "total": [0, -4.251001, 1], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.5666666, "startLifetime": 5, "seed": 692788716}]},
+{"step": 27, "time": 0.450000167, "count": 1, "particles": [
+  {"pos": [0, 0.0250188764, 0.447732061], "vel": [0, 1.65543771, 0.75], "anim": [0, 0, 0], "total": [0, 1.65543771, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.55000019, "startLifetime": 5, "seed": 692788716}]},
+{"step": 28, "time": 0.466666847, "count": 1, "particles": [
+  {"pos": [0, 0.0498845056, 0.460232049], "vel": [0, 1.49193764, 0.75], "anim": [0, 0, 0], "total": [0, 1.49193764, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.53333354, "startLifetime": 5, "seed": 692788716}]},
+{"step": 29, "time": 0.483333528, "count": 1, "particles": [
+  {"pos": [0, 0.0720251352, 0.472732037], "vel": [0, 1.32843757, 0.75], "anim": [0, 0, 0], "total": [0, 1.32843757, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.51666665, "startLifetime": 5, "seed": 692788716}]},
+{"step": 30, "time": 0.5000002, "count": 1, "particles": [
+  {"pos": [0, 0.09144076, 0.485232025], "vel": [0, 1.1649375, 0.75], "anim": [0, 0, 0], "total": [0, 1.1649375, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.5, "startLifetime": 5, "seed": 692788716}]},
+{"step": 31, "time": 0.5166668, "count": 1, "particles": [
+  {"pos": [0, 0.108131386, 0.497732], "vel": [0, 1.00143743, 0.75], "anim": [0, 0, 0], "total": [0, 1.00143743, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.48333335, "startLifetime": 5, "seed": 692788716}]},
+{"step": 32, "time": 0.5333335, "count": 1, "particles": [
+  {"pos": [0, 0.122097008, 0.510232031], "vel": [0, 0.8379374, 0.75], "anim": [0, 0, 0], "total": [0, 0.8379374, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.46666622, "startLifetime": 5, "seed": 692788716}]},
+{"step": 33, "time": 0.550000131, "count": 1, "particles": [
+  {"pos": [0, 0.133337632, 0.522732], "vel": [0, 0.6744374, 0.75], "anim": [0, 0, 0], "total": [0, 0.6744374, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.44999981, "startLifetime": 5, "seed": 692788716}]},
+{"step": 34, "time": 0.5666668, "count": 1, "particles": [
+  {"pos": [0, 0.141853258, 0.535232], "vel": [0, 0.5109374, 0.75], "anim": [0, 0, 0], "total": [0, 0.5109374, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.433333, "startLifetime": 5, "seed": 692788716}]},
+{"step": 35, "time": 0.583333433, "count": 1, "particles": [
+  {"pos": [0, 0.147643879, 0.547732], "vel": [0, 0.347437382, 0.75], "anim": [0, 0, 0], "total": [0, 0.347437382, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.41666651, "startLifetime": 5, "seed": 692788716}]},
+{"step": 36, "time": 0.6000001, "count": 1, "particles": [
+  {"pos": [0, 0.1507095, 0.560232], "vel": [0, 0.183937371, 0.75], "anim": [0, 0, 0], "total": [0, 0.183937371, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.39999962, "startLifetime": 5, "seed": 692788716}]},
+{"step": 37, "time": 0.616666734, "count": 1, "particles": [
+  {"pos": [0, 0.151050121, 0.572732], "vel": [0, 0.02043736, 0.75], "anim": [0, 0, 0], "total": [0, 0.02043736, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.38333321, "startLifetime": 5, "seed": 692788716}]},
+{"step": 38, "time": 0.6333334, "count": 1, "particles": [
+  {"pos": [0, 0.148665741, 0.58523196], "vel": [0, -0.143062651, 0.75], "anim": [0, 0, 0], "total": [0, -0.143062651, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.36666632, "startLifetime": 5, "seed": 692788716}]},
+{"step": 39, "time": 0.650000036, "count": 1, "particles": [
+  {"pos": [0, 0.143556356, 0.597731948], "vel": [0, -0.306562662, 0.75], "anim": [0, 0, 0], "total": [0, -0.306562662, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.35000014, "startLifetime": 5, "seed": 692788716}]},
+{"step": 40, "time": 0.6666667, "count": 1, "particles": [
+  {"pos": [0, 0.135721982, 0.610231936], "vel": [0, -0.470062673, 0.75], "anim": [0, 0, 0], "total": [0, -0.470062673, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.33333349, "startLifetime": 5, "seed": 692788716}]},
+{"step": 41, "time": 0.683333337, "count": 1, "particles": [
+  {"pos": [0, 0.1251626, 0.6227319], "vel": [0, -0.6335627, 0.75], "anim": [0, 0, 0], "total": [0, -0.6335627, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.31666684, "startLifetime": 5, "seed": 692788716}]},
+{"step": 42, "time": 0.7, "count": 1, "particles": [
+  {"pos": [0, 0.111878224, 0.6352319], "vel": [0, -0.7970627, 0.75], "anim": [0, 0, 0], "total": [0, -0.7970627, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.30000043, "startLifetime": 5, "seed": 692788716}]},
+{"step": 43, "time": 0.716666639, "count": 1, "particles": [
+  {"pos": [0, 0.09586884, 0.6477319], "vel": [0, -0.9605627, 0.75], "anim": [0, 0, 0], "total": [0, -0.9605627, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.28333378, "startLifetime": 5, "seed": 692788716}]},
+{"step": 44, "time": 0.7333333, "count": 1, "particles": [
+  {"pos": [0, 0.07713446, 0.6602319], "vel": [0, -1.12406278, 0.75], "anim": [0, 0, 0], "total": [0, -1.12406278, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.26666713, "startLifetime": 5, "seed": 692788716}]},
+{"step": 45, "time": 0.74999994, "count": 1, "particles": [
+  {"pos": [0, 0.05567508, 0.6727319], "vel": [0, -1.28756285, 0.75], "anim": [0, 0, 0], "total": [0, -1.28756285, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.25000048, "startLifetime": 5, "seed": 692788716}]},
+{"step": 46, "time": 0.7666666, "count": 1, "particles": [
+  {"pos": [0, 0.0314906947, 0.685231864], "vel": [0, -1.45106292, 0.75], "anim": [0, 0, 0], "total": [0, -1.45106292, 0.75], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 3.23333383, "startLifetime": 5, "seed": 692788716}]},
+{"step": 47, "time": 0.783333242, "count": 1, "particles": [
+  {"pos": [0, 0.0120320087, 0.697102547], "vel": [0, 0.6054611, 0.5625], "anim": [0, 0, 0], "total": [0, 0.6054611, 0.5625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 2.21666718, "startLifetime": 5, "seed": 692788716}]},
+{"step": 48, "time": 0.7999999, "count": 1, "particles": [
+  {"pos": [0, 0.019398028, 0.7064775], "vel": [0, 0.4419611, 0.5625], "anim": [0, 0, 0], "total": [0, 0.4419611, 0.5625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 2.20000052, "startLifetime": 5, "seed": 692788716}]},
+{"step": 49, "time": 0.816666543, "count": 1, "particles": [
+  {"pos": [0, 0.0240390468, 0.7158525], "vel": [0, 0.2784611, 0.5625], "anim": [0, 0, 0], "total": [0, 0.2784611, 0.5625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 2.18333387, "startLifetime": 5, "seed": 692788716}]},
+{"step": 50, "time": 0.8333332, "count": 1, "particles": [
+  {"pos": [0, 0.0259550642, 0.7252275], "vel": [0, 0.114961088, 0.5625], "anim": [0, 0, 0], "total": [0, 0.114961088, 0.5625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 2.16666722, "startLifetime": 5, "seed": 692788716}]},
+{"step": 51, "time": 0.849999845, "count": 1, "particles": [
+  {"pos": [0, 0.025146082, 0.734602451], "vel": [0, -0.0485389233, 0.5625], "anim": [0, 0, 0], "total": [0, -0.0485389233, 0.5625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 2.150001, "startLifetime": 5, "seed": 692788716}]},
+{"step": 52, "time": 0.8666665, "count": 1, "particles": [
+  {"pos": [0, 0.0216121, 0.7439774], "vel": [0, -0.212038934, 0.5625], "anim": [0, 0, 0], "total": [0, -0.212038934, 0.5625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 2.13333416, "startLifetime": 5, "seed": 692788716}]},
+{"step": 53, "time": 0.883333147, "count": 1, "particles": [
+  {"pos": [0, 0.0153531171, 0.7533524], "vel": [0, -0.375538945, 0.5625], "anim": [0, 0, 0], "total": [0, -0.375538945, 0.5625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 2.11666775, "startLifetime": 5, "seed": 692788716}]},
+{"step": 54, "time": 0.8999998, "count": 1, "particles": [
+  {"pos": [0, 0.0113615748, 0.761780143], "vel": [0, 0.202139616, 0.421875], "anim": [0, 0, 0], "total": [0, 0.202139616, 0.421875], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 1.10000074, "startLifetime": 5, "seed": 692788716}]},
+{"step": 55, "time": 0.916666448, "count": 1, "particles": [
+  {"pos": [0, 0.0120055685, 0.7688114], "vel": [0, 0.038639605, 0.421875], "anim": [0, 0, 0], "total": [0, 0.038639605, 0.421875], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 1.08333409, "startLifetime": 5, "seed": 692788716}]},
+{"step": 56, "time": 0.9333331, "count": 1, "particles": [
+  {"pos": [0, 0.0100282887, 0.775778949], "vel": [0, 0.0468226522, 0.31640625], "anim": [0, 0, 0], "total": [0, 0.0468226522, 0.31640625], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.0666672, "startLifetime": 5, "seed": 692788716}]},
+{"step": 57, "time": 0.94999975, "count": 1, "particles": [
+  {"pos": [0, 0.010718625, 0.7797532], "vel": [0, 0.04375401, 0.237304688], "anim": [0, 0, 0], "total": [0, 0.04375401, 0.237304688], "startSize": [0.02, 0.02, 0.02], "size": [0.02, 0.02, 0.02], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0, "startLifetime": 5, "seed": 692788716}]},
+{"step": 58, "time": 0.9666664, "count": 0, "particles": []},
+{"step": 59, "time": 0.983333051, "count": 0, "particles": []},
+{"step": 60, "time": 0.9999997, "count": 0, "particles": []},
+{"step": 61, "time": 1.01666641, "count": 0, "particles": []},
+{"step": 62, "time": 1.03333306, "count": 0, "particles": []},
+{"step": 63, "time": 1.04999971, "count": 0, "particles": []},
+{"step": 64, "time": 1.06666636, "count": 0, "particles": []},
+{"step": 65, "time": 1.083333, "count": 0, "particles": []},
+{"step": 66, "time": 1.09999967, "count": 0, "particles": []},
+{"step": 67, "time": 1.11666632, "count": 0, "particles": []},
+{"step": 68, "time": 1.133333, "count": 0, "particles": []},
+{"step": 69, "time": 1.14999962, "count": 0, "particles": []},
+{"step": 70, "time": 1.16666627, "count": 0, "particles": []},
+{"step": 71, "time": 1.18333292, "count": 0, "particles": []},
+{"step": 72, "time": 1.19999957, "count": 0, "particles": []},
+{"step": 73, "time": 1.21666622, "count": 0, "particles": []},
+{"step": 74, "time": 1.23333287, "count": 0, "particles": []},
+{"step": 75, "time": 1.24999952, "count": 0, "particles": []},
+{"step": 76, "time": 1.26666617, "count": 0, "particles": []},
+{"step": 77, "time": 1.28333282, "count": 0, "particles": []},
+{"step": 78, "time": 1.29999948, "count": 0, "particles": []},
+{"step": 79, "time": 1.31666613, "count": 0, "particles": []},
+{"step": 80, "time": 1.33333278, "count": 0, "particles": []},
+{"step": 81, "time": 1.34999943, "count": 0, "particles": []},
+{"step": 82, "time": 1.36666608, "count": 0, "particles": []},
+{"step": 83, "time": 1.38333273, "count": 0, "particles": []},
+{"step": 84, "time": 1.39999938, "count": 0, "particles": []},
+{"step": 85, "time": 1.416666, "count": 0, "particles": []},
+{"step": 86, "time": 1.43333268, "count": 0, "particles": []},
+{"step": 87, "time": 1.44999933, "count": 0, "particles": []},
+{"step": 88, "time": 1.466666, "count": 0, "particles": []},
+{"step": 89, "time": 1.48333263, "count": 0, "particles": []},
+{"step": 90, "time": 1.49999928, "count": 0, "particles": []},
+{"step": 91, "time": 1.51666594, "count": 0, "particles": []},
+{"step": 92, "time": 1.53333259, "count": 0, "particles": []},
+{"step": 93, "time": 1.54999924, "count": 0, "particles": []},
+{"step": 94, "time": 1.56666589, "count": 0, "particles": []},
+{"step": 95, "time": 1.58333254, "count": 0, "particles": []},
+{"step": 96, "time": 1.59999919, "count": 0, "particles": []},
+{"step": 97, "time": 1.61666584, "count": 0, "particles": []},
+{"step": 98, "time": 1.63333249, "count": 0, "particles": []},
+{"step": 99, "time": 1.64999914, "count": 0, "particles": []},
+{"step": 100, "time": 1.66666579, "count": 0, "particles": []},
+{"step": 101, "time": 1.68333244, "count": 0, "particles": []},
+{"step": 102, "time": 1.69999909, "count": 0, "particles": []},
+{"step": 103, "time": 1.71666574, "count": 0, "particles": []},
+{"step": 104, "time": 1.7333324, "count": 0, "particles": []},
+{"step": 105, "time": 1.749999, "count": 0, "particles": []},
+{"step": 106, "time": 1.7666657, "count": 0, "particles": []},
+{"step": 107, "time": 1.78333235, "count": 0, "particles": []},
+{"step": 108, "time": 1.799999, "count": 0, "particles": []},
+{"step": 109, "time": 1.81666565, "count": 0, "particles": []},
+{"step": 110, "time": 1.8333323, "count": 0, "particles": []},
+{"step": 111, "time": 1.849999, "count": 0, "particles": []},
+{"step": 112, "time": 1.8666656, "count": 0, "particles": []},
+{"step": 113, "time": 1.88333225, "count": 0, "particles": []},
+{"step": 114, "time": 1.8999989, "count": 0, "particles": []},
+{"step": 115, "time": 1.91666555, "count": 0, "particles": []},
+{"step": 116, "time": 1.9333322, "count": 0, "particles": []},
+{"step": 117, "time": 1.94999886, "count": 0, "particles": []},
+{"step": 118, "time": 1.96666551, "count": 0, "particles": []},
+{"step": 119, "time": 1.98333216, "count": 0, "particles": []},
+{"step": 120, "time": 1.99999881, "count": 0, "particles": []}
+]
+}
