@@ -3309,9 +3309,9 @@ byte-identical; `gate.sh` GREEN (golden d3d11 120/120).
 
 ### void3d on GL core (glsl430), as built
 
-**What changes for the author.** void3d builds for `SOKOL_GLCORE`, the desktop GL 4.3 backend Void's
+**What changes for the author.** void3d builds for `VOID_GLCORE`, the desktop GL 4.3 backend Void's
 platform table gives Linux, where every such build used to stop at `src/void3d/shaderBackends.h`.
-Build with void2d's flags, `-d:voidGlCore --passC=-DSOKOL_GLCORE` (`scripts/golden.sh --backend gl`).
+Build with void2d's flags, `-d:voidGlCore --passC=-DVOID_GLCORE` (`scripts/golden.sh --backend gl`).
 
 **Mechanism: the existing one.** `scripts/regen-shaders.sh` adds `glsl430` to void3d's language
 list (`LANGS_IOS`), so `shader3d.glsl.h`, `pixelArt3d.glsl.h` and `gpuCopy.glsl.h` carry a GL core
@@ -3335,7 +3335,7 @@ reflection always read the D3D11 desc, which a GL core build does not carry ("pr
 D3D11 shader desc"). `dba64872` reflects the compiled backend's desc instead (only stages and block
 sizes are read, the same on every backend; no `SOKOL_*` define is a compile error), a D3D11 build
 reading the same desc as before. Rerun on `dba64872`, BUILD `1090f789`: `gl-core` GREEN, 22 readback
-runs of 12 checks on `SOKOL_GLCORE`, headless 1452/1452.
+runs of 12 checks on `VOID_GLCORE`, headless 1452/1452.
 
 ### M45 as built: exposure and a linear tone map
 

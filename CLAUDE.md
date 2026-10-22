@@ -37,8 +37,8 @@ src/
 
 msc ──┬── --os=darwin → C + clang   (Metal backend src/webgpu/metal/; bridgeEmbed.m @compile'd by msc)
       └── --os=emcc   → C + emcc, TWO builds (sokol backend is compile-time):
-            -DSOKOL_WGPU  → web/wgpu/   (WebGPU)
-            -DSOKOL_GLES3 → web/gl/     (WebGL2, -sFULL_ES3=1 -sMAX_WEBGL_VERSION=2)
+            -DVOID_WGPU  → web/wgpu/   (WebGPU)
+            -DVOID_GLES3 → web/gl/     (WebGL2, -sFULL_ES3=1 -sMAX_WEBGL_VERSION=2)
       web/index.html (cube) · void2d.html: navigator.gpu? → load wgpu/ else gl/  (?gl / ?wgpu force)
 ```
 
@@ -48,13 +48,13 @@ Build with **`msc`** — the synced local build on `$PATH` (`~/.metascript/bin/m
 
 | Platform | sokol backend (`#define`) | Entry | Notes |
 |---|---|---|---|
-| macOS | Metal (`SOKOL_METAL`) | `main.ms` + SDL3 | |
-| iOS | Metal (`SOKOL_METAL`) | `main.ms` | |
-| Windows | D3D11 (`SOKOL_D3D11`) | `main.ms` + SDL3 | (sokol uses D3D11, not D3D12) |
-| Linux | GL (`SOKOL_GLCORE`) | `main.ms` + SDL3 | Vulkan backend exists but experimental |
-| Android | GLES3 (`SOKOL_GLES3`) | `main.ms` | |
-| Browser (new) | WebGPU (`SOKOL_WGPU`) | `main.wms` + canvas | build A |
-| Browser (old) | WebGL2 (`SOKOL_GLES3`) | `main.wms` + canvas | build B, ~97-98% coverage |
+| macOS | Metal (`VOID_METAL`) | `main.ms` + SDL3 | |
+| iOS | Metal (`VOID_METAL`) | `main.ms` | |
+| Windows | D3D11 (`VOID_D3D11`) | `main.ms` + SDL3 | (sokol uses D3D11, not D3D12) |
+| Linux | GL (`VOID_GLCORE`) | `main.ms` + SDL3 | Vulkan backend exists but experimental |
+| Android | GLES3 (`VOID_GLES3`) | `main.ms` | |
+| Browser (new) | WebGPU (`VOID_WGPU`) | `main.wms` + canvas | build A |
+| Browser (old) | WebGL2 (`VOID_GLES3`) | `main.wms` + canvas | build B, ~97-98% coverage |
 | VR/XR (native) | Vulkan/D3D + OpenXR | planned | |
 | VR/XR (browser) | WebXR + WebGPU | planned | |
 
@@ -63,7 +63,7 @@ Build with **`msc`** — the synced local build on `$PATH` (`~/.metascript/bin/m
 1. **Layered, thin entries** — GPU code in `src/sokol/` + `src/void2d/`; `src/examples/*.ms` are thin entries (`voidRun(...)` + init/frame closures). One source compiles to native + both web backends.
 2. **sokol_gfx as the GPU layer** — pure C single-header, zlib license, backends Metal/D3D11/GL/Vulkan/WebGPU/WebGL2, web-first design, prod-proven, lighter than Dawn, fits `MetaScript → C → emscripten`.
 3. **Void = opt-in backend for Neon, not Neon's default.** Neon-default = native components (light, every app). Void = heavy opt-in (games/GPU). Only opted-in apps pay Void's weight.
-4. **Two web builds, runtime feature-detect.** sokol picks its backend at **compile time** (`SOKOL_WGPU` vs `SOKOL_GLES3`), so a single wasm = one backend. To cover old+new browsers, ship **two wasm artifacts** and a small JS loader that checks `navigator.gpu` and loads the WebGPU build, else the WebGL2 build.
+4. **Two web builds, runtime feature-detect.** Void picks its backend at **compile time** (`VOID_WGPU` vs `VOID_GLES3`), so a single wasm = one backend. To cover old+new browsers, ship **two wasm artifacts** and a small JS loader that checks `navigator.gpu` and loads the WebGPU build, else the WebGL2 build.
 5. **sokol_app for windowing (native + web).** The implementation uses `sokol_app` (`sapp_run` via `voidRun`) on both native and web — bare-bones is fine for the demos. On Windows `sokol_app` runs without a graphics API and Void owns the device and swapchain (docs/SOKOL.md); elsewhere the swapchain comes via `sglue_swapchain()`. (SDL3 was the original plan but proved unnecessary; revisit if desktop needs richer input.)
 6. **Shaders via sokol-shdc** — author annotated GLSL (`@vs`/`@fs`/`@cs`, separate `texture`+`sampler`), cross-compile offline to GLSL/GLES/HLSL/MSL/**WGSL** + a generated shader-desc header. Replaces the WGSL-only pipeline.
 7. **`.wms` extension** — WASM/browser-specific MetaScript. Compiler resolves `.wms → .cms → .ms` for `--os=emcc`/`--os=wasm`.

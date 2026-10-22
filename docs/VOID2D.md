@@ -129,7 +129,7 @@ Neon's `Style` already names what the host must express and today drops (`neon/s
 
 ### Web and WebGPU
 
-The browser is a first-class target, not a port: `scripts/build-web.sh` builds **both** web backends, WebGPU (`--use-port=emdawnwebgpu -DSOKOL_WGPU`, which also needs `-sASYNCIFY`) and WebGL2 (`-DSOKOL_GLES3`), from the same source (`src/sokol/sokolWeb.c:1-8`).
+The browser is a first-class target, not a port: `scripts/build-web.sh` builds **both** web backends, WebGPU (`--use-port=emdawnwebgpu -DVOID_WGPU`, which also needs `-sASYNCIFY`) and WebGL2 (`-DVOID_GLES3`), from the same source (`src/sokol/sokolWeb.c:1-8`).
 
 Among the references **only GPUI ships a browser renderer**: `BrowserWebGpu` with WebGPU detection and a GL fallback (`gpui_wgpu/src/wgpu_context.rs:159-171`), plus a whole `gpui_web` crate. Makepad is WebGL2 only — its WGSL is an intermediate for Vulkan through naga, with no WebGPU consumer. Ghostty declares a `webgl` backend for wasm (`src/renderer/backend.zig:5-22`) but `src/renderer/WebGL.zig` is two lines: intent, not code. So on this axis GPUI is the closest reference, not the farthest.
 
@@ -3089,7 +3089,7 @@ recovery, arbitrary new shader features, a Sokol fork change, land or push.
   the shader; `_sg_wgpu_apply_pipeline` also applies pipeline-carried blend constant and stencil
   reference. If Void exposes them, they belong to Sokol identity even though WebGPU applies
   them dynamically. Views, textures and uniform contents stay draw bindings, not pipeline keys.
-- Browser path: `scripts/build-web.sh` and `src/sokol/sokolWeb.c` select SOKOL_WGPU with
+- Browser path: `scripts/build-web.sh` and `src/sokol/sokolWeb.c` select VOID_WGPU with
   emdawnwebgpu. Its `library_webgpu.js` `wgpuDeviceCreateRenderPipeline` forwards to Browser
   `GPUDevice.createRenderPipeline`; it is not a native wgpu renderer. Emdawn's package README
   describes that bridge at

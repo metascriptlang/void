@@ -412,7 +412,7 @@ What each readback costs:
 the missing piece is the readback and not the driver:
 
 1. A wasm-side capture: `glReadPixels` for WebGL2 (the same code already in
-   `tests/capture/capture.c`, which compiles under `SOKOL_GLES3`), and
+   `tests/capture/capture.c`, which compiles under `VOID_GLES3`), and
    `copyTextureToBuffer` + `mapAsync` for WebGPU, where `-sASYNCIFY` is already on for the
    emdawnwebgpu build (`src/sokol/sokolWeb.c`).
 2. A hand-off out of the sandbox: the module writes the RGBA bytes to a JS-visible buffer
@@ -476,7 +476,7 @@ Reproduce from the repository root, with the normal buildslot/native-window admi
 
 ```sh
 msc build -d:voidSdfText -d:voidShaper tests/integration/fontPanel.ms --release --output=out/fontPanelD3d.exe
-msc build -d:voidSdfText -d:voidShaper -d:voidGlCore --passC=-DSOKOL_GLCORE tests/integration/fontPanel.ms --release --output=out/fontPanelGl.exe
+msc build -d:voidSdfText -d:voidShaper -d:voidGlCore --passC=-DVOID_GLCORE tests/integration/fontPanel.ms --release --output=out/fontPanelGl.exe
 for dpi in 100 150 200 300; do FONT_PANEL_BACKEND=1 FONT_PANEL_DPI100=$dpi out/fontPanelD3d.exe; done
 for dpi in 100 150 200 300; do FONT_PANEL_BACKEND=4 FONT_PANEL_DPI100=$dpi out/fontPanelGl.exe; done
 ```
@@ -497,7 +497,7 @@ colour 1 page/4 MiB, 40 sweep rasterizations and 0 steady; SDF 1 page/1 MiB, 40 
 `tests/integration/colourSampler.ms`, working-source tree
 `09d651d1eaa2dad47ad0d7721357500c30725b20`, binary/support BUILD `4fe2a5eec`: Windows,
 D3D11 and GL core (`NVIDIA GeForce RTX 5090/PCIe/SSE2`), MSAA 1, high-DPI off,
-`--release -d:voidColourEmoji`; GL adds `-d:voidGlCore --passC=-DSOKOL_GLCORE`.
+`--release -d:voidColourEmoji`; GL adds `-d:voidGlCore --passC=-DVOID_GLCORE`.
 Noto Color Emoji's checked-in grin at 16 logical px, zooms 1.37 and 0.63, DPI 1 and 2,
 over black with scene smoothing off. These are correctness captures, not timings.
 

@@ -175,7 +175,7 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   in WSLg on llvmpipe at 4b66e809 and draws the whole void2d demo. Linux goldens wait for a
   current `msc` in WSL.
 
-- The backend selector defines are still sokol's names (`SOKOL_WGPU`, `SOKOL_GLES3`,
+- The backend selector defines were sokol's names until G7 (`SOKOL_WGPU`, `SOKOL_GLES3`,
   `SOKOL_GLCORE`, `SOKOL_D3D11`, `SOKOL_METAL`) in `src/sokol/backend.h`, `bridgeWin.c`,
   `bridgeWeb.c`, `src/platform/web/`, `tests/capture/capture.c`, `scripts/gate*.sh`,
   `scripts/golden.sh`. They are renamed once, after Metal, so `backend.h` is rewritten one time.
