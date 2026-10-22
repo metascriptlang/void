@@ -1678,14 +1678,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		if (noOutput && result == null) { return [stmtOf(StmtKind.Return, new ShaderExpr(), [])]; }
 		if (result == null) { fail(n, "an entry returns its stage output"); }
-		if (outputs == null) {
-			const colour = m.ios.findIndex((io) => io.name == "fragColor" &&
-				io.direction == IoDirection.Out);
-			return [
-				assignOf(exprOf(ExprKind.Io, m.ios[colour].type, colour as int32, []), lower(result)),
-				stmtOf(StmtKind.Return, new ShaderExpr(), []),
-			];
-		}
+		if (outputs == null) { return [stmtOf(StmtKind.Return, lower(result), [])]; }
 		if (result.kind != NodeKind.ObjectLiteral) {
 			fail(n, "a struct stage output is returned as an object literal");
 		}
