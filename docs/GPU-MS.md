@@ -124,6 +124,43 @@ Verify on the Mac: `msc test src/test/webgpuMetalCheck.ms`, then the index
 (`msc build src/examples/mainSokol2d.ms`) and the campfire example, looked at on screen. Before
 claiming "sokol-free": `nm <exe> | grep -ci " _\?\(sg\|sapp\|sglue\|stm\|slog\)_"` must print 0.
 
+## From the Mac (2026-10-22)
+
+G6 steps 1–6 are committed (`7d6dcd0` … `738fe69`, msc BUILD `794e1579a`), not pushed until the
+person says so. `webgpuMetalCheck` and the index are green; the void2d demo and campfire draw
+under `MTL_DEBUG_LAYER=1` with no validation message; `nm` finds no sokol symbol.
+
+- **Goldens:** `golden metal: 15 pass, 87 within bound, 18 fail of 120`. A sokol Metal build of
+  the merge base with the same readback captured 58 of those rows byte-identical to this backend,
+  so the 18 are the Apple GPU, not the port. How to record them waits for the person.
+- **Shared files you pick up on rebase:**
+  - `a32d4c0` `doorLiveBuffers` leaves the door's own uniform ring out. meshLod failed on Metal
+    with "close left GPU resources live"; the ring is a `createBuffer` on every backend, so run
+    meshLod on D3D11 and GL after the rebase.
+  - `b8afcdb` ports your `7a2f63d` (pool exhausted → id 0) to Metal.
+  - `738fe69` lets `texturedFrame` run its pixel checks on Metal readback (backend 5);
+    deviceLoss3d passes all three presets there. The other 3D consumers still accept D3D11 only:
+    `tests/capture3d/capture.c` reads back D3D11 alone, so gate3d on Metal needs a Metal capture3d
+    first (Mac's next job).
+- **Integration on the Mac** (gate flags): all pass except three that fail the same way on a
+  sokol Metal build, so they predate this branch: retainedReplay hangs, viewPaint "stage 1:
+  demoted background still paints", mrtBlend "backdrop normal is 2155937649". deviceLoss (svg,
+  colour, both misuse modes) passes since `16ef580` gave `bridgeEmbed.m` `voidLoseContext`.
+  colourSampler and fontPanel accept backends 1 and 4 by design; fbTrap exits 0 because macOS does
+  not clamp a 1×1 window (sokol behaves the same).
+- **For the Windows side:**
+  - D3D11 `writeBuffer` (`src/webgpu/d3d11/backend.ms:858`) does not refuse a second write over
+    bytes the frame already wrote; Metal stops there. Same sokol rule, enforced on one side only.
+  - Per draw item, void3d calls `applyPipeline` and every uniform block again
+    (`src/void3d/draw.ms:1598-1610`), and `doorApplyPipeline` always calls `setPipeline`
+    (`src/gpu/doorGpu.ms:631`). Backend-independent; under the end-game it is a candidate to beat
+    sokol, measured with a 3D bench row first, and it belongs on `main` as much as here.
+- **References by layer** (checkouts on the Mac): sokol `2e75443d` for backend bodies; wgpu-hal
+  (`~/projects/wgpu` `4fb3cca`) for WebGPU-to-native semantics and a future D3D12/Vulkan; Bevy
+  (`2bddbdfd7`) for renderer mechanisms (its `batched_uniform_buffer.rs` caps uniform arrays at
+  4 KB on WebGL2); Heaps (`25f9a88f`) for render concepts (`Engine.hx:90-111` picks its driver
+  with `#if`, as `device.ms` does); Mach sysgpu (`4be8e50`) for the shader compiler.
+
 ## G7 — after Metal (either side, coordinated)
 
 - The backend selector defines are still sokol's names (`SOKOL_WGPU`, `SOKOL_GLES3`,
