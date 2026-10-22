@@ -10,9 +10,19 @@ later replaces the hand-written GLSL source of each base.
 
 ## Design
 
-- **One GPU target: sokol-shdc GLSL 450.** Metal, D3D11, GL, GLES3/WebGL2 and WebGPU all come from shdc.
-  A feature sokol cannot express gets a native door and a hand-written per-backend shader for that
-  program only (`sg_shader_desc` takes raw per-backend source).
+- **Macro → IR → one printer per target** (the person's decision 2026-10-23: Void stops using
+  sokol-shdc). The `glsl` macro family lowers the typed body into the shader IR of `ir.ms`, plain
+  data with no `Node`: a Heaps-style typed expression tree (`hxsl/Ast.hx` `TExprDef`) over
+  Mach-style resolved globals (`sysgpu/shader/Air.zig` `Inst.Var` with binding, group, access;
+  `Builtin`, `Interpolate`, `TextureType`). Printers write GLSL 450 (today's text, the regression
+  oracle), GLSL 430, GLSL ES 300, HLSL SM5, WGSL and MSL from it, one file each, as Mach's
+  `codegen/*.zig`. Slots and uniform buffer layout are fixed on the IR before any printer, and that
+  pass produces the `GPUShaderModuleDescriptor` reflection (Heaps `Flatten`). A program key is a
+  `FeatureCondition` over feature names; per key, the IR is specialized and its unread declarations
+  dropped (Heaps `Eval` + `Dce`). Own backends, once rejected because shdc wrote every target, are
+  chosen because sokol is being replaced ([docs/GPU.md](../../docs/GPU.md)). sokol-shdc stays only as the A/B oracle during the transition.
+  `irErrors` names each broken invariant; `src/test/shaderIrCheck.ms` builds modules by hand, also
+  inside a macro.
 - **Emitter = macro library, not a compiler backend.** On msc `244ef48c`, `getImpl(bindSym("frag"))`
   inside a macro returned the `FunctionDecl` with checker types on every expression (`typeKind` Float32
   on `uv.x * t`).
@@ -307,8 +317,6 @@ one compiled by sokol-shdc to `glsl430:glsl300es:hlsl5:metal_macos:wgsl` (comput
 
 ## Rejected
 
-- **Own HLSL/MSL/GLSL backends, as shady has.** About 1000 of the 1817 lines of shady's `shared.nim` are
-  per-backend layout, and it has no WGSL. Every wall above is in sokol or the platform, not in shdc.
 - **A GLSL backend inside msc** (docs/SHADER.md Tier 3's first plan). The macro already reads the
   typed body, so only the callee gap needs the compiler.
 
