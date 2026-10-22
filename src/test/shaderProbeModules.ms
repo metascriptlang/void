@@ -30,6 +30,7 @@ import {
 	StmtKind,
 	TexelFormat,
 	TextureShape,
+	UnaryOp,
 	arrayType,
 	assignOf,
 	binaryOf,
@@ -393,6 +394,8 @@ export function fragmentModule(): ShaderModule {
 		caseOf([], true, [update(f, AssignOp.Sub, f32(1.0))]),
 	];
 	let zw = swizzle(v4, VEC2, [2, 3]);
+	let flipped = exprOf(ExprKind.Unary, BOOL, -1, [b]);
+	flipped.unary = UnaryOp.Not;
 	const statements: ShaderStmt[] = [
 		stmtOf(StmtKind.Block, new ShaderExpr(), [twice]),
 		update(v4, AssignOp.Add, v4),
@@ -410,7 +413,7 @@ export function fragmentModule(): ShaderModule {
 		ifOf(compare(BinaryOp.Less, f, f32(0.0)), [single(StmtKind.Discard)],
 			[assignOf(f, exprOf(ExprKind.Unary, F32, -1, [f]))]),
 		stmtOf(StmtKind.While, b, [
-			assignOf(b, exprOf(ExprKind.Unary, BOOL, -1, [b])),
+			assignOf(b, flipped),
 			ifOf(compare(BinaryOp.Greater, f, f32(2.0)), [single(StmtKind.Break)], []),
 		]),
 		firstLoop,
