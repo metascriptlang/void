@@ -59,7 +59,7 @@ export struct LightShapePoint {
 	direction: Vec3;
 }
 
-struct ConeCosines {
+export struct ConeCosines {
 	outer: float32;
 	inner: float32;
 }
@@ -80,7 +80,7 @@ function saturate(value: float32): float32 {
 	return Math.max(0.0, Math.min(1.0, value)) as float32;
 }
 
-function coneCosines(this cone: LightConeAngle): Result<ConeCosines, LightShapeError> {
+export function coneCosines(this cone: LightConeAngle): Result<ConeCosines, LightShapeError> {
 	if (!Number.isFinite(cone.fullAngleRadians) || !Number.isFinite(cone.falloffRadians)) {
 		return Result.err(LightShapeError.NonFiniteInput);
 	}
@@ -110,7 +110,7 @@ function shapePoint(point: Vec3, position: Vec3): Result<LightShapePoint, LightS
 	return Result.ok({ point: point, delta: delta, direction: direction });
 }
 
-function validateSpot(this light: SpotLightShape): Result<ConeCosines, LightShapeError> {
+export function validateSpot(this light: SpotLightShape): Result<ConeCosines, LightShapeError> {
 	if (!finiteVector(light.position)) { return Result.err(LightShapeError.NonFiniteInput); }
 	if (!unitAxis(light.forward)) { return Result.err(LightShapeError.BadAxes); }
 	if (!validRange(light.range)) { return Result.err(LightShapeError.BadRange); }
@@ -162,7 +162,7 @@ export function perspectiveCamera(
 	});
 }
 
-function validateRectangle(this light: RectangleLightShape): Result<void, LightShapeError> {
+export function validateRectangle(this light: RectangleLightShape): Result<void, LightShapeError> {
 	if (!finiteVector(light.position)) { return Result.err(LightShapeError.NonFiniteInput); }
 	if (!unitAxis(light.forward) || !unitAxis(light.right) || !unitAxis(light.up) ||
 		Math.abs(light.right.dot(light.up)) > 1e-4 ||
@@ -258,7 +258,7 @@ export function angularWeight(
 	return Result.ok(horizontal * vertical);
 }
 
-function validateCapsule(this light: CapsuleLightShape): Result<void, LightShapeError> {
+export function validateCapsule(this light: CapsuleLightShape): Result<void, LightShapeError> {
 	if (!finiteVector(light.position)) { return Result.err(LightShapeError.NonFiniteInput); }
 	if (!unitAxis(light.axis)) { return Result.err(LightShapeError.BadAxes); }
 	if (!validRange(light.range)) { return Result.err(LightShapeError.BadRange); }

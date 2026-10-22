@@ -8,6 +8,7 @@ import {
 	Vec2f,
 	Vec3f,
 	Vec4f,
+	abs,
 	binding,
 	builtin,
 	clamp,
@@ -232,6 +233,10 @@ export struct LightParams {
 	dirColor: Vec4f;
 	pointLight: Vec4f[4];
 	pointColor: Vec4f[4];
+	shapeA: Vec4f[4];
+	shapeB: Vec4f[4];
+	shapeC: Vec4f[4];
+	shapeD: Vec4f[4];
 }
 
 export struct FrameParams {
@@ -498,8 +503,9 @@ export function billboardFs(
 		let light = srgbToLinear(b.lightParams.ambient.rgb) +
 			srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
 		for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-			const at = b.lightParams.pointLight[i];
-			light = light + pointLightAt(input.worldPosition, n, at, b.lightParams.pointColor[i]);
+			light = light + lightAt(input.worldPosition, n, b.lightParams.pointLight[i],
+				b.lightParams.pointColor[i], b.lightParams.shapeA[i], b.lightParams.shapeB[i],
+				b.lightParams.shapeC[i], b.lightParams.shapeD[i]);
 		}
 		pixel = vec4f(linearToSrgb(srgbToLinear(pixel.rgb) * light), pixel.a);
 	}
@@ -670,6 +676,163 @@ export function pointLightAt(position: Vec3f, normal: Vec3f, at: Vec4f, tint: Ve
 	const falloff = clamp(1.0 - distance / tint.a, 0.0, 1.0);
 	const facing = max(dot(normal, toLight / max(distance, 0.0001)), 0.0);
 	return srgbToLinear(tint.rgb) * (falloff * falloff * facing * at.w);
+}
+
+// One light slot's shape, in shapeA.w: 0 point, 1 spot, 2 rectangle, 3 capsule. A shaped light
+// keeps the point light's window, (1 - d / range)^2 with d to the point the shape stands for
+// (a spot's position, a rectangle's or capsule's closest point), and multiplies its own angular
+// term in; pbr/Light.hx's pointLightIntensity is the 1 / (d^2 + 1) curve the point light here
+// already replaces. The sample is xyz toward the light, w the window times the cone, and a ray
+// or segment the shape cannot place (a surface seen edge on, a receiver on the light) gives w 0
+// where Heaps divides by zero.
+export function lightWindow(distance: float32, range: float32): float32 {
+	const window = clamp(1.0 - distance / range, 0.0, 1.0);
+	return window * window;
+}
+
+// pbr/Light.hx spotLightIntensity's angular half (60-62): theta = dot(delta.normalize(),
+// -spotDir), clamp((theta - angle) / (fallOff - angle)). a: forward, b: cos(angle / 2), cos(inner).
+export function spotSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f): Vec4f {
+	const delta = at.xyz - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	const toLight = delta / distance;
+	const cone = clamp((dot(toLight, -a.xyz) - b.x) / (b.y - b.x), 0.0, 1.0);
+	return vec4f(toLight, lightWindow(distance, tint.a) * cone);
+}
+
+// pbr/Light.hx rectangleLightIntensity (67-84), one axis: the delta and the inverse light
+// direction projected off `excluded`, their cosine against the outer and inner cosines with
+// Heaps' 0.00001 widening.
+export function rectangleAxisCone(
+	delta: Vec3f, forward: Vec3f, excluded: Vec3f, outer: float32, inner: float32,
+): float32 {
+	const projectedDelta = delta - excluded * dot(delta, excluded);
+	const projectedLight = -forward - excluded * dot(-forward, excluded);
+	const deltaLength = length(projectedDelta);
+	const lightLength = length(projectedLight);
+	if (deltaLength < 0.0001 || lightLength < 0.0001) {
+		return 0.0;
+	}
+	const theta = dot(projectedDelta, projectedLight) / (deltaLength * lightLength);
+	return clamp((theta - outer) / (inner - outer + 0.00001), 0.0, 1.0);
+}
+
+// pbr/Light.hx closestPointOnRectangle (28-32) over tracePlane (23-26): `ray` traced to the
+// light's plane, clamped to the half sizes. a: forward, b: right and half width, c: up and half
+// height.
+export function rectanglePoint(
+	position: Vec3f, ray: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f,
+): Vec3f {
+	const along = dot(a.xyz, at.xyz - position) / dot(a.xyz, ray);
+	const offset = position + ray * along - at.xyz;
+	return at.xyz + b.xyz * clamp(dot(offset, b.xyz), -b.w, b.w) +
+		c.xyz * clamp(dot(offset, c.xyz), -c.w, c.w);
+}
+
+// pbr/Light.hx rectangleLightDiffuse (101-105), the surface normal as the ray. d: cos outer and
+// inner of the horizontal angle, then of the vertical.
+export function rectangleSample(
+	position: Vec3f, normal: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
+): Vec4f {
+	if (abs(dot(a.xyz, normal)) < 0.000001) {
+		return vec4f(0.0);
+	}
+	const delta = rectanglePoint(position, normal, at, a, b, c) - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	const cone = rectangleAxisCone(delta, a.xyz, c.xyz, d.x, d.y) *
+		rectangleAxisCone(delta, a.xyz, b.xyz, d.z, d.w);
+	return vec4f(delta / distance, lightWindow(distance, tint.a) * cone);
+}
+
+// pbr/Light.hx capsuleLightDiffuse (86-90) over closestPointLineToPoint (8-12). a: axis, b: half
+// length.
+export function capsuleSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f): Vec4f {
+	const start = at.xyz - a.xyz * b.x;
+	const segment = a.xyz * (2.0 * b.x);
+	const along = clamp(dot(position - start, segment) / dot(segment, segment), 0.0, 1.0);
+	const delta = start + segment * along - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	return vec4f(delta / distance, lightWindow(distance, tint.a));
+}
+
+// pbr/Light.hx rectangleLightSpecularDir (107-109): the plane point along the reflected view
+// ray. A ray in the plane keeps the diffuse direction.
+export function rectangleSpecularDir(
+	position: Vec3f, reflected: Vec3f, diffuse: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f,
+): Vec3f {
+	if (abs(dot(a.xyz, reflected)) < 0.000001) {
+		return diffuse;
+	}
+	return normalize(rectanglePoint(position, reflected, at, a, b, c) - position);
+}
+
+// pbr/Light.hx capsuleLightSpecularDir (92-99) over closestPointLineToRay (14-21). b.y is the
+// radius, capped at the range (CapsuleLight.hx:68). A ray along the segment, or through it,
+// keeps the diffuse direction where Heaps divides by zero.
+export function capsuleSpecularDir(
+	position: Vec3f, reflected: Vec3f, diffuse: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f,
+): Vec3f {
+	const l0 = at.xyz - a.xyz * b.x - position;
+	const l01 = a.xyz * (2.0 * b.x);
+	const squared = dot(l01, l01);
+	const alongRay = dot(reflected, l01);
+	const denominator = squared - alongRay * alongRay;
+	if (denominator <= 0.000001) {
+		return diffuse;
+	}
+	const closest = l0 + l01 * clamp(dot(l0, reflected * alongRay - l01) / denominator, 0.0, 1.0);
+	const centerToRay = reflected * dot(closest, reflected) - closest;
+	const offset = length(centerToRay);
+	if (offset < 0.000001) {
+		return normalize(closest);
+	}
+	return normalize(closest + centerToRay * clamp(b.y / offset, 0.0, 1.0));
+}
+
+export function shapedSample(
+	position: Vec3f, normal: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
+): Vec4f {
+	if (a.w > 2.5) {
+		return capsuleSample(position, at, tint, a, b);
+	}
+	if (a.w > 1.5) {
+		return rectangleSample(position, normal, at, tint, a, b, c, d);
+	}
+	return spotSample(position, at, tint, a, b);
+}
+
+export function shapedSpecularDir(
+	position: Vec3f, reflected: Vec3f, diffuse: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f,
+): Vec3f {
+	if (a.w > 2.5) {
+		return capsuleSpecularDir(position, reflected, diffuse, at, a, b);
+	}
+	if (a.w > 1.5) {
+		return rectangleSpecularDir(position, reflected, diffuse, at, a, b, c);
+	}
+	return diffuse;
+}
+
+// PENDING3D: light-shape-range-window
+// PENDING3D: light-shape-degenerate-black
+// pointLightAt for a slot of any shape: a point light is pointLightAt untouched.
+export function lightAt(
+	position: Vec3f, normal: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
+): Vec3f {
+	if (a.w < 0.5) {
+		return pointLightAt(position, normal, at, tint);
+	}
+	const sample = shapedSample(position, normal, at, tint, a, b, c, d);
+	return srgbToLinear(tint.rgb) * (sample.w * max(dot(normal, sample.xyz), 0.0) * at.w);
 }
 
 // h3d.Matrix.colorSaturate in scalar form; campfireGreyCpuCapture holds it to colorSaturated.
@@ -871,6 +1034,26 @@ export function pbrDirect(
 	occlusionFactor: float32,
 	occlusion: float32,
 ): Vec3f {
+	return pbrDirectSpecular(albedo, metalness, roughness, normal, view, light, light, radiance,
+		shadow, occlusionFactor, occlusion);
+}
+
+// pbrDirect with Direct's pbrSpecularLightDirection (Lighting.hx:119-121): `specularLight` only
+// feeds the half vector, as a rectangle or capsule light's representative point does, while N.L
+// and the geometry term keep the diffuse `light`.
+export function pbrDirectSpecular(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	light: Vec3f,
+	specularLight: Vec3f,
+	radiance: Vec3f,
+	shadow: float32,
+	occlusionFactor: float32,
+	occlusion: float32,
+): Vec3f {
 	if (dot(radiance, radiance) <= 0.0001) {
 		return vec3f(0.0);
 	}
@@ -881,7 +1064,7 @@ export function pbrDirect(
 	if (nl <= 0.0) {
 		return vec3f(0.0);
 	}
-	const h = normalize(l + v);
+	const h = normalize(normalize(specularLight) + v);
 	const nh = clamp(dot(n, h), 0.0, 1.0);
 	const vh = clamp(dot(v, h), 0.0, 1.0);
 	const nv = clamp(dot(n, v), 0.0, 1.0);
@@ -953,14 +1136,27 @@ export function pbrShade(
 	let light = pbrAmbient(albedo, values.x, values.y, n, view,
 		srgbToLinear(b.lightParams.ambient.rgb), values.z);
 	light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
+	const eye = normalize(view);
+	const reflected = -eye - n * (2.0 * dot(-eye, n));
 	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
 		const at = b.lightParams.pointLight[i];
 		const tint = b.lightParams.pointColor[i];
-		const toLight = at.xyz - position;
-		const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
-		const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
-		light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0,
-			values.z);
+		const a = b.lightParams.shapeA[i];
+		if (a.w < 0.5) {
+			const toLight = at.xyz - position;
+			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
+			const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
+			light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0,
+				0.0, values.z);
+		} else {
+			const bb = b.lightParams.shapeB[i];
+			const cc = b.lightParams.shapeC[i];
+			const sample = shapedSample(position, n, at, tint, a, bb, cc, b.lightParams.shapeD[i]);
+			const radiance = srgbToLinear(tint.rgb) * (sample.w * at.w);
+			const specular = shapedSpecularDir(position, reflected, sample.xyz, at, a, bb, cc);
+			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
+				specular, radiance, 1.0, 0.0, values.z);
+		}
 	}
 	return vec4f(linearToSrgb(light), surfaceColor.a);
 }
@@ -982,8 +1178,9 @@ export function litShade(
 	const ambient = srgbToLinear(b.lightParams.ambient.rgb);
 	let light = ambient + srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
 	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-		const at = b.lightParams.pointLight[i];
-		light = light + pointLightAt(position, n, at, b.lightParams.pointColor[i]);
+		light = light + lightAt(position, n, b.lightParams.pointLight[i], b.lightParams.pointColor[i],
+			b.lightParams.shapeA[i], b.lightParams.shapeB[i], b.lightParams.shapeC[i],
+			b.lightParams.shapeD[i]);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);

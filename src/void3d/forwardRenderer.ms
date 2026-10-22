@@ -263,6 +263,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.DrawRange => ForwardError.DrawRange,
 		RendererError.CameraPosition => ForwardError.CameraPosition,
 		RendererError.MeshWrite => ForwardError.MeshWrite,
+		RendererError.ShapedLightPreset => { unreachable; },
 	};
 }
 

@@ -183,6 +183,10 @@ layout(binding=1) uniform lightParams {
     vec4 dirColor;
     vec4 pointLight[4];
     vec4 pointColor[4];
+    vec4 shapeA[4];
+    vec4 shapeB[4];
+    vec4 shapeC[4];
+    vec4 shapeD[4];
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -515,6 +519,10 @@ layout(binding=1) uniform lightParams {
     vec4 dirColor;
     vec4 pointLight[4];
     vec4 pointColor[4];
+    vec4 shapeA[4];
+    vec4 shapeB[4];
+    vec4 shapeC[4];
+    vec4 shapeD[4];
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -817,6 +825,10 @@ layout(binding=1) uniform lightParams {
     vec4 dirColor;
     vec4 pointLight[4];
     vec4 pointColor[4];
+    vec4 shapeA[4];
+    vec4 shapeB[4];
+    vec4 shapeC[4];
+    vec4 shapeD[4];
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;

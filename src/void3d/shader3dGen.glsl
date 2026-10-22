@@ -504,6 +504,10 @@ layout(binding=1) uniform lightParams {
     vec4 dirColor;
     vec4 pointLight[4];
     vec4 pointColor[4];
+    vec4 shapeA[4];
+    vec4 shapeB[4];
+    vec4 shapeC[4];
+    vec4 shapeD[4];
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -532,6 +536,75 @@ vec3 pointLightAt(vec3 position, vec3 normal, vec4 at, vec4 tint) {
     float falloff = clamp((1.0 - (distance_1 / tint.a)), 0.0, 1.0);
     float facing = max(dot(normal, (toLight / max(distance_1, 0.0001))), 0.0);
     return srgbToLinear(tint.rgb) * (((falloff * falloff) * facing) * at.w);
+}
+float lightWindow(float distance_1, float range) {
+    float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
+    return window * window;
+}
+vec4 capsuleSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
+    vec3 start = at.xyz - (a.xyz * b.x);
+    vec3 segment = a.xyz * (2.0 * b.x);
+    float along = clamp((dot((position - start), segment) / dot(segment, segment)), 0.0, 1.0);
+    vec3 delta = (start + (segment * along)) - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    return vec4((delta / distance_1), lightWindow(distance_1, tint.a));
+}
+vec3 rectanglePoint(vec3 position, vec3 ray, vec4 at, vec4 a, vec4 b, vec4 c) {
+    float along = dot(a.xyz, (at.xyz - position)) / dot(a.xyz, ray);
+    vec3 offset = (position + (ray * along)) - at.xyz;
+    return (at.xyz + (b.xyz * clamp(dot(offset, b.xyz), (-b.w), b.w))) + (c.xyz * clamp(dot(offset, c.xyz), (-c.w), c.w));
+}
+float rectangleAxisCone(vec3 delta, vec3 forward, vec3 excluded, float outer, float inner) {
+    vec3 projectedDelta = delta - (excluded * dot(delta, excluded));
+    vec3 projectedLight = (-forward) - (excluded * dot((-forward), excluded));
+    float deltaLength = length(projectedDelta);
+    float lightLength = length(projectedLight);
+    if ((deltaLength < 0.0001) || (lightLength < 0.0001)) {
+        return 0.0;
+    }
+    float theta = dot(projectedDelta, projectedLight) / (deltaLength * lightLength);
+    return clamp(((theta - outer) / ((inner - outer) + 0.00001)), 0.0, 1.0);
+}
+vec4 rectangleSample(vec3 position, vec3 normal, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (abs(dot(a.xyz, normal)) < 0.000001) {
+        return vec4(0.0);
+    }
+    vec3 delta = rectanglePoint(position, normal, at, a, b, c) - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    float cone = rectangleAxisCone(delta, a.xyz, c.xyz, d.x, d.y) * rectangleAxisCone(delta, a.xyz, b.xyz, d.z, d.w);
+    return vec4((delta / distance_1), (lightWindow(distance_1, tint.a) * cone));
+}
+vec4 spotSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
+    vec3 delta = at.xyz - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    vec3 toLight = delta / distance_1;
+    float cone = clamp(((dot(toLight, (-a.xyz)) - b.x) / (b.y - b.x)), 0.0, 1.0);
+    return vec4(toLight, (lightWindow(distance_1, tint.a) * cone));
+}
+vec4 shapedSample(vec3 position, vec3 normal, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (a.w > 2.5) {
+        return capsuleSample(position, at, tint, a, b);
+    }
+    if (a.w > 1.5) {
+        return rectangleSample(position, normal, at, tint, a, b, c, d);
+    }
+    return spotSample(position, at, tint, a, b);
+}
+vec3 lightAt(vec3 position, vec3 normal, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (a.w < 0.5) {
+        return pointLightAt(position, normal, at, tint);
+    }
+    vec4 sample_1 = shapedSample(position, normal, at, tint, a, b, c, d);
+    return srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal, sample_1.xyz), 0.0)) * at.w);
 }
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
@@ -591,8 +664,7 @@ void main() {
         float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
         vec3 light = srgbToLinear(ambient.rgb) + (srgbToLinear(dirColor.rgb) * lambert);
         for (int i = 0; i < int(ambient.a + 0.5); i++) {
-            vec4 at = pointLight[i];
-            light = light + pointLightAt(worldPosition, n, at, pointColor[i]);
+            light = light + lightAt(worldPosition, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]);
         }
         pixel = vec4(linearToSrgb((srgbToLinear(pixel.rgb) * light)), pixel.a);
     }
@@ -728,6 +800,10 @@ layout(binding=1) uniform lightParams {
     vec4 dirColor;
     vec4 pointLight[4];
     vec4 pointColor[4];
+    vec4 shapeA[4];
+    vec4 shapeB[4];
+    vec4 shapeC[4];
+    vec4 shapeD[4];
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -824,7 +900,7 @@ vec3 pbrAmbient(vec3 albedo, float metalness, float roughness, vec3 normal_1, ve
 }
 #endif
 #ifdef PBR
-vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 specularLight, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
     if (dot(radiance, radiance) <= 0.0001) {
         return vec3(0.0);
     }
@@ -835,7 +911,7 @@ vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec
     if (nl <= 0.0) {
         return vec3(0.0);
     }
-    vec3 h = normalize((l + v));
+    vec3 h = normalize((normalize(specularLight) + v));
     float nh = clamp(dot(n, h), 0.0, 1.0);
     float vh = clamp(dot(v, h), 0.0, 1.0);
     float nv = clamp(dot(n, v), 0.0, 1.0);
@@ -852,6 +928,111 @@ vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec
     vec3 diffuse = ((albedo * (1.0 / 3.14159265358979)) * (1.0 - metalness)) * (1.0 - fresnel);
     float reach = (nl * shadow_1) * mix(1.0, occlusion, occlusionFactor);
     return ((diffuse + specular) * radiance) * reach;
+}
+#endif
+#ifdef PBR
+vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+    return pbrDirectSpecular(albedo, metalness, roughness, normal_1, view, light, light, radiance, shadow_1, occlusionFactor, occlusion);
+}
+#endif
+float lightWindow(float distance_1, float range) {
+    float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
+    return window * window;
+}
+vec4 capsuleSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
+    vec3 start = at.xyz - (a.xyz * b.x);
+    vec3 segment = a.xyz * (2.0 * b.x);
+    float along = clamp((dot((position - start), segment) / dot(segment, segment)), 0.0, 1.0);
+    vec3 delta = (start + (segment * along)) - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    return vec4((delta / distance_1), lightWindow(distance_1, tint.a));
+}
+vec3 rectanglePoint(vec3 position, vec3 ray, vec4 at, vec4 a, vec4 b, vec4 c) {
+    float along = dot(a.xyz, (at.xyz - position)) / dot(a.xyz, ray);
+    vec3 offset = (position + (ray * along)) - at.xyz;
+    return (at.xyz + (b.xyz * clamp(dot(offset, b.xyz), (-b.w), b.w))) + (c.xyz * clamp(dot(offset, c.xyz), (-c.w), c.w));
+}
+float rectangleAxisCone(vec3 delta, vec3 forward, vec3 excluded, float outer, float inner) {
+    vec3 projectedDelta = delta - (excluded * dot(delta, excluded));
+    vec3 projectedLight = (-forward) - (excluded * dot((-forward), excluded));
+    float deltaLength = length(projectedDelta);
+    float lightLength = length(projectedLight);
+    if ((deltaLength < 0.0001) || (lightLength < 0.0001)) {
+        return 0.0;
+    }
+    float theta = dot(projectedDelta, projectedLight) / (deltaLength * lightLength);
+    return clamp(((theta - outer) / ((inner - outer) + 0.00001)), 0.0, 1.0);
+}
+vec4 rectangleSample(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (abs(dot(a.xyz, normal_1)) < 0.000001) {
+        return vec4(0.0);
+    }
+    vec3 delta = rectanglePoint(position, normal_1, at, a, b, c) - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    float cone = rectangleAxisCone(delta, a.xyz, c.xyz, d.x, d.y) * rectangleAxisCone(delta, a.xyz, b.xyz, d.z, d.w);
+    return vec4((delta / distance_1), (lightWindow(distance_1, tint.a) * cone));
+}
+vec4 spotSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
+    vec3 delta = at.xyz - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    vec3 toLight = delta / distance_1;
+    float cone = clamp(((dot(toLight, (-a.xyz)) - b.x) / (b.y - b.x)), 0.0, 1.0);
+    return vec4(toLight, (lightWindow(distance_1, tint.a) * cone));
+}
+vec4 shapedSample(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (a.w > 2.5) {
+        return capsuleSample(position, at, tint, a, b);
+    }
+    if (a.w > 1.5) {
+        return rectangleSample(position, normal_1, at, tint, a, b, c, d);
+    }
+    return spotSample(position, at, tint, a, b);
+}
+#ifdef PBR
+vec3 capsuleSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec4 a, vec4 b) {
+    vec3 l0 = (at.xyz - (a.xyz * b.x)) - position;
+    vec3 l01 = a.xyz * (2.0 * b.x);
+    float squared = dot(l01, l01);
+    float alongRay = dot(reflected, l01);
+    float denominator = squared - (alongRay * alongRay);
+    if (denominator <= 0.000001) {
+        return diffuse;
+    }
+    vec3 closest = l0 + (l01 * clamp((dot(l0, ((reflected * alongRay) - l01)) / denominator), 0.0, 1.0));
+    vec3 centerToRay = (reflected * dot(closest, reflected)) - closest;
+    float offset = length(centerToRay);
+    if (offset < 0.000001) {
+        return normalize(closest);
+    }
+    return normalize((closest + (centerToRay * clamp((b.y / offset), 0.0, 1.0))));
+}
+#endif
+#ifdef PBR
+vec3 rectangleSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec4 a, vec4 b, vec4 c) {
+    if (abs(dot(a.xyz, reflected)) < 0.000001) {
+        return diffuse;
+    }
+    return normalize((rectanglePoint(position, reflected, at, a, b, c) - position));
+}
+#endif
+#ifdef PBR
+vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec4 a, vec4 b, vec4 c) {
+    if (a.w > 2.5) {
+        return capsuleSpecularDir(position, reflected, diffuse, at, a, b);
+    }
+    if (a.w > 1.5) {
+        return rectangleSpecularDir(position, reflected, diffuse, at, a, b, c);
+    }
+    return diffuse;
 }
 #endif
 vec3 linearToSrgb(vec3 rgb) {
@@ -871,13 +1052,25 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
     vec3 light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
     light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
+    vec3 eye = normalize(view);
+    vec3 reflected = (-eye) - (n * (2.0 * dot((-eye), n)));
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         vec4 at = pointLight[i];
         vec4 tint = pointColor[i];
-        vec3 toLight = at.xyz - position;
-        float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
-        vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
-        light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+        vec4 a = shapeA[i];
+        if (a.w < 0.5) {
+            vec3 toLight = at.xyz - position;
+            float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
+            vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
+            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+        } else {
+            vec4 bb = shapeB[i];
+            vec4 cc = shapeC[i];
+            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, shapeD[i]);
+            vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
+            vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, 1.0, 0.0, values.z);
+        }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
 }
@@ -892,6 +1085,15 @@ vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
 }
 #endif
 #ifndef PBR
+vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (a.w < 0.5) {
+        return pointLightAt(position, normal_1, at, tint);
+    }
+    vec4 sample_1 = shapedSample(position, normal_1, at, tint, a, b, c, d);
+    return srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal_1, sample_1.xyz), 0.0)) * at.w);
+}
+#endif
+#ifndef PBR
 vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
@@ -901,8 +1103,7 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        vec4 at = pointLight[i];
-        light = light + pointLightAt(position, n, at, pointColor[i]);
+        light = light + lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]);
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
@@ -1192,6 +1393,10 @@ layout(binding=1) uniform lightParams {
     vec4 dirColor;
     vec4 pointLight[4];
     vec4 pointColor[4];
+    vec4 shapeA[4];
+    vec4 shapeB[4];
+    vec4 shapeC[4];
+    vec4 shapeD[4];
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -1397,7 +1602,7 @@ vec3 pbrAmbient(vec3 albedo, float metalness, float roughness, vec3 normal_1, ve
 }
 #endif
 #ifdef PBR
-vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 specularLight, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
     if (dot(radiance, radiance) <= 0.0001) {
         return vec3(0.0);
     }
@@ -1408,7 +1613,7 @@ vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec
     if (nl <= 0.0) {
         return vec3(0.0);
     }
-    vec3 h = normalize((l + v));
+    vec3 h = normalize((normalize(specularLight) + v));
     float nh = clamp(dot(n, h), 0.0, 1.0);
     float vh = clamp(dot(v, h), 0.0, 1.0);
     float nv = clamp(dot(n, v), 0.0, 1.0);
@@ -1425,6 +1630,111 @@ vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec
     vec3 diffuse = ((albedo * (1.0 / 3.14159265358979)) * (1.0 - metalness)) * (1.0 - fresnel);
     float reach = (nl * shadow_1) * mix(1.0, occlusion, occlusionFactor);
     return ((diffuse + specular) * radiance) * reach;
+}
+#endif
+#ifdef PBR
+vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+    return pbrDirectSpecular(albedo, metalness, roughness, normal_1, view, light, light, radiance, shadow_1, occlusionFactor, occlusion);
+}
+#endif
+float lightWindow(float distance_1, float range) {
+    float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
+    return window * window;
+}
+vec4 capsuleSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
+    vec3 start = at.xyz - (a.xyz * b.x);
+    vec3 segment = a.xyz * (2.0 * b.x);
+    float along = clamp((dot((position - start), segment) / dot(segment, segment)), 0.0, 1.0);
+    vec3 delta = (start + (segment * along)) - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    return vec4((delta / distance_1), lightWindow(distance_1, tint.a));
+}
+vec3 rectanglePoint(vec3 position, vec3 ray, vec4 at, vec4 a, vec4 b, vec4 c) {
+    float along = dot(a.xyz, (at.xyz - position)) / dot(a.xyz, ray);
+    vec3 offset = (position + (ray * along)) - at.xyz;
+    return (at.xyz + (b.xyz * clamp(dot(offset, b.xyz), (-b.w), b.w))) + (c.xyz * clamp(dot(offset, c.xyz), (-c.w), c.w));
+}
+float rectangleAxisCone(vec3 delta, vec3 forward, vec3 excluded, float outer, float inner) {
+    vec3 projectedDelta = delta - (excluded * dot(delta, excluded));
+    vec3 projectedLight = (-forward) - (excluded * dot((-forward), excluded));
+    float deltaLength = length(projectedDelta);
+    float lightLength = length(projectedLight);
+    if ((deltaLength < 0.0001) || (lightLength < 0.0001)) {
+        return 0.0;
+    }
+    float theta = dot(projectedDelta, projectedLight) / (deltaLength * lightLength);
+    return clamp(((theta - outer) / ((inner - outer) + 0.00001)), 0.0, 1.0);
+}
+vec4 rectangleSample(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (abs(dot(a.xyz, normal_1)) < 0.000001) {
+        return vec4(0.0);
+    }
+    vec3 delta = rectanglePoint(position, normal_1, at, a, b, c) - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    float cone = rectangleAxisCone(delta, a.xyz, c.xyz, d.x, d.y) * rectangleAxisCone(delta, a.xyz, b.xyz, d.z, d.w);
+    return vec4((delta / distance_1), (lightWindow(distance_1, tint.a) * cone));
+}
+vec4 spotSample(vec3 position, vec4 at, vec4 tint, vec4 a, vec4 b) {
+    vec3 delta = at.xyz - position;
+    float distance_1 = length(delta);
+    if (distance_1 < 0.0001) {
+        return vec4(0.0);
+    }
+    vec3 toLight = delta / distance_1;
+    float cone = clamp(((dot(toLight, (-a.xyz)) - b.x) / (b.y - b.x)), 0.0, 1.0);
+    return vec4(toLight, (lightWindow(distance_1, tint.a) * cone));
+}
+vec4 shapedSample(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (a.w > 2.5) {
+        return capsuleSample(position, at, tint, a, b);
+    }
+    if (a.w > 1.5) {
+        return rectangleSample(position, normal_1, at, tint, a, b, c, d);
+    }
+    return spotSample(position, at, tint, a, b);
+}
+#ifdef PBR
+vec3 capsuleSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec4 a, vec4 b) {
+    vec3 l0 = (at.xyz - (a.xyz * b.x)) - position;
+    vec3 l01 = a.xyz * (2.0 * b.x);
+    float squared = dot(l01, l01);
+    float alongRay = dot(reflected, l01);
+    float denominator = squared - (alongRay * alongRay);
+    if (denominator <= 0.000001) {
+        return diffuse;
+    }
+    vec3 closest = l0 + (l01 * clamp((dot(l0, ((reflected * alongRay) - l01)) / denominator), 0.0, 1.0));
+    vec3 centerToRay = (reflected * dot(closest, reflected)) - closest;
+    float offset = length(centerToRay);
+    if (offset < 0.000001) {
+        return normalize(closest);
+    }
+    return normalize((closest + (centerToRay * clamp((b.y / offset), 0.0, 1.0))));
+}
+#endif
+#ifdef PBR
+vec3 rectangleSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec4 a, vec4 b, vec4 c) {
+    if (abs(dot(a.xyz, reflected)) < 0.000001) {
+        return diffuse;
+    }
+    return normalize((rectanglePoint(position, reflected, at, a, b, c) - position));
+}
+#endif
+#ifdef PBR
+vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec4 a, vec4 b, vec4 c) {
+    if (a.w > 2.5) {
+        return capsuleSpecularDir(position, reflected, diffuse, at, a, b);
+    }
+    if (a.w > 1.5) {
+        return rectangleSpecularDir(position, reflected, diffuse, at, a, b, c);
+    }
+    return diffuse;
 }
 #endif
 vec3 linearToSrgb(vec3 rgb) {
@@ -1444,13 +1754,25 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
     vec3 light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
     light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
+    vec3 eye = normalize(view);
+    vec3 reflected = (-eye) - (n * (2.0 * dot((-eye), n)));
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         vec4 at = pointLight[i];
         vec4 tint = pointColor[i];
-        vec3 toLight = at.xyz - position;
-        float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
-        vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
-        light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+        vec4 a = shapeA[i];
+        if (a.w < 0.5) {
+            vec3 toLight = at.xyz - position;
+            float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
+            vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
+            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+        } else {
+            vec4 bb = shapeB[i];
+            vec4 cc = shapeC[i];
+            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, shapeD[i]);
+            vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
+            vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, 1.0, 0.0, values.z);
+        }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
 }
@@ -1465,6 +1787,15 @@ vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
 }
 #endif
 #ifndef PBR
+vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    if (a.w < 0.5) {
+        return pointLightAt(position, normal_1, at, tint);
+    }
+    vec4 sample_1 = shapedSample(position, normal_1, at, tint, a, b, c, d);
+    return srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal_1, sample_1.xyz), 0.0)) * at.w);
+}
+#endif
+#ifndef PBR
 vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
@@ -1474,8 +1805,7 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        vec4 at = pointLight[i];
-        light = light + pointLightAt(position, n, at, pointColor[i]);
+        light = light + lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]);
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);

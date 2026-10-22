@@ -28,6 +28,8 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
+	LIGHT_SHAPE_BASE,
+	MAX_POINT_LIGHTS,
 	SHADOW_UNIFORM_SLOT,
 	SHADOW_VIEW_SLOT,
 	FRAME_UNIFORM_SLOT,
@@ -168,6 +170,9 @@ export enum RendererError {
 	DrawRange,
 	CameraPosition,
 	MeshWrite,
+	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
+	// toon term there, and drawing it as a point would light the wrong place.
+	ShapedLightPreset,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -426,6 +431,13 @@ export function beginFrame(
 	}
 	if ((lights.length as int32) != renderer.lightBlock.length) {
 		return Result.err(RendererError.LightBlockLength);
+	}
+	if (renderer.preset == Preset.PixelArt) {
+		for (let i = 0; i < MAX_POINT_LIGHTS; i++) {
+			if (lights[LIGHT_SHAPE_BASE + i * 4 + 3] != 0.0) {
+				return Result.err(RendererError.ShapedLightPreset);
+			}
+		}
 	}
 	const cameraWritten: Result<int32, UniformError> =
 		writeUniforms(context, renderer.cameraBlock, camera);

@@ -199,6 +199,7 @@ export enum PixelArtError {
 	DrawRange,
 	CameraPosition,
 	MeshWrite,
+	ShapedLight,
 	RampLevels,
 	BlendedOpaque,
 	TranslucentDepthWrite,
@@ -687,6 +688,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.DrawRange => PixelArtError.DrawRange,
 		RendererError.CameraPosition => PixelArtError.CameraPosition,
 		RendererError.MeshWrite => PixelArtError.MeshWrite,
+		RendererError.ShapedLightPreset => PixelArtError.ShapedLight,
 	};
 }
 

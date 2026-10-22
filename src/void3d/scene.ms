@@ -16,10 +16,26 @@
 //   - a row is addressed by index plus a generation (slots.ms). A silently reused node id in a
 //     scene graph is unfindable from the symptom it produces.
 import {
-	Vec3, vec3, transformDirection, normalized, Quat, identityQuat, Mat4, identity,
+	Vec3, vec3, Vec4, vec4, transformDirection, normalized, Quat, identityQuat, Mat4, identity,
 	composeTransform, multiplyAffine,
 } from "../math/math3d";
-import { MAX_POINT_LIGHTS, declares, vertexLayoutOf } from "./gpu3d";
+import {
+	MAX_POINT_LIGHTS,
+	LIGHT_SHAPE_BASE,
+	LIGHT_SHAPE_ARRAY_LENGTH,
+	LIGHT_KIND_SPOT,
+	LIGHT_KIND_RECTANGLE,
+	LIGHT_KIND_CAPSULE,
+	declares,
+	vertexLayoutOf,
+} from "./gpu3d";
+import {
+	SpotLightShape,
+	RectangleLightShape,
+	CapsuleLightShape,
+	LightShapeError,
+	ConeCosines,
+} from "./lightShape";
 import { SkinGeometry, SkinGeometryError, deformPublished } from "./skinGeometry";
 import { syncSkinPose } from "./skinPose";
 import {
@@ -77,6 +93,27 @@ export enum NodeKind {
 export enum LightKind {
 	Directional,
 	Point,
+	Spot,
+	Rectangle,
+	Capsule,
+}
+
+// What a shaped light adds to `radius` (its range) and `power`, in radians as camera.ms is.
+// Spot: `angle` is SpotLight.angle and `falloff` SpotLight.fallOff, the inner half angle
+// (SpotLight.hx:7-9, 113-114). Rectangle: `angle` and `verticalAngle` are
+// RectangleLight.horizontalAngle and verticalAngle, `falloff` the shared fallOff, `width` and
+// `height` its sizes (RectangleLight.hx:9-14, 76-90). Capsule: `length` and `capsuleRadius`
+// (CapsuleLight.hx:6-7, 68-69). The node's +Z is Heaps' front(), +X its right and +Y its up.
+// A field the kind does not read is ignored; one it reads and finds out of range is
+// LightError.BadLightShape at collectLights.
+export struct LightShape {
+	angle: float32;
+	verticalAngle: float32;
+	falloff: float32;
+	width: float32;
+	height: float32;
+	length: float32;
+	capsuleRadius: float32;
 }
 
 // What h3d.scene.fwd.Light carries beyond an Object, cut for the toon shader: color and
@@ -91,6 +128,7 @@ export struct LightInstance {
 	radius: float32;
 	power: float32;
 	priority: int32;
+	shape: LightShape;
 }
 
 export enum SceneError {
@@ -127,6 +165,7 @@ export enum SceneSyncError {
 export enum LightError {
 	TooManyDirectionalLights,
 	TooManyPointLights,
+	BadLightShape,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -1455,7 +1494,8 @@ export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<Draw
 }
 
 // Fills the renderer's light block from the visible light nodes: ambient first, then the one
-// directional slot, then the point slots. `out` is the caller's LIGHT_UNIFORM_LENGTH floats.
+// directional slot, then the positioned slots (point, spot, rectangle and capsule share the four
+// of MAX_POINT_LIGHTS) with their shape arrays. `out` is the caller's LIGHT_UNIFORM_LENGTH floats.
 // A second visible directional, or a fifth visible point light, is an error rather than a
 // silent drop: the block cannot express it, and a shader quietly lighting less is the failure
 // this port refuses (fwd.LightSystem sorts by priority and keeps its top N without a word).
@@ -1545,9 +1585,84 @@ export function collectLightsFor(
 		out[colorAt + 1] = light.color.y;
 		out[colorAt + 2] = light.color.z;
 		out[colorAt + 3] = light.radius;
+		if (light.kind != LightKind.Point) {
+			if (!packShape(out, i, light, world).ok) { return Result.err(LightError.BadLightShape); }
+		}
 	}
 	out[3] = found as float32;
 	return Result.ok(found);
+}
+
+// One slot's shape in the block's four shape arrays (gpu3d.ms LIGHT_SHAPE_BASE): shapeA the
+// forward or axis and the kind, B, C and D what shader3d.ms's samplers read. The cosines are
+// lightShape.ms's, so a shape it refuses is refused here, and the node's own axes must stay
+// orthogonal (a shear is BadAxes). The half sizes take the node's scale as RectangleLight.hx:81
+// does; a capsule's length does not (CapsuleLight.hx:69).
+// PENDING3D: light-shape-spot-singular-cone
+function packShape(
+	out: Span<float32>, slot: int32, light: LightInstance, world: Mat4,
+): Result<void, LightShapeError> {
+	const at: int32 = slot * 4;
+	const position: Vec3 = vec3(world.m41, world.m42, world.m43);
+	const zAxis: Vec3 = transformDirection(vec3(0.0, 0.0, 1.0), world);
+	const forward: Vec3 = zAxis.normalized();
+	const shape: LightShape = light.shape;
+	let kind: float32 = LIGHT_KIND_SPOT;
+	let b: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
+	let c: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
+	let d: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
+	if (light.kind == LightKind.Spot) {
+		const spot: SpotLightShape = {
+			position: position, forward: forward, range: light.radius,
+			cone: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
+		};
+		const cosines: ConeCosines = try spot.validateSpot();
+		b = vec4(cosines.outer, cosines.inner, 0.0, 0.0);
+	} else if (light.kind == LightKind.Rectangle) {
+		kind = LIGHT_KIND_RECTANGLE;
+		const xAxis: Vec3 = transformDirection(vec3(1.0, 0.0, 0.0), world);
+		const yAxis: Vec3 = transformDirection(vec3(0.0, 1.0, 0.0), world);
+		const rectangle: RectangleLightShape = {
+			position: position, forward: forward, right: xAxis.normalized(), up: yAxis.normalized(),
+			halfWidth: shape.width * 0.5 * xAxis.length(),
+			halfHeight: shape.height * 0.5 * yAxis.length(),
+			horizontal: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
+			vertical: { fullAngleRadians: shape.verticalAngle, falloffRadians: shape.falloff },
+			range: light.radius,
+		};
+		const _valid = try rectangle.validateRectangle();
+		const horizontal: ConeCosines = try rectangle.horizontal.coneCosines();
+		const vertical: ConeCosines = try rectangle.vertical.coneCosines();
+		b = vec4(rectangle.right.x, rectangle.right.y, rectangle.right.z, rectangle.halfWidth);
+		c = vec4(rectangle.up.x, rectangle.up.y, rectangle.up.z, rectangle.halfHeight);
+		d = vec4(horizontal.outer, horizontal.inner, vertical.outer, vertical.inner);
+	} else {
+		kind = LIGHT_KIND_CAPSULE;
+		const capsule: CapsuleLightShape = {
+			position: position, axis: forward, halfLength: shape.length * 0.5,
+			radius: shape.capsuleRadius, range: light.radius,
+		};
+		const _valid = try capsule.validateCapsule();
+		b = vec4(capsule.halfLength, Math.min(capsule.radius, capsule.range) as float32, 0.0, 0.0);
+	}
+	const arrayB: int32 = LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + at;
+	out[LIGHT_SHAPE_BASE + at] = forward.x;
+	out[LIGHT_SHAPE_BASE + at + 1] = forward.y;
+	out[LIGHT_SHAPE_BASE + at + 2] = forward.z;
+	out[LIGHT_SHAPE_BASE + at + 3] = kind;
+	out[arrayB] = b.x;
+	out[arrayB + 1] = b.y;
+	out[arrayB + 2] = b.z;
+	out[arrayB + 3] = b.w;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH] = c.x;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 1] = c.y;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 2] = c.z;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 3] = c.w;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH] = d.x;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 1] = d.y;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 2] = d.z;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 3] = d.w;
+	return Result.ok(null);
 }
 
 function ownedRows(scene: Scene3D): int32 {

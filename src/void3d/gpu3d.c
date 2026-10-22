@@ -157,7 +157,7 @@ _Static_assert(ATTR_lit_program_position == 0 && ATTR_lit_program_normal == 1 &&
 	&& ATTR_litTexturedNormalMap_program_color == 3 && ATTR_litTexturedNormalMap_program_tangent == 4,
 	"sokol lays a buffer out in attribute slot order, which must be the order its writer writes:"
 	" meshData.ms, particleWriter.ms writeParticlePoints, billboard.ms pushTo");
-_Static_assert(sizeof(lit_lightParams_t) == 44 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
+_Static_assert(sizeof(lit_lightParams_t) == 108 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
 _Static_assert(sizeof(lit_modelParams_t) == 32 * 4, "modelParams must match MODEL_LENGTH in draw.ms");
 _Static_assert(sizeof(unlitTextured_modelTransformParams_t) == 16 * 4,
 	"modelTransformParams must contain one matrix");

@@ -376,7 +376,16 @@ export const LIGHT_UNIFORM_SLOT: int32 = 1;
 // (position + power) and pointColor[4] (rgb + radius): two vec4 arrays of one vec4 per light,
 // packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
 export const MAX_POINT_LIGHTS: int32 = 4;
-export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
+// The shape block follows, four vec4 arrays of one vec4 per light (shader3d.ms LightParams
+// shapeA..shapeD): shapeA is forward or axis with the kind in w, B, C and D the shape's own
+// numbers (scene.ms collectLights). Kind 0, a point light, reads none of them.
+export const LIGHT_SHAPE_BASE: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
+export const LIGHT_SHAPE_ARRAY_LENGTH: int32 = MAX_POINT_LIGHTS * 4;
+export const LIGHT_UNIFORM_LENGTH: int32 = LIGHT_SHAPE_BASE + 4 * LIGHT_SHAPE_ARRAY_LENGTH;
+export const LIGHT_KIND_POINT: float32 = 0.0;
+export const LIGHT_KIND_SPOT: float32 = 1.0;
+export const LIGHT_KIND_RECTANGLE: float32 = 2.0;
+export const LIGHT_KIND_CAPSULE: float32 = 3.0;
 // The scene's shadow block (binding=5, shader3d.ms ShadowParams): the world-to-map
 // matrix, then the bias and the opacity.
 export const SHADOW_UNIFORM_SLOT: int32 = 5;
