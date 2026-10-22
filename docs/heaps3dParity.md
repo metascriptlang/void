@@ -34,7 +34,7 @@ rendered skin, browser or physical device. Keep the old receipts as historical e
 
 `VOID3D.md` owns their acceptance and known gaps. Source pointers are `scene.ms`, `camera.ms`,
 `renderer.ms`, `passList.ms`, `material.ms`, `gltf.ms`, `gltfScene.ms`, `texture.ms`,
-`dirShadowMap.ms`, `billboard.ms`, `particles.ms`, `screenFx.ms`, `toneMap.ms`, `bloom.ms`,
+`dirShadowMap.ms`, `billboard.ms`, `particleWriter.ms`, `screenFx.ms`, `toneMap.ms`, `bloom.ms`,
 `worldLabel.ms` and the registered programs in `gpu3d.ms` / `programKeys.txt`.
 
 These cover retained transforms and identity, perspective/orthographic views and masks,
@@ -138,7 +138,7 @@ verified until those tests run; no component may lift an importer refusal or reg
 | Morph data | `morphGeometry.ms`, dedicated check | Owned base/deltas and instance weights; atomic mesh-space position/normal/tangent deformation before skin. No GPU-only spatial proxy or dynamic-buffer policy. |
 | LOD | `meshLod.ms`, dedicated check | Validated ordered thresholds and material/range-preserving CPU selection. No generic instance ABI or shared independent actor palettes. |
 | Colour effects | `colorMatrixPass.ms`, `fxaaFilter.glsl`, dedicated check | Distinct material/screen matrix alpha rules and Heaps color-only FXAA block. No registry, preset ordering, AO/decal/SSR input invention. |
-| Particle visuals | `particleVisual.ms`, dedicated check | Rotation/aspect/frame sampling and owned extended visual records, preserving current eight-float output and continuous Alpha. No compute or collision policy. |
+| Particle visuals | `particleWriter.ms` (`writeParticles`), `particleWriterCheck.ms` | Rotation/aspect/frame sampling and owned extended visual records, preserving current eight-float output and continuous Alpha. No compute or collision policy. |
 | Acceptance asset | `tests/fixtures/gltf/generateSkinnedAsymmetric.py`, `skinnedAsymmetric.glb` | Independently computed asymmetric joints/IBMs/TRS, duplicate names, multiple materials and clone expectations. No private asset committed or GPU receipt inferred. |
 
 All `.ms` paths above are under `src/void3d`; dedicated checks live under `src/test` and are

@@ -1016,7 +1016,7 @@ consumers. A fresh `reviewer` agent, `P5DesignPass`, independently reviewed
 `8140882` through the host-services and measurement work (`1158206`), against P5's exits,
 guardrails, TESTING.md and the decision rule. It edited nothing and ran no checks. Its ten
 answers are recorded below; runtime evidence is the main session's, not the reviewer's.
-`src/void3d/particles.ms` is the deliberate main-equivalent overlay, excluded from phase work.
+`src/void3d/particles.ms` was the deliberate main-equivalent overlay, excluded from phase work; it is retired (void2d-particles A4).
 
 ### Findings and resolutions
 

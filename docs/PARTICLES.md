@@ -111,6 +111,11 @@ The simulation lives in `src/particles/` and depends only on `src/math/math3d`. 
 `src/void3d/particleWriter.ms` (ParticleVisual instances, trails as segment quads). Assets come from
 code, from `importUnityPrefab` (AUTHORING §3) or from `fromHeaps`.
 
+The Heaps-port CPU emitter (`src/void3d/particles.ms`, `particleVisual.ms`) is retired. `EmitterState` and its
+value and shape types live in `src/void3d/fromHeaps.ms` as the input of `fromHeaps`; `Program.Particle`
+instances are written by `writeParticlePoints` and `Program.ParticleVisual` instances by `writeParticles`
+(both in `particleWriter.ms`), and the instance strides are in `gpu3d.ms` beside `VertexLayout`.
+
 Measured facts that shaped the code:
 - A dead particle's slot takes the last live particle, which then updates in that slot, as Unity
   does. Slot order is therefore not emission order, so Ribbon trails order particles by age.
