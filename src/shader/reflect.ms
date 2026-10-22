@@ -29,6 +29,7 @@ import {
 	GPUTextureSampleType,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
+import { DUMMY_SAMPLER_BINDING } from "../webgpu/gl/backend.ms";
 
 export const MAX_REFLECTED_BINDINGS = 24;
 export const MAX_REFLECTED_ATTRIBUTES = 16;
@@ -111,7 +112,22 @@ function storageFormatOf(format: TexelFormat, owner: string): Result<GPUTextureF
 	return Result.ok(name);
 }
 
+function dummySamplerOf(s: BindingSlot): GPUShaderBinding {
+	return {
+		group: s.group,
+		binding: DUMMY_SAMPLER_BINDING,
+		kind: "sampler",
+		stage: stageName(s.stage),
+		size: 0,
+		samplerType: "non-filtering",
+		nativeSlot: -1,
+		nativeName: s.nativeName,
+		textureBinding: s.textureBinding,
+	};
+}
+
 function bindingOf(m: ShaderModule, s: BindingSlot): Result<GPUShaderBinding, string> {
+	if (s.resource < 0) { return Result.ok(dummySamplerOf(s)); }
 	const r = m.resources[s.resource];
 	let b: GPUShaderBinding = {
 		group: s.group,
