@@ -107,6 +107,7 @@ import "./pbrMapsCheck";
 import "./pbrEnvironmentCheck";
 import "./lightShapeShaderCheck";
 import "./lightShapeSceneCheck";
+import "./spotShadowCheck";
 import "./lightShapeCheck";
 import "./morphGeometryCheck";
 import "./morphSceneCheck";

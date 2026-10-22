@@ -1,0 +1,68 @@
+# lib: heaps format
+# haxe-prelude: class SpotCam {
+# haxe-prelude: public static function make(px: Float, py: Float, pz: Float, fovDeg: Float, range: Float): h3d.Camera {
+# haxe-prelude: var c = new h3d.Camera();
+# haxe-prelude: c.screenRatio = 1.0;
+# haxe-prelude: c.pos.set(px, py, pz);
+# haxe-prelude: c.target.set(px, py - 1, pz);
+# haxe-prelude: c.fovY = fovDeg;
+# haxe-prelude: c.zNear = range * 0.05;
+# haxe-prelude: c.zFar = range;
+# haxe-prelude: c.update();
+# haxe-prelude: return c;
+# haxe-prelude: }
+# haxe-prelude: public static function clip(c: h3d.Camera, x: Float, y: Float, z: Float): Array<Float> {
+# haxe-prelude: var m = c.m;
+# haxe-prelude: var cx = x * m._11 + y * m._21 + z * m._31 + m._41;
+# haxe-prelude: var cy = x * m._12 + y * m._22 + z * m._32 + m._42;
+# haxe-prelude: var cz = x * m._13 + y * m._23 + z * m._33 + m._43;
+# haxe-prelude: var cw = x * m._14 + y * m._24 + z * m._34 + m._44;
+# haxe-prelude: return [Math.sqrt(cx * cx + cy * cy) / cw, cz / cw, cw];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Scene3D,LightKind,LightShape,addLightNode,collectLights,closeScene } from "../../../src/void3d/scene";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: import { LIGHT_UNIFORM_LENGTH } from "../../../src/void3d/gpu3d";
+# ms-prelude: import { Vec3,Vec4,vec3,axisAngle } from "../../../src/math/math3d";
+# ms-prelude: import { CameraView } from "../../../src/void3d/camera";
+# ms-prelude: import { SpotShadowError,spotShadowView } from "../../../src/void3d/spotShadow";
+# ms-prelude: const DEG: float32 = 0.017453292519943295;
+# ms-prelude: function clip(px: float32,py: float32,pz: float32,fov: float32,range: float32,x: float32,y: float32,z: float32): Vec4 {
+# ms-prelude: const scene=Scene3D.create(DrawContext.withUniformCapacity(0));
+# ms-prelude: const shape: LightShape = {angle:fov*DEG,verticalAngle:0,falloff:0,width:0,height:0,length:0,capsuleRadius:0};
+# ms-prelude: addLightNode(scene,scene.rootId(),{position:vec3(px,py,pz),rotation:axisAngle(vec3(1,0,0),90*DEG),scale:vec3(1,1,1)},
+# ms-prelude: {kind:LightKind.Spot,color:vec3(1,1,1),radius:range,power:1,priority:0,shape:shape,shadows:true});
+# ms-prelude: let values: Vec<float32> = [];
+# ms-prelude: for (let i=0;i<LIGHT_UNIFORM_LENGTH;i++) {values.push(0);}
+# ms-prelude: const collected=collectLights(scene,values);
+# ms-prelude: closeScene(scene);
+# ms-prelude: const view: Result<CameraView,SpotShadowError> = spotShadowView(values,0);
+# ms-prelude: if (!collected.ok || !view.ok) {return {x:-999,y:0,z:0,w:0};}
+# ms-prelude: const m = view.value.viewProj;
+# ms-prelude: return {x:x*m.m11+y*m.m21+z*m.m31+m.m41,y:x*m.m12+y*m.m22+z*m.m32+m.m42,z:x*m.m13+y*m.m23+z*m.m33+m.m43,w:x*m.m14+y*m.m24+z*m.m34+m.m44};
+# ms-prelude: }
+# ms-prelude: function radial(c: Vec4): float32 { return Math.sqrt((c.x*c.x+c.y*c.y) as float64) as float32 / c.w; }
+
+case spot-shadow-camera-on-axis tol=1e-5
+haxe> var c = SpotCam.make(0, 4, 0, 90, 8);
+haxe> emit("spot-shadow-camera-on-axis", SpotCam.clip(c, 0, 2, 0));
+ms> const a1 = clip(0,4,0,90,8,0,2,0);
+ms> emit3("spot-shadow-camera-on-axis", radial(a1), a1.z/a1.w, a1.w);
+
+case spot-shadow-camera-off-axis tol=1e-5
+haxe> var c = SpotCam.make(1, 5, 2, 60, 12);
+haxe> emit("spot-shadow-camera-off-axis", SpotCam.clip(c, 2.5, 1, 3));
+ms> const a2 = clip(1,5,2,60,12,2.5,1,3);
+ms> emit3("spot-shadow-camera-off-axis", radial(a2), a2.z/a2.w, a2.w);
+
+case spot-shadow-camera-near-plane tol=1e-5
+haxe> var c = SpotCam.make(0, 4, 0, 90, 8);
+haxe> emit("spot-shadow-camera-near-plane", SpotCam.clip(c, 0, 3.6, 0));
+ms> const a3 = clip(0,4,0,90,8,0,3.6,0);
+ms> emit3("spot-shadow-camera-near-plane", radial(a3), a3.z/a3.w, a3.w);
+
+case spot-shadow-camera-cone-edge tol=1e-5
+haxe> var c = SpotCam.make(0, 4, 0, 90, 8);
+haxe> emit("spot-shadow-camera-cone-edge", SpotCam.clip(c, 3, 1, 0));
+ms> const a4 = clip(0,4,0,90,8,3,1,0);
+ms> emit3("spot-shadow-camera-cone-edge", radial(a4), a4.z/a4.w, a4.w);

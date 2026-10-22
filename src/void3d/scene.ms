@@ -129,6 +129,10 @@ export struct LightInstance {
 	power: float32;
 	priority: int32;
 	shape: LightShape;
+	// A spot's shadows.enabled (LightBuffer.hx:180-186): it casts the frame's one shadow map,
+	// shared with the sun's (spotShadow.ms). Any other kind with it set is
+	// LightError.UnshadowableLight, and a second spot with it set LightError.TooManyShadowedSpots.
+	shadows: boolean;
 }
 
 export enum SceneError {
@@ -166,6 +170,8 @@ export enum LightError {
 	TooManyDirectionalLights,
 	TooManyPointLights,
 	BadLightShape,
+	TooManyShadowedSpots,
+	UnshadowableLight,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -1528,6 +1534,7 @@ export function collectLightsFor(
 			if (seen && scene.nodes[index].kind == NodeKind.Light) {
 				const light: LightInstance = scene.lights[scene.nodes[index].payload];
 				if (light.kind == LightKind.Directional) {
+					if (light.shadows) { return Result.err(LightError.UnshadowableLight); }
 					if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
 					seenDirectional = true;
 					// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the
@@ -1568,6 +1575,14 @@ export function collectLightsFor(
 	}
 	const found: int32 = scene.lightOrder.length as int32;
 	if (found > MAX_POINT_LIGHTS) { return Result.err(LightError.TooManyPointLights); }
+	let shadowedSpots: int32 = 0;
+	for (let i = 0; i < found; i++) {
+		const light: LightInstance = scene.lights[scene.nodes[scene.lightOrder[i]].payload];
+		if (!light.shadows) { continue; }
+		if (light.kind != LightKind.Spot) { return Result.err(LightError.UnshadowableLight); }
+		shadowedSpots = shadowedSpots + 1;
+	}
+	if (shadowedSpots > 1) { return Result.err(LightError.TooManyShadowedSpots); }
 	for (let i = 0; i < found; i++) {
 		const index: int32 = scene.lightOrder[i];
 		const light: LightInstance = scene.lights[scene.nodes[index].payload];
@@ -1617,7 +1632,7 @@ function packShape(
 			cone: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
 		};
 		const cosines: ConeCosines = try spot.validateSpot();
-		b = vec4(cosines.outer, cosines.inner, 0.0, 0.0);
+		b = vec4(cosines.outer, cosines.inner, light.shadows ? 1.0 : 0.0, shape.angle);
 	} else if (light.kind == LightKind.Rectangle) {
 		kind = LIGHT_KIND_RECTANGLE;
 		const xAxis: Vec3 = transformDirection(vec3(1.0, 0.0, 0.0), world);

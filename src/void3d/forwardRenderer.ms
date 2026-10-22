@@ -120,6 +120,10 @@ export enum ForwardError {
 	DrawRange,
 	CameraPosition,
 	MeshWrite,
+	// RendererError.TooManyShadowedSpots, SpotShadowSharesSunMap and BadShadowSpot.
+	TooManyShadowedSpots,
+	SpotShadowSharesSunMap,
+	BadShadowSpot,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
@@ -264,6 +268,9 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.CameraPosition => ForwardError.CameraPosition,
 		RendererError.MeshWrite => ForwardError.MeshWrite,
 		RendererError.ShapedLightPreset => { unreachable; },
+		RendererError.TooManyShadowedSpots => ForwardError.TooManyShadowedSpots,
+		RendererError.SpotShadowSharesSunMap => ForwardError.SpotShadowSharesSunMap,
+		RendererError.BadShadowSpot => ForwardError.BadShadowSpot,
 	};
 }
 

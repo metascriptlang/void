@@ -387,11 +387,14 @@ export const LIGHT_KIND_SPOT: float32 = 1.0;
 export const LIGHT_KIND_RECTANGLE: float32 = 2.0;
 export const LIGHT_KIND_CAPSULE: float32 = 3.0;
 // The scene's shadow block (binding=5, shader3d.ms ShadowParams): the world-to-map
-// matrix, then the bias and the opacity.
+// matrix, then the bias, the opacity and whose map it is: the sun's (0) or the one shadowing
+// spot's (1), which perspective-divides the matrix's product (spotShadow.ms).
 export const SHADOW_UNIFORM_SLOT: int32 = 5;
 export const SHADOW_UNIFORM_LENGTH: int32 = 20;
 export const SHADOW_BIAS: int32 = 16;
 export const SHADOW_OPACITY: int32 = 17;
+export const SHADOW_KIND: int32 = 18;
+export const SHADOW_KIND_SPOT: float32 = 1.0;
 // The shadow map's view and sampler slots (dirShadow's `binding=`), past a material's.
 export const SHADOW_VIEW_SLOT: int32 = 4;
 export const SHADOW_SAMPLER_SLOT: int32 = 2;

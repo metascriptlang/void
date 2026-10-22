@@ -575,8 +575,12 @@ vec3 facingNormal(vec3 normal_1, float doubleSided, bool frontFacing) {
     return ((doubleSided > 0.5) && (!frontFacing)) ? (-normal_1) : normal_1;
 }
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec3 p = (shadowMatrix * vec4(position, 1.0)).xyz;
+float mapShadowAt(vec3 position) {
+    vec4 q = shadowMatrix * vec4(position, 1.0);
+    if (q.w <= 0.0) {
+        return 1.0;
+    }
+    vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
         return 1.0;
     }
@@ -585,6 +589,14 @@ float dirShadowAt(vec3 position) {
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
     float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, shadow.y);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    if (shadow.z > 0.5) {
+        return 1.0;
+    }
+    return mapShadowAt(position);
 }
 #endif
 vec3 srgbToLinear(vec3 srgb) {
@@ -976,8 +988,12 @@ vec3 mappedNormal(vec3 normal_1, vec4 tangent, float face, vec3 texel) {
 }
 #endif
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec3 p = (shadowMatrix * vec4(position, 1.0)).xyz;
+float mapShadowAt(vec3 position) {
+    vec4 q = shadowMatrix * vec4(position, 1.0);
+    if (q.w <= 0.0) {
+        return 1.0;
+    }
+    vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
         return 1.0;
     }
@@ -986,6 +1002,14 @@ float dirShadowAt(vec3 position) {
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
     float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, shadow.y);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    if (shadow.z > 0.5) {
+        return 1.0;
+    }
+    return mapShadowAt(position);
 }
 #endif
 vec3 srgbToLinear(vec3 srgb) {

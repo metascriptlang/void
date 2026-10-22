@@ -691,7 +691,8 @@ export function lightWindow(distance: float32, range: float32): float32 {
 }
 
 // pbr/Light.hx spotLightIntensity's angular half (60-62): theta = dot(delta.normalize(),
-// -spotDir), clamp((theta - angle) / (fallOff - angle)). a: forward, b: cos(angle / 2), cos(inner).
+// -spotDir), clamp((theta - angle) / (fallOff - angle)). a: forward, b: cos(angle / 2), cos(inner),
+// then 1 when the spot casts the frame's shadow and its full angle (slotShadowAt, spotShadow.ms).
 export function spotSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f): Vec4f {
 	const delta = at.xyz - position;
 	const distance = length(delta);
@@ -1003,9 +1004,16 @@ export function dissolveEdgeOf(b: LitBindings, key: LitKey): Vec4f {
 // h3d.shader.ShadowSampling.sampleShadow with SAMPLING_NONE, on the map dirShadowMap.ms draws.
 // shadowMatrix takes a world position to the map's texel space and to the depth the backend
 // stores, so the compare reads the attachment as written; shadow.x is the bias in that depth,
-// shadow.y the opacity (1 a full shadow).
-export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
-	const p = (b.shadowParams.shadowMatrix * vec4f(position, 1.0)).xyz;
+// shadow.y the opacity (1 a full shadow). A spot's matrix is a perspective one, so the position
+// is divided by w as spotShadowPos does (ShadowSampling.hx:49-53); a sun's w is exactly 1. A
+// position behind the spot (w <= 0) is outside its cone, which weighs the light to 0 already.
+// PENDING3D: spot-shadow-behind-lit
+export function mapShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const q = b.shadowParams.shadowMatrix * vec4f(position, 1.0);
+	if (q.w <= 0.0) {
+		return 1.0;
+	}
+	const p = q.xyz / q.w;
 	if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0) {
 		return 1.0;
 	}
@@ -1014,6 +1022,30 @@ export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
 	const depth = textureLoad(b.shadowMap, b.shadowSampler, texel, 0).x;
 	const lit: float32 = clamp(p.z, 0.0, 1.0) - b.shadowParams.shadow.x > depth ? 0.0 : 1.0;
 	return mix(1.0, lit, b.shadowParams.shadow.y);
+}
+
+// The sun's shadow: 1 when the frame's one map is a spot's.
+export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
+	if (b.shadowParams.shadow.z > 0.5) {
+		return 1.0;
+	}
+	return mapShadowAt(position, b);
+}
+
+// A positioned slot's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless the
+// frame's map is a spot's and this slot is the spot that casts it (shapeB.z, scene.ms packShape).
+export function slotShadowAt(position: Vec3f, b: LitBindings, key: LitKey, slot: int32): float32 {
+	if (!key.shadowed) {
+		return 1.0;
+	}
+	if (b.shadowParams.shadow.z < 0.5) {
+		return 1.0;
+	}
+	const a = b.lightParams.shapeA[slot];
+	if (a.w < 0.5 || a.w > 1.5 || b.lightParams.shapeB[slot].z < 0.5) {
+		return 1.0;
+	}
+	return mapShadowAt(position, b);
 }
 
 // h3d.shader.pbr.Direct (Lighting.hx:125-145) for one light, in linear light: Cook-Torrance GGX
@@ -1116,7 +1148,7 @@ export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f): Vec3f {
 // The lit surface under the PBR path: the material's albedo (linear, saturated as the material
 // says) under the same ambient, directional and point lights litShade reads, from the camera
 // frame.cameraPosition names. The sun is shadowed, as Heaps' `shadow` scales every light of a
-// pass; a point light has no shadow here.
+// pass; a point light has no shadow here, and one spot may (slotShadowAt).
 export function pbrShade(
 	n: Vec3f,
 	position: Vec3f,
@@ -1155,7 +1187,7 @@ export function pbrShade(
 			const radiance = srgbToLinear(tint.rgb) * (sample.w * at.w);
 			const specular = shapedSpecularDir(position, reflected, sample.xyz, at, a, bb, cc);
 			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
-				specular, radiance, 1.0, 0.0, values.z);
+				specular, radiance, slotShadowAt(position, b, key, i), 0.0, values.z);
 		}
 	}
 	return vec4f(linearToSrgb(light), surfaceColor.a);
@@ -1180,7 +1212,7 @@ export function litShade(
 	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
 		light = light + lightAt(position, n, b.lightParams.pointLight[i], b.lightParams.pointColor[i],
 			b.lightParams.shapeA[i], b.lightParams.shapeB[i], b.lightParams.shapeC[i],
-			b.lightParams.shapeD[i]);
+			b.lightParams.shapeD[i]) * slotShadowAt(position, b, key, i);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);

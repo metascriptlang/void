@@ -15,6 +15,8 @@ import {
 	SHADOW_UNIFORM_LENGTH,
 	SHADOW_BIAS,
 	SHADOW_OPACITY,
+	SHADOW_KIND,
+	SHADOW_KIND_SPOT,
 } from "./gpu3d";
 import {
 	PixelFormat,
@@ -48,7 +50,8 @@ import { UniformError, ownRange, disownRange } from "./uniformPool";
 import { PassList, collectCasters, filterFrustum } from "./passList";
 import { Bounds3D, addPos, addBounds } from "./bounds";
 import { Frustum3D } from "./frustum";
-import { CameraBasis, OrthoBounds } from "./camera";
+import { CameraBasis, CameraView, OrthoBounds } from "./camera";
+import { SpotShadowError, firstShadowedSpot, spotShadowView } from "./spotShadow";
 
 export interface DirShadowMap {
 	context: DrawContext;
@@ -260,7 +263,8 @@ function stopOnPassOpen(): void {
 	unreachable;
 }
 
-// DirShadowMap.draw.
+// DirShadowMap.draw, or SpotShadowMap.draw (SpotShadowMap.hx:107-171) when a spot of the light
+// block casts: both fill the one map, the spot's through its perspective view-projection.
 export function drawShadows(
 	shadow: DirShadowMap,
 	items: Readonly<Span<DrawItem>>,
@@ -269,6 +273,15 @@ export function drawShadows(
 ): int32 {
 	if (shadow.closed) { stopOnClosed("drawShadows"); }
 	if (passState() != PassState.None) { stopOnPassOpen(); }
+	const spot: int32 = firstShadowedSpot(lights);
+	if (spot >= 0) {
+		const view: Result<CameraView, SpotShadowError> = spotShadowView(lights, spot);
+		if (!view.ok) {
+			console.log(`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`);
+			unreachable;
+		}
+		return drawSpotShadows(shadow, items, view.value);
+	}
 	const context: DrawContext = shadow.context;
 	const basis: CameraBasis = lightBasis(vec3(lights[4], lights[5], lights[6]));
 	const cameraViewProj: Mat4 = {
@@ -291,6 +304,27 @@ export function drawShadows(
 		shadow.casters.count = 0;
 	}
 	shadow.viewProj = basis.makeCameraMatrix(vec3(0.0, 0.0, 0.0)) * box.projectionMatrix();
+	return drawCasters(shadow, items, basis, 0.0);
+}
+
+function drawSpotShadows(
+	shadow: DirShadowMap,
+	items: Readonly<Span<DrawItem>>,
+	view: CameraView,
+): int32 {
+	collectCasters(shadow.casters, items, shadow.context.materials);
+	shadow.viewProj = view.viewProj;
+	return drawCasters(shadow, items, view.basis, SHADOW_KIND_SPOT);
+}
+
+// The pass both lights share, from shadow.viewProj: the casters in its frustum, depth only.
+function drawCasters(
+	shadow: DirShadowMap,
+	items: Readonly<Span<DrawItem>>,
+	basis: CameraBasis,
+	kind: float32,
+): int32 {
+	const context: DrawContext = shadow.context;
 	if (shadow.casters.count > 0) {
 		const _culled: int32 = filterFrustum(
 			shadow.casters, items, context.meshData, Frustum3D.fromMatrix(shadow.viewProj),
@@ -307,6 +341,7 @@ export function drawShadows(
 	(shadow.viewProj * map).writeTo(shadow.shadowValues[0..16], 0);
 	shadow.shadowValues[SHADOW_BIAS] = shadow.bias * map.m33;
 	shadow.shadowValues[SHADOW_OPACITY] = shadow.opacity;
+	shadow.shadowValues[SHADOW_KIND] = kind;
 	const cameraWritten: Result<int32, UniformError> =
 		writeUniforms(context, shadow.cameraBlock, shadow.cameraValues);
 	const shadowWritten: Result<int32, UniformError> =

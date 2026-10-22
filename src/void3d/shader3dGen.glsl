@@ -809,20 +809,14 @@ layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
 };
-#ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
     vec4 shadow;
 };
-#endif
-#ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2D shadowMap;
-#endif
-#ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
-#endif
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -878,9 +872,12 @@ vec3 saturated(vec3 rgb, float amount) {
     float keep = amount + 1.0;
     return (rgb * keep) + vec3((luma * (1.0 - keep)));
 }
-#ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec3 p = (shadowMatrix * vec4(position, 1.0)).xyz;
+float mapShadowAt(vec3 position) {
+    vec4 q = shadowMatrix * vec4(position, 1.0);
+    if (q.w <= 0.0) {
+        return 1.0;
+    }
+    vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
         return 1.0;
     }
@@ -889,6 +886,13 @@ float dirShadowAt(vec3 position) {
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
     float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, shadow.y);
+}
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    if (shadow.z > 0.5) {
+        return 1.0;
+    }
+    return mapShadowAt(position);
 }
 #endif
 #ifdef PBR
@@ -1035,6 +1039,19 @@ vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec
     return diffuse;
 }
 #endif
+float slotShadowAt(vec3 position, int slot) {
+#ifndef SHADOWED
+    return 1.0;
+#endif
+    if (shadow.z < 0.5) {
+        return 1.0;
+    }
+    vec4 a = shapeA[slot];
+    if (((a.w < 0.5) || (a.w > 1.5)) || (shapeB[slot].z < 0.5)) {
+        return 1.0;
+    }
+    return mapShadowAt(position);
+}
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
     vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
@@ -1069,7 +1086,7 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
             vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, shapeD[i]);
             vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
             vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
-            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, 1.0, 0.0, values.z);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, slotShadowAt(position, i), 0.0, values.z);
         }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
@@ -1103,7 +1120,7 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        light = light + lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]);
+        light = light + (lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]) * slotShadowAt(position, i));
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
@@ -1402,20 +1419,14 @@ layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
 };
-#ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
     vec4 shadow;
 };
-#endif
-#ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2D shadowMap;
-#endif
-#ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
-#endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 #ifdef BACK_TEXTURE
@@ -1580,9 +1591,12 @@ vec3 saturated(vec3 rgb, float amount) {
     float keep = amount + 1.0;
     return (rgb * keep) + vec3((luma * (1.0 - keep)));
 }
-#ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec3 p = (shadowMatrix * vec4(position, 1.0)).xyz;
+float mapShadowAt(vec3 position) {
+    vec4 q = shadowMatrix * vec4(position, 1.0);
+    if (q.w <= 0.0) {
+        return 1.0;
+    }
+    vec3 p = q.xyz / q.w;
     if ((((p.x <= 0.0) || (p.x >= 1.0)) || (p.y <= 0.0)) || (p.y >= 1.0)) {
         return 1.0;
     }
@@ -1591,6 +1605,13 @@ float dirShadowAt(vec3 position) {
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
     float lit = ((clamp(p.z, 0.0, 1.0) - shadow.x) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, shadow.y);
+}
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    if (shadow.z > 0.5) {
+        return 1.0;
+    }
+    return mapShadowAt(position);
 }
 #endif
 #ifdef PBR
@@ -1737,6 +1758,19 @@ vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec
     return diffuse;
 }
 #endif
+float slotShadowAt(vec3 position, int slot) {
+#ifndef SHADOWED
+    return 1.0;
+#endif
+    if (shadow.z < 0.5) {
+        return 1.0;
+    }
+    vec4 a = shapeA[slot];
+    if (((a.w < 0.5) || (a.w > 1.5)) || (shapeB[slot].z < 0.5)) {
+        return 1.0;
+    }
+    return mapShadowAt(position);
+}
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
     vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
@@ -1771,7 +1805,7 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
             vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, shapeD[i]);
             vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
             vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
-            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, 1.0, 0.0, values.z);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, slotShadowAt(position, i), 0.0, values.z);
         }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
@@ -1805,7 +1839,7 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        light = light + lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]);
+        light = light + (lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]) * slotShadowAt(position, i));
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);

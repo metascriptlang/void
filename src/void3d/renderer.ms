@@ -99,6 +99,12 @@ import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
 import { DirShadowMap, castsAll, drawShadows, sceneTexture } from "./dirShadowMap";
+import {
+	shadowedSpotCount,
+	firstShadowedSpot,
+	spotShadowView,
+	sunIsLit,
+} from "./spotShadow";
 
 export interface Renderer {
 	readonly context: DrawContext;
@@ -173,6 +179,13 @@ export enum RendererError {
 	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
 	// toon term there, and drawing it as a point would light the wrong place.
 	ShapedLightPreset,
+	// Two spot slots of the light block cast: the frame's one shadow map holds one light's.
+	TooManyShadowedSpots,
+	// The map is attached and a lit sun and a shadowing spot both want it; the sun would go
+	// unshadowed with no word, and it is the app's choice which light the map serves.
+	SpotShadowSharesSunMap,
+	// The shadowing spot's slot does not make a camera (lightShape.ms perspectiveCamera).
+	BadShadowSpot,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -438,6 +451,15 @@ export function beginFrame(
 				return Result.err(RendererError.ShapedLightPreset);
 			}
 		}
+	}
+	if (shadowedSpotCount(lights) > 1) { return Result.err(RendererError.TooManyShadowedSpots); }
+	const shadowedSpot: int32 = firstShadowedSpot(lights);
+	if (shadowedSpot >= 0) {
+		// PENDING3D: spot-shadow-single-map
+		if (shadow !== null && sunIsLit(lights)) {
+			return Result.err(RendererError.SpotShadowSharesSunMap);
+		}
+		if (!spotShadowView(lights, shadowedSpot).ok) { return Result.err(RendererError.BadShadowSpot); }
 	}
 	const cameraWritten: Result<int32, UniformError> =
 		writeUniforms(context, renderer.cameraBlock, camera);
