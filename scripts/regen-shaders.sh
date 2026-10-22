@@ -7,6 +7,8 @@ cd "$(dirname "$0")/.."
 # --check regenerates into a scratch directory and compares instead of writing; the gate runs it.
 CHECK=0
 [ "$1" = "--check" ] && CHECK=1
+IR=0
+[ "$1" = "--ir" ] && IR=1
 STALE=0
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
@@ -215,10 +217,43 @@ slots() {
 	settle "$out" "$2"
 }
 
+# A module's reflection: every line but the header and the sources, each program's bindings
+# sorted, since shdc does not list them by slot.
+reflectionOf() {
+	tr -d "\r" < "$1" | tail -n +2 | grep -v -e 'Code: "' -e '^	// ' | awk '
+		/bindings: \[/ { print; open = 1; n = 0; next }
+		open && /^\t*\],/ { asort(held); for (i = 1; i <= n; i++) print held[i]; delete held; open = 0 }
+		open { held[++n] = $0; next }
+		{ print }
+	'
+}
+
+# --ir writes the descriptor modules from the shader IR (tools/irPrograms.ms) into out/irModules
+# and compares their reflection with the committed sokol-shdc ones; the sources differ. The shdc
+# path stays the default until every target has a printer.
+if [ "$IR" = 1 ]; then
+	ir="out/irModules"
+	"${MSC:-msc}" run tools/irPrograms.ms -- "$ir" --reflection-only 2> "$SCRATCH/ir.log" ||
+		{ cat "$SCRATCH/ir.log"; echo "irPrograms failed"; exit 1; }
+	MISMATCH=0
+	for committed in src/void3d/programModules.ms src/void2d/shader2dModules.ms \
+		tests/integration/gpuCopyModules.ms; do
+		if cmp -s <(reflectionOf "$ir/$(basename "$committed")") <(reflectionOf "$committed"); then
+			echo "same reflection $committed"
+		else
+			echo "reflection differs $committed:"
+			diff <(reflectionOf "$committed") <(reflectionOf "$ir/$(basename "$committed")") | head -20
+			MISMATCH=1
+		fi
+	done
+	exit "$MISMATCH"
+fi
+
 [ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
 generate tools/genShaders.ms "$GENERATED"
 generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
 generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
+generate tools/genShadersGpuCopy.ms tests/integration/gpuCopyGen.glsl
 slots src/void2d/shader2dGen.glsl src/void2d/shader2dSlots.h VOID2D_SHADER2D_SLOTS_H
 tables src/void2d/shader2d.glsl src/void2d/shader2dModules.ms "$LANGS" ../webgpu/types.ms
 regenKeys
