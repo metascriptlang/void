@@ -104,6 +104,47 @@ SIM §6.3.
 inputs and the fixed step. That holds across frame rates and across native and emcc. A
 cross-target column hash pins it (SIM §6.4).
 
+## As built
+
+The simulation lives in `src/particles/` and depends only on `src/math/math3d`. Its writers are
+`src/void2d/particles2d.ms` (a TileGroup cell per particle, trails as Graphics strips) and
+`src/void3d/particleWriter.ms` (ParticleVisual instances, trails as segment quads). Assets come from
+code, from `importUnityPrefab` (AUTHORING §3) or from `fromHeaps`.
+
+Measured facts that shaped the code:
+- A dead particle's slot takes the last live particle, which then updates in that slot, as Unity
+  does. Slot order is therefore not emission order, so Ribbon trails order particles by age.
+- Reading a module through `const asset = sys.asset` copied the whole asset once per particle:
+  497 ms per step at 100k particles. Reading in place, or through a `Borrow`, brought it to
+  4.5 ms; swap-remove brought it to 2.46 ms (about 25 ns per particle; 1.83 ms with no modules
+  enabled). These are light probes on Windows with clang thin-LTO, not the bench. Without LTO the
+  math3d operators are not inlined across modules: 7.6 ms against 4.5 ms before swap-remove.
+
+Parity:
+- `tests/unity/goldens` (46 captures) through `src/test/particleUnityCheck.ms`. The cases left
+  pending are ties at exact float boundaries, where Void emits one step before Unity: emission at
+  t = 0.1 with rate 10, prewarm age equal to lifetime, a burst's sub-step ageing, a paused ring
+  buffer, and the texture-sheet frame at a boundary. No single emission model tried (float32
+  carry, strict threshold, float32 time) fits every golden.
+- `tests/oracle/particles3d.cases` through `fromHeaps`. A case declares what it cannot match with
+  `carries=`: `EmissionCeil`, `SpawnAge`, `GradientSampled`, `RandomStream` (Heaps draws from one
+  stream, Void from a hash per particle) and `OneShotClock`.
+
+Ceilings, each with what lifts it:
+- An event sub-emitter child emits only time-0 bursts; anything else is
+  `EffectErrorKind.ChildEmission`. Lifted by giving a per-event rate a meaning.
+- All systems of an effect share the effect's world matrix; a child system cannot be placed apart.
+- World colliders are given in the system's simulation space.
+- Collision is swept with one hit per step.
+- InheritColor multiplies the child's start colour by the parent's colour at the event.
+- A full trail ring drops its oldest point. A ribbon that splits into sub-emitter children is
+  refused (`ParticleSystemError.SplitSubEmitterRibbons`).
+- 3D trails are one view-facing quad per segment, with no mitre at the joints and one colour per
+  segment. Lifted by the ribbon program below.
+- 2D trails are mitred strips (mitre limit 4) with no antialiasing fringe, drawn under the
+  particles. The Tile and repeat texture modes need the tile to be the whole texture.
+- Noise follows a curl field with Unity's parameters, not Unity's own pattern.
+
 ## New mechanisms
 
 | item | adds | can regress |
