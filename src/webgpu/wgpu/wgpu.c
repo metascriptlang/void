@@ -582,11 +582,13 @@ void wgColorAttachment(
 	WgView resolve,
 	int32_t loadOp,
 	int32_t storeOp,
+	int32_t depthSlice,
 	double r,
 	double g,
 	double b,
 	double a) {
 	WGPURenderPassColorAttachment attachment = WGPU_RENDER_PASS_COLOR_ATTACHMENT_INIT;
+	if (depthSlice >= 0) attachment.depthSlice = (uint32_t)depthSlice;
 	attachment.view = (WGPUTextureView)view;
 	attachment.resolveTarget = (WGPUTextureView)resolve;
 	if (view) {

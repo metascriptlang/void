@@ -55,6 +55,7 @@ import {
 	GPUTextureViewDescriptor,
 	checkedBufferCopy,
 	checkedTexelBufferLayout,
+	checkedDepthTexelCopy,
 	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
 	featureBit,
@@ -1192,12 +1193,12 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
 	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
-		stop("a multisampled texture with mips, array layers or a 3d dimension is not ported to wgpu: WebGPU takes one mip and one layer");
+		stop("WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer");
 	}
 	const usage = descriptor.usage;
 	if (sampleCount > 1 && has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) { stop("a multisampled texture cannot be STORAGE_BINDING"); }
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
-	if (volume && (attachment || info.depth)) { stop("a 3d texture as RENDER_ATTACHMENT or with a depth format is not ported to wgpu yet"); }
+	if (volume && info.depth) { stop("WebGPU allows a depth or stencil format only on a 2d texture"); }
 	if (attachment && info.native == FORMAT_RG11B10_UFLOAT && wgHasFeature(FEATURE_RG11B10_UFLOAT_RENDERABLE) == 0) {
 		stop("rg11b10ufloat as RENDER_ATTACHMENT needs the device feature rg11b10ufloat-renderable, which this device was not created with");
 	}
@@ -1379,7 +1380,7 @@ export function createView(
 		baseMip: baseMip,
 		mipCount: mipCount,
 		dimension: dimension,
-		attachable: mipCount == 1 && layerCount == 1 && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY),
+		attachable: mipCount == 1 && layerCount == 1 && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY || dimension == VIEW_3D),
 		swapchain: false,
 	};
 	const index = slotOf(id);
@@ -1958,13 +1959,22 @@ export function beginRenderPass(
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = descriptor.colorAttachments[i];
 		if (attachment.view.id == 0) {
-			wgColorAttachment(i, NO_VIEW, NO_VIEW, 0, 0, 0, 0, 0, 0);
+			wgColorAttachment(i, NO_VIEW, NO_VIEW, 0, 0, -1, 0, 0, 0, 0);
 			continue;
 		}
 		const v = viewIndex(attachment.view.id);
 		checkColorAttachment(i, views[v].texture);
 		if (!views[v].attachable) { stop(`colorAttachments[${i}].view spans several mips or layers: a render attachment is one mip of one layer`); }
 		passExtent(views[v].texture, views[v].baseMip);
+		const slice = attachment.depthSlice;
+		if (views[v].dimension == VIEW_3D) {
+			const slices = Math.max(1, textures[textureIndex(views[v].texture)].layers >> views[v].baseMip);
+			if (slice < 0 || slice >= slices) {
+				stop(`colorAttachments[${i}].depthSlice ${slice} is outside the ${slices} slices of mip ${views[v].baseMip} of GPUTexture ${views[v].texture}`);
+			}
+		} else if (slice != 0) {
+			stop(`colorAttachments[${i}].depthSlice ${slice} needs a 3d view`);
+		}
 		let resolve = views[v].swapchainResolve;
 		if (attachment.resolveTarget.id != 0) {
 			resolve = checkResolve(i, views[v].texture, attachment.resolveTarget.id);
@@ -1976,6 +1986,7 @@ export function beginRenderPass(
 			resolve,
 			loadOp(attachment.loadOp, `colorAttachments[${i}].loadOp`),
 			storeOp(attachment.storeOp, `colorAttachments[${i}].storeOp`),
+			views[v].dimension == VIEW_3D ? slice : -1,
 			color.r,
 			color.g,
 			color.b,
@@ -2238,9 +2249,11 @@ function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32,
 	);
 }
 
-function colorFormatOf(index: int32, member: string): FormatInfo {
+function texelFormatOf(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): FormatInfo {
 	const info = formatInfo(textures[index].format, "texture format");
-	if (info.depth) { stop(`${member}: depth or stencil GPUTexture ${textures[index].id} is not ported to wgpu yet`); }
+	if (info.depth) {
+		checkedDepthTexelCopy(member, textures[index].id, textures[index].format, info.stencil, writes, textures[index].width, textures[index].height, copy.mipLevel, size);
+	}
 	return info;
 }
 
@@ -2260,8 +2273,8 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	const info = colorFormatOf(to, "copyBufferToTexture destination");
 	copyRegion("copyBufferToTexture destination", destination, to, size);
+	const info = texelFormatOf(to, "copyBufferToTexture destination", true, destination, size);
 	const bytesPerRow = checkedBufferLayout("copyBufferToTexture source", info.bytesPerPixel, from, source, size);
 	wgCopyBufferToTexture(
 		buffers[from].native,
@@ -2282,8 +2295,8 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableBuffer(destination.buffer, "copyTextureToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
-	const info = colorFormatOf(from, "copyTextureToBuffer source");
 	copyRegion("copyTextureToBuffer source", source, from, size);
+	const info = texelFormatOf(from, "copyTextureToBuffer source", false, source, size);
 	const bytesPerRow = checkedBufferLayout("copyTextureToBuffer destination", info.bytesPerPixel, to, destination, size);
 	wgCopyTextureToBuffer(
 		textures[from].native,

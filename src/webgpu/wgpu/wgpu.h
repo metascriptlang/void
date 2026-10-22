@@ -194,6 +194,7 @@ void wgColorAttachment(
 	WgView resolve,
 	int32_t loadOp,
 	int32_t storeOp,
+	int32_t depthSlice,
 	double r,
 	double g,
 	double b,
