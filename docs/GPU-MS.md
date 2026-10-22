@@ -189,6 +189,9 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   `tests/capture/capture.c` and `scripts/build-sokol-macos.sh` until G6 lands; the Windows session
   stays off them. A change to a shared file (`doorGpu.ms`, `types.ms`, `device.ms`, generated
   modules) is small, committed alone and pushed promptly, so the other side rebases onto it.
+- Since 2026-10-23 arc `shader` (branch wt/shader, rebased onto this one) owns `src/shader/` and the
+  reflection format the backends read; a change to that format, `tools/shaderTables.ms` or
+  regen-shaders is agreed with that arc's session first.
 - Commits: conventional subject only, no body, no attribution trailer.
 - GPU runs on the Windows machine go through void-manager's GO; the Mac has its own schedule.
 - A compiler bug is a card in `~/metascript/.inbox/compiler/` (smallest repro, park the site);
