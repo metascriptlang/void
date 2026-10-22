@@ -146,16 +146,18 @@ import { Ray } from "../void3d/ray";
 import { PickHit, PickError, pickNearest } from "../void3d/pick";
 import {
 	EmitterState,
-	ParticleEmitter,
-	ParticleError,
 	ShapeKind,
 	ValueKind,
 	Converge,
 	PARTICLE_INSTANCE_STRIDE,
+	PARTICLE_VISUAL_INSTANCE_STRIDE,
 	constant,
-	updateEmitter,
-	writeInstances,
 } from "../void3d/particles";
+import { fromHeaps, HEAPS_GRAVITY, HeapsLoweringError } from "../void3d/fromHeaps";
+import { ParticleSystem, ParticleSystemError, playSystem, updateSystem } from "../particles/system";
+import { ParticleSystemAsset } from "../particles/asset";
+import { AtlasTile } from "../void3d/billboard";
+import { ParticleWriter3D, ParticleWriteError, writeParticles } from "../void3d/particleWriter";
 
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
 const CAMERA_YAW: float32 = 0.785398;
@@ -222,6 +224,7 @@ const WINTER_PALETTE: Vec<uint32> = [
 	0xEEF4FC, 0x3A3F4F, 0x5C6272, 0x868C9C, 0x6E4A4A, 0xB0705A, 0xE0A070, 0xFFE0A8,
 ];
 
+const WHOLE_TILE: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };
 const PARTICLE_STEP: float64 = 1.0 / 30.0;
 const PARTICLE_WARMUP_STEPS: int32 = 240;
 const SNOW_SEED: uint32 = 12345;
@@ -312,8 +315,11 @@ let lookScheduleWanted: boolean = false;
 let groundSaturation: float32 = 0.0;
 let groundGreyOnCpu: boolean = false;
 let particleMaterial: MaterialId = NO_MATERIAL;
-let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
-let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
+let snow: ParticleSystem = systemOf(snowState(), SNOW_SEED);
+let embers: ParticleSystem = systemOf(emberState(), EMBER_SEED);
+let particleWriter: ParticleWriter3D = ParticleWriter3D.create();
+let snowVisual: Vec<float32> = new Array(snowState().maxParts * PARTICLE_VISUAL_INSTANCE_STRIDE);
+let emberVisual: Vec<float32> = new Array(emberState().maxParts * PARTICLE_VISUAL_INSTANCE_STRIDE);
 let snowNode: NodeId3D = NO_NODE_ID;
 let emberNode: NodeId3D = NO_NODE_ID;
 let snowMesh: MeshId = NO_MESH;
@@ -394,10 +400,14 @@ function emberState(): EmitterState {
 	};
 }
 
-function emitterOf(state: EmitterState, seed: uint32): ParticleEmitter {
-	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
-	if (made.ok) { return made.value; }
-	unreachable;
+function systemOf(state: EmitterState, seed: uint32): ParticleSystem {
+	const asset: Result<ParticleSystemAsset, HeapsLoweringError> = fromHeaps(state);
+	if (!asset.ok) { unreachable; }
+	const made: Result<ParticleSystem, ParticleSystemError> = ParticleSystem.create(asset.value, seed);
+	if (!made.ok) { unreachable; }
+	let sys: ParticleSystem = made.value;
+	sys.gravity = HEAPS_GRAVITY;
+	return sys;
 }
 
 // The spike's look: outline and fog tuned on the campfire, palette off.
@@ -1007,6 +1017,11 @@ function setupParticles(root: NodeId3D, state: RenderState): Result<int32, Parti
 	snowNode = snowPlaced.value;
 	emberNode = emberPlaced.value;
 	const _synced: int32 = syncWorld(tree);
+	const snowWorld: Result<Mat4, SceneError> = tree.worldOf(snowNode);
+	const emberWorld: Result<Mat4, SceneError> = tree.worldOf(emberNode);
+	if (!snowWorld.ok || !emberWorld.ok) { return Result.err(ParticleSetupError.NodeRefused); }
+	playSystem(snow, snowWorld.value);
+	playSystem(embers, emberWorld.value);
 	for (let i = 0; i < PARTICLE_WARMUP_STEPS; i++) {
 		if (!advanceEmitter(snow, snowNode)) {
 			return Result.err(ParticleSetupError.EmitterRefused);
@@ -1018,22 +1033,29 @@ function setupParticles(root: NodeId3D, state: RenderState): Result<int32, Parti
 	return Result.ok(2);
 }
 
-function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId3D): boolean {
+function advanceEmitter(ref emitter: ParticleSystem, node: NodeId3D): boolean {
 	const world: Result<Mat4, SceneError> = tree.worldOf(node);
 	if (!world.ok) { return false; }
-	return updateEmitter(emitter, PARTICLE_STEP, world.value).ok;
+	return updateSystem(emitter, PARTICLE_STEP, world.value).ok;
 }
 
 function drawEmitter(
-	ref emitter: ParticleEmitter,
-	node: NodeId3D,
+	ref emitter: ParticleSystem,
 	mesh: MeshId,
+	visual: Span<float32>,
 	instances: Span<float32>,
 ): boolean {
-	const world: Result<Mat4, SceneError> = tree.worldOf(node);
-	if (!world.ok) { return false; }
-	const written: Result<int32, ParticleError> = writeInstances(emitter, world.value, instances);
+	const written: Result<int32, ParticleWriteError> = writeParticles(
+		particleWriter, emitter, [WHOLE_TILE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), visual);
 	if (!written.ok) { return false; }
+	for (let i = 0; i < written.value; i++) {
+		const from: int32 = i * PARTICLE_VISUAL_INSTANCE_STRIDE;
+		const to: int32 = i * PARTICLE_INSTANCE_STRIDE;
+		for (let k = 0; k < 4; k++) {
+			instances[to + k] = visual[from + k];
+			instances[to + 4 + k] = visual[from + 12 + k];
+		}
+	}
 	return writeStream(context, mesh, instances, written.value).ok;
 }
 
@@ -1344,8 +1366,8 @@ function stepScene(): boolean {
 		const stepped: boolean =
 			advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
 		const drawn: boolean = stepped &&
-			drawEmitter(snow, snowNode, snowMesh, snowInstances) &&
-			drawEmitter(embers, emberNode, emberMesh, emberInstances);
+			drawEmitter(snow, snowMesh, snowVisual, snowInstances) &&
+			drawEmitter(embers, emberMesh, emberVisual, emberInstances);
 		if (!drawn) {
 			console.log("campfire: a particle emitter failed to step or draw");
 			return false;
