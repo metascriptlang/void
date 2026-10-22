@@ -201,7 +201,7 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   `copyTextureToBuffer`, `copyBufferToTexture`, `copyTextureToTexture`, mapped reads), the control
   sokol lacks. P3: compute and storage, once `shader` emits the reflection. P4: timestamps,
   labels, limits.
-- **Where each backend is** (WARP pins in `webgpuD3d11Check.ms`, 334 tests; GL pins compile-only
+- **Where each backend is** (WARP pins in `webgpuD3d11Check.ms`, 410 tests; GL pins compile-only
   until a GO):
 
   | phase | D3D11 | GL | wgpu | Metal |
@@ -221,14 +221,28 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   `occlusionQuerySet` is refused rather than ignored. Replace a stub when you port its call.
 - **Window features:** `requestQuit`/`cancelQuit`, `frameDuration`, clipboard, cursors,
   `showMouse`, `lockMouse`, fullscreen and dropped files are in `src/sokol/window.ms` over
-  `appWindow.c`. Windows and the browser implement them; Linux and iOS stop by name
-  (`notPorted` in `src/platform/linux/window.c`, `notPortedIos` in `appWindow.c`). Linux is next on
-  this side; macOS and iOS are yours. The touch API is yours (`touchCount`, `identifier`); the
+  `appWindow.c`. Windows, Linux (X11), the browser and Android implement them (Android gives what
+  `sokol_app` gives there: an app-local clipboard, stored cursor and mouse state, no fullscreen, no
+  drops); iOS stops by name (`notPortedIos` in `appWindow.c`). macOS and iOS are yours. The touch API is yours (`touchCount`, `identifier`); the
   browser driver now fills it.
 - **Your two Windows items:** D3D11 `writeBuffer` already refuses a rewrite of bytes the frame
   wrote (`src/webgpu/d3d11/backend.ms`, `writeBuffer`, "rewrites bytes this frame already
   wrote"). The per-draw `applyPipeline` and uniform re-apply in void3d is queued as a beat-sokol
   row after the A/B bench.
+- **Since `9968add0`, for Metal to follow** (each is a stop or a missing field on Metal today):
+  - `GPURenderPassColorAttachment.depthSlice` (3d render attachments; 0 is slice 0) and
+    `checkedDepthTexelCopy` in `types.ms` (WebGPU's depth copy rules) are used by D3D11, GL and wgpu.
+  - Swapchain readback: the swapchain texture is `COPY_SRC`, and the door reads it with
+    `doorReadScreen`/`doorReadTexture` (`src/gpu/doorGpu.ms`). `tests/capture*` switch to it next on
+    Windows; the Apple branches of those files are yours.
+  - `src/webgpu/pool.ms` is one generic handle pool (`0c9b0fe8`): D3D11 adopted it, GL and wgpu are
+    adopting it now. Metal's `SlotQueue`/`allocateId`/`*Index` copy can go the same way (see the
+    D3D11 diff of `0c9b0fe8`): pool exhaustion stops by name, and a slot at its last 16-bit
+    generation is retired instead of reused.
+  - From the shader arc (2026-10-23): a comparison sampler on Metal. `stopOnUnportedSampler`
+    refuses `GPUSamplerDescriptor.compare` for Metal and `mtlNewSampler` takes no compare function;
+    the need is `MTLSamplerDescriptor.compareFunction` (shader side prints `sample_compare`). D3D11,
+    GL and wgpu already create comparison samplers.
 - **Linux build in WSL:** `msc` there is synced to `4b5816aea`. Yoga has no linux branch, so
   build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
   (libc++, as msc links) and pass it with `--passL`.
