@@ -12,6 +12,8 @@ import {
 	Intrinsic,
 	IoDirection,
 	ResourceKind,
+	SampleType,
+	SamplerType,
 	Sampling,
 	ScalarKind,
 	ShaderCase,
@@ -508,4 +510,94 @@ export function prepend(f: ShaderFunction, s: ShaderStmt): void {
 	let body = [s];
 	for (const b of f.body) { body.push(b); }
 	f.body = body;
+}
+
+function depthTexture(name: string, binding: int32, shape: TextureShape): ShaderResource {
+	let r = resource(ResourceKind.Texture, name, binding, textureType(shape, ScalarKind.F32));
+	r.sampleType = SampleType.Depth;
+	return r;
+}
+
+function comparisonSampler(name: string, binding: int32): ShaderResource {
+	let r = resource(ResourceKind.Sampler, name, binding, samplerType());
+	r.samplerType = SamplerType.Comparison;
+	return r;
+}
+
+export function depthCompare(op: Intrinsic, texture: int32, sampler: int32, shape: TextureShape,
+	at: ShaderExpr): ShaderExpr {
+	return intrinsicOf(op, F32, [
+		exprOf(ExprKind.Resource, textureType(shape, ScalarKind.F32), texture, []),
+		exprOf(ExprKind.Resource, samplerType(), sampler, []),
+		at,
+		f32(0.5),
+	]);
+}
+
+// Depth comparison on every depth shape, at the derivative's level in the fragment entry and at
+// level 0 in the vertex entry, beside texel fetches and size queries that pass no sampler.
+export function depthModule(): ShaderModule {
+	let m = new ShaderModule();
+	m.resources = [
+		depthTexture("shadowMap", 0, TextureShape.Depth2d),
+		depthTexture("shadowLayers", 1, TextureShape.Depth2dArray),
+		depthTexture("shadowCube", 2, TextureShape.DepthCube),
+		resource(ResourceKind.Texture, "lut", 3, TEXTURE),
+		comparisonSampler("shadowSmp", 0),
+		depthTexture("heightMap", 4, TextureShape.Depth2d),
+		comparisonSampler("heightSmp", 1),
+	];
+	let color = io("color", ShaderStage.Fragment, IoDirection.Out, VEC4, Builtin.None);
+	color.location = 0;
+	m.ios = [
+		io("clip", ShaderStage.Vertex, IoDirection.Out, VEC4, Builtin.Position),
+		io("uv", ShaderStage.Vertex, IoDirection.Out, VEC2, Builtin.None),
+		io("uv", ShaderStage.Fragment, IoDirection.In, VEC2, Builtin.None),
+		color,
+	];
+	const uv = ioRead(2, VEC2);
+	const layered = construct(VEC3, [uv, f32(1.0)]);
+	const D2 = TextureShape.Depth2d;
+	const LAYERS = TextureShape.Depth2dArray;
+	const CUBE = TextureShape.DepthCube;
+	const COMPARE = Intrinsic.TextureSampleCompare;
+	const LEVEL = Intrinsic.TextureSampleCompareLevel;
+	const levels = binary(BinaryOp.Add, F32, binary(BinaryOp.Add, F32,
+		depthCompare(LEVEL, 0, 4, D2, uv), depthCompare(LEVEL, 1, 4, LAYERS, layered)),
+		depthCompare(LEVEL, 2, 4, CUBE, layered));
+	const fetched = intrinsicOf(Intrinsic.TextureLoad, F32, [
+		exprOf(ExprKind.Resource, textureType(D2, ScalarKind.F32), 0, []),
+		construct(IVEC2, [i32(1.0)]),
+		i32(0.0),
+	]);
+	const lutRead = intrinsicOf(Intrinsic.TextureLoad, VEC4,
+		[exprOf(ExprKind.Resource, TEXTURE, 3, []), construct(IVEC2, [i32(1.0)]), i32(0.0)]);
+	const lutSize = intrinsicOf(Intrinsic.TextureDimensions, IVEC2,
+		[exprOf(ExprKind.Resource, TEXTURE, 3, []), i32(0.0)]);
+	const shaded = construct(VEC4, [
+		depthCompare(COMPARE, 0, 4, D2, uv),
+		depthCompare(COMPARE, 1, 4, LAYERS, layered),
+		depthCompare(COMPARE, 2, 4, CUBE, layered),
+		binary(BinaryOp.Mul, F32, levels, fetched),
+	]);
+	const heightSize = intrinsicOf(Intrinsic.TextureDimensions, IVEC2,
+		[exprOf(ExprKind.Resource, textureType(D2, ScalarKind.F32), 5, [])]);
+	const height = binary(BinaryOp.Add, F32,
+		depthCompare(LEVEL, 5, 6, D2, construct(VEC2, [f32(0.5)])),
+		exprOf(ExprKind.Convert, F32, -1, [swizzle(heightSize, I32, [0])]));
+	m.functions = [
+		shaderFunction("depthVs", [], [
+			assignOf(ioRead(1, VEC2), construct(VEC2, [f32(0.5)])),
+			assignOf(ioRead(0, VEC4), construct(VEC4, [f32(0.0), f32(0.0), height, f32(1.0)])),
+			ret(),
+		]),
+		shaderFunction("depthFs", [], [
+			ifOf(compare(BinaryOp.Less, swizzle(lutSize, I32, [0]), i32(1.0)),
+				[single(StmtKind.Discard)], []),
+			assignOf(ioRead(3, VEC4), binary(BinaryOp.Mul, VEC4, shaded, lutRead)),
+			ret(),
+		]),
+	];
+	m.entries = [entry("depthVs", ShaderStage.Vertex, 0), entry("depthFs", ShaderStage.Fragment, 1)];
+	return m;
 }

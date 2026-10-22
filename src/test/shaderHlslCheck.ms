@@ -8,11 +8,14 @@ import {
 	BinaryOp,
 	Builtin,
 	ExprKind,
+	Intrinsic,
 	IoDirection,
+	SamplerType,
 	ShaderExpr,
 	ShaderModule,
 	ShaderStage,
 	StmtKind,
+	TextureShape,
 	arrayType,
 	assignOf,
 	exprOf,
@@ -38,6 +41,7 @@ import {
 	caseOf,
 	computeModule,
 	construct,
+	depthModule,
 	f32,
 	fragmentModule,
 	i32,
@@ -180,6 +184,37 @@ test "the compute probe pads std430 elements and binds t and u registers" {
 	}
 }
 
+test "depth comparison samples each depth shape and fetches with no sampler" {
+	const m = depthModule();
+	assert irErrors(m).length == 0;
+	const ps = printed(m, 1, [0, 1]);
+	const vs = printed(m, 0, [0, 1]);
+	for (const piece of [
+		"Texture2D<float> shadowMap : register(t0);\n",
+		"Texture2DArray<float> shadowLayers : register(t1);\n",
+		"TextureCube<float> shadowCube : register(t2);\n",
+		"SamplerComparisonState shadowSmp : register(s0);\n",
+		"shadowMap.SampleCmp(shadowSmp, uv, 0.5)",
+		"shadowLayers.SampleCmp(shadowSmp, float3(uv, 1.0), 0.5)",
+		"shadowCube.SampleCmp(shadowSmp, float3(uv, 1.0), 0.5)",
+		"shadowMap.SampleCmpLevelZero(shadowSmp, uv, 0.5)",
+		"shadowLayers.SampleCmpLevelZero(shadowSmp, float3(uv, 1.0), 0.5)",
+		"shadowCube.SampleCmpLevelZero(shadowSmp, float3(uv, 1.0), 0.5)",
+		"shadowMap.Load(int3(((int2)1), 0))",
+		"lut.Load(int3(((int2)1), 0))",
+	]) {
+		if (!ps.includes(piece)) { console.log("missing: " + piece + "\n" + ps); }
+		assert ps.includes(piece);
+	}
+	for (const piece of [
+		"SamplerComparisonState heightSmp : register(s1);\n",
+		"heightMap.SampleCmpLevelZero(heightSmp, ((float2)0.5), 0.5)",
+	]) {
+		if (!vs.includes(piece)) { console.log("missing: " + piece + "\n" + vs); }
+		assert vs.includes(piece);
+	}
+}
+
 function refusal(m: ShaderModule, entryIndex: int32): string {
 	const slots = bindingSlots(m, [entryIndex], ShaderTarget.Hlsl5);
 	const text = printHlsl(m, entryIndex, slots.ok ? slots.value : []);
@@ -237,6 +272,24 @@ test "what HLSL cannot carry is refused by name" {
 	assert refusal(recursive, 0) == "printHlsl: function 'shade' is recursive";
 }
 
+test "a depth comparison HLSL cannot spell is refused by name" {
+	let vertex = depthModule();
+	vertex.functions[0].body[1].expr.operands[2].operands[0].intrinsic =
+		Intrinsic.TextureSampleCompare;
+	assert refusal(vertex, 0) == "printHlsl: TextureSampleCompare outside a fragment stage";
+
+	let filtering = depthModule();
+	filtering.resources[6].samplerType = SamplerType.Filtering;
+	assert refusal(filtering, 0) == "printHlsl: TextureSampleCompareLevel through a sampler " +
+		"that is no comparison sampler binding";
+
+	let colour = depthModule();
+	colour.functions[0].body[1].expr.operands[2].operands[0].operands[0].type.shape =
+		TextureShape.D2;
+	assert refusal(colour, 0) == "printHlsl: TextureSampleCompareLevel of a D2 texture, which " +
+		"holds no depth";
+}
+
 const PROBE_DIR = "out/hlslProbe";
 
 function probe(name: string, text: string): boolean {
@@ -251,4 +304,6 @@ test "printed modules are written for fxc" {
 	assert probe("vertex.vs", printed(vertexModule(), 0, [0]));
 	assert probe("fragment.ps", printed(fragmentModule(), 0, [0]));
 	assert probe("compute.cs", printed(computeModule(), 0, [0]));
+	assert probe("depth.vs", printed(depthModule(), 0, [0, 1]));
+	assert probe("depth.ps", printed(depthModule(), 1, [0, 1]));
 }

@@ -11,6 +11,7 @@ import {
 	Intrinsic,
 	IoDirection,
 	ResourceKind,
+	SamplerType,
 	ScalarKind,
 	ShaderExpr,
 	ShaderModule,
@@ -43,6 +44,7 @@ import {
 	caseOf,
 	computeModule,
 	construct,
+	depthModule,
 	entry,
 	f32,
 	fragmentModule,
@@ -262,8 +264,64 @@ test "a TextureLoad without a sampler reads through the pair the slots chose" {
 	assert irErrors(paired).length == 0;
 	assert printed(paired, 0, [0], GlslTarget.Glsl430)
 		.includes("color = texelFetch(tex_smp, ivec2(1), 0);\n");
-	assert refusal(loneLoadModule(false), 0, GlslTarget.Glsl430) ==
-		"printGlsl: texture 'tex' has no combined sampler in this stage's binding slots";
+	const lone = printed(loneLoadModule(false), 0, [0], GlslTarget.Glsl430);
+	assert lone.includes("layout(binding = 0) uniform sampler2D tex_SPIRV_Cross_DummySampler;\n");
+	assert lone.includes("color = texelFetch(tex_SPIRV_Cross_DummySampler, ivec2(1), 0);\n");
+}
+
+test "depth comparison spells every depth shape and fetches through dummy pairs" {
+	const m = depthModule();
+	assert irErrors(m).length == 0;
+	for (const target of TARGETS) {
+		const fs = printed(m, 1, [0, 1], target);
+		const vs = printed(m, 0, [0, 1], target);
+		for (const piece of [
+			"sampler2D shadowMap_SPIRV_Cross_DummySampler;\n",
+			"sampler2DShadow shadowMap_shadowSmp;\n",
+			"sampler2DArrayShadow shadowLayers_shadowSmp;\n",
+			"samplerCubeShadow shadowCube_shadowSmp;\n",
+			"sampler2D lut_SPIRV_Cross_DummySampler;\n",
+			"texture(shadowMap_shadowSmp, vec3(uv, 0.5))",
+			"texture(shadowLayers_shadowSmp, vec4(vec3(uv, 1.0), 0.5))",
+			"texture(shadowCube_shadowSmp, vec4(vec3(uv, 1.0), 0.5))",
+			"textureLod(shadowMap_shadowSmp, vec3(uv, 0.5), 0.0)",
+			"textureGrad(shadowLayers_shadowSmp, vec4(vec3(uv, 1.0), 0.5), vec2(0.0), vec2(0.0))",
+			"textureGrad(shadowCube_shadowSmp, vec4(vec3(uv, 1.0), 0.5), vec3(0.0), vec3(0.0))",
+			"texelFetch(shadowMap_SPIRV_Cross_DummySampler, ivec2(1), 0).x",
+			"texelFetch(lut_SPIRV_Cross_DummySampler, ivec2(1), 0)",
+			"textureSize(lut_SPIRV_Cross_DummySampler, 0)",
+		]) {
+			if (!fs.includes(piece)) { console.log("missing: " + piece + "\n" + fs); }
+			assert fs.includes(piece);
+		}
+		for (const piece of [
+			"sampler2D heightMap_SPIRV_Cross_DummySampler;\n",
+			"sampler2DShadow heightMap_heightSmp;\n",
+			"textureLod(heightMap_heightSmp, vec3(vec2(0.5), 0.5), 0.0)",
+			"textureSize(heightMap_SPIRV_Cross_DummySampler, 0)",
+		]) {
+			if (!vs.includes(piece)) { console.log("missing: " + piece + "\n" + vs); }
+			assert vs.includes(piece);
+		}
+	}
+}
+
+test "a depth comparison GLSL cannot spell is refused by name" {
+	let vertex = depthModule();
+	vertex.functions[0].body[1].expr.operands[2].operands[0].intrinsic =
+		Intrinsic.TextureSampleCompare;
+	assert refusal(vertex, 0, GlslTarget.Glsl430) ==
+		"printGlsl: TextureSampleCompare outside a fragment stage";
+
+	let filtering = depthModule();
+	filtering.resources[6].samplerType = SamplerType.Filtering;
+	assert refusal(filtering, 0, GlslTarget.Glsl430) == "printGlsl: TextureSampleCompareLevel " +
+		"through sampler pair 'heightMap_heightSmp', whose sampler is no comparison sampler";
+
+	let colour = depthModule();
+	colour.resources[5].type = TEXTURE;
+	assert refusal(colour, 0, GlslTarget.Glsl430) ==
+		"printGlsl: comparison sampler pair 'heightMap_heightSmp' on a D2 texture";
 }
 
 test "what GLSL cannot carry is refused by name" {
@@ -359,4 +417,10 @@ test "printed modules are written for a GLSL front end" {
 	}
 	assert probe("vertex.430linear.vert", printed(vertexModule(), 0, [0], GlslTarget.Glsl430));
 	assert probe("compute.430.comp", printed(computeModule(), 0, [0], GlslTarget.Glsl430));
+	for (const target of TARGETS) {
+		const tag = target == GlslTarget.Glsl430 ? "430" : "es";
+		assert probe("depth." + tag + ".vert", printed(depthModule(), 0, [0, 1], target));
+		assert probe("depth." + tag + ".frag", printed(depthModule(), 1, [0, 1], target));
+		assert probe("load." + tag + ".frag", printed(loneLoadModule(false), 0, [0], target));
+	}
 }

@@ -40,11 +40,13 @@ import {
 } from "../shader/ir";
 import {
 	BindingSlot,
+	DUMMY_SAMPLER,
 	ShaderTarget,
 	bindingSlots,
 	storageElementLayout,
 	uniformBlockLayout,
 } from "../shader/layout";
+import { depthModule } from "./shaderProbeModules";
 
 function field(name: string, type: ShaderType): ShaderField {
 	let f = new ShaderField();
@@ -172,7 +174,8 @@ function slotModule(): ShaderModule {
 }
 
 function describe(m: ShaderModule, slots: BindingSlot[]): string {
-	return slots.map((s) => m.resources[s.resource].name + " " + s.stage.toString() + " " +
+	return slots.map((s) => (s.resource >= 0 ? m.resources[s.resource].name : DUMMY_SAMPLER) +
+		" " + s.stage.toString() + " " +
 		String(s.group) + "/" + String(s.binding) + " " + String(s.nativeSlot) +
 		(s.nativeName != "" ? " " + s.nativeName : "") +
 		(s.textureBinding >= 0 ? " t" + String(s.textureBinding) : "")).join("; ");
@@ -269,6 +272,21 @@ test "GL names blocks and combines each sampled texture with its sampler" {
 		"heightSmp Vertex 1/34 -1 heightTex_heightSmp t3";
 	assert slots(slotModule(), ShaderTarget.Glsl430) == gl;
 	assert slots(slotModule(), ShaderTarget.Glsl300es) == gl;
+}
+
+test "GL pairs a texture fetched with no sampler with a dummy sampler" {
+	const gl = "shadowMap Fragment 1/0 -1; shadowLayers Fragment 1/1 -1; " +
+		"shadowCube Fragment 1/2 -1; lut Fragment 1/3 -1; heightMap Vertex 1/4 -1; " +
+		"SPIRV_Cross_DummySampler Fragment 1/-1 -1 shadowMap_SPIRV_Cross_DummySampler t0; " +
+		"shadowSmp Fragment 1/32 -1 shadowMap_shadowSmp t0; " +
+		"shadowSmp Fragment 1/32 -1 shadowLayers_shadowSmp t1; " +
+		"shadowSmp Fragment 1/32 -1 shadowCube_shadowSmp t2; " +
+		"SPIRV_Cross_DummySampler Fragment 1/-1 -1 lut_SPIRV_Cross_DummySampler t3; " +
+		"SPIRV_Cross_DummySampler Vertex 1/-1 -1 heightMap_SPIRV_Cross_DummySampler t4; " +
+		"heightSmp Vertex 1/33 -1 heightMap_heightSmp t4";
+	assert slots(depthModule(), ShaderTarget.Glsl430) == gl;
+	assert slots(depthModule(), ShaderTarget.Glsl300es) == gl;
+	assert !slots(depthModule(), ShaderTarget.Hlsl5).includes(DUMMY_SAMPLER);
 }
 
 test "a binding read by both stages is refused by name" {
