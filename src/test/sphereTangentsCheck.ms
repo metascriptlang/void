@@ -11,7 +11,7 @@ function checkTangents(sectors: int32): boolean {
 	for (let i = 0; i < data.vertexCount(); i++) {
 		const at = i * data.stride();
 		const normal = vec3(data.vertices[at + 3], data.vertices[at + 4], data.vertices[at + 5]);
-		const tangent = vec3(data.vertices[at + 8], data.vertices[at + 9], data.vertices[at + 10]);
+		const tangent = vec3(data.vertices[at + 12], data.vertices[at + 13], data.vertices[at + 14]);
 		if (!approx(tangent.length(), 1.0) || Math.abs(normal.dot(tangent)) >= 0.001) {
 			return false;
 		}
