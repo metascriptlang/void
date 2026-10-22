@@ -22,9 +22,18 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 } from "../webgpu/types.ms";
-import { requestDevice } from "../webgpu/device.ms";
+import { getCurrentTexture, requestDevice } from "../webgpu/device.ms";
+import {
+	doorBeginColorPass,
+	doorEndPass,
+	doorMakeAttachmentView,
+	doorMakeTargetImage,
+	doorReadTexture,
+	doorSetup,
+	doorShutdown,
+} from "../gpu/doorGpu.ms";
 import { nativeTexture, bindStats } from "../webgpu/d3d11/backend.ms";
-import { warpDevice, warpContext, warpReadback, warpReadbackSubresource, warpObjectName } from "./d3d11Warp.h";
+import { warpDevice, warpContext, warpReadback, warpReadback3d, warpReadbackSubresource, warpObjectName, warpTarget, warpTargetView } from "./d3d11Warp.h";
 
 @passL("-ld3d11");
 
@@ -702,7 +711,10 @@ function centreOf(pixels: Vec<uint8>, width: int32): uint32 {
 }
 
 function sampleCentre(device: GPUDevice, view: GPUTextureView): uint32 {
-	const module = texturedShader(device);
+	return sampleCentreWith(device, texturedShader(device), view);
+}
+
+function sampleCentreWith(device: GPUDevice, module: GPUShaderModule, view: GPUTextureView): uint32 {
 	const pipeline = flatPipeline(device, module, 1);
 	const sampler = device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" });
 	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
@@ -1404,4 +1416,163 @@ test "an occlusion query counts samples over a drawn triangle and none over an e
 	assert counts[0] > 0 && counts[32] == counts[0];
 	assert counts[33] == 0;
 	device.destroy();
+}
+
+const CUBE_FRAGMENT_HLSL = "TextureCube tex : register(t0);
+SamplerState smp : register(s0);
+float4 main(float4 p : SV_Position) : SV_Target0 { return tex.Sample(smp, float3(0.0, 0.0, 1.0)); }";
+
+test "a cube view at baseArrayLayer 6 samples the second cube of a twelve-layer texture" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "two cubes",
+		size: { width: 2, height: 2, depthOrArrayLayers: 12 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	device.queue.writeTexture({ texture: texture, origin: { x: 0, y: 0, z: 4 } }, texels(255, 0, 0, 4), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	device.queue.writeTexture({ texture: texture, origin: { x: 0, y: 0, z: 10 } }, texels(0, 0, 255, 4), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "cube",
+		vertexCode: VERTEX_HLSL,
+		vertexEntryPoint: "",
+		fragmentCode: CUBE_FRAGMENT_HLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const module = device.createShaderModule(descriptor);
+	assert sampleCentreWith(device, module, texture.createView({ label: null, dimension: "cube", baseArrayLayer: 6 })) == BLUE;
+	assert sampleCentreWith(device, module, texture.createView({ label: null, dimension: "cube", baseArrayLayer: 0 })) == RED;
+	device.destroy();
+}
+
+function resolveInto(device: GPUDevice, resolveView: GPUTextureView): void {
+	const source = colourTarget(device, 4);
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(clearingPass(source.createView({ label: null }), resolveView)).end();
+	device.queue.submit(encoder.finish());
+}
+
+test "a resolve target at baseMipLevel 1 and at baseArrayLayer 1 receives the resolved clear and leaves the other subresources alone" {
+	const device = openDevice();
+	const usage = (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32);
+	const mipped = device.createTexture({ label: "mips", size: { width: 2 * SIZE, height: 2 * SIZE, depthOrArrayLayers: 1 }, format: "rgba8unorm", usage: usage, sampleCount: 1, mipLevelCount: 2 });
+	resolveInto(device, mipped.createView({ label: null, baseMipLevel: 1, mipLevelCount: 1 }));
+	assert centreOf(readSubresource(mipped, 1, SIZE, SIZE), SIZE) == BLUE;
+	assert centreOf(readSubresource(mipped, 0, 2 * SIZE, 2 * SIZE), 2 * SIZE) == 0;
+	const layered = device.createTexture({ label: "layers", size: { width: SIZE, height: SIZE, depthOrArrayLayers: 2 }, format: "rgba8unorm", usage: usage, sampleCount: 1 });
+	resolveInto(device, layered.createView({ label: null, dimension: "2d", baseArrayLayer: 1 }));
+	assert centreOf(readSubresource(layered, 1, SIZE, SIZE), SIZE) == BLUE;
+	assert centreOf(readSubresource(layered, 0, SIZE, SIZE), SIZE) == 0;
+	device.destroy();
+}
+
+test "a colour attachment with depthSlice 2 clears that slice of a 3d texture alone" {
+	const device = openDevice();
+	const volume = device.createTexture({
+		label: "volume target",
+		size: { width: 4, height: 4, depthOrArrayLayers: 4 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.TEXTURE_BINDING as int32),
+		sampleCount: 1,
+		dimension: "3d",
+	});
+	let descriptor = clearingPass(volume.createView({ label: null, dimension: "3d" }), { id: 0 });
+	descriptor.colorAttachments[0].depthSlice = 2;
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	let pixels: Vec<uint8> = new Array(4 * 4 * 4);
+	assert warpReadback3d(nativeTexture(volume), 0, 2, pixels[0], 4, 4) == 1;
+	assert centreOf(pixels, 4) == BLUE;
+	assert warpReadback3d(nativeTexture(volume), 0, 1, pixels[0], 4, 4) == 1;
+	assert centreOf(pixels, 4) == 0;
+	assert warpReadback3d(nativeTexture(volume), 0, 3, pixels[0], 4, 4) == 1;
+	assert centreOf(pixels, 4) == 0;
+	device.destroy();
+}
+
+test "a depth16unorm texture round-trips a buffer copy and a cleared depth32float copies out as a whole subresource" {
+	const device = openDevice();
+	const sixteen = device.createTexture({
+		label: "depth16",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "depth16unorm",
+		usage: (GPUTextureUsage.COPY_DST as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	const upload = device.createBuffer({ label: "up", size: 1024, usage: (GPUBufferUsage.COPY_SRC as int32) | (GPUBufferUsage.COPY_DST as int32) });
+	let values: Vec<uint16> = [];
+	for (let row = 0; row < 4; row++) {
+		for (let column = 0; column < 128; column++) { values.push(column < 4 ? ((row * 4 + column + 1) * 1000) as uint16 : 0); }
+	}
+	device.queue.writeBuffer(upload, 0, values);
+	const download = readbackBuffer(device, 1024);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToTexture({ buffer: upload, offset: 0, bytesPerRow: 256, rowsPerImage: 4 }, { texture: sixteen }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	encoder.copyTextureToBuffer({ texture: sixteen }, { buffer: download, offset: 0, bytesPerRow: 256, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.submit(encoder.finish());
+	const read = readBack(download);
+	assert (read[0] as uint32) + ((read[1] as uint32) << 8) == 1000;
+	assert (read[256 + 6] as uint32) + ((read[256 + 7] as uint32) << 8) == 8000;
+	assert (read[3 * 256 + 6] as uint32) + ((read[3 * 256 + 7] as uint32) << 8) == 16000;
+	const depth = device.createTexture({
+		label: "depth32",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	let pass: GPURenderPassDescriptor = { label: "depth" };
+	pass.depthStencilAttachment = { view: depth.createView({ label: null }), depthClearValue: 0.5, depthLoadOp: "clear", depthStoreOp: "store" };
+	const second = device.createCommandEncoder();
+	second.beginRenderPass(pass).end();
+	const floats = readbackBuffer(device, 1024);
+	second.copyTextureToBuffer({ texture: depth }, { buffer: floats, offset: 0, bytesPerRow: 256, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.submit(second.finish());
+	const bits = readBack(floats);
+	assert bits[0] == 0 && bits[1] == 0 && bits[2] == 0 && bits[3] == 0x3F;
+	assert bits[3 * 256 + 12] == 0 && bits[3 * 256 + 15] == 0x3F;
+	device.destroy();
+}
+
+test "the swapchain texture copies out of the back buffer, resolved when it is multisampled" {
+	const device = openDevice();
+	const back = warpTarget(8, 8, 1);
+	const backView = warpTargetView(back);
+	const screen = getCurrentTexture({ width: 8, height: 8, sampleCount: 1, renderView: backView, resolveView: null, depthStencilView: null });
+	const clear = device.createCommandEncoder();
+	clear.beginRenderPass(clearingPass(screen.createView({ label: null }), { id: 0 })).end();
+	const direct = readbackBuffer(device, 256 * 8);
+	clear.copyTextureToBuffer({ texture: screen }, { buffer: direct, offset: 0, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
+	device.queue.submit(clear.finish());
+	assert texelAt(readBack(direct), 256, 3, 3) == BLUE;
+	const samples = warpTarget(8, 8, 4);
+	const resolved = warpTarget(8, 8, 1);
+	const multi = getCurrentTexture({ width: 8, height: 8, sampleCount: 4, renderView: warpTargetView(samples), resolveView: warpTargetView(resolved), depthStencilView: null });
+	const frame = device.createCommandEncoder();
+	frame.beginRenderPass(clearingPass(multi.createView({ label: null }), { id: 0 })).end();
+	const copied = readbackBuffer(device, 256 * 8);
+	frame.copyTextureToBuffer({ texture: multi }, { buffer: copied, offset: 0, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
+	device.queue.submit(frame.finish());
+	assert texelAt(readBack(copied), 256, 7, 7) == BLUE;
+	device.destroy();
+}
+
+test "the door reads a cleared bgra8 target back as RGBA and refuses a buffer of the wrong size" {
+	doorSetup(warpDevice(), warpContext(), 2, 0, 1);
+	const image = doorMakeTargetImage(8, 8, 4);
+	const view = doorMakeAttachmentView(image, 4);
+	doorBeginColorPass(view, 0.0, 0.0, 1.0, 1.0);
+	doorEndPass();
+	let out: Vec<uint8> = new Array(8 * 8 * 4);
+	assert doorReadTexture(image, 0, 0, 8, 8, out) == 1;
+	assert out[0] == 0 && out[1] == 0 && out[2] == 255 && out[3] == 255;
+	assert out[8 * 8 * 4 - 4] == 0 && out[8 * 8 * 4 - 2] == 255;
+	let wrong: Vec<uint8> = new Array(8 * 8 * 4 - 1);
+	assert doorReadTexture(image, 0, 0, 8, 8, wrong) == 0;
+	doorShutdown();
 }
