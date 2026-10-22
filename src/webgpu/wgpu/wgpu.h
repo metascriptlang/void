@@ -47,6 +47,47 @@ void wgWriteTexture(
 	int32_t width,
 	int32_t height,
 	int32_t depth);
+void wgCopyBufferToBuffer(WgBuffer source, int64_t sourceOffset, WgBuffer destination, int64_t destinationOffset, int64_t bytes);
+void wgCopyBufferToTexture(
+	WgBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowsPerImage,
+	WgTexture texture,
+	int32_t mipLevel,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t width,
+	int32_t height,
+	int32_t depth);
+void wgCopyTextureToBuffer(
+	WgTexture texture,
+	int32_t mipLevel,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	WgBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowsPerImage,
+	int32_t width,
+	int32_t height,
+	int32_t depth);
+void wgCopyTextureToTexture(
+	WgTexture source,
+	int32_t sourceMip,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	WgTexture destination,
+	int32_t destinationMip,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationZ,
+	int32_t width,
+	int32_t height,
+	int32_t depth);
 WgView wgCreateView(
 	WgTexture texture,
 	int32_t aspect,
@@ -80,7 +121,8 @@ void wgLayoutEntry(
 	int32_t binding,
 	int32_t visibility,
 	int32_t kind,
-	int32_t bindingType);
+	int32_t bindingType,
+	int32_t viewDimension);
 WgLayout wgCreateLayout(int32_t count);
 void wgReleaseLayout(WgLayout layout);
 

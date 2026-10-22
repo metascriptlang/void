@@ -150,6 +150,97 @@ void wgWriteTexture(
 	wgpuQueueWriteTexture(queue, &destination, data, (size_t)bytes, &layout, &extent);
 }
 
+void wgCopyBufferToBuffer(WgBuffer source, int64_t sourceOffset, WgBuffer destination, int64_t destinationOffset, int64_t bytes) {
+	wgpuCommandEncoderCopyBufferToBuffer(
+		encoder, (WGPUBuffer)source, (uint64_t)sourceOffset, (WGPUBuffer)destination, (uint64_t)destinationOffset, (uint64_t)bytes);
+}
+
+static WGPUTexelCopyTextureInfo textureInfo(WgTexture texture, int32_t mipLevel, int32_t x, int32_t y, int32_t z) {
+	WGPUTexelCopyTextureInfo info = WGPU_TEXEL_COPY_TEXTURE_INFO_INIT;
+	info.texture = (WGPUTexture)texture;
+	info.mipLevel = (uint32_t)mipLevel;
+	info.origin.x = (uint32_t)x;
+	info.origin.y = (uint32_t)y;
+	info.origin.z = (uint32_t)z;
+	info.aspect = WGPUTextureAspect_All;
+	return info;
+}
+
+static WGPUTexelCopyBufferInfo bufferInfo(WgBuffer buffer, int64_t offset, int32_t bytesPerRow, int32_t rowsPerImage) {
+	WGPUTexelCopyBufferInfo info = WGPU_TEXEL_COPY_BUFFER_INFO_INIT;
+	info.buffer = (WGPUBuffer)buffer;
+	info.layout.offset = (uint64_t)offset;
+	info.layout.bytesPerRow = (uint32_t)bytesPerRow;
+	info.layout.rowsPerImage = (uint32_t)rowsPerImage;
+	return info;
+}
+
+static WGPUExtent3D extentOf(int32_t width, int32_t height, int32_t depth) {
+	WGPUExtent3D extent = WGPU_EXTENT_3D_INIT;
+	extent.width = (uint32_t)width;
+	extent.height = (uint32_t)height;
+	extent.depthOrArrayLayers = (uint32_t)depth;
+	return extent;
+}
+
+void wgCopyBufferToTexture(
+	WgBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowsPerImage,
+	WgTexture texture,
+	int32_t mipLevel,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t width,
+	int32_t height,
+	int32_t depth) {
+	WGPUTexelCopyBufferInfo source = bufferInfo(buffer, offset, bytesPerRow, rowsPerImage);
+	WGPUTexelCopyTextureInfo destination = textureInfo(texture, mipLevel, x, y, z);
+	WGPUExtent3D extent = extentOf(width, height, depth);
+	wgpuCommandEncoderCopyBufferToTexture(encoder, &source, &destination, &extent);
+}
+
+void wgCopyTextureToBuffer(
+	WgTexture texture,
+	int32_t mipLevel,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	WgBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowsPerImage,
+	int32_t width,
+	int32_t height,
+	int32_t depth) {
+	WGPUTexelCopyTextureInfo source = textureInfo(texture, mipLevel, x, y, z);
+	WGPUTexelCopyBufferInfo destination = bufferInfo(buffer, offset, bytesPerRow, rowsPerImage);
+	WGPUExtent3D extent = extentOf(width, height, depth);
+	wgpuCommandEncoderCopyTextureToBuffer(encoder, &source, &destination, &extent);
+}
+
+void wgCopyTextureToTexture(
+	WgTexture source,
+	int32_t sourceMip,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	WgTexture destination,
+	int32_t destinationMip,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationZ,
+	int32_t width,
+	int32_t height,
+	int32_t depth) {
+	WGPUTexelCopyTextureInfo from = textureInfo(source, sourceMip, sourceX, sourceY, sourceZ);
+	WGPUTexelCopyTextureInfo to = textureInfo(destination, destinationMip, destinationX, destinationY, destinationZ);
+	WGPUExtent3D extent = extentOf(width, height, depth);
+	wgpuCommandEncoderCopyTextureToTexture(encoder, &from, &to, &extent);
+}
+
 WgView wgCreateView(
 	WgTexture texture,
 	int32_t aspect,
@@ -223,7 +314,8 @@ void wgLayoutEntry(
 	int32_t binding,
 	int32_t visibility,
 	int32_t kind,
-	int32_t bindingType) {
+	int32_t bindingType,
+	int32_t viewDimension) {
 	WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
 	entry.binding = (uint32_t)binding;
 	entry.visibility = (WGPUShaderStage)visibility;
@@ -232,7 +324,7 @@ void wgLayoutEntry(
 		entry.buffer.hasDynamicOffset = 1;
 	} else if (kind == 1) {
 		entry.texture.sampleType = (WGPUTextureSampleType)bindingType;
-		entry.texture.viewDimension = WGPUTextureViewDimension_2D;
+		entry.texture.viewDimension = (WGPUTextureViewDimension)viewDimension;
 	} else {
 		entry.sampler.type = (WGPUSamplerBindingType)bindingType;
 	}

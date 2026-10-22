@@ -19,6 +19,14 @@ import {
 	GPUCommandBuffer,
 	GPUColor,
 	GPUCommandEncoder,
+	GPUQuerySet,
+	GPUQuerySetDescriptor,
+	GPUSupportedFeatures,
+	GPUSupportedLimits,
+	GPUComputePassDescriptor,
+	GPUComputePassEncoder,
+	GPUComputePipeline,
+	GPUComputePipelineDescriptor,
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
@@ -42,7 +50,11 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	checkedBufferCopy,
+	checkedTexelBufferLayout,
+	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
+	stopOnUnportedRenderPass,
 	stopOnUnportedShaderModule,
 } from "../types.ms";
 import {
@@ -55,6 +67,10 @@ import {
 	WgTextureImpl,
 	WgViewImpl,
 	wgBeginEncoder,
+	wgCopyBufferToBuffer,
+	wgCopyBufferToTexture,
+	wgCopyTextureToBuffer,
+	wgCopyTextureToTexture,
 	wgBeginPass,
 	wgBindEntry,
 	wgColorAttachment,
@@ -275,6 +291,7 @@ struct ShaderBinding {
 	kind: BindingKind;
 	visibility: int32;
 	bindingType: int32;
+	viewDimension: int32;
 	size: int32;
 }
 
@@ -727,6 +744,17 @@ function sampleType(sample: string): int32 {
 	};
 }
 
+function bindingViewDimension(dimension: string): int32 {
+	return match (dimension) {
+		"" | "2d" => VIEW_2D,
+		"2d-array" => VIEW_2D_ARRAY,
+		"cube" => VIEW_CUBE,
+		"cube-array" => VIEW_CUBE_ARRAY,
+		"3d" => VIEW_3D,
+		_ => stopOnMember("GPUShaderBinding.viewDimension", dimension),
+	};
+}
+
 function samplerType(sampler: string): int32 {
 	return match (sampler) {
 		"" | "filtering" => SAMPLER_FILTERING,
@@ -925,10 +953,11 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	if (id == 0) { return { id: 0 }; }
 	const usage = descriptor.usage;
 	if (descriptor.size <= 0) { stop("GPUBufferDescriptor.size must be positive"); }
-	const mapped = (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.MAP_WRITE as int32);
-	if (has(usage, mapped)) {
-		stop("GPUBufferUsage MAP_READ and MAP_WRITE have no Void caller");
+	if (has(usage, (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.MAP_WRITE as int32))) {
+		stop("GPUBufferUsage MAP_READ and MAP_WRITE are not ported to wgpu: mapAsync completes in the browser's event loop and cannot block here without ASYNCIFY or JSPI");
 	}
+	if (has(usage, GPUBufferUsage.STORAGE as int32)) { stop("GPUBufferUsage.STORAGE is not ported to wgpu yet"); }
+	if (has(usage, GPUBufferUsage.INDIRECT as int32)) { stop("GPUBufferUsage.INDIRECT is not ported to wgpu yet"); }
 	const native = wgCreateBuffer(descriptor.size, usage, labelText(descriptor.label));
 	if (native == null) { stop(`wgpuDeviceCreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	const slot: BufferSlot = { id: id, size: descriptor.size, usage: usage, native: native, writtenFrame: -1, writtenEnd: 0 };
@@ -973,6 +1002,7 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const id = allocateId(textureQueue, "texture");
 	if (id == 0) { return { id: 0 }; }
+	if (has(descriptor.usage, GPUTextureUsage.STORAGE_BINDING as int32)) { stop("GPUTextureUsage.STORAGE_BINDING is not ported to wgpu yet"); }
 	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
 	const width = descriptor.size.width;
 	const height = descriptor.size.height;
@@ -1295,6 +1325,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 				descriptor.bindings[i].sampleType,
 				descriptor.bindings[i].samplerType,
 			),
+			viewDimension: bindingViewDimension(descriptor.bindings[i].viewDimension),
 			size: descriptor.bindings[i].size,
 		};
 		checkBinding(native, descriptor.bindings[i].group);
@@ -1318,13 +1349,13 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	slot.fragmentEntry = entryPoint(descriptor.fragmentEntryPoint);
 	for (let u = 0; u < slot.uniformCount; u++) {
 		const binding = slot.uniforms[u];
-		wgLayoutEntry(u, binding.binding, binding.visibility, LAYOUT_UNIFORM, 0);
+		wgLayoutEntry(u, binding.binding, binding.visibility, LAYOUT_UNIFORM, 0, VIEW_2D);
 	}
 	slot.groupLayouts[GPU_UNIFORM_GROUP] = wgCreateLayout(slot.uniformCount);
 	for (let r = 0; r < slot.resourceCount; r++) {
 		const binding = slot.resources[r];
 		const kind = binding.kind == BindingKind.Texture ? LAYOUT_TEXTURE : LAYOUT_SAMPLER;
-		wgLayoutEntry(r, binding.binding, binding.visibility, kind, binding.bindingType);
+		wgLayoutEntry(r, binding.binding, binding.visibility, kind, binding.bindingType, binding.viewDimension);
 	}
 	slot.groupLayouts[GPU_RESOURCE_GROUP] = wgCreateLayout(slot.resourceCount);
 	const uniformLayout = slot.groupLayouts[GPU_UNIFORM_GROUP];
@@ -1647,6 +1678,7 @@ export function beginRenderPass(
 	encoder: GPUCommandEncoder,
 	descriptor: GPURenderPassDescriptor,
 ): GPURenderPassEncoder {
+	stopOnUnportedRenderPass("wgpu", descriptor);
 	if (passActive) { stop("beginRenderPass with a render pass already open"); }
 	if (!encoding) { stop("beginRenderPass without createCommandEncoder"); }
 	passWidth = 0;
@@ -1858,35 +1890,208 @@ export function setStencilReference(reference: uint32): void {
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
+function encodedCopy(member: string): void {
+	if (passActive) { stop(`${member} inside a render pass`); }
+	if (!encoding) { stop(`${member} without createCommandEncoder`); }
+}
+
+function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
+	encodedCopy(member);
+	const index = bufferIndex(buffer.id);
+	if (!has(buffers[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
+	return index;
+}
+
+function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
+	encodedCopy(member);
+	const index = textureIndex(info.texture.id);
+	if (!has(textures[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
+	if (textures[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
+	if (textures[index].swapchainView != 0) { stop(`${member}: the swapchain texture belongs to the platform`); }
+	return index;
+}
+
+function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32, size: GPUExtent3D): void {
+	checkedTexelCopyRegion(
+		member,
+		textures[index].id,
+		textures[index].width,
+		textures[index].height,
+		textures[index].mipLevels,
+		textures[index].layers,
+		textures[index].volume,
+		info,
+		size,
+	);
+}
+
+function colorFormatOf(index: int32, member: string): FormatInfo {
+	const info = formatInfo(textures[index].format, "texture format");
+	if (info.depth) { stop(`${member}: depth or stencil GPUTexture ${textures[index].id} is not ported to wgpu yet`); }
+	return info;
+}
+
+function checkedBufferLayout(member: string, bytesPerPixel: int32, slot: int32, info: GPUTexelCopyBufferInfo, size: GPUExtent3D): int32 {
+	if (info.offset % 4 != 0) { stop(`${member}.offset ${info.offset} is not a multiple of 4`); }
+	return checkedTexelBufferLayout(member, bytesPerPixel, buffers[slot].size, info, size);
+}
+
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
-	stop("copyBufferToBuffer is not ported to wgpu yet");
+	const from = copyableBuffer(source, "copyBufferToBuffer source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyableBuffer(destination, "copyBufferToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
+	checkedBufferCopy(source.id, buffers[from].size, sourceOffset, destination.id, buffers[to].size, destinationOffset, size);
+	if (size == 0) { return; }
+	wgCopyBufferToBuffer(buffers[from].native, sourceOffset, buffers[to].native, destinationOffset, size);
 }
 
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	stop("copyBufferToTexture is not ported to wgpu yet");
+	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
+	const info = colorFormatOf(to, "copyBufferToTexture destination");
+	copyRegion("copyBufferToTexture destination", destination, to, size);
+	const bytesPerRow = checkedBufferLayout("copyBufferToTexture source", info.bytesPerPixel, from, source, size);
+	wgCopyBufferToTexture(
+		buffers[from].native,
+		source.offset,
+		bytesPerRow,
+		source.rowsPerImage == 0 ? size.height : source.rowsPerImage,
+		textures[to].native,
+		destination.mipLevel,
+		destination.origin.x,
+		destination.origin.y,
+		destination.origin.z,
+		size.width,
+		size.height,
+		size.depthOrArrayLayers,
+	);
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
-	stop("copyTextureToBuffer is not ported to wgpu yet");
+	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyableBuffer(destination.buffer, "copyTextureToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
+	const info = colorFormatOf(from, "copyTextureToBuffer source");
+	copyRegion("copyTextureToBuffer source", source, from, size);
+	const bytesPerRow = checkedBufferLayout("copyTextureToBuffer destination", info.bytesPerPixel, to, destination, size);
+	wgCopyTextureToBuffer(
+		textures[from].native,
+		source.mipLevel,
+		source.origin.x,
+		source.origin.y,
+		source.origin.z,
+		buffers[to].native,
+		destination.offset,
+		bytesPerRow,
+		destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage,
+		size.width,
+		size.height,
+		size.depthOrArrayLayers,
+	);
 }
 
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	stop("copyTextureToTexture is not ported to wgpu yet");
+	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
+	const fromFormat: string = textures[from].format;
+	const toFormat: string = textures[to].format;
+	if (fromFormat != toFormat) { stop(`copyTextureToTexture between formats '${fromFormat}' and '${toFormat}'`); }
+	if (textures[from].volume != textures[to].volume) { stop("copyTextureToTexture between a 3d and a 2d GPUTexture"); }
+	copyRegion("copyTextureToTexture source", source, from, size);
+	copyRegion("copyTextureToTexture destination", destination, to, size);
+	const mipWidth = Math.max(1, textures[from].width >> source.mipLevel);
+	const mipHeight = Math.max(1, textures[from].height >> source.mipLevel);
+	if (formatInfo(textures[from].format, "texture format").depth && (size.width != mipWidth || size.height != mipHeight)) {
+		stop(`copyTextureToTexture of depth GPUTexture ${source.texture.id} copies whole mips only`);
+	}
+	if (
+		from == to && source.mipLevel == destination.mipLevel
+			&& source.origin.z < destination.origin.z + size.depthOrArrayLayers && destination.origin.z < source.origin.z + size.depthOrArrayLayers
+			&& source.origin.x < destination.origin.x + size.width && destination.origin.x < source.origin.x + size.width
+			&& source.origin.y < destination.origin.y + size.height && destination.origin.y < source.origin.y + size.height
+	) {
+		stop(`copyTextureToTexture regions overlap inside mip ${source.mipLevel} of GPUTexture ${source.texture.id}`);
+	}
+	wgCopyTextureToTexture(
+		textures[from].native,
+		source.mipLevel,
+		source.origin.x,
+		source.origin.y,
+		source.origin.z,
+		textures[to].native,
+		destination.mipLevel,
+		destination.origin.x,
+		destination.origin.y,
+		destination.origin.z,
+		size.width,
+		size.height,
+		size.depthOrArrayLayers,
+	);
 }
 
 export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
-	stop("mapAsync is not ported to wgpu yet");
+	stop("mapAsync is not ported to wgpu: wgpuBufferMapAsync completes in the browser's event loop, and the build has neither ASYNCIFY nor JSPI to block on it");
 }
 
 export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
-	stop("getMappedRange is not ported to wgpu yet");
+	stop("getMappedRange is not ported to wgpu: it needs mapAsync");
 	return new Array(0);
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	stop("writeMappedRange is not ported to wgpu yet");
+	stop("writeMappedRange is not ported to wgpu: it needs mapAsync");
 }
 
 export function unmap(buffer: GPUBuffer): void {
-	stop("unmap is not ported to wgpu yet");
+	stop("unmap is not ported to wgpu: it needs mapAsync");
 }
+
+export function createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
+	stop("createComputePipeline is not ported to wgpu yet");
+	return { id: 0 };
+}
+
+export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
+	stop("beginComputePass is not ported to wgpu yet");
+	return { id: 0 };
+}
+
+export function setComputePipeline(pipeline: GPUComputePipeline): void { stop("setPipeline on a compute pass is not ported to wgpu yet"); }
+
+export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	stop("setBindGroup on a compute pass is not ported to wgpu yet");
+}
+
+export function dispatchWorkgroups(x: int32, y: int32, z: int32): void { stop("dispatchWorkgroups is not ported to wgpu yet"); }
+
+export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
+	stop("dispatchWorkgroupsIndirect is not ported to wgpu yet");
+}
+
+export function endComputePass(): void { stop("end on a compute pass is not ported to wgpu yet"); }
+
+export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
+	stop("createQuerySet is not ported to wgpu yet");
+	return { id: 0 };
+}
+
+export function destroyQuerySet(querySet: GPUQuerySet): void { stop("destroy on a GPUQuerySet is not ported to wgpu yet"); }
+
+export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
+	stop("resolveQuerySet is not ported to wgpu yet");
+}
+
+export function beginOcclusionQuery(queryIndex: int32): void { stop("beginOcclusionQuery is not ported to wgpu yet"); }
+export function endOcclusionQuery(): void { stop("endOcclusionQuery is not ported to wgpu yet"); }
+
+export function limits(): GPUSupportedLimits {
+	stop("limits is not ported to wgpu yet");
+	return {};
+}
+
+export function features(): GPUSupportedFeatures {
+	stop("features is not ported to wgpu yet");
+	return { bits: 0 };
+}
+
+export function pushDebugGroup(label: string): void { stop("pushDebugGroup is not ported to wgpu yet"); }
+export function popDebugGroup(): void { stop("popDebugGroup is not ported to wgpu yet"); }
+export function insertDebugMarker(label: string): void { stop("insertDebugMarker is not ported to wgpu yet"); }
