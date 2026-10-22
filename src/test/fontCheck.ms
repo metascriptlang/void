@@ -31,7 +31,10 @@ import {
 	FaceCandidate,
 	setFaceResolver,
 	faceDiscoveryAsks,
+	addFontBytes,
+	registerFaceBytes,
 } from "../void2d/font";
+import { readFile } from "std/fs";
 
 when (voidSprites) {
 	import { isSpriteFace } from "../void2d/face";
@@ -318,6 +321,41 @@ test "the resolver's first candidate Void can draw, cover and present wins, in o
 	assert codepointFaceFor(f, 0x4F60, Presentation.Text).face == cjk;
 	assert faceDiscoveryAsks() == asks + 1;
 	setFaceResolver(null);
+}
+
+function bytesOf(path: string): uint8[] {
+	const read = readFile(path);
+	if (read.ok) { return read.value.asBytes().slice(0); }
+	console.log(`fontCheck: ${path} did not read`);
+	unreachable;
+}
+
+test "a font given as bytes draws under a name no file has, and the same bytes again are accepted" {
+	const bytes = bytesOf(CJK);
+	const f = addFontBytes("memory/cjk.ttf", bytes);
+	assert f.ok;
+	assert glyphIndex(fontFace(f.value), 0x4F60) != 0;
+	assert addFontBytes("memory/cjk.ttf", bytes).ok;
+	const other = addFontBytes("memory/cjk.ttf", bytesOf(LATIN));
+	assert !other.ok;
+	assert other.error == FontError.NameHeld;
+	const empty: uint8[] = [];
+	const none = addFontBytes("memory/empty.ttf", empty);
+	assert !none.ok;
+	assert none.error == FontError.NotLoaded;
+}
+
+test "bytes under a name already read from its file are refused" {
+	assert addFont(TEXT_SYMBOL).ok;
+	const taken = addFontBytes(TEXT_SYMBOL, bytesOf(CJK));
+	assert !taken.ok;
+	assert taken.error == FontError.NameHeld;
+}
+
+test "a face registered as bytes answers its family" {
+	assert registerFaceBytes("memory/cjkFamily.ttf", bytesOf(CJK), "Memory Sans", 400, FontStyle.Normal).ok;
+	const f = resolved(font("Memory Sans", 400, FontStyle.Normal));
+	assert glyphIndex(fontFace(f), 0x4F60) != 0;
 }
 
 test "a codepoint a discovered face covers is drawn from it without asking the resolver again" {
