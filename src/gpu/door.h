@@ -91,6 +91,11 @@ int32_t doorViewIsColorAttachment(uint32_t view);
 uint32_t doorMakeSampler(int32_t filter, int32_t wrap);
 int32_t doorImageAlive(uint32_t image);
 int32_t doorViewAlive(uint32_t view);
+// RGBA8 rows of a w x h rectangle at (x, y), tightly packed, top row first; BGRA8 is swizzled.
+// `outLength` must be w * h * 4. 1 on success, 0 on a size mismatch.
+int32_t doorReadTexture(uint32_t image, int32_t x, int32_t y, int32_t width, int32_t height, uint8_t *out, int64_t outLength);
+// The same for the whole swapchain buffer, sized voidSwapchainWidth() x voidSwapchainHeight().
+int32_t doorReadScreen(uint8_t *out, int64_t outLength);
 void doorDestroyImage(uint32_t image);
 void doorDestroyView(uint32_t view);
 void doorDestroySampler(uint32_t sampler);

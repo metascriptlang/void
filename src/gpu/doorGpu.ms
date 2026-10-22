@@ -11,6 +11,7 @@ import {
 	GPUBlendOperation,
 	GPUBuffer,
 	GPUBufferUsage,
+	GPUMapMode,
 	GPUCommandEncoder,
 	GPUCompareFunction,
 	GPUCullMode,
@@ -444,7 +445,7 @@ export function doorMakeTargetImage(width: int32, height: int32, format: int32):
 		label: null,
 		size: { width, height, depthOrArrayLayers: 1 },
 		format: textureFormat(format, isDepthFormat(format) ? "depth" : "color"),
-		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
 		sampleCount: 1,
 	}).id;
 }
@@ -583,7 +584,7 @@ export function doorMakeTexture(width: int32, height: int32, format: int32, data
 		label: null,
 		size: { width, height, depthOrArrayLayers: 1 },
 		format: textureFormatOf(format),
-		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC,
 		sampleCount: 1,
 	});
 	if (texture.id != 0 && data.length > 0) { doorUpdateTexture(texture.id, data); }
@@ -741,6 +742,61 @@ export function doorDraw(base: int32, count: int32, instances: int32): void {
 @exportName("doorApplyScissor")
 export function doorApplyScissor(x: int32, y: int32, width: int32, height: int32): void {
 	pass.setScissorRect(x, y, width, height);
+}
+
+// Tightly packed RGBA8 rows, top row first, of a w x h rectangle at (x, y) of an RGBA8 or BGRA8
+// texture. The copy rides the frame's encoder and submits it, so earlier passes have run.
+// 0 when `out` is not exactly w * h * 4 bytes.
+function readTexture(texture: GPUTexture, x: int32, y: int32, width: int32, height: int32, out: Span<uint8>): int32 {
+	stopOnOpenPass("readTexture");
+	if (width <= 0 || height <= 0 || (out.length as int64) != (width as int64) * (height as int64) * 4) { return 0; }
+	const format = texture.format();
+	if (format != "rgba8unorm" && format != "bgra8unorm") { fail("readTexture of " + format + ", which is neither rgba8unorm nor bgra8unorm"); }
+	const rowBytes = width * 4;
+	const bytesPerRow = (rowBytes + 255) & ~255;
+	const staging = device.createBuffer({ label: "readTexture", size: (bytesPerRow as int64) * (height as int64), usage: (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.COPY_DST as int32) });
+	frameEncoder().copyTextureToBuffer({ texture, mipLevel: 0, origin: { x, y, z: 0 } }, { buffer: staging, offset: 0, bytesPerRow, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 });
+	device.queue.submit(frameEncoder().finish());
+	encoder = { id: 0 };
+	staging.mapAsync(GPUMapMode.READ as int32, 0, 0);
+	const mapped = staging.getMappedRange(0, 0);
+	const swizzle = format == "bgra8unorm";
+	for (let row = 0; row < height; row++) {
+		for (let column = 0; column < width; column++) {
+			const from = row * bytesPerRow + column * 4;
+			const to = row * rowBytes + column * 4;
+			out[to] = mapped[swizzle ? from + 2 : from];
+			out[to + 1] = mapped[from + 1];
+			out[to + 2] = mapped[swizzle ? from : from + 2];
+			out[to + 3] = mapped[from + 3];
+		}
+	}
+	staging.unmap();
+	staging.destroy();
+	return 1;
+}
+
+@exportName("doorReadTexture")
+export function doorReadTexture(image: uint32, x: int32, y: int32, width: int32, height: int32, out: Span<uint8>): int32 {
+	const texture: GPUTexture = { id: image };
+	if (!texture.isAlive()) { fail("readTexture of image " + String(image) + ", which is not alive"); }
+	return readTexture(texture, x, y, width, height, out);
+}
+
+// The screen pass's color target as of the last frame that drew it: the whole swapchain buffer.
+@exportName("doorReadScreen")
+export function doorReadScreen(out: Span<uint8>): int32 {
+	const width = voidSwapchainWidth();
+	const height = voidSwapchainHeight();
+	const screen = getCurrentTexture({
+		width,
+		height,
+		sampleCount: voidSwapchainSampleCount(),
+		renderView: voidSwapchainRenderView(),
+		resolveView: voidSwapchainResolveView(),
+		depthStencilView: voidSwapchainDepthStencilView(),
+	});
+	return readTexture(screen, 0, 0, width, height, out);
 }
 
 // ---- passes ----
