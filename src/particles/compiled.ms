@@ -70,6 +70,8 @@ export struct CompiledCurves {
 	frameOverTime: CompiledMinMaxCurve;
 	startFrame: CompiledMinMaxCurve;
 	lightRange: CompiledMinMaxCurve;
+	trailLifetime: CompiledMinMaxCurve;
+	trailWidth: CompiledMinMaxCurve;
 	lightIntensity: CompiledMinMaxCurve;
 	custom1X: CompiledMinMaxCurve;
 	custom1Y: CompiledMinMaxCurve;
@@ -160,6 +162,8 @@ export function compileCurves(asset: ParticleSystemAsset): Result<CompiledCurves
 		frameOverTime: try c(sheet.frameOverTime),
 		startFrame: try c(sheet.startFrame),
 		lightRange: try c(asset.lights.range),
+		trailLifetime: try c(asset.trails.lifetime),
+		trailWidth: try c(asset.trails.widthOverTrail),
 		lightIntensity: try c(asset.lights.intensity),
 		custom1X: try c(cd.first.x),
 		custom1Y: try c(cd.first.y),

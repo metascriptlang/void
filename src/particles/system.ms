@@ -8,13 +8,14 @@ import {
 	ParticleSystemAsset, SimulationSpace, RingBufferMode, InheritVelocityMode, NoiseQuality,
 	TextureSheetAnimationType, TextureSheetRowMode, TextureSheetTimeMode, CustomDataMode,
 	CustomDataStream, EmitterVelocityMode, Range, Burst, SubEmitterType, SubEmitterProperty,
-	ParticleCollider, ForceField, TriggerAction, CollisionType,
+	ParticleCollider, ForceField, TriggerAction, CollisionType, TrailMode,
 } from "./asset";
 import { ParticleColor, CompiledMinMaxCurve, MinMaxGradient, unitDraw, pcgHash } from "./curve";
 import { CompiledCurves, compileCurves } from "./compiled";
 import { ShapeSample, ShapeSlot, sampleShape } from "./shape";
 import { noise3 } from "./noise";
 import { Hit, MISS, sweep, overlaps, fieldPush, FieldPush } from "./collision";
+import { TrailRings } from "./trailRing";
 
 // Column c of particle i is data[c * capacity + i]; the first `count` slots are live, oldest first.
 export const POS_X: int32 = 0;
@@ -56,7 +57,9 @@ export const PENDING: int32 = 37;
 // Each Birth sub-emitter's emission carry for this parent particle (Unity's m_EmitAccumulator0/1).
 export const BIRTH_CARRY: int32 = 38;
 export const MAX_BIRTH_LINKS: int32 = 2;
-export const PARTICLE_COLUMNS: int32 = 40;
+// Which Ribbon trail the particle joins: its emission number modulo the ribbon count.
+export const RIBBON: int32 = 40;
+export const PARTICLE_COLUMNS: int32 = 41;
 export const MAX_TRIGGER_COLLIDERS: int32 = 32;
 
 export enum ParticleSystemError {
@@ -72,6 +75,8 @@ export enum ParticleSystemError {
 	NoTiles,
 	NonFiniteStep,
 	TooManyTriggerColliders,
+	// Sub-emitter children splitting their parent's ribbon: not drawn yet.
+	SplitSubEmitterRibbons,
 }
 
 // How a system turns frame time into steps: whole fixed steps with the rest carried, or one
@@ -166,6 +171,8 @@ export struct ParticleSystem {
 	ringIndex: int32;
 	// Emission ended and the last particle died: the stop action is due.
 	finished: boolean;
+	// PerParticle trail points, sized when the system plays.
+	trails: TrailRings;
 	// Set by the app, in the system's simulation space: the colliders of World collision and the
 	// force fields External Forces reads.
 	colliders: Vec<ParticleCollider>;
@@ -222,6 +229,8 @@ export const DRAW_FLIP_U: uint32 = 31;
 export const DRAW_FLIP_V: uint32 = 32;
 // Whether a particle carries a light, when the Lights module draws them at random.
 export const DRAW_LIGHT: uint32 = 33;
+export const DRAW_TRAIL: uint32 = 34;
+const DRAW_TRAIL_LIFETIME: uint32 = 35;
 
 const DEGREE: float32 = 0.017453292519943295;
 const PI: float32 = 3.141592653589793;
@@ -292,9 +301,13 @@ function validateAsset(asset: ParticleSystemAsset): Result<int32, ParticleSystem
 		return Result.err(ParticleSystemError.NoTiles);
 	}
 	const gradientsOk: boolean = gradientOk(m.startColor) && gradientOk(asset.colorOverLifetime.color)
+		&& gradientOk(asset.trails.colorOverLifetime) && gradientOk(asset.trails.colorOverTrail)
 		&& gradientOk(asset.colorBySpeed.color) && streamOk(asset.customData.first)
 		&& streamOk(asset.customData.second);
 	if (!gradientsOk) { return Result.err(ParticleSystemError.InvalidGradient); }
+	if (asset.trails.enabled && asset.trails.mode == TrailMode.Ribbon && asset.trails.splitSubEmitterRibbons) {
+		return Result.err(ParticleSystemError.SplitSubEmitterRibbons);
+	}
 	return Result.ok(1);
 }
 
@@ -349,6 +362,7 @@ export function create(
 		noiseOffset: unitDraw(systemSeed, DRAW_NOISE_OFFSET) * 1000.0,
 		ringIndex: 0,
 		finished: false,
+		trails: TrailRings.create(0, 0),
 		colliders: [],
 		forceFields: [],
 		inside: inside,
@@ -383,6 +397,10 @@ export function playSystem(ref sys: ParticleSystem, world: Mat4): void {
 	sys.stepTo = world.position();
 	const delayDraw: float32 = unitDraw(sys.systemSeed, DRAW_START_DELAY);
 	sys.delayLeft = sys.curves.startDelay.evaluate(0.0, delayDraw) as float64;
+	if (hasTrailRings(sys)) {
+		const h: float64 = sys.clock.fixedStep > 0.0 ? sys.clock.fixedStep : DEFAULT_STEP;
+		sys.trails = TrailRings.create(sys.capacity, (Math.ceil(maxTrailSeconds(sys) / h) as int32) + 2);
+	}
 	if (sys.asset.main.prewarm) {
 		const h: float64 = sys.clock.fixedStep > 0.0 ? sys.clock.fixedStep : DEFAULT_STEP;
 		const steps: int32 = Math.ceil(sys.asset.main.duration as float64 / h) as int32;
@@ -393,7 +411,10 @@ export function playSystem(ref sys: ParticleSystem, world: Mat4): void {
 // ParticleSystem.Stop: emission ends; `clear` also removes the live particles.
 export function stopSystem(ref sys: ParticleSystem, clear: boolean): void {
 	sys.emitting = false;
-	if (clear) { sys.count = 0; }
+	if (clear) {
+		sys.count = 0;
+		sys.trails.orphans.length = 0;
+	}
 }
 
 // The steps a frame of `frameTime` seconds runs, carrying the rest of a fixed step in `clock`.
@@ -481,6 +502,7 @@ function step(ref sys: ParticleSystem, h64: float64): void {
 		sys.noiseScroll = sys.noiseScroll + sys.curves.noiseScroll.evaluate(normalizedTime(sys), 0.0) * h;
 	}
 	if (sys.playing) { advanceTime(sys, h64); }
+	sys.trails.drainOrphans(h);
 	updateParticles(sys, h);
 	if (!sys.emitting && sys.count == 0 && sys.playing) {
 		sys.playing = false;
@@ -698,6 +720,9 @@ function spawnAt(
 	startAppearance(sys, i);
 	put(sys, BIRTH_CARRY, i, 0.0);
 	put(sys, BIRTH_CARRY + 1, i, 0.0);
+	const ribbons: uint32 = sys.asset.trails.ribbonCount > 1 ? sys.asset.trails.ribbonCount as uint32 : 1;
+	put(sys, RIBBON, i, (sys.spawned % ribbons) as float32);
+	if (sys.trails.perSlot > 0) { sys.trails.clearSlot(i); }
 	return i;
 }
 
@@ -866,7 +891,10 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 			age = span > 0.0 ? lo + fract((age - lo) / span) * span : lo;
 		}
 		let dead: boolean = age >= lifetime;
-		if (dead && !sys.wantDeath) { continue; }
+		if (dead && !sys.wantDeath) {
+			endTrail(sys, i, age);
+			continue;
+		}
 		const tN: float32 = saturate(age / lifetime);
 		let pos: Vec3 = vec3(get(sys, POS_X, i), get(sys, POS_Y, i), get(sys, POS_Z, i));
 		let vel: Vec3 = vec3(get(sys, VEL_X, i), get(sys, VEL_Y, i), get(sys, VEL_Z, i));
@@ -1043,7 +1071,11 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 			if (sys.wantDeath) {
 				sys.events.push(eventOf(sys, i, SubEmitterType.Death, pos, vel, 0.0, 1.0));
 			}
+			endTrail(sys, i, age);
 			continue;
+		}
+		if (sys.trails.perSlot > 0 && hasTrail(sys, i)) {
+			sys.trails.record(i, pos, age, trailSeconds(sys, i), asset.trails.minVertexDistance);
 		}
 		// Order-keeping compaction: survivors slide down over the dead.
 		if (kept != i) { moveSlot(sys, i, kept); }
@@ -1064,6 +1096,44 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 		writeAppearance(sys, k, speed, noiseSize);
 	}
 	sys.count = kept;
+}
+
+function hasTrailRings(sys: ParticleSystem): boolean {
+	return sys.asset.trails.enabled && sys.asset.trails.mode == TrailMode.PerParticle;
+}
+
+// Whether the Trails module's ratio gave particle `i` a trail.
+export function hasTrail(sys: ParticleSystem, i: int32): boolean {
+	return unitDraw(sys.seeds[i], DRAW_TRAIL) < sys.asset.trails.ratio;
+}
+
+// How long particle `i`'s trail points live: a share of its lifetime, scaled by its size when
+// the module asks.
+export function trailSeconds(sys: ParticleSystem, i: int32): float32 {
+	const t = sys.asset.trails;
+	let seconds: float32 = sys.curves.trailLifetime.evaluate(0.0, unitDraw(sys.seeds[i], DRAW_TRAIL_LIFETIME))
+		* get(sys, LIFETIME, i);
+	if (t.sizeAffectsLifetime) { seconds = seconds * get(sys, SIZE_X, i); }
+	return seconds;
+}
+
+function maxTrailSeconds(sys: ParticleSystem): float64 {
+	const c = sys.curves;
+	let seconds: float64 = (c.trailLifetime.maxValue() * c.startLifetime.maxValue()) as float64;
+	if (sys.asset.trails.sizeAffectsLifetime) { seconds = seconds * (c.startSizeX.maxValue() as float64); }
+	return seconds > 0.0 ? seconds : 0.0;
+}
+
+// A dying particle's trail drains on its own when it outlives the particle, else goes with it.
+function endTrail(ref sys: ParticleSystem, i: int32, age: float32): void {
+	if (sys.trails.perSlot == 0) { return; }
+	if (!sys.asset.trails.dieWithParticles && hasTrail(sys, i)) {
+		sys.trails.orphan(i, age, trailSeconds(sys, i),
+			{ r: get(sys, COLOR_R, i), g: get(sys, COLOR_G, i), b: get(sys, COLOR_B, i), a: get(sys, COLOR_A, i) },
+			get(sys, SIZE_X, i), get(sys, LIFETIME, i), sys.seeds[i]);
+	} else {
+		sys.trails.clearSlot(i);
+	}
 }
 
 function allBits(n: int32): uint32 {
@@ -1126,6 +1196,7 @@ function moveSlot(ref sys: ParticleSystem, from: int32, to: int32): void {
 	}
 	sys.seeds[to] = sys.seeds[from];
 	sys.inside[to] = sys.inside[from];
+	if (sys.trails.perSlot > 0) { sys.trails.moveSlot(from, to); }
 }
 
 // Rotation over lifetime and by speed are angular velocities in rad/s, integrated per step.

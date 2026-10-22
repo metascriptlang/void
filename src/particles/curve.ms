@@ -345,6 +345,19 @@ export function evaluate(this value: CompiledMinMaxCurve, t: float32, r: float32
 	};
 }
 
+// The largest value the curve takes over t and r, sampled at 65 points on a curve.
+export function maxValue(this value: CompiledMinMaxCurve): float32 {
+	let most: float32 = value.evaluate(0.0, 0.0);
+	for (let k = 0; k <= 64; k++) {
+		const t: float32 = (k as float32) / 64.0;
+		const low: float32 = value.evaluate(t, 0.0);
+		const high: float32 = value.evaluate(t, 1.0);
+		if (low > most) { most = low; }
+		if (high > most) { most = high; }
+	}
+	return most;
+}
+
 // True when the value cannot change with `t`.
 export function isConstantOverTime(this value: CompiledMinMaxCurve): boolean {
 	return value.mode == CurveMode.Constant || value.mode == CurveMode.TwoConstants;
