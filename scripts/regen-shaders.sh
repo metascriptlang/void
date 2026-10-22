@@ -20,8 +20,10 @@ case "$(uname -s)-$(uname -m)" in
 	*) echo "no sokol-shdc for $(uname -s)-$(uname -m)"; exit 1 ;;
 esac
 
-# Every shdc language a program ships in, iOS (device + simulator) included.
-LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5"
+# Every shader carries every target, iOS device and simulator included; src/shader/program.ms
+# compiles its programs with the same list, so this reads it from there.
+LANGS=$(sed -n 's/^const SHDC_LANGUAGES = "\(.*\)";$/\1/p' src/shader/program.ms)
+[ -n "$LANGS" ] || { echo "no SHDC_LANGUAGES line in src/shader/program.ms"; exit 1; }
 
 settle() {
 	if [ "$CHECK" = 0 ]; then
@@ -134,7 +136,7 @@ regenKeys() {
 			grep -q "^#ifdef $feature\$" "$input" ||
 				{ echo "programKeys.txt: row $module asks for $feature, which $vs and $fs never read"; exit 1; }
 		done
-		"$SHDC" -i "$input" -o "$tables/$module" -l "$LANGS_IOS" -f bare_yaml -m "$module" $defines >/dev/null
+		"$SHDC" -i "$input" -o "$tables/$module" -l "$LANGS" -f bare_yaml -m "$module" $defines >/dev/null
 		echo "$module $tables/${module}_${module}_reflection.yaml $layout" >> "$tables/rows"
 		layoutOrdinal=$(ordinal VertexLayout "$layout")
 		echo "	$layoutOrdinal," >> "$work/dataLayouts"
@@ -218,9 +220,9 @@ generate tools/genShaders.ms "$GENERATED"
 generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
 generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 slots src/void2d/shader2dGen.glsl src/void2d/shader2dSlots.h VOID2D_SHADER2D_SLOTS_H
-tables src/void2d/shader2d.glsl src/void2d/shader2dModules.ms "$LANGS_IOS" ../webgpu/types.ms
+tables src/void2d/shader2d.glsl src/void2d/shader2dModules.ms "$LANGS" ../webgpu/types.ms
 regenKeys
-tables tests/integration/gpuCopy.glsl tests/integration/gpuCopyModules.ms "$LANGS_IOS" ../../src/webgpu/types.ms
+tables tests/integration/gpuCopy.glsl tests/integration/gpuCopyModules.ms "$LANGS" ../../src/webgpu/types.ms
 
 [ "$CHECK" = 1 ] && exit "$STALE"
 echo "OK: shader headers regenerated"

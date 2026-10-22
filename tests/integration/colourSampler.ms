@@ -198,7 +198,7 @@ let rasterized: int32 = 0;
 function init(): void {
 	const expected: int32 = voidCaptureEnvInt("COLOUR_SAMPLER_BACKEND", 0);
 	const actual: int32 = voidCaptureBackend();
-	require((actual == 1 || actual == 4) && (expected == 0 || actual == expected),
+	require((actual == 1 || actual == 4 || actual == 5) && (expected == 0 || actual == expected),
 		`expected backend ${expected}, actual ${actual}`);
 	gfxSetup();
 	setup2d();

@@ -44,6 +44,33 @@ still happen, or the view frame aborts.
 Of these references, only sokol was read at source (`sg_swapchain` in the pinned
 `sokol_gfx.h`). The others are cited from their documented models.
 
+## Frame admission
+
+A view starts a frame only when its surface can take one without waiting for the display.
+`viewReady(v)` answers that without blocking, and `viewFrame(v)` returns false without calling
+the frame closure when it is not. A host that gets false keeps the frame owed and asks its clock
+for the next tick; it never retries in a loop, because the answer changes only when the display
+shows a frame.
+
+| platform | admitted while | primitive |
+|---|---|---|
+| macOS, iOS | frames acquired and not yet shown < `maximumDrawableCount` (set to 3) | `presentGate.m`: an atomic count, `addPresentedHandler` |
+| Windows (D3D11 flip) | the frame-latency waitable object is signalled (latency 2) | `SetMaximumFrameLatency`, `GetFrameLatencyWaitableObject`, polled with timeout 0 |
+| Web | always | `requestAnimationFrame` already holds one frame in flight |
+| Android | always, not measured yet | `eglSwapBuffers` still blocks when the queue is full |
+
+Why: a loop that makes one frame per vsync never drains a queue it once overfilled. On an M1 at
+120 Hz, a Haro window that typed into continuous frames kept a 5–7.5 ms wait in
+`nextDrawable` on the main thread every frame after the typing stopped, with 4 vsyncs from
+acquire to screen instead of 3 (2026-10-22). Admitting at 3 in flight: 0.03 ms waits, 119 fps,
+3 vsyncs. Admitting at 2, or giving the layer 2 drawables, dropped to 40–80 fps. The shape is
+Flutter's (`animator.cc`: a frame whose pipeline is full is skipped and a new frame requested)
+and Chromium's pending-swap limit; wgpu caps latency the same way per backend.
+
+Void's own window driver (`voidRun`) skips its tick on the same gate on macOS. The Windows window
+driver waits for the latency object with `MsgWaitForMultipleObjectsEx`, so input still wakes it;
+the GL window driver (`windowGl.c`) admits every frame and blocks in `SwapBuffers`.
+
 ## Windows: two drivers in one binary
 
 `bridgeWin.c` holds both the sokol_app window driver (`voidRun`, used by the demos, the golden
@@ -84,7 +111,51 @@ sublayer of the view's layer (it sets `wantsLayer`), sized to the view's bounds 
 makes the layer and attaches it nowhere: `viewSwapChain` returns the `CAMetalLayer*`, as it returns
 the `IDXGISwapChain1*` on Windows, and the host adds it to its own layer tree. `w` and `h` are
 pixels. `tests/integration/macViews.ms` creates both and checks sizes, resize and destroy, with no
-pixel readback because the Metal capture path is a stub.
+pixel readback, because the Metal readback reads only the window driver's drawable.
+
+## iOS: an app driver on the host views
+
+`bridgeIosApp.m` gives iOS a `voidRun`, so an entry written for `voidRun` (Neon's `runCanvas`)
+runs as a full-screen UIKit app. sokol_app's iOS path was not used: it has no marked text and no
+hardware-key presses, which a terminal and an editor need. The driver is a host of the view
+driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `viewFrame` from a
+`CADisplayLink`, and it builds `sapp_event` values itself and hands them to `appWindow.c`, so
+`window.ms` reads them as on Windows and the web.
+
+- `voidRun` enters `UIApplicationMain` and does not return. The app's `main()` calls `MsMain`
+  (`src/examples/iosAppEntry.m`), as Neon's iOS entry does.
+- Touches arrive in framebuffer pixels in `AppEvent.touches`, with `changed` set on the touches
+  that moved; `safeArea()` gives the insets in pixels and `keyboardHeight()` how far a docked
+  software keyboard covers the view (0 hidden or floating), both changing with a `Resized` event.
+- A hardware key gives `KeyDown`/`KeyUp`; Backspace repeats while held. Typed text gives `Char`
+  per codepoint while text input is off, and `TextInput` plus `Preedit` for marked text while
+  `setTextInput(true)`; only then does the software keyboard show.
+- Demo: `src/examples/iosApp.ms` logs every event; a tap toggles text input.
+
+## Android: an app driver on the host views
+
+`bridgeAndroidApp.c` is the Android twin of `bridgeIosApp.m`, for the activity Ion's Android
+generator emits. Its one view, `VoidAppView` in the Java library `src/sokol/android/app`, is a
+`SurfaceView` that hosts the view driver in `bridgeAndroid.c` (EGL, GLES3) from Choreographer
+frames on the main thread, and sends touches, keys, IME text and window insets back as
+`sapp_event` values for `appWindow.c`.
+
+- The app compiles `src/sokol/androidAppEntry.c`, which defines Ion's `NativeApp` entry points,
+  and declares the Java library with Ion's `androidLibrary`. `NativeApp.start` runs `MsMain`;
+  `voidRun` records the closures and returns, and `start` then adds the view. Void imports
+  nothing from Ion; a Neon widget app defines the same entry points, so only a `voidRun` app
+  compiles this file.
+- The working directory is the app's files dir; APK assets are not extracted there.
+- Touches, `safeArea()` and `keyboardHeight()` (the IME inset, 0 when hidden or floating) are in
+  framebuffer pixels and change with a `Resized` event, as on iOS. Pause and resume give
+  `Suspended` and `Resumed`; the surface is dropped while the activity is stopped and the view
+  recreated on its return, with the same context.
+- A hardware key gives `KeyDown`/`KeyUp` with its modifiers; while text input is on, the IME may
+  take a letter's `KeyDown` and send its text alone. Nothing is committed while ctrl or meta is
+  held. `setImeRect` has no effect: the IME places its candidates itself.
+- `voidAndroidEnv`, `voidAndroidClassLoader` and `voidAndroidActivity` (`androidApp.h`) let code
+  above Void reach Java from the main thread.
+- Demo: `src/examples/iosApp.ms` is built the same way on Android.
 
 ## iOS: an app driver on the host views
 
@@ -150,12 +221,23 @@ second runtime per mount, which none of R3F, Three.js or Heaps does.
   `Module.preinitializedWebGPUDevice` unless the page put one there, and read by
   `emscripten_webgpu_get_device()` (emdawnwebgpu `library_webgpu.js:650`). Each view configures
   its own canvas surface; `stop` unconfigures it.
+- A browser can list WebGPU and still give no device: Chrome on some Macs rejects
+  `requestDevice()` with "Failed to create MTLSharedEvent" (Geass, 2026-10-20). `voidStart(canvas,
+  onError)` then calls `onError` with an `Error` naming the cause and starts nothing, so the page
+  can load the WebGL2 build instead; without `onError` the cause goes to `console.error`. The
+  WebGPU build cannot fall back by itself, because sokol fixes its backend at compile time.
 - WebGL2: a context belongs to its canvas, so the device is the one live view's context, and a
   second live view aborts by name. `stop` shuts sokol down, calls
   `WEBGL_lose_context.loseContext()` and destroys the context. The next view sets sokol up on its
   own context and bumps the GPU generation, as Android's context restore does
   (`bridgeAndroid.c` `restore_context`): `contextGeneration()` owners drop their old ids.
 - The view's pixel size follows the canvas's CSS size times `devicePixelRatio`, read every frame.
+- `setViewSampleCount(n)` holds on the web as on native. WebGPU renders into an `n`-sample
+  texture per view and resolves it into the canvas texture, as sokol_app's own WebGPU swapchain
+  does; WebGL2 asks the context for `antialias`, so the browser picks the sample count.
+- `embedRegister` does not return on the web. Like `voidRun`, it ends in
+  `emscripten_exit_with_live_runtime()`: a `main` that returns destroys the program's module
+  globals before the first `voidStart`, and the first `init` that touches one fails.
 
 ## What proves it
 
@@ -178,18 +260,24 @@ second runtime per mount, which none of R3F, Three.js or Heaps does.
 
 - `sh scripts/webViews.sh` builds `src/examples/webViews.ms` for WebGPU and WebGL2 and runs
   `tests/web/views.html` in headless Chrome: a view started, stopped, then started on a second
-  canvas. Each view must show its clear colour in a screenshot, and each stop must leave no
-  animation frame requested in 300 ms and the canvas context released (WebGL2 `isContextLost()`,
-  WebGPU `getCurrentTexture()` throwing). 12 of 12 passed on 2026-10-20 (msc BUILD `177f04c27`,
+  canvas, both at 4 samples. Each view must show its clear colour in a screenshot and render
+  multisampled (WebGL2 `getContextAttributes().antialias`, WebGPU a texture created with
+  `sampleCount > 1`), and each stop must leave no animation frame requested in 300 ms and the
+  canvas context released (WebGL2 `isContextLost()`, WebGPU `getCurrentTexture()` throwing). The
+  clear colour's last channel is appended by `init` to a module-initialized global, so every frame
+  reads what `init` wrote. 16 of 16 passed on 2026-10-20 (msc BUILD `177f04c27`,
   emscripten 5.0.5, Chrome 155 on macOS). Headless Chrome on macOS hands out neither WebGL2 nor a
   WebGPU adapter except on SwiftShader, so the run uses it, and SwiftShader takes seconds to hand
-  out the WebGPU device. With `stop` no longer destroying the view, 5 checks went red.
+  out the WebGPU device. Measured red on mutation: `stop` no longer destroying the view (5 checks);
+  `embedRegister` returning (both backends end in `Uncaught ExitStatus` before the first frame); the
+  WebGPU resolve view dropped (both views white); WebGL2 `antialias` off (both views at 1 sample).
+  The pixels of an edge drawn at 4 samples are not checked: the views only clear.
 
 Not verified:
 
-- A view that draws more than a clear across a WebGL2 restart. The web test's views only clear,
-  so the GPU-generation rebuild of void2d and void3d resources after a second WebGL2 setup is
-  covered only by the Android context-loss path.
+- A view that draws more than a clear across a WebGL2 restart, in a Void test. The web test's
+  views only clear. Outside this repo, geass-3d's mech redrew its void3d scene after a WebGL2
+  restart in headless Chrome (2026-10-20, void `b464abd` with the live runtime added by hand).
 
 - A live DPI change. This box has one monitor at 96 DPI. The scale path is covered only by
   `twoViews` at 1.25 and 1.5.

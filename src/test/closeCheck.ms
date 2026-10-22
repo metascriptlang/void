@@ -98,10 +98,10 @@ test "closing the core gives its screen mesh and both blocks back, once" {
 	assert !context.uniforms.holds(core.cameraBlock) && !context.uniforms.holds(core.lightBlock);
 }
 
-test "closing a forward preset gives back its copy material and closes its core" {
+test "closing a forward preset gives back its copy and over materials and closes its core" {
 	let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
 	let forward: ForwardRenderer = forwardOn(context);
-	assert context.liveMeshes() == 1 && context.liveMaterials() == 1;
+	assert context.liveMeshes() == 1 && context.liveMaterials() == 2;
 	let alias: ForwardRenderer = forward;
 	closeForward(alias);
 	assert forward.isClosed() && forward.core.isClosed();

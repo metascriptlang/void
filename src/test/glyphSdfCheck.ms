@@ -1,13 +1,12 @@
 import "../void2d/textSdfSwitch";
 import {
-	void2dGlyphBox,
-	void2dGlyphSdfBox,
 	void2dGlyphSdfRasterize,
 	void2dGlyphSdfGenerations,
 	void2dGlyphSdfStbDiff,
 	void2dGlyphPageCreate,
 	void2dGlyphPageTexel,
 } from "../void2d/glyph.h";
+import { glyphBox, glyphSdfBox } from "../void2d/glyphBoxes";
 import { loadFace, syntheticFace, glyphIndex } from "../void2d/face";
 import { SDF_EDGE, SDF_PAD } from "../void2d/textSdf";
 
@@ -48,7 +47,7 @@ struct Tile {
 const EMPTY_TILE: Tile = { x: 0, y: 0, w: 0, h: 0, left: 0, top: 0 };
 
 function generate(face: int32, glyph: int32): Tile {
-	const box: Ptr<int32> = void2dGlyphSdfBox(face, glyph);
+	const box = glyphSdfBox(face, glyph);
 	const w: int32 = box[2] - box[0];
 	const h: int32 = box[3] - box[1];
 	if (w <= 0 || h <= 0) { return EMPTY_TILE; }
@@ -119,12 +118,12 @@ test "the box is the coverage box at 32 px per em with the pad on every side" {
 	const face = plain();
 	for (const codepoint of ["I".code, "g".code, "W".code, "@".code]) {
 		const glyph: int32 = glyphIndex(face, codepoint);
-		const coverage: Ptr<int32> = void2dGlyphBox(face, glyph, 32.0, 0.0);
+		const coverage = glyphBox(face, glyph, 32.0, 0.0);
 		const left: int32 = coverage[0];
 		const top: int32 = coverage[1];
 		const right: int32 = coverage[2];
 		const bottom: int32 = coverage[3];
-		const box: Ptr<int32> = void2dGlyphSdfBox(face, glyph);
+		const box = glyphSdfBox(face, glyph);
 		assert box[0] == left - SDF_PAD;
 		assert box[1] == top - SDF_PAD;
 		assert box[2] == right + SDF_PAD;
@@ -136,7 +135,7 @@ test "the box is the coverage box at 32 px per em with the pad on every side" {
 test "a space has no tile and nothing is generated for it" {
 	const face = plain();
 	const before: uint32 = void2dGlyphSdfGenerations();
-	const box: Ptr<int32> = void2dGlyphSdfBox(face, glyphIndex(face, " ".code));
+	const box = glyphSdfBox(face, glyphIndex(face, " ".code));
 	assert box[0] == 0 && box[1] == 0 && box[2] == 0 && box[3] == 0 && box[4] == 0;
 	assert void2dGlyphSdfGenerations() == before;
 }
@@ -197,7 +196,7 @@ test "a synthetic face has no stb reference to compare against" {
 test "the rasterizer answers a refused tile with its code and counts no generation" {
 	const face = plain();
 	const glyph: int32 = glyphIndex(face, "I".code);
-	const box: Ptr<int32> = void2dGlyphSdfBox(face, glyph);
+	const box = glyphSdfBox(face, glyph);
 	const w: int32 = box[2] - box[0];
 	const h: int32 = box[3] - box[1];
 	const before: uint32 = void2dGlyphSdfGenerations();

@@ -35,6 +35,7 @@ import {
 	remove,
 	removeChildren,
 	setMeshOf,
+	setMaterialOf,
 	setName,
 	NO_NODE_ID,
 } from "../void3d/scene";
@@ -209,6 +210,58 @@ test "setMeshOf holds the new mesh before it lets go of the one shown, even when
 	const next: MeshId = added(context, quad());
 	assert setMeshOf(scene, node, next).ok;
 	assert !context.hasMesh(shown) && context.meshHolders[next.index] == 2;
+}
+
+test "setMaterialOf holds the new material before it lets go of the one shown, even when they are one" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const mesh: MeshId = added(context, quad());
+	const shown: MaterialId = plainMaterial(context);
+	let scene: Scene3D = Scene3D.create(context);
+	const node: NodeId3D =
+		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, shown)
+		catch NO_ID;
+	const sibling: NodeId3D =
+		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, shown)
+		catch NO_ID;
+	assert holders(releaseMaterial(context, shown)) == 2;
+	assert setMaterialOf(scene, node, shown).ok;
+	assert context.hasMaterial(shown) && context.materialHolders[shown.index] == 2;
+	const next: MaterialId = plainMaterial(context);
+	assert setMaterialOf(scene, node, next).ok;
+	assert context.materialHolders[shown.index] == 1 && context.materialHolders[next.index] == 2;
+	assert scene.meshes[scene.nodes[node.index].payload].material.index == next.index;
+	assert scene.meshes[scene.nodes[sibling.index].payload].material.index == shown.index;
+	assert setMaterialOf(scene, sibling, next).ok;
+	assert !context.hasMaterial(shown) && context.materialHolders[next.index] == 3;
+	remove(scene, node);
+	assert context.materialHolders[next.index] == 2;
+	assert holders(releaseMaterial(context, next)) == 1;
+	assert setMaterialOf(scene, sibling, next).ok;
+	assert context.hasMaterial(next) && context.materialHolders[next.index] == 1;
+}
+
+test "setMaterialOf refuses a released or foreign material and keeps the one shown" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const mesh: MeshId = added(context, quad());
+	const shown: MaterialId = plainMaterial(context);
+	const gone: MaterialId = plainMaterial(context);
+	assert holders(releaseMaterial(context, gone)) == 0;
+	let scene: Scene3D = Scene3D.create(context);
+	const node: NodeId3D =
+		try addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh, shown)
+		catch NO_ID;
+	const stale: Result<int32, SceneError> = setMaterialOf(scene, node, gone);
+	assert !stale.ok;
+	if (!stale.ok) { assert stale.error == SceneError.StaleMaterial; }
+	let other: DrawContext = DrawContext.withUniformCapacity(0);
+	const _first: MaterialId = plainMaterial(other);
+	const _second: MaterialId = plainMaterial(other);
+	const elsewhere: MaterialId = plainMaterial(other);
+	const foreign: Result<int32, SceneError> = setMaterialOf(scene, node, elsewhere);
+	assert !foreign.ok;
+	if (!foreign.ok) { assert foreign.error == SceneError.ForeignMaterial; }
+	assert context.materialHolders[shown.index] == 2;
+	assert scene.meshes[scene.nodes[node.index].payload].material.index == shown.index;
 }
 
 test "a node refuses a released mesh or material, and holds nothing then" {

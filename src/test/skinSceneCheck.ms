@@ -1,17 +1,18 @@
 import {
 	Scene3D, SceneError, Transform3D, addGroup, addSkinMeshNode, rootId, closeScene,
-	refreshChecked, setLocal, setPickable, remove,
+	refreshChecked, setLocal, setPickable, remove, setMaterialOf,
 } from "../void3d/scene";
 import { SkinGeometry, SkinGeometryError, bind, spatialReady } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
 import { SkinPalette, create } from "../void3d/skinPalette";
 import { MeshData, addVertex, addSkinAttributes } from "../void3d/meshData";
-import { MeshId, MaterialId, DrawItem, validSkin } from "../void3d/draw";
+import { MeshId, MaterialId, DrawItem, validSkin, addMaterial } from "../void3d/draw";
+import { Material, Phase } from "../void3d/material";
 import { Program, ProgramKey, VertexLayout, withSkin } from "../void3d/gpu3d";
 import { PickError, pickNearest } from "../void3d/pick";
 import { Ray } from "../void3d/ray";
 import { identity, vec3 } from "../math/math3d";
-import { Face } from "../gpu/state";
+import { Face, RenderState } from "../gpu/state";
 import { contextOf, meshAt, materialAt } from "./drawHelpers";
 
 interface SkinSceneFixture {
@@ -141,6 +142,27 @@ test "retained skin refuses foreign pose bad palette layout and element declarat
 	if (!layout.ok) { assert layout.error == SceneError.SkinMesh; }
 	assert f.scene.meshes.length == 0;
 	assert f.scene.context.meshPins[0] == 0 && f.scene.context.materialPins[0] == 0;
+}
+
+test "a skinned node takes only a skinned material through setMaterialOf" {
+	const f = fixture();
+	defer closeScene(f.scene);
+	const context = f.scene.context;
+	const made = addSkinMeshNode(f.scene, f.scene.rootId(), Transform3D.identity(),
+		f.mesh, f.material, f.geometry, 0, null);
+	assert made.ok;
+	if (!made.ok) { return; }
+	const flat = addMaterial(context, Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
+	const skinned = addMaterial(context, Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque));
+	assert flat.ok && skinned.ok;
+	if (!flat.ok || !skinned.ok) { return; }
+	context.materials[skinned.value.index].program = ProgramKey.of(Program.Lit).withSkin();
+	const refused = setMaterialOf(f.scene, made.value, flat.value);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == SceneError.SkinMesh; }
+	assert context.materialPins[f.material.index] == 1 && context.materialPins[flat.value.index] == 0;
+	assert setMaterialOf(f.scene, made.value, skinned.value).ok;
+	assert context.materialPins[f.material.index] == 0 && context.materialPins[skinned.value.index] == 1;
 }
 
 test "retained skin rejects stale joints rather than bind fallback and close drops attachment" {

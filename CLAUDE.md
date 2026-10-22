@@ -110,7 +110,9 @@ Done: sokol + fontstash headers vendored (`deps/sokol/`, `deps/fontstash/`); C b
 
 Void follows the worktree playbook enabled by `~/metascript/CLAUDE.md` and uses `~/nerdtools/claude/tools/wt.sh` with the gate below. Shared session context reads this repo's card and `~/metascript/.inbox/void/`. A compiler or runtime limitation follows the workspace compiler boundary: repro, card in `~/metascript/.inbox/compiler/`, park, move on.
 
-The gate is `scripts/gate.sh` (`docs/TESTING.md` "The gate"): its T0 runs `msc test src/test/index.ms` with module stages all-off and all-on, Yoga layout included (`src/test/layoutCheck.ms`), then the golden suite and the bench. A land runs the whole gate. Before that, choose checks by the change's effect: the index covers logic, and a change to the GPU or web path also runs `scripts/build-web.sh` and is looked at on the page, because green on native is not evidence for emcc, which is stricter.
+The gate is `scripts/gate.sh` (`docs/TESTING.md` "The gate"): its T0 runs `msc test src/test/index.ms` with module stages all-off and all-on, Yoga layout included (`src/test/layoutCheck.ms`), then the golden suite and the bench. Choose checks by the change's effect: the index covers logic, and a change to the GPU or web path also runs `scripts/build-web.sh` and is looked at on the page, because green on native is not evidence for emcc, which is stricter.
+
+Choose how a land is gated by what the gate can observe. When the change reaches code the gate compiles or runs (shared `.ms`, C built for the native target, `src/test/`, goldens, the bench), the land runs the whole gate, because a red there is only found by the whole run. When the gate cannot observe the change (emcc-only C such as `bridgeWeb.c`, web test scripts and pages, docs), land with `--no-gate` after the checks that do observe it went green, and write in the card what ran and what did not, because the gate would spend its run proving nothing new. In doubt, run the gate.
 
 ## Known Limitations / Considerations (sokol)
 

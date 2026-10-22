@@ -116,9 +116,28 @@ visual crawl quality remains a separate judgment, not solved merely by using FXA
 Current full CPU index1491/1491 and5/5 named refusal controls pass on installed9a4775dc.
 All134 shader keys previously regenerated for7 backends; production header identity unchanged.
 All11 integration entries build both web backends,22 builds PASS attempt1. WebGPU capture NOT RUN.
-Mandatory external NOT RUN until owner supplies receipts: native Metal, actual Mac Geass asset
-and screenshot (`sh ~/metascript/geass/mech3d/build.sh`), both real consumer web backends, actual
-DPR2 midrange-phone 60fps and slow-camera visual acceptance. No Geass source changed here.
+
+## Geass consumer receipts
+
+Measured by geass-3d on 2026-10-13: Void `5dbcb66`, msc v0.3.2 BUILD `ea7ae4d17`, emscripten 5.0.5,
+macOS, Chrome through Playwright.
+
+- `sh ~/metascript/geass/mech3d/build.sh` built wgpu and gl on attempt 1. `mechView.wasm` grew
+  1,856,859 → 2,324,236 bytes (wgpu) and 1,496,172 → 1,840,311 bytes (gl) with the outline.
+- `geass/mech3d/mechView.ms` budgets `FORWARD_OUTLINE_UNIFORM_LENGTH`, calls `setOutlineSettings`
+  once (colour `(0.36, 0.35, 0.34, 1)`, width 2) and `setOutlineBlend` every frame, 0 → 1 in 900 ms.
+- WebGL2 at 1440×900 and 390×844, device pixel ratio 2, and WebGPU at 1440×900, ratio 1: blend 0
+  shows the lit mech, blend 1 a grey hidden-line drawing with the page colour through every face,
+  and back to 0 restores the lit image. No console error, no refused frame.
+- Pinned on the Geass side by `geass/web/tests/browser.mjs`: red material pixels 1.27 % lit and 0
+  sketched, dark pixels 3.2 % sketched; the viewer built before the outline fails it (red 1.05 % at
+  the end of the page).
+- Creases come from the vertex normals, not the geometry. Geass's body (10,791 triangles) had 5,997
+  edges whose faces meet at more than 37°, but only 48 with differing vertex normals (an OBJ
+  import exported smooth), so it drew a silhouette and almost no inner line. Exported with normals
+  split at 30° (`geass/mech3d/exportCore.py` `crease`), every panel edge draws.
+
+Still not run: native Metal, a real phone, frame time with the outline on, Safari.
 
 
 ## Current verification checkpoint

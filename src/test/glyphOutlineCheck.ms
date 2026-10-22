@@ -1,12 +1,11 @@
 import "../void2d/textOutlineSwitch";
 import {
-	void2dGlyphBox,
-	void2dGlyphOutlineBox,
 	void2dGlyphOutlineGenerations,
 } from "../void2d/glyph.h";
+import { glyphBox, glyphOutlineBox } from "../void2d/glyphBoxes";
 
 when (voidSdfText) {
-	import { void2dGlyphSdfBox, void2dGlyphSdfOutlineBox } from "../void2d/glyph.h";
+	import { glyphSdfBox, glyphSdfOutlineBox } from "../void2d/glyphBoxes";
 	import { acquireSdf, acquireSdfOutline, SDF_OUTLINE_PER_TEXEL } from "../void2d/glyphAtlas";
 	import { SDF_EM, SDF_EDGE } from "../void2d/textSdf";
 }
@@ -111,13 +110,13 @@ test "the outline box is the fill box grown by ceil(width) + 1 on every side" {
 		for (const size of sizes) {
 			for (let variant = 0; variant < 4; variant++) {
 				const shift: float32 = (variant as float32) / 4.0;
-				const fill = void2dGlyphBox(face, glyph, size, shift);
+				const fill = glyphBox(face, glyph, size, shift);
 				const fx0: int32 = fill[0];
 				const fy0: int32 = fill[1];
 				const fx1: int32 = fill[2];
 				const fy1: int32 = fill[3];
 				for (const width of widths) {
-					const outline = void2dGlyphOutlineBox(face, glyph, size, shift, width);
+					const outline = glyphOutlineBox(face, glyph, size, shift, width);
 					const pad: int32 = (Math.ceil(width) as int32) + 1;
 					assert outline[0] == fx0 - pad && outline[1] == fy0 - pad;
 					assert outline[2] == fx1 + pad && outline[3] == fy1 + pad;
@@ -132,7 +131,7 @@ test "the outline box is the fill box grown by ceil(width) + 1 on every side" {
 
 test "a glyph with no ink has an empty outline box and a space costs no tile" {
 	const face = testFace();
-	const space = void2dGlyphOutlineBox(face, glyphIndex(face, " ".code), 13.0, 0.0, 2.0);
+	const space = glyphOutlineBox(face, glyphIndex(face, " ".code), 13.0, 0.0, 2.0);
 	assert space[0] == 0 && space[1] == 0 && space[2] == 0 && space[3] == 0;
 	const atlas = GlyphAtlas.create(256, 2);
 	defer atlas.dispose();
@@ -285,13 +284,13 @@ when (voidSdfText) {
 		defer atlas.dispose();
 		for (const codepoint of ["I".code, "g".code, "W".code, "@".code]) {
 			const glyph: int32 = glyphIndex(face, codepoint);
-			const base = void2dGlyphSdfBox(face, glyph);
+			const base = glyphSdfBox(face, glyph);
 			const bx0: int32 = base[0];
 			const by0: int32 = base[1];
 			const bx1: int32 = base[2];
 			const by1: int32 = base[3];
 			for (const lane of [4, 12, 25]) {
-				const grown = void2dGlyphSdfOutlineBox(face, glyph, (lane as float32) / 8.0);
+				const grown = glyphSdfOutlineBox(face, glyph, (lane as float32) / 8.0);
 				const extra: int32 = (Math.ceil((lane as float32) / 8.0) as int32) + 2;
 				assert grown[0] == bx0 - extra && grown[1] == by0 - extra;
 				assert grown[2] == bx1 + extra && grown[3] == by1 + extra;

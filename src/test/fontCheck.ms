@@ -27,7 +27,14 @@ import {
 	Presentation,
 	codepointFaceFor,
 	faceSlotFor,
+	FaceQuery,
+	FaceCandidate,
+	setFaceResolver,
+	faceDiscoveryAsks,
+	addFontBytes,
+	registerFaceBytes,
 } from "../void2d/font";
+import { readFile } from "std/fs";
 
 when (voidSprites) {
 	import { isSpriteFace } from "../void2d/face";
@@ -52,6 +59,7 @@ const COLOUR_DRAWABLE: string = "tests/fonts/sbixSynthetic.ttf";
 const COLLECTION: string = "tests/fonts/symbolCollection.ttc";
 const JOINERS: string = "tests/fonts/cmap/joiners.ttf";
 const UNLOADABLE: string = "tests/fonts/cmap/coversButUnloadable.otf";
+const NO_OUTLINES: string = "tests/fonts/cmap/noOutlines.ttf";
 
 let registeredFamilies: boolean = false;
 
@@ -260,6 +268,145 @@ test "a fallback of the other presentation is the last resort when nothing match
 	addFallbackFont(onlyColour, COLOUR_DRAWABLE);
 	assert codepointFaceFor(onlyColour, 0x2764, Presentation.Text).face == colour;
 	assert codepointFaceFor(onlyColour, 0x2764, Presentation.Default).face == colour;
+}
+
+test "a host resolver answers a text face no registered face has, once per codepoint" {
+	const text = faceOfPath(TEXT_SYMBOL);
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	setFaceResolver((q: FaceQuery): FaceCandidate[] =>
+		q.presentation == Presentation.Text ? [{ path: TEXT_SYMBOL, index: 0 }] : []);
+	const f = added(NO_LINE_HEIGHT);
+	addFallbackFont(f, COLOUR_DRAWABLE);
+	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == colour;
+	const asks: int32 = faceDiscoveryAsks();
+	const probes: int32 = fallbackProbes();
+	assert codepointFaceFor(f, 0x2764, Presentation.Default).face == text;
+	assert codepointFaceFor(f, 0x2764, Presentation.Text).face == text;
+	assert faceDiscoveryAsks() == asks + 1;
+	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == colour;
+	assert fallbackProbes() == probes + 2;
+	assert codepointFaceFor(f, 0x1F600, Presentation.Text).face == text;
+	assert codepointFaceFor(f, 0x10FFF0, Presentation.Text).face == fontFace(f);
+	assert codepointFaceFor(f, 0x10FFF0, Presentation.Default).face == fontFace(f);
+	assert faceDiscoveryAsks() == asks + 2;
+	setFaceResolver(null);
+}
+
+test "a resolver answer that lacks the codepoint or presentation is a cached miss" {
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	setFaceResolver((q: FaceQuery): FaceCandidate[] =>
+		[{ path: q.codepoint == 0x2764 ? COLOUR_DRAWABLE : "tests/fonts/absent.ttf", index: 0 }]);
+	const f = added(NO_LINE_HEIGHT);
+	addFallbackFont(f, COLOUR_DRAWABLE);
+	const asks: int32 = faceDiscoveryAsks();
+	assert codepointFaceFor(f, 0x2764, Presentation.Text).face == colour;
+	assert codepointFaceFor(f, 0x10FFF0, Presentation.Text).face == fontFace(f);
+	const g = added(NO_LINE_HEIGHT);
+	assert codepointFaceFor(g, 0x2764, Presentation.Text).face == fontFace(g);
+	assert faceDiscoveryAsks() == asks + 2;
+	setFaceResolver(null);
+}
+
+test "the resolver's first candidate Void can draw, cover and present wins, in one ask" {
+	const cjk = faceOfPath(CJK);
+	setFaceResolver((q: FaceQuery): FaceCandidate[] => [
+		{ path: NO_OUTLINES, index: 0 },
+		{ path: TEXT_SYMBOL, index: 0 },
+		{ path: CJK, index: 0 },
+		{ path: LATIN, index: 0 },
+	]);
+	const f = added(NO_LINE_HEIGHT);
+	const asks: int32 = faceDiscoveryAsks();
+	assert codepointFaceFor(f, 0x4F60, Presentation.Text).face == cjk;
+	assert codepointFaceFor(f, 0x4F60, Presentation.Text).face == cjk;
+	assert faceDiscoveryAsks() == asks + 1;
+	setFaceResolver(null);
+}
+
+function bytesOf(path: string): uint8[] {
+	const read = readFile(path);
+	if (read.ok) { return read.value.asBytes().slice(0); }
+	console.log(`fontCheck: ${path} did not read`);
+	unreachable;
+}
+
+test "a font given as bytes draws under a name no file has, and the same bytes again are accepted" {
+	const bytes = bytesOf(CJK);
+	const f = addFontBytes("memory/cjk.ttf", bytes);
+	assert f.ok;
+	assert glyphIndex(fontFace(f.value), 0x4F60) != 0;
+	assert addFontBytes("memory/cjk.ttf", bytes).ok;
+	const other = addFontBytes("memory/cjk.ttf", bytesOf(LATIN));
+	assert !other.ok;
+	assert other.error == FontError.NameHeld;
+	const empty: uint8[] = [];
+	const none = addFontBytes("memory/empty.ttf", empty);
+	assert !none.ok;
+	assert none.error == FontError.NotLoaded;
+}
+
+test "bytes under a name already read from its file are refused" {
+	assert addFont(TEXT_SYMBOL).ok;
+	const taken = addFontBytes(TEXT_SYMBOL, bytesOf(CJK));
+	assert !taken.ok;
+	assert taken.error == FontError.NameHeld;
+}
+
+test "a face registered as bytes answers its family" {
+	assert registerFaceBytes("memory/cjkFamily.ttf", bytesOf(CJK), "Memory Sans", 400, FontStyle.Normal).ok;
+	const f = resolved(font("Memory Sans", 400, FontStyle.Normal));
+	assert glyphIndex(fontFace(f), 0x4F60) != 0;
+}
+
+test "a codepoint a discovered face covers is drawn from it without asking the resolver again" {
+	const cjk = faceOfPath(CJK);
+	assert glyphIndex(cjk, 0x597D) != 0;
+	assert glyphIndex(cjk, 0x4E2D) != 0;
+	setFaceResolver((q: FaceQuery): FaceCandidate[] => [{ path: CJK, index: 0 }]);
+	const f = added(NO_LINE_HEIGHT);
+	const asks: int32 = faceDiscoveryAsks();
+	assert codepointFaceFor(f, 0x4F60, Presentation.Text).face == cjk;
+	assert codepointFaceFor(f, 0x597D, Presentation.Text).face == cjk;
+	assert codepointFaceFor(f, 0x4E2D, Presentation.Default).face == cjk;
+	assert faceDiscoveryAsks() == asks + 1;
+	setFaceResolver(null);
+}
+
+test "a candidate's index picks the face inside a collection" {
+	setFaceResolver((q: FaceQuery): FaceCandidate[] => [{ path: COLLECTION, index: 1 }]);
+	const f = added(NO_LINE_HEIGHT);
+	assert codepointFaceFor(f, 0x2764, Presentation.Text).face == fontFace(f);
+	setFaceResolver((q: FaceQuery): FaceCandidate[] => [
+		{ path: COLLECTION, index: 2 },
+		{ path: COLLECTION, index: 1 },
+		{ path: COLLECTION, index: 0 },
+	]);
+	const g = added(NO_LINE_HEIGHT);
+	const text = codepointFaceFor(g, 0x2764, Presentation.Text).face;
+	assert text != fontFace(g);
+	assert glyphIndex(text, 0x2764) != 0;
+	if (colourBuilt()) {
+		const emoji = codepointFaceFor(g, 0x1F600, Presentation.Emoji).face;
+		assert emoji != text;
+		assert emoji != fontFace(g);
+	}
+	setFaceResolver(null);
+}
+
+test "a fallback with neither outlines nor colour glyphs is skipped, colour module or not" {
+	const f = added(NO_LINE_HEIGHT);
+	addFallbackFont(f, NO_OUTLINES);
+	assert faceSlotFor(f, 0x4F60, Presentation.Text) < 0;
+	assert codepointFaceFor(f, 0x4F60, Presentation.Text).face == fontFace(f);
+}
+
+test "with no resolver installed the other presentation stays the last resort" {
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	const asks: int32 = faceDiscoveryAsks();
+	const f = added(NO_LINE_HEIGHT);
+	addFallbackFont(f, COLOUR_DRAWABLE);
+	assert codepointFaceFor(f, 0x2764, Presentation.Text).face == colour;
+	assert faceDiscoveryAsks() == asks;
 }
 
 test "the resolver answers a presentation without loading a face it does not pick" {

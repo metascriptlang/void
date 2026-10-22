@@ -8,7 +8,7 @@
 #   sh scripts/golden.sh --update        capture, then copy out/golden -> tests/golden
 #   sh scripts/golden.sh --backend gl    the GL core 4.3 desktop build (glsl430), judged against
 #                                        the D3D11 goldens under the cross-backend bound
-#   sh scripts/golden.sh --backend metal the macOS Metal build, judged the same way
+#   sh scripts/golden.sh --backend metal the macOS Metal window, judged the same way
 #   sh scripts/golden.sh prim/ snap/x    only the rows whose name starts with one of these
 #
 # --update is never automatic. A golden changes only inside a commit that says why, and the

@@ -15,6 +15,7 @@ export CHROME
 [ -x "$CHROME" ] || { echo "SKIP webViews: no Chrome at $CHROME"; exit 0; }
 command -v python >/dev/null || { echo "SKIP webViews: no python to serve $OUT"; exit 0; }
 
+mkdir -p out
 if [ "${1:-}" != "--run" ]; then
 	VOID_WEB_ENTRY=src/examples/webViews.ms VOID_WEB_DEST="$OUT" \
 		VOID_WEB_PRELOAD="--preload-file assets/test.png" \

@@ -82,6 +82,8 @@ holds Type 1 charstrings: the peek calls it drawable and stb_truetype refuses it
 
 `cmap/joiners.ttf` is a drawable face whose only glyphs are U+200D and U+FE0F, for the rule
 that a joiner or selector loads no fallback face of its own (`src/test/fontCheck.ms`).
+`cmap/noOutlines.ttf` covers U+4F60 and U+597D and holds an `hvgl` table in place of `glyf` or `CFF `,
+as macOS's PingFang does: the peek calls it neither drawable nor colour, so it is never a fallback.
 
 ```sh
 python tests/fonts/cmapEdges.py   # rewrites tests/fonts/cmap/; no fontTools needed, byte-identical

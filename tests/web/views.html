@@ -12,8 +12,16 @@
 <script>
   // scripts/webViews.mjs drives this page: it starts and stops views through Module.voidStart and
   // reads their pixels from a screenshot. Every animation frame the page asks for is counted, so
-  // a stopped view that keeps its loop shows up.
+  // a stopped view that keeps its loop shows up, and so is every multisampled WebGPU texture.
   window.rafCalls = 0;
+  window.msaaTargets = 0;
+  if (window.GPUDevice) {
+    const createTexture = GPUDevice.prototype.createTexture;
+    GPUDevice.prototype.createTexture = function (desc) {
+      if (desc.sampleCount > 1) window.msaaTargets++;
+      return createTexture.call(this, desc);
+    };
+  }
   const request = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = (callback) => { window.rafCalls++; return request(callback); };
   window.place = (id, left) => {

@@ -10,8 +10,11 @@ import {
 import { Align, NO_GLYPH } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import {
-	void2dGlyphBox, void2dGlyphRasterize, void2dGlyphPageCreate, void2dGlyphPageTexel,
+	void2dGlyphRasterize,
+	void2dGlyphPageCreate,
+	void2dGlyphPageTexel,
 } from "../../src/void2d/glyph.h";
+import { glyphBox } from "../../src/void2d/glyphBoxes";
 import {
 	DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST, gammaRatios, correctCoverage,
 } from "../../src/void2d/textGamma";
@@ -78,7 +81,7 @@ function paintCase(c: SdfLabelCase, canvas: Canvas): void {
 		if (g.glyph == NO_GLYPH) { continue; }
 		const baseline: float32 = entry.layout.lines[g.line].baseline;
 		const refSize: float32 = g.size * c.zoom * fine;
-		const box: Ptr<int32> = void2dGlyphBox(g.face, g.glyph, refSize, 0.0);
+		const box = glyphBox(g.face, g.glyph, refSize, 0.0);
 		const refLeft: int32 = box[0];
 		const refTop: int32 = box[1];
 		const refW: int32 = box[2] - box[0];

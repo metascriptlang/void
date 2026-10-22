@@ -4,6 +4,8 @@
 long long macHostOpen(int width, int height);
 void macHostResize(int width, int height);
 void macHostPump(void);
+void macHostAwaitVsync(void);
+double macHostNowMs(void);
 void macHostClose(void);
 int macHostBackingWidth(void);
 int macHostBackingHeight(void);

@@ -1,10 +1,10 @@
 import "../void2d/textSdfSwitch";
 import {
-	void2dGlyphBox,
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
 	void2dGlyphPageTexel,
 } from "../void2d/glyph.h";
+import { glyphBox } from "../void2d/glyphBoxes";
 import { loadFace, glyphIndex } from "../void2d/face";
 import { GlyphAtlas, GlyphTile, acquireSdf } from "../void2d/glyphAtlas";
 import { SDF_EM, sdfCoverage, sampleField } from "../void2d/textSdf";
@@ -89,7 +89,7 @@ function measure(zoom: float32, degrees: float32): Measure {
 		atlas.release(acquired.value);
 		if (t.width == 0) { continue; }
 		const bytes: Vec<uint8> = fieldBytes(t);
-		const box: Ptr<int32> = void2dGlyphBox(subject.face, subject.glyph, refSize, 0.0);
+		const box = glyphBox(subject.face, subject.glyph, refSize, 0.0);
 		const refLeft: int32 = box[0];
 		const refTop: int32 = box[1];
 		const refW: int32 = box[2] - box[0];
