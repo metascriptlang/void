@@ -18,6 +18,7 @@ typedef struct D3dInputLayoutImpl *D3dInputLayout;
 typedef struct D3dRasterizerStateImpl *D3dRasterizerState;
 typedef struct D3dDepthStencilStateImpl *D3dDepthStencilState;
 typedef struct D3dBlendStateImpl *D3dBlendState;
+typedef struct D3dQueryImpl *D3dQuery;
 
 D3dDevice d3dDeviceFrom(void *native);
 D3dContext d3dContextFrom(void *native);
@@ -248,3 +249,20 @@ void d3dCsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);
 void d3dCsClearViews(D3dContext context);
 void d3dDispatch(D3dContext context, int32_t x, int32_t y, int32_t z);
 void d3dDispatchIndirect(D3dContext context, D3dBuffer arguments, int64_t offset);
+
+void d3dSetName(void *object, const char *name);
+int32_t d3dFormatCaps(D3dDevice device, int32_t format);
+
+int32_t d3dBeginEvent(D3dContext context, const char *label);
+int32_t d3dEndEvent(D3dContext context);
+void d3dSetMarker(D3dContext context, const char *label);
+void d3dReleaseAnnotation(void);
+
+int32_t d3dQuerySupported(D3dDevice device, int32_t kind);
+D3dQuery d3dCreateQuery(D3dDevice device, int32_t kind);
+void d3dReleaseQuery(D3dQuery query);
+void d3dQueryBegin(D3dContext context, D3dQuery query);
+void d3dQueryEnd(D3dContext context, D3dQuery query);
+int32_t d3dQueryTicks(D3dContext context, D3dQuery query, uint64_t *out);
+int32_t d3dQueryFrequency(D3dContext context, D3dQuery query, uint64_t *out);
+uint64_t d3dTicksToNanoseconds(uint64_t ticks, uint64_t frequency);

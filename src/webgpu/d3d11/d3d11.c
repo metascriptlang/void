@@ -823,3 +823,111 @@ void d3dDispatch(D3dContext context, int32_t x, int32_t y, int32_t z) {
 void d3dDispatchIndirect(D3dContext context, D3dBuffer arguments, int64_t offset) {
 	ID3D11DeviceContext_DispatchIndirect(CONTEXT(context), (ID3D11Buffer *)arguments, (UINT)offset);
 }
+
+static const GUID debugObjectName = { 0x429b8c22, 0x9188, 0x4b0c, { 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 } };
+
+void d3dSetName(void *object, const char *name) {
+	ID3D11DeviceChild_SetPrivateData((ID3D11DeviceChild *)object, &debugObjectName, (UINT)strlen(name), name);
+}
+
+int32_t d3dFormatCaps(D3dDevice device, int32_t format) {
+	UINT support = 0;
+	if (FAILED(ID3D11Device_CheckFormatSupport(DEVICE(device), (DXGI_FORMAT)format, &support))) return 0;
+	return ((support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) ? 1 : 0) | ((support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) ? 2 : 0) |
+		((support & D3D11_FORMAT_SUPPORT_BLENDABLE) ? 4 : 0);
+}
+
+static ID3DUserDefinedAnnotation *annotation;
+static const GUID annotationIid = { 0xb2daad8b, 0x03d4, 0x4dbf, { 0x95, 0xeb, 0x32, 0xab, 0x4b, 0x63, 0xd0, 0xab } };
+
+static int annotationOf(D3dContext context) {
+	if (!annotation) ID3D11DeviceContext_QueryInterface(CONTEXT(context), &annotationIid, (void **)&annotation);
+	return annotation != NULL;
+}
+
+static wchar_t *widen(const char *text) {
+	int count = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+	wchar_t *wide = (wchar_t *)malloc((size_t)(count > 0 ? count : 1) * sizeof(wchar_t));
+	if (count > 0) MultiByteToWideChar(CP_UTF8, 0, text, -1, wide, count);
+	else wide[0] = 0;
+	return wide;
+}
+
+int32_t d3dBeginEvent(D3dContext context, const char *label) {
+	if (!annotationOf(context)) return -1;
+	wchar_t *wide = widen(label);
+	int32_t depth = (int32_t)ID3DUserDefinedAnnotation_BeginEvent(annotation, wide);
+	free(wide);
+	return depth;
+}
+
+int32_t d3dEndEvent(D3dContext context) {
+	if (!annotationOf(context)) return -1;
+	return (int32_t)ID3DUserDefinedAnnotation_EndEvent(annotation);
+}
+
+void d3dSetMarker(D3dContext context, const char *label) {
+	if (!annotationOf(context)) return;
+	wchar_t *wide = widen(label);
+	ID3DUserDefinedAnnotation_SetMarker(annotation, wide);
+	free(wide);
+}
+
+void d3dReleaseAnnotation(void) {
+	if (annotation) ID3DUserDefinedAnnotation_Release(annotation);
+	annotation = NULL;
+}
+
+static D3D11_QUERY_DESC queryDesc(int32_t kind) {
+	D3D11_QUERY_DESC desc = {0};
+	desc.Query = kind == 0 ? D3D11_QUERY_OCCLUSION : kind == 1 ? D3D11_QUERY_TIMESTAMP : D3D11_QUERY_TIMESTAMP_DISJOINT;
+	return desc;
+}
+
+int32_t d3dQuerySupported(D3dDevice device, int32_t kind) {
+	D3D11_QUERY_DESC desc = queryDesc(kind);
+	return ID3D11Device_CreateQuery(DEVICE(device), &desc, NULL) == S_FALSE;
+}
+
+D3dQuery d3dCreateQuery(D3dDevice device, int32_t kind) {
+	D3D11_QUERY_DESC desc = queryDesc(kind);
+	ID3D11Query *query = NULL;
+	return SUCCEEDED(ID3D11Device_CreateQuery(DEVICE(device), &desc, &query)) ? (D3dQuery)query : NULL;
+}
+
+void d3dReleaseQuery(D3dQuery query) { if (query) ID3D11Query_Release((ID3D11Query *)query); }
+
+void d3dQueryBegin(D3dContext context, D3dQuery query) {
+	ID3D11DeviceContext_Begin(CONTEXT(context), (ID3D11Asynchronous *)query);
+}
+
+void d3dQueryEnd(D3dContext context, D3dQuery query) {
+	ID3D11DeviceContext_End(CONTEXT(context), (ID3D11Asynchronous *)query);
+}
+
+static int32_t queryData(D3dContext context, D3dQuery query, void *out, UINT bytes) {
+	ULONGLONG deadline = GetTickCount64() + 5000;
+	for (;;) {
+		HRESULT hr = ID3D11DeviceContext_GetData(CONTEXT(context), (ID3D11Asynchronous *)query, out, bytes, 0);
+		if (hr == S_OK) return 1;
+		if (FAILED(hr) || GetTickCount64() > deadline) return 0;
+		ID3D11DeviceContext_Flush(CONTEXT(context));
+		Sleep(0);
+	}
+}
+
+int32_t d3dQueryTicks(D3dContext context, D3dQuery query, uint64_t *out) {
+	return queryData(context, query, out, sizeof(uint64_t));
+}
+
+int32_t d3dQueryFrequency(D3dContext context, D3dQuery query, uint64_t *out) {
+	D3D11_QUERY_DATA_TIMESTAMP_DISJOINT data;
+	if (!queryData(context, query, &data, sizeof data)) return 0;
+	if (data.Disjoint) return -1;
+	*out = data.Frequency;
+	return 1;
+}
+
+uint64_t d3dTicksToNanoseconds(uint64_t ticks, uint64_t frequency) {
+	return (ticks / frequency) * 1000000000ULL + (ticks % frequency) * 1000000000ULL / frequency;
+}
