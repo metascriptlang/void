@@ -1,9 +1,11 @@
-import { Vec3, vec3, identity, translation } from "../math/math3d";
-import { ParticleSystemAsset, RingBufferMode, SimulationSpace } from "../particles/asset";
+import { Vec3, vec3, Mat4, identity, translation } from "../math/math3d";
+import {
+	ParticleSystemAsset, RingBufferMode, SimulationSpace, ColliderShape, ForceFieldShape, TriggerAction,
+} from "../particles/asset";
 import { constantCurve, twoConstants } from "../particles/curve";
 import {
 	ParticleSystem, ParticleSystemError, playSystem, stopSystem, updateSystem,
-	POS_X, POS_Y, POS_Z, MOVE_X, MOVE_Y, MOVE_Z, AGE, PARTICLE_COLUMNS,
+	POS_X, POS_Y, POS_Z, VEL_X, VEL_Y, VEL_Z, MOVE_X, MOVE_Y, MOVE_Z, AGE, LIFETIME, PARTICLE_COLUMNS,
 } from "../particles/system";
 
 const TWO_PI: float32 = 6.283185307179586;
@@ -28,8 +30,8 @@ function started(asset: ParticleSystemAsset, step: float64): ParticleSystem {
 	const made = ParticleSystem.create(asset, 7);
 	if (!made.ok) { unreachable; }
 	let sys = made.value;
-	sys.fixedStep = step;
-	sys.maxFrameTime = 1.0;
+	sys.clock.fixedStep = step;
+	sys.clock.maxFrameTime = 1.0;
 	playSystem(sys, identity());
 	return sys;
 }
@@ -285,4 +287,120 @@ test "stop with clear removes the live particles" {
 	assert sys.count > 0;
 	stopSystem(sys, true);
 	assert sys.count == 0 && !sys.emitting;
+}
+
+// tests/unity/goldens/collision_plane_*: one particle from (0, 1, 0) at 1 along +z, size 0.02,
+// falling onto the plane y = 0.
+function dropped(bounce: float32, dampen: float32, loss: float32, minKillSpeed: float32): ParticleSystem {
+	let a = oneShot(1.0);
+	a.main.startLifetime = constantCurve(5.0);
+	a.main.startSizeX = constantCurve(0.02);
+	a.main.simulationSpace = SimulationSpace.World;
+	a.main.gravityModifier = constantCurve(1.0);
+	a.collision.enabled = true;
+	a.collision.planes = [{ point: vec3(0.0, 0.0, 0.0), normal: vec3(0.0, 1.0, 0.0) }];
+	a.collision.bounce = constantCurve(bounce);
+	a.collision.dampen = constantCurve(dampen);
+	a.collision.lifetimeLoss = constantCurve(loss);
+	a.collision.minKillSpeed = minKillSpeed;
+	const made = ParticleSystem.create(a, 7);
+	if (!made.ok) { unreachable; }
+	let sys = made.value;
+	sys.clock.fixedStep = 1.0 / 60.0;
+	playSystem(sys, translation(0.0, 1.0, 0.0));
+	return sys;
+}
+
+function runAt(ref sys: ParticleSystem, world: Mat4, frame: float64, frames: int32): void {
+	for (let k = 0; k < frames; k++) {
+		const done = updateSystem(sys, frame, world);
+		if (!done.ok) { unreachable; }
+	}
+}
+
+function at(sys: ParticleSystem, column: int32): float32 {
+	return sys.data[column * sys.capacity];
+}
+
+test "a plane bounces the normal speed by bounce, damps all of it, and takes lifetime loss" {
+	let sys = dropped(0.5, 0.25, 0.2, 0.0);
+	runAt(sys, translation(0.0, 1.0, 0.0), 1.0 / 60.0, 27);
+	assert near(at(sys, VEL_Y), 1.65543771, 1e-4);
+	assert near(at(sys, VEL_Z), 0.75, 1e-5);
+	assert near(at(sys, POS_Y), 0.0250188764, 1e-4);
+	assert near(at(sys, POS_Z), 0.447732061, 1e-4);
+	assert near(at(sys, LIFETIME) - at(sys, AGE), 3.55, 1e-4);
+	// The fourth bounce spends the last of the lifetime: shown once more with none left, then gone.
+	runAt(sys, translation(0.0, 1.0, 0.0), 1.0 / 60.0, 30);
+	assert sys.count == 1;
+	assert at(sys, AGE) == at(sys, LIFETIME);
+	runAt(sys, translation(0.0, 1.0, 0.0), 1.0 / 60.0, 1);
+	assert sys.count == 0;
+}
+
+test "a hit slower than the minimum kill speed ends the lifetime and leaves the next update" {
+	let sys = dropped(0.5, 0.0, 0.0, 3.0);
+	runAt(sys, translation(0.0, 1.0, 0.0), 1.0 / 60.0, 27);
+	assert near(at(sys, VEL_Y), 2.20725036, 1e-4);
+	assert at(sys, AGE) < at(sys, LIFETIME);
+	runAt(sys, translation(0.0, 1.0, 0.0), 1.0 / 60.0, 27);
+	assert sys.count == 1;
+	assert near(at(sys, VEL_Y), 1.10362542, 1e-4);
+	assert at(sys, AGE) == at(sys, LIFETIME);
+	runAt(sys, translation(0.0, 1.0, 0.0), 1.0 / 60.0, 1);
+	assert sys.count == 0;
+}
+
+// tests/unity/goldens/trigger_*_kill: born at the centre of a unit sphere, 1 along +z.
+function triggered(enter: TriggerAction, exit: TriggerAction, inside: TriggerAction, outside: TriggerAction): ParticleSystem {
+	let a = oneShot(1.0);
+	a.main.startLifetime = constantCurve(5.0);
+	a.main.startSizeX = constantCurve(0.01);
+	a.trigger.enabled = true;
+	a.trigger.enter = enter;
+	a.trigger.exit = exit;
+	a.trigger.inside = inside;
+	a.trigger.outside = outside;
+	a.trigger.colliders = [{
+		shape: ColliderShape.Sphere, center: vec3(0.0, 0.0, 0.0), extents: vec3(0.0, 0.0, 0.0),
+		end: vec3(0.0, 0.0, 0.0), radius: 1.0, layer: 0,
+	}];
+	return started(a, 0.1);
+}
+
+test "a particle born inside a trigger enters it" {
+	let enter = triggered(TriggerAction.Kill, TriggerAction.Ignore, TriggerAction.Ignore, TriggerAction.Ignore);
+	run(enter, 0.1, 1);
+	assert enter.count == 0;
+	let inside = triggered(TriggerAction.Ignore, TriggerAction.Ignore, TriggerAction.Kill, TriggerAction.Ignore);
+	run(inside, 0.1, 1);
+	assert inside.count == 0;
+}
+
+test "exit and outside kill on the step the particle leaves the sphere" {
+	let exit = triggered(TriggerAction.Ignore, TriggerAction.Kill, TriggerAction.Ignore, TriggerAction.Ignore);
+	let outside = triggered(TriggerAction.Ignore, TriggerAction.Ignore, TriggerAction.Ignore, TriggerAction.Kill);
+	run(exit, 0.1, 10);
+	run(outside, 0.1, 10);
+	assert exit.count == 1 && outside.count == 1;
+	run(exit, 0.1, 1);
+	run(outside, 0.1, 1);
+	assert exit.count == 0 && outside.count == 0;
+}
+
+test "a force field pushes along its direction inside its range and fades to its edge" {
+	let a = oneShot(0.0);
+	a.externalForces.enabled = true;
+	let sys = started(a, 1.0 / 60.0);
+	sys.forceFields = [{
+		shape: ForceFieldShape.Sphere, position: vec3(0.0, 0.0, 0.0), startRange: 10.0, endRange: 20.0,
+		length: 0.0, direction: vec3(1.0, 0.0, 0.0), gravity: 0.0, gravityFocus: 0.0, drag: 0.0,
+		multiplyDragByParticleSize: false, multiplyDragByParticleVelocity: false, layer: 0,
+	}];
+	run(sys, 1.0 / 60.0, 60);
+	assert near(at(sys, VEL_X), 1.0, 1e-4);
+	sys.forceFields[0].position = vec3(-15.0, 0.0, 0.0);
+	const before: float32 = at(sys, VEL_X);
+	run(sys, 1.0 / 60.0, 1);
+	assert near((at(sys, VEL_X) - before) * 60.0, 0.45, 0.02);
 }

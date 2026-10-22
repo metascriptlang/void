@@ -3,16 +3,18 @@
 // a remainder, every random value is a hash of the particle's seed, so a system's columns are a
 // pure function of its asset, seed and per-update inputs at any frame rate.
 
-import { Vec3, vec3, Mat4, identity, inverseAffine, transformDirection, position } from "../math/math3d";
+import { Vec3, vec3, Mat4, identity, inverseAffine, transformDirection, position, translation } from "../math/math3d";
 import {
 	ParticleSystemAsset, SimulationSpace, RingBufferMode, InheritVelocityMode, NoiseQuality,
 	TextureSheetAnimationType, TextureSheetRowMode, TextureSheetTimeMode, CustomDataMode,
-	CustomDataStream, EmitterVelocityMode, Range, Burst,
+	CustomDataStream, EmitterVelocityMode, Range, Burst, SubEmitterType, SubEmitterProperty,
+	ParticleCollider, ForceField, TriggerAction, CollisionType,
 } from "./asset";
 import { ParticleColor, CompiledMinMaxCurve, MinMaxGradient, unitDraw, pcgHash } from "./curve";
 import { CompiledCurves, compileCurves } from "./compiled";
 import { ShapeSample, ShapeSlot, sampleShape } from "./shape";
 import { noise3 } from "./noise";
+import { Hit, MISS, sweep, overlaps, fieldPush, FieldPush } from "./collision";
 
 // Column c of particle i is data[c * capacity + i]; the first `count` slots are live, oldest first.
 export const POS_X: int32 = 0;
@@ -51,7 +53,11 @@ export const CUSTOM1_X: int32 = 29;
 export const CUSTOM2_X: int32 = 33;
 // The seconds a particle born this step still has to simulate; -1 once it has.
 export const PENDING: int32 = 37;
-export const PARTICLE_COLUMNS: int32 = 38;
+// Each Birth sub-emitter's emission carry for this parent particle (Unity's m_EmitAccumulator0/1).
+export const BIRTH_CARRY: int32 = 38;
+export const MAX_BIRTH_LINKS: int32 = 2;
+export const PARTICLE_COLUMNS: int32 = 40;
+export const MAX_TRIGGER_COLLIDERS: int32 = 32;
 
 export enum ParticleSystemError {
 	InvalidCurve,
@@ -65,6 +71,64 @@ export enum ParticleSystemError {
 	EndlessBurst,
 	NoTiles,
 	NonFiniteStep,
+	TooManyTriggerColliders,
+}
+
+// How a system turns frame time into steps: whole fixed steps with the rest carried, or one
+// step of the frame's length when `fixedStep` is 0.
+export struct StepClock {
+	fixedStep: float64;
+	maxSubSteps: int32;
+	// A longer frame is simulated as this long, so a stall never runs away.
+	maxFrameTime: float64;
+	remainder: float64;
+}
+
+export struct FrameSteps {
+	count: int32;
+	h: float64;
+	// The remainder the frame started with and the frame's length after the clamp.
+	before: float64;
+	dt: float64;
+}
+
+export enum TriggerEvent {
+	Inside,
+	Outside,
+	Enter,
+	Exit,
+}
+
+// Something that happened to a particle during the update: what sub-emitters consume and what an
+// app reads for collision messages and trigger callbacks. Valid until the next update.
+export struct ParticleEvent {
+	kind: SubEmitterType;
+	trigger: TriggerEvent;
+	// The Birth link that emitted it, else -1.
+	link: int32;
+	// Children to spawn for a Birth link's rate; -1 runs the child's bursts.
+	count: int32;
+	position: Vec3;
+	// Where a Birth event's path started this step.
+	from: Vec3;
+	velocity: Vec3;
+	normal: Vec3;
+	collider: int32;
+	color: ParticleColor;
+	size: Vec3;
+	rotation: Vec3;
+	ageFraction: float32;
+	// Seconds before the end of the step at which it happened.
+	before: float32;
+	seed: uint32;
+	// The particle's slot when the event was made; slots move at the end of the step.
+	particle: int32;
+}
+
+// A Birth sub-emitter of this system: the child's rates, evaluated over the parent's age.
+export struct BirthLink {
+	rate: CompiledMinMaxCurve;
+	distanceRate: CompiledMinMaxCurve;
 }
 
 export struct ParticleSystem {
@@ -85,16 +149,13 @@ export struct ParticleSystem {
 	emitCarry: float64;
 	distanceCarry: float64;
 	stepIndex: uint32;
-	// The frame time not yet simulated, less than one fixed step.
-	remainder: float64;
-	// Seconds per step; 0 steps once per update by the frame time.
-	fixedStep: float64;
-	maxSubSteps: int32;
-	maxFrameTime: float64;
+	clock: StepClock;
 	// Scene gravity in world space; gravityModifier scales it.
 	gravity: Vec3;
 	world: Mat4;
 	placed: boolean;
+	frameFrom: Vec3;
+	frameTo: Vec3;
 	stepFrom: Vec3;
 	stepTo: Vec3;
 	emitterVelocity: Vec3;
@@ -105,6 +166,18 @@ export struct ParticleSystem {
 	ringIndex: int32;
 	// Emission ended and the last particle died: the stop action is due.
 	finished: boolean;
+	// Set by the app, in the system's simulation space: the colliders of World collision and the
+	// force fields External Forces reads.
+	colliders: Vec<ParticleCollider>;
+	forceFields: Vec<ForceField>;
+	// One bit per trigger collider the particle overlapped last step.
+	inside: Vec<uint32>;
+	events: Vec<ParticleEvent>;
+	births: Vec<BirthLink>;
+	// Whether anything consumes Death, Collision and Trigger events; the effect sets these.
+	wantDeath: boolean;
+	wantCollision: boolean;
+	wantTrigger: boolean;
 }
 
 // The salts of the per-particle draws: one stream per property, so adding a module never moves
@@ -141,6 +214,8 @@ const DRAW_RATE: uint32 = 41;
 const DRAW_BURST: uint32 = 42;
 const DRAW_BURST_COUNT: uint32 = 43;
 const DRAW_NOISE_OFFSET: uint32 = 44;
+const DRAW_COLLISION: uint32 = 28;
+const DRAW_BIRTH: uint32 = 29;
 
 const DEGREE: float32 = 0.017453292519943295;
 const PI: float32 = 3.141592653589793;
@@ -203,6 +278,9 @@ function validateAsset(asset: ParticleSystemAsset): Result<int32, ParticleSystem
 			&& asset.textureSheetAnimation.timeMode == TextureSheetTimeMode.Speed,
 			asset.textureSheetAnimation.speedRange);
 	if (!rangesOk) { return Result.err(ParticleSystemError.EmptyRange); }
+	if (asset.trigger.enabled && (asset.trigger.colliders.length as int32) > MAX_TRIGGER_COLLIDERS) {
+		return Result.err(ParticleSystemError.TooManyTriggerColliders);
+	}
 	const sheet = asset.textureSheetAnimation;
 	if (sheet.enabled && (sheet.numTilesX <= 0 || sheet.numTilesY <= 0)) {
 		return Result.err(ParticleSystemError.NoTiles);
@@ -227,7 +305,11 @@ export function create(
 	let data: Vec<float32> = new Array(capacity * PARTICLE_COLUMNS);
 	for (let i = 0; i < capacity * PARTICLE_COLUMNS; i++) { data[i] = 0.0; }
 	let seeds: Vec<uint32> = new Array(capacity);
-	for (let i = 0; i < capacity; i++) { seeds[i] = 0; }
+	let inside: Vec<uint32> = new Array(capacity);
+	for (let i = 0; i < capacity; i++) {
+		seeds[i] = 0;
+		inside[i] = 0;
+	}
 	const systemSeed: uint32 = asset.main.useAutoRandomSeed ? seed : asset.main.randomSeed;
 	return Result.ok({
 		asset: asset,
@@ -246,13 +328,12 @@ export function create(
 		emitCarry: 0.0,
 		distanceCarry: 0.0,
 		stepIndex: 0,
-		remainder: 0.0,
-		fixedStep: DEFAULT_STEP,
-		maxSubSteps: 8,
-		maxFrameTime: 0.1,
+		clock: { fixedStep: DEFAULT_STEP, maxSubSteps: 8, maxFrameTime: 0.1, remainder: 0.0 },
 		gravity: vec3(0.0, -9.81, 0.0),
 		world: identity(),
 		placed: false,
+		frameFrom: vec3(0.0, 0.0, 0.0),
+		frameTo: vec3(0.0, 0.0, 0.0),
 		stepFrom: vec3(0.0, 0.0, 0.0),
 		stepTo: vec3(0.0, 0.0, 0.0),
 		emitterVelocity: vec3(0.0, 0.0, 0.0),
@@ -262,6 +343,14 @@ export function create(
 		noiseOffset: unitDraw(systemSeed, DRAW_NOISE_OFFSET) * 1000.0,
 		ringIndex: 0,
 		finished: false,
+		colliders: [],
+		forceFields: [],
+		inside: inside,
+		events: [],
+		births: [],
+		wantDeath: false,
+		wantCollision: asset.collision.enabled && asset.collision.sendCollisionMessages,
+		wantTrigger: false,
 	});
 }
 
@@ -289,7 +378,7 @@ export function playSystem(ref sys: ParticleSystem, world: Mat4): void {
 	const delayDraw: float32 = unitDraw(sys.systemSeed, DRAW_START_DELAY);
 	sys.delayLeft = sys.curves.startDelay.evaluate(0.0, delayDraw) as float64;
 	if (sys.asset.main.prewarm) {
-		const h: float64 = sys.fixedStep > 0.0 ? sys.fixedStep : DEFAULT_STEP;
+		const h: float64 = sys.clock.fixedStep > 0.0 ? sys.clock.fixedStep : DEFAULT_STEP;
 		const steps: int32 = Math.ceil(sys.asset.main.duration as float64 / h) as int32;
 		for (let k = 0; k < steps; k++) { step(sys, h); }
 	}
@@ -301,8 +390,52 @@ export function stopSystem(ref sys: ParticleSystem, clear: boolean): void {
 	if (clear) { sys.count = 0; }
 }
 
+// The steps a frame of `frameTime` seconds runs, carrying the rest of a fixed step in `clock`.
+export function frameSteps(ref clock: StepClock, frameTime: float64): FrameSteps {
+	const dt: float64 = frameTime > clock.maxFrameTime ? clock.maxFrameTime : frameTime;
+	if (!(clock.fixedStep > 0.0)) {
+		return { count: dt > 0.0 ? 1 : 0, h: dt, before: 0.0, dt: dt };
+	}
+	const h: float64 = clock.fixedStep;
+	const before: float64 = clock.remainder;
+	let pending: float64 = before + dt;
+	let count: int32 = Math.floor(pending / h) as int32;
+	if (count > clock.maxSubSteps) { count = clock.maxSubSteps; }
+	pending = pending - (count as float64) * h;
+	clock.remainder = pending < h ? pending : h;
+	return { count: count, h: h, before: before, dt: dt };
+}
+
+// Starts a frame with the emitter moving to `world`: its velocity over the frame, its path for
+// the frame's steps, and an empty event list.
+export function beginFrame(ref sys: ParticleSystem, world: Mat4, frame: FrameSteps): void {
+	if (!sys.placed) {
+		sys.world = world;
+		sys.placed = true;
+	}
+	sys.frameFrom = sys.world.position();
+	sys.frameTo = world.position();
+	const dt: float64 = frame.dt * (sys.asset.main.simulationSpeed as float64);
+	if (sys.asset.main.emitterVelocityMode == EmitterVelocityMode.Custom) {
+		sys.emitterVelocity = sys.asset.main.emitterVelocity;
+	} else if (dt > 0.0) {
+		sys.emitterVelocity = (sys.frameTo - sys.frameFrom).scaled((1.0 / dt) as float32);
+	}
+	sys.world = world;
+	sys.events.length = 0;
+}
+
+// Runs the frame's step `k`, with the emitter where that step starts and ends along the frame.
+export function stepWithin(ref sys: ParticleSystem, frame: FrameSteps, k: int32): void {
+	const start: float64 = (k as float64) * frame.h - frame.before;
+	sys.stepFrom = sys.frameFrom.lerp(sys.frameTo, frameFraction(start, frame.dt));
+	sys.stepTo = sys.frameFrom.lerp(sys.frameTo, frameFraction(start + frame.h, frame.dt));
+	step(sys, frame.h * (sys.asset.main.simulationSpeed as float64));
+}
+
 // Advance by one frame of `frameTime` seconds with the emitter at `world`. Runs whole fixed steps
 // and keeps the rest for the next update; the emitter moves linearly across the frame's steps.
+// A system inside an effect is advanced by the effect instead.
 export function updateSystem(
 	ref sys: ParticleSystem,
 	frameTime: float64,
@@ -311,41 +444,9 @@ export function updateSystem(
 	if (!Number.isFinite(frameTime) || frameTime < 0.0) {
 		return Result.err(ParticleSystemError.NonFiniteStep);
 	}
-	if (!sys.placed) {
-		sys.world = world;
-		sys.placed = true;
-	}
-	let dt: float64 = frameTime * (sys.asset.main.simulationSpeed as float64);
-	if (dt > sys.maxFrameTime) { dt = sys.maxFrameTime; }
-	const from: Vec3 = sys.world.position();
-	const to: Vec3 = world.position();
-	if (sys.asset.main.emitterVelocityMode == EmitterVelocityMode.Custom) {
-		sys.emitterVelocity = sys.asset.main.emitterVelocity;
-	} else if (dt > 0.0) {
-		sys.emitterVelocity = (to - from).scaled((1.0 / dt) as float32);
-	}
-	sys.world = world;
-	if (!(sys.fixedStep > 0.0)) {
-		sys.stepFrom = from;
-		sys.stepTo = to;
-		if (dt > 0.0) { step(sys, dt); }
-		return Result.ok(sys.count);
-	}
-	const h: float64 = sys.fixedStep;
-	const before: float64 = sys.remainder;
-	let pending: float64 = before + dt;
-	let steps: int32 = Math.floor(pending / h) as int32;
-	if (steps > sys.maxSubSteps) { steps = sys.maxSubSteps; }
-	for (let k = 0; k < steps; k++) {
-		// Where each step starts and ends inside this frame, as fractions of the frame.
-		const start: float64 = (k as float64) * h - before;
-		const end: float64 = start + h;
-		sys.stepFrom = from.lerp(to, frameFraction(start, dt));
-		sys.stepTo = from.lerp(to, frameFraction(end, dt));
-		step(sys, h);
-	}
-	pending = pending - (steps as float64) * h;
-	sys.remainder = pending < h ? pending : h;
+	const frame: FrameSteps = frameSteps(sys.clock, frameTime);
+	beginFrame(sys, world, frame);
+	for (let k = 0; k < frame.count; k++) { stepWithin(sys, frame, k); }
 	return Result.ok(sys.count);
 }
 
@@ -514,14 +615,25 @@ function claimSlot(ref sys: ParticleSystem): int32 {
 
 // A particle born `age` seconds before the end of the step, at normalized cycle time `cycleN`.
 function spawnParticle(ref sys: ParticleSystem, age: float32, cycleN: float32, h: float32, slot: ShapeSlot): void {
-	const i: int32 = claimSlot(sys);
-	if (i < 0) { return; }
 	sys.spawned = sys.spawned + 1;
-	const seed: uint32 = mix(sys.systemSeed, sys.spawned);
+	const local: boolean = sys.asset.main.simulationSpace == SimulationSpace.Local;
+	const origin: Mat4 = local ? identity() : emitterAt(sys, age, h);
+	const _slot = spawnAt(sys, origin, sys.emitterVelocity, mix(sys.systemSeed, sys.spawned), age, cycleN, slot);
+}
+
+// A particle from the shape placed by `origin`, which carries simulation space; `emitterVelocity`
+// feeds Inherit Velocity. Returns its slot, or -1 when the system is full.
+function spawnAt(
+	ref sys: ParticleSystem, origin: Mat4, emitterVelocity: Vec3, seed: uint32, age: float32,
+	cycleN: float32, slot: ShapeSlot,
+): int32 {
+	const i: int32 = claimSlot(sys);
+	if (i < 0) { return -1; }
 	sys.seeds[i] = seed;
+	sys.inside[i] = 0;
 	const m = sys.asset.main;
 	const c = sys.curves;
-	const world: Mat4 = emitterAt(sys, age, h);
+	const world: Mat4 = origin;
 	const timers: ShapeSlot = {
 		...slot,
 		arcTimer: (sys.arcPhase as float32) - c.arcSpeed.evaluate(cycleN, 0.0) * age,
@@ -536,13 +648,12 @@ function spawnParticle(ref sys: ParticleSystem, age: float32, cycleN: float32, h
 	const speed: float32 = c.startSpeed.evaluate(cycleN, unitDraw(seed, DRAW_SPEED));
 	let pos: Vec3 = sample.position;
 	let vel: Vec3 = sample.direction.scaled(speed);
-	if (m.simulationSpace == SimulationSpace.World) {
-		pos = pos * world;
-		vel = vel.transformDirection(world);
-		if (sys.asset.inheritVelocity.enabled && sys.asset.inheritVelocity.mode == InheritVelocityMode.Initial) {
-			const k: float32 = c.inheritVelocity.evaluate(cycleN, unitDraw(seed, DRAW_INHERIT));
-			vel = vel + sys.emitterVelocity.scaled(k);
-		}
+	pos = pos * world;
+	vel = vel.transformDirection(world);
+	if (sys.asset.inheritVelocity.enabled && sys.asset.inheritVelocity.mode == InheritVelocityMode.Initial
+		&& m.simulationSpace == SimulationSpace.World) {
+		const k: float32 = c.inheritVelocity.evaluate(cycleN, unitDraw(seed, DRAW_INHERIT));
+		vel = vel + emitterVelocity.scaled(k);
 	}
 	if (sys.asset.space2D) {
 		pos = vec3(pos.x, pos.y, 0.0);
@@ -579,6 +690,71 @@ function spawnParticle(ref sys: ParticleSystem, age: float32, cycleN: float32, h
 	put(sys, START_B, i, color.b);
 	put(sys, START_A, i, color.a);
 	put(sys, SIZE_X, i, sx);
+	put(sys, BIRTH_CARRY, i, 0.0);
+	put(sys, BIRTH_CARRY + 1, i, 0.0);
+	return i;
+}
+
+// Spawns a sub-emitter's children for one event of its parent, with the parent's properties the
+// entry inherits: colour and size multiply, rotation adds, lifetime shrinks with the parent's age.
+export function spawnFromEvent(
+	ref sys: ParticleSystem, event: ParticleEvent, properties: BitSet<SubEmitterProperty>, key: uint32,
+): void {
+	const local: boolean = sys.asset.main.simulationSpace == SimulationSpace.Local;
+	let n: int32 = event.count;
+	if (n < 0) {
+		n = 0;
+		for (let b = 0; b < (sys.asset.emission.bursts.length as int32); b++) {
+			const value: float32 = sys.curves.burstCounts[b].evaluate(0.0, unitDraw(mix(key, b as uint32), DRAW_BURST_COUNT));
+			n = n + (Math.round(value) as int32);
+		}
+	}
+	for (let k = 0; k < n; k++) {
+		// Rate children spread along the parent's path over the step, oldest first.
+		const along: float32 = event.count < 0 ? 1.0 : ((k + 1) as float32) / (n as float32);
+		const p: Vec3 = event.from.lerp(event.position, along);
+		const age: float32 = event.count < 0 ? event.before : event.before * (1.0 - along);
+		const origin: Mat4 = local ? translation(p.x, p.y, p.z) : { ...sys.world, m41: p.x, m42: p.y, m43: p.z };
+		sys.spawned = sys.spawned + 1;
+		const i: int32 = spawnAt(sys, origin, event.velocity, mix(key, k as uint32), age, 0.0,
+			{ index: k, count: n, arcTimer: 0.0, radiusTimer: 0.0 });
+		if (i < 0) { return; }
+		if (properties.has(SubEmitterProperty.InheritColor)) {
+			put(sys, START_R, i, get(sys, START_R, i) * event.color.r);
+			put(sys, START_G, i, get(sys, START_G, i) * event.color.g);
+			put(sys, START_B, i, get(sys, START_B, i) * event.color.b);
+			put(sys, START_A, i, get(sys, START_A, i) * event.color.a);
+		}
+		if (properties.has(SubEmitterProperty.InheritSize)) {
+			put(sys, START_SIZE_X, i, get(sys, START_SIZE_X, i) * event.size.x);
+			put(sys, START_SIZE_Y, i, get(sys, START_SIZE_Y, i) * event.size.y);
+			put(sys, START_SIZE_Z, i, get(sys, START_SIZE_Z, i) * event.size.z);
+			put(sys, SIZE_X, i, get(sys, START_SIZE_X, i));
+		}
+		if (properties.has(SubEmitterProperty.InheritRotation)) {
+			put(sys, ROT_X, i, get(sys, ROT_X, i) + event.rotation.x);
+			put(sys, ROT_Y, i, get(sys, ROT_Y, i) + event.rotation.y);
+			put(sys, ROT_Z, i, get(sys, ROT_Z, i) + event.rotation.z);
+		}
+		if (properties.has(SubEmitterProperty.InheritLifetime)) {
+			put(sys, LIFETIME, i, get(sys, LIFETIME, i) * (1.0 - event.ageFraction));
+		}
+	}
+}
+
+// The event a particle makes, carrying the state its children may inherit.
+function eventOf(
+	sys: ParticleSystem, i: int32, kind: SubEmitterType, position: Vec3, velocity: Vec3, before: float32,
+	ageFraction: float32,
+): ParticleEvent {
+	return {
+		kind: kind, trigger: TriggerEvent.Inside, link: -1, count: -1,
+		position: position, from: position, velocity: velocity, normal: vec3(0.0, 1.0, 0.0), collider: -1,
+		color: { r: get(sys, COLOR_R, i), g: get(sys, COLOR_G, i), b: get(sys, COLOR_B, i), a: get(sys, COLOR_A, i) },
+		size: vec3(get(sys, SIZE_X, i), get(sys, SIZE_Y, i), get(sys, SIZE_Z, i)),
+		rotation: vec3(get(sys, ROT_X, i), get(sys, ROT_Y, i), get(sys, ROT_Z, i)),
+		ageFraction: ageFraction, before: before, seed: sys.seeds[i], particle: i,
+	};
 }
 
 // ---- update of the live particles (SIM §6.3 steps 5-14) ----
@@ -655,6 +831,12 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 	const noise = asset.noise;
 	const inheritCurrent: boolean = asset.inheritVelocity.enabled && !local
 		&& asset.inheritVelocity.mode == InheritVelocityMode.Current;
+	const collision = asset.collision;
+	const trigger = asset.trigger;
+	const triggerAll: uint32 = trigger.enabled ? allBits(trigger.colliders.length as int32) : 0;
+	const worldColliders: boolean = collision.enabled && collision.collisionType == CollisionType.World;
+	const noColliders: Vec<ParticleCollider> = [];
+	const fields: boolean = asset.externalForces.enabled && sys.forceFields.length > 0;
 	let kept: int32 = 0;
 	for (let i = 0; i < sys.count; i++) {
 		const seed: uint32 = sys.seeds[i];
@@ -670,7 +852,8 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 			const span: float32 = lifetime * asset.main.ringBufferLoopRange.max - lo;
 			age = span > 0.0 ? lo + fract((age - lo) / span) * span : lo;
 		}
-		if (age >= lifetime) { continue; }
+		let dead: boolean = age >= lifetime;
+		if (dead && !sys.wantDeath) { continue; }
 		const tN: float32 = saturate(age / lifetime);
 		let pos: Vec3 = vec3(get(sys, POS_X, i), get(sys, POS_Y, i), get(sys, POS_Z, i));
 		let vel: Vec3 = vec3(get(sys, VEL_X, i), get(sys, VEL_Y, i), get(sys, VEL_Z, i));
@@ -716,6 +899,19 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 		}
 		const g: float32 = c.gravityModifier.evaluate(emitterN, unitDraw(seed, DRAW_GRAVITY));
 		if (g != 0.0) { vel = vel + gravity.scaled(g * dt); }
+		if (fields) {
+			const multiplier: float32 = c.externalMultiplier.evaluate(tN, unitDraw(seed, DRAW_GRAVITY));
+			for (const field of sys.forceFields) {
+				if ((asset.externalForces.influenceMask & ((1 as uint32) << (field.layer as uint32))) == 0) { continue; }
+				const push: FieldPush = fieldPush(field, pos, vel.length(), get(sys, SIZE_X, i));
+				vel = vel + push.acceleration.scaled(multiplier * dt);
+				const speedNow: float32 = vel.length();
+				if (push.drag > 0.0 && speedNow > 0.0) {
+					const slower: float32 = speedNow - push.drag * multiplier * dt;
+					vel = vel.scaled(slower > 0.0 ? slower / speedNow : 0.0);
+				}
+			}
+		}
 		let noiseRotation: float32 = 0.0;
 		let noiseSize: float32 = 1.0;
 		if (noise.enabled) {
@@ -780,8 +976,62 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 			move = vec3(move.x, move.y, 0.0);
 			vel = vec3(vel.x, vel.y, 0.0);
 		}
-		pos = pos + move.scaled(speedScale * dt);
+		const start: Vec3 = pos;
+		const displacement: Vec3 = move.scaled(speedScale * dt);
+		let hit: Hit = MISS;
+		if (collision.enabled && !dead) {
+			const radius: float32 = get(sys, SIZE_X, i) * 0.5 * collision.radiusScale;
+			hit = sweep(pos, displacement, radius, collision.planes,
+				worldColliders ? sys.colliders : noColliders, collision.collidesWith);
+		}
+		if (hit.hit) {
+			// Unity's response: the normal part scaled by bounce, all of it by (1 - dampen), and
+			// the rest of the step spent at the new velocity (tests/unity/goldens/collision_plane_*).
+			const r: float32 = unitDraw(seed, DRAW_COLLISION);
+			const speedBefore: float32 = vel.length();
+			const vn: Vec3 = hit.normal.scaled(vel.dot(hit.normal));
+			const vt: Vec3 = vel - vn;
+			vel = (vt - vn.scaled(c.collisionBounce.evaluate(tN, r))).scaled(1.0 - c.collisionDampen.evaluate(tN, r));
+			if (asset.space2D) { vel = vec3(vel.x, vel.y, 0.0); }
+			age = age + c.collisionLifetimeLoss.evaluate(tN, r) * lifetime;
+			const contact: Vec3 = pos + displacement.scaled(hit.fraction);
+			move = vel + animated;
+			pos = contact + move.scaled(speedScale * dt * (1.0 - hit.fraction));
+			// A collision kill ends the lifetime and the particle leaves on the next update, as Unity
+			// shows it one more frame with no lifetime left (tests/unity/goldens/collision_plane_minkill3).
+			if (speedBefore < collision.minKillSpeed || speedBefore > collision.maxKillSpeed || age > lifetime) {
+				age = lifetime;
+			}
+			if (sys.wantCollision) {
+				sys.events.push({
+					...eventOf(sys, i, SubEmitterType.Collision, contact, vel, dt * (1.0 - hit.fraction), saturate(age / lifetime)),
+					normal: hit.normal, collider: hit.collider,
+				});
+			}
+		} else {
+			pos = pos + displacement;
+		}
 		const speed: float32 = move.length();
+		if (trigger.enabled && !dead) {
+			const radius: float32 = get(sys, SIZE_X, i) * 0.5 * trigger.radiusScale;
+			const now: uint32 = overlaps(pos, radius, trigger.colliders);
+			const was: uint32 = sys.inside[i];
+			sys.inside[i] = now;
+			// A particle born inside a collider enters it (tests/unity/goldens/trigger_enter_kill).
+			dead = applyTrigger(sys, i, trigger.enter, TriggerEvent.Enter, now & ~was, pos, vel) || dead;
+			dead = applyTrigger(sys, i, trigger.exit, TriggerEvent.Exit, was & ~now, pos, vel) || dead;
+			dead = applyTrigger(sys, i, trigger.inside, TriggerEvent.Inside, now, pos, vel) || dead;
+			dead = applyTrigger(sys, i, trigger.outside, TriggerEvent.Outside, triggerAll & ~now, pos, vel) || dead;
+		}
+		for (let b = 0; b < (sys.births.length as int32); b++) {
+			emitBirth(sys, i, b, start, pos, vel, pending >= 0.0, tN, dt);
+		}
+		if (dead) {
+			if (sys.wantDeath) {
+				sys.events.push(eventOf(sys, i, SubEmitterType.Death, pos, vel, 0.0, 1.0));
+			}
+			continue;
+		}
 		// Order-keeping compaction: survivors slide down over the dead.
 		if (kept != i) { moveSlot(sys, i, kept); }
 		const k: int32 = kept;
@@ -803,6 +1053,52 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 	sys.count = kept;
 }
 
+function allBits(n: int32): uint32 {
+	return n >= 32 ? 0xFFFFFFFF : ((1 as uint32) << (n as uint32)) - 1;
+}
+
+// One trigger event type for the colliders in `bits`: Kill reports death, Callback records an
+// event for the app and the Trigger sub-emitters.
+function applyTrigger(
+	ref sys: ParticleSystem, i: int32, action: TriggerAction, kind: TriggerEvent, bits: uint32, pos: Vec3,
+	vel: Vec3,
+): boolean {
+	if (bits == 0) { return false; }
+	return match (action) {
+		TriggerAction.Ignore => false,
+		TriggerAction.Kill => true,
+		TriggerAction.Callback => {
+			let collider: int32 = 0;
+			while (((bits >> (collider as uint32)) & 1) == 0) { collider = collider + 1; }
+			sys.events.push({
+				...eventOf(sys, i, SubEmitterType.Trigger, pos, vel, 0.0, 0.0),
+				trigger: kind, collider: collider,
+			});
+			return false;
+		},
+	};
+}
+
+// A Birth link's children for one parent particle this step: the child's bursts when the parent
+// is born, then its rate over time and distance carried per parent (Unity's m_EmitAccumulator).
+function emitBirth(
+	ref sys: ParticleSystem, i: int32, b: int32, from: Vec3, to: Vec3, vel: Vec3, born: boolean, tN: float32,
+	dt: float32,
+): void {
+	const link: BirthLink = sys.births[b];
+	if (born) {
+		sys.events.push({ ...eventOf(sys, i, SubEmitterType.Birth, from, vel, dt, tN), link: b });
+	}
+	const r: float32 = unitDraw(sys.seeds[i], DRAW_BIRTH);
+	const carry: float32 = get(sys, BIRTH_CARRY + b, i)
+		+ link.rate.evaluate(tN, r) * dt + link.distanceRate.evaluate(tN, r) * (to - from).length();
+	const n: int32 = Math.floor(carry as float64) as int32;
+	put(sys, BIRTH_CARRY + b, i, carry - (n as float32));
+	if (n > 0) {
+		sys.events.push({ ...eventOf(sys, i, SubEmitterType.Birth, to, vel, dt, tN), link: b, count: n, from: from });
+	}
+}
+
 // The signed part of `v` beyond `cap` in magnitude.
 function excess(v: float32, cap: float32): float32 {
 	if (v > cap) { return v - cap; }
@@ -816,6 +1112,7 @@ function moveSlot(ref sys: ParticleSystem, from: int32, to: int32): void {
 		sys.data[base + to] = sys.data[base + from];
 	}
 	sys.seeds[to] = sys.seeds[from];
+	sys.inside[to] = sys.inside[from];
 }
 
 // Rotation over lifetime and by speed are angular velocities in rad/s, integrated per step.
