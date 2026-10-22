@@ -1,10 +1,15 @@
 import {
 	Access,
+	ExprKind,
+	Intrinsic,
 	ResourceKind,
+	SamplerType,
 	ScalarKind,
+	ShaderExpr,
 	ShaderModule,
 	ShaderResource,
 	ShaderStage,
+	ShaderStmt,
 	ShaderType,
 	ShaderTypeKind,
 } from "./ir";
@@ -145,6 +150,10 @@ export function storageElementLayout(m: ShaderModule, resourceIndex: int32):
 	return Result.ok(structLayoutOf(m, element.structIndex, LayoutRule.Std430));
 }
 
+// SPIRV-Cross build_dummy_sampler_for_combined_images names the sampler a texel fetch or size
+// query pairs with on GL; sokol-shdc names each combined sampler <texture>_<sampler>.
+export const DUMMY_SAMPLER = "SPIRV_Cross_DummySampler";
+
 export class BindingSlot {
 	resource: int32 = -1;
 	texture: int32 = -1;
@@ -207,6 +216,36 @@ function slotOf(m: ShaderModule, u: Used, target: ShaderTarget): BindingSlot {
 	return s;
 }
 
+function samplerlessReads(e: ShaderExpr, out: int32[]): void {
+	const fetch = e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
+		e.intrinsic == Intrinsic.TextureDimensions);
+	if (fetch && e.operands.length > 0 && e.operands[0].kind == ExprKind.Resource &&
+		e.operands[0].type.kind == ShaderTypeKind.Texture &&
+		!e.operands.some((o) => o.type.kind == ShaderTypeKind.Sampler) &&
+		!out.includes(e.operands[0].index)) {
+		out.push(e.operands[0].index);
+	}
+	for (const o of e.operands) { samplerlessReads(o, out); }
+}
+
+function samplerlessStmts(stmts: ShaderStmt[], out: int32[]): void {
+	for (const s of stmts) {
+		samplerlessReads(s.expr, out);
+		samplerlessReads(s.target, out);
+		for (const list of [s.init, s.update, s.body, s.otherwise]) { samplerlessStmts(list, out); }
+		for (const k of s.cases) { samplerlessStmts(k.body, out); }
+	}
+}
+
+function fetchesThrough(m: ShaderModule, use: PairUse, texture: int32, stage: ShaderStage): boolean {
+	return use.stage == stage && use.pair.texture == texture && use.pair.sampler >= 0 &&
+		m.resources[use.pair.sampler].samplerType != SamplerType.Comparison;
+}
+
+function pairSamplerBinding(m: ShaderModule, pair: TexturePair): int32 {
+	return pair.sampler < 0 ? -1 : m.resources[pair.sampler].binding;
+}
+
 // Uniform block slot n is b<n> and buffer(n); views (textures, storage buffers and storage
 // textures, one slot space) and samplers follow sokol-shdc's
 // src/shdc/types/bind_slot_map.h allocate_backend_slots, per stage.
@@ -252,6 +291,15 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 		for (const p of reads.pairs) {
 			let use = new PairUse();
 			use.pair = p;
+			use.stage = entry.stage;
+			pairs.push(use);
+		}
+		let samplerless: int32[] = [];
+		for (const f of reads.functions) { samplerlessStmts(m.functions[f].body, samplerless); }
+		for (const texture of samplerless) {
+			if (pairs.some((u) => fetchesThrough(m, u, texture, entry.stage))) { continue; }
+			let use = new PairUse();
+			use.pair.texture = texture;
 			use.stage = entry.stage;
 			pairs.push(use);
 		}
@@ -308,16 +356,24 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 	pairs.sort((a, b) => {
 		const byTexture = m.resources[a.pair.texture].binding - m.resources[b.pair.texture].binding;
 		return byTexture != 0 ? byTexture :
-			m.resources[a.pair.sampler].binding - m.resources[b.pair.sampler].binding;
+			pairSamplerBinding(m, a.pair) - pairSamplerBinding(m, b.pair);
 	});
 	for (const p of pairs) {
-		let u = new Used();
-		u.resource = p.pair.sampler;
-		u.stage = p.stage;
-		let s = slotOf(m, u, target);
 		const texture = m.resources[p.pair.texture];
+		let s = new BindingSlot();
+		if (p.pair.sampler >= 0) {
+			let u = new Used();
+			u.resource = p.pair.sampler;
+			u.stage = p.stage;
+			s = slotOf(m, u, target);
+		} else {
+			s.stage = p.stage;
+			s.group = 1;
+			s.binding = -1;
+		}
 		s.texture = p.pair.texture;
-		s.nativeName = texture.name + "_" + m.resources[p.pair.sampler].name;
+		s.nativeName = texture.name + "_" +
+			(p.pair.sampler >= 0 ? m.resources[p.pair.sampler].name : DUMMY_SAMPLER);
 		s.textureBinding = texture.binding;
 		slots.push(s);
 	}
