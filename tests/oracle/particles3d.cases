@@ -54,11 +54,16 @@
 # haxe-prelude: 	}
 # haxe-prelude: }
 #
-# ms-prelude: import { identity } from "../../../src/math/math3d";
+# ms-prelude: import { identity, vec3 } from "../../../src/math/math3d";
 # ms-prelude: import {
 # ms-prelude: 	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, ParticleEmitter,
 # ms-prelude: 	ParticleError, constant, updateEmitter,
 # ms-prelude: } from "../../../src/void3d/particles";
+# ms-prelude: import { fromHeaps, divergences, HEAPS_GRAVITY, HeapsDivergence } from "../../../src/void3d/fromHeaps";
+# ms-prelude: import { CompiledMinMaxCurve, CurveError } from "../../../src/particles/curve";
+# ms-prelude: import { ParticleSystem, playSystem, updateSystem } from "../../../src/particles/system";
+# ms-prelude: import { ParticleWriter3D, writeParticles } from "../../../src/void3d/particleWriter";
+# ms-prelude: import { AtlasTile } from "../../../src/void3d/billboard";
 # ms-prelude:
 # ms-prelude: function run(state: EmitterState, seed: uint32, steps: int32, dt: float64): ParticleEmitter {
 # ms-prelude: 	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
@@ -71,6 +76,45 @@
 # ms-prelude: }
 # ms-prelude: function randomValue(start: float32, length: float32, converge: Converge): ParticleValue {
 # ms-prelude: 	return { kind: ValueKind.Random, start: start, length: length, converge: converge };
+# ms-prelude: }
+# ms-prelude: const WHOLE: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };
+# ms-prelude: const SPAWN_AGE_STEP: int32 = 1;
+# ms-prelude: const RED: int32 = 12;
+# ms-prelude: const GREEN: int32 = 13;
+# ms-prelude: const BLUE: int32 = 14;
+# ms-prelude: const ALPHA: int32 = 15;
+# ms-prelude:
+# ms-prelude: struct Written {
+# ms-prelude: 	count: int32;
+# ms-prelude: 	instances: Vec<float32>;
+# ms-prelude: }
+# ms-prelude: function runLowered(state: EmitterState, heapsSteps: int32, dt: float64): Written {
+# ms-prelude: 	const asset = fromHeaps(state);
+# ms-prelude: 	if (!asset.ok) { unreachable; }
+# ms-prelude: 	const made = ParticleSystem.create(asset.value, 7);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	let sys = made.value;
+# ms-prelude: 	sys.clock.fixedStep = dt;
+# ms-prelude: 	sys.clock.maxFrameTime = 1.0;
+# ms-prelude: 	sys.gravity = HEAPS_GRAVITY;
+# ms-prelude: 	playSystem(sys, identity());
+# ms-prelude: 	for (let i = 0; i < heapsSteps + SPAWN_AGE_STEP; i++) {
+# ms-prelude: 		const stepped = updateSystem(sys, dt, identity());
+# ms-prelude: 		if (!stepped.ok) { unreachable; }
+# ms-prelude: 	}
+# ms-prelude: 	let writer = ParticleWriter3D.create();
+# ms-prelude: 	let instances: Vec<float32> = new Array(16 * sys.capacity);
+# ms-prelude: 	const written = writeParticles(writer, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), instances);
+# ms-prelude: 	if (!written.ok) { unreachable; }
+# ms-prelude: 	return { count: written.value, instances: instances };
+# ms-prelude: }
+# ms-prelude: function field(w: Written, particle: int32, f: int32): float32 { return w.instances[particle * 16 + f]; }
+# ms-prelude: function loweredRate(v: ParticleValue, t: float32, draw: float32): float32 {
+# ms-prelude: 	const asset = fromHeaps({ ...EmitterState.defaults(), emitRate: v });
+# ms-prelude: 	if (!asset.ok) { unreachable; }
+# ms-prelude: 	const compiled: Result<CompiledMinMaxCurve, CurveError> = asset.value.emission.rateOverTime.compile();
+# ms-prelude: 	if (!compiled.ok) { unreachable; }
+# ms-prelude: 	return compiled.value.evaluate(t, draw);
 # ms-prelude: }
 
 # ---- State.eval -----------------------------------------------------------------------------
@@ -85,7 +129,7 @@ ms> const pow1: ParticleValue = { kind: ValueKind.Pow, start: 1.0, length: 2.0, 
 ms> const sin1: ParticleValue = { kind: ValueKind.Sin, frequency: 2.0, amplitude: 3.0, offset: 1.0 };
 ms> const cos1: ParticleValue = { kind: ValueKind.Cos, frequency: 2.0, amplitude: 3.0, offset: 1.0 };
 ms> const lin1: ParticleValue = { kind: ValueKind.Linear, start: 1.0, length: 2.0 };
-ms> emit9("values-evaluate", constant(2.0).evaluate(0.3, k1), lin1.evaluate(0.3, k1), pow1.evaluate(0.3, k1), sin1.evaluate(0.3, k1), cos1.evaluate(0.3, k1), randomValue(1.0, 4.0, Converge.No).evaluate(0.3, k1), randomValue(1.0, 4.0, Converge.Start).evaluate(0.3, k1), randomValue(1.0, 4.0, Converge.End).evaluate(0.3, k1), 0.0);
+ms> emit9("values-evaluate", loweredRate(constant(2.0), 0.3, k1), loweredRate(lin1, 0.3, k1), loweredRate(pow1, 0.3, k1), loweredRate(sin1, 0.3, k1), loweredRate(cos1, 0.3, k1), loweredRate(randomValue(1.0, 4.0, Converge.No), 0.3, k1), loweredRate(randomValue(1.0, 4.0, Converge.Start), 0.3, k1), loweredRate(randomValue(1.0, 4.0, Converge.End), 0.3, k1), 0.0);
 
 # ---- emission and shapes --------------------------------------------------------------------
 
@@ -126,13 +170,16 @@ ms> const e5: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: cons
 ms> emit9("random-lives-keep-order", e5.particles[0].position.x, e5.particles[0].position.y, e5.particles[0].position.z, e5.particles[2].position.x, e5.particles[2].position.y, e5.particles[2].position.z, e5.count as float32, 0.0, 0.0);
 
 # Color keys blended by the particle's time, times light, and alpha from the particle's time.
-case color-keys-light-alpha tol=1e-5
+case color-keys-light-alpha tol=2e-2 carries=EmissionCeil,SpawnAge,GradientSampled
 haxe> var s6 = H.state(); s6.emitRate = VConst(10); s6.life = VConst(1); s6.colors = [{ time: 0.0, color: 0xFF8000 }, { time: 0.5, color: 0x0040FF }, { time: 0.9, color: 0xFFFFFF }]; s6.light = VLinear(1, -0.5); s6.alpha = VLinear(1, -1);
 haxe> var e6 = H.run(s6, 5, 8, 0.1);
 haxe> var p6 = H.at(e6, 0); var q6 = H.at(e6, 5);
 haxe> emit("color-keys-light-alpha", [p6.r, p6.g, p6.b, p6.a, q6.r, q6.g, q6.b, q6.a, e6.count]);
-ms> const e6: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(10.0), life: constant(1.0), colors: [{ time: 0.0, color: 0xFF8000 }, { time: 0.5, color: 0x0040FF }, { time: 0.9, color: 0xFFFFFF }], light: { kind: ValueKind.Linear, start: 1.0, length: -0.5 }, alpha: { kind: ValueKind.Linear, start: 1.0, length: -1.0 } }, 5, 8, 0.1);
-ms> emit9("color-keys-light-alpha", e6.particles[0].red, e6.particles[0].green, e6.particles[0].blue, e6.particles[0].alpha, e6.particles[5].red, e6.particles[5].green, e6.particles[5].blue, e6.particles[5].alpha, e6.count as float32);
+ms> const s6: EmitterState = { ...EmitterState.defaults(), emitRate: constant(10.0), life: constant(1.0), colors: [{ time: 0.0, color: 0xFF8000 }, { time: 0.5, color: 0x0040FF }, { time: 0.9, color: 0xFFFFFF }], light: { kind: ValueKind.Linear, start: 1.0, length: -0.5 }, alpha: { kind: ValueKind.Linear, start: 1.0, length: -1.0 } };
+ms> const d6 = divergences(s6);
+ms> if (!(d6.has(HeapsDivergence.EmissionCeil) && d6.has(HeapsDivergence.SpawnAge) && d6.has(HeapsDivergence.GradientSampled))) { unreachable; }
+ms> const e6: Written = runLowered(s6, 8, 0.1);
+ms> emit9("color-keys-light-alpha", field(e6, 0, RED), field(e6, 0, GREEN), field(e6, 0, BLUE), field(e6, 0, ALPHA), field(e6, 5, RED), field(e6, 5, GREEN), field(e6, 5, BLUE), field(e6, 5, ALPHA), e6.count as float32);
 
 # A burst adds its count once, on the update whose cycle crosses its time; a looping cycle
 # wraps, and emission stops on a one-shot past its end.
@@ -166,9 +213,11 @@ ms> emit3("random-values-per-life", first9, e9.particles[0].size, e9.count as fl
 # A burst at 0.1 and one 0.1 s step: the burst time is compared with the emitter's cycle in
 # float64 on both sides. Stored as float32, 0.1 reads as 0.10000000149 and the burst fires one
 # update late.
-case burst-at-a-tenth tol=1e-6
+case burst-at-a-tenth tol=1e-6 carries=SpawnAge
 haxe> var s10 = H.state(); s10.emitRate = VConst(0); s10.bursts = [{ time: 0.1, count: 3 }]; s10.life = VConst(10);
 haxe> var e10 = H.run(s10, 3, 1, 0.1);
 haxe> emit("burst-at-a-tenth", [e10.count]);
-ms> const e10: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(0.0), bursts: [{ time: 0.1, count: 3 }], life: constant(10.0) }, 3, 1, 0.1);
+ms> const s10: EmitterState = { ...EmitterState.defaults(), emitRate: constant(0.0), bursts: [{ time: 0.1, count: 3 }], life: constant(10.0) };
+ms> if (!divergences(s10).has(HeapsDivergence.SpawnAge)) { unreachable; }
+ms> const e10: Written = runLowered(s10, 1, 0.1);
 ms> emit1("burst-at-a-tenth", e10.count as float32);
