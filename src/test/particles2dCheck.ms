@@ -1,6 +1,7 @@
 import { readFile } from "std/fs";
 import { JsonValue } from "std/serialize/json/types";
 import { vec3 } from "../math/math3d";
+import { sinf, cosf } from "../math/mat4";
 import {
 	ParticleSystemAsset, ParticleEffect, RenderMode, RenderAlignment, SimulationSpace,
 } from "../particles/asset";
@@ -155,13 +156,16 @@ struct UnityQuad {
 	velocityScale: float32;
 	pivotX: float32;
 	pivotY: float32;
+	freeform: boolean;
+	rotateWith: boolean;
+	allowRoll: boolean;
 }
 
 function quad(vx: float32, vy: float32): UnityQuad {
 	return {
 		vx: vx, vy: vy, forceY: 0.0, width: 1.0, height: 1.0, rotationDegrees: 0.0,
 		mode: RenderMode.Billboard, alignment: RenderAlignment.View, lengthScale: 1.0,
-		velocityScale: 0.0, pivotX: 0.0, pivotY: 0.0,
+		velocityScale: 0.0, pivotX: 0.0, pivotY: 0.0, freeform: false, rotateWith: true, allowRoll: true,
 	};
 }
 
@@ -188,6 +192,9 @@ function unityAsset(q: UnityQuad): ParticleSystemAsset {
 	a.renderer.lengthScale = q.lengthScale;
 	a.renderer.velocityScale = q.velocityScale;
 	a.renderer.pivot = vec3(q.pivotX, q.pivotY, 0.0);
+	a.renderer.freeformStretching = q.freeform;
+	a.renderer.rotateWithStretchDirection = q.rotateWith;
+	a.renderer.allowRoll = q.allowRoll;
 	return a;
 }
 
@@ -210,6 +217,21 @@ function cellCorners(c: TileCell): float32[] {
 	return [a.x, -a.y, b.x, -b.y, d.x, -d.y, e.x, -e.y];
 }
 
+// The mesh of the first freeform node: the corners of its one quad, top-left first in Unity's
+// y-up frame (two triangles, TL TR BR then TL BR BL), or nothing when the mesh is not one quad.
+function meshCorners(e: ParticleEmitter2D): float32[] {
+	const g: NodeRef = e.freeformNodes[0];
+	const mesh: float32[] = g.scene.meshes[g.scene.payloads[g.id.index]].mesh;
+	if ((mesh.length as int32) != 48) { return []; }
+	return [mesh[0], -mesh[1], mesh[8], -mesh[9], mesh[16], -mesh[17], mesh[40], -mesh[41]];
+}
+
+function quadCount(e: ParticleEmitter2D, freeform: boolean): int32 {
+	if (!freeform) { return e.node.count(); }
+	const g: NodeRef = e.freeformNodes[0];
+	return (g.scene.meshes[g.scene.payloads[g.id.index]].mesh.length as int32) / 48;
+}
+
 // Replays a baked-quad golden through the 2D writer at Unity's step, 4 sub-steps per frame, and
 // counts the corners that differ.
 function cornerMisses(name: string, q: UnityQuad): int32 {
@@ -224,9 +246,9 @@ function cornerMisses(name: string, q: UnityQuad): int32 {
 		if (!n.ok || n.value != 1) { return 1000; }
 		const baked = frames.at(k).getDynamicField("bakedQuads");
 		const wanted: int32 = baked.length() as int32;
-		if (e.node.count() != wanted) { return 1000; }
+		if (quadCount(e, q.freeform) != wanted) { return 1000; }
 		if (wanted == 0) { continue; }
-		const mine: float32[] = cellCorners(first(e));
+		const mine: float32[] = q.freeform ? meshCorners(e) : cellCorners(first(e));
 		const pos = baked.at(0).getDynamicField("pos");
 		for (let v = 0; v < 4; v++) {
 			for (let axis = 0; axis < 2; axis++) {
@@ -361,4 +383,136 @@ test "cameraVelocityScale is refused on a stretched system and ignored where it 
 	assert refusal(RenderMode.Stretch, 0.5) == Particles2DErrorKind.CameraVelocity;
 	assert refusal(RenderMode.Billboard, 0.5) == Particles2DErrorKind.Effect;
 	assert refusal(RenderMode.None, 0.5) == Particles2DErrorKind.Effect;
+}
+
+// ---- freeform stretching, roll ----
+
+function freeformQuad(rotateWith: boolean): UnityQuad {
+	let q = stretched(0.3, 0.4, 1.0, 5.0);
+	q.height = 2.0;
+	q.rotationDegrees = 45.0;
+	q.freeform = true;
+	q.rotateWith = rotateWith;
+	return q;
+}
+
+test "stretch: without freeformStretching, rotateWithStretchDirection changes nothing" {
+	let q = freeformQuad(false);
+	q.freeform = false;
+	assert cornerMisses("stretch_freeform0_rotwith0", q) == 0;
+	q.rotateWith = true;
+	assert cornerMisses("stretch_freeform0_rotwith1", q) == 0;
+}
+
+test "freeform stretch: the particle's rotated quad is stretched along the velocity about its centre, to length / size.y times" {
+	assert cornerMisses("stretch_freeform1_rotwith0", freeformQuad(false)) == 0;
+}
+
+test "freeform stretch: rotateWithStretchDirection turns the quad by the stretch direction's rotation before the stretch" {
+	assert cornerMisses("stretch_freeform1_rotwith1", freeformQuad(true)) == 0;
+}
+
+test "freeform stretch: the stretch factor is built from size.y, so a wider-than-tall quad stretches more" {
+	let q = stretched(0.3, 0.4, 2.0, 5.0);
+	q.width = 2.0;
+	q.freeform = true;
+	q.rotateWith = false;
+	assert cornerMisses("stretch_freeform1_rotwith0_size2x1_ls2_rot0", q) == 0;
+	q.rotateWith = true;
+	assert cornerMisses("stretch_freeform1_rotwith1_size2x1_ls2_rot0", q) == 0;
+}
+
+test "freeform stretch: pivot shifts the quad before it is rotated and stretched" {
+	let q = freeformQuad(false);
+	q.pivotX = 0.5;
+	q.pivotY = 0.25;
+	assert cornerMisses("stretch_freeform1_rotwith0_pivot", q) == 0;
+	q.rotateWith = true;
+	assert cornerMisses("stretch_freeform1_rotwith1_pivot", q) == 0;
+}
+
+test "billboard: allowRoll has no effect under an orthographic camera that looks down -z" {
+	let q = quad(3.0, 4.0);
+	q.rotationDegrees = 45.0;
+	q.allowRoll = false;
+	assert cornerMisses("billboard_view_rot45_noroll", q) == 0;
+	q.height = 3.0;
+	assert cornerMisses("billboard_view_size1x3_rot45_noroll", q) == 0;
+}
+
+// ---- a moved and rotated emitter (tests/unity/goldens/billboard_moved_*) ----
+
+const EMITTER_TURN: float32 = 0.5235987755982988;
+
+// Unity's emitter: at (2, 1) turned 30 degrees counter-clockwise. In the y-down frame the turn is
+// a negative rotation.
+function movedEmitter(): Transform2D { return trs2d(2.0, -1.0, -EMITTER_TURN, 1.0, 1.0); }
+
+// Replays a moved-emitter golden. A Local-space system draws into a node that carries the
+// emitter's transform; a World-space one into an untransformed node. Corners are compared on
+// screen. Unity bakes a Local-space quad around the particle's local position, so its offsets
+// from that centre are placed around the particle's world position.
+function movedMisses(name: string, alignment: RenderAlignment, worldSpace: boolean): int32 {
+	const s = fresh();
+	let q = quad(3.0, 4.0);
+	q.height = 3.0;
+	q.rotationDegrees = 20.0;
+	q.alignment = alignment;
+	let a = unityAsset(q);
+	a.main.simulationSpace = worldSpace ? SimulationSpace.World : SimulationSpace.Local;
+	let e = emitter(s, a, tile(fakeTexture(5), 16.0, 16.0));
+	if (!worldSpace) { e.node.setPosition(2.0, -1.0).setRotation(-EMITTER_TURN); }
+	e.effect.clock.fixedStep = UNITY_DT / 4.0;
+	e.play(movedEmitter());
+	const frames = golden(name).getDynamicField("frames");
+	const co: float32 = cosf(EMITTER_TURN);
+	const si: float32 = sinf(EMITTER_TURN);
+	let misses: int32 = 0;
+	for (let k = 1; k < (frames.length() as int32); k++) {
+		const n = e.update(UNITY_DT, movedEmitter());
+		if (!n.ok || n.value != 1 || e.node.count() != 1) { return 1000; }
+		const c: TileCell = first(e);
+		const m: Transform2D = trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
+		const t: Tile = c.tile;
+		const own: float32[] = [t.dx, t.dy, t.dx + t.w, t.dy, t.dx + t.w, t.dy + t.h, t.dx, t.dy + t.h];
+		const baked = frames.at(k);
+		const pos = baked.getDynamicField("bakedQuads").at(0).getDynamicField("pos");
+		const centre = baked.getDynamicField("particles").at(0).getDynamicField("pos");
+		const px: float32 = centre.at(0).asNumber() as float32;
+		const py: float32 = centre.at(1).asNumber() as float32;
+		const wx: float32 = worldSpace ? 0.0 : px * co - py * si + 2.0 - px;
+		const wy: float32 = worldSpace ? 0.0 : px * si + py * co + 1.0 - py;
+		for (let v = 0; v < 4; v++) {
+			const p = e.node.localToGlobal(vec2(own[v * 2], own[v * 2 + 1]) * m);
+			const mine: float32[] = [p.x, -p.y];
+			const shift: float32[] = [wx, wy];
+			for (let axis = 0; axis < 2; axis++) {
+				const unity: float32 = (pos.at(v).at(axis).asNumber() as float32) + shift[axis];
+				const d: float32 = mine[axis] - unity;
+				if (d > CORNER_TOL || d < -CORNER_TOL) { misses = misses + 1; }
+			}
+		}
+	}
+	return misses;
+}
+
+test "view alignment stays screen-aligned under a turned Local-space emitter node" {
+	assert movedMisses("billboard_moved_view_local", RenderAlignment.View, false) == 0;
+}
+
+test "world alignment stays screen-aligned under a turned Local-space emitter node" {
+	assert movedMisses("billboard_moved_world_local", RenderAlignment.World, false) == 0;
+}
+
+test "local alignment turns the quad with the emitter in a Local-space system" {
+	assert movedMisses("billboard_moved_local_local", RenderAlignment.Local, false) == 0;
+}
+
+test "view and world alignment are unaffected by the emitter's turn in a World-space system" {
+	assert movedMisses("billboard_moved_view_world", RenderAlignment.View, true) == 0;
+	assert movedMisses("billboard_moved_world_world", RenderAlignment.World, true) == 0;
+}
+
+test "local alignment adds the emitter's turn in a World-space system, whose node is not turned" {
+	assert movedMisses("billboard_moved_local_world", RenderAlignment.Local, true) == 0;
 }
