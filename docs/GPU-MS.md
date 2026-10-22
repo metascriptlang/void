@@ -125,8 +125,8 @@ claiming "sokol-free": `nm <exe> | grep -ci " _\?\(sg\|sapp\|sglue\|stm\|slog\)_
 
 ## From the Mac (2026-10-22)
 
-G6 steps 1–6 are committed ("feat(webgpu): add the metal backend" onward, msc BUILD `794e1579a`),
-not pushed until the person says so. `webgpuMetalCheck` and the index are green; the void2d demo
+G6 steps 1–6 are committed ("feat(webgpu): add the metal backend" onward, msc BUILD `794e1579a`)
+and pushed to `wt/gpu-ms`. `webgpuMetalCheck` and the index are green; the void2d demo
 and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` finds no sokol symbol.
 
 - **Goldens:** `golden metal: 15 pass, 87 within bound, 18 fail of 120`. A sokol Metal build of
@@ -144,9 +144,7 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   - "fix(webgpu): return an invalid handle when a metal pool is exhausted" ports your `7a2f63d`
     to Metal.
   - "test(void3d): run the textured frame checks on metal readback" lets `texturedFrame` run its
-    pixel checks on Metal readback (backend 5); deviceLoss3d passes all three presets there. The other 3D consumers still accept D3D11 only:
-    `tests/capture3d/capture.c` reads back D3D11 alone, so gate3d on Metal needs a Metal capture3d
-    first (Mac's next job).
+    pixel checks on Metal readback (backend 5); deviceLoss3d passes all three presets there.
 - **Integration on the Mac** (gate flags): all pass except three that fail the same way on a
   sokol Metal build, so they predate this branch: retainedReplay hangs, viewPaint "stage 1:
   demoted background still paints", mrtBlend "backdrop normal is 2155937649". deviceLoss (svg,
@@ -165,6 +163,33 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   (`2bddbdfd7`) for renderer mechanisms (its `batched_uniform_buffer.rs` caps uniform arrays at
   4 KB on WebGL2); Heaps (`25f9a88f`) for render concepts (`Engine.hx:90-111` picks its driver
   with `#if`, as `device.ms` does); Mach sysgpu (`4be8e50`) for the shader compiler.
+
+### 2026-10-23
+
+- **Goldens recorded:** the 18 Apple GPU rows are `golden:<scene>@metal` budgets in
+  `tests/PENDING.md` (the person chose per-row budgets); on the 2026-10-22 captures the comparator
+  gives `15 pass, 105 pending, 0 fail of 120`. A fresh run waits for the msc header fixes.
+- **3D harness renamed:** `tests/capture3d/capture.{c,h}` is now `capture3d.{c,h}`, and
+  `scripts/gate3d.sh` writes `@include("capture3d.h")`. Two headers named `capture.h`
+  (`tests/capture/`, `tests/capture3d/`) in one program let the C compiler take the wrong one
+  through the `-I` order; msc 2a4be982a changed that order and the textured entry stopped
+  compiling. It also reads the macOS Metal drawable back now. Run gate3d once after the rebase.
+- **3D consumers on Metal:** texturedFrame, unlitFrame, cameraRigFrame, perspectiveFrame,
+  reparentFrame, gltfFrame, gltfColour and viewTeardown accept backend 5 and pass on the M1
+  (gltf ones built with the msc before 2a4be982a, whose header bug they hit). Their frames do not
+  match the D3D11 hashes in `docs/baselines3d.sha256`: that manifest is D3D11 bytes, and how
+  gate3d judges a Metal frame is an open question for the person.
+- **iOS from main:** the iOS app driver and its follow-ups (`a32dd50`, `3ac71dd`, `9d451e3`,
+  `b6798c9`, `1a70a1c`, the demo `cb32d23`/`31de1bc` and its docs) are cherry-picked here.
+  `src/platform/appEvent.h` gained `touchCount` and `touches[VOID_MAX_TOUCHPOINTS]`
+  (`VoidTouchPoint`: identifier, x, y, changed), and `appWindow.c` the touch, safe-area and
+  keyboard getters. The win32, linux and web drivers memset the event, so they report 0 touches;
+  the Android driver (`86425bf`, yours) fills them when you pick it. `bridgeIosApp.m` builds
+  `VoidAppEvent` and runs on the iOS simulator (iPhone 17 Pro, iOS 26.5): it draws, delivers
+  focus/suspend/resume, and `loseContext()` rebuilds the door (generation 1 → 2). Touch and keys
+  were not driven: the Mac has no tool here that taps the simulator.
+- **Partial `writeTexture` on Metal stays refused**, with the measurement and the upgrade trigger
+  in `docs/GPU.md` "Metal".
 
 ## G7 — after Metal (either side, coordinated)
 
