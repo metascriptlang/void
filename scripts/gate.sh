@@ -778,6 +778,15 @@ else
 	fail "text sdf oracle: an SDF capture disagrees with true coverage — see out/gate-oracle-sdf-run.log"
 	sed -n 's/^/      /p' out/gate-oracle-sdf-run.log 2>/dev/null | head -4
 fi
+"$MSC" build$moduleDefines tests/oracle/textOutlineCheck.ms --output=out/textOutlineCapture.exe \
+	> out/gate-oracle-outline.log 2>&1 || true
+if [ -x out/textOutlineCapture.exe ] && out/textOutlineCapture.exe > out/gate-oracle-outline-run.log 2>&1; then
+	pass "outline capture oracle: the SDF outline captures read as Pillow strokes (text/outlineSdf*)"
+	sed -n 's/^outline capture oracle: /      /p' out/gate-oracle-outline-run.log
+else
+	fail "outline capture oracle: an outline capture disagrees with Pillow — see out/gate-oracle-outline-run.log"
+	sed -n 's/^/      /p' out/gate-oracle-outline-run.log 2>/dev/null | head -4
+fi
 # The font oracles run inside T0 (src/test/fontOracleCheck.ms) against snapshots that
 # `python tests/oracle/fonts.py regen` writes from fontTools and HarfBuzz; the gate needs
 # neither tool, and reads the verdict line each test prints.

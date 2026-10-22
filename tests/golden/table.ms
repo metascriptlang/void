@@ -213,6 +213,13 @@ export const OUTLINE_EFFECT_H: int32 = 100;
 export const OUTLINE_EFFECT_TOLERANCE: int32 = 1;
 export const OUTLINE_BG_X: int32 = 2;
 export const OUTLINE_BG_Y: int32 = 2;
+export const OUTLINE_BG_R: float32 = 0.08;
+export const OUTLINE_BG_G: float32 = 0.09;
+export const OUTLINE_BG_B: float32 = 0.12;
+export const OUTLINE_INK_R: float32 = 0.95;
+export const OUTLINE_INK_G: float32 = 0.55;
+export const OUTLINE_INK_B: float32 = 0.10;
+export const OUTLINE_SDF_WIDTH: float32 = 1.5;
 
 export interface SdfLabelCase {
 	scene: string;
@@ -245,6 +252,33 @@ export function sdfLabelCases(): SdfLabelCase[] {
 		{ scene: SDF_SCALE_DOWN_SCENE, text: "Scale down 26", size: 26.0, x: 10.0, y: 40.0,
 			rotation: 0.0, zoom: 0.75 },
 	];
+}
+
+export function outlineSdfLabelCases(): SdfLabelCase[] {
+	let cases: SdfLabelCase[] = [];
+	for (const c of sdfLabelCases()) {
+		let scene: string = "";
+		if (c.scene == SDF_ROTATED_SCENE) {
+			scene = OUTLINE_SDF_ROTATED_SCENE;
+		} else if (c.scene == SDF_ZOOM_SCENE) {
+			scene = OUTLINE_SDF_ZOOM_SCENE;
+		} else if (c.scene == SDF_SCALE_DOWN_SCENE) {
+			scene = OUTLINE_SDF_SCALE_DOWN_SCENE;
+		} else {
+			console.log(`outline SDF case has an unknown source scene: ${c.scene}`);
+			unreachable;
+		}
+		cases.push({ ...c, scene: scene });
+	}
+	cases.push({
+		scene: OUTLINE_SDF_SEAM_SCENE, text: "Seam 20", size: 20.0, x: 12.0, y: 8.0,
+		rotation: 0.0, zoom: 1.0,
+	});
+	cases.push({
+		scene: OUTLINE_SDF_SEAM_SCENE, text: "Seam 20", size: 20.0, x: 12.0, y: 52.0,
+		rotation: 0.0, zoom: 1.001,
+	});
+	return cases;
 }
 
 export function sceneRows(): SceneRow[] {
