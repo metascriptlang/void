@@ -51,9 +51,24 @@ export enum GPUColorWrite {
 
 export type GPUTextureFormat =
 	| "r8unorm"
+	| "rg8unorm"
 	| "rgba8unorm"
+	| "rgba8unorm-srgb"
 	| "bgra8unorm"
+	| "bgra8unorm-srgb"
+	| "rgba8uint"
+	| "rgba8sint"
+	| "r16float"
+	| "rg16float"
 	| "rgba16float"
+	| "rgba16uint"
+	| "r32float"
+	| "rg32float"
+	| "rgba32float"
+	| "r32uint"
+	| "rgb10a2unorm"
+	| "rg11b10ufloat"
+	| "depth16unorm"
 	| "depth32float"
 	| "depth24plus-stencil8";
 export type GPUTextureSampleType = "float" | "unfilterable-float";
@@ -71,7 +86,19 @@ export type GPUCompareFunction =
 	| "always";
 export type GPUCullMode = "none" | "front" | "back";
 export type GPUFrontFace = "ccw" | "cw";
-export type GPUPrimitiveTopology = "triangle-list";
+export type GPUPrimitiveTopology = "point-list" | "line-list" | "line-strip" | "triangle-list" | "triangle-strip";
+export type GPUStencilOperation =
+	| "keep"
+	| "zero"
+	| "replace"
+	| "invert"
+	| "increment-clamp"
+	| "decrement-clamp"
+	| "increment-wrap"
+	| "decrement-wrap";
+export type GPUTextureDimension = "2d" | "3d";
+export type GPUTextureViewDimension = "2d" | "2d-array" | "cube" | "cube-array" | "3d";
+export type GPUMipmapFilterMode = "nearest" | "linear";
 export type GPUIndexFormat = "uint16" | "uint32";
 export type GPUBlendFactor =
 	| "zero"
@@ -86,11 +113,54 @@ export type GPUBlendFactor =
 	| "one-minus-dst-alpha"
 	| "src-alpha-saturated";
 export type GPUBlendOperation = "add" | "subtract" | "reverse-subtract" | "min" | "max";
-export type GPUVertexFormat = "float32" | "float32x2" | "float32x3" | "float32x4" | "unorm8x4";
+export type GPUVertexFormat =
+	| "uint8x2"
+	| "uint8x4"
+	| "sint8x2"
+	| "sint8x4"
+	| "unorm8x2"
+	| "unorm8x4"
+	| "snorm8x2"
+	| "snorm8x4"
+	| "uint16x2"
+	| "uint16x4"
+	| "sint16x2"
+	| "sint16x4"
+	| "unorm16x2"
+	| "unorm16x4"
+	| "snorm16x2"
+	| "snorm16x4"
+	| "float16x2"
+	| "float16x4"
+	| "float32"
+	| "float32x2"
+	| "float32x3"
+	| "float32x4"
+	| "uint32"
+	| "uint32x2"
+	| "uint32x3"
+	| "uint32x4"
+	| "sint32"
+	| "sint32x2"
+	| "sint32x3"
+	| "sint32x4";
 export type GPUVertexStepMode = "vertex" | "instance";
 export type GPUFilterMode = "nearest" | "linear";
 export type GPUAddressMode = "clamp-to-edge" | "repeat" | "mirror-repeat";
 export type GPUBackend = "d3d11" | "metal" | "glcore" | "gles3" | "webgpu";
+
+export function vertexFormatSize(format: GPUVertexFormat): int32 {
+	return match (format) {
+		"uint8x2" | "sint8x2" | "unorm8x2" | "snorm8x2" => 2,
+		"uint8x4" | "sint8x4" | "unorm8x4" | "snorm8x4" => 4,
+		"uint16x2" | "sint16x2" | "unorm16x2" | "snorm16x2" | "float16x2" => 4,
+		"uint16x4" | "sint16x4" | "unorm16x4" | "snorm16x4" | "float16x4" => 8,
+		"float32" | "uint32" | "sint32" => 4,
+		"float32x2" | "uint32x2" | "sint32x2" => 8,
+		"float32x3" | "uint32x3" | "sint32x3" => 12,
+		"float32x4" | "uint32x4" | "sint32x4" => 16,
+	};
+}
 
 export struct GPUColor { r: number; g: number; b: number; a: number; }
 export struct GPUExtent3D { width: int32; height: int32; depthOrArrayLayers: int32; }
@@ -107,16 +177,31 @@ export struct GPUTextureDescriptor {
 	format: GPUTextureFormat;
 	usage: int32;
 	sampleCount: int32;
+	dimension: GPUTextureDimension;
+	mipLevelCount: int32;
 }
 
-export struct GPUTextureViewDescriptor { label: string | null; }
+export struct GPUTextureViewDescriptor {
+	label: string | null;
+	dimension: GPUTextureViewDimension;
+	baseMipLevel: int32;
+	mipLevelCount: int32;
+	baseArrayLayer: int32;
+	arrayLayerCount: int32;
+}
 
 export struct GPUSamplerDescriptor {
 	label: string | null;
 	addressModeU: GPUAddressMode;
 	addressModeV: GPUAddressMode;
+	addressModeW: GPUAddressMode;
 	magFilter: GPUFilterMode;
 	minFilter: GPUFilterMode;
+	mipmapFilter: GPUMipmapFilterMode;
+	lodMinClamp: number;
+	lodMaxClamp: number;
+	compare: GPUCompareFunction;
+	maxAnisotropy: int32;
 }
 
 // A shader module carries one stage's source per entry, compiled for the backend this build
@@ -197,14 +282,29 @@ export struct GPUFragmentState {
 
 export struct GPUPrimitiveState {
 	topology: GPUPrimitiveTopology;
+	stripIndexFormat: GPUIndexFormat;
 	frontFace: GPUFrontFace;
 	cullMode: GPUCullMode;
+}
+
+export struct GPUStencilFaceState {
+	compare: GPUCompareFunction;
+	failOp: GPUStencilOperation;
+	depthFailOp: GPUStencilOperation;
+	passOp: GPUStencilOperation;
 }
 
 export struct GPUDepthStencilState {
 	format: GPUTextureFormat;
 	depthWriteEnabled: boolean;
 	depthCompare: GPUCompareFunction;
+	stencilFront: GPUStencilFaceState;
+	stencilBack: GPUStencilFaceState;
+	stencilReadMask: uint32;
+	stencilWriteMask: uint32;
+	depthBias: int32;
+	depthBiasSlopeScale: number;
+	depthBiasClamp: number;
 }
 
 export struct GPUMultisampleState { count: int32; }
@@ -223,6 +323,7 @@ export struct GPURenderPipelineDescriptor {
 export struct GPUBindGroupEntry {
 	binding: int32;
 	buffer: GPUBuffer;
+	offset: int64;
 	size: int64;
 	textureView: GPUTextureView;
 	sampler: GPUSampler;
@@ -264,9 +365,108 @@ function stop(message: string): void {
 	unreachable;
 }
 
+function stopOn(backend: string, message: string): void {
+	console.log(`webgpu ${backend}: ${message}`);
+	unreachable;
+}
+
+const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
+
+// A backend that has not ported a descriptor member calls the helper for its descriptor: a member
+// at WebGPU's default passes, any other value stops naming the member, the value and the backend.
+export function stopOnUnportedTexture(backend: string, descriptor: GPUTextureDescriptor): void {
+	const dimension: string = descriptor.dimension;
+	if (dimension != "" && dimension != "2d") { stopOn(backend, `GPUTextureDescriptor.dimension '${dimension}' is not ported to ${backend} yet`); }
+	if (descriptor.size.depthOrArrayLayers > 1) {
+		stopOn(backend, `GPUTextureDescriptor.size.depthOrArrayLayers ${descriptor.size.depthOrArrayLayers} is not ported to ${backend} yet`);
+	}
+	if (descriptor.mipLevelCount > 1) {
+		stopOn(backend, `GPUTextureDescriptor.mipLevelCount ${descriptor.mipLevelCount} is not ported to ${backend} yet`);
+	}
+}
+
+export function stopOnUnportedView(backend: string, descriptor: GPUTextureViewDescriptor): void {
+	const dimension: string = descriptor.dimension;
+	if (dimension != "" && dimension != "2d") { stopOn(backend, `GPUTextureViewDescriptor.dimension '${dimension}' is not ported to ${backend} yet`); }
+	if (descriptor.baseMipLevel != 0) { stopOn(backend, `GPUTextureViewDescriptor.baseMipLevel ${descriptor.baseMipLevel} is not ported to ${backend} yet`); }
+	if (descriptor.mipLevelCount > 1) { stopOn(backend, `GPUTextureViewDescriptor.mipLevelCount ${descriptor.mipLevelCount} is not ported to ${backend} yet`); }
+	if (descriptor.baseArrayLayer != 0) { stopOn(backend, `GPUTextureViewDescriptor.baseArrayLayer ${descriptor.baseArrayLayer} is not ported to ${backend} yet`); }
+	if (descriptor.arrayLayerCount > 1) { stopOn(backend, `GPUTextureViewDescriptor.arrayLayerCount ${descriptor.arrayLayerCount} is not ported to ${backend} yet`); }
+}
+
+export function stopOnUnportedSampler(backend: string, descriptor: GPUSamplerDescriptor): void {
+	const addressModeW: string = descriptor.addressModeW;
+	if (addressModeW != "" && addressModeW != "clamp-to-edge") {
+		stopOn(backend, `GPUSamplerDescriptor.addressModeW '${addressModeW}' is not ported to ${backend} yet`);
+	}
+	const mipmapFilter: string = descriptor.mipmapFilter;
+	if (mipmapFilter != "" && mipmapFilter != "nearest") {
+		stopOn(backend, `GPUSamplerDescriptor.mipmapFilter '${mipmapFilter}' is not ported to ${backend} yet`);
+	}
+	if (descriptor.lodMinClamp != 0) { stopOn(backend, `GPUSamplerDescriptor.lodMinClamp ${descriptor.lodMinClamp} is not ported to ${backend} yet`); }
+	if (descriptor.lodMaxClamp != 0 && descriptor.lodMaxClamp != 32) {
+		stopOn(backend, `GPUSamplerDescriptor.lodMaxClamp ${descriptor.lodMaxClamp} is not ported to ${backend} yet`);
+	}
+	const compare: string = descriptor.compare;
+	if (compare != "") { stopOn(backend, `GPUSamplerDescriptor.compare '${compare}' is not ported to ${backend} yet`); }
+	if (descriptor.maxAnisotropy > 1) {
+		stopOn(backend, `GPUSamplerDescriptor.maxAnisotropy ${descriptor.maxAnisotropy} is not ported to ${backend} yet`);
+	}
+}
+
+function stopOnUnportedStencilFace(backend: string, member: string, face: GPUStencilFaceState): void {
+	const compare: string = face.compare;
+	if (compare != "" && compare != "always") { stopOn(backend, `${member}.compare '${compare}' is not ported to ${backend} yet`); }
+	const failOp: string = face.failOp;
+	if (failOp != "" && failOp != "keep") { stopOn(backend, `${member}.failOp '${failOp}' is not ported to ${backend} yet`); }
+	const depthFailOp: string = face.depthFailOp;
+	if (depthFailOp != "" && depthFailOp != "keep") { stopOn(backend, `${member}.depthFailOp '${depthFailOp}' is not ported to ${backend} yet`); }
+	const passOp: string = face.passOp;
+	if (passOp != "" && passOp != "keep") { stopOn(backend, `${member}.passOp '${passOp}' is not ported to ${backend} yet`); }
+}
+
+export function stopOnUnportedDepthStencil(backend: string, state: GPUDepthStencilState): void {
+	stopOnUnportedStencilFace(backend, "depthStencil.stencilFront", state.stencilFront);
+	stopOnUnportedStencilFace(backend, "depthStencil.stencilBack", state.stencilBack);
+	if (state.stencilReadMask != 0 && state.stencilReadMask != STENCIL_MASK_ALL) {
+		stopOn(backend, `depthStencil.stencilReadMask ${state.stencilReadMask} is not ported to ${backend} yet`);
+	}
+	if (state.stencilWriteMask != 0 && state.stencilWriteMask != STENCIL_MASK_ALL) {
+		stopOn(backend, `depthStencil.stencilWriteMask ${state.stencilWriteMask} is not ported to ${backend} yet`);
+	}
+	if (state.depthBias != 0) { stopOn(backend, `depthStencil.depthBias ${state.depthBias} is not ported to ${backend} yet`); }
+	if (state.depthBiasSlopeScale != 0) {
+		stopOn(backend, `depthStencil.depthBiasSlopeScale ${state.depthBiasSlopeScale} is not ported to ${backend} yet`);
+	}
+	if (state.depthBiasClamp != 0) { stopOn(backend, `depthStencil.depthBiasClamp ${state.depthBiasClamp} is not ported to ${backend} yet`); }
+}
+
+export function stopOnUnportedPrimitive(backend: string, state: GPUPrimitiveState): void {
+	const topology: string = state.topology;
+	if (topology != "" && topology != "triangle-list") { stopOn(backend, `primitive.topology '${topology}' is not ported to ${backend} yet`); }
+	const stripIndexFormat: string = state.stripIndexFormat;
+	if (stripIndexFormat != "") { stopOn(backend, `primitive.stripIndexFormat '${stripIndexFormat}' is not ported to ${backend} yet`); }
+}
+
+export function stopOnUnportedBindEntry(backend: string, entry: GPUBindGroupEntry): void {
+	if (entry.offset != 0) { stopOn(backend, `bind group entry ${entry.binding} offset ${entry.offset} is not ported to ${backend} yet`); }
+}
+
+export function stopOnUnportedTexelWrite(backend: string, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	if (destination.mipLevel != 0) {
+		stopOn(backend, `writeTexture destination.mipLevel ${destination.mipLevel} is not ported to ${backend} yet`);
+	}
+	if (destination.origin.z != 0 || size.depthOrArrayLayers != 1) {
+		stopOn(backend, `writeTexture origin.z ${destination.origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers} is not ported to ${backend} yet`);
+	}
+}
+
+// `width` and `height` are the texture's mip 0; the validator derives the destination mip's size.
 export function checkedTexelWritePitch(
 	width: int32,
 	height: int32,
+	mipLevelCount: int32,
+	arrayLayers: int32,
 	bytesPerPixel: int32,
 	dataBytes: int64,
 	destination: GPUTexelCopyTextureInfo,
@@ -275,13 +475,16 @@ export function checkedTexelWritePitch(
 ): int32 {
 	const id = destination.texture.id;
 	const origin = destination.origin;
-	if (destination.mipLevel != 0) { stop(`writeTexture destination.mipLevel ${destination.mipLevel} of GPUTexture ${id}, which has one mip`); }
-	if (origin.z != 0 || size.depthOrArrayLayers != 1) {
-		stop(`writeTexture origin.z ${origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers} of GPUTexture ${id}, which has one layer`);
+	const mip = destination.mipLevel;
+	if (mip < 0 || mip >= mipLevelCount) { stop(`writeTexture destination.mipLevel ${mip} of GPUTexture ${id}, which has ${mipLevelCount} mips`); }
+	const mipWidth = Math.max(1, width >> mip);
+	const mipHeight = Math.max(1, height >> mip);
+	if (origin.z < 0 || size.depthOrArrayLayers <= 0 || origin.z + size.depthOrArrayLayers > arrayLayers) {
+		stop(`writeTexture origin.z ${origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers} overruns GPUTexture ${id}, which has ${arrayLayers} layers`);
 	}
 	if (size.width <= 0 || size.height <= 0) { stop(`writeTexture size ${size.width}x${size.height} needs a positive width and height`); }
-	if (origin.x < 0 || origin.y < 0 || origin.x + size.width > width || origin.y + size.height > height) {
-		stop(`writeTexture of ${size.width}x${size.height} at origin ${origin.x},${origin.y} overruns GPUTexture ${id} of ${width}x${height}`);
+	if (origin.x < 0 || origin.y < 0 || origin.x + size.width > mipWidth || origin.y + size.height > mipHeight) {
+		stop(`writeTexture of ${size.width}x${size.height} at origin ${origin.x},${origin.y} overruns mip ${mip} of GPUTexture ${id}, ${mipWidth}x${mipHeight}`);
 	}
 	const rowBytes = size.width * bytesPerPixel;
 	const bytesPerRow = layout.bytesPerRow == 0 ? rowBytes : layout.bytesPerRow;
@@ -289,7 +492,12 @@ export function checkedTexelWritePitch(
 	if (bytesPerRow % bytesPerPixel != 0) {
 		stop(`writeTexture bytesPerRow ${bytesPerRow} is not a whole number of ${bytesPerPixel}-byte texels`);
 	}
-	const needed = layout.offset + (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
+	if (size.depthOrArrayLayers > 1 && layout.rowsPerImage < size.height) {
+		stop(`writeTexture rowsPerImage ${layout.rowsPerImage} is below the copy height ${size.height} of ${size.depthOrArrayLayers} images`);
+	}
+	const imageBytes = (bytesPerRow as int64) * (layout.rowsPerImage as int64);
+	const needed = layout.offset + imageBytes * ((size.depthOrArrayLayers - 1) as int64)
+		+ (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
 	if (layout.offset < 0 || needed > dataBytes) {
 		stop(`writeTexture needs ${needed} bytes of data and was given ${dataBytes}`);
 	}

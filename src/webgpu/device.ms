@@ -9,6 +9,7 @@ import {
 	GPUBuffer,
 	GPUBufferDescriptor,
 	GPUCommandBuffer,
+	GPUColor,
 	GPUCommandEncoder,
 	GPUDevice,
 	GPUExtent3D,
@@ -144,6 +145,26 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function setScissorRect(this self: GPURenderPassEncoder, x: int32, y: int32, width: int32, height: int32): void {
 	backend.setScissorRect(x, y, width, height);
+}
+
+@inline export function setViewport(
+	this self: GPURenderPassEncoder,
+	x: number,
+	y: number,
+	width: number,
+	height: number,
+	minDepth: number,
+	maxDepth: number,
+): void {
+	backend.setViewport(x, y, width, height, minDepth, maxDepth);
+}
+
+@inline export function setBlendConstant(this self: GPURenderPassEncoder, color: GPUColor): void {
+	backend.setBlendConstant(color);
+}
+
+@inline export function setStencilReference(this self: GPURenderPassEncoder, reference: uint32): void {
+	backend.setStencilReference(reference);
 }
 
 @inline export function draw(this self: GPURenderPassEncoder, vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {

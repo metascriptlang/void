@@ -17,6 +17,7 @@ import {
 	GPUBufferUsage,
 	GPUCanvasConfiguration,
 	GPUCommandBuffer,
+	GPUColor,
 	GPUCommandEncoder,
 	GPUDevice,
 	GPUExtent3D,
@@ -39,6 +40,13 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedTexelWritePitch,
+	stopOnUnportedBindEntry,
+	stopOnUnportedDepthStencil,
+	stopOnUnportedPrimitive,
+	stopOnUnportedSampler,
+	stopOnUnportedTexelWrite,
+	stopOnUnportedTexture,
+	stopOnUnportedView,
 } from "../types.ms";
 import {
 	WgBindGroupImpl,
@@ -835,9 +843,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		const limit = maxTextureDimension;
 		stop(`GPUTextureDescriptor.size ${width}x${height} exceeds maxTextureDimension2D ${limit}`);
 	}
-	if (descriptor.size.depthOrArrayLayers > 1) {
-		stop("GPUTextureDescriptor.size.depthOrArrayLayers above 1 has no Void caller yet");
-	}
+	stopOnUnportedTexture("wgpu", descriptor);
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
@@ -903,9 +909,12 @@ export function writeTexture<T>(
 		stop(`writeTexture on GPUTexture ${destination.texture.id}, created without COPY_DST`);
 	}
 	const info = formatInfo(textures[index].format, "texture format");
+	stopOnUnportedTexelWrite("wgpu", destination, size);
 	const bytesPerRow = checkedTexelWritePitch(
 		textures[index].width,
 		textures[index].height,
+		1,
+		1,
 		info.bytesPerPixel,
 		bytes,
 		destination,
@@ -930,6 +939,7 @@ export function createView(
 	texture: GPUTexture,
 	descriptor: GPUTextureViewDescriptor,
 ): GPUTextureView {
+	stopOnUnportedView("wgpu", descriptor);
 	const t = textureIndex(texture.id);
 	if (textures[t].swapchainView != 0) { return { id: textures[t].swapchainView }; }
 	const id = allocateId(viewQueue, "view");
@@ -999,6 +1009,7 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 }
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
+	stopOnUnportedSampler("wgpu", descriptor);
 	const id = allocateId(samplerQueue, "sampler");
 	if (id == 0) { return { id: 0 }; }
 	const native = wgCreateSampler(
@@ -1125,10 +1136,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule in Void");
 	}
-	const topology: string = descriptor.primitive.topology;
-	if (topology != "" && topology != "triangle-list") {
-		stopOnMember("primitive.topology", topology);
-	}
+	stopOnUnportedPrimitive("wgpu", descriptor.primitive);
+	stopOnUnportedDepthStencil("wgpu", descriptor.depthStencil);
 	const bufferCount = describeVertexBuffers(descriptor);
 	const depthFormat: string = descriptor.depthStencil.format;
 	if (depthFormat != "") {
@@ -1304,6 +1313,7 @@ function uniformEntrySize(shader: int32, entry: GPUBindGroupEntry): int64 {
 	for (let u = 0; u < shaders[shader].uniformCount; u++) {
 		const binding = shaders[shader].uniforms[u];
 		if (binding.binding == entry.binding) {
+			stopOnUnportedBindEntry("wgpu", entry);
 			if (entry.size != 0 && entry.size < (binding.size as int64)) {
 				const block = binding.size;
 				const at = entry.binding;
@@ -1514,6 +1524,21 @@ export function setBindGroup(
 @inline export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
 	checkPass("setScissorRect");
 	wgSetScissorRect(x, y, width, height);
+}
+
+export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+	checkPass("setViewport");
+	stop("setViewport is not ported to wgpu yet");
+}
+
+export function setBlendConstant(color: GPUColor): void {
+	checkPass("setBlendConstant");
+	stop("setBlendConstant is not ported to wgpu yet");
+}
+
+export function setStencilReference(reference: uint32): void {
+	checkPass("setStencilReference");
+	stop("setStencilReference is not ported to wgpu yet");
 }
 
 @inline export function draw(

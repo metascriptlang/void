@@ -17,6 +17,7 @@ import {
 	GPUBufferUsage,
 	GPUCanvasConfiguration,
 	GPUCommandBuffer,
+	GPUColor,
 	GPUCommandEncoder,
 	GPUDevice,
 	GPUExtent3D,
@@ -40,6 +41,13 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedTexelWritePitch,
+	stopOnUnportedBindEntry,
+	stopOnUnportedDepthStencil,
+	stopOnUnportedPrimitive,
+	stopOnUnportedSampler,
+	stopOnUnportedTexelWrite,
+	stopOnUnportedTexture,
+	stopOnUnportedView,
 } from "../types.ms";
 import {
 	D3dBlobImpl,
@@ -961,9 +969,8 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
 	const width = descriptor.size.width;
 	const height = descriptor.size.height;
-	const layers = descriptor.size.depthOrArrayLayers;
 	if (width <= 0 || height <= 0) { stop("GPUTextureDescriptor.size needs a positive width and height"); }
-	if (layers > 1) { stop("GPUTextureDescriptor.size.depthOrArrayLayers above 1 has no Void caller yet"); }
+	stopOnUnportedTexture("d3d11", descriptor);
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
@@ -1032,9 +1039,12 @@ export function writeTexture<T>(
 		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
 	}
 	const bytesPerPixel = formatInfo(textures[index].format, "texture format").bytesPerPixel;
+	stopOnUnportedTexelWrite("d3d11", destination, size);
 	const rowPitch = checkedTexelWritePitch(
 		textures[index].width,
 		textures[index].height,
+		1,
+		1,
 		bytesPerPixel,
 		bytes,
 		destination,
@@ -1055,6 +1065,7 @@ export function writeTexture<T>(
 }
 
 export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
+	stopOnUnportedView("d3d11", descriptor);
 	const t = textureIndex(texture.id);
 	if (textures[t].swapchainView != 0) { return { id: textures[t].swapchainView }; }
 	const id = allocateId(viewQueue, "view");
@@ -1127,6 +1138,7 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 }
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
+	stopOnUnportedSampler("d3d11", descriptor);
 	const id = allocateId(samplerQueue, "sampler");
 	if (id == 0) { return { id: 0 }; }
 	let filter = 0;
@@ -1255,8 +1267,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on D3D11");
 	}
-	const topology: string = descriptor.primitive.topology;
-	if (topology != "" && topology != "triangle-list") { stopOnMember("primitive.topology", topology); }
+	stopOnUnportedPrimitive("d3d11", descriptor.primitive);
+	stopOnUnportedDepthStencil("d3d11", descriptor.depthStencil);
 	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id };
 	slot.inputLayout = createInputLayout(s, descriptor, slot);
 	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
@@ -1415,6 +1427,7 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 		for (let u = 0; u < shaders[shader].uniformCount; u++) {
 			const binding = shaders[shader].uniforms[u];
 			if (binding.binding == entry.binding) {
+				stopOnUnportedBindEntry("d3d11", entry);
 				if (entry.size != 0 && entry.size < (binding.size as int64)) {
 					stop(`bind group entry ${entry.binding} size ${entry.size} is below its block of ${binding.size}`);
 				}
@@ -1605,6 +1618,21 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
 	if (!pass.active) { stop("setScissorRect outside a render pass"); }
 	d3dSetScissorRect(context, x, y, x + width, y + height);
+}
+
+export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+	if (!pass.active) { stop("setViewport outside a render pass"); }
+	stop("setViewport is not ported to d3d11 yet");
+}
+
+export function setBlendConstant(color: GPUColor): void {
+	if (!pass.active) { stop("setBlendConstant outside a render pass"); }
+	stop("setBlendConstant is not ported to d3d11 yet");
+}
+
+export function setStencilReference(reference: uint32): void {
+	if (!pass.active) { stop("setStencilReference outside a render pass"); }
+	stop("setStencilReference is not ported to d3d11 yet");
 }
 
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {

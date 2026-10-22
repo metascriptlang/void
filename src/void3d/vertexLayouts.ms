@@ -2,26 +2,16 @@
 // buffer, attributes at their shader slots, offsets and stride packed in slot order as sokol_gfx
 // computes them when every offset is zero (_sg_pipeline_desc_defaults).
 
-import { GPUVertexBufferLayout, GPUVertexFormat, GPUVertexStepMode } from "../webgpu/types.ms";
+import { GPUVertexBufferLayout, GPUVertexFormat, GPUVertexStepMode, vertexFormatSize } from "../webgpu/types.ms";
 
 export const LAYOUT_COUNT: int32 = 10;
-
-function byteSize(format: GPUVertexFormat): int32 {
-	return match (format) {
-		"float32" => 4,
-		"float32x2" => 8,
-		"float32x3" => 12,
-		"float32x4" => 16,
-		"unorm8x4" => 4,
-	};
-}
 
 function packed(stepMode: GPUVertexStepMode, formats: GPUVertexFormat[]): GPUVertexBufferLayout[2] {
 	let buffers: GPUVertexBufferLayout[2] = [{ arrayStride: 0, stepMode: stepMode }];
 	let offset = 0;
 	for (let slot = 0; slot < formats.length; slot++) {
 		buffers[0].attributes[slot] = { format: formats[slot], offset: offset, shaderLocation: slot };
-		offset += byteSize(formats[slot]);
+		offset += vertexFormatSize(formats[slot]);
 	}
 	buffers[0].arrayStride = offset;
 	return buffers;
