@@ -8,6 +8,7 @@ export enum MorphGeometryError {
 	SourceVertex,
 	NonFinite,
 	Revision,
+	Unpublished,
 }
 
 export struct MorphTarget {

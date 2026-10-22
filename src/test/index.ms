@@ -96,6 +96,7 @@ import "./pbrResponseCheck";
 import "./pbrLitCheck";
 import "./lightShapeCheck";
 import "./morphGeometryCheck";
+import "./morphSceneCheck";
 import "./gltfMorphImportCheck";
 import "./colorMatrixPassCheck";
 import "./imageDecodeCheck";

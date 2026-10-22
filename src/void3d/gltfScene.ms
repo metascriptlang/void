@@ -4,6 +4,7 @@ import {
 	GltfData, GltfMaterial, GltfAlphaMode, validateGltfGraph, DEFAULT_MATERIAL, NO_TEXTURE_INDEX,
 	GltfTextureTransform, IDENTITY_TEXTURE_TRANSFORM,
 } from "./gltf";
+import { GltfWeightTrack, sampleWeights } from "./gltfCurve";
 import {
 	DrawContext,
 	MeshId,
@@ -14,6 +15,7 @@ import {
 	HandleError,
 	addMaterial,
 	addMeshData,
+	addDynamicMeshData,
 	addTexture,
 	releaseMaterial,
 	releaseMesh,
@@ -61,6 +63,11 @@ import {
 	addGroup,
 	addMeshNode,
 	addSkinMeshNode,
+	addMorphMeshNode,
+	MorphNodeError,
+	bindSceneMorph,
+	setMorphWeights,
+	SceneMorph,
 	isLive,
 	remove,
 	setName,
@@ -78,6 +85,8 @@ export enum GltfSceneError {
 	MaterialRefused,
 	MeshRefused,
 	UndeclaredProgram,
+	MorphWithSkin,
+	MorphRefused,
 }
 
 export struct GltfMeshBinding {
@@ -87,9 +96,11 @@ export struct GltfMeshBinding {
 	material: MaterialId;
 }
 
+// `morphs[i]` is glTF node i's shared morph state when its mesh has morph targets, else null.
 export struct GltfNodeBinding {
 	nodes: Vec<NodeId3D>;
 	count: int32;
+	morphs: Vec<SceneMorph | null>;
 }
 
 // `block` is the lit block every material starts from, a preset's floats included (RAMP_LEVELS);
@@ -575,13 +586,48 @@ export function addGltfBoundNodes(
 	}
 	const valid = validateGltfGraph(data);
 	if (!valid.ok) { return Result.err(GltfSceneError.InvalidData); }
+	let owners: Vec<int32> = [];
+	let primitives: Vec<int32> = [];
+	let morphs: Vec<SceneMorph | null> = [];
+	for (let index = 0; index < data.nodes.length; index++) {
+		owners.push(-1);
+		primitives.push(0);
+		morphs.push(null);
+	}
+	for (let index = 0; index < data.nodes.length; index++) {
+		const morph = data.nodes[index].morph;
+		if (morph === null) { continue; }
+		if (data.nodes[index].skin !== null) { return Result.err(GltfSceneError.MorphWithSkin); }
+		const first: int32 = data.morphs[morph].firstPrimitive;
+		const count: int32 = data.morphs[morph].data.primitives.length as int32;
+		if (first < 0 || count < 1 || first > (data.meshes.length as int32) - count) {
+			return Result.err(GltfSceneError.InvalidData);
+		}
+		const bound = bindSceneMorph(data.morphs[morph].data, data.nodes[index].weights);
+		if (!bound.ok) { return Result.err(GltfSceneError.MorphRefused); }
+		morphs[index] = bound.value;
+		const own: int32 = data.nodes[index].mesh;
+		if (own >= 0) {
+			if (own < first || own >= first + count) { return Result.err(GltfSceneError.InvalidData); }
+			owners[index] = index;
+			primitives[index] = own - first;
+			continue;
+		}
+		for (const child of data.nodes[index].children) {
+			const mesh: int32 = data.nodes[child].mesh;
+			if (data.nodes[child].morph === null && mesh >= first && mesh < first + count) {
+				owners[child] = index;
+				primitives[child] = mesh - first;
+			}
+		}
+	}
 	let nodes: Vec<int32> = [];
 	let parents: Vec<NodeId3D> = [];
 	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {
 		nodes.push(data.sceneRoots[i]);
 		parents.push(parent);
 	}
-	let mapped: GltfNodeBinding = { nodes: [], count: 0 };
+	let mapped: GltfNodeBinding = { nodes: [], count: 0, morphs: [] };
 	for (let index = 0; index < data.nodes.length; index++) { mapped.nodes.push(NO_NODE_ID); }
 	while ((nodes.length as int32) > 0) {
 		const last: int32 = (nodes.length as int32) - 1;
@@ -593,6 +639,21 @@ export function addGltfBoundNodes(
 		const mesh: int32 = data.nodes[index].mesh;
 		if (mesh < 0) {
 			id = addGroup(scene, under, transformOf(data, index));
+		} else if (owners[index] >= 0) {
+			const owner = morphs[owners[index]];
+			const dynamic = addDynamicMeshData(context, data.meshes[mesh]);
+			if (owner === null || !dynamic.ok) {
+				return failedGltfNodes(scene, data, mapped, GltfSceneError.MeshRefused);
+			}
+			const added: Result<NodeId3D, MorphNodeError> = addMorphMeshNode(
+				scene, under, transformOf(data, index),
+				dynamic.value, bindings[mesh].material, owner, primitives[index],
+			);
+			if (!added.ok) {
+				if (!releaseMesh(context, dynamic.value).ok) { unreachable; }
+				return failedGltfNodes(scene, data, mapped, GltfSceneError.SceneRefused);
+			}
+			id = added.value;
 		} else {
 			const added: Result<NodeId3D, SceneError> = addMeshNode(
 				scene, under, transformOf(data, index),
@@ -615,5 +676,61 @@ export function addGltfBoundNodes(
 	const attached = attachGltfSkins(scene, data, bindings, mapped);
 	if (!attached.ok) { return failedGltfNodes(scene, data, mapped, attached.error); }
 	mapped.count += attached.value;
+	mapped.morphs = move morphs;
 	return Result.ok(move mapped);
+}
+
+export enum GltfMorphPoseError {
+	Target,
+	DuplicateTrack,
+	Curve,
+	Publish,
+}
+
+// Weights tracks of one clip over the nodes `addGltfBoundNodes` made, the morph twin of
+// gltfPose.ms' GltfPose: a sample publishes each track's node once, however many primitives it has.
+export interface GltfMorphPose {
+	morphs: Vec<SceneMorph | null>;
+	tracks: Vec<GltfWeightTrack>;
+}
+
+export function bindMorphPose(
+	this typeof GltfMorphPose,
+	morphs: Readonly<Span<SceneMorph | null>>,
+	tracks: Readonly<Span<GltfWeightTrack>>,
+): Result<GltfMorphPose, GltfMorphPoseError> {
+	let pose: GltfMorphPose = { morphs: [], tracks: [] };
+	for (const morph of morphs) { pose.morphs.push(morph); }
+	for (let i = 0; i < tracks.length; i++) {
+		const source: int32 = tracks[i].sourceNode;
+		if (source < 0 || source >= (morphs.length as int32)) {
+			return Result.err(GltfMorphPoseError.Target);
+		}
+		const morph = morphs[source];
+		if (morph === null || morph.geometry.data.targetCount != tracks[i].curve.targetCount) {
+			return Result.err(GltfMorphPoseError.Target);
+		}
+		for (let previous = 0; previous < i; previous++) {
+			if (tracks[previous].sourceNode == source) {
+				return Result.err(GltfMorphPoseError.DuplicateTrack);
+			}
+		}
+		pose.tracks.push({ sourceNode: source, curve: tracks[i].curve });
+	}
+	return Result.ok(pose);
+}
+
+export function sampleMorphPose(
+	this pose: GltfMorphPose, seconds: float64,
+): Result<int32, GltfMorphPoseError> {
+	for (const track of pose.tracks) {
+		const morph = pose.morphs[track.sourceNode];
+		if (morph === null) { return Result.err(GltfMorphPoseError.Target); }
+		const weights = track.curve.sampleWeights(seconds);
+		if (!weights.ok) { return Result.err(GltfMorphPoseError.Curve); }
+		if (!setMorphWeights(morph, weights.value).ok) {
+			return Result.err(GltfMorphPoseError.Publish);
+		}
+	}
+	return Result.ok(pose.tracks.length as int32);
 }

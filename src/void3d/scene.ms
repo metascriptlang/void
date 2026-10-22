@@ -22,6 +22,9 @@ import {
 import { MAX_POINT_LIGHTS, declares, vertexLayoutOf } from "./gpu3d";
 import { SkinGeometry, SkinGeometryError, deformPublished } from "./skinGeometry";
 import { syncSkinPose } from "./skinPose";
+import {
+	MorphData, MorphGeometry, MorphGeometryError, bind as bindMorphGeometry, publishMorphGeometry,
+} from "./morphGeometry";
 import { MeshData, stride, vertexCount, isIndexed, indexCount } from "./meshData";
 import { PassState, passState } from "../gpu/door";
 import {
@@ -35,6 +38,9 @@ import {
 	unpinMesh,
 	pinMaterial,
 	unpinMaterial,
+	releaseMesh,
+	setMeshVertices,
+	VertexStorage,
 	tallyMeshPin,
 	clearMeshTally,
 	tallyMaterialPin,
@@ -101,6 +107,23 @@ export enum SceneError {
 	DrawRange,
 }
 
+export enum MorphNodeError {
+	StaleMesh,
+	ForeignMesh,
+	StaleMaterial,
+	ForeignMaterial,
+	Mesh,
+	Skin,
+	Primitive,
+	Unpublished,
+	Scene,
+}
+
+export enum SceneSyncError {
+	Skin,
+	Morph,
+}
+
 export enum LightError {
 	TooManyDirectionalLights,
 	TooManyPointLights,
@@ -151,6 +174,17 @@ export struct MeshInstance {
 	skinGeometry: SkinGeometry | null;
 	skinPalette: int32;
 	range: DrawRange | null;
+	morph: SceneMorph | null;
+	morphPrimitive: int32;
+	morphRevision: uint64;
+}
+
+// The morph state of one glTF node instance, shared by the mesh nodes of its primitives: weights
+// are set here and published once, each node mirrors its own primitive's published mesh into its
+// private dynamic mesh (`syncSceneMorphGeometry`). The skin idiom with the roles swapped: skin
+// deforms on the GPU and mirrors on the CPU, a morph deforms on the CPU and the GPU reads it.
+export interface SceneMorph {
+	geometry: MorphGeometry;
 }
 
 export struct SceneCamera {
@@ -166,6 +200,7 @@ export interface Scene3D {
 	slots: Slots;
 	meshes: Vec<MeshInstance>;
 	skinNodes: int32;
+	morphNodes: int32;
 	lights: Vec<LightInstance>;
 	cameras: Vec<SceneCamera>;
 	activeCamera: NodeId3D | null;
@@ -289,6 +324,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		slots: Slots.empty(),
 		meshes: [],
 		skinNodes: 0,
+		morphNodes: 0,
 		lights: [],
 		cameras: [],
 		activeCamera: null,
@@ -390,7 +426,8 @@ export function addMeshNode(
 	if (!pinnedMesh.ok || !pinnedMaterial.ok) { unreachable; }
 	const payload: int32 = scene.meshes.length as int32;
 	scene.meshes.push({ mesh: mesh, material: material,
-		skinGeometry: null, skinPalette: 0, range: null });
+		skinGeometry: null, skinPalette: 0, range: null,
+		morph: null, morphPrimitive: 0, morphRevision: 0 });
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Mesh,
 		flags: freshFlags(),
@@ -500,6 +537,72 @@ export function addSkinMeshNode(
 	scene.meshes[row].skinPalette = palette;
 	scene.meshes[row].range = range;
 	scene.skinNodes += 1;
+	return Result.ok(node);
+}
+
+// Weights start published, so a node never draws the base by accident.
+export function bindSceneMorph(
+	data: Readonly<MorphData>, weights: Readonly<Span<float32>>,
+): Result<SceneMorph, MorphGeometryError> {
+	let geometry = try MorphGeometry.bindMorphGeometry(data);
+	const _published: int32 = try publishMorphGeometry(geometry, weights);
+	return Result.ok({ geometry: move geometry });
+}
+
+// Publishes a new revision; the scene mirrors it at its next refresh, collect or pick.
+export function setMorphWeights(
+	morph: SceneMorph, weights: Readonly<Span<float32>>,
+): Result<int32, MorphGeometryError> {
+	return publishMorphGeometry(morph.geometry, weights);
+}
+
+function validateMorphMesh(
+	scene: Scene3D, mesh: MeshId, material: MaterialId, morph: SceneMorph, primitive: int32,
+): Result<int32, MorphNodeError> {
+	const context = scene.context;
+	if (!context.hasMesh(mesh)) {
+		return Result.err(context.issuedMesh(mesh)
+			? MorphNodeError.StaleMesh : MorphNodeError.ForeignMesh);
+	}
+	if (!context.hasMaterial(material)) {
+		return Result.err(context.issuedMaterial(material)
+			? MorphNodeError.StaleMaterial : MorphNodeError.ForeignMaterial);
+	}
+	if (primitive < 0 || primitive >= (morph.geometry.meshes.length as int32)) {
+		return Result.err(MorphNodeError.Primitive);
+	}
+	if (!morph.geometry.ready) { return Result.err(MorphNodeError.Unpublished); }
+	const index: int32 = mesh.index;
+	if (context.meshData[index].hasSkin || morph.geometry.meshes[primitive].hasSkin) {
+		return Result.err(MorphNodeError.Skin);
+	}
+	if (context.meshStorage[index] == VertexStorage.Immutable ||
+		context.meshHolders[index] != 1 || context.meshPins[index] != 0 ||
+		context.meshData[index].vertices.length != morph.geometry.meshes[primitive].vertices.length ||
+		context.meshData[index].indexCount() != morph.geometry.meshes[primitive].indexCount() ||
+		context.meshData[index].hasUvs != morph.geometry.meshes[primitive].hasUvs ||
+		context.meshData[index].hasTangents != morph.geometry.meshes[primitive].hasTangents) {
+		return Result.err(MorphNodeError.Mesh);
+	}
+	return Result.ok(index);
+}
+
+// `mesh` must be a private dynamic mesh (draw.ms addDynamicMeshData) held once by the caller;
+// the node takes that hold and lets go of it, with its pin, when it is removed.
+export function addMorphMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, morph: SceneMorph, primitive: int32,
+): Result<NodeId3D, MorphNodeError> {
+	scene.requireOpen("addMorphMeshNode");
+	scene.context.requireOpen("addMorphMeshNode");
+	const _valid: int32 = try validateMorphMesh(scene, mesh, material, morph, primitive);
+	const added: Result<NodeId3D, SceneError> = addMeshNode(scene, parent, local, mesh, material);
+	if (!added.ok) { return Result.err(MorphNodeError.Scene); }
+	const node: NodeId3D = added.value;
+	const row: int32 = scene.nodes[node.index].payload;
+	scene.meshes[row].morph = morph;
+	scene.meshes[row].morphPrimitive = primitive;
+	scene.morphNodes += 1;
 	return Result.ok(node);
 }
 
@@ -723,6 +826,12 @@ function releasePayload(scene: Scene3D, index: int32): void {
 			if (context.hasMesh(instance.mesh) && !unpinMesh(context, instance.mesh).ok) {
 				unreachable;
 			}
+			if (instance.morph !== null) {
+				scene.morphNodes -= 1;
+				if (context.hasMesh(instance.mesh) && !releaseMesh(context, instance.mesh).ok) {
+					unreachable;
+				}
+			}
 			const material: MaterialId = instance.material;
 			if (context.hasMaterial(material) && !unpinMaterial(context, material).ok) {
 				unreachable;
@@ -904,6 +1013,10 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	context.requireOpen("setMeshOf");
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
+	if (scene.meshes[row].morph !== null) {
+		console.log("void3d: setMeshOf on a morph node, whose mesh is the instance's own dynamic one");
+		unreachable;
+	}
 	const geometry = scene.meshes[row].skinGeometry;
 	if (geometry !== null) {
 		const _valid: int32 = try validateSkinMesh(scene, mesh, scene.meshes[row].material,
@@ -1117,8 +1230,8 @@ export function syncWorld(scene: Scene3D): int32 {
 // into `items`, which the caller owns and keeps, so a steady frame allocates nothing.
 export function collectDrawList(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.closed) { stopOnClosed("collectDrawList"); }
-	const skins = syncSceneSkinGeometry(scene);
-	if (!skins.ok) { stopOnSkinError("collectDrawList", skins.error); }
+	const synced = syncSceneGeometry(scene);
+	if (!synced.ok) { stopOnSyncError("collectDrawList", synced.error); }
 	const count: int32 = fillDrawList(scene, activeLayers(scene), items);
 	scene.structureChanged = false;
 	return count;
@@ -1128,8 +1241,8 @@ export function collectDrawListFor(
 	scene: Scene3D, camera: NodeId3D, ref items: Vec<DrawItem>,
 ): int32 {
 	if (scene.closed) { stopOnClosed("collectDrawListFor"); }
-	const skins = syncSceneSkinGeometry(scene);
-	if (!skins.ok) { stopOnSkinError("collectDrawListFor", skins.error); }
+	const synced = syncSceneGeometry(scene);
+	if (!synced.ok) { stopOnSyncError("collectDrawListFor", synced.error); }
 	return fillDrawList(scene, cameraLayersOf(scene, camera), items);
 }
 
@@ -1205,8 +1318,44 @@ export function syncSceneSkinGeometry(scene: Scene3D): Result<int32, SkinGeometr
 	return Result.ok(deformed);
 }
 
-function stopOnSkinError(call: string, error: SkinGeometryError): void {
-	console.log(`void3d: ${call} cannot publish skin geometry: ${error.toString()}`);
+// Skin first: both only read and mirror their own published state, so the order is for the
+// error a frame reports first.
+export function syncSceneGeometry(scene: Scene3D): Result<int32, SceneSyncError> {
+	const skins = syncSceneSkinGeometry(scene);
+	if (!skins.ok) { return Result.err(SceneSyncError.Skin); }
+	const morphs = syncSceneMorphGeometry(scene);
+	if (!morphs.ok) { return Result.err(SceneSyncError.Morph); }
+	return Result.ok(skins.value + morphs.value);
+}
+
+// Mirrors each morph node's published primitive into its mesh, once per new revision, so bounds,
+// culling, picking, the shadow pass and the next upload all read the one deformation. A geometry
+// whose last publish failed is an error, not the previous shape.
+export function syncSceneMorphGeometry(scene: Scene3D): Result<int32, MorphGeometryError> {
+	scene.requireOpen("syncSceneMorphGeometry");
+	if (scene.morphNodes < 0) { return Result.err(MorphGeometryError.Shape); }
+	if (scene.morphNodes == 0) { return Result.ok(0); }
+	let mirrored: int32 = 0;
+	for (let i = 0; i < (scene.meshes.length as int32); i++) {
+		const morph = scene.meshes[i].morph;
+		if (morph === null) { continue; }
+		if (!morph.geometry.ready) { return Result.err(MorphGeometryError.Unpublished); }
+		if (morph.geometry.revision == scene.meshes[i].morphRevision) { continue; }
+		const primitive: int32 = scene.meshes[i].morphPrimitive;
+		if (primitive >= (morph.geometry.meshes.length as int32)) {
+			return Result.err(MorphGeometryError.Shape);
+		}
+		if (!setMeshVertices(scene.context, scene.meshes[i].mesh, morph.geometry.meshes[primitive]).ok) {
+			return Result.err(MorphGeometryError.Shape);
+		}
+		scene.meshes[i].morphRevision = morph.geometry.revision;
+		mirrored += 1;
+	}
+	return Result.ok(mirrored);
+}
+
+function stopOnSyncError(call: string, error: SceneSyncError): void {
+	console.log(`void3d: ${call} cannot publish ${error.toString()} geometry`);
 	unreachable;
 }
 
@@ -1214,17 +1363,17 @@ export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.closed) { stopOnClosed("refresh"); }
 	const updated = refreshChecked(scene, items);
 	if (updated.ok) { return updated.value; }
-	stopOnSkinError("refresh", updated.error);
+	stopOnSyncError("refresh", updated.error);
 	unreachable;
 }
 
 export function refreshChecked(
 	scene: Scene3D, ref items: Vec<DrawItem>,
-): Result<int32, SkinGeometryError> {
+): Result<int32, SceneSyncError> {
 	if (scene.closed) { stopOnClosed("refreshChecked"); }
 	if (scene.root == NO_NODE_3D) { return Result.ok(0); }
 	const _synced: int32 = syncWorld(scene);
-	const _skins: int32 = try syncSceneSkinGeometry(scene);
+	const _geometry: int32 = try syncSceneGeometry(scene);
 	return Result.ok(refreshItemsSynced(scene, items));
 }
 
