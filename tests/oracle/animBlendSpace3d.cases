@@ -1,0 +1,127 @@
+# h3d.anim.BlendSpace2D against src/void3d/animationBlendSpace.ms: Delaunay triangulation of the
+# points, the triangle holding the query point, barycentric weights, the closest-edge fallback
+# outside every triangle, and the weighted rotation blend, read back through the node's world.
+#
+# Same shape as anim3d.cases: no expected answer here; `sh scripts/oracle.sh regen
+# tests/oracle/animBlendSpace3d.cases` replays the Haxe side through real Heaps. Every clip is
+# two equal keys, so the pose is the clip's constant and the clocks play no part; the phase and
+# `scaleSpeedOutsideOfBounds` arithmetic is in src/test/animationBlendSpaceCheck.ms. The default
+# pose is the identity both sides, since the node has no joint to take one from.
+#
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: import h3d.anim.LinearAnimation;
+# haxe-prelude: import h3d.anim.BlendSpace2D;
+# haxe-prelude: class H {
+# haxe-prelude: 	public static function still(tx: Float, ty: Float, tz: Float, ry: Float, s: Float): LinearAnimation {
+# haxe-prelude: 		var f = new LinearFrame();
+# haxe-prelude: 		f.tx = tx; f.ty = ty; f.tz = tz;
+# haxe-prelude: 		var q = new h3d.Quat(); q.initRotation(0, ry, 0);
+# haxe-prelude: 		f.qx = q.x; f.qy = q.y; f.qz = q.z; f.qw = q.w;
+# haxe-prelude: 		f.sx = s; f.sy = s; f.sz = s;
+# haxe-prelude: 		var a = new LinearAnimation("a", 2, 1);
+# haxe-prelude: 		a.addCurve("o", haxe.ds.Vector.fromArrayCopy([f, f]), true, true, true);
+# haxe-prelude: 		return a;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function at(x: Float, y: Float): Array<Float> {
+# haxe-prelude: 		var root = new Object();
+# haxe-prelude: 		var child = new Object(root);
+# haxe-prelude: 		child.name = "o";
+# haxe-prelude: 		var space = new BlendSpace2D("space", [
+# haxe-prelude: 			new BlendSpace2DPoint(0, 0, still(1, 0, 0, 0.0, 1)),
+# haxe-prelude: 			new BlendSpace2DPoint(4, 0, still(5, 0, 0, 1.0, 2)),
+# haxe-prelude: 			new BlendSpace2DPoint(0, 4, still(0, 7, 0, -1.5, 3)),
+# haxe-prelude: 			new BlendSpace2DPoint(4, 5, still(0, 0, 9, 2.5, 1)),
+# haxe-prelude: 		]);
+# haxe-prelude: 		var inst: BlendSpace2D = cast space.createInstance(root);
+# haxe-prelude: 		inst.x = x;
+# haxe-prelude: 		inst.y = y;
+# haxe-prelude: 		inst.update(0);
+# haxe-prelude: 		inst.sync();
+# haxe-prelude: 		var m = child.getAbsPos();
+# haxe-prelude: 		return [m._11, m._13, m._22, m._31, m._33, m._41, m._42, m._43, m._12];
+# haxe-prelude: 	}
+# haxe-prelude: }
+#
+# ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: import {
+# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, addGroup, setLocal, syncWorld,
+# ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude: import {
+# ms-prelude: 	GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, forValues,
+# ms-prelude: } from "../../../src/void3d/gltfCurve";
+# ms-prelude: import { AnimationRestTarget } from "../../../src/void3d/animationCompose";
+# ms-prelude: import { AnimationTransitionClip, forTracks } from "../../../src/void3d/animationTransition";
+# ms-prelude: import {
+# ms-prelude: 	AnimationBlendSpace2D, AnimationBlendSpacePoint, setBlendSpacePosition,
+# ms-prelude: 	advanceBlendSpace, evaluateBlendSpace, create,
+# ms-prelude: } from "../../../src/void3d/animationBlendSpace";
+# ms-prelude:
+# ms-prelude: function still(tx: float32, ty: float32, tz: float32, ry: float32, s: float32): AnimationTransitionClip {
+# ms-prelude: 	const q = eulerQuat(0.0, ry, 0.0);
+# ms-prelude: 	const move = GltfCurve.forValues(GltfCurvePath.Translation, GltfCurveMode.Linear,
+# ms-prelude: 		[0.0, 1.0], [tx, ty, tz, tx, ty, tz]);
+# ms-prelude: 	const turn = GltfCurve.forValues(GltfCurvePath.Rotation, GltfCurveMode.Linear,
+# ms-prelude: 		[0.0, 1.0], [q.x, q.y, q.z, q.w, q.x, q.y, q.z, q.w]);
+# ms-prelude: 	const size = GltfCurve.forValues(GltfCurvePath.Scale, GltfCurveMode.Linear,
+# ms-prelude: 		[0.0, 1.0], [s, s, s, s, s, s]);
+# ms-prelude: 	if (!move.ok || !turn.ok || !size.ok) { unreachable; }
+# ms-prelude: 	const tracks: Vec<GltfPoseTrack> = [
+# ms-prelude: 		{ sourceNode: 0, curve: move.value }, { sourceNode: 0, curve: turn.value },
+# ms-prelude: 		{ sourceNode: 0, curve: size.value },
+# ms-prelude: 	];
+# ms-prelude: 	const made = AnimationTransitionClip.forTracks(tracks, [], true);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	return made.value;
+# ms-prelude: }
+# ms-prelude: function at(x: float64, y: float64): Mat4 {
+# ms-prelude: 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+# ms-prelude: 	const added: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+# ms-prelude: 	const targets: Vec<AnimationRestTarget> = [{ sourceNode: 0, rest: Transform3D.identity() }];
+# ms-prelude: 	const made = AnimationBlendSpace2D.create(targets, [
+# ms-prelude: 		{ x: 0.0, y: 0.0, clip: still(1.0, 0.0, 0.0, 0.0, 1.0), keepSync: true },
+# ms-prelude: 		{ x: 4.0, y: 0.0, clip: still(5.0, 0.0, 0.0, 1.0, 2.0), keepSync: true },
+# ms-prelude: 		{ x: 0.0, y: 4.0, clip: still(0.0, 7.0, 0.0, -1.5, 3.0), keepSync: true },
+# ms-prelude: 		{ x: 4.0, y: 5.0, clip: still(0.0, 0.0, 9.0, 2.5, 1.0), keepSync: true },
+# ms-prelude: 	]);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	let space = made.value;
+# ms-prelude: 	const _placed = setBlendSpacePosition(space, x, y);
+# ms-prelude: 	const _moved = advanceBlendSpace(space, 0.0);
+# ms-prelude: 	const _posed = evaluateBlendSpace(space);
+# ms-prelude: 	setLocal(scene, added, space.compose.output[0].value);
+# ms-prelude: 	const _synced: int32 = syncWorld(scene);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added);
+# ms-prelude: 	return world.ok ? world.value : identity();
+# ms-prelude: }
+
+# ---- the point lies inside a triangle: barycentric weights -------------------------------------
+
+case inside-near-first-corner tol=1e-5
+haxe> emit("inside-near-first-corner", H.at(1, 1));
+ms> const p1: Mat4 = at(1.0, 1.0);
+ms> emit9("inside-near-first-corner", p1.m11, p1.m13, p1.m22, p1.m31, p1.m33, p1.m41, p1.m42, p1.m43, p1.m12);
+
+case inside-near-far-corner tol=1e-5
+haxe> emit("inside-near-far-corner", H.at(3, 4));
+ms> const p2: Mat4 = at(3.0, 4.0);
+ms> emit9("inside-near-far-corner", p2.m11, p2.m13, p2.m22, p2.m31, p2.m33, p2.m41, p2.m42, p2.m43, p2.m12);
+
+# A point on a shared edge takes the weights of the first triangle that contains it.
+case on-an-interior-edge tol=1e-5
+haxe> emit("on-an-interior-edge", H.at(2, 0));
+ms> const p3: Mat4 = at(2.0, 0.0);
+ms> emit9("on-an-interior-edge", p3.m11, p3.m13, p3.m22, p3.m31, p3.m33, p3.m41, p3.m42, p3.m43, p3.m12);
+
+# ---- the point lies outside every triangle: closest edge --------------------------------------
+
+case outside-beside-an-edge tol=1e-5
+haxe> emit("outside-beside-an-edge", H.at(6, 1));
+ms> const p4: Mat4 = at(6.0, 1.0);
+ms> emit9("outside-beside-an-edge", p4.m11, p4.m13, p4.m22, p4.m31, p4.m33, p4.m41, p4.m42, p4.m43, p4.m12);
+
+case outside-past-a-corner tol=1e-5
+haxe> emit("outside-past-a-corner", H.at(-3, -3));
+ms> const p5: Mat4 = at(-3.0, -3.0);
+ms> emit9("outside-past-a-corner", p5.m11, p5.m13, p5.m22, p5.m31, p5.m33, p5.m41, p5.m42, p5.m43, p5.m12);

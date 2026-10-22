@@ -109,6 +109,8 @@ import "./sceneMaterialsCheck";
 import "./sceneContainsCheck";
 import "./animationCheck";
 import "./animationComposeCheck";
+import "./animationTransitionCheck";
+import "./animationBlendSpaceCheck";
 import "./pickCheck";
 import "./layersCheck";
 import "./renderOrderCheck";
