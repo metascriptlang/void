@@ -83,6 +83,7 @@ import {
 	checkedViewMips,
 	checkedViewport,
 	checkedWriteBuffer,
+	DUMMY_SAMPLER_BINDING,
 	featureBit,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
@@ -235,7 +236,6 @@ export struct NativeSwapchain {
 	depthStencilView: Ptr<void> | null;
 }
 
-export const DUMMY_SAMPLER_BINDING = -1;
 const UNIFORM_OFFSET_ALIGNMENT = 256;
 const INFLIGHT_SLOTS = 2;
 const MAX_TEXTURE_UNITS = 16;

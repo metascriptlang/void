@@ -241,6 +241,8 @@ export type GPUShaderStage = "vertex" | "fragment" | "compute";
 export type GPUBufferBindingType = "uniform" | "storage" | "read-only-storage";
 export type GPUStorageTextureAccess = "write-only" | "read-only" | "read-write";
 
+export const DUMMY_SAMPLER_BINDING: int32 = -1;
+
 export struct GPUShaderBinding {
 	group: int32;
 	binding: int32;

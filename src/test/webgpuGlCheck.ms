@@ -1,4 +1,5 @@
 import {
+	DUMMY_SAMPLER_BINDING,
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
@@ -19,7 +20,7 @@ import {
 	GPUTextureView,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
-import { DUMMY_SAMPLER_BINDING, nativeTexture, bindStats } from "../webgpu/gl/backend.ms";
+import { nativeTexture, bindStats } from "../webgpu/gl/backend.ms";
 import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 
 @passL("-lopengl32");
