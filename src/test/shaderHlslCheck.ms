@@ -46,6 +46,7 @@ import {
 	fragmentModule,
 	i32,
 	io,
+	layeredBlurModule,
 	local,
 	prepend,
 	shaderFunction,
@@ -195,10 +196,10 @@ test "depth comparison samples each depth shape and fetches with no sampler" {
 		"TextureCube<float> shadowCube : register(t2);\n",
 		"SamplerComparisonState shadowSmp : register(s0);\n",
 		"shadowMap.SampleCmp(shadowSmp, uv, 0.5)",
-		"shadowLayers.SampleCmp(shadowSmp, float3(uv, 1.0), 0.5)",
+		"shadowLayers.SampleCmp(shadowSmp, float3(uv, float(1)), 0.5)",
 		"shadowCube.SampleCmp(shadowSmp, float3(uv, 1.0), 0.5)",
 		"shadowMap.SampleCmpLevelZero(shadowSmp, uv, 0.5)",
-		"shadowLayers.SampleCmpLevelZero(shadowSmp, float3(uv, 1.0), 0.5)",
+		"shadowLayers.SampleCmpLevelZero(shadowSmp, float3(uv, float(1)), 0.5)",
 		"shadowCube.SampleCmpLevelZero(shadowSmp, float3(uv, 1.0), 0.5)",
 		"shadowMap.Load(int3(((int2)1), 0))",
 		"lut.Load(int3(((int2)1), 0))",
@@ -306,4 +307,10 @@ test "printed modules are written for fxc" {
 	assert probe("compute.cs", printed(computeModule(), 0, [0]));
 	assert probe("depth.vs", printed(depthModule(), 0, [0, 1]));
 	assert probe("depth.ps", printed(depthModule(), 1, [0, 1]));
+}
+
+test "an array texture samples with its layer packed into the coordinates" {
+	const m = layeredBlurModule();
+	assert irErrors(m).length == 0;
+	assert printed(m, 1, [0, 1]).includes("srcTex.Sample(srcSmp, float3(uv, float(2)))");
 }

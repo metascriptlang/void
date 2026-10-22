@@ -331,11 +331,9 @@ test "depth comparison prints on every depth shape" {
 	for (const fragment of [
 		"depthcube<float> shadowCube [[texture(2)]]",
 		"shadowMap.sample_compare(shadowSmp, in.uv, 0.5)",
-		"shadowLayers.sample_compare(shadowSmp, float3(in.uv, 1.0).xy, " +
-			"uint(float3(in.uv, 1.0).z), 0.5)",
+		"shadowLayers.sample_compare(shadowSmp, in.uv, uint(1), 0.5)",
 		"shadowCube.sample_compare(shadowSmp, float3(in.uv, 1.0), 0.5)",
-		"shadowLayers.sample_compare(shadowSmp, float3(in.uv, 1.0).xy, " +
-			"uint(float3(in.uv, 1.0).z), 0.5, level(0.0))",
+		"shadowLayers.sample_compare(shadowSmp, in.uv, uint(1), 0.5, level(0.0))",
 		"shadowMap.read(uint2(int2(1)), uint(0))",
 		"lut.get_width(uint(0))",
 	]) {

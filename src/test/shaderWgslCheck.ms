@@ -309,10 +309,9 @@ test "depth comparison prints on every depth shape" {
 	assert vs.includes("f32(vec2i(textureDimensions(heightMap)).x)");
 	for (const fragment of [
 		"textureSampleCompare(shadowMap, shadowSmp, uv, 0.5f)",
-		"textureSampleCompare(shadowLayers, shadowSmp, vec3f(uv, 1f).xy, i32(vec3f(uv, 1f).z), 0.5f)",
+		"textureSampleCompare(shadowLayers, shadowSmp, uv, 1i, 0.5f)",
 		"textureSampleCompare(shadowCube, shadowSmp, vec3f(uv, 1f), 0.5f)",
-		"textureSampleCompareLevel(shadowLayers, shadowSmp, vec3f(uv, 1f).xy, " +
-			"i32(vec3f(uv, 1f).z), 0.5f)",
+		"textureSampleCompareLevel(shadowLayers, shadowSmp, uv, 1i, 0.5f)",
 		"textureLoad(shadowMap, vec2i(1i), 0i)",
 		"textureDimensions(lut, 0i)",
 	]) {

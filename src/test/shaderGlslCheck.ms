@@ -51,6 +51,7 @@ import {
 	i32,
 	io,
 	ioRead,
+	layeredBlurModule,
 	local,
 	prepend,
 	resource,
@@ -282,10 +283,10 @@ test "depth comparison spells every depth shape and fetches through dummy pairs"
 			"samplerCubeShadow shadowCube_shadowSmp;\n",
 			"sampler2D lut_SPIRV_Cross_DummySampler;\n",
 			"texture(shadowMap_shadowSmp, vec3(uv, 0.5))",
-			"texture(shadowLayers_shadowSmp, vec4(vec3(uv, 1.0), 0.5))",
+			"texture(shadowLayers_shadowSmp, vec4(uv, float(1), 0.5))",
 			"texture(shadowCube_shadowSmp, vec4(vec3(uv, 1.0), 0.5))",
 			"textureLod(shadowMap_shadowSmp, vec3(uv, 0.5), 0.0)",
-			"textureGrad(shadowLayers_shadowSmp, vec4(vec3(uv, 1.0), 0.5), vec2(0.0), vec2(0.0))",
+			"textureGrad(shadowLayers_shadowSmp, vec4(uv, float(1), 0.5), vec2(0.0), vec2(0.0))",
 			"textureGrad(shadowCube_shadowSmp, vec4(vec3(uv, 1.0), 0.5), vec3(0.0), vec3(0.0))",
 			"texelFetch(shadowMap_SPIRV_Cross_DummySampler, ivec2(1), 0).x",
 			"texelFetch(lut_SPIRV_Cross_DummySampler, ivec2(1), 0)",
@@ -422,5 +423,13 @@ test "printed modules are written for a GLSL front end" {
 		assert probe("depth." + tag + ".vert", printed(depthModule(), 0, [0, 1], target));
 		assert probe("depth." + tag + ".frag", printed(depthModule(), 1, [0, 1], target));
 		assert probe("load." + tag + ".frag", printed(loneLoadModule(false), 0, [0], target));
+	}
+}
+
+test "an array texture samples with its layer packed into the coordinates" {
+	const m = layeredBlurModule();
+	assert irErrors(m).length == 0;
+	for (const target of TARGETS) {
+		assert printed(m, 1, [0, 1], target).includes("texture(srcTex_srcSmp, vec3(uv, float(2)))");
 	}
 }

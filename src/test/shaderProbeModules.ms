@@ -525,14 +525,17 @@ export function comparisonSampler(name: string, binding: int32): ShaderResource 
 	return r;
 }
 
+// An array texture's layer is its own operand, 1, as WGSL's array_index is.
 export function depthCompare(op: Intrinsic, texture: int32, sampler: int32, shape: TextureShape,
 	at: ShaderExpr): ShaderExpr {
-	return intrinsicOf(op, F32, [
+	let operands = [
 		exprOf(ExprKind.Resource, textureType(shape, ScalarKind.F32), texture, []),
 		exprOf(ExprKind.Resource, samplerType(), sampler, []),
 		at,
-		f32(0.5),
-	]);
+	];
+	if (shape == TextureShape.Depth2dArray) { operands.push(i32(1.0)); }
+	operands.push(f32(0.5));
+	return intrinsicOf(op, F32, operands);
 }
 
 // Depth comparison on every depth shape, at the derivative's level in the fragment entry and at
@@ -564,7 +567,7 @@ export function depthModule(): ShaderModule {
 	const COMPARE = Intrinsic.TextureSampleCompare;
 	const LEVEL = Intrinsic.TextureSampleCompareLevel;
 	const levels = binary(BinaryOp.Add, F32, binary(BinaryOp.Add, F32,
-		depthCompare(LEVEL, 0, 4, D2, uv), depthCompare(LEVEL, 1, 4, ARRAY, layered)),
+		depthCompare(LEVEL, 0, 4, D2, uv), depthCompare(LEVEL, 1, 4, ARRAY, uv)),
 		depthCompare(LEVEL, 2, 4, CUBE, layered));
 	const fetched = intrinsicOf(Intrinsic.TextureLoad, F32, [
 		exprOf(ExprKind.Resource, textureType(D2, ScalarKind.F32), 0, []),
@@ -577,7 +580,7 @@ export function depthModule(): ShaderModule {
 		[exprOf(ExprKind.Resource, TEXTURE, 3, []), i32(0.0)]);
 	const shaded = construct(VEC4, [
 		depthCompare(COMPARE, 0, 4, D2, uv),
-		depthCompare(COMPARE, 1, 4, ARRAY, layered),
+		depthCompare(COMPARE, 1, 4, ARRAY, uv),
 		depthCompare(COMPARE, 2, 4, CUBE, layered),
 		binary(BinaryOp.Mul, F32, levels, fetched),
 	]);
@@ -947,4 +950,14 @@ export function model(): ShaderExpr {
 
 export function column(matrix: ShaderExpr): ShaderExpr {
 	return exprOf(ExprKind.Index, VEC4, -1, [matrix, literal(I32, 0.0)]);
+}
+
+// blurModule sampling layer 2 of an array texture, the layer its own operand.
+export function layeredBlurModule(): ShaderModule {
+	let m = blurModule();
+	m.resources[0].type = LAYERS;
+	let sampled = m.functions[1].body[0].expr.operands[0];
+	sampled.operands[0].type = LAYERS;
+	sampled.operands.push(i32(2.0));
+	return m;
 }
