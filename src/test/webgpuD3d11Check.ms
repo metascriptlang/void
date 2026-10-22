@@ -1,6 +1,7 @@
 import {
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
+	GPUBindGroupEntry,
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
@@ -1090,5 +1091,160 @@ test "a buffer region at an offset with a 256-byte row copies into a texture sub
 	assert texelAt(read, 256, 6, 2) == 0x040207FF;
 	assert texelAt(read, 256, 2, 1) == 0;
 	assert texelAt(read, 256, 3, 3) == 0;
+	device.destroy();
+}
+
+const DOUBLE_HLSL = "RWByteAddressBuffer data : register(u0);
+[numthreads(4, 1, 1)] void main(uint3 id : SV_DispatchThreadID) { uint at = id.x * 4; data.Store(at, data.Load(at) * 2); }";
+
+function computeModule(device: GPUDevice, code: string, kind: string, nativeSlot: int32): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: code, computeEntryPoint: "" };
+	if (kind == "storage-buffer") {
+		descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: nativeSlot };
+	} else {
+		descriptor.bindings[0] = {
+			group: 1,
+			binding: 0,
+			kind: "storage-texture",
+			stage: "compute",
+			storageAccess: "write-only",
+			storageFormat: "r32uint",
+			nativeSlot: nativeSlot,
+		};
+	}
+	return device.createShaderModule(descriptor);
+}
+
+function dispatchOnce(device: GPUDevice, module: GPUShaderModule, entry: GPUBindGroupEntry): void {
+	const pipeline = device.createComputePipeline({ label: "compute", compute: { module: module, entryPoint: "" } });
+	let descriptor: GPUBindGroupDescriptor = { label: "storage", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = entry;
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, device.createBindGroup(descriptor), noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.end();
+	device.queue.submit(encoder.finish());
+}
+
+test "a compute pass doubles a storage buffer, directly and through an indirect dispatch" {
+	const device = openDevice();
+	const module = computeModule(device, DOUBLE_HLSL, "storage-buffer", 0);
+	const storage = device.createBuffer({
+		label: "storage",
+		size: 16,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	const values: Vec<uint32> = [1, 2, 3, 40000];
+	device.queue.writeBuffer(storage, 0, values);
+	dispatchOnce(device, module, { binding: 0, buffer: storage });
+	const readback = readbackBuffer(device, 16);
+	let encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(storage, 0, readback, 0, 16);
+	device.queue.submit(encoder.finish());
+	let read = readBack(readback);
+	assert read[0] == 2 && read[4] == 4 && read[8] == 6;
+	assert read[12] == 0x80 && read[13] == 0x38;
+
+	const pipeline = device.createComputePipeline({ label: "indirect", compute: { module: module, entryPoint: "" } });
+	let descriptor: GPUBindGroupDescriptor = { label: "storage", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = { binding: 0, buffer: storage };
+	const group = device.createBindGroup(descriptor);
+	const arguments = device.createBuffer({
+		label: "arguments",
+		size: 12,
+		usage: (GPUBufferUsage.INDIRECT as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const counts: Vec<uint32> = [1, 1, 1];
+	device.queue.writeBuffer(arguments, 0, counts);
+	const noOffsets: Vec<uint32> = [];
+	encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, group, noOffsets);
+	pass.dispatchWorkgroupsIndirect(arguments, 0);
+	pass.end();
+	encoder.copyBufferToBuffer(storage, 0, readback, 0, 16);
+	device.queue.submit(encoder.finish());
+	read = readBack(readback);
+	assert read[0] == 4 && read[4] == 8 && read[8] == 12;
+	device.destroy();
+}
+
+const FILL_HLSL = "RWTexture2D<uint> image : register(u0);
+[numthreads(4, 4, 1)] void main(uint3 id : SV_DispatchThreadID) { image[id.xy] = id.x + id.y * 10; }";
+
+test "a compute pass writes a storage texture that copies back" {
+	const device = openDevice();
+	const module = computeModule(device, FILL_HLSL, "storage-texture", 0);
+	const texture = device.createTexture({
+		label: "image",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "r32uint",
+		usage: (GPUTextureUsage.STORAGE_BINDING as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	dispatchOnce(device, module, { binding: 0, textureView: texture.createView({ label: null }) });
+	const readback = readbackBuffer(device, 1024);
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToBuffer(
+		{ texture: texture },
+		{ buffer: readback, offset: 0, bytesPerRow: 256, rowsPerImage: 4 },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readBack(readback);
+	assert read[0] == 0 && read[4] == 1 && read[12] == 3;
+	assert read[256] == 10 && read[3 * 256 + 3 * 4] == 33;
+	device.destroy();
+}
+
+test "a fragment shader reads a read-only storage buffer" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "storage fragment",
+		vertexCode: VERTEX_HLSL,
+		vertexEntryPoint: "",
+		fragmentCode: "ByteAddressBuffer colors : register(t0);\nfloat4 main() : SV_Target0 { return asfloat(colors.Load4(0)); }",
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = {
+		group: 1,
+		binding: 0,
+		kind: "storage-buffer",
+		stage: "fragment",
+		bufferType: "read-only-storage",
+		nativeSlot: 0,
+	};
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const module = device.createShaderModule(descriptor);
+	const pipeline = flatPipeline(device, module, 1);
+	const colours = device.createBuffer({
+		label: "colours",
+		size: 16,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const red: Vec<float32> = [1.0, 0.0, 0.0, 1.0];
+	device.queue.writeBuffer(colours, 0, red);
+	let group: GPUBindGroupDescriptor = { label: "colours", layout: pipeline.getBindGroupLayout(1) };
+	group.entries[0] = { binding: 0, buffer: colours };
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, device.createBindGroup(group), noOffsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixels(target);
+	assert pixel(pixels, 0, 0) == BLUE;
+	assert pixel(pixels, 32, 32) == RED;
 	device.destroy();
 }
