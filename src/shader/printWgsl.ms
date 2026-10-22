@@ -67,7 +67,8 @@ function wgslReservedWords(): string[] {
 		"rgba16sint", "rgba16float", "r32uint", "r32sint", "r32float", "rg32uint", "rg32sint",
 		"rg32float", "rgba32uint", "rgba32sint", "rgba32float", "bgra8unorm",
 		"all", "any", "select", "bitcast", "textureSample", "textureSampleLevel", "textureLoad",
-		"textureStore", "textureDimensions", "main",
+		"textureStore", "textureDimensions", "textureSampleCompare", "textureSampleCompareLevel",
+		"main",
 	];
 	for (let n = 2; n <= 4; n++) {
 		words.push("vec" + String(n));
@@ -395,6 +396,36 @@ function isDepth(t: ShaderType): boolean {
 		t.shape == TextureShape.DepthCube;
 }
 
+function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
+	const o = e.operands;
+	const name = e.intrinsic.toString();
+	if (o.length != 4 || o[0].type.kind != ShaderTypeKind.Texture ||
+		o[1].type.kind != ShaderTypeKind.Sampler) {
+		return refusal(p, name + " takes a texture, a sampler, coordinates and a depth reference");
+	}
+	if (!level) { fragmentOnly(p, name); }
+	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
+	if (sampler === null || sampler.samplerType != SamplerType.Comparison) {
+		return refusal(p, name + " through a sampler that is no comparison sampler binding");
+	}
+	if (!isDepth(o[0].type)) {
+		return refusal(p, name + " of a " + o[0].type.shape.toString() + " texture, which holds " +
+			"no depth");
+	}
+	let args = [exprText(p, o[0]), exprText(p, o[1])];
+	if (o[0].type.shape == TextureShape.Depth2dArray) {
+		if (hasEffect(o[2])) { return refusal(p, name + " whose coordinates call a function"); }
+		const at = exprText(p, o[2]);
+		args.push(at + ".xy");
+		args.push("i32(" + at + ".z)");
+	} else {
+		args.push(exprText(p, o[2]));
+	}
+	args.push(exprText(p, o[3]));
+	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + args.join(", ") +
+		")";
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
@@ -421,6 +452,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",
 		Intrinsic.TextureStore => "textureStore(" + argsText(p, o) + ")",
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
+		Intrinsic.TextureSampleCompare => compareText(p, e, false),
+		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
 		_ => refusal(p, op.toString() + " has no WGSL spelling"),
 	};
 }
