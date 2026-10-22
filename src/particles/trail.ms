@@ -4,7 +4,7 @@
 // emission order. A chain is ready for any writer: 2D triangles, 3D segments.
 
 import { Vec3, vec3, position } from "../math/math3d";
-import { SimulationSpace, TrailMode, TrailTextureMode, RingBufferMode, TrailModule } from "./asset";
+import { SimulationSpace, TrailMode, TrailTextureMode, TrailModule } from "./asset";
 import { ParticleColor, rgbaColor, unitDraw } from "./curve";
 import {
 	ParticleSystem, POS_X, POS_Y, POS_Z, SIZE_X, COLOR_R, COLOR_G, COLOR_B, COLOR_A, AGE, LIFETIME,
@@ -26,10 +26,13 @@ export struct TrailChains {
 	starts: Vec<int32>;
 	// Scratch, per vertex of the chain being built: its distance from the chain's far end.
 	distances: Vec<float32>;
+	// Scratch for Ribbon mode: live slots, youngest first.
+	order: Vec<int32>;
+	sorted: Vec<int32>;
 }
 
 export function create(this typeof TrailChains): TrailChains {
-	return { vertices: [], starts: [], distances: [] };
+	return { vertices: [], starts: [], distances: [], order: [], sorted: [] };
 }
 
 export function chainCount(this c: TrailChains): int32 {
@@ -155,12 +158,40 @@ function finishChain(sys: ParticleSystem, ref out: TrailChains, start: int32, se
 	}
 }
 
-// The slot of the k-th newest particle. Slots keep emission order, except that a full ring
-// buffer overwrites its oldest slot, so its newest sits just before `ringIndex`.
-function newest(sys: ParticleSystem, k: int32): int32 {
-	const ring: boolean = sys.asset.main.ringBufferMode != RingBufferMode.Disabled && sys.count == sys.capacity;
-	const top: int32 = ring ? sys.ringIndex - 1 : sys.count - 1;
-	return (top - k + sys.count) % sys.count;
+// Puts the live slots in `out.order`, youngest first: a stable merge sort by age, so particles
+// born together keep their slot order.
+function byAge(sys: ParticleSystem, ref out: TrailChains): void {
+	const n: int32 = sys.count;
+	out.order.length = 0;
+	out.sorted.length = 0;
+	for (let i = 0; i < n; i++) {
+		out.order.push(i);
+		out.sorted.push(i);
+	}
+	let width: int32 = 1;
+	while (width < n) {
+		let start: int32 = 0;
+		while (start < n) {
+			const middle: int32 = start + width < n ? start + width : n;
+			const end: int32 = start + 2 * width < n ? start + 2 * width : n;
+			let left: int32 = start;
+			let right: int32 = middle;
+			for (let at = start; at < end; at++) {
+				const takeLeft: boolean = right >= end || (left < middle
+					&& !(get(sys, AGE, out.order[right]) < get(sys, AGE, out.order[left])));
+				if (takeLeft) {
+					out.sorted[at] = out.order[left];
+					left = left + 1;
+				} else {
+					out.sorted[at] = out.order[right];
+					right = right + 1;
+				}
+			}
+			start = end;
+		}
+		for (let i = 0; i < n; i++) { out.order[i] = out.sorted[i]; }
+		width = width * 2;
+	}
 }
 
 // Ribbon mode: the live particles in emission order, `ribbonCount` chains taking turns, newest
@@ -170,13 +201,14 @@ function buildRibbons(sys: ParticleSystem, ref out: TrailChains): void {
 	const ribbons: int32 = t.ribbonCount > 0 ? t.ribbonCount : 1;
 	const particleWorld: boolean = sys.asset.main.simulationSpace == SimulationSpace.World;
 	const emitter: Vec3 = particleWorld ? sys.world.position() : vec3(0.0, 0.0, 0.0);
+	byAge(sys, out);
 	for (let chain = 0; chain < ribbons; chain++) {
 		const start: int32 = out.vertices.length as int32;
 		if (t.attachRibbonsToTransform) {
 			pushVertex(out, particleWorld ? emitter : emitter * sys.world, 0.0, rgbaColor(1.0, 1.0, 1.0, 1.0));
 		}
 		for (let k = 0; k < sys.count; k++) {
-			const i: int32 = newest(sys, k);
+			const i: int32 = out.order[k];
 			if ((get(sys, RIBBON, i) as int32) != chain) { continue; }
 			const p: Vec3 = vec3(get(sys, POS_X, i), get(sys, POS_Y, i), get(sys, POS_Z, i));
 			const tN: float32 = get(sys, AGE, i) / get(sys, LIFETIME, i);

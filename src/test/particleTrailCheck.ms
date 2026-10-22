@@ -175,3 +175,15 @@ test "a ribbon splitting into sub-emitter children is refused" {
 	const made = ParticleSystem.create(a, 8);
 	assert !made.ok && made.error == ParticleSystemError.SplitSubEmitterRibbons;
 }
+
+test "a ribbon keeps age order after particles die and others take their slots" {
+	let a = fountain(1);
+	a.main.startLifetime = constantCurve(0.5);
+	const sys = run(a, 60);
+	let chains = TrailChains.create();
+	buildTrails(sys, chains);
+	assert sys.count >= 2 && chains.chainCount() == 1 && chains.chainEnd(0) == sys.count;
+	for (let k = 1; k < sys.count; k++) {
+		assert chains.vertices[k].position.length() >= chains.vertices[k - 1].position.length() - 1e-5;
+	}
+}

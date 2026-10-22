@@ -125,8 +125,6 @@ export struct ParticleEvent {
 	// Seconds before the end of the step at which it happened.
 	before: float32;
 	seed: uint32;
-	// The particle's slot when the event was made; slots move at the end of the step.
-	particle: int32;
 }
 
 // A Birth sub-emitter of this system: the child's rates, evaluated over the parent's age.
@@ -790,7 +788,7 @@ export function eventOf(
 		color: { r: get(sys, COLOR_R, i), g: get(sys, COLOR_G, i), b: get(sys, COLOR_B, i), a: get(sys, COLOR_A, i) },
 		size: vec3(get(sys, SIZE_X, i), get(sys, SIZE_Y, i), get(sys, SIZE_Z, i)),
 		rotation: vec3(get(sys, ROT_X, i), get(sys, ROT_Y, i), get(sys, ROT_Z, i)),
-		ageFraction: ageFraction, before: before, seed: sys.seeds[i], particle: i,
+		ageFraction: ageFraction, before: before, seed: sys.seeds[i],
 	};
 }
 
@@ -874,8 +872,10 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 	const worldColliders: boolean = collision.enabled && collision.collisionType == CollisionType.World;
 	const noColliders: Vec<ParticleCollider> = [];
 	const fields: boolean = asset.externalForces.enabled && sys.forceFields.length > 0;
-	let kept: int32 = 0;
-	for (let i = 0; i < sys.count; i++) {
+	// Unity's removal: the last particle moves into a dead one's slot and is updated there.
+	let live: int32 = sys.count;
+	let i: int32 = 0;
+	while (i < live) {
 		const seed: uint32 = sys.seeds[i];
 		const lifetime: float32 = get(sys, LIFETIME, i);
 		// A particle born this step simulates from its spawn instant, as Unity's do.
@@ -892,6 +892,8 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 		let dead: boolean = age >= lifetime;
 		if (dead && !sys.wantDeath) {
 			endTrail(sys, i, age);
+			live = live - 1;
+			moveSlot(sys, live, i);
 			continue;
 		}
 		const tN: float32 = saturate(age / lifetime);
@@ -1071,15 +1073,15 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 				sys.events.push(eventOf(sys, i, SubEmitterType.Death, pos, vel, 0.0, 1.0));
 			}
 			endTrail(sys, i, age);
+			live = live - 1;
+			moveSlot(sys, live, i);
 			continue;
 		}
 		if (sys.trails.perSlot > 0 && hasTrail(sys, i)) {
 			sys.trails.record(i, pos, age, trailSeconds(sys, i), asset.trails.minVertexDistance);
 		}
-		// Order-keeping compaction: survivors slide down over the dead.
-		if (kept != i) { moveSlot(sys, i, kept); }
-		const k: int32 = kept;
-		kept = kept + 1;
+		const k: int32 = i;
+		i = i + 1;
 		put(sys, POS_X, k, pos.x);
 		put(sys, POS_Y, k, pos.y);
 		put(sys, POS_Z, k, pos.z);
@@ -1094,7 +1096,7 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 		integrateRotation(sys, k, tN, speed, dt, noiseRotation);
 		writeAppearance(sys, k, speed, noiseSize);
 	}
-	sys.count = kept;
+	sys.count = live;
 }
 
 function hasTrailRings(sys: ParticleSystem): boolean {
