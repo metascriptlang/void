@@ -114,6 +114,7 @@ import "./shaderLayoutCheck";
 import "./shaderReflectCheck";
 import "./shaderHlslCheck";
 import "./shaderWgslCheck";
+import "./shaderIrProgramCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
 import "./litShaderCheck";
