@@ -28,14 +28,14 @@ Written in MetaScript (TypeScript superset that compiles to C, JS, WASM).
 
 ```
 src/
-├── sokol/    bridge.{h,c}, gpu.ms, gpu.wms, sokol.m, sokolWeb.c, shader.glsl(.h)
+├── sokol/    bridge.{h,c}, gpu.ms, gpu.wms, sokolWeb.c, shader.glsl(.h)
 │             ← GPU layer: thin sokol_gfx + sokol_app primitives (the "narrow waist")
 ├── void2d/   draw.ms, node.ms, types.ms, batcher.{h,c}, shader2d.glsl(.h)
 │             ← 2D layer: batcher + Node2D tree (LOGIC in MetaScript; C = sokol/fontstash glue)
 ├── assets/   image.{h,c}, image.ms      math/  mat4.{h,c}, mat4.ms      ← helpers
 └── examples/ mainSokol2d, renderer2d, mainSokol, rendererSokol, cubedata .ms  ← demos/entries
 
-msc ──┬── --os=darwin → C + clang   (-DSOKOL_METAL; sokol.m precompiled → sokol.o @link'd; bridgeEmbed.m @compile'd by msc)
+msc ──┬── --os=darwin → C + clang   (Metal backend src/webgpu/metal/; bridgeEmbed.m @compile'd by msc)
       └── --os=emcc   → C + emcc, TWO builds (sokol backend is compile-time):
             -DSOKOL_WGPU  → web/wgpu/   (WebGPU)
             -DSOKOL_GLES3 → web/gl/     (WebGL2, -sFULL_ES3=1 -sMAX_WEBGL_VERSION=2)
@@ -76,7 +76,7 @@ Done: sokol + fontstash headers vendored (`deps/sokol/`, `deps/fontstash/`); C b
 
 ## Current Implementation (sokol)
 
-- **GPU bridge** `src/sokol/bridge.{h,c}` — flattened params, sokol handles as `uint32` ids; `voidRun(w,h,init,frame)` → `sapp_run`. `gpu.ms` (native: frameworks + `@link sokol.o` + `@compile bridgeEmbed.m`) / `gpu.wms` (web: `@compile sokolWeb.c`) wrap it with `extern function` (explicit types — needed because `voidRun` takes closures, which import-from-.h mis-types).
+- **GPU bridge** `src/sokol/bridge.{h,c}` — flattened params, sokol handles as `uint32` ids; `voidRun(w,h,init,frame)` → `sapp_run`. `gpu.ms` (native: frameworks + `@compile bridgeEmbed.m`) / `gpu.wms` (web: `@compile sokolWeb.c`) wrap it with `extern function` (explicit types — needed because `voidRun` takes closures, which import-from-.h mis-types).
 - **void2d batcher** `src/void2d/batcher.{h,c}` — sokol pipeline/buffer + fontstash (raw `fontstash.h` + `stb_truetype.h`); exposes `void2dUploadDraw` + the fontstash glyph iterator. `draw.ms` owns the `Vec<float32>` vertex buffer + geometry and imports the C primitives via **import-from-.h** (cleanly handles its `const char*`/`const float*` params; no closures here).
 - **Shaders** in sokol-shdc dialect (`shader.glsl`, `void2d/shader2d.glsl`); regen: `scripts/regen-shaders.sh` (or inline: `deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc -i X.glsl -o X.glsl.h -l metal_macos:glsl300es:wgsl -f sokol`).
 - **GPU data in MetaScript:** sized typed arrays (`float32[]` / `Vec<float32>`) are packed native-size; hand `arr[0]` to a `Borrow<float32>` C param (borrow-promotion) — no C data files, no malloc. Only `number[]` is `double`-backed.

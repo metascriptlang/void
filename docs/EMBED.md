@@ -75,8 +75,8 @@ below show through, as the overlay in `examples/ionViews.ms` does.
 ## macOS: two drivers in one binary
 
 `bridgeEmbed.m` follows `bridgeWin.c`: `voidRun` (a Cocoa window, no sokol_app) and the host-view
-driver share one process, the first of the two chooses, and the other aborts. sokol_gfx is the
-single implementation in `sokol.o`; `bridge.c` and `views.c` are compiled beside it.
+driver share one process, the first of the two chooses, and the other aborts. Both draw through
+the door's Metal backend (`src/webgpu/metal/`); `bridge.c` and `views.c` are compiled beside it.
 
 `native` in `viewCreate` is an `NSView*` or 0. With a view, Void adds a `CAMetalLayer` as a
 sublayer of the view's layer (it sets `wantsLayer`), sized to the view's bounds at every
