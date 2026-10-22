@@ -12,11 +12,15 @@ import {
 	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V,
 } from "../particles/system";
 import { AtlasTile } from "./billboard";
+import { sortKeyOf } from "./sortKey.h";
 
 // Floats per instance of the Particle layout (position, size, rgba) and of ParticleVisual
 // (position, width, height, anchor, rotation, uv rect, rgba).
 export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
 export const PARTICLE_VISUAL_INSTANCE_STRIDE: int32 = 16;
+
+const RADIX_BITS: int32 = 11;
+const RADIX_BUCKETS: int32 = 2048;
 
 export enum ParticleWriteError {
 	ShortInstances,
@@ -32,10 +36,13 @@ export struct ParticleWriter3D {
 	order: Vec<int32>;
 	keys: Vec<float32>;
 	scratch: Vec<int32>;
+	bits: Vec<uint32>;
+	bitsScratch: Vec<uint32>;
+	buckets: Vec<int32>;
 }
 
 export function create(this typeof ParticleWriter3D): ParticleWriter3D {
-	return { order: [], keys: [], scratch: [] };
+	return { order: [], keys: [], scratch: [], bits: [], bitsScratch: [], buckets: [] };
 }
 
 // The frames of a texture sheet laid over `t`, left to right then top to bottom.
@@ -59,35 +66,47 @@ function grow(ref w: ParticleWriter3D, count: int32): void {
 		w.order.push(0);
 		w.keys.push(0.0);
 		w.scratch.push(0);
+		w.bits.push(0);
+		w.bitsScratch.push(0);
+	}
+	while ((w.buckets.length as int32) < RADIX_BUCKETS) { w.buckets.push(0); }
+}
+
+// One radix pass: `fromKeys`/`fromSlots` scattered stably by the digit at `shift` into
+// `toKeys`/`toSlots`.
+function scatter(
+	fromKeys: Span<uint32>, fromSlots: Span<int32>, toKeys: Span<uint32>, toSlots: Span<int32>,
+	buckets: Span<int32>, count: int32, shift: uint32,
+): void {
+	for (let d = 0; d < RADIX_BUCKETS; d++) { buckets[d] = 0; }
+	for (let i = 0; i < count; i++) {
+		const d: int32 = ((fromKeys[i] >> shift) & 2047) as int32;
+		buckets[d] = buckets[d] + 1;
+	}
+	let start: int32 = 0;
+	for (let d = 0; d < RADIX_BUCKETS; d++) {
+		const n: int32 = buckets[d];
+		buckets[d] = start;
+		start = start + n;
+	}
+	for (let i = 0; i < count; i++) {
+		const key: uint32 = fromKeys[i];
+		const d: int32 = ((key >> shift) & 2047) as int32;
+		const at: int32 = buckets[d];
+		buckets[d] = at + 1;
+		toKeys[at] = key;
+		toSlots[at] = fromSlots[i];
 	}
 }
 
-// A stable merge sort of `order[0, count)` by ascending key, through `scratch`.
+// Sorts `order[0, count)`, slot i keyed by `keys[i]`, ascending and stable: an LSD radix sort
+// of the keys' bits in 11-bit digits (docs/PARTICLES-RUNTIME.md §3, sorting).
 function sortOrder(ref w: ParticleWriter3D, count: int32): void {
-	let width: int32 = 1;
-	while (width < count) {
-		let start: int32 = 0;
-		while (start < count) {
-			const middle: int32 = start + width < count ? start + width : count;
-			const end: int32 = start + 2 * width < count ? start + 2 * width : count;
-			let left: int32 = start;
-			let right: int32 = middle;
-			for (let at = start; at < end; at++) {
-				const takeLeft: boolean = right >= end || (left < middle
-					&& !(w.keys[w.order[right]] < w.keys[w.order[left]]));
-				if (takeLeft) {
-					w.scratch[at] = w.order[left];
-					left = left + 1;
-				} else {
-					w.scratch[at] = w.order[right];
-					right = right + 1;
-				}
-			}
-			start = end;
-		}
-		for (let i = 0; i < count; i++) { w.order[i] = w.scratch[i]; }
-		width = width * 2;
-	}
+	for (let i = 0; i < count; i++) { w.bits[i] = sortKeyOf(w.keys[w.order[i]]); }
+	scatter(w.bits, w.order, w.bitsScratch, w.scratch, w.buckets, count, 0);
+	scatter(w.bitsScratch, w.scratch, w.bits, w.order, w.buckets, count, RADIX_BITS as uint32);
+	scatter(w.bits, w.order, w.bitsScratch, w.scratch, w.buckets, count, (2 * RADIX_BITS) as uint32);
+	for (let i = 0; i < count; i++) { w.order[i] = w.scratch[i]; }
 }
 
 function placed(sys: ParticleSystem, i: int32): Vec3 {

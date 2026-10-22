@@ -2,8 +2,8 @@ import { vec3, translation } from "../math/math3d";
 import {
 	ParticleSystemAsset, ParticleSortMode, RenderMode, SimulationSpace,
 } from "../particles/asset";
-import { constantCurve, constantColor, rgbaColor } from "../particles/curve";
-import { ParticleSystem, playSystem, updateSystem } from "../particles/system";
+import { constantCurve, constantColor, rgbaColor, twoConstants } from "../particles/curve";
+import { ParticleSystem, playSystem, updateSystem, POS_Z, AGE, SIZE_X } from "../particles/system";
 import { TrailChains, buildTrails } from "../particles/trail";
 import { AtlasTile } from "../void3d/billboard";
 import {
@@ -84,6 +84,60 @@ test "oldest in front draws the youngest first" {
 	assert n.ok;
 	// The youngest was emitted last, nearest the emitter's last place at z = 3.
 	for (let k = 1; k < n.value; k++) { assert out[k * 16 + 2] <= out[(k - 1) * 16 + 2]; }
+}
+
+// Slots in the order a stable sort by ascending `keys` puts them.
+function stableOrder(keys: Vec<float32>): Vec<int32> {
+	let order: Vec<int32> = [];
+	for (let i = 0; i < (keys.length as int32); i++) {
+		let at: int32 = order.length as int32;
+		while (at > 0 && keys[order[at - 1]] > keys[i]) { at = at - 1; }
+		order.push(0);
+		for (let k = (order.length as int32) - 1; k > at; k--) { order[k] = order[k - 1]; }
+		order[at] = i;
+	}
+	return order;
+}
+
+// Bursts of eight a tenth of a second apart, each particle its own size, moving either way
+// along z at its own speed, so depths cross the eye and ages tie within a burst.
+function crossing(mode: ParticleSortMode): ParticleSystem {
+	let a = row();
+	a.renderer.sortMode = mode;
+	a.emission.rateOverTime = constantCurve(0.0);
+	a.emission.bursts = [{ time: 0.0, count: constantCurve(8.0), cycleCount: 6, repeatInterval: 0.1, probability: 1.0 }];
+	a.main.startSpeed = twoConstants(-3.0, 3.0);
+	a.main.startSizeX = twoConstants(1.0, 2.0);
+	const made = ParticleSystem.create(a, 17);
+	if (!made.ok) { unreachable; }
+	let sys = made.value;
+	sys.clock.fixedStep = 1.0 / 60.0;
+	playSystem(sys, translation(0.0, 0.0, 0.0));
+	for (let k = 0; k < 40; k++) {
+		const done = updateSystem(sys, 1.0 / 60.0, translation(0.0, 0.0, 0.0));
+		if (!done.ok) { unreachable; }
+	}
+	return sys;
+}
+
+test "sorting orders keys of either sign and keeps tied particles in slot order" {
+	for (const mode of [ParticleSortMode.Depth, ParticleSortMode.OldestInFront]) {
+		const sys = crossing(mode);
+		assert sys.count >= 16;
+		const cap: int32 = sys.capacity;
+		let keys: Vec<float32> = [];
+		for (let i = 0; i < sys.count; i++) {
+			keys.push(mode == ParticleSortMode.Depth ? -sys.data[POS_Z * cap + i] : sys.data[AGE * cap + i]);
+		}
+		const expected = stableOrder(keys);
+		let w = ParticleWriter3D.create();
+		let out: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE * sys.count);
+		const n = writeParticlePoints(w, sys, vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
+		assert n.ok && n.value == sys.count;
+		for (let k = 0; k < sys.count; k++) {
+			assert out[k * PARTICLE_INSTANCE_STRIDE + 3] == sys.data[SIZE_X * cap + expected[k]];
+		}
+	}
 }
 
 test "a local system's particles follow the emitter" {
