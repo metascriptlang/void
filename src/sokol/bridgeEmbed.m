@@ -29,6 +29,7 @@ static float g_dpiScale = 1.0f;
 static msClosure s_init;
 static msClosure s_frame;
 static int s_frames = 0;
+static int s_frameCommitted = 0;
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -41,6 +42,7 @@ static void tick(void) {
 	g_drawable = [g_layer nextDrawable];
 	if (!g_drawable) return;
 	voidPresentGateTrack(g_gate, (__bridge void *)g_drawable);
+	s_frameCommitted = 0;
 	call0(s_frame);
 	s_frames++;
 	g_drawable = nil;
@@ -48,6 +50,9 @@ static void tick(void) {
 
 int voidWindowReadRgba(uint8_t *out, int width, int height) {
 	if (s_driver != DRIVER_WINDOW || !g_drawable) return 0;
+	// sokol enqueues the frame's command buffer at its first pass (sokol_gfx.h _sg_mtl_begin_pass)
+	// and commits it in sg_commit; a blit committed behind it waits for it, so it never returns.
+	if (!s_frameCommitted) voidFail("metal readback: the frame is not committed yet; grab after commit()");
 	id<MTLTexture> tex = g_drawable.texture;
 	if ((int)tex.width != width || (int)tex.height != height) return 0;
 	@autoreleasepool {
@@ -205,6 +210,7 @@ sg_swapchain voidDriverSwapchain(void) {
 }
 
 void voidDriverPresent(void) {
+	if (s_driver == DRIVER_WINDOW) s_frameCommitted = 1;
 	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
 }
 
