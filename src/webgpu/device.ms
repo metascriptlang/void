@@ -36,6 +36,8 @@ when (webgpu) {
 	import * as backend from "./d3d11/backend.ms";
 } else when (voidGlCore || webgl2 || android) {
 	import * as backend from "./gl/backend.ms";
+} else when (macos || ios) {
+	import * as backend from "./metal/backend.ms";
 }
 
 export type GPUNativeEnvironment = backend.NativeEnvironment;
