@@ -38,7 +38,7 @@ import {
 	blurModule,
 	column,
 	comparisonSampler,
-	computeModule,
+	computeBuiltinsModule,
 	depthCompare,
 	depthModule,
 	depthTexture,
@@ -51,7 +51,7 @@ import {
 	resource,
 	shaderFunction,
 	tiny,
-} from "./shaderIrModules";
+} from "./shaderProbeModules";
 
 function slotsOf(m: ShaderModule, entries: int32[]): BindingSlot[] {
 	const slots = bindingSlots(m, entries, ShaderTarget.Msl);
@@ -156,7 +156,7 @@ test "blur prints the bindings, stage_in attributes and entry of the committed M
 }
 
 test "compute prints storage resources, builtins and no workgroup size" {
-	const m = computeModule();
+	const m = computeBuiltinsModule();
 	assert irErrors(m).length == 0;
 	const cs = mslOf(m, 0, slotsOf(m, [0]));
 	assert writeProbe("total", cs);
@@ -281,7 +281,7 @@ test "what MSL cannot say is refused by name" {
 	assert refused(unspellable) == "printMsl: '__entry' is no MSL identifier";
 
 	let recursive = tiny(fragment, exprOf(ExprKind.Call, VEC4, 1, []));
-	let helper = shaderFunction("helper", [stmtOf(StmtKind.Return, exprOf(ExprKind.Call, VEC4, 1,
+	let helper = shaderFunction("helper", [], [stmtOf(StmtKind.Return, exprOf(ExprKind.Call, VEC4, 1,
 		[]), [])]);
 	helper.result = VEC4;
 	recursive.functions.push(helper);

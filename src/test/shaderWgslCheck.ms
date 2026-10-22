@@ -36,7 +36,7 @@ import {
 	blurModule,
 	column,
 	comparisonSampler,
-	computeModule,
+	computeBuiltinsModule,
 	depthCompare,
 	depthModule,
 	depthTexture,
@@ -46,7 +46,7 @@ import {
 	resource,
 	shaderFunction,
 	tiny,
-} from "./shaderIrModules";
+} from "./shaderProbeModules";
 
 function slotsOf(m: ShaderModule, entries: int32[]): BindingSlot[] {
 	const slots = bindingSlots(m, entries, ShaderTarget.Wgsl);
@@ -148,7 +148,7 @@ test "blur prints the bindings and entry interface of the committed WGSL" {
 
 
 test "compute prints storage resources, builtins and its workgroup size" {
-	const m = computeModule();
+	const m = computeBuiltinsModule();
 	assert irErrors(m).length == 0;
 	const cs = wgslOf(m, 0, slotsOf(m, [0]));
 	assert writeProbe("total", cs);
@@ -251,7 +251,7 @@ test "what WGSL cannot say is refused by name" {
 
 	let called = tiny(fragment, exprOf(ExprKind.Conditional, VEC4, -1,
 		[literal(BOOL, 1.0), exprOf(ExprKind.Call, VEC4, 1, []), literal(VEC4, 0.0)]));
-	let helper = shaderFunction("helper", [stmtOf(StmtKind.Return, literal(VEC4, 1.0), [])]);
+	let helper = shaderFunction("helper", [], [stmtOf(StmtKind.Return, literal(VEC4, 1.0), [])]);
 	helper.result = VEC4;
 	called.functions.push(helper);
 	assert refused(called) == "printWgsl: a conditional whose branch calls a function";
