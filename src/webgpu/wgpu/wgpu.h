@@ -140,15 +140,15 @@ WgPipeline wgCreateComputePipeline(
 	const char *label);
 void wgReleaseComputePipeline(WgPipeline pipeline);
 
-void wgBindEntry(
-	int32_t index,
-	int32_t binding,
-	WgBuffer buffer,
-	int64_t offset,
-	int64_t size,
-	WgView view,
-	WgSampler sampler);
-WgBindGroup wgCreateBindGroup(WgLayout layout, int32_t count, const char *label);
+WgBindGroup wgCreateBindGroup(
+	WgLayout layout,
+	int32_t count,
+	const int32_t *bindings,
+	const WgBuffer *buffers,
+	const int64_t *ranges,
+	const WgView *views,
+	const WgSampler *samplers,
+	const char *label);
 void wgReleaseBindGroup(WgBindGroup group);
 
 int32_t wgBeginEncoder(void);
@@ -167,8 +167,7 @@ void wgSubmit(void);
 void wgSetPipeline(WgPipeline pipeline);
 void wgSetVertexBuffer(int32_t slot, WgBuffer buffer, int64_t offset);
 void wgSetIndexBuffer(WgBuffer buffer, int32_t format, int64_t offset);
-void wgDynamicOffset(int32_t index, uint32_t offset);
-void wgSetBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount);
+void wgSetBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount, const uint32_t *offsets);
 void wgSetScissorRect(int32_t x, int32_t y, int32_t width, int32_t height);
 void wgSetViewport(double x, double y, double width, double height, double minDepth, double maxDepth);
 void wgSetBlendConstant(double r, double g, double b, double a);
@@ -184,7 +183,7 @@ void wgDrawIndexed(
 int32_t wgBeginComputePass(const char *label, WgQuerySet timestampSet, int32_t timestampBegin, int32_t timestampEnd);
 void wgEndComputePass(void);
 void wgSetComputePipeline(WgPipeline pipeline);
-void wgSetComputeBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount);
+void wgSetComputeBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount, const uint32_t *offsets);
 void wgDispatch(int32_t x, int32_t y, int32_t z);
 void wgDispatchIndirect(WgBuffer buffer, int64_t offset);
 

@@ -103,7 +103,6 @@ import {
 	wgCopyTextureToBuffer,
 	wgCopyTextureToTexture,
 	wgBeginPass,
-	wgBindEntry,
 	wgCreateBindGroup,
 	wgCreateBuffer,
 	wgCreateComputePipeline,
@@ -118,7 +117,6 @@ import {
 	wgDispatchIndirect,
 	wgDraw,
 	wgDrawIndexed,
-	wgDynamicOffset,
 	wgEndComputePass,
 	wgEndOcclusionQuery,
 	wgEndPass,
@@ -1718,6 +1716,11 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 	const shader = shaders.slotIndex(pipelines.slots[pipelines.slotIndex(layouts.slots[l].pipeline)].shader);
 	let slot: BindGroupSlot = { id: 0, group: group };
 	let count = 0;
+	let bindings: int32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
+	let entryBuffers: Ptr<WgBufferImpl>[GPU_MAX_BIND_GROUP_ENTRIES] = [NO_BUFFER];
+	let ranges: int64[GPU_MAX_BIND_GROUP_ENTRIES * 2] = [0];
+	let entryViews: Ptr<WgViewImpl>[GPU_MAX_BIND_GROUP_ENTRIES] = [NO_VIEW];
+	let entrySamplers: Ptr<WgSamplerImpl>[GPU_MAX_BIND_GROUP_ENTRIES] = [NO_SAMPLER];
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) {
@@ -1727,33 +1730,47 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 			const buffer = buffers.slots[buffers.slotIndex(entry.buffer.id)].native;
 			if (group == GPU_UNIFORM_GROUP) {
 				const size = uniformEntrySize(shader, entry);
-				wgBindEntry(count, entry.binding, buffer, entry.offset, size, NO_VIEW, NO_SAMPLER);
+				entryBuffers[count] = buffer;
+				ranges[count * 2] = entry.offset;
+				ranges[count * 2 + 1] = size;
 				slot.dynamicCount += 1;
 			} else {
 				const size = storageEntrySize(shader, entry);
-				wgBindEntry(count, entry.binding, buffer, entry.offset, size, NO_VIEW, NO_SAMPLER);
+				entryBuffers[count] = buffer;
+				ranges[count * 2] = entry.offset;
+				ranges[count * 2 + 1] = size;
 			}
 		} else if (entry.textureView.id != 0) {
 			const v = views.slotIndex(entry.textureView.id);
 			const r = resourceIndex(shader, entry.binding);
 			if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.StorageTexture) {
-				wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, storageView(shader, r, v, entry.binding), NO_SAMPLER);
+				entryViews[count] = storageView(shader, r, v, entry.binding);
 			} else {
 				checkResource(shader, entry.binding, BindingKind.Texture, group);
 				const view = views.slots[v].binding;
 				if (view == null) {
 					stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`);
 				}
-				wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, view, NO_SAMPLER);
+				entryViews[count] = view;
 			}
 		} else {
 			checkResource(shader, entry.binding, BindingKind.Sampler, group);
 			const sampler = samplers.slots[samplers.slotIndex(entry.sampler.id)].native;
-			wgBindEntry(count, entry.binding, NO_BUFFER, 0, 0, NO_VIEW, sampler);
+			entrySamplers[count] = sampler;
 		}
+		bindings[count] = entry.binding;
 		count += 1;
 	}
-	slot.native = wgCreateBindGroup(shaders.slots[shader].groupLayouts[group], count, labelText(descriptor.label));
+	slot.native = wgCreateBindGroup(
+		shaders.slots[shader].groupLayouts[group],
+		count,
+		bindings[0],
+		entryBuffers[0],
+		ranges[0],
+		entryViews[0],
+		entrySamplers[0],
+		labelText(descriptor.label),
+	);
 	if (slot.native == null) {
 		stop(`wgpuDeviceCreateBindGroup failed for ${labelOf(descriptor.label)}`);
 	}
@@ -1885,8 +1902,8 @@ export function beginRenderPass(
 	pass.width = 0;
 	pass.height = 0;
 	let count = 0;
-	const ints = new Array<int32>(PASS_SIZE);
-	const reals = new Array<float64>(PASS_DEPTH_CLEAR + 1);
+	let ints: int32[PASS_SIZE] = [0];
+	let reals: float64[PASS_DEPTH_CLEAR + 1] = [0];
 	let colorViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
 	let resolveViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
 	let depthNative = NO_VIEW;
@@ -2065,12 +2082,13 @@ function stageBindGroup(
 	if (index != GPU_UNIFORM_GROUP && index != GPU_RESOURCE_GROUP) {
 		stopOnMember("setBindGroup index", `${index}`);
 	}
+	let offsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
 	if (bindGroup.id == 0) {
 		if (compute) {
-			wgSetComputeBindGroup(index, NO_BIND_GROUP, 0);
+			wgSetComputeBindGroup(index, NO_BIND_GROUP, 0, offsets[0]);
 			computeBound.groupMask &= ~(1 << index);
 		} else {
-			wgSetBindGroup(index, NO_BIND_GROUP, 0);
+			wgSetBindGroup(index, NO_BIND_GROUP, 0, offsets[0]);
 		}
 		return;
 	}
@@ -2087,13 +2105,13 @@ function stageBindGroup(
 		if (dynamicOffsets[i] % (uniformAlignment as uint32) != 0) {
 			stop(`dynamic offset ${dynamicOffsets[i]} is not a multiple of ${uniformAlignment}`);
 		}
-		wgDynamicOffset(i, dynamicOffsets[i]);
+		offsets[i] = dynamicOffsets[i];
 	}
 	if (compute) {
-		wgSetComputeBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount);
+		wgSetComputeBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount, offsets[0]);
 		computeBound.groupMask |= 1 << index;
 	} else {
-		wgSetBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount);
+		wgSetBindGroup(index, bindGroups.slots[g].native, bindGroups.slots[g].dynamicCount, offsets[0]);
 	}
 }
 

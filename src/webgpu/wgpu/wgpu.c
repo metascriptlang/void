@@ -6,7 +6,6 @@
 #define MAX_BUFFERS 2
 #define MAX_ATTRIBUTES 16
 #define MAX_TARGETS 4
-#define MAX_DYNAMIC_OFFSETS 8
 
 static WGPUDevice device;
 static WGPUQueue queue;
@@ -17,9 +16,6 @@ static WGPURenderPassEncoder pass;
 static WGPUComputePassEncoder computePass;
 static int32_t passWidth;
 static int32_t passHeight;
-
-static WGPUBindGroupEntry bindEntries[MAX_ENTRIES];
-static uint32_t dynamicOffsets[MAX_DYNAMIC_OFFSETS];
 
 static WGPUStringView text(const char *value) {
 	WGPUStringView view = WGPU_STRING_VIEW_INIT;
@@ -532,32 +528,33 @@ void wgReleaseComputePipeline(WgPipeline pipeline) {
 	if (pipeline) wgpuComputePipelineRelease((WGPUComputePipeline)pipeline);
 }
 
-void wgBindEntry(
-	int32_t index,
-	int32_t binding,
-	WgBuffer buffer,
-	int64_t offset,
-	int64_t size,
-	WgView view,
-	WgSampler sampler) {
-	WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
-	entry.binding = (uint32_t)binding;
-	entry.buffer = (WGPUBuffer)buffer;
-	if (buffer) {
-		entry.offset = (uint64_t)offset;
-		entry.size = (uint64_t)size;
+WgBindGroup wgCreateBindGroup(
+	WgLayout layout,
+	int32_t count,
+	const int32_t *bindings,
+	const WgBuffer *buffers,
+	const int64_t *ranges,
+	const WgView *views,
+	const WgSampler *samplers,
+	const char *label) {
+	WGPUBindGroupEntry entries[MAX_ENTRIES];
+	for (int32_t i = 0; i < count; i++) {
+		WGPUBindGroupEntry entry = WGPU_BIND_GROUP_ENTRY_INIT;
+		entry.binding = (uint32_t)bindings[i];
+		entry.buffer = (WGPUBuffer)buffers[i];
+		if (buffers[i]) {
+			entry.offset = (uint64_t)ranges[i * 2];
+			entry.size = (uint64_t)ranges[i * 2 + 1];
+		}
+		entry.textureView = (WGPUTextureView)views[i];
+		entry.sampler = (WGPUSampler)samplers[i];
+		entries[i] = entry;
 	}
-	entry.textureView = (WGPUTextureView)view;
-	entry.sampler = (WGPUSampler)sampler;
-	bindEntries[index] = entry;
-}
-
-WgBindGroup wgCreateBindGroup(WgLayout layout, int32_t count, const char *label) {
 	WGPUBindGroupDescriptor desc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
 	desc.label = text(label);
 	desc.layout = (WGPUBindGroupLayout)layout;
 	desc.entryCount = (size_t)count;
-	desc.entries = bindEntries;
+	desc.entries = entries;
 	return (WgBindGroup)wgpuDeviceCreateBindGroup(device, &desc);
 }
 
@@ -689,15 +686,13 @@ void wgSetIndexBuffer(WgBuffer buffer, int32_t format, int64_t offset) {
 		WGPU_WHOLE_SIZE);
 }
 
-void wgDynamicOffset(int32_t index, uint32_t offset) { dynamicOffsets[index] = offset; }
-
-void wgSetBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount) {
+void wgSetBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount, const uint32_t *offsets) {
 	wgpuRenderPassEncoderSetBindGroup(
 		pass,
 		(uint32_t)index,
 		(WGPUBindGroup)group,
 		(size_t)dynamicCount,
-		dynamicOffsets);
+		offsets);
 }
 
 void wgSetScissorRect(int32_t x, int32_t y, int32_t width, int32_t height) {
@@ -782,13 +777,13 @@ void wgSetComputePipeline(WgPipeline pipeline) {
 	wgpuComputePassEncoderSetPipeline(computePass, (WGPUComputePipeline)pipeline);
 }
 
-void wgSetComputeBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount) {
+void wgSetComputeBindGroup(int32_t index, WgBindGroup group, int32_t dynamicCount, const uint32_t *offsets) {
 	wgpuComputePassEncoderSetBindGroup(
 		computePass,
 		(uint32_t)index,
 		(WGPUBindGroup)group,
 		(size_t)dynamicCount,
-		dynamicOffsets);
+		offsets);
 }
 
 void wgDispatch(int32_t x, int32_t y, int32_t z) {
