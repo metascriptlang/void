@@ -6,12 +6,14 @@ typedef struct D3dContextImpl *D3dContext;
 typedef struct D3dBufferImpl *D3dBuffer;
 typedef struct D3dTextureImpl *D3dTexture;
 typedef struct D3dSrvImpl *D3dSrv;
+typedef struct D3dUavImpl *D3dUav;
 typedef struct D3dRtvImpl *D3dRtv;
 typedef struct D3dDsvImpl *D3dDsv;
 typedef struct D3dSamplerImpl *D3dSampler;
 typedef struct D3dBlobImpl *D3dBlob;
 typedef struct D3dVertexShaderImpl *D3dVertexShader;
 typedef struct D3dPixelShaderImpl *D3dPixelShader;
+typedef struct D3dComputeShaderImpl *D3dComputeShader;
 typedef struct D3dInputLayoutImpl *D3dInputLayout;
 typedef struct D3dRasterizerStateImpl *D3dRasterizerState;
 typedef struct D3dDepthStencilStateImpl *D3dDepthStencilState;
@@ -23,8 +25,12 @@ D3dRtv d3dRtvFrom(void *native);
 D3dDsv d3dDsvFrom(void *native);
 void *d3dTextureNative(D3dTexture texture);
 
-D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess);
+D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess, int32_t miscFlags);
 void d3dReleaseBuffer(D3dBuffer buffer);
+D3dSrv d3dCreateBufferSrv(D3dDevice device, D3dBuffer buffer, int64_t offset, int64_t bytes);
+D3dUav d3dCreateBufferUav(D3dDevice device, D3dBuffer buffer, int64_t offset, int64_t bytes);
+D3dUav d3dCreateTextureUav(D3dDevice device, D3dTexture texture, int32_t format, int32_t dimension, int32_t mip, int32_t layer, int32_t layerCount);
+void d3dReleaseUav(D3dUav view);
 int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64_t offset, void *data, int64_t bytes);
 int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache, int64_t cacheOffset, uint8_t *data, int64_t dataOffset, int64_t bytes, int32_t force);
 int32_t d3dUniformOffsetting(D3dDevice device, D3dContext context);
@@ -149,6 +155,8 @@ D3dVertexShader d3dCreateVertexShader(D3dDevice device, D3dBlob blob);
 D3dPixelShader d3dCreatePixelShader(D3dDevice device, D3dBlob blob);
 void d3dReleaseVertexShader(D3dVertexShader shader);
 void d3dReleasePixelShader(D3dPixelShader shader);
+D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob);
+void d3dReleaseComputeShader(D3dComputeShader shader);
 
 void d3dInputElement(
 	int32_t index,
@@ -230,3 +238,13 @@ void d3dDrawIndexedInstanced(
 	int32_t firstIndex,
 	int32_t baseVertex,
 	int32_t firstInstance);
+
+void d3dCsSetShader(D3dContext context, D3dComputeShader shader);
+void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer);
+void d3dCsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
+void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view);
+void d3dCsSetUnorderedAccessView(D3dContext context, int32_t slot, D3dUav view);
+void d3dCsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);
+void d3dCsClearViews(D3dContext context);
+void d3dDispatch(D3dContext context, int32_t x, int32_t y, int32_t z);
+void d3dDispatchIndirect(D3dContext context, D3dBuffer arguments, int64_t offset);

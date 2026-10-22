@@ -18,18 +18,67 @@ D3dRtv d3dRtvFrom(void *native) { return (D3dRtv)native; }
 D3dDsv d3dDsvFrom(void *native) { return (D3dDsv)native; }
 void *d3dTextureNative(D3dTexture texture) { return texture; }
 
-D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess) {
+D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess, int32_t miscFlags) {
 	D3D11_BUFFER_DESC desc = {0};
 	desc.ByteWidth = (UINT)bytes;
 	desc.Usage = (D3D11_USAGE)usage;
 	desc.BindFlags = (UINT)bindFlags;
 	desc.CPUAccessFlags = (UINT)cpuAccess;
+	desc.MiscFlags = (UINT)miscFlags;
 	ID3D11Buffer *buffer = NULL;
 	HRESULT hr = ID3D11Device_CreateBuffer(DEVICE(device), &desc, NULL, &buffer);
 	return SUCCEEDED(hr) ? (D3dBuffer)buffer : NULL;
 }
 
 void d3dReleaseBuffer(D3dBuffer buffer) { if (buffer) ID3D11Buffer_Release((ID3D11Buffer *)buffer); }
+
+D3dSrv d3dCreateBufferSrv(D3dDevice device, D3dBuffer buffer, int64_t offset, int64_t bytes) {
+	D3D11_SHADER_RESOURCE_VIEW_DESC desc = {0};
+	desc.Format = DXGI_FORMAT_R32_TYPELESS;
+	desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+	desc.BufferEx.FirstElement = (UINT)(offset / 4);
+	desc.BufferEx.NumElements = (UINT)(bytes / 4);
+	desc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
+	ID3D11ShaderResourceView *view = NULL;
+	HRESULT hr = ID3D11Device_CreateShaderResourceView(DEVICE(device), (ID3D11Resource *)buffer, &desc, &view);
+	return SUCCEEDED(hr) ? (D3dSrv)view : NULL;
+}
+
+D3dUav d3dCreateBufferUav(D3dDevice device, D3dBuffer buffer, int64_t offset, int64_t bytes) {
+	D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {0};
+	desc.Format = DXGI_FORMAT_R32_TYPELESS;
+	desc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+	desc.Buffer.FirstElement = (UINT)(offset / 4);
+	desc.Buffer.NumElements = (UINT)(bytes / 4);
+	desc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+	ID3D11UnorderedAccessView *view = NULL;
+	HRESULT hr = ID3D11Device_CreateUnorderedAccessView(DEVICE(device), (ID3D11Resource *)buffer, &desc, &view);
+	return SUCCEEDED(hr) ? (D3dUav)view : NULL;
+}
+
+D3dUav d3dCreateTextureUav(D3dDevice device, D3dTexture texture, int32_t format, int32_t dimension, int32_t mip, int32_t layer, int32_t layerCount) {
+	D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {0};
+	desc.Format = (DXGI_FORMAT)format;
+	if (dimension == 4) {
+		desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
+		desc.Texture3D.MipSlice = (UINT)mip;
+		desc.Texture3D.FirstWSlice = 0;
+		desc.Texture3D.WSize = (UINT)-1;
+	} else if (dimension == 1) {
+		desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
+		desc.Texture2DArray.MipSlice = (UINT)mip;
+		desc.Texture2DArray.FirstArraySlice = (UINT)layer;
+		desc.Texture2DArray.ArraySize = (UINT)layerCount;
+	} else {
+		desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+		desc.Texture2D.MipSlice = (UINT)mip;
+	}
+	ID3D11UnorderedAccessView *view = NULL;
+	HRESULT hr = ID3D11Device_CreateUnorderedAccessView(DEVICE(device), (ID3D11Resource *)texture, &desc, &view);
+	return SUCCEEDED(hr) ? (D3dUav)view : NULL;
+}
+
+void d3dReleaseUav(D3dUav view) { if (view) ID3D11UnorderedAccessView_Release((ID3D11UnorderedAccessView *)view); }
 
 int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64_t offset, void *data, int64_t bytes) {
 	D3D11_MAPPED_SUBRESOURCE mapped;
@@ -449,6 +498,15 @@ D3dPixelShader d3dCreatePixelShader(D3dDevice device, D3dBlob blob) {
 	return SUCCEEDED(hr) ? (D3dPixelShader)shader : NULL;
 }
 
+D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob) {
+	ID3DBlob *code = (ID3DBlob *)blob;
+	ID3D11ComputeShader *shader = NULL;
+	HRESULT hr = ID3D11Device_CreateComputeShader(DEVICE(device), ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), NULL, &shader);
+	return SUCCEEDED(hr) ? (D3dComputeShader)shader : NULL;
+}
+
+void d3dReleaseComputeShader(D3dComputeShader shader) { if (shader) ID3D11ComputeShader_Release((ID3D11ComputeShader *)shader); }
+
 void d3dReleaseVertexShader(D3dVertexShader shader) { if (shader) ID3D11VertexShader_Release((ID3D11VertexShader *)shader); }
 void d3dReleasePixelShader(D3dPixelShader shader) { if (shader) ID3D11PixelShader_Release((ID3D11PixelShader *)shader); }
 
@@ -719,4 +777,49 @@ void d3dDrawIndexedInstanced(
 	int32_t baseVertex,
 	int32_t firstInstance) {
 	ID3D11DeviceContext_DrawIndexedInstanced(CONTEXT(context), (UINT)indexCount, (UINT)instanceCount, (UINT)firstIndex, baseVertex, (UINT)firstInstance);
+}
+
+void d3dCsSetShader(D3dContext context, D3dComputeShader shader) {
+	ID3D11DeviceContext_CSSetShader(CONTEXT(context), (ID3D11ComputeShader *)shader, NULL, 0);
+}
+
+void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer) {
+	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
+	ID3D11DeviceContext_CSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
+}
+
+void d3dCsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
+	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
+	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
+	ID3D11DeviceContext1_CSSetConstantBuffers1(context1, (UINT)slot, 1, buffers, &first, &count);
+}
+
+void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view) {
+	ID3D11ShaderResourceView *views[1] = { (ID3D11ShaderResourceView *)view };
+	ID3D11DeviceContext_CSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);
+}
+
+void d3dCsSetUnorderedAccessView(D3dContext context, int32_t slot, D3dUav view) {
+	ID3D11UnorderedAccessView *views[1] = { (ID3D11UnorderedAccessView *)view };
+	ID3D11DeviceContext_CSSetUnorderedAccessViews(CONTEXT(context), (UINT)slot, 1, views, NULL);
+}
+
+void d3dCsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler) {
+	ID3D11SamplerState *samplers[1] = { (ID3D11SamplerState *)sampler };
+	ID3D11DeviceContext_CSSetSamplers(CONTEXT(context), (UINT)slot, 1, samplers);
+}
+
+void d3dCsClearViews(D3dContext context) {
+	ID3D11ShaderResourceView *srvs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {0};
+	ID3D11UnorderedAccessView *uavs[D3D11_PS_CS_UAV_REGISTER_COUNT] = {0};
+	ID3D11DeviceContext_CSSetShaderResources(CONTEXT(context), 0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, srvs);
+	ID3D11DeviceContext_CSSetUnorderedAccessViews(CONTEXT(context), 0, D3D11_PS_CS_UAV_REGISTER_COUNT, uavs, NULL);
+}
+
+void d3dDispatch(D3dContext context, int32_t x, int32_t y, int32_t z) {
+	ID3D11DeviceContext_Dispatch(CONTEXT(context), (UINT)x, (UINT)y, (UINT)z);
+}
+
+void d3dDispatchIndirect(D3dContext context, D3dBuffer arguments, int64_t offset) {
+	ID3D11DeviceContext_DispatchIndirect(CONTEXT(context), (ID3D11Buffer *)arguments, (UINT)offset);
 }

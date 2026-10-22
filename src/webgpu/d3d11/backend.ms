@@ -19,6 +19,10 @@ import {
 	GPUCommandBuffer,
 	GPUColor,
 	GPUCommandEncoder,
+	GPUComputePassDescriptor,
+	GPUComputePassEncoder,
+	GPUComputePipeline,
+	GPUComputePipelineDescriptor,
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
@@ -32,6 +36,7 @@ import {
 	GPUSamplerDescriptor,
 	GPUStencilFaceState,
 	GPUShaderAttribute,
+	GPUShaderBinding,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUMapMode,
@@ -49,12 +54,13 @@ import {
 	checkedTexelBufferLayout,
 	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
-	stopOnUnportedShaderModule,
+	stopOnUnportedShaderBindings,
 } from "../types.ms";
 import {
 	D3dBlobImpl,
 	D3dBlendStateImpl,
 	D3dBufferImpl,
+	D3dComputeShaderImpl,
 	D3dContextImpl,
 	D3dDepthStencilStateImpl,
 	D3dDeviceImpl,
@@ -66,6 +72,7 @@ import {
 	D3dSamplerImpl,
 	D3dSrvImpl,
 	D3dTextureImpl,
+	D3dUavImpl,
 	D3dVertexShaderImpl,
 	d3dBlendTarget,
 	d3dClearDsv,
@@ -81,6 +88,19 @@ import {
 	d3dCopyTextureToBuffer,
 	d3dCreateBlendState,
 	d3dCreateBuffer,
+	d3dCreateBufferSrv,
+	d3dCreateBufferUav,
+	d3dCreateComputeShader,
+	d3dCreateTextureUav,
+	d3dCsClearViews,
+	d3dCsSetSampler,
+	d3dCsSetShader,
+	d3dCsSetShaderResource,
+	d3dCsSetUnorderedAccessView,
+	d3dDispatch,
+	d3dDispatchIndirect,
+	d3dReleaseComputeShader,
+	d3dReleaseUav,
 	d3dCreateDepthStencilState,
 	d3dCreateDsv,
 	d3dCreateInputLayout,
@@ -168,6 +188,9 @@ const MAX_BLOCK_CONSTANTS = 4096;
 const MAX_STAGE_CONSTANT_BUFFERS = 14;
 const MAX_STAGE_SHADER_RESOURCES = 128;
 const MAX_STAGE_SAMPLERS = 16;
+const MAX_STAGE_UNORDERED_ACCESS_VIEWS = 8;
+const MAX_DISPATCH_GROUPS = 65535;
+const STORAGE_OFFSET_ALIGNMENT = 256;
 
 const DXGI_UNKNOWN = 0;
 const DXGI_R32G32B32A32_FLOAT = 2;
@@ -228,6 +251,9 @@ const BIND_CONSTANT_BUFFER = 0x4;
 const BIND_SHADER_RESOURCE = 0x8;
 const BIND_RENDER_TARGET = 0x20;
 const BIND_DEPTH_STENCIL = 0x40;
+const BIND_UNORDERED_ACCESS = 0x80;
+const MISC_DRAWINDIRECT_ARGS = 0x10;
+const MISC_ALLOW_RAW_VIEWS = 0x20;
 const CPU_ACCESS_WRITE = 0x10000;
 const CPU_ACCESS_READ = 0x20000;
 const MAP_WRITE = 2;
@@ -281,11 +307,15 @@ const NO_SRV = null as unknown as Ptr<D3dSrvImpl>;
 const NO_SAMPLER = null as unknown as Ptr<D3dSamplerImpl>;
 const NO_RTV = null as unknown as Ptr<D3dRtvImpl>;
 const NO_DSV = null as unknown as Ptr<D3dDsvImpl>;
+const NO_UAV = null as unknown as Ptr<D3dUavImpl>;
+const NO_COMPUTE = null as unknown as Ptr<D3dComputeShaderImpl>;
 
 enum BindingKind {
 	Uniform,
 	Texture,
 	Sampler,
+	StorageBuffer,
+	StorageTexture,
 }
 
 struct FormatInfo {
@@ -308,6 +338,7 @@ struct BufferSlot {
 	size: int64;
 	usage: int32;
 	uniform: boolean;
+	storage: boolean;
 	staging: boolean;
 	updatable: boolean;
 	mapMode: int32;
@@ -340,6 +371,7 @@ struct ViewSlot {
 	shaderResource: Ptr<D3dSrvImpl>;
 	renderTarget: Ptr<D3dRtvImpl>;
 	depthStencil: Ptr<D3dDsvImpl>;
+	unordered: Ptr<D3dUavImpl>;
 	swapchainResolve: Ptr<D3dRtvImpl>;
 	baseMip: int32;
 	baseLayer: int32;
@@ -355,6 +387,8 @@ struct NativeBinding {
 	binding: int32;
 	kind: BindingKind;
 	vertexStage: boolean;
+	computeStage: boolean;
+	writable: boolean;
 	nativeSlot: int32;
 	size: int32;
 }
@@ -363,6 +397,8 @@ struct ShaderSlot {
 	id: uint32;
 	vertex: Ptr<D3dVertexShaderImpl>;
 	fragment: Ptr<D3dPixelShaderImpl>;
+	compute: Ptr<D3dComputeShaderImpl>;
+	computeEntry: string;
 	vertexBlob: Ptr<D3dBlobImpl>;
 	uniforms: NativeBinding[8];
 	uniformCount: int32;
@@ -386,6 +422,7 @@ struct PipelineSlot {
 	layouts: uint32[2];
 	topology: int32;
 	stripIndexFormat: int32;
+	compute: boolean;
 }
 
 struct LayoutSlot {
@@ -398,6 +435,8 @@ struct BindGroupSlot {
 	id: uint32;
 	group: int32;
 	entries: GPUBindGroupEntry[8];
+	srv: Ptr<D3dSrvImpl>[8];
+	uav: Ptr<D3dUavImpl>[8];
 	entryCount: int32;
 	dynamicIndex: int32[8];
 	dynamicCount: int32;
@@ -409,6 +448,13 @@ struct PassState {
 	height: int32;
 	colorViews: uint32[4];
 	resolveViews: uint32[4];
+}
+
+struct ComputeState {
+	active: boolean;
+	pipeline: uint32;
+	bindGroup: uint32;
+	dirty: boolean;
 }
 
 struct BoundState {
@@ -457,6 +503,7 @@ let offsetUniforms = false;
 let frame: int64 = 0;
 let pass: PassState = { active: false };
 let bound: BoundState = { pipeline: 0 };
+let computeBound: ComputeState = { active: false };
 let nativeBinds: NativeBinds = { indexFormat: 0 };
 let stats: BindStats = { vertexBuffers: 0 };
 let swapchainColor: uint32 = 0;
@@ -854,6 +901,8 @@ function bindingKind(kind: string): BindingKind {
 		"uniform" => BindingKind.Uniform,
 		"texture" => BindingKind.Texture,
 		"sampler" => BindingKind.Sampler,
+		"storage-buffer" => BindingKind.StorageBuffer,
+		"storage-texture" => BindingKind.StorageTexture,
 		_ => stopOnMember("GPUShaderBinding.kind", kind) as BindingKind,
 	};
 }
@@ -862,6 +911,7 @@ function vertexStage(stage: string): boolean {
 	const value = match (stage) {
 		"vertex" => 1,
 		"fragment" => 0,
+		"compute" => 0,
 		_ => stopOnMember("GPUShaderBinding.stage", stage),
 	};
 	return value == 1;
@@ -876,6 +926,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	frame = 0;
 	pass = { active: false };
 	bound = { pipeline: 0 };
+	computeBound = { active: false };
 	offsetUniforms = d3dUniformOffsetting(device, context) != 0;
 	buffers = [{ id: 0 }];
 	textures = [{ id: 0 }];
@@ -1028,6 +1079,12 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	}
 	const vertexOrIndex = (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.INDEX as int32);
 	const uniform = has(usage, GPUBufferUsage.UNIFORM as int32);
+	const storage = has(usage, GPUBufferUsage.STORAGE as int32);
+	const indirect = has(usage, GPUBufferUsage.INDIRECT as int32);
+	if ((storage || indirect) && (uniform || has(usage, vertexOrIndex))) {
+		stop("a STORAGE or INDIRECT buffer cannot also be UNIFORM, VERTEX or INDEX on D3D11");
+	}
+	if (storage && descriptor.size % 4 != 0) { stop("a STORAGE buffer takes a size that is a multiple of 4 (raw ByteAddressBuffer views)"); }
 	if (uniform && has(usage, vertexOrIndex)) {
 		stop("a UNIFORM buffer is a CPU shadow on D3D11 and cannot also be VERTEX or INDEX");
 	}
@@ -1036,6 +1093,7 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		size: descriptor.size,
 		usage: usage,
 		uniform: uniform,
+		storage: storage,
 		staging: mapRead || mapWrite,
 		updatable: false,
 		native: NO_BUFFER,
@@ -1043,10 +1101,10 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		writtenEnd: 0,
 	};
 	if (slot.staging) {
-		slot.native = d3dCreateBuffer(device, descriptor.size, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE);
+		slot.native = d3dCreateBuffer(device, descriptor.size, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE, 0);
 		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	} else if (uniform && offsetUniforms) {
-		slot.native = d3dCreateBuffer(device, roundUp256(descriptor.size), USAGE_DYNAMIC, BIND_CONSTANT_BUFFER, CPU_ACCESS_WRITE);
+		slot.native = d3dCreateBuffer(device, roundUp256(descriptor.size), USAGE_DYNAMIC, BIND_CONSTANT_BUFFER, CPU_ACCESS_WRITE, 0);
 		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	} else if (uniform) {
 		slot.shadow = new Array(roundUp16(descriptor.size));
@@ -1054,7 +1112,13 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		let bindFlags = 0;
 		if (has(usage, GPUBufferUsage.VERTEX as int32)) { bindFlags |= BIND_VERTEX_BUFFER; }
 		if (has(usage, GPUBufferUsage.INDEX as int32)) { bindFlags |= BIND_INDEX_BUFFER; }
-		slot.updatable = bindFlags == 0 && has(usage, GPUBufferUsage.COPY_DST as int32);
+		let miscFlags = 0;
+		if (storage) {
+			bindFlags |= BIND_SHADER_RESOURCE | BIND_UNORDERED_ACCESS;
+			miscFlags |= MISC_ALLOW_RAW_VIEWS;
+		}
+		if (indirect) { miscFlags |= MISC_DRAWINDIRECT_ARGS; }
+		slot.updatable = (bindFlags == 0 || storage) && has(usage, GPUBufferUsage.COPY_DST as int32);
 		const writable = has(usage, GPUBufferUsage.COPY_DST as int32) && !slot.updatable;
 		slot.native = d3dCreateBuffer(
 			device,
@@ -1062,6 +1126,7 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 			writable ? USAGE_DYNAMIC : USAGE_DEFAULT,
 			bindFlags,
 			writable ? CPU_ACCESS_WRITE : 0,
+			miscFlags,
 		);
 		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	}
@@ -1169,6 +1234,12 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
 	let bindFlags = BIND_SHADER_RESOURCE;
 	if (attachment) { bindFlags |= info.depth ? BIND_DEPTH_STENCIL : BIND_RENDER_TARGET; }
+	if (has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) {
+		if (info.depth || info.texture != info.renderTarget || sampleCount > 1) {
+			stop("STORAGE_BINDING needs a single-sample color format that is not sRGB on d3d11");
+		}
+		bindFlags |= BIND_UNORDERED_ACCESS;
+	}
 	let native = NO_TEXTURE;
 	if (volume) {
 		native = d3dCreateTexture3D(device, width, height, layers, mipLevels, info.texture, USAGE_DEFAULT, bindFlags);
@@ -1290,7 +1361,7 @@ export function writeTexture<T>(
 }
 
 function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
-	if (pass.active) { stop(`${member} inside a render pass`); }
+	if (pass.active || computeBound.active) { stop(`${member} inside a pass`); }
 	const index = bufferIndex(buffer.id);
 	if (!has(buffers[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
 	if (buffers[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
@@ -1307,7 +1378,7 @@ function copyDestinationBuffer(buffer: GPUBuffer, member: string): int32 {
 }
 
 function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
-	if (pass.active) { stop(`${member} inside a render pass`); }
+	if (pass.active || computeBound.active) { stop(`${member} inside a pass`); }
 	const index = textureIndex(info.texture.id);
 	if (!has(textures[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
 	if (textures[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
@@ -1390,7 +1461,7 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 	const temporary = !buffers[from].staging;
 	if (temporary) {
 		const span = imageBytes * ((size.depthOrArrayLayers - 1) as int64) + (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
-		readable = d3dCreateBuffer(device, span, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE);
+		readable = d3dCreateBuffer(device, span, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE, 0);
 		if (readable == null) { stop(`CreateBuffer failed for the copy of GPUBuffer ${source.buffer.id}`); }
 		d3dCopyBuffer(context, readable, 0, buffers[from].native, offset, span);
 		offset = 0;
@@ -1585,6 +1656,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		shaderResource: NO_SRV,
 		renderTarget: NO_RTV,
 		depthStencil: NO_DSV,
+		unordered: NO_UAV,
 		swapchainResolve: NO_RTV,
 		baseMip: baseMip,
 		baseLayer: baseLayer,
@@ -1595,6 +1667,11 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		if (dimension == VIEW_2D && baseLayer > 0) { dimension = VIEW_2D_ARRAY; }
 		slot.shaderResource = d3dCreateSrv(device, native, info.shaderResource, multisampled, dimension, baseMip, mipCount, baseLayer, layerCount);
 		if (slot.shaderResource == null) { stop(`CreateShaderResourceView failed for ${labelOf(descriptor.label)}`); }
+	}
+	if (has(usage, GPUTextureUsage.STORAGE_BINDING as int32) && mipCount == 1) {
+		const uavDimension = textures[t].volume ? VIEW_3D : (layers > 1 ? VIEW_2D_ARRAY : VIEW_2D);
+		slot.unordered = d3dCreateTextureUav(device, native, info.renderTarget, uavDimension, baseMip, baseLayer, layerCount);
+		if (slot.unordered == null) { stop(`CreateUnorderedAccessView failed for ${labelOf(descriptor.label)}`); }
 	}
 	if (attachment && attachable && !info.depth) {
 		slot.renderTarget = d3dCreateRtv(device, native, info.renderTarget, multisampled, arrayed, baseMip, baseLayer);
@@ -1614,6 +1691,7 @@ export function destroyView(view: GPUTextureView): void {
 	const index = viewIndex(view.id);
 	if (views[index].swapchain) { return; }
 	d3dReleaseSrv(views[index].shaderResource);
+	d3dReleaseUav(views[index].unordered);
 	d3dReleaseRtv(views[index].renderTarget);
 	d3dReleaseDsv(views[index].depthStencil);
 	views[index] = { id: 0 };
@@ -1708,17 +1786,27 @@ function compileStage(code: string, entryPoint: string, target: string, label: s
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
-	stopOnUnportedShaderModule("d3d11", descriptor);
+	stopOnUnportedShaderBindings("d3d11", descriptor);
+	const compute = descriptor.computeCode != "";
+	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
+		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");
+	}
 	const id = allocateId(shaderQueue, "shader module");
 	if (id == 0) { return { id: 0 }; }
 	let slot: ShaderSlot = { id: 0 };
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
+		const stageName: string = descriptor.bindings[i].stage;
+		if ((stageName == "compute") != compute) {
+			stop(`shader binding ${descriptor.bindings[i].binding} stage '${stageName}' does not match a ${compute ? "compute" : "vertex and fragment"} module`);
+		}
 		const native: NativeBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: bindingKind(kindName),
-			vertexStage: vertexStage(descriptor.bindings[i].stage),
+			vertexStage: vertexStage(stageName),
+			computeStage: stageName == "compute",
+			writable: bindingWritable(descriptor.bindings[i]),
 			nativeSlot: descriptor.bindings[i].nativeSlot,
 			size: descriptor.bindings[i].size,
 		};
@@ -1734,19 +1822,27 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		}
 	}
 	slot.attributes = descriptor.attributes;
-	slot.vertexBlob = compileStage(descriptor.vertexCode, descriptor.vertexEntryPoint, "vs_5_0", descriptor.label);
-	const fragmentBlob = compileStage(descriptor.fragmentCode, descriptor.fragmentEntryPoint, "ps_5_0", descriptor.label);
-	slot.vertex = d3dCreateVertexShader(device, slot.vertexBlob);
-	slot.fragment = d3dCreatePixelShader(device, fragmentBlob);
-	d3dReleaseBlob(fragmentBlob);
-	if (slot.vertex == null || slot.fragment == null) { stop(`CreateVertexShader/CreatePixelShader failed for ${labelOf(descriptor.label)}`); }
+	if (compute) {
+		slot.computeEntry = descriptor.computeEntryPoint == "" ? "main" : descriptor.computeEntryPoint;
+		const computeBlob = compileStage(descriptor.computeCode, slot.computeEntry, "cs_5_0", descriptor.label);
+		slot.compute = d3dCreateComputeShader(device, computeBlob);
+		d3dReleaseBlob(computeBlob);
+		if (slot.compute == null) { stop(`CreateComputeShader failed for ${labelOf(descriptor.label)}`); }
+	} else {
+		slot.vertexBlob = compileStage(descriptor.vertexCode, descriptor.vertexEntryPoint, "vs_5_0", descriptor.label);
+		const fragmentBlob = compileStage(descriptor.fragmentCode, descriptor.fragmentEntryPoint, "ps_5_0", descriptor.label);
+		slot.vertex = d3dCreateVertexShader(device, slot.vertexBlob);
+		slot.fragment = d3dCreatePixelShader(device, fragmentBlob);
+		d3dReleaseBlob(fragmentBlob);
+		if (slot.vertex == null || slot.fragment == null) { stop(`CreateVertexShader/CreatePixelShader failed for ${labelOf(descriptor.label)}`); }
+	}
 	let cacheBytes: int64 = 0;
 	for (let u = 0; u < slot.uniformCount && !offsetUniforms; u++) {
 		const bytes = roundUp16(slot.uniforms[u].size as int64);
 		slot.cacheOffset[u] = cacheBytes as int32;
 		cacheBytes += bytes;
 		slot.cacheFresh[u] = 1;
-		slot.constantBuffers[u] = d3dCreateBuffer(device, bytes, USAGE_DEFAULT, BIND_CONSTANT_BUFFER, 0);
+		slot.constantBuffers[u] = d3dCreateBuffer(device, bytes, USAGE_DEFAULT, BIND_CONSTANT_BUFFER, 0, 0);
 		if (slot.constantBuffers[u] == null) { stop(`CreateBuffer of a constant buffer failed for ${labelOf(descriptor.label)}`); }
 	}
 	if (cacheBytes > 0) { slot.blockCache = new Array(cacheBytes); }
@@ -1754,6 +1850,22 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	const index = slotOf(slot.id);
 	if (index < shaders.length) { shaders[index] = slot; } else { shaders.push(slot); }
 	return { id: slot.id };
+}
+
+function bindingWritable(binding: GPUShaderBinding): boolean {
+	const kind: string = binding.kind;
+	if (kind == "storage-buffer") {
+		const bufferType: string = binding.bufferType;
+		if (bufferType == "storage") { return true; }
+		if (bufferType == "read-only-storage") { return false; }
+		return stopOnMember("GPUShaderBinding.bufferType", bufferType) == 0;
+	}
+	if (kind == "storage-texture") {
+		const access: string = binding.storageAccess;
+		if (access == "write-only" || access == "read-write") { return true; }
+		return stopOnMember("GPUShaderBinding.storageAccess", access) == 0;
+	}
+	return false;
 }
 
 function checkBinding(native: NativeBinding, group: int32): void {
@@ -1765,7 +1877,15 @@ function checkBinding(native: NativeBinding, group: int32): void {
 		BindingKind.Uniform => MAX_STAGE_CONSTANT_BUFFERS,
 		BindingKind.Texture => MAX_STAGE_SHADER_RESOURCES,
 		BindingKind.Sampler => MAX_STAGE_SAMPLERS,
+		BindingKind.StorageBuffer => native.writable ? MAX_STAGE_UNORDERED_ACCESS_VIEWS : MAX_STAGE_SHADER_RESOURCES,
+		BindingKind.StorageTexture => MAX_STAGE_UNORDERED_ACCESS_VIEWS,
 	};
+	if (native.writable && !native.computeStage) {
+		stop(`shader binding ${native.binding} is writable storage in a render stage, which D3D11 binds only through OMSetRenderTargetsAndUnorderedAccessViews: not ported`);
+	}
+	if (native.kind == BindingKind.Uniform && native.computeStage) {
+		stop(`uniform binding ${native.binding} in a compute stage is not ported to d3d11 yet`);
+	}
 	if (native.nativeSlot < 0 || native.nativeSlot >= limit) {
 		stop(`shader binding ${native.binding} has HLSL register ${native.nativeSlot}, outside 0..${limit - 1}`);
 	}
@@ -1778,6 +1898,7 @@ export function destroyShaderModule(module: GPUShaderModule): void {
 	const index = shaderIndex(module.id);
 	d3dReleaseVertexShader(shaders[index].vertex);
 	d3dReleasePixelShader(shaders[index].fragment);
+	d3dReleaseComputeShader(shaders[index].compute);
 	d3dReleaseBlob(shaders[index].vertexBlob);
 	for (let u = 0; u < shaders[index].uniformCount; u++) { d3dReleaseBuffer(shaders[index].constantBuffers[u]); }
 	shaders[index] = { id: 0 };
@@ -1797,6 +1918,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	const id = allocateId(pipelineQueue, "render pipeline");
 	if (id == 0) { return { id: 0 }; }
 	const s = shaderIndex(descriptor.vertex.module.id);
+	if (shaders[s].compute != null) { stop("a compute GPUShaderModule cannot make a GPURenderPipeline"); }
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on D3D11");
 	}
@@ -1961,14 +2083,15 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
 		checkEntry(shader, group, entry);
+		if (entry.buffer.id != 0 && buffers[bufferIndex(entry.buffer.id)].storage) { storageViews(slot, shader, entry); }
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
 	for (let i = 0; i < slot.entryCount; i++) {
-		if (slot.entries[i].buffer.id == 0) { continue; }
+		if (slot.entries[i].buffer.id == 0 || !buffers[bufferIndex(slot.entries[i].buffer.id)].uniform) { continue; }
 		let rank = 0;
 		for (let j = 0; j < slot.entryCount; j++) {
-			if (slot.entries[j].buffer.id != 0 && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
+			if (slot.entries[j].buffer.id != 0 && buffers[bufferIndex(slot.entries[j].buffer.id)].uniform && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
 		}
 		slot.dynamicIndex[i] = rank;
 		slot.dynamicCount += 1;
@@ -1979,15 +2102,44 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 	return { id: slot.id };
 }
 
+function resourceOf(shader: int32, binding: int32): int32 {
+	for (let r = 0; r < shaders[shader].resourceCount; r++) {
+		if (shaders[shader].resources[r].binding == binding) { return r; }
+	}
+	return -1;
+}
+
+function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
+	if (entry.offset < 0 || entry.offset % STORAGE_OFFSET_ALIGNMENT != 0) {
+		stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${STORAGE_OFFSET_ALIGNMENT}`);
+	}
+	const bytes = entry.size == 0 ? buffers[b].size - entry.offset : entry.size;
+	if (bytes <= 0 || bytes % 4 != 0 || entry.offset + bytes > buffers[b].size) {
+		stop(`bind group entry ${entry.binding} range ${entry.offset}+${bytes} is not a positive multiple of 4 inside its buffer of ${buffers[b].size}`);
+	}
+	return bytes;
+}
+
+function storageViews(ref slot: BindGroupSlot, shader: int32, entry: GPUBindGroupEntry): void {
+	const b = bufferIndex(entry.buffer.id);
+	const bytes = storageRange(entry, b);
+	const binding = shaders[shader].resources[resourceOf(shader, entry.binding)];
+	if (binding.writable) {
+		slot.uav[slot.entryCount] = d3dCreateBufferUav(device, buffers[b].native, entry.offset, bytes);
+		if (slot.uav[slot.entryCount] == null) { stop(`CreateUnorderedAccessView failed for bind group entry ${entry.binding}`); }
+	} else {
+		slot.srv[slot.entryCount] = d3dCreateBufferSrv(device, buffers[b].native, entry.offset, bytes);
+		if (slot.srv[slot.entryCount] == null) { stop(`CreateShaderResourceView failed for bind group entry ${entry.binding}`); }
+	}
+}
+
 function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
-	const kind = entry.buffer.id != 0 ? BindingKind.Uniform :
-		(entry.textureView.id != 0 ? BindingKind.Texture : BindingKind.Sampler);
-	if (kind == BindingKind.Uniform) {
+	if (entry.buffer.id != 0) {
 		const b = bufferIndex(entry.buffer.id);
-		if (!buffers[b].uniform) { stop(`bind group entry ${entry.binding} needs a UNIFORM buffer`); }
 		for (let u = 0; u < shaders[shader].uniformCount; u++) {
 			const binding = shaders[shader].uniforms[u];
 			if (binding.binding == entry.binding) {
+				if (!buffers[b].uniform) { stop(`bind group entry ${entry.binding} needs a UNIFORM buffer`); }
 				if (entry.offset < 0 || entry.offset % UNIFORM_OFFSET_ALIGNMENT != 0) {
 					stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
 				}
@@ -2000,25 +2152,37 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 				return;
 			}
 		}
-	} else {
-		if (kind == BindingKind.Texture) {
-			if (views[viewIndex(entry.textureView.id)].shaderResource == null) {
-				stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`);
-			}
-		} else {
-			samplerIndex(entry.sampler.id);
+		const r = resourceOf(shader, entry.binding);
+		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageBuffer) {
+			if (!buffers[b].storage) { stop(`bind group entry ${entry.binding} needs a STORAGE buffer`); }
+			return;
 		}
-		for (let r = 0; r < shaders[shader].resourceCount; r++) {
-			if (shaders[shader].resources[r].binding == entry.binding && shaders[shader].resources[r].kind == kind) {
-				return;
-			}
-		}
+		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
 	}
-	stop(`bind group ${group} entry ${entry.binding} (${kind.toString()}) is not a binding of the pipeline's shader`);
+	const r = resourceOf(shader, entry.binding);
+	if (entry.textureView.id != 0) {
+		const v = viewIndex(entry.textureView.id);
+		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Texture) {
+			if (views[v].shaderResource == null) { stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`); }
+			return;
+		}
+		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
+			if (views[v].unordered == null) { stop(`bind group entry ${entry.binding}: the view's texture lacks STORAGE_BINDING or the view spans several mips`); }
+			return;
+		}
+		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);
+	}
+	samplerIndex(entry.sampler.id);
+	if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Sampler) { return; }
+	stop(`bind group ${group} entry ${entry.binding} (sampler) is not a binding of the pipeline's shader`);
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
 	const index = bindGroupIndex(bindGroup.id);
+	for (let e = 0; e < bindGroups[index].entryCount; e++) {
+		d3dReleaseSrv(bindGroups[index].srv[e]);
+		d3dReleaseUav(bindGroups[index].uav[e]);
+	}
 	bindGroups[index] = { id: 0 };
 	releaseId(bindGroupQueue, bindGroup.id);
 }
@@ -2027,13 +2191,14 @@ export function createCommandEncoder(): GPUCommandEncoder { return { id: 1 }; }
 
 export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 	if (pass.active) { stop("finish with a render pass still open"); }
+	if (computeBound.active) { stop("finish with a compute pass still open"); }
 	return { id: 1 };
 }
 
 export function submit(commandBuffer: GPUCommandBuffer): void { frame += 1; }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
-	if (pass.active) { stop("beginRenderPass with a render pass already open"); }
+	if (pass.active || computeBound.active) { stop("beginRenderPass with a pass already open"); }
 	pass = { active: true };
 	let targets: Ptr<D3dRtvImpl>[4] = [NO_RTV, NO_RTV, NO_RTV, NO_RTV];
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
@@ -2143,6 +2308,99 @@ export function endPass(): void {
 	}
 	d3dClearState(context);
 	pass.active = false;
+}
+
+export function createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
+	const s = shaderIndex(descriptor.compute.module.id);
+	if (shaders[s].compute == null) { stop("createComputePipeline needs a GPUShaderModule made with computeCode"); }
+	const entry = descriptor.compute.entryPoint == "" ? "main" : descriptor.compute.entryPoint;
+	if (entry != shaders[s].computeEntry) {
+		stop(`compute.entryPoint '${entry}' differs from the module's computeEntryPoint '${shaders[s].computeEntry}'`);
+	}
+	const id = allocateId(pipelineQueue, "compute pipeline");
+	if (id == 0) { return { id: 0 }; }
+	const slot: PipelineSlot = { id: id, shader: descriptor.compute.module.id, compute: true };
+	const index = slotOf(id);
+	if (index < pipelines.length) { pipelines[index] = slot; } else { pipelines.push(slot); }
+	return { id: id };
+}
+
+export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
+	if (pass.active || computeBound.active) { stop("beginComputePass with a pass already open"); }
+	computeBound = { active: true };
+	return { id: 1 };
+}
+
+export function setComputePipeline(pipeline: GPUComputePipeline): void {
+	if (!computeBound.active) { stop("setPipeline outside a compute pass"); }
+	if (!pipelines[pipelineIndex(pipeline.id)].compute) { stop(`GPUPipeline ${pipeline.id} is not a compute pipeline`); }
+	computeBound.pipeline = pipeline.id;
+	computeBound.dirty = true;
+}
+
+export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	if (!computeBound.active) { stop("setBindGroup outside a compute pass"); }
+	if (index != GPU_RESOURCE_GROUP) { stop(`a compute pipeline has no uniform group: setBindGroup(${index}) takes group ${GPU_RESOURCE_GROUP}`); }
+	if (dynamicOffsets.length != 0) { stop("a compute bind group takes no dynamic offsets"); }
+	if (bindGroup.id != 0 && bindGroups[bindGroupIndex(bindGroup.id)].group != index) {
+		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups[bindGroupIndex(bindGroup.id)].group}`);
+	}
+	computeBound.bindGroup = bindGroup.id;
+	computeBound.dirty = true;
+}
+
+function applyCompute(): void {
+	if (!computeBound.active) { stop("dispatch outside a compute pass"); }
+	if (computeBound.pipeline == 0) { stop("dispatch without setPipeline"); }
+	if (!computeBound.dirty) { return; }
+	const s = shaderIndex(pipelines[pipelineIndex(computeBound.pipeline)].shader);
+	d3dCsClearViews(context);
+	d3dCsSetShader(context, shaders[s].compute);
+	computeBound.dirty = false;
+	if (shaders[s].resourceCount == 0) { return; }
+	if (computeBound.bindGroup == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
+	const g = bindGroupIndex(computeBound.bindGroup);
+	for (let r = 0; r < shaders[s].resourceCount; r++) {
+		const binding: NativeBinding = shaders[s].resources[r];
+		const e = entryOf(g, binding.binding);
+		if (binding.kind == BindingKind.Texture) {
+			d3dCsSetShaderResource(context, binding.nativeSlot, views[viewIndex(bindGroups[g].entries[e].textureView.id)].shaderResource);
+		} else if (binding.kind == BindingKind.Sampler) {
+			d3dCsSetSampler(context, binding.nativeSlot, samplers[samplerIndex(bindGroups[g].entries[e].sampler.id)].native);
+		} else if (binding.kind == BindingKind.StorageBuffer) {
+			if (binding.writable) {
+				d3dCsSetUnorderedAccessView(context, binding.nativeSlot, bindGroups[g].uav[e]);
+			} else {
+				d3dCsSetShaderResource(context, binding.nativeSlot, bindGroups[g].srv[e]);
+			}
+		} else {
+			d3dCsSetUnorderedAccessView(context, binding.nativeSlot, views[viewIndex(bindGroups[g].entries[e].textureView.id)].unordered);
+		}
+	}
+}
+
+export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
+	if (x < 0 || y < 0 || z < 0 || x > MAX_DISPATCH_GROUPS || y > MAX_DISPATCH_GROUPS || z > MAX_DISPATCH_GROUPS) {
+		stop(`dispatchWorkgroups ${x},${y},${z} is outside 0..${MAX_DISPATCH_GROUPS}`);
+	}
+	applyCompute();
+	d3dDispatch(context, x, y, z);
+}
+
+export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
+	const b = bufferIndex(buffer.id);
+	if (!has(buffers[b].usage, GPUBufferUsage.INDIRECT as int32)) { stop(`dispatchWorkgroupsIndirect: GPUBuffer ${buffer.id} was created without INDIRECT`); }
+	if (offset < 0 || offset % 4 != 0 || offset + 12 > buffers[b].size) {
+		stop(`dispatchWorkgroupsIndirect offset ${offset} is not a multiple of 4 with 12 bytes inside GPUBuffer ${buffer.id} of ${buffers[b].size}`);
+	}
+	applyCompute();
+	d3dDispatchIndirect(context, buffers[b].native, offset);
+}
+
+export function endComputePass(): void {
+	if (!computeBound.active) { stop("end without an open compute pass"); }
+	d3dClearState(context);
+	computeBound = { active: false };
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
@@ -2348,8 +2606,9 @@ function applyResources(): void {
 	for (let r = 0; r < shaders[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders[s].resources[r];
 		const e = entryOf(g, binding.binding);
-		if (binding.kind == BindingKind.Texture) {
-			const view = views[viewIndex(bindGroups[g].entries[e].textureView.id)].shaderResource;
+		if (binding.kind == BindingKind.StorageTexture) { stop("a storage texture in a render stage is not ported to d3d11"); }
+		if (binding.kind == BindingKind.Texture || binding.kind == BindingKind.StorageBuffer) {
+			const view = binding.kind == BindingKind.Texture ? views[viewIndex(bindGroups[g].entries[e].textureView.id)].shaderResource : bindGroups[g].srv[e];
 			if (binding.vertexStage) {
 				if (nativeBinds.vertexShaderResource[binding.nativeSlot] == view) { continue; }
 				d3dVsSetShaderResource(context, binding.nativeSlot, view);
