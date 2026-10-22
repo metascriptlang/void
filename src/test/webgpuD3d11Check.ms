@@ -20,7 +20,7 @@ import {
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
 import { nativeTexture, bindStats } from "../webgpu/d3d11/backend.ms";
-import { warpDevice, warpContext, warpReadback } from "./d3d11Warp.h";
+import { warpDevice, warpContext, warpReadback, warpReadbackSubresource } from "./d3d11Warp.h";
 
 @passL("-ld3d11");
 
@@ -669,5 +669,222 @@ test "a bind group entry offset selects the second uniform block" {
 	const pixels = drawTriangleAt(device, 1, 0, 256);
 	assert pixel(pixels, 32, 32) == GREEN;
 	assert pixel(pixels, 0, 0) == BLUE;
+	device.destroy();
+}
+
+function texels(red: uint8, green: uint8, blue: uint8, count: int32): Vec<uint8> {
+	let bytes: Vec<uint8> = new Array(count * 4);
+	for (let i = 0; i < count; i++) {
+		bytes[i * 4] = red;
+		bytes[i * 4 + 1] = green;
+		bytes[i * 4 + 2] = blue;
+		bytes[i * 4 + 3] = 255;
+	}
+	return bytes;
+}
+
+function readSubresource(texture: GPUTexture, subresource: int32, width: int32, height: int32): Vec<uint8> {
+	let pixels: Vec<uint8> = new Array(width * height * 4);
+	if (warpReadbackSubresource(nativeTexture(texture), subresource, pixels[0], width, height) != 1) {
+		stopOnWarp("the staging readback of a subresource failed");
+	}
+	return pixels;
+}
+
+function centreOf(pixels: Vec<uint8>, width: int32): uint32 {
+	const at = ((width / 2) * width + width / 2) * 4;
+	return ((pixels[at] as uint32) << 24) | ((pixels[at + 1] as uint32) << 16) |
+		((pixels[at + 2] as uint32) << 8) | (pixels[at + 3] as uint32);
+}
+
+function sampleCentre(device: GPUDevice, view: GPUTextureView): uint32 {
+	const module = texturedShader(device);
+	const pipeline = flatPipeline(device, module, 1);
+	const sampler = device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" });
+	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = { binding: 0, textureView: view };
+	descriptor.entries[1] = { binding: 32, sampler: sampler };
+	const group = device.createBindGroup(descriptor);
+	const vertices = vertexBuffer(device, 32);
+	const quad: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, quad);
+	const indices = device.createBuffer({
+		label: "indices",
+		size: 12,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order: Vec<uint16> = [0, 1, 2, 0, 2, 3];
+	device.queue.writeBuffer(indices, 0, order);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setIndexBuffer(indices, "uint16", 0);
+	const noOffsets: Vec<uint32> = [];
+	pass.setBindGroup(1, group, noOffsets);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return pixel(readPixels(target), 32, 32);
+}
+
+test "a view of mip 1 alone samples mip 1 of a three-mip texture" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "mips",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+		mipLevelCount: 3,
+	});
+	device.queue.writeTexture({ texture: texture, mipLevel: 0 }, texels(255, 0, 0, 16), { offset: 0, bytesPerRow: 16, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.writeTexture({ texture: texture, mipLevel: 1 }, texels(0, 255, 0, 4), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	device.queue.writeTexture({ texture: texture, mipLevel: 2 }, texels(0, 0, 255, 1), { offset: 0, bytesPerRow: 4, rowsPerImage: 1 }, { width: 1, height: 1, depthOrArrayLayers: 1 });
+	const mip0 = texture.createView({ label: null, baseMipLevel: 0, mipLevelCount: 1 });
+	const mip1 = texture.createView({ label: null, baseMipLevel: 1, mipLevelCount: 1 });
+	const mip2 = texture.createView({ label: null, baseMipLevel: 2, mipLevelCount: 1 });
+	assert sampleCentre(device, mip1) == GREEN;
+	assert sampleCentre(device, mip0) == RED;
+	assert sampleCentre(device, mip2) == BLUE;
+	device.destroy();
+}
+
+test "a single-mip attachment view renders into mip 1 and leaves mip 0 alone" {
+	const device = openDevice();
+	const target = device.createTexture({
+		label: "mipped target",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+		mipLevelCount: 2,
+	});
+	const module = flatShader(device);
+	const pipeline = flatPipeline(device, module, 1);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, pipeline, uniforms);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const view = target.createView({ label: null, baseMipLevel: 1, mipLevelCount: 1 });
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(view, { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const half = readSubresource(target, 1, 32, 32);
+	assert half[0] == 0 && half[1] == 0 && half[2] == 255 && half[3] == 255;
+	assert centreOf(half, 32) == RED;
+	const full = readSubresource(target, 0, SIZE, SIZE);
+	assert centreOf(full, SIZE) == 0;
+	device.destroy();
+}
+
+test "a two-dimensional array writes per layer and a 2d view at baseArrayLayer samples that layer" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "layers",
+		size: { width: 2, height: 2, depthOrArrayLayers: 3 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	device.queue.writeTexture({ texture: texture, origin: { x: 0, y: 0, z: 2 } }, texels(0, 0, 255, 4), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	let both: Vec<uint8> = texels(255, 0, 0, 4);
+	const second = texels(0, 255, 0, 4);
+	for (let i = 0; i < 16; i++) { both.push(second[i]); }
+	device.queue.writeTexture({ texture: texture }, both, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 2 });
+	const layer2 = texture.createView({ label: null, dimension: "2d", baseArrayLayer: 2 });
+	const layer1 = texture.createView({ label: null, dimension: "2d", baseArrayLayer: 1 });
+	const layer0 = texture.createView({ label: null, dimension: "2d", baseArrayLayer: 0 });
+	const all = texture.createView({ label: null });
+	assert all.isAlive();
+	assert sampleCentre(device, layer2) == BLUE;
+	assert sampleCentre(device, layer1) == GREEN;
+	assert sampleCentre(device, layer0) == RED;
+	device.destroy();
+}
+
+test "a six-layer texture creates a cube view and a cube-array view" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "cube",
+		size: { width: 2, height: 2, depthOrArrayLayers: 6 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	device.queue.writeTexture({ texture: texture, origin: { x: 0, y: 0, z: 5 } }, texels(255, 0, 0, 4), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	const cube = texture.createView({ label: null, dimension: "cube" });
+	const cubes = texture.createView({ label: null, dimension: "cube-array", arrayLayerCount: 6 });
+	const faces = texture.createView({ label: null, dimension: "2d-array", baseArrayLayer: 3, arrayLayerCount: 3 });
+	assert cube.isAlive() && cubes.isAlive() && faces.isAlive();
+	device.destroy();
+}
+
+test "a 4x4x4 three-dimensional texture takes a write with rowsPerImage and a 3d view" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "volume",
+		size: { width: 4, height: 4, depthOrArrayLayers: 4 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+		dimension: "3d",
+		mipLevelCount: 2,
+	});
+	device.queue.writeTexture({ texture: texture }, texels(255, 0, 0, 64), { offset: 0, bytesPerRow: 16, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 4 });
+	device.queue.writeTexture({ texture: texture, origin: { x: 0, y: 0, z: 2 } }, texels(0, 255, 0, 32), { offset: 0, bytesPerRow: 16, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 2 });
+	device.queue.writeTexture({ texture: texture, mipLevel: 1 }, texels(0, 0, 255, 8), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 2 });
+	const volume = texture.createView({ label: null, dimension: "3d" });
+	const volumeMip = texture.createView({ label: null, dimension: "3d", baseMipLevel: 1, mipLevelCount: 1 });
+	assert volume.isAlive() && volumeMip.isAlive();
+	device.destroy();
+}
+
+test "a blend constant of 0.5 weights a red source over black to half red" {
+	const device = openDevice();
+	const module = flatShader(device);
+	let descriptor: GPURenderPipelineDescriptor = { label: "blend" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.fragment.targets[0].blendEnabled = true;
+	descriptor.fragment.targets[0].blend = {
+		color: { operation: "add", srcFactor: "constant", dstFactor: "one-minus-constant" },
+		alpha: { operation: "add", srcFactor: "one", dstFactor: "zero" },
+	};
+	const pipeline = device.createRenderPipeline(descriptor);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, pipeline, uniforms);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	let pass: GPURenderPassDescriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	pass.colorAttachments[0].clearValue = { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+	const encoder = device.createCommandEncoder();
+	const encoded = encoder.beginRenderPass(pass);
+	encoded.setPipeline(pipeline);
+	encoded.setVertexBuffer(0, vertices, 0);
+	encoded.setBlendConstant({ r: 0.5, g: 0.5, b: 0.5, a: 0.5 });
+	const offsets: Vec<uint32> = [0];
+	encoded.setBindGroup(0, group, offsets);
+	encoded.draw(3, 1, 0, 0);
+	encoded.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixels(target);
+	const at = (32 * SIZE + 32) * 4;
+	assert pixels[at] >= 126 && pixels[at] <= 129;
+	assert pixels[at + 1] == 0 && pixels[at + 2] == 0 && pixels[at + 3] == 255;
+	assert pixel(pixels, 0, 0) == 0x000000FF;
 	device.destroy();
 }
