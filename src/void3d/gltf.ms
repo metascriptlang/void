@@ -251,6 +251,23 @@ export const IDENTITY_TEXTURE_TRANSFORM: GltfTextureTransform = {
 	offsetU: 0.0, offsetV: 0.0, rotation: 0.0, scaleU: 1.0, scaleV: 1.0,
 };
 
+// Which material model an import produces. Legacy keeps the forward looks (the base colour and
+// the emissive and normal maps); Pbr also reads pbrMetallicRoughness' factors into
+// GltfMaterial.pbr, so the scene can light the material with the direct BRDF.
+export enum GltfMaterialImport {
+	Legacy,
+	Pbr,
+}
+
+// pbrMetallicRoughness' factors, each in 0..1 and the glTF default 1 when the file names none;
+// roughness is above 0, the endpoint the BRDF has no response for (material.ms pbrBlock).
+export struct GltfPbr {
+	metallic: float32;
+	roughness: float32;
+}
+
+const GLTF_DEFAULT_PBR: GltfPbr = { metallic: 1.0, roughness: 1.0 };
+
 export struct GltfMaterial {
 	texture: int32;
 	doubleSided: boolean;
@@ -261,6 +278,7 @@ export struct GltfMaterial {
 	emissiveStrength: float32;
 	normalTexture: int32;
 	uvTransform: GltfTextureTransform;
+	pbr: GltfPbr | null;
 }
 
 export struct GltfAnimation {
@@ -331,7 +349,7 @@ const DEFAULT_READ: MaterialRead = {
 		alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 		emissiveTexture: NO_TEXTURE_INDEX, emissive: { x: 0.0, y: 0.0, z: 0.0 },
 		emissiveStrength: 1.0, normalTexture: NO_TEXTURE_INDEX,
-		uvTransform: IDENTITY_TEXTURE_TRANSFORM,
+		uvTransform: IDENTITY_TEXTURE_TRANSFORM, pbr: null,
 	},
 	factor: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
 	realUvs: false,
@@ -1780,14 +1798,53 @@ function loadNormalTexture(
 	return Result.ok(true);
 }
 
-function loadMaterial(material: JsonValue, textureCount: int32): Result<MaterialRead, GltfError> {
+// A factor of pbrMetallicRoughness: the glTF default when absent, else a number in 0..1.
+function pbrFactor(
+	pbr: JsonValue,
+	name: string,
+	ref cause: string,
+): Result<float32, GltfError> {
+	if (!hasField(pbr, name)) { return Result.ok(1.0); }
+	const value: float32 = try numberOf(fieldOf(pbr, name));
+	if (value < 0.0 || value > 1.0) {
+		cause = `${name} ${value} is outside 0..1`;
+		return Result.err(GltfError.OutOfRange);
+	}
+	return Result.ok(value);
+}
+
+function loadPbr(pbr: JsonValue, ref cause: string): Result<GltfPbr, GltfError> {
+	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (hasField(pbr, "metallicRoughnessTexture")) {
+		cause = "metallicRoughnessTexture has no view slot or program feature to ride yet";
+		return Result.err(GltfError.UnsupportedMaterial);
+	}
+	const metallic: float32 = try pbrFactor(pbr, "metallicFactor", cause);
+	const roughness: float32 = try pbrFactor(pbr, "roughnessFactor", cause);
+	if (roughness == 0.0) {
+		cause = "roughnessFactor 0 has no response in the direct BRDF (pbrBlock refuses it)";
+		return Result.err(GltfError.UnsupportedMaterial);
+	}
+	return Result.ok({ metallic: metallic, roughness: roughness });
+}
+
+function loadMaterial(
+	material: JsonValue,
+	textureCount: int32,
+	materials: GltfMaterialImport,
+	ref cause: string,
+): Result<MaterialRead, GltfError> {
 	if (material === null || material.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
 	if (hasField(material, "occlusionTexture")) {
+		if (materials == GltfMaterialImport.Pbr) {
+			cause = "occlusionTexture has no view slot or program feature to ride yet";
+		}
 		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	let read: MaterialRead = DEFAULT_READ;
+	if (materials == GltfMaterialImport.Pbr) { read.material.pbr = GLTF_DEFAULT_PBR; }
 	const _emits: boolean = try loadEmission(material, textureCount, read);
 	const _normals: boolean = try loadNormalTexture(material, textureCount, read);
 	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
@@ -1814,6 +1871,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 	const pbr: JsonValue = fieldOf(material, "pbrMetallicRoughness");
 	if (!hasField(material, "pbrMetallicRoughness")) { return Result.ok(read); }
 	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (materials == GltfMaterialImport.Pbr) { read.material.pbr = try loadPbr(pbr, cause); }
 	const factor: JsonValue = fieldOf(pbr, "baseColorFactor");
 	if (hasField(pbr, "baseColorFactor")) {
 		if (factor.kind != JsonKind.Array || countOf(factor) != 4) {
@@ -1966,6 +2024,7 @@ function decodeGltf(
 	buffer: Readonly<Span<uint8>>,
 	fromGlb: boolean,
 	source: string = "<memory>",
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
 ): Result<GltfData, GltfDiagnostic> {
 	const parsed: Result<JsonValue, string> = parseJson(json);
 	if (!parsed.ok) {
@@ -2077,10 +2136,11 @@ function decodeGltf(
 	const materialCount: int32 = countOf(materialArray);
 	let reads: Vec<MaterialRead> = [];
 	for (let i = 0; i < materialCount; i++) {
-		const material = loadMaterial(materialArray.at(i), textureCount);
+		let materialCause: string = "";
+		const material = loadMaterial(materialArray.at(i), textureCount, materials, materialCause);
 		if (!material.ok) {
 			return Result.err(gltfFailure(material.error, source, `$.materials[${i}]`,
-				sourceName(materialArray.at(i))));
+				sourceName(materialArray.at(i)), materialCause));
 		}
 		reads.push(material.value);
 		data.materials.push(material.value.material);
@@ -2284,16 +2344,23 @@ function decodeGltf(
 	return Result.ok(data);
 }
 
-export function loadGltf(json: string, buffer: Readonly<Span<uint8>>): Result<GltfData, GltfError> {
-	let decoded = decodeGltf(json, buffer, false);
+export function loadGltf(
+	json: string,
+	buffer: Readonly<Span<uint8>>,
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+): Result<GltfData, GltfError> {
+	let decoded = decodeGltf(json, buffer, false, "<memory>", materials);
 	if (!decoded.ok) { return Result.err(decoded.error.code); }
 	return Result.ok(move decoded.value);
 }
 
 export function loadGltfDetailed(
-	json: string, buffer: Readonly<Span<uint8>>, source: string = "<memory>",
+	json: string,
+	buffer: Readonly<Span<uint8>>,
+	source: string = "<memory>",
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
 ): Result<GltfData, GltfDiagnostic> {
-	return decodeGltf(json, buffer, false, source);
+	return decodeGltf(json, buffer, false, source, materials);
 }
 
 function uint32At(bytes: Readonly<Span<uint8>>, at: int32): uint32 {
@@ -2306,7 +2373,9 @@ function uint32At(bytes: Readonly<Span<uint8>>, at: int32): uint32 {
 // Chunk layout and checks from glTF 2.0.1 §4.4: a JSON chunk first, an optional BIN chunk
 // second, every chunk 4-byte aligned, unknown chunks after those two ignored.
 export function loadGlbDetailed(
-	bytes: Readonly<Span<uint8>>, source: string = "<memory>",
+	bytes: Readonly<Span<uint8>>,
+	source: string = "<memory>",
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
 ): Result<GltfData, GltfDiagnostic> {
 	const total: int32 = bytes.length as int32;
 	if (total < GLB_HEADER_LENGTH + GLB_CHUNK_HEADER_LENGTH) {
@@ -2353,11 +2422,14 @@ export function loadGlbDetailed(
 		at = end;
 		chunk = chunk + 1;
 	}
-	return decodeGltf(json, bytes[binaryStart..binaryEnd], true, source);
+	return decodeGltf(json, bytes[binaryStart..binaryEnd], true, source, materials);
 }
 
-export function loadGlb(bytes: Readonly<Span<uint8>>): Result<GltfData, GltfError> {
-	let decoded = loadGlbDetailed(bytes);
+export function loadGlb(
+	bytes: Readonly<Span<uint8>>,
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+): Result<GltfData, GltfError> {
+	let decoded = loadGlbDetailed(bytes, "<memory>", materials);
 	if (!decoded.ok) { return Result.err(decoded.error.code); }
 	return Result.ok(move decoded.value);
 }
