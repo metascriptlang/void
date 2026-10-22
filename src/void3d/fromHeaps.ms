@@ -47,6 +47,11 @@ export enum HeapsDivergence {
 	RotationIntegrated,
 	FrameBoundary,
 	TurbulenceAsNoise,
+	// Every particle draws from its own hash, where Heaps draws from one stream in order, so a
+	// random value or a shape position matches Heaps in distribution, not per particle.
+	RandomStream,
+	// A system that does not loop stops its clock at its duration; Heaps' clock keeps counting.
+	OneShotClock,
 }
 
 export const HEAPS_GRAVITY: Vec3 = { x: 0.0, y: -1.0, z: 0.0 };
@@ -591,5 +596,14 @@ export function divergences(this state: EmitterState): BitSet<HeapsDivergence> {
 	if (state.turbulence.enabled && state.turbulence.noiseStrength > 0.0) {
 		found = found.incl(HeapsDivergence.TurbulenceAsNoise);
 	}
+	const frame: ParticleValue | null = state.frame;
+	const draws: boolean = state.shape.kind != ShapeKind.Point || state.randomDir
+		|| state.emitRate.drawsRandom() || state.life.drawsRandom() || state.speed.drawsRandom()
+		|| state.initialSpeed.drawsRandom() || state.size.drawsRandom() || state.ratio.drawsRandom()
+		|| state.rotation.drawsRandom() || state.gravity.drawsRandom() || randomCount(f.x, f.y, f.z) > 0
+		|| state.damping.drawsRandom() || state.light.drawsRandom() || state.alpha.drawsRandom()
+		|| (frame !== null && frame.drawsRandom());
+	if (draws) { found = found.incl(HeapsDivergence.RandomStream); }
+	if (!state.loop) { found = found.incl(HeapsDivergence.OneShotClock); }
 	return found;
 }
