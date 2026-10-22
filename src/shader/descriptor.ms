@@ -197,15 +197,6 @@ export function entryPointOf(target: ShaderTarget): string {
 	return target == ShaderTarget.Msl ? "main0" : "main";
 }
 
-function wgslOf(m: ShaderModule, entry: int32, target: ShaderTarget): Result<string, string> {
-	const slots = try bindingSlots(m, [entry], target);
-	try {
-		return Result.ok(printWgsl(m, entry, slots));
-	} catch (e) {
-		return Result.err(e.message);
-	}
-}
-
 // The source of one entry for one target; a target whose printer is not in the tree is refused
 // by name.
 export function stageSource(m: ShaderModule, entry: int32, target: ShaderTarget):
@@ -215,7 +206,10 @@ export function stageSource(m: ShaderModule, entry: int32, target: ShaderTarget)
 			const slots = try bindingSlots(m, [entry], target);
 			return printHlsl(m, entry, slots);
 		},
-		ShaderTarget.Wgsl => wgslOf(m, entry, target),
+		ShaderTarget.Wgsl => {
+			const slots = try bindingSlots(m, [entry], target);
+			return printWgsl(m, entry, slots);
+		},
 		ShaderTarget.Glsl430 | ShaderTarget.Glsl300es | ShaderTarget.Msl =>
 			Result.err("no " + targetName(target) + " printer is merged yet"),
 	};
