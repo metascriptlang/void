@@ -1,9 +1,14 @@
-import { ParticleSystemAsset, ParticleEffect, RenderMode, SimulationSpace } from "../particles/asset";
+import { readFile } from "std/fs";
+import { JsonValue } from "std/serialize/json/types";
+import { vec3 } from "../math/math3d";
+import {
+	ParticleSystemAsset, ParticleEffect, RenderMode, RenderAlignment, SimulationSpace,
+} from "../particles/asset";
 import { constantCurve, constantColor, rgbaColor, curveOf, linearCurve, key } from "../particles/curve";
 import { NodeRef, Scene2D, TileCell } from "../void2d/node";
 import "../void2d/scene";
-import { Tile, Transform2D, rgba, tile, identity2d } from "../void2d/types";
-import { ParticleEmitter2D, particles, play, update } from "../void2d/particles2d";
+import { Tile, Transform2D, rgba, tile, identity2d, trs2d, vec2 } from "../void2d/types";
+import { ParticleEmitter2D, Particles2DErrorKind, particles, play, update } from "../void2d/particles2d";
 import { approx, fakeTexture } from "./helpers";
 
 function fresh(): Scene2D { return Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)); }
@@ -130,4 +135,230 @@ test "a falling particle's trail draws as a strip of its width down the screen" 
 	}
 	// The particle fell, and screen y grows downward.
 	assert lowest > 50.0 && approx(first(e).y, lowest);
+}
+
+// ---- render mode and alignment against Unity's baked quads (tests/unity/goldens) ----
+
+const CORNER_TOL: float32 = 1e-3;
+const UNITY_DT: float64 = 0.1;
+
+struct UnityQuad {
+	vx: float32;
+	vy: float32;
+	forceY: float32;
+	width: float32;
+	height: float32;
+	rotationDegrees: float32;
+	mode: RenderMode;
+	alignment: RenderAlignment;
+	lengthScale: float32;
+	velocityScale: float32;
+	pivotX: float32;
+	pivotY: float32;
+}
+
+function quad(vx: float32, vy: float32): UnityQuad {
+	return {
+		vx: vx, vy: vy, forceY: 0.0, width: 1.0, height: 1.0, rotationDegrees: 0.0,
+		mode: RenderMode.Billboard, alignment: RenderAlignment.View, lengthScale: 1.0,
+		velocityScale: 0.0, pivotX: 0.0, pivotY: 0.0,
+	};
+}
+
+// ParticleCapture.StretchCase: one particle drifting in the xy plane.
+function unityAsset(q: UnityQuad): ParticleSystemAsset {
+	let a = single();
+	a.main.simulationSpace = SimulationSpace.Local;
+	a.main.startLifetime = constantCurve(5.0);
+	a.main.startSizeX = constantCurve(q.width);
+	a.main.startSize3D = true;
+	a.main.startSizeY = constantCurve(q.height);
+	a.main.startSizeZ = constantCurve(1.0);
+	a.main.startRotationZ = constantCurve(q.rotationDegrees * 0.017453292519943295);
+	a.velocityOverLifetime.enabled = true;
+	a.velocityOverLifetime.x = constantCurve(q.vx);
+	a.velocityOverLifetime.y = constantCurve(q.vy);
+	a.velocityOverLifetime.z = constantCurve(0.0);
+	if (q.forceY != 0.0) {
+		a.forceOverLifetime.enabled = true;
+		a.forceOverLifetime.y = constantCurve(q.forceY);
+	}
+	a.renderer.renderMode = q.mode;
+	a.renderer.alignment = q.alignment;
+	a.renderer.lengthScale = q.lengthScale;
+	a.renderer.velocityScale = q.velocityScale;
+	a.renderer.pivot = vec3(q.pivotX, q.pivotY, 0.0);
+	return a;
+}
+
+function golden(name: string): JsonValue {
+	const text = readFile(`tests/unity/goldens/${name}.json`);
+	if (!text.ok) { unreachable; }
+	const parsed = JSON.parseValue(text.value);
+	if (!parsed.ok) { unreachable; }
+	return parsed.value;
+}
+
+// The cell's corners in Unity's y-up frame, top-left first, as the baked quad lists them.
+function cellCorners(c: TileCell): float32[] {
+	const m: Transform2D = trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
+	const t: Tile = c.tile;
+	const a = vec2(t.dx, t.dy) * m;
+	const b = vec2(t.dx + t.w, t.dy) * m;
+	const d = vec2(t.dx + t.w, t.dy + t.h) * m;
+	const e = vec2(t.dx, t.dy + t.h) * m;
+	return [a.x, -a.y, b.x, -b.y, d.x, -d.y, e.x, -e.y];
+}
+
+// Replays a baked-quad golden through the 2D writer at Unity's step, 4 sub-steps per frame, and
+// counts the corners that differ.
+function cornerMisses(name: string, q: UnityQuad): int32 {
+	const s = fresh();
+	let e = emitter(s, unityAsset(q), tile(fakeTexture(5), 16.0, 16.0));
+	e.effect.clock.fixedStep = UNITY_DT / 4.0;
+	e.play(identity2d());
+	const frames = golden(name).getDynamicField("frames");
+	let misses: int32 = 0;
+	for (let k = 1; k < (frames.length() as int32); k++) {
+		const n = e.update(UNITY_DT, identity2d());
+		if (!n.ok || n.value != 1) { return 1000; }
+		const baked = frames.at(k).getDynamicField("bakedQuads");
+		const wanted: int32 = baked.length() as int32;
+		if (e.node.count() != wanted) { return 1000; }
+		if (wanted == 0) { continue; }
+		const mine: float32[] = cellCorners(first(e));
+		const pos = baked.at(0).getDynamicField("pos");
+		for (let v = 0; v < 4; v++) {
+			for (let axis = 0; axis < 2; axis++) {
+				const unity: float32 = pos.at(v).at(axis).asNumber() as float32;
+				const d: float32 = mine[v * 2 + axis] - unity;
+				if (d > CORNER_TOL || d < -CORNER_TOL) { misses = misses + 1; }
+			}
+		}
+	}
+	return misses;
+}
+
+function stretched(vx: float32, vy: float32, lengthScale: float32, velocityScale: float32): UnityQuad {
+	let q = quad(vx, vy);
+	q.mode = RenderMode.Stretch;
+	q.lengthScale = lengthScale;
+	q.velocityScale = velocityScale;
+	return q;
+}
+
+test "stretch: the quad is size * lengthScale long with its head at the particle (ls 1 and 2, vs 0)" {
+	assert cornerMisses("stretch_ls1_vs0", stretched(3.0, 4.0, 1.0, 0.0)) == 0;
+	assert cornerMisses("stretch_ls2_vs0", stretched(3.0, 4.0, 2.0, 0.0)) == 0;
+}
+
+test "stretch: velocityScale adds speed * velocityScale to the length (vs 0.5, ls 1 and 2)" {
+	assert cornerMisses("stretch_ls1_vs05", stretched(3.0, 4.0, 1.0, 0.5)) == 0;
+	assert cornerMisses("stretch_ls2_vs05", stretched(3.0, 4.0, 2.0, 0.5)) == 0;
+}
+
+test "stretch: the direction and speed are the total velocity, and the particle's rotation is ignored" {
+	let q = stretched(3.0, 0.0, 1.0, 0.5);
+	q.forceY = 4.0;
+	q.width = 2.0;
+	q.height = 2.0;
+	q.rotationDegrees = 45.0;
+	assert cornerMisses("stretch_size2_rot45_total", q) == 0;
+}
+
+test "stretch: the width is size.x and the length is built from size.y" {
+	let q = stretched(3.0, 4.0, 1.0, 0.5);
+	q.height = 3.0;
+	assert cornerMisses("stretch_size3d_1x3", q) == 0;
+}
+
+test "stretch: pivot.x moves the quad across the stretch by pivot.x * size.x, pivot.y along it by 2 * pivot.y * size.y" {
+	let q = stretched(3.0, 4.0, 1.0, 0.0);
+	q.pivotX = 0.5;
+	q.pivotY = 0.25;
+	assert cornerMisses("stretch_pivot", q) == 0;
+	q.lengthScale = 2.0;
+	q.pivotY = 0.0;
+	assert cornerMisses("stretch_pivotx05_ls2", q) == 0;
+	q.pivotX = 0.0;
+	q.pivotY = 0.5;
+	assert cornerMisses("stretch_pivoty05_ls2", q) == 0;
+	q = stretched(3.0, 4.0, 1.0, 0.5);
+	q.width = 2.0;
+	q.height = 3.0;
+	q.pivotX = 0.5;
+	q.pivotY = 0.5;
+	assert cornerMisses("stretch_size3d_2x3_vs05_pivot", q) == 0;
+}
+
+test "stretch: a particle that does not move draws nothing, as Unity's quad collapses to a point" {
+	const s = fresh();
+	let e = emitter(s, unityAsset(stretched(0.0, 0.0, 1.0, 0.5)), tile(fakeTexture(5), 16.0, 16.0));
+	e.play(identity2d());
+	const n = e.update(UNITY_DT, identity2d());
+	assert n.ok && n.value == 1;
+	assert e.node.count() == 0;
+}
+
+test "billboard: a rotated view billboard turns clockwise on screen about the particle" {
+	let q = quad(3.0, 4.0);
+	q.rotationDegrees = 45.0;
+	assert cornerMisses("billboard_view_rot45", q) == 0;
+}
+
+test "billboard: a non-square size is width x height before rotation" {
+	let q = quad(3.0, 4.0);
+	q.height = 3.0;
+	q.rotationDegrees = 45.0;
+	assert cornerMisses("billboard_size3d_1x3_rot45", q) == 0;
+}
+
+test "billboard: pivot shifts the quad by pivot * size in its own axes, then the rotation turns the shift too" {
+	let q = quad(3.0, 4.0);
+	q.width = 2.0;
+	q.height = 2.0;
+	q.pivotX = 0.5;
+	q.pivotY = 0.25;
+	assert cornerMisses("billboard_pivot_rot0", q) == 0;
+	q.rotationDegrees = 45.0;
+	assert cornerMisses("billboard_pivot_rot45", q) == 0;
+}
+
+test "billboard with Velocity alignment turns the sprite's x axis along the velocity, whatever the particle's rotation" {
+	const s = fresh();
+	let q = quad(3.0, 4.0);
+	q.alignment = RenderAlignment.Velocity;
+	q.rotationDegrees = 45.0;
+	let e = emitter(s, unityAsset(q), tile(fakeTexture(5), 16.0, 16.0));
+	e.effect.clock.fixedStep = UNITY_DT / 4.0;
+	e.play(identity2d());
+	const n = e.update(UNITY_DT, identity2d());
+	assert n.ok && n.value == 1;
+	const c: TileCell = first(e);
+	// Velocity (3, 4) in y-up is (3, -4) on screen: the x axis points right and up the screen.
+	assert approx(c.rotation, -0.9272952);
+	assert approx(c.scaleX * c.tile.w, 1.0) && approx(c.scaleY * c.tile.h, 1.0);
+}
+
+function refusal(mode: RenderMode, cameraVelocityScale: float32): Particles2DErrorKind {
+	let a = single();
+	a.renderer.renderMode = mode;
+	a.renderer.cameraVelocityScale = cameraVelocityScale;
+	const effect: ParticleEffect = { systems: [a] };
+	const made = fresh().particles(effect, [tile(fakeTexture(5), 16.0, 16.0)], 3);
+	if (made.ok) { return Particles2DErrorKind.Effect; }
+	if (made.error.system != 0) { unreachable; }
+	return made.error.kind;
+}
+
+test "a render mode with a third axis is refused by name" {
+	assert refusal(RenderMode.HorizontalBillboard, 0.0) == Particles2DErrorKind.RenderModeNeedsThirdAxis;
+	assert refusal(RenderMode.VerticalBillboard, 0.0) == Particles2DErrorKind.RenderModeNeedsThirdAxis;
+	assert refusal(RenderMode.Mesh, 0.0) == Particles2DErrorKind.RenderModeNeedsThirdAxis;
+}
+
+test "cameraVelocityScale is refused on a stretched system and ignored where it does nothing" {
+	assert refusal(RenderMode.Stretch, 0.5) == Particles2DErrorKind.CameraVelocity;
+	assert refusal(RenderMode.Billboard, 0.5) == Particles2DErrorKind.Effect;
+	assert refusal(RenderMode.None, 0.5) == Particles2DErrorKind.Effect;
 }

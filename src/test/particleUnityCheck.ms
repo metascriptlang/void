@@ -950,3 +950,27 @@ test "subemitter_death: a Death sub-emitter bursts its 3 children where the pare
 test "subemitter_death_linear: the same under a linear colour space" {
 	assert subEmitterCase("subemitter_death_linear", SubEmitterType.Death) == 0;
 }
+
+// ---- stretched and aligned billboards: the state the 2D writer reads ----
+
+function drifting(vx: float32, vy: float32): ParticleSystemAsset {
+	let a = oneBurst(base(0.0, 0.0, 5.0));
+	a.velocityOverLifetime.enabled = true;
+	a.velocityOverLifetime.x = constantCurve(vx);
+	a.velocityOverLifetime.y = constantCurve(vy);
+	a.velocityOverLifetime.z = constantCurve(0.0);
+	return a;
+}
+
+test "stretch_ls1_vs0: velocityOverLifetime is animated velocity, so stored velocity stays zero and total holds it" {
+	assert same("stretch_ls1_vs0", drifting(3.0, 4.0)) == 0;
+}
+
+test "stretch_size2_rot45_total: totalVelocity is the stored force velocity plus the animated drift" {
+	let a = drifting(3.0, 0.0);
+	a.main.startSizeX = constantCurve(2.0);
+	a.main.startRotationZ = constantCurve(45.0 * 0.017453292519943295);
+	a.forceOverLifetime.enabled = true;
+	a.forceOverLifetime.y = constantCurve(4.0);
+	assert same("stretch_size2_rot45_total", a) == 0;
+}
