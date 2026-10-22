@@ -7,6 +7,7 @@ import {
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
+	GPUSampler,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUTexture,
@@ -14,7 +15,7 @@ import {
 	GPUTextureView,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
-import { nativeTexture } from "../webgpu/gl/backend.ms";
+import { nativeTexture, bindStats } from "../webgpu/gl/backend.ms";
 import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 
 @passL("-lopengl32");
@@ -364,5 +365,57 @@ test "a partial writeTexture changes only its sub-rect, read from an offset with
 	assert pixel(pixels, 13, 22) == GREY;
 	assert pixel(pixels, 0, 0) == GREY;
 	assert pixel(pixels, 63, 63) == GREY;
+	device.destroy();
+}
+
+test "a bind that did not change issues no native call, and a texture rotation or a new pass issues one" {
+	const device = openDevice();
+	const module = texturedShader(device);
+	let pipelineDescriptor: GPURenderPipelineDescriptor = { label: "textured" };
+	pipelineDescriptor.vertex.module = module;
+	pipelineDescriptor.vertex.buffers[0].arrayStride = 8;
+	pipelineDescriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	pipelineDescriptor.fragment.module = module;
+	pipelineDescriptor.fragment.targets[0].format = "rgba8unorm";
+	const pipeline = device.createRenderPipeline(pipelineDescriptor);
+	const texture = device.createTexture({
+		label: "rotating",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	const texel: Vec<uint8> = [255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255];
+	device.queue.writeTexture({ texture: texture }, texel, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	const sampler: GPUSampler = device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" });
+	let groupDescriptor: GPUBindGroupDescriptor = { label: "rotating", layout: pipeline.getBindGroupLayout(1) };
+	groupDescriptor.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
+	groupDescriptor.entries[1] = { binding: 32, sampler: sampler };
+	const group = device.createBindGroup(groupDescriptor);
+	const vertices = fullScreenQuad(device);
+	const target = colourTarget(device, 1);
+	const view = target.createView({ label: null });
+	const noOffsets: Vec<uint32> = [];
+	const encoder = device.createCommandEncoder();
+	let pass = encoder.beginRenderPass(clearingPass(view, { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	const first = bindStats();
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	let now = bindStats();
+	assert now.vertexBuffers == first.vertexBuffers && now.indexBuffers == first.indexBuffers;
+	assert now.shaderResources == first.shaderResources && now.samplers == first.samplers;
+	device.queue.writeTexture({ texture: texture }, texel, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	const beforeRotation = bindStats();
+	pass.draw(6, 1, 0, 0);
+	now = bindStats();
+	assert now.shaderResources > beforeRotation.shaderResources;
+	assert now.vertexBuffers == beforeRotation.vertexBuffers;
+	pass.end();
+	device.queue.submit(encoder.finish());
 	device.destroy();
 }

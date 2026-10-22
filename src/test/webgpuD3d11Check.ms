@@ -7,6 +7,7 @@ import {
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
+	GPUSampler,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUTexture,
@@ -14,7 +15,7 @@ import {
 	GPUTextureView,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
-import { nativeTexture } from "../webgpu/d3d11/backend.ms";
+import { nativeTexture, bindStats } from "../webgpu/d3d11/backend.ms";
 import { warpDevice, warpContext, warpReadback } from "./d3d11Warp.h";
 
 @passL("-ld3d11");
@@ -25,6 +26,9 @@ const RED: uint32 = 0xFF0000FF;
 const GREEN: uint32 = 0x00FF00FF;
 
 const VERTEX_HLSL = "float4 main(float2 position : TEXCOORD0) : SV_Position { return float4(position, 0.0, 1.0); }";
+const TEXTURED_FRAGMENT_HLSL = "Texture2D tex : register(t0);
+SamplerState smp : register(s0);
+float4 main(float4 p : SV_Position) : SV_Target0 { return tex.Sample(smp, p.xy / 64.0); }";
 const FRAGMENT_HLSL = "cbuffer params : register(b0) { float4 color; };\nfloat4 main() : SV_Target0 { return color; }";
 
 function stopOnWarp(message: string): void {
@@ -265,5 +269,106 @@ test "a partial writeTexture changes only its sub-rect, read from an offset with
 	assert pixel(pixels, 13, 22) == GREY;
 	assert pixel(pixels, 0, 0) == GREY;
 	assert pixel(pixels, 63, 63) == GREY;
+	device.destroy();
+}
+
+function texturedShader(device: GPUDevice): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "textured",
+		vertexCode: VERTEX_HLSL,
+		vertexEntryPoint: "",
+		fragmentCode: TEXTURED_FRAGMENT_HLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	return device.createShaderModule(descriptor);
+}
+
+function sampledTexture(device: GPUDevice): GPUTexture {
+	return device.createTexture({
+		label: "sampled",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+}
+
+function resourceGroup(device: GPUDevice, pipeline: GPURenderPipeline, texture: GPUTexture, sampler: GPUSampler): GPUBindGroup {
+	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
+	descriptor.entries[1] = { binding: 32, sampler: sampler };
+	return device.createBindGroup(descriptor);
+}
+
+test "a bind that did not change issues no native call, and every change or new pass issues one" {
+	const device = openDevice();
+	const module = texturedShader(device);
+	const pipeline = flatPipeline(device, module, 1);
+	const first = sampledTexture(device);
+	const second = sampledTexture(device);
+	const sampler = device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" });
+	const firstGroup = resourceGroup(device, pipeline, first, sampler);
+	const secondGroup = resourceGroup(device, pipeline, second, sampler);
+	const vertices = vertexBuffer(device, 64);
+	const quad: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, quad);
+	device.queue.writeBuffer(vertices, 32, quad);
+	const indices = device.createBuffer({
+		label: "indices",
+		size: 12,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order: Vec<uint16> = [0, 1, 2, 0, 2, 3];
+	device.queue.writeBuffer(indices, 0, order);
+	const texel: Vec<uint8> = [255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255];
+	const target = colourTarget(device, 1);
+	const view = target.createView({ label: null });
+	const noOffsets: Vec<uint32> = [];
+	const start = bindStats();
+	const encoder = device.createCommandEncoder();
+	let pass = encoder.beginRenderPass(clearingPass(view, { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setIndexBuffer(indices, "uint16", 0);
+	pass.setBindGroup(1, firstGroup, noOffsets);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	let now = bindStats();
+	assert now.vertexBuffers - start.vertexBuffers == 1 && now.indexBuffers - start.indexBuffers == 1;
+	assert now.shaderResources - start.shaderResources == 1 && now.samplers - start.samplers == 1;
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setIndexBuffer(indices, "uint16", 0);
+	pass.setBindGroup(1, firstGroup, noOffsets);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	now = bindStats();
+	assert now.vertexBuffers - start.vertexBuffers == 1 && now.indexBuffers - start.indexBuffers == 1;
+	assert now.shaderResources - start.shaderResources == 1 && now.samplers - start.samplers == 1;
+	pass.setBindGroup(1, secondGroup, noOffsets);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	now = bindStats();
+	assert now.shaderResources - start.shaderResources == 2 && now.samplers - start.samplers == 1;
+	pass.setVertexBuffer(0, vertices, 32);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	now = bindStats();
+	assert now.vertexBuffers - start.vertexBuffers == 2 && now.indexBuffers - start.indexBuffers == 1;
+	device.queue.writeTexture({ texture: second }, texel, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	pass.setBindGroup(1, secondGroup, noOffsets);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	now = bindStats();
+	assert now.shaderResources - start.shaderResources == 2;
+	pass.end();
+	pass = encoder.beginRenderPass(clearingPass(view, { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 32);
+	pass.setIndexBuffer(indices, "uint16", 0);
+	pass.setBindGroup(1, secondGroup, noOffsets);
+	pass.drawIndexed(6, 1, 0, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	now = bindStats();
+	assert now.vertexBuffers - start.vertexBuffers == 3 && now.indexBuffers - start.indexBuffers == 2;
+	assert now.shaderResources - start.shaderResources == 3 && now.samplers - start.samplers == 2;
 	device.destroy();
 }
