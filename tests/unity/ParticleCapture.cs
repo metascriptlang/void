@@ -24,6 +24,7 @@ public static class ParticleCapture
         public bool stats;
         public bool lastFrameOnly;
         public bool bakeUV;
+        public bool bakeQuads;
     }
 
     public static void Run()
@@ -198,6 +199,26 @@ public static class ParticleCapture
                 var cam = new GameObject("camera").AddComponent<Camera>(); cam.transform.SetParent(ps.transform, false);
                 cam.transform.position = new Vector3(0, 0, -10); } };
 
+        foreach (var ls in new[] { 1f, 2f })
+            foreach (var vs in new[] { 0f, 0.5f })
+            {
+                float lsc = ls, vsc = vs;
+                yield return StretchCase("stretch_ls" + lsc + "_vs" + (vsc == 0f ? "0" : "05"), lsc, vsc, 1f, 0f, false, (3f, 4f));
+            }
+        yield return StretchCase("stretch_size2_rot45_total", 1f, 0.5f, 2f, 45f, false, (3f, 0f), forceY: 4f);
+        yield return StretchCase("stretch_still", 1f, 0.5f, 1f, 0f, false, (0f, 0f));
+        yield return StretchCase("stretch_size3d_1x3", 1f, 0.5f, 1f, 0f, false, (3f, 4f), size3D: (1f, 3f));
+        yield return StretchCase("stretch_pivot", 1f, 0f, 1f, 0f, false, (3f, 4f), pivot: (0.5f, 0.25f));
+        yield return StretchCase("stretch_pivotx05_ls2", 2f, 0f, 1f, 0f, false, (3f, 4f), pivot: (0.5f, 0f));
+        yield return StretchCase("stretch_pivoty05_ls2", 2f, 0f, 1f, 0f, false, (3f, 4f), pivot: (0f, 0.5f));
+        yield return StretchCase("stretch_size3d_2x3_vs05_pivot", 1f, 0.5f, 1f, 0f, false, (3f, 4f), size3D: (2f, 3f), pivot: (0.5f, 0.5f));
+        yield return StretchCase("billboard_pivot_rot0", 1f, 0f, 2f, 0f, false, (3f, 4f), billboard: true, pivot: (0.5f, 0.25f));
+        yield return StretchCase("billboard_pivot_rot45", 1f, 0f, 2f, 45f, false, (3f, 4f), billboard: true, pivot: (0.5f, 0.25f));
+        yield return StretchCase("billboard_size3d_1x3_rot45", 1f, 0f, 1f, 45f, false, (3f, 4f), billboard: true, size3D: (1f, 3f));
+        yield return StretchCase("billboard_velocity_rot0", 1f, 0f, 1f, 0f, true, (3f, 4f));
+        yield return StretchCase("billboard_velocity_rot45", 1f, 0f, 1f, 45f, true, (3f, 4f));
+        yield return StretchCase("billboard_view_rot45", 1f, 0f, 1f, 45f, false, (3f, 4f), billboard: true);
+
         foreach (var damp in new[] { true, false })
         {
             bool dmp = damp;
@@ -250,6 +271,34 @@ public static class ParticleCapture
     }
 
     static void Burst1(ParticleSystem ps) => ps.emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 1) });
+
+    // One particle moving in the xy plane (velocityOverLifetime is animated velocity, force is stored),
+    // seen by an orthographic camera at (0,0,-10) facing +z, so the baked quad is the 2D case.
+    static Case StretchCase(string name, float lengthScale, float velocityScale, float size, float rotDeg,
+        bool velocityAlignment, (float, float) vol, float forceY = 0f, bool billboard = false,
+        (float, float)? size3D = null, (float, float)? pivot = null) => new Case {
+        name = name, dt = 0.1f, steps = 3, bakeQuads = true, cap = 4,
+        settings = S("renderMode", velocityAlignment || billboard ? "Billboard" : "Stretch", "alignment", velocityAlignment ? "Velocity" : "View",
+            "lengthScale", lengthScale, "velocityScale", velocityScale, "startSize", size, "startRotationDeg", rotDeg,
+            "velocityOverLifetime", "linear (" + vol.Item1 + ", " + vol.Item2 + ", 0) local", "forceY", forceY,
+            "startSize3D", size3D.HasValue ? "(" + size3D.Value.Item1 + ", " + size3D.Value.Item2 + ")" : "off",
+            "pivot", pivot.HasValue ? "(" + pivot.Value.Item1 + ", " + pivot.Value.Item2 + ", 0)" : "(0, 0, 0)",
+            "camera", "orthographic size 10 at (0,0,-10) facing +z", "read", "BakeMesh vertex positions and uv0 per quad"),
+        configure = ps => {
+            Base(ps, 0, 0, 5); Burst1(ps);
+            var m = ps.main; m.startSize = size;
+            if (size3D.HasValue) { m.startSize3D = true; m.startSizeX = size3D.Value.Item1; m.startSizeY = size3D.Value.Item2; m.startSizeZ = 1f; }
+            m.startRotation = rotDeg * Mathf.Deg2Rad;
+            var vo = ps.velocityOverLifetime; vo.enabled = true; vo.space = ParticleSystemSimulationSpace.Local;
+            vo.x = vol.Item1; vo.y = vol.Item2; vo.z = 0f;
+            if (forceY != 0f) { var fo = ps.forceOverLifetime; fo.enabled = true; fo.space = ParticleSystemSimulationSpace.Local; fo.y = forceY; }
+            var r = ps.GetComponent<ParticleSystemRenderer>();
+            r.renderMode = velocityAlignment || billboard ? ParticleSystemRenderMode.Billboard : ParticleSystemRenderMode.Stretch;
+            r.alignment = velocityAlignment ? ParticleSystemRenderSpace.Velocity : ParticleSystemRenderSpace.View;
+            r.lengthScale = lengthScale; r.velocityScale = velocityScale; r.cameraVelocityScale = 0f;
+            if (pivot.HasValue) r.pivot = new Vector3(pivot.Value.Item1, pivot.Value.Item2, 0f);
+            var cam = new GameObject("camera").AddComponent<Camera>(); cam.transform.SetParent(ps.transform, false);
+            cam.transform.position = new Vector3(0, 0, -10); cam.orthographic = true; cam.orthographicSize = 10; } };
 
     static Case ShapeBurst(string name, string shape, Action<ParticleSystem> set) => new Case {
         name = name, dt = 0.0001f, steps = 1, cap = 512, compact = true,
@@ -372,6 +421,7 @@ public static class ParticleCapture
         if (c.stats) Stats(sb, parts);
         if (dump) { sb.Append(", \"particles\": "); Particles(sb, c, ps, parts); }
         if (c.bakeUV) BakeUV(sb, ps);
+        if (c.bakeQuads) BakeQuads(sb, ps);
         if (children.Count > 0)
         {
             sb.Append(", \"children\": [");
@@ -455,6 +505,32 @@ public static class ParticleCapture
                 sb.Append("[").Append(F(a.x)).Append(", ").Append(F(a.y)).Append("]");
             }
             sb.Append("], \"bakedVertexCount\": ").Append(uv.Count);
+            UnityEngine.Object.DestroyImmediate(mesh);
+        }
+        catch (Exception e) { sb.Append(", \"bakeError\": ").Append(Q(e.Message)); }
+    }
+
+    static void BakeQuads(StringBuilder sb, ParticleSystem ps)
+    {
+        try
+        {
+            var mesh = new Mesh();
+            ps.GetComponent<ParticleSystemRenderer>().BakeMesh(mesh, ps.GetComponentInChildren<Camera>(), ParticleSystemBakeMeshOptions.Default);
+            var pos = new List<Vector3>();
+            var uv = new List<Vector2>();
+            mesh.GetVertices(pos);
+            mesh.GetUVs(0, uv);
+            sb.Append(", \"bakedQuads\": [");
+            for (int q = 0; q + 3 < pos.Count; q += 4)
+            {
+                if (q > 0) sb.Append(", ");
+                sb.Append("{\"pos\": [");
+                for (int k = 0; k < 4; k++) sb.Append(k > 0 ? ", " : "").Append(V(pos[q + k]));
+                sb.Append("], \"uv\": [");
+                for (int k = 0; k < 4; k++) sb.Append(k > 0 ? ", " : "").Append("[").Append(F(uv[q + k].x)).Append(", ").Append(F(uv[q + k].y)).Append("]");
+                sb.Append("]}");
+            }
+            sb.Append("]");
             UnityEngine.Object.DestroyImmediate(mesh);
         }
         catch (Exception e) { sb.Append(", \"bakeError\": ").Append(Q(e.Message)); }

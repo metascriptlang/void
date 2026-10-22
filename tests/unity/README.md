@@ -46,6 +46,10 @@ The log ends with `PrefabExport: done`.
 - `textureSheetAnimation` frame is not part of `ParticleSystem.Particle`. The texture sheet
   case reads it from `ParticleSystemRenderer.BakeMesh` UVs instead, using a camera at
   (0,0,-10) and recording the min UV corner of each quad.
+- The `stretch_*` and `billboard_*` cases read the quad corners of `BakeMesh` (vertex order: top-left,
+  top-right, bottom-right, bottom-left of the sprite) with an orthographic camera at (0,0,-10), so a
+  velocity in the xy plane is the 2D case. `billboard_velocity_*` bakes Unity's Velocity alignment:
+  a quad whose normal is the velocity, edge-on to this camera.
 - Trigger callbacks (`OnParticleTrigger`) are not captured. The trigger cases set one event's
   action to Kill, so the particle count shows when that event fires.
 - Noise is captured as `animatedVelocity` magnitude statistics plus 4 particles. Void's noise
