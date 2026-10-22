@@ -32,6 +32,9 @@ void d3dReleaseUniformOffsetting(void);
 void d3dVsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dPsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dCopyBytes(void *destination, int64_t destinationOffset, void *source, int64_t bytes);
+void d3dUpdateBuffer(D3dContext context, D3dBuffer buffer, int64_t offset, void *data, int64_t bytes);
+void d3dCopyBuffer(D3dContext context, D3dBuffer destination, int64_t destinationOffset, D3dBuffer source, int64_t sourceOffset, int64_t bytes);
+int32_t d3dReadBuffer(D3dContext context, D3dBuffer buffer, int64_t offset, void *out, int64_t bytes);
 
 D3dTexture d3dCreateTexture2D(
 	D3dDevice device,
@@ -69,6 +72,46 @@ void d3dUpdateTexture(
 	int32_t width,
 	int32_t height,
 	int32_t depth);
+void d3dCopyTexture(
+	D3dContext context,
+	D3dTexture destination,
+	int32_t destinationSubresource,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationZ,
+	D3dTexture source,
+	int32_t sourceSubresource,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	int32_t width,
+	int32_t height,
+	int32_t depth);
+int32_t d3dCopyTextureToBuffer(
+	D3dDevice device,
+	D3dContext context,
+	D3dTexture texture,
+	int32_t subresource,
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height,
+	D3dBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowBytes);
+int32_t d3dCopyBufferToTexture(
+	D3dContext context,
+	D3dBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowBytes,
+	D3dTexture texture,
+	int32_t subresource,
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height);
 D3dSrv d3dCreateSrv(
 	D3dDevice device,
 	D3dTexture texture,

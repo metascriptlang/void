@@ -34,6 +34,8 @@ import {
 	GPUShaderAttribute,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUMapMode,
+	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
 	GPUTexture,
@@ -42,6 +44,10 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	checkedBufferCopy,
+	checkedMapRange,
+	checkedTexelBufferLayout,
+	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
 	stopOnUnportedShaderModule,
 } from "../types.ms";
@@ -68,7 +74,11 @@ import {
 	d3dCompile,
 	d3dCompileLog,
 	d3dContextFrom,
+	d3dCopyBuffer,
+	d3dCopyBufferToTexture,
 	d3dCopyBytes,
+	d3dCopyTexture,
+	d3dCopyTextureToBuffer,
 	d3dCreateBlendState,
 	d3dCreateBuffer,
 	d3dCreateDepthStencilState,
@@ -100,6 +110,7 @@ import {
 	d3dPsSetSampler,
 	d3dPsSetShader,
 	d3dPsSetShaderResource,
+	d3dReadBuffer,
 	d3dReleaseBlendState,
 	d3dReleaseBlob,
 	d3dReleaseBuffer,
@@ -121,6 +132,7 @@ import {
 	d3dSetScissorRect,
 	d3dSetViewport,
 	d3dTextureNative,
+	d3dUpdateBuffer,
 	d3dUpdateIfChanged,
 	d3dUpdateTexture,
 	d3dUniformOffsetting,
@@ -209,6 +221,7 @@ const DXGI_B8G8R8A8_UNORM_SRGB = 91;
 
 const USAGE_DEFAULT = 0;
 const USAGE_DYNAMIC = 2;
+const USAGE_STAGING = 3;
 const BIND_VERTEX_BUFFER = 0x1;
 const BIND_INDEX_BUFFER = 0x2;
 const BIND_CONSTANT_BUFFER = 0x4;
@@ -216,6 +229,8 @@ const BIND_SHADER_RESOURCE = 0x8;
 const BIND_RENDER_TARGET = 0x20;
 const BIND_DEPTH_STENCIL = 0x40;
 const CPU_ACCESS_WRITE = 0x10000;
+const CPU_ACCESS_READ = 0x20000;
+const MAP_WRITE = 2;
 const MAP_WRITE_DISCARD = 4;
 const MAP_WRITE_NO_OVERWRITE = 5;
 const CLEAR_DEPTH = 0x1;
@@ -291,7 +306,13 @@ struct SlotQueue {
 struct BufferSlot {
 	id: uint32;
 	size: int64;
+	usage: int32;
 	uniform: boolean;
+	staging: boolean;
+	updatable: boolean;
+	mapMode: int32;
+	mapOffset: int64;
+	mapSize: int64;
 	native: Ptr<D3dBufferImpl>;
 	shadow: Vec<uint8>;
 	writtenFrame: int64;
@@ -997,8 +1018,13 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	if (id == 0) { return { id: 0 }; }
 	const usage = descriptor.usage;
 	if (descriptor.size <= 0) { stop("GPUBufferDescriptor.size must be positive"); }
-	if (has(usage, GPUBufferUsage.MAP_READ as int32) || has(usage, GPUBufferUsage.MAP_WRITE as int32)) {
-		stop("GPUBufferUsage MAP_READ and MAP_WRITE have no D3D11 path");
+	const mapRead = has(usage, GPUBufferUsage.MAP_READ as int32);
+	const mapWrite = has(usage, GPUBufferUsage.MAP_WRITE as int32);
+	if (mapRead && usage != ((GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.COPY_DST as int32))) {
+		stop("GPUBufferUsage MAP_READ combines only with COPY_DST");
+	}
+	if (mapWrite && usage != ((GPUBufferUsage.MAP_WRITE as int32) | (GPUBufferUsage.COPY_SRC as int32))) {
+		stop("GPUBufferUsage MAP_WRITE combines only with COPY_SRC");
 	}
 	const vertexOrIndex = (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.INDEX as int32);
 	const uniform = has(usage, GPUBufferUsage.UNIFORM as int32);
@@ -1008,12 +1034,18 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	let slot: BufferSlot = {
 		id: id,
 		size: descriptor.size,
+		usage: usage,
 		uniform: uniform,
+		staging: mapRead || mapWrite,
+		updatable: false,
 		native: NO_BUFFER,
 		writtenFrame: has(usage, GPUBufferUsage.COPY_DST as int32) ? -1 : -2,
 		writtenEnd: 0,
 	};
-	if (uniform && offsetUniforms) {
+	if (slot.staging) {
+		slot.native = d3dCreateBuffer(device, descriptor.size, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE);
+		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
+	} else if (uniform && offsetUniforms) {
 		slot.native = d3dCreateBuffer(device, roundUp256(descriptor.size), USAGE_DYNAMIC, BIND_CONSTANT_BUFFER, CPU_ACCESS_WRITE);
 		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	} else if (uniform) {
@@ -1022,7 +1054,8 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		let bindFlags = 0;
 		if (has(usage, GPUBufferUsage.VERTEX as int32)) { bindFlags |= BIND_VERTEX_BUFFER; }
 		if (has(usage, GPUBufferUsage.INDEX as int32)) { bindFlags |= BIND_INDEX_BUFFER; }
-		const writable = has(usage, GPUBufferUsage.COPY_DST as int32);
+		slot.updatable = bindFlags == 0 && has(usage, GPUBufferUsage.COPY_DST as int32);
+		const writable = has(usage, GPUBufferUsage.COPY_DST as int32) && !slot.updatable;
 		slot.native = d3dCreateBuffer(
 			device,
 			descriptor.size,
@@ -1059,6 +1092,11 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = writableBuffer(buffer.id, offset, bytes);
+	if (buffers[index].staging) { stop(`writeBuffer on GPUBuffer ${buffer.id}, a MAP buffer: write it through mapAsync and writeMappedRange or a copy`); }
+	if (buffers[index].updatable) {
+		d3dUpdateBuffer(context, buffers[index].native, offset, data[0], bytes);
+		return;
+	}
 	if (buffers[index].writtenFrame == -2) {
 		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
 	}
@@ -1249,6 +1287,243 @@ export function writeTexture<T>(
 			1,
 		);
 	}
+}
+
+function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
+	if (pass.active) { stop(`${member} inside a render pass`); }
+	const index = bufferIndex(buffer.id);
+	if (!has(buffers[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
+	if (buffers[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
+	if (buffers[index].native == null) { stop(`${member}: GPUBuffer ${buffer.id} is a CPU shadow uniform block on d3d11 and cannot be copied`); }
+	return index;
+}
+
+function copyDestinationBuffer(buffer: GPUBuffer, member: string): int32 {
+	const index = copyableBuffer(buffer, member, GPUBufferUsage.COPY_DST as int32, "COPY_DST");
+	if (!buffers[index].staging && !buffers[index].updatable) {
+		stop(`${member}: GPUBuffer ${buffer.id} is a DYNAMIC VERTEX or INDEX buffer written by writeBuffer and cannot take a GPU copy on d3d11 yet`);
+	}
+	return index;
+}
+
+function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
+	if (pass.active) { stop(`${member} inside a render pass`); }
+	const index = textureIndex(info.texture.id);
+	if (!has(textures[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
+	if (textures[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
+	return index;
+}
+
+function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32, size: GPUExtent3D): void {
+	checkedTexelCopyRegion(
+		member,
+		textures[index].id,
+		textures[index].width,
+		textures[index].height,
+		textures[index].mipLevels,
+		textures[index].layers,
+		textures[index].volume,
+		info,
+		size,
+	);
+}
+
+function texelCopyBytes(index: int32, member: string): int32 {
+	const info = formatInfo(textures[index].format, "texture format");
+	if (info.depth) { stop(`${member}: depth or stencil GPUTexture ${textures[index].id} is not ported to d3d11 yet`); }
+	if (textures[index].volume) { stop(`${member}: 3d GPUTexture ${textures[index].id} is not ported to d3d11 yet`); }
+	return info.bytesPerPixel;
+}
+
+export function copyBufferToBuffer(
+	source: GPUBuffer,
+	sourceOffset: int64,
+	destination: GPUBuffer,
+	destinationOffset: int64,
+	size: int64,
+): void {
+	const from = copyableBuffer(source, "copyBufferToBuffer source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyDestinationBuffer(destination, "copyBufferToBuffer destination");
+	checkedBufferCopy(source.id, buffers[from].size, sourceOffset, destination.id, buffers[to].size, destinationOffset, size);
+	if (size == 0) { return; }
+	d3dCopyBuffer(context, buffers[to].native, destinationOffset, buffers[from].native, sourceOffset, size);
+}
+
+export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
+	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyDestinationBuffer(destination.buffer, "copyTextureToBuffer destination");
+	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source");
+	copyRegion("copyTextureToBuffer source", source, from, size);
+	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, buffers[to].size, destination, size);
+	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
+	const mips = textures[from].mipLevels;
+	for (let i = 0; i < size.depthOrArrayLayers; i++) {
+		const copied = d3dCopyTextureToBuffer(
+			device,
+			context,
+			textures[from].native,
+			source.mipLevel + (source.origin.z + i) * mips,
+			source.origin.x,
+			source.origin.y,
+			size.width,
+			size.height,
+			buffers[to].native,
+			destination.offset + (bytesPerRow as int64) * (rowsPerImage as int64) * (i as int64),
+			bytesPerRow,
+			size.width * bytesPerPixel,
+		);
+		if (copied == 0) { stop(`copyTextureToBuffer failed on GPUTexture ${source.texture.id}`); }
+	}
+}
+
+export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
+	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination");
+	copyRegion("copyBufferToTexture destination", destination, to, size);
+	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, buffers[from].size, source, size);
+	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
+	const imageBytes = (bytesPerRow as int64) * (rowsPerImage as int64);
+	const rowBytes = size.width * bytesPerPixel;
+	let readable = buffers[from].native;
+	let offset = source.offset;
+	const temporary = !buffers[from].staging;
+	if (temporary) {
+		const span = imageBytes * ((size.depthOrArrayLayers - 1) as int64) + (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
+		readable = d3dCreateBuffer(device, span, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE);
+		if (readable == null) { stop(`CreateBuffer failed for the copy of GPUBuffer ${source.buffer.id}`); }
+		d3dCopyBuffer(context, readable, 0, buffers[from].native, offset, span);
+		offset = 0;
+	}
+	const mips = textures[to].mipLevels;
+	for (let i = 0; i < size.depthOrArrayLayers; i++) {
+		const copied = d3dCopyBufferToTexture(
+			context,
+			readable,
+			offset + imageBytes * (i as int64),
+			bytesPerRow,
+			rowBytes,
+			textures[to].native,
+			destination.mipLevel + (destination.origin.z + i) * mips,
+			destination.origin.x,
+			destination.origin.y,
+			size.width,
+			size.height,
+		);
+		if (copied == 0) { stop(`copyBufferToTexture failed on GPUTexture ${destination.texture.id}`); }
+	}
+	if (temporary) { d3dReleaseBuffer(readable); }
+}
+
+export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
+	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
+	const fromFormat: string = textures[from].format;
+	const toFormat: string = textures[to].format;
+	if (fromFormat != toFormat) { stop(`copyTextureToTexture between formats '${fromFormat}' and '${toFormat}'`); }
+	if (textures[from].volume != textures[to].volume) { stop("copyTextureToTexture between a 3d and a 2d GPUTexture"); }
+	copyRegion("copyTextureToTexture source", source, from, size);
+	copyRegion("copyTextureToTexture destination", destination, to, size);
+	const mipWidth = Math.max(1, textures[from].width >> source.mipLevel);
+	const mipHeight = Math.max(1, textures[from].height >> source.mipLevel);
+	if (formatInfo(textures[from].format, "texture format").depth && (size.width != mipWidth || size.height != mipHeight)) {
+		stop(`copyTextureToTexture of depth GPUTexture ${source.texture.id} copies whole mips only on d3d11`);
+	}
+	if (
+		from == to && source.mipLevel == destination.mipLevel
+			&& source.origin.z < destination.origin.z + size.depthOrArrayLayers && destination.origin.z < source.origin.z + size.depthOrArrayLayers
+			&& source.origin.x < destination.origin.x + size.width && destination.origin.x < source.origin.x + size.width
+			&& source.origin.y < destination.origin.y + size.height && destination.origin.y < source.origin.y + size.height
+	) {
+		stop(`copyTextureToTexture regions overlap inside mip ${source.mipLevel} of GPUTexture ${source.texture.id}`);
+	}
+	if (textures[from].volume) {
+		d3dCopyTexture(
+			context,
+			textures[to].native,
+			destination.mipLevel,
+			destination.origin.x,
+			destination.origin.y,
+			destination.origin.z,
+			textures[from].native,
+			source.mipLevel,
+			source.origin.x,
+			source.origin.y,
+			source.origin.z,
+			size.width,
+			size.height,
+			size.depthOrArrayLayers,
+		);
+		return;
+	}
+	for (let i = 0; i < size.depthOrArrayLayers; i++) {
+		d3dCopyTexture(
+			context,
+			textures[to].native,
+			destination.mipLevel + (destination.origin.z + i) * textures[to].mipLevels,
+			destination.origin.x,
+			destination.origin.y,
+			0,
+			textures[from].native,
+			source.mipLevel + (source.origin.z + i) * textures[from].mipLevels,
+			source.origin.x,
+			source.origin.y,
+			0,
+			size.width,
+			size.height,
+			1,
+		);
+	}
+}
+
+// A MAP buffer is a STAGING resource: mapAsync marks the range, and the Map call that reads or
+// writes it blocks until the GPU copies into it are done.
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
+	const index = bufferIndex(buffer.id);
+	const read = mode == (GPUMapMode.READ as int32);
+	if (!read && mode != (GPUMapMode.WRITE as int32)) { stop(`mapAsync mode ${mode} is not GPUMapMode READ or WRITE`); }
+	const need = read ? GPUBufferUsage.MAP_READ as int32 : GPUBufferUsage.MAP_WRITE as int32;
+	if (!has(buffers[index].usage, need)) { stop(`mapAsync ${read ? "READ" : "WRITE"} on GPUBuffer ${buffer.id}, created without ${read ? "MAP_READ" : "MAP_WRITE"}`); }
+	if (buffers[index].mapMode != 0) { stop(`mapAsync on GPUBuffer ${buffer.id}, which is already mapped`); }
+	const length = checkedMapRange("mapAsync", buffer.id, buffers[index].size, offset, size);
+	buffers[index].mapMode = mode;
+	buffers[index].mapOffset = offset;
+	buffers[index].mapSize = length;
+}
+
+function mappedRange(member: string, buffer: GPUBuffer, mode: int32, offset: int64, size: int64): int64 {
+	const index = bufferIndex(buffer.id);
+	if (buffers[index].mapMode != mode) { stop(`${member} on GPUBuffer ${buffer.id}, which is not mapped for ${mode == 1 ? "READ" : "WRITE"}`); }
+	const length = checkedMapRange(member, buffer.id, buffers[index].size, offset, size == 0 ? buffers[index].mapOffset + buffers[index].mapSize - offset : size);
+	if (offset < buffers[index].mapOffset || offset + length > buffers[index].mapOffset + buffers[index].mapSize) {
+		stop(`${member} of ${length} bytes at ${offset} leaves the mapped range ${buffers[index].mapOffset}..${buffers[index].mapOffset + buffers[index].mapSize} of GPUBuffer ${buffer.id}`);
+	}
+	return length;
+}
+
+// A copy of the mapped bytes: WebGPU's ArrayBuffer view has no MetaScript counterpart on a native pointer.
+export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
+	const length = mappedRange("getMappedRange", buffer, GPUMapMode.READ as int32, offset, size);
+	let bytes: Vec<uint8> = new Array(length);
+	if (d3dReadBuffer(context, buffers[bufferIndex(buffer.id)].native, offset, bytes[0], length) == 0) {
+		stop(`Map for getMappedRange failed on GPUBuffer ${buffer.id}`);
+	}
+	return bytes;
+}
+
+export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
+	if (data.length == 0) { return; }
+	const bytes = (data.length as int64) * (sizeof T as int64);
+	mappedRange("writeMappedRange", buffer, GPUMapMode.WRITE as int32, offset, bytes);
+	if (d3dMapWrite(context, buffers[bufferIndex(buffer.id)].native, MAP_WRITE, offset, data[0], bytes) == 0) {
+		stop(`Map for writeMappedRange failed on GPUBuffer ${buffer.id}`);
+	}
+}
+
+export function unmap(buffer: GPUBuffer): void {
+	const index = bufferIndex(buffer.id);
+	if (buffers[index].mapMode == 0) { stop(`unmap on GPUBuffer ${buffer.id}, which is not mapped`); }
+	buffers[index].mapMode = 0;
 }
 
 function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {

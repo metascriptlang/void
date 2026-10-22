@@ -5,6 +5,7 @@
 #include <d3d11_1.h>
 #include <d3dcompiler.h>
 #include <float.h>
+#include <stdlib.h>
 #include <string.h>
 #include "d3d11.h"
 
@@ -35,6 +36,25 @@ int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64
 	HRESULT hr = ID3D11DeviceContext_Map(CONTEXT(context), (ID3D11Resource *)buffer, 0, (D3D11_MAP)mapType, 0, &mapped);
 	if (FAILED(hr)) return 0;
 	memcpy((uint8_t *)mapped.pData + offset, data, (size_t)bytes);
+	ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
+	return 1;
+}
+
+void d3dUpdateBuffer(D3dContext context, D3dBuffer buffer, int64_t offset, void *data, int64_t bytes) {
+	D3D11_BOX box = { (UINT)offset, 0, 0, (UINT)(offset + bytes), 1, 1 };
+	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)buffer, 0, &box, data, 0, 0);
+}
+
+void d3dCopyBuffer(D3dContext context, D3dBuffer destination, int64_t destinationOffset, D3dBuffer source, int64_t sourceOffset, int64_t bytes) {
+	D3D11_BOX box = { (UINT)sourceOffset, 0, 0, (UINT)(sourceOffset + bytes), 1, 1 };
+	ID3D11DeviceContext_CopySubresourceRegion(CONTEXT(context), (ID3D11Resource *)destination, 0, (UINT)destinationOffset, 0, 0, (ID3D11Resource *)source, 0, &box);
+}
+
+int32_t d3dReadBuffer(D3dContext context, D3dBuffer buffer, int64_t offset, void *out, int64_t bytes) {
+	D3D11_MAPPED_SUBRESOURCE mapped;
+	HRESULT hr = ID3D11DeviceContext_Map(CONTEXT(context), (ID3D11Resource *)buffer, 0, D3D11_MAP_READ, 0, &mapped);
+	if (FAILED(hr)) return 0;
+	memcpy(out, (uint8_t *)mapped.pData + offset, (size_t)bytes);
 	ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
 	return 1;
 }
@@ -154,6 +174,100 @@ void d3dUpdateTexture(
 	int32_t depth) {
 	D3D11_BOX box = { (UINT)x, (UINT)y, (UINT)z, (UINT)(x + width), (UINT)(y + height), (UINT)(z + depth) };
 	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)texture, (UINT)subresource, &box, (const uint8_t *)data + offset, (UINT)sourceRowPitch, (UINT)sourceDepthPitch);
+}
+
+void d3dCopyTexture(
+	D3dContext context,
+	D3dTexture destination,
+	int32_t destinationSubresource,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationZ,
+	D3dTexture source,
+	int32_t sourceSubresource,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	int32_t width,
+	int32_t height,
+	int32_t depth) {
+	D3D11_BOX box = { (UINT)sourceX, (UINT)sourceY, (UINT)sourceZ, (UINT)(sourceX + width), (UINT)(sourceY + height), (UINT)(sourceZ + depth) };
+	ID3D11DeviceContext_CopySubresourceRegion(CONTEXT(context), (ID3D11Resource *)destination, (UINT)destinationSubresource, (UINT)destinationX, (UINT)destinationY, (UINT)destinationZ, (ID3D11Resource *)source, (UINT)sourceSubresource, &box);
+}
+
+int32_t d3dCopyTextureToBuffer(
+	D3dDevice device,
+	D3dContext context,
+	D3dTexture texture,
+	int32_t subresource,
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height,
+	D3dBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowBytes) {
+	D3D11_TEXTURE2D_DESC desc;
+	ID3D11Texture2D_GetDesc((ID3D11Texture2D *)texture, &desc);
+	desc.Width = (UINT)width;
+	desc.Height = (UINT)height;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
+	desc.Usage = D3D11_USAGE_STAGING;
+	desc.BindFlags = 0;
+	desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+	desc.MiscFlags = 0;
+	ID3D11Texture2D *staging = NULL;
+	if (FAILED(ID3D11Device_CreateTexture2D(DEVICE(device), &desc, NULL, &staging))) return 0;
+	D3D11_BOX box = { (UINT)x, (UINT)y, 0, (UINT)(x + width), (UINT)(y + height), 1 };
+	ID3D11DeviceContext_CopySubresourceRegion(CONTEXT(context), (ID3D11Resource *)staging, 0, 0, 0, 0, (ID3D11Resource *)texture, (UINT)subresource, &box);
+	D3D11_MAPPED_SUBRESOURCE source;
+	D3D11_MAPPED_SUBRESOURCE target;
+	int32_t ok = 0;
+	if (SUCCEEDED(ID3D11DeviceContext_Map(CONTEXT(context), (ID3D11Resource *)staging, 0, D3D11_MAP_READ, 0, &source))) {
+		if (SUCCEEDED(ID3D11DeviceContext_Map(CONTEXT(context), (ID3D11Resource *)buffer, 0, D3D11_MAP_READ_WRITE, 0, &target))) {
+			for (int32_t row = 0; row < height; row++) {
+				memcpy((uint8_t *)target.pData + offset + (size_t)row * (size_t)bytesPerRow, (uint8_t *)source.pData + (size_t)row * source.RowPitch, (size_t)rowBytes);
+			}
+			ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
+			ok = 1;
+		}
+		ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)staging, 0);
+	}
+	ID3D11Texture2D_Release(staging);
+	return ok;
+}
+
+int32_t d3dCopyBufferToTexture(
+	D3dContext context,
+	D3dBuffer buffer,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t rowBytes,
+	D3dTexture texture,
+	int32_t subresource,
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height) {
+	D3D11_MAPPED_SUBRESOURCE source;
+	if (FAILED(ID3D11DeviceContext_Map(CONTEXT(context), (ID3D11Resource *)buffer, 0, D3D11_MAP_READ, 0, &source))) return 0;
+	uint8_t *packed = (uint8_t *)malloc((size_t)rowBytes * (size_t)height);
+	if (!packed) {
+		ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
+		return 0;
+	}
+	for (int32_t row = 0; row < height; row++) {
+		memcpy(packed + (size_t)row * (size_t)rowBytes, (uint8_t *)source.pData + offset + (size_t)row * (size_t)bytesPerRow, (size_t)rowBytes);
+	}
+	ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
+	D3D11_BOX box = { (UINT)x, (UINT)y, 0, (UINT)(x + width), (UINT)(y + height), 1 };
+	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)texture, (UINT)subresource, &box, packed, (UINT)rowBytes, 0);
+	free(packed);
+	return 1;
 }
 
 D3dSrv d3dCreateSrv(
