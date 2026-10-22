@@ -35,6 +35,7 @@ function tilesOf(rows: JsonValue): TileCell[] {
 			scaleX: transformed ? c.at(6).asNumber() as float32 : 1.0,
 			scaleY: transformed ? c.at(7).asNumber() as float32 : 1.0,
 			rotation: transformed ? c.at(8).asNumber() as float32 : 0.0,
+			skew: 0.0,
 		});
 	}
 	return out;

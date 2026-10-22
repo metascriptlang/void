@@ -692,7 +692,7 @@ test "a camera pan emits the rows it brings on screen and drops the rows it take
 function tileCell(x: float32, y: float32, view: uint32): TileCell {
 	return {
 		x: x, y: y, tile: tile(fakeTexture(view), 8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0,
-		scaleY: 1.0, rotation: 0.0,
+		scaleY: 1.0, rotation: 0.0, skew: 0.0,
 	};
 }
 

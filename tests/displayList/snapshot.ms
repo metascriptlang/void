@@ -514,7 +514,7 @@ function textPrimitiveScene(): NodeRef {
 function tileAt(x: float32, y: float32, t: Tile): TileCell {
 	return {
 		x: x, y: y, tile: t, color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0, scaleY: 1.0,
-		rotation: 0.0,
+		rotation: 0.0, skew: 0.0,
 	};
 }
 function tileGroupScene(): NodeRef {

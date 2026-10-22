@@ -1,7 +1,8 @@
 import { DrawKind, Changed, NodeRef, Scene2D, TileCell, ALL_TILES } from "../void2d/node";
 import "../void2d/scene";
-import { sync, getBounds } from "../void2d/render";
-import { Bounds2D, Color, Tile, rgba, tile, identity2d, emptyBounds } from "../void2d/types";
+import { sync, getBounds, cellMatrix, cellBounds } from "../void2d/render";
+import { sinf, cosf } from "../math/mat4";
+import { Bounds2D, Color, Tile, Transform2D, rgba, tile, identity2d, emptyBounds, trs2d, vec2 } from "../void2d/types";
 import { approx, fakeTexture } from "./helpers";
 
 const HALF_PI: float32 = 1.5707963;
@@ -10,7 +11,7 @@ const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
 function fresh(): Scene2D { return Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)); }
 
 function cell(x: float32, y: float32, t: Tile): TileCell {
-	return { x: x, y: y, tile: t, color: white, scaleX: 1.0, scaleY: 1.0, rotation: 0.0 };
+	return { x: x, y: y, tile: t, color: white, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, skew: 0.0 };
 }
 
 function marked(n: NodeRef, what: Changed): boolean {
@@ -135,6 +136,45 @@ test "a group's bounds hold every tile's corners, turned and scaled, whatever it
 	g.getBounds(b);
 	assert approx(b.xMin, 100.0) && approx(b.yMin, 50.0);
 	assert approx(b.xMax, 114.0) && approx(b.yMax, 78.0);
+}
+
+test "a skewed cell's corners and bounds are the translated, rotated, sheared, scaled tile" {
+	const t: Tile = { ...tile(fakeTexture(11), 8.0, 4.0), dx: -4.0, dy: -2.0 };
+	const c: TileCell = { ...cell(10.0, 20.0, t), scaleX: 2.0, scaleY: 3.0, rotation: 0.5, skew: 0.25 };
+	const m: Transform2D = cellMatrix(c);
+	const co: float32 = cosf(0.5);
+	const si: float32 = sinf(0.5);
+	const us: float32[] = [-4.0, 4.0, 4.0, -4.0];
+	const vs: float32[] = [-2.0, -2.0, 2.0, 2.0];
+	let xMin: float32 = 1e30;
+	let yMin: float32 = 1e30;
+	let xMax: float32 = -1e30;
+	let yMax: float32 = -1e30;
+	for (let k = 0; k < 4; k++) {
+		const sx: float32 = us[k] * 2.0;
+		const sy: float32 = vs[k] * 3.0;
+		const hx: float32 = sx + 0.25 * sy;
+		const x: float32 = co * hx - si * sy + 10.0;
+		const y: float32 = si * hx + co * sy + 20.0;
+		const p = vec2(us[k], vs[k]) * m;
+		assert approx(p.x, x) && approx(p.y, y);
+		if (x < xMin) { xMin = x; }
+		if (x > xMax) { xMax = x; }
+		if (y < yMin) { yMin = y; }
+		if (y > yMax) { yMax = y; }
+	}
+	const b: Bounds2D = cellBounds(t, m);
+	assert approx(b.xMin, xMin) && approx(b.xMax, xMax) && approx(b.yMin, yMin) && approx(b.yMax, yMax);
+}
+
+test "a cell with no skew has the matrix it had before skew existed" {
+	const t: Tile = tile(fakeTexture(11), 8.0, 4.0);
+	const turned: Transform2D = cellMatrix({ ...cell(3.0, 5.0, t), scaleX: 2.0, scaleY: 0.5, rotation: 0.7 });
+	const old: Transform2D = trs2d(3.0, 5.0, 0.7, 2.0, 0.5);
+	assert turned.a == old.a && turned.b == old.b && turned.c == old.c && turned.d == old.d;
+	assert turned.tx == old.tx && turned.ty == old.ty;
+	const flat: Transform2D = cellMatrix({ ...cell(3.0, 5.0, t), scaleX: 2.0, scaleY: 0.5 });
+	assert flat.a == 2.0 && flat.b == 0.0 && flat.c == 0.0 && flat.d == 0.5 && flat.tx == 3.0 && flat.ty == 5.0;
 }
 
 test "an empty group bounds as a point at its origin" {

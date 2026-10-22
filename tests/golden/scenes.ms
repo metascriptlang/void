@@ -1642,7 +1642,7 @@ function orderNoOverlapLanes(): Scene2D {
 }
 
 function tileCellAt(x: float32, y: float32, t: Tile, color: Color): TileCell {
-	return { x: x, y: y, tile: t, color: color, scaleX: 1.0, scaleY: 1.0, rotation: 0.0 };
+	return { x: x, y: y, tile: t, color: color, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, skew: 0.0 };
 }
 
 function imageTileGroup(): Scene2D {

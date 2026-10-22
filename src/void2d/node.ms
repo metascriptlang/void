@@ -220,6 +220,8 @@ export struct TileCell {
 	scaleX: float32;
 	scaleY: float32;
 	rotation: float32;
+	// The shear after the scale and before the rotation: a point at local y moves by skew * y along x.
+	skew: float32;
 }
 
 export struct TileGroupRow {
@@ -1000,7 +1002,7 @@ function reshape(this s: Scene2D, i: int32): void {
 
 function sameShape(a: TileCell, b: TileCell): boolean {
 	return a.x == b.x && a.y == b.y && a.scaleX == b.scaleX && a.scaleY == b.scaleY &&
-		a.rotation == b.rotation && a.tile.source.sameAs(b.tile.source) && a.tile.w == b.tile.w &&
+		a.rotation == b.rotation && a.skew == b.skew && a.tile.source.sameAs(b.tile.source) && a.tile.w == b.tile.w &&
 		a.tile.h == b.tile.h && a.tile.dx == b.tile.dx && a.tile.dy == b.tile.dy;
 }
 

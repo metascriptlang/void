@@ -299,7 +299,7 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
 				),
 				scaleX: stretch ? along / t.w : w / t.w,
 				scaleY: (stretch ? w : h) / t.h,
-				rotation: rotation,
+				rotation: rotation, skew: 0.0,
 			});
 		}
 		if (freeform) { e.flushFreeform(k, frames[0]); }
