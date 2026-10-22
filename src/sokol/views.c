@@ -148,19 +148,6 @@ float voidViewsDpiScale(void) { return currentSlot("dpiScale")->scale; }
 
 void *voidViewsCurrentSurface(void) { return currentSlot("beginPass")->surface; }
 
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
-sg_swapchain voidViewsSwapchain(void) {
-	VoidViewSlot *s = currentSlot("beginPass");
-	sg_swapchain swapchain = {0};
-	swapchain.width = s->w;
-	swapchain.height = s->h;
-	swapchain.sample_count = s_sampleCount;
-	swapchain.depth_format = SG_PIXELFORMAT_NONE;
-	voidPlatformSurfaceSwapchain(s->surface, &swapchain);
-	return swapchain;
-}
-#endif
-
 void voidViewsPresent(void) {
 	VoidViewSlot *s = currentSlot("commit");
 	s_current = 0;
