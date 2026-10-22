@@ -92,7 +92,7 @@ pixel readback because the Metal capture path is a stub.
 runs as a full-screen UIKit app. sokol_app's iOS path was not used: it has no marked text and no
 hardware-key presses, which a terminal and an editor need. The driver is a host of the view
 driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `viewFrame` from a
-`CADisplayLink`, and it builds `sapp_event` values itself and hands them to `appWindow.c`, so
+`CADisplayLink`, and it builds `VoidAppEvent` values (`src/platform/appEvent.h`) and hands them to `appWindow.c`, so
 `window.ms` reads them as on Windows and the web.
 
 - `voidRun` enters `UIApplicationMain` and does not return. The app's `main()` calls `MsMain`
