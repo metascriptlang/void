@@ -207,6 +207,7 @@ const COLOR_WRITE_ALL = 0xF;
 const NO_BUFFER = null as unknown as Ptr<D3dBufferImpl>;
 const NO_TEXTURE = null as unknown as Ptr<D3dTextureImpl>;
 const NO_SRV = null as unknown as Ptr<D3dSrvImpl>;
+const NO_SAMPLER = null as unknown as Ptr<D3dSamplerImpl>;
 const NO_RTV = null as unknown as Ptr<D3dRtvImpl>;
 const NO_DSV = null as unknown as Ptr<D3dDsvImpl>;
 
@@ -343,12 +344,34 @@ struct BoundState {
 	uniformFirst: int64[8];
 }
 
+export struct BindStats {
+	vertexBuffers: int64;
+	indexBuffers: int64;
+	shaderResources: int64;
+	samplers: int64;
+}
+
+struct NativeBinds {
+	vertexBuffer: Ptr<D3dBufferImpl>[2];
+	vertexStride: int32[2];
+	vertexOffset: int32[2];
+	indexBuffer: Ptr<D3dBufferImpl>;
+	indexFormat: int32;
+	indexOffset: int32;
+	vertexShaderResource: Ptr<D3dSrvImpl>[128];
+	fragmentShaderResource: Ptr<D3dSrvImpl>[128];
+	vertexSampler: Ptr<D3dSamplerImpl>[16];
+	fragmentSampler: Ptr<D3dSamplerImpl>[16];
+}
+
 let device: Ptr<D3dDeviceImpl> = null as unknown as Ptr<D3dDeviceImpl>;
 let context: Ptr<D3dContextImpl> = null as unknown as Ptr<D3dContextImpl>;
 let offsetUniforms = false;
 let frame: int64 = 0;
 let pass: PassState = { active: false };
 let bound: BoundState = { pipeline: 0 };
+let nativeBinds: NativeBinds = { indexFormat: 0 };
+let stats: BindStats = { vertexBuffers: 0 };
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
 let canvas: GPUCanvasConfiguration = { format: "bgra8unorm", depthFormat: "depth32float", sampleCount: 1 };
@@ -396,6 +419,25 @@ function stopOnHandle(kind: string, id: uint32): int32 {
 @inline function roundUp16(bytes: int64): int64 { return (bytes + 15) & ~(15 as int64); }
 
 @inline function roundUp256(bytes: int64): int64 { return (bytes + 255) & ~(255 as int64); }
+
+function forgetNativeBinds(): void {
+	for (let i = 0; i < GPU_MAX_VERTEX_BUFFERS; i++) {
+		nativeBinds.vertexBuffer[i] = NO_BUFFER;
+		nativeBinds.vertexStride[i] = 0;
+		nativeBinds.vertexOffset[i] = 0;
+	}
+	nativeBinds.indexBuffer = NO_BUFFER;
+	for (let i = 0; i < MAX_STAGE_SHADER_RESOURCES; i++) {
+		nativeBinds.vertexShaderResource[i] = NO_SRV;
+		nativeBinds.fragmentShaderResource[i] = NO_SRV;
+	}
+	for (let i = 0; i < MAX_STAGE_SAMPLERS; i++) {
+		nativeBinds.vertexSampler[i] = NO_SAMPLER;
+		nativeBinds.fragmentSampler[i] = NO_SAMPLER;
+	}
+}
+
+export function bindStats(): BindStats { return stats; }
 
 function forgetAppliedUniforms(): void {
 	for (let u = 0; u < GPU_MAX_UNIFORM_BLOCKS; u++) { bound.uniformBuffer[u] = 0; }
@@ -1452,6 +1494,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		const flags = depthStencil ? CLEAR_DEPTH | CLEAR_STENCIL : CLEAR_DEPTH;
 		d3dClearDsv(context, depth, flags, descriptor.depthStencilAttachment.depthClearValue, 0);
 	}
+	forgetNativeBinds();
 	bound.appliedPipeline = 0;
 	bound.vertexDirty = true;
 	bound.indexDirty = true;
@@ -1634,7 +1677,14 @@ function applyVertexBuffers(): void {
 		if (stride == 0) { continue; }
 		if (bound.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
 		const b = bufferIndex(bound.vertexBuffers[slot]);
-		d3dIaSetVertexBuffer(context, slot, buffers[b].native, stride, bound.vertexOffsets[slot] as int32);
+		const native = buffers[b].native;
+		const offset = bound.vertexOffsets[slot] as int32;
+		if (nativeBinds.vertexBuffer[slot] == native && nativeBinds.vertexStride[slot] == stride && nativeBinds.vertexOffset[slot] == offset) { continue; }
+		d3dIaSetVertexBuffer(context, slot, native, stride, offset);
+		nativeBinds.vertexBuffer[slot] = native;
+		nativeBinds.vertexStride[slot] = stride;
+		nativeBinds.vertexOffset[slot] = offset;
+		stats.vertexBuffers += 1;
 	}
 	bound.vertexDirty = false;
 }
@@ -1642,8 +1692,15 @@ function applyVertexBuffers(): void {
 function applyIndexBuffer(): void {
 	if (bound.indexBuffer == 0) { stop("drawIndexed without setIndexBuffer"); }
 	const b = bufferIndex(bound.indexBuffer);
-	d3dIaSetIndexBuffer(context, buffers[b].native, bound.indexFormat, bound.indexOffset as int32);
+	const native = buffers[b].native;
+	const offset = bound.indexOffset as int32;
 	bound.indexDirty = false;
+	if (nativeBinds.indexBuffer == native && nativeBinds.indexFormat == bound.indexFormat && nativeBinds.indexOffset == offset) { return; }
+	d3dIaSetIndexBuffer(context, native, bound.indexFormat, offset);
+	nativeBinds.indexBuffer = native;
+	nativeBinds.indexFormat = bound.indexFormat;
+	nativeBinds.indexOffset = offset;
+	stats.indexBuffers += 1;
 }
 
 function entryOf(group: int32, binding: int32): int32 {
@@ -1665,17 +1722,27 @@ function applyResources(): void {
 		if (binding.kind == BindingKind.Texture) {
 			const view = views[viewIndex(bindGroups[g].entries[e].textureView.id)].shaderResource;
 			if (binding.vertexStage) {
+				if (nativeBinds.vertexShaderResource[binding.nativeSlot] == view) { continue; }
 				d3dVsSetShaderResource(context, binding.nativeSlot, view);
+				nativeBinds.vertexShaderResource[binding.nativeSlot] = view;
 			} else {
+				if (nativeBinds.fragmentShaderResource[binding.nativeSlot] == view) { continue; }
 				d3dPsSetShaderResource(context, binding.nativeSlot, view);
+				nativeBinds.fragmentShaderResource[binding.nativeSlot] = view;
 			}
+			stats.shaderResources += 1;
 		} else {
 			const sampler = samplers[samplerIndex(bindGroups[g].entries[e].sampler.id)].native;
 			if (binding.vertexStage) {
+				if (nativeBinds.vertexSampler[binding.nativeSlot] == sampler) { continue; }
 				d3dVsSetSampler(context, binding.nativeSlot, sampler);
+				nativeBinds.vertexSampler[binding.nativeSlot] = sampler;
 			} else {
+				if (nativeBinds.fragmentSampler[binding.nativeSlot] == sampler) { continue; }
 				d3dPsSetSampler(context, binding.nativeSlot, sampler);
+				nativeBinds.fragmentSampler[binding.nativeSlot] = sampler;
 			}
+			stats.samplers += 1;
 		}
 	}
 }
