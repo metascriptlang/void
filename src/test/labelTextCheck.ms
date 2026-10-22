@@ -21,6 +21,7 @@ import {
 	labelTexts,
 	setLabelRuns,
 	setLabelLines,
+	setLabelCellWidths,
 	labelLines,
 	DecorationKind,
 } from "../void2d/labelText";
@@ -264,6 +265,49 @@ test "calcTextWidth and splitText lay other text out with the label's line optio
 	assert nodeSplit(n, text) == "aa bb\ncc\ndd";
 	cells.dispose();
 	n.dispose();
+}
+
+function gridLabel(text: string, widths: Readonly<Span<uint8>>, maxWidth: float32): int32 {
+	const index = allocateLabelText();
+	setLabelLines(index, { ...labelLines(index), forceWidth: 10.0 });
+	setLabelCellWidths(index, widths);
+	shapeLabel(index, text, {
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: maxWidth,
+		align: Align.Left,
+	});
+	return index;
+}
+
+test "a wide cell of the grid takes two cells of a forced-width label" {
+	const widths: uint8[] = [2, 0, 0, 2, 0, 0, 1];
+	const index = gridLabel("\u{4F60}\u{597D}a", widths, 0.0);
+	const g = labelTexts[index].layout.glyphs;
+	assert (g.length as int32) == 3;
+	assert g[0].x == 0.0 && g[1].x == 20.0 && g[2].x == 40.0;
+	assert g[0].advance == 20.0 && g[1].advance == 20.0 && g[2].advance == 10.0;
+	assert labelTexts[index].layout.lines[0].width == 50.0;
+	releaseLabelText(index);
+}
+
+test "a forced-width label wraps by the grid's cell widths" {
+	const widths: uint8[] = [2, 0, 0, 2, 0, 0, 1];
+	const index = gridLabel("\u{4F60}\u{597D}a", widths, 35.0);
+	const l = labelTexts[index].layout;
+	assert (l.lines.length as int32) == 2;
+	assert l.glyphs[1].line == 1 && l.glyphs[1].x == 0.0 && l.glyphs[2].x == 20.0;
+	releaseLabelText(index);
+}
+
+test "cell widths that do not cover the text leave one cell per cluster" {
+	const widths: uint8[] = [2, 0, 0];
+	const index = gridLabel("\u{4F60}\u{597D}a", widths, 0.0);
+	const g = labelTexts[index].layout.glyphs;
+	assert g[1].x == 10.0 && g[2].x == 20.0;
+	releaseLabelText(index);
 }
 
 test "a run background over trailing spaces stays inside the label's bounds" {
