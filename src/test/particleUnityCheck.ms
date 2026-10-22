@@ -847,7 +847,7 @@ test "inherit_velocity_initial_transform (pending, tie): the spawn at t = 0.1 sh
 	assert diverges(replay("inherit_velocity_initial_transform", a, { origin: vec3(0.0, 0.0, 0.0), moveX: 5.0 }, ALL | 1, TOL));
 }
 
-test "inherit_velocity_initial_custom (pending): Unity moves the inherited velocity from the step after birth" {
+test "inherit_velocity_initial_custom (pending, tie): the spawn at t = 0.1 shows one frame early, at age 0" {
 	let a = base(10.0, 0.0, 5.0);
 	a.main.simulationSpace = SimulationSpace.World;
 	a.main.emitterVelocityMode = EmitterVelocityMode.Custom;
@@ -855,6 +855,7 @@ test "inherit_velocity_initial_custom (pending): Unity moves the inherited veloc
 	a.inheritVelocity.enabled = true;
 	a.inheritVelocity.mode = InheritVelocityMode.Initial;
 	a.inheritVelocity.curve = constantCurve(1.0);
+	// The tie particle stays one step older, so its position differs on every later frame.
 	expectOnly(M_COUNT | M_POS, []);
 	assert diverges(same("inherit_velocity_initial_custom", a));
 }
