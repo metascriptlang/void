@@ -117,6 +117,8 @@ sg_swapchain voidWindowSwapchain(void) {
 	return swapchain;
 }
 
+bool voidWindowAwaitFrame(void) { return true; }
+
 void voidWindowPresent(bool modal) {
 	(void)modal;
 	SwapBuffers(s_dc);

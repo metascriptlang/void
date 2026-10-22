@@ -11,6 +11,7 @@ when (macos) {
 	@passL("-framework MetalKit");
 	@link("./sokol.o");
 	@compile("./bridgeEmbed.m");
+	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./views.c");
 	@compile("./bridge.c");
 }
@@ -51,6 +52,7 @@ when (android) {
 
 when (ios) {
 	@compile("./bridgeIos.m");
+	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./bridgeIosApp.m", "-fobjc-arc");
 	@compile("./appWindow.c");
 	@compile("./views.c");
@@ -67,6 +69,7 @@ when (macos || (windows && !voidGlCore) || ios || android) {
 	extern function voidViewsSetSampleCount(count: int32): void;
 	extern function voidViewCreate(native: int64, w: int32, h: int32, scale: float32): int32;
 	extern function voidViewResize(view: int32, w: int32, h: int32, scale: float32): void;
+	extern function voidViewReady(view: int32): int32;
 	extern function voidViewFrame(view: int32): int32;
 	extern function voidViewDestroy(view: int32): void;
 	extern function voidViewSwapChain(view: int32): int64;
@@ -85,6 +88,7 @@ when (macos || (windows && !voidGlCore) || ios || android) {
 	export function viewResize(view: ViewId, w: int32, h: int32, scale: float32): void {
 		voidViewResize(view, w, h, scale);
 	}
+	export function viewReady(view: ViewId): boolean { return voidViewReady(view) !== 0; }
 	export function viewFrame(view: ViewId): boolean { return voidViewFrame(view) !== 0; }
 	export function viewDestroy(view: ViewId): void { voidViewDestroy(view); }
 	export function viewSwapChain(view: ViewId): int64 { return voidViewSwapChain(view); }

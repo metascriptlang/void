@@ -410,6 +410,8 @@ static void resizeSurface(WebSurface *s) {
 	makeMsaa(s);
 }
 
+int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
 	WGPUSurfaceTexture current = {0};
@@ -495,6 +497,8 @@ static bool makeSurface(WebSurface *s) {
 }
 
 static void resizeSurface(WebSurface *s) { emscripten_set_canvas_element_size(s->selector, s->w, s->h); }
+
+int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;

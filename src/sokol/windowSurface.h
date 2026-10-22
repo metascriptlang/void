@@ -13,6 +13,7 @@
 void voidWindowSurfaceCreate(HWND hwnd, int samples);
 sg_environment voidWindowEnvironment(void);
 sg_swapchain voidWindowSwapchain(void);
+bool voidWindowAwaitFrame(void);
 void voidWindowPresent(bool modal);
 void voidWindowSurfaceDestroy(void);
 
