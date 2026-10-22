@@ -89,8 +89,4 @@ mkdir -p deps/ucd
 fetch_ucd BidiTest.txt
 fetch_ucd BidiCharacterTest.txt
 
-if [ "$(uname -s)" = Darwin ]; then
-	sh scripts/build-sokol-macos.sh
-fi
-
 echo "--- Setup complete ---"

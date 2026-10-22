@@ -1,9 +1,6 @@
 // Void sokol GPU — native, per-OS backend. @platform blocks pick the native deps
 // (Metal on macOS/iOS, GLES3+EGL on Android); the extern surface is backend-agnostic.
 
-when (!windows && !android) {
-	@passC("-I../../deps/sokol");
-}
 @include("bridge.h");
 // The C bridges below set the door up and end frames through it (door.h).
 import "../gpu/doorGpu.ms";
@@ -13,7 +10,6 @@ when (macos) {
 	@passL("-framework QuartzCore");
 	@passL("-framework Metal");
 	@passL("-framework MetalKit");
-	@link("./sokol.o");
 	@compile("./bridgeEmbed.m");
 	@compile("./views.c");
 	@compile("./bridge.c");
