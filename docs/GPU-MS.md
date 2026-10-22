@@ -169,8 +169,11 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
-  `src/sokol/bridgeLinux.c` and the `when (linux)` block of `src/sokol/gpu.ms`; check-only until
-  WSL has a current `msc`.
+  `src/sokol/bridgeLinux.c` and the `when (linux)` block of `src/sokol/gpu.ms`. Cross-built from
+  Windows (`msc build --os=linux` with WSL's GL/X11 headers and libs, Yoga built for linux by hand
+  because `yoga/src/yogaH.ms` has no linux branch: note in `~/metascript/.inbox/yoga/`), it runs
+  in WSLg on llvmpipe at 4b66e809 and draws the whole void2d demo. Linux goldens wait for a
+  current `msc` in WSL.
 
 - The backend selector defines are still sokol's names (`SOKOL_WGPU`, `SOKOL_GLES3`,
   `SOKOL_GLCORE`, `SOKOL_D3D11`, `SOKOL_METAL`) in `src/sokol/backend.h`, `bridgeWin.c`,
@@ -200,8 +203,13 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   lacks) on D3D11 (a `COPY_DST` texture is DEFAULT, written by `UpdateSubresource` with a box), GL
   (`glTexSubImage2D` in place; a whole write still rotates the copy) and wgpu. Metal stops on a
   write that is not the whole texture until it ports the same (`MTLRegionMake2D(x, y, w, h)` and
-  the copy rotation only for a whole write). The caller, glyph-atlas dirty rects, is next; the
-  DEFAULT texture's cost for a whole-texture stream is unmeasured until a GO.
+  the copy rotation only for a whole write). Its caller: a glyph page uploads only the union of
+  the tiles written since its last upload (`doorUpdateTextureRect`); `batcher.c` keeps the
+  whole-page upload under `__APPLE__` until Metal has the partial write. The DEFAULT texture's
+  cost for a whole-texture stream is unmeasured until a GO.
+- D3D11 skips a vertex buffer, index buffer, shader resource or sampler bind the context already
+  holds (sokol re-issues all of them every apply); GL already caches them as sokol does. Both
+  count the native binds they issue (`bindStats()`), pinned by the check files.
 - Attribute order against the writers is only checked in the GL build (where modules carry
   names); the goldens catch a reorder on the other backends.
 - Android: GLES 3.2's `glColorMaski` is refused today (one mask for all targets); MSAA 2/8 untested.
