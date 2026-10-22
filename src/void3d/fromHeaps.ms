@@ -1,5 +1,4 @@
 import { Vec3, vec3 } from "../math/math3d";
-import { ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, SortMode } from "./particles";
 import { shaderNoiseScale } from "../particles/noise";
 import {
 	ParticleSystemAsset, ShapeModule, ShapeType, SimulationSpace, ParticleSortMode, Burst,
@@ -9,6 +8,222 @@ import {
 	ParticleColorSpace, MAX_GRADIENT_KEYS, constantCurve, twoConstants, twoCurves, curveOf,
 	linearCurve, key, gradientOf,
 } from "../particles/curve";
+
+export enum ValueKind {
+	Const,
+	Linear,
+	Pow,
+	Sin,
+	Cos,
+	Poly,
+	Random,
+}
+
+export enum Converge {
+	No,
+	Start,
+	End,
+}
+
+// h3d.parts.Data.Value without VCustom. Poly is VPoly without its `points`, which only the editor
+// reads (Data.hx:193 evaluates `values` alone).
+export struct ParticleValue = match (kind: ValueKind) {
+	ValueKind.Const => { value: float32 },
+	ValueKind.Linear => { start: float32, length: float32 },
+	ValueKind.Pow => { start: float32, length: float32, power: float32 },
+	ValueKind.Sin => { frequency: float32, amplitude: float32, offset: float32 },
+	ValueKind.Cos => { frequency: float32, amplitude: float32, offset: float32 },
+	ValueKind.Poly => { values: Vec<float32> },
+	ValueKind.Random => { start: float32, length: float32, converge: Converge },
+};
+
+// h3d.parts.Data.SortMode: the order a draw lists the particles in. Front and Back are the order
+// they were emitted in, newest first or oldest first; Sort and InvSort order them by view depth,
+// farthest first or nearest first.
+export enum SortMode {
+	Front,
+	Back,
+	Sort,
+	InvSort,
+}
+
+export enum ShapeKind {
+	Line,
+	Sphere,
+	Cone,
+	Disc,
+	Point,
+	Box,
+	Ring,
+}
+
+// h3d.parts.Data.Shape without SCustom, plus the three shapes a Heaps user writes as an
+// SCustom: Point, Box and Ring, with Godot 4.5's emission shapes as their reference
+// (particle_process_material.cpp: point 642-644, box 659-661, ring 668-695). Box `extents` are
+// half-widths, as Godot's `emission_box_extents`. Ring is Godot's `emission_ring_*`: `height`
+// along `axis`, `coneAngle` in degrees (90 is a cylinder).
+export struct EmitterShape = match (kind: ShapeKind) {
+	ShapeKind.Line => { size: ParticleValue },
+	ShapeKind.Sphere => { radius: ParticleValue },
+	ShapeKind.Cone => { radius: ParticleValue, angle: ParticleValue },
+	ShapeKind.Disc => { radius: ParticleValue },
+	ShapeKind.Point => {},
+	ShapeKind.Box => { extents: ValueXYZ },
+	ShapeKind.Ring => {
+		radius: ParticleValue,
+		inner: ParticleValue,
+		height: float32,
+		axis: Vec3,
+		coneAngle: float32,
+	},
+};
+
+export struct HeapsBurst {
+	time: float64;
+	count: int32;
+}
+
+// One row of State.colors: a time in the particle's life and 0xRRGGBB.
+export struct HeapsColorKey {
+	time: float64;
+	color: uint32;
+}
+
+export struct ValueXYZ {
+	x: ParticleValue;
+	y: ParticleValue;
+	z: ParticleValue;
+}
+
+// Godot 4.5's turbulence (particle_process_material.cpp:381-396 uniforms, 1032-1052 use) with its
+// defaults (2364-2420): a curl-noise field that turns a particle's velocity toward it. `noiseScale`
+// is the property an author sets (0 to 10, default 9), `noiseSpeed` and `noiseSpeedRandom` how fast
+// the field drifts, `influence` how far a particle turns, 0 to 1, per particle and over its life as
+// a `ParticleValue` on the particle's time of life (Godot's min/max pair times a curve).
+export struct Turbulence {
+	enabled: boolean;
+	noiseStrength: float32;
+	noiseScale: float32;
+	noiseSpeed: Vec3;
+	noiseSpeedRandom: float32;
+	influence: ParticleValue;
+}
+
+// h3d.parts.Data.State, the fields the simulation reads. `force` is never null here: Heaps'
+// null force and a force of three VConst(0) move no particle and draw no random value.
+export struct EmitterState {
+	loop: boolean;
+	emitRate: ParticleValue;
+	bursts: Vec<HeapsBurst>;
+	maxParts: int32;
+	shape: EmitterShape;
+	emitFromShell: boolean;
+	emitLocal: boolean;
+	randomDir: boolean;
+	globalLife: float64;
+	globalSpeed: ParticleValue;
+	globalSize: ParticleValue;
+	life: ParticleValue;
+	size: ParticleValue;
+	ratio: ParticleValue;
+	rotation: ParticleValue;
+	frame: ParticleValue | null;
+	frameCount: int32;
+	speed: ParticleValue;
+	// Godot's `initial_linear_velocity` (particle_process_material.cpp:204-205, 576, 893): a speed
+	// along the emission direction drawn once at spawn, which seeds the velocity that damping and
+	// turbulence act on. Heaps has none; `speed` stays Heaps' displacement curve.
+	initialSpeed: ParticleValue;
+	gravity: ParticleValue;
+	sortMode: SortMode;
+	damping: ParticleValue;
+	turbulence: Turbulence;
+	force: ValueXYZ;
+	colors: Vec<HeapsColorKey>;
+	light: ParticleValue;
+	alpha: ParticleValue;
+}
+
+const ONE: float32 = 1.0;
+
+export function constant(value: float32): ParticleValue {
+	return { kind: ValueKind.Const, value: value };
+}
+
+// State.setDefaults.
+export function defaults(this typeof EmitterState): EmitterState {
+	return {
+		loop: true,
+		emitRate: constant(100.0),
+		bursts: [],
+		maxParts: 1000,
+		shape: { kind: ShapeKind.Cone, radius: constant(1.0), angle: constant(0.7853981633974483) },
+		emitFromShell: false,
+		emitLocal: false,
+		randomDir: false,
+		globalLife: 1.0,
+		globalSpeed: constant(1.0),
+		globalSize: constant(1.0),
+		life: constant(1.0),
+		size: constant(1.0),
+		ratio: constant(1.0),
+		rotation: constant(0.0),
+		frame: null,
+		frameCount: 0,
+		speed: constant(0.1),
+		initialSpeed: constant(0.0),
+		gravity: constant(0.0),
+		sortMode: SortMode.Back,
+		damping: constant(0.0),
+		turbulence: {
+			enabled: false,
+			noiseStrength: 1.0,
+			noiseScale: 9.0,
+			noiseSpeed: vec3(0.0, 0.0, 0.0),
+			noiseSpeedRandom: 0.2,
+			influence: constant(0.1),
+		},
+		force: { x: constant(0.0), y: constant(0.0), z: constant(0.0) },
+		colors: [],
+		light: constant(1.0),
+		alpha: constant(1.0),
+	};
+}
+
+export function drawsRandom(this v: ParticleValue): boolean {
+	return v.kind == ValueKind.Random;
+}
+
+// State.eval; `random` is read only by a Random value and is its r.rand().
+export function evaluate(this v: ParticleValue, time: float32, random: float32): float32 {
+	return match (v.kind) {
+		ValueKind.Const => v.value,
+		ValueKind.Linear => v.start + v.length * time,
+		ValueKind.Pow => v.start + (Math.pow(time, v.power) as float32) * v.length,
+		ValueKind.Sin => (Math.sin(time * v.frequency) as float32) * v.amplitude + v.offset,
+		ValueKind.Cos => (Math.cos(time * v.frequency) as float32) * v.amplitude + v.offset,
+		ValueKind.Poly => polynomial(v.values, time),
+		ValueKind.Random => v.start + randomSpan(v.length, v.converge, time) * random,
+	};
+}
+
+function polynomial(values: Vec<float32>, time: float32): float32 {
+	let y: float32 = 0.0;
+	let j: int32 = (values.length as int32) - 1;
+	while (j >= 0) {
+		y = values[j] + time * y;
+		j = j - 1;
+	}
+	return y;
+}
+
+function randomSpan(length: float32, converge: Converge, time: float32): float32 {
+	return match (converge) {
+		Converge.No => length,
+		Converge.Start => length * time,
+		Converge.End => length * (ONE - time),
+	};
+}
 
 export enum HeapsLoweringError {
 	NoCapacity,

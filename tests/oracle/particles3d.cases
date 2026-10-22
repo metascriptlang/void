@@ -1,5 +1,5 @@
 # h3d.parts (Data.State.eval, Emitter.update, initPosDir, updateParticle) against
-# src/void3d/particles.ms.
+# src/void3d/fromHeaps.ms lowering and the particle system.
 #
 # Same shape as bounds3d.cases: no expected answer here; `sh scripts/oracle.sh regen
 # tests/oracle/particles3d.cases` replays the Haxe side through real Heaps and commits the
@@ -62,9 +62,9 @@
 #
 # ms-prelude: import { identity, vec3 } from "../../../src/math/math3d";
 # ms-prelude: import {
-# ms-prelude: 	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, constant,
-# ms-prelude: } from "../../../src/void3d/particles";
-# ms-prelude: import { fromHeaps, divergences, HEAPS_GRAVITY, HeapsDivergence } from "../../../src/void3d/fromHeaps";
+# ms-prelude: 	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, constant, fromHeaps, divergences,
+# ms-prelude: 	HEAPS_GRAVITY, HeapsDivergence,
+# ms-prelude: } from "../../../src/void3d/fromHeaps";
 # ms-prelude: import { CompiledMinMaxCurve, CurveError } from "../../../src/particles/curve";
 # ms-prelude: import { ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, AGE, LIFETIME, SIZE_X } from "../../../src/particles/system";
 # ms-prelude: import { ParticleWriter3D, writeParticles } from "../../../src/void3d/particleWriter";

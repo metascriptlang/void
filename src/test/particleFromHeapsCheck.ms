@@ -1,15 +1,13 @@
-import { vec3, identity } from "../math/math3d";
+import { Vec3, vec3, identity } from "../math/math3d";
+import { noiseDirection, shaderNoiseScale } from "../particles/noise";
 import {
-	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, ParticleEmitter, ParticleError, Burst,
-	constant, updateEmitter,
-} from "../void3d/particles";
-import {
+	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, HeapsBurst, constant,
 	fromHeaps, divergences, HEAPS_GRAVITY, HeapsLoweringError, HeapsDivergence,
 } from "../void3d/fromHeaps";
 import { CompiledMinMaxCurve } from "../particles/curve";
 import {
-	ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, AGE, SIZE_X, SIZE_Y, ROT_Z,
-	COLOR_R, COLOR_G, COLOR_B, COLOR_A, FRAME,
+	ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, AGE, SIZE_X,
+	COLOR_R, COLOR_G, COLOR_B, COLOR_A,
 } from "../particles/system";
 
 function near(a: float32, b: float32, tol: float32): boolean {
@@ -44,16 +42,6 @@ function advance(ref sys: ParticleSystem, frame: float64, frames: int32): void {
 	}
 }
 
-function heapsRun(state: EmitterState, steps: int32, dt: float64): ParticleEmitter {
-	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, 5);
-	if (!made.ok) { unreachable; }
-	let emitter: ParticleEmitter = made.value;
-	for (let i = 0; i < steps; i++) {
-		const _stepped: Result<int32, ParticleError> = updateEmitter(emitter, dt, identity());
-	}
-	return emitter;
-}
-
 function column(sys: ParticleSystem, c: int32, i: int32): float32 {
 	return sys.data[c * sys.capacity + i];
 }
@@ -65,17 +53,6 @@ function slotAged(sys: ParticleSystem, age: float64): int32 {
 	return -1;
 }
 
-struct Worst {
-	unmatched: int32;
-	matched: int32;
-	position: float32;
-	width: float32;
-	height: float32;
-	rotation: float32;
-	color: float32;
-	frame: float32;
-}
-
 function gap(a: float32, b: float32): float32 {
 	const d: float32 = a - b;
 	return d < 0.0 ? -d : d;
@@ -83,153 +60,6 @@ function gap(a: float32, b: float32): float32 {
 
 function larger(a: float32, b: float32): float32 {
 	return a > b ? a : b;
-}
-
-// The lowered system runs one step more than the Heaps emitter: both spawn at the end of a
-// step, Heaps then ages the newborn by a whole step and the system by none.
-function replay(state: EmitterState, steps: int32, dt: float64): Worst {
-	const oracle: ParticleEmitter = heapsRun(state, steps, dt);
-	let sys = lowered(state, dt);
-	advance(sys, dt, steps + 1);
-	const life: float64 = valueOf(state.life);
-	const scale: float32 = valueOf(state.globalSize) as float32;
-	let w: Worst = {
-		unmatched: 0, matched: 0, position: 0.0, width: 0.0, height: 0.0, rotation: 0.0, color: 0.0, frame: 0.0,
-	};
-	for (let i = 0; i < oracle.count; i++) {
-		const p = oracle.particles[i];
-		const j: int32 = slotAged(sys, p.time * life);
-		if (j < 0) {
-			w.unmatched = w.unmatched + 1;
-			continue;
-		}
-		w.matched = w.matched + 1;
-		w.position = larger(w.position, gap(p.position.x, column(sys, POS_X, j)));
-		w.position = larger(w.position, gap(p.position.y, column(sys, POS_Y, j)));
-		w.position = larger(w.position, gap(p.position.z, column(sys, POS_Z, j)));
-		w.width = larger(w.width, gap(p.size * scale, column(sys, SIZE_X, j)));
-		w.height = larger(w.height, gap(p.size * scale * p.ratio, column(sys, SIZE_Y, j)));
-		w.rotation = larger(w.rotation, gap(p.rotation, column(sys, ROT_Z, j)));
-		w.color = larger(w.color, gap(p.red, column(sys, COLOR_R, j)));
-		w.color = larger(w.color, gap(p.green, column(sys, COLOR_G, j)));
-		w.color = larger(w.color, gap(p.blue, column(sys, COLOR_B, j)));
-		w.color = larger(w.color, gap(p.alpha, column(sys, COLOR_A, j)));
-		w.frame = larger(w.frame, gap(p.frame as float32, column(sys, FRAME, j)));
-	}
-	return w;
-}
-
-function valueOf(v: ParticleValue): float64 {
-	return match (v.kind) {
-		ValueKind.Const => v.value as float64,
-		_ => 0.0,
-	};
-}
-
-test "a point emitter under gravity, a force and a start speed follows the Heaps emitter" {
-	let state = heapsState();
-	state.speed = constant(0.5);
-	state.initialSpeed = constant(1.5);
-	state.gravity = constant(0.8);
-	state.force = { x: constant(0.2), y: constant(0.3), z: constant(-0.4) };
-	const w = replay(state, 16, 0.125);
-	assert w.unmatched == 0 && w.matched == 16;
-	assert w.position < 1e-4;
-}
-
-test "a speed curve without forces follows the Heaps emitter" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.speed = { kind: ValueKind.Pow, start: 0.2, length: 1.5, power: 2.0 };
-	const w = replay(state, 12, 0.125);
-	assert w.unmatched == 0 && w.matched == 12;
-	assert w.position < 1e-4;
-	state.speed = { kind: ValueKind.Linear, start: 0.5, length: -0.4 };
-	state.initialSpeed = constant(0.75);
-	const linear = replay(state, 12, 0.125);
-	assert linear.unmatched == 0 && linear.position < 1e-4;
-}
-
-test "size, ratio and a constant global size follow the Heaps emitter" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.size = { kind: ValueKind.Linear, start: 1.0, length: 2.0 };
-	state.ratio = constant(0.5);
-	state.globalSize = constant(2.0);
-	const w = replay(state, 12, 0.125);
-	assert w.unmatched == 0 && w.matched == 12;
-	assert w.width < 1e-4 && w.height < 1e-4;
-	state.ratio = { kind: ValueKind.Pow, start: 1.0, length: 1.0, power: 2.0 };
-	state.size = constant(3.0);
-	const curved = replay(state, 12, 0.125);
-	assert curved.unmatched == 0 && curved.width < 1e-4 && curved.height < 1e-4;
-}
-
-test "a linear angle becomes an angular velocity that reproduces it" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.rotation = { kind: ValueKind.Linear, start: 0.3, length: 1.2 };
-	const w = replay(state, 12, 0.125);
-	assert w.unmatched == 0 && w.matched == 12;
-	assert w.rotation < 1e-4;
-}
-
-test "a sine angle is integrated per step: the error is first order in the step" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.rotation = { kind: ValueKind.Sin, frequency: 5.0, amplitude: 1.0, offset: 0.5 };
-	const coarse = replay(state, 14, 0.125);
-	state.emitRate = constant(32.0);
-	const fine = replay(state, 56, 0.03125);
-	assert coarse.unmatched == 0 && fine.unmatched == 0;
-	assert coarse.rotation < 0.35;
-	assert fine.rotation < coarse.rotation * 0.4;
-	assert divergences(state).has(HeapsDivergence.RotationIntegrated);
-}
-
-test "colour keys with a constant light and a linear alpha follow the Heaps emitter" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.colors = [{ time: 0.0, color: 0xFF8000 }, { time: 0.5, color: 0x0040FF }, { time: 0.9, color: 0xFFFFFF }];
-	state.light = constant(0.7);
-	state.alpha = { kind: ValueKind.Linear, start: 1.0, length: -0.5 };
-	const w = replay(state, 12, 0.125);
-	assert w.unmatched == 0 && w.matched == 12;
-	assert w.color < 1e-5;
-}
-
-test "a light that changes over life is sampled to the gradient's eight keys within a bound" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.colors = [{ time: 0.0, color: 0xFF8000 }, { time: 0.5, color: 0x0040FF }, { time: 0.9, color: 0xFFFFFF }];
-	state.light = { kind: ValueKind.Linear, start: 1.0, length: -0.5 };
-	state.alpha = { kind: ValueKind.Sin, frequency: 4.0, amplitude: 0.4, offset: 0.5 };
-	const w = replay(state, 14, 0.125);
-	assert w.unmatched == 0;
-	assert w.color < 0.02;
-	assert divergences(state).has(HeapsDivergence.GradientSampled);
-}
-
-test "damping takes the same amount off the speed each second as the Heaps emitter" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.initialSpeed = constant(2.0);
-	state.damping = constant(0.6);
-	state.gravity = constant(0.3);
-	const w = replay(state, 14, 0.125);
-	assert w.unmatched == 0 && w.matched == 14;
-	assert w.position < 1e-4;
-}
-
-test "a frame curve picks the frame the Heaps emitter picks except on an exact boundary" {
-	let state = heapsState();
-	state.life = constant(2.0);
-	state.frame = { kind: ValueKind.Linear, start: 0.0, length: 1.5 };
-	state.frameCount = 4;
-	const w = replay(state, 14, 0.125);
-	assert w.unmatched == 0;
-	assert w.frame <= 1.0;
-	assert divergences(state).has(HeapsDivergence.FrameBoundary);
 }
 
 function rateCurve(v: ParticleValue): CompiledMinMaxCurve {
@@ -318,15 +148,6 @@ test "colour keys, light and alpha read the oracle's colours at the same particl
 	assert divergences(state).has(HeapsDivergence.GradientSampled);
 }
 
-test "colour keys with a constant light read the oracle's colours exactly" {
-	let state = colorState();
-	state.light = constant(0.6);
-	state.emitRate = constant(8.0);
-	const reference = replay(state, 6, 0.125);
-	assert reference.unmatched == 0 && reference.color < 1e-5;
-	assert !divergences(state).has(HeapsDivergence.GradientSampled);
-}
-
 function refused(state: EmitterState, why: HeapsLoweringError): boolean {
 	const r = fromHeaps(state);
 	return !r.ok && r.error == why;
@@ -397,34 +218,34 @@ test "every input Unity cannot carry is refused by name" {
 	assert refused(s, HeapsLoweringError.RotationNotRepresentable);
 }
 
-function burstGaps(times: float64[], steps: int32, dt: float64, globalLife: float64): int32 {
+// The sys.count after each of the first `expected.length` steps, with `count: 3` bursts at `times`
+// and no emission. Heaps' emitter fires the same bursts in the same steps: the expected counts
+// are what it counted before it was retired (commit efd64688).
+function burstCountsMatch(times: float64[], expected: int32[], dt: float64, globalLife: float64): boolean {
 	let state = heapsState();
 	state.emitRate = constant(0.0);
 	state.globalLife = globalLife;
-	let list: Vec<Burst> = [];
+	let list: Vec<HeapsBurst> = [];
 	for (const t of times) { list.push({ time: t, count: 3 }); }
 	state.bursts = list;
-	let worst: int32 = 0;
-	for (let n = 1; n <= steps; n++) {
-		const oracle = heapsRun(state, n, dt);
+	for (let n = 1; n <= expected.length; n++) {
 		let sys = lowered(state, dt);
 		advance(sys, dt, n);
-		const d: int32 = oracle.count - sys.count;
-		if (d != 0) { worst = d; }
+		if (sys.count != expected[n - 1]) { return false; }
 	}
-	return worst;
+	return true;
 }
 
 test "bursts fire in the same step as the Heaps emitter, including a burst off the step grid" {
-	assert burstGaps([0.1, 0.2, 0.3, 0.4, 0.7], 10, 0.125, 1.0) == 0;
+	assert burstCountsMatch([0.1, 0.2, 0.3, 0.4, 0.7], [3, 6, 9, 12, 12, 15, 15, 15, 18, 21], 0.125, 1.0);
 }
 
 test "a burst on a step boundary fires once, in the step that ends on it" {
-	assert burstGaps([0.25, 0.5], 10, 0.125, 1.0) == 0;
+	assert burstCountsMatch([0.25, 0.5], [0, 3, 3, 6, 6, 6, 6, 6, 6, 9], 0.125, 1.0);
 }
 
 test "a burst scales with the global life" {
-	assert burstGaps([0.35], 5, 0.25, 2.0) == 0;
+	assert burstCountsMatch([0.35], [0, 0, 3, 3, 3], 0.25, 2.0);
 }
 
 test "a one-shot stops emitting after its cycle" {
@@ -520,4 +341,23 @@ test "the divergence set names what a state loses" {
 	s = heapsState();
 	s.rotation = { kind: ValueKind.Sin, frequency: 5.0, amplitude: 1.0, offset: 0.5 };
 	assert divergences(s).has(HeapsDivergence.ValueSampled);
+}
+
+// Expected values: tests/oracle/godotNoise.js, a second float32 transcription of the shader text
+// in particle_process_material.cpp:405-481 (no Godot build ran).
+test "the noise direction matches Godot's GLSL transcribed in float32 on the Godot side" {
+	const a: Vec3 = noiseDirection(vec3(0.3, -0.7, 1.1), 0.0, 1.0, 4.0, vec3(0.0, 0.0, 0.0), 0.0);
+	assert near(a.x, 0.35435, 0.003) && near(a.y, -0.93215, 0.003) && near(a.z, 0.07436, 0.003);
+	const b: Vec3 = noiseDirection(vec3(0.3, -0.7, 1.1), 0.5, 1.0, 4.0, vec3(1.0, 0.5, 0.25), 0.2);
+	assert near(b.x, -0.67330, 0.003) && near(b.y, -0.31516, 0.003) && near(b.z, -0.66883, 0.003);
+	const c: Vec3 = noiseDirection(vec3(-2.5, 3.1, 0.4), 1.25, 1.0, -0.104, vec3(0.0, 0.0, 0.0), 0.2);
+	assert near(c.x, 0.17383, 0.003) && near(c.y, -0.57915, 0.003) && near(c.z, 0.79647, 0.003);
+	const d: Vec3 = noiseDirection(vec3(1.9, 0.2, -3.3), 2.0, 3.0, 6.0, vec3(0.5, 0.5, 0.5), 0.2);
+	assert near(d.x, 0.44212, 0.003) && near(d.y, 0.89155, 0.003) && near(d.z, 0.09837, 0.003);
+}
+
+test "the noise scale property becomes the shader's frequency as set_turbulence_noise_scale does" {
+	assert near(shaderNoiseScale(9.0), -0.10399, 0.0005);
+	assert near(shaderNoiseScale(10.0), 0.0, 0.0005);
+	assert near(shaderNoiseScale(0.0), -4.0, 0.0005);
 }
