@@ -196,9 +196,12 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 - D3D11 binds each uniform block at its offset in the door's ring (`*SetConstantBuffers1`, no copy
   per draw) when the device has D3D11.1 constant-buffer offsetting, else uploads only blocks whose
   bytes changed; sokol uploads every applied block. Unmeasured until a GO.
-- `writeTexture` writes the whole texture only, as sokol's `sg_update_image` does. A partial write
-  (WebGPU's `origin` + `size`) is control sokol lacks; build it when a caller (glyph atlas pages)
-  can use it, with the bench row it moves.
+- `writeTexture` takes WebGPU's `origin` + `size` (control sokol's whole-image `sg_update_image`
+  lacks) on D3D11 (a `COPY_DST` texture is DEFAULT, written by `UpdateSubresource` with a box), GL
+  (`glTexSubImage2D` in place; a whole write still rotates the copy) and wgpu. Metal stops on a
+  write that is not the whole texture until it ports the same (`MTLRegionMake2D(x, y, w, h)` and
+  the copy rotation only for a whole write). The caller, glyph-atlas dirty rects, is next; the
+  DEFAULT texture's cost for a whole-texture stream is unmeasured until a GO.
 - Attribute order against the writers is only checked in the GL build (where modules carry
   names); the goldens catch a reorder on the other backends.
 - Android: GLES 3.2's `glColorMaski` is refused today (one mask for all targets); MSAA 2/8 untested.

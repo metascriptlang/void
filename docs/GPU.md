@@ -149,7 +149,8 @@ backend module. Metal follows it with a `.m`.
   to its other copy at its first write of a frame, so the frame in flight keeps reading the old
   one (sokol's `num_slots`, `_sg_mtl_update_buffer`). A second write over bytes the frame already
   wrote, or a second `writeTexture` of one texture in a frame, stops with a message: that is
-  sokol's one-update-per-frame rule, enforced instead of assumed.
+  sokol's one-update-per-frame rule, enforced instead of assumed. A `writeTexture` that is not
+  the whole texture stops too, until Metal ports the partial write the other backends have.
 - **CPU writes wait on the frame semaphore.** Two frames in flight; the command buffer begins at
   the frame's first write or pass and waits for the oldest frame there, as sokol waits in
   `_sg_mtl_begin_pass`.
