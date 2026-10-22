@@ -36,6 +36,7 @@ export struct AnimationCompose {
 	targets: Vec<AnimationRestTarget>;
 	first: Vec<AnimationTrsSample>;
 	second: Vec<AnimationTrsSample>;
+	third: Vec<AnimationTrsSample>;
 	pending: Vec<AnimationTrsSample>;
 	output: Vec<AnimationTrsSample>;
 	secondMask: Vec<boolean>;
@@ -110,7 +111,7 @@ export function create(
 ): Result<AnimationCompose, AnimationComposeError> {
 	const checked = try checkedTargets(targets);
 	let compose: AnimationCompose = {
-		targets: [], first: [], second: [], pending: [], output: [], secondMask: [],
+		targets: [], first: [], second: [], third: [], pending: [], output: [], secondMask: [],
 		firstSeconds: 0.0, secondSeconds: 0.0,
 	};
 	for (const target of targets) {
@@ -122,6 +123,7 @@ export function create(
 		};
 		compose.first.push(sample);
 		compose.second.push(sample);
+		compose.third.push(sample);
 		compose.pending.push(sample);
 		compose.output.push(sample);
 		compose.secondMask.push(false);
@@ -143,7 +145,7 @@ function checkedStorage(
 	this compose: Readonly<AnimationCompose>,
 ): Result<void, AnimationComposeError> {
 	const length = compose.targets.length;
-	if (compose.first.length != length || compose.second.length != length ||
+	if (compose.first.length != length || compose.second.length != length || compose.third.length != length ||
 		compose.pending.length != length || compose.output.length != length ||
 		compose.secondMask.length != length) {
 		return Result.err(AnimationComposeError.Shape);
@@ -200,7 +202,7 @@ function resolveChild(
 	}
 }
 
-function blendedScalar(first: float32, second: float32, weight: float32): float32 {
+export function blendedScalar(first: float32, second: float32, weight: float32): float32 {
 	const toward: float64 = weight as float64;
 	return ((first as float64) * (1.0 - toward) + (second as float64) * toward) as float32;
 }
@@ -286,6 +288,90 @@ export function stageExclusiveCompose(
 	}
 	for (let i = 0; i < compose.targets.length; i++) {
 		compose.pending[i] = compose.secondMask[i] ? compose.second[i] : compose.first[i];
+	}
+	publishCompose(compose, first.seconds, second.seconds);
+	return Result.ok(null);
+}
+
+function weightedScalar(a: float32, b: float32, c: float32, weights: Readonly<Span<float64>>): float32 {
+	return ((a as float64) * weights[0] + (b as float64) * weights[1] +
+		(c as float64) * weights[2]) as float32;
+}
+
+function weightedRotation(
+	reference: Quat,
+	a: Quat, b: Quat, c: Quat,
+	weights: Readonly<Span<float64>>,
+): Quat {
+	const inverse: Quat = reference.conjugate();
+	let x: float64 = 0.0;
+	let y: float64 = 0.0;
+	let z: float64 = 0.0;
+	let w: float64 = 0.0;
+	const sources: Vec<Quat> = [a, b, c];
+	for (let i = 0; i < 3; i++) {
+		let relative: Quat = inverse * sources[i];
+		if (relative.w < 0.0) {
+			relative = { x: -relative.x, y: -relative.y, z: -relative.z, w: -relative.w };
+		}
+		x += (relative.x as float64) * weights[i];
+		y += (relative.y as float64) * weights[i];
+		z += (relative.z as float64) * weights[i];
+		w += (relative.w as float64) * weights[i];
+	}
+	const sum: Quat = { x: x as float32, y: y as float32, z: z as float32, w: w as float32 };
+	const blended: Quat = reference * sum.normalized();
+	return blended.w < 0.0 ? { x: -blended.x, y: -blended.y, z: -blended.z, w: -blended.w } : blended;
+}
+
+export function stageWeightedCompose(
+	ref compose: AnimationCompose,
+	first: Readonly<AnimationChildSample>,
+	second: Readonly<AnimationChildSample>,
+	third: Readonly<AnimationChildSample>,
+	weights: Readonly<Span<float64>>,
+): Result<void, AnimationComposeError> {
+	if (weights.length != 3) { return Result.err(AnimationComposeError.Shape); }
+	let total: float64 = 0.0;
+	for (const weight of weights) {
+		if (!Number.isFinite(weight)) { return Result.err(AnimationComposeError.NonFinite); }
+		if (weight < 0.0 || weight > 1.0) { return Result.err(AnimationComposeError.Weight); }
+		total += weight;
+	}
+	if (Math.abs(total - 1.0) > 0.000001) { return Result.err(AnimationComposeError.Weight); }
+	const storage = try compose.checkedStorage();
+	const firstChecked = try compose.checkedChild(first);
+	const secondChecked = try compose.checkedChild(second);
+	const thirdChecked = try compose.checkedChild(third);
+	resolveChild(compose.targets, first, compose.first);
+	resolveChild(compose.targets, second, compose.second);
+	resolveChild(compose.targets, third, compose.third);
+	for (let i = 0; i < compose.targets.length; i++) {
+		const a = compose.first[i];
+		const b = compose.second[i];
+		const c = compose.third[i];
+		const value: Transform3D = {
+			position: vec3(
+				weightedScalar(a.value.position.x, b.value.position.x, c.value.position.x, weights),
+				weightedScalar(a.value.position.y, b.value.position.y, c.value.position.y, weights),
+				weightedScalar(a.value.position.z, b.value.position.z, c.value.position.z, weights)),
+			rotation: weightedRotation(
+				compose.targets[i].rest.rotation, a.value.rotation, b.value.rotation,
+				c.value.rotation, weights),
+			scale: vec3(
+				weightedScalar(a.value.scale.x, b.value.scale.x, c.value.scale.x, weights),
+				weightedScalar(a.value.scale.y, b.value.scale.y, c.value.scale.y, weights),
+				weightedScalar(a.value.scale.z, b.value.scale.z, c.value.scale.z, weights)),
+		};
+		const sample: AnimationTrsSample = {
+			sourceNode: compose.targets[i].sourceNode, value: value, present: allComponents(),
+		};
+		const checked = try sample.checkedSample();
+		let present: BitSet<AnimationComponent> = 0 as BitSet<AnimationComponent>;
+		if (weights[0] != 0.0) { present = present | a.present; }
+		if (weights[1] != 0.0) { present = present | b.present; }
+		if (weights[2] != 0.0) { present = present | c.present; }
+		compose.pending[i] = { ...sample, present: present };
 	}
 	publishCompose(compose, first.seconds, second.seconds);
 	return Result.ok(null);

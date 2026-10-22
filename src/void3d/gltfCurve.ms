@@ -234,47 +234,42 @@ export function forWeightValues(
 	return Result.ok(move curve);
 }
 
-function weightsAt(this curve: Readonly<GltfWeightCurve>, at: int32): Vec<float32> {
-	let weights: Vec<float32> = [];
-	for (let target = 0; target < curve.targetCount; target++) {
-		weights.push(curve.values[at + target]);
-	}
-	return move weights;
-}
-
-export function sampleWeights(
+export function sampleWeightsInto(
 	this curve: Readonly<GltfWeightCurve>,
 	seconds: float64,
-): Result<Vec<float32>, GltfCurveError> {
+	out: Span<float32>,
+): Result<void, GltfCurveError> {
 	if (!Number.isFinite(seconds)) { return Result.err(GltfCurveError.NonFinite); }
 	const width: int32 = curve.targetCount;
 	const stride: int32 = width * (curve.mode == GltfCurveMode.CubicSpline ? 3 : 1);
 	if (curve.times.length < 1 || width < 1 || curve.times.length > 0x7fffffff / stride ||
-		curve.values.length != curve.times.length * stride) {
+		curve.values.length != curve.times.length * stride || out.length != width) {
 		return Result.err(GltfCurveError.Shape);
 	}
 	if (curve.mode != GltfCurveMode.Step && curve.mode != GltfCurveMode.Linear &&
 		curve.mode != GltfCurveMode.CubicSpline) { return Result.err(GltfCurveError.Mode); }
 	const last: int32 = (curve.times.length as int32) - 1;
 	const offset: int32 = curve.mode == GltfCurveMode.CubicSpline ? width : 0;
-	if (seconds <= curve.times[0]) { return Result.ok(curve.weightsAt(offset)); }
-	if (seconds >= curve.times[last]) { return Result.ok(curve.weightsAt(last * stride + offset)); }
 	let left: int32 = 0;
 	let right: int32 = last;
-	while (right - left > 1) {
-		const middle: int32 = left + (right - left) / 2;
-		if (seconds < curve.times[middle]) { right = middle; }
-		else { left = middle; }
+	if (seconds <= curve.times[0]) { right = 0; }
+	else if (seconds >= curve.times[last]) { left = last; right = last; }
+	else {
+		while (right - left > 1) {
+			const middle: int32 = left + (right - left) / 2;
+			if (seconds < curve.times[middle]) { right = middle; }
+			else { left = middle; }
+		}
 	}
 	const firstAt: int32 = left * stride + offset;
 	const secondAt: int32 = right * stride + offset;
-	if (seconds == curve.times[left] || curve.mode == GltfCurveMode.Step) {
-		return Result.ok(curve.weightsAt(firstAt));
+	if (left == right || seconds == curve.times[left] || curve.mode == GltfCurveMode.Step) {
+		for (let target = 0; target < width; target++) { out[target] = curve.values[firstAt + target]; }
+		return Result.ok(null);
 	}
 	const duration: float64 = (curve.times[right] as float64) - (curve.times[left] as float64);
 	if (duration <= 0.0) { return Result.err(GltfCurveError.TimeOrder); }
 	const u: float64 = (seconds - (curve.times[left] as float64)) / duration;
-	let weights: Vec<float32> = [];
 	for (let target = 0; target < width; target++) {
 		const first: float32 = curve.values[firstAt + target];
 		const second: float32 = curve.values[secondAt + target];
@@ -283,7 +278,20 @@ export function sampleWeights(
 				curve.values[secondAt - width + target], second, u, duration)
 			: (((1.0 - u) * (first as float64) + u * (second as float64)) as float32);
 		if (!Number.isFinite(value)) { return Result.err(GltfCurveError.NonFinite); }
-		weights.push(value);
+		out[target] = value;
 	}
+	return Result.ok(null);
+}
+
+export function sampleWeights(
+	this curve: Readonly<GltfWeightCurve>,
+	seconds: float64,
+): Result<Vec<float32>, GltfCurveError> {
+	if (curve.targetCount < 1 || curve.targetCount > curve.values.length) {
+		return Result.err(Number.isFinite(seconds) ? GltfCurveError.Shape : GltfCurveError.NonFinite);
+	}
+	let weights: Vec<float32> = [];
+	for (let target = 0; target < curve.targetCount; target++) { weights.push(0.0); }
+	const filled = try curve.sampleWeightsInto(seconds, weights);
 	return Result.ok(move weights);
 }
