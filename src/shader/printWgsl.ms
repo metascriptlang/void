@@ -199,6 +199,8 @@ class Printer {
 	upperLeft: boolean = false;
 	inverses: int32[] = [];
 	lines: string[] = [];
+	depth: int32 = 0;
+	unhoistable: string = "";
 }
 
 function refusal(p: Printer, what: string): string {
@@ -350,6 +352,11 @@ function binaryOperator(op: BinaryOp): string {
 
 function binaryText(p: Printer, e: ShaderExpr): string {
 	const left = e.operands[0];
+	const shortCircuit = e.binary == BinaryOp.LogicalAnd || e.binary == BinaryOp.LogicalOr;
+	if (shortCircuit && hoists(e.operands[1])) {
+		return refusal(p, "a conditional whose branch calls a function, right of '" +
+			binaryOperator(e.binary) + "'");
+	}
 	const text = "(" + exprText(p, left) + " " + binaryOperator(e.binary) + " " +
 		exprText(p, e.operands[1]) + ")";
 	const whole = (e.binary == BinaryOp.Equal || e.binary == BinaryOp.NotEqual) &&
@@ -369,15 +376,61 @@ function hasEffect(e: ShaderExpr): boolean {
 	return e.operands.some((o) => hasEffect(o));
 }
 
+// select evaluates both arms, so a conditional with a call in an arm becomes a var assigned in
+// an if/else ahead of its statement, as Tint's PromoteSideEffectsToDecl does.
+function isHoisted(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Conditional && (hasEffect(e.operands[1]) || hasEffect(e.operands[2]));
+}
+
+function hoists(e: ShaderExpr): boolean {
+	return isHoisted(e) || e.operands.some((o) => hoists(o));
+}
+
+function bareEffect(e: ShaderExpr): boolean {
+	if (isHoisted(e)) { return false; }
+	if (e.kind == ExprKind.Call ||
+		e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.TextureStore) {
+		return true;
+	}
+	return e.operands.some((o) => bareEffect(o));
+}
+
+function keepsOrder(e: ShaderExpr): boolean {
+	if (!isHoisted(e) && hoists(e) && bareEffect(e)) { return false; }
+	return !e.operands.some((o) => !keepsOrder(o));
+}
+
+function hoistReason(s: ShaderStmt): string {
+	const parts = [s.target, s.expr];
+	const hoisting = parts.some((e) => hoists(e));
+	const ordered = !parts.some((e) => !keepsOrder(e)) &&
+		!(hoisting && parts.some((e) => bareEffect(e)));
+	return ordered ? "" : "beside a call it would run ahead of";
+}
+
 function conditionalText(p: Printer, e: ShaderExpr): string {
 	if (e.type.kind != ShaderTypeKind.Scalar && e.type.kind != ShaderTypeKind.Vector) {
 		return refusal(p, "a conditional of a " + e.type.kind.toString());
 	}
-	if (hasEffect(e.operands[1]) || hasEffect(e.operands[2])) {
-		return refusal(p, "a conditional whose branch calls a function");
+	if (!isHoisted(e)) {
+		return "select(" + exprText(p, e.operands[2]) + ", " + exprText(p, e.operands[1]) + ", " +
+			exprText(p, e.operands[0]) + ")";
 	}
-	return "select(" + exprText(p, e.operands[2]) + ", " + exprText(p, e.operands[1]) + ", " +
-		exprText(p, e.operands[0]) + ")";
+	if (p.unhoistable != "") {
+		return refusal(p, "a conditional whose branch calls a function, " + p.unhoistable);
+	}
+	const condition = exprText(p, e.operands[0]);
+	const name = nameIn(p, p.scope, "selected");
+	const depth = p.depth;
+	emit(p, depth, "var " + name + " : " + typeText(p, e.type) + ";");
+	emit(p, depth, "if (" + condition + ") {");
+	p.depth = depth + 1;
+	emit(p, depth + 1, name + " = " + exprText(p, e.operands[1]) + ";");
+	emit(p, depth, "} else {");
+	emit(p, depth + 1, name + " = " + exprText(p, e.operands[2]) + ";");
+	emit(p, depth, "}");
+	p.depth = depth;
+	return name;
 }
 
 function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
@@ -563,6 +616,8 @@ function stmtsText(p: Printer, stmts: ShaderStmt[], depth: int32): void {
 }
 
 function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
+	p.depth = depth;
+	p.unhoistable = hoistReason(s);
 	match (s.kind) {
 		StmtKind.Block => {
 			emit(p, depth, "{");
@@ -580,6 +635,7 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 			const value = nameIn(p, p.scope, "swizzled");
 			const base = exprText(p, s.target.operands[0]);
 			emit(p, depth, "{");
+			p.depth = depth + 1;
 			emit(p, depth + 1, "let " + value + " = " + exprText(p, s.expr) + ";");
 			for (let k = 0; k < s.target.components.length; k++) {
 				const c = s.target.components[k];
@@ -601,6 +657,7 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 		StmtKind.FeatureIf => refusal(p, "a feature branch is still undecided: specialize the " +
 			"module first"),
 		StmtKind.While => {
+			p.unhoistable = "in a loop condition";
 			emit(p, depth, "while (" + exprText(p, s.expr) + ") {");
 			stmtsText(p, s.body, depth + 1);
 			emit(p, depth, "}");
@@ -628,9 +685,12 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 }
 
 function forText(p: Printer, s: ShaderStmt, depth: int32): void {
+	const header = fitsHeader(s.init, false) && fitsHeader(s.update, true);
+	if (header && s.init.length > 0) { p.unhoistable = hoistReason(s.init[0]); }
+	const init = header && s.init.length > 0 ? simpleText(p, s.init[0]) : "";
+	p.unhoistable = "in a loop condition or update";
 	const condition = isVoid(s.expr) ? "" : exprText(p, s.expr);
-	if (fitsHeader(s.init, false) && fitsHeader(s.update, true)) {
-		const init = s.init.length == 0 ? "" : simpleText(p, s.init[0]);
+	if (header) {
 		const update = s.update.length == 0 ? "" : simpleText(p, s.update[0]);
 		emit(p, depth, "for (" + init + "; " + condition + "; " + update + ") {");
 		stmtsText(p, s.body, depth + 1);
