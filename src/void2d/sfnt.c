@@ -370,6 +370,12 @@ int void2dSfntPeek(const char *path, int index) {
 		(glyfSpan.found ? locaSpan.found : cffSpan.found)) {
 		summary.flags |= VOID2D_SFNT_DRAWABLE;
 	}
+	if (summary.index != 0 && headSpan.found && hheaSpan.found && hmtxSpan.found &&
+		findTable(directory, tables, fileSize, "maxp").found &&
+		(findTable(directory, tables, fileSize, "hvgl").found ||
+			findTable(directory, tables, fileSize, "CFF2").found)) {
+		summary.flags |= VOID2D_SFNT_OS_OUTLINES;
+	}
 	if ((findTable(directory, tables, fileSize, "CBDT").found &&
 			findTable(directory, tables, fileSize, "CBLC").found) ||
 		findTable(directory, tables, fileSize, "sbix").found) {

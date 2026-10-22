@@ -9,6 +9,7 @@ import {
 	glyphIndex,
 	faceHeights,
 	colourBuilt,
+	platformFacesBuilt,
 	FaceBytesError,
 	holdFaceBytes,
 } from "./face";
@@ -542,7 +543,7 @@ function discoveredFace(font: FontId, codepoint: int32, want: Presentation): int
 		const path: string = answers[k].path;
 		const collectionIndex: int32 = answers[k].index;
 		if (drawableAt(path, collectionIndex) && coversAtPath(path, collectionIndex, codepoint) &&
-			presentationOfPath(path, collectionIndex) == want) {
+			presentationOfPath(path, collectionIndex) == want && osOpens(path, collectionIndex)) {
 			discoveries.push({ path: path, index: collectionIndex });
 			chosen = (discoveries.length as int32) - 1;
 			break;
@@ -671,7 +672,14 @@ function drawableAt(path: string, collectionIndex: int32): boolean {
 	const summary = summaryAtPath(path, collectionIndex);
 	if (!summary.ok) { return false; }
 	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
-	return summary.value.drawable || (colour && colourBuilt());
+	return summary.value.drawable || (colour && colourBuilt()) ||
+		(summary.value.osOutlines && platformFacesBuilt());
+}
+
+function osOpens(path: string, collectionIndex: int32): boolean {
+	const summary = summaryAtPath(path, collectionIndex);
+	if (!summary.ok || !summary.value.osOutlines || summary.value.drawable) { return true; }
+	return faceAtPath(path, collectionIndex).ok;
 }
 
 function fallbackUsable(index: int32): boolean {
@@ -679,10 +687,15 @@ function fallbackUsable(index: int32): boolean {
 	const path: string = fallbacks[index].path;
 	const collectionIndex: int32 = fallbacks[index].collectionIndex;
 	const summary = summaryAtPath(path, collectionIndex);
-	if (!summary.ok || drawableAt(path, collectionIndex)) { return true; }
+	if (!summary.ok || (drawableAt(path, collectionIndex) && osOpens(path, collectionIndex))) {
+		return true;
+	}
 	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
 	console.log(
-		colour
+		summary.value.osOutlines && platformFacesBuilt()
+			? `void2d: fallback font ${path} has outlines only the OS draws, and the OS did not ` +
+				`open it; it is skipped`
+			: colour
 			? `void2d: fallback font ${path} holds colour glyphs but no outlines, ` +
 				`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`
 			: `void2d: fallback font ${path} has no outlines or colour glyphs Void can draw; ` +
