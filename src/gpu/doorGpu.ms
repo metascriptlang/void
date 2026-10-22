@@ -630,8 +630,11 @@ export function doorViewIsColorAttachment(view: uint32): int32 {
 @exportName("doorApplyPipeline")
 export function doorApplyPipeline(pipeline: uint32): void {
 	frameStats[DOOR_STAT_PIPELINES]++;
-	current = pipelineIndex(pipeline);
-	pass.setPipeline(pipelines[current].pipeline);
+	const index = pipelineIndex(pipeline);
+	if (index != current) {
+		current = index;
+		pass.setPipeline(pipelines[current].pipeline);
+	}
 	uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
 }
 
