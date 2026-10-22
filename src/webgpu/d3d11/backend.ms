@@ -39,6 +39,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	checkedTexelWritePitch,
 } from "../types.ms";
 import {
 	D3dBlobImpl,
@@ -88,7 +89,6 @@ import {
 	d3dIaSetVertexBuffer,
 	d3dInputElement,
 	d3dMapWrite,
-	d3dMapWriteTexture,
 	d3dOmSetBlendState,
 	d3dOmSetDepthStencilState,
 	d3dPsSetConstantBuffer,
@@ -117,6 +117,7 @@ import {
 	d3dSetViewport,
 	d3dTextureNative,
 	d3dUpdateIfChanged,
+	d3dUpdateTexture,
 	d3dUniformOffsetting,
 	d3dReleaseUniformOffsetting,
 	d3dVsSetConstantBufferRange,
@@ -929,7 +930,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	const copyDestination = has(usage, GPUTextureUsage.COPY_DST as int32);
 	if (attachment && copyDestination) {
-		stop("COPY_DST with RENDER_ATTACHMENT: D3D11 writes textures through a dynamic map");
+		stop("COPY_DST with RENDER_ATTACHMENT has no Void caller: a multisampled target takes no UpdateSubresource");
 	}
 	if (sampleCount > 1 && !attachment) { stop("a multisampled texture must be a RENDER_ATTACHMENT"); }
 	let bindFlags = BIND_SHADER_RESOURCE;
@@ -939,9 +940,9 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		width,
 		height,
 		info.texture,
-		copyDestination ? USAGE_DYNAMIC : USAGE_DEFAULT,
+		USAGE_DEFAULT,
 		bindFlags,
-		copyDestination ? CPU_ACCESS_WRITE : 0,
+		0,
 		sampleCount,
 	);
 	if (native == null) { stop(`CreateTexture2D failed for ${labelOf(descriptor.label)}`); }
@@ -985,41 +986,30 @@ export function writeTexture<T>(
 ): void {
 	const index = textureIndex(destination.texture.id);
 	const bytes = (data.length as int64) * (sizeof T as int64);
-	const [rowPitch, rowBytes] = textureCopyShape(index, bytes, layout, size);
-	const written = d3dMapWriteTexture(
+	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
+		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
+	}
+	const bytesPerPixel = formatInfo(textures[index].format, "texture format").bytesPerPixel;
+	const rowPitch = checkedTexelWritePitch(
+		textures[index].width,
+		textures[index].height,
+		bytesPerPixel,
+		bytes,
+		destination,
+		layout,
+		size,
+	);
+	d3dUpdateTexture(
 		context,
 		textures[index].native,
 		data[0],
 		layout.offset,
 		rowPitch,
-		rowBytes,
-		textures[index].height,
+		destination.origin.x,
+		destination.origin.y,
+		size.width,
+		size.height,
 	);
-	if (written == 0) { stop(`Map for writeTexture failed on GPUTexture ${destination.texture.id}`); }
-}
-
-function textureCopyShape(
-	index: int32,
-	bytes: int64,
-	layout: GPUTexelCopyBufferLayout,
-	size: GPUExtent3D,
-): [int32, int32] {
-	const width = textures[index].width;
-	const height = textures[index].height;
-	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
-		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
-	}
-	if (size.width != width || size.height != height || size.depthOrArrayLayers > 1) {
-		stop("writeTexture covers the whole texture on D3D11 (a WRITE_DISCARD map, sokol 15249)");
-	}
-	const rowBytes = width * formatInfo(textures[index].format, "texture format").bytesPerPixel;
-	const rowPitch = layout.bytesPerRow == 0 ? rowBytes : layout.bytesPerRow;
-	if (rowPitch < rowBytes) { stop(`writeTexture bytesPerRow ${rowPitch} is below a row of ${rowBytes}`); }
-	const needed = layout.offset + (rowPitch as int64) * ((height - 1) as int64) + (rowBytes as int64);
-	if (layout.offset < 0 || needed > bytes) {
-		stop(`writeTexture needs ${needed} bytes of data and was given ${bytes}`);
-	}
-	return [rowPitch, rowBytes];
 }
 
 export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {

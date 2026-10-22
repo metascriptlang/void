@@ -43,14 +43,16 @@ D3dTexture d3dCreateTexture2D(
 	int32_t cpuAccess,
 	int32_t sampleCount);
 void d3dReleaseTexture(D3dTexture texture);
-int32_t d3dMapWriteTexture(
+void d3dUpdateTexture(
 	D3dContext context,
 	D3dTexture texture,
 	void *data,
 	int64_t offset,
 	int32_t sourceRowPitch,
-	int32_t rowBytes,
-	int32_t rows);
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height);
 D3dSrv d3dCreateSrv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled);
 D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled);
 D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled);

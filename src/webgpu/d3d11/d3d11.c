@@ -112,29 +112,18 @@ D3dTexture d3dCreateTexture2D(
 
 void d3dReleaseTexture(D3dTexture texture) { if (texture) ID3D11Texture2D_Release((ID3D11Texture2D *)texture); }
 
-int32_t d3dMapWriteTexture(
+void d3dUpdateTexture(
 	D3dContext context,
 	D3dTexture texture,
 	void *data,
 	int64_t offset,
 	int32_t sourceRowPitch,
-	int32_t rowBytes,
-	int32_t rows) {
-	D3D11_MAPPED_SUBRESOURCE mapped;
-	ID3D11Resource *resource = (ID3D11Resource *)texture;
-	HRESULT hr = ID3D11DeviceContext_Map(CONTEXT(context), resource, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	if (FAILED(hr)) return 0;
-	const uint8_t *source = (const uint8_t *)data + offset;
-	uint8_t *destination = (uint8_t *)mapped.pData;
-	if ((UINT)sourceRowPitch == mapped.RowPitch) {
-		memcpy(destination, source, (size_t)sourceRowPitch * (size_t)(rows - 1) + (size_t)rowBytes);
-	} else {
-		for (int32_t row = 0; row < rows; row++) {
-			memcpy(destination + (size_t)row * mapped.RowPitch, source + (size_t)row * (size_t)sourceRowPitch, (size_t)rowBytes);
-		}
-	}
-	ID3D11DeviceContext_Unmap(CONTEXT(context), resource, 0);
-	return 1;
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height) {
+	D3D11_BOX box = { (UINT)x, (UINT)y, 0, (UINT)(x + width), (UINT)(y + height), 1 };
+	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)texture, 0, &box, (const uint8_t *)data + offset, (UINT)sourceRowPitch, 0);
 }
 
 D3dSrv d3dCreateSrv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled) {
