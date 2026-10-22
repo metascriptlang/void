@@ -174,3 +174,22 @@ test "a roughness texel of 0 floors at 0.089 instead of leaving the BRDF undefin
 	assert !nearColor(colorOf(FULL, texel(1.0, 0.2, 0.0), texel(1.0, 1.0, 1.0)),
 		expectedColor(0.0, 0.089, 1.0));
 }
+
+test "a pbr-maps key that emits reads its factors from the emissive layout" {
+	const white: Texture2d = texel(1.0, 1.0, 1.0);
+	let b: LitBindings = bindingsOf(FULL, texel(0.0, 0.5, 0.5), white);
+	b.pbrEmissiveMaterialParams = {
+		material: vec4f(0.0, 0.0, 0.0, 0.5),
+		pbr: vec4f(0.5, 0.8, 1.0, 1.0),
+		emissive: vec4f(0.0, 0.0, 0.0, 1.0),
+	};
+	const color: Vec3f = litTexturedFs({
+		worldPosition: toVec3f(POSITION),
+		worldNormal: toVec3f(UP),
+		surfaceUv: vec2f(0.5, 0.5),
+		baseColor: BASE,
+		frontFacing: true,
+	}, b, { pbr: true, pbrMaps: true, emissive: true }).color.rgb;
+	assert nearColor(color, expectedColor(0.25, 0.4, 1.0));
+	assert !nearColor(color, expectedColor(0.5, 0.5, 1.0));
+}

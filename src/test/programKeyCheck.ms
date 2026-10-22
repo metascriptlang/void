@@ -1156,3 +1156,64 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 	assert MATERIAL_TEXTURE_ROLES == 7 && !colorRole(5) && !colorRole(6) && colorRole(0);
 	assert !declares({ ...ProgramKey.of(Program.Lit).withPbr(), pbrMaps: true });
 }
+
+test "a skinned pbr key is declared on the skinned layout in every variant a glTF material makes" {
+	const lit: ProgramKey = ProgramKey.of(Program.Lit).withPbr();
+	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();
+	const maps: ProgramKey = textured.withPbrMaps();
+	const variants: Vec<ProgramKey> = [
+		lit, textured, maps, textured.withNormalMap(), maps.withNormalMap(),
+	];
+	for (const key of variants) {
+		const layout: VertexLayout = key.program == Program.Lit ? VertexLayout.SkinLit :
+			(key.normalMap ? VertexLayout.SkinLitTexturedTangent : VertexLayout.SkinLitTextured);
+		for (const cut of [false, true]) {
+			for (const shadowed of [false, true]) {
+				let made: ProgramKey = cut ? key.withCutout() : key;
+				made = shadowed ? made.withShadowed() : made;
+				const skinned: ProgramKey = made.withSkin();
+				assert declares(skinned) && vertexLayoutOf(skinned) == layout;
+				assert uniformBlockLength(skinned, MATERIAL_UNIFORM_SLOT) == PBR_MATERIAL_UNIFORM_LENGTH;
+				assert uniformBlockLength(skinned, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
+				assert textureSlotMask(skinned) == textureSlotMask(made);
+				const cast = castIn(skinned);
+				assert !cast.ok || (cast.value.skinned && !cast.value.pbr && !cast.value.pbrMaps);
+			}
+		}
+	}
+	assert castIn(textured.withSkin()).ok && castIn(lit.withSkin().withCutout()).ok;
+}
+
+test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds view slot 3" {
+	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withEmissive();
+	assert base.bits() == ProgramKey.of(Program.LitTextured).bits() + 4096 + 65536;
+	assert movingBase(base) == PBR_MATERIAL_UNIFORM_LENGTH && emissiveBase(base) == movingBase(base);
+	assert movingBase(ProgramKey.of(Program.LitTextured)) == MATERIAL_UNIFORM_LENGTH;
+	const maps: ProgramKey = base.withPbrMaps();
+	for (const key of [base, maps, base.withNormalMap(), maps.withNormalMap()]) {
+		for (const cut of [false, true]) {
+			for (const shadowed of [false, true]) {
+				let made: ProgramKey = cut ? key.withCutout() : key;
+				made = shadowed ? made.withShadowed() : made;
+				assert declares(made);
+				assert uniformBlockLength(made, MATERIAL_UNIFORM_SLOT)
+					== emissiveBase(made) + EMISSIVE_LENGTH;
+				const views: int32 = textureSlotMask(made) as int32;
+				assert (views & (1 << EMISSIVE_VIEW_SLOT)) != 0 && (views & 1) != 0;
+				assert (views & 6) == (key.pbrMaps ? 6 : 0);
+				const cast = castIn(made);
+				assert !cast.ok || (!cast.value.emissive && !cast.value.pbr);
+			}
+		}
+	}
+	assert textureSlotMask(base) == 9 && textureSlotMask(maps) == 15;
+	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41;
+}
+
+test "the pbr combinations with no block layout or no row are not declared" {
+	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();
+	assert !declares(textured.withEmissive().withSkin());
+	assert !declares(textured.withUvTransform()) && !declares(textured.withUvTransform().withSkin());
+	assert !declares(textured.withEmissive().withUvTransform());
+	assert declares(textured.withSkin()) && declares(textured.withEmissive());
+}

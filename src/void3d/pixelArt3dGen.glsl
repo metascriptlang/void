@@ -496,10 +496,17 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
-#ifdef PBR
+#if defined(PBR) && !defined(EMISSIVE)
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
     vec4 pbr;
+};
+#endif
+#if defined(PBR) && defined(EMISSIVE)
+layout(binding=3) uniform pbrEmissiveMaterialParams {
+    vec4 material;
+    vec4 pbr;
+    vec4 emissive;
 };
 #endif
 layout(binding=1) uniform lightParams {
@@ -535,7 +542,11 @@ layout(location=0) out vec4 color;
 layout(location=1) out vec4 normal;
 vec4 materialOf() {
 #ifdef PBR
+#ifdef EMISSIVE
     return material;
+#else
+    return material;
+#endif
 #else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
@@ -769,7 +780,7 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if defined(EMISSIVE) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))
+#if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
@@ -787,10 +798,17 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
-#ifdef PBR
+#if defined(PBR) && !defined(EMISSIVE)
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
     vec4 pbr;
+};
+#endif
+#if defined(PBR) && defined(EMISSIVE)
+layout(binding=3) uniform pbrEmissiveMaterialParams {
+    vec4 material;
+    vec4 pbr;
+    vec4 emissive;
 };
 #endif
 layout(binding=1) uniform lightParams {
@@ -847,7 +865,11 @@ layout(location=0) out vec4 color;
 layout(location=1) out vec4 normal;
 vec4 materialOf() {
 #ifdef PBR
+#ifdef EMISSIVE
     return material;
+#else
+    return material;
+#endif
 #else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
@@ -1004,10 +1026,14 @@ vec4 emittedOver(vec4 color_1, vec3 texel, vec4 emissive_1) {
 #endif
 #ifdef EMISSIVE
 vec4 emissiveOf() {
+#ifdef PBR
+    return emissive;
+#else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
     return emissive;
 #else
     return emissive;
+#endif
 #endif
 }
 #endif

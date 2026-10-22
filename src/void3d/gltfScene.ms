@@ -253,7 +253,8 @@ function declaresPbr(key: ProgramKey): boolean {
 }
 
 // The material's block: the setup's floats with the double-sided flag and alpha kill written
-// over them, and an emissive key's colour and strength after them at emissiveBase.
+// over them, a pbr key's factors after them, and an emissive key's colour and strength after
+// those at emissiveBase.
 export function gltfBlockOf(
 	setup: GltfMaterialSetup,
 	source: GltfMaterial,
@@ -264,7 +265,7 @@ export function gltfBlockOf(
 	values[MATERIAL_DOUBLE_SIDED] = source.doubleSided ? 1.0 : 0.0;
 	values[MATERIAL_ALPHA_KILL] = source.alphaKill;
 	if (program.pbr) {
-		if (program.uvTransform || program.emissive) { unreachable; }
+		if (program.uvTransform) { unreachable; }
 		const held = pbrValuesOf(source, program);
 		if (!held.ok) { unreachable; }
 		if (held.ok) {
@@ -276,7 +277,6 @@ export function gltfBlockOf(
 				values[PBR_OCCLUSION_STRENGTH] = maps.occlusionStrength;
 			}
 		}
-		return values;
 	}
 	if (program.uvTransform) {
 		if ((values.length as int32) != movingBase(program)) { unreachable; }
@@ -415,8 +415,10 @@ export function addGltfAssets(
 		const material: int32 = data.meshMaterials[mesh];
 		const source: GltfMaterial = material == DEFAULT_MATERIAL
 			? DEFAULT_SOURCE : data.materials[material];
-		if (source.pbr !== null) { return Result.err(GltfSceneError.PbrFeatureRefused); }
-		if (!declares(gltfProgramOf(source).withSkin())) {
+		const skinned: ProgramKey = gltfProgramOf(source).withSkin();
+		if (skinned.pbr) {
+			if (!declaresPbr(skinned)) { return Result.err(GltfSceneError.PbrFeatureRefused); }
+		} else if (!declares(skinned)) {
 			return Result.err(GltfSceneError.UndeclaredProgram);
 		}
 	}

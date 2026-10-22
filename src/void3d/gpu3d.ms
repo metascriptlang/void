@@ -446,9 +446,11 @@ export const FRAME_TONE_MODE: int32 = 3;
 export const FRAME_CAMERA_POSITION: int32 = 4;
 
 // A pbr key's block (pbrMaterialParams in shader3d.ms): the lit block, then one vec4 holding
-// metalness, roughness and occlusion, all in 0..1. No pbr key moves or emits, so it starts at
-// PBR_VALUES = MATERIAL_UNIFORM_LENGTH. Heaps' defaults (PbrMaterial props): 0, 1 and 1; a block
-// is zero-filled, so material.ms pbrDefaults writes them, because roughness 0 has no valid BRDF.
+// metalness, roughness and occlusion, all in 0..1, at PBR_VALUES = MATERIAL_UNIFORM_LENGTH for
+// every pbr key. It is part of the key's own block, so movingBase and emissiveBase start after it:
+// an emitting key adds the emissive vec4 at emissiveBase (pbrEmissiveMaterialParams).
+// Heaps' defaults (PbrMaterial props): 0, 1 and 1; a block is zero-filled,
+// so material.ms pbrDefaults writes them, because roughness 0 has no valid BRDF.
 export const PBR_VALUES: int32 = MATERIAL_UNIFORM_LENGTH;
 export const PBR_METALNESS: int32 = PBR_VALUES;
 export const PBR_ROUGHNESS: int32 = PBR_VALUES + 1;
@@ -458,6 +460,7 @@ export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 4;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {
+	if (key.pbr) { return PBR_MATERIAL_UNIFORM_LENGTH; }
 	return key.program == Program.UnlitTextured ?
 		UNLIT_MATERIAL_UNIFORM_LENGTH : MATERIAL_UNIFORM_LENGTH;
 }

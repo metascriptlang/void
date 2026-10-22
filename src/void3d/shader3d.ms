@@ -187,6 +187,13 @@ export struct PbrMaterialParams {
 	pbr: Vec4f;
 }
 
+// gpu3d.ms PBR_* then EMISSIVE_*: a pbr key that emits holds the emissive vec4 after the pbr one.
+export struct PbrEmissiveMaterialParams {
+	material: Vec4f;
+	pbr: Vec4f;
+	emissive: Vec4f;
+}
+
 export struct EmissiveMaterialParams {
 	material: Vec4f;
 	emissive: Vec4f;
@@ -255,6 +262,7 @@ export struct LitBindings {
 	@binding(3) emissiveMaterialParams: EmissiveMaterialParams;
 	@binding(3) movingEmissiveMaterialParams: MovingEmissiveMaterialParams;
 	@binding(3) pbrMaterialParams: PbrMaterialParams;
+	@binding(3) pbrEmissiveMaterialParams: PbrEmissiveMaterialParams;
 	@binding(1) lightParams: LightParams;
 	@binding(6) frameParams: FrameParams;
 	@binding(5) shadowParams: ShadowParams;
@@ -739,7 +747,11 @@ function moving(b: LitBindings, key: LitKey): boolean {
 // picks the member from the block the program declares.
 export function materialOf(b: LitBindings, key: LitKey): Vec4f {
 	if (key.pbr) {
-		return b.pbrMaterialParams.material;
+		if (key.emissive) {
+			return b.pbrEmissiveMaterialParams.material;
+		} else {
+			return b.pbrMaterialParams.material;
+		}
 	} else {
 		if (key.uvTransform || key.backTexture || key.dissolve) {
 			if (key.emissive) {
@@ -758,10 +770,22 @@ export function materialOf(b: LitBindings, key: LitKey): Vec4f {
 }
 
 export function emissiveOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.uvTransform || key.backTexture || key.dissolve) {
-		return b.movingEmissiveMaterialParams.emissive;
+	if (key.pbr) {
+		return b.pbrEmissiveMaterialParams.emissive;
 	} else {
-		return b.emissiveMaterialParams.emissive;
+		if (key.uvTransform || key.backTexture || key.dissolve) {
+			return b.movingEmissiveMaterialParams.emissive;
+		} else {
+			return b.emissiveMaterialParams.emissive;
+		}
+	}
+}
+
+export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.pbrEmissiveMaterialParams.pbr;
+	} else {
+		return b.pbrMaterialParams.pbr;
 	}
 }
 
@@ -895,10 +919,10 @@ export function pbrAmbient(
 
 // Roughness floors at 0.089 as Bevy's clampedPerceptualRoughness (pbr_lighting.wesl:550): a
 // texel of 0 has no BRDF response, and a texture cannot be refused per pixel.
-export function pbrMapped(b: LitBindings, uv: Vec2f): Vec3f {
+export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f): Vec3f {
 	const metalRoughTexel = textureSample(b.metalRoughTexture, b.baseSampler, uv);
 	const occluded = textureSample(b.occlusionTexture, b.baseSampler, uv).r;
-	const values = b.pbrMaterialParams.pbr;
+	const values = pbrOf(b, key);
 	return vec3f(
 		values.x * metalRoughTexel.b,
 		max(values.y * metalRoughTexel.g, 0.089),
@@ -918,7 +942,7 @@ export function pbrShade(
 	key: LitKey,
 	values: Vec3f,
 ): Vec4f {
-	const albedo = srgbToLinear(saturated(surfaceColor.rgb, b.pbrMaterialParams.material.y));
+	const albedo = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	const view = b.frameParams.cameraPosition.xyz - position;
 	const dir = b.lightParams.dirLight;
 	let shadow: float32 = 1.0;
@@ -971,7 +995,7 @@ export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): Lit
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
-		const pbrValues = b.pbrMaterialParams.pbr.xyz;
+		const pbrValues = pbrOf(b, key).xyz;
 		shaded = pbrShade(n, input.worldPosition, input.baseColor, b, key, pbrValues);
 	} else {
 		shaded = litShade(n, input.worldPosition, input.baseColor, b, key);
@@ -1032,9 +1056,9 @@ export function litTexturedFs(
 	const surfaceColor = vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a);
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
-		let pbrValues = b.pbrMaterialParams.pbr.xyz;
+		let pbrValues = pbrOf(b, key).xyz;
 		if (key.pbrMaps) {
-			pbrValues = pbrMapped(b, uv);
+			pbrValues = pbrMapped(b, key, uv);
 		}
 		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key, pbrValues);
 	} else {

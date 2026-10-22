@@ -3,7 +3,7 @@
 // independent ambient formula.
 
 import { Vec3, vec3 } from "../math/math3d";
-import { Texture2d, Vec3f, Vec4f, mat4x4f, vec3f, vec4f } from "../shader/std";
+import { Texture2d, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
 import {
 	Program,
 	ProgramKey,
@@ -26,8 +26,11 @@ import {
 import {
 	LitBindings,
 	LitKey,
+	VertexBindings,
 	linearToSrgb,
 	litFs,
+	litTexturedFs,
+	litVs,
 	pbrDirect,
 	srgbToLinear,
 } from "../void3d/shader3d";
@@ -293,4 +296,82 @@ test "pbrBlock holds the values at PBR_* after the lit block and refuses roughne
 	if (declares(key)) {
 		assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == PBR_MATERIAL_UNIFORM_LENGTH;
 	}
+}
+
+// A pbr key that emits reads the emissive layout, and nothing else; the pbr-only block holds
+// values no right reading can reach.
+function emittingBindings(
+	metalness: float32, roughness: float32, emitted: Vec4f, glow: Texture2d,
+): LitBindings {
+	let b: LitBindings = bindingsAt(CAMERA, 0.9, 0.1, 0.0, 1.0);
+	b.pbrEmissiveMaterialParams = {
+		material: vec4f(0.0, 0.0, 0.0, 0.5),
+		pbr: vec4f(metalness, roughness, 1.0, 0.0),
+		emissive: emitted,
+	};
+	b.emissiveTexture = glow;
+	return b;
+}
+
+function emittingColor(b: LitBindings): Vec3f {
+	return litTexturedFs({
+		worldPosition: toVec3f(POSITION),
+		worldNormal: toVec3f(UP),
+		surfaceUv: vec2f(0.5, 0.5),
+		baseColor: BASE,
+		frontFacing: true,
+	}, b, { pbr: true, emissive: true }).color.rgb;
+}
+
+test "an emitting pbr key adds colour times texel times strength after the lighting, in linear light" {
+	const glow: Texture2d = { width: 1, height: 1, texels: [0.5, 0.25, 1.0, 1.0] };
+	const emitted: Vec4f = vec4f(0.6, 0.3, 0.1, 2.0);
+	const lit: Vec3f = expectedColor(0.0, 0.7, 1.0, 1.0);
+	const added: Vec3f = linearToSrgb(srgbToLinear(lit) + srgbToLinear(emitted.rgb) *
+		srgbToLinear(vec3f(0.5, 0.25, 1.0)) * 2.0);
+	const color: Vec3f = emittingColor(emittingBindings(0.0, 0.7, emitted, glow));
+	assert nearColor(color, added) && color.x > lit.x;
+	assert nearColor(emittingColor(emittingBindings(0.0, 0.7, vec4f(0.0, 0.0, 0.0, 1.0), glow)), lit);
+	assert !nearColor(color, linearToSrgb(srgbToLinear(lit) + emitted.rgb * 0.5 * 2.0));
+}
+
+test "an emitting pbr key still glows with no light on it" {
+	const glow: Texture2d = { width: 1, height: 1, texels: [1.0, 1.0, 1.0, 1.0] };
+	let b: LitBindings = emittingBindings(0.0, 0.7, vec4f(0.5, 0.2, 0.1, 1.0), glow);
+	b.lightParams.ambient = none();
+	b.lightParams.dirLight = none();
+	const dark: Vec3f = emittingColor(b);
+	assert nearColor(dark, linearToSrgb(srgbToLinear(vec3f(0.5, 0.2, 0.1))));
+}
+
+function skinnedPosition(x: float32, y: float32, z: float32): Vec3f {
+	let rows: Vec4f[192] = [vec4f(0.0)];
+	rows[0] = vec4f(1.0, 0.0, 0.0, x);
+	rows[1] = vec4f(0.0, 1.0, 0.0, y);
+	rows[2] = vec4f(0.0, 0.0, 1.0, z);
+	let model = identity();
+	model.columns[3] = vec4f(1000.0, 2000.0, 3000.0, 1.0);
+	const b: VertexBindings = {
+		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none() },
+		modelParams: { model: model, normalModel: model },
+		modelTransformParams: { model: model },
+		skinParams: { skinRows: rows },
+	};
+	return litVs({
+		position: vec3f(0.0, 0.0, 0.0), normal: toVec3f(UP), color: BASE,
+		skinJoints: vec4f(0.0), skinWeights: vec4f(1.0, 0.0, 0.0, 0.0),
+	}, b, { pbr: true, skinned: true }).worldPosition;
+}
+
+function colorAt(position: Vec3f): Vec3f {
+	return litFs({
+		worldPosition: position, worldNormal: toVec3f(UP), baseColor: BASE, frontFacing: true,
+	}, bindingsAt(CAMERA, 0.0, 0.7, 1.0, 1.0), { pbr: true }).color.rgb;
+}
+
+test "a skinned pbr vertex is lit from its skinned world position, not from the mesh's model" {
+	const home: Vec3f = skinnedPosition(POSITION.x, POSITION.y, POSITION.z);
+	assert nearVec(home, POSITION);
+	assert nearColor(colorAt(home), expectedColor(0.0, 0.7, 1.0, 1.0));
+	assert !nearColor(colorAt(skinnedPosition(-2.0, 0.0, 0.1)), expectedColor(0.0, 0.7, 1.0, 1.0));
 }
