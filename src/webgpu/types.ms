@@ -111,7 +111,9 @@ export type GPUBlendFactor =
 	| "one-minus-dst"
 	| "dst-alpha"
 	| "one-minus-dst-alpha"
-	| "src-alpha-saturated";
+	| "src-alpha-saturated"
+	| "constant"
+	| "one-minus-constant";
 export type GPUBlendOperation = "add" | "subtract" | "reverse-subtract" | "min" | "max";
 export type GPUVertexFormat =
 	| "uint8x2"
