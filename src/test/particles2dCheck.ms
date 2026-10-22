@@ -106,3 +106,28 @@ test "a particle whose life ends leaves the node" {
 	for (let k = 0; k < 121; k++) { const _n = e.update(1.0 / 60.0, identity2d()); }
 	assert e.node.count() == 0;
 }
+
+test "a falling particle's trail draws as a strip of its width down the screen" {
+	const s = fresh();
+	let a = single();
+	a.main.gravityModifier = constantCurve(1.0);
+	a.trails.enabled = true;
+	a.trails.minVertexDistance = 0.0;
+	a.trails.colorOverTrail = constantColor(rgbaColor(1.0, 1.0, 1.0, 0.5));
+	let e = emitter(s, a, tile(fakeTexture(5), 16.0, 16.0));
+	e.play(at(100.0, 50.0));
+	for (let k = 0; k < 20; k++) { const n = e.update(1.0 / 60.0, at(100.0, 50.0)); }
+	const g: NodeRef = e.trailNodes[0];
+	const mesh: float32[] = s.meshes[s.payloads[g.id.index]].mesh;
+	const vertices: int32 = (mesh.length as int32) / 8;
+	assert vertices >= 6 && vertices % 6 == 0;
+	let lowest: float32 = 0.0;
+	for (let v = 0; v < vertices; v++) {
+		const x: float32 = mesh[v * 8];
+		assert approx(x, 98.0) || approx(x, 102.0);
+		if (mesh[v * 8 + 1] > lowest) { lowest = mesh[v * 8 + 1]; }
+		assert approx(mesh[v * 8 + 4], 1.0) && approx(mesh[v * 8 + 5], 0.5) && approx(mesh[v * 8 + 7], 0.5);
+	}
+	// The particle fell, and screen y grows downward.
+	assert lowest > 50.0 && approx(first(e).y, lowest);
+}

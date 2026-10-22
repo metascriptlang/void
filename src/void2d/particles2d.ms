@@ -1,8 +1,9 @@
 // A particle effect drawn by void2d: the effect simulates in Unity's units with y up, and every
 // live particle becomes one cell of a TileGroup, its sheet frame as the cell's tile
 // (docs/PARTICLES.md: one model for 2D and 3D; the TileGroup is RENDER §A.1's 2D particle shape).
+// A system's trails draw as triangle strips into a Graphics node under its particles.
 
-import { Mat4 } from "../math/math3d";
+import { Mat4, Vec3 } from "../math/math3d";
 import { ParticleEffect, RenderMode } from "../particles/asset";
 import { unitDraw } from "../particles/curve";
 import { EffectInstance, EffectError, playEffect, stopEffect, updateEffect } from "../particles/effect";
@@ -10,8 +11,12 @@ import {
 	ParticleSystem, ParticleSystemError, POS_X, POS_Y, ROT_Z, SIZE_X, SIZE_Y, COLOR_R, COLOR_G,
 	COLOR_B, COLOR_A, FRAME, DRAW_FLIP_U, DRAW_FLIP_V,
 } from "../particles/system";
+import { TrailChains, TrailVertex, buildTrails } from "../particles/trail";
 import { Scene2D, NodeRef, TileCell } from "./node";
-import { Tile, Transform2D, rgba } from "./types";
+import { fillTexTriangles } from "./graphics";
+import { Tile, Transform2D, Vec2, Color, rgba, vec2, whiteTile } from "./types";
+
+const MITER_LIMIT: float32 = 4.0;
 
 export struct ParticleEmitter2D {
 	effect: EffectInstance;
@@ -20,6 +25,16 @@ export struct ParticleEmitter2D {
 	// Per system: its sheet frames, each centred on the particle.
 	frames: Vec<Vec<Tile>>;
 	cells: TileCell[];
+	// Holds the trail nodes, then the particles' node: attach it to draw the effect.
+	root: NodeRef;
+	// Per system with trails: its Graphics node and the tile its trails sample.
+	trailSystems: Vec<int32>;
+	trailNodes: Vec<NodeRef>;
+	trailTiles: Vec<Tile>;
+	chains: TrailChains;
+	points: Vec2[];
+	uvs: Vec2[];
+	colors: Color[];
 }
 
 // The y-up placement of an emitter given in void2d's y-down frame.
@@ -67,7 +82,38 @@ export function particles(
 	if (!made.ok) { return Result.err(made.error); }
 	let frames: Vec<Vec<Tile>> = [];
 	for (let k = 0; k < (tiles.length as int32); k++) { frames.push(sheetFrames(tiles[k], made.value.systems[k])); }
-	return Result.ok({ effect: made.value, node: s.tileGroup(), frames: frames, cells: [] });
+	const root: NodeRef = s.group();
+	let trailSystems: Vec<int32> = [];
+	let trailNodes: Vec<NodeRef> = [];
+	let trailTiles: Vec<Tile> = [];
+	for (let k = 0; k < (effect.systems.length as int32); k++) {
+		if (!effect.systems[k].trails.enabled) { continue; }
+		const g: NodeRef = s.graphics();
+		root.addChild(g);
+		trailSystems.push(k);
+		trailNodes.push(g);
+		trailTiles.push(whiteTile(1.0, 1.0));
+	}
+	const node: NodeRef = s.tileGroup();
+	root.addChild(node);
+	return Result.ok({
+		effect: made.value, node: node, frames: frames, cells: [], root: root,
+		trailSystems: trailSystems, trailNodes: trailNodes, trailTiles: trailTiles,
+		chains: TrailChains.create(), points: [], uvs: [], colors: [],
+	});
+}
+
+// The tile system `system`'s trails sample: u runs along the trail, v across it. A texture mode
+// that repeats wants the tile to be its whole texture, sampled with wrap.
+export function setTrailTile(this ref e: ParticleEmitter2D, system: int32, t: Tile): void {
+	for (let k = 0; k < (e.trailSystems.length as int32); k++) {
+		if (e.trailSystems[k] == system) {
+			e.trailTiles[k] = t;
+			return;
+		}
+	}
+	console.log(`void2d: setTrailTile asked of system ${system}, which has no Trails module`);
+	unreachable;
 }
 
 export function play(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
@@ -121,4 +167,85 @@ function redraw(this ref e: ParticleEmitter2D): void {
 		}
 	}
 	e.node.setTiles(e.cells);
+	for (let k = 0; k < (e.trailSystems.length as int32); k++) { e.redrawTrails(k); }
+}
+
+function flat(p: Vec3): Vec2 {
+	return vec2(p.x, -p.y);
+}
+
+// The left normal of a to b, zero when they meet.
+function normalOf(a: Vec2, b: Vec2): Vec2 {
+	const dx: float32 = b.x - a.x;
+	const dy: float32 = b.y - a.y;
+	const len: float32 = Math.sqrt(dx * dx + dy * dy) as float32;
+	if (len < 1e-6) { return vec2(0.0, 0.0); }
+	return vec2(-dy / len, dx / len);
+}
+
+// Where vertex k of chain [start, end) sits its edges: its half width along the mitre of its
+// two segments.
+function offsetAt(chains: TrailChains, start: int32, end: int32, k: int32): Vec2 {
+	const p: Vec2 = flat(chains.vertices[k].position);
+	const before: Vec2 = k > start ? normalOf(flat(chains.vertices[k - 1].position), p) : vec2(0.0, 0.0);
+	const after: Vec2 = k + 1 < end ? normalOf(p, flat(chains.vertices[k + 1].position)) : vec2(0.0, 0.0);
+	let mx: float32 = before.x + after.x;
+	let my: float32 = before.y + after.y;
+	const len: float32 = Math.sqrt(mx * mx + my * my) as float32;
+	const half: float32 = chains.vertices[k].width * 0.5;
+	if (len < 1e-6) {
+		const side: Vec2 = after.x != 0.0 || after.y != 0.0 ? after : before;
+		return vec2(side.x * half, side.y * half);
+	}
+	mx = mx / len;
+	my = my / len;
+	const edge: Vec2 = after.x != 0.0 || after.y != 0.0 ? after : before;
+	const cosine: float32 = mx * edge.x + my * edge.y;
+	const scale: float32 = cosine > 1.0 / MITER_LIMIT ? 1.0 / cosine : MITER_LIMIT;
+	return vec2(mx * half * scale, my * half * scale);
+}
+
+function corner(this ref e: ParticleEmitter2D, p: Vec2, uv: Vec2, c: Color): void {
+	e.points.push(p);
+	e.uvs.push(uv);
+	e.colors.push(c);
+}
+
+function redrawTrails(this ref e: ParticleEmitter2D, k: int32): void {
+	const sys: ParticleSystem = e.effect.systems[e.trailSystems[k]];
+	const node: NodeRef = e.trailNodes[k];
+	const t: Tile = e.trailTiles[k];
+	node.clear();
+	buildTrails(sys, e.chains);
+	e.points.length = 0;
+	e.uvs.length = 0;
+	e.colors.length = 0;
+	const du: float32 = t.u1 - t.u0;
+	for (let c = 0; c < e.chains.chainCount(); c++) {
+		const start: int32 = e.chains.starts[c];
+		const end: int32 = e.chains.chainEnd(c);
+		for (let v = start; v + 1 < end; v++) {
+			const va: TrailVertex = e.chains.vertices[v];
+			const vb: TrailVertex = e.chains.vertices[v + 1];
+			const a: Vec2 = flat(va.position);
+			const b: Vec2 = flat(vb.position);
+			const oa: Vec2 = offsetAt(e.chains, start, end, v);
+			const ob: Vec2 = offsetAt(e.chains, start, end, v + 1);
+			const ua: float32 = t.u0 + va.u * du;
+			const ub: float32 = t.u0 + vb.u * du;
+			const ca: Color = rgba(va.color.r, va.color.g, va.color.b, va.color.a);
+			const cb: Color = rgba(vb.color.r, vb.color.g, vb.color.b, vb.color.a);
+			const al: Vec2 = vec2(a.x + oa.x, a.y + oa.y);
+			const ar: Vec2 = vec2(a.x - oa.x, a.y - oa.y);
+			const bl: Vec2 = vec2(b.x + ob.x, b.y + ob.y);
+			const br: Vec2 = vec2(b.x - ob.x, b.y - ob.y);
+			e.corner(al, vec2(ua, t.v0), ca);
+			e.corner(ar, vec2(ua, t.v1), ca);
+			e.corner(br, vec2(ub, t.v1), cb);
+			e.corner(al, vec2(ua, t.v0), ca);
+			e.corner(br, vec2(ub, t.v1), cb);
+			e.corner(bl, vec2(ub, t.v0), cb);
+		}
+	}
+	if ((e.points.length as int32) > 0) { node.fillTexTriangles(t, e.points, e.uvs, e.colors); }
 }
