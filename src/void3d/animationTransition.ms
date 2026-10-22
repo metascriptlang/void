@@ -16,6 +16,7 @@ export enum AnimationTransitionError {
 	WeightShape,
 	Curve,
 	Compose,
+	Speed,
 }
 
 export struct AnimationWeightRest {
@@ -47,6 +48,9 @@ export struct AnimationTransition {
 	weights: Vec<Vec<float32>>;
 	blend: float64;
 	blendSeconds: float64;
+	firstSpeed: float64;
+	secondSpeed: float64;
+	blendSpeed: float64;
 }
 
 function noComponents(): BitSet<AnimationComponent> {
@@ -92,6 +96,15 @@ export function forTracks(
 export function localTime(this clip: Readonly<AnimationTransitionClip>, time: float64): float64 {
 	if (clip.loops) { return clip.seconds > 0.0 ? time % clip.seconds : 0.0; }
 	return Math.min(time, clip.seconds);
+}
+
+export function steppedTime(
+	this clip: Readonly<AnimationTransitionClip>,
+	time: float64,
+	dt: float64,
+	speed: float64,
+): float64 {
+	return clip.localTime(Math.max(0.0, time + dt * speed));
 }
 
 function copied(values: Readonly<Span<float32>>): Vec<float32> {
@@ -148,17 +161,9 @@ export function bindSide(
 	return Result.ok(move side);
 }
 
-export function create(
-	this typeof AnimationTransition,
-	targets: Readonly<Span<AnimationRestTarget>>,
+export function checkedWeightRests(
 	weightRests: Readonly<Span<AnimationWeightRest>>,
-	first: Readonly<AnimationTransitionClip>,
-	second: Readonly<AnimationTransitionClip>,
-	blendSeconds: float64,
-): Result<AnimationTransition, AnimationTransitionError> {
-	if (!Number.isFinite(blendSeconds) || blendSeconds <= 0.0) {
-		return Result.err(AnimationTransitionError.Duration);
-	}
+): Result<void, AnimationTransitionError> {
 	for (let i = 0; i < weightRests.length; i++) {
 		if (weightRests[i].rest.length < 1) { return Result.err(AnimationTransitionError.WeightShape); }
 		for (const value of weightRests[i].rest) {
@@ -170,6 +175,21 @@ export function create(
 			}
 		}
 	}
+	return Result.ok(null);
+}
+
+export function create(
+	this typeof AnimationTransition,
+	targets: Readonly<Span<AnimationRestTarget>>,
+	weightRests: Readonly<Span<AnimationWeightRest>>,
+	first: Readonly<AnimationTransitionClip>,
+	second: Readonly<AnimationTransitionClip>,
+	blendSeconds: float64,
+): Result<AnimationTransition, AnimationTransitionError> {
+	if (!Number.isFinite(blendSeconds) || blendSeconds <= 0.0) {
+		return Result.err(AnimationTransitionError.Duration);
+	}
+	const checkedRests = try checkedWeightRests(weightRests);
 	const composed = AnimationCompose.create(targets);
 	if (!composed.ok) { return Result.err(AnimationTransitionError.Compose); }
 	const firstSide = try bindSide(targets, weightRests, first);
@@ -177,6 +197,7 @@ export function create(
 	let transition: AnimationTransition = {
 		compose: composed.value, weightRest: [], first: firstSide, second: secondSide,
 		weights: [], blend: 0.0, blendSeconds: blendSeconds,
+		firstSpeed: 1.0, secondSpeed: 1.0, blendSpeed: 1.0,
 	};
 	for (const rest of weightRests) {
 		transition.weightRest.push({ sourceNode: rest.sourceNode, rest: copied(rest.rest) });
@@ -185,14 +206,32 @@ export function create(
 	return Result.ok(move transition);
 }
 
+export function setSpeeds(
+	ref transition: AnimationTransition,
+	first: float64,
+	second: float64,
+	blend: float64,
+): Result<void, AnimationTransitionError> {
+	if (!Number.isFinite(first) || !Number.isFinite(second) || !Number.isFinite(blend)) {
+		return Result.err(AnimationTransitionError.Speed);
+	}
+	transition.firstSpeed = first;
+	transition.secondSpeed = second;
+	transition.blendSpeed = blend;
+	return Result.ok(null);
+}
+
 export function advance(
 	ref transition: AnimationTransition,
 	dt: float64,
 ): Result<void, AnimationTransitionError> {
 	if (!Number.isFinite(dt) || dt < 0.0) { return Result.err(AnimationTransitionError.Delta); }
-	transition.first.time = transition.first.clip.localTime(transition.first.time + dt);
-	transition.second.time = transition.second.clip.localTime(transition.second.time + dt);
-	transition.blend = Math.min(1.0, transition.blend + dt / transition.blendSeconds);
+	transition.first.time = transition.first.clip.steppedTime(
+		transition.first.time, dt, transition.firstSpeed);
+	transition.second.time = transition.second.clip.steppedTime(
+		transition.second.time, dt, transition.secondSpeed);
+	transition.blend = Math.min(1.0, Math.max(
+		0.0, transition.blend + dt * transition.blendSpeed / transition.blendSeconds));
 	return Result.ok(null);
 }
 
@@ -290,18 +329,26 @@ export function evaluateMasked(
 	return Result.ok(null);
 }
 
+export function commitCompose(
+	compose: Readonly<AnimationCompose>,
+	scene: Scene3D,
+	nodes: Readonly<Span<NodeId3D>>,
+): Result<int32, AnimationTransitionError> {
+	for (const target of compose.targets) {
+		if (target.sourceNode >= nodes.length || !scene.isLive(nodes[target.sourceNode])) {
+			return Result.err(AnimationTransitionError.Target);
+		}
+	}
+	for (let i = 0; i < compose.targets.length; i++) {
+		setLocal(scene, nodes[compose.targets[i].sourceNode], compose.output[i].value);
+	}
+	return Result.ok(compose.targets.length as int32);
+}
+
 export function commit(
 	this transition: Readonly<AnimationTransition>,
 	scene: Scene3D,
 	nodes: Readonly<Span<NodeId3D>>,
 ): Result<int32, AnimationTransitionError> {
-	for (const target of transition.compose.targets) {
-		if (target.sourceNode >= nodes.length || !scene.isLive(nodes[target.sourceNode])) {
-			return Result.err(AnimationTransitionError.Target);
-		}
-	}
-	for (let i = 0; i < transition.compose.targets.length; i++) {
-		setLocal(scene, nodes[transition.compose.targets[i].sourceNode], transition.compose.output[i].value);
-	}
-	return Result.ok(transition.compose.targets.length as int32);
+	return commitCompose(transition.compose, scene, nodes);
 }

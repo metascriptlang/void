@@ -117,6 +117,7 @@ import "./sceneContainsCheck";
 import "./animationCheck";
 import "./animationComposeCheck";
 import "./animationTransitionCheck";
+import "./animationSmoothTargetCheck";
 import "./animationBlendSpaceCheck";
 import "./pickCheck";
 import "./layersCheck";

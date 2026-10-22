@@ -1,0 +1,215 @@
+# h3d.anim.SmoothTarget against src/void3d/animationSmoothTarget.ms: freeze the node's current pose and
+# ease into a target clip, read back through the node's world matrix.
+#
+# Same shape as animTransition3d.cases: no expected answer here; `sh scripts/oracle.sh regen
+# tests/oracle/animSmoothTarget3d.cases` replays the Haxe side through real Heaps. Keys sit on
+# integer seconds with sampling 1 and every clip frame reached is a whole number, so the blend under
+# test is SmoothTarget's, never a track's own interpolation. Heaps clips are non-looping here
+# (the port's clip is built with loops false). A step is [dt, target clip speed, blend speed].
+#
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: import h3d.anim.LinearAnimation;
+# haxe-prelude: import h3d.anim.SmoothTarget;
+# haxe-prelude: class H {
+# haxe-prelude: 	public static function key(tx: Float, ty: Float, tz: Float, ry: Float, s: Float): LinearFrame {
+# haxe-prelude: 		var f = new LinearFrame();
+# haxe-prelude: 		f.tx = tx; f.ty = ty; f.tz = tz;
+# haxe-prelude: 		var q = new h3d.Quat(); q.initRotation(0, ry, 0);
+# haxe-prelude: 		f.qx = q.x; f.qy = q.y; f.qz = q.z; f.qw = q.w;
+# haxe-prelude: 		f.sx = s; f.sy = s; f.sz = s;
+# haxe-prelude: 		return f;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function matrixOf(f: LinearFrame): h3d.Matrix {
+# haxe-prelude: 		var m = new h3d.Matrix();
+# haxe-prelude: 		m.identity();
+# haxe-prelude: 		var q = new h3d.Quat(); q.set(f.qx, f.qy, f.qz, f.qw);
+# haxe-prelude: 		q.toMatrix(m);
+# haxe-prelude: 		m._11 *= f.sx; m._12 *= f.sx; m._13 *= f.sx;
+# haxe-prelude: 		m._21 *= f.sy; m._22 *= f.sy; m._23 *= f.sy;
+# haxe-prelude: 		m._31 *= f.sz; m._32 *= f.sz; m._33 *= f.sz;
+# haxe-prelude: 		m.tx = f.tx; m.ty = f.ty; m.tz = f.tz;
+# haxe-prelude: 		return m;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function run(frozen: LinearFrame, kb: Array<LinearFrame>, steps: Array<Float>,
+# haxe-prelude: 			duration: Float, easing: Float, ignoreTranslate: Bool): h3d.Matrix {
+# haxe-prelude: 		var root = new Object();
+# haxe-prelude: 		var child = new Object(root);
+# haxe-prelude: 		child.name = "o";
+# haxe-prelude: 		child.defaultTransform = matrixOf(frozen);
+# haxe-prelude: 		var b = new LinearAnimation("b", kb.length, 1);
+# haxe-prelude: 		b.addCurve("o", haxe.ds.Vector.fromArrayCopy(kb), true, true, true);
+# haxe-prelude: 		var inst = b.createInstance(root);
+# haxe-prelude: 		inst.loop = false;
+# haxe-prelude: 		var t = new SmoothTarget(inst, duration);
+# haxe-prelude: 		t.easing = easing;
+# haxe-prelude: 		t.ignoreTranslate = ignoreTranslate;
+# haxe-prelude: 		var i = 0;
+# haxe-prelude: 		while (i < steps.length) {
+# haxe-prelude: 			inst.speed = steps[i + 1];
+# haxe-prelude: 			t.speed = steps[i + 2];
+# haxe-prelude: 			t.update(steps[i]);
+# haxe-prelude: 			i += 3;
+# haxe-prelude: 		}
+# haxe-prelude: 		t.sync();
+# haxe-prelude: 		return child.getAbsPos();
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function clipB(): Array<LinearFrame> {
+# haxe-prelude: 		return [key(10,0,0,0,1), key(10,4,0,0.5,1), key(10,8,0,1.0,2), key(10,12,0,1.5,2), key(10,16,0,2.0,3)];
+# haxe-prelude: 	}
+# haxe-prelude: }
+#
+# ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: import {
+# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, addGroup, syncWorld,
+# ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude: import {
+# ms-prelude: 	GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, forValues,
+# ms-prelude: } from "../../../src/void3d/gltfCurve";
+# ms-prelude: import { AnimationRestTarget } from "../../../src/void3d/animationCompose";
+# ms-prelude: import { AnimationTransitionClip } from "../../../src/void3d/animationTransition";
+# ms-prelude: import {
+# ms-prelude: 	AnimationSmoothTarget, setSmoothTargetSpeeds, advanceSmoothTarget, evaluateSmoothTarget,
+# ms-prelude: 	commitSmoothTarget,
+# ms-prelude: } from "../../../src/void3d/animationSmoothTarget";
+# ms-prelude:
+# ms-prelude: function emit6(id: string, a: float32, b: float32, c: float32, d: float32, e: float32,
+# ms-prelude: 		f: float32): void {
+# ms-prelude: 	console.log(`CASE ${id} ${a} ${b} ${c} ${d} ${e} ${f}`);
+# ms-prelude: }
+# ms-prelude: function emit7(id: string, a: float32, b: float32, c: float32, d: float32, e: float32,
+# ms-prelude: 		f: float32, g: float32): void {
+# ms-prelude: 	console.log(`CASE ${id} ${a} ${b} ${c} ${d} ${e} ${f} ${g}`);
+# ms-prelude: }
+# ms-prelude: function key(tx: float32, ty: float32, tz: float32, ry: float32, s: float32): Transform3D {
+# ms-prelude: 	return { position: vec3(tx, ty, tz), rotation: eulerQuat(0.0, ry, 0.0), scale: vec3(s, s, s) };
+# ms-prelude: }
+# ms-prelude: function clip(keys: Vec<Transform3D>): AnimationTransitionClip {
+# ms-prelude: 	let times: Vec<float32> = [];
+# ms-prelude: 	let moves: Vec<float32> = [];
+# ms-prelude: 	let turns: Vec<float32> = [];
+# ms-prelude: 	let sizes: Vec<float32> = [];
+# ms-prelude: 	for (let i = 0; i < keys.length; i++) {
+# ms-prelude: 		times.push(i as float32);
+# ms-prelude: 		moves.push(keys[i].position.x); moves.push(keys[i].position.y); moves.push(keys[i].position.z);
+# ms-prelude: 		turns.push(keys[i].rotation.x); turns.push(keys[i].rotation.y);
+# ms-prelude: 		turns.push(keys[i].rotation.z); turns.push(keys[i].rotation.w);
+# ms-prelude: 		sizes.push(keys[i].scale.x); sizes.push(keys[i].scale.y); sizes.push(keys[i].scale.z);
+# ms-prelude: 	}
+# ms-prelude: 	const move = GltfCurve.forValues(GltfCurvePath.Translation, GltfCurveMode.Linear, times, moves);
+# ms-prelude: 	const turn = GltfCurve.forValues(GltfCurvePath.Rotation, GltfCurveMode.Linear, times, turns);
+# ms-prelude: 	const size = GltfCurve.forValues(GltfCurvePath.Scale, GltfCurveMode.Linear, times, sizes);
+# ms-prelude: 	if (!move.ok || !turn.ok || !size.ok) { unreachable; }
+# ms-prelude: 	const tracks: Vec<GltfPoseTrack> = [
+# ms-prelude: 		{ sourceNode: 0, curve: move.value }, { sourceNode: 0, curve: turn.value },
+# ms-prelude: 		{ sourceNode: 0, curve: size.value },
+# ms-prelude: 	];
+# ms-prelude: 	const made = AnimationTransitionClip.forTracks(tracks, [], false);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	return made.value;
+# ms-prelude: }
+# ms-prelude: function clipB(): AnimationTransitionClip {
+# ms-prelude: 	return clip([key(10.0, 0.0, 0.0, 0.0, 1.0), key(10.0, 4.0, 0.0, 0.5, 1.0), key(10.0, 8.0, 0.0, 1.0, 2.0),
+# ms-prelude: 		key(10.0, 12.0, 0.0, 1.5, 2.0), key(10.0, 16.0, 0.0, 2.0, 3.0)]);
+# ms-prelude: }
+# ms-prelude: function run(frozen: Transform3D, steps: Vec<float64>, duration: float64, easing: float64,
+# ms-prelude: 		ignoreTranslate: boolean): Mat4 {
+# ms-prelude: 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+# ms-prelude: 	const added: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+# ms-prelude: 	const pose: Vec<AnimationRestTarget> = [{ sourceNode: 0, rest: frozen }];
+# ms-prelude: 	const made = AnimationSmoothTarget.create(pose, [], clipB(), duration, easing, ignoreTranslate);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	let smooth = made.value;
+# ms-prelude: 	for (let i = 0; i < steps.length; i += 3) {
+# ms-prelude: 		const _speeds = setSmoothTargetSpeeds(smooth, steps[i + 1], steps[i + 2]);
+# ms-prelude: 		const _moved = advanceSmoothTarget(smooth, steps[i]);
+# ms-prelude: 	}
+# ms-prelude: 	const _posed = evaluateSmoothTarget(smooth);
+# ms-prelude: 	const _written = smooth.commitSmoothTarget(scene, [added]);
+# ms-prelude: 	const _synced: int32 = syncWorld(scene);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added);
+# ms-prelude: 	return world.ok ? world.value : identity();
+# ms-prelude: }
+
+# ---- the blend: dt * speed / duration, eased, clamped at 1 --------------------------------------
+
+# A quarter of the way from the frozen pose to the target's second key: translation, scale and
+# rotation (nearest-hemisphere lerp then normalize).
+case quarter-way tol=1e-5
+haxe> var q1 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,1,1], 4, 0, false);
+haxe> emit("quarter-way", [q1._41, q1._42, q1._43, q1._11, q1._13, q1._31, q1._22]);
+ms> const q1: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 1.0, 1.0], 4.0, 0.0, false);
+ms> emit7("quarter-way", q1.m41, q1.m42, q1.m43, q1.m11, q1.m13, q1.m31, q1.m22);
+
+# hxd.Math.easeFactor reshapes the blend: easing 1 turns 0.25 into 0.1, easing 2 into 0.25^3 over
+# the sum of 0.25^3 and 0.75^3.
+case easing-one-and-two tol=1e-5
+haxe> var q2 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,1,1], 4, 1, false);
+haxe> var q3 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,1,1], 4, 2, false);
+haxe> emit("easing-one-and-two", [q2._41, q2._42, q2._22, q3._41, q3._42, q3._22]);
+ms> const q2: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 1.0, 1.0], 4.0, 1.0, false);
+ms> const q3: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 1.0, 1.0], 4.0, 2.0, false);
+ms> emit6("easing-one-and-two", q2.m41, q2.m42, q2.m22, q3.m41, q3.m42, q3.m22);
+
+# ignoreTranslate takes the target's translation whole; rotation and scale still blend.
+case ignore-translate tol=1e-5
+haxe> var q4 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,1,1], 4, 0, true);
+haxe> emit("ignore-translate", [q4._41, q4._42, q4._43, q4._11, q4._13, q4._22]);
+ms> const q4: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 1.0, 1.0], 4.0, 0.0, true);
+ms> emit6("ignore-translate", q4.m41, q4.m42, q4.m43, q4.m11, q4.m13, q4.m22);
+
+# Past the end of the blend the target clip is held on its last key.
+case finished-holds-last-key tol=1e-5
+haxe> var q5 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [10,1,1], 4, 0, false);
+haxe> emit("finished-holds-last-key", [q5._41, q5._42, q5._22]);
+ms> const q5: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [10.0, 1.0, 1.0], 4.0, 0.0, false);
+ms> emit3("finished-holds-last-key", q5.m41, q5.m42, q5.m22);
+
+# ---- speed: the target clip's own, and the SmoothTarget's, which scales only the blend -------------
+
+# Clip speed 2 reads the target at frame 2 while the blend stays a quarter.
+case target-speed-two tol=1e-5
+haxe> var q6 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,2,1], 4, 0, false);
+haxe> emit("target-speed-two", [q6._41, q6._42, q6._43, q6._22]);
+ms> const q6: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 2.0, 1.0], 4.0, 0.0, false);
+ms> emit4("target-speed-two", q6.m41, q6.m42, q6.m43, q6.m22);
+
+# Blend speed 2 halves the blend time and leaves the clip at frame 1.
+case blend-speed-two tol=1e-5
+haxe> var q7 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,1,2], 4, 0, false);
+haxe> emit("blend-speed-two", [q7._41, q7._42, q7._43, q7._22]);
+ms> const q7: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 1.0, 2.0], 4.0, 0.0, false);
+ms> emit4("blend-speed-two", q7.m41, q7.m42, q7.m43, q7.m22);
+
+# SmoothTarget.update returns early when its own speed is paused, so the target clip stops too
+# (SmoothTarget.hx:98): the second step moves neither.
+case zero-blend-speed-pauses-target tol=1e-5
+haxe> var q8 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,1,1, 1,1,0], 4, 0, false);
+haxe> emit("zero-blend-speed-pauses-target", [q8._41, q8._42, q8._22]);
+ms> const q8: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 1.0, 1.0, 1.0, 1.0, 0.0], 4.0, 0.0, false);
+ms> emit3("zero-blend-speed-pauses-target", q8.m41, q8.m42, q8.m22);
+
+# A negative clip speed plays the clip back and holds its first key, with no wrap below zero.
+case negative-target-speed-holds-first-key tol=1e-5
+haxe> var q9 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [2,1,1, 1,-1,1, 3,-1,1], 4, 0, false);
+haxe> emit("negative-target-speed-holds-first-key", [q9._41, q9._42, q9._22]);
+ms> const q9: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [2.0, 1.0, 1.0, 1.0, -1.0, 1.0, 3.0, -1.0, 1.0], 4.0, 0.0, false);
+ms> emit3("negative-target-speed-holds-first-key", q9.m41, q9.m42, q9.m22);
+
+# A negative blend speed runs the blend below zero in Heaps, and the blend factor extrapolates
+# away from the target past the frozen pose; the port holds the frozen pose.
+case negative-blend-speed-extrapolates tol=1e-5 diverges=anim-never-extrapolates
+haxe> var q10 = H.run(H.key(2,1,0,0.8,1), H.clipB(), [1,1,-1], 4, 0, false);
+haxe> emit("negative-blend-speed-extrapolates", [q10._41, q10._42, q10._22]);
+ms> const q10: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.0), [1.0, 1.0, -1.0], 4.0, 0.0, false);
+ms> emit3("negative-blend-speed-extrapolates", q10.m41, q10.m42, q10.m22);
+
+# A frozen pose whose scale is not 1: SmoothTarget.hx:60 reads the rotation with Quat.initRotateMatrix
+# (Quat.hx:140) straight off the scaled matrix, which assumes unit scale, so the frozen quaternion is
+# wrong and the blended rotation with it. The port keeps the exact frozen rotation.
+case frozen-scaled-rotation tol=1e-5 diverges=anim-frozen-rotation-unscaled
+haxe> var q11 = H.run(H.key(2,1,0,0.8,1.5), H.clipB(), [1,1,1], 4, 0, false);
+haxe> emit("frozen-scaled-rotation", [q11._11, q11._13, q11._31, q11._22]);
+ms> const q11: Mat4 = run(key(2.0, 1.0, 0.0, 0.8, 1.5), [1.0, 1.0, 1.0], 4.0, 0.0, false);
+ms> emit4("frozen-scaled-rotation", q11.m11, q11.m13, q11.m31, q11.m22);
