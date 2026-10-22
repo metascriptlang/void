@@ -96,6 +96,7 @@ import "./particles2dCheck";
 import "./particleWriterCheck";
 import "./particleTrailCheck";
 import "./particleUnityCheck";
+import "./particleFromHeapsCheck";
 import "./layoutCheck";
 import "./billboardCheck";
 import "./shaderCheck";
