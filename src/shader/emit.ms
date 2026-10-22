@@ -11,6 +11,7 @@ import {
 	DeclKind,
 	Node,
 	NodeKind,
+	StringLiteralData,
 	SymbolKind,
 	TypeKind,
 	bindSym,
@@ -103,6 +104,7 @@ import {
 	vectorType,
 } from "./ir";
 import { suffixed } from "./names";
+import { irText } from "./irText";
 import { printGlsl450 } from "./printGlsl450";
 
 function isGlslIdentifier(name: string): boolean {
@@ -116,6 +118,19 @@ function isGlslIdentifier(name: string): boolean {
 }
 
 export macro glsl(entry: Node): Node {
+	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslAs"),
+		arguments: [entry, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
+			value: "glsl" }] };
+}
+
+// glslIr, glslLinkedIr and glslComputeIr return the lowered module as irText instead of GLSL.
+export macro glslIr(entry: Node): Node {
+	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslAs"),
+		arguments: [entry, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
+			value: "ir" }] };
+}
+
+export macro glslAs(entry: Node, form: Node): Node {
 	const signature = getType(entry);
 	if (signature == null || signature.kind != NodeKind.TypeFunction) {
 		error("glsl: the entry must be a function", entry);
@@ -151,17 +166,24 @@ export macro glsl(entry: Node): Node {
 				"outputs", entry);
 		}
 	}
-	return {
-		kind: NodeKind.CallExpr,
-		line: entry.line,
-		column: entry.column,
-		callee: bindSym("glslStage"),
-		arguments: [entry, { kind: NodeKind.ArrayLiteral, line: entry.line, column: entry.column,
-			elements: [] }, entry],
-	};
+	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column,
+		callee: bindSym("glslStage"), arguments: [entry, { kind: NodeKind.ArrayLiteral,
+			line: entry.line, column: entry.column, elements: [] }, entry, form] };
 }
 
 export macro glslLinked(fragment: Node, vertex: Node): Node {
+	return { kind: NodeKind.CallExpr, line: fragment.line, column: fragment.column, callee: bindSym("glslLinkedAs"),
+		arguments: [fragment, vertex, { kind: NodeKind.StringLiteral, line: fragment.line, column: fragment.column,
+			value: "glsl" }] };
+}
+
+export macro glslLinkedIr(fragment: Node, vertex: Node): Node {
+	return { kind: NodeKind.CallExpr, line: fragment.line, column: fragment.column, callee: bindSym("glslLinkedAs"),
+		arguments: [fragment, vertex, { kind: NodeKind.StringLiteral, line: fragment.line, column: fragment.column,
+			value: "ir" }] };
+}
+
+export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 	function fieldsAt(t: Node | null, at: Node): Node {
 		const fields = t == null ? null : getTypeImpl(t);
 		if (fields == null || fields.kind != NodeKind.TypeObject) {
@@ -259,30 +281,32 @@ export macro glslLinked(fragment: Node, vertex: Node): Node {
 				"vertex output", fragment);
 		}
 	}
-	return {
-		kind: NodeKind.CallExpr,
-		line: fragment.line,
-		column: fragment.column,
-		callee: bindSym("glslStage"),
-		arguments: [fragment, { kind: NodeKind.ArrayLiteral, line: fragment.line,
-			column: fragment.column, elements: [] }, vertex],
-	};
+	return { kind: NodeKind.CallExpr, line: fragment.line, column: fragment.column,
+		callee: bindSym("glslStage"), arguments: [fragment, { kind: NodeKind.ArrayLiteral,
+			line: fragment.line, column: fragment.column, elements: [] }, vertex, form] };
 }
 
 // glslCompute(entry, [x, y, z]) for a compute entry: its workgroup size is WGSL's
 // @workgroup_size, written where the stage is generated as shdc's local_size.
 export macro glslCompute(entry: Node, workgroupSize: Node): Node {
+	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslComputeAs"),
+		arguments: [entry, workgroupSize, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
+			value: "glsl" }] };
+}
+
+export macro glslComputeIr(entry: Node, workgroupSize: Node): Node {
+	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslComputeAs"),
+		arguments: [entry, workgroupSize, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
+			value: "ir" }] };
+}
+
+export macro glslComputeAs(entry: Node, workgroupSize: Node, form: Node): Node {
 	if (workgroupSize.kind != NodeKind.ArrayLiteral || workgroupSize.elements.length < 1 ||
 		workgroupSize.elements.length > 3) {
 		error("glslCompute: the workgroup size is an array of one to three numbers", workgroupSize);
 	}
-	return {
-		kind: NodeKind.CallExpr,
-		line: entry.line,
-		column: entry.column,
-		callee: bindSym("glslStage"),
-		arguments: [entry, workgroupSize, entry],
-	};
+	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column,
+		callee: bindSym("glslStage"), arguments: [entry, workgroupSize, entry, form] };
 }
 
 
@@ -432,7 +456,7 @@ function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition 
 
 // The stage both glsl and glslLinked expand to, once their checks hold: the walk lowers the entry
 // into a ShaderModule, and printGlsl450 writes its text.
-export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
+export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
 	}
@@ -1874,6 +1898,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 	m.entries.push(stageEntry);
 	const broken = irErrors(m);
 	if (broken.length > 0) { fail(entry, "internal: the lowered module breaks the IR: " + broken[0]); }
+	const formName = form.kind == NodeKind.StringLiteral ? (form as StringLiteralData).value : "";
+	if (formName != "glsl" && formName != "ir") {
+		fail(form, "internal: the stage form is \"glsl\" or \"ir\"");
+	}
 	return { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-		value: printGlsl450(m) };
+		value: formName == "ir" ? irText(m) : printGlsl450(m) };
 }
