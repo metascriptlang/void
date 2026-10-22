@@ -19,7 +19,7 @@ import {
 	GPUTextureView,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
-import { nativeTexture, bindStats } from "../webgpu/gl/backend.ms";
+import { DUMMY_SAMPLER_BINDING, nativeTexture, bindStats } from "../webgpu/gl/backend.ms";
 import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 
 @passL("-lopengl32");
@@ -36,6 +36,12 @@ const VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nvoid 
 const FRAGMENT_GLSL = "#version 430\nuniform vec4 params[1];\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = params[0]; }\n";
 const TEXTURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nout vec2 uv;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); uv = position * 0.5 + 0.5; }\n";
 const TEXTURED_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_smp;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texture(tex_smp, uv); }\n";
+const DUMMY_FRAGMENT_GLSL = "#version 430
+layout(binding = 0) uniform sampler2D tex_SPIRV_Cross_DummySampler;
+in vec2 uv;
+layout(location = 0) out vec4 frag_color;
+void main() { frag_color = texelFetch(tex_SPIRV_Cross_DummySampler, ivec2(uv * 2.0), 0); }
+";
 
 function stopOnGl(message: string): void {
 	console.log(`webgpuGlCheck: ${message}`);
@@ -79,6 +85,20 @@ function texturedShader(device: GPUDevice): GPUShaderModule {
 	};
 	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 };
 	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
+	return device.createShaderModule(descriptor);
+}
+
+function dummySamplerShader(device: GPUDevice): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "dummy sampler",
+		vertexCode: TEXTURED_VERTEX_GLSL,
+		vertexEntryPoint: "",
+		fragmentCode: DUMMY_FRAGMENT_GLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "unfilterable-float", nativeSlot: -1, textureBinding: -1 };
+	descriptor.bindings[1] = { group: 1, binding: DUMMY_SAMPLER_BINDING, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "tex_SPIRV_Cross_DummySampler", textureBinding: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
@@ -279,6 +299,47 @@ test "a texture-sampler pair samples the last write of a 2x2 texture, row 0 at u
 	let groupDescriptor: GPUBindGroupDescriptor = { label: "checker", layout: pipeline.getBindGroupLayout(1) };
 	groupDescriptor.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
 	groupDescriptor.entries[1] = { binding: 32, sampler: sampler };
+	const group = device.createBindGroup(groupDescriptor);
+	const vertices = fullScreenQuad(device);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const noOffsets: Vec<uint32> = [];
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixelsBottomUp(target);
+	assert pixel(pixels, 16, 16) == RED;
+	assert pixel(pixels, 48, 16) == GREEN;
+	assert pixel(pixels, 16, 48) == BLUE;
+	assert pixel(pixels, 48, 48) == WHITE;
+	device.destroy();
+}
+
+test "a texel-fetching stage binds the backend dummy sampler, which has no bind group entry" {
+	const device = openDevice();
+	const module = dummySamplerShader(device);
+	let pipelineDescriptor: GPURenderPipelineDescriptor = { label: "dummy sampler" };
+	pipelineDescriptor.vertex.module = module;
+	pipelineDescriptor.vertex.buffers[0].arrayStride = 8;
+	pipelineDescriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	pipelineDescriptor.fragment.module = module;
+	pipelineDescriptor.fragment.targets[0].format = "rgba8unorm";
+	const pipeline = device.createRenderPipeline(pipelineDescriptor);
+	const texture = device.createTexture({
+		label: "checker",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	const checker: Vec<uint8> = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255];
+	device.queue.writeTexture({ texture: texture }, checker, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	let groupDescriptor: GPUBindGroupDescriptor = { label: "checker", layout: pipeline.getBindGroupLayout(1) };
+	groupDescriptor.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
 	const group = device.createBindGroup(groupDescriptor);
 	const vertices = fullScreenQuad(device);
 	const target = colourTarget(device, 1);
