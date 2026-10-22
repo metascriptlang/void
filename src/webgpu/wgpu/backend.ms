@@ -333,6 +333,7 @@ struct TextureSlot {
 	width: int32;
 	height: int32;
 	format: GPUTextureFormat;
+	info: FormatInfo;
 	usage: int32;
 	sampleCount: int32;
 	mipLevels: int32;
@@ -410,6 +411,29 @@ struct QuerySetSlot {
 	usedPass: Vec<int64>;
 }
 
+struct PassState {
+	active: boolean;
+	groupBase: int32;
+	timestampSet: uint32;
+	timestampEnd: int32;
+	occlusionSet: uint32;
+	occlusionOpen: boolean;
+	occlusionIndex: int32;
+	width: int32;
+	height: int32;
+	pipeline: uint32;
+	indexFormat: int32;
+}
+
+struct ComputeState {
+	active: boolean;
+	groupBase: int32;
+	timestampSet: uint32;
+	timestampEnd: int32;
+	pipeline: uint32;
+	groupMask: int32;
+}
+
 struct BindGroupSlot {
 	id: uint32;
 	group: int32;
@@ -419,26 +443,11 @@ struct BindGroupSlot {
 
 let frame: int64 = 0;
 let encoding = false;
-let passActive = false;
-let computeActive = false;
+let pass: PassState = { active: false, timestampEnd: -1 };
+let computeBound: ComputeState = { active: false, timestampEnd: -1 };
 let passSerial: int64 = 0;
 let groupDepth: int32 = 0;
-let passGroupBase: int32 = 0;
-let passTimestampSet: uint32 = 0;
-let passTimestampEnd: int32 = -1;
-let passOcclusionSet: uint32 = 0;
-let passOcclusionOpen = false;
-let passOcclusionIndex: int32 = 0;
-let computeGroupBase: int32 = 0;
-let computeTimestampSet: uint32 = 0;
-let computeTimestampEnd: int32 = -1;
-let boundCompute: uint32 = 0;
-let computeGroupMask: int32 = 0;
 let deviceLimits: GPUSupportedLimits = { maxTextureDimension1D: 0 };
-let boundPipeline: uint32 = 0;
-let boundIndexFormat = 0;
-let passWidth = 0;
-let passHeight = 0;
 let uniformAlignment = 256;
 let maxTextureDimension = 0;
 let swapchainColor: uint32 = 0;
@@ -469,7 +478,7 @@ let layouts: Vec<LayoutSlot> = [];
 let querySets: Vec<QuerySetSlot> = [];
 let bindGroups: Vec<BindGroupSlot> = [];
 
-function stop(message: string): void {
+function stop(message: string): never {
 	console.log(`webgpu wgpu: ${message}`);
 	unreachable;
 }
@@ -484,7 +493,7 @@ function stopOnFormat(member: string, value: string): FormatInfo {
 	unreachable;
 }
 
-function stopOnHandle(kind: string, id: uint32): int32 {
+function stopOnHandle(kind: string, id: uint32): never {
 	console.log(`webgpu wgpu: ${kind} ${id} is not a live handle`);
 	unreachable;
 }
@@ -518,7 +527,7 @@ function releaseId(ref queue: SlotQueue, id: uint32): void {
 function bufferIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= buffers.length || buffers[index].id != id) {
-		return stopOnHandle("GPUBuffer", id);
+		stopOnHandle("GPUBuffer", id);
 	}
 	return index;
 }
@@ -526,7 +535,7 @@ function bufferIndex(id: uint32): int32 {
 function textureIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= textures.length || textures[index].id != id) {
-		return stopOnHandle("GPUTexture", id);
+		stopOnHandle("GPUTexture", id);
 	}
 	return index;
 }
@@ -534,7 +543,7 @@ function textureIndex(id: uint32): int32 {
 function viewIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= views.length || views[index].id != id) {
-		return stopOnHandle("GPUTextureView", id);
+		stopOnHandle("GPUTextureView", id);
 	}
 	return index;
 }
@@ -542,7 +551,7 @@ function viewIndex(id: uint32): int32 {
 function samplerIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= samplers.length || samplers[index].id != id) {
-		return stopOnHandle("GPUSampler", id);
+		stopOnHandle("GPUSampler", id);
 	}
 	return index;
 }
@@ -550,7 +559,7 @@ function samplerIndex(id: uint32): int32 {
 function shaderIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= shaders.length || shaders[index].id != id) {
-		return stopOnHandle("GPUShaderModule", id);
+		stopOnHandle("GPUShaderModule", id);
 	}
 	return index;
 }
@@ -558,7 +567,7 @@ function shaderIndex(id: uint32): int32 {
 function pipelineIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= pipelines.length || pipelines[index].id != id) {
-		return stopOnHandle("GPURenderPipeline", id);
+		stopOnHandle("GPURenderPipeline", id);
 	}
 	return index;
 }
@@ -566,7 +575,7 @@ function pipelineIndex(id: uint32): int32 {
 function querySetIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= querySets.length || querySets[index].id != id) {
-		return stopOnHandle("GPUQuerySet", id);
+		stopOnHandle("GPUQuerySet", id);
 	}
 	return index;
 }
@@ -574,7 +583,7 @@ function querySetIndex(id: uint32): int32 {
 function layoutIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= layouts.length || layouts[index].id != id) {
-		return stopOnHandle("GPUBindGroupLayout", id);
+		stopOnHandle("GPUBindGroupLayout", id);
 	}
 	return index;
 }
@@ -582,7 +591,7 @@ function layoutIndex(id: uint32): int32 {
 function bindGroupIndex(id: uint32): int32 {
 	const index = slotOf(id);
 	if (id == 0 || index >= bindGroups.length || bindGroups[index].id != id) {
-		return stopOnHandle("GPUBindGroup", id);
+		stopOnHandle("GPUBindGroup", id);
 	}
 	return index;
 }
@@ -816,19 +825,23 @@ function indexFormat(format: GPUIndexFormat): int32 {
 	};
 }
 
-function loadOp(op: string, member: string): int32 {
+function attachmentMember(index: int32, field: string): string {
+	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
+}
+
+function loadOp(op: string, index: int32, field: string): int32 {
 	return match (op) {
 		"clear" => LOAD_CLEAR,
 		"load" => LOAD_LOAD,
-		_ => stopOnMember(member, op),
+		_ => stopOnMember(attachmentMember(index, field), op),
 	};
 }
 
-function storeOp(op: string, member: string): int32 {
+function storeOp(op: string, index: int32, field: string): int32 {
 	return match (op) {
 		"store" => STORE_STORE,
 		"discard" => STORE_DISCARD,
-		_ => stopOnMember(member, op),
+		_ => stopOnMember(attachmentMember(index, field), op),
 	};
 }
 
@@ -941,13 +954,13 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	deviceLimits = readLimits();
 	frame = 0;
 	encoding = false;
-	passActive = false;
-	computeActive = false;
+	pass.active = false;
+	computeBound.active = false;
 	passSerial = 0;
 	groupDepth = 0;
-	passOcclusionOpen = false;
-	boundPipeline = 0;
-	boundCompute = 0;
+	pass.occlusionOpen = false;
+	pass.pipeline = 0;
+	computeBound.pipeline = 0;
 	buffers = [{ id: 0 }];
 	textures = [{ id: 0 }];
 	views = [{ id: 0 }];
@@ -1066,7 +1079,7 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 }
 
 export function shutdown(): void {
-	if (passActive || computeActive) { stop("shutdown with a pass still open"); }
+	if (pass.active || computeBound.active) { stop("shutdown with a pass still open"); }
 	for (let i = 1; i < querySets.length; i++) {
 		if (querySets[i].id != 0) { destroyQuerySet({ id: querySets[i].id }); }
 	}
@@ -1221,6 +1234,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		width: width,
 		height: height,
 		format: descriptor.format,
+		info: info,
 		usage: usage,
 		sampleCount: sampleCount,
 		mipLevels: mipLevels,
@@ -1276,7 +1290,7 @@ export function writeTexture<T>(
 	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
 		stop(`writeTexture on GPUTexture ${destination.texture.id}, created without COPY_DST`);
 	}
-	const info = formatInfo(textures[index].format, "texture format");
+	const info = textures[index].info;
 	const mip = destination.mipLevel;
 	const mips = textures[index].mipLevels;
 	const depth = textures[index].volume && mip >= 0 && mip < mips ? Math.max(1, textures[index].layers >> mip) : textures[index].layers;
@@ -1330,7 +1344,7 @@ export function createView(
 	if (textures[t].swapchainView != 0) { return { id: textures[t].swapchainView }; }
 	const id = allocateId(viewQueue, "view");
 	if (id == 0) { return { id: 0 }; }
-	const info = formatInfo(textures[t].format, "texture format");
+	const info = textures[t].info;
 	const label = labelText(descriptor.label);
 	const layers = textures[t].layers;
 	const baseMip = descriptor.baseMipLevel;
@@ -1750,7 +1764,7 @@ export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
 	} else {
 		wgReleasePipeline(pipelines[index].native);
 	}
-	if (boundCompute == pipeline.id) { boundCompute = 0; }
+	if (computeBound.pipeline == pipeline.id) { computeBound.pipeline = 0; }
 	for (let g = 0; g < 2; g++) {
 		const layout = pipelines[index].layouts[g];
 		if (layout != 0) {
@@ -1758,7 +1772,7 @@ export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
 			releaseId(layoutQueue, layout);
 		}
 	}
-	if (boundPipeline == pipeline.id) { boundPipeline = 0; }
+	if (pass.pipeline == pipeline.id) { pass.pipeline = 0; }
 	pipelines[index] = { id: 0 };
 	releaseId(pipelineQueue, pipeline.id);
 }
@@ -1856,7 +1870,6 @@ function uniformEntrySize(shader: int32, entry: GPUBindGroupEntry): int64 {
 		}
 	}
 	stop(`bind group entry ${entry.binding} (Uniform) is not a binding of the pipeline's shader`);
-	return 0;
 }
 
 function resourceIndex(shader: int32, binding: int32): int32 {
@@ -1897,7 +1910,7 @@ function storageView(shader: int32, r: int32, v: int32, binding: int32): Ptr<WgV
 	if (views[v].dimension != expected.viewDimension) {
 		stop(`bind group entry ${binding}: the view dimension ${views[v].dimension} differs from the shader's ${expected.viewDimension}`);
 	}
-	if (formatInfo(textures[t].format, "texture format").native != expected.storageFormat) {
+	if (textures[t].info.native != expected.storageFormat) {
 		stop(`bind group entry ${binding}: the texture format '${textures[t].format}' differs from the shader's storage format`);
 	}
 	return views[v].native;
@@ -1928,8 +1941,8 @@ export function createCommandEncoder(): GPUCommandEncoder {
 }
 
 export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
-	if (passActive) { stop("finish with a render pass still open"); }
-	if (computeActive) { stop("finish with a compute pass still open"); }
+	if (pass.active) { stop("finish with a render pass still open"); }
+	if (computeBound.active) { stop("finish with a compute pass still open"); }
 	checkGroupsClosed(0, "finish");
 	if (!encoding) { stop("finish without createCommandEncoder"); }
 	encoding = false;
@@ -1946,15 +1959,15 @@ export function beginRenderPass(
 	encoder: GPUCommandEncoder,
 	descriptor: GPURenderPassDescriptor,
 ): GPURenderPassEncoder {
-	if (passActive || computeActive) { stop("beginRenderPass with a pass already open"); }
+	if (pass.active || computeBound.active) { stop("beginRenderPass with a pass already open"); }
 	if (!encoding) { stop("beginRenderPass without createCommandEncoder"); }
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	const occlusionId = descriptor.occlusionQuerySet.id;
 	if (occlusionId != 0 && querySets[querySetIndex(occlusionId)].timestamp) {
 		stop("GPURenderPassDescriptor.occlusionQuerySet is a timestamp set: an occlusion set is required");
 	}
-	passWidth = 0;
-	passHeight = 0;
+	pass.width = 0;
+	pass.height = 0;
 	let count = 0;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const attachment = descriptor.colorAttachments[i];
@@ -1984,8 +1997,8 @@ export function beginRenderPass(
 			i,
 			views[v].native,
 			resolve,
-			loadOp(attachment.loadOp, `colorAttachments[${i}].loadOp`),
-			storeOp(attachment.storeOp, `colorAttachments[${i}].storeOp`),
+			loadOp(attachment.loadOp, i, "loadOp"),
+			storeOp(attachment.storeOp, i, "storeOp"),
 			views[v].dimension == VIEW_3D ? slice : -1,
 			color.r,
 			color.g,
@@ -2000,15 +2013,15 @@ export function beginRenderPass(
 		const t = textureIndex(views[v].texture);
 		if (!views[v].attachable) { stop("depthStencilAttachment.view spans several mips or layers: a render attachment is one mip of one layer"); }
 		passExtent(views[v].texture, views[v].baseMip);
-		const info = formatInfo(textures[t].format, "depth format");
+		const info = textures[t].info;
 		if (!info.depth || !has(textures[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
 			stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT");
 		}
 		const depth = descriptor.depthStencilAttachment;
 		wgDepthAttachment(
 			views[v].native,
-			loadOp(depth.depthLoadOp, "depthStencilAttachment.depthLoadOp"),
-			storeOp(depth.depthStoreOp, "depthStencilAttachment.depthStoreOp"),
+			loadOp(depth.depthLoadOp, -1, "depthLoadOp"),
+			storeOp(depth.depthStoreOp, -1, "depthStoreOp"),
 			depth.depthClearValue,
 			info.stencil ? 1 : 0,
 		);
@@ -2018,8 +2031,8 @@ export function beginRenderPass(
 	if (wgBeginPass(
 		count,
 		depthView != 0 ? 1 : 0,
-		passWidth,
-		passHeight,
+		pass.width,
+		pass.height,
 		labelText(descriptor.label),
 		occlusionId == 0 ? NO_QUERY_SET : querySets[querySetIndex(occlusionId)].native,
 		timestampNative(writes),
@@ -2028,16 +2041,16 @@ export function beginRenderPass(
 	) == 0) {
 		stop("wgpuCommandEncoderBeginRenderPass failed");
 	}
-	passActive = true;
+	pass.active = true;
 	passSerial += 1;
-	passGroupBase = groupDepth;
-	passTimestampSet = writes.querySet.id;
-	passTimestampEnd = writes.endOfPassWriteIndex;
-	passOcclusionSet = occlusionId;
-	passOcclusionOpen = false;
+	pass.groupBase = groupDepth;
+	pass.timestampSet = writes.querySet.id;
+	pass.timestampEnd = writes.endOfPassWriteIndex;
+	pass.occlusionSet = occlusionId;
+	pass.occlusionOpen = false;
 	markTimestamp(writes.querySet.id, writes.beginningOfPassWriteIndex);
-	boundPipeline = 0;
-	boundIndexFormat = 0;
+	pass.pipeline = 0;
+	pass.indexFormat = 0;
 	return { id: 1 };
 }
 
@@ -2045,10 +2058,10 @@ function passExtent(texture: uint32, baseMip: int32): void {
 	const t = textureIndex(texture);
 	const width = Math.max(1, textures[t].width >> baseMip);
 	const height = Math.max(1, textures[t].height >> baseMip);
-	if (passWidth == 0) {
-		passWidth = width;
-		passHeight = height;
-	} else if (passWidth != width || passHeight != height) {
+	if (pass.width == 0) {
+		pass.width = width;
+		pass.height = height;
+	} else if (pass.width != width || pass.height != height) {
 		stop("render pass attachments differ in size");
 	}
 }
@@ -2056,7 +2069,7 @@ function passExtent(texture: uint32, baseMip: int32): void {
 function checkColorAttachment(attachment: int32, texture: uint32): void {
 	const t = textureIndex(texture);
 	const attachable = has(textures[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
-	if (formatInfo(textures[t].format, "color format").depth || !attachable) {
+	if (textures[t].info.depth || !attachable) {
 		stop(`colorAttachments[${attachment}].view is not a color RENDER_ATTACHMENT`);
 	}
 }
@@ -2076,16 +2089,16 @@ function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32
 }
 
 export function endPass(): void {
-	if (!passActive) { stop("end without an open render pass"); }
-	if (passOcclusionOpen) { stop("end with an occlusion query still open"); }
-	checkGroupsClosed(passGroupBase, "end");
+	if (!pass.active) { stop("end without an open render pass"); }
+	if (pass.occlusionOpen) { stop("end with an occlusion query still open"); }
+	checkGroupsClosed(pass.groupBase, "end");
 	wgEndPass();
-	markTimestamp(passTimestampSet, passTimestampEnd);
-	passActive = false;
+	markTimestamp(pass.timestampSet, pass.timestampEnd);
+	pass.active = false;
 }
 
 @inline function checkPass(call: string): void {
-	if (!passActive) { stop(`${call} outside a render pass`); }
+	if (!pass.active) { stop(`${call} outside a render pass`); }
 }
 
 @inline export function setPipeline(pipeline: GPURenderPipeline): void {
@@ -2093,7 +2106,7 @@ export function endPass(): void {
 	const p = pipelineIndex(pipeline.id);
 	if (pipelines[p].compute) { stop(`GPUPipeline ${pipeline.id} is a compute pipeline`); }
 	wgSetPipeline(pipelines[p].native);
-	boundPipeline = pipeline.id;
+	pass.pipeline = pipeline.id;
 }
 
 @inline export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
@@ -2110,8 +2123,8 @@ export function endPass(): void {
 	offset: int64,
 ): void {
 	checkPass("setIndexBuffer");
-	boundIndexFormat = indexFormat(format);
-	wgSetIndexBuffer(buffers[bufferIndex(buffer.id)].native, boundIndexFormat, offset);
+	pass.indexFormat = indexFormat(format);
+	wgSetIndexBuffer(buffers[bufferIndex(buffer.id)].native, pass.indexFormat, offset);
 }
 
 export function setBindGroup(
@@ -2135,7 +2148,7 @@ function stageBindGroup(
 	if (bindGroup.id == 0) {
 		if (compute) {
 			wgSetComputeBindGroup(index, NO_BIND_GROUP, 0);
-			computeGroupMask &= ~(1 << index);
+			computeBound.groupMask &= ~(1 << index);
 		} else {
 			wgSetBindGroup(index, NO_BIND_GROUP, 0);
 		}
@@ -2158,7 +2171,7 @@ function stageBindGroup(
 	}
 	if (compute) {
 		wgSetComputeBindGroup(index, bindGroups[g].native, bindGroups[g].dynamicCount);
-		computeGroupMask |= 1 << index;
+		computeBound.groupMask |= 1 << index;
 	} else {
 		wgSetBindGroup(index, bindGroups[g].native, bindGroups[g].dynamicCount);
 	}
@@ -2194,7 +2207,7 @@ export function setStencilReference(reference: uint32): void {
 	firstInstance: int32,
 ): void {
 	checkPass("draw");
-	if (boundPipeline == 0) { stop("draw without setPipeline"); }
+	if (pass.pipeline == 0) { stop("draw without setPipeline"); }
 	wgDraw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -2206,16 +2219,16 @@ export function setStencilReference(reference: uint32): void {
 	firstInstance: int32,
 ): void {
 	checkPass("drawIndexed");
-	if (boundPipeline == 0) { stop("drawIndexed without setPipeline"); }
-	const strip = pipelines[pipelineIndex(boundPipeline)].stripIndexFormat;
-	if (strip != 0 && strip != boundIndexFormat) {
+	if (pass.pipeline == 0) { stop("drawIndexed without setPipeline"); }
+	const strip = pipelines[pipelineIndex(pass.pipeline)].stripIndexFormat;
+	if (strip != 0 && strip != pass.indexFormat) {
 		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
 	}
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
 function encodedCopy(member: string): void {
-	if (passActive || computeActive) { stop(`${member} inside a pass`); }
+	if (pass.active || computeBound.active) { stop(`${member} inside a pass`); }
 	if (!encoding) { stop(`${member} without createCommandEncoder`); }
 }
 
@@ -2250,7 +2263,7 @@ function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32,
 }
 
 function texelFormatOf(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): FormatInfo {
-	const info = formatInfo(textures[index].format, "texture format");
+	const info = textures[index].info;
 	if (info.depth) {
 		checkedDepthTexelCopy(member, textures[index].id, textures[index].format, info.stencil, writes, textures[index].width, textures[index].height, copy.mipLevel, size);
 	}
@@ -2325,7 +2338,7 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	copyRegion("copyTextureToTexture destination", destination, to, size);
 	const mipWidth = Math.max(1, textures[from].width >> source.mipLevel);
 	const mipHeight = Math.max(1, textures[from].height >> source.mipLevel);
-	if (formatInfo(textures[from].format, "texture format").depth && (size.width != mipWidth || size.height != mipHeight)) {
+	if (textures[from].info.depth && (size.width != mipWidth || size.height != mipHeight)) {
 		stop(`copyTextureToTexture of depth GPUTexture ${source.texture.id} copies whole mips only`);
 	}
 	if (
@@ -2359,7 +2372,6 @@ export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: in
 
 export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
 	stop("getMappedRange is not ported to wgpu: it needs mapAsync");
-	return new Array(0);
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
@@ -2394,7 +2406,7 @@ export function createComputePipeline(descriptor: GPUComputePipelineDescriptor):
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
-	if (passActive || computeActive) { stop("beginComputePass with a pass already open"); }
+	if (pass.active || computeBound.active) { stop("beginComputePass with a pass already open"); }
 	if (!encoding) { stop("beginComputePass without createCommandEncoder"); }
 	checkTimestampWrites("GPUComputePassDescriptor.timestampWrites", descriptor.timestampWrites);
 	const writes = descriptor.timestampWrites;
@@ -2406,37 +2418,37 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 	) == 0) {
 		stop("wgpuCommandEncoderBeginComputePass failed");
 	}
-	computeActive = true;
-	computeGroupBase = groupDepth;
-	computeTimestampSet = writes.querySet.id;
-	computeTimestampEnd = writes.endOfPassWriteIndex;
+	computeBound.active = true;
+	computeBound.groupBase = groupDepth;
+	computeBound.timestampSet = writes.querySet.id;
+	computeBound.timestampEnd = writes.endOfPassWriteIndex;
 	markTimestamp(writes.querySet.id, writes.beginningOfPassWriteIndex);
-	boundCompute = 0;
-	computeGroupMask = 0;
+	computeBound.pipeline = 0;
+	computeBound.groupMask = 0;
 	return { id: 1 };
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	if (!computeActive) { stop("setPipeline outside a compute pass"); }
+	if (!computeBound.active) { stop("setPipeline outside a compute pass"); }
 	const p = pipelineIndex(pipeline.id);
 	if (!pipelines[p].compute) { stop(`GPUPipeline ${pipeline.id} is not a compute pipeline`); }
 	wgSetComputePipeline(pipelines[p].native);
-	boundCompute = pipeline.id;
+	computeBound.pipeline = pipeline.id;
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	if (!computeActive) { stop("setBindGroup outside a compute pass"); }
+	if (!computeBound.active) { stop("setBindGroup outside a compute pass"); }
 	stageBindGroup(index, bindGroup, dynamicOffsets, true);
 }
 
 function checkDispatch(call: string): void {
-	if (!computeActive) { stop(`${call} outside a compute pass`); }
-	if (boundCompute == 0) { stop(`${call} without setPipeline`); }
-	const s = shaderIndex(pipelines[pipelineIndex(boundCompute)].shader);
-	if (shaders[s].uniformCount > 0 && (computeGroupMask & 1) == 0) {
+	if (!computeBound.active) { stop(`${call} outside a compute pass`); }
+	if (computeBound.pipeline == 0) { stop(`${call} without setPipeline`); }
+	const s = shaderIndex(pipelines[pipelineIndex(computeBound.pipeline)].shader);
+	if (shaders[s].uniformCount > 0 && (computeBound.groupMask & 1) == 0) {
 		stop(`${call}: the compute pipeline reads bind group ${GPU_UNIFORM_GROUP}, which is not set`);
 	}
-	if (shaders[s].resourceCount > 0 && (computeGroupMask & 2) == 0) {
+	if (shaders[s].resourceCount > 0 && (computeBound.groupMask & 2) == 0) {
 		stop(`${call}: the compute pipeline reads bind group ${GPU_RESOURCE_GROUP}, which is not set`);
 	}
 }
@@ -2463,12 +2475,12 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 }
 
 export function endComputePass(): void {
-	if (!computeActive) { stop("end without an open compute pass"); }
-	checkGroupsClosed(computeGroupBase, "end");
+	if (!computeBound.active) { stop("end without an open compute pass"); }
+	checkGroupsClosed(computeBound.groupBase, "end");
 	wgEndComputePass();
-	markTimestamp(computeTimestampSet, computeTimestampEnd);
-	computeActive = false;
-	boundCompute = 0;
+	markTimestamp(computeBound.timestampSet, computeBound.timestampEnd);
+	computeBound.active = false;
+	computeBound.pipeline = 0;
 }
 
 export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
@@ -2530,7 +2542,7 @@ function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): v
 }
 
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
-	if (passActive || computeActive) { stop("resolveQuerySet inside a pass"); }
+	if (pass.active || computeBound.active) { stop("resolveQuerySet inside a pass"); }
 	if (!encoding) { stop("resolveQuerySet without createCommandEncoder"); }
 	const q = querySetIndex(querySet.id);
 	if (firstQuery < 0 || queryCount < 0 || firstQuery + queryCount > querySets[q].count) {
@@ -2557,10 +2569,10 @@ export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryC
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	if (!passActive) { stop("beginOcclusionQuery outside a render pass"); }
-	if (passOcclusionSet == 0) { stop("beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet"); }
-	if (passOcclusionOpen) { stop("beginOcclusionQuery with an occlusion query already open"); }
-	const q = querySetIndex(passOcclusionSet);
+	if (!pass.active) { stop("beginOcclusionQuery outside a render pass"); }
+	if (pass.occlusionSet == 0) { stop("beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet"); }
+	if (pass.occlusionOpen) { stop("beginOcclusionQuery with an occlusion query already open"); }
+	const q = querySetIndex(pass.occlusionSet);
 	if (queryIndex < 0 || queryIndex >= querySets[q].count) {
 		stop(`beginOcclusionQuery index ${queryIndex} is outside the query set of ${querySets[q].count}`);
 	}
@@ -2570,15 +2582,15 @@ export function beginOcclusionQuery(queryIndex: int32): void {
 	querySets[q].usedPass[queryIndex] = passSerial;
 	querySets[q].state[queryIndex] = QUERY_OPEN;
 	wgBeginOcclusionQuery(queryIndex);
-	passOcclusionOpen = true;
-	passOcclusionIndex = queryIndex;
+	pass.occlusionOpen = true;
+	pass.occlusionIndex = queryIndex;
 }
 
 export function endOcclusionQuery(): void {
-	if (!passActive || !passOcclusionOpen) { stop("endOcclusionQuery without an open occlusion query"); }
+	if (!pass.active || !pass.occlusionOpen) { stop("endOcclusionQuery without an open occlusion query"); }
 	wgEndOcclusionQuery();
-	querySets[querySetIndex(passOcclusionSet)].state[passOcclusionIndex] = QUERY_WRITTEN;
-	passOcclusionOpen = false;
+	querySets[querySetIndex(pass.occlusionSet)].state[pass.occlusionIndex] = QUERY_WRITTEN;
+	pass.occlusionOpen = false;
 }
 
 function limitOf(which: int32): int32 { return wgLimit(which) as int32; }
@@ -2616,21 +2628,30 @@ function featureBits(bits: uint32, native: int32, name: GPUFeatureName): uint32 
 	return wgHasFeature(native) != 0 ? bits | featureBit(name) : bits;
 }
 
+struct FeatureEntry {
+	native: int32;
+	name: GPUFeatureName;
+}
+
+const FEATURE_TABLE: FeatureEntry[] = [
+	{ native: FEATURE_TIMESTAMP_QUERY, name: "timestamp-query" },
+	{ native: FEATURE_TEXTURE_COMPRESSION_BC, name: "texture-compression-bc" },
+	{ native: FEATURE_TEXTURE_COMPRESSION_ETC2, name: "texture-compression-etc2" },
+	{ native: FEATURE_TEXTURE_COMPRESSION_ASTC, name: "texture-compression-astc" },
+	{ native: FEATURE_DEPTH32_FLOAT_STENCIL8, name: "depth32float-stencil8" },
+	{ native: FEATURE_DEPTH_CLIP_CONTROL, name: "depth-clip-control" },
+	{ native: FEATURE_FLOAT32_FILTERABLE, name: "float32-filterable" },
+	{ native: FEATURE_FLOAT32_BLENDABLE, name: "float32-blendable" },
+	{ native: FEATURE_RG11B10_UFLOAT_RENDERABLE, name: "rg11b10ufloat-renderable" },
+	{ native: FEATURE_BGRA8_UNORM_STORAGE, name: "bgra8unorm-storage" },
+	{ native: FEATURE_INDIRECT_FIRST_INSTANCE, name: "indirect-first-instance" },
+	{ native: FEATURE_SHADER_F16, name: "shader-f16" },
+	{ native: FEATURE_DUAL_SOURCE_BLENDING, name: "dual-source-blending" },
+];
+
 export function features(): GPUSupportedFeatures {
 	let bits: uint32 = 0;
-	bits = featureBits(bits, FEATURE_TIMESTAMP_QUERY, "timestamp-query");
-	bits = featureBits(bits, FEATURE_TEXTURE_COMPRESSION_BC, "texture-compression-bc");
-	bits = featureBits(bits, FEATURE_TEXTURE_COMPRESSION_ETC2, "texture-compression-etc2");
-	bits = featureBits(bits, FEATURE_TEXTURE_COMPRESSION_ASTC, "texture-compression-astc");
-	bits = featureBits(bits, FEATURE_DEPTH32_FLOAT_STENCIL8, "depth32float-stencil8");
-	bits = featureBits(bits, FEATURE_DEPTH_CLIP_CONTROL, "depth-clip-control");
-	bits = featureBits(bits, FEATURE_FLOAT32_FILTERABLE, "float32-filterable");
-	bits = featureBits(bits, FEATURE_FLOAT32_BLENDABLE, "float32-blendable");
-	bits = featureBits(bits, FEATURE_RG11B10_UFLOAT_RENDERABLE, "rg11b10ufloat-renderable");
-	bits = featureBits(bits, FEATURE_BGRA8_UNORM_STORAGE, "bgra8unorm-storage");
-	bits = featureBits(bits, FEATURE_INDIRECT_FIRST_INSTANCE, "indirect-first-instance");
-	bits = featureBits(bits, FEATURE_SHADER_F16, "shader-f16");
-	bits = featureBits(bits, FEATURE_DUAL_SOURCE_BLENDING, "dual-source-blending");
+	for (const entry of FEATURE_TABLE) { bits = featureBits(bits, entry.native, entry.name); }
 	return { bits: bits };
 }
 
@@ -2646,7 +2667,7 @@ export function pushDebugGroup(label: string): void {
 
 export function popDebugGroup(): void {
 	if (!encoding) { stop("popDebugGroup without createCommandEncoder"); }
-	const base = passActive ? passGroupBase : (computeActive ? computeGroupBase : 0);
+	const base = pass.active ? pass.groupBase : (computeBound.active ? computeBound.groupBase : 0);
 	if (groupDepth <= base) { stop("popDebugGroup without a matching pushDebugGroup"); }
 	wgPopDebugGroup();
 	groupDepth -= 1;
