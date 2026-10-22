@@ -171,6 +171,37 @@ export function create(
 	return Result.ok({ targetCount: targetCount, primitives: move primitives });
 }
 
+// The same offsets over other bases: one per primitive, the vertices of the primitive's base in
+// the same order, so a skinned layout of the mesh deforms by the weights the plain one does.
+export function rebased(
+	this data: Readonly<MorphData>, bases: Readonly<Span<MeshData>>,
+): Result<Readonly<MorphData>, MorphGeometryError> {
+	if (bases.length != data.primitives.length) { return Result.err(MorphGeometryError.Shape); }
+	let primitives: Vec<MorphPrimitiveData> = [];
+	for (let primitive = 0; primitive < data.primitives.length; primitive++) {
+		const from: Readonly<MeshData> = data.primitives[primitive].base;
+		if (!meshShape(bases[primitive]) || bases[primitive].vertexCount() != from.vertexCount() ||
+			bases[primitive].hasUvs != from.hasUvs ||
+			bases[primitive].hasTangents != from.hasTangents) {
+			return Result.err(MorphGeometryError.Shape);
+		}
+		const fields: int32 = from.stride();
+		const stride: int32 = bases[primitive].stride();
+		for (let vertex = 0; vertex < from.vertexCount(); vertex++) {
+			for (let field = 0; field < fields; field++) {
+				if (bases[primitive].vertices[vertex * stride + field] !=
+					from.vertices[vertex * fields + field]) {
+					return Result.err(MorphGeometryError.Shape);
+				}
+			}
+		}
+		let offsets: Vec<float32> = [];
+		for (const value of data.primitives[primitive].targetVertexXyz) { offsets.push(value); }
+		primitives.push({ base: copiedMesh(bases[primitive]), targetVertexXyz: move offsets });
+	}
+	return Result.ok({ targetCount: data.targetCount, primitives: move primitives });
+}
+
 export function bind(
 	this typeof MorphGeometry,
 	data: Readonly<MorphData>,

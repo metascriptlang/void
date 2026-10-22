@@ -5,6 +5,7 @@ import {
 	GltfTextureTransform, IDENTITY_TEXTURE_TRANSFORM,
 } from "./gltf";
 import { GltfWeightTrack, sampleWeights } from "./gltfCurve";
+import { MorphData, rebased } from "./morphGeometry";
 import {
 	DrawContext,
 	MeshId,
@@ -70,6 +71,7 @@ import {
 	addMeshNode,
 	addSkinMeshNode,
 	addMorphMeshNode,
+	addSkinMorphMeshNode,
 	MorphNodeError,
 	bindSceneMorph,
 	setMorphWeights,
@@ -91,7 +93,6 @@ export enum GltfSceneError {
 	MaterialRefused,
 	MeshRefused,
 	UndeclaredProgram,
-	MorphWithSkin,
 	MorphRefused,
 	PbrFeatureRefused,
 	PbrValueRefused,
@@ -206,7 +207,8 @@ export function gltfProgramOf(source: GltfMaterial): ProgramKey {
 		source.texture != NO_TEXTURE_INDEX ? Program.LitTextured : Program.Lit;
 	const plain: ProgramKey = Material.ofKind(lit, kindOf(source.alphaMode)).program;
 	const pbrKey: ProgramKey = source.pbr !== null ? plain.withPbr() : plain;
-	const key: ProgramKey = source.pbr !== null && source.pbrMaps !== null && lit == Program.LitTextured
+	const key: ProgramKey =
+		source.pbr !== null && source.pbrMaps !== null && lit == Program.LitTextured
 		? pbrKey.withPbrMaps() : pbrKey;
 	const emitting: ProgramKey =
 		source.emissiveTexture != NO_TEXTURE_INDEX ? key.withEmissive() : key;
@@ -477,7 +479,8 @@ export function addGltfAssets(
 					? DEFAULT_SOURCE : data.materials[material];
 				const base = context.materials[assets.materials[index].index];
 				const roles: GltfTextureRoles = {
-					texture: base.texture, emissive: base.emissiveTexture, normal: base.normalTexture,
+					texture: base.texture, emissive: base.emissiveTexture,
+					normal: base.normalTexture,
 					metalRough: base.metalRoughTexture, occlusion: base.occlusionTexture,
 				};
 				const made = madeMaterial(context, setup, source, roles, true);
@@ -596,6 +599,7 @@ function attachGltfSkins(
 	data: GltfData,
 	bindings: Readonly<Span<GltfMeshBinding>>,
 	mapped: GltfNodeBinding,
+	morphs: Readonly<Span<SceneMorph | null>>,
 ): Result<int32, GltfSceneError> {
 	let addedCount: int32 = 0;
 	for (let node = 0; node < data.nodes.length; node++) {
@@ -630,9 +634,23 @@ function attachGltfSkins(
 				const local: Transform3D = {
 					position: vec3(0, 0, 0), rotation: identityQuat(), scale: vec3(1, 1, 1),
 				};
-				const added = addSkinMeshNode(scene, mapped.nodes[node], local,
-					skinMesh, skinMaterial, geometry.value, palette, range);
-				if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }
+				const morph = morphs[node];
+				if (morph === null) {
+					const added = addSkinMeshNode(scene, mapped.nodes[node], local,
+						skinMesh, skinMaterial, geometry.value, palette, range);
+					if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }
+				} else {
+					const dynamic = addDynamicMeshData(scene.context, source.mesh);
+					if (!dynamic.ok) { return Result.err(GltfSceneError.MeshRefused); }
+					const morphed = data.nodes[node].morph;
+					const added = addSkinMorphMeshNode(scene, mapped.nodes[node], local,
+						dynamic.value, skinMaterial, geometry.value, palette, range, morph,
+						mesh - (morphed === null ? 0 : data.morphs[morphed].firstPrimitive));
+					if (!added.ok) {
+						if (!releaseMesh(scene.context, dynamic.value).ok) { unreachable; }
+						return Result.err(GltfSceneError.SceneRefused);
+					}
+				}
 				addedCount++;
 				palette++;
 				base += count;
@@ -685,18 +703,39 @@ export function addGltfBoundNodes(
 	for (let index = 0; index < data.nodes.length; index++) {
 		const morph = data.nodes[index].morph;
 		if (morph === null) { continue; }
-		if (data.nodes[index].skin !== null) { return Result.err(GltfSceneError.MorphWithSkin); }
 		const first: int32 = data.morphs[morph].firstPrimitive;
 		const count: int32 = data.morphs[morph].data.primitives.length as int32;
 		if (first < 0 || count < 1 || first > (data.meshes.length as int32) - count) {
 			return Result.err(GltfSceneError.InvalidData);
 		}
-		const bound = bindSceneMorph(data.morphs[morph].data, data.nodes[index].weights);
+		let morphData: Readonly<MorphData> = data.morphs[morph].data;
+		if (data.nodes[index].skin !== null) {
+			const skinMeshes = data.nodes[index].skinMeshes;
+			if ((skinMeshes.length as int32) != count) {
+				return Result.err(GltfSceneError.InvalidData);
+			}
+			let bases: Vec<MeshData> = [];
+			for (let primitive = 0; primitive < count; primitive++) {
+				if (skinMeshes[primitive] != first + primitive) {
+					return Result.err(GltfSceneError.InvalidData);
+				}
+				const source = data.skinMeshes[skinMeshes[primitive]];
+				if (source === null) { return Result.err(GltfSceneError.InvalidData); }
+				bases.push(source.mesh);
+			}
+			const skinned = morphData.rebased(bases);
+			if (!skinned.ok) { return Result.err(GltfSceneError.MorphRefused); }
+			morphData = skinned.value;
+		}
+		const bound = bindSceneMorph(morphData, data.nodes[index].weights);
 		if (!bound.ok) { return Result.err(GltfSceneError.MorphRefused); }
 		morphs[index] = bound.value;
+		if (data.nodes[index].skin !== null) { continue; }
 		const own: int32 = data.nodes[index].mesh;
 		if (own >= 0) {
-			if (own < first || own >= first + count) { return Result.err(GltfSceneError.InvalidData); }
+			if (own < first || own >= first + count) {
+				return Result.err(GltfSceneError.InvalidData);
+			}
 			owners[index] = index;
 			primitives[index] = own - first;
 			continue;
@@ -761,7 +800,7 @@ export function addGltfBoundNodes(
 			parents.push(id);
 		}
 	}
-	const attached = attachGltfSkins(scene, data, bindings, mapped);
+	const attached = attachGltfSkins(scene, data, bindings, mapped, morphs);
 	if (!attached.ok) { return failedGltfNodes(scene, data, mapped, attached.error); }
 	mapped.count += attached.value;
 	mapped.morphs = move morphs;

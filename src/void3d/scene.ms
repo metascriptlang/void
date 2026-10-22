@@ -36,7 +36,12 @@ import {
 	LightShapeError,
 	ConeCosines,
 } from "./lightShape";
-import { SkinGeometry, SkinGeometryError, deformPublished } from "./skinGeometry";
+import {
+	SkinGeometry,
+	SkinGeometryError,
+	deformPublished,
+	setSourceVertices,
+} from "./skinGeometry";
 import { syncSkinPose } from "./skinPose";
 import {
 	MorphData, MorphGeometry, MorphGeometryError, bind as bindMorphGeometry, publishMorphGeometry,
@@ -156,6 +161,7 @@ export enum MorphNodeError {
 	ForeignMaterial,
 	Mesh,
 	Skin,
+	SkinMesh,
 	Primitive,
 	Unpublished,
 	Scene,
@@ -603,6 +609,7 @@ export function setMorphWeights(
 
 function validateMorphMesh(
 	scene: Scene3D, mesh: MeshId, material: MaterialId, morph: SceneMorph, primitive: int32,
+	skinned: boolean,
 ): Result<int32, MorphNodeError> {
 	const context = scene.context;
 	if (!context.hasMesh(mesh)) {
@@ -618,16 +625,23 @@ function validateMorphMesh(
 	}
 	if (!morph.geometry.ready) { return Result.err(MorphNodeError.Unpublished); }
 	const index: int32 = mesh.index;
-	if (context.meshData[index].hasSkin || morph.geometry.meshes[primitive].hasSkin) {
+	if (context.meshData[index].hasSkin != skinned ||
+		morph.geometry.meshes[primitive].hasSkin != skinned) {
 		return Result.err(MorphNodeError.Skin);
 	}
 	if (context.meshStorage[index] == VertexStorage.Immutable ||
 		context.meshHolders[index] != 1 || context.meshPins[index] != 0 ||
-		context.meshData[index].vertices.length != morph.geometry.meshes[primitive].vertices.length ||
+		context.meshData[index].vertices.length !=
+			morph.geometry.meshes[primitive].vertices.length ||
 		context.meshData[index].indexCount() != morph.geometry.meshes[primitive].indexCount() ||
 		context.meshData[index].hasUvs != morph.geometry.meshes[primitive].hasUvs ||
 		context.meshData[index].hasTangents != morph.geometry.meshes[primitive].hasTangents) {
 		return Result.err(MorphNodeError.Mesh);
+	}
+	for (let i = 0; i < morph.geometry.meshes[primitive].indexCount(); i++) {
+		if (context.meshData[index].indexAt(i) != morph.geometry.meshes[primitive].indexAt(i)) {
+			return Result.err(MorphNodeError.Mesh);
+		}
 	}
 	return Result.ok(index);
 }
@@ -640,13 +654,46 @@ export function addMorphMeshNode(
 ): Result<NodeId3D, MorphNodeError> {
 	scene.requireOpen("addMorphMeshNode");
 	scene.context.requireOpen("addMorphMeshNode");
-	const _valid: int32 = try validateMorphMesh(scene, mesh, material, morph, primitive);
+	const _valid: int32 = try validateMorphMesh(scene, mesh, material, morph, primitive, false);
 	const added: Result<NodeId3D, SceneError> = addMeshNode(scene, parent, local, mesh, material);
 	if (!added.ok) { return Result.err(MorphNodeError.Scene); }
 	const node: NodeId3D = added.value;
 	const row: int32 = scene.nodes[node.index].payload;
 	scene.meshes[row].morph = morph;
 	scene.meshes[row].morphPrimitive = primitive;
+	scene.morphNodes += 1;
+	return Result.ok(node);
+}
+
+// A morph node whose private dynamic mesh has the skin layout: the CPU deforms the primitive by
+// the weights, the GPU skins that by the palette, and the skin geometry that bounds, culls and
+// picks the node skins the same morphed vertices (glTF 2.0 section 3.7.3.3: morph targets,
+// then skin).
+// Every part of one skin mesh holds a mesh of its own, since a node holds its mesh once.
+export function addSkinMorphMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, geometry: SkinGeometry,
+	palette: int32, range: DrawRange | null, morph: SceneMorph, primitive: int32,
+): Result<NodeId3D, MorphNodeError> {
+	scene.requireOpen("addSkinMorphMeshNode");
+	scene.context.requireOpen("addSkinMorphMeshNode");
+	const _valid: int32 = try validateMorphMesh(scene, mesh, material, morph, primitive, true);
+	const skin: Result<int32, SceneError> =
+		validateSkinMesh(scene, mesh, material, geometry, palette, range);
+	if (!skin.ok) { return Result.err(MorphNodeError.SkinMesh); }
+	if (morph.geometry.meshes[primitive].vertices.length != geometry.source.vertices.length) {
+		return Result.err(MorphNodeError.SkinMesh);
+	}
+	const added: Result<NodeId3D, SceneError> = addMeshNode(scene, parent, local, mesh, material);
+	if (!added.ok) { return Result.err(MorphNodeError.Scene); }
+	const node: NodeId3D = added.value;
+	const row: int32 = scene.nodes[node.index].payload;
+	scene.meshes[row].skinGeometry = geometry;
+	scene.meshes[row].skinPalette = palette;
+	scene.meshes[row].range = range;
+	scene.meshes[row].morph = morph;
+	scene.meshes[row].morphPrimitive = primitive;
+	scene.skinNodes += 1;
 	scene.morphNodes += 1;
 	return Result.ok(node);
 }
@@ -1059,7 +1106,9 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
 	if (scene.meshes[row].morph !== null) {
-		console.log("void3d: setMeshOf on a morph node, whose mesh is the instance's own dynamic one");
+		console.log(
+			"void3d: setMeshOf on a morph node, whose mesh is the instance's own dynamic one",
+		);
 		unreachable;
 	}
 	const geometry = scene.meshes[row].skinGeometry;
@@ -1075,7 +1124,9 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	return Result.ok(node);
 }
 
-export function setMaterialOf(scene: Scene3D, id: NodeId3D, material: MaterialId): Result<int32, SceneError> {
+export function setMaterialOf(
+	scene: Scene3D, id: NodeId3D, material: MaterialId,
+): Result<int32, SceneError> {
 	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setMaterialOf");
 	const context: DrawContext = scene.context;
 	context.requireOpen("setMaterialOf");
@@ -1363,13 +1414,13 @@ export function syncSceneSkinGeometry(scene: Scene3D): Result<int32, SkinGeometr
 	return Result.ok(deformed);
 }
 
-// Skin first: both only read and mirror their own published state, so the order is for the
-// error a frame reports first.
+// Morph first: a skinned morph node hands its morphed vertices to its skin geometry, which the
+// skin deform then poses.
 export function syncSceneGeometry(scene: Scene3D): Result<int32, SceneSyncError> {
-	const skins = syncSceneSkinGeometry(scene);
-	if (!skins.ok) { return Result.err(SceneSyncError.Skin); }
 	const morphs = syncSceneMorphGeometry(scene);
 	if (!morphs.ok) { return Result.err(SceneSyncError.Morph); }
+	const skins = syncSceneSkinGeometry(scene);
+	if (!skins.ok) { return Result.err(SceneSyncError.Skin); }
 	return Result.ok(skins.value + morphs.value);
 }
 
@@ -1390,7 +1441,14 @@ export function syncSceneMorphGeometry(scene: Scene3D): Result<int32, MorphGeome
 		if (primitive >= (morph.geometry.meshes.length as int32)) {
 			return Result.err(MorphGeometryError.Shape);
 		}
-		if (!setMeshVertices(scene.context, scene.meshes[i].mesh, morph.geometry.meshes[primitive]).ok) {
+		if (!setMeshVertices(
+			scene.context, scene.meshes[i].mesh, morph.geometry.meshes[primitive],
+		).ok) {
+			return Result.err(MorphGeometryError.Shape);
+		}
+		const skin = scene.meshes[i].skinGeometry;
+		if (skin !== null &&
+			!skin.setSourceVertices(morph.geometry.meshes[primitive].vertices).ok) {
 			return Result.err(MorphGeometryError.Shape);
 		}
 		scene.meshes[i].morphRevision = morph.geometry.revision;
@@ -1601,7 +1659,9 @@ export function collectLightsFor(
 		out[colorAt + 2] = light.color.z;
 		out[colorAt + 3] = light.radius;
 		if (light.kind != LightKind.Point) {
-			if (!packShape(out, i, light, world).ok) { return Result.err(LightError.BadLightShape); }
+			if (!packShape(out, i, light, world).ok) {
+				return Result.err(LightError.BadLightShape);
+			}
 		}
 	}
 	out[3] = found as float32;

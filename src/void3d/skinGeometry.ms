@@ -79,6 +79,17 @@ export function bind(
 	});
 }
 
+// A morphed pose of the bind mesh: the next deform skins these vertices instead of the bind ones.
+export function setSourceVertices(
+	this geometry: SkinGeometry, vertices: Readonly<Span<float32>>,
+): Result<int32, SkinGeometryError> {
+	if (vertices.length != geometry.source.vertices.length) {
+		return Result.err(SkinGeometryError.Shape);
+	}
+	for (let i = 0; i < vertices.length; i++) { geometry.source.vertices[i] = vertices[i]; }
+	return Result.ok(geometry.source.vertexCount());
+}
+
 export function syncGeometry(this geometry: SkinGeometry): Result<int32, SkinGeometryError> {
 	geometry.ready = false;
 	const synced = geometry.pose.syncSkinPose();

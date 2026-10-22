@@ -5703,10 +5703,12 @@ shadow pass and the next upload read one deformation. It is the skin idiom with 
 skin deforms on the GPU and mirrors on the CPU, morph deforms on the CPU and the GPU reads it.
 Refused by name: a primitive whose target count differs from its siblings', a target carrying an
 attribute other than the three or one the primitive lacks, generated tangents under morph (supply
-TANGENT), a weights channel on a node whose mesh has no targets, and `GltfSceneError.MorphWithSkin`
-(skin and morph on one node). Reference: the commits cite no Heaps line for the morph mechanism;
+TANGENT), and a weights channel on a node whose mesh has no targets. Skin and morph on one node
+(`addSkinMorphMeshNode`) morph first on the CPU, hand the morphed vertices to the skin geometry,
+then skin on the GPU, the order glTF 2.0 section 3.7.3.3 gives; every part of one skin mesh holds
+a mesh of its own. Reference: the commits cite no Heaps line for the morph mechanism;
 `h3d/prim/Blendshape.hx` is the family anchor in `heaps3dParity.md`. Acceptance:
-`gltfMorphImportCheck` 7, `morphSceneCheck` 6.
+`gltfMorphImportCheck` 7, `morphSceneCheck` 6, `morphSkinSceneCheck` 8.
 
 **Dynamic mesh upload.** `draw.ms` `addDynamicMeshData`, `setMeshVertices`, `uploadDirtyMeshes`;
 `renderer.ms` `beginFrame` calls the last after the scene refresh and before the first pass. A sokol
@@ -5779,7 +5781,7 @@ zero-length edge or a zero-length axis contains nothing. Oracle: `segment3d` 8, 
 collider file here: the posed-mesh ray query is `skinGeometry.ms` `rayIntersectionElements`.
 
 **Not built, recorded.**
-- Morph with skin on one node (`MorphWithSkin`); morph on a primitive with generated tangents.
+- Morph on a primitive with generated tangents.
 - Pbr with a UV transform; roughness 0; environment and image-based lighting, so the pbr indirect
   term is a flat ambient only; any compensation for the pi factor.
 - Texture mips: automatic mip generation, so a caller supplies every level (Heaps calls the driver's
