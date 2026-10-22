@@ -484,11 +484,22 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	};
 }
 
+function isLayered(t: ShaderType): boolean {
+	return t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
+}
+
+function layeredAt(p: Printer, e: ShaderExpr, layered: boolean): string {
+	return layered ? "float3(" + expr(p, e.operands[2]) + ", float(" + expr(p, e.operands[3]) +
+		"))" : expr(p, e.operands[2]);
+}
+
 function sampleOf(p: Printer, e: ShaderExpr): string {
-	if (e.operands.length != 3) {
-		return fail(p, "TextureSample takes a texture, a sampler and coordinates");
+	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	if (e.operands.length != (layered ? 4 : 3)) {
+		return fail(p, "TextureSample takes a texture, a sampler, coordinates and, for an array " +
+			"texture, a layer");
 	}
-	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
+	const [texture, sampler] = [e.operands[0], e.operands[1]];
 	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, "TextureSample takes a texture and a sampler first");
 	}
@@ -499,16 +510,19 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		p.module.resources[sampler.index].samplerType == SamplerType.Comparison) {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
-	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + expr(p, at) + ")";
+	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e, layered) +
+		")";
 }
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
-	if (e.operands.length != 4) {
-		return fail(p, name + " takes a texture, a sampler, coordinates and a depth reference");
+	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	if (e.operands.length != (layered ? 5 : 4)) {
+		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
+			"layer, and a depth reference");
 	}
-	const [texture, sampler, at, reference] = [e.operands[0], e.operands[1], e.operands[2],
-		e.operands[3]];
+	const [texture, sampler] = [e.operands[0], e.operands[1]];
+	const reference = e.operands[e.operands.length - 1];
 	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
 	}
@@ -528,7 +542,7 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 			"no depth");
 	}
 	return operand(p, texture) + (level ? ".SampleCmpLevelZero(" : ".SampleCmp(") +
-		expr(p, sampler) + ", " + expr(p, at) + ", " + expr(p, reference) + ")";
+		expr(p, sampler) + ", " + layeredAt(p, e, layered) + ", " + expr(p, reference) + ")";
 }
 
 function storeOf(p: Printer, e: ShaderExpr): string {

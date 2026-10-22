@@ -409,7 +409,9 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 
 function compared(e: ShaderExpr, args: string[]): string {
 	const level = e.intrinsic == Intrinsic.TextureSampleCompareLevel;
-	const coords = args[2] + ", " + args[3];
+	const layered = e.operands[0].type.shape == TextureShape.Depth2dArray;
+	const coords = args[2] + (layered ? ", float(" + args[3] + ")" : "") + ", " +
+		args[args.length - 1];
 	const pair = "(" + args[0] + ", " + args[1] + ")";
 	return match (e.operands[0].type.shape) {
 		TextureShape.Depth2dArray => level ? "textureGrad(sampler2DArrayShadow" + pair +

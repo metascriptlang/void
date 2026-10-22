@@ -399,9 +399,11 @@ function isDepth(t: ShaderType): boolean {
 function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
 	const name = e.intrinsic.toString();
-	if (o.length != 4 || o[0].type.kind != ShaderTypeKind.Texture ||
+	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
+	if (o.length != (layered ? 5 : 4) || o[0].type.kind != ShaderTypeKind.Texture ||
 		o[1].type.kind != ShaderTypeKind.Sampler) {
-		return refusal(p, name + " takes a texture, a sampler, coordinates and a depth reference");
+		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
+			"a layer, and a depth reference");
 	}
 	if (!level) { fragmentOnly(p, name); }
 	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
@@ -412,18 +414,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 		return refusal(p, name + " of a " + o[0].type.shape.toString() + " texture, which holds " +
 			"no depth");
 	}
-	let args = [exprText(p, o[0]), exprText(p, o[1])];
-	if (o[0].type.shape == TextureShape.Depth2dArray) {
-		if (hasEffect(o[2])) { return refusal(p, name + " whose coordinates call a function"); }
-		const at = exprText(p, o[2]);
-		args.push(at + ".xy");
-		args.push("i32(" + at + ".z)");
-	} else {
-		args.push(exprText(p, o[2]));
-	}
-	args.push(exprText(p, o[3]));
-	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + args.join(", ") +
-		")";
+	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + argsText(p, o) + ")";
 }
 
 function intrinsicText(p: Printer, e: ShaderExpr): string {

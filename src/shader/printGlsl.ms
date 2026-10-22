@@ -475,9 +475,15 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	};
 }
 
+function isLayered(t: ShaderType): boolean {
+	return t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
+}
+
 function sampleOf(p: Printer, e: ShaderExpr): string {
-	if (e.operands.length != 3) {
-		return fail(p, "TextureSample takes a texture, a sampler and coordinates");
+	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	if (e.operands.length != (layered ? 4 : 3)) {
+		return fail(p, "TextureSample takes a texture, a sampler, coordinates and, for an array " +
+			"texture, a layer");
 	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
 	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
@@ -490,16 +496,20 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 	if (isComparison(p, pair)) {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
-	return narrowed("texture(" + pair.name + ", " + expr(p, at) + ")", e.type);
+	const coords = layered ? "vec3(" + expr(p, at) + ", float(" + expr(p, e.operands[3]) + "))" :
+		expr(p, at);
+	return narrowed("texture(" + pair.name + ", " + coords + ")", e.type);
 }
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
-	if (e.operands.length != 4) {
-		return fail(p, name + " takes a texture, a sampler, coordinates and a depth reference");
+	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
+	if (e.operands.length != (layered ? 5 : 4)) {
+		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
+			"layer, and a depth reference");
 	}
-	const [texture, sampler, at, reference] = [e.operands[0], e.operands[1], e.operands[2],
-		e.operands[3]];
+	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
+	const reference = e.operands[e.operands.length - 1];
 	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
 	}
@@ -511,7 +521,8 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 		return fail(p, name + " through sampler pair '" + pair.name + "', whose sampler is no " +
 			"comparison sampler");
 	}
-	const coords = expr(p, at) + ", " + expr(p, reference);
+	const coords = expr(p, at) + (layered ? ", float(" + expr(p, e.operands[3]) + ")" : "") +
+		", " + expr(p, reference);
 	return match (texture.type.shape) {
 		TextureShape.Depth2d => level ?
 			"textureLod(" + pair.name + ", vec3(" + coords + "), 0.0)" :
