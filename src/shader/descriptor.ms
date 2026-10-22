@@ -20,7 +20,9 @@ import {
 } from "./ir";
 import { irFromText } from "./irText";
 import { ShaderTarget, bindingSlots } from "./layout";
+import { GlslTarget, printGlsl } from "./printGlsl";
 import { printHlsl } from "./printHlsl";
+import { printMsl } from "./printMsl";
 import { printWgsl } from "./printWgsl";
 import { Reflection, reflectCompute, reflectProgram } from "./reflect";
 import { specialize } from "./specialize";
@@ -143,7 +145,7 @@ function returnsWritten(stmts: ShaderStmt[], output: ShaderExpr): ShaderStmt[] {
 }
 
 // The IR lets an entry `return` its single colour; printGlsl450 writes it to the stage's output,
-// the HLSL and WGSL printers print what is there, so the write is spelled out here.
+// the other printers print what is there, so the write is spelled out here.
 function colourWritten(m: ShaderModule): void {
 	for (const e of m.entries) {
 		const index = m.ios.findIndex((io) => io.stage == e.stage &&
@@ -197,8 +199,6 @@ export function entryPointOf(target: ShaderTarget): string {
 	return target == ShaderTarget.Msl ? "main0" : "main";
 }
 
-// The source of one entry for one target; a target whose printer is not in the tree is refused
-// by name.
 export function stageSource(m: ShaderModule, entry: int32, target: ShaderTarget):
 	Result<string, string> {
 	return match (target) {
@@ -210,8 +210,15 @@ export function stageSource(m: ShaderModule, entry: int32, target: ShaderTarget)
 			const slots = try bindingSlots(m, [entry], target);
 			return printWgsl(m, entry, slots);
 		},
-		ShaderTarget.Glsl430 | ShaderTarget.Glsl300es | ShaderTarget.Msl =>
-			Result.err("no " + targetName(target) + " printer is merged yet"),
+		ShaderTarget.Glsl430 | ShaderTarget.Glsl300es => {
+			const slots = try bindingSlots(m, [entry], target);
+			return printGlsl(m, entry, slots, target == ShaderTarget.Glsl430 ? GlslTarget.Glsl430 :
+				GlslTarget.Glsl300es);
+		},
+		ShaderTarget.Msl => {
+			const slots = try bindingSlots(m, [entry], target);
+			return printMsl(m, entry, slots);
+		},
 	};
 }
 
@@ -224,7 +231,7 @@ export class ProgramSource {
 	refusal: string = "";
 }
 
-// The reflection always; the sources when the target's printer exists, else `refusal` says why.
+// The reflection always; the sources when the target's printer prints them, else its refusal.
 export function programSource(m: ShaderModule, target: ShaderTarget): Result<ProgramSource, string> {
 	let out = new ProgramSource();
 	out.entryPoint = entryPointOf(target);
