@@ -31,6 +31,7 @@ typedef ptrdiff_t GLsizeiptr;
 typedef unsigned char GLboolean;
 typedef unsigned int GLbitfield;
 typedef float GLfloat;
+typedef double GLdouble;
 typedef int GLint;
 
 #define GL_NO_ERROR 0
@@ -47,10 +48,13 @@ typedef int GLint;
 #define GL_DRAW_FRAMEBUFFER 0x8CA9
 #define GL_RENDERBUFFER 0x8D41
 #define GL_TEXTURE_2D 0x0DE1
+#define GL_TEXTURE_3D 0x806F
+#define GL_TEXTURE_2D_ARRAY 0x8C1A
 #define GL_TEXTURE0 0x84C0
 #define GL_COLOR_ATTACHMENT0 0x8CE0
 #define GL_TEXTURE_BORDER_COLOR 0x1004
 #define GL_UNPACK_ROW_LENGTH 0x0CF2
+#define GL_UNPACK_IMAGE_HEIGHT 0x806E
 #define GL_COMPILE_STATUS 0x8B81
 #define GL_LINK_STATUS 0x8B82
 #define GL_INFO_LOG_LENGTH 0x8B84
@@ -74,7 +78,10 @@ typedef int GLint;
 	OGL_XMACRO(glBindTexture,              void, (GLenum target, GLuint texture)) \
 	OGL_XMACRO(glTexStorage2D,             void, (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height)) \
 	OGL_XMACRO(glTexStorage2DMultisample,  void, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height, GLboolean fixedsamplelocations)) \
+	OGL_XMACRO(glTexStorage3D,             void, (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth)) \
 	OGL_XMACRO(glTexSubImage2D,            void, (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels)) \
+	OGL_XMACRO(glTexSubImage3D,            void, (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels)) \
+	OGL_XMACRO(glTexParameteri,            void, (GLenum target, GLenum pname, GLint param)) \
 	OGL_XMACRO(glDeleteTextures,           void, (GLsizei n, const GLuint *textures)) \
 	OGL_XMACRO(glGenSamplers,              void, (GLsizei n, GLuint *samplers)) \
 	OGL_XMACRO(glSamplerParameteri,        void, (GLuint sampler, GLenum pname, GLint param)) \
@@ -104,6 +111,13 @@ typedef int GLint;
 	OGL_XMACRO(glStencilMask,              void, (GLuint mask)) \
 	OGL_XMACRO(glStencilFunc,              void, (GLenum func, GLint ref, GLuint mask)) \
 	OGL_XMACRO(glStencilOp,                void, (GLenum fail, GLenum zfail, GLenum zpass)) \
+	OGL_XMACRO(glStencilFuncSeparate,      void, (GLenum face, GLenum func, GLint ref, GLuint mask)) \
+	OGL_XMACRO(glStencilOpSeparate,        void, (GLenum face, GLenum sfail, GLenum dpfail, GLenum dppass)) \
+	OGL_XMACRO(glDepthRange,               void, (GLdouble n, GLdouble f)) \
+	OGL_XMACRO(glEnablei,                  void, (GLenum target, GLuint index)) \
+	OGL_XMACRO(glDisablei,                 void, (GLenum target, GLuint index)) \
+	OGL_XMACRO(glBlendFuncSeparatei,       void, (GLuint buf, GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha)) \
+	OGL_XMACRO(glBlendEquationSeparatei,   void, (GLuint buf, GLenum modeRGB, GLenum modeAlpha)) \
 	OGL_XMACRO(glBlendFuncSeparate,        void, (GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha)) \
 	OGL_XMACRO(glBlendEquationSeparate,    void, (GLenum modeRGB, GLenum modeAlpha)) \
 	OGL_XMACRO(glBlendColor,               void, (GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)) \
@@ -119,6 +133,7 @@ typedef int GLint;
 	OGL_XMACRO(glDeleteFramebuffers,       void, (GLsizei n, const GLuint *framebuffers)) \
 	OGL_XMACRO(glFramebufferTexture2D,     void, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)) \
 	OGL_XMACRO(glFramebufferRenderbuffer,  void, (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)) 	OGL_XMACRO(glGenRenderbuffers,         void, (GLsizei n, GLuint *renderbuffers)) 	OGL_XMACRO(glBindRenderbuffer,         void, (GLenum target, GLuint renderbuffer)) 	OGL_XMACRO(glRenderbufferStorageMultisample, void, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)) 	OGL_XMACRO(glDeleteRenderbuffers,      void, (GLsizei n, const GLuint *renderbuffers)) \
+	OGL_XMACRO(glFramebufferTextureLayer,  void, (GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer)) \
 	OGL_XMACRO(glCheckFramebufferStatus,   GLenum, (GLenum target)) \
 	OGL_XMACRO(glDrawBuffers,              void, (GLsizei n, const GLenum *bufs)) \
 	OGL_XMACRO(glReadBuffer,               void, (GLenum src)) \
@@ -126,6 +141,7 @@ typedef int GLint;
 	OGL_XMACRO(glClearBufferfv,            void, (GLenum buffer, GLint drawbuffer, const GLfloat *value)) \
 	OGL_XMACRO(glClearBufferfi,            void, (GLenum buffer, GLint drawbuffer, GLfloat depth, GLint stencil)) \
 	OGL_XMACRO(glVertexAttribPointer,      void, (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer)) \
+	OGL_XMACRO(glVertexAttribIPointer,     void, (GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer)) \
 	OGL_XMACRO(glVertexAttribDivisor,      void, (GLuint index, GLuint divisor)) \
 	OGL_XMACRO(glEnableVertexAttribArray,  void, (GLuint index)) \
 	OGL_XMACRO(glDisableVertexAttribArray, void, (GLuint index)) \
@@ -246,9 +262,15 @@ uint32_t oglCreateTexture(void) {
 void oglActiveTexture(int32_t unit) { glActiveTexture((GLenum)(GL_TEXTURE0 + unit)); }
 void oglBindTexture(int32_t target, uint32_t texture) { glBindTexture((GLenum)target, texture); }
 
-void oglTexStorage2D(int32_t target, int32_t internalFormat, int32_t width, int32_t height) {
-	glTexStorage2D((GLenum)target, 1, (GLenum)internalFormat, width, height);
+void oglTexStorage(int32_t target, int32_t levels, int32_t internalFormat, int32_t width, int32_t height, int32_t depth) {
+	if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) {
+		glTexStorage3D((GLenum)target, levels, (GLenum)internalFormat, width, height, depth);
+	} else {
+		glTexStorage2D((GLenum)target, levels, (GLenum)internalFormat, width, height);
+	}
 }
+
+void oglTexParameteri(int32_t target, int32_t name, int32_t value) { glTexParameteri((GLenum)target, (GLenum)name, value); }
 
 #if !defined(OGL_GLES)
 void oglTexStorage2DMultisample(int32_t target, int32_t samples, int32_t internalFormat, int32_t width, int32_t height) {
@@ -271,19 +293,30 @@ void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer) {
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, (GLenum)attachment, GL_RENDERBUFFER, renderbuffer);
 }
 
-void oglTexSubImage2D(
+void oglTexSubImage(
 	int32_t target,
+	int32_t level,
 	int32_t x,
 	int32_t y,
+	int32_t z,
 	int32_t width,
 	int32_t height,
+	int32_t depth,
 	int32_t format,
 	int32_t type,
 	void *data,
 	int64_t offset,
-	int32_t rowLength) {
+	int32_t rowLength,
+	int32_t imageHeight) {
+	const uint8_t *pixels = (const uint8_t *)data + offset;
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
-	glTexSubImage2D((GLenum)target, 0, x, y, width, height, (GLenum)format, (GLenum)type, (const uint8_t *)data + offset);
+	if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) {
+		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, imageHeight);
+		glTexSubImage3D((GLenum)target, level, x, y, z, width, height, depth, (GLenum)format, (GLenum)type, pixels);
+		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+	} else {
+		glTexSubImage2D((GLenum)target, level, x, y, width, height, (GLenum)format, (GLenum)type, pixels);
+	}
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 }
 
@@ -358,11 +391,40 @@ void oglStencilMask(int32_t mask) { glStencilMask((GLuint)mask); }
 void oglStencilFunc(int32_t compare, int32_t reference, int32_t mask) { glStencilFunc((GLenum)compare, reference, (GLuint)mask); }
 void oglStencilOp(int32_t fail, int32_t depthFail, int32_t pass) { glStencilOp((GLenum)fail, (GLenum)depthFail, (GLenum)pass); }
 
+void oglStencilFuncSeparate(int32_t face, int32_t compare, int32_t reference, int32_t mask) {
+	glStencilFuncSeparate((GLenum)face, (GLenum)compare, reference, (GLuint)mask);
+}
+
+void oglStencilOpSeparate(int32_t face, int32_t fail, int32_t depthFail, int32_t pass) {
+	glStencilOpSeparate((GLenum)face, (GLenum)fail, (GLenum)depthFail, (GLenum)pass);
+}
+
+void oglDepthRange(double nearDepth, double farDepth) {
+#if defined(OGL_GLES)
+	glDepthRangef((GLfloat)nearDepth, (GLfloat)farDepth);
+#else
+	glDepthRange(nearDepth, farDepth);
+#endif
+}
+
 void oglBlendFuncSeparate(int32_t sourceColor, int32_t destinationColor, int32_t sourceAlpha, int32_t destinationAlpha) {
 	glBlendFuncSeparate((GLenum)sourceColor, (GLenum)destinationColor, (GLenum)sourceAlpha, (GLenum)destinationAlpha);
 }
 
 void oglBlendEquationSeparate(int32_t color, int32_t alpha) { glBlendEquationSeparate((GLenum)color, (GLenum)alpha); }
+
+#if !defined(OGL_GLES)
+void oglEnablei(int32_t capability, int32_t index) { glEnablei((GLenum)capability, (GLuint)index); }
+void oglDisablei(int32_t capability, int32_t index) { glDisablei((GLenum)capability, (GLuint)index); }
+
+void oglBlendFuncSeparatei(int32_t index, int32_t sourceColor, int32_t destinationColor, int32_t sourceAlpha, int32_t destinationAlpha) {
+	glBlendFuncSeparatei((GLuint)index, (GLenum)sourceColor, (GLenum)destinationColor, (GLenum)sourceAlpha, (GLenum)destinationAlpha);
+}
+
+void oglBlendEquationSeparatei(int32_t index, int32_t color, int32_t alpha) {
+	glBlendEquationSeparatei((GLuint)index, (GLenum)color, (GLenum)alpha);
+}
+#endif
 void oglBlendColor(double r, double g, double b, double a) { glBlendColor((GLfloat)r, (GLfloat)g, (GLfloat)b, (GLfloat)a); }
 
 void oglColorMask(int32_t mask) {
@@ -390,8 +452,12 @@ uint32_t oglCreateFramebuffer(void) {
 void oglBindFramebuffer(int32_t target, uint32_t framebuffer) { glBindFramebuffer((GLenum)target, framebuffer); }
 void oglDeleteFramebuffer(uint32_t framebuffer) { if (framebuffer) glDeleteFramebuffers(1, &framebuffer); }
 
-void oglFramebufferTexture2D(int32_t attachment, int32_t textureTarget, uint32_t texture) {
-	glFramebufferTexture2D(GL_FRAMEBUFFER, (GLenum)attachment, (GLenum)textureTarget, texture, 0);
+void oglFramebufferTexture2D(int32_t attachment, int32_t textureTarget, uint32_t texture, int32_t level) {
+	glFramebufferTexture2D(GL_FRAMEBUFFER, (GLenum)attachment, (GLenum)textureTarget, texture, level);
+}
+
+void oglFramebufferTextureLayer(int32_t attachment, uint32_t texture, int32_t level, int32_t layer) {
+	glFramebufferTextureLayer(GL_FRAMEBUFFER, (GLenum)attachment, texture, level, layer);
 }
 
 void oglFramebufferDetach(int32_t attachment) {
@@ -430,6 +496,10 @@ void oglClearDepthStencil(double depth, int32_t stencil) { glClearBufferfi(GL_DE
 
 void oglVertexAttribPointer(int32_t index, int32_t size, int32_t type, int32_t normalized, int32_t stride, int64_t offset) {
 	glVertexAttribPointer((GLuint)index, size, (GLenum)type, normalized ? GL_TRUE : GL_FALSE, stride, (const void *)(intptr_t)offset);
+}
+
+void oglVertexAttribIPointer(int32_t index, int32_t size, int32_t type, int32_t stride, int64_t offset) {
+	glVertexAttribIPointer((GLuint)index, size, (GLenum)type, stride, (const void *)(intptr_t)offset);
 }
 
 void oglVertexAttribDivisor(int32_t index, int32_t divisor) { glVertexAttribDivisor((GLuint)index, (GLuint)divisor); }

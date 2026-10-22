@@ -25,22 +25,27 @@ void oglDeleteBuffer(uint32_t buffer);
 uint32_t oglCreateTexture(void);
 void oglActiveTexture(int32_t unit);
 void oglBindTexture(int32_t target, uint32_t texture);
-void oglTexStorage2D(int32_t target, int32_t internalFormat, int32_t width, int32_t height);
+void oglTexStorage(int32_t target, int32_t levels, int32_t internalFormat, int32_t width, int32_t height, int32_t depth);
+void oglTexParameteri(int32_t target, int32_t name, int32_t value);
 void oglTexStorage2DMultisample(int32_t target, int32_t samples, int32_t internalFormat, int32_t width, int32_t height);
 uint32_t oglCreateRenderbuffer(int32_t samples, int32_t internalFormat, int32_t width, int32_t height);
 void oglDeleteRenderbuffer(uint32_t renderbuffer);
 void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer);
-void oglTexSubImage2D(
+void oglTexSubImage(
 	int32_t target,
+	int32_t level,
 	int32_t x,
 	int32_t y,
+	int32_t z,
 	int32_t width,
 	int32_t height,
+	int32_t depth,
 	int32_t format,
 	int32_t type,
 	void *data,
 	int64_t offset,
-	int32_t rowLength);
+	int32_t rowLength,
+	int32_t imageHeight);
 void oglDeleteTexture(uint32_t texture);
 
 uint32_t oglCreateSampler(void);
@@ -65,8 +70,15 @@ void oglDepthMask(int32_t write);
 void oglStencilMask(int32_t mask);
 void oglStencilFunc(int32_t compare, int32_t reference, int32_t mask);
 void oglStencilOp(int32_t fail, int32_t depthFail, int32_t pass);
+void oglStencilFuncSeparate(int32_t face, int32_t compare, int32_t reference, int32_t mask);
+void oglStencilOpSeparate(int32_t face, int32_t fail, int32_t depthFail, int32_t pass);
+void oglDepthRange(double nearDepth, double farDepth);
 void oglBlendFuncSeparate(int32_t sourceColor, int32_t destinationColor, int32_t sourceAlpha, int32_t destinationAlpha);
 void oglBlendEquationSeparate(int32_t color, int32_t alpha);
+void oglEnablei(int32_t capability, int32_t index);
+void oglDisablei(int32_t capability, int32_t index);
+void oglBlendFuncSeparatei(int32_t index, int32_t sourceColor, int32_t destinationColor, int32_t sourceAlpha, int32_t destinationAlpha);
+void oglBlendEquationSeparatei(int32_t index, int32_t color, int32_t alpha);
 void oglBlendColor(double r, double g, double b, double a);
 void oglColorMask(int32_t mask);
 void oglColorMaski(int32_t index, int32_t mask);
@@ -79,7 +91,8 @@ void oglScissor(int32_t x, int32_t y, int32_t width, int32_t height);
 uint32_t oglCreateFramebuffer(void);
 void oglBindFramebuffer(int32_t target, uint32_t framebuffer);
 void oglDeleteFramebuffer(uint32_t framebuffer);
-void oglFramebufferTexture2D(int32_t attachment, int32_t textureTarget, uint32_t texture);
+void oglFramebufferTexture2D(int32_t attachment, int32_t textureTarget, uint32_t texture, int32_t level);
+void oglFramebufferTextureLayer(int32_t attachment, uint32_t texture, int32_t level, int32_t layer);
 void oglFramebufferDetach(int32_t attachment);
 int32_t oglCheckFramebufferStatus(void);
 void oglDrawBuffers(int32_t count, int32_t colorMask);
@@ -90,6 +103,7 @@ void oglClearDepth(double depth);
 void oglClearDepthStencil(double depth, int32_t stencil);
 
 void oglVertexAttribPointer(int32_t index, int32_t size, int32_t type, int32_t normalized, int32_t stride, int64_t offset);
+void oglVertexAttribIPointer(int32_t index, int32_t size, int32_t type, int32_t stride, int64_t offset);
 void oglVertexAttribDivisor(int32_t index, int32_t divisor);
 void oglEnableVertexAttribArray(int32_t index);
 void oglDisableVertexAttribArray(int32_t index);
