@@ -41,6 +41,7 @@ import {
 	stopOnUnportedPrimitive,
 	stopOnUnportedSampler,
 	stopOnUnportedTexelWrite,
+	stopOnUnportedShaderModule,
 	stopOnUnportedTexture,
 	stopOnUnportedView,
 	GPUTexture,
@@ -1055,6 +1056,7 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+	stopOnUnportedShaderModule("metal", descriptor);
 	const id = allocateId(shaderQueue, "shader module");
 	if (id == 0) { return { id: 0 }; }
 	let slot: ShaderSlot = { id: 0 };

@@ -45,6 +45,7 @@ import {
 	stopOnUnportedPrimitive,
 	stopOnUnportedSampler,
 	stopOnUnportedTexelWrite,
+	stopOnUnportedShaderModule,
 	stopOnUnportedTexture,
 	stopOnUnportedView,
 } from "../types.ms";
@@ -1042,6 +1043,7 @@ function createModule(code: string, label: string | null): Ptr<WgModuleImpl> {
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+	stopOnUnportedShaderModule("wgpu", descriptor);
 	const id = allocateId(shaderQueue, "shader module");
 	if (id == 0) { return { id: 0 }; }
 	let slot: ShaderSlot = { id: 0 };

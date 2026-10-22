@@ -46,6 +46,7 @@ import {
 	stopOnUnportedPrimitive,
 	stopOnUnportedSampler,
 	stopOnUnportedTexelWrite,
+	stopOnUnportedShaderModule,
 	stopOnUnportedTexture,
 	stopOnUnportedView,
 } from "../types.ms";
@@ -1176,6 +1177,7 @@ function compileStage(code: string, entryPoint: string, target: string, label: s
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+	stopOnUnportedShaderModule("d3d11", descriptor);
 	const id = allocateId(shaderQueue, "shader module");
 	if (id == 0) { return { id: 0 }; }
 	let slot: ShaderSlot = { id: 0 };

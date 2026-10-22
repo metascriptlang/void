@@ -71,8 +71,8 @@ export type GPUTextureFormat =
 	| "depth16unorm"
 	| "depth32float"
 	| "depth24plus-stencil8";
-export type GPUTextureSampleType = "float" | "unfilterable-float";
-export type GPUSamplerBindingType = "filtering" | "non-filtering";
+export type GPUTextureSampleType = "float" | "unfilterable-float" | "depth" | "sint" | "uint";
+export type GPUSamplerBindingType = "filtering" | "non-filtering" | "comparison";
 export type GPULoadOp = "load" | "clear";
 export type GPUStoreOp = "store" | "discard";
 export type GPUCompareFunction =
@@ -206,8 +206,10 @@ export struct GPUSamplerDescriptor {
 
 // A shader module carries one stage's source per entry, compiled for the backend this build
 // targets, and the reflection that maps a WebGPU binding to the backend's register or name.
-export type GPUShaderBindingKind = "uniform" | "texture" | "sampler";
-export type GPUShaderStage = "vertex" | "fragment";
+export type GPUShaderBindingKind = "uniform" | "texture" | "sampler" | "storage-buffer" | "storage-texture";
+export type GPUShaderStage = "vertex" | "fragment" | "compute";
+export type GPUBufferBindingType = "uniform" | "storage" | "read-only-storage";
+export type GPUStorageTextureAccess = "write-only" | "read-only" | "read-write";
 
 export struct GPUShaderBinding {
 	group: int32;
@@ -217,6 +219,11 @@ export struct GPUShaderBinding {
 	size: int32;
 	sampleType: GPUTextureSampleType;
 	samplerType: GPUSamplerBindingType;
+	bufferType: GPUBufferBindingType;
+	viewDimension: GPUTextureViewDimension;
+	multisampled: boolean;
+	storageAccess: GPUStorageTextureAccess;
+	storageFormat: GPUTextureFormat;
 	nativeSlot: int32;
 	nativeName: string | null;
 	textureBinding: int32;
@@ -234,6 +241,9 @@ export struct GPUShaderModuleDescriptor {
 	vertexEntryPoint: string;
 	fragmentCode: string;
 	fragmentEntryPoint: string;
+	computeCode: string;
+	computeEntryPoint: string;
+	workgroupSize: int32[3];
 	bindings: GPUShaderBinding[24];
 	attributes: GPUShaderAttribute[16];
 }
@@ -368,6 +378,24 @@ function stop(message: string): void {
 function stopOn(backend: string, message: string): void {
 	console.log(`webgpu ${backend}: ${message}`);
 	unreachable;
+}
+
+export function stopOnUnportedShaderModule(backend: string, descriptor: GPUShaderModuleDescriptor): void {
+	if (descriptor.computeCode != "") { stopOn(backend, `GPUShaderModuleDescriptor.computeCode is not ported to ${backend} yet`); }
+	for (let i = 0; i < 24; i++) {
+		const b = descriptor.bindings[i];
+		const sampleType: string = b.sampleType;
+		if (sampleType != "" && sampleType != "float" && sampleType != "unfilterable-float") {
+			stopOn(backend, `GPUShaderBinding.sampleType '${sampleType}' is not ported to ${backend} yet`);
+		}
+		const samplerType: string = b.samplerType;
+		if (samplerType == "comparison") { stopOn(backend, `GPUShaderBinding.samplerType 'comparison' is not ported to ${backend} yet`); }
+		const viewDimension: string = b.viewDimension;
+		if (viewDimension != "" && viewDimension != "2d") {
+			stopOn(backend, `GPUShaderBinding.viewDimension '${viewDimension}' is not ported to ${backend} yet`);
+		}
+		if (b.multisampled) { stopOn(backend, `GPUShaderBinding.multisampled is not ported to ${backend} yet`); }
+	}
 }
 
 const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
