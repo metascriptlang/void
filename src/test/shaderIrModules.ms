@@ -1,5 +1,5 @@
 // Hand-built IR modules the shader printer checks share: void2d's blur, a compute entry, and one
-// pair of entries that reaches every intrinsic and statement kind.
+// pair of entries that reaches every intrinsic and statement kind, and depth comparison.
 
 import {
 	Access,
@@ -11,6 +11,8 @@ import {
 	Intrinsic,
 	IoDirection,
 	ResourceKind,
+	SampleType,
+	SamplerType,
 	Sampling,
 	ScalarKind,
 	ShaderCase,
@@ -506,4 +508,95 @@ export function model(): ShaderExpr {
 
 export function column(matrix: ShaderExpr): ShaderExpr {
 	return exprOf(ExprKind.Index, VEC4, -1, [matrix, literal(I32, 0.0)]);
+}
+
+export function depthTexture(name: string, binding: int32, shape: TextureShape): ShaderResource {
+	let r = resource(ResourceKind.Texture, name, binding, textureType(shape, ScalarKind.F32));
+	r.sampleType = SampleType.Depth;
+	return r;
+}
+
+export function comparisonSampler(name: string, binding: int32): ShaderResource {
+	let r = resource(ResourceKind.Sampler, name, binding, samplerType());
+	r.samplerType = SamplerType.Comparison;
+	return r;
+}
+
+export function depthCompare(op: Intrinsic, texture: int32, sampler: int32, shape: TextureShape,
+	at: ShaderExpr): ShaderExpr {
+	return intrinsicOf(op, F32, [
+		exprOf(ExprKind.Resource, textureType(shape, ScalarKind.F32), texture, []),
+		exprOf(ExprKind.Resource, samplerType(), sampler, []),
+		at,
+		literal(F32, 0.5),
+	]);
+}
+
+// Depth comparison on every depth shape, at the derivative's level in the fragment entry and at
+// level 0 in the vertex entry, beside texel fetches and size queries that pass no sampler.
+export function depthModule(): ShaderModule {
+	let m = new ShaderModule();
+	m.resources = [
+		depthTexture("shadowMap", 0, TextureShape.Depth2d),
+		depthTexture("shadowLayers", 1, TextureShape.Depth2dArray),
+		depthTexture("shadowCube", 2, TextureShape.DepthCube),
+		resource(ResourceKind.Texture, "lut", 3, TEXTURE),
+		comparisonSampler("shadowSmp", 0),
+		depthTexture("heightMap", 4, TextureShape.Depth2d),
+		comparisonSampler("heightSmp", 1),
+	];
+	let color = io("color", ShaderStage.Fragment, IoDirection.Out, VEC4, Builtin.None);
+	color.location = 0;
+	m.ios = [
+		io("clip", ShaderStage.Vertex, IoDirection.Out, VEC4, Builtin.Position),
+		io("uv", ShaderStage.Vertex, IoDirection.Out, VEC2, Builtin.None),
+		io("uv", ShaderStage.Fragment, IoDirection.In, VEC2, Builtin.None),
+		color,
+	];
+	const uv = ioOf(m, 2);
+	const layered = exprOf(ExprKind.Construct, VEC3, -1, [uv, literal(F32, 1.0)]);
+	const D2 = TextureShape.Depth2d;
+	const ARRAY = TextureShape.Depth2dArray;
+	const CUBE = TextureShape.DepthCube;
+	const COMPARE = Intrinsic.TextureSampleCompare;
+	const LEVEL = Intrinsic.TextureSampleCompareLevel;
+	const levels = binaryOf(BinaryOp.Add, F32, binaryOf(BinaryOp.Add, F32,
+		depthCompare(LEVEL, 0, 4, D2, uv), depthCompare(LEVEL, 1, 4, ARRAY, layered)),
+		depthCompare(LEVEL, 2, 4, CUBE, layered));
+	const fetched = intrinsicOf(Intrinsic.TextureLoad, F32, [
+		exprOf(ExprKind.Resource, textureType(D2, ScalarKind.F32), 0, []),
+		exprOf(ExprKind.Construct, IVEC2, -1, [literal(I32, 1.0)]),
+		literal(I32, 0.0),
+	]);
+	const lutRead = intrinsicOf(Intrinsic.TextureLoad, VEC4, [resourceOf(m, 3),
+		exprOf(ExprKind.Construct, IVEC2, -1, [literal(I32, 1.0)]), literal(I32, 0.0)]);
+	const lutSize = intrinsicOf(Intrinsic.TextureDimensions, IVEC2,
+		[resourceOf(m, 3), literal(I32, 0.0)]);
+	const shaded = exprOf(ExprKind.Construct, VEC4, -1, [
+		depthCompare(COMPARE, 0, 4, D2, uv),
+		depthCompare(COMPARE, 1, 4, ARRAY, layered),
+		depthCompare(COMPARE, 2, 4, CUBE, layered),
+		binaryOf(BinaryOp.Mul, F32, levels, fetched),
+	]);
+	const heightSize = intrinsicOf(Intrinsic.TextureDimensions, IVEC2, [resourceOf(m, 5)]);
+	const height = binaryOf(BinaryOp.Add, F32,
+		depthCompare(LEVEL, 5, 6, D2, exprOf(ExprKind.Construct, VEC2, -1, [literal(F32, 0.5)])),
+		exprOf(ExprKind.Convert, F32, -1, [swizzle(heightSize, I32, [0])]));
+	let tooSmall = stmtOf(StmtKind.If, binaryOf(BinaryOp.Less, BOOL, swizzle(lutSize, I32, [0]),
+		literal(I32, 1.0)), [stmtOf(StmtKind.Discard, new ShaderExpr(), [])]);
+	m.functions = [
+		shaderFunction("depthVs", [
+			assignOf(ioOf(m, 1), exprOf(ExprKind.Construct, VEC2, -1, [literal(F32, 0.5)])),
+			assignOf(ioOf(m, 0), exprOf(ExprKind.Construct, VEC4, -1,
+				[literal(F32, 0.0), literal(F32, 0.0), height, literal(F32, 1.0)])),
+			ret(),
+		]),
+		shaderFunction("depthFs", [
+			tooSmall,
+			assignOf(ioOf(m, 3), binaryOf(BinaryOp.Mul, VEC4, shaded, lutRead)),
+			ret(),
+		]),
+	];
+	m.entries = [entry("depthVs", ShaderStage.Vertex, 0), entry("depthFs", ShaderStage.Fragment, 1)];
+	return m;
 }

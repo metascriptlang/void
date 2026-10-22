@@ -12,6 +12,7 @@ import {
 	ShaderModule,
 	ShaderStage,
 	StmtKind,
+	TextureShape,
 	exprOf,
 	featureOn,
 	intrinsicOf,
@@ -30,10 +31,15 @@ import {
 	IVEC2,
 	MAT4,
 	TEXTURE,
+	VEC2,
 	VEC4,
 	blurModule,
 	column,
+	comparisonSampler,
 	computeModule,
+	depthCompare,
+	depthModule,
+	depthTexture,
 	everyModule,
 	io,
 	model,
@@ -287,4 +293,53 @@ test "a feature branch prints only after specialize decides it" {
 		assert cut.includes("  discard;\n") && !kept.includes("discard");
 		assert writeProbe("cutout", cut) && writeProbe("kept", kept);
 	}
+}
+
+test "depth comparison prints on every depth shape" {
+	const m = depthModule();
+	assert irErrors(m).length == 0;
+	const slots = slotsOf(m, [0, 1]);
+	const vs = wgslOf(m, 0, slots);
+	const fs = wgslOf(m, 1, slots);
+	assert writeProbe("depthVs", vs);
+	assert writeProbe("depthFs", fs);
+	assert vs.includes("@binding(33) @group(1) var heightSmp : sampler_comparison;
+");
+	assert vs.includes("textureSampleCompareLevel(heightMap, heightSmp, vec2f(0.5f), 0.5f)");
+	assert vs.includes("f32(vec2i(textureDimensions(heightMap)).x)");
+	for (const fragment of [
+		"textureSampleCompare(shadowMap, shadowSmp, uv, 0.5f)",
+		"textureSampleCompare(shadowLayers, shadowSmp, vec3f(uv, 1f).xy, i32(vec3f(uv, 1f).z), 0.5f)",
+		"textureSampleCompare(shadowCube, shadowSmp, vec3f(uv, 1f), 0.5f)",
+		"textureSampleCompareLevel(shadowLayers, shadowSmp, vec3f(uv, 1f).xy, " +
+			"i32(vec3f(uv, 1f).z), 0.5f)",
+		"textureLoad(shadowMap, vec2i(1i), 0i)",
+		"textureDimensions(lut, 0i)",
+	]) {
+		assert fs.includes(fragment);
+	}
+}
+
+function compared(stage: ShaderStage, op: Intrinsic, shape: TextureShape,
+	comparison: boolean): ShaderModule {
+	let m = tiny(stage, exprOf(ExprKind.Construct, VEC4, -1,
+		[depthCompare(op, 1, 2, shape, literal(VEC2, 0.5))]));
+	m.resources.push(depthTexture("shadowMap", 0, shape));
+	m.resources.push(comparison ? comparisonSampler("shadowSmp", 0) :
+		resource(ResourceKind.Sampler, "shadowSmp", 0, samplerType()));
+	return m;
+}
+
+test "depth comparison is refused by name where it cannot print" {
+	const COMPARE = Intrinsic.TextureSampleCompare;
+	const LEVEL = Intrinsic.TextureSampleCompareLevel;
+	const D2 = TextureShape.Depth2d;
+	assert refused(compared(ShaderStage.Vertex, LEVEL, D2, true)) == "printed";
+	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
+	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
+		"printWgsl: TextureSampleCompare outside a fragment entry";
+	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
+		"printWgsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
+	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==
+		"printWgsl: TextureSampleCompare of a D2 texture, which holds no depth";
 }
