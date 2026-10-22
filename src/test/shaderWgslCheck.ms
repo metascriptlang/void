@@ -3,6 +3,7 @@
 
 import { mkdir, writeFile } from "std/fs";
 import {
+	BinaryOp,
 	Builtin,
 	ExprKind,
 	Intrinsic,
@@ -11,8 +12,10 @@ import {
 	ShaderExpr,
 	ShaderModule,
 	ShaderStage,
+	ShaderType,
 	StmtKind,
 	TextureShape,
+	binaryOf,
 	exprOf,
 	featureOn,
 	intrinsicOf,
@@ -27,6 +30,7 @@ import { printWgsl } from "../shader/printWgsl";
 import { specialize } from "../shader/specialize";
 import {
 	BOOL,
+	F32,
 	I32,
 	IVEC2,
 	MAT4,
@@ -43,8 +47,10 @@ import {
 	everyModule,
 	io,
 	model,
+	prepend,
 	resource,
 	shaderFunction,
+	swizzle,
 	tiny,
 } from "./shaderProbeModules";
 
@@ -249,13 +255,6 @@ test "what WGSL cannot say is refused by name" {
 		"printWgsl: resource 'params' has no binding slot";
 	assert refusalOf(tiny(fragment, column(model())), 1, []) == "printWgsl: entry 1 is out of range";
 
-	let called = tiny(fragment, exprOf(ExprKind.Conditional, VEC4, -1,
-		[literal(BOOL, 1.0), exprOf(ExprKind.Call, VEC4, 1, []), literal(VEC4, 0.0)]));
-	let helper = shaderFunction("helper", [], [stmtOf(StmtKind.Return, literal(VEC4, 1.0), [])]);
-	helper.result = VEC4;
-	called.functions.push(helper);
-	assert refused(called) == "printWgsl: a conditional whose branch calls a function";
-
 	let unlevelled = tiny(fragment, intrinsicOf(Intrinsic.TextureLoad, VEC4, [
 		exprOf(ExprKind.Resource, TEXTURE, 1, []),
 		exprOf(ExprKind.Resource, samplerType(), 2, []),
@@ -341,4 +340,46 @@ test "depth comparison is refused by name where it cannot print" {
 		"printWgsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
 	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==
 		"printWgsl: TextureSampleCompare of a D2 texture, which holds no depth";
+}
+
+function helperCall(): ShaderExpr { return exprOf(ExprKind.Call, VEC4, 1, []); }
+
+function withHelper(m: ShaderModule): ShaderModule {
+	let helper = shaderFunction("helper", [], [stmtOf(StmtKind.Return, literal(VEC4, 1.0), [])]);
+	helper.result = VEC4;
+	m.functions.push(helper);
+	return m;
+}
+
+function calledConditional(type: ShaderType, called: ShaderExpr, other: ShaderExpr): ShaderExpr {
+	return exprOf(ExprKind.Conditional, type, -1, [literal(BOOL, 1.0), called, other]);
+}
+
+test "a conditional that calls a function in an arm becomes an if/else ahead of its statement" {
+	const m = withHelper(tiny(ShaderStage.Fragment, binaryOf(BinaryOp.Mul, VEC4,
+		calledConditional(VEC4, helperCall(), literal(VEC4, 0.0)), literal(VEC4, 2.0))));
+	const text = wgslOf(m, 0, slotsOf(m, [0]));
+	assert text.includes("  var selected : vec4f;\n  if (true) {\n    selected = helper();\n" +
+		"  } else {\n    selected = vec4f(0f);\n  }\n  result = (selected * vec4f(2f));\n");
+	assert writeProbe("hoisted", text);
+}
+
+test "a conditional that calls a function is refused where hoisting would change what runs" {
+	const fragment = ShaderStage.Fragment;
+	const called = calledConditional(VEC4, helperCall(), literal(VEC4, 0.0));
+	assert refused(withHelper(tiny(fragment, binaryOf(BinaryOp.Add, VEC4, helperCall(),
+		called)))) == "printWgsl: a conditional whose branch calls a function, beside a call " +
+		"it would run ahead of";
+	const positive = binaryOf(BinaryOp.Greater, BOOL, swizzle(helperCall(), F32, [0]),
+		literal(F32, 0.0));
+	const test = calledConditional(BOOL, positive, literal(BOOL, 0.0));
+	const guarded = binaryOf(BinaryOp.LogicalAnd, BOOL, literal(BOOL, 1.0), test);
+	assert refused(withHelper(tiny(fragment, exprOf(ExprKind.Conditional, VEC4, -1,
+		[guarded, literal(VEC4, 1.0), literal(VEC4, 0.0)])))) ==
+		"printWgsl: a conditional whose branch calls a function, right of '&&'";
+	let looped = withHelper(tiny(fragment, literal(VEC4, 0.0)));
+	prepend(looped.functions[0], stmtOf(StmtKind.While, test,
+		[stmtOf(StmtKind.Break, new ShaderExpr(), [])]));
+	assert refused(looped) ==
+		"printWgsl: a conditional whose branch calls a function, in a loop condition";
 }
