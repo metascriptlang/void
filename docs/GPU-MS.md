@@ -194,7 +194,7 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
 ### 2026-10-23, main merged into the branch
 
 The person's call: merge main in now, and land the whole branch as the step that retires sokol
-everywhere. The merge commit takes main up to `origin/main` at the time of the merge. What changed
+everywhere. The merges take main up to `cc2dae57` (platform faces included). What changed
 for you:
 
 - **Frame admission from main (`e65f562a`):** `voidViewReady`/`viewReady`, and
@@ -213,12 +213,21 @@ for you:
 - **Capture:** `voidMetalReadDrawable` is the only macOS readback. Main's sokol
   `voidWindowReadRgba` is gone, and `VOID_CAPTURE_SLOTS` is 3, as on main.
 - **Measured on the Mac (msc `fce7770d3`):**
-  - `msc test src/test/index.ms`: all-off 1926/1926, all-on 2318/2318.
+  - `msc test src/test/index.ms`: all-off 1931/1931, all-on 2323/2323.
   - `webgpuMetalCheck`: 304/304.
   - framePacing, layerSlot, paintedSlots, screenOver: PASS on Metal.
   - The iOS demo draws on the simulator.
   - `scripts/build-web.sh`: both backends built.
   - `nm` sokol count 0 on the mac and iOS builds.
+- **Golden metal on the merged tree:** `15 pass, 105 pending, 0 fail of 120`. gltfColour and
+  viewTeardown PASS on Metal. The other 3D frame consumers were not run this time: they need
+  gate3d's generated entries.
+- **`viewTeardown` was red after the merge, on main's side:** since main `65d44234` a
+  `ForwardRenderer` holds two materials (copy and over), but the test checked for one.
+  `3fc22de6` compares the survivor with the counts it had when it was made. On D3D11 the
+  `views` row of gate3d should have been red the same way.
+- **Metal adopts `src/webgpu/pool.ms`** (`31966549`): the same diff shape as D3D11. Pool
+  exhaustion now stops by name instead of returning id 0.
 - **Not measured on Windows:** the merged tree.
   - Please run your index and the WARP pins.
   - Watch `windowSurface.h`, `bridgeWin.c`, `windowGl.c` and `views.h`: they auto-merged the DXGI
