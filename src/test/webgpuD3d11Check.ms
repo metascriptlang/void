@@ -4,6 +4,7 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
+	GPUMapMode,
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
@@ -886,5 +887,208 @@ test "a blend constant of 0.5 weights a red source over black to half red" {
 	assert pixels[at] >= 126 && pixels[at] <= 129;
 	assert pixels[at + 1] == 0 && pixels[at + 2] == 0 && pixels[at + 3] == 255;
 	assert pixel(pixels, 0, 0) == 0x000000FF;
+	device.destroy();
+}
+
+function readBack(buffer: GPUBuffer): Vec<uint8> {
+	buffer.mapAsync(GPUMapMode.READ as int32, 0, 0);
+	const bytes = buffer.getMappedRange(0, 0);
+	buffer.unmap();
+	return bytes;
+}
+
+function readbackBuffer(device: GPUDevice, size: int64): GPUBuffer {
+	return device.createBuffer({
+		label: "readback",
+		size: size,
+		usage: (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+}
+
+function texelAt(bytes: Vec<uint8>, bytesPerRow: int32, x: int32, y: int32): uint32 {
+	const at = y * bytesPerRow + x * 4;
+	return ((bytes[at] as uint32) << 24) | ((bytes[at + 1] as uint32) << 16) | ((bytes[at + 2] as uint32) << 8) | (bytes[at + 3] as uint32);
+}
+
+test "a buffer range copies to a MAP_READ buffer and a mapped range reads it back" {
+	const device = openDevice();
+	const source = device.createBuffer({
+		label: "source",
+		size: 16,
+		usage: (GPUBufferUsage.COPY_SRC as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const bytes: Vec<uint8> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+	device.queue.writeBuffer(source, 0, bytes);
+	const destination = readbackBuffer(device, 32);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(source, 4, destination, 8, 8);
+	device.queue.submit(encoder.finish());
+	const read = readBack(destination);
+	assert read.length == 32;
+	for (let i = 0; i < 8; i++) { assert read[8 + i] == (5 + i) as uint8; }
+	assert read[7] == 0 && read[16] == 0;
+	device.destroy();
+}
+
+test "a MAP_WRITE buffer filled through a mapped range copies to a MAP_READ buffer" {
+	const device = openDevice();
+	const upload = device.createBuffer({
+		label: "upload",
+		size: 16,
+		usage: (GPUBufferUsage.MAP_WRITE as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	upload.mapAsync(GPUMapMode.WRITE as int32, 0, 0);
+	const bytes: Vec<uint8> = [9, 8, 7, 6, 5, 4, 3, 2];
+	upload.writeMappedRange(8, bytes);
+	upload.unmap();
+	const destination = readbackBuffer(device, 16);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(upload, 8, destination, 0, 8);
+	device.queue.submit(encoder.finish());
+	destination.mapAsync(GPUMapMode.READ as int32, 0, 8);
+	const read = destination.getMappedRange(0, 8);
+	destination.unmap();
+	assert read.length == 8;
+	for (let i = 0; i < 8; i++) { assert read[i] == (9 - i) as uint8; }
+	device.destroy();
+}
+
+test "a writeTexture sub-rect reads back through copyTextureToBuffer with a 256-byte row" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "atlas",
+		size: { width: 8, height: 4, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.COPY_DST as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	let data: Vec<uint8> = new Array(8 * 4 * 4);
+	for (let i = 0; i < 32; i++) {
+		data[i * 4] = i as uint8;
+		data[i * 4 + 1] = (i * 2) as uint8;
+		data[i * 4 + 2] = (i * 3) as uint8;
+		data[i * 4 + 3] = 255;
+	}
+	device.queue.writeTexture({ texture: texture }, data, { offset: 0, bytesPerRow: 32, rowsPerImage: 4 }, { width: 8, height: 4, depthOrArrayLayers: 1 });
+	const destination = readbackBuffer(device, 1024);
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToBuffer(
+		{ texture: texture, origin: { x: 2, y: 1, z: 0 } },
+		{ buffer: destination, offset: 0, bytesPerRow: 256, rowsPerImage: 2 },
+		{ width: 4, height: 2, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readBack(destination);
+	for (let y = 0; y < 2; y++) {
+		for (let x = 0; x < 4; x++) {
+			const i = (y + 1) * 8 + x + 2;
+			const want = ((i as uint32) << 24) | (((i * 2) as uint32) << 16) | (((i * 3) as uint32) << 8) | 255;
+			assert texelAt(read, 256, x, y) == want;
+		}
+	}
+	device.destroy();
+}
+
+test "a cleared render target copies to a buffer and every row holds the clear colour" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 })).end();
+	const destination = readbackBuffer(device, 256 * SIZE);
+	encoder.copyTextureToBuffer(
+		{ texture: target },
+		{ buffer: destination, offset: 0, bytesPerRow: 256, rowsPerImage: SIZE },
+		{ width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readBack(destination);
+	assert texelAt(read, 256, 0, 0) == BLUE;
+	assert texelAt(read, 256, 10, 10) == BLUE;
+	assert texelAt(read, 256, SIZE - 1, SIZE - 1) == BLUE;
+	device.destroy();
+}
+
+test "copyTextureToTexture copies mip 1 into a region of mip 0" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "mips",
+		size: { width: 8, height: 8, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.COPY_DST as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+		mipLevelCount: 2,
+	});
+	const red = texels(255, 0, 0, 64);
+	const green = texels(0, 255, 0, 16);
+	device.queue.writeTexture({ texture: texture }, red, { offset: 0, bytesPerRow: 32, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
+	device.queue.writeTexture({ texture: texture, mipLevel: 1 }, green, { offset: 0, bytesPerRow: 16, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	const destination = readbackBuffer(device, 256 * 8);
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToTexture(
+		{ texture: texture, mipLevel: 1 },
+		{ texture: texture, mipLevel: 0, origin: { x: 2, y: 2, z: 0 } },
+		{ width: 4, height: 4, depthOrArrayLayers: 1 },
+	);
+	encoder.copyTextureToBuffer(
+		{ texture: texture },
+		{ buffer: destination, offset: 0, bytesPerRow: 256, rowsPerImage: 8 },
+		{ width: 8, height: 8, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readBack(destination);
+	const RED_TEXEL: uint32 = 0xFF0000FF;
+	const GREEN_TEXEL: uint32 = 0x00FF00FF;
+	assert texelAt(read, 256, 1, 1) == RED_TEXEL;
+	assert texelAt(read, 256, 2, 2) == GREEN_TEXEL;
+	assert texelAt(read, 256, 5, 5) == GREEN_TEXEL;
+	assert texelAt(read, 256, 6, 6) == RED_TEXEL;
+	assert texelAt(read, 256, 2, 6) == RED_TEXEL;
+	device.destroy();
+}
+
+test "a buffer region at an offset with a 256-byte row copies into a texture sub-rect" {
+	const device = openDevice();
+	const source = device.createBuffer({
+		label: "texels",
+		size: 512,
+		usage: (GPUBufferUsage.COPY_SRC as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	let data: Vec<uint8> = new Array(288);
+	for (let i = 0; i < 288; i++) { data[i] = 0; }
+	for (let row = 0; row < 2; row++) {
+		for (let column = 0; column < 4; column++) {
+			const at = 16 + row * 256 + column * 4;
+			data[at] = (column + 1) as uint8;
+			data[at + 1] = (row + 1) as uint8;
+			data[at + 2] = 7;
+			data[at + 3] = 255;
+		}
+	}
+	device.queue.writeBuffer(source, 0, data);
+	const texture = device.createTexture({
+		label: "target",
+		size: { width: 8, height: 4, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.COPY_DST as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	const destination = readbackBuffer(device, 1024);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToTexture(
+		{ buffer: source, offset: 16, bytesPerRow: 256, rowsPerImage: 2 },
+		{ texture: texture, origin: { x: 3, y: 1, z: 0 } },
+		{ width: 4, height: 2, depthOrArrayLayers: 1 },
+	);
+	encoder.copyTextureToBuffer(
+		{ texture: texture },
+		{ buffer: destination, offset: 0, bytesPerRow: 256, rowsPerImage: 4 },
+		{ width: 8, height: 4, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const read = readBack(destination);
+	assert texelAt(read, 256, 3, 1) == 0x010107FF;
+	assert texelAt(read, 256, 6, 2) == 0x040207FF;
+	assert texelAt(read, 256, 2, 1) == 0;
+	assert texelAt(read, 256, 3, 3) == 0;
 	device.destroy();
 }
