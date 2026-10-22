@@ -260,3 +260,13 @@ skinLitTexturedDissolvePremultipliedNormalMrt LIT_TEXTURED CORE DISSOLVE:PREMULT
 skinLitTexturedDissolveEmissiveNormalMrt LIT_TEXTURED CORE DISSOLVE:EMISSIVE:NORMAL_MRT:SKINNED litTexturedVs litTexturedFs SKIN_LIT_TEXTURED
 skinLitTexturedDissolveEmissiveShadowedNormalMrt LIT_TEXTURED CORE DISSOLVE:EMISSIVE:SHADOWED:NORMAL_MRT:SKINNED litTexturedVs litTexturedFs SKIN_LIT_TEXTURED
 skinUnlitTexturedUvTransformPremultipliedNormalMrt UNLIT_TEXTURED CORE PREMULTIPLIED:UV_TRANSFORM:NORMAL_MRT:SKINNED unlitTexturedVs unlitTexturedFs SKIN_LIT_TEXTURED
+
+# PBR direct lighting (shader3d.ms pbrDirect): the lit programs, unskinned, no normal target.
+litPbr LIT CORE PBR litVs litFs LIT
+litPbrShadowed LIT CORE PBR:SHADOWED litVs litFs LIT
+litPbrCutout LIT CORE PBR:CUTOUT litVs litFs LIT
+litPbrCutoutShadowed LIT CORE PBR:CUTOUT:SHADOWED litVs litFs LIT
+litTexturedPbr LIT_TEXTURED CORE PBR litTexturedVs litTexturedFs LIT_TEXTURED
+litTexturedPbrShadowed LIT_TEXTURED CORE PBR:SHADOWED litTexturedVs litTexturedFs LIT_TEXTURED
+litTexturedPbrCutout LIT_TEXTURED CORE PBR:CUTOUT litTexturedVs litTexturedFs LIT_TEXTURED
+litTexturedPbrCutoutShadowed LIT_TEXTURED CORE PBR:CUTOUT:SHADOWED litTexturedVs litTexturedFs LIT_TEXTURED

@@ -16,6 +16,7 @@ import {
 	determinant,
 	discard,
 	dot,
+	exp2,
 	feature,
 	length,
 	location,
@@ -180,6 +181,12 @@ export struct MovingMaterialParams {
 	dissolveEdge: Vec4f;
 }
 
+// gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z.
+export struct PbrMaterialParams {
+	material: Vec4f;
+	pbr: Vec4f;
+}
+
 export struct EmissiveMaterialParams {
 	material: Vec4f;
 	emissive: Vec4f;
@@ -222,6 +229,7 @@ export struct LightParams {
 
 export struct FrameParams {
 	frame: Vec4f;
+	cameraPosition: Vec4f;
 }
 
 export struct ShadowParams {
@@ -246,6 +254,7 @@ export struct LitBindings {
 	@binding(3) movingMaterialParams: MovingMaterialParams;
 	@binding(3) emissiveMaterialParams: EmissiveMaterialParams;
 	@binding(3) movingEmissiveMaterialParams: MovingEmissiveMaterialParams;
+	@binding(3) pbrMaterialParams: PbrMaterialParams;
 	@binding(1) lightParams: LightParams;
 	@binding(6) frameParams: FrameParams;
 	@binding(5) shadowParams: ShadowParams;
@@ -282,6 +291,7 @@ export struct LitKey {
 	@feature(DISSOLVE) dissolve: boolean;
 	@feature(EMISSIVE) emissive: boolean;
 	@feature(NORMAL_MAP) normalMap: boolean;
+	@feature(PBR) pbr: boolean;
 }
 
 export struct LitOutput {
@@ -725,17 +735,21 @@ function moving(b: LitBindings, key: LitKey): boolean {
 // texture or a dissolve reads them, the emissive ones when the key emits. Each reader below
 // picks the member from the block the program declares.
 export function materialOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.uvTransform || key.backTexture || key.dissolve) {
-		if (key.emissive) {
-			return b.movingEmissiveMaterialParams.material;
-		} else {
-			return b.movingMaterialParams.material;
-		}
+	if (key.pbr) {
+		return b.pbrMaterialParams.material;
 	} else {
-		if (key.emissive) {
-			return b.emissiveMaterialParams.material;
+		if (key.uvTransform || key.backTexture || key.dissolve) {
+			if (key.emissive) {
+				return b.movingEmissiveMaterialParams.material;
+			} else {
+				return b.movingMaterialParams.material;
+			}
 		} else {
-			return b.materialParams.material;
+			if (key.emissive) {
+				return b.emissiveMaterialParams.material;
+			} else {
+				return b.materialParams.material;
+			}
 		}
 	}
 }
@@ -812,6 +826,105 @@ export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
 	return mix(1.0, lit, b.shadowParams.shadow.y);
 }
 
+// h3d.shader.pbr.Direct (Lighting.hx:125-145) for one light, in linear light: Cook-Torrance GGX
+// with Schlick-GGX visibility and the exp2 Fresnel (BRDF.hx:40-63), F0 = mix(0.04, albedo,
+// metalness) (PropsImport.hx:74). `radiance` excludes N.L and the shadow; `occlusionFactor` is
+// pbrOcclusionFactor, whose Heaps default is 0 (Light.hx:10), so glTF's ambient-only occlusion
+// holds. pbrResponse.ms is its CPU oracle, minus the validation a shader cannot report: roughness 0
+// has no guard in Heaps either, so a material never carries it (material.ms pbrValues).
+export function pbrDirect(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	light: Vec3f,
+	radiance: Vec3f,
+	shadow: float32,
+	occlusionFactor: float32,
+	occlusion: float32,
+): Vec3f {
+	if (dot(radiance, radiance) <= 0.0001) {
+		return vec3f(0.0);
+	}
+	const n = normalize(normal);
+	const v = normalize(view);
+	const l = normalize(light);
+	const nl = clamp(dot(n, l), 0.0, 1.0);
+	if (nl <= 0.0) {
+		return vec3f(0.0);
+	}
+	const h = normalize(l + v);
+	const nh = clamp(dot(n, h), 0.0, 1.0);
+	const vh = clamp(dot(v, h), 0.0, 1.0);
+	const nv = clamp(dot(n, v), 0.0, 1.0);
+	const alpha = roughness * roughness;
+	const alpha2 = alpha * alpha;
+	const denominator = nh * nh * (alpha2 - 1.0) + 1.0;
+	const distribution = alpha2 / (3.14159265358979 * denominator * denominator);
+	const remapped = roughness + 1.0;
+	const k = remapped * remapped * 0.125;
+	const visibility = (1.0 / (nv * (1.0 - k) + k)) * (1.0 / (nl * (1.0 - k) + k)) * 0.25;
+	const f0 = mix(vec3f(0.04), albedo, metalness);
+	const fresnel = f0 + (1.0 - f0) * exp2((-5.55473 * vh - 6.98316) * vh);
+	const specular = max(fresnel * (distribution * visibility), vec3f(0.0));
+	const diffuse = albedo * (1.0 / 3.14159265358979) * (1.0 - metalness) * (1.0 - fresnel);
+	const reach = nl * shadow * mix(1.0, occlusion, occlusionFactor);
+	return (diffuse + specular) * radiance * reach;
+}
+
+// h3d.shader.pbr.Indirect's diffuse half with a flat ambient as the irradiance (Lighting.hx:78-99,
+// drawIndirectDiffuse): the specular half needs an environment map, which void3d has none of.
+export function pbrAmbient(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	ambient: Vec3f,
+	occlusion: float32,
+): Vec3f {
+	const nv = max(dot(normalize(normal), normalize(view)), 0.0);
+	const f0 = mix(vec3f(0.04), albedo, metalness);
+	const fresnel = f0 + (max(vec3f(1.0 - roughness), f0) - f0) * exp2((-5.55473 * nv - 6.98316) * nv);
+	return ambient * albedo * (1.0 - metalness) * (1.0 - fresnel) * occlusion;
+}
+
+// The lit surface under the PBR path: the material's albedo (linear, saturated as the material
+// says) under the same ambient, directional and point lights litShade reads, from the camera
+// frame.cameraPosition names. The sun is shadowed, as Heaps' `shadow` scales every light of a
+// pass; a point light has no shadow here.
+export function pbrShade(
+	n: Vec3f,
+	position: Vec3f,
+	surfaceColor: Vec4f,
+	b: LitBindings,
+	key: LitKey,
+): Vec4f {
+	const values = b.pbrMaterialParams.pbr;
+	const albedo = srgbToLinear(saturated(surfaceColor.rgb, b.pbrMaterialParams.material.y));
+	const view = b.frameParams.cameraPosition.xyz - position;
+	const dir = b.lightParams.dirLight;
+	let shadow: float32 = 1.0;
+	if (key.shadowed) {
+		shadow = dirShadowAt(position, b);
+	}
+	const sun = srgbToLinear(b.lightParams.dirColor.rgb) * dir.w;
+	let light = pbrAmbient(albedo, values.x, values.y, n, view,
+		srgbToLinear(b.lightParams.ambient.rgb), values.z);
+	light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
+	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
+		const at = b.lightParams.pointLight[i];
+		const tint = b.lightParams.pointColor[i];
+		const toLight = at.xyz - position;
+		const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
+		const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
+		light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0,
+			values.z);
+	}
+	return vec4f(linearToSrgb(light), surfaceColor.a);
+}
+
 // The lit surface: its colour (the vertex colour, times the texel when textured) under the
 // ambient, directional and point lights, saturated as the material says.
 export function litShade(
@@ -840,7 +953,12 @@ export function litShade(
 export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): LitOutput {
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
-	const shaded = litShade(n, input.worldPosition, input.baseColor, b, key);
+	let shaded = vec4f(0.0);
+	if (key.pbr) {
+		shaded = pbrShade(n, input.worldPosition, input.baseColor, b, key);
+	} else {
+		shaded = litShade(n, input.worldPosition, input.baseColor, b, key);
+	}
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
@@ -895,7 +1013,12 @@ export function litTexturedFs(
 		n = mappedNormal(normalize(input.worldNormal), input.worldTangent, face, normalTexel);
 	}
 	const surfaceColor = vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a);
-	let shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
+	let shaded = vec4f(0.0);
+	if (key.pbr) {
+		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key);
+	} else {
+		shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
+	}
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;
 		shaded = emittedOver(shaded, glow, emissiveOf(b, key));

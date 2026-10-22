@@ -92,15 +92,18 @@ export struct ProgramKey {
 	normalMap: boolean;
 	skinned: boolean;
 	normalMrt: boolean;
+	// Lights the surface with Heaps' direct BRDF (pbrDirect in shader3d.ms) from the material's
+	// metalness, roughness and occlusion (PBR_* below) instead of the legacy lambert.
+	pbr: boolean;
 }
 
-const KEY_LIMIT: int32 = 65536;
+const KEY_LIMIT: int32 = 131072;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
-		skinned: false, normalMrt: false,
+		skinned: false, normalMrt: false, pbr: false,
 	};
 }
 
@@ -169,6 +172,13 @@ export function withNormalMap(this key: ProgramKey): ProgramKey {
 	return { ...stopOnNotLitTextured(key, "normal map"), normalMap: true };
 }
 
+export function withPbr(this key: ProgramKey): ProgramKey {
+	if (key.program != Program.Lit && key.program != Program.LitTextured) {
+		return stopOnFeature(key, "pbr");
+	}
+	return { ...key, pbr: true };
+}
+
 export function withNormalMrt(this key: ProgramKey): ProgramKey {
 	const mesh: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
 		key.program == Program.UnlitTextured;
@@ -192,7 +202,8 @@ export function bits(this key: ProgramKey): int32 {
 		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
 		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
 		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
-		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15);
+		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
+		((key.pbr ? 1 : 0) << 16);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -206,9 +217,10 @@ export function describe(this key: ProgramKey): string {
 	const normalMap: string = key.normalMap ? " normal-map" : "";
 	const skin: string = key.skinned ? " skinned" : "";
 	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
+	const pbr: string = key.pbr ? " pbr" : "";
 	const features: string =
 		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
-		skin + normalMrt;
+		skin + normalMrt + pbr;
 	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
@@ -306,7 +318,7 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	const cast: ProgramKey = {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
 		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
-		emissive: false, normalMrt: false,
+		emissive: false, normalMrt: false, pbr: false,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);
@@ -412,11 +424,24 @@ export const EMISSIVE_LENGTH: int32 = 4;
 // draws into an HDR target, where every scene program writes its colour linear and unexposed; at
 // FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed colour goes through.
 export const FRAME_UNIFORM_SLOT: int32 = 6;
-export const FRAME_UNIFORM_LENGTH: int32 = 4;
+export const FRAME_UNIFORM_LENGTH: int32 = 8;
 export const FRAME_TIME: int32 = 0;
 export const FRAME_EXPOSURE: int32 = 1;
 export const FRAME_LINEAR: int32 = 2;
 export const FRAME_TONE_MODE: int32 = 3;
+// The camera's world position at FRAME_CAMERA_POSITION (xyz; w unread): the view vector of a pbr
+// key, as Heaps' PropsDefinition `cameraPosition`.
+export const FRAME_CAMERA_POSITION: int32 = 4;
+
+// A pbr key's block (pbrMaterialParams in shader3d.ms): the lit block, then one vec4 holding
+// metalness, roughness and occlusion, all in 0..1. No pbr key moves or emits, so it starts at
+// PBR_VALUES = MATERIAL_UNIFORM_LENGTH. Heaps' defaults (PbrMaterial props): 0, 1 and 1; a block
+// is zero-filled, so material.ms pbrDefaults writes them, because roughness 0 has no valid BRDF.
+export const PBR_VALUES: int32 = MATERIAL_UNIFORM_LENGTH;
+export const PBR_METALNESS: int32 = PBR_VALUES;
+export const PBR_ROUGHNESS: int32 = PBR_VALUES + 1;
+export const PBR_OCCLUSION: int32 = PBR_VALUES + 2;
+export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 4;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {

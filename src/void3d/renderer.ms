@@ -36,6 +36,7 @@ import {
 	FRAME_EXPOSURE,
 	FRAME_LINEAR,
 	FRAME_TONE_MODE,
+	FRAME_CAMERA_POSITION,
 	MOVING_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
@@ -54,6 +55,7 @@ import {
 	samplerSlotOf,
 } from "./material";
 import { TextureId } from "./texture";
+import { Vec3 } from "../math/math3d";
 import { TargetLayout } from "../gpu/target";
 import {
 	PassState,
@@ -123,6 +125,9 @@ export interface Renderer {
 	// Forward's enabled outline draws opaque meshes with their normal MRT variants.
 	normalMrt: boolean;
 	frameValues: Vec<float32>;
+	// The eye a pbr key's view vector starts from (setCameraPosition); a frame drawing a pbr key
+	// without one is refused.
+	cameraPosition: Vec3 | null;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
 	preset: Preset;
@@ -160,6 +165,7 @@ export enum RendererError {
 	CasterBlock,
 	SkinPose,
 	DrawRange,
+	CameraPosition,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -231,6 +237,7 @@ export function createDrawing(
 		linearOutput: false,
 		normalMrt: false,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
+		cameraPosition: null,
 		readsTime: false,
 		preset: preset,
 		drawn: [],
@@ -309,6 +316,16 @@ export function setExposure(renderer: Renderer, stops: float32): void {
 	renderer.changed = true;
 }
 
+export function setCameraPosition(renderer: Renderer, eye: Vec3): void {
+	if (renderer.closed) { stopOnClosed("setCameraPosition"); }
+	if (!Number.isFinite(eye.x) || !Number.isFinite(eye.y) || !Number.isFinite(eye.z)) {
+		console.log(`void3d: setCameraPosition with ${eye.x}, ${eye.y}, ${eye.z}; an eye is finite`);
+		unreachable;
+	}
+	renderer.cameraPosition = eye;
+	renderer.changed = true;
+}
+
 export function setTimeWrap(renderer: Renderer, seconds: float64): void {
 	if (renderer.closed) { stopOnClosed("setTimeWrap"); }
 	if (!(seconds >= 0.0)) {
@@ -371,6 +388,9 @@ export function beginFrame(
 			drawnIn(context.materials[material].program, renderer.preset, shadowed,
 				renderer.normalMrt && context.materials[material].phase == Phase.Opaque);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
+		if (drawn.value.pbr && renderer.cameraPosition === null) {
+			return Result.err(RendererError.CameraPosition);
+		}
 		if (!item.validSkin(drawn.value)) { return Result.err(RendererError.SkinPose); }
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
@@ -416,6 +436,12 @@ export function beginFrame(
 	renderer.frameValues[FRAME_EXPOSURE] = exposureMultiplier(renderer.exposure);
 	renderer.frameValues[FRAME_LINEAR] = renderer.linearOutput ? 1.0 : 0.0;
 	renderer.frameValues[FRAME_TONE_MODE] = renderer.toneMode as float32;
+	const eye: Vec3 | null = renderer.cameraPosition;
+	if (eye !== null) {
+		renderer.frameValues[FRAME_CAMERA_POSITION] = eye.x;
+		renderer.frameValues[FRAME_CAMERA_POSITION + 1] = eye.y;
+		renderer.frameValues[FRAME_CAMERA_POSITION + 2] = eye.z;
+	}
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));

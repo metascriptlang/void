@@ -93,6 +93,7 @@ import "./closeCheck";
 import "./textureCheck";
 import "./textureMipCheck";
 import "./pbrResponseCheck";
+import "./pbrLitCheck";
 import "./lightShapeCheck";
 import "./morphGeometryCheck";
 import "./gltfMorphImportCheck";

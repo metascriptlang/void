@@ -186,6 +186,7 @@ layout(binding=1) uniform lightParams {
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
@@ -320,6 +321,7 @@ void main() {
 @fs particleFs
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 in vec4 particleColor;
 in float depth01;
@@ -460,12 +462,12 @@ void main() {
 @end
 
 @fs litFs
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -476,13 +478,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -494,6 +496,12 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
+#ifdef PBR
+layout(binding=3) uniform pbrMaterialParams {
+    vec4 material;
+    vec4 pbr;
+};
+#endif
 layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
@@ -503,6 +511,7 @@ layout(binding=1) uniform lightParams {
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
@@ -525,6 +534,9 @@ in float depth01;
 layout(location=0) out vec4 color;
 layout(location=1) out vec4 normal;
 vec4 materialOf() {
+#ifdef PBR
+    return material;
+#else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
     return material;
@@ -536,6 +548,7 @@ vec4 materialOf() {
     return material;
 #else
     return material;
+#endif
 #endif
 #endif
 }
@@ -740,12 +753,12 @@ void main() {
 @end
 
 @fs litTexturedFs
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if (defined(UV_TRANSFORM) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -756,13 +769,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if defined(EMISSIVE) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if (defined(UV_TRANSFORM) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE))
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -774,6 +787,12 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
+#ifdef PBR
+layout(binding=3) uniform pbrMaterialParams {
+    vec4 material;
+    vec4 pbr;
+};
+#endif
 layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
@@ -783,6 +802,7 @@ layout(binding=1) uniform lightParams {
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
@@ -826,6 +846,9 @@ in float depth01;
 layout(location=0) out vec4 color;
 layout(location=1) out vec4 normal;
 vec4 materialOf() {
+#ifdef PBR
+    return material;
+#else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
     return material;
@@ -837,6 +860,7 @@ vec4 materialOf() {
     return material;
 #else
     return material;
+#endif
 #endif
 #endif
 }
@@ -1188,6 +1212,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
 #endif
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;

@@ -397,6 +397,7 @@ void main() {
 @fs particleFs
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 in vec4 particleColor;
 layout(location=0) out vec4 fragColor;
@@ -506,6 +507,7 @@ layout(binding=1) uniform lightParams {
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
@@ -673,12 +675,12 @@ void main() {
 @end
 
 @fs litFs
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -689,13 +691,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -707,6 +709,12 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
+#ifdef PBR
+layout(binding=3) uniform pbrMaterialParams {
+    vec4 material;
+    vec4 pbr;
+};
+#endif
 layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
@@ -716,6 +724,7 @@ layout(binding=1) uniform lightParams {
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
@@ -739,6 +748,9 @@ layout(location=0) out vec4 color;
 layout(location=1) out vec4 normal;
 #endif
 vec4 materialOf() {
+#ifdef PBR
+    return material;
+#else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
     return material;
@@ -752,9 +764,23 @@ vec4 materialOf() {
     return material;
 #endif
 #endif
+#endif
 }
 vec3 facingNormal(vec3 normal_1, float doubleSided, bool frontFacing) {
     return ((doubleSided > 0.5) && (!frontFacing)) ? (-normal_1) : normal_1;
+}
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 saturated(vec3 rgb, float amount) {
+    if (amount == 0.0) {
+        return rgb;
+    }
+    float luma = dot(rgb, vec3(0.212671, 0.71516, 0.072169));
+    float keep = amount + 1.0;
+    return (rgb * keep) + vec3((luma * (1.0 - keep)));
 }
 #ifdef SHADOWED
 float dirShadowAt(vec3 position) {
@@ -769,11 +795,75 @@ float dirShadowAt(vec3 position) {
     return mix(1.0, lit, shadow.y);
 }
 #endif
-vec3 srgbToLinear(vec3 srgb) {
-    vec3 low = srgb * 0.0773993808;
-    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
-    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+#ifdef PBR
+vec3 pbrAmbient(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 ambient_1, float occlusion) {
+    float nv = max(dot(normalize(normal_1), normalize(view)), 0.0);
+    vec3 f0 = mix(vec3(0.04), albedo, metalness);
+    vec3 fresnel = f0 + ((max(vec3((1.0 - roughness)), f0) - f0) * exp2((((-5.55473 * nv) - 6.98316) * nv)));
+    return (((ambient_1 * albedo) * (1.0 - metalness)) * (1.0 - fresnel)) * occlusion;
 }
+#endif
+#ifdef PBR
+vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+    if (dot(radiance, radiance) <= 0.0001) {
+        return vec3(0.0);
+    }
+    vec3 n = normalize(normal_1);
+    vec3 v = normalize(view);
+    vec3 l = normalize(light);
+    float nl = clamp(dot(n, l), 0.0, 1.0);
+    if (nl <= 0.0) {
+        return vec3(0.0);
+    }
+    vec3 h = normalize((l + v));
+    float nh = clamp(dot(n, h), 0.0, 1.0);
+    float vh = clamp(dot(v, h), 0.0, 1.0);
+    float nv = clamp(dot(n, v), 0.0, 1.0);
+    float alpha = roughness * roughness;
+    float alpha2 = alpha * alpha;
+    float denominator = ((nh * nh) * (alpha2 - 1.0)) + 1.0;
+    float distribution = alpha2 / ((3.14159265358979 * denominator) * denominator);
+    float remapped = roughness + 1.0;
+    float k = (remapped * remapped) * 0.125;
+    float visibility = ((1.0 / ((nv * (1.0 - k)) + k)) * (1.0 / ((nl * (1.0 - k)) + k))) * 0.25;
+    vec3 f0 = mix(vec3(0.04), albedo, metalness);
+    vec3 fresnel = f0 + ((1.0 - f0) * exp2((((-5.55473 * vh) - 6.98316) * vh)));
+    vec3 specular = max((fresnel * (distribution * visibility)), vec3(0.0));
+    vec3 diffuse = ((albedo * (1.0 / 3.14159265358979)) * (1.0 - metalness)) * (1.0 - fresnel);
+    float reach = (nl * shadow_1) * mix(1.0, occlusion, occlusionFactor);
+    return ((diffuse + specular) * radiance) * reach;
+}
+#endif
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+#ifdef PBR
+vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor) {
+    vec4 values = pbr;
+    vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, material.y));
+    vec3 view = cameraPosition.xyz - position;
+    vec4 dir = dirLight;
+    float shadow_1 = 1.0;
+#ifdef SHADOWED
+    shadow_1 = dirShadowAt(position);
+#endif
+    vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
+    vec3 light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
+    light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
+    for (int i = 0; i < int(ambient.a + 0.5); i++) {
+        vec4 at = pointLight[i];
+        vec4 tint = pointColor[i];
+        vec3 toLight = at.xyz - position;
+        float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
+        vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
+        light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+    }
+    return vec4(linearToSrgb(light), surfaceColor.a);
+}
+#endif
+#ifndef PBR
 vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
     vec3 toLight = at.xyz - position;
     float distance_1 = length(toLight);
@@ -781,19 +871,8 @@ vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
     float facing = max(dot(normal_1, (toLight / max(distance_1, 0.0001))), 0.0);
     return srgbToLinear(tint.rgb) * (((falloff * falloff) * facing) * at.w);
 }
-vec3 saturated(vec3 rgb, float amount) {
-    if (amount == 0.0) {
-        return rgb;
-    }
-    float luma = dot(rgb, vec3(0.212671, 0.71516, 0.072169));
-    float keep = amount + 1.0;
-    return (rgb * keep) + vec3((luma * (1.0 - keep)));
-}
-vec3 linearToSrgb(vec3 rgb) {
-    vec3 low = rgb * 12.92;
-    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
-    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
-}
+#endif
+#ifndef PBR
 vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
@@ -809,6 +888,7 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
 }
+#endif
 vec3 toneCurved(vec3 exposed, float mode) {
     if (mode == 1.0) {
         return exposed / (exposed + vec3(1.0));
@@ -848,7 +928,12 @@ vec3 toneMapped(vec3 rgb, vec4 tone) {
 void main() {
     vec4 params = materialOf();
     vec3 n = facingNormal(normalize(worldNormal), params.z, gl_FrontFacing);
-    vec4 shaded = litShade(n, worldPosition, baseColor);
+    vec4 shaded = vec4(0.0);
+#ifdef PBR
+    shaded = pbrShade(n, worldPosition, baseColor);
+#else
+    shaded = litShade(n, worldPosition, baseColor);
+#endif
 #ifdef CUTOUT
     if (shaded.a < params.w) {
         discard;
@@ -863,12 +948,12 @@ void main() {
 @end
 
 @fs shadowLitFs
-#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if defined(CUTOUT) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -879,13 +964,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if defined(CUTOUT) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -897,11 +982,20 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
+#if defined(CUTOUT) && defined(PBR)
+layout(binding=3) uniform pbrMaterialParams {
+    vec4 material;
+    vec4 pbr;
+};
+#endif
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
 #ifdef CUTOUT
 vec4 materialOf() {
+#ifdef PBR
+    return material;
+#else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
     return material;
@@ -913,6 +1007,7 @@ vec4 materialOf() {
     return material;
 #else
     return material;
+#endif
 #endif
 #endif
 }
@@ -1013,12 +1108,12 @@ void main() {
 @end
 
 @fs litTexturedFs
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if (defined(UV_TRANSFORM) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -1029,13 +1124,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if defined(EMISSIVE) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE))
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if (defined(UV_TRANSFORM) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE))
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -1047,6 +1142,12 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
+#ifdef PBR
+layout(binding=3) uniform pbrMaterialParams {
+    vec4 material;
+    vec4 pbr;
+};
+#endif
 layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
@@ -1056,6 +1157,7 @@ layout(binding=1) uniform lightParams {
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
@@ -1100,6 +1202,9 @@ layout(location=0) out vec4 color;
 layout(location=1) out vec4 normal;
 #endif
 vec4 materialOf() {
+#ifdef PBR
+    return material;
+#else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
     return material;
@@ -1111,6 +1216,7 @@ vec4 materialOf() {
     return material;
 #else
     return material;
+#endif
 #endif
 #endif
 }
@@ -1191,6 +1297,19 @@ vec3 mappedNormal(vec3 normal_1, vec4 tangent, float face, vec3 texel) {
     return normalize((((mapped.x * t) + (mapped.y * bitangent)) + (mapped.z * normal_1))) * face;
 }
 #endif
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 saturated(vec3 rgb, float amount) {
+    if (amount == 0.0) {
+        return rgb;
+    }
+    float luma = dot(rgb, vec3(0.212671, 0.71516, 0.072169));
+    float keep = amount + 1.0;
+    return (rgb * keep) + vec3((luma * (1.0 - keep)));
+}
 #ifdef SHADOWED
 float dirShadowAt(vec3 position) {
     vec3 p = (shadowMatrix * vec4(position, 1.0)).xyz;
@@ -1204,11 +1323,75 @@ float dirShadowAt(vec3 position) {
     return mix(1.0, lit, shadow.y);
 }
 #endif
-vec3 srgbToLinear(vec3 srgb) {
-    vec3 low = srgb * 0.0773993808;
-    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
-    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+#ifdef PBR
+vec3 pbrAmbient(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 ambient_1, float occlusion) {
+    float nv = max(dot(normalize(normal_1), normalize(view)), 0.0);
+    vec3 f0 = mix(vec3(0.04), albedo, metalness);
+    vec3 fresnel = f0 + ((max(vec3((1.0 - roughness)), f0) - f0) * exp2((((-5.55473 * nv) - 6.98316) * nv)));
+    return (((ambient_1 * albedo) * (1.0 - metalness)) * (1.0 - fresnel)) * occlusion;
 }
+#endif
+#ifdef PBR
+vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+    if (dot(radiance, radiance) <= 0.0001) {
+        return vec3(0.0);
+    }
+    vec3 n = normalize(normal_1);
+    vec3 v = normalize(view);
+    vec3 l = normalize(light);
+    float nl = clamp(dot(n, l), 0.0, 1.0);
+    if (nl <= 0.0) {
+        return vec3(0.0);
+    }
+    vec3 h = normalize((l + v));
+    float nh = clamp(dot(n, h), 0.0, 1.0);
+    float vh = clamp(dot(v, h), 0.0, 1.0);
+    float nv = clamp(dot(n, v), 0.0, 1.0);
+    float alpha = roughness * roughness;
+    float alpha2 = alpha * alpha;
+    float denominator = ((nh * nh) * (alpha2 - 1.0)) + 1.0;
+    float distribution = alpha2 / ((3.14159265358979 * denominator) * denominator);
+    float remapped = roughness + 1.0;
+    float k = (remapped * remapped) * 0.125;
+    float visibility = ((1.0 / ((nv * (1.0 - k)) + k)) * (1.0 / ((nl * (1.0 - k)) + k))) * 0.25;
+    vec3 f0 = mix(vec3(0.04), albedo, metalness);
+    vec3 fresnel = f0 + ((1.0 - f0) * exp2((((-5.55473 * vh) - 6.98316) * vh)));
+    vec3 specular = max((fresnel * (distribution * visibility)), vec3(0.0));
+    vec3 diffuse = ((albedo * (1.0 / 3.14159265358979)) * (1.0 - metalness)) * (1.0 - fresnel);
+    float reach = (nl * shadow_1) * mix(1.0, occlusion, occlusionFactor);
+    return ((diffuse + specular) * radiance) * reach;
+}
+#endif
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+#ifdef PBR
+vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor) {
+    vec4 values = pbr;
+    vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, material.y));
+    vec3 view = cameraPosition.xyz - position;
+    vec4 dir = dirLight;
+    float shadow_1 = 1.0;
+#ifdef SHADOWED
+    shadow_1 = dirShadowAt(position);
+#endif
+    vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
+    vec3 light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
+    light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
+    for (int i = 0; i < int(ambient.a + 0.5); i++) {
+        vec4 at = pointLight[i];
+        vec4 tint = pointColor[i];
+        vec3 toLight = at.xyz - position;
+        float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
+        vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
+        light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+    }
+    return vec4(linearToSrgb(light), surfaceColor.a);
+}
+#endif
+#ifndef PBR
 vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
     vec3 toLight = at.xyz - position;
     float distance_1 = length(toLight);
@@ -1216,19 +1399,8 @@ vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
     float facing = max(dot(normal_1, (toLight / max(distance_1, 0.0001))), 0.0);
     return srgbToLinear(tint.rgb) * (((falloff * falloff) * facing) * at.w);
 }
-vec3 saturated(vec3 rgb, float amount) {
-    if (amount == 0.0) {
-        return rgb;
-    }
-    float luma = dot(rgb, vec3(0.212671, 0.71516, 0.072169));
-    float keep = amount + 1.0;
-    return (rgb * keep) + vec3((luma * (1.0 - keep)));
-}
-vec3 linearToSrgb(vec3 rgb) {
-    vec3 low = rgb * 12.92;
-    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
-    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
-}
+#endif
+#ifndef PBR
 vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
@@ -1244,6 +1416,7 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
 }
+#endif
 #ifdef EMISSIVE
 vec4 emittedOver(vec4 color_1, vec3 texel, vec4 emissive_1) {
     vec3 emitted = (srgbToLinear(emissive_1.rgb) * srgbToLinear(texel)) * emissive_1.a;
@@ -1340,7 +1513,12 @@ void main() {
     n = mappedNormal(normalize(worldNormal), worldTangent, face, normalTexel);
 #endif
     vec4 surfaceColor = vec4((baseColor.rgb * texel.rgb), (baseColor.a * texel.a));
-    vec4 shaded = litShade(n, worldPosition, surfaceColor);
+    vec4 shaded = vec4(0.0);
+#ifdef PBR
+    shaded = pbrShade(n, worldPosition, surfaceColor);
+#else
+    shaded = litShade(n, worldPosition, surfaceColor);
+#endif
 #ifdef EMISSIVE
     vec3 glow = texture(sampler2D(emissiveTexture, baseSampler), uv).rgb;
     shaded = emittedOver(shaded, glow, emissiveOf());
@@ -1366,12 +1544,12 @@ void main() {
 @end
 
 @fs shadowLitTexturedFs
-#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
+#if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if (defined(DISSOLVE) && !defined(EMISSIVE)) || (defined(CUTOUT) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE))
+#if (defined(DISSOLVE) && !defined(EMISSIVE)) || (defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE))
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -1382,13 +1560,13 @@ layout(binding=3) uniform movingMaterialParams {
     vec4 dissolveEdge;
 };
 #endif
-#if defined(CUTOUT) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
+#if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
     vec4 emissive;
 };
 #endif
-#if (defined(DISSOLVE) && defined(EMISSIVE)) || (defined(CUTOUT) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE))
+#if (defined(DISSOLVE) && defined(EMISSIVE)) || (defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE))
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -1398,6 +1576,12 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 dissolve;
     vec4 dissolveEdge;
     vec4 emissive;
+};
+#endif
+#if defined(CUTOUT) && defined(PBR)
+layout(binding=3) uniform pbrMaterialParams {
+    vec4 material;
+    vec4 pbr;
 };
 #endif
 #ifdef CUTOUT
@@ -1430,6 +1614,9 @@ vec4 dissolveOf() {
 #endif
 #ifdef CUTOUT
 vec4 materialOf() {
+#ifdef PBR
+    return material;
+#else
 #if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
 #ifdef EMISSIVE
     return material;
@@ -1441,6 +1628,7 @@ vec4 materialOf() {
     return material;
 #else
     return material;
+#endif
 #endif
 #endif
 }
@@ -1573,6 +1761,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
 #endif
 layout(binding=6) uniform frameParams {
     vec4 frame;
+    vec4 cameraPosition;
 };
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;

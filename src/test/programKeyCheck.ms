@@ -1,5 +1,5 @@
 import { approx } from "./helpers";
-import { Mat4, Vec4, identity } from "../math/math3d";
+import { Mat4, Vec4, identity, vec3 } from "../math/math3d";
 import {
 	Program,
 	ProgramKey,
@@ -39,6 +39,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
+	PBR_MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	uniformBlockLength,
@@ -73,6 +74,7 @@ import { added, litShape } from "./drawHelpers";
 import {
 	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setElapsedTime, setTimeWrap,
 	setExposure,
+	setCameraPosition,
 	setToneMode,
 	ToneMode,
 	exposureMultiplier,
@@ -579,6 +581,36 @@ test "the core refuses a lit material without its block, or on a mesh of another
 			beginFrame(core, litItems, shortCamera, lights);
 		assert !began.ok && began.error == RendererError.CameraBlockLength;
 		assert core.drawn.length == 0 && held.uniforms.values[core.cameraBlock.offset] == 0.0;
+	}
+}
+
+test "the core refuses a pbr material until the camera position is set" {
+	let context: DrawContext =
+		DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + PBR_MATERIAL_UNIFORM_LENGTH);
+	const key: ProgramKey = ProgramKey.of(Program.Lit).withPbr();
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, PBR_MATERIAL_UNIFORM_LENGTH);
+	assert block.ok;
+	if (block.ok) {
+		const _pbr: Result<MaterialId, MaterialError> = addMaterial(context, {
+			...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque),
+			program: key, uniforms: block.value,
+		});
+	}
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	const mesh: MeshId = added(context, litShape());
+	const items: Vec<DrawItem> = [{ ...itemOf(context, firstMaterial(context)), mesh: mesh }];
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	if (created.ok) {
+		let core: Renderer = created.value;
+		const unset: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
+		assert !unset.ok && unset.error == RendererError.CameraPosition;
+		setCameraPosition(core, vec3(1, 2, 3));
+		const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+		const placed: Result<boolean, RendererError> = beginFrame(core, items, shortCamera, lights);
+		assert !placed.ok && placed.error == RendererError.CameraBlockLength;
 	}
 }
 

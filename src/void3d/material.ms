@@ -19,7 +19,12 @@ import {
 	movingBase,
 	uniformBlockLength,
 	MATERIAL_UNIFORM_SLOT,
+	PBR_METALNESS,
+	PBR_ROUGHNESS,
+	PBR_OCCLUSION,
+	PBR_MATERIAL_UNIFORM_LENGTH,
 } from "./gpu3d";
+import { PbrProperties, PbrResponseError } from "./pbrResponse";
 import { TextureId, NO_TEXTURE } from "./texture";
 
 // Which of the renderer's pass lists draws the material: the passes h3d.scene.fwd.Renderer
@@ -319,4 +324,26 @@ export function movingDefaults(key: ProgramKey): Vec<float32> {
 		values[matrix + 3] = 1.0;
 	}
 	return values;
+}
+
+// The block of a pbr key (gpu3d.ms PBR_*) holding `properties`, every other float 0 for the
+// caller to set. Roughness 0 is refused: Heaps' BRDF has no guard at that endpoint
+// (BRDF.hx:48-53), and pbrResponse.ms reports it as ZeroRoughness rather than invent a floor.
+export function pbrBlock(
+	key: ProgramKey,
+	properties: PbrProperties,
+): Result<Vec<float32>, PbrResponseError> {
+	if (!key.pbr) {
+		console.log(`void3d: pbrBlock for ${key.describe()}, which is not pbr`);
+		unreachable;
+	}
+	const checked: PbrProperties = try PbrProperties.heapsValues(
+		properties.metalness, properties.roughness, properties.occlusion,
+	);
+	if (checked.roughness == 0.0) { return Result.err(PbrResponseError.ZeroRoughness); }
+	let values: Vec<float32> = new Array(PBR_MATERIAL_UNIFORM_LENGTH);
+	values[PBR_METALNESS] = checked.metalness;
+	values[PBR_ROUGHNESS] = checked.roughness;
+	values[PBR_OCCLUSION] = checked.occlusion;
+	return Result.ok(values);
 }
