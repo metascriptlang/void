@@ -33,7 +33,13 @@ import {
 	decode,
 } from "./gltfAccessor";
 import { GltfColour, GltfColourError, GltfLinearRgba, fromAccessor } from "./gltfColour";
-import { GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, forValues } from "./gltfCurve";
+import {
+	GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, GltfWeightCurve, GltfWeightTrack,
+	forValues, forWeightValues,
+} from "./gltfCurve";
+import {
+	MorphData, MorphGeometryError, MorphPrimitiveInput, MorphTarget,
+} from "./morphGeometry";
 import { SkinInfluences, fromAccessor as readSkinInfluences } from "./skinInfluences";
 import { SkinPartition, fromTriangles } from "./skinPartition";
 import { TextureData } from "./texture";
@@ -204,6 +210,8 @@ export struct GltfNode {
 	mesh: int32;
 	skin: int32 | null;
 	skinMeshes: Vec<int32>;
+	morph: int32 | null;
+	weights: Vec<float32>;
 	local: GltfTransform;
 	children: Vec<int32>;
 }
@@ -258,6 +266,15 @@ export struct GltfMaterial {
 export struct GltfAnimation {
 	name: string;
 	tracks: Vec<GltfPoseTrack>;
+	weightTracks: Vec<GltfWeightTrack>;
+}
+
+export struct GltfMorph {
+	meshIndex: int32;
+	firstPrimitive: int32;
+	targetCount: int32;
+	data: Readonly<MorphData>;
+	meshWeights: Vec<float32>;
 }
 
 export struct GltfSkin {
@@ -276,6 +293,7 @@ export struct GltfSkinMesh {
 export struct GltfData {
 	skins: Vec<GltfSkin>;
 	skinMeshes: Vec<GltfSkinMesh | null>;
+	morphs: Vec<GltfMorph>;
 	meshes: Vec<MeshData>;
 	meshMaterials: Vec<int32>;
 	materials: Vec<GltfMaterial>;
@@ -347,12 +365,13 @@ function animationValues(
 	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
 	bufferLength: int32, index: int32, components: int32,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
+	sparseOk: boolean = false,
 ): Result<Vec<float32>, GltfError> {
 	const source = try accessorSource(accessors, index, GltfAccessorRole.Other);
 	const shape = components == 1 ? GltfAccessorShape.Scalar :
 		(components == 3 ? GltfAccessorShape.Vec3 : GltfAccessorShape.Vec4);
 	if (source.componentType != COMPONENT_FLOAT || source.normalized || source.shape != shape ||
-		(components == 1 && source.sparse !== null)) {
+		(components == 1 && !sparseOk && source.sparse !== null)) {
 		return Result.err(GltfError.Unsupported);
 	}
 	if (buffers.length == 0) {
@@ -373,10 +392,35 @@ function animationValues(
 	return Result.ok(move values);
 }
 
+function weightTrack(
+	sampler: JsonValue, node: int32, targetCount: int32,
+	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>, bufferLength: int32,
+	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
+	ref cause: string,
+): Result<GltfWeightTrack, GltfError> {
+	if (targetCount < 1) {
+		cause = "a weights channel targets a node whose mesh has no morph targets";
+		return Result.err(GltfError.BadReference);
+	}
+	const mode = try animationMode(fieldOf(sampler, "interpolation"));
+	const times = try animationValues(accessors, views, buffer, bufferLength,
+		intField(sampler, "input", -1), 1, buffers, accessorViews);
+	const values = try animationValues(accessors, views, buffer, bufferLength,
+		intField(sampler, "output", -1), 1, buffers, accessorViews, true);
+	const curve = GltfWeightCurve.forWeightValues(mode, targetCount, times, values);
+	if (!curve.ok) {
+		cause = `weights output must hold ${targetCount} scalars per keyframe ` +
+			`(three times that for CUBICSPLINE) at strictly increasing times: ${curve.error.toString()}`;
+		return Result.err(GltfError.CountMismatch);
+	}
+	return Result.ok({ sourceNode: node, curve: curve.value });
+}
+
 function loadAnimations(
 	root: JsonValue, accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
-	bufferLength: int32, nodeCount: int32,
+	bufferLength: int32, nodeCount: int32, nodeTargets: Readonly<Span<int32>>,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
+	ref cause: string,
 ): Result<Vec<GltfAnimation>, GltfError> {
 	let clips: Vec<GltfAnimation> = [];
 	const animations = arrayOf(root, "animations");
@@ -389,7 +433,9 @@ function loadAnimations(
 			(!isNull(name) && name.kind != JsonKind.String)) {
 			return Result.err(GltfError.Unsupported);
 		}
-		let clip: GltfAnimation = { name: isNull(name) ? "" : name.asString(), tracks: [] };
+		let clip: GltfAnimation = {
+			name: isNull(name) ? "" : name.asString(), tracks: [], weightTracks: [],
+		};
 		for (let channelIndex = 0; channelIndex < countOf(channels); channelIndex++) {
 			const channel = channels.at(channelIndex);
 			const target = fieldOf(channel, "target");
@@ -399,7 +445,20 @@ function loadAnimations(
 				samplerIndex >= countOf(samplers)) {
 				return Result.err(GltfError.BadReference);
 			}
-			const path = try animationPath(fieldOf(target, "path"));
+			const pathName = fieldOf(target, "path");
+			if (pathName.kind == JsonKind.String && pathName.strVal == "weights") {
+				for (const previous of clip.weightTracks) {
+					if (previous.sourceNode == node) {
+						cause = "two weights channels of one animation target the same node";
+						return Result.err(GltfError.Unsupported);
+					}
+				}
+				const track = try weightTrack(samplers.at(samplerIndex), node, nodeTargets[node],
+					accessors, views, buffer, bufferLength, buffers, accessorViews, cause);
+				clip.weightTracks.push(track);
+				continue;
+			}
+			const path = try animationPath(pathName);
 			if (hasField(arrayOf(root, "nodes").at(node), "matrix")) {
 				return Result.err(GltfError.Unsupported);
 			}
@@ -442,9 +501,6 @@ function uvAt(values: Readonly<Span<float64>>, i: int32): Uv {
 }
 
 function primitivesOf(mesh: JsonValue): Result<JsonValue, GltfError> {
-	if (!isNull(fieldOf(mesh, "weights"))) {
-		return Result.err(GltfError.Unsupported);
-	}
 	const primitives: JsonValue = arrayOf(mesh, "primitives");
 	if (isNull(primitives) || countOf(primitives) < 1) {
 		return Result.err(GltfError.Unsupported);
@@ -457,6 +513,7 @@ struct PrimitiveRun {
 	names: Vec<string>;
 	first: int32;
 	count: int32;
+	morph: int32;
 }
 
 // three.js createUniqueName (GLTFLoader.js:3810-3819): a name's first use is itself, later uses
@@ -895,6 +952,93 @@ function geometryAttribute(
 	return Result.ok(move decoded.value);
 }
 
+function loadMorphTargets(
+	primitive: JsonValue,
+	base: Readonly<MeshData>,
+	original: int32,
+	accessors: JsonValue,
+	views: JsonValue,
+	buffer: Readonly<Span<uint8>>,
+	bufferLength: int32,
+	ref colourBuffers: Vec<GltfAccessorBuffer>,
+	ref colourViews: Vec<GltfAccessorView>,
+	ref cause: string,
+): Result<Vec<MorphTarget>, GltfError> {
+	let result: Vec<MorphTarget> = [];
+	const targets: JsonValue = fieldOf(primitive, "targets");
+	if (isNull(targets)) { return Result.ok(move result); }
+	if (targets.kind != JsonKind.Array || countOf(targets) < 1) {
+		cause = "targets must be a nonempty array";
+		return Result.err(GltfError.Unsupported);
+	}
+	const attributes: JsonValue = fieldOf(primitive, "attributes");
+	if (base.hasTangents && !hasField(attributes, "TANGENT")) {
+		cause = "morph targets on a primitive whose tangents are generated need tangents " +
+			"recomputed from each morphed position; supply a TANGENT attribute";
+		return Result.err(GltfError.Unsupported);
+	}
+	for (let index = 0; index < countOf(targets); index++) {
+		const target: JsonValue = targets.at(index);
+		if (target === null || target.kind != JsonKind.Object || target.keys.length < 1) {
+			cause = `morph target ${index} must be a nonempty object of accessors`;
+			return Result.err(GltfError.Unsupported);
+		}
+		let morph: MorphTarget = { positions: [], normals: [], tangents: [] };
+		for (const key of target.keys) {
+			if (key != "POSITION" && key != "NORMAL" && key != "TANGENT") {
+				cause = `morph target ${index} carries ${key}; only POSITION, NORMAL and TANGENT ` +
+					"displacements are supported";
+				return Result.err(GltfError.Unsupported);
+			}
+			if (!hasField(attributes, key)) {
+				cause = `morph target ${index} displaces ${key}, which the primitive does not carry`;
+				return Result.err(GltfError.BadReference);
+			}
+			const source = try accessorSource(accessors, try colourIntField(target, key, -1));
+			const decoded = try source.geometryAttribute(GltfAccessorShape.Vec3, original,
+				views, buffer, bufferLength, colourBuffers, colourViews);
+			let values: Vec<float32> = [];
+			for (const value of decoded.values) { values.push(value as float32); }
+			if (key == "POSITION") { morph.positions = move values; }
+			else if (key == "NORMAL") { morph.normals = move values; }
+			else if (base.hasTangents) { morph.tangents = move values; }
+		}
+		if (morph.positions.length == 0 && morph.normals.length == 0 &&
+			morph.tangents.length == 0) {
+			for (let at = 0; at < original * 3; at++) { morph.positions.push(0.0); }
+		}
+		result.push(move morph);
+	}
+	return Result.ok(move result);
+}
+
+function resolveMorphNodes(
+	ref data: GltfData, runs: Readonly<Span<PrimitiveRun>>, source: string,
+): Result<void, GltfDiagnostic> {
+	for (let i = 0; i < data.nodes.length; i++) {
+		const mesh: int32 = data.nodes[i].mesh;
+		const morph: int32 = mesh >= 0 && mesh < (runs.length as int32) ? runs[mesh].morph : -1;
+		const location: string = `$.nodes[${i}].weights`;
+		if (morph < 0) {
+			if (data.nodes[i].weights.length > 0) {
+				return Result.err(gltfFailure(GltfError.BadNode, source, location,
+					data.nodes[i].name, "node weights need a mesh with morph targets"));
+			}
+			continue;
+		}
+		const count: int32 = data.morphs[morph].targetCount;
+		if (data.nodes[i].weights.length == 0) {
+			for (const weight of data.morphs[morph].meshWeights) { data.nodes[i].weights.push(weight); }
+		} else if (data.nodes[i].weights.length != count) {
+			return Result.err(gltfFailure(GltfError.CountMismatch, source, location,
+				data.nodes[i].name, `node weights hold ${data.nodes[i].weights.length} values ` +
+				`for ${count} morph targets`));
+		}
+		data.nodes[i].morph = morph as (int32 | null);
+	}
+	return Result.ok(null);
+}
+
 function loadMesh(
 	primitive: JsonValue,
 	read: MaterialRead,
@@ -906,9 +1050,6 @@ function loadMesh(
 	ref colourViews: Vec<GltfAccessorView>,
 	ref tangentSources: Vec<int32>,
 ): Result<MeshData, GltfError> {
-	if (!isNull(fieldOf(primitive, "targets"))) {
-		return Result.err(GltfError.Unsupported);
-	}
 	const mode: int32 = try colourIntField(primitive, "mode", 4);
 	const strip: boolean = mode == 5;
 	const fan: boolean = mode == 6;
@@ -1131,11 +1272,22 @@ function matrixTransform(value: JsonValue): Result<GltfTransform, GltfError> {
 	});
 }
 
+function weightsField(owner: JsonValue): Result<Vec<float32>, GltfError> {
+	let weights: Vec<float32> = [];
+	const field: JsonValue = fieldOf(owner, "weights");
+	if (isNull(field)) { return Result.ok(move weights); }
+	if (field.kind != JsonKind.Array || countOf(field) < 1) {
+		return Result.err(GltfError.Unsupported);
+	}
+	for (let i = 0; i < countOf(field); i++) { weights.push(try numberAt(field, i)); }
+	return Result.ok(move weights);
+}
+
 function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 	if (node === null || node.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(node, "weights"))) { return Result.err(GltfError.Unsupported); }
+	const nodeWeights = try weightsField(node);
 	const hasMatrix: boolean = hasField(node, "matrix");
 	if (hasMatrix && (hasField(node, "translation") || hasField(node, "rotation") ||
 		hasField(node, "scale"))) {
@@ -1226,6 +1378,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 		name: isNull(nameField) ? "" : nameField.asString(),
 		mesh: mesh,
 		skin: try colourOptionalInt(node, "skin"), skinMeshes: [],
+		morph: null, weights: move nodeWeights,
 		local: local,
 		children: children,
 	});
@@ -1858,7 +2011,7 @@ function decodeGltf(
 	const accessors: JsonValue = arrayOf(root, "accessors");
 	const views: JsonValue = arrayOf(root, "bufferViews");
 	let data: GltfData = {
-		skins: [], skinMeshes: [],
+		skins: [], skinMeshes: [], morphs: [],
 		meshes: [],
 		meshMaterials: [],
 		materials: [],
@@ -1962,7 +2115,15 @@ function decodeGltf(
 		for (let p = 0; p < countOf(primitives); p++) {
 			names.push(uniqueName(usedNames, usedCounts, base));
 		}
-		runs.push({ names: names, first: data.meshes.length as int32, count: countOf(primitives) });
+		runs.push({
+			names: names, first: data.meshes.length as int32, count: countOf(primitives), morph: -1,
+		});
+		let morphed: boolean = false;
+		for (let p = 0; p < countOf(primitives); p++) {
+			if (!isNull(fieldOf(primitives.at(p), "targets"))) { morphed = true; }
+		}
+		let morphInputs: Vec<MorphPrimitiveInput> = [];
+		let morphTargetCount: int32 = 0;
 		for (let p = 0; p < countOf(primitives); p++) {
 			const primitive: JsonValue = primitives.at(p);
 			const materialRead = materialIndexOf(primitive, materialCount);
@@ -1990,6 +2151,32 @@ function decodeGltf(
 				return Result.err(gltfFailure(mesh.error, source,
 					`$.meshes[${i}].primitives[${p}]`, base));
 			}
+			if (morphed) {
+				let cause: string = "";
+				const original: int32 = mesh.value.vertexCount() - (tangentSources.length as int32);
+				const targets = loadMorphTargets(primitive, mesh.value, original, accessors, views,
+					buffer, declaredLength, colourBuffers, colourViews, cause);
+				if (!targets.ok) {
+					return Result.err(gltfFailure(targets.error, source,
+						`$.meshes[${i}].primitives[${p}].targets`, base, cause));
+				}
+				const targetCount: int32 = targets.value.length as int32;
+				if (targetCount == 0 || (morphTargetCount > 0 && targetCount != morphTargetCount)) {
+					return Result.err(gltfFailure(GltfError.CountMismatch, source,
+						`$.meshes[${i}].primitives[${p}].targets`, base,
+						targetCount == 0
+							? "primitive has no morph targets while its siblings have them"
+							: `primitive has ${targetCount} morph targets, its siblings ${morphTargetCount}`));
+				}
+				if (targetCount > 0) { morphTargetCount = targetCount; }
+				let sourceVertices: Vec<int32> = [];
+				for (let vertex = 0; vertex < original; vertex++) { sourceVertices.push(vertex); }
+				for (const vertex of tangentSources) { sourceVertices.push(vertex); }
+				morphInputs.push({
+					base: mesh.value, sourceVertexCount: original,
+					sourceVertices: move sourceVertices, targets: move targets.value,
+				});
+			}
 			const skinMesh = loadSkinMesh(primitive, mesh.value, tangentSources, accessors, views,
 				buffer, declaredLength, colourBuffers, colourViews);
 			if (!skinMesh.ok) {
@@ -2001,6 +2188,39 @@ function decodeGltf(
 			data.skinMeshes.push(skinMesh.value);
 			data.meshMaterials.push(material);
 		}
+		const meshWeights = weightsField(meshArray.at(i));
+		if (!meshWeights.ok) {
+			return Result.err(gltfFailure(meshWeights.error, source, `$.meshes[${i}].weights`, base));
+		}
+		if (!morphed) {
+			if (meshWeights.value.length > 0) {
+				return Result.err(gltfFailure(GltfError.CountMismatch, source,
+					`$.meshes[${i}].weights`, base, "mesh weights need morph targets"));
+			}
+			continue;
+		}
+		if (meshWeights.value.length > 0 && meshWeights.value.length != morphTargetCount) {
+			return Result.err(gltfFailure(GltfError.CountMismatch, source,
+				`$.meshes[${i}].weights`, base, `mesh weights hold ${meshWeights.value.length} ` +
+				`values for ${morphTargetCount} morph targets`));
+		}
+		let defaults: Vec<float32> = [];
+		for (let target = 0; target < morphTargetCount; target++) {
+			defaults.push(meshWeights.value.length > 0 ? meshWeights.value[target] : 0.0);
+		}
+		const created = MorphData.create(morphInputs, morphTargetCount);
+		if (!created.ok) {
+			return Result.err(gltfFailure(match (created.error) {
+				MorphGeometryError.Shape | MorphGeometryError.SourceVertex => GltfError.CountMismatch,
+				MorphGeometryError.NonFinite => GltfError.OutOfRange,
+				_ => GltfError.Unsupported,
+			}, source, `$.meshes[${i}]`, base, "morph data: " + created.error.toString()));
+		}
+		data.morphs.push({
+			meshIndex: i, firstPrimitive: runs[i].first, targetCount: morphTargetCount,
+			data: created.value, meshWeights: move defaults,
+		});
+		runs[i].morph = (data.morphs.length as int32) - 1;
 	}
 	const nodeArray: JsonValue = arrayOf(root, "nodes");
 	const nodeCount: int32 = countOf(nodeArray);
@@ -2021,10 +2241,17 @@ function decodeGltf(
 	}
 	data.skins = try loadSkins(root, accessors, views, buffer, declaredLength, nodeCount,
 		colourBuffers, colourViews, source);
+	const resolved = try resolveMorphNodes(data, runs, source);
+	let nodeTargets: Vec<int32> = [];
+	for (const node of data.nodes) {
+		const morph = node.morph;
+		nodeTargets.push(morph === null ? 0 : data.morphs[morph].targetCount);
+	}
+	let animationCause: string = "";
 	let animations = loadAnimations(root, accessors, views, buffer, declaredLength, nodeCount,
-		colourBuffers, colourViews);
+		nodeTargets, colourBuffers, colourViews, animationCause);
 	if (!animations.ok) {
-		return Result.err(gltfFailure(animations.error, source, "$.animations"));
+		return Result.err(gltfFailure(animations.error, source, "$.animations", "", animationCause));
 	}
 	data.animations = move animations.value;
 	placePrimitives(data, runs, nodeCount);

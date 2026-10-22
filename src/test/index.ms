@@ -95,6 +95,7 @@ import "./textureMipCheck";
 import "./pbrResponseCheck";
 import "./lightShapeCheck";
 import "./morphGeometryCheck";
+import "./gltfMorphImportCheck";
 import "./colorMatrixPassCheck";
 import "./imageDecodeCheck";
 import "./animationSheetCheck";
