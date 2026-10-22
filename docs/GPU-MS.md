@@ -201,12 +201,24 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   `copyTextureToBuffer`, `copyBufferToTexture`, `copyTextureToTexture`, mapped reads), the control
   sokol lacks. P3: compute and storage, once `shader` emits the reflection. P4: timestamps,
   labels, limits.
-- **Done on D3D11:** P1 whole (`5233ffcd`, `29c449f3`, pinned on WARP in `webgpuD3d11Check.ms`).
-  GL and wgpu P1 and D3D11 P2 are in flight.
+- **Where each backend is** (WARP pins in `webgpuD3d11Check.ms`, 334 tests; GL pins compile-only
+  until a GO):
+
+  | phase | D3D11 | GL | wgpu | Metal |
+  |---|---|---|---|---|
+  | P1 members | done | done | done | stops by name |
+  | P2 copies, mapped reads | done | done | copies done; `mapAsync` stops (no ASYNCIFY) | stops |
+  | P3 compute, storage | done | in flight | in flight | stops |
+  | P4 limits, labels, debug groups, queries | done | in flight | in flight | stops |
+
+  `mapAsync` blocks on native and `getMappedRange` returns a copy. `limits()` and `features()` are
+  methods, so an unported backend stops only when asked.
 - **For Metal:** a backend that has not ported a P0 member stops by name through the
   `stopOnUnported*` helpers in `types.ms`, so Metal keeps building; drop a helper call once Metal
-  handles every member it guards (the D3D11 diff is the map). P2 adds backend functions every
-  backend must define: the Windows side adds a Metal stub that stops by name, committed alone.
+  handles every member it guards (the D3D11 diff is the map). P2-P4 added backend functions; the
+  Windows side committed Metal stubs that stop by name (`74b659a3`, `e19a6768`, `7499b938`), and
+  Metal's `beginRenderPass` calls `stopOnUnportedRenderPass` so a `timestampWrites` or
+  `occlusionQuerySet` is refused rather than ignored. Replace a stub when you port its call.
 - **Window features:** `requestQuit`/`cancelQuit`, `frameDuration`, clipboard, cursors,
   `showMouse`, `lockMouse`, fullscreen and dropped files are in `src/sokol/window.ms` over
   `appWindow.c`. Windows and the browser implement them; Linux and iOS stop by name
