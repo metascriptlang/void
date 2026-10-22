@@ -105,8 +105,8 @@ write_entry() {
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings$extra } from \"../../../src/void3d/pixelArtRenderer\";"
 		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureSwapchain(frame: int32): void;"
 		echo "extern function captureQuit(): void;"
@@ -136,7 +136,7 @@ write_entry() {
 # the test entry and the arm64 entry, whose imports are relative to out/tmp.
 prepare_harness() {
 	mkdir -p "$TMP/android"
-	for file in capture.c capture.h; do
+	for file in capture3d.c capture3d.h; do
 		cp "tests/capture3d/$file" "$WORK/$file.new"
 		replace_if_changed "$WORK/$file.new" "$CAPTURE/$file"
 	done
@@ -152,8 +152,8 @@ write_perspective_entry() {
 	{
 		echo 'import { initPerspective, framePerspective } from "../../../tests/integration/perspectiveFrame";'
 		echo '@include("../../../src/sokol/bridge.h");'
-		echo '@include("capture.h");'
-		echo '@compile("./capture.c");'
+		echo '@include("capture3d.h");'
+		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
 		echo '	w: int32,'
 		echo '	h: int32,'
@@ -184,8 +184,8 @@ write_frame_entry() {
 	{
 		echo "import { $4, $5, $6 } from \"../../../tests/integration/$3\";"
 		echo '@include("../../../src/sokol/bridge.h");'
-		echo '@include("capture.h");'
-		echo '@compile("./capture.c");'
+		echo '@include("capture3d.h");'
+		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
 		echo '	w: int32,'
 		echo '	h: int32,'
@@ -415,8 +415,8 @@ write_bench_entry() {
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings } from \"../../../src/void3d/pixelArtRenderer\";"
 		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -481,8 +481,8 @@ write_churn_entry() {
 		echo "	ChurnError,"
 		echo "} from \"../../../src/examples/churnScene\";"
 		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -580,8 +580,8 @@ import { setup2d, begin2d, flushTargets, end2d, fillQuad } from "../../../src/vo
 import { Color, vec2, rgba } from "../../../src/void2d/types";
 import { BlendMode } from "../../../src/gpu/state";
 @include("../../../src/sokol/bridge.h");
-@include("capture.h");
-@compile("./capture.c");
+@include("capture3d.h");
+@compile("./capture3d.c");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 extern function captureSwapchain(frame: int32): void;
 extern function captureQuit(): void;
@@ -657,8 +657,8 @@ write_pick_entry() {
 		echo "import { PickHit, PickError } from \"../../../src/void3d/pick\";"
 		echo "import { Vec3 } from \"../../../src/math/math3d\";"
 		echo "@include(\"../../../src/sokol/bridge.h\");"
-		echo "@include(\"capture.h\");"
-		echo "@compile(\"./capture.c\");"
+		echo "@include(\"capture3d.h\");"
+		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -711,8 +711,8 @@ write_pick_entry() {
 # ---- pick ---------------------------------------------------------------------------------
 
 run_pick() {
-	if [ ! -f "$CAPTURE/capture.c" ] || [ ! -f "$CAPTURE/capture.h" ]; then
-		skip "pick: $CAPTURE/capture.c and capture.h are missing (gitignored out/tmp harness)"
+	if [ ! -f "$CAPTURE/capture3d.c" ] || [ ! -f "$CAPTURE/capture3d.h" ]; then
+		skip "pick: $CAPTURE/capture3d.c and capture3d.h are missing (gitignored out/tmp harness)"
 		return
 	fi
 	if ! msc build "$CAPTURE/campfirePick.ms" > "$WORK/pick-build.log" 2>&1; then

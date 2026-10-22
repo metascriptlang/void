@@ -4,7 +4,7 @@
 #include <dxgi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "capture.h"
+#include "capture3d.h"
 
 void *voidD3d11Device(void);
 void *voidD3d11Context(void);

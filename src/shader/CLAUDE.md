@@ -150,7 +150,7 @@ later replaces the hand-written GLSL source of each base.
   stages: the port first grew the text by 2438 B (GLSL ES) and 1150 B (HLSL), past the budget.
 - **CPU oracle within a tolerance, never pixel-exact.** GLSL allows contraction and looser ULP bounds,
   and `sin`/`exp` are implementation-defined. shady's own tests use `1e-4`. Pixel truth is
-  the readback in `tests/capture3d/capture.c`.
+  the readback in `tests/capture3d/capture3d.c`.
 
 ## Compiler surface the emitter relies on
 
