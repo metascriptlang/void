@@ -409,7 +409,7 @@ function stripPipeline(device: GPUDevice, module: GPUShaderModule, topology: GPU
 	return device.createRenderPipeline(descriptor);
 }
 
-function drawStrip(device: GPUDevice, topology: GPUPrimitiveTopology, points: Vec<float32>, count: int32, colourOffset: uint32, viewportWidth: number): Vec<uint8> {
+function drawStrip(device: GPUDevice, topology: GPUPrimitiveTopology, points: Vec<float32>, count: int32, colourOffset: uint32, viewportWidth: float32): Vec<uint8> {
 	const module = flatShader(device);
 	const pipeline = stripPipeline(device, module, topology);
 	const uniforms = colourUniforms(device);

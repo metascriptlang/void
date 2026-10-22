@@ -19,11 +19,12 @@ export struct GPURenderPassEncoder { id: uint32; }
 export struct GPUComputePassEncoder { id: uint32; }
 export struct GPUQuerySet { id: uint32; }
 
-export const GPU_MAX_COLOR_ATTACHMENTS = 4;
-export const GPU_MAX_VERTEX_BUFFERS = 2;
-export const GPU_MAX_VERTEX_ATTRIBUTES = 16;
-export const GPU_MAX_BIND_GROUP_ENTRIES = 8;
-export const GPU_MAX_UNIFORM_BLOCKS = 8;
+export const GPU_MAX_COLOR_ATTACHMENTS: int32 = 4;
+export const GPU_MAX_VERTEX_BUFFERS: int32 = 2;
+export const GPU_MAX_VERTEX_ATTRIBUTES: int32 = 16;
+export const GPU_MAX_BIND_GROUP_ENTRIES: int32 = 8;
+export const GPU_MAX_UNIFORM_BLOCKS: int32 = 8;
+export const GPU_MAX_SHADER_BINDINGS: int32 = 24;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
 
@@ -191,7 +192,7 @@ export function vertexFormatSize(format: GPUVertexFormat): int32 {
 	};
 }
 
-export struct GPUColor { r: number; g: number; b: number; a: number; }
+export struct GPUColor { r: float64; g: float64; b: float64; a: float64; }
 export struct GPUExtent3D { width: int32; height: int32; depthOrArrayLayers: int32; }
 
 export struct GPUBufferDescriptor {
@@ -227,8 +228,8 @@ export struct GPUSamplerDescriptor {
 	magFilter: GPUFilterMode;
 	minFilter: GPUFilterMode;
 	mipmapFilter: GPUMipmapFilterMode;
-	lodMinClamp: number;
-	lodMaxClamp: number;
+	lodMinClamp: float32;
+	lodMaxClamp: float32;
 	compare: GPUCompareFunction;
 	maxAnisotropy: int32;
 }
@@ -273,8 +274,8 @@ export struct GPUShaderModuleDescriptor {
 	computeCode: string;
 	computeEntryPoint: string;
 	workgroupSize: int32[3];
-	bindings: GPUShaderBinding[24];
-	attributes: GPUShaderAttribute[16];
+	bindings: GPUShaderBinding[GPU_MAX_SHADER_BINDINGS];
+	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
 
 export struct GPUVertexAttribute {
@@ -286,12 +287,12 @@ export struct GPUVertexAttribute {
 export struct GPUVertexBufferLayout {
 	arrayStride: int32;
 	stepMode: GPUVertexStepMode;
-	attributes: GPUVertexAttribute[16];
+	attributes: GPUVertexAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
 }
 
 export struct GPUVertexState {
 	module: GPUShaderModule;
-	buffers: GPUVertexBufferLayout[2];
+	buffers: GPUVertexBufferLayout[GPU_MAX_VERTEX_BUFFERS];
 }
 
 export struct GPUBlendComponent {
@@ -316,7 +317,7 @@ export struct GPUColorTargetState {
 
 export struct GPUFragmentState {
 	module: GPUShaderModule;
-	targets: GPUColorTargetState[4];
+	targets: GPUColorTargetState[GPU_MAX_COLOR_ATTACHMENTS];
 }
 
 export struct GPUPrimitiveState {
@@ -342,8 +343,8 @@ export struct GPUDepthStencilState {
 	stencilReadMask: uint32;
 	stencilWriteMask: uint32;
 	depthBias: int32;
-	depthBiasSlopeScale: number;
-	depthBiasClamp: number;
+	depthBiasSlopeScale: float32;
+	depthBiasClamp: float32;
 }
 
 export struct GPUMultisampleState { count: int32; }
@@ -446,7 +447,7 @@ export struct GPUBindGroupEntry {
 export struct GPUBindGroupDescriptor {
 	label: string | null;
 	layout: GPUBindGroupLayout;
-	entries: GPUBindGroupEntry[8];
+	entries: GPUBindGroupEntry[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 export struct GPURenderPassColorAttachment {
@@ -460,14 +461,14 @@ export struct GPURenderPassColorAttachment {
 
 export struct GPURenderPassDepthStencilAttachment {
 	view: GPUTextureView;
-	depthClearValue: number;
+	depthClearValue: float32;
 	depthLoadOp: GPULoadOp;
 	depthStoreOp: GPUStoreOp;
 }
 
 export struct GPURenderPassDescriptor {
 	label: string | null;
-	colorAttachments: GPURenderPassColorAttachment[4];
+	colorAttachments: GPURenderPassColorAttachment[GPU_MAX_COLOR_ATTACHMENTS];
 	depthStencilAttachment: GPURenderPassDepthStencilAttachment;
 	timestampWrites: GPUPassTimestampWrites;
 	occlusionQuerySet: GPUQuerySet;
@@ -483,51 +484,47 @@ function stop(message: string): void {
 	unreachable;
 }
 
-function stopOn(backend: string, message: string): void {
-	console.log(`webgpu ${backend}: ${message}`);
+function stopOnUnported(backend: string, what: string): void {
+	console.log(`webgpu ${backend}: ${what} is not ported to ${backend} yet`);
 	unreachable;
 }
 
 export function stopOnUnportedShaderModule(backend: string, descriptor: GPUShaderModuleDescriptor): void {
-	if (descriptor.computeCode != "") { stopOn(backend, `GPUShaderModuleDescriptor.computeCode is not ported to ${backend} yet`); }
-	for (let i = 0; i < 24; i++) {
+	if (descriptor.computeCode != "") { stopOnUnported(backend, `GPUShaderModuleDescriptor.computeCode`); }
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const kind: string = descriptor.bindings[i].kind;
 		if (kind == "storage-buffer" || kind == "storage-texture") {
-			stopOn(backend, `GPUShaderBinding.kind '${kind}' is not ported to ${backend} yet`);
+			stopOnUnported(backend, `GPUShaderBinding.kind '${kind}'`);
 		}
 		const stage: string = descriptor.bindings[i].stage;
-		if (stage == "compute") { stopOn(backend, `GPUShaderBinding.stage 'compute' is not ported to ${backend} yet`); }
+		if (stage == "compute") { stopOnUnported(backend, `GPUShaderBinding.stage 'compute'`); }
 	}
 	stopOnUnportedShaderBindings(backend, descriptor);
 	if (backend == "gl" || backend == "wgpu") { return; }
-	for (let i = 0; i < 24; i++) {
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const viewDimension: string = descriptor.bindings[i].viewDimension;
 		if (viewDimension != "" && viewDimension != "2d") {
-			stopOn(backend, `GPUShaderBinding.viewDimension '${viewDimension}' is not ported to ${backend} yet`);
+			stopOnUnported(backend, `GPUShaderBinding.viewDimension '${viewDimension}'`);
 		}
 	}
 }
 
 export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUShaderModuleDescriptor): void {
-	for (let i = 0; i < 24; i++) {
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const b = descriptor.bindings[i];
 		const sampleType: string = b.sampleType;
 		if (sampleType != "" && sampleType != "float" && sampleType != "unfilterable-float") {
-			stopOn(backend, `GPUShaderBinding.sampleType '${sampleType}' is not ported to ${backend} yet`);
+			stopOnUnported(backend, `GPUShaderBinding.sampleType '${sampleType}'`);
 		}
 		const samplerType: string = b.samplerType;
-		if (samplerType == "comparison") { stopOn(backend, `GPUShaderBinding.samplerType 'comparison' is not ported to ${backend} yet`); }
-		if (b.multisampled) { stopOn(backend, `GPUShaderBinding.multisampled is not ported to ${backend} yet`); }
+		if (samplerType == "comparison") { stopOnUnported(backend, `GPUShaderBinding.samplerType 'comparison'`); }
+		if (b.multisampled) { stopOnUnported(backend, `GPUShaderBinding.multisampled`); }
 	}
 }
 
 export function stopOnUnportedRenderPass(backend: string, descriptor: GPURenderPassDescriptor): void {
-	if (descriptor.timestampWrites.querySet.id != 0) { stopOn(backend, `GPURenderPassDescriptor.timestampWrites is not ported to ${backend} yet`); }
-	if (descriptor.occlusionQuerySet.id != 0) { stopOn(backend, `GPURenderPassDescriptor.occlusionQuerySet is not ported to ${backend} yet`); }
-}
-
-export function stopOnUnportedComputePass(backend: string, descriptor: GPUComputePassDescriptor): void {
-	if (descriptor.timestampWrites.querySet.id != 0) { stopOn(backend, `GPUComputePassDescriptor.timestampWrites is not ported to ${backend} yet`); }
+	if (descriptor.timestampWrites.querySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.timestampWrites`); }
+	if (descriptor.occlusionQuerySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.occlusionQuerySet`); }
 }
 
 const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
@@ -536,88 +533,88 @@ const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 // at WebGPU's default passes, any other value stops naming the member, the value and the backend.
 export function stopOnUnportedTexture(backend: string, descriptor: GPUTextureDescriptor): void {
 	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d") { stopOn(backend, `GPUTextureDescriptor.dimension '${dimension}' is not ported to ${backend} yet`); }
+	if (dimension != "" && dimension != "2d") { stopOnUnported(backend, `GPUTextureDescriptor.dimension '${dimension}'`); }
 	if (descriptor.size.depthOrArrayLayers > 1) {
-		stopOn(backend, `GPUTextureDescriptor.size.depthOrArrayLayers ${descriptor.size.depthOrArrayLayers} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUTextureDescriptor.size.depthOrArrayLayers ${descriptor.size.depthOrArrayLayers}`);
 	}
 	if (descriptor.mipLevelCount > 1) {
-		stopOn(backend, `GPUTextureDescriptor.mipLevelCount ${descriptor.mipLevelCount} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUTextureDescriptor.mipLevelCount ${descriptor.mipLevelCount}`);
 	}
 }
 
 export function stopOnUnportedView(backend: string, descriptor: GPUTextureViewDescriptor): void {
 	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d") { stopOn(backend, `GPUTextureViewDescriptor.dimension '${dimension}' is not ported to ${backend} yet`); }
-	if (descriptor.baseMipLevel != 0) { stopOn(backend, `GPUTextureViewDescriptor.baseMipLevel ${descriptor.baseMipLevel} is not ported to ${backend} yet`); }
-	if (descriptor.mipLevelCount > 1) { stopOn(backend, `GPUTextureViewDescriptor.mipLevelCount ${descriptor.mipLevelCount} is not ported to ${backend} yet`); }
-	if (descriptor.baseArrayLayer != 0) { stopOn(backend, `GPUTextureViewDescriptor.baseArrayLayer ${descriptor.baseArrayLayer} is not ported to ${backend} yet`); }
-	if (descriptor.arrayLayerCount > 1) { stopOn(backend, `GPUTextureViewDescriptor.arrayLayerCount ${descriptor.arrayLayerCount} is not ported to ${backend} yet`); }
+	if (dimension != "" && dimension != "2d") { stopOnUnported(backend, `GPUTextureViewDescriptor.dimension '${dimension}'`); }
+	if (descriptor.baseMipLevel != 0) { stopOnUnported(backend, `GPUTextureViewDescriptor.baseMipLevel ${descriptor.baseMipLevel}`); }
+	if (descriptor.mipLevelCount > 1) { stopOnUnported(backend, `GPUTextureViewDescriptor.mipLevelCount ${descriptor.mipLevelCount}`); }
+	if (descriptor.baseArrayLayer != 0) { stopOnUnported(backend, `GPUTextureViewDescriptor.baseArrayLayer ${descriptor.baseArrayLayer}`); }
+	if (descriptor.arrayLayerCount > 1) { stopOnUnported(backend, `GPUTextureViewDescriptor.arrayLayerCount ${descriptor.arrayLayerCount}`); }
 }
 
 export function stopOnUnportedSampler(backend: string, descriptor: GPUSamplerDescriptor): void {
 	const addressModeW: string = descriptor.addressModeW;
 	if (addressModeW != "" && addressModeW != "clamp-to-edge") {
-		stopOn(backend, `GPUSamplerDescriptor.addressModeW '${addressModeW}' is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.addressModeW '${addressModeW}'`);
 	}
 	const mipmapFilter: string = descriptor.mipmapFilter;
 	if (mipmapFilter != "" && mipmapFilter != "nearest") {
-		stopOn(backend, `GPUSamplerDescriptor.mipmapFilter '${mipmapFilter}' is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.mipmapFilter '${mipmapFilter}'`);
 	}
-	if (descriptor.lodMinClamp != 0) { stopOn(backend, `GPUSamplerDescriptor.lodMinClamp ${descriptor.lodMinClamp} is not ported to ${backend} yet`); }
+	if (descriptor.lodMinClamp != 0) { stopOnUnported(backend, `GPUSamplerDescriptor.lodMinClamp ${descriptor.lodMinClamp}`); }
 	if (descriptor.lodMaxClamp != 0 && descriptor.lodMaxClamp != 32) {
-		stopOn(backend, `GPUSamplerDescriptor.lodMaxClamp ${descriptor.lodMaxClamp} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.lodMaxClamp ${descriptor.lodMaxClamp}`);
 	}
 	const compare: string = descriptor.compare;
-	if (compare != "") { stopOn(backend, `GPUSamplerDescriptor.compare '${compare}' is not ported to ${backend} yet`); }
+	if (compare != "") { stopOnUnported(backend, `GPUSamplerDescriptor.compare '${compare}'`); }
 	if (descriptor.maxAnisotropy > 1) {
-		stopOn(backend, `GPUSamplerDescriptor.maxAnisotropy ${descriptor.maxAnisotropy} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `GPUSamplerDescriptor.maxAnisotropy ${descriptor.maxAnisotropy}`);
 	}
 }
 
 function stopOnUnportedStencilFace(backend: string, member: string, face: GPUStencilFaceState): void {
 	const compare: string = face.compare;
-	if (compare != "" && compare != "always") { stopOn(backend, `${member}.compare '${compare}' is not ported to ${backend} yet`); }
+	if (compare != "" && compare != "always") { stopOnUnported(backend, `${member}.compare '${compare}'`); }
 	const failOp: string = face.failOp;
-	if (failOp != "" && failOp != "keep") { stopOn(backend, `${member}.failOp '${failOp}' is not ported to ${backend} yet`); }
+	if (failOp != "" && failOp != "keep") { stopOnUnported(backend, `${member}.failOp '${failOp}'`); }
 	const depthFailOp: string = face.depthFailOp;
-	if (depthFailOp != "" && depthFailOp != "keep") { stopOn(backend, `${member}.depthFailOp '${depthFailOp}' is not ported to ${backend} yet`); }
+	if (depthFailOp != "" && depthFailOp != "keep") { stopOnUnported(backend, `${member}.depthFailOp '${depthFailOp}'`); }
 	const passOp: string = face.passOp;
-	if (passOp != "" && passOp != "keep") { stopOn(backend, `${member}.passOp '${passOp}' is not ported to ${backend} yet`); }
+	if (passOp != "" && passOp != "keep") { stopOnUnported(backend, `${member}.passOp '${passOp}'`); }
 }
 
 export function stopOnUnportedDepthStencil(backend: string, state: GPUDepthStencilState): void {
 	stopOnUnportedStencilFace(backend, "depthStencil.stencilFront", state.stencilFront);
 	stopOnUnportedStencilFace(backend, "depthStencil.stencilBack", state.stencilBack);
 	if (state.stencilReadMask != 0 && state.stencilReadMask != STENCIL_MASK_ALL) {
-		stopOn(backend, `depthStencil.stencilReadMask ${state.stencilReadMask} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `depthStencil.stencilReadMask ${state.stencilReadMask}`);
 	}
 	if (state.stencilWriteMask != 0 && state.stencilWriteMask != STENCIL_MASK_ALL) {
-		stopOn(backend, `depthStencil.stencilWriteMask ${state.stencilWriteMask} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `depthStencil.stencilWriteMask ${state.stencilWriteMask}`);
 	}
-	if (state.depthBias != 0) { stopOn(backend, `depthStencil.depthBias ${state.depthBias} is not ported to ${backend} yet`); }
+	if (state.depthBias != 0) { stopOnUnported(backend, `depthStencil.depthBias ${state.depthBias}`); }
 	if (state.depthBiasSlopeScale != 0) {
-		stopOn(backend, `depthStencil.depthBiasSlopeScale ${state.depthBiasSlopeScale} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `depthStencil.depthBiasSlopeScale ${state.depthBiasSlopeScale}`);
 	}
-	if (state.depthBiasClamp != 0) { stopOn(backend, `depthStencil.depthBiasClamp ${state.depthBiasClamp} is not ported to ${backend} yet`); }
+	if (state.depthBiasClamp != 0) { stopOnUnported(backend, `depthStencil.depthBiasClamp ${state.depthBiasClamp}`); }
 }
 
 export function stopOnUnportedPrimitive(backend: string, state: GPUPrimitiveState): void {
 	const topology: string = state.topology;
-	if (topology != "" && topology != "triangle-list") { stopOn(backend, `primitive.topology '${topology}' is not ported to ${backend} yet`); }
+	if (topology != "" && topology != "triangle-list") { stopOnUnported(backend, `primitive.topology '${topology}'`); }
 	const stripIndexFormat: string = state.stripIndexFormat;
-	if (stripIndexFormat != "") { stopOn(backend, `primitive.stripIndexFormat '${stripIndexFormat}' is not ported to ${backend} yet`); }
+	if (stripIndexFormat != "") { stopOnUnported(backend, `primitive.stripIndexFormat '${stripIndexFormat}'`); }
 }
 
 export function stopOnUnportedBindEntry(backend: string, entry: GPUBindGroupEntry): void {
-	if (entry.offset != 0) { stopOn(backend, `bind group entry ${entry.binding} offset ${entry.offset} is not ported to ${backend} yet`); }
+	if (entry.offset != 0) { stopOnUnported(backend, `bind group entry ${entry.binding} offset ${entry.offset}`); }
 }
 
 export function stopOnUnportedTexelWrite(backend: string, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	if (destination.mipLevel != 0) {
-		stopOn(backend, `writeTexture destination.mipLevel ${destination.mipLevel} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `writeTexture destination.mipLevel ${destination.mipLevel}`);
 	}
 	if (destination.origin.z != 0 || size.depthOrArrayLayers != 1) {
-		stopOn(backend, `writeTexture origin.z ${destination.origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers} is not ported to ${backend} yet`);
+		stopOnUnported(backend, `writeTexture origin.z ${destination.origin.z} / size.depthOrArrayLayers ${size.depthOrArrayLayers}`);
 	}
 }
 

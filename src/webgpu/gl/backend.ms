@@ -2704,7 +2704,7 @@ export function setScissorRect(x: int32, y: int32, width: int32, height: int32):
 	oglScissor(x, pass.height - (y + height), width, height);
 }
 
-export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
 	if (!pass.active) { stop("setViewport outside a render pass"); }
 	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
 		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
@@ -2713,7 +2713,7 @@ export function setViewport(x: number, y: number, width: number, height: number,
 	const top = y as int32;
 	const viewWidth = width as int32;
 	const viewHeight = height as int32;
-	if ((left as number) != x || (top as number) != y || (viewWidth as number) != width || (viewHeight as number) != height) {
+	if ((left as float32) != x || (top as float32) != y || (viewWidth as float32) != width || (viewHeight as float32) != height) {
 		stop(`setViewport ${x},${y} ${width}x${height} is fractional: glViewport takes whole pixels`);
 	}
 	oglViewport(left, pass.height - (top + viewHeight), viewWidth, viewHeight);

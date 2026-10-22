@@ -2007,7 +2007,7 @@ function stageBindGroup(
 	wgSetScissorRect(x, y, width, height);
 }
 
-export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
 	checkPass("setViewport");
 	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
 		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
