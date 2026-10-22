@@ -455,6 +455,7 @@ export struct GPURenderPassColorAttachment {
 	clearValue: GPUColor;
 	loadOp: GPULoadOp;
 	storeOp: GPUStoreOp;
+	depthSlice: int32;
 }
 
 export struct GPURenderPassDepthStencilAttachment {
@@ -721,6 +722,27 @@ export function checkedTexelCopyRegion(
 	if (size.width <= 0 || size.height <= 0) { stop(`${member} size ${size.width}x${size.height} needs a positive width and height`); }
 	if (origin.x < 0 || origin.y < 0 || origin.x + size.width > mipWidth || origin.y + size.height > mipHeight) {
 		stop(`${member} of ${size.width}x${size.height} at origin ${origin.x},${origin.y} overruns mip ${mip} of GPUTexture ${id}, ${mipWidth}x${mipHeight}`);
+	}
+}
+
+// WebGPU copies a depth aspect only whole and only for depth16unorm (both ways) and depth32float
+// (out); a combined depth-stencil format needs an aspect, which GPUTexelCopyTextureInfo does not carry.
+export function checkedDepthTexelCopy(
+	member: string,
+	id: uint32,
+	format: GPUTextureFormat,
+	stencil: boolean,
+	writes: boolean,
+	width: int32,
+	height: int32,
+	mipLevel: int32,
+	size: GPUExtent3D,
+): void {
+	const name: string = format;
+	if (stencil) { stop(`${member}: ${name} GPUTexture ${id} has no single copyable aspect, and GPUTexelCopyTextureInfo names none`); }
+	if (writes && name == "depth32float") { stop(`${member}: depth32float GPUTexture ${id} is not a valid copy destination in WebGPU`); }
+	if (size.width != Math.max(1, width >> mipLevel) || size.height != Math.max(1, height >> mipLevel)) {
+		stop(`${member}: a depth GPUTexture ${id} is copied as a whole subresource in WebGPU`);
 	}
 }
 
