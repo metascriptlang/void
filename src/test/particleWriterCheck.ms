@@ -4,9 +4,10 @@ import {
 } from "../particles/asset";
 import { constantCurve, constantColor, rgbaColor } from "../particles/curve";
 import { ParticleSystem, playSystem, updateSystem } from "../particles/system";
+import { TrailChains, buildTrails } from "../particles/trail";
 import { AtlasTile } from "../void3d/billboard";
 import {
-	ParticleWriter3D, ParticleWriteError, writeParticles, sheetTiles,
+	ParticleWriter3D, ParticleWriteError, writeParticles, writeTrails, sheetTiles,
 } from "../void3d/particleWriter";
 
 const WHOLE: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };
@@ -130,4 +131,31 @@ test "the writer refuses what the visual program cannot draw and a short buffer"
 	assert !s.ok && s.error == ParticleWriteError.ShortInstances;
 	const f = writeParticles(w, sys, [WHOLE, WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
 	assert !f.ok && f.error == ParticleWriteError.FrameCount;
+}
+
+test "a trail writes one view-facing quad per segment, turned onto it" {
+	let a = row();
+	a.emission.rateOverTime = constantCurve(0.0);
+	a.emission.bursts = [{ time: 0.0, count: constantCurve(1.0), cycleCount: 1, repeatInterval: 0.01, probability: 1.0 }];
+	a.main.startSpeed = constantCurve(6.0);
+	a.trails.enabled = true;
+	a.trails.minVertexDistance = 0.0;
+	const sys = walked(a);
+	let chains = TrailChains.create();
+	buildTrails(sys, chains);
+	const segments: int32 = (chains.vertices.length as int32) - chains.chainCount();
+	assert segments >= 2;
+	let out: Vec<float32> = new Array(16 * segments);
+	// Seen from the side, +z the camera's right: each segment runs from the newer point back
+	// along -z, so its quad turns half round and keeps u at the newer end.
+	const side = writeTrails(chains, WHOLE, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), out);
+	assert side.ok && side.value == segments;
+	assert near(out[3], 0.1) && near(out[4], 2.0) && near(Math.abs(out[7]) as float32, 3.1415927);
+	assert near(out[8], 0.0) && out[10] > out[8];
+	// With +z the camera's up, the segment runs down the view and the quad turns a quarter.
+	const up = writeTrails(chains, WHOLE, vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
+	assert up.ok && near(out[7], 1.5707964);
+	let short: Vec<float32> = new Array(16);
+	const s = writeTrails(chains, WHOLE, vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), short);
+	assert !s.ok && s.error == ParticleWriteError.ShortInstances;
 }

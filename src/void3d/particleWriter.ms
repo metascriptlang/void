@@ -1,10 +1,12 @@
 // Writes a particle system's live particles as Program.ParticleVisual instances, in the order
 // its renderer sorts them (docs/PARTICLES.md, tier T0's CPU writer; the layout is gpu3d.c's
 // ParticleVisual: position, width, height, anchor, clockwise rotation, uv rect, colour).
+// Trails write the same instances, one view-facing quad per trail segment.
 
 import { Vec3, vec3 } from "../math/math3d";
 import { ParticleSortMode, RenderMode, RenderAlignment, SimulationSpace } from "../particles/asset";
 import { unitDraw } from "../particles/curve";
+import { TrailChains, TrailVertex } from "../particles/trail";
 import {
 	ParticleSystem, POS_X, POS_Y, POS_Z, ROT_Z, SIZE_X, SIZE_Y, COLOR_R, COLOR_G, COLOR_B,
 	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V,
@@ -166,4 +168,51 @@ export function writeParticles(
 		}
 	}
 	return Result.ok(count);
+}
+
+// Writes `chains` as one quad per segment, seen through a camera whose view plane is spanned by
+// `right` and `up`: each quad spans its segment's projection on that plane, as wide as the trail,
+// with u along the trail and v across it on `t`. Returns the instance count.
+export function writeTrails(
+	chains: TrailChains, t: AtlasTile, right: Vec3, up: Vec3, out: Span<float32>,
+): Result<int32, ParticleWriteError> {
+	const stride: int32 = PARTICLE_VISUAL_INSTANCE_STRIDE;
+	const segments: int32 = (chains.vertices.length as int32) - chains.chainCount();
+	if (segments > 2147483647 / stride || (out.length as int32) < segments * stride) {
+		return Result.err(ParticleWriteError.ShortInstances);
+	}
+	let n: int32 = 0;
+	for (let c = 0; c < chains.chainCount(); c++) {
+		const end: int32 = chains.chainEnd(c);
+		for (let v = chains.starts[c]; v + 1 < end; v++) {
+			const a: TrailVertex = chains.vertices[v];
+			const b: TrailVertex = chains.vertices[v + 1];
+			const d: Vec3 = b.position - a.position;
+			const across: float32 = d.dot(right);
+			const along: float32 = d.dot(up);
+			const at: int32 = n * stride;
+			out[at] = (a.position.x + b.position.x) * 0.5;
+			out[at + 1] = (a.position.y + b.position.y) * 0.5;
+			out[at + 2] = (a.position.z + b.position.z) * 0.5;
+			out[at + 3] = Math.sqrt(across * across + along * along) as float32;
+			out[at + 4] = (a.width + b.width) * 0.5;
+			out[at + 5] = 0.0;
+			out[at + 6] = 0.0;
+			// The program turns the quad's x axis clockwise by this, onto the segment.
+			out[at + 7] = Math.atan2(-along, across) as float32;
+			out[at + 8] = t.u + (t.u2 - t.u) * a.u;
+			out[at + 9] = t.v;
+			out[at + 10] = t.u + (t.u2 - t.u) * b.u;
+			out[at + 11] = t.v2;
+			out[at + 12] = (a.color.r + b.color.r) * 0.5;
+			out[at + 13] = (a.color.g + b.color.g) * 0.5;
+			out[at + 14] = (a.color.b + b.color.b) * 0.5;
+			out[at + 15] = (a.color.a + b.color.a) * 0.5;
+			for (let k = 0; k < stride; k++) {
+				if (!Number.isFinite(out[at + k])) { return Result.err(ParticleWriteError.NonFinite); }
+			}
+			n = n + 1;
+		}
+	}
+	return Result.ok(n);
 }
