@@ -423,3 +423,24 @@ test "a storage format WebGPU cannot name is refused" {
 	assert reflected(m, ShaderTarget.Wgsl) ==
 		"storage texture 'image': Rgba8snorm is no GPUTextureFormat";
 }
+
+test "a samplerless texel fetch reflects the GL dummy sampler and nothing elsewhere" {
+	let m = blurModule();
+	const vec2 = vectorType(ScalarKind.F32, 2);
+	const ivec2 = vectorType(ScalarKind.I32, 2);
+	const vec4 = vectorType(ScalarKind.F32, 4);
+	const fetched = intrinsicOf(Intrinsic.TextureLoad, vec4, [
+		exprOf(ExprKind.Resource, m.resources[0].type, 0, []),
+		exprOf(ExprKind.Convert, ivec2, -1, [exprOf(ExprKind.Io, vec2, 4, [])]),
+		literal(scalarType(ScalarKind.I32), 0.0),
+	]);
+	m.functions[1].body = [assignOf(exprOf(ExprKind.Io, vec4, 5, []), fetched), ret()];
+	assert irErrors(m).length == 0;
+	const gl = reflected(m, ShaderTarget.Glsl430).split("\n");
+	assert gl[0] == "texture fragment 1/0 size 0 slot -1 name - tb -1 [float||||||]";
+	assert gl[1] == "sampler fragment 1/-1 size 0 slot -1 name srcTex_SPIRV_Cross_DummySampler " +
+		"tb 0 [|non-filtering|||||]";
+	const hlsl = reflected(m, ShaderTarget.Hlsl5).split("\n");
+	assert hlsl[0] == "texture fragment 1/0 size 0 slot 0 name - tb -1 [float||||||]";
+	assert hlsl[1] == "0 - 0";
+}
