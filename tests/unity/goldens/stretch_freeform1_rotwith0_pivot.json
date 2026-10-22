@@ -1,0 +1,20 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "stretch_freeform1_rotwith0_pivot",
+"dt": 0.1,
+"steps": 3,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"renderMode": "Stretch", "alignment": "View", "lengthScale": 1, "velocityScale": 5, "startSize": 1, "startRotationDeg": 45, "velocityOverLifetime": "linear (0.3, 0.4, 0) local", "forceY": 0, "startSize3D": "(1, 2)", "pivot": "(0.5, 0.25, 0)", "camera": "orthographic size 10 at (0,0,-10) facing +z", "read": "BakeMesh vertex positions and uv0 per quad", "freeformStretching": true, "rotateWithStretchDirection": false},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": [], "bakedQuads": []},
+{"step": 1, "time": 0.1, "count": 1, "particles": [
+  {"pos": [0.0300000012, 0.0400000028, 0], "vel": [0, 0, 0], "anim": [0.3, 0.4, 0], "total": [0.3, 0.4, 0], "startSize": [1, 2, 1], "size": [1, 2, 1], "rot": [0, 0, 45], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.9, "startLifetime": 5, "seed": 692788716}], "bakedQuads": [{"pos": [[2.204323, 2.585559, -0.007424536], [2.80537534, 1.7370441, -0.00671746768], [-0.09372255, -1.65703452, 0.00318191363], [-0.6947743, -0.808519542, 0.00247484539]], "uv": [[0, 1], [1, 1], [1, 0], [0, 0]]}]},
+{"step": 2, "time": 0.200000018, "count": 1, "particles": [
+  {"pos": [0.0600000024, 0.0800000057, 0], "vel": [0, 0, 0], "anim": [0.3, 0.4, 0], "total": [0.3, 0.4, 0], "startSize": [1, 2, 1], "size": [1, 2, 1], "rot": [0, 0, 45], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.79999971, "startLifetime": 5, "seed": 692788716}], "bakedQuads": [{"pos": [[2.23423147, 2.62548161, -0.0148485526], [2.83531666, 1.77700686, -0.0134346467], [-0.06365883, -1.61696851, 0.00636342354], [-0.664743841, -0.7684938, 0.00494951755]], "uv": [[0, 1], [1, 1], [1, 0], [0, 0]]}]},
+{"step": 3, "time": 0.300000042, "count": 1, "particles": [
+  {"pos": [0.09, 0.12, 0], "vel": [0, 0, 0], "anim": [0.3, 0.4, 0], "total": [0.3, 0.4, 0], "startSize": [1, 2, 1], "size": [1, 2, 1], "rot": [0, 0, 45], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 4.7, "startLifetime": 5, "seed": 692788716}], "bakedQuads": [{"pos": [[2.26407933, 2.66535234, -0.02227153], [2.86521983, 1.81694484, -0.02015125], [-0.0335525572, -1.57685864, 0.009544123], [-0.634693, -0.7284509, 0.00742384372]], "uv": [[0, 1], [1, 1], [1, 0], [0, 0]]}]}
+]
+}

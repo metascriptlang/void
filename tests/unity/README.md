@@ -50,6 +50,13 @@ The log ends with `PrefabExport: done`.
   top-right, bottom-right, bottom-left of the sprite) with an orthographic camera at (0,0,-10), so a
   velocity in the xy plane is the 2D case. `billboard_velocity_*` bakes Unity's Velocity alignment:
   a quad whose normal is the velocity, edge-on to this camera.
+- `stretch_freeform*` bake a freeform Stretch with a small velocity and a large `velocityScale`, because
+  Unity's freeform quad foreshortens with the angle to the camera even when it is orthographic.
+  `billboard_moved_<alignment>_<space>` move the system to (2, 1) turned 30 degrees about z; its
+  camera is reset to world (0,0,-10) with no rotation. For a Local-space system the baked centre is
+  the particle's local position and the offsets from it are in world orientation; a World-space one
+  bakes world positions. `*_clamp_*` set `minParticleSize` and `maxParticleSize` with the camera's
+  `aspect` and `orthographicSize` recorded in the settings.
 - Trigger callbacks (`OnParticleTrigger`) are not captured. The trigger cases set one event's
   action to Kill, so the particle count shows when that event fires.
 - Noise is captured as `animatedVelocity` magnitude statistics plus 4 particles. Void's noise

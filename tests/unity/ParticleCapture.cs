@@ -219,6 +219,71 @@ public static class ParticleCapture
         yield return StretchCase("billboard_velocity_rot45", 1f, 0f, 1f, 45f, true, (3f, 4f));
         yield return StretchCase("billboard_view_rot45", 1f, 0f, 1f, 45f, false, (3f, 4f), billboard: true);
 
+        foreach (var freeform in new[] { false, true })
+            foreach (var rotateWith in new[] { false, true })
+            {
+                bool ff = freeform, rw = rotateWith;
+                yield return RenderCase("stretch_freeform" + (ff ? "1" : "0") + "_rotwith" + (rw ? "1" : "0"),
+                    StretchCase("", 1f, 5f, 1f, 45f, false, (0.3f, 0.4f), size3D: (1f, 2f)),
+                    S("freeformStretching", ff, "rotateWithStretchDirection", rw),
+                    (ps, r) => { r.freeformStretching = ff; r.rotateWithStretchDirection = rw; });
+            }
+        foreach (var rotateWith in new[] { false, true })
+        {
+            bool rw = rotateWith;
+            yield return RenderCase("stretch_freeform1_rotwith" + (rw ? "1" : "0") + "_size2x1_ls2_rot0",
+                StretchCase("", 2f, 5f, 1f, 0f, false, (0.3f, 0.4f), size3D: (2f, 1f)),
+                S("freeformStretching", true, "rotateWithStretchDirection", rw),
+                (ps, r) => { r.freeformStretching = true; r.rotateWithStretchDirection = rw; });
+        }
+        foreach (var rotateWith in new[] { false, true })
+        {
+            bool rw = rotateWith;
+            yield return RenderCase("stretch_freeform1_rotwith" + (rw ? "1" : "0") + "_pivot",
+                StretchCase("", 1f, 5f, 1f, 45f, false, (0.3f, 0.4f), size3D: (1f, 2f), pivot: (0.5f, 0.25f)),
+                S("freeformStretching", true, "rotateWithStretchDirection", rw),
+                (ps, r) => { r.freeformStretching = true; r.rotateWithStretchDirection = rw; });
+        }
+        yield return RenderCase("billboard_view_rot45_noroll", StretchCase("", 1f, 0f, 1f, 45f, false, (3f, 4f), billboard: true),
+            S("allowRoll", false), (ps, r) => r.allowRoll = false);
+        yield return RenderCase("billboard_view_size1x3_rot45_noroll", StretchCase("", 1f, 0f, 1f, 45f, false, (3f, 4f), billboard: true, size3D: (1f, 3f)),
+            S("allowRoll", false), (ps, r) => r.allowRoll = false);
+
+        foreach (var align in new[] { ParticleSystemRenderSpace.View, ParticleSystemRenderSpace.Local, ParticleSystemRenderSpace.World })
+            foreach (var worldSpace in new[] { false, true })
+            {
+                var al = align; bool ws = worldSpace;
+                yield return RenderCase("billboard_moved_" + al.ToString().ToLowerInvariant() + "_" + (ws ? "world" : "local"),
+                    StretchCase("", 1f, 0f, 1f, 20f, false, (3f, 4f), billboard: true, size3D: (1f, 3f)),
+                    S("emitter", "position (2, 1, 0), rotation z 30 degrees", "simulationSpace", ws ? "World" : "Local", "alignment", al.ToString()),
+                    (ps, r) => {
+                        var m = ps.main; m.simulationSpace = ws ? ParticleSystemSimulationSpace.World : ParticleSystemSimulationSpace.Local;
+                        r.alignment = al;
+                        ps.transform.SetPositionAndRotation(new Vector3(2f, 1f, 0f), Quaternion.Euler(0f, 0f, 30f)); });
+            }
+
+        // Orthographic size 10 at aspect 2 unless the case says otherwise: the viewport is 20 high and 40 wide.
+        foreach (var (tag, size, max, min, s3, aspect, ortho) in new (string, float, float, float, (float, float), float, float)[] {
+            ("max_big", 5f, 0.1f, 0f, (5f, 5f), 2f, 10f), ("max_wide", 1f, 0.1f, 0f, (8f, 3f), 2f, 10f), ("max_tall", 1f, 0.1f, 0f, (3f, 8f), 2f, 10f),
+            ("min_small", 0.2f, 0.5f, 0.1f, (0.2f, 0.2f), 2f, 10f), ("min_thin", 1f, 0.5f, 0.1f, (0.2f, 6f), 2f, 10f), ("inside", 1f, 0.5f, 0.05f, (1f, 1f), 2f, 10f),
+            ("max_big_aspect1", 5f, 0.1f, 0f, (5f, 5f), 1f, 10f), ("max_big_aspect05", 5f, 0.1f, 0f, (5f, 5f), 0.5f, 10f),
+            ("max_big_ortho5", 5f, 0.1f, 0f, (5f, 5f), 2f, 5f), ("min_small_aspect05", 0.2f, 0.5f, 0.1f, (0.2f, 0.2f), 0.5f, 10f) })
+        {
+            float mx = max, mn = min, asp = aspect, orth = ortho;
+            yield return RenderCase("billboard_clamp_" + tag, StretchCase("", 1f, 0f, size, 0f, false, (3f, 4f), billboard: true, size3D: s3),
+                S("minParticleSize", mn, "maxParticleSize", mx, "cameraAspect", asp, "orthographicSize", orth),
+                (ps, r) => { r.minParticleSize = mn; r.maxParticleSize = mx; var cam = ps.GetComponentInChildren<Camera>(); cam.aspect = asp; cam.orthographicSize = orth; });
+        }
+        foreach (var (tag, s3, min, max) in new (string, (float, float), float, float)[] {
+            ("stretch_clamp_max", (1f, 2f), 0f, 0.1f), ("stretch_clamp_max_big", (2f, 5f), 0f, 0.1f),
+            ("stretch_clamp_max_wide", (5f, 2f), 0f, 0.1f), ("stretch_clamp_min", (0.2f, 0.2f), 0.1f, 0.5f) })
+        {
+            float mn = min, mx = max;
+            yield return RenderCase(tag, StretchCase("", 1f, 0.5f, 1f, 0f, false, (3f, 4f), size3D: s3),
+                S("minParticleSize", mn, "maxParticleSize", mx, "cameraAspect", 2f, "orthographicSize", 10f),
+                (ps, r) => { r.minParticleSize = mn; r.maxParticleSize = mx; var cam = ps.GetComponentInChildren<Camera>(); cam.aspect = 2f; });
+        }
+
         foreach (var damp in new[] { true, false })
         {
             bool dmp = damp;
@@ -299,6 +364,20 @@ public static class ParticleCapture
             if (pivot.HasValue) r.pivot = new Vector3(pivot.Value.Item1, pivot.Value.Item2, 0f);
             var cam = new GameObject("camera").AddComponent<Camera>(); cam.transform.SetParent(ps.transform, false);
             cam.transform.position = new Vector3(0, 0, -10); cam.orthographic = true; cam.orthographicSize = 10; } };
+
+    // A StretchCase with more of the renderer set: `extra` is a settings object merged into the case's.
+    static Case RenderCase(string name, Case c, string extra, Action<ParticleSystem, ParticleSystemRenderer> more)
+    {
+        var inner = c.configure;
+        c.name = name;
+        c.settings = c.settings.Substring(0, c.settings.Length - 1) + ", " + extra.Substring(1);
+        c.configure = ps => { inner(ps); more(ps, ps.GetComponent<ParticleSystemRenderer>()); ResetCamera(ps); };
+        return c;
+    }
+
+    // The camera is a child of the system for BakeMesh; keep it at (0,0,-10) facing +z whatever the system's placement.
+    static void ResetCamera(ParticleSystem ps) =>
+        ps.GetComponentInChildren<Camera>().transform.SetPositionAndRotation(new Vector3(0, 0, -10), Quaternion.identity);
 
     static Case ShapeBurst(string name, string shape, Action<ParticleSystem> set) => new Case {
         name = name, dt = 0.0001f, steps = 1, cap = 512, compact = true,
