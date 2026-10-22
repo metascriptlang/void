@@ -4,7 +4,7 @@
 // A system's trails draw as triangle strips into a Graphics node under its particles.
 
 import { Mat4, Vec3 } from "../math/math3d";
-import { ParticleEffect, RenderMode } from "../particles/asset";
+import { ParticleEffect, RenderMode, TextureSheetAnimationModule } from "../particles/asset";
 import { unitDraw } from "../particles/curve";
 import { EffectInstance, EffectError, playEffect, stopEffect, updateEffect } from "../particles/effect";
 import {
@@ -49,7 +49,7 @@ function liftY(m: Transform2D): Mat4 {
 
 // The sheet frames of `t`, left to right then top to bottom, centred on the particle.
 function sheetFrames(t: Tile, sys: ParticleSystem): Vec<Tile> {
-	const sheet = sys.asset.textureSheetAnimation;
+	const sheet: Borrow<TextureSheetAnimationModule> = sys.asset.textureSheetAnimation;
 	const across: int32 = sheet.enabled ? sheet.numTilesX : 1;
 	const down: int32 = sheet.enabled ? sheet.numTilesY : 1;
 	const w: float32 = t.w / (across as float32);

@@ -4,7 +4,7 @@
 // Trails write the same instances, one view-facing quad per trail segment.
 
 import { Vec3, vec3 } from "../math/math3d";
-import { ParticleSortMode, RenderMode, RenderAlignment, SimulationSpace } from "../particles/asset";
+import { ParticleSortMode, RenderMode, RenderAlignment, SimulationSpace, RendererModule, TextureSheetAnimationModule } from "../particles/asset";
 import { unitDraw } from "../particles/curve";
 import { TrailChains, TrailVertex } from "../particles/trail";
 import {
@@ -98,12 +98,12 @@ export function writeParticles(
 	ref w: ParticleWriter3D, sys: ParticleSystem, frames: Readonly<Span<AtlasTile>>, eye: Vec3, forward: Vec3,
 	out: Span<float32>,
 ): Result<int32, ParticleWriteError> {
-	const renderer = sys.asset.renderer;
+	const renderer: Borrow<RendererModule> = sys.asset.renderer;
 	if (renderer.renderMode == RenderMode.None) { return Result.ok(0); }
 	if (renderer.renderMode != RenderMode.Billboard || renderer.alignment != RenderAlignment.View) {
 		return Result.err(ParticleWriteError.UnsupportedRenderMode);
 	}
-	const sheet = sys.asset.textureSheetAnimation;
+	const sheet: Borrow<TextureSheetAnimationModule> = sys.asset.textureSheetAnimation;
 	const wanted: int32 = sheet.enabled ? sheet.numTilesX * sheet.numTilesY : 1;
 	if ((frames.length as int32) != wanted) { return Result.err(ParticleWriteError.FrameCount); }
 	const count: int32 = sys.count;

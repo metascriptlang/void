@@ -2,7 +2,7 @@
 // place (docs/PARTICLES.md: capped by void3d's four forward point lights, which the scene enforces).
 
 import { Vec3, vec3 } from "../math/math3d";
-import { SimulationSpace } from "./asset";
+import { SimulationSpace, LightsModule } from "./asset";
 import { ParticleColor, unitDraw } from "./curve";
 import {
 	ParticleSystem, POS_X, POS_Y, POS_Z, AGE, LIFETIME, SIZE_X, COLOR_R, COLOR_G, COLOR_B, COLOR_A,
@@ -20,7 +20,7 @@ export struct ParticleLight {
 // `ratio` picks a share of the particles: at random per particle, or every 1/ratio-th in order.
 export function particleLights(sys: ParticleSystem, ref out: Vec<ParticleLight>): void {
 	out.length = 0;
-	const lights = sys.asset.lights;
+	const lights: Borrow<LightsModule> = sys.asset.lights;
 	if (!lights.enabled || lights.ratio <= 0.0) { return; }
 	const cap: int32 = sys.capacity;
 	const local: boolean = sys.asset.main.simulationSpace == SimulationSpace.Local;

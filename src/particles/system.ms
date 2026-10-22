@@ -8,8 +8,7 @@ import {
 	ParticleSystemAsset, SimulationSpace, RingBufferMode, InheritVelocityMode, NoiseQuality,
 	TextureSheetAnimationType, TextureSheetRowMode, TextureSheetTimeMode, CustomDataMode,
 	CustomDataStream, EmitterVelocityMode, Range, Burst, SubEmitterType, SubEmitterProperty,
-	ParticleCollider, ForceField, TriggerAction, CollisionType, TrailMode,
-} from "./asset";
+	ParticleCollider, ForceField, TriggerAction, CollisionType, TrailMode, MainModule, EmissionModule, NoiseModule, CollisionModule, TriggerModule, TextureSheetAnimationModule, TrailModule} from "./asset";
 import { ParticleColor, CompiledMinMaxCurve, MinMaxGradient, unitDraw, pcgHash } from "./curve";
 import { CompiledCurves, compileCurves } from "./compiled";
 import { ShapeSample, ShapeSlot, sampleShape } from "./shape";
@@ -270,7 +269,7 @@ function streamOk(stream: CustomDataStream): boolean {
 // Refuses an asset the simulation cannot run as authored: Unity's editor rules, ranges a
 // by-speed module divides by, and a burst that would fire every instant forever.
 function validateAsset(asset: ParticleSystemAsset): Result<int32, ParticleSystemError> {
-	const m = asset.main;
+	const m: Borrow<MainModule> = asset.main;
 	if (!(m.duration > 0.0)) { return Result.err(ParticleSystemError.NonPositiveDuration); }
 	if (m.maxParticles <= 0 || m.maxParticles > 2147483647 / PARTICLE_COLUMNS) {
 		return Result.err(ParticleSystemError.NoCapacity);
@@ -296,7 +295,7 @@ function validateAsset(asset: ParticleSystemAsset): Result<int32, ParticleSystem
 	if (asset.trigger.enabled && (asset.trigger.colliders.length as int32) > MAX_TRIGGER_COLLIDERS) {
 		return Result.err(ParticleSystemError.TooManyTriggerColliders);
 	}
-	const sheet = asset.textureSheetAnimation;
+	const sheet: Borrow<TextureSheetAnimationModule> = asset.textureSheetAnimation;
 	if (sheet.enabled && (sheet.numTilesX <= 0 || sheet.numTilesY <= 0)) {
 		return Result.err(ParticleSystemError.NoTiles);
 	}
@@ -659,8 +658,8 @@ function spawnAt(
 	if (i < 0) { return -1; }
 	sys.seeds[i] = seed;
 	sys.inside[i] = 0;
-	const m = sys.asset.main;
-	const c = sys.curves;
+	const m: Borrow<MainModule> = sys.asset.main;
+	const c: Borrow<CompiledCurves> = sys.curves;
 	const world: Mat4 = origin;
 	const timers: ShapeSlot = {
 		...slot,
@@ -832,7 +831,7 @@ function intoSimulation(spaces: Spaces, moduleSpace: SimulationSpace, v: Vec3): 
 }
 
 function noiseAt(sys: ParticleSystem, p: Vec3): Vec3 {
-	const n = sys.asset.noise;
+	const n: Borrow<NoiseModule> = sys.asset.noise;
 	let sum: Vec3 = vec3(0.0, 0.0, 0.0);
 	let amplitude: float32 = 1.0;
 	let frequency: float32 = n.frequency;
@@ -1110,7 +1109,7 @@ export function hasTrail(sys: ParticleSystem, i: int32): boolean {
 // How long particle `i`'s trail points live: a share of its lifetime, scaled by its size when
 // the module asks.
 export function trailSeconds(sys: ParticleSystem, i: int32): float32 {
-	const t = sys.asset.trails;
+	const t: Borrow<TrailModule> = sys.asset.trails;
 	let seconds: float32 = sys.curves.trailLifetime.evaluate(0.0, unitDraw(sys.seeds[i], DRAW_TRAIL_LIFETIME))
 		* get(sys, LIFETIME, i);
 	if (t.sizeAffectsLifetime) { seconds = seconds * get(sys, SIZE_X, i); }
@@ -1118,7 +1117,7 @@ export function trailSeconds(sys: ParticleSystem, i: int32): float32 {
 }
 
 function maxTrailSeconds(sys: ParticleSystem): float64 {
-	const c = sys.curves;
+	const c: Borrow<CompiledCurves> = sys.curves;
 	let seconds: float64 = (c.trailLifetime.maxValue() * c.startLifetime.maxValue()) as float64;
 	if (sys.asset.trails.sizeAffectsLifetime) { seconds = seconds * (c.startSizeX.maxValue() as float64); }
 	return seconds > 0.0 ? seconds : 0.0;
@@ -1201,8 +1200,8 @@ function moveSlot(ref sys: ParticleSystem, from: int32, to: int32): void {
 
 // Rotation over lifetime and by speed are angular velocities in rad/s, integrated per step.
 function integrateRotation(ref sys: ParticleSystem, i: int32, tN: float32, speed: float32, h: float32, noiseSpin: float32): void {
-	const asset = sys.asset;
-	const c = sys.curves;
+	const asset: Borrow<ParticleSystemAsset> = sys.asset;
+	const c: Borrow<CompiledCurves> = sys.curves;
 	const seed: uint32 = sys.seeds[i];
 	const flip: float32 = unitDraw(seed, DRAW_FLIP) < asset.main.flipRotation ? -1.0 : 1.0;
 	let wx: float32 = 0.0;
@@ -1232,30 +1231,28 @@ function integrateRotation(ref sys: ParticleSystem, i: int32, tN: float32, speed
 
 // Size, colour, texture sheet frame and custom data at the particle's current age and speed.
 function writeAppearance(ref sys: ParticleSystem, i: int32, speed: float32, noiseSize: float32): void {
-	const asset = sys.asset;
-	const c = sys.curves;
 	const seed: uint32 = sys.seeds[i];
 	const age: float32 = get(sys, AGE, i);
 	const tN: float32 = saturate(age / get(sys, LIFETIME, i));
 	let sx: float32 = get(sys, START_SIZE_X, i) * noiseSize;
 	let sy: float32 = get(sys, START_SIZE_Y, i) * noiseSize;
 	let sz: float32 = get(sys, START_SIZE_Z, i) * noiseSize;
-	if (asset.sizeOverLifetime.enabled) {
+	if (sys.asset.sizeOverLifetime.enabled) {
 		const r: float32 = unitDraw(seed, DRAW_SIZE_LIFE);
-		const x: float32 = c.sizeX.evaluate(tN, r);
-		const separate: boolean = asset.sizeOverLifetime.separateAxes;
+		const x: float32 = sys.curves.sizeX.evaluate(tN, r);
+		const separate: boolean = sys.asset.sizeOverLifetime.separateAxes;
 		sx = sx * x;
-		sy = sy * (separate ? c.sizeY.evaluate(tN, r) : x);
-		sz = sz * (separate ? c.sizeZ.evaluate(tN, r) : x);
+		sy = sy * (separate ? sys.curves.sizeY.evaluate(tN, r) : x);
+		sz = sz * (separate ? sys.curves.sizeZ.evaluate(tN, r) : x);
 	}
-	if (asset.sizeBySpeed.enabled) {
+	if (sys.asset.sizeBySpeed.enabled) {
 		const r: float32 = unitDraw(seed, DRAW_SIZE_SPEED);
-		const u: float32 = within(asset.sizeBySpeed.range, speed);
-		const x: float32 = c.sizeBySpeedX.evaluate(u, r);
-		const separate: boolean = asset.sizeBySpeed.separateAxes;
+		const u: float32 = within(sys.asset.sizeBySpeed.range, speed);
+		const x: float32 = sys.curves.sizeBySpeedX.evaluate(u, r);
+		const separate: boolean = sys.asset.sizeBySpeed.separateAxes;
 		sx = sx * x;
-		sy = sy * (separate ? c.sizeBySpeedY.evaluate(u, r) : x);
-		sz = sz * (separate ? c.sizeBySpeedZ.evaluate(u, r) : x);
+		sy = sy * (separate ? sys.curves.sizeBySpeedY.evaluate(u, r) : x);
+		sz = sz * (separate ? sys.curves.sizeBySpeedZ.evaluate(u, r) : x);
 	}
 	put(sys, SIZE_X, i, sx);
 	put(sys, SIZE_Y, i, sy);
@@ -1263,29 +1260,29 @@ function writeAppearance(ref sys: ParticleSystem, i: int32, speed: float32, nois
 	let color: ParticleColor = {
 		r: get(sys, START_R, i), g: get(sys, START_G, i), b: get(sys, START_B, i), a: get(sys, START_A, i),
 	};
-	if (asset.colorOverLifetime.enabled) {
-		color = color.times(asset.colorOverLifetime.color.evaluate(tN, unitDraw(seed, DRAW_COLOR_LIFE)));
+	if (sys.asset.colorOverLifetime.enabled) {
+		color = color.times(sys.asset.colorOverLifetime.color.evaluate(tN, unitDraw(seed, DRAW_COLOR_LIFE)));
 	}
-	if (asset.colorBySpeed.enabled) {
-		const u: float32 = within(asset.colorBySpeed.range, speed);
-		color = color.times(asset.colorBySpeed.color.evaluate(u, unitDraw(seed, DRAW_COLOR_SPEED)));
+	if (sys.asset.colorBySpeed.enabled) {
+		const u: float32 = within(sys.asset.colorBySpeed.range, speed);
+		color = color.times(sys.asset.colorBySpeed.color.evaluate(u, unitDraw(seed, DRAW_COLOR_SPEED)));
 	}
 	put(sys, COLOR_R, i, color.r);
 	put(sys, COLOR_G, i, color.g);
 	put(sys, COLOR_B, i, color.b);
 	put(sys, COLOR_A, i, color.a);
-	if (asset.textureSheetAnimation.enabled) { put(sys, FRAME, i, sheetFrame(sys, seed, tN, age, speed)); }
-	if (asset.customData.enabled) {
-		writeCustom(sys, i, CUSTOM1_X, asset.customData.first, c.custom1X, c.custom1Y, c.custom1Z, c.custom1W, tN, seed);
-		writeCustom(sys, i, CUSTOM2_X, asset.customData.second, c.custom2X, c.custom2Y, c.custom2Z, c.custom2W, tN, seed + 1);
+	if (sys.asset.textureSheetAnimation.enabled) { put(sys, FRAME, i, sheetFrame(sys, seed, tN, age, speed)); }
+	if (sys.asset.customData.enabled) {
+		writeCustom(sys, i, CUSTOM1_X, sys.asset.customData.first, sys.curves.custom1X, sys.curves.custom1Y, sys.curves.custom1Z, sys.curves.custom1W, tN, seed);
+		writeCustom(sys, i, CUSTOM2_X, sys.asset.customData.second, sys.curves.custom2X, sys.curves.custom2Y, sys.curves.custom2Z, sys.curves.custom2W, tN, seed + 1);
 	}
 }
 
 // Texture Sheet Animation: the frame over lifetime, by speed or at a frame rate, offset by the
 // start frame and confined to one row in SingleRow mode.
 function sheetFrame(sys: ParticleSystem, seed: uint32, tN: float32, age: float32, speed: float32): float32 {
-	const sheet = sys.asset.textureSheetAnimation;
-	const c = sys.curves;
+	const sheet: Borrow<TextureSheetAnimationModule> = sys.asset.textureSheetAnimation;
+	const c: Borrow<CompiledCurves> = sys.curves;
 	const rowOnly: boolean = sheet.animation == TextureSheetAnimationType.SingleRow;
 	const frames: int32 = rowOnly ? sheet.numTilesX : sheet.numTilesX * sheet.numTilesY;
 	const r: float32 = unitDraw(seed, DRAW_FRAME);

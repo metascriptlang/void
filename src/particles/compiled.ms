@@ -2,7 +2,7 @@
 // re-validates keys (docs/PARTICLES.md: Heaps' split of authored state from the simulation).
 
 import { MinMaxCurve, CompiledMinMaxCurve, CurveError } from "./curve";
-import { ParticleSystemAsset } from "./asset";
+import { ParticleSystemAsset, MainModule, NoiseModule, TextureSheetAnimationModule } from "./asset";
 
 export struct CompiledCurves {
 	startDelay: CompiledMinMaxCurve;
@@ -88,11 +88,11 @@ function c(value: MinMaxCurve): Result<CompiledMinMaxCurve, CurveError> {
 }
 
 export function compileCurves(asset: ParticleSystemAsset): Result<CompiledCurves, CurveError> {
-	const m = asset.main;
+	const m: Borrow<MainModule> = asset.main;
 	const v = asset.velocityOverLifetime;
 	const l = asset.limitVelocityOverLifetime;
-	const n = asset.noise;
-	const sheet = asset.textureSheetAnimation;
+	const n: Borrow<NoiseModule> = asset.noise;
+	const sheet: Borrow<TextureSheetAnimationModule> = asset.textureSheetAnimation;
 	const cd = asset.customData;
 	let bursts: Vec<CompiledMinMaxCurve> = [];
 	for (const burst of asset.emission.bursts) { bursts.push(try c(burst.count)); }

@@ -4,7 +4,7 @@
 // emission order. A chain is ready for any writer: 2D triangles, 3D segments.
 
 import { Vec3, vec3, position } from "../math/math3d";
-import { SimulationSpace, TrailMode, TrailTextureMode, RingBufferMode } from "./asset";
+import { SimulationSpace, TrailMode, TrailTextureMode, RingBufferMode, TrailModule } from "./asset";
 import { ParticleColor, rgbaColor, unitDraw } from "./curve";
 import {
 	ParticleSystem, POS_X, POS_Y, POS_Z, SIZE_X, COLOR_R, COLOR_G, COLOR_B, COLOR_A, AGE, LIFETIME,
@@ -65,17 +65,16 @@ function toWorld(sys: ParticleSystem, p: Vec3, inWorld: boolean): Vec3 {
 export function buildTrails(sys: ParticleSystem, ref out: TrailChains): void {
 	out.vertices.length = 0;
 	out.starts.length = 0;
-	const t = sys.asset.trails;
+	const t: Borrow<TrailModule> = sys.asset.trails;
 	if (!t.enabled) { return; }
 	if (t.mode == TrailMode.Ribbon) {
 		buildRibbons(sys, out);
 		return;
 	}
-	const rings = sys.trails;
 	const inWorld: boolean = pointsInWorld(sys);
 	const particleWorld: boolean = sys.asset.main.simulationSpace == SimulationSpace.World;
 	for (let i = 0; i < sys.count; i++) {
-		const n: int32 = rings.pointCount(i);
+		const n: int32 = sys.trails.pointCount(i);
 		if (n == 0 || !hasTrail(sys, i)) { continue; }
 		const start: int32 = out.vertices.length as int32;
 		out.starts.push(start);
@@ -87,20 +86,20 @@ export function buildTrails(sys: ParticleSystem, ref out: TrailChains): void {
 		// Newest first: the particle, then its points back to the oldest. A point recorded this
 		// step sits on the particle and is left out.
 		pushVertex(out, headWorld, size, look);
-		const newestPoint: Vec3 = toWorld(sys, rings.pointOf(i, n - 1), inWorld);
+		const newestPoint: Vec3 = toWorld(sys, sys.trails.pointOf(i, n - 1), inWorld);
 		const gap: float32 = (headWorld - newestPoint).length();
 		const from: int32 = gap > 0.0 ? n - 1 : n - 2;
 		for (let k = from; k >= 0; k--) {
-			pushVertex(out, toWorld(sys, rings.pointOf(i, k), inWorld), size, look);
+			pushVertex(out, toWorld(sys, sys.trails.pointOf(i, k), inWorld), size, look);
 		}
 		if ((out.vertices.length as int32) - start < 2) {
 			out.vertices.length = start;
 			out.starts.length = out.starts.length - 1;
 			continue;
 		}
-		finishChain(sys, out, start, sys.seeds[i], rings.distanceOf(i, n - 1) + gap);
+		finishChain(sys, out, start, sys.seeds[i], sys.trails.distanceOf(i, n - 1) + gap);
 	}
-	for (const o of rings.orphans) {
+	for (const o of sys.trails.orphans) {
 		const start: int32 = out.vertices.length as int32;
 		out.starts.push(start);
 		const tN: float32 = o.lifetime > 0.0 ? o.age / o.lifetime : 1.0;
@@ -114,7 +113,7 @@ export function buildTrails(sys: ParticleSystem, ref out: TrailChains): void {
 }
 
 function trailTint(sys: ParticleSystem, particle: ParticleColor, tN: float32): ParticleColor {
-	const t = sys.asset.trails;
+	const t: Borrow<TrailModule> = sys.asset.trails;
 	const base: ParticleColor = t.inheritParticleColor ? particle : rgbaColor(1.0, 1.0, 1.0, 1.0);
 	return times(base, t.colorOverLifetime.evaluate(tN, 0.0));
 }
@@ -126,7 +125,7 @@ function pushVertex(ref out: TrailChains, p: Vec3, size: float32, color: Particl
 // Sets the chain's widths, colours over the trail and texture coordinates once its vertices,
 // newest first, are in. `travelled` is the distance from the trail's birth to its newest vertex.
 function finishChain(sys: ParticleSystem, ref out: TrailChains, start: int32, seed: uint32, travelled: float32): void {
-	const t = sys.asset.trails;
+	const t: Borrow<TrailModule> = sys.asset.trails;
 	const end: int32 = out.vertices.length as int32;
 	const n: int32 = end - start;
 	out.distances.length = 0;
@@ -167,7 +166,7 @@ function newest(sys: ParticleSystem, k: int32): int32 {
 // Ribbon mode: the live particles in emission order, `ribbonCount` chains taking turns, newest
 // first; the emitter closes each chain when ribbons attach to the transform.
 function buildRibbons(sys: ParticleSystem, ref out: TrailChains): void {
-	const t = sys.asset.trails;
+	const t: Borrow<TrailModule> = sys.asset.trails;
 	const ribbons: int32 = t.ribbonCount > 0 ? t.ribbonCount : 1;
 	const particleWorld: boolean = sys.asset.main.simulationSpace == SimulationSpace.World;
 	const emitter: Vec3 = particleWorld ? sys.world.position() : vec3(0.0, 0.0, 0.0);
