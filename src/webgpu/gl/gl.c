@@ -273,6 +273,8 @@ void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer) {
 
 void oglTexSubImage2D(
 	int32_t target,
+	int32_t x,
+	int32_t y,
 	int32_t width,
 	int32_t height,
 	int32_t format,
@@ -281,7 +283,7 @@ void oglTexSubImage2D(
 	int64_t offset,
 	int32_t rowLength) {
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
-	glTexSubImage2D((GLenum)target, 0, 0, 0, width, height, (GLenum)format, (GLenum)type, (const uint8_t *)data + offset);
+	glTexSubImage2D((GLenum)target, 0, x, y, width, height, (GLenum)format, (GLenum)type, (const uint8_t *)data + offset);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 }
 

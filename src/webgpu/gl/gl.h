@@ -32,6 +32,8 @@ void oglDeleteRenderbuffer(uint32_t renderbuffer);
 void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer);
 void oglTexSubImage2D(
 	int32_t target,
+	int32_t x,
+	int32_t y,
 	int32_t width,
 	int32_t height,
 	int32_t format,

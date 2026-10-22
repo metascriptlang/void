@@ -39,6 +39,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	checkedTexelWritePitch,
 } from "../types.ms";
 import {
 	oglActiveTexture,
@@ -1309,16 +1310,32 @@ export function writeTexture<T>(
 ): void {
 	const index = textureIndex(destination.texture.id);
 	const bytes = (data.length as int64) * (sizeof T as int64);
+	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
+		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
+	}
 	const info = formatInfo(textures[index].format, "texture format");
-	const rowPitch = textureCopyPitch(index, info.bytesPerPixel, bytes, layout, size);
-	textures[index].activeSlot = (textures[index].activeSlot + 1) % textures[index].slotCount;
-	bound.resourcesDirty = true;
+	const rowPitch = checkedTexelWritePitch(
+		textures[index].width,
+		textures[index].height,
+		info.bytesPerPixel,
+		bytes,
+		destination,
+		layout,
+		size,
+	);
+	const wholeTexture = size.width == textures[index].width && size.height == textures[index].height;
+	if (wholeTexture) {
+		textures[index].activeSlot = (textures[index].activeSlot + 1) % textures[index].slotCount;
+		bound.resourcesDirty = true;
+	}
 	cacheStoreUnit0();
 	cacheBindTextureSampler(0, textures[index].target, textures[index].names[textures[index].activeSlot], 0);
 	oglTexSubImage2D(
 		textures[index].target,
-		textures[index].width,
-		textures[index].height,
+		destination.origin.x,
+		destination.origin.y,
+		size.width,
+		size.height,
 		info.pixelFormat,
 		info.pixelType,
 		data[0],
@@ -1326,34 +1343,6 @@ export function writeTexture<T>(
 		rowPitch / info.bytesPerPixel,
 	);
 	cacheRestoreUnit0();
-}
-
-function textureCopyPitch(
-	index: int32,
-	bytesPerPixel: int32,
-	bytes: int64,
-	layout: GPUTexelCopyBufferLayout,
-	size: GPUExtent3D,
-): int32 {
-	const width = textures[index].width;
-	const height = textures[index].height;
-	if (!has(textures[index].usage, GPUTextureUsage.COPY_DST as int32)) {
-		stop(`writeTexture on GPUTexture ${textures[index].id}, created without COPY_DST`);
-	}
-	if (size.width != width || size.height != height || size.depthOrArrayLayers > 1) {
-		stop("writeTexture covers the whole texture on GL (each write fills the next in-flight copy)");
-	}
-	const rowBytes = width * bytesPerPixel;
-	const rowPitch = layout.bytesPerRow == 0 ? rowBytes : layout.bytesPerRow;
-	if (rowPitch < rowBytes) { stop(`writeTexture bytesPerRow ${rowPitch} is below a row of ${rowBytes}`); }
-	if (rowPitch % bytesPerPixel != 0) {
-		stop(`writeTexture bytesPerRow ${rowPitch} is not a whole number of ${bytesPerPixel}-byte texels`);
-	}
-	const needed = layout.offset + (rowPitch as int64) * ((height - 1) as int64) + (rowBytes as int64);
-	if (layout.offset < 0 || needed > bytes) {
-		stop(`writeTexture needs ${needed} bytes of data and was given ${bytes}`);
-	}
-	return rowPitch;
 }
 
 export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
