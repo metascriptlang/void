@@ -384,6 +384,9 @@ static void requestDevice(void) {
 		WGPUFeatureName_Float32Filterable,
 		WGPUFeatureName_Float32Blendable,
 		WGPUFeatureName_TextureFormatsTier2,
+		WGPUFeatureName_TimestampQuery,
+		WGPUFeatureName_RG11B10UfloatRenderable,
+		WGPUFeatureName_BGRA8UnormStorage,
 	};
 	WGPUFeatureName features[1 + sizeof optional / sizeof optional[0]] = { WGPUFeatureName_Depth32FloatStencil8 };
 	size_t featureCount = 1;
