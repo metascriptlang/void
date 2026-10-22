@@ -25,6 +25,8 @@ D3dTexture d3dRtvTexture(D3dRtv view) {
 	return (D3dTexture)resource;
 }
 
+void d3dRelease(void *object) { if (object) IUnknown_Release((IUnknown *)object); }
+
 D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess, int32_t miscFlags) {
 	D3D11_BUFFER_DESC desc = {0};
 	desc.ByteWidth = (UINT)bytes;
@@ -36,8 +38,6 @@ D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_
 	HRESULT hr = ID3D11Device_CreateBuffer(DEVICE(device), &desc, NULL, &buffer);
 	return SUCCEEDED(hr) ? (D3dBuffer)buffer : NULL;
 }
-
-void d3dReleaseBuffer(D3dBuffer buffer) { if (buffer) ID3D11Buffer_Release((ID3D11Buffer *)buffer); }
 
 D3dSrv d3dCreateBufferSrv(D3dDevice device, D3dBuffer buffer, int64_t offset, int64_t bytes) {
 	D3D11_SHADER_RESOURCE_VIEW_DESC desc = {0};
@@ -66,12 +66,12 @@ D3dUav d3dCreateBufferUav(D3dDevice device, D3dBuffer buffer, int64_t offset, in
 D3dUav d3dCreateTextureUav(D3dDevice device, D3dTexture texture, int32_t format, int32_t dimension, int32_t mip, int32_t layer, int32_t layerCount) {
 	D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {0};
 	desc.Format = (DXGI_FORMAT)format;
-	if (dimension == 4) {
+	if (dimension == D3D_VIEW_3D) {
 		desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE3D;
 		desc.Texture3D.MipSlice = (UINT)mip;
 		desc.Texture3D.FirstWSlice = 0;
 		desc.Texture3D.WSize = (UINT)-1;
-	} else if (dimension == 1) {
+	} else if (dimension == D3D_VIEW_2D_ARRAY) {
 		desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
 		desc.Texture2DArray.MipSlice = (UINT)mip;
 		desc.Texture2DArray.FirstArraySlice = (UINT)layer;
@@ -84,8 +84,6 @@ D3dUav d3dCreateTextureUav(D3dDevice device, D3dTexture texture, int32_t format,
 	HRESULT hr = ID3D11Device_CreateUnorderedAccessView(DEVICE(device), (ID3D11Resource *)texture, &desc, &view);
 	return SUCCEEDED(hr) ? (D3dUav)view : NULL;
 }
-
-void d3dReleaseUav(D3dUav view) { if (view) ID3D11UnorderedAccessView_Release((ID3D11UnorderedAccessView *)view); }
 
 int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64_t offset, void *data, int64_t bytes) {
 	D3D11_MAPPED_SUBRESOURCE mapped;
@@ -212,8 +210,6 @@ D3dTexture d3dCreateTexture3D(
 	return SUCCEEDED(hr) ? (D3dTexture)texture : NULL;
 }
 
-void d3dReleaseTexture(D3dTexture texture) { if (texture) IUnknown_Release((IUnknown *)texture); }
-
 void d3dUpdateTexture(
 	D3dContext context,
 	D3dTexture texture,
@@ -306,7 +302,6 @@ int32_t d3dCopyBufferToTexture(
 	D3dBuffer buffer,
 	int64_t offset,
 	int32_t bytesPerRow,
-	int32_t rowBytes,
 	D3dTexture texture,
 	int32_t subresource,
 	int32_t x,
@@ -315,18 +310,9 @@ int32_t d3dCopyBufferToTexture(
 	int32_t height) {
 	D3D11_MAPPED_SUBRESOURCE source;
 	if (FAILED(ID3D11DeviceContext_Map(CONTEXT(context), (ID3D11Resource *)buffer, 0, D3D11_MAP_READ, 0, &source))) return 0;
-	uint8_t *packed = (uint8_t *)malloc((size_t)rowBytes * (size_t)height);
-	if (!packed) {
-		ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
-		return 0;
-	}
-	for (int32_t row = 0; row < height; row++) {
-		memcpy(packed + (size_t)row * (size_t)rowBytes, (uint8_t *)source.pData + offset + (size_t)row * (size_t)bytesPerRow, (size_t)rowBytes);
-	}
-	ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
 	D3D11_BOX box = { (UINT)x, (UINT)y, 0, (UINT)(x + width), (UINT)(y + height), 1 };
-	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)texture, (UINT)subresource, &box, packed, (UINT)rowBytes, 0);
-	free(packed);
+	ID3D11DeviceContext_UpdateSubresource(CONTEXT(context), (ID3D11Resource *)texture, (UINT)subresource, &box, (uint8_t *)source.pData + offset, (UINT)bytesPerRow, 0);
+	ID3D11DeviceContext_Unmap(CONTEXT(context), (ID3D11Resource *)buffer, 0);
 	return 1;
 }
 
@@ -344,21 +330,21 @@ D3dSrv d3dCreateSrv(
 	desc.Format = (DXGI_FORMAT)format;
 	if (multisampled) {
 		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DMS;
-	} else if (dimension == 0) {
+	} else if (dimension == D3D_VIEW_2D) {
 		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 		desc.Texture2D.MostDetailedMip = (UINT)baseMip;
 		desc.Texture2D.MipLevels = (UINT)mipCount;
-	} else if (dimension == 1) {
+	} else if (dimension == D3D_VIEW_2D_ARRAY) {
 		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
 		desc.Texture2DArray.MostDetailedMip = (UINT)baseMip;
 		desc.Texture2DArray.MipLevels = (UINT)mipCount;
 		desc.Texture2DArray.FirstArraySlice = (UINT)baseLayer;
 		desc.Texture2DArray.ArraySize = (UINT)layerCount;
-	} else if (dimension == 2) {
+	} else if (dimension == D3D_VIEW_CUBE) {
 		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
 		desc.TextureCube.MostDetailedMip = (UINT)baseMip;
 		desc.TextureCube.MipLevels = (UINT)mipCount;
-	} else if (dimension == 3) {
+	} else if (dimension == D3D_VIEW_CUBE_ARRAY) {
 		desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY;
 		desc.TextureCubeArray.MostDetailedMip = (UINT)baseMip;
 		desc.TextureCubeArray.MipLevels = (UINT)mipCount;
@@ -424,10 +410,6 @@ D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_
 	return SUCCEEDED(hr) ? (D3dDsv)view : NULL;
 }
 
-void d3dReleaseSrv(D3dSrv view) { if (view) ID3D11ShaderResourceView_Release((ID3D11ShaderResourceView *)view); }
-void d3dReleaseRtv(D3dRtv view) { if (view) ID3D11RenderTargetView_Release((ID3D11RenderTargetView *)view); }
-void d3dReleaseDsv(D3dDsv view) { if (view) ID3D11DepthStencilView_Release((ID3D11DepthStencilView *)view); }
-
 void d3dResolveSubresource(D3dContext context, D3dTexture destination, int32_t destinationSubresource, D3dTexture source, int32_t format) {
 	ID3D11DeviceContext_ResolveSubresource(CONTEXT(context), (ID3D11Resource *)destination, (UINT)destinationSubresource, (ID3D11Resource *)source, 0, (DXGI_FORMAT)format);
 }
@@ -467,8 +449,6 @@ D3dSampler d3dCreateSampler(
 	return SUCCEEDED(hr) ? (D3dSampler)sampler : NULL;
 }
 
-void d3dReleaseSampler(D3dSampler sampler) { if (sampler) ID3D11SamplerState_Release((ID3D11SamplerState *)sampler); }
-
 static HMODULE s_compilerDll;
 static pD3DCompile s_compile;
 static char s_compileLog[4096];
@@ -505,8 +485,6 @@ D3dBlob d3dCompile(const char *source, const char *entryPoint, const char *targe
 
 const char *d3dCompileLog(void) { return s_compileLog; }
 
-void d3dReleaseBlob(D3dBlob blob) { if (blob) ID3D10Blob_Release((ID3DBlob *)blob); }
-
 D3dVertexShader d3dCreateVertexShader(D3dDevice device, D3dBlob blob) {
 	ID3DBlob *code = (ID3DBlob *)blob;
 	ID3D11VertexShader *shader = NULL;
@@ -527,11 +505,6 @@ D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob) {
 	HRESULT hr = ID3D11Device_CreateComputeShader(DEVICE(device), ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), NULL, &shader);
 	return SUCCEEDED(hr) ? (D3dComputeShader)shader : NULL;
 }
-
-void d3dReleaseComputeShader(D3dComputeShader shader) { if (shader) ID3D11ComputeShader_Release((ID3D11ComputeShader *)shader); }
-
-void d3dReleaseVertexShader(D3dVertexShader shader) { if (shader) ID3D11VertexShader_Release((ID3D11VertexShader *)shader); }
-void d3dReleasePixelShader(D3dPixelShader shader) { if (shader) ID3D11PixelShader_Release((ID3D11PixelShader *)shader); }
 
 static D3D11_INPUT_ELEMENT_DESC s_inputElements[D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
 
@@ -560,8 +533,6 @@ D3dInputLayout d3dCreateInputLayout(D3dDevice device, int32_t count, D3dBlob ver
 	return SUCCEEDED(hr) ? (D3dInputLayout)layout : NULL;
 }
 
-void d3dReleaseInputLayout(D3dInputLayout layout) { if (layout) ID3D11InputLayout_Release((ID3D11InputLayout *)layout); }
-
 D3dRasterizerState d3dCreateRasterizerState(
 	D3dDevice device,
 	int32_t cullMode,
@@ -584,8 +555,6 @@ D3dRasterizerState d3dCreateRasterizerState(
 	HRESULT hr = ID3D11Device_CreateRasterizerState(DEVICE(device), &desc, &state);
 	return SUCCEEDED(hr) ? (D3dRasterizerState)state : NULL;
 }
-
-void d3dReleaseRasterizerState(D3dRasterizerState state) { if (state) ID3D11RasterizerState_Release((ID3D11RasterizerState *)state); }
 
 D3dDepthStencilState d3dCreateDepthStencilState(
 	D3dDevice device,
@@ -621,8 +590,6 @@ D3dDepthStencilState d3dCreateDepthStencilState(
 	HRESULT hr = ID3D11Device_CreateDepthStencilState(DEVICE(device), &desc, &state);
 	return SUCCEEDED(hr) ? (D3dDepthStencilState)state : NULL;
 }
-
-void d3dReleaseDepthStencilState(D3dDepthStencilState state) { if (state) ID3D11DepthStencilState_Release((ID3D11DepthStencilState *)state); }
 
 static D3D11_BLEND_DESC s_blend;
 static int s_blendReady;
@@ -670,8 +637,6 @@ D3dBlendState d3dCreateBlendState(D3dDevice device) {
 	s_blendReady = 0;
 	return SUCCEEDED(hr) ? (D3dBlendState)state : NULL;
 }
-
-void d3dReleaseBlendState(D3dBlendState state) { if (state) ID3D11BlendState_Release((ID3D11BlendState *)state); }
 
 void d3dSetRenderTargets(D3dContext context, D3dRtv color0, D3dRtv color1, D3dRtv color2, D3dRtv color3, D3dDsv depth) {
 	ID3D11RenderTargetView *views[4] = {
@@ -806,17 +771,6 @@ void d3dCsSetShader(D3dContext context, D3dComputeShader shader) {
 	ID3D11DeviceContext_CSSetShader(CONTEXT(context), (ID3D11ComputeShader *)shader, NULL, 0);
 }
 
-void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer) {
-	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
-	ID3D11DeviceContext_CSSetConstantBuffers(CONTEXT(context), (UINT)slot, 1, buffers);
-}
-
-void d3dCsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants) {
-	ID3D11Buffer *buffers[1] = { (ID3D11Buffer *)buffer };
-	UINT first = (UINT)firstConstant, count = (UINT)numConstants;
-	ID3D11DeviceContext1_CSSetConstantBuffers1(context1, (UINT)slot, 1, buffers, &first, &count);
-}
-
 void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view) {
 	ID3D11ShaderResourceView *views[1] = { (ID3D11ShaderResourceView *)view };
 	ID3D11DeviceContext_CSSetShaderResources(CONTEXT(context), (UINT)slot, 1, views);
@@ -856,8 +810,8 @@ void d3dSetName(void *object, const char *name) {
 int32_t d3dFormatCaps(D3dDevice device, int32_t format) {
 	UINT support = 0;
 	if (FAILED(ID3D11Device_CheckFormatSupport(DEVICE(device), (DXGI_FORMAT)format, &support))) return 0;
-	return ((support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) ? 1 : 0) | ((support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) ? 2 : 0) |
-		((support & D3D11_FORMAT_SUPPORT_BLENDABLE) ? 4 : 0);
+	return ((support & D3D11_FORMAT_SUPPORT_SHADER_SAMPLE) ? D3D_FORMAT_CAP_SAMPLE : 0) | ((support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) ? D3D_FORMAT_CAP_RENDER : 0) |
+		((support & D3D11_FORMAT_SUPPORT_BLENDABLE) ? D3D_FORMAT_CAP_BLEND : 0);
 }
 
 static ID3DUserDefinedAnnotation *annotation;
@@ -868,20 +822,15 @@ static int annotationOf(D3dContext context) {
 	return annotation != NULL;
 }
 
-static wchar_t *widen(const char *text) {
-	int count = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
-	wchar_t *wide = (wchar_t *)malloc((size_t)(count > 0 ? count : 1) * sizeof(wchar_t));
-	if (count > 0) MultiByteToWideChar(CP_UTF8, 0, text, -1, wide, count);
-	else wide[0] = 0;
-	return wide;
+static int widen(const char *text, wchar_t *out) {
+	return MultiByteToWideChar(CP_UTF8, 0, text, -1, out, D3D_LABEL_MAX) > 0;
 }
 
 int32_t d3dBeginEvent(D3dContext context, const char *label) {
 	if (!annotationOf(context)) return -1;
-	wchar_t *wide = widen(label);
-	int32_t depth = (int32_t)ID3DUserDefinedAnnotation_BeginEvent(annotation, wide);
-	free(wide);
-	return depth;
+	wchar_t wide[D3D_LABEL_MAX];
+	if (!widen(label, wide)) return D3D_LABEL_TOO_LONG;
+	return (int32_t)ID3DUserDefinedAnnotation_BeginEvent(annotation, wide);
 }
 
 int32_t d3dEndEvent(D3dContext context) {
@@ -889,11 +838,12 @@ int32_t d3dEndEvent(D3dContext context) {
 	return (int32_t)ID3DUserDefinedAnnotation_EndEvent(annotation);
 }
 
-void d3dSetMarker(D3dContext context, const char *label) {
-	if (!annotationOf(context)) return;
-	wchar_t *wide = widen(label);
+int32_t d3dSetMarker(D3dContext context, const char *label) {
+	if (!annotationOf(context)) return -1;
+	wchar_t wide[D3D_LABEL_MAX];
+	if (!widen(label, wide)) return D3D_LABEL_TOO_LONG;
 	ID3DUserDefinedAnnotation_SetMarker(annotation, wide);
-	free(wide);
+	return 0;
 }
 
 void d3dReleaseAnnotation(void) {
@@ -903,7 +853,7 @@ void d3dReleaseAnnotation(void) {
 
 static D3D11_QUERY_DESC queryDesc(int32_t kind) {
 	D3D11_QUERY_DESC desc = {0};
-	desc.Query = kind == 0 ? D3D11_QUERY_OCCLUSION : kind == 1 ? D3D11_QUERY_TIMESTAMP : D3D11_QUERY_TIMESTAMP_DISJOINT;
+	desc.Query = kind == D3D_QUERY_OCCLUSION ? D3D11_QUERY_OCCLUSION : kind == D3D_QUERY_TIMESTAMP ? D3D11_QUERY_TIMESTAMP : D3D11_QUERY_TIMESTAMP_DISJOINT;
 	return desc;
 }
 
@@ -917,8 +867,6 @@ D3dQuery d3dCreateQuery(D3dDevice device, int32_t kind) {
 	ID3D11Query *query = NULL;
 	return SUCCEEDED(ID3D11Device_CreateQuery(DEVICE(device), &desc, &query)) ? (D3dQuery)query : NULL;
 }
-
-void d3dReleaseQuery(D3dQuery query) { if (query) ID3D11Query_Release((ID3D11Query *)query); }
 
 void d3dQueryBegin(D3dContext context, D3dQuery query) {
 	ID3D11DeviceContext_Begin(CONTEXT(context), (ID3D11Asynchronous *)query);
@@ -949,8 +897,4 @@ int32_t d3dQueryFrequency(D3dContext context, D3dQuery query, uint64_t *out) {
 	if (data.Disjoint) return -1;
 	*out = data.Frequency;
 	return 1;
-}
-
-uint64_t d3dTicksToNanoseconds(uint64_t ticks, uint64_t frequency) {
-	return (ticks / frequency) * 1000000000ULL + (ticks % frequency) * 1000000000ULL / frequency;
 }

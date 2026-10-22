@@ -27,12 +27,11 @@ D3dDsv d3dDsvFrom(void *native);
 void *d3dTextureNative(D3dTexture texture);
 D3dTexture d3dRtvTexture(D3dRtv view);
 
+void d3dRelease(void *object);
 D3dBuffer d3dCreateBuffer(D3dDevice device, int64_t bytes, int32_t usage, int32_t bindFlags, int32_t cpuAccess, int32_t miscFlags);
-void d3dReleaseBuffer(D3dBuffer buffer);
 D3dSrv d3dCreateBufferSrv(D3dDevice device, D3dBuffer buffer, int64_t offset, int64_t bytes);
 D3dUav d3dCreateBufferUav(D3dDevice device, D3dBuffer buffer, int64_t offset, int64_t bytes);
 D3dUav d3dCreateTextureUav(D3dDevice device, D3dTexture texture, int32_t format, int32_t dimension, int32_t mip, int32_t layer, int32_t layerCount);
-void d3dReleaseUav(D3dUav view);
 int32_t d3dMapWrite(D3dContext context, D3dBuffer buffer, int32_t mapType, int64_t offset, void *data, int64_t bytes);
 int32_t d3dUpdateIfChanged(D3dContext context, D3dBuffer buffer, uint8_t *cache, int64_t cacheOffset, uint8_t *data, int64_t dataOffset, int64_t bytes, int32_t force);
 int32_t d3dUniformOffsetting(D3dDevice device, D3dContext context);
@@ -65,7 +64,6 @@ D3dTexture d3dCreateTexture3D(
 	int32_t format,
 	int32_t usage,
 	int32_t bindFlags);
-void d3dReleaseTexture(D3dTexture texture);
 void d3dUpdateTexture(
 	D3dContext context,
 	D3dTexture texture,
@@ -113,7 +111,6 @@ int32_t d3dCopyBufferToTexture(
 	D3dBuffer buffer,
 	int64_t offset,
 	int32_t bytesPerRow,
-	int32_t rowBytes,
 	D3dTexture texture,
 	int32_t subresource,
 	int32_t x,
@@ -133,9 +130,6 @@ D3dSrv d3dCreateSrv(
 D3dRtv d3dCreateRtv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer);
 D3dRtv d3dCreateRtv3d(D3dDevice device, D3dTexture texture, int32_t format, int32_t mip, int32_t slice);
 D3dDsv d3dCreateDsv(D3dDevice device, D3dTexture texture, int32_t format, int32_t multisampled, int32_t arrayed, int32_t mip, int32_t layer);
-void d3dReleaseSrv(D3dSrv view);
-void d3dReleaseRtv(D3dRtv view);
-void d3dReleaseDsv(D3dDsv view);
 void d3dResolveSubresource(D3dContext context, D3dTexture destination, int32_t destinationSubresource, D3dTexture source, int32_t format);
 void d3dResolveViews(D3dContext context, D3dRtv destination, D3dRtv source, int32_t format);
 
@@ -149,17 +143,12 @@ D3dSampler d3dCreateSampler(
 	int32_t comparison,
 	double minLod,
 	double maxLod);
-void d3dReleaseSampler(D3dSampler sampler);
 
 D3dBlob d3dCompile(const char *source, const char *entryPoint, const char *target);
 const char *d3dCompileLog(void);
-void d3dReleaseBlob(D3dBlob blob);
 D3dVertexShader d3dCreateVertexShader(D3dDevice device, D3dBlob blob);
 D3dPixelShader d3dCreatePixelShader(D3dDevice device, D3dBlob blob);
-void d3dReleaseVertexShader(D3dVertexShader shader);
-void d3dReleasePixelShader(D3dPixelShader shader);
 D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob);
-void d3dReleaseComputeShader(D3dComputeShader shader);
 
 void d3dInputElement(
 	int32_t index,
@@ -169,7 +158,6 @@ void d3dInputElement(
 	int32_t offset,
 	int32_t perInstance);
 D3dInputLayout d3dCreateInputLayout(D3dDevice device, int32_t count, D3dBlob vertexBlob);
-void d3dReleaseInputLayout(D3dInputLayout layout);
 D3dRasterizerState d3dCreateRasterizerState(
 	D3dDevice device,
 	int32_t cullMode,
@@ -178,7 +166,6 @@ D3dRasterizerState d3dCreateRasterizerState(
 	int32_t depthBias,
 	double slopeScaledDepthBias,
 	double depthBiasClamp);
-void d3dReleaseRasterizerState(D3dRasterizerState state);
 D3dDepthStencilState d3dCreateDepthStencilState(
 	D3dDevice device,
 	int32_t depthWrite,
@@ -194,7 +181,6 @@ D3dDepthStencilState d3dCreateDepthStencilState(
 	int32_t backDepthFail,
 	int32_t backPass,
 	int32_t backCompare);
-void d3dReleaseDepthStencilState(D3dDepthStencilState state);
 void d3dBlendTarget(
 	int32_t index,
 	int32_t enabled,
@@ -206,7 +192,6 @@ void d3dBlendTarget(
 	int32_t operationAlpha,
 	int32_t writeMask);
 D3dBlendState d3dCreateBlendState(D3dDevice device);
-void d3dReleaseBlendState(D3dBlendState state);
 
 void d3dSetRenderTargets(D3dContext context, D3dRtv color0, D3dRtv color1, D3dRtv color2, D3dRtv color3, D3dDsv depth);
 void d3dSetViewport(D3dContext context, double x, double y, double width, double height, double minDepth, double maxDepth);
@@ -243,8 +228,6 @@ void d3dDrawIndexedInstanced(
 	int32_t firstInstance);
 
 void d3dCsSetShader(D3dContext context, D3dComputeShader shader);
-void d3dCsSetConstantBuffer(D3dContext context, int32_t slot, D3dBuffer buffer);
-void d3dCsSetConstantBufferRange(int32_t slot, D3dBuffer buffer, int64_t firstConstant, int64_t numConstants);
 void d3dCsSetShaderResource(D3dContext context, int32_t slot, D3dSrv view);
 void d3dCsSetUnorderedAccessView(D3dContext context, int32_t slot, D3dUav view);
 void d3dCsSetSampler(D3dContext context, int32_t slot, D3dSampler sampler);
@@ -253,18 +236,29 @@ void d3dDispatch(D3dContext context, int32_t x, int32_t y, int32_t z);
 void d3dDispatchIndirect(D3dContext context, D3dBuffer arguments, int64_t offset);
 
 void d3dSetName(void *object, const char *name);
+#define D3D_FORMAT_CAP_SAMPLE 1
+#define D3D_FORMAT_CAP_RENDER 2
+#define D3D_FORMAT_CAP_BLEND 4
+#define D3D_VIEW_2D 0
+#define D3D_VIEW_2D_ARRAY 1
+#define D3D_VIEW_CUBE 2
+#define D3D_VIEW_CUBE_ARRAY 3
+#define D3D_VIEW_3D 4
+#define D3D_QUERY_OCCLUSION 0
+#define D3D_QUERY_TIMESTAMP 1
+#define D3D_QUERY_DISJOINT 2
 int32_t d3dFormatCaps(D3dDevice device, int32_t format);
 
+#define D3D_LABEL_MAX 256 // LABEL_MAX_UNITS + the terminator
+#define D3D_LABEL_TOO_LONG -2
 int32_t d3dBeginEvent(D3dContext context, const char *label);
 int32_t d3dEndEvent(D3dContext context);
-void d3dSetMarker(D3dContext context, const char *label);
+int32_t d3dSetMarker(D3dContext context, const char *label);
 void d3dReleaseAnnotation(void);
 
 int32_t d3dQuerySupported(D3dDevice device, int32_t kind);
 D3dQuery d3dCreateQuery(D3dDevice device, int32_t kind);
-void d3dReleaseQuery(D3dQuery query);
 void d3dQueryBegin(D3dContext context, D3dQuery query);
 void d3dQueryEnd(D3dContext context, D3dQuery query);
 int32_t d3dQueryTicks(D3dContext context, D3dQuery query, uint64_t *out);
 int32_t d3dQueryFrequency(D3dContext context, D3dQuery query, uint64_t *out);
-uint64_t d3dTicksToNanoseconds(uint64_t ticks, uint64_t frequency);
