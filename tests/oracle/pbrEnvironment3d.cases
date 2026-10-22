@@ -1,0 +1,70 @@
+# lib: heaps
+# haxe-prelude: class Ibl {
+# haxe-prelude: static function rev(i: Int): Int { var r = (i << 16) | (i >>> 16); r = ((r & 0x00ff00ff) << 8) | ((r & 0xff00ff00) >>> 8); r = ((r & 0x0f0f0f0f) << 4) | ((r & 0xf0f0f0f0) >>> 4); r = ((r & 0x33333333) << 2) | ((r & 0xcccccccc) >>> 2); r = ((r & 0x55555555) << 1) | ((r & 0xaaaaaaaa) >>> 1); return r; }
+# haxe-prelude: public static function ham(i: Int, max: Int): Array<Float> { var ri = rev(i) * 2.3283064365386963e-10; return [i / max, ri]; }
+# haxe-prelude: static function cross(a: Array<Float>, b: Array<Float>): Array<Float> { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+# haxe-prelude: public static function norm(a: Array<Float>): Array<Float> { var l = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]); return [a[0] / l, a[1] / l, a[2] / l]; }
+# haxe-prelude: static function frame(n: Array<Float>, lx: Float, ly: Float, lz: Float): Array<Float> { var up = Math.abs(n[2]) < 0.999 ? [0., 0., 1.] : [1., 0., 0.]; var tx = norm(cross(up, n)); var ty = norm(cross(n, tx)); return norm([tx[0] * lx + ty[0] * ly + n[0] * lz, tx[1] * lx + ty[1] * ly + n[1] * lz, tx[2] * lx + ty[2] * ly + n[2] * lz]); }
+# haxe-prelude: public static function cosine(px: Float, py: Float, n: Array<Float>): Array<Float> { var sq = Math.sqrt(1 - px); var alpha = 2 * Math.PI * py; return frame(norm(n), sq * Math.cos(alpha), sq * Math.sin(alpha), Math.sqrt(px)); }
+# haxe-prelude: public static function ggx(roughness: Float, px: Float, py: Float, n: Array<Float>): Array<Float> { var a = roughness * roughness; var phi = 2 * Math.PI * px; var cosT = Math.min(Math.sqrt((1 - py) / (1 + (a * a - 1) * py)), 1.); var sinT = Math.sqrt(1 - cosT * cosT); return frame(norm(n), sinT * Math.cos(phi), sinT * Math.sin(phi), cosT); }
+# haxe-prelude: static function sat(x: Float): Float { return Math.max(0., Math.min(1., x)); }
+# haxe-prelude: static function ggxG(NdotV: Float, roughness: Float): Float { var k = (roughness * roughness) * 0.5; return NdotV / (NdotV * (1.0 - k) + k); }
+# haxe-prelude: public static function lut(roughness: Float, NoV: Float, numSamples: Int): Array<Float> { var v = [Math.sqrt(1.0 - NoV * NoV), 0., NoV]; var n = [0., 0., 1.]; var a = 0., b = 0.; for (i in 0...numSamples) { var xi = ham(i, numSamples); var h = ggx(roughness, xi[0], xi[1], n); var d = v[0] * h[0] + v[1] * h[1] + v[2] * h[2]; var l = [-v[0] + 2 * d * h[0], -v[1] + 2 * d * h[1], -v[2] + 2 * d * h[2]]; var NoL = sat(l[2]); var NoH = sat(h[2]); var VoH = sat(d); if (NoL > 0) { var g = ggxG(NoL, roughness) * ggxG(NoV, roughness); var gvis = g * VoH / (NoH * NoV); var fresnel = Math.pow(1 - VoH, 5.); a += (1 - fresnel) * gvis; b += fresnel * gvis; } } return [a / numSamples, b / numSamples]; }
+# haxe-prelude: public static function face(f: Int, u: Float, v: Float): Array<Float> { var m = @:privateAccess h3d.scene.pbr.Environment.getCubeMatrix(f); var dx = u * 2 - 1; var dy = v * 2 - 1; return norm([dx * m._11 + dy * m._21 + m._31, dx * m._12 + dy * m._22 + m._32, dx * m._13 + dy * m._23 + m._33]); }
+# haxe-prelude: }
+# ms-prelude: import { vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { HammersleyForm,hammersley,cosineWeightedSample,importanceSampleGgx,cubeFaceDirection,splitSumLut } from "../../../src/void3d/pbrEnvironment";
+# ms-prelude: function line(id: string, v: Vec<float32>): void { let s = `CASE ${id}`; for (const x of v) { s = s + ` ${x}`; } console.log(s); }
+# ms-prelude: function msHam(count: int32): Vec<float32> { let v: Vec<float32> = []; for (let i = 0; i < count; i++) { const p = hammersley(i, count); if (p.ok) { v.push(p.value.x); v.push(p.value.y); } } return move v; }
+# ms-prelude: function msCos(px: float32, py: float32, nx: float32, ny: float32, nz: float32): Vec<float32> { let v: Vec<float32> = []; const r = cosineWeightedSample({x:px,y:py}, vec3(nx,ny,nz)); if (r.ok) { v.push(r.value.x); v.push(r.value.y); v.push(r.value.z); } return move v; }
+# ms-prelude: function msGgx(rough: float32, px: float32, py: float32, nx: float32, ny: float32, nz: float32): Vec<float32> { let v: Vec<float32> = []; const r = importanceSampleGgx(rough, {x:px,y:py}, vec3(nx,ny,nz)); if (r.ok) { v.push(r.value.x); v.push(r.value.y); v.push(r.value.z); } return move v; }
+# ms-prelude: function msFaces(u: float32, v: float32): Vec<float32> { let out: Vec<float32> = []; for (let f = 0; f < 6; f++) { const r = cubeFaceDirection(f, u, v); if (r.ok) { out.push(r.value.x); out.push(r.value.y); out.push(r.value.z); } } return move out; }
+# ms-prelude: function msLut(rough: float32, view: float32, count: int32): Vec<float32> { let v: Vec<float32> = []; const r = splitSumLut(rough, view, count); if (r.ok) { v.push(r.value.scale); v.push(r.value.bias); } return move v; }
+
+case hammersley-heaps-8 tol=1e-6
+haxe> var o: Array<Float> = []; for (i in 0...8) o = o.concat(Ibl.ham(i, 8)); emit("hammersley-heaps-8", o);
+ms> line("hammersley-heaps-8", msHam(8));
+
+case hammersley-heaps-33 tol=1e-6
+haxe> var o: Array<Float> = []; for (i in 0...33) o = o.concat(Ibl.ham(i, 33)); emit("hammersley-heaps-33", o);
+ms> line("hammersley-heaps-33", msHam(33));
+
+case cosine-sample-tilted tol=1e-5
+haxe> emit("cosine-sample-tilted", Ibl.cosine(0.3, 0.7, [2., -1., 0.5]));
+ms> line("cosine-sample-tilted", msCos(0.3, 0.7, 2.0, -1.0, 0.5));
+
+case cosine-sample-signed-second tol=1e-5
+haxe> emit("cosine-sample-signed-second", Ibl.cosine(0.6, -0.4, [0., 0., 1.]));
+ms> line("cosine-sample-signed-second", msCos(0.6, -0.4, 0.0, 0.0, 1.0));
+
+case ggx-sample-tilted tol=1e-5
+haxe> emit("ggx-sample-tilted", Ibl.ggx(0.6, 0.35, 0.2, [-1., 2., 3.]));
+ms> line("ggx-sample-tilted", msGgx(0.6, 0.35, 0.2, -1.0, 2.0, 3.0));
+
+case ggx-sample-signed-second tol=1e-5
+haxe> emit("ggx-sample-signed-second", Ibl.ggx(0.6, 0.35, -0.3, [-1., 2., 3.]));
+ms> line("ggx-sample-signed-second", msGgx(0.6, 0.35, -0.3, -1.0, 2.0, 3.0));
+
+case ggx-sample-mirror tol=1e-5
+haxe> emit("ggx-sample-mirror", Ibl.ggx(0., 0.35, 0.2, [0., 1., 0.]));
+ms> line("ggx-sample-mirror", msGgx(0.0, 0.35, 0.2, 0.0, 1.0, 0.0));
+
+case cube-face-directions tol=1e-6
+haxe> var o: Array<Float> = []; for (f in 0...6) o = o.concat(Ibl.face(f, 0.3, 0.8)); emit("cube-face-directions", o);
+ms> line("cube-face-directions", msFaces(0.3, 0.8));
+
+case lut-mid tol=2e-4
+haxe> emit("lut-mid", Ibl.lut(0.5, 0.5, 4096));
+ms> line("lut-mid", msLut(0.5, 0.5, 4096));
+
+case lut-rough-head-on tol=2e-4
+haxe> emit("lut-rough-head-on", Ibl.lut(0.9, 1.0, 4096));
+ms> line("lut-rough-head-on", msLut(0.9, 1.0, 4096));
+
+case lut-smooth-grazing tol=2e-4
+haxe> emit("lut-smooth-grazing", Ibl.lut(0.3, 0.1, 1024));
+ms> line("lut-smooth-grazing", msLut(0.3, 0.1, 1024));
+
+case lut-mirror tol=1e-5
+haxe> emit("lut-mirror", Ibl.lut(0., 0.6, 64));
+ms> line("lut-mirror", msLut(0.0, 0.6, 64));
