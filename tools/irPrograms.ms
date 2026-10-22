@@ -3,9 +3,9 @@
 // builds it. The stages are lowered while this tool compiles (glslIr); the programs are the rows of
 // src/void3d/programKeys.txt and the @program lines of shader2d.glsl and gpuCopy.glsl.
 // Usage: msc run tools/irPrograms.ms -- <out dir> [--reflection-only]
-// --reflection-only writes a target whose printer is not merged as its reflection with empty
-// sources and the refusal above the function; without it such a target stops the tool.
-// Every printed HLSL and WGSL stage lands in out/irPrograms/ for validateHlsl.sh and validateWgsl.sh.
+// --reflection-only writes a target whose printer refuses the program as its reflection with empty
+// sources and the refusal above the function; without it a refusal stops the tool.
+// Every printed stage lands in out/irPrograms/ for validateHlsl.sh, validateWgsl.sh and the rest.
 
 import { mkdir, readFile, writeFile } from "std/fs";
 import { argv, exit } from "std/process";
@@ -140,6 +140,17 @@ function targetOf(language: string): ShaderTarget {
 	};
 }
 
+// The file suffixes of a language's vertex and fragment stage, as the validators read them.
+function stageFiles(language: string): string[] {
+	return match (language) {
+		"wgsl" => [".vs.wgsl", ".fs.wgsl"],
+		"glsl300es" => [".es.vert", ".es.frag"],
+		"glsl430" => [".430.vert", ".430.frag"],
+		"hlsl5" => [".vs.hlsl", ".ps.hlsl"],
+		_ => ["." + language + ".vs.metal", "." + language + ".fs.metal"],
+	};
+}
+
 function fail(message: string): never {
 	console.error("irPrograms: " + message);
 	exit(1);
@@ -226,12 +237,11 @@ function moduleText(programs: Program[], typesPath: string, dispatcher: string,
 			if (s.value.refusal != "") {
 				if (!reflectionOnly) { fail(p.name + " " + language[0] + ": " + s.value.refusal); }
 				counts.refused++;
-			} else if (language[0] == "hlsl5" || language[0] == "wgsl") {
-				const hlsl = language[0] == "hlsl5";
-				keep("out/irPrograms/" + p.name + ".vs" + (hlsl ? ".hlsl" : ".wgsl"),
-					s.value.vertexCode);
-				keep("out/irPrograms/" + p.name + (hlsl ? ".ps.hlsl" : ".fs.wgsl"),
-					s.value.fragmentCode);
+				console.log("refused " + p.name + " " + language[0] + ": " + s.value.refusal);
+			} else {
+				const files = stageFiles(language[0]);
+				keep("out/irPrograms/" + p.name + files[0], s.value.vertexCode);
+				keep("out/irPrograms/" + p.name + files[1], s.value.fragmentCode);
 				counts.printed += 2;
 			}
 			row.push(s.value);
@@ -279,8 +289,7 @@ function main(): void {
 	keep(out + "/gpuCopyModules.ms", moduleText(listedPrograms("tests/integration/gpuCopy.glsl",
 		"GPU_COPY"), "../../src/webgpu/types.ms", "", reflectionOnly, counts));
 	console.log("irPrograms: " + String(counts.programs) + " programs, " + String(counts.printed) +
-		" hlsl and wgsl stages printed, " + String(counts.refused) +
-		" target sources refused (no printer)");
+		" stages printed, " + String(counts.refused) + " target sources refused");
 }
 
 main();
