@@ -41,6 +41,7 @@ import {
 	EMISSIVE_LENGTH,
 	movingBase,
 	emissiveBase,
+	PARTICLE_INSTANCE_STRIDE,
 } from "../void3d/gpu3d";
 import {
 	Material, Phase, MaterialKind, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
@@ -111,15 +112,14 @@ import {
 	EmitterState,
 	ShapeKind,
 	ValueKind,
-	PARTICLE_INSTANCE_STRIDE,
-	PARTICLE_VISUAL_INSTANCE_STRIDE,
 	constant,
-} from "../void3d/particles";
-import { fromHeaps, HEAPS_GRAVITY, HeapsLoweringError } from "../void3d/fromHeaps";
+	fromHeaps,
+	HEAPS_GRAVITY,
+	HeapsLoweringError,
+} from "../void3d/fromHeaps";
 import { ParticleSystem, ParticleSystemError, playSystem, updateSystem } from "../particles/system";
 import { ParticleSystemAsset } from "../particles/asset";
-import { AtlasTile } from "../void3d/billboard";
-import { ParticleWriter3D, ParticleWriteError, writeParticles } from "../void3d/particleWriter";
+import { ParticleWriter3D, ParticleWriteError, writeParticlePoints } from "../void3d/particleWriter";
 import {
 	WorldLabel,
 	WorldLabelStyle,
@@ -178,7 +178,6 @@ const BOARD_REPEAT_Z: float32 = 3.0;
 const TILE: int32 = 32;
 const SHADOW_SIZE: int32 = 1024;
 const SHADOW_OPACITY: float32 = 0.8;
-const WHOLE_TILE: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };
 const PARTICLE_STEP: float64 = 1.0 / 60.0;
 const PARTICLE_WARMUP: int32 = 90;
 const FLICKER_FRAMES: int32 = 6;
@@ -222,8 +221,6 @@ let displayEpoch: int32 = 0;
 let torchA: ParticleSystem = systemOf(11);
 let torchB: ParticleSystem = systemOf(23);
 let particleWriter: ParticleWriter3D = ParticleWriter3D.create();
-let torchAVisual: Vec<float32> = new Array(flameState().maxParts * PARTICLE_VISUAL_INSTANCE_STRIDE);
-let torchBVisual: Vec<float32> = new Array(flameState().maxParts * PARTICLE_VISUAL_INSTANCE_STRIDE);
 let torchANode: NodeId3D = NO_NODE_ID;
 let torchBNode: NodeId3D = NO_NODE_ID;
 let torchAMesh: MeshId = { store: 0, index: 0, generation: 0 };
@@ -642,20 +639,11 @@ function advance(ref emitter: ParticleSystem, node: NodeId3D): boolean {
 function draw(
 	ref emitter: ParticleSystem,
 	stream: MeshId,
-	visual: Span<float32>,
 	instances: Span<float32>,
 ): boolean {
-	const written: Result<int32, ParticleWriteError> = writeParticles(
-		particleWriter, emitter, [WHOLE_TILE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), visual);
+	const written: Result<int32, ParticleWriteError> = writeParticlePoints(
+		particleWriter, emitter, vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), instances);
 	if (!written.ok) { return false; }
-	for (let i = 0; i < written.value; i++) {
-		const from: int32 = i * PARTICLE_VISUAL_INSTANCE_STRIDE;
-		const to: int32 = i * PARTICLE_INSTANCE_STRIDE;
-		for (let k = 0; k < 4; k++) {
-			instances[to + k] = visual[from + k];
-			instances[to + 4 + k] = visual[from + 12 + k];
-		}
-	}
 	return writeStream(context, stream, instances, written.value).ok;
 }
 
@@ -773,8 +761,8 @@ function flicker(frame: int32): void {
 
 function stepTorches(): boolean {
 	return advance(torchA, torchANode) && advance(torchB, torchBNode) &&
-		draw(torchA, torchAMesh, torchAVisual, torchAInstances) &&
-		draw(torchB, torchBMesh, torchBVisual, torchBInstances);
+		draw(torchA, torchAMesh, torchAInstances) &&
+		draw(torchB, torchBMesh, torchBInstances);
 }
 
 export function tableView(width: int32, height: int32): Result<CameraView, CameraError> {

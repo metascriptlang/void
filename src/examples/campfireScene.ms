@@ -21,6 +21,7 @@ import {
 	makeImage,
 	destroyBuffer,
 	destroyImage,
+	PARTICLE_INSTANCE_STRIDE,
 } from "../void3d/gpu3d";
 import {
 	makeTextureView,
@@ -149,15 +150,14 @@ import {
 	ShapeKind,
 	ValueKind,
 	Converge,
-	PARTICLE_INSTANCE_STRIDE,
-	PARTICLE_VISUAL_INSTANCE_STRIDE,
 	constant,
-} from "../void3d/particles";
-import { fromHeaps, HEAPS_GRAVITY, HeapsLoweringError } from "../void3d/fromHeaps";
+	fromHeaps,
+	HEAPS_GRAVITY,
+	HeapsLoweringError,
+} from "../void3d/fromHeaps";
 import { ParticleSystem, ParticleSystemError, playSystem, updateSystem } from "../particles/system";
 import { ParticleSystemAsset } from "../particles/asset";
-import { AtlasTile } from "../void3d/billboard";
-import { ParticleWriter3D, ParticleWriteError, writeParticles } from "../void3d/particleWriter";
+import { ParticleWriter3D, ParticleWriteError, writeParticlePoints } from "../void3d/particleWriter";
 
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
 const CAMERA_YAW: float32 = 0.785398;
@@ -224,7 +224,6 @@ const WINTER_PALETTE: Vec<uint32> = [
 	0xEEF4FC, 0x3A3F4F, 0x5C6272, 0x868C9C, 0x6E4A4A, 0xB0705A, 0xE0A070, 0xFFE0A8,
 ];
 
-const WHOLE_TILE: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };
 const PARTICLE_STEP: float64 = 1.0 / 30.0;
 const PARTICLE_WARMUP_STEPS: int32 = 240;
 const SNOW_SEED: uint32 = 12345;
@@ -318,8 +317,6 @@ let particleMaterial: MaterialId = NO_MATERIAL;
 let snow: ParticleSystem = systemOf(snowState(), SNOW_SEED);
 let embers: ParticleSystem = systemOf(emberState(), EMBER_SEED);
 let particleWriter: ParticleWriter3D = ParticleWriter3D.create();
-let snowVisual: Vec<float32> = new Array(snowState().maxParts * PARTICLE_VISUAL_INSTANCE_STRIDE);
-let emberVisual: Vec<float32> = new Array(emberState().maxParts * PARTICLE_VISUAL_INSTANCE_STRIDE);
 let snowNode: NodeId3D = NO_NODE_ID;
 let emberNode: NodeId3D = NO_NODE_ID;
 let snowMesh: MeshId = NO_MESH;
@@ -1042,20 +1039,11 @@ function advanceEmitter(ref emitter: ParticleSystem, node: NodeId3D): boolean {
 function drawEmitter(
 	ref emitter: ParticleSystem,
 	mesh: MeshId,
-	visual: Span<float32>,
 	instances: Span<float32>,
 ): boolean {
-	const written: Result<int32, ParticleWriteError> = writeParticles(
-		particleWriter, emitter, [WHOLE_TILE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), visual);
+	const written: Result<int32, ParticleWriteError> = writeParticlePoints(
+		particleWriter, emitter, vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), instances);
 	if (!written.ok) { return false; }
-	for (let i = 0; i < written.value; i++) {
-		const from: int32 = i * PARTICLE_VISUAL_INSTANCE_STRIDE;
-		const to: int32 = i * PARTICLE_INSTANCE_STRIDE;
-		for (let k = 0; k < 4; k++) {
-			instances[to + k] = visual[from + k];
-			instances[to + 4 + k] = visual[from + 12 + k];
-		}
-	}
 	return writeStream(context, mesh, instances, written.value).ok;
 }
 
@@ -1366,8 +1354,8 @@ function stepScene(): boolean {
 		const stepped: boolean =
 			advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
 		const drawn: boolean = stepped &&
-			drawEmitter(snow, snowMesh, snowVisual, snowInstances) &&
-			drawEmitter(embers, emberMesh, emberVisual, emberInstances);
+			drawEmitter(snow, snowMesh, snowInstances) &&
+			drawEmitter(embers, emberMesh, emberInstances);
 		if (!drawn) {
 			console.log("campfire: a particle emitter failed to step or draw");
 			return false;
