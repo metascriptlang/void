@@ -84,6 +84,7 @@ int32_t doorBufferAlive(uint32_t buffer);
 
 uint32_t doorMakeTexture(int32_t width, int32_t height, int32_t format, const uint8_t *data, int64_t length);
 void doorUpdateTexture(uint32_t image, const uint8_t *data, int64_t length);
+void doorUpdateTextureRect(uint32_t image, int32_t x, int32_t y, int32_t width, int32_t height, int32_t bytesPerRow, const uint8_t *data, int64_t length);
 uint32_t doorMakeTextureView(uint32_t image);
 uint32_t doorViewImage(uint32_t view);
 int32_t doorViewIsColorAttachment(uint32_t view);

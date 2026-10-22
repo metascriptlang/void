@@ -605,6 +605,16 @@ export function doorUpdateTextureOf<T>(id: uint32, data: Readonly<Span<T>>): voi
 	device.queue.writeTexture({ texture }, data, { offset: 0, bytesPerRow: rowBytes as int32, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 });
 }
 
+// A partial sampled-texture write: `data` starts at the rectangle's first texel and holds rows
+// `bytesPerRow` apart, the last one only as far as the rectangle's width.
+@exportName("doorUpdateTextureRect")
+export function doorUpdateTextureRect(id: uint32, x: int32, y: int32, width: int32, height: int32, bytesPerRow: int32, data: Readonly<Span<uint8>>): void {
+	const texture: GPUTexture = { id };
+	if (!texture.isAlive()) { return; }
+	frameStats[DOOR_STAT_IMAGE_BYTES] += (data.length as int32);
+	device.queue.writeTexture({ texture, origin: { x, y, z: 0 } }, data, { offset: 0, bytesPerRow, rowsPerImage: height }, { width, height, depthOrArrayLayers: 1 });
+}
+
 export function doorTextureWidth(id: uint32): int32 { const t: GPUTexture = { id }; return t.width(); }
 export function doorTextureHeight(id: uint32): int32 { const t: GPUTexture = { id }; return t.height(); }
 
