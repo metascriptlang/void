@@ -107,9 +107,10 @@ Port order follows the Windows one: the backend, then the window bridges, then t
      `src/sokol/bridgeAndroid.c` (commit `7f3da43b`, a host-view driver onto the door),
      `src/sokol/bridgeWeb.c` (context loss → `doorShutdown` + `doorSetup`).
 3. **`src/sokol/bridgeIos.m`** — the same move for the React-Native host views.
-4. **`src/sokol/views.h` / `views.c`** — add `&& !defined(__APPLE__)` to the guards around
-   `sg_swapchain` (they read `!_WIN32 && !__EMSCRIPTEN__ && !__ANDROID__` now); after that the
-   `voidViewsSwapchain` branch is dead everywhere and can go.
+4. **`src/sokol/views.h` / `views.c`** — delete the `sg_swapchain` branch (its guard reads
+   `!_WIN32 && !__EMSCRIPTEN__ && !__ANDROID__`): Linux (`750ec157`) also reaches it, so adding
+   only `!__APPLE__` would leave a sokol include on Linux. After G6 nothing takes that branch.
+   Linux then also drops `-I../../deps/sokol` from the `when (!windows && !android)` block.
 5. **`src/sokol/gpu.ms`** — the `when (macos)` block drops `@link("./sokol.o")`; the
    `-I../../deps/sokol` line goes. Delete `src/sokol/sokol.m` and
    `scripts/build-sokol-macos.sh`.
@@ -163,6 +164,10 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   with `#if`, as `device.ms` does); Mach sysgpu (`4be8e50`) for the shader compiler.
 
 ## G7 — after Metal (either side, coordinated)
+
+- Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`) and
+  `src/sokol/bridgeLinux.c` are in; `src/sokol/gpu.ms` gets a `when (linux)` block after G6
+  (`@compile` window.c, bridgeLinux.c, appWindow.c, bridge.c; `-lX11 -lGL -ldl -lm`).
 
 - The backend selector defines are still sokol's names (`SOKOL_WGPU`, `SOKOL_GLES3`,
   `SOKOL_GLCORE`, `SOKOL_D3D11`, `SOKOL_METAL`) in `src/sokol/backend.h`, `bridgeWin.c`,
