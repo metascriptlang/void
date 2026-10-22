@@ -1,10 +1,6 @@
-// Void sokol driver — iOS (Metal). Host-driven: no run-loop, no UIKit window. Each
+// Void driver — iOS (Metal). Host-driven: no run-loop, no UIKit window. Each
 // React-Native VoidView owns a CAMetalLayer and a CADisplayLink and drives its view in
-// views.c. One MTLDevice is shared by every view. Single sokol_gfx implementation unit on iOS
-// (Metal backend, no sokol_app).
-
-#define SOKOL_IMPL
-#define SOKOL_METAL
+// views.c. One MTLDevice is shared by every view; the GPU door's Metal backend draws on it.
 
 #import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -15,7 +11,9 @@
 
 #include "bridge.h"
 #include "views.h"
-#include "sokol_log.h"
+#include "../gpu/door.h"
+#include "../platform/swapchain.h"
+#include "../webgpu/metal/metal.h"
 
 static id<MTLDevice> g_device;
 
@@ -36,14 +34,8 @@ void voidPlatformDeviceEnsure(void) {
 	if (g_device) return;
 	g_device = MTLCreateSystemDefaultDevice();
 	if (!g_device) voidFail("MTLCreateSystemDefaultDevice returned nil");
-	sg_desc d = {0};
-	d.environment.metal.device = (__bridge const void *)g_device;
-	d.environment.defaults.color_format = SG_PIXELFORMAT_BGRA8;
-	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = voidViewsSampleCount();
-	d.logger.func = slog_func;
-	sg_setup(&d);
-	if (!sg_isvalid()) voidFail("sg_setup on the Metal device failed");
+	doorSetup((__bridge void *)g_device, NULL, DOOR_PIXEL_FORMAT_BGRA8, DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
+	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
 }
 
 // Void's asset loaders use relative paths ("assets/test.png", "assets/font.ttf").
@@ -113,13 +105,8 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
 	s->drawable = (void *)CFBridgingRetain(drawable);
+	mtlSetDrawable(s->drawable);
 	return 1;
-}
-
-void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
-	swapchain->color_format = SG_PIXELFORMAT_BGRA8;
-	swapchain->metal.current_drawable = ((IosSurface *)surface)->drawable;
-	swapchain->metal.msaa_color_texture = ((IosSurface *)surface)->msaa;
 }
 
 void voidPlatformSurfacePresent(void *surface) {
@@ -139,12 +126,30 @@ void voidPlatformSurfaceDestroy(void *surface) {
 long long voidPlatformSurfaceNative(void *surface) { (void)surface; return 0; }
 
 void voidGfxSetup(void) {
-	if (!sg_isvalid()) voidFail("gfxSetup before voidViewCreate made the Metal device");
+	if (!doorValid()) voidFail("gfxSetup before voidViewCreate made the Metal device");
 }
 
 int voidFbWidth(void) { return voidViewsFbWidth(); }
 int voidFbHeight(void) { return voidViewsFbHeight(); }
 float voidDpiScale(void) { return voidViewsDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
-sg_swapchain voidDriverSwapchain(void) { return voidViewsSwapchain(); }
 void voidDriverPresent(void) { voidViewsPresent(); }
+
+static IosSurface *screenSurface(void) { return (IosSurface *)voidViewsCurrentSurface(); }
+static void *drawableTexture(void *drawable) { return (__bridge void *)((__bridge id<CAMetalDrawable>)drawable).texture; }
+
+int32_t voidSwapchainWidth(void) { return screenSurface()->w; }
+int32_t voidSwapchainHeight(void) { return screenSurface()->h; }
+int32_t voidSwapchainSampleCount(void) { return voidViewsSampleCount(); }
+
+void *voidSwapchainRenderView(void) {
+	const IosSurface *s = screenSurface();
+	return s->msaa ? s->msaa : drawableTexture(s->drawable);
+}
+
+void *voidSwapchainResolveView(void) {
+	const IosSurface *s = screenSurface();
+	return s->msaa ? drawableTexture(s->drawable) : NULL;
+}
+
+void *voidSwapchainDepthStencilView(void) { return NULL; }
