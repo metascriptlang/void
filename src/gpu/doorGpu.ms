@@ -884,7 +884,8 @@ export function doorEnvironmentColorFormat(): int32 { return pixelFormatOf(envir
 export function doorEnvironmentDepthFormat(): int32 { return pixelFormatOf(environment().depthFormat, "depth format"); }
 export function doorEnvironmentSampleCount(): int32 { return environment().sampleCount; }
 export function doorFrameIndex(): uint32 { return device.frameIndex(); }
-export function doorLiveBuffers(): int32 { return device.liveCounts().buffers; }
+function doorOwnedBuffers(): int32 { return uniformRing.isAlive() ? 1 : 0; }
+export function doorLiveBuffers(): int32 { return device.liveCounts().buffers - doorOwnedBuffers(); }
 export function doorLiveImages(): int32 { return device.liveCounts().textures; }
 export function doorLiveViews(): int32 { return device.liveCounts().views; }
 export function doorLiveSamplers(): int32 { return device.liveCounts().samplers; }
