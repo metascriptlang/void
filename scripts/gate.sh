@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -618,6 +618,15 @@ if [ "$(uname -s)" = Darwin ] && [ -x out/twoViews.exe ]; then
 		fail "a view frame autoreleases its drawable with no pool in place — see out/gate-two-views-pools.err"
 	else
 		pass "a view frame releases its drawable in its own autorelease pool"
+	fi
+fi
+if [ "$(uname -s)" = Darwin ]; then
+	if "$MSC" build tests/integration/framePacing.ms --output=out/framePacing.exe > out/gate-frame-pacing.log 2>&1 \
+			&& out/framePacing.exe > out/gate-frame-pacing-run.log 2>&1; then
+		pass "$(grep -E '^PASS frame pacing' out/gate-frame-pacing-run.log | sed 's/^PASS //')"
+	else
+		fail "frame pacing — see out/gate-frame-pacing.log and out/gate-frame-pacing-run.log"
+		grep -E '^FAIL' out/gate-frame-pacing-run.log | sed 's/^/      /' || true
 	fi
 fi
 outside_status=0
