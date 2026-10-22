@@ -158,14 +158,17 @@ export function play(this ref e: ParticleEmitter2D, emitter: Transform2D): void 
 
 export function stop(this ref e: ParticleEmitter2D, clear: boolean): void {
 	stopEffect(e.effect, clear);
-	if (clear) { e.redraw(identity2d()); }
+	if (clear) { e.redraw(identity2d(), 0.0); }
 }
 
 // Advances the effect by `dt` seconds with the emitter at `emitter` in the node's frame, then
-// rewrites the node's cells. Returns the live particle count.
-export function update(this ref e: ParticleEmitter2D, dt: float64, emitter: Transform2D): Result<int32, ParticleSystemError> {
+// rewrites the node's cells. `viewportWidth` is the width of the view in the node's units, the unit
+// of minParticleSize and maxParticleSize. Returns the live particle count.
+export function update(
+	this ref e: ParticleEmitter2D, dt: float64, emitter: Transform2D, viewportWidth: float32,
+): Result<int32, ParticleSystemError> {
 	const count = try updateEffect(e.effect, dt, liftY(emitter));
-	e.redraw(emitter);
+	e.redraw(emitter, viewportWidth);
 	return Result.ok(count);
 }
 
@@ -177,7 +180,15 @@ function nodeTurn(n: NodeRef): float32 {
 	return Math.atan2((across.y - origin.y) as float64, (across.x - origin.x) as float64) as float32;
 }
 
-function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
+// The factor that brings a quad of size w x h whose larger side lies outside [lo, hi] to the limit.
+function sizeFit(w: float32, h: float32, lo: float32, hi: float32): float32 {
+	const big: float32 = w > h ? w : h;
+	if (big > hi) { return hi / big; }
+	if (big < lo && big > 0.0) { return lo / big; }
+	return 1.0;
+}
+
+function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D, viewportWidth: float32): void {
 	e.cells.length = 0;
 	const nodeTurned: float32 = nodeTurn(e.node);
 	const emitterTurned: float32 = Math.atan2(emitter.b as float64, emitter.a as float64) as float32;
@@ -190,6 +201,8 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
 		const renderer = sys.asset.renderer;
 		const flip = renderer.flip;
 		const pivot = renderer.pivot;
+		const lo: float32 = renderer.minParticleSize * viewportWidth;
+		const hi: float32 = renderer.maxParticleSize * viewportWidth;
 		const freeform: boolean = isFreeform(renderer);
 		const stretch: boolean = renderer.renderMode == RenderMode.Stretch && !freeform;
 		const worldSpace: boolean = sys.asset.main.simulationSpace == SimulationSpace.World;
@@ -204,8 +217,13 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D): void {
 			const seed: uint32 = sys.seeds[i];
 			if (unitDraw(seed, DRAW_FLIP_U) < flipU) { t = { ...t, u0: t.u1, u1: t.u0 }; }
 			if (unitDraw(seed, DRAW_FLIP_V) < flipV) { t = { ...t, v0: t.v1, v1: t.v0 }; }
-			const w: float32 = sys.data[SIZE_X * cap + i];
-			const h: float32 = sys.data[SIZE_Y * cap + i];
+			const rawW: float32 = sys.data[SIZE_X * cap + i];
+			const rawH: float32 = sys.data[SIZE_Y * cap + i];
+			// Unity scales a quad to its size limits; a stretched one only in width, as its length is
+			// built from the size it started with. A freeform quad is not clamped (not measured).
+			const fit: float32 = freeform ? 1.0 : sizeFit(rawW, rawH, lo, hi);
+			const w: float32 = rawW * fit;
+			const h: float32 = stretch ? rawH : rawH * fit;
 			const vx: float32 = sys.data[MOVE_X * cap + i];
 			const vy: float32 = sys.data[MOVE_Y * cap + i];
 			let x: float32 = sys.data[POS_X * cap + i];

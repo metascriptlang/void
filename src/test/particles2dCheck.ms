@@ -49,7 +49,7 @@ test "a particle draws as one centred cell of its size and colour where the emit
 	const s = fresh();
 	let e = emitter(s, single(), tile(fakeTexture(5), 16.0, 16.0));
 	e.play(at(100.0, 50.0));
-	const n = e.update(1.0 / 60.0, at(100.0, 50.0));
+	const n = e.update(1.0 / 60.0, at(100.0, 50.0), VIEW);
 	assert n.ok && n.value == 1;
 	assert e.node.count() == 1;
 	const c: TileCell = first(e);
@@ -71,7 +71,7 @@ test "gravity pulls a particle down the screen and +x speed moves it right" {
 	a.shape.radius = 0.0;
 	let e = emitter(s, a, tile(fakeTexture(5), 16.0, 16.0));
 	e.play(identity2d());
-	for (let k = 0; k < 30; k++) { const _n = e.update(1.0 / 60.0, identity2d()); }
+	for (let k = 0; k < 30; k++) { const _n = e.update(1.0 / 60.0, identity2d(), VIEW); }
 	const c: TileCell = first(e);
 	assert c.x > 4.0;
 	assert c.y > 1.0;
@@ -88,7 +88,7 @@ test "the texture sheet picks the frame's quarter of a 2x2 tile" {
 	let e = emitter(s, a, tile(fakeTexture(5), 32.0, 32.0));
 	e.play(identity2d());
 	// At 1.1 s of 2 s the sheet is at 0.55 of 4 frames: frame 2, the bottom-left quarter.
-	for (let k = 0; k < 66; k++) { const _n = e.update(1.0 / 60.0, identity2d()); }
+	for (let k = 0; k < 66; k++) { const _n = e.update(1.0 / 60.0, identity2d(), VIEW); }
 	const c: TileCell = first(e);
 	assert approx(c.tile.w, 16.0) && approx(c.tile.h, 16.0);
 	assert approx(c.tile.u0, 0.0) && approx(c.tile.u1, 0.5);
@@ -101,7 +101,7 @@ test "a system rendered as None draws nothing but still simulates" {
 	a.renderer.renderMode = RenderMode.None;
 	let e = emitter(s, a, tile(fakeTexture(5), 16.0, 16.0));
 	e.play(identity2d());
-	const n = e.update(1.0 / 60.0, identity2d());
+	const n = e.update(1.0 / 60.0, identity2d(), VIEW);
 	assert n.ok && n.value == 1;
 	assert e.node.count() == 0;
 }
@@ -110,7 +110,7 @@ test "a particle whose life ends leaves the node" {
 	const s = fresh();
 	let e = emitter(s, single(), tile(fakeTexture(5), 16.0, 16.0));
 	e.play(identity2d());
-	for (let k = 0; k < 121; k++) { const _n = e.update(1.0 / 60.0, identity2d()); }
+	for (let k = 0; k < 121; k++) { const _n = e.update(1.0 / 60.0, identity2d(), VIEW); }
 	assert e.node.count() == 0;
 }
 
@@ -123,7 +123,7 @@ test "a falling particle's trail draws as a strip of its width down the screen" 
 	a.trails.colorOverTrail = constantColor(rgbaColor(1.0, 1.0, 1.0, 0.5));
 	let e = emitter(s, a, tile(fakeTexture(5), 16.0, 16.0));
 	e.play(at(100.0, 50.0));
-	for (let k = 0; k < 20; k++) { const n = e.update(1.0 / 60.0, at(100.0, 50.0)); }
+	for (let k = 0; k < 20; k++) { const n = e.update(1.0 / 60.0, at(100.0, 50.0), VIEW); }
 	const g: NodeRef = e.trailNodes[0];
 	const mesh: float32[] = s.meshes[s.payloads[g.id.index]].mesh;
 	const vertices: int32 = (mesh.length as int32) / 8;
@@ -143,6 +143,8 @@ test "a falling particle's trail draws as a strip of its width down the screen" 
 
 const CORNER_TOL: float32 = 1e-3;
 const UNITY_DT: float64 = 0.1;
+// A view wide enough that no default size limit (minParticleSize 0, maxParticleSize 0.5) reaches a test particle.
+const VIEW: float32 = 1000.0;
 
 struct UnityQuad {
 	vx: float32;
@@ -160,6 +162,9 @@ struct UnityQuad {
 	freeform: boolean;
 	rotateWith: boolean;
 	allowRoll: boolean;
+	minSize: float32;
+	maxSize: float32;
+	viewport: float32;
 }
 
 function quad(vx: float32, vy: float32): UnityQuad {
@@ -167,6 +172,7 @@ function quad(vx: float32, vy: float32): UnityQuad {
 		vx: vx, vy: vy, forceY: 0.0, width: 1.0, height: 1.0, rotationDegrees: 0.0,
 		mode: RenderMode.Billboard, alignment: RenderAlignment.View, lengthScale: 1.0,
 		velocityScale: 0.0, pivotX: 0.0, pivotY: 0.0, freeform: false, rotateWith: true, allowRoll: true,
+		minSize: 0.0, maxSize: 0.5, viewport: VIEW,
 	};
 }
 
@@ -196,6 +202,8 @@ function unityAsset(q: UnityQuad): ParticleSystemAsset {
 	a.renderer.freeformStretching = q.freeform;
 	a.renderer.rotateWithStretchDirection = q.rotateWith;
 	a.renderer.allowRoll = q.allowRoll;
+	a.renderer.minParticleSize = q.minSize;
+	a.renderer.maxParticleSize = q.maxSize;
 	return a;
 }
 
@@ -228,7 +236,7 @@ function cornerMisses(name: string, q: UnityQuad): int32 {
 	const frames = golden(name).getDynamicField("frames");
 	let misses: int32 = 0;
 	for (let k = 1; k < (frames.length() as int32); k++) {
-		const n = e.update(UNITY_DT, identity2d());
+		const n = e.update(UNITY_DT, identity2d(), q.viewport);
 		if (!n.ok || n.value != 1) { return 1000; }
 		const baked = frames.at(k).getDynamicField("bakedQuads");
 		const wanted: int32 = baked.length() as int32;
@@ -303,7 +311,7 @@ test "stretch: a particle that does not move draws nothing, as Unity's quad coll
 	const s = fresh();
 	let e = emitter(s, unityAsset(stretched(0.0, 0.0, 1.0, 0.5)), tile(fakeTexture(5), 16.0, 16.0));
 	e.play(identity2d());
-	const n = e.update(UNITY_DT, identity2d());
+	const n = e.update(UNITY_DT, identity2d(), VIEW);
 	assert n.ok && n.value == 1;
 	assert e.node.count() == 0;
 }
@@ -340,7 +348,7 @@ test "billboard with Velocity alignment turns the sprite's x axis along the velo
 	let e = emitter(s, unityAsset(q), tile(fakeTexture(5), 16.0, 16.0));
 	e.effect.clock.fixedStep = UNITY_DT / 4.0;
 	e.play(identity2d());
-	const n = e.update(UNITY_DT, identity2d());
+	const n = e.update(UNITY_DT, identity2d(), VIEW);
 	assert n.ok && n.value == 1;
 	const c: TileCell = first(e);
 	// Velocity (3, 4) in y-up is (3, -4) on screen: the x axis points right and up the screen.
@@ -417,6 +425,48 @@ test "freeform stretch: pivot shifts the quad before it is rotated and stretched
 	assert cornerMisses("stretch_freeform1_rotwith1_pivot", q) == 0;
 }
 
+// The clamp goldens carry their limits and camera in `settings`: the unit is the viewport width,
+// 2 * orthographicSize * aspect.
+function clampMisses(name: string): int32 {
+	const g = golden(name);
+	const st = g.getDynamicField("settings");
+	const stretch: boolean = st.getDynamicField("renderMode").asString() == "Stretch";
+	let q = stretch
+		? stretched(3.0, 4.0, st.getDynamicField("lengthScale").asNumber() as float32, st.getDynamicField("velocityScale").asNumber() as float32)
+		: quad(3.0, 4.0);
+	const size = g.getDynamicField("frames").at(1).getDynamicField("particles").at(0).getDynamicField("startSize");
+	q.width = size.at(0).asNumber() as float32;
+	q.height = size.at(1).asNumber() as float32;
+	q.minSize = st.getDynamicField("minParticleSize").asNumber() as float32;
+	q.maxSize = st.getDynamicField("maxParticleSize").asNumber() as float32;
+	q.viewport = 2.0 * (st.getDynamicField("orthographicSize").asNumber() as float32)
+		* (st.getDynamicField("cameraAspect").asNumber() as float32);
+	return cornerMisses(name, q);
+}
+
+test "billboard: a larger side above maxParticleSize * viewport width scales the quad uniformly down to it" {
+	assert clampMisses("billboard_clamp_max_big") == 0;
+	assert clampMisses("billboard_clamp_max_tall") == 0;
+	assert clampMisses("billboard_clamp_max_wide") == 0;
+	assert clampMisses("billboard_clamp_max_big_aspect05") == 0;
+	assert clampMisses("billboard_clamp_max_big_aspect1") == 0;
+	assert clampMisses("billboard_clamp_max_big_ortho5") == 0;
+}
+
+test "billboard: a larger side below minParticleSize * viewport width scales the quad uniformly up to it, one inside is untouched" {
+	assert clampMisses("billboard_clamp_min_small") == 0;
+	assert clampMisses("billboard_clamp_min_small_aspect05") == 0;
+	assert clampMisses("billboard_clamp_min_thin") == 0;
+	assert clampMisses("billboard_clamp_inside") == 0;
+}
+
+test "stretch: the size limits take the width only, the length keeps the unclamped size" {
+	assert clampMisses("stretch_clamp_max") == 0;
+	assert clampMisses("stretch_clamp_max_big") == 0;
+	assert clampMisses("stretch_clamp_max_wide") == 0;
+	assert clampMisses("stretch_clamp_min") == 0;
+}
+
 test "billboard: allowRoll has no effect under an orthographic camera that looks down -z" {
 	let q = quad(3.0, 4.0);
 	q.rotationDegrees = 45.0;
@@ -455,7 +505,7 @@ function movedMisses(name: string, alignment: RenderAlignment, worldSpace: boole
 	const si: float32 = sinf(EMITTER_TURN);
 	let misses: int32 = 0;
 	for (let k = 1; k < (frames.length() as int32); k++) {
-		const n = e.update(UNITY_DT, movedEmitter());
+		const n = e.update(UNITY_DT, movedEmitter(), VIEW);
 		if (!n.ok || n.value != 1 || e.node.count() != 1) { return 1000; }
 		const c: TileCell = first(e);
 		const m: Transform2D = trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
