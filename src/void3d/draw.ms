@@ -43,12 +43,20 @@ import {
 	contextGeneration,
 	frameIndex,
 	makeSampler,
+	makeSamplerEx,
+	anisotropyPortable,
 	destroyView,
 	destroySampler,
 	passState,
 } from "../gpu/door";
 import { FilterMode, Wrap, BlendMode, RenderState } from "../gpu/state";
 import { Texture, TextureError, DetachedHandles } from "../gpu/texture";
+import {
+	TextureMipData,
+	TextureSampler2D,
+	TextureSamplerError,
+	SamplerCall,
+} from "./textureMip";
 import {
 	TextureData,
 	TextureId,
@@ -61,6 +69,11 @@ export struct GpuTexture {
 	texture: Texture | null;
 	sampler: uint32;
 	samplerGeneration: int32;
+}
+
+export struct MipSampler {
+	sampling: TextureSampler2D;
+	id: uint32;
 }
 
 export struct DoomedTexture {
@@ -252,6 +265,8 @@ export interface DrawContext {
 	doomedTextures: Vec<DoomedTexture>;
 	samplers: Vec<uint32>;
 	samplerGeneration: int32;
+	textureMips: Vec<TextureMipData>;
+	mipSamplers: Vec<MipSampler>;
 	uniforms: UniformPool;
 	doomed: Vec<DoomedBuffer>;
 	pipelines: PipelineCache;
@@ -359,6 +374,8 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		doomedTextures: [],
 		samplers: samplers,
 		samplerGeneration: 0,
+		textureMips: [],
+		mipSamplers: [],
 		uniforms: UniformPool.withCapacity(capacity),
 		doomed: [],
 		pipelines: PipelineCache.empty(),
@@ -1224,15 +1241,61 @@ export function samplerSlot(filter: FilterMode, wrap: Wrap): int32 {
 
 // Heaps' DirectXDriver shares one sampler state per setting (`samplerStates`), as PipelineCache
 // shares a pipeline per key, and like it the cache belongs to one GPU context.
-function samplerFor(context: DrawContext, filter: FilterMode, wrap: Wrap): uint32 {
+function refreshSamplers(context: DrawContext): void {
 	let generation: int32 = contextGeneration();
 	if (context.samplerGeneration != generation) {
 		for (let i = 0; i < SAMPLER_SETTINGS; i++) { context.samplers[i] = 0; }
+		while ((context.mipSamplers.length as int32) > 0) { context.mipSamplers.pop(); }
 		context.samplerGeneration = generation;
 	}
+}
+
+function samplerFor(context: DrawContext, filter: FilterMode, wrap: Wrap): uint32 {
+	refreshSamplers(context);
 	let at: int32 = samplerSlot(filter, wrap);
 	if (context.samplers[at] == 0) { context.samplers[at] = makeSampler(filter, wrap); }
 	return context.samplers[at];
+}
+
+// One sampler per distinct sampling, shared as the six above are; 0 when the door refuses it.
+function mipSamplerFor(context: DrawContext, sampling: TextureSampler2D): uint32 {
+	refreshSamplers(context);
+	for (const entry of context.mipSamplers) {
+		if (entry.sampling.sameSampling(sampling)) { return entry.id; }
+	}
+	const call: SamplerCall = sampling.doorCall();
+	const id: uint32 = makeSamplerEx(
+		call.minFilter, call.magFilter, call.mipFilter, call.wrapU, call.wrapV,
+		call.minLod, call.maxLod, call.maxAnisotropy,
+	);
+	if (id != 0) { context.mipSamplers.push({ sampling: sampling, id: id }); }
+	return id;
+}
+
+function hasMips(this context: DrawContext, index: int32): boolean {
+	return index < (context.textureMips.length as int32) &&
+		(context.textureMips[index].levels.length as int32) > 0;
+}
+
+function samplerAt(context: DrawContext, index: int32): uint32 {
+	if (context.hasMips(index)) {
+		return mipSamplerFor(context, context.textureMips[index].sampler);
+	}
+	return samplerFor(context, context.textureData[index].filter, context.textureData[index].wrap);
+}
+
+function uploadPixels(
+	context: DrawContext,
+	index: int32,
+	owner: Texture,
+): Result<int32, TextureError> {
+	if (context.hasMips(index)) {
+		return owner.uploadMips(
+			context.textureMips[index].pixels,
+			context.textureMips[index].levels.length as int32,
+		);
+	}
+	return owner.upload(context.textureData[index].pixels);
 }
 
 const VACANT_TEXTURE: GpuTexture = { texture: null, sampler: 0, samplerGeneration: 0 };
@@ -1257,18 +1320,14 @@ function uploadError(error: TextureError): TextureUploadError {
 }
 
 function uploadTexture(context: DrawContext, index: int32): Result<int32, TextureUploadError> {
-	const sampler: uint32 = samplerFor(
-		context,
-		context.textureData[index].filter,
-		context.textureData[index].wrap,
-	);
+	const sampler: uint32 = samplerAt(context, index);
 	if (sampler == 0) { return Result.err(TextureUploadError.SamplerRefused); }
 	const owner: Texture = Texture.create(
 		context.textureData[index].width,
 		context.textureData[index].height,
 		null,
 	);
-	const uploaded: Result<int32, TextureError> = owner.upload(context.textureData[index].pixels);
+	const uploaded: Result<int32, TextureError> = uploadPixels(context, index, owner);
 	if (!uploaded.ok) {
 		owner.close();
 		return Result.err(uploadError(uploaded.error));
@@ -1286,6 +1345,9 @@ function freeTexture(context: DrawContext, index: int32): void {
 	if (owner !== null) { doomOwner(context, owner); }
 	context.textures[index] = VACANT_TEXTURE;
 	context.textureData[index] = TextureData.empty();
+	if (index < (context.textureMips.length as int32)) {
+		context.textureMips[index] = noMips();
+	}
 	context.textureHolders[index] = 0;
 	context.texturePins[index] = 0;
 	context.textureTargets[index] = null;
@@ -1303,6 +1365,49 @@ export function addTexture(
 	if (!data.isWellFormed()) { return Result.err(TextureUploadError.BadSize); }
 	let index: int32 = claimTexture(context, data, null, TextureAlpha.Straight);
 	let uploaded: Result<int32, TextureUploadError> = uploadTexture(context, index);
+	if (!uploaded.ok) {
+		freeTexture(context, index);
+		return Result.err(uploaded.error);
+	}
+	return Result.ok(context.issuedTextureAt(index));
+}
+
+function noMips(): TextureMipData {
+	return {
+		levels: [],
+		pixels: [],
+		sampler: TextureSampler2D.unmipped(FilterMode.Linear, Wrap.Clamp),
+	};
+}
+
+// A texture with an explicit mip chain and its own sampler (Heaps' `mipMap`, `filter`, `wrap`,
+// `anisotropicMaxLevel`). Takes a copy of `mips`; the same upload and rebuild as `addTexture`,
+// from the chain. An anisotropic sampler is refused on a backend that cannot promise it.
+export function addTextureMip(
+	context: DrawContext,
+	mips: TextureMipData,
+): Result<TextureId, TextureUploadError> {
+	if (context.closed) { stopOnClosedContext("addTextureMip"); }
+	const levels: int32 = mips.levels.length as int32;
+	if (levels < 1) { return Result.err(TextureUploadError.BadSize); }
+	const admitted: Result<void, TextureSamplerError> =
+		mips.sampler.admitFor(levels, anisotropyPortable());
+	if (!admitted.ok) {
+		return Result.err(admitted.error == TextureSamplerError.AnisotropyNeedsCapability
+			? TextureUploadError.AnisotropyUnavailable
+			: TextureUploadError.SamplerRefused);
+	}
+	const base: TextureData = {
+		pixels: [],
+		width: mips.levels[0].width,
+		height: mips.levels[0].height,
+		filter: mips.sampler.minFilter,
+		wrap: mips.sampler.wrapU,
+	};
+	const index: int32 = claimTexture(context, base, null, TextureAlpha.Straight);
+	while ((context.textureMips.length as int32) <= index) { context.textureMips.push(noMips()); }
+	context.textureMips[index] = mips;
+	const uploaded: Result<int32, TextureUploadError> = uploadTexture(context, index);
 	if (!uploaded.ok) {
 		freeTexture(context, index);
 		return Result.err(uploaded.error);
@@ -1432,8 +1537,7 @@ export function rebuildTextures(context: DrawContext): int32 {
 		const imageStale: boolean = owner !== null && owner.generation != generation;
 		if (context.textures[i].samplerGeneration == generation && !imageStale) { continue; }
 		if (context.textures[i].samplerGeneration != generation) {
-			const sampler: uint32 =
-				samplerFor(context, context.textureData[i].filter, context.textureData[i].wrap);
+			const sampler: uint32 = samplerAt(context, i);
 			if (sampler == 0) {
 				if (owner !== null) { context.textures[i].sampler = 0; }
 				continue;
@@ -1442,7 +1546,7 @@ export function rebuildTextures(context: DrawContext): int32 {
 			context.textures[i].samplerGeneration = generation;
 		}
 		if (owner !== null && imageStale) {
-			if (!owner.upload(context.textureData[i].pixels).ok) { continue; }
+			if (!uploadPixels(context, i, owner).ok) { continue; }
 		}
 		count = count + 1;
 	}
@@ -1761,6 +1865,10 @@ export function closeContext(context: DrawContext): void {
 		}
 	}
 	for (let i = 0; i < SAMPLER_SETTINGS; i++) { context.samplers[i] = 0; }
+	if (context.samplerGeneration == generation) {
+		for (const entry of context.mipSamplers) { destroySampler(entry.id); }
+	}
+	while ((context.mipSamplers.length as int32) > 0) { context.mipSamplers.pop(); }
 	if (!context.pipelines.closed) { closePipelines(context.pipelines); }
 	if (!context.uniforms.closed) { closeUniformPool(context.uniforms); }
 	context.closed = true;

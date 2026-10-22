@@ -3,6 +3,7 @@ import { FilterMode, Wrap } from "../gpu/state";
 export const MAX_TEXTURE_MIP_LEVELS: int32 = 16;
 const MAX_SOKOL_SURFACE_WORDS: int64 = 536870911;
 const MAX_TEXTURE_PIXEL_OFFSET: int64 = 2147483647;
+const SMALLEST_POSITIVE_LOD: float32 = 1.17549435e-38;
 
 export enum TextureMipFilter {
 	None,
@@ -85,12 +86,37 @@ export function validate(
 	return Result.ok(null);
 }
 
+export function unmipped(
+	this typeof TextureSampler2D,
+	filter: FilterMode,
+	wrap: Wrap,
+): TextureSampler2D {
+	return {
+		minFilter: filter,
+		magFilter: filter,
+		mipFilter: TextureMipFilter.None,
+		wrapU: wrap,
+		wrapV: wrap,
+		minLod: 0.0,
+		maxLod: 0.0,
+		maxAnisotropy: 1,
+	};
+}
+
 export function admitPortable(
 	this sampler: TextureSampler2D,
 	levelCount: int32,
 ): Result<void, TextureSamplerError> {
+	return sampler.admitFor(levelCount, false);
+}
+
+export function admitFor(
+	this sampler: TextureSampler2D,
+	levelCount: int32,
+	anisotropyAvailable: boolean,
+): Result<void, TextureSamplerError> {
 	const checked = try sampler.validate(levelCount);
-	if (sampler.maxAnisotropy > 1) {
+	if (sampler.maxAnisotropy > 1 && !anisotropyAvailable) {
 		return Result.err(TextureSamplerError.AnisotropyNeedsCapability);
 	}
 	return Result.ok(null);
@@ -101,6 +127,32 @@ export function sameSampling(this sampler: TextureSampler2D, other: TextureSampl
 		sampler.mipFilter == other.mipFilter && sampler.wrapU == other.wrapU &&
 		sampler.wrapV == other.wrapV && sampler.minLod == other.minLod &&
 		sampler.maxLod == other.maxLod && sampler.maxAnisotropy == other.maxAnisotropy;
+}
+
+// The arguments gpu/door.ms makeSamplerEx takes: enum ordinals, with sokol's max_lod of 0 (its
+// unset, FLT_MAX) written as the smallest positive lod, which samples level 0 all the same.
+export struct SamplerCall {
+	minFilter: int32;
+	magFilter: int32;
+	mipFilter: int32;
+	wrapU: int32;
+	wrapV: int32;
+	minLod: float32;
+	maxLod: float32;
+	maxAnisotropy: int32;
+}
+
+export function doorCall(this sampler: TextureSampler2D): SamplerCall {
+	return {
+		minFilter: sampler.minFilter as int32,
+		magFilter: sampler.magFilter as int32,
+		mipFilter: sampler.mipFilter as int32,
+		wrapU: sampler.wrapU as int32,
+		wrapV: sampler.wrapV as int32,
+		minLod: sampler.minLod,
+		maxLod: sampler.maxLod > 0.0 ? sampler.maxLod : SMALLEST_POSITIVE_LOD,
+		maxAnisotropy: sampler.maxAnisotropy,
+	};
 }
 
 export struct TextureMipLevel {

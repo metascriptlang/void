@@ -92,6 +92,7 @@ import "./storeCheck";
 import "./closeCheck";
 import "./textureCheck";
 import "./textureMipCheck";
+import "./textureMipUploadCheck";
 import "./pbrResponseCheck";
 import "./pbrLitCheck";
 import "./lightShapeCheck";
