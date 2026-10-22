@@ -1,14 +1,5 @@
 // Void capture — see capture.h. Moved out of the gitignored out/tmp/capture/capture.c, which
 // is the reason no gate of the last three sessions can be re-run by anyone (docs/TESTING.md).
-//
-// The D3D11 path is that file's, unchanged in mechanism: reach the resolved swapchain buffer
-// through the bridge's device getters, clone its desc as STAGING | CPU_ACCESS_READ,
-// CopyResource, Map. It runs after the frame's submit, by which point the door has resolved the
-// swapchain pass into that buffer, so the bytes are the frame that was just drawn.
-//
-// The BGRA -> RGBA swizzle below is hand-written and nothing in the renderer checks it.
-// What checks it is tests/golden/scenes.ms "harness/solid", whose expected pixels are
-// arithmetic rather than a capture.
 
 #include "capture.h"
 #include <stdio.h>
@@ -37,7 +28,6 @@
 	#include <dxgi.h>
 	void *voidD3d11Device(void);
 	void *voidD3d11Context(void);
-	void *voidWindowSwapChain(void);
 	static const GUID VOID_TEXTURE2D_IID =
 		{0x6f15aaf2, 0xd208, 0x4e89, {0x9a, 0xb4, 0x48, 0x95, 0x35, 0xd3, 0x4f, 0x9c}};
 #endif
@@ -98,6 +88,12 @@ int voidCaptureBackend(void) {
 	return 0;
 #endif
 }
+
+#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL)
+int32_t doorReadScreen(uint8_t *out, int64_t outLength);
+int32_t voidSwapchainWidth(void);
+int32_t voidSwapchainHeight(void);
+#endif
 
 #if defined(VOID_CAPTURE_D3D11)
 static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
@@ -173,25 +169,13 @@ const char *voidCaptureRenderer(void) {
 
 int voidCaptureGrab(int slot) {
 	stopOnClampedWindow();
-#if defined(VOID_CAPTURE_D3D11)
-	return grabD3D11(slot, (IDXGISwapChain *)voidWindowSwapChain(), 0);
-#elif defined(VOID_CAPTURE_GL)
-	int width = voidFbWidth();
-	int height = voidFbHeight();
+#if defined(VOID_CAPTURE_D3D11) || defined(VOID_CAPTURE_GL)
+	int width = voidSwapchainWidth();
+	int height = voidSwapchainHeight();
 	if (width <= 0 || height <= 0) return 0;
 	uint8_t *out = slotResize(slot, width, height);
 	if (out == NULL) return 0;
-	uint8_t *flip = (uint8_t *)malloc((size_t)width * (size_t)height * 4u);
-	if (!flip) return 0;
-	glPixelStorei(GL_PACK_ALIGNMENT, 1);
-	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, flip);
-	for (int y = 0; y < height; y++) {
-		memcpy(out + (size_t)y * (size_t)width * 4u,
-		       flip + (size_t)(height - 1 - y) * (size_t)width * 4u,
-		       (size_t)width * 4u);
-	}
-	free(flip);
-	return 1;
+	return doorReadScreen(out, (int64_t)width * (int64_t)height * 4);
 #elif defined(VOID_CAPTURE_METAL)
 	int width = voidFbWidth();
 	int height = voidFbHeight();
