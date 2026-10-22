@@ -1,6 +1,8 @@
 // The window's events, IME and title, on the window drivers: Windows (D3D11 and
 // -d:voidGlCore), the browser and the iOS and Android apps. Import beside ./gpu, which compiles their C.
 
+import { VoidAppEventType, VoidMouseCursor } from "../platform/appEvent.h";
+
 @include("bridge.h");
 @include("appText.h");
 
@@ -50,7 +52,7 @@ extern function voidIsFullscreen(): int32;
 extern function voidDroppedFileCount(): int32;
 extern function voidDroppedFilePath(i: int32): string;
 
-// The ordinals of VoidAppEventType in src/platform/appEvent.h: keep the order.
+// Mirrors VoidAppEventType in src/platform/appEvent.h; the test at the end holds every member to it.
 export enum AppEventType {
 	Invalid,
 	KeyDown,
@@ -235,7 +237,42 @@ export function droppedFiles(): string[] {
 	return paths;
 }
 
-test "the ordinals of AppEventType and MouseCursor follow src/platform/appEvent.h" {
-	assert (AppEventType.Preedit as int32) == 24 && (AppEventType.TextInput as int32) == 25;
-	assert (MouseCursor.NotAllowed as int32) == 10;
+test "AppEventType and MouseCursor agree member by member with src/platform/appEvent.h" {
+	assert (AppEventType.Invalid as int32) == (VoidAppEventType.VOID_EVENT_INVALID as int32);
+	assert (AppEventType.KeyDown as int32) == (VoidAppEventType.VOID_EVENT_KEY_DOWN as int32);
+	assert (AppEventType.KeyUp as int32) == (VoidAppEventType.VOID_EVENT_KEY_UP as int32);
+	assert (AppEventType.Char as int32) == (VoidAppEventType.VOID_EVENT_CHAR as int32);
+	assert (AppEventType.MouseDown as int32) == (VoidAppEventType.VOID_EVENT_MOUSE_DOWN as int32);
+	assert (AppEventType.MouseUp as int32) == (VoidAppEventType.VOID_EVENT_MOUSE_UP as int32);
+	assert (AppEventType.MouseScroll as int32) == (VoidAppEventType.VOID_EVENT_MOUSE_SCROLL as int32);
+	assert (AppEventType.MouseMove as int32) == (VoidAppEventType.VOID_EVENT_MOUSE_MOVE as int32);
+	assert (AppEventType.MouseEnter as int32) == (VoidAppEventType.VOID_EVENT_MOUSE_ENTER as int32);
+	assert (AppEventType.MouseLeave as int32) == (VoidAppEventType.VOID_EVENT_MOUSE_LEAVE as int32);
+	assert (AppEventType.TouchesBegan as int32) == (VoidAppEventType.VOID_EVENT_TOUCHES_BEGAN as int32);
+	assert (AppEventType.TouchesMoved as int32) == (VoidAppEventType.VOID_EVENT_TOUCHES_MOVED as int32);
+	assert (AppEventType.TouchesEnded as int32) == (VoidAppEventType.VOID_EVENT_TOUCHES_ENDED as int32);
+	assert (AppEventType.TouchesCancelled as int32) == (VoidAppEventType.VOID_EVENT_TOUCHES_CANCELLED as int32);
+	assert (AppEventType.Resized as int32) == (VoidAppEventType.VOID_EVENT_RESIZED as int32);
+	assert (AppEventType.Iconified as int32) == (VoidAppEventType.VOID_EVENT_ICONIFIED as int32);
+	assert (AppEventType.Restored as int32) == (VoidAppEventType.VOID_EVENT_RESTORED as int32);
+	assert (AppEventType.Focused as int32) == (VoidAppEventType.VOID_EVENT_FOCUSED as int32);
+	assert (AppEventType.Unfocused as int32) == (VoidAppEventType.VOID_EVENT_UNFOCUSED as int32);
+	assert (AppEventType.Suspended as int32) == (VoidAppEventType.VOID_EVENT_SUSPENDED as int32);
+	assert (AppEventType.Resumed as int32) == (VoidAppEventType.VOID_EVENT_RESUMED as int32);
+	assert (AppEventType.QuitRequested as int32) == (VoidAppEventType.VOID_EVENT_QUIT_REQUESTED as int32);
+	assert (AppEventType.ClipboardPasted as int32) == (VoidAppEventType.VOID_EVENT_CLIPBOARD_PASTED as int32);
+	assert (AppEventType.FilesDropped as int32) == (VoidAppEventType.VOID_EVENT_FILES_DROPPED as int32);
+	assert (AppEventType.Preedit as int32) == (VoidAppEventType.VOID_EVENT_PREEDIT as int32);
+	assert (AppEventType.TextInput as int32) == (VoidAppEventType.VOID_EVENT_TEXT_INPUT as int32);
+	assert (MouseCursor.Default as int32) == (VoidMouseCursor.VOID_CURSOR_DEFAULT as int32);
+	assert (MouseCursor.Arrow as int32) == (VoidMouseCursor.VOID_CURSOR_ARROW as int32);
+	assert (MouseCursor.IBeam as int32) == (VoidMouseCursor.VOID_CURSOR_IBEAM as int32);
+	assert (MouseCursor.Crosshair as int32) == (VoidMouseCursor.VOID_CURSOR_CROSSHAIR as int32);
+	assert (MouseCursor.PointingHand as int32) == (VoidMouseCursor.VOID_CURSOR_POINTING_HAND as int32);
+	assert (MouseCursor.ResizeEW as int32) == (VoidMouseCursor.VOID_CURSOR_RESIZE_EW as int32);
+	assert (MouseCursor.ResizeNS as int32) == (VoidMouseCursor.VOID_CURSOR_RESIZE_NS as int32);
+	assert (MouseCursor.ResizeNWSE as int32) == (VoidMouseCursor.VOID_CURSOR_RESIZE_NWSE as int32);
+	assert (MouseCursor.ResizeNESW as int32) == (VoidMouseCursor.VOID_CURSOR_RESIZE_NESW as int32);
+	assert (MouseCursor.ResizeAll as int32) == (VoidMouseCursor.VOID_CURSOR_RESIZE_ALL as int32);
+	assert (MouseCursor.NotAllowed as int32) == (VoidMouseCursor.VOID_CURSOR_NOT_ALLOWED as int32);
 }
