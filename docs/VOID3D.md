@@ -3941,6 +3941,22 @@ uppercase IDs replayed `face`; it is not31-row acceptance. Corrected IDs reran a
 Heaps/C/JS; kept packet `out/tmp/orientedBounds/oracleRetry2/`. SDKafcd unchanged;
 no whole-index, WebAssembly, GPU, performance, gate or land claim. Prefix2 stays unchanged.
 
+### Frustum against an oriented box: CPU checkpoint
+
+`Frustum3D.intersectsOrientedBounds` ports `h3d.col.Frustum::hasOrientedBounds` over
+`OrientedBounds::testPlane`: per plane, the support radius `Σ half·|n·axis|` added to the
+centre's signed distance, culled when the sum is below zero, all six planes (Heaps'
+`checkNearFar` default). Heaps' plane is `n·p − d` and Void's `n·p + w`, so the oracle hands
+Heaps `d = −w`; plane normals are not normalized on either side. The box is validated by the
+same `validateOrientedBounds` rules as the pair overlap; malformed boxes return its errors.
+Frustum planes are taken as given, as Heaps does. No renderer culling path changes.
+
+Actual missing-export red (BUILD `afcd22f19`, `out/m6FrustumOrientedBoundsRedAfcd22f1920261021.*`),
+then on BUILD `81084f1bb` the single-file check **305/305** and real Heaps **19/19** cases agree:
+each plane culling, plane contact, a rotated box whose aligned twin is culled at the same
+centre, zero-size points, distant, skewed and unnormalized planes. Receipts
+`out/m5FrustumObb{Green,Regen,Oracle}20261022.*`. No index, gate, JS, GPU or perf claim.
+
 ### World-line miter math: independent CPU checkpoint
 
 `worldGraphicsMiter` evaluates only `h3d.scene.Graphics::flushLine`'s joined offset from
