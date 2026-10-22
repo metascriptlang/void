@@ -184,6 +184,7 @@ export class ShaderExpr {
 	binary: BinaryOp = BinaryOp.Add;
 	intrinsic: Intrinsic = Intrinsic.Abs;
 	components: int32[] = [];
+	rgba: boolean = false;
 	operands: ShaderExpr[] = [];
 }
 
@@ -351,6 +352,17 @@ export class ShaderEntry {
 	workgroupSize: int32[] = [1, 1, 1];
 }
 
+export enum DeclarationKind {
+	Struct,
+	Constant,
+	Function,
+}
+
+export class ShaderDeclaration {
+	kind: DeclarationKind = DeclarationKind.Struct;
+	index: int32 = -1;
+}
+
 export class ShaderModule {
 	features: string[] = [];
 	structs: ShaderStruct[] = [];
@@ -359,6 +371,7 @@ export class ShaderModule {
 	ios: ShaderIo[] = [];
 	functions: ShaderFunction[] = [];
 	entries: ShaderEntry[] = [];
+	declarations: ShaderDeclaration[] = [];
 }
 
 export function scalarType(scalar: ScalarKind): ShaderType {
@@ -633,6 +646,14 @@ export function irErrors(m: ShaderModule): string[] {
 		const owner = "function '" + f.name + "'";
 		conditionErrors(c, f.condition, owner);
 		for (const s of f.body) { stmtErrors(c, s, f, owner); }
+	}
+	for (const d of m.declarations) {
+		const count = match (d.kind) {
+			DeclarationKind.Struct => m.structs.length,
+			DeclarationKind.Constant => m.constants.length,
+			DeclarationKind.Function => m.functions.length,
+		};
+		inRange(c, d.index, count as int32, d.kind.toString().toLowerCase(), "declarations");
 	}
 	let stages: ShaderStage[] = [];
 	for (const e of m.entries) {
