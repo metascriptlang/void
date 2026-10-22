@@ -73,8 +73,11 @@ function fract(x: float32): float32 {
 }
 
 // One multi-mode value in [0, 1]: Random, Loop, PingPong or BurstSpread, then quantized by spread.
+// BurstSpread reaches both ends of an open range and stops one step short of closing a full
+// circle (tests/unity/goldens/shape_circle_arc180_burstspread4, _arc360_).
 function multiMode(
 	mode: ShapeMultiModeValue, spread: float32, timer: float32, random: float32, slot: ShapeSlot,
+	closed: boolean,
 ): float32 {
 	let u: float32 = match (mode) {
 		ShapeMultiModeValue.Random => random,
@@ -83,8 +86,10 @@ function multiMode(
 			const x: float32 = fract(timer * 0.5) * 2.0;
 			return x > 1.0 ? 2.0 - x : x;
 		},
-		ShapeMultiModeValue.BurstSpread =>
-			slot.count > 0 ? (slot.index as float32) / (slot.count as float32) : 0.0,
+		ShapeMultiModeValue.BurstSpread => {
+			const steps: int32 = closed ? slot.count : slot.count - 1;
+			return steps > 0 ? (slot.index as float32) / (steps as float32) : 0.0;
+		},
 	};
 	if (spread > 0.0) { u = (Math.floor((u / spread) as float64) as float32) * spread; }
 	return u;
@@ -110,13 +115,13 @@ function shellFraction(u: float32, thickness: float32, dimensions: int32): float
 
 function arcAngle(shape: ShapeModule, seed: uint32, slot: ShapeSlot): float32 {
 	const u: float32 =
-		multiMode(shape.arcMode, shape.arcSpread, slot.arcTimer, unitDraw(seed, DRAW_ARC), slot);
+		multiMode(shape.arcMode, shape.arcSpread, slot.arcTimer, unitDraw(seed, DRAW_ARC), slot, shape.arc >= 360.0);
 	return u * shape.arc * DEGREE;
 }
 
 function radialFraction(shape: ShapeModule, seed: uint32, slot: ShapeSlot, dimensions: int32): float32 {
 	const u: float32 = multiMode(
-		shape.radiusMode, shape.radiusSpread, slot.radiusTimer, unitDraw(seed, DRAW_RADIUS), slot,
+		shape.radiusMode, shape.radiusSpread, slot.radiusTimer, unitDraw(seed, DRAW_RADIUS), slot, false,
 	);
 	return shellFraction(u, shape.radiusThickness, dimensions);
 }
@@ -177,7 +182,7 @@ function rawSample(shape: ShapeModule, seed: uint32, slot: ShapeSlot): ShapeSamp
 		},
 		ShapeType.SingleSidedEdge => {
 			const u: float32 = multiMode(
-				shape.radiusMode, shape.radiusSpread, slot.radiusTimer, unitDraw(seed, DRAW_RADIUS), slot,
+				shape.radiusMode, shape.radiusSpread, slot.radiusTimer, unitDraw(seed, DRAW_RADIUS), slot, false,
 			);
 			return { position: vec3((u * 2.0 - 1.0) * shape.radius, 0.0, 0.0), direction: vec3(0.0, 1.0, 0.0) };
 		},
