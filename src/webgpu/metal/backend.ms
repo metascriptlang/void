@@ -20,6 +20,10 @@ import {
 	GPUColorWrite,
 	GPUCommandBuffer,
 	GPUCommandEncoder,
+	GPUComputePassDescriptor,
+	GPUComputePassEncoder,
+	GPUComputePipeline,
+	GPUComputePipelineDescriptor,
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
@@ -1645,3 +1649,10 @@ export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: in
 export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> { stop("getMappedRange is not ported to metal yet"); return []; }
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void { stop("writeMappedRange is not ported to metal yet"); }
 export function unmap(buffer: GPUBuffer): void { stop("unmap is not ported to metal yet"); }
+export function createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline { stop("createComputePipeline is not ported to metal yet"); return { id: 0 }; }
+export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder { stop("beginComputePass is not ported to metal yet"); return { id: 0 }; }
+export function setComputePipeline(pipeline: GPUComputePipeline): void { stop("setPipeline on a compute pass is not ported to metal yet"); }
+export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void { stop("setBindGroup on a compute pass is not ported to metal yet"); }
+export function dispatchWorkgroups(x: int32, y: int32, z: int32): void { stop("dispatchWorkgroups is not ported to metal yet"); }
+export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void { stop("dispatchWorkgroupsIndirect is not ported to metal yet"); }
+export function endComputePass(): void { stop("end on a compute pass is not ported to metal yet"); }
