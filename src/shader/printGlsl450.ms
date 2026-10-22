@@ -377,6 +377,8 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.TextureLoad => "texelFetch",
 		Intrinsic.TextureStore => "imageStore",
 		Intrinsic.TextureDimensions => "textureSize",
+		Intrinsic.TextureSampleCompare => "texture",
+		Intrinsic.TextureSampleCompareLevel => "textureLod",
 	};
 }
 
@@ -400,7 +402,24 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		Intrinsic.TextureSample => layered ?
 			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 			"texture(" + sampled + ", " + args[2] + ")",
+		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
 		_ => intrinsicName(e.intrinsic) + all,
+	};
+}
+
+function compared(e: ShaderExpr, args: string[]): string {
+	const level = e.intrinsic == Intrinsic.TextureSampleCompareLevel;
+	const coords = args[2] + ", " + args[3];
+	const pair = "(" + args[0] + ", " + args[1] + ")";
+	return match (e.operands[0].type.shape) {
+		TextureShape.Depth2dArray => level ? "textureGrad(sampler2DArrayShadow" + pair +
+			", vec4(" + coords + "), vec2(0.0), vec2(0.0))" :
+			"texture(sampler2DArrayShadow" + pair + ", vec4(" + coords + "))",
+		TextureShape.DepthCube => level ? "textureGrad(samplerCubeShadow" + pair + ", vec4(" +
+			coords + "), vec3(0.0), vec3(0.0))" :
+			"texture(samplerCubeShadow" + pair + ", vec4(" + coords + "))",
+		_ => level ? "textureLod(sampler2DShadow" + pair + ", vec3(" + coords + "), 0.0)" :
+			"texture(sampler2DShadow" + pair + ", vec3(" + coords + "))",
 	};
 }
 
@@ -543,6 +562,9 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 				"    " + declared(p, f.type, f.name) + ";\n").join("") + "};\n",
 		ResourceKind.Texture => r.type.shape == TextureShape.D2Array ?
 			slot + "texture2DArray " + r.name + ";\n" :
+			r.type.shape == TextureShape.Depth2dArray || r.type.shape == TextureShape.DepthCube ?
+			"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
+				TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n" :
 			r.type.scalar == ScalarKind.U32 ?
 			"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
 			(r.sampleType == SampleType.Float ? "" : "@image_sample_type " + r.name + " " +
