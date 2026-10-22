@@ -535,9 +535,12 @@ model.
 - **Traps**:
   - Rotations are radians in the file.
   - `frameOverTime` is a fraction.
-  - Bursts use `cycleCount` but store `m_RepeatCount` and `m_InvProbability` (PSS:404-455).
+  - Bursts store `cycleCount`, `repeatInterval` and `probability` under those names, beside a
+    `countCurve` MinMaxCurve (measured in `tests/unity/prefabs/fountain.prefab`, Unity
+    6000.6.6f1). The C# bindings' `m_RepeatCount` and `m_InvProbability` (PSS:404-455) never
+    reach the file.
   - The Lights `range`/`intensity` keys are bools.
-  - `moveWithTransform` is the simulation space.
+  - `moveWithTransform` holds the simulation space enum: 0 Local, 1 World, 2 Custom.
   - Shape `radius`/`arc` are sub-objects.
   - Obsolete shape types 1/3/7/9/11 appear in old files and map to their base shape with
     `radiusThickness = 0`.
@@ -549,6 +552,12 @@ Unity's fields: about one line per field, plus a curve converter and a gradient 
 References (materials, meshes, sub-emitter systems, textures) need an asset map, so a first importer
 can refuse what it cannot resolve. Unity's own fields are documented only by the C# bindings and the
 saved files; there is no public schema.
+
+**Built**: `importUnityPrefab` in `src/particles/unityPrefab.ms` reads version 8 only, requires
+every field it maps, and returns a `PrefabError` naming the YAML path of anything the asset cannot
+hold (custom simulation space, force field and trigger collider references, nested prefab
+overrides, and the rest listed by the `Unsupported` sites). Its fixtures come from
+`tests/unity/PrefabExport.cs` (`tests/unity/README.md`).
 
 ---
 

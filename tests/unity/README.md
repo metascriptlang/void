@@ -26,6 +26,21 @@ cp "$W/tests/unity/ParticleCapture.cs" "$W/out/unity/ParticleCapture/Assets/Edit
 
 The log ends with `ParticleCapture: done, failed cases = 0`. If any case fails, the exit code is 1.
 
+## Prefab fixtures
+
+`prefabs/*.prefab` are the importer's fixtures (`src/test/particleUnityPrefabCheck.ms`).
+`PrefabExport.cs` builds four effects from code (fountain, curves, subEmitters,
+trailsCollision), saves each with `PrefabUtility.SaveAsPrefabAsset` in the project's default
+text serialization, and copies the file out. Same project as above:
+
+```sh
+cp "$W/tests/unity/PrefabExport.cs" "$W/out/unity/ParticleCapture/Assets/Editor/"
+"$UNITY" -batchmode -nographics -quit -projectPath "$W/out/unity/ParticleCapture" \
+  -executeMethod PrefabExport.Run -prefabDir "$W/tests/unity/prefabs" -logFile "$W/out/unity/prefab.log"
+```
+
+The log ends with `PrefabExport: done`.
+
 ## Limits
 
 - `textureSheetAnimation` frame is not part of `ParticleSystem.Particle`. The texture sheet
