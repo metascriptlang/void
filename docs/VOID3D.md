@@ -5680,6 +5680,108 @@ shouldn't be any code *after* sapp_run()"). Compiler card
 `2026-10-09-emcc-main-destroys-globals-before-frame-loop.md`; the checks keep their module-level
 state, red until it is fixed, rather than moving it into callbacks to hide it.
 
+### M5 end-game stack, as built (2026-10-23)
+
+Fifteen commits on `wt/void3d-m5` (`602ba624..3d0a3c66`). Every deformation, material and clip
+path below is CPU-checked and headless; none has a GPU, web or device receipt, so a rendered claim
+waits for a native GPU run under its named GO. The counts are from running each file alone
+(`MSC_NO_GLOBAL_CACHE=1 msc test <file>` for the checks, `sh scripts/oracle.sh check <cases>` for
+the oracles), with the other lane's uncommitted `shader3d.ms` and `scene.ms` edits in the tree.
+
+**Morph targets and scene deformation.** `gltf.ms` `loadMorphTargets` reads POSITION, NORMAL and
+TANGENT deltas, mesh default weights and node weights; `gltfCurve.ms` `GltfWeightTrack` decodes
+weight tracks. `scene.ms` `SceneMorph` holds one instance's weights and mirrors the deformed
+primitive into a private dynamic mesh (`syncSceneMorphGeometry`), so bounds, culling, picking, the
+shadow pass and the next upload read one deformation. It is the skin idiom with the roles swapped:
+skin deforms on the GPU and mirrors on the CPU, morph deforms on the CPU and the GPU reads it.
+Refused by name: a primitive whose target count differs from its siblings', a target carrying an
+attribute other than the three or one the primitive lacks, generated tangents under morph (supply
+TANGENT), a weights channel on a node whose mesh has no targets, and `GltfSceneError.MorphWithSkin`
+(skin and morph on one node). Reference: the commits cite no Heaps line for the morph mechanism;
+`h3d/prim/Blendshape.hx` is the family anchor in `heaps3dParity.md`. Acceptance:
+`gltfMorphImportCheck` 7, `morphSceneCheck` 6.
+
+**Dynamic mesh upload.** `draw.ms` `addDynamicMeshData`, `setMeshVertices`, `uploadDirtyMeshes`;
+`renderer.ms` `beginFrame` calls the last after the scene refresh and before the first pass. A sokol
+dynamic buffer takes no initial data and one update per frame, so a new dynamic mesh is `Pending`
+and refuses to draw rather than show stale vertices; a second write in one frame is
+`WrittenThisFrame`; indices and vertex format cannot change; a lost context remakes the buffer from
+the current CPU data. It is exercised through `morphSceneCheck`; no GPU readback receipt exists.
+
+**Direct PBR, maps, skinned, emissive.** `shader3d.ms` `pbrDirect` is Heaps' `Direct` for one light
+(`Lighting.hx:125-145`): Cook-Torrance GGX with Schlick-GGX visibility and the exp2 Fresnel
+(`BRDF.hx:40-63`), F0 = mix(0.04, albedo, metalness) (`PropsImport.hx:74`), the indirect diffuse
+half with a flat ambient (`Lighting.hx:78-99`), occlusion on the ambient only because Heaps'
+`pbrOcclusionFactor` defaults to 0 (`Light.hx:10`). `pbrResponse.ms` is its CPU oracle. glTF maps
+are read as glTF stores them (roughness G, metalness B, occlusion R, linear), not as Heaps'
+`PropsTexture.hx:28-34` packs them. A texel's roughness is floored at 0.089 as Bevy's
+`clampedPerceptualRoughness` (`pbr_lighting.wesl:550`) because a texture cannot be refused per
+pixel; a material factor of 0 is refused (`material.ms` `pbrBlock`, `gltf.ms` `loadPbr`) because
+Heaps' BRDF has no guard (`BRDF.hx:48-53`) and the port invents no floor. Opt-in: the importer's
+`Pbr` mode reads `pbrMetallicRoughness`; the legacy lambert look is unchanged. Block layout: the pbr
+block is `MATERIAL_UNIFORM_LENGTH` plus one vec4 (`PBR_METALNESS`, `PBR_ROUGHNESS`, `PBR_OCCLUSION`,
+`PBR_OCCLUSION_STRENGTH`), and an emissive pbr key holds the emissive vec4 after the pbr one, at
+`emissiveBase` (`gltfScene.ms` `gltfBlockOf`). Skinned pbr is declared with every combination of
+CUTOUT, SHADOWED, NORMAL_MAP and PBR_MAPS (`programKeys.txt`), but not with EMISSIVE. A pbr material with a
+UV transform, or a skinned pbr material that emits, is refused by name, `GltfSceneError.PbrFeatureRefused`, before anything is made. Look: the pbr diffuse
+is `albedo / pi` (Heaps' convention), so a pbr material reads about pi dimmer than the same albedo
+under the legacy lambert, which is why the path is opt-in; no compensation was added. Acceptance:
+`pbrLitCheck` 15, `pbrMapsCheck` 7, `gltfPbrMaterialCheck` 6, `gltfPbrSceneCheck` 12.
+
+**Texture mip chains and samplers.** `textureMip.ms` carries an explicit chain and a full sampler
+identity; `draw.ms` `addTextureMip` uploads it through `doorMakeImageMips` (`src/gpu/door.c`; level
+count as `Texture.hx:80-90`: one level or the full chain to 1x1) with one shared sampler per
+distinct sampling (`doorMakeSamplerEx`: min, mag and mip filter, wrap, lod range, anisotropy).
+Refused by name: `TextureSamplerError` (lod range, lod outside the chain, no-mip lod, anisotropy
+range, a non-linear filter with anisotropy, `AnisotropyNeedsCapability`) and
+`TextureUploadError.AnisotropyUnavailable`. `doorAnisotropyPortable` is false on GLCORE and GLES3,
+so anisotropy above 1 is refused there rather than dropped. Acceptance: `textureMipUploadCheck` 6.
+
+**Clip composition.** `animationTransition.ms` (cross-fade with masks and weight tracks),
+`animationSmoothTarget.ms` (freeze the current pose, ease into a target clip, clip and blend
+speeds), `animationBlendSpace.ms` (Delaunay triangulation of the points, barycentric weights, the
+closest-edge fallback outside every triangle). References: `SmoothTransition.hx`, `SmoothTarget.hx:98`
+(a blend speed at or under EPSILON pauses the target too), `Animation.hx:30,279`, `Math.hx:188`
+`easeFactor`, `BlendSpace2D.hx`. Each module has its own refusal enum
+(`AnimationTransitionError`, `AnimationSmoothTargetError`, `AnimationBlendSpaceError`). Acceptance:
+oracle `animTransition3d` 9, `animSmoothTarget3d` 10, `animBlendSpace3d` 5, all as declared; checks
+`animationTransitionCheck` 8, `animationSmoothTargetCheck` 11, `animationBlendSpaceCheck` 8.
+
+**Recorded divergences in clip composition.** (1) A node that only one of the two clips animates:
+Heaps' `SmoothTransition` blends it toward `MZERO`, an identity matrix; the port blends toward the
+captured rest pose (a smooth target toward the frozen pose). The oracle does not cover this, since
+both clips animate the whole TRS in every oracle row; `animationTransitionCheck` holds it. (2)
+`anim-frozen-rotation-unscaled`: Heaps reads the frozen rotation from the scaled local matrix with
+`Quat.initRotateMatrix`, which assumes unit scale; the port freezes the exact rotation (a
+`diverges=` case in `animSmoothTarget3d.cases`, row in `tests/PENDING3D.md`).
+
+**Colliders.** `segment.ms`, `capsule.ms`, `cylinder.ms`, `polygonCollider.ms`, `heightMap.ms`,
+`transformCollider.ms`, `objectCollider.ms` and `optimizedCollider.ms` (with `GroupCollider`) port
+`h3d.col` (`Seg.hx:16-24`, `Capsule.hx:16-71`, `Cylinder.hx:16-72`, `Polygon.hx:116-305`,
+`PolygonBuffer.hx:56-168`, `HeightMap.hx:29-89`, `TransformCollider.hx:18-46`, `Object.hx:432-441`,
+`Collider.hx:33-101`). Divergences measured against real Heaps and listed in `tests/PENDING3D.md`: a
+ray parallel to a capsule or cylinder axis (Heaps divides by zero), the bounding sphere centred at
+`b` where the port centres the midpoint, the height-map bisection reading the interval end, a
+mirrored transform's negated scale. Refused by name where Heaps divides by zero or dereferences
+null: a singular matrix (`Singular`) and an empty mesh (`EmptyMesh`); a zero-area triangle, a
+zero-length edge or a zero-length axis contains nothing. Oracle: `segment3d` 8, `capsule3d` 27,
+`cylinder3d` 25, `polygonCollider3d` 31, `heightMap3d` 13, `transformCollider3d` 23,
+`objectCollider3d` 21, `optimizedCollider3d` 17, all as declared. Checks: `segmentCheck` 3,
+`capsuleCheck` 7, `cylinderCheck` 6, `polygonColliderCheck` 9, `heightMapCheck` 4,
+`transformColliderCheck` 7, `objectColliderCheck` 3, `optimizedColliderCheck` 6. `SkinCollider` has no
+collider file here: the posed-mesh ray query is `skinGeometry.ms` `rayIntersectionElements`.
+
+**Not built, recorded.**
+- Morph with skin on one node (`MorphWithSkin`); morph on a primitive with generated tangents.
+- Pbr with a UV transform; roughness 0; environment and image-based lighting, so the pbr indirect
+  term is a flat ambient only; any compensation for the pi factor.
+- Texture mips: automatic mip generation, so a caller supplies every level (Heaps calls the driver's
+  `generateMipMaps`; sokol has no equivalent, so it is a new mechanism for the person); `lodBias`
+  (`sg_sampler_desc` has `min_lod`/`max_lod` and no bias); anisotropy above 1 on GLCORE and GLES3 (the limit is not portable). The GL
+  and WebGL2 paths have no mip receipt.
+- Dynamic mesh upload: a second write in one frame, an index or format change, a GPU readback.
+- Anything rendered: no skinned, morphed or pbr frame, no web or device run.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
