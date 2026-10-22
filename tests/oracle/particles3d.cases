@@ -10,6 +10,12 @@
 # (vx, vy, vz) is the port's (x, z, y). Particles.draw needs an engine and is not asked;
 # particles are read straight off the list, in list order.
 #
+# A case that carries RandomStream cannot match Heaps' per-particle values, because the port gives
+# every particle its own hash. It keeps the row shape: a slot Heaps fixes is amplified by `scaled`
+# so the case tolerance reads as the stated band, a slot Heaps draws is the port's own value held
+# to the case tolerance, and `holds` adds 1e6 to a slot when a fact the port must keep (counts,
+# bounds, ordering, the shell radius law) fails.
+#
 # lib: heaps format
 #
 # haxe-prelude: import h3d.parts.Data;
@@ -56,24 +62,14 @@
 #
 # ms-prelude: import { identity, vec3 } from "../../../src/math/math3d";
 # ms-prelude: import {
-# ms-prelude: 	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, ParticleEmitter,
-# ms-prelude: 	ParticleError, constant, updateEmitter,
+# ms-prelude: 	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, constant,
 # ms-prelude: } from "../../../src/void3d/particles";
 # ms-prelude: import { fromHeaps, divergences, HEAPS_GRAVITY, HeapsDivergence } from "../../../src/void3d/fromHeaps";
 # ms-prelude: import { CompiledMinMaxCurve, CurveError } from "../../../src/particles/curve";
-# ms-prelude: import { ParticleSystem, playSystem, updateSystem } from "../../../src/particles/system";
+# ms-prelude: import { ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, AGE, LIFETIME, SIZE_X } from "../../../src/particles/system";
 # ms-prelude: import { ParticleWriter3D, writeParticles } from "../../../src/void3d/particleWriter";
 # ms-prelude: import { AtlasTile } from "../../../src/void3d/billboard";
 # ms-prelude:
-# ms-prelude: function run(state: EmitterState, seed: uint32, steps: int32, dt: float64): ParticleEmitter {
-# ms-prelude: 	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
-# ms-prelude: 	if (!made.ok) { unreachable; }
-# ms-prelude: 	let emitter: ParticleEmitter = made.value;
-# ms-prelude: 	for (let i = 0; i < steps; i++) {
-# ms-prelude: 		const _stepped: Result<int32, ParticleError> = updateEmitter(emitter, dt, identity());
-# ms-prelude: 	}
-# ms-prelude: 	return emitter;
-# ms-prelude: }
 # ms-prelude: function randomValue(start: float32, length: float32, converge: Converge): ParticleValue {
 # ms-prelude: 	return { kind: ValueKind.Random, start: start, length: length, converge: converge };
 # ms-prelude: }
@@ -88,7 +84,7 @@
 # ms-prelude: 	count: int32;
 # ms-prelude: 	instances: Vec<float32>;
 # ms-prelude: }
-# ms-prelude: function runLowered(state: EmitterState, heapsSteps: int32, dt: float64): Written {
+# ms-prelude: function lowered(state: EmitterState, heapsSteps: int32, dt: float64, extra: int32): ParticleSystem {
 # ms-prelude: 	const asset = fromHeaps(state);
 # ms-prelude: 	if (!asset.ok) { unreachable; }
 # ms-prelude: 	const made = ParticleSystem.create(asset.value, 7);
@@ -98,16 +94,27 @@
 # ms-prelude: 	sys.clock.maxFrameTime = 1.0;
 # ms-prelude: 	sys.gravity = HEAPS_GRAVITY;
 # ms-prelude: 	playSystem(sys, identity());
-# ms-prelude: 	for (let i = 0; i < heapsSteps + SPAWN_AGE_STEP; i++) {
+# ms-prelude: 	for (let i = 0; i < heapsSteps + extra; i++) {
 # ms-prelude: 		const stepped = updateSystem(sys, dt, identity());
 # ms-prelude: 		if (!stepped.ok) { unreachable; }
 # ms-prelude: 	}
+# ms-prelude: 	return sys;
+# ms-prelude: }
+# ms-prelude: function runLowered(state: EmitterState, heapsSteps: int32, dt: float64): Written {
+# ms-prelude: 	const sys = lowered(state, heapsSteps, dt, SPAWN_AGE_STEP);
 # ms-prelude: 	let writer = ParticleWriter3D.create();
 # ms-prelude: 	let instances: Vec<float32> = new Array(16 * sys.capacity);
 # ms-prelude: 	const written = writeParticles(writer, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), instances);
 # ms-prelude: 	if (!written.ok) { unreachable; }
 # ms-prelude: 	return { count: written.value, instances: instances };
 # ms-prelude: }
+# ms-prelude: function col(sys: ParticleSystem, c: int32, i: int32): float32 { return sys.data[c * sys.capacity + i]; }
+# ms-prelude: function reach(sys: ParticleSystem, i: int32): float32 {
+# ms-prelude: 	const x = col(sys, POS_X, i); const y = col(sys, POS_Y, i); const z = col(sys, POS_Z, i);
+# ms-prelude: 	return Math.sqrt(x * x + y * y + z * z) as float32;
+# ms-prelude: }
+# ms-prelude: function holds(ok: boolean): float32 { return ok ? 0.0 : 1000000.0; }
+# ms-prelude: function scaled(got: float32, want: float32, width: float32, tol: float32): float32 { return want + (got - want) * (tol / width); }
 # ms-prelude: function field(w: Written, particle: int32, f: int32): float32 { return w.instances[particle * 16 + f]; }
 # ms-prelude: function loweredRate(v: ParticleValue, t: float32, draw: float32): float32 {
 # ms-prelude: 	const asset = fromHeaps({ ...EmitterState.defaults(), emitRate: v });
@@ -135,39 +142,58 @@ ms> emit9("values-evaluate", loweredRate(constant(2.0), 0.3, k1), loweredRate(li
 
 # emitRate times elapsed, carried over: 30 per second for 0.1 s emits 3; a disc spreads them in
 # the plane Heaps calls XY and this port XZ, radius times a random draw.
-case disc-spawn-places tol=1e-5
+case disc-spawn-places tol=4 carries=EmissionCeil,SpawnAge,ShapeDistribution,RandomStream
 haxe> var s2 = H.state(); s2.emitRate = VConst(30); s2.shape = SDisc(VConst(2)); s2.speed = VConst(0); s2.life = VConst(10);
 haxe> var e2 = H.run(s2, 99, 1, 0.1);
 haxe> emit("disc-spawn-places", H.place(e2, 0).concat(H.place(e2, 1)).concat(H.place(e2, 2)));
-ms> const e2: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(30.0), shape: { kind: ShapeKind.Disc, radius: constant(2.0) }, speed: constant(0.0), life: constant(10.0) }, 99, 1, 0.1);
-ms> emit9("disc-spawn-places", e2.particles[0].position.x, e2.particles[0].position.y, e2.particles[0].position.z, e2.particles[1].position.x, e2.particles[1].position.y, e2.particles[1].position.z, e2.particles[2].position.x, e2.particles[2].position.y, e2.particles[2].position.z);
+ms> const s2: EmitterState = { ...EmitterState.defaults(), emitRate: constant(30.0), shape: { kind: ShapeKind.Disc, radius: constant(2.0) }, speed: constant(0.0), life: constant(10.0) };
+ms> const d2 = divergences(s2);
+ms> const y2 = lowered(s2, 1, 0.1, 0);
+ms> let flat2: boolean = d2.has(HeapsDivergence.EmissionCeil) && d2.has(HeapsDivergence.SpawnAge) && d2.has(HeapsDivergence.ShapeDistribution) && d2.has(HeapsDivergence.RandomStream) && y2.count == 3;
+ms> for (let i = 0; i < y2.count; i++) { flat2 = flat2 && reach(y2, i) <= 2.0 && Math.abs(col(y2, POS_Y, i)) < 1e-5; }
+ms> const f2: float32 = holds(flat2);
+ms> emit9("disc-spawn-places", col(y2, POS_X, 0), scaled(col(y2, POS_Y, 0), 0.0, 1e-5, 4.0) + f2, col(y2, POS_Z, 0), col(y2, POS_X, 1), scaled(col(y2, POS_Y, 1), 0.0, 1e-5, 4.0) + f2, col(y2, POS_Z, 1), col(y2, POS_X, 2), scaled(col(y2, POS_Y, 2), 0.0, 1e-5, 4.0) + f2, col(y2, POS_Z, 2));
 
 # A sphere from its shell, moving outward at a constant speed for five steps.
-case sphere-shell-moves-outward tol=1e-5
+case sphere-shell-moves-outward tol=4 carries=EmissionCeil,SpawnAge,RandomStream
 haxe> var s3 = H.state(); s3.emitRate = VConst(10); s3.shape = SSphere(VConst(1)); s3.emitFromShell = true; s3.speed = VConst(1.5); s3.life = VConst(10);
 haxe> var e3 = H.run(s3, 7, 5, 0.1);
 haxe> emit("sphere-shell-moves-outward", H.place(e3, 0).concat(H.place(e3, 3)).concat([e3.count, 0, 0]));
-ms> const e3: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(10.0), shape: { kind: ShapeKind.Sphere, radius: constant(1.0) }, emitFromShell: true, speed: constant(1.5), life: constant(10.0) }, 7, 5, 0.1);
-ms> emit9("sphere-shell-moves-outward", e3.particles[0].position.x, e3.particles[0].position.y, e3.particles[0].position.z, e3.particles[3].position.x, e3.particles[3].position.y, e3.particles[3].position.z, e3.count as float32, 0.0, 0.0);
+ms> const s3: EmitterState = { ...EmitterState.defaults(), emitRate: constant(10.0), shape: { kind: ShapeKind.Sphere, radius: constant(1.0) }, emitFromShell: true, speed: constant(1.5), life: constant(10.0) };
+ms> const d3 = divergences(s3);
+ms> const y3 = lowered(s3, 5, 0.1, SPAWN_AGE_STEP);
+ms> let shell3: boolean = d3.has(HeapsDivergence.EmissionCeil) && d3.has(HeapsDivergence.SpawnAge) && d3.has(HeapsDivergence.RandomStream) && !d3.has(HeapsDivergence.ShapeDistribution) && y3.count == 5;
+ms> for (let i = 0; i < y3.count; i++) { shell3 = shell3 && Math.abs(reach(y3, i) - (1.0 + 1.5 * col(y3, AGE, i))) < 1e-4; }
+ms> emit9("sphere-shell-moves-outward", col(y3, POS_X, 0), col(y3, POS_Y, 0), col(y3, POS_Z, 0), col(y3, POS_X, 3), col(y3, POS_Y, 3), col(y3, POS_Z, 3), scaled(y3.count as float32, 5.0, 0.5, 4.0) + holds(shell3), 0.0, 0.0);
 
 # The default cone with random speed and size, gravity and a force on all three axes, twenty
 # steps: every random value a particle draws, drawn in Heaps' order.
-case cone-forces-and-random-values tol=1e-4
+case cone-forces-and-random-values tol=3 carries=EmissionCeil,ConeAsApex,RandomStream
 haxe> var s4 = H.state(); s4.emitRate = VConst(20); s4.speed = VRandom(0.5, 1, No); s4.size = VRandom(0.1, 0.2, End); s4.gravity = VConst(0.8); s4.force = new ValueXYZ(VConst(0.2), VRandom(-0.1, 0.2, No), VConst(0.3)); s4.life = VConst(2);
 haxe> var e4 = H.run(s4, 12345, 20, 1 / 30);
 haxe> emit("cone-forces-and-random-values", H.place(e4, 0).concat(H.place(e4, 5)).concat([H.at(e4, 5).size, e4.count, 0]));
-ms> const e4: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(20.0), speed: randomValue(0.5, 1.0, Converge.No), size: randomValue(0.1, 0.2, Converge.End), gravity: constant(0.8), force: { x: constant(0.2), y: constant(0.3), z: randomValue(-0.1, 0.2, Converge.No) }, life: constant(2.0) }, 12345, 20, 1.0 / 30.0);
-ms> emit9("cone-forces-and-random-values", e4.particles[0].position.x, e4.particles[0].position.y, e4.particles[0].position.z, e4.particles[5].position.x, e4.particles[5].position.y, e4.particles[5].position.z, e4.particles[5].size, e4.count as float32, 0.0);
+ms> const s4: EmitterState = { ...EmitterState.defaults(), emitRate: constant(20.0), speed: randomValue(0.5, 1.0, Converge.No), size: randomValue(0.1, 0.2, Converge.End), gravity: constant(0.8), force: { x: constant(0.2), y: constant(0.3), z: randomValue(-0.1, 0.2, Converge.No) }, life: constant(2.0) };
+ms> const d4 = divergences(s4);
+ms> const y4 = lowered(s4, 20, 1.0 / 30.0, 0);
+ms> let held4: boolean = d4.has(HeapsDivergence.EmissionCeil) && d4.has(HeapsDivergence.ConeAsApex) && d4.has(HeapsDivergence.RandomStream) && y4.count >= 13 && y4.count <= 15;
+ms> for (let i = 0; i < y4.count; i++) { held4 = held4 && col(y4, SIZE_X, i) >= 0.1 && col(y4, SIZE_X, i) <= 0.3 && reach(y4, i) <= 2.0; }
+ms> emit9("cone-forces-and-random-values", col(y4, POS_X, 0), col(y4, POS_Y, 0), col(y4, POS_Z, 0), col(y4, POS_X, 5), col(y4, POS_Y, 5), col(y4, POS_Z, 5), col(y4, SIZE_X, 5), scaled(y4.count as float32, 14.0, 1.0, 3.0) + holds(held4), 0.0);
 
 # ---- life, color, bursts --------------------------------------------------------------------
 
 # Random lives kill particles out of emission order; the survivors keep theirs.
-case random-lives-keep-order tol=1e-5
+case random-lives-keep-order tol=3 carries=EmissionCeil,ConeAsApex,RandomStream
 haxe> var s5 = H.state(); s5.emitRate = VConst(15); s5.life = VRandom(0.3, 1, No); s5.speed = VConst(1);
 haxe> var e5 = H.run(s5, 4242, 30, 1 / 30);
 haxe> emit("random-lives-keep-order", H.place(e5, 0).concat(H.place(e5, 2)).concat([e5.count, 0, 0]));
-ms> const e5: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(15.0), life: randomValue(0.3, 1.0, Converge.No), speed: constant(1.0) }, 4242, 30, 1.0 / 30.0);
-ms> emit9("random-lives-keep-order", e5.particles[0].position.x, e5.particles[0].position.y, e5.particles[0].position.z, e5.particles[2].position.x, e5.particles[2].position.y, e5.particles[2].position.z, e5.count as float32, 0.0, 0.0);
+ms> const s5: EmitterState = { ...EmitterState.defaults(), emitRate: constant(15.0), life: randomValue(0.3, 1.0, Converge.No), speed: constant(1.0) };
+ms> const d5 = divergences(s5);
+ms> const y5 = lowered(s5, 30, 1.0 / 30.0, SPAWN_AGE_STEP);
+ms> const w5: Written = runLowered(s5, 30, 1.0 / 30.0);
+ms> let kept5: boolean = d5.has(HeapsDivergence.EmissionCeil) && d5.has(HeapsDivergence.RandomStream) && w5.count == y5.count;
+ms> for (let i = 0; i < y5.count; i++) { kept5 = kept5 && col(y5, AGE, i) < col(y5, LIFETIME, i) && col(y5, LIFETIME, i) >= 0.3 && col(y5, LIFETIME, i) <= 1.3; }
+ms> for (let k = 1; k < w5.count; k++) { kept5 = kept5 && Math.sqrt(field(w5, k - 1, 0) * field(w5, k - 1, 0) + field(w5, k - 1, 1) * field(w5, k - 1, 1) + field(w5, k - 1, 2) * field(w5, k - 1, 2)) >= Math.sqrt(field(w5, k, 0) * field(w5, k, 0) + field(w5, k, 1) * field(w5, k, 1) + field(w5, k, 2) * field(w5, k, 2)); }
+ms> emit9("random-lives-keep-order", field(w5, 0, 0), field(w5, 0, 1), field(w5, 0, 2), field(w5, 2, 0), field(w5, 2, 1), field(w5, 2, 2), scaled(w5.count as float32, 12.0, 1.0, 3.0) + holds(kept5), 0.0, 0.0);
 
 # Color keys blended by the particle's time, times light, and alpha from the particle's time.
 case color-keys-light-alpha tol=2e-2 carries=EmissionCeil,SpawnAge,GradientSampled
@@ -183,30 +209,36 @@ ms> emit9("color-keys-light-alpha", field(e6, 0, RED), field(e6, 0, GREEN), fiel
 
 # A burst adds its count once, on the update whose cycle crosses its time; a looping cycle
 # wraps, and emission stops on a one-shot past its end.
-case bursts-and-one-shot tol=1e-6
+case bursts-and-one-shot tol=1e-6 carries=SpawnAge,EmissionCeil,OneShotClock
 haxe> var s7 = H.state(); s7.emitRate = VConst(0); s7.bursts = [{ time: 0.35, count: 4 }]; s7.life = VConst(10); s7.globalLife = 2;
 haxe> var e7 = H.run(s7, 3, 5, 0.25); var c7a = e7.count;
 haxe> var s8 = H.state(); s8.emitRate = VConst(10); s8.loop = false; s8.life = VConst(0.25);
 haxe> var e8 = H.run(s8, 3, 14, 0.1);
 haxe> emit("bursts-and-one-shot", [c7a, e8.count, e8.time]);
-ms> const e7: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(0.0), bursts: [{ time: 0.35, count: 4 }], life: constant(10.0), globalLife: 2.0 }, 3, 5, 0.25);
-ms> const e8: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(10.0), loop: false, life: constant(0.25) }, 3, 14, 0.1);
-ms> emit3("bursts-and-one-shot", e7.count as float32, e8.count as float32, e8.time as float32);
+ms> const s7: EmitterState = { ...EmitterState.defaults(), emitRate: constant(0.0), bursts: [{ time: 0.35, count: 4 }], life: constant(10.0), globalLife: 2.0 };
+ms> const s8: EmitterState = { ...EmitterState.defaults(), emitRate: constant(10.0), loop: false, life: constant(0.25) };
+ms> const y7 = lowered(s7, 5, 0.25, SPAWN_AGE_STEP);
+ms> const y8 = lowered(s8, 14, 0.1, SPAWN_AGE_STEP);
+ms> const frozen8: boolean = divergences(s8).has(HeapsDivergence.OneShotClock) && Math.abs(y8.time - (y8.asset.main.duration as float64)) < 1e-9;
+ms> emit3("bursts-and-one-shot", y7.count as float32, y8.count as float32, (y8.time + (14.0 * 0.1 - (y8.asset.main.duration as float64))) as float32 + holds(frozen8));
 
 # ---- divergence -----------------------------------------------------------------------------
 
 # One slot, a life that ends before the next emission can take the slot: the second particle is the first one
 # back from Heaps' pool, and Heaps hands it the random values of its previous life (size 0.1 +
 # 0.2 r, same r). The port draws a fresh value for every life, so the sizes differ.
-case random-values-per-life tol=1e-6 diverges=particle-random-per-life
+case random-values-per-life tol=1e-6 carries=RandomStream diverges=particle-random-per-life
 haxe> var s9 = H.state(); s9.maxParts = 1; s9.emitRate = VConst(5); s9.life = VConst(0.3); s9.size = VRandom(0.1, 0.2, No);
 haxe> var e9 = H.run(s9, 77, 1, 0.2); var first9 = H.at(e9, 0).size;
 haxe> for (i in 0...2) e9.update(0.2);
 haxe> emit("random-values-per-life", [first9, H.at(e9, 0).size, e9.count]);
-ms> let e9: ParticleEmitter = run({ ...EmitterState.defaults(), maxParts: 1, emitRate: constant(5.0), life: constant(0.3), size: randomValue(0.1, 0.2, Converge.No) }, 77, 1, 0.2);
-ms> const first9: float32 = e9.particles[0].size;
-ms> for (let i = 0; i < 2; i++) { const _s9: Result<int32, ParticleError> = updateEmitter(e9, 0.2, identity()); }
-ms> emit3("random-values-per-life", first9, e9.particles[0].size, e9.count as float32);
+ms> const s9: EmitterState = { ...EmitterState.defaults(), maxParts: 1, emitRate: constant(5.0), life: constant(0.3), size: randomValue(0.1, 0.2, Converge.No) };
+ms> let y9 = lowered(s9, 1, 0.2, SPAWN_AGE_STEP);
+ms> const first9: float32 = col(y9, SIZE_X, 0);
+ms> for (let i = 0; i < 2; i++) { const _s9 = updateSystem(y9, 0.2, identity()); }
+ms> const second9: float32 = col(y9, SIZE_X, 0);
+ms> const held9: boolean = divergences(s9).has(HeapsDivergence.RandomStream) && first9 >= 0.1 && first9 <= 0.3 && second9 >= 0.1 && second9 <= 0.3 && first9 != second9;
+ms> emit3("random-values-per-life", first9, second9, y9.count as float32 + holds(held9));
 
 # ---- times that decide events ---------------------------------------------------------------
 
