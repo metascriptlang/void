@@ -6,6 +6,9 @@
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 #define OGL_GLES 1
 #include <GLES3/gl3.h>
+#if defined(__EMSCRIPTEN__)
+void glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+#endif
 #elif defined(__linux__)
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
@@ -55,6 +58,16 @@ typedef int GLint;
 #define GL_TEXTURE_BORDER_COLOR 0x1004
 #define GL_UNPACK_ROW_LENGTH 0x0CF2
 #define GL_UNPACK_IMAGE_HEIGHT 0x806E
+#define GL_PACK_ROW_LENGTH 0x0D02
+#define GL_PACK_ALIGNMENT 0x0D05
+#define GL_PIXEL_PACK_BUFFER 0x88EB
+#define GL_PIXEL_UNPACK_BUFFER 0x88EC
+#define GL_COPY_READ_BUFFER 0x8F36
+#define GL_COPY_WRITE_BUFFER 0x8F37
+#define GL_READ_FRAMEBUFFER_BINDING 0x8CAA
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#define GL_TEXTURE_CUBE_MAP 0x8513
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
 #define GL_COMPILE_STATUS 0x8B81
 #define GL_LINK_STATUS 0x8B82
 #define GL_INFO_LOG_LENGTH 0x8B84
@@ -73,6 +86,11 @@ typedef int GLint;
 	OGL_XMACRO(glBufferData,               void, (GLenum target, GLsizeiptr size, const void *data, GLenum usage)) \
 	OGL_XMACRO(glBufferSubData,            void, (GLenum target, GLintptr offset, GLsizeiptr size, const void *data)) \
 	OGL_XMACRO(glDeleteBuffers,            void, (GLsizei n, const GLuint *buffers)) \
+	OGL_XMACRO(glCopyBufferSubData,        void, (GLenum readTarget, GLenum writeTarget, GLintptr readOffset, GLintptr writeOffset, GLsizeiptr size)) \
+	OGL_XMACRO(glGetBufferSubData,         void, (GLenum target, GLintptr offset, GLsizeiptr size, void *data)) \
+	OGL_XMACRO(glReadPixels,               void, (GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void *pixels)) \
+	OGL_XMACRO(glCopyTexSubImage2D,        void, (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height)) \
+	OGL_XMACRO(glCopyTexSubImage3D,        void, (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height)) \
 	OGL_XMACRO(glGenTextures,              void, (GLsizei n, GLuint *textures)) \
 	OGL_XMACRO(glActiveTexture,            void, (GLenum texture)) \
 	OGL_XMACRO(glBindTexture,              void, (GLenum target, GLuint texture)) \
@@ -253,6 +271,32 @@ void oglBufferSubData(int32_t target, int64_t offset, void *data, int64_t bytes)
 
 void oglDeleteBuffer(uint32_t buffer) { if (buffer) glDeleteBuffers(1, &buffer); }
 
+void oglCopyBufferData(uint32_t source, int64_t sourceOffset, uint32_t destination, int64_t destinationOffset, int64_t bytes) {
+	glBindBuffer(GL_COPY_READ_BUFFER, source);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, destination);
+	glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, (GLintptr)sourceOffset, (GLintptr)destinationOffset, (GLsizeiptr)bytes);
+	glBindBuffer(GL_COPY_READ_BUFFER, 0);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+}
+
+int32_t oglGetBufferData(uint32_t buffer, int64_t offset, void *destination, int64_t bytes) {
+	int32_t read = 1;
+	glBindBuffer(GL_COPY_READ_BUFFER, buffer);
+#if defined(OGL_GLES) && !defined(__EMSCRIPTEN__)
+	const void *mapped = glMapBufferRange(GL_COPY_READ_BUFFER, (GLintptr)offset, (GLsizeiptr)bytes, GL_MAP_READ_BIT);
+	if (mapped == NULL) {
+		read = 0;
+	} else {
+		memcpy(destination, mapped, (size_t)bytes);
+		glUnmapBuffer(GL_COPY_READ_BUFFER);
+	}
+#else
+	glGetBufferSubData(GL_COPY_READ_BUFFER, (GLintptr)offset, (GLsizeiptr)bytes, destination);
+#endif
+	glBindBuffer(GL_COPY_READ_BUFFER, 0);
+	return read;
+}
+
 uint32_t oglCreateTexture(void) {
 	GLuint texture = 0;
 	glGenTextures(1, &texture);
@@ -293,6 +337,31 @@ void oglFramebufferRenderbuffer(int32_t attachment, uint32_t renderbuffer) {
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, (GLenum)attachment, GL_RENDERBUFFER, renderbuffer);
 }
 
+static void texSubImage(
+	int32_t target,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t format,
+	int32_t type,
+	const void *pixels,
+	int32_t rowLength,
+	int32_t imageHeight) {
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
+	if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) {
+		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, imageHeight);
+		glTexSubImage3D((GLenum)target, level, x, y, z, width, height, depth, (GLenum)format, (GLenum)type, pixels);
+		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+	} else {
+		glTexSubImage2D((GLenum)target, level, x, y, width, height, (GLenum)format, (GLenum)type, pixels);
+	}
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+}
+
 void oglTexSubImage(
 	int32_t target,
 	int32_t level,
@@ -308,16 +377,27 @@ void oglTexSubImage(
 	int64_t offset,
 	int32_t rowLength,
 	int32_t imageHeight) {
-	const uint8_t *pixels = (const uint8_t *)data + offset;
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
-	if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY) {
-		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, imageHeight);
-		glTexSubImage3D((GLenum)target, level, x, y, z, width, height, depth, (GLenum)format, (GLenum)type, pixels);
-		glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
-	} else {
-		glTexSubImage2D((GLenum)target, level, x, y, width, height, (GLenum)format, (GLenum)type, pixels);
-	}
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	texSubImage(target, level, x, y, z, width, height, depth, format, type, (const uint8_t *)data + offset, rowLength, imageHeight);
+}
+
+void oglTexSubImageFromBuffer(
+	int32_t target,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t format,
+	int32_t type,
+	uint32_t buffer,
+	int64_t offset,
+	int32_t rowLength,
+	int32_t imageHeight) {
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, buffer);
+	texSubImage(target, level, x, y, z, width, height, depth, format, type, (const void *)(intptr_t)offset, rowLength, imageHeight);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 void oglDeleteTexture(uint32_t texture) { if (texture) glDeleteTextures(1, &texture); }
@@ -474,6 +554,103 @@ void oglDrawBuffers(int32_t count, int32_t colorMask) {
 		buffers[i] = (colorMask & (1 << i)) ? (GLenum)(GL_COLOR_ATTACHMENT0 + i) : GL_NONE;
 	}
 	glDrawBuffers(count, buffers);
+}
+
+static void attachTexel(uint32_t texture, int32_t target, int32_t level, int32_t layer) {
+	if (target == GL_TEXTURE_2D) {
+		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, level);
+	} else if (target == GL_TEXTURE_CUBE_MAP) {
+		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer), texture, level);
+	} else {
+		glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, level, layer);
+	}
+}
+
+static GLuint beginTexelRead(uint32_t texture, int32_t target, int32_t level, int32_t layer, GLint *previous) {
+	GLuint readFramebuffer = 0;
+	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, previous);
+	glGenFramebuffers(1, &readFramebuffer);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
+	attachTexel(texture, target, level, layer);
+	glReadBuffer(GL_COLOR_ATTACHMENT0);
+	return readFramebuffer;
+}
+
+static void endTexelRead(GLuint readFramebuffer, GLint previous) {
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)previous);
+	glDeleteFramebuffers(1, &readFramebuffer);
+}
+
+int32_t oglReadTexelsToBuffer(
+	uint32_t texture,
+	int32_t target,
+	int32_t level,
+	int32_t layer,
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height,
+	int32_t format,
+	int32_t type,
+	int32_t rowLength,
+	uint32_t buffer,
+	int64_t offset) {
+	GLint previous = 0;
+	GLuint readFramebuffer = beginTexelRead(texture, target, level, layer, &previous);
+	int32_t result = 1;
+	if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		result = 0;
+	} else {
+		glPixelStorei(GL_PACK_ALIGNMENT, 1);
+		glPixelStorei(GL_PACK_ROW_LENGTH, rowLength);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, buffer);
+		while (glGetError() != GL_NO_ERROR) {}
+		glReadPixels(x, y, width, height, (GLenum)format, (GLenum)type, (void *)(intptr_t)offset);
+		if (glGetError() != GL_NO_ERROR) result = -1;
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+		glPixelStorei(GL_PACK_ALIGNMENT, 4);
+	}
+	endTexelRead(readFramebuffer, previous);
+	return result;
+}
+
+int32_t oglCopyTexels(
+	uint32_t source,
+	int32_t sourceTarget,
+	int32_t sourceLevel,
+	int32_t sourceLayer,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t destinationTarget,
+	int32_t destinationLevel,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationLayer,
+	int32_t width,
+	int32_t height,
+	int32_t count) {
+	GLint previous = 0;
+	GLuint readFramebuffer = beginTexelRead(source, sourceTarget, sourceLevel, sourceLayer, &previous);
+	int32_t result = 1;
+	if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		result = 0;
+	} else {
+		while (glGetError() != GL_NO_ERROR) {}
+		for (int32_t i = 0; i < count && result == 1; i++) {
+			if (i > 0) attachTexel(source, sourceTarget, sourceLevel, sourceLayer + i);
+			if (destinationTarget == GL_TEXTURE_2D) {
+				glCopyTexSubImage2D(GL_TEXTURE_2D, destinationLevel, destinationX, destinationY, sourceX, sourceY, width, height);
+			} else if (destinationTarget == GL_TEXTURE_CUBE_MAP) {
+				glCopyTexSubImage2D((GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + destinationLayer + i), destinationLevel, destinationX, destinationY, sourceX, sourceY, width, height);
+			} else {
+				glCopyTexSubImage3D((GLenum)destinationTarget, destinationLevel, destinationX, destinationY, destinationLayer + i, sourceX, sourceY, width, height);
+			}
+			if (glGetError() != GL_NO_ERROR) result = -1;
+		}
+	}
+	endTexelRead(readFramebuffer, previous);
+	return result;
 }
 
 void oglReadBuffer(int32_t attachment) { glReadBuffer((GLenum)attachment); }

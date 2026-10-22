@@ -21,6 +21,8 @@ void oglBindBuffer(int32_t target, uint32_t buffer);
 void oglBufferData(int32_t target, int64_t bytes, int32_t usage);
 void oglBufferSubData(int32_t target, int64_t offset, void *data, int64_t bytes);
 void oglDeleteBuffer(uint32_t buffer);
+void oglCopyBufferData(uint32_t source, int64_t sourceOffset, uint32_t destination, int64_t destinationOffset, int64_t bytes);
+int32_t oglGetBufferData(uint32_t buffer, int64_t offset, void *destination, int64_t bytes);
 
 uint32_t oglCreateTexture(void);
 void oglActiveTexture(int32_t unit);
@@ -46,6 +48,50 @@ void oglTexSubImage(
 	int64_t offset,
 	int32_t rowLength,
 	int32_t imageHeight);
+void oglTexSubImageFromBuffer(
+	int32_t target,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t format,
+	int32_t type,
+	uint32_t buffer,
+	int64_t offset,
+	int32_t rowLength,
+	int32_t imageHeight);
+int32_t oglReadTexelsToBuffer(
+	uint32_t texture,
+	int32_t target,
+	int32_t level,
+	int32_t layer,
+	int32_t x,
+	int32_t y,
+	int32_t width,
+	int32_t height,
+	int32_t format,
+	int32_t type,
+	int32_t rowLength,
+	uint32_t buffer,
+	int64_t offset);
+int32_t oglCopyTexels(
+	uint32_t source,
+	int32_t sourceTarget,
+	int32_t sourceLevel,
+	int32_t sourceLayer,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t destinationTarget,
+	int32_t destinationLevel,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationLayer,
+	int32_t width,
+	int32_t height,
+	int32_t count);
 void oglDeleteTexture(uint32_t texture);
 
 uint32_t oglCreateSampler(void);
