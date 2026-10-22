@@ -1022,7 +1022,7 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:refresh scene:refreshChecked
 	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow scene:requireOpen scene:requireOwn
 	draw:requireOpen animation:requirePaired animation:update animation:keys animation:blendTo
 	animation:syncPose animation:syncMeshFrame particle87riter:writeParticlePoints
-	particle87riter:drawOrder particle87riter:sortOrder particle87riter:placed
+	particle87riter:drawOrder particle87riter:sortOrder particle87riter:scatter particle87riter:placed
 	particle87riter:finite draw:writeStream draw:pinMesh draw:unpinMesh
 	draw:letGoOfMesh draw:meshPinned draw:hasMesh draw:issuedMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
