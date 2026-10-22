@@ -7,6 +7,7 @@ import {
 	GPUAddressMode,
 	GPUBindGroupDescriptor,
 	GPUBlendFactor,
+	GPUCanvasConfiguration,
 	GPUBlendOperation,
 	GPUBuffer,
 	GPUBufferUsage,
@@ -858,6 +859,7 @@ export function doorPassAttachesView(view: uint32): int32 {
 
 export function doorFormatRenderable(format: int32): int32 {
 	if (format == FORMAT_NONE || format == FORMAT_DEFAULT) { fail("formatRenderable was asked about PixelFormat " + String(format) + ", which names no one format"); }
+	if (device.id == 0) { fail("formatRenderable was asked before gfxSetup made the device"); }
 	return device.isRenderable(textureFormat(format, "color")) ? 1 : 0;
 }
 
@@ -873,9 +875,14 @@ function pixelFormatOf(format: GPUTextureFormat, role: string): int32 {
 	};
 }
 
-export function doorEnvironmentColorFormat(): int32 { return pixelFormatOf(device.getCanvasConfiguration().format, "color format"); }
-export function doorEnvironmentDepthFormat(): int32 { return pixelFormatOf(device.getCanvasConfiguration().depthFormat, "depth format"); }
-export function doorEnvironmentSampleCount(): int32 { return device.getCanvasConfiguration().sampleCount; }
+function environment(): GPUCanvasConfiguration {
+	if (device.id == 0) { fail("a screen layout was resolved before gfxSetup made the device"); }
+	return device.getCanvasConfiguration();
+}
+
+export function doorEnvironmentColorFormat(): int32 { return pixelFormatOf(environment().format, "color format"); }
+export function doorEnvironmentDepthFormat(): int32 { return pixelFormatOf(environment().depthFormat, "depth format"); }
+export function doorEnvironmentSampleCount(): int32 { return environment().sampleCount; }
 export function doorFrameIndex(): uint32 { return device.frameIndex(); }
 export function doorLiveBuffers(): int32 { return device.liveCounts().buffers; }
 export function doorLiveImages(): int32 { return device.liveCounts().textures; }
