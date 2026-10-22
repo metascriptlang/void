@@ -883,7 +883,7 @@ function bit(mask: uint32, slot: int32): boolean {
 	return (mask & ((1 as uint32) << (slot as uint32))) != 0;
 }
 
-test "a shadowed key reads the sun's map at view 4 and sampler 2, a core one the spot's at view 6 and sampler 3" {
+test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot map at 6, 3" {
 	let shadowedKeys: int32 = 0;
 	for (const key of everyKey()) {
 		if (!declares(key)) { continue; }
@@ -1204,7 +1204,8 @@ test "a skinned pbr key is declared on the skinned layout in every variant a glT
 				made = shadowed ? made.withShadowed() : made;
 				const skinned: ProgramKey = made.withSkin();
 				assert declares(skinned) && vertexLayoutOf(skinned) == layout;
-				assert uniformBlockLength(skinned, MATERIAL_UNIFORM_SLOT) == PBR_MATERIAL_UNIFORM_LENGTH;
+				assert uniformBlockLength(skinned, MATERIAL_UNIFORM_SLOT) ==
+					PBR_MATERIAL_UNIFORM_LENGTH;
 				assert uniformBlockLength(skinned, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
 				assert textureSlotMask(skinned) == textureSlotMask(made);
 				const cast = castIn(skinned);
@@ -1218,7 +1219,8 @@ test "a skinned pbr key is declared on the skinned layout in every variant a glT
 test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds view slot 3" {
 	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withEmissive();
 	assert base.bits() == ProgramKey.of(Program.LitTextured).bits() + 4096 + 65536;
-	assert movingBase(base) == PBR_MATERIAL_UNIFORM_LENGTH && emissiveBase(base) == movingBase(base);
+	assert movingBase(base) == PBR_MATERIAL_UNIFORM_LENGTH &&
+		emissiveBase(base) == movingBase(base);
 	assert movingBase(ProgramKey.of(Program.LitTextured)) == MATERIAL_UNIFORM_LENGTH;
 	const maps: ProgramKey = base.withPbrMaps();
 	for (const key of [base, maps, base.withNormalMap(), maps.withNormalMap()]) {
@@ -1244,7 +1246,8 @@ test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds vi
 test "the pbr combinations with no block layout or no row are not declared" {
 	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();
 	assert !declares(textured.withEmissive().withSkin());
-	assert !declares(textured.withUvTransform()) && !declares(textured.withUvTransform().withSkin());
+	assert !declares(textured.withUvTransform()) &&
+		!declares(textured.withUvTransform().withSkin());
 	assert !declares(textured.withEmissive().withUvTransform());
 	assert declares(textured.withSkin()) && declares(textured.withEmissive());
 }

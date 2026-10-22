@@ -1141,7 +1141,8 @@ export function pbrAmbient(
 ): Vec3f {
 	const nv = max(dot(normalize(normal), normalize(view)), 0.0);
 	const f0 = mix(vec3f(0.04), albedo, metalness);
-	const fresnel = f0 + (max(vec3f(1.0 - roughness), f0) - f0) * exp2((-5.55473 * nv - 6.98316) * nv);
+	const fresnel =
+		f0 + (max(vec3f(1.0 - roughness), f0) - f0) * exp2((-5.55473 * nv - 6.98316) * nv);
 	return ambient * albedo * (1.0 - metalness) * (1.0 - fresnel) * occlusion;
 }
 
@@ -1180,7 +1181,8 @@ export function pbrShade(
 	const sun = srgbToLinear(b.lightParams.dirColor.rgb) * dir.w;
 	let light = pbrAmbient(albedo, values.x, values.y, n, view,
 		srgbToLinear(b.lightParams.ambient.rgb), values.z);
-	light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
+	light = light +
+		pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
 	const eye = normalize(view);
 	const reflected = -eye - n * (2.0 * dot(-eye, n));
 	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
@@ -1223,7 +1225,8 @@ export function litShade(
 	const ambient = srgbToLinear(b.lightParams.ambient.rgb);
 	let light = ambient + srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
 	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-		light = light + lightAt(position, n, b.lightParams.pointLight[i], b.lightParams.pointColor[i],
+		light = light + lightAt(position, n, b.lightParams.pointLight[i],
+			b.lightParams.pointColor[i],
 			b.lightParams.shapeA[i], b.lightParams.shapeB[i], b.lightParams.shapeC[i],
 			b.lightParams.shapeD[i]) * slotShadowAt(position, b, key, i);
 	}

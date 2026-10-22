@@ -212,7 +212,7 @@ test "setMeshOf holds the new mesh before it lets go of the one shown, even when
 	assert !context.hasMesh(shown) && context.meshHolders[next.index] == 2;
 }
 
-test "setMaterialOf holds the new material before it lets go of the one shown, even when they are one" {
+test "setMaterialOf holds the new material before it lets go of the shown one, even the same one" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const shown: MaterialId = plainMaterial(context);

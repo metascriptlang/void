@@ -74,10 +74,13 @@ export function rayIntersection(
 
 // TriPlane.contains: the point lies inside the triangle's prism along its normal, so a point off
 // the plane is tested by where it projects.
-export function containsProjected(this tri: Triangle3D, point: Vec3): Result<boolean, PolygonError> {
+export function containsProjected(
+	this tri: Triangle3D, point: Vec3,
+): Result<boolean, PolygonError> {
 	if (!finiteTriangle(tri) || !finiteVec(point)) { return Result.err(PolygonError.NonFinite); }
 	const p0: Wide3 = wide(tri.p0);
-	return Result.ok(inTriangle(p0, wideSub(wide(tri.p1), p0), wideSub(wide(tri.p2), p0), wide(point)));
+	return Result.ok(
+		inTriangle(p0, wideSub(wide(tri.p1), p0), wideSub(wide(tri.p2), p0), wide(point)));
 }
 
 // closestPointLine, Polygon.hx:127-130. A zero-length edge has no direction (Heaps divides 0/0);

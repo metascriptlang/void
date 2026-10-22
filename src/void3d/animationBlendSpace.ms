@@ -148,7 +148,9 @@ export function triangulate(
 			first--;
 		}
 		for (const edge of edges) {
-			if (triangles.length >= limit) { return Result.err(AnimationBlendSpaceError.Triangulation); }
+			if (triangles.length >= limit) {
+				return Result.err(AnimationBlendSpaceError.Triangulation);
+			}
 			triangles.push({ a: edge.a, b: edge.b, c: i });
 		}
 	}
@@ -243,7 +245,8 @@ export function setBlendSpaceSmoothing(
 	xHalfLife: float64,
 	yHalfLife: float64,
 ): Result<void, AnimationBlendSpaceError> {
-	if (!Number.isFinite(xHalfLife) || !Number.isFinite(yHalfLife) || xHalfLife < 0.0 || yHalfLife < 0.0) {
+	if (!Number.isFinite(xHalfLife) || !Number.isFinite(yHalfLife) || xHalfLife < 0.0 ||
+		yHalfLife < 0.0) {
 		return Result.err(AnimationBlendSpaceError.Smooth);
 	}
 	space.xSmooth = xHalfLife;
@@ -303,7 +306,8 @@ function refreshTriangle(ref space: AnimationBlendSpace2D): void {
 			];
 			for (let i = 0; i < 3; i++) {
 				const next: int32 = (i + 1) % 3;
-				const x1: float64 = space.pointX[corners[i]]; const y1: float64 = space.pointY[corners[i]];
+				const x1: float64 = space.pointX[corners[i]];
+				const y1: float64 = space.pointY[corners[i]];
 				const dx: float64 = space.pointX[corners[next]] - x1;
 				const dy: float64 = space.pointY[corners[next]] - y1;
 				const k: float64 = Math.min(1.0, Math.max(
@@ -343,7 +347,8 @@ function refreshTriangle(ref space: AnimationBlendSpace2D): void {
 	space.blendLength = 0.0;
 	for (let i = 0; i < 3; i++) {
 		if (space.keepSync[corners[i]]) {
-			space.blendLength += space.sides[corners[i]].clip.seconds * (space.weights[i] + unsyncedWeight);
+			space.blendLength +=
+				space.sides[corners[i]].clip.seconds * (space.weights[i] + unsyncedWeight);
 		}
 	}
 }
@@ -355,12 +360,14 @@ export function advanceBlendSpace(
 	if (!Number.isFinite(dt) || dt < 0.0) { return Result.err(AnimationBlendSpaceError.Delta); }
 	let velocity: float64 = 0.0;
 	if (space.xSmooth > 0.0) {
-		space.xSmoothed = springStep(space.xSmoothed, space.xVelocity, space.x, space.xSmooth, dt, velocity);
+		space.xSmoothed =
+			springStep(space.xSmoothed, space.xVelocity, space.x, space.xSmooth, dt, velocity);
 		space.xVelocity = velocity;
 		space.current = -1;
 	} else { space.xSmoothed = space.x; }
 	if (space.ySmooth > 0.0) {
-		space.ySmoothed = springStep(space.ySmoothed, space.yVelocity, space.y, space.ySmooth, dt, velocity);
+		space.ySmoothed =
+			springStep(space.ySmoothed, space.yVelocity, space.y, space.ySmooth, dt, velocity);
 		space.yVelocity = velocity;
 		space.current = -1;
 	} else { space.ySmoothed = space.y; }

@@ -63,7 +63,8 @@ export function forTracks(
 	weightTracks: Readonly<Span<GltfWeightTrack>>,
 	loops: boolean,
 ): Result<AnimationTransitionClip, AnimationTransitionError> {
-	let clip: AnimationTransitionClip = { tracks: [], weightTracks: [], loops: loops, seconds: 0.0 };
+	let clip: AnimationTransitionClip =
+		{ tracks: [], weightTracks: [], loops: loops, seconds: 0.0 };
 	for (let i = 0; i < tracks.length; i++) {
 		for (let previous = 0; previous < i; previous++) {
 			if (tracks[previous].sourceNode == tracks[i].sourceNode &&
@@ -84,11 +85,15 @@ export function forTracks(
 				return Result.err(AnimationTransitionError.DuplicateTrack);
 			}
 		}
-		if (weightTracks[i].curve.times.length < 1) { return Result.err(AnimationTransitionError.Curve); }
+		if (weightTracks[i].curve.times.length < 1) {
+			return Result.err(AnimationTransitionError.Curve);
+		}
 		clip.seconds = Math.max(
 			clip.seconds,
 			weightTracks[i].curve.times[weightTracks[i].curve.times.length - 1] as float64);
-		clip.weightTracks.push({ sourceNode: weightTracks[i].sourceNode, curve: weightTracks[i].curve });
+		clip.weightTracks.push({
+			sourceNode: weightTracks[i].sourceNode, curve: weightTracks[i].curve,
+		});
 	}
 	return Result.ok(move clip);
 }
@@ -165,9 +170,13 @@ export function checkedWeightRests(
 	weightRests: Readonly<Span<AnimationWeightRest>>,
 ): Result<void, AnimationTransitionError> {
 	for (let i = 0; i < weightRests.length; i++) {
-		if (weightRests[i].rest.length < 1) { return Result.err(AnimationTransitionError.WeightShape); }
+		if (weightRests[i].rest.length < 1) {
+			return Result.err(AnimationTransitionError.WeightShape);
+		}
 		for (const value of weightRests[i].rest) {
-			if (!Number.isFinite(value)) { return Result.err(AnimationTransitionError.WeightShape); }
+			if (!Number.isFinite(value)) {
+				return Result.err(AnimationTransitionError.WeightShape);
+			}
 		}
 		for (let previous = 0; previous < i; previous++) {
 			if (weightRests[previous].sourceNode == weightRests[i].sourceNode) {
@@ -288,12 +297,16 @@ export function sampleSide(
 }
 
 function sampleBoth(ref transition: AnimationTransition): Result<void, AnimationTransitionError> {
-	const first = try sampleSide(transition.compose.targets, transition.weightRest, transition.first);
-	const second = try sampleSide(transition.compose.targets, transition.weightRest, transition.second);
+	const first =
+		try sampleSide(transition.compose.targets, transition.weightRest, transition.first);
+	const second =
+		try sampleSide(transition.compose.targets, transition.weightRest, transition.second);
 	return Result.ok(null);
 }
 
-export function evaluate(ref transition: AnimationTransition): Result<void, AnimationTransitionError> {
+export function evaluate(
+	ref transition: AnimationTransition,
+): Result<void, AnimationTransitionError> {
 	const sampled = try sampleBoth(transition);
 	const toward: float32 = transition.blend as float32;
 	const staged = stageSmoothCompose(

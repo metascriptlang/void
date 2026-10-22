@@ -305,7 +305,9 @@ export function attachSpotShadow(renderer: Renderer, shadow: DirShadowMap | null
 }
 
 function castError(error: ProgramError): RendererError {
-	return error == ProgramError.BlockShort ? RendererError.CasterBlock : RendererError.ProgramNotCast;
+	return error == ProgramError.BlockShort
+		? RendererError.CasterBlock
+		: RendererError.ProgramNotCast;
 }
 
 function stopOnWrongShadow(call: string, found: string): void {
@@ -368,7 +370,9 @@ export function setExposure(renderer: Renderer, stops: float32): void {
 export function setCameraPosition(renderer: Renderer, eye: Vec3): void {
 	if (renderer.closed) { stopOnClosed("setCameraPosition"); }
 	if (!Number.isFinite(eye.x) || !Number.isFinite(eye.y) || !Number.isFinite(eye.z)) {
-		console.log(`void3d: setCameraPosition with ${eye.x}, ${eye.y}, ${eye.z}; an eye is finite`);
+		console.log(
+			`void3d: setCameraPosition with ${eye.x}, ${eye.y}, ${eye.z}; an eye is finite`,
+		);
 		unreachable;
 	}
 	renderer.cameraPosition = eye;
@@ -579,14 +583,20 @@ function sceneTextureOf(renderer: Renderer): SceneTexture {
 	if (shadow !== null) {
 		const sun: SceneTexture = shadow.sceneTexture();
 		if (spotShadow === null) {
-			return { view: sun.view, sampler: sun.sampler, spotView: sun.view, spotSampler: sun.sampler };
+			return {
+				view: sun.view, sampler: sun.sampler, spotView: sun.view, spotSampler: sun.sampler,
+			};
 		}
 		const spot: SceneTexture = spotShadow.sceneTexture();
-		return { view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler };
+		return {
+			view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler,
+		};
 	}
 	if (spotShadow !== null) {
 		const spot: SceneTexture = spotShadow.sceneTexture();
-		return { view: spot.view, sampler: spot.sampler, spotView: spot.view, spotSampler: spot.sampler };
+		return {
+			view: spot.view, sampler: spot.sampler, spotView: spot.view, spotSampler: spot.sampler,
+		};
 	}
 	return NO_SCENE_TEXTURE;
 }

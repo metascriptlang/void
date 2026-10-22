@@ -1694,7 +1694,7 @@ test "one map alone gets white for the other, and white for a missing base textu
 	assert result.value.textures[maps.metalRough].pixels[0] == 0xFFFFFFFF;
 }
 
-test "an occlusion strength outside 0..1 or a missing texture is refused, and Legacy still refuses the map" {
+test "an occlusion strength outside 0..1 or a missing texture is refused; Legacy refuses the map" {
 	const source = "{\"source\":0,\"sampler\":0}";
 	for (const strength of ["1.5", "-0.1"]) {
 		const refused = pbrLoaded(
@@ -1705,7 +1705,10 @@ test "an occlusion strength outside 0..1 or a missing texture is refused, and Le
 	const missing = pbrLoaded("{\"occlusionTexture\":{\"index\":3}}", source);
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error == GltfError.BadReference; }
-	const legacy = loaded({ ...texturedParts(), materials: "{\"occlusionTexture\":{\"index\":0}}" });
+	const legacy = loaded({
+		...texturedParts(),
+		materials: "{\"occlusionTexture\":{\"index\":0}}",
+	});
 	assert !legacy.ok;
 	if (!legacy.ok) { assert legacy.error == GltfError.UnsupportedMaterial; }
 }

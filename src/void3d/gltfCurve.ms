@@ -264,7 +264,9 @@ export function sampleWeightsInto(
 	const firstAt: int32 = left * stride + offset;
 	const secondAt: int32 = right * stride + offset;
 	if (left == right || seconds == curve.times[left] || curve.mode == GltfCurveMode.Step) {
-		for (let target = 0; target < width; target++) { out[target] = curve.values[firstAt + target]; }
+		for (let target = 0; target < width; target++) {
+			out[target] = curve.values[firstAt + target];
+		}
 		return Result.ok(null);
 	}
 	const duration: float64 = (curve.times[right] as float64) - (curve.times[left] as float64);
@@ -288,7 +290,9 @@ export function sampleWeights(
 	seconds: float64,
 ): Result<Vec<float32>, GltfCurveError> {
 	if (curve.targetCount < 1 || curve.targetCount > curve.values.length) {
-		return Result.err(Number.isFinite(seconds) ? GltfCurveError.Shape : GltfCurveError.NonFinite);
+		return Result.err(
+			Number.isFinite(seconds) ? GltfCurveError.Shape : GltfCurveError.NonFinite,
+		);
 	}
 	let weights: Vec<float32> = [];
 	for (let target = 0; target < curve.targetCount; target++) { weights.push(0.0); }

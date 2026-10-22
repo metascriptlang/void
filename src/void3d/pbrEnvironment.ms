@@ -125,7 +125,8 @@ export function hammersley(
 }
 
 function frameOf(normal: Vec3): Frame {
-	const up: Vec3 = Math.abs(normal.z as float64) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	const up: Vec3 =
+		Math.abs(normal.z as float64) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
 	const tangent: Vec3 = up.cross(normal).normalized();
 	return { tangent: tangent, bitangent: normal.cross(tangent).normalized() };
 }
@@ -171,7 +172,9 @@ export function importanceSampleGgx(
 	if (!Number.isFinite(roughness) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
 		return Result.err(PbrEnvironmentError.NonFinite);
 	}
-	if (!unitInterval(roughness) || p.y >= 1.0) { return Result.err(PbrEnvironmentError.OutOfRange); }
+	if (!unitInterval(roughness) || p.y >= 1.0) {
+		return Result.err(PbrEnvironmentError.OutOfRange);
+	}
 	const n: Vec3 = try normal.direction();
 	const result: Vec3 = ggxHalf(roughness, p, n);
 	if (!result.finiteVector()) { return Result.err(PbrEnvironmentError.Unrepresentable); }
@@ -180,12 +183,24 @@ export function importanceSampleGgx(
 
 function faceBasis(face: int32): FaceBasis {
 	return match (face) {
-		0 => ({ right: vec3(0.0, 0.0, -1.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(1.0, 0.0, 0.0) }),
-		1 => ({ right: vec3(0.0, 0.0, 1.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(-1.0, 0.0, 0.0) }),
-		2 => ({ right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 0.0, 1.0), forward: vec3(0.0, 1.0, 0.0) }),
-		3 => ({ right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 0.0, -1.0), forward: vec3(0.0, -1.0, 0.0) }),
-		4 => ({ right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(0.0, 0.0, 1.0) }),
-		_ => ({ right: vec3(-1.0, 0.0, 0.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(0.0, 0.0, -1.0) }),
+		0 => ({
+			right: vec3(0.0, 0.0, -1.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(1.0, 0.0, 0.0),
+		}),
+		1 => ({
+			right: vec3(0.0, 0.0, 1.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(-1.0, 0.0, 0.0),
+		}),
+		2 => ({
+			right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 0.0, 1.0), forward: vec3(0.0, 1.0, 0.0),
+		}),
+		3 => ({
+			right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 0.0, -1.0), forward: vec3(0.0, -1.0, 0.0),
+		}),
+		4 => ({
+			right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(0.0, 0.0, 1.0),
+		}),
+		_ => ({
+			right: vec3(-1.0, 0.0, 0.0), up: vec3(0.0, -1.0, 0.0), forward: vec3(0.0, 0.0, -1.0),
+		}),
 	};
 }
 

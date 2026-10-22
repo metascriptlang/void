@@ -83,7 +83,9 @@ export function create(
 	if (!Number.isFinite(easing) || easing <= -1.0) {
 		return Result.err(AnimationSmoothTargetError.Easing);
 	}
-	if (!checkedWeightRests(weights).ok) { return Result.err(AnimationSmoothTargetError.WeightShape); }
+	if (!checkedWeightRests(weights).ok) {
+		return Result.err(AnimationSmoothTargetError.WeightShape);
+	}
 	const composed = AnimationCompose.create(pose);
 	if (!composed.ok) { return Result.err(AnimationSmoothTargetError.Compose); }
 	const side = bindSide(pose, weights, clip);
@@ -158,7 +160,9 @@ export function evaluateSmoothTarget(
 		}
 	}
 	const eased: float64 = easeFactor(smooth.blend, smooth.easing);
-	if (!stageSmoothCompose(smooth.compose, smooth.frozen, smooth.target.child, eased as float32).ok) {
+	if (!stageSmoothCompose(
+		smooth.compose, smooth.frozen, smooth.target.child, eased as float32,
+	).ok) {
 		return Result.err(AnimationSmoothTargetError.Compose);
 	}
 	for (let i = 0; i < smooth.weights.length; i++) {

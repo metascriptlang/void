@@ -124,7 +124,9 @@ export function createSpot(
 	return buildMap(context, size, true);
 }
 
-function buildMap(context: DrawContext, size: int32, spot: boolean): Result<DirShadowMap, ShadowError> {
+function buildMap(
+	context: DrawContext, size: int32, spot: boolean,
+): Result<DirShadowMap, ShadowError> {
 	context.requireOpen("DirShadowMap.create");
 	if (size <= 0) { return Result.err(ShadowError.Size); }
 	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, SHADOW_UNIFORM_LENGTH];
@@ -328,7 +330,9 @@ function drawSpotShadows(
 	}
 	const view: Result<CameraView, SpotShadowError> = spotShadowView(lights, slot);
 	if (!view.ok) {
-		console.log(`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`);
+		console.log(
+			`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`,
+		);
 		unreachable;
 	}
 	collectCasters(shadow.casters, items, shadow.context.materials);

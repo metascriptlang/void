@@ -145,7 +145,8 @@ function checkedStorage(
 	this compose: Readonly<AnimationCompose>,
 ): Result<void, AnimationComposeError> {
 	const length = compose.targets.length;
-	if (compose.first.length != length || compose.second.length != length || compose.third.length != length ||
+	if (compose.first.length != length || compose.second.length != length ||
+		compose.third.length != length ||
 		compose.pending.length != length || compose.output.length != length ||
 		compose.secondMask.length != length) {
 		return Result.err(AnimationComposeError.Shape);
@@ -293,7 +294,9 @@ export function stageExclusiveCompose(
 	return Result.ok(null);
 }
 
-function weightedScalar(a: float32, b: float32, c: float32, weights: Readonly<Span<float64>>): float32 {
+function weightedScalar(
+	a: float32, b: float32, c: float32, weights: Readonly<Span<float64>>,
+): float32 {
 	return ((a as float64) * weights[0] + (b as float64) * weights[1] +
 		(c as float64) * weights[2]) as float32;
 }
@@ -321,7 +324,9 @@ function weightedRotation(
 	}
 	const sum: Quat = { x: x as float32, y: y as float32, z: z as float32, w: w as float32 };
 	const blended: Quat = reference * sum.normalized();
-	return blended.w < 0.0 ? { x: -blended.x, y: -blended.y, z: -blended.z, w: -blended.w } : blended;
+	return blended.w < 0.0
+		? { x: -blended.x, y: -blended.y, z: -blended.z, w: -blended.w }
+		: blended;
 }
 
 export function stageWeightedCompose(
@@ -354,7 +359,8 @@ export function stageWeightedCompose(
 			position: vec3(
 				weightedScalar(a.value.position.x, b.value.position.x, c.value.position.x, weights),
 				weightedScalar(a.value.position.y, b.value.position.y, c.value.position.y, weights),
-				weightedScalar(a.value.position.z, b.value.position.z, c.value.position.z, weights)),
+				weightedScalar(a.value.position.z, b.value.position.z, c.value.position.z,
+					weights)),
 			rotation: weightedRotation(
 				compose.targets[i].rest.rotation, a.value.rotation, b.value.rotation,
 				c.value.rotation, weights),

@@ -435,7 +435,8 @@ function weightTrack(
 	const curve = GltfWeightCurve.forWeightValues(mode, targetCount, times, values);
 	if (!curve.ok) {
 		cause = `weights output must hold ${targetCount} scalars per keyframe ` +
-			`(three times that for CUBICSPLINE) at strictly increasing times: ${curve.error.toString()}`;
+			`(three times that for CUBICSPLINE) at strictly increasing times: ` +
+			`${curve.error.toString()}`;
 		return Result.err(GltfError.CountMismatch);
 	}
 	return Result.ok({ sourceNode: node, curve: curve.value });
@@ -1016,7 +1017,8 @@ function loadMorphTargets(
 				return Result.err(GltfError.Unsupported);
 			}
 			if (!hasField(attributes, key)) {
-				cause = `morph target ${index} displaces ${key}, which the primitive does not carry`;
+				cause =
+					`morph target ${index} displaces ${key}, which the primitive does not carry`;
 				return Result.err(GltfError.BadReference);
 			}
 			const source = try accessorSource(accessors, try colourIntField(target, key, -1));
@@ -1053,7 +1055,9 @@ function resolveMorphNodes(
 		}
 		const count: int32 = data.morphs[morph].targetCount;
 		if (data.nodes[i].weights.length == 0) {
-			for (const weight of data.morphs[morph].meshWeights) { data.nodes[i].weights.push(weight); }
+			for (const weight of data.morphs[morph].meshWeights) {
+				data.nodes[i].weights.push(weight);
+			}
 		} else if (data.nodes[i].weights.length != count) {
 			return Result.err(gltfFailure(GltfError.CountMismatch, source, location,
 				data.nodes[i].name, `node weights hold ${data.nodes[i].weights.length} values ` +
@@ -1562,7 +1566,9 @@ function loadTexture(
 	}
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
 	if (!decoded.ok) {
-		if (decoded.error == ImageError.NoDecoderOnJs) { return Result.err(GltfError.NoImageDecoderOnJs); }
+		if (decoded.error == ImageError.NoDecoderOnJs) {
+			return Result.err(GltfError.NoImageDecoderOnJs);
+		}
 		return Result.err(GltfError.BadImage);
 	}
 	return Result.ok({
@@ -1837,7 +1843,9 @@ function pbrFactor(
 function pbrMapsOf(read: MaterialRead): GltfPbrMaps {
 	const held = read.material.pbrMaps;
 	if (held === null) {
-		return { metalRough: NO_TEXTURE_INDEX, occlusion: NO_TEXTURE_INDEX, occlusionStrength: 1.0 };
+		return {
+			metalRough: NO_TEXTURE_INDEX, occlusion: NO_TEXTURE_INDEX, occlusionStrength: 1.0,
+		};
 	}
 	return held;
 }
@@ -2299,7 +2307,8 @@ function decodeGltf(
 						`$.meshes[${i}].primitives[${p}].targets`, base,
 						targetCount == 0
 							? "primitive has no morph targets while its siblings have them"
-							: `primitive has ${targetCount} morph targets, its siblings ${morphTargetCount}`));
+							: `primitive has ${targetCount} morph targets, ` +
+								`its siblings ${morphTargetCount}`));
 				}
 				if (targetCount > 0) { morphTargetCount = targetCount; }
 				let sourceVertices: Vec<int32> = [];
@@ -2323,7 +2332,8 @@ function decodeGltf(
 		}
 		const meshWeights = weightsField(meshArray.at(i));
 		if (!meshWeights.ok) {
-			return Result.err(gltfFailure(meshWeights.error, source, `$.meshes[${i}].weights`, base));
+			return Result.err(gltfFailure(meshWeights.error, source,
+				`$.meshes[${i}].weights`, base));
 		}
 		if (!morphed) {
 			if (meshWeights.value.length > 0) {
@@ -2344,7 +2354,8 @@ function decodeGltf(
 		const created = MorphData.create(morphInputs, morphTargetCount);
 		if (!created.ok) {
 			return Result.err(gltfFailure(match (created.error) {
-				MorphGeometryError.Shape | MorphGeometryError.SourceVertex => GltfError.CountMismatch,
+				MorphGeometryError.Shape | MorphGeometryError.SourceVertex =>
+					GltfError.CountMismatch,
 				MorphGeometryError.NonFinite => GltfError.OutOfRange,
 				_ => GltfError.Unsupported,
 			}, source, `$.meshes[${i}]`, base, "morph data: " + created.error.toString()));
@@ -2384,7 +2395,8 @@ function decodeGltf(
 	let animations = loadAnimations(root, accessors, views, buffer, declaredLength, nodeCount,
 		nodeTargets, colourBuffers, colourViews, animationCause);
 	if (!animations.ok) {
-		return Result.err(gltfFailure(animations.error, source, "$.animations", "", animationCause));
+		return Result.err(gltfFailure(animations.error, source, "$.animations", "",
+			animationCause));
 	}
 	data.animations = move animations.value;
 	placePrimitives(data, runs, nodeCount);

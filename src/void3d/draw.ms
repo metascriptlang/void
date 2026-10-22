@@ -683,7 +683,9 @@ export function setMeshVertices(
 ): Result<int32, MeshWriteError> {
 	if (context.closed) { stopOnClosedContext("setMeshVertices"); }
 	if (!context.hasMesh(id)) {
-		return Result.err(context.issuedMesh(id) ? MeshWriteError.StaleMesh : MeshWriteError.ForeignMesh);
+		return Result.err(
+			context.issuedMesh(id) ? MeshWriteError.StaleMesh : MeshWriteError.ForeignMesh,
+		);
 	}
 	const index: int32 = id.index;
 	if (context.meshStorage[index] == VertexStorage.Immutable) {

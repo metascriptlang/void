@@ -2,7 +2,12 @@
 // the light block's shadowing spot slot: the spot's position and forward, fovY its full angle,
 // near range / 20 (the first 5% outside of range, as Heaps writes it), far range, square. The
 // pass itself is dirShadowMap.ms drawShadows, into the spot's own map (createSpot).
-import { MAX_POINT_LIGHTS, LIGHT_SHAPE_BASE, LIGHT_SHAPE_ARRAY_LENGTH, LIGHT_KIND_SPOT } from "./gpu3d";
+import {
+	MAX_POINT_LIGHTS,
+	LIGHT_SHAPE_BASE,
+	LIGHT_SHAPE_ARRAY_LENGTH,
+	LIGHT_KIND_SPOT,
+} from "./gpu3d";
 import { Vec3, vec3 } from "../math/math3d";
 import { SpotLightShape, LightShapeError, perspectiveCamera } from "./lightShape";
 import { Camera3D, CameraView, CameraError, resolve } from "./camera";

@@ -29,8 +29,12 @@ export function optimizedRayIntersection(
 }
 
 // OptimizedCollider.dimension, Collider.hx:55-57.
-export function optimizedDimension(first: float32, second: float32): Result<float32, OptimizedColliderError> {
-	if (Number.isNaN(first) || Number.isNaN(second)) { return Result.err(OptimizedColliderError.NonFinite); }
+export function optimizedDimension(
+	first: float32, second: float32,
+): Result<float32, OptimizedColliderError> {
+	if (Number.isNaN(first) || Number.isNaN(second)) {
+		return Result.err(OptimizedColliderError.NonFinite);
+	}
 	return Result.ok(Math.max(first, second));
 }
 

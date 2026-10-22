@@ -15,7 +15,9 @@ export enum ObjectColliderError { NonFinite, Singular, NotAffine }
 export function objectFrame(absPos: Mat4): Result<TransformFrame, ObjectColliderError> {
 	const frame = transformFrame(absPos);
 	if (!frame.ok) {
-		if (frame.error == TransformError.Singular) { return Result.err(ObjectColliderError.Singular); }
+		if (frame.error == TransformError.Singular) {
+			return Result.err(ObjectColliderError.Singular);
+		}
 		return Result.err(ObjectColliderError.NonFinite);
 	}
 	if (absPos.m14 != 0.0 || absPos.m24 != 0.0 || absPos.m34 != 0.0 || absPos.m44 != 1.0) {

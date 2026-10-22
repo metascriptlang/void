@@ -52,7 +52,9 @@ export function isIdentityEpsilon(m: Mat4, epsilon: float32): boolean {
 }
 
 // TransformCollider.transform, TransformCollider.hx:24-28.
-export function composed(this frame: TransformFrame, m: Mat4): Result<TransformFrame, TransformError> {
+export function composed(
+	this frame: TransformFrame, m: Mat4,
+): Result<TransformFrame, TransformError> {
 	if (!finiteMatrix(m)) { return Result.err(TransformError.NonFinite); }
 	return transformFrame(multiplyAffine(m, frame.mat));
 }
@@ -62,8 +64,9 @@ export function localRay(this frame: TransformFrame, ray: Ray): Ray {
 	return ray.transformed(frame.invMat);
 }
 
-// TransformCollider.hx:34-46: the local hit distance back to the world, measured from the world ray's origin to
-// the hit point carried through the matrix, so a scale in the matrix scales the distance.
+// TransformCollider.hx:34-46: the local hit distance back to the world, measured from the
+// world ray's origin to the hit point carried through the matrix, so a scale in the matrix
+// scales the distance.
 // A negative `hit` is a miss and passes through.
 export function worldHitDistance(
 	this frame: TransformFrame, local: Ray, hit: float32, world: Ray,
@@ -100,11 +103,14 @@ function largest(v: Vec3): float32 {
 // Matrix.getScale, which negates all three for a mirrored matrix, so a mirrored placement gets a
 // negative radius there; the scale used here is the axis length.
 // PENDING3D: transform-collider-mirrored-scale-negative
-export function localSphere(this frame: TransformFrame, sphere: Sphere3D): Result<Sphere3D, TransformError> {
+export function localSphere(
+	this frame: TransformFrame, sphere: Sphere3D,
+): Result<Sphere3D, TransformError> {
 	if (!finiteVec(sphere.center) || !Number.isFinite(sphere.radius)) {
 		return Result.err(TransformError.NonFinite);
 	}
-	const radius: float64 = (sphere.radius as float64) * (largest(axisScale(frame.invMat)) as float64);
+	const radius: float64 =
+		(sphere.radius as float64) * (largest(axisScale(frame.invMat)) as float64);
 	if (Math.abs(radius) > FLOAT32_LIMIT) { return Result.err(TransformError.OutOfRange); }
 	return Result.ok({ center: sphere.center * frame.invMat, radius: radius as float32 });
 }
@@ -112,7 +118,9 @@ export function localSphere(this frame: TransformFrame, sphere: Sphere3D): Resul
 // Sphere.inFrustumMatrix, Sphere.hx:61-76, which `TransformCollider.inFrustum` reaches through
 // a collider's bounding sphere: the collider's sphere placed in the world by `mat`, radius grown
 // by the largest axis scale.
-export function worldSphere(this frame: TransformFrame, sphere: Sphere3D): Result<Sphere3D, TransformError> {
+export function worldSphere(
+	this frame: TransformFrame, sphere: Sphere3D,
+): Result<Sphere3D, TransformError> {
 	if (!finiteVec(sphere.center) || !Number.isFinite(sphere.radius)) {
 		return Result.err(TransformError.NonFinite);
 	}
@@ -123,7 +131,9 @@ export function worldSphere(this frame: TransformFrame, sphere: Sphere3D): Resul
 
 // TransformCollider.dimension, hx:81-85, with the axis lengths for the scale, so a mirrored
 // placement does not negate it.
-export function scaledDimension(this frame: TransformFrame, dimension: float32): Result<float32, TransformError> {
+export function scaledDimension(
+	this frame: TransformFrame, dimension: float32,
+): Result<float32, TransformError> {
 	if (!Number.isFinite(dimension)) { return Result.err(TransformError.NonFinite); }
 	const scaled: float64 = (dimension as float64) * (largest(axisScale(frame.mat)) as float64);
 	if (Math.abs(scaled) > FLOAT32_LIMIT) { return Result.err(TransformError.OutOfRange); }
