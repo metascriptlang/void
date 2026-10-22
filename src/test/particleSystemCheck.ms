@@ -2,7 +2,8 @@ import { Vec3, vec3, Mat4, identity, translation } from "../math/math3d";
 import {
 	ParticleSystemAsset, RingBufferMode, SimulationSpace, ColliderShape, ForceFieldShape, TriggerAction,
 } from "../particles/asset";
-import { constantCurve, twoConstants } from "../particles/curve";
+import { constantCurve, twoConstants, constantColor, rgbaColor } from "../particles/curve";
+import { ParticleLight, particleLights } from "../particles/lights";
 import {
 	ParticleSystem, ParticleSystemError, playSystem, stopSystem, updateSystem,
 	POS_X, POS_Y, POS_Z, VEL_X, VEL_Y, VEL_Z, MOVE_X, MOVE_Y, MOVE_Z, AGE, LIFETIME, PARTICLE_COLUMNS,
@@ -403,4 +404,31 @@ test "a force field pushes along its direction inside its range and fades to its
 	const before: float32 = at(sys, VEL_X);
 	run(sys, 1.0 / 60.0, 1);
 	assert near((at(sys, VEL_X) - before) * 60.0, 0.45, 0.02);
+}
+
+test "the lights module lights every 1/ratio-th particle up to maxLights, from its colour and size" {
+	let a = oneShot(0.0);
+	a.emission.bursts = [{ time: 0.0, count: constantCurve(10.0), cycleCount: 1, repeatInterval: 0.01, probability: 1.0 }];
+	a.main.startSizeX = constantCurve(2.0);
+	a.main.startColor = constantColor(rgbaColor(1.0, 0.5, 0.5, 0.5));
+	a.lights.enabled = true;
+	a.lights.ratio = 0.5;
+	a.lights.useRandomDistribution = false;
+	a.lights.useParticleColor = true;
+	a.lights.sizeAffectsRange = true;
+	a.lights.alphaAffectsIntensity = true;
+	a.lights.range = constantCurve(3.0);
+	a.lights.intensity = constantCurve(4.0);
+	a.lights.maxLights = 20;
+	let sys = started(a, 1.0 / 60.0);
+	run(sys, 1.0 / 60.0, 1);
+	let lights: Vec<ParticleLight> = [];
+	particleLights(sys, lights);
+	assert lights.length == 5;
+	assert near(lights[0].range, 6.0, 1e-5);
+	assert near(lights[0].intensity, 2.0, 1e-5);
+	assert near(lights[0].color.g, 0.5, 1e-5);
+	sys.asset.lights.maxLights = 3;
+	particleLights(sys, lights);
+	assert lights.length == 3;
 }

@@ -220,6 +220,8 @@ export const DRAW_SUB_EMITTER: uint32 = 30;
 // The renderer's and the texture sheet's flip proportions, drawn by the writers (2D and 3D).
 export const DRAW_FLIP_U: uint32 = 31;
 export const DRAW_FLIP_V: uint32 = 32;
+// Whether a particle carries a light, when the Lights module draws them at random.
+export const DRAW_LIGHT: uint32 = 33;
 
 const DEGREE: float32 = 0.017453292519943295;
 const PI: float32 = 3.141592653589793;
