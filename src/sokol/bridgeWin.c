@@ -278,7 +278,7 @@ static void createDevice(UINT flags) {
 void voidPlatformDeviceEnsure(void) {
 	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Void window");
 	if (s_driver == DRIVER_VIEWS) return;
-#if defined(SOKOL_GLCORE)
+#if defined(VOID_GLCORE)
 	voidFail("voidViewCreate: host views on Windows render through D3D11; this is a GL core build");
 #endif
 	createDevice(0);
@@ -399,7 +399,7 @@ long long voidPlatformSurfaceNative(void *surface) {
 	return (long long)(intptr_t)((WinSurface *)surface)->swapChain;
 }
 
-#if defined(SOKOL_D3D11)
+#if defined(VOID_D3D11)
 static WinSurface s_window;
 
 void voidWindowSurfaceCreate(HWND hwnd, int samples) {
@@ -495,7 +495,7 @@ static WinSurface *screenSurface(void) {
 	if (s_driver == DRIVER_VIEWS) {
 		s = (WinSurface *)voidViewsCurrentSurface();
 	} else {
-#if defined(SOKOL_D3D11)
+#if defined(VOID_D3D11)
 		if (voidWin32Width() != s_window.w || voidWin32Height() != s_window.h) {
 			voidPlatformSurfaceResize(&s_window, voidWin32Width(), voidWin32Height());
 		}

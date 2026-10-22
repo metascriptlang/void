@@ -19,7 +19,7 @@
 	#include <emscripten.h>
 #endif
 
-#if defined(SOKOL_GLES3) || defined(SOKOL_GLCORE)
+#if defined(VOID_GLES3) || defined(VOID_GLCORE)
 	#define VOID_CAPTURE_GL 1
 #elif defined(_WIN32)
 	#define VOID_CAPTURE_D3D11 1
@@ -43,7 +43,7 @@
 #endif
 
 #if defined(VOID_CAPTURE_GL)
-	#if defined(SOKOL_GLCORE)
+	#if defined(VOID_GLCORE)
 		#if defined(_WIN32)
 			#include <windows.h>
 		#endif
@@ -88,7 +88,7 @@ int voidCaptureBackend(void) {
 	return 1;
 #elif defined(VOID_CAPTURE_GL) && defined(__EMSCRIPTEN__)
 	return 3;
-#elif defined(SOKOL_GLCORE)
+#elif defined(VOID_GLCORE)
 	return 4;
 #elif defined(VOID_CAPTURE_METAL)
 	return 5;

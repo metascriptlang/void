@@ -43,10 +43,10 @@ bytes() { llvm-size "$1" | awk 'NR == 2 { print $1 + $2 }'; }
 
 compile() {
 	root="$1"; file="$2"; label="$3"; extra="$4"
-	$WASM $extra -I "$root/src/void2d" -DSOKOL_GLES3 -c "$root/src/void2d/$file" \
+	$WASM $extra -I "$root/src/void2d" -DVOID_GLES3 -c "$root/src/void2d/$file" \
 		-o "$OUT/$label.wasm.o" 2> "$OUT/$label.wasm.log" \
 		|| { echo "FAIL wasm delta: $file did not compile for wasm32 — see $OUT/$label.wasm.log"; failed=1; return; }
-	$NATIVE $extra -DSOKOL_D3D11 -I "$root/src/void2d" -c "$root/src/void2d/$file" \
+	$NATIVE $extra -DVOID_D3D11 -I "$root/src/void2d" -c "$root/src/void2d/$file" \
 		-o "$OUT/$label.o" 2> "$OUT/$label.log" \
 		|| { echo "FAIL wasm delta: $file did not compile natively — see $OUT/$label.log"; failed=1; }
 }

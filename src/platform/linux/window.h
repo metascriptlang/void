@@ -1,5 +1,5 @@
 // The X11 window with its GLX context, ported from sokol_app.h's Linux backend (pin 2e75443d,
-// SOKOL_GLCORE without SOKOL_FORCE_EGL): GL core 4.3, RGBA8 with depth 24, swap interval 1.
+// VOID_GLCORE without SOKOL_FORCE_EGL): GL core 4.3, RGBA8 with depth 24, swap interval 1.
 // The caller draws into framebuffer 0 and presents with voidLinuxSwapBuffers.
 #ifndef VOID_PLATFORM_LINUX_WINDOW_H
 #define VOID_PLATFORM_LINUX_WINDOW_H

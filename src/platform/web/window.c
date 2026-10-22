@@ -2,10 +2,10 @@
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
-#if defined(SOKOL_GLES3)
+#if defined(VOID_GLES3)
 #include <emscripten/html5_webgl.h>
-#elif !defined(SOKOL_WGPU)
-#error "void: the browser window needs -DSOKOL_WGPU or -DSOKOL_GLES3"
+#elif !defined(VOID_WGPU)
+#error "void: the browser window needs -DVOID_WGPU or -DVOID_GLES3"
 #endif
 #include <math.h>
 #include <stdarg.h>
@@ -144,7 +144,7 @@ static struct {
 		bool posValid;
 	} mouse;
 	VoidAppEvent event;
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	struct {
 		WGPUInstance instance;
 		WGPUAdapter adapter;
@@ -223,7 +223,7 @@ static uint32_t mods(bool ctrl, bool shift, bool alt, bool meta) {
 	return m;
 }
 
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 
 static void printMessage(const char *what, WGPUStringView message) {
 	const size_t length = message.data == NULL ? 0 : message.length == WGPU_STRLEN ? strlen(message.data) : message.length;
@@ -510,7 +510,7 @@ static bool sizeChangedCallback(int type, const EmscriptenUiEvent *ui, void *use
 	s.framebufferWidth = roundAtLeastOne((float)w * s.dpiScale);
 	s.framebufferHeight = roundAtLeastOne((float)h * s.dpiScale);
 	emscripten_set_canvas_element_size(CANVAS, s.framebufferWidth, s.framebufferHeight);
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	sizeChanged();
 #endif
 	appEvent(VOID_EVENT_RESIZED);
@@ -650,7 +650,7 @@ static void setEventHandlers(bool on) {
 	emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, on ? focusCallback : NULL);
 	emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, on ? focusCallback : NULL);
 	emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, on ? sizeChangedCallback : NULL);
-#if defined(SOKOL_GLES3)
+#if defined(VOID_GLES3)
 	emscripten_set_webglcontextlost_callback(CANVAS, 0, true, on ? webglContextChanged : NULL);
 	emscripten_set_webglcontextrestored_callback(CANVAS, 0, true, on ? webglContextChanged : NULL);
 #endif
@@ -668,7 +668,7 @@ static void frame(void) {
 static bool animationFrame(double time, void *userData) {
 	(void)time;
 	(void)userData;
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	wgpuInstanceProcessEvents(s.wgpu.instance);
 	if (s.wgpu.initDone) {
 		frame();
@@ -690,7 +690,7 @@ static bool animationFrame(double time, void *userData) {
 		if (s.desc.cleanup) s.desc.cleanup();
 		s.cleanupCalled = true;
 	}
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	discardGpu();
 #endif
 	memset(&s, 0, sizeof s);

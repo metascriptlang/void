@@ -225,7 +225,7 @@ case "$(uname -s)" in
 esac
 for glyph_backend in $glyph_backends; do
 	glyph_flags=""
-	[ "$glyph_backend" != gl ] || glyph_flags="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+	[ "$glyph_backend" != gl ] || glyph_flags="-d:voidGlCore --passC=-DVOID_GLCORE"
 	glyph_runner="out/glyphClip-$glyph_backend.exe"
 	if "$MSC" build -d:voidSvg -d:voidColourEmoji -d:voidSdfText $glyph_flags \
 			tests/integration/glyphClip.ms --release --output="$glyph_runner" \

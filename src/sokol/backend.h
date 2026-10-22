@@ -1,25 +1,25 @@
-#ifndef VOID_SOKOL_BACKEND_H
-#define VOID_SOKOL_BACKEND_H
+#ifndef VOID_BACKEND_H
+#define VOID_BACKEND_H
 
-#if defined(SOKOL_METAL) + defined(SOKOL_D3D11) + defined(SOKOL_GLES3) + defined(SOKOL_WGPU) + \
-	defined(SOKOL_GLCORE) > 1
-#error "void: more than one SOKOL_<backend> is defined"
+#if defined(VOID_METAL) + defined(VOID_D3D11) + defined(VOID_GLES3) + defined(VOID_WGPU) + \
+	defined(VOID_GLCORE) > 1
+#error "void: more than one VOID_<backend> is defined"
 #endif
 
-#if !defined(SOKOL_METAL) && !defined(SOKOL_D3D11) && !defined(SOKOL_GLES3) && \
-	!defined(SOKOL_WGPU) && !defined(SOKOL_GLCORE)
+#if !defined(VOID_METAL) && !defined(VOID_D3D11) && !defined(VOID_GLES3) && \
+	!defined(VOID_WGPU) && !defined(VOID_GLCORE)
 #if defined(_WIN32)
-#define SOKOL_D3D11
+#define VOID_D3D11
 #elif defined(__APPLE__)
-#define SOKOL_METAL
+#define VOID_METAL
 #elif defined(__ANDROID__)
-#define SOKOL_GLES3
+#define VOID_GLES3
 #elif defined(__linux__)
-#define SOKOL_GLCORE
+#define VOID_GLCORE
 #elif defined(__EMSCRIPTEN__)
 #error "void: a browser build names its API; pass -d:webgpu or -d:webgl2 to msc"
 #else
-#error "void: no SOKOL_<backend> for this platform; define one with -D"
+#error "void: no VOID_<backend> for this platform; define one with -D"
 #endif
 #endif
 

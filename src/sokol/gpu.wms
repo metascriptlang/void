@@ -10,10 +10,10 @@
 
 when (webgpu) {
 	@passC("--use-port=emdawnwebgpu");
-	@passC("-DSOKOL_WGPU");
+	@passC("-DVOID_WGPU");
 	@passL("--use-port=emdawnwebgpu");
 } else when (webgl2) {
-	@passC("-DSOKOL_GLES3");
+	@passC("-DVOID_GLES3");
 	@passL("-sFULL_ES3=1");
 	@passL("-sMAX_WEBGL_VERSION=2");
 }

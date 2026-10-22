@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 #include <webgpu/webgpu.h>
 #else
 #include <emscripten/html5_webgl.h>
@@ -286,7 +286,7 @@ EM_JS(void, voidWebInstallStart, (int needsDevice), {
 });
 
 void voidWebInstall(void) {
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	voidWebInstallStart(1);
 #else
 	voidWebInstallStart(0);
@@ -306,7 +306,7 @@ typedef struct {
 	int id;
 	char selector[32];
 	int w, h;
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	WGPUSurface surface;
 	WGPUTexture texture;
 	WGPUTextureView view;
@@ -321,7 +321,7 @@ static void refuseMultisample(void) {
 	}
 }
 
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 
 static WGPUInstance s_instance;
 static WGPUDevice s_device;
@@ -418,7 +418,7 @@ static void dropSurface(WebSurface *s) {
 	wgpuSurfaceRelease(s->surface);
 }
 
-#else // SOKOL_GLES3
+#else // VOID_GLES3
 
 static WebSurface *s_glView = NULL;
 static bool s_glEverSetUp = false;
@@ -582,7 +582,7 @@ int32_t voidSwapchainSampleCount(void) {
 
 void *voidSwapchainRenderView(void) {
 	if (screenDriver() == DRIVER_VIEWS) return viewRenderView((const WebSurface *)voidViewsCurrentSurface());
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	return voidWebRenderView();
 #else
 	return NULL;
@@ -591,7 +591,7 @@ void *voidSwapchainRenderView(void) {
 
 void *voidSwapchainResolveView(void) {
 	if (screenDriver() == DRIVER_VIEWS) return NULL;
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	return voidWebResolveView();
 #else
 	return NULL;
@@ -600,7 +600,7 @@ void *voidSwapchainResolveView(void) {
 
 void *voidSwapchainDepthStencilView(void) {
 	if (screenDriver() == DRIVER_VIEWS) return NULL;
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 	return voidWebDepthStencilView();
 #else
 	return NULL;

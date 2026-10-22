@@ -50,7 +50,7 @@ case "$backend" in
 	gl)
 		BACKEND_DIR=gl430
 		RUNNER=out/goldenRunnerGl.exe
-		BACKEND_FLAGS="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+		BACKEND_FLAGS="-d:voidGlCore --passC=-DVOID_GLCORE"
 		;;
 	metal)
 		BACKEND_DIR=metal

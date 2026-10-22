@@ -1,12 +1,12 @@
 // The browser window, ported from sokol_app.h's emscripten backend (pin 2e75443d): the canvas
 // '#canvas' (or Module.canvas), its size and DPI, the requestAnimationFrame loop and the input
-// events, over a WebGPU device and surface (SOKOL_WGPU) or a WebGL2 context (SOKOL_GLES3).
+// events, over a WebGPU device and surface (VOID_WGPU) or a WebGL2 context (VOID_GLES3).
 #ifndef VOID_PLATFORM_WEB_WINDOW_H
 #define VOID_PLATFORM_WEB_WINDOW_H
 
 #include <stdbool.h>
 #include <stdint.h>
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 #include <webgpu/webgpu.h>
 #endif
 
@@ -36,7 +36,7 @@ void voidWebRequestQuit(void);
 void voidWebConsumeEvent(void);
 void voidWebSetTitle(const char *title);
 
-#if defined(SOKOL_WGPU)
+#if defined(VOID_WGPU)
 WGPUDevice voidWebDevice(void);
 WGPUTextureFormat voidWebColorFormat(void);
 // The frame's screen views. The surface texture is acquired on the first call in a frame and

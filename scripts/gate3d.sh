@@ -1255,7 +1255,7 @@ run_particle_fade() {
 		rm -f "$exe"
 		rm -rf out/debug/.cache
 		flags=""
-		[ "$backend" = gl-core ] && flags="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+		[ "$backend" = gl-core ] && flags="-d:voidGlCore --passC=-DVOID_GLCORE"
 		if ! msc build $flags tests/integration/particleFade.ms --output="$exe" \
 			> "$WORK/particleFade.$backend.build.log" 2>&1; then
 			fail "particle-fade: $backend build refused — see $WORK/particleFade.$backend.build.log"
@@ -1349,7 +1349,7 @@ run_hdr() {
 # ---- gl core -------------------------------------------------------------------------------
 
 # The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
-# SOKOL_GLCORE (glsl430) as void2d's golden.sh --backend gl builds: name, then the env that
+# VOID_GLCORE (glsl430) as void2d's golden.sh --backend gl builds: name, then the env that
 # selects the pixel-art preset, or - when the check has only the core run.
 GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_BLEND_PIXEL_ART=1
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
@@ -1378,7 +1378,7 @@ run_gl_checks() {
 		pixel=${entry#*:}
 		exe="$WORK/gl_$name.exe"
 		rm -f "$exe"
-		if ! msc build -d:voidGlCore --passC=-DSOKOL_GLCORE tests/integration/$name.ms --output="$exe" \
+		if ! msc build -d:voidGlCore --passC=-DVOID_GLCORE tests/integration/$name.ms --output="$exe" \
 			> "$WORK/gl_$name.build.log" 2>&1; then
 			fail "gl-core: tests/integration/$name.ms does not build for GL core — see $WORK/gl_$name.build.log"
 			return
@@ -1403,7 +1403,7 @@ run_gl_checks() {
 			runs=$((runs + 1))
 		done
 	done
-	pass "gl-core: $runs readback runs of $(echo $GL_CHECKS | wc -w) void3d checks pass on SOKOL_GLCORE (glsl430)"
+	pass "gl-core: $runs readback runs of $(echo $GL_CHECKS | wc -w) void3d checks pass on VOID_GLCORE (glsl430)"
 }
 
 # ---- pending ------------------------------------------------------------------------------
