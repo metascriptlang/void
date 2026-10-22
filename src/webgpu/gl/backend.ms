@@ -56,6 +56,7 @@ import {
 	checkedBufferCopy,
 	checkedMapRange,
 	checkedTexelBufferLayout,
+	checkedDepthTexelCopy,
 	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
 	featureBit,
@@ -145,6 +146,7 @@ import {
 	oglQueryCounterBits,
 	oglQueryResult,
 	oglReadBuffer,
+	oglReadScreenRow,
 	oglReadTexelsToBuffer,
 	oglSamplerParameterf,
 	oglSamplerParameteri,
@@ -638,6 +640,7 @@ struct PassState {
 	height: int32;
 	colorViews: uint32[4];
 	resolveViews: uint32[4];
+	colorSlices: int32[4];
 }
 
 struct BoundState {
@@ -1383,6 +1386,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	querySetQueue = { free: [], generations: [] };
 	canvas = canvasOf(environment);
 	swapchainColor = reserveSwapchainTexture(canvas.format);
+	textures[textureIndex(swapchainColor)].usage |= GPUTextureUsage.COPY_SRC as int32;
 	const depthFormat: string = canvas.depthFormat;
 	swapchainDepth = depthFormat == "" ? 0 : reserveSwapchainTexture(canvas.depthFormat);
 	return { id: 1, queue: { id: 1 } };
@@ -1693,7 +1697,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
 	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
-		stop("a multisampled texture with mips, array layers or a 3d dimension is not ported to gl: sokol_gfx takes one mip and one layer per multisampled image");
+		stop("WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer");
 	}
 	const usage = descriptor.usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
@@ -1709,7 +1713,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		}
 	}
 	if (sampleCount > 1 && !attachment) { stop("a multisampled texture must be a RENDER_ATTACHMENT"); }
-	if (volume && (attachment || info.depth)) { stop("a 3d texture as RENDER_ATTACHMENT or with a depth format is not ported to gl yet"); }
+	if (volume && info.depth) { stop("WebGPU allows a depth or stencil format only on a 2d texture"); }
 	if (attachment && info.integer) {
 		stop(`${descriptor.format} as RENDER_ATTACHMENT is not ported to gl: clearing an integer target needs glClearBufferuiv or glClearBufferiv`);
 	}
@@ -1933,7 +1937,6 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		if (!textures[t].cube) {
 			stop(`a cube view needs GPUTexture ${textures[t].id} created square with exactly 6 layers and TEXTURE_BINDING: gl makes it a cube map`);
 		}
-		if (baseLayer != 0) { stop("a cube view at baseArrayLayer above 0 is not ported to gl"); }
 	}
 	const slot: ViewSlot = {
 		id: id,
@@ -1947,7 +1950,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		mipCount: mipCount,
 		baseLayer: baseLayer,
 		layerCount: layerCount,
-		attachable: mipCount == 1 && layerCount == 1 && (dimension == "2d" || dimension == "2d-array"),
+		attachable: mipCount == 1 && layerCount == 1 && (dimension == "2d" || dimension == "2d-array" || dimension == "3d"),
 		storage: has(usage, GPUTextureUsage.STORAGE_BINDING as int32) && mipCount == 1,
 		swapchain: false,
 	};
@@ -2618,6 +2621,16 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		}
 		if (!views[v].attachable) { stop(`colorAttachments[${i}].view spans several mips or layers: a render attachment is one mip of one layer`); }
 		passExtent(views[v].texture, views[v].baseMip);
+		const slice = descriptor.colorAttachments[i].depthSlice;
+		if (views[v].dimension == "3d") {
+			const slices = Math.max(1, textures[textureIndex(views[v].texture)].layers >> views[v].baseMip);
+			if (slice < 0 || slice >= slices) {
+				stop(`colorAttachments[${i}].depthSlice ${slice} is outside the ${slices} slices of mip ${views[v].baseMip} of GPUTexture ${views[v].texture}`);
+			}
+		} else if (slice != 0) {
+			stop(`colorAttachments[${i}].depthSlice ${slice} needs a 3d view`);
+		}
+		pass.colorSlices[i] = slice;
 		pass.colorViews[i] = viewId;
 		pass.resolveViews[i] = checkResolve(i, views[v].texture, descriptor.colorAttachments[i].resolveTarget.id);
 		colorMask |= 1 << i;
@@ -2677,12 +2690,13 @@ function bindOffscreenFramebuffer(colorMask: int32, depthView: int32, depthStenc
 			oglFramebufferDetach(attachment);
 			continue;
 		}
-		attachView(attachment, viewIndex(pass.colorViews[i]));
+		const v = viewIndex(pass.colorViews[i]);
+		attachView(attachment, v, views[v].dimension == "3d" ? pass.colorSlices[i] : views[v].baseLayer);
 	}
 	if (depthView >= 0) {
 		oglFramebufferDetach(GL_DEPTH_ATTACHMENT);
 		oglFramebufferDetach(GL_DEPTH_STENCIL_ATTACHMENT);
-		attachView(depthStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT, depthView);
+		attachView(depthStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT, depthView, views[depthView].baseLayer);
 	} else {
 		oglFramebufferDetach(GL_DEPTH_STENCIL_ATTACHMENT);
 	}
@@ -2691,14 +2705,14 @@ function bindOffscreenFramebuffer(colorMask: int32, depthView: int32, depthStenc
 	oglDrawBuffers(GPU_MAX_COLOR_ATTACHMENTS, colorMask);
 }
 
-function attachView(attachment: int32, v: int32): void {
+function attachView(attachment: int32, v: int32, layer: int32): void {
 	const t = textureIndex(views[v].texture);
 	const target = textures[t].target;
 	const name = textures[t].names[0];
 	if (target == GL_RENDERBUFFER) {
 		oglFramebufferRenderbuffer(attachment, name);
-	} else if (target == GL_TEXTURE_2D_ARRAY) {
-		oglFramebufferTextureLayer(attachment, name, views[v].baseMip, views[v].baseLayer);
+	} else if (target == GL_TEXTURE_2D_ARRAY || target == GL_TEXTURE_3D) {
+		oglFramebufferTextureLayer(attachment, name, views[v].baseMip, layer);
 	} else if (target == GL_TEXTURE_CUBE_MAP) {
 		oglFramebufferTexture2D(attachment, GL_TEXTURE_CUBE_MAP_POSITIVE_X + views[v].baseLayer, name, views[v].baseMip);
 	} else {
@@ -2778,7 +2792,7 @@ function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32
 	if (views[r].resolveFramebuffer == 0) {
 		const resolveFramebuffer = oglCreateFramebuffer();
 		oglBindFramebuffer(GL_FRAMEBUFFER, resolveFramebuffer);
-		attachView(GL_COLOR_ATTACHMENT0, r);
+		attachView(GL_COLOR_ATTACHMENT0, r, views[r].baseLayer);
 		const status = oglCheckFramebufferStatus();
 		if (status != GL_FRAMEBUFFER_COMPLETE) { stop(`the resolve framebuffer is incomplete (status 0x${status.toString(16)})`); }
 		oglDrawBuffers(1, 1);
@@ -3287,8 +3301,11 @@ function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: in
 	if (pass.active || computeBound.active) { stop(`${member} inside a pass`); }
 	const index = textureIndex(info.texture.id);
 	if (!has(textures[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
+	if (textures[index].swapchainView != 0) {
+		if (flag != (GPUTextureUsage.COPY_SRC as int32)) { stop(`${member}: the swapchain texture is the default framebuffer on gl and is only read`); }
+		return index;
+	}
 	if (textures[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
-	if (textures[index].swapchainView != 0) { stop(`${member}: the swapchain texture is the default framebuffer on gl`); }
 	return index;
 }
 
@@ -3306,9 +3323,11 @@ function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32,
 	);
 }
 
-function colorFormatOf(index: int32, member: string): FormatInfo {
+function texelFormatOf(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): FormatInfo {
 	const info = formatInfo(textures[index].format, "texture format");
-	if (info.depth) { stop(`${member}: depth or stencil GPUTexture ${textures[index].id} is not ported to gl yet`); }
+	if (info.depth) {
+		checkedDepthTexelCopy(member, textures[index].id, textures[index].format, info.stencil, writes, textures[index].width, textures[index].height, copy.mipLevel, size);
+	}
 	return info;
 }
 
@@ -3330,8 +3349,11 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableBuffer(destination.buffer, "copyTextureToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
-	const info = colorFormatOf(from, "copyTextureToBuffer source");
 	copyRegion("copyTextureToBuffer source", source, from, size);
+	const info = texelFormatOf(from, "copyTextureToBuffer source", false, source, size);
+	when (webgl2 || android) {
+		if (info.depth) { stop("copyTextureToBuffer of a depth GPUTexture: GLES has no glReadPixels of GL_DEPTH_COMPONENT"); }
+	}
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", info.bytesPerPixel, buffers[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
 	const imageBytes = (bytesPerRow as int64) * (rowsPerImage as int64);
@@ -3339,6 +3361,23 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 		+ ((size.width * info.bytesPerPixel) as int64);
 	claimBufferWrite(to, destination.offset, span, "copyTextureToBuffer");
 	checkError("copyTextureToBuffer");
+	if (textures[from].swapchainView != 0) {
+		const format: string = textures[from].format;
+		if (format != "rgba8unorm") { stop(`copyTextureToBuffer: the default framebuffer reads as RGBA bytes, which the canvas format ${format} would mislabel`); }
+		for (let row = 0; row < size.height; row++) {
+			const read = oglReadScreenRow(
+				source.origin.x,
+				textures[from].height - 1 - (source.origin.y + row),
+				size.width,
+				info.pixelFormat,
+				info.pixelType,
+				bufferName(to),
+				destination.offset + (bytesPerRow as int64) * (row as int64),
+			);
+			if (read == 0) { stop("copyTextureToBuffer: glReadPixels of the default framebuffer failed"); }
+		}
+		return;
+	}
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		const read = oglReadTexelsToBuffer(
 			textureName(from),
@@ -3367,8 +3406,8 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	const info = colorFormatOf(to, "copyBufferToTexture destination");
 	copyRegion("copyBufferToTexture destination", destination, to, size);
+	const info = texelFormatOf(to, "copyBufferToTexture destination", true, destination, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", info.bytesPerPixel, buffers[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
 	const imageBytes = (bytesPerRow as int64) * (rowsPerImage as int64);
@@ -3421,7 +3460,8 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	colorFormatOf(from, "copyTextureToTexture source");
+	if (formatInfo(textures[from].format, "texture format").depth) { stop("copyTextureToTexture of a depth GPUTexture is not ported to gl yet"); }
+	if (textures[from].swapchainView != 0) { stop("copyTextureToTexture from the swapchain texture: the default framebuffer reads only into a buffer on gl"); }
 	const fromFormat: string = textures[from].format;
 	const toFormat: string = textures[to].format;
 	if (fromFormat != toFormat) { stop(`copyTextureToTexture between formats '${fromFormat}' and '${toFormat}'`); }

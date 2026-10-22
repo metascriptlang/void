@@ -55,6 +55,9 @@ typedef int GLint;
 #define GL_COLOR 0x1800
 #define GL_DEPTH 0x1801
 #define GL_DEPTH_STENCIL 0x84F9
+#define GL_DEPTH_COMPONENT 0x1902
+#define GL_DEPTH_ATTACHMENT 0x8D00
+#define GL_BACK 0x0405
 #define GL_COLOR_BUFFER_BIT 0x00004000
 #define GL_FRAMEBUFFER 0x8D40
 #define GL_READ_FRAMEBUFFER 0x8CA8
@@ -625,23 +628,23 @@ void oglDrawBuffers(int32_t count, int32_t colorMask) {
 	glDrawBuffers(count, buffers);
 }
 
-static void attachTexel(uint32_t texture, int32_t target, int32_t level, int32_t layer) {
+static void attachTexel(uint32_t texture, int32_t target, int32_t level, int32_t layer, GLenum attachment) {
 	if (target == GL_TEXTURE_2D) {
-		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, level);
+		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, attachment, GL_TEXTURE_2D, texture, level);
 	} else if (target == GL_TEXTURE_CUBE_MAP) {
-		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer), texture, level);
+		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, attachment, (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + layer), texture, level);
 	} else {
-		glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texture, level, layer);
+		glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, attachment, texture, level, layer);
 	}
 }
 
-static GLuint beginTexelRead(uint32_t texture, int32_t target, int32_t level, int32_t layer, GLint *previous) {
+static GLuint beginTexelRead(uint32_t texture, int32_t target, int32_t level, int32_t layer, GLenum attachment, GLint *previous) {
 	GLuint readFramebuffer = 0;
 	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, previous);
 	glGenFramebuffers(1, &readFramebuffer);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer);
-	attachTexel(texture, target, level, layer);
-	glReadBuffer(GL_COLOR_ATTACHMENT0);
+	attachTexel(texture, target, level, layer, attachment);
+	glReadBuffer(attachment == GL_COLOR_ATTACHMENT0 ? GL_COLOR_ATTACHMENT0 : GL_NONE);
 	return readFramebuffer;
 }
 
@@ -665,7 +668,8 @@ int32_t oglReadTexelsToBuffer(
 	uint32_t buffer,
 	int64_t offset) {
 	GLint previous = 0;
-	GLuint readFramebuffer = beginTexelRead(texture, target, level, layer, &previous);
+	GLenum attachment = format == GL_DEPTH_COMPONENT ? GL_DEPTH_ATTACHMENT : GL_COLOR_ATTACHMENT0;
+	GLuint readFramebuffer = beginTexelRead(texture, target, level, layer, attachment, &previous);
 	int32_t result = 1;
 	if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		result = 0;
@@ -681,6 +685,22 @@ int32_t oglReadTexelsToBuffer(
 		glPixelStorei(GL_PACK_ALIGNMENT, 4);
 	}
 	endTexelRead(readFramebuffer, previous);
+	return result;
+}
+
+int32_t oglReadScreenRow(int32_t x, int32_t y, int32_t width, int32_t format, int32_t type, uint32_t buffer, int64_t offset) {
+	GLint previous = 0;
+	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previous);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	glReadBuffer(GL_BACK);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, buffer);
+	while (glGetError() != GL_NO_ERROR) {}
+	glReadPixels(x, y, width, 1, (GLenum)format, (GLenum)type, (void *)(intptr_t)offset);
+	int32_t result = glGetError() == GL_NO_ERROR ? 1 : 0;
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	glPixelStorei(GL_PACK_ALIGNMENT, 4);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)previous);
 	return result;
 }
 
@@ -700,14 +720,14 @@ int32_t oglCopyTexels(
 	int32_t height,
 	int32_t count) {
 	GLint previous = 0;
-	GLuint readFramebuffer = beginTexelRead(source, sourceTarget, sourceLevel, sourceLayer, &previous);
+	GLuint readFramebuffer = beginTexelRead(source, sourceTarget, sourceLevel, sourceLayer, GL_COLOR_ATTACHMENT0, &previous);
 	int32_t result = 1;
 	if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		result = 0;
 	} else {
 		while (glGetError() != GL_NO_ERROR) {}
 		for (int32_t i = 0; i < count && result == 1; i++) {
-			if (i > 0) attachTexel(source, sourceTarget, sourceLevel, sourceLayer + i);
+			if (i > 0) attachTexel(source, sourceTarget, sourceLevel, sourceLayer + i, GL_COLOR_ATTACHMENT0);
 			if (destinationTarget == GL_TEXTURE_2D) {
 				glCopyTexSubImage2D(GL_TEXTURE_2D, destinationLevel, destinationX, destinationY, sourceX, sourceY, width, height);
 			} else if (destinationTarget == GL_TEXTURE_CUBE_MAP) {

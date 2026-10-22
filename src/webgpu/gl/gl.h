@@ -77,6 +77,7 @@ int32_t oglReadTexelsToBuffer(
 	int32_t rowLength,
 	uint32_t buffer,
 	int64_t offset);
+int32_t oglReadScreenRow(int32_t x, int32_t y, int32_t width, int32_t format, int32_t type, uint32_t buffer, int64_t offset);
 int32_t oglCopyTexels(
 	uint32_t source,
 	int32_t sourceTarget,
