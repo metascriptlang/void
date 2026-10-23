@@ -106,7 +106,8 @@ void mtlEndPass(MtlEncoder encoder);
 void mtlSetDrawable(void *drawable);
 void mtlPresentDrawable(MtlCommandBuffer commandBuffer);
 
-void mtlSetViewport(MtlEncoder encoder, int32_t width, int32_t height);
+void mtlSetViewport(MtlEncoder encoder, double x, double y, double width, double height, double near, double far);
+void mtlSetBlendColor(MtlEncoder encoder, double r, double g, double b, double a);
 void mtlSetScissorRect(MtlEncoder encoder, int32_t x, int32_t y, int32_t width, int32_t height);
 void mtlSetPipeline(MtlEncoder encoder, MtlPipeline pipeline, MtlDepthState depth, int32_t cullMode, int32_t winding);
 void mtlSetVertexBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index);

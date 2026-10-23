@@ -46,6 +46,7 @@ import {
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
 	checkedSamplerAnisotropy,
+	checkedViewport,
 	checkedSamplerLod,
 	checkedTexelWritePitch,
 	stopOnUnportedBindEntry,
@@ -111,6 +112,7 @@ import {
 	mtlReleaseQueue,
 	mtlReleaseSampler,
 	mtlReleaseTexture,
+	mtlSetBlendColor,
 	mtlSetFragmentBuffer,
 	mtlSetFragmentBufferOffset,
 	mtlSetFragmentSampler,
@@ -183,6 +185,8 @@ const BLEND_ONE_MINUS_DST_COLOR = 7;
 const BLEND_DST_ALPHA = 8;
 const BLEND_ONE_MINUS_DST_ALPHA = 9;
 const BLEND_SRC_ALPHA_SATURATED = 10;
+const BLEND_COLOR = 11;
+const BLEND_ONE_MINUS_COLOR = 12;
 
 const WRITE_RED = 0x8;
 const WRITE_GREEN = 0x4;
@@ -434,6 +438,8 @@ function blendFactor(factor: string, member: string): int32 {
 		"dst-alpha" => BLEND_DST_ALPHA,
 		"one-minus-dst-alpha" => BLEND_ONE_MINUS_DST_ALPHA,
 		"src-alpha-saturated" => BLEND_SRC_ALPHA_SATURATED,
+		"constant" => BLEND_COLOR,
+		"one-minus-constant" => BLEND_ONE_MINUS_COLOR,
 		_ => stopOnMember(member, factor),
 	};
 }
@@ -1286,7 +1292,7 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	encoder = mtlBeginPass(commandBuffer);
 	if (encoder == null) { stop("renderCommandEncoderWithDescriptor returned nil"); }
-	mtlSetViewport(encoder, pass.width, pass.height);
+	mtlSetViewport(encoder, 0.0, 0.0, pass.width, pass.height, 0.0, 1.0);
 	bound.appliedPipeline = 0;
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
@@ -1381,14 +1387,15 @@ export function setScissorRect(x: int32, y: int32, width: int32, height: int32):
 	mtlSetScissorRect(encoder, left, top, right - left, bottom - top);
 }
 
-export function setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void {
+export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
 	if (!pass.active) { stop("setViewport outside a render pass"); }
-	stop("setViewport is not ported to metal yet");
+	checkedViewport(width, height, minDepth, maxDepth);
+	mtlSetViewport(encoder, x, y, width, height, minDepth, maxDepth);
 }
 
 export function setBlendConstant(color: GPUColor): void {
 	if (!pass.active) { stop("setBlendConstant outside a render pass"); }
-	stop("setBlendConstant is not ported to metal yet");
+	mtlSetBlendColor(encoder, color.r, color.g, color.b, color.a);
 }
 
 export function setStencilReference(reference: uint32): void {

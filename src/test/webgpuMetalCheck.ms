@@ -1,6 +1,7 @@
 import {
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
+	GPUBlendFactor,
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
@@ -306,5 +307,97 @@ test "anisotropic and mip-filtered samplers with W addressing and LOD clamps cre
 	assert device.liveCounts().samplers == 1;
 	anisotropic.destroy();
 	assert device.liveCounts().samplers == 0;
+	device.destroy();
+}
+
+function drawFullQuad(device: GPUDevice, viewport: Vec<float32>): Vec<uint8> {
+	const module = flatShader(device);
+	const pipeline = flatPipeline(device, module, 1);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, pipeline, uniforms);
+	const vertices = vertexBuffer(device, 48);
+	const quad: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, quad);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	if (viewport.length > 0) { pass.setViewport(viewport[0], viewport[1], viewport[2], viewport[3], 0, 1); }
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [256];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return readPixels(target);
+}
+
+test "setViewport confines a full-target quad to the left half, then to the bottom half" {
+	const device = openDevice();
+	const left: Vec<float32> = [0.0, 0.0, 32.0, 64.0];
+	const leftHalf = drawFullQuad(device, left);
+	assert pixel(leftHalf, 16, 32) == GREEN;
+	assert pixel(leftHalf, 2, 2) == GREEN;
+	assert pixel(leftHalf, 48, 32) == BLUE;
+	assert pixel(leftHalf, 62, 62) == BLUE;
+	const bottom: Vec<float32> = [0.0, 32.0, 64.0, 32.0];
+	const bottomHalf = drawFullQuad(device, bottom);
+	assert pixel(bottomHalf, 32, 48) == GREEN;
+	assert pixel(bottomHalf, 32, 16) == BLUE;
+	const none: Vec<float32> = [];
+	assert pixel(drawFullQuad(device, none), 62, 2) == GREEN;
+	device.destroy();
+}
+
+function blendPipeline(device: GPUDevice, module: GPUShaderModule, source: GPUBlendFactor, destination: GPUBlendFactor): GPURenderPipeline {
+	let descriptor: GPURenderPipelineDescriptor = { label: "blend" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.fragment.targets[0].blendEnabled = true;
+	descriptor.fragment.targets[0].blend = {
+		color: { operation: "add", srcFactor: source, dstFactor: destination },
+		alpha: { operation: "add", srcFactor: "one", dstFactor: "zero" },
+	};
+	return device.createRenderPipeline(descriptor);
+}
+
+function blendedRed(device: GPUDevice, source: GPUBlendFactor, destination: GPUBlendFactor, constant: Vec<float64>): uint8 {
+	const module = flatShader(device);
+	const pipeline = blendPipeline(device, module, source, destination);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, pipeline, uniforms);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	let descriptor: GPURenderPassDescriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.colorAttachments[0].clearValue = { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(descriptor);
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	if (constant.length > 0) { pass.setBlendConstant({ r: constant[0], g: constant[0], b: constant[0], a: constant[0] }); }
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixels(target);
+	return pixels[(32 * SIZE + 32) * 4];
+}
+
+test "a blend constant weights a red source over black, and is zero until set" {
+	const device = openDevice();
+	const half: Vec<float64> = [0.5];
+	const quarter: Vec<float64> = [0.25];
+	const unset: Vec<float64> = [];
+	const halfRed = blendedRed(device, "constant", "one-minus-constant", half);
+	assert halfRed >= 126 && halfRed <= 129;
+	const invertedQuarter = blendedRed(device, "one-minus-constant", "constant", quarter);
+	assert invertedQuarter >= 190 && invertedQuarter <= 193;
+	assert blendedRed(device, "constant", "one-minus-constant", unset) == 0;
 	device.destroy();
 }

@@ -327,9 +327,13 @@ void mtlPresentDrawable(MtlCommandBuffer commandBuffer) {
 	s_drawable = nil;
 }
 
-void mtlSetViewport(MtlEncoder encoder, int32_t width, int32_t height) {
-	MTLViewport viewport = { 0.0, 0.0, (double)width, (double)height, 0.0, 1.0 };
+void mtlSetViewport(MtlEncoder encoder, double x, double y, double width, double height, double near, double far) {
+	MTLViewport viewport = { x, y, width, height, near, far };
 	[(id<MTLRenderCommandEncoder>)encoder setViewport:viewport];
+}
+
+void mtlSetBlendColor(MtlEncoder encoder, double r, double g, double b, double a) {
+	[(id<MTLRenderCommandEncoder>)encoder setBlendColorRed:(float)r green:(float)g blue:(float)b alpha:(float)a];
 }
 
 void mtlSetScissorRect(MtlEncoder encoder, int32_t x, int32_t y, int32_t width, int32_t height) {
