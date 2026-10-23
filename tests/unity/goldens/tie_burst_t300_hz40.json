@@ -1,0 +1,51 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "tie_burst_t300_hz40",
+"dt": 0.025,
+"steps": 24,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"burst": "time 0.3 count 1", "rateOverTime": 0, "startLifetime": 2, "startSpeed": 0},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.025, "count": 0, "particles": []},
+{"step": 2, "time": 0.05, "count": 0, "particles": []},
+{"step": 3, "time": 0.075, "count": 0, "particles": []},
+{"step": 4, "time": 0.1, "count": 0, "particles": []},
+{"step": 5, "time": 0.125, "count": 0, "particles": []},
+{"step": 6, "time": 0.15, "count": 0, "particles": []},
+{"step": 7, "time": 0.175000012, "count": 0, "particles": []},
+{"step": 8, "time": 0.200000018, "count": 0, "particles": []},
+{"step": 9, "time": 0.225000024, "count": 0, "particles": []},
+{"step": 10, "time": 0.25000003, "count": 0, "particles": []},
+{"step": 11, "time": 0.275000036, "count": 0, "particles": []},
+{"step": 12, "time": 0.300000042, "count": 1, "particles": [
+  {"remaining": 2}]},
+{"step": 13, "time": 0.325000048, "count": 1, "particles": [
+  {"remaining": 1.975}]},
+{"step": 14, "time": 0.350000054, "count": 1, "particles": [
+  {"remaining": 1.94999993}]},
+{"step": 15, "time": 0.37500006, "count": 1, "particles": [
+  {"remaining": 1.925}]},
+{"step": 16, "time": 0.400000066, "count": 1, "particles": [
+  {"remaining": 1.9}]},
+{"step": 17, "time": 0.425000072, "count": 1, "particles": [
+  {"remaining": 1.875}]},
+{"step": 18, "time": 0.450000077, "count": 1, "particles": [
+  {"remaining": 1.85}]},
+{"step": 19, "time": 0.475000083, "count": 1, "particles": [
+  {"remaining": 1.82499993}]},
+{"step": 20, "time": 0.50000006, "count": 1, "particles": [
+  {"remaining": 1.8}]},
+{"step": 21, "time": 0.525000036, "count": 1, "particles": [
+  {"remaining": 1.775}]},
+{"step": 22, "time": 0.55, "count": 1, "particles": [
+  {"remaining": 1.75}]},
+{"step": 23, "time": 0.575, "count": 1, "particles": [
+  {"remaining": 1.7249999}]},
+{"step": 24, "time": 0.599999964, "count": 1, "particles": [
+  {"remaining": 1.69999993}]}
+]
+}

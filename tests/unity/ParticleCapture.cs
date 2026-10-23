@@ -21,6 +21,7 @@ public static class ParticleCapture
         public Action<ParticleSystem, int> beforeStep;
         public int cap = 64;
         public bool compact;
+        public bool remainingOnly;
         public bool stats;
         public bool lastFrameOnly;
         public bool bakeUV;
@@ -39,7 +40,12 @@ public static class ParticleCapture
         var original = PlayerSettings.colorSpace;
         PlayerSettings.colorSpace = ColorSpace.Gamma;
         int failed = 0;
-        foreach (var c in Cases()) failed += RunCase(c);
+        string only = null;
+        for (int i = 0; i < args.Length - 1; i++)
+            if (args[i] == "-only") only = args[i + 1];
+        foreach (var c in Cases())
+            if (only == null || c.name.Contains(only)) failed += RunCase(c);
+        if (only != null) { Debug.Log("ParticleCapture: done, failed cases = " + failed); if (failed > 0) EditorApplication.Exit(1); return; }
         PlayerSettings.colorSpace = ColorSpace.Linear;
         failed += RunCase(ColorCase("color_over_lifetime_linear"));
         failed += RunCase(SubEmitterCase("subemitter_death_linear", ParticleSystemSubEmitterType.Death));
@@ -52,7 +58,8 @@ public static class ParticleCapture
 
     static IEnumerable<Case> Cases()
     {
-        yield return new Case {
+        foreach (var tc in TieCases()) yield return tc;
+                yield return new Case {
             name = "emission_rate10_dt60", dt = 1f / 60f, steps = 60,
             settings = S("rateOverTime", 10, "startSpeed", 1, "startLifetime", 5, "shape", "disabled"),
             configure = ps => Base(ps, 10, 1, 5) };
@@ -284,6 +291,46 @@ public static class ParticleCapture
                 (ps, r) => { r.minParticleSize = mn; r.maxParticleSize = mx; var cam = ps.GetComponentInChildren<Camera>(); cam.aspect = 2f; });
         }
 
+        // The size limits on a freeform stretch: the base quad is 1 x 2, stretched to about 2.25 times its length.
+        foreach (var (tag, min, max) in new (string, float, float)[] {
+            ("max_base", 0f, 0.04f), ("max_stretched", 0f, 0.1f), ("min_big", 0.1f, 0.5f), ("inside", 0.01f, 0.5f) })
+            foreach (var rotateWith in new[] { false, true })
+            {
+                float mn = min, mx = max; bool rw = rotateWith;
+                yield return RenderCase("stretch_freeform1_rotwith" + (rw ? "1" : "0") + "_clamp_" + tag,
+                    StretchCase("", 1f, 5f, 1f, 45f, false, (0.3f, 0.4f), size3D: (1f, 2f)),
+                    S("freeformStretching", true, "rotateWithStretchDirection", rw, "minParticleSize", mn, "maxParticleSize", mx, "cameraAspect", 2f, "orthographicSize", 10f),
+                    (ps, r) => { r.freeformStretching = true; r.rotateWithStretchDirection = rw; r.minParticleSize = mn; r.maxParticleSize = mx;
+                        ps.GetComponentInChildren<Camera>().aspect = 2f; });
+            }
+
+        foreach (var rotateWith in new[] { false, true })
+        {
+            bool rw = rotateWith;
+            yield return RenderCase("stretch_freeform1_rotwith" + (rw ? "1" : "0") + "_pivot_clamp_max_base",
+                StretchCase("", 1f, 5f, 1f, 45f, false, (0.3f, 0.4f), size3D: (1f, 2f), pivot: (0.5f, 0.25f)),
+                S("freeformStretching", true, "rotateWithStretchDirection", rw, "minParticleSize", 0f, "maxParticleSize", 0.04f, "cameraAspect", 2f, "orthographicSize", 10f),
+                (ps, r) => { r.freeformStretching = true; r.rotateWithStretchDirection = rw; r.maxParticleSize = 0.04f;
+                    ps.GetComponentInChildren<Camera>().aspect = 2f; });
+        }
+
+        // The size limits under the moved, turned emitter of billboard_moved_*: a quad above the maximum, one below the minimum.
+        foreach (var align in new[] { ParticleSystemRenderSpace.View, ParticleSystemRenderSpace.Local, ParticleSystemRenderSpace.World })
+            foreach (var worldSpace in new[] { false, true })
+                foreach (var (tag, size, min, max) in new (string, float, float, float)[] { ("max", 5f, 0f, 0.1f), ("min", 0.2f, 0.1f, 0.5f) })
+                {
+                    var al = align; bool ws = worldSpace; float sz = size, mn = min, mx = max;
+                    yield return RenderCase("billboard_moved_" + al.ToString().ToLowerInvariant() + "_" + (ws ? "world" : "local") + "_clamp_" + tag,
+                        StretchCase("", 1f, 0f, sz, 20f, false, (3f, 4f), billboard: true, size3D: (sz, sz * 3f / 1f)),
+                        S("emitter", "position (2, 1, 0), rotation z 30 degrees", "simulationSpace", ws ? "World" : "Local", "alignment", al.ToString(),
+                          "minParticleSize", mn, "maxParticleSize", mx, "cameraAspect", 2f, "orthographicSize", 10f),
+                        (ps, r) => {
+                            var m = ps.main; m.simulationSpace = ws ? ParticleSystemSimulationSpace.World : ParticleSystemSimulationSpace.Local;
+                            r.alignment = al; r.minParticleSize = mn; r.maxParticleSize = mx;
+                            ps.GetComponentInChildren<Camera>().aspect = 2f;
+                            ps.transform.SetPositionAndRotation(new Vector3(2f, 1f, 0f), Quaternion.Euler(0f, 0f, 30f)); });
+                }
+
         foreach (var damp in new[] { true, false })
         {
             bool dmp = damp;
@@ -322,6 +369,65 @@ public static class ParticleCapture
 
         foreach (var ev in new[] { "enter", "inside", "exit", "outside" })
             yield return TriggerCase(ev);
+    }
+
+
+    static readonly (string, float)[] TieSteps = {
+        ("60", 1f / 60f), ("40", 0.025f), ("20", 0.05f), ("10", 0.1f), ("120", 1f / 120f), ("144", 1f / 144f), ("100", 0.01f) };
+
+    // Exact float boundaries of the emission clock: each case lists every particle's remaining lifetime at every frame,
+    // so the step a spawn, a burst or a death lands in is read from the counts.
+    static IEnumerable<Case> TieCases()
+    {
+        foreach (var (rate, label, dt) in new (float, string, float)[] {
+            (10f, "60", 1f / 60f), (10f, "40", 0.025f), (10f, "10", 0.1f), (10f, "120", 1f / 120f), (25f, "50", 0.02f), (50f, "25", 0.04f), (13f, "144", 1f / 144f) })
+        {
+            float r = rate, d = dt;
+            yield return new Case {
+                name = "tie_emission_r" + r + "_hz" + label, dt = d, steps = (int)(1.5f / d), cap = 200, remainingOnly = true,
+                settings = S("rateOverTime", r, "startLifetime", 2, "startSpeed", 0, "shape", "disabled"),
+                configure = ps => Base(ps, r, 0, 2) };
+        }
+        foreach (var (label, dt) in TieSteps)
+            foreach (var at in new[] { 0.1f, 0.3f })
+            {
+                float d = dt, t = at;
+                yield return new Case {
+                    name = "tie_burst_t" + (int)Math.Round(t * 1000) + "_hz" + label, dt = d, steps = (int)((t + 0.3f) / d), cap = 200, remainingOnly = true,
+                    settings = S("burst", "time " + t + " count 1", "rateOverTime", 0, "startLifetime", 2, "startSpeed", 0),
+                    configure = ps => { Base(ps, 0, 0, 2); ps.emission.SetBursts(new[] { new ParticleSystem.Burst(t, 1) }); } };
+            }
+        // A burst that falls inside a sub-step, first and repeated.
+        foreach (var (label, dt) in new (string, float)[] { ("10", 0.1f), ("20", 0.05f), ("60", 1f / 60f) })
+        {
+            float d = dt;
+            yield return new Case {
+                name = "tie_burst_inside_hz" + label, dt = d, steps = (int)(0.6f / d), cap = 200, remainingOnly = true,
+                settings = S("burst", "time 0.113 count 1", "rateOverTime", 0, "startLifetime", 2, "startSpeed", 0),
+                configure = ps => { Base(ps, 0, 0, 2); ps.emission.SetBursts(new[] { new ParticleSystem.Burst(0.113f, 1) }); } };
+            yield return new Case {
+                name = "tie_burst_repeat_hz" + label, dt = d, steps = (int)(0.6f / d), cap = 200, remainingOnly = true,
+                settings = S("burst", "time 0.113 count 1 cycleCount 4 repeatInterval 0.0733", "duration", 5, "rateOverTime", 0, "startLifetime", 2, "startSpeed", 0),
+                configure = ps => { Base(ps, 0, 0, 2); ps.emission.SetBursts(new[] { new ParticleSystem.Burst(0.113f, 1, 1, 4, 0.0733f) }); } };
+        }
+        foreach (var life in new[] { 0.1f, 0.3f, 1f })
+            foreach (var (label, dt) in TieSteps)
+            {
+                float l = life, d = dt;
+                yield return new Case {
+                    name = "tie_death_life" + (int)Math.Round(l * 1000) + "_hz" + label, dt = d, steps = (int)((l + 0.15f) / d), cap = 200, remainingOnly = true,
+                    settings = S("burst", "time 0 count 1", "rateOverTime", 0, "startLifetime", l, "startSpeed", 0),
+                    configure = ps => { Base(ps, 0, 0, l); Burst1(ps); } };
+            }
+        // A looping system whose cycle ends exactly on a step: duration 1, steps of 1/16 or 1/60, a burst at 0 and a rate.
+        foreach (var (label, dt) in new (string, float)[] { ("16", 0.0625f), ("60", 1f / 60f), ("40", 0.025f), ("10", 0.1f) })
+        {
+            float d = dt;
+            yield return new Case {
+                name = "tie_wrap_hz" + label, dt = d, steps = (int)(2.6f / d), cap = 200, remainingOnly = true,
+                settings = S("duration", 1, "loop", true, "burst", "time 0 count 1", "rateOverTime", 10, "startLifetime", 5, "startSpeed", 0),
+                configure = ps => { Base(ps, 10, 0, 5); var m = ps.main; m.duration = 1; ps.emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 1) }); } };
+        }
     }
 
     static void Base(ParticleSystem ps, float rate, float speed, float life)
@@ -533,6 +639,11 @@ public static class ParticleCapture
         {
             var p = parts[i];
             sb.Append(i > 0 ? ",\n  " : "\n  ");
+            if (c.remainingOnly)
+            {
+                sb.Append("{\"remaining\": ").Append(F(p.remainingLifetime)).Append("}");
+                continue;
+            }
             if (c.compact)
             {
                 sb.Append("{\"pos\": ").Append(V(p.position)).Append(", \"vel\": ").Append(V(p.velocity)).Append("}");

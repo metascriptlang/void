@@ -1,0 +1,88 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "tie_death_life300_hz100",
+"dt": 0.01,
+"steps": 45,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"burst": "time 0 count 1", "rateOverTime": 0, "startLifetime": 0.3, "startSpeed": 0},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.01, "count": 1, "particles": [
+  {"remaining": 0.290000021}]},
+{"step": 2, "time": 0.02, "count": 1, "particles": [
+  {"remaining": 0.28}]},
+{"step": 3, "time": 0.03, "count": 1, "particles": [
+  {"remaining": 0.27}]},
+{"step": 4, "time": 0.04, "count": 1, "particles": [
+  {"remaining": 0.26000002}]},
+{"step": 5, "time": 0.049999997, "count": 1, "particles": [
+  {"remaining": 0.25000003}]},
+{"step": 6, "time": 0.0599999949, "count": 1, "particles": [
+  {"remaining": 0.24000001}]},
+{"step": 7, "time": 0.06999999, "count": 1, "particles": [
+  {"remaining": 0.23}]},
+{"step": 8, "time": 0.07999999, "count": 1, "particles": [
+  {"remaining": 0.220000014}]},
+{"step": 9, "time": 0.08999999, "count": 1, "particles": [
+  {"remaining": 0.210000008}]},
+{"step": 10, "time": 0.09999999, "count": 1, "particles": [
+  {"remaining": 0.2}]},
+{"step": 11, "time": 0.109999985, "count": 1, "particles": [
+  {"remaining": 0.190000013}]},
+{"step": 12, "time": 0.119999982, "count": 1, "particles": [
+  {"remaining": 0.18}]},
+{"step": 13, "time": 0.12999998, "count": 1, "particles": [
+  {"remaining": 0.170000017}]},
+{"step": 14, "time": 0.139999986, "count": 1, "particles": [
+  {"remaining": 0.160000011}]},
+{"step": 15, "time": 0.149999991, "count": 1, "particles": [
+  {"remaining": 0.150000021}]},
+{"step": 16, "time": 0.16, "count": 1, "particles": [
+  {"remaining": 0.14000003}]},
+{"step": 17, "time": 0.17, "count": 1, "particles": [
+  {"remaining": 0.130000025}]},
+{"step": 18, "time": 0.18, "count": 1, "particles": [
+  {"remaining": 0.120000035}]},
+{"step": 19, "time": 0.190000013, "count": 1, "particles": [
+  {"remaining": 0.110000044}]},
+{"step": 20, "time": 0.200000018, "count": 1, "particles": [
+  {"remaining": 0.100000031}]},
+{"step": 21, "time": 0.210000023, "count": 1, "particles": [
+  {"remaining": 0.0900000259}]},
+{"step": 22, "time": 0.220000029, "count": 1, "particles": [
+  {"remaining": 0.08000001}]},
+{"step": 23, "time": 0.230000034, "count": 1, "particles": [
+  {"remaining": 0.07000001}]},
+{"step": 24, "time": 0.240000039, "count": 1, "particles": [
+  {"remaining": 0.0600000173}]},
+{"step": 25, "time": 0.25000003, "count": 1, "particles": [
+  {"remaining": 0.05000001}]},
+{"step": 26, "time": 0.26000002, "count": 1, "particles": [
+  {"remaining": 0.04}]},
+{"step": 27, "time": 0.27, "count": 1, "particles": [
+  {"remaining": 0.02999999}]},
+{"step": 28, "time": 0.28, "count": 1, "particles": [
+  {"remaining": 0.01999998}]},
+{"step": 29, "time": 0.29, "count": 1, "particles": [
+  {"remaining": 0.009999973}]},
+{"step": 30, "time": 0.299999982, "count": 0, "particles": []},
+{"step": 31, "time": 0.309999973, "count": 0, "particles": []},
+{"step": 32, "time": 0.319999963, "count": 0, "particles": []},
+{"step": 33, "time": 0.329999954, "count": 0, "particles": []},
+{"step": 34, "time": 0.339999944, "count": 0, "particles": []},
+{"step": 35, "time": 0.349999934, "count": 0, "particles": []},
+{"step": 36, "time": 0.359999925, "count": 0, "particles": []},
+{"step": 37, "time": 0.369999915, "count": 0, "particles": []},
+{"step": 38, "time": 0.3799999, "count": 0, "particles": []},
+{"step": 39, "time": 0.3899999, "count": 0, "particles": []},
+{"step": 40, "time": 0.3999999, "count": 0, "particles": []},
+{"step": 41, "time": 0.409999877, "count": 0, "particles": []},
+{"step": 42, "time": 0.419999868, "count": 0, "particles": []},
+{"step": 43, "time": 0.429999858, "count": 0, "particles": []},
+{"step": 44, "time": 0.439999849, "count": 0, "particles": []},
+{"step": 45, "time": 0.449999839, "count": 0, "particles": []}
+]
+}
