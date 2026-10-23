@@ -1822,6 +1822,11 @@ export function feature(): void {}
 export function access(): void {}
 export function format(): void {}
 
+// WGSL's workgroupBarrier and storageBarrier; the CPU runs one invocation at a time, so they
+// wait for no one.
+export function workgroupBarrier(): void {}
+export function storageBarrier(): void {}
+
 // WGSL's discard: the fragment writes nothing. Like TypeGPU's, it has no CPU meaning.
 export function discard(): never {
 	unreachable("discard: a fragment is discarded only on the GPU");

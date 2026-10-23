@@ -388,6 +388,7 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.TextureDimensions => "textureSize",
 		Intrinsic.TextureSampleCompare => "texture",
 		Intrinsic.TextureSampleCompareLevel => "textureLod",
+		Intrinsic.WorkgroupBarrier | Intrinsic.StorageBarrier => "barrier",
 	};
 }
 
@@ -408,6 +409,8 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 			"texture(" + sampled + ", " + args[2] + ")",
 		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
+		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
+		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
 		_ => intrinsicName(e.intrinsic) + all,
 	};
 }

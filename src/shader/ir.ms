@@ -182,6 +182,13 @@ export enum Intrinsic {
 	TextureDimensions,
 	TextureSampleCompare,
 	TextureSampleCompareLevel,
+	WorkgroupBarrier,
+	StorageBarrier,
+}
+
+export function isEffect(op: Intrinsic): boolean {
+	return op == Intrinsic.TextureStore || op == Intrinsic.WorkgroupBarrier ||
+		op == Intrinsic.StorageBarrier;
 }
 
 export class ShaderExpr {

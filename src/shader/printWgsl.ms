@@ -26,6 +26,7 @@ import {
 	sameShaderType,
 	scalarType,
 	vectorType,
+	isEffect,
 } from "./ir";
 import { BindingSlot } from "./layout";
 import { readsFrom } from "./specialize";
@@ -373,8 +374,7 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 }
 
 function hasEffect(e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Call ||
-		e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.TextureStore) {
+	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
 		return true;
 	}
 	return e.operands.some((o) => hasEffect(o));
@@ -392,8 +392,7 @@ function hoists(e: ShaderExpr): boolean {
 
 function bareEffect(e: ShaderExpr): boolean {
 	if (isHoisted(e)) { return false; }
-	if (e.kind == ExprKind.Call ||
-		e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.TextureStore) {
+	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
 		return true;
 	}
 	return e.operands.some((o) => bareEffect(o));
@@ -474,6 +473,13 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + argsText(p, o) + ")";
 }
 
+function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
+	if (p.stage != ShaderStage.Compute) {
+		return refusal(p, e.intrinsic.toString() + " outside a compute entry");
+	}
+	return text;
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
@@ -502,6 +508,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
 		Intrinsic.TextureSampleCompare => compareText(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
+		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "workgroupBarrier()"),
+		Intrinsic.StorageBarrier => computeOnly(p, e, "storageBarrier()"),
 		_ => refusal(p, op.toString() + " has no WGSL spelling"),
 	};
 }

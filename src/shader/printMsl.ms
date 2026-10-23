@@ -27,6 +27,7 @@ import {
 	scalarType,
 	vectorType,
 	isShift,
+	isEffect,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { readsFrom } from "./specialize";
@@ -363,8 +364,7 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 }
 
 function hasEffect(e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Call ||
-		e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.TextureStore) {
+	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
 		return true;
 	}
 	return e.operands.some((o) => hasEffect(o));
@@ -526,6 +526,13 @@ function inverseCall(p: Printer, e: ShaderExpr): string {
 	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
 }
 
+function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
+	if (p.stage != ShaderStage.Compute) {
+		return fail(p, e.intrinsic.toString() + " outside a compute entry");
+	}
+	return text;
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
@@ -549,6 +556,9 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
 		Intrinsic.TextureSampleCompare => compareText(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
+		Intrinsic.WorkgroupBarrier =>
+			computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_threadgroup)"),
+		Intrinsic.StorageBarrier => computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_device)"),
 		_ => fail(p, op.toString() + " has no MSL spelling"),
 	};
 }

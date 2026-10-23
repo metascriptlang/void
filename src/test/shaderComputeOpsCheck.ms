@@ -5,7 +5,21 @@
 import { mkdir, writeFile } from "std/fs";
 import { computeModule, stageSource } from "../shader/descriptor";
 import { glslCompute, glslComputeIr } from "../shader/emit";
-import { ShaderModule } from "../shader/ir";
+import {
+	ExprKind,
+	Intrinsic,
+	ScalarKind,
+	ShaderModule,
+	ShaderStage,
+	ShaderType,
+	StmtKind,
+	exprOf,
+	intrinsicOf,
+	literal,
+	scalarType,
+	stmtOf,
+	vectorType,
+} from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import {
 	StorageTexture2d,
@@ -14,11 +28,14 @@ import {
 	binding,
 	builtin,
 	format,
+	storageBarrier,
 	textureStore,
 	vec2i,
 	vec2u,
 	vec4f,
+	workgroupBarrier,
 } from "../shader/std";
+import { prepend, tiny } from "./shaderProbeModules";
 
 const TARGETS = [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl430, ShaderTarget.Msl];
 
@@ -117,4 +134,47 @@ test "every target spells the bit operators, a shift amount as a masked uint" {
 	const msl = printedFor(m, ShaderTarget.Msl, "bits");
 	assert msl.includes("((((x | 4) ^ (x << 2u)) ^ ((~x) >> 1u)) ^ (x >> (uint((x & 7)) & 31u)))");
 	assert msl.includes("((u << (uint2(1u, 3u) & 31u)) | ((u >> (u & 31u)) ^ (u & uint2(6u, 6u))))");
+}
+
+export function barrierCs(input: OpsInput, b: OpsBindings): void {
+	const at = vec2i(input.id.xy);
+	workgroupBarrier();
+	storageBarrier();
+	textureStore(b.image, at, vec4f(1.0));
+}
+
+test "a barrier waits for no one on the CPU and is two GLSL statements" {
+	const b: OpsBindings = { image: blankImage() };
+	barrierCs({ id: { x: 2, y: 0, z: 0 } }, b);
+	assert b.image.texels[2 * 4] == 1.0;
+	assert glslCompute(barrierCs, [32, 1, 1]) ==
+		"layout(local_size_x=32, local_size_y=1, local_size_z=1) in;\n" +
+		"layout(binding=0, r32f) uniform writeonly image2D image;\n" +
+		"void main() {\n" +
+		"    ivec2 at = ivec2(gl_GlobalInvocationID.xy);\n" +
+		"    memoryBarrierShared(); barrier();\n" +
+		"    memoryBarrierBuffer(); barrier();\n" +
+		"    imageStore(image, at, vec4(1.0));\n" +
+		"}\n";
+}
+
+test "every target spells both barriers, and refuses one outside a compute entry" {
+	const m = computeOf(glslComputeIr(barrierCs, [32, 1, 1]));
+	assert printedFor(m, ShaderTarget.Wgsl, "barriers").includes(
+		"  workgroupBarrier();\n  storageBarrier();\n");
+	assert printedFor(m, ShaderTarget.Hlsl5, "barriers").includes(
+		"    GroupMemoryBarrierWithGroupSync();\n    DeviceMemoryBarrierWithGroupSync();\n");
+	assert printedFor(m, ShaderTarget.Glsl430, "barriers").includes(
+		"    memoryBarrierShared(); barrier();\n    memoryBarrierBuffer(); barrier();\n");
+	assert printedFor(m, ShaderTarget.Msl, "barriers").includes(
+		"  threadgroup_barrier(mem_flags::mem_threadgroup);\n" +
+		"  threadgroup_barrier(mem_flags::mem_device);\n");
+	let fragment = tiny(ShaderStage.Fragment, exprOf(ExprKind.Construct,
+		vectorType(ScalarKind.F32, 4), -1, [literal(scalarType(ScalarKind.F32), 1.0)]));
+	prepend(fragment.functions[0], stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.WorkgroupBarrier, new ShaderType(), []), []));
+	for (const target of TARGETS) {
+		const refused = stageSource(fragment, 0, target);
+		assert !refused.ok && refused.error.endsWith(": WorkgroupBarrier outside a compute entry");
+	}
 }

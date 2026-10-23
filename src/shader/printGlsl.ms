@@ -26,6 +26,7 @@ import {
 	UnaryOp,
 	irErrors,
 	isShift,
+	isEffect,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import { readsFrom } from "./specialize";
@@ -310,7 +311,7 @@ function stmtsHaveEffect(p: Printer, stmts: ShaderStmt[]): boolean {
 }
 
 function hasEffect(p: Printer, e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.TextureStore) { return true; }
+	if (e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) { return true; }
 	if (e.kind == ExprKind.Call) {
 		if (p.effects[e.index] == 0) {
 			p.effects[e.index] = 1;
@@ -638,6 +639,13 @@ function selectText(p: Printer, e: ShaderExpr): string {
 		operand(p, falseValue) + ")";
 }
 
+function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
+	if (p.stage != ShaderStage.Compute) {
+		return fail(p, e.intrinsic.toString() + " outside a compute entry");
+	}
+	return text;
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	const derivative = e.intrinsic == Intrinsic.Dpdx || e.intrinsic == Intrinsic.Dpdy ||
@@ -667,6 +675,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => sizeOf(p, e),
 		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
+		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "memoryBarrierShared(); barrier()"),
+		Intrinsic.StorageBarrier => computeOnly(p, e, "memoryBarrierBuffer(); barrier()"),
 		_ => intrinsicName(e.intrinsic) + "(" + args() + ")",
 	};
 }
