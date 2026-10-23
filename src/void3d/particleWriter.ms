@@ -4,7 +4,10 @@
 // Trails write the same instances, one view-facing quad per trail segment.
 
 import { Vec3, vec3 } from "../math/math3d";
-import { ParticleSortMode, RenderMode, RenderAlignment, SimulationSpace, RendererModule, TextureSheetAnimationModule } from "../particles/asset";
+import {
+	ParticleSortMode, RenderMode, RenderAlignment, SimulationSpace, RendererModule,
+	TextureSheetAnimationModule,
+} from "../particles/asset";
 import { unitDraw } from "../particles/curve";
 import { TrailChains, TrailVertex } from "../particles/trail";
 import {
@@ -105,13 +108,17 @@ function sortOrder(ref w: ParticleWriter3D, count: int32): void {
 	for (let i = 0; i < count; i++) { w.bits[i] = sortKeyOf(w.keys[w.order[i]]); }
 	scatter(w.bits, w.order, w.bitsScratch, w.scratch, w.buckets, count, 0);
 	scatter(w.bitsScratch, w.scratch, w.bits, w.order, w.buckets, count, RADIX_BITS as uint32);
-	scatter(w.bits, w.order, w.bitsScratch, w.scratch, w.buckets, count, (2 * RADIX_BITS) as uint32);
+	scatter(
+		w.bits, w.order, w.bitsScratch, w.scratch, w.buckets, count, (2 * RADIX_BITS) as uint32,
+	);
 	for (let i = 0; i < count; i++) { w.order[i] = w.scratch[i]; }
 }
 
 function placed(sys: ParticleSystem, i: int32): Vec3 {
 	const cap: int32 = sys.capacity;
-	const p: Vec3 = vec3(sys.data[POS_X * cap + i], sys.data[POS_Y * cap + i], sys.data[POS_Z * cap + i]);
+	const p: Vec3 = vec3(
+		sys.data[POS_X * cap + i], sys.data[POS_Y * cap + i], sys.data[POS_Z * cap + i],
+	);
 	return sys.asset.main.simulationSpace == SimulationSpace.Local ? p * sys.world : p;
 }
 
@@ -129,7 +136,8 @@ function drawn(sys: ParticleSystem): Result<boolean, ParticleWriteError> {
 // Puts `w.order[0, count)` in the order `sys`'s renderer draws its particles, seen from `eye`
 // looking along `forward`, and refuses an `out` too short for `count` instances of `stride`.
 function drawOrder(
-	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, stride: int32, outLength: int32,
+	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, stride: int32,
+	outLength: int32,
 ): Result<int32, ParticleWriteError> {
 	const count: int32 = sys.count;
 	if (count > 2147483647 / stride || outLength < count * stride) {
@@ -169,7 +177,8 @@ function finite(out: Span<float32>, at: int32, stride: int32): boolean {
 // Writes `sys`'s particles into `out`, drawn first to last, seen from `eye` looking along
 // `forward`. `frames` holds one tile per sheet frame. Returns the instance count.
 export function writeParticles(
-	ref w: ParticleWriter3D, sys: ParticleSystem, frames: Readonly<Span<AtlasTile>>, eye: Vec3, forward: Vec3,
+	ref w: ParticleWriter3D, sys: ParticleSystem, frames: Readonly<Span<AtlasTile>>, eye: Vec3,
+	forward: Vec3,
 	out: Span<float32>,
 ): Result<int32, ParticleWriteError> {
 	const visible = drawn(sys);
@@ -184,8 +193,12 @@ export function writeParticles(
 	if (!ordered.ok) { return Result.err(ordered.error); }
 	const count: int32 = ordered.value;
 	const cap: int32 = sys.capacity;
-	const flipU: float32 = sheet.enabled ? renderer.flip.x + sheet.flipU - renderer.flip.x * sheet.flipU : renderer.flip.x;
-	const flipV: float32 = sheet.enabled ? renderer.flip.y + sheet.flipV - renderer.flip.y * sheet.flipV : renderer.flip.y;
+	const flipU: float32 = sheet.enabled
+		? renderer.flip.x + sheet.flipU - renderer.flip.x * sheet.flipU
+		: renderer.flip.x;
+	const flipV: float32 = sheet.enabled
+		? renderer.flip.y + sheet.flipV - renderer.flip.y * sheet.flipV
+		: renderer.flip.y;
 	const last: int32 = wanted - 1;
 	for (let k = 0; k < count; k++) {
 		const i: int32 = w.order[k];
@@ -289,7 +302,9 @@ export function writeTrails(
 			out[at + 14] = (a.color.b + b.color.b) * 0.5;
 			out[at + 15] = (a.color.a + b.color.a) * 0.5;
 			for (let k = 0; k < stride; k++) {
-				if (!Number.isFinite(out[at + k])) { return Result.err(ParticleWriteError.NonFinite); }
+				if (!Number.isFinite(out[at + k])) {
+					return Result.err(ParticleWriteError.NonFinite);
+				}
 			}
 			n = n + 1;
 		}

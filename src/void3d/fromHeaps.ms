@@ -4,7 +4,8 @@ import {
 	ParticleSystemAsset, ShapeModule, ShapeType, SimulationSpace, ParticleSortMode, Burst,
 } from "../particles/asset";
 import {
-	MinMaxCurve, AnimationCurve, CurveKey, ColorKey, AlphaKey, ParticleColor, Gradient, GradientMode,
+	MinMaxCurve, AnimationCurve, CurveKey, ColorKey, AlphaKey, ParticleColor, Gradient,
+	GradientMode,
 	ParticleColorSpace, MAX_GRADIENT_KEYS, constantCurve, twoConstants, twoCurves, curveOf,
 	linearCurve, key, gradientOf,
 } from "../particles/curve";
@@ -303,7 +304,9 @@ function sampledKind(this v: ParticleValue): boolean {
 	};
 }
 
-function constantOf(v: ParticleValue, error: HeapsLoweringError): Result<float32, HeapsLoweringError> {
+function constantOf(
+	v: ParticleValue, error: HeapsLoweringError,
+): Result<float32, HeapsLoweringError> {
 	return match (v.kind) {
 		ValueKind.Const => Result.ok(v.value),
 		_ => Result.err(error),
@@ -340,9 +343,12 @@ function valueAt(v: ParticleValue, t: float64): float64 {
 	return match (v.kind) {
 		ValueKind.Const => v.value as float64,
 		ValueKind.Linear => (v.start as float64) + (v.length as float64) * t,
-		ValueKind.Pow => (v.start as float64) + Math.pow(t, v.power as float64) * (v.length as float64),
-		ValueKind.Sin => Math.sin(t * (v.frequency as float64)) * (v.amplitude as float64) + (v.offset as float64),
-		ValueKind.Cos => Math.cos(t * (v.frequency as float64)) * (v.amplitude as float64) + (v.offset as float64),
+		ValueKind.Pow => (v.start as float64) +
+			Math.pow(t, v.power as float64) * (v.length as float64),
+		ValueKind.Sin => Math.sin(t * (v.frequency as float64)) * (v.amplitude as float64) +
+			(v.offset as float64),
+		ValueKind.Cos => Math.cos(t * (v.frequency as float64)) * (v.amplitude as float64) +
+			(v.offset as float64),
 		ValueKind.Poly => polynomial(v.values, t),
 		ValueKind.Random => v.start as float64,
 	};
@@ -354,10 +360,13 @@ function slopeAt(v: ParticleValue, t: float64): float64 {
 		ValueKind.Linear => v.length as float64,
 		ValueKind.Pow => {
 			const floor: float64 = t > POW_FLOOR ? t : POW_FLOOR;
-			return (v.length as float64) * (v.power as float64) * Math.pow(floor, (v.power as float64) - 1.0);
+			return (v.length as float64) * (v.power as float64) *
+				Math.pow(floor, (v.power as float64) - 1.0);
 		},
-		ValueKind.Sin => (v.amplitude as float64) * (v.frequency as float64) * Math.cos(t * (v.frequency as float64)),
-		ValueKind.Cos => -(v.amplitude as float64) * (v.frequency as float64) * Math.sin(t * (v.frequency as float64)),
+		ValueKind.Sin => (v.amplitude as float64) * (v.frequency as float64) *
+			Math.cos(t * (v.frequency as float64)),
+		ValueKind.Cos => -(v.amplitude as float64) * (v.frequency as float64) *
+			Math.sin(t * (v.frequency as float64)),
 		ValueKind.Poly => polynomialSlope(v.values, t),
 		ValueKind.Random => 0.0,
 	};
@@ -377,7 +386,8 @@ function curveTrack(v: ParticleValue, derivative: boolean, t: float64): float64 
 // key steeper than four chords (a power below one at 0) takes the chord instead of overshooting.
 function sampledCurve(v: ParticleValue, derivative: boolean, m: float64, a: float64): MinMaxCurve {
 	let keys: Vec<CurveKey> = [];
-	const chord: float64 = (curveTrack(v, derivative, 1.0 / (SAMPLES as float64)) - curveTrack(v, derivative, 0.0))
+	const chord: float64 = (curveTrack(v, derivative, 1.0 / (SAMPLES as float64)) -
+		curveTrack(v, derivative, 0.0))
 		* (SAMPLES as float64);
 	for (let i = 0; i <= SAMPLES; i++) {
 		const t: float64 = (i as float64) / (SAMPLES as float64);
@@ -398,7 +408,9 @@ function flatLine(value: float32): AnimationCurve {
 function randomCurve(low: float32, high: float32, converge: Converge): MinMaxCurve {
 	return match (converge) {
 		Converge.No => twoConstants(low, high),
-		Converge.Start => twoCurves(1.0, flatLine(low), linearCurve([key(0.0, low), key(1.0, high)])),
+		Converge.Start => twoCurves(
+			1.0, flatLine(low), linearCurve([key(0.0, low), key(1.0, high)]),
+		),
 		Converge.End => twoCurves(1.0, flatLine(low), linearCurve([key(0.0, high), key(1.0, low)])),
 	};
 }
@@ -509,7 +521,9 @@ function colorTimes(state: EmitterState): Vec<float64> {
 	return times;
 }
 
-function lowerColor(ref a: ParticleSystemAsset, state: EmitterState): Result<void, HeapsLoweringError> {
+function lowerColor(
+	ref a: ParticleSystemAsset, state: EmitterState,
+): Result<void, HeapsLoweringError> {
 	if (state.light.drawsRandom() || state.alpha.drawsRandom()) {
 		return Result.err(HeapsLoweringError.RandomLightOrAlpha);
 	}
@@ -523,7 +537,9 @@ function lowerColor(ref a: ParticleSystemAsset, state: EmitterState): Result<voi
 		&& valueAt(state.alpha, 0.0) == 1.0;
 	if (plain) { return Result.ok(null); }
 	let times: Vec<float64> = colorTimes(state);
-	if ((times.length as int32) > MAX_GRADIENT_KEYS) { return Result.err(HeapsLoweringError.TooManyColorKeys); }
+	if ((times.length as int32) > MAX_GRADIENT_KEYS) {
+		return Result.err(HeapsLoweringError.TooManyColorKeys);
+	}
 	if (state.light.kind != ValueKind.Const) { times = refinedTimes(state, false, times); }
 	let colorKeys: Vec<ColorKey> = [];
 	for (const t of times) { colorKeys.push({ color: heapsColor(state, t), time: t as float32 }); }
@@ -563,7 +579,9 @@ function ringRotation(axis: Vec3): Result<Vec3, HeapsLoweringError> {
 	return Result.err(HeapsLoweringError.RingAxisNotAligned);
 }
 
-function lowerShape(ref a: ParticleSystemAsset, state: EmitterState): Result<void, HeapsLoweringError> {
+function lowerShape(
+	ref a: ParticleSystemAsset, state: EmitterState,
+): Result<void, HeapsLoweringError> {
 	const shell: boolean = state.emitFromShell;
 	let shape: ShapeModule = {
 		...a.shape, rotation: EMIT_UP, radiusThickness: shell ? 0.0 : 1.0,
@@ -586,7 +604,8 @@ function lowerShape(ref a: ParticleSystemAsset, state: EmitterState): Result<voi
 			shape = { ...shape, shapeType: ShapeType.Sphere, radius: radius };
 		},
 		ShapeKind.Cone => {
-			const angle: float32 = try constantOf(state.shape.angle, HeapsLoweringError.ShapeValueNotConstant);
+			const angle: float32 =
+				try constantOf(state.shape.angle, HeapsLoweringError.ShapeValueNotConstant);
 			if (!(angle >= 0.0 && (angle as float64) < HALF_PI)) {
 				return Result.err(HeapsLoweringError.ConeAngleOutOfRange);
 			}
@@ -600,14 +619,21 @@ function lowerShape(ref a: ParticleSystemAsset, state: EmitterState): Result<voi
 		},
 		ShapeKind.Point => { shape = pointShape(shape, 0.0); },
 		ShapeKind.Box => {
-			const ex: float32 = try constantOf(state.shape.extents.x, HeapsLoweringError.ShapeValueNotConstant);
-			const ey: float32 = try constantOf(state.shape.extents.y, HeapsLoweringError.ShapeValueNotConstant);
-			const ez: float32 = try constantOf(state.shape.extents.z, HeapsLoweringError.ShapeValueNotConstant);
+			const ex: float32 =
+				try constantOf(state.shape.extents.x, HeapsLoweringError.ShapeValueNotConstant);
+			const ey: float32 =
+				try constantOf(state.shape.extents.y, HeapsLoweringError.ShapeValueNotConstant);
+			const ez: float32 =
+				try constantOf(state.shape.extents.z, HeapsLoweringError.ShapeValueNotConstant);
 			const width: float32 = ex < 0.0 ? -2.0 * ex : 2.0 * ex;
 			const height: float32 = ey < 0.0 ? -2.0 * ey : 2.0 * ey;
 			const depth: float32 = ez < 0.0 ? -2.0 * ez : 2.0 * ez;
 			if (height == 0.0) {
-				shape = { ...shape, shapeType: ShapeType.Rectangle, scale: vec3(width, depth, 1.0) };
+				shape = {
+					...shape,
+					shapeType: ShapeType.Rectangle,
+					scale: vec3(width, depth, 1.0),
+				};
 			} else {
 				shape = {
 					...shape, shapeType: shell ? ShapeType.BoxShell : ShapeType.Box,
@@ -623,7 +649,8 @@ function lowerShape(ref a: ParticleSystemAsset, state: EmitterState): Result<voi
 			const reach: float32 = outer > MIN_RING_RADIUS ? outer : MIN_RING_RADIUS;
 			if (inner > reach) { return Result.err(HeapsLoweringError.RingInnerAboveOuter); }
 			shape = {
-				...shape, shapeType: ShapeType.Circle, radius: reach, radiusThickness: 1.0 - inner / reach,
+				...shape, shapeType: ShapeType.Circle, radius: reach,
+				radiusThickness: 1.0 - inner / reach,
 				rotation: turn,
 			};
 		},
@@ -632,7 +659,9 @@ function lowerShape(ref a: ParticleSystemAsset, state: EmitterState): Result<voi
 	return Result.ok(null);
 }
 
-function lowerSpeed(ref a: ParticleSystemAsset, state: EmitterState): Result<void, HeapsLoweringError> {
+function lowerSpeed(
+	ref a: ParticleSystemAsset, state: EmitterState,
+): Result<void, HeapsLoweringError> {
 	const speed: ParticleValue = state.speed;
 	const initial: ParticleValue = state.initialSpeed;
 	if (speed.kind == ValueKind.Const) {
@@ -645,18 +674,24 @@ function lowerSpeed(ref a: ParticleSystemAsset, state: EmitterState): Result<voi
 		return Result.ok(null);
 	}
 	a.main.startSpeed = constantCurve(1.0);
-	a.velocityOverLifetime = { ...a.velocityOverLifetime, enabled: true, speedModifier: curveFor(speed, 1.0, start) };
+	a.velocityOverLifetime = {
+		...a.velocityOverLifetime, enabled: true, speedModifier: curveFor(speed, 1.0, start),
+	};
 	return Result.ok(null);
 }
 
-function lowerRotation(ref a: ParticleSystemAsset, state: EmitterState): Result<void, HeapsLoweringError> {
+function lowerRotation(
+	ref a: ParticleSystemAsset, state: EmitterState,
+): Result<void, HeapsLoweringError> {
 	const angle: ParticleValue = state.rotation;
 	if (angle.timeIndependent()) {
 		a.main.startRotationZ = curveFor(angle, 1.0, 0.0);
 		return Result.ok(null);
 	}
 	const life: float32 = try constantOf(state.life, HeapsLoweringError.RotationNotRepresentable);
-	if (!(life > 0.0) || angle.drawsRandom()) { return Result.err(HeapsLoweringError.RotationNotRepresentable); }
+	if (!(life > 0.0) || angle.drawsRandom()) {
+		return Result.err(HeapsLoweringError.RotationNotRepresentable);
+	}
 	const perSecond: float64 = 1.0 / (life as float64);
 	a.main.startRotationZ = constantCurve(valueAt(angle, 0.0) as float32);
 	const spin: MinMaxCurve = match (angle.kind) {
@@ -667,7 +702,9 @@ function lowerRotation(ref a: ParticleSystemAsset, state: EmitterState): Result<
 	return Result.ok(null);
 }
 
-function lowerSize(ref a: ParticleSystemAsset, state: EmitterState, scale: float32): Result<void, HeapsLoweringError> {
+function lowerSize(
+	ref a: ParticleSystemAsset, state: EmitterState, scale: float32,
+): Result<void, HeapsLoweringError> {
 	const size: ParticleValue = state.size;
 	const ratio: ParticleValue = state.ratio;
 	a.sizeOverLifetime.enabled = true;
@@ -683,11 +720,15 @@ function lowerSize(ref a: ParticleSystemAsset, state: EmitterState, scale: float
 	return Result.ok(null);
 }
 
-function lowerEmission(ref a: ParticleSystemAsset, state: EmitterState): Result<void, HeapsLoweringError> {
+function lowerEmission(
+	ref a: ParticleSystemAsset, state: EmitterState,
+): Result<void, HeapsLoweringError> {
 	a.emission.rateOverTime = curveFor(state.emitRate, 1.0, 0.0);
 	let bursts: Vec<Burst> = [];
 	for (const b of state.bursts) {
-		if (!(b.time > 0.0 && b.time < 1.0)) { return Result.err(HeapsLoweringError.BurstOutsideCycle); }
+		if (!(b.time > 0.0 && b.time < 1.0)) {
+			return Result.err(HeapsLoweringError.BurstOutsideCycle);
+		}
 		bursts.push({
 			time: burstSeconds(b.time, state.globalLife), count: constantCurve(b.count as float32),
 			cycleCount: 1, repeatInterval: 0.01, probability: 1.0,
@@ -702,7 +743,8 @@ function lowerForces(ref a: ParticleSystemAsset, state: EmitterState): void {
 	a.main.gravityModifier = curveFor(state.gravity, 1.0, 0.0);
 	if (!(f.x.isZero() && f.y.isZero() && f.z.isZero())) {
 		a.forceOverLifetime = {
-			...a.forceOverLifetime, enabled: true, x: curveFor(f.x, 1.0, 0.0), y: curveFor(f.y, 1.0, 0.0),
+			...a.forceOverLifetime, enabled: true,
+			x: curveFor(f.x, 1.0, 0.0), y: curveFor(f.y, 1.0, 0.0),
 			z: curveFor(f.z, 1.0, 0.0), space: a.main.simulationSpace,
 		};
 	}
@@ -718,7 +760,8 @@ function lowerForces(ref a: ParticleSystemAsset, state: EmitterState): void {
 		const scale: float32 = shaderNoiseScale(t.noiseScale);
 		a.noise = {
 			...a.noise, enabled: true, strengthX: constantCurve(t.noiseStrength),
-			frequency: scale < 0.0 ? -scale : scale, scrollSpeed: constantCurve(t.noiseSpeed.length()),
+			frequency: scale < 0.0 ? -scale : scale,
+			scrollSpeed: constantCurve(t.noiseSpeed.length()),
 			damping: false, positionAmount: curveFor(t.influence, 1.0, 0.0),
 		};
 	}
@@ -736,10 +779,14 @@ function sortModeOf(mode: SortMode): ParticleSortMode {
 export function fromHeaps(state: EmitterState): Result<ParticleSystemAsset, HeapsLoweringError> {
 	if (state.maxParts <= 0) { return Result.err(HeapsLoweringError.NoCapacity); }
 	if (!(state.globalLife > 0.0)) { return Result.err(HeapsLoweringError.NonPositiveLife); }
-	if (state.frame !== null && state.frameCount <= 0) { return Result.err(HeapsLoweringError.NoFrames); }
-	const globalSpeed: float32 = try constantOf(state.globalSpeed, HeapsLoweringError.GlobalSpeedNotConstant);
+	if (state.frame !== null && state.frameCount <= 0) {
+		return Result.err(HeapsLoweringError.NoFrames);
+	}
+	const globalSpeed: float32 =
+		try constantOf(state.globalSpeed, HeapsLoweringError.GlobalSpeedNotConstant);
 	if (globalSpeed < 0.0) { return Result.err(HeapsLoweringError.NegativeGlobalSpeed); }
-	const globalSize: float32 = try constantOf(state.globalSize, HeapsLoweringError.GlobalSizeNotConstant);
+	const globalSize: float32 =
+		try constantOf(state.globalSize, HeapsLoweringError.GlobalSizeNotConstant);
 	let a = ParticleSystemAsset.defaults();
 	a.main.loop = state.loop;
 	a.main.duration = state.globalLife as float32;
@@ -790,15 +837,20 @@ export function divergences(this state: EmitterState): BitSet<HeapsDivergence> {
 	if (!state.speed.timeIndependent() && (forced || !state.gravity.isZero())) {
 		found = found.incl(HeapsDivergence.SpeedScalesForces);
 	}
-	if (!state.damping.isZero() && !state.speed.isZero()) { found = found.incl(HeapsDivergence.DampingReachesSpeed); }
+	if (!state.damping.isZero() && !state.speed.isZero()) {
+		found = found.incl(HeapsDivergence.DampingReachesSpeed);
+	}
 	if (!(f.x.timeIndependent() && f.y.timeIndependent() && f.z.timeIndependent())) {
 		found = found.incl(HeapsDivergence.ForceTimeAxis);
 	}
 	if (randomCount(f.x, f.y, f.z) > 1) { found = found.incl(HeapsDivergence.ForceSharedDraw); }
-	if (state.emitLocal && !state.gravity.isZero()) { found = found.incl(HeapsDivergence.GravityFollowsWorld); }
+	if (state.emitLocal && !state.gravity.isZero()) {
+		found = found.incl(HeapsDivergence.GravityFollowsWorld);
+	}
 	const lightSampled: boolean = state.light.kind != ValueKind.Const
 		&& !(state.colors.length == 0 && state.light.kind == ValueKind.Linear);
-	const alphaSampled: boolean = state.alpha.kind != ValueKind.Const && state.alpha.kind != ValueKind.Linear;
+	const alphaSampled: boolean =
+		state.alpha.kind != ValueKind.Const && state.alpha.kind != ValueKind.Linear;
 	if (lightSampled || alphaSampled) { found = found.incl(HeapsDivergence.GradientSampled); }
 	const sampled: boolean = state.emitRate.sampledKind() || state.life.sampledKind()
 		|| state.speed.sampledKind() || state.initialSpeed.sampledKind() || state.size.sampledKind()
@@ -806,7 +858,9 @@ export function divergences(this state: EmitterState): BitSet<HeapsDivergence> {
 		|| f.y.sampledKind() || f.z.sampledKind() || state.damping.sampledKind()
 		|| state.rotation.sampledKind() || state.turbulence.influence.sampledKind();
 	if (sampled) { found = found.incl(HeapsDivergence.ValueSampled); }
-	if (!state.rotation.timeIndependent()) { found = found.incl(HeapsDivergence.RotationIntegrated); }
+	if (!state.rotation.timeIndependent()) {
+		found = found.incl(HeapsDivergence.RotationIntegrated);
+	}
 	if (state.frame !== null) { found = found.incl(HeapsDivergence.FrameBoundary); }
 	if (state.turbulence.enabled && state.turbulence.noiseStrength > 0.0) {
 		found = found.incl(HeapsDivergence.TurbulenceAsNoise);
@@ -815,7 +869,8 @@ export function divergences(this state: EmitterState): BitSet<HeapsDivergence> {
 	const draws: boolean = state.shape.kind != ShapeKind.Point || state.randomDir
 		|| state.emitRate.drawsRandom() || state.life.drawsRandom() || state.speed.drawsRandom()
 		|| state.initialSpeed.drawsRandom() || state.size.drawsRandom() || state.ratio.drawsRandom()
-		|| state.rotation.drawsRandom() || state.gravity.drawsRandom() || randomCount(f.x, f.y, f.z) > 0
+		|| state.rotation.drawsRandom() || state.gravity.drawsRandom()
+		|| randomCount(f.x, f.y, f.z) > 0
 		|| state.damping.drawsRandom() || state.light.drawsRandom() || state.alpha.drawsRandom()
 		|| (frame !== null && frame.drawsRandom());
 	if (draws) { found = found.incl(HeapsDivergence.RandomStream); }
