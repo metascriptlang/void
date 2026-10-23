@@ -213,9 +213,12 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
 		ShaderTypeKind.Texture => textureTypeName(p, t),
 		ShaderTypeKind.Sampler => "SamplerState",
-		ShaderTypeKind.StorageTexture => t.shape == TextureShape.D2 ?
-			"RWTexture2D<" + texelOf(t.format) + ">" :
-			fail(p, "a storage texture of shape " + t.shape.toString()),
+		ShaderTypeKind.StorageTexture => match (t.shape) {
+			TextureShape.D2 => "RWTexture2D<" + texelOf(t.format) + ">",
+			TextureShape.D2Array => "RWTexture2DArray<" + texelOf(t.format) + ">",
+			TextureShape.D3 => "RWTexture3D<" + texelOf(t.format) + ">",
+			_ => fail(p, "a storage texture of shape " + t.shape.toString()),
+		},
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => exchangeResult(p, t.scalar),
 	};
@@ -500,10 +503,17 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	const texture = expr(p, args[0]);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const ty = typeName(p, t);
+		const deep = t.shape == TextureShape.D3;
+		const sizes = deep ? ["width", "height", "depth"] :
+			t.shape == TextureShape.D2Array ? ["width", "height", "layers"] : ["width", "height"];
+		const result = deep ? "uint3" : "uint2";
+		const kept = deep ? "width, height, depth" : "width, height";
 		const name = helper(p, "imageSize " + ty, "imageSize", (n) =>
-			"uint2 " + n + "(" + ty + " image)\n{\n    uint width;\n    uint height;\n" +
-			"    image.GetDimensions(width, height);\n    return uint2(width, height);\n}\n");
-		return converted(p, name + "(" + texture + ")", "uint2", e.type);
+			result + " " + n + "(" + ty + " image)\n{\n" +
+			sizes.map((s) => "    uint " + s + ";\n").join("") +
+			"    image.GetDimensions(" + sizes.join(", ") + ");\n" +
+			"    return " + result + "(" + kept + ");\n}\n");
+		return converted(p, name + "(" + texture + ")", result, e.type);
 	}
 	if (t.kind != ShaderTypeKind.Texture) {
 		return fail(p, "TextureDimensions of a " + t.kind.toString());
@@ -544,7 +554,11 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 			return fail(p, "TextureLoad of a " + t.format.toString() + " storage texture: SM5 " +
 				"loads typed UAVs of one 32-bit channel only");
 		}
-		return texture + "[uint2(" + at + ")]";
+		const texel = texture + "[" + storageAt(p, args) + "]";
+		if (e.type.kind != ShaderTypeKind.Vector) { return texel; }
+		const unsigned = t.format == TexelFormat.R32uint;
+		return (unsigned ? "uint4(" : "float4(") + texel +
+			(unsigned ? ", 0u, 0u, 1u)" : ", 0.0, 0.0, 1.0)");
 	}
 	if (t.kind != ShaderTypeKind.Texture) { return fail(p, "TextureLoad of a " + t.kind.toString()); }
 	return match (t.shape) {
@@ -617,16 +631,27 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 		expr(p, sampler) + ", " + layeredAt(p, e, layered) + ", " + expr(p, reference) + ")";
 }
 
+function storageAt(p: Printer, args: ShaderExpr[]): string {
+	return match (args[0].type.shape) {
+		TextureShape.D2 => "uint2(" + expr(p, args[1]) + ")",
+		TextureShape.D2Array => "uint3(" + expr(p, args[1]) + ", " + expr(p, args[2]) + ")",
+		_ => "uint3(" + expr(p, args[1]) + ")",
+	};
+}
+
 function storeOf(p: Printer, e: ShaderExpr): string {
-	if (e.operands.length != 3 || e.operands[0].type.kind != ShaderTypeKind.StorageTexture) {
-		return fail(p, "TextureStore takes a storage texture, coordinates and a value");
+	const o = e.operands;
+	const wanted = o.length > 0 && o[0].type.shape == TextureShape.D2Array ? 4 : 3;
+	if (o.length != wanted || o[0].type.kind != ShaderTypeKind.StorageTexture) {
+		return fail(p, "TextureStore takes a storage texture, coordinates, a layer of an " +
+			"array, and a value");
 	}
-	const width = texelWidth(e.operands[0].type.format);
-	const value = e.operands[2];
+	const width = texelWidth(o[0].type.format);
+	const value = o[wanted - 1];
 	const rows = value.type.kind == ShaderTypeKind.Vector ? value.type.rows : 1;
 	const written = width < rows ?
 		operand(p, value) + "." + SWIZZLE.slice(0, width).join("") : expr(p, value);
-	return operand(p, e.operands[0]) + "[uint2(" + expr(p, e.operands[1]) + ")] = " + written;
+	return operand(p, o[0]) + "[" + storageAt(p, o) + "] = " + written;
 }
 
 function intrinsicName(op: Intrinsic): string {

@@ -289,8 +289,8 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Struct => p.structs[t.structIndex],
 		ShaderTypeKind.Texture => textureText(p, t),
 		ShaderTypeKind.Sampler => "sampler",
-		ShaderTypeKind.StorageTexture => "texture2d<" + formatTexel(t.format) + ", " +
-			accessText(t.access) + ">",
+		ShaderTypeKind.StorageTexture => storageShapeText(p, t.shape) + "<" +
+			formatTexel(t.format) + ", " + accessText(t.access) + ">",
 		ShaderTypeKind.Atomic => "atomic_" + scalarText(t.scalar),
 		ShaderTypeKind.ExchangeResult => "AtomicExchange" +
 			exchangeSuffix(t.scalar == ScalarKind.I32 ? 0 : 1),
@@ -489,7 +489,7 @@ function loadText(p: Printer, e: ShaderExpr): string {
 	const at = texelCoordinate(p, o[1]);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		if (t.access == Access.Write) { return fail(p, "TextureLoad of a write-only storage texture"); }
-		return texture + ".read(" + at + ")";
+		return texture + ".read(" + at + layerText(p, o) + ")";
 	}
 	if (t.kind != ShaderTypeKind.Texture) { return fail(p, "TextureLoad of a " + t.kind.toString()); }
 	if (t.shape == TextureShape.Cube || t.shape == TextureShape.CubeArray ||
@@ -507,16 +507,31 @@ function loadText(p: Printer, e: ShaderExpr): string {
 	return texture + ".read(" + args.join(", ") + ")";
 }
 
+function storageShapeText(p: Printer, shape: TextureShape): string {
+	return match (shape) {
+		TextureShape.D2 => "texture2d",
+		TextureShape.D2Array => "texture2d_array",
+		TextureShape.D3 => "texture3d",
+		_ => fail(p, "a storage texture of shape " + shape.toString()),
+	};
+}
+
+function layerText(p: Printer, o: ShaderExpr[]): string {
+	return o[0].type.shape == TextureShape.D2Array ? ", uint(" + exprText(p, o[2]) + ")" : "";
+}
+
 function storeText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
-	if (o.length != 3 || o[0].type.kind != ShaderTypeKind.StorageTexture) {
-		return fail(p, "TextureStore takes a storage texture, coordinates and a value");
+	const wanted = o.length > 0 && o[0].type.shape == TextureShape.D2Array ? 4 : 3;
+	if (o.length != wanted || o[0].type.kind != ShaderTypeKind.StorageTexture) {
+		return fail(p, "TextureStore takes a storage texture, coordinates, a layer of an " +
+			"array, and a value");
 	}
 	if (o[0].type.access == Access.Read) {
 		return fail(p, "TextureStore to a read-only storage texture");
 	}
-	return exprText(p, o[0]) + ".write(" + exprText(p, o[2]) + ", " + texelCoordinate(p, o[1]) +
-		")";
+	return exprText(p, o[0]) + ".write(" + exprText(p, o[wanted - 1]) + ", " +
+		texelCoordinate(p, o[1]) + layerText(p, o) + ")";
 }
 
 function dimensionsText(p: Printer, e: ShaderExpr): string {
@@ -533,7 +548,7 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 	const level = levelled ? "uint(" + exprText(p, o[1]) + ")" : "";
 	const texture = exprText(p, o[0]);
 	let sizes = [texture + ".get_width(" + level + ")", texture + ".get_height(" + level + ")"];
-	if (t.kind == ShaderTypeKind.Texture && t.shape == TextureShape.D3) {
+	if (t.shape == TextureShape.D3) {
 		sizes.push(texture + ".get_depth(" + level + ")");
 	}
 	if (e.type.kind != ShaderTypeKind.Vector || e.type.rows != sizes.length) {

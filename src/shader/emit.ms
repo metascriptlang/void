@@ -36,6 +36,8 @@ import {
 	Mat4x4f,
 	Sampler,
 	StorageTexture2d,
+	StorageTexture2dArray,
+	StorageTexture3d,
 	Texture2d,
 	Texture2dArray,
 	Texture2dU32,
@@ -474,7 +476,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const stdModule = stdSymbol.resolvedSym.modulePath;
 	const textureNode = getTypeImpl(Texture2d);
 	const samplerNode = getTypeImpl(Sampler);
-	const storageTextureNode = getTypeImpl(StorageTexture2d);
+	const storageTextureNodes = [getTypeImpl(StorageTexture2d),
+		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d)];
+	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
 	const uintTextureNode = getTypeImpl(Texture2dU32);
 	const arrayTextureNode = getTypeImpl(Texture2dArray);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
@@ -801,7 +805,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				r.access = writes ? Access.ReadWrite : Access.Read;
 				continue;
 			}
-			if (sameType(t, storageTextureNode)) {
+			const storageShape = storageTextureNodes.findIndex((n) => sameType(t, n));
+			if (storageShape >= 0) {
 				if (!compute) {
 					fail(binding, "storage texture '" + name + "' is a compute binding");
 				}
@@ -822,7 +827,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				const writeOnly = access == null || argumentName(access) == "write";
 				const mode = writeOnly ? Access.Write : writes ? Access.ReadWrite : Access.Read;
 				const r = addResource(ResourceKind.StorageTexture, name, slot,
-					storageTextureType(texels[at], mode), binding);
+					storageTextureType(texels[at], mode, storageShapes[storageShape]), binding);
 				r.access = mode;
 				continue;
 			}

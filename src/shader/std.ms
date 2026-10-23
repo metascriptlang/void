@@ -2002,14 +2002,92 @@ export function textureDimensions(texture: StorageTexture2d): Vec2i {
 }
 
 export function textureStore(texture: StorageTexture2d, at: Vec2i, value: Vec4f): void {
-	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
-		unreachable("textureStore: the texel is outside the texture");
-	}
-	const first = (at.y * texture.width + at.x) * 4;
-	texture.texels[first] = value.x;
-	texture.texels[first + 1] = value.y;
-	texture.texels[first + 2] = value.z;
-	texture.texels[first + 3] = value.w;
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2d, at: Vec2i): Vec4f {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+// WGSL's texture_storage_2d_array: textureStore and textureLoad name the layer as an operand of
+// its own, after the texel coordinate. Its texels run layer by layer, four floats a texel.
+export struct StorageTexture2dArray {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: float32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dArray): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(
+	texture: StorageTexture2dArray,
+	at: Vec2i,
+	layer: int32,
+	value: Vec4f,
+): void {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dArray, at: Vec2i, layer: int32): Vec4f {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+// WGSL's texture_storage_3d: its texels run slice by slice, four floats a texel.
+export struct StorageTexture3d {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: float32[];
+}
+
+export function textureDimensions(texture: StorageTexture3d): Vec3i {
+	return { x: texture.width, y: texture.height, z: texture.depth };
+}
+
+export function textureStore(texture: StorageTexture3d, at: Vec3i, value: Vec4f): void {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture3d, at: Vec3i): Vec4f {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+function storageTexel(
+	width: int32,
+	height: int32,
+	depth: int32,
+	x: int32,
+	y: int32,
+	z: int32,
+): int32 {
+	if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= depth) { return -1; }
+	return ((z * height + y) * width + x) * 4;
+}
+
+function storeTexel(texels: float32[], first: int32, value: Vec4f): void {
+	texels[first] = value.x;
+	texels[first + 1] = value.y;
+	texels[first + 2] = value.z;
+	texels[first + 3] = value.w;
+}
+
+function loadTexel(texels: float32[], first: int32): Vec4f {
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
 }
 
 // The size is signed, as the texel coordinate it bounds is (docs/VOCABULARY.md, "A name brings

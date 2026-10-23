@@ -16,6 +16,7 @@ import {
 	ShaderType,
 	ShaderField,
 	StmtKind,
+	TextureShape,
 	atomicType,
 	exprOf,
 	intrinsicOf,
@@ -30,6 +31,8 @@ import {
 	AtomicI32,
 	AtomicU32,
 	StorageTexture2d,
+	StorageTexture2dArray,
+	StorageTexture3d,
 	Vec3u,
 	access,
 	atomicAdd,
@@ -47,9 +50,12 @@ import {
 	builtin,
 	format,
 	storageBarrier,
+	textureDimensions,
+	textureLoad,
 	textureStore,
 	vec2i,
 	vec2u,
+	vec3i,
 	vec4f,
 	workgroupBarrier,
 } from "../shader/std";
@@ -425,4 +431,87 @@ test "an atomic stays in a read_write buffer, and HLSL refuses one nested in an 
 	assert !refused.ok && refused.error.endsWith(": AtomicAdd inside an expression or a for " +
 		"header: Interlocked* hands its result back through an out parameter, so an atomic is a " +
 		"statement or a local's initializer");
+}
+
+export struct VolumeBindings {
+	@binding(0) @format(r32float) @access(read_write) layers: StorageTexture2dArray;
+	@binding(1) @format(r32float) @access(read_write) volume: StorageTexture3d;
+	@binding(2) @format(r32float) @access(read) plane: StorageTexture2d;
+}
+
+export function volumeCs(input: OpsInput, b: VolumeBindings): void {
+	const at = vec2i(input.id.xy);
+	const size = textureDimensions(b.layers);
+	const deep = textureDimensions(b.volume);
+	const below = textureLoad(b.layers, at, 0);
+	textureStore(b.layers, at, 1, vec4f(below.x + (size.x as float32)));
+	const far = textureLoad(b.volume, vec3i(at.x, at.y, deep.z - 1));
+	textureStore(b.volume, vec3i(at.x, at.y, 0), vec4f(far.x * 2.0));
+	textureStore(b.layers, at, 0, textureLoad(b.plane, at));
+}
+
+function texelsOf(count: int32, start: float32): float32[] {
+	let texels: float32[] = [];
+	for (let i = 0; i < count * 4; i++) { texels.push(start + ((i / 4) as float32)); }
+	return texels;
+}
+
+test "a storage texture is 2d, 2d array or 3d, a layer an operand of its own" {
+	let b: VolumeBindings = {
+		layers: { width: 2, height: 1, layers: 2, texels: texelsOf(4, 10.0) },
+		volume: { width: 2, height: 1, depth: 3, texels: texelsOf(6, 20.0) },
+		plane: { width: 2, height: 1, texels: texelsOf(2, 30.0) },
+	};
+	volumeCs({ id: { x: 1, y: 0, z: 0 } }, b);
+	assert b.layers.texels[3 * 4] == 13.0;
+	assert b.volume.texels[1 * 4] == 50.0;
+	assert b.layers.texels[1 * 4] == 31.0;
+}
+
+test "every target spells a storage texture of each shape" {
+	const m = computeOf(glslComputeIr(volumeCs, [32, 1, 1]));
+	const wgsl = printedFor(m, ShaderTarget.Wgsl, "volume");
+	assert wgsl.includes("var layers : texture_storage_2d_array<r32float, read_write>;\n");
+	assert wgsl.includes("var volume : texture_storage_3d<r32float, read_write>;\n");
+	assert wgsl.includes("  var below : vec4f = textureLoad(layers, at, 0i);\n" +
+		"  textureStore(layers, at, 1i, vec4f((below.x + f32(size.x))));\n");
+	const hlsl = printedFor(m, ShaderTarget.Hlsl5, "volume");
+	assert hlsl.includes("RWTexture2DArray<float> layers : register(u0);\n" +
+		"RWTexture3D<float> volume : register(u1);\n");
+	assert hlsl.includes("    image.GetDimensions(width, height, depth);\n" +
+		"    return uint3(width, height, depth);\n");
+	assert hlsl.includes("    float4 below = float4(layers[uint3(at, 0)], 0.0, 0.0, 1.0);\n" +
+		"    layers[uint3(at, 1)] = ((float4)(below.x + float(size.x))).x;\n");
+	assert hlsl.includes("    volume[uint3(int3(at.x, at.y, 0))] = ((float4)(far.x * 2.0)).x;\n");
+	const gl = printedFor(m, ShaderTarget.Glsl430, "volume");
+	assert gl.includes("layout(binding = 0, r32f) uniform image2DArray layers;\n" +
+		"layout(binding = 1, r32f) uniform image3D volume;\n");
+	assert gl.includes("    ivec2 size = imageSize(layers).xy;\n    ivec3 deep = imageSize(volume);\n" +
+		"    vec4 below = imageLoad(layers, ivec3(at, 0));\n" +
+		"    imageStore(layers, ivec3(at, 1), vec4(below.x + float(size.x)));\n");
+	const msl = printedFor(m, ShaderTarget.Msl, "volume");
+	assert msl.includes("texture2d_array<float, access::read_write> layers, " +
+		"texture3d<float, access::read_write> volume, texture2d<float, access::read> plane");
+	assert msl.includes("  int3 deep = int3(volume.get_width(), volume.get_height(), " +
+		"volume.get_depth());\n  float4 below = layers.read(uint2(at), uint(0));\n" +
+		"  layers.write(float4((below.x + float(size.x))), uint2(at), uint(1));\n");
+	let cube = computeOf(glslComputeIr(volumeCs, [32, 1, 1]));
+	cube.resources[1].type.shape = TextureShape.Cube;
+	assert irErrors(cube).includes("resource 'volume': a storage texture of shape Cube, where " +
+		"WGSL's is 2d, 2d array or 3d");
+	assert glslCompute(volumeCs, [32, 1, 1]) ==
+		"layout(local_size_x=32, local_size_y=1, local_size_z=1) in;\n" +
+		"layout(binding=0, r32f) uniform image2DArray layers;\n" +
+		"layout(binding=1, r32f) uniform image3D volume;\n" +
+		"layout(binding=2, r32f) uniform readonly image2D plane;\n" +
+		"void main() {\n" +
+		"    ivec2 at = ivec2(gl_GlobalInvocationID.xy);\n" +
+		"    ivec2 size = imageSize(layers).xy;\n" +
+		"    ivec3 deep = imageSize(volume);\n" +
+		"    vec4 below = imageLoad(layers, ivec3(at, 0));\n" +
+		"    imageStore(layers, ivec3(at, 1), vec4((below.x + float(size.x))));\n" +
+		"    vec4 far = imageLoad(volume, ivec3(at.x, at.y, (deep.z - 1)));\n" +
+		"    imageStore(volume, ivec3(at.x, at.y, 0), vec4((far.x * 2.0)));\n" +
+		"    imageStore(layers, ivec3(at, 0), imageLoad(plane, at));\n" +
+		"}\n";
 }

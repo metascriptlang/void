@@ -159,6 +159,8 @@ function bindingOf(m: ShaderModule, s: BindingSlot): Result<GPUShaderBinding, st
 			b.bufferType = bufferType;
 		},
 		ResourceKind.StorageTexture => {
+			const dimension = viewDimensionOf(r.type.shape);
+			if (dimension != "2d") { b.viewDimension = dimension; }
 			b.storageAccess = storageAccessName(r.type.access);
 			const owner = "storage texture '" + r.name + "'";
 			b.storageFormat = try storageFormatOf(r.type.format, owner);

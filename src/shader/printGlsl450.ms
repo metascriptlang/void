@@ -452,6 +452,8 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
 		Intrinsic.TextureDimensions | Intrinsic.TextureLoad => fetched(p, e, args),
+		Intrinsic.TextureStore => "imageStore(" + args[0] + ", " + imageAt(e, args) + ", " +
+			args[args.length - 1] + ")",
 		Intrinsic.TextureSample => layered ?
 			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 			"texture(" + sampled + ", " + args[2] + ")",
@@ -471,7 +473,13 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {
 	const args = all.filter((_, i) => e.operands[i].type.kind != ShaderTypeKind.Sampler);
 	const texture = e.operands[0].type;
-	if (texture.kind == ShaderTypeKind.StorageTexture) { return "imageSize(" + args[0] + ")"; }
+	if (texture.kind == ShaderTypeKind.StorageTexture) {
+		if (e.intrinsic == Intrinsic.TextureLoad) {
+			return "imageLoad(" + args[0] + ", " + imageAt(e, args) + ")";
+		}
+		const size = "imageSize(" + args[0] + ")";
+		return texture.shape == TextureShape.D2Array ? size + ".xy" : size;
+	}
 	p.samplerless = true;
 	if (e.intrinsic == Intrinsic.TextureDimensions) {
 		return "textureSize(" + args[0] + ", " + args[1] + ")";
@@ -479,6 +487,20 @@ function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {
 	return texture.shape == TextureShape.D2Array ?
 		"texelFetch(" + args[0] + ", ivec3(" + args[1] + ", " + args[2] + "), " + args[3] + ")" :
 		"texelFetch(" + args[0] + ", " + args[1] + ", " + args[2] + ")";
+}
+
+function imageAt(e: ShaderExpr, args: string[]): string {
+	return e.operands[0].type.shape == TextureShape.D2Array ?
+		"ivec3(" + args[1] + ", " + args[2] + ")" : args[1];
+}
+
+function imageName(t: ShaderType): string {
+	const unsigned = t.format == TexelFormat.R32uint || t.format == TexelFormat.Rgba8uint;
+	return (unsigned ? "u" : "") + match (t.shape) {
+		TextureShape.D2Array => "image2DArray",
+		TextureShape.D3 => "image3D",
+		_ => "image2D",
+	};
 }
 
 function compared(e: ShaderExpr, args: string[]): string {
@@ -658,8 +680,8 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 			"buffer " + r.name + "Buffer {\n    " + typeName(p, r.type.element[0]) + " " + r.name +
 			"[];\n};\n",
 		ResourceKind.StorageTexture => "layout(binding=" + String(r.binding) + ", " +
-			formatName(r.type.format) + ") uniform " + accessMode(r.type.access) + "image2D " + r.name +
-			";\n",
+			formatName(r.type.format) + ") uniform " + accessMode(r.type.access) +
+			imageName(r.type) + " " + r.name + ";\n",
 	};
 }
 

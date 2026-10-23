@@ -465,11 +465,16 @@ export function samplerType(): ShaderType {
 	return t;
 }
 
-export function storageTextureType(format: TexelFormat, access: Access): ShaderType {
+export function storageTextureType(
+	format: TexelFormat,
+	access: Access,
+	shape: TextureShape = TextureShape.D2,
+): ShaderType {
 	let t = new ShaderType();
 	t.kind = ShaderTypeKind.StorageTexture;
 	t.format = format;
 	t.access = access;
+	t.shape = shape;
 	return t;
 }
 
@@ -720,6 +725,11 @@ export function irErrors(m: ShaderModule): string[] {
 			ResourceKind.StorageTexture => r.type.kind == ShaderTypeKind.StorageTexture,
 		};
 		if (!shapeHolds) { c.errors.push(owner + ": its type does not fit a " + r.kind.toString()); }
+		if (r.kind == ResourceKind.StorageTexture && r.type.shape != TextureShape.D2 &&
+			r.type.shape != TextureShape.D2Array && r.type.shape != TextureShape.D3) {
+			c.errors.push(owner + ": a storage texture of shape " + r.type.shape.toString() +
+				", where WGSL's is 2d, 2d array or 3d");
+		}
 		if (r.kind == ResourceKind.StorageBuffer && r.access != Access.ReadWrite &&
 			holdsAtomic(m, r.type)) {
 			c.errors.push(owner + ": it holds atomics, so its access is read_write, as WGSL's");

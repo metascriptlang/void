@@ -296,8 +296,8 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Struct => p.structs[t.structIndex],
 		ShaderTypeKind.Texture => textureText(p, t),
 		ShaderTypeKind.Sampler => "sampler",
-		ShaderTypeKind.StorageTexture => "texture_storage_2d<" + formatText(t.format) + ", " +
-			accessText(t.access) + ">",
+		ShaderTypeKind.StorageTexture => "texture_storage_" + storageShapeText(p, t.shape) + "<" +
+			formatText(t.format) + ", " + accessText(t.access) + ">",
 		ShaderTypeKind.Atomic => "atomic<" + scalarText(t.scalar) + ">",
 		ShaderTypeKind.ExchangeResult => refusal(p, "an atomic exchange result outside the " +
 			"local it initializes"),
@@ -546,6 +546,15 @@ function inverseCall(p: Printer, e: ShaderExpr): string {
 	}
 	if (!p.inverses.includes(t.rows)) { p.inverses.push(t.rows); }
 	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
+}
+
+function storageShapeText(p: Printer, shape: TextureShape): string {
+	return match (shape) {
+		TextureShape.D2 => "2d",
+		TextureShape.D2Array => "2d_array",
+		TextureShape.D3 => "3d",
+		_ => refusal(p, "a storage texture of shape " + shape.toString()),
+	};
 }
 
 function dimensionsText(p: Printer, e: ShaderExpr): string {

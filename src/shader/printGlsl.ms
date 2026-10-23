@@ -232,9 +232,8 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Texture | ShaderTypeKind.Sampler =>
 			fail(p, "a " + t.kind.toString() + " outside a texture operation: GL samples through " +
 				"combined samplers"),
-		ShaderTypeKind.StorageTexture => t.shape == TextureShape.D2 ?
-			(texelType(t.format) == "uvec4" ? "uimage2D" : "image2D") :
-			fail(p, "a storage texture of shape " + t.shape.toString()),
+		ShaderTypeKind.StorageTexture => (texelType(t.format) == "uvec4" ? "u" : "") +
+			imageShapeName(p, t.shape),
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
 	};
@@ -499,7 +498,12 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	const args = withoutSampler(e);
 	const t = args[0].type;
 	if (t.kind == ShaderTypeKind.StorageTexture) {
-		return converted(p, "imageSize(" + expr(p, args[0]) + ")", "ivec2", e.type);
+		const size = "imageSize(" + expr(p, args[0]) + ")";
+		return match (t.shape) {
+			TextureShape.D3 => converted(p, size, "ivec3", e.type),
+			TextureShape.D2Array => converted(p, size + ".xy", "ivec2", e.type),
+			_ => converted(p, size, "ivec2", e.type),
+		};
 	}
 	if (t.kind != ShaderTypeKind.Texture) {
 		return fail(p, "TextureDimensions of a " + t.kind.toString());
@@ -521,7 +525,7 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	const t = args[0].type;
 	if (args.length < 2) { return fail(p, "TextureLoad without coordinates"); }
 	if (t.kind == ShaderTypeKind.StorageTexture) {
-		return narrowed("imageLoad(" + expr(p, args[0]) + ", " + intText(p, args[1]) + ")", e.type);
+		return narrowed("imageLoad(" + expr(p, args[0]) + ", " + imageAt(p, args) + ")", e.type);
 	}
 	if (t.kind != ShaderTypeKind.Texture) { return fail(p, "TextureLoad of a " + t.kind.toString()); }
 	const pair = pairOf(p, args[0], samplerOperand(e));
@@ -600,19 +604,35 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	};
 }
 
+function imageShapeName(p: Printer, shape: TextureShape): string {
+	return match (shape) {
+		TextureShape.D2 => "image2D",
+		TextureShape.D2Array => "image2DArray",
+		TextureShape.D3 => "image3D",
+		_ => fail(p, "a storage texture of shape " + shape.toString()),
+	};
+}
+
+function imageAt(p: Printer, args: ShaderExpr[]): string {
+	return args[0].type.shape == TextureShape.D2Array ?
+		"ivec3(" + intText(p, args[1]) + ", " + intText(p, args[2]) + ")" : intText(p, args[1]);
+}
+
 function storeOf(p: Printer, e: ShaderExpr): string {
-	if (e.operands.length != 3 || e.operands[0].type.kind != ShaderTypeKind.StorageTexture) {
-		return fail(p, "TextureStore takes a storage texture, coordinates and a value");
+	const o = e.operands;
+	const wanted = o.length > 0 && o[0].type.shape == TextureShape.D2Array ? 4 : 3;
+	if (o.length != wanted || o[0].type.kind != ShaderTypeKind.StorageTexture) {
+		return fail(p, "TextureStore takes a storage texture, coordinates, a layer of an " +
+			"array, and a value");
 	}
-	const texel = texelType(e.operands[0].type.format);
-	const value = e.operands[2];
+	const texel = texelType(o[0].type.format);
+	const value = o[wanted - 1];
 	const rows = value.type.kind == ShaderTypeKind.Vector ? value.type.rows : 1;
 	const zero = texel == "uvec4" ? "0u" : "0.0";
 	const written = rows == 4 ? converted(p, expr(p, value), typeName(p, value.type),
 		texel == "uvec4" ? vectorTypeOf(ScalarKind.U32) : vectorTypeOf(ScalarKind.F32)) :
 		texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
-	return "imageStore(" + expr(p, e.operands[0]) + ", " + intText(p, e.operands[1]) + ", " +
-		written + ")";
+	return "imageStore(" + expr(p, o[0]) + ", " + imageAt(p, o) + ", " + written + ")";
 }
 
 function vectorTypeOf(s: ScalarKind): ShaderType {
