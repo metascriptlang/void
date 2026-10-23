@@ -54,7 +54,7 @@ function positionOf(sys: ParticleSystem, i: int32): Vec3 {
 	return vec3(sys.data[POS_X * cap + i], sys.data[POS_Y * cap + i], sys.data[POS_Z * cap + i]);
 }
 
-test "rate 10 at 60 steps a second spawns once every sixth step" {
+test "rate 10 at 60 steps a second spawns once every sixth step, the tie at t = 0.1 landing a step late as in Unity" {
 	let a = quiet();
 	a.emission.rateOverTime = constantCurve(10.0);
 	let sys = started(a, 1.0 / 60.0);
@@ -64,8 +64,8 @@ test "rate 10 at 60 steps a second spawns once every sixth step" {
 		run(sys, 1.0 / 60.0, 1);
 		if (sys.spawned != before) { firsts.push(k); }
 	}
-	assert sys.spawned == 10;
-	assert firsts[0] >= 5 && firsts[0] <= 7;
+	assert sys.spawned == 9;
+	assert firsts[0] == 7;
 }
 
 test "a fractional rate carries its remainder: rate 7 at 0.1 s steps" {

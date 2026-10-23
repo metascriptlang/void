@@ -255,11 +255,16 @@ function substeps(dt: float64): int32 {
 	return Math.ceil(((dt as float32) / MAX_PARTICLE_DT) as float64) as int32;
 }
 
+// One sub-step in float32, as Unity divides it.
+function substep(dt: float64): float64 {
+	return ((dt as float32) / (substeps(dt) as float32)) as float64;
+}
+
 function started(asset: ParticleSystemAsset, dt: float64, place: Place): ParticleSystem {
 	const made = ParticleSystem.create(asset, SEED);
 	if (!made.ok) { unreachable; }
 	let sys = made.value;
-	sys.clock.fixedStep = dt / (substeps(dt) as float64);
+	sys.clock.fixedStep = substep(dt);
 	sys.clock.maxFrameTime = 1.0;
 	playSystem(sys, worldAt(place, 0, dt));
 	return sys;
@@ -268,7 +273,7 @@ function started(asset: ParticleSystemAsset, dt: float64, place: Place): Particl
 function advance(ref sys: ParticleSystem, dt: float64, place: Place, k: int32): void {
 	const n: int32 = substeps(dt);
 	for (let s = 0; s < n; s++) {
-		const done = updateSystem(sys, dt / (n as float64), worldAt(place, k, dt));
+		const done = updateSystem(sys, substep(dt), worldAt(place, k, dt));
 		if (!done.ok) { unreachable; }
 	}
 }
@@ -296,46 +301,154 @@ function same(name: string, asset: ParticleSystemAsset): int32 {
 
 // ---- emission ----
 
-test "emission_rate10_dt60 (pending, tie): the spawn at t = 0.1 shows one frame early, at age 0" {
-	expectOnly(M_COUNT, [6, 12, 42, 48, 54, 60]);
-	assert diverges(same("emission_rate10_dt60", base(10.0, 1.0, 5.0)));
+test "emission_rate10_dt60: the spawn at t = 0.1 lands in the next step, at age 0, as the float32 clock puts it" {
+	assert same("emission_rate10_dt60", base(10.0, 1.0, 5.0)) == 0;
 }
 
-test "emission_rate7_dt100ms (pending, tie): the 14th spawn at t = 2.0 shows one frame early, at age 0" {
-	expectOnly(M_COUNT, [10]);
-	assert diverges(same("emission_rate7_dt100ms", base(7.0, 1.0, 10.0)));
+test "emission_rate7_dt100ms: the 14th spawn at t = 2.0 lands in the next step" {
+	assert same("emission_rate7_dt100ms", base(7.0, 1.0, 10.0)) == 0;
 }
 
-test "burst_loop_t0 (pending, burst quantization): Unity starts a burst at the sub-step that holds it" {
+test "burst_loop_t0: a burst of a later cycle starts at the sub-step that holds it" {
 	let a = burstsAt0(base(0.0, 1.0, 10.0), 5.0);
 	a.main.duration = 1.0;
-	expectOnly(M_POS | M_REMAINING, []);
-	assert diverges(same("burst_loop_t0", a));
+	assert same("burst_loop_t0", a) == 0;
 }
 
-test "burst_cycles (pending, burst quantization and tie): Unity starts a burst at the sub-step that holds it" {
+test "burst_cycles: the first burst is placed at its time, its repeats at the sub-step that holds them" {
 	let a = base(0.0, 1.0, 10.0);
 	a.main.duration = 2.0;
 	a.main.loop = false;
 	a.emission.bursts = [{ time: 0.1, count: constantCurve(2.0), cycleCount: 3, repeatInterval: 0.2, probability: 1.0 }];
-	expectOnly(M_COUNT | M_POS | M_REMAINING, []);
-	assert diverges(same("burst_cycles", a));
+	assert same("burst_cycles", a) == 0;
 }
 
-test "prewarm_rate10_life1 (pending, tie): the particle that reaches age 1.0 at t = 0.1 is still alive" {
+test "prewarm_rate10_life1 (pending, death tie): the particle that reaches remaining 0 at frame 12 is still alive" {
 	let a = base(10.0, 1.0, 1.0);
 	a.main.duration = 1.0;
 	a.main.prewarm = true;
-	expectOnly(M_COUNT, [6]);
+	expectOnly(M_COUNT, [12]);
 	assert diverges(sorted("prewarm_rate10_life1", a));
 }
 
-test "ring_pause_until_replaced_max4 (pending, tie): a spawn on a step end replaces a slot one frame early" {
+test "ring_pause_until_replaced_max4 (pending, death tie): a replacement one frame early at frame 14" {
 	let a = base(10.0, 1.0, 0.1);
 	a.main.maxParticles = 4;
 	a.main.ringBufferMode = RingBufferMode.PauseUntilReplaced;
 	expectOnly(M_COUNT | M_POS | M_REMAINING, []);
 	assert diverges(sorted("ring_pause_until_replaced_max4", a));
+}
+
+// ---- ties: a spawn or a death that lands exactly on a step end, captured as counts and remaining ----
+
+const TIE_MASK: int32 = M_COUNT | M_REMAINING | SORT;
+
+function tie(name: string, a: ParticleSystemAsset): int32 {
+	return replay(name, a, stay(), TIE_MASK | 1, TOL);
+}
+
+function tieBurst(time: float32, cycles: int32, interval: float32): ParticleSystemAsset {
+	let a = base(0.0, 0.0, 2.0);
+	a.emission.bursts = [{ time: time, count: constantCurve(1.0), cycleCount: cycles, repeatInterval: interval, probability: 1.0 }];
+	return a;
+}
+
+function tieDeath(name: string, life: float32): int32 {
+	return tie(name, oneBurst(base(0.0, 0.0, life)));
+}
+
+test "tie_emission: a rate spawn on a step end follows the float32 carry of each sub-step" {
+	assert tie("tie_emission_r10_hz60", base(10.0, 0.0, 2.0)) == 0;
+	assert tie("tie_emission_r10_hz40", base(10.0, 0.0, 2.0)) == 0;
+	assert tie("tie_emission_r10_hz10", base(10.0, 0.0, 2.0)) == 0;
+	assert tie("tie_emission_r10_hz120", base(10.0, 0.0, 2.0)) == 0;
+	assert tie("tie_emission_r25_hz50", base(25.0, 0.0, 2.0)) == 0;
+	assert tie("tie_emission_r50_hz25", base(50.0, 0.0, 2.0)) == 0;
+	assert tie("tie_emission_r13_hz144", base(13.0, 0.0, 2.0)) == 0;
+}
+
+test "tie_burst_t100: a burst at time 0.1 fires in the step with t0 <= 0.1 < t1" {
+	for (const hz of ["10", "20", "40", "60", "100", "120", "144"]) {
+		assert tie("tie_burst_t100_hz" + hz, tieBurst(0.1, 1, 0.01)) == 0;
+	}
+}
+
+test "tie_burst_t300: a burst at time 0.3 fires in the step with t0 <= 0.3 < t1" {
+	for (const hz of ["10", "20", "40", "60", "100", "120", "144"]) {
+		assert tie("tie_burst_t300_hz" + hz, tieBurst(0.3, 1, 0.01)) == 0;
+	}
+}
+
+test "tie_burst_inside: the first occurrence is placed at its time inside the step" {
+	for (const hz of ["10", "20", "60"]) {
+		assert tie("tie_burst_inside_hz" + hz, tieBurst(0.113, 1, 0.01)) == 0;
+	}
+}
+
+test "tie_burst_repeat: a repeat starts at the sub-step that holds it" {
+	for (const hz of ["10", "20", "60"]) {
+		assert tie("tie_burst_repeat_hz" + hz, tieBurst(0.113, 4, 0.0733)) == 0;
+	}
+}
+
+test "tie_wrap: a looping cycle wraps by subtraction and fires its burst at time 0" {
+	for (const hz of ["10", "16", "40", "60"]) {
+		let a = base(10.0, 0.0, 5.0);
+		a.main.duration = 1.0;
+		a.emission.bursts = [{ time: 0.0, count: constantCurve(1.0), cycleCount: 1, repeatInterval: 0.01, probability: 1.0 }];
+		assert tie("tie_wrap_hz" + hz, a) == 0;
+	}
+}
+
+test "tie_world_moved: a spawn of a moving emitter sits at the step end moved back by its velocity" {
+	let a = base(10.0, 0.0, 2.0);
+	a.main.simulationSpace = SimulationSpace.World;
+	assert replay("tie_world_moved_hz60", a, { origin: vec3(0.0, 0.0, 0.0), moveX: 5.0 }, ALL | 1, TOL) == 0;
+	assert replay("tie_world_moved_hz10", a, { origin: vec3(0.0, 0.0, 0.0), moveX: 5.0 }, ALL | 1, TOL) == 0;
+}
+
+function worldCustom(speed: float32, inherited: float32): ParticleSystemAsset {
+	let a = base(10.0, speed, 2.0);
+	a.main.simulationSpace = SimulationSpace.World;
+	a.main.emitterVelocityMode = EmitterVelocityMode.Custom;
+	a.main.emitterVelocity = vec3(5.0, 0.0, 0.0);
+	a.inheritVelocity.enabled = true;
+	a.inheritVelocity.mode = InheritVelocityMode.Initial;
+	a.inheritVelocity.curve = constantCurve(inherited);
+	return a;
+}
+
+test "tie_world_custom: the inherited part of the velocity is integrated over the birth age" {
+	assert same("tie_world_custom_speed1_hz60", worldCustom(1.0, 1.0)) == 0;
+	assert same("tie_world_custom_half_hz60", worldCustom(0.0, 0.5)) == 0;
+}
+
+test "tie_death: a particle dies when its age passes its lifetime, one that reaches it exactly stays" {
+	for (const hz of ["10", "20", "40", "60", "100", "120", "144"]) {
+		if (hz != "60" && hz != "120") { assert tieDeath("tie_death_life100_hz" + hz, 0.1) == 0; }
+		if (hz != "100") { assert tieDeath("tie_death_life300_hz" + hz, 0.3) == 0; }
+		if (hz != "120") { assert tieDeath("tie_death_life1000_hz" + hz, 1.0) == 0; }
+	}
+}
+
+test "tie_death_life100_hz60 (pending, death arithmetic): Unity's remaining time falls faster than the float32 chain" {
+	expectOnly(M_COUNT, [6]);
+	assert diverges(tieDeath("tie_death_life100_hz60", 0.1));
+}
+
+test "tie_death_life100_hz120 (pending, death arithmetic): Unity's remaining time falls faster than the float32 chain" {
+	expectOnly(M_COUNT, [12]);
+	assert diverges(tieDeath("tie_death_life100_hz120", 0.1));
+}
+
+test "tie_death_life300_hz100 (pending, death arithmetic): Unity's remaining time falls faster than the float32 chain" {
+	expectOnly(M_COUNT, [30]);
+	assert diverges(tieDeath("tie_death_life300_hz100", 0.3));
+}
+
+test "tie_death_life1000_hz120 (pending, death arithmetic): Unity's remaining time falls faster than the float32 chain" {
+	expectOnly(M_COUNT, [120]);
+	assert diverges(tieDeath("tie_death_life1000_hz120", 1.0));
 }
 
 // ---- burst probability: Unity draws from its own RNG and per frame ----
@@ -520,7 +633,7 @@ test "shape_circle_arc360_burstspread4: four particles spread over a full circle
 	assert same("shape_circle_arc360_burstspread4", circleBurst(360.0)) == 0;
 }
 
-test "shape_circle_loop_speed1 (pending, tie): spawns on a step end show one frame early or late" {
+test "shape_circle_loop_speed1: spawns on a step end land in the next step" {
 	let a = base(10.0, 1.0, 10.0);
 	a.shape.enabled = true;
 	a.shape.shapeType = ShapeType.Circle;
@@ -529,8 +642,7 @@ test "shape_circle_loop_speed1 (pending, tie): spawns on a step end show one fra
 	a.shape.arc = 360.0;
 	a.shape.arcMode = ShapeMultiModeValue.Loop;
 	a.shape.arcSpeed = constantCurve(1.0);
-	expectOnly(M_COUNT, [2, 3, 6, 7, 8, 9, 10, 11]);
-	assert diverges(same("shape_circle_loop_speed1", a));
+	assert same("shape_circle_loop_speed1", a) == 0;
 }
 
 // ---- velocity over lifetime, limit, drag ----
@@ -804,7 +916,7 @@ test "color_over_lifetime_linear: the same gradient blends in linear space" {
 	assert colorCase("color_over_lifetime_linear") == 0;
 }
 
-test "texture_sheet_4x4_wholesheet (pending, tie): the frame at age 6/16 to 8/16 reads one tile low in Unity" {
+test "texture_sheet_4x4_wholesheet (pending, frame tie and death tie): the frame at age 6/16 to 8/16 reads one tile low in Unity, and the particle dies a frame early" {
 	begin();
 	expectOnly(M_FACT | M_COUNT, [6, 7, 8, 16]);
 	let a = oneBurst(base(0.0, 0.0, 1.0));
@@ -837,17 +949,16 @@ test "texture_sheet_4x4_wholesheet (pending, tie): the frame at age 6/16 to 8/16
 
 // ---- inherit velocity ----
 
-test "inherit_velocity_initial_transform (pending, tie): the spawn at t = 0.1 shows one frame early, at age 0" {
+test "inherit_velocity_initial_transform: the spawn at t = 0.1 lands in the next step" {
 	let a = base(10.0, 0.0, 5.0);
 	a.main.simulationSpace = SimulationSpace.World;
 	a.inheritVelocity.enabled = true;
 	a.inheritVelocity.mode = InheritVelocityMode.Initial;
 	a.inheritVelocity.curve = constantCurve(1.0);
-	expectOnly(M_COUNT, [6, 12, 42, 48, 54, 60]);
-	assert diverges(replay("inherit_velocity_initial_transform", a, { origin: vec3(0.0, 0.0, 0.0), moveX: 5.0 }, ALL | 1, TOL));
+	assert replay("inherit_velocity_initial_transform", a, { origin: vec3(0.0, 0.0, 0.0), moveX: 5.0 }, ALL | 1, TOL) == 0;
 }
 
-test "inherit_velocity_initial_custom (pending, tie): the spawn at t = 0.1 shows one frame early, at age 0" {
+test "inherit_velocity_initial_custom: a spawn is placed at the step end moved back by the emitter velocity, the inherited part included" {
 	let a = base(10.0, 0.0, 5.0);
 	a.main.simulationSpace = SimulationSpace.World;
 	a.main.emitterVelocityMode = EmitterVelocityMode.Custom;
@@ -855,9 +966,7 @@ test "inherit_velocity_initial_custom (pending, tie): the spawn at t = 0.1 shows
 	a.inheritVelocity.enabled = true;
 	a.inheritVelocity.mode = InheritVelocityMode.Initial;
 	a.inheritVelocity.curve = constantCurve(1.0);
-	// The tie particle stays one step older, so its position differs on every later frame.
-	expectOnly(M_COUNT | M_POS, []);
-	assert diverges(same("inherit_velocity_initial_custom", a));
+	assert same("inherit_velocity_initial_custom", a) == 0;
 }
 
 // ---- noise: Void's field is Godot's curl by design, so only what the damping switch changes ----
