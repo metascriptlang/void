@@ -26,7 +26,7 @@ import {
 	GPUTextureView,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
-import { requestDevice } from "../webgpu/device.ms";
+import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import { nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
 import { metalReadback, metalSystemDevice } from "./metalDevice.h";
 
@@ -1172,5 +1172,36 @@ test "a multisampled target resolves into a chosen mip, then into a chosen layer
 	device.queue.submit(encoder.finish());
 	assert firstTexel(readBytes(layers, 0, 1, 0, 4, 4, 4)) == BLUE;
 	assert firstTexel(readBytes(layers, 0, 0, 0, 4, 4, 4)) == RED;
+	device.destroy();
+}
+
+test "a render pass begins on the swapchain view and draws into the native colour texture" {
+	const device = openDevice();
+	const colour = colourTarget(device, 1);
+	const depth = device.createTexture({
+		label: "depth",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32),
+	});
+	const swapchain = getCurrentTexture({
+		width: SIZE,
+		height: SIZE,
+		sampleCount: 1,
+		renderView: nativeTexture(colour),
+		resolveView: null,
+		depthStencilView: nativeTexture(depth),
+	});
+	let descriptor = clearingPass(swapchain.createView({ label: null }), { id: 0 });
+	descriptor.depthStencilAttachment = {
+		view: getCurrentDepthTexture().createView({ label: null }),
+		depthLoadOp: "clear",
+		depthStoreOp: "store",
+		depthClearValue: 1.0,
+	};
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	assert firstTexel(readPixels(colour)) == BLUE;
 	device.destroy();
 }

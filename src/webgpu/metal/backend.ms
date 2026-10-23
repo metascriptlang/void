@@ -742,7 +742,7 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 		natives: [NO_TEXTURE, NO_TEXTURE],
 		swapchainView: viewId,
 	});
-	store(views, { id: viewId, texture: textureId, swapchain: true, swapchainTexture: NO_TEXTURE, swapchainResolve: NO_TEXTURE });
+	store(views, { id: viewId, texture: textureId, swapchain: true, attachable: true, swapchainTexture: NO_TEXTURE, swapchainResolve: NO_TEXTURE });
 	return textureId;
 }
 
