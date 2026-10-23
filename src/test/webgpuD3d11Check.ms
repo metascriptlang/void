@@ -57,9 +57,7 @@ import { warpDevice, warpContext, warpReadback, warpReadback3d, warpReadbackSubr
 
 
 const VERTEX_HLSL = "float4 main(float2 position : TEXCOORD0) : SV_Position { return float4(position, 0.0, 1.0); }";
-const TEXTURED_FRAGMENT_HLSL = "Texture2D tex : register(t0);
-SamplerState smp : register(s0);
-float4 main(float4 p : SV_Position) : SV_Target0 { return tex.Sample(smp, p.xy / 64.0); }";
+const TEXTURED_FRAGMENT_HLSL = "Texture2D tex : register(t0);\nSamplerState smp : register(s0);\nfloat4 main(float4 p : SV_Position) : SV_Target0 { return tex.Sample(smp, p.xy / 64.0); }";
 const FRAGMENT_HLSL = "cbuffer params : register(b0) { float4 color; };\nfloat4 main() : SV_Target0 { return color; }";
 
 function stopOnWarp(message: string): void {
@@ -413,8 +411,7 @@ test "a line-list draws a horizontal line and a triangle-strip fills a quad" {
 	device.destroy();
 }
 
-const COLOURED_VERTEX_HLSL = "struct Out { float4 position : SV_Position; float4 color : TEXCOORD0; };
-Out main(float2 position : TEXCOORD0, float4 color : TEXCOORD1) { Out o; o.position = float4(position, 0.0, 1.0); o.color = color; return o; }";
+const COLOURED_VERTEX_HLSL = "struct Out { float4 position : SV_Position; float4 color : TEXCOORD0; };\nOut main(float2 position : TEXCOORD0, float4 color : TEXCOORD1) { Out o; o.position = float4(position, 0.0, 1.0); o.color = color; return o; }";
 const COLOURED_FRAGMENT_HLSL = "float4 main(float4 p : SV_Position, float4 color : TEXCOORD0) : SV_Target0 { return color; }";
 
 test "a unorm8x4 vertex colour from a second vertex buffer reaches the fragment shader" {
@@ -1032,8 +1029,7 @@ test "a buffer region at an offset with a 256-byte row copies into a texture sub
 	device.destroy();
 }
 
-const DOUBLE_HLSL = "RWByteAddressBuffer data : register(u0);
-[numthreads(4, 1, 1)] void main(uint3 id : SV_DispatchThreadID) { uint at = id.x * 4; data.Store(at, data.Load(at) * 2); }";
+const DOUBLE_HLSL = "RWByteAddressBuffer data : register(u0);\n[numthreads(4, 1, 1)] void main(uint3 id : SV_DispatchThreadID) { uint at = id.x * 4; data.Store(at, data.Load(at) * 2); }";
 
 function computeModule(device: GPUDevice, code: string, kind: string, nativeSlot: int32): GPUShaderModule {
 	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: code, computeEntryPoint: "" };
@@ -1111,8 +1107,7 @@ test "a compute pass doubles a storage buffer, directly and through an indirect 
 	device.destroy();
 }
 
-const FILL_HLSL = "RWTexture2D<uint> image : register(u0);
-[numthreads(4, 4, 1)] void main(uint3 id : SV_DispatchThreadID) { image[id.xy] = id.x + id.y * 10; }";
+const FILL_HLSL = "RWTexture2D<uint> image : register(u0);\n[numthreads(4, 4, 1)] void main(uint3 id : SV_DispatchThreadID) { image[id.xy] = id.x + id.y * 10; }";
 
 test "a compute pass writes a storage texture that copies back" {
 	const device = openDevice();
@@ -1307,9 +1302,7 @@ test "an occlusion query counts samples over a drawn triangle and none over an e
 	device.destroy();
 }
 
-const CUBE_FRAGMENT_HLSL = "TextureCube tex : register(t0);
-SamplerState smp : register(s0);
-float4 main(float4 p : SV_Position) : SV_Target0 { return tex.Sample(smp, float3(0.0, 0.0, 1.0)); }";
+const CUBE_FRAGMENT_HLSL = "TextureCube tex : register(t0);\nSamplerState smp : register(s0);\nfloat4 main(float4 p : SV_Position) : SV_Target0 { return tex.Sample(smp, float3(0.0, 0.0, 1.0)); }";
 
 test "a cube view at baseArrayLayer 6 samples the second cube of a twelve-layer texture" {
 	const device = openDevice();
