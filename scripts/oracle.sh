@@ -74,7 +74,8 @@ regen() {
 	PATH="$NEKO:$PATH"
 	export PATH
 	HAXE_VERSION=$("$HAXE" --version 2>&1 | head -1)
-	HEAPS_DIR=$(haxelib path heaps 2>/dev/null | head -1 | sed 's/\r$//')
+	HEAPS_DIR=$(cd "${HEAPS:-$HOME/projects/heaps}" && pwd) || {
+		echo "oracle: no Heaps checkout at ${HEAPS:-$HOME/projects/heaps}" >&2; exit 2; }
 	HEAPS_PIN=$(git -C "$HEAPS_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 	{
@@ -96,7 +97,12 @@ regen() {
 	} > "$WORK/Oracle.hx"
 
 	libs=""
-	for lib in $LIBS; do libs="$libs -lib $lib"; done
+	for lib in $LIBS; do
+		case $lib in
+			heaps) libs="$libs -cp $HEAPS_DIR" ;;
+			*) libs="$libs -lib $lib" ;;
+		esac
+	done
 	# shellcheck disable=SC2086
 	( cd "$WORK" && "$HAXE" -js oracle.js -main Oracle $libs -D js-es=6 ) || {
 		echo "oracle: haxe failed; see $WORK/Oracle.hx" >&2; exit 1; }

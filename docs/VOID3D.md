@@ -246,9 +246,11 @@ A case may declare `diverges=<PENDING3D row>`, and those are checked **in both d
 
 ### Running the Haxe side
 
-Haxe was installed during this arc (scoop): `haxe 4.3.7`, `neko 2.4.1`, `haxelib git heaps ...
-2b84cc2` plus `format 3.8.0`. Use `-lib heaps -lib format`; **do not** use the clone at
-`~/projects/heaps`, which is 18 commits off the pin.
+Haxe was installed during this arc (scoop): `haxe 4.3.7`, `neko 2.4.1`, `format 3.8.0`. The
+oracle reads Heaps from the clone the rows cite, `~/projects/heaps` at `b9aa6dcb` (`HEAPS=` names
+another), as `tests/oracle/h2d.sh` does, so a case measures the code a row quotes. Snapshots taken
+before 2026-10-24 ran the older haxelib `2b84cc2`; retaken at `b9aa6dcb`, all 42 files kept every
+value.
 
 Three traps, one of which no document had:
 
