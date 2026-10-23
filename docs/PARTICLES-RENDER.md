@@ -152,6 +152,19 @@ Features stay for what changes the interface: `INSTANCED` (mesh), `SOFT`, `FLIPB
 pipeline key, HM:2095-2097, :2206-2208); the branch's cost is a measurement item (§D), and a
 backend that shows a difference gets a constant for that mode.
 
+**3D as built (`particleModeCheck.ms`, replaying the `p3d_*` goldens at 1e-3 under a perspective camera).**
+Every mode except Mesh, which stays refused as `UnsupportedRenderMode`, draws through `particleVisualPoint`.
+The mode rides each instance (`look` = mode, alignment, pivot.z, flags; `scale` = lengthScale,
+velocityScale, min, max; `pull` = camera velocity x `cameraVelocityScale`; emitter right and up), because
+a material carries one uniform block and a vertex-stage block collides with the fragment one in sokol-shdc.
+Rules pinned by the goldens: View is the camera basis (with `allowRoll` off, world up projected); World
+is the world axes; Local is the emitter axes; Facing looks at the camera position; Velocity's normal is
+the velocity. Stretch's width axis is the velocity's cross with the view ray, projected on the image
+plane. HorizontalBillboard spans world X and Z with a unit diagonal. VerticalBillboard's right axis is
+`normalize(forward.z, 0, right.z)` in Unity's frame, not the flat camera right (the flat right was
+0.002 off, the cross with world up 0.015 off; the fit equals this form to 1e-3 at two poses).
+`cameraVelocityScale` is written but not measured. Void's frame is Unity's with z negated.
+
 ### A.2.1 Mesh particles
 
 **Verdict: the references back the plan (feature, two buffers with per-instance step, 3x4
@@ -448,6 +461,7 @@ Byte counts are from the field lists (est.), to be held by a layout check like
 | `PARTICLE_STATE` (T0) | a0 FLOAT4 position.xyz, age01; a1 FLOAT4 velocity.xyz, invLife; a2 FLOAT2 rotation, startSize; a3 UBYTE4N startColor (HALF4 when the effect is HDR); a4 UINT seed | **48** (52 HDR) | CPU-simulated billboards; appearance in the VS |
 | optional columns | FLOAT4 size3D + rotation, FLOAT4 or HALF4 quaternion (Rotation3D), FLOAT4 Custom1, FLOAT4 Custom2 | +16 each | only when a module or a custom shader reads them (A.9) |
 | `PARTICLE_SPAWN` (T1) | a0 FLOAT4 spawn position, spawn time; a1 FLOAT4 start velocity, lifetime; a2 FLOAT4 start rotation, angular velocity, start size, spare; a3 UBYTE4N start colour; a4 UINT seed | **56**, written on spawn only | procedural effects |
+| `PARTICLE_VISUAL` (as built) | root(4), shape(4), tile(4), color(4), velocity(3), look(4), scale(4), pull(3), emitterRight(3), emitterUp(3) | **144** (36 floats, was 64 B); the pass uniform gained the camera position (28 floats) | Billboard, Stretch, Horizontal and Vertical modes |
 | `PARTICLE_MESH` | slot 0 (per vertex): the mesh's own layout, 48 B for `LitTextured`; slot 1 (per instance): 3 x FLOAT4 world-space affine rows + FLOAT4 colour (A.2.1) | **64** per instance (+16 per custom column) | Mesh render mode, feature `INSTANCED` |
 | `RIBBON_POINT` | FLOAT4 position, width; UBYTE4N colour; FLOAT u; UINT chain id | **28** (32 HDR) | trails, both modes, and the Trail object |
 | today: `PARTICLE`, `PARTICLE_VISUAL` | `gpu3d.c:80-102` | 32, 64 | kept for the Heaps-compatibility front end the authoring report proposes, retired with it |
