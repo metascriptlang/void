@@ -96,28 +96,17 @@ test "integer '|', '^', '<<', '>>' and '~' keep their bits, scalar and per compo
 	bitsCs({ id: { x: 5, y: 0, z: 0 } }, b);
 	assert b.image.texels[5 * 4] == -20.0;
 	assert glslCompute(bitsCs, [32, 1, 1]) ==
-		"layout(local_size_x=32, local_size_y=1, local_size_z=1) in;
-" +
-		"layout(binding=0, r32f) uniform writeonly image2D image;
-" +
-		"void main() {
-" +
-		"    ivec2 at = ivec2(gl_GlobalInvocationID.xy);
-" +
-		"    int x = at.x;
-" +
-		"    int mixed = (((x | 4) ^ (x << 2)) ^ ((~x) >> 1)) ^ (x >> (uint(x & 7) & 31u));
-" +
-		"    uvec2 u = uvec2(ivec2(x, 3));
-" +
-		"    uvec2 v = (u << (uvec2(1, 3) & 31u)) | ((u >> (u & 31u)) ^ (u & uvec2(6, 6)));
-" +
-		"    uint w = v.x ^ v.y;
-" +
-		"    imageStore(image, at, vec4(((float(mixed) * 2.0) + float(w))));
-" +
-		"}
-";
+		"layout(local_size_x=32, local_size_y=1, local_size_z=1) in;\n" +
+		"layout(binding=0, r32f) uniform writeonly image2D image;\n" +
+		"void main() {\n" +
+		"    ivec2 at = ivec2(gl_GlobalInvocationID.xy);\n" +
+		"    int x = at.x;\n" +
+		"    int mixed = (((x | 4) ^ (x << 2)) ^ ((~x) >> 1)) ^ (x >> (uint(x & 7) & 31u));\n" +
+		"    uvec2 u = uvec2(ivec2(x, 3));\n" +
+		"    uvec2 v = (u << (uvec2(1, 3) & 31u)) | ((u >> (u & 31u)) ^ (u & uvec2(6, 6)));\n" +
+		"    uint w = v.x ^ v.y;\n" +
+		"    imageStore(image, at, vec4(((float(mixed) * 2.0) + float(w))));\n" +
+		"}\n";
 }
 
 test "every target spells the bit operators, a shift amount as a masked uint" {
