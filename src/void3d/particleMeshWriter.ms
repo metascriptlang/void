@@ -1,6 +1,6 @@
 // Writes a Mesh-mode particle system as instances of its meshes (docs/PARTICLES-RENDER.md
 // A.2.1): per particle the world-space 3x4 affine of its mesh, as three rows (row i = m_i0, m_i1,
-// m_i2, t_i), then its colour, grouped by mesh index so each mesh is one draw. The affine is
+// m_i2, t_i), then its colour, as runs of one mesh that are one draw each. The affine is
 // composed here in Unity's left-handed frame, from the alignment axes, the particle's 3D
 // rotation and size, the pivot and the flip, and crosses to Void's frame with z negated.
 
@@ -20,6 +20,19 @@ import {
 const TINY: float32 = 1e-6;
 // Velocity along world up has no measurement; this is the reference taken then.
 const UNMEASURED_PARALLEL_REFERENCE: Vec3 = { x: 0.0, y: 0.0, z: 1.0 };
+
+// How instances of several meshes are ordered: grouped by mesh for a depth-tested material, where
+// the order is invisible, or kept in draw order for a blended one, with a run per change of mesh.
+export enum MeshDrawOrder {
+	ByMesh,
+	AsDrawn,
+}
+
+// `count` consecutive instances of mesh `mesh`, one instanced draw.
+export struct MeshRun {
+	mesh: int32;
+	count: int32;
+}
 
 struct MeshAxes {
 	x: Vec3;
@@ -118,20 +131,22 @@ function writeRow(
 	out[at + 3] = rt * sign;
 }
 
-// Writes `sys`'s particles as mesh instances into `out`, grouped by mesh index in mesh order and
-// in draw order within each group, and the size of each group into `counts`. The camera is at
-// `eye`, looking along `forward` with `up` (Void's frame). `boundsSizes` is each mesh's extent
-// (max - min of its vertices), the unit of the pivot. Returns the instance count.
+// Writes `sys`'s particles as mesh instances into `out` in `order`, and the runs that cover
+// them, first to last, into `runs`: ByMesh gives a run per drawn mesh in mesh order, each in
+// draw order; AsDrawn keeps the draw order. The camera is at `eye`, looking along `forward`
+// with `up` (Void's frame). `boundsSizes` is each mesh's extent (max - min of its vertices), the
+// unit of the pivot. Returns the run count.
 export function writeMeshParticles(
 	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, up: Vec3,
-	boundsSizes: Readonly<Span<Vec3>>, out: Span<float32>, counts: Span<int32>,
+	boundsSizes: Readonly<Span<Vec3>>, order: MeshDrawOrder, out: Span<float32>,
+	runs: Span<MeshRun>,
 ): Result<int32, ParticleWriteError> {
 	const renderer: Borrow<RendererModule> = sys.asset.renderer;
 	if (renderer.renderMode != RenderMode.Mesh) {
 		return Result.err(ParticleWriteError.UnsupportedRenderMode);
 	}
 	const meshes: int32 = renderer.meshCount;
-	if (meshes < 1 || (counts.length as int32) < meshes || (boundsSizes.length as int32) < meshes) {
+	if (meshes < 1 || (boundsSizes.length as int32) < meshes) {
 		return Result.err(ParticleWriteError.ShortInstances);
 	}
 	const stride: int32 = PARTICLE_MESH_INSTANCE_STRIDE;
@@ -139,15 +154,38 @@ export function writeMeshParticles(
 	if (!ordered.ok) { return Result.err(ordered.error); }
 	const count: int32 = ordered.value;
 	const cap: int32 = sys.capacity;
-	for (let k = 0; k < meshes; k++) { counts[k] = 0; }
+	let counts: int32[4] = [0, 0, 0, 0];
+	let runCount: int32 = 0;
+	let last: int32 = -1;
 	// w.scratch is free once the order is final: it holds each drawn slot's mesh index.
 	for (let k = 0; k < count; k++) {
 		const m: int32 = meshIndexOf(renderer, sys.seeds[w.order[k]]);
 		w.scratch[k] = m;
 		counts[m] = counts[m] + 1;
+		if (order == MeshDrawOrder.AsDrawn && m != last) {
+			if (runCount >= (runs.length as int32)) {
+				return Result.err(ParticleWriteError.ShortInstances);
+			}
+			runs[runCount] = { mesh: m, count: 0 };
+			runCount = runCount + 1;
+			last = m;
+		}
+		if (order == MeshDrawOrder.AsDrawn) {
+			runs[runCount - 1].count = runs[runCount - 1].count + 1;
+		}
 	}
 	let starts: int32[4] = [0, 0, 0, 0];
 	for (let m = 1; m < meshes; m++) { starts[m] = starts[m - 1] + counts[m - 1]; }
+	if (order == MeshDrawOrder.ByMesh) {
+		for (let m = 0; m < meshes; m++) {
+			if (counts[m] == 0) { continue; }
+			if (runCount >= (runs.length as int32)) {
+				return Result.err(ParticleWriteError.ShortInstances);
+			}
+			runs[runCount] = { mesh: m, count: counts[m] };
+			runCount = runCount + 1;
+		}
+	}
 	const local: boolean = sys.asset.main.simulationSpace == SimulationSpace.Local;
 	const eyeU: Vec3 = mirrored(eye);
 	const camera: MeshAxes = {
@@ -185,7 +223,8 @@ export function writeMeshParticles(
 		const x: Vec3 = q.x.scaled(sx * mirrorX);
 		const y: Vec3 = q.y.scaled(sy * mirrorY);
 		const z: Vec3 = q.z.scaled(sz * mirrorZ);
-		const at: int32 = starts[m] * stride;
+		const slot: int32 = order == MeshDrawOrder.ByMesh ? starts[m] : k;
+		const at: int32 = slot * stride;
 		starts[m] = starts[m] + 1;
 		writeRow(out, at, 0, x, y, z, t);
 		writeRow(out, at + 4, 1, x, y, z, t);
@@ -196,5 +235,5 @@ export function writeMeshParticles(
 		out[at + 15] = sys.data[COLOR_A * cap + i];
 		if (!finite(out, at, stride)) { return Result.err(ParticleWriteError.NonFinite); }
 	}
-	return Result.ok(count);
+	return Result.ok(runCount);
 }
