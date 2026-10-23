@@ -254,6 +254,20 @@ selected by the key, the binding needing an offset word, and sort order across m
    `MeshBatch` is one primitive (HMB:76-78); a multi-mesh `meshDistribution` has no reference
    draw to copy, only this split. `MeshIndex` as a stream and as a sheet `rowMode` is then a
    per-draw constant, not an instance column.
+   **Across meshes, the material decides the order.** An opaque or cutout system is grouped
+   by mesh as above, whatever its sortMode: depth testing makes the order invisible, as in
+   Bevy's binned `Opaque3d` and `AlphaMask3d` phases (`core_3d/mod.rs:275`, `:353`;
+   `BinnedRenderPhase` "ordering is less critical", `render_phase/mod.rs:106-109`). A blended
+   system keeps its draw order across meshes and draws one instanced draw per run of
+   consecutive particles with the same mesh: Bevy's sorted `Transparent3d` phase merges only
+   adjacent items with equal batch data (`batching/mod.rs:219-244`), Heaps sorts transparent
+   passes back to front per object (`h3d/scene/Renderer.hx:104-122`), and Unity's baked mesh
+   concatenates meshes in particle order, not grouped (`m3d_two_meshes`: picks 1,1,1,0,0,0,1,
+   ...). The runs are contiguous ranges of the stream buffer, so a blended system writes in
+   draw order with no counting sort. Its ceiling: k meshes interleaved by depth give up to one
+   draw per particle; the trigger to revisit is a bench where the run count, not the
+   instance count, bounds the frame, and Unity's own default path (one CPU-expanded mesh in
+   particle order, PSE:482-497) is the reference way past it.
 5. **The key feature.** `INSTANCED` joins `ProgramKey` as one feature bit. The key is already
    16 bits (program 4, preset 2, ten features, `GPU3D_PROGRAM_KEY` in `gpu3d.c`, bit 15 is
    `normalMrt`) and `KEY_LIMIT` is 65536 (`gpu3d.ms:97`), so this is a 17th bit: it needs the
