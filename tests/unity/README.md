@@ -57,6 +57,10 @@ The log ends with `PrefabExport: done`.
   the particle's local position and the offsets from it are in world orientation; a World-space one
   bakes world positions. `*_clamp_*` set `minParticleSize` and `maxParticleSize` with the camera's
   `aspect` and `orthographicSize` recorded in the settings.
+- `tie_*` cases record only `remainingLifetime` per particle (`remainingOnly`) at exact float
+  boundaries of emission, bursts, wraps and deaths; `tie_world_*` record full particles. The
+  `-only <substring>` argument of `ParticleCapture.Run` captures just the cases whose name
+  contains it.
 - Trigger callbacks (`OnParticleTrigger`) are not captured. The trigger cases set one event's
   action to Kill, so the particle count shows when that event fires.
 - Noise is captured as `animatedVelocity` magnitude statistics plus 4 particles. Void's noise

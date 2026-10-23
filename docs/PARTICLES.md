@@ -153,11 +153,17 @@ Measured facts that shaped the code:
   particles past about 100k per system are where the T2 GPU sort is first needed.
 
 Parity:
-- `tests/unity/goldens` (46 captures) through `src/test/particleUnityCheck.ms`. The cases left
-  pending are ties at exact float boundaries, where Void emits one step before Unity: emission at
-  t = 0.1 with rate 10, prewarm age equal to lifetime, a burst's sub-step ageing, a paused ring
-  buffer, and the texture-sheet frame at a boundary. No single emission model tried (float32
-  carry, strict threshold, float32 time) fits every golden.
+- `tests/unity/goldens` through `src/test/particleUnityCheck.ms`, with the tie cases in
+  `tie_*` as counts and remaining time. Unity splits a step into `ceil(dt/0.03)` equal sub-steps
+  and keeps its clock in float32; a rate spawns from a float32 carry of `rate * (t1 - t0)` per
+  sub-step; a burst fires in the sub-step with `t0 <= time < t1`, its first occurrence placed at
+  its time and its repeats and later cycles at the start of the sub-step; prewarm is one duration
+  in `ceil(duration/0.03)` steps; a World-space spawn sits at the step end moved back by the
+  emitter velocity. A particle that reaches its lifetime exactly stays alive. Still pending: four
+  `tie_death` cases (life 0.1 at 60 and 120 Hz, 0.3 at 100 Hz, 1.0 at 120 Hz) where Unity removes
+  a particle one frame before every float32 age or remaining chain tried does, and the three
+  goldens that depend on that death (prewarm_rate10_life1, ring_pause_until_replaced_max4,
+  texture_sheet_4x4_wholesheet, which also has a frame tie).
 - `tests/oracle/particles3d.cases` through `fromHeaps`. A case declares what it cannot match with
   `carries=`: `EmissionCeil`, `SpawnAge`, `GradientSampled`, `RandomStream` (Heaps draws from one
   stream, Void from a hash per particle) and `OneShotClock`.
