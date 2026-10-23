@@ -485,6 +485,47 @@ uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
 	return validImage(sg_make_image(&desc));
 }
 
+uint32_t doorMakeCubeImage(const uint32_t *rgba, int64_t length, int32_t size) {
+	if (size <= 0 || length != (int64_t)size * size * 6) return SG_INVALID_ID;
+	sg_image_desc desc = {0};
+	desc.type = SG_IMAGETYPE_CUBE;
+	desc.width = size;
+	desc.height = size;
+	desc.num_slices = 6;
+	desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+	desc.data.mip_levels[0].ptr = rgba;
+	desc.data.mip_levels[0].size = (size_t)length * 4;
+	return validImage(sg_make_image(&desc));
+}
+
+uint32_t doorMakeCubeTargetImage(int32_t size, int32_t levels, int32_t format) {
+	if (size <= 0 || levels < 1 || levels > SG_MAX_MIPMAPS || isDepthFormat(format)) {
+		return SG_INVALID_ID;
+	}
+	int32_t full = 1;
+	for (int32_t largest = size; largest > 1; largest /= 2) full++;
+	if (levels > full) return SG_INVALID_ID;
+	sg_image_desc desc = {0};
+	desc.type = SG_IMAGETYPE_CUBE;
+	desc.usage.color_attachment = true;
+	desc.width = size;
+	desc.height = size;
+	desc.num_slices = 6;
+	desc.num_mipmaps = levels;
+	desc.pixel_format = LOOKUP(PIXEL_FORMATS, format);
+	desc.sample_count = 1;
+	return validImage(sg_make_image(&desc));
+}
+
+uint32_t doorMakeCubeAttachmentView(uint32_t image, int32_t face, int32_t level) {
+	if (face < 0 || face >= 6 || level < 0) return SG_INVALID_ID;
+	sg_view_desc desc = {0};
+	desc.color_attachment.image = (sg_image){.id = image};
+	desc.color_attachment.slice = face;
+	desc.color_attachment.mip_level = level;
+	return validView(sg_make_view(&desc));
+}
+
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format) {
 	sg_view_desc desc = {0};
 	if (isDepthFormat(format)) {

@@ -12,6 +12,8 @@ import {
 	doorProgramLayout,
 	doorProgramCount,
 	doorMakeTargetImage,
+	doorMakeCubeTargetImage,
+	doorMakeCubeAttachmentView,
 	doorMakeAttachmentView,
 	doorMakeTextureView,
 	doorMakeSampler,
@@ -55,6 +57,7 @@ import {
 // one-element copy (docs/VOID3D.md, Compiler notes).
 extern function doorMakePipeline(descriptor: Readonly<Span<uint32>>): uint32;
 extern function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
+extern function doorMakeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): uint32;
 extern function doorMakeImageMips(
 	rgba: Readonly<Span<uint32>>, width: int32, height: int32, levels: int32,
 ): uint32;
@@ -155,6 +158,18 @@ export function makeImageMips(
 
 export function makeTargetImage(width: int32, height: int32, format: PixelFormat): uint32 {
 	return doorMakeTargetImage(width, height, format as int32);
+}
+
+export function makeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): uint32 {
+	return doorMakeCubeImage(rgba, size);
+}
+
+export function makeCubeTargetImage(size: int32, levels: int32, format: PixelFormat): uint32 {
+	return doorMakeCubeTargetImage(size, levels, format as int32);
+}
+
+export function makeCubeAttachmentView(image: uint32, face: int32, level: int32): uint32 {
+	return doorMakeCubeAttachmentView(image, face, level);
 }
 
 export function makeAttachmentView(image: uint32, format: PixelFormat): uint32 {

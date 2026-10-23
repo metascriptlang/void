@@ -84,11 +84,17 @@ int32_t doorLayoutFloats(int32_t layout, int32_t buffer);
 int32_t doorLayoutPerInstance(int32_t layout, int32_t buffer);
 uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length);
 uint32_t doorMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
+uint32_t doorMakeCubeImage(const uint32_t *rgba, int64_t length, int32_t size);
 // `levels` is 1 or the full chain down to 1x1 (floor halving, as h3d Texture.mipLevels); `rgba`
 // holds the levels back to back, `length` their pixel count.
 uint32_t doorMakeImageMips(const uint32_t *rgba, int64_t length, int32_t width, int32_t height,
 	int32_t levels);
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format);
+// A cube's faces in sokol's order (+X, -X, +Y, -Y, +Z, -Z), each `size` x `size`: from `rgba`, six
+// faces back to back, or as a colour target of `levels` mips (1 up to the full chain), its view
+// for one face of one mip drawn into by doorMakeCubeAttachmentView.
+uint32_t doorMakeCubeTargetImage(int32_t size, int32_t levels, int32_t format);
+uint32_t doorMakeCubeAttachmentView(uint32_t image, int32_t face, int32_t level);
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format);
 uint32_t doorMakeTextureView(uint32_t image);
 uint32_t doorMakeSampler(int32_t filter, int32_t wrap);
