@@ -400,6 +400,11 @@ export const SHADOW_VIEW_SLOT: int32 = 4;
 export const SHADOW_SAMPLER_SLOT: int32 = 2;
 export const SPOT_SHADOW_VIEW_SLOT: int32 = 6;
 export const SPOT_SHADOW_SAMPLER_SLOT: int32 = 3;
+// The slots a shadowed program reads the scene's maps at, which no material binds.
+export const SHADOW_SCENE_VIEWS: uint32 =
+	(1 << (SHADOW_VIEW_SLOT as uint32)) | (1 << (SPOT_SHADOW_VIEW_SLOT as uint32));
+export const SHADOW_SCENE_SAMPLERS: uint32 =
+	(1 << (SHADOW_SAMPLER_SLOT as uint32)) | (1 << (SPOT_SHADOW_SAMPLER_SLOT as uint32));
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel

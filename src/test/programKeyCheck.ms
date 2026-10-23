@@ -53,6 +53,8 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
 	SPOT_SHADOW_SAMPLER_SLOT,
+	SHADOW_SCENE_VIEWS,
+	SHADOW_SCENE_SAMPLERS,
 	withPbr,
 	withPbrMaps,
 	withShadowed,
@@ -905,6 +907,16 @@ test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot
 	assert shadowedKeys > 0;
 	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6;
 	assert SHADOW_SAMPLER_SLOT == 2 && SPOT_SHADOW_SAMPLER_SLOT == 3;
+}
+
+test "an untextured shadowed key reads only the scene maps, in either preset" {
+	for (const preset of [Preset.Core, Preset.PixelArt]) {
+		const key: ProgramKey = ProgramKey.of(Program.Lit).withShadowed().withPreset(preset);
+		assert declares(key);
+		assert textureSlotMask(key) != 0;
+		assert (textureSlotMask(key) & ~SHADOW_SCENE_VIEWS) == 0;
+		assert (samplerSlotMask(key) & ~SHADOW_SCENE_SAMPLERS) == 0;
+	}
 }
 
 test "a moving key reads its program's block and the moving floats, and what its features sample" {

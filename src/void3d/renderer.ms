@@ -42,6 +42,8 @@ import {
 	MOVING_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
+	SHADOW_SCENE_VIEWS,
+	SHADOW_SCENE_SAMPLERS,
 	uniformBlockLength,
 	textureSlotMask,
 	samplerSlotMask,
@@ -722,8 +724,8 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 // raw view or sampler, or a context texture's role. The shadow map's are the scene's to bind for
 // a shadowed program.
 function texturesFit(program: ProgramKey, material: Material): boolean {
-	const sceneViews: uint32 = program.shadowed ? slotBit(SHADOW_VIEW_SLOT) : 0;
-	const sceneSamplers: uint32 = program.shadowed ? slotBit(SHADOW_SAMPLER_SLOT) : 0;
+	const sceneViews: uint32 = program.shadowed ? SHADOW_SCENE_VIEWS : 0;
+	const sceneSamplers: uint32 = program.shadowed ? SHADOW_SCENE_SAMPLERS : 0;
 	const views: uint32 = textureSlotMask(program) & ~sceneViews;
 	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;
 	let boundViews: uint32 = 0;
