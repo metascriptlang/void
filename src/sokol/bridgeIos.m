@@ -99,6 +99,7 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	CAMetalLayer *layer = (__bridge CAMetalLayer *)native;
 	layer.device = g_device;
 	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	layer.framebufferOnly = NO;
 	layer.drawableSize = CGSizeMake(w, h);
 	IosSurface *s = (IosSurface *)calloc(1, sizeof(IosSurface));
 	s->layer = (void *)CFBridgingRetain(layer);
