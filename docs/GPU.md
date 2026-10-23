@@ -25,9 +25,9 @@ pass.end();
 device.queue.submit(encoder.finish());
 ```
 
-Only what Void calls exists: the inventory of sokol uses is the scope, and a WebGPU feature
-with no Void caller (compute, storage buffers, stencil, mipmaps, cube/3D/array textures,
-topologies other than triangle-list, readback) is left out until one appears.
+The inventory of sokol uses was the first scope. The end-game adds the WebGPU calls a Void
+caller needs and sokol refuses, listed under "Control sokol refuses" below with the caller that
+uses each; a call with no caller is listed there too and is a backend-coverage item, not a use.
 
 ## Why this shape
 
@@ -130,6 +130,43 @@ GLSL the shader is built from (`tools/shaderSlots.ms`, `src/void2d/shader2dSlots
 includes `sokol_gfx.h`. Programs register with a function from index to
 `GPUShaderModuleDescriptor` (`doorRegisterPrograms`), which void3d's generated
 `gpu3dShaderModule` is.
+
+## Control sokol refuses
+
+Each row is a WebGPU-shaped call Void uses where `deps/sokol/sokol_gfx.h` refuses or lacks it
+(lines are in the vendored header). The pin is the check file's test title: `D3D11` is
+`src/test/webgpuD3d11Check.ms` (WARP), `GL` is `src/test/webgpuGlCheck.ms`.
+
+| call | sokol | caller | pin |
+|---|---|---|---|
+| `queue.writeTexture` with `origin` and a sub-rect `size` | `sg_update_image` takes whole mips: `VALIDATE_IMAGEDATA_DATA_SIZE` `:24035` through `_sg_validate_update_image` `:25492`; the D3D11 path maps and rewrites every mip `:15249` | glyph page dirty rect: `batcher.c` `doorUpdateTextureRect` → `doorGpu.ms` `doorUpdateTextureRect` | D3D11 and GL "a partial writeTexture changes only its sub-rect…"; Metal stops on a partial write |
+| `queue.writeBuffer(buffer, offset)` beside other writes in a frame | `sg_update_buffer` writes from 0 once per frame `:25468`, and refuses an append in the same frame `:25487` | `doorGpu.ms` `doorAppendBuffer`, the uniform ring in `doorApplyUniformsOf` | D3D11 and GL "an indexed uint16 quad draws from a vertex buffer written twice in one frame" |
+| `copyTextureToBuffer` + `mapAsync`/`getMappedRange`: GPU→CPU readback | no readback or copy function; `readback`, `ReadPixels`, `CopyResource`, `CopySubresourceRegion` and `D3D11_MAP_READ` have no match | `doorGpu.ms` `readTexture` behind `doorReadScreen`: `tests/capture/capture.c`, `tests/capture3d/capture3d.c` | D3D11 and GL "a writeTexture sub-rect reads back through copyTextureToBuffer…", "a cleared render target copies to a buffer…"; D3D11 "the door reads a cleared bgra8 target back as RGBA…" |
+| `setBindGroup(group, bindGroup, dynamicOffsets)` on a uniform ring | `sg_apply_uniforms` copies the block into the shader's own constant buffer on every call `:15170` | `doorGpu.ms` `doorApplyUniformsOf` | D3D11 "a WARP triangle takes its colour from the uniform block at the dynamic offset", "a bind group entry offset selects the second uniform block"; GL "a GL triangle takes its colour from the uniform block at the dynamic offset" |
+| uniform blocks uploaded only when their bytes changed (D3D11 without D3D11.1) | every applied block is uploaded `:15170` | same | none: no test names the fallback path |
+| a bind the context already holds is not issued again (D3D11); `bindStats()` counts native binds | `_sg_d3d11_apply_bindings` clears its bind cache and re-issues all `:15035-15053` | `doorGpu.ms` `doorApplyBindings`, every draw | D3D11 "a bind that did not change issues no native call…"; GL same count pinned (GL already caches as sokol does) |
+
+A bind skip saves time and adds no capability; it is here because the end-game's performance
+clause reads it. `bindStats()` has no reader but the check files.
+
+Not a control: `setVertexBuffer`/`setIndexBuffer` offsets (sokol has `vertex_buffer_offsets`
+`:3309`, `index_buffer_offset` `:3311`). The rule that bytes written this frame are not written
+again is sokol's once-per-frame rule enforced as a stop (`:25468`), kept because Metal and WebGPU
+need it; the stop ends the process, so no test pins it.
+
+### No caller yet
+
+These exist and are pinned, and nothing in `src/` outside the backends and the check files calls
+them. A caller that arrives gets a row above.
+
+| call | sokol | pin |
+|---|---|---|
+| `depthSlice` of a colour attachment on a 3D texture | slice must be 0 on a 3D image `:24734` | D3D11 "a colour attachment with depthSlice 2 clears that slice of a 3d texture alone" |
+| copy of a depth texture, and of the swapchain texture, to a buffer | no copy (see readback) | D3D11 "a depth16unorm texture round-trips a buffer copy…", "the swapchain texture copies out of the back buffer…" |
+| `copyBufferToBuffer`, `copyBufferToTexture`, `copyTextureToTexture`, `writeMappedRange` | no copy | D3D11 and GL "a buffer range copies to a MAP_READ buffer…", "a MAP_WRITE buffer filled through a mapped range…", "copyTextureToTexture copies mip 1…", "a buffer region at an offset…" |
+| `dispatchWorkgroupsIndirect` | `sg_dispatch` `:27469` only; `indirect` has no match | D3D11 and GL "a compute pass doubles a storage buffer, directly and through an indirect dispatch" |
+| timestamp writes, occlusion queries, `resolveQuerySet` | `timestamp`, `occlusion` have no match | D3D11 and GL "two timestamps around a render pass…", "an occlusion query counts samples…" |
+| `doorReadTexture` (any texture, door level) | no readback | D3D11 "the door reads a cleared bgra8 target back as RGBA…" |
 
 ## Native calls
 
