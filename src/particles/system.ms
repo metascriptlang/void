@@ -5,7 +5,8 @@
 
 import { Vec3, vec3, Mat4, identity, inverseAffine, transformDirection, position, translation } from "../math/math3d";
 import {
-	ParticleSystemAsset, SimulationSpace, RingBufferMode, InheritVelocityMode, NoiseQuality,
+	ParticleSystemAsset, SimulationSpace, RenderMode, RendererModule, MeshDistribution, MAX_MESHES,
+	RingBufferMode, InheritVelocityMode, NoiseQuality,
 	TextureSheetAnimationType, TextureSheetRowMode, TextureSheetTimeMode, CustomDataMode,
 	CustomDataStream, EmitterVelocityMode, Range, Burst, SubEmitterType, SubEmitterProperty,
 	ParticleCollider, ForceField, TriggerAction, CollisionType, TrailMode, MainModule, EmissionModule, NoiseModule, CollisionModule, TriggerModule, TextureSheetAnimationModule, TrailModule} from "./asset";
@@ -76,6 +77,12 @@ export enum ParticleSystemError {
 	TooManyTriggerColliders,
 	// Sub-emitter children splitting their parent's ribbon: not drawn yet.
 	SplitSubEmitterRibbons,
+	// Mesh render mode: no meshes, more than MAX_MESHES, a weight that is negative or not a
+	// number, or weights that are all zero under NonUniformRandom.
+	NoMeshes,
+	TooManyMeshes,
+	InvalidMeshWeight,
+	ZeroMeshWeights,
 }
 
 // How a system turns frame time into steps: whole fixed steps with the rest carried, or one
@@ -227,6 +234,9 @@ export const DRAW_FLIP_V: uint32 = 32;
 // Whether a particle carries a light, when the Lights module draws them at random.
 export const DRAW_LIGHT: uint32 = 33;
 export const DRAW_TRAIL: uint32 = 34;
+// Which of a Mesh-mode renderer's meshes a particle draws, and its flip along z.
+export const DRAW_MESH: uint32 = 36;
+export const DRAW_FLIP_Z: uint32 = 37;
 const DRAW_TRAIL_LIFETIME: uint32 = 35;
 
 const DEGREE: float32 = 0.017453292519943295;
@@ -262,6 +272,24 @@ function gradientOk(value: MinMaxGradient): boolean {
 
 function streamOk(stream: CustomDataStream): boolean {
 	return stream.mode != CustomDataMode.Color || gradientOk(stream.color);
+}
+
+function validateMeshes(renderer: Borrow<RendererModule>): Result<int32, ParticleSystemError> {
+	if (renderer.renderMode != RenderMode.Mesh) { return Result.ok(1); }
+	if (renderer.meshCount <= 0) { return Result.err(ParticleSystemError.NoMeshes); }
+	if (renderer.meshCount > MAX_MESHES) { return Result.err(ParticleSystemError.TooManyMeshes); }
+	let total: float32 = 0.0;
+	for (let k = 0; k < renderer.meshCount; k++) {
+		const weight: float32 = renderer.meshWeights[k];
+		if (!Number.isFinite(weight) || weight < 0.0) {
+			return Result.err(ParticleSystemError.InvalidMeshWeight);
+		}
+		total = total + weight;
+	}
+	if (renderer.meshDistribution == MeshDistribution.NonUniformRandom && !(total > 0.0)) {
+		return Result.err(ParticleSystemError.ZeroMeshWeights);
+	}
+	return Result.ok(1);
 }
 
 // Refuses an asset the simulation cannot run as authored: Unity's editor rules, ranges a
@@ -305,6 +333,8 @@ function validateAsset(asset: ParticleSystemAsset): Result<int32, ParticleSystem
 	if (asset.trails.enabled && asset.trails.mode == TrailMode.Ribbon && asset.trails.splitSubEmitterRibbons) {
 		return Result.err(ParticleSystemError.SplitSubEmitterRibbons);
 	}
+	const meshes = validateMeshes(asset.renderer);
+	if (!meshes.ok) { return meshes; }
 	return Result.ok(1);
 }
 

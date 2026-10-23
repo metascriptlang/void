@@ -1,6 +1,7 @@
 import { Vec3, vec3, Mat4, identity, translation } from "../math/math3d";
 import {
 	ParticleSystemAsset, RingBufferMode, SimulationSpace, ColliderShape, ForceFieldShape, TriggerAction,
+	RenderMode, MeshDistribution,
 } from "../particles/asset";
 import { constantCurve, twoConstants, constantColor, rgbaColor } from "../particles/curve";
 import { ParticleLight, particleLights } from "../particles/lights";
@@ -223,6 +224,36 @@ test "prewarm without loop, or with a start delay, is refused" {
 	a.main.startDelay = constantCurve(1.0);
 	const delayed = ParticleSystem.create(a, 1);
 	assert !delayed.ok;
+}
+
+function meshError(a: ParticleSystemAsset): ParticleSystemError {
+	const made = ParticleSystem.create(a, 1);
+	if (!made.ok) { return made.error; }
+	return ParticleSystemError.NoCapacity;
+}
+
+test "a Mesh-mode asset needs 1 to 4 meshes and sound weights" {
+	let a = quiet();
+	a.renderer.renderMode = RenderMode.Mesh;
+	assert ParticleSystem.create(a, 1).ok;
+	a.renderer.meshCount = 0;
+	assert meshError(a) == ParticleSystemError.NoMeshes;
+	a.renderer.meshCount = 5;
+	assert meshError(a) == ParticleSystemError.TooManyMeshes;
+	a.renderer.meshCount = 2;
+	a.renderer.meshWeights = [1.0, -1.0, 0.0, 0.0];
+	assert meshError(a) == ParticleSystemError.InvalidMeshWeight;
+	a.renderer.meshWeights = [1.0, Number.NaN as float32, 0.0, 0.0];
+	assert meshError(a) == ParticleSystemError.InvalidMeshWeight;
+	a.renderer.meshWeights = [0.0, 0.0, 5.0, 0.0];
+	assert ParticleSystem.create(a, 1).ok;
+	a.renderer.meshDistribution = MeshDistribution.NonUniformRandom;
+	assert meshError(a) == ParticleSystemError.ZeroMeshWeights;
+	a.renderer.meshWeights = [0.0, 2.0, 0.0, 0.0];
+	assert ParticleSystem.create(a, 1).ok;
+	a.renderer.renderMode = RenderMode.Billboard;
+	a.renderer.meshCount = 0;
+	assert ParticleSystem.create(a, 1).ok;
 }
 
 test "the cap drops extra spawns; a ring buffer keeps the cap full of frozen particles" {

@@ -575,6 +575,14 @@ export enum ParticleSortMode {
 	DepthReverse,
 }
 
+// How a Mesh-mode particle picks one of the renderer's meshes: any with equal odds, or by weight.
+export const MAX_MESHES: int32 = 4;
+
+export enum MeshDistribution {
+	UniformRandom,
+	NonUniformRandom,
+}
+
 export struct RendererModule {
 	renderMode: RenderMode;
 	alignment: RenderAlignment;
@@ -596,6 +604,9 @@ export struct RendererModule {
 	softParticlesFar: float32;
 	cameraFadeNear: float32;
 	cameraFadeFar: float32;
+	meshCount: int32;
+	meshWeights: float32[4];
+	meshDistribution: MeshDistribution;
 }
 
 // ---- the system ----
@@ -775,6 +786,8 @@ export function defaults(this typeof ParticleSystemAsset): ParticleSystemAsset {
 			flip: vec3(0.0, 0.0, 0.0), allowRoll: true, freeformStretching: false,
 			rotateWithStretchDirection: true, softParticlesNear: 0.0, softParticlesFar: 1.0,
 			cameraFadeNear: 1.0, cameraFadeFar: 2.0,
+			meshCount: 1, meshWeights: [1.0, 0.0, 0.0, 0.0],
+			meshDistribution: MeshDistribution.UniformRandom,
 		},
 		space2D: false,
 	};
