@@ -367,3 +367,52 @@ authored set, and a Metal frame passes within the cross-backend bound (docs/TEST
 - Android: the app driver from `main` (`86425bf1`) delivers `VoidAppEvent` through `appWindow.c` and
   links with NDK 28 (`msc build src/examples/androidEntry.ms --os=android --app=lib --cc=<ndk>/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android26-clang.exe`);
   it has never run on a device. Its window features other than `requestQuit` and `frameDuration` stop by name.
+
+## A/B against main
+
+`scripts/abBench.sh` provisions and `scripts/bench-ab.sh` measures (its protocol is docs/TESTING.md
+"T4": interleaved pairs, load sampled on both sides of a run, NOISY pairs and `AB_MIN_CLEAN`).
+The performance clause of "End-game done when" is read from the `tests/bench` entries
+`Ui Sprites Text Editor Scroll`, built `--release` by one `msc` (`msc --version` and
+`~/.metascript/BUILD` go to `$TEMP/voidAB/env.txt`) from side A, a detached worktree
+`../void-ab-main` with `deps/` junctioned to the main checkout's, and side B, this tree.
+
+```sh
+bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build        # d3d11 and gl, CPU only
+bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build linux  # both sides in WSL, CPU only
+AB_BACKENDS="d3d11 gl linux" sh scripts/abBench.sh run 5                         # opens windows: only inside a granted GO
+AB_BACKENDS=linux AB_LINUX_DRIVER=llvmpipe sh scripts/abBench.sh run 5          # the software-GL alternative
+sh scripts/abBench.sh clean                                                     # deletes $TEMP/voidAB and the main worktree
+```
+
+- **Side A** is `git merge-base HEAD main` by default, so a delta measures the GPU layer and not void2d
+  commits main gained since; both shas print. `AB_MAIN_SHA=main` (or any sha) overrides it, and a
+  re-run of `build` moves the worktree to it.
+- **Flags** per backend: d3d11 none; gl `-d:voidGlCore` plus `--passC=-DSOKOL_GLCORE` on A and
+  `-DVOID_GLCORE` on B (each tree's golden runner define); linux `--os=linux` and a `libyoga.a`
+  built once from `yoga/deps/yoga` by `zig c++` (yoga has no linux link line,
+  `~/metascript/.inbox/yoga/`). Windows exes land in `$TEMP/voidAB/<backend>/<side>/`; Linux exes in
+  WSL's `~/voidAB/<side>/`, which is not under `/mnt/c`, with the trees read through `/mnt/c`.
+- **Rows**: `bench-ab.sh` with `AB_RAW` keeps every bench row of every run and prints, per scene and
+  label, the median of the clean pairs. A `.ms` row is `RED` when B is more than `AB_TOL` (3 %)
+  slower than A; a counter that differs is `DIFF` (a higher `draws`, `uploads` or `uploadBytes` is a
+  regression; read it); a row one side lacks is `ONLY-A`/`ONLY-B`; identical counters are counted,
+  not listed. The `present.ms` verdict lines and the arguments of existing callers are unchanged.
+  Raw rows: `$TEMP/voidAB/raw-<label>.tsv`.
+- **Linux driver**: `GALLIUM_DRIVER=d3d12` (Mesa's d3d12 on the real GPU, the default) or
+  `AB_LINUX_DRIVER=llvmpipe`, set by a wrapper in `~/voidAB`. Before the rows, `glxinfo -B` runs under
+  the same wrapper; a renderer string that is not D3D12 (or llvmpipe) voids the whole Linux row and
+  says so, and the string heads the table. The bench exes print no renderer themselves.
+  Load sampling is the Windows CPU counter of `bench-ab.sh`; the WSL VM's own load is not sampled.
+
+Not covered:
+
+- **Linux side A:** main has no Linux window path, so `build linux` fails on A (a compile error in
+  `src/gpu/door.c`, no Linux backend define) and `run` skips Linux with that reason: the Linux
+  rows exist on B only and no A/B is possible until main grows one or the comparison is made
+  against another Linux baseline.
+- **Web (wgpu, webgl2):** no bench path runs in a browser; `scripts/webGolden.mjs` and
+  `web-liveness.sh` judge pixels and liveness, and `tests/bench/wasm.json` is a size record.
+- **Metal:** another machine and another GO.
+- **Particles and module scenes:** `benchParticles.ms` is on main's tip only, and TextEmoji,
+  TextOutline and TextSdf need module defines; `AB_SCENES` can name them but the build passes none.

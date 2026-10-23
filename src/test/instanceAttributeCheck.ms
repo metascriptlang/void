@@ -7,6 +7,10 @@
 // order is read here, because a swapped pair compiles, links and draws wrong pixels.
 
 import { readFile } from "std/fs";
+import {
+	void2dUiInstanceOffset, void2dSpriteInstanceOffset,
+} from "../void2d/batcher.h";
+import { uiInstanceStride, spriteInstanceStride } from "../void2d/draw";
 import { doorLayout } from "../gpu/doorGpu";
 import { spriteAttributes, uiAttributes } from "../void2d/programs";
 import { spriteShaderModule, uiShaderModule } from "../void2d/shader2dModules";
@@ -38,6 +42,7 @@ function vertexInputs(block: string): string[] {
 }
 
 test "the UI instance buffer the door registers has the generated offsets and stride" {
+	assert uiInstanceStride() == UI_STRIDE;
 	const layout = doorLayout(uiAttributes(), ["vertex", "instance"]);
 	const lanes = layout.buffers[1];
 	const offsets: int32[UI_ATTRIBUTES] = [
@@ -48,12 +53,14 @@ test "the UI instance buffer the door registers has the generated offsets and st
 	assert layout.buffers[0].arrayStride == CORNER_BYTES;
 	assert layout.buffers[0].attributes[0].shaderLocation == INSTANCE_CORNER_LOCATION;
 	for (let i = 0; i < UI_ATTRIBUTES; i++) {
+		assert void2dUiInstanceOffset(i) == offsets[i];
 		assert lanes.attributes[i].offset == offsets[i];
 		assert lanes.attributes[i].shaderLocation == INSTANCE_CORNER_LOCATION + 1 + i;
 	}
 }
 
 test "the sprite instance buffer the door registers has the generated offsets and stride" {
+	assert spriteInstanceStride() == SPRITE_STRIDE;
 	const layout = doorLayout(spriteAttributes(), ["vertex", "instance"]);
 	const lanes = layout.buffers[1];
 	const offsets: int32[SPRITE_ATTRIBUTES] = [
@@ -61,6 +68,7 @@ test "the sprite instance buffer the door registers has the generated offsets an
 	];
 	assert lanes.arrayStride == SPRITE_STRIDE;
 	for (let i = 0; i < SPRITE_ATTRIBUTES; i++) {
+		assert void2dSpriteInstanceOffset(i) == offsets[i];
 		assert lanes.attributes[i].offset == offsets[i];
 		assert lanes.attributes[i].shaderLocation == INSTANCE_CORNER_LOCATION + 1 + i;
 	}

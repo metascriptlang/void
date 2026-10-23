@@ -108,4 +108,8 @@ int void2dUiInstanceStride(void);
 int void2dPackChannel(float value);
 int void2dSpriteInstanceStride(void);
 
+// Byte offset of one instance lane, by lane index in the generated order; -1 past the last lane.
+int void2dUiInstanceOffset(int lane);
+int void2dSpriteInstanceOffset(int lane);
+
 #endif
