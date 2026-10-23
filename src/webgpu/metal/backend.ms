@@ -392,13 +392,32 @@ function stopOnFormat(member: string, value: string): FormatInfo {
 
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
+function colorInfo(pixel: int32, bytesPerPixel: int32): FormatInfo {
+	return { pixel: pixel, bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
+}
+
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	const value: string = format;
 	return match (value) {
-		"r8unorm" => ({ pixel: PIXEL_R8_UNORM, bytesPerPixel: 1, depth: false, stencil: false }),
-		"rgba8unorm" => ({ pixel: PIXEL_RGBA8_UNORM, bytesPerPixel: 4, depth: false, stencil: false }),
-		"bgra8unorm" => ({ pixel: PIXEL_BGRA8_UNORM, bytesPerPixel: 4, depth: false, stencil: false }),
-		"rgba16float" => ({ pixel: PIXEL_RGBA16_FLOAT, bytesPerPixel: 8, depth: false, stencil: false }),
+		"r8unorm" => colorInfo(PIXEL_R8_UNORM, 1),
+		"rg8unorm" => colorInfo(30, 2),
+		"rgba8unorm" => colorInfo(PIXEL_RGBA8_UNORM, 4),
+		"rgba8unorm-srgb" => colorInfo(71, 4),
+		"bgra8unorm" => colorInfo(PIXEL_BGRA8_UNORM, 4),
+		"bgra8unorm-srgb" => colorInfo(81, 4),
+		"rgba8uint" => colorInfo(73, 4),
+		"rgba8sint" => colorInfo(74, 4),
+		"r16float" => colorInfo(25, 2),
+		"rg16float" => colorInfo(65, 4),
+		"rgba16float" => colorInfo(PIXEL_RGBA16_FLOAT, 8),
+		"rgba16uint" => colorInfo(113, 8),
+		"r32float" => colorInfo(55, 4),
+		"rg32float" => colorInfo(105, 8),
+		"rgba32float" => colorInfo(125, 16),
+		"r32uint" => colorInfo(53, 4),
+		"rgb10a2unorm" => colorInfo(90, 4),
+		"rg11b10ufloat" => colorInfo(92, 4),
+		"depth16unorm" => ({ pixel: 250, bytesPerPixel: 2, depth: true, stencil: false }),
 		"depth32float" => ({ pixel: PIXEL_DEPTH32_FLOAT, bytesPerPixel: 4, depth: true, stencil: false }),
 		"depth24plus-stencil8" => ({ pixel: PIXEL_DEPTH32_FLOAT_STENCIL8, bytesPerPixel: 8, depth: true, stencil: true }),
 		_ => stopOnFormat(member, value),

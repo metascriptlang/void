@@ -17,6 +17,7 @@ import {
 	GPUShaderModuleDescriptor,
 	GPUStencilOperation,
 	GPUTexture,
+	GPUTextureFormat,
 	GPUTextureUsage,
 	GPUTextureView,
 } from "../webgpu/types.ms";
@@ -124,11 +125,15 @@ function clearingPass(view: GPUTextureView, resolve: GPUTextureView): GPURenderP
 	return descriptor;
 }
 
-function readPixels(texture: GPUTexture): Vec<uint8> {
-	let pixels: Vec<uint8> = new Array(SIZE * SIZE * 4);
-	if (metalReadback(nativeQueue(), nativeTexture(texture), pixels[0], SIZE, SIZE) != 1) { stopOnMetal("the blit readback failed"); }
-	return pixels;
+function readBytes(texture: GPUTexture, level: int32, slice: int32, plane: int32, width: int32, height: int32, bytesPerPixel: int32): Vec<uint8> {
+	let bytes: Vec<uint8> = new Array(width * height * bytesPerPixel);
+	if (metalReadback(nativeQueue(), nativeTexture(texture), level, slice, plane, bytes[0], width, height, bytesPerPixel) != 1) {
+		stopOnMetal("the blit readback failed");
+	}
+	return bytes;
 }
+
+function readPixels(texture: GPUTexture): Vec<uint8> { return readBytes(texture, 0, 0, 0, SIZE, SIZE, 4); }
 
 function pixel(pixels: Vec<uint8>, x: int32, y: int32): uint32 {
 	const at = (y * SIZE + x) * 4;
@@ -794,5 +799,125 @@ test "sint vertex formats reach an int4 attribute at every width" {
 	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint32x3", 12, upload(device, s32x3)) == GREEN;
 	const s32x4: Vec<int32> = [0, 127, 0, 127];
 	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint32x4", 16, upload(device, s32x4)) == GREEN;
+	device.destroy();
+}
+
+function clearedBytes(device: GPUDevice, format: GPUTextureFormat, bytesPerPixel: int32, r: float64, g: float64, b: float64, a: float64): Vec<uint8> {
+	const target = device.createTexture({
+		label: "format",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: format,
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	let descriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.colorAttachments[0].clearValue = { r: r, g: g, b: b, a: a };
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	return readBytes(target, 0, 0, 0, 2, 2, bytesPerPixel);
+}
+
+function clearedDepthBytes(device: GPUDevice, format: GPUTextureFormat, bytesPerPixel: int32, value: float32): Vec<uint8> {
+	const target = device.createTexture({
+		label: "depth format",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: format,
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	let descriptor: GPURenderPassDescriptor = { label: "clear depth" };
+	descriptor.depthStencilAttachment = { view: target.createView({ label: null }), depthClearValue: value, depthLoadOp: "clear", depthStoreOp: "store" };
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	return readBytes(target, 0, 0, 0, 2, 2, bytesPerPixel);
+}
+
+test "an 8-bit colour format stores its clear in its own channel order and encoding" {
+	const device = openDevice();
+	const r8 = clearedBytes(device, "r8unorm", 1, 1.0, 0.0, 0.0, 1.0);
+	assert r8[0] == 255;
+	const rg8 = clearedBytes(device, "rg8unorm", 2, 1.0, 0.0, 0.0, 1.0);
+	assert rg8[0] == 255 && rg8[1] == 0;
+	const bgra = clearedBytes(device, "bgra8unorm", 4, 1.0, 0.0, 0.0, 1.0);
+	assert bgra[0] == 0 && bgra[1] == 0 && bgra[2] == 255 && bgra[3] == 255;
+	const linear = clearedBytes(device, "rgba8unorm", 4, 0.5, 0.0, 0.0, 1.0);
+	const srgb = clearedBytes(device, "rgba8unorm-srgb", 4, 0.5, 0.0, 0.0, 1.0);
+	const bgraSrgb = clearedBytes(device, "bgra8unorm-srgb", 4, 0.5, 0.0, 0.0, 1.0);
+	assert linear[0] >= 127 && linear[0] <= 128;
+	assert srgb[0] >= 187 && srgb[0] <= 189 && srgb[3] == 255;
+	assert bgraSrgb[2] == srgb[0] && bgraSrgb[0] == 0;
+	const uint = clearedBytes(device, "rgba8uint", 4, 7.0, 9.0, 0.0, 1.0);
+	assert uint[0] == 7 && uint[1] == 9 && uint[2] == 0 && uint[3] == 1;
+	const sint = clearedBytes(device, "rgba8sint", 4, -3.0, 5.0, 0.0, 1.0);
+	assert sint[0] == 253 && sint[1] == 5;
+	device.destroy();
+}
+
+test "16-bit, 32-bit and packed colour formats store their clear bit for bit" {
+	const device = openDevice();
+	const r16 = clearedBytes(device, "r16float", 2, 1.0, 0.0, 0.0, 1.0);
+	assert r16[0] == 0x00 && r16[1] == 0x3C;
+	const rg16 = clearedBytes(device, "rg16float", 4, 1.0, 2.0, 0.0, 1.0);
+	assert rg16[1] == 0x3C && rg16[3] == 0x40;
+	const rgba16 = clearedBytes(device, "rgba16float", 8, 1.0, 0.0, 0.0, 1.0);
+	assert rgba16[1] == 0x3C && rgba16[7] == 0x3C;
+	const rgba16uint = clearedBytes(device, "rgba16uint", 8, 1000.0, 0.0, 0.0, 1.0);
+	assert rgba16uint[0] == 0xE8 && rgba16uint[1] == 0x03;
+	const r32 = clearedBytes(device, "r32float", 4, 1.0, 0.0, 0.0, 1.0);
+	assert r32[2] == 0x80 && r32[3] == 0x3F;
+	const rg32 = clearedBytes(device, "rg32float", 8, 1.0, 2.0, 0.0, 1.0);
+	assert rg32[3] == 0x3F && rg32[7] == 0x40;
+	const rgba32 = clearedBytes(device, "rgba32float", 16, 1.0, 2.0, 0.0, 1.0);
+	assert rgba32[3] == 0x3F && rgba32[7] == 0x40 && rgba32[15] == 0x3F;
+	const r32uint = clearedBytes(device, "r32uint", 4, 70000.0, 0.0, 0.0, 1.0);
+	assert r32uint[0] == 0x70 && r32uint[1] == 0x11 && r32uint[2] == 0x01;
+	const packed = clearedBytes(device, "rgb10a2unorm", 4, 1.0, 0.0, 0.0, 1.0);
+	assert packed[0] == 0xFF && packed[1] == 0x03 && packed[2] == 0x00 && packed[3] == 0xC0;
+	const small = clearedBytes(device, "rg11b10ufloat", 4, 1.0, 0.0, 0.0, 1.0);
+	assert small[0] == 0xC0 && small[1] == 0x03 && small[2] == 0x00;
+	device.destroy();
+}
+
+test "depth16unorm, depth32float and depth24plus-stencil8 store their cleared depth" {
+	const device = openDevice();
+	const sixteen = clearedDepthBytes(device, "depth16unorm", 2, 1.0);
+	assert sixteen[0] == 0xFF && sixteen[1] == 0xFF;
+	const half16 = clearedDepthBytes(device, "depth16unorm", 2, 0.5);
+	assert half16[1] >= 0x7F && half16[1] <= 0x80;
+	const thirtyTwo = clearedDepthBytes(device, "depth32float", 4, 0.5);
+	assert thirtyTwo[2] == 0x00 && thirtyTwo[3] == 0x3F;
+	const combined = clearedDepthBytes(device, "depth24plus-stencil8", 4, 0.25);
+	assert combined[2] == 0x80 && combined[3] == 0x3E;
+	device.destroy();
+}
+
+test "a writeTexture of a 16-bit and a two-channel format reads back unchanged" {
+	const device = openDevice();
+	const texture = device.createTexture({
+		label: "rg8",
+		size: { width: 4, height: 2, depthOrArrayLayers: 1 },
+		format: "rg8unorm",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	const data: Vec<uint8> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+	device.queue.writeTexture({ texture: texture }, data, { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 4, height: 2, depthOrArrayLayers: 1 });
+	device.queue.submit(device.createCommandEncoder().finish());
+	const back = readBytes(texture, 0, 0, 0, 4, 2, 2);
+	for (let i = 0; i < 16; i++) { assert back[i] == data[i]; }
+	const wide = device.createTexture({
+		label: "rgba16",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "rgba16float",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32) | (GPUTextureUsage.COPY_SRC as int32),
+		sampleCount: 1,
+	});
+	const halves: Vec<uint16> = [0x3C00, 0x4000, 0x4200, 0x4400, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+	device.queue.writeTexture({ texture: wide }, halves, { offset: 0, bytesPerRow: 16, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	device.queue.submit(device.createCommandEncoder().finish());
+	const wideBack = readBytes(wide, 0, 0, 0, 2, 2, 8);
+	assert wideBack[0] == 0x00 && wideBack[1] == 0x3C && wideBack[7] == 0x44 && wideBack[8] == 1 && wideBack[14] == 4;
 	device.destroy();
 }

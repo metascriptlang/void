@@ -8,23 +8,35 @@ void *metalSystemDevice(void) {
 	return device;
 }
 
-int32_t metalReadback(void *queue, void *texture, void *pixels, int32_t width, int32_t height) {
+int32_t metalReadback(
+	void *queue,
+	void *texture,
+	int32_t level,
+	int32_t slice,
+	int32_t plane,
+	void *pixels,
+	int32_t width,
+	int32_t height,
+	int32_t bytesPerPixel) {
 	@autoreleasepool {
 		id<MTLCommandQueue> q = (id<MTLCommandQueue>)queue;
-		NSUInteger rowBytes = (NSUInteger)width * 4;
+		id<MTLTexture> source = (id<MTLTexture>)texture;
+		NSUInteger rowBytes = (NSUInteger)width * (NSUInteger)bytesPerPixel;
 		id<MTLBuffer> staging = [q.device newBufferWithLength:rowBytes * (NSUInteger)height options:MTLResourceStorageModeShared];
 		if (staging == nil) return 0;
 		id<MTLCommandBuffer> commandBuffer = [q commandBuffer];
 		id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
-		[blit copyFromTexture:(id<MTLTexture>)texture
-			sourceSlice:0
-			sourceLevel:0
-			sourceOrigin:MTLOriginMake(0, 0, 0)
+		MTLBlitOption options = source.pixelFormat == MTLPixelFormatDepth32Float_Stencil8 ? MTLBlitOptionDepthFromDepthStencil : MTLBlitOptionNone;
+		[blit copyFromTexture:source
+			sourceSlice:(NSUInteger)slice
+			sourceLevel:(NSUInteger)level
+			sourceOrigin:MTLOriginMake(0, 0, (NSUInteger)plane)
 			sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, 1)
 			toBuffer:staging
 			destinationOffset:0
 			destinationBytesPerRow:rowBytes
-			destinationBytesPerImage:rowBytes * (NSUInteger)height];
+			destinationBytesPerImage:rowBytes * (NSUInteger)height
+			options:options];
 		[blit endEncoding];
 		[commandBuffer commit];
 		[commandBuffer waitUntilCompleted];
