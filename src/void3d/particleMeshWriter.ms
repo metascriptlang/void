@@ -121,11 +121,10 @@ function writeRow(
 
 // Writes `sys`'s particles as mesh instances into `out`, grouped by mesh index in mesh order and
 // in draw order within each group, and the size of each group into `counts`. The camera is at
-// `eye`, looking along `forward` with `up` (Void's frame). `cameraVelocity` is read by nothing:
-// a mesh does not stretch. Returns the instance count.
+// `eye`, looking along `forward` with `up` (Void's frame). Returns the instance count.
 export function writeMeshParticles(
 	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, up: Vec3,
-	cameraVelocity: Vec3, out: Span<float32>, counts: Span<int32>,
+	out: Span<float32>, counts: Span<int32>,
 ): Result<int32, ParticleWriteError> {
 	const renderer: Borrow<RendererModule> = sys.asset.renderer;
 	if (renderer.renderMode != RenderMode.Mesh) {

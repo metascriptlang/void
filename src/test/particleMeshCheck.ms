@@ -250,7 +250,7 @@ function replay(name: string): int32 {
 		}
 		const view = viewOf(pose.getDynamicField("camera"));
 		const written = writeMeshParticles(
-			writer, sys, view.eye, view.basis.forward, view.basis.up, vec3(0.0, 0.0, 0.0), out,
+			writer, sys, view.eye, view.basis.forward, view.basis.up, out,
 			perMesh);
 		if (!written.ok || written.value != count) {
 			const got: int32 = written.ok ? written.value : -1;
@@ -364,7 +364,7 @@ test "a World-aligned unrotated mesh is its size on the diagonal, at the particl
 	let w = ParticleWriter3D.create();
 	let out: Vec<float32> = new Array(PARTICLE_MESH_INSTANCE_STRIDE);
 	let counts: Vec<int32> = [0, 0, 0, 0];
-	const n = writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, out, counts);
+	const n = writeMeshParticles(w, sys, EYE, FORWARD, UP, out, counts);
 	assert n.ok && n.value == 1 && counts[0] == 1;
 	assert near(out[0], 2.0) && near(out[1], 0.0) && near(out[2], 0.0) && near(out[3], 0.0);
 	assert near(out[4], 0.0) && near(out[5], 3.0) && near(out[6], 0.0) && near(out[7], 0.0);
@@ -382,13 +382,13 @@ test "a rotation about z or y turns the sized axes as Unity's frame does, then c
 	let w = ParticleWriter3D.create();
 	let out: Vec<float32> = new Array(PARTICLE_MESH_INSTANCE_STRIDE);
 	let counts: Vec<int32> = [0, 0, 0, 0];
-	assert writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, out, counts).ok;
+	assert writeMeshParticles(w, sys, EYE, FORWARD, UP, out, counts).ok;
 	assert near(out[0], 0.0) && near(out[1], 3.0) && near(out[4], -2.0) && near(out[5], 0.0);
 	assert near(out[10], 4.0);
 	a.main.startRotationZ = constantCurve(0.0);
 	a.main.startRotationY = constantCurve(1.5707963267948966);
 	sys = started(a);
-	assert writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, out, counts).ok;
+	assert writeMeshParticles(w, sys, EYE, FORWARD, UP, out, counts).ok;
 	assert near(out[2], 4.0) && near(out[5], 3.0) && near(out[8], -2.0) && near(out[0], 0.0);
 }
 
@@ -403,7 +403,7 @@ test "instances are grouped by mesh index in mesh order and keep the draw order 
 	let w = ParticleWriter3D.create();
 	let out: Vec<float32> = new Array(PARTICLE_MESH_INSTANCE_STRIDE * total);
 	let counts: Vec<int32> = [0, 0, 0, 0];
-	const n = writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, out, counts);
+	const n = writeMeshParticles(w, sys, EYE, FORWARD, UP, out, counts);
 	assert n.ok && n.value == total;
 	assert counts[0] + counts[1] + counts[2] == total && counts[3] == 0;
 	assert counts[0] > 0 && counts[1] > 0 && counts[2] > 0;
@@ -434,7 +434,7 @@ test "distance sorting orders each mesh's group far to near" {
 	let w = ParticleWriter3D.create();
 	let out: Vec<float32> = new Array(PARTICLE_MESH_INSTANCE_STRIDE * total);
 	let counts: Vec<int32> = [0, 0, 0, 0];
-	assert writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, out, counts).ok;
+	assert writeMeshParticles(w, sys, EYE, FORWARD, UP, out, counts).ok;
 	assert counts[0] > 1 && counts[1] > 1;
 	let at: int32 = 0;
 	for (let m = 0; m < 2; m++) {
@@ -483,20 +483,20 @@ test "a short out, a short counts, another mode and a non-finite size are refuse
 	let out: Vec<float32> = new Array(PARTICLE_MESH_INSTANCE_STRIDE);
 	let counts: Vec<int32> = [0, 0];
 	let short: Vec<float32> = new Array(PARTICLE_MESH_INSTANCE_STRIDE - 1);
-	const tooShort = writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, short, counts);
+	const tooShort = writeMeshParticles(w, sys, EYE, FORWARD, UP, short, counts);
 	assert !tooShort.ok && tooShort.error == ParticleWriteError.ShortInstances;
 	let fewer: Vec<int32> = [0];
-	const fewCounts = writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, out, fewer);
+	const fewCounts = writeMeshParticles(w, sys, EYE, FORWARD, UP, out, fewer);
 	assert !fewCounts.ok && fewCounts.error == ParticleWriteError.ShortInstances;
-	const ok = writeMeshParticles(w, sys, EYE, FORWARD, UP, STILL, out, counts);
+	const ok = writeMeshParticles(w, sys, EYE, FORWARD, UP, out, counts);
 	assert ok.ok;
 	let bad = started(one(2));
 	bad.data[SIZE_X * bad.capacity] = Number.NaN as float32;
-	const nan = writeMeshParticles(w, bad, EYE, FORWARD, UP, STILL, out, counts);
+	const nan = writeMeshParticles(w, bad, EYE, FORWARD, UP, out, counts);
 	assert !nan.ok && nan.error == ParticleWriteError.NonFinite;
 	let billboard = one(2);
 	billboard.renderer.renderMode = RenderMode.Billboard;
-	const refused = writeMeshParticles(w, started(billboard), EYE, FORWARD, UP, STILL, out, counts);
+	const refused = writeMeshParticles(w, started(billboard), EYE, FORWARD, UP, out, counts);
 	assert !refused.ok && refused.error == ParticleWriteError.UnsupportedRenderMode;
 	let visual: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE);
 	const other = writeParticles(
