@@ -506,11 +506,6 @@ export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUSha
 	}
 }
 
-export function stopOnUnportedRenderPass(backend: string, descriptor: GPURenderPassDescriptor): void {
-	if (descriptor.timestampWrites.querySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.timestampWrites`); }
-	if (descriptor.occlusionQuerySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.occlusionQuerySet`); }
-}
-
 // `width` and `height` are the texture's mip 0; the validator derives the destination mip's size.
 export function checkedTexelWritePitch(
 	width: int32,
