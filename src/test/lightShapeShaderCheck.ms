@@ -293,6 +293,7 @@ function bindingsWith(
 		normalTexture: texture(),
 		metalRoughTexture: texture(),
 		occlusionTexture: texture(),
+		envDiffuse: { size: 0, texels: [] }, envSpecular: { size: 0, texels: [] },
 	};
 }
 

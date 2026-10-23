@@ -91,6 +91,7 @@ function plainBindings(): LitBindings {
 		normalTexture: white(),
 		metalRoughTexture: white(),
 		occlusionTexture: white(),
+		envDiffuse: { size: 0, texels: [] }, envSpecular: { size: 0, texels: [] },
 	};
 }
 

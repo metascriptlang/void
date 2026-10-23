@@ -526,6 +526,7 @@ void main() {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 in vec4 particleColor;
 layout(location=0) out vec4 fragColor;
@@ -641,6 +642,7 @@ layout(binding=1) uniform lightParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
@@ -945,6 +947,7 @@ layout(binding=1) uniform lightParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
@@ -964,6 +967,15 @@ layout(binding=2) uniform sampler shadowSampler;
 layout(binding=6) uniform texture2D spotShadowMap;
 @sampler_type spotShadowSampler nonfiltering
 layout(binding=3) uniform sampler spotShadowSampler;
+#ifdef PBR
+layout(binding=7) uniform textureCube envDiffuse;
+#endif
+#ifdef PBR
+layout(binding=8) uniform textureCube envSpecular;
+#endif
+#ifdef PBR
+layout(binding=4) uniform sampler envSampler;
+#endif
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -1044,6 +1056,34 @@ float dirShadowAt(vec3 position) {
     ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
     float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
     return mapLit(p.z, depth, shadow.x, shadow.y);
+}
+#endif
+#ifdef PBR
+vec3 envTurned(vec3 d, vec4 turn) {
+    return vec3(((d.x * turn.z) - (d.z * turn.w)), d.y, ((d.x * turn.w) + (d.z * turn.z)));
+}
+#endif
+#ifdef PBR
+vec2 splitSum(float roughness, float nv) {
+    float rx = 1.0 - roughness;
+    float ry = 0.0425 - (0.0275 * roughness);
+    float a004 = (min((rx * rx), exp2((-9.28 * nv))) * rx) + ry;
+    return max(vec2((((-1.04 * a004) + 1.04) - (0.572 * roughness)), (((1.04 * a004) - 0.04) + (0.022 * roughness))), vec2(0.00005));
+}
+#endif
+#ifdef PBR
+vec3 pbrEnvironmentLight(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, float occlusion) {
+    vec3 n = normalize(normal_1);
+    vec3 v = normalize(view);
+    float nv = max(dot(n, v), 0.0);
+    vec3 f0 = mix(vec3(0.04), albedo, metalness);
+    vec3 fresnel = f0 + ((max(vec3((1.0 - roughness)), f0) - f0) * exp2((((-5.55473 * nv) - 6.98316) * nv)));
+    vec4 turn = envParams;
+    vec3 irradiance = textureLod(samplerCube(envDiffuse, envSampler), envTurned(n, turn), 0.0).rgb;
+    vec3 radiance = textureLod(samplerCube(envSpecular, envSampler), envTurned(reflect((-v), n), turn), (roughness * turn.y)).rgb;
+    vec2 lut = splitSum(roughness, nv);
+    vec3 specular = radiance * ((fresnel * lut.x) + lut.y);
+    return ((((irradiance * albedo) * (1.0 - metalness)) * (1.0 - fresnel)) + specular) * (turn.x * occlusion);
 }
 #endif
 #ifdef PBR
@@ -1225,7 +1265,12 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     shadow_1 = dirShadowAt(position);
 #endif
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
-    vec3 light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
+    vec3 light = vec3(0.0);
+    if (envParams.x > 0.0) {
+        light = pbrEnvironmentLight(albedo, values.x, values.y, n, view, values.z);
+    } else {
+        light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
+    }
     light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
     vec3 eye = normalize(view);
     vec3 reflected = (-eye) - (n * (2.0 * dot((-eye), n)));
@@ -1619,6 +1664,7 @@ layout(binding=1) uniform lightParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 layout(binding=5) uniform shadowParams {
     mat4 shadowMatrix;
@@ -1660,6 +1706,15 @@ layout(binding=1) uniform texture2D metalRoughTexture;
 #endif
 #if defined(PBR) && defined(PBR_MAPS)
 layout(binding=2) uniform texture2D occlusionTexture;
+#endif
+#ifdef PBR
+layout(binding=7) uniform textureCube envDiffuse;
+#endif
+#ifdef PBR
+layout(binding=8) uniform textureCube envSpecular;
+#endif
+#ifdef PBR
+layout(binding=4) uniform sampler envSampler;
 #endif
 #ifdef NORMAL_MAP
 in vec4 worldTangent;
@@ -1846,6 +1901,34 @@ float dirShadowAt(vec3 position) {
 }
 #endif
 #ifdef PBR
+vec3 envTurned(vec3 d, vec4 turn) {
+    return vec3(((d.x * turn.z) - (d.z * turn.w)), d.y, ((d.x * turn.w) + (d.z * turn.z)));
+}
+#endif
+#ifdef PBR
+vec2 splitSum(float roughness, float nv) {
+    float rx = 1.0 - roughness;
+    float ry = 0.0425 - (0.0275 * roughness);
+    float a004 = (min((rx * rx), exp2((-9.28 * nv))) * rx) + ry;
+    return max(vec2((((-1.04 * a004) + 1.04) - (0.572 * roughness)), (((1.04 * a004) - 0.04) + (0.022 * roughness))), vec2(0.00005));
+}
+#endif
+#ifdef PBR
+vec3 pbrEnvironmentLight(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, float occlusion) {
+    vec3 n = normalize(normal_1);
+    vec3 v = normalize(view);
+    float nv = max(dot(n, v), 0.0);
+    vec3 f0 = mix(vec3(0.04), albedo, metalness);
+    vec3 fresnel = f0 + ((max(vec3((1.0 - roughness)), f0) - f0) * exp2((((-5.55473 * nv) - 6.98316) * nv)));
+    vec4 turn = envParams;
+    vec3 irradiance = textureLod(samplerCube(envDiffuse, envSampler), envTurned(n, turn), 0.0).rgb;
+    vec3 radiance = textureLod(samplerCube(envSpecular, envSampler), envTurned(reflect((-v), n), turn), (roughness * turn.y)).rgb;
+    vec2 lut = splitSum(roughness, nv);
+    vec3 specular = radiance * ((fresnel * lut.x) + lut.y);
+    return ((((irradiance * albedo) * (1.0 - metalness)) * (1.0 - fresnel)) + specular) * (turn.x * occlusion);
+}
+#endif
+#ifdef PBR
 vec3 pbrAmbient(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 ambient_1, float occlusion) {
     float nv = max(dot(normalize(normal_1), normalize(view)), 0.0);
     vec3 f0 = mix(vec3(0.04), albedo, metalness);
@@ -2024,7 +2107,12 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     shadow_1 = dirShadowAt(position);
 #endif
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
-    vec3 light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
+    vec3 light = vec3(0.0);
+    if (envParams.x > 0.0) {
+        light = pbrEnvironmentLight(albedo, values.x, values.y, n, view, values.z);
+    } else {
+        light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
+    }
     light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
     vec3 eye = normalize(view);
     vec3 reflected = (-eye) - (n * (2.0 * dot((-eye), n)));
@@ -2483,6 +2571,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;

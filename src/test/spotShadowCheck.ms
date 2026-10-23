@@ -235,6 +235,7 @@ function spotLights(values: Vec<float32>): LitBindings {
 		normalTexture: depthTexture(1.0),
 		metalRoughTexture: depthTexture(1.0),
 		occlusionTexture: depthTexture(1.0),
+		envDiffuse: { size: 0, texels: [] }, envSpecular: { size: 0, texels: [] },
 	};
 }
 

@@ -3,7 +3,8 @@
 // independent ambient formula.
 
 import { Vec3, vec3 } from "../math/math3d";
-import { Texture2d, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
+import { Texture2d, TextureCube, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
+import { pbrIndirect, splitSumAnalytic } from "../void3d/pbrEnvironment";
 import {
 	Program,
 	ProgramKey,
@@ -32,6 +33,8 @@ import {
 	litTexturedFs,
 	litVs,
 	pbrDirect,
+	pbrEnvironmentLight,
+	splitSum,
 	srgbToLinear,
 } from "../void3d/shader3d";
 
@@ -191,6 +194,7 @@ function bindingsAt(
 		normalTexture: texture(1.0),
 		metalRoughTexture: texture(1.0),
 		occlusionTexture: texture(1.0),
+		envDiffuse: { size: 0, texels: [] }, envSpecular: { size: 0, texels: [] },
 	};
 }
 
@@ -379,4 +383,107 @@ test "a skinned pbr vertex is lit from its skinned world position, not from the 
 	assert nearVec(home, POSITION);
 	assert nearColor(colorAt(home), expectedColor(0.0, 0.7, 1.0, 1.0));
 	assert !nearColor(colorAt(skinnedPosition(-2.0, 0.0, 0.1)), expectedColor(0.0, 0.7, 1.0, 1.0));
+}
+
+// One colour per face, faces +X -X +Y -Y +Z -Z.
+function cubeOf(colors: Vec3f[]): TextureCube {
+	let texels: float32[] = [];
+	for (const color of colors) {
+		texels.push(color.x);
+		texels.push(color.y);
+		texels.push(color.z);
+		texels.push(1.0);
+	}
+	return { size: 1, texels };
+}
+
+function constantCube(color: Vec3f): TextureCube {
+	return cubeOf([color, color, color, color, color, color]);
+}
+
+function environmentAt(
+	diffuse: TextureCube, specular: TextureCube, power: float32, levels: float32, turn: float32,
+): LitBindings {
+	const base: LitBindings = bindingsAt(CAMERA, 0.0, 0.5, 1.0, 1.0);
+	return {
+		...base,
+		frameParams: {
+			...base.frameParams,
+			envParams: vec4f(power * power, levels, Math.cos(turn as float64) as float32,
+				Math.sin(turn as float64) as float32),
+		},
+		envDiffuse: diffuse,
+		envSpecular: specular,
+	};
+}
+
+test "splitSum is Bevy's analytic split sum" {
+	const roughnesses: float32[] = [0.089, 0.3, 0.7, 1.0];
+	for (const roughness of roughnesses) {
+		const angles: float32[] = [0.05, 0.5, 1.0];
+		for (const nv of angles) {
+			const reference = splitSumAnalytic(roughness, nv);
+			assert reference.ok;
+			if (reference.ok) {
+				const got = splitSum(roughness, nv);
+				assert near(got.x, reference.value.scale) && near(got.y, reference.value.bias);
+			}
+		}
+	}
+}
+
+test "the environment light is pbrIndirect over the cubes' irradiance and radiance" {
+	const irradiance = vec3f(0.3, 0.4, 0.5);
+	const radiance = vec3f(0.6, 0.2, 0.1);
+	const albedo = vec3f(0.8, 0.5, 0.2);
+	const normal = vec3f(0.0, 0.0, 1.0);
+	const view = vec3f(0.3, 0.1, 0.9);
+	const metals: float32[] = [0.0, 0.4, 1.0];
+	const roughs: float32[] = [0.089, 0.5, 1.0];
+	for (const metalness of metals) {
+		for (const roughness of roughs) {
+			const b = environmentAt(constantCube(irradiance), constantCube(radiance), 1.5, 9.0, 0.7);
+			const got = pbrEnvironmentLight(albedo, metalness, roughness, normal, view, 0.75, b);
+			const v = vec3(view.x, view.y, view.z).normalized();
+			const nv: float32 = Math.max(v.z, 0.0);
+			const lut = splitSumAnalytic(roughness, nv);
+			assert lut.ok;
+			if (lut.ok) {
+				const expected = pbrIndirect({
+					diffuseIrradiance: vec3(irradiance.x, irradiance.y, irradiance.z),
+					specularRadiance: vec3(radiance.x, radiance.y, radiance.z),
+					albedo: vec3(albedo.x, albedo.y, albedo.z),
+					metalness, roughness, occlusion: 0.75, normalView: nv, lut: lut.value,
+					power: 2.25,
+				});
+				assert expected.ok;
+				if (expected.ok) {
+					assert near(got.x, expected.value.x) && near(got.y, expected.value.y) &&
+						near(got.z, expected.value.z);
+				}
+			}
+		}
+	}
+}
+
+test "the environment turns about the up axis, +X reading +Z a quarter turn on" {
+	const faces = cubeOf([
+		vec3f(1.0), vec3f(2.0), vec3f(3.0), vec3f(4.0), vec3f(5.0), vec3f(6.0),
+	]);
+	const black = constantCube(vec3f(0.0));
+	const normal = vec3f(1.0, 0.0, 0.0);
+	const albedo = vec3f(1.0);
+	const still = pbrEnvironmentLight(albedo, 0.0, 1.0, normal, normal, 1.0,
+		environmentAt(faces, black, 1.0, 9.0, 0.0));
+	const turned = pbrEnvironmentLight(albedo, 0.0, 1.0, normal, normal, 1.0,
+		environmentAt(faces, black, 1.0, 9.0, 1.5707963267948966));
+	assert still.x > 0.0 && near(turned.x / still.x, 5.0);
+	const up = pbrEnvironmentLight(albedo, 0.0, 1.0, vec3f(0.0, 1.0, 0.0), vec3f(0.0, 1.0, 0.0),
+		1.0, environmentAt(faces, black, 1.0, 9.0, 1.5707963267948966));
+	assert near(up.x / still.x, 3.0);
+}
+
+test "a pbr key with no environment is lit by the flat ambient, as before" {
+	const b = bindingsAt(CAMERA, 0.3, 0.5, 1.0, 1.0);
+	assert b.frameParams.envParams.x == 0.0;
 }

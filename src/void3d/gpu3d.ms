@@ -428,6 +428,14 @@ export const SHADOW_SCENE_VIEWS: uint32 =
 	(1 << (SHADOW_VIEW_SLOT as uint32)) | (1 << (SPOT_SHADOW_VIEW_SLOT as uint32));
 export const SHADOW_SCENE_SAMPLERS: uint32 =
 	(1 << (SHADOW_SAMPLER_SLOT as uint32)) | (1 << (SPOT_SHADOW_SAMPLER_SLOT as uint32));
+// The environment's cubes (shader3d.ms pbrEnvironmentLight), which a pbr program reads and the
+// scene binds: an environment's, or a black cube when none is attached.
+export const ENV_DIFFUSE_VIEW_SLOT: int32 = 7;
+export const ENV_SPECULAR_VIEW_SLOT: int32 = 8;
+export const ENV_SAMPLER_SLOT: int32 = 4;
+export const ENV_SCENE_VIEWS: uint32 =
+	(1 << (ENV_DIFFUSE_VIEW_SLOT as uint32)) | (1 << (ENV_SPECULAR_VIEW_SLOT as uint32));
+export const ENV_SCENE_SAMPLERS: uint32 = 1 << (ENV_SAMPLER_SLOT as uint32);
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
@@ -478,7 +486,7 @@ export const EMISSIVE_LENGTH: int32 = 4;
 // draws into an HDR target, where every scene program writes its colour linear and unexposed; at
 // FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed colour goes through.
 export const FRAME_UNIFORM_SLOT: int32 = 6;
-export const FRAME_UNIFORM_LENGTH: int32 = 8;
+export const FRAME_UNIFORM_LENGTH: int32 = 12;
 export const FRAME_TIME: int32 = 0;
 export const FRAME_EXPOSURE: int32 = 1;
 export const FRAME_LINEAR: int32 = 2;
@@ -486,6 +494,13 @@ export const FRAME_TONE_MODE: int32 = 3;
 // The camera's world position at FRAME_CAMERA_POSITION (xyz; w unread): the view vector of a pbr
 // key, as Heaps' PropsDefinition `cameraPosition`.
 export const FRAME_CAMERA_POSITION: int32 = 4;
+// The attached environment (renderer.ms attachEnvironment), as Heaps' Renderer.hx:715-723 loads
+// pbrIndirect: irrPower (the power squared), irrSpecularLevels, and the cosine and sine of its
+// rotation; a power of 0 lights a pbr key by the flat ambient instead.
+export const FRAME_ENV_POWER: int32 = 8;
+export const FRAME_ENV_LEVELS: int32 = 9;
+export const FRAME_ENV_COS: int32 = 10;
+export const FRAME_ENV_SIN: int32 = 11;
 
 // A pbr key's block (pbrMaterialParams in shader3d.ms): the lit block, then one vec4 holding
 // metalness, roughness and occlusion, all in 0..1, at PBR_VALUES = MATERIAL_UNIFORM_LENGTH for

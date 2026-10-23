@@ -76,6 +76,7 @@ function bindingsOf(factors: Factors, packed: Texture2d, occlusion: Texture2d): 
 		normalTexture: texel(1.0, 1.0, 1.0),
 		metalRoughTexture: packed,
 		occlusionTexture: occlusion,
+		envDiffuse: { size: 0, texels: [] }, envSpecular: { size: 0, texels: [] },
 	};
 }
 

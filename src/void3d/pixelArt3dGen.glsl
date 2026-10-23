@@ -319,6 +319,7 @@ layout(binding=1) uniform lightParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
@@ -455,6 +456,7 @@ void main() {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 in vec4 particleColor;
 in float depth01;
@@ -661,6 +663,7 @@ layout(binding=1) uniform lightParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
@@ -1025,6 +1028,7 @@ layout(binding=1) uniform lightParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
@@ -1508,6 +1512,7 @@ layout(binding=3) uniform movingUnlitMaterialParams {
 layout(binding=6) uniform frameParams {
     vec4 frame;
     vec4 cameraPosition;
+    vec4 envParams;
 };
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;

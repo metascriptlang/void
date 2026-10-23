@@ -5,6 +5,7 @@ import {
 	Mat4x4f,
 	Sampler,
 	Texture2d,
+	TextureCube,
 	Vec2f,
 	Vec3f,
 	Vec4f,
@@ -29,12 +30,14 @@ import {
 	mix,
 	normalize,
 	pow,
+	reflect,
 	sampleType,
 	samplerType,
 	sin,
 	textureDimensions,
 	textureLoad,
 	textureSample,
+	textureSampleLevel,
 	transpose,
 	upperLeft3x3,
 	vec2f,
@@ -259,6 +262,7 @@ export struct LightParams {
 export struct FrameParams {
 	frame: Vec4f;
 	cameraPosition: Vec4f;
+	envParams: Vec4f;
 }
 
 export struct ShadowParams {
@@ -303,6 +307,9 @@ export struct LitBindings {
 	@binding(5) normalTexture: Texture2d;
 	@binding(1) metalRoughTexture: Texture2d;
 	@binding(2) occlusionTexture: Texture2d;
+	@binding(7) envDiffuse: TextureCube;
+	@binding(8) envSpecular: TextureCube;
+	@binding(4) envSampler: Sampler;
 }
 
 export struct UnlitBindings {
@@ -1338,6 +1345,49 @@ export function pbrAmbient(
 	return ambient * albedo * (1.0 - metalness) * (1.0 - fresnel) * occlusion;
 }
 
+// Bevy pbr_lighting.wesl:527-538, the analytic split sum standing in for Heaps' irrLut: the
+// scale and bias of F0 in the specular response.
+export function splitSum(roughness: float32, nv: float32): Vec2f {
+	const rx = 1.0 - roughness;
+	const ry = 0.0425 - 0.0275 * roughness;
+	const a004 = min(rx * rx, exp2(-9.28 * nv)) * rx + ry;
+	return max(vec2f(-1.04 * a004 + 1.04 - 0.572 * roughness, 1.04 * a004 - 0.04 + 0.022 * roughness),
+		vec2f(0.00005));
+}
+
+// Renderer.hx:716 irrRotation turned about this frame's up axis, Heaps' z.
+function envTurned(d: Vec3f, turn: Vec4f): Vec3f {
+	return vec3f(d.x * turn.z - d.z * turn.w, d.y, d.x * turn.w + d.z * turn.z);
+}
+
+// h3d.shader.pbr.Indirect without the sky and emissive terms (Lighting.hx:85-99): the baked
+// irradiance and the specular cube at roughness * irrSpecularLevels, both turned, times irrPower
+// and the occlusion. envParams holds irrPower, irrSpecularLevels and the turn's cosine and sine.
+export function pbrEnvironmentLight(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	occlusion: float32,
+	b: LitBindings,
+): Vec3f {
+	const n = normalize(normal);
+	const v = normalize(view);
+	const nv = max(dot(n, v), 0.0);
+	const f0 = mix(vec3f(0.04), albedo, metalness);
+	const fresnel =
+		f0 + (max(vec3f(1.0 - roughness), f0) - f0) * exp2((-5.55473 * nv - 6.98316) * nv);
+	const turn = b.frameParams.envParams;
+	const irradiance = textureSampleLevel(b.envDiffuse, b.envSampler, envTurned(n, turn), 0.0).rgb;
+	const radiance = textureSampleLevel(b.envSpecular, b.envSampler, envTurned(reflect(-v, n), turn),
+		roughness * turn.y).rgb;
+	const lut = splitSum(roughness, nv);
+	const specular = radiance * (fresnel * lut.x + lut.y);
+	return (irradiance * albedo * (1.0 - metalness) * (1.0 - fresnel) + specular) *
+		(turn.x * occlusion);
+}
+
 // Roughness floors at 0.089 as Bevy's clampedPerceptualRoughness (pbr_lighting.wesl:550): a
 // texel of 0 has no BRDF response, and a texture cannot be refused per pixel.
 export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f): Vec3f {
@@ -1371,8 +1421,13 @@ export function pbrShade(
 		shadow = dirShadowAt(position, b);
 	}
 	const sun = srgbToLinear(b.lightParams.dirColor.rgb) * dir.w;
-	let light = pbrAmbient(albedo, values.x, values.y, n, view,
-		srgbToLinear(b.lightParams.ambient.rgb), values.z);
+	let light = vec3f(0.0);
+	if (b.frameParams.envParams.x > 0.0) {
+		light = pbrEnvironmentLight(albedo, values.x, values.y, n, view, values.z, b);
+	} else {
+		light = pbrAmbient(albedo, values.x, values.y, n, view,
+			srgbToLinear(b.lightParams.ambient.rgb), values.z);
+	}
 	light = light +
 		pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
 	const eye = normalize(view);

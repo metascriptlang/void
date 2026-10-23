@@ -60,6 +60,11 @@ import {
 	SPOT_SHADOW_SAMPLER_SLOT,
 	SHADOW_SCENE_VIEWS,
 	SHADOW_SCENE_SAMPLERS,
+	ENV_SCENE_VIEWS,
+	ENV_SCENE_SAMPLERS,
+	ENV_DIFFUSE_VIEW_SLOT,
+	ENV_SPECULAR_VIEW_SLOT,
+	ENV_SAMPLER_SLOT,
 	withPbr,
 	withPbrMaps,
 	withShadowed,
@@ -1216,9 +1221,10 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 			assert !cast.ok || !cast.value.pbrMaps;
 		}
 	}
-	assert textureSlotMask(base) == 7 && samplerSlotMask(base) == 1;
-	assert textureSlotMask(base.withShadowed()) == 23 + 64;
-	assert textureSlotMask(tangent) == 39;
+	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS;
+	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS;
+	assert textureSlotMask(base.withShadowed()) == 23 + 64 + ENV_SCENE_VIEWS;
+	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS;
 	assert viewSlotOf(5) == METAL_ROUGH_VIEW_SLOT && viewSlotOf(6) == OCCLUSION_VIEW_SLOT;
 	assert METAL_ROUGH_VIEW_SLOT == 1 && OCCLUSION_VIEW_SLOT == 2;
 	assert MATERIAL_TEXTURE_ROLES == 7 && !colorRole(5) && !colorRole(6) && colorRole(0);
@@ -1276,8 +1282,22 @@ test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds vi
 			}
 		}
 	}
-	assert textureSlotMask(base) == 9 && textureSlotMask(maps) == 15;
-	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41;
+	assert textureSlotMask(base) == 9 + ENV_SCENE_VIEWS;
+	assert textureSlotMask(maps) == 15 + ENV_SCENE_VIEWS;
+	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41 + ENV_SCENE_VIEWS;
+}
+
+test "every pbr key reads the environment's cubes past the shadow maps, and no other key does" {
+	assert ENV_DIFFUSE_VIEW_SLOT == 7 && ENV_SPECULAR_VIEW_SLOT == 8 && ENV_SAMPLER_SLOT == 4;
+	for (const program of [Program.Lit, Program.LitTextured]) {
+		const plain: ProgramKey = ProgramKey.of(program);
+		assert (textureSlotMask(plain) & ENV_SCENE_VIEWS) == 0;
+		assert (samplerSlotMask(plain) & ENV_SCENE_SAMPLERS) == 0;
+		for (const key of [plain.withPbr(), plain.withPbr().withShadowed()]) {
+			assert (textureSlotMask(key) & ENV_SCENE_VIEWS) == ENV_SCENE_VIEWS;
+			assert (samplerSlotMask(key) & ENV_SCENE_SAMPLERS) == ENV_SCENE_SAMPLERS;
+		}
+	}
 }
 
 test "the pbr combinations with no row are not declared" {
