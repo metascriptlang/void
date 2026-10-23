@@ -77,6 +77,7 @@ import "./gltfAccessorCheck";
 import "./gltfColourCheck";
 import "./gltfColourImportCheck";
 import "./slotsCheck";
+import "./poolCheck";
 import "./uniformPoolCheck";
 import "./lifetimeCheck";
 import "./storeCheck";
