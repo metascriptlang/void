@@ -13,13 +13,17 @@ import {
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
 	GPUSampler,
+	GPUSamplerBindingType,
+	GPUShaderBinding,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUStencilOperation,
 	GPUTexture,
 	GPUTextureFormat,
+	GPUTextureSampleType,
 	GPUTextureUsage,
 	GPUTextureView,
+	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
 import { nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
@@ -243,7 +247,7 @@ test "an indexed uint16 quad draws from a vertex buffer written twice in one fra
 const TEXTURED_FRAGMENT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 tmain(Out in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) { return tex.sample(smp, in.position.xy / 64.0); }\n";
 const COMPARE_FRAGMENT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 cmain(Out in [[stage_in]], depth2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) { float2 uv = in.position.xy / 64.0; return float4(tex.sample_compare(smp, uv, 0.25), tex.sample_compare(smp, uv, 0.75), 0.0, 1.0); }\n";
 
-function sampledShader(device: GPUDevice, fragmentCode: string, entryPoint: string): GPUShaderModule {
+function sampledShader(device: GPUDevice, fragmentCode: string, entryPoint: string, texture: GPUShaderBinding, sampler: GPUShaderBinding): GPUShaderModule {
 	let descriptor: GPUShaderModuleDescriptor = {
 		label: "sampled",
 		vertexCode: VERTEX_MSL,
@@ -251,17 +255,37 @@ function sampledShader(device: GPUDevice, fragmentCode: string, entryPoint: stri
 		fragmentCode: fragmentCode,
 		fragmentEntryPoint: entryPoint,
 	};
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, nativeSlot: 0 };
-	descriptor.bindings[1] = { group: 1, binding: 1, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.bindings[0] = texture;
+	descriptor.bindings[1] = sampler;
 	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
+
+function textureBinding(sampleType: GPUTextureSampleType, viewDimension: GPUTextureViewDimension, multisampled: boolean): GPUShaderBinding {
+	return {
+		group: 1,
+		binding: 0,
+		kind: "texture",
+		stage: "fragment",
+		size: 0,
+		nativeSlot: 0,
+		sampleType: sampleType,
+		viewDimension: viewDimension,
+		multisampled: multisampled,
+	};
+}
+
+function samplerBinding(samplerType: GPUSamplerBindingType): GPUShaderBinding {
+	return { group: 1, binding: 1, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0, samplerType: samplerType };
+}
+
+const NO_BINDING: GPUShaderBinding = { group: 1, binding: 1 };
 
 function sampleCentreWith(device: GPUDevice, module: GPUShaderModule, view: GPUTextureView, sampler: GPUSampler): uint32 {
 	const pipeline = flatPipeline(device, module, 1);
 	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
 	descriptor.entries[0] = { binding: 0, textureView: view };
-	descriptor.entries[1] = { binding: 1, sampler: sampler };
+	if (sampler.id != 0) { descriptor.entries[1] = { binding: 1, sampler: sampler }; }
 	const group = device.createBindGroup(descriptor);
 	const vertices = vertexBuffer(device, 48);
 	const quad: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0];
@@ -298,7 +322,7 @@ function clearedDepth(device: GPUDevice, value: float32): GPUTextureView {
 
 test "a comparison sampler passes a reference by its compare function against the stored depth" {
 	const device = openDevice();
-	const module = sampledShader(device, COMPARE_FRAGMENT_MSL, "cmain");
+	const module = sampledShader(device, COMPARE_FRAGMENT_MSL, "cmain", textureBinding("depth", "2d", false), samplerBinding("comparison"));
 	const depth = clearedDepth(device, 0.5);
 	const less = device.createSampler({ label: "less", magFilter: "linear", minFilter: "linear", compare: "less" });
 	const greater = device.createSampler({ label: "greater", magFilter: "linear", minFilter: "linear", compare: "greater" });
@@ -937,5 +961,38 @@ test "a bind group entry offset selects the second uniform block" {
 	assert pixel(second, 0, 0) == BLUE;
 	const first = drawTriangleAt(device, 1, 0, 0);
 	assert pixel(first, 32, 32) == RED;
+	device.destroy();
+}
+
+const UINT_FRAGMENT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 umain(Out in [[stage_in]], texture2d<uint> tex [[texture(0)]]) { uint4 t = tex.read(uint2(0, 0)); return float4(float3(t.rgb) / 255.0, 1.0); }\n";
+const MULTISAMPLED_FRAGMENT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 mmain(Out in [[stage_in]], texture2d_ms<float> tex [[texture(0)]]) { return tex.read(uint2(0, 0), 0); }\n";
+
+function clearedTarget(device: GPUDevice, format: GPUTextureFormat, sampleCount: int32, r: float64, g: float64, b: float64): GPUTextureView {
+	const target = device.createTexture({
+		label: "cleared",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: format,
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.TEXTURE_BINDING as int32),
+		sampleCount: sampleCount,
+	});
+	const view = target.createView({ label: null });
+	let descriptor = clearingPass(view, { id: 0 });
+	descriptor.colorAttachments[0].clearValue = { r: r, g: g, b: b, a: 1.0 };
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	return view;
+}
+
+test "a shader reads an unsigned-integer texture and a multisampled texture through their reflected bindings" {
+	const device = openDevice();
+	const unsigned = sampledShader(device, UINT_FRAGMENT_MSL, "umain", textureBinding("uint", "2d", false), NO_BINDING);
+	const integers = clearedTarget(device, "rgba8uint", 1, 0.0, 255.0, 0.0);
+	assert sampleCentreWith(device, unsigned, integers, { id: 0 }) == GREEN;
+	const swapped = clearedTarget(device, "rgba8uint", 1, 255.0, 0.0, 0.0);
+	assert sampleCentreWith(device, unsigned, swapped, { id: 0 }) == RED;
+	const multisampled = sampledShader(device, MULTISAMPLED_FRAGMENT_MSL, "mmain", textureBinding("float", "2d", true), NO_BINDING);
+	const samples = clearedTarget(device, "rgba8unorm", 4, 0.0, 1.0, 0.0);
+	assert sampleCentreWith(device, multisampled, samples, { id: 0 }) == GREEN;
 	device.destroy();
 }

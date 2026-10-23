@@ -53,7 +53,6 @@ import {
 	checkedTexelWritePitch,
 	stopOnUnportedTexelWrite,
 	stopOnUnportedRenderPass,
-	stopOnUnportedShaderModule,
 	stopOnUnportedTexture,
 	stopOnUnportedView,
 	GPUTexture,
@@ -1043,7 +1042,7 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
-	stopOnUnportedShaderModule("metal", descriptor);
+	if (descriptor.computeCode != "") { stop("GPUShaderModuleDescriptor.computeCode is not ported to metal yet"); }
 	const id = allocate(shaders);
 	let slot: ShaderSlot = { id: 0 };
 	for (let i = 0; i < descriptor.bindings.length; i++) {
