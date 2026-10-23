@@ -411,7 +411,9 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 			"texture(" + sampled + ", " + args[2] + ")",
 		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
-		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
+		// glslang gives a compute barrier() workgroup-memory semantics, while the OpMemoryBarrier
+		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
+		Intrinsic.WorkgroupBarrier => "barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
 		_ => intrinsicName(e.intrinsic) + all,
 	};

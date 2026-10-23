@@ -143,7 +143,7 @@ export function barrierCs(input: OpsInput, b: OpsBindings): void {
 	textureStore(b.image, at, vec4f(1.0));
 }
 
-test "a barrier waits for no one on the CPU and is two GLSL statements" {
+test "a barrier waits for no one on the CPU, and GLSL 450 spells a workgroup one barrier()" {
 	const b: OpsBindings = { image: blankImage() };
 	barrierCs({ id: { x: 2, y: 0, z: 0 } }, b);
 	assert b.image.texels[2 * 4] == 1.0;
@@ -152,7 +152,7 @@ test "a barrier waits for no one on the CPU and is two GLSL statements" {
 		"layout(binding=0, r32f) uniform writeonly image2D image;\n" +
 		"void main() {\n" +
 		"    ivec2 at = ivec2(gl_GlobalInvocationID.xy);\n" +
-		"    memoryBarrierShared(); barrier();\n" +
+		"    barrier();\n" +
 		"    memoryBarrierBuffer(); barrier();\n" +
 		"    imageStore(image, at, vec4(1.0));\n" +
 		"}\n";
@@ -222,13 +222,13 @@ test "a module let a compute entry reads is workgroup memory that starts at zero
 		"        }\n" +
 		"        scale = 0.0;\n" +
 		"    }\n" +
-		"    memoryBarrierShared(); barrier();\n" +
+		"    barrier();\n" +
 		"    uint i = gl_LocalInvocationIndex;\n" +
 		"    tile[i] = float(i);\n" +
 		"    if (i == 0) {\n" +
 		"        scale = 2.0;\n" +
 		"    }\n" +
-		"    memoryBarrierShared(); barrier();\n" +
+		"    barrier();\n" +
 		"    imageStore(image, ivec2(gl_GlobalInvocationID.xy), vec4(mirrored(i)));\n" +
 		"}\n";
 }
