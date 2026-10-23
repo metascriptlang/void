@@ -77,6 +77,24 @@ driver as any source. On 2026-10-23 no gate step runs them; a printer change run
 and naga reads GL GLSL only after a rewrite to Vulkan 450 (combined samplers split, locations
 added) that lives outside the repository. MSL has no validator on Windows.
 
+## The DXBC cache
+
+D3D11 compiles HLSL at load with `D3DCompile`, about 15 ms a stage (30 ms a program at first
+use), so the generated modules carry each HLSL stage's DXBC precompiled, as Heaps caches compiled
+shaders per platform keyed by a hash of the generated source (`hxsl/CacheFile.hx`,
+`h3d/impl/ShaderCache.hx`). `tools/irPrograms.ms` keys a stage by the SHA-256 (`std/crypto/sha256`)
+of its profile, entry point, flags and printed HLSL, and reads `src/shader/dxbc/<key>.dxbc`; on a
+miss it runs fxc with the backend's flags (`-Zpc -O3`, `d3d11.c` `d3dCompile`). The cache sits
+with the shader layer because one blob serves every module that prints the same stage: 518 HLSL
+stages are 168 blobs, 0.92 MB (2026-10-23). The `windows` arm holds each blob once as base64
+(`shaderBytecodeFromBase64`, `src/webgpu/types.ms`) beside the HLSL text, which stays the fallback;
+every other arm writes `[]`, since gl, wgpu and metal stop on bytecode.
+
+fxc and the runtime `D3DCompile` (`d3dcompiler_47.dll`) gave the same bytes for a 22-stage sample
+(2026-10-23, fxc of Windows Kit 10.0.26100). `regen-shaders.sh` adds a compiled blob and deletes
+one no stage uses; `--check` reports either as stale. Where fxc is absent (macOS, Linux) a miss is
+printed, not stale: that stage keeps no bytecode and compiles at load until a Windows regen.
+
 ## The oracle and when it goes
 
 sokol-shdc is on no build path. `scripts/regen-shaders.sh --oracle-shdc` still compiles the
