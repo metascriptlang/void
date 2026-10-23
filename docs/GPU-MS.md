@@ -243,7 +243,10 @@ authored set, and a Metal frame passes within the cross-backend bound (docs/TEST
 - **Ask:** commit `tests/golden3d/d3d11/<baseline>_<frame>.png` for every key in gate3d's
   `baseline_names` (18 baselines × frames 1 6 11 16, 320x240), converted from the
   `out/tmp/capture/<key>.ppm` copies whose SHA-256 matches `docs/baselines3d.sha256`. Please
-  convert only a matching copy, and check that each PNG decodes back to those bytes.
+  convert only a matching copy, and check that each PNG decodes back to those bytes. For a key
+  `tests/PENDING3D.md` holds (`capture-m14forward`, `capture-m16anchor`), please also commit
+  `<key>.held.png` from the frame whose hash is the row's held fingerprint. While the row holds,
+  Metal is judged against what D3D11 draws now.
 - **The Mac side:** gate3d's capture stage on Darwin compares against those PNGs instead of the
   hashes, through the 2D comparator's judgement and budget parsing. Until the PNGs exist, every
   Metal capture row fails and names the missing image.
