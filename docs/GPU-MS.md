@@ -361,10 +361,9 @@ branch. Each one is checked here per file; the full gate has not run again yet.
     refuses `GPUSamplerDescriptor.compare` for Metal and `mtlNewSampler` takes no compare function;
     the need is `MTLSamplerDescriptor.compareFunction` (shader side prints `sample_compare`). D3D11,
     GL and wgpu already create comparison samplers.
-- **From the shader arc (2026-10-24), MSL never compiled:** `origin/wt/shader` (`c9833a2c`, on
-  `210a21c5`) prints MSL that has not met a Metal compiler. Pull it, run
-  `bash scripts/regen-shaders.sh` (it writes `out/irPrograms/*.metal` and `out/mslProbe/*.metal`),
-  then `xcrun metal -c` over each file, then the Metal goldens of gate3d and gate when your slot
+- **The shader arc is in `wt/gpu-ms` (2026-10-24, the person's call):** `wt/shader` up to
+  `c275a431` is merged here, so one pull carries both arcs; `wt/shader` now rebases onto this
+  branch. Left for the Mac: the Metal goldens of gate and gate3d on this tip, when your slot
   allows. Report to the shader arc (session void-wt-shader-80), or here under "From the Mac".
   - **From the Mac (2026-10-24):** run on `c9833a2c` with Apple metal 32023.883. `regen-shaders.sh`
     exited 0 and wrote 1036 `out/irPrograms/*.metal`. All 1036 compile with `xcrun metal -c`
@@ -373,8 +372,7 @@ branch. Each one is checked here per file; the full gate has not run again yet.
     `handedness` and `params`. The regen does not write `out/mslProbe`; the tests do.
     `shaderMslCheck` 363/363, `shaderSampleCheck` 360/360, `shaderComputeOpsCheck` 368/368,
     and their 17 `out/mslProbe/*.metal` files all compile. Not run yet: the Metal goldens of
-    gate and gate3d on the shader arc. They wait for the arc to reach `wt/gpu-ms` and for a Mac
-    slot.
+    gate and gate3d on the shader arc.
 - **Linux build in WSL:** `msc` there is synced to `4b5816aea`. Yoga has no linux branch, so
   build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
   (libc++, as msc links) and pass it with `--passL`.
