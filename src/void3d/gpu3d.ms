@@ -370,7 +370,7 @@ export function drawsQuads(layout: VertexLayout): boolean {
 export const SKIN_UNIFORM_SLOT: int32 = 7;
 export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
-export const VERTEX_UNIFORM_LENGTH: int32 = 24;
+export const VERTEX_UNIFORM_LENGTH: int32 = 28;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
 // ambient (rgb + point count), dirLight (direction + power), dirColor, then pointLight[4]
 // (position + power) and pointColor[4] (rgb + radius): two vec4 arrays of one vec4 per light,

@@ -9,6 +9,7 @@ import {
 	Vec3f,
 	Vec4f,
 	abs,
+	atan2,
 	binding,
 	builtin,
 	clamp,
@@ -68,6 +69,12 @@ export struct ParticleVisualAttributes {
 	shape: Vec4f;
 	tile: Vec4f;
 	color: Vec4f;
+	velocity: Vec3f;
+	look: Vec4f;
+	scale: Vec4f;
+	pull: Vec3f;
+	emitterRight: Vec3f;
+	emitterUp: Vec3f;
 	@builtin(vertexIndex) index: uint32;
 }
 
@@ -155,6 +162,7 @@ export struct VertexParams {
 	viewProj: Mat4x4f;
 	cameraRight: Vec4f;
 	cameraUp: Vec4f;
+	cameraPosition: Vec4f;
 }
 
 export struct ModelParams {
@@ -342,22 +350,143 @@ export function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
 	return (a * normal.x + b * normal.y + c * normal.z) * direction;
 }
 
-function particleVisualPoint(
-	root: Vec4f, shape: Vec4f, corner: Vec2f, right: Vec3f, up: Vec3f,
-): Vec3f {
-	const x = (corner.x - shape.y) * root.w;
-	const y = (corner.y - shape.z) * shape.x;
-	const c = cos(shape.w);
-	const s = sin(shape.w);
-	return root.xyz + right * (x * c + y * s) + up * (y * c - x * s);
+// A ParticleVisual corner in world space. The instance carries its system's render mode: `look`
+// is mode (0 Billboard, 1 Stretch, 2 Horizontal, 3 Vertical), alignment (0 View, 1 World,
+// 2 Local, 3 Facing, 4 Velocity), pivot.z and the flags (1 allowRoll off, 2 freeform, 4 rotate
+// with the stretch direction, summed); `scale` is lengthScale, velocityScale, the smallest and the
+// largest size (0 for none), as fractions of the viewport width at the particle; `pull` is the
+// camera's velocity times cameraVelocityScale; the emitter's axes serve Local. A zeroed instance
+// is the camera-facing billboard. Each rule is Unity's, measured (docs/PARTICLES-RENDER.md A.2).
+function particleVisualPoint(input: ParticleVisualAttributes, corner: Vec2f, b: VertexBindings): Vec3f {
+	const root = input.root;
+	const shape = input.shape;
+	const velocity = input.velocity;
+	const pos = root.xyz;
+	const eye = b.vertexParams.cameraPosition.xyz;
+	const camRight = b.vertexParams.cameraRight.xyz;
+	const camUp = b.vertexParams.cameraUp.xyz;
+	const camToward = cross(camRight, camUp);
+	const kind = input.look;
+	const scale = input.scale;
+	const emitterRight = input.emitterRight;
+	const emitterUp = input.emitterUp;
+	let flags: float32 = kind.w;
+	const rotateWith = flags >= 3.5;
+	if (rotateWith) { flags = flags - 4.0; }
+	const freeform = flags >= 1.5;
+	if (freeform) { flags = flags - 2.0; }
+	const noRoll = flags >= 0.5;
+	const stretch = kind.x == 1.0;
+	const pivotX = -shape.y;
+	const pivotY = -shape.z;
+	const pivotZ = kind.z;
+	const theta = shape.w;
+	const c = cos(theta);
+	const s = sin(theta);
+	const root2: float32 = 0.70710678;
+	let w = root.w;
+	let h = shape.x;
+	const clipCentre = b.vertexParams.viewProj * vec4f(pos, 1.0);
+	const clipRight = b.vertexParams.viewProj * vec4f(pos + camRight, 1.0);
+	const viewportWidth = 2.0 * clipCentre.w / (clipRight.x - clipCentre.x);
+	const big = max(w, h);
+	let fit: float32 = 1.0;
+	if (scale.w > 0.0 && big > scale.w * viewportWidth) {
+		fit = scale.w * viewportWidth / big;
+	}
+	if (scale.z > 0.0 && big > 0.0 && big < scale.z * viewportWidth) {
+		fit = scale.z * viewportWidth / big;
+	}
+	const speed = length(velocity);
+	const along = velocity / max(speed, 0.000001);
+	const toParticle = pos - eye;
+	if (stretch) {
+		if (freeform) {
+			const f = normalize(toParticle);
+			const right = normalize(cross(f, camUp));
+			const up = cross(right, f);
+			let angle = theta;
+			if (rotateWith && speed > 0.000001) {
+				angle = angle + atan2(dot(along, up), -dot(along, right));
+			}
+			const ca = cos(angle);
+			const sa = sin(angle);
+			const fw = w * fit;
+			const fh = h * fit;
+			let o = (right * ca - up * sa) * ((corner.x + pivotX) * fw)
+				+ (up * ca + right * sa) * ((corner.y + pivotY) * fh) + f * (pivotZ * fw);
+			const grow = scale.x + speed * scale.y / max(fh, 0.000001) - 1.0;
+			o = o + along * (grow * dot(o, along));
+			return pos + o;
+		}
+		if (speed < 0.000001) {
+			return pos;
+		}
+		const pull = along * (h * scale.x) + velocity * scale.y - input.pull;
+		const length3 = length(pull);
+		const axis = pull / max(length3, 0.000001);
+		const forward = -camToward;
+		const across = cross(toParticle, axis);
+		const flat = across - forward * dot(across, forward);
+		const width = flat / max(length(flat), 0.000001);
+		const fw = w * fit;
+		const head = pos + width * (pivotX * fw) + axis * (2.0 * pivotY * h);
+		return head + width * (corner.y * fw) - axis * ((corner.x + 0.5) * length3);
+	}
+	w = w * fit;
+	h = h * fit;
+	if (kind.x == 2.0 || kind.x == 3.0) {
+		let right = vec3f(1.0, 0.0, 0.0);
+		let up = vec3f(0.0, 0.0, -1.0);
+		let normal = vec3f(0.0, 1.0, 0.0);
+		if (kind.x == 3.0) {
+			right = normalize(vec3f(camToward.z, 0.0, camRight.z));
+			up = vec3f(0.0, 1.0, 0.0);
+			normal = cross(right, up);
+		}
+		const x = 2.0 * corner.x;
+		const y = 2.0 * corner.y;
+		const ox = 0.5 * w * (x * c + y * s) * root2 + pivotX * w * (c - s) * root2;
+		const oy = 0.5 * h * (y * c - x * s) * root2 + pivotY * h * (c + s) * root2;
+		return pos + right * ox + up * oy + normal * (pivotZ * w);
+	}
+	let right = camRight;
+	let up = camUp;
+	let normal = camToward;
+	if (kind.y == 0.0 && noRoll) {
+		right = normalize(cross(-camToward, vec3f(0.0, 1.0, 0.0)));
+		up = cross(right, -camToward);
+	}
+	if (kind.y == 1.0) {
+		right = vec3f(1.0, 0.0, 0.0);
+		up = vec3f(0.0, 1.0, 0.0);
+		normal = vec3f(0.0, 0.0, -1.0);
+	}
+	if (kind.y == 2.0) {
+		right = emitterRight;
+		up = emitterUp;
+		normal = -cross(right, up);
+	}
+	if (kind.y == 3.0) {
+		normal = normalize(toParticle);
+		right = normalize(cross(normal, camUp));
+		up = cross(right, normal);
+	}
+	if (kind.y == 4.0) {
+		normal = along;
+		right = normalize(cross(vec3f(0.0, 0.0, 1.0), normal));
+		up = cross(right, normal);
+	}
+	const x = (corner.x + pivotX) * w;
+	const y = (corner.y + pivotY) * h;
+	return pos + (right * c - up * s) * x + (up * c + right * s) * y + normal * (pivotZ * w);
 }
 
 export function particleVisualPixelArtVs(
 	input: ParticleVisualAttributes, b: VertexBindings,
 ): ParticleVisualPixelArtVaryings {
 	const corner = PARTICLE_CORNERS[input.index % 6];
-	const world = particleVisualPoint(input.root, input.shape, corner,
-		b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz);
+	const world = particleVisualPoint(input, corner, b);
 	const clip = b.vertexParams.viewProj * vec4f(world, 1.0);
 	return {
 		uv: vec2f(corner.x > 0.0 ? input.tile.z : input.tile.x,
@@ -373,8 +502,7 @@ export function particleVisualVs(
 	input: ParticleVisualAttributes, b: VertexBindings,
 ): ParticleVisualVaryings {
 	const corner = PARTICLE_CORNERS[input.index % 6];
-	const world = particleVisualPoint(input.root, input.shape, corner,
-		b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz);
+	const world = particleVisualPoint(input, corner, b);
 	return {
 		worldPosition: world,
 		towardCamera: cross(b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz),

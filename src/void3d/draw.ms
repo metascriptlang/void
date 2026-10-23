@@ -750,7 +750,7 @@ export function isStream(this mesh: GpuMesh): boolean {
 
 function streamStride(layout: VertexLayout): int32 {
 	if (layout == VertexLayout.Particle) { return STREAM_INSTANCE_STRIDE; }
-	if (layout == VertexLayout.ParticleVisual) { return 16; }
+	if (layout == VertexLayout.ParticleVisual) { return 36; }
 	console.error(`void3d: ${layout.toString()} is not a particle stream layout`);
 	unreachable;
 }

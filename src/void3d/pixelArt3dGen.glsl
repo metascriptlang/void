@@ -109,26 +109,153 @@ layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
+    vec4 cameraPosition;
 };
 in vec4 root;
 in vec4 shape;
 in vec4 tile;
 in vec4 color;
+in vec3 velocity;
+in vec4 look;
+in vec4 scale;
+in vec3 pull;
+in vec3 emitterRight;
+in vec3 emitterUp;
 out vec2 uv;
 out vec3 rootPosition;
 out vec4 instanceColor;
 out float depth01;
 const vec2[6] PARTICLE_CORNERS = vec2[6](vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
-vec3 particleVisualPoint(vec4 root_1, vec4 shape_1, vec2 corner, vec3 right, vec3 up) {
-    float x = (corner.x - shape_1.y) * root_1.w;
-    float y = (corner.y - shape_1.z) * shape_1.x;
-    float c = cos(shape_1.w);
-    float s = sin(shape_1.w);
-    return (root_1.xyz + (right * ((x * c) + (y * s)))) + (up * ((y * c) - (x * s)));
+vec3 particleVisualPoint(vec2 corner) {
+    vec4 root_1 = root;
+    vec4 shape_1 = shape;
+    vec3 velocity_1 = velocity;
+    vec3 pos = root_1.xyz;
+    vec3 eye = cameraPosition.xyz;
+    vec3 camRight = cameraRight.xyz;
+    vec3 camUp = cameraUp.xyz;
+    vec3 camToward = cross(camRight, camUp);
+    vec4 kind = look;
+    vec4 scale_1 = scale;
+    vec3 emitterRight_1 = emitterRight;
+    vec3 emitterUp_1 = emitterUp;
+    float flags = kind.w;
+    bool rotateWith = flags >= 3.5;
+    if (rotateWith) {
+        flags = flags - 4.0;
+    }
+    bool freeform = flags >= 1.5;
+    if (freeform) {
+        flags = flags - 2.0;
+    }
+    bool noRoll = flags >= 0.5;
+    bool stretch = kind.x == 1.0;
+    float pivotX = -shape_1.y;
+    float pivotY = -shape_1.z;
+    float pivotZ = kind.z;
+    float theta = shape_1.w;
+    float c = cos(theta);
+    float s = sin(theta);
+    float root2 = 0.70710678;
+    float w = root_1.w;
+    float h = shape_1.x;
+    vec4 clipCentre = viewProj * vec4(pos, 1.0);
+    vec4 clipRight = viewProj * vec4((pos + camRight), 1.0);
+    float viewportWidth = (2.0 * clipCentre.w) / (clipRight.x - clipCentre.x);
+    float big = max(w, h);
+    float fit = 1.0;
+    if ((scale_1.w > 0.0) && (big > (scale_1.w * viewportWidth))) {
+        fit = (scale_1.w * viewportWidth) / big;
+    }
+    if (((scale_1.z > 0.0) && (big > 0.0)) && (big < (scale_1.z * viewportWidth))) {
+        fit = (scale_1.z * viewportWidth) / big;
+    }
+    float speed = length(velocity_1);
+    vec3 along = velocity_1 / max(speed, 0.000001);
+    vec3 toParticle = pos - eye;
+    if (stretch) {
+        if (freeform) {
+            vec3 f = normalize(toParticle);
+            vec3 right = normalize(cross(f, camUp));
+            vec3 up = cross(right, f);
+            float angle = theta;
+            if (rotateWith && (speed > 0.000001)) {
+                angle = angle + atan(dot(along, up), (-dot(along, right)));
+            }
+            float ca = cos(angle);
+            float sa = sin(angle);
+            float fw = w * fit;
+            float fh = h * fit;
+            vec3 o = ((((right * ca) - (up * sa)) * ((corner.x + pivotX) * fw)) + (((up * ca) + (right * sa)) * ((corner.y + pivotY) * fh))) + (f * (pivotZ * fw));
+            float grow = (scale_1.x + ((speed * scale_1.y) / max(fh, 0.000001))) - 1.0;
+            o = o + (along * (grow * dot(o, along)));
+            return pos + o;
+        }
+        if (speed < 0.000001) {
+            return pos;
+        }
+        vec3 pull_1 = ((along * (h * scale_1.x)) + (velocity_1 * scale_1.y)) - pull;
+        float length3 = length(pull_1);
+        vec3 axis = pull_1 / max(length3, 0.000001);
+        vec3 forward = -camToward;
+        vec3 across = cross(toParticle, axis);
+        vec3 flat_1 = across - (forward * dot(across, forward));
+        vec3 width = flat_1 / max(length(flat_1), 0.000001);
+        float fw_1 = w * fit;
+        vec3 head = (pos + (width * (pivotX * fw_1))) + (axis * ((2.0 * pivotY) * h));
+        return (head + (width * (corner.y * fw_1))) - (axis * ((corner.x + 0.5) * length3));
+    }
+    w = w * fit;
+    h = h * fit;
+    if ((kind.x == 2.0) || (kind.x == 3.0)) {
+        vec3 right_1 = vec3(1.0, 0.0, 0.0);
+        vec3 up_1 = vec3(0.0, 0.0, -1.0);
+        vec3 normal = vec3(0.0, 1.0, 0.0);
+        if (kind.x == 3.0) {
+            right_1 = normalize(vec3(camToward.z, 0.0, camRight.z));
+            up_1 = vec3(0.0, 1.0, 0.0);
+            normal = cross(right_1, up_1);
+        }
+        float x = 2.0 * corner.x;
+        float y = 2.0 * corner.y;
+        float ox = (((0.5 * w) * ((x * c) + (y * s))) * root2) + (((pivotX * w) * (c - s)) * root2);
+        float oy = (((0.5 * h) * ((y * c) - (x * s))) * root2) + (((pivotY * h) * (c + s)) * root2);
+        return ((pos + (right_1 * ox)) + (up_1 * oy)) + (normal * (pivotZ * w));
+    }
+    vec3 right_2 = camRight;
+    vec3 up_2 = camUp;
+    vec3 normal_1 = camToward;
+    if ((kind.y == 0.0) && noRoll) {
+        right_2 = normalize(cross((-camToward), vec3(0.0, 1.0, 0.0)));
+        up_2 = cross(right_2, (-camToward));
+    }
+    if (kind.y == 1.0) {
+        right_2 = vec3(1.0, 0.0, 0.0);
+        up_2 = vec3(0.0, 1.0, 0.0);
+        normal_1 = vec3(0.0, 0.0, -1.0);
+    }
+    if (kind.y == 2.0) {
+        right_2 = emitterRight_1;
+        up_2 = emitterUp_1;
+        normal_1 = -cross(right_2, up_2);
+    }
+    if (kind.y == 3.0) {
+        normal_1 = normalize(toParticle);
+        right_2 = normalize(cross(normal_1, camUp));
+        up_2 = cross(right_2, normal_1);
+    }
+    if (kind.y == 4.0) {
+        normal_1 = along;
+        right_2 = normalize(cross(vec3(0.0, 0.0, 1.0), normal_1));
+        up_2 = cross(right_2, normal_1);
+    }
+    float x_1 = (corner.x + pivotX) * w;
+    float y_1 = (corner.y + pivotY) * h;
+    return ((pos + (((right_2 * c) - (up_2 * s)) * x_1)) + (((up_2 * c) + (right_2 * s)) * y_1)) + (normal_1 * (pivotZ * w));
 }
 void main() {
     vec2 corner = PARTICLE_CORNERS[uint(gl_VertexIndex) % 6];
-    vec3 world = particleVisualPoint(root, shape, corner, cameraRight.xyz, cameraUp.xyz);
+    vec3 world = particleVisualPoint(corner);
     vec4 clip = viewProj * vec4(world, 1.0);
     uv = vec2(((corner.x > 0.0) ? tile.z : tile.x), ((corner.y > 0.0) ? tile.y : tile.w));
     rootPosition = root.xyz;
@@ -144,6 +271,7 @@ layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
+    vec4 cameraPosition;
 };
 in vec3 position;
 in vec2 size;
@@ -303,6 +431,7 @@ layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
+    vec4 cameraPosition;
 };
 in vec4 root;
 in vec4 color;
@@ -396,6 +525,7 @@ layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
+    vec4 cameraPosition;
 };
 #ifndef SKINNED
 layout(binding=4) uniform modelParams {
@@ -705,6 +835,7 @@ layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
+    vec4 cameraPosition;
 };
 #ifndef SKINNED
 layout(binding=4) uniform modelParams {
@@ -1198,6 +1329,7 @@ layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
+    vec4 cameraPosition;
 };
 #ifndef SKINNED
 layout(binding=4) uniform modelParams {

@@ -85,7 +85,7 @@ attributesOf() {
 	case "$1" in
 		LIT)          echo "position normal color" ;;
 		PARTICLE)     echo "root color" ;;
-		PARTICLE_VISUAL) echo "root shape tile color" ;;
+		PARTICLE_VISUAL) echo "root shape tile color velocity look scale pull emitterRight emitterUp" ;;
 		BILLBOARD)    echo "position size anchor tile color" ;;
 		LIT_TEXTURED) echo "position normal uv color" ;;
 		LIT_TEXTURED_TANGENT) echo "position normal uv color tangent" ;;

@@ -101,6 +101,12 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_particleVisual_program_shape].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_particleVisual_program_tile].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_particleVisual_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particleVisual_program_velocity].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_particleVisual_program_look].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particleVisual_program_scale].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particleVisual_program_pull].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_particleVisual_program_emitterRight].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_particleVisual_program_emitterUp].format = SG_VERTEXFORMAT_FLOAT3;
 		break;
 	case LAYOUT_LIT_TEXTURED:
 		out->attrs[ATTR_litTextured_program_position].format = SG_VERTEXFORMAT_FLOAT3;
