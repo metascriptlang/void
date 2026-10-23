@@ -220,8 +220,9 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D, viewportWid
 			const rawW: float32 = sys.data[SIZE_X * cap + i];
 			const rawH: float32 = sys.data[SIZE_Y * cap + i];
 			// Unity scales a quad to its size limits; a stretched one only in width, as its length is
-			// built from the size it started with. A freeform quad is not clamped (not measured).
-			const fit: float32 = freeform ? 1.0 : sizeFit(rawW, rawH, lo, hi);
+			// built from the size it started with. A freeform quad is scaled whole about its centre by
+			// the factor its unstretched size needs, and its pivot shift is not scaled.
+			const fit: float32 = sizeFit(rawW, rawH, lo, hi);
 			const w: float32 = rawW * fit;
 			const h: float32 = stretch ? rawH : rawH * fit;
 			const vx: float32 = sys.data[MOVE_X * cap + i];
@@ -236,23 +237,23 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D, viewportWid
 				// velocity by (size.y * lengthScale + speed * velocityScale) / size.y. That is one affine
 				// of the particle's own axes; the cell holds it as rotate * shear * scale.
 				const speed: float32 = Math.sqrt((vx * vx + vy * vy) as float64) as float32;
-				if (speed == 0.0 || h == 0.0) { continue; }
+				if (speed == 0.0 || rawH == 0.0) { continue; }
 				const dx: float32 = vx / speed;
 				const dy: float32 = vy / speed;
 				const turn: float32 = renderer.rotateWithStretchDirection
 					? rotation + (Math.atan2(dy as float64, -dx as float64) as float32)
 					: rotation - nodeTurned;
-				const grow: float32 = renderer.lengthScale + speed * renderer.velocityScale / h - 1.0;
+				const grow: float32 = renderer.lengthScale + speed * renderer.velocityScale / rawH - 1.0;
 				const co: float32 = cosf(turn);
 				const si: float32 = sinf(turn);
 				const g11: float32 = 1.0 + grow * dx * dx;
 				const g12: float32 = grow * dx * dy;
 				const g22: float32 = 1.0 + grow * dy * dy;
 				// The image of the tile's x and y axes on screen, y down, per tile unit.
-				const a: float32 = (g11 * co - g12 * si) * (w / t.w);
-				const b: float32 = -(g12 * co - g22 * si) * (w / t.w);
-				const c: float32 = (-g11 * si - g12 * co) * (h / t.h);
-				const d: float32 = -(-g12 * si - g22 * co) * (h / t.h);
+				const a: float32 = (g11 * co - g12 * si) * (rawW / t.w);
+				const b: float32 = -(g12 * co - g22 * si) * (rawW / t.w);
+				const c: float32 = (-g11 * si - g12 * co) * (rawH / t.h);
+				const d: float32 = -(-g12 * si - g22 * co) * (rawH / t.h);
 				const det: float32 = a * d - b * c;
 				if (det == 0.0) { continue; }
 				const across: float32 = Math.sqrt((a * a + b * b) as float64) as float32;
@@ -263,7 +264,7 @@ function redraw(this ref e: ParticleEmitter2D, emitter: Transform2D, viewportWid
 						sys.data[COLOR_R * cap + i], sys.data[COLOR_G * cap + i],
 						sys.data[COLOR_B * cap + i], sys.data[COLOR_A * cap + i],
 					),
-					scaleX: across, scaleY: det / across,
+					scaleX: across * fit, scaleY: det / across * fit,
 					rotation: Math.atan2(b as float64, a as float64) as float32,
 					skew: (a * c + b * d) / det,
 				});
