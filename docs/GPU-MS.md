@@ -366,6 +366,15 @@ branch. Each one is checked here per file; the full gate has not run again yet.
   `bash scripts/regen-shaders.sh` (it writes `out/irPrograms/*.metal` and `out/mslProbe/*.metal`),
   then `xcrun metal -c` over each file, then the Metal goldens of gate3d and gate when your slot
   allows. Report to the shader arc (session void-wt-shader-80), or here under "From the Mac".
+  - **From the Mac (2026-10-24):** run on `c9833a2c` with Apple metal 32023.883. `regen-shaders.sh`
+    exited 0 and wrote 1036 `out/irPrograms/*.metal`. All 1036 compile with `xcrun metal -c`
+    (`-sdk macosx` for `_macos`, `-sdk iphoneos` for `_ios`), with 0 errors. 572 files print
+    warnings, all cosmetic: `-Wparentheses-equality` (2206) and unused variables `noise`,
+    `handedness` and `params`. The regen does not write `out/mslProbe`; the tests do.
+    `shaderMslCheck` 363/363, `shaderSampleCheck` 360/360, `shaderComputeOpsCheck` 368/368,
+    and their 17 `out/mslProbe/*.metal` files all compile. Not run yet: the Metal goldens of
+    gate and gate3d on the shader arc. They wait for the arc to reach `wt/gpu-ms` and for a Mac
+    slot.
 - **Linux build in WSL:** `msc` there is synced to `4b5816aea`. Yoga has no linux branch, so
   build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
   (libc++, as msc links) and pass it with `--passL`.
