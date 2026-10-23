@@ -17,10 +17,9 @@ import {
 	ParticleWriter3D, ParticleWriteError, PARTICLE_MESH_INSTANCE_STRIDE, drawOrder, placed, finite,
 } from "./particleWriter";
 
-// A positive rotation3D value turns a mesh clockwise along the axis, as a billboard turns, which
-// is a negative angle in the Euler matrix.
-const ROTATION_SIGN: float32 = -1.0;
 const TINY: float32 = 1e-6;
+// Velocity along world up has no measurement; this is the reference taken then.
+const UNMEASURED_PARALLEL_REFERENCE: Vec3 = { x: 0.0, y: 0.0, z: 1.0 };
 
 struct MeshAxes {
 	x: Vec3;
@@ -72,8 +71,8 @@ function alignmentAxes(
 	}
 	if (alignment == RenderAlignment.Velocity && velocity.length() > TINY) {
 		const f: Vec3 = normalized(velocity);
-		let r: Vec3 = cross(vec3(0.0, 0.0, 1.0), f);
-		if (r.length() < TINY) { r = cross(vec3(1.0, 0.0, 0.0), f); }
+		let r: Vec3 = cross(vec3(0.0, 1.0, 0.0), f);
+		if (r.length() < TINY) { r = cross(UNMEASURED_PARALLEL_REFERENCE, f); }
 		r = normalized(r);
 		return { x: r, y: cross(f, r), z: f };
 	}
@@ -82,12 +81,12 @@ function alignmentAxes(
 
 // Unity's Euler rotation (z, then x, then y) as the columns of its matrix applied to `axes`.
 function turned(axes: MeshAxes, rx: float32, ry: float32, rz: float32): MeshAxes {
-	const cx: float32 = Math.cos(ROTATION_SIGN * rx) as float32;
-	const sx: float32 = Math.sin(ROTATION_SIGN * rx) as float32;
-	const cy: float32 = Math.cos(ROTATION_SIGN * ry) as float32;
-	const sy: float32 = Math.sin(ROTATION_SIGN * ry) as float32;
-	const cz: float32 = Math.cos(ROTATION_SIGN * rz) as float32;
-	const sz: float32 = Math.sin(ROTATION_SIGN * rz) as float32;
+	const cx: float32 = Math.cos(rx) as float32;
+	const sx: float32 = Math.sin(rx) as float32;
+	const cy: float32 = Math.cos(ry) as float32;
+	const sy: float32 = Math.sin(ry) as float32;
+	const cz: float32 = Math.cos(rz) as float32;
+	const sz: float32 = Math.sin(rz) as float32;
 	const r00: float32 = cy * cz + sy * sx * sz;
 	const r01: float32 = -cy * sz + sy * sx * cz;
 	const r02: float32 = sy * cx;
@@ -121,17 +120,18 @@ function writeRow(
 
 // Writes `sys`'s particles as mesh instances into `out`, grouped by mesh index in mesh order and
 // in draw order within each group, and the size of each group into `counts`. The camera is at
-// `eye`, looking along `forward` with `up` (Void's frame). Returns the instance count.
+// `eye`, looking along `forward` with `up` (Void's frame). `boundsSizes` is each mesh's extent
+// (max - min of its vertices), the unit of the pivot. Returns the instance count.
 export function writeMeshParticles(
 	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, up: Vec3,
-	out: Span<float32>, counts: Span<int32>,
+	boundsSizes: Readonly<Span<Vec3>>, out: Span<float32>, counts: Span<int32>,
 ): Result<int32, ParticleWriteError> {
 	const renderer: Borrow<RendererModule> = sys.asset.renderer;
 	if (renderer.renderMode != RenderMode.Mesh) {
 		return Result.err(ParticleWriteError.UnsupportedRenderMode);
 	}
 	const meshes: int32 = renderer.meshCount;
-	if (meshes < 1 || (counts.length as int32) < meshes) {
+	if (meshes < 1 || (counts.length as int32) < meshes || (boundsSizes.length as int32) < meshes) {
 		return Result.err(ParticleWriteError.ShortInstances);
 	}
 	const stride: int32 = PARTICLE_MESH_INSTANCE_STRIDE;
@@ -178,10 +178,10 @@ export function writeMeshParticles(
 		const sx: float32 = sys.data[SIZE_X * cap + i];
 		const sy: float32 = sys.data[SIZE_Y * cap + i];
 		const sz: float32 = sys.data[SIZE_Z * cap + i];
-		// The pivot is added to the flipped mesh and scales with it: it moves the mesh by that
-		// many particle sizes along its own, turned axes.
-		const t: Vec3 = p + q.x.scaled(sx * renderer.pivot.x) + q.y.scaled(sy * renderer.pivot.y)
-			+ q.z.scaled(sz * renderer.pivot.z);
+		const bounds: Vec3 = boundsSizes[m];
+		const t: Vec3 = p + q.x.scaled(sx * renderer.pivot.x * bounds.x)
+			+ q.y.scaled(sy * renderer.pivot.y * bounds.y)
+			- q.z.scaled(sz * renderer.pivot.z * bounds.z);
 		const x: Vec3 = q.x.scaled(sx * mirrorX);
 		const y: Vec3 = q.y.scaled(sy * mirrorY);
 		const z: Vec3 = q.z.scaled(sz * mirrorZ);
