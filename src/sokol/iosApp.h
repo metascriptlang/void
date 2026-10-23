@@ -14,5 +14,7 @@ bool voidIosValid(void);
 int voidIosWidth(void);
 int voidIosHeight(void);
 uint64_t voidIosFrameCount(void);
+// The display link's frame interval, as sokol_app reports it on iOS.
+double voidIosFrameDuration(void);
 
 #endif

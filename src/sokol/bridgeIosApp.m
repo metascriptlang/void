@@ -12,6 +12,7 @@
 #include "views.h"
 #include "appWindow.h"
 #include "iosApp.h"
+#include "../platform/frameTiming.h"
 
 #if !__has_feature(objc_arc)
 #error "bridgeIosApp.m is written for ARC"
@@ -24,6 +25,9 @@ static int s_running;
 static int s_highDpi = 1;
 static int s_reqW, s_reqH;
 static uint64_t s_frameCount;
+static VoidFrameTiming s_timing;
+static double s_frameDuration;
+static CFTimeInterval s_stamp;
 static int s_fbW = 1, s_fbH = 1;
 static float s_scale = 1.0f;
 static uint32_t s_modifiers;
@@ -37,6 +41,7 @@ uint64_t voidIosFrameCount(void) { return s_frameCount; }
 int voidIosWidth(void) { return s_fbW; }
 int voidIosHeight(void) { return s_fbH; }
 bool voidIosValid(void) { return s_running != 0; }
+double voidIosFrameDuration(void) { return s_frameDuration; }
 
 static VoidAppEvent makeEvent(VoidAppEventType type) {
 	VoidAppEvent e;
@@ -276,6 +281,8 @@ static VoidAppView *s_view;
 }
 
 - (void)tick {
+	if (s_stamp > 0.0) s_frameDuration = voidFrameTimingClamp(&s_timing, self.link.timestamp - s_stamp);
+	s_stamp = self.link.timestamp;
 	s_frameCount++;
 	voidViewFrame(self.viewId);
 }
@@ -577,6 +584,8 @@ void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	if (s_running) voidFail("voidRun: the iOS app is already running");
 	s_running = 1;
+	voidFrameTimingInit(&s_timing);
+	s_frameDuration = 1.0 / (double)[UIScreen mainScreen].maximumFramesPerSecond;
 	s_reqW = w;
 	s_reqH = h;
 	s_highDpi = highDpi;
