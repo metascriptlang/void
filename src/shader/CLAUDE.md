@@ -319,7 +319,11 @@ shader-toy and compute examples (`circle`, `colors`, `flare`, `mandelbrot`, `com
 as a Void stage in `src/test/shadyTestsCheck.ms`, `shadyExamplesCheck.ms` and `shaderComputeCheck.ms`:
 its GLSL pinned, run on the CPU where it computes something, and the 14 programs plus the compute
 one compiled by sokol-shdc to `glsl430:glsl300es:hlsl5:metal_macos:wgsl` (compute without
-`glsl300es`, which has none). Where a case is written differently:
+`glsl300es`, which has none). Since 2026-10-23 (BUILD `4b5816aea`) `src/test/shadyPortsCheck.ms`
+prints the 19 programs and compute1 through `descriptor.ms` on every target into
+`out/shadyPrograms/`: fxc accepts 39 HLSL stages, naga 39 WGSL and 77 GLSL 430 / ES 300 stages
+(rewritten to Vulkan 450 for its front end); GLSL ES 3.00 refuses compute1 for its storage
+resources. Where a case is written differently:
 
 | shady | Void |
 |---|---|
