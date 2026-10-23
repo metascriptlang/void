@@ -42,6 +42,8 @@ import {
 	PBR_VALUES,
 	PBR_OCCLUSION_STRENGTH,
 	PBR_MATERIAL_UNIFORM_LENGTH,
+	PBR_UV_MATRIX,
+	PBR_UV_OFFSET,
 	declares,
 	emissiveBase,
 	movingBase,
@@ -214,27 +216,27 @@ export function gltfProgramOf(source: GltfMaterial): ProgramKey {
 		source.emissiveTexture != NO_TEXTURE_INDEX ? key.withEmissive() : key;
 	const mapped: ProgramKey =
 		source.normalTexture != NO_TEXTURE_INDEX ? emitting.withNormalMap() : emitting;
-	return source.uvTransform != IDENTITY_TEXTURE_TRANSFORM ? mapped.withUvTransform() : mapped;
+	const moving: boolean = source.uvTransform != IDENTITY_TEXTURE_TRANSFORM && !mapped.pbr;
+	return moving ? mapped.withUvTransform() : mapped;
 }
 
-// KHR_texture_transform as the UV transform key's matrix and offset: translation, rotation, scale,
+// KHR_texture_transform as a UV transform's matrix and offset: translation, rotation, scale,
 // with the rotation negated as Bevy's texture_transform_to_affine2 (bevy_gltf
 // loader/gltf_ext/texture.rs:59-65) and three.js' Texture.rotation apply it.
 function writeUvTransform(
 	ref values: Vec<float32>,
-	at: int32,
+	matrixAt: int32,
+	offsetAt: int32,
 	transform: GltfTextureTransform,
 ): void {
 	const c: float32 = cosf(transform.rotation);
 	const s: float32 = sinf(transform.rotation);
-	values[at + MOVING_UV_MATRIX] = transform.scaleU * c;
-	values[at + MOVING_UV_MATRIX + 1] = -transform.scaleU * s;
-	values[at + MOVING_UV_MATRIX + 2] = transform.scaleV * s;
-	values[at + MOVING_UV_MATRIX + 3] = transform.scaleV * c;
-	values[at + MOVING_UV_OFFSET] = transform.offsetU;
-	values[at + MOVING_UV_OFFSET + 1] = transform.offsetV;
-	values[at + MOVING_BACK_UV_MATRIX] = 1.0;
-	values[at + MOVING_BACK_UV_MATRIX + 3] = 1.0;
+	values[matrixAt] = transform.scaleU * c;
+	values[matrixAt + 1] = -transform.scaleU * s;
+	values[matrixAt + 2] = transform.scaleV * s;
+	values[matrixAt + 3] = transform.scaleV * c;
+	values[offsetAt] = transform.offsetU;
+	values[offsetAt + 1] = transform.offsetV;
 }
 
 function pbrValuesOf(
@@ -267,7 +269,6 @@ export function gltfBlockOf(
 	values[MATERIAL_DOUBLE_SIDED] = source.doubleSided ? 1.0 : 0.0;
 	values[MATERIAL_ALPHA_KILL] = source.alphaKill;
 	if (program.pbr) {
-		if (program.uvTransform) { unreachable; }
 		const held = pbrValuesOf(source, program);
 		if (!held.ok) { unreachable; }
 		if (held.ok) {
@@ -278,12 +279,16 @@ export function gltfBlockOf(
 			if (program.pbrMaps && maps !== null) {
 				values[PBR_OCCLUSION_STRENGTH] = maps.occlusionStrength;
 			}
+			writeUvTransform(values, PBR_UV_MATRIX, PBR_UV_OFFSET, source.uvTransform);
 		}
 	}
 	if (program.uvTransform) {
-		if ((values.length as int32) != movingBase(program)) { unreachable; }
+		const at: int32 = movingBase(program);
+		if ((values.length as int32) != at) { unreachable; }
 		for (let i = 0; i < MOVING_LENGTH; i++) { values.push(0.0); }
-		writeUvTransform(values, movingBase(program), source.uvTransform);
+		writeUvTransform(values, at + MOVING_UV_MATRIX, at + MOVING_UV_OFFSET, source.uvTransform);
+		values[at + MOVING_BACK_UV_MATRIX] = 1.0;
+		values[at + MOVING_BACK_UV_MATRIX + 3] = 1.0;
 	}
 	if (program.emissive) {
 		if ((values.length as int32) != emissiveBase(program)) { unreachable; }

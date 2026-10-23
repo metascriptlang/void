@@ -25,6 +25,7 @@ import {
 	PBR_ROUGHNESS,
 	PBR_OCCLUSION,
 	PBR_MATERIAL_UNIFORM_LENGTH,
+	PBR_UV_MATRIX,
 } from "./gpu3d";
 import { PbrProperties, PbrResponseError } from "./pbrResponse";
 import { TextureId, NO_TEXTURE } from "./texture";
@@ -336,9 +337,10 @@ export function movingDefaults(key: ProgramKey): Vec<float32> {
 	return values;
 }
 
-// The block of a pbr key (gpu3d.ms PBR_*) holding `properties`, every other float 0 for the
-// caller to set. Roughness 0 is refused: Heaps' BRDF has no guard at that endpoint
-// (BRDF.hx:48-53), and pbrResponse.ms reports it as ZeroRoughness rather than invent a floor.
+// The block of a pbr key (gpu3d.ms PBR_*) holding `properties` and the identity UV transform,
+// every other float 0 for the caller to set. Roughness 0 is refused: Heaps' BRDF has no guard at
+// that endpoint (BRDF.hx:48-53), and pbrResponse.ms reports it as ZeroRoughness rather than invent
+// a floor.
 export function pbrBlock(
 	key: ProgramKey,
 	properties: PbrProperties,
@@ -355,5 +357,7 @@ export function pbrBlock(
 	values[PBR_METALNESS] = checked.metalness;
 	values[PBR_ROUGHNESS] = checked.roughness;
 	values[PBR_OCCLUSION] = checked.occlusion;
+	values[PBR_UV_MATRIX] = 1.0;
+	values[PBR_UV_MATRIX + 3] = 1.0;
 	return Result.ok(values);
 }

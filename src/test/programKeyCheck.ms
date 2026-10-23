@@ -20,6 +20,11 @@ import {
 	FRAME_UNIFORM_SLOT,
 	FRAME_UNIFORM_LENGTH,
 	MOVING_UV_MATRIX,
+	MOVING_UV_OFFSET,
+	MOVING_UV_SCROLL,
+	PBR_UV_MATRIX,
+	PBR_UV_OFFSET,
+	PBR_UV_SCROLL,
 	MOVING_BACK_UV_MATRIX,
 	MOVING_MATERIAL_UNIFORM_LENGTH,
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
@@ -1275,11 +1280,21 @@ test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds vi
 	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41;
 }
 
-test "the pbr combinations with no block layout or no row are not declared" {
+test "the pbr combinations with no row are not declared" {
 	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();
 	assert !declares(textured.withEmissive().withSkin());
-	assert !declares(textured.withUvTransform()) &&
-		!declares(textured.withUvTransform().withSkin());
-	assert !declares(textured.withEmissive().withUvTransform());
 	assert declares(textured.withSkin()) && declares(textured.withEmissive());
+}
+
+test "every pbr block holds the UV transform, as its shader declares it" {
+	const lit: ProgramKey = ProgramKey.of(Program.Lit).withPbr();
+	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();
+	for (const key of [lit, textured, textured.withSkin(), textured.withPbrMaps()]) {
+		assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == PBR_MATERIAL_UNIFORM_LENGTH;
+	}
+	assert uniformBlockLength(textured.withEmissive(), MATERIAL_UNIFORM_SLOT) ==
+		PBR_MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
+	assert PBR_UV_OFFSET - PBR_UV_MATRIX == MOVING_UV_OFFSET - MOVING_UV_MATRIX;
+	assert PBR_UV_SCROLL - PBR_UV_MATRIX == MOVING_UV_SCROLL - MOVING_UV_MATRIX;
+	assert PBR_UV_SCROLL + 2 <= PBR_MATERIAL_UNIFORM_LENGTH;
 }

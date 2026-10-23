@@ -40,6 +40,7 @@ import {
 	FRAME_TONE_MODE,
 	FRAME_CAMERA_POSITION,
 	MOVING_UV_SCROLL,
+	PBR_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
 	SHADOW_SCENE_VIEWS,
@@ -700,9 +701,10 @@ export function drawScreen(
 
 // Whether material `index`, drawn as `key`, scrolls its UV with the frame's time.
 function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
-	if (!key.uvTransform) { return false; }
+	if (!key.uvTransform && !key.pbr) { return false; }
 	const block: UniformBlock = context.materials[index].uniforms;
-	const at: int32 = block.offset + movingBase(key) + MOVING_UV_SCROLL;
+	const scroll: int32 = key.pbr ? PBR_UV_SCROLL : movingBase(key) + MOVING_UV_SCROLL;
+	const at: int32 = block.offset + scroll;
 	return context.uniforms.values[at] != 0.0 || context.uniforms.values[at + 1] != 0.0;
 }
 

@@ -145,7 +145,9 @@ function stopOnUntextured(key: ProgramKey, feature: string): ProgramKey {
 	return key;
 }
 
+// A pbr key reads the UV transform in its own block, so it never takes the moving one.
 export function withUvTransform(this key: ProgramKey): ProgramKey {
+	if (key.pbr) { return stopOnFeature(key, "uv transform"); }
 	return { ...stopOnUntextured(key, "uv transform"), uvTransform: true };
 }
 
@@ -179,7 +181,7 @@ export function withNormalMap(this key: ProgramKey): ProgramKey {
 }
 
 export function withPbr(this key: ProgramKey): ProgramKey {
-	if (key.program != Program.Lit && key.program != Program.LitTextured) {
+	if ((key.program != Program.Lit && key.program != Program.LitTextured) || key.moves()) {
 		return stopOnFeature(key, "pbr");
 	}
 	return { ...key, pbr: true };
@@ -487,8 +489,10 @@ export const FRAME_CAMERA_POSITION: int32 = 4;
 
 // A pbr key's block (pbrMaterialParams in shader3d.ms): the lit block, then one vec4 holding
 // metalness, roughness and occlusion, all in 0..1, at PBR_VALUES = MATERIAL_UNIFORM_LENGTH for
-// every pbr key. It is part of the key's own block, so movingBase and emissiveBase start after it:
-// an emitting key adds the emissive vec4 at emissiveBase (pbrEmissiveMaterialParams).
+// every pbr key, then the UV transform laid out as MOVING_UV_*, which every pbr key reads as
+// Bevy's StandardMaterial reads its uv_transform. It is part of the key's own block, so
+// emissiveBase starts after it: an emitting key adds the emissive vec4 at emissiveBase
+// (pbrEmissiveMaterialParams).
 // Heaps' defaults (PbrMaterial props): 0, 1 and 1; a block is zero-filled,
 // so material.ms pbrDefaults writes them, because roughness 0 has no valid BRDF.
 export const PBR_VALUES: int32 = MATERIAL_UNIFORM_LENGTH;
@@ -496,7 +500,10 @@ export const PBR_METALNESS: int32 = PBR_VALUES;
 export const PBR_ROUGHNESS: int32 = PBR_VALUES + 1;
 export const PBR_OCCLUSION: int32 = PBR_VALUES + 2;
 export const PBR_OCCLUSION_STRENGTH: int32 = PBR_VALUES + 3;
-export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 4;
+export const PBR_UV_MATRIX: int32 = PBR_VALUES + 4;
+export const PBR_UV_OFFSET: int32 = PBR_VALUES + 8;
+export const PBR_UV_SCROLL: int32 = PBR_VALUES + 10;
+export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 12;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {

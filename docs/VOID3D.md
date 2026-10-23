@@ -5731,10 +5731,15 @@ pixel; a material factor of 0 is refused (`material.ms` `pbrBlock`, `gltf.ms` `l
 Heaps' BRDF has no guard (`BRDF.hx:48-53`) and the port invents no floor. Opt-in: the importer's
 `Pbr` mode reads `pbrMetallicRoughness`; the legacy lambert look is unchanged. Block layout: the pbr
 block is `MATERIAL_UNIFORM_LENGTH` plus one vec4 (`PBR_METALNESS`, `PBR_ROUGHNESS`, `PBR_OCCLUSION`,
-`PBR_OCCLUSION_STRENGTH`), and an emissive pbr key holds the emissive vec4 after the pbr one, at
+`PBR_OCCLUSION_STRENGTH`) and the UV transform (`PBR_UV_*`, laid out as `MOVING_UV_*`), and an emissive pbr key holds the emissive vec4 after the pbr one, at
 `emissiveBase` (`gltfScene.ms` `gltfBlockOf`). Skinned pbr is declared with every combination of
-CUTOUT, SHADOWED, NORMAL_MAP and PBR_MAPS (`programKeys.txt`), but not with EMISSIVE. A pbr material with a
-UV transform, or a skinned pbr material that emits, is refused by name, `GltfSceneError.PbrFeatureRefused`, before anything is made. Look: the pbr diffuse
+CUTOUT, SHADOWED, NORMAL_MAP and PBR_MAPS (`programKeys.txt`), but not with EMISSIVE. A skinned pbr
+material that emits is refused by name, `GltfSceneError.PbrFeatureRefused`, before anything is made.
+Every pbr key reads its UV transform from its own block, identity by default, as Bevy's
+`StandardMaterial.uv_transform` (`pbr_material.rs:790`, applied unconditionally at
+`pbr_fragment.wesl:131`): one program serves a moving and a still pbr material, where a UV_TRANSFORM
+key bit would have doubled every pbr row. A pbr key never takes the moving block (`withUvTransform`
+and `withPbr` refuse the mix), and its scroll keeps the frame time as the moving block's does. Look: the pbr diffuse
 is `albedo / pi` (Heaps' convention), so a pbr material reads about pi dimmer than the same albedo
 under the legacy lambert, which is why the path is opt-in; no compensation was added. Acceptance:
 `pbrLitCheck` 15, `pbrMapsCheck` 7, `gltfPbrMaterialCheck` 6, `gltfPbrSceneCheck` 12.
@@ -5784,7 +5789,7 @@ collider file here: the posed-mesh ray query is `skinGeometry.ms` `rayIntersecti
 
 **Not built, recorded.**
 - Morph on a primitive with generated tangents.
-- Pbr with a UV transform; roughness 0; environment and image-based lighting, so the pbr indirect
+- Roughness 0; environment and image-based lighting, so the pbr indirect
   term is a flat ambient only; any compensation for the pi factor.
 - Texture mips: automatic mip generation, so a caller supplies every level (Heaps calls the driver's
   `generateMipMaps`; sokol has no equivalent, so it is a new mechanism for the person); `lodBias`

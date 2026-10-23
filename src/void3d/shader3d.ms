@@ -194,16 +194,21 @@ export struct MovingMaterialParams {
 	dissolveEdge: Vec4f;
 }
 
-// gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z.
+// gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
+// UV transform every pbr key reads.
 export struct PbrMaterialParams {
 	material: Vec4f;
 	pbr: Vec4f;
+	uvMatrix: Vec4f;
+	uvMotion: Vec4f;
 }
 
 // gpu3d.ms PBR_* then EMISSIVE_*: a pbr key that emits holds the emissive vec4 after the pbr one.
 export struct PbrEmissiveMaterialParams {
 	material: Vec4f;
 	pbr: Vec4f;
+	uvMatrix: Vec4f;
+	uvMotion: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -1129,18 +1134,34 @@ export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
 }
 
 export function uvMatrixOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.emissive) {
-		return b.movingEmissiveMaterialParams.uvMatrix;
+	if (key.pbr) {
+		if (key.emissive) {
+			return b.pbrEmissiveMaterialParams.uvMatrix;
+		} else {
+			return b.pbrMaterialParams.uvMatrix;
+		}
 	} else {
-		return b.movingMaterialParams.uvMatrix;
+		if (key.emissive) {
+			return b.movingEmissiveMaterialParams.uvMatrix;
+		} else {
+			return b.movingMaterialParams.uvMatrix;
+		}
 	}
 }
 
 export function uvMotionOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.emissive) {
-		return b.movingEmissiveMaterialParams.uvMotion;
+	if (key.pbr) {
+		if (key.emissive) {
+			return b.pbrEmissiveMaterialParams.uvMotion;
+		} else {
+			return b.pbrMaterialParams.uvMotion;
+		}
 	} else {
-		return b.movingMaterialParams.uvMotion;
+		if (key.emissive) {
+			return b.movingEmissiveMaterialParams.uvMotion;
+		} else {
+			return b.movingMaterialParams.uvMotion;
+		}
 	}
 }
 
@@ -1443,7 +1464,7 @@ export function litTexturedFs(
 ): LitOutput {
 	const params = materialOf(b, key);
 	let uv = input.surfaceUv;
-	if (key.uvTransform) {
+	if (key.uvTransform || key.pbr) {
 		const time = b.frameParams.frame.x;
 		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
 	}

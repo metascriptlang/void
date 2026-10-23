@@ -634,12 +634,16 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
     vec4 pbr;
+    vec4 uvMatrix;
+    vec4 uvMotion;
 };
 #endif
 #if defined(PBR) && defined(EMISSIVE)
 layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 material;
     vec4 pbr;
+    vec4 uvMatrix;
+    vec4 uvMotion;
     vec4 emissive;
 };
 #endif
@@ -961,7 +965,7 @@ layout(binding=3) uniform materialParams {
     vec4 material;
 };
 #endif
-#if (defined(UV_TRANSFORM) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
+#if (!defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -978,7 +982,7 @@ layout(binding=3) uniform emissiveMaterialParams {
     vec4 emissive;
 };
 #endif
-#if (defined(UV_TRANSFORM) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE))
+#if (!defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE))
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
     vec4 uvMatrix;
@@ -994,12 +998,16 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
     vec4 pbr;
+    vec4 uvMatrix;
+    vec4 uvMotion;
 };
 #endif
 #if defined(PBR) && defined(EMISSIVE)
 layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 material;
     vec4 pbr;
+    vec4 uvMatrix;
+    vec4 uvMotion;
     vec4 emissive;
 };
 #endif
@@ -1091,19 +1099,35 @@ vec2 movedUv(vec2 uv, vec4 matrix, vec4 motion, float time) {
 #endif
 #ifdef UV_TRANSFORM
 vec4 uvMatrixOf() {
+#ifdef PBR
 #ifdef EMISSIVE
     return uvMatrix;
 #else
     return uvMatrix;
+#endif
+#else
+#ifdef EMISSIVE
+    return uvMatrix;
+#else
+    return uvMatrix;
+#endif
 #endif
 }
 #endif
 #ifdef UV_TRANSFORM
 vec4 uvMotionOf() {
+#ifdef PBR
 #ifdef EMISSIVE
     return uvMotion;
 #else
     return uvMotion;
+#endif
+#else
+#ifdef EMISSIVE
+    return uvMotion;
+#else
+    return uvMotion;
+#endif
 #endif
 }
 #endif

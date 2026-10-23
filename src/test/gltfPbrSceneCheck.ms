@@ -1,6 +1,5 @@
 // Imported pbr materials in the scene: the key and block gltfScene.ms makes of GltfMaterial.pbr,
-// and the combinations the build has no pbr program or block layout for, refused by name before
-// anything is made.
+// and the combinations the build has no pbr program for, refused by name before anything is made.
 
 import { FilterMode, Wrap, RenderState } from "../gpu/state";
 import { vec3 } from "../math/math3d";
@@ -35,6 +34,9 @@ import {
 	PBR_OCCLUSION,
 	PBR_MATERIAL_UNIFORM_LENGTH,
 	PBR_OCCLUSION_STRENGTH,
+	PBR_UV_MATRIX,
+	PBR_UV_OFFSET,
+	PBR_UV_SCROLL,
 	EMISSIVE_COLOR,
 	EMISSIVE_LENGTH,
 	EMISSIVE_STRENGTH,
@@ -176,15 +178,26 @@ test "a pbr material with an emissive map keeps the emissive vec4 after the pbr 
 	assert full[emissiveBase(both) + EMISSIVE_STRENGTH] == 3.0;
 }
 
-test "a pbr material that moves its UV has no block layout and is refused by name" {
-	const shifted: GltfTextureTransform = { ...IDENTITY_TEXTURE_TRANSFORM, offsetU: 0.5 };
+test "a pbr material that moves its UV keeps its key and writes the transform in its own block" {
+	const shifted: GltfTextureTransform =
+		{ ...IDENTITY_TEXTURE_TRANSFORM, offsetU: 0.5, scaleV: 2.0 };
 	let moved: GltfMaterial = pbrMaterial(0.5, 0.5, 0);
 	moved.uvTransform = shifted;
-	assert !declares(gltfProgramOf(moved));
-	assert refusalOf(moved) == GltfSceneError.PbrFeatureRefused;
+	const key: ProgramKey = gltfProgramOf(moved);
+	assert key == gltfProgramOf(pbrMaterial(0.5, 0.5, 0)) && !key.uvTransform && declares(key);
+	const block: Vec<float32> = gltfBlockOf(setupOf(), moved, key);
+	assert (block.length as int32) == uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
+	assert block[PBR_UV_MATRIX] == 1.0 && block[PBR_UV_MATRIX + 3] == 2.0;
+	assert block[PBR_UV_OFFSET] == 0.5 && block[PBR_UV_SCROLL] == 0.0;
+	const still: Vec<float32> = gltfBlockOf(setupOf(), pbrMaterial(0.5, 0.5, 0), key);
+	assert still[PBR_UV_MATRIX] == 1.0 && still[PBR_UV_MATRIX + 3] == 1.0;
+	assert still[PBR_UV_OFFSET] == 0.0;
 	let both: GltfMaterial = emittingMaterial();
 	both.uvTransform = shifted;
-	assert refusalOf(both) == GltfSceneError.PbrFeatureRefused;
+	const emitting: ProgramKey = gltfProgramOf(both);
+	const lit: Vec<float32> = gltfBlockOf(setupOf(), both, emitting);
+	assert (lit.length as int32) == uniformBlockLength(emitting, MATERIAL_UNIFORM_SLOT);
+	assert lit[PBR_UV_OFFSET] == 0.5 && lit[emissiveBase(emitting) + EMISSIVE_STRENGTH] == 3.0;
 }
 
 function pushBits(ref bytes: Vec<uint8>, bits: uint32): void {
@@ -269,12 +282,13 @@ test "a skinned pbr material has declared skinned programs, shadowed or not, cut
 	assert key.pbrMaps && key.normalMap && declares(key) && declares({ ...key, shadowed: false });
 }
 
-test "a skinned pbr material that also emits or moves its UV is refused by name, before anything is made" {
+test "a skinned pbr material that also emits is refused by name, before anything is made" {
 	assert !declares(gltfProgramOf(emittingMaterial()).withSkin());
 	assert skinnedRefusalOf(emittingMaterial()) == GltfSceneError.PbrFeatureRefused;
 	let moved: GltfMaterial = pbrMaterial(0.5, 0.5, 0);
 	moved.uvTransform = { ...IDENTITY_TEXTURE_TRANSFORM, offsetU: 0.5 };
-	assert skinnedRefusalOf(moved) == GltfSceneError.PbrFeatureRefused;
+	const skinned: ProgramKey = gltfProgramOf(moved).withSkin();
+	assert declares(skinned) && declares({ ...skinned, shadowed: false });
 	assert skinnedRefusalOf(pbrMaterial(0.5, 0.0, 0)) == GltfSceneError.PbrValueRefused;
 }
 
