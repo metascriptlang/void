@@ -380,8 +380,10 @@ The performance clause of "End-game done when" is read from the `tests/bench` en
 ```sh
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build        # d3d11 and gl, CPU only
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build linux  # both sides in WSL, CPU only
+bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build web    # wasm of both sides, wgpu and gl, CPU only (about 6 min)
 AB_BACKENDS="d3d11 gl linux" sh scripts/abBench.sh run 5                         # opens windows: only inside a granted GO
 AB_BACKENDS=linux AB_LINUX_DRIVER=llvmpipe sh scripts/abBench.sh run 5          # the software-GL alternative
+AB_BACKENDS="web-wgpu web-gl" sh scripts/abBench.sh run 5                       # headless Chrome on the GPU: only inside a granted GO
 sh scripts/abBench.sh clean                                                     # deletes $TEMP/voidAB and the main worktree
 ```
 
@@ -399,6 +401,16 @@ sh scripts/abBench.sh clean                                                     
   regression; read it); a row one side lacks is `ONLY-A`/`ONLY-B`; identical counters are counted,
   not listed. The `present.ms` verdict lines and the arguments of existing callers are unchanged.
   Raw rows: `$TEMP/voidAB/raw-<label>.tsv`.
+- **Web**: `build web` runs each tree's own `scripts/build-web.sh` (identical on both sides today) per
+  scene and backend with `VOID_WEB_ENTRY=tests/bench/bench<Scene>.ms`, the `assets` and `tests/fonts`
+  preloads of the golden runner, and the same `-d:webgpu` / `-d:webgl2` defines, into
+  `$TEMP/voidAB/web/<side>/<wgpu|gl>/bench<Scene>.{js,wasm,data}`. `run` hands `bench-ab.sh` the
+  driver `scripts/webBench.mjs <wgpu|gl>` as `AB_RUN` (this tree's driver for both sides), so the
+  `bench<Scene>.exe` path it passes is only a name: the driver serves that directory, loads
+  `bench<Scene>.js` in headless Chrome, waits until the `present.ms` row has been logged and the log
+  has been quiet for 1 s, and prints the rows. Its row filter is unit-tested without a browser
+  (`node --test scripts/webBench.test.mjs`). Labels are `web-wgpu` and `web-gl`; raw rows
+  `$TEMP/voidAB/raw-web-<backend>.tsv`.
 - **Linux driver**: `GALLIUM_DRIVER=d3d12` (Mesa's d3d12 on the real GPU, the default) or
   `AB_LINUX_DRIVER=llvmpipe`, set by a wrapper in `~/voidAB`. Before the rows, `glxinfo -B` runs under
   the same wrapper; a renderer string that is not D3D12 (or llvmpipe) voids the whole Linux row and
@@ -411,8 +423,10 @@ Not covered:
   `src/gpu/door.c`, no Linux backend define) and `run` skips Linux with that reason: the Linux
   rows exist on B only and no A/B is possible until main grows one or the comparison is made
   against another Linux baseline.
-- **Web (wgpu, webgl2):** no bench path runs in a browser; `scripts/webGolden.mjs` and
-  `web-liveness.sh` judge pixels and liveness, and `tests/bench/wasm.json` is a size record.
+- **Web run:** the wasm builds exist on both sides, but the driver has not yet run in Chrome; the first
+  GO also settles whether headless Chrome throttles `requestAnimationFrame` (the rows are CPU
+  milliseconds, but a slow frame loop lengthens a run) and whether `Module.onExit` fires, which the
+  driver does not depend on. WebGPU with no adapter yields no rows and the pair is `BROKEN`.
 - **Metal:** another machine and another GO.
 - **Particles and module scenes:** `benchParticles.ms` is on main's tip only, and TextEmoji,
   TextOutline and TextSdf need module defines; `AB_SCENES` can name them but the build passes none.

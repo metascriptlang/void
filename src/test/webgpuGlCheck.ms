@@ -1,6 +1,5 @@
 import {
 	DUMMY_SAMPLER_BINDING,
-	GPUBindGroup,
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBuffer,
@@ -8,8 +7,6 @@ import {
 	GPUDevice,
 	GPU_NO_QUERY_INDEX,
 	GPUMapMode,
-	GPURenderPassEncoder,
-	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
 	GPUSampler,
@@ -21,23 +18,39 @@ import {
 } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
 import { nativeTexture, bindStats } from "../webgpu/gl/backend.ms";
+import {
+	BLUE,
+	GREEN,
+	RED,
+	SIZE,
+	clearingPass,
+	colourTarget,
+	colourUniforms,
+	drawTriangleIn,
+	pixel,
+	readBack,
+	readCounters,
+	readbackBuffer,
+	resolveBuffer,
+	texelAt,
+	texels,
+	uniformGroup,
+	vertexBuffer,
+} from "./webgpuFixtures.ms";
 import { glWindowError, glWindowOpen, glWindowReadback } from "./glWindow.h";
 
 @passL("-lopengl32");
 @passL("-lgdi32");
 @passL("-luser32");
 
-const SIZE = 64;
-const BLUE: uint32 = 0x0000FFFF;
-const RED: uint32 = 0xFF0000FF;
-const GREEN: uint32 = 0x00FF00FF;
 const WHITE: uint32 = 0xFFFFFFFF;
 
 const VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); }\n";
 const FRAGMENT_GLSL = "#version 430\nuniform vec4 params[1];\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = params[0]; }\n";
 const TEXTURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 position;\nout vec2 uv;\nvoid main() { gl_Position = vec4(position, 0.0, 1.0); uv = position * 0.5 + 0.5; }\n";
 const TEXTURED_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_smp;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texture(tex_smp, uv); }\n";
-const DUMMY_FRAGMENT_GLSL = "#version 430
+
+const DUMMY_FRAGMENT_GLSL = "#version 430
 layout(binding = 0) uniform sampler2D tex_SPIRV_Cross_DummySampler;
 in vec2 uv;
 layout(location = 0) out vec4 frag_color;
@@ -115,33 +128,6 @@ function flatPipeline(device: GPUDevice, module: GPUShaderModule, sampleCount: i
 	return device.createRenderPipeline(descriptor);
 }
 
-function colourUniforms(device: GPUDevice): GPUBuffer {
-	const buffer = device.createBuffer({
-		label: "colours",
-		size: 512,
-		usage: (GPUBufferUsage.UNIFORM as int32) | (GPUBufferUsage.COPY_DST as int32),
-	});
-	const red: Vec<float32> = [1.0, 0.0, 0.0, 1.0];
-	const green: Vec<float32> = [0.0, 1.0, 0.0, 1.0];
-	device.queue.writeBuffer(buffer, 0, red);
-	device.queue.writeBuffer(buffer, 256, green);
-	return buffer;
-}
-
-function uniformGroup(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer): GPUBindGroup {
-	let descriptor: GPUBindGroupDescriptor = { label: "colours", layout: pipeline.getBindGroupLayout(0) };
-	descriptor.entries[0] = { binding: 0, buffer: uniforms, size: 16 };
-	return device.createBindGroup(descriptor);
-}
-
-function vertexBuffer(device: GPUDevice, size: int64): GPUBuffer {
-	return device.createBuffer({
-		label: "vertices",
-		size: size,
-		usage: (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_DST as int32),
-	});
-}
-
 function fullScreenQuad(device: GPUDevice): GPUBuffer {
 	const vertices = vertexBuffer(device, 48);
 	const quad: Vec<float32> = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
@@ -149,38 +135,10 @@ function fullScreenQuad(device: GPUDevice): GPUBuffer {
 	return vertices;
 }
 
-function colourTarget(device: GPUDevice, sampleCount: int32): GPUTexture {
-	return device.createTexture({
-		label: "target",
-		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
-		format: "rgba8unorm",
-		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
-		sampleCount: sampleCount,
-	});
-}
-
-function clearingPass(view: GPUTextureView, resolve: GPUTextureView): GPURenderPassDescriptor {
-	let descriptor: GPURenderPassDescriptor = { label: "pass" };
-	descriptor.colorAttachments[0] = {
-		view: view,
-		resolveTarget: resolve,
-		clearValue: { r: 0.0, g: 0.0, b: 1.0, a: 1.0 },
-		loadOp: "clear",
-		storeOp: "store",
-	};
-	return descriptor;
-}
-
 function readPixelsBottomUp(texture: GPUTexture): Vec<uint8> {
 	let pixels: Vec<uint8> = new Array(SIZE * SIZE * 4);
 	if (glWindowReadback(nativeTexture(texture), pixels[0], SIZE, SIZE) != 1) { stopOnGl("the glReadPixels readback failed"); }
 	return pixels;
-}
-
-function pixel(pixels: Vec<uint8>, x: int32, y: int32): uint32 {
-	const at = (y * SIZE + x) * 4;
-	return ((pixels[at] as uint32) << 24) | ((pixels[at + 1] as uint32) << 16) |
-		((pixels[at + 2] as uint32) << 8) | (pixels[at + 3] as uint32);
 }
 
 function drawTriangle(device: GPUDevice, sampleCount: int32, dynamicOffset: uint32): Vec<uint8> {
@@ -546,37 +504,6 @@ test "setViewport, setBlendConstant and setStencilReference run inside a pass" {
 	device.destroy();
 }
 
-function texels(red: uint8, green: uint8, blue: uint8, count: int32): Vec<uint8> {
-	let bytes: Vec<uint8> = new Array(count * 4);
-	for (let i = 0; i < count; i++) {
-		bytes[i * 4] = red;
-		bytes[i * 4 + 1] = green;
-		bytes[i * 4 + 2] = blue;
-		bytes[i * 4 + 3] = 255;
-	}
-	return bytes;
-}
-
-
-function readBack(buffer: GPUBuffer): Vec<uint8> {
-	buffer.mapAsync(GPUMapMode.READ as int32, 0, 0);
-	const bytes = buffer.getMappedRange(0, 0);
-	buffer.unmap();
-	return bytes;
-}
-
-function readbackBuffer(device: GPUDevice, size: int64): GPUBuffer {
-	return device.createBuffer({
-		label: "readback",
-		size: size,
-		usage: (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.COPY_DST as int32),
-	});
-}
-
-function texelAt(bytes: Vec<uint8>, bytesPerRow: int32, x: int32, y: int32): uint32 {
-	const at = y * bytesPerRow + x * 4;
-	return ((bytes[at] as uint32) << 24) | ((bytes[at + 1] as uint32) << 16) | ((bytes[at + 2] as uint32) << 8) | (bytes[at + 3] as uint32);
-}
 
 test "a buffer range copies to a MAP_READ buffer and a mapped range reads it back" {
 	const device = openDevice();
@@ -959,41 +886,6 @@ test "labels and debug groups balance across an encoder, a render pass and a com
 	encoder.popDebugGroup();
 	device.queue.submit(encoder.finish());
 	device.destroy();
-}
-
-function resolveBuffer(device: GPUDevice, size: int64): GPUBuffer {
-	return device.createBuffer({
-		label: "resolved",
-		size: size,
-		usage: (GPUBufferUsage.QUERY_RESOLVE as int32) | (GPUBufferUsage.COPY_SRC as int32),
-	});
-}
-
-function readCounters(device: GPUDevice, resolved: GPUBuffer, count: int32): Vec<uint64> {
-	const readback = readbackBuffer(device, (count as int64) * 8);
-	const encoder = device.createCommandEncoder();
-	encoder.copyBufferToBuffer(resolved, 0, readback, 0, (count as int64) * 8);
-	device.queue.submit(encoder.finish());
-	const bytes = readBack(readback);
-	let values: Vec<uint64> = new Array(count);
-	for (let i = 0; i < count; i++) {
-		let value: uint64 = 0;
-		for (let b = 7; b >= 0; b--) { value = (value << 8) | (bytes[i * 8 + b] as uint64); }
-		values[i] = value;
-	}
-	return values;
-}
-
-function drawTriangleIn(device: GPUDevice, pipeline: GPURenderPipeline, pass: GPURenderPassEncoder): void {
-	const uniforms = colourUniforms(device);
-	const vertices = vertexBuffer(device, 24);
-	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
-	device.queue.writeBuffer(vertices, 0, triangle);
-	const offsets: Vec<uint32> = [0];
-	pass.setPipeline(pipeline);
-	pass.setVertexBuffer(0, vertices, 0);
-	pass.setBindGroup(0, uniformGroup(device, pipeline, uniforms), offsets);
-	pass.draw(3, 1, 0, 0);
 }
 
 test "two timestamps around a render pass and around a compute pass resolve to non-decreasing nanoseconds" {
