@@ -361,6 +361,11 @@ branch. Each one is checked here per file; the full gate has not run again yet.
     refuses `GPUSamplerDescriptor.compare` for Metal and `mtlNewSampler` takes no compare function;
     the need is `MTLSamplerDescriptor.compareFunction` (shader side prints `sample_compare`). D3D11,
     GL and wgpu already create comparison samplers.
+- **From the shader arc (2026-10-24), MSL never compiled:** `origin/wt/shader` (`c9833a2c`, on
+  `210a21c5`) prints MSL that has not met a Metal compiler. Pull it, run
+  `bash scripts/regen-shaders.sh` (it writes `out/irPrograms/*.metal` and `out/mslProbe/*.metal`),
+  then `xcrun metal -c` over each file, then the Metal goldens of gate3d and gate when your slot
+  allows. Report to the shader arc (session void-wt-shader-80), or here under "From the Mac".
 - **Linux build in WSL:** `msc` there is synced to `4b5816aea`. Yoga has no linux branch, so
   build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
   (libc++, as msc links) and pass it with `--passL`.
