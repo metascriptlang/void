@@ -7,6 +7,7 @@ import {
 	GPUBufferUsage,
 	GPUDevice,
 	GPUIndexFormat,
+	GPUVertexFormat,
 	GPUPrimitiveTopology,
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
@@ -672,5 +673,126 @@ test "an indexed triangle-strip draws with the strip index format of its pipelin
 	const quad32 = drawIndexedStrip(device, "uint32", wide);
 	assert pixel(quad32, 32, 32) == RED;
 	assert pixel(quad32, 62, 62) == BLUE;
+	device.destroy();
+}
+
+const FLOAT_COLOUR_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct In { float2 position [[attribute(0)]]; float4 color [[attribute(1)]]; };\nstruct Out { float4 position [[position]]; float4 color; };\nvertex Out cmain(In in [[stage_in]]) { Out out; out.position = float4(in.position, 0.0, 1.0); out.color = float4(in.color.rgb, 1.0); return out; }\nfragment float4 fcolour(Out in [[stage_in]]) { return in.color; }\n";
+const UINT_COLOUR_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct In { float2 position [[attribute(0)]]; uint4 color [[attribute(1)]]; };\nstruct Out { float4 position [[position]]; float4 color; };\nvertex Out cmain(In in [[stage_in]]) { Out out; out.position = float4(in.position, 0.0, 1.0); out.color = float4(float3(in.color.rgb) / 255.0, 1.0); return out; }\nfragment float4 fcolour(Out in [[stage_in]]) { return in.color; }\n";
+const SINT_COLOUR_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct In { float2 position [[attribute(0)]]; int4 color [[attribute(1)]]; };\nstruct Out { float4 position [[position]]; float4 color; };\nvertex Out cmain(In in [[stage_in]]) { Out out; out.position = float4(in.position, 0.0, 1.0); out.color = float4(float3(in.color.rgb) / 127.0, 1.0); return out; }\nfragment float4 fcolour(Out in [[stage_in]]) { return in.color; }\n";
+
+function upload<T>(device: GPUDevice, data: Vec<T>): GPUBuffer {
+	const buffer = vertexBuffer(device, (data.length as int64) * (sizeof T as int64));
+	device.queue.writeBuffer(buffer, 0, data);
+	return buffer;
+}
+
+function colourOfFormat(device: GPUDevice, code: string, format: GPUVertexFormat, stride: int32, colours: GPUBuffer): uint32 {
+	let shader: GPUShaderModuleDescriptor = {
+		label: "colour",
+		vertexCode: code,
+		vertexEntryPoint: "cmain",
+		fragmentCode: code,
+		fragmentEntryPoint: "fcolour",
+	};
+	shader.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	shader.attributes[1] = { location: 1, nativeName: null, semanticIndex: 1 };
+	const module = device.createShaderModule(shader);
+	let descriptor: GPURenderPipelineDescriptor = { label: "colour" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.vertex.buffers[1].arrayStride = stride;
+	descriptor.vertex.buffers[1].stepMode = "instance";
+	descriptor.vertex.buffers[1].attributes[0] = { format: format, offset: 0, shaderLocation: 1 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	const pipeline = device.createRenderPipeline(descriptor);
+	const positions = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-1.0, -1.0, -1.0, 3.0, 3.0, -1.0];
+	device.queue.writeBuffer(positions, 0, triangle);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, positions, 0);
+	pass.setVertexBuffer(1, colours, 0);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return pixel(readPixels(target), 32, 32);
+}
+
+test "float, unorm, snorm and half vertex formats reach a float4 attribute, narrower ones padded with 0 and 1" {
+	const device = openDevice();
+	const one: Vec<float32> = [1.0];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "float32", 4, upload(device, one)) == RED;
+	const f2: Vec<float32> = [0.0, 1.0];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "float32x2", 8, upload(device, f2)) == GREEN;
+	const f3: Vec<float32> = [0.0, 1.0, 0.0];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "float32x3", 12, upload(device, f3)) == GREEN;
+	const f4: Vec<float32> = [0.0, 1.0, 0.0, 1.0];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "float32x4", 16, upload(device, f4)) == GREEN;
+	const un8x2: Vec<uint8> = [0, 255, 0, 0];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "unorm8x2", 4, upload(device, un8x2)) == GREEN;
+	const un8x4: Vec<uint8> = [0, 255, 0, 255];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "unorm8x4", 4, upload(device, un8x4)) == GREEN;
+	const sn8x2: Vec<int8> = [0, 127, 0, 0];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "snorm8x2", 4, upload(device, sn8x2)) == GREEN;
+	const sn8x4: Vec<int8> = [0, 127, 0, 127];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "snorm8x4", 4, upload(device, sn8x4)) == GREEN;
+	const un16x2: Vec<uint16> = [0, 65535];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "unorm16x2", 4, upload(device, un16x2)) == GREEN;
+	const un16x4: Vec<uint16> = [0, 65535, 0, 65535];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "unorm16x4", 8, upload(device, un16x4)) == GREEN;
+	const sn16x2: Vec<int16> = [0, 32767];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "snorm16x2", 4, upload(device, sn16x2)) == GREEN;
+	const sn16x4: Vec<int16> = [0, 32767, 0, 32767];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "snorm16x4", 8, upload(device, sn16x4)) == GREEN;
+	const h2: Vec<uint16> = [0, 0x3C00];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "float16x2", 4, upload(device, h2)) == GREEN;
+	const h4: Vec<uint16> = [0, 0x3C00, 0, 0x3C00];
+	assert colourOfFormat(device, FLOAT_COLOUR_MSL, "float16x4", 8, upload(device, h4)) == GREEN;
+	device.destroy();
+}
+
+test "uint vertex formats reach a uint4 attribute at every width" {
+	const device = openDevice();
+	const u8x2: Vec<uint8> = [0, 255, 0, 0];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint8x2", 4, upload(device, u8x2)) == GREEN;
+	const u8x4: Vec<uint8> = [0, 255, 0, 255];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint8x4", 4, upload(device, u8x4)) == GREEN;
+	const u16x2: Vec<uint16> = [0, 255];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint16x2", 4, upload(device, u16x2)) == GREEN;
+	const u16x4: Vec<uint16> = [0, 255, 0, 255];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint16x4", 8, upload(device, u16x4)) == GREEN;
+	const u32: Vec<uint32> = [255];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint32", 4, upload(device, u32)) == RED;
+	const u32x2: Vec<uint32> = [0, 255];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint32x2", 8, upload(device, u32x2)) == GREEN;
+	const u32x3: Vec<uint32> = [0, 255, 0];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint32x3", 12, upload(device, u32x3)) == GREEN;
+	const u32x4: Vec<uint32> = [0, 255, 0, 255];
+	assert colourOfFormat(device, UINT_COLOUR_MSL, "uint32x4", 16, upload(device, u32x4)) == GREEN;
+	device.destroy();
+}
+
+test "sint vertex formats reach an int4 attribute at every width" {
+	const device = openDevice();
+	const s8x2: Vec<int8> = [0, 127, 0, 0];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint8x2", 4, upload(device, s8x2)) == GREEN;
+	const s8x4: Vec<int8> = [0, 127, 0, 127];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint8x4", 4, upload(device, s8x4)) == GREEN;
+	const s16x2: Vec<int16> = [0, 127];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint16x2", 4, upload(device, s16x2)) == GREEN;
+	const s16x4: Vec<int16> = [0, 127, 0, 127];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint16x4", 8, upload(device, s16x4)) == GREEN;
+	const s32: Vec<int32> = [127];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint32", 4, upload(device, s32)) == RED;
+	const s32x2: Vec<int32> = [0, 127];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint32x2", 8, upload(device, s32x2)) == GREEN;
+	const s32x3: Vec<int32> = [0, 127, 0];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint32x3", 12, upload(device, s32x3)) == GREEN;
+	const s32x4: Vec<int32> = [0, 127, 0, 127];
+	assert colourOfFormat(device, SINT_COLOUR_MSL, "sint32x4", 16, upload(device, s32x4)) == GREEN;
 	device.destroy();
 }
