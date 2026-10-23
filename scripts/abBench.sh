@@ -67,7 +67,7 @@ buildWeb() {
 				dir="${backend#web-}"
 				rm -f "$OUT/web/$side/$dir/bench$scene".*
 				mkdir -p "$OUT/web/$side/logs"
-				(cd "$tree" && VOID_WEB_ENTRY="tests/bench/bench$scene.ms" VOID_WEB_DEST="$OUT/web/$side" 					VOID_WEB_BACKENDS="$dir" VOID_WEB_LOGDIR="$OUT/web/$side/logs" MSC="$MSC" 					VOID_WEB_PRELOAD="--preload-file assets --preload-file tests/fonts" 					sh scripts/build-web.sh) > "$OUT/web/$side/build$scene-$dir.log" 2>&1 || true
+				(cd "$tree" && VOID_WEB_MSCFLAGS="--release" VOID_WEB_ENTRY="tests/bench/bench$scene.ms" VOID_WEB_DEST="$OUT/web/$side" 					VOID_WEB_BACKENDS="$dir" VOID_WEB_LOGDIR="$OUT/web/$side/logs" MSC="$MSC" 					VOID_WEB_PRELOAD="--preload-file assets --preload-file tests/fonts" 					sh scripts/build-web.sh) > "$OUT/web/$side/build$scene-$dir.log" 2>&1 || true
 				if [ -f "$OUT/web/$side/$dir/bench$scene.js" ] && [ -f "$OUT/web/$side/$dir/bench$scene.wasm" ]; then
 					echo "BUILD ok   $backend $side $scene"
 				else
