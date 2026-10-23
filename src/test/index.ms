@@ -142,6 +142,7 @@ import "./particleWriterCheck";
 import "./particleTrailCheck";
 import "./particleUnityCheck";
 import "./particleModeCheck";
+import "./particleMeshCheck";
 import "./particleFromHeapsCheck";
 import "./particleUnityPrefabCheck";
 import "./layoutCheck";
