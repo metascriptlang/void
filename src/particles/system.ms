@@ -148,7 +148,7 @@ export struct ParticleSystem {
 	time: float64;
 	cycle: int32;
 	delayLeft: float64;
-	emitCarry: float64;
+	emitCarry: float32;
 	distanceCarry: float64;
 	stepIndex: uint32;
 	clock: StepClock;
@@ -379,6 +379,8 @@ export function isAlive(this sys: ParticleSystem): boolean {
 	return sys.playing || sys.count > 0;
 }
 
+const PREWARM_MAX_STEP: float32 = 0.03;
+
 // ParticleSystem.Play: starts a cycle from time 0, draws the start delay once, and prewarms.
 export function playSystem(ref sys: ParticleSystem, world: Mat4): void {
 	sys.playing = true;
@@ -399,8 +401,11 @@ export function playSystem(ref sys: ParticleSystem, world: Mat4): void {
 		sys.trails = TrailRings.create(sys.capacity, (Math.ceil(maxTrailSeconds(sys) / h) as int32) + 2);
 	}
 	if (sys.asset.main.prewarm) {
-		const h: float64 = sys.clock.fixedStep > 0.0 ? sys.clock.fixedStep : DEFAULT_STEP;
-		const steps: int32 = Math.ceil(sys.asset.main.duration as float64 / h) as int32;
+		// One cycle in equal steps of at most Unity's maximumParticleDeltaTime, whatever the fixed step
+		// (tests/unity/goldens/prewarm_rate10_life1).
+		const duration: float32 = sys.asset.main.duration;
+		const steps: int32 = Math.ceil((duration / PREWARM_MAX_STEP) as float64) as int32;
+		const h: float64 = (duration / (steps as float32)) as float64;
 		for (let k = 0; k < steps; k++) { step(sys, h); }
 	}
 }
@@ -479,10 +484,11 @@ function frameFraction(at: float64, dt: float64): float32 {
 	return saturate((at / dt) as float32);
 }
 
-// The emitter matrix `age` seconds before the end of the current step of length `h`.
-function emitterAt(sys: ParticleSystem, age: float32, h: float32): Mat4 {
-	const back: float32 = h > 0.0 ? saturate(age / h) : 0.0;
-	const p: Vec3 = sys.stepTo.lerp(sys.stepFrom, back);
+// The emitter matrix `age` seconds before the end of the current step: the step's end moved back
+// by the emitter velocity, which Inherit Velocity also reads, so a Custom velocity shifts a spawn
+// of a static emitter too (tests/unity/goldens/tie_world_*).
+function emitterAt(sys: ParticleSystem, age: float32): Mat4 {
+	const p: Vec3 = sys.stepTo - sys.emitterVelocity.scaled(age);
 	return { ...sys.world, m41: p.x, m42: p.y, m43: p.z };
 }
 
@@ -511,8 +517,9 @@ function normalizedTime(sys: ParticleSystem): float32 {
 	return saturate((sys.time / (sys.asset.main.duration as float64)) as float32);
 }
 
-// Start delay, then the cycle clock: a step that crosses the end of a looping cycle emits over
-// two spans, so a burst at 0 fires on every loop and one just before the end fires before the wrap.
+// Start delay, then the cycle clock, kept in float32 as Unity's is: `sys.time` holds a float32
+// value, each step adds the step as float32, and a step that reaches the end of a looping cycle
+// wraps by subtracting the duration (tests/unity/goldens/tie_*).
 function advanceTime(ref sys: ParticleSystem, h: float64): void {
 	let dt: float64 = h;
 	if (sys.delayLeft > 0.0) {
@@ -522,90 +529,107 @@ function advanceTime(ref sys: ParticleSystem, h: float64): void {
 		sys.delayLeft = 0.0;
 	}
 	if (!sys.emitting) { return; }
-	const duration: float64 = sys.asset.main.duration as float64;
-	const t0: float64 = sys.time;
-	const t1: float64 = t0 + dt;
-	if (t1 < duration) {
-		emitSpan(sys, t0, t1, 0.0, h);
-		sys.time = t1;
+	const duration: float32 = sys.asset.main.duration;
+	const t0: float32 = sys.time as float32;
+	const t1: float32 = t0 + (dt as float32);
+	const wraps: boolean = !(t1 < duration);
+	emitStep(sys, t0, t1, h);
+	if (!wraps) {
+		sys.time = t1 as float64;
 		return;
 	}
-	emitSpan(sys, t0, duration, t1 - duration, h);
 	if (!sys.asset.main.loop) {
-		sys.time = duration;
+		sys.time = duration as float64;
 		sys.emitting = false;
 		return;
 	}
 	sys.cycle = sys.cycle + 1;
-	let rest: float64 = t1 - duration;
+	let rest: float32 = t1 - duration;
 	while (rest >= duration) {
 		rest = rest - duration;
 		sys.cycle = sys.cycle + 1;
 	}
-	emitSpan(sys, 0.0, rest, 0.0, h);
-	sys.time = rest;
+	emitBursts(sys, 0.0, rest, 0.0, h as float32);
+	sys.time = rest as float64;
 }
 
-// Emission over the cycle span [a, b), which ends `after` seconds before the step does. Rate
-// spawns carry the fractional count to the next span and are placed at their own instants;
-// a burst spawns at its time; both are pre-advanced to the end of the step.
-function emitSpan(ref sys: ParticleSystem, a: float64, b: float64, after: float64, h: float64): void {
+// Emission over one step from cycle time `t0` to `t1`, which may pass the end of the cycle.
+// Rate spawns carry the fractional count in float32 over the step's own length, so a spawn that
+// falls exactly on a step end lands in the next step, as Unity's does (tests/unity/goldens/tie_emission_*),
+// and are placed at their own instants; bursts are placed by emitBursts.
+function emitStep(ref sys: ParticleSystem, t0: float32, t1: float32, h: float64): void {
 	const emission = sys.asset.emission;
-	if (!emission.enabled || !(b > a)) { return; }
-	const duration: float64 = sys.asset.main.duration as float64;
-	const cycleN: float32 = saturate((a / duration) as float32);
-	const rateDraw: float32 = unitDraw(mix(sys.systemSeed, sys.stepIndex), DRAW_RATE);
-	const rate: float64 = sys.curves.rateOverTime.evaluate(cycleN, rateDraw) as float64;
-	const span: float64 = b - a;
+	if (!emission.enabled) { return; }
+	const duration: float32 = sys.asset.main.duration;
+	const wraps: boolean = !(t1 < duration);
+	const last: boolean = wraps && !sys.asset.main.loop;
+	const end: float32 = wraps ? duration : t1;
+	const after: float32 = wraps ? t1 - duration : 0.0;
+	const span: float32 = last ? duration - t0 : t1 - t0;
 	const hs: float32 = h as float32;
-	if (rate > 0.0) {
+	const cycleN: float32 = saturate(t0 / duration);
+	const rateDraw: float32 = unitDraw(mix(sys.systemSeed, sys.stepIndex), DRAW_RATE);
+	const rate: float32 = sys.curves.rateOverTime.evaluate(cycleN, rateDraw);
+	if (rate > 0.0 && span > 0.0) {
 		sys.emitCarry = sys.emitCarry + rate * span;
-		const n: int32 = Math.floor(sys.emitCarry) as int32;
-		sys.emitCarry = sys.emitCarry - (n as float64);
+		const n: int32 = Math.floor(sys.emitCarry as float64) as int32;
+		sys.emitCarry = sys.emitCarry - (n as float32);
 		for (let k = n - 1; k >= 0; k--) {
-			// The k-th most recent spawn of the span, oldest first.
-			const back: float64 = (sys.emitCarry + (k as float64)) / rate;
-			const age: float32 = ((back < span ? back : span) + after) as float32;
-			const at: float32 = saturate(((b - back) / duration) as float32);
-			spawnParticle(sys, age, at, hs, { index: n - 1 - k, count: n, arcTimer: 0.0, radiusTimer: 0.0 });
+			// The k-th most recent spawn of the step, oldest first.
+			const back: float32 = (sys.emitCarry + (k as float32)) / rate;
+			const age: float32 = (back < span ? back : span) + (last ? t1 - duration : 0.0);
+			let at: float32 = t1 - (last ? t1 - duration : 0.0) - (back < span ? back : span);
+			if (at >= duration) { at = at - duration; }
+			spawnParticle(sys, age, saturate(at / duration), hs, { index: n - 1 - k, count: n, arcTimer: 0.0, radiusTimer: 0.0 });
 		}
 	}
 	const distanceRate: float32 = sys.curves.rateOverDistance.evaluate(cycleN, rateDraw);
-	if (distanceRate > 0.0) {
+	if (distanceRate > 0.0 && end > t0) {
+		const spanD: float64 = (end - t0) as float64;
 		const moved: float32 = (sys.stepTo - sys.stepFrom).length();
-		const share: float64 = h > 0.0 ? span / h : 1.0;
+		const share: float64 = h > 0.0 ? spanD / h : 1.0;
 		sys.distanceCarry = sys.distanceCarry + ((distanceRate * moved) as float64) * share;
 		const n: int32 = Math.floor(sys.distanceCarry) as int32;
 		sys.distanceCarry = sys.distanceCarry - (n as float64);
 		for (let k = 0; k < n; k++) {
-			const back: float64 = span * (((n - k) as float64) - 0.5) / (n as float64);
-			spawnParticle(sys, (back + after) as float32, cycleN, hs, { index: k, count: n, arcTimer: 0.0, radiusTimer: 0.0 });
+			const back: float64 = spanD * (((n - k) as float64) - 0.5) / (n as float64);
+			spawnParticle(sys, (back + (after as float64)) as float32, cycleN, hs, { index: k, count: n, arcTimer: 0.0, radiusTimer: 0.0 });
 		}
 	}
-	for (let i = 0; i < (emission.bursts.length as int32); i++) {
-		emitBurst(sys, i, a, b, after, hs);
+	emitBursts(sys, t0, end, after, hs);
+}
+
+function emitBursts(ref sys: ParticleSystem, a: float32, b: float32, after: float32, h: float32): void {
+	if (!sys.asset.emission.enabled || !(b > a)) { return; }
+	for (let i = 0; i < (sys.asset.emission.bursts.length as int32); i++) {
+		emitBurst(sys, i, a, b, after, h);
 	}
 }
 
-function emitBurst(ref sys: ParticleSystem, index: int32, a: float64, b: float64, after: float64, h: float32): void {
+// The bursts due in the cycle span [a, b), which ends `after` seconds before the step does. The
+// first occurrence of a burst is placed at its own time; a repeat, or any occurrence in a later
+// cycle, is placed at the start of the step that holds it (tests/unity/goldens/tie_burst_*, burst_cycles,
+// burst_loop_t0).
+function emitBurst(ref sys: ParticleSystem, index: int32, a: float32, b: float32, after: float32, h: float32): void {
 	const burst: Burst = sys.asset.emission.bursts[index];
-	const duration: float64 = sys.asset.main.duration as float64;
-	const interval: float64 = burst.repeatInterval as float64;
+	const duration: float32 = sys.asset.main.duration;
+	const interval: float32 = burst.repeatInterval;
 	let j: int32 = 0;
-	if (burst.cycleCount != 1 && a > (burst.time as float64)) {
-		j = Math.ceil((a - (burst.time as float64)) / interval) as int32;
+	if (burst.cycleCount != 1 && a > burst.time) {
+		j = Math.ceil(((a - burst.time) / interval) as float64) as int32;
 	}
 	while (burst.cycleCount == 0 || j < burst.cycleCount) {
-		const at: float64 = (burst.time as float64) + (j as float64) * (burst.cycleCount == 1 ? 0.0 : interval);
-		if (at >= b) { return; }
+		const at: float32 = burst.time + (burst.cycleCount == 1 ? 0.0 : (j as float32) * interval);
+		if (!(at < b)) { return; }
 		if (at >= a) {
 			const key: uint32 = mix(mix(mix(sys.systemSeed, index as uint32), sys.cycle as uint32), j as uint32);
 			if (unitDraw(key, DRAW_BURST) < burst.probability) {
-				const atN: float32 = saturate((at / duration) as float32);
+				const atN: float32 = saturate(at / duration);
 				const countValue: float32 =
 					sys.curves.burstCounts[index].evaluate(atN, unitDraw(key, DRAW_BURST_COUNT));
 				const n: int32 = Math.round(countValue) as int32;
-				const age: float32 = ((b - at) + after) as float32;
+				const first: boolean = sys.cycle == 0 && j == 0;
+				const age: float32 = first ? (b - at) + after : h;
 				for (let k = 0; k < n; k++) {
 					spawnParticle(sys, age, atN, h, { index: k, count: n, arcTimer: 0.0, radiusTimer: 0.0 });
 				}
@@ -642,7 +666,7 @@ function claimSlot(ref sys: ParticleSystem): int32 {
 function spawnParticle(ref sys: ParticleSystem, age: float32, cycleN: float32, h: float32, slot: ShapeSlot): void {
 	sys.spawned = sys.spawned + 1;
 	const local: boolean = sys.asset.main.simulationSpace == SimulationSpace.Local;
-	const origin: Mat4 = local ? identity() : emitterAt(sys, age, h);
+	const origin: Mat4 = local ? identity() : emitterAt(sys, age);
 	const _slot = spawnAt(sys, origin, sys.emitterVelocity, mix(sys.systemSeed, sys.spawned), age, cycleN, slot);
 }
 
@@ -890,7 +914,7 @@ function updateParticles(ref sys: ParticleSystem, h: float32): void {
 			const span: float32 = lifetime * asset.main.ringBufferLoopRange.max - lo;
 			age = span > 0.0 ? lo + fract((age - lo) / span) * span : lo;
 		}
-		let dead: boolean = age >= lifetime;
+		let dead: boolean = age > lifetime;
 		if (dead && !sys.wantDeath) {
 			endTrail(sys, i, age);
 			live = live - 1;
