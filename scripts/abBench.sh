@@ -1,0 +1,177 @@
+#!/bin/sh
+# A/B of the tests/bench rows, main (sokol) against this tree (gpu-ms), per backend. The end-game
+# clause is docs/GPU-MS.md "End-game done when"; the commands are its section "A/B against main".
+#
+#   sh scripts/abBench.sh build [linux]      CPU only: worktree of main, both sides, every backend, or
+#                                            both sides under WSL (linux)
+#   sh scripts/abBench.sh run [reps]         opens windows and uses the GPU: only inside a granted GO
+#   sh scripts/abBench.sh clean              delete the exes and the main worktree
+#
+# Environment: AB_MAIN_SHA (default: the merge base of HEAD and main, so a delta is the GPU layer
+# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add linux),
+# AB_LINUX_DRIVER (d3d12 default, or llvmpipe),
+# AB_SCENES (default "Ui Sprites Text Editor Scroll"), AB_TOL percent of slack on a .ms row
+# (default 3), AB_LOAD_LIMIT percent CPU load that voids a run (default 25), AB_OUT, MSC.
+# Run `build` as `bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build`.
+set -eu
+cd "$(dirname "$0")/.."
+B="$(pwd)"
+MSC="${MSC:-msc}"
+SCENES="${AB_SCENES:-Ui Sprites Text Editor Scroll}"
+BACKENDS="${AB_BACKENDS:-d3d11 gl}"
+TOL="${AB_TOL:-3}"
+LIMIT="${AB_LOAD_LIMIT:-25}"
+OUT="${AB_OUT:-${TEMP:-/tmp}/voidAB}"
+MAIN_REPO="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+A="$(dirname "$B")/void-ab-main"
+export MSC_NO_GLOBAL_CACHE=1
+
+# $2 is the side: main's golden runner defines SOKOL_GLCORE, this branch's defines VOID_GLCORE.
+backendFlags() {
+	case "$1" in
+		d3d11) echo "" ;;
+		gl) if [ "$2" = A ]; then echo "-d:voidGlCore --passC=-DSOKOL_GLCORE"; else echo "-d:voidGlCore --passC=-DVOID_GLCORE"; fi ;;
+		*) echo "abBench.sh: backend '$1' is not built on this machine (d3d11, gl)" >&2; exit 2 ;;
+	esac
+}
+
+winPath() { cygpath -w "$1"; }
+
+provision() {
+	sha="${AB_MAIN_SHA:-$(git merge-base HEAD main)}"
+	mkdir -p "$OUT"
+	if [ ! -d "$A" ]; then
+		git worktree add --detach "$A" "$sha"
+		MSYS_NO_PATHCONV=1 cmd /c "mklink /J $(winPath "$A")\\deps $(winPath "$MAIN_REPO")\\deps" > /dev/null
+	elif [ "$(git -C "$A" rev-parse HEAD)" != "$(git rev-parse "$sha")" ]; then
+		git -C "$A" checkout --detach "$sha"
+	fi
+	{
+		echo "A main-side $(git -C "$A" rev-parse HEAD) (main tip $(git rev-parse main))"
+		echo "B gpu-ms $(git rev-parse HEAD)"
+		echo "msc $("$MSC" --version | sed 's/\x1b\[[0-9;]*m//g' | head -1)"
+		echo "BUILD $(head -1 "$(dirname "$(command -v "$MSC")")/../BUILD")"
+	} | tee "$OUT/env.txt"
+}
+
+build() {
+	provision
+	if [ "${1:-}" = linux ]; then buildLinux; return; fi
+	for backend in $BACKENDS; do
+		for side in A B; do
+			flags="$(backendFlags "$backend" "$side")"
+			tree="$A"; [ "$side" = B ] && tree="$B"
+			mkdir -p "$OUT/$backend/$side"
+			for scene in $SCENES; do
+				exe="$OUT/$backend/$side/bench$scene.exe"
+				rm -f "$exe"
+				# shellcheck disable=SC2086
+				if (cd "$tree" && "$MSC" build $flags "tests/bench/bench$scene.ms" --release --output="$exe") \
+						> "$OUT/$backend/$side/build$scene.log" 2>&1 && [ -x "$exe" ]; then
+					echo "BUILD ok   $backend $side $scene"
+				else
+					echo "BUILD FAIL $backend $side $scene (see $OUT/$backend/$side/build$scene.log)"
+					failed=1
+				fi
+			done
+		done
+	done
+	[ -z "${failed:-}" ]
+}
+
+# Linux runs in WSL on the real GPU through Mesa's d3d12 driver (GALLIUM_DRIVER=d3d12), or on
+# llvmpipe with AB_LINUX_DRIVER=llvmpipe. Exes live in a WSL-native dir, never under /mnt/c, so the
+# load path is not a variable; each tree is read through /mnt/c. msc has no yoga link line for
+# linux (~/metascript/.inbox/yoga/), so libyoga.a is built once by zig c++ from deps/yoga.
+# The WSL script comes on stdin; \$ is WSL's, $ is expanded here first.
+wsl() { MSYS_NO_PATHCONV=1 wsl.exe -e bash -l -s; }
+wslTree() { MSYS_NO_PATHCONV=1 wsl.exe -e wslpath -u "$(winPath "$1")" | tr -d '\r'; }
+wslOut() { echo "$(echo 'echo $HOME' | wsl | tr -d '\r')/voidAB"; }
+
+buildLinux() {
+	out="$(wslOut)"; yoga="$(wslTree "$MAIN_REPO/../yoga")"
+	wsl > "$OUT/linuxProvision.log" 2>&1 <<EOF || { echo "BUILD FAIL linux provision (see $OUT/linuxProvision.log)"; return 1; }
+set -e
+mkdir -p $out/A $out/B
+for d in d3d12 llvmpipe; do
+	printf '#!/bin/bash -l\nexport GALLIUM_DRIVER=%s DISPLAY=\${DISPLAY:-:0}\nexec "\$@"\n' \$d > $out/run.\$d.sh
+	chmod +x $out/run.\$d.sh
+done
+if [ ! -f $out/libyoga.a ]; then
+	mkdir -p $out/yoga && cd $out/yoga
+	for f in \$(find '$yoga/deps/yoga/yoga' -name '*.cpp'); do
+		zig c++ -target x86_64-linux-gnu -std=c++20 -O2 -fPIC -I'$yoga/deps/yoga' -c \$f -o \$(echo \$f | md5sum | cut -c1-12).o
+	done
+	ar rcs ../libyoga.a *.o
+fi
+EOF
+	for side in A B; do
+		tree="$A"; [ "$side" = B ] && tree="$B"; wtree="$(wslTree "$tree")"
+		for scene in $SCENES; do
+			if wsl > "$OUT/linux$side$scene.log" 2>&1 <<EOF
+export MSC_NO_GLOBAL_CACHE=1
+rm -f $out/$side/bench$scene.exe
+cd '$wtree'
+msc build --os=linux --passL=$out/libyoga.a tests/bench/bench$scene.ms --release --output=$out/$side/bench$scene.exe
+[ -x $out/$side/bench$scene.exe ]
+EOF
+			then
+				echo "BUILD ok   linux $side $scene"
+			else
+				echo "BUILD FAIL linux $side $scene (see $OUT/linux$side$scene.log)"
+				failed=1
+			fi
+		done
+	done
+	[ -z "${failed:-}" ]
+}
+
+# The GL renderer a driver setting yields, from glxinfo under the same wrapper the exes use.
+linuxRenderer() { echo "$(wslOut)/run.$1.sh glxinfo -B" | wsl 2>/dev/null | tr -d '\r' | sed -n 's/^OpenGL renderer string: //p'; }
+
+runLinux() {
+	reps="$1"; want="${AB_LINUX_DRIVER:-d3d12}"; out="$(wslOut)"
+	if [ -z "$(echo "ls $out/A/bench*.exe 2>/dev/null" | wsl)" ]; then
+		echo "VOID linux: side A has no exe (main has no Linux window path), nothing to compare"; return 0
+	fi
+	renderer="$(linuxRenderer "$want")"
+	case "$want:$renderer" in
+		d3d12:*D3D12*|llvmpipe:*llvmpipe*) ;;
+		*) echo "VOID linux/$want: the renderer is '${renderer:-none}', not the one requested; no rows"; return 0 ;;
+	esac
+	echo "=== linux/$want, GL renderer: $renderer"
+	AB_RUN="wsl.exe -e $out/run.$want.sh" MSYS_NO_PATHCONV=1 AB_DIR_A="$out/A" AB_DIR_B="$out/B" \
+		AB_RAW="$OUT/raw-linux-$want.tsv" AB_LABEL="linux/$want" \
+		AB_TOL="$TOL" AB_LOAD_LIMIT="$LIMIT" sh scripts/bench-ab.sh "$A" "$B" "$reps" $SCENES
+}
+
+# The protocol (interleaving, load sampling, NOISY, AB_MIN_CLEAN, the all-row table) is
+# scripts/bench-ab.sh's; this only points it at each backend's exes.
+run() {
+	reps="${1:-5}"
+	[ -f "$OUT/env.txt" ] || { echo "abBench.sh: no build under $OUT, run build first" >&2; exit 1; }
+	rm -f "$OUT"/raw-*.tsv
+	cat "$OUT/env.txt"
+	for backend in $BACKENDS; do
+		if [ "$backend" = linux ]; then runLinux "$reps"; continue; fi
+		echo "=== $backend"
+		# shellcheck disable=SC2086
+		AB_DIR_A="$OUT/$backend/A" AB_DIR_B="$OUT/$backend/B" AB_RAW="$OUT/raw-$backend.tsv" AB_LABEL="$backend" 			AB_TOL="$TOL" AB_LOAD_LIMIT="$LIMIT" sh scripts/bench-ab.sh "$A" "$B" "$reps" $SCENES
+	done
+	echo "raw rows: $OUT/raw-<backend>.tsv"
+}
+
+clean() {
+	rm -rf "$OUT"
+	if [ -d "$A" ]; then
+		cmd /c "rmdir $(winPath "$A")\\deps" > /dev/null 2>&1 || true
+		git worktree remove --force "$A"
+	fi
+}
+
+case "${1:-}" in
+	build) build "${2:-}" ;;
+	run) run "${2:-5}" ;;
+	clean) clean ;;
+	*) echo "usage: sh scripts/abBench.sh build | run [reps] | clean" >&2; exit 2 ;;
+esac

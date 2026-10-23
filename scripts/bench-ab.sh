@@ -6,7 +6,12 @@
 #   sh scripts/bench-ab.sh <tree A> <tree B> [pairs] [scene...]
 #
 # Each tree must hold out/bench<Scene>.exe already built with --release; each binary runs from
-# its own tree so its assets resolve.
+# its own tree so its assets resolve. AB_DIR_A / AB_DIR_B name another directory for that side's
+# exes (absolute, or relative to its tree), so one tree can hold one build per backend.
+# AB_RAW=<file> also keeps every bench row of every run there and prints the all-row table:
+# the median of the clean pairs per row, `.ms` rows RED when B is more than AB_TOL percent
+# (default 3) slower than A, a counter that differs DIFF. AB_LABEL tags the rows (the backend).
+# AB_RUN is a command prefix for the exe (a WSL wrapper), so a side can run elsewhere than Windows.
 set -eu
 A="$1"; B="$2"; PAIRS="${3:-6}"
 shift 2; [ $# -gt 0 ] && shift
@@ -25,9 +30,15 @@ load() {
 one() {
 	tree="$1"; scene="$2"; side="$3"; pair="$4"
 	if [ "$side" = A ]; then suffix="${AB_SUFFIX_A:-}"; else suffix="${AB_SUFFIX_B:-}"; fi
+	if [ "$side" = A ]; then dir="${AB_DIR_A:-out}"; else dir="${AB_DIR_B:-out}"; fi
 	before=$(load)
-	ms=$(cd "$tree" && "./out/bench$scene$suffix.exe" 2>/dev/null | sed -n 's/^[a-z]*\.present\.ms //p' | tr -d '\r')
+	out=$(cd "$tree" && ${AB_RUN:-} "$dir/bench$scene$suffix.exe" 2>/dev/null | tr -d '\r')
 	after=$(load)
+	ms=$(printf '%s\n' "$out" | sed -n 's/^[a-z]*\.present\.ms //p')
+	if [ -n "${AB_RAW:-}" ]; then
+		printf '%s\n' "$out" | awk -v l="${AB_LABEL:-}" -v s="$scene" -v w="$side" -v p="$pair" -v b="${before:-x}" -v a="${after:-x}" \
+			'/^[A-Za-z0-9]+\.[A-Za-z0-9.]+ -?[0-9.eE+-]+$/ { print l "\t" s "\t" w "\t" p "\t" b "\t" a "\t" $1 "\t" $2 }' >> "$AB_RAW"
+	fi
 	echo "AB $scene $side pair $pair present.ms ${ms:-missing} load ${before:-missing} ${after:-missing}" \
 		| tee -a "$ROWS"
 }
@@ -84,3 +95,49 @@ awk -v limit="$LIMIT" -v minClean="$MIN_CLEAN" '
 				brokenCount[scene] + 0
 		}
 	}' "$ROWS"
+
+[ -z "${AB_RAW:-}" ] || awk -F'	' -v limit="$LIMIT" -v minClean="$MIN_CLEAN" -v tol="${AB_TOL:-3}" '
+	function median(key,   n, i, j, x, v) {
+		n = cnt[key]
+		for (i = 1; i <= n; i++) v[i] = val[key, i]
+		for (i = 2; i <= n; i++) { x = v[i]; j = i - 1; while (j >= 1 && v[j] > x) { v[j + 1] = v[j]; j-- } v[j + 1] = x }
+		return n % 2 ? v[(n + 1) / 2] : (v[n / 2] + v[n / 2 + 1]) / 2
+	}
+	function number(v) { return v ~ /^[0-9]+(\.[0-9]+)?$/ }
+	{
+		pk = $1 SUBSEP $2 SUBSEP $4
+		seenSide[pk, $3] = 1
+		if (!number($5) || !number($6) || $5 > limit || $6 > limit) noisy[pk] = 1
+		rowKey[pk, $3, $7] = $8
+		if (!(pk in listed)) { listed[pk] = 1; pairs[++np] = pk }
+		rowsOf[pk] = rowsOf[pk] SUBSEP $7 SUBSEP $3
+	}
+	END {
+		for (i = 1; i <= np; i++) {
+			pk = pairs[i]; split(pk, p, SUBSEP); sc = p[1] SUBSEP p[2]
+			if (noisy[pk] || !seenSide[pk, "A"] || !seenSide[pk, "B"]) continue
+			clean[sc]++
+			n = split(rowsOf[pk], r, SUBSEP)
+			for (j = 2; j <= n; j += 2) {
+				m = r[j]; w = r[j + 1]; key = sc SUBSEP m SUBSEP w
+				if (!((sc SUBSEP m) in order)) { order[sc SUBSEP m] = 1; keys[++nk] = sc SUBSEP m }
+				val[key, ++cnt[key]] = rowKey[pk, w, m]
+			}
+		}
+		printf "%-6s %-34s %14s %14s %9s  %s\n", "label", "metric", "A", "B", "delta %", "verdict"
+		red = 0; same = 0
+		for (i = 1; i <= nk; i++) {
+			split(keys[i], q, SUBSEP); sc = q[1] SUBSEP q[2]; m = q[3]
+			if (clean[sc] < minClean) { if (!(sc in skipped)) { skipped[sc] = 1; printf "%s %s: %d clean pairs, too few for the table\n", q[1], q[2], clean[sc] } continue }
+			ka = keys[i] SUBSEP "A"; kb = keys[i] SUBSEP "B"
+			if (!(ka in cnt) || !(kb in cnt)) { printf "%-6s %-34s %14s %14s %9s  ONLY-%s\n", q[1], m, (ka in cnt) ? median(ka) : "-", (kb in cnt) ? median(kb) : "-", "-", (ka in cnt) ? "A" : "B"; continue }
+			a = median(ka); b = median(kb)
+			d = (a == 0) ? (b == 0 ? 0 : 100) : (b - a) / a * 100
+			if (m ~ /\.ms$/) verdict = (d > tol) ? "RED" : "ok"
+			else verdict = (a == b) ? "same" : "DIFF"
+			if (verdict == "RED") red++
+			if (verdict == "same") { same++; continue }
+			printf "%-6s %-34s %14.4g %14.4g %+8.1f%%  %s\n", q[1], m, a, b, d, verdict
+		}
+		printf "(%d counter rows identical on both sides, not listed; tolerance %s %% on .ms rows)\nRED rows: %d\n", same, tol, red
+	}' "$AB_RAW"
