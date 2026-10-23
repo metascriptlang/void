@@ -50,7 +50,14 @@ const PREMULTIPLIED_GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 0.5 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 // Copy keeps RGBA, including packed orthographic depth: (4.5 - 0.1) / (10 - 0.1)
 // times 255 is 113.333, byte 0x71. This is data alpha, not canvas coverage.
-const FACING_NORMAL: int64 = 0x7F7FFF71;
+// The facing normal encodes x and y as 0.5, a tie for unorm8 (127.5): D3D11 stores 0x7F, Metal 0x80.
+const FACING_NORMAL_D3D11: int64 = 0x7F7FFF71;
+const FACING_NORMAL_METAL: int64 = 0x8080FF71;
+
+function isFacingNormal(pixel: int64): boolean {
+	return pixel == FACING_NORMAL_D3D11 || pixel == FACING_NORMAL_METAL;
+}
+
 const ALPHA_X: float32 = -1.6;
 const PREMULTIPLIED_X: float32 = 0.0;
 const ADDITIVE_X: float32 = 1.6;
@@ -213,10 +220,10 @@ function checkNormals(view: CameraView): void {
 		const behind: int64 = pixelAt(view, columns[i] + HALF / 2.0);
 		const under: int64 = pixelAt(view, columns[i] - HALF / 2.0);
 		console.log(`mrt blend: ${names[i]} column: backdrop normal ${behind}, under ${under}`);
-		if (behind != FACING_NORMAL) {
-			fail(`the backdrop normal is ${behind}, not ${FACING_NORMAL}`);
+		if (!isFacingNormal(behind)) {
+			fail(`the backdrop normal is ${behind}, not ${FACING_NORMAL_D3D11} or ${FACING_NORMAL_METAL}`);
 		}
-		if (under != FACING_NORMAL) {
+		if (!isFacingNormal(under)) {
 			fail(`${names[i]}-blended material changed the normal attachment: ${under}`);
 		}
 	}
