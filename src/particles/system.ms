@@ -739,9 +739,12 @@ function spawnAt(
 		pos = vec3(pos.x, pos.y, 0.0);
 		vel = vec3(vel.x, vel.y, 0.0);
 	}
-	const sx: float32 = c.startSizeX.evaluate(cycleN, unitDraw(seed, DRAW_SIZE));
-	const sy: float32 = m.startSize3D ? c.startSizeY.evaluate(cycleN, unitDraw(seed, DRAW_SIZE_Y)) : sx;
-	const sz: float32 = m.startSize3D ? c.startSizeZ.evaluate(cycleN, unitDraw(seed, DRAW_SIZE_Z)) : sx;
+	// Unity floors a start size at 0 (measured on x by m3d_negsize_x, assumed for y and z).
+	const sx: float32 = Math.max(0.0, c.startSizeX.evaluate(cycleN, unitDraw(seed, DRAW_SIZE)));
+	const sy: float32 = m.startSize3D ?
+		Math.max(0.0, c.startSizeY.evaluate(cycleN, unitDraw(seed, DRAW_SIZE_Y))) : sx;
+	const sz: float32 = m.startSize3D ?
+		Math.max(0.0, c.startSizeZ.evaluate(cycleN, unitDraw(seed, DRAW_SIZE_Z))) : sx;
 	const flip: float32 = unitDraw(seed, DRAW_FLIP) < m.flipRotation ? -1.0 : 1.0;
 	const rz: float32 = c.startRotationZ.evaluate(cycleN, unitDraw(seed, DRAW_ROTATION_Z)) * flip;
 	const rx: float32 = m.startRotation3D ? c.startRotationX.evaluate(cycleN, unitDraw(seed, DRAW_ROTATION)) * flip : 0.0;
