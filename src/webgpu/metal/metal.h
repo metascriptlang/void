@@ -85,7 +85,21 @@ MtlPipeline mtlNewPipeline(
 	int32_t stencilFormat,
 	int32_t sampleCount);
 void mtlReleasePipeline(MtlPipeline pipeline);
-MtlDepthState mtlNewDepthState(MtlDevice device, int32_t compare, int32_t depthWrite);
+MtlDepthState mtlNewDepthState(
+	MtlDevice device,
+	int32_t compare,
+	int32_t depthWrite,
+	int32_t stencil,
+	uint32_t readMask,
+	uint32_t writeMask,
+	int32_t frontFail,
+	int32_t frontDepthFail,
+	int32_t frontPass,
+	int32_t frontCompare,
+	int32_t backFail,
+	int32_t backDepthFail,
+	int32_t backPass,
+	int32_t backCompare);
 void mtlReleaseDepthState(MtlDepthState state);
 
 void mtlPassReset(void);
@@ -109,7 +123,16 @@ void mtlPresentDrawable(MtlCommandBuffer commandBuffer);
 void mtlSetViewport(MtlEncoder encoder, double x, double y, double width, double height, double near, double far);
 void mtlSetBlendColor(MtlEncoder encoder, double r, double g, double b, double a);
 void mtlSetScissorRect(MtlEncoder encoder, int32_t x, int32_t y, int32_t width, int32_t height);
-void mtlSetPipeline(MtlEncoder encoder, MtlPipeline pipeline, MtlDepthState depth, int32_t cullMode, int32_t winding);
+void mtlSetPipeline(
+	MtlEncoder encoder,
+	MtlPipeline pipeline,
+	MtlDepthState depth,
+	int32_t cullMode,
+	int32_t winding,
+	float depthBias,
+	float depthBiasSlope,
+	float depthBiasClamp);
+void mtlSetStencilReference(MtlEncoder encoder, uint32_t reference);
 void mtlSetVertexBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index);
 void mtlSetFragmentBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index);
 void mtlSetVertexBufferOffset(MtlEncoder encoder, int64_t offset, int32_t index);

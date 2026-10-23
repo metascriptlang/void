@@ -251,10 +251,43 @@ MtlPipeline mtlNewPipeline(
 
 void mtlReleasePipeline(MtlPipeline pipeline) { [(id<MTLRenderPipelineState>)pipeline release]; }
 
-MtlDepthState mtlNewDepthState(MtlDevice device, int32_t compare, int32_t depthWrite) {
+static MTLStencilDescriptor *stencilFace(int32_t fail, int32_t depthFail, int32_t pass, int32_t compare, uint32_t readMask, uint32_t writeMask) {
+	MTLStencilDescriptor *face = [[MTLStencilDescriptor alloc] init];
+	face.stencilFailureOperation = (MTLStencilOperation)fail;
+	face.depthFailureOperation = (MTLStencilOperation)depthFail;
+	face.depthStencilPassOperation = (MTLStencilOperation)pass;
+	face.stencilCompareFunction = (MTLCompareFunction)compare;
+	face.readMask = readMask;
+	face.writeMask = writeMask;
+	return face;
+}
+
+MtlDepthState mtlNewDepthState(
+	MtlDevice device,
+	int32_t compare,
+	int32_t depthWrite,
+	int32_t stencil,
+	uint32_t readMask,
+	uint32_t writeMask,
+	int32_t frontFail,
+	int32_t frontDepthFail,
+	int32_t frontPass,
+	int32_t frontCompare,
+	int32_t backFail,
+	int32_t backDepthFail,
+	int32_t backPass,
+	int32_t backCompare) {
 	MTLDepthStencilDescriptor *desc = [[MTLDepthStencilDescriptor alloc] init];
 	desc.depthCompareFunction = (MTLCompareFunction)compare;
 	desc.depthWriteEnabled = depthWrite ? YES : NO;
+	if (stencil) {
+		MTLStencilDescriptor *front = stencilFace(frontFail, frontDepthFail, frontPass, frontCompare, readMask, writeMask);
+		MTLStencilDescriptor *back = stencilFace(backFail, backDepthFail, backPass, backCompare, readMask, writeMask);
+		desc.frontFaceStencil = front;
+		desc.backFaceStencil = back;
+		[front release];
+		[back release];
+	}
 	id<MTLDepthStencilState> state = [(id<MTLDevice>)device newDepthStencilStateWithDescriptor:desc];
 	[desc release];
 	return (MtlDepthState)state;
@@ -341,12 +374,25 @@ void mtlSetScissorRect(MtlEncoder encoder, int32_t x, int32_t y, int32_t width, 
 	[(id<MTLRenderCommandEncoder>)encoder setScissorRect:rect];
 }
 
-void mtlSetPipeline(MtlEncoder encoder, MtlPipeline pipeline, MtlDepthState depth, int32_t cullMode, int32_t winding) {
+void mtlSetPipeline(
+	MtlEncoder encoder,
+	MtlPipeline pipeline,
+	MtlDepthState depth,
+	int32_t cullMode,
+	int32_t winding,
+	float depthBias,
+	float depthBiasSlope,
+	float depthBiasClamp) {
 	id<MTLRenderCommandEncoder> e = (id<MTLRenderCommandEncoder>)encoder;
 	[e setCullMode:(MTLCullMode)cullMode];
 	[e setFrontFacingWinding:(MTLWinding)winding];
+	[e setDepthBias:depthBias slopeScale:depthBiasSlope clamp:depthBiasClamp];
 	[e setRenderPipelineState:(id<MTLRenderPipelineState>)pipeline];
 	[e setDepthStencilState:(id<MTLDepthStencilState>)depth];
+}
+
+void mtlSetStencilReference(MtlEncoder encoder, uint32_t reference) {
+	[(id<MTLRenderCommandEncoder>)encoder setStencilFrontReferenceValue:reference backReferenceValue:reference];
 }
 
 void mtlSetVertexBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index) {

@@ -2,6 +2,7 @@ import {
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
 	GPUBlendFactor,
+	GPUCompareFunction,
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
@@ -11,6 +12,7 @@ import {
 	GPUSampler,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUStencilOperation,
 	GPUTexture,
 	GPUTextureUsage,
 	GPUTextureView,
@@ -399,5 +401,159 @@ test "a blend constant weights a red source over black, and is zero until set" {
 	const invertedQuarter = blendedRed(device, "one-minus-constant", "constant", quarter);
 	assert invertedQuarter >= 190 && invertedQuarter <= 193;
 	assert blendedRed(device, "constant", "one-minus-constant", unset) == 0;
+	device.destroy();
+}
+
+function stencilPipeline(
+	device: GPUDevice,
+	module: GPUShaderModule,
+	compare: GPUCompareFunction,
+	passOp: GPUStencilOperation,
+	writeMask: uint32,
+): GPURenderPipeline {
+	let descriptor: GPURenderPipelineDescriptor = { label: "stencil" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.depthStencil.format = "depth24plus-stencil8";
+	descriptor.depthStencil.depthCompare = "always";
+	descriptor.depthStencil.stencilFront = { compare: compare, passOp: passOp };
+	descriptor.depthStencil.stencilBack = { compare: compare, passOp: passOp };
+	descriptor.depthStencil.stencilWriteMask = writeMask;
+	return device.createRenderPipeline(descriptor);
+}
+
+function stencilScene(device: GPUDevice, writerReference: uint32, testerReference: uint32, writerMask: uint32): Vec<uint8> {
+	const module = flatShader(device);
+	const writer = stencilPipeline(device, module, "always", "replace", writerMask);
+	const tester = stencilPipeline(device, module, "equal", "keep", 0);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, writer, uniforms);
+	const vertices = vertexBuffer(device, 96);
+	const left: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 0.0, 1.0, -1.0, -1.0, 0.0, 1.0, 0.0, -1.0];
+	const full: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, left);
+	device.queue.writeBuffer(vertices, 48, full);
+	const target = colourTarget(device, 1);
+	const depth = device.createTexture({
+		label: "depth stencil",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth24plus-stencil8",
+		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
+		sampleCount: 1,
+	});
+	let descriptor = clearingPass(target.createView({ label: null }), { id: 0 });
+	descriptor.depthStencilAttachment = {
+		view: depth.createView({ label: null }),
+		depthClearValue: 1.0,
+		depthLoadOp: "clear",
+		depthStoreOp: "store",
+	};
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(descriptor);
+	const red: Vec<uint32> = [0];
+	const green: Vec<uint32> = [256];
+	pass.setStencilReference(writerReference);
+	pass.setPipeline(writer);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(0, group, red);
+	pass.draw(6, 1, 0, 0);
+	pass.setStencilReference(testerReference);
+	pass.setPipeline(tester);
+	pass.setVertexBuffer(0, vertices, 48);
+	pass.setBindGroup(0, group, green);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return readPixels(target);
+}
+
+test "a stencil write at a reference masks a later equal-test draw, by reference and by write mask" {
+	const device = openDevice();
+	const matched = stencilScene(device, 1, 1, 0);
+	assert pixel(matched, 16, 32) == GREEN;
+	assert pixel(matched, 48, 32) == BLUE;
+	const mismatched = stencilScene(device, 1, 2, 0);
+	assert pixel(mismatched, 16, 32) == RED;
+	assert pixel(mismatched, 48, 32) == BLUE;
+	const masked = stencilScene(device, 3, 2, 2);
+	assert pixel(masked, 16, 32) == GREEN;
+	const maskedMismatch = stencilScene(device, 3, 3, 2);
+	assert pixel(maskedMismatch, 16, 32) == RED;
+	device.destroy();
+}
+
+const DEPTH_VERTEX_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct In { float3 position [[attribute(0)]]; };\nstruct Out { float4 position [[position]]; };\nvertex Out dmain(In in [[stage_in]]) { Out out; out.position = float4(in.position, 1.0); return out; }\n";
+
+function depthBiasScene(device: GPUDevice, compare: GPUCompareFunction, depthBias: int32, clamp: float32): Vec<uint8> {
+	let shader: GPUShaderModuleDescriptor = {
+		label: "depth",
+		vertexCode: DEPTH_VERTEX_MSL,
+		vertexEntryPoint: "dmain",
+		fragmentCode: FRAGMENT_MSL,
+		fragmentEntryPoint: "fmain",
+	};
+	shader.bindings[0] = { group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0 };
+	shader.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const module = device.createShaderModule(shader);
+	let descriptor: GPURenderPipelineDescriptor = { label: "depth" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 12;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x3", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.depthStencil.format = "depth32float";
+	descriptor.depthStencil.depthWriteEnabled = true;
+	descriptor.depthStencil.depthCompare = "always";
+	const writer = device.createRenderPipeline(descriptor);
+	descriptor.depthStencil.depthCompare = compare;
+	descriptor.depthStencil.depthBias = depthBias;
+	descriptor.depthStencil.depthBiasClamp = clamp;
+	const tester = device.createRenderPipeline(descriptor);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, writer, uniforms);
+	const vertices = vertexBuffer(device, 36);
+	const triangle: Vec<float32> = [-1.0, -1.0, 0.5, -1.0, 3.0, 0.5, 3.0, -1.0, 0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const depth = device.createTexture({
+		label: "depth",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
+		sampleCount: 1,
+	});
+	let pass = clearingPass(target.createView({ label: null }), { id: 0 });
+	pass.depthStencilAttachment = {
+		view: depth.createView({ label: null }),
+		depthClearValue: 1.0,
+		depthLoadOp: "clear",
+		depthStoreOp: "store",
+	};
+	const encoder = device.createCommandEncoder();
+	const encoded = encoder.beginRenderPass(pass);
+	const red: Vec<uint32> = [0];
+	const green: Vec<uint32> = [256];
+	encoded.setPipeline(writer);
+	encoded.setVertexBuffer(0, vertices, 0);
+	encoded.setBindGroup(0, group, red);
+	encoded.draw(3, 1, 0, 0);
+	encoded.setPipeline(tester);
+	encoded.setBindGroup(0, group, green);
+	encoded.draw(3, 1, 0, 0);
+	encoded.end();
+	device.queue.submit(encoder.finish());
+	return readPixels(target);
+}
+
+test "a negative depth bias lets an equal-depth less-test draw pass, a positive one, none and a tight clamp do not" {
+	const device = openDevice();
+	assert pixel(depthBiasScene(device, "less", 0, 0.0), 32, 32) == RED;
+	assert pixel(depthBiasScene(device, "less", 100000, 0.0), 32, 32) == RED;
+	assert pixel(depthBiasScene(device, "less", -100000, 0.0), 32, 32) == GREEN;
+	assert pixel(depthBiasScene(device, "greater", 100000, 0.0), 32, 32) == GREEN;
+	assert pixel(depthBiasScene(device, "greater", 100000, 0.000000001), 32, 32) == RED;
 	device.destroy();
 }

@@ -42,6 +42,7 @@ import {
 	GPUShaderAttribute,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUStencilFaceState,
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
@@ -50,7 +51,6 @@ import {
 	checkedSamplerLod,
 	checkedTexelWritePitch,
 	stopOnUnportedBindEntry,
-	stopOnUnportedDepthStencil,
 	stopOnUnportedPrimitive,
 	stopOnUnportedTexelWrite,
 	stopOnUnportedRenderPass,
@@ -118,6 +118,7 @@ import {
 	mtlSetFragmentSampler,
 	mtlSetFragmentTexture,
 	mtlSetPipeline,
+	mtlSetStencilReference,
 	mtlSetScissorRect,
 	mtlSetVertexBuffer,
 	mtlSetVertexBufferOffset,
@@ -214,6 +215,7 @@ const STORE_DONT_CARE = 0;
 const STORE_STORE = 1;
 const STORE_RESOLVE = 2;
 const STORE_STORE_AND_RESOLVE = 3;
+const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 const COMPARE_NEVER = 0;
 const COMPARE_ALWAYS = 7;
 
@@ -298,6 +300,9 @@ struct PipelineSlot {
 	depth: Ptr<MtlDepthStateImpl>;
 	cullMode: int32;
 	winding: int32;
+	depthBias: float32;
+	depthBiasSlope: float32;
+	depthBiasClamp: float32;
 	strides: int32[2];
 	layouts: uint32[2];
 }
@@ -457,6 +462,20 @@ function blendOperation(operation: string, member: string): int32 {
 		"reverse-subtract" => 2,
 		"min" => 3,
 		"max" => 4,
+		_ => stopOnMember(member, operation),
+	};
+}
+
+function stencilOperation(operation: string, member: string): int32 {
+	return match (operation) {
+		"" | "keep" => 0,
+		"zero" => 1,
+		"replace" => 2,
+		"increment-clamp" => 3,
+		"decrement-clamp" => 4,
+		"invert" => 5,
+		"increment-wrap" => 6,
+		"decrement-wrap" => 7,
 		_ => stopOnMember(member, operation),
 	};
 }
@@ -1031,7 +1050,6 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		stop("vertex and fragment stages come from one GPUShaderModule on Metal");
 	}
 	stopOnUnportedPrimitive("metal", descriptor.primitive);
-	stopOnUnportedDepthStencil("metal", descriptor.depthStencil);
 	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id };
 	mtlPipelineReset();
 	describeVertexLayout(s, descriptor, slot);
@@ -1051,12 +1069,31 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		const log: string = mtlErrorLog();
 		stop(`newRenderPipelineStateWithDescriptor failed for ${labelOf(descriptor.label)}:\n${log}`);
 	}
+	const stencil = stencilPixel != PIXEL_INVALID;
+	const front: GPUStencilFaceState = descriptor.depthStencil.stencilFront;
+	const back: GPUStencilFaceState = descriptor.depthStencil.stencilBack;
+	const readMask = descriptor.depthStencil.stencilReadMask;
+	const writeMask = descriptor.depthStencil.stencilWriteMask;
 	slot.depth = mtlNewDepthState(
 		device,
 		depthFormat == "" ? COMPARE_ALWAYS : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
 		depthFormat != "" && descriptor.depthStencil.depthWriteEnabled ? 1 : 0,
+		stencil ? 1 : 0,
+		readMask == 0 ? STENCIL_MASK_ALL : readMask,
+		writeMask == 0 ? STENCIL_MASK_ALL : writeMask,
+		stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
+		stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
+		stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),
+		compareFunction(front.compare, "depthStencil.stencilFront.compare"),
+		stencilOperation(back.failOp, "depthStencil.stencilBack.failOp"),
+		stencilOperation(back.depthFailOp, "depthStencil.stencilBack.depthFailOp"),
+		stencilOperation(back.passOp, "depthStencil.stencilBack.passOp"),
+		compareFunction(back.compare, "depthStencil.stencilBack.compare"),
 	);
 	if (slot.depth == null) { stop(`newDepthStencilStateWithDescriptor failed for ${labelOf(descriptor.label)}`); }
+	slot.depthBias = descriptor.depthStencil.depthBias as float32;
+	slot.depthBiasSlope = descriptor.depthStencil.depthBiasSlopeScale;
+	slot.depthBiasClamp = descriptor.depthStencil.depthBiasClamp;
 	slot.cullMode = cullMode(descriptor.primitive.cullMode);
 	slot.winding = winding(descriptor.primitive.frontFace);
 	slot.id = id;
@@ -1400,7 +1437,7 @@ export function setBlendConstant(color: GPUColor): void {
 
 export function setStencilReference(reference: uint32): void {
 	if (!pass.active) { stop("setStencilReference outside a render pass"); }
-	stop("setStencilReference is not ported to metal yet");
+	mtlSetStencilReference(encoder, reference);
 }
 
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
@@ -1446,7 +1483,7 @@ function applyPipeline(): void {
 	if (!shaders.alive(pipelines.slots[p].shader)) {
 		stop(`the shader module of GPURenderPipeline ${bound.pipeline} was destroyed`);
 	}
-	mtlSetPipeline(encoder, pipelines.slots[p].state, pipelines.slots[p].depth, pipelines.slots[p].cullMode, pipelines.slots[p].winding);
+	mtlSetPipeline(encoder, pipelines.slots[p].state, pipelines.slots[p].depth, pipelines.slots[p].cullMode, pipelines.slots[p].winding, pipelines.slots[p].depthBias, pipelines.slots[p].depthBiasSlope, pipelines.slots[p].depthBiasClamp);
 	bound.appliedPipeline = bound.pipeline;
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
