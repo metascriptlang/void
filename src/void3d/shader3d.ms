@@ -1001,11 +1001,14 @@ export function shapedSpecularDir(
 export function lightAt(
 	position: Vec3f, normal: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
 ): Vec3f {
+	let lit: Vec3f = vec3f(0.0);
 	if (a.w < 0.5) {
-		return pointLightAt(position, normal, at, tint);
+		lit = pointLightAt(position, normal, at, tint);
+	} else {
+		const sample = shapedSample(position, normal, at, tint, a, b, c, d);
+		lit = srgbToLinear(tint.rgb) * (sample.w * max(dot(normal, sample.xyz), 0.0) * at.w);
 	}
-	const sample = shapedSample(position, normal, at, tint, a, b, c, d);
-	return srgbToLinear(tint.rgb) * (sample.w * max(dot(normal, sample.xyz), 0.0) * at.w);
+	return lit;
 }
 
 // h3d.Matrix.colorSaturate in scalar form; campfireGreyCpuCapture holds it to colorSaturated.

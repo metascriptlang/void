@@ -729,11 +729,14 @@ vec4 shapedSample(vec3 position, vec3 normal, vec4 at, vec4 tint, vec4 a, vec4 b
     return spotSample(position, at, tint, a, b);
 }
 vec3 lightAt(vec3 position, vec3 normal, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    vec3 lit = vec3(0.0);
     if (a.w < 0.5) {
-        return pointLightAt(position, normal, at, tint);
+        lit = pointLightAt(position, normal, at, tint);
+    } else {
+        vec4 sample_1 = shapedSample(position, normal, at, tint, a, b, c, d);
+        lit = srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal, sample_1.xyz), 0.0)) * at.w);
     }
-    vec4 sample_1 = shapedSample(position, normal, at, tint, a, b, c, d);
-    return srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal, sample_1.xyz), 0.0)) * at.w);
+    return lit;
 }
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
@@ -1254,11 +1257,14 @@ vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
 #endif
 #ifndef PBR
 vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    vec3 lit = vec3(0.0);
     if (a.w < 0.5) {
-        return pointLightAt(position, normal_1, at, tint);
+        lit = pointLightAt(position, normal_1, at, tint);
+    } else {
+        vec4 sample_1 = shapedSample(position, normal_1, at, tint, a, b, c, d);
+        lit = srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal_1, sample_1.xyz), 0.0)) * at.w);
     }
-    vec4 sample_1 = shapedSample(position, normal_1, at, tint, a, b, c, d);
-    return srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal_1, sample_1.xyz), 0.0)) * at.w);
+    return lit;
 }
 #endif
 #ifndef PBR
@@ -2026,11 +2032,14 @@ vec3 pointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint) {
 #endif
 #ifndef PBR
 vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, vec4 c, vec4 d) {
+    vec3 lit = vec3(0.0);
     if (a.w < 0.5) {
-        return pointLightAt(position, normal_1, at, tint);
+        lit = pointLightAt(position, normal_1, at, tint);
+    } else {
+        vec4 sample_1 = shapedSample(position, normal_1, at, tint, a, b, c, d);
+        lit = srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal_1, sample_1.xyz), 0.0)) * at.w);
     }
-    vec4 sample_1 = shapedSample(position, normal_1, at, tint, a, b, c, d);
-    return srgbToLinear(tint.rgb) * ((sample_1.w * max(dot(normal_1, sample_1.xyz), 0.0)) * at.w);
+    return lit;
 }
 #endif
 #ifndef PBR
