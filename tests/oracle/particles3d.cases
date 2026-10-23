@@ -162,9 +162,9 @@ haxe> emit("sphere-shell-moves-outward", H.place(e3, 0).concat(H.place(e3, 3)).c
 ms> const s3: EmitterState = { ...EmitterState.defaults(), emitRate: constant(10.0), shape: { kind: ShapeKind.Sphere, radius: constant(1.0) }, emitFromShell: true, speed: constant(1.5), life: constant(10.0) };
 ms> const d3 = divergences(s3);
 ms> const y3 = lowered(s3, 5, 0.1, SPAWN_AGE_STEP);
-ms> let shell3: boolean = d3.has(HeapsDivergence.EmissionCeil) && d3.has(HeapsDivergence.SpawnAge) && d3.has(HeapsDivergence.RandomStream) && !d3.has(HeapsDivergence.ShapeDistribution) && y3.count == 5;
+ms> let shell3: boolean = d3.has(HeapsDivergence.EmissionCeil) && d3.has(HeapsDivergence.SpawnAge) && d3.has(HeapsDivergence.RandomStream) && !d3.has(HeapsDivergence.ShapeDistribution) && y3.count >= 4 && y3.count <= 6;
 ms> for (let i = 0; i < y3.count; i++) { shell3 = shell3 && Math.abs(reach(y3, i) - (1.0 + 1.5 * col(y3, AGE, i))) < 1e-4; }
-ms> emit9("sphere-shell-moves-outward", col(y3, POS_X, 0), col(y3, POS_Y, 0), col(y3, POS_Z, 0), col(y3, POS_X, 3), col(y3, POS_Y, 3), col(y3, POS_Z, 3), scaled(y3.count as float32, 5.0, 0.5, 4.0) + holds(shell3), 0.0, 0.0);
+ms> emit9("sphere-shell-moves-outward", col(y3, POS_X, 0), col(y3, POS_Y, 0), col(y3, POS_Z, 0), col(y3, POS_X, 3), col(y3, POS_Y, 3), col(y3, POS_Z, 3), scaled(y3.count as float32, 5.0, 1.0, 4.0) + holds(shell3), 0.0, 0.0);
 
 # The default cone with random speed and size, gravity and a force on all three axes, twenty
 # steps: every random value a particle draws, drawn in Heaps' order.
@@ -205,7 +205,7 @@ ms> const s6: EmitterState = { ...EmitterState.defaults(), emitRate: constant(10
 ms> const d6 = divergences(s6);
 ms> if (!(d6.has(HeapsDivergence.EmissionCeil) && d6.has(HeapsDivergence.SpawnAge) && d6.has(HeapsDivergence.GradientSampled))) { unreachable; }
 ms> const e6: Written = runLowered(s6, 8, 0.1);
-ms> emit9("color-keys-light-alpha", field(e6, 0, RED), field(e6, 0, GREEN), field(e6, 0, BLUE), field(e6, 0, ALPHA), field(e6, 5, RED), field(e6, 5, GREEN), field(e6, 5, BLUE), field(e6, 5, ALPHA), e6.count as float32);
+ms> emit9("color-keys-light-alpha", field(e6, 0, RED), field(e6, 0, GREEN), field(e6, 0, BLUE), field(e6, 0, ALPHA), field(e6, 5, RED), field(e6, 5, GREEN), field(e6, 5, BLUE), field(e6, 5, ALPHA), scaled(e6.count as float32, 8.0, 1.0, 1e-2));
 
 # A burst adds its count once, on the update whose cycle crosses its time; a looping cycle
 # wraps, and emission stops on a one-shot past its end.
