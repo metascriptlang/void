@@ -105,6 +105,8 @@ import "./pbrResponseCheck";
 import "./pbrLitCheck";
 import "./pbrMapsCheck";
 import "./pbrEnvironmentCheck";
+import "./gltfPbrMaterialCheck";
+import "./gltfPbrSceneCheck";
 import "./lightShapeShaderCheck";
 import "./lightShapeSceneCheck";
 import "./spotShadowCheck";
