@@ -29,7 +29,7 @@ import {
 	GPUTextureSampleType,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
-import { DUMMY_SAMPLER_BINDING } from "../webgpu/gl/backend.ms";
+import { DUMMY_SAMPLER_BINDING } from "../webgpu/types.ms";
 
 export const MAX_REFLECTED_BINDINGS = 24;
 export const MAX_REFLECTED_ATTRIBUTES = 16;
