@@ -121,6 +121,7 @@ import "./shaderGlslCheck";
 import "./shaderMslCheck";
 import "./shadyExamplesCheck";
 import "./shadyTestsCheck";
+import "./shadyPortsCheck";
 import "./litShaderCheck";
 import "./pixelArtShaderCheck";
 import "./post3dCheck";
