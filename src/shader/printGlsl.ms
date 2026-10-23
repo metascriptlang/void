@@ -1382,11 +1382,15 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 		if (!layout.ok) { return Result.err("printGlsl: " + layout.error); }
 		p.blockOffsets[r] = layout.value.offsets;
 	}
+	let varyingNames = m.ios.filter((io) => io.stage == ShaderStage.Vertex &&
+		io.direction == IoDirection.In && io.builtin == Builtin.None).map((io) => io.name);
 	for (let i = 0; i < m.ios.length; i++) {
 		const io = m.ios[i];
-		if (io.stage == entry.stage && io.builtin == Builtin.None) {
-			p.ioNames[i] = claimFixed(p, io.name, "io");
-		}
+		if (io.stage != entry.stage || io.builtin != Builtin.None) { continue; }
+		const varying = io.stage == ShaderStage.Vertex ? io.direction == IoDirection.Out :
+			io.stage == ShaderStage.Fragment && io.direction == IoDirection.In;
+		p.ioNames[i] = varying ? claimFixed(p, claim(p, varyingNames, io.name), "varying") :
+			claimFixed(p, io.name, "io");
 	}
 	for (const s of structs) {
 		p.structNames[s] = claim(p, p.globals, m.structs[s].name);
