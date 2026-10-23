@@ -654,6 +654,7 @@ function spawnAt(
 ): int32 {
 	const i: int32 = claimSlot(sys);
 	if (i < 0) { return -1; }
+	// PENDING3D: particle-random-per-life
 	sys.seeds[i] = seed;
 	sys.inside[i] = 0;
 	const m: Borrow<MainModule> = sys.asset.main;
