@@ -51,6 +51,7 @@ import {
 	uniformGroupAt,
 	vertexBuffer,
 } from "./webgpuFixtures.ms";
+import { d3dBlobFree, d3dBlobRead, d3dCompile, d3dCompileLog } from "../webgpu/d3d11/d3d11.h";
 import { warpDevice, warpContext, warpReadback, warpReadback3d, warpReadbackSubresource, warpObjectName, warpTarget, warpTargetView } from "./d3d11Warp.h";
 
 @passL("-ld3d11");
@@ -157,6 +158,85 @@ test "a 4x multisampled target resolves into its single-sample resolve target" {
 	const pixels = drawTriangle(device, 4, 0);
 	assert pixel(pixels, 0, 0) == BLUE;
 	assert pixel(pixels, 32, 32) == RED;
+	device.destroy();
+}
+
+const GREEN_HLSL = "float4 main() : SV_Target0 { return float4(0.0, 1.0, 0.0, 1.0); }";
+
+function dxbc(code: string, target: string): Vec<uint8> {
+	const blob = d3dCompile(code, "main", target);
+	if (blob == null) { stopOnWarp(`D3DCompile ${target} failed: ${d3dCompileLog()}`); }
+	let bytes: Vec<uint8> = new Array(65536);
+	const size = d3dBlobRead(blob, bytes[0], 65536);
+	d3dBlobFree(blob);
+	if (size <= 0) { stopOnWarp("the compiled blob did not fit 64 KiB"); }
+	bytes.setLength(size as number);
+	return bytes;
+}
+
+function greenTriangle(device: GPUDevice, descriptor: GPUShaderModuleDescriptor): Vec<uint8> {
+	const pipeline = flatPipeline(device, device.createShaderModule(descriptor), 1);
+	const vertices = vertexBuffer(device, 24);
+	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
+	device.queue.writeBuffer(vertices, 0, triangle);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.draw(3, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return readPixels(target);
+}
+
+test "a module built from precompiled DXBC with empty text draws, and a stage without a blob still compiles its text" {
+	const device = openDevice();
+	let blobs: GPUShaderModuleDescriptor = {
+		label: "blobs",
+		vertexCode: "",
+		vertexEntryPoint: "",
+		fragmentCode: "",
+		fragmentEntryPoint: "",
+		vertexBytecode: dxbc(VERTEX_HLSL, "vs_5_0"),
+		fragmentBytecode: dxbc(GREEN_HLSL, "ps_5_0"),
+	};
+	blobs.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const fromBlobs = greenTriangle(device, blobs);
+	assert pixel(fromBlobs, 0, 0) == BLUE;
+	assert pixel(fromBlobs, 32, 32) == GREEN;
+	let mixed: GPUShaderModuleDescriptor = {
+		label: "mixed",
+		vertexCode: "",
+		vertexEntryPoint: "",
+		fragmentCode: GREEN_HLSL,
+		fragmentEntryPoint: "",
+		vertexBytecode: dxbc(VERTEX_HLSL, "vs_5_0"),
+	};
+	mixed.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	assert pixel(greenTriangle(device, mixed), 32, 32) == GREEN;
+	device.destroy();
+}
+
+test "a compute module built from precompiled DXBC with empty text doubles a storage buffer" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: "", computeEntryPoint: "", computeBytecode: dxbc(DOUBLE_HLSL, "cs_5_0") };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 0 };
+	const module = device.createShaderModule(descriptor);
+	const storage = device.createBuffer({
+		label: "storage",
+		size: 16,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_DST as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	const values: Vec<uint32> = [1, 2, 3, 4];
+	device.queue.writeBuffer(storage, 0, values);
+	dispatchOnce(device, module, { binding: 0, buffer: storage });
+	const readback = readbackBuffer(device, 16);
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(storage, 0, readback, 0, 16);
+	device.queue.submit(encoder.finish());
+	const read = readBack(readback);
+	assert read[0] == 2 && read[4] == 4 && read[8] == 6 && read[12] == 8;
 	device.destroy();
 }
 
