@@ -2,6 +2,7 @@
 // (Metal on macOS/iOS, GLES3+EGL on Android); the extern surface is backend-agnostic.
 
 @include("bridge.h");
+import "../gpu/doorGpu";
 
 when (macos) {
 	@passL("-framework Cocoa");
