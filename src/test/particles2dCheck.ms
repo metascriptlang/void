@@ -489,11 +489,16 @@ function movedEmitter(): Transform2D { return trs2d(2.0, -1.0, -EMITTER_TURN, 1.
 // screen. Unity bakes a Local-space quad around the particle's local position, so its offsets
 // from that centre are placed around the particle's world position.
 function movedMisses(name: string, alignment: RenderAlignment, worldSpace: boolean): int32 {
-	const s = fresh();
 	let q = quad(3.0, 4.0);
 	q.height = 3.0;
 	q.rotationDegrees = 20.0;
 	q.alignment = alignment;
+	return movedQuadMisses(name, q, worldSpace);
+}
+
+function movedQuadMisses(name: string, q: UnityQuad, worldSpace: boolean): int32 {
+	const s = fresh();
+	const alignment: RenderAlignment = q.alignment;
 	let a = unityAsset(q);
 	a.main.simulationSpace = worldSpace ? SimulationSpace.World : SimulationSpace.Local;
 	let e = emitter(s, a, tile(fakeTexture(5), 16.0, 16.0));
@@ -505,7 +510,7 @@ function movedMisses(name: string, alignment: RenderAlignment, worldSpace: boole
 	const si: float32 = sinf(EMITTER_TURN);
 	let misses: int32 = 0;
 	for (let k = 1; k < (frames.length() as int32); k++) {
-		const n = e.update(UNITY_DT, movedEmitter(), VIEW);
+		const n = e.update(UNITY_DT, movedEmitter(), q.viewport);
 		if (!n.ok || n.value != 1 || e.node.count() != 1) { return 1000; }
 		const c: TileCell = first(e);
 		const m: Transform2D = trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
@@ -551,4 +556,73 @@ test "view and world alignment are unaffected by the emitter's turn in a World-s
 
 test "local alignment adds the emitter's turn in a World-space system, whose node is not turned" {
 	assert movedMisses("billboard_moved_local_world", RenderAlignment.Local, true) == 0;
+}
+
+// The *_clamp_* goldens of the moved emitter: the size limits act on the quad's own size, so a turned or
+// moved emitter changes nothing in them. The viewport is 2 * orthographicSize * aspect = 40.
+function movedClampMisses(alignment: RenderAlignment, worldSpace: boolean, size: float32, minSize: float32, maxSize: float32): int32 {
+	let q = quad(3.0, 4.0);
+	q.width = size;
+	q.height = size * 3.0;
+	q.rotationDegrees = 20.0;
+	q.alignment = alignment;
+	q.minSize = minSize;
+	q.maxSize = maxSize;
+	q.viewport = 40.0;
+	const space: string = worldSpace ? "world" : "local";
+	const al: string = alignment == RenderAlignment.View ? "view" : (alignment == RenderAlignment.World ? "world" : "local");
+	const tag: string = `billboard_moved_${al}_${space}_clamp_`;
+	return movedQuadMisses(tag + (maxSize < 0.2 ? "max" : "min"), q, worldSpace);
+}
+
+test "a moved and turned emitter leaves maxParticleSize's uniform scale down unchanged, in every alignment and space" {
+	const alignments: RenderAlignment[] = [RenderAlignment.View, RenderAlignment.World, RenderAlignment.Local];
+	for (let k = 0; k < 3; k++) {
+		assert movedClampMisses(alignments[k], false, 5.0, 0.0, 0.1) == 0;
+		assert movedClampMisses(alignments[k], true, 5.0, 0.0, 0.1) == 0;
+	}
+}
+
+test "a moved and turned emitter leaves minParticleSize's uniform scale up unchanged, in every alignment and space" {
+	const alignments: RenderAlignment[] = [RenderAlignment.View, RenderAlignment.World, RenderAlignment.Local];
+	for (let k = 0; k < 3; k++) {
+		assert movedClampMisses(alignments[k], false, 0.2, 0.1, 0.5) == 0;
+		assert movedClampMisses(alignments[k], true, 0.2, 0.1, 0.5) == 0;
+	}
+}
+
+// ---- the size limits on a freeform stretch (tests/unity/goldens/stretch_freeform1_*_clamp_*) ----
+
+function freeformClampMisses(name: string, rotateWith: boolean, minSize: float32, maxSize: float32, pivot: boolean): int32 {
+	let q = freeformQuad(rotateWith);
+	q.minSize = minSize;
+	q.maxSize = maxSize;
+	q.viewport = 40.0;
+	if (pivot) {
+		q.pivotX = 0.5;
+		q.pivotY = 0.25;
+	}
+	return cornerMisses(name, q);
+}
+
+test "freeform stretch: a base size above maxParticleSize scales the whole stretched quad about its centre" {
+	assert freeformClampMisses("stretch_freeform1_rotwith0_clamp_max_base", false, 0.0, 0.04, false) == 0;
+	assert freeformClampMisses("stretch_freeform1_rotwith1_clamp_max_base", true, 0.0, 0.04, false) == 0;
+}
+
+test "freeform stretch: a base size below minParticleSize scales the whole stretched quad up" {
+	assert freeformClampMisses("stretch_freeform1_rotwith0_clamp_min_big", false, 0.1, 0.5, false) == 0;
+	assert freeformClampMisses("stretch_freeform1_rotwith1_clamp_min_big", true, 0.1, 0.5, false) == 0;
+}
+
+test "freeform stretch: the limits read the unstretched size, so a stretched quad past maxParticleSize is not clamped" {
+	assert freeformClampMisses("stretch_freeform1_rotwith0_clamp_max_stretched", false, 0.0, 0.1, false) == 0;
+	assert freeformClampMisses("stretch_freeform1_rotwith1_clamp_max_stretched", true, 0.0, 0.1, false) == 0;
+	assert freeformClampMisses("stretch_freeform1_rotwith0_clamp_inside", false, 0.01, 0.5, false) == 0;
+	assert freeformClampMisses("stretch_freeform1_rotwith1_clamp_inside", true, 0.01, 0.5, false) == 0;
+}
+
+test "freeform stretch: the clamp scales the quad about its centre, not about the pivot" {
+	assert freeformClampMisses("stretch_freeform1_rotwith0_pivot_clamp_max_base", false, 0.0, 0.04, true) == 0;
+	assert freeformClampMisses("stretch_freeform1_rotwith1_pivot_clamp_max_base", true, 0.0, 0.04, true) == 0;
 }
