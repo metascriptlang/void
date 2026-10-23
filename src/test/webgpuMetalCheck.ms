@@ -19,6 +19,7 @@ import {
 	GPUShaderModuleDescriptor,
 	GPUStencilOperation,
 	GPUTexture,
+	GPUTextureDimension,
 	GPUTextureFormat,
 	GPUTextureSampleType,
 	GPUTextureUsage,
@@ -994,5 +995,182 @@ test "a shader reads an unsigned-integer texture and a multisampled texture thro
 	const multisampled = sampledShader(device, MULTISAMPLED_FRAGMENT_MSL, "mmain", textureBinding("float", "2d", true), NO_BINDING);
 	const samples = clearedTarget(device, "rgba8unorm", 4, 0.0, 1.0, 0.0);
 	assert sampleCentreWith(device, multisampled, samples, { id: 0 }) == GREEN;
+	device.destroy();
+}
+
+const COLOURED_USAGE: int32 = (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_SRC as int32);
+const READ_LOD1_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 lod1(Out in [[stage_in]], texture2d<float> tex [[texture(0)]]) { return tex.read(uint2(0, 0), 1); }\n";
+const READ_LAYER1_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 layer1(Out in [[stage_in]], texture2d_array<float> tex [[texture(0)]]) { return tex.read(uint2(0, 0), 1); }\n";
+const READ_FIRST_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 first(Out in [[stage_in]], texture2d<float> tex [[texture(0)]]) { return tex.read(uint2(0, 0), 0); }\n";
+const READ_CUBE_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 faces(Out in [[stage_in]], texturecube<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) { return float4(tex.sample(smp, float3(1.0, 0.0, 0.0)).r, tex.sample(smp, float3(0.0, 1.0, 0.0)).g, tex.sample(smp, float3(0.0, 0.0, -1.0)).b, 1.0); }\n";
+const READ_VOLUME_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 plane2(Out in [[stage_in]], texture3d<float> tex [[texture(0)]]) { return tex.read(uint3(0, 0, 2), 0); }\n";
+
+function sizedTexture(device: GPUDevice, width: int32, height: int32, layers: int32, mips: int32, dimension: GPUTextureDimension): GPUTexture {
+	return device.createTexture({
+		label: "sized",
+		size: { width: width, height: height, depthOrArrayLayers: layers },
+		format: "rgba8unorm",
+		usage: COLOURED_USAGE,
+		sampleCount: 1,
+		mipLevelCount: mips,
+		dimension: dimension,
+	});
+}
+
+function clearView(device: GPUDevice, view: GPUTextureView, r: float64, g: float64, b: float64, depthSlice: int32): void {
+	let descriptor = clearingPass(view, { id: 0 });
+	descriptor.colorAttachments[0].clearValue = { r: r, g: g, b: b, a: 1.0 };
+	descriptor.colorAttachments[0].depthSlice = depthSlice;
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+}
+
+function viewOf(texture: GPUTexture, dimension: GPUTextureViewDimension, baseMip: int32, mips: int32, baseLayer: int32, layers: int32): GPUTextureView {
+	return texture.createView({ label: null, dimension: dimension, baseMipLevel: baseMip, mipLevelCount: mips, baseArrayLayer: baseLayer, arrayLayerCount: layers });
+}
+
+function firstTexel(bytes: Vec<uint8>): uint32 {
+	return ((bytes[0] as uint32) << 24) | ((bytes[1] as uint32) << 16) | ((bytes[2] as uint32) << 8) | (bytes[3] as uint32);
+}
+
+test "each mip of a texture is a render attachment sized by its mip, and views select a mip range" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 8, 8, 1, 4, "2d");
+	clearView(device, viewOf(texture, "2d", 0, 1, 0, 1), 1.0, 0.0, 0.0, 0);
+	clearView(device, viewOf(texture, "2d", 1, 1, 0, 1), 0.0, 1.0, 0.0, 0);
+	clearView(device, viewOf(texture, "2d", 2, 1, 0, 1), 0.0, 0.0, 1.0, 0);
+	assert firstTexel(readBytes(texture, 0, 0, 0, 8, 8, 4)) == RED;
+	assert firstTexel(readBytes(texture, 1, 0, 0, 4, 4, 4)) == GREEN;
+	assert firstTexel(readBytes(texture, 2, 0, 0, 2, 2, 4)) == BLUE;
+	const subRange = sampledShader(device, READ_FIRST_MSL, "first", textureBinding("float", "2d", false), NO_BINDING);
+	assert sampleCentreWith(device, subRange, viewOf(texture, "2d", 2, 1, 0, 1), { id: 0 }) == BLUE;
+	assert sampleCentreWith(device, subRange, viewOf(texture, "2d", 1, 2, 0, 1), { id: 0 }) == GREEN;
+	const lod = sampledShader(device, READ_LOD1_MSL, "lod1", textureBinding("float", "2d", false), NO_BINDING);
+	assert sampleCentreWith(device, lod, viewOf(texture, "2d", 0, 4, 0, 1), { id: 0 }) == GREEN;
+	device.destroy();
+}
+
+test "a draw into mip 1 covers that mip's whole extent and leaves mip 0 alone" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 8, 8, 1, 2, "2d");
+	clearView(device, viewOf(texture, "2d", 0, 1, 0, 1), 1.0, 0.0, 0.0, 0);
+	const module = flatShader(device);
+	const pipeline = flatPipeline(device, module, 1);
+	const group = uniformGroupAt(device, pipeline, colourUniforms(device), 256);
+	const vertices = vertexBuffer(device, 48);
+	const quad: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, quad);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(viewOf(texture, "2d", 1, 1, 0, 1), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const mip1 = readBytes(texture, 1, 0, 0, 4, 4, 4);
+	for (let i = 0; i < 16; i++) { assert mip1[i * 4 + 1] == 255 && mip1[i * 4] == 0; }
+	const mip0 = readBytes(texture, 0, 0, 0, 8, 8, 4);
+	for (let i = 0; i < 64; i++) { assert mip0[i * 4] == 255 && mip0[i * 4 + 1] == 0; }
+	device.destroy();
+}
+
+test "a sampler's LOD clamp and mip filter choose the mip a shader samples" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 8, 8, 1, 4, "2d");
+	clearView(device, viewOf(texture, "2d", 0, 1, 0, 1), 1.0, 0.0, 0.0, 0);
+	clearView(device, viewOf(texture, "2d", 1, 1, 0, 1), 0.0, 1.0, 0.0, 0);
+	clearView(device, viewOf(texture, "2d", 2, 1, 0, 1), 0.0, 0.0, 1.0, 0);
+	const module = sampledShader(device, TEXTURED_FRAGMENT_MSL, "tmain", textureBinding("float", "2d", false), samplerBinding("filtering"));
+	const whole = viewOf(texture, "2d", 0, 4, 0, 1);
+	const atTwo = device.createSampler({ label: "lod2", magFilter: "nearest", minFilter: "nearest", mipmapFilter: "nearest", lodMinClamp: 2.0, lodMaxClamp: 2.0 });
+	const atOne = device.createSampler({ label: "lod1", magFilter: "nearest", minFilter: "nearest", mipmapFilter: "nearest", lodMinClamp: 1.0, lodMaxClamp: 1.0 });
+	const atZero = device.createSampler({ label: "lod0", magFilter: "nearest", minFilter: "nearest", mipmapFilter: "nearest", lodMinClamp: 0.0, lodMaxClamp: 0.0 });
+	assert sampleCentreWith(device, module, whole, atTwo) == BLUE;
+	assert sampleCentreWith(device, module, whole, atOne) == GREEN;
+	assert sampleCentreWith(device, module, whole, atZero) == RED;
+	device.destroy();
+}
+
+test "array layers are attachments and views select a layer or a range of layers" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 4, 4, 3, 1, "2d");
+	clearView(device, viewOf(texture, "2d", 0, 1, 0, 1), 1.0, 0.0, 0.0, 0);
+	clearView(device, viewOf(texture, "2d", 0, 1, 1, 1), 0.0, 1.0, 0.0, 0);
+	clearView(device, viewOf(texture, "2d", 0, 1, 2, 1), 0.0, 0.0, 1.0, 0);
+	assert firstTexel(readBytes(texture, 0, 0, 0, 4, 4, 4)) == RED;
+	assert firstTexel(readBytes(texture, 0, 1, 0, 4, 4, 4)) == GREEN;
+	assert firstTexel(readBytes(texture, 0, 2, 0, 4, 4, 4)) == BLUE;
+	const arrayShader = sampledShader(device, READ_LAYER1_MSL, "layer1", textureBinding("float", "2d-array", false), NO_BINDING);
+	assert sampleCentreWith(device, arrayShader, viewOf(texture, "2d-array", 0, 1, 0, 3), { id: 0 }) == GREEN;
+	assert sampleCentreWith(device, arrayShader, viewOf(texture, "2d-array", 0, 1, 1, 2), { id: 0 }) == BLUE;
+	const single = sampledShader(device, READ_FIRST_MSL, "first", textureBinding("float", "2d", false), NO_BINDING);
+	assert sampleCentreWith(device, single, viewOf(texture, "2d", 0, 1, 2, 1), { id: 0 }) == BLUE;
+	device.destroy();
+}
+
+test "a cube view of six layers samples each face by direction" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 4, 4, 6, 1, "2d");
+	for (let face = 0; face < 6; face++) {
+		clearView(device, viewOf(texture, "2d", 0, 1, face, 1), face == 0 ? 1.0 : 0.0, face == 2 ? 1.0 : 0.0, face == 5 ? 1.0 : 0.0, 0);
+	}
+	const module = sampledShader(device, READ_CUBE_MSL, "faces", textureBinding("float", "cube", false), samplerBinding("filtering"));
+	const sampler = device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" });
+	const cube = viewOf(texture, "cube", 0, 1, 0, 6);
+	assert sampleCentreWith(device, module, cube, sampler) == 0xFFFFFFFF;
+	const other = sizedTexture(device, 4, 4, 6, 1, "2d");
+	for (let face = 0; face < 6; face++) { clearView(device, viewOf(other, "2d", 0, 1, face, 1), 0.0, 0.0, 0.0, 0); }
+	clearView(device, viewOf(other, "2d", 0, 1, 2, 1), 0.0, 1.0, 0.0, 0);
+	assert sampleCentreWith(device, module, viewOf(other, "cube", 0, 1, 0, 6), sampler) == 0x00FF00FF;
+	device.destroy();
+}
+
+test "a 3d texture takes a render attachment at each depth slice and mip, and a shader reads a slice" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 4, 4, 4, 3, "3d");
+	clearView(device, viewOf(texture, "3d", 0, 1, 0, 0), 1.0, 0.0, 0.0, 0);
+	clearView(device, viewOf(texture, "3d", 0, 1, 0, 0), 0.0, 1.0, 0.0, 1);
+	clearView(device, viewOf(texture, "3d", 0, 1, 0, 0), 0.0, 0.0, 1.0, 2);
+	assert firstTexel(readBytes(texture, 0, 0, 0, 4, 4, 4)) == RED;
+	assert firstTexel(readBytes(texture, 0, 0, 1, 4, 4, 4)) == GREEN;
+	assert firstTexel(readBytes(texture, 0, 0, 2, 4, 4, 4)) == BLUE;
+	const shader = sampledShader(device, READ_VOLUME_MSL, "plane2", textureBinding("float", "3d", false), NO_BINDING);
+	assert sampleCentreWith(device, shader, viewOf(texture, "3d", 0, 3, 0, 0), { id: 0 }) == BLUE;
+	clearView(device, viewOf(texture, "3d", 1, 1, 0, 0), 1.0, 1.0, 0.0, 1);
+	assert firstTexel(readBytes(texture, 1, 0, 1, 2, 2, 4)) == 0xFFFF00FF;
+	assert firstTexel(readBytes(texture, 1, 0, 0, 2, 2, 4)) != 0xFFFF00FF;
+	device.destroy();
+}
+
+test "a multisampled target resolves into a chosen mip, then into a chosen layer" {
+	const device = openDevice();
+	const mips = sizedTexture(device, 8, 8, 1, 2, "2d");
+	clearView(device, viewOf(mips, "2d", 0, 1, 0, 1), 1.0, 0.0, 0.0, 0);
+	const samples = device.createTexture({
+		label: "samples",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32),
+		sampleCount: 4,
+	});
+	let descriptor = clearingPass(samples.createView({ label: null }), viewOf(mips, "2d", 1, 1, 0, 1));
+	descriptor.colorAttachments[0].clearValue = { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
+	let encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	assert firstTexel(readBytes(mips, 1, 0, 0, 4, 4, 4)) == GREEN;
+	assert firstTexel(readBytes(mips, 0, 0, 0, 8, 8, 4)) == RED;
+	const layers = sizedTexture(device, 4, 4, 2, 1, "2d");
+	clearView(device, viewOf(layers, "2d", 0, 1, 0, 1), 1.0, 0.0, 0.0, 0);
+	descriptor = clearingPass(samples.createView({ label: null }), viewOf(layers, "2d", 0, 1, 1, 1));
+	descriptor.colorAttachments[0].clearValue = { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
+	encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	assert firstTexel(readBytes(layers, 0, 1, 0, 4, 4, 4)) == BLUE;
+	assert firstTexel(readBytes(layers, 0, 0, 0, 4, 4, 4)) == RED;
 	device.destroy();
 }

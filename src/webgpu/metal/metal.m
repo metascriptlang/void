@@ -104,15 +104,21 @@ MtlTexture mtlNewTexture(
 	MtlDevice device,
 	int32_t width,
 	int32_t height,
+	int32_t depthOrLayers,
+	int32_t mipLevels,
+	int32_t textureType,
 	int32_t pixelFormat,
 	int32_t sampleCount,
 	int32_t renderTarget,
 	int32_t shared) {
 	MTLTextureDescriptor *desc = [[MTLTextureDescriptor alloc] init];
-	desc.textureType = sampleCount > 1 ? MTLTextureType2DMultisample : MTLTextureType2D;
+	desc.textureType = (MTLTextureType)textureType;
 	desc.pixelFormat = (MTLPixelFormat)pixelFormat;
 	desc.width = (NSUInteger)width;
 	desc.height = (NSUInteger)height;
+	desc.mipmapLevelCount = (NSUInteger)mipLevels;
+	if (textureType == MTLTextureType3D) { desc.depth = (NSUInteger)depthOrLayers; }
+	if (textureType == MTLTextureType2DArray) { desc.arrayLength = (NSUInteger)depthOrLayers; }
 	desc.sampleCount = (NSUInteger)sampleCount;
 	desc.usage = MTLTextureUsageShaderRead | (renderTarget ? MTLTextureUsageRenderTarget : 0);
 	desc.resourceOptions = renderTarget
@@ -121,6 +127,20 @@ MtlTexture mtlNewTexture(
 	id<MTLTexture> texture = [(id<MTLDevice>)device newTextureWithDescriptor:desc];
 	[desc release];
 	return (MtlTexture)texture;
+}
+
+MtlTexture mtlNewTextureView(
+	MtlTexture texture,
+	int32_t pixelFormat,
+	int32_t textureType,
+	int32_t baseMip,
+	int32_t mipCount,
+	int32_t baseLayer,
+	int32_t layerCount) {
+	return (MtlTexture)[(id<MTLTexture>)texture newTextureViewWithPixelFormat:(MTLPixelFormat)pixelFormat
+		textureType:(MTLTextureType)textureType
+		levels:NSMakeRange((NSUInteger)baseMip, (NSUInteger)mipCount)
+		slices:NSMakeRange((NSUInteger)baseLayer, (NSUInteger)layerCount)];
 }
 
 void mtlReleaseTexture(MtlTexture texture) { [(id<MTLTexture>)texture release]; }
@@ -303,7 +323,12 @@ void mtlPassReset(void) {
 void mtlPassColor(
 	int32_t index,
 	MtlTexture texture,
+	int32_t level,
+	int32_t slice,
+	int32_t depthPlane,
 	MtlTexture resolve,
+	int32_t resolveLevel,
+	int32_t resolveSlice,
 	int32_t loadAction,
 	int32_t storeAction,
 	double r,
@@ -312,19 +337,28 @@ void mtlPassColor(
 	double a) {
 	MTLRenderPassColorAttachmentDescriptor *color = s_pass.colorAttachments[(NSUInteger)index];
 	color.texture = (id<MTLTexture>)texture;
+	color.level = (NSUInteger)level;
+	color.slice = (NSUInteger)slice;
+	color.depthPlane = (NSUInteger)depthPlane;
 	color.resolveTexture = (id<MTLTexture>)resolve;
+	color.resolveLevel = (NSUInteger)resolveLevel;
+	color.resolveSlice = (NSUInteger)resolveSlice;
 	color.loadAction = (MTLLoadAction)loadAction;
 	color.storeAction = (MTLStoreAction)storeAction;
 	color.clearColor = MTLClearColorMake(r, g, b, a);
 }
 
-void mtlPassDepth(MtlTexture texture, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil) {
+void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil) {
 	s_pass.depthAttachment.texture = (id<MTLTexture>)texture;
+	s_pass.depthAttachment.level = (NSUInteger)level;
+	s_pass.depthAttachment.slice = (NSUInteger)slice;
 	s_pass.depthAttachment.loadAction = (MTLLoadAction)loadAction;
 	s_pass.depthAttachment.storeAction = (MTLStoreAction)storeAction;
 	s_pass.depthAttachment.clearDepth = depth;
 	if (stencil) {
 		s_pass.stencilAttachment.texture = (id<MTLTexture>)texture;
+		s_pass.stencilAttachment.level = (NSUInteger)level;
+		s_pass.stencilAttachment.slice = (NSUInteger)slice;
 		s_pass.stencilAttachment.loadAction = (MTLLoadAction)loadAction;
 		s_pass.stencilAttachment.storeAction = (MTLStoreAction)storeAction;
 		s_pass.stencilAttachment.clearStencil = 0;

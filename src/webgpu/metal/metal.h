@@ -36,10 +36,21 @@ MtlTexture mtlNewTexture(
 	MtlDevice device,
 	int32_t width,
 	int32_t height,
+	int32_t depthOrLayers,
+	int32_t mipLevels,
+	int32_t textureType,
 	int32_t pixelFormat,
 	int32_t sampleCount,
 	int32_t renderTarget,
 	int32_t shared);
+MtlTexture mtlNewTextureView(
+	MtlTexture texture,
+	int32_t pixelFormat,
+	int32_t textureType,
+	int32_t baseMip,
+	int32_t mipCount,
+	int32_t baseLayer,
+	int32_t layerCount);
 void mtlReleaseTexture(MtlTexture texture);
 void mtlWriteTexture(MtlTexture texture, void *data, int64_t offset, int32_t bytesPerRow, int32_t width, int32_t height);
 
@@ -106,14 +117,19 @@ void mtlPassReset(void);
 void mtlPassColor(
 	int32_t index,
 	MtlTexture texture,
+	int32_t level,
+	int32_t slice,
+	int32_t depthPlane,
 	MtlTexture resolve,
+	int32_t resolveLevel,
+	int32_t resolveSlice,
 	int32_t loadAction,
 	int32_t storeAction,
 	double r,
 	double g,
 	double b,
 	double a);
-void mtlPassDepth(MtlTexture texture, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil);
+void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil);
 MtlEncoder mtlBeginPass(MtlCommandBuffer commandBuffer);
 void mtlEndPass(MtlEncoder encoder);
 
