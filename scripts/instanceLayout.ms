@@ -90,6 +90,12 @@ function cStruct(name: string, lanes: Lane[]): string {
 	return out + `} ${name};\n`;
 }
 
+function cOffsets(name: string, lanes: Lane[]): string {
+	let out: string = `static const size_t ${name}Offsets[${lanes.length}] = {\n`;
+	for (const l of lanes) { out += `\toffsetof(${name}, ${l.field}),\n`; }
+	return out + "};\n";
+}
+
 function cPack(name: string, instance: string, lanes: Lane[]): string {
 	let out: string = `static inline void ${name}(\n`;
 	out += `\t${instance} *dst, const float *rec, uint32_t (*packColor)(const float *)) {\n`;
@@ -120,9 +126,11 @@ ms += msConstants("UI", uiLanes);
 ms += msConstants("SPRITE", spriteLanes);
 writeFile(`${dir}/instanceLayout.ms`, ms);
 
-let h: string = "#pragma once\n#include <stdint.h>\n#include <string.h>\n\n";
+let h: string = "#pragma once\n#include <stddef.h>\n#include <stdint.h>\n#include <string.h>\n\n";
 h += cStruct("void2dUiInstance", uiLanes) + "\n";
 h += cStruct("void2dSpriteInstance", spriteLanes) + "\n";
+h += cOffsets("void2dUiInstance", uiLanes) + "\n";
+h += cOffsets("void2dSpriteInstance", spriteLanes) + "\n";
 h += `#define VOID2D_UI_REC_FLOATS ${recFloats(uiLanes)}\n`;
 h += `#define VOID2D_SPRITE_REC_FLOATS ${recFloats(spriteLanes)}\n\n`;
 h += cPack("void2dPackUiInstance", "void2dUiInstance", uiLanes);

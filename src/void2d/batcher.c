@@ -227,6 +227,16 @@ static uint32_t packColor(const float *c) {
 int void2dUiInstanceStride(void) { return (int)sizeof(void2dUiInstance); }
 int void2dSpriteInstanceStride(void) { return (int)sizeof(void2dSpriteInstance); }
 
+int void2dUiInstanceOffset(int lane) {
+	const int lanes = (int)(sizeof void2dUiInstanceOffsets / sizeof void2dUiInstanceOffsets[0]);
+	return lane >= 0 && lane < lanes ? (int)void2dUiInstanceOffsets[lane] : -1;
+}
+
+int void2dSpriteInstanceOffset(int lane) {
+	const int lanes = (int)(sizeof void2dSpriteInstanceOffsets / sizeof void2dSpriteInstanceOffsets[0]);
+	return lane >= 0 && lane < lanes ? (int)void2dSpriteInstanceOffsets[lane] : -1;
+}
+
 void void2dCopyFloats(float *dst, const float *src, int count) {
 	if (count > 0) { memcpy(dst, src, (size_t)count * sizeof(float)); }
 }
