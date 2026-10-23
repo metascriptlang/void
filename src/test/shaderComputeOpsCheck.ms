@@ -178,3 +178,86 @@ test "every target spells both barriers, and refuses one outside a compute entry
 		assert !refused.ok && refused.error.endsWith(": WorkgroupBarrier outside a compute entry");
 	}
 }
+
+export struct TileInput {
+	@builtin(globalInvocationId) id: Vec3u;
+	@builtin(localInvocationIndex) local: uint32;
+}
+
+let tile: float32[64];
+let scale: float32;
+
+function mirrored(i: uint32): float32 {
+	return tile[63 - i] * scale;
+}
+
+export function tileCs(input: TileInput, b: OpsBindings): void {
+	const i = input.local;
+	tile[i] = i as float32;
+	if (i == 0) {
+		scale = 2.0;
+	}
+	workgroupBarrier();
+	textureStore(b.image, vec2i(input.id.xy), vec4f(mirrored(i)));
+}
+
+test "a module let a compute entry reads is workgroup memory that starts at zero" {
+	const b: OpsBindings = { image: blankImage() };
+	tileCs({ id: { x: 1, y: 0, z: 0 }, local: 63 }, b);
+	assert b.image.texels[4] == 0.0;
+	tileCs({ id: { x: 0, y: 0, z: 0 }, local: 0 }, b);
+	assert b.image.texels[0] == 126.0;
+	assert glslCompute(tileCs, [64, 1, 1]) ==
+		"layout(local_size_x=64, local_size_y=1, local_size_z=1) in;\n" +
+		"layout(binding=0, r32f) uniform writeonly image2D image;\n" +
+		"shared float[64] tile;\n" +
+		"shared float scale;\n" +
+		"float mirrored(uint i) {\n" +
+		"    return tile[63 - i] * scale;\n" +
+		"}\n" +
+		"void main() {\n" +
+		"    if (gl_LocalInvocationIndex == 0) {\n" +
+		"        for (uint zeroAt = 0; zeroAt < 64; zeroAt++) {\n" +
+		"            tile[zeroAt] = 0.0;\n" +
+		"        }\n" +
+		"        scale = 0.0;\n" +
+		"    }\n" +
+		"    memoryBarrierShared(); barrier();\n" +
+		"    uint i = gl_LocalInvocationIndex;\n" +
+		"    tile[i] = float(i);\n" +
+		"    if (i == 0) {\n" +
+		"        scale = 2.0;\n" +
+		"    }\n" +
+		"    memoryBarrierShared(); barrier();\n" +
+		"    imageStore(image, ivec2(gl_GlobalInvocationID.xy), vec4(mirrored(i)));\n" +
+		"}\n";
+}
+
+test "every target declares workgroup memory, zeroed by one invocation behind a barrier" {
+	const m = computeOf(glslComputeIr(tileCs, [64, 1, 1]));
+	const wgsl = printedFor(m, ShaderTarget.Wgsl, "tile");
+	assert wgsl.includes("var<workgroup> tile : array<f32, 64>;\n");
+	assert wgsl.includes("var<workgroup> scale : f32;\n");
+	assert wgsl.includes("  if ((local == 0u)) {\n" +
+		"    for (var zeroAt : u32 = 0u; (zeroAt < 64u); zeroAt++) {\n" +
+		"      tile[zeroAt] = 0f;\n    }\n    scale = 0f;\n  }\n  workgroupBarrier();\n");
+	const hlsl = printedFor(m, ShaderTarget.Hlsl5, "tile");
+	assert hlsl.includes("groupshared float tile[64];\ngroupshared float scale;\n");
+	assert hlsl.includes("    uint local : SV_GroupIndex;\n");
+	const gl = printedFor(m, ShaderTarget.Glsl430, "tile");
+	assert gl.includes("shared float tile[64];\nshared float scale;\n");
+	assert gl.includes("    if (gl_LocalInvocationIndex == 0u)\n");
+	const msl = printedFor(m, ShaderTarget.Msl, "tile");
+	assert msl.includes("static inline float mirrored(uint i, threadgroup float (&tile)[64], " +
+		"threadgroup float& scale) {\n");
+	assert msl.includes("  threadgroup float tile[64];\n  threadgroup float scale;\n" +
+		"  tileCs(id, local, image, tile, scale);\n");
+	let fragment = tiny(ShaderStage.Fragment, exprOf(ExprKind.Construct,
+		vectorType(ScalarKind.F32, 4), -1, [exprOf(ExprKind.Workgroup, m.workgroups[1].type, 0, [])]));
+	fragment.workgroups = [m.workgroups[1]];
+	for (const target of TARGETS) {
+		const refused = stageSource(fragment, 0, target);
+		assert !refused.ok &&
+			refused.error.endsWith(": workgroup variable 'scale' is read outside a compute entry");
+	}
+}

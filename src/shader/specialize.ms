@@ -12,6 +12,7 @@ import {
 	ShaderIo,
 	ShaderModule,
 	ShaderResource,
+	ShaderStage,
 	ShaderStmt,
 	ShaderStruct,
 	ShaderType,
@@ -32,6 +33,7 @@ export class Reads {
 	ios: int32[] = [];
 	structs: int32[] = [];
 	pairs: TexturePair[] = [];
+	workgroups: int32[] = [];
 }
 
 class Walk {
@@ -109,6 +111,9 @@ function walkExpr(w: Walk, e: ShaderExpr): void {
 		},
 		ExprKind.Call => walkFunction(w, e.index),
 		ExprKind.Intrinsic => notePair(w, e),
+		ExprKind.Workgroup => {
+			if (note(w.reads.workgroups, e.index)) { walkType(w, m.workgroups[e.index].type); }
+		},
 		_ => {},
 	}
 	for (const o of e.operands) { walkExpr(w, o); }
@@ -146,6 +151,12 @@ function walkFunction(w: Walk, index: int32): void {
 	walkStmts(w, f.body);
 }
 
+export function strayWorkgroup(m: ShaderModule, e: ShaderEntry, reads: Reads): string {
+	if (e.stage == ShaderStage.Compute || reads.workgroups.length == 0) { return ""; }
+	return "workgroup variable '" + m.workgroups[reads.workgroups[0]].name +
+		"' is read outside a compute entry";
+}
+
 export function readsFrom(m: ShaderModule, functionIndex: int32): Result<Reads, string> {
 	let w = new Walk();
 	w.module = m;
@@ -161,6 +172,7 @@ class Remap {
 	resources: int32[] = [];
 	ios: int32[] = [];
 	functions: int32[] = [];
+	workgroups: int32[] = [];
 }
 
 function keptIndices(count: int32, kept: int32[]): int32[] {
@@ -209,6 +221,7 @@ function copyExpr(r: Remap, e: ShaderExpr): ShaderExpr {
 		ExprKind.Io => r.ios[e.index],
 		ExprKind.Resource | ExprKind.BlockMember => r.resources[e.index],
 		ExprKind.Call => r.functions[e.index],
+		ExprKind.Workgroup => r.workgroups[e.index],
 		_ => e.index,
 	};
 	c.member = e.member;
@@ -280,6 +293,7 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 	r.resources = keptIndices(m.resources.length as int32, w.reads.resources);
 	r.ios = keptIndices(m.ios.length as int32, ios);
 	r.functions = keptIndices(m.functions.length as int32, w.reads.functions);
+	r.workgroups = keptIndices(m.workgroups.length as int32, w.reads.workgroups);
 
 	let out = new ShaderModule();
 	for (let i = 0; i < m.structs.length; i++) {
@@ -336,6 +350,9 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 		c.body = copyStmts(r, from.body);
 		out.functions.push(c);
 	}
+	for (let i = 0; i < m.workgroups.length; i++) {
+		if (r.workgroups[i] >= 0) { out.workgroups.push(copyField(r, m.workgroups[i])); }
+	}
 	for (const e of m.entries) {
 		let c = new ShaderEntry();
 		c.name = e.name;
@@ -349,6 +366,7 @@ export function specialize(m: ShaderModule, on: string[]): Result<ShaderModule, 
 			DeclarationKind.Struct => r.structs[d.index],
 			DeclarationKind.Constant => r.constants[d.index],
 			DeclarationKind.Function => r.functions[d.index],
+			DeclarationKind.Workgroup => r.workgroups[d.index],
 		};
 		if (index < 0) { continue; }
 		let c = new ShaderDeclaration();

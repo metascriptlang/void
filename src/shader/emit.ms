@@ -871,6 +871,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let openKeys: string[] = [];
 	let constantKeys: string[] = [];
 	let constantIndices: int32[] = [];
+	let workgroupKeys: string[] = [];
+	let workgroupIndices: int32[] = [];
 	let scopeModule = "";
 	let current = new ShaderFunction();
 	let paramNames: string[] = [];
@@ -1143,9 +1145,14 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		const decl = declaration(n);
 		const module = n.resolvedSym.modulePath;
 		const key = declKey(module, decl);
-		if (constantKeys.includes(key)) { return; }
+		if (constantKeys.includes(key) || workgroupKeys.includes(key)) { return; }
 		if (decl.declKind != DeclKind.Const) {
-			fail(n, "'" + n.name + "' is a module variable: a shader reads only module constants");
+			if (!compute) {
+				fail(n, "'" + n.name + "' is a module variable: a shader reads only module " +
+					"constants, and a compute entry shares one as workgroup memory");
+			}
+			defineWorkgroup(n, decl, key);
+			return;
 		}
 		gather(decl.initializer, module, [], decl);
 		checkName(decl.declName, n);
@@ -1158,6 +1165,73 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		c.value = lower(decl.initializer);
 		constantKeys.push(key);
 		constantIndices.push(index);
+	}
+
+	function defineWorkgroup(n: Node, decl: Node, key: string): void {
+		if (decl.initializer != null) {
+			fail(n, "workgroup variable '" + n.name + "' starts at zero, as WGSL's " +
+				"var<workgroup>: drop its initializer");
+		}
+		checkName(decl.declName, n);
+		const index = m.workgroups.length as int32;
+		m.workgroups.push(shaderField(decl.declName, valueType(getType(n), n)));
+		declare(DeclarationKind.Workgroup, index);
+		workgroupKeys.push(key);
+		workgroupIndices.push(index);
+	}
+
+	function workgroupOf(n: Node): int32 {
+		if (n.kind != NodeKind.Identifier || symKind(n) != SymbolKind.Variable ||
+			n.resolvedSym == null) {
+			return -1;
+		}
+		const at = workgroupKeys.indexOf(declKey(n.resolvedSym.modulePath, declaration(n)));
+		return at < 0 ? -1 : workgroupIndices[at];
+	}
+
+	function zeroOf(t: ShaderType): ShaderExpr {
+		if (t.kind == ShaderTypeKind.Scalar) { return literal(t, 0.0); }
+		return exprOf(ExprKind.Construct, t, -1, [literal(scalarType(t.scalar), 0.0)]);
+	}
+
+	// One invocation zeroes every workgroup variable before any reads it, as naga's
+	// zero_initialize_workgroup_memory does, so every target starts where WGSL starts.
+	function zeroedWorkgroups(f: ShaderFunction): ShaderStmt[] {
+		const u32 = scalarType(ScalarKind.U32);
+		let index = m.ios.findIndex((io) => io.stage == stage &&
+			io.builtin == Builtin.LocalInvocationIndex);
+		if (index < 0) {
+			index = addIo(stage, "localInvocationIndex", IoDirection.In, u32,
+				Builtin.LocalInvocationIndex, new FeatureCondition());
+		}
+		let zeroes: ShaderStmt[] = [];
+		for (let w = 0; w < m.workgroups.length; w++) {
+			const t = m.workgroups[w].type;
+			const variable = exprOf(ExprKind.Workgroup, t, w as int32, []);
+			if (t.kind != ShaderTypeKind.Array) {
+				zeroes.push(assignOf(variable, zeroOf(t)));
+				continue;
+			}
+			const at = f.locals.length as int32;
+			f.locals.push(shaderField("zeroAt", u32));
+			const counter = exprOf(ExprKind.Local, u32, at, []);
+			let start = stmtOf(StmtKind.Let, literal(u32, 0.0), []);
+			start.local = at;
+			let step = assignOf(counter, new ShaderExpr());
+			step.assign = AssignOp.Increment;
+			let loop = stmtOf(StmtKind.For,
+				binaryOf(BinaryOp.Less, scalarType(ScalarKind.Bool), counter,
+					literal(u32, t.length as float64)),
+				[assignOf(exprOf(ExprKind.Index, t.element[0], -1, [variable, counter]),
+					zeroOf(t.element[0]))]);
+			loop.init = [start];
+			loop.update = [step];
+			zeroes.push(loop);
+		}
+		const first = binaryOf(BinaryOp.Equal, scalarType(ScalarKind.Bool),
+			exprOf(ExprKind.Io, u32, index as int32, []), literal(u32, 0.0));
+		return [stmtOf(StmtKind.If, first, zeroes),
+			stmtOf(StmtKind.Call, intrinsicOf(Intrinsic.WorkgroupBarrier, new ShaderType(), []), [])];
 	}
 
 	function enterScope(module: string, f: ShaderFunction): void {
@@ -1238,6 +1312,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				const i = constantIndices[constantKeys.indexOf(key)];
 				return exprOf(ExprKind.Constant, m.constants[i].type, i, []);
 			}
+			const w = workgroupOf(n);
+			if (w >= 0) { return exprOf(ExprKind.Workgroup, m.workgroups[w].type, w, []); }
 		}
 		fail(n, "'" + n.name + "' has no GLSL form yet");
 	}
@@ -1524,7 +1600,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function assignee(target: Node, n: Node): ShaderExpr {
-		if (target.kind == NodeKind.Identifier && locals.includes(target.name)) {
+		if (target.kind == NodeKind.Identifier &&
+			(locals.includes(target.name) || workgroupOf(target) >= 0)) {
 			return identifier(target);
 		}
 		if (target.kind == NodeKind.MemberExpr) {
@@ -1886,6 +1963,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const mainIndex = addFunction(main);
 	enterScope(entry.resolvedSym.modulePath, main);
 	main.body = lowerBody(fn.fnBody);
+	if (m.workgroups.length > 0) { main.body = zeroedWorkgroups(main).concat(main.body); }
 	for (let s = 0; s < storageResources.length; s++) {
 		const element = storageElements[s];
 		if (!isAuthorStruct(element)) {

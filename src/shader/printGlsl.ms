@@ -29,7 +29,7 @@ import {
 	isEffect,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
-import { readsFrom } from "./specialize";
+import { readsFrom, strayWorkgroup } from "./specialize";
 
 export enum GlslTarget {
 	Glsl430,
@@ -134,6 +134,7 @@ class Printer {
 	blockOffsets: int32[][] = [];
 	ioNames: string[] = [];
 	functionNames: string[] = [];
+	workgroupNames: string[] = [];
 	effects: int32[] = [];
 	pairs: Pair[] = [];
 	scope: string[] = [];
@@ -809,6 +810,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 			p.scope[p.current.params.length + e.index] : fail(p, "a local out of range"),
 		ExprKind.Param => p.scope[e.index],
 		ExprKind.Constant => p.constantNames[e.index],
+		ExprKind.Workgroup => p.workgroupNames[e.index],
 		ExprKind.Io => ioText(p, e.index),
 		ExprKind.Resource => resourceText(p, e.index),
 		ExprKind.BlockMember => memberText(p, e),
@@ -1191,6 +1193,8 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	const readsResult = readsFrom(m, entry.functionIndex);
 	if (!readsResult.ok) { return Result.err("printGlsl: " + readsResult.error); }
 	const reads = readsResult.value;
+	const stray = strayWorkgroup(m, entry, reads);
+	if (stray != "") { return Result.err("printGlsl: " + stray); }
 	const conditioned = unspecialized(m, entry.stage, reads.resources, reads.functions);
 	if (conditioned != "") {
 		return Result.err("printGlsl: " + conditioned + " is under a feature condition: " +
@@ -1214,6 +1218,7 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	p.blockOffsets = m.resources.map((_r) => []);
 	p.ioNames = m.ios.map((_io) => "");
 	p.functionNames = m.functions.map((_f) => "");
+	p.workgroupNames = m.workgroups.map((_w) => "");
 	p.effects = m.functions.map((_f) => 0);
 
 	let functions: int32[] = [];
@@ -1292,6 +1297,9 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 		}
 	}
 	for (const c of constants) { p.constantNames[c] = claim(p, p.globals, m.constants[c].name); }
+	for (const w of reads.workgroups) {
+		p.workgroupNames[w] = claim(p, p.globals, m.workgroups[w].name);
+	}
 	for (const f of functions) {
 		p.functionNames[f] = f == entry.functionIndex ? "main" :
 			claim(p, p.globals, m.functions[f].name);
@@ -1320,6 +1328,10 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	const ios = ioDeclarations(p);
 	if (declared != "") { head += declared + "\n"; }
 	if (ios != "") { head += ios + "\n"; }
+	for (const w of reads.workgroups) {
+		head += "shared " + declaration(p, m.workgroups[w].type, p.workgroupNames[w]) + ";\n";
+	}
+	if (reads.workgroups.length > 0) { head += "\n"; }
 	const bodies = functions.map((f) => functionText(p, f)).join("\n");
 	if (p.error != "") { return Result.err(p.error); }
 	return Result.ok(head + bodies);

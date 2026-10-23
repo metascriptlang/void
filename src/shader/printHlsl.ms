@@ -28,7 +28,7 @@ import {
 	isEffect,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
-import { readsFrom } from "./specialize";
+import { readsFrom, strayWorkgroup } from "./specialize";
 
 const KEYWORDS = [
 	"AppendStructuredBuffer", "asm", "asm_fragment", "BlendState", "bool", "break", "Buffer",
@@ -132,6 +132,7 @@ class Printer {
 	memberNames: string[][] = [];
 	ioNames: string[] = [];
 	functionNames: string[] = [];
+	workgroupNames: string[] = [];
 	effects: int32[] = [];
 	scope: string[] = [];
 	current: ShaderFunction = new ShaderFunction();
@@ -696,6 +697,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 			p.scope[p.current.params.length + e.index] : fail(p, "a local out of range"),
 		ExprKind.Param => p.scope[e.index],
 		ExprKind.Constant => p.constantNames[e.index],
+		ExprKind.Workgroup => p.workgroupNames[e.index],
 		ExprKind.Io => p.ioNames[e.index] != "" ? p.ioNames[e.index] :
 			fail(p, "io '" + m.ios[e.index].name + "' belongs to the " +
 				m.ios[e.index].stage.toString() + " stage"),
@@ -1170,6 +1172,8 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	const readsResult = readsFrom(m, entry.functionIndex);
 	if (!readsResult.ok) { return Result.err("printHlsl: " + readsResult.error); }
 	const reads = readsResult.value;
+	const stray = strayWorkgroup(m, entry, reads);
+	if (stray != "") { return Result.err("printHlsl: " + stray); }
 	const conditioned = unspecialized(m, entry.stage, reads.resources, reads.functions);
 	if (conditioned != "") {
 		return Result.err("printHlsl: " + conditioned + " is under a feature condition: " +
@@ -1189,6 +1193,7 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	p.memberNames = m.resources.map((_r) => []);
 	p.ioNames = m.ios.map((_io) => "");
 	p.functionNames = m.functions.map((_f) => "");
+	p.workgroupNames = m.workgroups.map((_w) => "");
 	p.effects = m.functions.map((_f) => 0);
 
 	let functions: int32[] = [];
@@ -1243,6 +1248,9 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 		if (m.ios[i].stage == entry.stage) { p.ioNames[i] = claim(p.globals, m.ios[i].name); }
 	}
 	for (const f of functions) { p.functionNames[f] = claim(p.globals, m.functions[f].name); }
+	for (const w of reads.workgroups) {
+		p.workgroupNames[w] = claim(p.globals, m.workgroups[w].name);
+	}
 
 	const entryFunction = m.functions[entry.functionIndex];
 	if (entryFunction.params.length > 0 || entryFunction.result.kind != ShaderTypeKind.Void) {
@@ -1267,6 +1275,9 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 		if (p.ioNames[i] != "") {
 			head += "static " + declaration(p, m.ios[i].type, p.ioNames[i]) + ";\n";
 		}
+	}
+	for (const w of reads.workgroups) {
+		head += "groupshared " + declaration(p, m.workgroups[w].type, p.workgroupNames[w]) + ";\n";
 	}
 	head += "\n";
 	const bodies = functions.map((f) => functionText(p, f)).join("\n");

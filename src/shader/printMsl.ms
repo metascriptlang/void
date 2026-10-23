@@ -30,7 +30,7 @@ import {
 	isEffect,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { readsFrom } from "./specialize";
+import { readsFrom, strayWorkgroup } from "./specialize";
 
 // C++14 keywords, the Metal address spaces, attributes and types, and every function this
 // printer calls.
@@ -166,6 +166,7 @@ class Threaded {
 	stageOut: boolean = false;
 	builtins: int32[] = [];
 	resources: int32[] = [];
+	workgroups: int32[] = [];
 }
 
 class Printer {
@@ -178,6 +179,7 @@ class Printer {
 	resources: string[] = [];
 	ios: string[] = [];
 	functions: string[] = [];
+	workgroups: string[] = [];
 	threaded: Threaded[] = [];
 	fn: ShaderFunction = new ShaderFunction();
 	scope: string[] = [];
@@ -613,6 +615,7 @@ function threadedArgs(p: Printer, index: int32): string[] {
 	if (t.stageOut) { args.push("out"); }
 	for (const b of t.builtins) { args.push(p.ios[b]); }
 	for (const r of t.resources) { args.push(p.resources[r]); }
+	for (const w of t.workgroups) { args.push(p.workgroups[w]); }
 	return args;
 }
 
@@ -636,6 +639,7 @@ function exprText(p: Printer, e: ShaderExpr): string {
 		ExprKind.Constant => p.constants[e.index],
 		ExprKind.Io => ioText(p, e.index),
 		ExprKind.Resource => p.resources[e.index],
+		ExprKind.Workgroup => p.workgroups[e.index],
 		ExprKind.BlockMember => p.resources[e.index] + "." +
 			memberName(p, m.resources[e.index].type, e.member),
 		ExprKind.Unary => match (e.unary) {
@@ -796,6 +800,12 @@ function threadedParams(p: Printer, index: int32): string[] {
 		params.push("thread " + typeText(p, p.module.ios[b].type) + "& " + p.ios[b]);
 	}
 	for (const r of t.resources) { params.push(resourceParam(p, r)); }
+	for (const w of t.workgroups) {
+		const type = p.module.workgroups[w].type;
+		params.push("threadgroup " + (type.kind == ShaderTypeKind.Array ?
+			declText(p, type, "(&" + p.workgroups[w] + ")") :
+			typeText(p, type) + "& " + p.workgroups[w]));
+	}
 	return params;
 }
 
@@ -882,6 +892,8 @@ function threadedOf(p: Printer, index: int32): Threaded {
 	}
 	t.resources = read.value.resources.map((n) => n);
 	t.resources.sort((a, b) => a - b);
+	t.workgroups = read.value.workgroups.map((n) => n);
+	t.workgroups.sort((a, b) => a - b);
 	return t;
 }
 
@@ -1048,6 +1060,8 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	const read = readsFrom(m, e.functionIndex);
 	if (!read.ok) { return Result.err("printMsl: " + read.error); }
 	const reads = read.value;
+	const stray = strayWorkgroup(m, e, reads);
+	if (stray != "") { return Result.err("printMsl: " + stray); }
 	for (const index of reads.resources) {
 		const slots = bindings.filter((s) => s.resource == index);
 		if (slots.length == 0 || slots[0].nativeSlot < 0) {
@@ -1072,6 +1086,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	p.resources = m.resources.map((r) => nameIn(p, p.taken, r.name));
 	p.ios = m.ios.map((io) => io.stage == e.stage ? nameIn(p, p.taken, io.name) : "");
 	p.functions = m.functions.map((x) => nameIn(p, p.taken, x.name));
+	p.workgroups = m.workgroups.map((w) => nameIn(p, p.taken, w.name));
 	p.threaded = m.functions.map((_x) => new Threaded());
 	for (const i of reads.functions) { p.threaded[i] = threadedOf(p, i); }
 
@@ -1139,7 +1154,9 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	}
 	for (const text of functions) { decls.push(text); }
 	const returned = outputs.length > 0 ? "main0_out" : "void";
-	const call = "  " + p.functions[e.functionIndex] + "(" +
+	const shared = reads.workgroups.map((w) => "  threadgroup " +
+		declText(p, m.workgroups[w].type, p.workgroups[w]) + ";\n").join("");
+	const call = shared + "  " + p.functions[e.functionIndex] + "(" +
 		threadedArgs(p, e.functionIndex).join(", ") + ");\n";
 	decls.push(stageKeyword(e.stage) + " " + returned + " main0(" + params.join(", ") + ") {\n" +
 		(outputs.length > 0 ? "  main0_out out = {};\n" + call + "  return out;\n" : call) + "}");

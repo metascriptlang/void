@@ -122,6 +122,7 @@ class Glsl {
 	functionNames: string[] = [];
 	paramNames: string[][] = [];
 	localNames: string[][] = [];
+	workgroupNames: string[] = [];
 	fn: int32 = -1;
 	samplerless: boolean = false;
 }
@@ -315,6 +316,7 @@ function expr(p: Glsl, e: ShaderExpr): string {
 		ExprKind.Constant => p.constantNames[e.index],
 		ExprKind.Io => ioName(p, e.index),
 		ExprKind.Resource => m.resources[e.index].name,
+		ExprKind.Workgroup => p.workgroupNames[e.index],
 		ExprKind.BlockMember =>
 			m.structs[m.resources[e.index].type.structIndex].members[e.member].name,
 		ExprKind.Call => p.functionNames[e.index] + listed(p, e.operands),
@@ -634,6 +636,7 @@ function nameDeclarations(p: Glsl): void {
 		p.structFields.push([]);
 	}
 	for (const c of m.constants) { p.constantNames.push(""); }
+	for (const w of m.workgroups) { p.workgroupNames.push(""); }
 	for (const f of m.functions) {
 		p.functionNames.push("");
 		p.paramNames.push([]);
@@ -649,6 +652,10 @@ function nameDeclarations(p: Glsl): void {
 		}
 		if (d.kind == DeclarationKind.Constant) {
 			p.constantNames[i] = nameConstant(names, m.constants[i].name);
+			continue;
+		}
+		if (d.kind == DeclarationKind.Workgroup) {
+			p.workgroupNames[i] = nameConstant(names, m.workgroups[i].name);
 			continue;
 		}
 		const f = m.functions[i];
@@ -708,6 +715,10 @@ export function printGlsl450(m: ShaderModule): string {
 			const c = m.constants[d.index];
 			out += "const " + typeName(p, c.type) + " " + p.constantNames[d.index] + " = " +
 				expr(p, c.value) + ";\n";
+		}
+		if (d.kind == DeclarationKind.Workgroup) {
+			out += "shared " + typeName(p, m.workgroups[d.index].type) + " " +
+				p.workgroupNames[d.index] + ";\n";
 		}
 		if (d.kind == DeclarationKind.Function && d.index != p.entry.functionIndex) {
 			const f = m.functions[d.index];

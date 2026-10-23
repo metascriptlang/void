@@ -92,6 +92,7 @@ export enum ExprKind {
 	Field,
 	Swizzle,
 	Index,
+	Workgroup,
 }
 
 export enum UnaryOp {
@@ -373,6 +374,7 @@ export enum DeclarationKind {
 	Struct,
 	Constant,
 	Function,
+	Workgroup,
 }
 
 export class ShaderDeclaration {
@@ -389,6 +391,7 @@ export class ShaderModule {
 	functions: ShaderFunction[] = [];
 	entries: ShaderEntry[] = [];
 	declarations: ShaderDeclaration[] = [];
+	workgroups: ShaderField[] = [];
 }
 
 export function scalarType(scalar: ScalarKind): ShaderType {
@@ -563,6 +566,11 @@ function isBlockMember(t: ShaderType): boolean {
 		own.kind == ShaderTypeKind.Matrix;
 }
 
+function isWorkgroupType(t: ShaderType): boolean {
+	const own = t.kind == ShaderTypeKind.Array && t.length > 0 ? t.element[0] : t;
+	return own.kind == ShaderTypeKind.Scalar || own.kind == ShaderTypeKind.Vector;
+}
+
 class Checker {
 	module: ShaderModule = new ShaderModule();
 	errors: string[] = [];
@@ -591,6 +599,8 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		ExprKind.Resource | ExprKind.BlockMember =>
 			inRange(c, e.index, m.resources.length as int32, "resource", owner),
 		ExprKind.Call => inRange(c, e.index, m.functions.length as int32, "function", owner),
+		ExprKind.Workgroup =>
+			inRange(c, e.index, m.workgroups.length as int32, "workgroup variable", owner),
 		_ => {},
 	}
 	const shift = e.kind == ExprKind.Binary && isShift(e.binary);
@@ -668,11 +678,18 @@ export function irErrors(m: ShaderModule): string[] {
 		conditionErrors(c, f.condition, owner);
 		for (const s of f.body) { stmtErrors(c, s, f, owner); }
 	}
+	for (const w of m.workgroups) {
+		if (!isWorkgroupType(w.type)) {
+			c.errors.push("workgroup variable '" + w.name + "': it holds a scalar, a vector or " +
+				"an array of them");
+		}
+	}
 	for (const d of m.declarations) {
 		const count = match (d.kind) {
 			DeclarationKind.Struct => m.structs.length,
 			DeclarationKind.Constant => m.constants.length,
 			DeclarationKind.Function => m.functions.length,
+			DeclarationKind.Workgroup => m.workgroups.length,
 		};
 		inRange(c, d.index, count as int32, d.kind.toString().toLowerCase(), "declarations");
 	}

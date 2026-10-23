@@ -29,7 +29,7 @@ import {
 	isEffect,
 } from "./ir";
 import { BindingSlot } from "./layout";
-import { readsFrom } from "./specialize";
+import { readsFrom, strayWorkgroup } from "./specialize";
 
 // WGSL keywords and reserved words (sections 15.1, 15.2), the predeclared types and enumerants
 // a declaration would shadow, and every builtin function this printer calls.
@@ -191,6 +191,7 @@ class Printer {
 	resources: string[] = [];
 	ios: string[] = [];
 	functions: string[] = [];
+	workgroups: string[] = [];
 	fn: ShaderFunction = new ShaderFunction();
 	scope: string[] = [];
 	params: string[] = [];
@@ -557,6 +558,7 @@ function exprText(p: Printer, e: ShaderExpr): string {
 		ExprKind.Constant => p.constants[e.index],
 		ExprKind.Io => ioName(p, e.index),
 		ExprKind.Resource => p.resources[e.index],
+		ExprKind.Workgroup => p.workgroups[e.index],
 		ExprKind.BlockMember => p.resources[e.index] + "." +
 			memberName(p, m.resources[e.index].type, e.member),
 		ExprKind.Unary => match (e.unary) {
@@ -870,6 +872,8 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	const read = readsFrom(m, e.functionIndex);
 	if (!read.ok) { return Result.err("printWgsl: " + read.error); }
 	const reads = read.value;
+	const stray = strayWorkgroup(m, e, reads);
+	if (stray != "") { return Result.err("printWgsl: " + stray); }
 
 	let p = new Printer();
 	p.module = m;
@@ -884,6 +888,7 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	p.resources = m.resources.map((r) => nameIn(p, p.taken, r.name));
 	p.ios = m.ios.map((io) => io.stage == e.stage ? nameIn(p, p.taken, io.name) : "");
 	p.functions = m.functions.map((x) => nameIn(p, p.taken, x.name));
+	p.workgroups = m.workgroups.map((w) => nameIn(p, p.taken, w.name));
 
 	let functions: string[] = [];
 	for (let i = 0; i < m.functions.length; i++) {
@@ -945,6 +950,10 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 			declared.push(s.resource);
 			decls.push(resourceText(p, s));
 		}
+	}
+	for (const w of reads.workgroups) {
+		decls.push("var<workgroup> " + p.workgroups[w] + " : " + typeText(p, m.workgroups[w].type) +
+			";");
 	}
 	for (const v of privates) { decls.push(v); }
 	if (p.upperLeft) {

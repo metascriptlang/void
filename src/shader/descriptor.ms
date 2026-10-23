@@ -33,6 +33,7 @@ class Offsets {
 	resources: int32 = 0;
 	ios: int32[] = [];
 	functions: int32 = 0;
+	workgroups: int32 = 0;
 }
 
 function shiftType(o: Offsets, t: ShaderType): void {
@@ -47,6 +48,7 @@ function shiftExpr(o: Offsets, e: ShaderExpr): void {
 		ExprKind.Io => { e.index = o.ios[e.index]; },
 		ExprKind.Resource | ExprKind.BlockMember => { e.index += o.resources; },
 		ExprKind.Call => { e.index += o.functions; },
+		ExprKind.Workgroup => { e.index += o.workgroups; },
 		_ => {},
 	}
 	for (const operand of e.operands) { shiftExpr(o, operand); }
@@ -79,6 +81,7 @@ function append(into: ShaderModule, from: ShaderModule): void {
 		if (io.stage == stage) { next++; }
 	}
 	o.functions = into.functions.length as int32;
+	o.workgroups = into.workgroups.length as int32;
 	for (const s of from.structs) {
 		for (const f of s.members) { shiftType(o, f.type); }
 		into.structs.push(s);
@@ -104,6 +107,10 @@ function append(into: ShaderModule, from: ShaderModule): void {
 		shiftStmts(o, f.body);
 		into.functions.push(f);
 	}
+	for (const w of from.workgroups) {
+		shiftType(o, w.type);
+		into.workgroups.push(w);
+	}
 	for (const e of from.entries) {
 		e.functionIndex += o.functions;
 		into.entries.push(e);
@@ -113,6 +120,7 @@ function append(into: ShaderModule, from: ShaderModule): void {
 			DeclarationKind.Struct => o.structs,
 			DeclarationKind.Constant => o.constants,
 			DeclarationKind.Function => o.functions,
+			DeclarationKind.Workgroup => o.workgroups,
 		};
 		into.declarations.push(d);
 	}

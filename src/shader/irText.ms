@@ -169,6 +169,7 @@ export function irText(m: ShaderModule): string {
 		record(m.entries.map((e) => record([quoted(e.name), String(e.stage as int32),
 			String(e.functionIndex), numbers(e.workgroupSize)]))),
 		record(m.declarations.map((d) => record([String(d.kind as int32), String(d.index)]))),
+		fieldsText(m.workgroups),
 	]);
 }
 
@@ -393,7 +394,7 @@ export function irFromText(text: string): Result<ShaderModule, string> {
 	if (!parsed.ok) { return Result.err("irText: " + parsed.error); }
 	let r = new Reader();
 	let m = new ShaderModule();
-	const f = fieldsOf(r, parsed.value, 8, "module");
+	const f = fieldsOf(r, parsed.value, 9, "module");
 	if (f.length == 0) { return Result.err(r.errors[0]); }
 	m.features = itemsOf(r, f[0], "features").map((x) => textOf(x));
 	m.structs = itemsOf(r, f[1], "structs").map((x) => readStruct(r, x));
@@ -403,6 +404,7 @@ export function irFromText(text: string): Result<ShaderModule, string> {
 	m.functions = itemsOf(r, f[5], "functions").map((x) => readFunction(r, x));
 	m.entries = itemsOf(r, f[6], "entries").map((x) => readEntry(r, x));
 	m.declarations = itemsOf(r, f[7], "declarations").map((x) => readDeclaration(r, x));
+	m.workgroups = readFields(r, f[8]);
 	if (r.errors.length > 0) { return Result.err(r.errors[0]); }
 	return Result.ok(m);
 }
