@@ -1200,6 +1200,30 @@ run_exposure() {
 	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending, Reinhard per layer"
 }
 
+run_environment_light() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "environment-light: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/environmentLight.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/environmentLight.ms --output="$exe" > "$WORK/environmentLight.build.log" 2>&1; then
+		fail "environment-light: tests/integration/environmentLight.ms does not build — see $WORK/environmentLight.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/environmentLight.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "environment-light: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS environmentLight: ' "$WORK/environmentLight.log"; then
+		fail "environment-light: exit $status — see $WORK/environmentLight.log"
+		return
+	fi
+	pass "environment-light: a pbr key is black without an environment and lit by the baked panorama as the CPU shader predicts"
+}
+
 run_mesh_lod() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "mesh-lod: GATE_SKIP_CAPTURE=1 — nothing was read back"
@@ -3033,6 +3057,7 @@ run_both_layers
 run_world_label
 run_card_table
 run_exposure
+run_environment_light
 run_hdr
 run_bloom
 run_particle_fade
