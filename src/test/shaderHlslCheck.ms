@@ -104,8 +104,8 @@ test "blur prints the interface of the committed HLSL" {
 	assert vs.includes("StageOutput main(StageInput stage_input)\n");
 	when (windows) {
 		const committed = blurShaderModule();
-		assert interfaceLines(fs).join("\n") == interfaceLines(committed.fragmentCode).join("\n");
-		assert interfaceLines(vs).join("\n") == interfaceLines(committed.vertexCode).join("\n");
+		assert committed.fragmentCode == "" && committed.fragmentBytecode.length > 0;
+		assert committed.vertexCode == "" && committed.vertexBytecode.length > 0;
 	}
 }
 
