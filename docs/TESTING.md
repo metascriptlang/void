@@ -376,7 +376,7 @@ in the same change as the fix.
 |---|---|---|
 | D3D11 | **120 / 120 scenes byte-identical** | every full gate, this box |
 | GL core 4.3 desktop (glsl430) | **120 / 120**: 94 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
-| Metal macOS | **120 / 120** on an Apple GPU, 2026-10-23: 15 byte-identical, 87 within the cross-backend bound, 18 within their measured `@metal` budgets (`tests/PENDING.md`, delta 2 to 4 spread over many pixels with no shape moved). The readback (`voidMetalReadDrawable`) blits the window's drawable into a shared `MTLBuffer` after waiting for every frame in flight, so it reads the committed frame | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
+| Metal macOS | **120 / 120** on an Apple GPU, 2026-10-23: 15 byte-identical, 87 within the cross-backend bound, 18 within their measured `@metal` budgets (`tests/PENDING.md`, delta 2 to 4 spread over many pixels with no shape moved). The readback is `doorReadScreen`, the door's swapchain copy, as on D3D11 and GL; it stops by name rather than wait behind a command buffer that is not committed | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
 | WebGPU | no readback in the wasm build. P6. Headless Chrome does hand it the real adapter here (2026-10-20); liveness only, below | SKIP |
@@ -406,7 +406,7 @@ What each readback costs:
 |---|---|---|---|
 | D3D11 | staging texture + `CopyResource` + `Map` | this Windows box | exists; needs moving into the repo |
 | GL / GLES3 | `glReadPixels` | this box (desktop GL), the Android device | ~30 lines, and it is shared with WebGL2 |
-| Metal | blit to a shared `MTLBuffer` (`voidMetalReadDrawable`, `bridgeEmbed.m`) | the Mac; the iOS device still needs it | exists on macOS |
+| Metal | `doorReadScreen`: the swapchain copied to a mapped buffer through the door | the Mac; the iOS bridge has it, a device run does not | exists on macOS |
 | WebGPU | `copyTextureToBuffer` + `mapAsync`; `-sASYNCIFY` is already on for the emdawnwebgpu build (`src/sokol/sokolWeb.c`) | headless Chrome on this box | ~60 lines plus a JS hand-off |
 | WebGL2 | the GLES3 path | headless Chrome on this box | shared |
 

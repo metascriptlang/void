@@ -210,7 +210,7 @@ for you:
 - **Goldens:** main's single `conformance:metal-gpu-rounding` row is replaced by the branch's 18
   `@metal` budgets, which cover the same scenes. `regen-shaders.sh` reads its language list from
   `src/shader/program.ms` `SHDC_LANGUAGES`, as main does.
-- **Capture:** `voidMetalReadDrawable` is the only macOS readback. Main's sokol
+- **Capture:** `voidMetalReadDrawable` was the only macOS readback (since 26da77a9 the Apple capture reads through `doorReadScreen`). Main's sokol
   `voidWindowReadRgba` is gone, and `VOID_CAPTURE_SLOTS` is 3, as on main.
 - **Measured on the Mac (msc `fce7770d3`):**
   - `msc test src/test/index.ms`: all-off 1931/1931, all-on 2323/2323.
