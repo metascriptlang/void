@@ -437,6 +437,13 @@ D3dSampler d3dCreateSampler(
 	return SUCCEEDED(hr) ? (D3dSampler)sampler : NULL;
 }
 
+/* The bytes of one compiled stage, owned: a D3DCompile output or a caller's precompiled DXBC copy. */
+struct D3dBlobImpl {
+	ID3DBlob *compiled;
+	void *bytes;
+	size_t size;
+};
+
 static HMODULE s_compilerDll;
 static pD3DCompile s_compile;
 static char s_compileLog[4096];
@@ -468,29 +475,60 @@ D3dBlob d3dCompile(const char *source, const char *entryPoint, const char *targe
 		if (output) ID3D10Blob_Release(output);
 		return NULL;
 	}
-	return (D3dBlob)output;
+	D3dBlob blob = (D3dBlob)calloc(1, sizeof *blob);
+	if (!blob) {
+		ID3D10Blob_Release(output);
+		return NULL;
+	}
+	blob->compiled = output;
+	blob->bytes = ID3D10Blob_GetBufferPointer(output);
+	blob->size = ID3D10Blob_GetBufferSize(output);
+	return blob;
+}
+
+D3dBlob d3dBlobCopy(const uint8_t *bytes, int64_t size) {
+	D3dBlob blob = (D3dBlob)calloc(1, sizeof *blob);
+	if (!blob) return NULL;
+	blob->bytes = malloc((size_t)size);
+	if (!blob->bytes) {
+		free(blob);
+		return NULL;
+	}
+	memcpy(blob->bytes, bytes, (size_t)size);
+	blob->size = (size_t)size;
+	return blob;
+}
+
+int64_t d3dBlobRead(D3dBlob blob, uint8_t *out, int64_t capacity) {
+	if (!blob || (int64_t)blob->size > capacity) return -1;
+	memcpy(out, blob->bytes, blob->size);
+	return (int64_t)blob->size;
+}
+
+void d3dBlobFree(D3dBlob blob) {
+	if (!blob) return;
+	if (blob->compiled) ID3D10Blob_Release(blob->compiled);
+	else free(blob->bytes);
+	free(blob);
 }
 
 const char *d3dCompileLog(void) { return s_compileLog; }
 
 D3dVertexShader d3dCreateVertexShader(D3dDevice device, D3dBlob blob) {
-	ID3DBlob *code = (ID3DBlob *)blob;
 	ID3D11VertexShader *shader = NULL;
-	HRESULT hr = ID3D11Device_CreateVertexShader(DEVICE(device), ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), NULL, &shader);
+	HRESULT hr = ID3D11Device_CreateVertexShader(DEVICE(device), blob->bytes, blob->size, NULL, &shader);
 	return SUCCEEDED(hr) ? (D3dVertexShader)shader : NULL;
 }
 
 D3dPixelShader d3dCreatePixelShader(D3dDevice device, D3dBlob blob) {
-	ID3DBlob *code = (ID3DBlob *)blob;
 	ID3D11PixelShader *shader = NULL;
-	HRESULT hr = ID3D11Device_CreatePixelShader(DEVICE(device), ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), NULL, &shader);
+	HRESULT hr = ID3D11Device_CreatePixelShader(DEVICE(device), blob->bytes, blob->size, NULL, &shader);
 	return SUCCEEDED(hr) ? (D3dPixelShader)shader : NULL;
 }
 
 D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob) {
-	ID3DBlob *code = (ID3DBlob *)blob;
 	ID3D11ComputeShader *shader = NULL;
-	HRESULT hr = ID3D11Device_CreateComputeShader(DEVICE(device), ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), NULL, &shader);
+	HRESULT hr = ID3D11Device_CreateComputeShader(DEVICE(device), blob->bytes, blob->size, NULL, &shader);
 	return SUCCEEDED(hr) ? (D3dComputeShader)shader : NULL;
 }
 
@@ -498,7 +536,6 @@ enum { INPUT_ELEMENT_INTS = 5 };
 
 /* elements: count records of { semanticIndex, format, slot, offset, perInstance } */
 D3dInputLayout d3dCreateInputLayout(D3dDevice device, const int32_t *elements, int32_t count, D3dBlob vertexBlob) {
-	ID3DBlob *code = (ID3DBlob *)vertexBlob;
 	D3D11_INPUT_ELEMENT_DESC descs[D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT];
 	if (count < 0 || count > D3D11_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT) return NULL;
 	for (int i = 0; i < count; i++) {
@@ -513,7 +550,7 @@ D3dInputLayout d3dCreateInputLayout(D3dDevice device, const int32_t *elements, i
 	}
 	ID3D11InputLayout *layout = NULL;
 	HRESULT hr = ID3D11Device_CreateInputLayout(DEVICE(device), descs, (UINT)count,
-		ID3D10Blob_GetBufferPointer(code), ID3D10Blob_GetBufferSize(code), &layout);
+		vertexBlob->bytes, vertexBlob->size, &layout);
 	return SUCCEEDED(hr) ? (D3dInputLayout)layout : NULL;
 }
 

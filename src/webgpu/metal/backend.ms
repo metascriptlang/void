@@ -1387,6 +1387,7 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+	if (descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0 || descriptor.computeBytecode.length > 0) { stop("GPUShaderModuleDescriptor vertexBytecode, fragmentBytecode and computeBytecode are not ported to the metal backend: it compiles MSL text"); }
 	const compute = descriptor.computeCode != "";
 	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
 		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");

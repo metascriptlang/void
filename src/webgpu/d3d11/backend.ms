@@ -113,6 +113,8 @@ import {
 	d3dClearRtv,
 	d3dClearState,
 	d3dCompile,
+	d3dBlobCopy,
+	d3dBlobFree,
 	d3dCompileLog,
 	d3dContextFrom,
 	d3dCopyBuffer,
@@ -1889,6 +1891,14 @@ export function destroySampler(sampler: GPUSampler): void {
 	release(samplers, sampler.id);
 }
 
+// A stage's precompiled bytes become its blob and skip D3DCompile; no stage reaching it loads d3dcompiler_47.dll.
+function stageBlob(code: string, bytecode: Readonly<Vec<uint8>>, entryPoint: string, target: string, label: string | null, field: string): Ptr<D3dBlobImpl> {
+	if (bytecode.length == 0) { return compileStage(code, entryPoint, target, label); }
+	const blob = d3dBlobCopy(bytecode[0], bytecode.length as int64);
+	if (blob == null) { stop(`out of memory copying GPUShaderModuleDescriptor.${field} of ${labelOf(label)}`); }
+	return blob;
+}
+
 function compileStage(code: string, entryPoint: string, target: string, label: string | null): Ptr<D3dBlobImpl> {
 	const entry = entryPoint == "" ? "main" : entryPoint;
 	const blob = d3dCompile(code, entry, target);
@@ -1901,8 +1911,8 @@ function compileStage(code: string, entryPoint: string, target: string, label: s
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBindings("d3d11", descriptor);
-	const compute = descriptor.computeCode != "";
-	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
+	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
+	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "" || descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0)) {
 		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");
 	}
 	const id = allocate(shaders);
@@ -1941,18 +1951,19 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		if (size[0] > MAX_WORKGROUP_SIZE_X || size[1] > MAX_WORKGROUP_SIZE_Y || size[2] > MAX_WORKGROUP_SIZE_Z || size[0] * size[1] * size[2] > MAX_WORKGROUP_INVOCATIONS) {
 			stop(`workgroupSize ${size[0]}x${size[1]}x${size[2]} is over the limits ${MAX_WORKGROUP_SIZE_X}x${MAX_WORKGROUP_SIZE_Y}x${MAX_WORKGROUP_SIZE_Z} and ${MAX_WORKGROUP_INVOCATIONS} invocations`);
 		}
-		const computeBlob = compileStage(descriptor.computeCode, slot.computeEntry, "cs_5_0", descriptor.label);
+		const computeBlob = stageBlob(descriptor.computeCode, descriptor.computeBytecode, slot.computeEntry, "cs_5_0", descriptor.label, "computeBytecode");
 		slot.compute = d3dCreateComputeShader(device, computeBlob);
-		d3dRelease(computeBlob as Ptr<void>);
-		if (slot.compute == null) { stop(`CreateComputeShader failed for ${labelOf(descriptor.label)}`); }
+		d3dBlobFree(computeBlob);
+		if (slot.compute == null) { stop(`CreateComputeShader failed for ${labelOf(descriptor.label)}${descriptor.computeBytecode.length > 0 ? ": the device rejected GPUShaderModuleDescriptor.computeBytecode" : ""}`); }
 		setLabel(slot.compute, descriptor.label);
 	} else {
-		slot.vertexBlob = compileStage(descriptor.vertexCode, descriptor.vertexEntryPoint, "vs_5_0", descriptor.label);
-		const fragmentBlob = compileStage(descriptor.fragmentCode, descriptor.fragmentEntryPoint, "ps_5_0", descriptor.label);
+		slot.vertexBlob = stageBlob(descriptor.vertexCode, descriptor.vertexBytecode, descriptor.vertexEntryPoint, "vs_5_0", descriptor.label, "vertexBytecode");
+		const fragmentBlob = stageBlob(descriptor.fragmentCode, descriptor.fragmentBytecode, descriptor.fragmentEntryPoint, "ps_5_0", descriptor.label, "fragmentBytecode");
 		slot.vertex = d3dCreateVertexShader(device, slot.vertexBlob);
 		slot.fragment = d3dCreatePixelShader(device, fragmentBlob);
-		d3dRelease(fragmentBlob as Ptr<void>);
-		if (slot.vertex == null || slot.fragment == null) { stop(`CreateVertexShader/CreatePixelShader failed for ${labelOf(descriptor.label)}`); }
+		d3dBlobFree(fragmentBlob);
+		if (slot.vertex == null) { stop(`CreateVertexShader failed for ${labelOf(descriptor.label)}${descriptor.vertexBytecode.length > 0 ? ": the device rejected GPUShaderModuleDescriptor.vertexBytecode" : ""}`); }
+		if (slot.fragment == null) { stop(`CreatePixelShader failed for ${labelOf(descriptor.label)}${descriptor.fragmentBytecode.length > 0 ? ": the device rejected GPUShaderModuleDescriptor.fragmentBytecode" : ""}`); }
 		setLabel(slot.vertex, descriptor.label);
 		setLabel(slot.fragment, descriptor.label);
 	}
@@ -2021,7 +2032,7 @@ export function destroyShaderModule(module: GPUShaderModule): void {
 	d3dRelease(shaders.slots[index].vertex as Ptr<void>);
 	d3dRelease(shaders.slots[index].fragment as Ptr<void>);
 	d3dRelease(shaders.slots[index].compute as Ptr<void>);
-	d3dRelease(shaders.slots[index].vertexBlob as Ptr<void>);
+	d3dBlobFree(shaders.slots[index].vertexBlob);
 	for (let u = 0; u < shaders.slots[index].uniformCount; u++) { d3dRelease(shaders.slots[index].constantBuffers[u] as Ptr<void>); }
 	shaders.slots[index] = { id: 0 };
 	release(shaders, module.id);

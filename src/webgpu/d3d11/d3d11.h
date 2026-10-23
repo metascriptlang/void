@@ -145,6 +145,9 @@ D3dSampler d3dCreateSampler(
 
 D3dBlob d3dCompile(const char *source, const char *entryPoint, const char *target);
 const char *d3dCompileLog(void);
+D3dBlob d3dBlobCopy(const uint8_t *bytes, int64_t size);
+int64_t d3dBlobRead(D3dBlob blob, uint8_t *out, int64_t capacity);
+void d3dBlobFree(D3dBlob blob);
 D3dVertexShader d3dCreateVertexShader(D3dDevice device, D3dBlob blob);
 D3dPixelShader d3dCreatePixelShader(D3dDevice device, D3dBlob blob);
 D3dComputeShader d3dCreateComputeShader(D3dDevice device, D3dBlob blob);

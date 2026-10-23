@@ -86,6 +86,7 @@ import {
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
 	stopOnUnportedShaderBindings,
+	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
 import {
@@ -1913,6 +1914,7 @@ function compileStage(stage: int32, code: string, entryPoint: string, label: str
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBindings("gl", descriptor);
+	stopOnUnportedShaderBytecode("gl", descriptor);
 	const compute = descriptor.computeCode != "";
 	if (compute) {
 		stopOnNoCompute("a compute GPUShaderModule");

@@ -83,6 +83,7 @@ import {
 	checkedWriteBuffer,
 	featureBit,
 	stopOnUnportedShaderBindings,
+	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
 import {
@@ -1403,6 +1404,7 @@ function createModule(code: string, label: string | null): Ptr<WgModuleImpl> {
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBindings("wgpu", descriptor);
+	stopOnUnportedShaderBytecode("wgpu", descriptor);
 	const compute = descriptor.computeCode != "";
 	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
 		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");

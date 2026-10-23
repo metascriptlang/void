@@ -275,6 +275,11 @@ export struct GPUShaderModuleDescriptor {
 	fragmentEntryPoint: string;
 	computeCode: string;
 	computeEntryPoint: string;
+	// A stage's precompiled bytes in the backend's native format (DXBC on d3d11), used instead of
+	// compiling that stage's code; empty is none. A backend that compiles text stops on a non-empty one.
+	vertexBytecode: Vec<uint8>;
+	fragmentBytecode: Vec<uint8>;
+	computeBytecode: Vec<uint8>;
 	workgroupSize: int32[3];
 	bindings: GPUShaderBinding[GPU_MAX_SHADER_BINDINGS];
 	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
@@ -504,6 +509,12 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 		if (samplerType == "comparison") { stopOnUnported(backend, `GPUShaderBinding.samplerType 'comparison'`); }
 		if (b.multisampled) { stopOnUnported(backend, `GPUShaderBinding.multisampled`); }
 	}
+}
+
+@noinline export function stopOnUnportedShaderBytecode(backend: string, descriptor: GPUShaderModuleDescriptor): void {
+	if (descriptor.vertexBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.vertexBytecode`); }
+	if (descriptor.fragmentBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.fragmentBytecode`); }
+	if (descriptor.computeBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.computeBytecode`); }
 }
 
 // `width` and `height` are the texture's mip 0; the validator derives the destination mip's size.
