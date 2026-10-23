@@ -1866,6 +1866,76 @@ export function textureSample(
 	return textureSample(layerOf(texture, layer), sampler, uv);
 }
 
+// WGSL's textureSampleLevel, textureSampleBias and textureSampleGrad choose the mip level: given,
+// biased, or from given derivatives. The Vulkan specification's "Level-of-Detail Operation" clamps
+// that level to the image's levels, and a CPU texture has one, so each samples as textureSample.
+export function textureSampleLevel(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: float32,
+): Vec4f {
+	return textureSample(texture, sampler, uv);
+}
+
+// WGSL's texture_cube<f32>: six square faces in the order +X, -X, +Y, -Y, +Z, -Z.
+export struct TextureCube {
+	size: int32;
+	texels: float32[];
+}
+
+// The face a direction reads and where on it, by the OpenGL specification's cube map table
+// ("Cube Map Texture Selection"): the major axis picks the face, a tie going to x, then y.
+function cubeFaceOf(texture: TextureCube, dir: Vec3f): Texture2d {
+	const ax = abs(dir.x);
+	const ay = abs(dir.y);
+	const az = abs(dir.z);
+	const face = ax >= ay && ax >= az ? (dir.x >= 0.0 ? 0 : 1) :
+		ay >= az ? (dir.y >= 0.0 ? 2 : 3) : (dir.z >= 0.0 ? 4 : 5);
+	const size = texture.size * texture.size * 4;
+	let texels: float32[] = [];
+	for (let i = 0; i < size; i++) { texels.push(texture.texels[face * size + i]); }
+	return { width: texture.size, height: texture.size, texels };
+}
+
+function cubeFaceUv(dir: Vec3f): Vec2f {
+	const ax = abs(dir.x);
+	const ay = abs(dir.y);
+	const az = abs(dir.z);
+	let sc: float32 = 0.0;
+	let tc: float32 = 0.0;
+	let ma: float32 = 0.0;
+	if (ax >= ay && ax >= az) {
+		sc = dir.x >= 0.0 ? -dir.z : dir.z;
+		tc = -dir.y;
+		ma = ax;
+	} else if (ay >= az) {
+		sc = dir.x;
+		tc = dir.y >= 0.0 ? dir.z : -dir.z;
+		ma = ay;
+	} else {
+		sc = dir.z >= 0.0 ? dir.x : -dir.x;
+		tc = -dir.y;
+		ma = az;
+	}
+	if (!(ma > 0.0)) { unreachable("textureSample: a cube is sampled along a zero direction"); }
+	return { x: (sc / ma + 1.0) * 0.5, y: (tc / ma + 1.0) * 0.5 };
+}
+
+export function textureSample(texture: TextureCube, sampler: Sampler, dir: Vec3f): Vec4f {
+	const clamped: Sampler = { nearest: sampler.nearest, wrap: Wrap.Clamp };
+	return textureSample(cubeFaceOf(texture, dir), clamped, cubeFaceUv(dir));
+}
+
+export function textureSampleLevel(
+	texture: TextureCube,
+	sampler: Sampler,
+	dir: Vec3f,
+	level: float32,
+): Vec4f {
+	return textureSample(texture, sampler, dir);
+}
+
 function texelAt(texture: Texture2d, x: int32, y: int32): Vec4f {
 	const first = (y * texture.width + x) * 4;
 	const t = texture.texels;

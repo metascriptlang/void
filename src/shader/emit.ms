@@ -33,6 +33,7 @@ import {
 	Texture2d,
 	Texture2dArray,
 	Texture2dU32,
+	TextureCube,
 	Vec2f,
 	Vec2i,
 	Vec2u,
@@ -314,6 +315,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 	const storageTextureType = getTypeImpl(StorageTexture2d);
 	const uintTextureType = getTypeImpl(Texture2dU32);
 	const arrayTextureType = getTypeImpl(Texture2dArray);
+	const cubeTextureType = getTypeImpl(TextureCube);
 	const boolVectorType = getTypeImpl(Vec3b);
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
@@ -904,10 +906,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 					binding);
 				continue;
 			}
-			if (sameType(t, uintTextureType) || sameType(t, arrayTextureType)) {
+			if (sameType(t, uintTextureType) || sameType(t, arrayTextureType) ||
+				sameType(t, cubeTextureType)) {
 				const uint = sameType(t, uintTextureType);
 				const tag = uint ? "@image_sample_type " + name + " uint\n" : "";
-				const kind = uint ? "utexture2D " : "texture2DArray ";
+				const kind = uint ? "utexture2D " :
+					sameType(t, cubeTextureType) ? "textureCube " : "texture2DArray ";
 				declare(name, tag + slot + kind + name + ";\n", false, binding);
 			} else if (sameType(t, textureType)) {
 				const tag = sampleType == null ? "" : "@image_sample_type " + name + " " +
@@ -1485,8 +1489,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			const first = n.arguments.length > 0 ? getType(n.arguments[0]) : null;
 			const uintTexture = first != null && sameType(first, uintTextureType);
 			const arrayTexture = first != null && sameType(first, arrayTextureType);
+			const cubeTexture = first != null && sameType(first, cubeTextureType);
 			const shape = uintTexture ? "usampler2D(" : arrayTexture ? "sampler2DArray(" :
-				"sampler2D(";
+				cubeTexture ? "samplerCube(" : "sampler2D(";
 			const layered = shape == "sampler2DArray(";
 			const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 			return match (impl.fnName) {
@@ -1529,6 +1534,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 					fail(n, "textureSample samples only in a fragment entry, as WGSL's does") :
 					layered ? "texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 					"texture(" + sampled + ", " + args[2] + ")",
+				"textureSampleLevel" => layered ?
+					fail(n, "textureSampleLevel on a texture array has no GLSL spelling yet") :
+					"textureLod(" + sampled + ", " + args[2] + ", " + args[3] + ")",
 				_ => fail(n, "./std's '" + impl.fnName + "' has no GLSL spelling"),
 			};
 		}
