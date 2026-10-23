@@ -257,6 +257,8 @@ generate tools/genShaders.ms "$GENERATED"
 generate tools/genShadersPixelArt.ms "$GENERATED_PIXEL_ART"
 generate tools/genShaders2d.ms src/void2d/shader2dGen.glsl
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
+generate tools/genShadersEnvironment.ms src/void3d/environmentGen.glsl
+regen src/void3d/environment.glsl src/void3d/environment.glsl.h "$LANGS"
 regenKeys
 regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS"
 
