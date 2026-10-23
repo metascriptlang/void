@@ -788,6 +788,9 @@ export function irErrors(m: ShaderModule): string[] {
 		if (varying && isIntegral(io.type) && io.interpolation != Interpolation.Flat) {
 			c.errors.push(owner + ": an integer varying is flat");
 		}
+		if (io.builtin == Builtin.None && io.type.kind == ShaderTypeKind.Array) {
+			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
+		}
 	}
 	for (const f of m.functions) {
 		const owner = "function '" + f.name + "'";

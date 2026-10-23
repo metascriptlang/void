@@ -122,9 +122,13 @@ later replaces the hand-written GLSL source of each base.
   suffix, where TypeGPU refuses the key: TypeGPU's struct is also the host's buffer layout, and a
   value struct here never reaches the interface. A struct is no attribute, varying or block member,
   and holds no texture or sampler. An integer varying is `flat` on both sides (glslang refuses it
-  otherwise). Measured 2026-10-15, `out/stmtProbe/shdc/`: array varyings pass all five shdc
-  outputs, an array vertex attribute fails GLES3 (SPIRV-Cross "OpenGL ES doesn't support array input
-  variables in vertex shader"), so the emitter refuses it.
+  otherwise). An attribute, varying or fragment output is no array, refused at the field and by
+  `irErrors`: WGSL's user-defined IO is a numeric scalar or vector (TypeGPU's `BaseIOData`,
+  `packages/typegpu/src/core/function/fnTypes.ts:58`; naga refuses an array at `@location`, "Only
+  numeric scalars and vectors are allowed"), and GLSL ES 3.00 declares no array vertex input
+  (SPIRV-Cross "OpenGL ES doesn't support array input variables in vertex shader"). naga's GLSL
+  front end splits an array input into one location per element; WGSL has no such source to
+  accept, so the author declares one field each (2026-10-23, BUILD `4b5816aea`).
 - **Generated modules live on disk.** `tools/irPrograms.ms` lowers every stage while it compiles,
   specializes it per program (the rows of `src/void3d/programKeys.txt`, its `VOID2D_PROGRAMS` and
   `GPU_COPY_PROGRAMS`) and prints each target; `scripts/regen-shaders.sh` writes the results to
@@ -332,7 +336,7 @@ resources. Where a case is written differently:
 | `SamplerBuffer` + `texelFetch`, `ImageBuffer` + `imageStore` | a storage buffer of structs, a storage texture and `textureStore` (shdc has no buffer textures) |
 | `fmod` (GLSL's floored `mod`) | `x - y * floor(x / y)`; Void's `%` is WGSL's truncated one |
 | `c[i] = …` on a vector | a component write (`c.x = …`) per index |
-| `array[2, uint16]` vertex attribute | refused: shdc's GLES3 output has no array vertex inputs |
+| `array[2, uint16]` vertex attribute | refused: neither WGSL nor GLSL ES 3.00 takes an array vertex input |
 | `gl_VertexID mod 2`, `div 2` | `@builtin(vertexIndex)` (uint32) with uint `%` and `/` |
 | `USampler2d`, `Sampler2dArray` | `Texture2dU32`, `Texture2dArray` (WGSL's `texture_2d<u32>`, `texture_2d_array`) |
 | a varying named as an attribute (`color` in, `color` out) | renamed on both sides (`color_1`), `glslLinked` passing the vertex entry |

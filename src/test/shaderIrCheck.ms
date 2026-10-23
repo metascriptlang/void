@@ -261,6 +261,13 @@ test "an integer varying is flat" {
 	assert irErrors(m)[0] == "io 'id': an integer varying is flat";
 }
 
+test "an attribute, varying or output is no array" {
+	let m = texturedModule();
+	m.ios.push(io("weights", ShaderStage.Vertex, IoDirection.In,
+		arrayType(vectorType(ScalarKind.F32, 4), 2), Builtin.None));
+	assert irErrors(m)[0] == "io 'weights': an attribute, varying or output is no array, as WGSL's";
+}
+
 test "varyings link by name, type, order and condition" {
 	let m = texturedModule();
 	m.ios[4].condition = featureOn("CUTOUT");

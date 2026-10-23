@@ -742,6 +742,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return integral ? Interpolation.Flat : Interpolation.Perspective;
 	}
 
+	function arrayVarying(name: string): string {
+		return "varying '" + name + "' is an array, which WGSL does not pass between stages: " +
+			"declare one varying each";
+	}
+
 	function member(t: Node, name: string, at: Node): ShaderType {
 		if (isAuthorStruct(t.kind == NodeKind.TypeArray ? t.typExprElement : t)) {
 			fail(at, "interface field '" + name + "' is a struct: a uniform block member, " +
@@ -1930,9 +1935,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const builtin = decorator(inputs.typExprFieldDecorators[f], "builtin");
 			if (builtin == null) {
 				// Every input is declared, read or not: shdc numbers them in declaration order.
-				if (vertex && t.kind == NodeKind.TypeArray) {
-					fail(site, "attribute '" + name + "' is an array, and shdc's GLES3 " +
-						"(WebGL2) output has no array vertex inputs: declare one attribute each");
+				if (t.kind == NodeKind.TypeArray) {
+					fail(site, vertex ? "attribute '" + name + "' is an array, which neither " +
+						"WGSL nor GLSL ES 3.00 takes as a vertex input: declare one attribute each" :
+						arrayVarying(name));
 				}
 				const spelled = vertex ? name : varyingName(name);
 				const type = member(t, spelled, site);
@@ -1991,6 +1997,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				continue;
 			}
 			if (vertex) {
+				if (t.kind == NodeKind.TypeArray) { fail(site, arrayVarying(name)); }
 				const spelled = varyingName(name);
 				const type = member(t, spelled, site);
 				const interpolation = interpolationOf(t, site);
@@ -2005,6 +2012,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(site, "fragment output '" + name + "' has no @location(n)");
 			}
 			const slot = argumentNumber(location);
+			if (t.kind == NodeKind.TypeArray) {
+				fail(site, "fragment output '" + name + "' is an array, which WGSL does not " +
+					"write: declare one output each at its @location");
+			}
 			const type = member(t, name, site);
 			claim(name, site);
 			const io = addIo(stage, name, IoDirection.Out, type, Builtin.None, gate);
