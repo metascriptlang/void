@@ -164,9 +164,9 @@ test "compute prints storage resources, builtins and no workgroup size" {
 		"[[thread_position_in_threadgroup]], uint index [[thread_index_in_threadgroup]], uint3 group " +
 		"[[threadgroup_position_in_grid]], uint3 groups [[threadgroups_per_grid]], " +
 		"const device Command* commands [[buffer(8)]], device Total* results [[buffer(9)]], " +
-		"texture2d<float, access::write> image [[texture(0)]], texture2d<float> lut [[texture(1)]], " +
-		"sampler lutSmp [[sampler(0)]]) {\n" +
-		"  total(id, local, index, group, groups, commands, results, image, lut, lutSmp);\n}\n");
+		"texture2d<float, access::write> image [[texture(0)]], texture2d<float> lut [[texture(1)]]) " +
+		"{\n" +
+		"  total(id, local, index, group, groups, commands, results, image, lut);\n}\n");
 	assert cs.includes("struct Command {\n  float value;\n};\n");
 	assert cs.includes("  image.write((lut.read(uint2(int2(local.xy)), uint(0)) * " +
 		"commands[id.x].value), uint2(int2(local.xy)));\n");

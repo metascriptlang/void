@@ -337,7 +337,6 @@ function computeModule(): ShaderModule {
 		[exprOf(ExprKind.Resource, arrayType(structType(1), -1), 1, []), zero])]);
 	const looked = intrinsicOf(Intrinsic.TextureLoad, vec4, [
 		exprOf(ExprKind.Resource, texture, 3, []),
-		exprOf(ExprKind.Resource, samplerType(), 4, []),
 		literal(vec2, 0.0),
 	]);
 	const store = intrinsicOf(Intrinsic.TextureStore, new ShaderType(), [
@@ -368,7 +367,6 @@ test "HLSL puts read-only storage in t and writable storage in u" {
 		"storage-buffer compute 1/1 size 16 slot 0 name - tb -1 [||storage||||]",
 		"storage-texture compute 1/2 size 0 slot 1 name - tb -1 [|||||write-only|rgba8unorm]",
 		"texture compute 1/3 size 0 slot 1 name - tb -1 [float||||||]",
-		"sampler compute 1/32 size 0 slot 0 name - tb -1 [|filtering|||||]",
 	].join("\n") + COMPUTE_ATTRIBUTES;
 }
 
@@ -378,7 +376,6 @@ test "MSL puts storage buffers after the uniform buffers and storage textures wi
 		"storage-buffer compute 1/1 size 16 slot 9 name - tb -1 [||storage||||]",
 		"storage-texture compute 1/2 size 0 slot 0 name - tb -1 [|||||write-only|rgba8unorm]",
 		"texture compute 1/3 size 0 slot 1 name - tb -1 [float||||||]",
-		"sampler compute 1/32 size 0 slot 0 name - tb -1 [|filtering|||||]",
 	].join("\n") + COMPUTE_ATTRIBUTES;
 }
 
@@ -388,7 +385,7 @@ test "GL binds a storage buffer at its slot and a storage texture at its own cou
 		"storage-buffer compute 1/1 size 16 slot 1 name - tb -1 [||storage||||]",
 		"storage-texture compute 1/2 size 0 slot 0 name - tb -1 [|||||write-only|rgba8unorm]",
 		"texture compute 1/3 size 0 slot -1 name - tb -1 [float||||||]",
-		"sampler compute 1/32 size 0 slot -1 name lut_lutSmp tb 3 [|filtering|||||]",
+		"sampler compute 1/-1 size 0 slot -1 name lut_SPIRV_Cross_DummySampler tb 3 [|non-filtering|||||]",
 	].join("\n") + COMPUTE_ATTRIBUTES;
 }
 
@@ -398,7 +395,6 @@ test "WGSL and GLSL ES reflect storage by WebGPU numbers or refuse it" {
 		"storage-buffer compute 1/1 size 16 slot -1 name - tb -1 [||storage||||]",
 		"storage-texture compute 1/2 size 0 slot -1 name - tb -1 [|||||write-only|rgba8unorm]",
 		"texture compute 1/3 size 0 slot -1 name - tb -1 [float||||||]",
-		"sampler compute 1/32 size 0 slot -1 name - tb -1 [|filtering|||||]",
 	].join("\n") + COMPUTE_ATTRIBUTES;
 	assert reflected(computeModule(), ShaderTarget.Glsl300es) ==
 		"resource 'results': GLSL ES 3.0 has no storage resources";

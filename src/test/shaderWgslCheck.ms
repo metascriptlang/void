@@ -162,7 +162,7 @@ test "compute prints storage resources, builtins and its workgroup size" {
 	assert cs.includes("@binding(1) @group(1) var<storage, read_write> results : array<Total>;\n");
 	assert cs.includes("@binding(2) @group(1) var image : texture_storage_2d<rgba8unorm, write>;\n");
 	assert cs.includes("@binding(3) @group(1) var lut : texture_2d<f32>;\n");
-	assert cs.includes("@binding(32) @group(1) var lutSmp : sampler;\n");
+	assert !cs.includes("lutSmp");
 	assert cs.includes("@compute @workgroup_size(32, 1, 1)\nfn main(@builtin(global_invocation_id)" +
 		" id_param : vec3u, @builtin(local_invocation_id) local_param : vec3u, " +
 		"@builtin(local_invocation_index) index_param : u32, @builtin(workgroup_id) group_param :" +

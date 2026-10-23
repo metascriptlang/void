@@ -336,7 +336,7 @@ export function fragmentModule(): ShaderModule {
 		letOf(11, construct(arrayType(F32, 3), [f, f, f32(2.0)])),
 		letOf(12, exprOf(ExprKind.Convert, IVEC2, -1, [v2])),
 		letOf(13, construct(SAMPLE, [f, v2])),
-		letOf(16, intrinsicOf(Intrinsic.TextureDimensions, IVEC2, [texture, sampler, i32(0.0)])),
+		letOf(16, intrinsicOf(Intrinsic.TextureDimensions, IVEC2, [texture, i32(0.0)])),
 	];
 	for (const op of [Intrinsic.Abs, Intrinsic.Sqrt, Intrinsic.InverseSqrt, Intrinsic.Exp,
 		Intrinsic.Exp2, Intrinsic.Log, Intrinsic.Log2, Intrinsic.Sin, Intrinsic.Cos, Intrinsic.Tan,
@@ -375,7 +375,7 @@ export function fragmentModule(): ShaderModule {
 	body.push(setLocal(1, Intrinsic.Dpdx, [v2]));
 	body.push(setLocal(1, Intrinsic.Fwidth, [v2]));
 	body.push(setLocal(7, Intrinsic.Sign, [i]));
-	body.push(setLocal(3, Intrinsic.TextureLoad, [texture, sampler, i2, i32(0.0)]));
+	body.push(setLocal(3, Intrinsic.TextureLoad, [texture, i2, i32(0.0)]));
 
 	const twice = assignOf(f, binary(BinaryOp.Mul, F32, f, f32(2.0)));
 	let firstLoop = stmtOf(StmtKind.For, compare(BinaryOp.Less, k, i32(3.0)), [
@@ -686,7 +686,7 @@ export function computeBuiltinsModule(): ShaderModule {
 	const at = exprOf(ExprKind.Convert, IVEC2, -1, [swizzle(ioOf(m, 1), vectorType(ScalarKind.U32,
 		2), [0, 1])]);
 	const looked = intrinsicOf(Intrinsic.TextureLoad, VEC4,
-		[resourceOf(m, 3), resourceOf(m, 4), at, literal(I32, 0.0)]);
+		[resourceOf(m, 3), at, literal(I32, 0.0)]);
 	const store = intrinsicOf(Intrinsic.TextureStore, new ShaderType(),
 		[resourceOf(m, 2), at, binaryOf(BinaryOp.Mul, VEC4, looked, value)]);
 	m.functions = [shaderFunction("total", [], [
@@ -817,11 +817,11 @@ export function everyModule(): ShaderModule {
 	bind(fs, "ofTextureSampleLayer", intrinsicOf(Intrinsic.TextureSample, VEC4,
 		[resourceOf(m, 4), resourceOf(m, 2), uv, i]));
 	bind(fs, "ofTextureLoad", intrinsicOf(Intrinsic.TextureLoad, VEC4,
-		[resourceOf(m, 3), resourceOf(m, 2), texel, literal(I32, 0.0)]));
+		[resourceOf(m, 3), texel, literal(I32, 0.0)]));
 	bind(fs, "ofTextureLoadLayer", intrinsicOf(Intrinsic.TextureLoad, VEC4,
-		[resourceOf(m, 4), resourceOf(m, 2), texel, i, literal(I32, 0.0)]));
+		[resourceOf(m, 4), texel, i, literal(I32, 0.0)]));
 	bind(fs, "ofTextureDimensions", intrinsicOf(Intrinsic.TextureDimensions, IVEC2,
-		[resourceOf(m, 3), resourceOf(m, 2), literal(I32, 0.0)]));
+		[resourceOf(m, 3), literal(I32, 0.0)]));
 	bind(fs, "least", literal(I32, -2147483648.0));
 	bind(fs, "same", binaryOf(BinaryOp.Equal, BOOL, v3, v3));
 	bind(fs, "differ", binaryOf(BinaryOp.NotEqual, BOOL, v4, v4));
