@@ -1591,11 +1591,61 @@ build_and_capture() {
 	return 0
 }
 
+# A backend other than D3D11 renders other bytes, so its frames are judged against the committed
+# D3D11 images by tests/capture3d/compare3d.ms, golden 2D's policy with `golden3d:` budget rows.
+case "$(uname -s)" in
+	Darwin) CROSS3D=metal ;;
+	*) CROSS3D="" ;;
+esac
+GOLDEN3D=tests/golden3d/d3d11
+COMPARE3D=out/compare3d.exe
+
+run_capture_cross() {
+	name=$1
+	baseline=$2
+	what=$3
+	if [ -z "${COMPARE3D_BUILT:-}" ]; then
+		if ! msc build tests/capture3d/compare3d.ms --output="$COMPARE3D" > "$WORK/compare3d.build.log" 2>&1; then
+			fail "capture $name: the comparator did not build — see $WORK/compare3d.build.log"
+			return
+		fi
+		COMPARE3D_BUILT=1
+	fi
+	list=$WORK/$name.compare3d
+	: > "$list"
+	for frame in $FRAMES; do
+		key=${baseline}_$frame
+		golden=$GOLDEN3D/$key.png
+		verdict=$(capture_pending_verdict "$PENDING" "$key.ppm" "$(expected_hash "$key.ppm")" "") ||
+			verdict=invalid
+		case "$verdict" in
+			listed) golden=$GOLDEN3D/$key.held.png ;;
+			normal) ;;
+			*) fail "capture $name: invalid PENDING3D record for $key.ppm"; return ;;
+		esac
+		echo "$key $CAPTURE/gate/${name}_$frame.ppm $golden" >> "$list"
+	done
+	if ! VOID_COMPARE3D_LIST="$list" VOID_COMPARE3D_BACKEND="$CROSS3D" "$COMPARE3D" \
+		> "$WORK/$name.compare3d.log" 2>&1; then
+		grep -v '^PASS\|^PENDING' "$WORK/$name.compare3d.log" | tail -12
+		fail "capture $name ($what): $CROSS3D frames outside their bound against $GOLDEN3D/${baseline}_*.png"
+		return
+	fi
+	for frame in $FRAMES; do
+		cp "$CAPTURE/gate/${name}_$frame.ppm" "$CAPTURE/${baseline}_$frame.ppm"
+	done
+	pass "capture $name ($what): $(tail -1 "$WORK/$name.compare3d.log")"
+}
+
 run_capture() {
 	name=$1
 	baseline=$2
 	what=$3
 	build_and_capture "$name" || return
+	if [ -n "$CROSS3D" ]; then
+		run_capture_cross "$@"
+		return
+	fi
 	missing=0
 	differing=0
 	adopted=0
@@ -1667,6 +1717,17 @@ run_capture() {
 # and frame 1 is before any of it: both have to be the palette-on image, byte for byte. A swap
 # that left the LUT or the post block anywhere but where it was fails here.
 run_look_restored() {
+	if [ -n "$CROSS3D" ]; then
+		for frame in 1 16; do
+			if ! cmp -s "$CAPTURE/gate/campfireLookCapture_$frame.ppm" \
+				"$CAPTURE/gate/campfirePaletteCapture_$frame.ppm"; then
+				fail "capture look: frame $frame is not this backend's palette-on image after the swap and back"
+				return
+			fi
+		done
+		pass "capture look: frames 1 and 16 byte-identical to campfirePaletteCapture around the swap"
+		return
+	fi
 	for frame in 1 16; do
 		got=$CAPTURE/gate/campfireLookCapture_$frame.ppm
 		expected=$(expected_hash "m3palette_$frame.ppm")

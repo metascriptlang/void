@@ -15,9 +15,8 @@
 // passes. The third self-check, "two draws of the same state are identical", belongs to
 // the runner.
 
-import { readLines } from "std/fs";
 import { env } from "std/process";
-import { trimSpaces, parseInt32, NOT_A_NUMBER } from "../harness/parse";
+import { PENDING_PATH, PendingBudget, Verdict, readPendingBudgets, reportDiff, judgeLoaded } from "./judge";
 import {
 	SceneRow,
 	sceneRows,
@@ -42,85 +41,10 @@ import {
 	voidPngHeight,
 	voidPngPixel,
 	voidPngDiff,
-	voidPngDiffMaxDelta,
-	voidPngDiffOverOne,
-	voidPngDiffMinX,
-	voidPngDiffMinY,
-	voidPngDiffMaxX,
-	voidPngDiffMaxY,
-	voidPngWriteDiffMask,
 } from "./pngio.h";
 
 const GOLDEN_ROOT: string = "tests/golden";
 const ACTUAL_ROOT: string = "out/golden";
-const PENDING_PATH: string = "tests/PENDING.md";
-// docs/TESTING.md "Guardrail 9": across backends a delta of 1 is ignored, and a scene fails at
-// a max delta of 4 or when more than 0.05 % of its pixels differ by 2 or 3.
-const CROSS_FAIL_DELTA: int32 = 4;
-const CROSS_MAX_SHARE: float64 = 0.0005;
-
-// A tests/PENDING.md row that carries an image budget.
-interface PendingBudget {
-	id: string;
-	maxPixels: int32;
-	maxDelta: int32;
-}
-
-enum Verdict {
-	Pass,
-	PassPending,
-	Fail,
-}
-
-// tests/PENDING.md is a markdown table so that one file serves both a reader and the
-// harness. A row is `| id | tier | reason | phase | date | maxPixels | maxDelta |`, and only
-// rows whose id starts with `golden:` mean anything here.
-let malformed: int32 = 0;
-
-function readPendingBudgets(): PendingBudget[] {
-	const budgets: PendingBudget[] = [];
-	const lines = readLines(PENDING_PATH);
-	if (!lines.ok) { return budgets; }
-	for (const line of lines.value) {
-		const cells = line.split("|");
-		// Order matters, and it used to be wrong. The `< 8` test is what lets this parser walk
-		// a markdown file at all - prose, headings and the 3-cell index rows all fall out here
-		// - so it cannot simply become a failure. But it ran *before* the `golden:` test, which
-		// meant a budget row that had lost a column was dropped as quietly as a paragraph.
-		// Measured: a `golden:` row with two columns missing left the comparator reporting
-		// `45 pass, 0 fail` and exit 0, with the budget it carried silently absent.
-		// So: enough cells to read an id, then decide whether this row is ours, and only then
-		// insist on the full width - loudly, because by then we know it was meant to be a row.
-		if ((cells.length as int32) < 2) { continue; }
-		const id = trimSpaces(cells[1]);
-		if (!id.startsWith("golden:")) { continue; }
-		if ((cells.length as int32) < 8) {
-			console.log(`FAIL ${PENDING_PATH} row ${id} has ${cells.length as int32} cells, not the 8 a ` +
-				`budget row needs`);
-			malformed = malformed + 1;
-			continue;
-		}
-		const name = id.substring("golden:".length as int32, id.length as int32);
-		const maxPixels: int32 = parseInt32(cells[6]);
-		const maxDelta: int32 = parseInt32(cells[7]);
-		if (maxPixels == NOT_A_NUMBER || maxDelta == NOT_A_NUMBER) {
-			console.log(`FAIL ${PENDING_PATH} row golden:${name} has an unreadable budget: maxPixels ` +
-				`'${trimSpaces(cells[6])}', maxDelta '${trimSpaces(cells[7])}'`);
-			malformed = malformed + 1;
-			continue;
-		}
-		budgets.push({ id: name, maxPixels: maxPixels, maxDelta: maxDelta });
-	}
-	return budgets;
-}
-
-function budgetFor(budgets: PendingBudget[], name: string): PendingBudget | null {
-	for (const budget of budgets) {
-		if (budget.id.equals(name)) { return budget; }
-	}
-	return null;
-}
-
 // Slot 0 is the golden, slot 1 the fresh capture. Every byte of harness/solid is predicted
 // here: a readback that swaps channels, returns zeros or passes everything fails this row
 // before it can be blamed on the renderer.
@@ -148,15 +72,6 @@ function checkHandComputed(row: SceneRow): boolean {
 	console.log(`  hand-computed check: ${bad} of ${row.width * row.height} pixels are not what the ` +
 		`arithmetic says`);
 	return false;
-}
-
-function reportDiff(name: string, differ: int32): void {
-	if (differ <= 0) {
-		console.log(`  ${name}: 0 px differ, max delta 0`);
-		return;
-	}
-	console.log(`  ${name}: ${differ} px differ, max delta ${voidPngDiffMaxDelta()}, bbox ` +
-		`(${voidPngDiffMinX()},${voidPngDiffMinY()})-(${voidPngDiffMaxX()},${voidPngDiffMaxY()})`);
 }
 
 function judge(
@@ -189,15 +104,9 @@ function judge(
 		return Verdict.Fail;
 	}
 
-	const differ: int32 = voidPngDiff();
-	if (differ < 0) {
-		console.log(`FAIL ${row.name} golden is ${voidPngWidth(0)}x${voidPngHeight(0)} and the capture ` +
-			`is ${voidPngWidth(1)}x${voidPngHeight(1)}`);
-		return Verdict.Fail;
-	}
-
 	// The deliberately wrong golden: the comparator has to report it, or it cannot fail at all.
 	if (row.name.equals(MUST_FAIL_SCENE)) {
+		const differ: int32 = voidPngDiff();
 		if (differ > 0) {
 			reportDiff(row.name, differ);
 			console.log(`PASS ${row.name} (the deliberately wrong golden was reported, so the comparator ` +
@@ -209,45 +118,8 @@ function judge(
 		return Verdict.Fail;
 	}
 
-	if (cross && differ > 0) {
-		const pixels: float64 = (row.width * row.height) as float64;
-		const within: boolean = voidPngDiffMaxDelta() < CROSS_FAIL_DELTA
-			&& (voidPngDiffOverOne() as float64) <= pixels * CROSS_MAX_SHARE;
-		if (within) {
-			reportDiff(row.name, differ);
-			console.log(`PASS ${row.name} within the cross-backend bound (${voidPngDiffOverOne()} px over ` +
-				`delta 1)`);
-			return Verdict.PassPending;
-		}
-	}
-
-	const budget = budgetFor(budgets, cross ? `${row.name}@${captured}` : row.name);
-	if (budget !== null) {
-		if (differ == 0) {
-			console.log(`FAIL ${row.name} is byte-identical and still listed in ${PENDING_PATH} — delete ` +
-				`the entry`);
-			return Verdict.Fail;
-		}
-		reportDiff(row.name, differ);
-		if (differ <= budget.maxPixels && voidPngDiffMaxDelta() <= budget.maxDelta) {
-			console.log(`PENDING ${row.name} within its budget (${budget.maxPixels} px, delta ` +
-				`${budget.maxDelta})`);
-			return Verdict.PassPending;
-		}
-		voidPngWriteDiffMask(`${ACTUAL_ROOT}/${captured}/${row.name}.diff.png`);
-		console.log(`FAIL ${row.name} is over its budget (${budget.maxPixels} px, delta ` +
-			`${budget.maxDelta})`);
-		return Verdict.Fail;
-	}
-
-	if (differ == 0) {
-		console.log(`PASS ${row.name}`);
-		return Verdict.Pass;
-	}
-	reportDiff(row.name, differ);
-	voidPngWriteDiffMask(`${ACTUAL_ROOT}/${captured}/${row.name}.diff.png`);
-	console.log(`FAIL ${row.name} differs from its golden and has no ${PENDING_PATH} entry`);
-	return Verdict.Fail;
+	return judgeLoaded(row.name, cross ? `${row.name}@${captured}` : row.name, cross, budgets,
+		`${ACTUAL_ROOT}/${captured}/${row.name}.diff.png`);
 }
 
 function runComparison(): int32 {
@@ -257,7 +129,8 @@ function runComparison(): int32 {
 	// under the cross-backend bound instead of byte identity.
 	const conform: string = env.get("VOID_CONFORM");
 	const captured: string = conform.length > 0 ? conform : backend;
-	const budgets = readPendingBudgets();
+	const read = readPendingBudgets("golden:");
+	const budgets = read.rows;
 	const rows = sceneRows();
 	let passed: int32 = 0;
 	let pending: int32 = 0;
@@ -279,13 +152,13 @@ function runComparison(): int32 {
 
 	const total: int32 = (rows.length as int32) - excluded;
 	console.log("");
-	if (malformed > 0) {
-		console.log(`golden ${captured}: ${malformed} unreadable ${PENDING_PATH} budget row(s)`);
+	if (read.malformed > 0) {
+		console.log(`golden ${captured}: ${read.malformed} unreadable ${PENDING_PATH} budget row(s)`);
 	}
 	console.log(`golden ${captured}: ${passed} pass, ${pending} pending, ${failed} fail of ${total}`
 		+ (excluded > 0 ? ` (${excluded} excluded)` : ""));
 	console.log(`pass rate ${(passed + pending) * 100 / total}%`);
-	return failed == 0 && malformed == 0 ? 0 : 1;
+	return failed == 0 && read.malformed == 0 ? 0 : 1;
 }
 
 process.exit(runComparison());

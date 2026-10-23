@@ -1,8 +1,17 @@
 // The window's app-facing half, shared by the window drivers (bridgeWin.c, bridgeLinux.c,
-// bridgeWeb.c and bridgeIosApp.m): the event closure with its getters, the IME events, and the title.
+// bridgeWeb.c, bridgeEmbed.m and bridgeIosApp.m): the event closure with its getters, the IME events, and the title.
+
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#define VOID_MACOS 1
+#endif
+#endif
 
 #if defined(__EMSCRIPTEN__)
 #include "../platform/web/window.h"
+#elif defined(VOID_MACOS)
+#include "../platform/macos/window.h"
 #elif defined(__APPLE__)
 #include "iosApp.h"
 #elif defined(__ANDROID__)
@@ -126,6 +135,10 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	e.frameCount = voidWebFrameCount();
 	e.framebufferWidth = voidWebWidth();
 	e.framebufferHeight = voidWebHeight();
+#elif defined(VOID_MACOS)
+	e.frameCount = voidMacosFrameCount();
+	e.framebufferWidth = voidMacosWidth();
+	e.framebufferHeight = voidMacosHeight();
 #elif defined(__APPLE__)
 	e.frameCount = voidIosFrameCount();
 	e.framebufferWidth = voidIosWidth();
@@ -159,6 +172,8 @@ void voidSetWindowTitle(const char *title) {
 	s_titleSet = true;
 #if defined(__EMSCRIPTEN__)
 	if (voidWebValid()) voidWebSetTitle(s_title);
+#elif defined(VOID_MACOS)
+	if (voidMacosValid()) voidMacosSetTitle(s_title);
 #elif defined(__APPLE__) || defined(__ANDROID__)
 #elif defined(__linux__)
 	if (voidLinuxValid()) voidLinuxSetTitle(s_title);
@@ -197,24 +212,32 @@ static int voidAndroidDroppedCount(void) { return 0; }
 static const char *voidAndroidDroppedPath(int i) { (void)i; return ""; }
 #elif defined(__linux__)
 #define PLATFORM(name) voidLinux##name
+#elif defined(VOID_MACOS)
+#define PLATFORM(name) voidMacos##name
 #elif defined(__APPLE__)
 #define PLATFORM(name) voidIos##name
-__attribute__((noreturn)) static void notPortedIos(const char *feature) { fail("%s is not ported to iOS yet (src/sokol/appWindow.c)", feature); }
-static void voidIosRequestQuit(void) { notPortedIos("voidRequestQuit"); }
-static void voidIosCancelQuit(void) { notPortedIos("voidCancelQuit"); }
-static double voidIosFrameDuration(void) { notPortedIos("voidFrameDuration"); }
-static void voidIosSetClipboard(const char *utf8) { (void)utf8; notPortedIos("the clipboard"); }
-static const char *voidIosClipboard(void) { notPortedIos("the clipboard"); }
-static void voidIosSetCursor(int cursor) { (void)cursor; notPortedIos("the mouse cursor"); }
-static int voidIosCursor(void) { notPortedIos("the mouse cursor"); }
-static void voidIosShowMouse(bool shown) { (void)shown; notPortedIos("showing and hiding the mouse"); }
-static bool voidIosMouseShown(void) { notPortedIos("showing and hiding the mouse"); }
-static void voidIosLockMouse(bool locked) { (void)locked; notPortedIos("the mouse lock"); }
-static bool voidIosMouseLocked(void) { notPortedIos("the mouse lock"); }
-static void voidIosToggleFullscreen(void) { notPortedIos("fullscreen"); }
-static bool voidIosIsFullscreen(void) { notPortedIos("fullscreen"); }
-static int voidIosDroppedCount(void) { notPortedIos("dropped files"); }
-static const char *voidIosDroppedPath(int i) { (void)i; notPortedIos("dropped files"); }
+#define IOS_CLIPBOARD_SIZE 8192
+static char s_iosClipboard[IOS_CLIPBOARD_SIZE];
+static int s_iosCursor = 0;
+static bool s_iosMouseShown = true;
+static bool s_iosMouseLocked = false;
+static void voidIosRequestQuit(void) {}
+static void voidIosCancelQuit(void) {}
+static void voidIosSetClipboard(const char *utf8) {
+	if (strlen(utf8) >= sizeof s_iosClipboard) fail("the clipboard holds at most %d bytes on iOS; got %d", (int)sizeof s_iosClipboard - 1, (int)strlen(utf8));
+	strcpy(s_iosClipboard, utf8);
+}
+static const char *voidIosClipboard(void) { return s_iosClipboard; }
+static void voidIosSetCursor(int cursor) { s_iosCursor = cursor; }
+static int voidIosCursor(void) { return s_iosCursor; }
+static void voidIosShowMouse(bool shown) { s_iosMouseShown = shown; }
+static bool voidIosMouseShown(void) { return s_iosMouseShown; }
+static void voidIosLockMouse(bool locked) { s_iosMouseLocked = locked; }
+static bool voidIosMouseLocked(void) { return s_iosMouseLocked; }
+static void voidIosToggleFullscreen(void) {}
+static bool voidIosIsFullscreen(void) { return false; }
+static int voidIosDroppedCount(void) { return 0; }
+static const char *voidIosDroppedPath(int i) { (void)i; return ""; }
 #else
 #define PLATFORM(name) voidWin32##name
 #endif

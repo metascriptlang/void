@@ -104,15 +104,21 @@ MtlTexture mtlNewTexture(
 	MtlDevice device,
 	int32_t width,
 	int32_t height,
+	int32_t depthOrLayers,
+	int32_t mipLevels,
+	int32_t textureType,
 	int32_t pixelFormat,
 	int32_t sampleCount,
 	int32_t renderTarget,
 	int32_t shared) {
 	MTLTextureDescriptor *desc = [[MTLTextureDescriptor alloc] init];
-	desc.textureType = sampleCount > 1 ? MTLTextureType2DMultisample : MTLTextureType2D;
+	desc.textureType = (MTLTextureType)textureType;
 	desc.pixelFormat = (MTLPixelFormat)pixelFormat;
 	desc.width = (NSUInteger)width;
 	desc.height = (NSUInteger)height;
+	desc.mipmapLevelCount = (NSUInteger)mipLevels;
+	if (textureType == MTLTextureType3D) { desc.depth = (NSUInteger)depthOrLayers; }
+	if (textureType == MTLTextureType2DArray) { desc.arrayLength = (NSUInteger)depthOrLayers; }
 	desc.sampleCount = (NSUInteger)sampleCount;
 	desc.usage = MTLTextureUsageShaderRead | (renderTarget ? MTLTextureUsageRenderTarget : 0);
 	desc.resourceOptions = renderTarget
@@ -121,6 +127,20 @@ MtlTexture mtlNewTexture(
 	id<MTLTexture> texture = [(id<MTLDevice>)device newTextureWithDescriptor:desc];
 	[desc release];
 	return (MtlTexture)texture;
+}
+
+MtlTexture mtlNewTextureView(
+	MtlTexture texture,
+	int32_t pixelFormat,
+	int32_t textureType,
+	int32_t baseMip,
+	int32_t mipCount,
+	int32_t baseLayer,
+	int32_t layerCount) {
+	return (MtlTexture)[(id<MTLTexture>)texture newTextureViewWithPixelFormat:(MTLPixelFormat)pixelFormat
+		textureType:(MTLTextureType)textureType
+		levels:NSMakeRange((NSUInteger)baseMip, (NSUInteger)mipCount)
+		slices:NSMakeRange((NSUInteger)baseLayer, (NSUInteger)layerCount)];
 }
 
 void mtlReleaseTexture(MtlTexture texture) { [(id<MTLTexture>)texture release]; }
@@ -134,15 +154,30 @@ void mtlWriteTexture(MtlTexture texture, void *data, int64_t offset, int32_t byt
 		bytesPerImage:0];
 }
 
-MtlSampler mtlNewSampler(MtlDevice device, int32_t minFilter, int32_t magFilter, int32_t addressU, int32_t addressV) {
+MtlSampler mtlNewSampler(
+	MtlDevice device,
+	int32_t minFilter,
+	int32_t magFilter,
+	int32_t mipFilter,
+	int32_t addressU,
+	int32_t addressV,
+	int32_t addressW,
+	float lodMin,
+	float lodMax,
+	int32_t maxAnisotropy,
+	int32_t compare) {
 	MTLSamplerDescriptor *desc = [[MTLSamplerDescriptor alloc] init];
 	desc.sAddressMode = (MTLSamplerAddressMode)addressU;
 	desc.tAddressMode = (MTLSamplerAddressMode)addressV;
-	desc.rAddressMode = MTLSamplerAddressModeClampToEdge;
+	desc.rAddressMode = (MTLSamplerAddressMode)addressW;
 	desc.minFilter = (MTLSamplerMinMagFilter)minFilter;
 	desc.magFilter = (MTLSamplerMinMagFilter)magFilter;
-	desc.mipFilter = MTLSamplerMipFilterNotMipmapped;
+	desc.mipFilter = (MTLSamplerMipFilter)mipFilter;
+	desc.lodMinClamp = lodMin;
+	desc.lodMaxClamp = lodMax;
+	desc.maxAnisotropy = (NSUInteger)maxAnisotropy;
 	desc.normalizedCoordinates = YES;
+	desc.compareFunction = (MTLCompareFunction)compare;
 	id<MTLSamplerState> sampler = [(id<MTLDevice>)device newSamplerStateWithDescriptor:desc];
 	[desc release];
 	return (MtlSampler)sampler;
@@ -236,10 +271,43 @@ MtlPipeline mtlNewPipeline(
 
 void mtlReleasePipeline(MtlPipeline pipeline) { [(id<MTLRenderPipelineState>)pipeline release]; }
 
-MtlDepthState mtlNewDepthState(MtlDevice device, int32_t compare, int32_t depthWrite) {
+static MTLStencilDescriptor *stencilFace(int32_t fail, int32_t depthFail, int32_t pass, int32_t compare, uint32_t readMask, uint32_t writeMask) {
+	MTLStencilDescriptor *face = [[MTLStencilDescriptor alloc] init];
+	face.stencilFailureOperation = (MTLStencilOperation)fail;
+	face.depthFailureOperation = (MTLStencilOperation)depthFail;
+	face.depthStencilPassOperation = (MTLStencilOperation)pass;
+	face.stencilCompareFunction = (MTLCompareFunction)compare;
+	face.readMask = readMask;
+	face.writeMask = writeMask;
+	return face;
+}
+
+MtlDepthState mtlNewDepthState(
+	MtlDevice device,
+	int32_t compare,
+	int32_t depthWrite,
+	int32_t stencil,
+	uint32_t readMask,
+	uint32_t writeMask,
+	int32_t frontFail,
+	int32_t frontDepthFail,
+	int32_t frontPass,
+	int32_t frontCompare,
+	int32_t backFail,
+	int32_t backDepthFail,
+	int32_t backPass,
+	int32_t backCompare) {
 	MTLDepthStencilDescriptor *desc = [[MTLDepthStencilDescriptor alloc] init];
 	desc.depthCompareFunction = (MTLCompareFunction)compare;
 	desc.depthWriteEnabled = depthWrite ? YES : NO;
+	if (stencil) {
+		MTLStencilDescriptor *front = stencilFace(frontFail, frontDepthFail, frontPass, frontCompare, readMask, writeMask);
+		MTLStencilDescriptor *back = stencilFace(backFail, backDepthFail, backPass, backCompare, readMask, writeMask);
+		desc.frontFaceStencil = front;
+		desc.backFaceStencil = back;
+		[front release];
+		[back release];
+	}
 	id<MTLDepthStencilState> state = [(id<MTLDevice>)device newDepthStencilStateWithDescriptor:desc];
 	[desc release];
 	return (MtlDepthState)state;
@@ -255,7 +323,12 @@ void mtlPassReset(void) {
 void mtlPassColor(
 	int32_t index,
 	MtlTexture texture,
+	int32_t level,
+	int32_t slice,
+	int32_t depthPlane,
 	MtlTexture resolve,
+	int32_t resolveLevel,
+	int32_t resolveSlice,
 	int32_t loadAction,
 	int32_t storeAction,
 	double r,
@@ -264,19 +337,28 @@ void mtlPassColor(
 	double a) {
 	MTLRenderPassColorAttachmentDescriptor *color = s_pass.colorAttachments[(NSUInteger)index];
 	color.texture = (id<MTLTexture>)texture;
+	color.level = (NSUInteger)level;
+	color.slice = (NSUInteger)slice;
+	color.depthPlane = (NSUInteger)depthPlane;
 	color.resolveTexture = (id<MTLTexture>)resolve;
+	color.resolveLevel = (NSUInteger)resolveLevel;
+	color.resolveSlice = (NSUInteger)resolveSlice;
 	color.loadAction = (MTLLoadAction)loadAction;
 	color.storeAction = (MTLStoreAction)storeAction;
 	color.clearColor = MTLClearColorMake(r, g, b, a);
 }
 
-void mtlPassDepth(MtlTexture texture, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil) {
+void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil) {
 	s_pass.depthAttachment.texture = (id<MTLTexture>)texture;
+	s_pass.depthAttachment.level = (NSUInteger)level;
+	s_pass.depthAttachment.slice = (NSUInteger)slice;
 	s_pass.depthAttachment.loadAction = (MTLLoadAction)loadAction;
 	s_pass.depthAttachment.storeAction = (MTLStoreAction)storeAction;
 	s_pass.depthAttachment.clearDepth = depth;
 	if (stencil) {
 		s_pass.stencilAttachment.texture = (id<MTLTexture>)texture;
+		s_pass.stencilAttachment.level = (NSUInteger)level;
+		s_pass.stencilAttachment.slice = (NSUInteger)slice;
 		s_pass.stencilAttachment.loadAction = (MTLLoadAction)loadAction;
 		s_pass.stencilAttachment.storeAction = (MTLStoreAction)storeAction;
 		s_pass.stencilAttachment.clearStencil = 0;
@@ -312,9 +394,13 @@ void mtlPresentDrawable(MtlCommandBuffer commandBuffer) {
 	s_drawable = nil;
 }
 
-void mtlSetViewport(MtlEncoder encoder, int32_t width, int32_t height) {
-	MTLViewport viewport = { 0.0, 0.0, (double)width, (double)height, 0.0, 1.0 };
+void mtlSetViewport(MtlEncoder encoder, double x, double y, double width, double height, double near, double far) {
+	MTLViewport viewport = { x, y, width, height, near, far };
 	[(id<MTLRenderCommandEncoder>)encoder setViewport:viewport];
+}
+
+void mtlSetBlendColor(MtlEncoder encoder, double r, double g, double b, double a) {
+	[(id<MTLRenderCommandEncoder>)encoder setBlendColorRed:(float)r green:(float)g blue:(float)b alpha:(float)a];
 }
 
 void mtlSetScissorRect(MtlEncoder encoder, int32_t x, int32_t y, int32_t width, int32_t height) {
@@ -322,12 +408,25 @@ void mtlSetScissorRect(MtlEncoder encoder, int32_t x, int32_t y, int32_t width, 
 	[(id<MTLRenderCommandEncoder>)encoder setScissorRect:rect];
 }
 
-void mtlSetPipeline(MtlEncoder encoder, MtlPipeline pipeline, MtlDepthState depth, int32_t cullMode, int32_t winding) {
+void mtlSetPipeline(
+	MtlEncoder encoder,
+	MtlPipeline pipeline,
+	MtlDepthState depth,
+	int32_t cullMode,
+	int32_t winding,
+	float depthBias,
+	float depthBiasSlope,
+	float depthBiasClamp) {
 	id<MTLRenderCommandEncoder> e = (id<MTLRenderCommandEncoder>)encoder;
 	[e setCullMode:(MTLCullMode)cullMode];
 	[e setFrontFacingWinding:(MTLWinding)winding];
+	[e setDepthBias:depthBias slopeScale:depthBiasSlope clamp:depthBiasClamp];
 	[e setRenderPipelineState:(id<MTLRenderPipelineState>)pipeline];
 	[e setDepthStencilState:(id<MTLDepthStencilState>)depth];
+}
+
+void mtlSetStencilReference(MtlEncoder encoder, uint32_t reference) {
+	[(id<MTLRenderCommandEncoder>)encoder setStencilFrontReferenceValue:reference backReferenceValue:reference];
 }
 
 void mtlSetVertexBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index) {
@@ -362,15 +461,15 @@ void mtlSetFragmentSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index
 	[(id<MTLRenderCommandEncoder>)encoder setFragmentSamplerState:(id<MTLSamplerState>)sampler atIndex:(NSUInteger)index];
 }
 
-void mtlDraw(MtlEncoder encoder, int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance) {
+void mtlDraw(MtlEncoder encoder, int32_t primitive, int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance) {
 	id<MTLRenderCommandEncoder> e = (id<MTLRenderCommandEncoder>)encoder;
 	if (firstInstance == 0) {
-		[e drawPrimitives:MTLPrimitiveTypeTriangle
+		[e drawPrimitives:(MTLPrimitiveType)primitive
 			vertexStart:(NSUInteger)firstVertex
 			vertexCount:(NSUInteger)vertexCount
 			instanceCount:(NSUInteger)instanceCount];
 	} else {
-		[e drawPrimitives:MTLPrimitiveTypeTriangle
+		[e drawPrimitives:(MTLPrimitiveType)primitive
 			vertexStart:(NSUInteger)firstVertex
 			vertexCount:(NSUInteger)vertexCount
 			instanceCount:(NSUInteger)instanceCount
@@ -380,6 +479,7 @@ void mtlDraw(MtlEncoder encoder, int32_t vertexCount, int32_t instanceCount, int
 
 void mtlDrawIndexed(
 	MtlEncoder encoder,
+	int32_t primitive,
 	MtlBuffer indexBuffer,
 	int32_t indexType,
 	int64_t indexOffset,
@@ -389,14 +489,14 @@ void mtlDrawIndexed(
 	int32_t firstInstance) {
 	id<MTLRenderCommandEncoder> e = (id<MTLRenderCommandEncoder>)encoder;
 	if (baseVertex == 0 && firstInstance == 0) {
-		[e drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+		[e drawIndexedPrimitives:(MTLPrimitiveType)primitive
 			indexCount:(NSUInteger)indexCount
 			indexType:(MTLIndexType)indexType
 			indexBuffer:(id<MTLBuffer>)indexBuffer
 			indexBufferOffset:(NSUInteger)indexOffset
 			instanceCount:(NSUInteger)instanceCount];
 	} else {
-		[e drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+		[e drawIndexedPrimitives:(MTLPrimitiveType)primitive
 			indexCount:(NSUInteger)indexCount
 			indexType:(MTLIndexType)indexType
 			indexBuffer:(id<MTLBuffer>)indexBuffer

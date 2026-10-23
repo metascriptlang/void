@@ -8,8 +8,10 @@ when (macos) {
 	@passL("-framework QuartzCore");
 	@passL("-framework Metal");
 	@passL("-framework MetalKit");
+	@compile("../platform/macos/window.m", "-fobjc-arc");
 	@compile("./bridgeEmbed.m");
 	@compile("./presentGate.m", "-fobjc-arc");
+	@compile("./appWindow.c");
 	@compile("./views.c");
 	@compile("./bridge.c");
 }

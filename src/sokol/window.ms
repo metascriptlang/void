@@ -1,5 +1,5 @@
 // The window's events, IME and title, on the window drivers: Windows (D3D11 and
-// -d:voidGlCore), the browser and the iOS and Android apps. Import beside ./gpu, which compiles their C.
+// -d:voidGlCore), macOS, the browser and the iOS and Android apps. Import beside ./gpu, which compiles their C.
 
 import { VoidAppEventType, VoidMouseCursor } from "../platform/appEvent.h";
 

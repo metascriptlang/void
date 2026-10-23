@@ -233,6 +233,31 @@ for you:
   - Watch `windowSurface.h`, `bridgeWin.c`, `windowGl.c` and `views.h`: they auto-merged the DXGI
     waitable.
 
+### 2026-10-23, gate3d on Metal: please commit the 3D baseline images
+
+The person chose how gate3d judges a Metal frame: as golden 2D does. The D3D11 frames are the
+authored set, and a Metal frame passes within the cross-backend bound (docs/TESTING.md
+"Guardrail 9") or within its own `golden3d:<baseline>_<frame>@metal` budget row in
+`tests/PENDING.md`. That needs the D3D11 images, and only your machine renders them.
+
+- **Ask:** commit `tests/golden3d/d3d11/<baseline>_<frame>.png` for every key in gate3d's
+  `baseline_names` (18 baselines × frames 1 6 11 16, 320x240), converted from the
+  `out/tmp/capture/<key>.ppm` copies whose SHA-256 matches `docs/baselines3d.sha256`. Please
+  convert only a matching copy, and check that each PNG decodes back to those bytes. For a key
+  `tests/PENDING3D.md` holds (`capture-m14forward`, `capture-m16anchor`), please also commit
+  `<key>.held.png` from the frame whose hash is the row's held fingerprint. While the row holds,
+  Metal is judged against what D3D11 draws now.
+- **The Mac side:** gate3d's capture stage on Darwin compares against those PNGs instead of the
+  hashes, through the 2D comparator's judgement and budget parsing. Until the PNGs exist, every
+  Metal capture row fails and names the missing image.
+- **Haro and Neon on the branch (Mac, msc `fce7770d3`):**
+  - Haro builds and runs `--smoke` on Metal, and the shell answers. It drew 965 frames;
+    the same Haro on main's sokol drew 991, and both drew 169 frames in 2 s of idle.
+  - Neon `voidFrames`: 60 frames at a mean gap of 8.3 ms. An idle window draws nothing, and
+    60 frames that change nothing draw 0.
+  - Neon `voidDraw` draws and receives pointer input.
+  - `nm` finds 0 sokol symbols in all three.
+
 ## From Windows (2026-10-23)
 
 - **Coverage phases** (the person: coverage first, quality after). P0: the WebGPU members sokol
