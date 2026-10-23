@@ -167,6 +167,11 @@ static uint32_t modifierOfKey(VoidKeyCode code) {
 - (BOOL)isEmpty { return self.range.length == 0; }
 @end
 
+static NSRange clampRange(NSRange r, NSUInteger length) {
+	const NSUInteger at = MIN(r.location, length);
+	return NSMakeRange(at, MIN(r.length, length - at));
+}
+
 static NSInteger offsetOf(UITextPosition *p) { return ((VoidTextPosition *)p).offset; }
 
 @interface VoidAppView : UIView <UITextInput>
@@ -425,7 +430,7 @@ static VoidAppView *s_view;
 - (NSInteger)documentLength { return (NSInteger)self.marked.length; }
 
 - (NSString *)textInRange:(UITextRange *)range {
-	const NSRange r = NSIntersectionRange(((VoidTextRange *)range).range, NSMakeRange(0, self.marked.length));
+	const NSRange r = clampRange(((VoidTextRange *)range).range, self.marked.length);
 	return [self.marked substringWithRange:r];
 }
 
@@ -434,7 +439,7 @@ static VoidAppView *s_view;
 		[self insertText:text];
 		return;
 	}
-	const NSRange r = NSIntersectionRange(((VoidTextRange *)range).range, NSMakeRange(0, self.marked.length));
+	const NSRange r = clampRange(((VoidTextRange *)range).range, self.marked.length);
 	self.marked = [self.marked stringByReplacingCharactersInRange:r withString:text];
 	self.markedSelection = NSMakeRange(r.location + text.length, 0);
 	[self sendPreedit];
@@ -446,7 +451,7 @@ static VoidAppView *s_view;
 
 - (void)setSelectedTextRange:(UITextRange *)range {
 	if (self.marked.length == 0) return;
-	self.markedSelection = NSIntersectionRange(((VoidTextRange *)range).range, NSMakeRange(0, self.marked.length));
+	self.markedSelection = clampRange(((VoidTextRange *)range).range, self.marked.length);
 	[self sendPreedit];
 }
 
@@ -456,7 +461,7 @@ static VoidAppView *s_view;
 
 - (void)setMarkedText:(NSString *)markedText selectedRange:(NSRange)selectedRange {
 	self.marked = markedText ? [markedText copy] : @"";
-	self.markedSelection = NSIntersectionRange(selectedRange, NSMakeRange(0, self.marked.length));
+	self.markedSelection = clampRange(selectedRange, self.marked.length);
 	[self sendPreedit];
 }
 
