@@ -23,4 +23,3 @@ web/.claude/
 # Blender exports (docs/BLENDER.md)
 exports/
 *.blend1
-.shaders/

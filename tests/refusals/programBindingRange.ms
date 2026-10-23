@@ -1,4 +1,4 @@
-// expect: 18:15 shaderProgram 'farProgram': sokol-shdc exited 10
+// expect: 18:15 shaderProgram 'farProgram': resource 'far': @binding(9) is outside 0..7
 import { shaderProgram } from "../../src/shader/program";
 import { Vec4f, binding, builtin } from "../../src/shader/std";
 struct In {
