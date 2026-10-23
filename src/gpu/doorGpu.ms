@@ -38,6 +38,7 @@ import {
 	GPU_MAX_VERTEX_BUFFERS,
 	GPU_UNIFORM_GROUP,
 	GPU_RESOURCE_GROUP,
+	DUMMY_SAMPLER_BINDING,
 } from "../webgpu/types.ms";
 import {
 	GPUNativeEnvironment,
@@ -342,7 +343,7 @@ export function doorRegisterPrograms(
 				bytes[binding.binding] = binding.size;
 			} else if (binding.kind == "texture") {
 				textureMask |= (1 as uint32) << (binding.binding as uint32);
-			} else if (binding.kind == "sampler") {
+			} else if (binding.kind == "sampler" && binding.binding != DUMMY_SAMPLER_BINDING) {
 				const slot = binding.binding - SAMPLER_BINDING_BASE;
 				samplerMask |= (1 as uint32) << (slot as uint32);
 			}
