@@ -5846,6 +5846,37 @@ LDR path; a cube source (`Environment.new` with a cube texture); drawing the env
 Heaps' specular edge fix-up (`cubeScaleFactor`), which seamless cube sampling makes unneeded on
 every sokol backend; Bevy's blue-noise sample rotation.
 
+### Bevy comparison bench, scope (prepared 2026-10-24, not run)
+
+"Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
+engines in release on this machine (Windows 11, Ryzen 9950X, RTX 5090; void3d on D3D11, Bevy on its
+default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloads are Bevy's
+`examples/stress_tests` at `84e2d2cc5adaeff7547e44f434a0d0d7a20345b8`, built with
+`--profile stress-test` (`Cargo.toml:5393-5396`: release, fat LTO, abort on panic).
+
+| Order | Bevy test, default workload | void3d today | What a fair comparison needs first |
+|---|---|---|---|
+| 1 | `many_cubes --benchmark`: 1.6M cubes of one mesh and one white `StandardMaterial` on a sphere of radius 500, one directional light without shadows, the camera turning 0.15/60 rad a frame (`many_cubes.rs:61`, `:189-212`, `:355-361`, `:588-601`); also `--layout dense` (every cube in view, static camera) and `--no-indirect-drawing` | one draw per `DrawItem`, CPU frustum culling (M21, world-sphere culling) | instanced batching of a run of items with one mesh, material and pipeline, ported from Bevy's batching (`bevy_render/src/batching/`, not read yet). sokol has instancing, `base_instance` and storage buffers but no indirect draw, so `--no-indirect-drawing` is the like-for-like arm and the default arm is reported beside it |
+| 2 | `transform_hierarchy <preset>`: windowless propagation; presets `large_tree` (non-uniform, depth 18, branch 8), `wide_tree`, `deep_tree`, `chain` (depth 2500), `update_leaves`, `update_shallow`, `humanoids_active` / `_inactive` / `_mixed` (4000 rigs of 68 nodes) (`transform_hierarchy.rs:29-156`) | `Scene3D` sync, CPU only | nothing; a windowless entry like `benchParticles.ms`. Bevy's rng is unseeded and its step time-driven (`:293`, `:258-263`), so the trees match in shape and update probability, not node for node |
+| 3 | `many_materials`: 10x10 cubes, one material each, every colour rewritten each frame, a shadowed directional light (`many_materials.rs:15`, `:71-74`, `:91-106`) | material uniform writes, one shadow map | nothing |
+| 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade; the asset |
+| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU | the asset |
+| 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | 4 point lights per draw (`gpu3d.ms` `MAX_POINT_LIGHTS`) | clustered forward lighting (Bevy's clusters, not read yet); until then not comparable |
+
+Measured per arm: the median and p99 of the frame time over a fixed number of frames after a
+warm-up, with the CPU-load bracket of `scripts/bench-ab.sh` and its NOISY and five-clean-pairs
+rules; void3d prints rows (`cubes.present.ms`, `cubes.draws`, `cubes.instances`), Bevy's
+`LogDiagnosticsPlugin` prints `frame_time`. Only `many_cubes` and `bevymark_3d` step by a fixed
+1/60 (`--benchmark`); the others are time-driven, so their camera or animation phase differs
+between arms and only a static view (`many_materials`, `many_foxes` with `--sync`) is compared frame
+for frame.
+
+Before the first run: the Bevy checkout is sparse (no `bevy_diagnostic`, no `assets`), so it needs
+the full tree at the same commit and the three assets (`models/animated/Fox.glb`,
+`models/animated/MorphStressTest.gltf`, `branding/icon.png`); a fat-LTO Bevy build and every bench
+run are heavy jobs and take a void-manager slot. Step 1 is measuring void3d's `many_cubes` as it is,
+since the batching milestone is sized by that gap.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
