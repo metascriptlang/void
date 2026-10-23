@@ -3,7 +3,9 @@
 // ATTR_* slots of shader2d.glsl.
 import { DoorAttribute, doorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
 import { blurShaderModule, spriteShaderModule, uiShaderModule, void2dShaderModule } from "./shader2dModules.ms";
-import { SPRITE_FORMATS, UI_FORMATS } from "./instanceLayout.ms";
+import {
+	INSTANCE_CORNER_LOCATION, SPRITE_FORMATS, SPRITE_LOCATIONS, UI_FORMATS, UI_LOCATIONS,
+} from "./instanceLayout.ms";
 import { GPUShaderModuleDescriptor, GPUVertexFormat } from "../webgpu/types.ms";
 
 const VERTEX: DoorAttribute[3] = [
@@ -12,13 +14,26 @@ const VERTEX: DoorAttribute[3] = [
 	{ location: 2, format: "float32x4", buffer: 0 },
 ];
 
-// The corner at location 0, then the instance lanes scripts/instanceLayout.ms generates, in order.
-function instanced(formats: Readonly<Span<GPUVertexFormat>>): DoorAttribute[] {
-	const attributes: DoorAttribute[] = [{ location: 0, format: "float32x2", buffer: 0 }];
+// The corner, then the instance lanes scripts/instanceLayout.ms generates: formats and locations.
+function instanced(
+	formats: Readonly<Span<GPUVertexFormat>>,
+	locations: Readonly<Span<int32>>,
+): DoorAttribute[] {
+	const attributes: DoorAttribute[] = [
+		{ location: INSTANCE_CORNER_LOCATION, format: "float32x2", buffer: 0 },
+	];
 	for (let i = 0; i < formats.length; i++) {
-		attributes.push({ location: (i + 1) as int32, format: formats[i], buffer: 1 });
+		attributes.push({ location: locations[i], format: formats[i], buffer: 1 });
 	}
 	return attributes;
+}
+
+export function spriteAttributes(): DoorAttribute[] {
+	return instanced(SPRITE_FORMATS, SPRITE_LOCATIONS);
+}
+
+export function uiAttributes(): DoorAttribute[] {
+	return instanced(UI_FORMATS, UI_LOCATIONS);
 }
 
 const BLUR: DoorAttribute[2] = [
@@ -28,8 +43,8 @@ const BLUR: DoorAttribute[2] = [
 
 export const layoutBase: int32 = doorRegisterLayouts([
 	doorLayout(VERTEX, ["vertex"]),
-	doorLayout(instanced(SPRITE_FORMATS), ["vertex", "instance"]),
-	doorLayout(instanced(UI_FORMATS), ["vertex", "instance"]),
+	doorLayout(spriteAttributes(), ["vertex", "instance"]),
+	doorLayout(uiAttributes(), ["vertex", "instance"]),
 	doorLayout(BLUR, ["vertex"]),
 ]);
 

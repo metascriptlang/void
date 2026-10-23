@@ -54,6 +54,9 @@ function cField(l: Lane): string {
 	}
 }
 
+// The per-vertex corner owns location 0 in every instanced program; lanes follow it.
+const cornerLocation: int32 = 0;
+
 function msConstants(prefix: string, lanes: Lane[]): string {
 	let out: string = "";
 	let bytes: int32 = 0;
@@ -71,6 +74,12 @@ function msConstants(prefix: string, lanes: Lane[]): string {
 	out += `export const REC_${prefix}_FLOATS: int32 = ${floats};\n`;
 	out += `export const ${prefix}_FORMATS: GPUVertexFormat[${lanes.length}] = [`;
 	for (const l of lanes) { out += `"${vertexFormat(l.kind)}", `; }
+	out += "];\n";
+	out += `export const ${prefix}_LOCATIONS: int32[${lanes.length}] = [`;
+	for (let i = 0; i < lanes.length; i++) { out += `${cornerLocation + 1 + i}, `; }
+	out += "];\n";
+	out += `export const ${prefix}_NAMES: string[${lanes.length}] = [`;
+	for (const l of lanes) { out += `"${l.attribute}", `; }
 	out += "];\n";
 	return out;
 }
@@ -105,6 +114,8 @@ const dirSetting: string = env.get("INSTANCE_LAYOUT_DIR");
 const dir: string = dirSetting.length > 0 ? dirSetting : "src/void2d";
 
 let ms: string = "import { GPUVertexFormat } from \"../webgpu/types.ms\";\n\n";
+ms += `export const INSTANCE_CORNER_LOCATION: int32 = ${cornerLocation};
+`;
 ms += msConstants("UI", uiLanes);
 ms += msConstants("SPRITE", spriteLanes);
 writeFile(`${dir}/instanceLayout.ms`, ms);

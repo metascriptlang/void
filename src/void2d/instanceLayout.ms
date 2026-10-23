@@ -1,5 +1,6 @@
 import { GPUVertexFormat } from "../webgpu/types.ms";
 
+export const INSTANCE_CORNER_LOCATION: int32 = 0;
 export const UI_AFFINE: int32 = 0;
 export const UI_ORIGIN_SIZE: int32 = 16;
 export const UI_UV_RADII: int32 = 32;
@@ -22,6 +23,8 @@ export const REC_UI_COLOR_BORDER: int32 = 28;
 export const REC_UI_COLOR_EXTRA: int32 = 32;
 export const REC_UI_FLOATS: int32 = 36;
 export const UI_FORMATS: GPUVertexFormat[9] = ["float32x4", "float32x4", "float32x4", "float32x4", "float32x4", "float32x4", "unorm8x4", "unorm8x4", "unorm8x4", ];
+export const UI_LOCATIONS: int32[9] = [1, 2, 3, 4, 5, 6, 7, 8, 9, ];
+export const UI_NAMES: string[9] = ["iAffine", "iOriginSize", "iUvRadii", "iBorders", "iParams0", "iParams1", "iColorFill", "iColorBorder", "iColorExtra", ];
 export const SPRITE_AFFINE: int32 = 0;
 export const SPRITE_ORIGIN_SIZE: int32 = 16;
 export const SPRITE_UV: int32 = 32;
@@ -34,3 +37,5 @@ export const REC_SPRITE_UV: int32 = 8;
 export const REC_SPRITE_COLOR: int32 = 12;
 export const REC_SPRITE_FLOATS: int32 = 16;
 export const SPRITE_FORMATS: GPUVertexFormat[4] = ["float32x4", "float32x4", "float32x4", "float32x4", ];
+export const SPRITE_LOCATIONS: int32[4] = [1, 2, 3, 4, ];
+export const SPRITE_NAMES: string[4] = ["iAffine", "iOriginSize", "iUv", "iColor", ];

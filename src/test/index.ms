@@ -45,6 +45,7 @@ import "./gltfAnimationCheck";
 import "./skinInfluencesCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";
+import "./instanceAttributeCheck";
 import "./instanceStreamCheck";
 import "./coverageOracleCheck";
 import "./gradientCheck";
