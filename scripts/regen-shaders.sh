@@ -168,7 +168,7 @@ regenKeys() {
 		} > "$input"
 		for feature in $(echo "$features" | tr ':' ' '); do
 			[ "$feature" = "-" ] && continue
-			grep -q "^#ifdef $feature\$" "$input" ||
+			grep -qE "^#ifdef $feature\$|^#if .*defined\($feature\)" "$input" ||
 				{ echo "programKeys.txt: row $module asks for $feature, which $vs and $fs never read"; exit 1; }
 		done
 		"$SHDC" -i "$input" -o "$work/$module.h" -l "$LANGS" -f sokol --ifdef --no-log-cmdline \
