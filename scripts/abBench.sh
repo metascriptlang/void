@@ -2,13 +2,15 @@
 # A/B of the tests/bench rows, main (sokol) against this tree (gpu-ms), per backend. The end-game
 # clause is docs/GPU-MS.md "End-game done when"; the commands are its section "A/B against main".
 #
-#   sh scripts/abBench.sh build [linux]      CPU only: worktree of main, both sides, every backend, or
-#                                            both sides under WSL (linux)
+#   sh scripts/abBench.sh build [linux|web]  CPU only: worktree of main, both sides, every backend, or
+#                                            both sides under WSL (linux), or both sides for the
+#                                            browser (web-wgpu, web-gl: emscripten wasm per scene)
 #   sh scripts/abBench.sh run [reps]         opens windows and uses the GPU: only inside a granted GO
 #   sh scripts/abBench.sh clean              delete the exes and the main worktree
 #
 # Environment: AB_MAIN_SHA (default: the merge base of HEAD and main, so a delta is the GPU layer
-# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add linux),
+# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add linux,
+# web-wgpu, web-gl; `build web` alone defaults it to "web-wgpu web-gl"),
 # AB_LINUX_DRIVER (d3d12 default, or llvmpipe),
 # AB_SCENES (default "Ui Sprites Text Editor Scroll"), AB_TOL percent of slack on a .ms row
 # (default 3), AB_LOAD_LIMIT percent CPU load that voids a run (default 25), AB_OUT, MSC.
@@ -54,10 +56,36 @@ provision() {
 	} | tee "$OUT/env.txt"
 }
 
+# Both sides build with build-web.sh, each its own (identical today), into $OUT/web/<side>/<wgpu|gl>/.
+# Chrome is the only consumer of these, so a build is judged by the .js and .wasm it leaves.
+buildWeb() {
+	for side in A B; do
+		tree="$A"; [ "$side" = B ] && tree="$B"
+		for scene in $SCENES; do
+			for backend in $BACKENDS; do
+				case "$backend" in web-*) ;; *) continue ;; esac
+				dir="${backend#web-}"
+				rm -f "$OUT/web/$side/$dir/bench$scene".*
+				mkdir -p "$OUT/web/$side/logs"
+				(cd "$tree" && VOID_WEB_ENTRY="tests/bench/bench$scene.ms" VOID_WEB_DEST="$OUT/web/$side" 					VOID_WEB_BACKENDS="$dir" VOID_WEB_LOGDIR="$OUT/web/$side/logs" MSC="$MSC" 					VOID_WEB_PRELOAD="--preload-file assets --preload-file tests/fonts" 					sh scripts/build-web.sh) > "$OUT/web/$side/build$scene-$dir.log" 2>&1 || true
+				if [ -f "$OUT/web/$side/$dir/bench$scene.js" ] && [ -f "$OUT/web/$side/$dir/bench$scene.wasm" ]; then
+					echo "BUILD ok   $backend $side $scene"
+				else
+					echo "BUILD FAIL $backend $side $scene (see $OUT/web/$side/build$scene-$dir.log)"
+					failed=1
+				fi
+			done
+		done
+	done
+	[ -z "${failed:-}" ]
+}
+
 build() {
+	if [ "${1:-}" = web ] && [ -z "${AB_BACKENDS:-}" ]; then BACKENDS="web-wgpu web-gl"; fi
 	provision
 	if [ "${1:-}" = linux ]; then buildLinux; return; fi
 	for backend in $BACKENDS; do
+		case "$backend" in web-*) continue ;; esac
 		for side in A B; do
 			flags="$(backendFlags "$backend" "$side")"
 			tree="$A"; [ "$side" = B ] && tree="$B"
@@ -76,6 +104,7 @@ build() {
 			done
 		done
 	done
+	case " $BACKENDS " in *" web-"*) buildWeb || failed=1 ;; esac
 	[ -z "${failed:-}" ]
 }
 
@@ -145,6 +174,14 @@ runLinux() {
 		AB_TOL="$TOL" AB_LOAD_LIMIT="$LIMIT" sh scripts/bench-ab.sh "$A" "$B" "$reps" $SCENES
 }
 
+# Headless Chrome runs each scene through scripts/webBench.mjs, this tree's driver for both sides, as
+# the AB_RUN of the exe path bench-ab.sh builds; node needs Windows paths.
+runWeb() {
+	dir="${1#web-}"
+	echo "=== $1"
+	AB_RUN="node $(cygpath -m "$B")/scripts/webBench.mjs $dir" 		AB_DIR_A="$(cygpath -m "$OUT")/web/A/$dir" AB_DIR_B="$(cygpath -m "$OUT")/web/B/$dir" 		AB_RAW="$OUT/raw-$1.tsv" AB_LABEL="$1" AB_TOL="$TOL" AB_LOAD_LIMIT="$LIMIT" 		sh scripts/bench-ab.sh "$A" "$B" "$2" $SCENES
+}
+
 # The protocol (interleaving, load sampling, NOISY, AB_MIN_CLEAN, the all-row table) is
 # scripts/bench-ab.sh's; this only points it at each backend's exes.
 run() {
@@ -154,6 +191,7 @@ run() {
 	cat "$OUT/env.txt"
 	for backend in $BACKENDS; do
 		if [ "$backend" = linux ]; then runLinux "$reps"; continue; fi
+		case "$backend" in web-*) runWeb "$backend" "$reps"; continue ;; esac
 		echo "=== $backend"
 		# shellcheck disable=SC2086
 		AB_DIR_A="$OUT/$backend/A" AB_DIR_B="$OUT/$backend/B" AB_RAW="$OUT/raw-$backend.tsv" AB_LABEL="$backend" 			AB_TOL="$TOL" AB_LOAD_LIMIT="$LIMIT" sh scripts/bench-ab.sh "$A" "$B" "$reps" $SCENES
@@ -173,5 +211,5 @@ case "${1:-}" in
 	build) build "${2:-}" ;;
 	run) run "${2:-5}" ;;
 	clean) clean ;;
-	*) echo "usage: sh scripts/abBench.sh build | run [reps] | clean" >&2; exit 2 ;;
+	*) echo "usage: sh scripts/abBench.sh build [linux|web] | run [reps] | clean" >&2; exit 2 ;;
 esac
