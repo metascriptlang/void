@@ -38,57 +38,54 @@ export enum GlslTarget {
 	Glsl300es,
 }
 
-const KEYWORDS = [
-	"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
-	"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
-	"noperspective", "patch", "sample", "break", "continue", "do", "for", "while", "switch",
-	"case", "default", "if", "else", "subroutine", "in", "out", "inout", "float", "double", "int",
-	"uint", "void", "bool", "true", "false", "invariant", "precise", "discard", "return", "lowp",
-	"mediump", "highp", "precision", "struct", "common", "partition", "active", "asm", "class",
-	"union", "enum", "typedef", "template", "this", "resource", "goto", "inline", "noinline",
-	"public", "static", "extern", "external", "interface", "long", "short", "half", "fixed",
-	"unsigned", "superp", "input", "output", "filter", "sizeof", "cast", "namespace", "using",
-];
+function glslKeywords(): string[] {
+	return [
+		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
+		"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
+		"noperspective", "patch", "sample", "break", "continue", "do", "for", "while", "switch",
+		"case", "default", "if", "else", "subroutine", "in", "out", "inout", "float", "double", "int",
+		"uint", "void", "bool", "true", "false", "invariant", "precise", "discard", "return", "lowp",
+		"mediump", "highp", "precision", "struct", "common", "partition", "active", "asm", "class",
+		"union", "enum", "typedef", "template", "this", "resource", "goto", "inline", "noinline",
+		"public", "static", "extern", "external", "interface", "long", "short", "half", "fixed",
+		"unsigned", "superp", "input", "output", "filter", "sizeof", "cast", "namespace", "using",
+	];
+}
 
-const FUNCTIONS = [
-	"radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
-	"asinh", "acosh", "atanh", "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt", "abs",
-	"sign", "floor", "trunc", "round", "roundEven", "ceil", "fract", "mod", "modf", "min", "max",
-	"clamp", "mix", "step", "smoothstep", "isnan", "isinf", "floatBitsToInt", "floatBitsToUint",
-	"intBitsToFloat", "uintBitsToFloat", "fma", "frexp", "ldexp", "packUnorm2x16",
-	"packSnorm2x16", "packUnorm4x8", "packSnorm4x8", "unpackUnorm2x16", "unpackSnorm2x16",
-	"unpackUnorm4x8", "unpackSnorm4x8", "packHalf2x16", "unpackHalf2x16", "packDouble2x32",
-	"unpackDouble2x32", "length", "distance", "dot", "cross", "normalize", "ftransform",
-	"faceforward", "reflect", "refract", "matrixCompMult", "outerProduct", "transpose",
-	"determinant", "inverse", "lessThan", "lessThanEqual", "greaterThan", "greaterThanEqual",
-	"equal", "notEqual", "any", "all", "not", "uaddCarry", "usubBorrow", "umulExtended",
-	"imulExtended", "bitfieldExtract", "bitfieldInsert", "bitfieldReverse", "bitCount", "findLSB",
-	"findMSB", "textureSize", "textureQueryLod", "textureQueryLevels", "textureSamples",
-	"texture", "textureProj", "textureLod", "textureOffset", "texelFetch", "texelFetchOffset",
-	"textureProjOffset", "textureLodOffset", "textureProjLod", "textureProjLodOffset",
-	"textureGrad", "textureGradOffset", "textureProjGrad", "textureProjGradOffset",
-	"textureGather", "textureGatherOffset", "textureGatherOffsets", "texture1D", "texture2D",
-	"texture3D", "textureCube", "texture2DLod", "texture2DProj", "shadow1D", "shadow2D",
-	"atomicCounterIncrement", "atomicCounterDecrement", "atomicCounter", "atomicAdd", "atomicMin",
-	"atomicMax", "atomicAnd", "atomicOr", "atomicXor", "atomicExchange", "atomicCompSwap",
-	"imageSize", "imageSamples", "imageLoad", "imageStore", "imageAtomicAdd", "imageAtomicMin",
-	"imageAtomicMax", "imageAtomicAnd", "imageAtomicOr", "imageAtomicXor", "imageAtomicExchange",
-	"imageAtomicCompSwap", "dFdx", "dFdy", "fwidth", "dFdxFine", "dFdyFine", "fwidthFine",
-	"dFdxCoarse", "dFdyCoarse", "fwidthCoarse", "interpolateAtCentroid", "interpolateAtSample",
-	"interpolateAtOffset", "noise1", "noise2", "noise3", "noise4", "EmitStreamVertex",
-	"EndStreamPrimitive", "EmitVertex", "EndPrimitive", "barrier", "memoryBarrier",
-	"memoryBarrierAtomicCounter", "memoryBarrierBuffer", "memoryBarrierShared",
-	"memoryBarrierImage", "groupMemoryBarrier",
-];
+function glslFunctions(): string[] {
+	return [
+		"radians", "degrees", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
+		"asinh", "acosh", "atanh", "pow", "exp", "log", "exp2", "log2", "sqrt", "inversesqrt", "abs",
+		"sign", "floor", "trunc", "round", "roundEven", "ceil", "fract", "mod", "modf", "min", "max",
+		"clamp", "mix", "step", "smoothstep", "isnan", "isinf", "floatBitsToInt", "floatBitsToUint",
+		"intBitsToFloat", "uintBitsToFloat", "fma", "frexp", "ldexp", "packUnorm2x16",
+		"packSnorm2x16", "packUnorm4x8", "packSnorm4x8", "unpackUnorm2x16", "unpackSnorm2x16",
+		"unpackUnorm4x8", "unpackSnorm4x8", "packHalf2x16", "unpackHalf2x16", "packDouble2x32",
+		"unpackDouble2x32", "length", "distance", "dot", "cross", "normalize", "ftransform",
+		"faceforward", "reflect", "refract", "matrixCompMult", "outerProduct", "transpose",
+		"determinant", "inverse", "lessThan", "lessThanEqual", "greaterThan", "greaterThanEqual",
+		"equal", "notEqual", "any", "all", "not", "uaddCarry", "usubBorrow", "umulExtended",
+		"imulExtended", "bitfieldExtract", "bitfieldInsert", "bitfieldReverse", "bitCount", "findLSB",
+		"findMSB", "textureSize", "textureQueryLod", "textureQueryLevels", "textureSamples",
+		"texture", "textureProj", "textureLod", "textureOffset", "texelFetch", "texelFetchOffset",
+		"textureProjOffset", "textureLodOffset", "textureProjLod", "textureProjLodOffset",
+		"textureGrad", "textureGradOffset", "textureProjGrad", "textureProjGradOffset",
+		"textureGather", "textureGatherOffset", "textureGatherOffsets", "texture1D", "texture2D",
+		"texture3D", "textureCube", "texture2DLod", "texture2DProj", "shadow1D", "shadow2D",
+		"atomicCounterIncrement", "atomicCounterDecrement", "atomicCounter", "atomicAdd", "atomicMin",
+		"atomicMax", "atomicAnd", "atomicOr", "atomicXor", "atomicExchange", "atomicCompSwap",
+		"imageSize", "imageSamples", "imageLoad", "imageStore", "imageAtomicAdd", "imageAtomicMin",
+		"imageAtomicMax", "imageAtomicAnd", "imageAtomicOr", "imageAtomicXor", "imageAtomicExchange",
+		"imageAtomicCompSwap", "dFdx", "dFdy", "fwidth", "dFdxFine", "dFdyFine", "fwidthFine",
+		"dFdxCoarse", "dFdyCoarse", "fwidthCoarse", "interpolateAtCentroid", "interpolateAtSample",
+		"interpolateAtOffset", "noise1", "noise2", "noise3", "noise4", "EmitStreamVertex",
+		"EndStreamPrimitive", "EmitVertex", "EndPrimitive", "barrier", "memoryBarrier",
+		"memoryBarrierAtomicCounter", "memoryBarrierBuffer", "memoryBarrierShared",
+		"memoryBarrierImage", "groupMemoryBarrier",
+	];
+}
 
-const SAMPLED_SHAPES = ["1D", "2D", "3D", "Cube", "2DRect", "1DArray", "2DArray", "CubeArray",
-	"Buffer", "2DMS", "2DMSArray"];
-
-const SHADOW_TYPES = ["sampler1DShadow", "sampler2DShadow", "samplerCubeShadow",
-	"sampler1DArrayShadow", "sampler2DArrayShadow", "samplerCubeArrayShadow", "sampler2DRectShadow",
-	"sampler3DRect", "samplerExternalOES"];
-
-const SWIZZLE = ["x", "y", "z", "w"];
+const SWIZZLE = "xyzw";
 
 function isTypeName(name: string): boolean {
 	for (const base of ["vec", "ivec", "uvec", "bvec", "dvec", "hvec", "fvec", "mat", "dmat"]) {
@@ -99,15 +96,18 @@ function isTypeName(name: string): boolean {
 		if (rest.length == 3 && digit(0) && rest.substring(1, 2) == "x" && digit(2)) { return true; }
 	}
 	for (const prefix of ["sampler", "isampler", "usampler", "image", "iimage", "uimage"]) {
-		if (name.startsWith(prefix) && SAMPLED_SHAPES.includes(name.substring(prefix.length))) {
+		if (name.startsWith(prefix) && ["1D", "2D", "3D", "Cube", "2DRect", "1DArray", "2DArray", "CubeArray", "Buffer", "2DMS",
+			"2DMSArray"].includes(name.substring(prefix.length))) {
 			return true;
 		}
 	}
-	return SHADOW_TYPES.includes(name);
+	return ["sampler1DShadow", "sampler2DShadow", "samplerCubeShadow", "sampler1DArrayShadow",
+		"sampler2DArrayShadow", "samplerCubeArrayShadow", "sampler2DRectShadow", "sampler3DRect",
+		"samplerExternalOES"].includes(name);
 }
 
-function isReserved(name: string): boolean {
-	return KEYWORDS.includes(name) || FUNCTIONS.includes(name) || isTypeName(name);
+function isReserved(p: Printer, name: string): boolean {
+	return p.reserved.includes(name) || isTypeName(name);
 }
 
 enum Nesting {
@@ -143,6 +143,7 @@ class Printer {
 	scope: string[] = [];
 	current: ShaderFunction = new ShaderFunction();
 	nesting: Nesting[] = [];
+	reserved: string[] = [];
 }
 
 function fail(p: Printer, message: string): string {
@@ -156,7 +157,7 @@ function claim(p: Printer, taken: string[], name: string): string {
 	}
 	let candidate = name;
 	let n = 1;
-	while (isReserved(candidate) || taken.includes(candidate)) {
+	while (isReserved(p, candidate) || taken.includes(candidate)) {
 		candidate = name + "_" + String(n);
 		n++;
 	}
@@ -459,7 +460,7 @@ function intText(p: Printer, e: ShaderExpr): string {
 
 function narrowed(text: string, to: ShaderType): string {
 	const rows = to.kind == ShaderTypeKind.Vector ? to.rows : 1;
-	return rows == 4 ? text : text + "." + SWIZZLE.slice(0, rows).join("");
+	return rows == 4 ? text : text + "." + SWIZZLE.substring(0, rows);
 }
 
 function pairOf(p: Printer, texture: ShaderExpr, sampler: ShaderExpr | null): Pair {
@@ -805,7 +806,7 @@ function matrixRows(p: Printer, r: int32, t: ShaderType, row: (column: int32) =>
 	let columns: string[] = [];
 	for (let c = 0; c < t.columns; c++) {
 		const whole = blockRow(p, r, row(c));
-		columns.push(t.rows == 4 ? whole : whole + "." + SWIZZLE.slice(0, t.rows).join(""));
+		columns.push(t.rows == 4 ? whole : whole + "." + SWIZZLE.substring(0, t.rows));
 	}
 	return typeName(p, t) + "(" + columns.join(", ") + ")";
 }
@@ -829,7 +830,7 @@ function memberText(p: Printer, e: ShaderExpr): string {
 	const width = t.kind == ShaderTypeKind.Vector ? t.rows : 1;
 	const whole = blockRow(p, r, String(row));
 	return lane == 0 && width == 4 ? whole :
-		whole + "." + SWIZZLE.slice(lane, lane + width).join("");
+		whole + "." + SWIZZLE.substring(lane, lane + width);
 }
 
 function elementText(p: Printer, r: int32, t: ShaderType, row: int32, index: string): string {
@@ -938,7 +939,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 			return postfixBase(p, base) + "." + p.fieldNames[base.type.structIndex][e.index];
 		},
 		ExprKind.Swizzle => postfixBase(p, e.operands[0]) + "." +
-			e.components.map((c) => SWIZZLE[c]).join(""),
+			e.components.map((c) => SWIZZLE.substring(c, c + 1)).join(""),
 		ExprKind.Index => indexText(p, e),
 	};
 }
@@ -1312,6 +1313,7 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	}
 
 	let p = new Printer();
+	p.reserved = glslKeywords().concat(glslFunctions());
 	p.module = m;
 	p.stage = entry.stage;
 	p.es = es;

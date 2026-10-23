@@ -156,10 +156,12 @@ later replaces the hand-written GLSL source of each base.
   `4b5816aea`, Windows, `msc check src/test/shaderProgramCheck.ms` against a copy without its two
   programs): the two IR programs cost 1.9 s of compile, where sokol-shdc's cost 1.6 s; one
   program written ahead of time by `msc run` of a generator costs 5.6 to 7.3 s and a step the
-  author runs. Importing the printers grows a consumer's binary: `forwardOutlineReference.exe`
-  797,184 B against 682,496 B with the sokol-shdc path (`--release`). Not traced; a probe links a
-  module-level `const` array of a module only a macro imports, and not a function only a macro
-  calls, so the printers' top-level tables are the first suspect. Its
+  author runs. A module only a macro reaches stays out of the binary only while its top level
+  runs nothing: a module `const` initialized by an array literal or a call is module init, which
+  every program runs, so the printers' reserved-word tables are built per printer
+  (`Printer.reserved`). With them at module level, `forwardOutlineReference.exe` (`--release`)
+  was 759,808 B and the printers were emitted as C; with them per printer it is 701,440 B and no
+  printer module is emitted (2026-10-24, BUILD `4b5816aea`). Its
   limits, each refused or stated: one program, so no `@feature` field in either entry
   (`tests/refusals/programFeature.ms`); one per-vertex buffer, attributes packed in declaration
   order with no padding, `@builtin` inputs skipped; `float32` and its `./std` vectors only, since

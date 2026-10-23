@@ -32,66 +32,68 @@ import {
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
-const KEYWORDS = [
-	"AppendStructuredBuffer", "asm", "asm_fragment", "BlendState", "bool", "break", "Buffer",
-	"ByteAddressBuffer", "case", "cbuffer", "centroid", "class", "column_major", "compile",
-	"compile_fragment", "CompileShader", "const", "continue", "ComputeShader",
-	"ConsumeStructuredBuffer", "default", "DepthStencilState", "DepthStencilView", "discard", "do",
-	"double", "DomainShader", "dword", "else", "export", "extern", "false", "float", "for",
-	"fxgroup", "GeometryShader", "groupshared", "half", "Hullshader", "HullShader", "if", "in",
-	"inline", "inout", "InputPatch", "int", "interface", "line", "lineadj", "linear", "LineStream",
-	"matrix", "min16float", "min10float", "min16int", "min12int", "min16uint", "namespace",
-	"nointerpolation", "noperspective", "NULL", "out", "OutputPatch", "packoffset", "pass",
-	"pixelfragment", "PixelShader", "point", "PointStream", "precise", "RasterizerState",
-	"RenderTargetView", "return", "register", "row_major", "RWBuffer", "RWByteAddressBuffer",
-	"RWStructuredBuffer", "RWTexture1D", "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray",
-	"RWTexture3D", "sample", "sampler", "SamplerState", "SamplerComparisonState", "shared",
-	"snorm", "stateblock", "stateblock_state", "static", "string", "struct", "switch",
-	"StructuredBuffer", "tbuffer", "technique", "technique10", "technique11", "texture",
-	"Texture1D", "Texture1DArray", "Texture2D", "Texture2DArray", "Texture2DMS",
-	"Texture2DMSArray", "Texture3D", "TextureCube", "TextureCubeArray", "true", "typedef",
-	"triangle", "triangleadj", "TriangleStream", "uint", "uniform", "unorm", "unsigned", "vector",
-	"vertexfragment", "VertexShader", "void", "volatile", "while", "sampler1D", "sampler2D",
-	"sampler3D", "samplerCUBE", "sampler_state", "auto", "catch", "char", "const_cast",
-	"delete", "dynamic_cast", "enum", "explicit", "friend", "goto", "long", "mutable", "new",
-	"operator", "private", "protected", "public", "reinterpret_cast", "short", "signed", "sizeof",
-	"static_cast", "template", "this", "throw", "try", "typename", "union", "using", "virtual",
-];
+function hlslKeywords(): string[] {
+	return [
+		"AppendStructuredBuffer", "asm", "asm_fragment", "BlendState", "bool", "break", "Buffer",
+		"ByteAddressBuffer", "case", "cbuffer", "centroid", "class", "column_major", "compile",
+		"compile_fragment", "CompileShader", "const", "continue", "ComputeShader",
+		"ConsumeStructuredBuffer", "default", "DepthStencilState", "DepthStencilView", "discard", "do",
+		"double", "DomainShader", "dword", "else", "export", "extern", "false", "float", "for",
+		"fxgroup", "GeometryShader", "groupshared", "half", "Hullshader", "HullShader", "if", "in",
+		"inline", "inout", "InputPatch", "int", "interface", "line", "lineadj", "linear", "LineStream",
+		"matrix", "min16float", "min10float", "min16int", "min12int", "min16uint", "namespace",
+		"nointerpolation", "noperspective", "NULL", "out", "OutputPatch", "packoffset", "pass",
+		"pixelfragment", "PixelShader", "point", "PointStream", "precise", "RasterizerState",
+		"RenderTargetView", "return", "register", "row_major", "RWBuffer", "RWByteAddressBuffer",
+		"RWStructuredBuffer", "RWTexture1D", "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray",
+		"RWTexture3D", "sample", "sampler", "SamplerState", "SamplerComparisonState", "shared",
+		"snorm", "stateblock", "stateblock_state", "static", "string", "struct", "switch",
+		"StructuredBuffer", "tbuffer", "technique", "technique10", "technique11", "texture",
+		"Texture1D", "Texture1DArray", "Texture2D", "Texture2DArray", "Texture2DMS",
+		"Texture2DMSArray", "Texture3D", "TextureCube", "TextureCubeArray", "true", "typedef",
+		"triangle", "triangleadj", "TriangleStream", "uint", "uniform", "unorm", "unsigned", "vector",
+		"vertexfragment", "VertexShader", "void", "volatile", "while", "sampler1D", "sampler2D",
+		"sampler3D", "samplerCUBE", "sampler_state", "auto", "catch", "char", "const_cast",
+		"delete", "dynamic_cast", "enum", "explicit", "friend", "goto", "long", "mutable", "new",
+		"operator", "private", "protected", "public", "reinterpret_cast", "short", "signed", "sizeof",
+		"static_cast", "template", "this", "throw", "try", "typename", "union", "using", "virtual",
+	];
+}
 
-const INTRINSICS = [
-	"abort", "abs", "acos", "all", "AllMemoryBarrier", "AllMemoryBarrierWithGroupSync", "any",
-	"asdouble", "asfloat", "asin", "asint", "asuint", "atan", "atan2", "ceil",
-	"CheckAccessFullyMapped", "clamp", "clip", "cos", "cosh", "countbits", "cross",
-	"D3DCOLORtoUBYTE4", "ddx", "ddx_coarse", "ddx_fine", "ddy", "ddy_coarse", "ddy_fine",
-	"degrees", "determinant", "DeviceMemoryBarrier", "DeviceMemoryBarrierWithGroupSync",
-	"distance", "dot", "dst", "errorf", "EvaluateAttributeAtCentroid", "EvaluateAttributeAtSample",
-	"EvaluateAttributeSnapped", "exp", "exp2", "f16tof32", "f32tof16", "faceforward",
-	"firstbithigh", "firstbitlow", "floor", "fma", "fmod", "frac", "frexp", "fwidth",
-	"GetRenderTargetSampleCount", "GetRenderTargetSamplePosition", "GroupMemoryBarrier",
-	"GroupMemoryBarrierWithGroupSync", "InterlockedAdd", "InterlockedAnd",
-	"InterlockedCompareExchange", "InterlockedCompareStore", "InterlockedExchange",
-	"InterlockedMax", "InterlockedMin", "InterlockedOr", "InterlockedXor", "isfinite", "isinf",
-	"isnan", "ldexp", "length", "lerp", "lit", "log", "log10", "log2", "mad", "max", "min", "modf",
-	"msad4", "mul", "noise", "normalize", "pow", "printf", "Process2DQuadTessFactorsAvg",
-	"Process2DQuadTessFactorsMax", "Process2DQuadTessFactorsMin", "ProcessIsolineTessFactors",
-	"ProcessQuadTessFactorsAvg", "ProcessQuadTessFactorsMax", "ProcessQuadTessFactorsMin",
-	"ProcessTriTessFactorsAvg", "ProcessTriTessFactorsMax", "ProcessTriTessFactorsMin",
-	"radians", "rcp", "reflect", "refract", "reversebits", "round", "rsqrt", "saturate", "sign",
-	"sin", "sincos", "smoothstep", "sqrt", "step", "tan", "tanh", "tex1D", "tex1Dbias",
-	"tex1Dgrad", "tex1Dlod", "tex1Dproj", "tex2D", "tex2Dbias", "tex2Dgrad", "tex2Dlod",
-	"tex2Dproj", "tex3D", "tex3Dbias", "tex3Dgrad", "tex3Dlod", "tex3Dproj", "texCUBE",
-	"texCUBEbias", "texCUBEgrad", "texCUBElod", "texCUBEproj", "transpose", "trunc",
-];
+function hlslIntrinsics(): string[] {
+	return [
+		"abort", "abs", "acos", "all", "AllMemoryBarrier", "AllMemoryBarrierWithGroupSync", "any",
+		"asdouble", "asfloat", "asin", "asint", "asuint", "atan", "atan2", "ceil",
+		"CheckAccessFullyMapped", "clamp", "clip", "cos", "cosh", "countbits", "cross",
+		"D3DCOLORtoUBYTE4", "ddx", "ddx_coarse", "ddx_fine", "ddy", "ddy_coarse", "ddy_fine",
+		"degrees", "determinant", "DeviceMemoryBarrier", "DeviceMemoryBarrierWithGroupSync",
+		"distance", "dot", "dst", "errorf", "EvaluateAttributeAtCentroid", "EvaluateAttributeAtSample",
+		"EvaluateAttributeSnapped", "exp", "exp2", "f16tof32", "f32tof16", "faceforward",
+		"firstbithigh", "firstbitlow", "floor", "fma", "fmod", "frac", "frexp", "fwidth",
+		"GetRenderTargetSampleCount", "GetRenderTargetSamplePosition", "GroupMemoryBarrier",
+		"GroupMemoryBarrierWithGroupSync", "InterlockedAdd", "InterlockedAnd",
+		"InterlockedCompareExchange", "InterlockedCompareStore", "InterlockedExchange",
+		"InterlockedMax", "InterlockedMin", "InterlockedOr", "InterlockedXor", "isfinite", "isinf",
+		"isnan", "ldexp", "length", "lerp", "lit", "log", "log10", "log2", "mad", "max", "min", "modf",
+		"msad4", "mul", "noise", "normalize", "pow", "printf", "Process2DQuadTessFactorsAvg",
+		"Process2DQuadTessFactorsMax", "Process2DQuadTessFactorsMin", "ProcessIsolineTessFactors",
+		"ProcessQuadTessFactorsAvg", "ProcessQuadTessFactorsMax", "ProcessQuadTessFactorsMin",
+		"ProcessTriTessFactorsAvg", "ProcessTriTessFactorsMax", "ProcessTriTessFactorsMin",
+		"radians", "rcp", "reflect", "refract", "reversebits", "round", "rsqrt", "saturate", "sign",
+		"sin", "sincos", "smoothstep", "sqrt", "step", "tan", "tanh", "tex1D", "tex1Dbias",
+		"tex1Dgrad", "tex1Dlod", "tex1Dproj", "tex2D", "tex2Dbias", "tex2Dgrad", "tex2Dlod",
+		"tex2Dproj", "tex3D", "tex3Dbias", "tex3Dgrad", "tex3Dlod", "tex3Dproj", "texCUBE",
+		"texCUBEbias", "texCUBEgrad", "texCUBElod", "texCUBEproj", "transpose", "trunc",
+	];
+}
 
-const NUMERIC_TYPES = [
-	"bool", "int", "uint", "dword", "half", "float", "double", "min16float", "min10float",
-	"min16int", "min12int", "min16uint",
-];
-
-const SWIZZLE = ["x", "y", "z", "w"];
+const SWIZZLE = "xyzw";
 
 function isNumericTypeName(name: string): boolean {
-	for (const base of NUMERIC_TYPES) {
+	for (const base of [
+	"bool", "int", "uint", "dword", "half", "float", "double", "min16float", "min10float",
+	"min16int", "min12int", "min16uint",
+]) {
 		if (!name.startsWith(base)) { continue; }
 		const rest = name.substring(base.length);
 		const digit = (at: int32) => rest.length > at && "1234".includes(rest.substring(at, at + 1));
@@ -101,14 +103,14 @@ function isNumericTypeName(name: string): boolean {
 	return false;
 }
 
-function isReserved(name: string): boolean {
-	return KEYWORDS.includes(name) || INTRINSICS.includes(name) || isNumericTypeName(name);
+function isReserved(p: Printer, name: string): boolean {
+	return p.reserved.includes(name) || isNumericTypeName(name);
 }
 
-function claim(taken: string[], name: string): string {
+function claim(p: Printer, taken: string[], name: string): string {
 	let candidate = name;
 	let n = 1;
-	while (isReserved(candidate) || taken.includes(candidate)) {
+	while (isReserved(p, candidate) || taken.includes(candidate)) {
 		candidate = name + "_" + String(n);
 		n++;
 	}
@@ -143,6 +145,7 @@ class Printer {
 	helperBases: string[] = [];
 	helperNames: string[] = [];
 	helpers: string[] = [];
+	reserved: string[] = [];
 }
 
 function fail(p: Printer, message: string): string {
@@ -232,7 +235,7 @@ function exchangeResult(p: Printer, scalar: ScalarKind): string {
 }
 
 function temporary(p: Printer, name: string): string {
-	const named = claim(p.globals.concat(p.scope), name);
+	const named = claim(p, p.globals.concat(p.scope), name);
 	p.scope.push(named);
 	p.localsEver.push(named);
 	return named;
@@ -456,7 +459,7 @@ function helper(p: Printer, key: string, name: string, write: (n: string) => str
 function claimHelper(p: Printer, name: string): string {
 	let taken = p.globals.map((n) => n);
 	for (const n of p.localsEver) { taken.push(n); }
-	const named = claim(taken, name);
+	const named = claim(p, taken, name);
 	p.globals.push(named);
 	return named;
 }
@@ -669,7 +672,7 @@ function storeOf(p: Printer, e: ShaderExpr): string {
 	const value = o[wanted - 1];
 	const rows = value.type.kind == ShaderTypeKind.Vector ? value.type.rows : 1;
 	const written = width < rows ?
-		operand(p, value) + "." + SWIZZLE.slice(0, width).join("") : expr(p, value);
+		operand(p, value) + "." + SWIZZLE.substring(0, width) : expr(p, value);
 	return operand(p, o[0]) + "[" + storageAt(p, o) + "] = " + written;
 }
 
@@ -848,7 +851,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 			return postfixBase(p, base) + "." + p.fieldNames[base.type.structIndex][e.index];
 		},
 		ExprKind.Swizzle => postfixBase(p, e.operands[0]) + "." +
-			e.components.map((c) => SWIZZLE[c]).join(""),
+			e.components.map((c) => SWIZZLE.substring(c, c + 1)).join(""),
 		ExprKind.Index => postfixBase(p, e.operands[0]) + "[" + expr(p, e.operands[1]) + "]",
 	};
 }
@@ -969,8 +972,8 @@ function functionText(p: Printer, index: int32): string {
 	p.current = f;
 	p.scope = p.globals.map((n) => n);
 	const start = p.scope.length;
-	for (const param of f.params) { claim(p.scope, param.name); }
-	for (const local of f.locals) { claim(p.scope, local.name); }
+	for (const param of f.params) { claim(p, p.scope, param.name); }
+	for (const local of f.locals) { claim(p, p.scope, local.name); }
 	const named = p.scope.slice(start);
 	for (const n of named) { p.localsEver.push(n); }
 	p.scope = named;
@@ -1071,7 +1074,7 @@ function storageStructText(p: Printer, structIndex: int32, resource: int32): str
 	let end = 0;
 	const pad = (to: int32) => {
 		while (end < to) {
-			text += "    uint " + claim(names, "_pad") + ";\n";
+			text += "    uint " + claim(p, names, "_pad") + ";\n";
 			end += 4;
 		}
 	};
@@ -1131,7 +1134,7 @@ function blockText(p: Printer, index: int32, slots: BindingSlot[]): string {
 	let text = "cbuffer " + p.resourceNames[index] + " : " + registerOf(p, index, slots) + "\n{\n";
 	for (let i = 0; i < members.length; i++) {
 		const offset = layout.value.offsets[i];
-		const component = offset % 16 == 0 ? "" : "." + SWIZZLE[(offset % 16) / 4];
+		const component = offset % 16 == 0 ? "" : "." + SWIZZLE.substring((offset % 16) / 4, (offset % 16) / 4 + 1);
 		text += "    " + declaration(p, members[i].type, p.memberNames[index][i]) +
 			" : packoffset(c" + String(offset / 16) + component + ");\n";
 	}
@@ -1308,10 +1311,11 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	}
 
 	let p = new Printer();
+	p.reserved = hlslKeywords().concat(hlslIntrinsics());
 	p.module = m;
 	p.stage = entry.stage;
 	for (const fixed of ["main", "stage_input", "stage_output", "StageInput", "StageOutput"]) {
-		claim(p.globals, fixed);
+		claim(p, p.globals, fixed);
 	}
 	p.structNames = m.structs.map((_s) => "");
 	p.fieldNames = m.structs.map((_s) => []);
@@ -1361,22 +1365,22 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	for (const r of resources) {
 		if (m.resources[r].kind != ResourceKind.UniformBlock) { continue; }
 		const members = m.structs[m.resources[r].type.structIndex].members;
-		p.memberNames[r] = members.map((f) => claim(p.globals, "_" + String(r) + "_" + f.name));
+		p.memberNames[r] = members.map((f) => claim(p, p.globals, "_" + String(r) + "_" + f.name));
 	}
 	for (const s of structs) {
-		p.structNames[s] = claim(p.globals, m.structs[s].name);
+		p.structNames[s] = claim(p, p.globals, m.structs[s].name);
 		let fields: string[] = [];
-		for (const f of m.structs[s].members) { claim(fields, f.name); }
+		for (const f of m.structs[s].members) { claim(p, fields, f.name); }
 		p.fieldNames[s] = fields;
 	}
-	for (const r of resources) { p.resourceNames[r] = claim(p.globals, m.resources[r].name); }
-	for (const c of constants) { p.constantNames[c] = claim(p.globals, m.constants[c].name); }
+	for (const r of resources) { p.resourceNames[r] = claim(p, p.globals, m.resources[r].name); }
+	for (const c of constants) { p.constantNames[c] = claim(p, p.globals, m.constants[c].name); }
 	for (let i = 0; i < m.ios.length; i++) {
-		if (m.ios[i].stage == entry.stage) { p.ioNames[i] = claim(p.globals, m.ios[i].name); }
+		if (m.ios[i].stage == entry.stage) { p.ioNames[i] = claim(p, p.globals, m.ios[i].name); }
 	}
-	for (const f of functions) { p.functionNames[f] = claim(p.globals, m.functions[f].name); }
+	for (const f of functions) { p.functionNames[f] = claim(p, p.globals, m.functions[f].name); }
 	for (const w of reads.workgroups) {
-		p.workgroupNames[w] = claim(p.globals, m.workgroups[w].name);
+		p.workgroupNames[w] = claim(p, p.globals, m.workgroups[w].name);
 	}
 
 	const entryFunction = m.functions[entry.functionIndex];

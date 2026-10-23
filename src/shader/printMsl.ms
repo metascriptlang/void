@@ -121,8 +121,6 @@ function builtinName(op: Intrinsic): string {
 	};
 }
 
-const MSL_WORDS = mslReservedWords();
-
 const UPPER_LEFT = "upperLeft3x3";
 
 function inverseName(n: int32): string { return "inverse" + String(n) + "x" + String(n); }
@@ -204,6 +202,7 @@ class Printer {
 	exchanges: boolean[] = [false, false];
 	error: string = "";
 	lines: string[] = [];
+	reserved: string[] = [];
 }
 
 function fail(p: Printer, what: string): string {
@@ -225,7 +224,7 @@ function nameIn(p: Printer, scope: string[], name: string): string {
 	if (!isIdentifier(name)) { return fail(p, "'" + name + "' is no MSL identifier"); }
 	let candidate = name;
 	let n = 1;
-	while (MSL_WORDS.includes(candidate) || scope.includes(candidate)) {
+	while (p.reserved.includes(candidate) || scope.includes(candidate)) {
 		candidate = name + "_" + String(n);
 		n++;
 	}
@@ -1159,6 +1158,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	}
 
 	let p = new Printer();
+	p.reserved = mslReservedWords();
 	p.module = m;
 	p.stage = e.stage;
 	p.taken = ["main0", "main0_in", "main0_out", "in", "out", UPPER_LEFT, inverseName(2),

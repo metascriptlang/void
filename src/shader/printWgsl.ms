@@ -89,8 +89,6 @@ function wgslReservedWords(): string[] {
 	return words;
 }
 
-const WGSL_WORDS = wgslReservedWords();
-
 function builtinName(op: Intrinsic): string {
 	return match (op) {
 		Intrinsic.Abs => "abs",
@@ -204,6 +202,7 @@ class Printer {
 	lines: string[] = [];
 	depth: int32 = 0;
 	unhoistable: string = "";
+	reserved: string[] = [];
 }
 
 function refusal(p: Printer, what: string): string {
@@ -225,7 +224,7 @@ function nameIn(p: Printer, scope: string[], name: string): string {
 	if (!isIdentifier(name)) { return refusal(p, "'" + name + "' is no WGSL identifier"); }
 	let candidate = name;
 	let n = 1;
-	while (WGSL_WORDS.includes(candidate) || scope.includes(candidate)) {
+	while (p.reserved.includes(candidate) || scope.includes(candidate)) {
 		candidate = name + "_" + String(n);
 		n++;
 	}
@@ -919,6 +918,7 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	if (stray != "") { return Result.err("printWgsl: " + stray); }
 
 	let p = new Printer();
+	p.reserved = wgslReservedWords();
 	p.module = m;
 	p.stage = e.stage;
 	p.taken = ["main_out", UPPER_LEFT, inverseName(2), inverseName(3), inverseName(4)];
