@@ -51,7 +51,6 @@ import {
 	checkedViewport,
 	checkedSamplerLod,
 	checkedTexelWritePitch,
-	stopOnUnportedBindEntry,
 	stopOnUnportedTexelWrite,
 	stopOnUnportedRenderPass,
 	stopOnUnportedShaderModule,
@@ -1278,11 +1277,16 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 	const kind = entry.buffer.id != 0 ? BindingKind.Uniform :
 		(entry.textureView.id != 0 ? BindingKind.Texture : BindingKind.Sampler);
 	if (kind == BindingKind.Uniform) {
-		buffers.slotIndex(entry.buffer.id);
+		const b = buffers.slotIndex(entry.buffer.id);
 		for (let u = 0; u < shaders.slots[shader].uniformCount; u++) {
 			const binding = shaders.slots[shader].uniforms[u];
 			if (binding.binding == entry.binding) {
-				stopOnUnportedBindEntry("metal", entry);
+				if (entry.offset < 0 || entry.offset % UNIFORM_OFFSET_ALIGNMENT != 0) {
+					stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
+				}
+				if (entry.offset + (binding.size as int64) > buffers.slots[b].size) {
+					stop(`bind group entry ${entry.binding} offset ${entry.offset} overruns its buffer`);
+				}
 				if (entry.size != 0 && entry.size < (binding.size as int64)) {
 					stop(`bind group entry ${entry.binding} size ${entry.size} is below its block of ${binding.size}`);
 				}
@@ -1620,7 +1624,7 @@ function applyUniforms(): void {
 	const g = bindGroups.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders.slots[s].uniformCount; u++) {
 		const e = entryOf(g, shaders.slots[s].uniforms[u].binding);
-		const offset = bound.dynamicOffsets[bindGroups.slots[g].dynamicIndex[e]] as int64;
+		const offset = (bound.dynamicOffsets[bindGroups.slots[g].dynamicIndex[e]] as int64) + bindGroups.slots[g].entries[e].offset;
 		const b = buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id);
 		if (offset + (shaders.slots[s].uniforms[u].size as int64) > buffers.slots[b].size) {
 			stop(`uniform binding ${shaders.slots[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);

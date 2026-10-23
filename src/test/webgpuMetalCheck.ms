@@ -89,10 +89,14 @@ function colourUniforms(device: GPUDevice): GPUBuffer {
 	return buffer;
 }
 
-function uniformGroup(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer): GPUBindGroup {
+function uniformGroupAt(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer, offset: int64): GPUBindGroup {
 	let descriptor: GPUBindGroupDescriptor = { label: "colours", layout: pipeline.getBindGroupLayout(0) };
-	descriptor.entries[0] = { binding: 0, buffer: uniforms, size: 16 };
+	descriptor.entries[0] = { binding: 0, buffer: uniforms, offset: offset, size: 16 };
 	return device.createBindGroup(descriptor);
+}
+
+function uniformGroup(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer): GPUBindGroup {
+	return uniformGroupAt(device, pipeline, uniforms, 0);
 }
 
 function vertexBuffer(device: GPUDevice, size: int64): GPUBuffer {
@@ -142,10 +146,14 @@ function pixel(pixels: Vec<uint8>, x: int32, y: int32): uint32 {
 }
 
 function drawTriangle(device: GPUDevice, sampleCount: int32, dynamicOffset: uint32): Vec<uint8> {
+	return drawTriangleAt(device, sampleCount, dynamicOffset, 0);
+}
+
+function drawTriangleAt(device: GPUDevice, sampleCount: int32, dynamicOffset: uint32, entryOffset: int64): Vec<uint8> {
 	const module = flatShader(device);
 	const pipeline = flatPipeline(device, module, sampleCount);
 	const uniforms = colourUniforms(device);
-	const group = uniformGroup(device, pipeline, uniforms);
+	const group = uniformGroupAt(device, pipeline, uniforms, entryOffset);
 	const vertices = vertexBuffer(device, 24);
 	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
 	device.queue.writeBuffer(vertices, 0, triangle);
@@ -919,5 +927,15 @@ test "a writeTexture of a 16-bit and a two-channel format reads back unchanged" 
 	device.queue.submit(device.createCommandEncoder().finish());
 	const wideBack = readBytes(wide, 0, 0, 0, 2, 2, 8);
 	assert wideBack[0] == 0x00 && wideBack[1] == 0x3C && wideBack[7] == 0x44 && wideBack[8] == 1 && wideBack[14] == 4;
+	device.destroy();
+}
+
+test "a bind group entry offset selects the second uniform block" {
+	const device = openDevice();
+	const second = drawTriangleAt(device, 1, 0, 256);
+	assert pixel(second, 32, 32) == GREEN;
+	assert pixel(second, 0, 0) == BLUE;
+	const first = drawTriangleAt(device, 1, 0, 0);
+	assert pixel(first, 32, 32) == RED;
 	device.destroy();
 }
