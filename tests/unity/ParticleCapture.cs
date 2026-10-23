@@ -419,6 +419,26 @@ public static class ParticleCapture
                     settings = S("burst", "time 0 count 1", "rateOverTime", 0, "startLifetime", l, "startSpeed", 0),
                     configure = ps => { Base(ps, 0, 0, l); Burst1(ps); } };
             }
+        // World-space spawns: where a particle born inside a step starts, with the emitter moving, and with inherited velocity.
+        foreach (var (label, dt) in new (string, float)[] { ("60", 1f / 60f), ("10", 0.1f) })
+        {
+            float d = dt;
+            yield return new Case {
+                name = "tie_world_moved_hz" + label, dt = d, steps = (int)(0.5f / d), cap = 200,
+                settings = S("space", "World", "emitter", "moved +x 5 u/s before each step", "rateOverTime", 10, "startLifetime", 2, "startSpeed", 0),
+                configure = ps => { Base(ps, 10, 0, 2); var m = ps.main; m.simulationSpace = ParticleSystemSimulationSpace.World; },
+                beforeStep = (ps, s) => ps.transform.position = new Vector3(5f * s * d, 0, 0) };
+        }
+        foreach (var (tag, inherit, speed) in new (string, float, float)[] { ("speed1", 1f, 1f), ("half", 0.5f, 0f) })
+        {
+            float inh = inherit, spd = speed;
+            yield return new Case {
+                name = "tie_world_custom_" + tag + "_hz60", dt = 1f / 60f, steps = 24, cap = 200,
+                settings = S("space", "World", "emitterVelocityMode", "Custom (5,0,0), emitter static", "inheritVelocity", "Initial " + inh, "rateOverTime", 10, "startLifetime", 2, "startSpeed", spd),
+                configure = ps => { Base(ps, 10, spd, 2); var m = ps.main; m.simulationSpace = ParticleSystemSimulationSpace.World;
+                    m.emitterVelocityMode = ParticleSystemEmitterVelocityMode.Custom; m.emitterVelocity = new Vector3(5, 0, 0);
+                    var iv = ps.inheritVelocity; iv.enabled = true; iv.mode = ParticleSystemInheritVelocityMode.Initial; iv.curve = inh; } };
+        }
         // A looping system whose cycle ends exactly on a step: duration 1, steps of 1/16 or 1/60, a burst at 0 and a rate.
         foreach (var (label, dt) in new (string, float)[] { ("16", 0.0625f), ("60", 1f / 60f), ("40", 0.025f), ("10", 0.1f) })
         {
