@@ -5789,14 +5789,62 @@ collider file here: the posed-mesh ray query is `skinGeometry.ms` `rayIntersecti
 
 **Not built, recorded.**
 - Morph on a primitive with generated tangents.
-- Roughness 0; environment and image-based lighting, so the pbr indirect
-  term is a flat ambient only; any compensation for the pi factor.
+- Roughness 0; any compensation for the pi factor. Image-based lighting came after this stack
+  (next section).
 - Texture mips: automatic mip generation, so a caller supplies every level (Heaps calls the driver's
   `generateMipMaps`; sokol has no equivalent, so it is a new mechanism for the person); `lodBias`
   (`sg_sampler_desc` has `min_lod`/`max_lod` and no bias); anisotropy above 1 on GLCORE and GLES3 (the limit is not portable). The GL
   and WebGL2 paths have no mip receipt.
 - Dynamic mesh upload: a second write in one frame, an index or format change, a GPU readback.
 - Anything rendered: no skinned, morphed or pbr frame, no web or device run.
+
+### Image-based light, as built (2026-10-24)
+
+An app attaches an `Environment` to a renderer (`renderer.ms` `attachEnvironment`), and every pbr
+key is lit by it in place of the flat ambient. The API and the shading are Heaps'; the filtering
+is Bevy's, because Heaps brute-forces 4096 samples per texel where Bevy reaches the same result with
+a few dozen.
+
+- **API, Heaps.** `Environment.fromPanorama(texture, diffSize = 64, specSize = 512)` with `power`,
+  `rotation`, `hdrMax` 10, `threshold`/`scale` (`Environment.hx:216-245`, `equiToCube` :273-292);
+  `specLevels()` is `Environment.specLevels` with `ignoredSpecLevels` 1 (:390-399). The renderer
+  loads `power * power`, `specLevels` and the rotation's cosine and sine into the frame block
+  (`FRAME_ENV_*`), as `Renderer.hx:715-723` loads `pbrIndirect`. A frame bakes an environment that
+  is not baked, or whose cubes died with a GPU context, before its first pass (Heaps' `get_env`
+  remakes a disposed one).
+- **Shading, Heaps.** `shader3d.ms` `pbrEnvironmentLight` is `Lighting.hx:85-99` without the sky and
+  emissive terms: the exp2 Fresnel with `max(1 - roughness, F0)`, `irrDiffuse * albedo`,
+  `irrSpecular` at lod `roughness * irrSpecularLevels` times `F * A + B`, and `indirect * irrPower *
+  occlusion`. Heaps' `irrLut` is replaced by Bevy's analytic split sum (`pbr_lighting.wesl:527-538`,
+  `splitSum`), so no LUT texture is baked or bound. Heaps rotates about its up axis z; void3d's is y,
+  and the panorama's longitude and latitude are read with the same swap. A pbr key with power 0
+  takes the flat-ambient branch unchanged, so frames without an environment draw as before.
+- **Bake, Bevy.** `generate.rs` and `environment_filter.wesl`: the source cube gets a full mip chain
+  (each mip from the one above through a scratch cube, because sokol refuses to sample an image
+  that is a pass attachment), every sample reads the mip whose texel covers the sample's solid
+  angle (`calculate_environment_map_lod`), a radiance mip takes `32 * 2^floor(4r)` samples and the
+  irradiance 1024, and specular mip 0 is the source itself, as Bevy skips sampling below roughness
+  0.01. The GGX and cosine samplers and the face matrices stay Heaps' (`IrradBase`, `IrradShader`,
+  `getCubeMatrix`); Hammersley is the unit radical inverse, not Heaps' signed one. Cubes are
+  Rgba16f, Bevy's format and Heaps' `DEFAULT_FORMAT`; a device that cannot draw into Rgba16f gets
+  `EnvironmentError.NotRenderable`. The bake programs register with the GPU door apart from the
+  scene's (`environmentBake.c`), since `ProgramKey` has 4 bits for a program and 15 are taken.
+- **Bindings.** The cubes sit at views 7 and 8 and sampler 4, past the shadow maps; with no
+  environment attached the scene binds a 1x1 black cube.
+
+Acceptance, CPU: `environmentShaderCheck` 9 (a baked texel reads back through the cube sampler,
+face directions equal `pbrEnvironment.ms` `cubeFaceDirection`, Hammersley and both samplers equal
+`pbrEnvironment.ms`, constant sources stay constant, the hdrMax clamp, panorama orientation and fake
+HDR), `pbrLitCheck` 19 (`splitSum` equals `splitSumAnalytic`, `pbrEnvironmentLight` equals
+`pbrIndirect`, the quarter turn reads the +Z face), `programKeyCheck` (every pbr key and no other
+reads the env slots). GPU: `tests/integration/environmentLight.ms` in `scripts/gate3d.sh`
+(`run_environment_light`), built, not yet run; it compares a pbr quad under a baked grey panorama
+with the CPU shader.
+
+Not built: a float (HDR) panorama upload, so `threshold`/`scale` stand in for HDR as in Heaps'
+LDR path; a cube source (`Environment.new` with a cube texture); drawing the environment as a sky;
+Heaps' specular edge fix-up (`cubeScaleFactor`), which seamless cube sampling makes unneeded on
+every sokol backend; Bevy's blue-noise sample rotation.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
