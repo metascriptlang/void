@@ -533,6 +533,7 @@ test "a short out, a short counts, another mode and a non-finite size are refuse
 	assert !refused.ok && refused.error == ParticleWriteError.UnsupportedRenderMode;
 	let visual: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE);
 	const other = writeParticles(
-		w, started(one(2)), [{ u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 }], EYE, FORWARD, STILL, visual);
+		w, started(one(2)), [{ u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 }], EYE, FORWARD, STILL,
+		visual);
 	assert !other.ok && other.error == ParticleWriteError.UnsupportedRenderMode;
 }
