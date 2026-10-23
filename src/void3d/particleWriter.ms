@@ -25,6 +25,8 @@ import { sortKeyOf } from "./sortKey.h";
 // stage has no block of its own to read it from (docs/PARTICLES-RENDER.md A.2).
 export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
 export const PARTICLE_VISUAL_INSTANCE_STRIDE: int32 = 36;
+// A mesh instance: three rows of the world-space 3x4 affine, then rgba (particleMeshWriter.ms).
+export const PARTICLE_MESH_INSTANCE_STRIDE: int32 = 16;
 
 const RADIX_BITS: int32 = 11;
 const RADIX_BUCKETS: int32 = 2048;
@@ -119,7 +121,7 @@ function sortOrder(ref w: ParticleWriter3D, count: int32): void {
 	for (let i = 0; i < count; i++) { w.order[i] = w.scratch[i]; }
 }
 
-function placed(sys: ParticleSystem, i: int32): Vec3 {
+export function placed(sys: ParticleSystem, i: int32): Vec3 {
 	const cap: int32 = sys.capacity;
 	const p: Vec3 = vec3(
 		sys.data[POS_X * cap + i], sys.data[POS_Y * cap + i], sys.data[POS_Z * cap + i],
@@ -143,7 +145,7 @@ function drawn(sys: ParticleSystem, visual: boolean): Result<boolean, ParticleWr
 
 // Puts `w.order[0, count)` in the order `sys`'s renderer draws its particles, seen from `eye`
 // looking along `forward`, and refuses an `out` too short for `count` instances of `stride`.
-function drawOrder(
+export function drawOrder(
 	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, stride: int32,
 	outLength: int32,
 ): Result<int32, ParticleWriteError> {
@@ -175,7 +177,7 @@ function drawOrder(
 	return Result.ok(count);
 }
 
-function finite(out: Span<float32>, at: int32, stride: int32): boolean {
+export function finite(out: Span<float32>, at: int32, stride: int32): boolean {
 	for (let c = 0; c < stride; c++) {
 		if (!Number.isFinite(out[at + c])) { return false; }
 	}
