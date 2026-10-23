@@ -43,7 +43,18 @@ MtlTexture mtlNewTexture(
 void mtlReleaseTexture(MtlTexture texture);
 void mtlWriteTexture(MtlTexture texture, void *data, int64_t offset, int32_t bytesPerRow, int32_t width, int32_t height);
 
-MtlSampler mtlNewSampler(MtlDevice device, int32_t minFilter, int32_t magFilter, int32_t addressU, int32_t addressV);
+MtlSampler mtlNewSampler(
+	MtlDevice device,
+	int32_t minFilter,
+	int32_t magFilter,
+	int32_t mipFilter,
+	int32_t addressU,
+	int32_t addressV,
+	int32_t addressW,
+	float lodMin,
+	float lodMax,
+	int32_t maxAnisotropy,
+	int32_t compare);
 void mtlReleaseSampler(MtlSampler sampler);
 
 MtlLibrary mtlNewLibrary(MtlDevice device, const char *source);

@@ -7,6 +7,7 @@ import {
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
+	GPUSampler,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUTexture,
@@ -217,5 +218,93 @@ test "an indexed uint16 quad draws from a vertex buffer written twice in one fra
 	assert uniforms.isAlive();
 	uniforms.destroy();
 	assert !uniforms.isAlive();
+	device.destroy();
+}
+
+const TEXTURED_FRAGMENT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 tmain(Out in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) { return tex.sample(smp, in.position.xy / 64.0); }\n";
+const COMPARE_FRAGMENT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Out { float4 position [[position]]; };\nfragment float4 cmain(Out in [[stage_in]], depth2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) { float2 uv = in.position.xy / 64.0; return float4(tex.sample_compare(smp, uv, 0.25), tex.sample_compare(smp, uv, 0.75), 0.0, 1.0); }\n";
+
+function sampledShader(device: GPUDevice, fragmentCode: string, entryPoint: string): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "sampled",
+		vertexCode: VERTEX_MSL,
+		vertexEntryPoint: "vmain",
+		fragmentCode: fragmentCode,
+		fragmentEntryPoint: entryPoint,
+	};
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 1, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	return device.createShaderModule(descriptor);
+}
+
+function sampleCentreWith(device: GPUDevice, module: GPUShaderModule, view: GPUTextureView, sampler: GPUSampler): uint32 {
+	const pipeline = flatPipeline(device, module, 1);
+	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = { binding: 0, textureView: view };
+	descriptor.entries[1] = { binding: 1, sampler: sampler };
+	const group = device.createBindGroup(descriptor);
+	const vertices = vertexBuffer(device, 48);
+	const quad: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, quad);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const noOffsets: Vec<uint32> = [];
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return pixel(readPixels(target), 32, 32);
+}
+
+function clearedDepth(device: GPUDevice, value: float32): GPUTextureView {
+	const depth = device.createTexture({
+		label: "depth",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.TEXTURE_BINDING as int32),
+		sampleCount: 1,
+	});
+	const view = depth.createView({ label: null });
+	let descriptor: GPURenderPassDescriptor = { label: "clear depth" };
+	descriptor.depthStencilAttachment = { view: view, depthClearValue: value, depthLoadOp: "clear", depthStoreOp: "store" };
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	return view;
+}
+
+test "a comparison sampler passes a reference by its compare function against the stored depth" {
+	const device = openDevice();
+	const module = sampledShader(device, COMPARE_FRAGMENT_MSL, "cmain");
+	const depth = clearedDepth(device, 0.5);
+	const less = device.createSampler({ label: "less", magFilter: "linear", minFilter: "linear", compare: "less" });
+	const greater = device.createSampler({ label: "greater", magFilter: "linear", minFilter: "linear", compare: "greater" });
+	assert sampleCentreWith(device, module, depth, less) == RED;
+	assert sampleCentreWith(device, module, depth, greater) == GREEN;
+	device.destroy();
+}
+
+test "anisotropic and mip-filtered samplers with W addressing and LOD clamps create" {
+	const device = openDevice();
+	const anisotropic = device.createSampler({
+		label: "aniso",
+		addressModeU: "repeat",
+		addressModeV: "mirror-repeat",
+		addressModeW: "repeat",
+		magFilter: "linear",
+		minFilter: "linear",
+		mipmapFilter: "linear",
+		lodMinClamp: 1.0,
+		lodMaxClamp: 8.0,
+		maxAnisotropy: 8,
+	});
+	assert anisotropic.isAlive();
+	assert device.liveCounts().samplers == 1;
+	anisotropic.destroy();
+	assert device.liveCounts().samplers == 0;
 	device.destroy();
 }

@@ -45,11 +45,12 @@ import {
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
+	checkedSamplerAnisotropy,
+	checkedSamplerLod,
 	checkedTexelWritePitch,
 	stopOnUnportedBindEntry,
 	stopOnUnportedDepthStencil,
 	stopOnUnportedPrimitive,
-	stopOnUnportedSampler,
 	stopOnUnportedTexelWrite,
 	stopOnUnportedRenderPass,
 	stopOnUnportedShaderModule,
@@ -195,6 +196,9 @@ const WINDING_CLOCKWISE = 0;
 const WINDING_COUNTER_CLOCKWISE = 1;
 const FILTER_NEAREST = 0;
 const FILTER_LINEAR = 1;
+const MIP_FILTER_NEAREST = 1;
+const MIP_FILTER_LINEAR = 2;
+const MAX_ANISOTROPY = 16;
 const ADDRESS_CLAMP_TO_EDGE = 0;
 const ADDRESS_REPEAT = 2;
 const ADDRESS_MIRROR_REPEAT = 3;
@@ -206,6 +210,7 @@ const STORE_DONT_CARE = 0;
 const STORE_STORE = 1;
 const STORE_RESOLVE = 2;
 const STORE_STORE_AND_RESOLVE = 3;
+const COMPARE_NEVER = 0;
 const COMPARE_ALWAYS = 7;
 
 const NO_BUFFER = null as unknown as Ptr<MtlBufferImpl>;
@@ -484,6 +489,14 @@ function filterMode(filter: string, member: string): int32 {
 	return match (filter) {
 		"" | "nearest" => FILTER_NEAREST,
 		"linear" => FILTER_LINEAR,
+		_ => stopOnMember(member, filter),
+	};
+}
+
+function mipFilterMode(filter: string, member: string): int32 {
+	return match (filter) {
+		"" | "nearest" => MIP_FILTER_NEAREST,
+		"linear" => MIP_FILTER_LINEAR,
 		_ => stopOnMember(member, filter),
 	};
 }
@@ -883,14 +896,29 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 }
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
-	stopOnUnportedSampler("metal", descriptor);
 	const id = allocate(samplers);
+	const minFilter = filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
+	const magFilter = filterMode(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
+	const mipFilter = mipFilterMode(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter");
+	let maxAnisotropy = descriptor.maxAnisotropy;
+	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
+	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
+	checkedSamplerAnisotropy(maxAnisotropy, minFilter == FILTER_LINEAR && magFilter == FILTER_LINEAR && mipFilter == MIP_FILTER_LINEAR);
+	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
+	const maxLod = checkedSamplerLod(descriptor.lodMinClamp, descriptor.lodMaxClamp);
+	const compare: string = descriptor.compare;
 	const native = mtlNewSampler(
 		device,
-		filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter"),
-		filterMode(descriptor.magFilter, "GPUSamplerDescriptor.magFilter"),
+		minFilter,
+		magFilter,
+		mipFilter,
 		addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"),
 		addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"),
+		addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW"),
+		descriptor.lodMinClamp,
+		maxLod,
+		maxAnisotropy,
+		compare == "" ? COMPARE_NEVER : compareFunction(compare, "GPUSamplerDescriptor.compare"),
 	);
 	if (native == null) { stop(`newSamplerStateWithDescriptor failed for ${labelOf(descriptor.label)}`); }
 	store(samplers, { id: id, native: native });
