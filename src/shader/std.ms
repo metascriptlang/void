@@ -2156,6 +2156,68 @@ export function textureSample(
 	return textureSample(layerOf(texture, layer), sampler, uv);
 }
 
+// WGSL's textureSampleLevel, textureSampleBias and textureSampleGrad choose the mip level: given,
+// biased, or from given derivatives. The Vulkan specification's "Level-of-Detail Operation" clamps
+// that level to the image's levels, and a CPU texture has one, so each samples as textureSample.
+export function textureSampleLevel(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: float32,
+): Vec4f {
+	return textureSample(texture, sampler, uv);
+}
+
+export function textureSampleBias(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	bias: float32,
+): Vec4f {
+	return textureSample(texture, sampler, uv);
+}
+
+export function textureSampleGrad(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	ddx: Vec2f,
+	ddy: Vec2f,
+): Vec4f {
+	return textureSample(texture, sampler, uv);
+}
+
+export function textureSampleLevel(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	level: float32,
+): Vec4f {
+	return textureSample(layerOf(texture, layer), sampler, uv);
+}
+
+export function textureSampleBias(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	bias: float32,
+): Vec4f {
+	return textureSample(layerOf(texture, layer), sampler, uv);
+}
+
+export function textureSampleGrad(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	ddx: Vec2f,
+	ddy: Vec2f,
+): Vec4f {
+	return textureSample(layerOf(texture, layer), sampler, uv);
+}
+
 function texelAt(texture: Texture2d, x: int32, y: int32): Vec4f {
 	const first = (y * texture.width + x) * 4;
 	const t = texture.texels;

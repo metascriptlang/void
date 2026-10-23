@@ -26,6 +26,7 @@ import {
 	UnaryOp,
 	irErrors,
 	isShift,
+	isArrayTexture,
 	isAtomic,
 	isEffect,
 } from "./ir";
@@ -567,6 +568,29 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 	return narrowed("texture(" + pair.name + ", " + coords + ")", e.type);
 }
 
+function explicitSampleOf(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const t = o[0].type;
+	if (e.intrinsic == Intrinsic.TextureSampleBias && p.stage != ShaderStage.Fragment) {
+		return fail(p, "TextureSampleBias outside a fragment stage");
+	}
+	const pair = pairOf(p, o[0], o[1]);
+	if (isComparison(p, pair)) {
+		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
+			"depth reference");
+	}
+	const layer = isArrayTexture(t) ? 1 : 0;
+	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "vec4(" :
+		"vec3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
+	const tail = o.slice(3 + layer).map((a) => expr(p, a)).join(", ");
+	const name = match (e.intrinsic) {
+		Intrinsic.TextureSampleLevel => "textureLod(",
+		Intrinsic.TextureSampleBias => "texture(",
+		_ => "textureGrad(",
+	};
+	return narrowed(name + pair.name + ", " + at + ", " + tail + ")", e.type);
+}
+
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
@@ -744,6 +768,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => sizeOf(p, e),
 		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
+		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
+			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "memoryBarrierShared(); barrier()"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "memoryBarrierBuffer(); barrier()"),
 		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,

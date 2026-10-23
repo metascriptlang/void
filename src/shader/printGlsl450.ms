@@ -430,7 +430,9 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.TextureStore => "imageStore",
 		Intrinsic.TextureDimensions => "textureSize",
 		Intrinsic.TextureSampleCompare => "texture",
-		Intrinsic.TextureSampleCompareLevel => "textureLod",
+		Intrinsic.TextureSampleCompareLevel | Intrinsic.TextureSampleLevel => "textureLod",
+		Intrinsic.TextureSampleBias => "texture",
+		Intrinsic.TextureSampleGrad => "textureGrad",
 		Intrinsic.WorkgroupBarrier | Intrinsic.StorageBarrier => "barrier",
 		Intrinsic.AtomicLoad | Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicSub |
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
@@ -458,6 +460,10 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 			"texture(" + sampled + ", " + args[2] + ")",
 		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
+		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
+			intrinsicName(e.intrinsic) + "(" + sampled + ", " + (layered ? "vec3(" + args[2] +
+				", float(" + args[3] + "))" : args[2]) + ", " +
+				args.slice(layered ? 4 : 3).join(", ") + ")",
 		// glslang gives a compute barrier() workgroup-memory semantics, while the OpMemoryBarrier
 		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
 		Intrinsic.WorkgroupBarrier => "barrier()",

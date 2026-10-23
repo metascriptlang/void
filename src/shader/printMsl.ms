@@ -455,6 +455,32 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
 }
 
+function explicitSampleText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const t = o[0].type;
+	if (e.intrinsic == Intrinsic.TextureSampleBias) { fragmentOnly(p, "TextureSampleBias"); }
+	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
+	if (sampler !== null && sampler.samplerType == SamplerType.Comparison) {
+		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
+			"depth reference");
+	}
+	const layer = isArrayed(t) ? 1 : 0;
+	let args = [exprText(p, o[1]), exprText(p, o[2])];
+	if (layer == 1) { args.push("uint(" + exprText(p, o[3]) + ")"); }
+	const at = 3 + layer;
+	const gradient = match (t.shape) {
+		TextureShape.D3 => "gradient3d(",
+		TextureShape.Cube | TextureShape.CubeArray => "gradientcube(",
+		_ => "gradient2d(",
+	};
+	args.push(match (e.intrinsic) {
+		Intrinsic.TextureSampleLevel => "level(" + exprText(p, o[at]) + ")",
+		Intrinsic.TextureSampleBias => "bias(" + exprText(p, o[at]) + ")",
+		_ => gradient + exprText(p, o[at]) + ", " + exprText(p, o[at + 1]) + ")",
+	});
+	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
+}
+
 function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
 	const name = e.intrinsic.toString();
@@ -615,6 +641,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
 		Intrinsic.TextureSampleCompare => compareText(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
+		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
+			explicitSampleText(p, e),
 		Intrinsic.WorkgroupBarrier =>
 			computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_threadgroup)"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_device)"),

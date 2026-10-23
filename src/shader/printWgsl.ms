@@ -477,6 +477,11 @@ function isDepth(t: ShaderType): boolean {
 		t.shape == TextureShape.DepthCube;
 }
 
+function biasText(p: Printer, o: ShaderExpr[]): string {
+	fragmentOnly(p, "TextureSampleBias");
+	return "textureSampleBias(" + argsText(p, o) + ")";
+}
+
 function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
 	const name = e.intrinsic.toString();
@@ -533,6 +538,9 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => dimensionsText(p, e),
 		Intrinsic.TextureSampleCompare => compareText(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
+		Intrinsic.TextureSampleLevel => "textureSampleLevel(" + argsText(p, o) + ")",
+		Intrinsic.TextureSampleBias => biasText(p, o),
+		Intrinsic.TextureSampleGrad => "textureSampleGrad(" + argsText(p, o) + ")",
 		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "workgroupBarrier()"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "storageBarrier()"),
 		_ => isAtomic(op) ? atomicText(p, e) : refusal(p, op.toString() + " has no WGSL spelling"),

@@ -1502,9 +1502,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(n, name + " exists only in a compute entry, as WGSL's does") :
 				intrinsicOf(name == "workgroupBarrier" ? Intrinsic.WorkgroupBarrier :
 					Intrinsic.StorageBarrier, type, args),
-			"textureSample" => fragmentOnly ?
-				fail(n, "textureSample samples only in a fragment entry, as WGSL's does") :
-				intrinsicOf(Intrinsic.TextureSample, type, args),
+			"textureSample" | "textureSampleBias" => fragmentOnly ?
+				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
+				intrinsicOf(name == "textureSample" ? Intrinsic.TextureSample :
+					Intrinsic.TextureSampleBias, type, args),
+			"textureSampleLevel" => intrinsicOf(Intrinsic.TextureSampleLevel, type, args),
+			"textureSampleGrad" => intrinsicOf(Intrinsic.TextureSampleGrad, type, args),
 			_ => fail(n, "./std's '" + name + "' has no GLSL spelling"),
 		};
 	}

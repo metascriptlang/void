@@ -25,6 +25,7 @@ import {
 	TextureShape,
 	UnaryOp,
 	irErrors,
+	isArrayTexture,
 	isAtomic,
 	isEffect,
 } from "./ir";
@@ -600,6 +601,24 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		")";
 }
 
+function explicitSampleOf(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const t = o[0].type;
+	if (e.intrinsic == Intrinsic.TextureSampleBias && p.stage != ShaderStage.Fragment) {
+		return fail(p, "TextureSampleBias outside a fragment stage");
+	}
+	const layer = isArrayTexture(t) ? 1 : 0;
+	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "float4(" :
+		"float3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
+	const tail = o.slice(3 + layer).map((a) => expr(p, a)).join(", ");
+	const method = match (e.intrinsic) {
+		Intrinsic.TextureSampleLevel => ".SampleLevel(",
+		Intrinsic.TextureSampleBias => ".SampleBias(",
+		_ => ".SampleGrad(",
+	};
+	return operand(p, o[0]) + method + expr(p, o[1]) + ", " + at + ", " + tail + ")";
+}
+
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
@@ -731,6 +750,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions => sizeOf(p, e),
 		Intrinsic.TextureSampleCompare => compareOf(p, e, false),
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
+		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
+			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "GroupMemoryBarrierWithGroupSync()"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "DeviceMemoryBarrierWithGroupSync()"),
 		_ => isAtomic(e.intrinsic) ? fail(p, e.intrinsic.toString() + " inside an expression or " +

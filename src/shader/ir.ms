@@ -198,6 +198,42 @@ export enum Intrinsic {
 	AtomicXor,
 	AtomicExchange,
 	AtomicCompareExchangeWeak,
+	TextureSampleLevel,
+	TextureSampleBias,
+	TextureSampleGrad,
+}
+
+export function isExplicitSample(op: Intrinsic): boolean {
+	return op == Intrinsic.TextureSampleLevel || op == Intrinsic.TextureSampleBias ||
+		op == Intrinsic.TextureSampleGrad;
+}
+
+export function isArrayTexture(t: ShaderType): boolean {
+	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
+		t.shape == TextureShape.Depth2dArray;
+}
+
+function explicitSampleError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
+		o[1].type.kind != ShaderTypeKind.Sampler) {
+		return name + " takes a texture, a sampler and coordinates first";
+	}
+	const t = o[0].type;
+	const color = t.shape == TextureShape.D2 || t.shape == TextureShape.D2Array ||
+		t.shape == TextureShape.D3 || t.shape == TextureShape.Cube ||
+		t.shape == TextureShape.CubeArray;
+	if (!color || t.scalar != ScalarKind.F32) {
+		return name + " of a " + t.shape.toString() + " texture of " + t.scalar.toString() +
+			": it samples a float color texture here";
+	}
+	const tail = e.intrinsic == Intrinsic.TextureSampleGrad ? 2 : 1;
+	if (o.length != 3 + (isArrayTexture(t) ? 1 : 0) + tail) {
+		return name + " takes a texture, a sampler, coordinates, a layer of an array, and " +
+			(tail == 2 ? "two derivatives" : "a level or bias") + ", as WGSL's";
+	}
+	return "";
 }
 
 export function isAtomic(op: Intrinsic): boolean {
@@ -656,6 +692,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	const shift = e.kind == ExprKind.Binary && isShift(e.binary);
 	if (shift && (e.operands.length != 2 || e.operands[1].type.scalar != ScalarKind.U32)) {
 		c.errors.push(owner + ": a shift amount is a u32, as WGSL's");
+	}
+	if (e.kind == ExprKind.Intrinsic && isExplicitSample(e.intrinsic)) {
+		const error = explicitSampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	const atomic = e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);
 	if (atomic && (e.operands.length == 0 || e.operands[0].type.kind != ShaderTypeKind.Atomic)) {
