@@ -87,8 +87,9 @@ of its profile, entry point, flags and printed HLSL, and reads `src/shader/dxbc/
 miss it runs fxc with the backend's flags (`-Zpc -O3`, `d3d11.c` `d3dCompile`). The cache sits
 with the shader layer because one blob serves every module that prints the same stage: 518 HLSL
 stages are 168 blobs, 0.92 MB (2026-10-23). The `windows` arm holds each blob once as base64
-(`shaderBytecodeFromBase64`, `src/shader/dxbc.ms`) beside the HLSL text, which stays the fallback;
-every other arm writes `[]`, since gl, wgpu and metal stop on bytecode.
+(`shaderBytecodeFromBase64`, `src/shader/dxbc.ms`) and leaves that stage's HLSL text empty, which
+cut forwardOutline.exe from 13.94 to 13.20 MB (2026-10-24); a stage with no blob keeps its text.
+Every other arm writes `[]`, since gl, wgpu and metal stop on bytecode.
 
 fxc and the runtime `D3DCompile` (`d3dcompiler_47.dll`) gave the same bytes for a 22-stage sample
 (2026-10-23, fxc of Windows Kit 10.0.26100). `regen-shaders.sh` adds a compiled blob and deletes
