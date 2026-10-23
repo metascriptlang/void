@@ -153,6 +153,11 @@ Parity:
 - `tests/oracle/particles3d.cases` through `fromHeaps`. A case declares what it cannot match with
   `carries=`: `EmissionCeil`, `SpawnAge`, `GradientSampled`, `RandomStream` (Heaps draws from one
   stream, Void from a hash per particle) and `OneShotClock`.
+- `scripts/gate3d.sh` captures. Moving the campfire's snow and embers onto the particle system
+  re-baselined `m11particles_*` and re-held the 0.3.0 fingerprints of `m14forward_*` and
+  `m16anchor_*`, all four frames each. Measured on main 075e0660: the scene without particles
+  stayed byte-identical to `before_*`, and each particle frame differs from it in 1756 to
+  1768 pixels, the snow and the embers.
 
 Ceilings, each with what lifts it:
 - An event sub-emitter child emits only time-0 bursts; anything else is
