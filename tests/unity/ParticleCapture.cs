@@ -27,6 +27,7 @@ public static class ParticleCapture
         public bool bakeUV;
         public bool bakeQuads;
         public bool bakePose;
+        public bool bakeMesh;
     }
 
     public static void Run()
@@ -47,6 +48,8 @@ public static class ParticleCapture
         foreach (var c in Cases())
             if (only == null || c.name.Contains(only)) failed += RunCase(c);
         foreach (var c in Cases3D())
+            if (only == null || c.name.Contains(only)) failed += RunCase(c);
+        foreach (var c in CasesMesh())
             if (only == null || c.name.Contains(only)) failed += RunCase(c);
         if (only != null) { Debug.Log("ParticleCapture: done, failed cases = " + failed); if (failed > 0) EditorApplication.Exit(1); return; }
         PlayerSettings.colorSpace = ColorSpace.Linear;
@@ -639,6 +642,181 @@ public static class ParticleCapture
         }
     }
 
+    // ---------- 3D mesh particles ----------
+    // Mesh render mode under the same placed cameras and moved emitter as the p3d_ cases. The meshes are built in code
+    // and are asymmetric, so every axis and sign shows. BakeMesh returns every particle's mesh vertices one after the
+    // other; the capture records them with the particles (position, rotation3D, size3D, velocity) and the meshes' own
+    // vertices. Unity does not expose which mesh a particle drew, so the two-mesh case makes every particle identical
+    // except for its mesh: the replay finds each particle's mesh by which one its transform maps onto the baked vertices.
+
+    struct MeshM
+    {
+        public ParticleSystemRenderSpace align;
+        public bool local, rot3D, twoMeshes;
+        public Vector3 pivot, flip, rotDeg, size, velocity;
+        public float rotZDeg;
+        public int count;
+    }
+
+    static MeshM MM(ParticleSystemRenderSpace align = ParticleSystemRenderSpace.World) => new MeshM {
+        align = align, rot3D = true, rotDeg = new Vector3(20f, 35f, 50f), size = new Vector3(1.5f, 0.7f, 2f),
+        velocity = new Vector3(1.5f, 0.5f, 1f), count = 1 };
+
+    // A unit cube with the (+,+,+) corner pulled out, so no axis or sign is a symmetry of it.
+    static Mesh CubeMesh()
+    {
+        var v = new[] { new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, -0.5f), new Vector3(0.5f, 0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f),
+                        new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.9f, 0.6f, 0.7f), new Vector3(-0.5f, 0.5f, 0.5f) };
+        var uv = new Vector2[8];
+        for (int i = 0; i < 8; i++) uv[i] = new Vector2(v[i].x + 0.5f, v[i].y + 0.5f);
+        var m = new Mesh { name = "m3dCube", vertices = v, uv = uv,
+            triangles = new[] { 0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2 } };
+        m.RecalculateNormals();
+        return m;
+    }
+
+    // A lopsided five-vertex pyramid, with a different vertex count from the cube.
+    static Mesh PyramidMesh()
+    {
+        var v = new[] { new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.8f, 0f, -0.4f), new Vector3(0.5f, 0f, 0.6f), new Vector3(-0.6f, 0f, 0.3f), new Vector3(0.1f, 1.2f, 0f) };
+        var uv = new Vector2[5];
+        for (int i = 0; i < 5; i++) uv[i] = new Vector2(v[i].x + 0.5f, v[i].z + 0.5f);
+        var m = new Mesh { name = "m3dPyramid", vertices = v, uv = uv,
+            triangles = new[] { 0, 2, 1, 0, 3, 2, 0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4 } };
+        m.RecalculateNormals();
+        return m;
+    }
+
+    static string MeshVerticesJson(Mesh mesh)
+    {
+        var sb = new StringBuilder("[");
+        var v = mesh.vertices;
+        for (int i = 0; i < v.Length; i++) sb.Append(i > 0 ? ", " : "").Append(V(v[i]));
+        return sb.Append("]").ToString();
+    }
+
+    static string Raw(string obj, params string[] kv)
+    {
+        var sb = new StringBuilder(obj.Substring(0, obj.Length - 1));
+        for (int i = 0; i + 1 < kv.Length; i += 2) sb.Append(", ").Append(Q(kv[i])).Append(": ").Append(kv[i + 1]);
+        return sb.Append("}").ToString();
+    }
+
+    static Case RenderMesh(string name, MeshM m, Pose pose)
+    {
+        var cube = CubeMesh();
+        var pyramid = PyramidMesh();
+        var weights = new[] { 1f, 3f };
+        string space = m.local ? "Local" : "World";
+        return new Case {
+            name = name, dt = 0.1f, steps = 3, bakeMesh = true, bakePose = true, cap = 8,
+            settings = Raw(S("renderMode", "Mesh", "alignment", m.align.ToString(), "simulationSpace", space,
+                "meshDistribution", m.twoMeshes ? "NonUniformRandom" : "UniformRandom", "startRotation3D", m.rot3D, "startRotationZDeg", m.rotZDeg,
+                "particleCount", m.count, "read", "BakeMesh world vertices per particle, meshes concatenated in particle order; pose = camera and emitter per frame"),
+                "pivot", V(m.pivot), "flip", V(m.flip), "startRotationDeg", V(m.rotDeg), "startSize3D", V(m.size), "velocity", V(m.velocity),
+                "meshWeights", m.twoMeshes ? "[" + F(weights[0]) + ", " + F(weights[1]) + "]" : "[1]",
+                "meshes", m.twoMeshes ? "[" + MeshVerticesJson(cube) + ", " + MeshVerticesJson(pyramid) + "]" : "[" + MeshVerticesJson(cube) + "]"),
+            configure = ps => {
+                Base(ps, 0, 0, 5);
+                ps.emission.SetBursts(new[] { new ParticleSystem.Burst(0f, (short)m.count) });
+                var sim = m.local ? ParticleSystemSimulationSpace.Local : ParticleSystemSimulationSpace.World;
+                var main = ps.main; main.simulationSpace = sim;
+                main.startSize3D = true; main.startSizeX = m.size.x; main.startSizeY = m.size.y; main.startSizeZ = m.size.z;
+                main.startRotation3D = m.rot3D;
+                if (m.rot3D) { main.startRotationX = m.rotDeg.x * Mathf.Deg2Rad; main.startRotationY = m.rotDeg.y * Mathf.Deg2Rad; main.startRotationZ = m.rotDeg.z * Mathf.Deg2Rad; }
+                else main.startRotation = m.rotZDeg * Mathf.Deg2Rad;
+                var vo = ps.velocityOverLifetime; vo.enabled = true; vo.space = sim;
+                vo.x = m.velocity.x; vo.y = m.velocity.y; vo.z = m.velocity.z;
+                var r = ps.GetComponent<ParticleSystemRenderer>();
+                r.renderMode = ParticleSystemRenderMode.Mesh;
+                r.mesh = cube;
+                if (m.twoMeshes)
+                {
+                    r.SetMeshes(new[] { cube, pyramid });
+                    r.SetMeshWeightings(weights);
+                    r.meshDistribution = ParticleSystemMeshDistribution.NonUniformRandom;
+                }
+                r.alignment = m.align; r.pivot = m.pivot; r.flip = m.flip;
+                ps.transform.SetPositionAndRotation(pose.emPos, Quaternion.Euler(pose.emEuler));
+                var cam = new GameObject("camera").AddComponent<Camera>(); cam.transform.SetParent(ps.transform, false);
+                cam.orthographic = pose.ortho; cam.orthographicSize = pose.orthoSize; cam.fieldOfView = pose.fov; cam.aspect = pose.aspect;
+                cam.transform.SetPositionAndRotation(pose.camPos, Quaternion.Euler(pose.camEuler)); } };
+    }
+
+    static IEnumerable<Case> CasesMesh()
+    {
+        var pivot = new Vector3(0.5f, 0.25f, 0.6f);
+        var aligns = new[] { ParticleSystemRenderSpace.View, ParticleSystemRenderSpace.World, ParticleSystemRenderSpace.Local,
+                             ParticleSystemRenderSpace.Facing, ParticleSystemRenderSpace.Velocity };
+        foreach (var (tag, pose) in new[] { ("", Pose.Persp()), ("ortho_", Pose.Persp().Orthographic()) })
+            foreach (var al in aligns)
+                yield return RenderMesh("m3d_" + tag + al.ToString().ToLowerInvariant(), MM(al), pose);
+        foreach (var al in aligns)
+        {
+            var l = MM(al); l.local = true;
+            yield return RenderMesh("m3d_localsim_" + al.ToString().ToLowerInvariant(), l, Pose.Persp());
+        }
+        foreach (var al in new[] { ParticleSystemRenderSpace.View, ParticleSystemRenderSpace.World, ParticleSystemRenderSpace.Local })
+        {
+            var p = MM(al); p.pivot = pivot;
+            yield return RenderMesh("m3d_pivot_" + al.ToString().ToLowerInvariant(), p, Pose.Persp());
+        }
+        var pl = MM(); pl.pivot = pivot; pl.local = true;
+        yield return RenderMesh("m3d_localsim_pivot_world", pl, Pose.Persp());
+
+        foreach (var (k, f) in new[] { ("x", new Vector3(1f, 0f, 0f)), ("y", new Vector3(0f, 1f, 0f)), ("z", new Vector3(0f, 0f, 1f)), ("xyz", new Vector3(1f, 1f, 1f)) })
+        {
+            var fl = MM(); fl.flip = f;
+            yield return RenderMesh("m3d_flip_" + k, fl, Pose.Persp());
+        }
+
+        var neg = MM(); neg.size = new Vector3(-1.2f, 0.7f, 2f);
+        yield return RenderMesh("m3d_negsize_x", neg, Pose.Persp());
+        var uniform = MM(); uniform.size = new Vector3(1.8f, 1.8f, 1.8f);
+        yield return RenderMesh("m3d_size_uniform", uniform, Pose.Persp());
+        var rotOff = MM(); rotOff.rot3D = false; rotOff.rotZDeg = 50f;
+        yield return RenderMesh("m3d_rot3d_off", rotOff, Pose.Persp());
+        foreach (var (k, r) in new[] { ("x", new Vector3(30f, 0f, 0f)), ("y", new Vector3(0f, 30f, 0f)), ("z", new Vector3(0f, 0f, 30f)) })
+        {
+            var ra = MM(); ra.rotDeg = r;
+            yield return RenderMesh("m3d_rot_" + k + "30", ra, Pose.Persp());
+        }
+
+        var pose2 = Pose.Persp2();
+        foreach (var al in aligns)
+        {
+            var p2 = MM(al); p2.pivot = pivot;
+            yield return RenderMesh("m3d_pose2_" + al.ToString().ToLowerInvariant(), p2, pose2);
+        }
+
+        var two = MM(); two.twoMeshes = true; two.count = 8;
+        yield return RenderMesh("m3d_two_meshes", two, Pose.Persp());
+    }
+
+    // Every particle's mesh vertices in the order BakeMesh gives them: under the default options, and with the
+    // renderer's rotation, scale and position baked too (which one is world space depends on the simulation space).
+    static void BakeMeshVertices(StringBuilder sb, ParticleSystem ps)
+    {
+        try
+        {
+            var r = ps.GetComponent<ParticleSystemRenderer>();
+            var cam = ps.GetComponentInChildren<Camera>();
+            foreach (var (key, options) in new[] { ("bakedMesh", ParticleSystemBakeMeshOptions.Default),
+                ("bakedMeshXform", ParticleSystemBakeMeshOptions.BakeRotationAndScale | ParticleSystemBakeMeshOptions.BakePosition) })
+            {
+                var mesh = new Mesh();
+                r.BakeMesh(mesh, cam, options);
+                var pos = new List<Vector3>();
+                mesh.GetVertices(pos);
+                sb.Append(", ").Append(Q(key)).Append(": [");
+                for (int i = 0; i < pos.Count; i++) sb.Append(i > 0 ? ", " : "").Append(V(pos[i]));
+                sb.Append("]");
+                UnityEngine.Object.DestroyImmediate(mesh);
+            }
+        }
+        catch (Exception e) { sb.Append(", \"bakeError\": ").Append(Q(e.Message)); }
+    }
+
     static void BakePose(StringBuilder sb, ParticleSystem ps)
     {
         var cam = ps.GetComponentInChildren<Camera>();
@@ -829,6 +1007,7 @@ public static class ParticleCapture
         if (dump) { sb.Append(", \"particles\": "); Particles(sb, c, ps, parts); }
         if (c.bakeUV) BakeUV(sb, ps);
         if (c.bakeQuads) BakeQuads(sb, ps);
+        if (c.bakeMesh) BakeMeshVertices(sb, ps);
         if (c.bakePose) BakePose(sb, ps);
         if (children.Count > 0)
         {

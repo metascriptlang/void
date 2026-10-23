@@ -66,6 +66,21 @@ The log ends with `PrefabExport: done`.
   `pose.camera` and `pose.emitter`), and `particleModeCheck.ms` replays each through the writer and
   `particleVisualVs`. `cameraVelocityScale` has no golden: `BakeMesh` does not see the camera's
   velocity, so that term is written by the writer and tested only for its value.
+- `m3d_*` cases are Mesh render mode, from the same two placements as `p3d_*` (`Pose.Persp`,
+  `Persp2`), with two meshes built in code (a unit cube with one corner pulled out, 8 vertices; a
+  lopsided pyramid, 5 vertices), 3D start rotation (20, 35, 50 degrees) and a non-uniform 3D start
+  size. Each frame records the particles (`pos`, `rot`, `size`, `vel`), the pose, the meshes'
+  own vertices in `settings.meshes` and `BakeMesh`'s vertices of every particle, concatenated, as
+  `bakedMesh` (default options) and `bakedMeshXform` (rotation, scale and position baked too;
+  which one is world space for a Local-space system is not known before the capture). Cases:
+  `m3d_<alignment>` and `m3d_ortho_<alignment>` for View, World, Local, Facing and Velocity;
+  `m3d_localsim_<alignment>` (Local simulation space, same five); `m3d_pivot_{view,world,local}`
+  and `m3d_localsim_pivot_world`; `m3d_flip_{x,y,z,xyz}` (flip 1 on those axes);
+  `m3d_negsize_x` (start size x -1.2, if Unity keeps it), `m3d_size_uniform`, `m3d_rot3d_off`
+  (start rotation z only), `m3d_rot_{x,y,z}30` (one axis at a time, which fixes the rotation
+  order); `m3d_pose2_<alignment>` with a pivot; `m3d_two_meshes`: 8 identical particles with
+  `NonUniformRandom` weights 1 and 3. Unity exposes no per-particle mesh index, so the replay
+  finds each particle's mesh by which one maps onto its baked vertices.
 - Trigger callbacks (`OnParticleTrigger`) are not captured. The trigger cases set one event's
   action to Kill, so the particle count shows when that event fires.
 - Noise is captured as `animatedVelocity` magnitude statistics plus 4 particles. Void's noise
