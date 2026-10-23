@@ -17,8 +17,7 @@ mechanism. A concept TypeGPU has and a row above forbids is left out, not adapte
 **Clear to the author comes before matching TypeGPU.** TypeGPU is where a familiar name is looked
 for first, not a spec to conform to: its name is taken when it maps one to one and reads plainly in
 MetaScript, and Void keeps or picks its own when that says more directly what the thing does. A
-signature states what the platform needs (a fetch here takes its sampler) even where TypeGPU's does
-not.
+signature states what the platform needs even where TypeGPU's does not.
 
 ## Why not one reference
 
@@ -54,7 +53,7 @@ TypeGPU `1f9d89d`, typegpu 0.12.7 (`~/projects/TypeGPU`): `packages/typegpu/src/
 | per-frame value | `@global` | a uniform shared across draws | one to one |
 | compile-time switch | `@const`, one program per value | `tgpu.slot`, filled when the shader is resolved | same idea; Void's is the program key (`src/void3d/programKeys.txt`) |
 | sample | `tex.get(uv)`, texture and sampler in one `Sampler2D` | `textureSample(texture, sampler, uv)` | TypeGPU's, which is also shdc's separate pair |
-| fetch / size | `tex.fetch(p)`, `tex.size()` | `textureLoad`, `textureDimensions` | one to one; Void's take a sampler, and the size is signed (below) |
+| fetch / size | `tex.fetch(p)`, `tex.size()` | `textureLoad`, `textureDimensions` | one to one, without a sampler as WGSL's; the size is signed (below) |
 | math | `mix` `clamp` `saturate` `smoothstep` `normalize` `dot` `cross` | the same names | one to one |
 | math, renamed | `dFdx` `dFdy` `inversesqrt` | `dpdx` `dpdy` `inverseSqrt` | TypeGPU's name |
 | remainder | `mod`, emitted as GLSL `mod`: floored | `mod`, emitted as `%`: truncated (`std/operators.ts` `mod`) | **same name, two results** for a negative operand |
