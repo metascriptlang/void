@@ -46,3 +46,13 @@ int32_t metalReadback(
 		return ok;
 	}
 }
+
+int32_t metalLabel(void *object, void *text, int32_t capacity) {
+	NSString *label = [(id)object label];
+	if (label == nil) return 0;
+	const char *bytes = [label UTF8String];
+	int32_t length = (int32_t)strlen(bytes);
+	if (length > capacity) length = capacity;
+	memcpy(text, bytes, (size_t)length);
+	return length;
+}

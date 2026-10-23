@@ -12,3 +12,4 @@ int32_t metalReadback(
 	int32_t width,
 	int32_t height,
 	int32_t bytesPerPixel);
+int32_t metalLabel(void *object, void *text, int32_t capacity);

@@ -142,6 +142,7 @@ MtlTexture mtlNewTexture(
 	int32_t pixelFormat,
 	int32_t sampleCount,
 	int32_t renderTarget,
+	int32_t storage,
 	int32_t shared) {
 	MTLTextureDescriptor *desc = [[MTLTextureDescriptor alloc] init];
 	desc.textureType = (MTLTextureType)textureType;
@@ -152,8 +153,8 @@ MtlTexture mtlNewTexture(
 	if (textureType == MTLTextureType3D) { desc.depth = (NSUInteger)depthOrLayers; }
 	if (textureType == MTLTextureType2DArray) { desc.arrayLength = (NSUInteger)depthOrLayers; }
 	desc.sampleCount = (NSUInteger)sampleCount;
-	desc.usage = MTLTextureUsageShaderRead | (renderTarget ? MTLTextureUsageRenderTarget : 0);
-	desc.resourceOptions = renderTarget
+	desc.usage = MTLTextureUsageShaderRead | (renderTarget ? MTLTextureUsageRenderTarget : 0) | (storage ? MTLTextureUsageShaderWrite : 0);
+	desc.resourceOptions = (renderTarget || storage)
 		? MTLResourceStorageModePrivate
 		: (storageOptions(shared) | MTLResourceCPUCacheModeWriteCombined);
 	id<MTLTexture> texture = [(id<MTLDevice>)device newTextureWithDescriptor:desc];
@@ -301,7 +302,8 @@ MtlSampler mtlNewSampler(
 	float lodMin,
 	float lodMax,
 	int32_t maxAnisotropy,
-	int32_t compare) {
+	int32_t compare,
+	const char *label) {
 	MTLSamplerDescriptor *desc = [[MTLSamplerDescriptor alloc] init];
 	desc.sAddressMode = (MTLSamplerAddressMode)addressU;
 	desc.tAddressMode = (MTLSamplerAddressMode)addressV;
@@ -314,6 +316,7 @@ MtlSampler mtlNewSampler(
 	desc.maxAnisotropy = (NSUInteger)maxAnisotropy;
 	desc.normalizedCoordinates = YES;
 	desc.compareFunction = (MTLCompareFunction)compare;
+	if (label[0]) desc.label = [NSString stringWithUTF8String:label];
 	id<MTLSamplerState> sampler = [(id<MTLDevice>)device newSamplerStateWithDescriptor:desc];
 	[desc release];
 	return (MtlSampler)sampler;
@@ -346,6 +349,10 @@ void mtlReleaseFunction(MtlFunction shaderFunction) { [(id<MTLFunction>)shaderFu
 void mtlPipelineReset(void) {
 	[s_pipeline release];
 	s_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+}
+
+void mtlPipelineLabel(const char *label) {
+	if (label[0]) s_pipeline.label = [NSString stringWithUTF8String:label];
 }
 
 void mtlPipelineAttribute(int32_t location, int32_t format, int32_t offset, int32_t bufferIndex) {
@@ -512,7 +519,7 @@ MtlEncoder mtlBeginPass(MtlCommandBuffer commandBuffer) {
 }
 
 void mtlEndPass(MtlEncoder encoder) {
-	id<MTLRenderCommandEncoder> e = (id<MTLRenderCommandEncoder>)encoder;
+	id<MTLCommandEncoder> e = (id<MTLCommandEncoder>)encoder;
 	[e endEncoding];
 	[e release];
 }
@@ -641,4 +648,155 @@ void mtlDrawIndexed(
 			baseVertex:baseVertex
 			baseInstance:(NSUInteger)firstInstance];
 	}
+}
+
+static NSString *labelString(const char *label) { return [NSString stringWithUTF8String:label]; }
+
+void mtlSetLabel(void *object, const char *label) {
+	if (label[0]) [(id)object setLabel:labelString(label)];
+}
+
+void mtlPushDebugGroup(MtlCommandBuffer commandBuffer, const char *label) { [(id<MTLCommandBuffer>)commandBuffer pushDebugGroup:labelString(label)]; }
+void mtlPopDebugGroup(MtlCommandBuffer commandBuffer) { [(id<MTLCommandBuffer>)commandBuffer popDebugGroup]; }
+void mtlEncoderPushDebugGroup(MtlEncoder encoder, const char *label) { [(id<MTLCommandEncoder>)encoder pushDebugGroup:labelString(label)]; }
+void mtlEncoderPopDebugGroup(MtlEncoder encoder) { [(id<MTLCommandEncoder>)encoder popDebugGroup]; }
+void mtlEncoderInsertSignpost(MtlEncoder encoder, const char *label) { [(id<MTLCommandEncoder>)encoder insertDebugSignpost:labelString(label)]; }
+
+int64_t mtlMaxBufferLength(MtlDevice device) { return (int64_t)[(id<MTLDevice>)device maxBufferLength]; }
+
+int32_t mtlMaxThreadsPerThreadgroup(MtlDevice device, int32_t axis) {
+	MTLSize size = [(id<MTLDevice>)device maxThreadsPerThreadgroup];
+	return (int32_t)(axis == 0 ? size.width : (axis == 1 ? size.height : size.depth));
+}
+
+int32_t mtlSupportsFloat32Filtering(MtlDevice device) {
+#if TARGET_OS_OSX
+	(void)device;
+	return 1;
+#else
+	return [(id<MTLDevice>)device supports32BitFloatFiltering] ? 1 : 0;
+#endif
+}
+
+int32_t mtlSupportsRg11b10Render(MtlDevice device) {
+#if TARGET_OS_OSX
+	(void)device;
+	return 1;
+#else
+	return [(id<MTLDevice>)device supportsFamily:MTLGPUFamilyApple3] ? 1 : 0;
+#endif
+}
+
+int32_t mtlSupportsTimestamps(MtlDevice device) {
+	id<MTLDevice> d = (id<MTLDevice>)device;
+	if (![d supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary]) return 0;
+	if ([[d name] hasPrefix:@"Intel"]) return 0;
+	for (id<MTLCounterSet> set in [d counterSets]) {
+		if ([[set name] isEqualToString:MTLCommonCounterSetTimestamp]) return 1;
+	}
+	return 0;
+}
+
+MtlComputePipeline mtlNewComputePipeline(MtlDevice device, MtlFunction compute, const char *label) {
+	MTLComputePipelineDescriptor *desc = [[MTLComputePipelineDescriptor alloc] init];
+	desc.computeFunction = (id<MTLFunction>)compute;
+	if (label[0]) desc.label = labelString(label);
+	NSError *error = nil;
+	id<MTLComputePipelineState> state = [(id<MTLDevice>)device newComputePipelineStateWithDescriptor:desc
+		options:MTLPipelineOptionNone
+		reflection:nil
+		error:&error];
+	[desc release];
+	if (state == nil) keepLog(error);
+	return (MtlComputePipeline)state;
+}
+
+int32_t mtlComputeMaxThreads(MtlComputePipeline pipeline) {
+	return (int32_t)[(id<MTLComputePipelineState>)pipeline maxTotalThreadsPerThreadgroup];
+}
+
+void mtlReleaseComputePipeline(MtlComputePipeline pipeline) { [(id<MTLComputePipelineState>)pipeline release]; }
+
+MtlEncoder mtlBeginComputePass(MtlCommandBuffer commandBuffer, const char *label) {
+	@autoreleasepool {
+		id<MTLComputeCommandEncoder> encoder = [(id<MTLCommandBuffer>)commandBuffer computeCommandEncoder];
+		if (encoder && label[0]) encoder.label = labelString(label);
+		return (MtlEncoder)[encoder retain];
+	}
+}
+
+void mtlComputeSetPipeline(MtlEncoder encoder, MtlComputePipeline pipeline) {
+	[(id<MTLComputeCommandEncoder>)encoder setComputePipelineState:(id<MTLComputePipelineState>)pipeline];
+}
+
+void mtlComputeSetBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index) {
+	[(id<MTLComputeCommandEncoder>)encoder setBuffer:(id<MTLBuffer>)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index];
+}
+
+void mtlComputeSetTexture(MtlEncoder encoder, MtlTexture texture, int32_t index) {
+	[(id<MTLComputeCommandEncoder>)encoder setTexture:(id<MTLTexture>)texture atIndex:(NSUInteger)index];
+}
+
+void mtlComputeSetSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index) {
+	[(id<MTLComputeCommandEncoder>)encoder setSamplerState:(id<MTLSamplerState>)sampler atIndex:(NSUInteger)index];
+}
+
+void mtlDispatch(MtlEncoder encoder, int32_t x, int32_t y, int32_t z, int32_t threadsX, int32_t threadsY, int32_t threadsZ) {
+	[(id<MTLComputeCommandEncoder>)encoder dispatchThreadgroups:MTLSizeMake((NSUInteger)x, (NSUInteger)y, (NSUInteger)z)
+		threadsPerThreadgroup:MTLSizeMake((NSUInteger)threadsX, (NSUInteger)threadsY, (NSUInteger)threadsZ)];
+}
+
+void mtlDispatchIndirect(MtlEncoder encoder, MtlBuffer arguments, int64_t offset, int32_t threadsX, int32_t threadsY, int32_t threadsZ) {
+	[(id<MTLComputeCommandEncoder>)encoder dispatchThreadgroupsWithIndirectBuffer:(id<MTLBuffer>)arguments
+		indirectBufferOffset:(NSUInteger)offset
+		threadsPerThreadgroup:MTLSizeMake((NSUInteger)threadsX, (NSUInteger)threadsY, (NSUInteger)threadsZ)];
+}
+
+MtlSampleBuffer mtlNewSampleBuffer(MtlDevice device, int32_t count, const char *label) {
+	@autoreleasepool {
+		id<MTLDevice> d = (id<MTLDevice>)device;
+		id<MTLCounterSet> timestamp = nil;
+		for (id<MTLCounterSet> set in [d counterSets]) {
+			if ([[set name] isEqualToString:MTLCommonCounterSetTimestamp]) timestamp = set;
+		}
+		if (timestamp == nil) return NULL;
+		MTLCounterSampleBufferDescriptor *desc = [[MTLCounterSampleBufferDescriptor alloc] init];
+		desc.counterSet = timestamp;
+		desc.storageMode = MTLStorageModeShared;
+		desc.sampleCount = (NSUInteger)count;
+		if (label[0]) desc.label = labelString(label);
+		NSError *error = nil;
+		id<MTLCounterSampleBuffer> samples = [d newCounterSampleBufferWithDescriptor:desc error:&error];
+		[desc release];
+		if (samples == nil) keepLog(error);
+		return (MtlSampleBuffer)samples;
+	}
+}
+
+void mtlReleaseSampleBuffer(MtlSampleBuffer samples) { [(id<MTLCounterSampleBuffer>)samples release]; }
+
+void mtlResolveCounters(MtlCommandBuffer commandBuffer, MtlSampleBuffer samples, int32_t first, int32_t count, MtlBuffer destination, int64_t destinationOffset) {
+	@autoreleasepool {
+		id<MTLBlitCommandEncoder> blit = [(id<MTLCommandBuffer>)commandBuffer blitCommandEncoder];
+		[blit resolveCounters:(id<MTLCounterSampleBuffer>)samples
+			inRange:NSMakeRange((NSUInteger)first, (NSUInteger)count)
+			destinationBuffer:(id<MTLBuffer>)destination
+			destinationOffset:(NSUInteger)destinationOffset];
+		[blit endEncoding];
+	}
+}
+
+void mtlPassSamples(MtlSampleBuffer samples, int32_t startIndex, int32_t endIndex) {
+	MTLRenderPassSampleBufferAttachmentDescriptor *attachment = s_pass.sampleBufferAttachments[0];
+	attachment.sampleBuffer = (id<MTLCounterSampleBuffer>)samples;
+	attachment.startOfVertexSampleIndex = startIndex < 0 ? MTLCounterDontSample : (NSUInteger)startIndex;
+	attachment.endOfVertexSampleIndex = MTLCounterDontSample;
+	attachment.startOfFragmentSampleIndex = MTLCounterDontSample;
+	attachment.endOfFragmentSampleIndex = endIndex < 0 ? MTLCounterDontSample : (NSUInteger)endIndex;
+}
+
+void mtlPassVisibility(MtlBuffer buffer) { s_pass.visibilityResultBuffer = (id<MTLBuffer>)buffer; }
+
+void mtlSetVisibility(MtlEncoder encoder, int32_t enabled, int64_t offset) {
+	[(id<MTLRenderCommandEncoder>)encoder setVisibilityResultMode:enabled ? MTLVisibilityResultModeBoolean : MTLVisibilityResultModeDisabled offset:(NSUInteger)offset];
 }
