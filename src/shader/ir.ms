@@ -106,6 +106,10 @@ export enum BinaryOp {
 	Div,
 	Mod,
 	BitAnd,
+	BitOr,
+	BitXor,
+	ShiftLeft,
+	ShiftRight,
 	LogicalAnd,
 	LogicalOr,
 	Equal,
@@ -114,6 +118,10 @@ export enum BinaryOp {
 	LessEqual,
 	Greater,
 	GreaterEqual,
+}
+
+export function isShift(op: BinaryOp): boolean {
+	return op == BinaryOp.ShiftLeft || op == BinaryOp.ShiftRight;
 }
 
 export enum Intrinsic {
@@ -577,6 +585,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 			inRange(c, e.index, m.resources.length as int32, "resource", owner),
 		ExprKind.Call => inRange(c, e.index, m.functions.length as int32, "function", owner),
 		_ => {},
+	}
+	const shift = e.kind == ExprKind.Binary && isShift(e.binary);
+	if (shift && (e.operands.length != 2 || e.operands[1].type.scalar != ScalarKind.U32)) {
+		c.errors.push(owner + ": a shift amount is a u32, as WGSL's");
 	}
 	for (const o of e.operands) { exprErrors(c, o, f, owner); }
 }

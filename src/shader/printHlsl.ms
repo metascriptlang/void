@@ -331,6 +331,10 @@ function remainder(p: Printer, a: ShaderExpr, b: ShaderExpr): string {
 		"undefined");
 }
 
+function unaryText(e: ShaderExpr): string {
+	return e.unary == UnaryOp.Negate ? "-" : e.operands[0].type.scalar == ScalarKind.Bool ? "!" : "~";
+}
+
 function binaryText(p: Printer, e: ShaderExpr): string {
 	const a = e.operands[0];
 	const b = e.operands[1];
@@ -341,6 +345,10 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 		BinaryOp.Div => "/",
 		BinaryOp.Mod => "%",
 		BinaryOp.BitAnd => "&",
+		BinaryOp.BitOr => "|",
+		BinaryOp.BitXor => "^",
+		BinaryOp.ShiftLeft => "<<",
+		BinaryOp.ShiftRight => ">>",
 		BinaryOp.LogicalAnd => "&&",
 		BinaryOp.LogicalOr => "||",
 		BinaryOp.Equal => "==",
@@ -685,7 +693,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 			fail(p, "uniform block '" + m.resources[e.index].name + "' read whole") :
 			p.resourceNames[e.index],
 		ExprKind.BlockMember => p.memberNames[e.index][e.member],
-		ExprKind.Unary => (e.unary == UnaryOp.Negate ? "-" : "!") + operand(p, e.operands[0]),
+		ExprKind.Unary => unaryText(e) + operand(p, e.operands[0]),
 		ExprKind.Binary => binaryText(p, e),
 		ExprKind.Conditional => {
 			bothSides(p, "?:", [e.operands[1], e.operands[2]]);

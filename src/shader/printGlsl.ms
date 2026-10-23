@@ -25,6 +25,7 @@ import {
 	TextureShape,
 	UnaryOp,
 	irErrors,
+	isShift,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import { readsFrom } from "./specialize";
@@ -353,6 +354,10 @@ function remainder(p: Printer, a: ShaderExpr, b: ShaderExpr): string {
 		"undefined");
 }
 
+function unaryText(e: ShaderExpr): string {
+	return e.unary == UnaryOp.Negate ? "-" : e.operands[0].type.scalar == ScalarKind.Bool ? "!" : "~";
+}
+
 function binaryText(p: Printer, e: ShaderExpr): string {
 	const a = e.operands[0];
 	const b = e.operands[1];
@@ -363,6 +368,10 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 		BinaryOp.Div => "/",
 		BinaryOp.Mod => "%",
 		BinaryOp.BitAnd => "&",
+		BinaryOp.BitOr => "|",
+		BinaryOp.BitXor => "^",
+		BinaryOp.ShiftLeft => "<<",
+		BinaryOp.ShiftRight => ">>",
 		BinaryOp.LogicalAnd => "&&",
 		BinaryOp.LogicalOr => "||",
 		BinaryOp.Equal => "==",
@@ -373,6 +382,9 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 		BinaryOp.GreaterEqual => ">=",
 	};
 	if (e.binary == BinaryOp.Mod) { return remainder(p, a, b); }
+	if (isShift(e.binary) && b.kind != ExprKind.Literal) {
+		return operand(p, a) + " " + op + " (" + operand(p, b) + " & 31u)";
+	}
 	const folds = e.type.kind == ShaderTypeKind.Scalar && a.type.kind == ShaderTypeKind.Vector;
 	if (folds && e.binary != BinaryOp.Equal && e.binary != BinaryOp.NotEqual) {
 		return fail(p, "'" + op + "' of two vectors into one bool");
@@ -790,7 +802,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 		ExprKind.Io => ioText(p, e.index),
 		ExprKind.Resource => resourceText(p, e.index),
 		ExprKind.BlockMember => memberText(p, e),
-		ExprKind.Unary => (e.unary == UnaryOp.Negate ? "-" : "!") + operand(p, e.operands[0]),
+		ExprKind.Unary => unaryText(e) + operand(p, e.operands[0]),
 		ExprKind.Binary => binaryText(p, e),
 		ExprKind.Conditional => operand(p, e.operands[0]) + " ? " + operand(p, e.operands[1]) +
 			" : " + operand(p, e.operands[2]),

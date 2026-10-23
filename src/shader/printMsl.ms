@@ -26,6 +26,7 @@ import {
 	sameShaderType,
 	scalarType,
 	vectorType,
+	isShift,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { readsFrom } from "./specialize";
@@ -323,6 +324,10 @@ function binaryOperator(op: BinaryOp): string {
 		BinaryOp.Div => "/",
 		BinaryOp.Mod => "%",
 		BinaryOp.BitAnd => "&",
+		BinaryOp.BitOr => "|",
+		BinaryOp.BitXor => "^",
+		BinaryOp.ShiftLeft => "<<",
+		BinaryOp.ShiftRight => ">>",
 		BinaryOp.LogicalAnd => "&&",
 		BinaryOp.LogicalOr => "||",
 		BinaryOp.Equal => "==",
@@ -344,8 +349,10 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 	if (e.binary == BinaryOp.Mod && isFloat(e.type)) {
 		return "fmod(" + argsText(p, e.operands) + ")";
 	}
-	const text = "(" + exprText(p, left) + " " + binaryOperator(e.binary) + " " +
-		exprText(p, e.operands[1]) + ")";
+	const right = e.operands[1];
+	const amount = isShift(e.binary) && right.kind != ExprKind.Literal ?
+		"(" + exprText(p, right) + " & 31u)" : exprText(p, right);
+	const text = "(" + exprText(p, left) + " " + binaryOperator(e.binary) + " " + amount + ")";
 	const whole = (e.binary == BinaryOp.Equal || e.binary == BinaryOp.NotEqual) &&
 		e.type.kind == ShaderTypeKind.Scalar;
 	if (!whole || left.type.kind == ShaderTypeKind.Scalar) { return text; }

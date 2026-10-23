@@ -1239,6 +1239,76 @@ export function `+`(this s: int32, a: Vec2i): Vec2i { return vec2i(s + a.x, s + 
 export function `-`(this s: int32, a: Vec2i): Vec2i { return vec2i(s - a.x, s - a.y); }
 export function `*`(this s: int32, a: Vec2i): Vec2i { return vec2i(s * a.x, s * a.y); }
 export function `-`(this a: Vec2i): Vec2i { return vec2i(-a.x, -a.y); }
+export function `&`(this a: Vec2i, b: Vec2i): Vec2i { return vec2i(a.x & b.x, a.y & b.y); }
+export function `|`(this a: Vec2i, b: Vec2i): Vec2i { return vec2i(a.x | b.x, a.y | b.y); }
+export function `^`(this a: Vec2i, b: Vec2i): Vec2i { return vec2i(a.x ^ b.x, a.y ^ b.y); }
+export function `<<`(this a: Vec2i, b: Vec2i): Vec2i { return vec2i(a.x << b.x, a.y << b.y); }
+export function `>>`(this a: Vec2i, b: Vec2i): Vec2i { return vec2i(a.x >> b.x, a.y >> b.y); }
+export function `&`(this a: Vec3i, b: Vec3i): Vec3i {
+	return vec3i(a.x & b.x, a.y & b.y, a.z & b.z);
+}
+export function `|`(this a: Vec3i, b: Vec3i): Vec3i {
+	return vec3i(a.x | b.x, a.y | b.y, a.z | b.z);
+}
+export function `^`(this a: Vec3i, b: Vec3i): Vec3i {
+	return vec3i(a.x ^ b.x, a.y ^ b.y, a.z ^ b.z);
+}
+export function `<<`(this a: Vec3i, b: Vec3i): Vec3i {
+	return vec3i(a.x << b.x, a.y << b.y, a.z << b.z);
+}
+export function `>>`(this a: Vec3i, b: Vec3i): Vec3i {
+	return vec3i(a.x >> b.x, a.y >> b.y, a.z >> b.z);
+}
+export function `&`(this a: Vec4i, b: Vec4i): Vec4i {
+	return vec4i(a.x & b.x, a.y & b.y, a.z & b.z, a.w & b.w);
+}
+export function `|`(this a: Vec4i, b: Vec4i): Vec4i {
+	return vec4i(a.x | b.x, a.y | b.y, a.z | b.z, a.w | b.w);
+}
+export function `^`(this a: Vec4i, b: Vec4i): Vec4i {
+	return vec4i(a.x ^ b.x, a.y ^ b.y, a.z ^ b.z, a.w ^ b.w);
+}
+export function `<<`(this a: Vec4i, b: Vec4i): Vec4i {
+	return vec4i(a.x << b.x, a.y << b.y, a.z << b.z, a.w << b.w);
+}
+export function `>>`(this a: Vec4i, b: Vec4i): Vec4i {
+	return vec4i(a.x >> b.x, a.y >> b.y, a.z >> b.z, a.w >> b.w);
+}
+export function `&`(this a: Vec2u, b: Vec2u): Vec2u { return vec2u(a.x & b.x, a.y & b.y); }
+export function `|`(this a: Vec2u, b: Vec2u): Vec2u { return vec2u(a.x | b.x, a.y | b.y); }
+export function `^`(this a: Vec2u, b: Vec2u): Vec2u { return vec2u(a.x ^ b.x, a.y ^ b.y); }
+export function `<<`(this a: Vec2u, b: Vec2u): Vec2u { return vec2u(a.x << b.x, a.y << b.y); }
+export function `>>`(this a: Vec2u, b: Vec2u): Vec2u { return vec2u(a.x >> b.x, a.y >> b.y); }
+export function `&`(this a: Vec3u, b: Vec3u): Vec3u {
+	return vec3u(a.x & b.x, a.y & b.y, a.z & b.z);
+}
+export function `|`(this a: Vec3u, b: Vec3u): Vec3u {
+	return vec3u(a.x | b.x, a.y | b.y, a.z | b.z);
+}
+export function `^`(this a: Vec3u, b: Vec3u): Vec3u {
+	return vec3u(a.x ^ b.x, a.y ^ b.y, a.z ^ b.z);
+}
+export function `<<`(this a: Vec3u, b: Vec3u): Vec3u {
+	return vec3u(a.x << b.x, a.y << b.y, a.z << b.z);
+}
+export function `>>`(this a: Vec3u, b: Vec3u): Vec3u {
+	return vec3u(a.x >> b.x, a.y >> b.y, a.z >> b.z);
+}
+export function `&`(this a: Vec4u, b: Vec4u): Vec4u {
+	return vec4u(a.x & b.x, a.y & b.y, a.z & b.z, a.w & b.w);
+}
+export function `|`(this a: Vec4u, b: Vec4u): Vec4u {
+	return vec4u(a.x | b.x, a.y | b.y, a.z | b.z, a.w | b.w);
+}
+export function `^`(this a: Vec4u, b: Vec4u): Vec4u {
+	return vec4u(a.x ^ b.x, a.y ^ b.y, a.z ^ b.z, a.w ^ b.w);
+}
+export function `<<`(this a: Vec4u, b: Vec4u): Vec4u {
+	return vec4u(a.x << b.x, a.y << b.y, a.z << b.z, a.w << b.w);
+}
+export function `>>`(this a: Vec4u, b: Vec4u): Vec4u {
+	return vec4u(a.x >> b.x, a.y >> b.y, a.z >> b.z, a.w >> b.w);
+}
 
 export function `*`(this m: Mat2x2f, v: Vec2f): Vec2f {
 	return m.columns[0] * v.x + m.columns[1] * v.y;

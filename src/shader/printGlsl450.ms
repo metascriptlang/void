@@ -27,6 +27,7 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
+	isShift,
 } from "./ir";
 import {
 	Names,
@@ -243,6 +244,10 @@ function binaryText(op: BinaryOp): string {
 		BinaryOp.Div => "/",
 		BinaryOp.Mod => "%",
 		BinaryOp.BitAnd => "&",
+		BinaryOp.BitOr => "|",
+		BinaryOp.BitXor => "^",
+		BinaryOp.ShiftLeft => "<<",
+		BinaryOp.ShiftRight => ">>",
 		BinaryOp.LogicalAnd => "&&",
 		BinaryOp.LogicalOr => "||",
 		BinaryOp.Equal => "==",
@@ -267,11 +272,14 @@ function value(p: Glsl, e: ShaderExpr): string {
 			const b = expr(p, right);
 			return a + " - " + b + " * trunc(" + a + " / " + b + ")";
 		}
-		return expr(p, left) + " " + binaryText(e.binary) + " " + expr(p, right);
+		const amount = isShift(e.binary) && right.kind != ExprKind.Literal ?
+			"(" + expr(p, right) + " & 31u)" : expr(p, right);
+		return expr(p, left) + " " + binaryText(e.binary) + " " + amount;
 	}
 	if (e.kind == ExprKind.Unary) {
 		const operand = e.operands[0];
-		const op = e.unary == UnaryOp.Negate ? "-" : "!";
+		const op = e.unary == UnaryOp.Negate ? "-" :
+			operand.type.scalar == ScalarKind.Bool ? "!" : "~";
 		return op + (operand.kind == ExprKind.Unary ? "(" + value(p, operand) + ")" : expr(p, operand));
 	}
 	if (e.kind == ExprKind.Conditional) {

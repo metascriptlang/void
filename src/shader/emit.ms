@@ -880,9 +880,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let breakOwners: string[] = [];
 	let locals: string[] = [];
 
-	const binaryTexts = ["+", "-", "*", "/", "%", "&", "&&", "||", "==", "!=", "<", "<=", ">", ">="];
+	const binaryTexts = ["+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>", "&&", "||", "==", "!=",
+		"<", "<=", ">", ">="];
 	const binaryOps = [BinaryOp.Add, BinaryOp.Sub, BinaryOp.Mul, BinaryOp.Div, BinaryOp.Mod,
-		BinaryOp.BitAnd, BinaryOp.LogicalAnd, BinaryOp.LogicalOr, BinaryOp.Equal,
+		BinaryOp.BitAnd, BinaryOp.BitOr, BinaryOp.BitXor, BinaryOp.ShiftLeft, BinaryOp.ShiftRight,
+		BinaryOp.LogicalAnd, BinaryOp.LogicalOr, BinaryOp.Equal,
 		BinaryOp.NotEqual, BinaryOp.Less, BinaryOp.LessEqual, BinaryOp.Greater,
 		BinaryOp.GreaterEqual];
 
@@ -1314,6 +1316,23 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return kindOf(n.left) == TypeKind.Uint32 && kindOf(n.right) == TypeKind.Uint32;
 	}
 
+	function integral(n: Node): boolean {
+		const t = looseType(getType(n));
+		return (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) &&
+			(t.scalar == ScalarKind.I32 || t.scalar == ScalarKind.U32);
+	}
+
+	function shiftAmount(n: Node): ShaderExpr {
+		const e = lower(n);
+		if (e.kind == ExprKind.Literal) {
+			return literal(scalarType(ScalarKind.U32), ((e.value as int64) & 31) as float64);
+		}
+		if (e.type.scalar == ScalarKind.U32) { return e; }
+		const type = e.type.kind == ShaderTypeKind.Vector ?
+			vectorType(ScalarKind.U32, e.type.rows) : scalarType(ScalarKind.U32);
+		return exprOf(ExprKind.Convert, type, -1, [e]);
+	}
+
 	function condition(n: Node): ShaderExpr {
 		if (kindOf(n) != TypeKind.Boolean) { fail(n, "a shader condition is a boolean"); }
 		return lower(n);
@@ -1333,13 +1352,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		} else if (op == "/" && integer(n.left) && !unsigned(n)) {
 			fail(n, "'/' has no GLSL form: GLSL does not truncate as MetaScript does");
 		} else if (op == "%" && !integer(n.left)) {
-		} else if (op == "&" && !integer(n.left)) {
-			fail(n, "'&' takes integers in a shader");
-		} else if (op != "+" && op != "-" && op != "*" && op != "/" && op != "%" && op != "&") {
+		} else if (["&", "|", "^", "<<", ">>"].includes(op)) {
+			if (!integral(n.left)) { fail(n, "'" + op + "' takes integers in a shader"); }
+		} else if (op != "+" && op != "-" && op != "*" && op != "/" && op != "%") {
 			fail(n, "operator '" + op + "' has no GLSL form yet");
 		}
 		const left = lower(n.left);
-		const right = lower(n.right);
+		const right = op == "<<" || op == ">>" ? shiftAmount(n.right) : lower(n.right);
 		return binaryOf(binaryOps[binaryTexts.indexOf(op)], looseType(getType(n)), left, right);
 	}
 
@@ -1374,6 +1393,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (n.kind == NodeKind.UnaryExpr) {
 			const op = n.unaryOp;
 			if (op == "!" && kindOf(n.operand) == TypeKind.Boolean ||
+				op == "~" && integer(n.operand) ||
 				op == "-" && kindOf(n.operand) != TypeKind.Uint32) {
 				let e = exprOf(ExprKind.Unary, looseType(getType(n)), -1, [lower(n.operand)]);
 				e.unary = op == "-" ? UnaryOp.Negate : UnaryOp.Not;
