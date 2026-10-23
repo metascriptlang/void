@@ -145,16 +145,18 @@ backend module. Metal follows it with a `.m`.
 
 `src/webgpu/metal/` ports `_sg_mtl_*`. Where it differs from sokol, the reason is Void's:
 
-- **Two copies of every writable resource.** A buffer created with `COPY_DST` or a texture moves
-  to its other copy at its first write of a frame, so the frame in flight keeps reading the old
-  one (sokol's `num_slots`, `_sg_mtl_update_buffer`). A second write over bytes the frame already
-  wrote, or a second `writeTexture` of one texture in a frame, stops with a message: that is
-  sokol's one-update-per-frame rule, enforced instead of assumed. A `writeTexture` that is not
-  the whole texture stops too, so void2d uploads whole glyph pages under `__APPLE__`
-  (`batcher.c`). A whole 1024×1024 r8 write measured 0.09 ms mean, 0.14 ms worst, on an M1
-  (2026-10-23), which does not pay for a partial path yet. Port the partial write (a blit of the
-  live copy into the other, then `replaceRegion`) when a profile shows whole-page uploads in a
-  frame, or when a consumer writes a region of a texture larger than a glyph page.
+- **Two copies of a writable resource, until a GPU copy writes it.** A buffer created with
+  `COPY_DST` or a single-subresource texture moves to its other copy at its first CPU write of a
+  frame, so the frame in flight keeps reading the old one (sokol's `num_slots`,
+  `_sg_mtl_update_buffer`). A resource that a GPU copy has written, a mappable buffer, and an
+  attachment texture keep one live copy: a CPU write to them is a staging buffer and a blit in the
+  frame's command buffer, ordered behind the frame's earlier reads, and stops inside a render pass.
+  A `writeTexture` that is not a whole single-subresource texture, or a second one in a frame,
+  takes the same blit path; a whole write of a mipped, array or 3d texture is a sub-rectangle write
+  of its subresource. A second `writeBuffer` over bytes the frame already wrote stops, as before.
+- **A readback never waits behind an open command buffer.** `mapAsync` waits for the last
+  committed command buffer, and stops by name when the buffer's copy is still in the frame's
+  uncommitted one: Metal runs a queue in order, so waiting would deadlock.
 - **CPU writes wait on the frame semaphore.** Two frames in flight; the command buffer begins at
   the frame's first write or pass and waits for the oldest frame there, as sokol waits in
   `_sg_mtl_begin_pass`.
