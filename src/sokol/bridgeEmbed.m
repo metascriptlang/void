@@ -1,8 +1,8 @@
-// Void driver — macOS (Metal). Two drivers in one binary, like bridgeWin.c: voidRun is a
-// minimal Cocoa window with no sokol_app, and voidViewCreate is the host-view driver behind
-// views.c, one CAMetalLayer per view over one shared MTLDevice. The first of the two chooses the
-// driver for the process. The GPU door's Metal backend draws on the shared device; the resource
-// and pass wrappers are bridge.c's.
+// Void driver — macOS (Metal). Two drivers in one binary, like bridgeWin.c: voidRun is the Cocoa
+// window of src/platform/macos/window.m with no sokol_app, and voidViewCreate is the host-view
+// driver behind views.c, one CAMetalLayer per view over one shared MTLDevice. The first of the
+// two chooses the driver for the process. The GPU door's Metal backend draws on the shared
+// device; the resource and pass wrappers are bridge.c's.
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
@@ -14,6 +14,8 @@
 #include "../platform/swapchain.h"
 #include "../webgpu/metal/metal.h"
 #include "presentGate.h"
+#include "appWindow.h"
+#include "../platform/macos/window.h"
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
@@ -30,6 +32,7 @@ static float g_dpiScale = 1.0f;
 static msClosure s_init;
 static msClosure s_frame;
 static int s_frames = 0;
+static bool s_keys[VOID_KEY_COUNT];
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -83,16 +86,50 @@ static void tick(void) {
 	g_drawable = nil;
 }
 
-@interface VEAppDelegate : NSObject <NSApplicationDelegate>
-@end
-@implementation VEAppDelegate
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)s { (void)s; return YES; }
-@end
-static id g_delegate;
-
 static int s_reqW = 0;
 static int s_reqH = 0;
 void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
+
+static void windowInit(void) {
+	NSView *view = (__bridge NSView *)voidMacosView();
+	view.wantsLayer = YES;
+	g_dpiScale = voidMacosDpiScale();
+	g_device = MTLCreateSystemDefaultDevice();
+	g_layer = [CAMetalLayer layer];
+	g_layer.device = g_device;
+	g_layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	g_layer.framebufferOnly = NO;
+	g_layer.frame = view.bounds;
+	g_layer.contentsScale = (CGFloat)g_dpiScale;
+	g_w = voidMacosWidth();
+	g_h = voidMacosHeight();
+	g_layer.drawableSize = CGSizeMake(g_w, g_h);
+	g_gate = voidPresentGateCreate((__bridge void *)g_layer);
+	[view setLayer:g_layer];
+	call0(s_init);
+}
+
+static void fitWindowLayer(void) {
+	NSView *view = (__bridge NSView *)voidMacosView();
+	g_dpiScale = voidMacosDpiScale();
+	g_w = voidMacosWidth();
+	g_h = voidMacosHeight();
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	g_layer.frame = view.bounds;
+	g_layer.contentsScale = (CGFloat)g_dpiScale;
+	g_layer.drawableSize = CGSizeMake(g_w, g_h);
+	[CATransaction commit];
+}
+
+static void windowEvent(const VoidAppEvent *e) {
+	if (e->type == VOID_EVENT_RESIZED) fitWindowLayer();
+	if (e->type == VOID_EVENT_KEY_DOWN) s_keys[e->keyCode] = true;
+	else if (e->type == VOID_EVENT_KEY_UP) s_keys[e->keyCode] = false;
+	if (voidAppDeliver(e)) return;
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidMacosRequestQuit();
+}
+
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
 	if (sampleCount != 1) {
@@ -103,48 +140,16 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	s_reqW = w;
 	s_reqH = h;
 	s_frame = frame;
-
-	@autoreleasepool {
-		[NSApplication sharedApplication];
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-		g_delegate = [VEAppDelegate new];
-		[NSApp setDelegate:g_delegate];
-
-		NSRect rect = NSMakeRect(0, 0, w, h);
-		NSWindow* win = [[NSWindow alloc] initWithContentRect:rect
-			styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
-			backing:NSBackingStoreBuffered defer:NO];
-		[win setTitle:@"Void — EMBED (no sokol_app)"];
-
-		g_dpiScale = highDpi ? (float)[[NSScreen mainScreen] backingScaleFactor] : 1.0f;
-		if (g_dpiScale < 1.0f) g_dpiScale = 1.0f;
-
-		NSView* view = [win contentView];
-		view.wantsLayer = YES;
-
-		g_device = MTLCreateSystemDefaultDevice();
-		g_layer = [CAMetalLayer layer];
-		g_layer.device = g_device;
-		g_layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-		g_layer.framebufferOnly = NO;
-		g_layer.frame = view.bounds;
-		g_layer.contentsScale = (CGFloat)g_dpiScale;
-		g_w = (int)(w * g_dpiScale);
-		g_h = (int)(h * g_dpiScale);
-		g_layer.drawableSize = CGSizeMake(g_w, g_h);
-		g_gate = voidPresentGateCreate((__bridge void *)g_layer);
-		[view setLayer:g_layer];
-
-		[win center];
-		[win makeKeyAndOrderFront:nil];
-		[NSApp activateIgnoringOtherApps:YES];
-
-		call0(s_init);
-
-		[NSTimer scheduledTimerWithTimeInterval:1.0/60.0 repeats:YES
-			block:^(NSTimer* t){ (void)t; tick(); }];
-		[NSApp run];
-	}
+	VoidMacosDesc d = {0};
+	d.init = windowInit;
+	d.frame = tick;
+	d.event = windowEvent;
+	d.text = voidAppTextDeliver;
+	d.width = w;
+	d.height = h;
+	d.highDpi = highDpi != 0;
+	d.title = voidWindowTitle();
+	voidMacosRun(&d);
 }
 
 void voidRun(int w, int h, msClosure init, msClosure frame) {
@@ -196,9 +201,13 @@ float voidDpiScale(void) {
 	return voidViewsDpiScale();
 }
 
-// Keyboard polling — Stage-2 stub (the 2D render proof needs no input). In Stage 3
-// this maps to the host (RCTView) key state; here no keys are ever down.
-int voidKeyDown(int keycode) { (void)keycode; return 0; }
+int voidKeyDown(int keycode) {
+	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
+	return s_keys[keycode] ? 1 : 0;
+}
+
+void voidSetTextInput(int on) { voidMacosSetTextInput(on != 0); }
+void voidSetImeRect(int x, int y, int w, int h) { voidMacosSetImeRect(x, y, w, h); }
 
 void voidDriverPresent(void) {
 	if (s_driver == DRIVER_VIEWS) voidViewsPresent();

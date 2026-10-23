@@ -1,8 +1,17 @@
 // The window's app-facing half, shared by the window drivers (bridgeWin.c, bridgeLinux.c,
-// bridgeWeb.c and bridgeIosApp.m): the event closure with its getters, the IME events, and the title.
+// bridgeWeb.c, bridgeEmbed.m and bridgeIosApp.m): the event closure with its getters, the IME events, and the title.
+
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#define VOID_MACOS 1
+#endif
+#endif
 
 #if defined(__EMSCRIPTEN__)
 #include "../platform/web/window.h"
+#elif defined(VOID_MACOS)
+#include "../platform/macos/window.h"
 #elif defined(__APPLE__)
 #include "iosApp.h"
 #elif defined(__ANDROID__)
@@ -126,6 +135,10 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	e.frameCount = voidWebFrameCount();
 	e.framebufferWidth = voidWebWidth();
 	e.framebufferHeight = voidWebHeight();
+#elif defined(VOID_MACOS)
+	e.frameCount = voidMacosFrameCount();
+	e.framebufferWidth = voidMacosWidth();
+	e.framebufferHeight = voidMacosHeight();
 #elif defined(__APPLE__)
 	e.frameCount = voidIosFrameCount();
 	e.framebufferWidth = voidIosWidth();
@@ -159,6 +172,8 @@ void voidSetWindowTitle(const char *title) {
 	s_titleSet = true;
 #if defined(__EMSCRIPTEN__)
 	if (voidWebValid()) voidWebSetTitle(s_title);
+#elif defined(VOID_MACOS)
+	if (voidMacosValid()) voidMacosSetTitle(s_title);
 #elif defined(__APPLE__) || defined(__ANDROID__)
 #elif defined(__linux__)
 	if (voidLinuxValid()) voidLinuxSetTitle(s_title);
@@ -197,6 +212,8 @@ static int voidAndroidDroppedCount(void) { return 0; }
 static const char *voidAndroidDroppedPath(int i) { (void)i; return ""; }
 #elif defined(__linux__)
 #define PLATFORM(name) voidLinux##name
+#elif defined(VOID_MACOS)
+#define PLATFORM(name) voidMacos##name
 #elif defined(__APPLE__)
 #define PLATFORM(name) voidIos##name
 __attribute__((noreturn)) static void notPortedIos(const char *feature) { fail("%s is not ported to iOS yet (src/sokol/appWindow.c)", feature); }
