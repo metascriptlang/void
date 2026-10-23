@@ -10,13 +10,15 @@ import {
 test "typed particle VS rotates asymmetric anchored tile in world camera basis" {
 	let input: ParticleVisualAttributes = {
 		root: vec4f(4, 5, 6, 3), shape: vec4f(1.125, 0.25, -0.5, 1.57079632679),
-		tile: vec4f(0.25, 0.125, 0.5, 0.625), color: vec4f(1, 0.5, 0.25, 0.25), index: 2,
+		tile: vec4f(0.25, 0.125, 0.5, 0.625), color: vec4f(1, 0.5, 0.25, 0.25),
+		velocity: vec3f(0, 0, 0), look: none(), scale: none(), pull: vec3f(0, 0, 0),
+		emitterRight: vec3f(0, 0, 0), emitterUp: vec3f(0, 0, 0), index: 2,
 	};
 	let bindings: VertexBindings = {
 		vertexParams: {
 			viewProj: mat4x4f(vec4f(1, 0, 0, 0), vec4f(0, 1, 0, 0),
 				vec4f(0, 0, 1, 0), vec4f(0, 0, 0, 1)),
-			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0),
+			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0), cameraPosition: none(),
 		},
 	};
 	const point = particleVisualVs(input, bindings);
@@ -70,7 +72,7 @@ function upright(): VertexBindings {
 		vertexParams: {
 			viewProj: mat4x4f(vec4f(1, 0, 0, 0), vec4f(0, 1, 0, 0),
 				vec4f(0, 0, 1, 0), vec4f(0, 0, 0, 1)),
-			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0),
+			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0), cameraPosition: none(),
 		},
 	};
 }

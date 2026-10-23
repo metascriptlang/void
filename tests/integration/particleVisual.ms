@@ -226,8 +226,8 @@ function frame(): void {
 	view.writeCameraBlock(cameraValues);
 	const eye: Vec3 = vec3(0, 0, 4);
 	const lookDir: Vec3 = vec3(0, 0, -1);
-	const first = writeParticles(writer, actorA, frames, eye, lookDir, valuesA);
-	const second = writeParticles(writer, actorB, frames, eye, lookDir, valuesB);
+	const first = writeParticles(writer, actorA, frames, eye, lookDir, vec3(0.0, 0.0, 0.0), valuesA);
+	const second = writeParticles(writer, actorB, frames, eye, lookDir, vec3(0.0, 0.0, 0.0), valuesB);
 	if (!first.ok || !second.ok) { fail("visual instance write refused"); }
 	if (control == 2) { valuesA[4] = valuesA[3] * 1.5; }
 	if (!writeStream(context, streams[0], valuesA, 1).ok

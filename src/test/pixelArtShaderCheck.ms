@@ -112,7 +112,7 @@ test "pixel-art lit stages carry the clip depth into the normal target" {
 		vertexParams: {
 			viewProj: mat4x4f(vec4f(1, 0, 0, 0), vec4f(0, 1, 0, 0),
 				vec4f(0, 0, 0.5, 0), vec4f(0, 0, 0, 1)),
-			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0),
+			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0), cameraPosition: none(),
 		},
 		modelParams: { model: identity(), normalModel: identity() },
 	};

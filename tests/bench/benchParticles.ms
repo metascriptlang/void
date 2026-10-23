@@ -56,15 +56,15 @@ function measure(count: int32, headline: boolean): void {
 	const forward: Vec3 = vec3(0.0, 0.0, -1.0);
 	let out: Vec<float32> = new Array((sys.capacity as int32) * PARTICLE_VISUAL_INSTANCE_STRIDE);
 	for (let i = 0; i < out.length; i++) { out[i] = 0.0; }
-	const unsorted = writeParticles(writer, sys, tiles, eye, forward, out);
+	const unsorted = writeParticles(writer, sys, tiles, eye, forward, vec3(0.0, 0.0, 0.0), out);
 	if (!unsorted.ok) { console.log(`write failed ${unsorted.error}`); unreachable; }
 	const writeStarted: float64 = performance.now();
-	for (let k = 0; k < steps; k++) { const w = writeParticles(writer, sys, tiles, eye, forward, out); }
+	for (let k = 0; k < steps; k++) { const w = writeParticles(writer, sys, tiles, eye, forward, vec3(0.0, 0.0, 0.0), out); }
 	const writeMs: float64 = millisecondsSince(writeStarted, steps);
 
 	sys.asset.renderer.sortMode = ParticleSortMode.Distance;
 	const sortedStarted: float64 = performance.now();
-	for (let k = 0; k < steps; k++) { const w = writeParticles(writer, sys, tiles, eye, forward, out); }
+	for (let k = 0; k < steps; k++) { const w = writeParticles(writer, sys, tiles, eye, forward, vec3(0.0, 0.0, 0.0), out); }
 	const sortMs: float64 = millisecondsSince(sortedStarted, steps) - writeMs;
 
 	row(`live${count}`, sys.count as float64);

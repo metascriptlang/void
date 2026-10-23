@@ -1,6 +1,6 @@
-import { vec3, translation } from "../math/math3d";
+import { vec3, translation, rotationY } from "../math/math3d";
 import {
-	ParticleSystemAsset, ParticleSortMode, RenderMode, SimulationSpace,
+	ParticleSystemAsset, ParticleSortMode, RenderMode, RenderAlignment, SimulationSpace,
 } from "../particles/asset";
 import { constantCurve, constantColor, rgbaColor, twoConstants } from "../particles/curve";
 import { ParticleSystem, playSystem, updateSystem, POS_Z, AGE, SIZE_X } from "../particles/system";
@@ -49,8 +49,8 @@ function walked(a: ParticleSystemAsset): ParticleSystem {
 test "a billboard instance carries position, size, rotation, uv and colour in the visual layout" {
 	const sys = walked(row());
 	let w = ParticleWriter3D.create();
-	let out: Vec<float32> = new Array(16 * sys.count);
-	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), out);
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.count);
+	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
 	assert n.ok && n.value == sys.count && sys.count >= 2;
 	assert near(out[3], 2.0) && near(out[4], 2.0);
 	assert near(out[5], 0.0) && near(out[6], 0.0);
@@ -64,14 +64,14 @@ test "distance sorting draws the farthest particle first" {
 	a.renderer.sortMode = ParticleSortMode.Distance;
 	const sys = walked(a);
 	let w = ParticleWriter3D.create();
-	let out: Vec<float32> = new Array(16 * sys.count);
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.count);
 	const eye = vec3(0.0, 0.0, -10.0);
-	const n = writeParticles(w, sys, [WHOLE], eye, vec3(0.0, 0.0, 1.0), out);
+	const n = writeParticles(w, sys, [WHOLE], eye, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
 	assert n.ok;
-	for (let k = 1; k < n.value; k++) { assert out[k * 16 + 2] <= out[(k - 1) * 16 + 2]; }
-	const back = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 10.0), vec3(0.0, 0.0, -1.0), out);
+	for (let k = 1; k < n.value; k++) { assert out[k * PARTICLE_VISUAL_INSTANCE_STRIDE + 2] <= out[(k - 1) * PARTICLE_VISUAL_INSTANCE_STRIDE + 2]; }
+	const back = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 10.0), vec3(0.0, 0.0, -1.0), vec3(0.0, 0.0, 0.0), out);
 	assert back.ok;
-	for (let k = 1; k < back.value; k++) { assert out[k * 16 + 2] >= out[(k - 1) * 16 + 2]; }
+	for (let k = 1; k < back.value; k++) { assert out[k * PARTICLE_VISUAL_INSTANCE_STRIDE + 2] >= out[(k - 1) * PARTICLE_VISUAL_INSTANCE_STRIDE + 2]; }
 }
 
 test "oldest in front draws the youngest first" {
@@ -79,11 +79,11 @@ test "oldest in front draws the youngest first" {
 	a.renderer.sortMode = ParticleSortMode.OldestInFront;
 	const sys = walked(a);
 	let w = ParticleWriter3D.create();
-	let out: Vec<float32> = new Array(16 * sys.count);
-	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.count);
+	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
 	assert n.ok;
 	// The youngest was emitted last, nearest the emitter's last place at z = 3.
-	for (let k = 1; k < n.value; k++) { assert out[k * 16 + 2] <= out[(k - 1) * 16 + 2]; }
+	for (let k = 1; k < n.value; k++) { assert out[k * PARTICLE_VISUAL_INSTANCE_STRIDE + 2] <= out[(k - 1) * PARTICLE_VISUAL_INSTANCE_STRIDE + 2]; }
 }
 
 // Slots in the order a stable sort by ascending `keys` puts them.
@@ -147,8 +147,8 @@ test "a local system's particles follow the emitter" {
 	a.emission.bursts = [{ time: 0.0, count: constantCurve(1.0), cycleCount: 1, repeatInterval: 0.01, probability: 1.0 }];
 	const sys = walked(a);
 	let w = ParticleWriter3D.create();
-	let out: Vec<float32> = new Array(16);
-	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE);
+	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
 	assert n.ok && n.value == 1;
 	assert near(out[2], 3.0);
 }
@@ -163,27 +163,80 @@ test "the sheet frame picks its tile and every flip mirrors the uv" {
 	const sys = walked(a);
 	const tiles = sheetTiles(WHOLE, 2, 2);
 	let w = ParticleWriter3D.create();
-	let out: Vec<float32> = new Array(16 * sys.count);
-	const n = writeParticles(w, sys, tiles, vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.count);
+	const n = writeParticles(w, sys, tiles, vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
 	assert n.ok;
 	// 0.6 of 4 frames is frame 2, the bottom-left quarter, mirrored in u.
 	assert near(out[8], 0.5) && near(out[10], 0.0);
 	assert near(out[9], 0.5) && near(out[11], 1.0);
 }
 
-test "the writer refuses what the visual program cannot draw and a short buffer" {
+test "an instance carries the particle's world velocity and its system's render mode" {
 	let a = row();
 	a.renderer.renderMode = RenderMode.Stretch;
-	const stretched = walked(a);
+	a.renderer.alignment = RenderAlignment.Local;
+	a.renderer.pivot = vec3(0.0, 0.0, 0.5);
+	a.renderer.lengthScale = 2.0;
+	a.renderer.velocityScale = 0.25;
+	a.renderer.cameraVelocityScale = 0.5;
+	a.renderer.minParticleSize = 0.125;
+	a.renderer.maxParticleSize = 0.75;
+	a.renderer.allowRoll = false;
+	a.renderer.rotateWithStretchDirection = true;
+	a.main.simulationSpace = SimulationSpace.Local;
+	a.main.startSpeed = constantCurve(4.0);
+	a.shape.enabled = false;
+	const sys = walked(a);
 	let w = ParticleWriter3D.create();
-	let out: Vec<float32> = new Array(16 * 8);
-	const mode = writeParticles(w, stretched, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.count);
+	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), vec3(2.0, 0.0, 0.0), out);
+	assert n.ok && n.value >= 1;
+	// Local space: the stored velocity (along local +z, the emitter's translation-only transform)
+	// reaches the instance as a world direction.
+	assert near(out[16], 0.0) && near(out[17], 0.0) && near(out[18], 4.0);
+	assert near(out[19], 1.0) && near(out[20], 2.0) && near(out[21], 0.5);
+	// allowRoll off is bit 1, rotateWithStretchDirection bit 4.
+	assert near(out[22], 5.0);
+	assert near(out[23], 2.0) && near(out[24], 0.25) && near(out[25], 0.125) && near(out[26], 0.75);
+	assert near(out[27], 1.0) && near(out[28], 0.0) && near(out[29], 0.0);
+	assert near(out[30], 1.0) && near(out[31], 0.0) && near(out[32], 0.0);
+	assert near(out[33], 0.0) && near(out[34], 1.0) && near(out[35], 0.0);
+}
+
+test "a local-space particle's velocity is turned by the emitter into the world direction" {
+	let a = row();
+	a.main.simulationSpace = SimulationSpace.Local;
+	a.main.startSpeed = constantCurve(4.0);
+	a.emission.rateOverTime = constantCurve(0.0);
+	a.emission.bursts = [{ time: 0.0, count: constantCurve(1.0), cycleCount: 1, repeatInterval: 0.01, probability: 1.0 }];
+	const made = ParticleSystem.create(a, 9);
+	if (!made.ok) { unreachable; }
+	let sys = made.value;
+	sys.clock.fixedStep = 1.0 / 60.0;
+	const quarter = rotationY(1.5707963267948966 as float32);
+	playSystem(sys, quarter);
+	const done = updateSystem(sys, 1.0 / 60.0, quarter);
+	if (!done.ok) { unreachable; }
+	let w = ParticleWriter3D.create();
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE);
+	const n = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
+	assert n.ok && n.value == 1;
+	assert near(Math.abs(out[16]) as float32, 4.0) && Math.abs(out[18]) < 1e-4;
+}
+
+test "the writer refuses what the visual program cannot draw and a short buffer" {
+	let a = row();
+	a.renderer.renderMode = RenderMode.Mesh;
+	const meshed = walked(a);
+	let w = ParticleWriter3D.create();
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * 8);
+	const mode = writeParticles(w, meshed, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
 	assert !mode.ok && mode.error == ParticleWriteError.UnsupportedRenderMode;
 	const sys = walked(row());
 	let short: Vec<float32> = new Array(16);
-	const s = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), short);
+	const s = writeParticles(w, sys, [WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), short);
 	assert !s.ok && s.error == ParticleWriteError.ShortInstances;
-	const f = writeParticles(w, sys, [WHOLE, WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), out);
+	const f = writeParticles(w, sys, [WHOLE, WHOLE], vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), out);
 	assert !f.ok && f.error == ParticleWriteError.FrameCount;
 }
 
@@ -196,7 +249,7 @@ test "the point writer writes the visual writer's position, width and colour in 
 	const forward = vec3(0.0, 0.0, 1.0);
 	let visual: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.count);
 	let points: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE * sys.count);
-	const v = writeParticles(w, sys, [WHOLE], eye, forward, visual);
+	const v = writeParticles(w, sys, [WHOLE], eye, forward, vec3(0.0, 0.0, 0.0), visual);
 	const p = writeParticlePoints(w, sys, eye, forward, points);
 	assert v.ok && p.ok && p.value == v.value && v.value >= 2;
 	for (let k = 0; k < v.value; k++) {
@@ -237,7 +290,7 @@ test "a trail writes one view-facing quad per segment, turned onto it" {
 	buildTrails(sys, chains);
 	const segments: int32 = (chains.vertices.length as int32) - chains.chainCount();
 	assert segments >= 2;
-	let out: Vec<float32> = new Array(16 * segments);
+	let out: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * segments);
 	// Seen from the side, +z the camera's right: each segment runs from the newer point back
 	// along -z, so its quad turns half round and keeps u at the newer end.
 	const side = writeTrails(chains, WHOLE, vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), out);

@@ -1158,7 +1158,7 @@ test "particleVisual declares additive program14 layout9 with original billboard
 		const key = ProgramKey.of(Program.ParticleVisual).withPreset(preset);
 		assert declares(key) && declares(key.withCutout()) && declares(key.withPremultiplied());
 		assert vertexLayoutOf(key) == VertexLayout.ParticleVisual;
-		assert layoutFloats(VertexLayout.ParticleVisual, 0) == 16;
+		assert layoutFloats(VertexLayout.ParticleVisual, 0) == 36;
 		assert layoutPerInstance(VertexLayout.ParticleVisual);
 		assert uniformBlockLength(key, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(key, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;

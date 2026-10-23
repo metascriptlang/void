@@ -67,7 +67,7 @@
 # ms-prelude: } from "../../../src/void3d/fromHeaps";
 # ms-prelude: import { CompiledMinMaxCurve, CurveError } from "../../../src/particles/curve";
 # ms-prelude: import { ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, AGE, LIFETIME, SIZE_X } from "../../../src/particles/system";
-# ms-prelude: import { ParticleWriter3D, writeParticles } from "../../../src/void3d/particleWriter";
+# ms-prelude: import { ParticleWriter3D, PARTICLE_VISUAL_INSTANCE_STRIDE, writeParticles } from "../../../src/void3d/particleWriter";
 # ms-prelude: import { AtlasTile } from "../../../src/void3d/billboard";
 # ms-prelude:
 # ms-prelude: function randomValue(start: float32, length: float32, converge: Converge): ParticleValue {
@@ -103,8 +103,8 @@
 # ms-prelude: function runLowered(state: EmitterState, heapsSteps: int32, dt: float64): Written {
 # ms-prelude: 	const sys = lowered(state, heapsSteps, dt, SPAWN_AGE_STEP);
 # ms-prelude: 	let writer = ParticleWriter3D.create();
-# ms-prelude: 	let instances: Vec<float32> = new Array(16 * sys.capacity);
-# ms-prelude: 	const written = writeParticles(writer, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), instances);
+# ms-prelude: 	let instances: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE * sys.capacity);
+# ms-prelude: 	const written = writeParticles(writer, sys, [WHOLE], vec3(0.0, 0.0, -10.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 0.0), instances);
 # ms-prelude: 	if (!written.ok) { unreachable; }
 # ms-prelude: 	return { count: written.value, instances: instances };
 # ms-prelude: }
@@ -115,7 +115,7 @@
 # ms-prelude: }
 # ms-prelude: function holds(ok: boolean): float32 { return ok ? 0.0 : 1000000.0; }
 # ms-prelude: function scaled(got: float32, want: float32, width: float32, tol: float32): float32 { return want + (got - want) * (tol / width); }
-# ms-prelude: function field(w: Written, particle: int32, f: int32): float32 { return w.instances[particle * 16 + f]; }
+# ms-prelude: function field(w: Written, particle: int32, f: int32): float32 { return w.instances[particle * PARTICLE_VISUAL_INSTANCE_STRIDE + f]; }
 # ms-prelude: function loweredRate(v: ParticleValue, t: float32, draw: float32): float32 {
 # ms-prelude: 	const asset = fromHeaps({ ...EmitterState.defaults(), emitRate: v });
 # ms-prelude: 	if (!asset.ok) { unreachable; }
