@@ -186,7 +186,7 @@ function typeName(p: Glsl, t: ShaderType): string {
 		ShaderTypeKind.Matrix => "mat" + String(t.columns),
 		ShaderTypeKind.Array => typeName(p, t.element[0]) + "[" + String(t.length) + "]",
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
-		_ => broken("a " + t.kind.toString() + " is no GLSL value type"),
+		_ => { broken("a " + t.kind.toString() + " is no GLSL value type"); },
 	};
 }
 
@@ -214,7 +214,7 @@ function builtinName(io: ShaderIo): string {
 		Builtin.LocalInvocationIndex => "gl_LocalInvocationIndex",
 		Builtin.WorkgroupId => "gl_WorkGroupID",
 		Builtin.NumWorkgroups => "gl_NumWorkGroups",
-		_ => broken("@builtin " + io.builtin.toString() + " has no GLSL input"),
+		_ => { broken("@builtin " + io.builtin.toString() + " has no GLSL input"); },
 	};
 }
 

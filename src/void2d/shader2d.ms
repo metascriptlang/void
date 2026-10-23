@@ -1,6 +1,5 @@
-// void2d's programs written as MetaScript shader functions. tools/genShaders2d.ms writes their GLSL
-// into shader2dGen.glsl, which shader2d.glsl includes; src/test/shader2dCheck.ms runs them on the
-// CPU.
+// void2d's programs written as MetaScript shader functions. tools/irPrograms.ms prints them into
+// shader2dModules.ms; src/test/shader2dCheck.ms runs them on the CPU.
 
 import {
 	Mat4x4f,

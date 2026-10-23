@@ -1,4 +1,4 @@
-// IR modules built by hand for the printer checks: the blur of src/void2d/shader2dGen.glsl, a
+// IR modules built by hand for the printer checks: the blur of src/void2d/shader2d.ms, a
 // vertex probe, a fragment probe that holds every intrinsic and statement kind, two compute
 // probes, a pair of entries that between them reach every intrinsic and statement kind, and depth
 // comparison.
@@ -151,7 +151,7 @@ export function update(target: ShaderExpr, op: AssignOp, value: ShaderExpr): Sha
 	return s;
 }
 
-// blurVs and blurFs of src/void2d/shader2dGen.glsl, the blur weights left out, as
+// blurVs and blurFs of src/void2d/shader2d.ms, the blur weights left out, as
 // shaderReflectCheck.ms builds them.
 export function blurModule(): ShaderModule {
 	let m = new ShaderModule();

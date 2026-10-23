@@ -1,6 +1,6 @@
 // The foreign program gpuRegistrationFixture.ms registers: the scene copy with alpha forced to 1,
-// over void3d's fullscreen vertex stage. tools/genShadersGpuCopy.ms writes its GLSL into
-// gpuCopyGen.glsl.
+// over void3d's fullscreen vertex stage. tools/irPrograms.ms prints it into
+// gpuCopyModules.ms.
 
 import { CopyBindings, CopyInput } from "../../src/void3d/shader3d";
 import {

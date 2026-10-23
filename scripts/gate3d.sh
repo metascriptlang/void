@@ -375,21 +375,10 @@ run_entries() {
 
 # ---- shaders ------------------------------------------------------------------------------
 #
-# REVIEWS-3D M6 defect 12: nothing checked that a .glsl.h was regenerated from its .glsl, and
-# the M7 light block made the generated header load-bearing. The regeneration and the
-# comparison are scripts/regen-shaders.sh --check, so the gate cannot drift from the script.
+# REVIEWS-3D M6 defect 12: nothing checked that a generated shader module was regenerated from
+# its source. The regeneration and the comparison are scripts/regen-shaders.sh --check, so the
+# gate cannot drift from the script.
 run_shaders() {
-	case "$(uname -s)-$(uname -m)" in
-		Darwin-arm64)  SHDC="deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc" ;;
-		Darwin-*)      SHDC="deps/sokol-tools-bin/bin/osx/sokol-shdc" ;;
-		Linux-aarch64) SHDC="deps/sokol-tools-bin/bin/linux_arm64/sokol-shdc" ;;
-		Linux-*)       SHDC="deps/sokol-tools-bin/bin/linux/sokol-shdc" ;;
-		*)             SHDC="deps/sokol-tools-bin/bin/win32/sokol-shdc.exe" ;;
-	esac
-	if [ ! -f "$SHDC" ]; then
-		skip "shaders: sokol-shdc not found — .glsl.h freshness not checked"
-		return
-	fi
 	if ! bash scripts/regen-shaders.sh --check > "$WORK/shaders.log" 2>&1 && ! grep -q "^stale " "$WORK/shaders.log"; then
 		fail "shaders: scripts/regen-shaders.sh --check failed"
 		cat "$WORK/shaders.log"
@@ -397,7 +386,7 @@ run_shaders() {
 	fi
 	while read -r state header; do
 		case "$state" in
-			fresh) pass "shaders: $header is a fresh regeneration of its .glsl" ;;
+			fresh) pass "shaders: $header is a fresh regeneration of the shader IR" ;;
 			stale) fail "shaders: $header is stale — run scripts/regen-shaders.sh and commit it" ;;
 		esac
 	done < "$WORK/shaders.log"

@@ -1,6 +1,6 @@
 // void2d's programs and their vertex layouts registered with the door, in the order
-// Program2D numbers them (displayList.ms): vertex, sprite, ui, blur. Locations are shdc's
-// ATTR_* slots of shader2d.glsl.
+// Program2D numbers them (displayList.ms): vertex, sprite, ui, blur. Locations are the
+// attribute locations shader2dModules.ms reflects.
 import { DoorAttribute, doorLayout, doorRegisterLayouts, doorRegisterPrograms } from "../gpu/doorGpu.ms";
 import { blurShaderModule, spriteShaderModule, uiShaderModule, void2dShaderModule } from "./shader2dModules.ms";
 import {

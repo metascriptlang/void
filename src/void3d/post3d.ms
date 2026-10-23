@@ -1,5 +1,5 @@
 // void3d's fullscreen passes written as MetaScript shader functions: tone map, bloom and outline.
-// tools/genShaders.ms writes their GLSL into shader3dGen.glsl; src/test/post3dCheck.ms runs them on
+// tools/irPrograms.ms prints them into programModules.ms; src/test/post3dCheck.ms runs them on
 // the CPU.
 
 import {

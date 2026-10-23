@@ -99,7 +99,7 @@ function shaderFunction(name: string, body: ShaderStmt[]): ShaderFunction {
 
 function ret(): ShaderStmt { return stmtOf(StmtKind.Return, new ShaderExpr(), []); }
 
-// blurVs and blurFs of src/void2d/shader2dGen.glsl, the blur weights left out.
+// blurVs and blurFs of src/void2d/shader2d.ms, the blur weights left out.
 function blurModule(): ShaderModule {
 	const f32 = scalarType(ScalarKind.F32);
 	const vec2 = vectorType(ScalarKind.F32, 2);

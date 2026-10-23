@@ -1,6 +1,7 @@
 # The program keys void3d ships (docs/VOID3D.md, M35a, M35, M36, M37). scripts/regen-shaders.sh
-# compiles one sokol-shdc program per row, from the preset's source with the row's features as
-# defines, and writes programTable.h, the table gpu3d.c registers with the GPU door in this order.
+# prints one program per row through tools/irPrograms.ms, from the preset's stages specialized for the
+# row's features, into programModules.ms and programTableData.ms, the table gpu3d.ms registers with
+# the GPU door in this order.
 #
 # module                                program         preset    features                                     vs              fs                    layout
 lit                                     LIT             CORE      -                                            litVs           litFs                 LIT

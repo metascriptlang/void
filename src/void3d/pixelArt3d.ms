@@ -1,5 +1,5 @@
-// The pixel-art preset's programs as MetaScript shader functions. tools/genShadersPixelArt.ms
-// writes their GLSL into pixelArt3dGen.glsl for scripts/regen-shaders.sh. Every scene stage also
+// The pixel-art preset's programs as MetaScript shader functions. tools/irPrograms.ms
+// prints them into programModules.ms for scripts/regen-shaders.sh. Every scene stage also
 // writes the normal target, its alpha the clip depth the post pass outlines and fogs by.
 
 import {

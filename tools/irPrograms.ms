@@ -1,7 +1,9 @@
-// Writes the GPUShaderModuleDescriptor modules from the shader IR, in the shape tools/shaderTables.ms
-// writes from sokol-shdc: one function per program, each target's source under the `when` that
-// builds it. The stages are lowered while this tool compiles (glslIr); the programs are the rows of
-// src/void3d/programKeys.txt and the @program lines of shader2d.glsl and gpuCopy.glsl.
+// Writes the GPUShaderModuleDescriptor modules from the shader IR: one function per program, each
+// target's source under the `when` that builds it. The stages are lowered while this tool compiles
+// (glslIr); the programs are the rows of src/void3d/programKeys.txt, VOID2D_PROGRAMS and
+// GPU_COPY_PROGRAMS. Beside the modules it writes each source's stages as GLSL 450 in sokol-shdc's
+// dialect (void3d.glsl, pixelArt3d.glsl, shader2d.glsl, gpuCopy.glsl), which tools/shaderSlots.ms
+// reads and scripts/regen-shaders.sh --oracle-shdc hands to sokol-shdc.
 // Usage: msc run tools/irPrograms.ms -- <out dir> [--reflection-only]
 // --reflection-only writes a target whose printer refuses the program as its reflection with empty
 // sources and the refusal above the function; without it a refusal stops the tool.
@@ -11,7 +13,10 @@ import { mkdir, readFile, writeFile } from "std/fs";
 import { argv, exit } from "std/process";
 import { glslIr, glslLinkedIr } from "../src/shader/emit";
 import { ProgramSource, descriptorSource, programModule, programSource } from "../src/shader/descriptor";
-import { ShaderTarget } from "../src/shader/layout";
+import { irFromText } from "../src/shader/irText";
+import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
+import { ShaderTarget, uniformBlockLayout } from "../src/shader/layout";
+import { printGlsl450 } from "../src/shader/printGlsl450";
 import {
 	billboardFs,
 	billboardVs,
@@ -194,22 +199,96 @@ function keyedPrograms(): Program[] {
 	return out;
 }
 
-// In name order, as sokol-shdc keeps its programs.
-function listedPrograms(path: string, source: string): Program[] {
-	let out: Program[] = [];
-	for (const line of lines(path)) {
-		const columns = line.trim().split(" ").filter((c) => c != "");
-		if (columns.length == 0 || columns[0] != "@program") { continue; }
-		if (columns.length != 4) { fail(path + ": '" + line + "' is not '@program <name> <vs> <fs>'"); }
+// [program, vertex stage, fragment stage], in name order, as sokol-shdc kept its programs.
+const VOID2D_PROGRAMS: string[][] = [
+	["blur", "blurVs", "blurFs"],
+	["sprite", "spriteVs", "spriteFs"],
+	["ui", "uiVs", "uiFs"],
+	["void2d", "vs", "fs"],
+];
+const GPU_COPY_PROGRAMS: string[][] = [["gpuCopy", "gpuCopyVs", "gpuCopyFs"]];
+
+function listedPrograms(rows: string[][], source: string): Program[] {
+	return rows.map((row) => {
 		let p = new Program();
-		p.name = columns[1];
+		p.name = row[0];
 		p.source = source;
-		p.vertex = columns[2];
-		p.fragment = columns[3];
-		out.push(p);
+		p.vertex = row[1];
+		p.fragment = row[2];
+		return p;
+	});
+}
+
+function parsed(text: string, what: string): ShaderModule {
+	const m = irFromText(text);
+	if (!m.ok) { fail(what + ": " + m.error); }
+	return m.value;
+}
+
+function shdcText(source: string, programs: Program[]): string {
+	let out = "";
+	for (const s of STAGES) {
+		if (s[0] != source) { continue; }
+		const m = parsed(s[2], source + " " + s[1]);
+		const kind = m.entries[0].stage == ShaderStage.Vertex ? "@vs " : "@fs ";
+		out += kind + s[1] + "\n" + printGlsl450(m) + "@end\n\n";
 	}
-	out.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+	for (const p of programs) {
+		out += "@program " + p.name + " " + p.vertex + " " + p.fragment + "\n";
+	}
 	return out;
+}
+
+function blockMembers(p: Program, block: string): string[] {
+	const m = programModule(stageText(p.source, p.vertex), stageText(p.source, p.fragment),
+		p.features);
+	if (!m.ok) { fail(p.name + ": " + m.error); }
+	for (let r = 0; r < m.value.resources.length; r++) {
+		const resource = m.value.resources[r];
+		if (resource.kind != ResourceKind.UniformBlock || resource.name != block) { continue; }
+		const layout = uniformBlockLayout(m.value, r);
+		if (!layout.ok) { fail(p.name + ": " + layout.error); }
+		const members = m.value.structs[resource.type.structIndex].members;
+		let out: string[] = [];
+		for (let i = 0; i < members.length; i++) {
+			out.push(members[i].name + "@" + String(layout.value.offsets[i]));
+		}
+		return out;
+	}
+	fail(p.name + " has no uniform block " + block);
+}
+
+
+function checkFeaturesRead(p: Program): void {
+	const text = printGlsl450(parsed(stageText(p.source, p.vertex), p.vertex)) +
+		printGlsl450(parsed(stageText(p.source, p.fragment), p.fragment));
+	for (const f of p.features) {
+		if (!text.split("\n").includes("#ifdef " + f)) {
+			fail("programKeys.txt: row " + p.name + " asks for " + f + ", which " + p.vertex + " and " +
+				p.fragment + " never read");
+		}
+	}
+}
+function programNamed(programs: Program[], name: string): Program {
+	for (const p of programs) {
+		if (p.name == name) { return p; }
+	}
+	fail("programKeys.txt has no row " + name);
+}
+
+// A dissolve caster writes the head of an emissive dissolve's block (src/void3d/draw.ms
+// applyBlockHead), so that block is the caster's, member for member, and then emissive.
+function checkBlockHead(programs: Program[]): void {
+	const caster = blockMembers(programNamed(programs, "shadowLitTexturedDissolve"),
+		"movingMaterialParams");
+	const emissive = blockMembers(programNamed(programs, "litTexturedDissolveEmissive"),
+		"movingEmissiveMaterialParams");
+	const head = caster.length > 0 ? Number(caster[caster.length - 1].split("@")[1]) + 16 : 0;
+	const expected = caster.concat(["emissive@" + String(head)]);
+	if (emissive.join(" ") != expected.join(" ")) {
+		fail("movingEmissiveMaterialParams (" + emissive.join(" ") +
+			") must be movingMaterialParams (" + caster.join(" ") + ") and then emissive");
+	}
 }
 
 class Counts {
@@ -282,12 +361,21 @@ function main(): void {
 	const _probes = mkdir("out/irPrograms");
 	const _dir = mkdir(out);
 	let counts = new Counts();
-	keep(out + "/programModules.ms", moduleText(keyedPrograms(), "../webgpu/types.ms",
+	const keyed = keyedPrograms();
+	const void2d = listedPrograms(VOID2D_PROGRAMS, "VOID2D");
+	const gpuCopy = listedPrograms(GPU_COPY_PROGRAMS, "GPU_COPY");
+	for (const p of keyed) { checkFeaturesRead(p); }
+	checkBlockHead(keyed);
+	keep(out + "/programModules.ms", moduleText(keyed, "../webgpu/types.ms",
 		"gpu3dShaderModule", reflectionOnly, counts));
-	keep(out + "/shader2dModules.ms", moduleText(listedPrograms("src/void2d/shader2d.glsl",
-		"VOID2D"), "../webgpu/types.ms", "", reflectionOnly, counts));
-	keep(out + "/gpuCopyModules.ms", moduleText(listedPrograms("tests/integration/gpuCopy.glsl",
-		"GPU_COPY"), "../../src/webgpu/types.ms", "", reflectionOnly, counts));
+	keep(out + "/shader2dModules.ms", moduleText(void2d, "../webgpu/types.ms", "", reflectionOnly,
+		counts));
+	keep(out + "/gpuCopyModules.ms", moduleText(gpuCopy, "../../src/webgpu/types.ms", "",
+		reflectionOnly, counts));
+	keep(out + "/void3d.glsl", shdcText("CORE", []));
+	keep(out + "/pixelArt3d.glsl", shdcText("PIXEL_ART", []));
+	keep(out + "/shader2d.glsl", shdcText("VOID2D", void2d));
+	keep(out + "/gpuCopy.glsl", shdcText("GPU_COPY", gpuCopy));
 	console.log("irPrograms: " + String(counts.programs) + " programs, " + String(counts.printed) +
 		" stages printed, " + String(counts.refused) + " target sources refused");
 }

@@ -1,5 +1,5 @@
-// void3d's programs written as MetaScript shader functions. tools/genShaders.ms writes their GLSL
-// into shader3dGen.glsl for scripts/regen-shaders.sh; the native gate runs them on the CPU.
+// void3d's programs written as MetaScript shader functions. tools/irPrograms.ms prints them
+// into programModules.ms for scripts/regen-shaders.sh; the native gate runs them on the CPU.
 
 import {
 	Mat4x4f,
