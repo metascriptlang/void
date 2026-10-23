@@ -1,5 +1,3 @@
-import { Buffer } from "std/core/buffer";
-
 // Void's WebGPU-shaped API: names and fields as WebGPU spells them, docs/GPU.md.
 // A handle is a pool id with sokol's encoding (slot index + generation); 0 is invalid.
 // A fixed array field holds up to the limit Void uses; trailing entries stay zero and are unused.
@@ -517,13 +515,6 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 	if (descriptor.vertexBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.vertexBytecode`); }
 	if (descriptor.fragmentBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.fragmentBytecode`); }
 	if (descriptor.computeBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.computeBytecode`); }
-}
-
-export function shaderBytecodeFromBase64(base64: string): Vec<uint8> {
-	const bytes = Buffer.fromString(base64, "base64");
-	let out: Vec<uint8> = new Array(bytes.byteLength);
-	for (let i = 0; i < out.length; i++) { out[i] = bytes.byteAt(i) as uint8; }
-	return out;
 }
 
 // `width` and `height` are the texture's mip 0; the validator derives the destination mip's size.
