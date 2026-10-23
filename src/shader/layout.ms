@@ -45,7 +45,7 @@ function roundUp(n: int32, to: int32): int32 {
 
 function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int32] {
 	const std140 = rule == LayoutRule.Std140;
-	if (t.kind == ShaderTypeKind.Scalar) { return [4, 4]; }
+	if (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Atomic) { return [4, 4]; }
 	if (t.kind == ShaderTypeKind.Vector) { return [t.rows == 2 ? 8 : 16, 4 * t.rows]; }
 	if (t.kind == ShaderTypeKind.Matrix) {
 		const column = t.rows == 2 && !std140 ? 8 : 16;
@@ -124,7 +124,7 @@ function storageMemberError(m: ShaderModule, t: ShaderType, path: string): strin
 	if (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) {
 		return t.scalar == ScalarKind.Bool ? path + " is a bool, which has no host layout" : "";
 	}
-	if (t.kind == ShaderTypeKind.Matrix) { return ""; }
+	if (t.kind == ShaderTypeKind.Matrix || t.kind == ShaderTypeKind.Atomic) { return ""; }
 	if (t.kind == ShaderTypeKind.Array) { return storageMemberError(m, t.element[0], path); }
 	if (t.kind == ShaderTypeKind.Struct) {
 		for (const f of m.structs[t.structIndex].members) {

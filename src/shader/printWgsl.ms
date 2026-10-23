@@ -26,6 +26,7 @@ import {
 	sameShaderType,
 	scalarType,
 	vectorType,
+	isAtomic,
 	isEffect,
 } from "./ir";
 import { BindingSlot } from "./layout";
@@ -297,8 +298,31 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Sampler => "sampler",
 		ShaderTypeKind.StorageTexture => "texture_storage_2d<" + formatText(t.format) + ", " +
 			accessText(t.access) + ">",
+		ShaderTypeKind.Atomic => "atomic<" + scalarText(t.scalar) + ">",
+		ShaderTypeKind.ExchangeResult => refusal(p, "an atomic exchange result outside the " +
+			"local it initializes"),
 		ShaderTypeKind.Void => refusal(p, "a value of type void"),
 	};
+}
+
+function atomicText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const place = "&" + exprText(p, o[0]);
+	const rest = o.slice(1).map((a) => ", " + exprText(p, a)).join("");
+	const name = match (e.intrinsic) {
+		Intrinsic.AtomicLoad => "atomicLoad",
+		Intrinsic.AtomicStore => "atomicStore",
+		Intrinsic.AtomicAdd => "atomicAdd",
+		Intrinsic.AtomicSub => "atomicSub",
+		Intrinsic.AtomicMax => "atomicMax",
+		Intrinsic.AtomicMin => "atomicMin",
+		Intrinsic.AtomicAnd => "atomicAnd",
+		Intrinsic.AtomicOr => "atomicOr",
+		Intrinsic.AtomicXor => "atomicXor",
+		Intrinsic.AtomicExchange => "atomicExchange",
+		_ => "atomicCompareExchangeWeak",
+	};
+	return name + "(" + place + rest + ")";
 }
 
 function numberText(p: Printer, value: float64): string {
@@ -511,7 +535,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompareLevel => compareText(p, e, true),
 		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "workgroupBarrier()"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "storageBarrier()"),
-		_ => refusal(p, op.toString() + " has no WGSL spelling"),
+		_ => isAtomic(op) ? atomicText(p, e) : refusal(p, op.toString() + " has no WGSL spelling"),
 	};
 }
 
@@ -530,6 +554,7 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 }
 
 function memberName(p: Printer, t: ShaderType, member: int32): string {
+	if (t.kind == ShaderTypeKind.ExchangeResult) { return member == 0 ? "old_value" : "exchanged"; }
 	if (t.kind != ShaderTypeKind.Struct) {
 		return refusal(p, "a field of a " + t.kind.toString());
 	}
@@ -605,8 +630,9 @@ function splitSwizzle(s: ShaderStmt): boolean {
 
 function simpleText(p: Printer, s: ShaderStmt): string {
 	return match (s.kind) {
-		StmtKind.Let => "var " + p.locals[s.local] + " : " +
-			typeText(p, p.fn.locals[s.local].type) +
+		StmtKind.Let => p.fn.locals[s.local].type.kind == ShaderTypeKind.ExchangeResult &&
+			!isVoid(s.expr) ? "var " + p.locals[s.local] + " = " + exprText(p, s.expr) :
+			"var " + p.locals[s.local] + " : " + typeText(p, p.fn.locals[s.local].type) +
 			(isVoid(s.expr) ? "" : " = " + exprText(p, s.expr)),
 		StmtKind.Assign => s.assign == AssignOp.Increment || s.assign == AssignOp.Decrement ?
 			exprText(p, s.target) + assignOperator(s.assign) :

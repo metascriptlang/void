@@ -26,6 +26,7 @@ import {
 	UnaryOp,
 	irErrors,
 	isShift,
+	isAtomic,
 	isEffect,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
@@ -135,6 +136,7 @@ class Printer {
 	ioNames: string[] = [];
 	functionNames: string[] = [];
 	workgroupNames: string[] = [];
+	exchangeNames: string[] = ["", ""];
 	effects: int32[] = [];
 	pairs: Pair[] = [];
 	scope: string[] = [];
@@ -233,7 +235,53 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.StorageTexture => t.shape == TextureShape.D2 ?
 			(texelType(t.format) == "uvec4" ? "uimage2D" : "image2D") :
 			fail(p, "a storage texture of shape " + t.shape.toString()),
+		ShaderTypeKind.Atomic => scalarName(t.scalar),
+		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
 	};
+}
+
+function exchangeSlot(scalar: ScalarKind): int32 { return scalar == ScalarKind.I32 ? 0 : 1; }
+
+function atomicName(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",
+		Intrinsic.AtomicMax => "atomicMax",
+		Intrinsic.AtomicMin => "atomicMin",
+		Intrinsic.AtomicAnd => "atomicAnd",
+		Intrinsic.AtomicOr => "atomicOr",
+		Intrinsic.AtomicXor => "atomicXor",
+		Intrinsic.AtomicCompareExchangeWeak => "atomicCompSwap",
+		_ => "atomicExchange",
+	};
+}
+
+// SPIRV-Cross's GLSL atomics (measured through sokol-shdc): GLSL 4.30 has no atomic load or
+// store, so a load is an add of 0 and a store an exchange.
+function atomicText(p: Printer, e: ShaderExpr): string {
+	if (p.es) { return fail(p, e.intrinsic.toString() + " has no GLSL ES 3.00 form"); }
+	const o = e.operands;
+	const value = match (e.intrinsic) {
+		Intrinsic.AtomicLoad => o[0].type.scalar == ScalarKind.U32 ? "0u" : "0",
+		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
+		_ => o.slice(1).map((a) => expr(p, a)).join(", "),
+	};
+	return atomicName(e.intrinsic) + "(" + expr(p, o[0]) + ", " + value + ")";
+}
+
+function exchangeLet(p: Printer, s: ShaderStmt, at: string): string {
+	const name = p.scope[p.current.params.length + s.local];
+	const o = s.expr.operands;
+	const compare = claim(p, p.globals.concat(p.scope), "compare");
+	p.scope.push(compare);
+	return at + scalarName(o[0].type.scalar) + " " + compare + " = " + expr(p, o[1]) + ";\n" +
+		at + typeName(p, s.expr.type) + " " + name + ";\n" +
+		at + name + ".old_value = atomicCompSwap(" + expr(p, o[0]) + ", " + compare + ", " +
+		expr(p, o[2]) + ");\n" +
+		at + name + ".exchanged = " + name + ".old_value == " + compare + ";\n";
+}
+
+function isExchange(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.AtomicCompareExchangeWeak;
 }
 
 // GLSL ES 3.00 §4.5.3: a fragment shader has no default float precision and no sampler type but
@@ -678,7 +726,11 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "memoryBarrierShared(); barrier()"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "memoryBarrierBuffer(); barrier()"),
-		_ => intrinsicName(e.intrinsic) + "(" + args() + ")",
+		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,
+			"AtomicCompareExchangeWeak outside a " +
+			"local's initializer: atomicCompSwap returns only the old value"),
+		_ => isAtomic(e.intrinsic) ? atomicText(p, e) :
+			intrinsicName(e.intrinsic) + "(" + args() + ")",
 	};
 }
 
@@ -831,6 +883,9 @@ function expr(p: Printer, e: ShaderExpr): string {
 		},
 		ExprKind.Field => {
 			const base = e.operands[0];
+			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
+				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
+			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
 				return fail(p, "Field of a " + base.type.kind.toString());
 			}
@@ -936,6 +991,10 @@ function switchText(p: Printer, s: ShaderStmt, depth: int32): string {
 
 function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 	const at = indent(depth);
+	if (s.kind == StmtKind.Let && isExchange(s.expr) && !p.es) { return exchangeLet(p, s, at); }
+	if (s.kind == StmtKind.Call && isExchange(s.expr)) {
+		return at + atomicText(p, s.expr) + ";\n";
+	}
 	return match (s.kind) {
 		StmtKind.Block => block(p, s.body, depth),
 		StmtKind.Let | StmtKind.Assign | StmtKind.Call => at + simple(p, s) + ";\n",
@@ -1304,6 +1363,18 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 		p.functionNames[f] = f == entry.functionIndex ? "main" :
 			claim(p, p.globals, m.functions[f].name);
 	}
+	let exchanges = "";
+	for (const f of functions) {
+		for (const v of m.functions[f].locals) {
+			const slot = v.type.kind == ShaderTypeKind.ExchangeResult ?
+				exchangeSlot(v.type.scalar) : -1;
+			if (slot < 0 || p.exchangeNames[slot] != "") { continue; }
+			p.exchangeNames[slot] = claim(p, p.globals, slot == 0 ? "AtomicExchangeI32" :
+				"AtomicExchangeU32");
+			exchanges += "struct " + p.exchangeNames[slot] + "\n{\n    " +
+				scalarName(v.type.scalar) + " old_value;\n    bool exchanged;\n};\n\n";
+		}
+	}
 
 	let head = es ? "#version 300 es\n" : "#version 430\n";
 	if (es && entry.stage == ShaderStage.Fragment) {
@@ -1316,6 +1387,7 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 			String(n)).join(", ") + ") in;\n\n";
 	}
 	for (const s of structs) { head += structText(p, s); }
+	head += exchanges;
 	for (const c of constants) {
 		const constant = m.constants[c];
 		head += "const " + declaration(p, constant.type, p.constantNames[c]) + " = " +

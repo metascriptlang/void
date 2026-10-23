@@ -27,6 +27,7 @@ import {
 	scalarType,
 	vectorType,
 	isShift,
+	isAtomic,
 	isEffect,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
@@ -126,6 +127,19 @@ const UPPER_LEFT = "upperLeft3x3";
 
 function inverseName(n: int32): string { return "inverse" + String(n) + "x" + String(n); }
 
+function exchangeSuffix(slot: int32): string { return slot == 0 ? "I32" : "U32"; }
+
+function exchangeText(slot: int32): string {
+	const scalar = slot == 0 ? "int" : "uint";
+	const result = "AtomicExchange" + exchangeSuffix(slot);
+	return "struct " + result + " {\n  " + scalar + " old_value;\n  bool exchanged;\n};\n\n" +
+		"template <typename A>\nstatic inline " + result + " atomicCompareExchangeWeak" +
+		exchangeSuffix(slot) + "(A place, " + scalar + " compare, " + scalar + " value) {\n" +
+		"  bool exchanged = atomic_compare_exchange_weak_explicit(place, &compare, value, " +
+		"memory_order_relaxed, memory_order_relaxed);\n  return " + result +
+		"{compare, exchanged};\n}";
+}
+
 function inverseText(n: int32): string {
 	const mat = "float" + String(n) + "x" + String(n);
 	const body = match (n) {
@@ -187,6 +201,7 @@ class Printer {
 	locals: string[] = [];
 	upperLeft: boolean = false;
 	inverses: int32[] = [];
+	exchanges: boolean[] = [false, false];
 	error: string = "";
 	lines: string[] = [];
 }
@@ -276,8 +291,35 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Sampler => "sampler",
 		ShaderTypeKind.StorageTexture => "texture2d<" + formatTexel(t.format) + ", " +
 			accessText(t.access) + ">",
+		ShaderTypeKind.Atomic => "atomic_" + scalarText(t.scalar),
+		ShaderTypeKind.ExchangeResult => "AtomicExchange" +
+			exchangeSuffix(t.scalar == ScalarKind.I32 ? 0 : 1),
 		ShaderTypeKind.Void => "void",
 	};
+}
+
+function atomicText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const place = "&" + exprText(p, o[0]);
+	const rest = o.slice(1).map((a) => ", " + exprText(p, a)).join("");
+	if (e.intrinsic == Intrinsic.AtomicCompareExchangeWeak) {
+		const slot = o[0].type.scalar == ScalarKind.I32 ? 0 : 1;
+		p.exchanges[slot] = true;
+		return "atomicCompareExchangeWeak" + exchangeSuffix(slot) + "(" + place + rest + ")";
+	}
+	const name = match (e.intrinsic) {
+		Intrinsic.AtomicLoad => "atomic_load_explicit",
+		Intrinsic.AtomicStore => "atomic_store_explicit",
+		Intrinsic.AtomicAdd => "atomic_fetch_add_explicit",
+		Intrinsic.AtomicSub => "atomic_fetch_sub_explicit",
+		Intrinsic.AtomicMax => "atomic_fetch_max_explicit",
+		Intrinsic.AtomicMin => "atomic_fetch_min_explicit",
+		Intrinsic.AtomicAnd => "atomic_fetch_and_explicit",
+		Intrinsic.AtomicOr => "atomic_fetch_or_explicit",
+		Intrinsic.AtomicXor => "atomic_fetch_xor_explicit",
+		_ => "atomic_exchange_explicit",
+	};
+	return name + "(" + place + rest + ", memory_order_relaxed)";
 }
 
 function declText(p: Printer, t: ShaderType, name: string): string {
@@ -561,7 +603,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.WorkgroupBarrier =>
 			computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_threadgroup)"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_device)"),
-		_ => fail(p, op.toString() + " has no MSL spelling"),
+		_ => isAtomic(op) ? atomicText(p, e) : fail(p, op.toString() + " has no MSL spelling"),
 	};
 }
 
@@ -591,6 +633,7 @@ function initializerText(p: Printer, e: ShaderExpr): string {
 }
 
 function memberName(p: Printer, t: ShaderType, member: int32): string {
+	if (t.kind == ShaderTypeKind.ExchangeResult) { return member == 0 ? "old_value" : "exchanged"; }
 	if (t.kind != ShaderTypeKind.Struct) { return fail(p, "a field of a " + t.kind.toString()); }
 	return p.members[t.structIndex][member];
 }
@@ -898,7 +941,7 @@ function threadedOf(p: Printer, index: int32): Threaded {
 }
 
 function naturalExtent(m: ShaderModule, t: ShaderType): [int32, int32] {
-	if (t.kind == ShaderTypeKind.Scalar) { return [4, 4]; }
+	if (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Atomic) { return [4, 4]; }
 	if (t.kind == ShaderTypeKind.Vector) { return t.rows == 2 ? [8, 8] : [16, 16]; }
 	if (t.kind == ShaderTypeKind.Matrix) {
 		const column = t.rows == 2 ? 8 : 16;
@@ -1076,7 +1119,8 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	p.module = m;
 	p.stage = e.stage;
 	p.taken = ["main0", "main0_in", "main0_out", "in", "out", UPPER_LEFT, inverseName(2),
-		inverseName(3), inverseName(4)];
+		inverseName(3), inverseName(4), "AtomicExchangeI32", "AtomicExchangeU32",
+		"atomicCompareExchangeWeakI32", "atomicCompareExchangeWeakU32"];
 	for (const s of m.structs) {
 		p.structs.push(nameIn(p, p.taken, s.name));
 		let scope: string[] = [];
@@ -1151,6 +1195,9 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	}
 	for (let n = 2; n <= 4; n++) {
 		if (p.inverses.includes(n as int32)) { decls.push(inverseText(n as int32)); }
+	}
+	for (let slot = 0; slot < 2; slot++) {
+		if (p.exchanges[slot]) { decls.push(exchangeText(slot as int32)); }
 	}
 	for (const text of functions) { decls.push(text); }
 	const returned = outputs.length > 0 ? "main0_out" : "void";

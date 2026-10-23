@@ -25,6 +25,7 @@ import {
 	TextureShape,
 	UnaryOp,
 	irErrors,
+	isAtomic,
 	isEffect,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
@@ -215,7 +216,68 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.StorageTexture => t.shape == TextureShape.D2 ?
 			"RWTexture2D<" + texelOf(t.format) + ">" :
 			fail(p, "a storage texture of shape " + t.shape.toString()),
+		ShaderTypeKind.Atomic => scalarName(t.scalar),
+		ShaderTypeKind.ExchangeResult => exchangeResult(p, t.scalar),
 	};
+}
+
+function exchangeResult(p: Printer, scalar: ScalarKind): string {
+	const suffix = scalar == ScalarKind.I32 ? "I32" : "U32";
+	return helper(p, "exchange " + suffix, "AtomicExchange" + suffix, (n) => "struct " + n +
+		"\n{\n    " + scalarName(scalar) + " old_value;\n    bool exchanged;\n};\n");
+}
+
+function temporary(p: Printer, name: string): string {
+	const named = claim(p.globals.concat(p.scope), name);
+	p.scope.push(named);
+	p.localsEver.push(named);
+	return named;
+}
+
+function interlockedName(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "InterlockedAdd",
+		Intrinsic.AtomicMax => "InterlockedMax",
+		Intrinsic.AtomicMin => "InterlockedMin",
+		Intrinsic.AtomicAnd => "InterlockedAnd",
+		Intrinsic.AtomicOr => "InterlockedOr",
+		Intrinsic.AtomicXor => "InterlockedXor",
+		_ => "InterlockedExchange",
+	};
+}
+
+// SPIRV-Cross's HLSL atomics: Interlocked* hands the old value back through an out parameter,
+// so an atomic is a statement of its own, a load is an add of 0 and a store an exchange.
+function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string): string {
+	const o = e.operands;
+	const place = expr(p, o[0]);
+	const scalar = scalarName(o[0].type.scalar);
+	if (e.intrinsic == Intrinsic.AtomicCompareExchangeWeak) {
+		if (result == "") {
+			return at + "InterlockedCompareStore(" + place + ", " + expr(p, o[1]) + ", " +
+				expr(p, o[2]) + ");\n";
+		}
+		const compare = temporary(p, "compare");
+		return at + scalar + " " + compare + " = " + expr(p, o[1]) + ";\n" +
+			at + typeName(p, e.type) + " " + result + ";\n" +
+			at + "InterlockedCompareExchange(" + place + ", " + compare + ", " + expr(p, o[2]) +
+			", " + result + ".old_value);\n" +
+			at + result + ".exchanged = " + result + ".old_value == " + compare + ";\n";
+	}
+	const value = match (e.intrinsic) {
+		Intrinsic.AtomicLoad => "0",
+		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
+		_ => expr(p, o[1]),
+	};
+	const exchange = e.intrinsic == Intrinsic.AtomicStore || e.intrinsic == Intrinsic.AtomicExchange;
+	let out = result;
+	let head = "";
+	if (out == "" && exchange) {
+		out = temporary(p, "exchanged");
+		head = at + scalar + " " + out + ";\n";
+	}
+	return head + at + interlockedName(e.intrinsic) + "(" + place + ", " + value +
+		(out == "" ? "" : ", " + out) + ");\n";
 }
 
 function declaration(p: Printer, t: ShaderType, name: string): string {
@@ -646,7 +708,10 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "GroupMemoryBarrierWithGroupSync()"),
 		Intrinsic.StorageBarrier => computeOnly(p, e, "DeviceMemoryBarrierWithGroupSync()"),
-		_ => intrinsicName(e.intrinsic) + "(" + args() + ")",
+		_ => isAtomic(e.intrinsic) ? fail(p, e.intrinsic.toString() + " inside an expression or " +
+			"a for header: Interlocked* hands its result back through an out parameter, so an " +
+			"atomic is a statement or a local's initializer") :
+			intrinsicName(e.intrinsic) + "(" + args() + ")",
 	};
 }
 
@@ -728,6 +793,9 @@ function expr(p: Printer, e: ShaderExpr): string {
 		},
 		ExprKind.Field => {
 			const base = e.operands[0];
+			if (base.type.kind == ShaderTypeKind.ExchangeResult) {
+				return postfixBase(p, base) + (e.index == 0 ? ".old_value" : ".exchanged");
+			}
 			if (base.type.kind != ShaderTypeKind.Struct) {
 				return fail(p, "Field of a " + base.type.kind.toString());
 			}
@@ -811,8 +879,21 @@ function switchText(p: Printer, s: ShaderStmt, depth: int32): string {
 	return text + indent(depth) + "}\n";
 }
 
+function isAtomicCall(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);
+}
+
 function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 	const at = indent(depth);
+	if (s.kind == StmtKind.Call && isAtomicCall(s.expr)) {
+		return atomicStatement(p, s.expr, "", at);
+	}
+	if (s.kind == StmtKind.Let && isAtomicCall(s.expr)) {
+		const name = p.scope[p.current.params.length + s.local];
+		const head = s.expr.intrinsic == Intrinsic.AtomicCompareExchangeWeak ? "" :
+			at + declaration(p, p.current.locals[s.local].type, name) + ";\n";
+		return head + atomicStatement(p, s.expr, name, at);
+	}
 	return match (s.kind) {
 		StmtKind.Block => block(p, s.body, depth),
 		StmtKind.Let | StmtKind.Assign | StmtKind.Call => at + simple(p, s) + ";\n",
@@ -920,7 +1001,7 @@ function constantOrder(p: Printer, e: ShaderExpr, out: int32[]): void {
 
 function packedSize(t: ShaderType): int32 {
 	return match (t.kind) {
-		ShaderTypeKind.Scalar => 4,
+		ShaderTypeKind.Scalar | ShaderTypeKind.Atomic => 4,
 		ShaderTypeKind.Vector => 4 * t.rows,
 		ShaderTypeKind.Matrix => 4 * t.rows * t.columns,
 		ShaderTypeKind.Array => t.length * packedSize(t.element[0]),

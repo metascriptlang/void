@@ -27,6 +27,7 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
+	isAtomic,
 	isShift,
 } from "./ir";
 import {
@@ -123,6 +124,8 @@ class Glsl {
 	paramNames: string[][] = [];
 	localNames: string[][] = [];
 	workgroupNames: string[] = [];
+	exchangeNames: string[] = ["", ""];
+	exchangeMakers: string[] = ["", ""];
 	fn: int32 = -1;
 	samplerless: boolean = false;
 }
@@ -189,8 +192,45 @@ function typeName(p: Glsl, t: ShaderType): string {
 		ShaderTypeKind.Matrix => "mat" + String(t.columns),
 		ShaderTypeKind.Array => typeName(p, t.element[0]) + "[" + String(t.length) + "]",
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
+		ShaderTypeKind.Atomic => scalarName(t.scalar),
+		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
 		_ => { broken("a " + t.kind.toString() + " is no GLSL value type"); },
 	};
+}
+
+function exchangeSlot(scalar: ScalarKind): int32 { return scalar == ScalarKind.I32 ? 0 : 1; }
+
+function atomicName(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",
+		Intrinsic.AtomicMax => "atomicMax",
+		Intrinsic.AtomicMin => "atomicMin",
+		Intrinsic.AtomicAnd => "atomicAnd",
+		Intrinsic.AtomicOr => "atomicOr",
+		Intrinsic.AtomicXor => "atomicXor",
+		Intrinsic.AtomicCompareExchangeWeak => "atomicCompSwap",
+		_ => "atomicExchange",
+	};
+}
+
+function atomicText(p: Glsl, e: ShaderExpr, args: string[]): string {
+	const unsigned = e.operands[0].type.scalar == ScalarKind.U32;
+	const rest = match (e.intrinsic) {
+		Intrinsic.AtomicLoad => unsigned ? "0u" : "0",
+		Intrinsic.AtomicSub => "-(" + args[1] + ")",
+		_ => args.slice(1).join(", "),
+	};
+	return atomicName(e.intrinsic) + "(" + args[0] + ", " + rest + ")";
+}
+
+function exchangeLet(p: Glsl, s: ShaderStmt, indent: string): string {
+	const name = p.localNames[p.fn][s.local];
+	const slot = exchangeSlot(s.expr.operands[0].type.scalar);
+	const args = s.expr.operands.map((a) => expr(p, a));
+	return indent + p.exchangeNames[slot] + " " + name + " = " + p.exchangeNames[slot] + "(" +
+		value(p, s.expr.operands[1]) + ", false);\n" + indent + name + " = " +
+		p.exchangeMakers[slot] + "(" + name + ".old_value, atomicCompSwap(" + args[0] + ", " +
+		name + ".old_value, " + args[2] + "));\n";
 }
 
 function declared(p: Glsl, t: ShaderType, name: string): string {
@@ -326,8 +366,9 @@ function expr(p: Glsl, e: ShaderExpr): string {
 			e.type.scalar == ScalarKind.U32 && e.operands[0].kind == ExprKind.Literal ?
 			integerText(e.operands[0].value) + "u" :
 			typeName(p, e.type) + "(" + value(p, e.operands[0]) + ")",
-		ExprKind.Field => expr(p, e.operands[0]) + "." +
-			p.structFields[e.operands[0].type.structIndex][e.index],
+		ExprKind.Field => e.operands[0].type.kind == ShaderTypeKind.ExchangeResult ?
+			expr(p, e.operands[0]) + (e.index == 0 ? ".old_value" : ".exchanged") :
+			expr(p, e.operands[0]) + "." + p.structFields[e.operands[0].type.structIndex][e.index],
 		ExprKind.Swizzle => expr(p, e.operands[0]) + "." + swizzle(e),
 		ExprKind.Index => expr(p, e.operands[0]) + "[" + value(p, e.operands[1]) + "]",
 	};
@@ -391,6 +432,10 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.TextureSampleCompare => "texture",
 		Intrinsic.TextureSampleCompareLevel => "textureLod",
 		Intrinsic.WorkgroupBarrier | Intrinsic.StorageBarrier => "barrier",
+		Intrinsic.AtomicLoad | Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicSub |
+			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
+			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
+			Intrinsic.AtomicCompareExchangeWeak => atomicName(op),
 	};
 }
 
@@ -415,7 +460,11 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
 		Intrinsic.WorkgroupBarrier => "barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
-		_ => intrinsicName(e.intrinsic) + all,
+		Intrinsic.AtomicCompareExchangeWeak => {
+			broken("AtomicCompareExchangeWeak outside a local's initializer or a statement of " +
+				"its own: atomicCompSwap returns only the old value");
+		},
+		_ => isAtomic(e.intrinsic) ? atomicText(p, e, args) : intrinsicName(e.intrinsic) + all,
 	};
 }
 
@@ -519,6 +568,12 @@ function outputName(p: Glsl): string {
 
 function stmt(p: Glsl, s: ShaderStmt, indent: string): string {
 	const inner = indent + "    ";
+	const exchange = s.expr.kind == ExprKind.Intrinsic &&
+		s.expr.intrinsic == Intrinsic.AtomicCompareExchangeWeak;
+	if (exchange && s.kind == StmtKind.Let) { return exchangeLet(p, s, indent); }
+	if (exchange && s.kind == StmtKind.Call) {
+		return indent + atomicText(p, s.expr, s.expr.operands.map((a) => expr(p, a))) + ";\n";
+	}
 	return match (s.kind) {
 		StmtKind.Block => indent + "{\n" + statements(p, s.body, inner) + indent + "}\n",
 		StmtKind.FeatureIf => opening(s.condition) + "\n" + statements(p, s.body, indent) +
@@ -644,6 +699,18 @@ function nameDeclarations(p: Glsl): void {
 		p.paramNames.push([]);
 		p.localNames.push([]);
 	}
+	for (const f of m.functions) {
+		for (const l of f.locals) {
+			const slot = l.type.kind == ShaderTypeKind.ExchangeResult ?
+				exchangeSlot(l.type.scalar) : -1;
+			if (slot < 0 || p.exchangeNames[slot] != "") { continue; }
+			const suffix = slot == 0 ? "I32" : "U32";
+			const scalar = scalarName(l.type.scalar);
+			p.exchangeNames[slot] = nameStruct(names, "AtomicExchange" + suffix);
+			p.exchangeMakers[slot] = nameFunction(names, "atomicExchangeResult" + suffix,
+				"(" + scalar + ", " + scalar + ")");
+		}
+	}
 	for (const d of m.declarations) {
 		const i = d.index;
 		if (d.kind == DeclarationKind.Struct) {
@@ -702,6 +769,14 @@ export function printGlsl450(m: ShaderModule): string {
 			out += "    " + typeName(p, s.members[f].type) + " " + p.structFields[d.index][f] + ";\n";
 		}
 		out += "};\n";
+	}
+	for (let slot = 0; slot < 2; slot++) {
+		if (p.exchangeNames[slot] == "") { continue; }
+		const t = p.exchangeNames[slot];
+		const scalar = slot == 0 ? "int" : "uint";
+		out += "struct " + t + " {\n    " + scalar + " old_value;\n    bool exchanged;\n};\n" + t +
+			" " + p.exchangeMakers[slot] + "(" + scalar + " compare, " + scalar + " old) {\n" +
+			"    return " + t + "(old, old == compare);\n}\n";
 	}
 	for (const r of m.resources) { out += gated(r.condition, resourceText(p, r)); }
 	for (const direction of [IoDirection.In, IoDirection.Out]) {

@@ -1827,6 +1827,150 @@ export function format(): void {}
 export function workgroupBarrier(): void {}
 export function storageBarrier(): void {}
 
+// WGSL's atomic<i32> and atomic<u32>, in a storage buffer element or workgroup memory. An
+// operation takes it by ref, as WGSL takes &a; the CPU runs one invocation at a time, so each
+// is a plain read-modify-write that returns the old value.
+export struct AtomicI32 {
+	value: int32;
+}
+
+export struct AtomicU32 {
+	value: uint32;
+}
+
+// WGSL's __atomic_compare_exchange_result<T>, its old_value and exchanged.
+export struct AtomicExchangeI32 {
+	oldValue: int32;
+	exchanged: boolean;
+}
+
+export struct AtomicExchangeU32 {
+	oldValue: uint32;
+	exchanged: boolean;
+}
+
+export function atomicLoad(ref a: AtomicI32): int32 { return a.value; }
+export function atomicLoad(ref a: AtomicU32): uint32 { return a.value; }
+export function atomicStore(ref a: AtomicI32, v: int32): void { a.value = v; }
+export function atomicStore(ref a: AtomicU32, v: uint32): void { a.value = v; }
+
+export function atomicAdd(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = old + v;
+	return old;
+}
+
+export function atomicAdd(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = old + v;
+	return old;
+}
+
+export function atomicSub(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = old - v;
+	return old;
+}
+
+export function atomicSub(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = old - v;
+	return old;
+}
+
+export function atomicMax(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = v > old ? v : old;
+	return old;
+}
+
+export function atomicMax(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = v > old ? v : old;
+	return old;
+}
+
+export function atomicMin(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = v < old ? v : old;
+	return old;
+}
+
+export function atomicMin(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = v < old ? v : old;
+	return old;
+}
+
+export function atomicAnd(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = old & v;
+	return old;
+}
+
+export function atomicAnd(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = old & v;
+	return old;
+}
+
+export function atomicOr(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = old | v;
+	return old;
+}
+
+export function atomicOr(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = old | v;
+	return old;
+}
+
+export function atomicXor(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = old ^ v;
+	return old;
+}
+
+export function atomicXor(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = old ^ v;
+	return old;
+}
+
+export function atomicExchange(ref a: AtomicI32, v: int32): int32 {
+	const old = a.value;
+	a.value = v;
+	return old;
+}
+
+export function atomicExchange(ref a: AtomicU32, v: uint32): uint32 {
+	const old = a.value;
+	a.value = v;
+	return old;
+}
+
+// A weak exchange may fail on the GPU though the values match; the CPU's never does.
+export function atomicCompareExchangeWeak(
+	ref a: AtomicI32,
+	compare: int32,
+	v: int32,
+): AtomicExchangeI32 {
+	const old = a.value;
+	if (old == compare) { a.value = v; }
+	return { oldValue: old, exchanged: old == compare };
+}
+
+export function atomicCompareExchangeWeak(
+	ref a: AtomicU32,
+	compare: uint32,
+	v: uint32,
+): AtomicExchangeU32 {
+	const old = a.value;
+	if (old == compare) { a.value = v; }
+	return { oldValue: old, exchanged: old == compare };
+}
+
 // WGSL's discard: the fragment writes nothing. Like TypeGPU's, it has no CPU meaning.
 export function discard(): never {
 	unreachable("discard: a fragment is discarded only on the GPU");

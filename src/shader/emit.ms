@@ -27,6 +27,10 @@ import {
 	typeKind,
 } from "std/meta";
 import {
+	AtomicExchangeI32,
+	AtomicExchangeU32,
+	AtomicI32,
+	AtomicU32,
 	Mat2x2f,
 	Mat3x3f,
 	Mat4x4f,
@@ -85,8 +89,10 @@ import {
 	UnaryOp,
 	arrayType,
 	assignOf,
+	atomicType,
 	binaryOf,
 	conditionOf,
+	exchangeResultType,
 	exprOf,
 	featureOn,
 	holds,
@@ -471,6 +477,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const storageTextureNode = getTypeImpl(StorageTexture2d);
 	const uintTextureNode = getTypeImpl(Texture2dU32);
 	const arrayTextureNode = getTypeImpl(Texture2dArray);
+	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
+	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
+	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
 		getTypeImpl(Vec3f),
@@ -509,8 +518,18 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return false;
 	}
 
+	function atomicOrExchange(t: Node): ShaderType | null {
+		for (let i = 0; i < atomicNodes.length; i++) {
+			if (sameType(t, atomicNodes[i])) { return atomicType(atomicScalars[i]); }
+			if (sameType(t, exchangeNodes[i])) { return exchangeResultType(atomicScalars[i]); }
+		}
+		return null;
+	}
+
 	function glslType(t: Node | null, at: Node): ShaderType {
 		if (t == null) { fail(at, "the expression has no type"); }
+		const atomic = atomicOrExchange(t);
+		if (atomic != null) { return atomic; }
 		const kind = typeKind(t);
 		if (kind == TypeKind.Float32) { return scalarType(ScalarKind.F32); }
 		if (kind == TypeKind.Int32) { return scalarType(ScalarKind.I32); }
@@ -896,7 +915,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"max", "min", "clamp", "mix", "step", "smoothstep", "fma", "pow", "dot", "cross", "length",
 		"distance", "normalize", "reflect", "refract", "transpose", "determinant", "inverse",
 		"round", "inverseSqrt", "atan2", "faceForward", "saturate", "upperLeft3x3", "select", "le",
-		"textureDimensions", "textureStore", "textureLoad",
+		"textureDimensions", "textureStore", "textureLoad", "atomicLoad", "atomicStore",
+		"atomicAdd", "atomicSub", "atomicMax", "atomicMin", "atomicAnd", "atomicOr", "atomicXor",
+		"atomicExchange", "atomicCompareExchangeWeak",
 	];
 	const intrinsics = [
 		Intrinsic.Abs, Intrinsic.Sign, Intrinsic.Floor, Intrinsic.Ceil, Intrinsic.Trunc,
@@ -910,7 +931,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.Inverse, Intrinsic.Round, Intrinsic.InverseSqrt, Intrinsic.Atan2,
 		Intrinsic.FaceForward, Intrinsic.Saturate, Intrinsic.UpperLeft3x3, Intrinsic.Select,
 		Intrinsic.LessThanEqual, Intrinsic.TextureDimensions, Intrinsic.TextureStore,
-		Intrinsic.TextureLoad,
+		Intrinsic.TextureLoad, Intrinsic.AtomicLoad, Intrinsic.AtomicStore, Intrinsic.AtomicAdd,
+		Intrinsic.AtomicSub, Intrinsic.AtomicMax, Intrinsic.AtomicMin, Intrinsic.AtomicAnd,
+		Intrinsic.AtomicOr, Intrinsic.AtomicXor, Intrinsic.AtomicExchange,
+		Intrinsic.AtomicCompareExchangeWeak,
 	];
 
 	function looseType(t: Node | null): ShaderType {
@@ -932,6 +956,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			return textureType(TextureShape.D2Array, ScalarKind.F32);
 		}
 		if (sameType(t, samplerNode)) { return samplerType(); }
+		const atomic = atomicOrExchange(t);
+		if (atomic != null) { return atomic; }
 		if (isAuthorStruct(t)) { return structType(knownStruct(t)); }
 		return new ShaderType();
 	}
@@ -1033,6 +1059,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function memberOf(object: ShaderExpr, n: Node): ShaderExpr {
 		const t = getType(n.object);
+		const atomic = t == null ? null : atomicOrExchange(t);
+		if (atomic != null && atomic.kind == ShaderTypeKind.Atomic) {
+			fail(n, "an atomic is read through atomicLoad and written through atomicStore, " +
+				"as WGSL's");
+		}
+		if (atomic != null) {
+			const old = n.property == "oldValue";
+			return exprOf(ExprKind.Field, old ? scalarType(atomic.scalar) :
+				scalarType(ScalarKind.Bool), old ? 0 : 1, [object]);
+		}
 		if (t == null || !isAuthorStruct(t)) {
 			return swizzleOf(object, n.property, n, looseType(getType(n)));
 		}
@@ -1189,9 +1225,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return at < 0 ? -1 : workgroupIndices[at];
 	}
 
-	function zeroOf(t: ShaderType): ShaderExpr {
-		if (t.kind == ShaderTypeKind.Scalar) { return literal(t, 0.0); }
-		return exprOf(ExprKind.Construct, t, -1, [literal(scalarType(t.scalar), 0.0)]);
+	function zeroed(place: ShaderExpr): ShaderStmt {
+		const t = place.type;
+		if (t.kind == ShaderTypeKind.Atomic) {
+			return stmtOf(StmtKind.Call, intrinsicOf(Intrinsic.AtomicStore, new ShaderType(),
+				[place, literal(scalarType(t.scalar), 0.0)]), []);
+		}
+		if (t.kind == ShaderTypeKind.Scalar) { return assignOf(place, literal(t, 0.0)); }
+		return assignOf(place, exprOf(ExprKind.Construct, t, -1,
+			[literal(scalarType(t.scalar), 0.0)]));
 	}
 
 	// One invocation zeroes every workgroup variable before any reads it, as naga's
@@ -1209,7 +1251,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const t = m.workgroups[w].type;
 			const variable = exprOf(ExprKind.Workgroup, t, w as int32, []);
 			if (t.kind != ShaderTypeKind.Array) {
-				zeroes.push(assignOf(variable, zeroOf(t)));
+				zeroes.push(zeroed(variable));
 				continue;
 			}
 			const at = f.locals.length as int32;
@@ -1222,8 +1264,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			let loop = stmtOf(StmtKind.For,
 				binaryOf(BinaryOp.Less, scalarType(ScalarKind.Bool), counter,
 					literal(u32, t.length as float64)),
-				[assignOf(exprOf(ExprKind.Index, t.element[0], -1, [variable, counter]),
-					zeroOf(t.element[0]))]);
+				[zeroed(exprOf(ExprKind.Index, t.element[0], -1, [variable, counter]))]);
 			loop.init = [start];
 			loop.update = [step];
 			zeroes.push(loop);
@@ -1649,13 +1690,20 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			impl != null && impl.fnName == "discard";
 	}
 
+	function isStdAtomic(callee: Node): boolean {
+		const impl = getImpl(callee);
+		return callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule &&
+			impl != null && impl.fnName.startsWith("atomic");
+	}
+
 	function simple(n: Node): ShaderStmt {
 		if (n.kind == NodeKind.ExprStmt) {
 			const e = n.expr;
 			if (e.kind == NodeKind.CallExpr && isDiscard(e.callee)) {
 				return stmtOf(StmtKind.Discard, new ShaderExpr(), []);
 			}
-			if (e.kind == NodeKind.CallExpr && typeKind(getType(e)) == TypeKind.Void) {
+			if (e.kind == NodeKind.CallExpr &&
+				(typeKind(getType(e)) == TypeKind.Void || isStdAtomic(e.callee))) {
 				return stmtOf(StmtKind.Call, lower(e), []);
 			}
 			if (e.kind != NodeKind.UpdateExpr && e.kind != NodeKind.BinaryExpr) {

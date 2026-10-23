@@ -16,6 +16,8 @@ export enum ShaderTypeKind {
 	Texture,
 	Sampler,
 	StorageTexture,
+	Atomic,
+	ExchangeResult,
 }
 
 export enum TextureShape {
@@ -185,11 +187,31 @@ export enum Intrinsic {
 	TextureSampleCompareLevel,
 	WorkgroupBarrier,
 	StorageBarrier,
+	AtomicLoad,
+	AtomicStore,
+	AtomicAdd,
+	AtomicSub,
+	AtomicMax,
+	AtomicMin,
+	AtomicAnd,
+	AtomicOr,
+	AtomicXor,
+	AtomicExchange,
+	AtomicCompareExchangeWeak,
+}
+
+export function isAtomic(op: Intrinsic): boolean {
+	return match (op) {
+		Intrinsic.AtomicLoad | Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicSub |
+		Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
+		Intrinsic.AtomicXor | Intrinsic.AtomicExchange | Intrinsic.AtomicCompareExchangeWeak => true,
+		_ => false,
+	};
 }
 
 export function isEffect(op: Intrinsic): boolean {
 	return op == Intrinsic.TextureStore || op == Intrinsic.WorkgroupBarrier ||
-		op == Intrinsic.StorageBarrier;
+		op == Intrinsic.StorageBarrier || isAtomic(op) && op != Intrinsic.AtomicLoad;
 }
 
 export class ShaderExpr {
@@ -451,6 +473,19 @@ export function storageTextureType(format: TexelFormat, access: Access): ShaderT
 	return t;
 }
 
+export function atomicType(scalar: ScalarKind): ShaderType {
+	let t = scalarType(scalar);
+	t.kind = ShaderTypeKind.Atomic;
+	return t;
+}
+
+// WGSL's __atomic_compare_exchange_result<T>: member 0 is old_value, member 1 exchanged.
+export function exchangeResultType(scalar: ScalarKind): ShaderType {
+	let t = scalarType(scalar);
+	t.kind = ShaderTypeKind.ExchangeResult;
+	return t;
+}
+
 export function sameShaderType(a: ShaderType, b: ShaderType): boolean {
 	if (a.kind != b.kind || a.scalar != b.scalar || a.rows != b.rows || a.columns != b.columns ||
 		a.length != b.length || a.structIndex != b.structIndex || a.shape != b.shape ||
@@ -568,7 +603,17 @@ function isBlockMember(t: ShaderType): boolean {
 
 function isWorkgroupType(t: ShaderType): boolean {
 	const own = t.kind == ShaderTypeKind.Array && t.length > 0 ? t.element[0] : t;
-	return own.kind == ShaderTypeKind.Scalar || own.kind == ShaderTypeKind.Vector;
+	return own.kind == ShaderTypeKind.Scalar || own.kind == ShaderTypeKind.Vector ||
+		own.kind == ShaderTypeKind.Atomic;
+}
+
+function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
+	if (t.kind == ShaderTypeKind.Atomic) { return true; }
+	if (t.kind == ShaderTypeKind.Struct) {
+		return t.structIndex >= 0 && t.structIndex < m.structs.length &&
+			m.structs[t.structIndex].members.some((f) => holdsAtomic(m, f.type));
+	}
+	return t.element.some((e) => holdsAtomic(m, e));
 }
 
 class Checker {
@@ -607,12 +652,29 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	if (shift && (e.operands.length != 2 || e.operands[1].type.scalar != ScalarKind.U32)) {
 		c.errors.push(owner + ": a shift amount is a u32, as WGSL's");
 	}
-	for (const o of e.operands) { exprErrors(c, o, f, owner); }
+	const atomic = e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);
+	if (atomic && (e.operands.length == 0 || e.operands[0].type.kind != ShaderTypeKind.Atomic)) {
+		c.errors.push(owner + ": " + e.intrinsic.toString() + " works on an atomic, as WGSL's");
+	}
+	for (let i = 0; i < e.operands.length; i++) {
+		const o = e.operands[i];
+		const place = atomic && i == 0 || o.type.kind == ShaderTypeKind.Struct ||
+			o.type.kind == ShaderTypeKind.Array || o.type.kind == ShaderTypeKind.RuntimeArray;
+		if (!place && holdsAtomic(m, o.type)) {
+			c.errors.push(owner + ": an atomic is read and written only through atomic " +
+				"operations, as WGSL's");
+		}
+		exprErrors(c, o, f, owner);
+	}
 }
 
 function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string): void {
 	exprErrors(c, s.expr, f, owner);
 	exprErrors(c, s.target, f, owner);
+	if (holdsAtomic(c.module, s.expr.type) || holdsAtomic(c.module, s.target.type)) {
+		c.errors.push(owner + ": an atomic is read and written only through atomic operations, " +
+			"as WGSL's");
+	}
 	if (s.kind == StmtKind.Let) {
 		inRange(c, s.local, f.locals.length as int32, "local", owner);
 	}
@@ -658,6 +720,10 @@ export function irErrors(m: ShaderModule): string[] {
 			ResourceKind.StorageTexture => r.type.kind == ShaderTypeKind.StorageTexture,
 		};
 		if (!shapeHolds) { c.errors.push(owner + ": its type does not fit a " + r.kind.toString()); }
+		if (r.kind == ResourceKind.StorageBuffer && r.access != Access.ReadWrite &&
+			holdsAtomic(m, r.type)) {
+			c.errors.push(owner + ": it holds atomics, so its access is read_write, as WGSL's");
+		}
 	}
 	for (const io of m.ios) {
 		const owner = "io '" + io.name + "'";
@@ -676,6 +742,12 @@ export function irErrors(m: ShaderModule): string[] {
 	for (const f of m.functions) {
 		const owner = "function '" + f.name + "'";
 		conditionErrors(c, f.condition, owner);
+		for (const v of f.params.concat(f.locals)) {
+			if (holdsAtomic(m, v.type)) {
+				c.errors.push(owner + ": '" + v.name + "' holds an atomic, which lives only in a " +
+					"storage buffer or workgroup memory, as WGSL's");
+			}
+		}
 		for (const s of f.body) { stmtErrors(c, s, f, owner); }
 	}
 	for (const w of m.workgroups) {
