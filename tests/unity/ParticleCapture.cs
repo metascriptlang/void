@@ -26,6 +26,7 @@ public static class ParticleCapture
         public bool lastFrameOnly;
         public bool bakeUV;
         public bool bakeQuads;
+        public bool bakePose;
     }
 
     public static void Run()
@@ -44,6 +45,8 @@ public static class ParticleCapture
         for (int i = 0; i < args.Length - 1; i++)
             if (args[i] == "-only") only = args[i + 1];
         foreach (var c in Cases())
+            if (only == null || c.name.Contains(only)) failed += RunCase(c);
+        foreach (var c in Cases3D())
             if (only == null || c.name.Contains(only)) failed += RunCase(c);
         if (only != null) { Debug.Log("ParticleCapture: done, failed cases = " + failed); if (failed > 0) EditorApplication.Exit(1); return; }
         PlayerSettings.colorSpace = ColorSpace.Linear;
@@ -450,6 +453,205 @@ public static class ParticleCapture
         }
     }
 
+    // ---------- 3D render modes ----------
+    // One World-space particle drifting with a world velocity, seen by a perspective or orthographic camera
+    // that is placed, turned and rolled, from a moved and turned emitter. BakeMesh returns world corners.
+
+    struct Pose
+    {
+        public Vector3 camPos, camEuler, emPos, emEuler;
+        public bool ortho; public float fov, aspect, orthoSize;
+        public static Pose Persp(float camZ = -8f) => new Pose { camPos = new Vector3(1.5f, 2f, camZ), camEuler = new Vector3(10f, -15f, 12f),
+            fov = 50f, aspect = 1.5f, orthoSize = 6f, emPos = new Vector3(2f, 1f, 1f), emEuler = new Vector3(20f, 30f, 40f) };
+        public Pose Orthographic() { var p = this; p.ortho = true; return p; }
+        // A second placement with a different yaw, pitch, roll and emitter turn, so a rule that fits one pose is checked on another.
+        public static Pose Persp2() => new Pose { camPos = new Vector3(-3f, 1f, -6f), camEuler = new Vector3(-25f, 40f, -8f),
+            fov = 40f, aspect = 1.5f, orthoSize = 6f, emPos = new Vector3(-1f, 2f, 0f), emEuler = new Vector3(-30f, -50f, 15f) };
+    }
+
+    struct Mode3D
+    {
+        public ParticleSystemRenderMode mode;
+        public ParticleSystemRenderSpace align;
+        public Vector3 pivot;
+        public float lengthScale, velocityScale, cameraVelocityScale;
+        public bool freeform, rotateWith, allowRoll;
+        public float min, max;
+        public Vector3 velocity;
+        public (float, float) size;
+        public float rotDeg, sizeZ;
+    }
+
+    static Mode3D M(ParticleSystemRenderMode mode, ParticleSystemRenderSpace align = ParticleSystemRenderSpace.View) => new Mode3D {
+        mode = mode, align = align, lengthScale = 1.5f, velocityScale = 0.4f, allowRoll = true, max = 0.5f,
+        velocity = new Vector3(1.5f, 0.5f, 1f), size = (1f, 2f), rotDeg = 25f };
+
+    static Case Render3D(string name, Mode3D m, Pose pose, Action<ParticleSystem, int> moveCamera = null) => new Case {
+        name = name, dt = 0.1f, steps = 3, bakeQuads = true, bakePose = true, cap = 4, beforeStep = moveCamera,
+        settings = S("renderMode", m.mode.ToString(), "alignment", m.align.ToString(),
+            "lengthScale", m.lengthScale, "velocityScale", m.velocityScale, "cameraVelocityScale", m.cameraVelocityScale,
+            "freeformStretching", m.freeform, "rotateWithStretchDirection", m.rotateWith, "allowRoll", m.allowRoll,
+            "pivot", V(m.pivot), "minParticleSize", m.min, "maxParticleSize", m.max,
+            "velocity", V(m.velocity), "startSize3D", "(" + m.size.Item1 + ", " + m.size.Item2 + ", " + (m.sizeZ == 0f ? 1f : m.sizeZ) + ")", "startRotationDeg", m.rotDeg,
+            "simulationSpace", "World", "read", "BakeMesh world corners; pose = camera and emitter transforms per frame"),
+        configure = ps => {
+            Base(ps, 0, 0, 5); Burst1(ps);
+            var main = ps.main; main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.startSize3D = true; main.startSizeX = m.size.Item1; main.startSizeY = m.size.Item2; main.startSizeZ = m.sizeZ == 0f ? 1f : m.sizeZ;
+            main.startRotation = m.rotDeg * Mathf.Deg2Rad;
+            var vo = ps.velocityOverLifetime; vo.enabled = true; vo.space = ParticleSystemSimulationSpace.World;
+            vo.x = m.velocity.x; vo.y = m.velocity.y; vo.z = m.velocity.z;
+            var r = ps.GetComponent<ParticleSystemRenderer>();
+            r.renderMode = m.mode; r.alignment = m.align; r.pivot = m.pivot;
+            r.lengthScale = m.lengthScale; r.velocityScale = m.velocityScale; r.cameraVelocityScale = m.cameraVelocityScale;
+            r.freeformStretching = m.freeform; r.rotateWithStretchDirection = m.rotateWith; r.allowRoll = m.allowRoll;
+            r.minParticleSize = m.min; r.maxParticleSize = m.max;
+            ps.transform.SetPositionAndRotation(pose.emPos, Quaternion.Euler(pose.emEuler));
+            var cam = new GameObject("camera").AddComponent<Camera>(); cam.transform.SetParent(ps.transform, false);
+            cam.orthographic = pose.ortho; cam.orthographicSize = pose.orthoSize; cam.fieldOfView = pose.fov; cam.aspect = pose.aspect;
+            cam.transform.SetPositionAndRotation(pose.camPos, Quaternion.Euler(pose.camEuler)); } };
+
+    static IEnumerable<Case> Cases3D()
+    {
+        var pivot = new Vector3(0.5f, 0.25f, 0.6f);
+        var bb = ParticleSystemRenderMode.Billboard;
+        foreach (var (tag, pose) in new[] { ("", Pose.Persp()), ("ortho_", Pose.Persp().Orthographic()) })
+        {
+            foreach (var al in new[] { ParticleSystemRenderSpace.View, ParticleSystemRenderSpace.World, ParticleSystemRenderSpace.Local,
+                                       ParticleSystemRenderSpace.Facing, ParticleSystemRenderSpace.Velocity })
+            {
+                var a = M(bb, al);
+                string n = "p3d_" + tag + "bb_" + al.ToString().ToLowerInvariant();
+                yield return Render3D(n, a, pose);
+                var withPivot = a; withPivot.pivot = pivot;
+                yield return Render3D(n + "_pivot", withPivot, pose);
+            }
+            var noRoll = M(bb); noRoll.allowRoll = false;
+            yield return Render3D("p3d_" + tag + "bb_view_noroll", noRoll, pose);
+            noRoll.pivot = pivot;
+            yield return Render3D("p3d_" + tag + "bb_view_noroll_pivot", noRoll, pose);
+
+            var st = M(ParticleSystemRenderMode.Stretch);
+            yield return Render3D("p3d_" + tag + "stretch", st, pose);
+            var stPivot = st; stPivot.pivot = pivot;
+            yield return Render3D("p3d_" + tag + "stretch_pivot", stPivot, pose);
+            var ff = st; ff.freeform = true;
+            yield return Render3D("p3d_" + tag + "stretch_freeform", ff, pose);
+            var ffRot = ff; ffRot.rotateWith = true;
+            yield return Render3D("p3d_" + tag + "stretch_freeform_rotwith", ffRot, pose);
+            var ffPivot = ff; ffPivot.pivot = pivot;
+            yield return Render3D("p3d_" + tag + "stretch_freeform_pivot", ffPivot, pose);
+            var stWorld = st; stWorld.align = ParticleSystemRenderSpace.World;
+            yield return Render3D("p3d_" + tag + "stretch_world", stWorld, pose);
+
+            foreach (var mode in new[] { ParticleSystemRenderMode.HorizontalBillboard, ParticleSystemRenderMode.VerticalBillboard })
+            {
+                var h = M(mode);
+                string n = "p3d_" + tag + mode.ToString().Replace("Billboard", "").ToLowerInvariant();
+                yield return Render3D(n, h, pose);
+                h.pivot = pivot;
+                yield return Render3D(n + "_pivot", h, pose);
+            }
+        }
+
+        // Horizontal and Vertical billboards one input at a time: identity pose, then each of the particle's turn,
+        // the emitter's turn, the camera's roll, the camera's yaw and pitch.
+        var still = new Pose { camPos = new Vector3(0f, 0f, -8f), fov = 50f, aspect = 1.5f, orthoSize = 6f, emPos = new Vector3(0f, 0f, 1f) };
+        foreach (var mode in new[] { ParticleSystemRenderMode.HorizontalBillboard, ParticleSystemRenderMode.VerticalBillboard })
+        {
+            string k = "p3d_diag_" + mode.ToString().Replace("Billboard", "").ToLowerInvariant();
+            var d = M(mode); d.rotDeg = 0f; d.velocity = new Vector3(0.5f, 0.2f, 0.3f);
+            yield return Render3D(k + "_base", d, still);
+            var turned = d; turned.rotDeg = 25f;
+            yield return Render3D(k + "_rot25", turned, still);
+            var em = still; em.emEuler = new Vector3(0f, 30f, 0f);
+            yield return Render3D(k + "_emyaw30", d, em);
+            var em2 = still; em2.emEuler = new Vector3(0f, 0f, 40f);
+            yield return Render3D(k + "_emroll40", d, em2);
+            var roll = still; roll.camEuler = new Vector3(0f, 0f, 12f);
+            yield return Render3D(k + "_camroll12", d, roll);
+            var yaw = still; yaw.camEuler = new Vector3(0f, -30f, 0f);
+            yield return Render3D(k + "_camyaw30", d, yaw);
+            var pitch = still; pitch.camEuler = new Vector3(20f, 0f, 0f);
+            yield return Render3D(k + "_campitch20", d, pitch);
+            foreach (var (pk, pv) in new[] { ("px", new Vector3(0.5f, 0f, 0f)), ("py", new Vector3(0f, 0.25f, 0f)), ("pz", new Vector3(0f, 0f, 0.6f)) })
+            {
+                var pd = d; pd.pivot = pv; pd.size = (2f, 3f);
+                yield return Render3D(k + "_" + pk + "_size2x3", pd, still);
+                var pr = turned; pr.pivot = pv; pr.size = (2f, 3f);
+                yield return Render3D(k + "_" + pk + "_size2x3_rot25", pr, still);
+            }
+            var big = d; big.size = (2f, 3f);
+            yield return Render3D(k + "_size2x3", big, still);
+        }
+
+        var deep = M(bb); deep.pivot = pivot; deep.sizeZ = 3f;
+        yield return Render3D("p3d_bb_view_pivot_sizez3", deep, Pose.Persp());
+        var deepWorld = deep; deepWorld.align = ParticleSystemRenderSpace.World;
+        yield return Render3D("p3d_bb_world_pivot_sizez3", deepWorld, Pose.Persp());
+
+        var zWide = M(bb); zWide.pivot = new Vector3(0f, 0f, 0.6f); zWide.size = (2f, 3f);
+        yield return Render3D("p3d_bb_view_pz_size2x3", zWide, Pose.Persp());
+
+        // The camera moves 2 units along its own x per frame; the control keeps it still.
+        var cvs = M(ParticleSystemRenderMode.Stretch); cvs.cameraVelocityScale = 1f;
+        yield return Render3D("p3d_stretch_cvs_static", cvs, Pose.Persp());
+        yield return Render3D("p3d_stretch_cvs_moving", cvs, Pose.Persp(), (ps, s) => {
+            var t = ps.GetComponentInChildren<Camera>().transform; t.position = t.position + t.right * 2f; });
+        var cvsOff = M(ParticleSystemRenderMode.Stretch);
+        yield return Render3D("p3d_stretch_cvs0_moving", cvsOff, Pose.Persp(), (ps, s) => {
+            var t = ps.GetComponentInChildren<Camera>().transform; t.position = t.position + t.right * 2f; });
+
+        // Min and max size against the viewport, near and far under a perspective camera.
+        foreach (var (tag, z) in new[] { ("near", -2f), ("mid", -8f), ("far", -20f) })
+        {
+            var mx = M(bb); mx.size = (5f, 5f); mx.max = 0.1f;
+            yield return Render3D("p3d_clamp_max_" + tag, mx, Pose.Persp(z));
+            var mxWide = M(bb); mxWide.size = (8f, 3f); mxWide.max = 0.1f;
+            yield return Render3D("p3d_clamp_max_wide_" + tag, mxWide, Pose.Persp(z));
+            var mn = M(bb); mn.size = (0.2f, 0.2f); mn.min = 0.1f; mn.max = 0.5f;
+            yield return Render3D("p3d_clamp_min_" + tag, mn, Pose.Persp(z));
+            var sm = M(ParticleSystemRenderMode.Stretch); sm.size = (2f, 5f); sm.max = 0.1f;
+            yield return Render3D("p3d_stretch_clamp_max_" + tag, sm, Pose.Persp(z));
+        }
+        var inside = M(bb); inside.size = (1f, 1f); inside.min = 0.01f; inside.max = 0.5f;
+        yield return Render3D("p3d_clamp_inside", inside, Pose.Persp());
+
+        // The same modes from the second placement, each with a pivot.
+        var pose2 = Pose.Persp2();
+        var pose2Pivot = new Vector3(0.5f, 0.25f, 0.6f);
+        foreach (var al in new[] { ParticleSystemRenderSpace.View, ParticleSystemRenderSpace.World, ParticleSystemRenderSpace.Local,
+                                   ParticleSystemRenderSpace.Facing, ParticleSystemRenderSpace.Velocity })
+        {
+            var a = M(bb, al); a.pivot = pose2Pivot;
+            yield return Render3D("p3d_pose2_bb_" + al.ToString().ToLowerInvariant(), a, pose2);
+        }
+        var p2NoRoll = M(bb); p2NoRoll.allowRoll = false; p2NoRoll.pivot = pose2Pivot;
+        yield return Render3D("p3d_pose2_bb_view_noroll", p2NoRoll, pose2);
+        var p2Stretch = M(ParticleSystemRenderMode.Stretch); p2Stretch.pivot = pose2Pivot;
+        yield return Render3D("p3d_pose2_stretch", p2Stretch, pose2);
+        var p2Freeform = p2Stretch; p2Freeform.freeform = true; p2Freeform.rotateWith = true;
+        yield return Render3D("p3d_pose2_stretch_freeform_rotwith", p2Freeform, pose2);
+        foreach (var mode in new[] { ParticleSystemRenderMode.HorizontalBillboard, ParticleSystemRenderMode.VerticalBillboard })
+        {
+            var h = M(mode); h.pivot = pose2Pivot;
+            yield return Render3D("p3d_pose2_" + mode.ToString().Replace("Billboard", "").ToLowerInvariant(), h, pose2);
+        }
+    }
+
+    static void BakePose(StringBuilder sb, ParticleSystem ps)
+    {
+        var cam = ps.GetComponentInChildren<Camera>();
+        var t = cam.transform;
+        sb.Append(", \"pose\": {\"camera\": {\"pos\": ").Append(V(t.position))
+          .Append(", \"right\": ").Append(V(t.right)).Append(", \"up\": ").Append(V(t.up)).Append(", \"forward\": ").Append(V(t.forward))
+          .Append(", \"orthographic\": ").Append(cam.orthographic ? "true" : "false")
+          .Append(", \"fov\": ").Append(F(cam.fieldOfView)).Append(", \"aspect\": ").Append(F(cam.aspect))
+          .Append(", \"orthographicSize\": ").Append(F(cam.orthographicSize)).Append("}")
+          .Append(", \"emitter\": {\"pos\": ").Append(V(ps.transform.position))
+          .Append(", \"right\": ").Append(V(ps.transform.right)).Append(", \"up\": ").Append(V(ps.transform.up)).Append(", \"forward\": ").Append(V(ps.transform.forward)).Append("}}");
+    }
+
     static void Base(ParticleSystem ps, float rate, float speed, float life)
     {
         var m = ps.main;
@@ -627,6 +829,7 @@ public static class ParticleCapture
         if (dump) { sb.Append(", \"particles\": "); Particles(sb, c, ps, parts); }
         if (c.bakeUV) BakeUV(sb, ps);
         if (c.bakeQuads) BakeQuads(sb, ps);
+        if (c.bakePose) BakePose(sb, ps);
         if (children.Count > 0)
         {
             sb.Append(", \"children\": [");

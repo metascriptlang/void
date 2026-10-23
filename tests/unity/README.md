@@ -61,6 +61,11 @@ The log ends with `PrefabExport: done`.
   boundaries of emission, bursts, wraps and deaths; `tie_world_*` record full particles. The
   `-only <substring>` argument of `ParticleCapture.Run` captures just the cases whose name
   contains it.
+- `p3d_*` cases are the 3D render modes under a perspective camera: `p3d_pose1_*` and `p3d_pose2_*`
+  place the camera and the emitter with a pitch, yaw and roll (the pose is recorded per frame in
+  `pose.camera` and `pose.emitter`), and `particleModeCheck.ms` replays each through the writer and
+  `particleVisualVs`. `cameraVelocityScale` has no golden: `BakeMesh` does not see the camera's
+  velocity, so that term is written by the writer and tested only for its value.
 - Trigger callbacks (`OnParticleTrigger`) are not captured. The trigger cases set one event's
   action to Kill, so the particle count shows when that event fires.
 - Noise is captured as `animatedVelocity` magnitude statistics plus 4 particles. Void's noise
