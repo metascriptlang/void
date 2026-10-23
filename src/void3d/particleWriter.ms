@@ -1,9 +1,10 @@
 // Writes a particle system's live particles as Program.ParticleVisual instances, in the order
 // its renderer sorts them (docs/PARTICLES.md, tier T0's CPU writer; the layout is gpu3d.c's
-// ParticleVisual: position, width, height, anchor, clockwise rotation, uv rect, colour).
+// ParticleVisual: position, width, height, anchor, clockwise rotation, uv rect, colour, world
+// velocity, then the system's render mode, which shader3d.ms particleVisualPoint reads).
 // Trails write the same instances, one view-facing quad per trail segment.
 
-import { Vec3, vec3 } from "../math/math3d";
+import { Vec3, vec3, transformDirection } from "../math/math3d";
 import {
 	ParticleSortMode, RenderMode, RenderAlignment, SimulationSpace, RendererModule,
 	TextureSheetAnimationModule,
@@ -12,15 +13,18 @@ import { unitDraw } from "../particles/curve";
 import { TrailChains, TrailVertex } from "../particles/trail";
 import {
 	ParticleSystem, POS_X, POS_Y, POS_Z, ROT_Z, SIZE_X, SIZE_Y, COLOR_R, COLOR_G, COLOR_B,
-	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V,
+	COLOR_A, FRAME, AGE, DRAW_FLIP_U, DRAW_FLIP_V, MOVE_X, MOVE_Y, MOVE_Z,
 } from "../particles/system";
 import { AtlasTile } from "./billboard";
 import { sortKeyOf } from "./sortKey.h";
 
 // Floats per instance of the Particle layout (position, size, rgba) and of ParticleVisual
-// (position, width, height, anchor, rotation, uv rect, rgba).
+// (position, width, height, anchor, rotation, uv rect, rgba, velocity, look, scale, pull and the
+// emitter's right and up). The render mode is the same for every particle of a system; it rides
+// each instance because a material's one uniform block is the fragment stage's, and the vertex
+// stage has no block of its own to read it from (docs/PARTICLES-RENDER.md A.2).
 export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
-export const PARTICLE_VISUAL_INSTANCE_STRIDE: int32 = 16;
+export const PARTICLE_VISUAL_INSTANCE_STRIDE: int32 = 36;
 
 const RADIX_BITS: int32 = 11;
 const RADIX_BUCKETS: int32 = 2048;
@@ -29,7 +33,8 @@ export enum ParticleWriteError {
 	ShortInstances,
 	// The frames do not cover the texture sheet: one tile per sheet frame, or one without a sheet.
 	FrameCount,
-	// The renderer asks for a mode or alignment the visual billboard program does not draw.
+	// The renderer asks for a mode the program does not draw: Mesh, or anything but a view
+	// billboard for the point program.
 	UnsupportedRenderMode,
 	NonFinite,
 }
@@ -122,12 +127,15 @@ function placed(sys: ParticleSystem, i: int32): Vec3 {
 	return sys.asset.main.simulationSpace == SimulationSpace.Local ? p * sys.world : p;
 }
 
-// Whether `sys` draws at all: false for RenderMode.None, an error for a mode or alignment the
-// billboard programs do not draw.
-function drawn(sys: ParticleSystem): Result<boolean, ParticleWriteError> {
+// Whether `sys` draws at all: false for RenderMode.None, an error for Mesh, and for the point
+// program (`visual` false) for anything but a view billboard, which a point cannot orient.
+function drawn(sys: ParticleSystem, visual: boolean): Result<boolean, ParticleWriteError> {
 	const renderer: Borrow<RendererModule> = sys.asset.renderer;
 	if (renderer.renderMode == RenderMode.None) { return Result.ok(false); }
-	if (renderer.renderMode != RenderMode.Billboard || renderer.alignment != RenderAlignment.View) {
+	if (renderer.renderMode == RenderMode.Mesh) {
+		return Result.err(ParticleWriteError.UnsupportedRenderMode);
+	}
+	if (!visual && (renderer.renderMode != RenderMode.Billboard || renderer.alignment != RenderAlignment.View)) {
 		return Result.err(ParticleWriteError.UnsupportedRenderMode);
 	}
 	return Result.ok(true);
@@ -175,13 +183,13 @@ function finite(out: Span<float32>, at: int32, stride: int32): boolean {
 }
 
 // Writes `sys`'s particles into `out`, drawn first to last, seen from `eye` looking along
-// `forward`. `frames` holds one tile per sheet frame. Returns the instance count.
+// `forward` and moving at `cameraVelocity` (read by cameraVelocityScale). `frames` holds one tile
+// per sheet frame. Returns the instance count.
 export function writeParticles(
 	ref w: ParticleWriter3D, sys: ParticleSystem, frames: Readonly<Span<AtlasTile>>, eye: Vec3,
-	forward: Vec3,
-	out: Span<float32>,
+	forward: Vec3, cameraVelocity: Vec3, out: Span<float32>,
 ): Result<int32, ParticleWriteError> {
-	const visible = drawn(sys);
+	const visible = drawn(sys, true);
 	if (!visible.ok) { return Result.err(visible.error); }
 	if (!visible.value) { return Result.ok(0); }
 	const renderer: Borrow<RendererModule> = sys.asset.renderer;
@@ -200,6 +208,15 @@ export function writeParticles(
 		? renderer.flip.y + sheet.flipV - renderer.flip.y * sheet.flipV
 		: renderer.flip.y;
 	const last: int32 = wanted - 1;
+	// The emitter's axes with its scale taken out, for RenderAlignment.Local.
+	const emitterRight: Vec3 = vec3(1.0, 0.0, 0.0).transformDirection(sys.world).normalized();
+	const emitterUp: Vec3 = vec3(0.0, 1.0, 0.0).transformDirection(sys.world).normalized();
+	const pull: Vec3 = cameraVelocity.scaled(renderer.cameraVelocityScale);
+	// allowRoll off is 1, freeform stretching 2, rotateWithStretchDirection 4.
+	let flags: float32 = 0.0;
+	if (!renderer.allowRoll) { flags = flags + 1.0; }
+	if (renderer.freeformStretching) { flags = flags + 2.0; }
+	if (renderer.rotateWithStretchDirection) { flags = flags + 4.0; }
 	for (let k = 0; k < count; k++) {
 		const i: int32 = w.order[k];
 		const p: Vec3 = placed(sys, i);
@@ -228,6 +245,29 @@ export function writeParticles(
 		out[at + 13] = sys.data[COLOR_G * cap + i];
 		out[at + 14] = sys.data[COLOR_B * cap + i];
 		out[at + 15] = sys.data[COLOR_A * cap + i];
+		const move: Vec3 = vec3(sys.data[MOVE_X * cap + i], sys.data[MOVE_Y * cap + i], sys.data[MOVE_Z * cap + i]);
+		const world: Vec3 = sys.asset.main.simulationSpace == SimulationSpace.Local ?
+			move.transformDirection(sys.world) : move;
+		out[at + 16] = world.x;
+		out[at + 17] = world.y;
+		out[at + 18] = world.z;
+		out[at + 19] = renderer.renderMode as float32;
+		out[at + 20] = renderer.alignment as float32;
+		out[at + 21] = renderer.pivot.z;
+		out[at + 22] = flags;
+		out[at + 23] = renderer.lengthScale;
+		out[at + 24] = renderer.velocityScale;
+		out[at + 25] = renderer.minParticleSize;
+		out[at + 26] = renderer.maxParticleSize;
+		out[at + 27] = pull.x;
+		out[at + 28] = pull.y;
+		out[at + 29] = pull.z;
+		out[at + 30] = emitterRight.x;
+		out[at + 31] = emitterRight.y;
+		out[at + 32] = emitterRight.z;
+		out[at + 33] = emitterUp.x;
+		out[at + 34] = emitterUp.y;
+		out[at + 35] = emitterUp.z;
 		if (!finite(out, at, stride)) { return Result.err(ParticleWriteError.NonFinite); }
 	}
 	return Result.ok(count);
@@ -238,7 +278,7 @@ export function writeParticles(
 export function writeParticlePoints(
 	ref w: ParticleWriter3D, sys: ParticleSystem, eye: Vec3, forward: Vec3, out: Span<float32>,
 ): Result<int32, ParticleWriteError> {
-	const visible = drawn(sys);
+	const visible = drawn(sys, false);
 	if (!visible.ok) { return Result.err(visible.error); }
 	if (!visible.value) { return Result.ok(0); }
 	const stride: int32 = PARTICLE_INSTANCE_STRIDE;
@@ -301,6 +341,10 @@ export function writeTrails(
 			out[at + 13] = (a.color.g + b.color.g) * 0.5;
 			out[at + 14] = (a.color.b + b.color.b) * 0.5;
 			out[at + 15] = (a.color.a + b.color.a) * 0.5;
+			out[at + 16] = 0.0;
+			out[at + 17] = 0.0;
+			out[at + 18] = 0.0;
+			for (let z = 19; z < stride; z++) { out[at + z] = 0.0; }
 			for (let k = 0; k < stride; k++) {
 				if (!Number.isFinite(out[at + k])) {
 					return Result.err(ParticleWriteError.NonFinite);
