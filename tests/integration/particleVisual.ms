@@ -218,7 +218,9 @@ function check(view: CameraView): string {
 
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("framebuffer changed"); }
-	if (stage == 1 && !updateSystem(actorB, 0.5, identity()).ok) { fail("animation refused"); }
+	for (let step = 0; stage == 1 && step < 30; step++) {
+		if (!updateSystem(actorB, 1.0 / 60.0, identity()).ok) { fail("animation refused"); }
+	}
 	if (control == 3) { actorA.data[FRAME * actorA.capacity] = 0.0; }
 	const view = viewOf();
 	view.writeCameraBlock(cameraValues);
