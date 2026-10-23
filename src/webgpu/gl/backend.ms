@@ -776,22 +776,22 @@ let layouts: Pool<LayoutSlot> = newPool<LayoutSlot>("gl", "GPUBindGroupLayout", 
 let bindGroups: Pool<BindGroupSlot> = newPool<BindGroupSlot>("gl", "GPUBindGroup", "bind group", { id: 0 });
 let querySets: Pool<QuerySetSlot> = newPool<QuerySetSlot>("gl", "GPUQuerySet", "query set", { id: 0 });
 
-function stop(message: string): never {
+@noinline function stop(message: string): never {
 	console.log(`webgpu gl: ${message}`);
 	unreachable;
 }
 
-function stopOnMember(member: string, value: string): int32 {
+@noinline function stopOnMember(member: string, value: string): int32 {
 	console.log(`webgpu gl: ${member} '${value}' is not supported`);
 	unreachable;
 }
 
-function stopOnVertexFormat(value: string): VertexFormatInfo {
+@noinline function stopOnVertexFormat(value: string): VertexFormatInfo {
 	console.log(`webgpu gl: vertex attribute format '${value}' is not supported`);
 	unreachable;
 }
 
-function stopOnFormat(member: string, value: string): FormatInfo {
+@noinline function stopOnFormat(member: string, value: string): FormatInfo {
 	console.log(`webgpu gl: ${member} '${value}' is not supported`);
 	unreachable;
 }
@@ -1048,7 +1048,7 @@ function bindingKind(kind: string): BindingKind {
 	};
 }
 
-function checkStage(stage: string): void {
+@noinline function checkStage(stage: string): void {
 	if (stage != "vertex" && stage != "fragment" && stage != "compute") { stopOnMember("GPUShaderBinding.stage", stage); }
 }
 
@@ -1809,7 +1809,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	return { id: slot.id };
 }
 
-function checkSampledView(binding: int32, v: int32): void {
+@noinline function checkSampledView(binding: int32, v: int32): void {
 	const t = textures.slotIndex(views.slots[v].texture);
 	const target = textures.slots[t].target;
 	const dimension = views.slots[v].dimension;
@@ -2049,7 +2049,7 @@ function addResource(ref slot: ShaderSlot, resource: ResourceBinding): void {
 	slot.resourceCount += 1;
 }
 
-function checkPairTexture(slot: ShaderSlot, textureBinding: int32): void {
+@noinline function checkPairTexture(slot: ShaderSlot, textureBinding: int32): void {
 	for (let r = 0; r < slot.resourceCount; r++) {
 		if (slot.resources[r].binding == textureBinding && slot.resources[r].kind == BindingKind.Texture) { return; }
 	}
@@ -2319,7 +2319,7 @@ function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
 	return bytes;
 }
 
-function checkStorageView(entry: GPUBindGroupEntry, v: int32, resource: ResourceBinding): void {
+@noinline function checkStorageView(entry: GPUBindGroupEntry, v: int32, resource: ResourceBinding): void {
 	if (!views.slots[v].storage) {
 		stop(`bind group entry ${entry.binding}: the view's texture lacks STORAGE_BINDING or the view spans several mips`);
 	}
@@ -2336,7 +2336,7 @@ function checkStorageView(entry: GPUBindGroupEntry, v: int32, resource: Resource
 	}
 }
 
-function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
+@noinline function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
 	if (entry.buffer.id != 0) {
 		const b = buffers.slotIndex(entry.buffer.id);
 		for (let u = 0; u < shaders.slots[shader].uniformCount; u++) {
@@ -2593,7 +2593,7 @@ function passExtent(texture: uint32, baseMip: int32): void {
 	pass.height = height;
 }
 
-function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): uint32 {
+@noinline function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): uint32 {
 	if (resolveId == 0) { return 0; }
 	const r = views.slotIndex(resolveId);
 	const resolveTexture = textures.slotIndex(views.slots[r].texture);
@@ -2636,7 +2636,7 @@ function isClear(loadOp: string, index: int32, field: string): boolean {
 	return value == 1;
 }
 
-function checkStoreOp(storeOp: string, index: int32, field: string): void {
+@noinline function checkStoreOp(storeOp: string, index: int32, field: string): void {
 	if (storeOp != "store" && storeOp != "discard") { stopOnMember(attachmentMember(index, field), storeOp); }
 }
 
@@ -3614,7 +3614,7 @@ export function endComputePass(): void {
 	computeBound = { active: false };
 }
 
-function stopOnNoCompute(what: string): void {
+@noinline function stopOnNoCompute(what: string): void {
 	if (computeSupported) { return; }
 	when (webgl2) {
 		stop(`${what} is not available on WebGL2: it has no compute shaders or shader storage buffers (GL 4.3 or GLES 3.1 required)`);
@@ -3711,7 +3711,7 @@ function endLabel(): void {
 	if (debugSupported) { oglPopDebugGroup(); }
 }
 
-function checkGroupsClosed(base: int32, what: string): void {
+@noinline function checkGroupsClosed(base: int32, what: string): void {
 	if (groupDepth != base) { stop(`${what} with ${groupDepth - base} debug groups still open`); }
 }
 
@@ -3763,7 +3763,7 @@ function writeTimestamp(querySet: uint32, queryIndex: int32): void {
 	querySets.slots[q].state[queryIndex] = QUERY_WRITTEN;
 }
 
-function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
+@noinline function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
 	if (writes.querySet.id == 0) { return; }
 	const q = querySets.slotIndex(writes.querySet.id);
 	checkedTimestampWrites(member, writes, querySets.slots[q].timestamp, querySets.slots[q].count);

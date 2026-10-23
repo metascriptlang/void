@@ -568,17 +568,17 @@ let layouts: Pool<LayoutSlot> = newPool<LayoutSlot>("wgpu", "GPUBindGroupLayout"
 let querySets: Pool<QuerySetSlot> = newPool<QuerySetSlot>("wgpu", "GPUQuerySet", "query set", { id: 0 });
 let bindGroups: Pool<BindGroupSlot> = newPool<BindGroupSlot>("wgpu", "GPUBindGroup", "bind group", { id: 0 });
 
-function stop(message: string): never {
+@noinline function stop(message: string): never {
 	console.log(`webgpu wgpu: ${message}`);
 	unreachable;
 }
 
-function stopOnMember(member: string, value: string): int32 {
+@noinline function stopOnMember(member: string, value: string): int32 {
 	console.log(`webgpu wgpu: ${member} '${value}' is not supported`);
 	unreachable;
 }
 
-function stopOnFormat(member: string, value: string): FormatInfo {
+@noinline function stopOnFormat(member: string, value: string): FormatInfo {
 	console.log(`webgpu wgpu: ${member} '${value}' is not supported`);
 	unreachable;
 }
@@ -1501,7 +1501,7 @@ function packLayoutEntry(
 	entries[at + 5] = storageFormat;
 }
 
-function checkBinding(native: ShaderBinding, group: int32): void {
+@noinline function checkBinding(native: ShaderBinding, group: int32): void {
 	const uniform = native.kind == BindingKind.Uniform;
 	const expectedGroup = uniform ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
 	const kind = native.kind.toString();
@@ -1849,7 +1849,7 @@ function storageView(shader: int32, r: int32, v: int32, binding: int32): Ptr<WgV
 	return views.slots[v].native;
 }
 
-function checkResource(shader: int32, binding: int32, kind: BindingKind, group: int32): void {
+@noinline function checkResource(shader: int32, binding: int32, kind: BindingKind, group: int32): void {
 	for (let r = 0; r < shaders.slots[shader].resourceCount; r++) {
 		const resource = shaders.slots[shader].resources[r];
 		if (resource.binding == binding && resource.kind == kind) { return; }
@@ -1997,7 +1997,7 @@ function passExtent(texture: uint32, baseMip: int32): void {
 	pass.height = height;
 }
 
-function checkColorAttachment(attachment: int32, texture: uint32): void {
+@noinline function checkColorAttachment(attachment: int32, texture: uint32): void {
 	const t = textures.slotIndex(texture);
 	const attachable = has(textures.slots[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	if (textures.slots[t].info.depth || !attachable) {
@@ -2005,7 +2005,7 @@ function checkColorAttachment(attachment: int32, texture: uint32): void {
 	}
 }
 
-function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): Ptr<WgViewImpl> {
+@noinline function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): Ptr<WgViewImpl> {
 	const r = views.slotIndex(resolveId);
 	const resolveTexture = textures.slotIndex(views.slots[r].texture);
 	const color = textures.slotIndex(colorTexture);
@@ -2206,7 +2206,7 @@ function texelFormatOf(index: int32, member: string, writes: boolean, copy: GPUT
 	return info;
 }
 
-function checkedBufferLayout(member: string, bytesPerPixel: int32, slot: int32, info: GPUTexelCopyBufferInfo, size: GPUExtent3D): int32 {
+@noinline function checkedBufferLayout(member: string, bytesPerPixel: int32, slot: int32, info: GPUTexelCopyBufferInfo, size: GPUExtent3D): int32 {
 	if (info.offset % 4 != 0) { stop(`${member}.offset ${info.offset} is not a multiple of 4`); }
 	return checkedTexelBufferLayout(member, bytesPerPixel, buffers.slots[slot].size, info, size);
 }
@@ -2370,7 +2370,7 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 	stageBindGroup(index, bindGroup, dynamicOffsets, true);
 }
 
-function checkDispatch(call: string): void {
+@noinline function checkDispatch(call: string): void {
 	if (!computeBound.active) { stop(`${call} outside a compute pass`); }
 	if (computeBound.pipeline == 0) { stop(`${call} without setPipeline`); }
 	const s = shaders.slotIndex(pipelines.slots[pipelines.slotIndex(computeBound.pipeline)].shader);
@@ -2445,7 +2445,7 @@ function markTimestamp(querySet: uint32, queryIndex: int32): void {
 	querySets.slots[querySets.slotIndex(querySet)].state[queryIndex] = QUERY_WRITTEN;
 }
 
-function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
+@noinline function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
 	if (writes.querySet.id == 0) { return; }
 	const q = querySets.slotIndex(writes.querySet.id);
 	checkedTimestampWrites(member, writes, querySets.slots[q].timestamp, querySets.slots[q].count);
@@ -2561,7 +2561,7 @@ export function features(): GPUSupportedFeatures {
 	return { bits: bits };
 }
 
-function checkGroupsClosed(base: int32, what: string): void {
+@noinline function checkGroupsClosed(base: int32, what: string): void {
 	if (groupDepth != base) { stop(`${what} with ${groupDepth - base} debug groups still open`); }
 }
 

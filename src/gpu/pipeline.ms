@@ -161,29 +161,29 @@ export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
 	return false;
 }
 
-function stopOnUnregisteredProgram(program: int32): uint32 {
+@noinline function stopOnUnregisteredProgram(program: int32): uint32 {
 	console.log(`gpu door: program id ${program} was never registered`);
 	unreachable;
 }
 
-function stopOnRefusedShader(program: int32): uint32 {
+@noinline function stopOnRefusedShader(program: int32): uint32 {
 	console.log(`gpu door: sokol refused the shader of program ${program}; ` +
 		"its pool is full or it did not compile");
 	unreachable;
 }
 
-function stopOnRefusedPipeline(key: PipelineKey): uint32 {
+@noinline function stopOnRefusedPipeline(key: PipelineKey): uint32 {
 	console.log(`gpu door: sokol refused pipeline ${key.toString()}; ` +
 		"its pool is full or its description is invalid");
 	unreachable;
 }
 
-function stopOnClosed(call: string): void {
+@noinline function stopOnClosed(call: string): void {
 	console.log(`gpu door: ${call} on a pipeline cache that was closed`);
 	unreachable;
 }
 
-function stopInsidePass(call: string): void {
+@noinline function stopInsidePass(call: string): void {
 	console.log(`gpu door: ${call} with a pass already open; endPass ends it`);
 	unreachable;
 }
@@ -245,6 +245,22 @@ export function pipelineFor(
 			found = i;
 		}
 	}
+	return buildPipeline(cache, program, layout, indexed, state, concrete, format, key, found);
+}
+
+// The cache-miss path of pipelineFor, out of line so its pipeline description and refusal
+// message are not copied into every caller.
+@noinline function buildPipeline(
+	cache: PipelineCache,
+	program: int32,
+	layout: int32,
+	indexed: boolean,
+	state: RenderState,
+	concrete: TargetLayout,
+	format: IndexType,
+	key: PipelineKey,
+	found: int32,
+): uint32 {
 	const shader: uint32 = shaderFor(cache, program);
 	describePipeline(cache.descriptor, shader, layout, indexed, state, concrete, format);
 	const pipeline: uint32 = makePipeline(cache.descriptor);

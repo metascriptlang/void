@@ -595,17 +595,17 @@ let layouts: Pool<LayoutSlot> = newPool<LayoutSlot>("d3d11", "GPUBindGroupLayout
 let querySets: Pool<QuerySetSlot> = newPool<QuerySetSlot>("d3d11", "GPUQuerySet", "query set", { id: 0 });
 let bindGroups: Pool<BindGroupSlot> = newPool<BindGroupSlot>("d3d11", "GPUBindGroup", "bind group", { id: 0 });
 
-function stop(message: string): void {
+@noinline function stop(message: string): void {
 	console.log(`webgpu d3d11: ${message}`);
 	unreachable;
 }
 
-function stopOnMember(member: string, value: string): int32 {
+@noinline function stopOnMember(member: string, value: string): int32 {
 	console.log(`webgpu d3d11: ${member} '${value}' is not supported`);
 	unreachable;
 }
 
-function stopOnFormat(member: string, value: string): FormatInfo {
+@noinline function stopOnFormat(member: string, value: string): FormatInfo {
 	console.log(`webgpu d3d11: ${member} '${value}' is not supported`);
 	unreachable;
 }
@@ -1158,7 +1158,7 @@ function labelPass(label: string | null): boolean {
 	return true;
 }
 
-function checkGroupsClosed(base: int32, what: string): void {
+@noinline function checkGroupsClosed(base: int32, what: string): void {
 	if (groupDepth != base) { stop(`${what} with ${groupDepth - base} debug groups still open`); }
 }
 
@@ -1211,7 +1211,7 @@ function writeTimestamp(querySet: uint32, queryIndex: int32): void {
 	querySets.slots[q].state[queryIndex] = QueryState.Written;
 }
 
-function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
+@noinline function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
 	if (writes.querySet.id == 0) { return; }
 	const q = querySets.slotIndex(writes.querySet.id);
 	checkedTimestampWrites(member, writes, querySets.slots[q].timestamp, querySets.slots[q].count);
@@ -1987,7 +1987,7 @@ function bindingWritable(binding: GPUShaderBinding): boolean {
 	return false;
 }
 
-function checkBinding(native: NativeBinding, group: int32): void {
+@noinline function checkBinding(native: NativeBinding, group: int32): void {
 	const expectedGroup = native.kind == BindingKind.Uniform ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
 	if (group != expectedGroup) {
 		stop(`shader binding ${native.binding} (${native.kind.toString()}) belongs in group ${expectedGroup}, not ${group}`);
@@ -2255,7 +2255,7 @@ function storageViews(ref slot: BindGroupSlot, shader: int32, entry: GPUBindGrou
 	}
 }
 
-function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
+@noinline function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
 	if (entry.buffer.id != 0) {
 		const b = buffers.slotIndex(entry.buffer.id);
 		for (let u = 0; u < shaders.slots[shader].uniformCount; u++) {
@@ -2409,7 +2409,7 @@ function passExtent(texture: uint32, baseMip: int32): void {
 	pass.height = height;
 }
 
-function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): uint32 {
+@noinline function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): uint32 {
 	if (resolveId == 0) { return 0; }
 	const r = views.slotIndex(resolveId);
 	const resolveTexture = textures.slotIndex(views.slots[r].texture);
@@ -2437,7 +2437,7 @@ function isClear(loadOp: string, member: string): boolean {
 	return value == 1;
 }
 
-function checkStoreOp(storeOp: string, member: string): void {
+@noinline function checkStoreOp(storeOp: string, member: string): void {
 	if (storeOp != "store" && storeOp != "discard") { stopOnMember(member, storeOp); }
 }
 
@@ -2713,7 +2713,7 @@ function applyPipeline(p: int32, s: int32): void {
 	bound.uniformsDirty = true;
 }
 
-function checkStripIndexFormat(p: int32): void {
+@noinline function checkStripIndexFormat(p: int32): void {
 	const topology = pipelines.slots[p].topology;
 	if (topology != TOPOLOGY_LINE_STRIP && topology != TOPOLOGY_TRIANGLE_STRIP) { return; }
 	if (pipelines.slots[p].stripIndexFormat != bound.indexFormat) {

@@ -198,7 +198,7 @@ let current: int32 = -1;
 let openPass: PassState = PassState.None;
 let passViews: uint32[5] = [0, 0, 0, 0, 0];
 
-function fail(message: string): never {
+@noinline function fail(message: string): never {
 	console.error("gpu door: " + message);
 	exit(1);
 }
@@ -418,7 +418,7 @@ export function doorLayoutPerInstance(layout: int32): int32 {
 
 // ---- resources ----
 
-export function doorMakeShader(program: int32): uint32 {
+@noinline export function doorMakeShader(program: int32): uint32 {
 	const record = programAt(program);
 	const module = device.createShaderModule(record.source(record.index));
 	if (module.id == 0) { return 0; }
@@ -521,7 +521,7 @@ function renderStateOf(d: Readonly<Span<uint32>>): RenderState {
 	};
 }
 
-export function doorMakePipeline(d: Readonly<Span<uint32>>): uint32 {
+@noinline export function doorMakePipeline(d: Readonly<Span<uint32>>): uint32 {
 	if (d.length < DOOR_PIPELINE_LENGTH) {
 		fail("makePipeline descriptor holds " + String(d.length) + " of " +
 			String(DOOR_PIPELINE_LENGTH) + " words");
@@ -1173,7 +1173,7 @@ export function doorReadScreen(out: Span<uint8>): int32 {
 
 // ---- passes ----
 
-function stopOnOpenPass(call: string): void {
+@noinline function stopOnOpenPass(call: string): void {
 	if (openPass != PassState.None) { fail(call + " with a pass already open; endPass ends it"); }
 }
 

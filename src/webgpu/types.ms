@@ -481,19 +481,19 @@ export struct GPUTexelCopyTextureInfo { texture: GPUTexture; mipLevel: int32; or
 export struct GPUTexelCopyBufferLayout { offset: int64; bytesPerRow: int32; rowsPerImage: int32; }
 export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPerRow: int32; rowsPerImage: int32; }
 
-function stop(message: string): void {
+@noinline function stop(message: string): void {
 	console.log(`webgpu: ${message}`);
 	unreachable;
 }
 
-function stopOnUnported(backend: string, what: string): void {
+@noinline function stopOnUnported(backend: string, what: string): void {
 	console.log(`webgpu ${backend}: ${what} is not ported to ${backend} yet`);
 	unreachable;
 }
 
 // A backend that has not ported a descriptor member calls the helper for its descriptor: a member
 // at WebGPU's default passes, any other value stops naming the member, the value and the backend.
-export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUShaderModuleDescriptor): void {
+@noinline export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUShaderModuleDescriptor): void {
 	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const b = descriptor.bindings[i];
 		const sampleType: string = b.sampleType;
@@ -506,13 +506,13 @@ export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUSha
 	}
 }
 
-export function stopOnUnportedRenderPass(backend: string, descriptor: GPURenderPassDescriptor): void {
+@noinline export function stopOnUnportedRenderPass(backend: string, descriptor: GPURenderPassDescriptor): void {
 	if (descriptor.timestampWrites.querySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.timestampWrites`); }
 	if (descriptor.occlusionQuerySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.occlusionQuerySet`); }
 }
 
 // `width` and `height` are the texture's mip 0; the validator derives the destination mip's size.
-export function checkedTexelWritePitch(
+@noinline export function checkedTexelWritePitch(
 	width: int32,
 	height: int32,
 	mipLevelCount: int32,
@@ -554,7 +554,7 @@ export function checkedTexelWritePitch(
 	return bytesPerRow;
 }
 
-export function checkedBufferCopy(
+@noinline export function checkedBufferCopy(
 	sourceId: uint32,
 	sourceSize: int64,
 	sourceOffset: int64,
@@ -580,7 +580,7 @@ export function checkedBufferCopy(
 }
 
 // A size of 0 means the rest of the buffer, as WebGPU's omitted size does.
-export function checkedMapRange(member: string, id: uint32, bufferSize: int64, offset: int64, size: int64): int64 {
+@noinline export function checkedMapRange(member: string, id: uint32, bufferSize: int64, offset: int64, size: int64): int64 {
 	if (offset < 0 || offset % 8 != 0) { stop(`${member} offset ${offset} of GPUBuffer ${id} is not a non-negative multiple of 8`); }
 	const length = size == 0 ? bufferSize - offset : size;
 	if (length <= 0 || length % 4 != 0) { stop(`${member} size ${length} of GPUBuffer ${id} is not a positive multiple of 4`); }
@@ -589,7 +589,7 @@ export function checkedMapRange(member: string, id: uint32, bufferSize: int64, o
 }
 
 // `width`/`height` are mip 0; `arrayLayers` is the layer count of a 2d texture and the depth of a 3d one.
-export function checkedTexelCopyRegion(
+@noinline export function checkedTexelCopyRegion(
 	member: string,
 	id: uint32,
 	width: int32,
@@ -617,7 +617,7 @@ export function checkedTexelCopyRegion(
 
 // WebGPU copies a depth aspect only whole and only for depth16unorm (both ways) and depth32float
 // (out); a combined depth-stencil format needs an aspect, which GPUTexelCopyTextureInfo does not carry.
-export function checkedDepthTexelCopy(
+@noinline export function checkedDepthTexelCopy(
 	member: string,
 	id: uint32,
 	format: GPUTextureFormat,
@@ -637,7 +637,7 @@ export function checkedDepthTexelCopy(
 }
 
 // The buffer side of a texture<->buffer copy; returns the effective bytesPerRow.
-export function checkedTexelBufferLayout(
+@noinline export function checkedTexelBufferLayout(
 	member: string,
 	bytesPerPixel: int32,
 	bufferSize: int64,
@@ -671,7 +671,7 @@ export function checkedTexelBufferLayout(
 }
 
 // WebGPU lets a mappable buffer carry only the one copy usage that matches its map direction.
-export function checkedBufferUsage(usage: int32): void {
+@noinline export function checkedBufferUsage(usage: int32): void {
 	const mapRead = GPUBufferUsage.MAP_READ as int32;
 	const mapWrite = GPUBufferUsage.MAP_WRITE as int32;
 	if ((usage & mapRead) != 0 && usage != (mapRead | (GPUBufferUsage.COPY_DST as int32))) {
@@ -683,7 +683,7 @@ export function checkedBufferUsage(usage: int32): void {
 }
 
 // The mip count a descriptor asks for (0 means 1), checked against the chain its largest side allows.
-export function checkedMipLevelCount(descriptor: GPUTextureDescriptor, volume: boolean, layers: int32): int32 {
+@noinline export function checkedMipLevelCount(descriptor: GPUTextureDescriptor, volume: boolean, layers: int32): int32 {
 	const requested = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
 	let largest = Math.max(descriptor.size.width, descriptor.size.height);
 	if (volume) { largest = Math.max(largest, layers); }
@@ -696,7 +696,7 @@ export function checkedMipLevelCount(descriptor: GPUTextureDescriptor, volume: b
 }
 
 // `sampleCount` is already resolved (0 means 1); more than one sample is a 2d, single-mip, single-layer attachment.
-export function checkedMultisample(sampleCount: int32, volume: boolean, layers: int32, mipLevels: int32, attachment: boolean): void {
+@noinline export function checkedMultisample(sampleCount: int32, volume: boolean, layers: int32, mipLevels: int32, attachment: boolean): void {
 	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
 		stop("WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer");
 	}
@@ -704,7 +704,7 @@ export function checkedMultisample(sampleCount: int32, volume: boolean, layers: 
 }
 
 // `from*` describe the source texture at mip 0; the regions are already bounds-checked by checkedTexelCopyRegion.
-export function checkedTextureToTextureCopy(
+@noinline export function checkedTextureToTextureCopy(
 	source: GPUTexelCopyTextureInfo,
 	destination: GPUTexelCopyTextureInfo,
 	size: GPUExtent3D,
@@ -736,7 +736,7 @@ export function checkedTextureToTextureCopy(
 }
 
 // `mapMode` is the buffer's current map (0 when unmapped); returns the byte length mapped.
-export function checkedMapAsync(id: uint32, usage: int32, mapMode: int32, bufferSize: int64, mode: int32, offset: int64, size: int64): int64 {
+@noinline export function checkedMapAsync(id: uint32, usage: int32, mapMode: int32, bufferSize: int64, mode: int32, offset: int64, size: int64): int64 {
 	const read = mode == (GPUMapMode.READ as int32);
 	if (!read && mode != (GPUMapMode.WRITE as int32)) { stop(`mapAsync mode ${mode} is not GPUMapMode READ or WRITE`); }
 	const need = read ? GPUBufferUsage.MAP_READ as int32 : GPUBufferUsage.MAP_WRITE as int32;
@@ -746,7 +746,7 @@ export function checkedMapAsync(id: uint32, usage: int32, mapMode: int32, buffer
 }
 
 // A size of 0 means the rest of the mapped range; returns the byte length.
-export function checkedMappedRange(
+@noinline export function checkedMappedRange(
 	member: string,
 	id: uint32,
 	bufferSize: int64,
@@ -765,83 +765,83 @@ export function checkedMappedRange(
 	return length;
 }
 
-export function checkedUnmap(id: uint32, mapMode: int32): void {
+@noinline export function checkedUnmap(id: uint32, mapMode: int32): void {
 	if (mapMode == 0) { stop(`unmap on GPUBuffer ${id}, which is not mapped`); }
 }
 
-export function checkedWriteBuffer(id: uint32, bufferSize: int64, offset: int64, bytes: int64): void {
+@noinline export function checkedWriteBuffer(id: uint32, bufferSize: int64, offset: int64, bytes: int64): void {
 	if (offset < 0 || offset + bytes > bufferSize) {
 		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${id} of ${bufferSize}`);
 	}
 	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
 }
 
-export function checkedViewMips(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): void {
+@noinline export function checkedViewMips(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): void {
 	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > mipLevels) {
 		stop(`view mips ${baseMip}+${mipCount} overrun GPUTexture ${id}, which has ${mipLevels} mips`);
 	}
 }
 
 // A 3d view spans the whole volume slice stack, so it names no layer range.
-export function checkedView3d(baseLayer: int32, layerCount: int32): void {
+@noinline export function checkedView3d(baseLayer: int32, layerCount: int32): void {
 	if (baseLayer != 0 || layerCount > 1) { stop("a 3d view takes no baseArrayLayer or arrayLayerCount"); }
 }
 
 // `layerCount` is resolved (a 0 count already means the rest of the layers).
-export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): void {
+@noinline export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): void {
 	if (baseLayer < 0 || layerCount < 1 || baseLayer + layerCount > layers) {
 		stop(`view layers ${baseLayer}+${layerCount} overrun GPUTexture ${id}, which has ${layers} layers`);
 	}
 }
 
 // `cubeCapable` is the texture's own square, TEXTURE_BINDING, multiple-of-6 test made at creation.
-export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void {
+@noinline export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void {
 	if (!cubeCapable) {
 		stop(`a cube view needs GPUTexture ${id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
 	}
 	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
 }
 
-export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
+@noinline export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
 	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
 		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
 	}
 }
 
-export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void {
+@noinline export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void {
 	if (x < 0 || y < 0 || z < 0 || x > limit || y > limit || z > limit) {
 		stop(`dispatchWorkgroups ${x},${y},${z} is outside 0..${limit}`);
 	}
 }
 
 // `groupBase` is the depth the open pass (or none) started at: a pass cannot pop a group it did not push.
-export function checkedPopDebugGroup(groupDepth: int32, groupBase: int32): void {
+@noinline export function checkedPopDebugGroup(groupDepth: int32, groupBase: int32): void {
 	if (groupDepth <= groupBase) { stop("popDebugGroup without a matching pushDebugGroup"); }
 }
 
 // `slices` is the depth of the 3d view's mip.
-export function checkedDepthSlice(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): void {
+@noinline export function checkedDepthSlice(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): void {
 	if (slice < 0 || slice >= slices) {
 		stop(`colorAttachments[${attachment}].depthSlice ${slice} is outside the ${slices} slices of mip ${baseMip} of GPUTexture ${textureId}`);
 	}
 }
 
-export function checkedNoDepthSlice(attachment: int32, slice: int32): void {
+@noinline export function checkedNoDepthSlice(attachment: int32, slice: int32): void {
 	if (slice != 0) { stop(`colorAttachments[${attachment}].depthSlice ${slice} needs a 3d view`); }
 }
 
 // A pass width of 0 means no attachment has set the extent yet.
-export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void {
+@noinline export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void {
 	if (passWidth != 0 && (passWidth != width || passHeight != height)) { stop("render pass attachments differ in size"); }
 }
 
 // `member` is the attachment's field, such as `colorAttachments[0].view`.
-export function checkedSingleSubresource(member: string, attachable: boolean): void {
+@noinline export function checkedSingleSubresource(member: string, attachable: boolean): void {
 	if (!attachable) { stop(`${member} spans several mips or layers: a render attachment is one mip of one layer`); }
 }
 
 // The sizes are the color view's and the resolve view's own mip.
-export function checkedResolveTarget(
+@noinline export function checkedResolveTarget(
 	attachment: int32,
 	colorSamples: int32,
 	colorWidth: int32,
@@ -855,32 +855,32 @@ export function checkedResolveTarget(
 	}
 }
 
-export function checkedSamplerAnisotropy(maxAnisotropy: int32, allLinear: boolean): void {
+@noinline export function checkedSamplerAnisotropy(maxAnisotropy: int32, allLinear: boolean): void {
 	if (maxAnisotropy > 1 && !allLinear) {
 		stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter");
 	}
 }
 
 // A lodMaxClamp of 0 means WebGPU's default of 32; returns the effective maximum.
-export function checkedSamplerLod(lodMinClamp: float32, lodMaxClamp: float32): float32 {
+@noinline export function checkedSamplerLod(lodMinClamp: float32, lodMaxClamp: float32): float32 {
 	const maxLod: float32 = lodMaxClamp == 0 ? 32.0 : lodMaxClamp;
 	if (maxLod < lodMinClamp) { stop(`GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${lodMinClamp}`); }
 	return maxLod;
 }
 
-export function checkedDispatchIndirect(id: uint32, usage: int32, bufferSize: int64, offset: int64): void {
+@noinline export function checkedDispatchIndirect(id: uint32, usage: int32, bufferSize: int64, offset: int64): void {
 	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { stop(`dispatchWorkgroupsIndirect: GPUBuffer ${id} was created without INDIRECT`); }
 	if (offset < 0 || offset % 4 != 0 || offset + 12 > bufferSize) {
 		stop(`dispatchWorkgroupsIndirect offset ${offset} is not a multiple of 4 with 12 bytes inside GPUBuffer ${id} of ${bufferSize}`);
 	}
 }
 
-export function checkedQuerySetCount(count: int32): void {
+@noinline export function checkedQuerySetCount(count: int32): void {
 	if (count < 1 || count > 4096) { stop(`GPUQuerySetDescriptor.count ${count} is outside 1..4096`); }
 }
 
 // `count` is the query set's size; an occlusion set cannot take timestamp writes.
-export function checkedTimestampWrites(member: string, writes: GPUPassTimestampWrites, timestamp: boolean, count: int32): void {
+@noinline export function checkedTimestampWrites(member: string, writes: GPUPassTimestampWrites, timestamp: boolean, count: int32): void {
 	if (!timestamp) { stop(`${member}.querySet is an occlusion set: a timestamp set is required`); }
 	const begin = writes.beginningOfPassWriteIndex;
 	const end = writes.endOfPassWriteIndex;
@@ -893,7 +893,7 @@ export function checkedTimestampWrites(member: string, writes: GPUPassTimestampW
 }
 
 // Each query resolves to 8 bytes; returns that byte length.
-export function checkedResolveQuerySet(
+@noinline export function checkedResolveQuerySet(
 	setCount: int32,
 	firstQuery: int32,
 	queryCount: int32,
