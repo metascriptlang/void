@@ -102,10 +102,10 @@ when (webgpu) {
 	export function gpuCopyShaderModule(): GPUShaderModuleDescriptor {
 		return {
 			label: "gpuCopy",
-			vertexCode: "static float2 position;\nstatic float4 clip_1;\n\nvoid fullscreenVs()\n{\n    clip_1 = float4(position, 0.5, 1.0);\n    return;\n}\n\nstruct StageInput\n{\n    float2 position : TEXCOORD0;\n};\n\nstruct StageOutput\n{\n    float4 clip_1 : SV_Position;\n};\n\nStageOutput main(StageInput stage_input)\n{\n    position = stage_input.position;\n    fullscreenVs();\n    StageOutput stage_output;\n    stage_output.clip_1 = clip_1;\n    return stage_output;\n}\n",
+			vertexCode: "",
 			vertexEntryPoint: "main",
 			vertexBytecode: shaderBytecodeFromBase64(DXBC_799135855c29ca46b435b7c47d28e3fcb6a7809ed3805e9cf7e304342f8c8578),
-			fragmentCode: "Texture2D<float4> sourceTexture : register(t0);\n\nstatic float4 position;\nstatic float4 fragColor;\n\nuint2 textureSize(Texture2D<float4> t, uint level)\n{\n    uint width;\n    uint height;\n    uint levels;\n    t.GetDimensions(level, width, height, levels);\n    return uint2(width, height);\n}\n\nvoid gpuCopyFs()\n{\n    int2 size = int2(textureSize(sourceTexture, uint(0)));\n    int2 p = clamp(int2(position.xy), int2(0, 0), size - int2(1, 1));\n    fragColor = float4(sourceTexture.Load(int3(p, 0)).xyz, 1.0);\n    return;\n}\n\nstruct StageInput\n{\n    float4 position : SV_Position;\n};\n\nstruct StageOutput\n{\n    float4 fragColor : SV_Target0;\n};\n\nStageOutput main(StageInput stage_input)\n{\n    position = stage_input.position;\n    position.w = 1.0 / position.w;\n    gpuCopyFs();\n    StageOutput stage_output;\n    stage_output.fragColor = fragColor;\n    return stage_output;\n}\n",
+			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_b394fd50df62f3bd67d3dcf124f8ae7c5a1ea6c8519ad03ce095e42bf5cf3bd4),
 			bindings: [
