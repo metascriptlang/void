@@ -322,17 +322,24 @@ export function attributeSource(r: Reflection): string[] {
 }
 
 // One `export function <name>ShaderModule()` as tools/shaderTables.ms writes it.
-export function descriptorSource(name: string, s: ProgramSource): string {
+export function isComputeSource(s: ProgramSource): boolean {
+	return s.computeCode != "" || s.reflection.workgroupSize[0] > 0;
+}
+
+export function descriptorSource(name: string, s: ProgramSource, bytecode: string[]): string {
 	const refused = s.refusal != "" ? "\t// " + s.refusal + "\n" : "";
-	const stages = s.computeCode != "" || s.reflection.workgroupSize[0] > 0 ?
+	const stages = isComputeSource(s) ?
 		"\t\t\tcomputeCode: " + quotedSource(s.computeCode) + ",\n" +
 		"\t\t\tcomputeEntryPoint: " + quotedSource(s.entryPoint) + ",\n" +
+		"\t\t\tcomputeBytecode: " + bytecode[0] + ",\n" +
 		"\t\t\tworkgroupSize: [" + s.reflection.workgroupSize.map((n) => String(n)).join(", ") +
 		"],\n" :
 		"\t\t\tvertexCode: " + quotedSource(s.vertexCode) + ",\n" +
 		"\t\t\tvertexEntryPoint: " + quotedSource(s.entryPoint) + ",\n" +
+		"\t\t\tvertexBytecode: " + bytecode[0] + ",\n" +
 		"\t\t\tfragmentCode: " + quotedSource(s.fragmentCode) + ",\n" +
-		"\t\t\tfragmentEntryPoint: " + quotedSource(s.entryPoint) + ",\n";
+		"\t\t\tfragmentEntryPoint: " + quotedSource(s.entryPoint) + ",\n" +
+		"\t\t\tfragmentBytecode: " + bytecode[1] + ",\n";
 	return refused + "\texport function " + name + "ShaderModule(): GPUShaderModuleDescriptor {\n" +
 		"\t\treturn {\n" +
 		"\t\t\tlabel: " + quotedSource(name) + ",\n" +

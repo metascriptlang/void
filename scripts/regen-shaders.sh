@@ -106,10 +106,42 @@ programTable() {
 
 # The tools are native binaries that cannot open an MSYS /tmp path, so they write under out/.
 IR=out/irModules
+DXBC=src/shader/dxbc
+FXC="${FXC-/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/fxc.exe}"
 irModules() {
 	rm -rf "$IR"
-	"${MSC:-msc}" run tools/irPrograms.ms -- "$IR" > "$SCRATCH/ir.log" 2>&1 ||
+	fxc=()
+	if [ -n "$FXC" ] && [ -x "$FXC" ]; then
+		fxc=(--fxc "$(cygpath -m "$FXC" 2>/dev/null || echo "$FXC")")
+	fi
+	"${MSC:-msc}" run tools/irPrograms.ms -- "$IR" "$DXBC" "${fxc[@]}" > "$SCRATCH/ir.log" 2>&1 ||
 		{ cat "$SCRATCH/ir.log"; echo "irPrograms failed"; exit 1; }
+	grep "^dxbc miss" "$SCRATCH/ir.log" || true
+}
+
+# Without fxc (macOS, Linux) a missing blob is reported, not stale, so a regen there stays usable:
+# the stage keeps no bytecode and the D3D11 backend compiles its HLSL at load.
+dxbcCache() {
+	for blob in "$IR"/dxbc/*.dxbc; do
+		[ -e "$blob" ] || continue
+		if [ "$CHECK" = 1 ]; then
+			echo "stale $DXBC/$(basename "$blob") (missing)"
+			STALE=1
+		else
+			mkdir -p "$DXBC"
+			mv "$blob" "$DXBC/"
+		fi
+	done
+	for blob in "$DXBC"/*.dxbc; do
+		[ -e "$blob" ] || continue
+		grep -qx "$(basename "$blob" .dxbc)" "$IR/dxbc.used" && continue
+		if [ "$CHECK" = 1 ]; then
+			echo "stale $blob (unused)"
+			STALE=1
+		else
+			rm "$blob"
+		fi
+	done
 }
 
 # The C side of void2d's uniform blocks and slots for batcher.c, without sokol_gfx.h.
@@ -150,7 +182,7 @@ stagesOf() {
 # A module's reflection: every line but the header and the sources, each program's bindings
 # sorted, since shdc does not list them by slot.
 reflectionOf() {
-	tr -d "\r" < "$1" | tail -n +2 | grep -v -e 'Code: "' -e '^	// ' | awk '
+	tr -d "\r" < "$1" | tail -n +2 | grep -v -e 'Code: "' -e 'Bytecode: ' -e '^	// ' | awk '
 		/bindings: \[/ { print; open = 1; n = 0; next }
 		open && /^\t*\],/ { asort(held); for (i = 1; i <= n; i++) print held[i]; delete held; open = 0 }
 		open { held[++n] = $0; next }
@@ -214,6 +246,7 @@ done
 settle "$SCRATCH/programModules.ms" src/void3d/programModules.ms
 settle "$SCRATCH/shader2dModules.ms" src/void2d/shader2dModules.ms
 settle "$SCRATCH/gpuCopyModules.ms" tests/integration/gpuCopyModules.ms
+dxbcCache
 slots "$IR/shader2d.glsl" src/void2d/shader2dSlots.h VOID2D_SHADER2D_SLOTS_H
 
 [ "$CHECK" = 1 ] && exit "$STALE"

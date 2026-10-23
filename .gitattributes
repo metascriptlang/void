@@ -6,5 +6,6 @@
 *.ttf binary
 tests/displayList/*.txt -text
 *.glb binary
+*.dxbc binary
 scripts/scriptEscapes.txt -text
 tests/golden/moduleRows.txt -text
