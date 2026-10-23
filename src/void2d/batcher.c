@@ -753,12 +753,7 @@ static void uploadGlyphPages(void) {
 		int size = void2dGlyphPageSize(page);
 		const int *box = void2dGlyphPageUploadBox(page);
 		int w = box[2] - box[0], h = box[3] - box[1];
-		// Metal's door stops on a partial write, so it keeps the whole page.
-#ifdef __APPLE__
-		int whole = 1;
-#else
 		int whole = (w >= size && h >= size);
-#endif
 		if (whole) {
 			doorUpdateTexture(s_pageImg[page], void2dGlyphPageData(page), (int64_t)bytes);
 		} else {
