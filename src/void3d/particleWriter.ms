@@ -137,7 +137,9 @@ function drawn(sys: ParticleSystem, visual: boolean): Result<boolean, ParticleWr
 	if (renderer.renderMode == RenderMode.Mesh) {
 		return Result.err(ParticleWriteError.UnsupportedRenderMode);
 	}
-	if (!visual && (renderer.renderMode != RenderMode.Billboard || renderer.alignment != RenderAlignment.View)) {
+	if (!visual
+		&& (renderer.renderMode != RenderMode.Billboard
+			|| renderer.alignment != RenderAlignment.View)) {
 		return Result.err(ParticleWriteError.UnsupportedRenderMode);
 	}
 	return Result.ok(true);
@@ -247,7 +249,8 @@ export function writeParticles(
 		out[at + 13] = sys.data[COLOR_G * cap + i];
 		out[at + 14] = sys.data[COLOR_B * cap + i];
 		out[at + 15] = sys.data[COLOR_A * cap + i];
-		const move: Vec3 = vec3(sys.data[MOVE_X * cap + i], sys.data[MOVE_Y * cap + i], sys.data[MOVE_Z * cap + i]);
+		const move: Vec3 = vec3(
+			sys.data[MOVE_X * cap + i], sys.data[MOVE_Y * cap + i], sys.data[MOVE_Z * cap + i]);
 		const world: Vec3 = sys.asset.main.simulationSpace == SimulationSpace.Local ?
 			move.transformDirection(sys.world) : move;
 		out[at + 16] = world.x;

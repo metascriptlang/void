@@ -357,7 +357,9 @@ export function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
 // largest size (0 for none), as fractions of the viewport width at the particle; `pull` is the
 // camera's velocity times cameraVelocityScale; the emitter's axes serve Local. A zeroed instance
 // is the camera-facing billboard. Each rule is Unity's, measured (docs/PARTICLES-RENDER.md A.2).
-function particleVisualPoint(input: ParticleVisualAttributes, corner: Vec2f, b: VertexBindings): Vec3f {
+function particleVisualPoint(
+	input: ParticleVisualAttributes, corner: Vec2f, b: VertexBindings,
+): Vec3f {
 	const root = input.root;
 	const shape = input.shape;
 	const velocity = input.velocity;
