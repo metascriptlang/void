@@ -506,11 +506,6 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 	}
 }
 
-@noinline export function stopOnUnportedRenderPass(backend: string, descriptor: GPURenderPassDescriptor): void {
-	if (descriptor.timestampWrites.querySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.timestampWrites`); }
-	if (descriptor.occlusionQuerySet.id != 0) { stopOnUnported(backend, `GPURenderPassDescriptor.occlusionQuerySet`); }
-}
-
 // `width` and `height` are the texture's mip 0; the validator derives the destination mip's size.
 @noinline export function checkedTexelWritePitch(
 	width: int32,

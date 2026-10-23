@@ -210,7 +210,7 @@ for you:
 - **Goldens:** main's single `conformance:metal-gpu-rounding` row is replaced by the branch's 18
   `@metal` budgets, which cover the same scenes. `regen-shaders.sh` reads its language list from
   `src/shader/program.ms` `SHDC_LANGUAGES`, as main does.
-- **Capture:** `voidMetalReadDrawable` is the only macOS readback. Main's sokol
+- **Capture:** `voidMetalReadDrawable` was the only macOS readback (since 26da77a9 the Apple capture reads through `doorReadScreen`). Main's sokol
   `voidWindowReadRgba` is gone, and `VOID_CAPTURE_SLOTS` is 3, as on main.
 - **Measured on the Mac (msc `fce7770d3`):**
   - `msc test src/test/index.ms`: all-off 1931/1931, all-on 2323/2323.
@@ -241,7 +241,8 @@ authored set, and a Metal frame passes within the cross-backend bound (docs/TEST
 `tests/PENDING.md`. That needs the D3D11 images, and only your machine renders them.
 
 - **Ask:** commit `tests/golden3d/d3d11/<baseline>_<frame>.png` for every key in gate3d's
-  `baseline_names` (18 baselines × frames 1 6 11 16, 320x240), converted from the
+  `baseline_names` (18 baselines × frames 1 6 11 16, at their capture size: 1280x720 for the
+  campfire entries), converted from the
   `out/tmp/capture/<key>.ppm` copies whose SHA-256 matches `docs/baselines3d.sha256`. Please
   convert only a matching copy, and check that each PNG decodes back to those bytes. For a key
   `tests/PENDING3D.md` holds (`capture-m14forward`, `capture-m16anchor`), please also commit
@@ -257,6 +258,56 @@ authored set, and a Metal frame passes within the cross-backend bound (docs/TEST
     60 frames that change nothing draw 0.
   - Neon `voidDraw` draws and receives pointer input.
   - `nm` finds 0 sokol symbols in all three.
+
+### 2026-10-23, the first full Mac gate on the branch
+
+Run on `17c5a033`, msc `a0eba215c`. `gate.sh`: 17 FAIL, and 6 of them were not in main's Mac
+baseline (`~/metascript/.wt/baseline/void-mac-5dfb8ed.fails`). Golden metal: 15 pass, 105
+pending, 0 fail of 120. `gate3d.sh` had never run on a Mac: 51 FAIL. The fixes below are on the
+branch. Each one is checked here per file; the full gate has not run again yet.
+
+- **Changes that reach your side:**
+  - `d30e92cd`: `src/sokol/gpu.ms` imports `../gpu/doorGpu`. The bridges call the door, and an
+    entry that imported only `gpu.ms` (`fbTrap`, `viewIdAfterRecreate`, `viewSlotsRetired`,
+    `mainCardTable`) failed to link. On Windows, `bridgeWin.c` calls `doorShutdown` the same way.
+  - `403ebda7`: the `tests/aborts/writeBufferRewrite*` programs open `openTestDevice()` from
+    the new `src/test/testDevice.ms`. That is WARP on Windows, built as before, and the system
+    device on macOS. Not built on Windows yet.
+  - `c571a1ae`: the multi-line HLSL and GLSL literals in `webgpuD3d11Check.ms` and
+    `webgpuGlCheck.ms` now use `\n`. gate.sh's string-literal style check refused them.
+  - `4c041828`: `doorShortPassDescriptor` and `doorShortPipelineDescriptor` import
+    `doorBeginPass`/`doorMakePipeline` from `doorGpu`. They had declared them as C externs, and
+    clang refused the implicit declaration.
+  - `15b1a429`: `mrtBlend` accepts the facing normal as either `0x7F7FFF71` (D3D11) or
+    `0x8080FF71` (Metal). The value 0.5 is a unorm8 tie, and the two backends round it apart.
+  - `ae4ec7af`, gate3d:
+    - Every `msc build` there now names its `.exe`, because msc on the Mac writes no suffix.
+    - On macOS the capture entries run `voidRunConfigured(1280, 720, 1, 0, …)`: the Mac window
+      driver renders at 1 sample, and a retina screen would double the size. Windows still
+      runs `voidRun`, so your hashes stay the same.
+  - Earlier on the branch: the `stopOnUnported*` helpers in `types.ms` are gone, except
+    `stopOnUnportedShaderBindings`. `voidMetalReadDrawable` is gone. Compute-pass timestamps
+    stop by name on Metal: Metal samples a compute timestamp only at a dispatch boundary.
+- **Still red, needs you or the person:**
+  - **Pool exhaustion as a test trigger:** `RenderTarget refused-pool` (gate.sh and gate3d) and
+    `churn` (gate3d). Both expected the backend to run out early and return id 0, which the
+    door then names. Since `0c9b0fe8`, the 65535-slot pool stops in the backend instead (on
+    Metal: `view pool exhausted`), and memory never runs out first. Do these pass on D3D11? If
+    so, what runs out there? Either the expectations follow the pool's own stop, or the tests
+    need a smaller pool. Which do you prefer?
+  - **gate3d `allocation`:** it looks for `<fn>__M…` in the emitted C. msc `a0eba215c` names a
+    function `<fn>__srcZvoid3dZsceneOms_u0`, so `syncWorld` "has no body". This is a harness
+    against compiler naming, the same on any host with this msc.
+  - **gate3d `style`:** 15222 lines over 100 columns. Most of them are in the generated
+    `src/void3d/programModules.ms`.
+  - **gate3d `oracle`:** six `tests/oracle/*.cases` disagree with real Heaps. Not traced from
+    the Mac.
+  - **Known on main's Mac baseline, not chased:** view paint, two views, host-view samples
+    1/2/4/8, D3D11 golden and its TESTING.md row, GL core 4.3, wasm delta, bare build, and the
+    fb trap's clamped-window message (it builds again now).
+  - **gate3d captures:** they run and are compared on Metal, and fail only on the missing
+    `tests/golden3d/d3d11/*.png`. Perspective, textured, gltf, pick and bench pass their
+    semantic checks on Metal.
 
 ## From Windows (2026-10-23)
 

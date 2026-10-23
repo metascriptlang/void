@@ -108,6 +108,7 @@ write_entry() {
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
+		echo "extern function voidRunConfigured(w: int32, h: int32, sampleCount: int32, highDpi: int32, init: () => void, frame: () => void): void;"
 		echo "extern function captureSwapchain(frame: int32): void;"
 		echo "extern function captureQuit(): void;"
 		echo ""
@@ -127,7 +128,11 @@ write_entry() {
 		echo "$config"
 		[ -n "$extraConfig" ] && echo "$extraConfig"
 		echo "configureCampfireCamera(false, 0.0);"
-		echo "voidRun(1280, 720, initCampfire, frame);"
+		echo "when (macos) {"
+		echo "	voidRunConfigured(1280, 720, 1, 0, initCampfire, frame);"
+		echo "} else {"
+		echo "	voidRun(1280, 720, initCampfire, frame);"
+		echo "}"
 	} > "$WORK/$outName.new"
 	replace_if_changed "$WORK/$outName.new" "$CAPTURE/$outName.ms"
 }
@@ -583,6 +588,7 @@ import { BlendMode } from "../../../src/gpu/state";
 @include("capture3d.h");
 @compile("./capture3d.c");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
+extern function voidRunConfigured(w: int32, h: int32, sampleCount: int32, highDpi: int32, init: () => void, frame: () => void): void;
 extern function captureSwapchain(frame: int32): void;
 extern function captureQuit(): void;
 
@@ -629,7 +635,11 @@ function frame(): void {
 
 configureCampfire(PixelArtSettings.full(), false);
 configureCampfireCamera(false, 0.0);
-voidRun(1280, 720, initHud, frame);
+when (macos) {
+	voidRunConfigured(1280, 720, 1, 0, initHud, frame);
+} else {
+	voidRun(1280, 720, initHud, frame);
+}
 EOF
 	replace_if_changed "$WORK/$1.new" "$CAPTURE/$1.ms"
 }
@@ -715,7 +725,7 @@ run_pick() {
 		skip "pick: $CAPTURE/capture3d.c and capture3d.h are missing (gitignored out/tmp harness)"
 		return
 	fi
-	if ! msc build "$CAPTURE/campfirePick.ms" > "$WORK/pick-build.log" 2>&1; then
+	if ! msc build "$CAPTURE/campfirePick.ms" --output=out/debug/campfirePick.exe > "$WORK/pick-build.log" 2>&1; then
 		fail "pick: the pick entry did not build"
 		tail -5 "$WORK/pick-build.log" | sed 's/^/         /'
 		return
@@ -755,7 +765,7 @@ run_bench() {
 		skip "bench: $CAPTURE/campfireBench.ms is missing"
 		return
 	fi
-	if ! msc build "$CAPTURE/campfireBench.ms" --release > "$WORK/bench-build.log" 2>&1; then
+	if ! msc build "$CAPTURE/campfireBench.ms" --release --output=out/release/campfireBench.exe > "$WORK/bench-build.log" 2>&1; then
 		fail "bench: the bench entry did not build"
 		tail -5 "$WORK/bench-build.log" | sed 's/^/         /'
 		return
@@ -812,7 +822,7 @@ run_churn() {
 			skip "churn: $CAPTURE/$entry.ms is missing"
 			return
 		fi
-		if ! msc build "$CAPTURE/$entry.ms" > "$WORK/$entry-build.log" 2>&1; then
+		if ! msc build "$CAPTURE/$entry.ms" --output="out/debug/$entry.exe" > "$WORK/$entry-build.log" 2>&1; then
 			fail "churn: $entry did not build"
 			tail -5 "$WORK/$entry-build.log" | sed 's/^/         /'
 			return
@@ -1509,7 +1519,7 @@ run_gltf_cpu() {
 		'console.log(loadGlb([]).ok);' \
 		> "$WORK/gltfCpu.ms"
 	rm -f out/debug/gltfCpu.exe
-	if ! msc build "$WORK/gltfCpu.ms" > "$WORK/gltfCpu.build.log" 2>&1; then
+	if ! msc build "$WORK/gltfCpu.ms" --output=out/debug/gltfCpu.exe > "$WORK/gltfCpu.build.log" 2>&1; then
 		fail "gltf-cpu: the decoder does not build without sokol"
 		tail -20 "$WORK/gltfCpu.build.log"
 		return
@@ -1573,7 +1583,7 @@ build_and_capture() {
 		return 1
 	fi
 	rm -f "out/debug/$name.exe" "$CAPTURE/gate/${name}_"*.ppm
-	if ! msc build "$entry" > "$WORK/$name.build.log" 2>&1; then
+	if ! msc build "$entry" --output="out/debug/$name.exe" > "$WORK/$name.build.log" 2>&1; then
 		fail "capture $name: build failed"
 		tail -30 "$WORK/$name.build.log"
 		return 1

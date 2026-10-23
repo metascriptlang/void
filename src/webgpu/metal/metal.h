@@ -12,6 +12,8 @@ typedef struct MtlPipelineImpl *MtlPipeline;
 typedef struct MtlDepthStateImpl *MtlDepthState;
 typedef struct MtlCommandBufferImpl *MtlCommandBuffer;
 typedef struct MtlEncoderImpl *MtlEncoder;
+typedef struct MtlComputePipelineImpl *MtlComputePipeline;
+typedef struct MtlSampleBufferImpl *MtlSampleBuffer;
 
 MtlDevice mtlDeviceFrom(void *native);
 void mtlReleaseDevice(MtlDevice device);
@@ -48,6 +50,7 @@ MtlTexture mtlNewTexture(
 	int32_t pixelFormat,
 	int32_t sampleCount,
 	int32_t renderTarget,
+	int32_t storage,
 	int32_t shared);
 MtlTexture mtlNewTextureView(
 	MtlTexture texture,
@@ -119,7 +122,8 @@ MtlSampler mtlNewSampler(
 	float lodMin,
 	float lodMax,
 	int32_t maxAnisotropy,
-	int32_t compare);
+	int32_t compare,
+	const char *label);
 void mtlReleaseSampler(MtlSampler sampler);
 
 MtlLibrary mtlNewLibrary(MtlDevice device, const char *source);
@@ -129,6 +133,7 @@ void mtlReleaseLibrary(MtlLibrary library);
 void mtlReleaseFunction(MtlFunction shaderFunction);
 
 void mtlPipelineReset(void);
+void mtlPipelineLabel(const char *label);
 void mtlPipelineAttribute(int32_t location, int32_t format, int32_t offset, int32_t bufferIndex);
 void mtlPipelineLayout(int32_t bufferIndex, int32_t stride, int32_t perInstance);
 void mtlPipelineColor(
@@ -222,3 +227,34 @@ void mtlDrawIndexed(
 	int32_t instanceCount,
 	int32_t baseVertex,
 	int32_t firstInstance);
+
+void mtlSetLabel(void *object, const char *label);
+void mtlPushDebugGroup(MtlCommandBuffer commandBuffer, const char *label);
+void mtlPopDebugGroup(MtlCommandBuffer commandBuffer);
+void mtlEncoderPushDebugGroup(MtlEncoder encoder, const char *label);
+void mtlEncoderPopDebugGroup(MtlEncoder encoder);
+void mtlEncoderInsertSignpost(MtlEncoder encoder, const char *label);
+
+int64_t mtlMaxBufferLength(MtlDevice device);
+int32_t mtlMaxThreadsPerThreadgroup(MtlDevice device, int32_t axis);
+int32_t mtlSupportsFloat32Filtering(MtlDevice device);
+int32_t mtlSupportsRg11b10Render(MtlDevice device);
+int32_t mtlSupportsTimestamps(MtlDevice device);
+
+MtlComputePipeline mtlNewComputePipeline(MtlDevice device, MtlFunction compute, const char *label);
+int32_t mtlComputeMaxThreads(MtlComputePipeline pipeline);
+void mtlReleaseComputePipeline(MtlComputePipeline pipeline);
+MtlEncoder mtlBeginComputePass(MtlCommandBuffer commandBuffer, const char *label);
+void mtlComputeSetPipeline(MtlEncoder encoder, MtlComputePipeline pipeline);
+void mtlComputeSetBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index);
+void mtlComputeSetTexture(MtlEncoder encoder, MtlTexture texture, int32_t index);
+void mtlComputeSetSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index);
+void mtlDispatch(MtlEncoder encoder, int32_t x, int32_t y, int32_t z, int32_t threadsX, int32_t threadsY, int32_t threadsZ);
+void mtlDispatchIndirect(MtlEncoder encoder, MtlBuffer arguments, int64_t offset, int32_t threadsX, int32_t threadsY, int32_t threadsZ);
+
+MtlSampleBuffer mtlNewSampleBuffer(MtlDevice device, int32_t count, const char *label);
+void mtlReleaseSampleBuffer(MtlSampleBuffer samples);
+void mtlResolveCounters(MtlCommandBuffer commandBuffer, MtlSampleBuffer samples, int32_t first, int32_t count, MtlBuffer destination, int64_t destinationOffset);
+void mtlPassSamples(MtlSampleBuffer samples, int32_t startIndex, int32_t endIndex);
+void mtlPassVisibility(MtlBuffer buffer);
+void mtlSetVisibility(MtlEncoder encoder, int32_t enabled, int64_t offset);

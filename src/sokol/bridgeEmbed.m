@@ -40,38 +40,6 @@ static void call0(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
-int voidMetalReadDrawable(uint8_t *rgba, int width, int height) {
-	if (!g_drawable) return 0;
-	id<MTLTexture> texture = g_drawable.texture;
-	if ((int)texture.width != width || (int)texture.height != height) return 0;
-	mtlFrameSemaphoreWaitAll();
-	NSUInteger rowBytes = (NSUInteger)width * 4u;
-	id<MTLBuffer> staging = [g_device newBufferWithLength:rowBytes * (NSUInteger)height
-		options:MTLResourceStorageModeShared];
-	id<MTLCommandQueue> queue = [g_device newCommandQueue];
-	@autoreleasepool {
-		id<MTLCommandBuffer> commandBuffer = [queue commandBuffer];
-		id<MTLBlitCommandEncoder> blit = [commandBuffer blitCommandEncoder];
-		[blit copyFromTexture:texture sourceSlice:0 sourceLevel:0
-			sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, 1)
-			toBuffer:staging destinationOffset:0 destinationBytesPerRow:rowBytes
-			destinationBytesPerImage:rowBytes * (NSUInteger)height];
-		[blit endEncoding];
-		[commandBuffer commit];
-		[commandBuffer waitUntilCompleted];
-	}
-	const uint8_t *bgra = (const uint8_t *)staging.contents;
-	for (size_t i = 0; i < (size_t)width * (size_t)height; i++) {
-		rgba[i * 4 + 0] = bgra[i * 4 + 2];
-		rgba[i * 4 + 1] = bgra[i * 4 + 1];
-		rgba[i * 4 + 2] = bgra[i * 4 + 0];
-		rgba[i * 4 + 3] = bgra[i * 4 + 3];
-	}
-	[queue release];
-	[staging release];
-	return 1;
-}
-
 static void restoreContextIfLost(void);
 
 static void tick(void) {
@@ -276,6 +244,7 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	CAMetalLayer *layer = [CAMetalLayer layer];
 	layer.device = g_device;
 	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	layer.framebufferOnly = NO;
 	MacSurface *s = (MacSurface *)calloc(1, sizeof(MacSurface));
 	s->layer = (void *)CFBridgingRetain(layer);
 	s->gate = voidPresentGateCreate(s->layer);
