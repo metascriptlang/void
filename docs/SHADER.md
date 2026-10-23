@@ -53,6 +53,7 @@ All three tiers live **in Void**: shaders, uniforms and the emitter are part of 
 ## Reference
 
 - [src/shader/CLAUDE.md](../src/shader/CLAUDE.md) — Tier 3's design, measurements and rejected paths.
+- [SHADER-IR.md](SHADER-IR.md) — what the shader IR fixes before its five printers, the reflection markers, validators and the shdc oracle.
 - [VOCABULARY.md](VOCABULARY.md) — the TypeGPU vocabulary Tier 3 uses.
 - [HEAPS.md](HEAPS.md) — HXSL (Haxe-macro shader DSL with `addShader` composition).
 - [treeform/shady](https://github.com/treeform/shady) — Nim→GLSL via macros; Tier 3's blueprint.

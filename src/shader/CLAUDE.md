@@ -2,7 +2,8 @@
 
 **Goal.** A shader is an ordinary MetaScript function. A macro reads its typed body and lowers it into
 the shader IR, which this module prints for every backend. The same function runs on the CPU as a
-logic oracle in the native gate. Shader-tier context: [docs/SHADER.md](../../docs/SHADER.md) Tier 3.
+logic oracle in the native gate. Shader-tier context: [docs/SHADER.md](../../docs/SHADER.md) Tier 3;
+what the IR fixes before its printers: [docs/SHADER-IR.md](../../docs/SHADER-IR.md).
 
 **Why now.** void3d hand-writes one program per feature combination (`Program` in `src/void3d/gpu3d.ms`),
 and `ProgramMap` packs at most 24 of them. void3d's feature-bit ProgramKey keys the variants, and this module
