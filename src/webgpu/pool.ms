@@ -1,8 +1,7 @@
 export const SLOT_SHIFT = 16;
 export const SLOT_MASK = 0xFFFF;
 
-export struct Pool<T> {
-	slots: Vec<T>;
+export struct PoolCore {
 	free: Vec<int32>;
 	generations: Vec<uint32>;
 	backend: string;
@@ -10,48 +9,61 @@ export struct Pool<T> {
 	what: string;
 }
 
-export function newPool<T>(backend: string, kind: string, what: string, zero: T): Pool<T> {
-	return { slots: [zero], free: [], generations: [], backend: backend, kind: kind, what: what };
+export struct Pool<T> {
+	slots: Vec<T>;
+	core: PoolCore;
 }
 
-function stopOnPool(backend: string, message: string): never {
+export function newPool<T>(backend: string, kind: string, what: string, zero: T): Pool<T> {
+	return { slots: [zero], core: { free: [], generations: [], backend: backend, kind: kind, what: what } };
+}
+
+@noinline function stopOnPool(backend: string, message: string): never {
 	console.log(`webgpu ${backend}: ${message}`);
 	unreachable;
 }
 
+@noinline function stopNotLive(backend: string, kind: string, id: uint32): never {
+	stopOnPool(backend, `${kind} ${id} is not a live handle`);
+}
+
 @inline export function slotOf(id: uint32): int32 { return (id & SLOT_MASK) as int32; }
 
-export function allocate<T>(ref pool: Pool<T>): uint32 {
+@noinline function allocateId(ref core: PoolCore): uint32 {
 	let index: int32 = 0;
-	if (pool.free.length > 0) {
-		index = pool.free[pool.free.length - 1];
-		pool.free.pop();
+	if (core.free.length > 0) {
+		index = core.free[core.free.length - 1];
+		core.free.pop();
 	} else {
-		if (pool.generations.length == 0) { pool.generations.push(0); }
-		index = pool.generations.length as int32;
+		if (core.generations.length == 0) { core.generations.push(0); }
+		index = core.generations.length as int32;
 		if (index > SLOT_MASK) {
-			stopOnPool(pool.backend, `${pool.what} pool exhausted: all ${SLOT_MASK} slots are live or retired`);
+			stopOnPool(core.backend, `${core.what} pool exhausted: all ${SLOT_MASK} slots are live or retired`);
 		}
-		pool.generations.push(0);
+		core.generations.push(0);
 	}
-	pool.generations[index] += 1;
-	return (pool.generations[index] << SLOT_SHIFT) | (index as uint32);
+	core.generations[index] += 1;
+	return (core.generations[index] << SLOT_SHIFT) | (index as uint32);
 }
+
+@noinline function releaseId(ref core: PoolCore, id: uint32): void {
+	const index = slotOf(id);
+	if (core.generations[index] < SLOT_MASK) { core.free.push(index); }
+}
+
+export function allocate<T>(ref pool: Pool<T>): uint32 { return allocateId(pool.core); }
 
 export function store<T>(ref pool: Pool<T>, slot: T): void {
 	const index = slotOf(slot.id);
 	if (index < pool.slots.length) { pool.slots[index] = slot; } else { pool.slots.push(slot); }
 }
 
-export function release<T>(ref pool: Pool<T>, id: uint32): void {
-	const index = slotOf(id);
-	if (pool.generations[index] < SLOT_MASK) { pool.free.push(index); }
-}
+export function release<T>(ref pool: Pool<T>, id: uint32): void { releaseId(pool.core, id); }
 
 export function reset<T>(ref pool: Pool<T>): void {
 	while (pool.slots.length > 1) { pool.slots.pop(); }
-	pool.free = [];
-	pool.generations = [];
+	pool.core.free = [];
+	pool.core.generations = [];
 }
 
 export function alive<T>(this pool: Pool<T>, id: uint32): boolean {
@@ -60,9 +72,7 @@ export function alive<T>(this pool: Pool<T>, id: uint32): boolean {
 }
 
 export function slotIndex<T>(this pool: Pool<T>, id: uint32): int32 {
-	if (!pool.alive(id)) {
-		stopOnPool(pool.backend, `${pool.kind} ${id} is not a live handle`);
-	}
+	if (!pool.alive(id)) { stopNotLive(pool.core.backend, pool.core.kind, id); }
 	return slotOf(id);
 }
 
