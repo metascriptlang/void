@@ -315,15 +315,10 @@ selected by the key, the binding needing an offset word, and sort order across m
 - Same as Unity: render mode, `alignment`, the 3D rotation and size, `mesh` and
   `SetMeshes` with weights, `meshDistribution`, flip and pivot (the CPU composes them), vertex
   colour times particle colour.
-- Different, and the person's call: **draw order across meshes.** Unity expands all of a
-  system's mesh particles in the system's sort order ((mem)); here particles are grouped by
-  mesh, so with a blended material and a `sortMode` other than `None` (§A.4) a particle of
-  mesh A can no longer be drawn between two particles of mesh B. For opaque and cutout
-  materials (depth-tested) nothing changes. The alternative that keeps Unity's order is
-  to sort first, then cut the sorted list into runs of equal mesh index and draw each run
-  (draws = runs, up to one per particle in the worst case of alternating meshes). Recommended:
-  group by mesh for opaque and cutout, runs for a blended sorted system, and say in the
-  emitter's type which one it gets.
+- Same as Unity, settled by the references (item 4): **draw order across meshes.** An opaque
+  or cutout material is grouped by mesh, where depth testing hides the order; a blended one
+  keeps the system's sort order and draws one run per change of mesh, so a particle of mesh A
+  still lands between two of mesh B. The writer takes the choice as `MeshDrawOrder`.
 - Different, smaller: a mesh's second to fourth UV sets (`UV2`..`UV4`, PSE:490-497) are not
   carried, because `LitTextured` has one UV (`meshData.ms:46`); and custom streams
   (`Custom1/2`, `AgePercent`, `StableRandom*`) are optional 16 B instance columns appended after
