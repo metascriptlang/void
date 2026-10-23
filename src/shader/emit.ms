@@ -41,6 +41,7 @@ import {
 	Texture2d,
 	Texture2dArray,
 	Texture2dU32,
+	TextureCube,
 	Vec2f,
 	Vec2i,
 	Vec2u,
@@ -481,6 +482,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
 	const uintTextureNode = getTypeImpl(Texture2dU32);
 	const arrayTextureNode = getTypeImpl(Texture2dArray);
+	const cubeTextureNode = getTypeImpl(TextureCube);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
 	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
@@ -836,11 +838,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				r.access = mode;
 				continue;
 			}
-			if (sameType(t, uintTextureNode) || sameType(t, arrayTextureNode)) {
+			if (sameType(t, uintTextureNode) || sameType(t, arrayTextureNode) ||
+				sameType(t, cubeTextureNode)) {
 				const uint = sameType(t, uintTextureNode);
 				const r = addResource(ResourceKind.Texture, name, slot, uint ?
 					textureType(TextureShape.D2, ScalarKind.U32) :
-					textureType(TextureShape.D2Array, ScalarKind.F32), binding);
+					textureType(sameType(t, cubeTextureNode) ? TextureShape.Cube :
+						TextureShape.D2Array, ScalarKind.F32), binding);
 				if (uint) { r.sampleType = SampleType.Uint; }
 			} else if (sameType(t, textureNode)) {
 				const kind = sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
@@ -965,6 +969,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (sameType(t, arrayTextureNode)) {
 			return textureType(TextureShape.D2Array, ScalarKind.F32);
 		}
+		if (sameType(t, cubeTextureNode)) { return textureType(TextureShape.Cube, ScalarKind.F32); }
 		if (sameType(t, samplerNode)) { return samplerType(); }
 		const atomic = atomicOrExchange(t);
 		if (atomic != null) { return atomic; }

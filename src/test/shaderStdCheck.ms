@@ -7,6 +7,8 @@ import {
 	Mat4x4f,
 	Sampler,
 	Texture2d,
+	TextureCube,
+	Vec3f,
 	Vec4f,
 	abs,
 	acos,
@@ -63,6 +65,7 @@ import {
 	textureDimensions,
 	textureLoad,
 	textureSample,
+	textureSampleLevel,
 	transpose,
 	trunc,
 	upperLeft3x3,
@@ -189,6 +192,56 @@ test "textureSample wraps a texel index past the edge as the sampler's wrap says
 	assert sampledAt(-0.125, true, Wrap.Mirror) == 0.0 && sampledAt(1.0, true, Wrap.Mirror) == 3.0;
 	assert sampledAt(0.0, false, Wrap.Clamp) == 0.0 && sampledAt(0.0, false, Wrap.Repeat) == 1.5;
 	assert sampledAt(0.0, false, Wrap.Mirror) == 0.0 && sampledAt(1.0, false, Wrap.Repeat) == 1.5;
+}
+
+export struct CubeProbeInput {
+	@builtin(position) position: Vec4f;
+}
+
+export struct CubeProbeBindings {
+	@binding(0) environment: TextureCube;
+	@binding(0) environmentSampler: Sampler;
+}
+
+export function cubeProbeFs(input: CubeProbeInput, b: CubeProbeBindings): Vec4f {
+	const dir = input.position.xyz;
+	const sharp = textureSample(b.environment, b.environmentSampler, dir);
+	const rough = textureSampleLevel(b.environment, b.environmentSampler, dir, input.position.w);
+	return sharp + rough;
+}
+
+test "glsl spells a cube texture and textureSampleLevel in their GLSL form" {
+	assert glsl(cubeProbeFs) ==
+		"layout(binding=0) uniform textureCube environment;\n" +
+		"layout(binding=0) uniform sampler environmentSampler;\n" +
+		"layout(location=0) out vec4 fragColor;\n" +
+		"void main() {\n" +
+		"    vec3 dir = gl_FragCoord.xyz;\n" +
+		"    vec4 sharp = texture(samplerCube(environment, environmentSampler), dir);\n" +
+		"    vec4 rough = textureLod(samplerCube(environment, environmentSampler), dir, " +
+		"gl_FragCoord.w);\n" +
+		"    fragColor = sharp + rough;\n" +
+		"    return;\n" +
+		"}\n";
+}
+
+// One texel per face, the red channel of each its face index.
+function faces(): TextureCube {
+	let texels: float32[] = [];
+	for (let face = 0; face < 6; face++) { texels.push(face as float32); texels.push(0.0); texels.push(0.0); texels.push(1.0); }
+	return { size: 1, texels };
+}
+
+function faceAt(dir: Vec3f): float32 {
+	return textureSample(faces(), { nearest: true }, dir).r;
+}
+
+test "a cube is read on the face of the direction's major axis, a tie going to x, then y" {
+	assert faceAt(vec3f(1.0, 0.2, -0.3)) == 0.0 && faceAt(vec3f(-1.0, 0.2, 0.3)) == 1.0;
+	assert faceAt(vec3f(0.2, 1.0, -0.3)) == 2.0 && faceAt(vec3f(0.2, -1.0, 0.3)) == 3.0;
+	assert faceAt(vec3f(0.2, 0.3, 1.0)) == 4.0 && faceAt(vec3f(0.2, -0.3, -1.0)) == 5.0;
+	assert faceAt(vec3f(1.0, 1.0, 1.0)) == 0.0 && faceAt(vec3f(0.5, -1.0, 1.0)) == 3.0;
+	assert textureSampleLevel(faces(), { nearest: false }, vec3f(0.0, 0.0, -2.0), 3.0).r == 5.0;
 }
 
 test "select returns its second operand when the condition holds, as WGSL orders them" {
