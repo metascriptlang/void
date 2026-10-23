@@ -7,6 +7,7 @@ import {
 	GPUBufferUsage,
 	GPUDevice,
 	GPUIndexFormat,
+	GPUMapMode,
 	GPUVertexFormat,
 	GPUPrimitiveTopology,
 	GPURenderPassDescriptor,
@@ -26,7 +27,8 @@ import {
 	GPUTextureView,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
-import { requestDevice } from "../webgpu/device.ms";
+import { exec } from "std/process";
+import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import { nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
 import { metalReadback, metalSystemDevice } from "./metalDevice.h";
 
@@ -1173,4 +1175,341 @@ test "a multisampled target resolves into a chosen mip, then into a chosen layer
 	assert firstTexel(readBytes(layers, 0, 1, 0, 4, 4, 4)) == BLUE;
 	assert firstTexel(readBytes(layers, 0, 0, 0, 4, 4, 4)) == RED;
 	device.destroy();
+}
+
+test "a render pass begins on the swapchain view and draws into the native colour texture" {
+	const device = openDevice();
+	const colour = colourTarget(device, 1);
+	const depth = device.createTexture({
+		label: "depth",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32),
+	});
+	const swapchain = getCurrentTexture({
+		width: SIZE,
+		height: SIZE,
+		sampleCount: 1,
+		renderView: nativeTexture(colour),
+		resolveView: null,
+		depthStencilView: nativeTexture(depth),
+	});
+	let descriptor = clearingPass(swapchain.createView({ label: null }), { id: 0 });
+	descriptor.depthStencilAttachment = {
+		view: getCurrentDepthTexture().createView({ label: null }),
+		depthLoadOp: "clear",
+		depthStoreOp: "store",
+		depthClearValue: 1.0,
+	};
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+	assert firstTexel(readPixels(colour)) == BLUE;
+	device.destroy();
+}
+
+const COPY_TEXTURE_USAGE: int32 = (GPUTextureUsage.COPY_SRC as int32) | (GPUTextureUsage.COPY_DST as int32) | (GPUTextureUsage.TEXTURE_BINDING as int32);
+const MAP_READ_USAGE: int32 = (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.COPY_DST as int32);
+const COPY_BUFFER_USAGE: int32 = (GPUBufferUsage.COPY_SRC as int32) | (GPUBufferUsage.COPY_DST as int32);
+
+function copyTexture(device: GPUDevice, format: GPUTextureFormat, width: int32, height: int32, layers: int32, mips: int32, dimension: GPUTextureDimension): GPUTexture {
+	return device.createTexture({
+		label: "copy",
+		size: { width: width, height: height, depthOrArrayLayers: layers },
+		format: format,
+		usage: COPY_TEXTURE_USAGE,
+		sampleCount: 1,
+		mipLevelCount: mips,
+		dimension: dimension,
+	});
+}
+
+function ramp(count: int32, first: int32): Vec<uint8> {
+	let bytes: Vec<uint8> = new Array(count);
+	for (let i = 0; i < count; i++) { bytes[i] = ((first + i) & 255) as uint8; }
+	return bytes;
+}
+
+function mappedRead(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
+	buffer.mapAsync(GPUMapMode.READ as int32, offset, size);
+	const bytes = buffer.getMappedRange(offset, size);
+	buffer.unmap();
+	return bytes;
+}
+
+function same(actual: Vec<uint8>, expected: Vec<uint8>): boolean {
+	if (actual.length != expected.length) { return false; }
+	for (let i = 0; i < expected.length; i++) { if (actual[i] != expected[i]) { return false; } }
+	return true;
+}
+
+function readTexels(device: GPUDevice, texture: GPUTexture, mip: int32, x: int32, y: int32, z: int32, width: int32, height: int32, bytesPerPixel: int32): Vec<uint8> {
+	const staging = device.createBuffer({ label: "texels", size: 256 * (height as int64), usage: MAP_READ_USAGE });
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToBuffer(
+		{ texture: texture, mipLevel: mip, origin: { x: x, y: y, z: z } },
+		{ buffer: staging, offset: 0, bytesPerRow: 256, rowsPerImage: height },
+		{ width: width, height: height, depthOrArrayLayers: 1 },
+	);
+	device.queue.submit(encoder.finish());
+	const padded = mappedRead(staging, 0, 256 * (height as int64));
+	let tight: Vec<uint8> = new Array(width * height * bytesPerPixel);
+	for (let row = 0; row < height; row++) {
+		for (let i = 0; i < width * bytesPerPixel; i++) { tight[row * width * bytesPerPixel + i] = padded[row * 256 + i]; }
+	}
+	staging.destroy();
+	return tight;
+}
+
+function fill(count: int32, value: uint8): Vec<uint8> {
+	let bytes: Vec<uint8> = new Array(count);
+	for (let i = 0; i < count; i++) { bytes[i] = value; }
+	return bytes;
+}
+
+function writeWhole(device: GPUDevice, texture: GPUTexture, mip: int32, layer: int32, width: int32, height: int32, bytesPerPixel: int32, data: Vec<uint8>): void {
+	device.queue.writeTexture(
+		{ texture: texture, mipLevel: mip, origin: { x: 0, y: 0, z: layer } },
+		data,
+		{ offset: 0, bytesPerRow: width * bytesPerPixel, rowsPerImage: height },
+		{ width: width, height: height, depthOrArrayLayers: 1 },
+	);
+}
+
+test "copyBufferToBuffer moves a range into a MAP_READ buffer at an offset, and a later writeBuffer lands after the copy" {
+	const device = openDevice();
+	const source = device.createBuffer({ label: "source", size: 64, usage: COPY_BUFFER_USAGE });
+	device.queue.writeBuffer(source, 0, ramp(64, 0));
+	const middle = device.createBuffer({ label: "middle", size: 64, usage: COPY_BUFFER_USAGE });
+	const read = device.createBuffer({ label: "read", size: 64, usage: MAP_READ_USAGE });
+	let encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(source, 16, read, 8, 16);
+	encoder.copyBufferToBuffer(source, 0, middle, 0, 64);
+	device.queue.submit(encoder.finish());
+	assert same(mappedRead(read, 8, 16), ramp(16, 16));
+	device.queue.writeBuffer(middle, 4, fill(4, 200));
+	encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(middle, 0, read, 0, 8);
+	device.queue.submit(encoder.finish());
+	const patched = mappedRead(read, 0, 8);
+	assert patched[3] == 3 && patched[4] == 200 && patched[7] == 200;
+	device.destroy();
+}
+
+test "a MAP_WRITE buffer takes mapped bytes and a MAP_READ buffer gives a mapped sub-range back" {
+	const device = openDevice();
+	const upload = device.createBuffer({ label: "upload", size: 32, usage: (GPUBufferUsage.MAP_WRITE as int32) | (GPUBufferUsage.COPY_SRC as int32) });
+	upload.mapAsync(GPUMapMode.WRITE as int32, 0, 0);
+	upload.writeMappedRange(8, ramp(8, 100));
+	upload.unmap();
+	const read = device.createBuffer({ label: "read", size: 32, usage: MAP_READ_USAGE });
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToBuffer(upload, 0, read, 0, 32);
+	device.queue.submit(encoder.finish());
+	assert same(mappedRead(read, 8, 8), ramp(8, 100));
+	assert same(mappedRead(read, 16, 8), fill(8, 0));
+	upload.mapAsync(GPUMapMode.WRITE as int32, 0, 8);
+	upload.writeMappedRange(0, ramp(8, 50));
+	upload.unmap();
+	const second = device.createCommandEncoder();
+	second.copyBufferToBuffer(upload, 0, read, 0, 16);
+	device.queue.submit(second.finish());
+	assert same(mappedRead(read, 0, 8), ramp(8, 50));
+	assert same(mappedRead(read, 8, 8), ramp(8, 100));
+	device.destroy();
+}
+
+test "copyTextureToBuffer reads a whole rgba8 texture and an unaligned sub-rectangle of an r8 one" {
+	const device = openDevice();
+	const colour = copyTexture(device, "rgba8unorm", 4, 4, 1, 1, "2d");
+	writeWhole(device, colour, 0, 0, 4, 4, 4, ramp(64, 0));
+	assert same(readTexels(device, colour, 0, 0, 0, 0, 4, 4, 4), ramp(64, 0));
+	const grey = copyTexture(device, "r8unorm", 8, 8, 1, 1, "2d");
+	writeWhole(device, grey, 0, 0, 8, 8, 1, ramp(64, 0));
+	const rect = readTexels(device, grey, 0, 3, 2, 0, 3, 2, 1);
+	assert same(rect, [19, 20, 21, 27, 28, 29] as Vec<uint8>);
+	device.destroy();
+}
+
+test "copyBufferToTexture fills one mip, one array layer and one 3d slice, each read back apart from its neighbours" {
+	const device = openDevice();
+	const source = device.createBuffer({ label: "source", size: 4096, usage: COPY_BUFFER_USAGE });
+	device.queue.writeBuffer(source, 0, ramp(2048, 1));
+	const mips = copyTexture(device, "r8unorm", 8, 8, 1, 3, "2d");
+	let encoder = device.createCommandEncoder();
+	encoder.copyBufferToTexture({ buffer: source, offset: 0, bytesPerRow: 256, rowsPerImage: 0 }, { texture: mips, mipLevel: 1 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.submit(encoder.finish());
+	assert same(readTexels(device, mips, 1, 0, 0, 0, 4, 4, 1), [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4] as Vec<uint8>);
+	assert readTexels(device, mips, 0, 0, 0, 0, 4, 4, 1)[0] == 0;
+	const layers = copyTexture(device, "r8unorm", 4, 4, 3, 1, "2d");
+	encoder = device.createCommandEncoder();
+	encoder.copyBufferToTexture({ buffer: source, offset: 4, bytesPerRow: 256, rowsPerImage: 4 }, { texture: layers, origin: { x: 0, y: 0, z: 1 } }, { width: 4, height: 4, depthOrArrayLayers: 2 });
+	device.queue.submit(encoder.finish());
+	assert readTexels(device, layers, 0, 0, 0, 0, 1, 1, 1)[0] == 0;
+	assert readTexels(device, layers, 0, 0, 0, 1, 1, 1, 1)[0] == 5;
+	assert readTexels(device, layers, 0, 3, 3, 2, 1, 1, 1)[0] == 8;
+	const volume = copyTexture(device, "r8unorm", 4, 4, 4, 1, "3d");
+	const deep = device.createBuffer({ label: "deep", size: 4096, usage: COPY_BUFFER_USAGE });
+	device.queue.writeBuffer(deep, 0, fill(4096, 7));
+	encoder = device.createCommandEncoder();
+	encoder.copyBufferToTexture({ buffer: deep, offset: 0, bytesPerRow: 256, rowsPerImage: 4 }, { texture: volume, origin: { x: 0, y: 0, z: 2 } }, { width: 4, height: 4, depthOrArrayLayers: 2 });
+	device.queue.submit(encoder.finish());
+	assert readTexels(device, volume, 0, 0, 0, 1, 1, 1, 1)[0] == 0;
+	assert readTexels(device, volume, 0, 0, 0, 2, 1, 1, 1)[0] == 7;
+	assert readTexels(device, volume, 0, 3, 3, 3, 1, 1, 1)[0] == 7;
+	device.destroy();
+}
+
+function flush(device: GPUDevice): void { device.queue.submit(device.createCommandEncoder().finish()); }
+
+test "copyTextureToTexture copies a layer onto another layer, a mip onto a texture, and a 3d slice onto a slice" {
+	const device = openDevice();
+	const layers = copyTexture(device, "rgba8unorm", 4, 4, 3, 1, "2d");
+	writeWhole(device, layers, 0, 1, 4, 4, 4, ramp(64, 9));
+	const encoder = device.createCommandEncoder();
+	encoder.copyTextureToTexture({ texture: layers, origin: { x: 1, y: 1, z: 1 } }, { texture: layers, origin: { x: 0, y: 2, z: 2 } }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	device.queue.submit(encoder.finish());
+	assert same(readTexels(device, layers, 0, 0, 2, 2, 2, 2, 4), [29, 30, 31, 32, 33, 34, 35, 36, 45, 46, 47, 48, 49, 50, 51, 52] as Vec<uint8>);
+	assert readTexels(device, layers, 0, 0, 0, 2, 1, 1, 4)[0] == 0;
+	const mips = copyTexture(device, "r8unorm", 8, 8, 1, 2, "2d");
+	writeWhole(device, mips, 1, 0, 4, 4, 1, ramp(16, 40));
+	const flat = copyTexture(device, "r8unorm", 4, 4, 1, 1, "2d");
+	const second = device.createCommandEncoder();
+	second.copyTextureToTexture({ texture: mips, mipLevel: 1 }, { texture: flat }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.submit(second.finish());
+	assert same(readTexels(device, flat, 0, 0, 0, 0, 4, 4, 1), ramp(16, 40));
+	const volume = copyTexture(device, "r8unorm", 4, 4, 4, 1, "3d");
+	const other = copyTexture(device, "r8unorm", 4, 4, 4, 1, "3d");
+	const deep = device.createBuffer({ label: "deep", size: 4096, usage: COPY_BUFFER_USAGE });
+	device.queue.writeBuffer(deep, 0, fill(4096, 9));
+	const third = device.createCommandEncoder();
+	third.copyBufferToTexture({ buffer: deep, offset: 0, bytesPerRow: 256, rowsPerImage: 4 }, { texture: volume, origin: { x: 0, y: 0, z: 1 } }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	third.copyTextureToTexture({ texture: volume, origin: { x: 0, y: 0, z: 1 } }, { texture: other, origin: { x: 0, y: 0, z: 3 } }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.submit(third.finish());
+	assert readTexels(device, other, 0, 2, 2, 3, 1, 1, 1)[0] == 9;
+	assert readTexels(device, other, 0, 2, 2, 1, 1, 1, 1)[0] == 0;
+	device.destroy();
+}
+
+test "a depth16unorm texture takes a buffer copy and gives it back, and a depth32float clear copies out" {
+	const device = openDevice();
+	const depth16 = device.createTexture({
+		label: "depth16",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "depth16unorm",
+		usage: COPY_TEXTURE_USAGE,
+	});
+	const source = device.createBuffer({ label: "source", size: 1024, usage: COPY_BUFFER_USAGE });
+	device.queue.writeBuffer(source, 0, ramp(1024, 3));
+	const encoder = device.createCommandEncoder();
+	encoder.copyBufferToTexture({ buffer: source, offset: 0, bytesPerRow: 256, rowsPerImage: 4 }, { texture: depth16 }, { width: 4, height: 4, depthOrArrayLayers: 1 });
+	device.queue.submit(encoder.finish());
+	const row: Vec<uint8> = [3, 4, 5, 6, 7, 8, 9, 10];
+	const back = readTexels(device, depth16, 0, 0, 0, 0, 4, 4, 2);
+	for (let r = 0; r < 4; r++) { for (let j = 0; j < 8; j++) { assert back[r * 8 + j] == row[j]; } }
+	const target = device.createTexture({
+		label: "depth32",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
+	});
+	let descriptor: GPURenderPassDescriptor = { label: "clear depth" };
+	descriptor.depthStencilAttachment = { view: target.createView({ label: null }), depthClearValue: 0.5, depthLoadOp: "clear", depthStoreOp: "store" };
+	const second = device.createCommandEncoder();
+	second.beginRenderPass(descriptor).end();
+	device.queue.submit(second.finish());
+	const clear = readTexels(device, target, 0, 0, 0, 0, 2, 2, 4);
+	assert clear[3] == 0x3F && clear[2] == 0 && clear[1] == 0 && clear[0] == 0 && clear[15] == 0x3F;
+	device.destroy();
+}
+
+test "writeTexture writes a sub-rectangle in place over a whole write of the same frame, and into one mip, layer or 3d slice" {
+	const device = openDevice();
+	const grey = copyTexture(device, "r8unorm", 8, 8, 1, 1, "2d");
+	writeWhole(device, grey, 0, 0, 8, 8, 1, fill(64, 0x11));
+	device.queue.writeTexture({ texture: grey, origin: { x: 3, y: 2, z: 0 } }, fill(16, 0x22), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	flush(device);
+	let pixels = readBytes(grey, 0, 0, 0, 8, 8, 1);
+	assert pixels[2 * 8 + 3] == 0x22 && pixels[3 * 8 + 4] == 0x22 && pixels[2 * 8 + 2] == 0x11 && pixels[2 * 8 + 5] == 0x11 && pixels[4 * 8 + 3] == 0x11;
+	device.queue.writeTexture({ texture: grey, origin: { x: 7, y: 7, z: 0 } }, fill(1, 0x33), { offset: 0, bytesPerRow: 1, rowsPerImage: 1 }, { width: 1, height: 1, depthOrArrayLayers: 1 });
+	flush(device);
+	pixels = readBytes(grey, 0, 0, 0, 8, 8, 1);
+	assert pixels[63] == 0x33 && pixels[3 * 8 + 4] == 0x22 && pixels[0] == 0x11;
+	writeWhole(device, grey, 0, 0, 8, 8, 1, fill(64, 0x44));
+	writeWhole(device, grey, 0, 0, 8, 8, 1, fill(64, 0x55));
+	flush(device);
+	assert readBytes(grey, 0, 0, 0, 8, 8, 1)[27] == 0x55;
+	const mips = copyTexture(device, "r8unorm", 8, 8, 1, 3, "2d");
+	device.queue.writeTexture({ texture: mips, mipLevel: 1, origin: { x: 1, y: 1, z: 0 } }, fill(4, 0x66), { offset: 0, bytesPerRow: 2, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	flush(device);
+	pixels = readBytes(mips, 1, 0, 0, 4, 4, 1);
+	assert pixels[1 * 4 + 1] == 0x66 && pixels[2 * 4 + 2] == 0x66 && pixels[0] == 0 && pixels[3 * 4 + 3] == 0;
+	assert readBytes(mips, 0, 0, 0, 8, 8, 1)[9] == 0;
+	const layers = copyTexture(device, "rgba8unorm", 4, 4, 2, 1, "2d");
+	device.queue.writeTexture({ texture: layers, origin: { x: 1, y: 1, z: 1 } }, fill(16, 0x77), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	flush(device);
+	assert readBytes(layers, 0, 1, 0, 4, 4, 4)[(1 * 4 + 1) * 4] == 0x77;
+	assert readBytes(layers, 0, 0, 0, 4, 4, 4)[(1 * 4 + 1) * 4] == 0;
+	const volume = copyTexture(device, "r8unorm", 4, 4, 4, 1, "3d");
+	device.queue.writeTexture({ texture: volume, origin: { x: 0, y: 0, z: 1 } }, fill(32, 0x88), { offset: 0, bytesPerRow: 4, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 2 });
+	flush(device);
+	assert readBytes(volume, 0, 0, 1, 4, 4, 1)[5] == 0x88 && readBytes(volume, 0, 0, 2, 4, 4, 1)[5] == 0x88;
+	assert readBytes(volume, 0, 0, 0, 4, 4, 1)[5] == 0 && readBytes(volume, 0, 0, 3, 4, 4, 1)[5] == 0;
+	device.destroy();
+}
+
+test "an attachment texture that is also COPY_DST takes writeTexture and keeps it after a partial write" {
+	const device = openDevice();
+	const target = device.createTexture({
+		label: "target",
+		size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32) | (GPUTextureUsage.COPY_DST as int32),
+	});
+	writeWhole(device, target, 0, 0, 4, 4, 4, fill(64, 0x21));
+	device.queue.writeTexture({ texture: target, origin: { x: 2, y: 2, z: 0 } }, fill(16, 0x42), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	flush(device);
+	const pixels = readBytes(target, 0, 0, 0, 4, 4, 4);
+	assert pixels[0] == 0x21 && pixels[(2 * 4 + 2) * 4] == 0x42 && pixels[(3 * 4 + 3) * 4 + 3] == 0x42;
+	device.destroy();
+}
+
+test "the swapchain texture copies out after its pass, resolved when it is multisampled" {
+	const device = openDevice();
+	const colour = colourTarget(device, 1);
+	const depth = device.createTexture({
+		label: "depth",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth32float",
+		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32),
+	});
+	const direct = getCurrentTexture({ width: SIZE, height: SIZE, sampleCount: 1, renderView: nativeTexture(colour), resolveView: null, depthStencilView: nativeTexture(depth) });
+	let encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(clearingPass(direct.createView({ label: null }), { id: 0 })).end();
+	const staging = device.createBuffer({ label: "staging", size: 256 * 8, usage: MAP_READ_USAGE });
+	encoder.copyTextureToBuffer({ texture: direct, origin: { x: 8, y: 8, z: 0 } }, { buffer: staging, offset: 0, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
+	device.queue.submit(encoder.finish());
+	const direct_ = mappedRead(staging, 0, 256 * 8);
+	assert direct_[0] == 0 && direct_[2] == 255 && direct_[3] == 255 && direct_[7 * 256 + 30] == 255;
+	const samples = colourTarget(device, 4);
+	const resolved = colourTarget(device, 1);
+	const multi = getCurrentTexture({ width: SIZE, height: SIZE, sampleCount: 4, renderView: nativeTexture(samples), resolveView: nativeTexture(resolved), depthStencilView: nativeTexture(depth) });
+	encoder = device.createCommandEncoder();
+	let descriptor = clearingPass(multi.createView({ label: null }), { id: 0 });
+	descriptor.colorAttachments[0].clearValue = { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+	encoder.beginRenderPass(descriptor).end();
+	encoder.copyTextureToBuffer({ texture: multi }, { buffer: staging, offset: 0, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8, depthOrArrayLayers: 1 });
+	device.queue.submit(encoder.finish());
+	const back = mappedRead(staging, 0, 256 * 8);
+	assert back[0] == 255 && back[1] == 0 && back[3] == 255 && back[7 * 256 + 28] == 255;
+	device.destroy();
+}
+
+test "a mapAsync that would wait behind the frame's open command buffer stops by name instead of hanging" {
+	const run = exec("timeout 120 msc run src/test/metalReadbackHazardProbe.ms 2>&1");
+	if (run.ok) { assert false; }
+	if (!run.ok) {
+		assert run.error.output.includes("which is not committed");
+		assert !run.error.output.includes("probe: mapAsync returned");
+	}
 }

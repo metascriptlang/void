@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe out/macWindow.exe out/macWindowEscape.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -628,6 +628,15 @@ if [ "$(uname -s)" = Darwin ]; then
 		fail "frame pacing — see out/gate-frame-pacing.log and out/gate-frame-pacing-run.log"
 		grep -E '^FAIL' out/gate-frame-pacing-run.log | sed 's/^/      /' || true
 	fi
+	for test in macWindow macWindowEscape; do
+		if "$MSC" build tests/integration/$test.ms --output=out/$test.exe > out/gate-$test.log 2>&1 \
+				&& out/$test.exe > out/gate-$test-run.log 2>&1; then
+			pass "$test: the macOS window driver delivers AppKit events through the app event API"
+		else
+			fail "$test — see out/gate-$test.log and out/gate-$test-run.log"
+			grep -E '^FAIL' out/gate-$test-run.log | sed 's/^/      /' || true
+		fi
+	done
 fi
 outside_status=0
 VOID_VIEWS_OUTSIDE=1 out/twoViews.exe > out/gate-two-views-outside.log 2>&1 || outside_status=$?
