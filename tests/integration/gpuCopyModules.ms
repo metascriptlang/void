@@ -8,11 +8,10 @@ when (webgpu) {
 			label: "gpuCopy",
 			vertexCode: "var<private> position : vec2f;\n\nvar<private> clip : vec4f;\n\nfn fullscreenVs() {\n  clip = vec4f(position, 0.5f, 1f);\n  return;\n}\n\nstruct main_out {\n  @builtin(position) clip : vec4f,\n}\n\n@vertex\nfn main(@location(0) position_param : vec2f) -> main_out {\n  position = position_param;\n  fullscreenVs();\n  return main_out(clip);\n}\n",
 			vertexEntryPoint: "main",
-			fragmentCode: "@binding(0) @group(1) var sourceTexture : texture_2d<f32>;\n\n@binding(32) @group(1) var pointSampler : sampler;\n\nvar<private> position : vec4f;\n\nvar<private> fragColor : vec4f;\n\nfn gpuCopyFs() {\n  var size : vec2i = vec2i(textureDimensions(sourceTexture, 0i));\n  var p : vec2i = clamp(vec2i(position.xy), vec2i(0i, 0i), (size - vec2i(1i, 1i)));\n  fragColor = vec4f(textureLoad(sourceTexture, p, 0i).xyz, 1f);\n  return;\n}\n\nstruct main_out {\n  @location(0) fragColor : vec4f,\n}\n\n@fragment\nfn main(@builtin(position) position_param : vec4f) -> main_out {\n  position = position_param;\n  gpuCopyFs();\n  return main_out(fragColor);\n}\n",
+			fragmentCode: "@binding(0) @group(1) var sourceTexture : texture_2d<f32>;\n\nvar<private> position : vec4f;\n\nvar<private> fragColor : vec4f;\n\nfn gpuCopyFs() {\n  var size : vec2i = vec2i(textureDimensions(sourceTexture, 0i));\n  var p : vec2i = clamp(vec2i(position.xy), vec2i(0i, 0i), (size - vec2i(1i, 1i)));\n  fragColor = vec4f(textureLoad(sourceTexture, p, 0i).xyz, 1f);\n  return;\n}\n\nstruct main_out {\n  @location(0) fragColor : vec4f,\n}\n\n@fragment\nfn main(@builtin(position) position_param : vec4f) -> main_out {\n  position = position_param;\n  gpuCopyFs();\n  return main_out(fragColor);\n}\n",
 			fragmentEntryPoint: "main",
 			bindings: [
 				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -25,11 +24,11 @@ when (webgpu) {
 			label: "gpuCopy",
 			vertexCode: "#version 300 es\n\nlayout(location = 0) in vec2 position;\n\nvoid main()\n{\n    gl_Position = vec4(position, 0.5, 1.0);\n    return;\n}\n",
 			vertexEntryPoint: "main",
-			fragmentCode: "#version 300 es\nprecision mediump float;\nprecision highp int;\n\nuniform highp sampler2D sourceTexture_pointSampler;\n\nlayout(location = 0) out highp vec4 fragColor;\n\nvoid main()\n{\n    highp ivec2 size = textureSize(sourceTexture_pointSampler, 0);\n    highp ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));\n    fragColor = vec4(texelFetch(sourceTexture_pointSampler, p, 0).xyz, 1.0);\n    return;\n}\n",
+			fragmentCode: "#version 300 es\nprecision mediump float;\nprecision highp int;\n\nuniform highp sampler2D sourceTexture_SPIRV_Cross_DummySampler;\n\nlayout(location = 0) out highp vec4 fragColor;\n\nvoid main()\n{\n    highp ivec2 size = textureSize(sourceTexture_SPIRV_Cross_DummySampler, 0);\n    highp ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));\n    fragColor = vec4(texelFetch(sourceTexture_SPIRV_Cross_DummySampler, p, 0).xyz, 1.0);\n    return;\n}\n",
 			fragmentEntryPoint: "main",
 			bindings: [
 				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "sourceTexture_pointSampler", textureBinding: 0 },
+				{ group: 1, binding: -1, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "position", semanticIndex: 0 },
@@ -42,11 +41,10 @@ when (webgpu) {
 			label: "gpuCopy",
 			vertexCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_in {\n  float2 position [[attribute(0)]];\n};\n\nstruct main0_out {\n  float4 clip [[position]];\n};\n\nstatic inline void fullscreenVs(thread main0_in& in, thread main0_out& out) {\n  out.clip = float4(in.position, 0.5, 1.0);\n  return;\n}\n\nvertex main0_out main0(main0_in in [[stage_in]]) {\n  main0_out out = {};\n  fullscreenVs(in, out);\n  return out;\n}\n",
 			vertexEntryPoint: "main0",
-			fragmentCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_out {\n  float4 fragColor [[color(0)]];\n};\n\nstatic inline void gpuCopyFs(thread main0_out& out, thread float4& position, texture2d<float> sourceTexture, sampler pointSampler) {\n  int2 size = int2(sourceTexture.get_width(uint(0)), sourceTexture.get_height(uint(0)));\n  int2 p = clamp(int2(position.xy), int2(0, 0), (size - int2(1, 1)));\n  out.fragColor = float4(sourceTexture.read(uint2(p), uint(0)).xyz, 1.0);\n  return;\n}\n\nfragment main0_out main0(float4 position [[position]], texture2d<float> sourceTexture [[texture(0)]], sampler pointSampler [[sampler(0)]]) {\n  main0_out out = {};\n  gpuCopyFs(out, position, sourceTexture, pointSampler);\n  return out;\n}\n",
+			fragmentCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_out {\n  float4 fragColor [[color(0)]];\n};\n\nstatic inline void gpuCopyFs(thread main0_out& out, thread float4& position, texture2d<float> sourceTexture) {\n  int2 size = int2(sourceTexture.get_width(uint(0)), sourceTexture.get_height(uint(0)));\n  int2 p = clamp(int2(position.xy), int2(0, 0), (size - int2(1, 1)));\n  out.fragColor = float4(sourceTexture.read(uint2(p), uint(0)).xyz, 1.0);\n  return;\n}\n\nfragment main0_out main0(float4 position [[position]], texture2d<float> sourceTexture [[texture(0)]]) {\n  main0_out out = {};\n  gpuCopyFs(out, position, sourceTexture);\n  return out;\n}\n",
 			fragmentEntryPoint: "main0",
 			bindings: [
 				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -59,11 +57,10 @@ when (webgpu) {
 			label: "gpuCopy",
 			vertexCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_in {\n  float2 position [[attribute(0)]];\n};\n\nstruct main0_out {\n  float4 clip [[position]];\n};\n\nstatic inline void fullscreenVs(thread main0_in& in, thread main0_out& out) {\n  out.clip = float4(in.position, 0.5, 1.0);\n  return;\n}\n\nvertex main0_out main0(main0_in in [[stage_in]]) {\n  main0_out out = {};\n  fullscreenVs(in, out);\n  return out;\n}\n",
 			vertexEntryPoint: "main0",
-			fragmentCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_out {\n  float4 fragColor [[color(0)]];\n};\n\nstatic inline void gpuCopyFs(thread main0_out& out, thread float4& position, texture2d<float> sourceTexture, sampler pointSampler) {\n  int2 size = int2(sourceTexture.get_width(uint(0)), sourceTexture.get_height(uint(0)));\n  int2 p = clamp(int2(position.xy), int2(0, 0), (size - int2(1, 1)));\n  out.fragColor = float4(sourceTexture.read(uint2(p), uint(0)).xyz, 1.0);\n  return;\n}\n\nfragment main0_out main0(float4 position [[position]], texture2d<float> sourceTexture [[texture(0)]], sampler pointSampler [[sampler(0)]]) {\n  main0_out out = {};\n  gpuCopyFs(out, position, sourceTexture, pointSampler);\n  return out;\n}\n",
+			fragmentCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_out {\n  float4 fragColor [[color(0)]];\n};\n\nstatic inline void gpuCopyFs(thread main0_out& out, thread float4& position, texture2d<float> sourceTexture) {\n  int2 size = int2(sourceTexture.get_width(uint(0)), sourceTexture.get_height(uint(0)));\n  int2 p = clamp(int2(position.xy), int2(0, 0), (size - int2(1, 1)));\n  out.fragColor = float4(sourceTexture.read(uint2(p), uint(0)).xyz, 1.0);\n  return;\n}\n\nfragment main0_out main0(float4 position [[position]], texture2d<float> sourceTexture [[texture(0)]]) {\n  main0_out out = {};\n  gpuCopyFs(out, position, sourceTexture);\n  return out;\n}\n",
 			fragmentEntryPoint: "main0",
 			bindings: [
 				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -76,11 +73,11 @@ when (webgpu) {
 			label: "gpuCopy",
 			vertexCode: "#version 430\n\nlayout(location = 0) in vec2 position;\n\nvoid main()\n{\n    gl_Position = vec4(position, 0.5, 1.0);\n    return;\n}\n",
 			vertexEntryPoint: "main",
-			fragmentCode: "#version 430\n\nlayout(binding = 0) uniform sampler2D sourceTexture_pointSampler;\n\nlayout(location = 0) out vec4 fragColor;\n\nvoid main()\n{\n    ivec2 size = textureSize(sourceTexture_pointSampler, 0);\n    ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));\n    fragColor = vec4(texelFetch(sourceTexture_pointSampler, p, 0).xyz, 1.0);\n    return;\n}\n",
+			fragmentCode: "#version 430\n\nlayout(binding = 0) uniform sampler2D sourceTexture_SPIRV_Cross_DummySampler;\n\nlayout(location = 0) out vec4 fragColor;\n\nvoid main()\n{\n    ivec2 size = textureSize(sourceTexture_SPIRV_Cross_DummySampler, 0);\n    ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));\n    fragColor = vec4(texelFetch(sourceTexture_SPIRV_Cross_DummySampler, p, 0).xyz, 1.0);\n    return;\n}\n",
 			fragmentEntryPoint: "main",
 			bindings: [
 				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "sourceTexture_pointSampler", textureBinding: 0 },
+				{ group: 1, binding: -1, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "position", semanticIndex: 0 },
@@ -93,11 +90,10 @@ when (webgpu) {
 			label: "gpuCopy",
 			vertexCode: "static float2 position;\nstatic float4 clip_1;\n\nvoid fullscreenVs()\n{\n    clip_1 = float4(position, 0.5, 1.0);\n    return;\n}\n\nstruct StageInput\n{\n    float2 position : TEXCOORD0;\n};\n\nstruct StageOutput\n{\n    float4 clip_1 : SV_Position;\n};\n\nStageOutput main(StageInput stage_input)\n{\n    position = stage_input.position;\n    fullscreenVs();\n    StageOutput stage_output;\n    stage_output.clip_1 = clip_1;\n    return stage_output;\n}\n",
 			vertexEntryPoint: "main",
-			fragmentCode: "Texture2D<float4> sourceTexture : register(t0);\nSamplerState pointSampler : register(s0);\n\nstatic float4 position;\nstatic float4 fragColor;\n\nuint2 textureSize(Texture2D<float4> t, uint level)\n{\n    uint width;\n    uint height;\n    uint levels;\n    t.GetDimensions(level, width, height, levels);\n    return uint2(width, height);\n}\n\nvoid gpuCopyFs()\n{\n    int2 size = int2(textureSize(sourceTexture, uint(0)));\n    int2 p = clamp(int2(position.xy), int2(0, 0), size - int2(1, 1));\n    fragColor = float4(sourceTexture.Load(int3(p, 0)).xyz, 1.0);\n    return;\n}\n\nstruct StageInput\n{\n    float4 position : SV_Position;\n};\n\nstruct StageOutput\n{\n    float4 fragColor : SV_Target0;\n};\n\nStageOutput main(StageInput stage_input)\n{\n    position = stage_input.position;\n    position.w = 1.0 / position.w;\n    gpuCopyFs();\n    StageOutput stage_output;\n    stage_output.fragColor = fragColor;\n    return stage_output;\n}\n",
+			fragmentCode: "Texture2D<float4> sourceTexture : register(t0);\n\nstatic float4 position;\nstatic float4 fragColor;\n\nuint2 textureSize(Texture2D<float4> t, uint level)\n{\n    uint width;\n    uint height;\n    uint levels;\n    t.GetDimensions(level, width, height, levels);\n    return uint2(width, height);\n}\n\nvoid gpuCopyFs()\n{\n    int2 size = int2(textureSize(sourceTexture, uint(0)));\n    int2 p = clamp(int2(position.xy), int2(0, 0), size - int2(1, 1));\n    fragColor = float4(sourceTexture.Load(int3(p, 0)).xyz, 1.0);\n    return;\n}\n\nstruct StageInput\n{\n    float4 position : SV_Position;\n};\n\nstruct StageOutput\n{\n    float4 fragColor : SV_Target0;\n};\n\nStageOutput main(StageInput stage_input)\n{\n    position = stage_input.position;\n    position.w = 1.0 / position.w;\n    gpuCopyFs();\n    StageOutput stage_output;\n    stage_output.fragColor = fragColor;\n    return stage_output;\n}\n",
 			fragmentEntryPoint: "main",
 			bindings: [
 				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },

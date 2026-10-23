@@ -4,7 +4,7 @@
 import { glsl, glslLinked } from "../shader/emit";
 import {
 	Sampler, Texture2d, Vec2f, Vec4f, binding, builtin, feature, location, sampleType, samplerType,
-	textureLoad, vec2i, discard,
+	textureSample, discard,
 } from "../shader/std";
 
 struct Attributes {
@@ -51,7 +51,7 @@ function probeVs(input: Attributes, b: ProbeBindings): Varyings {
 function probeFs(input: Varyings, b: ProbeBindings, key: ProbeKey): ProbeOutput {
 	const shade = input.tint;
 	if (key.shadowed) {
-		const s = textureLoad(b.shadowMap, b.shadowSampler, vec2i(0, 0), 0);
+		const s = textureSample(b.shadowMap, b.shadowSampler, input.uv);
 		return { color: s, normal: b.shadowParams.shadow };
 	}
 	return { color: shade, normal: input.tint };
@@ -116,7 +116,7 @@ test "a fragment entry declares each binding and output under the features that 
 		"void main() {\n" +
 		"    vec4 shade = tint;\n" +
 		"#ifdef SHADOWED\n" +
-		"    vec4 s = texelFetch(sampler2D(shadowMap, shadowSampler), ivec2(0, 0), 0);\n" +
+		"    vec4 s = texture(sampler2D(shadowMap, shadowSampler), uv);\n" +
 		"    color = s;\n" +
 		"#ifdef NORMAL_MRT\n" +
 		"    normal = shadow;\n" +

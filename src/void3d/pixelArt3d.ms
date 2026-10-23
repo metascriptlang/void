@@ -3,7 +3,6 @@
 // writes the normal target, its alpha the clip depth the post pass outlines and fogs by.
 
 import {
-	Sampler,
 	Texture2d,
 	Vec2f,
 	Vec2i,
@@ -24,7 +23,6 @@ import {
 	mix,
 	normalize,
 	sampleType,
-	samplerType,
 	smoothstep,
 	textureDimensions,
 	textureLoad,
@@ -170,8 +168,6 @@ export struct PostBindings {
 	@binding(1) normalTexture: Texture2d;
 	@binding(2) @sampleType(unfilterable_float) depthTexture: Texture2d;
 	@binding(3) paletteTexture: Texture2d;
-	@binding(0) pointSampler: Sampler;
-	@binding(1) @samplerType(nonfiltering) depthSampler: Sampler;
 }
 
 export struct BlitParams {
@@ -181,7 +177,6 @@ export struct BlitParams {
 export struct BlitBindings {
 	@binding(0) blitParams: BlitParams;
 	@binding(0) sceneTexture: Texture2d;
-	@binding(0) pointSampler: Sampler;
 }
 
 // The toon ramp: the point light's energy stepped into `levels` bands. normalWeight 0 lights a
@@ -537,9 +532,7 @@ export function pixelArtParticleFs(
 }
 
 function postNormalAt(b: PostBindings, p: Vec2i, size: Vec2i): Vec4f {
-	return textureLoad(
-		b.normalTexture, b.pointSampler, clamp(p, vec2i(0, 0), size - vec2i(1, 1)), 0,
-	);
+	return textureLoad(b.normalTexture, clamp(p, vec2i(0, 0), size - vec2i(1, 1)), 0);
 }
 
 // features.z picks the depth: the scene's depth attachment, unpacked to the depth the scene
@@ -548,7 +541,7 @@ function postDepthAt(b: PostBindings, normal: Vec4f, p: Vec2i, size: Vec2i): flo
 	let depth = normal.w;
 	if (b.postParams.features.z > 0.5) {
 		const q = clamp(p, vec2i(0, 0), size - vec2i(1, 1));
-		const stored = textureLoad(b.depthTexture, b.depthSampler, q, 0).x;
+		const stored = textureLoad(b.depthTexture, q, 0).x;
 		depth = stored * b.postParams.depthUnpack.x + b.postParams.depthUnpack.y;
 	}
 	return depth;
@@ -559,15 +552,15 @@ function postDepthAt(b: PostBindings, normal: Vec4f, p: Vec2i, size: Vec2i): flo
 function paletteColor(b: PostBindings, rgb: Vec3f): Vec3f {
 	const levels = b.postParams.features.w as int32;
 	const q = vec3i(clamp(rgb, vec3f(0.0), vec3f(1.0)) * ((levels - 1) as float32) + 0.5);
-	return textureLoad(b.paletteTexture, b.pointSampler, vec2i(q.x + q.z * levels, q.y), 0).rgb;
+	return textureLoad(b.paletteTexture, vec2i(q.x + q.z * levels, q.y), 0).rgb;
 }
 
 // Outline from depth and normal edges, fog by depth, then palette quantization through a LUT:
 // one pass, because the palette only needs this pixel's outlined colour (docs/VOID3D.md, M3).
 export function postFs(input: PostInput, b: PostBindings): Vec4f {
-	const size = textureDimensions(b.colorTexture, b.pointSampler, 0);
+	const size = textureDimensions(b.colorTexture, 0);
 	const p = vec2i(input.position.xy);
-	const color = textureLoad(b.colorTexture, b.pointSampler, p, 0);
+	const color = textureLoad(b.colorTexture, p, 0);
 	const center = postNormalAt(b, p, size);
 	const centerDepth = postDepthAt(b, center, p, size);
 	const edge = b.postParams.edge;
@@ -603,9 +596,8 @@ export function postFs(input: PostInput, b: PostBindings): Vec4f {
 // pixel = (scale, scale, offset x, offset y) in framebuffer pixels (blit.ms). Alpha is 1 so that
 // blitting the scene colour directly (no post stage) never shows through the surface.
 export function blitFs(input: PostInput, b: BlitBindings): Vec4f {
-	const size = textureDimensions(b.sceneTexture, b.pointSampler, 0);
+	const size = textureDimensions(b.sceneTexture, 0);
 	const p = vec2i(floor((input.position.xy + b.blitParams.pixel.zw) / b.blitParams.pixel.x));
-	const texel = textureLoad(b.sceneTexture, b.pointSampler,
-		clamp(p, vec2i(0, 0), size - vec2i(1, 1)), 0);
+	const texel = textureLoad(b.sceneTexture, clamp(p, vec2i(0, 0), size - vec2i(1, 1)), 0);
 	return vec4f(texel.rgb, 1.0);
 }

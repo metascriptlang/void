@@ -434,7 +434,7 @@ export function fs(input: BatchInput, b: BatchBindings): Vec4f {
 		if (input.coverageTexture > 0.5) {
 			let coverage = texel.x;
 			if (input.coverageTexture > 1.5) {
-				const pageSize = vec2f(textureDimensions(b.tex, b.smp, 0));
+				const pageSize = vec2f(textureDimensions(b.tex, 0));
 				coverage = sdfCoverage(coverage, sdfTexelsPerPixel(uvDx, uvDy, pageSize));
 			}
 			const gamma = applyContrastAndGamma(coverage, input.color.xyz,
@@ -1025,7 +1025,7 @@ export function uiFs(input: UiInput, b: UiBindings): Vec4f {
 	if (mode == 2) {
 		let coverage = textureSample(b.uiTex, b.uiSmp, input.vUvAa.xy).x;
 		if (input.vParams0.x > 0.5) {
-			const pageSize = vec2f(textureDimensions(b.uiTex, b.uiSmp, 0));
+			const pageSize = vec2f(textureDimensions(b.uiTex, 0));
 			coverage = sdfCoverage(coverage, sdfTexelsPerPixel(uvDx, uvDy, pageSize));
 		}
 		fill.w = fill.w * applyContrastAndGamma(coverage, fill.xyz, b.ui_fx.textParams.x,

@@ -45,7 +45,6 @@ test "the fullscreen triangle's corner is its clip position at depth 0.5" {
 function toneMapOf(hdr: Texture2d, exposure: float32, mode: float32, x: float32): Vec4f {
 	return toneMapFs(at(x, 0.5), {
 		hdrTexture: hdr,
-		pointSampler: { nearest: true, wrap: Wrap.Clamp },
 		toneMapParams: { toneMap: vec4f(exposure, mode, 0.0, 0.0) },
 	});
 }
@@ -98,8 +97,6 @@ function leftSurfaceOf(width: float32): OutlineMaskBindings {
 	return {
 		outlineNormal: normal,
 		outlineDepth: filled(4, 1, vec4f(0.5, 0.0, 0.0, 1.0)),
-		outlinePointSampler: { nearest: true, wrap: Wrap.Clamp },
-		outlineDepthSampler: { nearest: true, wrap: Wrap.Clamp },
 		outlineMaskParams: {
 			outlineEdge: vec4f(width, 0.01, 0.9, 1.0),
 			outlineDepthMap: vec4f(0.0),
@@ -118,7 +115,6 @@ function mixOf(blend: float32): Vec4f {
 	return outlineMixFs(at(0.5, 0.5), {
 		outlineLit: filled(2, 2, vec4f(0.2, 0.4, 0.6, 1.0)),
 		outlineMask: filled(2, 2, vec4f(1.0, 1.0, 1.0, 1.0)),
-		outlineLitSampler: { nearest: true, wrap: Wrap.Clamp },
 		outlineLinearSampler: { nearest: false, wrap: Wrap.Clamp },
 		outlineMixParams: {
 			outlineColor: vec4f(1.0, 0.0, 0.0, 1.0),

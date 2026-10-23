@@ -62,7 +62,7 @@ function referenceCoverage(b: ReferenceBindings, coordinate: Vec2f): float32 {
 function outlineReferenceFs(input: ReferenceInput, b: ReferenceBindings): Vec4f {
 	const size = b.referenceParameters.referenceSize;
 	const inputUv = input.position.xy /
-		vec2f(textureDimensions(b.referenceImage, b.referenceSampler, 0));
+		vec2f(textureDimensions(b.referenceImage, 0));
 	const ownColor = referenceCoverage(b, inputUv);
 	let maxAlpha: float32 = 0.0;
 	let angle: float32 = 0.0;

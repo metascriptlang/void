@@ -27,7 +27,6 @@ import {
 	normalize,
 	pow,
 	sampleType,
-	samplerType,
 	sin,
 	textureDimensions,
 	textureLoad,
@@ -46,14 +45,13 @@ export struct CopyInput {
 
 export struct CopyBindings {
 	@binding(0) sourceTexture: Texture2d;
-	@binding(0) pointSampler: Sampler;
 }
 
 // h3d.pass.Copy: the scene target onto the swapchain, one texel per pixel.
 export function copyFs(input: CopyInput, b: CopyBindings): Vec4f {
-	const size = textureDimensions(b.sourceTexture, b.pointSampler, 0);
+	const size = textureDimensions(b.sourceTexture, 0);
 	const p = clamp(vec2i(input.position.xy), vec2i(0, 0), size - vec2i(1, 1));
-	return textureLoad(b.sourceTexture, b.pointSampler, p, 0);
+	return textureLoad(b.sourceTexture, p, 0);
 }
 
 export const PARTICLE_CORNERS: Vec2f[6] = [
@@ -250,7 +248,6 @@ export struct LitBindings {
 	@binding(6) frameParams: FrameParams;
 	@binding(5) shadowParams: ShadowParams;
 	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2d;
-	@binding(2) @samplerType(nonfiltering) shadowSampler: Sampler;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
 	@binding(1) backTexture: Texture2d;
@@ -805,9 +802,9 @@ export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
 	if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0) {
 		return 1.0;
 	}
-	const size = textureDimensions(b.shadowMap, b.shadowSampler, 0);
+	const size = textureDimensions(b.shadowMap, 0);
 	const texel = clamp(vec2i(p.xy * vec2f(size)), vec2i(0, 0), size - vec2i(1, 1));
-	const depth = textureLoad(b.shadowMap, b.shadowSampler, texel, 0).x;
+	const depth = textureLoad(b.shadowMap, texel, 0).x;
 	const lit: float32 = clamp(p.z, 0.0, 1.0) - b.shadowParams.shadow.x > depth ? 0.0 : 1.0;
 	return mix(1.0, lit, b.shadowParams.shadow.y);
 }

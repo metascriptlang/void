@@ -13,7 +13,7 @@ import {
 } from "../../src/shader/std";
 
 export function gpuCopyFs(input: CopyInput, b: CopyBindings): Vec4f {
-	const size = textureDimensions(b.sourceTexture, b.pointSampler, 0);
+	const size = textureDimensions(b.sourceTexture, 0);
 	const p = clamp(vec2i(input.position.xy), vec2i(0, 0), size - vec2i(1, 1));
-	return vec4f(textureLoad(b.sourceTexture, b.pointSampler, p, 0).rgb, 1.0);
+	return vec4f(textureLoad(b.sourceTexture, p, 0).rgb, 1.0);
 }

@@ -76,7 +76,6 @@ function plainBindings(): LitBindings {
 		frameParams: { frame: vec4f(0.0, 1.0, 0.0, 0.0) },
 		shadowParams: { shadowMatrix: identity(), shadow: none() },
 		shadowMap: white(),
-		shadowSampler: { nearest: true },
 		baseTexture: white(),
 		baseSampler: { nearest: true },
 		backTexture: white(),

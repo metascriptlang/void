@@ -23,7 +23,11 @@ later replaces the hand-written GLSL source of each base.
   chosen because sokol is being replaced ([docs/GPU.md](../../docs/GPU.md)). sokol-shdc is on no
   build or regeneration path; it runs only as the opt-in oracle `scripts/regen-shaders.sh
   --oracle-shdc`, which compiles the GLSL 450 of the same stages and compares its reflection with
-  the committed modules (all three the same, 2026-10-23, BUILD `4b5816aea`).
+  the committed modules (all three the same, 2026-10-23, BUILD `4b5816aea`, while fetches still
+  took a sampler). Since `textureLoad` and `textureDimensions` take none, shdc refuses every
+  stage that fetches (see "No fetch without a sampler" below), so the oracle stops at the first
+  such program (`copy`); on 2026-10-23 that was 77 of the 254 void3d rows, `shader2d` and
+  `gpuCopy`.
   `irErrors` names each broken invariant; `src/test/shaderIrCheck.ms` builds modules by hand, also
   inside a macro.
 - **Emitter = macro library, not a compiler backend.** On msc `244ef48c`, `getImpl(bindSym("frag"))`
@@ -238,8 +242,11 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
 - **No fetch without a sampler** (measured 2026-10-13, same shdc). `texelFetch(texture2D, …)` and
   `textureSize(texture2D, …)` need `GL_EXT_samplerless_texture_functions`, and with it shdc stops at
   `SPIRVCross exception: texelFetch without sampler was found, but no dummy sampler has been created
-  with build_dummy_sampler_for_combined_images()`. So `textureLoad` and `textureDimensions` take a
-  sampler here, where WGSL's take none; the parameter goes when shdc builds the dummy sampler.
+  with build_dummy_sampler_for_combined_images()` (again 2026-10-23, win32 shdc, on hlsl5, wgsl
+  and metal_macos too). `textureLoad` and `textureDimensions` take no sampler, as WGSL's, so
+  printGlsl450 writes them through that extension and only the IR printers compile them. On GL
+  `bindingSlots` pairs the fetched texture with a sampler its stage already samples it through,
+  else with `DUMMY_SAMPLER`, which the GL backend binds itself.
 - **Walls neither shdc nor self-emitting can pass**: sokol API (spec constants compile, but sokol has
   no field for them, so the default always wins; push constants; framebuffer fetch degrades to a
   texture read; bindless; indirect) and platform floors (WebGL2, WebGPU core, D3D11 SM5).

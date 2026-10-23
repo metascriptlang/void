@@ -61,7 +61,7 @@ function plainLit(): LitBindings {
 		},
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		shadowParams: { shadowMatrix: identity(), shadow: none() },
-		shadowMap: white, shadowSampler: { nearest: true },
+		shadowMap: white,
 		baseTexture: white, baseSampler: { nearest: true },
 		backTexture: white, dissolveTexture: white, dissolveSampler: { nearest: true },
 		emissiveTexture: white, normalTexture: white,
@@ -86,8 +86,6 @@ function plainPost(): PostBindings {
 		normalTexture: grid(3, 3, vec4f(0.5, 1.0, 0.5, 0.5)),
 		depthTexture: grid(3, 3, none()),
 		paletteTexture: grid(4, 2, none()),
-		pointSampler: { nearest: true },
-		depthSampler: { nearest: true },
 	};
 }
 
@@ -193,7 +191,6 @@ test "blit reads the scene texel under the scaled fragment, clamped, alpha 1" {
 	}
 	let b: BlitBindings = {
 		blitParams: { pixel: vec4f(2, 2, 0, 0) }, sceneTexture: scene,
-		pointSampler: { nearest: true },
 	};
 	const texel = blitFs({ position: vec4f(5.5, 3.5, 0.5, 1.0) }, b);
 	assert texel.x == 0.5 && texel.y == 0.25 && texel.w == 1.0;

@@ -1793,15 +1793,14 @@ export function textureStore(texture: StorageTexture2d, at: Vec2i, value: Vec4f)
 	texture.texels[first + 3] = value.w;
 }
 
-// WGSL's textureDimensions and textureLoad take no sampler. These do: sokol-shdc cannot fetch
-// without one (src/shader/CLAUDE.md, "shdc's own limits"). The size is signed, as the texel
-// coordinate it bounds is (docs/VOCABULARY.md, "A name brings its meaning").
-export function textureDimensions(texture: Texture2d, sampler: Sampler, level: int32): Vec2i {
+// The size is signed, as the texel coordinate it bounds is (docs/VOCABULARY.md, "A name brings
+// its meaning").
+export function textureDimensions(texture: Texture2d, level: int32): Vec2i {
 	if (level != 0) { unreachable("textureDimensions: the CPU texture has no mip levels"); }
 	return { x: texture.width, y: texture.height };
 }
 
-export function textureLoad(texture: Texture2d, sampler: Sampler, at: Vec2i, level: int32): Vec4f {
+export function textureLoad(texture: Texture2d, at: Vec2i, level: int32): Vec4f {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
 	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
 		unreachable("textureLoad: the texel is outside the texture");
@@ -1816,12 +1815,7 @@ export struct Texture2dU32 {
 	texels: uint32[];
 }
 
-export function textureLoad(
-	texture: Texture2dU32,
-	sampler: Sampler,
-	at: Vec2i,
-	level: int32,
-): Vec4u {
+export function textureLoad(texture: Texture2dU32, at: Vec2i, level: int32): Vec4u {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
 	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
 		unreachable("textureLoad: the texel is outside the texture");
@@ -1849,12 +1843,11 @@ function layerOf(texture: Texture2dArray, layer: int32): Texture2d {
 
 export function textureLoad(
 	texture: Texture2dArray,
-	sampler: Sampler,
 	at: Vec2i,
 	layer: int32,
 	level: int32,
 ): Vec4f {
-	return textureLoad(layerOf(texture, layer), sampler, at, level);
+	return textureLoad(layerOf(texture, layer), at, level);
 }
 
 export function textureSample(

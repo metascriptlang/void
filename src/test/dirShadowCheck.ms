@@ -19,7 +19,6 @@ import {
 	SHADOW_UNIFORM_SLOT,
 	SHADOW_UNIFORM_LENGTH,
 	SHADOW_VIEW_SLOT,
-	SHADOW_SAMPLER_SLOT,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	MOVING_MATERIAL_UNIFORM_LENGTH,
@@ -118,7 +117,7 @@ test "a receiver draws shadowed only in a frame with a shadow map, in both prese
 	}
 }
 
-test "a shadowed program reads the shadow block, map and sampler past a material's" {
+test "a shadowed program reads the shadow block and map past a material's" {
 	for (const program of LIT_PROGRAMS) {
 		for (const preset of [Preset.Core, Preset.PixelArt]) {
 			const plain: ProgramKey = ProgramKey.of(program).withPreset(preset);
@@ -128,8 +127,7 @@ test "a shadowed program reads the shadow block, map and sampler past a material
 			assert uniformBlockLength(plain, SHADOW_UNIFORM_SLOT) == 0;
 			assert uniformBlockLength(shadowed, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;
 			assert textureSlotMask(shadowed) == (textureSlotMask(plain) | bit(SHADOW_VIEW_SLOT));
-			assert samplerSlotMask(shadowed) ==
-				(samplerSlotMask(plain) | bit(SHADOW_SAMPLER_SLOT));
+			assert samplerSlotMask(shadowed) == samplerSlotMask(plain);
 		}
 	}
 }

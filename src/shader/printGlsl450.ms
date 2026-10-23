@@ -122,6 +122,7 @@ class Glsl {
 	paramNames: string[][] = [];
 	localNames: string[][] = [];
 	fn: int32 = -1;
+	samplerless: boolean = false;
 }
 
 function isNever(c: FeatureCondition): boolean {
@@ -394,17 +395,26 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		Intrinsic.Saturate => "clamp(" + args[0] + ", 0.0, 1.0)",
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
-		Intrinsic.TextureDimensions => args.length == 1 ? "imageSize(" + args[0] + ")" :
-			"textureSize(" + sampled + ", " + args[2] + ")",
-		Intrinsic.TextureLoad => layered ?
-			"texelFetch(" + sampled + ", ivec3(" + args[2] + ", " + args[3] + "), " + args[4] + ")" :
-			"texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",
+		Intrinsic.TextureDimensions | Intrinsic.TextureLoad => fetched(p, e, args),
 		Intrinsic.TextureSample => layered ?
 			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
 			"texture(" + sampled + ", " + args[2] + ")",
 		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
 		_ => intrinsicName(e.intrinsic) + all,
 	};
+}
+
+function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {
+	const args = all.filter((_, i) => e.operands[i].type.kind != ShaderTypeKind.Sampler);
+	const texture = e.operands[0].type;
+	if (texture.kind == ShaderTypeKind.StorageTexture) { return "imageSize(" + args[0] + ")"; }
+	p.samplerless = true;
+	if (e.intrinsic == Intrinsic.TextureDimensions) {
+		return "textureSize(" + args[0] + ", " + args[1] + ")";
+	}
+	return texture.shape == TextureShape.D2Array ?
+		"texelFetch(" + args[0] + ", ivec3(" + args[1] + ", " + args[2] + "), " + args[3] + ")" :
+		"texelFetch(" + args[0] + ", " + args[1] + ", " + args[2] + ")";
 }
 
 function compared(e: ShaderExpr, args: string[]): string {
@@ -700,5 +710,7 @@ export function printGlsl450(m: ShaderModule): string {
 		}
 	}
 	p.fn = p.entry.functionIndex;
-	return out + "void main() {\n" + statements(p, m.functions[p.fn].body, "    ") + "}\n";
+	out += "void main() {\n" + statements(p, m.functions[p.fn].body, "    ") + "}\n";
+	return (p.samplerless ? "#extension GL_EXT_samplerless_texture_functions : require\n" : "") +
+		out;
 }

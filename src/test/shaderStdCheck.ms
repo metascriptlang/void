@@ -83,7 +83,6 @@ export struct ProbeInput {
 
 export struct ProbeBindings {
 	@binding(0) shadowMap: Texture2d;
-	@binding(0) shadowSampler: Sampler;
 }
 
 export function probeFs(input: ProbeInput, b: ProbeBindings): Vec4f {
@@ -92,7 +91,7 @@ export function probeFs(input: ProbeInput, b: ProbeBindings): Vec4f {
 	const world = model * model * vec4f(p.xyz, 1.0);
 	const n = normalize(upperLeft3x3(model) * world.xyz);
 	const basis = mat3x3f(n, vec3f(0.0, 1.0, 0.0), vec3f(1.0));
-	const uv = p.xy * vec2f(textureDimensions(b.shadowMap, b.shadowSampler, 0));
+	const uv = p.xy * vec2f(textureDimensions(b.shadowMap, 0));
 	const up = basis * vec3f(0.0, 1.0, 0.0);
 	const lambert = max(dot(n, up), 0.0) * p.w / length(n);
 	const light = pow(max(n * 0.5 + 0.5, vec3f(0.0)), vec3f(2.4)) - 1.0;
@@ -100,14 +99,14 @@ export function probeFs(input: ProbeInput, b: ProbeBindings): Vec4f {
 	const curved = mix(clamp(light, vec3f(0.0), vec3f(1.0)), bright, min(lambert, 1.0));
 	const facing = select(n, light - n, p.z > 0.5);
 	const shade = select(1.0, clamp(uv.x, 0.0, 1.0), uv.y > 1.0);
-	const texel = textureLoad(b.shadowMap, b.shadowSampler, vec2i(uv), 0);
+	const texel = textureLoad(b.shadowMap, vec2i(uv), 0);
 	return vec4f(curved * facing * shade + texel.rgb * texel.r, texel.a);
 }
 
 test "glsl spells every std name in its GLSL form" {
 	const expected =
+		"#extension GL_EXT_samplerless_texture_functions : require\n" +
 		"layout(binding=0) uniform texture2D shadowMap;\n" +
-		"layout(binding=0) uniform sampler shadowSampler;\n" +
 		"layout(location=0) out vec4 fragColor;\n" +
 		"void main() {\n" +
 		"    vec4 p = gl_FragCoord;\n" +
@@ -115,7 +114,7 @@ test "glsl spells every std name in its GLSL form" {
 		"    vec4 world = (model * model) * vec4(p.xyz, 1.0);\n" +
 		"    vec3 n = normalize((mat3(model) * world.xyz));\n" +
 		"    mat3 basis = mat3(n, vec3(0.0, 1.0, 0.0), vec3(1.0));\n" +
-		"    vec2 uv = p.xy * vec2(textureSize(sampler2D(shadowMap, shadowSampler), 0));\n" +
+		"    vec2 uv = p.xy * vec2(textureSize(shadowMap, 0));\n" +
 		"    vec3 up = basis * vec3(0.0, 1.0, 0.0);\n" +
 		"    float lambert = (max(dot(n, up), 0.0) * p.w) / length(n);\n" +
 		"    vec3 light = pow(max(((n * 0.5) + 0.5), vec3(0.0)), vec3(2.4)) - 1.0;\n" +
@@ -123,7 +122,7 @@ test "glsl spells every std name in its GLSL form" {
 		"    vec3 curved = mix(clamp(light, vec3(0.0), vec3(1.0)), bright, min(lambert, 1.0));\n" +
 		"    vec3 facing = ((p.z > 0.5) ? (light - n) : n);\n" +
 		"    float shade = ((uv.y > 1.0) ? clamp(uv.x, 0.0, 1.0) : 1.0);\n" +
-		"    vec4 texel = texelFetch(sampler2D(shadowMap, shadowSampler), ivec2(uv), 0);\n" +
+		"    vec4 texel = texelFetch(shadowMap, ivec2(uv), 0);\n" +
 		"    fragColor = vec4((((curved * facing) * shade) + (texel.rgb * texel.r)), texel.a);\n" +
 		"    return;\n" +
 		"}\n";
