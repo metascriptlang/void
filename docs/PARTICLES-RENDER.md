@@ -309,7 +309,11 @@ selected by the key, the binding needing an offset word, and sort order across m
   only what an effect asks for (additive and cutout first).
 - Backend behaviour of a per-instance slot 1 beside a per-vertex slot 0 with a buffer offset is
   new to Void (every current layout uses slot 0 only): probe on D3D11 and a WebGL2 build
-  before the layout lands (risk 12).
+  before the layout lands (risk 12). Probed on 2026-10-24 at `0d3d4ecf`, raw sokol, D3D11 and
+  WebGL2 alike: three quads of two `FLOAT2` corners per vertex in slot 0, `FLOAT2` offset and
+  `FLOAT4` colour per instance in slot 1, bound at `vertex_buffer_offsets[1]` = one instance
+  (24 B) and drawn with 2 instances, read back exactly the clear colour, then green and blue;
+  the control at offset 0 reads red where the skipped instance would be.
 
 **What the app author sees.**
 - Same as Unity: render mode, `alignment`, the 3D rotation and size, `mesh` and
