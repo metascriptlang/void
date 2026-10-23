@@ -89,9 +89,9 @@ is its slot list and costs no driver object.
 
 ## Shaders
 
-Until Void has its own emitter, sokol-shdc stays the compiler, but its output is read as data:
-the per-language source and the reflection, not `sg_shader_desc`. The generated table is
-Void's `GPUShaderModule` descriptor, so nothing includes `sokol_gfx.h`. D3D11 compiles HLSL
+Void's own printers write each language from the shader IR (`src/shader/CLAUDE.md`), with the
+reflection `sokol-shdc` used to give, which `scripts/regen-shaders.sh --oracle-shdc` still compares.
+The generated table is Void's `GPUShaderModule` descriptor, so nothing includes `sokol_gfx.h`. D3D11 compiles HLSL
 source at load with `D3DCompile`, as sokol does (`sokol_gfx.h:14127`, `:14143`).
 
 ## Window, surface and time

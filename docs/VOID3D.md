@@ -2266,7 +2266,7 @@ until a consumer needs it; `addMaterial` refuses it with `UndeclaredProgram`, an
 door lookup stops naming the key. No `src/gpu` change: the door id remains the pipeline key.
 `scripts/regen-shaders.sh` writes `programModules.ms` and `programTableData.ms` from the same
 rows and refuses rows that disagree on a layout's attribute slots or a shared block's size and
-slot (`tools/shaderTables.ms` `agree`); its `--check` covers both files. A row whose stages never
+slot (`tools/irPrograms.ms` `agree`); its `--check` covers both files. A row whose stages never
 read its declared feature is refused rather than compiling a plain shader under that key.
 
 **One source per base and preset.** The shader sources use sokol-shdc's `--defines` and

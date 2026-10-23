@@ -122,5 +122,5 @@ None of these holds today.
 - [GPUI.md](GPUI.md): the void2d frame shape (display list, instanced UI pipeline) that the sokol upgrade lands with.
 - [VOID2D.md](VOID2D.md): the 2026-06-20 decision to own the batcher on `sokol_gfx` instead of vendoring sokol_gp.
 - [HEAPS.md](HEAPS.md): sokol replacing the Heaps driver and hxsl layers.
-- `setup.sh`: the pins. `scripts/regen-shaders.sh`: sokol-shdc outputs.
+- `setup.sh`: the pins. `scripts/regen-shaders.sh --oracle-shdc`: the sokol-shdc reflection oracle.
 - sokol changelog: https://github.com/floooh/sokol/blob/master/CHANGELOG.md

@@ -67,12 +67,12 @@ src/webgpu/<backend>/backend.ms + <backend>.{c,h}   logic in MetaScript, driver 
 src/platform/swapchain.h  the window hands the door its frame target (6 getters)
 ```
 
-Shader modules are generated, not hand-written: `scripts/regen-shaders.sh` runs sokol-shdc with
-`-f bare_yaml` and writes `src/void2d/shader2dModules.ms`, `src/void3d/programModules.ms`,
+Shader modules are generated, not hand-written: `scripts/regen-shaders.sh` runs
+`tools/irPrograms.ms`, which prints them from the shader IR, and writes `src/void2d/shader2dModules.ms`, `src/void3d/programModules.ms`,
 `tests/integration/gpuCopyModules.ms`. **They already carry MSL for `macos` and `ios`** (a
 `when (macos)` / `when (ios)` branch per module), with `nativeSlot` = the MSL
-`buffer`/`texture`/`sampler` index for each WebGPU binding. Regenerate on a Mac with the
-`osx_arm64` shdc; `bash scripts/regen-shaders.sh --check` must say every output is fresh.
+`buffer`/`texture`/`sampler` index for each WebGPU binding. Any host regenerates them;
+`bash scripts/regen-shaders.sh --check` must say every output is fresh.
 
 ## G6 — what the Mac session builds
 

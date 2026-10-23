@@ -9,10 +9,10 @@ author shaders ──┐
                  ├─ Tier 1  hand-written GLSL  (.glsl, @vs/@fs)               stages not ported yet
                  ├─ Tier 2  über-shader terms (colorMatrix/colorAdd/colorKey) ✅ void2d
                  └─ Tier 3  MetaScript shader fns → GLSL (shady-style)        ✅ void3d lit, textured, post; void2d
-                              │  glsl(fn) macro → GLSL 450 on disk (tools/genShaders.ms)
+                              │  glslIr(fn) macro → shader IR (src/shader/ir.ms)
                               ▼
-                   sokol-shdc  (offline cross-compile, scripts/regen-shaders.sh)
-                              │  GLSL → Metal · D3D · GL · WGSL + desc header
+                   IR printers  (offline, tools/irPrograms.ms via scripts/regen-shaders.sh)
+                              │  IR → MSL · HLSL · GLSL 430 / ES 300 · WGSL + reflection
                               ▼
                    Void GPU bridge  (sg_make_shader / sg_make_pipeline)
                               │  src/sokol/{bridge,gpu}, src/void2d/batcher, src/void3d
@@ -20,11 +20,11 @@ author shaders ──┐
                    Metal · D3D11 · GL · WebGPU · WebGL2
 ```
 
-sokol picks its backend at **compile time**, and sokol-shdc cross-compiles **offline**, so GLSL generated at runtime would reach only the GL backend. That is why every tier, Tier 3 included, writes its GLSL to disk before shdc runs.
+The backend is picked at **compile time** and the printers run **offline** (or in the `shaderProgram` macro while msc compiles the app), so every tier, Tier 3 included, reaches the binary as generated per-target source.
 
 ## Tier 1 — hand-written GLSL
 
-Annotated GLSL (`@vs` / `@fs` / `@cs`, separate `texture` + `sampler`), cross-compiled by `scripts/regen-shaders.sh` to a generated `*.glsl.h` desc header. Tier 3 has taken every stage: what stays hand-written is the frame around the generated programs, `src/void2d/shader2d.glsl`'s `@program` lines and includes.
+Annotated GLSL (`@vs` / `@fs` / `@cs`, separate `texture` + `sampler`) that sokol-shdc cross-compiled. Tier 3 has taken every stage, and the hand-written `.glsl` files are gone; which programs exist is `src/void3d/programKeys.txt` and `tools/irPrograms.ms`'s program lists.
 
 void2d runs **one shader × pipeline-per-blend-mode** (`VOID2D_BLEND_COUNT` in `src/void2d/batcher.c`), flushing the batcher on a blend or view change. A new effect is a new pipeline variant, not a new architecture.
 
