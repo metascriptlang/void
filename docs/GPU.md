@@ -204,6 +204,15 @@ backend module. Metal follows it with a `.m`.
   acquires; the pass that renders to the swapchain presents it at `endPass`.
 - **Uniform offsets are 256-aligned on iOS too** (sokol: 16), because the door hands every
   backend 256-aligned offsets. It costs uniform-buffer space only.
+- **Compute and storage run on the frame's command buffer.** A compute pass, a render pass and a
+  blit share it, so Metal orders them by the resources they touch. A compute module takes MSL
+  (`computeCode`) and its `workgroupSize`, which the shader arc does not emit for Metal yet, so
+  the pins write MSL by hand. Storage bindings are never clamped to the device's range, and a
+  storage range's offset is a multiple of 32.
+- **Timestamps need `MTLCounterSamplingPointAtStageBoundary` and are refused on Intel.** A render
+  pass writes them; `timestampWrites` on a compute pass stops by name, because on an Apple GPU the
+  compute sample is not written before a resolve that follows it in the same command buffer
+  (a second dispatch after the pass makes it appear).
 
 On the Apple GPU the goldens differ from the D3D11 set by up to 4 levels on text, filter and
 shadow rows; a sokol Metal build of the merge base captured the same 58 rows byte-identical to
