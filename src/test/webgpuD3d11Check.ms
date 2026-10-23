@@ -2,12 +2,10 @@ import {
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
-	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
 	GPU_NO_QUERY_INDEX,
 	GPUMapMode,
-	GPURenderPassEncoder,
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
@@ -33,14 +31,30 @@ import {
 	doorShutdown,
 } from "../gpu/doorGpu.ms";
 import { nativeTexture, bindStats } from "../webgpu/d3d11/backend.ms";
+import {
+	BLUE,
+	GREEN,
+	RED,
+	SIZE,
+	clearingPass,
+	colourTarget,
+	colourUniforms,
+	drawTriangleIn,
+	pixel,
+	readBack,
+	readCounters,
+	readbackBuffer,
+	resolveBuffer,
+	texelAt,
+	texels,
+	uniformGroup,
+	uniformGroupAt,
+	vertexBuffer,
+} from "./webgpuFixtures.ms";
 import { warpDevice, warpContext, warpReadback, warpReadback3d, warpReadbackSubresource, warpObjectName, warpTarget, warpTargetView } from "./d3d11Warp.h";
 
 @passL("-ld3d11");
 
-const SIZE = 64;
-const BLUE: uint32 = 0x0000FFFF;
-const RED: uint32 = 0xFF0000FF;
-const GREEN: uint32 = 0x00FF00FF;
 
 const VERTEX_HLSL = "float4 main(float2 position : TEXCOORD0) : SV_Position { return float4(position, 0.0, 1.0); }";
 const TEXTURED_FRAGMENT_HLSL = "Texture2D tex : register(t0);
@@ -89,69 +103,10 @@ function flatPipeline(device: GPUDevice, module: GPUShaderModule, sampleCount: i
 	return device.createRenderPipeline(descriptor);
 }
 
-function colourUniforms(device: GPUDevice): GPUBuffer {
-	const buffer = device.createBuffer({
-		label: "colours",
-		size: 512,
-		usage: (GPUBufferUsage.UNIFORM as int32) | (GPUBufferUsage.COPY_DST as int32),
-	});
-	const red: Vec<float32> = [1.0, 0.0, 0.0, 1.0];
-	const green: Vec<float32> = [0.0, 1.0, 0.0, 1.0];
-	device.queue.writeBuffer(buffer, 0, red);
-	device.queue.writeBuffer(buffer, 256, green);
-	return buffer;
-}
-
-function uniformGroupAt(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer, offset: int64): GPUBindGroup {
-	let descriptor: GPUBindGroupDescriptor = { label: "colours", layout: pipeline.getBindGroupLayout(0) };
-	descriptor.entries[0] = { binding: 0, buffer: uniforms, offset: offset, size: 16 };
-	return device.createBindGroup(descriptor);
-}
-
-function uniformGroup(device: GPUDevice, pipeline: GPURenderPipeline, uniforms: GPUBuffer): GPUBindGroup {
-	return uniformGroupAt(device, pipeline, uniforms, 0);
-}
-
-function vertexBuffer(device: GPUDevice, size: int64): GPUBuffer {
-	return device.createBuffer({
-		label: "vertices",
-		size: size,
-		usage: (GPUBufferUsage.VERTEX as int32) | (GPUBufferUsage.COPY_DST as int32),
-	});
-}
-
-function colourTarget(device: GPUDevice, sampleCount: int32): GPUTexture {
-	return device.createTexture({
-		label: "target",
-		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
-		format: "rgba8unorm",
-		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
-		sampleCount: sampleCount,
-	});
-}
-
-function clearingPass(view: GPUTextureView, resolve: GPUTextureView): GPURenderPassDescriptor {
-	let descriptor: GPURenderPassDescriptor = { label: "pass" };
-	descriptor.colorAttachments[0] = {
-		view: view,
-		resolveTarget: resolve,
-		clearValue: { r: 0.0, g: 0.0, b: 1.0, a: 1.0 },
-		loadOp: "clear",
-		storeOp: "store",
-	};
-	return descriptor;
-}
-
 function readPixels(texture: GPUTexture): Vec<uint8> {
 	let pixels: Vec<uint8> = new Array(SIZE * SIZE * 4);
 	if (warpReadback(nativeTexture(texture), pixels[0], SIZE, SIZE) != 1) { stopOnWarp("the staging readback failed"); }
 	return pixels;
-}
-
-function pixel(pixels: Vec<uint8>, x: int32, y: int32): uint32 {
-	const at = (y * SIZE + x) * 4;
-	return ((pixels[at] as uint32) << 24) | ((pixels[at + 1] as uint32) << 16) |
-		((pixels[at + 2] as uint32) << 8) | (pixels[at + 3] as uint32);
 }
 
 function drawTriangle(device: GPUDevice, sampleCount: int32, dynamicOffset: uint32): Vec<uint8> {
@@ -685,17 +640,6 @@ test "a bind group entry offset selects the second uniform block" {
 	device.destroy();
 }
 
-function texels(red: uint8, green: uint8, blue: uint8, count: int32): Vec<uint8> {
-	let bytes: Vec<uint8> = new Array(count * 4);
-	for (let i = 0; i < count; i++) {
-		bytes[i * 4] = red;
-		bytes[i * 4 + 1] = green;
-		bytes[i * 4 + 2] = blue;
-		bytes[i * 4 + 3] = 255;
-	}
-	return bytes;
-}
-
 function readSubresource(texture: GPUTexture, subresource: int32, width: int32, height: int32): Vec<uint8> {
 	let pixels: Vec<uint8> = new Array(width * height * 4);
 	if (warpReadbackSubresource(nativeTexture(texture), subresource, pixels[0], width, height) != 1) {
@@ -903,26 +847,6 @@ test "a blend constant of 0.5 weights a red source over black to half red" {
 	assert pixels[at + 1] == 0 && pixels[at + 2] == 0 && pixels[at + 3] == 255;
 	assert pixel(pixels, 0, 0) == 0x000000FF;
 	device.destroy();
-}
-
-function readBack(buffer: GPUBuffer): Vec<uint8> {
-	buffer.mapAsync(GPUMapMode.READ as int32, 0, 0);
-	const bytes = buffer.getMappedRange(0, 0);
-	buffer.unmap();
-	return bytes;
-}
-
-function readbackBuffer(device: GPUDevice, size: int64): GPUBuffer {
-	return device.createBuffer({
-		label: "readback",
-		size: size,
-		usage: (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.COPY_DST as int32),
-	});
-}
-
-function texelAt(bytes: Vec<uint8>, bytesPerRow: int32, x: int32, y: int32): uint32 {
-	const at = y * bytesPerRow + x * 4;
-	return ((bytes[at] as uint32) << 24) | ((bytes[at + 1] as uint32) << 16) | ((bytes[at + 2] as uint32) << 8) | (bytes[at + 3] as uint32);
 }
 
 test "a buffer range copies to a MAP_READ buffer and a mapped range reads it back" {
@@ -1319,43 +1243,8 @@ test "a label reaches the native object and a pass label and debug groups balanc
 	device.destroy();
 }
 
-function resolveBuffer(device: GPUDevice, size: int64): GPUBuffer {
-	return device.createBuffer({
-		label: "resolved",
-		size: size,
-		usage: (GPUBufferUsage.QUERY_RESOLVE as int32) | (GPUBufferUsage.COPY_SRC as int32),
-	});
-}
-
-function readCounters(device: GPUDevice, resolved: GPUBuffer, count: int32): Vec<uint64> {
-	const readback = readbackBuffer(device, (count as int64) * 8);
-	const encoder = device.createCommandEncoder();
-	encoder.copyBufferToBuffer(resolved, 0, readback, 0, (count as int64) * 8);
-	device.queue.submit(encoder.finish());
-	const bytes = readBack(readback);
-	let values: Vec<uint64> = new Array(count);
-	for (let i = 0; i < count; i++) {
-		let value: uint64 = 0;
-		for (let b = 7; b >= 0; b--) { value = (value << 8) | (bytes[i * 8 + b] as uint64); }
-		values[i] = value;
-	}
-	return values;
-}
-
 function triangleSetup(device: GPUDevice): GPURenderPipeline {
 	return flatPipeline(device, flatShader(device), 1);
-}
-
-function drawTriangleIn(device: GPUDevice, pipeline: GPURenderPipeline, pass: GPURenderPassEncoder): void {
-	const uniforms = colourUniforms(device);
-	const vertices = vertexBuffer(device, 24);
-	const triangle: Vec<float32> = [-0.5, -0.5, 0.0, 0.5, 0.5, -0.5];
-	device.queue.writeBuffer(vertices, 0, triangle);
-	const offsets: Vec<uint32> = [0];
-	pass.setPipeline(pipeline);
-	pass.setVertexBuffer(0, vertices, 0);
-	pass.setBindGroup(0, uniformGroup(device, pipeline, uniforms), offsets);
-	pass.draw(3, 1, 0, 0);
 }
 
 test "two timestamps around a render pass and around a compute pass resolve to non-decreasing nanoseconds" {
