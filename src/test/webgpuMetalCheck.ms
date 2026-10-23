@@ -6,6 +6,8 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUDevice,
+	GPUIndexFormat,
+	GPUPrimitiveTopology,
 	GPURenderPassDescriptor,
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
@@ -555,5 +557,120 @@ test "a negative depth bias lets an equal-depth less-test draw pass, a positive 
 	assert pixel(depthBiasScene(device, "less", -100000, 0.0), 32, 32) == GREEN;
 	assert pixel(depthBiasScene(device, "greater", 100000, 0.0), 32, 32) == GREEN;
 	assert pixel(depthBiasScene(device, "greater", 100000, 0.000000001), 32, 32) == RED;
+	device.destroy();
+}
+
+const POINT_VERTEX_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct In { float2 position [[attribute(0)]]; };\nstruct Out { float4 position [[position]]; float pointSize [[point_size]]; };\nvertex Out pmain(In in [[stage_in]]) { Out out; out.position = float4(in.position, 0.0, 1.0); out.pointSize = 8.0; return out; }\n";
+
+function topologyDescriptor(module: GPUShaderModule, topology: GPUPrimitiveTopology): GPURenderPipelineDescriptor {
+	let descriptor: GPURenderPipelineDescriptor = { label: "topology" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.primitive.topology = topology;
+	return descriptor;
+}
+
+function drawTopology(device: GPUDevice, vertexCode: string, entryPoint: string, topology: GPUPrimitiveTopology, points: Vec<float32>, count: int32): Vec<uint8> {
+	let shader: GPUShaderModuleDescriptor = {
+		label: "topology",
+		vertexCode: vertexCode,
+		vertexEntryPoint: entryPoint,
+		fragmentCode: FRAGMENT_MSL,
+		fragmentEntryPoint: "fmain",
+	};
+	shader.bindings[0] = { group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0 };
+	shader.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const module = device.createShaderModule(shader);
+	const pipeline = device.createRenderPipeline(topologyDescriptor(module, topology));
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, pipeline, uniforms);
+	const vertices = vertexBuffer(device, 64);
+	device.queue.writeBuffer(vertices, 0, points);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.draw(count, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return readPixels(target);
+}
+
+test "a line-list, a line-strip and a point-list draw their primitives and a triangle-strip fills a quad" {
+	const device = openDevice();
+	const line: Vec<float32> = [-1.0, -0.51, 1.0, -0.51];
+	const lines = drawTopology(device, VERTEX_MSL, "vmain", "line-list", line, 2);
+	assert pixel(lines, 32, 48) == RED;
+	assert pixel(lines, 32, 40) == BLUE;
+	assert pixel(lines, 32, 56) == BLUE;
+	const corner: Vec<float32> = [-1.0, -0.51, 0.51, -0.51, 0.51, 0.5];
+	const strip = drawTopology(device, VERTEX_MSL, "vmain", "line-strip", corner, 3);
+	assert pixel(strip, 20, 48) == RED;
+	assert pixel(strip, 48, 32) == RED;
+	assert pixel(strip, 16, 32) == BLUE;
+	const point: Vec<float32> = [0.0, 0.0];
+	const dots = drawTopology(device, POINT_VERTEX_MSL, "pmain", "point-list", point, 1);
+	assert pixel(dots, 32, 32) == RED;
+	assert pixel(dots, 32, 40) == BLUE;
+	const quadPoints: Vec<float32> = [-0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5];
+	const quad = drawTopology(device, VERTEX_MSL, "vmain", "triangle-strip", quadPoints, 4);
+	assert pixel(quad, 32, 32) == RED;
+	assert pixel(quad, 20, 44) == RED;
+	assert pixel(quad, 4, 4) == BLUE;
+	device.destroy();
+}
+
+function drawIndexedStrip(device: GPUDevice, format: GPUIndexFormat, indices: GPUBuffer): Vec<uint8> {
+	const module = flatShader(device);
+	let descriptor = topologyDescriptor(module, "triangle-strip");
+	descriptor.primitive.stripIndexFormat = format;
+	const pipeline = device.createRenderPipeline(descriptor);
+	const uniforms = colourUniforms(device);
+	const group = uniformGroup(device, pipeline, uniforms);
+	const vertices = vertexBuffer(device, 32);
+	const quad: Vec<float32> = [-0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5];
+	device.queue.writeBuffer(vertices, 0, quad);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setIndexBuffer(indices, format, 0);
+	const offsets: Vec<uint32> = [0];
+	pass.setBindGroup(0, group, offsets);
+	pass.drawIndexed(4, 1, 0, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	return readPixels(target);
+}
+
+test "an indexed triangle-strip draws with the strip index format of its pipeline, uint16 and uint32" {
+	const device = openDevice();
+	const narrow = device.createBuffer({
+		label: "indices16",
+		size: 8,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order16: Vec<uint16> = [0, 1, 2, 3];
+	device.queue.writeBuffer(narrow, 0, order16);
+	const quad16 = drawIndexedStrip(device, "uint16", narrow);
+	assert pixel(quad16, 32, 32) == RED;
+	assert pixel(quad16, 4, 4) == BLUE;
+	const wide = device.createBuffer({
+		label: "indices32",
+		size: 16,
+		usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	const order32: Vec<uint32> = [0, 1, 2, 3];
+	device.queue.writeBuffer(wide, 0, order32);
+	const quad32 = drawIndexedStrip(device, "uint32", wide);
+	assert pixel(quad32, 32, 32) == RED;
+	assert pixel(quad32, 62, 62) == BLUE;
 	device.destroy();
 }

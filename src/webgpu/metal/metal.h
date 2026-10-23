@@ -141,9 +141,10 @@ void mtlSetVertexTexture(MtlEncoder encoder, MtlTexture texture, int32_t index);
 void mtlSetFragmentTexture(MtlEncoder encoder, MtlTexture texture, int32_t index);
 void mtlSetVertexSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index);
 void mtlSetFragmentSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index);
-void mtlDraw(MtlEncoder encoder, int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance);
+void mtlDraw(MtlEncoder encoder, int32_t primitive, int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance);
 void mtlDrawIndexed(
 	MtlEncoder encoder,
+	int32_t primitive,
 	MtlBuffer indexBuffer,
 	int32_t indexType,
 	int64_t indexOffset,

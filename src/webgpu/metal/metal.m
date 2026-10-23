@@ -427,15 +427,15 @@ void mtlSetFragmentSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index
 	[(id<MTLRenderCommandEncoder>)encoder setFragmentSamplerState:(id<MTLSamplerState>)sampler atIndex:(NSUInteger)index];
 }
 
-void mtlDraw(MtlEncoder encoder, int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance) {
+void mtlDraw(MtlEncoder encoder, int32_t primitive, int32_t vertexCount, int32_t instanceCount, int32_t firstVertex, int32_t firstInstance) {
 	id<MTLRenderCommandEncoder> e = (id<MTLRenderCommandEncoder>)encoder;
 	if (firstInstance == 0) {
-		[e drawPrimitives:MTLPrimitiveTypeTriangle
+		[e drawPrimitives:(MTLPrimitiveType)primitive
 			vertexStart:(NSUInteger)firstVertex
 			vertexCount:(NSUInteger)vertexCount
 			instanceCount:(NSUInteger)instanceCount];
 	} else {
-		[e drawPrimitives:MTLPrimitiveTypeTriangle
+		[e drawPrimitives:(MTLPrimitiveType)primitive
 			vertexStart:(NSUInteger)firstVertex
 			vertexCount:(NSUInteger)vertexCount
 			instanceCount:(NSUInteger)instanceCount
@@ -445,6 +445,7 @@ void mtlDraw(MtlEncoder encoder, int32_t vertexCount, int32_t instanceCount, int
 
 void mtlDrawIndexed(
 	MtlEncoder encoder,
+	int32_t primitive,
 	MtlBuffer indexBuffer,
 	int32_t indexType,
 	int64_t indexOffset,
@@ -454,14 +455,14 @@ void mtlDrawIndexed(
 	int32_t firstInstance) {
 	id<MTLRenderCommandEncoder> e = (id<MTLRenderCommandEncoder>)encoder;
 	if (baseVertex == 0 && firstInstance == 0) {
-		[e drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+		[e drawIndexedPrimitives:(MTLPrimitiveType)primitive
 			indexCount:(NSUInteger)indexCount
 			indexType:(MTLIndexType)indexType
 			indexBuffer:(id<MTLBuffer>)indexBuffer
 			indexBufferOffset:(NSUInteger)indexOffset
 			instanceCount:(NSUInteger)instanceCount];
 	} else {
-		[e drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+		[e drawIndexedPrimitives:(MTLPrimitiveType)primitive
 			indexCount:(NSUInteger)indexCount
 			indexType:(MTLIndexType)indexType
 			indexBuffer:(id<MTLBuffer>)indexBuffer

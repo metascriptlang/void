@@ -21,6 +21,7 @@ import {
 	GPUColorWrite,
 	GPUCommandBuffer,
 	GPUCommandEncoder,
+	GPUPrimitiveState,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPUSupportedFeatures,
@@ -51,7 +52,6 @@ import {
 	checkedSamplerLod,
 	checkedTexelWritePitch,
 	stopOnUnportedBindEntry,
-	stopOnUnportedPrimitive,
 	stopOnUnportedTexelWrite,
 	stopOnUnportedRenderPass,
 	stopOnUnportedShaderModule,
@@ -209,6 +209,10 @@ const ADDRESS_REPEAT = 2;
 const ADDRESS_MIRROR_REPEAT = 3;
 const INDEX_UINT16 = 0;
 const INDEX_UINT32 = 1;
+const NO_STRIP_INDEX = -1;
+const PRIMITIVE_LINE_STRIP = 2;
+const PRIMITIVE_TRIANGLE = 3;
+const PRIMITIVE_TRIANGLE_STRIP = 4;
 const LOAD_LOAD = 1;
 const LOAD_CLEAR = 2;
 const STORE_DONT_CARE = 0;
@@ -303,6 +307,8 @@ struct PipelineSlot {
 	depthBias: float32;
 	depthBiasSlope: float32;
 	depthBiasClamp: float32;
+	primitive: int32;
+	stripIndexType: int32;
 	strides: int32[2];
 	layouts: uint32[2];
 }
@@ -524,6 +530,26 @@ function mipFilterMode(filter: string, member: string): int32 {
 		"linear" => MIP_FILTER_LINEAR,
 		_ => stopOnMember(member, filter),
 	};
+}
+
+function primitiveType(topology: string): int32 {
+	return match (topology) {
+		"point-list" => 0,
+		"line-list" => 1,
+		"line-strip" => PRIMITIVE_LINE_STRIP,
+		"" | "triangle-list" => PRIMITIVE_TRIANGLE,
+		"triangle-strip" => PRIMITIVE_TRIANGLE_STRIP,
+		_ => stopOnMember("primitive.topology", topology),
+	};
+}
+
+function stripIndexTypeOf(state: GPUPrimitiveState, primitive: int32): int32 {
+	const format: string = state.stripIndexFormat;
+	if (format == "") { return NO_STRIP_INDEX; }
+	if (primitive != PRIMITIVE_LINE_STRIP && primitive != PRIMITIVE_TRIANGLE_STRIP) {
+		stop(`primitive.stripIndexFormat '${format}' needs a strip topology`);
+	}
+	return indexType(state.stripIndexFormat);
 }
 
 function indexType(format: GPUIndexFormat): int32 {
@@ -1049,7 +1075,6 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on Metal");
 	}
-	stopOnUnportedPrimitive("metal", descriptor.primitive);
 	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id };
 	mtlPipelineReset();
 	describeVertexLayout(s, descriptor, slot);
@@ -1094,6 +1119,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	slot.depthBias = descriptor.depthStencil.depthBias as float32;
 	slot.depthBiasSlope = descriptor.depthStencil.depthBiasSlopeScale;
 	slot.depthBiasClamp = descriptor.depthStencil.depthBiasClamp;
+	slot.primitive = primitiveType(descriptor.primitive.topology);
+	slot.stripIndexType = stripIndexTypeOf(descriptor.primitive, slot.primitive);
 	slot.cullMode = cullMode(descriptor.primitive.cullMode);
 	slot.winding = winding(descriptor.primitive.frontFace);
 	slot.id = id;
@@ -1443,7 +1470,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	mtlDraw(encoder, vertexCount, instanceCount, firstVertex, firstInstance);
+	mtlDraw(encoder, pipelines.slots[pipelines.slotIndex(bound.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
 export function drawIndexed(
@@ -1456,9 +1483,15 @@ export function drawIndexed(
 	if (instanceCount == 0) { return; }
 	flush();
 	if (bound.indexBuffer == 0) { stop("drawIndexed without setIndexBuffer"); }
+	const p = pipelines.slotIndex(bound.pipeline);
+	const primitive = pipelines.slots[p].primitive;
+	if ((primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP) && pipelines.slots[p].stripIndexType != bound.indexType) {
+		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
+	}
 	const b = buffers.slotIndex(bound.indexBuffer);
 	mtlDrawIndexed(
 		encoder,
+		primitive,
 		buffers.slots[b].natives[buffers.slots[b].active],
 		bound.indexType,
 		bound.indexOffset + (firstIndex as int64) * bound.indexBytes,
