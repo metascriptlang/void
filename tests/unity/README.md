@@ -80,7 +80,15 @@ The log ends with `PrefabExport: done`.
   (start rotation z only), `m3d_rot_{x,y,z}30` (one axis at a time, which fixes the rotation
   order); `m3d_pose2_<alignment>` with a pivot; `m3d_two_meshes`: 8 identical particles with
   `NonUniformRandom` weights 1 and 3. Unity exposes no per-particle mesh index, so the replay
-  finds each particle's mesh by which one maps onto its baked vertices.
+  finds each particle's mesh by which one maps onto its baked vertices; Unity's own random
+  stream picks the meshes, so Void's picks differ. Measured rules, all in Unity's frame: vertex =
+  p + B . Ry . Rx . Rz . (size * (flipSign * v + pivot * boundsSize * (1, 1, -1))), with positive
+  Euler angles (Quaternion.Euler) and boundsSize the mesh's max - min, so the pivot is in mesh
+  extents and its z is negated. B is the camera's axes (View), the world's, the emitter's
+  (Local), look-at-camera with the camera's up (Facing) or the velocity as z with world up as the
+  reference (Velocity; a velocity along up is unmeasured). A negative start size is floored at 0
+  (`m3d_negsize_x`). `bakedMesh` is world space for World simulation and `bakedMeshXform` for
+  Local.
 - Trigger callbacks (`OnParticleTrigger`) are not captured. The trigger cases set one event's
   action to Kill, so the particle count shows when that event fires.
 - Noise is captured as `animatedVelocity` magnitude statistics plus 4 particles. Void's noise
