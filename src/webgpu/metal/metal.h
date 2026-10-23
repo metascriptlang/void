@@ -27,8 +27,14 @@ void mtlFrameSemaphoreCreate(int32_t framesInFlight);
 void mtlFrameSemaphoreWaitAll(void);
 MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue);
 void mtlCommit(MtlCommandBuffer commandBuffer);
+int32_t mtlWaitCommitted(void);
+void mtlForgetCommitted(void);
 
 MtlBuffer mtlNewBuffer(MtlDevice device, int64_t bytes, int32_t shared);
+MtlBuffer mtlNewMappableBuffer(MtlDevice device, int64_t bytes, int32_t writable);
+MtlBuffer mtlNewStagingBuffer(MtlDevice device, const void *data, int64_t offset, int64_t bytes);
+void mtlCopyOut(MtlBuffer buffer, int64_t offset, void *bytes, int64_t length);
+void mtlCopyIn(MtlBuffer buffer, int64_t offset, const void *bytes, int64_t length);
 void mtlReleaseBuffer(MtlBuffer buffer);
 void mtlWriteBuffer(MtlBuffer buffer, int64_t offset, void *data, int64_t bytes, int32_t managed);
 
@@ -52,6 +58,54 @@ MtlTexture mtlNewTextureView(
 	int32_t baseLayer,
 	int32_t layerCount);
 void mtlReleaseTexture(MtlTexture texture);
+void mtlBlitBufferToBuffer(MtlCommandBuffer commandBuffer, MtlBuffer source, int64_t sourceOffset, MtlBuffer destination, int64_t destinationOffset, int64_t size);
+void mtlBlitBufferToTexture(
+	MtlCommandBuffer commandBuffer,
+	MtlBuffer source,
+	int64_t sourceOffset,
+	int32_t bytesPerRow,
+	int32_t bytesPerImage,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	MtlTexture destination,
+	int32_t slice,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z);
+void mtlBlitTextureToBuffer(
+	MtlCommandBuffer commandBuffer,
+	MtlTexture source,
+	int32_t slice,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	MtlBuffer destination,
+	int64_t destinationOffset,
+	int32_t bytesPerRow,
+	int32_t bytesPerImage);
+void mtlBlitTextureToTexture(
+	MtlCommandBuffer commandBuffer,
+	MtlTexture source,
+	int32_t sourceSlice,
+	int32_t sourceLevel,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	MtlTexture destination,
+	int32_t destinationSlice,
+	int32_t destinationLevel,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationZ);
 void mtlWriteTexture(MtlTexture texture, void *data, int64_t offset, int32_t bytesPerRow, int32_t width, int32_t height);
 
 MtlSampler mtlNewSampler(

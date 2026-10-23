@@ -14,6 +14,7 @@ static char s_log[4096];
 static MTLRenderPipelineDescriptor *s_pipeline;
 static MTLRenderPassDescriptor *s_pass;
 static id<CAMetalDrawable> s_drawable;
+static id<MTLCommandBuffer> s_committed;
 
 static void keepLog(NSError *error) {
 	const char *text = error ? [[error localizedDescription] UTF8String] : "no error description";
@@ -71,7 +72,19 @@ MtlCommandBuffer mtlBeginCommandBuffer(MtlQueue queue) {
 void mtlCommit(MtlCommandBuffer commandBuffer) {
 	id<MTLCommandBuffer> cb = (id<MTLCommandBuffer>)commandBuffer;
 	[cb commit];
-	[cb release];
+	[s_committed release];
+	s_committed = cb;
+}
+
+int32_t mtlWaitCommitted(void) {
+	if (s_committed == nil) return 1;
+	[s_committed waitUntilCompleted];
+	return s_committed.status == MTLCommandBufferStatusCompleted ? 1 : 0;
+}
+
+void mtlForgetCommitted(void) {
+	[s_committed release];
+	s_committed = nil;
 }
 
 static MTLResourceOptions storageOptions(int32_t shared) {
@@ -86,6 +99,25 @@ static MTLResourceOptions storageOptions(int32_t shared) {
 MtlBuffer mtlNewBuffer(MtlDevice device, int64_t bytes, int32_t shared) {
 	MTLResourceOptions options = MTLResourceCPUCacheModeWriteCombined | storageOptions(shared);
 	return (MtlBuffer)[(id<MTLDevice>)device newBufferWithLength:(NSUInteger)bytes options:options];
+}
+
+MtlBuffer mtlNewMappableBuffer(MtlDevice device, int64_t bytes, int32_t writable) {
+	MTLResourceOptions options = MTLResourceStorageModeShared | (writable ? MTLResourceCPUCacheModeWriteCombined : 0);
+	return (MtlBuffer)[(id<MTLDevice>)device newBufferWithLength:(NSUInteger)bytes options:options];
+}
+
+MtlBuffer mtlNewStagingBuffer(MtlDevice device, const void *data, int64_t offset, int64_t bytes) {
+	return (MtlBuffer)[(id<MTLDevice>)device newBufferWithBytes:(const uint8_t *)data + offset
+		length:(NSUInteger)bytes
+		options:MTLResourceStorageModeShared | MTLResourceCPUCacheModeWriteCombined];
+}
+
+void mtlCopyOut(MtlBuffer buffer, int64_t offset, void *bytes, int64_t length) {
+	memcpy(bytes, (const uint8_t *)[(id<MTLBuffer>)buffer contents] + offset, (size_t)length);
+}
+
+void mtlCopyIn(MtlBuffer buffer, int64_t offset, const void *bytes, int64_t length) {
+	memcpy((uint8_t *)[(id<MTLBuffer>)buffer contents] + offset, bytes, (size_t)length);
 }
 
 void mtlReleaseBuffer(MtlBuffer buffer) { [(id<MTLBuffer>)buffer release]; }
@@ -144,6 +176,110 @@ MtlTexture mtlNewTextureView(
 }
 
 void mtlReleaseTexture(MtlTexture texture) { [(id<MTLTexture>)texture release]; }
+
+void mtlBlitBufferToBuffer(MtlCommandBuffer commandBuffer, MtlBuffer source, int64_t sourceOffset, MtlBuffer destination, int64_t destinationOffset, int64_t size) {
+	@autoreleasepool {
+		id<MTLBlitCommandEncoder> blit = [(id<MTLCommandBuffer>)commandBuffer blitCommandEncoder];
+		[blit copyFromBuffer:(id<MTLBuffer>)source
+			sourceOffset:(NSUInteger)sourceOffset
+			toBuffer:(id<MTLBuffer>)destination
+			destinationOffset:(NSUInteger)destinationOffset
+			size:(NSUInteger)size];
+		[blit endEncoding];
+	}
+}
+
+void mtlBlitBufferToTexture(
+	MtlCommandBuffer commandBuffer,
+	MtlBuffer source,
+	int64_t sourceOffset,
+	int32_t bytesPerRow,
+	int32_t bytesPerImage,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	MtlTexture destination,
+	int32_t slice,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z) {
+	@autoreleasepool {
+		id<MTLBlitCommandEncoder> blit = [(id<MTLCommandBuffer>)commandBuffer blitCommandEncoder];
+		[blit copyFromBuffer:(id<MTLBuffer>)source
+			sourceOffset:(NSUInteger)sourceOffset
+			sourceBytesPerRow:(NSUInteger)bytesPerRow
+			sourceBytesPerImage:(NSUInteger)bytesPerImage
+			sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, (NSUInteger)depth)
+			toTexture:(id<MTLTexture>)destination
+			destinationSlice:(NSUInteger)slice
+			destinationLevel:(NSUInteger)level
+			destinationOrigin:MTLOriginMake((NSUInteger)x, (NSUInteger)y, (NSUInteger)z)];
+		[blit endEncoding];
+	}
+}
+
+void mtlBlitTextureToBuffer(
+	MtlCommandBuffer commandBuffer,
+	MtlTexture source,
+	int32_t slice,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	MtlBuffer destination,
+	int64_t destinationOffset,
+	int32_t bytesPerRow,
+	int32_t bytesPerImage) {
+	@autoreleasepool {
+		id<MTLBlitCommandEncoder> blit = [(id<MTLCommandBuffer>)commandBuffer blitCommandEncoder];
+		[blit copyFromTexture:(id<MTLTexture>)source
+			sourceSlice:(NSUInteger)slice
+			sourceLevel:(NSUInteger)level
+			sourceOrigin:MTLOriginMake((NSUInteger)x, (NSUInteger)y, (NSUInteger)z)
+			sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, (NSUInteger)depth)
+			toBuffer:(id<MTLBuffer>)destination
+			destinationOffset:(NSUInteger)destinationOffset
+			destinationBytesPerRow:(NSUInteger)bytesPerRow
+			destinationBytesPerImage:(NSUInteger)bytesPerImage];
+		[blit endEncoding];
+	}
+}
+
+void mtlBlitTextureToTexture(
+	MtlCommandBuffer commandBuffer,
+	MtlTexture source,
+	int32_t sourceSlice,
+	int32_t sourceLevel,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	MtlTexture destination,
+	int32_t destinationSlice,
+	int32_t destinationLevel,
+	int32_t destinationX,
+	int32_t destinationY,
+	int32_t destinationZ) {
+	@autoreleasepool {
+		id<MTLBlitCommandEncoder> blit = [(id<MTLCommandBuffer>)commandBuffer blitCommandEncoder];
+		[blit copyFromTexture:(id<MTLTexture>)source
+			sourceSlice:(NSUInteger)sourceSlice
+			sourceLevel:(NSUInteger)sourceLevel
+			sourceOrigin:MTLOriginMake((NSUInteger)sourceX, (NSUInteger)sourceY, (NSUInteger)sourceZ)
+			sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, (NSUInteger)depth)
+			toTexture:(id<MTLTexture>)destination
+			destinationSlice:(NSUInteger)destinationSlice
+			destinationLevel:(NSUInteger)destinationLevel
+			destinationOrigin:MTLOriginMake((NSUInteger)destinationX, (NSUInteger)destinationY, (NSUInteger)destinationZ)];
+		[blit endEncoding];
+	}
+}
 
 void mtlWriteTexture(MtlTexture texture, void *data, int64_t offset, int32_t bytesPerRow, int32_t width, int32_t height) {
 	[(id<MTLTexture>)texture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)width, (NSUInteger)height)
