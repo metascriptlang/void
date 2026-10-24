@@ -262,9 +262,15 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) { fitLayer((MacSurfa
 
 int voidPlatformSurfaceReady(void *surface) { return voidPresentGateAdmits(((MacSurface *)surface)->gate); }
 
+// The drawable a commit presented stays readable until the surface's next frame, as the window's
+// does, so a capture after the view's frame reads the frame it showed.
+static MacSurface *s_presented;
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	restoreContextIfLost();
 	MacSurface *s = (MacSurface *)surface;
+	if (s->drawable) CFRelease(s->drawable);
+	s->drawable = NULL;
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
 	voidPresentGateTrack(s->gate, (__bridge void *)drawable);
@@ -273,15 +279,11 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	return 1;
 }
 
-
-void voidPlatformSurfacePresent(void *surface) {
-	MacSurface *s = (MacSurface *)surface;
-	if (s->drawable) CFRelease(s->drawable);
-	s->drawable = NULL;
-}
+void voidPlatformSurfacePresent(void *surface) { s_presented = (MacSurface *)surface; }
 
 void voidPlatformSurfaceDestroy(void *surface) {
 	MacSurface *s = (MacSurface *)surface;
+	if (s_presented == s) s_presented = NULL;
 	if (s->drawable) CFRelease(s->drawable);
 	releaseMsaa(s);
 	[(__bridge CAMetalLayer *)s->layer removeFromSuperlayer];
@@ -295,7 +297,9 @@ long long voidPlatformSurfaceNative(void *surface) { return (long long)(intptr_t
 
 static MacSurface *screenSurface(void) {
 	if (s_driver == DRIVER_NONE) noDriver("beginPass");
-	return s_driver == DRIVER_VIEWS ? (MacSurface *)voidViewsCurrentSurface() : NULL;
+	if (s_driver == DRIVER_WINDOW) return NULL;
+	if (voidCurrentView() == 0 && s_presented) return s_presented;
+	return (MacSurface *)voidViewsCurrentSurface();
 }
 
 static void *drawableTexture(void *drawable) { return (__bridge void *)((__bridge id<CAMetalDrawable>)drawable).texture; }
