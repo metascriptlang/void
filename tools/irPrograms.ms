@@ -15,8 +15,8 @@
 
 import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
-import { exists, mkdir, readFile, writeFile } from "std/fs";
-import { argv, execFileResult, exit } from "std/process";
+import { mkdir, readFile, writeFile } from "std/fs";
+import { argv, exit } from "std/process";
 import { glslIr, glslLinkedIr } from "../src/shader/emit";
 import {
 	ProgramSource,
@@ -26,6 +26,7 @@ import {
 	programSource,
 	quotedSource,
 } from "../src/shader/descriptor";
+import { dxbcStage } from "../src/shader/dxbcCache";
 import { irFromText } from "../src/shader/irText";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
 import { ShaderTarget, uniformBlockLayout } from "../src/shader/layout";
@@ -375,9 +376,6 @@ function agree(
 	}
 }
 
-// The flags src/webgpu/d3d11/d3d11.c passes D3DCompile, in fxc's spelling; keep them in step.
-const FXC_FLAGS: string[] = ["-Zpc", "-O3"];
-
 class Dxbc {
 	cache: string = "";
 	fresh: string = "";
@@ -395,32 +393,16 @@ function bytecodeOf(
 	entry: string,
 	what: string,
 ): string {
-	const keyed = profile + " " + entry + " " + FXC_FLAGS.join(" ") + "\n" + code;
-	const key = sha256(keyed.asBytes()).toHex();
-	let path = dxbc.cache + "/" + key + ".dxbc";
-	if (!exists(path)) {
-		path = dxbc.fresh + "/" + key + ".dxbc";
-		if (!exists(path)) {
-			if (dxbc.fxc == "") {
-				dxbc.missed++;
-				console.log("dxbc miss " + what + " " + key + ": no fxc");
-				return "[]";
-			}
-			const source = dxbc.fresh + "/" + key + ".hlsl";
-			keep(source, code);
-			const run = execFileResult(
-				dxbc.fxc,
-				["-nologo", "-T", profile, "-E", entry]
-					.concat(FXC_FLAGS)
-					.concat(["-Fo", path, source]),
-			);
-			if (!run.started || run.exitCode != 0) {
-				fail("fxc " + profile + " refused " + what + " (" + source + "):\n" + run.output +
-					run.errorOutput);
-			}
-			dxbc.compiled++;
-		}
+	const stage = dxbcStage(dxbc.cache, dxbc.fresh, dxbc.fxc, profile, entry, code);
+	if (stage.error != "") { fail(what + ": " + stage.error); }
+	const key = stage.key;
+	if (stage.path == "") {
+		dxbc.missed++;
+		console.log("dxbc miss " + what + " " + key + ": no fxc");
+		return "[]";
 	}
+	if (stage.compiled) { dxbc.compiled++; }
+	const path = stage.path;
 	if (!dxbc.used.includes(key)) { dxbc.used.push(key); }
 	if (!constants.has(key)) {
 		const blob = readFile(path);
