@@ -1760,6 +1760,12 @@ export function textureReady(this context: DrawContext, index: int32): boolean {
 	return true;
 }
 
+function stopOnUntakenInstances(program: ProgramKey, layout: VertexLayout): void {
+	console.log(`void3d: drawItem draws ${program.describe()} on a ${layout.toString()} mesh with ` +
+		"instances it does not take");
+	unreachable;
+}
+
 function stopOnAlphaMismatch(program: ProgramKey, alpha: TextureAlpha): void {
 	console.log(`void3d: drawItem draws ${program.describe()} for a ${alpha.toString()} ` +
 		"material or texture; premultiplied input needs a premultiplied program, straight a " +
@@ -1829,9 +1835,7 @@ export function drawItemWith(
 	}
 	if (!item.validInstances(context, program) ||
 		(program.instanced && mesh.layout != meshLayoutOf(program))) {
-		console.log(`void3d: drawItem draws ${program.describe()} on a ` +
-			`${mesh.layout.toString()} mesh with instances it does not take`);
-		unreachable;
+		stopOnUntakenInstances(program, mesh.layout);
 	}
 	const run = item.instances;
 	const instanceCount: int32 = run === null ? mesh.instanceCount : run.count;
