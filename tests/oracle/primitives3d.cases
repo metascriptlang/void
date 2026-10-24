@@ -1,0 +1,122 @@
+# lib: heaps format
+# haxe-prelude: import h3d.prim.Polygon;
+# haxe-prelude: import h3d.prim.Grid;
+# haxe-prelude: import h3d.prim.GeoSphere;
+# haxe-prelude: import h3d.prim.Sphere;
+# haxe-prelude: import h3d.prim.Disc;
+# haxe-prelude: import h3d.prim.Capsule;
+# haxe-prelude: import h3d.prim.Capsule.Axis;
+# haxe-prelude: import h3d.prim.Cylinder;
+# haxe-prelude: import h3d.prim.Quads;
+# haxe-prelude: class H {
+# haxe-prelude: public static function sample(p: Polygon, i: Int, v: Bool): Array<Float> {
+# haxe-prelude: var a = p.points[i]; var n = p.normals[i];
+# haxe-prelude: var l = Math.sqrt(n.x*n.x+n.y*n.y+n.z*n.z);
+# haxe-prelude: if (!(l > 0) || !Math.isFinite(l)) throw "invalid reference normal";
+# haxe-prelude: var uv = p.uvs == null ? -1.0 : (v ? p.uvs[i].v : p.uvs[i].u);
+# haxe-prelude: return [p.points.length,p.idx.length/3,a.x,a.z,a.y,n.x/l,n.z/l,n.y/l,uv];
+# haxe-prelude: }
+# haxe-prelude: public static function sampleQuad(p: Quads, i: Int, v: Bool): Array<Float> {
+# haxe-prelude: var points = @:privateAccess p.pts;
+# haxe-prelude: var normals = @:privateAccess p.normals;
+# haxe-prelude: var uvs = @:privateAccess p.uvs;
+# haxe-prelude: var a = points[i]; var n = normals[i];
+# haxe-prelude: var l = Math.sqrt(n.x*n.x+n.y*n.y+n.z*n.z);
+# haxe-prelude: if (!(l > 0) || !Math.isFinite(l)) throw "invalid reference normal";
+# haxe-prelude: var uv = v ? uvs[i].v : uvs[i].u;
+# haxe-prelude: return [points.length,points.length/2,a.x,a.z,a.y,n.x/l,n.z/l,n.y/l,uv];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { vec3 } from "../../../src/math/math3d";
+# ms-prelude: import {
+# ms-prelude: MeshData, Rgba, addGrid, addGeoSphere, addSphere, addDisc, addCapsuleY,
+# ms-prelude: addCylinderSides,
+# ms-prelude: } from "../../../src/void3d/meshData";
+# ms-prelude: import { Bounds3D } from "../../../src/void3d/bounds";
+# ms-prelude: const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+# ms-prelude: function sample(id: string, data: MeshData, i: int32, v: boolean): void {
+# ms-prelude: const at: int32 = i * data.stride();
+# ms-prelude: const n = vec3(data.vertices[at+3],data.vertices[at+4],data.vertices[at+5]);
+# ms-prelude: if (n.length() <= 0.0 || n.length()-n.length() != 0.0) { unreachable; }
+# ms-prelude: const uv: float32 = data.hasUvs ? data.vertices[at+(v ? 7 : 6)] : -1.0;
+# ms-prelude: emit9(id,data.vertexCount() as float32,data.triangleCount() as float32,
+# ms-prelude: data.vertices[at],data.vertices[at+1],data.vertices[at+2],n.x,n.y,n.z,uv);
+# ms-prelude: }
+
+case grid-u tol=1e-5
+haxe> var g1 = new Grid(2,3,1.5,0.5); g1.addNormals(); g1.addUVs();
+haxe> emit("grid-u",H.sample(g1,5,false));
+ms> let g1 = MeshData.withUvs(); if (!addGrid(g1,2,3,1.5,0.5,WHITE).ok) { return 1; }
+ms> sample("grid-u",g1,5,false);
+
+case grid-v tol=1e-5
+haxe> emit("grid-v",H.sample(g1,7,true));
+ms> sample("grid-v",g1,7,true);
+
+case geo-one-midpoint tol=1e-5
+haxe> var p1 = new GeoSphere(1); p1.addNormals(); p1.scale(2);
+haxe> emit("geo-one-midpoint",H.sample(p1,6,false));
+ms> let p1 = MeshData.empty(); if (!addGeoSphere(p1,2.0,WHITE,1).ok) { return 1; }
+ms> sample("geo-one-midpoint",p1,6,false);
+
+case geo-two-pole tol=1e-5
+haxe> var p2 = new GeoSphere(2); p2.addNormals(); p2.scale(2);
+haxe> emit("geo-two-pole",H.sample(p2,0,false));
+ms> let p2 = MeshData.empty(); if (!addGeoSphere(p2,2.0,WHITE,2).ok) { return 1; }
+ms> sample("geo-two-pole",p2,0,false);
+
+case sphere-equator tol=1e-5
+haxe> var s1 = new Sphere(2,8,6); s1.addNormals(); s1.addUVs();
+haxe> emit("sphere-equator",H.sample(s1,29,false));
+ms> let s1 = MeshData.withUvs(); if (!addSphere(s1,2.0,WHITE,8,6).ok) { return 1; }
+ms> sample("sphere-equator",s1,29,false);
+
+case sphere-pole tol=1e-5
+haxe> emit("sphere-pole",H.sample(s1,0,true));
+ms> sample("sphere-pole",s1,0,true);
+
+case disc-quarter tol=1e-5
+haxe> var d1 = new Disc(2,8); d1.addNormals(); d1.addUVs();
+haxe> emit("disc-quarter",H.sample(d1,2,true));
+ms> let d1 = MeshData.withUvs(); if (!addDisc(d1,2.0,WHITE,8).ok) { return 1; }
+ms> sample("disc-quarter",d1,2,true);
+
+case disc-center tol=1e-5
+haxe> emit("disc-center",H.sample(d1,8,false));
+ms> sample("disc-center",d1,8,false);
+
+case capsule-cap tol=1e-5
+haxe> var c1 = new Capsule(1,2,8,Axis.Z);
+haxe> emit("capsule-cap",H.sample(c1,40,false));
+ms> let c1 = MeshData.empty(); if (!addCapsuleY(c1,1.0,2.0,WHITE,8).ok) { return 1; }
+ms> sample("capsule-cap",c1,40,false);
+
+case capsule-zero-length tol=1e-5
+haxe> var c2 = new Capsule(1,0,8,Axis.Z);
+haxe> emit("capsule-zero-length",H.sample(c2,40,false));
+ms> let c2 = MeshData.empty(); if (!addCapsuleY(c2,1.0,0.0,WHITE,8).ok) { return 1; }
+ms> sample("capsule-zero-length",c2,40,false);
+
+case cylinder-centered tol=1e-5
+haxe> var cy1 = new Cylinder(8,2,3,true); cy1.addUVs();
+haxe> emit("cylinder-centered",H.sampleQuad(cy1,1,false));
+ms> let cy1 = MeshData.withUvs();
+ms> if (!addCylinderSides(cy1,2.0,3.0,true,WHITE,8).ok) { return 1; }
+ms> sample("cylinder-centered",cy1,1,false);
+
+case cylinder-bottom-origin tol=1e-5
+haxe> var cy2 = new Cylinder(8,2,3,false); cy2.addUVs();
+haxe> emit("cylinder-bottom-origin",H.sampleQuad(cy2,2,true));
+ms> let cy2 = MeshData.withUvs();
+ms> if (!addCylinderSides(cy2,2.0,3.0,false,WHITE,8).ok) { return 1; }
+ms> sample("cylinder-bottom-origin",cy2,2,true);
+
+case bounds-intersection tol=1e-5
+haxe> var a = h3d.col.Bounds.fromValues(0,0,0,1,2,3);
+haxe> var b = h3d.col.Bounds.fromValues(0.5,-1,1,2,2,3);
+haxe> var r = new h3d.col.Bounds(); r.intersection(a,b); var e = r.getSize();
+haxe> emit("bounds-intersection",[r.xMin,r.yMin,r.zMin,r.xMax,r.yMax,r.zMax,e.x,e.y,e.z]);
+ms> const a = Bounds3D.fromValues(0.0,0.0,0.0,1.0,2.0,3.0);
+ms> const b = Bounds3D.fromValues(0.5,-1.0,1.0,2.0,2.0,3.0);
+ms> const r = a.intersection(b); const e = r.size();
+ms> emit9("bounds-intersection",r.min.x,r.min.y,r.min.z,r.max.x,r.max.y,r.max.z,e.x,e.y,e.z);

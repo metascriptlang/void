@@ -5,6 +5,7 @@ import {
 	Scene2D, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, TileCell, NO_SLOT,
 	NO_NODE_2D, Enclosure, LaneFrame, NO_FRAME,
 } from "./node";
+import { sinf, cosf } from "../math/mat4";
 import {
 	DrawContext2D,
 	currentContext,
@@ -196,14 +197,23 @@ function tileOffsetY(t: Tile, height: float32): float32 {
 	return t.h != 0.0 ? t.dy * height / t.h : t.dy;
 }
 
-function cellMatrix(c: TileCell): Transform2D {
+export function cellMatrix(c: TileCell): Transform2D {
+	if (c.skew != 0.0) {
+		const co: float32 = cosf(c.rotation);
+		const si: float32 = sinf(c.rotation);
+		return {
+			a: co * c.scaleX, b: si * c.scaleX,
+			c: c.scaleY * (c.skew * co - si), d: c.scaleY * (c.skew * si + co),
+			tx: c.x, ty: c.y,
+		};
+	}
 	if (c.rotation == 0.0) {
 		return { a: c.scaleX, b: 0.0, c: 0.0, d: c.scaleY, tx: c.x, ty: c.y };
 	}
 	return trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
 }
 
-function cellBounds(t: Tile, m: Transform2D): Bounds2D {
+export function cellBounds(t: Tile, m: Transform2D): Bounds2D {
 	const a = vec2(t.dx, t.dy) * m;
 	const b = vec2(t.dx + t.w, t.dy) * m;
 	const c = vec2(t.dx + t.w, t.dy + t.h) * m;

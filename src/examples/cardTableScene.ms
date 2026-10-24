@@ -109,15 +109,16 @@ import {
 } from "../void3d/forwardRenderer";
 import {
 	EmitterState,
-	ParticleEmitter,
-	ParticleError,
 	ShapeKind,
 	ValueKind,
-	PARTICLE_INSTANCE_STRIDE,
 	constant,
-	updateEmitter,
-	writeInstances,
-} from "../void3d/particles";
+	fromHeaps,
+	HEAPS_GRAVITY,
+	HeapsLoweringError,
+} from "../void3d/fromHeaps";
+import { ParticleSystem, ParticleSystemError, playSystem, updateSystem } from "../particles/system";
+import { ParticleSystemAsset } from "../particles/asset";
+import { ParticleWriter3D, ParticleWriteError, writeParticlePoints, PARTICLE_INSTANCE_STRIDE } from "../void3d/particleWriter";
 import {
 	WorldLabel,
 	WorldLabelStyle,
@@ -216,8 +217,9 @@ let cardScenes: Vec<Scene2D> = [];
 let display: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
 let displaySprite: NodeRef = display.sprite(whiteTile(1.0, 1.0));
 let displayEpoch: int32 = 0;
-let torchA: ParticleEmitter = emitterOf(11);
-let torchB: ParticleEmitter = emitterOf(23);
+let torchA: ParticleSystem = systemOf(11);
+let torchB: ParticleSystem = systemOf(23);
+let particleWriter: ParticleWriter3D = ParticleWriter3D.create();
 let torchANode: NodeId3D = NO_NODE_ID;
 let torchBNode: NodeId3D = NO_NODE_ID;
 let torchAMesh: MeshId = { store: 0, index: 0, generation: 0 };
@@ -292,11 +294,14 @@ function flameState(): EmitterState {
 	};
 }
 
-function emitterOf(seed: uint32): ParticleEmitter {
-	const made: Result<ParticleEmitter, ParticleError> =
-		ParticleEmitter.create(flameState(), seed);
-	if (made.ok) { return made.value; }
-	unreachable;
+function systemOf(seed: uint32): ParticleSystem {
+	const asset: Result<ParticleSystemAsset, HeapsLoweringError> = fromHeaps(flameState());
+	if (!asset.ok) { unreachable; }
+	const made: Result<ParticleSystem, ParticleSystemError> = ParticleSystem.create(asset.value, seed);
+	if (!made.ok) { unreachable; }
+	let sys: ParticleSystem = made.value;
+	sys.gravity = HEAPS_GRAVITY;
+	return sys;
 }
 
 // ---- Assets --------------------------------------------------------------------------------
@@ -624,21 +629,19 @@ function torch(x: float32, which: int32): NodeId3D {
 	return emitter;
 }
 
-function advance(ref emitter: ParticleEmitter, node: NodeId3D): boolean {
+function advance(ref emitter: ParticleSystem, node: NodeId3D): boolean {
 	const world: Result<Mat4, SceneError> = scene.worldOf(node);
 	if (!world.ok) { return false; }
-	return updateEmitter(emitter, PARTICLE_STEP, world.value).ok;
+	return updateSystem(emitter, PARTICLE_STEP, world.value).ok;
 }
 
 function draw(
-	ref emitter: ParticleEmitter,
-	node: NodeId3D,
+	ref emitter: ParticleSystem,
 	stream: MeshId,
 	instances: Span<float32>,
 ): boolean {
-	const world: Result<Mat4, SceneError> = scene.worldOf(node);
-	if (!world.ok) { return false; }
-	const written: Result<int32, ParticleError> = writeInstances(emitter, world.value, instances);
+	const written: Result<int32, ParticleWriteError> = writeParticlePoints(
+		particleWriter, emitter, vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), instances);
 	if (!written.ok) { return false; }
 	return writeStream(context, stream, instances, written.value).ok;
 }
@@ -705,6 +708,11 @@ export function setupCardTable(withoutFeatures: boolean): void {
 	}
 	attachShadow(forward.core, shadow);
 	shadow.opacity = SHADOW_OPACITY;
+	const worldA: Result<Mat4, SceneError> = scene.worldOf(torchANode);
+	const worldB: Result<Mat4, SceneError> = scene.worldOf(torchBNode);
+	if (!worldA.ok || !worldB.ok) { stop("a flame emitter has no world"); unreachable; }
+	playSystem(torchA, worldA.value);
+	playSystem(torchB, worldB.value);
 	for (let i = 0; i < PARTICLE_WARMUP; i++) {
 		if (!advance(torchA, torchANode) || !advance(torchB, torchBNode)) {
 			stop("a flame emitter refused a warm-up step");
@@ -752,8 +760,8 @@ function flicker(frame: int32): void {
 
 function stepTorches(): boolean {
 	return advance(torchA, torchANode) && advance(torchB, torchBNode) &&
-		draw(torchA, torchANode, torchAMesh, torchAInstances) &&
-		draw(torchB, torchBNode, torchBMesh, torchBInstances);
+		draw(torchA, torchAMesh, torchAInstances) &&
+		draw(torchB, torchBMesh, torchBInstances);
 }
 
 export function tableView(width: int32, height: int32): Result<CameraView, CameraError> {

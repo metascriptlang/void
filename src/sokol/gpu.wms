@@ -7,6 +7,9 @@
 @compile("./views.c");
 @compile("./appWindow.c");
 @compile("../platform/web/window.c");
+// The native Windows main-thread stack: a particle system's value-struct frames need about 88 KB,
+// beyond emscripten's 64 KB default, and an overflow there corrupts the heap instead of trapping.
+@passL("-sSTACK_SIZE=1048576");
 
 when (webgpu) {
 	@passC("--use-port=emdawnwebgpu");

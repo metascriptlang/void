@@ -69,6 +69,7 @@ import {
 	saturated,
 	skinNormal,
 	skinWorld,
+	instanceWorld,
 	srgbToLinear,
 	straightTexel,
 	toneMapped,
@@ -295,19 +296,36 @@ export function pixelArtLitTexturedVs(
 			clip: clip,
 		};
 	} else {
-		const world = b.modelParams.model * vec4f(input.position, 1.0);
-		const clip = b.vertexParams.viewProj * world;
-		return {
-			worldPosition: world.xyz,
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			worldTangent: vec4f(
-				upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
-			),
-			surfaceUv: input.uv,
-			baseColor: input.color,
-			depth01: clip.z,
-			clip: clip,
-		};
+		if (key.instanced) {
+			const matrix = instanceWorld(
+				input.instanceRow0, input.instanceRow1, input.instanceRow2,
+			);
+			const world = matrix * vec4f(input.position, 1.0);
+			const clip = b.vertexParams.viewProj * world;
+			return {
+				worldPosition: world.xyz,
+				worldNormal: skinNormal(matrix, input.normal),
+				worldTangent: vec4f(upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w),
+				surfaceUv: input.uv,
+				baseColor: input.color * input.instanceColor,
+				depth01: clip.z,
+				clip: clip,
+			};
+		} else {
+			const world = b.modelParams.model * vec4f(input.position, 1.0);
+			const clip = b.vertexParams.viewProj * world;
+			return {
+				worldPosition: world.xyz,
+				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+				worldTangent: vec4f(
+					upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
+				),
+				surfaceUv: input.uv,
+				baseColor: input.color,
+				depth01: clip.z,
+				clip: clip,
+			};
+		}
 	}
 }
 
@@ -381,14 +399,29 @@ export function pixelArtUnlitTexturedVs(
 			clip: clip,
 		};
 	} else {
-		const clip = b.vertexParams.viewProj * b.modelParams.model * vec4f(input.position, 1.0);
-		return {
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			surfaceUv: input.uv,
-			baseColor: input.color,
-			depth01: clip.z,
-			clip: clip,
-		};
+		if (key.instanced) {
+			const matrix = instanceWorld(
+				input.instanceRow0, input.instanceRow1, input.instanceRow2,
+			);
+			const clip = b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0);
+			return {
+				worldNormal: skinNormal(matrix, input.normal),
+				surfaceUv: input.uv,
+				baseColor: input.color * input.instanceColor,
+				depth01: clip.z,
+				clip: clip,
+			};
+		} else {
+			const clip =
+				b.vertexParams.viewProj * b.modelParams.model * vec4f(input.position, 1.0);
+			return {
+				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+				surfaceUv: input.uv,
+				baseColor: input.color,
+				depth01: clip.z,
+				clip: clip,
+			};
+		}
 	}
 }
 

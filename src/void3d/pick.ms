@@ -18,7 +18,8 @@ import {
 	NO_NODE_3D,
 	NO_NODE_ID,
 	syncWorld,
-	syncSceneSkinGeometry,
+	syncSceneGeometry,
+	SceneSyncError,
 } from "./scene";
 
 export struct PickHit {
@@ -32,6 +33,7 @@ export struct PickHit {
 export enum PickError {
 	NothingHit,
 	SkinGeometry,
+	MorphGeometry,
 }
 
 struct MeshHit {
@@ -54,8 +56,11 @@ export function pickNearestOn(
 ): Result<PickHit, PickError> {
 	scene.requireOpen("pickNearestOn");
 	const _synced: int32 = syncWorld(scene);
-	const skins = syncSceneSkinGeometry(scene);
-	if (!skins.ok) { return Result.err(PickError.SkinGeometry); }
+	const synced = syncSceneGeometry(scene);
+	if (!synced.ok) {
+		return Result.err(synced.error == SceneSyncError.Skin
+			? PickError.SkinGeometry : PickError.MorphGeometry);
+	}
 	const context: DrawContext = scene.context;
 	let best: PickHit = {
 		owner: NO_NODE_ID,

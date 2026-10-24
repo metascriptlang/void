@@ -43,11 +43,11 @@ static const int32_t DOOR_PASS_LENGTH = 11;
 static const int32_t DOOR_PASS_CLEAR_DEPTH = 16;
 static const int32_t DOOR_PASS_CLEAR_LENGTH = 17;
 
-static const int32_t DOOR_BINDING_VERTEX_BUFFER = 0;
+static const int32_t DOOR_BINDING_VERTEX_BUFFER = 0; // two
 static const int32_t DOOR_BINDING_INDEX_BUFFER = 2;
-static const int32_t DOOR_BINDING_VIEW = 3;
-static const int32_t DOOR_BINDING_SAMPLER = 9;
-static const int32_t DOOR_BINDING_LENGTH = 12;
+static const int32_t DOOR_BINDING_VIEW = 3; // nine
+static const int32_t DOOR_BINDING_SAMPLER = 12; // five
+static const int32_t DOOR_BINDING_LENGTH = 17;
 
 // Which pass the door has open, read by MetaScript to stop misuse naming the call.
 enum {

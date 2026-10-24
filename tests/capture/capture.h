@@ -7,7 +7,7 @@
 //
 // Several slots, so the caller can grab the same frame twice and prove the capture path is
 // deterministic before either grab is compared to a golden ("distrust the harness before
-// the engine", docs/TESTING.md).
+// the engine", docs/TESTING.md). tests/integration/screenOver.ms compares three frames.
 #ifndef VOID_CAPTURE_H
 #define VOID_CAPTURE_H
 

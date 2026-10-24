@@ -22,7 +22,7 @@ export struct GPUQuerySet { id: uint32; }
 export const GPU_MAX_COLOR_ATTACHMENTS: int32 = 4;
 export const GPU_MAX_VERTEX_BUFFERS: int32 = 2;
 export const GPU_MAX_VERTEX_ATTRIBUTES: int32 = 16;
-export const GPU_MAX_BIND_GROUP_ENTRIES: int32 = 8;
+export const GPU_MAX_BIND_GROUP_ENTRIES: int32 = 16;
 export const GPU_MAX_UNIFORM_BLOCKS: int32 = 8;
 export const GPU_MAX_SHADER_BINDINGS: int32 = 24;
 export const GPU_UNIFORM_GROUP = 0;

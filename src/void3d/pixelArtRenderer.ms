@@ -196,7 +196,11 @@ export enum PixelArtError {
 	ProgramNotCast,
 	CasterBlock,
 	SkinPose,
+	Instances,
 	DrawRange,
+	CameraPosition,
+	MeshWrite,
+	ShapedLight,
 	RampLevels,
 	BlendedOpaque,
 	TranslucentDepthWrite,
@@ -682,7 +686,14 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.ProgramNotCast => PixelArtError.ProgramNotCast,
 		RendererError.CasterBlock => PixelArtError.CasterBlock,
 		RendererError.SkinPose => PixelArtError.SkinPose,
+		RendererError.Instances => PixelArtError.Instances,
 		RendererError.DrawRange => PixelArtError.DrawRange,
+		RendererError.CameraPosition => PixelArtError.CameraPosition,
+		RendererError.MeshWrite => PixelArtError.MeshWrite,
+		RendererError.ShapedLightPreset => PixelArtError.ShapedLight,
+		RendererError.TooManyShadowedSpots => PixelArtError.ShapedLight,
+		RendererError.BadShadowSpot => PixelArtError.ShapedLight,
+		RendererError.SpotShadowUnattached => PixelArtError.ShapedLight,
 	};
 }
 

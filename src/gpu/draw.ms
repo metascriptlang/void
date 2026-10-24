@@ -1,4 +1,5 @@
 import "./door";
+import { exit } from "std/process";
 import {
 	DOOR_BUFFER_INDEX,
 	DOOR_BUFFER_STREAM,
@@ -24,7 +25,9 @@ export const BINDING_VERTEX_BUFFER: int32 = DOOR_BINDING_VERTEX_BUFFER;
 export const BINDING_INDEX_BUFFER: int32 = DOOR_BINDING_INDEX_BUFFER;
 export const BINDING_VIEW: int32 = DOOR_BINDING_VIEW;
 export const BINDING_SAMPLER: int32 = DOOR_BINDING_SAMPLER;
-export const BINDING_LENGTH: int32 = DOOR_BINDING_LENGTH;
+// The second vertex buffer's offset in bytes, after the door's words.
+export const BINDING_VERTEX_OFFSET: int32 = DOOR_BINDING_LENGTH;
+export const BINDING_LENGTH: int32 = DOOR_BINDING_LENGTH + 1;
 
 export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
 	return doorMakeBufferOf(DOOR_BUFFER_VERTEX, data);
@@ -53,7 +56,13 @@ export function destroyBuffer(buffer: uint32): void { doorDestroyBuffer(buffer);
 export function applyPipeline(pipeline: uint32): void { doorApplyPipeline(pipeline); }
 
 export function applyBindings(bindings: Readonly<Span<uint32>>): void {
-	doorApplyBindings(bindings, []);
+	if (bindings.length < BINDING_LENGTH) {
+		console.error("gpu door: applyBindings descriptor holds " + String(bindings.length) +
+			" of " + String(BINDING_LENGTH) + " words");
+		exit(1);
+	}
+	const offsets: int32[2] = [0, bindings[BINDING_VERTEX_OFFSET] as int32];
+	doorApplyBindings(bindings[0..DOOR_BINDING_LENGTH], offsets);
 }
 
 export function applyUniforms(slot: int32, data: Readonly<Span<float32>>): void {

@@ -1,0 +1,74 @@
+# lib: heaps format
+# haxe-prelude: import h3d.scene.pbr.SpotLight;
+# haxe-prelude: import h3d.scene.pbr.CapsuleLight;
+# haxe-prelude: class Headless {
+# haxe-prelude: public static function init() {
+# haxe-prelude: var e = Type.createEmptyInstance(h3d.Engine);
+# haxe-prelude: @:privateAccess e.driver = new h3d.impl.NullDriver();
+# haxe-prelude: @:privateAccess e.resCache = new Map();
+# haxe-prelude: @:privateAccess h3d.Engine.CURRENT = e;
+# haxe-prelude: }
+# haxe-prelude: public static function spot(angle: Float, fallOff: Float, range: Float): h3d.shader.pbr.Light.SpotLight {
+# haxe-prelude: var s = new SpotLight(); s.angle = angle; s.fallOff = fallOff; s.range = range;
+# haxe-prelude: @:privateAccess s.syncPos(); @:privateAccess s.sync(null);
+# haxe-prelude: return @:privateAccess s.pbr;
+# haxe-prelude: }
+# haxe-prelude: public static function capsule(length: Float, radius: Float, range: Float): h3d.shader.pbr.Light.CapsuleLight {
+# haxe-prelude: var c = new CapsuleLight(); c.length = length; c.radius = radius; c.range = range;
+# haxe-prelude: @:privateAccess c.syncPos(); @:privateAccess c.sync(null);
+# haxe-prelude: return @:privateAccess c.pbr;
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Scene3D,NodeId3D,Transform3D,LightKind,LightShape,addLightNode,collectLights,closeScene } from "../../../src/void3d/scene";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: import { LIGHT_UNIFORM_LENGTH,LIGHT_SHAPE_BASE,LIGHT_SHAPE_ARRAY_LENGTH,MAX_POINT_LIGHTS } from "../../../src/void3d/gpu3d";
+# ms-prelude: import { Vec3,vec3,identityQuat } from "../../../src/math/math3d";
+# ms-prelude: const DEG: float32 = 0.017453292519943295;
+# ms-prelude: function shape(angle: float32,vertical: float32,falloff: float32,width: float32,height: float32,length: float32,radius: float32): LightShape {
+# ms-prelude: return {angle:angle,verticalAngle:vertical,falloff:falloff,width:width,height:height,length:length,capsuleRadius:radius};
+# ms-prelude: }
+# ms-prelude: function packed(kind: LightKind,range: float32,scale: Vec3,value: LightShape): Vec<float32> {
+# ms-prelude: const scene=Scene3D.create(DrawContext.withUniformCapacity(0));
+# ms-prelude: addLightNode(scene,scene.rootId(),{position:vec3(0,0,0),rotation:identityQuat(),scale:scale},
+# ms-prelude: {kind:kind,color:vec3(1,1,1),radius:range,power:1,priority:0,shape:value});
+# ms-prelude: let values: Vec<float32> = [];
+# ms-prelude: for (let i=0;i<LIGHT_UNIFORM_LENGTH;i++) {values.push(0);}
+# ms-prelude: const result=collectLights(scene,values);
+# ms-prelude: closeScene(scene);
+# ms-prelude: if (!result.ok) {values[0]=-999;}
+# ms-prelude: return move values;
+# ms-prelude: }
+# ms-prelude: function at(values: Vec<float32>,array: int32,k: int32): float32 {
+# ms-prelude: return values[LIGHT_SHAPE_BASE+array*LIGHT_SHAPE_ARRAY_LENGTH+k];
+# ms-prelude: }
+# ms-prelude: function rangeOf(values: Vec<float32>): float32 {
+# ms-prelude: return values[12+MAX_POINT_LIGHTS*4+3];
+# ms-prelude: }
+
+case spot-cone-cosines tol=1e-6
+haxe> Headless.init();
+haxe> var p = Headless.spot(90, 20, 7);
+haxe> emit("spot-cone-cosines", [p.angle, p.fallOff, p.range, 0]);
+ms> const v1 = packed(LightKind.Spot, 7, vec3(1,1,1), shape(90*DEG,0,20*DEG,0,0,0,0));
+ms> emit4("spot-cone-cosines", at(v1,1,0), at(v1,1,1), rangeOf(v1), 0);
+
+case spot-no-falloff-is-inner-one tol=1e-6
+haxe> Headless.init();
+haxe> var p = Headless.spot(60, 0, 3);
+haxe> emit("spot-no-falloff-is-inner-one", [p.angle, p.fallOff, p.range]);
+ms> const v2 = packed(LightKind.Spot, 3, vec3(1,1,1), shape(60*DEG,0,0,0,0,0,0));
+ms> emit3("spot-no-falloff-is-inner-one", at(v2,1,0), at(v2,1,1), rangeOf(v2));
+
+case spot-falloff-wider-than-cone tol=1e-6 diverges=light-shape-spot-singular-cone
+haxe> Headless.init();
+haxe> var p = Headless.spot(60, 40, 3);
+haxe> emit("spot-falloff-wider-than-cone", [p.angle - p.fallOff]);
+ms> const v3 = packed(LightKind.Spot, 3, vec3(1,1,1), shape(60*DEG,0,40*DEG,0,0,0,0));
+ms> emit1("spot-falloff-wider-than-cone", v3[0] == -999 ? 1.0 : 0.0);
+
+case capsule-half-length-and-radius tol=1e-6
+haxe> Headless.init();
+haxe> var p = Headless.capsule(3, 0.4, 10);
+haxe> emit("capsule-half-length-and-radius", [p.halfLength, p.radius, 0]);
+ms> const v4 = packed(LightKind.Capsule, 10, vec3(1,1,1), shape(0,0,0,0,0,3,0.4));
+ms> emit3("capsule-half-length-and-radius", at(v4,1,0), at(v4,1,1), 0);

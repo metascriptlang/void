@@ -1014,12 +1014,9 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:refresh scene:refreshChecked
 	skin80ose:syncSkinPose skin71eometry:deformPublished skin80alette:writePalette
 	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow scene:requireOpen scene:requireOwn
 	draw:requireOpen animation:requirePaired animation:update animation:keys animation:blendTo
-	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
-	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
-	particles:emitterValue particles:writeInstances particles:writeOrdered particles:sortByDepth
-	particles:depthKey particles:placeOf particles:ringPoint particles:damped particles:bentToward
-	particle78oise:noiseDirection particle78oise:curl3 particle78oise:noise4 particles:boxPosition
-	particles:boxHalfExtent particles:polynomial draw:writeStream draw:pinMesh draw:unpinMesh
+	animation:syncPose animation:syncMeshFrame particle87riter:writeParticlePoints
+	particle87riter:drawOrder particle87riter:sortOrder particle87riter:scatter particle87riter:placed
+	particle87riter:finite draw:writeStream draw:pinMesh draw:unpinMesh
 	draw:letGoOfMesh draw:meshPinned draw:hasMesh draw:issuedMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit draw:slotBit gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
@@ -1103,21 +1100,21 @@ check_array_copies() {
 		fn=${entry#*:}
 		emitted=$({ ls out/debug/*srcZvoid3dZ${module}Oms.c; ls out/debug/*srcZgpuZ${module}Oms.c;
 			ls out/debug/*srcZexamplesZ${module}Oms.c; } 2>/dev/null | head -1)
-		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
+		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__.*{[[:space:]]*$" "$emitted"; then
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1
 		fi
-		body=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted")
+		body=$(awk "/^[a-zA-Z_].*\y${fn}__.*\{[ \t]*\$/,/^}/" "$emitted")
 		found=""
 		for copyName in $(echo "$body" | grep -oE '[A-Za-z0-9_]*Copy(__M[A-Za-z0-9_]+)?\(' |
-			sed -E 's/^(.*)__M.*Z([A-Za-z0-9]+)O[a-z]+(_v[0-9]+)?Copy\($/\2:\1/;s/(__M[A-Za-z0-9_]+)?\($//'); do
+			sed -E 's/^(.*)__M?.*Z([A-Za-z0-9]+)O[a-z]+(_v[0-9]+)?Copy\($/\2:\1/;s/(__M[A-Za-z0-9_]+)?\($//'); do
 			case " $VEC_FREE_COPIES " in
 			*" $copyName "*) ;;
 			*) found="$found $copyName" ;;
 			esac
 		done
 		[ -n "$found" ] && offenders="$offenders ${fn}=$(echo $found | tr ' ' ',')"
-		strings=$(echo "$body" | grep -cE 'msStringConcat|msNumberToString|toString__M' || true)
+		strings=$(echo "$body" | grep -cE 'msStringConcat|msNumberToString|toString__' || true)
 		[ "$strings" -gt 0 ] && builders="$builders ${fn}=${strings}"
 	done
 	if [ -n "$offenders" ]; then
@@ -1194,6 +1191,30 @@ run_exposure() {
 		fi
 	done
 	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending, Reinhard per layer"
+}
+
+run_environment_light() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "environment-light: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/environmentLight.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/environmentLight.ms --output="$exe" > "$WORK/environmentLight.build.log" 2>&1; then
+		fail "environment-light: tests/integration/environmentLight.ms does not build — see $WORK/environmentLight.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/environmentLight.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "environment-light: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS environmentLight: ' "$WORK/environmentLight.log"; then
+		fail "environment-light: exit $status — see $WORK/environmentLight.log"
+		return
+	fi
+	pass "environment-light: a pbr key is black without an environment and lit by the baked panorama as the CPU shader predicts"
 }
 
 run_mesh_lod() {
@@ -1291,6 +1312,41 @@ run_particle_fade() {
 		done
 	done
 	rm -rf out/debug/.cache
+}
+
+run_particle_mesh() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "particle-mesh: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/particleMesh.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/particleMesh.ms --output="$exe" \
+		> "$WORK/particleMesh.build.log" 2>&1; then
+		fail "particle-mesh: tests/integration/particleMesh.ms does not build — see $WORK/particleMesh.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		log="$WORK/particleMesh.$preset.log"
+		status=0
+		VOID_PARTICLE_MESH_PIXEL_ART=$preset "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "particle-mesh: no readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || [ "$(grep -c '^PASS particle mesh:' "$log")" -ne 2 ]; then
+			fail "particle-mesh: preset=$preset — see $log"
+			continue
+		fi
+		status=0
+		VOID_PARTICLE_MESH_PIXEL_ART=$preset VOID_PARTICLE_MESH_CONTROL=1 "$exe" \
+			> "$log.control" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'stage=0: the blue particle is not blue' "$log.control"; then
+			fail "particle-mesh: preset=$preset run-offset control not red — see $log.control"
+			continue
+		fi
+		pass "particle-mesh: preset=$preset; by mesh, in draw order, run-offset control red"
+	done
 }
 
 run_bloom() {
@@ -3055,9 +3111,11 @@ run_both_layers
 run_world_label
 run_card_table
 run_exposure
+run_environment_light
 run_hdr
 run_bloom
 run_particle_fade
+run_particle_mesh
 run_mesh_lod
 run_gl_core
 run_stores

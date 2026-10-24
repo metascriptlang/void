@@ -8,6 +8,7 @@
 // a loader that reads files it has never seen is a claim this port does not make.
 // PENDING3D: gltf-real-export-not-exercised
 
+import { Buffer } from "std/core/buffer";
 import { parseJson } from "std/serialize/json/parser";
 import { jsonNull } from "std/serialize/json/builder";
 import { asString, asNumber, at } from "std/serialize/json/accessors";
@@ -32,7 +33,13 @@ import {
 	decode,
 } from "./gltfAccessor";
 import { GltfColour, GltfColourError, GltfLinearRgba, fromAccessor } from "./gltfColour";
-import { GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, forValues } from "./gltfCurve";
+import {
+	GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, GltfWeightCurve, GltfWeightTrack,
+	forValues, forWeightValues,
+} from "./gltfCurve";
+import {
+	MorphData, MorphGeometryError, MorphPrimitiveInput, MorphTarget,
+} from "./morphGeometry";
 import { SkinInfluences, fromAccessor as readSkinInfluences } from "./skinInfluences";
 import { SkinPartition, fromTriangles } from "./skinPartition";
 import { TextureData } from "./texture";
@@ -91,13 +98,14 @@ function gltfCause(code: GltfError): string {
 		GltfError.NotGltf => "glTF 2.0 asset or selected scene is missing or invalid",
 		GltfError.Unsupported => "feature, accessor component, shape, or layout is unsupported",
 		GltfError.OutOfRange => "buffer range or accessor count exceeds available bytes",
-		GltfError.CountMismatch => "attribute counts differ or index count is not divisible by 3",
-		GltfError.MeshTooLarge => "vertex storage exceeds packed mesh capacity",
+		GltfError.CountMismatch => "attribute counts differ or vertex/index count is incomplete",
+		GltfError.MeshTooLarge => "mesh exceeds vertex storage or index draw capacity",
 		GltfError.BadIndex => "index >= vertex count or equals component maximum restart value",
 		GltfError.BadNode => "node transform is invalid or not representable",
 		GltfError.NotGlb => "GLB header or aligned JSON/BIN chunk layout is invalid",
 		GltfError.BadReference => "node, mesh, material, texture, or graph reference is invalid",
-		GltfError.ImageByUri => "URI image loading is not supported; supply an embedded image",
+		GltfError.ImageByUri => "External URI image loading is not supported; " +
+			"supply an embedded image",
 		GltfError.BadImage => "embedded PNG/JPEG bytes or image dimensions are invalid",
 		GltfError.UnsupportedSampler => "sampler filter or wrap is unsupported or incompatible",
 		GltfError.UnsupportedMaterial => "material property or texture combination is unsupported",
@@ -202,6 +210,8 @@ export struct GltfNode {
 	mesh: int32;
 	skin: int32 | null;
 	skinMeshes: Vec<int32>;
+	morph: int32 | null;
+	weights: Vec<float32>;
 	local: GltfTransform;
 	children: Vec<int32>;
 }
@@ -241,6 +251,29 @@ export const IDENTITY_TEXTURE_TRANSFORM: GltfTextureTransform = {
 	offsetU: 0.0, offsetV: 0.0, rotation: 0.0, scaleU: 1.0, scaleV: 1.0,
 };
 
+// Which material model an import produces. Legacy keeps the forward looks (the base colour and
+// the emissive and normal maps); Pbr also reads pbrMetallicRoughness' factors into
+// GltfMaterial.pbr, so the scene can light the material with the direct BRDF.
+export enum GltfMaterialImport {
+	Legacy,
+	Pbr,
+}
+
+// pbrMetallicRoughness' factors, each in 0..1 and the glTF default 1 when the file names none;
+// roughness is above 0, the endpoint the BRDF has no response for (material.ms pbrBlock).
+export struct GltfPbr {
+	metallic: float32;
+	roughness: float32;
+}
+
+const GLTF_DEFAULT_PBR: GltfPbr = { metallic: 1.0, roughness: 1.0 };
+
+export struct GltfPbrMaps {
+	metalRough: int32;
+	occlusion: int32;
+	occlusionStrength: float32;
+}
+
 export struct GltfMaterial {
 	texture: int32;
 	doubleSided: boolean;
@@ -251,11 +284,22 @@ export struct GltfMaterial {
 	emissiveStrength: float32;
 	normalTexture: int32;
 	uvTransform: GltfTextureTransform;
+	pbr: GltfPbr | null;
+	pbrMaps: GltfPbrMaps | null;
 }
 
 export struct GltfAnimation {
 	name: string;
 	tracks: Vec<GltfPoseTrack>;
+	weightTracks: Vec<GltfWeightTrack>;
+}
+
+export struct GltfMorph {
+	meshIndex: int32;
+	firstPrimitive: int32;
+	targetCount: int32;
+	data: Readonly<MorphData>;
+	meshWeights: Vec<float32>;
 }
 
 export struct GltfSkin {
@@ -274,6 +318,7 @@ export struct GltfSkinMesh {
 export struct GltfData {
 	skins: Vec<GltfSkin>;
 	skinMeshes: Vec<GltfSkinMesh | null>;
+	morphs: Vec<GltfMorph>;
 	meshes: Vec<MeshData>;
 	meshMaterials: Vec<int32>;
 	materials: Vec<GltfMaterial>;
@@ -297,6 +342,7 @@ struct ImageView {
 	offset: int32;
 	length: int32;
 	format: ImageFormat;
+	inlineBytes: Vec<uint8>;
 }
 
 struct Sampling {
@@ -310,7 +356,7 @@ const DEFAULT_READ: MaterialRead = {
 		alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 		emissiveTexture: NO_TEXTURE_INDEX, emissive: { x: 0.0, y: 0.0, z: 0.0 },
 		emissiveStrength: 1.0, normalTexture: NO_TEXTURE_INDEX,
-		uvTransform: IDENTITY_TEXTURE_TRANSFORM,
+		uvTransform: IDENTITY_TEXTURE_TRANSFORM, pbr: null, pbrMaps: null,
 	},
 	factor: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
 	realUvs: false,
@@ -344,12 +390,13 @@ function animationValues(
 	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
 	bufferLength: int32, index: int32, components: int32,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
+	sparseOk: boolean = false,
 ): Result<Vec<float32>, GltfError> {
 	const source = try accessorSource(accessors, index, GltfAccessorRole.Other);
 	const shape = components == 1 ? GltfAccessorShape.Scalar :
 		(components == 3 ? GltfAccessorShape.Vec3 : GltfAccessorShape.Vec4);
 	if (source.componentType != COMPONENT_FLOAT || source.normalized || source.shape != shape ||
-		(components == 1 && source.sparse !== null)) {
+		(components == 1 && !sparseOk && source.sparse !== null)) {
 		return Result.err(GltfError.Unsupported);
 	}
 	if (buffers.length == 0) {
@@ -370,10 +417,36 @@ function animationValues(
 	return Result.ok(move values);
 }
 
+function weightTrack(
+	sampler: JsonValue, node: int32, targetCount: int32,
+	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>, bufferLength: int32,
+	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
+	ref cause: string,
+): Result<GltfWeightTrack, GltfError> {
+	if (targetCount < 1) {
+		cause = "a weights channel targets a node whose mesh has no morph targets";
+		return Result.err(GltfError.BadReference);
+	}
+	const mode = try animationMode(fieldOf(sampler, "interpolation"));
+	const times = try animationValues(accessors, views, buffer, bufferLength,
+		intField(sampler, "input", -1), 1, buffers, accessorViews);
+	const values = try animationValues(accessors, views, buffer, bufferLength,
+		intField(sampler, "output", -1), 1, buffers, accessorViews, true);
+	const curve = GltfWeightCurve.forWeightValues(mode, targetCount, times, values);
+	if (!curve.ok) {
+		cause = `weights output must hold ${targetCount} scalars per keyframe ` +
+			`(three times that for CUBICSPLINE) at strictly increasing times: ` +
+			`${curve.error.toString()}`;
+		return Result.err(GltfError.CountMismatch);
+	}
+	return Result.ok({ sourceNode: node, curve: curve.value });
+}
+
 function loadAnimations(
 	root: JsonValue, accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
-	bufferLength: int32, nodeCount: int32,
+	bufferLength: int32, nodeCount: int32, nodeTargets: Readonly<Span<int32>>,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
+	ref cause: string,
 ): Result<Vec<GltfAnimation>, GltfError> {
 	let clips: Vec<GltfAnimation> = [];
 	const animations = arrayOf(root, "animations");
@@ -386,7 +459,9 @@ function loadAnimations(
 			(!isNull(name) && name.kind != JsonKind.String)) {
 			return Result.err(GltfError.Unsupported);
 		}
-		let clip: GltfAnimation = { name: isNull(name) ? "" : name.asString(), tracks: [] };
+		let clip: GltfAnimation = {
+			name: isNull(name) ? "" : name.asString(), tracks: [], weightTracks: [],
+		};
 		for (let channelIndex = 0; channelIndex < countOf(channels); channelIndex++) {
 			const channel = channels.at(channelIndex);
 			const target = fieldOf(channel, "target");
@@ -396,7 +471,20 @@ function loadAnimations(
 				samplerIndex >= countOf(samplers)) {
 				return Result.err(GltfError.BadReference);
 			}
-			const path = try animationPath(fieldOf(target, "path"));
+			const pathName = fieldOf(target, "path");
+			if (pathName.kind == JsonKind.String && pathName.strVal == "weights") {
+				for (const previous of clip.weightTracks) {
+					if (previous.sourceNode == node) {
+						cause = "two weights channels of one animation target the same node";
+						return Result.err(GltfError.Unsupported);
+					}
+				}
+				const track = try weightTrack(samplers.at(samplerIndex), node, nodeTargets[node],
+					accessors, views, buffer, bufferLength, buffers, accessorViews, cause);
+				clip.weightTracks.push(track);
+				continue;
+			}
+			const path = try animationPath(pathName);
 			if (hasField(arrayOf(root, "nodes").at(node), "matrix")) {
 				return Result.err(GltfError.Unsupported);
 			}
@@ -439,9 +527,6 @@ function uvAt(values: Readonly<Span<float64>>, i: int32): Uv {
 }
 
 function primitivesOf(mesh: JsonValue): Result<JsonValue, GltfError> {
-	if (!isNull(fieldOf(mesh, "weights"))) {
-		return Result.err(GltfError.Unsupported);
-	}
 	const primitives: JsonValue = arrayOf(mesh, "primitives");
 	if (isNull(primitives) || countOf(primitives) < 1) {
 		return Result.err(GltfError.Unsupported);
@@ -454,6 +539,7 @@ struct PrimitiveRun {
 	names: Vec<string>;
 	first: int32;
 	count: int32;
+	morph: int32;
 }
 
 // three.js createUniqueName (GLTFLoader.js:3810-3819): a name's first use is itself, later uses
@@ -892,6 +978,96 @@ function geometryAttribute(
 	return Result.ok(move decoded.value);
 }
 
+function loadMorphTargets(
+	primitive: JsonValue,
+	base: Readonly<MeshData>,
+	original: int32,
+	accessors: JsonValue,
+	views: JsonValue,
+	buffer: Readonly<Span<uint8>>,
+	bufferLength: int32,
+	ref colourBuffers: Vec<GltfAccessorBuffer>,
+	ref colourViews: Vec<GltfAccessorView>,
+	ref cause: string,
+): Result<Vec<MorphTarget>, GltfError> {
+	let result: Vec<MorphTarget> = [];
+	const targets: JsonValue = fieldOf(primitive, "targets");
+	if (isNull(targets)) { return Result.ok(move result); }
+	if (targets.kind != JsonKind.Array || countOf(targets) < 1) {
+		cause = "targets must be a nonempty array";
+		return Result.err(GltfError.Unsupported);
+	}
+	const attributes: JsonValue = fieldOf(primitive, "attributes");
+	if (base.hasTangents && !hasField(attributes, "TANGENT")) {
+		cause = "morph targets on a primitive whose tangents are generated need tangents " +
+			"recomputed from each morphed position; supply a TANGENT attribute";
+		return Result.err(GltfError.Unsupported);
+	}
+	for (let index = 0; index < countOf(targets); index++) {
+		const target: JsonValue = targets.at(index);
+		if (target === null || target.kind != JsonKind.Object || target.keys.length < 1) {
+			cause = `morph target ${index} must be a nonempty object of accessors`;
+			return Result.err(GltfError.Unsupported);
+		}
+		let morph: MorphTarget = { positions: [], normals: [], tangents: [] };
+		for (const key of target.keys) {
+			if (key != "POSITION" && key != "NORMAL" && key != "TANGENT") {
+				cause = `morph target ${index} carries ${key}; only POSITION, NORMAL and TANGENT ` +
+					"displacements are supported";
+				return Result.err(GltfError.Unsupported);
+			}
+			if (!hasField(attributes, key)) {
+				cause =
+					`morph target ${index} displaces ${key}, which the primitive does not carry`;
+				return Result.err(GltfError.BadReference);
+			}
+			const source = try accessorSource(accessors, try colourIntField(target, key, -1));
+			const decoded = try source.geometryAttribute(GltfAccessorShape.Vec3, original,
+				views, buffer, bufferLength, colourBuffers, colourViews);
+			let values: Vec<float32> = [];
+			for (const value of decoded.values) { values.push(value as float32); }
+			if (key == "POSITION") { morph.positions = move values; }
+			else if (key == "NORMAL") { morph.normals = move values; }
+			else if (base.hasTangents) { morph.tangents = move values; }
+		}
+		if (morph.positions.length == 0 && morph.normals.length == 0 &&
+			morph.tangents.length == 0) {
+			for (let at = 0; at < original * 3; at++) { morph.positions.push(0.0); }
+		}
+		result.push(move morph);
+	}
+	return Result.ok(move result);
+}
+
+function resolveMorphNodes(
+	ref data: GltfData, runs: Readonly<Span<PrimitiveRun>>, source: string,
+): Result<void, GltfDiagnostic> {
+	for (let i = 0; i < data.nodes.length; i++) {
+		const mesh: int32 = data.nodes[i].mesh;
+		const morph: int32 = mesh >= 0 && mesh < (runs.length as int32) ? runs[mesh].morph : -1;
+		const location: string = `$.nodes[${i}].weights`;
+		if (morph < 0) {
+			if (data.nodes[i].weights.length > 0) {
+				return Result.err(gltfFailure(GltfError.BadNode, source, location,
+					data.nodes[i].name, "node weights need a mesh with morph targets"));
+			}
+			continue;
+		}
+		const count: int32 = data.morphs[morph].targetCount;
+		if (data.nodes[i].weights.length == 0) {
+			for (const weight of data.morphs[morph].meshWeights) {
+				data.nodes[i].weights.push(weight);
+			}
+		} else if (data.nodes[i].weights.length != count) {
+			return Result.err(gltfFailure(GltfError.CountMismatch, source, location,
+				data.nodes[i].name, `node weights hold ${data.nodes[i].weights.length} values ` +
+				`for ${count} morph targets`));
+		}
+		data.nodes[i].morph = morph as (int32 | null);
+	}
+	return Result.ok(null);
+}
+
 function loadMesh(
 	primitive: JsonValue,
 	read: MaterialRead,
@@ -903,11 +1079,11 @@ function loadMesh(
 	ref colourViews: Vec<GltfAccessorView>,
 	ref tangentSources: Vec<int32>,
 ): Result<MeshData, GltfError> {
-	if (!isNull(fieldOf(primitive, "targets"))) {
-		return Result.err(GltfError.Unsupported);
-	}
 	const mode: int32 = try colourIntField(primitive, "mode", 4);
-	if (mode != 4) {
+	const strip: boolean = mode == 5;
+	const fan: boolean = mode == 6;
+	const connected: boolean = strip || fan;
+	if (mode != 4 && !connected) {
 		return Result.err(GltfError.Unsupported);
 	}
 	const attributes: JsonValue = fieldOf(primitive, "attributes");
@@ -1004,10 +1180,21 @@ function loadMesh(
 		}
 	}
 	if (!hasField(primitive, "indices")) {
-		if (count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		if (connected ? count < 3 : count % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		if (connected) {
+			for (let t = 0; t < count - 2; t++) {
+				const odd: int32 = strip ? t % 2 : 0;
+				const tri = addTriangle(data, fan ? t + 1 : t + odd,
+					fan ? t + 2 : t + 1 - odd, fan ? 0 : t + 2);
+				if (!tri.ok) { return Result.err(GltfError.BadIndex); }
+			}
+		}
 	} else {
 		const source = try accessorSource(accessors,
 			try colourIntField(primitive, "indices", -1), GltfAccessorRole.Indices);
+		if (connected && source.count > 0x7fffffff / 3 + 2) {
+			return Result.err(GltfError.MeshTooLarge);
+		}
 		const indices = GltfAccessorIndices.readIndices(source, colourBuffers, colourViews,
 			count as uint32);
 		if (!indices.ok) {
@@ -1018,11 +1205,19 @@ function loadMesh(
 				_ => GltfError.Unsupported,
 			});
 		}
-		if (indices.value.values.length % 3 != 0) { return Result.err(GltfError.CountMismatch); }
+		const corners: int32 = indices.value.values.length as int32;
+		if (connected ? corners < 3 : corners % 3 != 0) {
+			return Result.err(GltfError.CountMismatch);
+		}
 		if (source.componentType == COMPONENT_UNSIGNED_INT) { data.wideIndices = []; }
-		for (let t = 0; t < indices.value.values.length; t += 3) {
-			const tri = addTriangle(data, indices.value.values[t] as int32,
-				indices.value.values[t + 1] as int32, indices.value.values[t + 2] as int32);
+		const step: int32 = connected ? 1 : 3;
+		for (let t = 0; t < corners - 2; t += step) {
+			const odd: int32 = strip ? t % 2 : 0;
+			const a: int32 = fan ? t + 1 : t + odd;
+			const b: int32 = fan ? t + 2 : t + 1 - odd;
+			const c: int32 = fan ? 0 : t + 2;
+			const tri = addTriangle(data, indices.value.values[a] as int32,
+				indices.value.values[b] as int32, indices.value.values[c] as int32);
 			if (!tri.ok) { return Result.err(GltfError.BadIndex); }
 		}
 	}
@@ -1106,11 +1301,22 @@ function matrixTransform(value: JsonValue): Result<GltfTransform, GltfError> {
 	});
 }
 
+function weightsField(owner: JsonValue): Result<Vec<float32>, GltfError> {
+	let weights: Vec<float32> = [];
+	const field: JsonValue = fieldOf(owner, "weights");
+	if (isNull(field)) { return Result.ok(move weights); }
+	if (field.kind != JsonKind.Array || countOf(field) < 1) {
+		return Result.err(GltfError.Unsupported);
+	}
+	for (let i = 0; i < countOf(field); i++) { weights.push(try numberAt(field, i)); }
+	return Result.ok(move weights);
+}
+
 function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 	if (node === null || node.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(node, "weights"))) { return Result.err(GltfError.Unsupported); }
+	const nodeWeights = try weightsField(node);
 	const hasMatrix: boolean = hasField(node, "matrix");
 	if (hasMatrix && (hasField(node, "translation") || hasField(node, "rotation") ||
 		hasField(node, "scale"))) {
@@ -1201,6 +1407,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 		name: isNull(nameField) ? "" : nameField.asString(),
 		mesh: mesh,
 		skin: try colourOptionalInt(node, "skin"), skinMeshes: [],
+		morph: null, weights: move nodeWeights,
 		local: local,
 		children: children,
 	});
@@ -1248,6 +1455,49 @@ function loadSampler(sampler: JsonValue): Result<Sampling, GltfError> {
 	return Result.ok(out);
 }
 
+function formatForMime(mime: string): Result<ImageFormat, GltfError> {
+	return match (mime) {
+		"image/png" => Result.ok(ImageFormat.Png),
+		"image/jpeg" => Result.ok(ImageFormat.Jpeg),
+		_ => Result.err(GltfError.BadImage),
+	};
+}
+
+function loadInlineImage(uri: string, image: JsonValue): Result<ImageView, GltfError> {
+	const comma: int32 = uri.indexOf(",") as int32;
+	if (comma < 5) { return Result.err(GltfError.BadImage); }
+	const header: string = uri.substring(5, comma);
+	if (!header.endsWith(";base64")) { return Result.err(GltfError.Unsupported); }
+	const format: ImageFormat = try formatForMime(header.substring(0, header.length - 7));
+	if (hasField(image, "mimeType")) {
+		const declared: ImageFormat = try formatForMime(fieldOf(image, "mimeType").asString());
+		if (declared != format) { return Result.err(GltfError.BadImage); }
+	}
+	const payload: string = uri.substring(comma + 1);
+	const chars: int64 = payload.length as int64;
+	if (chars > 2147483647) { return Result.err(GltfError.OutOfRange); }
+	if (chars == 0 || chars % 4 != 0) { return Result.err(GltfError.BadImage); }
+	const padding: int32 = payload.endsWith("==") ? 2 : (payload.endsWith("=") ? 1 : 0);
+	const contentChars: int32 = (chars as int32) - padding;
+	for (let i = 0; i < contentChars; i++) {
+		const code: int32 = payload.charCodeAt(i) as int32;
+		if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+			|| (code >= 48 && code <= 57) || code == 43 || code == 47)) {
+			return Result.err(GltfError.BadImage);
+		}
+	}
+	const count: int32 = ((chars / 4) * 3) as int32 - padding;
+	const decoded = Buffer.fromString(payload, "base64");
+	if (decoded.toStringEncoded("base64", 0.0, count as float64) != payload) {
+		return Result.err(GltfError.BadImage);
+	}
+	let inlineBytes: Vec<uint8> = new Array(count);
+	for (let i = 0; i < count; i++) {
+		inlineBytes[i] = decoded.readUInt8(i as float64) as uint8;
+	}
+	return Result.ok({ offset: 0, length: count, format: format, inlineBytes: move inlineBytes });
+}
+
 function loadImageView(
 	image: JsonValue,
 	views: JsonValue,
@@ -1256,16 +1506,18 @@ function loadImageView(
 	if (image === null || image.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(image, "uri"))) { return Result.err(GltfError.ImageByUri); }
+	if (hasField(image, "uri")) {
+		if (hasField(image, "bufferView")) { return Result.err(GltfError.Unsupported); }
+		const uri: JsonValue = fieldOf(image, "uri");
+		if (uri === null || uri.kind != JsonKind.String) { return Result.err(GltfError.BadImage); }
+		if (!uri.strVal.startsWith("data:")) { return Result.err(GltfError.ImageByUri); }
+		return loadInlineImage(uri.strVal, image);
+	}
 	const viewIndex: int32 = intField(image, "bufferView", INVALID_INT);
 	if (viewIndex < 0 || viewIndex >= countOf(views)) {
 		return Result.err(GltfError.BadReference);
 	}
-	const format: Result<ImageFormat, GltfError> = match (fieldOf(image, "mimeType").asString()) {
-		"image/png" => Result.ok(ImageFormat.Png),
-		"image/jpeg" => Result.ok(ImageFormat.Jpeg),
-		_ => Result.err(GltfError.BadImage),
-	};
+	const format = formatForMime(fieldOf(image, "mimeType").asString());
 	if (!format.ok) { return Result.err(format.error); }
 	const view: JsonValue = views.at(viewIndex);
 	if (isNull(view) || intField(view, "buffer", 0) != 0
@@ -1277,7 +1529,9 @@ function loadImageView(
 	if (offset < 0 || length <= 0 || offset > bufferLength || length > bufferLength - offset) {
 		return Result.err(GltfError.OutOfRange);
 	}
-	const out: ImageView = { offset: offset, length: length, format: format.value };
+	const out: ImageView = {
+		offset: offset, length: length, format: format.value, inlineBytes: [],
+	};
 	return Result.ok(out);
 }
 
@@ -1303,13 +1557,18 @@ function loadTexture(
 		}
 		sampling = samplers[index];
 	}
-	const view: ImageView = images[source];
-	const bytes: Readonly<Span<uint8>> = buffer[view.offset..view.offset + view.length];
+	const bytes: Readonly<Span<uint8>> = images[source].inlineBytes.length > 0
+		? images[source].inlineBytes
+		: buffer[images[source].offset..images[source].offset + images[source].length];
 	const format: Result<ImageFormat, ImageError> = imageFormatOf(bytes);
-	if (!format.ok || format.value != view.format) { return Result.err(GltfError.BadImage); }
+	if (!format.ok || format.value != images[source].format) {
+		return Result.err(GltfError.BadImage);
+	}
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
 	if (!decoded.ok) {
-		if (decoded.error == ImageError.NoDecoderOnJs) { return Result.err(GltfError.NoImageDecoderOnJs); }
+		if (decoded.error == ImageError.NoDecoderOnJs) {
+			return Result.err(GltfError.NoImageDecoderOnJs);
+		}
 		return Result.err(GltfError.BadImage);
 	}
 	return Result.ok({
@@ -1353,7 +1612,12 @@ function sharedSampling(
 ): Result<Sampling, GltfError> {
 	let shared: Sampling = { filter: FilterMode.Linear, wrap: Wrap.Clamp };
 	let found: boolean = false;
-	for (const index of [material.texture, material.emissiveTexture, material.normalTexture]) {
+	const maps = material.pbrMaps;
+	const packed: int32 = maps === null ? NO_TEXTURE_INDEX : maps.metalRough;
+	const occluding: int32 = maps === null ? NO_TEXTURE_INDEX : maps.occlusion;
+	for (const index of [
+		material.texture, material.emissiveTexture, material.normalTexture, packed, occluding,
+	]) {
 		if (index == NO_TEXTURE_INDEX) { continue; }
 		const sampling: Sampling =
 			{ filter: textures[index].filter, wrap: textures[index].wrap };
@@ -1393,12 +1657,21 @@ function substituteWhites(
 		const sampling: Sampling = try sharedSampling(data.textures, material);
 		const wantsEmissive: boolean =
 			reads[i].emits && material.emissiveTexture == NO_TEXTURE_INDEX;
-		const wantsBase: boolean = (reads[i].emits || material.normalTexture != NO_TEXTURE_INDEX)
-			&& material.texture == NO_TEXTURE_INDEX;
-		if (wantsEmissive || wantsBase) {
+		const maps = material.pbrMaps;
+		const wantsBase: boolean = (reads[i].emits || material.normalTexture != NO_TEXTURE_INDEX
+			|| maps !== null) && material.texture == NO_TEXTURE_INDEX;
+		const wantsPacked: boolean = maps !== null && maps.metalRough == NO_TEXTURE_INDEX;
+		const wantsOcclusion: boolean = maps !== null && maps.occlusion == NO_TEXTURE_INDEX;
+		if (wantsEmissive || wantsBase || wantsPacked || wantsOcclusion) {
 			const white: int32 = whiteFor(data, whites, sampling);
 			if (wantsEmissive) { data.materials[i].emissiveTexture = white; }
 			if (wantsBase) { data.materials[i].texture = white; }
+			if (wantsPacked || wantsOcclusion) {
+				let filled: GltfPbrMaps = pbrMapsOf(reads[i]);
+				if (wantsPacked) { filled.metalRough = white; }
+				if (wantsOcclusion) { filled.occlusion = white; }
+				data.materials[i].pbrMaps = filled;
+			}
 		}
 		reads[i].material = data.materials[i];
 	}
@@ -1410,8 +1683,8 @@ function forceOpaque(texels: Span<uint32>): void {
 }
 
 function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
+	if (!hasField(material, "alphaCutoff")) { return Result.ok(GLTF_DEFAULT_CUTOFF); }
 	const cutoff: JsonValue = fieldOf(material, "alphaCutoff");
-	if (isNull(cutoff)) { return Result.ok(GLTF_DEFAULT_CUTOFF); }
 	const value: float32 = try numberOf(cutoff);
 	if (value < 0.0) { return Result.err(GltfError.OutOfRange); }
 	return Result.ok(value);
@@ -1421,14 +1694,17 @@ function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
 // carries one UV set, so another set is refused rather than sampled at the wrong place.
 function textureInfoIndex(info: JsonValue, textureCount: int32): Result<int32, GltfError> {
 	if (info.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
-	if (intField(info, "texCoord", 0) != 0) { return Result.err(GltfError.UnsupportedMaterial); }
+	const base: int32 = hasField(info, "texCoord") ? intValue(fieldOf(info, "texCoord")) : 0;
+	const transform: JsonValue = fieldOf(fieldOf(info, "extensions"), "KHR_texture_transform");
+	const effective: int32 = hasField(transform, "texCoord")
+		? intValue(fieldOf(transform, "texCoord")) : base;
+	if (base < 0 || effective != 0) { return Result.err(GltfError.UnsupportedMaterial); }
 	const index: int32 = intField(info, "index", INVALID_INT);
 	if (index < 0 || index >= textureCount) { return Result.err(GltfError.BadReference); }
 	return Result.ok(index);
 }
 
 // A textureInfo's KHR_texture_transform, the only extension a texture reference may carry here.
-// Its texCoord override is held to 0 like the textureInfo's own.
 function textureTransformOf(info: JsonValue): Result<GltfTextureTransform, GltfError> {
 	const extensions: JsonValue = fieldOf(info, "extensions");
 	if (isNull(extensions)) { return Result.ok(IDENTITY_TEXTURE_TRANSFORM); }
@@ -1482,10 +1758,14 @@ function shareTransform(info: JsonValue, ref read: MaterialRead): Result<boolean
 // so a factor of 0 emits nothing whatever the map is (three.js GLTFLoader.js:3774-3784 sets the
 // same two terms). KHR_materials_emissive_strength scales it (GLTFLoader.js:878).
 function emissiveStrengthOf(material: JsonValue): Result<float32, GltfError> {
+	if (!hasField(material, "extensions")) { return Result.ok(1.0); }
 	const extensions: JsonValue = fieldOf(material, "extensions");
+	if (extensions.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (!hasField(extensions, "KHR_materials_emissive_strength")) { return Result.ok(1.0); }
 	const extension: JsonValue = fieldOf(extensions, "KHR_materials_emissive_strength");
+	if (extension.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (!hasField(extension, "emissiveStrength")) { return Result.ok(1.0); }
 	const strength: JsonValue = fieldOf(extension, "emissiveStrength");
-	if (isNull(strength)) { return Result.ok(1.0); }
 	const value: float32 = try numberOf(strength);
 	if (value < 0.0) { return Result.err(GltfError.OutOfRange); }
 	return Result.ok(value);
@@ -1498,7 +1778,7 @@ function loadEmission(
 ): Result<boolean, GltfError> {
 	let factor: Vec3 = vec3(0.0, 0.0, 0.0);
 	const field: JsonValue = fieldOf(material, "emissiveFactor");
-	if (!isNull(field)) {
+	if (hasField(material, "emissiveFactor")) {
 		if (field.kind != JsonKind.Array || countOf(field) != 3) {
 			return Result.err(GltfError.Unsupported);
 		}
@@ -1510,7 +1790,7 @@ function loadEmission(
 	const strength: float32 = try emissiveStrengthOf(material);
 	let index: int32 = NO_TEXTURE_INDEX;
 	const info: JsonValue = fieldOf(material, "emissiveTexture");
-	if (!isNull(info)) { index = try textureInfoIndex(info, textureCount); }
+	if (hasField(material, "emissiveTexture")) { index = try textureInfoIndex(info, textureCount); }
 	const lit: boolean = factor.x != 0.0 || factor.y != 0.0 || factor.z != 0.0;
 	if (!lit || strength == 0.0) { return Result.ok(false); }
 	read.material.emissive = factor;
@@ -1532,10 +1812,10 @@ function loadNormalTexture(
 	ref read: MaterialRead,
 ): Result<boolean, GltfError> {
 	const info: JsonValue = fieldOf(material, "normalTexture");
-	if (isNull(info)) { return Result.ok(false); }
+	if (!hasField(material, "normalTexture")) { return Result.ok(false); }
 	const index: int32 = try textureInfoIndex(info, textureCount);
 	const scale: JsonValue = fieldOf(info, "scale");
-	if (!isNull(scale)) {
+	if (hasField(info, "scale")) {
 		const value: float32 = try numberOf(scale);
 		if (value != 1.0) { return Result.err(GltfError.UnsupportedMaterial); }
 	}
@@ -1545,18 +1825,98 @@ function loadNormalTexture(
 	return Result.ok(true);
 }
 
-function loadMaterial(material: JsonValue, textureCount: int32): Result<MaterialRead, GltfError> {
+// A factor of pbrMetallicRoughness: the glTF default when absent, else a number in 0..1.
+function pbrFactor(
+	pbr: JsonValue,
+	name: string,
+	ref cause: string,
+): Result<float32, GltfError> {
+	if (!hasField(pbr, name)) { return Result.ok(1.0); }
+	const value: float32 = try numberOf(fieldOf(pbr, name));
+	if (value < 0.0 || value > 1.0) {
+		cause = `${name} ${value} is outside 0..1`;
+		return Result.err(GltfError.OutOfRange);
+	}
+	return Result.ok(value);
+}
+
+function pbrMapsOf(read: MaterialRead): GltfPbrMaps {
+	const held = read.material.pbrMaps;
+	if (held === null) {
+		return {
+			metalRough: NO_TEXTURE_INDEX, occlusion: NO_TEXTURE_INDEX, occlusionStrength: 1.0,
+		};
+	}
+	return held;
+}
+
+function loadPbr(
+	pbr: JsonValue,
+	textureCount: int32,
+	ref read: MaterialRead,
+	ref cause: string,
+): Result<GltfPbr, GltfError> {
+	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (hasField(pbr, "metallicRoughnessTexture")) {
+		const info: JsonValue = fieldOf(pbr, "metallicRoughnessTexture");
+		let maps: GltfPbrMaps = pbrMapsOf(read);
+		maps.metalRough = try textureInfoIndex(info, textureCount);
+		read.material.pbrMaps = maps;
+		read.realUvs = true;
+		const _shared: boolean = try shareTransform(info, read);
+	}
+	const metallic: float32 = try pbrFactor(pbr, "metallicFactor", cause);
+	const roughness: float32 = try pbrFactor(pbr, "roughnessFactor", cause);
+	if (roughness == 0.0) {
+		cause = "roughnessFactor 0 has no response in the direct BRDF (pbrBlock refuses it)";
+		return Result.err(GltfError.UnsupportedMaterial);
+	}
+	return Result.ok({ metallic: metallic, roughness: roughness });
+}
+
+function loadOcclusion(
+	material: JsonValue,
+	textureCount: int32,
+	ref read: MaterialRead,
+	ref cause: string,
+): Result<boolean, GltfError> {
+	if (!hasField(material, "occlusionTexture")) { return Result.ok(false); }
+	const info: JsonValue = fieldOf(material, "occlusionTexture");
+	let maps: GltfPbrMaps = pbrMapsOf(read);
+	maps.occlusion = try textureInfoIndex(info, textureCount);
+	if (hasField(info, "strength")) {
+		const strength: float32 = try numberOf(fieldOf(info, "strength"));
+		if (strength < 0.0 || strength > 1.0) {
+			cause = `occlusionTexture strength ${strength} is outside 0..1`;
+			return Result.err(GltfError.OutOfRange);
+		}
+		maps.occlusionStrength = strength;
+	}
+	read.material.pbrMaps = maps;
+	read.realUvs = true;
+	const _shared: boolean = try shareTransform(info, read);
+	return Result.ok(true);
+}
+
+function loadMaterial(
+	material: JsonValue,
+	textureCount: int32,
+	materials: GltfMaterialImport,
+	ref cause: string,
+): Result<MaterialRead, GltfError> {
 	if (material === null || material.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(material, "occlusionTexture"))) {
+	if (hasField(material, "occlusionTexture") && materials != GltfMaterialImport.Pbr) {
 		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	let read: MaterialRead = DEFAULT_READ;
+	if (materials == GltfMaterialImport.Pbr) { read.material.pbr = GLTF_DEFAULT_PBR; }
 	const _emits: boolean = try loadEmission(material, textureCount, read);
 	const _normals: boolean = try loadNormalTexture(material, textureCount, read);
+	const _occludes: boolean = try loadOcclusion(material, textureCount, read, cause);
 	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
-	if (!isNull(alphaMode)) {
+	if (hasField(material, "alphaMode")) {
 		if (alphaMode.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
 		const mode: string = alphaMode.strVal;
 		if (mode == "MASK") {
@@ -1572,15 +1932,18 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 		if (read.material.alphaKill == 0.0) { read.material.alphaMode = GltfAlphaMode.Opaque; }
 	}
 	const doubleSided: JsonValue = fieldOf(material, "doubleSided");
-	if (!isNull(doubleSided)) {
+	if (hasField(material, "doubleSided")) {
 		if (doubleSided.kind != JsonKind.Bool) { return Result.err(GltfError.Unsupported); }
 		read.material.doubleSided = doubleSided.boolVal;
 	}
 	const pbr: JsonValue = fieldOf(material, "pbrMetallicRoughness");
-	if (isNull(pbr)) { return Result.ok(read); }
+	if (!hasField(material, "pbrMetallicRoughness")) { return Result.ok(read); }
 	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (materials == GltfMaterialImport.Pbr) {
+		read.material.pbr = try loadPbr(pbr, textureCount, read, cause);
+	}
 	const factor: JsonValue = fieldOf(pbr, "baseColorFactor");
-	if (!isNull(factor)) {
+	if (hasField(pbr, "baseColorFactor")) {
 		if (factor.kind != JsonKind.Array || countOf(factor) != 4) {
 			return Result.err(GltfError.Unsupported);
 		}
@@ -1592,7 +1955,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 		};
 	}
 	const info: JsonValue = fieldOf(pbr, "baseColorTexture");
-	if (isNull(info)) { return Result.ok(read); }
+	if (!hasField(pbr, "baseColorTexture")) { return Result.ok(read); }
 	read.material.texture = try textureInfoIndex(info, textureCount);
 	read.realUvs = true;
 	const _shared: boolean = try shareTransform(info, read);
@@ -1731,6 +2094,7 @@ function decodeGltf(
 	buffer: Readonly<Span<uint8>>,
 	fromGlb: boolean,
 	source: string = "<memory>",
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
 ): Result<GltfData, GltfDiagnostic> {
 	const parsed: Result<JsonValue, string> = parseJson(json);
 	if (!parsed.ok) {
@@ -1751,7 +2115,8 @@ function decodeGltf(
 		}
 		for (let i = 0; i < countOf(requiredExtensions); i++) {
 			const name: JsonValue = at(requiredExtensions, i);
-			if (name.kind != JsonKind.String || name.strVal != "KHR_texture_transform") {
+			if (name.kind != JsonKind.String || (name.strVal != "KHR_texture_transform"
+				&& name.strVal != "KHR_materials_emissive_strength")) {
 				return Result.err(gltfFailure(GltfError.Unsupported, source,
 					`$.extensionsRequired[${i}]`, name.asString()));
 			}
@@ -1775,7 +2140,7 @@ function decodeGltf(
 	const accessors: JsonValue = arrayOf(root, "accessors");
 	const views: JsonValue = arrayOf(root, "bufferViews");
 	let data: GltfData = {
-		skins: [], skinMeshes: [],
+		skins: [], skinMeshes: [], morphs: [],
 		meshes: [],
 		meshMaterials: [],
 		materials: [],
@@ -1792,9 +2157,9 @@ function decodeGltf(
 	const imageCount: int32 = countOf(imageArray);
 	const buffers: JsonValue = arrayOf(root, "buffers");
 	const bufferCount: int32 = countOf(buffers);
-	if (bufferCount > 1 || ((meshCount > 0 || imageCount > 0) && bufferCount != 1)) {
+	if (bufferCount > 1 || (meshCount > 0 && bufferCount != 1)) {
 		return Result.err(gltfFailure(GltfError.Unsupported, source, "$.buffers", "",
-			"this loader requires one supplied buffer for meshes or images"));
+			"this loader accepts at most one supplied buffer and requires it for meshes"));
 	}
 	let declaredLength: int32 = 0;
 	if (bufferCount == 1) {
@@ -1841,10 +2206,11 @@ function decodeGltf(
 	const materialCount: int32 = countOf(materialArray);
 	let reads: Vec<MaterialRead> = [];
 	for (let i = 0; i < materialCount; i++) {
-		const material = loadMaterial(materialArray.at(i), textureCount);
+		let materialCause: string = "";
+		const material = loadMaterial(materialArray.at(i), textureCount, materials, materialCause);
 		if (!material.ok) {
 			return Result.err(gltfFailure(material.error, source, `$.materials[${i}]`,
-				sourceName(materialArray.at(i))));
+				sourceName(materialArray.at(i)), materialCause));
 		}
 		reads.push(material.value);
 		data.materials.push(material.value.material);
@@ -1861,6 +2227,7 @@ function decodeGltf(
 	let colourBuffers: Vec<GltfAccessorBuffer> = [];
 	let colourViews: Vec<GltfAccessorView> = [];
 	let runs: Vec<PrimitiveRun> = [];
+	let pbrDefault: int32 = DEFAULT_MATERIAL;
 	let usedNames: Vec<string> = [];
 	let usedCounts: Vec<int32> = [];
 	for (let i = 0; i < meshCount; i++) {
@@ -1879,7 +2246,15 @@ function decodeGltf(
 		for (let p = 0; p < countOf(primitives); p++) {
 			names.push(uniqueName(usedNames, usedCounts, base));
 		}
-		runs.push({ names: names, first: data.meshes.length as int32, count: countOf(primitives) });
+		runs.push({
+			names: names, first: data.meshes.length as int32, count: countOf(primitives), morph: -1,
+		});
+		let morphed: boolean = false;
+		for (let p = 0; p < countOf(primitives); p++) {
+			if (!isNull(fieldOf(primitives.at(p), "targets"))) { morphed = true; }
+		}
+		let morphInputs: Vec<MorphPrimitiveInput> = [];
+		let morphTargetCount: int32 = 0;
 		for (let p = 0; p < countOf(primitives); p++) {
 			const primitive: JsonValue = primitives.at(p);
 			const materialRead = materialIndexOf(primitive, materialCount);
@@ -1887,7 +2262,17 @@ function decodeGltf(
 				return Result.err(gltfFailure(materialRead.error, source,
 					`$.meshes[${i}].primitives[${p}].material`, base));
 			}
-			const material: int32 = materialRead.value;
+			let material: int32 = materialRead.value;
+			if (material == DEFAULT_MATERIAL && materials == GltfMaterialImport.Pbr) {
+				if (pbrDefault == DEFAULT_MATERIAL) {
+					let fallback: MaterialRead = DEFAULT_READ;
+					fallback.material.pbr = GLTF_DEFAULT_PBR;
+					pbrDefault = reads.length as int32;
+					reads.push(fallback);
+					data.materials.push(fallback.material);
+				}
+				material = pbrDefault;
+			}
 			const read: MaterialRead =
 				material == DEFAULT_MATERIAL ? DEFAULT_READ : reads[material];
 			let tangentSources: Vec<int32> = [];
@@ -1907,6 +2292,33 @@ function decodeGltf(
 				return Result.err(gltfFailure(mesh.error, source,
 					`$.meshes[${i}].primitives[${p}]`, base));
 			}
+			if (morphed) {
+				let cause: string = "";
+				const original: int32 = mesh.value.vertexCount() - (tangentSources.length as int32);
+				const targets = loadMorphTargets(primitive, mesh.value, original, accessors, views,
+					buffer, declaredLength, colourBuffers, colourViews, cause);
+				if (!targets.ok) {
+					return Result.err(gltfFailure(targets.error, source,
+						`$.meshes[${i}].primitives[${p}].targets`, base, cause));
+				}
+				const targetCount: int32 = targets.value.length as int32;
+				if (targetCount == 0 || (morphTargetCount > 0 && targetCount != morphTargetCount)) {
+					return Result.err(gltfFailure(GltfError.CountMismatch, source,
+						`$.meshes[${i}].primitives[${p}].targets`, base,
+						targetCount == 0
+							? "primitive has no morph targets while its siblings have them"
+							: `primitive has ${targetCount} morph targets, ` +
+								`its siblings ${morphTargetCount}`));
+				}
+				if (targetCount > 0) { morphTargetCount = targetCount; }
+				let sourceVertices: Vec<int32> = [];
+				for (let vertex = 0; vertex < original; vertex++) { sourceVertices.push(vertex); }
+				for (const vertex of tangentSources) { sourceVertices.push(vertex); }
+				morphInputs.push({
+					base: mesh.value, sourceVertexCount: original,
+					sourceVertices: move sourceVertices, targets: move targets.value,
+				});
+			}
 			const skinMesh = loadSkinMesh(primitive, mesh.value, tangentSources, accessors, views,
 				buffer, declaredLength, colourBuffers, colourViews);
 			if (!skinMesh.ok) {
@@ -1918,6 +2330,41 @@ function decodeGltf(
 			data.skinMeshes.push(skinMesh.value);
 			data.meshMaterials.push(material);
 		}
+		const meshWeights = weightsField(meshArray.at(i));
+		if (!meshWeights.ok) {
+			return Result.err(gltfFailure(meshWeights.error, source,
+				`$.meshes[${i}].weights`, base));
+		}
+		if (!morphed) {
+			if (meshWeights.value.length > 0) {
+				return Result.err(gltfFailure(GltfError.CountMismatch, source,
+					`$.meshes[${i}].weights`, base, "mesh weights need morph targets"));
+			}
+			continue;
+		}
+		if (meshWeights.value.length > 0 && meshWeights.value.length != morphTargetCount) {
+			return Result.err(gltfFailure(GltfError.CountMismatch, source,
+				`$.meshes[${i}].weights`, base, `mesh weights hold ${meshWeights.value.length} ` +
+				`values for ${morphTargetCount} morph targets`));
+		}
+		let defaults: Vec<float32> = [];
+		for (let target = 0; target < morphTargetCount; target++) {
+			defaults.push(meshWeights.value.length > 0 ? meshWeights.value[target] : 0.0);
+		}
+		const created = MorphData.create(morphInputs, morphTargetCount);
+		if (!created.ok) {
+			return Result.err(gltfFailure(match (created.error) {
+				MorphGeometryError.Shape | MorphGeometryError.SourceVertex =>
+					GltfError.CountMismatch,
+				MorphGeometryError.NonFinite => GltfError.OutOfRange,
+				_ => GltfError.Unsupported,
+			}, source, `$.meshes[${i}]`, base, "morph data: " + created.error.toString()));
+		}
+		data.morphs.push({
+			meshIndex: i, firstPrimitive: runs[i].first, targetCount: morphTargetCount,
+			data: created.value, meshWeights: move defaults,
+		});
+		runs[i].morph = (data.morphs.length as int32) - 1;
 	}
 	const nodeArray: JsonValue = arrayOf(root, "nodes");
 	const nodeCount: int32 = countOf(nodeArray);
@@ -1938,10 +2385,18 @@ function decodeGltf(
 	}
 	data.skins = try loadSkins(root, accessors, views, buffer, declaredLength, nodeCount,
 		colourBuffers, colourViews, source);
+	const resolved = try resolveMorphNodes(data, runs, source);
+	let nodeTargets: Vec<int32> = [];
+	for (const node of data.nodes) {
+		const morph = node.morph;
+		nodeTargets.push(morph === null ? 0 : data.morphs[morph].targetCount);
+	}
+	let animationCause: string = "";
 	let animations = loadAnimations(root, accessors, views, buffer, declaredLength, nodeCount,
-		colourBuffers, colourViews);
+		nodeTargets, colourBuffers, colourViews, animationCause);
 	if (!animations.ok) {
-		return Result.err(gltfFailure(animations.error, source, "$.animations"));
+		return Result.err(gltfFailure(animations.error, source, "$.animations", "",
+			animationCause));
 	}
 	data.animations = move animations.value;
 	placePrimitives(data, runs, nodeCount);
@@ -1974,16 +2429,23 @@ function decodeGltf(
 	return Result.ok(data);
 }
 
-export function loadGltf(json: string, buffer: Readonly<Span<uint8>>): Result<GltfData, GltfError> {
-	let decoded = decodeGltf(json, buffer, false);
+export function loadGltf(
+	json: string,
+	buffer: Readonly<Span<uint8>>,
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+): Result<GltfData, GltfError> {
+	let decoded = decodeGltf(json, buffer, false, "<memory>", materials);
 	if (!decoded.ok) { return Result.err(decoded.error.code); }
 	return Result.ok(move decoded.value);
 }
 
 export function loadGltfDetailed(
-	json: string, buffer: Readonly<Span<uint8>>, source: string = "<memory>",
+	json: string,
+	buffer: Readonly<Span<uint8>>,
+	source: string = "<memory>",
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
 ): Result<GltfData, GltfDiagnostic> {
-	return decodeGltf(json, buffer, false, source);
+	return decodeGltf(json, buffer, false, source, materials);
 }
 
 function uint32At(bytes: Readonly<Span<uint8>>, at: int32): uint32 {
@@ -1996,7 +2458,9 @@ function uint32At(bytes: Readonly<Span<uint8>>, at: int32): uint32 {
 // Chunk layout and checks from glTF 2.0.1 §4.4: a JSON chunk first, an optional BIN chunk
 // second, every chunk 4-byte aligned, unknown chunks after those two ignored.
 export function loadGlbDetailed(
-	bytes: Readonly<Span<uint8>>, source: string = "<memory>",
+	bytes: Readonly<Span<uint8>>,
+	source: string = "<memory>",
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
 ): Result<GltfData, GltfDiagnostic> {
 	const total: int32 = bytes.length as int32;
 	if (total < GLB_HEADER_LENGTH + GLB_CHUNK_HEADER_LENGTH) {
@@ -2043,11 +2507,14 @@ export function loadGlbDetailed(
 		at = end;
 		chunk = chunk + 1;
 	}
-	return decodeGltf(json, bytes[binaryStart..binaryEnd], true, source);
+	return decodeGltf(json, bytes[binaryStart..binaryEnd], true, source, materials);
 }
 
-export function loadGlb(bytes: Readonly<Span<uint8>>): Result<GltfData, GltfError> {
-	let decoded = loadGlbDetailed(bytes);
+export function loadGlb(
+	bytes: Readonly<Span<uint8>>,
+	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+): Result<GltfData, GltfError> {
+	let decoded = loadGlbDetailed(bytes, "<memory>", materials);
 	if (!decoded.ok) { return Result.err(decoded.error.code); }
 	return Result.ok(move decoded.value);
 }

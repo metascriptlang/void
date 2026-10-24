@@ -1,4 +1,4 @@
-// expect: gpu door: applyBindings descriptor holds 11 of 12 words
+// expect: gpu door: applyBindings descriptor holds 17 of 18 words
 import { gfxSetup } from "../../src/sokol/gpu";
 import { BINDING_LENGTH as GPU3D_BINDING_LENGTH } from "../../src/gpu/draw";
 import { applyBindings } from "../../src/void3d/gpu3d";

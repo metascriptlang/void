@@ -4,8 +4,14 @@
 // readback (docs/VOID3D.md, M5 as built).
 
 import { IndexType } from "../gpu/pipeline";
-import { Vec3, vec3 } from "../math/math3d";
-import { VertexLayout, layoutFloats, layoutPerInstance, drawsQuads } from "../void3d/gpu3d";
+import { Vec3, vec3, identity } from "../math/math3d";
+import {
+	VertexLayout, layoutFloats, layoutPerInstance, drawsQuads, vertexLayoutOf, meshLayoutOf,
+	ProgramKey, Program,
+} from "../void3d/gpu3d";
+import {
+	PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE,
+} from "../void3d/particleWriter";
 import {
 	MeshData,
 	MeshError,
@@ -15,13 +21,15 @@ import {
 	addPlane,
 	addVertex,
 } from "../void3d/meshData";
-import { PARTICLE_INSTANCE_STRIDE, PARTICLE_VISUAL_INSTANCE_STRIDE } from "../void3d/particles";
 import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
 import { added } from "./drawHelpers";
 import {
 	DrawContext,
 	GpuMesh,
 	MeshId,
+	DrawItem,
+	NO_MATERIAL,
+	EXTERNAL_GENERATION,
 	StreamError,
 	STREAM_INSTANCE_STRIDE,
 	QUAD_VERTEX_COUNT,
@@ -189,10 +197,17 @@ test "the quad layouts are the layouts whose one buffer steps per instance" {
 		VertexLayout.LitTextured,
 	];
 	for (const layout of layouts) {
-		assert drawsQuads(layout) == layoutPerInstance(layout);
+		assert drawsQuads(layout) == layoutPerInstance(layout, 0);
 		assert layoutFloats(layout, 1) == 0;
 	}
 	assert drawsQuads(VertexLayout.Particle) && drawsQuads(VertexLayout.Billboard);
+}
+
+test "the instanced mesh layout steps its mesh per vertex and its particles per instance" {
+	const layout: VertexLayout = VertexLayout.InstancedLitTextured;
+	assert !drawsQuads(layout);
+	assert !layoutPerInstance(layout, 0) && layoutPerInstance(layout, 1);
+	assert layoutFloats(layout, 0) == 12 && layoutFloats(layout, 1) == 16;
 }
 
 function streamError(result: Result<int32, StreamError>): StreamError {
@@ -242,4 +257,32 @@ test "particleVisual streams reject eight-float writes and overflowing capacity 
 	assert context.meshes[stream.index].instanceCount == 0;
 	const excessive = addStreamMesh(context, 134217728, VertexLayout.ParticleVisual);
 	assert !excessive.ok && excessive.error == StreamError.OverCapacity;
+}
+
+test "an instanced program draws a run of an instanced stream over a textured mesh, nothing else" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const mesh: MeshId = added(context, {
+		layout: VertexLayout.LitTextured, vertexBuffer: 7, instanceBuffer: 0, indexBuffer: 0,
+		vertexCount: 3, indexCount: 0, instanceCount: 1, instanceCapacity: 0,
+		generation: EXTERNAL_GENERATION, writtenFrame: 0,
+	});
+	const stream: MeshId = added(context, {
+		...GpuMesh.streamMesh(8, 5, 1, VertexLayout.InstancedLitTextured), instanceCount: 6,
+	});
+	const instanced: ProgramKey = ProgramKey.of(Program.LitTextured).withInstanced();
+	assert vertexLayoutOf(instanced) == VertexLayout.InstancedLitTextured;
+	assert meshLayoutOf(instanced) == VertexLayout.LitTextured;
+	const item: DrawItem = {
+		mesh: mesh, material: NO_MATERIAL, world: identity(),
+		instances: { stream: stream, first: 2, count: 4 },
+	};
+	assert item.validInstances(context, instanced);
+	assert !item.validInstances(context, ProgramKey.of(Program.LitTextured));
+	const none: DrawItem = { ...item, instances: null };
+	assert !none.validInstances(context, instanced);
+	assert none.validInstances(context, ProgramKey.of(Program.LitTextured));
+	const past: DrawItem = { ...item, instances: { stream: stream, first: 3, count: 4 } };
+	assert !past.validInstances(context, instanced);
+	const notStream: DrawItem = { ...item, instances: { stream: mesh, first: 0, count: 1 } };
+	assert !notStream.validInstances(context, instanced);
 }

@@ -213,6 +213,9 @@ function churnErrorOf(error: GltfSceneError): ChurnError {
 		GltfSceneError.ForeignMeshBinding => ChurnError.ModelRefused,
 		GltfSceneError.BadSetup => ChurnError.ModelRefused,
 		GltfSceneError.UndeclaredProgram => ChurnError.ModelRefused,
+		GltfSceneError.MorphRefused => ChurnError.ModelRefused,
+		GltfSceneError.PbrFeatureRefused => ChurnError.ModelRefused,
+		GltfSceneError.PbrValueRefused => ChurnError.ModelRefused,
 	};
 }
 

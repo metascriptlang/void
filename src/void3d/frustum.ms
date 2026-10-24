@@ -1,5 +1,6 @@
 import { Mat4, Vec3, Vec4, vec4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
+import { OrientedBounds3D, OrientedBoundsError, validateOrientedBounds } from "./orientedBounds";
 
 export struct Frustum3D {
 	left: Vec4;
@@ -19,6 +20,40 @@ export function fromMatrix(this typeof Frustum3D, m: Mat4): Frustum3D {
 		nearPlane: vec4(m.m13, m.m23, m.m33, m.m43),
 		farPlane: vec4(m.m14 - m.m13, m.m24 - m.m23, m.m34 - m.m33, m.m44 - m.m43),
 	};
+}
+
+function planeDistance(plane: Vec4, point: Vec3): float64 {
+	return (plane.x as float64) * (point.x as float64) +
+		(plane.y as float64) * (point.y as float64) +
+		(plane.z as float64) * (point.z as float64) + (plane.w as float64);
+}
+
+function outsidePlane(plane: Vec4, point: Vec3): boolean {
+	return planeDistance(plane, point) < 0.0;
+}
+
+export function containsPoint(this frustum: Frustum3D, point: Vec3): boolean {
+	return !outsidePlane(frustum.left, point) && !outsidePlane(frustum.right, point) &&
+		!outsidePlane(frustum.bottom, point) && !outsidePlane(frustum.top, point) &&
+		!outsidePlane(frustum.nearPlane, point) && !outsidePlane(frustum.farPlane, point);
+}
+
+function sphereOutsidePlane(plane: Vec4, center: Vec3, radius: float64): boolean {
+	const nx: float64 = plane.x as float64;
+	const ny: float64 = plane.y as float64;
+	const nz: float64 = plane.z as float64;
+	const normalLength: float64 = Math.sqrt(nx * nx + ny * ny + nz * nz);
+	return planeDistance(plane, center) < -radius * normalLength;
+}
+
+export function intersectsSphere(this frustum: Frustum3D, center: Vec3, radius: float32): boolean {
+	const r: float64 = radius as float64;
+	return !sphereOutsidePlane(frustum.left, center, r) &&
+		!sphereOutsidePlane(frustum.right, center, r) &&
+		!sphereOutsidePlane(frustum.bottom, center, r) &&
+		!sphereOutsidePlane(frustum.top, center, r) &&
+		!sphereOutsidePlane(frustum.nearPlane, center, r) &&
+		!sphereOutsidePlane(frustum.farPlane, center, r);
 }
 
 function absolute(value: float32): float32 {
@@ -44,4 +79,28 @@ export function intersectsBounds(this frustum: Frustum3D, bounds: Bounds3D, worl
 		intersectsPlane(frustum.top, center, half, world) &&
 		intersectsPlane(frustum.nearPlane, center, half, world) &&
 		intersectsPlane(frustum.farPlane, center, half, world);
+}
+
+function normalDot(plane: Vec4, axis: Vec3): float64 {
+	return (plane.x as float64) * (axis.x as float64) +
+		(plane.y as float64) * (axis.y as float64) + (plane.z as float64) * (axis.z as float64);
+}
+
+function orientedInsidePlane(plane: Vec4, bounds: OrientedBounds3D): boolean {
+	const radius: float64 = Math.abs(normalDot(plane, bounds.axisX)) * bounds.halfSize.x +
+		Math.abs(normalDot(plane, bounds.axisY)) * bounds.halfSize.y +
+		Math.abs(normalDot(plane, bounds.axisZ)) * bounds.halfSize.z;
+	return planeDistance(plane, bounds.center) + radius >= 0.0;
+}
+
+export function intersectsOrientedBounds(
+	this frustum: Frustum3D, bounds: OrientedBounds3D,
+): Result<boolean, OrientedBoundsError> {
+	const _valid: int32 = try validateOrientedBounds(bounds);
+	return Result.ok(orientedInsidePlane(frustum.left, bounds) &&
+		orientedInsidePlane(frustum.right, bounds) &&
+		orientedInsidePlane(frustum.top, bounds) &&
+		orientedInsidePlane(frustum.bottom, bounds) &&
+		orientedInsidePlane(frustum.nearPlane, bounds) &&
+		orientedInsidePlane(frustum.farPlane, bounds));
 }

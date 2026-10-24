@@ -1,0 +1,46 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "texture_sheet_4x4_wholesheet",
+"dt": 0.0625,
+"steps": 17,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"textureSheetAnimation": "4x4 WholeSheet frameOverTime default", "startLifetime": 1, "read": "BakeMesh(camera at (0,0,-10) facing +z) uv0 min corner per quad"},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": [], "bakedQuadUVMin": [], "bakedVertexCount": 0},
+{"step": 1, "time": 0.0625, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.9375, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0, 0.75]], "bakedVertexCount": 4},
+{"step": 2, "time": 0.125, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.875, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.25, 0.75]], "bakedVertexCount": 4},
+{"step": 3, "time": 0.187499985, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.8125, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.5, 0.75]], "bakedVertexCount": 4},
+{"step": 4, "time": 0.24999997, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.74999994, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.75, 0.75]], "bakedVertexCount": 4},
+{"step": 5, "time": 0.3125, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.68749994, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0, 0.5]], "bakedVertexCount": 4},
+{"step": 6, "time": 0.37500003, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.625, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.25, 0.5]], "bakedVertexCount": 4},
+{"step": 7, "time": 0.43750006, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.5625, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.5, 0.5]], "bakedVertexCount": 4},
+{"step": 8, "time": 0.50000006, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.50000006, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.75, 0.5]], "bakedVertexCount": 4},
+{"step": 9, "time": 0.5625, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.43750006, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0, 0.25]], "bakedVertexCount": 4},
+{"step": 10, "time": 0.62499994, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.375000119, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.25, 0.25]], "bakedVertexCount": 4},
+{"step": 11, "time": 0.6874999, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.312500119, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.5, 0.25]], "bakedVertexCount": 4},
+{"step": 12, "time": 0.7499998, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.25, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.75, 0.25]], "bakedVertexCount": 4},
+{"step": 13, "time": 0.812499762, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.18749994, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0, 0]], "bakedVertexCount": 4},
+{"step": 14, "time": 0.8749997, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.124999881, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.25, 0]], "bakedVertexCount": 4},
+{"step": 15, "time": 0.937499642, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [1, 1, 1, 1], "startColor": [1, 1, 1, 1], "remaining": 0.06249982, "startLifetime": 1, "seed": 692788716}], "bakedQuadUVMin": [[0.5, 0]], "bakedVertexCount": 4},
+{"step": 16, "time": 0.9999996, "count": 0, "particles": [], "bakedQuadUVMin": [], "bakedVertexCount": 0},
+{"step": 17, "time": 1.06249964, "count": 0, "particles": [], "bakedQuadUVMin": [], "bakedVertexCount": 0}
+]
+}

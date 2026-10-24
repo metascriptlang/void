@@ -1,0 +1,153 @@
+# h3d.col.Capsule (Capsule.hx) against src/void3d/capsule.ms. `regen` replays the Haxe side through
+# real Heaps; `check` diffs the port against the snapshot without Haxe. A ray exactly along the
+# axis and the bounding sphere of inFrustum/inSphere are Heaps reference bugs, declared below.
+# lib: heaps format
+# haxe-prelude: import h3d.Matrix;
+# haxe-prelude: import h3d.col.Capsule;
+# haxe-prelude: import h3d.col.Frustum;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.Sphere;
+# haxe-prelude: class H {
+# haxe-prelude: public static function col(a:Array<Float>,b:Array<Float>,r:Float):Capsule {
+# haxe-prelude: return new Capsule(new Point(a[0],a[1],a[2]),new Point(b[0],b[1],b[2]),r);
+# haxe-prelude: }
+# haxe-prelude: public static function ray(c:Capsule,o:Array<Float>,d:Array<Float>):Float {
+# haxe-prelude: return c.rayIntersection(Ray.fromValues(o[0],o[1],o[2],d[0],d[1],d[2]),true);
+# haxe-prelude: }
+# haxe-prelude: public static function frustum(c:Capsule):Float {
+# haxe-prelude: return c.inFrustum(new Frustum(Matrix.I())) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: public static function sphere(c:Capsule,s:Array<Float>):Float {
+# haxe-prelude: return c.inSphere(new Sphere(s[0],s[1],s[2],s[3])) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3, identity } from "../../../src/math/math3d";
+# ms-prelude: import { Capsule3D } from "../../../src/void3d/capsule";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import { Sphere3D } from "../../../src/void3d/sphere";
+# ms-prelude: import { Frustum3D } from "../../../src/void3d/frustum";
+# ms-prelude: function col(a:Vec3,b:Vec3,r:float32):Capsule3D { return {a:a,b:b,radius:r}; }
+# ms-prelude: function ray(c:Capsule3D,o:Vec3,d:Vec3):float32 {
+# ms-prelude: const r=c.rayIntersection(Ray.fromPoints(o,vec3(o.x+d.x,o.y+d.y,o.z+d.z))); if(!r.ok){unreachable;} return r.value;
+# ms-prelude: }
+# ms-prelude: function contained(c:Capsule3D,p:Vec3):float32 {
+# ms-prelude: const r=c.contains(p); if(!r.ok){unreachable;} return r.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function frustum(c:Capsule3D):float32 {
+# ms-prelude: const r=c.inFrustum(Frustum3D.fromMatrix(identity())); if(!r.ok){unreachable;} return r.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function sphere(c:Capsule3D,s:Sphere3D):float32 {
+# ms-prelude: const r=c.inSphere(s); if(!r.ok){unreachable;} return r.value ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function size(c:Capsule3D):float32 {
+# ms-prelude: const r=c.dimension(); if(!r.ok){unreachable;} return r.value as float32;
+# ms-prelude: }
+
+case capsule-ray-side tol=1e-5
+haxe> emit("capsule-ray-side",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,0,1],[1,0,0])]);
+ms> emit1("capsule-ray-side",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,0,1),vec3(1,0,0)));
+
+case capsule-ray-side-oblique tol=1e-5
+haxe> emit("capsule-ray-side-oblique",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,-2,1],[1,0.4,0.0])]);
+ms> emit1("capsule-ray-side-oblique",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,-2,1),vec3(1,0.4,0.0)));
+
+case capsule-ray-cap-a tol=1e-5
+haxe> emit("capsule-ray-cap-a",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,0,-0.5],[1,0,0])]);
+ms> emit1("capsule-ray-cap-a",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,0,-0.5),vec3(1,0,0)));
+
+case capsule-ray-cap-b tol=1e-5
+haxe> emit("capsule-ray-cap-b",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,0,2.5],[1,0,0])]);
+ms> emit1("capsule-ray-cap-b",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,0,2.5),vec3(1,0,0)));
+
+case capsule-ray-miss-beside tol=1e-5
+haxe> emit("capsule-ray-miss-beside",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,3,1],[1,0,0])]);
+ms> emit1("capsule-ray-miss-beside",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,3,1),vec3(1,0,0)));
+
+case capsule-ray-tangent-cap tol=1e-5
+haxe> emit("capsule-ray-tangent-cap",[H.ray(H.col([0,0,0],[0,0,2],1),[-5,0,-1],[1,0,0])]);
+ms> emit1("capsule-ray-tangent-cap",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-5,0,-1),vec3(1,0,0)));
+
+case capsule-ray-behind tol=1e-5
+haxe> emit("capsule-ray-behind",[H.ray(H.col([0,0,0],[0,0,2],1),[5,0,1],[1,0,0])]);
+ms> emit1("capsule-ray-behind",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(5,0,1),vec3(1,0,0)));
+
+case capsule-ray-inside tol=1e-5
+haxe> emit("capsule-ray-inside",[H.ray(H.col([0,0,0],[0,0,2],1),[0,0,1],[1,0,0])]);
+ms> emit1("capsule-ray-inside",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,1),vec3(1,0,0)));
+
+case capsule-ray-slanted tol=1e-5
+haxe> emit("capsule-ray-slanted",[H.ray(H.col([0,0,0],[0,0,2],1),[-3,0,-3],[0.6,0,0.8])]);
+ms> emit1("capsule-ray-slanted",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(-3,0,-3),vec3(0.6,0,0.8)));
+
+case capsule-ray-diagonal-axis tol=1e-5 diverges=capsule-ray-parallel-to-axis
+haxe> emit("capsule-ray-diagonal-axis",[H.ray(H.col([0,0,0],[1,1,1],1),[-3,-3,-3],[1,1,1])]);
+ms> emit1("capsule-ray-diagonal-axis",ray(col(vec3(0,0,0),vec3(1,1,1),1.0),vec3(-3,-3,-3),vec3(1,1,1)));
+
+case capsule-ray-along-axis-from-b tol=1e-5
+haxe> emit("capsule-ray-along-axis-from-b",[H.ray(H.col([0,0,0],[0,0,2],1),[0,0,5],[0,0,-1])]);
+ms> emit1("capsule-ray-along-axis-from-b",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,5),vec3(0,0,-1)));
+
+case capsule-ray-along-axis-from-a tol=1e-5 diverges=capsule-ray-parallel-to-axis
+haxe> emit("capsule-ray-along-axis-from-a",[H.ray(H.col([0,0,0],[0,0,2],1),[0,0,-5],[0,0,1])]);
+ms> emit1("capsule-ray-along-axis-from-a",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,-5),vec3(0,0,1)));
+
+case capsule-ray-along-axis-offset-from-a tol=1e-5 diverges=capsule-ray-parallel-to-axis
+haxe> emit("capsule-ray-along-axis-offset-from-a",[H.ray(H.col([0,0,0],[0,0,2],1),[0.5,0,-5],[0,0,1])]);
+ms> emit1("capsule-ray-along-axis-offset-from-a",ray(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0.5,0,-5),vec3(0,0,1)));
+
+case capsule-contains-body tol=0
+haxe> emit("capsule-contains-body",[H.col([0,0,0],[0,0,2],1).contains(new Point(0.9,0,1))?1.:0.]);
+ms> emit1("capsule-contains-body",contained(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0.9,0,1)));
+
+case capsule-contains-cap tol=0
+haxe> emit("capsule-contains-cap",[H.col([0,0,0],[0,0,2],1).contains(new Point(0,0,-0.9))?1.:0.]);
+ms> emit1("capsule-contains-cap",contained(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,-0.9)));
+
+case capsule-contains-outside tol=0
+haxe> emit("capsule-contains-outside",[H.col([0,0,0],[0,0,2],1).contains(new Point(1.1,0,1))?1.:0.]);
+ms> emit1("capsule-contains-outside",contained(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(1.1,0,1)));
+
+case capsule-contains-beyond-cap tol=0
+haxe> emit("capsule-contains-beyond-cap",[H.col([0,0,0],[0,0,2],1).contains(new Point(0,0,-1.1))?1.:0.]);
+ms> emit1("capsule-contains-beyond-cap",contained(col(vec3(0,0,0),vec3(0,0,2),1.0),vec3(0,0,-1.1)));
+
+case capsule-contains-oblique tol=0
+haxe> emit("capsule-contains-oblique",[H.col([0,0,0],[1,1,1],1).contains(new Point(0.5,0.5,0.5))?1.:0.]);
+ms> emit1("capsule-contains-oblique",contained(col(vec3(0,0,0),vec3(1,1,1),1.0),vec3(0.5,0.5,0.5)));
+
+case capsule-dimension tol=1e-6
+haxe> emit("capsule-dimension",[H.col([0,0,0],[0,0,2],1).dimension()]);
+ms> emit1("capsule-dimension",size(col(vec3(0,0,0),vec3(0,0,2),1.0)));
+
+case capsule-dimension-oblique tol=1e-6
+haxe> emit("capsule-dimension-oblique",[H.col([1,2,3],[4,6,3],0.5).dimension()]);
+ms> emit1("capsule-dimension-oblique",size(col(vec3(1,2,3),vec3(4,6,3),0.5)));
+
+case capsule-frustum-inside tol=0
+haxe> emit("capsule-frustum-inside",[H.frustum(H.col([0,0,0.2],[0,0,0.4],0.1))]);
+ms> emit1("capsule-frustum-inside",frustum(col(vec3(0,0,0.2),vec3(0,0,0.4),0.1)));
+
+case capsule-frustum-outside tol=0
+haxe> emit("capsule-frustum-outside",[H.frustum(H.col([5,0,0.5],[7,0,0.5],0.5))]);
+ms> emit1("capsule-frustum-outside",frustum(col(vec3(5,0,0.5),vec3(7,0,0.5),0.5)));
+
+case capsule-frustum-trailing-end-outside tol=0 diverges=capsule-bounding-sphere-centre-at-b
+haxe> emit("capsule-frustum-trailing-end-outside",[H.frustum(H.col([-3.2,0,0.5],[-1.2,0,0.5],0.1))]);
+ms> emit1("capsule-frustum-trailing-end-outside",frustum(col(vec3(-3.2,0,0.5),vec3(-1.2,0,0.5),0.1)));
+
+case capsule-frustum-leading-end-inside tol=0
+haxe> emit("capsule-frustum-leading-end-inside",[H.frustum(H.col([-1.2,0,0.5],[-3.2,0,0.5],0.1))]);
+ms> emit1("capsule-frustum-leading-end-inside",frustum(col(vec3(-1.2,0,0.5),vec3(-3.2,0,0.5),0.1)));
+
+case capsule-sphere-apart tol=0
+haxe> emit("capsule-sphere-apart",[H.sphere(H.col([0,0,0],[0,0,2],1),[0,0,-3.5,0.5])]);
+ms> emit1("capsule-sphere-apart",sphere(col(vec3(0,0,0),vec3(0,0,2),1.0),{center:vec3(0,0,-3.5),radius:0.5}));
+
+case capsule-sphere-near-b tol=0
+haxe> emit("capsule-sphere-near-b",[H.sphere(H.col([0,0,0],[0,0,2],1),[0,0,3,0.5])]);
+ms> emit1("capsule-sphere-near-b",sphere(col(vec3(0,0,0),vec3(0,0,2),1.0),{center:vec3(0,0,3),radius:0.5}));
+
+case capsule-sphere-near-a tol=0 diverges=capsule-bounding-sphere-centre-at-b
+haxe> emit("capsule-sphere-near-a",[H.sphere(H.col([0,0,0],[0,0,2],1),[0,0,-1.4,0.5])]);
+ms> emit1("capsule-sphere-near-a",sphere(col(vec3(0,0,0),vec3(0,0,2),1.0),{center:vec3(0,0,-1.4),radius:0.5}));

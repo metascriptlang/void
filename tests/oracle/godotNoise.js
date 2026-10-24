@@ -1,7 +1,7 @@
 // An independent float32 transcription of the GLSL ParticleProcessMaterial writes for turbulence
 // (godotengine/godot 4.5-stable, 876b290332ec, scene/resources/particle_process_material.cpp:405-481),
 // with set_turbulence_noise_scale (1812-1819). Run with `node tests/oracle/godotNoise.js`: it prints
-// the numbers src/test/particlesCheck.ms holds src/void3d/particleNoise.ms to. It is a second
+// the numbers src/test/particleFromHeapsCheck.ms holds src/particles/noise.ms to. It is a second
 // transcription of the shader text, not Godot's own output: no Godot build ran.
 const f = Math.fround;
 const fract = (x) => f(x - Math.floor(x));

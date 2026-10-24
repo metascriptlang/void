@@ -62,6 +62,9 @@ featureBits() {
 			NORMAL_MAP)    bits=$((bits | 1 << 13)) ;;
 			SKINNED)       bits=$((bits | 1 << 14)) ;;
 			NORMAL_MRT)    bits=$((bits | 1 << 15)) ;;
+			PBR)           bits=$((bits | 1 << 16)) ;;
+			PBR_MAPS)      bits=$((bits | 1 << 17)) ;;
+			INSTANCED)     bits=$((bits | 1 << 18)) ;;
 			*) echo "programKeys.txt: unknown feature $feature" >&2; return 1 ;;
 		esac
 	done

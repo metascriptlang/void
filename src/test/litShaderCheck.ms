@@ -74,8 +74,12 @@ function plainBindings(): LitBindings {
 			pointColor: [none(), none(), none(), none()],
 		},
 		frameParams: { frame: vec4f(0.0, 1.0, 0.0, 0.0) },
-		shadowParams: { shadowMatrix: identity(), shadow: none() },
+		shadowParams: {
+			shadowMatrix: identity(), shadow: none(),
+			spotMatrix: identity(), spotShadow: none(),
+		},
 		shadowMap: white(),
+		spotShadowMap: white(),
 		baseTexture: white(),
 		baseSampler: { nearest: true },
 		backTexture: white(),
@@ -83,6 +87,9 @@ function plainBindings(): LitBindings {
 		dissolveSampler: { nearest: true },
 		emissiveTexture: white(),
 		normalTexture: white(),
+		metalRoughTexture: white(),
+		occlusionTexture: white(),
+		envDiffuse: { size: 0, texels: [] }, envSpecular: { size: 0, texels: [] },
 	};
 }
 
@@ -134,7 +141,7 @@ test "a vertex under identity matrices lands where it is, its normal and colour 
 			color: vec4f(1.0, 0.5, 0.25, 1.0),
 		},
 		{
-			vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none() },
+			vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none() },
 			modelParams: { model: identity(), normalModel: identity() },
 		},
 		plainKey(),
@@ -218,7 +225,7 @@ function skinBindings(): VertexBindings {
 	let model = identity();
 	model.columns[3] = vec4f(1000.0, 2000.0, 3000.0, 1.0);
 	return {
-		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none() },
+		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none() },
 		modelParams: { model: model, normalModel: model },
 		modelTransformParams: { model: model },
 		skinParams: { skinRows: rows },

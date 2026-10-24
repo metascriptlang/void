@@ -1,0 +1,57 @@
+# lib: heaps format
+# haxe-prelude: import h3d.col.Bounds;
+# ms-prelude: import { Bounds3D,addSpherePos } from "../../../src/void3d/bounds";
+
+case sphere-build-initial-min tol=0
+haxe> var b=new Bounds(); b.empty(); b.addSpherePos(2,-3,4,1);
+haxe> emit("sphere-build-initial-min",[b.xMin,b.yMin,b.zMin]);
+ms> let b=Bounds3D.empty(); const first=addSpherePos(b,2,-3,4,1);
+ms> if (!first.ok) { return 1; }
+ms> emit3("sphere-build-initial-min",b.min.x,b.min.y,b.min.z);
+
+case sphere-build-initial-max tol=0
+haxe> emit("sphere-build-initial-max",[b.xMax,b.yMax,b.zMax]);
+ms> emit3("sphere-build-initial-max",b.max.x,b.max.y,b.max.z);
+
+case sphere-build-union-min tol=0
+haxe> b.addSpherePos(-4,5,0,2);
+haxe> emit("sphere-build-union-min",[b.xMin,b.yMin,b.zMin]);
+ms> const second=addSpherePos(b,-4,5,0,2); if (!second.ok) { return 1; }
+ms> emit3("sphere-build-union-min",b.min.x,b.min.y,b.min.z);
+
+case sphere-build-union-max tol=0
+haxe> emit("sphere-build-union-max",[b.xMax,b.yMax,b.zMax]);
+ms> emit3("sphere-build-union-max",b.max.x,b.max.y,b.max.z);
+
+case sphere-build-contained-min tol=0
+haxe> var c=Bounds.fromValues(-4,-3,-2,8,6,4); c.addSpherePos(0,0,0,1);
+haxe> emit("sphere-build-contained-min",[c.xMin,c.yMin,c.zMin]);
+ms> let c=Bounds3D.fromValues(-4,-3,-2,8,6,4);
+ms> const contained=addSpherePos(c,0,0,0,1); if (!contained.ok) { return 1; }
+ms> emit3("sphere-build-contained-min",c.min.x,c.min.y,c.min.z);
+
+case sphere-build-contained-max tol=0
+haxe> emit("sphere-build-contained-max",[c.xMax,c.yMax,c.zMax]);
+ms> emit3("sphere-build-contained-max",c.max.x,c.max.y,c.max.z);
+
+case sphere-build-zero-min tol=0
+haxe> var p=new Bounds(); p.empty(); p.addSpherePos(2,3,4,0);
+haxe> emit("sphere-build-zero-min",[p.xMin,p.yMin,p.zMin]);
+ms> let p=Bounds3D.empty(); const point=addSpherePos(p,2,3,4,0);
+ms> if (!point.ok) { return 1; }
+ms> emit3("sphere-build-zero-min",p.min.x,p.min.y,p.min.z);
+
+case sphere-build-zero-max tol=0
+haxe> emit("sphere-build-zero-max",[p.xMax,p.yMax,p.zMax]);
+ms> emit3("sphere-build-zero-max",p.max.x,p.max.y,p.max.z);
+
+case sphere-build-signed-min tol=0
+haxe> var n=new Bounds(); n.empty(); n.addSpherePos(0,0,0,-1);
+haxe> emit("sphere-build-signed-min",[n.xMin,n.yMin,n.zMin]);
+ms> let n=Bounds3D.empty(); const signed=addSpherePos(n,0,0,0,-1);
+ms> if (!signed.ok) { return 1; }
+ms> emit3("sphere-build-signed-min",n.min.x,n.min.y,n.min.z);
+
+case sphere-build-signed-max tol=0
+haxe> emit("sphere-build-signed-max",[n.xMax,n.yMax,n.zMax]);
+ms> emit3("sphere-build-signed-max",n.max.x,n.max.y,n.max.z);

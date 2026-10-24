@@ -1,0 +1,59 @@
+# lib: heaps format
+# haxe-prelude: import h3d.prim.Disc;
+# haxe-prelude: class H {
+# haxe-prelude: public static function sample(segments: Int): Array<Float> {
+# haxe-prelude: var p = new Disc(1,segments); var ids = [];
+# haxe-prelude: for (i in p.idx) ids.push(i == segments ? 0 : i+1);
+# haxe-prelude: var anchors = 0; for (i in ids) if (i == 0) anchors++;
+# haxe-prelude: var n = ids.length;
+# haxe-prelude: return [n/3,n,anchors,ids[0],ids[1],ids[2],ids[n-3],ids[n-2],ids[n-1]];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { GltfData, GltfError, loadGltf } from "../../../src/void3d/gltf";
+# ms-prelude: import { MeshData } from "../../../src/void3d/meshData";
+# ms-prelude: function pushWord(ref bytes: Vec<uint8>, word: uint32): void {
+# ms-prelude: for (let byte = 0; byte < 4; byte++) {
+# ms-prelude: bytes.push(((word >> ((byte*8) as uint32)) & 255) as uint8);
+# ms-prelude: }
+# ms-prelude: }
+# ms-prelude: function readFan(segments: int32): Result<GltfData,GltfError> {
+# ms-prelude: const count: int32 = segments+1; let bytes: Vec<uint8> = [];
+# ms-prelude: for (let i = 0; i < count*3; i++) { pushWord(bytes,0); }
+# ms-prelude: for (let i = 0; i < count; i++) {
+# ms-prelude: pushWord(bytes,0); pushWord(bytes,0); pushWord(bytes,0x3f800000);
+# ms-prelude: }
+# ms-prelude: for (let i = 0; i < segments+2; i++) {
+# ms-prelude: const index: uint32 = (i == segments+1 ? 1 : i) as uint32;
+# ms-prelude: bytes.push((index & 255) as uint8); bytes.push((index >> (8 as uint32)) as uint8);
+# ms-prelude: }
+# ms-prelude: const vectorBytes: int32 = count*12;
+# ms-prelude: const json = `{"asset":{"version":"2.0"},"buffers":[{"byteLength":${bytes.length}}],`+
+# ms-prelude: `"bufferViews":[{"buffer":0,"byteLength":${vectorBytes}},`+
+# ms-prelude: `{"buffer":0,"byteOffset":${vectorBytes},"byteLength":${vectorBytes}},`+
+# ms-prelude: `{"buffer":0,"byteOffset":${vectorBytes*2},"byteLength":${(segments+2)*2}}],`+
+# ms-prelude: `"accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3",`+
+# ms-prelude: `"count":${count},"min":[0,0,0],"max":[0,0,0]},`+
+# ms-prelude: `{"bufferView":1,"componentType":5126,"type":"VEC3","count":${count}},`+
+# ms-prelude: `{"bufferView":2,"componentType":5123,"type":"SCALAR","count":${segments+2}}],`+
+# ms-prelude: `"meshes":[{"primitives":[{"mode":6,"attributes":{"POSITION":0,"NORMAL":1},`+
+# ms-prelude: `"indices":2}]}],"nodes":[{"mesh":0}],"scenes":[{"nodes":[0]}],"scene":0}`;
+# ms-prelude: return loadGltf(json,bytes);
+# ms-prelude: }
+# ms-prelude: function sampleFan(id: string, data: MeshData): void {
+# ms-prelude: const count: int32 = data.indexCount(); let anchors: int32 = 0;
+# ms-prelude: for (let i = 0; i < count; i++) { if (data.indexAt(i) == 0) { anchors++; } }
+# ms-prelude: emit9(id,data.triangleCount() as float32,count as float32,anchors as float32,
+# ms-prelude: data.indexAt(0) as float32,data.indexAt(1) as float32,data.indexAt(2) as float32,
+# ms-prelude: data.indexAt(count-3) as float32,data.indexAt(count-2) as float32,
+# ms-prelude: data.indexAt(count-1) as float32);
+# ms-prelude: }
+
+case fan-four-connectivity tol=0
+haxe> emit("fan-four-connectivity",H.sample(4));
+ms> const four = readFan(4); if (!four.ok) { return 1; }
+ms> sampleFan("fan-four-connectivity",four.value.meshes[0]);
+
+case fan-five-connectivity tol=0
+haxe> emit("fan-five-connectivity",H.sample(5));
+ms> const five = readFan(5); if (!five.ok) { return 1; }
+ms> sampleFan("fan-five-connectivity",five.value.meshes[0]);

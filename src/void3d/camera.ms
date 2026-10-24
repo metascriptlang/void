@@ -4,7 +4,7 @@ import {
 import { LowResView, ViewPoint } from "./blit";
 import { Ray } from "./ray";
 
-export const CAMERA_BLOCK_LENGTH: int32 = 24;
+export const CAMERA_BLOCK_LENGTH: int32 = 28;
 
 export enum ProjectionKind {
 	Orthographic,
@@ -363,7 +363,8 @@ export function resolve(
 // ---- Uniforms ----
 
 // The scene programs' camera block: viewProj in upload order, then the world-space right and up
-// the billboard program builds its quads from (shader3d.ms `VertexParams`).
+// the billboard program builds its quads from, then the eye its facing and stretched quads aim
+// at (shader3d.ms `VertexParams`).
 export function writeCameraBlock(this view: CameraView, out: Span<float32>): void {
 	view.viewProj.writeTo(out, 0);
 	out[16] = view.basis.right.x;
@@ -374,6 +375,10 @@ export function writeCameraBlock(this view: CameraView, out: Span<float32>): voi
 	out[21] = view.basis.up.y;
 	out[22] = view.basis.up.z;
 	out[23] = 0.0;
+	out[24] = view.eye.x;
+	out[25] = view.eye.y;
+	out[26] = view.eye.z;
+	out[27] = 0.0;
 }
 
 // ---- Screen and back ----

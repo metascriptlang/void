@@ -27,6 +27,7 @@ export enum TextureUploadError {
 	ImageRefused,
 	ViewRefused,
 	SamplerRefused,
+	AnisotropyUnavailable,
 	TargetNotSampled,
 	TargetNotAllocated,
 }

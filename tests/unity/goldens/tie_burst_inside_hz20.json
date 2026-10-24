@@ -1,0 +1,36 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "tie_burst_inside_hz20",
+"dt": 0.05,
+"steps": 12,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"burst": "time 0.113 count 1", "rateOverTime": 0, "startLifetime": 2, "startSpeed": 0},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.05, "count": 0, "particles": []},
+{"step": 2, "time": 0.1, "count": 0, "particles": []},
+{"step": 3, "time": 0.15, "count": 1, "particles": [
+  {"remaining": 1.963}]},
+{"step": 4, "time": 0.200000018, "count": 1, "particles": [
+  {"remaining": 1.913}]},
+{"step": 5, "time": 0.25000003, "count": 1, "particles": [
+  {"remaining": 1.863}]},
+{"step": 6, "time": 0.300000042, "count": 1, "particles": [
+  {"remaining": 1.813}]},
+{"step": 7, "time": 0.350000054, "count": 1, "particles": [
+  {"remaining": 1.763}]},
+{"step": 8, "time": 0.400000066, "count": 1, "particles": [
+  {"remaining": 1.713}]},
+{"step": 9, "time": 0.450000077, "count": 1, "particles": [
+  {"remaining": 1.663}]},
+{"step": 10, "time": 0.50000006, "count": 1, "particles": [
+  {"remaining": 1.613}]},
+{"step": 11, "time": 0.55, "count": 1, "particles": [
+  {"remaining": 1.563}]},
+{"step": 12, "time": 0.599999964, "count": 1, "particles": [
+  {"remaining": 1.513}]}
+]
+}

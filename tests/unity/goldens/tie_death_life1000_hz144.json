@@ -1,0 +1,323 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "tie_death_life1000_hz144",
+"dt": 0.0069444445,
+"steps": 165,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"burst": "time 0 count 1", "rateOverTime": 0, "startLifetime": 1, "startSpeed": 0},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.0069444445, "count": 1, "particles": [
+  {"remaining": 0.9930556}]},
+{"step": 2, "time": 0.013888889, "count": 1, "particles": [
+  {"remaining": 0.9861111}]},
+{"step": 3, "time": 0.020833334, "count": 1, "particles": [
+  {"remaining": 0.9791667}]},
+{"step": 4, "time": 0.027777778, "count": 1, "particles": [
+  {"remaining": 0.9722222}]},
+{"step": 5, "time": 0.0347222239, "count": 1, "particles": [
+  {"remaining": 0.9652778}]},
+{"step": 6, "time": 0.0416666679, "count": 1, "particles": [
+  {"remaining": 0.9583333}]},
+{"step": 7, "time": 0.0486111119, "count": 1, "particles": [
+  {"remaining": 0.9513889}]},
+{"step": 8, "time": 0.055555556, "count": 1, "particles": [
+  {"remaining": 0.9444444}]},
+{"step": 9, "time": 0.0625, "count": 1, "particles": [
+  {"remaining": 0.9375}]},
+{"step": 10, "time": 0.06944445, "count": 1, "particles": [
+  {"remaining": 0.9305555}]},
+{"step": 11, "time": 0.0763888955, "count": 1, "particles": [
+  {"remaining": 0.9236111}]},
+{"step": 12, "time": 0.08333334, "count": 1, "particles": [
+  {"remaining": 0.9166666}]},
+{"step": 13, "time": 0.09027779, "count": 1, "particles": [
+  {"remaining": 0.9097222}]},
+{"step": 14, "time": 0.09722224, "count": 1, "particles": [
+  {"remaining": 0.9027778}]},
+{"step": 15, "time": 0.104166687, "count": 1, "particles": [
+  {"remaining": 0.8958333}]},
+{"step": 16, "time": 0.111111134, "count": 1, "particles": [
+  {"remaining": 0.888888836}]},
+{"step": 17, "time": 0.118055582, "count": 1, "particles": [
+  {"remaining": 0.8819444}]},
+{"step": 18, "time": 0.12500003, "count": 1, "particles": [
+  {"remaining": 0.875}]},
+{"step": 19, "time": 0.131944478, "count": 1, "particles": [
+  {"remaining": 0.8680555}]},
+{"step": 20, "time": 0.138888925, "count": 1, "particles": [
+  {"remaining": 0.861111045}]},
+{"step": 21, "time": 0.145833373, "count": 1, "particles": [
+  {"remaining": 0.8541666}]},
+{"step": 22, "time": 0.152777821, "count": 1, "particles": [
+  {"remaining": 0.8472222}]},
+{"step": 23, "time": 0.159722269, "count": 1, "particles": [
+  {"remaining": 0.840277731}]},
+{"step": 24, "time": 0.166666716, "count": 1, "particles": [
+  {"remaining": 0.8333333}]},
+{"step": 25, "time": 0.173611164, "count": 1, "particles": [
+  {"remaining": 0.826388836}]},
+{"step": 26, "time": 0.180555612, "count": 1, "particles": [
+  {"remaining": 0.8194444}]},
+{"step": 27, "time": 0.18750006, "count": 1, "particles": [
+  {"remaining": 0.8125}]},
+{"step": 28, "time": 0.1944445, "count": 1, "particles": [
+  {"remaining": 0.8055555}]},
+{"step": 29, "time": 0.201388955, "count": 1, "particles": [
+  {"remaining": 0.798611045}]},
+{"step": 30, "time": 0.2083334, "count": 1, "particles": [
+  {"remaining": 0.7916666}]},
+{"step": 31, "time": 0.215277851, "count": 1, "particles": [
+  {"remaining": 0.7847222}]},
+{"step": 32, "time": 0.2222223, "count": 1, "particles": [
+  {"remaining": 0.777777731}]},
+{"step": 33, "time": 0.229166746, "count": 1, "particles": [
+  {"remaining": 0.770833254}]},
+{"step": 34, "time": 0.2361112, "count": 1, "particles": [
+  {"remaining": 0.763888836}]},
+{"step": 35, "time": 0.243055642, "count": 1, "particles": [
+  {"remaining": 0.7569444}]},
+{"step": 36, "time": 0.2500001, "count": 1, "particles": [
+  {"remaining": 0.74999994}]},
+{"step": 37, "time": 0.256944537, "count": 1, "particles": [
+  {"remaining": 0.743055463}]},
+{"step": 38, "time": 0.263888985, "count": 1, "particles": [
+  {"remaining": 0.736111045}]},
+{"step": 39, "time": 0.270833433, "count": 1, "particles": [
+  {"remaining": 0.7291666}]},
+{"step": 40, "time": 0.27777788, "count": 1, "particles": [
+  {"remaining": 0.722222149}]},
+{"step": 41, "time": 0.284722328, "count": 1, "particles": [
+  {"remaining": 0.7152777}]},
+{"step": 42, "time": 0.291666776, "count": 1, "particles": [
+  {"remaining": 0.708333254}]},
+{"step": 43, "time": 0.298611224, "count": 1, "particles": [
+  {"remaining": 0.701388836}]},
+{"step": 44, "time": 0.305555671, "count": 1, "particles": [
+  {"remaining": 0.6944444}]},
+{"step": 45, "time": 0.312500119, "count": 1, "particles": [
+  {"remaining": 0.68749994}]},
+{"step": 46, "time": 0.319444567, "count": 1, "particles": [
+  {"remaining": 0.680555463}]},
+{"step": 47, "time": 0.326389, "count": 1, "particles": [
+  {"remaining": 0.673611045}]},
+{"step": 48, "time": 0.333333462, "count": 1, "particles": [
+  {"remaining": 0.6666666}]},
+{"step": 49, "time": 0.3402779, "count": 1, "particles": [
+  {"remaining": 0.6597222}]},
+{"step": 50, "time": 0.347222358, "count": 1, "particles": [
+  {"remaining": 0.6527778}]},
+{"step": 51, "time": 0.3541668, "count": 1, "particles": [
+  {"remaining": 0.6458334}]},
+{"step": 52, "time": 0.361111253, "count": 1, "particles": [
+  {"remaining": 0.6388889}]},
+{"step": 53, "time": 0.3680557, "count": 1, "particles": [
+  {"remaining": 0.6319445}]},
+{"step": 54, "time": 0.375000149, "count": 1, "particles": [
+  {"remaining": 0.62500006}]},
+{"step": 55, "time": 0.3819446, "count": 1, "particles": [
+  {"remaining": 0.6180556}]},
+{"step": 56, "time": 0.388889045, "count": 1, "particles": [
+  {"remaining": 0.611111164}]},
+{"step": 57, "time": 0.3958335, "count": 1, "particles": [
+  {"remaining": 0.604166746}]},
+{"step": 58, "time": 0.40277794, "count": 1, "particles": [
+  {"remaining": 0.5972223}]},
+{"step": 59, "time": 0.4097224, "count": 1, "particles": [
+  {"remaining": 0.5902779}]},
+{"step": 60, "time": 0.416666836, "count": 1, "particles": [
+  {"remaining": 0.5833335}]},
+{"step": 61, "time": 0.423611283, "count": 1, "particles": [
+  {"remaining": 0.5763891}]},
+{"step": 62, "time": 0.430555731, "count": 1, "particles": [
+  {"remaining": 0.569444656}]},
+{"step": 63, "time": 0.437500179, "count": 1, "particles": [
+  {"remaining": 0.562500238}]},
+{"step": 64, "time": 0.444444627, "count": 1, "particles": [
+  {"remaining": 0.555555761}]},
+{"step": 65, "time": 0.451389074, "count": 1, "particles": [
+  {"remaining": 0.548611343}]},
+{"step": 66, "time": 0.458333522, "count": 1, "particles": [
+  {"remaining": 0.5416669}]},
+{"step": 67, "time": 0.46527797, "count": 1, "particles": [
+  {"remaining": 0.534722447}]},
+{"step": 68, "time": 0.472222418, "count": 1, "particles": [
+  {"remaining": 0.527778}]},
+{"step": 69, "time": 0.479166865, "count": 1, "particles": [
+  {"remaining": 0.5208336}]},
+{"step": 70, "time": 0.4861113, "count": 1, "particles": [
+  {"remaining": 0.5138892}]},
+{"step": 71, "time": 0.493055761, "count": 1, "particles": [
+  {"remaining": 0.5069448}]},
+{"step": 72, "time": 0.5000002, "count": 1, "particles": [
+  {"remaining": 0.500000358}]},
+{"step": 73, "time": 0.5069446, "count": 1, "particles": [
+  {"remaining": 0.49305594}]},
+{"step": 74, "time": 0.513889, "count": 1, "particles": [
+  {"remaining": 0.486111522}]},
+{"step": 75, "time": 0.520833433, "count": 1, "particles": [
+  {"remaining": 0.479167044}]},
+{"step": 76, "time": 0.527777851, "count": 1, "particles": [
+  {"remaining": 0.472222626}]},
+{"step": 77, "time": 0.534722269, "count": 1, "particles": [
+  {"remaining": 0.4652782}]},
+{"step": 78, "time": 0.5416667, "count": 1, "particles": [
+  {"remaining": 0.4583338}]},
+{"step": 79, "time": 0.5486111, "count": 1, "particles": [
+  {"remaining": 0.451389372}]},
+{"step": 80, "time": 0.5555555, "count": 1, "particles": [
+  {"remaining": 0.444444954}]},
+{"step": 81, "time": 0.56249994, "count": 1, "particles": [
+  {"remaining": 0.437500536}]},
+{"step": 82, "time": 0.569444358, "count": 1, "particles": [
+  {"remaining": 0.430556059}]},
+{"step": 83, "time": 0.5763888, "count": 1, "particles": [
+  {"remaining": 0.423611641}]},
+{"step": 84, "time": 0.5833332, "count": 1, "particles": [
+  {"remaining": 0.416667223}]},
+{"step": 85, "time": 0.5902776, "count": 1, "particles": [
+  {"remaining": 0.4097228}]},
+{"step": 86, "time": 0.59722203, "count": 1, "particles": [
+  {"remaining": 0.4027784}]},
+{"step": 87, "time": 0.604166448, "count": 1, "particles": [
+  {"remaining": 0.395833969}]},
+{"step": 88, "time": 0.611110866, "count": 1, "particles": [
+  {"remaining": 0.3888895}]},
+{"step": 89, "time": 0.6180553, "count": 1, "particles": [
+  {"remaining": 0.381945074}]},
+{"step": 90, "time": 0.6249997, "count": 1, "particles": [
+  {"remaining": 0.375000656}]},
+{"step": 91, "time": 0.6319441, "count": 1, "particles": [
+  {"remaining": 0.368056238}]},
+{"step": 92, "time": 0.638888538, "count": 1, "particles": [
+  {"remaining": 0.36111182}]},
+{"step": 93, "time": 0.645832956, "count": 1, "particles": [
+  {"remaining": 0.354167342}]},
+{"step": 94, "time": 0.6527774, "count": 1, "particles": [
+  {"remaining": 0.347222924}]},
+{"step": 95, "time": 0.6597218, "count": 1, "particles": [
+  {"remaining": 0.3402785}]},
+{"step": 96, "time": 0.6666662, "count": 1, "particles": [
+  {"remaining": 0.3333341}]},
+{"step": 97, "time": 0.6736106, "count": 1, "particles": [
+  {"remaining": 0.3263896}]},
+{"step": 98, "time": 0.680555046, "count": 1, "particles": [
+  {"remaining": 0.3194452}]},
+{"step": 99, "time": 0.687499464, "count": 1, "particles": [
+  {"remaining": 0.312500775}]},
+{"step": 100, "time": 0.6944439, "count": 1, "particles": [
+  {"remaining": 0.305556357}]},
+{"step": 101, "time": 0.7013883, "count": 1, "particles": [
+  {"remaining": 0.298611939}]},
+{"step": 102, "time": 0.7083327, "count": 1, "particles": [
+  {"remaining": 0.291667521}]},
+{"step": 103, "time": 0.715277135, "count": 1, "particles": [
+  {"remaining": 0.284723043}]},
+{"step": 104, "time": 0.722221553, "count": 1, "particles": [
+  {"remaining": 0.277778625}]},
+{"step": 105, "time": 0.729166, "count": 1, "particles": [
+  {"remaining": 0.2708342}]},
+{"step": 106, "time": 0.7361104, "count": 1, "particles": [
+  {"remaining": 0.2638898}]},
+{"step": 107, "time": 0.7430548, "count": 1, "particles": [
+  {"remaining": 0.256945372}]},
+{"step": 108, "time": 0.7499992, "count": 1, "particles": [
+  {"remaining": 0.250000954}]},
+{"step": 109, "time": 0.756943643, "count": 1, "particles": [
+  {"remaining": 0.243056476}]},
+{"step": 110, "time": 0.763888061, "count": 1, "particles": [
+  {"remaining": 0.236112058}]},
+{"step": 111, "time": 0.7708325, "count": 1, "particles": [
+  {"remaining": 0.22916764}]},
+{"step": 112, "time": 0.7777769, "count": 1, "particles": [
+  {"remaining": 0.222223222}]},
+{"step": 113, "time": 0.7847213, "count": 1, "particles": [
+  {"remaining": 0.2152788}]},
+{"step": 114, "time": 0.791665733, "count": 1, "particles": [
+  {"remaining": 0.208334386}]},
+{"step": 115, "time": 0.798610151, "count": 1, "particles": [
+  {"remaining": 0.201389968}]},
+{"step": 116, "time": 0.805554569, "count": 1, "particles": [
+  {"remaining": 0.194445491}]},
+{"step": 117, "time": 0.812499, "count": 1, "particles": [
+  {"remaining": 0.187501073}]},
+{"step": 118, "time": 0.8194434, "count": 1, "particles": [
+  {"remaining": 0.180556655}]},
+{"step": 119, "time": 0.8263878, "count": 1, "particles": [
+  {"remaining": 0.173612237}]},
+{"step": 120, "time": 0.833332241, "count": 1, "particles": [
+  {"remaining": 0.166667819}]},
+{"step": 121, "time": 0.840276659, "count": 1, "particles": [
+  {"remaining": 0.1597234}]},
+{"step": 122, "time": 0.8472211, "count": 1, "particles": [
+  {"remaining": 0.152778924}]},
+{"step": 123, "time": 0.8541655, "count": 1, "particles": [
+  {"remaining": 0.1458345}]},
+{"step": 124, "time": 0.8611099, "count": 1, "particles": [
+  {"remaining": 0.138890088}]},
+{"step": 125, "time": 0.86805433, "count": 1, "particles": [
+  {"remaining": 0.13194567}]},
+{"step": 126, "time": 0.874998748, "count": 1, "particles": [
+  {"remaining": 0.125001252}]},
+{"step": 127, "time": 0.881943166, "count": 1, "particles": [
+  {"remaining": 0.118056834}]},
+{"step": 128, "time": 0.8888876, "count": 1, "particles": [
+  {"remaining": 0.111112356}]},
+{"step": 129, "time": 0.895832, "count": 1, "particles": [
+  {"remaining": 0.104167938}]},
+{"step": 130, "time": 0.9027764, "count": 1, "particles": [
+  {"remaining": 0.09722352}]},
+{"step": 131, "time": 0.909720838, "count": 1, "particles": [
+  {"remaining": 0.0902791}]},
+{"step": 132, "time": 0.916665256, "count": 1, "particles": [
+  {"remaining": 0.0833346844}]},
+{"step": 133, "time": 0.9236097, "count": 1, "particles": [
+  {"remaining": 0.07639027}]},
+{"step": 134, "time": 0.9305541, "count": 1, "particles": [
+  {"remaining": 0.06944585}]},
+{"step": 135, "time": 0.9374985, "count": 1, "particles": [
+  {"remaining": 0.06250137}]},
+{"step": 136, "time": 0.9444429, "count": 1, "particles": [
+  {"remaining": 0.055556953}]},
+{"step": 137, "time": 0.951387346, "count": 1, "particles": [
+  {"remaining": 0.048612535}]},
+{"step": 138, "time": 0.958331764, "count": 1, "particles": [
+  {"remaining": 0.041668117}]},
+{"step": 139, "time": 0.9652762, "count": 1, "particles": [
+  {"remaining": 0.0347237}]},
+{"step": 140, "time": 0.9722206, "count": 1, "particles": [
+  {"remaining": 0.0277792811}]},
+{"step": 141, "time": 0.979165, "count": 1, "particles": [
+  {"remaining": 0.0208348036}]},
+{"step": 142, "time": 0.986109436, "count": 1, "particles": [
+  {"remaining": 0.0138903856}]},
+{"step": 143, "time": 0.993053854, "count": 1, "particles": [
+  {"remaining": 0.00694596767}]},
+{"step": 144, "time": 0.9999983, "count": 1, "particles": [
+  {"remaining": 1.54972076E-06}]},
+{"step": 145, "time": 1.00694275, "count": 0, "particles": []},
+{"step": 146, "time": 1.01388717, "count": 0, "particles": []},
+{"step": 147, "time": 1.02083158, "count": 0, "particles": []},
+{"step": 148, "time": 1.027776, "count": 0, "particles": []},
+{"step": 149, "time": 1.03472042, "count": 0, "particles": []},
+{"step": 150, "time": 1.04166484, "count": 0, "particles": []},
+{"step": 151, "time": 1.04860926, "count": 0, "particles": []},
+{"step": 152, "time": 1.05555367, "count": 0, "particles": []},
+{"step": 153, "time": 1.06249809, "count": 0, "particles": []},
+{"step": 154, "time": 1.06944251, "count": 0, "particles": []},
+{"step": 155, "time": 1.07638693, "count": 0, "particles": []},
+{"step": 156, "time": 1.08333135, "count": 0, "particles": []},
+{"step": 157, "time": 1.09027576, "count": 0, "particles": []},
+{"step": 158, "time": 1.09722018, "count": 0, "particles": []},
+{"step": 159, "time": 1.1041646, "count": 0, "particles": []},
+{"step": 160, "time": 1.111109, "count": 0, "particles": []},
+{"step": 161, "time": 1.11805344, "count": 0, "particles": []},
+{"step": 162, "time": 1.12499785, "count": 0, "particles": []},
+{"step": 163, "time": 1.13194227, "count": 0, "particles": []},
+{"step": 164, "time": 1.13888669, "count": 0, "particles": []},
+{"step": 165, "time": 1.14583111, "count": 0, "particles": []}
+]
+}

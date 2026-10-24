@@ -96,13 +96,16 @@ test "glTF index failures report named mesh primitive and concrete rejection cau
 	assert result.error.name == "BrokenMesh";
 	assert result.error.cause.includes(">= vertex count");
 	const countJson = json.replace(`"count":3,"type":"SCALAR"`, `"count":2,"type":"SCALAR"`);
-	const mismatched = loadGltfDetailed(countJson, bytes, "count.gltf");
-	assert !mismatched.ok;
-	if (mismatched.ok) { return; }
-	assert mismatched.error.code == GltfError.CountMismatch;
-	assert mismatched.error.location == "$.meshes[0].primitives[0]";
-	assert mismatched.error.name == "BrokenMesh";
-	assert mismatched.error.cause.includes("index count");
+	for (const mode of [4, 5, 6]) {
+		const mismatched = loadGltfDetailed(countJson.replace(`"attributes":`,
+			`"mode":${mode},"attributes":`), bytes, "count.gltf");
+		assert !mismatched.ok;
+		if (mismatched.ok) { continue; }
+		assert mismatched.error.code == GltfError.CountMismatch;
+		assert mismatched.error.location == "$.meshes[0].primitives[0]";
+		assert mismatched.error.name == "BrokenMesh";
+		assert mismatched.error.cause.includes("index count");
+	}
 }
 
 function jsonGlb(json: string): Vec<uint8> {

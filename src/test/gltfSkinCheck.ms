@@ -113,6 +113,34 @@ test "glTF nonindexed skin keeps implicit corner source ids through palette part
 	}
 }
 
+test "glTF fans preserve canonical skin corners for explicit and implicit sources" {
+	const expected: Vec<int32> = [1, 2, 0];
+	for (const wide of [false, true]) {
+		for (const index32 of [false, true]) {
+			for (const indexed of [false, true]) {
+				const json = document(wide, true, true, "[2,3]", 2, index32)
+					.replace(`"attributes":`, `"mode":6,"attributes":`);
+				const loaded = loadGltf(indexed ? json : json.replace(`,"indices":2`, ""),
+					payload(wide, false, index32));
+				assert loaded.ok;
+				if (!loaded.ok) { continue; }
+				assert loaded.value.meshes[0].indexCount() == 3;
+				const skin = loaded.value.skinMeshes[0];
+				assert skin !== null;
+				if (skin === null) { continue; }
+				assert skin.mesh.hasSkin && skin.mesh.indexCount() == 3;
+				assert (skin.mesh.wideIndices !== null) == (indexed && index32);
+				assert skin.partition.parts.length == 1 && skin.vertexSources.length == 3;
+				for (let i = 0; i < 3; i++) {
+					assert skin.vertexSources[skin.mesh.indexAt(i) as int32] == expected[i];
+				}
+				assert skin.influences.joints[4] == 1;
+				assert skin.influences.weights[8] == 0.25 && skin.influences.weights[9] == 0.75;
+			}
+		}
+	}
+}
+
 test "glTF skin attributes keep a rigid node a valid passing neighbour" {
 	for (const wide of [false, true]) {
 		const loaded = loadGltf(document(wide, false, wide), payload(wide, wide));

@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -47,6 +48,7 @@ def bad_png(source, target):
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser()
     parser.add_argument('--source-root', type=Path, default=Path.cwd())
     args = parser.parse_args()

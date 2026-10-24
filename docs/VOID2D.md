@@ -3766,9 +3766,7 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
 - **Public reference-owner fields remain writable**: both a pipeline cache and a RenderTarget
   expose their state. `closed = false` can reopen an owner; dropping a cache's live tables or
   replacing a target's handles bypasses its lifecycle. This inherits F/M25's public-field
-  limitation; the standing readonly-field compiler card is
-  `2026-09-27-readonly-interface-field-unresolved-type.md`, alongside PENDING3D
-  `store-serial-writable`. That compiler card was not revalidated by this slice.
+  limitation; the fields become `readonly` with PENDING3D `store-serial-writable`.
   The API contract assumes state changes through the owning module, not forged owner fields;
   this is not an opaque or unforgeable owner boundary.
 - **WebGPU uniform budget**: two uniform blocks per draw cost 512 B of the per-frame uniform buffer on WebGPU and Metal. Measure at P1 and fold what does not change per draw into fewer blocks if it bites.

@@ -641,7 +641,8 @@ test "light setters reach collectLights for that light alone" {
 test "a directional light's color setter reaches its block slot" {
 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const sun: NodeId3D = addLightNode(scene, scene.rootId(), Transform3D.identity(), {
-		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0), radius: 0.0, power: 0.5, priority: 0,
+		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0), radius: 0.0, power: 0.5,
+		priority: 0,
 	});
 	setLightColor(scene, sun, vec3(0.2, 0.3, 0.4));
 	let block: Vec<float32> = blockOf();

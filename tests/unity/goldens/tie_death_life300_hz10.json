@@ -1,0 +1,20 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Gamma",
+"activeColorSpace": "Gamma",
+"caseName": "tie_death_life300_hz10",
+"dt": 0.1,
+"steps": 4,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"burst": "time 0 count 1", "rateOverTime": 0, "startLifetime": 0.3, "startSpeed": 0},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.1, "count": 1, "particles": [
+  {"remaining": 0.200000018}]},
+{"step": 2, "time": 0.200000018, "count": 1, "particles": [
+  {"remaining": 0.100000016}]},
+{"step": 3, "time": 0.300000042, "count": 0, "particles": []},
+{"step": 4, "time": 0.400000066, "count": 0, "particles": []}
+]
+}

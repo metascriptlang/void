@@ -104,7 +104,10 @@ import {
 	SDF_ROTATED_SCENE, SDF_ZOOM_SCENE, SDF_SCALE_DOWN_SCENE,
 	SDF_EFFECT_SHIFT, SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, SDF_EFFECT_X, SDF_EFFECT_Y,
 	SDF_EFFECT_ROTATION, SDF_EFFECT_ADD_Y, SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B,
-	OUTLINE_EFFECT_SHIFT,
+	OUTLINE_EFFECT_SHIFT, OUTLINE_INK_R, OUTLINE_INK_G, OUTLINE_INK_B, OUTLINE_SDF_WIDTH,
+	OUTLINE_BG_R, OUTLINE_BG_G, OUTLINE_BG_B,
+	OUTLINE_SDF_ROTATED_SCENE, OUTLINE_SDF_ZOOM_SCENE, OUTLINE_SDF_SCALE_DOWN_SCENE,
+	OUTLINE_SDF_SEAM_SCENE, outlineSdfLabelCases,
 } from "./table";
 import { Texture, TextureError } from "../../src/gpu/texture";
 import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
@@ -1639,7 +1642,7 @@ function orderNoOverlapLanes(): Scene2D {
 }
 
 function tileCellAt(x: float32, y: float32, t: Tile, color: Color): TileCell {
-	return { x: x, y: y, tile: t, color: color, scaleX: 1.0, scaleY: 1.0, rotation: 0.0 };
+	return { x: x, y: y, tile: t, color: color, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, skew: 0.0 };
 }
 
 function imageTileGroup(): Scene2D {
@@ -1876,12 +1879,11 @@ function textSdfColorEffect(): Scene2D {
 }
 
 const OUTLINE_FILL: Color = { r: 0.86, g: 0.90, b: 0.98, a: 1.0 };
-const OUTLINE_INK: Color = { r: 0.95, g: 0.55, b: 0.10, a: 1.0 };
+const OUTLINE_INK: Color = { r: OUTLINE_INK_R, g: OUTLINE_INK_G, b: OUTLINE_INK_B, a: 1.0 };
 const OUTLINE_PANEL: Color = { r: 0.80, g: 0.82, b: 0.86, a: 1.0 };
 const OUTLINE_DARK_TEXT: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
 const OUTLINE_WHITE: Color = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
 const OUTLINE_GREY: Color = { r: 0.35, g: 0.35, b: 0.35, a: 1.0 };
-const OUTLINE_SDF_WIDTH: float32 = 1.5;
 
 function outlined(
 	s: Scene2D,
@@ -1977,9 +1979,9 @@ function textOutlineColorEffect(): Scene2D {
 }
 
 function sdfOutlineText(scene: string): Scene2D {
-	const s = Scene2D.create(DARK);
+	const s = Scene2D.create(rgba(OUTLINE_BG_R, OUTLINE_BG_G, OUTLINE_BG_B, 1.0));
 	const color: Color = rgba(SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B, 1.0);
-	for (const c of sdfLabelCases()) {
+	for (const c of outlineSdfLabelCases()) {
 		if (c.scene != scene) { continue; }
 		const label = s.label(c.text, c.size, color).at(c.x, c.y);
 		when (voidTextOutline) { label.setOutline(OUTLINE_SDF_WIDTH, OUTLINE_INK); }
@@ -1988,23 +1990,10 @@ function sdfOutlineText(scene: string): Scene2D {
 	return s;
 }
 
-function textOutlineSdfRotated(): Scene2D { return sdfOutlineText(SDF_ROTATED_SCENE); }
-function textOutlineSdfZoom4(): Scene2D { return sdfOutlineText(SDF_ZOOM_SCENE); }
-function textOutlineSdfScaleDown(): Scene2D { return sdfOutlineText(SDF_SCALE_DOWN_SCENE); }
-
-function textOutlineSdfSeam(): Scene2D {
-	const s = Scene2D.create(DARK);
-	const color: Color = rgba(SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B, 1.0);
-	const exact = s.label("Seam 20", 20.0, color).at(12.0, 8.0);
-	const nearly = s.label("Seam 20", 20.0, color).at(12.0, 52.0);
-	when (voidTextOutline) {
-		exact.setOutline(OUTLINE_SDF_WIDTH, OUTLINE_INK);
-		nearly.setOutline(OUTLINE_SDF_WIDTH, OUTLINE_INK);
-	}
-	s.add(exact);
-	s.add(nearly.setScale(1.001));
-	return s;
-}
+function textOutlineSdfRotated(): Scene2D { return sdfOutlineText(OUTLINE_SDF_ROTATED_SCENE); }
+function textOutlineSdfZoom4(): Scene2D { return sdfOutlineText(OUTLINE_SDF_ZOOM_SCENE); }
+function textOutlineSdfScaleDown(): Scene2D { return sdfOutlineText(OUTLINE_SDF_SCALE_DOWN_SCENE); }
+function textOutlineSdfSeam(): Scene2D { return sdfOutlineText(OUTLINE_SDF_SEAM_SCENE); }
 
 const ICON_SOURCE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
 	`viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" ` +

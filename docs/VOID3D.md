@@ -102,7 +102,7 @@ M1–M11 are ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 
 | M20 | Heaps: `h2d/RenderContext.hx` inheritance, `pass`, `pushTarget`; Bevy at `0f38358f`: `RenderDevice`, shader handles and vertex layouts | One GPU door in `src/gpu`, void3d through it; programs/layouts by registration, checked pass ownership and an external shader consumer in both registration orders. **NEW MECHANISM**: bounded program registration, taken on the references under the delegation of 2026-09-29. Every standing capture stays byte-identical | generality: void2d's pipelines/targets and `BlendMode` adopt the door in its own arc | **done**, 14 new abort programs, 2 registration runs |
 | M21 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `Camera.makeFrustumMatrix`, `col.Frustum`, `scene.Object.cullingCollider`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Projection`, `Aabb.relative_radius`, `Frustum.intersects_obb`, `check_visibility_cpu_culling` | One `Camera3D` with orthographic/perspective projection, vertical FOV in radians, finite near/far depth in `[0,1]`; snap remains orthographic only. View-local frustum filtering of pass lists each frame, using transformed CPU mesh bounds without changing scene visibility. Perspective capture, half-off-screen culling count and picking; every existing ortho capture byte-identical. Textured meshes remain the next milestone | generality: perspective scenes without the pixel-art camera | **built and reviewed SHIP**, 1004 suite tests, 35 aborts, 4 new baseline hashes |
 | M22 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `prim/Polygon` (`uvs`, `getBufferFormat`: position, normal, uv, colour), `prim/Cube.addUVs`, `shader/Texture` (`pixelColor *= texture.get(uv)` after `BaseMesh`), `mat/Material.texture`, `mat/Texture` (`filter`, `wrap`, `realloc`, `dispose`), `hxd/BufferFormat.resolveMapping`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Image.data` and `Image.sampler`, `GpuImage` (texture, view, sampler), `StandardMaterial.base_color_texture: Option<Handle<Image>>` | Textured meshes. A mesh with UVs is its own vertex layout, `LitTextured` (position, normal, uv, rgba, Heaps' order), recorded on its `MeshData`; the lit programs get a textured twin, the core's `LitTextured` and the pixel-art preset's `PixelArtLitTextured`, which multiply the texel into the colour before saturation and the lights, where Heaps' `Texture` shader follows `BaseMesh`. A textured material on a mesh without UVs is the existing `RendererError.VertexLayout`, where Heaps throws "Missing buffer input 'uv'". A texture is the context's third asset beside meshes and materials: a `TextureId` from the same slot table, its RGBA8 pixels, filter and wrap kept as CPU data (Heaps keeps sampling on the texture, Bevy on the `Image`), its image, view and sampler made from them, remade after a context loss, counted by holders and doomed at zero. A material names at most one context texture, bound at view and sampler 0 when it draws, and pins it from `addMaterial` until the material is freed, as Bevy's material holds its image's strong handle; a material whose texture no longer names the one it holds is refused. Heaps binds a grey loading texture for a missing or disposed one; here a missing texture is refused by name. Acceptance: a textured cube drawn by the real renderer in perspective through both presets, its texel colours and UV orientation checked from the readback independently of the new hashes; a mid-run rebuild of every mesh and texture byte-identical; a churn run that adds and releases textures with sokol's live images, views and samplers flat; every existing capture byte-identical. Not in this row: glTF `TEXCOORD_0` and images, decoding an image file, mipmaps, sRGB, Heaps' `killAlpha`, moving billboard atlases onto context textures, and deleting the spike. Existing mechanisms: M5's rebuild, M17's holders and pins, M20's registration | generality: textured content for any game; the spike's textured cube on the real renderer | **built and reviewed**, 1022 suite tests, 35 aborts, 12 new baseline hashes |
-| M23 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `hxd/res/Image.hx` (`getInfo` tells PNG from JPEG by their first bytes, `getPixels` decodes into `hxd.Pixels` with the first row on top, `toTexture` filters `Linear` by default), `hxd/fmt/hmd/Library.hx` `makeMaterial` (one material per material of the file, made through `MaterialSetup.current`, its `texture` from the caller's `loadTexture`), `h3d/shader/FlipBackFaceNormal.hx` and `PbrMaterial`'s `flipBackFaceNormal` beside `culling`; glTF 2.0.1 (2021-10-11): GLB (§4.4), `images` in a buffer view with `mimeType`, `samplers`, `textures`, `pbrMetallicRoughness.baseColorFactor` and `baseColorTexture`, `doubleSided`, `alphaMode`, `TEXCOORD_0`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `bevy_gltf` `load_image` (one `Image` per glTF texture, its sampler on the image), `texture_sampler` (a mipmap min filter samples through its base filter), `load_material` (`base_color`, `base_color_texture`, `double_sided` with `cull_mode: None`) | Textured content from files. **Images:** `src/assets` decodes PNG and JPEG from bytes, told apart by their first bytes as Heaps does, through the vendored stb_image, into RGBA8 words with the first row on top: re-entrant (no C globals), GPU-free, and `ImageError` by name (not PNG or JPEG, undecodable, too large). The path loader void2d uses stays as it is, for its arc. **glTF:** `loadGlb` reads the binary container (magic, version 2, length, a JSON chunk then an optional BIN chunk, 4-byte alignment) into M8's `loadGltf`, whose subset grows: `TEXCOORD_0` as float VEC2 into a mesh with uvs (M22's `LitTextured`); `primitive.material`; each glTF texture decoded once into a `TextureData`, its image from a buffer view as `image/png` or `image/jpeg` and its sampler's filter and wrap. Heaps keeps one filter and one wrap per texture, so min and mag must name the same filter, a mipmap min filter counting as its base filter as in Bevy, and `wrapS` must equal `wrapT`; a texture with no sampler is `Linear` and `Repeat`. Each material's `baseColorFactor` is multiplied into its primitive's vertex colours: exact, since a primitive has one material, and the lit block has no colour. Its `baseColorTexture` is read at `texCoord` 0. Refused by name, before anything is made: an image by URI, a `texCoord` other than 0, extensions on a texture reference, `alphaMode` `MASK` or `BLEND`, normal, occlusion and emissive textures, a non-zero emissive (normal and emissive: superseded by M39), an integer `TEXCOORD_0`, a textured material on a primitive without `TEXCOORD_0`. Metallic and roughness are read by nothing, as in Heaps' forward renderer. **Into the context:** `addGltfAssets` makes one context texture per glTF texture, one material per glTF material as `makeMaterial` does (and glTF's default material when a primitive names none) from the caller's `GltfMaterialSetup`, which plays Heaps' `MaterialSetup`: the pass, and the lit block's values a preset gives a meaning to. It makes one mesh per decoded mesh, answers M8's bindings for `addGltfNodes`, holds each asset once, and `releaseGltfAssets` gives those holds back (M17). A refused upload or a full uniform pool releases what the call made and is named. **Double-sided:** a `doubleSided` material draws with culling off and sets the lit block's `MATERIAL_DOUBLE_SIDED`; the four lit programs reverse a back face's normal when it is set, as `FlipBackFaceNormal` and Bevy's `double_sided` do and glTF requires. Every existing material leaves it 0. Acceptance: a `.glb` fixture written by an independent generator (Python, committed beside it) is read from disk through std `readFile`, decoded headless with every refusal tested, and drawn by the real renderer through both presets. A textured cube's quadrants land on their texels' exact bytes and orientation, an untextured material shows its factor times its vertex colour, and a double-sided plane is lit from behind; each is checked from the readback independently of the new hashes. A context rebuild is byte-identical; the loader's assets release to the tables they started from, with sokol's live images, views and buffers flat in the churn run; every existing capture is byte-identical; the decoder stage links no GPU code. Not in this row: images by URI and data URIs, `KHR_texture_transform`, a second uv set, alpha mask and blend (Heaps' `killAlpha`), normal, occlusion and emissive maps, sRGB (texels drawn as stored, as Heaps does by default; neither preset converts), mipmaps, a material colour uniform (Heaps' `BaseMesh.color`), a Blender export (`gltf-real-export-not-exercised` stays), decoding on the JS backend, and moving void2d's image loading. Existing mechanisms: M8's decoder, M22's textures, M17's holders, M12's material block floats | generality: textured models from files for any game | **built and reviewed**, 1037 suite tests, 35 aborts, 8 new baseline hashes |
+| M23 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `hxd/res/Image.hx` (`getInfo` tells PNG from JPEG by their first bytes, `getPixels` decodes into `hxd.Pixels` with the first row on top, `toTexture` filters `Linear` by default), `hxd/fmt/hmd/Library.hx` `makeMaterial` (one material per material of the file, made through `MaterialSetup.current`, its `texture` from the caller's `loadTexture`), `h3d/shader/FlipBackFaceNormal.hx` and `PbrMaterial`'s `flipBackFaceNormal` beside `culling`; glTF 2.0.1 (2021-10-11): GLB (§4.4), `images` in a buffer view with `mimeType`, `samplers`, `textures`, `pbrMetallicRoughness.baseColorFactor` and `baseColorTexture`, `doubleSided`, `alphaMode`, `TEXCOORD_0`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `bevy_gltf` `load_image` (one `Image` per glTF texture, its sampler on the image), `texture_sampler` (a mipmap min filter samples through its base filter), `load_material` (`base_color`, `base_color_texture`, `double_sided` with `cull_mode: None`) | Textured content from files. **Images:** `src/assets` decodes PNG and JPEG from bytes, told apart by their first bytes as Heaps does, through the vendored stb_image, into RGBA8 words with the first row on top: re-entrant (no C globals), GPU-free, and `ImageError` by name (not PNG or JPEG, undecodable, too large). The path loader void2d uses stays as it is, for its arc. **glTF:** `loadGlb` reads the binary container (magic, version 2, length, a JSON chunk then an optional BIN chunk, 4-byte alignment) into M8's `loadGltf`, whose subset grows: `TEXCOORD_0` as float VEC2 into a mesh with uvs (M22's `LitTextured`); `primitive.material`; each glTF texture decoded once into a `TextureData`, its image from a buffer view as `image/png` or `image/jpeg` and its sampler's filter and wrap. Heaps keeps one filter and one wrap per texture, so min and mag must name the same filter, a mipmap min filter counting as its base filter as in Bevy, and `wrapS` must equal `wrapT`; a texture with no sampler is `Linear` and `Repeat`. Each material's `baseColorFactor` is multiplied into its primitive's vertex colours: exact, since a primitive has one material, and the lit block has no colour. Its `baseColorTexture` is read at `texCoord` 0. Refused by name, before anything is made: an image by URI, a `texCoord` other than 0, extensions on a texture reference, `alphaMode` `MASK` or `BLEND`, normal, occlusion and emissive textures, a non-zero emissive (normal and emissive: superseded by M39), an integer `TEXCOORD_0`, a textured material on a primitive without `TEXCOORD_0`. Metallic and roughness are read by nothing, as in Heaps' forward renderer. **Into the context:** `addGltfAssets` makes one context texture per glTF texture, one material per glTF material as `makeMaterial` does (and glTF's default material when a primitive names none) from the caller's `GltfMaterialSetup`, which plays Heaps' `MaterialSetup`: the pass, and the lit block's values a preset gives a meaning to. It makes one mesh per decoded mesh, answers M8's bindings for `addGltfNodes`, holds each asset once, and `releaseGltfAssets` gives those holds back (M17). A refused upload or a full uniform pool releases what the call made and is named. **Double-sided:** a `doubleSided` material draws with culling off and sets the lit block's `MATERIAL_DOUBLE_SIDED`; the four lit programs reverse a back face's normal when it is set, as `FlipBackFaceNormal` and Bevy's `double_sided` do and glTF requires. Every existing material leaves it 0. Acceptance: a `.glb` fixture written by an independent generator (Python, committed beside it) is read from disk through std `readFile`, decoded headless with every refusal tested, and drawn by the real renderer through both presets. A textured cube's quadrants land on their texels' exact bytes and orientation, an untextured material shows its factor times its vertex colour, and a double-sided plane is lit from behind; each is checked from the readback independently of the new hashes. A context rebuild is byte-identical; the loader's assets release to the tables they started from, with sokol's live images, views and buffers flat in the churn run; every existing capture is byte-identical; the decoder stage links no GPU code. Not in this row: external image URIs and buffer data URIs (embedded PNG/JPEG image data URIs: superseded by the M6 native checkpoint below), `KHR_texture_transform`, a second uv set, alpha mask and blend (Heaps' `killAlpha`), normal, occlusion and emissive maps, sRGB (texels drawn as stored, as Heaps does by default; neither preset converts), mipmaps, a material colour uniform (Heaps' `BaseMesh.color`), a Blender export (`gltf-real-export-not-exercised` stays), decoding on the JS backend, and moving void2d's image loading. Existing mechanisms: M8's decoder, M22's textures, M17's holders, M12's material block floats | generality: textured models from files for any game | **built and reviewed**, 1037 suite tests, 35 aborts, 8 new baseline hashes |
 | M24 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: a handle is the object; a `Texture` keeps the `MemoryManager` it was made in (`h3d/mat/Texture.hx:129`) and disposes through it (`:358-360`), which ignores a texture it does not hold (`h3d/impl/MemoryManager.hx:229-230`); `Primitive.refCount` (`h3d/prim/Primitive.hx:58-71`). Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Assets<A>` is one resource per world and not `Clone` (`bevy_asset/src/assets.rs:288-296`); a strong handle carries its own store's drop channel and a clone is one more holder (`handle.rs:80-97`); `AssetIndex` names no store, the world's one store does. GPUI at `b961b4950febbc050081554bafe976b5d1b93f39`: the atlas is shared by `Arc`, never copied (`gpui_wgpu/src/wgpu_renderer.rs:215`), and its texture ids name tiles of that atlas only (`wgpu_atlas.rs:74-80`) | Store identity (the unify audit, `void/out/tmp/unifyAcceptanceD0/evidence.zip`). Today a `DrawContext` is a value: `let b = a` makes a second owner of the same buffers, views and holder counts, and an id of one context is taken by another, so `releaseTexture(b, idOfA)` destroys B's texture. **The store becomes one reference:** `DrawContext` and the `UniformPool` it holds are reference types, as `Scene2D` and `DrawContext2D` are, so `let b = a` and `let p = context.uniforms` name the same store, as the Heaps object and the `Arc` of Bevy and GPUI do; a second holder is still only `retain*` or `pin*` (M17). **Ids name their store:** each context takes a serial when it is made, from a module counter as `DrawContext2D` takes its id (`src/void2d/displayList.ms:348-356`), and `MeshId`, `MaterialId`, `TextureId` and `UniformBlock` carry it as `store`. The questions (`hasMesh`, `hasMaterial`, `hasTexture`, the pool's `holds` and `isOwned`) answer false for another context's id; every call that admits, writes, holds, releases, pins, unpins or draws one refuses it by name (`HandleError.ForeignMesh`, `ForeignMaterial`, `ForeignTexture`; `MaterialError.ForeignTexture`, `ForeignUniforms`; `UniformError.Foreign`; the scene's, the renderers' and the stream's), never as stale. A scene's unpin keeps skipping an id that was freed (`scene.ms:356-369`) and stops, naming the call, on an id of another context. A zero-length block owns nothing and names no store. **NEW MECHANISM**, under the delegation of 2026-09-29: a store serial in every id. Neither reference has one, Heaps because a handle is the object, Bevy because a world has one store of a kind; void3d keeps ids as values ("Data types": handles are values), so `DrawItem` stays a plain value and the store is checked where an id comes in. It adds 4 bytes to an id and one compare to a check, and can regress an id written by hand, which a struct literal leaves at store 0, a store no context has. Acceptance: the audit's owner controls, red on `b4eb9af` (A's material taken by B and its release deleting B's; A's texture released in B destroying B's view), turn green and grow to every kind: two contexts × {mesh, material, texture, uniform block}, a foreign id refused by name on each path while each context's own ids are untouched and B's GPU view stays live; an alias of the context and of its pool releases once, `buryDoomed` counting one; a slot reused after a release refuses the old id as stale; the churn stage flat; every capture byte-identical. Not in this row: the owners that hold a context's ids (M25); the representation of `PipelineCache` and `RenderTarget`, which is the GPU door's, void2d's arc; one pipeline cache for every context (two caches make two shaders: Bevy's cache does not dedup, GPUI keeps pipelines per renderer). Existing mechanisms: M17's holders and pins, M6's slots, void2d's context serial | generality: two 3D views, or a loader and a renderer, on one device | **built and reviewed**, 1123 suite tests, 46 aborts, 1 new gate stage, no new baseline |
 | M25 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: scene objects and renderers are objects, `Mesh.onRemove` decrefs its primitive, `Texture.dispose` (`h3d/mat/Texture.hx:358-360`); `h2d/Tile.hx:248-261`, where a tile's `dispose` disposes the texture its clones still share, the alias disposal this row does not take; a primitive's collider is built from its CPU points (`h3d/prim/Polygon.hx:277`), apart from the buffers it allocates at its first render (`h3d/prim/Primitive.hx:113-114`). Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: an asset goes when its last strong handle drops (`handle.rs:80-97`), its GPU copy in the next `prepare_assets` (`bevy_render/src/render_asset.rs:443-445`); mesh picking reads the world's one CPU store, `Res<Assets<Mesh>>` (`bevy_picking/src/mesh_picking/ray_cast/mod.rs:177`, `:283`). GPUI at `b961b4950febbc050081554bafe976b5d1b93f39`: `destroy` takes the renderer's resource group in one step (`wgpu_renderer.rs:2041-2044`). void2d's door: `closePipelines` (`b324be1`), the targets' and sampler's `released()` (`src/gpu/target.ms:178-181`, `:275-278`) | Owners and their teardown. **Owners are references holding their context:** `Scene3D`, the core `Renderer`, `ForwardRenderer`, `PixelArtRenderer`, `MeshFrameAnimation` and `GltfAssets` hold ids, ranges or targets of a context. They become reference types that keep the context they were made on, as `Scene2D` keeps its `DrawContext2D` and a Heaps texture its `MemoryManager`, so a copy names the same owner and its holds count once. The pixel-art preset's `PaletteLut` (`palette.ms:27-35`) owns an image and its view the same way and becomes a reference type too, so `let p = renderer.palette` names the preset's table; it records the GPU generation its image was made under, as a `RenderTarget` does, so a close under a stale generation forgets and under the current one destroys once. Their calls lose the context a caller passed (every caller moved, no shim). A scene is made on a context even when it holds only groups and lights: there is no hidden store. An animation or a glTF model paired with a scene of another context stops, naming the call, as an owner paired with the wrong context does since M19. `pickNearest(scene, ray)` reads the geometry and materials of the scene's own context, as Bevy's picking reads the world's one store and a Heaps collider its primitive's CPU points; its headless tests give a context CPU geometry through a test helper beside `meshAt` (`src/test/drawHelpers.ms`), since picking reads only that table, and the `pick` and `perspective` stages keep proving the uploaded path. `NodeId3D` carries its scene's serial as a context's ids carry theirs: per-scene CPU identity, apart from the device's generation. **Teardown is explicit:** dropping an owner releases nothing on the GPU, and there is no finalizer, so each owner has a `close` made of the calls that exist (`remove`, `releaseMeshFrames`, `releaseGltfAssets`, `release*`, the palette's `releaseGpu`, the targets' and sampler's `released()`, `buryDoomed`), refused inside a pass. `Renderer.close` also destroys the screen triangle's vertex buffer it made, once and only under `renderer.generation` (the screen mesh is `EXTERNAL_GENERATION`, which `releaseMesh` leaves to its maker, `draw.ms:642-644`), and releases its `MeshId`. A closed owner refuses every later call by name, its queries answer false, it never rebuilds a GPU object, and closing it again through an alias stops by name; a parent skips a child that is already closed. `DrawContext` and its `UniformPool` close by a `closed` flag apart from the GPU generation, terminal as void2d's cache: `DrawContext.close` closes its pipeline cache once and stops by name, with the kind and the count, while a hold, a pin or a caller's uniform range is live. A misordered close stops rather than returning an error, as `closePipelines` does: the holds are the program's own state, not input. The caller closes renderers, then scenes, animations and glTF models, then gives back its own ids and ranges, then closes the context; there is no forced close. The device's shutdown stays the host's. **NEW MECHANISM**, under the delegation of 2026-09-29: an owner's terminal `close` and `closed` flag beside the GPU generation, as void2d's cache has; it can regress a caller that keeps using an owner after closing it, which now stops. Acceptance: red before, on `2be9cf5` with every release call that exists made, a view's create-draw-release-recreate cycle beside an independent surviving context leaks what no call releases; green after: each cycle makes a context with a scene, a renderer of each preset and a glTF model, draws a frame and closes them in that order while the survivor keeps drawing its own pixels; holders, pins, uniform ranges and sokol's live buffers, images, views, samplers, shaders and pipelines (the door's counters, `7f8507b`) return to the warm baseline, the palette's image and the screen buffer counted; a call after close is named, through an alias too; a close under a stale generation forgets and destroys nothing; no allocation or copy on the frame path; every capture byte-identical. Not in this row: the device's shutdown; void2d's scene teardown; the cache's own close (void2d's). Existing mechanisms: M17's release paths, M5's context generation, `Scene2D.context`, M24's store serial, the door's `released()` and void2d's `closePipelines` | generality: opening and closing views, levels and editors without restarting the device | **done**, 1138 suite tests, 84 abort programs and 98 abort cases, 1 new gate stage (`views`), no new baseline |
 | M26 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `h3d/shader/ColorSpaces.hx:56-65` (`srgb2linear`) and `:67-76` (`linear2srgb`), the exact piecewise curve (0.04045, 12.92, 1.055, 2.4, 0.0031308) written for shaders and called by nothing in the legacy tree — the forward renderer void3d ports applies no conversion anywhere, and `hxd/res/Image.hx:743` loads every image into a plain texture (the `setupTextureFlags` hook empty), so default Heaps assets ride gamma-encoded bytes as void3d's do today; the PBR renderer is the in-shader precedent: albedo linearized in the shader (`h3d/shader/pbr/GammaCorrect.hx`, `color *= color`; `pbr/PropsImport.hx` FAST_SRGB beside the exact pair), lit in RGBA16F, `pow(x, 1/gamma)` at the end with gamma 2.0 (`pbr/ToneMapping.hx:63-68`; `h3d/scene/pbr/Renderer.hx:869-871`, targets `:643-655`). Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: the glTF factor is read linear (`Color::linear_rgba`, `bevy_gltf/src/loader/mod.rs:1435`); `bevy_color/src/srgba.rs:205-227` `gamma_function`/`gamma_function_inverse` carry the same piecewise constants; compositing defaults to the sRGB convention (`CompositingSpace::Srgb`, `bevy_camera/src/components.rs:102-110`); a 2D camera is held to no tone mapping (`Camera2d` requires `Tonemapping::Linear`, `bevy_core_pipeline/src/core_2d/mod.rs:56`); its sRGB surface and view formats (`bevy_render/src/view/window/mod.rs:405-415`) are the format-based mechanism this row does not take | Colour spaces: a linear excursion inside the lit programs, gamma-encoded bytes everywhere else. The shared shader blocks gain Heaps' pair as `@block colorSpace` and `math3d.ms` the CPU twins beside `colorSaturated` — one curve, the constants both references share. **One convention at the API:** every colour a caller hands void3d — texels, vertex colours, material colours, light colours — is sRGB-encoded, as its textures already are, and every scalar (a light's power, a falloff, a ramp level) is linear and never converted; the glTF loader converts the spec's linear `baseColorFactor` and `COLOR_0` to that convention at load, the CPU `linear2srgb` exact, and base-colour texels stay as stored, authored sRGB. **Every program that lights** — the core's `Lit` and `LitTextured`, the billboards' lit form, and the pixel-art preset's lit and toon programs — decodes its colour inputs to linear, lights in linear (the toon ramp quantizes the linear light term; M12's saturation stays Heaps' gamma-space matrix on the tinted surface, before the decode), and encodes the stored colour back. Every target, the post pass, the outline, the fog, the palette LUT of authored bytes, `Copy` and `Blit`, the shared screen pass and void2d's `end2d` keep gamma-encoded bytes, and no `src/gpu/` file moves: **void2d's own drawing sees nothing — of its 82 D3D11 goldens the 80 that draw no 3D stayed byte-identical, and the two `mixed/void3d*Target` scenes, which render this layer's lit content through the shared frame, were re-goldened by this milestone over a proof that names no hash: outside the 3D rect byte-identical to the old goldens, the rect equal to a fresh out-of-band capture of the same lit content (delta 0 opaque, 1 translucent), both backends green after it** — the row's first draft claimed all 82 and the web gate corrected it. The conversion rides void3d's own programs, as Heaps' PBR shaders carry theirs, and is the same arithmetic on every backend, where the format-based route is not (sokol has `SG_PIXELFORMAT_SRGB8A8`, but GL writes it through `GL_FRAMEBUFFER_SRGB`, `deps/sokol/sokol_gfx.h:12086`, `:12150-12152`, and the door's `PixelFormat` has no sRGB member — void2d's). Acceptance: red before — the M23 fixture's factor quad reads (128, 64, 128) against the spec's curve (measured, "Still missing after M23"); green after — the factor and `COLOR_0` quads read exactly (188, 137, 188) through both presets, the pair held at the hinge points both references share (0, 0.04045, 0.0031308, 1) with round-trip identity over a grid; each moved capture re-baselined in its own commit with its magnitude named, the unlit paths (copy, blit, the outline's edges) byte-identical, the count of moved hashes among the 72 in the as-built; no allocation or copy on the frame path, the CPU encode running at load only; the arm64 .so builds. Not in this row: tonemapping and exposure (Bevy's `TonyMcMapface` default, `bevy_render/src/view/mod.rs:324-325`, and Blender exposure belong to its HDR pipeline; Heaps' fwd has none and these targets are LDR); sRGB pixel formats at the door and an sRGB swapchain (`sapp_desc.srgb`); mipmaps and anisotropy; alpha as a material's (MASK, BLEND — the next row); void2d's own colour handling. Existing mechanisms: the shader blocks' colour math (M12's `@block saturation`), `math3d.ms`'s pinned colour functions, M23's loader paths | generality: glTF content that matches a spec viewer, lit looks that survive a palette swap; unblocks `gltf-real-export-not-exercised` on colour | **done**, 1148 suite tests, 84 abort programs and 98 abort cases, no new gate stage, 61 of 72 hashes and 2 of 82 goldens re-baselined |
@@ -236,7 +236,7 @@ Every claim in this document about what Heaps does used to rest on somebody havi
 
 A case may declare `diverges=<PENDING3D row>`, and those are checked **in both directions**: a declared divergence that starts agreeing fails the run and names the row to reconcile, exactly as a PENDING3D sentinel does. Verified by making `size()` answer Heaps' −2e20 and watching two cases graduate.
 
-**Its first two runs corrected this document, which is the point of building it.** `bounds-sphere-rescale` was written up as a divergence; the answers agree to 4.6e-9 relative, so it is a divergence in method forced by float32 and not a difference in behaviour. And `bounds-transformed-or` was described as applying to a box "empty on one axis" — but a *flat* axis (min == max) is empty under neither Heaps' rule nor this port's, so the real divergence needs a genuinely negative extent: with one, Heaps answers `10 -1 0` where this port answers `0 0 0`. Thirty-three cases over two files now: thirty agree, three diverge as declared.
+**Its first two runs corrected this document, which is the point of building it.** The initial `bounds-sphere-rescale` row was method-only: answers agreed to 4.6e-9 relative. M6 later returned the calculation to Heaps' float64 intermediates and removed that row after measured range failures; see the bounding-sphere precision acceptance below. And `bounds-transformed-or` was described as applying to a box "empty on one axis" — but a *flat* axis (min == max) is empty under neither Heaps' rule nor this port's, so the real divergence needs a genuinely negative extent: with one, Heaps answers `10 -1 0` where this port answers `0 0 0`. At that first checkpoint, thirty-three cases over two files gave thirty agreements and three declared differences.
 
 **The scene tree is measured too, and it is where the M6 claims were.** `tests/oracle/scene3d.cases` is sixteen cases against a bare `h3d.scene.Object` tree, and all sixteen agree. They cover what M6 asserted only against itself: that `world` is `local * parent` and not the reverse (a quarter turn about Y on the parent takes a child at +X to −1 on Z, and the child's *basis* turns with it, not only its position); that the product associates the same way three levels deep; that `Transform3D.scale` composes as `S * R` and not `R * S`, which no test and no production caller had exercised at all; that `math3d.eulerQuat` is `h3d.Quat.initRotation` to nine matrix entries at three angles at once; and that a write to one node reaches its whole subtree, four levels down, without reaching a sibling subtree or its own parent.
 
@@ -246,9 +246,11 @@ A case may declare `diverges=<PENDING3D row>`, and those are checked **in both d
 
 ### Running the Haxe side
 
-Haxe was installed during this arc (scoop): `haxe 4.3.7`, `neko 2.4.1`, `haxelib git heaps ...
-2b84cc2` plus `format 3.8.0`. Use `-lib heaps -lib format`; **do not** use the clone at
-`~/projects/heaps`, which is 18 commits off the pin.
+Haxe was installed during this arc (scoop): `haxe 4.3.7`, `neko 2.4.1`, `format 3.8.0`. The
+oracle reads Heaps from the clone the rows cite, `~/projects/heaps` at `b9aa6dcb` (`HEAPS=` names
+another), as `tests/oracle/h2d.sh` does, so a case measures the code a row quotes. Snapshots taken
+before 2026-10-24 ran the older haxelib `2b84cc2`; retaken at `b9aa6dcb`, all 42 files kept every
+value.
 
 Three traps, one of which no document had:
 
@@ -379,9 +381,10 @@ row and two three-value port rows silently mismatch rather than failing usefully
 
 ### M11 as built
 
+- **Retired (void2d-particles A4).** `src/void3d/particles.ms` and `particleVisual.ms` are deleted: the simulation is `src/particles/system.ms`, the writers are `particleWriter.ms` (`writeParticles` for `Program.ParticleVisual`, `writeParticlePoints` for `Program.Particle`), and the Heaps vocabulary below (`ParticleValue`, `EmitterShape`, `EmitterState`) lives in `fromHeaps.ms` as the input of `fromHeaps`. `updateEmitter`, `writeInstances`, `ParticleRandom` and the per-life Heaps draw order are gone; the last two M11 bullets that name them describe what was built then. The next bullets are history.
 - **`particles.ms` is `h3d.parts` without the draw call.** `ParticleValue` is `Data.Value` and `EmitterShape` is `Data.Shape`, both as closed unions (`match (kind: …)`). `EmitterState` is `Data.State`, with `defaults()` as `setDefaults`. `updateEmitter` is `Emitter.update` with `initPosDir`, `initPart` and `updateParticle` in Heaps' order, so every random value is drawn at the point Heaps draws it. `writeInstances` is the half of `Particles.draw` that fills the buffer. It evaluates `globalSize` on every call, before it returns on an empty emitter, as `Emitter.draw` does (`Emitter.hx:272`), so a random `globalSize` consumes the sequence exactly as Heaps does. The emitter is a value the caller owns, as M9's animations are: it is not a node kind and has no side table. It takes the world matrix of the node that places it, and that node carries a stream mesh (below) the draw list already knows how to draw.
 - **Frame, randomness and time.** Heaps is Z up and left-handed. Exchanging y and z maps it onto this frame, so the cone and the line point up +Y, the disc lies in XZ and gravity pulls along −Y. Heaps reads `Math.random`; the emitter owns an xorshift32 read as 24 bits (`ParticleRandom`), seeded by the caller, so a run is deterministic and the oracle can hand Heaps the same sequence. Every time that decides an event is `float64`, as Heaps' `Float` is: emitter time, the emission count, particle time, the life factor, `globalLife`, burst times and colour-key times. They were `float32` first, and the oracle measured the cost: the emission count and the moment a particle dies each drifted by one (`random-lives-keep-order` kept 13 particles against Heaps' 12, `color-keys-light-alpha` 9 against 8). The design review then found burst and key times still `float32`, and measured it: a burst at 0.1 fires one update late, because 0.1 in `float32` is 0.10000000149 (`burst-at-a-tenth` now agrees). Positions, sizes and colours stay `float32`, the vertex format.
-- **Not ported:** `VPoly`, `VCustom`, `SCustom`, `ratio`, `rotation`, `frame` and textures, `emitTrail`, `collide` and `Collider`, `delay`, the `update` callback, `Emitter.speed`, `setState` on a live emitter, `offsetParticles`, `alloc`/`add`, `SortMode` and `BlendMode`. The pool of `Particle` objects is a dense array of capacity `maxParts`, fixed at `create` in `capacity` so that a caller raising `state.maxParts` later cannot outgrow it, compacted in order as particles die, which is the order Heaps' list keeps.
+- **M11 historical gaps, not current status:** `VPoly`, `VCustom`, `SCustom`, `ratio`, `rotation`, `frame` and textures, `emitTrail`, `collide` and `Collider`, `delay`, the `update` callback, `Emitter.speed`, `setState` on a live emitter, `offsetParticles`, `alloc`/`add`, `SortMode` and `BlendMode`. Rotation/aspect/atlas animation is superseded by `9596ac70` (`particleVisual.ms`, emitter fields, 16-float visual writer, both preset programs), with frame-copy fix `3e4a5048`; the legacy eight-float particle path remains separate. M38 below supersedes the older Poly/shapes/order gaps. The pool of `Particle` objects is a dense array of capacity `maxParts`, fixed at `create` in `capacity` so that a caller raising `state.maxParts` later cannot outgrow it, compacted in order as particles die, which is the order Heaps' list keeps.
 - **Three divergences, one measured.** A particle draws its random values again every life, where Heaps' pool hands a reborn particle the values of its last one (`particle-random-per-life`: 0.18018 in Heaps for both lives, 0.16936 here for the second). A particle is a camera-facing square of side `size × globalSize` in world units, where Heaps' default sizes it in clip space with a factor of 0.4 (`particle-size-world-units`). The program discards below half alpha and writes depth instead of blending and sorting (`particle-alpha-tested`).
 - **Two names moved for the compiler.** Heaps' `update` is `updateEmitter`, because `animation.ms` exports `update(ref clock, …)` and two `ref` free functions with one name resolve to the wrong one silently (`particle-update-name-collision`, card `2026-09-20-ref-receiver-not-an-extension.md`). The random state is the field `sequence`: a field named `random` in the `Result.ok({…})` of `ParticleEmitter.create` made std's `Math.random` reachable, whose body calls an undeclared `time()` and fails clang (card `2026-09-23-literal-key-reaches-std-function.md`, Compiler notes).
 - **Instance data: a stream mesh, not an `InstanceData` sibling** (Open questions, answered). `draw.ms` `addStreamMesh(context, capacity)` puts a `GpuMesh` whose `instanceCapacity` is non-zero into the same table. Its instance buffer is made once at that capacity (`gpu3dMakeStreamBuffer`, sokol `dynamic_update`), and `writeStream` replaces its contents and sets the instance count, one `sg_update_buffer` per frame. A write the driver refuses (a buffer that is not valid, or more floats than it holds) is `StreamError.BufferRefused` and leaves the stream drawing nothing; a remake that gets only one of its two buffers destroys that one. It keeps no CPU copy: its owner holds the state it is written from and writes it every frame it draws, so a kept copy would be stale by construction. After a context loss, the loop that re-uploads meshes (`rebuildMeshes`) remakes a stream's buffers empty, with zero instances. A `writeStream` that finds its handles stale remakes them first, so the write after a loss is also the rebuild. The buffer is `dynamic_update` rather than `write_transient`: a transient buffer must be written every frame it is bound, and a host on the on-demand pacing redraws for a camera move while a paused emitter writes nothing new.
@@ -639,7 +642,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 
 **Still missing after M15.**
 - **Who owns a billboard's corners** is open (`billboard-anchor-is-the-callers`). Heaps centres the quad on its position; the campfire anchors it at the bottom, and moving it moves the campfire's pixels. That is the human's call, and an emitter that writes billboards should not come before it.
-- **An emitter cannot draw textured particles.** `particles.ms` writes the `Particle` layout. Heaps' `Emitter` animates a particle's `frame` over `frames` (`Data.frame`), which would need `writeInstances` for the billboard layout.
+- **An emitter cannot draw textured particles.** (Historical; `writeParticles` now writes sheet frames on the visual layout.) `particles.ms` wrote the `Particle` layout. Heaps' `Emitter` animates a particle's `frame` over `frames` (`Data.frame`), which would need `writeInstances` for the billboard layout.
 - **Two ports of `h2d.Tile`.** void2d has its own (`src/void2d/types.ms` `Tile`, with a texture view, `sub` and float32 uvs). void3d has never imported void2d, and merging them crosses into that lane, so `AtlasTile` is its own. `Tile.split`'s `vertical` and `subpixel`, and a grid of frames, are not ported.
 - **Billboards have no rotation or ratio** (`particle-size-world-units`), **are alpha-tested** (`particle-alpha-tested`), and **have no saturation** (`material-saturation-only`).
 - **The lit billboard has no exact check.** The `unlit` stage holds the unlit path; the lit one is held by the forward baseline only.
@@ -686,7 +689,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 **Still missing after M16.**
 - **No phone and no WGPU run.** Everything above is D3D11 and the emulator. `gl_VertexID` with every attribute stepping per instance, and a constant array indexed by it, are the new GLES3 risks.
 - **The pixel-art preset's light point from the anchor has no check.** The campfire only draws bottom-centre anchors in that preset.
-- **An emitter still cannot draw textured particles** (Heaps' `Data.frame` over `frames`). It can now write billboards whose anchor is the core's; `particles.ms` writes the `Particle` layout only.
+- **An emitter still cannot draw textured particles** (Heaps' `Data.frame` over `frames`). It can now write billboards whose anchor is the core's; `particles.ms` wrote the `Particle` layout only (retired; see the M11 note).
 - **A struct literal can build a per-vertex mesh with instances** that nothing refuses.
 - The rest of M15's list stands: two ports of `h2d.Tile`, billboards with no rotation, ratio or saturation, and alpha-tested only.
 
@@ -1241,7 +1244,9 @@ land gate (`9f41458`), which msc `35601908` built; not attributed further. Timin
     added three; they give no count now.
 
 **Still missing after M23.**
-- Images by URI and data URIs, `KHR_texture_transform`, a second uv set, alpha mask and blend
+- External image URIs and buffer data URIs; embedded PNG/JPEG image data URIs now have the
+  [M6 native checkpoint](#embedded-image-data-native-checkpoint). `KHR_texture_transform`,
+  a second uv set, alpha mask and blend
   (Heaps' `killAlpha`), normal, occlusion and emissive maps, mipmaps, a material colour uniform
   (Heaps' `BaseMesh.color`; the factor is baked instead), a Blender export
   (`gltf-real-export-not-exercised` stays), decoding on the JS backend, and moving void2d's image
@@ -2548,7 +2553,14 @@ GLES3 and web are NOT RUN.
 - **Poly** is Heaps' `VPoly` (`Data.hx:193-200`) by Horner, without its `points`, which `eval` never reads.
 - **Order** is Heaps' `SortMode` (`Data.hx:65`, default `Back`). `writeInstances` writes `Back` and `Front` and returns `ParticleError.NeedsView` for `Sort` and `InvSort`; `writeSortedInstances(emitter, world, viewProjection, out)` writes all four. The key is Heaps' z over w through the camera matrix (`Particles.hx:164-166`), `Sort` farthest first (`:140-146`), by a stable merge over buffers made at `create`. Godot's key is `dot(sort_direction, position)`, linear along the view direction (`particles_copy.glsl:89`); it orders points in front of the eye as z over w does, and differs only behind the eye, where here a point with no depth counts as farthest. **Divergences:** under `Front` the simulation still steps oldest first (Heaps steps the newest first, `Particles.hx:108-116`, `Emitter.hx:90-96`), so a random draw order differs there; the order is rebuilt on each write instead of kept; equal depths keep emission order where Heaps' comparator (`p1.w < p2.w ? 1 : -1`) leaves them to the merge.
 
-**Not done, on purpose.** Collision, `Collider`, sub-emitters, `emitTrail` (the row); `SCustom`, `VCustom` and the `update` hook; `ratio`, `rotation` and frame animation (the particle program has none); soft particles; Godot's `emission_shape_offset`/`_scale`, `damping_as_friction`, initial displacement and the turbulence colour ramp; No new program and no ProgramKey bit: every field acts on the CPU side of the eight instance floats the particle program reads, so bit 14 stays unused.
+**M38 historical gaps, not current status.** Collision, `Collider`, sub-emitters, `emitTrail` (the row); `SCustom`, `VCustom` and the `update` hook; `ratio`, `rotation` and frame animation (subsequently implemented by `9596ac70`, frame-copy fix `3e4a5048`, as the separate 16-float visual particle program for both presets); soft particles; Godot's `emission_shape_offset`/`_scale`, `damping_as_friction`, initial displacement and the turbulence colour ramp; At M38 no new program or ProgramKey bit was added: those fields acted on the CPU side of the legacy eight instance floats. This describes that checkpoint, not current program/key ownership.
+
+**Particle re-check, afcd22f19.** Existing `particleVisualCheck.ms` is **316/316**; actual
+Heaps regeneration plus native `particles3d.cases` check gives **8 agreements + 1 previously
+declared per-life random divergence**, unchanged snapshot and SDK. Receipt
+`out/m6ParticleVisualRecheckAfcd22f1920261021.*`. The legacy oracle does not newly compare
+rotation/frame fields; the dedicated CPU suite exercises them. No new fields, shader, ABI,
+GPU run or performance claim was needed for this re-check.
 
 **Allocation.** `scripts/gate3d.sh` holds `writeOrdered`, `sortByDepth`, `depthKey`, `placeOf`, `ringPoint`, `damped`, `bentToward`, `boxPosition`, `boxHalfExtent`, `polynomial` and, from `particleNoise.ms`, `noiseDirection`, `curl3` and `noise4` to no `ArrayCopy`, beside the M11 list. Those lines have NOT run through the gate (the `particle78oise` spelling is the gate's module-name encoding of `particleNoise`, not checked by running it). What was run: a probe entry built with `msc build --emit=c` and the gate's awk over the emitted C found no `ArrayCopy` in those functions, in `particleNoise.ms`'s others, or in `updateEmitter`, `spawn`, `stepParticle` and `writeInstances`. `writeSortedInstances` is not called by the campfire entry the gate builds, so it is not in the list; it is one call to `writeOrdered`. The noise does 288 gradient hashes per turbulent particle per step; no timing was taken.
 
@@ -3749,6 +3761,1529 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF output/topology/mode stack land acceptance
+
+On 2026-10-21, shared `wt.sh land void3d-m5` exited 0 and fast-forwarded Main from
+`7e77f01b` to `f11cef69`, source tree `95f226c8c047acd3c296a157b0db523b5eef1a7f`.
+Installed binary/support BUILD was `3c5ca8377`. This receipt covers the sparse-output,
+non-indexed-triangle and explicit-mode stack, not the later triangle-strip preparation.
+
+The chained `sh scripts/gate.sh`, `sh scripts/gate3d.sh` and `sh scripts/web3d.sh` all passed:
+module all-off **1881/1881**, all-on **2268/2268**, full native gate GREEN, gate3D GREEN,
+and **37/37** real WebGL2 `RESULT ... PASS` records. No new reds; seven native skips and
+three gate3D skips retain their prior scope (`tests/PENDING.md`, `tests/PENDING3D.md`).
+Those three are held Forward/Anchor capture fingerprints and no physical GLES3 device run.
+The separately run web37 does not accept the native gate's skipped WebGL2 conformance suite.
+
+The four-hour compiler HOLD expired during this long run and was renewed through the official
+tool. Deployment owner confirmed no SDK sync during that interval; installed BUILD remained
+unchanged at closure. The receipt does not assume a continuously active lock. Raw evidence:
+`out/m5StackLand20261020.{log,exit}` in the M5 worktree, with renewal under
+`.wt/void3d-m5.stack-hold-renew20261020.{log,exit}` in the workspace.
+
+No WebGPU, physical-device, actual device-loss or performance acceptance is added here.
+Gate elapsed time under shared machine load is not a benchmark.
+
+### glTF triangle-strip reference boundary
+
+Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_gltf/src/loader/gltf_ext/mesh.rs` `primitive_topology` accepts triangle strips,
+not triangle fans. Its `crates/bevy_mesh/src/mesh.rs` `Mesh::triangles` visits overlapping
+three-index windows and swaps the first two indices on odd windows, for both index widths.
+The glTF `b43260ee1291134a94b3098d415f54f479a59508` "Topology and Connectivity" strip
+rule gives the same winding by cyclic permutation; it requires at least three corners.
+These are source traces, not executed Bevy or imported-asset acceptance.
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Primitive.hx` `triCount` and
+`render` consume triangle lists, with `h3d/prim/Polygon.hx` carrying their index buffer.
+The adapter therefore belongs before Void's existing triangle-list consumers:
+`meshData.ms` `addTangentsWithSources` and `rayIntersection`, and `skinPartition.ms`
+`fromTriangles`. Reusing `MeshData.addTriangle` avoids a second topology representation
+whose colour, shadow, picking and skin consumers could disagree.
+
+Canonical storage costs `3 * (n - 2)` indices for an `n`-corner strip, bounded by the existing
+signed draw-count limit. This is an allocation formula, not a performance measurement.
+That strip checkpoint did not accept fans, lines or points. Fan CPU acceptance below adds
+mode6 separately; neither change adds a GPU topology or ABI extension.
+
+### glTF triangle-strip CPU acceptance
+
+On 2026-10-21, Windows native `msc test src/test/<name>.ms`, through default buildslot,
+with installed binary/support BUILD `b1f63337f`: visibility reds were index **316 pass/5 fail**
+and material **335 pass/2 fail**, both exit 1 at the intended strip assertions. The pre-reboot
+attempt was cancelled before admission (137); neither suite ran in that attempt.
+
+After `gltf.ms` `loadMesh` integration, index **321/321**, material **337/337**, glTF **316/316**
+and skin **309/309** passed, four exits 0 plus aggregate 0. The capacity-edge pins use short
+buffers, so they test pre-decode refusal/boundary routing, not enormous allocations.
+
+The diagnostic consumer then exposed an owned wording regression: **307 pass/1 fail**, exit 1,
+because the new count message omitted `index count`. Its correction preserves that phrase
+without claiming every topology needs a count divisible by three. `gltfDiagnosticCheck.ms`
+covered mode4/5 at that checkpoint and passed **308/308**, exit0. Only that suite reran: the prior
+four consume `loadGltf` enum errors, not diagnostic causes; their topology/data paths did not
+change. Final CPU source tree: `1e44f9acf6c6bb1cca860335485efc1d9cec0d32`.
+
+M6 receipts: `out/m6Strip{name}RedB1f63337f20261021Retry1.{log,exit}` for index/material,
+`out/m6Strip{name}GreenB1f63337f20261021.{log,exit}` for the four checks, and
+`out/m6StripDiagnostic{Before,Green}B1f63337f20261021.{log,exit}`. The empty name is the
+serial producer's aggregate where present. Original failures/cancellation remain intact.
+
+These are synthetic importer/consumer fixtures, not executed Bevy comparisons, external-asset
+renders or performance evidence. Full native/gate3D/web acceptance for this stack is pending.
+
+### glTF triangle-fan reference boundary and CPU acceptance
+
+Heaps `b9aa6dcb` `h3d/prim/Disc.hx::new` emits each ring edge and a fixed center into
+Polygon's existing triangle list. Bevy `157e1ce6`
+`bevy_gltf/src/loader/gltf_ext/mesh.rs::primitive_topology` rejects fans; no Bevy loader parity
+is claimed. glTF `b43260ee`, "Topology and Connectivity", requires at least three corners
+and defines each fan triangle as `(i+1,i+2,0)`. `gltf.ms::loadMesh` reuses the existing strip
+canonicalizer before `MeshData.addTangentsWithSources` and `SkinPartition.fromTriangles`.
+Only mode6's gate is loosened: point/line modes, malformed mode values, short counts,
+pre-decode expansion limits, source index ranges/restart sentinels and storage guards remain.
+Fan winding and corner order follow the spec exactly, including degenerate faces. The
+`3*(n-2)` storage formula is unchanged; it is not a performance measurement.
+
+On Windows/binary+support `b1f63337f`, serial default buildslot: actual reds were index321/5,
+material348/2, skin309/1 and diagnostic307/1, all exit1 at new fan expectations. After
+`52eec9d4`, **index326/326, material350/350, skin310/310, glTF316/316, diagnostic308/308**,
+all exits0 plus aggregate0:9 new expected failures resolved,0 additional native failures.
+`src/test/gltfIndexCheck.ms`, `gltfMaterialCheck.ms`, `gltfSkinCheck.ms` and
+`gltfDiagnosticCheck.ms` own the buffer/layout/winding/picking/tangent/skin/diagnostic pins.
+The implicit65535/65536-vertex fixtures execute the existing u16/u32 promotion boundary;
+large accessor-count refusal still uses short buffers, not huge allocations.
+
+Existing oracle runner regenerated/checked **2/2 AGREES**, tolerance0, against actual Heaps
+`2b84cc23`, Haxe4.3.7/Nodev24.18.0. `tests/oracle/gltfFan3d.cases` passes synthetic fan data
+through real `loadGltf` and compares18 connectivity fields with Disc's triangle output after
+explicit center-last ->center-first source-ID relabeling. It compares counts/anchor frequency/
+first+last triangles, not positions, whole buffers or a Heaps glTF loader. Three relevant
+reference sources byte-match across pins. Source tree `99431b214bbc1871b7c17af99f19e07d56e7c8ac`.
+
+CLI JS acceptance is **not** green: actual oracle run exits1 with10 type diagnostics before
+codegen. `src/assets/image.jms` exposes async browser loading, not the native synchronous
+`decodeImage/imageFormatOf/ImageError/ImageFormat/Pixels` exports imported by gltf.ms; DOM,
+Readonly<ImageView> and unknown-value diagnostics accompany the export mismatch. Minimal
+`out/m6GltfJsImportControl20261021.ms` removes all fan/oracle inputs: C exits0/prints false,
+JS exits1 with the exact same10 diagnostics and locations. This scopes an existing platform
+API gap, not Ray's normalizer TDZ or a newly established compiler bug. No importer/platform
+bypass was applied. Browser emcc is a separate target, unrun here; CLI JS failure is not its
+verdict. Small passing Mikk fan fixtures do not close the held sphere-sort UB.
+
+Receipts: `out/m6Fan{Index,Material,Skin,Diagnostic,}RedB1f63337f20261021.{log,exit}`;
+`out/m6Fan{Index,Material,Skin,Gltf,Diagnostic,Heaps,Oracle,Js}GreenB1f63337f20261021.{log,exit}`.
+Native aggregate `out/m6FanGreenB1f63337f20261021` is0; reference aggregate
+`out/m6FanReferenceB1f63337f20261021` is1 because JS failed. Import controls are
+`out/m6FanJsImportControl{C,Js,}B1f63337f20261021.{log,exit}`; exact diagnostic comparison is
+`out/m6FanJsImportScopeAuditB1f63337f20261021.log`. No full-index, external-asset render,
+GPU, browser, device-loss, performance or whole-stack acceptance is added.
+
+### glTF required emission declaration, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`
+`h3d/shader/pbr/PropsValues.hx` carries `emissiveValue` through `__init__` and `fragment`.
+This establishes its existing scalar-emission mechanism, not glTF extension declarations.
+Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_gltf/src/loader/mod.rs` `load_material` multiplies linear `emissive_factor` by
+`emissive_strength().unwrap_or(1.0)`; its crate manifest enables that glTF extension feature.
+No exact gltf-rs lock resolution or executed Bevy comparison is claimed.
+
+Khronos glTF `b43260ee1291134a94b3098d415f54f479a59508`, "Specifying Extensions", requires
+required names to appear in `extensionsUsed`. At the same revision,
+`extensions/2.0/Khronos/KHR_materials_emissive_strength/README.md` supplies a unitless multiplier,
+default 1; it does not forbid declaring this extension required. Its exclusion of use with
+`KHR_materials_unlit` is not permission to introduce unlit rendering here.
+
+The bounded next row is declaration parity for emission already interpreted by `gltf.ms`
+`emissiveStrengthOf` / `loadEmission`: a required declaration must not discard those semantics.
+Reuse `decodeGltf`'s existing required-name gate, not a registry, new material model or shader.
+Keep unknown required names and existing material refusals; do not reopen production PBR.
+The existing fixture and `gltfProgramOf` / `gltfBlockOf` consumers in `gltfMaterialCheck.ms`
+carry the pins. Initial preparation changed no production.
+
+Visibility run, 2026-10-21: Windows native `msc test src/test/gltfMaterialCheck.ms`, serial
+through default buildslot, binary/support BUILD `b1f63337f` unchanged at admission and audit,
+tree `bd48c3baec5a008364e6ae010bc37fdbfded8cf8`: **337 pass / 3 fail**, actual exit 1.
+Failures were the two required-declaration successes and the negative-strength `OutOfRange`
+expectation, all intercepted by the required-name gate. Optional controls and unknown-name
+refusals before those assertions passed; success assertions after a failed guard did not run.
+No compiler error occurred. Receipt: `out/m6RequiredEmissionRedB1f63337f20261021.{log,exit}`.
+This establishes reds, not rendered acceptance or clearance of the T0 blocker.
+
+The subsequent gate change passed `msc test src/test/<name>.ms` serially on the same BUILD:
+`gltfMaterialCheck` **340/340**, `gltfCheck` **316/316**, `gltfDiagnosticCheck` **308/308**,
+all three exits 0 plus aggregate 0. CPU source tree:
+`eeef701f7811e19e00d91e4b1dd3c7b7a1323fbe`. The positive matrix now executed; no payload,
+material block, renderer or shader changed. Receipts:
+`out/m6RequiredEmission{name}GreenB1f63337f20261021.{log,exit}` (empty name is aggregate).
+The whole-index compiler blocker and full native/gate3D/web acceptance remain separate.
+
+### Oriented-box pair overlap: CPU checkpoint
+
+`orientedBounds.ms` ports `h3d.col.OrientedBounds::collideOrientedBounds`'s 15-axis SAT:
+three face normals per box and nine edge cross axes. Explicit center, unit orthogonal axes
+and nonnegative half sizes reuse Vec3; reflected frames and closed zero-size points/flat
+boxes are valid. Nonfinite values, negative half sizes and invalid frames return errors.
+No Collider hierarchy, matrix decomposition, quaternion, empty-Bounds policy or GPU path.
+
+The primary's `abs(R) + 1e-10` guard is preserved: near-contact results are conservative,
+not exact mathematical overlap. Intermediates widen before subtraction/dot products; finite
+float32 centers may differ by more than float32 can hold. Inputs are not changed.
+
+Missing-module red1 → `msc check`0, native **307/307**, CLIJS **69/69**; real Heaps
+**31 distinct cases**, **31 boolean fields Haxe/C/JS exact**, including all 15 separating
+axes, contacts, reflection, degenerate closed boxes, epsilon and widened differences.
+C/JS counterfactuals separately omit every SAT axis: **15/15 red each**, with all baseline
+controls passing. The counterfactual wrapper's log-parser error is retained; independent
+receipt review0 verifies the actual expected child failures, not a fabricated green exit.
+
+Final oracle receipts are `out/m6OrientedBounds*Afcd22f1920261021Retry2.*`; unchanged
+source/unit evidence is Retry1. Earlier Retry1 oracle had only25 distinct cases because
+uppercase IDs replayed `face`; it is not31-row acceptance. Corrected IDs reran actual
+Heaps/C/JS; kept packet `out/tmp/orientedBounds/oracleRetry2/`. SDKafcd unchanged;
+no whole-index, WebAssembly, GPU, performance, gate or land claim. Prefix2 stays unchanged.
+
+### Frustum against an oriented box: CPU checkpoint
+
+`Frustum3D.intersectsOrientedBounds` ports `h3d.col.Frustum::hasOrientedBounds` over
+`OrientedBounds::testPlane`: per plane, the support radius `Σ half·|n·axis|` added to the
+centre's signed distance, culled when the sum is below zero, all six planes (Heaps'
+`checkNearFar` default). Heaps' plane is `n·p − d` and Void's `n·p + w`, so the oracle hands
+Heaps `d = −w`; plane normals are not normalized on either side. The box is validated by the
+same `validateOrientedBounds` rules as the pair overlap; malformed boxes return its errors.
+Frustum planes are taken as given, as Heaps does. No renderer culling path changes.
+
+Actual missing-export red (BUILD `afcd22f19`, `out/m6FrustumOrientedBoundsRedAfcd22f1920261021.*`),
+then on BUILD `81084f1bb` the single-file check **305/305** and real Heaps **19/19** cases agree:
+each plane culling, plane contact, a rotated box whose aligned twin is culled at the same
+centre, zero-size points, distant, skewed and unnormalized planes. Receipts
+`out/m5FrustumObb{Green,Regen,Oracle}20261022.*`. No index, gate, JS, GPU or perf claim.
+
+### World-line miter math: independent CPU checkpoint
+
+`worldGraphicsMiter` evaluates only `h3d.scene.Graphics::flushLine`'s joined offset from
+three points and a nonnegative world width. Heaps' explicit XY restriction maps to XZ;
+height does not change the offset. Open/closed path handling, colors, indices, MeshData
+publication, bounds and a renderer are **not** implemented by this math helper. It neither
+chooses the pending world-bounds policy nor substitutes world width for default pixel lines.
+
+The join is deliberately uncapped: the actual sharp-corner offset is
+`(-20.049875259399414, 0, 1)` at width2. Existing void2d `strokePoly` caps at four and depends
+on node/draw machinery, so it is not the same primitive. Degenerate projected segments,
+exact reversals, nonfinite inputs and unrepresentable offsets return explicit errors.
+
+Actual missing-module red1, then `msc check`0, native **306/306**, CLIJS **68/68**, actual
+Heaps **8/8**, **24 fields Haxe/C/JS exactly equal**. Real Graphics world-path CPU buffers
+are captured through BigPrimitive GPU-flush interception; only host mode selection bypasses
+GPU texture setup, not the tessellation algorithm. Cases pin both axes, both turn signs,
+uncapped sharp/shallow joins, ignored height and zero width. Reference files byte-equal;
+SDK `afcd22f19` unchanged. Receipts `out/m6WorldGraphicsMiter*Afcd22f1920261021Retry1.*`,
+kept generated packet `out/tmp/worldGraphicsMiter/oracleRetry1/`.
+
+Secondary Bevy `157e1ce6`, `bevy_gizmos/src/config.rs:26,254-260`, describes Miter versus
+Bevel/Round and pixel width/perspective. It was read, not executed or ported; no Bevy
+runtime, performance, GPU, whole-index or integration claim. Full World Graphics/bounds
+and default LineShader remain separate held work; prefix2 is unchanged by this helper.
+
+### Plane point projection: CPU query checkpoint
+
+`plane.ms` reuses existing `Vec4` plane convention **normal dot point + w = 0**, so Heaps'
+`d` becomes `-w`. Primary `h3d/col/Plane.hx::distance/project/projectTo` explicitly requires a
+normalized normal. That precondition is checked, not silently repaired; raw unnormalized
+frustum planes cannot be passed as though already normalized. Signed distance returns
+float64; projection keeps float64 intermediates and refuses an unrepresentable Vec3.
+No new plane object, collider hierarchy, empty-volume or overlap policy.
+
+Actual missing-module red1 precedes the helpers. Installed binary/support `afcd22f19`:
+native **306/306**, CLIJS **68/68**, actual Heaps **8/8**, **32 fields** C/JS exactly equal;
+max Heaps delta **2.1769374747293568e-7** within declared `1e-5` (axis cases use zero).
+Axes, reversed normal, oblique planes, point on plane, negative offset and primary projectTo
+are measured; local tests additionally pin nonfinite/unit-normal/range refusal and widened
+distance above float32 range. Reference Plane file byte-equal inspected/executed. Receipts
+`out/m6PlaneProjection*Afcd22f1920261021.*`, generated oracle packet
+`out/tmp/planeProjection/oracle/`; SDK unchanged. No GPU/gate/whole-index/land run.
+
+**Why this missing query, not another triangle raycaster.** Current MeshData already has
+Moller-Trumbore nearest hits, UVs, culling, u16/u32/nonindexed and element ranges; pick and
+SkinGeometry consume it, including broad/narrow and transforms. That covers the relevant
+Polygon/PolygonBuffer/Object/Transform/Optimized/Skin ray use cases, not every Collider API.
+Point/FPoint arithmetic is Vec3. Capsule/Cylinder/Seg and triangle closest-point source
+raise zero-axis/empty/degenerate-shape questions; these were deferred rather than reopen
+that parked policy family. HeightMap's stale bisection variable and OBB pair SAT remain
+separate source frontiers, not new implementations or measured acceptance. No new
+shape-policy divergence was approved. The bounded independent addition here is
+normalized-plane point projection only.
+
+### Graphics3D: default screen-line CPU encoding only
+
+`graphics3d.ms` ports default `h3d.scene.Graphics` (`is3D=false`) **CPU input encoding**, not
+rendering: four coincident roots, endpoint delta in NORMAL, UV corners, per-segment RGBA,
+primary index connectivity and centerline endpoint bounds. `width` is global for the whole
+mesh: later positive `lineStyle` changes it for all segments; nonpositive sizes retain it.
+Clear retains cursor/style. The safe constructor explicitly initializes the black style,
+equivalent to reference construction followed by `lineStyle()`, not uninitialized channels.
+
+**Not ordinary LitTextured geometry.** The existing 12-float storage is reused, but normals
+contain directions and positions do not yet contain expanded corners/endpoints. Do not draw
+it with Lit, recompute its normals, or claim triangle picking from those coincident roots.
+Heaps `LineShader.hx` supplies endpoint extension and pixel/depth-dependent expansion.
+That program is not implemented here yet. `is3D=true` world-width XY-plane miter is a separate
+future row; no world-width substitute, h2d rectangle or filled polygon was added.
+
+Actual missing-module exit1 precedes implementation. Native **308/308**, CLIJS **70/70**,
+actual Heaps **13/13**, **117 fields Haxe/C/JS exactly equal**. Coverage includes all four
+UV corners, directions, color/alpha, indices, bounds, chain/move breaks, global width,
+nonpositive style sizes, clear, signed float colors and finite zero-length encoding.
+The separate wide-index test uses MeshData promotion beyond 65K; it does not claim Heaps'
+BigPrimitive batch behavior there. Zero-length CPU encoding is not GPU normalization proof.
+
+The actual Heaps Graphics writes through captured BigPrimitive, with only GPU `flush`
+intercepted. Three reference files byte-equal between inspected/executed checkouts. SDK
+`afcd22f19` unchanged. `out/m6Graphics3d*Afcd22f1920261021Retry{1,2}*` and kept
+`out/tmp/graphics3d/oracleRetry1/` contain receipts; initial void-Result constructor type
+errors are retained, corrected to existing `Result.ok(null)` idiom. Retry2 adds only shape
+unit coverage; production/oracle inputs and prior 13-case evidence are unchanged.
+No shader/program/ABI, whole-index, gate3d, GPU, web or land acceptance for this CPU stage.
+
+### Trail: CPU history and ribbon checkpoint
+
+Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
+`buildTrailMesh`; the host owns visibility, pause/elapsed-time policy and upload/materials.
+Geometry is **world-space**: submit with an identity model, not the sampled object's transform
+again. No Scene node kind, texture resolver, serializer, renderer or shader was added.
+
+Primary `h3d/scene/Trail.hx::sync` supplies strict movement thresholds, retained pending
+endpoint, capped 20-way Bezier subdivision, normalized quaternion slerp, strict expiration,
+zero-width tail replacement, age/width/UVs and connectivity. Y/Z mapping follows the existing
+Heaps-to-Void particle frame; normals and rotation follow it too. Existing `MeshData`'s
+12-float LitTextured format, white RGBA, index promotion and bounds own the output contract.
+No instance float, ProgramKey bit or preset shader change is required for that CPU format.
+Positive duration/movementMax and finite representable poses/corners are explicit Result
+gates; nonfinite or overflowing geometry is not published.
+
+Actual missing-module red1 preceded implementation. Installed binary/support `afcd22f19`:
+native **311/311**, CLIJS **73/73**, actual Haxe Heaps oracle **14/14**, **120 fields**;
+C/JS values exactly equal, max Heaps delta **1.6671231717335644e-7** within the predeclared
+`1e-5` numeric tolerance (strict history rows use zero). Cases include noncollinear curvature,
+changing orientation, all three half-turn extraction branches, angle, thresholds, TTL,
+pending/clear, normals, UV and indices. The reference runs actual `Trail.sync`; only
+DynamicPrimitive's GPU `flush` is intercepted, and an empty host context supplies time and
+visibility. No reference algorithm is copied into that capture adapter. Inactive pending
+coordinates are not compared. Three inspected/executed reference files were byte-equal.
+
+Receipts `out/m6Trail*Afcd22f1920261021*`, kept generated oracle packets under
+`out/tmp/trail/oracleRetry{1,2}/`; SDK unchanged. Final changes after Retry2 are two formatting
+wraps using existing syntax, checked at <=100 columns; numerical evidence scope is unchanged.
+The writer currently allocates fresh CPU mesh arrays; no frame-cost/performance claim.
+No whole-index, gate3d, upload, GPU pixels, web/device or land acceptance for this row.
+
+### Retained light color: native/reference checkpoint
+
+`setLightColor` follows the existing light-kind/liveness gate and stored RGB packet.
+Primary Heaps `scene/fwd/{PointLight,DirLight}.hx::set_color` assigns the shader color;
+Bevy's public PointLight color is secondary source-only. Actual Haxe/Node Heaps and native
+Void `collectLights` agree on all **3 rows / 9 RGB fields exactly**: point color, black,
+directional signed/HDR color. This is numeric shader-color correspondence, not reference
+identity, gamma conversion or rendered-pixel/performance acceptance. The five relevant
+inspected/executed Heaps light/shader files were byte-equal.
+
+Actual missing-export red1 precedes the setter. On installed binary/support `afcd22f19`,
+native **303/303**, old Scene **344/344**, and all **four expected misuse aborts** pass.
+CLIJS unit/oracle and unchanged old Scene stop before logic at `DOOR_UNIFORM_SLOTS`.
+A minimal import of Door from actual main **`72c8aacf`** gives C **300/300**, JS the same
+startup failure: the existing `ca53522d` provider gap, not a new light regression. Decision10
+(provider versus explicit deferral) remains person-owned/open: **no JS acceptance or waiver**.
+Retry1's abort build succeeded but its Python relative executable path failed to launch;
+Retry2 uses the same executable's absolute path and verifies all four named messages.
+Receipts `out/m6LightColor*Afcd22f1920261021Retry{1,2}*` preserve both attempts; SDK unchanged.
+No whole-index, gate3d, GPU or land run for this row; single-entry checks only under buildslot.
+
+### Independent M6 prefix accepted
+
+Original CPU/import prefix `42c0be54` landed as `abf2b47a` on main `3a70f335` via the shared
+worktree tool and the full `gate.sh → gate3d.sh → web3d.sh` chain. Installed binary/support
+`afcd22f19`, clean private upstream sokol `2e75443d`, tools `11d0cf67`. Actual Retry3 exits
+**0/0/0**: T0 OFF **1903/1903**, ON **2290/2290**, no new reds, seven native and three gate3d
+known skips. WebGL2 **37/37**; actual WebGPU campfire presents three frames, 91% non-clear.
+This accepts only the independent prefix, not later M6 work or held Mikk/other decisions.
+
+Initial full attempt failed the camera allocation guard. Existing upstream `72c82945`
+restores explicit value unions for camera/particle packets; the original unmodified
+allocation stage then passes all ten paths. No local allowlist or parallel packet fix was
+landed. Retry2 was aborted for a GPU collision and is **not a verdict**. Retry3 is the sole
+land verdict; SDK unchanged, own HOLD release0 and END complete. Preserved receipts, source
+packets and images are under `out/retiredPrefix20261021/`, with SHA256 manifest; original
+`m6PrefixLand*Afcd22f1920261021Retry3` logs retain the complete command/skip output. No push.
+
+### Installed compiler unpark: M6 JS consumers verified
+
+Deployment owner installed user-approved binary/support `afcd22f19`; this lane did not sync
+or alter the SDK. Actual unchanged consumers ran in M6, not an archived copy:
+`meshTranslationCheck` **66/66**, `meshUvScaleCheck` **66/66**, `meshNormalsCheck` **67/67**,
+`rayPlaneCheck` **68/68**, `sphereRayCheck` **67/67**, `boundsSphereBuildCheck` **66/66** JS,
+all exit0. Original receiver calls, same-name locals and direct rich assertions remain.
+
+Original comma declarations in `meshNormals3d.cases::normalData` now execute on C and JS:
+**5 rows / 27 fields**, C-JS exactly equal, maximum Heaps difference
+**1.07096936874e-8**, within unchanged declared tolerances. No statement splitting, clone
+wrapper, alternate normalizer, import removal or weaker assertion. Installed BUILD remained
+unchanged through the batch. Receipts `out/m6PostSync*Afcd22f1920261021*`; the batch's exit1
+comes only from separately attempted C-coupled Scene/material startup, not these consumers.
+Nim Audit closed the comma/rich-assert cards after these real receipts. Historical b1
+failures below remain historical evidence, not current M6 holds for those roots.
+
+The two unchanged morph consumers were also answered: original **66pass/1fail(67)** at the
+pending-buffer assertion; M5 PositiveParent exits1 over/underflow, without a local summary.
+Neither throws TDZ. Original emission suggests in-place move-swap `msValAssign`; the parent
+limit expression suggests overflow, but neither new cause is reduced/stack-confirmed here.
+Morph remains integration-HOLD, not feature-green; no source/stash change or resumed work.
+Its card and capture card retain that distinction; the owner keeps the unpark note open.
+
+CLIJS C-host metadata/provider startup, Mikk, empty-overlap, weighted blending, GPU/browser,
+full-index and full-stack acceptance remain independent; SDK sync does not close them.
+
+### Strict node ancestry: native/reference checkpoint
+
+Primary Heaps `b9aa6dcb`, `h3d/scene/Object.hx::contains`, follows parent links before
+comparing, so self is excluded. Executed Heaps `2b84cc23` Object source is byte-identical.
+Secondary Bevy `157e1ce6`,
+`bevy_ecs/src/relationship/relationship_query.rs::AncestorIter::next`, likewise follows
+`R::get` before yielding a parent; source-only comparison. Both assume a tree, not a cyclic
+graph. Void's existing `placeNode` cycle gate continues to protect the parent chain.
+
+`src/void3d/scene.ms::containsNode` reuses that chain and the existing liveness gate for both
+identifiers. It adds no alternate hierarchy, world/render sync, reparenting rule or query
+framework. Live detached ancestors remain meaningful; stale or foreign identifiers are not
+silently treated as a valid negative relation.
+
+On binary/support `b1f63337f`, source tree `71ce7c1a96d11c91a168eefa4ad75408a58bb03c`, actual
+red **6 missing-method diagnostics**, exit1; native **304/304**, existing Scene **344/344**,
+both0. Tests cover direct/deep/self/reverse/sibling relations, reparenting/order, detached
+subtrees, a 256-parent chain and stale/foreign/closed identifiers. Actual Heaps **6/6**, C
+oracle0; independent comparison finds all **6 rows / 18 classifications exactly equal**.
+
+CLIJS new unit and generated oracle stop at the traced missing Void provider before the
+query. Aggregate1 retained; no JS acceptance, provider workaround, SDK sync or scope choice.
+Commands: `msc test [--target=js] src/test/sceneContainsCheck.ms`, existing `scene3dCheck.ms`,
+existing oracle regen/check plus generated-source JS attempt. Receipts
+`out/m6SceneContains*B1f63337f20261021*`; `ReferenceFields` is C/Heaps only. No GPU/browser,
+full gate or performance verdict.
+
+### Subtree material collection: native/reference checkpoint
+
+Primary Heaps `b9aa6dcb`, `h3d/scene/Object.hx::getMaterials` and
+`h3d/scene/Mesh.hx::getMaterials`, appends each mesh's material once by object identity,
+self before children; recursive=false includes only the starting mesh. Visibility is not
+a filter. Executed Heaps `2b84cc23` Object/Mesh sources are byte-identical. Secondary Bevy
+`157e1ce6`, `bevy_asset/src/handle.rs::PartialEq for Handle<A>`, compares asset IDs rather
+than contents; source-only identity comparison, not an equivalent subtree collector claim.
+
+`src/void3d/scene.ms::getMaterials` extends the existing fresh-result/liveness/handle model
+and reuses `getMeshes`; it adds no traversal framework or GPU metadata provider. Distinct
+material handles remain distinct even when values match. This is the fresh-list branch of
+Heaps' query; the optional caller-array append overload is not exposed. Results borrow no
+resource hold from the scene, and queries do not acquire pins.
+
+On installed binary/support `b1f63337f`, source tree
+`2402f7ce922637b9c5c2969689f1247b1557ed12`, actual corrected red **12 missing-method
+diagnostics**, exit1; native **304/304**, existing Scene **344/344**, prior mesh enumeration
+**305/305**, all0. Actual Heaps **6/6**, C oracle0; independent comparison finds all
+**6 rows / 18 count/identity/order fields exactly equal**. Tests additionally pin unchanged
+material pin counts, owned results, detached/hidden/layered nodes and stale/foreign/closed
+handles. Final native fixture formatting rerun `TestsGreen...Retry1` remains304/304.
+
+CLIJS unit and generated oracle each abort at the already traced missing Void provider
+`DOOR_UNIFORM_SLOTS` before query execution. No JS acceptance, stub, dependency removal,
+SDK/compiler fix or provider-scope approval is claimed; aggregate1 is retained.
+
+Commands: `msc test [--target=js] src/test/sceneMaterialsCheck.ms`, existing Scene/mesh tests,
+existing oracle regen/check and generated-source JS attempt. Receipts
+`out/m6SceneMaterials*B1f63337f20261021*`; `ReferenceFields` is C/Heaps only. The first red
+also had two fixture errors from an omitted `bits` extension import; Retry1 adds that
+ordinary dependency (LANG extension visibility), leaving method calls/assertions unchanged
+and isolating only missing getMaterials. No GPU/browser/full gate or performance verdict.
+
+### CLIJS GPU-door startup: missing Void provider, not a compiler regression
+
+This startup failure has no entry in `tests/PENDING.md` or `tests/PENDING3D.md`; no known-red
+waiver was added during this trace. The default gate does not run MetaScript's JS backend:
+`gate.sh` T0 all-off/all-on and `gate3d.sh` tests/oracles use native msc; browser coverage is
+C/emcc/WASM. Node in the web runner is automation, and Node in oracle regeneration runs
+Haxe's reference output. Those paths do not prove `msc --target=js` consumers.
+
+On binary/support `b1f63337f`, production tree `33a7b4446429cc30a4aaef17f1a900f5aee5f61b`,
+minimal `out/tmp/doorConstant/constant.h` defines a literal C static const, a macro-initialized
+one and a const alias. Importing them: native **302/302**, JS **61pass/3fail(64)**, each name
+undefined. Importing equivalent real `.ms` constants: native **302/302**, JS **64/64**, all0.
+The changes between controls are the provider language/file and its C macro/alias syntax;
+no GPU, Scene, Texture or helper module participates. This rules out a door-specific slot
+value, shader registration order or one macro expansion as the sole trigger.
+
+The mechanism is explicit, not conjectured: recompiler main `afcd22f19`,
+`src/module/cimport/emit.ms::emitVariable`, creates `extern const` declarations without
+initializers; `src/codegen/js/declarations.ms::emitImportDecl` skips `.h` imports because
+there is no JS counterpart. Nim `3525b4d`, `compiler/jsgen.nim::genVarStmt` skips variable
+initialization for `sfImportc` in the same way. NIM-REF CK-109 says C header parsing is
+MetaScript-only and the real C compiler supplies the header. An extern name needs its host
+binding; it is not a portable constant-value import. Nim Audit independently confirmed this
+ownership. No compiler inbox card, compiler patch or changed refusal policy was created.
+
+Void has no `door.jms` or `gpu3d.jms` provider. The resolver's existing JS-extension order
+falls through to `.ms`, whose C imports cannot supply those bindings in Node. Merely
+replacing slot constants would move the failure: `gpu3d.ms` eagerly calls
+`gpu3dProgramBase`/`gpu3dLayoutBase`, and `indexPrograms` reads C program count/keys at load.
+Their C provider `gpu3d.c::registerOnce` registers the actual generated layouts/programs.
+`pipeline.ms` and descriptor users also consume C header constants. These are real CPU
+metadata dependencies, not GPU calls that can honestly be replaced with zero/no-op stubs.
+
+A root JS path therefore needs real CPU metadata/bindings, preserving the authoritative
+program/ABI tables and native parity. Existing `.jms`/extern binding and shader-generation
+idioms are the candidates to extend; a Node GPU renderer is not implied. This expands the
+M6 geometry/importer lane into shared GPU-metadata ownership, so implementation waits for
+the person's scope decision. Deferring CLIJS for these C-coupled families is a different
+acceptance scope, not a green result. No provider, gate change, duplicate ABI literals,
+helper dependency removal, stub or new metadata format was implemented by this trace.
+
+Commands/receipts: `msc test [--target=js] out/tmp/doorConstant/{headerCheck,controlCheck}.ms`,
+`out/m6DoorConstant*B1f63337f20261021.{log,exit}`; emitted header/control modules retained
+at `out/tmp/doorConstant/emission/`. Aggregate1 is expected from the failing header cells.
+At that b1 trace, no SDK sync or browser/GPU rerun occurred; previous native and emcc
+evidence is not recast as CLIJS acceptance.
+
+### Subtree mesh enumeration: native/reference checkpoint, CLIJS startup held
+
+Primary Heaps `h3d/scene/Object.hx::getMeshes` at `b9aa6dcb` includes self when it is a Mesh,
+then children depth-first in insertion order, without visibility filtering. Executed
+Heaps `2b84cc23` Object/Mesh files are byte-identical. Real headless Mesh construction and
+`getMeshes` ran without a Window or renderer; no substitute reference scene walk was used.
+Secondary Bevy `157e1ce6`,
+`bevy_ecs/src/relationship/relationship_query.rs::DescendantDepthFirstIter`, uses a stack
+with reversed child pushes for the same descendant order but excludes the starting root.
+Root inclusion here follows primary Heaps, not Bevy's descendants-only iterator.
+
+`src/void3d/scene.ms::getMeshes` reuses `findByName`'s stack and generation/liveness gates.
+The fresh-list query returns existing node identifiers; it does not add another scene,
+ECS query, renderer walk, world sync or resource-pin ownership model. Live detached
+subtrees remain queryable because traversal needs no world transform. The optional
+append-to-an-existing-array overload of Heaps is not exposed by this fresh-value entry.
+
+On binary/support `b1f63337f`, source tree `995d7a8b6cc0f93ea4664a6522740abb07623e5f`,
+actual red **18 missing-method diagnostics**, exit1; native **305/305** and existing Scene
+**344/344**, both0. New tests cover self/order, hidden/layered nodes, reparent/reorder,
+unchanged prior results, detached/empty/group/light roots and stale/foreign/reused/closed
+identifiers. Actual Heaps **6/6** and C oracle0; independent comparison finds all
+**6 rows / 18 count/order fields exactly equal**. No geometry-buffer or render equality claim.
+
+CLIJS new unit, old Scene control and generated oracle each abort with the same
+`ReferenceError: DOOR_UNIFORM_SLOTS is not defined` before query execution. This is the
+existing GPU-door/platform dependency of Scene, not a passed JS query or a new compiler
+diagnosis. No import substitution or platform stub was added to obtain acceptance.
+
+Commands: `msc test [--target=js] src/test/sceneMeshesCheck.ms`, existing `scene3dCheck.ms`,
+existing oracle regen/check and generated-source JS attempt. Receipts
+`out/m6SceneMeshes*B1f63337f20261021*`; `ReferenceFields` is native/reference only.
+Aggregate1 retained. First read-only red classification missed ANSI-prefixed diagnostics;
+`AuditFirstAttempt` retains that failed bookkeeping step, `RedClassification...Retry1`
+strips ANSI and confirms only missing getMeshes. No API/test rewrite or new build was needed.
+No GPU/browser/full-gate, performance, SDK sync or empty-overlap decision change.
+
+### Sphere bounds accumulation: historical b1 checkpoint, JS since cleared on afcd
+
+Primary `h3d/col/Bounds.hx::addSpherePos` at inspected Heaps `b9aa6dcb` grows each endpoint
+with center±radius. Actual Heaps `2b84cc23` Bounds source is byte-identical. Secondary Bevy
+`157e1ce6`, `bevy_shape/src/bounding/bounded3d/mod.rs::BoundingSphere::aabb_3d` followed by
+`Aabb3d::merge`, gives the same positive-radius envelope/union; source-only comparison.
+Signed and zero parameters follow primary scalar updates, not radius normalization or a
+new empty-overlap policy. No `addSphere` wrapper was needed alongside MeshData's generator.
+
+`src/void3d/bounds.ms::addSpherePos` reuses the existing ref builder and f64/Result preflight
+model. On binary/support `b1f63337f`, source tree `8f5d98cd8c2e1064b67e8dd474592969fc837d0a`,
+actual red **2 missing-export diagnostics**, exit1; native **304/304**, prior bounds **327/327**.
+The new native tests reach the existing ray/slab consumer through accumulated actor bounds.
+Actual Heaps **10/10**; C/JS oracle0, independently **10 rows / 30 coordinates exactly equal**,
+serialized delta0. These scalar fixtures do not clear direct rich-assert ref calls.
+
+Historical b1 JS unit was **63pass/3fail(66)**; unchanged afcd rerun is66/66 above. Direct `assert addSpherePos(box,...).ok` copies Bounds3D
+into `__pa_0` and mutates that ref instead of the original. Saved ESM15–17 proves the same
+rich-assert root already parked for mesh transforms/normals; original calls stay registered.
+Nim Audit reports its copied-tree control on builder `afcd22f19` passes JS66/66, covered by
+landed rich-assert fix `033aa30d6`; that owner result is not installed SDK acceptance here.
+
+Old `boundsCheck.ms` CLIJS additionally aborts before its geometry tests with
+`ReferenceError: DOOR_UNIFORM_SLOTS is not defined`. A minimal control importing only
+`src/test/helpers.ms::approx`, with no bounds/sphere import, reproduces the same startup1.
+Dependency read: helpers→gpu/texture→gpu/door. No helper split, import removal, runtime
+workaround or new compiler diagnosis was used to obtain a green. Native/oracle evidence
+must not be presented as full old-unit CLIJS acceptance.
+
+Commands: `msc test [--target=js] src/test/boundsSphereBuildCheck.ms`, prior `boundsCheck.ms`,
+existing oracle regen/check and retained generated-source JS run. Receipts
+`out/m6BoundsSphereBuild*B1f63337f20261021*`, exact `CrossBackend`; emitted unit/door packets
+`out/tmp/boundsSphereBuild/jsCapture/`; standalone `out/m6BoundsJsHelperImportControl*`.
+Aggregate1 retained. No GPU/browser/full gate/performance or empty-overlap approval.
+
+### Sphere ray picking: historical b1 checkpoint, JS since cleared on afcd
+
+Primary `h3d/col/Sphere.hx::rayIntersection` at Heaps `b9aa6dcb` uses the unit-direction
+Ray contract, nearest nonnegative entry, −1 miss, zero for an inside/surface origin, and
+includes exact tangency. Its `bestMatch` argument is unused. Executed Heaps `2b84cc23` has
+byte-identical Sphere/Ray files. Secondary Bevy `157e1ce6`,
+`bevy_shape/src/bounding/raycast3d.rs::RayCast3d::sphere_intersection_at`, also clamps inside
+hits to zero and includes contact, but additionally caps a finite cast's length. That cap
+is not part of this unbounded-ray port; no Bevy numerical execution is claimed.
+
+`src/void3d/sphere.ms::rayIntersection` reuses the existing Ray and f64/Result boundary,
+not a new collider hierarchy, arbitrary-direction solver or implicit ray normalizer.
+Unit direction remains the precondition already stated by `ray.ms`; caller-supplied
+nonunit directions are outside this acceptance, not silently repaired.
+
+On binary/support `b1f63337f`, source tree `1faac0893569cc06919dcc75392bd0283ecb64de`,
+actual corrected red **8 missing-export/API diagnostics**, exit1, then native **305/305**.
+Prior query C303/JS65 and projection C302/JS64 all0. Full new JS unit is **66pass/1fail(67)**:
+the unchanged camera-style `Ray.fromPoints` consumer throws `Cannot access 'lengthSquared'
+before initialization`. Saved math3d ESM43–44 contains the same-name local/function call;
+existing compiler capture card names this registered site. No local rename, direct-ray
+substitution, skip or approved SDK sync. Aggregate remains1, not complete JS acceptance.
+
+Actual Heaps **6/6**; literal-unit-ray oracle C0/JS0. Independent comparison finds all
+**6 rows / 18 float32 distances exactly equal**, serialized delta0, including all-axis
+forward/reverse, misses, tangency, inside/surface and translated/signed/zero-radius controls.
+This oracle does not exercise or clear the failing camera constructor.
+
+Commands: `msc test [--target=js] src/test/sphereRayCheck.ms`,
+`sh scripts/oracle.sh regen|check tests/oracle/sphereRay3d.cases`, followed by JS execution
+of the retained generated oracle source. Receipts `out/m6SphereRay*B1f63337f20261021*`;
+`CrossBackend` owns the exact comparison, `out/tmp/sphereRay/jsCapture/` owns emitted
+unit/math3d/ray packets. Original red included an out-of-test assert and missing explicit
+Infinity/NaN narrowing in the fixture; that attempt is retained, Retry1 isolates API red.
+No GPU/browser, full-stack, performance or empty-bounds divergence acceptance.
+
+### Empty bounds query frontier: evidence only
+
+Before adding sphere/AABB overlap, the existing empty-box contract was audited. On installed
+binary/support `b1f63337f`, source tree `f5d1391a2238f8e71bc595f9f3ec5c7dfdc9205f`, read-only
+probe C **301/301**, JS **63/63**, all0: point/positive-radius sphere containment is false;
+`closestPoint` returns zero; frustum bounds testing returns true, conservatively not culling.
+Existing raw `Bounds3D.collide(empty, Bounds3D.all())` returns true in either order. A second
+variant, negative extent on one axis inside a surrounding box, also returns true despite
+`isEmpty()`. Thus the recorded special cases do not define one universal overlap policy.
+
+Actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0, reproduces those raw box-overlap results.
+`h3d/col/Bounds.hx::inSphere` returns false for an origin sphere against the empty marker,
+but true when a positive-radius sphere is centered on the marker's min corner. A one-axis
+inverted box can also return true. The nonempty formula is squared distance from raw
+endpoint clamp **< r²**; secondary Bevy `157e1ce6` Aabb3d/BoundingSphere uses **<= r²**.
+These were source-read, not claimed to share contact semantics.
+
+A geometric overlap API must not silently bless empty occupancy. The proposed raw tests
+were reverted before implementation and retained at `out/tmp/boundsSphere/rawProposal/`.
+No overlap API, empty guard, existing-query change or approved divergence was added. Any
+choice must distinguish exact overlap from the frustum's conservative unknown-bounds rule.
+
+Commands/receipts: `msc test [--target=js] out/m6EmptyBoundsContractProbe20261021.ms`,
+`out/m6EmptyBounds*B1f63337f20261021{,Retry1}.{log,exit}`. Heaps-only reference probe uses
+existing `scripts/oracle.sh regen` on `out/tmp/boundsSphere/emptyReferenceOnly.cases`;
+its deliberately failing MS stub is unexecuted, not a port/oracle acceptance claim.
+
+### Sphere closest point: primary projection, C/JS acceptance
+
+`sphere.ms::closestPoint` follows primary Heaps `b9aa6dcb`
+`h3d/col/Sphere.hx::closestPoint` and `h3d/Vector.hx::normalized`: radial surface projection,
+including interior points; exact/near center returns the center under EPSILON2=1e-20.
+Signed-radius behavior is retained. This is not volume clamping: secondary Bevy `157e1ce6`,
+`bevy_shape/src/bounding/bounded3d/mod.rs::BoundingSphere::closest_point`, explicitly returns
+an interior input unchanged. That branch was read, not executed; no general Bevy equality
+is claimed. Existing Result/output-range handling is reused for the declared float32 Vec3
+surface, not an alternate general normalizer or a change to old capture sites.
+
+On binary/support `b1f63337f`, red **9 missing-API/type diagnostics**, exit1 before codegen.
+Native **302/302**, JS **64/64**; prior sphere query native **303/303**, JS **65/65**, all0.
+Actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0: sphere oracle **15/15 AGREES**, with the
+original8 rows unchanged. Independent C/JS/Heaps audit: **15rows/45 float32 fields equal**;
+new7 projection rows add21 fields. Relevant Sphere/Vector/Math sources byte-match the
+inspected pin. Checked source/index tree `1ac6c46032157b8a8dc24802ce7dbcfb0d0ab8c9`.
+
+The first exact comparison exposed a representation mismatch, not a branch mismatch:
+Heaps' raw double above-cutoff output0.9999999999999999 versus float32 output1. The
+reference adapter now narrows only projection outputs through Haxe FPHelper float32,
+matching the declared API; axis cases keep zero tolerance. Original raw packets remain at
+`out/tmp/spherePoint/unroundedReference/`. No production method/assertion was changed for
+that calibration. Off-axis comparison retains its declared1e-6 tolerance.
+
+Receipts `out/m6SpherePoint*B1f63337f20261021*`: unit/query0, original oracle1 retained,
+reference Retry1 aggregate0; independent audit `CrossBackend`. No rendered/GPU/browser,
+performance, full-index or whole-stack acceptance. That b1 run did not clear older holds;
+afcd consumers above since clear parser/rich-assert roots, not Mikk.
+
+### Area-weighted normal rebuilding: historical b1 checkpoint, oracle since cleared
+
+`meshData.ms::recomputeNormals` ports primary Heaps `b9aa6dcb`
+`h3d/prim/Polygon.hx::addNormals`, `h3d/Vector.hx::normalize`, `hxd/Math.hx::EPSILON2`
+through the existing
+interleaved writer/area-sum idioms. Stored vertex IDs determine smoothing, not positional
+welding. Primary accumulation is Float64 with squared-length cutoff1e-20 before narrowing
+normal words. The general float32 Vec3 normalizer has different intermediate range and
+cutoff semantics, so it is not substituted; its old JS capture site remains unchanged.
+Secondary Bevy `157e1ce6`, `Mesh::try_compute_area_weighted_normals` and its shared custom
+normal path, accumulates face-area normals and changes only NORMAL. Default smooth normals
+are angle-weighted, not this operation. Existing tangent attributes are retained by both
+reference paths; no automatic tangent-frame, morph/skin rebuild or GPU update is claimed.
+
+On binary/support `b1f63337f`, missing-export red1 before codegen. Native **305/305**,
+MeshData **361/361**, Pick **329/329**, all0. New unit executes18 layout/skin/index variants,
+attribute/topology/bounds preservation, winding cancellation, degenerate/unused vertices,
+wide intermediates, primary cutoff and atomic invalid-input guards. JS **66pass/1fail(67)**:
+only the retained direct rich-assert call loses its ref mutation. Its actual emission copies
+MeshData into `__pa_0` and calls `recomputeNormals([__pa_0,0])`; no Vec aliasing or source
+workaround. Existing `2026-10-21-js-rich-assert-ref-argument-mutates-temporary.md` records
+this additional real consumer; a candidate guard is not installed-consumer acceptance.
+
+Actual Heaps `2b84cc23` reference side executes **5rows**, exit0, Haxe4.3.7/Nodev24.18.0;
+five relevant primary files byte-match the inspected pin. **C/JS comparison was held on b1**:
+unchanged `meshNormals3d.cases::normalData` comma declaration lists stop shared parsing.
+Reduced const/let lists fail C/JS; split-statement controls pass both, and Node runs the exact
+original source. No intentional refusal was found in LANG/STYLE/TSG-REF/NIM-REF; compiler
+card `2026-10-21-comma-variable-declaration-list-parse.md` owns the parked port. No splitting
+or alternate oracle was used. Native aggregate and overall batch remain1, not green.
+
+Checked source/index tree `419185862182da60b1db12f3b9be641283b27102`. Receipts
+`out/m6MeshNormals*B1f63337f20261021*`, `out/m6CommaDecl*B1f63337f20261021*`; original packets
+`out/tmp/meshNormalsOracleParseCapture/`, `out/tmp/meshNormalsJsCapture/`. No full JS-oracle,
+browser/emcc, GPU, performance, full-index or whole-stack acceptance.
+
+### Embedded image data: native checkpoint
+
+`gltf.ms::loadInlineImage/loadImageView/loadTexture` extends the existing byte-image path,
+not an external resolver. Primary Heaps `b9aa6dcb`, `hxd/res/Image.hx::getInfo/getPixels`,
+detects byte formats and decodes pixels; glTF `b43260ee` Images/spec2283-2295 requires
+both the URI media type and any explicit JSON MIME to match content. Secondary Bevy
+`157e1ce6`, `bevy_gltf/src/loader/mod.rs::load_image`, decodes embedded image bytes, but its
+JSON MIME override accepts some contradictory declarations; those are invalid glTF here,
+not an author-visible divergence on valid inputs. The supported transport profile is raw,
+canonical PNG/JPEG Base64: no percent-escaped/non-base64 payloads or external URI access.
+An exporter requiring another RFC2397 transport form needs a separate profile extension,
+not a filesystem/network resolver. The supplied-buffer contract is unchanged; buffer URI
+precedence is not decided.
+
+The private byte-source ownership follows the existing packed `GltfAccessorBuffer` idiom.
+The installed Buffer codec is reused, with lexical/canonical checks because its malformed-
+input behavior is permissive. Standalone RFC/binary/canonical-roundtrip prerequisite:
+C **301/301**, JS **63/63**, all0. URI-only images no longer require a binary buffer;
+mesh buffer requirements and buffer-view range checks still protect supplied-byte reads.
+
+On binary/support `b1f63337f`, actual red **299 pass/6 fail**, exit1. Native image tests
+**305/305**, material **350/350**, glTF **316/316**, diagnostics **308/308**, minimal import
+control0; native aggregate0. Actual Heaps `2b84cc23` oracle **4/4 AGREES**, Haxe4.3.7/
+Nodev24.18.0; four relevant Image/Any/Resource/Pixels sources byte-match the inspected pin.
+Independent field audit: C/Heaps **4rows/30 fields exactly equal**. PNG rows cover all four
+RGBA pixels; JPEG dimensions/count and three RGB samples agree (declared RGB tolerance2,
+observed maximum delta0), not a whole-JPEG-buffer claim. PNG fixture was independently
+encoded with Python struct/zlib/Base64; JPEG encodes the existing ImageMagick fixture.
+Checked source/index tree `f4a48ce920273177aaee4439349ce2a5025026fe`.
+
+CLI JS is **not accepted**: new unit and minimal import control have the same9 type
+errors before codegen, 0new versus the prior10. Direct read-only source access no longer
+copies `Readonly<ImageView>` into a mutable local; the remaining image.jms exports/DOM/
+unknown failures remain. No compiler fix or SDK sync is inferred from that local change.
+No browser/emcc, GPU/upload, performance, full-index or whole-stack acceptance.
+
+Receipts `out/m6EmbeddedImage*B1f63337f20261021*`: native GreenRetry2/aggregate0,
+`Heaps`0, `OracleRetry1`0, field audit `ReferenceFields`, CLI scope audit `JsImportScopeAudit`.
+First Green's missing match parentheses, Retry1's scene-less fixtures, and the first
+oracle's30 fixture-width diagnostics remain; no production gate was loosened for those.
+The retained original oracle packet is `out/tmp/embeddedImage/oracleFirstTypeRed/`.
+
+### Buffer URI source boundary: unchanged
+
+`gltf.ms::loadGltf/decodeGltf` still consumes the caller's supplied buffer, as its module
+contract states. Read-only probe on binary/support `b1f63337f`, source tree
+`b9fbe970e44604ba4321832dd79256cbe38b4d94`: C **301/301**, exit0. A data-buffer URI encoding
+a triangle of x extent1, supplied with extent2 bytes, produces extent2; supplying extent1
+produces extent1. Empty supplied bytes return `OutOfRange`, not an implicit URI decode.
+A filename or HTTPS buffer URI with supplied bytes also succeeds without resolving it.
+These buffer metadata cases differ from external **image** URIs, which remain refused.
+
+Probe `out/m6BufferUriPrecedenceProbe20261021.ms`, command
+`msc test out/m6BufferUriPrecedenceProbe20261021.ms`, receipts
+`out/m6BufferUriPrecedenceProbeB1f63337f20261021.{log,exit}`. The embedded payload was
+independently checked against72 little-endian bytes. Automatic buffer-URI decoding needs
+an explicit supplied-byte/URI contract; the reference loaders have no analogous second
+argument. No precedence, conflict-error rule or new entry point has been implemented.
+
+### Uniform mesh position scale: CPU/reference acceptance
+
+`meshData.ms::scaleUniform` follows primary Heaps `b9aa6dcb`
+`h3d/prim/Polygon.hx::scale/getCPUBuffer/getBounds`: uniform position multiplication,
+other packed attributes retained, bounds updated through the existing writer helper.
+Secondary Bevy `157e1ce6`, `bevy_mesh/src/mesh.rs::try_scale_by`, returns before normal/
+tangent edits when scale is uniform, including negative factors. Zero follows Heaps;
+Bevy's debug assertion rejects all-zero scale, so that case is not claimed equal to Bevy.
+This is base Polygon/value-data behavior, not Heaps' derived Sphere point/normal aliasing,
+collider metadata, nonuniform transforms, skeleton retargeting or GPU resource updates.
+
+On binary/support `b1f63337f`, actual red **2 missing-API/type diagnostics**, exit1 before
+codegen. After `08e9b034`, native **304/304**, JS **66/66**, MeshData **361/361**, Pick
+**329/329**, all0 plus aggregate0. `src/test/meshScaleCheck.ms` executes72 factor/layout/
+skin/index variants, bounds/attribute/topology preservation, positive/negative/zero Lit
+position picking and atomic failure guards. The zero-scale face is degenerate and misses
+CPU ray picking; its point bounds are not empty. Existing translation/UV bodies, common
+helpers and error ordinals did not change; their scoped prior proof is carried, not rerun.
+
+Existing oracle runner regenerated/checked actual Heaps `2b84cc23` **3/3 AGREES**, tolerance0,
+Haxe4.3.7/Nodev24.18.0. C/JS/Heaps **3rows/27 named fields exactly equal**, independently
+compared: positive, negative and zero bounds plus retained CPU attribute samples. It uses
+independent attribute arrays in base Polygon, not shared derived-object identity or whole-
+buffer/rendered equivalence. Five relevant Heaps sources byte-match across pins. Source
+tree `883f9c69847e23d6c96bef1ea7c215a66fccae0d`.
+
+Receipts `out/m6MeshScale{Red,Heaps,RedReference}B1f63337f20261021.{log,exit}`,
+`out/m6MeshScale{Tests,JsTests,MeshData,Pick,Oracle,Js,}GreenB1f63337f20261021.{log,exit}`;
+exact field audit `out/m6MeshScaleCrossBackendB1f63337f20261021.log`. No timing, GPU/browser,
+full-index or whole-stack acceptance. This independent operation does not clear the earlier
+Ray/UV interpolation or rich-assert holds in that b1 run; unchanged afcd consumers now pass.
+
+### CPU UV0 scaling: historical b1 checkpoint, JS picker since cleared
+
+`meshData.ms::scaleUvs` extends the same interleaved CPU writer used for position baking.
+Primary Heaps `b9aa6dcb`, `h3d/prim/Polygon.hx::uvScale`, rejects missing UVs and scales
+shared UV objects once through an identity map. Void stores a separate value slot per
+vertex, so each UV0 slot is updated once; equal values are not deduplicated. Like that
+reference operation, normals/tangents/other attributes stay unchanged; this is not tangent
+regeneration or a new material transform policy. Secondary Bevy `157e1ce6`,
+`bevy_mesh/src/mesh.rs::ATTRIBUTE_UV_0/try_attribute_mut`, supplies Float32x2 attribute editing;
+no dedicated UV-scale helper was found or executed there. No extra UV sets or GPU upload.
+
+Actual red: **3 missing-API/type diagnostics**, exit1 before codegen. With `0455905f`, native
+new suite **304/304**, shared translation **304/304**, MeshData **361/361**, Pick **329/329**,
+all0. JS new suite **65pass/1fail (66)**: its separate36-case signed/zero-factor, layout,
+skin and index-storage slot matrix passes, as do failure guards; only real CPU picked-UV
+consumer fails on the already parked `interpolateUv` stride TDZ. The top-level mutating
+assertion also retains rich-assert's copied-ref emission, currently masked by that stride
+error before UV comparison. Both compiler cards name the site; neither call moved outside
+assert nor the original stride local was renamed. Test remains in the existing index.
+
+Existing oracle runner: actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0,
+**3/3 AGREES**, tolerance0. C/JS/Heaps **3rows/27 named fields exactly equal**, separately
+compared. `tests/oracle/meshUvScale3d.cases` uses shared UV objects in the real reference,
+then compares getCPUBuffer UV values and retained normal/tangent/index samples with the
+actual packed writer. It is not whole-buffer, rendered-normal-map or GPU equivalence.
+Three relevant source files byte-match across pins. Binary/support `b1f63337f`, source tree
+`e81c096e78bc94ac8a3364920418183c98ccc3d1`.
+
+`src/test/meshUvScaleCheck.ms` owns preservation, picking and atomic/error pins. Its UV-only
+writes leave position bounds unchanged; preflight rejects missing UVs, malformed storage,
+nonfinite factors and unrepresentable targets before publishing any mutation. The existing
+coordinate-range helper now serves XYZ and UV consumers, hence the translation regression
+check. This is behavior coverage, not a float-precision or performance campaign.
+
+Receipts `out/m6MeshUvScale{Red,Heaps,RedReference}B1f63337f20261021.{log,exit}` and
+`out/m6MeshUvScale{Tests,JsTests,Translation,MeshData,Pick,Oracle,Js}GreenB1f63337f20261021`.
+Aggregate Green is1 because JS picker fails; arithmetic/reference checks are0. Exact field
+audit `out/m6MeshUvScaleCrossBackendB1f63337f20261021.log`; actual test ESM preserved at
+`out/tmp/meshUvScaleJsCapture/unit.emitted.js`. No SDK/compiler/vendor edits, source-level
+workaround, full JS-consumer, GPU/browser/full-index/performance or full-stack acceptance.
+
+### Mesh position baking: historical b1 checkpoint, JS consumers since cleared
+
+`meshData.ms::translate` extends the existing CPU geometry-writer idiom, not node placement
+or automatic GPU resource updates. Primary Heaps `b9aa6dcb`,
+`h3d/prim/Polygon.hx::translate/getCPUBuffer/getBounds`, shifts positions while retaining the
+other attribute arrays and computes bounds from the shifted points. Secondary Bevy
+`157e1ce6`, `bevy_mesh/src/mesh.rs::try_translate_by`, also edits positions only; it warns that
+entity AABBs are not updated automatically. Void's owned MeshData bounds already belong to
+its writers, so this operation uses existing `recomputeBounds` rather than leaving that cache
+stale. `draw.ms::newMesh/addMeshData` owns GPU upload/CPU-copy lifetime separately. Ordinary
+placement still uses existing node transforms; this helper is explicit pre-upload baking.
+No skeleton/IBM retargeting, posed-skin integration or normal/tangent transform policy is added.
+
+Prerequisite public vertex/tangent/skin/index writers ran on C/JS, both0, producing
+`3 3 24 1` (vertices,indices,stride,tangentW). The first red mixed missing API with owned
+fixture mistakes (`assert` in a non-test helper and a missing bounds-extension import);
+those outputs remain. Corrected Retry1 isolates **4 missing-API/type diagnostics**, exit1
+before codegen, not an executed test verdict. After `56800619`, native **304/304**,
+existing MeshData **361/361** and Pick **329/329**, all0. New native coverage uses18 layout/
+skin/index combinations, CPU picking, owned-copy/empty cases and atomic failure guards.
+`src/test/meshTranslationCheck.ms` owns those conditions. Input/target coordinates are
+preflighted before any write, then existing bounds recomputation runs; no speed claim.
+
+Existing oracle runner executes actual Heaps `2b84cc23`, Haxe4.3.7/Nodev24.18.0:
+**3/3 AGREES**, tolerance0. C/JS/Heaps **3rows/27 named fields exactly equal**, independently
+compared, including translated getCPUBuffer positions, getBounds and retained attributes.
+`tests/oracle/meshTranslation3d.cases` adapts Heaps' CPU attribute order to Void's interleave;
+this is not whole-buffer identity or GPU acceptance. Five relevant Heaps files byte-match
+across pins. Binary/support `b1f63337f`, source tree `70dc7c57cd66cb5fb7a314721944667a77eafc6a`.
+
+Historical b1 full JS unit was **64pass/2fail (66)**, exit1; unchanged afcd rerun is66/66:
+- Existing `meshData.ms::interpolateUv` has `const stride=data.stride()`, emitted as
+  `const stride=stride(data)`, so textured CPU picking reaches the known extension/local TDZ.
+  Existing compiler card `2026-10-16-js-extension-local-name-capture.md` owns this sighting.
+- `assert translate(copy,...).ok` is rich-decomposed into a copied ref-argument temporary;
+  translation succeeds on that temporary but the caller's copy is unchanged. This is NOT
+  struct/Vec aliasing; that initial attribution was retracted after reading emitted code.
+  New compiler card `2026-10-21-js-rich-assert-ref-argument-mutates-temporary.md` retains the
+  reduction: C305/305, JS64pass/3fail(67), with scalar Result/bool/owned-Vec triggers and
+  ordinary-call, loop/plain-assert and deep-copy controls passing. No ref-call movement,
+  clone wrapper, stride rename, weaker assertion or skip was applied.
+
+Receipts `out/m6MeshTranslation{PrerequisiteC,PrerequisiteJs,Red,Heaps}B1f63337f20261021`,
+isolated red `out/m6MeshTranslationRedB1f63337f20261021Retry1`, and
+`out/m6MeshTranslation{Tests,JsTests,MeshData,Pick,Oracle,Js}GreenB1f63337f20261021.{log,exit}`.
+Aggregate Green is1 because the JS unit fails; exact field comparison is
+`out/m6MeshTranslationCrossBackendB1f63337f20261021.log`. Rich-assert receipts
+`out/m6RichAssertRefProbe{C,Js,}B1f63337f20261021.{log,exit}`; emitted test/reduction saved in
+`out/tmp/meshTranslationJsCapture/` (meshData.afterOracle is explicitly a later emission).
+No SDK/compiler edits, GPU/browser/performance/full-index or full JS-consumer acceptance.
+
+### Frustum bounds frontier: reference probe only
+
+Heaps `b9aa6dcb` `h3d/col/Frustum.hx::intersectPlanes/getBounds` intersects eight named
+plane triples, transforms those points, then encloses them. Actual registered Heaps
+`2b84cc23` execution agrees on three finite controls: identity bounds `[-1,-1,0;1,1,1]`,
+90-degree/aspect-two perspective with near1/far9 `[-18,-9,1;18,9,9]`, then scale(2,3,-1)
+and translation(7,-2,4) `[-29,-29,-5;43,25,3]`. All18 coordinates agree within1e-9.
+This alone does not settle a public finite-volume contract for arbitrary raw Frustum planes:
+replacing identity's far plane with constant-positive `(0,0,0,d=-1)` gives flat z=0 bounds,
+while `hasPoint(0,0,100)` is true and the returned box excludes it. Default degenerate planes
+return Heaps' empty sentinel box. Copying nominal corner enclosure is not evidence of a
+boundedness validator or conservative enclosure of an unbounded half-space intersection.
+
+Secondary Bevy `157e1ce6`, `bevy_shape/src/view_frustum.rs::ViewFrustum::corners` and
+`half_space.rs::HalfSpace::intersection_point`, has fallible corner triples; it explicitly
+permits NaN far corners for inactive far half-spaces. Source read only, not Rust execution.
+No Void API, error/precondition policy, validator, renderer change or forced divergence was
+implemented. A later bounds API must settle canonical finite-camera input versus arbitrary
+raw half-spaces first; this candidate does not hold up other reference-settled CPU work.
+
+Five relevant Heaps files byte-match across pins. Haxe4.3.7/Nodev24.18.0, installed b1f63337f,
+source tree `8e55a66f01e48bacd29599145b875163eaa23ea0`. Probe:
+`out/tmp/frustumBoundsReference/FrustumBoundsProbeRetry1.hx`, build/run via its runRetry1.sh.
+Actual build/run/aggregate0 receipts `out/m6FrustumBoundsReference{Build,Run,}20261021Retry1`.
+Original probe printed all rows but left the Node event loop alive: owned Node was terminated,
+Run/aggregate143; original source/logs/exits preserved without Retry1 suffix. Retry1 uses the
+existing Haxe-oracle harness's explicit process exit. No port/native/JS/GPU/perf verdict.
+
+### Sphere point/pair predicates
+
+`src/void3d/sphere.ms` `Sphere3D` adds point membership and pair overlap in the same value-
+geometry idiom as Bounds3D, not a collider hierarchy, physics system or scene integration.
+Primary Heaps `b9aa6dcb`, `h3d/col/Sphere.hx::contains` / `inSphere`, uses strict squared-
+distance thresholds. Surface points and pair tangency therefore do not count. Radius zero
+keeps Heaps' exact predicates: point membership and zero/zero overlap are false, while a
+zero-radius center inside a positive-radius sphere satisfies the pair threshold.
+Secondary Bevy `157e1ce6`, `bevy_shape/src/bounding/bounded3d/mod.rs`,
+`BoundingSphere::intersects`, uses `<=` and includes tangency; this port follows Heaps, not
+that contact policy. Internal distances/combined radius use float64; no normalization or
+new renderer/ABI/model-transform policy is involved.
+
+Actual API red: unresolved sphere module, exit 1 before codegen. After `339e06de`, native
+**303/303** and JS **65/65** tests passed, both exit 0. Four groups cover translated centers,
+all axis surfaces/interior/diagonal separation, pair symmetry/nesting/tangency and radius zero.
+Actual Heaps `2b84cc23`, Haxe 4.3.7 / Node v24.18.0, regenerated/checked **8/8 AGREES**.
+C/JS/Heaps match **24/24 classifications exactly**, tolerance 0. Sphere reference source
+byte-matches `b9aa6dcb`; source tree `5664e77aa8563f35a63472c798da4bb7dd921604`, binary/support
+`b1f63337f`. These independent predicates do not replace the original Vec3 normalizer or
+claim to unpark the Ray/Plane JS compiler failure.
+
+Receipts: `out/m6SphereQueryRedB1f63337f20261021.{log,exit}` and
+`out/m6SphereQuery{Tests,JsTests,Heaps,Oracle,Js,CrossBackend}GreenB1f63337f20261021.{log,exit}`;
+aggregate `out/m6SphereQueryGreenB1f63337f20261021.{log,exit}`, actual 0. Tests are registered
+in the existing index and the oracle glob. No GPU, performance or whole-index claim.
+
+### Full sphere containment in Bounds
+
+Zone/region code can ask whether the **whole** sphere fits:
+`bounds.containsSphere(center, radius)`, with all inputs in the same coordinate space.
+A center inside the box is insufficient when its radius crosses a face. Primary Heaps
+`b9aa6dcb`, `h3d/col/Bounds.hx:201`, checks center-minus/plus-radius against all six limits.
+Both limits are closed, like `containsBounds`: a radius-zero sphere on a max face is contained,
+although the existing half-open point `contains` predicate rejects that face. No automatic
+coordinate transform, Sphere object, scene trigger or physics policy was added.
+
+Secondary Bevy `157e1ce6`, `bevy_shape/src/bounding/bounded3d/mod.rs`, has closed AABB
+containment but its cross-type Sphere method is intersection via closest point, not full
+sphere containment; no direct `contains_sphere` appears there. This port follows Heaps'
+full-volume predicate using existing Bounds/Vec3/scalar data and float64 comparison arithmetic.
+
+Actual missing-API red: **10 property diagnostics**, exit 1 before codegen. After `33874910`,
+**327/327 native tests passed**, exit 0. Three new groups cover center-vs-volume, all min/max
+face contacts/crossings, empty/degenerate boxes and radius zero. Actual Heaps regenerated
+and checked **28 rows: 25 AGREES + 3 existing declared differences**, exits 0/0. Executed pin
+`2b84cc23`, Haxe 4.3.7 / Node v24.18.0, unchanged binary/support `b1f63337f`.
+The C and JS programs match on all 28 rows; all **7 new rows / 21 volume classifications**
+also match Heaps exactly, tolerance 0. Prior 21 reference rows are unchanged. CPU source tree
+`bb8d1510d2f12faf64d14f8e03c0ecea4782a63b`.
+
+Receipts: `out/m6BoundsContainsSphereRedB1f63337f20261021.{log,exit}` and
+`out/m6BoundsContainsSphere{Tests,Heaps,Oracle,Js,CrossBackend}GreenB1f63337f20261021.{log,exit}`;
+aggregate `out/m6BoundsContainsSphereGreenB1f63337f20261021.{log,exit}`, actual 0. Pure JS
+oracle clients avoid native-only GPU fixture imports; no existing test/normalization producer
+was renamed or bypassed. No renderer/ABI change, GPU capture, speed or whole-index claim.
+
+### Line/plane world hit: native checkpoint, JS producer blocked
+
+`ray.linePlaneIntersection(plane)` returns `Result<Vec3 | null, RayPlaneError>` using existing
+Vec4 coefficients `normal dot point + w = 0`. The name deliberately says **line**: primary
+Heaps `b9aa6dcb`, `h3d/col/Ray.hx:83` `intersect`, accepts signed hits behind the origin and
+returns the origin for a coplanar line. Parallel separation returns null. Its absolute
+parallel/coplanar tolerance remains 1e-10. Computation stays float64 until publishing float32
+coordinates; nonfinite inputs and unrepresentable output coordinates are explicit errors.
+No separate Plane/collider type or scene picking integration was added.
+
+Secondary Bevy `157e1ce6`, `bevy_shape/src/ray.rs::Ray3d::intersect_plane` and
+`plane_intersection_point`, instead require denominator and forward distance above
+`f32::EPSILON`. This API preserves Heaps' line meaning, not Bevy's half-ray semantics.
+Before implementation, a direct nullable-Vec3 Result protocol probe passed C **302/302** and
+JS **64/64**, covering two point payloads, null miss and error. That does not close the older
+compound-result compiler card for every union/carrier.
+
+Actual API red: **13 missing enum/method diagnostics**, exit 1 before codegen. Native
+`rayPlaneCheck.ms` then passed **306/306**, exit 0. Actual registered Heaps `2b84cc23`, Haxe
+4.3.7 / Node v24.18.0, regenerated the new oracle and native check: **12/12 AGREES**, exits 0/0.
+Ray/Plane sources byte-match `b9aa6dcb`. Cases include forward/behind/zero-distance, coplanar,
+parallel, stationary, oblique, coefficient scaling and real Frustum near/far plane consumers.
+CPU source tree `c4ffe2d0c32524a4112d2bf66c9bf267efba6ce3`, checkpoint `ef4326e8`, BUILD `b1f63337f`.
+
+**Historical b1 JS was blocked**: **62 passed / 6 failed (68)**; unchanged afcd rerun is68/68. The existing
+`Ray.fromPoints -> Vec3.normalized` producer emits
+`const lengthSquared = lengthSquared(a)` in `math3d.js`, causing TDZ before the six queries.
+The original local at `src/math/math3d.ms:82` is unchanged. Reduced same-source controls:
+direct Vec3 squared length and Quat normalization pass; Vec3 normalization alone fails;
+C **302/302**, JS **63/1**. This is a new same-module sighting on existing compiler card
+`../.inbox/compiler/2026-10-16-js-extension-local-name-capture.md`, now owned by Nim Audit.
+No local rename, alternate normalizer, producer bypass or JS skip. Both tests and native
+oracle remain registered. Installed afcd remeasurement above clears this site's capture hold.
+
+Receipts: `out/m6RayPlaneRedB1f63337f20261021.{log,exit}`,
+`out/m6RayPlane{Tests,JsTests}GreenB1f63337f20261021Retry1.{log,exit}` (0/1),
+`out/m6RayPlaneRetry1B1f63337f20261021.{log,exit}` (aggregate 1),
+`out/m6RayPlane{HeapsNative,OracleNative,NativeReference}B1f63337f20261021.{log,exit}` (all 0),
+`out/m6RayNormalizationCapture{C,Js,}B1f63337f20261021.{log,exit}` (0/1/1).
+Repro source `out/m6RayNormalizationJsCapture20261021.ms`, emitted JS
+`out/tmp/rayPlaneJsCapture/math3d.emitted.js`. The first JS attempt stopped on an unnecessary
+C-only GPU test-helper import, a distinct setup failure retained in its original receipt.
+Deleting that unneeded dependency also strengthened the integer-axis checks to exact equality;
+it did not alter the real normalization producer or weaken the failing JS cases. No GPU,
+performance, complete JS or whole-index acceptance is claimed for this checkpoint.
+
+### World-sphere frustum culling
+
+Apps can test a world-space volume, not just its center:
+`frustum.intersectsSphere(worldCenter, worldRadius)`. A sphere touching/crossing a camera
+plane can remain a candidate even when `containsPoint(worldCenter)` is false. This follows
+Heaps `b9aa6dcb`, `h3d/col/Frustum.hx::hasSphere`, and the center/radius data consumed from
+`h3d/col/Sphere.hx`. It is the same conservative six-plane culling test, not a narrow-phase
+sphere/frustum collision solver; corner false positives can remain. No collider or physics.
+
+Heaps normalizes its planes on load. `Frustum3D` retains its existing unnormalized Vec4
+representation, so the rejection test compares signed plane distance against
+`-radius * length(normal.xyz)`, in float64. Only spatial normal components participate.
+The shared distance helper keeps the previous point predicate unchanged. Contact and radius
+zero follow Heaps; Bevy's related sphere predicate rejects contact instead. Near/far both
+participate. Callers supply world-space spheres: no new model-transform/radius-scaling policy,
+renderer filtering switch, layout/ABI change or automatic culling integration was added.
+
+Actual missing-API red: **18 property diagnostics**, exit 1 before codegen, not an executed
+test verdict. After `d44cef04`, **317/317 native tests passed**, exit 0. Four new groups cover
+six-plane contact/separation, radius-zero point agreement, perspective slopes/depth/camera
+movement, and stored nonunit planes. Actual Heaps regeneration/check both exited 0;
+Frustum/Sphere source matches `b9aa6dcb`, executed pin remains registered `2b84cc23` with
+Haxe 4.3.7 / Node v24.18.0. **17/17 oracle rows agree**. C, JS and the real-Heaps snapshot
+match exactly for **51/51 classifications**, including the prior eight point rows unchanged.
+Calibration covers finite world-space centers/nonnegative radii; no GPU or speed proof.
+CPU source tree `369a5676de22053c1037b5686514452d19aeea55`, binary/support BUILD `b1f63337f`.
+
+Receipts: `out/m6FrustumSphereRedB1f63337f20261021.{log,exit}` and
+`out/m6FrustumSphere{Tests,Heaps,Oracle,Js,CrossBackend}GreenB1f63337f20261021.{log,exit}`;
+aggregate `out/m6FrustumSphereGreenB1f63337f20261021.{log,exit}`, actual 0. Existing oracle
+retention option kept the generated source for the JS run. Existing Bounds/list filtering
+still uses its unchanged predicate; the native suite retains its old consumer checks too.
+
+### World-point frustum containment
+
+World-space anchors/markers can ask whether their point lies in the camera volume without
+constructing geometry: `frustum.containsPoint(worldAnchor)`. This is frustum containment,
+not occlusion, material visibility or an automatic change to renderer filtering.
+
+Primary Heaps `b9aa6dcb`, `h3d/col/Frustum.hx:91` `hasPoint`, checks its six signed half-spaces
+and includes contact. The new method uses existing `Frustum3D` Vec4 planes and the same
+`normal dot point + w` sign, evaluating it in float64. Positive plane normalization cannot
+change this sign, so stored planes need not be normalized. Near and far both participate,
+matching Heaps' default `checkNearFar=true`; no skip-depth option or new plane type was added.
+Secondary Bevy `157e1ce6`, `bevy_camera/src/primitives.rs::Frustum::intersects_sphere`, uses
+`<= 0` rejection for its zero-radius sphere, excluding contact. This port follows Heaps and
+its existing closed-contact Bounds culling policy, not a claim of Bevy contact parity.
+
+Actual missing-API red: 20 property diagnostics, exit 1 before codegen, not an executed test
+verdict. After `fe08b437`, **313/313 native tests passed**, exit 0. Three new groups cover all
+six outside planes/contact, perspective width/near/far/behind-eye, camera translation and
+unnormalized stored planes. Actual registered Heaps `2b84cc23` / Haxe 4.3.7 / Node v24.18.0
+regenerated the new oracle; its Frustum source byte-matches `b9aa6dcb`. **8/8 oracle rows agree**.
+The same generated query program ran on JS; a separate check compared C, JS and the generated
+Heaps snapshot exactly: **24/24 point classifications equal**, tolerance 0.
+CPU source tree `210d2125e91c92ec3ddfbf5f4a517207520b2624`, binary/support BUILD `b1f63337f`.
+
+Receipts: `out/m6FrustumPointRedB1f63337f20261021.{log,exit}`,
+`out/m6FrustumPoint{Tests,Heaps,Oracle}GreenB1f63337f20261021.{log,exit}`,
+`out/m6FrustumPoint{Oracle,Js}GreenB1f63337f20261021Retry1.{log,exit}`,
+`out/m6FrustumPointRetry1B1f63337f20261021.{log,exit}` and
+`out/m6FrustumPointCrossBackendGreenB1f63337f20261021.{log,exit}`. Retry aggregate exited 0.
+Original aggregate remains 1: the JS invocation followed oracle cleanup of its generated
+source and reported file-not-found, not a compiler/geometry failure. The retry uses the
+harness's existing `ORACLE_KEEP=1` retention option; no new runner or bypass.
+
+Existing Frustum layout, extraction, Bounds filtering and renderer/ABI are unchanged. Tests
+exercise existing list consumers too; no GPU/web capture, performance or whole-index acceptance
+is implied. The new case file is discovered by the existing gate3D oracle glob.
+
+### Bounding-sphere precision: back on the Heaps calculation
+
+On 2026-10-21, three new native tests demonstrated valid finite boxes producing nonfinite
+`boundingSphereRadius` results: **321 passed / 3 failed**, exit 1. Both C and JS print probes
+confirmed `NaN, NaN, NaN, Infinity` for subnormal line/flat extents, a wide line whose float32
+edge difference overflows, and a wide cube whose diagonal overflows before the final half.
+The final four radii themselves fit float32. This is not a request for a wider public API.
+
+The fix follows Heaps `b9aa6dcb`, `h3d/col/Bounds.hx:393`: widen endpoints before subtraction,
+compute squared diagonal/square root/half in float64, narrow once at return. Emitted C before
+and after is retained under `out/tmp/boundsSpherePrecision/{before,after}.c`; the export stays
+`float`, while the repaired edge intermediates are `double`. Bevy `157e1ce6`,
+`bevy_shape/src/bounding/bounded3d/mod.rs::Aabb3d::bounding_sphere`, also defines radius as half
+the diagonal; no Bevy numeric or performance comparison was executed. No new mechanism.
+
+**324/324 native tests passed**, exit 0. Repaired C and JS probes both exited 0 and printed
+identical four finite radii; a separate check matched each to the expected float32-rounded
+float64 calculation. Actual Heaps regeneration/check then exited 0/0: **21 cases, 18 AGREES
+and 3 existing declared differences**, including all four new radius cases. Their normalized
+outputs use tolerance 1e-5 and map a nonfinite result to a failing negative sentinel, not NaN.
+The obsolete `bounds-sphere-rescale` row and source marker were removed together; a targeted
+row/tag audit exited 0 with no unlisted source markers. CPU source tree
+`68ff77537f9e7ae8bb6a3a8e9bcd043dddd3d5c7`, implementation `56b24fa2`, binary/support `b1f63337f`.
+
+Receipts use prefix `out/m6BoundsSphere`: `BoundsRedB1f63337f20261021`,
+`{Repro,Js}RedB1f63337f20261021Retry1`, `{Repro,Js,Bounds}GreenB1f63337f20261021`,
+`{Heaps,Oracle}GreenB1f63337f20261021Retry1`, `OracleRetry1B1f63337f20261021`, and
+`{CrossBackend,Pending}GreenB1f63337f20261021`, each with `.log`/`.exit`. Original setup failures
+remain: the first print source omitted its top-level call (no numeric execution); the first
+oracle attempt referenced nonexistent `emit2` and stopped before codegen. Corrected fixture
+uses existing `emit1`; the original green-attempt aggregate remains exit 1, not overwritten.
+
+Only tests/oracle call this public radius method in the current source. Frustum/picking
+algorithms, Bounds layout and other accessors are unchanged, so their suites and capture
+controls had no new contract to observe and were not rerun. Full gate/GPU/web remain held.
+The result type remains float32: final radii outside its range still need a separately chosen
+wider API if a consumer requires them. No all-input finite-result or speed claim is made.
+
+### Weighted-quaternion frontier: reference safety boundary
+
+A read-only frontier probe on 2026-10-21 found that directly porting Heaps
+`h3d/Quat.hx:366` `weightedBlend` can lose a valid half-turn when equivalent input rotations
+use opposite quaternion signs. Actual registered Heaps `2b84cc23`, Haxe 4.3.7 / Node v24.18.0:
+
+| Inputs, weights 0.5/0.5, identity reference | X-axis result | Y-axis result |
+| --- | --- | --- |
+| Same half-turn quaternion twice | Correct half-turn | Correct half-turn |
+| Half-turn quaternion and its negation | Identity, wrong | Identity, wrong |
+
+These are finite unit quaternions. Only the second input's representation sign changes.
+The branch `if (mulRes.w < 0)` does not align opposite vector components when relative `w`
+is exactly zero; accumulation cancels, and `normalize` falls back to identity. Both axes
+reproduce the same invariant failure with passing same-sign controls. Haxe build exited 0;
+Node invariant probe exited 1, **2 failures / 4 cases**.
+
+A second probe crossed the real consumer boundary: public `LinearAnimation` constant curves
+-> `BlendSpace2D.createInstance` / `sync` -> animated Object's output matrix, with three
+blend-space points and an edge query yielding weights 0.5/0.5/0. The same two controls passed
+and two sign variants produced identity matrices, build 0 / invariant run 1. This was CPU
+Object animation, not a rendered or Skin/GPU test. `LinearAnimation.hx:201-219` preserves the
+sample's sign in decomposed output; `BlendSpace2D.hx:143-146` passes it to `weightedBlend`.
+Quat, LinearAnimation, BlendSpace2D and Animation source files byte-match the source-reading
+checkout `b9aa6dcb`; executed provenance remains `2b84cc23`.
+
+Probe sources are `out/tmp/weightedQuatReference/{WeightedQuatProbe,BlendSpaceProbe}.hx`;
+receipts are `out/m6{WeightedQuat,BlendSpace}Reference{Build,Run,}20261021.{log,exit}`.
+Secondary Bevy source `157e1ce6`, `crates/bevy_animation/src/animatable.rs`,
+`impl Animatable for Quat::blend`, uses iterative SLERP, not this relative normalized sum.
+No Rust execution or animation-graph weight-consumer comparison was performed; it is not a
+verified drop-in replacement. No new Void API, reference/vendor patch, intentional-divergence
+permission or failing oracle snapshot was added. Candidate multi-clip extension needs an
+approved safety contract before implementation. Existing two-clip composition is unchanged;
+primitive oracle acceptance below does not accept this candidate.
+
+### Executed primitive samples against Heaps
+
+On 2026-10-21, the existing `scripts/oracle.sh` harness ran `regen` then `check` for
+`tests/oracle/primitives3d.cases`, serial default buildslot. Both and aggregate exited 0:
+**11/11 AGREES**, no declared divergence. Windows native MetaScript binary/support BUILD
+`b1f63337f`; actual Haxe 4.3.7 / Node v24.18.0 and registered Heaps `2b84cc23` are recorded in
+the generated snapshot. CPU source tree `6185562952832e4dce27ea1d285390f7c5b70e26`.
+
+Registered haxelib is not the source-reading checkout at `b9aa6dcb`. Grid, GeoSphere, Sphere,
+Cylinder, Disc, Capsule, Polygon, Bounds, Point and UV files were byte-compared between those
+two checkouts and matched; no global haxelib configuration was changed. Executed provenance
+remains `2b84cc23`, not a claim that the whole newer checkout ran.
+
+Rows cover selected positions, unit-normal components, counts/UVs for Grid, GeoSphere, Sphere,
+Disc, vertical Capsule (including zero length), plus Bounds intersection. Reference normal
+components are normalized without mutating `Sphere.normals`, which aliases its positions:
+this compares the unit-normal output contract, not the unnormalized source buffer's length.
+The nonradial GeoSphere ID-6 anchor was confirmed by actual Heaps execution. Per-row tolerance
+is 1e-5; these finite selected samples are not full-buffer, rendered, Mikk or speed comparisons.
+Cylinder is not in this executed matrix. `gate3d.sh`'s existing oracle glob discovers the new
+case file; no new runner or bypass was added. Receipts:
+`out/m6PrimitiveOracleRegen20261021.{log,exit}`,
+`out/m6PrimitiveOracleCheckB1f63337f20261021.{log,exit}` and aggregate
+`out/m6PrimitiveOracleB1f63337f20261021.{log,exit}`.
+
+A separate actual Haxe Cylinder constructor probe then built and ran, exits 0/0. An apparent
+source-order concern was not a bug: generated JS passes `super(pts,null,normals)` because
+Haxe resolves the skipped optional UV parameter by type. No reference patch or dynamic type
+bypass was needed. Quads was also byte-compared equal between the two Heaps pins. After
+adding centered/bottom-origin Cylinder samples (private Quads fields read only in the oracle),
+`regen`, `check` and aggregate **all exited 0**, **13/13 AGREES** on the same toolchains.
+CPU source tree `a344b43ad3627954a83bf5a6e447122485101adf`. Original 11-row receipts remain;
+new oracle receipts append `Retry1` before their extensions. Constructor receipts:
+`out/m6CylinderReference{Build,Run,}20261021.{log,exit}`. This extends sampled CPU reference
+coverage to Cylinder; it does not extend Mikk, full-buffer, rendered or performance coverage.
+
+### Octahedral GeoSphere, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/GeoSphere.hx` starts with
+six octahedron vertices/eight faces, creates three normalized midpoint vertices per face
+without welding neighboring faces, and replaces each face with four. At subdivision level n,
+counts are `8*4^n - 2` vertices and `8*4^n` triangles. This is not Bevy's icosphere:
+`157e1ce6` `SphereMeshBuilder::ico` uses `hexasphere::IcoSphere`, a different base/subdivision
+contract and radial normals. Equal subdivision parameters are not equivalent geometry or
+valid performance controls.
+
+Heaps GeoSphere does not override `Polygon.addNormals`; when supplying Lit normals, follow
+that source's area-weighted per-index accumulation and normalize last. Welding midpoint IDs
+or substituting radial Sphere normals would change its shading. The source-arithmetic pin at
+level 1, ID 6 has mapped unit position `(0.5,0.707106781,-0.5)` and normal
+`(0.774596669,0.623347261,-0.106949482)`, not the radial vector. This anchor was calculated
+from the read source; no executed Heaps comparison is claimed.
+
+`meshData.ms` `addGeoSphere` reuses existing geometry writers, Y/Z mapping and reversed winding.
+It generates Lit-only data rather than inventing a spherical UV profile over Heaps' inherited
+planar UV fallback. Iterative int64 count preflight checks each level before multiplying the
+next one, so even signed-maximum requested subdivisions refuse without a huge loop/allocation.
+`meshDataCheck.ms` pins counts, source IDs/normals, winding, picking and wide append.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addGeoSphere`, no codegen.
+After implementation, serial mesh **361/361**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `e1333e9b47b1662f371f93618d6dd0430c789503`.
+Levels 0 through 3 and the nonradial normal anchor actually ran. Receipts:
+`out/m6GeoSphereRedB1f63337f20261021.{log,exit}` and
+`out/m6GeoSphere{name}GreenB1f63337f20261021.{log,exit}`. No UV, Mikk, GPU or speed claim.
+This remains above the sphere-dependent split point.
+
+### Shared grid primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Grid.hx` creates a shared
+`(width+1)*(height+1)` lattice, six indices per cell and UVs `(column/width,row/height)`.
+It starts at the origin with positions scaled by the requested cell dimensions. Bevy `157e1ce6`
+`crates/bevy_mesh/src/primitives/dim3/plane.rs` `PlaneMeshBuilder::build` uses the same shared
+lattice in XZ, but centers its geometry and expresses resolution as subdivisions plus two
+vertices. Use Heaps' origin/cell-count semantics, mapping its Y to Void Z and reversing
+winding so triangles agree with +Y normals. GeoSphere's octahedral subdivision is a separate
+unimplemented feature, not necessary machinery for this Grid row.
+
+`meshData.ms` `addGrid` extends the existing primitive writers and append guard. A positive
+cell count/size and finite total X/Z extents precede writes; int64 vertex preflight precedes
+the six-corners-per-cell expansion. `meshDataCheck.ms` pins both layouts, shared IDs, UV ray
+picking, winding and a generated 255x255-cell grid crossing the reserved u16 index boundary.
+This is flat mesh geometry, not terrain deformation, a scene node, collider or GPU feature.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addGrid`, no codegen.
+After implementation, serial mesh **358/358**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `ddb1a97f530512961de1f453a4a45dd310661d46`.
+The native check generated the full 65,536 vertices/390,150 indices before promoting/validating
+and appending another cell; it was not a fabricated vertex-array length. Receipts:
+`out/m6GridRedB1f63337f20261021.{log,exit}` and
+`out/m6Grid{name}GreenB1f63337f20261021.{log,exit}`. No Mikk, rendering or benchmark claim.
+
+### Vertical capsule primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Capsule.hx` constructor
+builds two half-sphere grids and an axial cylinder, with radial normals. Axis.Z followed by
+Void's Y/Z mapping gives the vertical form; straight length is the distance between cap
+centers, not the total tip-to-tip height. For `s` segments its source construction has
+`2*(s+1)^2 + 4*s + 2` vertices and `4*s*s` triangles, including degenerate cylinder triangles
+when straight length is zero (sphere geometry). Both source axes and winding must be mapped.
+
+Bevy `157e1ce6` `crates/bevy_mesh/src/primitives/dim3/capsule.rs` `Capsule3dMeshBuilder`
+uses the same two-hemisphere/cylinder construction and straight-length meaning, with separate
+Aspect/Uniform/Fixed UV policies. Heaps' `defaultUnitCapsule` requests no UVs; its inherited
+`Polygon.addUVs` is planar, not one of Bevy's profiles. `addCapsuleY` therefore extends existing
+Lit geometry builders only, refusing textured receivers with existing `UvMismatch` instead of
+inventing a UV policy. No additional axes, UV profile, collider or physics API is claimed.
+
+`meshDataCheck.ms` pins radial distance from the center segment, normals, winding, zero-length
+shape, curved-versus-box picking, appended wide IDs and preflight. Squaring signed maximum
+segment counts fits int64, but multiplying that square by two or twelve need not: reject the
+square against existing capacity before either expansion. Finite parameters also need a
+finite combined cap extent; finite radius and straight length alone are insufficient.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addCapsuleY`, no codegen.
+After implementation, serial mesh **354/354**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `27d237f529b051aaec64ab898b48d715499ca70f`.
+Receipts: `out/m6CapsuleRedB1f63337f20261021.{log,exit}` and
+`out/m6Capsule{name}GreenB1f63337f20261021.{log,exit}`. No textured capsule, collider, GPU,
+Mikk or performance acceptance. This remains above the sphere-dependent split point.
+
+### Full disc primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Disc.hx` constructs an outer
+ring plus a center vertex, one triangle per segment and radial UVs `(x/r+1,y/r+1)/2`.
+Bevy `157e1ce6` `crates/bevy_mesh/src/primitives/dim2.rs` `CircleMeshBuilder::build`
+delegates to `EllipseMeshBuilder`, which instead triangulates from one perimeter vertex.
+Use Heaps' fan and UV convention, not Bevy's distinct vertex count/orientation.
+
+`meshData.ms` `addDisc` is a full XZ-plane/up-normal mesh through existing primitive writers;
+Y/Z conversion requires reversing the source triangle winding. No arc, annulus, ellipse,
+collider or glTF TRIANGLE_FAN support is implied. Positive radius and at least three segments
+are required rather than silently clamping the caller's requested resolution as Heaps does;
+this preserves the existing fallible geometry-builder contract. The named pins in
+`meshDataCheck.ms` exercise both layouts, surface-versus-square picking, normals/UV, wide
+index append and preflight, without relying on Mikk's currently blocked path.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addDisc`, no codegen.
+After implementation, serial mesh **351/351**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `1f4c64f5a8576b7befe02e78343c56c451b498ce`.
+Receipts: `out/m6DiscRedB1f63337f20261021.{log,exit}` and
+`out/m6Disc{name}GreenB1f63337f20261021.{log,exit}`. No Mikk, GPU, arc or performance acceptance.
+The shared sphere append guard/error keeps this row above the held split point.
+
+### Open cylinder sides, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Cylinder.hx` builds four
+vertices per side segment, smooth radial normals and UVs `(1-u,1)` / `(1-u,0)`; it has no caps.
+Its centered flag moves the axial interval from `[0,height]` to `[-height/2,height/2]`.
+Bevy `157e1ce6` `crates/bevy_mesh/src/primitives/dim3/cylinder.rs` `CylinderMeshBuilder`
+explicitly separates barrel and caps and offers `without_caps`; its Y-up barrel uses outward
+CCW triangles. Void's `addCylinderSides` names that open-surface boundary, not a closed solid.
+
+Reuse the existing MeshData vertex/triangle and new primitive append guards, preserving old
+indices and automatic width promotion. Swap Heaps' Y/Z axis convention and corresponding
+winding, as with sphere; no cap policy, collider, new storage or GPU program is introduced.
+`meshDataCheck.ms` pins both layouts, centered/bottom placement, radial normals, open-axis
+ray miss, side hit, winding, appended IDs and preflight. Mikk acceptance is independently
+blocked by the recorded vendor issue, not claimed by ordinary geometry checks.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/meshDataCheck.ms` first exited 1 at missing `addCylinderSides`, no codegen.
+After implementation, serial mesh **348/348**, picking **329/329**, material **349/349**,
+all three exits and aggregate 0. CPU source tree `6dc64cbc80b15bd6ab80a5f4534947b2ccf96b36`.
+Receipts: `out/m6CylinderRedB1f63337f20261021.{log,exit}` and
+`out/m6Cylinder{name}GreenB1f63337f20261021.{log,exit}`. No Mikk, GPU or performance acceptance
+is added. This row depends on sphere's append guard/error, so remains above the M6 split point.
+
+### UV sphere primitive, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/prim/Sphere.hx` constructor,
+`addNormals` and `addUVs` define a latitude/longitude grid with a duplicate seam, radial
+normals, `u = 1 - x / sectors`, `v = y / stacks`, omitting one degenerate triangle per polar
+cell. Full-sphere counts are `(sectors + 1) * (stacks + 1)` vertices and
+`2 * sectors * (stacks - 1)` triangles. Bevy `157e1ce6`
+`crates/bevy_mesh/src/primitives/dim3/sphere.rs` `SphereMeshBuilder::uv` uses the same grid
+and polar-triangle omission, with a different UV orientation. These are source references,
+not an executed performance comparison.
+
+Reuse `meshData.ms`'s indexed primitive-builder idiom (`addTexturedCube`, `addPlane`) for a
+full sphere through existing vertex/triangle writers. Void's Y-up mapping swaps Heaps' Y/Z,
+so winding must swap too to remain outward CCW; normals come from the unit grid independent
+of radius. Exact seam/pole endpoints avoid float32 `sin(pi)` leaving a tiny inverted polar ring.
+Positive finite radius, at least 3 sectors/2 stacks, layout/storage and signed capacity checks
+precede writes; no icosphere, partial sphere, collider type or GPU representation is added.
+`meshDataCheck.ms` owns winding/grid, appended IDs/index promotion and actual ray/Mikk pins.
+Appending indexed triangles to nonempty unindexed data would silently hide the old geometry;
+the new builder refuses that ambiguous receiver instead of synthesizing or discarding topology.
+This is an additive API guard, not a change to the older primitive builders.
+
+CPU, Windows native, unchanged binary/support BUILD `b1f63337f`, 2026-10-21:
+initial `msc test src/test/meshDataCheck.ms` stopped at missing `addSphere`, exit 1.
+The first implemented run caught an owned float64 radius test-loop cast, exit 1, not a
+production failure; after correction, the real 8x6 Mikk consumer aborted (exit 3) at vendor
+`QuickSortEdges`. Picking **329/329** and importer/material **349/349** passed with sphere
+production unchanged. The same sphere core/grid/ray/wide-append checks were then isolated
+from Mikk in `meshDataCheck.ms`: **345/345**, exit 0. The exact Mikk geometry/checks remain
+in `sphereTangentsCheck.ms`, registered in `src/test/index.ms`, not skipped or removed.
+CPU source tree for core proof: `0558ca4deb777adebfe2391de9937cc26b65ac7e`.
+
+Retained receipts under `out/`, suffix `B1f63337f20261021.{log,exit}`:
+`m6SphereRed`, `m6Sphere{meshDataCheck,pickCheck,gltfMaterialCheck}Green`;
+`m6SpheremeshDataCheckGreenB1f63337f20261021Retry1` records the original Mikk abort.
+`m6SphereCoreGreen` is the independent core result. Isolating the Mikk tests first exposed
+owned `assert` placement errors in helper/probe code (exit 1, no Mikk executed); corrected
+`m6SphereTangentsRedB1f63337f20261021Retry1` and
+`m6SphereMikk16RedB1f63337f20261021Retry1` both abort 3 at vendor line 1667. The latter is
+`msc run out/m6SphereMikk16Repro.ms`, an independent 16x6 geometry. Original errors remain.
+Sphere geometry is CPU-proven; full Mikk, rendered and whole-stack acceptance remain blocked.
+
+### Mikk zero-shift UB, root and ownership boundary
+
+Void pins mmikk/MikkTSpace `3e895b49d05ea07e4c2133156cfa94369e19e409` in `setup.sh`;
+`mikkTangents.c` includes its C source. Both `QuickSort` (line 1460) and `QuickSortEdges`
+(line 1667) contain `(uSeed << t) | (uSeed >> (32 - t))` after `t = uSeed & 31`.
+When t is zero, the right shift is 32: undefined in C. Both sphere sizes actually reached
+the latter site; the former is the same expression by source, not a separately executed crash.
+Upstream issue [#7](https://github.com/mmikk/MikkTSpace/issues/7) reports this exact fault.
+
+Blender [c8103efbe3](https://github.com/blender/blender/commit/c8103efbe3bfa2487a2866a7cf22e3b7681338ef)
+fixes its vendored `QuickSortEdges` with masked rotation. Bevy's manifest at `157e1ce6`
+names `bevy_mikktspace` version 1; the separately inspected port at
+`9de78a281bca0505142da521eb5152146da28656` `src/mikktspace/quick_sort_legacy.rs`
+`quick_sort_by_key_with_seed` uses `wrapping_shl` / `wrapping_shr`, keeping counts in range.
+This is not proof of the manifest's resolved lock revision. Godot's local `876b2903`
+`thirdparty/misc/mikktspace.c` still has both UB expressions. Its closed issue #51767 was
+resolved by [PR #120974](https://github.com/godotengine/godot/pull/120974), commit `90616d50`,
+removing the unused C dependency, not by a demonstrated local rotate patch.
+
+Technical recommendation: a provenance-marked, licensed tracked copy of the pinned C/header,
+with defined rotation at both sites, retaining all callbacks/semantics and dropping the old
+fetch only after checking consumers. No generic dependency patch framework or sanitizer
+suppression. The port/license allows an altered copy if its origin and change are marked.
+`heaps3dParity.md` explicitly forbids vendor edits in this session; ownership/permission for
+that fix is a user decision, recorded on the M6 card. No vendor/cache/setup edit was made.
+
+**Fixed 2026-10-23 (the person chose the tracked copy).** `src/void3d/mikktspace/` holds the pinned
+`mikktspace.c/.h`, marked as altered, with both rotations masked (`(32-t)&31`); `mikkTangents.c`
+includes it and `setup.sh` no longer fetches MikkTSpace. Red: on BUILD 4b5816aea the M5 stack's T0
+aborted at vendor line 1667 (`shift exponent 32`). Green: `sphereTangentsCheck` 2/2, after the
+check read the tangent at its real offset 12 (it read the colour at 8, never reached before the
+abort); `meshDataCheck`, `skinTangentCheck`, `gltfMaterialCheck`, `skinMeshCheck` unchanged green.
+
+### Bounds intersection, Heaps capability acceptance
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/col/Bounds.hx` `intersection`
+uses componentwise max of the two minimums and min of their maximums. It leaves separated
+intervals inverted rather than clamping them into touching geometry. Bevy `157e1ce6`
+`crates/bevy_shape/src/bounding/bounded3d/mod.rs` `Aabb3d` `IntersectsVolume::intersects`
+confirms that contact counts as intersection; no speculative Bevy intersection-result API
+is claimed. This is Euclidean interval intersection, not a glTF feature.
+
+`bounds.ms` `intersection` reuses Bounds3D's value-return idiom, not a collider hierarchy.
+`boundsCheck.ms` pins operand immutability, symmetry, containment, clipped ray queries,
+face/edge/point contact, separated/empty sets and the existing all-bounds sentinel.
+`contains` remains half-open; contact's zero-size result is nonempty under existing `isEmpty`.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+`msc test src/test/boundsCheck.ms` first exited 1 with seven missing-`intersection` diagnostics
+and no codegen/tests. This is the missing API red, not the particles union compiler blocker.
+After implementation, serial bounds **321/321**, frustum **310/310**, picking **329/329**,
+all three exits and aggregate 0; the latter two import Bounds3D through actual culling/picking
+consumers. CPU source tree `c0d350d4720e076cee5f13ea56dfa424a1ddc3c7`.
+Receipts: `out/m6BoundsIntersectionRedB1f63337f20261021.{log,exit}` and
+`out/m6BoundsIntersection{name}GreenB1f63337f20261021.{log,exit}`. No new GPU or performance claim.
+
+### glTF material descriptor shapes, sweep boundary
+
+Heaps `b9aa6dcb` `h3d/shader/Texture.hx` and `PropsValues.hx` consume the selected texture
+and scalar values; Bevy `157e1ce6` `load_material` uses parsed optional maps, factors and normal
+scale. Khronos `b43260ee` `material.schema.json`, `material.pbrMetallicRoughness.schema.json`,
+`textureInfo.schema.json` and `material.normalTextureInfo.schema.json` distinguish omitted
+properties from explicit null: map descriptors/PBR are objects, factors are fixed numeric
+arrays and normal scale is numeric. None of these defaults admits null.
+
+`gltf.ms` `loadMaterial`, `loadEmission`, `loadNormalTexture` already reject nonnull malformed
+values; use their existing `hasField` gates for explicit null too. Unsupported occlusion stays
+refused, not silently dropped. No numeric metallic/roughness semantics, PBR model or map role
+is introduced. `gltfMaterialCheck.ms` pins the descriptors and absence controls. This closes
+the bounded material-shape sweep; more refusal-only rows are not the next capability work.
+
+Windows native CPU, 2026-10-21, unchanged binary/support BUILD `b1f63337f`, default buildslot:
+material **347 pass / 2 fail**, actual 1, then material **349/349**, importer **316/316** and
+diagnostic **308/308**, all three exits and aggregate 0. CPU source tree
+`f2e4c99f441bb3a46a1e1bd23947a93fea19fced`. Before the fix, the null PBR descriptor and null
+occlusion assertions failed; after it, the full factor/map/scale and absence matrix executed.
+Receipts: `out/m6MaterialShapesRedB1f63337f20261021.{log,exit}` and
+`out/m6MaterialShapes{name}GreenB1f63337f20261021.{log,exit}`. No rendered/full-index acceptance.
+
+### glTF alpha defaults, reference boundary
+
+Heaps `b9aa6dcb` `h3d/mat/Material.hx` `refreshProps` derives blend, culling and alpha kill
+from explicit material properties. Bevy `157e1ce6` `loader/gltf_ext/material.rs` `alpha_mode`
+matches decoded Opaque/Mask/Blend and defaults only the optional cutoff. Khronos `b43260ee`
+`specification/2.0/schema/material.schema.json` makes `alphaMode` a string (default OPAQUE),
+`doubleSided` a boolean (default false), and `alphaCutoff` a nonnegative number (default 0.5).
+Null is not absence. Its detailed cutoff rule also says to ignore cutoff outside MASK;
+the bounded fix must retain that behavior rather than introduce a global schema validator.
+
+Reuse `gltf.ms` `hasField` at the defaults in `loadMaterial` / `alphaCutoffOf`, retaining
+existing typed/range checks and enum/error surfaces. `gltfMaterialCheck.ms` carries absent,
+explicit-null/malformed and ignored-cutoff controls. No new material kind or rendering path.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`, default buildslot:
+material **345 pass / 2 fail**, actual 1, at explicit-null mode and MASK cutoff; after the three
+presence-gate corrections, material **347/347**, importer **316/316**, diagnostic **308/308**,
+all exits and aggregate 0. CPU source tree `90d77a347435a914caa44296caba8d06ce73b164`.
+Receipts: `out/m6AlphaDefaultsRedB1f63337f20261021.{log,exit}` and
+`out/m6AlphaDefaults{name}GreenB1f63337f20261021.{log,exit}`. No new rendered acceptance.
+
+### glTF emission extension shape, reference boundary
+
+Heaps `b9aa6dcb` `h3d/shader/pbr/PropsValues.hx` consumes a scalar and Bevy `157e1ce6`
+`load_material` multiplies by the decoded strength. Neither shader/readback source makes
+malformed JSON equivalent to a missing property. Khronos `b43260ee`
+`specification/2.0/schema/extensions.schema.json` requires an object with object-valued entries;
+`extensions/2.0/Khronos/KHR_materials_emissive_strength/schema/`
+`material.KHR_materials_emissive_strength.schema.json` requires an object and, when present,
+a numeric nonnegative strength. Default 1 applies to absence, not explicit null or another type.
+
+Reuse `gltf.ms` `hasField`, `JsonKind.Object`, `numberOf` and the existing nonnegative check
+in `emissiveStrengthOf`; validate before the no-emission fast path. No generic extension
+registry, shader/default change or global schema validator is needed. `gltfMaterialCheck.ms`
+carries absent/default controls, malformed containers and explicit invalid scalars with both
+zero and nonzero factors. This is a boundary-validation row, not new PBR support.
+
+Windows native CPU, 2026-10-21, binary/support BUILD `b1f63337f`: `msc test`
+`src/test/gltfMaterialCheck.ms` observed **343 pass / 2 fail**, actual 1, on the malformed
+container/default and explicit-null assertions. Following validation, serial material
+**345/345**, importer **316/316**, diagnostic **308/308**, all three exits and aggregate 0.
+CPU source tree `936dd1b2187d2b29bd3e601b9aed1d92f3307bac`.
+Receipts: `out/m6EmissionShapeRedB1f63337f20261021.{log,exit}` and
+`out/m6EmissionShape{name}GreenB1f63337f20261021.{log,exit}`. These tests ran through default
+buildslot; no new renderer/GPU, full-index or external-asset acceptance is implied.
+
+### glTF texture-coordinate override, reference boundary
+
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984` `h3d/shader/Texture.hx` `vertex` passes
+`input.uv` to `calculatedUV`; this is the existing single-UV consumer, not a glTF selector.
+Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_gltf/src/loader/gltf_ext/material.rs` `uv_channel` maps the supplied set to UV0/UV1
+and warns/falls back for larger indices. Its `load_material` callers pass `info.tex_coord()`;
+these source reads do not establish extension-override precedence in the resolved dependency.
+Void must not copy the fallback: its existing unsupported-active-set refusal stays.
+
+Khronos `b43260ee1291134a94b3098d415f54f479a59508`
+`extensions/2.0/Khronos/KHR_texture_transform/README.md` explicitly makes extension `texCoord`
+override textureInfo `texCoord`. It recommends a post-transform fallback set in textureInfo and
+a pre-transform set in the extension; when omitting the fallback, declare the extension required.
+Both `textureInfo.schema.json` and the extension schema require nonnegative integers; omission
+of the base selects 0, omission of the override inherits the base.
+
+The bounded next row resolves that precedence before the existing UV0-only gate in `gltf.ms`
+`textureInfoIndex` / `textureTransformOf`. A base set 1 or 2 overridden to 0 must not be refused
+as an active nonzero set. This does not add UV1 storage, multiple active sets, a renderer field,
+or a new transform. Malformed selectors and unsupported effective sets still fail; the existing
+signed-int parser ceiling remains, pinned by the unrepresentable selector case.
+
+CPU acceptance, 2026-10-21, Windows native, binary/support BUILD `b1f63337f`: the initial queued
+red was deliberately cancelled before admission for void2d's priority bench (actual 137, no test
+ran). Retry1 of `msc test src/test/gltfMaterialCheck.ms` observed **340 pass / 3 fail**, exit 1:
+required override success, explicit-null refusal and the missing-selected-UV0 diagnostic.
+After resolving the override with existing `hasField` / `intValue`, serial material **343/343**,
+importer **316/316** and diagnostic **308/308** passed, all three exits plus aggregate 0.
+CPU source tree: `c3b5f8bc413131cbe0a127fafc3e5523134ebe18`. The matrix reaches base/emissive/normal
+roles, supplied/Mikk tangents and identical mesh/material blocks, without adding a UV channel.
+Receipts: `out/m6UvOverrideRedB1f63337f20261021{,Retry1}.{log,exit}` and
+`out/m6UvOverride{name}GreenB1f63337f20261021.{log,exit}`; original 137 is not a red.
+No rendered acceptance, full-index clearance or performance claim follows from these checks.
+
 ### glTF explicit primitive-mode CPU acceptance
 
 Heaps `b9aa6dcb` `Primitive.render` dispatches triangle draws, not glTF JSON defaults.
@@ -4155,6 +5690,194 @@ shouldn't be any code *after* sapp_run()"). Compiler card
 `2026-10-09-emcc-main-destroys-globals-before-frame-loop.md`; the checks keep their module-level
 state, red until it is fixed, rather than moving it into callbacks to hide it.
 
+### M5 end-game stack, as built (2026-10-23)
+
+Fifteen commits on `wt/void3d-m5` (`602ba624..3d0a3c66`). Every deformation, material and clip
+path below is CPU-checked and headless; none has a GPU, web or device receipt, so a rendered claim
+waits for a native GPU run under its named GO. The counts are from running each file alone
+(`MSC_NO_GLOBAL_CACHE=1 msc test <file>` for the checks, `sh scripts/oracle.sh check <cases>` for
+the oracles), with the other lane's uncommitted `shader3d.ms` and `scene.ms` edits in the tree.
+
+**Morph targets and scene deformation.** `gltf.ms` `loadMorphTargets` reads POSITION, NORMAL and
+TANGENT deltas, mesh default weights and node weights; `gltfCurve.ms` `GltfWeightTrack` decodes
+weight tracks. `scene.ms` `SceneMorph` holds one instance's weights and mirrors the deformed
+primitive into a private dynamic mesh (`syncSceneMorphGeometry`), so bounds, culling, picking, the
+shadow pass and the next upload read one deformation. It is the skin idiom with the roles swapped:
+skin deforms on the GPU and mirrors on the CPU, morph deforms on the CPU and the GPU reads it.
+Refused by name: a primitive whose target count differs from its siblings', a target carrying an
+attribute other than the three or one the primitive lacks, generated tangents under morph (supply
+TANGENT), and a weights channel on a node whose mesh has no targets. Skin and morph on one node
+(`addSkinMorphMeshNode`) morph first on the CPU, hand the morphed vertices to the skin geometry,
+then skin on the GPU, the order glTF 2.0 section 3.7.3.3 gives; every part of one skin mesh holds
+a mesh of its own. Reference: the commits cite no Heaps line for the morph mechanism;
+`h3d/prim/Blendshape.hx` is the family anchor in `heaps3dParity.md`. Acceptance:
+`gltfMorphImportCheck` 7, `morphSceneCheck` 6, `morphSkinSceneCheck` 8.
+
+**Dynamic mesh upload.** `draw.ms` `addDynamicMeshData`, `setMeshVertices`, `uploadDirtyMeshes`;
+`renderer.ms` `beginFrame` calls the last after the scene refresh and before the first pass. A sokol
+dynamic buffer takes no initial data and one update per frame, so a new dynamic mesh is `Pending`
+and refuses to draw rather than show stale vertices; a second write in one frame is
+`WrittenThisFrame`; indices and vertex format cannot change; a lost context remakes the buffer from
+the current CPU data. It is exercised through `morphSceneCheck`; no GPU readback receipt exists.
+
+**Direct PBR, maps, skinned, emissive.** `shader3d.ms` `pbrDirect` is Heaps' `Direct` for one light
+(`Lighting.hx:125-145`): Cook-Torrance GGX with Schlick-GGX visibility and the exp2 Fresnel
+(`BRDF.hx:40-63`), F0 = mix(0.04, albedo, metalness) (`PropsImport.hx:74`), the indirect diffuse
+half with a flat ambient (`Lighting.hx:78-99`), occlusion on the ambient only because Heaps'
+`pbrOcclusionFactor` defaults to 0 (`Light.hx:10`). `pbrResponse.ms` is its CPU oracle. glTF maps
+are read as glTF stores them (roughness G, metalness B, occlusion R, linear), not as Heaps'
+`PropsTexture.hx:28-34` packs them. A texel's roughness is floored at 0.089 as Bevy's
+`clampedPerceptualRoughness` (`pbr_lighting.wesl:550`) because a texture cannot be refused per
+pixel; a material factor of 0 is refused (`material.ms` `pbrBlock`, `gltf.ms` `loadPbr`) because
+Heaps' BRDF has no guard (`BRDF.hx:48-53`) and the port invents no floor. Opt-in: the importer's
+`Pbr` mode reads `pbrMetallicRoughness`; the legacy lambert look is unchanged. Block layout: the pbr
+block is `MATERIAL_UNIFORM_LENGTH` plus one vec4 (`PBR_METALNESS`, `PBR_ROUGHNESS`, `PBR_OCCLUSION`,
+`PBR_OCCLUSION_STRENGTH`) and the UV transform (`PBR_UV_*`, laid out as `MOVING_UV_*`), and an emissive pbr key holds the emissive vec4 after the pbr one, at
+`emissiveBase` (`gltfScene.ms` `gltfBlockOf`). Skinned pbr is declared with every combination of
+CUTOUT, SHADOWED, NORMAL_MAP and PBR_MAPS (`programKeys.txt`), but not with EMISSIVE. A skinned pbr
+material that emits is refused by name, `GltfSceneError.PbrFeatureRefused`, before anything is made.
+Every pbr key reads its UV transform from its own block, identity by default, as Bevy's
+`StandardMaterial.uv_transform` (`pbr_material.rs:790`, applied unconditionally at
+`pbr_fragment.wesl:131`): one program serves a moving and a still pbr material, where a UV_TRANSFORM
+key bit would have doubled every pbr row. A pbr key never takes the moving block (`withUvTransform`
+and `withPbr` refuse the mix), and its scroll keeps the frame time as the moving block's does. Look: the pbr diffuse
+is `albedo / pi` (Heaps' convention), so a pbr material reads about pi dimmer than the same albedo
+under the legacy lambert, which is why the path is opt-in; no compensation was added. Acceptance:
+`pbrLitCheck` 15, `pbrMapsCheck` 7, `gltfPbrMaterialCheck` 6, `gltfPbrSceneCheck` 12.
+
+**Texture mip chains and samplers.** `textureMip.ms` carries an explicit chain and a full sampler
+identity; `draw.ms` `addTextureMip` uploads it through `doorMakeImageMips` (`src/gpu/door.c`; level
+count as `Texture.hx:80-90`: one level or the full chain to 1x1) with one shared sampler per
+distinct sampling (`doorMakeSamplerEx`: min, mag and mip filter, wrap, lod range, anisotropy).
+Refused by name: `TextureSamplerError` (lod range, lod outside the chain, no-mip lod, anisotropy
+range, a non-linear filter with anisotropy, `AnisotropyNeedsCapability`) and
+`TextureUploadError.AnisotropyUnavailable`. `doorAnisotropyPortable` is false on GLCORE and GLES3,
+so anisotropy above 1 is refused there rather than dropped. Acceptance: `textureMipUploadCheck` 6.
+
+**Clip composition.** `animationTransition.ms` (cross-fade with masks and weight tracks),
+`animationSmoothTarget.ms` (freeze the current pose, ease into a target clip, clip and blend
+speeds), `animationBlendSpace.ms` (Delaunay triangulation of the points, barycentric weights, the
+closest-edge fallback outside every triangle). References: `SmoothTransition.hx`, `SmoothTarget.hx:98`
+(a blend speed at or under EPSILON pauses the target too), `Animation.hx:30,279`, `Math.hx:188`
+`easeFactor`, `BlendSpace2D.hx`. Each module has its own refusal enum
+(`AnimationTransitionError`, `AnimationSmoothTargetError`, `AnimationBlendSpaceError`). Acceptance:
+oracle `animTransition3d` 9, `animSmoothTarget3d` 10, `animBlendSpace3d` 5, all as declared; checks
+`animationTransitionCheck` 8, `animationSmoothTargetCheck` 11, `animationBlendSpaceCheck` 8.
+
+**Recorded divergences in clip composition.** (1) A node that only one of the two clips animates:
+Heaps' `SmoothTransition` blends it toward `MZERO`, an identity matrix; the port blends toward the
+captured rest pose (a smooth target toward the frozen pose). The oracle does not cover this, since
+both clips animate the whole TRS in every oracle row; `animationTransitionCheck` holds it. (2)
+`anim-frozen-rotation-unscaled`: Heaps reads the frozen rotation from the scaled local matrix with
+`Quat.initRotateMatrix`, which assumes unit scale; the port freezes the exact rotation (a
+`diverges=` case in `animSmoothTarget3d.cases`, row in `tests/PENDING3D.md`).
+
+**Colliders.** `segment.ms`, `capsule.ms`, `cylinder.ms`, `polygonCollider.ms`, `heightMap.ms`,
+`transformCollider.ms`, `objectCollider.ms` and `optimizedCollider.ms` (with `GroupCollider`) port
+`h3d.col` (`Seg.hx:16-24`, `Capsule.hx:16-71`, `Cylinder.hx:16-72`, `Polygon.hx:116-305`,
+`PolygonBuffer.hx:56-168`, `HeightMap.hx:29-89`, `TransformCollider.hx:18-46`, `Object.hx:432-441`,
+`Collider.hx:33-101`). Divergences measured against real Heaps and listed in `tests/PENDING3D.md`: a
+ray parallel to a capsule or cylinder axis (Heaps divides by zero), the bounding sphere centred at
+`b` where the port centres the midpoint, the height-map bisection reading the interval end, a
+mirrored transform's negated scale. Refused by name where Heaps divides by zero or dereferences
+null: a singular matrix (`Singular`) and an empty mesh (`EmptyMesh`); a zero-area triangle, a
+zero-length edge or a zero-length axis contains nothing. Oracle: `segment3d` 8, `capsule3d` 27,
+`cylinder3d` 25, `polygonCollider3d` 31, `heightMap3d` 13, `transformCollider3d` 23,
+`objectCollider3d` 21, `optimizedCollider3d` 17, all as declared. Checks: `segmentCheck` 3,
+`capsuleCheck` 7, `cylinderCheck` 6, `polygonColliderCheck` 9, `heightMapCheck` 4,
+`transformColliderCheck` 7, `objectColliderCheck` 3, `optimizedColliderCheck` 6. `SkinCollider` has no
+collider file here: the posed-mesh ray query is `skinGeometry.ms` `rayIntersectionElements`.
+
+**Not built, recorded.**
+- Morph on a primitive with generated tangents.
+- Roughness 0; any compensation for the pi factor. Image-based lighting came after this stack
+  (next section).
+- Texture mips: automatic mip generation, so a caller supplies every level (Heaps calls the driver's
+  `generateMipMaps`; sokol has no equivalent, so it is a new mechanism for the person); `lodBias`
+  (`sg_sampler_desc` has `min_lod`/`max_lod` and no bias); anisotropy above 1 on GLCORE and GLES3 (the limit is not portable). The GL
+  and WebGL2 paths have no mip receipt.
+- Dynamic mesh upload: a second write in one frame, an index or format change, a GPU readback.
+- Anything rendered: no skinned, morphed or pbr frame, no web or device run.
+
+### Image-based light, as built (2026-10-24)
+
+An app attaches an `Environment` to a renderer (`renderer.ms` `attachEnvironment`), and every pbr
+key is lit by it in place of the flat ambient. The API and the shading are Heaps'; the filtering
+is Bevy's, because Heaps brute-forces 4096 samples per texel where Bevy reaches the same result with
+a few dozen.
+
+- **API, Heaps.** `Environment.fromPanorama(texture, diffSize = 64, specSize = 512)` with `power`,
+  `rotation`, `hdrMax` 10, `threshold`/`scale` (`Environment.hx:216-245`, `equiToCube` :273-292);
+  `specLevels()` is `Environment.specLevels` with `ignoredSpecLevels` 1 (:390-399). The renderer
+  loads `power * power`, `specLevels` and the rotation's cosine and sine into the frame block
+  (`FRAME_ENV_*`), as `Renderer.hx:715-723` loads `pbrIndirect`. A frame bakes an environment that
+  is not baked, or whose cubes died with a GPU context, before its first pass (Heaps' `get_env`
+  remakes a disposed one).
+- **Shading, Heaps.** `shader3d.ms` `pbrEnvironmentLight` is `Lighting.hx:85-99` without the sky and
+  emissive terms: the exp2 Fresnel with `max(1 - roughness, F0)`, `irrDiffuse * albedo`,
+  `irrSpecular` at lod `roughness * irrSpecularLevels` times `F * A + B`, and `indirect * irrPower *
+  occlusion`. Heaps' `irrLut` is replaced by Bevy's analytic split sum (`pbr_lighting.wesl:527-538`,
+  `splitSum`), so no LUT texture is baked or bound. Heaps rotates about its up axis z; void3d's is y,
+  and the panorama's longitude and latitude are read with the same swap. A pbr key with power 0
+  takes the flat-ambient branch unchanged, so frames without an environment draw as before.
+- **Bake, Bevy.** `generate.rs` and `environment_filter.wesl`: the source cube gets a full mip chain
+  (each mip from the one above through a scratch cube, because sokol refuses to sample an image
+  that is a pass attachment), every sample reads the mip whose texel covers the sample's solid
+  angle (`calculate_environment_map_lod`), a radiance mip takes `32 * 2^floor(4r)` samples and the
+  irradiance 1024, and specular mip 0 is the source itself, as Bevy skips sampling below roughness
+  0.01. The GGX and cosine samplers and the face matrices stay Heaps' (`IrradBase`, `IrradShader`,
+  `getCubeMatrix`); Hammersley is the unit radical inverse, not Heaps' signed one. Cubes are
+  Rgba16f, Bevy's format and Heaps' `DEFAULT_FORMAT`; a device that cannot draw into Rgba16f gets
+  `EnvironmentError.NotRenderable`. The bake programs register with the GPU door apart from the
+  scene's (`shaderProgram` in `environment.ms`), since `ProgramKey` has 4 bits for a program and 15 are taken.
+- **Bindings.** The cubes sit at views 7 and 8 and sampler 4, past the shadow maps; with no
+  environment attached the scene binds a 1x1 black cube.
+
+Acceptance, CPU: `environmentShaderCheck` 9 (a baked texel reads back through the cube sampler,
+face directions equal `pbrEnvironment.ms` `cubeFaceDirection`, Hammersley and both samplers equal
+`pbrEnvironment.ms`, constant sources stay constant, the hdrMax clamp, panorama orientation and fake
+HDR), `pbrLitCheck` 19 (`splitSum` equals `splitSumAnalytic`, `pbrEnvironmentLight` equals
+`pbrIndirect`, the quarter turn reads the +Z face), `programKeyCheck` (every pbr key and no other
+reads the env slots). GPU: `tests/integration/environmentLight.ms` in `scripts/gate3d.sh`
+(`run_environment_light`), built, not yet run; it compares a pbr quad under a baked grey panorama
+with the CPU shader.
+
+Not built: a float (HDR) panorama upload, so `threshold`/`scale` stand in for HDR as in Heaps'
+LDR path; a cube source (`Environment.new` with a cube texture); drawing the environment as a sky;
+Heaps' specular edge fix-up (`cubeScaleFactor`), which seamless cube sampling makes unneeded on
+every sokol backend; Bevy's blue-noise sample rotation.
+
+### Bevy comparison bench, scope (prepared 2026-10-24, not run)
+
+"Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
+engines in release on this machine (Windows 11, Ryzen 9950X, RTX 5090; void3d on D3D11, Bevy on its
+default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloads are Bevy's
+`examples/stress_tests` at `84e2d2cc5adaeff7547e44f434a0d0d7a20345b8`, built with
+`--profile stress-test` (`Cargo.toml:5393-5396`: release, fat LTO, abort on panic).
+
+| Order | Bevy test, default workload | void3d today | What a fair comparison needs first |
+|---|---|---|---|
+| 1 | `many_cubes --benchmark`: 1.6M cubes of one mesh and one white `StandardMaterial` on a sphere of radius 500, one directional light without shadows, the camera turning 0.15/60 rad a frame (`many_cubes.rs:61`, `:189-212`, `:355-361`, `:588-601`); also `--layout dense` (every cube in view, static camera) and `--no-indirect-drawing` | one draw per `DrawItem`, CPU frustum culling (M21, world-sphere culling) | instanced batching of a run of items with one mesh, material and pipeline, ported from Bevy's batching (`bevy_render/src/batching/`, not read yet). sokol has instancing, `base_instance` and storage buffers but no indirect draw, so `--no-indirect-drawing` is the like-for-like arm and the default arm is reported beside it |
+| 2 | `transform_hierarchy <preset>`: windowless propagation; presets `large_tree` (non-uniform, depth 18, branch 8), `wide_tree`, `deep_tree`, `chain` (depth 2500), `update_leaves`, `update_shallow`, `humanoids_active` / `_inactive` / `_mixed` (4000 rigs of 68 nodes) (`transform_hierarchy.rs:29-156`) | `Scene3D` sync, CPU only | nothing; a windowless entry like `benchParticles.ms`. Bevy's rng is unseeded and its step time-driven (`:293`, `:258-263`), so the trees match in shape and update probability, not node for node |
+| 3 | `many_materials`: 10x10 cubes, one material each, every colour rewritten each frame, a shadowed directional light (`many_materials.rs:15`, `:71-74`, `:91-106`) | material uniform writes, one shadow map | nothing |
+| 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade; the asset |
+| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU | the asset |
+| 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | 4 point lights per draw (`gpu3d.ms` `MAX_POINT_LIGHTS`) | clustered forward lighting (Bevy's clusters, not read yet); until then not comparable |
+
+Measured per arm: the median and p99 of the frame time over a fixed number of frames after a
+warm-up, with the CPU-load bracket of `scripts/bench-ab.sh` and its NOISY and five-clean-pairs
+rules; void3d prints rows (`cubes.present.ms`, `cubes.draws`, `cubes.instances`), Bevy's
+`LogDiagnosticsPlugin` prints `frame_time`. Only `many_cubes` and `bevymark_3d` step by a fixed
+1/60 (`--benchmark`); the others are time-driven, so their camera or animation phase differs
+between arms and only a static view (`many_materials`, `many_foxes` with `--sync`) is compared frame
+for frame.
+
+Before the first run: the Bevy checkout is sparse (no `bevy_diagnostic`, no `assets`), so it needs
+the full tree at the same commit and the three assets (`models/animated/Fox.glb`,
+`models/animated/MorphStressTest.gltf`, `branding/icon.png`); a fat-LTO Bevy build and every bench
+run are heavy jobs and take a void-manager slot. Step 1 is measuring void3d's `many_cubes` as it is,
+since the batching milestone is sized by that gap.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
@@ -4327,6 +6050,123 @@ Text shares **one** glyph layer with void2d — see [VOID2D.md → Text design](
 - **Same glyph quads, different transform.** The font layer (fontstash) emits backend-neutral `quad + UV + atlas`. void2d feeds them through the screen-space ortho path; void3d feeds the **same** quads through the camera MVP (world space, depth-tested). No second text system.
 - **3D-text consumer = billboard or text-mesh.** Start with billboard; mesh only if a use case demands it.
 - **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected. void2d's SDF page kind and shader ramp exist behind `-d:voidSdfText`; the void3d program, the glyph-layer import and flat world text are deferred by name, each with its reopening condition, in [VOID2D.md](VOID2D.md) P6 "Deferred out of P6".
+
+### Plane point projection: CPU query checkpoint
+
+`plane.ms` reuses existing `Vec4` plane convention **normal dot point + w = 0**, so Heaps'
+`d` becomes `-w`. Primary `h3d/col/Plane.hx::distance/project/projectTo` explicitly requires a
+normalized normal. That precondition is checked, not silently repaired; raw unnormalized
+frustum planes cannot be passed as though already normalized. Signed distance returns
+float64; projection keeps float64 intermediates and refuses an unrepresentable Vec3.
+No new plane object, collider hierarchy, empty-volume or overlap policy.
+
+Actual missing-module red1 precedes the helpers. Installed binary/support `afcd22f19`:
+native **306/306**, CLIJS **68/68**, actual Heaps **8/8**, **32 fields** C/JS exactly equal;
+max Heaps delta **2.1769374747293568e-7** within declared `1e-5` (axis cases use zero).
+Axes, reversed normal, oblique planes, point on plane, negative offset and primary projectTo
+are measured; local tests additionally pin nonfinite/unit-normal/range refusal and widened
+distance above float32 range. Reference Plane file byte-equal inspected/executed. Receipts
+`out/m6PlaneProjection*Afcd22f1920261021.*`, generated oracle packet
+`out/tmp/planeProjection/oracle/`; SDK unchanged. No GPU/gate/whole-index/land run.
+
+**Why this missing query, not another triangle raycaster.** Current MeshData already has
+Moller-Trumbore nearest hits, UVs, culling, u16/u32/nonindexed and element ranges; pick and
+SkinGeometry consume it, including broad/narrow and transforms. That covers the relevant
+Polygon/PolygonBuffer/Object/Transform/Optimized/Skin ray use cases, not every Collider API.
+Point/FPoint arithmetic is Vec3. Capsule/Cylinder/Seg and triangle closest-point source
+raise zero-axis/empty/degenerate-shape questions; these were deferred rather than reopen
+that parked policy family. HeightMap's stale bisection variable and OBB pair SAT remain
+separate source frontiers, not new implementations or measured acceptance. No new
+shape-policy divergence was approved. The bounded independent addition here is
+normalized-plane point projection only.
+
+### Graphics3D: default screen-line CPU encoding only
+
+`graphics3d.ms` ports default `h3d.scene.Graphics` (`is3D=false`) **CPU input encoding**, not
+rendering: four coincident roots, endpoint delta in NORMAL, UV corners, per-segment RGBA,
+primary index connectivity and centerline endpoint bounds. `width` is global for the whole
+mesh: later positive `lineStyle` changes it for all segments; nonpositive sizes retain it.
+Clear retains cursor/style. The safe constructor explicitly initializes the black style,
+equivalent to reference construction followed by `lineStyle()`, not uninitialized channels.
+
+**Not ordinary LitTextured geometry.** The existing 12-float storage is reused, but normals
+contain directions and positions do not yet contain expanded corners/endpoints. Do not draw
+it with Lit, recompute its normals, or claim triangle picking from those coincident roots.
+Heaps `LineShader.hx` supplies endpoint extension and pixel/depth-dependent expansion.
+That program is not implemented here yet. `is3D=true` world-width XY-plane miter is a separate
+future row; no world-width substitute, h2d rectangle or filled polygon was added.
+
+Actual missing-module exit1 precedes implementation. Native **308/308**, CLIJS **70/70**,
+actual Heaps **13/13**, **117 fields Haxe/C/JS exactly equal**. Coverage includes all four
+UV corners, directions, color/alpha, indices, bounds, chain/move breaks, global width,
+nonpositive style sizes, clear, signed float colors and finite zero-length encoding.
+The separate wide-index test uses MeshData promotion beyond 65K; it does not claim Heaps'
+BigPrimitive batch behavior there. Zero-length CPU encoding is not GPU normalization proof.
+
+The actual Heaps Graphics writes through captured BigPrimitive, with only GPU `flush`
+intercepted. Three reference files byte-equal between inspected/executed checkouts. SDK
+`afcd22f19` unchanged. `out/m6Graphics3d*Afcd22f1920261021Retry{1,2}*` and kept
+`out/tmp/graphics3d/oracleRetry1/` contain receipts; initial void-Result constructor type
+errors are retained, corrected to existing `Result.ok(null)` idiom. Retry2 adds only shape
+unit coverage; production/oracle inputs and prior 13-case evidence are unchanged.
+No shader/program/ABI, whole-index, gate3d, GPU, web or land acceptance for this CPU stage.
+
+### Trail: CPU history and ribbon checkpoint
+
+Apps sample a world pose/time into standalone `Trail` state and obtain `MeshData` through
+`buildTrailMesh`; the host owns visibility, pause/elapsed-time policy and upload/materials.
+Geometry is **world-space**: submit with an identity model, not the sampled object's transform
+again. No Scene node kind, texture resolver, serializer, renderer or shader was added.
+
+Primary `h3d/scene/Trail.hx::sync` supplies strict movement thresholds, retained pending
+endpoint, capped 20-way Bezier subdivision, normalized quaternion slerp, strict expiration,
+zero-width tail replacement, age/width/UVs and connectivity. Y/Z mapping follows the existing
+Heaps-to-Void particle frame; normals and rotation follow it too. Existing `MeshData`'s
+12-float LitTextured format, white RGBA, index promotion and bounds own the output contract.
+No instance float, ProgramKey bit or preset shader change is required for that CPU format.
+Positive duration/movementMax and finite representable poses/corners are explicit Result
+gates; nonfinite or overflowing geometry is not published.
+
+Actual missing-module red1 preceded implementation. Installed binary/support `afcd22f19`:
+native **311/311**, CLIJS **73/73**, actual Haxe Heaps oracle **14/14**, **120 fields**;
+C/JS values exactly equal, max Heaps delta **1.6671231717335644e-7** within the predeclared
+`1e-5` numeric tolerance (strict history rows use zero). Cases include noncollinear curvature,
+changing orientation, all three half-turn extraction branches, angle, thresholds, TTL,
+pending/clear, normals, UV and indices. The reference runs actual `Trail.sync`; only
+DynamicPrimitive's GPU `flush` is intercepted, and an empty host context supplies time and
+visibility. No reference algorithm is copied into that capture adapter. Inactive pending
+coordinates are not compared. Three inspected/executed reference files were byte-equal.
+
+Receipts `out/m6Trail*Afcd22f1920261021*`, kept generated oracle packets under
+`out/tmp/trail/oracleRetry{1,2}/`; SDK unchanged. Final changes after Retry2 are two formatting
+wraps using existing syntax, checked at <=100 columns; numerical evidence scope is unchanged.
+The writer currently allocates fresh CPU mesh arrays; no frame-cost/performance claim.
+No whole-index, gate3d, upload, GPU pixels, web/device or land acceptance for this row.
+
+### Retained light color: native/reference checkpoint
+
+`setLightColor` follows the existing light-kind/liveness gate and stored RGB packet.
+Primary Heaps `scene/fwd/{PointLight,DirLight}.hx::set_color` assigns the shader color;
+Bevy's public PointLight color is secondary source-only. Actual Haxe/Node Heaps and native
+Void `collectLights` agree on all **3 rows / 9 RGB fields exactly**: point color, black,
+directional signed/HDR color. This is numeric shader-color correspondence, not reference
+identity, gamma conversion or rendered-pixel/performance acceptance. The five relevant
+inspected/executed Heaps light/shader files were byte-equal.
+
+Historical M6 missing-export red1 preceded its setter. Installed binary/support `afcd22f19`:
+native **303/303**, old Scene **344/344**, and all **four expected misuse aborts** pass.
+CLIJS unit/oracle and unchanged old Scene stop before logic at `DOOR_UNIFORM_SLOTS`.
+A minimal import of Door from then-main **`72c8aacf`** gives C **300/300**, JS the same
+startup failure: the existing `ca53522d` provider gap, not a new light regression. Decision10
+(provider versus explicit deferral) remains person-owned/open: **no JS acceptance or waiver**.
+Retry1's abort build succeeded but its Python relative executable path failed to launch;
+Retry2 uses the same executable's absolute path and verifies all four named messages.
+Receipts `out/m6LightColor*Afcd22f1920261021Retry{1,2}*` preserve both attempts; SDK unchanged.
+
+Prefix2 keeps upstream `69459fee`'s identical setter and `628c1d03`'s point/directional
+coverage, not a second implementation. Its additional unit file retains only value-copy
+and hidden/visible cases, plus the Heaps oracle and four misuse fixtures. Historical counts
+above belong to the original M6 checkpoint; prefix2 integration verification is separate.
 
 ## Reference
 

@@ -1,5 +1,5 @@
 #include "mikkTangents.h"
-#include "../../deps/mikktspace/mikktspace.c"
+#include "mikktspace/mikktspace.c"
 
 typedef struct {
 	const float *vertices;

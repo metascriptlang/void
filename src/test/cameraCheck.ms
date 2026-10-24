@@ -638,10 +638,14 @@ test "two projections are equal when they share the kind and every field of that
 	const lens: CameraProjection = { kind: ProjectionKind.Perspective, fovY: 1.0 };
 	const sameLens: CameraProjection = { kind: ProjectionKind.Perspective, fovY: 1.0 };
 	const wider: CameraProjection = { kind: ProjectionKind.Perspective, fovY: 2.0 };
-	const grid: CameraProjection = { kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: true };
-	const sameGrid: CameraProjection = { kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: true };
-	const unsnapped: CameraProjection = { kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: false };
-	const coarser: CameraProjection = { kind: ProjectionKind.Orthographic, worldPerTexel: 0.2, snap: true };
+	const grid: CameraProjection =
+		{ kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: true };
+	const sameGrid: CameraProjection =
+		{ kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: true };
+	const unsnapped: CameraProjection =
+		{ kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: false };
+	const coarser: CameraProjection =
+		{ kind: ProjectionKind.Orthographic, worldPerTexel: 0.2, snap: true };
 	assert lens == sameLens && sameLens == lens;
 	assert grid == sameGrid;
 	assert lens != wider && wider != lens;
@@ -653,7 +657,8 @@ test "a generic === in another module compares projections by the declared ==" {
 	const lens: CameraProjection = { kind: ProjectionKind.Perspective, fovY: 1.0 };
 	const sameLens: CameraProjection = { kind: ProjectionKind.Perspective, fovY: 1.0 };
 	const wider: CameraProjection = { kind: ProjectionKind.Perspective, fovY: 2.0 };
-	const grid: CameraProjection = { kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: false };
+	const grid: CameraProjection =
+		{ kind: ProjectionKind.Orthographic, worldPerTexel: 0.1, snap: false };
 	assert sameValue<CameraProjection>(lens, sameLens);
 	assert !sameValue<CameraProjection>(lens, wider);
 	assert !sameValue<CameraProjection>(lens, grid);

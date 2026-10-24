@@ -15,6 +15,8 @@ import {
 	SKIN_UNIFORM_LENGTH,
 	Program,
 	drawsQuads,
+	vertexLayoutOf,
+	meshLayoutOf,
 	doorProgram,
 	applyPipeline,
 	applyBindings,
@@ -36,6 +38,11 @@ import {
 	MATERIAL_ALPHA_KILL,
 	SHADOW_VIEW_SLOT,
 	SHADOW_SAMPLER_SLOT,
+	SPOT_SHADOW_VIEW_SLOT,
+	SPOT_SHADOW_SAMPLER_SLOT,
+	ENV_DIFFUSE_VIEW_SLOT,
+	ENV_SPECULAR_VIEW_SLOT,
+	ENV_SAMPLER_SLOT,
 	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
@@ -43,12 +50,20 @@ import {
 	contextGeneration,
 	frameIndex,
 	makeSampler,
+	makeSamplerEx,
+	anisotropyPortable,
 	destroyView,
 	destroySampler,
 	passState,
 } from "../gpu/door";
 import { FilterMode, Wrap, BlendMode, RenderState } from "../gpu/state";
 import { Texture, TextureError, DetachedHandles } from "../gpu/texture";
+import {
+	TextureMipData,
+	TextureSampler2D,
+	TextureSamplerError,
+	SamplerCall,
+} from "./textureMip";
 import {
 	TextureData,
 	TextureId,
@@ -63,6 +78,11 @@ export struct GpuTexture {
 	samplerGeneration: int32;
 }
 
+export struct MipSampler {
+	sampling: TextureSampler2D;
+	id: uint32;
+}
+
 export struct DoomedTexture {
 	image: uint32;
 	view: uint32;
@@ -70,6 +90,7 @@ export struct DoomedTexture {
 }
 import {
 	BINDING_VERTEX_BUFFER as GPU3D_BINDING_VERTEX_BUFFER,
+	BINDING_VERTEX_OFFSET as GPU3D_BINDING_VERTEX_OFFSET,
 	BINDING_INDEX_BUFFER as GPU3D_BINDING_INDEX_BUFFER,
 	BINDING_VIEW as GPU3D_BINDING_VIEW,
 	BINDING_SAMPLER as GPU3D_BINDING_SAMPLER,
@@ -180,12 +201,35 @@ export struct DrawItem {
 	skinGeometry: SkinGeometry | null;
 	skinPalette: int32;
 	range: DrawRange | null;
+	instances: InstanceRun | null;
+}
+
+// What an instanced program draws the item's mesh once each for: `count` instances of the
+// stream `stream` from instance `first` (docs/PARTICLES-RENDER.md A.2.1).
+export struct InstanceRun {
+	stream: MeshId;
+	first: int32;
+	count: int32;
 }
 
 export function validRange(this item: Readonly<DrawItem>, total: int32): boolean {
 	const range = item.range;
 	return range === null || (range.base >= 0 && range.count >= 0 &&
 		range.base <= total && range.count <= total - range.base);
+}
+
+export function validInstances(
+	this item: Readonly<DrawItem>,
+	context: DrawContext,
+	program: ProgramKey,
+): boolean {
+	const run = item.instances;
+	if (!program.instanced) { return run === null; }
+	if (run === null || !context.hasMesh(run.stream)) { return false; }
+	const stream: GpuMesh = context.meshes[run.stream.index];
+	return stream.layout == VertexLayout.InstancedLitTextured && run.first >= 0 &&
+		run.count >= 0 && run.first <= stream.instanceCount &&
+		run.count <= stream.instanceCount - run.first;
 }
 
 export function skinPoseOf(this item: Readonly<DrawItem>): Readonly<SkinPose> | null {
@@ -234,6 +278,7 @@ export interface DrawContext {
 	meshHolders: Vec<int32>;
 	meshPins: Vec<int32>;
 	meshTally: Vec<int32>;
+	meshStorage: Vec<VertexStorage>;
 	materials: Vec<Material>;
 	materialSlots: Slots;
 	materialHolders: Vec<int32>;
@@ -251,12 +296,32 @@ export interface DrawContext {
 	doomedTextures: Vec<DoomedTexture>;
 	samplers: Vec<uint32>;
 	samplerGeneration: int32;
+	textureMips: Vec<TextureMipData>;
+	mipSamplers: Vec<MipSampler>;
 	uniforms: UniformPool;
 	doomed: Vec<DoomedBuffer>;
 	pipelines: PipelineCache;
 	bindings: Vec<uint32>;
 	model: Vec<float32>;
 	closed: boolean;
+}
+
+// How a mesh's vertex buffer is written. A Dynamic buffer is one update per frame away from its
+// CPU data (`setMeshVertices`, `uploadDirtyMeshes`); Pending means the CPU data is newer than the
+// buffer, and drawing such a mesh is refused rather than shown stale.
+export enum VertexStorage {
+	Immutable,
+	Dynamic,
+	Pending,
+}
+
+export enum MeshWriteError {
+	StaleMesh,
+	ForeignMesh,
+	NotDynamic,
+	Shape,
+	BufferRefused,
+	WrittenThisFrame,
 }
 
 export enum MeshUploadError {
@@ -322,6 +387,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		meshHolders: [],
 		meshPins: [],
 		meshTally: [],
+		meshStorage: [],
 		materials: [],
 		materialSlots: Slots.empty(),
 		materialHolders: [],
@@ -339,6 +405,8 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		doomedTextures: [],
 		samplers: samplers,
 		samplerGeneration: 0,
+		textureMips: [],
+		mipSamplers: [],
 		uniforms: UniformPool.withCapacity(capacity),
 		doomed: [],
 		pipelines: PipelineCache.empty(),
@@ -399,12 +467,14 @@ function newMesh(context: DrawContext, mesh: GpuMesh, data: MeshData): MeshId {
 		context.meshHolders.push(1);
 		context.meshPins.push(0);
 		context.meshTally.push(0);
+		context.meshStorage.push(VertexStorage.Immutable);
 	} else {
 		context.meshes[index] = mesh;
 		context.meshData[index] = data;
 		context.meshHolders[index] = 1;
 		context.meshPins[index] = 0;
 		context.meshTally[index] = 0;
+		context.meshStorage[index] = VertexStorage.Immutable;
 	}
 	return {
 		store: context.serial,
@@ -564,7 +634,11 @@ function uploadMesh(context: DrawContext, index: int32): Result<int32, MeshUploa
 		context.meshes[index] = context.meshes[index].drawsNothing();
 		return Result.err(MeshUploadError.EmptyMesh);
 	}
-	const vertexBuffer: uint32 = makeVertexBuffer(context.meshData[index].vertices);
+	const dynamic: boolean = context.meshStorage[index] != VertexStorage.Immutable;
+	const vertexBuffer: uint32 = dynamic
+		? makeStreamBuffer(context.meshData[index].vertices.length as int32)
+		: makeVertexBuffer(context.meshData[index].vertices);
+	if (dynamic) { context.meshStorage[index] = VertexStorage.Pending; }
 	let indexBuffer: uint32 = 0;
 	if (context.meshData[index].isIndexed()) {
 		if (context.meshData[index].wideIndices !== null) {
@@ -608,6 +682,85 @@ export function addMeshData(
 	return Result.ok(id);
 }
 
+// A mesh whose vertices an app rewrites after the upload (morph targets). The buffer is made
+// empty and filled by the first `uploadDirtyMeshes`, because a dynamic sokol buffer takes no
+// initial data and one update per frame; until then the mesh is Pending and refuses to draw.
+// A lost context remakes it the same way, from the current CPU data.
+export function addDynamicMeshData(
+	context: DrawContext,
+	data: MeshData,
+): Result<MeshId, MeshUploadError> {
+	if (context.closed) { stopOnClosedContext("addDynamicMeshData"); }
+	if (!data.validIndexStorage()) { return Result.err(MeshUploadError.InvalidIndices); }
+	const id: MeshId = newMesh(context, data.meshFor(0, 0, 0), data);
+	context.meshStorage[id.index] = VertexStorage.Pending;
+	const uploaded: Result<int32, MeshUploadError> = uploadMesh(context, id.index);
+	if (!uploaded.ok) {
+		freeMesh(context, id.index);
+		return Result.err(uploaded.error);
+	}
+	return Result.ok(id);
+}
+
+// The CPU half of a dynamic mesh's update: the mesh keeps `source`'s vertices and bounds, so
+// bounds, picking, culling and a context rebuild all read what the next upload writes. The
+// indices and the vertex format cannot change.
+export function setMeshVertices(
+	context: DrawContext,
+	id: MeshId,
+	source: Readonly<MeshData>,
+): Result<int32, MeshWriteError> {
+	if (context.closed) { stopOnClosedContext("setMeshVertices"); }
+	if (!context.hasMesh(id)) {
+		return Result.err(
+			context.issuedMesh(id) ? MeshWriteError.StaleMesh : MeshWriteError.ForeignMesh,
+		);
+	}
+	const index: int32 = id.index;
+	if (context.meshStorage[index] == VertexStorage.Immutable) {
+		return Result.err(MeshWriteError.NotDynamic);
+	}
+	if (context.meshData[index].vertices.length != source.vertices.length ||
+		context.meshData[index].indexCount() != source.indexCount() ||
+		context.meshData[index].hasUvs != source.hasUvs ||
+		context.meshData[index].hasTangents != source.hasTangents ||
+		context.meshData[index].hasSkin != source.hasSkin) {
+		return Result.err(MeshWriteError.Shape);
+	}
+	for (let i = 0; i < source.vertices.length; i++) {
+		context.meshData[index].vertices[i] = source.vertices[i];
+	}
+	context.meshData[index].bounds = source.bounds;
+	context.meshStorage[index] = VertexStorage.Pending;
+	return Result.ok(source.vertexCount());
+}
+
+// The GPU half: writes every Pending mesh's vertices into its buffer and answers how many;
+// renderer.ms beginFrame calls it after the scene refresh and before the first pass.
+export function uploadDirtyMeshes(context: DrawContext): Result<int32, MeshWriteError> {
+	if (context.closed) { stopOnClosedContext("uploadDirtyMeshes"); }
+	let written: int32 = 0;
+	for (let i = 0; i < (context.meshes.length as int32); i++) {
+		if (context.meshHolders[i] == 0 || context.meshStorage[i] != VertexStorage.Pending) {
+			continue;
+		}
+		if (context.meshes[i].isStale(contextGeneration())) {
+			if (!uploadMesh(context, i).ok) { return Result.err(MeshWriteError.BufferRefused); }
+		}
+		const frame: uint32 = frameIndex();
+		if (context.meshes[i].writtenFrame == frame) {
+			return Result.err(MeshWriteError.WrittenThisFrame);
+		}
+		if (!updateBuffer(context.meshes[i].vertexBuffer, context.meshData[i].vertices)) {
+			return Result.err(MeshWriteError.BufferRefused);
+		}
+		context.meshes[i].writtenFrame = frame;
+		context.meshStorage[i] = VertexStorage.Dynamic;
+		written = written + 1;
+	}
+	return Result.ok(written);
+}
+
 export const STREAM_INSTANCE_STRIDE: int32 = 8;
 
 export enum StreamError {
@@ -626,7 +779,8 @@ export function isStream(this mesh: GpuMesh): boolean {
 
 function streamStride(layout: VertexLayout): int32 {
 	if (layout == VertexLayout.Particle) { return STREAM_INSTANCE_STRIDE; }
-	if (layout == VertexLayout.ParticleVisual) { return 16; }
+	if (layout == VertexLayout.ParticleVisual) { return 36; }
+	if (layout == VertexLayout.InstancedLitTextured) { return 16; }
 	console.error(`void3d: ${layout.toString()} is not a particle stream layout`);
 	unreachable;
 }
@@ -790,6 +944,7 @@ function freeMesh(context: DrawContext, index: int32): void {
 	context.meshes[index] = VACANT_MESH;
 	context.meshData[index] = MeshData.empty();
 	context.meshHolders[index] = 0;
+	context.meshStorage[index] = VertexStorage.Immutable;
 	vacate(context.meshSlots, index);
 }
 
@@ -1047,6 +1202,8 @@ function letGoOfMaterial(context: DrawContext, index: int32): int32 {
 	context.materials[index].dissolveTexture = NO_TEXTURE;
 	context.materials[index].emissiveTexture = NO_TEXTURE;
 	context.materials[index].normalTexture = NO_TEXTURE;
+	context.materials[index].metalRoughTexture = NO_TEXTURE;
+	context.materials[index].occlusionTexture = NO_TEXTURE;
 	context.materialBlocks[index] = NO_UNIFORMS;
 	context.materialHolders[index] = 0;
 	vacate(context.materialSlots, index);
@@ -1120,15 +1277,61 @@ export function samplerSlot(filter: FilterMode, wrap: Wrap): int32 {
 
 // Heaps' DirectXDriver shares one sampler state per setting (`samplerStates`), as PipelineCache
 // shares a pipeline per key, and like it the cache belongs to one GPU context.
-function samplerFor(context: DrawContext, filter: FilterMode, wrap: Wrap): uint32 {
+function refreshSamplers(context: DrawContext): void {
 	let generation: int32 = contextGeneration();
 	if (context.samplerGeneration != generation) {
 		for (let i = 0; i < SAMPLER_SETTINGS; i++) { context.samplers[i] = 0; }
+		while ((context.mipSamplers.length as int32) > 0) { context.mipSamplers.pop(); }
 		context.samplerGeneration = generation;
 	}
+}
+
+function samplerFor(context: DrawContext, filter: FilterMode, wrap: Wrap): uint32 {
+	refreshSamplers(context);
 	let at: int32 = samplerSlot(filter, wrap);
 	if (context.samplers[at] == 0) { context.samplers[at] = makeSampler(filter, wrap); }
 	return context.samplers[at];
+}
+
+// One sampler per distinct sampling, shared as the six above are; 0 when the door refuses it.
+function mipSamplerFor(context: DrawContext, sampling: TextureSampler2D): uint32 {
+	refreshSamplers(context);
+	for (const entry of context.mipSamplers) {
+		if (entry.sampling.sameSampling(sampling)) { return entry.id; }
+	}
+	const call: SamplerCall = sampling.doorCall();
+	const id: uint32 = makeSamplerEx(
+		call.minFilter, call.magFilter, call.mipFilter, call.wrapU, call.wrapV,
+		call.minLod, call.maxLod, call.maxAnisotropy,
+	);
+	if (id != 0) { context.mipSamplers.push({ sampling: sampling, id: id }); }
+	return id;
+}
+
+function hasMips(this context: DrawContext, index: int32): boolean {
+	return index < (context.textureMips.length as int32) &&
+		(context.textureMips[index].levels.length as int32) > 0;
+}
+
+function samplerAt(context: DrawContext, index: int32): uint32 {
+	if (context.hasMips(index)) {
+		return mipSamplerFor(context, context.textureMips[index].sampler);
+	}
+	return samplerFor(context, context.textureData[index].filter, context.textureData[index].wrap);
+}
+
+function uploadPixels(
+	context: DrawContext,
+	index: int32,
+	owner: Texture,
+): Result<int32, TextureError> {
+	if (context.hasMips(index)) {
+		return owner.uploadMips(
+			context.textureMips[index].pixels,
+			context.textureMips[index].levels.length as int32,
+		);
+	}
+	return owner.upload(context.textureData[index].pixels);
 }
 
 const VACANT_TEXTURE: GpuTexture = { texture: null, sampler: 0, samplerGeneration: 0 };
@@ -1153,18 +1356,14 @@ function uploadError(error: TextureError): TextureUploadError {
 }
 
 function uploadTexture(context: DrawContext, index: int32): Result<int32, TextureUploadError> {
-	const sampler: uint32 = samplerFor(
-		context,
-		context.textureData[index].filter,
-		context.textureData[index].wrap,
-	);
+	const sampler: uint32 = samplerAt(context, index);
 	if (sampler == 0) { return Result.err(TextureUploadError.SamplerRefused); }
 	const owner: Texture = Texture.create(
 		context.textureData[index].width,
 		context.textureData[index].height,
 		null,
 	);
-	const uploaded: Result<int32, TextureError> = owner.upload(context.textureData[index].pixels);
+	const uploaded: Result<int32, TextureError> = uploadPixels(context, index, owner);
 	if (!uploaded.ok) {
 		owner.close();
 		return Result.err(uploadError(uploaded.error));
@@ -1182,6 +1381,9 @@ function freeTexture(context: DrawContext, index: int32): void {
 	if (owner !== null) { doomOwner(context, owner); }
 	context.textures[index] = VACANT_TEXTURE;
 	context.textureData[index] = TextureData.empty();
+	if (index < (context.textureMips.length as int32)) {
+		context.textureMips[index] = noMips();
+	}
 	context.textureHolders[index] = 0;
 	context.texturePins[index] = 0;
 	context.textureTargets[index] = null;
@@ -1199,6 +1401,49 @@ export function addTexture(
 	if (!data.isWellFormed()) { return Result.err(TextureUploadError.BadSize); }
 	let index: int32 = claimTexture(context, data, null, TextureAlpha.Straight);
 	let uploaded: Result<int32, TextureUploadError> = uploadTexture(context, index);
+	if (!uploaded.ok) {
+		freeTexture(context, index);
+		return Result.err(uploaded.error);
+	}
+	return Result.ok(context.issuedTextureAt(index));
+}
+
+function noMips(): TextureMipData {
+	return {
+		levels: [],
+		pixels: [],
+		sampler: TextureSampler2D.unmipped(FilterMode.Linear, Wrap.Clamp),
+	};
+}
+
+// A texture with an explicit mip chain and its own sampler (Heaps' `mipMap`, `filter`, `wrap`,
+// `anisotropicMaxLevel`). Takes a copy of `mips`; the same upload and rebuild as `addTexture`,
+// from the chain. An anisotropic sampler is refused on a backend that cannot promise it.
+export function addTextureMip(
+	context: DrawContext,
+	mips: TextureMipData,
+): Result<TextureId, TextureUploadError> {
+	if (context.closed) { stopOnClosedContext("addTextureMip"); }
+	const levels: int32 = mips.levels.length as int32;
+	if (levels < 1) { return Result.err(TextureUploadError.BadSize); }
+	const admitted: Result<void, TextureSamplerError> =
+		mips.sampler.admitFor(levels, anisotropyPortable());
+	if (!admitted.ok) {
+		return Result.err(admitted.error == TextureSamplerError.AnisotropyNeedsCapability
+			? TextureUploadError.AnisotropyUnavailable
+			: TextureUploadError.SamplerRefused);
+	}
+	const base: TextureData = {
+		pixels: [],
+		width: mips.levels[0].width,
+		height: mips.levels[0].height,
+		filter: mips.sampler.minFilter,
+		wrap: mips.sampler.wrapU,
+	};
+	const index: int32 = claimTexture(context, base, null, TextureAlpha.Straight);
+	while ((context.textureMips.length as int32) <= index) { context.textureMips.push(noMips()); }
+	context.textureMips[index] = mips;
+	const uploaded: Result<int32, TextureUploadError> = uploadTexture(context, index);
 	if (!uploaded.ok) {
 		freeTexture(context, index);
 		return Result.err(uploaded.error);
@@ -1328,8 +1573,7 @@ export function rebuildTextures(context: DrawContext): int32 {
 		const imageStale: boolean = owner !== null && owner.generation != generation;
 		if (context.textures[i].samplerGeneration == generation && !imageStale) { continue; }
 		if (context.textures[i].samplerGeneration != generation) {
-			const sampler: uint32 =
-				samplerFor(context, context.textureData[i].filter, context.textureData[i].wrap);
+			const sampler: uint32 = samplerAt(context, i);
 			if (sampler == 0) {
 				if (owner !== null) { context.textures[i].sampler = 0; }
 				continue;
@@ -1338,7 +1582,7 @@ export function rebuildTextures(context: DrawContext): int32 {
 			context.textures[i].samplerGeneration = generation;
 		}
 		if (owner !== null && imageStale) {
-			if (!owner.upload(context.textureData[i].pixels).ok) { continue; }
+			if (!uploadPixels(context, i, owner).ok) { continue; }
 		}
 		count = count + 1;
 	}
@@ -1428,23 +1672,39 @@ function stopOnLongBlock(program: ProgramKey, block: UniformBlock, declared: int
 	unreachable;
 }
 
-// An hxsl global texture (Heaps' `shadow.map`), bound past a material's slots.
+// An hxsl global texture (Heaps' `shadow.map`) of the sun and of the shadowing spot, and the
+// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular), bound past a material's slots.
 export struct SceneTexture {
 	view: uint32;
 	sampler: uint32;
+	spotView: uint32;
+	spotSampler: uint32;
+	envDiffuse: uint32;
+	envSpecular: uint32;
+	envSampler: uint32;
 }
 
-export const NO_SCENE_TEXTURE: SceneTexture = { view: 0, sampler: 0 };
+export const NO_SCENE_TEXTURE: SceneTexture = {
+	view: 0, sampler: 0, spotView: 0, spotSampler: 0, envDiffuse: 0, envSpecular: 0, envSampler: 0,
+};
 
 function bindItem(
 	context: DrawContext,
 	mesh: GpuMesh,
+	instances: InstanceRun | null,
 	material: Material,
 	scene: SceneTexture,
 ): void {
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER] =
 		drawsQuads(mesh.layout) ? mesh.instanceBuffer : mesh.vertexBuffer;
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = 0;
+	context.bindings[GPU3D_BINDING_VERTEX_OFFSET] = 0;
+	if (instances !== null) {
+		const stream: GpuMesh = context.meshes[instances.stream.index];
+		context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = stream.instanceBuffer;
+		context.bindings[GPU3D_BINDING_VERTEX_OFFSET] =
+			(instances.first * streamStride(stream.layout) * 4) as uint32;
+	}
 	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = mesh.indexBuffer;
 	context.bindings[GPU3D_BINDING_VIEW] = material.texture0;
 	context.bindings[GPU3D_BINDING_VIEW + 1] = material.texture1;
@@ -1465,6 +1725,11 @@ function bindItem(
 	}
 	context.bindings[GPU3D_BINDING_VIEW + SHADOW_VIEW_SLOT] = scene.view;
 	context.bindings[GPU3D_BINDING_SAMPLER + SHADOW_SAMPLER_SLOT] = scene.sampler;
+	context.bindings[GPU3D_BINDING_VIEW + SPOT_SHADOW_VIEW_SLOT] = scene.spotView;
+	context.bindings[GPU3D_BINDING_SAMPLER + SPOT_SHADOW_SAMPLER_SLOT] = scene.spotSampler;
+	context.bindings[GPU3D_BINDING_VIEW + ENV_DIFFUSE_VIEW_SLOT] = scene.envDiffuse;
+	context.bindings[GPU3D_BINDING_VIEW + ENV_SPECULAR_VIEW_SLOT] = scene.envSpecular;
+	context.bindings[GPU3D_BINDING_SAMPLER + ENV_SAMPLER_SLOT] = scene.envSampler;
 	applyBindings(context.bindings);
 }
 
@@ -1504,6 +1769,12 @@ export function textureReady(this context: DrawContext, index: int32): boolean {
 	}
 	if (target.isAttachedToOpenPass()) { stopOnFeedbackTarget(index); }
 	return true;
+}
+
+function stopOnUntakenInstances(program: ProgramKey, layout: VertexLayout): void {
+	console.log(`void3d: drawItem draws ${program.describe()} on a ${layout.toString()} ` +
+		"mesh with instances it does not take");
+	unreachable;
 }
 
 function stopOnAlphaMismatch(program: ProgramKey, alpha: TextureAlpha): void {
@@ -1573,7 +1844,18 @@ export function drawItemWith(
 		console.log("void3d: drawItem with invalid skin pose or element range");
 		unreachable;
 	}
-	if (mesh.hasNothingToDraw()) { return; }
+	if (!item.validInstances(context, program) ||
+		(program.instanced && mesh.layout != meshLayoutOf(program))) {
+		stopOnUntakenInstances(program, mesh.layout);
+	}
+	const run = item.instances;
+	const instanceCount: int32 = run === null ? mesh.instanceCount : run.count;
+	if (mesh.hasNothingToDraw() || instanceCount == 0) { return; }
+	if (context.meshStorage[item.mesh.index] == VertexStorage.Pending) {
+		console.log("void3d: drawItem on a dynamic mesh whose vertices were not uploaded; " +
+			"beginFrame uploads them, so this frame changed the mesh after it began");
+		unreachable;
+	}
 	const declared: TextureAlpha = material.program.premultiplied ?
 		TextureAlpha.Premultiplied : TextureAlpha.Straight;
 	// Depth has no colour to premultiply, and the alpha a caster cuts by is the same either way.
@@ -1593,14 +1875,14 @@ export function drawItemWith(
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,
 		program,
-		mesh.layout,
+		program.instanced ? vertexLayoutOf(program) : mesh.layout,
 		mesh.isIndexed(),
 		state,
 		targets,
 		mesh.indexType(),
 	);
 	applyPipeline(pipeline);
-	bindItem(context, mesh, material, scene);
+	bindItem(context, mesh, run, material, scene);
 	let globalProgram: int32 = doorProgram(program);
 	if (context.pipelines.declaresBlock(globalProgram, MODEL_SLOT)) {
 		const modelLength: int32 = uniformBlockLength(program, MODEL_SLOT);
@@ -1625,9 +1907,9 @@ export function drawItemWith(
 	}
 	const range = item.range;
 	if (range === null) {
-		draw(0, mesh.elementCount(), mesh.instanceCount);
+		draw(0, mesh.elementCount(), instanceCount);
 	} else {
-		draw(range.base, range.count, mesh.instanceCount);
+		draw(range.base, range.count, instanceCount);
 	}
 }
 
@@ -1652,6 +1934,10 @@ export function closeContext(context: DrawContext): void {
 		}
 	}
 	for (let i = 0; i < SAMPLER_SETTINGS; i++) { context.samplers[i] = 0; }
+	if (context.samplerGeneration == generation) {
+		for (const entry of context.mipSamplers) { destroySampler(entry.id); }
+	}
+	while ((context.mipSamplers.length as int32) > 0) { context.mipSamplers.pop(); }
 	if (!context.pipelines.closed) { closePipelines(context.pipelines); }
 	if (!context.uniforms.closed) { closeUniformPool(context.uniforms); }
 	context.closed = true;

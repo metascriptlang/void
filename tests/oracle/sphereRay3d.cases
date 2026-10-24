@@ -1,0 +1,64 @@
+# lib: heaps format
+# haxe-prelude: import h3d.col.Sphere;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: class H {
+# haxe-prelude: public static function hit(s: Sphere,x: Float,y: Float,z: Float,
+# haxe-prelude: dx: Float,dy: Float,dz: Float): Float {
+# haxe-prelude: var ray=new Ray(); ray.px=x; ray.py=y; ray.pz=z;
+# haxe-prelude: ray.lx=dx; ray.ly=dy; ray.lz=dz;
+# haxe-prelude: return haxe.io.FPHelper.i32ToFloat(
+# haxe-prelude: haxe.io.FPHelper.floatToI32(s.rayIntersection(ray,true)));
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { Sphere3D } from "../../../src/void3d/sphere";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: function ball(x: float32,y: float32,z: float32,r: float32): Sphere3D {
+# ms-prelude: return { center:vec3(x,y,z),radius:r };
+# ms-prelude: }
+# ms-prelude: function hit(s: Sphere3D,x: float32,y: float32,z: float32,
+# ms-prelude: dx: float32,dy: float32,dz: float32): float32 {
+# ms-prelude: const ray: Ray = { origin:vec3(x,y,z),direction:vec3(dx,dy,dz) };
+# ms-prelude: const result=s.rayIntersection(ray);
+# ms-prelude: if (!result.ok) { console.error("Unexpected sphere ray error",result.error);
+# ms-prelude: const queryError: float32=-2.0; return queryError; }
+# ms-prelude: return result.value;
+# ms-prelude: }
+
+case sphere-ray-forward-axes tol=0
+haxe> var s=new Sphere(0,0,0,1);
+haxe> emit("sphere-ray-forward-axes",[H.hit(s,-3,0,0,1,0,0),
+haxe> H.hit(s,0,-3,0,0,1,0),H.hit(s,0,0,-3,0,0,1)]);
+ms> const s=ball(0,0,0,1);
+ms> emit3("sphere-ray-forward-axes",hit(s,-3,0,0,1,0,0),
+ms> hit(s,0,-3,0,0,1,0),hit(s,0,0,-3,0,0,1));
+
+case sphere-ray-misses tol=0
+haxe> emit("sphere-ray-misses",[H.hit(s,3,0,0,1,0,0),
+haxe> H.hit(s,-3,2,0,1,0,0),H.hit(s,-3,0,0,0,1,0)]);
+ms> emit3("sphere-ray-misses",hit(s,3,0,0,1,0,0),
+ms> hit(s,-3,2,0,1,0,0),hit(s,-3,0,0,0,1,0));
+
+case sphere-ray-tangencies tol=0
+haxe> emit("sphere-ray-tangencies",[H.hit(s,-3,1,0,1,0,0),
+haxe> H.hit(s,0,-3,1,0,1,0),H.hit(s,1,0,-3,0,0,1)]);
+ms> emit3("sphere-ray-tangencies",hit(s,-3,1,0,1,0,0),
+ms> hit(s,0,-3,1,0,1,0),hit(s,1,0,-3,0,0,1));
+
+case sphere-ray-inside-surface tol=0
+haxe> emit("sphere-ray-inside-surface",[H.hit(s,0.5,0,0,-1,0,0),
+haxe> H.hit(s,1,0,0,1,0,0),H.hit(s,1,0,0,-1,0,0)]);
+ms> emit3("sphere-ray-inside-surface",hit(s,0.5,0,0,-1,0,0),
+ms> hit(s,1,0,0,1,0,0),hit(s,1,0,0,-1,0,0));
+
+case sphere-ray-translated-signed-point tol=0
+haxe> emit("sphere-ray-translated-signed-point",[H.hit(new Sphere(5,-2,7,2),5,-2,3,0,0,1),
+haxe> H.hit(new Sphere(0,0,0,-1),-3,0,0,1,0,0),H.hit(new Sphere(0,0,0,0),-3,0,0,1,0,0)]);
+ms> emit3("sphere-ray-translated-signed-point",hit(ball(5,-2,7,2),5,-2,3,0,0,1),
+ms> hit(ball(0,0,0,-1),-3,0,0,1,0,0),hit(ball(0,0,0,0),-3,0,0,1,0,0));
+
+case sphere-ray-reverse-axes tol=0
+haxe> emit("sphere-ray-reverse-axes",[H.hit(s,3,0,0,-1,0,0),
+haxe> H.hit(s,0,3,0,0,-1,0),H.hit(s,0,0,3,0,0,-1)]);
+ms> emit3("sphere-ray-reverse-axes",hit(s,3,0,0,-1,0,0),
+ms> hit(s,0,3,0,0,-1,0),hit(s,0,0,3,0,0,-1));

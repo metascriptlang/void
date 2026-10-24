@@ -83,8 +83,11 @@ driver as any source. The gate's oracle step runs `regen-shaders.sh --check`, wh
 stage of every program in `out/irPrograms/`, then fxc and naga over it: 518 HLSL stages in 26 s
 and 518 WGSL files in 18 s, the regen itself about 4 min (2026-10-24, Windows); a missing tool
 is a named SKIP. GLSL stays a SKIP: naga reads GL GLSL only after a rewrite to Vulkan 450
-(combined samplers split, locations added) that lives outside the repository. MSL is compiled
-by hand on a Mac (`xcrun metal`); Windows has no validator for it.
+(combined samplers split, locations added) that lives outside the repository. On a Mac
+`scripts/validateMsl.sh` compiles every MSL stage with `xcrun metal -c`, the `_ios` ones against
+the iphoneos SDK, with no options, as `newLibraryWithSource` gets none: 1036 stages in 2.5 min,
+plus the shader checks' `out/mslProbe/` (2026-10-24). Other hosts have no Metal compiler and
+SKIP it.
 
 ## The DXBC cache
 

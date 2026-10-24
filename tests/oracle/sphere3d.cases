@@ -1,0 +1,108 @@
+# lib: heaps format
+# haxe-prelude: import h3d.col.Sphere;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: class H {
+# haxe-prelude: public static function at(s: Sphere,x: Float,y: Float,z: Float): Float {
+# haxe-prelude: return s.contains(new Point(x,y,z)) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: public static function pair(a: Sphere,b: Sphere): Float {
+# haxe-prelude: return a.inSphere(b) ? 1.0 : 0.0;
+# haxe-prelude: }
+# haxe-prelude: public static function projection(
+# haxe-prelude: s: Sphere,x: Float,y: Float,z: Float): Array<Float> {
+# haxe-prelude: var p=s.closestPoint(new Point(x,y,z)); return [f32(p.x),f32(p.y),f32(p.z)];
+# haxe-prelude: }
+# haxe-prelude: public static function f32(v: Float): Float {
+# haxe-prelude: return haxe.io.FPHelper.i32ToFloat(haxe.io.FPHelper.floatToI32(v));
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { Sphere3D } from "../../../src/void3d/sphere";
+# ms-prelude: function ball(x: float32,y: float32,z: float32,r: float32): Sphere3D {
+# ms-prelude: return { center:vec3(x,y,z),radius:r };
+# ms-prelude: }
+# ms-prelude: function at(s: Sphere3D,x: float32,y: float32,z: float32): float32 {
+# ms-prelude: return s.contains(vec3(x,y,z)) ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function pair(a: Sphere3D,b: Sphere3D): float32 {
+# ms-prelude: return a.overlaps(b) ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function emitPoint(id: string,s: Sphere3D,p: Vec3): boolean {
+# ms-prelude: const result=s.closestPoint(p); if (!result.ok) { return false; }
+# ms-prelude: emit3(id,result.value.x,result.value.y,result.value.z); return true;
+# ms-prelude: }
+
+case sphere-point-inside tol=0
+haxe> var s = new Sphere(2,3,4,2);
+haxe> emit("sphere-point-inside",[H.at(s,2,3,4),H.at(s,3,3,4),H.at(s,2,4,5)]);
+ms> const s = ball(2.0,3.0,4.0,2.0);
+ms> emit3("sphere-point-inside",at(s,2.0,3.0,4.0),at(s,3.0,3.0,4.0),at(s,2.0,4.0,5.0));
+
+case sphere-point-contact tol=0
+haxe> emit("sphere-point-contact",[H.at(s,4,3,4),H.at(s,0,3,4),H.at(s,2,3,6)]);
+ms> emit3("sphere-point-contact",at(s,4.0,3.0,4.0),at(s,0.0,3.0,4.0),at(s,2.0,3.0,6.0));
+
+case sphere-point-outside tol=0
+haxe> emit("sphere-point-outside",[H.at(s,4.01,3,4),H.at(s,2,5.01,4),H.at(s,2,3,6.01)]);
+ms> emit3("sphere-point-outside",at(s,4.01,3.0,4.0),at(s,2.0,5.01,4.0),at(s,2.0,3.0,6.01));
+
+case sphere-point-diagonal tol=0
+haxe> var u = new Sphere(0,0,0,1);
+haxe> emit("sphere-point-diagonal",[H.at(u,0.5,0.5,0.5),H.at(u,1,1,1),H.at(u,0,0,0)]);
+ms> const u = ball(0.0,0.0,0.0,1.0);
+ms> emit3("sphere-point-diagonal",at(u,0.5,0.5,0.5),at(u,1.0,1.0,1.0),at(u,0.0,0.0,0.0));
+
+case sphere-pair-distance tol=0
+haxe> var close = new Sphere(1.5,0,0,1); var tangent = new Sphere(2,0,0,1);
+haxe> emit("sphere-pair-distance",[H.pair(u,close),H.pair(u,tangent),
+haxe> H.pair(u,new Sphere(2.01,0,0,1))]);
+ms> const close = ball(1.5,0.0,0.0,1.0); const tangent = ball(2.0,0.0,0.0,1.0);
+ms> emit3("sphere-pair-distance",pair(u,close),pair(u,tangent),pair(u,ball(2.01,0.0,0.0,1.0)));
+
+case sphere-pair-symmetry tol=0
+haxe> var nested = new Sphere(0,0,0,0.25);
+haxe> emit("sphere-pair-symmetry",[H.pair(close,u),H.pair(u,nested),H.pair(nested,u)]);
+ms> const nested = ball(0.0,0.0,0.0,0.25);
+ms> emit3("sphere-pair-symmetry",pair(close,u),pair(u,nested),pair(nested,u));
+
+case sphere-zero-radius tol=0
+haxe> var zero = new Sphere(0,0,0,0);
+haxe> emit("sphere-zero-radius",[H.at(zero,0,0,0),H.pair(zero,zero),H.pair(zero,u)]);
+ms> const zero = ball(0.0,0.0,0.0,0.0);
+ms> emit3("sphere-zero-radius",at(zero,0.0,0.0,0.0),pair(zero,zero),pair(zero,u));
+
+case sphere-zero-boundary tol=0
+haxe> var edge = new Sphere(1,0,0,0);
+haxe> emit("sphere-zero-boundary",[H.pair(u,edge),H.pair(edge,u),H.pair(u,zero)]);
+ms> const edge = ball(1.0,0.0,0.0,0.0);
+ms> emit3("sphere-zero-boundary",pair(u,edge),pair(edge,u),pair(u,zero));
+
+case sphere-project-outside tol=0
+haxe> var projected=new Sphere(3,-4,5,2);
+haxe> emit("sphere-project-outside",H.projection(projected,7,-4,5));
+ms> const projected=ball(3.0,-4.0,5.0,2.0);
+ms> if (!emitPoint("sphere-project-outside",projected,vec3(7,-4,5))) { return 1; }
+
+case sphere-project-inside tol=0
+haxe> emit("sphere-project-inside",H.projection(projected,4,-4,5));
+ms> if (!emitPoint("sphere-project-inside",projected,vec3(4,-4,5))) { return 1; }
+
+case sphere-project-center tol=0
+haxe> emit("sphere-project-center",H.projection(projected,3,-4,5));
+ms> if (!emitPoint("sphere-project-center",projected,vec3(3,-4,5))) { return 1; }
+
+case sphere-project-diagonal tol=0.000001
+haxe> emit("sphere-project-diagonal",H.projection(projected,3,-1,9));
+ms> if (!emitPoint("sphere-project-diagonal",projected,vec3(3,-1,9))) { return 1; }
+
+case sphere-project-tiny tol=0
+haxe> emit("sphere-project-tiny",H.projection(u,1e-12,0,0));
+ms> if (!emitPoint("sphere-project-tiny",u,vec3(1.0e-12,0,0))) { return 1; }
+
+case sphere-project-above-cutoff tol=0
+haxe> emit("sphere-project-above-cutoff",H.projection(u,1e-9,0,0));
+ms> if (!emitPoint("sphere-project-above-cutoff",u,vec3(1.0e-9,0,0))) { return 1; }
+
+case sphere-project-signed-radius tol=0
+haxe> emit("sphere-project-signed-radius",H.projection(new Sphere(0,0,0,-2),1,0,0));
+ms> if (!emitPoint("sphere-project-signed-radius",ball(0,0,0,-2),vec3(1,0,0))) { return 1; }

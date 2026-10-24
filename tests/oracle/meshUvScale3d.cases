@@ -1,0 +1,54 @@
+# lib: heaps format
+# haxe-prelude: import h3d.prim.Polygon;
+# haxe-prelude: import h3d.prim.UV;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: class H {
+# haxe-prelude: public static function sample(su: Float,sv: Float): Array<Float> {
+# haxe-prelude: var indices = new hxd.IndexBuffer(); for (i in 0...3) indices.push(i);
+# haxe-prelude: var p = new Polygon([new Point(),new Point(1,0,0),new Point(0,1,0)],indices);
+# haxe-prelude: p.normals = [for (i in 0...3) new Point(0,0,1)];
+# haxe-prelude: p.tangents = [for (i in 0...3) new Point(1,0,0)];
+# haxe-prelude: var shared = new UV(0.25,0.75); p.uvs = [shared,new UV(1,-0.5),shared];
+# haxe-prelude: p.uvScale(su,sv); var cpu = p.getCPUBuffer();
+# haxe-prelude: return [cpu[9],cpu[10],cpu[20],cpu[21],cpu[31],cpu[32],cpu[5],cpu[6],p.idx.length];
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { vec3 } from "../../../src/math/math3d";
+# ms-prelude: import {
+# ms-prelude: MeshData, MeshError, Uv, addTexturedVertex, addTriangle, addGivenTangents, scaleUvs,
+# ms-prelude: } from "../../../src/void3d/meshData";
+# ms-prelude: function scaledUvs(su: float32,sv: float32): Result<MeshData,MeshError> {
+# ms-prelude: let data = MeshData.withUvs();
+# ms-prelude: for (let i = 0; i < 3; i++) {
+# ms-prelude: const point = vec3(i == 1 ? 1.0 : 0.0,i == 2 ? 1.0 : 0.0,0.0);
+# ms-prelude: const uv: Uv = i == 1 ? { u: 1.0, v: -0.5 } : { u: 0.25, v: 0.75 };
+# ms-prelude: const _vertex = try addTexturedVertex(data,point,vec3(0.0,0.0,1.0),uv,
+# ms-prelude: { red: 0.25, green: 0.5, blue: 0.75, alpha: 1.0 });
+# ms-prelude: }
+# ms-prelude: const _triangle = try addTriangle(data,0,1,2);
+# ms-prelude: const _tangents = try addGivenTangents(data,[1.0,0.0,0.0,1.0,1.0,0.0,0.0,1.0,
+# ms-prelude: 1.0,0.0,0.0,1.0]);
+# ms-prelude: const _scaled = try scaleUvs(data,su,sv);
+# ms-prelude: return Result.ok(data);
+# ms-prelude: }
+# ms-prelude: function sampleUvs(id: string,data: MeshData): void {
+# ms-prelude: const width = data.stride();
+# ms-prelude: emit9(id,data.vertices[6],data.vertices[7],data.vertices[width+6],
+# ms-prelude: data.vertices[width+7],data.vertices[width*2+6],data.vertices[width*2+7],
+# ms-prelude: data.vertices[5],data.vertices[12],data.indexCount() as float32);
+# ms-prelude: }
+
+case uv-shared-positive tol=0
+haxe> emit("uv-shared-positive",H.sample(2,3));
+ms> const positive = scaledUvs(2.0,3.0); if (!positive.ok) { return 1; }
+ms> sampleUvs("uv-shared-positive",positive.value);
+
+case uv-shared-signed tol=0
+haxe> emit("uv-shared-signed",H.sample(-2,0.5));
+ms> const signed = scaledUvs(-2.0,0.5); if (!signed.ok) { return 1; }
+ms> sampleUvs("uv-shared-signed",signed.value);
+
+case uv-shared-zero tol=0
+haxe> emit("uv-shared-zero",H.sample(0,0));
+ms> const zero = scaledUvs(0.0,0.0); if (!zero.ok) { return 1; }
+ms> sampleUvs("uv-shared-zero",zero.value);

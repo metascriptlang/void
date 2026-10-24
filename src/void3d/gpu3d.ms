@@ -97,15 +97,22 @@ export struct ProgramKey {
 	normalMap: boolean;
 	skinned: boolean;
 	normalMrt: boolean;
+	// Lights the surface with Heaps' direct BRDF (pbrDirect in shader3d.ms) from the material's
+	// metalness, roughness and occlusion (PBR_* below) instead of the legacy lambert.
+	pbr: boolean;
+	pbrMaps: boolean;
+	// Draws the mesh once per particle from a per-instance world affine and colour in vertex
+	// buffer slot 1 (docs/PARTICLES-RENDER.md A.2.1).
+	instanced: boolean;
 }
 
-const KEY_LIMIT: int32 = 65536;
+const KEY_LIMIT: int32 = 524288;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
-		skinned: false, normalMrt: false,
+		skinned: false, normalMrt: false, pbr: false, pbrMaps: false, instanced: false,
 	};
 }
 
@@ -143,15 +150,19 @@ function stopOnUntextured(key: ProgramKey, feature: string): ProgramKey {
 	return key;
 }
 
+// A pbr key reads the UV transform in its own block, so it never takes the moving one.
 export function withUvTransform(this key: ProgramKey): ProgramKey {
+	if (key.pbr) { return stopOnFeature(key, "uv transform"); }
 	return { ...stopOnUntextured(key, "uv transform"), uvTransform: true };
 }
 
 export function withBackTexture(this key: ProgramKey): ProgramKey {
+	if (key.pbrMaps) { return stopOnFeature(key, "back texture"); }
 	return { ...stopOnUntextured(key, "back texture"), backTexture: true };
 }
 
 export function withDissolve(this key: ProgramKey): ProgramKey {
+	if (key.pbrMaps) { return stopOnFeature(key, "dissolve"); }
 	return { ...stopOnUntextured(key, "dissolve"), dissolve: true };
 }
 
@@ -172,6 +183,27 @@ export function withSkin(this key: ProgramKey): ProgramKey {
 
 export function withNormalMap(this key: ProgramKey): ProgramKey {
 	return { ...stopOnNotLitTextured(key, "normal map"), normalMap: true };
+}
+
+export function withPbr(this key: ProgramKey): ProgramKey {
+	if ((key.program != Program.Lit && key.program != Program.LitTextured) || key.moves()) {
+		return stopOnFeature(key, "pbr");
+	}
+	return { ...key, pbr: true };
+}
+
+export function withPbrMaps(this key: ProgramKey): ProgramKey {
+	if (!key.pbr || key.program != Program.LitTextured || key.backTexture || key.dissolve) {
+		return stopOnFeature(key, "pbr maps");
+	}
+	return { ...key, pbrMaps: true };
+}
+
+export function withInstanced(this key: ProgramKey): ProgramKey {
+	const textured: boolean = key.program == Program.LitTextured ||
+		key.program == Program.UnlitTextured;
+	if (!textured || key.skinned || key.normalMap) { return stopOnFeature(key, "instancing"); }
+	return { ...key, instanced: true };
 }
 
 export function withNormalMrt(this key: ProgramKey): ProgramKey {
@@ -197,7 +229,9 @@ export function bits(this key: ProgramKey): int32 {
 		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
 		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
 		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
-		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15);
+		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
+		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17) |
+		((key.instanced ? 1 : 0) << 18);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -211,9 +245,11 @@ export function describe(this key: ProgramKey): string {
 	const normalMap: string = key.normalMap ? " normal-map" : "";
 	const skin: string = key.skinned ? " skinned" : "";
 	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
+	const pbr: string = (key.pbr ? " pbr" : "") + (key.pbrMaps ? " pbr-maps" : "");
+	const instanced: string = key.instanced ? " instanced" : "";
 	const features: string =
 		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
-		skin + normalMrt;
+		skin + normalMrt + pbr + instanced;
 	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
@@ -311,7 +347,7 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	const cast: ProgramKey = {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
 		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
-		emissive: false, normalMrt: false,
+		emissive: false, normalMrt: false, pbr: false, pbrMaps: false,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);
@@ -329,10 +365,18 @@ export enum VertexLayout {
 	SkinLitTextured,
 	SkinLitTexturedTangent,
 	ParticleVisual,
+	InstancedLitTextured,
 }
 
 export function vertexLayoutOf(program: ProgramKey): VertexLayout {
 	return (doorProgramLayout(doorProgram(program)) - layoutBase) as VertexLayout;
+}
+
+// The layout of the mesh a draw item names: an instanced program reads that mesh in slot 0 and
+// its instances from a stream in slot 1.
+export function meshLayoutOf(program: ProgramKey): VertexLayout {
+	const layout: VertexLayout = vertexLayoutOf(program);
+	return layout == VertexLayout.InstancedLitTextured ? VertexLayout.LitTextured : layout;
 }
 
 export function drawsQuads(layout: VertexLayout): boolean {
@@ -344,6 +388,7 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Fullscreen => false,
 		VertexLayout.LitTextured => false,
 		VertexLayout.LitTexturedTangent => false,
+		VertexLayout.InstancedLitTextured => false,
 		VertexLayout.SkinLit | VertexLayout.SkinLitTextured |
 			VertexLayout.SkinLitTexturedTangent => false,
 	};
@@ -353,22 +398,49 @@ export function drawsQuads(layout: VertexLayout): boolean {
 export const SKIN_UNIFORM_SLOT: int32 = 7;
 export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
-export const VERTEX_UNIFORM_LENGTH: int32 = 24;
+export const VERTEX_UNIFORM_LENGTH: int32 = 28;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
 // ambient (rgb + point count), dirLight (direction + power), dirColor, then pointLight[4]
 // (position + power) and pointColor[4] (rgb + radius): two vec4 arrays of one vec4 per light,
 // packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
 export const MAX_POINT_LIGHTS: int32 = 4;
-export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
-// The scene's shadow block (binding=5, shader3d.ms ShadowParams): the world-to-map
-// matrix, then the bias and the opacity.
+// The shape block follows, four vec4 arrays of one vec4 per light (shader3d.ms LightParams
+// shapeA..shapeD): shapeA is forward or axis with the kind in w, B, C and D the shape's own
+// numbers (scene.ms collectLights). Kind 0, a point light, reads none of them.
+export const LIGHT_SHAPE_BASE: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
+export const LIGHT_SHAPE_ARRAY_LENGTH: int32 = MAX_POINT_LIGHTS * 4;
+export const LIGHT_UNIFORM_LENGTH: int32 = LIGHT_SHAPE_BASE + 4 * LIGHT_SHAPE_ARRAY_LENGTH;
+export const LIGHT_KIND_POINT: float32 = 0.0;
+export const LIGHT_KIND_SPOT: float32 = 1.0;
+export const LIGHT_KIND_RECTANGLE: float32 = 2.0;
+export const LIGHT_KIND_CAPSULE: float32 = 3.0;
+// The scene's shadow block (binding=5, shader3d.ms ShadowParams): one light's half is the
+// world-to-map matrix, then the bias and the opacity. The sun's half comes first and the one
+// shadowing spot's at SHADOW_SPOT_BASE; a half nobody wrote is zero and shades nothing.
 export const SHADOW_UNIFORM_SLOT: int32 = 5;
-export const SHADOW_UNIFORM_LENGTH: int32 = 20;
+export const SHADOW_SPOT_BASE: int32 = 20;
+export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_SPOT_BASE * 2;
 export const SHADOW_BIAS: int32 = 16;
 export const SHADOW_OPACITY: int32 = 17;
-// The shadow map's view and sampler slots (dirShadow's `binding=`), past a material's.
+// The shadow maps' view and sampler slots (dirShadow's `binding=`), past a material's: the sun's
+// map, then the spot's.
 export const SHADOW_VIEW_SLOT: int32 = 4;
 export const SHADOW_SAMPLER_SLOT: int32 = 2;
+export const SPOT_SHADOW_VIEW_SLOT: int32 = 6;
+export const SPOT_SHADOW_SAMPLER_SLOT: int32 = 3;
+// The slots a shadowed program reads the scene's maps at, which no material binds.
+export const SHADOW_SCENE_VIEWS: uint32 =
+	(1 << (SHADOW_VIEW_SLOT as uint32)) | (1 << (SPOT_SHADOW_VIEW_SLOT as uint32));
+export const SHADOW_SCENE_SAMPLERS: uint32 =
+	(1 << (SHADOW_SAMPLER_SLOT as uint32)) | (1 << (SPOT_SHADOW_SAMPLER_SLOT as uint32));
+// The environment's cubes (shader3d.ms pbrEnvironmentLight), which a pbr program reads and the
+// scene binds: an environment's, or a black cube when none is attached.
+export const ENV_DIFFUSE_VIEW_SLOT: int32 = 7;
+export const ENV_SPECULAR_VIEW_SLOT: int32 = 8;
+export const ENV_SAMPLER_SLOT: int32 = 4;
+export const ENV_SCENE_VIEWS: uint32 =
+	(1 << (ENV_DIFFUSE_VIEW_SLOT as uint32)) | (1 << (ENV_SPECULAR_VIEW_SLOT as uint32));
+export const ENV_SCENE_SAMPLERS: uint32 = 1 << (ENV_SAMPLER_SLOT as uint32);
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
@@ -406,6 +478,8 @@ export const DISSOLVE_VIEW_SLOT: int32 = 2;
 export const DISSOLVE_SAMPLER_SLOT: int32 = 1;
 export const EMISSIVE_VIEW_SLOT: int32 = 3;
 export const NORMAL_VIEW_SLOT: int32 = 5;
+export const METAL_ROUGH_VIEW_SLOT: int32 = 1;
+export const OCCLUSION_VIEW_SLOT: int32 = 2;
 // An emissive key's block ends in one vec4: the emitted colour, gamma-encoded, and at
 // EMISSIVE_STRENGTH the factor it is scaled by in linear light (KHR_materials_emissive_strength).
 export const EMISSIVE_COLOR: int32 = 0;
@@ -417,14 +491,43 @@ export const EMISSIVE_LENGTH: int32 = 4;
 // draws into an HDR target, where every scene program writes its colour linear and unexposed; at
 // FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed colour goes through.
 export const FRAME_UNIFORM_SLOT: int32 = 6;
-export const FRAME_UNIFORM_LENGTH: int32 = 4;
+export const FRAME_UNIFORM_LENGTH: int32 = 12;
 export const FRAME_TIME: int32 = 0;
 export const FRAME_EXPOSURE: int32 = 1;
 export const FRAME_LINEAR: int32 = 2;
 export const FRAME_TONE_MODE: int32 = 3;
+// The camera's world position at FRAME_CAMERA_POSITION (xyz; w unread): the view vector of a pbr
+// key, as Heaps' PropsDefinition `cameraPosition`.
+export const FRAME_CAMERA_POSITION: int32 = 4;
+// The attached environment (renderer.ms attachEnvironment), as Heaps' Renderer.hx:715-723 loads
+// pbrIndirect: irrPower (the power squared), irrSpecularLevels, and the cosine and sine of its
+// rotation; a power of 0 lights a pbr key by the flat ambient instead.
+export const FRAME_ENV_POWER: int32 = 8;
+export const FRAME_ENV_LEVELS: int32 = 9;
+export const FRAME_ENV_COS: int32 = 10;
+export const FRAME_ENV_SIN: int32 = 11;
+
+// A pbr key's block (pbrMaterialParams in shader3d.ms): the lit block, then one vec4 holding
+// metalness, roughness and occlusion, all in 0..1, at PBR_VALUES = MATERIAL_UNIFORM_LENGTH for
+// every pbr key, then the UV transform laid out as MOVING_UV_*, which every pbr key reads as
+// Bevy's StandardMaterial reads its uv_transform. It is part of the key's own block, so
+// emissiveBase starts after it: an emitting key adds the emissive vec4 at emissiveBase
+// (pbrEmissiveMaterialParams).
+// Heaps' defaults (PbrMaterial props): 0, 1 and 1; a block is zero-filled,
+// so material.ms pbrDefaults writes them, because roughness 0 has no valid BRDF.
+export const PBR_VALUES: int32 = MATERIAL_UNIFORM_LENGTH;
+export const PBR_METALNESS: int32 = PBR_VALUES;
+export const PBR_ROUGHNESS: int32 = PBR_VALUES + 1;
+export const PBR_OCCLUSION: int32 = PBR_VALUES + 2;
+export const PBR_OCCLUSION_STRENGTH: int32 = PBR_VALUES + 3;
+export const PBR_UV_MATRIX: int32 = PBR_VALUES + 4;
+export const PBR_UV_OFFSET: int32 = PBR_VALUES + 8;
+export const PBR_UV_SCROLL: int32 = PBR_VALUES + 10;
+export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 12;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {
+	if (key.pbr) { return PBR_MATERIAL_UNIFORM_LENGTH; }
 	return key.program == Program.UnlitTextured ?
 		UNLIT_MATERIAL_UNIFORM_LENGTH : MATERIAL_UNIFORM_LENGTH;
 }
@@ -460,8 +563,8 @@ export function layoutFloats(layout: VertexLayout, buffer: int32): int32 {
 	return doorLayoutFloats(doorLayout(layout), buffer);
 }
 
-export function layoutPerInstance(layout: VertexLayout): boolean {
-	return doorLayoutPerInstance(doorLayout(layout));
+export function layoutPerInstance(layout: VertexLayout, buffer: int32): boolean {
+	return doorLayoutPerInstance(doorLayout(layout), buffer);
 }
 
 // PipelineBuilder.lookup, on void3d's own enums: the key and the cache are the door's.

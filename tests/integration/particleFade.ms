@@ -9,9 +9,13 @@ import {
 	addMaterial, addStreamMesh, writeStream,
 } from "../../src/void3d/draw";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/void3d/camera";
+import { ParticleSystemAsset, ParticleSortMode, SimulationSpace } from "../../src/particles/asset";
+import { constantCurve } from "../../src/particles/curve";
 import {
-	ParticleEmitter, EmitterState, SortMode, constant, updateEmitter, writeSortedInstances,
-} from "../../src/void3d/particles";
+	ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, SIZE_X, COLOR_R, COLOR_G, COLOR_B,
+	COLOR_A,
+} from "../../src/particles/system";
+import { ParticleWriter3D, writeParticlePoints } from "../../src/void3d/particleWriter";
 import { LowResView } from "../../src/void3d/blit";
 import {
 	ForwardRenderer, ForwardError, FORWARD_HDR_UNIFORM_LENGTH,
@@ -52,15 +56,25 @@ let values: Vec<float32> = [0.0, 0.0, 0.0, 0.6, 1.0, 1.0, 1.0, 1.0];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
-let emitter: ParticleEmitter = makeEmitter();
+let emitter: ParticleSystem = makeEmitter();
+let writer: ParticleWriter3D = ParticleWriter3D.create();
 let sortedValues: Vec<float32> = new Array(16);
 
-function makeEmitter(): ParticleEmitter {
-	const made = ParticleEmitter.create({
-		...EmitterState.defaults(), maxParts: 2, sortMode: SortMode.Sort, life: constant(10.0),
-	}, 31);
-	if (made.ok) { return made.value; }
-	unreachable;
+function makeEmitter(): ParticleSystem {
+	let asset = ParticleSystemAsset.defaults();
+	asset.main.duration = 10.0;
+	asset.main.maxParticles = 2;
+	asset.main.startLifetime = constantCurve(10.0);
+	asset.main.startSpeed = constantCurve(0.0);
+	asset.main.simulationSpace = SimulationSpace.World;
+	asset.shape.enabled = false;
+	asset.emission.rateOverTime = constantCurve(1000.0);
+	asset.renderer.sortMode = ParticleSortMode.Depth;
+	const made = ParticleSystem.create(asset, 31);
+	if (!made.ok) { unreachable; }
+	let sys = made.value;
+	sys.clock.fixedStep = 1.0 / 60.0;
+	return sys;
 }
 
 function fail(message: string): void {
@@ -114,17 +128,20 @@ function init(): void {
 	addParticle(Material.ofKind(Program.Particle, MaterialKind.Opaque));
 	addParticle(cut);
 	addParticle(alpha, 2);
-	emitter.emitCount = 2.0;
-	if (!updateEmitter(emitter, 0.0, identity()).ok || emitter.count != 2) {
+	playSystem(emitter, identity());
+	if (!updateSystem(emitter, 1.0 / 60.0, identity()).ok || emitter.count != 2) {
 		fail("sorted emitter setup refused");
 	}
+	const cap: int32 = emitter.capacity;
 	for (let i = 0; i < 2; i++) {
-		emitter.particles[i].position = vec3(0.0, 1.2, i == 0 ? 1.0 : 0.0);
-		emitter.particles[i].size = 0.6;
-		emitter.particles[i].red = i == 0 ? 1.0 : 0.0;
-		emitter.particles[i].green = i == 0 ? 0.0 : 1.0;
-		emitter.particles[i].blue = 0.0;
-		emitter.particles[i].alpha = 0.5;
+		emitter.data[POS_X * cap + i] = 0.0;
+		emitter.data[POS_Y * cap + i] = 1.2;
+		emitter.data[POS_Z * cap + i] = i == 0 ? 1.0 : 0.0;
+		emitter.data[SIZE_X * cap + i] = 0.6;
+		emitter.data[COLOR_R * cap + i] = i == 0 ? 1.0 : 0.0;
+		emitter.data[COLOR_G * cap + i] = i == 0 ? 0.0 : 1.0;
+		emitter.data[COLOR_B * cap + i] = 0.0;
+		emitter.data[COLOR_A * cap + i] = 0.5;
 	}
 }
 
@@ -176,7 +193,8 @@ function frame(): void {
 	write(4, 2.1, 0.0, 1.0, 0.75);
 	const view: CameraView = viewOf();
 	view.writeCameraBlock(cameraValues);
-	const sorted = writeSortedInstances(emitter, identity(), view.viewProj, sortedValues);
+	const sorted = writeParticlePoints(
+		writer, emitter, vec3(0.0, 0.0, 4.0), vec3(0.0, 0.0, -1.0), sortedValues);
 	if (!sorted.ok) { fail("sorted emitter write refused"); }
 	if (sorted.ok && !writeStream(context, streams[5], sortedValues, sorted.value).ok) {
 		fail("sorted stream refused");

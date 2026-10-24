@@ -46,7 +46,19 @@ MS_PRELUDE=$(sed -n 's|^# ms-prelude: ||p' "$CASES")
 # every case in the file, where a prelude line can only declare.
 MS_MAIN_PRELUDE=$(sed -n 's|^# ms-main-prelude: ||p' "$CASES")
 
-case_ids() { sed -n 's|^case \([a-z0-9-]*\).*|\1|p' "$CASES"; }
+CASE_IDS=$(LC_ALL=C awk '/^case / {
+	id = $2
+	if (id !~ /^[a-z0-9-]+$/) {
+		printf "oracle: invalid case ID '\''%s'\''\n", id > "/dev/stderr"
+		exit 2
+	}
+	if (seen[id]++) {
+		printf "oracle: duplicate case ID '\''%s'\''\n", id > "/dev/stderr"
+		exit 2
+	}
+	print id
+}' "$CASES") || exit 2
+case_ids() { printf '%s\n' "$CASE_IDS"; }
 case_attr() { sed -n "s|^case $1 .*$2=\([^ ]*\).*|\1|p" "$CASES" | head -1; }
 case_body() { awk -v id="$1" -v tag="$2" '
 	$1 == "case" { active = ($2 == id) }
@@ -62,7 +74,8 @@ regen() {
 	PATH="$NEKO:$PATH"
 	export PATH
 	HAXE_VERSION=$("$HAXE" --version 2>&1 | head -1)
-	HEAPS_DIR=$(haxelib path heaps 2>/dev/null | head -1 | sed 's/\r$//')
+	HEAPS_DIR=$(cd "${HEAPS:-$HOME/projects/heaps}" && pwd) || {
+		echo "oracle: no Heaps checkout at ${HEAPS:-$HOME/projects/heaps}" >&2; exit 2; }
 	HEAPS_PIN=$(git -C "$HEAPS_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 	{
@@ -84,7 +97,12 @@ regen() {
 	} > "$WORK/Oracle.hx"
 
 	libs=""
-	for lib in $LIBS; do libs="$libs -lib $lib"; done
+	for lib in $LIBS; do
+		case $lib in
+			heaps) libs="$libs -cp $HEAPS_DIR" ;;
+			*) libs="$libs -lib $lib" ;;
+		esac
+	done
 	# shellcheck disable=SC2086
 	( cd "$WORK" && "$HAXE" -js oracle.js -main Oracle $libs -D js-es=6 ) || {
 		echo "oracle: haxe failed; see $WORK/Oracle.hx" >&2; exit 1; }

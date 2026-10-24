@@ -190,3 +190,112 @@ export function sample(
 		w: 0.0,
 	});
 }
+
+export struct GltfWeightTrack {
+	sourceNode: int32;
+	curve: Readonly<GltfWeightCurve>;
+}
+
+export struct GltfWeightCurve {
+	mode: GltfCurveMode;
+	targetCount: int32;
+	times: Vec<float32>;
+	values: Vec<float32>;
+}
+
+export function forWeightValues(
+	this typeof GltfWeightCurve,
+	mode: GltfCurveMode,
+	targetCount: int32,
+	times: Readonly<Span<float32>>,
+	values: Readonly<Span<float32>>,
+): Result<GltfWeightCurve, GltfCurveError> {
+	if (times.length < 1) { return Result.err(GltfCurveError.Empty); }
+	if (mode != GltfCurveMode.Step && mode != GltfCurveMode.Linear &&
+		mode != GltfCurveMode.CubicSpline) { return Result.err(GltfCurveError.Mode); }
+	const stride: int32 = targetCount * (mode == GltfCurveMode.CubicSpline ? 3 : 1);
+	if (targetCount < 1 || times.length > 0x7fffffff / stride ||
+		values.length != times.length * stride ||
+		(mode == GltfCurveMode.CubicSpline && times.length < 2)) {
+		return Result.err(GltfCurveError.Shape);
+	}
+	let previous: float32 = -1.0;
+	let curve: GltfWeightCurve = { mode: mode, targetCount: targetCount, times: [], values: [] };
+	for (const time of times) {
+		if (!Number.isFinite(time)) { return Result.err(GltfCurveError.NonFinite); }
+		if (time < 0.0 || time <= previous) { return Result.err(GltfCurveError.TimeOrder); }
+		previous = time;
+		curve.times.push(time);
+	}
+	for (const value of values) {
+		if (!Number.isFinite(value)) { return Result.err(GltfCurveError.NonFinite); }
+		curve.values.push(value);
+	}
+	return Result.ok(move curve);
+}
+
+export function sampleWeightsInto(
+	this curve: Readonly<GltfWeightCurve>,
+	seconds: float64,
+	out: Span<float32>,
+): Result<void, GltfCurveError> {
+	if (!Number.isFinite(seconds)) { return Result.err(GltfCurveError.NonFinite); }
+	const width: int32 = curve.targetCount;
+	const stride: int32 = width * (curve.mode == GltfCurveMode.CubicSpline ? 3 : 1);
+	if (curve.times.length < 1 || width < 1 || curve.times.length > 0x7fffffff / stride ||
+		curve.values.length != curve.times.length * stride || out.length != width) {
+		return Result.err(GltfCurveError.Shape);
+	}
+	if (curve.mode != GltfCurveMode.Step && curve.mode != GltfCurveMode.Linear &&
+		curve.mode != GltfCurveMode.CubicSpline) { return Result.err(GltfCurveError.Mode); }
+	const last: int32 = (curve.times.length as int32) - 1;
+	const offset: int32 = curve.mode == GltfCurveMode.CubicSpline ? width : 0;
+	let left: int32 = 0;
+	let right: int32 = last;
+	if (seconds <= curve.times[0]) { right = 0; }
+	else if (seconds >= curve.times[last]) { left = last; right = last; }
+	else {
+		while (right - left > 1) {
+			const middle: int32 = left + (right - left) / 2;
+			if (seconds < curve.times[middle]) { right = middle; }
+			else { left = middle; }
+		}
+	}
+	const firstAt: int32 = left * stride + offset;
+	const secondAt: int32 = right * stride + offset;
+	if (left == right || seconds == curve.times[left] || curve.mode == GltfCurveMode.Step) {
+		for (let target = 0; target < width; target++) {
+			out[target] = curve.values[firstAt + target];
+		}
+		return Result.ok(null);
+	}
+	const duration: float64 = (curve.times[right] as float64) - (curve.times[left] as float64);
+	if (duration <= 0.0) { return Result.err(GltfCurveError.TimeOrder); }
+	const u: float64 = (seconds - (curve.times[left] as float64)) / duration;
+	for (let target = 0; target < width; target++) {
+		const first: float32 = curve.values[firstAt + target];
+		const second: float32 = curve.values[secondAt + target];
+		const value: float32 = curve.mode == GltfCurveMode.CubicSpline
+			? hermite(first, curve.values[firstAt + width + target],
+				curve.values[secondAt - width + target], second, u, duration)
+			: (((1.0 - u) * (first as float64) + u * (second as float64)) as float32);
+		if (!Number.isFinite(value)) { return Result.err(GltfCurveError.NonFinite); }
+		out[target] = value;
+	}
+	return Result.ok(null);
+}
+
+export function sampleWeights(
+	this curve: Readonly<GltfWeightCurve>,
+	seconds: float64,
+): Result<Vec<float32>, GltfCurveError> {
+	if (curve.targetCount < 1 || curve.targetCount > curve.values.length) {
+		return Result.err(
+			Number.isFinite(seconds) ? GltfCurveError.Shape : GltfCurveError.NonFinite,
+		);
+	}
+	let weights: Vec<float32> = [];
+	for (let target = 0; target < curve.targetCount; target++) { weights.push(0.0); }
+	const filled = try curve.sampleWeightsInto(seconds, weights);
+	return Result.ok(move weights);
+}

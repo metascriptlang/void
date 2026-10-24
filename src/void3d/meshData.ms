@@ -9,10 +9,6 @@
 // uvs, `LitTextured` (position 3, normal 3, uv 2, rgba 4: `getBufferFormat`'s order). The fixed
 // sokol-shdc programs read exactly those two, so four arrays would buy nothing.
 //
-// Bounds are maintained as vertices arrive rather than computed on demand as in Heaps'
-// `Polygon.getBounds`: the builders are the only writers, so the bounds cannot go stale, and
-// nothing later has to remember to ask.
-//
 // MeshData is a value struct holding owned `Vec`s, so **assigning it to a local copies its
 // arrays**. Reach one through its table by index (`context.meshData[i].bounds`) or take it by
 // `ref`; never `const data: MeshData = table[i]` (CODE-STYLE §5, the copy trap).
@@ -90,6 +86,19 @@ export enum MeshError {
 	SkinWeight,
 	DrawRange,
 	IndexStorage,
+	SphereParameters,
+	UnindexedAppend,
+	CylinderParameters,
+	DiscParameters,
+	CapsuleParameters,
+	GridParameters,
+	GeoSphereParameters,
+	VertexStorage,
+	TranslationOffset,
+	PositionRange,
+	UvScaleParameters,
+	UvRange,
+	ScaleParameters,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -491,6 +500,143 @@ function orthogonalTangent(normal: Vec3, tangent: Vec3): Vec3 {
 	return (axis - normal.scaled(normal.dot(axis))).normalized();
 }
 
+const FLOAT32_MAX: float64 = 3.4028234663852886e38;
+
+function coordinateInRange(value: float64): boolean {
+	return value >= -FLOAT32_MAX && value <= FLOAT32_MAX;
+}
+
+export function recomputeNormals(ref data: MeshData): Result<void, MeshError> {
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (!data.validIndices()) { return Result.err(MeshError.IndexOutOfRange); }
+	for (let at = 0; at < data.vertices.length; at += width) {
+		if (!Number.isFinite(data.vertices[at]) || !Number.isFinite(data.vertices[at + 1])
+			|| !Number.isFinite(data.vertices[at + 2])) {
+			return Result.err(MeshError.PositionRange);
+		}
+	}
+	const count: int32 = data.vertexCount();
+	let normals: Vec<float64> = new Array(count * 3);
+	const indexed: boolean = data.isIndexed();
+	const faces: int32 = data.triangleCount();
+	for (let face = 0; face < faces; face++) {
+		const corner: int32 = face * 3;
+		const a: int32 = indexed ? data.indexAt(corner) as int32 : corner;
+		const b: int32 = indexed ? data.indexAt(corner + 1) as int32 : corner + 1;
+		const c: int32 = indexed ? data.indexAt(corner + 2) as int32 : corner + 2;
+		const at: int32 = a * width;
+		const bt: int32 = b * width;
+		const ct: int32 = c * width;
+		const ux: float64 = (data.vertices[bt] as float64) - (data.vertices[at] as float64);
+		const uy: float64 = (data.vertices[bt + 1] as float64) - (data.vertices[at + 1] as float64);
+		const uz: float64 = (data.vertices[bt + 2] as float64) - (data.vertices[at + 2] as float64);
+		const vx: float64 = (data.vertices[ct] as float64) - (data.vertices[at] as float64);
+		const vy: float64 = (data.vertices[ct + 1] as float64) - (data.vertices[at + 1] as float64);
+		const vz: float64 = (data.vertices[ct + 2] as float64) - (data.vertices[at + 2] as float64);
+		const nx: float64 = uy * vz - uz * vy;
+		const ny: float64 = uz * vx - ux * vz;
+		const nz: float64 = ux * vy - uy * vx;
+		for (let vertex = 0; vertex < 3; vertex++) {
+			const normalAt: int32 = (vertex == 0 ? a : (vertex == 1 ? b : c)) * 3;
+			normals[normalAt] += nx;
+			normals[normalAt + 1] += ny;
+			normals[normalAt + 2] += nz;
+		}
+	}
+	for (let vertex = 0; vertex < count; vertex++) {
+		const normalAt: int32 = vertex * 3;
+		const nx: float64 = normals[normalAt];
+		const ny: float64 = normals[normalAt + 1];
+		const nz: float64 = normals[normalAt + 2];
+		const squared: float64 = nx * nx + ny * ny + nz * nz;
+		const inverse: float64 = squared < 1.0e-20 ? 0.0 : 1.0 / Math.sqrt(squared);
+		const at: int32 = vertex * width;
+		data.vertices[at + 3] = (nx * inverse) as float32;
+		data.vertices[at + 4] = (ny * inverse) as float32;
+		data.vertices[at + 5] = (nz * inverse) as float32;
+	}
+	return Result.ok(null);
+}
+
+export function translate(ref data: MeshData, offset: Vec3): Result<void, MeshError> {
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!Number.isFinite(offset.x) || !Number.isFinite(offset.y) || !Number.isFinite(offset.z)) {
+		return Result.err(MeshError.TranslationOffset);
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		const x: float64 = (data.vertices[at] as float64) + (offset.x as float64);
+		const y: float64 = (data.vertices[at + 1] as float64) + (offset.y as float64);
+		const z: float64 = (data.vertices[at + 2] as float64) + (offset.z as float64);
+		if (!coordinateInRange(x) || !coordinateInRange(y) || !coordinateInRange(z)) {
+			return Result.err(MeshError.PositionRange);
+		}
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		data.vertices[at] = ((data.vertices[at] as float64) + (offset.x as float64)) as float32;
+		data.vertices[at + 1] =
+			((data.vertices[at + 1] as float64) + (offset.y as float64)) as float32;
+		data.vertices[at + 2] =
+			((data.vertices[at + 2] as float64) + (offset.z as float64)) as float32;
+	}
+	recomputeBounds(data);
+	return Result.ok(null);
+}
+
+export function scaleUniform(ref data: MeshData, factor: float32): Result<void, MeshError> {
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!Number.isFinite(factor)) { return Result.err(MeshError.ScaleParameters); }
+	for (let at = 0; at < data.vertices.length; at += width) {
+		const x: float64 = (data.vertices[at] as float64) * (factor as float64);
+		const y: float64 = (data.vertices[at + 1] as float64) * (factor as float64);
+		const z: float64 = (data.vertices[at + 2] as float64) * (factor as float64);
+		if (!coordinateInRange(x) || !coordinateInRange(y) || !coordinateInRange(z)) {
+			return Result.err(MeshError.PositionRange);
+		}
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		data.vertices[at] = ((data.vertices[at] as float64) * (factor as float64)) as float32;
+		data.vertices[at + 1] =
+			((data.vertices[at + 1] as float64) * (factor as float64)) as float32;
+		data.vertices[at + 2] =
+			((data.vertices[at + 2] as float64) * (factor as float64)) as float32;
+	}
+	recomputeBounds(data);
+	return Result.ok(null);
+}
+
+export function scaleUvs(ref data: MeshData, su: float32, sv: float32): Result<void, MeshError> {
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	const width: int32 = data.stride();
+	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
+		return Result.err(MeshError.VertexStorage);
+	}
+	if (!Number.isFinite(su) || !Number.isFinite(sv)) {
+		return Result.err(MeshError.UvScaleParameters);
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		const u: float64 = (data.vertices[at + 6] as float64) * (su as float64);
+		const v: float64 = (data.vertices[at + 7] as float64) * (sv as float64);
+		if (!coordinateInRange(u) || !coordinateInRange(v)) {
+			return Result.err(MeshError.UvRange);
+		}
+	}
+	for (let at = 0; at < data.vertices.length; at += width) {
+		data.vertices[at + 6] = ((data.vertices[at + 6] as float64) * (su as float64)) as float32;
+		data.vertices[at + 7] = ((data.vertices[at + 7] as float64) * (sv as float64)) as float32;
+	}
+	return Result.ok(null);
+}
+
 // Recomputes the bounds from the vertices, h3d.prim.Polygon.getBounds. The builders keep the
 // bounds current, so this is for a caller that edited `vertices` itself — a vertex-baked
 // animation frame (M9) swapping positions under a mesh that keeps its indices.
@@ -705,6 +851,374 @@ export function addPlane(
 		vec3(0.0, 1.0, 0.0),
 		color,
 	);
+}
+
+export function addSphere(
+	ref data: MeshData,
+	radius: float32,
+	color: Rgba,
+	sectors: int32,
+	stacks: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || sectors < 3 || stacks < 2) {
+		return Result.err(MeshError.SphereParameters);
+	}
+	const vertices: int64 = ((sectors as int64) + 1) * ((stacks as int64) + 1);
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	const corners: int64 = (sectors as int64) * ((stacks as int64) - 1) * 6;
+	if (corners > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const pi: float32 = 3.141592653589793;
+	for (let y = 0; y <= stacks; y++) {
+		const latitude: float32 = pi * (y as float32) / (stacks as float32);
+		const radial: float32 = y == 0 || y == stacks ? 0.0 : sinf(latitude);
+		const vertical: float32 = y == 0 ? 1.0 : (y == stacks ? -1.0 : cosf(latitude));
+		for (let x = 0; x <= sectors; x++) {
+			const longitude: float32 = x == sectors ? 0.0
+				: 2.0 * pi * (x as float32) / (sectors as float32);
+			const normal: Vec3 = vec3(radial * cosf(longitude), vertical, radial * sinf(longitude));
+			const added = data.hasUvs ? addTexturedVertex(data, normal.scaled(radius), normal,
+				{ u: 1.0 - (x as float32) / (sectors as float32),
+					v: (y as float32) / (stacks as float32) }, color)
+				: addVertex(data, normal.scaled(radius), normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+	}
+	for (let y = 0; y < stacks; y++) {
+		for (let x = 0; x < sectors; x++) {
+			const v2: int32 = first + x + y * (sectors + 1);
+			const v1: int32 = v2 + 1;
+			const v3: int32 = v2 + sectors + 1;
+			const v4: int32 = v3 + 1;
+			if (y != 0) { const _top = try addTriangle(data, v1, v4, v2); }
+			if (y != stacks - 1) { const _bottom = try addTriangle(data, v2, v4, v3); }
+		}
+	}
+	return Result.ok(first);
+}
+
+export function addCylinderSides(
+	ref data: MeshData,
+	radius: float32,
+	height: float32,
+	centered: boolean,
+	color: Rgba,
+	sectors: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || height <= 0.0
+		|| height - height != 0.0 || sectors < 3) {
+		return Result.err(MeshError.CylinderParameters);
+	}
+	const vertices: int64 = (sectors as int64) * 4;
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((sectors as int64) * 6 > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const low: float32 = centered ? -height * 0.5 : 0.0;
+	const high: float32 = centered ? height * 0.5 : height;
+	const turn: float32 = 6.283185307179586;
+	for (let s = 0; s < sectors; s++) {
+		for (let corner = 0; corner < 4; corner++) {
+			const segment: int32 = s + corner % 2;
+			const angle: float32 = segment == sectors ? 0.0
+				: turn * (segment as float32) / (sectors as float32);
+			const normal: Vec3 = vec3(cosf(angle), 0.0, sinf(angle));
+			const point: Vec3 = vec3(normal.x * radius, corner < 2 ? low : high, normal.z * radius);
+			const added = data.hasUvs ? addTexturedVertex(data, point, normal,
+				{ u: 1.0 - (segment as float32) / (sectors as float32),
+					v: corner < 2 ? 1.0 : 0.0 }, color)
+				: addVertex(data, point, normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+		const base: int32 = first + s * 4;
+		const _first = try addTriangle(data, base, base + 2, base + 1);
+		const _second = try addTriangle(data, base + 2, base + 3, base + 1);
+	}
+	return Result.ok(first);
+}
+
+export function addDisc(
+	ref data: MeshData,
+	radius: float32,
+	color: Rgba,
+	segments: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || segments < 3) {
+		return Result.err(MeshError.DiscParameters);
+	}
+	const vertices: int64 = (segments as int64) + 1;
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((segments as int64) * 3 > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const turn: float32 = 6.283185307179586;
+	const normal: Vec3 = vec3(0.0, 1.0, 0.0);
+	for (let i = 0; i <= segments; i++) {
+		const angle: float32 = turn * (i as float32) / (segments as float32);
+		const radial: float32 = i == segments ? 0.0 : radius;
+		const point: Vec3 = vec3(radial * cosf(angle), 0.0, radial * sinf(angle));
+		const added = data.hasUvs ? addTexturedVertex(data, point, normal,
+			{ u: (point.x / radius + 1.0) * 0.5, v: (point.z / radius + 1.0) * 0.5 }, color)
+			: addVertex(data, point, normal, color);
+		if (!added.ok) { return Result.err(added.error); }
+	}
+	for (let i = 0; i < segments; i++) {
+		const _triangle = try addTriangle(data, first + i, first + segments,
+			first + (i + 1) % segments);
+	}
+	return Result.ok(first);
+}
+
+export function addCapsuleY(
+	ref data: MeshData,
+	radius: float32,
+	length: float32,
+	color: Rgba,
+	segments: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	const extent: float32 = radius + length * 0.5;
+	if (radius <= 0.0 || radius - radius != 0.0 || length < 0.0 || length - length != 0.0
+		|| extent - extent != 0.0 || segments < 3) {
+		return Result.err(MeshError.CapsuleParameters);
+	}
+	const ring: int64 = (segments as int64) + 1;
+	const square: int64 = ring * ring;
+	if (square > (MAX_MESH_VERTICES as int64) / 2) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	const vertices: int64 = 2 * square + (segments as int64) * 4 + 2;
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((segments as int64) * (segments as int64) * 12
+		> (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const pi: float32 = 3.141592653589793;
+	const halfLength: float32 = length * 0.5;
+	for (let half = 0; half < 2; half++) {
+		const offset: float32 = half == 0 ? halfLength : -halfLength;
+		const phase: float32 = half == 0 ? pi * 0.5 : -pi * 0.5;
+		const base: int32 = data.vertexCount();
+		for (let y = 0; y <= segments; y++) {
+			const latitude: float32 = pi * (y as float32) / (segments as float32);
+			const radial: float32 = y == 0 || y == segments ? 0.0 : sinf(latitude);
+			const vertical: float32 = y == 0 ? 1.0 : (y == segments ? -1.0 : cosf(latitude));
+			for (let x = 0; x <= segments; x++) {
+				const longitude: float32 = phase + pi * (x as float32) / (segments as float32);
+				const edge: boolean = x == 0 || x == segments;
+				const c: float32 = edge ? 0.0 : cosf(longitude);
+				const s: float32 = edge ? ((x == 0) == (half == 0) ? 1.0 : -1.0)
+					: sinf(longitude);
+				const normal: Vec3 = vec3(vertical, -radial * c, radial * s);
+				const _vertex = try addVertex(data,
+					normal.scaled(radius) + vec3(0.0, offset, 0.0), normal, color);
+			}
+		}
+		for (let y = 0; y < segments; y++) {
+			for (let x = 0; x < segments; x++) {
+				const v2: int32 = base + x + y * (segments + 1);
+				const v1: int32 = v2 + 1;
+				const v3: int32 = v2 + segments + 1;
+				const v4: int32 = v3 + 1;
+				if (y != 0) { const _a = try addTriangle(data, v1, v4, v2); }
+				if (y != segments - 1) { const _b = try addTriangle(data, v2, v4, v3); }
+			}
+		}
+	}
+	const base: int32 = data.vertexCount();
+	for (let y = 0; y <= segments * 2; y++) {
+		const angle: float32 = y == segments * 2 ? 0.0
+			: pi * (y as float32) / (segments as float32);
+		const normal: Vec3 = vec3(cosf(angle), 0.0, sinf(angle));
+		const _a = try addVertex(data,
+			vec3(normal.x * radius, halfLength, normal.z * radius), normal, color);
+		const _b = try addVertex(data,
+			vec3(normal.x * radius, -halfLength, normal.z * radius), normal, color);
+	}
+	for (let y = 0; y < segments * 2; y++) {
+		const v0: int32 = base + y * 2;
+		const _a = try addTriangle(data, v0, v0 + 2, v0 + 1);
+		const _b = try addTriangle(data, v0 + 1, v0 + 2, v0 + 3);
+	}
+	return Result.ok(first);
+}
+
+export function addGrid(
+	ref data: MeshData,
+	columns: int32,
+	rows: int32,
+	cellWidth: float32,
+	cellDepth: float32,
+	color: Rgba,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	const extentX: float32 = cellWidth * (columns as float32);
+	const extentZ: float32 = cellDepth * (rows as float32);
+	if (columns < 1 || rows < 1 || cellWidth <= 0.0 || cellDepth <= 0.0
+		|| extentX - extentX != 0.0 || extentZ - extentZ != 0.0) {
+		return Result.err(MeshError.GridParameters);
+	}
+	const vertices: int64 = ((columns as int64) + 1) * ((rows as int64) + 1);
+	if (vertices > (MAX_MESH_VERTICES as int64) || !data.hasRoomFor(vertices as int32)) {
+		return Result.err(MeshError.TooManyVertices);
+	}
+	if ((columns as int64) * (rows as int64) * 6
+		> (0x7fffffff as int64) - (data.indexCount() as int64)) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const first: int32 = data.vertexCount();
+	const normal: Vec3 = vec3(0.0, 1.0, 0.0);
+	for (let y = 0; y <= rows; y++) {
+		for (let x = 0; x <= columns; x++) {
+			const point: Vec3 = vec3((x as float32) * cellWidth, 0.0, (y as float32) * cellDepth);
+			const added = data.hasUvs ? addTexturedVertex(data, point, normal,
+				{ u: (x as float32) / (columns as float32),
+					v: (y as float32) / (rows as float32) }, color)
+				: addVertex(data, point, normal, color);
+			if (!added.ok) { return Result.err(added.error); }
+		}
+	}
+	for (let y = 0; y < rows; y++) {
+		for (let x = 0; x < columns; x++) {
+			const a: int32 = first + x + y * (columns + 1);
+			const b: int32 = a + 1;
+			const c: int32 = a + columns + 1;
+			const _first = try addTriangle(data, a, c, b);
+			const _second = try addTriangle(data, b, c, c + 1);
+		}
+	}
+	return Result.ok(first);
+}
+
+export function addGeoSphere(
+	ref data: MeshData,
+	radius: float32,
+	color: Rgba,
+	subdivisions: int32,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
+	if (data.vertexCount() > 0 && !data.isIndexed()) {
+		return Result.err(MeshError.UnindexedAppend);
+	}
+	if (radius <= 0.0 || radius - radius != 0.0 || subdivisions < 0) {
+		return Result.err(MeshError.GeoSphereParameters);
+	}
+	let plannedVertices: int64 = 6;
+	let plannedTriangles: int64 = 8;
+	for (let level = 0; level <= subdivisions; level++) {
+		if (plannedVertices > (MAX_MESH_VERTICES as int64)
+			|| !data.hasRoomFor(plannedVertices as int32)) {
+			return Result.err(MeshError.TooManyVertices);
+		}
+		if (plannedTriangles * 3 > (0x7fffffff as int64) - (data.indexCount() as int64)) {
+			return Result.err(MeshError.DrawRange);
+		}
+		if (level != subdivisions) {
+			plannedVertices += plannedTriangles * 3;
+			plannedTriangles *= 4;
+		}
+	}
+	const diagonal: float32 = 0.7071067811865476;
+	let points: Vec<Vec3> = [
+		vec3(0.0, 1.0, 0.0), vec3(0.0, -1.0, 0.0),
+		vec3(-diagonal, 0.0, -diagonal), vec3(diagonal, 0.0, -diagonal),
+		vec3(diagonal, 0.0, diagonal), vec3(-diagonal, 0.0, diagonal),
+	];
+	let faces: Vec<int32> = [
+		0, 3, 4, 0, 4, 5, 0, 5, 2, 0, 2, 3,
+		1, 4, 3, 1, 5, 4, 1, 2, 5, 1, 3, 2,
+	];
+	for (let level = 0; level < subdivisions; level++) {
+		let next: Vec<int32> = [];
+		for (let i = 0; i < faces.length; i += 3) {
+			const a: int32 = faces[i];
+			const b: int32 = faces[i + 1];
+			const c: int32 = faces[i + 2];
+			const start: int32 = points.length as int32;
+			points.push((points[a] + points[b]).normalized());
+			points.push((points[b] + points[c]).normalized());
+			points.push((points[c] + points[a]).normalized());
+			next.push(start);
+			next.push(start + 1);
+			next.push(start + 2);
+			next.push(a);
+			next.push(start);
+			next.push(start + 2);
+			next.push(start);
+			next.push(b);
+			next.push(start + 1);
+			next.push(start + 1);
+			next.push(c);
+			next.push(start + 2);
+		}
+		faces = move next;
+	}
+	let normals: Vec<Vec3> = [];
+	for (let i = 0; i < points.length; i++) { normals.push(vec3(0.0, 0.0, 0.0)); }
+	for (let i = 0; i < faces.length; i += 3) {
+		const a: int32 = faces[i];
+		const b: int32 = faces[i + 2];
+		const c: int32 = faces[i + 1];
+		const normal: Vec3 = (points[b] - points[a]).cross(points[c] - points[a]);
+		normals[a] = normals[a] + normal;
+		normals[b] = normals[b] + normal;
+		normals[c] = normals[c] + normal;
+	}
+	const first: int32 = data.vertexCount();
+	for (let i = 0; i < points.length; i++) {
+		const _vertex = try addVertex(data,
+			points[i].scaled(radius), normals[i].normalized(), color);
+	}
+	for (let i = 0; i < faces.length; i += 3) {
+		const _triangle = try addTriangle(data,
+			first + faces[i], first + faces[i + 2], first + faces[i + 1]);
+	}
+	return Result.ok(first);
 }
 
 export const CUBE_VERTICES: int32 = 24;

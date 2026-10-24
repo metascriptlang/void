@@ -1,0 +1,74 @@
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: import h3d.scene.Mesh;
+# haxe-prelude: class H {
+# haxe-prelude: public static function order(o: Object,expected: Array<Mesh>): Float {
+# haxe-prelude: var found=o.getMeshes(); if (found.length!=expected.length) return 0;
+# haxe-prelude: for (i in 0...expected.length) if (found[i]!=expected[i]) return 0;
+# haxe-prelude: return 1;
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Scene3D,NodeId3D,Transform3D,NO_NODE_ID,
+# ms-prelude: addGroup,addMeshNode,setVisible,attach } from "../../../src/void3d/scene";
+# ms-prelude: import { contextOf } from "../../../src/test/drawHelpers";
+# ms-prelude: function mesh(scene: Scene3D,parent: NodeId3D): NodeId3D {
+# ms-prelude: const result=addMeshNode(scene,parent,Transform3D.identity(),
+# ms-prelude: scene.context.meshAt(0),scene.context.materialAt(0));
+# ms-prelude: return result.ok ? result.value : NO_NODE_ID;
+# ms-prelude: }
+# ms-prelude: function count(scene: Scene3D,from: NodeId3D): float32 {
+# ms-prelude: const result=scene.getMeshes(from);
+# ms-prelude: return result.ok ? (result.value.length as float32) : -1.0;
+# ms-prelude: }
+# ms-prelude: function order(scene: Scene3D,from: NodeId3D,
+# ms-prelude: expected: Vec<NodeId3D>): float32 {
+# ms-prelude: const result=scene.getMeshes(from); if (!result.ok) { return -1.0; }
+# ms-prelude: if (result.value.length!=expected.length) { return 0.0; }
+# ms-prelude: for (let i=0;i<(expected.length as int32);i++) {
+# ms-prelude: const a=result.value[i]; const b=expected[i];
+# ms-prelude: if (a.scene!=b.scene || a.index!=b.index || a.generation!=b.generation) { return 0.0; }
+# ms-prelude: }
+# ms-prelude: return 1.0;
+# ms-prelude: }
+
+case mesh-subtree-depth-order tol=0
+haxe> var r=new Object(); var ga=new Object(r); var ma=new Mesh(null,null,ga);
+haxe> var gb=new Object(ga); var mb=new Mesh(null,null,gb); var mc=new Mesh(null,null,r);
+haxe> var child=new Mesh(null,null,ma);
+haxe> emit("mesh-subtree-depth-order",[r.getMeshes().length,
+haxe> H.order(r,[ma,child,mb,mc]),ga.getMeshes().length]);
+ms> const scene=Scene3D.create(contextOf(1,1)); const r=scene.rootId();
+ms> const ga=addGroup(scene,r,Transform3D.identity()); const ma=mesh(scene,ga);
+ms> const gb=addGroup(scene,ga,Transform3D.identity()); const mb=mesh(scene,gb);
+ms> const mc=mesh(scene,r); const child=mesh(scene,ma);
+ms> emit3("mesh-subtree-depth-order",count(scene,r),order(scene,r,[ma,child,mb,mc]),count(scene,ga));
+
+case mesh-subtree-self tol=0
+haxe> emit("mesh-subtree-self",[ma.getMeshes().length,H.order(ma,[ma,child]),H.order(mb,[mb])]);
+ms> emit3("mesh-subtree-self",count(scene,ma),order(scene,ma,[ma,child]),order(scene,mb,[mb]));
+
+case mesh-subtree-hidden tol=0
+haxe> ga.visible=false; mc.visible=false;
+haxe> emit("mesh-subtree-hidden",[r.getMeshes().length,H.order(r,[ma,child,mb,mc]),H.order(mc,[mc])]);
+ms> setVisible(scene,ga,false); setVisible(scene,mc,false);
+ms> emit3("mesh-subtree-hidden",count(scene,r),order(scene,r,[ma,child,mb,mc]),order(scene,mc,[mc]));
+
+case mesh-subtree-reparented tol=0
+haxe> r.addChild(ma);
+haxe> emit("mesh-subtree-reparented",[H.order(r,[mb,mc,ma,child]),
+haxe> ga.getMeshes().length,ma.getMeshes().length]);
+ms> attach(scene,r,ma);
+ms> emit3("mesh-subtree-reparented",order(scene,r,[mb,mc,ma,child]),count(scene,ga),count(scene,ma));
+
+case mesh-subtree-detached tol=0
+haxe> var detached=new Object(); var dm=new Mesh(null,null,detached);
+haxe> emit("mesh-subtree-detached",[detached.getMeshes().length,H.order(detached,[dm]),r.getMeshes().length]);
+ms> const detached=addGroup(scene,null,Transform3D.identity()); const dm=mesh(scene,detached);
+ms> emit3("mesh-subtree-detached",count(scene,detached),order(scene,detached,[dm]),count(scene,r));
+
+case mesh-subtree-empty tol=0
+haxe> var empty=new Object(); var nested=new Object(empty);
+haxe> emit("mesh-subtree-empty",[empty.getMeshes().length,nested.getMeshes().length,H.order(empty,[])]);
+ms> const empty=addGroup(scene,r,Transform3D.identity());
+ms> const nested=addGroup(scene,empty,Transform3D.identity());
+ms> emit3("mesh-subtree-empty",count(scene,empty),count(scene,nested),order(scene,empty,[]));

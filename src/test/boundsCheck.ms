@@ -1,6 +1,7 @@
 import { Vec3, vec3, identity, translation, scaling, rotationY } from "../math/math3d";
 import { Bounds3D, addPoint, addPos, addBounds } from "../void3d/bounds";
 import { approx, approxRel } from "./helpers";
+import { Ray } from "../void3d/ray";
 
 function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 	return approx(a.x, x) && approx(a.y, y) && approx(a.z, z);
@@ -76,6 +77,90 @@ test "collide counts touching, containsBounds does not need it" {
 	assert !box.containsBounds(Bounds3D.fromValues(0.25, 0.25, 0.25, 0.5, 0.5, 5.0));
 }
 
+test "containsSphere requires the whole volume rather than only its center" {
+	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	assert box.containsSphere(vec3(0.5, 0.5, 0.5), 0.25);
+	assert box.contains(vec3(0.1, 0.5, 0.5));
+	assert !box.containsSphere(vec3(0.1, 0.5, 0.5), 0.25);
+	assert !box.containsSphere(vec3(1.25, 0.5, 0.5), 0.5);
+	assert !box.containsSphere(vec3(0.5, 0.5, 0.5), 0.6);
+}
+
+test "containsSphere includes all six face contacts but not crossed faces" {
+	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	let contacts: Vec<Vec3> = [
+		vec3(0.25, 0.5, 0.5), vec3(0.75, 0.5, 0.5),
+		vec3(0.5, 0.25, 0.5), vec3(0.5, 0.75, 0.5),
+		vec3(0.5, 0.5, 0.25), vec3(0.5, 0.5, 0.75),
+	];
+	let crossing: Vec<Vec3> = [
+		vec3(0.24, 0.5, 0.5), vec3(0.76, 0.5, 0.5),
+		vec3(0.5, 0.24, 0.5), vec3(0.5, 0.76, 0.5),
+		vec3(0.5, 0.5, 0.24), vec3(0.5, 0.5, 0.76),
+	];
+	for (let i = 0; i < contacts.length; i++) {
+		assert box.containsSphere(contacts[i], 0.25);
+		assert !box.containsSphere(crossing[i], 0.25);
+	}
+}
+
+test "zero radius volume containment is closed even on a max face" {
+	const box = Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	const face = vec3(1.0, 0.5, 0.5);
+	assert box.containsSphere(face, 0.0);
+	assert !box.contains(face);
+	const point = vec3(2.0, 3.0, 4.0);
+	const flat = Bounds3D.fromPoints(point, point);
+	assert flat.containsSphere(point, 0.0);
+	assert !flat.containsSphere(point, 0.01);
+	assert !Bounds3D.empty().containsSphere(vec3(0.0, 0.0, 0.0), 0.0);
+}
+
+test "intersection clips both corners without changing either input" {
+	const a = unitBox();
+	const b = Bounds3D.fromValues(0.5, -1.0, 1.0, 2.0, 2.0, 3.0);
+	const clipped = a.intersection(b);
+	assert near(clipped.min, 0.5, 0.0, 1.0);
+	assert near(clipped.max, 1.0, 1.0, 3.0);
+	const reversed = b.intersection(a);
+	assert near(reversed.min, clipped.min.x, clipped.min.y, clipped.min.z);
+	assert near(reversed.max, clipped.max.x, clipped.max.y, clipped.max.z);
+	assert near(a.min, 0.0, 0.0, 0.0) && near(a.max, 1.0, 2.0, 3.0);
+	assert near(b.min, 0.5, -1.0, 1.0) && near(b.max, 2.5, 1.0, 4.0);
+	assert a.containsBounds(clipped) && b.containsBounds(clipped);
+	const inside = Bounds3D.fromValues(0.25, 0.5, 1.0, 0.5, 1.0, 1.0);
+	const kept = a.intersection(inside);
+	assert near(kept.min, inside.min.x, inside.min.y, inside.min.z);
+	assert near(kept.max, inside.max.x, inside.max.y, inside.max.z);
+	const ray = Ray.fromPoints(vec3(0.75, 0.5, -2.0), vec3(0.75, 0.5, 0.0));
+	assert approx(clipped.rayIntersection(ray), 3.0);
+}
+
+test "intersection keeps face edge and point contacts as nonempty bounds" {
+	const box = unitBox();
+	for (const start of [vec3(1.0, 0.5, 1.0), vec3(1.0, 2.0, 1.0), vec3(1.0, 2.0, 3.0)]) {
+		const contact = box.intersection(Bounds3D.fromPoints(start, vec3(2.0, 3.0, 4.0)));
+		assert !contact.isEmpty();
+		assert near(contact.min, start.x, start.y, start.z);
+		assert near(contact.max, 1.0, 2.0, 3.0);
+	}
+}
+
+test "intersection preserves empty and separated sets without collapsing them to a point" {
+	const box = unitBox();
+	for (const other of [Bounds3D.empty(),
+		Bounds3D.fromValues(0.0, 0.0, 0.0, 1.0, -1.0, 1.0),
+		Bounds3D.fromValues(2.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+	]) {
+		const clipped = box.intersection(other);
+		assert clipped.isEmpty();
+		assert other.intersection(box).isEmpty();
+		assert near(clipped.size(), 0.0, 0.0, 0.0);
+	}
+	const retained = box.intersection(Bounds3D.all());
+	assert near(retained.min, 0.0, 0.0, 0.0) && near(retained.max, 1.0, 2.0, 3.0);
+}
+
 test "identity leaves a bounds alone and an empty one stays empty" {
 	const box: Bounds3D = unitBox();
 	const same: Bounds3D = box.transformed(identity());
@@ -110,6 +195,34 @@ test "offsetBy is a translation without a matrix" {
 test "the bounding sphere is half the diagonal" {
 	const box: Bounds3D = Bounds3D.fromValues(0.0, 0.0, 0.0, 2.0, 3.0, 6.0);
 	assert approx(box.boundingSphereRadius(), 3.5);
+}
+
+test "bounding sphere radii stay finite for subnormal extents" {
+	const edge: float32 = 1.0e-40;
+	const line = Bounds3D.fromPoints(vec3(0.0, 0.0, 0.0), vec3(edge, 0.0, 0.0));
+	const flat = Bounds3D.fromPoints(vec3(0.0, 0.0, 0.0), vec3(edge, edge, 0.0));
+	const lineRadius: float32 = line.boundingSphereRadius();
+	const flatRadius: float32 = flat.boundingSphereRadius();
+	assert Number.isFinite(lineRadius) && lineRadius > 0.0;
+	assert Number.isFinite(flatRadius) && flatRadius > 0.0;
+	assert approx(lineRadius / edge, 0.5);
+	assert approx(flatRadius / edge, 0.70710678);
+}
+
+test "bounding sphere radius survives an overflowing float32 edge difference" {
+	const limit: float32 = 3.0e38;
+	const box = Bounds3D.fromPoints(vec3(-limit, 0.0, 0.0), vec3(limit, 0.0, 0.0));
+	const radius: float32 = box.boundingSphereRadius();
+	assert Number.isFinite(radius);
+	assert approx(radius / limit, 1.0);
+}
+
+test "bounding sphere radius halves the diagonal before narrowing to float32" {
+	const extent: float32 = 1.0e38;
+	const box = Bounds3D.fromPoints(vec3(-extent, -extent, -extent), vec3(extent, extent, extent));
+	const radius: float32 = box.boundingSphereRadius();
+	assert Number.isFinite(radius);
+	assert approx(radius / extent, 1.7320508);
 }
 
 test "closestPoint clamps into the box and leaves inside points alone" {

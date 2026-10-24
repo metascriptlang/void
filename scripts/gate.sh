@@ -47,6 +47,12 @@ else
 fi
 
 echo
+if sh scripts/oracle.test.sh > out/gate-oracle-ids.log 2>&1; then
+	pass "oracle case IDs: invalid and duplicate IDs fail closed"
+else
+	fail "oracle case ID checks — see out/gate-oracle-ids.log"
+fi
+
 echo "=== 1. evict the caches ==============================================="
 # msc answers "Up to date" after a header that a compiled .c includes has changed, and the
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
@@ -797,6 +803,15 @@ else
 	fail "text sdf oracle: an SDF capture disagrees with true coverage — see out/gate-oracle-sdf-run.log"
 	sed -n 's/^/      /p' out/gate-oracle-sdf-run.log 2>/dev/null | head -4
 fi
+"$MSC" build$moduleDefines tests/oracle/textOutlineCheck.ms --output=out/textOutlineCapture.exe \
+	> out/gate-oracle-outline.log 2>&1 || true
+if [ -x out/textOutlineCapture.exe ] && out/textOutlineCapture.exe > out/gate-oracle-outline-run.log 2>&1; then
+	pass "outline capture oracle: the SDF outline captures read as Pillow strokes (text/outlineSdf*)"
+	sed -n 's/^outline capture oracle: /      /p' out/gate-oracle-outline-run.log
+else
+	fail "outline capture oracle: an outline capture disagrees with Pillow — see out/gate-oracle-outline-run.log"
+	sed -n 's/^/      /p' out/gate-oracle-outline-run.log 2>/dev/null | head -4
+fi
 # The font oracles run inside T0 (src/test/fontOracleCheck.ms) against snapshots that
 # `python tests/oracle/fonts.py regen` writes from fontTools and HarfBuzz; the gate needs
 # neither tool, and reads the verdict line each test prints.
@@ -870,7 +885,7 @@ else
 	fail "shader modules: stale or unprintable — see out/gate-shaders.log (sh scripts/regen-shaders.sh)"
 	grep -E '^(stale|dxbc miss)' out/gate-shaders.log | head -4 | sed 's/^/      /'
 fi
-for validator in Hlsl Wgsl; do
+for validator in Hlsl Wgsl Msl; do
 	status=0
 	sh "scripts/validate$validator.sh" out/irPrograms > "out/gate-validate$validator.log" 2>&1 || status=$?
 	verdict=$(grep "^validate" "out/gate-validate$validator.log" | tail -1)
@@ -880,12 +895,15 @@ for validator in Hlsl Wgsl; do
 		*) fail "printed $validator: $verdict — see out/gate-validate$validator.log" ;;
 	esac
 done
+status=0
+sh scripts/validateMsl.sh out/mslProbe > out/gate-validateMslProbe.log 2>&1 || status=$?
+verdict=$(grep "^validate" out/gate-validateMslProbe.log | tail -1)
+case "$status" in
+	0) pass "probed MSL: $verdict" ;;
+	2) skip "probed MSL: $verdict" ;;
+	*) fail "probed MSL: $verdict — see out/gate-validateMslProbe.log" ;;
+esac
 skip "printed GLSL 430 / ES 3.00: naga reads GL GLSL only after a Vulkan 450 rewrite that is not in this repository"
-if command -v xcrun > /dev/null; then
-	skip "printed MSL: no gate step yet; the Mac compiles out/irPrograms/*.metal by hand (docs/GPU-MS.md)"
-else
-	skip "printed MSL: xcrun metal exists only on macOS"
-fi
 t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"
 
 echo

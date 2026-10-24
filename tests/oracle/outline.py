@@ -1,7 +1,9 @@
 import base64
+import hashlib
 import json
 import math
 import sys
+from pathlib import Path
 
 import fontTools
 import PIL
@@ -89,7 +91,59 @@ def regen():
     print(f"{len(cases)} cases, {sum(len(c['data']) for c in cases)} base64 bytes")
 
 
+def capture(request_path, output_path):
+    request = Path(request_path).read_bytes()
+    if len(request) > 65536:
+        raise ValueError("outline capture requests exceed 65536 bytes")
+    lines = request.decode("utf-8").splitlines()
+    digest = hashlib.sha256(Path(LATIN).read_bytes()).hexdigest()
+    if not lines or lines[0] != f"FONT|{digest}|{SUPERSAMPLE}":
+        raise ValueError("outline capture font digest or supersampling differs")
+    if not 0 < len(lines) - 1 <= 512:
+        raise ValueError("outline capture needs 1..512 masks")
+    font = TTFont(LATIN)
+    cmap = font.getBestCmap()
+    masks = []
+    seen = set()
+    for line in lines[1:]:
+        parts = line.split("|")
+        if len(parts) != 6 or parts[0] != "MASK":
+            raise ValueError(f"invalid outline capture request: {line}")
+        key = "|".join(parts[1:])
+        if key in seen:
+            raise ValueError(f"duplicate outline capture request: {key}")
+        seen.add(key)
+        codepoint, glyph = int(parts[1]), int(parts[2])
+        size, variant, width = float(parts[3]), int(parts[4]), float(parts[5])
+        if not math.isfinite(size) or not 0 < size <= 256:
+            raise ValueError(f"outline capture reference size outside (0,256]: {key}")
+        if variant not in range(4) or not math.isfinite(width) or not 0 <= width <= 32:
+            raise ValueError(f"outline capture variant or stroke outside range: {key}")
+        if codepoint not in cmap or font.getGlyphID(cmap[codepoint]) != glyph:
+            raise ValueError(f"outline capture cmap does not name glyph {glyph}: U+{codepoint:04X}")
+        _, box = bounds(LATIN, codepoint)
+        if box is None:
+            if codepoint != 32:
+                raise ValueError(f"unexpected empty outline capture glyph: U+{codepoint:04X}")
+            left, top, w, h, data = 0, 0, 0, 0, b""
+        else:
+            left, top, w, h, data = render(LATIN, codepoint, size, variant, width)
+        masks.append({"key": key, "left": left, "top": top, "w": w, "h": h,
+                      "data": base64.b64encode(data).decode("ascii")})
+    doc = {"format": 1, "fontSha256": digest, "supersample": SUPERSAMPLE,
+           "pillow": PIL.__version__, "freetype": features.version("freetype2"),
+           "fontTools": fontTools.version,
+           "generatorSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+           "requestSha256": hashlib.sha256(request).hexdigest(), "masks": masks}
+    Path(output_path).write_text(json.dumps(doc, separators=(",", ":")) + "\n",
+                                 encoding="utf-8", newline="\n")
+    print(f"{len(masks)} capture masks, {sum(len(m['data']) for m in masks)} base64 bytes")
+
+
 if __name__ == "__main__":
-    if sys.argv[1:] != ["regen"]:
-        raise SystemExit("usage: python tests/oracle/outline.py regen")
-    regen()
+    if sys.argv[1:] == ["regen"]:
+        regen()
+    elif len(sys.argv) == 4 and sys.argv[1] == "capture":
+        capture(sys.argv[2], sys.argv[3])
+    else:
+        raise SystemExit("usage: python tests/oracle/outline.py regen | capture requests.txt output.json")

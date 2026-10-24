@@ -727,11 +727,11 @@ int void2dActivateContext(int id) {
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
 // 9-tap kernel offset by (dirX,dirY) in UV space. Caller runs it twice (H then V) ping-ponging
 // between two RTs. dir = (radius/texW,0) horizontal, (0,radius/texH) vertical.
-// The door's 12 binding words: vertex buffers 0..1, index buffer 2, views from 3 and samplers
-// from 9, each at the shader's slot as sg_bindings indexes them.
+// The door's 17 binding words: vertex buffers 0..1, index buffer 2, views from 3 and samplers
+// from 12, each at the shader's slot as sg_bindings indexes them.
 #define BIND_VIEWS 3
-#define BIND_SAMPLERS 9
-#define BIND_WORDS 12
+#define BIND_SAMPLERS 12
+#define BIND_WORDS 17
 
 static void applyBindings(uint32_t vertex0, uint32_t vertex1, int32_t offset0, int32_t offset1,
                           int viewSlot, uint32_t view, int samplerSlot, uint32_t sampler) {

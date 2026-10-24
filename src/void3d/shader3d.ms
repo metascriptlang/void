@@ -5,9 +5,12 @@ import {
 	Mat4x4f,
 	Sampler,
 	Texture2d,
+	TextureCube,
 	Vec2f,
 	Vec3f,
 	Vec4f,
+	abs,
+	atan2,
 	binding,
 	builtin,
 	clamp,
@@ -16,6 +19,7 @@ import {
 	determinant,
 	discard,
 	dot,
+	exp2,
 	feature,
 	length,
 	location,
@@ -26,11 +30,13 @@ import {
 	mix,
 	normalize,
 	pow,
+	reflect,
 	sampleType,
 	sin,
 	textureDimensions,
 	textureLoad,
 	textureSample,
+	textureSampleLevel,
 	transpose,
 	upperLeft3x3,
 	vec2f,
@@ -64,6 +70,12 @@ export struct ParticleVisualAttributes {
 	shape: Vec4f;
 	tile: Vec4f;
 	color: Vec4f;
+	velocity: Vec3f;
+	look: Vec4f;
+	scale: Vec4f;
+	pull: Vec3f;
+	emitterRight: Vec3f;
+	emitterUp: Vec3f;
 	@builtin(vertexIndex) index: uint32;
 }
 
@@ -113,6 +125,10 @@ export struct TexturedAttributes {
 	@feature(NORMAL_MAP) tangent: Vec4f;
 	@feature(SKINNED) skinJoints: Vec4f;
 	@feature(SKINNED) skinWeights: Vec4f;
+	@feature(INSTANCED) instanceRow0: Vec4f;
+	@feature(INSTANCED) instanceRow1: Vec4f;
+	@feature(INSTANCED) instanceRow2: Vec4f;
+	@feature(INSTANCED) instanceColor: Vec4f;
 }
 
 export struct LitTexturedVaryings {
@@ -151,6 +167,7 @@ export struct VertexParams {
 	viewProj: Mat4x4f;
 	cameraRight: Vec4f;
 	cameraUp: Vec4f;
+	cameraPosition: Vec4f;
 }
 
 export struct ModelParams {
@@ -176,6 +193,24 @@ export struct MovingMaterialParams {
 	backUvOffset: Vec4f;
 	dissolve: Vec4f;
 	dissolveEdge: Vec4f;
+}
+
+// gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
+// UV transform every pbr key reads.
+export struct PbrMaterialParams {
+	material: Vec4f;
+	pbr: Vec4f;
+	uvMatrix: Vec4f;
+	uvMotion: Vec4f;
+}
+
+// gpu3d.ms PBR_* then EMISSIVE_*: a pbr key that emits holds the emissive vec4 after the pbr one.
+export struct PbrEmissiveMaterialParams {
+	material: Vec4f;
+	pbr: Vec4f;
+	uvMatrix: Vec4f;
+	uvMotion: Vec4f;
+	emissive: Vec4f;
 }
 
 export struct EmissiveMaterialParams {
@@ -216,15 +251,23 @@ export struct LightParams {
 	dirColor: Vec4f;
 	pointLight: Vec4f[4];
 	pointColor: Vec4f[4];
+	shapeA: Vec4f[4];
+	shapeB: Vec4f[4];
+	shapeC: Vec4f[4];
+	shapeD: Vec4f[4];
 }
 
 export struct FrameParams {
 	frame: Vec4f;
+	cameraPosition: Vec4f;
+	envParams: Vec4f;
 }
 
 export struct ShadowParams {
 	shadowMatrix: Mat4x4f;
 	shadow: Vec4f;
+	spotMatrix: Mat4x4f;
+	spotShadow: Vec4f;
 }
 
 // The blocks at one binding are the layouts a program key chooses between.
@@ -244,10 +287,13 @@ export struct LitBindings {
 	@binding(3) movingMaterialParams: MovingMaterialParams;
 	@binding(3) emissiveMaterialParams: EmissiveMaterialParams;
 	@binding(3) movingEmissiveMaterialParams: MovingEmissiveMaterialParams;
+	@binding(3) pbrMaterialParams: PbrMaterialParams;
+	@binding(3) pbrEmissiveMaterialParams: PbrEmissiveMaterialParams;
 	@binding(1) lightParams: LightParams;
 	@binding(6) frameParams: FrameParams;
 	@binding(5) shadowParams: ShadowParams;
 	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2d;
+	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2d;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
 	@binding(1) backTexture: Texture2d;
@@ -255,6 +301,11 @@ export struct LitBindings {
 	@binding(1) dissolveSampler: Sampler;
 	@binding(3) emissiveTexture: Texture2d;
 	@binding(5) normalTexture: Texture2d;
+	@binding(1) metalRoughTexture: Texture2d;
+	@binding(2) occlusionTexture: Texture2d;
+	@binding(7) envDiffuse: TextureCube;
+	@binding(8) envSpecular: TextureCube;
+	@binding(4) envSampler: Sampler;
 }
 
 export struct UnlitBindings {
@@ -279,6 +330,9 @@ export struct LitKey {
 	@feature(DISSOLVE) dissolve: boolean;
 	@feature(EMISSIVE) emissive: boolean;
 	@feature(NORMAL_MAP) normalMap: boolean;
+	@feature(PBR) pbr: boolean;
+	@feature(PBR_MAPS) pbrMaps: boolean;
+	@feature(INSTANCED) instanced: boolean;
 }
 
 export struct LitOutput {
@@ -300,6 +354,12 @@ export function skinWorld(b: VertexBindings, joints: Vec4f, weights: Vec4f): Mat
 	));
 }
 
+export function instanceWorld(row0: Vec4f, row1: Vec4f, row2: Vec4f): Mat4x4f {
+	return transpose(mat4x4f(
+		row0, row1, row2, vec4f(0.0, 0.0, 0.0, 1.0),
+	));
+}
+
 export function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
 	const linear = upperLeft3x3(world);
 	const a = cross(linear.columns[1], linear.columns[2]);
@@ -309,22 +369,145 @@ export function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
 	return (a * normal.x + b * normal.y + c * normal.z) * direction;
 }
 
+// A ParticleVisual corner in world space. The instance carries its system's render mode: `look`
+// is mode (0 Billboard, 1 Stretch, 2 Horizontal, 3 Vertical), alignment (0 View, 1 World,
+// 2 Local, 3 Facing, 4 Velocity), pivot.z and the flags (1 allowRoll off, 2 freeform, 4 rotate
+// with the stretch direction, summed); `scale` is lengthScale, velocityScale, the smallest and the
+// largest size (0 for none), as fractions of the viewport width at the particle; `pull` is the
+// camera's velocity times cameraVelocityScale; the emitter's axes serve Local. A zeroed instance
+// is the camera-facing billboard. Each rule is Unity's, measured (docs/PARTICLES-RENDER.md A.2).
 function particleVisualPoint(
-	root: Vec4f, shape: Vec4f, corner: Vec2f, right: Vec3f, up: Vec3f,
+	input: ParticleVisualAttributes, corner: Vec2f, b: VertexBindings,
 ): Vec3f {
-	const x = (corner.x - shape.y) * root.w;
-	const y = (corner.y - shape.z) * shape.x;
-	const c = cos(shape.w);
-	const s = sin(shape.w);
-	return root.xyz + right * (x * c + y * s) + up * (y * c - x * s);
+	const root = input.root;
+	const shape = input.shape;
+	const velocity = input.velocity;
+	const pos = root.xyz;
+	const eye = b.vertexParams.cameraPosition.xyz;
+	const camRight = b.vertexParams.cameraRight.xyz;
+	const camUp = b.vertexParams.cameraUp.xyz;
+	const camToward = cross(camRight, camUp);
+	const kind = input.look;
+	const scale = input.scale;
+	const emitterRight = input.emitterRight;
+	const emitterUp = input.emitterUp;
+	let flags: float32 = kind.w;
+	const rotateWith = flags >= 3.5;
+	if (rotateWith) { flags = flags - 4.0; }
+	const freeform = flags >= 1.5;
+	if (freeform) { flags = flags - 2.0; }
+	const noRoll = flags >= 0.5;
+	const stretch = kind.x == 1.0;
+	const pivotX = -shape.y;
+	const pivotY = -shape.z;
+	const pivotZ = kind.z;
+	const theta = shape.w;
+	const c = cos(theta);
+	const s = sin(theta);
+	const root2: float32 = 0.70710678;
+	let w = root.w;
+	let h = shape.x;
+	const clipCentre = b.vertexParams.viewProj * vec4f(pos, 1.0);
+	const clipRight = b.vertexParams.viewProj * vec4f(pos + camRight, 1.0);
+	const viewportWidth = 2.0 * clipCentre.w / (clipRight.x - clipCentre.x);
+	const big = max(w, h);
+	let fit: float32 = 1.0;
+	if (scale.w > 0.0 && big > scale.w * viewportWidth) {
+		fit = scale.w * viewportWidth / big;
+	}
+	if (scale.z > 0.0 && big > 0.0 && big < scale.z * viewportWidth) {
+		fit = scale.z * viewportWidth / big;
+	}
+	const speed = length(velocity);
+	const along = velocity / max(speed, 0.000001);
+	const toParticle = pos - eye;
+	if (stretch) {
+		if (freeform) {
+			const f = normalize(toParticle);
+			const right = normalize(cross(f, camUp));
+			const up = cross(right, f);
+			let angle = theta;
+			if (rotateWith && speed > 0.000001) {
+				angle = angle + atan2(dot(along, up), -dot(along, right));
+			}
+			const ca = cos(angle);
+			const sa = sin(angle);
+			const fw = w * fit;
+			const fh = h * fit;
+			let o = (right * ca - up * sa) * ((corner.x + pivotX) * fw)
+				+ (up * ca + right * sa) * ((corner.y + pivotY) * fh) + f * (pivotZ * fw);
+			const grow = scale.x + speed * scale.y / max(fh, 0.000001) - 1.0;
+			o = o + along * (grow * dot(o, along));
+			return pos + o;
+		}
+		if (speed < 0.000001) {
+			return pos;
+		}
+		const pull = along * (h * scale.x) + velocity * scale.y - input.pull;
+		const length3 = length(pull);
+		const axis = pull / max(length3, 0.000001);
+		const forward = -camToward;
+		const across = cross(toParticle, axis);
+		const flat = across - forward * dot(across, forward);
+		const width = flat / max(length(flat), 0.000001);
+		const fw = w * fit;
+		const head = pos + width * (pivotX * fw) + axis * (2.0 * pivotY * h);
+		return head + width * (corner.y * fw) - axis * ((corner.x + 0.5) * length3);
+	}
+	w = w * fit;
+	h = h * fit;
+	if (kind.x == 2.0 || kind.x == 3.0) {
+		let right = vec3f(1.0, 0.0, 0.0);
+		let up = vec3f(0.0, 0.0, -1.0);
+		let normal = vec3f(0.0, 1.0, 0.0);
+		if (kind.x == 3.0) {
+			right = normalize(vec3f(camToward.z, 0.0, camRight.z));
+			up = vec3f(0.0, 1.0, 0.0);
+			normal = cross(right, up);
+		}
+		const x = 2.0 * corner.x;
+		const y = 2.0 * corner.y;
+		const ox = 0.5 * w * (x * c + y * s) * root2 + pivotX * w * (c - s) * root2;
+		const oy = 0.5 * h * (y * c - x * s) * root2 + pivotY * h * (c + s) * root2;
+		return pos + right * ox + up * oy + normal * (pivotZ * w);
+	}
+	let right = camRight;
+	let up = camUp;
+	let normal = camToward;
+	if (kind.y == 0.0 && noRoll) {
+		right = normalize(cross(-camToward, vec3f(0.0, 1.0, 0.0)));
+		up = cross(right, -camToward);
+	}
+	if (kind.y == 1.0) {
+		right = vec3f(1.0, 0.0, 0.0);
+		up = vec3f(0.0, 1.0, 0.0);
+		normal = vec3f(0.0, 0.0, -1.0);
+	}
+	if (kind.y == 2.0) {
+		right = emitterRight;
+		up = emitterUp;
+		normal = -cross(right, up);
+	}
+	if (kind.y == 3.0) {
+		normal = normalize(toParticle);
+		right = normalize(cross(normal, camUp));
+		up = cross(right, normal);
+	}
+	if (kind.y == 4.0) {
+		normal = along;
+		right = normalize(cross(vec3f(0.0, 0.0, 1.0), normal));
+		up = cross(right, normal);
+	}
+	const x = (corner.x + pivotX) * w;
+	const y = (corner.y + pivotY) * h;
+	return pos + (right * c - up * s) * x + (up * c + right * s) * y + normal * (pivotZ * w);
 }
 
 export function particleVisualPixelArtVs(
 	input: ParticleVisualAttributes, b: VertexBindings,
 ): ParticleVisualPixelArtVaryings {
 	const corner = PARTICLE_CORNERS[input.index % 6];
-	const world = particleVisualPoint(input.root, input.shape, corner,
-		b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz);
+	const world = particleVisualPoint(input, corner, b);
 	const clip = b.vertexParams.viewProj * vec4f(world, 1.0);
 	return {
 		uv: vec2f(corner.x > 0.0 ? input.tile.z : input.tile.x,
@@ -340,8 +523,7 @@ export function particleVisualVs(
 	input: ParticleVisualAttributes, b: VertexBindings,
 ): ParticleVisualVaryings {
 	const corner = PARTICLE_CORNERS[input.index % 6];
-	const world = particleVisualPoint(input.root, input.shape, corner,
-		b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz);
+	const world = particleVisualPoint(input, corner, b);
 	return {
 		worldPosition: world,
 		towardCamera: cross(b.vertexParams.cameraRight.xyz, b.vertexParams.cameraUp.xyz),
@@ -474,8 +656,9 @@ export function billboardFs(
 		let light = srgbToLinear(b.lightParams.ambient.rgb) +
 			srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
 		for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-			const at = b.lightParams.pointLight[i];
-			light = light + pointLightAt(input.worldPosition, n, at, b.lightParams.pointColor[i]);
+			light = light + lightAt(input.worldPosition, n, b.lightParams.pointLight[i],
+				b.lightParams.pointColor[i], b.lightParams.shapeA[i], b.lightParams.shapeB[i],
+				b.lightParams.shapeC[i], b.lightParams.shapeD[i]);
 		}
 		pixel = vec4f(linearToSrgb(srgbToLinear(pixel.rgb) * light), pixel.a);
 	}
@@ -525,17 +708,32 @@ export function litTexturedVs(
 			clip: b.vertexParams.viewProj * world,
 		};
 	} else {
-		const world = b.modelParams.model * vec4f(input.position, 1.0);
-		return {
-			worldPosition: world.xyz,
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			worldTangent: vec4f(
-				upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
-			),
-			surfaceUv: input.uv,
-			baseColor: input.color,
-			clip: b.vertexParams.viewProj * world,
-		};
+		if (key.instanced) {
+			const matrix = instanceWorld(
+				input.instanceRow0, input.instanceRow1, input.instanceRow2,
+			);
+			const world = matrix * vec4f(input.position, 1.0);
+			return {
+				worldPosition: world.xyz,
+				worldNormal: skinNormal(matrix, input.normal),
+				worldTangent: vec4f(upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w),
+				surfaceUv: input.uv,
+				baseColor: input.color * input.instanceColor,
+				clip: b.vertexParams.viewProj * world,
+			};
+		} else {
+			const world = b.modelParams.model * vec4f(input.position, 1.0);
+			return {
+				worldPosition: world.xyz,
+				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+				worldTangent: vec4f(
+					upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
+				),
+				surfaceUv: input.uv,
+				baseColor: input.color,
+				clip: b.vertexParams.viewProj * world,
+			};
+		}
 	}
 }
 
@@ -562,12 +760,24 @@ export function unlitTexturedVs(
 			baseColor: input.color,
 		};
 	} else {
-		return {
-			clip: b.vertexParams.viewProj * unlitModel(b, key) * vec4f(input.position, 1.0),
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			surfaceUv: input.uv,
-			baseColor: input.color,
-		};
+		if (key.instanced) {
+			const matrix = instanceWorld(
+				input.instanceRow0, input.instanceRow1, input.instanceRow2,
+			);
+			return {
+				clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+				worldNormal: skinNormal(matrix, input.normal),
+				surfaceUv: input.uv,
+				baseColor: input.color * input.instanceColor,
+			};
+		} else {
+			return {
+				clip: b.vertexParams.viewProj * unlitModel(b, key) * vec4f(input.position, 1.0),
+				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+				surfaceUv: input.uv,
+				baseColor: input.color,
+			};
+		}
 	}
 }
 
@@ -648,6 +858,167 @@ export function pointLightAt(position: Vec3f, normal: Vec3f, at: Vec4f, tint: Ve
 	return srgbToLinear(tint.rgb) * (falloff * falloff * facing * at.w);
 }
 
+// One light slot's shape, in shapeA.w: 0 point, 1 spot, 2 rectangle, 3 capsule. A shaped light
+// keeps the point light's window, (1 - d / range)^2 with d to the point the shape stands for
+// (a spot's position, a rectangle's or capsule's closest point), and multiplies its own angular
+// term in; pbr/Light.hx's pointLightIntensity is the 1 / (d^2 + 1) curve the point light here
+// already replaces. The sample is xyz toward the light, w the window times the cone, and a ray
+// or segment the shape cannot place (a surface seen edge on, a receiver on the light) gives w 0
+// where Heaps divides by zero.
+export function lightWindow(distance: float32, range: float32): float32 {
+	const window = clamp(1.0 - distance / range, 0.0, 1.0);
+	return window * window;
+}
+
+// pbr/Light.hx spotLightIntensity's angular half (60-62): theta = dot(delta.normalize(),
+// -spotDir), clamp((theta - angle) / (fallOff - angle)). a: forward, b: cos(angle / 2), cos(inner),
+// then 1 when the spot casts the frame's shadow and its full angle (slotShadowAt, spotShadow.ms).
+export function spotSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f): Vec4f {
+	const delta = at.xyz - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	const toLight = delta / distance;
+	const cone = clamp((dot(toLight, -a.xyz) - b.x) / (b.y - b.x), 0.0, 1.0);
+	return vec4f(toLight, lightWindow(distance, tint.a) * cone);
+}
+
+// pbr/Light.hx rectangleLightIntensity (67-84), one axis: the delta and the inverse light
+// direction projected off `excluded`, their cosine against the outer and inner cosines with
+// Heaps' 0.00001 widening.
+export function rectangleAxisCone(
+	delta: Vec3f, forward: Vec3f, excluded: Vec3f, outer: float32, inner: float32,
+): float32 {
+	const projectedDelta = delta - excluded * dot(delta, excluded);
+	const projectedLight = -forward - excluded * dot(-forward, excluded);
+	const deltaLength = length(projectedDelta);
+	const lightLength = length(projectedLight);
+	if (deltaLength < 0.0001 || lightLength < 0.0001) {
+		return 0.0;
+	}
+	const theta = dot(projectedDelta, projectedLight) / (deltaLength * lightLength);
+	return clamp((theta - outer) / (inner - outer + 0.00001), 0.0, 1.0);
+}
+
+// pbr/Light.hx closestPointOnRectangle (28-32) over tracePlane (23-26): `ray` traced to the
+// light's plane, clamped to the half sizes. a: forward, b: right and half width, c: up and half
+// height.
+export function rectanglePoint(
+	position: Vec3f, ray: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f,
+): Vec3f {
+	const along = dot(a.xyz, at.xyz - position) / dot(a.xyz, ray);
+	const offset = position + ray * along - at.xyz;
+	return at.xyz + b.xyz * clamp(dot(offset, b.xyz), -b.w, b.w) +
+		c.xyz * clamp(dot(offset, c.xyz), -c.w, c.w);
+}
+
+// pbr/Light.hx rectangleLightDiffuse (101-105), the surface normal as the ray. d: cos outer and
+// inner of the horizontal angle, then of the vertical.
+export function rectangleSample(
+	position: Vec3f, normal: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
+): Vec4f {
+	if (abs(dot(a.xyz, normal)) < 0.000001) {
+		return vec4f(0.0);
+	}
+	const delta = rectanglePoint(position, normal, at, a, b, c) - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	const cone = rectangleAxisCone(delta, a.xyz, c.xyz, d.x, d.y) *
+		rectangleAxisCone(delta, a.xyz, b.xyz, d.z, d.w);
+	return vec4f(delta / distance, lightWindow(distance, tint.a) * cone);
+}
+
+// pbr/Light.hx capsuleLightDiffuse (86-90) over closestPointLineToPoint (8-12). a: axis, b: half
+// length.
+export function capsuleSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f): Vec4f {
+	const start = at.xyz - a.xyz * b.x;
+	const segment = a.xyz * (2.0 * b.x);
+	const along = clamp(dot(position - start, segment) / dot(segment, segment), 0.0, 1.0);
+	const delta = start + segment * along - position;
+	const distance = length(delta);
+	if (distance < 0.0001) {
+		return vec4f(0.0);
+	}
+	return vec4f(delta / distance, lightWindow(distance, tint.a));
+}
+
+// pbr/Light.hx rectangleLightSpecularDir (107-109): the plane point along the reflected view
+// ray. A ray in the plane keeps the diffuse direction.
+export function rectangleSpecularDir(
+	position: Vec3f, reflected: Vec3f, diffuse: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f,
+): Vec3f {
+	if (abs(dot(a.xyz, reflected)) < 0.000001) {
+		return diffuse;
+	}
+	return normalize(rectanglePoint(position, reflected, at, a, b, c) - position);
+}
+
+// pbr/Light.hx capsuleLightSpecularDir (92-99) over closestPointLineToRay (14-21). b.y is the
+// radius, capped at the range (CapsuleLight.hx:68). A ray along the segment, or through it,
+// keeps the diffuse direction where Heaps divides by zero.
+export function capsuleSpecularDir(
+	position: Vec3f, reflected: Vec3f, diffuse: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f,
+): Vec3f {
+	const l0 = at.xyz - a.xyz * b.x - position;
+	const l01 = a.xyz * (2.0 * b.x);
+	const squared = dot(l01, l01);
+	const alongRay = dot(reflected, l01);
+	const denominator = squared - alongRay * alongRay;
+	if (denominator <= 0.000001) {
+		return diffuse;
+	}
+	const closest = l0 + l01 * clamp(dot(l0, reflected * alongRay - l01) / denominator, 0.0, 1.0);
+	const centerToRay = reflected * dot(closest, reflected) - closest;
+	const offset = length(centerToRay);
+	if (offset < 0.000001) {
+		return normalize(closest);
+	}
+	return normalize(closest + centerToRay * clamp(b.y / offset, 0.0, 1.0));
+}
+
+export function shapedSample(
+	position: Vec3f, normal: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
+): Vec4f {
+	if (a.w > 2.5) {
+		return capsuleSample(position, at, tint, a, b);
+	}
+	if (a.w > 1.5) {
+		return rectangleSample(position, normal, at, tint, a, b, c, d);
+	}
+	return spotSample(position, at, tint, a, b);
+}
+
+export function shapedSpecularDir(
+	position: Vec3f, reflected: Vec3f, diffuse: Vec3f, at: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f,
+): Vec3f {
+	if (a.w > 2.5) {
+		return capsuleSpecularDir(position, reflected, diffuse, at, a, b);
+	}
+	if (a.w > 1.5) {
+		return rectangleSpecularDir(position, reflected, diffuse, at, a, b, c);
+	}
+	return diffuse;
+}
+
+// PENDING3D: light-shape-range-window
+// PENDING3D: light-shape-degenerate-black
+// pointLightAt for a slot of any shape: a point light is pointLightAt untouched.
+export function lightAt(
+	position: Vec3f, normal: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
+): Vec3f {
+	let lit: Vec3f = vec3f(0.0);
+	if (a.w < 0.5) {
+		lit = pointLightAt(position, normal, at, tint);
+	} else {
+		const sample = shapedSample(position, normal, at, tint, a, b, c, d);
+		lit = srgbToLinear(tint.rgb) * (sample.w * max(dot(normal, sample.xyz), 0.0) * at.w);
+	}
+	return lit;
+}
+
 // h3d.Matrix.colorSaturate in scalar form; campfireGreyCpuCapture holds it to colorSaturated.
 export function saturated(rgb: Vec3f, amount: float32): Vec3f {
 	if (amount == 0.0) {
@@ -722,42 +1093,78 @@ function moving(b: LitBindings, key: LitKey): boolean {
 // texture or a dissolve reads them, the emissive ones when the key emits. Each reader below
 // picks the member from the block the program declares.
 export function materialOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.uvTransform || key.backTexture || key.dissolve) {
+	if (key.pbr) {
 		if (key.emissive) {
-			return b.movingEmissiveMaterialParams.material;
+			return b.pbrEmissiveMaterialParams.material;
 		} else {
-			return b.movingMaterialParams.material;
+			return b.pbrMaterialParams.material;
 		}
 	} else {
-		if (key.emissive) {
-			return b.emissiveMaterialParams.material;
+		if (key.uvTransform || key.backTexture || key.dissolve) {
+			if (key.emissive) {
+				return b.movingEmissiveMaterialParams.material;
+			} else {
+				return b.movingMaterialParams.material;
+			}
 		} else {
-			return b.materialParams.material;
+			if (key.emissive) {
+				return b.emissiveMaterialParams.material;
+			} else {
+				return b.materialParams.material;
+			}
 		}
 	}
 }
 
 export function emissiveOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.uvTransform || key.backTexture || key.dissolve) {
-		return b.movingEmissiveMaterialParams.emissive;
+	if (key.pbr) {
+		return b.pbrEmissiveMaterialParams.emissive;
 	} else {
-		return b.emissiveMaterialParams.emissive;
+		if (key.uvTransform || key.backTexture || key.dissolve) {
+			return b.movingEmissiveMaterialParams.emissive;
+		} else {
+			return b.emissiveMaterialParams.emissive;
+		}
+	}
+}
+
+export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.emissive) {
+		return b.pbrEmissiveMaterialParams.pbr;
+	} else {
+		return b.pbrMaterialParams.pbr;
 	}
 }
 
 export function uvMatrixOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.emissive) {
-		return b.movingEmissiveMaterialParams.uvMatrix;
+	if (key.pbr) {
+		if (key.emissive) {
+			return b.pbrEmissiveMaterialParams.uvMatrix;
+		} else {
+			return b.pbrMaterialParams.uvMatrix;
+		}
 	} else {
-		return b.movingMaterialParams.uvMatrix;
+		if (key.emissive) {
+			return b.movingEmissiveMaterialParams.uvMatrix;
+		} else {
+			return b.movingMaterialParams.uvMatrix;
+		}
 	}
 }
 
 export function uvMotionOf(b: LitBindings, key: LitKey): Vec4f {
-	if (key.emissive) {
-		return b.movingEmissiveMaterialParams.uvMotion;
+	if (key.pbr) {
+		if (key.emissive) {
+			return b.pbrEmissiveMaterialParams.uvMotion;
+		} else {
+			return b.pbrMaterialParams.uvMotion;
+		}
 	} else {
-		return b.movingMaterialParams.uvMotion;
+		if (key.emissive) {
+			return b.movingEmissiveMaterialParams.uvMotion;
+		} else {
+			return b.movingMaterialParams.uvMotion;
+		}
 	}
 }
 
@@ -793,20 +1200,257 @@ export function dissolveEdgeOf(b: LitBindings, key: LitKey): Vec4f {
 	}
 }
 
-// h3d.shader.ShadowSampling.sampleShadow with SAMPLING_NONE, on the map dirShadowMap.ms draws.
-// shadowMatrix takes a world position to the map's texel space and to the depth the backend
-// stores, so the compare reads the attachment as written; shadow.x is the bias in that depth,
-// shadow.y the opacity (1 a full shadow).
-export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
-	const p = (b.shadowParams.shadowMatrix * vec4f(position, 1.0)).xyz;
+// h3d.shader.ShadowSampling.sampleShadow with SAMPLING_NONE, on the maps dirShadowMap.ms draws. A
+// spot's matrix is perspective, so the product is divided by w (ShadowSampling.hx:49-53); a
+// position behind the spot (w <= 0), like a half of the block nobody wrote, reads lit.
+// PENDING3D: spot-shadow-behind-lit
+function mapCoord(position: Vec3f, matrix: Mat4x4f): Vec4f {
+	const q = matrix * vec4f(position, 1.0);
+	if (q.w <= 0.0) {
+		return vec4f(0.0, 0.0, 0.0, 0.0);
+	}
+	const p = q.xyz / q.w;
 	if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0) {
+		return vec4f(0.0, 0.0, 0.0, 0.0);
+	}
+	return vec4f(p, 1.0);
+}
+
+function mapLit(z: float32, depth: float32, bias: float32, opacity: float32): float32 {
+	const lit: float32 = clamp(z, 0.0, 1.0) - bias > depth ? 0.0 : 1.0;
+	return mix(1.0, lit, opacity);
+}
+
+export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const p = mapCoord(position, b.shadowParams.shadowMatrix);
+	if (p.w < 0.5) {
 		return 1.0;
 	}
 	const size = textureDimensions(b.shadowMap, 0);
 	const texel = clamp(vec2i(p.xy * vec2f(size)), vec2i(0, 0), size - vec2i(1, 1));
 	const depth = textureLoad(b.shadowMap, texel, 0).x;
-	const lit: float32 = clamp(p.z, 0.0, 1.0) - b.shadowParams.shadow.x > depth ? 0.0 : 1.0;
-	return mix(1.0, lit, b.shadowParams.shadow.y);
+	return mapLit(p.z, depth, b.shadowParams.shadow.x, b.shadowParams.shadow.y);
+}
+
+export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const p = mapCoord(position, b.shadowParams.spotMatrix);
+	if (p.w < 0.5) {
+		return 1.0;
+	}
+	const size = textureDimensions(b.spotShadowMap, 0);
+	const texel = clamp(vec2i(p.xy * vec2f(size)), vec2i(0, 0), size - vec2i(1, 1));
+	const depth = textureLoad(b.spotShadowMap, texel, 0).x;
+	return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
+}
+
+// A positioned slot's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless this
+// slot is the spot that casts the spot map (shapeB.z, scene.ms packShape).
+export function slotShadowAt(position: Vec3f, b: LitBindings, key: LitKey, slot: int32): float32 {
+	if (!key.shadowed) {
+		return 1.0;
+	}
+	const a = b.lightParams.shapeA[slot];
+	if (a.w < 0.5 || a.w > 1.5 || b.lightParams.shapeB[slot].z < 0.5) {
+		return 1.0;
+	}
+	return spotShadowAt(position, b);
+}
+
+// h3d.shader.pbr.Direct (Lighting.hx:125-145) for one light, in linear light: Cook-Torrance GGX
+// with Schlick-GGX visibility and the exp2 Fresnel (BRDF.hx:40-63), F0 = mix(0.04, albedo,
+// metalness) (PropsImport.hx:74). `radiance` excludes N.L and the shadow; `occlusionFactor` is
+// pbrOcclusionFactor, whose Heaps default is 0 (Light.hx:10), so glTF's ambient-only occlusion
+// holds. pbrResponse.ms is its CPU oracle, minus the validation a shader cannot report: roughness 0
+// has no guard in Heaps either, so a material never carries it (material.ms pbrValues).
+export function pbrDirect(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	light: Vec3f,
+	radiance: Vec3f,
+	shadow: float32,
+	occlusionFactor: float32,
+	occlusion: float32,
+): Vec3f {
+	return pbrDirectSpecular(albedo, metalness, roughness, normal, view, light, light, radiance,
+		shadow, occlusionFactor, occlusion);
+}
+
+// pbrDirect with Direct's pbrSpecularLightDirection (Lighting.hx:119-121): `specularLight` only
+// feeds the half vector, as a rectangle or capsule light's representative point does, while N.L
+// and the geometry term keep the diffuse `light`.
+export function pbrDirectSpecular(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	light: Vec3f,
+	specularLight: Vec3f,
+	radiance: Vec3f,
+	shadow: float32,
+	occlusionFactor: float32,
+	occlusion: float32,
+): Vec3f {
+	if (dot(radiance, radiance) <= 0.0001) {
+		return vec3f(0.0);
+	}
+	const n = normalize(normal);
+	const v = normalize(view);
+	const l = normalize(light);
+	const nl = clamp(dot(n, l), 0.0, 1.0);
+	if (nl <= 0.0) {
+		return vec3f(0.0);
+	}
+	const h = normalize(normalize(specularLight) + v);
+	const nh = clamp(dot(n, h), 0.0, 1.0);
+	const vh = clamp(dot(v, h), 0.0, 1.0);
+	const nv = clamp(dot(n, v), 0.0, 1.0);
+	const alpha = roughness * roughness;
+	const alpha2 = alpha * alpha;
+	const denominator = nh * nh * (alpha2 - 1.0) + 1.0;
+	const distribution = alpha2 / (3.14159265358979 * denominator * denominator);
+	const remapped = roughness + 1.0;
+	const k = remapped * remapped * 0.125;
+	const visibility = (1.0 / (nv * (1.0 - k) + k)) * (1.0 / (nl * (1.0 - k) + k)) * 0.25;
+	const f0 = mix(vec3f(0.04), albedo, metalness);
+	const fresnel = f0 + (1.0 - f0) * exp2((-5.55473 * vh - 6.98316) * vh);
+	const specular = max(fresnel * (distribution * visibility), vec3f(0.0));
+	const diffuse = albedo * (1.0 / 3.14159265358979) * (1.0 - metalness) * (1.0 - fresnel);
+	const reach = nl * shadow * mix(1.0, occlusion, occlusionFactor);
+	return (diffuse + specular) * radiance * reach;
+}
+
+// h3d.shader.pbr.Indirect's diffuse half with a flat ambient as the irradiance (Lighting.hx:78-99,
+// drawIndirectDiffuse): the specular half needs an environment map, which void3d has none of.
+export function pbrAmbient(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	ambient: Vec3f,
+	occlusion: float32,
+): Vec3f {
+	const nv = max(dot(normalize(normal), normalize(view)), 0.0);
+	const f0 = mix(vec3f(0.04), albedo, metalness);
+	const fresnel =
+		f0 + (max(vec3f(1.0 - roughness), f0) - f0) * exp2((-5.55473 * nv - 6.98316) * nv);
+	return ambient * albedo * (1.0 - metalness) * (1.0 - fresnel) * occlusion;
+}
+
+// Bevy pbr_lighting.wesl:527-538, the analytic split sum standing in for Heaps' irrLut: the
+// scale and bias of F0 in the specular response.
+export function splitSum(roughness: float32, nv: float32): Vec2f {
+	const rx = 1.0 - roughness;
+	const ry = 0.0425 - 0.0275 * roughness;
+	const a004 = min(rx * rx, exp2(-9.28 * nv)) * rx + ry;
+	return max(
+		vec2f(-1.04 * a004 + 1.04 - 0.572 * roughness, 1.04 * a004 - 0.04 + 0.022 * roughness),
+		vec2f(0.00005),
+	);
+}
+
+// Renderer.hx:716 irrRotation turned about this frame's up axis, Heaps' z.
+function envTurned(d: Vec3f, turn: Vec4f): Vec3f {
+	return vec3f(d.x * turn.z - d.z * turn.w, d.y, d.x * turn.w + d.z * turn.z);
+}
+
+// h3d.shader.pbr.Indirect without the sky and emissive terms (Lighting.hx:85-99): the baked
+// irradiance and the specular cube at roughness * irrSpecularLevels, both turned, times irrPower
+// and the occlusion. envParams holds irrPower, irrSpecularLevels and the turn's cosine and sine.
+export function pbrEnvironmentLight(
+	albedo: Vec3f,
+	metalness: float32,
+	roughness: float32,
+	normal: Vec3f,
+	view: Vec3f,
+	occlusion: float32,
+	b: LitBindings,
+): Vec3f {
+	const n = normalize(normal);
+	const v = normalize(view);
+	const nv = max(dot(n, v), 0.0);
+	const f0 = mix(vec3f(0.04), albedo, metalness);
+	const fresnel =
+		f0 + (max(vec3f(1.0 - roughness), f0) - f0) * exp2((-5.55473 * nv - 6.98316) * nv);
+	const turn = b.frameParams.envParams;
+	const irradiance = textureSampleLevel(b.envDiffuse, b.envSampler, envTurned(n, turn), 0.0).rgb;
+	const radiance = textureSampleLevel(b.envSpecular, b.envSampler,
+		envTurned(reflect(-v, n), turn), roughness * turn.y).rgb;
+	const lut = splitSum(roughness, nv);
+	const specular = radiance * (fresnel * lut.x + lut.y);
+	return (irradiance * albedo * (1.0 - metalness) * (1.0 - fresnel) + specular) *
+		(turn.x * occlusion);
+}
+
+// Roughness floors at 0.089 as Bevy's clampedPerceptualRoughness (pbr_lighting.wesl:550): a
+// texel of 0 has no BRDF response, and a texture cannot be refused per pixel.
+export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f): Vec3f {
+	const metalRoughTexel = textureSample(b.metalRoughTexture, b.baseSampler, uv);
+	const occluded = textureSample(b.occlusionTexture, b.baseSampler, uv).r;
+	const values = pbrOf(b, key);
+	return vec3f(
+		values.x * metalRoughTexel.b,
+		max(values.y * metalRoughTexel.g, 0.089),
+		values.z * (1.0 + values.w * (occluded - 1.0)),
+	);
+}
+
+// The lit surface under the PBR path: the material's albedo (linear, saturated as the material
+// says) under the same ambient, directional and point lights litShade reads, from the camera
+// frame.cameraPosition names. The sun is shadowed, as Heaps' `shadow` scales every light of a
+// pass; a point light has no shadow here, and one spot may (slotShadowAt).
+export function pbrShade(
+	n: Vec3f,
+	position: Vec3f,
+	surfaceColor: Vec4f,
+	b: LitBindings,
+	key: LitKey,
+	values: Vec3f,
+): Vec4f {
+	const albedo = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
+	const view = b.frameParams.cameraPosition.xyz - position;
+	const dir = b.lightParams.dirLight;
+	let shadow: float32 = 1.0;
+	if (key.shadowed) {
+		shadow = dirShadowAt(position, b);
+	}
+	const sun = srgbToLinear(b.lightParams.dirColor.rgb) * dir.w;
+	let light = vec3f(0.0);
+	if (b.frameParams.envParams.x > 0.0) {
+		light = pbrEnvironmentLight(albedo, values.x, values.y, n, view, values.z, b);
+	} else {
+		light = pbrAmbient(albedo, values.x, values.y, n, view,
+			srgbToLinear(b.lightParams.ambient.rgb), values.z);
+	}
+	light = light +
+		pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
+	const eye = normalize(view);
+	const reflected = -eye - n * (2.0 * dot(-eye, n));
+	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
+		const at = b.lightParams.pointLight[i];
+		const tint = b.lightParams.pointColor[i];
+		const a = b.lightParams.shapeA[i];
+		if (a.w < 0.5) {
+			const toLight = at.xyz - position;
+			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
+			const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
+			light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0,
+				0.0, values.z);
+		} else {
+			const bb = b.lightParams.shapeB[i];
+			const cc = b.lightParams.shapeC[i];
+			const sample = shapedSample(position, n, at, tint, a, bb, cc, b.lightParams.shapeD[i]);
+			const radiance = srgbToLinear(tint.rgb) * (sample.w * at.w);
+			const specular = shapedSpecularDir(position, reflected, sample.xyz, at, a, bb, cc);
+			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
+				specular, radiance, slotShadowAt(position, b, key, i), 0.0, values.z);
+		}
+	}
+	return vec4f(linearToSrgb(light), surfaceColor.a);
 }
 
 // The lit surface: its colour (the vertex colour, times the texel when textured) under the
@@ -826,8 +1470,10 @@ export function litShade(
 	const ambient = srgbToLinear(b.lightParams.ambient.rgb);
 	let light = ambient + srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
 	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-		const at = b.lightParams.pointLight[i];
-		light = light + pointLightAt(position, n, at, b.lightParams.pointColor[i]);
+		light = light + lightAt(position, n, b.lightParams.pointLight[i],
+			b.lightParams.pointColor[i],
+			b.lightParams.shapeA[i], b.lightParams.shapeB[i], b.lightParams.shapeC[i],
+			b.lightParams.shapeD[i]) * slotShadowAt(position, b, key, i);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);
@@ -837,7 +1483,13 @@ export function litShade(
 export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): LitOutput {
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
-	const shaded = litShade(n, input.worldPosition, input.baseColor, b, key);
+	let shaded = vec4f(0.0);
+	if (key.pbr) {
+		const pbrValues = pbrOf(b, key).xyz;
+		shaded = pbrShade(n, input.worldPosition, input.baseColor, b, key, pbrValues);
+	} else {
+		shaded = litShade(n, input.worldPosition, input.baseColor, b, key);
+	}
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
@@ -865,7 +1517,7 @@ export function litTexturedFs(
 ): LitOutput {
 	const params = materialOf(b, key);
 	let uv = input.surfaceUv;
-	if (key.uvTransform) {
+	if (key.uvTransform || key.pbr) {
 		const time = b.frameParams.frame.x;
 		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
 	}
@@ -892,7 +1544,16 @@ export function litTexturedFs(
 		n = mappedNormal(normalize(input.worldNormal), input.worldTangent, face, normalTexel);
 	}
 	const surfaceColor = vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a);
-	let shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
+	let shaded = vec4f(0.0);
+	if (key.pbr) {
+		let pbrValues = pbrOf(b, key).xyz;
+		if (key.pbrMaps) {
+			pbrValues = pbrMapped(b, key, uv);
+		}
+		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key, pbrValues);
+	} else {
+		shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
+	}
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;
 		shaded = emittedOver(shaded, glow, emissiveOf(b, key));

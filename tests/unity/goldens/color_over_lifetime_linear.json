@@ -1,0 +1,36 @@
+{
+"unityVersion": "6000.6.6f1",
+"colorSpace": "Linear",
+"activeColorSpace": "Linear",
+"caseName": "color_over_lifetime_linear",
+"dt": 0.1,
+"steps": 12,
+"randomSeed": 12345,
+"simulate": "frame 0 = Simulate(0, withChildren:true, restart:true, fixedTimeStep:false); frame k = Simulate(dt, true, false, false)",
+"settings": {"colorOverLifetime": "gradient 2 keys red(t0) -> green(t1), alpha 1, mode Blend", "startLifetime": 1, "gradientColorSpace": "Uninitialized"},
+"frames": [
+{"step": 0, "time": 0, "count": 0, "particles": []},
+{"step": 1, "time": 0.1, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.9019608, 0.101960786, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.9, "startLifetime": 1, "seed": 692788716}]},
+{"step": 2, "time": 0.200000018, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.8, 0.2, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.8, "startLifetime": 1, "seed": 692788716}]},
+{"step": 3, "time": 0.300000042, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.7019608, 0.298039228, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.700000048, "startLifetime": 1, "seed": 692788716}]},
+{"step": 4, "time": 0.400000066, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.6, 0.4, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.6, "startLifetime": 1, "seed": 692788716}]},
+{"step": 5, "time": 0.50000006, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.5019608, 0.5019608, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.5, "startLifetime": 1, "seed": 692788716}]},
+{"step": 6, "time": 0.599999964, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.4, 0.6, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.400000036, "startLifetime": 1, "seed": 692788716}]},
+{"step": 7, "time": 0.699999869, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.3019608, 0.7019608, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.3, "startLifetime": 1, "seed": 692788716}]},
+{"step": 8, "time": 0.7999998, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.2, 0.8, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.200000048, "startLifetime": 1, "seed": 692788716}]},
+{"step": 9, "time": 0.8999997, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0.101960786, 0.9019608, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0.100000024, "startLifetime": 1, "seed": 692788716}]},
+{"step": 10, "time": 0.9999996, "count": 1, "particles": [
+  {"pos": [0, 0, 0], "vel": [0, 0, 0], "anim": [0, 0, 0], "total": [0, 0, 0], "startSize": [1, 1, 1], "size": [1, 1, 1], "rot": [0, 0, 0], "color": [0, 1, 0, 1], "startColor": [1, 1, 1, 1], "remaining": 0, "startLifetime": 1, "seed": 692788716}]},
+{"step": 11, "time": 1.09999955, "count": 0, "particles": []},
+{"step": 12, "time": 1.19999945, "count": 0, "particles": []}
+]
+}

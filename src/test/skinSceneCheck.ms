@@ -1,6 +1,6 @@
 import {
 	Scene3D, SceneError, Transform3D, addGroup, addSkinMeshNode, rootId, closeScene,
-	refreshChecked, setLocal, setPickable, remove, setMaterialOf,
+	refreshChecked, setLocal, setPickable, remove, setMaterialOf, SceneSyncError,
 } from "../void3d/scene";
 import { SkinGeometry, SkinGeometryError, bind, spatialReady } from "../void3d/skinGeometry";
 import { SkinPose, bind as bindPose } from "../void3d/skinPose";
@@ -178,7 +178,7 @@ test "retained skin rejects stale joints rather than bind fallback and close dro
 	assert removed == 1;
 	const failed = refreshChecked(f.scene, items);
 	assert !failed.ok;
-	if (!failed.ok) { assert failed.error == SkinGeometryError.Pose; }
+	if (!failed.ok) { assert failed.error == SceneSyncError.Skin; }
 	assert !f.geometry.spatialReady();
 	const hit = pickNearest(f.scene,
 		{ origin: vec3(10.25, 0.25, 2), direction: vec3(0, 0, -1) });

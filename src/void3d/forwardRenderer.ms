@@ -117,7 +117,14 @@ export enum ForwardError {
 	ProgramNotCast,
 	CasterBlock,
 	SkinPose,
+	Instances,
 	DrawRange,
+	CameraPosition,
+	MeshWrite,
+	// RendererError.TooManyShadowedSpots, BadShadowSpot and SpotShadowUnattached.
+	TooManyShadowedSpots,
+	BadShadowSpot,
+	SpotShadowUnattached,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
@@ -258,7 +265,14 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.ProgramNotCast => ForwardError.ProgramNotCast,
 		RendererError.CasterBlock => ForwardError.CasterBlock,
 		RendererError.SkinPose => ForwardError.SkinPose,
+		RendererError.Instances => ForwardError.Instances,
 		RendererError.DrawRange => ForwardError.DrawRange,
+		RendererError.CameraPosition => ForwardError.CameraPosition,
+		RendererError.MeshWrite => ForwardError.MeshWrite,
+		RendererError.ShapedLightPreset => { unreachable; },
+		RendererError.TooManyShadowedSpots => ForwardError.TooManyShadowedSpots,
+		RendererError.BadShadowSpot => ForwardError.BadShadowSpot,
+		RendererError.SpotShadowUnattached => ForwardError.SpotShadowUnattached,
 	};
 }
 

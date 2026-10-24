@@ -18,6 +18,7 @@ import {
 	GPUDevice,
 	GPUExtent3D,
 	GPUFilterMode,
+	GPUMipmapFilterMode,
 	GPUIndexFormat,
 	GPULoadOp,
 	GPURenderPassDescriptor,
@@ -101,8 +102,8 @@ import {
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;
-const VIEW_SLOTS: int32 = 6;
-const SAMPLER_SLOTS: int32 = 3;
+const VIEW_SLOTS: int32 = 9;
+const SAMPLER_SLOTS: int32 = 5;
 const SAMPLER_BINDING_BASE: int32 = 32;
 const UNIFORM_RING_BYTES: int64 = 4 * 1024 * 1024;
 const UNIFORM_ALIGNMENT: int64 = 256;
@@ -413,8 +414,9 @@ export function doorLayoutFloats(layout: int32, buffer: int32): int32 {
 	return floats;
 }
 
-export function doorLayoutPerInstance(layout: int32): int32 {
-	return layoutAt(layout).buffers[0].stepMode == "instance" ? 1 : 0;
+export function doorLayoutPerInstance(layout: int32, buffer: int32): int32 {
+	if (buffer < 0 || buffer >= GPU_MAX_VERTEX_BUFFERS) { return 0; }
+	return layoutAt(layout).buffers[buffer].stepMode == "instance" ? 1 : 0;
 }
 
 // ---- resources ----
@@ -477,6 +479,9 @@ const BLEND_OPERATIONS: GPUBlendOperation[5] = [
 	"max",
 ];
 const FILTERS: GPUFilterMode[2] = ["nearest", "linear"];
+// TextureMipFilter None, Nearest, Linear: None is a nearest mip filter whose lod range the caller
+// ends at level 0, as on sokol.
+const MIP_FILTERS: GPUMipmapFilterMode[3] = ["nearest", "nearest", "linear"];
 const WRAPS: GPUAddressMode[3] = ["clamp-to-edge", "repeat", "mirror-repeat"];
 
 // WebGPU has no DontCare load: it clears.
@@ -637,6 +642,103 @@ export function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height
 	return texture.id;
 }
 
+function fullMipChain(largest: int32): int32 {
+	let levels = 1;
+	for (let size = largest; size > 1; size = size / 2) { levels++; }
+	return levels;
+}
+
+export function doorMakeImageMips(
+	rgba: Readonly<Span<uint32>>, width: int32, height: int32, levels: int32,
+): uint32 {
+	if (width <= 0 || height <= 0 || levels < 1) { return 0; }
+	if (levels != 1 && levels != fullMipChain(width > height ? width : height)) { return 0; }
+	let words: int64 = 0;
+	for (let level = 0; level < levels; level++) {
+		words += ((width >> level) > 1 ? width >> level : 1) as int64 * (((height >> level) > 1 ? height >> level : 1) as int64);
+	}
+	if (rgba.length != words) { return 0; }
+	const texture = device.createTexture({
+		label: null,
+		size: texture2dSize(width, height),
+		format: "rgba8unorm",
+		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+		sampleCount: 1,
+		mipLevelCount: levels,
+	});
+	if (texture.id == 0) { return 0; }
+	let offset: int64 = 0;
+	for (let level = 0; level < levels; level++) {
+		const w = (width >> level) > 1 ? width >> level : 1;
+		const h = (height >> level) > 1 ? height >> level : 1;
+		device.queue.writeTexture(
+			{ texture, mipLevel: level },
+			rgba,
+			{ offset: offset * 4, bytesPerRow: w * 4, rowsPerImage: h },
+			texture2dSize(w, h),
+		);
+		offset += (w as int64) * (h as int64);
+	}
+	return texture.id;
+}
+
+// Cube images by id, so a texture view of one samples it as a cube, as sokol's does.
+let cubeImages: Vec<uint32> = [];
+
+function cubeSize(size: int32): GPUExtent3D {
+	return { width: size, height: size, depthOrArrayLayers: 6 };
+}
+
+export function doorMakeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): uint32 {
+	if (size <= 0 || rgba.length != (size as int64) * (size as int64) * 6) { return 0; }
+	const texture = device.createTexture({
+		label: null,
+		size: cubeSize(size),
+		format: "rgba8unorm",
+		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+		sampleCount: 1,
+	});
+	if (texture.id == 0) { return 0; }
+	device.queue.writeTexture(
+		{ texture },
+		rgba,
+		{ offset: 0, bytesPerRow: size * 4, rowsPerImage: size },
+		cubeSize(size),
+	);
+	cubeImages.push(texture.id);
+	return texture.id;
+}
+
+export function doorMakeCubeTargetImage(size: int32, levels: int32, format: int32): uint32 {
+	const pixelFormat = format as PixelFormat;
+	if (size <= 0 || levels < 1 || levels > fullMipChain(size) || isDepthFormat(pixelFormat)) { return 0; }
+	const texture = device.createTexture({
+		label: null,
+		size: cubeSize(size),
+		format: colorTextureFormat(pixelFormat),
+		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING |
+			GPUTextureUsage.COPY_SRC,
+		sampleCount: 1,
+		mipLevelCount: levels,
+	});
+	if (texture.id == 0) { return 0; }
+	cubeImages.push(texture.id);
+	return texture.id;
+}
+
+export function doorMakeCubeAttachmentView(image: uint32, face: int32, level: int32): uint32 {
+	if (face < 0 || face >= 6 || level < 0) { return 0; }
+	const texture: GPUTexture = { id: image };
+	return texture.createView({
+		label: null,
+		dimension: "2d",
+		baseMipLevel: level,
+		mipLevelCount: 1,
+		baseArrayLayer: face,
+		arrayLayerCount: 1,
+	}).id;
+}
+
 export function doorMakeTargetImage(width: int32, height: int32, format: int32): uint32 {
 	if (width <= 0 || height <= 0) { return 0; }
 	const pixelFormat = format as PixelFormat;
@@ -659,6 +761,7 @@ export function doorMakeAttachmentView(image: uint32, format: int32): uint32 {
 @exportName("doorMakeTextureView")
 export function doorMakeTextureView(image: uint32): uint32 {
 	const texture: GPUTexture = { id: image };
+	if (cubeImages.includes(image)) { return texture.createView({ label: null, dimension: "cube" }).id; }
 	return texture.createView({ label: null }).id;
 }
 
@@ -672,6 +775,34 @@ export function doorMakeSampler(filter: int32, wrap: int32): uint32 {
 		addressModeV: w,
 		magFilter: f,
 		minFilter: f,
+	}).id;
+}
+
+export function doorAnisotropyPortable(): int32 {
+	const backend: string = device.getAdapterInfo().backend;
+	return backend == "glcore" || backend == "gles3" ? 0 : 1;
+}
+
+export function doorMakeSamplerEx(
+	minFilter: int32, magFilter: int32, mipFilter: int32, wrapU: int32, wrapV: int32,
+	minLod: float32, maxLod: float32, maxAnisotropy: int32,
+): uint32 {
+	if (minFilter < 0 || minFilter >= 2 || magFilter < 0 || magFilter >= 2 || mipFilter < 0 ||
+		mipFilter >= 3 || wrapU < 0 || wrapU >= 3 || wrapV < 0 || wrapV >= 3) { return 0; }
+	if (!(minLod >= 0.0) || !(maxLod > 0.0) || maxLod < minLod) { return 0; }
+	if (maxAnisotropy < 1 || maxAnisotropy > 16) { return 0; }
+	if (maxAnisotropy > 1 && (doorAnisotropyPortable() == 0 || minFilter != 1 || magFilter != 1 ||
+		mipFilter != 2)) { return 0; }
+	return device.createSampler({
+		label: null,
+		addressModeU: WRAPS[wrapU],
+		addressModeV: WRAPS[wrapV],
+		magFilter: FILTERS[magFilter],
+		minFilter: FILTERS[minFilter],
+		mipmapFilter: MIP_FILTERS[mipFilter],
+		lodMinClamp: minLod,
+		lodMaxClamp: maxLod,
+		maxAnisotropy,
 	}).id;
 }
 
@@ -716,6 +847,8 @@ export function doorDestroyPipeline(pipeline: uint32): void {
 @exportName("doorDestroyImage")
 export function doorDestroyImage(image: uint32): void {
 	if (image == 0) { return; }
+	const cube = cubeImages.indexOf(image);
+	if (cube >= 0) { cubeImages.splice(cube, 1); }
 	const texture: GPUTexture = { id: image };
 	texture.destroy();
 }

@@ -1,0 +1,127 @@
+# h3d.col.ObjectCollider (ObjectCollider.hx) against src/void3d/objectCollider.ms, placed by a real
+# h3d.scene.Object whose absolute position is the matrix, over a Sphere collider so that the local
+# query is Heaps' own. Same queries as transformCollider3d.cases, through Object.getInvPos'
+# inverse3x4. A mirrored matrix takes its scale from Matrix.getScale, which negates all three axes,
+# and is declared below.
+# lib: heaps format
+# haxe-prelude: import h3d.Matrix;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.Sphere;
+# haxe-prelude: import h3d.col.Frustum;
+# haxe-prelude: import h3d.col.ObjectCollider;
+# haxe-prelude: class H {
+# haxe-prelude: public static function oc(s:Array<Float>,r:Array<Float>,t:Array<Float>,c:Array<Float>):ObjectCollider {
+# haxe-prelude: var o=new h3d.scene.Object(); o.setPosition(t[0],t[1],t[2]); o.setRotation(r[0],r[1],r[2]);
+# haxe-prelude: o.scaleX=s[0]; o.scaleY=s[1]; o.scaleZ=s[2];
+# haxe-prelude: return new ObjectCollider(o,new Sphere(c[0],c[1],c[2],c[3]));
+# haxe-prelude: }
+# haxe-prelude: public static function ray(o:Array<Float>,d:Array<Float>):Ray { return Ray.fromValues(o[0],o[1],o[2],d[0],d[1],d[2]); }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, Mat4, vec3, identity, scaling, translation, rotationEuler } from "../../../src/math/math3d";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import { Sphere3D, contains, overlaps } from "../../../src/void3d/sphere";
+# ms-prelude: import { Frustum3D, intersectsSphere } from "../../../src/void3d/frustum";
+# ms-prelude: import { TransformFrame } from "../../../src/void3d/transformCollider";
+# ms-prelude: import { objectFrame } from "../../../src/void3d/objectCollider";
+# ms-prelude: function M(s:Vec3,r:Vec3,t:Vec3):Mat4 { return scaling(s.x,s.y,s.z) * rotationEuler(r.x,r.y,r.z) * translation(t.x,t.y,t.z); }
+# ms-prelude: function frame(m:Mat4):TransformFrame { const r=objectFrame(m); if(!r.ok){unreachable;} return r.value; }
+# ms-prelude: function sph(x:float32,y:float32,z:float32,r:float32):Sphere3D { return {center:vec3(x,y,z),radius:r}; }
+# ms-prelude: function ray(o:Vec3,d:Vec3):Ray { return Ray.fromPoints(o,vec3(o.x+d.x,o.y+d.y,o.z+d.z)); }
+# ms-prelude: function cast(f:TransformFrame,s:Sphere3D,world:Ray):float32 {
+# ms-prelude: const local=f.localRay(world); const h=s.rayIntersection(local); if(!h.ok){unreachable;}
+# ms-prelude: const w=f.worldHitDistance(local,h.value,world); if(!w.ok){unreachable;} return w.value;
+# ms-prelude: }
+# ms-prelude: function within(f:TransformFrame,s:Sphere3D,p:Vec3):float32 { return s.contains(f.localPoint(p)) ? 1.0 : 0.0; }
+# ms-prelude: function touching(f:TransformFrame,s:Sphere3D,q:Sphere3D):float32 {
+# ms-prelude: const l=f.localSphere(q); if(!l.ok){unreachable;} return s.overlaps(l.value) ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function visible(f:TransformFrame,s:Sphere3D):float32 {
+# ms-prelude: const w=f.worldSphere(s); if(!w.ok){unreachable;}
+# ms-prelude: return Frustum3D.fromMatrix(identity()).intersectsSphere(w.value.center,w.value.radius) ? 1.0 : 0.0;
+# ms-prelude: }
+# ms-prelude: function sized(f:TransformFrame,d:float32):float32 { const r=f.scaledDimension(d); if(!r.ok){unreachable;} return r.value; }
+
+case ray-scaled-and-moved tol=1e-5
+haxe> emit("ray-scaled-and-moved",[H.oc([2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("ray-scaled-and-moved",cast(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),ray(vec3(0,0,0),vec3(1,0,0))));
+
+case ray-non-uniform tol=1e-5
+haxe> emit("ray-non-uniform",[H.oc([1,3,2],[0,0,0],[4,1,0],[0,0,0,1]).rayIntersection(H.ray([0,1,0],[1,0,0]),true)]);
+ms> emit1("ray-non-uniform",cast(frame(M(vec3(1,3,2),vec3(0,0,0),vec3(4,1,0))),sph(0,0,0,1),ray(vec3(0,1,0),vec3(1,0,0))));
+
+case ray-rotated-non-uniform tol=1e-5
+haxe> emit("ray-rotated-non-uniform",[H.oc([1,3,2],[0.3,0.7,-0.2],[4,1,2],[0.5,0,0,1]).rayIntersection(H.ray([0,1,2],[1,0,0]),true)]);
+ms> emit1("ray-rotated-non-uniform",cast(frame(M(vec3(1,3,2),vec3(0.3,0.7,-0.2),vec3(4,1,2))),sph(0.5,0,0,1),ray(vec3(0,1,2),vec3(1,0,0))));
+
+case ray-miss tol=1e-5
+haxe> emit("ray-miss",[H.oc([2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).rayIntersection(H.ray([0,5,0],[1,0,0]),true)]);
+ms> emit1("ray-miss",cast(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),ray(vec3(0,5,0),vec3(1,0,0))));
+
+case ray-behind tol=1e-5
+haxe> emit("ray-behind",[H.oc([2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).rayIntersection(H.ray([20,0,0],[1,0,0]),true)]);
+ms> emit1("ray-behind",cast(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),ray(vec3(20,0,0),vec3(1,0,0))));
+
+case ray-slanted tol=1e-5
+haxe> emit("ray-slanted",[H.oc([0.5,0.5,0.5],[0,0.4,0],[3,0,0],[0,0,0,1]).rayIntersection(H.ray([0,0,-4],[0.6,0,0.8]),true)]);
+ms> emit1("ray-slanted",cast(frame(M(vec3(0.5,0.5,0.5),vec3(0,0.4,0),vec3(3,0,0))),sph(0,0,0,1),ray(vec3(0,0,-4),vec3(0.6,0,0.8))));
+
+case ray-mirrored tol=1e-5
+haxe> emit("ray-mirrored",[H.oc([-2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).rayIntersection(H.ray([0,0,0],[1,0,0]),true)]);
+ms> emit1("ray-mirrored",cast(frame(M(vec3(-2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),ray(vec3(0,0,0),vec3(1,0,0))));
+
+case contains-inside tol=0
+haxe> emit("contains-inside",[H.oc([2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).contains(new Point(11.5,0,0))?1.:0.]);
+ms> emit1("contains-inside",within(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),vec3(11.5,0,0)));
+
+case contains-outside tol=0
+haxe> emit("contains-outside",[H.oc([2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).contains(new Point(12.5,0,0))?1.:0.]);
+ms> emit1("contains-outside",within(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),vec3(12.5,0,0)));
+
+case contains-rotated-stretched tol=0
+haxe> emit("contains-rotated-stretched",[H.oc([1,3,2],[0.3,0.7,-0.2],[4,1,2],[0.5,0,0,1]).contains(new Point(4,1,2))?1.:0.]);
+ms> emit1("contains-rotated-stretched",within(frame(M(vec3(1,3,2),vec3(0.3,0.7,-0.2),vec3(4,1,2))),sph(0.5,0,0,1),vec3(4,1,2)));
+
+case in-sphere-overlapping tol=0
+haxe> emit("in-sphere-overlapping",[H.oc([2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).inSphere(new Sphere(12.5,0,0,0.6))?1.:0.]);
+ms> emit1("in-sphere-overlapping",touching(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),sph(12.5,0,0,0.6)));
+
+case in-sphere-apart tol=0
+haxe> emit("in-sphere-apart",[H.oc([2,2,2],[0,0,0],[10,0,0],[0,0,0,1]).inSphere(new Sphere(16,0,0,0.5))?1.:0.]);
+ms> emit1("in-sphere-apart",touching(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(10,0,0))),sph(0,0,0,1),sph(16,0,0,0.5)));
+
+case in-sphere-non-uniform tol=0
+haxe> emit("in-sphere-non-uniform",[H.oc([1,3,2],[0,0,0],[4,0,0],[0,0,0,1]).inSphere(new Sphere(4,3.2,0,0.5))?1.:0.]);
+ms> emit1("in-sphere-non-uniform",touching(frame(M(vec3(1,3,2),vec3(0,0,0),vec3(4,0,0))),sph(0,0,0,1),sph(4,3.2,0,0.5)));
+
+case in-sphere-mirrored tol=0 diverges=transform-collider-mirrored-scale-negative
+haxe> emit("in-sphere-mirrored",[H.oc([-2,2,2],[0,0,0],[0,0,0],[0,0,0,1]).inSphere(new Sphere(2.2,0,0,0.5))?1.:0.]);
+ms> emit1("in-sphere-mirrored",touching(frame(M(vec3(-2,2,2),vec3(0,0,0),vec3(0,0,0))),sph(0,0,0,1),sph(2.2,0,0,0.5)));
+
+case in-frustum-outside tol=0
+haxe> emit("in-frustum-outside",[H.oc([1,1,1],[0,0,0],[2.5,0,0],[0,0,0.5,1]).inFrustum(new Frustum(Matrix.I()))?1.:0.]);
+ms> emit1("in-frustum-outside",visible(frame(M(vec3(1,1,1),vec3(0,0,0),vec3(2.5,0,0))),sph(0,0,0.5,1)));
+
+case in-frustum-scaled-in tol=0
+haxe> emit("in-frustum-scaled-in",[H.oc([2,2,2],[0,0,0],[2.5,0,0],[0,0,0.5,1]).inFrustum(new Frustum(Matrix.I()))?1.:0.]);
+ms> emit1("in-frustum-scaled-in",visible(frame(M(vec3(2,2,2),vec3(0,0,0),vec3(2.5,0,0))),sph(0,0,0.5,1)));
+
+case in-frustum-inside tol=0
+haxe> emit("in-frustum-inside",[H.oc([1,1,1],[0,0,0],[0,0,0],[0,0,0.5,0.2]).inFrustum(new Frustum(Matrix.I()))?1.:0.]);
+ms> emit1("in-frustum-inside",visible(frame(M(vec3(1,1,1),vec3(0,0,0),vec3(0,0,0))),sph(0,0,0.5,0.2)));
+
+case in-frustum-mirrored-non-uniform tol=0 diverges=transform-collider-mirrored-scale-negative
+haxe> emit("in-frustum-mirrored-non-uniform",[H.oc([-1,-3,-2],[0,0,0],[0,0,0],[-3,0,0,1]).inFrustum(new Frustum(Matrix.I()))?1.:0.]);
+ms> emit1("in-frustum-mirrored-non-uniform",visible(frame(M(vec3(-1,-3,-2),vec3(0,0,0),vec3(0,0,0))),sph(-3,0,0,1)));
+
+case dimension-non-uniform tol=1e-6
+haxe> emit("dimension-non-uniform",[H.oc([1,3,2],[0,0,0],[0,0,0],[0,0,0,2]).dimension()]);
+ms> emit1("dimension-non-uniform",sized(frame(M(vec3(1,3,2),vec3(0,0,0),vec3(0,0,0))),2));
+
+case dimension-scaled tol=1e-6
+haxe> emit("dimension-scaled",[H.oc([2,2,2],[0.3,0,0],[1,2,3],[0,0,0,1.5]).dimension()]);
+ms> emit1("dimension-scaled",sized(frame(M(vec3(2,2,2),vec3(0.3,0,0),vec3(1,2,3))),1.5));
+
+case dimension-mirrored tol=1e-6 diverges=transform-collider-mirrored-scale-negative
+haxe> emit("dimension-mirrored",[H.oc([-2,2,2],[0,0,0],[0,0,0],[0,0,0,1]).dimension()]);
+ms> emit1("dimension-mirrored",sized(frame(M(vec3(-2,2,2),vec3(0,0,0),vec3(0,0,0))),1));

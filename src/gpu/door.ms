@@ -14,10 +14,16 @@ import {
 	doorProgramCount,
 	doorMakePipeline,
 	doorMakeImage,
+	doorMakeImageMips,
+	doorMakeCubeImage,
 	doorMakeTargetImage,
+	doorMakeCubeTargetImage,
+	doorMakeCubeAttachmentView,
 	doorMakeAttachmentView,
 	doorMakeTextureView,
 	doorMakeSampler,
+	doorMakeSamplerEx,
+	doorAnisotropyPortable,
 	doorImageAlive,
 	doorViewAlive,
 	doorSamplerAlive,
@@ -97,8 +103,8 @@ export function layoutFloats(layout: int32, buffer: int32): int32 {
 	return doorLayoutFloats(layout, buffer);
 }
 
-export function layoutPerInstance(layout: int32): boolean {
-	return doorLayoutPerInstance(layout) != 0;
+export function layoutPerInstance(layout: int32, buffer: int32): boolean {
+	return doorLayoutPerInstance(layout, buffer) != 0;
 }
 
 export function makePipeline(descriptor: Readonly<Span<uint32>>): uint32 {
@@ -109,8 +115,26 @@ export function makeImage(rgba: Readonly<Span<uint32>>, width: int32, height: in
 	return doorMakeImage(rgba, width, height);
 }
 
+export function makeImageMips(
+	rgba: Readonly<Span<uint32>>, width: int32, height: int32, levels: int32,
+): uint32 {
+	return doorMakeImageMips(rgba, width, height, levels);
+}
+
 export function makeTargetImage(width: int32, height: int32, format: PixelFormat): uint32 {
 	return doorMakeTargetImage(width, height, format as int32);
+}
+
+export function makeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): uint32 {
+	return doorMakeCubeImage(rgba, size);
+}
+
+export function makeCubeTargetImage(size: int32, levels: int32, format: PixelFormat): uint32 {
+	return doorMakeCubeTargetImage(size, levels, format as int32);
+}
+
+export function makeCubeAttachmentView(image: uint32, face: int32, level: int32): uint32 {
+	return doorMakeCubeAttachmentView(image, face, level);
 }
 
 export function makeAttachmentView(image: uint32, format: PixelFormat): uint32 {
@@ -123,6 +147,18 @@ export function makeTextureView(image: uint32): uint32 {
 
 export function makeSampler(filter: FilterMode, wrap: Wrap): uint32 {
 	return doorMakeSampler(filter as int32, wrap as int32);
+}
+
+export function anisotropyPortable(): boolean { return doorAnisotropyPortable() != 0; }
+
+// Ordinals of FilterMode, TextureMipFilter and Wrap (void3d/textureMip.ms `doorCall`).
+export function makeSamplerEx(
+	minFilter: int32, magFilter: int32, mipFilter: int32, wrapU: int32, wrapV: int32,
+	minLod: float32, maxLod: float32, maxAnisotropy: int32,
+): uint32 {
+	return doorMakeSamplerEx(
+		minFilter, magFilter, mipFilter, wrapU, wrapV, minLod, maxLod, maxAnisotropy,
+	);
 }
 
 export function imageAlive(image: uint32): boolean { return doorImageAlive(image) != 0; }

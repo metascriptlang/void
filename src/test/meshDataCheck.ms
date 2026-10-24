@@ -22,6 +22,12 @@ import {
 	addQuad,
 	addBox,
 	addPlane,
+	addSphere,
+	addCylinderSides,
+	addDisc,
+	addCapsuleY,
+	addGrid,
+	addGeoSphere,
 	recomputeBounds,
 	addTangents,
 	addTangentsWithSources,
@@ -54,6 +60,476 @@ function plainBox(height: float32): Box {
 		tilt: 0.0,
 		color: WHITE,
 	};
+}
+
+test "a UV sphere shares indexed rings with outward unit normals and exact seam poles" {
+	for (const textured of [false, true]) {
+		for (const sectors of [3, 8, 16]) {
+			let data = textured ? MeshData.withUvs() : MeshData.empty();
+			const added = addSphere(data, 2.0, WHITE, sectors, 6);
+			assert added.ok;
+			if (!added.ok) { continue; }
+			assert added.value == 0;
+			assert data.vertexCount() == (sectors + 1) * 7;
+			assert data.triangleCount() == sectors * 10 && data.validIndices();
+			const width = data.stride();
+			for (let i = 0; i < data.vertexCount(); i++) {
+				const at = i * width;
+				const point = vec3(data.vertices[at], data.vertices[at + 1], data.vertices[at + 2]);
+				const normal = vec3(data.vertices[at + 3], data.vertices[at + 4],
+					data.vertices[at + 5]);
+				assert approx(point.length(), 2.0) && approx(normal.length(), 1.0);
+				assert approx(point.dot(normal), 2.0);
+				if (textured) {
+					const u: float32 =
+						1.0 - ((i % (sectors + 1)) as float32) / (sectors as float32);
+					assert approx(data.vertices[at + 6], u);
+					assert data.vertices[at + 7] >= 0.0 && data.vertices[at + 7] <= 1.0;
+				}
+			}
+			for (let ring = 0; ring <= 6; ring++) {
+				const first = ring * (sectors + 1) * width;
+				const last = first + sectors * width;
+				for (let i = 0; i < 6; i++) {
+					assert data.vertices[first + i] == data.vertices[last + i];
+				}
+				if (ring == 0 || ring == 6) {
+					assert data.vertices[first] == 0.0 && data.vertices[first + 2] == 0.0;
+					assert data.vertices[first + 1] == (ring == 0 ? 2.0 : -2.0);
+				}
+			}
+			for (let i = 0; i < data.indexCount(); i += 3) {
+				const a = data.indexAt(i) as int32 * width;
+				const b = data.indexAt(i + 1) as int32 * width;
+				const c = data.indexAt(i + 2) as int32 * width;
+				const p = vec3(data.vertices[a], data.vertices[a + 1], data.vertices[a + 2]);
+				const q = vec3(data.vertices[b], data.vertices[b + 1], data.vertices[b + 2]);
+				const r = vec3(data.vertices[c], data.vertices[c + 1], data.vertices[c + 2]);
+				assert (q - p).cross(r - p).dot(p + q + r) > 0.0;
+			}
+		}
+	}
+}
+
+test "sphere geometry reaches UV picking and automatic wide index append" {
+	let data = MeshData.withUvs();
+	assert addSphere(data, 2.0, WHITE, 8, 6).ok;
+	const ray = Ray.fromPoints(vec3(0.0, 0.0, 6.0), vec3(0.0, 0.0, 0.0));
+	const hit = data.rayIntersection(ray, Face.Back);
+	assert approx(hit.distance, 4.0) && hit.uv !== null;
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const appended = addSphere(wide, 1.0, WHITE, 3, 2);
+	assert appended.ok;
+	if (appended.ok) { assert appended.value == 65535; }
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+	let unindexed = MeshData.empty();
+	assert addVertex(unindexed, vec3(0.0, 0.0, 0.0), UP, WHITE).ok;
+	const refused = addSphere(unindexed, 1.0, WHITE, 8, 6);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UnindexedAppend; }
+	assert unindexed.vertexCount() == 1 && unindexed.indexCount() == 0;
+}
+
+test "sphere dimensions and capacity fail before writing any vertices indices or bounds" {
+	for (const sectors of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addSphere(data, 1.0, WHITE, sectors, 6).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const stacks of [-1, 0, 1, 2147483647]) {
+		let data = MeshData.withUvs();
+		assert !addSphere(data, 1.0, WHITE, 8, stacks).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const radius of [0.0, -1.0]) {
+		let data = MeshData.empty();
+		assert !addSphere(data, radius as float32, WHITE, 8, 6).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+}
+
+test "cylinder sides retain smooth radial normals open ends and centered placement" {
+	for (const textured of [false, true]) {
+		for (const centered of [false, true]) {
+			let data = textured ? MeshData.withUvs() : MeshData.empty();
+			const made = addCylinderSides(data, 2.0, 3.0, centered, WHITE, 8);
+			assert made.ok;
+			if (!made.ok) { continue; }
+			assert made.value == 0 && data.vertexCount() == 32 && data.triangleCount() == 16;
+			assert data.validIndices();
+			const low: float32 = centered ? -1.5 : 0.0;
+			assert near(data.bounds.min, -2.0, low, -2.0);
+			assert near(data.bounds.max, 2.0, low + 3.0, 2.0);
+			const width = data.stride();
+			for (let i = 0; i < data.vertexCount(); i++) {
+				const at = i * width;
+				const point = vec3(data.vertices[at], 0.0, data.vertices[at + 2]);
+				const normal = vec3(data.vertices[at + 3], data.vertices[at + 4],
+					data.vertices[at + 5]);
+				assert approx(point.length(), 2.0) && approx(point.dot(normal), 2.0);
+				assert normal.y == 0.0 && approx(normal.length(), 1.0);
+				assert data.vertices[at + 1] == (i % 4 < 2 ? low : low + 3.0);
+				if (textured) {
+					assert data.vertices[at + 6] >= 0.0 && data.vertices[at + 6] <= 1.0;
+					assert data.vertices[at + 7] == (i % 4 < 2 ? 1.0 : 0.0);
+				}
+			}
+			const front = Ray.fromPoints(vec3(0.0, low + 1.5, 6.0), vec3(0.0, low + 1.5, 0.0));
+			assert approx(data.rayIntersection(front, Face.Back).distance, 4.0);
+			const axis = Ray.fromPoints(vec3(0.0, 6.0, 0.0), vec3(0.0, 0.0, 0.0));
+			assert data.rayIntersection(axis, Face.None).distance == -1.0;
+			for (let i = 0; i < data.indexCount(); i += 3) {
+				const a = data.indexAt(i) as int32 * width;
+				const b = data.indexAt(i + 1) as int32 * width;
+				const c = data.indexAt(i + 2) as int32 * width;
+				const p = vec3(data.vertices[a], data.vertices[a + 1], data.vertices[a + 2]);
+				const q = vec3(data.vertices[b], data.vertices[b + 1], data.vertices[b + 2]);
+				const r = vec3(data.vertices[c], data.vertices[c + 1], data.vertices[c + 2]);
+				assert (q - p).cross(r - p).dot(vec3(p.x + q.x + r.x, 0.0, p.z + q.z + r.z)) > 0.0;
+			}
+		}
+	}
+}
+
+test "cylinder side append keeps old triangles and promotes high vertex ids" {
+	let data = MeshData.empty();
+	data.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(data, 0, 1, 2).ok;
+	const made = addCylinderSides(data, 1.0, 2.0, false, WHITE, 3);
+	assert made.ok;
+	if (made.ok) { assert made.value == 65535; }
+	assert data.vertexCount() == 65547 && data.indexCount() == 21;
+	assert data.wideIndices !== null && data.validIndices();
+	assert data.indexAt(0) == 0 && data.indexAt(1) == 1 && data.indexAt(2) == 2;
+	for (let i = 3; i < data.indexCount(); i++) { assert data.indexAt(i) >= 65535; }
+}
+
+test "invalid cylinder dimensions and unindexed append leave the receiver unchanged" {
+	for (const sectors of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addCylinderSides(data, 1.0, 2.0, false, WHITE, sectors).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const invalid of [0.0, -1.0]) {
+		let data = MeshData.withUvs();
+		assert !addCylinderSides(data, invalid as float32, 2.0, false, WHITE, 8).ok;
+		assert !addCylinderSides(data, 1.0, invalid as float32, false, WHITE, 8).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let data = MeshData.empty();
+	assert addVertex(data, vec3(0.0, 0.0, 0.0), UP, WHITE).ok;
+	const refused = addCylinderSides(data, 1.0, 2.0, false, WHITE, 8);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UnindexedAppend; }
+	assert data.vertexCount() == 1 && data.indexCount() == 0;
+}
+
+test "a full disc is an upward center fan with radial UVs in both layouts" {
+	for (const textured of [false, true]) {
+		for (const segments of [3, 8, 16]) {
+			let data = textured ? MeshData.withUvs() : MeshData.empty();
+			const made = addDisc(data, 2.0, WHITE, segments);
+			assert made.ok;
+			if (!made.ok) { continue; }
+			assert made.value == 0 && data.vertexCount() == segments + 1;
+			assert data.triangleCount() == segments && data.validIndices();
+			const width = data.stride();
+			for (let i = 0; i <= segments; i++) {
+				const at = i * width;
+				const point = vec3(data.vertices[at], data.vertices[at + 1], data.vertices[at + 2]);
+				assert point.y == 0.0 && approx(point.length(), i == segments ? 0.0 : 2.0);
+				assert data.vertices[at + 3] == 0.0 && data.vertices[at + 4] == 1.0;
+				assert data.vertices[at + 5] == 0.0;
+				if (textured) {
+					assert approx(data.vertices[at + 6], (point.x / 2.0 + 1.0) * 0.5);
+					assert approx(data.vertices[at + 7], (point.z / 2.0 + 1.0) * 0.5);
+				}
+			}
+			for (let i = 0; i < segments; i++) {
+				assert data.indexAt(i * 3) == (i as uint32);
+				assert data.indexAt(i * 3 + 1) == (segments as uint32);
+				const a = data.indexAt(i * 3) as int32 * width;
+				const b = data.indexAt(i * 3 + 2) as int32 * width;
+				const p = vec3(data.vertices[a], 0.0, data.vertices[a + 2]);
+				const q = vec3(data.vertices[b], 0.0, data.vertices[b + 2]);
+				assert (vec3(0.0, 0.0, 0.0) - p).cross(q - p).y > 0.0;
+			}
+			if (segments == 8) {
+				assert near(data.bounds.min, -2.0, 0.0, -2.0);
+				assert near(data.bounds.max, 2.0, 0.0, 2.0);
+			}
+		}
+	}
+}
+
+test "disc UV picking uses its generated surface rather than the containing square" {
+	let data = MeshData.withUvs();
+	assert addDisc(data, 2.0, WHITE, 8).ok;
+	const ray = Ray.fromPoints(vec3(0.0, 3.0, 0.0), vec3(0.0, 0.0, 0.0));
+	const hit = data.rayIntersection(ray, Face.Back);
+	assert approx(hit.distance, 3.0);
+	const uv = hit.uv;
+	assert uv !== null;
+	if (uv !== null) { assert approx(uv.u, 0.5) && approx(uv.v, 0.5); }
+	const corner = Ray.fromPoints(vec3(1.9, 3.0, 1.9), vec3(1.9, 0.0, 1.9));
+	assert data.rayIntersection(corner, Face.Back).distance == -1.0;
+}
+
+test "disc append promotes indices while invalid parameters do not mutate the mesh" {
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const added = addDisc(wide, 2.0, WHITE, 8);
+	assert added.ok;
+	if (added.ok) { assert added.value == 65535; }
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.vertexCount() == 65544 && wide.indexCount() == 27;
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+	for (const segments of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addDisc(data, 1.0, WHITE, segments).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const radius of [0.0, -1.0]) {
+		let data = MeshData.withUvs();
+		assert !addDisc(data, radius as float32, WHITE, 8).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+}
+
+test "a vertical capsule joins two radial hemispheres with the centered cylinder" {
+	for (const segments of [4, 8]) {
+		for (const middle of [0.0, 2.0]) {
+			const length: float32 = middle as float32;
+			let data = MeshData.empty();
+			const made = addCapsuleY(data, 1.0, length, WHITE, segments);
+			assert made.ok;
+			if (!made.ok) { continue; }
+			assert made.value == 0;
+			assert data.vertexCount() == 2 * (segments + 1) * (segments + 1) + 4 * segments + 2;
+			assert data.triangleCount() == 4 * segments * segments && data.validIndices();
+			assert near(data.bounds.min, -1.0, -length * 0.5 - 1.0, -1.0);
+			assert near(data.bounds.max, 1.0, length * 0.5 + 1.0, 1.0);
+			for (let i = 0; i < data.vertexCount(); i++) {
+				const point = positionAt(data, i);
+				const normal = normalAt(data, i);
+				const centerY = Math.max(-length * 0.5, Math.min(length * 0.5, point.y));
+				const radial = point - vec3(0.0, centerY, 0.0);
+				assert approx(radial.length(), 1.0) && approx(normal.length(), 1.0);
+				assert approx(radial.dot(normal), 1.0);
+			}
+			if (length > 0.0) {
+				for (let i = 0; i < data.indexCount(); i += 3) {
+					const p = positionAt(data, data.indexAt(i) as int32);
+					const q = positionAt(data, data.indexAt(i + 1) as int32);
+					const r = positionAt(data, data.indexAt(i + 2) as int32);
+					const normals = normalAt(data, data.indexAt(i) as int32) +
+						normalAt(data, data.indexAt(i + 1) as int32) +
+						normalAt(data, data.indexAt(i + 2) as int32);
+					assert (q - p).cross(r - p).dot(normals) > 0.0;
+				}
+			}
+		}
+	}
+}
+
+test "capsule picking distinguishes its curved cap from its enclosing bounds" {
+	let data = MeshData.empty();
+	assert addCapsuleY(data, 1.0, 2.0, WHITE, 8).ok;
+	const above = Ray.fromPoints(vec3(0.0, 5.0, 0.0), vec3(0.0, 0.0, 0.0));
+	const side = Ray.fromPoints(vec3(0.0, 0.0, 5.0), vec3(0.0, 0.0, 0.0));
+	assert approx(data.rayIntersection(above, Face.Back).distance, 3.0);
+	assert approx(data.rayIntersection(side, Face.Back).distance, 4.0);
+	const outside = Ray.fromPoints(vec3(0.9, 1.9, 3.0), vec3(0.9, 1.9, 0.0));
+	assert data.rayIntersection(outside, Face.Back).distance == -1.0;
+	assert data.rayIntersection(side, Face.Back).uv === null;
+}
+
+test "capsule appends wide ids and preflights dimensions capacity and unsupported UVs" {
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const made = addCapsuleY(wide, 1.0, 2.0, WHITE, 4);
+	assert made.ok;
+	if (made.ok) { assert made.value == 65535; }
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.vertexCount() == 65603 && wide.indexCount() == 195;
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+	for (const segments of [-1, 0, 1, 2, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addCapsuleY(data, 1.0, 2.0, WHITE, segments).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let data = MeshData.withUvs();
+	const refused = addCapsuleY(data, 1.0, 2.0, WHITE, 8);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UvMismatch; }
+	assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	let invalid = MeshData.empty();
+	assert !addCapsuleY(invalid, 0.0, 2.0, WHITE, 8).ok;
+	assert !addCapsuleY(invalid, 1.0, -1.0, WHITE, 8).ok;
+	assert !addCapsuleY(invalid, 3.0e38, 3.0e38, WHITE, 8).ok;
+	assert invalid.vertexCount() == 0 && invalid.indexCount() == 0 && invalid.bounds.isEmpty();
+}
+
+test "a rectangular grid shares row vertices with upward triangles and normalized UVs" {
+	for (const textured of [false, true]) {
+		let data = textured ? MeshData.withUvs() : MeshData.empty();
+		const made = addGrid(data, 2, 3, 1.5, 0.5, WHITE);
+		assert made.ok;
+		if (!made.ok) { continue; }
+		assert made.value == 0 && data.vertexCount() == 12 && data.triangleCount() == 12;
+		assert data.validIndices() && data.wideIndices === null;
+		assert near(data.bounds.min, 0.0, 0.0, 0.0) && near(data.bounds.max, 3.0, 0.0, 1.5);
+		const width = data.stride();
+		for (let y = 0; y <= 3; y++) {
+			for (let x = 0; x <= 2; x++) {
+				const at = (x + y * 3) * width;
+				assert approx(data.vertices[at], (x as float32) * 1.5);
+				assert data.vertices[at + 1] == 0.0;
+				assert approx(data.vertices[at + 2], (y as float32) * 0.5);
+				assert data.vertices[at + 3] == 0.0 && data.vertices[at + 4] == 1.0;
+				assert data.vertices[at + 5] == 0.0;
+				if (textured) {
+					assert approx(data.vertices[at + 6], (x as float32) / 2.0);
+					assert approx(data.vertices[at + 7], (y as float32) / 3.0);
+				}
+			}
+		}
+		for (let i = 0; i < data.indexCount(); i += 3) {
+			const a = data.indexAt(i) as int32 * width;
+			const b = data.indexAt(i + 1) as int32 * width;
+			const c = data.indexAt(i + 2) as int32 * width;
+			const p = vec3(data.vertices[a], 0.0, data.vertices[a + 2]);
+			const q = vec3(data.vertices[b], 0.0, data.vertices[b + 2]);
+			const r = vec3(data.vertices[c], 0.0, data.vertices[c + 2]);
+			assert (q - p).cross(r - p).y > 0.0;
+		}
+	}
+}
+
+test "grid picking reaches normalized UVs and excludes points beyond the tiled extent" {
+	let data = MeshData.withUvs();
+	assert addGrid(data, 2, 3, 1.5, 0.5, WHITE).ok;
+	const ray = Ray.fromPoints(vec3(1.5, 3.0, 0.75), vec3(1.5, 0.0, 0.75));
+	const hit = data.rayIntersection(ray, Face.Back);
+	assert approx(hit.distance, 3.0);
+	const uv = hit.uv;
+	assert uv !== null;
+	if (uv !== null) { assert approx(uv.u, 0.5) && approx(uv.v, 0.5); }
+	const outside = Ray.fromPoints(vec3(3.1, 3.0, 0.75), vec3(3.1, 0.0, 0.75));
+	assert data.rayIntersection(outside, Face.Back).distance == -1.0;
+}
+
+test "a generated grid promotes its own high index and can append another primitive" {
+	let data = MeshData.empty();
+	assert addGrid(data, 255, 255, 1.0, 1.0, WHITE).ok;
+	assert data.vertexCount() == 65536 && data.indexCount() == 255 * 255 * 6;
+	assert data.wideIndices !== null && data.validIndices();
+	const previous = data.indexCount();
+	const appended = addGrid(data, 1, 1, 1.0, 1.0, WHITE);
+	assert appended.ok;
+	if (appended.ok) { assert appended.value == 65536; }
+	assert data.vertexCount() == 65540 && data.indexCount() == previous + 6;
+	for (let i = previous; i < data.indexCount(); i++) { assert data.indexAt(i) >= 65536; }
+}
+
+test "grid preflight refuses invalid cell counts sizes or overflowing extents atomically" {
+	for (const dimension of [0, -1, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addGrid(data, dimension, 2, 1.0, 1.0, WHITE).ok;
+		assert !addGrid(data, 2, dimension, 1.0, 1.0, WHITE).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	for (const size of [0.0, -1.0]) {
+		let data = MeshData.withUvs();
+		assert !addGrid(data, 2, 2, size as float32, 1.0, WHITE).ok;
+		assert !addGrid(data, 2, 2, 1.0, size as float32, WHITE).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let data = MeshData.empty();
+	assert !addGrid(data, 2, 2, 3.0e38, 1.0, WHITE).ok;
+	assert !addGrid(data, 2, 2, 1.0, 3.0e38, WHITE).ok;
+	assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+}
+
+test "a Heaps geosphere retains octahedral subdivision counts and per-source normals" {
+	let factor: int32 = 1;
+	for (const subdivisions of [0, 1, 2, 3]) {
+		let data = MeshData.empty();
+		const made = addGeoSphere(data, 2.0, WHITE, subdivisions);
+		assert made.ok;
+		if (!made.ok) { continue; }
+		assert made.value == 0;
+		assert data.vertexCount() == 8 * factor - 2 && data.triangleCount() == 8 * factor;
+		assert data.validIndices();
+		for (let i = 0; i < data.vertexCount(); i++) {
+			const point = positionAt(data, i);
+			const normal = normalAt(data, i);
+			assert approx(point.length(), 2.0) && approx(normal.length(), 1.0);
+			assert point.dot(normal) > 0.0;
+		}
+		for (let i = 0; i < data.indexCount(); i += 3) {
+			const p = positionAt(data, data.indexAt(i) as int32);
+			const q = positionAt(data, data.indexAt(i + 1) as int32);
+			const r = positionAt(data, data.indexAt(i + 2) as int32);
+			assert (q - p).cross(r - p).dot(p + q + r) > 0.0;
+		}
+		if (subdivisions == 0) {
+			assert near(data.bounds.min, -1.41421356, -2.0, -1.41421356);
+			assert near(data.bounds.max, 1.41421356, 2.0, 1.41421356);
+		} else {
+			assert near(data.bounds.min, -2.0, -2.0, -2.0);
+			assert near(data.bounds.max, 2.0, 2.0, 2.0);
+		}
+		if (subdivisions == 1) {
+			assert near(positionAt(data, 6), 1.0, 1.41421356, -1.0);
+			assert near(normalAt(data, 6), 0.774596669, 0.623347261, -0.106949482);
+		}
+		factor *= 4;
+	}
+}
+
+test "geosphere triangles reach picking and append without replacing old ids" {
+	let data = MeshData.empty();
+	assert addGeoSphere(data, 2.0, WHITE, 2).ok;
+	const above = Ray.fromPoints(vec3(0.0, 6.0, 0.0), vec3(0.0, 0.0, 0.0));
+	assert approx(data.rayIntersection(above, Face.Back).distance, 4.0);
+	const outside = Ray.fromPoints(vec3(1.8, 1.8, 6.0), vec3(1.8, 1.8, 0.0));
+	assert data.rayIntersection(outside, Face.Back).distance == -1.0;
+	let wide = MeshData.empty();
+	wide.vertices = new Array(65535 * LIT_VERTEX_STRIDE);
+	assert addTriangle(wide, 0, 1, 2).ok;
+	const appended = addGeoSphere(wide, 1.0, WHITE, 0);
+	assert appended.ok;
+	if (appended.ok) { assert appended.value == 65535; }
+	assert wide.vertexCount() == 65541 && wide.indexCount() == 27;
+	assert wide.wideIndices !== null && wide.validIndices();
+	assert wide.indexAt(0) == 0 && wide.indexAt(1) == 1 && wide.indexAt(2) == 2;
+	for (let i = 3; i < wide.indexCount(); i++) { assert wide.indexAt(i) >= 65535; }
+}
+
+test "geosphere preflight bounds subdivision growth and refuses unsupported layouts" {
+	for (const subdivisions of [-1, 20, 2147483647]) {
+		let data = MeshData.empty();
+		assert !addGeoSphere(data, 1.0, WHITE, subdivisions).ok;
+		assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
+	}
+	let textured = MeshData.withUvs();
+	const refused = addGeoSphere(textured, 1.0, WHITE, 1);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == MeshError.UvMismatch; }
+	assert textured.vertexCount() == 0 && textured.indexCount() == 0;
+	let data = MeshData.empty();
+	assert !addGeoSphere(data, 0.0, WHITE, 1).ok;
+	assert !addGeoSphere(data, -1.0, WHITE, 1).ok;
+	assert data.vertexCount() == 0 && data.indexCount() == 0 && data.bounds.isEmpty();
 }
 
 test "an empty mesh has no vertices, no indices and empty bounds" {

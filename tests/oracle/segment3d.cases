@@ -1,0 +1,47 @@
+# h3d.col.Seg (Seg.hx:17-25) against src/void3d/segment.ms. `regen` replays the Haxe side
+# through real Heaps and writes the snapshot; `check` diffs the port against it without Haxe.
+# lib: heaps format
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.Seg;
+# haxe-prelude: class H {
+# haxe-prelude: public static function sq(a:Array<Float>,b:Array<Float>,p:Array<Float>):Float {
+# haxe-prelude: return new Seg(new Point(a[0],a[1],a[2]),new Point(b[0],b[1],b[2])).distanceSq(new Point(p[0],p[1],p[2]));
+# haxe-prelude: }
+# haxe-prelude: }
+# ms-prelude: import { Vec3, vec3 } from "../../../src/math/math3d";
+# ms-prelude: import { Segment3D, distanceSquared } from "../../../src/void3d/segment";
+# ms-prelude: function sq(a:Vec3,b:Vec3,p:Vec3):float32 {
+# ms-prelude: const seg:Segment3D={p1:a,p2:b}; const r=seg.distanceSquared(p); if(!r.ok){unreachable;} return r.value as float32;
+# ms-prelude: }
+
+case seg-beside tol=1e-6
+haxe> emit("seg-beside",[H.sq([0,0,0],[2,0,0],[1,3,0])]);
+ms> emit1("seg-beside",sq(vec3(0,0,0),vec3(2,0,0),vec3(1,3,0)));
+
+case seg-before-start tol=1e-6
+haxe> emit("seg-before-start",[H.sq([0,0,0],[2,0,0],[-1,0,0])]);
+ms> emit1("seg-before-start",sq(vec3(0,0,0),vec3(2,0,0),vec3(-1,0,0)));
+
+case seg-past-end tol=1e-6
+haxe> emit("seg-past-end",[H.sq([0,0,0],[2,0,0],[3,0,4])]);
+ms> emit1("seg-past-end",sq(vec3(0,0,0),vec3(2,0,0),vec3(3,0,4)));
+
+case seg-on-segment tol=1e-6
+haxe> emit("seg-on-segment",[H.sq([0,0,0],[2,0,0],[1,0,0])]);
+ms> emit1("seg-on-segment",sq(vec3(0,0,0),vec3(2,0,0),vec3(1,0,0)));
+
+case seg-oblique tol=1e-6
+haxe> emit("seg-oblique",[H.sq([0,0,0],[1,1,0],[1,0,0])]);
+ms> emit1("seg-oblique",sq(vec3(0,0,0),vec3(1,1,0),vec3(1,0,0)));
+
+case seg-oblique-past-end tol=1e-6
+haxe> emit("seg-oblique-past-end",[H.sq([0,0,0],[1,1,0],[2,2,1])]);
+ms> emit1("seg-oblique-past-end",sq(vec3(0,0,0),vec3(1,1,0),vec3(2,2,1)));
+
+case seg-reversed tol=1e-6
+haxe> emit("seg-reversed",[H.sq([2,0,0],[0,0,0],[-1,0,0])]);
+ms> emit1("seg-reversed",sq(vec3(2,0,0),vec3(0,0,0),vec3(-1,0,0)));
+
+case seg-3d tol=1e-6
+haxe> emit("seg-3d",[H.sq([1,2,3],[4,6,3],[0,0,0])]);
+ms> emit1("seg-3d",sq(vec3(1,2,3),vec3(4,6,3),vec3(0,0,0)));

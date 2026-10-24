@@ -1432,7 +1432,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 			slot.uniformCount += 1;
 		} else {
 			if (slot.resourceCount == GPU_MAX_BIND_GROUP_ENTRIES) {
-				stop("a shader module has over 8 resources");
+				stop(`a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`);
 			}
 			slot.resources[slot.resourceCount] = native;
 			slot.resourceCount += 1;

@@ -1,0 +1,262 @@
+# h3d.anim.SmoothTransition against src/void3d/animationTransition.ms: the cross-clip blend of two
+# clips on one node, read back through the node's world matrix.
+#
+# Same shape as anim3d.cases: no expected answer here; `sh scripts/oracle.sh regen
+# tests/oracle/animTransition3d.cases` replays the Haxe side through real Heaps. Heaps clips are
+# frame clocks and the port's are glTF seconds, so every key sits on an integer second with
+# sampling 1 and every update is a whole number: no frame lies between two keys, and the blend
+# under test is the transition's, never a track's own interpolation (Heaps lerps key rotations,
+# glTF slerps them). Both clips animate the node's whole TRS: for a node only one clip animates,
+# Heaps blends toward an identity matrix (SmoothTransition.hx MZERO) and the port toward the
+# captured rest, so that case has no oracle row; src/test/animationTransitionCheck.ms holds it.
+#
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: import h3d.anim.LinearAnimation;
+# haxe-prelude: import h3d.anim.SmoothTransition;
+# haxe-prelude: class H {
+# haxe-prelude: 	public static function key(tx: Float, ty: Float, tz: Float, ry: Float, s: Float,
+# haxe-prelude: 			flip: Bool): LinearFrame {
+# haxe-prelude: 		var f = new LinearFrame();
+# haxe-prelude: 		f.tx = tx; f.ty = ty; f.tz = tz;
+# haxe-prelude: 		var q = new h3d.Quat(); q.initRotation(0, ry, 0);
+# haxe-prelude: 		var sign = flip ? -1.0 : 1.0;
+# haxe-prelude: 		f.qx = q.x * sign; f.qy = q.y * sign; f.qz = q.z * sign; f.qw = q.w * sign;
+# haxe-prelude: 		f.sx = s; f.sy = s; f.sz = s;
+# haxe-prelude: 		return f;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function run(ka: Array<LinearFrame>, kb: Array<LinearFrame>,
+# haxe-prelude: 			dts: Array<Float>, duration: Float): h3d.Matrix {
+# haxe-prelude: 		var root = new Object();
+# haxe-prelude: 		var child = new Object(root);
+# haxe-prelude: 		child.name = "o";
+# haxe-prelude: 		var a = new LinearAnimation("a", ka.length, 1);
+# haxe-prelude: 		a.addCurve("o", haxe.ds.Vector.fromArrayCopy(ka), true, true, true);
+# haxe-prelude: 		var b = new LinearAnimation("b", kb.length, 1);
+# haxe-prelude: 		b.addCurve("o", haxe.ds.Vector.fromArrayCopy(kb), true, true, true);
+# haxe-prelude: 		var t = new SmoothTransition(a.createInstance(root), b.createInstance(root), duration);
+# haxe-prelude: 		for (dt in dts) t.update(dt);
+# haxe-prelude: 		t.sync();
+# haxe-prelude: 		return child.getAbsPos();
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function runSteps(ka: Array<LinearFrame>, kb: Array<LinearFrame>,
+# haxe-prelude: 			steps: Array<Float>, duration: Float): h3d.Matrix {
+# haxe-prelude: 		var root = new Object();
+# haxe-prelude: 		var child = new Object(root);
+# haxe-prelude: 		child.name = "o";
+# haxe-prelude: 		var a = new LinearAnimation("a", ka.length, 1);
+# haxe-prelude: 		a.addCurve("o", haxe.ds.Vector.fromArrayCopy(ka), true, true, true);
+# haxe-prelude: 		var b = new LinearAnimation("b", kb.length, 1);
+# haxe-prelude: 		b.addCurve("o", haxe.ds.Vector.fromArrayCopy(kb), true, true, true);
+# haxe-prelude: 		var a1 = a.createInstance(root);
+# haxe-prelude: 		var a2 = b.createInstance(root);
+# haxe-prelude: 		a1.loop = false;
+# haxe-prelude: 		a2.loop = false;
+# haxe-prelude: 		var t = new SmoothTransition(a1, a2, duration);
+# haxe-prelude: 		var i = 0;
+# haxe-prelude: 		while (i < steps.length) {
+# haxe-prelude: 			a1.speed = steps[i + 1];
+# haxe-prelude: 			a2.speed = steps[i + 2];
+# haxe-prelude: 			t.speed = steps[i + 3];
+# haxe-prelude: 			t.update(steps[i]);
+# haxe-prelude: 			i += 4;
+# haxe-prelude: 		}
+# haxe-prelude: 		t.sync();
+# haxe-prelude: 		return child.getAbsPos();
+# haxe-prelude: 	}
+# haxe-prelude: }
+#
+# ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: import {
+# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, addGroup, syncWorld,
+# ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude: import {
+# ms-prelude: 	GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, forValues,
+# ms-prelude: } from "../../../src/void3d/gltfCurve";
+# ms-prelude: import { AnimationRestTarget } from "../../../src/void3d/animationCompose";
+# ms-prelude: import {
+# ms-prelude: 	AnimationTransition, AnimationTransitionClip, advance, evaluate, commit, setSpeeds,
+# ms-prelude: } from "../../../src/void3d/animationTransition";
+# ms-prelude:
+# ms-prelude: function key(tx: float32, ty: float32, tz: float32, ry: float32, s: float32,
+# ms-prelude: 		flip: boolean): Transform3D {
+# ms-prelude: 	const q = eulerQuat(0.0, ry, 0.0);
+# ms-prelude: 	const sign: float32 = flip ? -1.0 : 1.0;
+# ms-prelude: 	return {
+# ms-prelude: 		position: vec3(tx, ty, tz),
+# ms-prelude: 		rotation: { x: q.x * sign, y: q.y * sign, z: q.z * sign, w: q.w * sign },
+# ms-prelude: 		scale: vec3(s, s, s),
+# ms-prelude: 	};
+# ms-prelude: }
+# ms-prelude: function slid(x: float32, y: float32): Transform3D { return key(x, y, 0.0, 0.0, 1.0, false); }
+# ms-prelude: function clip(keys: Vec<Transform3D>): AnimationTransitionClip {
+# ms-prelude: 	let times: Vec<float32> = [];
+# ms-prelude: 	let moves: Vec<float32> = [];
+# ms-prelude: 	let turns: Vec<float32> = [];
+# ms-prelude: 	let sizes: Vec<float32> = [];
+# ms-prelude: 	for (let i = 0; i < keys.length; i++) {
+# ms-prelude: 		times.push(i as float32);
+# ms-prelude: 		moves.push(keys[i].position.x); moves.push(keys[i].position.y); moves.push(keys[i].position.z);
+# ms-prelude: 		turns.push(keys[i].rotation.x); turns.push(keys[i].rotation.y);
+# ms-prelude: 		turns.push(keys[i].rotation.z); turns.push(keys[i].rotation.w);
+# ms-prelude: 		sizes.push(keys[i].scale.x); sizes.push(keys[i].scale.y); sizes.push(keys[i].scale.z);
+# ms-prelude: 	}
+# ms-prelude: 	const move = GltfCurve.forValues(GltfCurvePath.Translation, GltfCurveMode.Linear, times, moves);
+# ms-prelude: 	const turn = GltfCurve.forValues(GltfCurvePath.Rotation, GltfCurveMode.Linear, times, turns);
+# ms-prelude: 	const size = GltfCurve.forValues(GltfCurvePath.Scale, GltfCurveMode.Linear, times, sizes);
+# ms-prelude: 	if (!move.ok || !turn.ok || !size.ok) { unreachable; }
+# ms-prelude: 	const tracks: Vec<GltfPoseTrack> = [
+# ms-prelude: 		{ sourceNode: 0, curve: move.value }, { sourceNode: 0, curve: turn.value },
+# ms-prelude: 		{ sourceNode: 0, curve: size.value },
+# ms-prelude: 	];
+# ms-prelude: 	const made = AnimationTransitionClip.forTracks(tracks, [], false);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	return made.value;
+# ms-prelude: }
+# ms-prelude: function run(ka: Vec<Transform3D>, kb: Vec<Transform3D>, dts: Vec<float64>,
+# ms-prelude: 		duration: float64): Mat4 {
+# ms-prelude: 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+# ms-prelude: 	const added: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+# ms-prelude: 	const targets: Vec<AnimationRestTarget> = [{ sourceNode: 0, rest: Transform3D.identity() }];
+# ms-prelude: 	const made = AnimationTransition.create(targets, [], clip(ka), clip(kb), duration);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	let transition = made.value;
+# ms-prelude: 	for (const dt of dts) { const _moved = advance(transition, dt); }
+# ms-prelude: 	const _posed = evaluate(transition);
+# ms-prelude: 	const _written = transition.commit(scene, [added]);
+# ms-prelude: 	const _synced: int32 = syncWorld(scene);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added);
+# ms-prelude: 	return world.ok ? world.value : identity();
+# ms-prelude: }
+# ms-prelude: function runSteps(ka: Vec<Transform3D>, kb: Vec<Transform3D>, steps: Vec<float64>,
+# ms-prelude: 		duration: float64): Mat4 {
+# ms-prelude: 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+# ms-prelude: 	const added: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+# ms-prelude: 	const targets: Vec<AnimationRestTarget> = [{ sourceNode: 0, rest: Transform3D.identity() }];
+# ms-prelude: 	const made = AnimationTransition.create(targets, [], clip(ka), clip(kb), duration);
+# ms-prelude: 	if (!made.ok) { unreachable; }
+# ms-prelude: 	let transition = made.value;
+# ms-prelude: 	for (let i = 0; i < steps.length; i += 4) {
+# ms-prelude: 		const _speeds = setSpeeds(transition, steps[i + 1], steps[i + 2], steps[i + 3]);
+# ms-prelude: 		const _moved = advance(transition, steps[i]);
+# ms-prelude: 	}
+# ms-prelude: 	const _posed = evaluate(transition);
+# ms-prelude: 	const _written = transition.commit(scene, [added]);
+# ms-prelude: 	const _synced: int32 = syncWorld(scene);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added);
+# ms-prelude: 	return world.ok ? world.value : identity();
+# ms-prelude: }
+
+# ---- the blend factor: dt / duration, clamped at 1 ---------------------------------------------
+
+# One update of 1 second against a 4 second blend is a quarter of the way from the first clip's
+# second key to the second clip's, translation `m1 * (1 - b) + m2 * b`.
+case quarter-way-translation tol=1e-5
+haxe> var q1 = H.run([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,8,0,0,1,false), H.key(10,16,0,0,1,false)], [1], 4);
+haxe> emit("quarter-way-translation", [q1._41, q1._42, q1._43]);
+ms> const q1: Mat4 = run([slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0)],
+ms>     [slid(10.0, 0.0), slid(10.0, 8.0), slid(10.0, 16.0)], [1.0], 4.0);
+ms> emit3("quarter-way-translation", q1.m41, q1.m42, q1.m43);
+
+# Two updates accumulate; against a 1 second blend the second clip is held.
+case accumulated-and-clamped tol=1e-5
+haxe> var q2 = H.run([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,8,0,0,1,false), H.key(10,16,0,0,1,false)], [1, 1], 3);
+haxe> var q3 = H.run([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,8,0,0,1,false), H.key(10,16,0,0,1,false)], [1, 1], 1);
+haxe> emit("accumulated-and-clamped", [q2._41, q2._42, q3._41, q3._42]);
+ms> const q2: Mat4 = run([slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0)],
+ms>     [slid(10.0, 0.0), slid(10.0, 8.0), slid(10.0, 16.0)], [1.0, 1.0], 3.0);
+ms> const q3: Mat4 = run([slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0)],
+ms>     [slid(10.0, 0.0), slid(10.0, 8.0), slid(10.0, 16.0)], [1.0, 1.0], 1.0);
+ms> emit4("accumulated-and-clamped", q2.m41, q2.m42, q3.m41, q3.m42);
+
+# ---- rotation and scale ---------------------------------------------------------------------------
+
+# Rotation is nearest-hemisphere lerp then normalize, not a slerp, and scale blends linearly. The
+# second clip's keys are the negated quaternions, so the blend has to flip onto the first's side.
+case rotation-nlerp-and-scale tol=1e-5
+haxe> var q4 = H.run([H.key(0,0,0,0.2,1,false), H.key(0,0,0,0.2,1,false), H.key(0,0,0,0.2,1,false)],
+haxe>     [H.key(0,0,0,2.2,3,true), H.key(0,0,0,2.2,3,true), H.key(0,0,0,2.2,3,true)], [1], 4);
+haxe> emit("rotation-nlerp-and-scale", [q4._11, q4._13, q4._31, q4._22]);
+ms> const q4: Mat4 = run(
+ms>     [key(0.0, 0.0, 0.0, 0.2, 1.0, false), key(0.0, 0.0, 0.0, 0.2, 1.0, false), key(0.0, 0.0, 0.0, 0.2, 1.0, false)],
+ms>     [key(0.0, 0.0, 0.0, 2.2, 3.0, true), key(0.0, 0.0, 0.0, 2.2, 3.0, true), key(0.0, 0.0, 0.0, 2.2, 3.0, true)],
+ms>     [1.0], 4.0);
+ms> emit4("rotation-nlerp-and-scale", q4.m11, q4.m13, q4.m31, q4.m22);
+
+# ---- speed: each clip's own, and the transition's, which scales only the blend -------------------
+# A step is [dt, first clip speed, second clip speed, transition speed]; the clips are five keys long
+# and sampling is 1, so every frame reached is a whole number. Transition.update hands the whole dt
+# to both clips whatever the transition's own speed is, and only the blend takes that speed
+# (SmoothTransition.hx:144).
+
+# Clip speed 2 on the first side reads frame 2 there while the second side and the blend stay put.
+case first-speed-two tol=1e-5
+haxe> var s1 = H.runSteps([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false), H.key(6,0,0,0,1,false), H.key(8,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,4,0,0,2,false), H.key(10,8,0,0,3,false), H.key(10,12,0,0,4,false), H.key(10,16,0,0,5,false)], [1,2,1,1], 4);
+haxe> emit("first-speed-two", [s1._41, s1._42, s1._22]);
+ms> const s1: Mat4 = runSteps(
+ms>     [slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0), slid(6.0, 0.0), slid(8.0, 0.0)],
+ms>     [key(10.0, 0.0, 0.0, 0.0, 1.0, false), key(10.0, 4.0, 0.0, 0.0, 2.0, false), key(10.0, 8.0, 0.0, 0.0, 3.0, false),
+ms>      key(10.0, 12.0, 0.0, 0.0, 4.0, false), key(10.0, 16.0, 0.0, 0.0, 5.0, false)], [1.0, 2.0, 1.0, 1.0], 4.0);
+ms> emit3("first-speed-two", s1.m41, s1.m42, s1.m22);
+
+# Clip speed 2 on the second side.
+case second-speed-two tol=1e-5
+haxe> var s2 = H.runSteps([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false), H.key(6,0,0,0,1,false), H.key(8,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,4,0,0,2,false), H.key(10,8,0,0,3,false), H.key(10,12,0,0,4,false), H.key(10,16,0,0,5,false)], [1,1,2,1], 4);
+haxe> emit("second-speed-two", [s2._41, s2._42, s2._22]);
+ms> const s2: Mat4 = runSteps(
+ms>     [slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0), slid(6.0, 0.0), slid(8.0, 0.0)],
+ms>     [key(10.0, 0.0, 0.0, 0.0, 1.0, false), key(10.0, 4.0, 0.0, 0.0, 2.0, false), key(10.0, 8.0, 0.0, 0.0, 3.0, false),
+ms>      key(10.0, 12.0, 0.0, 0.0, 4.0, false), key(10.0, 16.0, 0.0, 0.0, 5.0, false)], [1.0, 1.0, 2.0, 1.0], 4.0);
+ms> emit3("second-speed-two", s2.m41, s2.m42, s2.m22);
+
+# Transition speed 2 doubles the blend rate and leaves both clips at frame 1.
+case blend-speed-two tol=1e-5
+haxe> var s3 = H.runSteps([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false), H.key(6,0,0,0,1,false), H.key(8,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,4,0,0,2,false), H.key(10,8,0,0,3,false), H.key(10,12,0,0,4,false), H.key(10,16,0,0,5,false)], [1,1,1,2], 4);
+haxe> emit("blend-speed-two", [s3._41, s3._42, s3._22]);
+ms> const s3: Mat4 = runSteps(
+ms>     [slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0), slid(6.0, 0.0), slid(8.0, 0.0)],
+ms>     [key(10.0, 0.0, 0.0, 0.0, 1.0, false), key(10.0, 4.0, 0.0, 0.0, 2.0, false), key(10.0, 8.0, 0.0, 0.0, 3.0, false),
+ms>      key(10.0, 12.0, 0.0, 0.0, 4.0, false), key(10.0, 16.0, 0.0, 0.0, 5.0, false)], [1.0, 1.0, 1.0, 2.0], 4.0);
+ms> emit3("blend-speed-two", s3.m41, s3.m42, s3.m22);
+
+# A paused transition (speed 0) still moves both clips and only holds the blend, unlike SmoothTarget.
+case zero-transition-speed-moves-clips tol=1e-5
+haxe> var s4 = H.runSteps([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false), H.key(6,0,0,0,1,false), H.key(8,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,4,0,0,2,false), H.key(10,8,0,0,3,false), H.key(10,12,0,0,4,false), H.key(10,16,0,0,5,false)], [1,1,1,1, 1,1,1,0], 4);
+haxe> emit("zero-transition-speed-moves-clips", [s4._41, s4._42, s4._22]);
+ms> const s4: Mat4 = runSteps(
+ms>     [slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0), slid(6.0, 0.0), slid(8.0, 0.0)],
+ms>     [key(10.0, 0.0, 0.0, 0.0, 1.0, false), key(10.0, 4.0, 0.0, 0.0, 2.0, false), key(10.0, 8.0, 0.0, 0.0, 3.0, false),
+ms>      key(10.0, 12.0, 0.0, 0.0, 4.0, false), key(10.0, 16.0, 0.0, 0.0, 5.0, false)], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0], 4.0);
+ms> emit3("zero-transition-speed-moves-clips", s4.m41, s4.m42, s4.m22);
+
+# A negative clip speed plays that clip back and holds its first key; the other side runs on to its
+# last key and the blend keeps rising.
+case negative-first-speed-holds-first-key tol=1e-5
+haxe> var s5 = H.runSteps([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false), H.key(6,0,0,0,1,false), H.key(8,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,4,0,0,2,false), H.key(10,8,0,0,3,false), H.key(10,12,0,0,4,false), H.key(10,16,0,0,5,false)], [2,1,1,1, 3,-1,1,1], 8);
+haxe> emit("negative-first-speed-holds-first-key", [s5._41, s5._42, s5._22]);
+ms> const s5: Mat4 = runSteps(
+ms>     [slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0), slid(6.0, 0.0), slid(8.0, 0.0)],
+ms>     [key(10.0, 0.0, 0.0, 0.0, 1.0, false), key(10.0, 4.0, 0.0, 0.0, 2.0, false), key(10.0, 8.0, 0.0, 0.0, 3.0, false),
+ms>      key(10.0, 12.0, 0.0, 0.0, 4.0, false), key(10.0, 16.0, 0.0, 0.0, 5.0, false)], [2.0, 1.0, 1.0, 1.0, 3.0, -1.0, 1.0, 1.0], 8.0);
+ms> emit3("negative-first-speed-holds-first-key", s5.m41, s5.m42, s5.m22);
+
+# A negative transition speed runs the blend below zero in Heaps (SmoothTransition.hx:144 only clamps
+# above), extrapolating away from the second clip; the port holds the first clip.
+case negative-blend-speed-extrapolates tol=1e-5 diverges=anim-never-extrapolates
+haxe> var s6 = H.runSteps([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false), H.key(6,0,0,0,1,false), H.key(8,0,0,0,1,false)],
+haxe>     [H.key(10,0,0,0,1,false), H.key(10,4,0,0,2,false), H.key(10,8,0,0,3,false), H.key(10,12,0,0,4,false), H.key(10,16,0,0,5,false)], [1,1,1,-1], 4);
+haxe> emit("negative-blend-speed-extrapolates", [s6._41, s6._42, s6._22]);
+ms> const s6: Mat4 = runSteps(
+ms>     [slid(0.0, 0.0), slid(2.0, 0.0), slid(4.0, 0.0), slid(6.0, 0.0), slid(8.0, 0.0)],
+ms>     [key(10.0, 0.0, 0.0, 0.0, 1.0, false), key(10.0, 4.0, 0.0, 0.0, 2.0, false), key(10.0, 8.0, 0.0, 0.0, 3.0, false),
+ms>      key(10.0, 12.0, 0.0, 0.0, 4.0, false), key(10.0, 16.0, 0.0, 0.0, 5.0, false)], [1.0, 1.0, 1.0, -1.0], 4.0);
+ms> emit3("negative-blend-speed-extrapolates", s6.m41, s6.m42, s6.m22);

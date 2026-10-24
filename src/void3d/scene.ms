@@ -16,12 +16,36 @@
 //   - a row is addressed by index plus a generation (slots.ms). A silently reused node id in a
 //     scene graph is unfindable from the symptom it produces.
 import {
-	Vec3, vec3, transformDirection, normalized, Quat, identityQuat, Mat4, identity,
+	Vec3, vec3, Vec4, vec4, transformDirection, normalized, Quat, identityQuat, Mat4, identity,
 	composeTransform, multiplyAffine,
 } from "../math/math3d";
-import { MAX_POINT_LIGHTS, declares, vertexLayoutOf } from "./gpu3d";
-import { SkinGeometry, SkinGeometryError, deformPublished } from "./skinGeometry";
+import {
+	MAX_POINT_LIGHTS,
+	LIGHT_SHAPE_BASE,
+	LIGHT_SHAPE_ARRAY_LENGTH,
+	LIGHT_KIND_SPOT,
+	LIGHT_KIND_RECTANGLE,
+	LIGHT_KIND_CAPSULE,
+	declares,
+	vertexLayoutOf,
+} from "./gpu3d";
+import {
+	SpotLightShape,
+	RectangleLightShape,
+	CapsuleLightShape,
+	LightShapeError,
+	ConeCosines,
+} from "./lightShape";
+import {
+	SkinGeometry,
+	SkinGeometryError,
+	deformPublished,
+	setSourceVertices,
+} from "./skinGeometry";
 import { syncSkinPose } from "./skinPose";
+import {
+	MorphData, MorphGeometry, MorphGeometryError, bind as bindMorphGeometry, publishMorphGeometry,
+} from "./morphGeometry";
 import { MeshData, stride, vertexCount, isIndexed, indexCount } from "./meshData";
 import { PassState, passState } from "../gpu/door";
 import {
@@ -35,6 +59,9 @@ import {
 	unpinMesh,
 	pinMaterial,
 	unpinMaterial,
+	releaseMesh,
+	setMeshVertices,
+	VertexStorage,
 	tallyMeshPin,
 	clearMeshTally,
 	tallyMaterialPin,
@@ -71,6 +98,27 @@ export enum NodeKind {
 export enum LightKind {
 	Directional,
 	Point,
+	Spot,
+	Rectangle,
+	Capsule,
+}
+
+// What a shaped light adds to `radius` (its range) and `power`, in radians as camera.ms is.
+// Spot: `angle` is SpotLight.angle and `falloff` SpotLight.fallOff, the inner half angle
+// (SpotLight.hx:7-9, 113-114). Rectangle: `angle` and `verticalAngle` are
+// RectangleLight.horizontalAngle and verticalAngle, `falloff` the shared fallOff, `width` and
+// `height` its sizes (RectangleLight.hx:9-14, 76-90). Capsule: `length` and `capsuleRadius`
+// (CapsuleLight.hx:6-7, 68-69). The node's +Z is Heaps' front(), +X its right and +Y its up.
+// A field the kind does not read is ignored; one it reads and finds out of range is
+// LightError.BadLightShape at collectLights.
+export struct LightShape {
+	angle: float32;
+	verticalAngle: float32;
+	falloff: float32;
+	width: float32;
+	height: float32;
+	length: float32;
+	capsuleRadius: float32;
 }
 
 // What h3d.scene.fwd.Light carries beyond an Object, cut for the toon shader: color and
@@ -85,6 +133,11 @@ export struct LightInstance {
 	radius: float32;
 	power: float32;
 	priority: int32;
+	shape: LightShape;
+	// A spot's shadows.enabled (LightBuffer.hx:180-186): it casts its own shadow map, beside the
+	// sun's (spotShadow.ms). Any other kind with it set is
+	// LightError.UnshadowableLight, and a second spot with it set LightError.TooManyShadowedSpots.
+	shadows: boolean;
 }
 
 export enum SceneError {
@@ -101,9 +154,30 @@ export enum SceneError {
 	DrawRange,
 }
 
+export enum MorphNodeError {
+	StaleMesh,
+	ForeignMesh,
+	StaleMaterial,
+	ForeignMaterial,
+	Mesh,
+	Skin,
+	SkinMesh,
+	Primitive,
+	Unpublished,
+	Scene,
+}
+
+export enum SceneSyncError {
+	Skin,
+	Morph,
+}
+
 export enum LightError {
 	TooManyDirectionalLights,
 	TooManyPointLights,
+	BadLightShape,
+	TooManyShadowedSpots,
+	UnshadowableLight,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -151,6 +225,17 @@ export struct MeshInstance {
 	skinGeometry: SkinGeometry | null;
 	skinPalette: int32;
 	range: DrawRange | null;
+	morph: SceneMorph | null;
+	morphPrimitive: int32;
+	morphRevision: uint64;
+}
+
+// The morph state of one glTF node instance, shared by the mesh nodes of its primitives: weights
+// are set here and published once, each node mirrors its own primitive's published mesh into its
+// private dynamic mesh (`syncSceneMorphGeometry`). The skin idiom with the roles swapped: skin
+// deforms on the GPU and mirrors on the CPU, a morph deforms on the CPU and the GPU reads it.
+export interface SceneMorph {
+	geometry: MorphGeometry;
 }
 
 export struct SceneCamera {
@@ -166,6 +251,7 @@ export interface Scene3D {
 	slots: Slots;
 	meshes: Vec<MeshInstance>;
 	skinNodes: int32;
+	morphNodes: int32;
 	lights: Vec<LightInstance>;
 	cameras: Vec<SceneCamera>;
 	activeCamera: NodeId3D | null;
@@ -289,6 +375,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		slots: Slots.empty(),
 		meshes: [],
 		skinNodes: 0,
+		morphNodes: 0,
 		lights: [],
 		cameras: [],
 		activeCamera: null,
@@ -390,7 +477,8 @@ export function addMeshNode(
 	if (!pinnedMesh.ok || !pinnedMaterial.ok) { unreachable; }
 	const payload: int32 = scene.meshes.length as int32;
 	scene.meshes.push({ mesh: mesh, material: material,
-		skinGeometry: null, skinPalette: 0, range: null });
+		skinGeometry: null, skinPalette: 0, range: null,
+		morph: null, morphPrimitive: 0, morphRevision: 0 });
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Mesh,
 		flags: freshFlags(),
@@ -500,6 +588,113 @@ export function addSkinMeshNode(
 	scene.meshes[row].skinPalette = palette;
 	scene.meshes[row].range = range;
 	scene.skinNodes += 1;
+	return Result.ok(node);
+}
+
+// Weights start published, so a node never draws the base by accident.
+export function bindSceneMorph(
+	data: Readonly<MorphData>, weights: Readonly<Span<float32>>,
+): Result<SceneMorph, MorphGeometryError> {
+	let geometry = try MorphGeometry.bindMorphGeometry(data);
+	const _published: int32 = try publishMorphGeometry(geometry, weights);
+	return Result.ok({ geometry: move geometry });
+}
+
+// Publishes a new revision; the scene mirrors it at its next refresh, collect or pick.
+export function setMorphWeights(
+	morph: SceneMorph, weights: Readonly<Span<float32>>,
+): Result<int32, MorphGeometryError> {
+	return publishMorphGeometry(morph.geometry, weights);
+}
+
+function validateMorphMesh(
+	scene: Scene3D, mesh: MeshId, material: MaterialId, morph: SceneMorph, primitive: int32,
+	skinned: boolean,
+): Result<int32, MorphNodeError> {
+	const context = scene.context;
+	if (!context.hasMesh(mesh)) {
+		return Result.err(context.issuedMesh(mesh)
+			? MorphNodeError.StaleMesh : MorphNodeError.ForeignMesh);
+	}
+	if (!context.hasMaterial(material)) {
+		return Result.err(context.issuedMaterial(material)
+			? MorphNodeError.StaleMaterial : MorphNodeError.ForeignMaterial);
+	}
+	if (primitive < 0 || primitive >= (morph.geometry.meshes.length as int32)) {
+		return Result.err(MorphNodeError.Primitive);
+	}
+	if (!morph.geometry.ready) { return Result.err(MorphNodeError.Unpublished); }
+	const index: int32 = mesh.index;
+	if (context.meshData[index].hasSkin != skinned ||
+		morph.geometry.meshes[primitive].hasSkin != skinned) {
+		return Result.err(MorphNodeError.Skin);
+	}
+	if (context.meshStorage[index] == VertexStorage.Immutable ||
+		context.meshHolders[index] != 1 || context.meshPins[index] != 0 ||
+		context.meshData[index].vertices.length !=
+			morph.geometry.meshes[primitive].vertices.length ||
+		context.meshData[index].indexCount() != morph.geometry.meshes[primitive].indexCount() ||
+		context.meshData[index].hasUvs != morph.geometry.meshes[primitive].hasUvs ||
+		context.meshData[index].hasTangents != morph.geometry.meshes[primitive].hasTangents) {
+		return Result.err(MorphNodeError.Mesh);
+	}
+	for (let i = 0; i < morph.geometry.meshes[primitive].indexCount(); i++) {
+		if (context.meshData[index].indexAt(i) != morph.geometry.meshes[primitive].indexAt(i)) {
+			return Result.err(MorphNodeError.Mesh);
+		}
+	}
+	return Result.ok(index);
+}
+
+// `mesh` must be a private dynamic mesh (draw.ms addDynamicMeshData) held once by the caller;
+// the node takes that hold and lets go of it, with its pin, when it is removed.
+export function addMorphMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, morph: SceneMorph, primitive: int32,
+): Result<NodeId3D, MorphNodeError> {
+	scene.requireOpen("addMorphMeshNode");
+	scene.context.requireOpen("addMorphMeshNode");
+	const _valid: int32 = try validateMorphMesh(scene, mesh, material, morph, primitive, false);
+	const added: Result<NodeId3D, SceneError> = addMeshNode(scene, parent, local, mesh, material);
+	if (!added.ok) { return Result.err(MorphNodeError.Scene); }
+	const node: NodeId3D = added.value;
+	const row: int32 = scene.nodes[node.index].payload;
+	scene.meshes[row].morph = morph;
+	scene.meshes[row].morphPrimitive = primitive;
+	scene.morphNodes += 1;
+	return Result.ok(node);
+}
+
+// A morph node whose private dynamic mesh has the skin layout: the CPU deforms the primitive by
+// the weights, the GPU skins that by the palette, and the skin geometry that bounds, culls and
+// picks the node skins the same morphed vertices (glTF 2.0 section 3.7.3.3: morph targets,
+// then skin).
+// Every part of one skin mesh holds a mesh of its own, since a node holds its mesh once.
+export function addSkinMorphMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, geometry: SkinGeometry,
+	palette: int32, range: DrawRange | null, morph: SceneMorph, primitive: int32,
+): Result<NodeId3D, MorphNodeError> {
+	scene.requireOpen("addSkinMorphMeshNode");
+	scene.context.requireOpen("addSkinMorphMeshNode");
+	const _valid: int32 = try validateMorphMesh(scene, mesh, material, morph, primitive, true);
+	const skin: Result<int32, SceneError> =
+		validateSkinMesh(scene, mesh, material, geometry, palette, range);
+	if (!skin.ok) { return Result.err(MorphNodeError.SkinMesh); }
+	if (morph.geometry.meshes[primitive].vertices.length != geometry.source.vertices.length) {
+		return Result.err(MorphNodeError.SkinMesh);
+	}
+	const added: Result<NodeId3D, SceneError> = addMeshNode(scene, parent, local, mesh, material);
+	if (!added.ok) { return Result.err(MorphNodeError.Scene); }
+	const node: NodeId3D = added.value;
+	const row: int32 = scene.nodes[node.index].payload;
+	scene.meshes[row].skinGeometry = geometry;
+	scene.meshes[row].skinPalette = palette;
+	scene.meshes[row].range = range;
+	scene.meshes[row].morph = morph;
+	scene.meshes[row].morphPrimitive = primitive;
+	scene.skinNodes += 1;
+	scene.morphNodes += 1;
 	return Result.ok(node);
 }
 
@@ -723,6 +918,12 @@ function releasePayload(scene: Scene3D, index: int32): void {
 			if (context.hasMesh(instance.mesh) && !unpinMesh(context, instance.mesh).ok) {
 				unreachable;
 			}
+			if (instance.morph !== null) {
+				scene.morphNodes -= 1;
+				if (context.hasMesh(instance.mesh) && !releaseMesh(context, instance.mesh).ok) {
+					unreachable;
+				}
+			}
 			const material: MaterialId = instance.material;
 			if (context.hasMaterial(material) && !unpinMaterial(context, material).ok) {
 				unreachable;
@@ -904,6 +1105,12 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	context.requireOpen("setMeshOf");
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
+	if (scene.meshes[row].morph !== null) {
+		console.log(
+			"void3d: setMeshOf on a morph node, whose mesh is the instance's own dynamic one",
+		);
+		unreachable;
+	}
 	const geometry = scene.meshes[row].skinGeometry;
 	if (geometry !== null) {
 		const _valid: int32 = try validateSkinMesh(scene, mesh, scene.meshes[row].material,
@@ -917,7 +1124,9 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	return Result.ok(node);
 }
 
-export function setMaterialOf(scene: Scene3D, id: NodeId3D, material: MaterialId): Result<int32, SceneError> {
+export function setMaterialOf(
+	scene: Scene3D, id: NodeId3D, material: MaterialId,
+): Result<int32, SceneError> {
 	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setMaterialOf");
 	const context: DrawContext = scene.context;
 	context.requireOpen("setMaterialOf");
@@ -1001,6 +1210,73 @@ export function findByName(
 	return Result.err(SceneError.NodeNotFound);
 }
 
+export function getMeshes(
+	this scene: Scene3D,
+	from: NodeId3D,
+): Result<Vec<NodeId3D>, SceneError> {
+	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
+	let found: Vec<NodeId3D> = [];
+	let stack: Vec<int32> = [from.index];
+	while ((stack.length as int32) > 0) {
+		const last: int32 = (stack.length as int32) - 1;
+		const index: int32 = stack[last];
+		stack.pop();
+		if (scene.nodes[index].kind == NodeKind.Mesh) {
+			found.push(scene.nodeIdAt(index));
+		}
+		const count: int32 = scene.nodes[index].children.length as int32;
+		for (let i = count - 1; i >= 0; i--) {
+			stack.push(scene.nodes[index].children[i]);
+		}
+	}
+	return Result.ok(found);
+}
+
+export function getMaterials(
+	this scene: Scene3D,
+	from: NodeId3D,
+	recursive: boolean = true,
+): Result<Vec<MaterialId>, SceneError> {
+	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
+	let found: Vec<MaterialId> = [];
+	if (!recursive) {
+		if (scene.nodes[from.index].kind == NodeKind.Mesh) {
+			found.push(scene.meshes[scene.nodes[from.index].payload].material);
+		}
+		return Result.ok(found);
+	}
+	const nodes: Vec<NodeId3D> = try scene.getMeshes(from);
+	for (const node of nodes) {
+		const material: MaterialId = scene.meshes[scene.nodes[node.index].payload].material;
+		let present: boolean = false;
+		for (const earlier of found) {
+			if (earlier.store == material.store && earlier.index == material.index
+				&& earlier.generation == material.generation) {
+				present = true;
+				break;
+			}
+		}
+		if (!present) { found.push(material); }
+	}
+	return Result.ok(found);
+}
+
+export function containsNode(
+	this scene: Scene3D,
+	ancestor: NodeId3D,
+	node: NodeId3D,
+): Result<boolean, SceneError> {
+	if (!scene.isLive(ancestor) || !scene.isLive(node)) {
+		return Result.err(SceneError.StaleNode);
+	}
+	let at: int32 = scene.nodes[node.index].parent;
+	while (at != NO_NODE_3D) {
+		if (at == ancestor.index) { return Result.ok(true); }
+		at = scene.nodes[at].parent;
+	}
+	return Result.ok(false);
+}
+
 export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (!connectedRow(scene, id.index)) { return Result.err(SceneError.DetachedNode); }
@@ -1050,8 +1326,8 @@ export function syncWorld(scene: Scene3D): int32 {
 // into `items`, which the caller owns and keeps, so a steady frame allocates nothing.
 export function collectDrawList(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.closed) { stopOnClosed("collectDrawList"); }
-	const skins = syncSceneSkinGeometry(scene);
-	if (!skins.ok) { stopOnSkinError("collectDrawList", skins.error); }
+	const synced = syncSceneGeometry(scene);
+	if (!synced.ok) { stopOnSyncError("collectDrawList", synced.error); }
 	const count: int32 = fillDrawList(scene, activeLayers(scene), items);
 	scene.structureChanged = false;
 	return count;
@@ -1061,8 +1337,8 @@ export function collectDrawListFor(
 	scene: Scene3D, camera: NodeId3D, ref items: Vec<DrawItem>,
 ): int32 {
 	if (scene.closed) { stopOnClosed("collectDrawListFor"); }
-	const skins = syncSceneSkinGeometry(scene);
-	if (!skins.ok) { stopOnSkinError("collectDrawListFor", skins.error); }
+	const synced = syncSceneGeometry(scene);
+	if (!synced.ok) { stopOnSyncError("collectDrawListFor", synced.error); }
 	return fillDrawList(scene, cameraLayersOf(scene, camera), items);
 }
 
@@ -1138,8 +1414,51 @@ export function syncSceneSkinGeometry(scene: Scene3D): Result<int32, SkinGeometr
 	return Result.ok(deformed);
 }
 
-function stopOnSkinError(call: string, error: SkinGeometryError): void {
-	console.log(`void3d: ${call} cannot publish skin geometry: ${error.toString()}`);
+// Morph first: a skinned morph node hands its morphed vertices to its skin geometry, which the
+// skin deform then poses.
+export function syncSceneGeometry(scene: Scene3D): Result<int32, SceneSyncError> {
+	const morphs = syncSceneMorphGeometry(scene);
+	if (!morphs.ok) { return Result.err(SceneSyncError.Morph); }
+	const skins = syncSceneSkinGeometry(scene);
+	if (!skins.ok) { return Result.err(SceneSyncError.Skin); }
+	return Result.ok(skins.value + morphs.value);
+}
+
+// Mirrors each morph node's published primitive into its mesh, once per new revision, so bounds,
+// culling, picking, the shadow pass and the next upload all read the one deformation. A geometry
+// whose last publish failed is an error, not the previous shape.
+export function syncSceneMorphGeometry(scene: Scene3D): Result<int32, MorphGeometryError> {
+	scene.requireOpen("syncSceneMorphGeometry");
+	if (scene.morphNodes < 0) { return Result.err(MorphGeometryError.Shape); }
+	if (scene.morphNodes == 0) { return Result.ok(0); }
+	let mirrored: int32 = 0;
+	for (let i = 0; i < (scene.meshes.length as int32); i++) {
+		const morph = scene.meshes[i].morph;
+		if (morph === null) { continue; }
+		if (!morph.geometry.ready) { return Result.err(MorphGeometryError.Unpublished); }
+		if (morph.geometry.revision == scene.meshes[i].morphRevision) { continue; }
+		const primitive: int32 = scene.meshes[i].morphPrimitive;
+		if (primitive >= (morph.geometry.meshes.length as int32)) {
+			return Result.err(MorphGeometryError.Shape);
+		}
+		if (!setMeshVertices(
+			scene.context, scene.meshes[i].mesh, morph.geometry.meshes[primitive],
+		).ok) {
+			return Result.err(MorphGeometryError.Shape);
+		}
+		const skin = scene.meshes[i].skinGeometry;
+		if (skin !== null &&
+			!skin.setSourceVertices(morph.geometry.meshes[primitive].vertices).ok) {
+			return Result.err(MorphGeometryError.Shape);
+		}
+		scene.meshes[i].morphRevision = morph.geometry.revision;
+		mirrored += 1;
+	}
+	return Result.ok(mirrored);
+}
+
+function stopOnSyncError(call: string, error: SceneSyncError): void {
+	console.log(`void3d: ${call} cannot publish ${error.toString()} geometry`);
 	unreachable;
 }
 
@@ -1147,17 +1466,17 @@ export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.closed) { stopOnClosed("refresh"); }
 	const updated = refreshChecked(scene, items);
 	if (updated.ok) { return updated.value; }
-	stopOnSkinError("refresh", updated.error);
+	stopOnSyncError("refresh", updated.error);
 	unreachable;
 }
 
 export function refreshChecked(
 	scene: Scene3D, ref items: Vec<DrawItem>,
-): Result<int32, SkinGeometryError> {
+): Result<int32, SceneSyncError> {
 	if (scene.closed) { stopOnClosed("refreshChecked"); }
 	if (scene.root == NO_NODE_3D) { return Result.ok(0); }
 	const _synced: int32 = syncWorld(scene);
-	const _skins: int32 = try syncSceneSkinGeometry(scene);
+	const _geometry: int32 = try syncSceneGeometry(scene);
 	return Result.ok(refreshItemsSynced(scene, items));
 }
 
@@ -1239,7 +1558,8 @@ export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<Draw
 }
 
 // Fills the renderer's light block from the visible light nodes: ambient first, then the one
-// directional slot, then the point slots. `out` is the caller's LIGHT_UNIFORM_LENGTH floats.
+// directional slot, then the positioned slots (point, spot, rectangle and capsule share the four
+// of MAX_POINT_LIGHTS) with their shape arrays. `out` is the caller's LIGHT_UNIFORM_LENGTH floats.
 // A second visible directional, or a fifth visible point light, is an error rather than a
 // silent drop: the block cannot express it, and a shader quietly lighting less is the failure
 // this port refuses (fwd.LightSystem sorts by priority and keeps its top N without a word).
@@ -1272,6 +1592,7 @@ export function collectLightsFor(
 			if (seen && scene.nodes[index].kind == NodeKind.Light) {
 				const light: LightInstance = scene.lights[scene.nodes[index].payload];
 				if (light.kind == LightKind.Directional) {
+					if (light.shadows) { return Result.err(LightError.UnshadowableLight); }
 					if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
 					seenDirectional = true;
 					// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the
@@ -1312,6 +1633,14 @@ export function collectLightsFor(
 	}
 	const found: int32 = scene.lightOrder.length as int32;
 	if (found > MAX_POINT_LIGHTS) { return Result.err(LightError.TooManyPointLights); }
+	let shadowedSpots: int32 = 0;
+	for (let i = 0; i < found; i++) {
+		const light: LightInstance = scene.lights[scene.nodes[scene.lightOrder[i]].payload];
+		if (!light.shadows) { continue; }
+		if (light.kind != LightKind.Spot) { return Result.err(LightError.UnshadowableLight); }
+		shadowedSpots = shadowedSpots + 1;
+	}
+	if (shadowedSpots > 1) { return Result.err(LightError.TooManyShadowedSpots); }
 	for (let i = 0; i < found; i++) {
 		const index: int32 = scene.lightOrder[i];
 		const light: LightInstance = scene.lights[scene.nodes[index].payload];
@@ -1329,9 +1658,86 @@ export function collectLightsFor(
 		out[colorAt + 1] = light.color.y;
 		out[colorAt + 2] = light.color.z;
 		out[colorAt + 3] = light.radius;
+		if (light.kind != LightKind.Point) {
+			if (!packShape(out, i, light, world).ok) {
+				return Result.err(LightError.BadLightShape);
+			}
+		}
 	}
 	out[3] = found as float32;
 	return Result.ok(found);
+}
+
+// One slot's shape in the block's four shape arrays (gpu3d.ms LIGHT_SHAPE_BASE): shapeA the
+// forward or axis and the kind, B, C and D what shader3d.ms's samplers read. The cosines are
+// lightShape.ms's, so a shape it refuses is refused here, and the node's own axes must stay
+// orthogonal (a shear is BadAxes). The half sizes take the node's scale as RectangleLight.hx:81
+// does; a capsule's length does not (CapsuleLight.hx:69).
+// PENDING3D: light-shape-spot-singular-cone
+function packShape(
+	out: Span<float32>, slot: int32, light: LightInstance, world: Mat4,
+): Result<void, LightShapeError> {
+	const at: int32 = slot * 4;
+	const position: Vec3 = vec3(world.m41, world.m42, world.m43);
+	const zAxis: Vec3 = transformDirection(vec3(0.0, 0.0, 1.0), world);
+	const forward: Vec3 = zAxis.normalized();
+	const shape: LightShape = light.shape;
+	let kind: float32 = LIGHT_KIND_SPOT;
+	let b: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
+	let c: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
+	let d: Vec4 = vec4(0.0, 0.0, 0.0, 0.0);
+	if (light.kind == LightKind.Spot) {
+		const spot: SpotLightShape = {
+			position: position, forward: forward, range: light.radius,
+			cone: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
+		};
+		const cosines: ConeCosines = try spot.validateSpot();
+		b = vec4(cosines.outer, cosines.inner, light.shadows ? 1.0 : 0.0, shape.angle);
+	} else if (light.kind == LightKind.Rectangle) {
+		kind = LIGHT_KIND_RECTANGLE;
+		const xAxis: Vec3 = transformDirection(vec3(1.0, 0.0, 0.0), world);
+		const yAxis: Vec3 = transformDirection(vec3(0.0, 1.0, 0.0), world);
+		const rectangle: RectangleLightShape = {
+			position: position, forward: forward, right: xAxis.normalized(), up: yAxis.normalized(),
+			halfWidth: shape.width * 0.5 * xAxis.length(),
+			halfHeight: shape.height * 0.5 * yAxis.length(),
+			horizontal: { fullAngleRadians: shape.angle, falloffRadians: shape.falloff },
+			vertical: { fullAngleRadians: shape.verticalAngle, falloffRadians: shape.falloff },
+			range: light.radius,
+		};
+		const _valid = try rectangle.validateRectangle();
+		const horizontal: ConeCosines = try rectangle.horizontal.coneCosines();
+		const vertical: ConeCosines = try rectangle.vertical.coneCosines();
+		b = vec4(rectangle.right.x, rectangle.right.y, rectangle.right.z, rectangle.halfWidth);
+		c = vec4(rectangle.up.x, rectangle.up.y, rectangle.up.z, rectangle.halfHeight);
+		d = vec4(horizontal.outer, horizontal.inner, vertical.outer, vertical.inner);
+	} else {
+		kind = LIGHT_KIND_CAPSULE;
+		const capsule: CapsuleLightShape = {
+			position: position, axis: forward, halfLength: shape.length * 0.5,
+			radius: shape.capsuleRadius, range: light.radius,
+		};
+		const _valid = try capsule.validateCapsule();
+		b = vec4(capsule.halfLength, Math.min(capsule.radius, capsule.range) as float32, 0.0, 0.0);
+	}
+	const arrayB: int32 = LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + at;
+	out[LIGHT_SHAPE_BASE + at] = forward.x;
+	out[LIGHT_SHAPE_BASE + at + 1] = forward.y;
+	out[LIGHT_SHAPE_BASE + at + 2] = forward.z;
+	out[LIGHT_SHAPE_BASE + at + 3] = kind;
+	out[arrayB] = b.x;
+	out[arrayB + 1] = b.y;
+	out[arrayB + 2] = b.z;
+	out[arrayB + 3] = b.w;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH] = c.x;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 1] = c.y;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 2] = c.z;
+	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 3] = c.w;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH] = d.x;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 1] = d.y;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 2] = d.z;
+	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 3] = d.w;
+	return Result.ok(null);
 }
 
 function ownedRows(scene: Scene3D): int32 {
