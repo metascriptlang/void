@@ -30,6 +30,7 @@ import {
 import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
+import { binaryOperator } from "./spelling";
 
 // WGSL keywords and reserved words (sections 15.1, 15.2), the predeclared types and enumerants
 // a declaration would shadow, and every builtin function this printer calls.
@@ -353,29 +354,6 @@ function literalText(p: Printer, t: ShaderType, value: float64): string {
 
 function argsText(p: Printer, args: ShaderExpr[]): string {
 	return args.map((a) => exprText(p, a)).join(", ");
-}
-
-function binaryOperator(op: BinaryOp): string {
-	return match (op) {
-		BinaryOp.Add => "+",
-		BinaryOp.Sub => "-",
-		BinaryOp.Mul => "*",
-		BinaryOp.Div => "/",
-		BinaryOp.Mod => "%",
-		BinaryOp.BitAnd => "&",
-		BinaryOp.BitOr => "|",
-		BinaryOp.BitXor => "^",
-		BinaryOp.ShiftLeft => "<<",
-		BinaryOp.ShiftRight => ">>",
-		BinaryOp.LogicalAnd => "&&",
-		BinaryOp.LogicalOr => "||",
-		BinaryOp.Equal => "==",
-		BinaryOp.NotEqual => "!=",
-		BinaryOp.Less => "<",
-		BinaryOp.LessEqual => "<=",
-		BinaryOp.Greater => ">",
-		BinaryOp.GreaterEqual => ">=",
-	};
 }
 
 function binaryText(p: Printer, e: ShaderExpr): string {

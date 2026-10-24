@@ -41,6 +41,7 @@ import {
 	structOrder,
 	unspecialized,
 } from "./irWalk";
+import { binaryOperator } from "./spelling";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 export enum GlslTarget {
@@ -395,26 +396,7 @@ function unaryText(e: ShaderExpr): string {
 function binaryText(p: Printer, e: ShaderExpr): string {
 	const a = e.operands[0];
 	const b = e.operands[1];
-	const op = match (e.binary) {
-		BinaryOp.Add => "+",
-		BinaryOp.Sub => "-",
-		BinaryOp.Mul => "*",
-		BinaryOp.Div => "/",
-		BinaryOp.Mod => "%",
-		BinaryOp.BitAnd => "&",
-		BinaryOp.BitOr => "|",
-		BinaryOp.BitXor => "^",
-		BinaryOp.ShiftLeft => "<<",
-		BinaryOp.ShiftRight => ">>",
-		BinaryOp.LogicalAnd => "&&",
-		BinaryOp.LogicalOr => "||",
-		BinaryOp.Equal => "==",
-		BinaryOp.NotEqual => "!=",
-		BinaryOp.Less => "<",
-		BinaryOp.LessEqual => "<=",
-		BinaryOp.Greater => ">",
-		BinaryOp.GreaterEqual => ">=",
-	};
+	const op = binaryOperator(e.binary);
 	if (e.binary == BinaryOp.Mod) { return remainder(p, a, b); }
 	if (isShift(e.binary) && b.kind != ExprKind.Literal) {
 		return operand(p, a) + " " + op + " (" + operand(p, b) + " & 31u)";

@@ -31,6 +31,7 @@ import {
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
+import { binaryOperator } from "./spelling";
 
 // C++14 keywords, the Metal address spaces, attributes and types, and every function this
 // printer calls.
@@ -357,29 +358,6 @@ function literalText(p: Printer, t: ShaderType, value: float64): string {
 
 function argsText(p: Printer, args: ShaderExpr[]): string {
 	return args.map((a) => exprText(p, a)).join(", ");
-}
-
-function binaryOperator(op: BinaryOp): string {
-	return match (op) {
-		BinaryOp.Add => "+",
-		BinaryOp.Sub => "-",
-		BinaryOp.Mul => "*",
-		BinaryOp.Div => "/",
-		BinaryOp.Mod => "%",
-		BinaryOp.BitAnd => "&",
-		BinaryOp.BitOr => "|",
-		BinaryOp.BitXor => "^",
-		BinaryOp.ShiftLeft => "<<",
-		BinaryOp.ShiftRight => ">>",
-		BinaryOp.LogicalAnd => "&&",
-		BinaryOp.LogicalOr => "||",
-		BinaryOp.Equal => "==",
-		BinaryOp.NotEqual => "!=",
-		BinaryOp.Less => "<",
-		BinaryOp.LessEqual => "<=",
-		BinaryOp.Greater => ">",
-		BinaryOp.GreaterEqual => ">=",
-	};
 }
 
 function isFloat(t: ShaderType): boolean {

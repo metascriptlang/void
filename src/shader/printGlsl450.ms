@@ -40,6 +40,7 @@ import {
 	nameStruct,
 	suffixed,
 } from "./names";
+import { binaryOperator } from "./spelling";
 
 // GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
 // texture and sampler types of Vulkan GLSL.
@@ -277,29 +278,6 @@ function literalText(e: ShaderExpr): string {
 	return text.indexOf(".") >= 0 || text.indexOf("e") >= 0 ? text : text + ".0";
 }
 
-function binaryText(op: BinaryOp): string {
-	return match (op) {
-		BinaryOp.Add => "+",
-		BinaryOp.Sub => "-",
-		BinaryOp.Mul => "*",
-		BinaryOp.Div => "/",
-		BinaryOp.Mod => "%",
-		BinaryOp.BitAnd => "&",
-		BinaryOp.BitOr => "|",
-		BinaryOp.BitXor => "^",
-		BinaryOp.ShiftLeft => "<<",
-		BinaryOp.ShiftRight => ">>",
-		BinaryOp.LogicalAnd => "&&",
-		BinaryOp.LogicalOr => "||",
-		BinaryOp.Equal => "==",
-		BinaryOp.NotEqual => "!=",
-		BinaryOp.Less => "<",
-		BinaryOp.LessEqual => "<=",
-		BinaryOp.Greater => ">",
-		BinaryOp.GreaterEqual => ">=",
-	};
-}
-
 function isIntegerScalar(t: ShaderType): boolean {
 	return t.kind == ShaderTypeKind.Scalar &&
 		(t.scalar == ScalarKind.I32 || t.scalar == ScalarKind.U32);
@@ -317,7 +295,7 @@ function value(p: Glsl, e: ShaderExpr): string {
 		}
 		const amount = isShift(e.binary) && right.kind != ExprKind.Literal ?
 			"(" + expr(p, right) + " & 31u)" : expr(p, right);
-		return expr(p, left) + " " + binaryText(e.binary) + " " + amount;
+		return expr(p, left) + " " + binaryOperator(e.binary) + " " + amount;
 	}
 	if (e.kind == ExprKind.Unary) {
 		const operand = e.operands[0];
