@@ -47,10 +47,10 @@ when (webgpu) {
 	export function gpuCopyShaderModule(): GPUShaderModuleDescriptor {
 		return {
 			label: "gpuCopy",
-			vertexCode: "",
+			vertexCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_in {\n  float2 position [[attribute(0)]];\n};\n\nstruct main0_out {\n  float4 clip [[position]];\n};\n\nstatic inline void fullscreenVs(thread main0_in& in, thread main0_out& out) {\n  out.clip = float4(in.position, 0.5, 1.0);\n  return;\n}\n\nvertex main0_out main0(main0_in in [[stage_in]]) {\n  main0_out out = {};\n  fullscreenVs(in, out);\n  return out;\n}\n",
 			vertexEntryPoint: "main0",
 			vertexBytecode: shaderBytecodeFromBase64(METALLIB_fa319764e5b0e4e63134739d91ec7b4f6ec7d6104b1f3406ea01c35212b8d773),
-			fragmentCode: "",
+			fragmentCode: "#include <metal_stdlib>\n\nusing namespace metal;\n\nstruct main0_out {\n  float4 fragColor [[color(0)]];\n};\n\nstatic inline void gpuCopyFs(thread main0_out& out, thread float4& position, texture2d<float> sourceTexture) {\n  int2 size = int2(sourceTexture.get_width(uint(0)), sourceTexture.get_height(uint(0)));\n  int2 p = clamp(int2(position.xy), int2(0, 0), (size - int2(1, 1)));\n  out.fragColor = float4(sourceTexture.read(uint2(p), uint(0)).xyz, 1.0);\n  return;\n}\n\nfragment main0_out main0(float4 position [[position]], texture2d<float> sourceTexture [[texture(0)]]) {\n  main0_out out = {};\n  gpuCopyFs(out, position, sourceTexture);\n  return out;\n}\n",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_cc091af8afac82913f3308314c2588d1644bbad2119425b3e97bb58f80c69cba),
 			bindings: [
