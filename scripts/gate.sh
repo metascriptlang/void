@@ -676,7 +676,7 @@ if "$MSC" build tests/integration/viewSamples.ms --output=out/viewSamples.exe > 
 	for samples in 1 2 4 8; do
 		if VOID_VIEW_SAMPLES=$samples out/viewSamples.exe > out/gate-view-samples-$samples.log 2>&1; then
 			pass "$(grep -o 'view samples: .*' out/gate-view-samples-$samples.log)"
-		elif grep -q "sampleCount '$samples' is not supported" out/gate-view-samples-$samples.log; then
+		elif [ "$samples" -eq 8 ] && grep -q "sampleCount '8' is not supported" out/gate-view-samples-$samples.log; then
 			pass "a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)"
 		else
 			fail "a host view at $samples samples — see out/gate-view-samples-$samples.log"
@@ -1176,7 +1176,7 @@ else
 			ios_line="$(grep "^$samples: " out/gate-ios-samples.log || true)"
 			case "$ios_line" in
 				*"PASS view samples"*) pass "iOS $ios_model: ${ios_line#*: }" ;;
-				*"sampleCount '$samples' is not supported"*) pass "iOS $ios_model: a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)" ;;
+				"8: "*"sampleCount '8' is not supported"*) pass "iOS $ios_model: a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)" ;;
 				*) fail "iOS $ios_model: a host view at $samples samples: ${ios_line:-no result} — see out/gate-ios-samples.log" ;;
 			esac
 		done
