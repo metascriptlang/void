@@ -37,7 +37,10 @@ import {
 import { exec } from "std/process";
 import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
+import { glslComputeIr } from "../shader/emit";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
+
+import { Cell, PlainBindings, WORKGROUP, plainKernel, shadyComputeDescriptor } from "./metalShadyCompute";
 
 @compile("./metalDevice.m");
 
@@ -2189,5 +2192,92 @@ test "a compute pass skips a buffer it already holds, moves it by offset alone, 
 	device.queue.submit(encoder.finish());
 	now = bindStats();
 	assert now.buffers - second.buffers == 2 && now.offsets - second.offsets == 0;
+	device.destroy();
+}
+
+const SHADY_COUNT = 96;
+const SHADY_SHIFT = 32;
+
+function shadyFloats(): Vec<float32> {
+	let out: Vec<float32> = [];
+	for (let j = 0; j < SHADY_COUNT; j++) { out.push((j as float32) * 0.25 - 12.0); }
+	return out;
+}
+
+function shadyInts(): Vec<int32> {
+	let out: Vec<int32> = [];
+	for (let j = 0; j < SHADY_COUNT; j++) { out.push(j * 37 - 1700); }
+	return out;
+}
+
+function cpuCells(xs: Vec<float32>, ks: Vec<int32>, shift: int32, count: int32): Cell[] {
+	let b: PlainBindings = { xs: [], ks: [], cells: [] };
+	for (let i = 0; i < count; i++) {
+		b.xs.push({ x: xs[shift + i] });
+		b.ks.push({ k: ks[shift + i] });
+		b.cells.push({ a: { value: 0 }, b: { value: 0 }, c: { value: 0 } });
+	}
+	for (let i = 0; i < count; i++) { plainKernel({ id: { x: i as uint32, y: 0, z: 0 } }, b); }
+	return b.cells;
+}
+
+function wordAt(bytes: Vec<uint8>, at: int32): uint32 {
+	return (bytes[at] as uint32) | ((bytes[at + 1] as uint32) << 8) | ((bytes[at + 2] as uint32) << 16) | ((bytes[at + 3] as uint32) << 24);
+}
+
+function intAt(bytes: Vec<uint8>, at: int32): int32 {
+	const word = wordAt(bytes, at) as int64;
+	return (word >= 2147483648 ? word - 4294967296 : word) as int32;
+}
+
+function shadyGroup(device: GPUDevice, pipeline: GPUComputePipeline, xs: GPUBuffer, ks: GPUBuffer, cells: GPUBuffer, shift: int64): GPUBindGroup {
+	let descriptor: GPUBindGroupDescriptor = { label: "shady", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = { binding: 0, buffer: xs, offset: shift * 4, size: (SHADY_COUNT as int64) * 4 - shift * 4 };
+	descriptor.entries[1] = { binding: 1, buffer: ks, offset: shift * 4, size: (SHADY_COUNT as int64) * 4 - shift * 4 };
+	descriptor.entries[2] = { binding: 2, buffer: cells, offset: shift * 12, size: (SHADY_COUNT as int64) * 12 - shift * 12 };
+	return device.createBindGroup(descriptor);
+}
+
+function sameCell(bytes: Vec<uint8>, index: int32, expected: Cell): boolean {
+	return wordAt(bytes, index * 12) == expected.a.value &&
+		intAt(bytes, index * 12 + 4) == expected.b.value &&
+		intAt(bytes, index * 12 + 8) == expected.c.value;
+}
+
+test "a compute program printed by the shader compiler fills a read-write storage buffer, whole and then through bindings at an offset" {
+	const device = openDevice();
+	const module = device.createShaderModule(shadyComputeDescriptor("plain", glslComputeIr(plainKernel, [32, 1, 1])));
+	const pipeline = device.createComputePipeline({ label: "plain", compute: { module: module, entryPoint: "main0" } });
+	const xs = device.createBuffer({ label: "xs", size: SHADY_COUNT * 4, usage: STORAGE_BUFFER_USAGE });
+	const ks = device.createBuffer({ label: "ks", size: SHADY_COUNT * 4, usage: STORAGE_BUFFER_USAGE });
+	const cells = device.createBuffer({ label: "cells", size: SHADY_COUNT * 12, usage: STORAGE_BUFFER_USAGE });
+	const floats = shadyFloats();
+	const ints = shadyInts();
+	device.queue.writeBuffer(xs, 0, floats);
+	device.queue.writeBuffer(ks, 0, ints);
+	const noOffsets: Vec<uint32> = [];
+	const read = device.createBuffer({ label: "read", size: SHADY_COUNT * 12, usage: MAP_READ_USAGE });
+	const encoder = device.createCommandEncoder();
+	let pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, shadyGroup(device, pipeline, xs, ks, cells, 0), noOffsets);
+	pass.dispatchWorkgroups(SHADY_COUNT / WORKGROUP, 1, 1);
+	pass.end();
+	pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, shadyGroup(device, pipeline, xs, ks, cells, SHADY_SHIFT), noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.end();
+	encoder.copyBufferToBuffer(cells, 0, read, 0, SHADY_COUNT * 12);
+	device.queue.submit(encoder.finish());
+	const bytes = mappedRead(read, 0, SHADY_COUNT * 12);
+	const whole = cpuCells(floats, ints, 0, SHADY_COUNT);
+	const shifted = cpuCells(floats, ints, SHADY_SHIFT, WORKGROUP);
+	assert whole[1].a.value == 10 && whole[0].c.value == -29;
+	assert whole[40].b.value != shifted[8].b.value;
+	for (let i = 0; i < SHADY_COUNT; i++) {
+		const expected = i >= SHADY_SHIFT && i < SHADY_SHIFT + WORKGROUP ? shifted[i - SHADY_SHIFT] : whole[i];
+		assert sameCell(bytes, i, expected);
+	}
 	device.destroy();
 }
