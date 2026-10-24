@@ -1031,30 +1031,30 @@ _Static_assert(sizeof(billboard_frameParams_t) == sizeof(lit_frameParams_t) && U
 	"billboard must take frameParams as lit does");
 _Static_assert(sizeof(particleVisual_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_particleVisual_vertexParams == UB_lit_vertexParams,
 	"particleVisual must take vertexParams as lit does");
-_Static_assert(sizeof(particleVisual_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisual_billboardParams == UB_billboard_billboardParams,
-	"particleVisual must take billboardParams as billboard does");
 _Static_assert(sizeof(particleVisual_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisual_lightParams == UB_lit_lightParams,
 	"particleVisual must take lightParams as lit does");
+_Static_assert(sizeof(particleVisual_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisual_billboardParams == UB_billboard_billboardParams,
+	"particleVisual must take billboardParams as billboard does");
 _Static_assert(sizeof(particleVisual_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisual_frameParams == UB_lit_frameParams,
 	"particleVisual must take frameParams as lit does");
 _Static_assert(ATTR_particleVisualPremultiplied_program_root == ATTR_particleVisual_program_root && ATTR_particleVisualPremultiplied_program_shape == ATTR_particleVisual_program_shape && ATTR_particleVisualPremultiplied_program_tile == ATTR_particleVisual_program_tile && ATTR_particleVisualPremultiplied_program_color == ATTR_particleVisual_program_color && ATTR_particleVisualPremultiplied_program_velocity == ATTR_particleVisual_program_velocity && ATTR_particleVisualPremultiplied_program_look == ATTR_particleVisual_program_look && ATTR_particleVisualPremultiplied_program_scale == ATTR_particleVisual_program_scale && ATTR_particleVisualPremultiplied_program_pull == ATTR_particleVisual_program_pull && ATTR_particleVisualPremultiplied_program_emitterRight == ATTR_particleVisual_program_emitterRight && ATTR_particleVisualPremultiplied_program_emitterUp == ATTR_particleVisual_program_emitterUp,
 	"particleVisualPremultiplied must take the PARTICLE_VISUAL layout as particleVisual does");
 _Static_assert(sizeof(particleVisualPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_particleVisualPremultiplied_vertexParams == UB_lit_vertexParams,
 	"particleVisualPremultiplied must take vertexParams as lit does");
-_Static_assert(sizeof(particleVisualPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisualPremultiplied_billboardParams == UB_billboard_billboardParams,
-	"particleVisualPremultiplied must take billboardParams as billboard does");
 _Static_assert(sizeof(particleVisualPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisualPremultiplied_lightParams == UB_lit_lightParams,
 	"particleVisualPremultiplied must take lightParams as lit does");
+_Static_assert(sizeof(particleVisualPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisualPremultiplied_billboardParams == UB_billboard_billboardParams,
+	"particleVisualPremultiplied must take billboardParams as billboard does");
 _Static_assert(sizeof(particleVisualPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisualPremultiplied_frameParams == UB_lit_frameParams,
 	"particleVisualPremultiplied must take frameParams as lit does");
 _Static_assert(ATTR_particleVisualCutout_program_root == ATTR_particleVisual_program_root && ATTR_particleVisualCutout_program_shape == ATTR_particleVisual_program_shape && ATTR_particleVisualCutout_program_tile == ATTR_particleVisual_program_tile && ATTR_particleVisualCutout_program_color == ATTR_particleVisual_program_color && ATTR_particleVisualCutout_program_velocity == ATTR_particleVisual_program_velocity && ATTR_particleVisualCutout_program_look == ATTR_particleVisual_program_look && ATTR_particleVisualCutout_program_scale == ATTR_particleVisual_program_scale && ATTR_particleVisualCutout_program_pull == ATTR_particleVisual_program_pull && ATTR_particleVisualCutout_program_emitterRight == ATTR_particleVisual_program_emitterRight && ATTR_particleVisualCutout_program_emitterUp == ATTR_particleVisual_program_emitterUp,
 	"particleVisualCutout must take the PARTICLE_VISUAL layout as particleVisual does");
 _Static_assert(sizeof(particleVisualCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_particleVisualCutout_vertexParams == UB_lit_vertexParams,
 	"particleVisualCutout must take vertexParams as lit does");
-_Static_assert(sizeof(particleVisualCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisualCutout_billboardParams == UB_billboard_billboardParams,
-	"particleVisualCutout must take billboardParams as billboard does");
 _Static_assert(sizeof(particleVisualCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_particleVisualCutout_lightParams == UB_lit_lightParams,
 	"particleVisualCutout must take lightParams as lit does");
+_Static_assert(sizeof(particleVisualCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_particleVisualCutout_billboardParams == UB_billboard_billboardParams,
+	"particleVisualCutout must take billboardParams as billboard does");
 _Static_assert(sizeof(particleVisualCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_particleVisualCutout_frameParams == UB_lit_frameParams,
 	"particleVisualCutout must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtParticleVisual_program_root == ATTR_particleVisual_program_root && ATTR_pixelArtParticleVisual_program_shape == ATTR_particleVisual_program_shape && ATTR_pixelArtParticleVisual_program_tile == ATTR_particleVisual_program_tile && ATTR_pixelArtParticleVisual_program_color == ATTR_particleVisual_program_color && ATTR_pixelArtParticleVisual_program_velocity == ATTR_particleVisual_program_velocity && ATTR_pixelArtParticleVisual_program_look == ATTR_particleVisual_program_look && ATTR_pixelArtParticleVisual_program_scale == ATTR_particleVisual_program_scale && ATTR_pixelArtParticleVisual_program_pull == ATTR_particleVisual_program_pull && ATTR_pixelArtParticleVisual_program_emitterRight == ATTR_particleVisual_program_emitterRight && ATTR_pixelArtParticleVisual_program_emitterUp == ATTR_particleVisual_program_emitterUp,
@@ -1283,10 +1283,10 @@ _Static_assert(sizeof(litShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) 
 	"litShadowed must take vertexParams as lit does");
 _Static_assert(sizeof(litShadowed_materialParams_t) == sizeof(lit_materialParams_t) && UB_litShadowed_materialParams == UB_lit_materialParams,
 	"litShadowed must take materialParams as lit does");
-_Static_assert(sizeof(litShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litShadowed_lightParams == UB_lit_lightParams,
-	"litShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litShadowed_frameParams == UB_lit_frameParams,
 	"litShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litShadowed_lightParams == UB_lit_lightParams,
+	"litShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLitShadowed_program_position == ATTR_lit_program_position && ATTR_pixelArtLitShadowed_program_normal == ATTR_lit_program_normal && ATTR_pixelArtLitShadowed_program_color == ATTR_lit_program_color && ATTR_pixelArtLitShadowed_program_instanceRow0 == ATTR_lit_program_instanceRow0 && ATTR_pixelArtLitShadowed_program_instanceRow1 == ATTR_lit_program_instanceRow1 && ATTR_pixelArtLitShadowed_program_instanceRow2 == ATTR_lit_program_instanceRow2 && ATTR_pixelArtLitShadowed_program_instanceColor == ATTR_lit_program_instanceColor,
 	"pixelArtLitShadowed must take the LIT layout as lit does");
 _Static_assert(sizeof(pixelArtLitShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitShadowed_vertexParams == UB_lit_vertexParams,
@@ -1295,10 +1295,10 @@ _Static_assert(sizeof(pixelArtLitShadowed_materialParams_t) == sizeof(lit_materi
 	"pixelArtLitShadowed must take materialParams as lit does");
 _Static_assert(sizeof(pixelArtLitShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitShadowed must take lightParams as lit does");
 _Static_assert(ATTR_litCutoutShadowed_program_position == ATTR_lit_program_position && ATTR_litCutoutShadowed_program_normal == ATTR_lit_program_normal && ATTR_litCutoutShadowed_program_color == ATTR_lit_program_color && ATTR_litCutoutShadowed_program_instanceRow0 == ATTR_lit_program_instanceRow0 && ATTR_litCutoutShadowed_program_instanceRow1 == ATTR_lit_program_instanceRow1 && ATTR_litCutoutShadowed_program_instanceRow2 == ATTR_lit_program_instanceRow2 && ATTR_litCutoutShadowed_program_instanceColor == ATTR_lit_program_instanceColor,
 	"litCutoutShadowed must take the LIT layout as lit does");
 _Static_assert(sizeof(litCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litCutoutShadowed_vertexParams == UB_lit_vertexParams,
@@ -1307,10 +1307,10 @@ _Static_assert(sizeof(litCutoutShadowed_materialParams_t) == sizeof(lit_material
 	"litCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(litCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litCutoutShadowed_lightParams == UB_lit_lightParams,
-	"litCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litCutoutShadowed_frameParams == UB_lit_frameParams,
 	"litCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litCutoutShadowed_lightParams == UB_lit_lightParams,
+	"litCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLitCutoutShadowed_program_position == ATTR_lit_program_position && ATTR_pixelArtLitCutoutShadowed_program_normal == ATTR_lit_program_normal && ATTR_pixelArtLitCutoutShadowed_program_color == ATTR_lit_program_color && ATTR_pixelArtLitCutoutShadowed_program_instanceRow0 == ATTR_lit_program_instanceRow0 && ATTR_pixelArtLitCutoutShadowed_program_instanceRow1 == ATTR_lit_program_instanceRow1 && ATTR_pixelArtLitCutoutShadowed_program_instanceRow2 == ATTR_lit_program_instanceRow2 && ATTR_pixelArtLitCutoutShadowed_program_instanceColor == ATTR_lit_program_instanceColor,
 	"pixelArtLitCutoutShadowed must take the LIT layout as lit does");
 _Static_assert(sizeof(pixelArtLitCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitCutoutShadowed_vertexParams == UB_lit_vertexParams,
@@ -1319,10 +1319,10 @@ _Static_assert(sizeof(pixelArtLitCutoutShadowed_materialParams_t) == sizeof(lit_
 	"pixelArtLitCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitCutoutShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitCutoutShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitCutoutShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedShadowed_program_position == ATTR_litTextured_program_position && ATTR_litTexturedShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedShadowed_program_color == ATTR_litTextured_program_color && ATTR_litTexturedShadowed_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_litTexturedShadowed_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_litTexturedShadowed_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_litTexturedShadowed_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"litTexturedShadowed must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedShadowed_vertexParams == UB_lit_vertexParams,
@@ -1331,10 +1331,10 @@ _Static_assert(sizeof(litTexturedShadowed_materialParams_t) == sizeof(lit_materi
 	"litTexturedShadowed must take materialParams as lit does");
 _Static_assert(sizeof(litTexturedShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLitTexturedShadowed_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedShadowed_program_color == ATTR_litTextured_program_color && ATTR_pixelArtLitTexturedShadowed_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_pixelArtLitTexturedShadowed_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_pixelArtLitTexturedShadowed_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_pixelArtLitTexturedShadowed_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"pixelArtLitTexturedShadowed must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtLitTexturedShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedShadowed_vertexParams == UB_lit_vertexParams,
@@ -1343,10 +1343,10 @@ _Static_assert(sizeof(pixelArtLitTexturedShadowed_materialParams_t) == sizeof(li
 	"pixelArtLitTexturedShadowed must take materialParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedShadowed must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedCutoutShadowed_program_position == ATTR_litTextured_program_position && ATTR_litTexturedCutoutShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedCutoutShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedCutoutShadowed_program_color == ATTR_litTextured_program_color && ATTR_litTexturedCutoutShadowed_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_litTexturedCutoutShadowed_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_litTexturedCutoutShadowed_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_litTexturedCutoutShadowed_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"litTexturedCutoutShadowed must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedCutoutShadowed_vertexParams == UB_lit_vertexParams,
@@ -1355,10 +1355,10 @@ _Static_assert(sizeof(litTexturedCutoutShadowed_materialParams_t) == sizeof(lit_
 	"litTexturedCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(litTexturedCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedCutoutShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLitTexturedCutoutShadowed_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedCutoutShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedCutoutShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedCutoutShadowed_program_color == ATTR_litTextured_program_color && ATTR_pixelArtLitTexturedCutoutShadowed_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_pixelArtLitTexturedCutoutShadowed_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_pixelArtLitTexturedCutoutShadowed_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_pixelArtLitTexturedCutoutShadowed_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"pixelArtLitTexturedCutoutShadowed must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedCutoutShadowed_vertexParams == UB_lit_vertexParams,
@@ -1367,10 +1367,10 @@ _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_materialParams_t) == siz
 	"pixelArtLitTexturedCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedCutoutShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedUvTransform_program_position == ATTR_litTextured_program_position && ATTR_litTexturedUvTransform_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedUvTransform_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedUvTransform_program_color == ATTR_litTextured_program_color && ATTR_litTexturedUvTransform_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_litTexturedUvTransform_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_litTexturedUvTransform_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_litTexturedUvTransform_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"litTexturedUvTransform must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedUvTransform_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedUvTransform_vertexParams == UB_lit_vertexParams,
@@ -1387,10 +1387,10 @@ _Static_assert(sizeof(litTexturedUvTransformShadowed_movingMaterialParams_t) == 
 	"litTexturedUvTransformShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedUvTransformShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedUvTransformShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedUvTransformShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedUvTransformShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedUvTransformShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedUvTransformShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedUvTransform_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedUvTransform_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedUvTransform_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedUvTransform_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedUvTransform_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedUvTransform_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedUvTransform_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedUvTransform_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedUvTransform must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedUvTransform_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedUvTransform_vertexParams == UB_lit_vertexParams,
@@ -1415,10 +1415,10 @@ _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_movingMaterialParam
 	"pixelArtLitTexturedUvTransformShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedUvTransformShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedUvTransformShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtUnlitTexturedUvTransform_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedUvTransform_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedUvTransform_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedUvTransform_program_color == ATTR_litTextured_program_color && ATTR_pixelArtUnlitTexturedUvTransform_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_pixelArtUnlitTexturedUvTransform_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_pixelArtUnlitTexturedUvTransform_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_pixelArtUnlitTexturedUvTransform_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"pixelArtUnlitTexturedUvTransform must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTexturedUvTransform_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTexturedUvTransform_vertexParams == UB_lit_vertexParams,
@@ -1445,10 +1445,10 @@ _Static_assert(sizeof(litTexturedBackTextureShadowed_movingMaterialParams_t) == 
 	"litTexturedBackTextureShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedBackTextureShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedBackTextureShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedBackTextureShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedBackTextureShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedBackTextureShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedBackTextureShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedBackTexture_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedBackTexture_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedBackTexture_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedBackTexture_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedBackTexture_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedBackTexture_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedBackTexture_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedBackTexture_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedBackTexture must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedBackTexture_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedBackTexture_vertexParams == UB_lit_vertexParams,
@@ -1475,10 +1475,10 @@ _Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_movingMaterialParam
 	"pixelArtLitTexturedBackTextureShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedBackTextureShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedBackTextureShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtUnlitTexturedBackTexture_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedBackTexture_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedBackTexture_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedBackTexture_program_color == ATTR_litTextured_program_color && ATTR_pixelArtUnlitTexturedBackTexture_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_pixelArtUnlitTexturedBackTexture_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_pixelArtUnlitTexturedBackTexture_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_pixelArtUnlitTexturedBackTexture_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"pixelArtUnlitTexturedBackTexture must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTexturedBackTexture_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTexturedBackTexture_vertexParams == UB_lit_vertexParams,
@@ -1505,10 +1505,10 @@ _Static_assert(sizeof(litTexturedDissolveShadowed_movingMaterialParams_t) == siz
 	"litTexturedDissolveShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedDissolveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedDissolveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedDissolveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolveShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedDissolveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedDissolve_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedDissolve_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedDissolve_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedDissolve_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedDissolve_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedDissolve_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedDissolve_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedDissolve_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedDissolve must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedDissolve_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedDissolve_vertexParams == UB_lit_vertexParams,
@@ -1535,10 +1535,10 @@ _Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_movingMaterialParams_t
 	"pixelArtLitTexturedDissolveShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedDissolveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedDissolveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedDissolveShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedDissolveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtUnlitTexturedDissolve_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedDissolve_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedDissolve_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedDissolve_program_color == ATTR_litTextured_program_color && ATTR_pixelArtUnlitTexturedDissolve_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_pixelArtUnlitTexturedDissolve_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_pixelArtUnlitTexturedDissolve_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_pixelArtUnlitTexturedDissolve_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"pixelArtUnlitTexturedDissolve must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTexturedDissolve_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTexturedDissolve_vertexParams == UB_lit_vertexParams,
@@ -1565,10 +1565,10 @@ _Static_assert(sizeof(litTexturedMovingShadowed_movingMaterialParams_t) == sizeo
 	"litTexturedMovingShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedMovingShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedMovingShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedMovingShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedMovingShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedMovingShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedMovingShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedMovingShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedMovingShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedMoving_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedMoving_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedMoving_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedMoving_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedMoving_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedMoving_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedMoving_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedMoving_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedMoving must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedMoving_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedMoving_vertexParams == UB_lit_vertexParams,
@@ -1595,10 +1595,10 @@ _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_movingMaterialParams_t) 
 	"pixelArtLitTexturedMovingShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedMovingShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedMovingShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedMovingShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedMovingShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedMovingShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedMovingShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtUnlitTexturedMoving_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedMoving_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedMoving_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedMoving_program_color == ATTR_litTextured_program_color && ATTR_pixelArtUnlitTexturedMoving_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_pixelArtUnlitTexturedMoving_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_pixelArtUnlitTexturedMoving_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_pixelArtUnlitTexturedMoving_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"pixelArtUnlitTexturedMoving must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTexturedMoving_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTexturedMoving_vertexParams == UB_lit_vertexParams,
@@ -1635,10 +1635,10 @@ _Static_assert(sizeof(litTexturedEmissiveShadowed_emissiveMaterialParams_t) == s
 	"litTexturedEmissiveShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(litTexturedEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedEmissiveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissiveShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedEmissiveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLitTexturedEmissive_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedEmissive_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedEmissive_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedEmissive_program_color == ATTR_litTextured_program_color && ATTR_pixelArtLitTexturedEmissive_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_pixelArtLitTexturedEmissive_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_pixelArtLitTexturedEmissive_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_pixelArtLitTexturedEmissive_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"pixelArtLitTexturedEmissive must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissive_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedEmissive_vertexParams == UB_lit_vertexParams,
@@ -1657,10 +1657,10 @@ _Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_emissiveMaterialParams
 	"pixelArtLitTexturedEmissiveShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedEmissiveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedEmissiveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedNormalMap_vertexParams == UB_lit_vertexParams,
 	"litTexturedNormalMap must take vertexParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMap_materialParams_t) == sizeof(lit_materialParams_t) && UB_litTexturedNormalMap_materialParams == UB_lit_materialParams,
@@ -1677,10 +1677,10 @@ _Static_assert(sizeof(litTexturedNormalMapShadowed_materialParams_t) == sizeof(l
 	"litTexturedNormalMapShadowed must take materialParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLitTexturedNormalMap_program_position == ATTR_litTexturedNormalMap_program_position && ATTR_pixelArtLitTexturedNormalMap_program_normal == ATTR_litTexturedNormalMap_program_normal && ATTR_pixelArtLitTexturedNormalMap_program_uv == ATTR_litTexturedNormalMap_program_uv && ATTR_pixelArtLitTexturedNormalMap_program_color == ATTR_litTexturedNormalMap_program_color && ATTR_pixelArtLitTexturedNormalMap_program_tangent == ATTR_litTexturedNormalMap_program_tangent && ATTR_pixelArtLitTexturedNormalMap_program_instanceRow0 == ATTR_litTexturedNormalMap_program_instanceRow0 && ATTR_pixelArtLitTexturedNormalMap_program_instanceRow1 == ATTR_litTexturedNormalMap_program_instanceRow1 && ATTR_pixelArtLitTexturedNormalMap_program_instanceRow2 == ATTR_litTexturedNormalMap_program_instanceRow2 && ATTR_pixelArtLitTexturedNormalMap_program_instanceColor == ATTR_litTexturedNormalMap_program_instanceColor,
 	"pixelArtLitTexturedNormalMap must take the LIT_TEXTURED_TANGENT layout as litTexturedNormalMap does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedNormalMap_vertexParams == UB_lit_vertexParams,
@@ -1699,10 +1699,10 @@ _Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_materialParams_t) == 
 	"pixelArtLitTexturedNormalMapShadowed must take materialParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedEmissiveNormalMap_program_position == ATTR_litTexturedNormalMap_program_position && ATTR_litTexturedEmissiveNormalMap_program_normal == ATTR_litTexturedNormalMap_program_normal && ATTR_litTexturedEmissiveNormalMap_program_uv == ATTR_litTexturedNormalMap_program_uv && ATTR_litTexturedEmissiveNormalMap_program_color == ATTR_litTexturedNormalMap_program_color && ATTR_litTexturedEmissiveNormalMap_program_tangent == ATTR_litTexturedNormalMap_program_tangent && ATTR_litTexturedEmissiveNormalMap_program_instanceRow0 == ATTR_litTexturedNormalMap_program_instanceRow0 && ATTR_litTexturedEmissiveNormalMap_program_instanceRow1 == ATTR_litTexturedNormalMap_program_instanceRow1 && ATTR_litTexturedEmissiveNormalMap_program_instanceRow2 == ATTR_litTexturedNormalMap_program_instanceRow2 && ATTR_litTexturedEmissiveNormalMap_program_instanceColor == ATTR_litTexturedNormalMap_program_instanceColor,
 	"litTexturedEmissiveNormalMap must take the LIT_TEXTURED_TANGENT layout as litTexturedNormalMap does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedEmissiveNormalMap_vertexParams == UB_lit_vertexParams,
@@ -1721,10 +1721,10 @@ _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_emissiveMaterialParam
 	"litTexturedEmissiveNormalMapShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedEmissiveNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedEmissiveNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissiveNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedEmissiveNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLitTexturedEmissiveNormalMap_program_position == ATTR_litTexturedNormalMap_program_position && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_normal == ATTR_litTexturedNormalMap_program_normal && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_uv == ATTR_litTexturedNormalMap_program_uv && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_color == ATTR_litTexturedNormalMap_program_color && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_tangent == ATTR_litTexturedNormalMap_program_tangent && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_instanceRow0 == ATTR_litTexturedNormalMap_program_instanceRow0 && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_instanceRow1 == ATTR_litTexturedNormalMap_program_instanceRow1 && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_instanceRow2 == ATTR_litTexturedNormalMap_program_instanceRow2 && ATTR_pixelArtLitTexturedEmissiveNormalMap_program_instanceColor == ATTR_litTexturedNormalMap_program_instanceColor,
 	"pixelArtLitTexturedEmissiveNormalMap must take the LIT_TEXTURED_TANGENT layout as litTexturedNormalMap does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedEmissiveNormalMap_vertexParams == UB_lit_vertexParams,
@@ -1743,10 +1743,10 @@ _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_emissiveMater
 	"pixelArtLitTexturedEmissiveNormalMapShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedEmissiveNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"pixelArtLitTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"pixelArtLitTexturedEmissiveNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"pixelArtLitTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_shadowLitTexturedNormalMap_program_position == ATTR_litTexturedNormalMap_program_position && ATTR_shadowLitTexturedNormalMap_program_normal == ATTR_litTexturedNormalMap_program_normal && ATTR_shadowLitTexturedNormalMap_program_uv == ATTR_litTexturedNormalMap_program_uv && ATTR_shadowLitTexturedNormalMap_program_color == ATTR_litTexturedNormalMap_program_color && ATTR_shadowLitTexturedNormalMap_program_tangent == ATTR_litTexturedNormalMap_program_tangent && ATTR_shadowLitTexturedNormalMap_program_instanceRow0 == ATTR_litTexturedNormalMap_program_instanceRow0 && ATTR_shadowLitTexturedNormalMap_program_instanceRow1 == ATTR_litTexturedNormalMap_program_instanceRow1 && ATTR_shadowLitTexturedNormalMap_program_instanceRow2 == ATTR_litTexturedNormalMap_program_instanceRow2 && ATTR_shadowLitTexturedNormalMap_program_instanceColor == ATTR_litTexturedNormalMap_program_instanceColor,
 	"shadowLitTexturedNormalMap must take the LIT_TEXTURED_TANGENT layout as litTexturedNormalMap does");
 _Static_assert(sizeof(shadowLitTexturedNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_shadowLitTexturedNormalMap_vertexParams == UB_lit_vertexParams,
@@ -1803,18 +1803,18 @@ _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_movingEmissiveMaterial
 	"litTexturedDissolveEmissiveShadowed must take movingEmissiveMaterialParams as litTexturedDissolveEmissive does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedDissolveEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedDissolveEmissiveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveEmissiveShadowed_lightParams == UB_lit_lightParams,
-	"litTexturedDissolveEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolveEmissiveShadowed_frameParams == UB_lit_frameParams,
 	"litTexturedDissolveEmissiveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveEmissiveShadowed_lightParams == UB_lit_lightParams,
+	"litTexturedDissolveEmissiveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_billboardPremultiplied_program_position == ATTR_billboard_program_position && ATTR_billboardPremultiplied_program_size == ATTR_billboard_program_size && ATTR_billboardPremultiplied_program_anchor == ATTR_billboard_program_anchor && ATTR_billboardPremultiplied_program_tile == ATTR_billboard_program_tile && ATTR_billboardPremultiplied_program_color == ATTR_billboard_program_color,
 	"billboardPremultiplied must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(billboardPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboardPremultiplied_vertexParams == UB_lit_vertexParams,
 	"billboardPremultiplied must take vertexParams as lit does");
-_Static_assert(sizeof(billboardPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardPremultiplied_billboardParams == UB_billboard_billboardParams,
-	"billboardPremultiplied must take billboardParams as billboard does");
 _Static_assert(sizeof(billboardPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardPremultiplied_lightParams == UB_lit_lightParams,
 	"billboardPremultiplied must take lightParams as lit does");
+_Static_assert(sizeof(billboardPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardPremultiplied_billboardParams == UB_billboard_billboardParams,
+	"billboardPremultiplied must take billboardParams as billboard does");
 _Static_assert(sizeof(billboardPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardPremultiplied_frameParams == UB_lit_frameParams,
 	"billboardPremultiplied must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtBillboardPremultiplied_program_position == ATTR_billboard_program_position && ATTR_pixelArtBillboardPremultiplied_program_size == ATTR_billboard_program_size && ATTR_pixelArtBillboardPremultiplied_program_anchor == ATTR_billboard_program_anchor && ATTR_pixelArtBillboardPremultiplied_program_tile == ATTR_billboard_program_tile && ATTR_pixelArtBillboardPremultiplied_program_color == ATTR_billboard_program_color,
@@ -1847,10 +1847,10 @@ _Static_assert(ATTR_billboardCutout_program_position == ATTR_billboard_program_p
 	"billboardCutout must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(billboardCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboardCutout_vertexParams == UB_lit_vertexParams,
 	"billboardCutout must take vertexParams as lit does");
-_Static_assert(sizeof(billboardCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardCutout_billboardParams == UB_billboard_billboardParams,
-	"billboardCutout must take billboardParams as billboard does");
 _Static_assert(sizeof(billboardCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardCutout_lightParams == UB_lit_lightParams,
 	"billboardCutout must take lightParams as lit does");
+_Static_assert(sizeof(billboardCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardCutout_billboardParams == UB_billboard_billboardParams,
+	"billboardCutout must take billboardParams as billboard does");
 _Static_assert(sizeof(billboardCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardCutout_frameParams == UB_lit_frameParams,
 	"billboardCutout must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtBillboardCutout_program_position == ATTR_billboard_program_position && ATTR_pixelArtBillboardCutout_program_size == ATTR_billboard_program_size && ATTR_pixelArtBillboardCutout_program_anchor == ATTR_billboard_program_anchor && ATTR_pixelArtBillboardCutout_program_tile == ATTR_billboard_program_tile && ATTR_pixelArtBillboardCutout_program_color == ATTR_billboard_program_color,
@@ -1957,10 +1957,10 @@ _Static_assert(sizeof(litShadowedNormalMrt_materialParams_t) == sizeof(lit_mater
 	"litShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(litShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_litCutoutShadowedNormalMrt_program_position == ATTR_lit_program_position && ATTR_litCutoutShadowedNormalMrt_program_normal == ATTR_lit_program_normal && ATTR_litCutoutShadowedNormalMrt_program_color == ATTR_lit_program_color && ATTR_litCutoutShadowedNormalMrt_program_instanceRow0 == ATTR_lit_program_instanceRow0 && ATTR_litCutoutShadowedNormalMrt_program_instanceRow1 == ATTR_lit_program_instanceRow1 && ATTR_litCutoutShadowedNormalMrt_program_instanceRow2 == ATTR_lit_program_instanceRow2 && ATTR_litCutoutShadowedNormalMrt_program_instanceColor == ATTR_lit_program_instanceColor,
 	"litCutoutShadowedNormalMrt must take the LIT layout as lit does");
 _Static_assert(sizeof(litCutoutShadowedNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litCutoutShadowedNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -1969,10 +1969,10 @@ _Static_assert(sizeof(litCutoutShadowedNormalMrt_materialParams_t) == sizeof(lit
 	"litCutoutShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(litCutoutShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litCutoutShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litCutoutShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litCutoutShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litCutoutShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litCutoutShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedShadowedNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_litTexturedShadowedNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedShadowedNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedShadowedNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_litTexturedShadowedNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_litTexturedShadowedNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_litTexturedShadowedNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_litTexturedShadowedNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"litTexturedShadowedNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedShadowedNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedShadowedNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -1981,10 +1981,10 @@ _Static_assert(sizeof(litTexturedShadowedNormalMrt_materialParams_t) == sizeof(l
 	"litTexturedShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(litTexturedShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedCutoutShadowedNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_litTexturedCutoutShadowedNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedCutoutShadowedNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedCutoutShadowedNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_litTexturedCutoutShadowedNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_litTexturedCutoutShadowedNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_litTexturedCutoutShadowedNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_litTexturedCutoutShadowedNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"litTexturedCutoutShadowedNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedCutoutShadowedNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedCutoutShadowedNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -1993,10 +1993,10 @@ _Static_assert(sizeof(litTexturedCutoutShadowedNormalMrt_materialParams_t) == si
 	"litTexturedCutoutShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(litTexturedCutoutShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedCutoutShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedCutoutShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedCutoutShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedCutoutShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedCutoutShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedUvTransformNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_litTexturedUvTransformNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedUvTransformNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedUvTransformNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_litTexturedUvTransformNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_litTexturedUvTransformNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_litTexturedUvTransformNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_litTexturedUvTransformNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"litTexturedUvTransformNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedUvTransformNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedUvTransformNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2015,10 +2015,10 @@ _Static_assert(sizeof(litTexturedUvTransformShadowedNormalMrt_movingMaterialPara
 	"litTexturedUvTransformShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedUvTransformShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedUvTransformShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedUvTransformShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedUvTransformShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedUvTransformShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedUvTransformShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedUvTransformShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedUvTransformShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedUvTransformShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedUvTransformShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedUvTransformShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedUvTransformShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedUvTransformNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedUvTransformNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedUvTransformNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedUvTransformNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedUvTransformNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedUvTransformNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedUvTransformNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedUvTransformNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedUvTransformNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedUvTransformNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedUvTransformNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2045,10 +2045,10 @@ _Static_assert(sizeof(litTexturedBackTextureShadowedNormalMrt_movingMaterialPara
 	"litTexturedBackTextureShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedBackTextureShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedBackTextureShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedBackTextureShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedBackTextureShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedBackTextureShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedBackTextureShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedBackTextureShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedBackTextureShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedBackTextureShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedBackTextureShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedBackTextureShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedBackTextureShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedBackTextureNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedBackTextureNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedBackTextureNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedBackTextureNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedBackTextureNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedBackTextureNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedBackTextureNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedBackTextureNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedBackTextureNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedBackTextureNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedBackTextureNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2075,10 +2075,10 @@ _Static_assert(sizeof(litTexturedDissolveShadowedNormalMrt_movingMaterialParams_
 	"litTexturedDissolveShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedDissolveShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedDissolveShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedDissolveShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedDissolveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedDissolveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolveShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedDissolveShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedDissolveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedDissolveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedDissolveNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedDissolveNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedDissolveNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedDissolveNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedDissolveNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedDissolveNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedDissolveNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedDissolveNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedDissolveNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedDissolveNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedDissolveNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2105,10 +2105,10 @@ _Static_assert(sizeof(litTexturedMovingShadowedNormalMrt_movingMaterialParams_t)
 	"litTexturedMovingShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(litTexturedMovingShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedMovingShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedMovingShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedMovingShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedMovingShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedMovingShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedMovingShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedMovingShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedMovingShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedMovingShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedMovingShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedMovingShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedMovingNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedMovingNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedMovingNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedMovingNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedMovingNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedMovingNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedMovingNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedMovingNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedMovingNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedMovingNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedMovingNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2135,10 +2135,10 @@ _Static_assert(sizeof(litTexturedEmissiveShadowedNormalMrt_emissiveMaterialParam
 	"litTexturedEmissiveShadowedNormalMrt must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(litTexturedEmissiveShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedEmissiveShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedEmissiveShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissiveShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedEmissiveShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedNormalMapNormalMrt_program_position == ATTR_litTexturedNormalMap_program_position && ATTR_litTexturedNormalMapNormalMrt_program_normal == ATTR_litTexturedNormalMap_program_normal && ATTR_litTexturedNormalMapNormalMrt_program_uv == ATTR_litTexturedNormalMap_program_uv && ATTR_litTexturedNormalMapNormalMrt_program_color == ATTR_litTexturedNormalMap_program_color && ATTR_litTexturedNormalMapNormalMrt_program_tangent == ATTR_litTexturedNormalMap_program_tangent && ATTR_litTexturedNormalMapNormalMrt_program_instanceRow0 == ATTR_litTexturedNormalMap_program_instanceRow0 && ATTR_litTexturedNormalMapNormalMrt_program_instanceRow1 == ATTR_litTexturedNormalMap_program_instanceRow1 && ATTR_litTexturedNormalMapNormalMrt_program_instanceRow2 == ATTR_litTexturedNormalMap_program_instanceRow2 && ATTR_litTexturedNormalMapNormalMrt_program_instanceColor == ATTR_litTexturedNormalMap_program_instanceColor,
 	"litTexturedNormalMapNormalMrt must take the LIT_TEXTURED_TANGENT layout as litTexturedNormalMap does");
 _Static_assert(sizeof(litTexturedNormalMapNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedNormalMapNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2157,10 +2157,10 @@ _Static_assert(sizeof(litTexturedNormalMapShadowedNormalMrt_materialParams_t) ==
 	"litTexturedNormalMapShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMapShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedNormalMapShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedNormalMapShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMapShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedNormalMapShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedNormalMapShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedEmissiveNormalMapNormalMrt_program_position == ATTR_litTexturedNormalMap_program_position && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_normal == ATTR_litTexturedNormalMap_program_normal && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_uv == ATTR_litTexturedNormalMap_program_uv && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_color == ATTR_litTexturedNormalMap_program_color && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_tangent == ATTR_litTexturedNormalMap_program_tangent && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_instanceRow0 == ATTR_litTexturedNormalMap_program_instanceRow0 && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_instanceRow1 == ATTR_litTexturedNormalMap_program_instanceRow1 && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_instanceRow2 == ATTR_litTexturedNormalMap_program_instanceRow2 && ATTR_litTexturedEmissiveNormalMapNormalMrt_program_instanceColor == ATTR_litTexturedNormalMap_program_instanceColor,
 	"litTexturedEmissiveNormalMapNormalMrt must take the LIT_TEXTURED_TANGENT layout as litTexturedNormalMap does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedEmissiveNormalMapNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2179,10 +2179,10 @@ _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowedNormalMrt_emissiveMate
 	"litTexturedEmissiveNormalMapShadowedNormalMrt must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedEmissiveNormalMapShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedEmissiveNormalMapShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedEmissiveNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedEmissiveNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissiveNormalMapShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedEmissiveNormalMapShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedEmissiveNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedEmissiveNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedPremultipliedCutoutNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedPremultipliedCutoutNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedPremultipliedCutoutNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedPremultipliedCutoutNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2237,10 +2237,10 @@ _Static_assert(sizeof(litTexturedDissolveEmissiveShadowedNormalMrt_movingEmissiv
 	"litTexturedDissolveEmissiveShadowedNormalMrt must take movingEmissiveMaterialParams as litTexturedDissolveEmissive does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedDissolveEmissiveShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedDissolveEmissiveShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(litTexturedDissolveEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"litTexturedDissolveEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolveEmissiveShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"litTexturedDissolveEmissiveShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(litTexturedDissolveEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"litTexturedDissolveEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_color == ATTR_litTextured_program_color && ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_instanceRow0 == ATTR_litTextured_program_instanceRow0 && ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_instanceRow1 == ATTR_litTextured_program_instanceRow1 && ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_instanceRow2 == ATTR_litTextured_program_instanceRow2 && ATTR_unlitTexturedUvTransformPremultipliedNormalMrt_program_instanceColor == ATTR_litTextured_program_instanceColor,
 	"unlitTexturedUvTransformPremultipliedNormalMrt must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedUvTransformPremultipliedNormalMrt_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedUvTransformPremultipliedNormalMrt_vertexParams == UB_lit_vertexParams,
@@ -2481,10 +2481,10 @@ _Static_assert(sizeof(skinLitShadowed_materialParams_t) == sizeof(lit_materialPa
 	"skinLitShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinLitShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitShadowed_lightParams == UB_lit_lightParams,
-	"skinLitShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitShadowed_frameParams == UB_lit_frameParams,
 	"skinLitShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitShadowed_lightParams == UB_lit_lightParams,
+	"skinLitShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtLitShadowed_program_position == ATTR_skinLit_program_position && ATTR_skinPixelArtLitShadowed_program_normal == ATTR_skinLit_program_normal && ATTR_skinPixelArtLitShadowed_program_color == ATTR_skinLit_program_color && ATTR_skinPixelArtLitShadowed_program_skinJoints == ATTR_skinLit_program_skinJoints && ATTR_skinPixelArtLitShadowed_program_skinWeights == ATTR_skinLit_program_skinWeights && ATTR_skinPixelArtLitShadowed_program_instanceRow0 == ATTR_skinLit_program_instanceRow0 && ATTR_skinPixelArtLitShadowed_program_instanceRow1 == ATTR_skinLit_program_instanceRow1 && ATTR_skinPixelArtLitShadowed_program_instanceRow2 == ATTR_skinLit_program_instanceRow2 && ATTR_skinPixelArtLitShadowed_program_instanceColor == ATTR_skinLit_program_instanceColor,
 	"skinPixelArtLitShadowed must take the SKIN_LIT layout as skinLit does");
 _Static_assert(sizeof(skinPixelArtLitShadowed_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtLitShadowed_skinParams == UB_skinLit_skinParams,
@@ -2495,10 +2495,10 @@ _Static_assert(sizeof(skinPixelArtLitShadowed_materialParams_t) == sizeof(lit_ma
 	"skinPixelArtLitShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinLitCutoutShadowed_program_position == ATTR_skinLit_program_position && ATTR_skinLitCutoutShadowed_program_normal == ATTR_skinLit_program_normal && ATTR_skinLitCutoutShadowed_program_color == ATTR_skinLit_program_color && ATTR_skinLitCutoutShadowed_program_skinJoints == ATTR_skinLit_program_skinJoints && ATTR_skinLitCutoutShadowed_program_skinWeights == ATTR_skinLit_program_skinWeights && ATTR_skinLitCutoutShadowed_program_instanceRow0 == ATTR_skinLit_program_instanceRow0 && ATTR_skinLitCutoutShadowed_program_instanceRow1 == ATTR_skinLit_program_instanceRow1 && ATTR_skinLitCutoutShadowed_program_instanceRow2 == ATTR_skinLit_program_instanceRow2 && ATTR_skinLitCutoutShadowed_program_instanceColor == ATTR_skinLit_program_instanceColor,
 	"skinLitCutoutShadowed must take the SKIN_LIT layout as skinLit does");
 _Static_assert(sizeof(skinLitCutoutShadowed_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitCutoutShadowed_skinParams == UB_skinLit_skinParams,
@@ -2509,10 +2509,10 @@ _Static_assert(sizeof(skinLitCutoutShadowed_materialParams_t) == sizeof(lit_mate
 	"skinLitCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinLitCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitCutoutShadowed_lightParams == UB_lit_lightParams,
-	"skinLitCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitCutoutShadowed_frameParams == UB_lit_frameParams,
 	"skinLitCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitCutoutShadowed_lightParams == UB_lit_lightParams,
+	"skinLitCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtLitCutoutShadowed_program_position == ATTR_skinLit_program_position && ATTR_skinPixelArtLitCutoutShadowed_program_normal == ATTR_skinLit_program_normal && ATTR_skinPixelArtLitCutoutShadowed_program_color == ATTR_skinLit_program_color && ATTR_skinPixelArtLitCutoutShadowed_program_skinJoints == ATTR_skinLit_program_skinJoints && ATTR_skinPixelArtLitCutoutShadowed_program_skinWeights == ATTR_skinLit_program_skinWeights && ATTR_skinPixelArtLitCutoutShadowed_program_instanceRow0 == ATTR_skinLit_program_instanceRow0 && ATTR_skinPixelArtLitCutoutShadowed_program_instanceRow1 == ATTR_skinLit_program_instanceRow1 && ATTR_skinPixelArtLitCutoutShadowed_program_instanceRow2 == ATTR_skinLit_program_instanceRow2 && ATTR_skinPixelArtLitCutoutShadowed_program_instanceColor == ATTR_skinLit_program_instanceColor,
 	"skinPixelArtLitCutoutShadowed must take the SKIN_LIT layout as skinLit does");
 _Static_assert(sizeof(skinPixelArtLitCutoutShadowed_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtLitCutoutShadowed_skinParams == UB_skinLit_skinParams,
@@ -2523,10 +2523,10 @@ _Static_assert(sizeof(skinPixelArtLitCutoutShadowed_materialParams_t) == sizeof(
 	"skinPixelArtLitCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitCutoutShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitCutoutShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitCutoutShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedShadowed_program_position == ATTR_skinLitTextured_program_position && ATTR_skinLitTexturedShadowed_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinLitTexturedShadowed_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinLitTexturedShadowed_program_color == ATTR_skinLitTextured_program_color && ATTR_skinLitTexturedShadowed_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinLitTexturedShadowed_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinLitTexturedShadowed_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinLitTexturedShadowed_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinLitTexturedShadowed_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinLitTexturedShadowed_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinLitTexturedShadowed must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinLitTexturedShadowed_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedShadowed_skinParams == UB_skinLit_skinParams,
@@ -2537,10 +2537,10 @@ _Static_assert(sizeof(skinLitTexturedShadowed_materialParams_t) == sizeof(lit_ma
 	"skinLitTexturedShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinLitTexturedShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtLitTexturedShadowed_program_position == ATTR_skinLitTextured_program_position && ATTR_skinPixelArtLitTexturedShadowed_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinPixelArtLitTexturedShadowed_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinPixelArtLitTexturedShadowed_program_color == ATTR_skinLitTextured_program_color && ATTR_skinPixelArtLitTexturedShadowed_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinPixelArtLitTexturedShadowed_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinPixelArtLitTexturedShadowed_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinPixelArtLitTexturedShadowed_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinPixelArtLitTexturedShadowed_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinPixelArtLitTexturedShadowed_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinPixelArtLitTexturedShadowed must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinPixelArtLitTexturedShadowed_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtLitTexturedShadowed_skinParams == UB_skinLit_skinParams,
@@ -2551,10 +2551,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedShadowed_materialParams_t) == sizeo
 	"skinPixelArtLitTexturedShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedCutoutShadowed_program_position == ATTR_skinLitTextured_program_position && ATTR_skinLitTexturedCutoutShadowed_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinLitTexturedCutoutShadowed_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinLitTexturedCutoutShadowed_program_color == ATTR_skinLitTextured_program_color && ATTR_skinLitTexturedCutoutShadowed_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinLitTexturedCutoutShadowed_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinLitTexturedCutoutShadowed_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinLitTexturedCutoutShadowed_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinLitTexturedCutoutShadowed_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinLitTexturedCutoutShadowed_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinLitTexturedCutoutShadowed must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinLitTexturedCutoutShadowed_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedCutoutShadowed_skinParams == UB_skinLit_skinParams,
@@ -2565,10 +2565,10 @@ _Static_assert(sizeof(skinLitTexturedCutoutShadowed_materialParams_t) == sizeof(
 	"skinLitTexturedCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinLitTexturedCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedCutoutShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtLitTexturedCutoutShadowed_program_position == ATTR_skinLitTextured_program_position && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_color == ATTR_skinLitTextured_program_color && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinPixelArtLitTexturedCutoutShadowed_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinPixelArtLitTexturedCutoutShadowed must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinPixelArtLitTexturedCutoutShadowed_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtLitTexturedCutoutShadowed_skinParams == UB_skinLit_skinParams,
@@ -2579,10 +2579,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedCutoutShadowed_materialParams_t) ==
 	"skinPixelArtLitTexturedCutoutShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedCutoutShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedCutoutShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedCutoutShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedUvTransform_program_position == ATTR_skinLitTextured_program_position && ATTR_skinLitTexturedUvTransform_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinLitTexturedUvTransform_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinLitTexturedUvTransform_program_color == ATTR_skinLitTextured_program_color && ATTR_skinLitTexturedUvTransform_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinLitTexturedUvTransform_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinLitTexturedUvTransform_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinLitTexturedUvTransform_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinLitTexturedUvTransform_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinLitTexturedUvTransform_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinLitTexturedUvTransform must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinLitTexturedUvTransform_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedUvTransform_skinParams == UB_skinLit_skinParams,
@@ -2605,10 +2605,10 @@ _Static_assert(sizeof(skinLitTexturedUvTransformShadowed_movingMaterialParams_t)
 	"skinLitTexturedUvTransformShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedUvTransformShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedUvTransformShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedUvTransformShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedUvTransformShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedUvTransformShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedUvTransformShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedUvTransform_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedUvTransform_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedUvTransform_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedUvTransform_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedUvTransform_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedUvTransform_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedUvTransform_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedUvTransform_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedUvTransform_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedUvTransform_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedUvTransform must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedUvTransform_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedUvTransform_skinParams == UB_skinLit_skinParams,
@@ -2641,10 +2641,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedUvTransformShadowed_movingMaterialP
 	"skinPixelArtLitTexturedUvTransformShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinPixelArtLitTexturedUvTransformShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedUvTransformShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedUvTransformShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedUvTransformShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedUvTransformShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedUvTransformShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtUnlitTexturedUvTransform_program_position == ATTR_skinLitTextured_program_position && ATTR_skinPixelArtUnlitTexturedUvTransform_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinPixelArtUnlitTexturedUvTransform_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinPixelArtUnlitTexturedUvTransform_program_color == ATTR_skinLitTextured_program_color && ATTR_skinPixelArtUnlitTexturedUvTransform_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinPixelArtUnlitTexturedUvTransform_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinPixelArtUnlitTexturedUvTransform_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinPixelArtUnlitTexturedUvTransform_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinPixelArtUnlitTexturedUvTransform_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinPixelArtUnlitTexturedUvTransform_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinPixelArtUnlitTexturedUvTransform must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinPixelArtUnlitTexturedUvTransform_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtUnlitTexturedUvTransform_skinParams == UB_skinLit_skinParams,
@@ -2677,10 +2677,10 @@ _Static_assert(sizeof(skinLitTexturedBackTextureShadowed_movingMaterialParams_t)
 	"skinLitTexturedBackTextureShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedBackTextureShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedBackTextureShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedBackTextureShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedBackTextureShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedBackTextureShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedBackTextureShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedBackTexture_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedBackTexture_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedBackTexture_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedBackTexture_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedBackTexture_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedBackTexture_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedBackTexture_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedBackTexture_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedBackTexture_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedBackTexture_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedBackTexture must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedBackTexture_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedBackTexture_skinParams == UB_skinLit_skinParams,
@@ -2713,10 +2713,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedBackTextureShadowed_movingMaterialP
 	"skinPixelArtLitTexturedBackTextureShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinPixelArtLitTexturedBackTextureShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedBackTextureShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedBackTextureShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedBackTextureShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedBackTextureShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedBackTextureShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtUnlitTexturedBackTexture_program_position == ATTR_skinLitTextured_program_position && ATTR_skinPixelArtUnlitTexturedBackTexture_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinPixelArtUnlitTexturedBackTexture_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinPixelArtUnlitTexturedBackTexture_program_color == ATTR_skinLitTextured_program_color && ATTR_skinPixelArtUnlitTexturedBackTexture_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinPixelArtUnlitTexturedBackTexture_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinPixelArtUnlitTexturedBackTexture_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinPixelArtUnlitTexturedBackTexture_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinPixelArtUnlitTexturedBackTexture_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinPixelArtUnlitTexturedBackTexture_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinPixelArtUnlitTexturedBackTexture must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinPixelArtUnlitTexturedBackTexture_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtUnlitTexturedBackTexture_skinParams == UB_skinLit_skinParams,
@@ -2749,10 +2749,10 @@ _Static_assert(sizeof(skinLitTexturedDissolveShadowed_movingMaterialParams_t) ==
 	"skinLitTexturedDissolveShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedDissolveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedDissolveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedDissolveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedDissolveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedDissolveShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedDissolveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedDissolve_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedDissolve_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedDissolve_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedDissolve_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedDissolve_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedDissolve_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedDissolve_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedDissolve_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedDissolve_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedDissolve_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedDissolve must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedDissolve_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedDissolve_skinParams == UB_skinLit_skinParams,
@@ -2785,10 +2785,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedDissolveShadowed_movingMaterialPara
 	"skinPixelArtLitTexturedDissolveShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinPixelArtLitTexturedDissolveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedDissolveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedDissolveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedDissolveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedDissolveShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedDissolveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtUnlitTexturedDissolve_program_position == ATTR_skinLitTextured_program_position && ATTR_skinPixelArtUnlitTexturedDissolve_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinPixelArtUnlitTexturedDissolve_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinPixelArtUnlitTexturedDissolve_program_color == ATTR_skinLitTextured_program_color && ATTR_skinPixelArtUnlitTexturedDissolve_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinPixelArtUnlitTexturedDissolve_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinPixelArtUnlitTexturedDissolve_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinPixelArtUnlitTexturedDissolve_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinPixelArtUnlitTexturedDissolve_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinPixelArtUnlitTexturedDissolve_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinPixelArtUnlitTexturedDissolve must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinPixelArtUnlitTexturedDissolve_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtUnlitTexturedDissolve_skinParams == UB_skinLit_skinParams,
@@ -2821,10 +2821,10 @@ _Static_assert(sizeof(skinLitTexturedMovingShadowed_movingMaterialParams_t) == s
 	"skinLitTexturedMovingShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedMovingShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedMovingShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedMovingShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedMovingShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedMovingShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedMovingShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedMovingShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedMovingShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedMoving_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedMoving_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedMoving_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedMoving_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedMoving_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedMoving_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedMoving_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedMoving_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedMoving_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedMoving_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedMoving must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedMoving_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedMoving_skinParams == UB_skinLit_skinParams,
@@ -2857,10 +2857,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedMovingShadowed_movingMaterialParams
 	"skinPixelArtLitTexturedMovingShadowed must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinPixelArtLitTexturedMovingShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedMovingShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedMovingShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedMovingShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedMovingShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedMovingShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedMovingShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedMovingShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtUnlitTexturedMoving_program_position == ATTR_skinLitTextured_program_position && ATTR_skinPixelArtUnlitTexturedMoving_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinPixelArtUnlitTexturedMoving_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinPixelArtUnlitTexturedMoving_program_color == ATTR_skinLitTextured_program_color && ATTR_skinPixelArtUnlitTexturedMoving_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinPixelArtUnlitTexturedMoving_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinPixelArtUnlitTexturedMoving_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinPixelArtUnlitTexturedMoving_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinPixelArtUnlitTexturedMoving_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinPixelArtUnlitTexturedMoving_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinPixelArtUnlitTexturedMoving must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinPixelArtUnlitTexturedMoving_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtUnlitTexturedMoving_skinParams == UB_skinLit_skinParams,
@@ -2909,10 +2909,10 @@ _Static_assert(sizeof(skinLitTexturedEmissiveShadowed_emissiveMaterialParams_t) 
 	"skinLitTexturedEmissiveShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(skinLitTexturedEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedEmissiveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedEmissiveShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedEmissiveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtLitTexturedEmissive_program_position == ATTR_skinLitTextured_program_position && ATTR_skinPixelArtLitTexturedEmissive_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinPixelArtLitTexturedEmissive_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinPixelArtLitTexturedEmissive_program_color == ATTR_skinLitTextured_program_color && ATTR_skinPixelArtLitTexturedEmissive_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinPixelArtLitTexturedEmissive_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinPixelArtLitTexturedEmissive_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinPixelArtLitTexturedEmissive_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinPixelArtLitTexturedEmissive_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinPixelArtLitTexturedEmissive_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinPixelArtLitTexturedEmissive must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinPixelArtLitTexturedEmissive_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtLitTexturedEmissive_skinParams == UB_skinLit_skinParams,
@@ -2935,10 +2935,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedEmissiveShadowed_emissiveMaterialPa
 	"skinPixelArtLitTexturedEmissiveShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(skinPixelArtLitTexturedEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedEmissiveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedEmissiveShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedEmissiveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedNormalMap_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedNormalMap_skinParams == UB_skinLit_skinParams,
 	"skinLitTexturedNormalMap must take skinParams as skinLit does");
 _Static_assert(sizeof(skinLitTexturedNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_skinLitTexturedNormalMap_vertexParams == UB_lit_vertexParams,
@@ -2959,10 +2959,10 @@ _Static_assert(sizeof(skinLitTexturedNormalMapShadowed_materialParams_t) == size
 	"skinLitTexturedNormalMapShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinLitTexturedNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtLitTexturedNormalMap_program_position == ATTR_skinLitTexturedNormalMap_program_position && ATTR_skinPixelArtLitTexturedNormalMap_program_normal == ATTR_skinLitTexturedNormalMap_program_normal && ATTR_skinPixelArtLitTexturedNormalMap_program_uv == ATTR_skinLitTexturedNormalMap_program_uv && ATTR_skinPixelArtLitTexturedNormalMap_program_color == ATTR_skinLitTexturedNormalMap_program_color && ATTR_skinPixelArtLitTexturedNormalMap_program_tangent == ATTR_skinLitTexturedNormalMap_program_tangent && ATTR_skinPixelArtLitTexturedNormalMap_program_skinJoints == ATTR_skinLitTexturedNormalMap_program_skinJoints && ATTR_skinPixelArtLitTexturedNormalMap_program_skinWeights == ATTR_skinLitTexturedNormalMap_program_skinWeights && ATTR_skinPixelArtLitTexturedNormalMap_program_instanceRow0 == ATTR_skinLitTexturedNormalMap_program_instanceRow0 && ATTR_skinPixelArtLitTexturedNormalMap_program_instanceRow1 == ATTR_skinLitTexturedNormalMap_program_instanceRow1 && ATTR_skinPixelArtLitTexturedNormalMap_program_instanceRow2 == ATTR_skinLitTexturedNormalMap_program_instanceRow2 && ATTR_skinPixelArtLitTexturedNormalMap_program_instanceColor == ATTR_skinLitTexturedNormalMap_program_instanceColor,
 	"skinPixelArtLitTexturedNormalMap must take the SKIN_LIT_TEXTURED_TANGENT layout as skinLitTexturedNormalMap does");
 _Static_assert(sizeof(skinPixelArtLitTexturedNormalMap_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtLitTexturedNormalMap_skinParams == UB_skinLit_skinParams,
@@ -2985,10 +2985,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedNormalMapShadowed_materialParams_t)
 	"skinPixelArtLitTexturedNormalMapShadowed must take materialParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedEmissiveNormalMap_program_position == ATTR_skinLitTexturedNormalMap_program_position && ATTR_skinLitTexturedEmissiveNormalMap_program_normal == ATTR_skinLitTexturedNormalMap_program_normal && ATTR_skinLitTexturedEmissiveNormalMap_program_uv == ATTR_skinLitTexturedNormalMap_program_uv && ATTR_skinLitTexturedEmissiveNormalMap_program_color == ATTR_skinLitTexturedNormalMap_program_color && ATTR_skinLitTexturedEmissiveNormalMap_program_tangent == ATTR_skinLitTexturedNormalMap_program_tangent && ATTR_skinLitTexturedEmissiveNormalMap_program_skinJoints == ATTR_skinLitTexturedNormalMap_program_skinJoints && ATTR_skinLitTexturedEmissiveNormalMap_program_skinWeights == ATTR_skinLitTexturedNormalMap_program_skinWeights && ATTR_skinLitTexturedEmissiveNormalMap_program_instanceRow0 == ATTR_skinLitTexturedNormalMap_program_instanceRow0 && ATTR_skinLitTexturedEmissiveNormalMap_program_instanceRow1 == ATTR_skinLitTexturedNormalMap_program_instanceRow1 && ATTR_skinLitTexturedEmissiveNormalMap_program_instanceRow2 == ATTR_skinLitTexturedNormalMap_program_instanceRow2 && ATTR_skinLitTexturedEmissiveNormalMap_program_instanceColor == ATTR_skinLitTexturedNormalMap_program_instanceColor,
 	"skinLitTexturedEmissiveNormalMap must take the SKIN_LIT_TEXTURED_TANGENT layout as skinLitTexturedNormalMap does");
 _Static_assert(sizeof(skinLitTexturedEmissiveNormalMap_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedEmissiveNormalMap_skinParams == UB_skinLit_skinParams,
@@ -3011,10 +3011,10 @@ _Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowed_emissiveMaterialP
 	"skinLitTexturedEmissiveNormalMapShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedEmissiveNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedEmissiveNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_position == ATTR_skinLitTexturedNormalMap_program_position && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_normal == ATTR_skinLitTexturedNormalMap_program_normal && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_uv == ATTR_skinLitTexturedNormalMap_program_uv && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_color == ATTR_skinLitTexturedNormalMap_program_color && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_tangent == ATTR_skinLitTexturedNormalMap_program_tangent && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_skinJoints == ATTR_skinLitTexturedNormalMap_program_skinJoints && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_skinWeights == ATTR_skinLitTexturedNormalMap_program_skinWeights && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_instanceRow0 == ATTR_skinLitTexturedNormalMap_program_instanceRow0 && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_instanceRow1 == ATTR_skinLitTexturedNormalMap_program_instanceRow1 && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_instanceRow2 == ATTR_skinLitTexturedNormalMap_program_instanceRow2 && ATTR_skinPixelArtLitTexturedEmissiveNormalMap_program_instanceColor == ATTR_skinLitTexturedNormalMap_program_instanceColor,
 	"skinPixelArtLitTexturedEmissiveNormalMap must take the SKIN_LIT_TEXTURED_TANGENT layout as skinLitTexturedNormalMap does");
 _Static_assert(sizeof(skinPixelArtLitTexturedEmissiveNormalMap_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinPixelArtLitTexturedEmissiveNormalMap_skinParams == UB_skinLit_skinParams,
@@ -3037,10 +3037,10 @@ _Static_assert(sizeof(skinPixelArtLitTexturedEmissiveNormalMapShadowed_emissiveM
 	"skinPixelArtLitTexturedEmissiveNormalMapShadowed must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(skinPixelArtLitTexturedEmissiveNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinPixelArtLitTexturedEmissiveNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinPixelArtLitTexturedEmissiveNormalMapShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinPixelArtLitTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
-	"skinPixelArtLitTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinPixelArtLitTexturedEmissiveNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinPixelArtLitTexturedEmissiveNormalMapShadowed_frameParams == UB_lit_frameParams,
 	"skinPixelArtLitTexturedEmissiveNormalMapShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinPixelArtLitTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinPixelArtLitTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
+	"skinPixelArtLitTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinShadowLitTexturedNormalMap_program_position == ATTR_skinLitTexturedNormalMap_program_position && ATTR_skinShadowLitTexturedNormalMap_program_normal == ATTR_skinLitTexturedNormalMap_program_normal && ATTR_skinShadowLitTexturedNormalMap_program_uv == ATTR_skinLitTexturedNormalMap_program_uv && ATTR_skinShadowLitTexturedNormalMap_program_color == ATTR_skinLitTexturedNormalMap_program_color && ATTR_skinShadowLitTexturedNormalMap_program_tangent == ATTR_skinLitTexturedNormalMap_program_tangent && ATTR_skinShadowLitTexturedNormalMap_program_skinJoints == ATTR_skinLitTexturedNormalMap_program_skinJoints && ATTR_skinShadowLitTexturedNormalMap_program_skinWeights == ATTR_skinLitTexturedNormalMap_program_skinWeights && ATTR_skinShadowLitTexturedNormalMap_program_instanceRow0 == ATTR_skinLitTexturedNormalMap_program_instanceRow0 && ATTR_skinShadowLitTexturedNormalMap_program_instanceRow1 == ATTR_skinLitTexturedNormalMap_program_instanceRow1 && ATTR_skinShadowLitTexturedNormalMap_program_instanceRow2 == ATTR_skinLitTexturedNormalMap_program_instanceRow2 && ATTR_skinShadowLitTexturedNormalMap_program_instanceColor == ATTR_skinLitTexturedNormalMap_program_instanceColor,
 	"skinShadowLitTexturedNormalMap must take the SKIN_LIT_TEXTURED_TANGENT layout as skinLitTexturedNormalMap does");
 _Static_assert(sizeof(skinShadowLitTexturedNormalMap_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinShadowLitTexturedNormalMap_skinParams == UB_skinLit_skinParams,
@@ -3113,10 +3113,10 @@ _Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowed_movingEmissiveMate
 	"skinLitTexturedDissolveEmissiveShadowed must take movingEmissiveMaterialParams as litTexturedDissolveEmissive does");
 _Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedDissolveEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedDissolveEmissiveShadowed must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveEmissiveShadowed_lightParams == UB_lit_lightParams,
-	"skinLitTexturedDissolveEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedDissolveEmissiveShadowed_frameParams == UB_lit_frameParams,
 	"skinLitTexturedDissolveEmissiveShadowed must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveEmissiveShadowed_lightParams == UB_lit_lightParams,
+	"skinLitTexturedDissolveEmissiveShadowed must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedUvTransformPremultiplied_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedUvTransformPremultiplied_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedUvTransformPremultiplied must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedUvTransformPremultiplied_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedUvTransformPremultiplied_skinParams == UB_skinLit_skinParams,
@@ -3237,10 +3237,10 @@ _Static_assert(sizeof(skinLitShadowedNormalMrt_materialParams_t) == sizeof(lit_m
 	"skinLitShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(skinLitShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinLitCutoutShadowedNormalMrt_program_position == ATTR_skinLit_program_position && ATTR_skinLitCutoutShadowedNormalMrt_program_normal == ATTR_skinLit_program_normal && ATTR_skinLitCutoutShadowedNormalMrt_program_color == ATTR_skinLit_program_color && ATTR_skinLitCutoutShadowedNormalMrt_program_skinJoints == ATTR_skinLit_program_skinJoints && ATTR_skinLitCutoutShadowedNormalMrt_program_skinWeights == ATTR_skinLit_program_skinWeights && ATTR_skinLitCutoutShadowedNormalMrt_program_instanceRow0 == ATTR_skinLit_program_instanceRow0 && ATTR_skinLitCutoutShadowedNormalMrt_program_instanceRow1 == ATTR_skinLit_program_instanceRow1 && ATTR_skinLitCutoutShadowedNormalMrt_program_instanceRow2 == ATTR_skinLit_program_instanceRow2 && ATTR_skinLitCutoutShadowedNormalMrt_program_instanceColor == ATTR_skinLit_program_instanceColor,
 	"skinLitCutoutShadowedNormalMrt must take the SKIN_LIT layout as skinLit does");
 _Static_assert(sizeof(skinLitCutoutShadowedNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitCutoutShadowedNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3251,10 +3251,10 @@ _Static_assert(sizeof(skinLitCutoutShadowedNormalMrt_materialParams_t) == sizeof
 	"skinLitCutoutShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(skinLitCutoutShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitCutoutShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitCutoutShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitCutoutShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitCutoutShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitCutoutShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedShadowedNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinLitTexturedShadowedNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinLitTexturedShadowedNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinLitTexturedShadowedNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinLitTexturedShadowedNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinLitTexturedShadowedNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinLitTexturedShadowedNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinLitTexturedShadowedNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinLitTexturedShadowedNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinLitTexturedShadowedNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinLitTexturedShadowedNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinLitTexturedShadowedNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedShadowedNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3265,10 +3265,10 @@ _Static_assert(sizeof(skinLitTexturedShadowedNormalMrt_materialParams_t) == size
 	"skinLitTexturedShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(skinLitTexturedShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinLitTexturedCutoutShadowedNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinLitTexturedCutoutShadowedNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinLitTexturedCutoutShadowedNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedCutoutShadowedNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3279,10 +3279,10 @@ _Static_assert(sizeof(skinLitTexturedCutoutShadowedNormalMrt_materialParams_t) =
 	"skinLitTexturedCutoutShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(skinLitTexturedCutoutShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedCutoutShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedCutoutShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedCutoutShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedCutoutShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedCutoutShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedCutoutShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedCutoutShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedCutoutShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedUvTransformNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinLitTexturedUvTransformNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinLitTexturedUvTransformNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinLitTexturedUvTransformNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinLitTexturedUvTransformNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinLitTexturedUvTransformNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinLitTexturedUvTransformNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinLitTexturedUvTransformNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinLitTexturedUvTransformNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinLitTexturedUvTransformNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinLitTexturedUvTransformNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinLitTexturedUvTransformNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedUvTransformNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3305,10 +3305,10 @@ _Static_assert(sizeof(skinLitTexturedUvTransformShadowedNormalMrt_movingMaterial
 	"skinLitTexturedUvTransformShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedUvTransformShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedUvTransformShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedUvTransformShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedUvTransformShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedUvTransformShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedUvTransformShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedUvTransformShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedUvTransformShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedUvTransformShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedUvTransformShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedUvTransformShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedUvTransformShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedUvTransformNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedUvTransformNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedUvTransformNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedUvTransformNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedUvTransformNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3341,10 +3341,10 @@ _Static_assert(sizeof(skinLitTexturedBackTextureShadowedNormalMrt_movingMaterial
 	"skinLitTexturedBackTextureShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedBackTextureShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedBackTextureShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedBackTextureShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedBackTextureShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedBackTextureShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedBackTextureShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedBackTextureShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedBackTextureShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedBackTextureShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedBackTextureShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedBackTextureShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedBackTextureShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedBackTextureNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedBackTextureNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedBackTextureNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedBackTextureNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedBackTextureNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3377,10 +3377,10 @@ _Static_assert(sizeof(skinLitTexturedDissolveShadowedNormalMrt_movingMaterialPar
 	"skinLitTexturedDissolveShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedDissolveShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedDissolveShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedDissolveShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedDissolveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedDissolveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedDissolveShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedDissolveShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedDissolveShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedDissolveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedDissolveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedDissolveNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedDissolveNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedDissolveNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedDissolveNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedDissolveNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedDissolveNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedDissolveNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedDissolveNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedDissolveNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedDissolveNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedDissolveNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedDissolveNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedDissolveNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3413,10 +3413,10 @@ _Static_assert(sizeof(skinLitTexturedMovingShadowedNormalMrt_movingMaterialParam
 	"skinLitTexturedMovingShadowedNormalMrt must take movingMaterialParams as litTexturedUvTransform does");
 _Static_assert(sizeof(skinLitTexturedMovingShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedMovingShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedMovingShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedMovingShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedMovingShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedMovingShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedMovingShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedMovingShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedMovingShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedMovingShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedMovingShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedMovingShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedMovingNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedMovingNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedMovingNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedMovingNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedMovingNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedMovingNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedMovingNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedMovingNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedMovingNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedMovingNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedMovingNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedMovingNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedMovingNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3449,10 +3449,10 @@ _Static_assert(sizeof(skinLitTexturedEmissiveShadowedNormalMrt_emissiveMaterialP
 	"skinLitTexturedEmissiveShadowedNormalMrt must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(skinLitTexturedEmissiveShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedEmissiveShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedEmissiveShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedEmissiveShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedEmissiveShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedEmissiveShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedNormalMapNormalMrt_program_position == ATTR_skinLitTexturedNormalMap_program_position && ATTR_skinLitTexturedNormalMapNormalMrt_program_normal == ATTR_skinLitTexturedNormalMap_program_normal && ATTR_skinLitTexturedNormalMapNormalMrt_program_uv == ATTR_skinLitTexturedNormalMap_program_uv && ATTR_skinLitTexturedNormalMapNormalMrt_program_color == ATTR_skinLitTexturedNormalMap_program_color && ATTR_skinLitTexturedNormalMapNormalMrt_program_tangent == ATTR_skinLitTexturedNormalMap_program_tangent && ATTR_skinLitTexturedNormalMapNormalMrt_program_skinJoints == ATTR_skinLitTexturedNormalMap_program_skinJoints && ATTR_skinLitTexturedNormalMapNormalMrt_program_skinWeights == ATTR_skinLitTexturedNormalMap_program_skinWeights && ATTR_skinLitTexturedNormalMapNormalMrt_program_instanceRow0 == ATTR_skinLitTexturedNormalMap_program_instanceRow0 && ATTR_skinLitTexturedNormalMapNormalMrt_program_instanceRow1 == ATTR_skinLitTexturedNormalMap_program_instanceRow1 && ATTR_skinLitTexturedNormalMapNormalMrt_program_instanceRow2 == ATTR_skinLitTexturedNormalMap_program_instanceRow2 && ATTR_skinLitTexturedNormalMapNormalMrt_program_instanceColor == ATTR_skinLitTexturedNormalMap_program_instanceColor,
 	"skinLitTexturedNormalMapNormalMrt must take the SKIN_LIT_TEXTURED_TANGENT layout as skinLitTexturedNormalMap does");
 _Static_assert(sizeof(skinLitTexturedNormalMapNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedNormalMapNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3475,10 +3475,10 @@ _Static_assert(sizeof(skinLitTexturedNormalMapShadowedNormalMrt_materialParams_t
 	"skinLitTexturedNormalMapShadowedNormalMrt must take materialParams as lit does");
 _Static_assert(sizeof(skinLitTexturedNormalMapShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedNormalMapShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedNormalMapShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedNormalMapShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedNormalMapShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedNormalMapShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_position == ATTR_skinLitTexturedNormalMap_program_position && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_normal == ATTR_skinLitTexturedNormalMap_program_normal && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_uv == ATTR_skinLitTexturedNormalMap_program_uv && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_color == ATTR_skinLitTexturedNormalMap_program_color && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_tangent == ATTR_skinLitTexturedNormalMap_program_tangent && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_skinJoints == ATTR_skinLitTexturedNormalMap_program_skinJoints && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_skinWeights == ATTR_skinLitTexturedNormalMap_program_skinWeights && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_instanceRow0 == ATTR_skinLitTexturedNormalMap_program_instanceRow0 && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_instanceRow1 == ATTR_skinLitTexturedNormalMap_program_instanceRow1 && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_instanceRow2 == ATTR_skinLitTexturedNormalMap_program_instanceRow2 && ATTR_skinLitTexturedEmissiveNormalMapNormalMrt_program_instanceColor == ATTR_skinLitTexturedNormalMap_program_instanceColor,
 	"skinLitTexturedEmissiveNormalMapNormalMrt must take the SKIN_LIT_TEXTURED_TANGENT layout as skinLitTexturedNormalMap does");
 _Static_assert(sizeof(skinLitTexturedEmissiveNormalMapNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinLitTexturedEmissiveNormalMapNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3501,10 +3501,10 @@ _Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowedNormalMrt_emissive
 	"skinLitTexturedEmissiveNormalMapShadowedNormalMrt must take emissiveMaterialParams as litTexturedEmissive does");
 _Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedEmissiveNormalMapShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedEmissiveNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedEmissiveNormalMapShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedEmissiveNormalMapShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedEmissiveNormalMapShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedEmissiveNormalMapShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedPremultipliedCutoutNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedPremultipliedCutoutNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedPremultipliedCutoutNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedPremultipliedCutoutNormalMrt_skinParams == UB_skinLit_skinParams,
@@ -3571,10 +3571,10 @@ _Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowedNormalMrt_movingEmi
 	"skinLitTexturedDissolveEmissiveShadowedNormalMrt must take movingEmissiveMaterialParams as litTexturedDissolveEmissive does");
 _Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowedNormalMrt_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_skinLitTexturedDissolveEmissiveShadowedNormalMrt_shadowParams == UB_litShadowed_shadowParams,
 	"skinLitTexturedDissolveEmissiveShadowedNormalMrt must take shadowParams as litShadowed does");
-_Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
-	"skinLitTexturedDissolveEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowedNormalMrt_frameParams_t) == sizeof(lit_frameParams_t) && UB_skinLitTexturedDissolveEmissiveShadowedNormalMrt_frameParams == UB_lit_frameParams,
 	"skinLitTexturedDissolveEmissiveShadowedNormalMrt must take frameParams as lit does");
+_Static_assert(sizeof(skinLitTexturedDissolveEmissiveShadowedNormalMrt_lightParams_t) == sizeof(lit_lightParams_t) && UB_skinLitTexturedDissolveEmissiveShadowedNormalMrt_lightParams == UB_lit_lightParams,
+	"skinLitTexturedDissolveEmissiveShadowedNormalMrt must take lightParams as lit does");
 _Static_assert(ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_position == ATTR_skinLitTextured_program_position && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_normal == ATTR_skinLitTextured_program_normal && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_uv == ATTR_skinLitTextured_program_uv && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_color == ATTR_skinLitTextured_program_color && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_skinJoints == ATTR_skinLitTextured_program_skinJoints && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_skinWeights == ATTR_skinLitTextured_program_skinWeights && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_instanceRow0 == ATTR_skinLitTextured_program_instanceRow0 && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_instanceRow1 == ATTR_skinLitTextured_program_instanceRow1 && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_instanceRow2 == ATTR_skinLitTextured_program_instanceRow2 && ATTR_skinUnlitTexturedUvTransformPremultipliedNormalMrt_program_instanceColor == ATTR_skinLitTextured_program_instanceColor,
 	"skinUnlitTexturedUvTransformPremultipliedNormalMrt must take the SKIN_LIT_TEXTURED layout as skinLitTextured does");
 _Static_assert(sizeof(skinUnlitTexturedUvTransformPremultipliedNormalMrt_skinParams_t) == sizeof(skinLit_skinParams_t) && UB_skinUnlitTexturedUvTransformPremultipliedNormalMrt_skinParams == UB_skinLit_skinParams,

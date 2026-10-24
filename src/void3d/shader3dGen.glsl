@@ -632,12 +632,10 @@ layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
     vec4 dirColor;
-    vec4 pointLight[4];
-    vec4 pointColor[4];
-    vec4 shapeA[4];
-    vec4 shapeB[4];
-    vec4 shapeC[4];
-    vec4 shapeD[4];
+    vec4 clusterGrid;
+    vec4 clusterFactors;
+    vec4 clusterView;
+    vec4 clusterScreen;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -646,6 +644,14 @@ layout(binding=6) uniform frameParams {
 };
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
+@image_sample_type lightRecords unfilterable_float
+layout(binding=9) uniform texture2D lightRecords;
+@image_sample_type clusterRecords uint
+layout(binding=10) uniform utexture2D clusterRecords;
+@image_sample_type clusterIndices uint
+layout(binding=11) uniform utexture2D clusterIndices;
+@sampler_type clusterSampler nonfiltering
+layout(binding=5) uniform sampler clusterSampler;
 in vec3 worldPosition;
 in vec3 towardCamera;
 in vec2 uv;
@@ -660,6 +666,68 @@ vec3 srgbToLinear(vec3 srgb) {
     vec3 low = srgb * 0.0773993808;
     vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
     return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+int cellOf(float position, int cells) {
+    if (!(position > 0.0)) {
+        return 0;
+    }
+    if (position >= float(cells)) {
+        return cells - 1;
+    }
+    return int(position);
+}
+int clusterSliceOf(float depth, vec4 grid, vec4 factors) {
+    int slices = int(grid.z + 0.5);
+    if (grid.w > 0.5) {
+        return cellOf(floor(((depth - factors.z) * factors.w)), slices);
+    }
+    return cellOf((((log(depth) * factors.z) - factors.w) + 1.0), slices);
+}
+int clusterAtCell(vec2 cell, float depth, vec4 grid, vec4 factors) {
+    int columns = int(grid.x + 0.5);
+    int x = cellOf(cell.x, columns);
+    int y = cellOf(cell.y, int(grid.y + 0.5));
+    return (((y * columns) + x) * int(grid.z + 0.5)) + clusterSliceOf(depth, grid, factors);
+}
+int clusterIndexOf(vec2 frag, float depth, vec4 grid, vec4 factors) {
+    return clusterAtCell((frag * factors.xy), depth, grid, factors);
+}
+float clusterDepthOf(vec3 position, vec4 view) {
+    return dot(position, view.xyz) + view.w;
+}
+int fragmentClusterOf(vec2 frag, vec3 position, vec4 grid, vec4 factors, vec4 view, vec4 screen) {
+    float row = (screen.x > 0.5) ? (screen.y - frag.y) : frag.y;
+    return clusterIndexOf(vec2(frag.x, row), clusterDepthOf(position, view), grid, factors);
+}
+const uint DATA_ROW = 256;
+ivec2 dataTexelOf(int i) {
+    uint at = uvec2(ivec2(i, 0)).x;
+    return ivec2(uvec2((at % DATA_ROW), (at / DATA_ROW)));
+}
+ivec4 billboardClusterOf(vec2 frag, vec3 position) {
+    int cluster = fragmentClusterOf(frag, position, clusterGrid, clusterFactors, clusterView, clusterScreen);
+    return ivec4(texelFetch(usampler2D(clusterRecords, clusterSampler), dataTexelOf(cluster), 0));
+}
+int indexOfWord(uvec4 texel, int j) {
+    ivec4 words = ivec4(texel);
+    uint channel = uvec2(ivec2(j, 0)).x % 4;
+    if (channel == 0) {
+        return words.x;
+    }
+    if (channel == 1) {
+        return words.y;
+    }
+    if (channel == 2) {
+        return words.z;
+    }
+    return words.w;
+}
+ivec2 indexTexelOf(int j) {
+    return dataTexelOf(ivec2(uvec2((uvec2(ivec2(j, 0)).x / 4), 0)).x);
+}
+int billboardLightOf(ivec4 cluster, int k) {
+    int j = cluster.x + k;
+    return indexOfWord(texelFetch(usampler2D(clusterIndices, clusterSampler), indexTexelOf(j), 0), j);
 }
 vec3 pointLightAt(vec3 position, vec3 normal, vec4 at, vec4 tint) {
     vec3 toLight = at.xyz - position;
@@ -740,6 +808,13 @@ vec3 lightAt(vec3 position, vec3 normal, vec4 at, vec4 tint, vec4 a, vec4 b, vec
     }
     return lit;
 }
+const int RECORD_TEXELS = 6;
+ivec2 recordTexelOf(int light, int texel) {
+    return dataTexelOf(((light * RECORD_TEXELS) + texel));
+}
+vec4 billboardTexelOf(int light, int texel) {
+    return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
+}
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
     vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
@@ -797,8 +872,10 @@ void main() {
         vec4 dir = dirLight;
         float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
         vec3 light = srgbToLinear(ambient.rgb) + (srgbToLinear(dirColor.rgb) * lambert);
-        for (int i = 0; i < int(ambient.a + 0.5); i++) {
-            light = light + lightAt(worldPosition, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]);
+        ivec4 cluster = billboardClusterOf(gl_FragCoord.xy, worldPosition);
+        for (int k = 0; k < (cluster.y + cluster.z); k++) {
+            int i = billboardLightOf(cluster, k);
+            light = light + lightAt(worldPosition, n, billboardTexelOf(i, 0), billboardTexelOf(i, 1), billboardTexelOf(i, 2), billboardTexelOf(i, 3), billboardTexelOf(i, 4), billboardTexelOf(i, 5));
         }
         pixel = vec4(linearToSrgb((srgbToLinear(pixel.rgb) * light)), pixel.a);
     }
@@ -945,12 +1022,10 @@ layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
     vec4 dirColor;
-    vec4 pointLight[4];
-    vec4 pointColor[4];
-    vec4 shapeA[4];
-    vec4 shapeB[4];
-    vec4 shapeC[4];
-    vec4 shapeD[4];
+    vec4 clusterGrid;
+    vec4 clusterFactors;
+    vec4 clusterView;
+    vec4 clusterScreen;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -958,21 +1033,21 @@ layout(binding=6) uniform frameParams {
     vec4 envParams;
 };
 layout(binding=5) uniform shadowParams {
-    mat4 shadowMatrix;
-    vec4 shadow;
+    mat4 cascadeMatrices[4];
+    vec4 cascadeFar;
+    vec4 cascadeInfo;
+    vec4 cascadeView;
     mat4 spotMatrix;
     vec4 spotShadow;
 };
 #ifdef SHADOWED
-@image_sample_type shadowMap unfilterable_float
-layout(binding=4) uniform texture2D shadowMap;
+layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
 #endif
-@image_sample_type spotShadowMap unfilterable_float
-layout(binding=6) uniform texture2D spotShadowMap;
+layout(binding=6) uniform texture2DArray spotShadowMap;
 @sampler_type spotShadowSampler nonfiltering
 layout(binding=3) uniform sampler spotShadowSampler;
 #ifdef PBR
@@ -984,6 +1059,14 @@ layout(binding=8) uniform textureCube envSpecular;
 #ifdef PBR
 layout(binding=4) uniform sampler envSampler;
 #endif
+@image_sample_type lightRecords unfilterable_float
+layout(binding=9) uniform texture2D lightRecords;
+@image_sample_type clusterRecords uint
+layout(binding=10) uniform utexture2D clusterRecords;
+@image_sample_type clusterIndices uint
+layout(binding=11) uniform utexture2D clusterIndices;
+@sampler_type clusterSampler nonfiltering
+layout(binding=5) uniform sampler clusterSampler;
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -1065,6 +1148,41 @@ vec3 saturated(vec3 rgb, float amount) {
     float keep = amount + 1.0;
     return (rgb * keep) + vec3((luma * (1.0 - keep)));
 }
+#ifdef SHADOWED
+float cascadeDepthOf(vec3 position, vec3 eye, vec4 view) {
+    return dot((position - eye), view.xyz);
+}
+#endif
+#ifdef SHADOWED
+int cascadeCountOf(vec4 info) {
+    return int(info.x + 0.5);
+}
+#endif
+#ifdef SHADOWED
+float farOf(vec4 far, int cascade) {
+    if (cascade == 0) {
+        return far.x;
+    }
+    if (cascade == 1) {
+        return far.y;
+    }
+    if (cascade == 2) {
+        return far.z;
+    }
+    return far.w;
+}
+#endif
+#ifdef SHADOWED
+int cascadeIndexOf(float depth, vec4 far, vec4 info) {
+    int count = cascadeCountOf(info);
+    for (int i = 0; i < count; i++) {
+        if (depth < farOf(far, i)) {
+            return i;
+        }
+    }
+    return count;
+}
+#endif
 vec4 mapCoord(vec3 position, mat4 matrix) {
     vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
@@ -1076,20 +1194,62 @@ vec4 mapCoord(vec3 position, mat4 matrix) {
     }
     return vec4(p, 1.0);
 }
+#ifdef SHADOWED
+vec4 cascadeTexelOf(vec3 position, mat4 matrix, vec4 view) {
+    vec4 at = mapCoord(position, matrix);
+    if (at.w < 0.5) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    int size = int(view.w + 0.5);
+    ivec2 texel = clamp(ivec2((at.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    return vec4(float(texel.x), float(texel.y), at.z, 1.0);
+}
+#endif
 float mapLit(float z, float depth, float bias, float opacity) {
     float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, opacity);
 }
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, shadowMatrix);
-    if (p.w < 0.5) {
+float cascadeLitOf(vec4 texel, float stored, vec4 info) {
+    if (texel.w < 0.5) {
         return 1.0;
     }
-    ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
-    float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    return mapLit(p.z, depth, shadow.x, shadow.y);
+    return mapLit(texel.z, stored, info.z, info.w);
+}
+#endif
+#ifdef SHADOWED
+float cascadeShadowAt(vec3 position, int cascade) {
+    vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
+    float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
+    return cascadeLitOf(texel, stored, cascadeInfo);
+}
+#endif
+#ifdef SHADOWED
+float cascadeBlendOf(float depth, int cascade, vec4 far, vec4 info) {
+    if ((cascade + 1) >= cascadeCountOf(info)) {
+        return 0.0;
+    }
+    float bound = farOf(far, cascade);
+    float nextNear = (1.0 - info.y) * bound;
+    if (depth < nextNear) {
+        return 0.0;
+    }
+    return (depth - nextNear) / (bound - nextNear);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    float depth = cascadeDepthOf(position, cameraPosition.xyz, cascadeView);
+    int cascade = cascadeIndexOf(depth, cascadeFar, cascadeInfo);
+    if (cascade >= cascadeCountOf(cascadeInfo)) {
+        return 1.0;
+    }
+    float lit = cascadeShadowAt(position, cascade);
+    float blend = cascadeBlendOf(depth, cascade, cascadeFar, cascadeInfo);
+    if (blend > 0.0) {
+        return mix(lit, cascadeShadowAt(position, (cascade + 1)), blend);
+    }
+    return lit;
 }
 #endif
 #ifdef PBR
@@ -1129,7 +1289,7 @@ vec3 pbrAmbient(vec3 albedo, float metalness, float roughness, vec3 normal_1, ve
 }
 #endif
 #ifdef PBR
-vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 specularLight, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 specularLight, vec3 radiance, float shadow, float occlusionFactor, float occlusion) {
     if (dot(radiance, radiance) <= 0.0001) {
         return vec3(0.0);
     }
@@ -1155,15 +1315,84 @@ vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 norma
     vec3 fresnel = f0 + ((1.0 - f0) * exp2((((-5.55473 * vh) - 6.98316) * vh)));
     vec3 specular = max((fresnel * (distribution * visibility)), vec3(0.0));
     vec3 diffuse = ((albedo * (1.0 / 3.14159265358979)) * (1.0 - metalness)) * (1.0 - fresnel);
-    float reach = (nl * shadow_1) * mix(1.0, occlusion, occlusionFactor);
+    float reach = (nl * shadow) * mix(1.0, occlusion, occlusionFactor);
     return ((diffuse + specular) * radiance) * reach;
 }
 #endif
 #ifdef PBR
-vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
-    return pbrDirectSpecular(albedo, metalness, roughness, normal_1, view, light, light, radiance, shadow_1, occlusionFactor, occlusion);
+vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow, float occlusionFactor, float occlusion) {
+    return pbrDirectSpecular(albedo, metalness, roughness, normal_1, view, light, light, radiance, shadow, occlusionFactor, occlusion);
 }
 #endif
+int cellOf(float position, int cells) {
+    if (!(position > 0.0)) {
+        return 0;
+    }
+    if (position >= float(cells)) {
+        return cells - 1;
+    }
+    return int(position);
+}
+int clusterSliceOf(float depth, vec4 grid, vec4 factors) {
+    int slices = int(grid.z + 0.5);
+    if (grid.w > 0.5) {
+        return cellOf(floor(((depth - factors.z) * factors.w)), slices);
+    }
+    return cellOf((((log(depth) * factors.z) - factors.w) + 1.0), slices);
+}
+int clusterAtCell(vec2 cell, float depth, vec4 grid, vec4 factors) {
+    int columns = int(grid.x + 0.5);
+    int x = cellOf(cell.x, columns);
+    int y = cellOf(cell.y, int(grid.y + 0.5));
+    return (((y * columns) + x) * int(grid.z + 0.5)) + clusterSliceOf(depth, grid, factors);
+}
+int clusterIndexOf(vec2 frag, float depth, vec4 grid, vec4 factors) {
+    return clusterAtCell((frag * factors.xy), depth, grid, factors);
+}
+float clusterDepthOf(vec3 position, vec4 view) {
+    return dot(position, view.xyz) + view.w;
+}
+int fragmentClusterOf(vec2 frag, vec3 position, vec4 grid, vec4 factors, vec4 view, vec4 screen) {
+    float row = (screen.x > 0.5) ? (screen.y - frag.y) : frag.y;
+    return clusterIndexOf(vec2(frag.x, row), clusterDepthOf(position, view), grid, factors);
+}
+const uint DATA_ROW = 256;
+ivec2 dataTexelOf(int i) {
+    uint at = uvec2(ivec2(i, 0)).x;
+    return ivec2(uvec2((at % DATA_ROW), (at / DATA_ROW)));
+}
+ivec4 litClusterOf(vec2 frag, vec3 position) {
+    int cluster = fragmentClusterOf(frag, position, clusterGrid, clusterFactors, clusterView, clusterScreen);
+    return ivec4(texelFetch(usampler2D(clusterRecords, clusterSampler), dataTexelOf(cluster), 0));
+}
+int indexOfWord(uvec4 texel, int j) {
+    ivec4 words = ivec4(texel);
+    uint channel = uvec2(ivec2(j, 0)).x % 4;
+    if (channel == 0) {
+        return words.x;
+    }
+    if (channel == 1) {
+        return words.y;
+    }
+    if (channel == 2) {
+        return words.z;
+    }
+    return words.w;
+}
+ivec2 indexTexelOf(int j) {
+    return dataTexelOf(ivec2(uvec2((uvec2(ivec2(j, 0)).x / 4), 0)).x);
+}
+int litLightOf(ivec4 cluster, int k) {
+    int j = cluster.x + k;
+    return indexOfWord(texelFetch(usampler2D(clusterIndices, clusterSampler), indexTexelOf(j), 0), j);
+}
+const int RECORD_TEXELS = 6;
+ivec2 recordTexelOf(int light, int texel) {
+    return dataTexelOf(((light * RECORD_TEXELS) + texel));
+}
+vec4 litTexelOf(int light, int texel) {
+    return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
+}
 float lightWindow(float distance_1, float range) {
     float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
     return window * window;
@@ -1269,17 +1498,16 @@ float spotShadowAt(vec3 position) {
     if (p.w < 0.5) {
         return 1.0;
     }
-    ivec2 size = textureSize(sampler2D(spotShadowMap, spotShadowSampler), 0);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
-    float depth = texelFetch(sampler2D(spotShadowMap, spotShadowSampler), texel, 0).x;
+    int size = int(spotShadow.z + 0.5);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(texel, 0), 0).x;
     return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
 }
-float slotShadowAt(vec3 position, int slot) {
+float recordShadowAt(vec3 position, vec4 a, vec4 bb) {
 #ifndef SHADOWED
     return 1.0;
 #endif
-    vec4 a = shapeA[slot];
-    if (((a.w < 0.5) || (a.w > 1.5)) || (shapeB[slot].z < 0.5)) {
+    if (((a.w < 0.5) || (a.w > 1.5)) || (bb.z < 0.5)) {
         return 1.0;
     }
     return spotShadowAt(position);
@@ -1290,13 +1518,13 @@ vec3 linearToSrgb(vec3 rgb) {
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
 #ifdef PBR
-vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
+vec4 pbrShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) {
     vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     vec3 view = cameraPosition.xyz - position;
     vec4 dir = dirLight;
-    float shadow_1 = 1.0;
+    float shadow = 1.0;
 #ifdef SHADOWED
-    shadow_1 = dirShadowAt(position);
+    shadow = dirShadowAt(position);
 #endif
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
     vec3 light = vec3(0.0);
@@ -1305,25 +1533,27 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     } else {
         light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
     }
-    light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
+    light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
     vec3 eye = normalize(view);
     vec3 reflected = (-eye) - (n * (2.0 * dot((-eye), n)));
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        vec4 at = pointLight[i];
-        vec4 tint = pointColor[i];
-        vec4 a = shapeA[i];
+    ivec4 cluster = litClusterOf(frag, position);
+    for (int k = 0; k < (cluster.y + cluster.z); k++) {
+        int i = litLightOf(cluster, k);
+        vec4 at = litTexelOf(i, 0);
+        vec4 tint = litTexelOf(i, 1);
+        vec4 a = litTexelOf(i, 2);
         if (a.w < 0.5) {
             vec3 toLight = at.xyz - position;
             float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
             vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
             light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
         } else {
-            vec4 bb = shapeB[i];
-            vec4 cc = shapeC[i];
-            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, shapeD[i]);
+            vec4 bb = litTexelOf(i, 3);
+            vec4 cc = litTexelOf(i, 4);
+            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
             vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
             vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
-            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, slotShadowAt(position, i), 0.0, values.z);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, recordShadowAt(position, a, bb), 0.0, values.z);
         }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
@@ -1351,7 +1581,7 @@ vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, v
 }
 #endif
 #ifndef PBR
-vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
+vec4 litShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 #ifdef SHADOWED
@@ -1359,8 +1589,12 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
 #endif
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        light = light + (lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]) * slotShadowAt(position, i));
+    ivec4 cluster = litClusterOf(frag, position);
+    for (int k = 0; k < (cluster.y + cluster.z); k++) {
+        int i = litLightOf(cluster, k);
+        vec4 a = litTexelOf(i, 2);
+        vec4 bb = litTexelOf(i, 3);
+        light = light + (lightAt(position, n, litTexelOf(i, 0), litTexelOf(i, 1), a, bb, litTexelOf(i, 4), litTexelOf(i, 5)) * recordShadowAt(position, a, bb));
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
@@ -1409,9 +1643,9 @@ void main() {
     vec4 shaded = vec4(0.0);
 #ifdef PBR
     vec3 pbrValues = pbrOf().xyz;
-    shaded = pbrShade(n, worldPosition, surfaceColor, pbrValues);
+    shaded = pbrShade(n, worldPosition, gl_FragCoord.xy, surfaceColor, pbrValues);
 #else
-    shaded = litShade(n, worldPosition, surfaceColor);
+    shaded = litShade(n, worldPosition, gl_FragCoord.xy, surfaceColor);
 #endif
 #ifdef CUTOUT
     if (shaded.a < params.w) {
@@ -1713,12 +1947,10 @@ layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
     vec4 dirColor;
-    vec4 pointLight[4];
-    vec4 pointColor[4];
-    vec4 shapeA[4];
-    vec4 shapeB[4];
-    vec4 shapeC[4];
-    vec4 shapeD[4];
+    vec4 clusterGrid;
+    vec4 clusterFactors;
+    vec4 clusterView;
+    vec4 clusterScreen;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -1726,21 +1958,21 @@ layout(binding=6) uniform frameParams {
     vec4 envParams;
 };
 layout(binding=5) uniform shadowParams {
-    mat4 shadowMatrix;
-    vec4 shadow;
+    mat4 cascadeMatrices[4];
+    vec4 cascadeFar;
+    vec4 cascadeInfo;
+    vec4 cascadeView;
     mat4 spotMatrix;
     vec4 spotShadow;
 };
 #ifdef SHADOWED
-@image_sample_type shadowMap unfilterable_float
-layout(binding=4) uniform texture2D shadowMap;
+layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
 #endif
-@image_sample_type spotShadowMap unfilterable_float
-layout(binding=6) uniform texture2D spotShadowMap;
+layout(binding=6) uniform texture2DArray spotShadowMap;
 @sampler_type spotShadowSampler nonfiltering
 layout(binding=3) uniform sampler spotShadowSampler;
 layout(binding=0) uniform texture2D baseTexture;
@@ -1775,6 +2007,14 @@ layout(binding=8) uniform textureCube envSpecular;
 #ifdef PBR
 layout(binding=4) uniform sampler envSampler;
 #endif
+@image_sample_type lightRecords unfilterable_float
+layout(binding=9) uniform texture2D lightRecords;
+@image_sample_type clusterRecords uint
+layout(binding=10) uniform utexture2D clusterRecords;
+@image_sample_type clusterIndices uint
+layout(binding=11) uniform utexture2D clusterIndices;
+@sampler_type clusterSampler nonfiltering
+layout(binding=5) uniform sampler clusterSampler;
 #ifdef NORMAL_MAP
 in vec4 worldTangent;
 #endif
@@ -1961,6 +2201,41 @@ vec3 saturated(vec3 rgb, float amount) {
     float keep = amount + 1.0;
     return (rgb * keep) + vec3((luma * (1.0 - keep)));
 }
+#ifdef SHADOWED
+float cascadeDepthOf(vec3 position, vec3 eye, vec4 view) {
+    return dot((position - eye), view.xyz);
+}
+#endif
+#ifdef SHADOWED
+int cascadeCountOf(vec4 info) {
+    return int(info.x + 0.5);
+}
+#endif
+#ifdef SHADOWED
+float farOf(vec4 far, int cascade) {
+    if (cascade == 0) {
+        return far.x;
+    }
+    if (cascade == 1) {
+        return far.y;
+    }
+    if (cascade == 2) {
+        return far.z;
+    }
+    return far.w;
+}
+#endif
+#ifdef SHADOWED
+int cascadeIndexOf(float depth, vec4 far, vec4 info) {
+    int count = cascadeCountOf(info);
+    for (int i = 0; i < count; i++) {
+        if (depth < farOf(far, i)) {
+            return i;
+        }
+    }
+    return count;
+}
+#endif
 vec4 mapCoord(vec3 position, mat4 matrix) {
     vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
@@ -1972,20 +2247,62 @@ vec4 mapCoord(vec3 position, mat4 matrix) {
     }
     return vec4(p, 1.0);
 }
+#ifdef SHADOWED
+vec4 cascadeTexelOf(vec3 position, mat4 matrix, vec4 view) {
+    vec4 at = mapCoord(position, matrix);
+    if (at.w < 0.5) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    int size = int(view.w + 0.5);
+    ivec2 texel = clamp(ivec2((at.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    return vec4(float(texel.x), float(texel.y), at.z, 1.0);
+}
+#endif
 float mapLit(float z, float depth, float bias, float opacity) {
     float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, opacity);
 }
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, shadowMatrix);
-    if (p.w < 0.5) {
+float cascadeLitOf(vec4 texel, float stored, vec4 info) {
+    if (texel.w < 0.5) {
         return 1.0;
     }
-    ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
-    float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    return mapLit(p.z, depth, shadow.x, shadow.y);
+    return mapLit(texel.z, stored, info.z, info.w);
+}
+#endif
+#ifdef SHADOWED
+float cascadeShadowAt(vec3 position, int cascade) {
+    vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
+    float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
+    return cascadeLitOf(texel, stored, cascadeInfo);
+}
+#endif
+#ifdef SHADOWED
+float cascadeBlendOf(float depth, int cascade, vec4 far, vec4 info) {
+    if ((cascade + 1) >= cascadeCountOf(info)) {
+        return 0.0;
+    }
+    float bound = farOf(far, cascade);
+    float nextNear = (1.0 - info.y) * bound;
+    if (depth < nextNear) {
+        return 0.0;
+    }
+    return (depth - nextNear) / (bound - nextNear);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    float depth = cascadeDepthOf(position, cameraPosition.xyz, cascadeView);
+    int cascade = cascadeIndexOf(depth, cascadeFar, cascadeInfo);
+    if (cascade >= cascadeCountOf(cascadeInfo)) {
+        return 1.0;
+    }
+    float lit = cascadeShadowAt(position, cascade);
+    float blend = cascadeBlendOf(depth, cascade, cascadeFar, cascadeInfo);
+    if (blend > 0.0) {
+        return mix(lit, cascadeShadowAt(position, (cascade + 1)), blend);
+    }
+    return lit;
 }
 #endif
 #ifdef PBR
@@ -2025,7 +2342,7 @@ vec3 pbrAmbient(vec3 albedo, float metalness, float roughness, vec3 normal_1, ve
 }
 #endif
 #ifdef PBR
-vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 specularLight, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
+vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 specularLight, vec3 radiance, float shadow, float occlusionFactor, float occlusion) {
     if (dot(radiance, radiance) <= 0.0001) {
         return vec3(0.0);
     }
@@ -2051,15 +2368,84 @@ vec3 pbrDirectSpecular(vec3 albedo, float metalness, float roughness, vec3 norma
     vec3 fresnel = f0 + ((1.0 - f0) * exp2((((-5.55473 * vh) - 6.98316) * vh)));
     vec3 specular = max((fresnel * (distribution * visibility)), vec3(0.0));
     vec3 diffuse = ((albedo * (1.0 / 3.14159265358979)) * (1.0 - metalness)) * (1.0 - fresnel);
-    float reach = (nl * shadow_1) * mix(1.0, occlusion, occlusionFactor);
+    float reach = (nl * shadow) * mix(1.0, occlusion, occlusionFactor);
     return ((diffuse + specular) * radiance) * reach;
 }
 #endif
 #ifdef PBR
-vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow_1, float occlusionFactor, float occlusion) {
-    return pbrDirectSpecular(albedo, metalness, roughness, normal_1, view, light, light, radiance, shadow_1, occlusionFactor, occlusion);
+vec3 pbrDirect(vec3 albedo, float metalness, float roughness, vec3 normal_1, vec3 view, vec3 light, vec3 radiance, float shadow, float occlusionFactor, float occlusion) {
+    return pbrDirectSpecular(albedo, metalness, roughness, normal_1, view, light, light, radiance, shadow, occlusionFactor, occlusion);
 }
 #endif
+int cellOf(float position, int cells) {
+    if (!(position > 0.0)) {
+        return 0;
+    }
+    if (position >= float(cells)) {
+        return cells - 1;
+    }
+    return int(position);
+}
+int clusterSliceOf(float depth, vec4 grid, vec4 factors) {
+    int slices = int(grid.z + 0.5);
+    if (grid.w > 0.5) {
+        return cellOf(floor(((depth - factors.z) * factors.w)), slices);
+    }
+    return cellOf((((log(depth) * factors.z) - factors.w) + 1.0), slices);
+}
+int clusterAtCell(vec2 cell, float depth, vec4 grid, vec4 factors) {
+    int columns = int(grid.x + 0.5);
+    int x = cellOf(cell.x, columns);
+    int y = cellOf(cell.y, int(grid.y + 0.5));
+    return (((y * columns) + x) * int(grid.z + 0.5)) + clusterSliceOf(depth, grid, factors);
+}
+int clusterIndexOf(vec2 frag, float depth, vec4 grid, vec4 factors) {
+    return clusterAtCell((frag * factors.xy), depth, grid, factors);
+}
+float clusterDepthOf(vec3 position, vec4 view) {
+    return dot(position, view.xyz) + view.w;
+}
+int fragmentClusterOf(vec2 frag, vec3 position, vec4 grid, vec4 factors, vec4 view, vec4 screen) {
+    float row = (screen.x > 0.5) ? (screen.y - frag.y) : frag.y;
+    return clusterIndexOf(vec2(frag.x, row), clusterDepthOf(position, view), grid, factors);
+}
+const uint DATA_ROW = 256;
+ivec2 dataTexelOf(int i) {
+    uint at = uvec2(ivec2(i, 0)).x;
+    return ivec2(uvec2((at % DATA_ROW), (at / DATA_ROW)));
+}
+ivec4 litClusterOf(vec2 frag, vec3 position) {
+    int cluster = fragmentClusterOf(frag, position, clusterGrid, clusterFactors, clusterView, clusterScreen);
+    return ivec4(texelFetch(usampler2D(clusterRecords, clusterSampler), dataTexelOf(cluster), 0));
+}
+int indexOfWord(uvec4 texel, int j) {
+    ivec4 words = ivec4(texel);
+    uint channel = uvec2(ivec2(j, 0)).x % 4;
+    if (channel == 0) {
+        return words.x;
+    }
+    if (channel == 1) {
+        return words.y;
+    }
+    if (channel == 2) {
+        return words.z;
+    }
+    return words.w;
+}
+ivec2 indexTexelOf(int j) {
+    return dataTexelOf(ivec2(uvec2((uvec2(ivec2(j, 0)).x / 4), 0)).x);
+}
+int litLightOf(ivec4 cluster, int k) {
+    int j = cluster.x + k;
+    return indexOfWord(texelFetch(usampler2D(clusterIndices, clusterSampler), indexTexelOf(j), 0), j);
+}
+const int RECORD_TEXELS = 6;
+ivec2 recordTexelOf(int light, int texel) {
+    return dataTexelOf(((light * RECORD_TEXELS) + texel));
+}
+vec4 litTexelOf(int light, int texel) {
+    return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
+}
 float lightWindow(float distance_1, float range) {
     float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
     return window * window;
@@ -2165,17 +2551,16 @@ float spotShadowAt(vec3 position) {
     if (p.w < 0.5) {
         return 1.0;
     }
-    ivec2 size = textureSize(sampler2D(spotShadowMap, spotShadowSampler), 0);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
-    float depth = texelFetch(sampler2D(spotShadowMap, spotShadowSampler), texel, 0).x;
+    int size = int(spotShadow.z + 0.5);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(texel, 0), 0).x;
     return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
 }
-float slotShadowAt(vec3 position, int slot) {
+float recordShadowAt(vec3 position, vec4 a, vec4 bb) {
 #ifndef SHADOWED
     return 1.0;
 #endif
-    vec4 a = shapeA[slot];
-    if (((a.w < 0.5) || (a.w > 1.5)) || (shapeB[slot].z < 0.5)) {
+    if (((a.w < 0.5) || (a.w > 1.5)) || (bb.z < 0.5)) {
         return 1.0;
     }
     return spotShadowAt(position);
@@ -2186,13 +2571,13 @@ vec3 linearToSrgb(vec3 rgb) {
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
 #ifdef PBR
-vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
+vec4 pbrShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) {
     vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     vec3 view = cameraPosition.xyz - position;
     vec4 dir = dirLight;
-    float shadow_1 = 1.0;
+    float shadow = 1.0;
 #ifdef SHADOWED
-    shadow_1 = dirShadowAt(position);
+    shadow = dirShadowAt(position);
 #endif
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
     vec3 light = vec3(0.0);
@@ -2201,25 +2586,27 @@ vec4 pbrShade(vec3 n, vec3 position, vec4 surfaceColor, vec3 values) {
     } else {
         light = pbrAmbient(albedo, values.x, values.y, n, view, srgbToLinear(ambient.rgb), values.z);
     }
-    light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow_1, 0.0, values.z);
+    light = light + pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
     vec3 eye = normalize(view);
     vec3 reflected = (-eye) - (n * (2.0 * dot((-eye), n)));
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        vec4 at = pointLight[i];
-        vec4 tint = pointColor[i];
-        vec4 a = shapeA[i];
+    ivec4 cluster = litClusterOf(frag, position);
+    for (int k = 0; k < (cluster.y + cluster.z); k++) {
+        int i = litLightOf(cluster, k);
+        vec4 at = litTexelOf(i, 0);
+        vec4 tint = litTexelOf(i, 1);
+        vec4 a = litTexelOf(i, 2);
         if (a.w < 0.5) {
             vec3 toLight = at.xyz - position;
             float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
             vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
             light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
         } else {
-            vec4 bb = shapeB[i];
-            vec4 cc = shapeC[i];
-            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, shapeD[i]);
+            vec4 bb = litTexelOf(i, 3);
+            vec4 cc = litTexelOf(i, 4);
+            vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
             vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
             vec3 specular = shapedSpecularDir(position, reflected, sample_1.xyz, at, a, bb, cc);
-            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, slotShadowAt(position, i), 0.0, values.z);
+            light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample_1.xyz, specular, radiance_1, recordShadowAt(position, a, bb), 0.0, values.z);
         }
     }
     return vec4(linearToSrgb(light), surfaceColor.a);
@@ -2247,7 +2634,7 @@ vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, v
 }
 #endif
 #ifndef PBR
-vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
+vec4 litShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 #ifdef SHADOWED
@@ -2255,8 +2642,12 @@ vec4 litShade(vec3 n, vec3 position, vec4 surfaceColor) {
 #endif
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        light = light + (lightAt(position, n, pointLight[i], pointColor[i], shapeA[i], shapeB[i], shapeC[i], shapeD[i]) * slotShadowAt(position, i));
+    ivec4 cluster = litClusterOf(frag, position);
+    for (int k = 0; k < (cluster.y + cluster.z); k++) {
+        int i = litLightOf(cluster, k);
+        vec4 a = litTexelOf(i, 2);
+        vec4 bb = litTexelOf(i, 3);
+        light = light + (lightAt(position, n, litTexelOf(i, 0), litTexelOf(i, 1), a, bb, litTexelOf(i, 4), litTexelOf(i, 5)) * recordShadowAt(position, a, bb));
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
@@ -2372,9 +2763,9 @@ void main() {
 #endif
     pbrValues = pbrMapped(uv, occlusionUv);
 #endif
-    shaded = pbrShade(n, worldPosition, surfaceColor, pbrValues);
+    shaded = pbrShade(n, worldPosition, gl_FragCoord.xy, surfaceColor, pbrValues);
 #else
-    shaded = litShade(n, worldPosition, surfaceColor);
+    shaded = litShade(n, worldPosition, gl_FragCoord.xy, surfaceColor);
 #endif
 #ifdef EMISSIVE
     vec3 glow = texture(sampler2D(emissiveTexture, baseSampler), uv).rgb;

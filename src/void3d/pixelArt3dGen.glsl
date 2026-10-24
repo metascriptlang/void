@@ -309,12 +309,10 @@ layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
     vec4 dirColor;
-    vec4 pointLight[4];
-    vec4 pointColor[4];
-    vec4 shapeA[4];
-    vec4 shapeB[4];
-    vec4 shapeC[4];
-    vec4 shapeD[4];
+    vec4 clusterGrid;
+    vec4 clusterFactors;
+    vec4 clusterView;
+    vec4 clusterScreen;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -323,6 +321,10 @@ layout(binding=6) uniform frameParams {
 };
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
+@image_sample_type lightRecords unfilterable_float
+layout(binding=9) uniform texture2D lightRecords;
+@sampler_type clusterSampler nonfiltering
+layout(binding=5) uniform sampler clusterSampler;
 in vec2 uv;
 in vec3 rootPosition;
 in vec4 instanceColor;
@@ -347,6 +349,18 @@ vec3 toonPointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, float no
     float energy = ((falloff * falloff) * facing) * at.w;
     float level = floor(((energy * levels) + 0.35)) / levels;
     return srgbToLinear(tint.rgb) * level;
+}
+const uint DATA_ROW = 256;
+ivec2 dataTexelOf(int i) {
+    uint at = uvec2(ivec2(i, 0)).x;
+    return ivec2(uvec2((at % DATA_ROW), (at / DATA_ROW)));
+}
+const int RECORD_TEXELS = 6;
+ivec2 recordTexelOf(int light, int texel) {
+    return dataTexelOf(((light * RECORD_TEXELS) + texel));
+}
+vec4 billboardTexelOf(int light, int texel) {
+    return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
@@ -406,10 +420,9 @@ void main() {
     if (shape.y != 0.0) {
         vec3 lightPoint = rootPosition + vec3(0.0, shape.z, 0.0);
         vec3 points = vec3(0.0);
-        for (int i = 0; i < int(ambient.a + 0.5); i++) {
-            vec4 at = pointLight[i];
+        for (int i = 0; i < int(clusterScreen.z + 0.5); i++) {
             vec3 up = vec3(0.0, 1.0, 0.0);
-            points = points + toonPointLightAt(lightPoint, up, at, pointColor[i], 0.0, shape.x);
+            points = points + toonPointLightAt(lightPoint, up, billboardTexelOf(i, 0), billboardTexelOf(i, 1), 0.0, shape.x);
         }
         rgb = linearToSrgb((srgbToLinear(rgb) + points));
     }
@@ -661,12 +674,10 @@ layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
     vec4 dirColor;
-    vec4 pointLight[4];
-    vec4 pointColor[4];
-    vec4 shapeA[4];
-    vec4 shapeB[4];
-    vec4 shapeC[4];
-    vec4 shapeD[4];
+    vec4 clusterGrid;
+    vec4 clusterFactors;
+    vec4 clusterView;
+    vec4 clusterScreen;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -675,20 +686,29 @@ layout(binding=6) uniform frameParams {
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
-    mat4 shadowMatrix;
-    vec4 shadow;
+    mat4 cascadeMatrices[4];
+    vec4 cascadeFar;
+    vec4 cascadeInfo;
+    vec4 cascadeView;
     mat4 spotMatrix;
     vec4 spotShadow;
 };
 #endif
 #ifdef SHADOWED
-@image_sample_type shadowMap unfilterable_float
-layout(binding=4) uniform texture2D shadowMap;
+layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
 #endif
+@image_sample_type lightRecords unfilterable_float
+layout(binding=9) uniform texture2D lightRecords;
+@image_sample_type clusterRecords uint
+layout(binding=10) uniform utexture2D clusterRecords;
+@image_sample_type clusterIndices uint
+layout(binding=11) uniform utexture2D clusterIndices;
+@sampler_type clusterSampler nonfiltering
+layout(binding=5) uniform sampler clusterSampler;
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -748,6 +768,41 @@ vec4 tintedSurface(vec4 color_1) {
     return color_1 * materialColorOf();
 }
 #ifdef SHADOWED
+float cascadeDepthOf(vec3 position, vec3 eye, vec4 view) {
+    return dot((position - eye), view.xyz);
+}
+#endif
+#ifdef SHADOWED
+int cascadeCountOf(vec4 info) {
+    return int(info.x + 0.5);
+}
+#endif
+#ifdef SHADOWED
+float farOf(vec4 far, int cascade) {
+    if (cascade == 0) {
+        return far.x;
+    }
+    if (cascade == 1) {
+        return far.y;
+    }
+    if (cascade == 2) {
+        return far.z;
+    }
+    return far.w;
+}
+#endif
+#ifdef SHADOWED
+int cascadeIndexOf(float depth, vec4 far, vec4 info) {
+    int count = cascadeCountOf(info);
+    for (int i = 0; i < count; i++) {
+        if (depth < farOf(far, i)) {
+            return i;
+        }
+    }
+    return count;
+}
+#endif
+#ifdef SHADOWED
 vec4 mapCoord(vec3 position, mat4 matrix) {
     vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
@@ -761,27 +816,131 @@ vec4 mapCoord(vec3 position, mat4 matrix) {
 }
 #endif
 #ifdef SHADOWED
+vec4 cascadeTexelOf(vec3 position, mat4 matrix, vec4 view) {
+    vec4 at = mapCoord(position, matrix);
+    if (at.w < 0.5) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    int size = int(view.w + 0.5);
+    ivec2 texel = clamp(ivec2((at.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    return vec4(float(texel.x), float(texel.y), at.z, 1.0);
+}
+#endif
+#ifdef SHADOWED
 float mapLit(float z, float depth, float bias, float opacity) {
     float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, opacity);
 }
 #endif
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, shadowMatrix);
-    if (p.w < 0.5) {
+float cascadeLitOf(vec4 texel, float stored, vec4 info) {
+    if (texel.w < 0.5) {
         return 1.0;
     }
-    ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
-    float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    return mapLit(p.z, depth, shadow.x, shadow.y);
+    return mapLit(texel.z, stored, info.z, info.w);
+}
+#endif
+#ifdef SHADOWED
+float cascadeShadowAt(vec3 position, int cascade) {
+    vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
+    float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
+    return cascadeLitOf(texel, stored, cascadeInfo);
+}
+#endif
+#ifdef SHADOWED
+float cascadeBlendOf(float depth, int cascade, vec4 far, vec4 info) {
+    if ((cascade + 1) >= cascadeCountOf(info)) {
+        return 0.0;
+    }
+    float bound = farOf(far, cascade);
+    float nextNear = (1.0 - info.y) * bound;
+    if (depth < nextNear) {
+        return 0.0;
+    }
+    return (depth - nextNear) / (bound - nextNear);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    float depth = cascadeDepthOf(position, cameraPosition.xyz, cascadeView);
+    int cascade = cascadeIndexOf(depth, cascadeFar, cascadeInfo);
+    if (cascade >= cascadeCountOf(cascadeInfo)) {
+        return 1.0;
+    }
+    float lit = cascadeShadowAt(position, cascade);
+    float blend = cascadeBlendOf(depth, cascade, cascadeFar, cascadeInfo);
+    if (blend > 0.0) {
+        return mix(lit, cascadeShadowAt(position, (cascade + 1)), blend);
+    }
+    return lit;
 }
 #endif
 vec3 srgbToLinear(vec3 srgb) {
     vec3 low = srgb * 0.0773993808;
     vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
     return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+int cellOf(float position, int cells) {
+    if (!(position > 0.0)) {
+        return 0;
+    }
+    if (position >= float(cells)) {
+        return cells - 1;
+    }
+    return int(position);
+}
+int clusterSliceOf(float depth, vec4 grid, vec4 factors) {
+    int slices = int(grid.z + 0.5);
+    if (grid.w > 0.5) {
+        return cellOf(floor(((depth - factors.z) * factors.w)), slices);
+    }
+    return cellOf((((log(depth) * factors.z) - factors.w) + 1.0), slices);
+}
+int clusterAtCell(vec2 cell, float depth, vec4 grid, vec4 factors) {
+    int columns = int(grid.x + 0.5);
+    int x = cellOf(cell.x, columns);
+    int y = cellOf(cell.y, int(grid.y + 0.5));
+    return (((y * columns) + x) * int(grid.z + 0.5)) + clusterSliceOf(depth, grid, factors);
+}
+int clusterIndexOf(vec2 frag, float depth, vec4 grid, vec4 factors) {
+    return clusterAtCell((frag * factors.xy), depth, grid, factors);
+}
+float clusterDepthOf(vec3 position, vec4 view) {
+    return dot(position, view.xyz) + view.w;
+}
+int fragmentClusterOf(vec2 frag, vec3 position, vec4 grid, vec4 factors, vec4 view, vec4 screen) {
+    float row = (screen.x > 0.5) ? (screen.y - frag.y) : frag.y;
+    return clusterIndexOf(vec2(frag.x, row), clusterDepthOf(position, view), grid, factors);
+}
+const uint DATA_ROW = 256;
+ivec2 dataTexelOf(int i) {
+    uint at = uvec2(ivec2(i, 0)).x;
+    return ivec2(uvec2((at % DATA_ROW), (at / DATA_ROW)));
+}
+ivec4 litClusterOf(vec2 frag, vec3 position) {
+    int cluster = fragmentClusterOf(frag, position, clusterGrid, clusterFactors, clusterView, clusterScreen);
+    return ivec4(texelFetch(usampler2D(clusterRecords, clusterSampler), dataTexelOf(cluster), 0));
+}
+int indexOfWord(uvec4 texel, int j) {
+    ivec4 words = ivec4(texel);
+    uint channel = uvec2(ivec2(j, 0)).x % 4;
+    if (channel == 0) {
+        return words.x;
+    }
+    if (channel == 1) {
+        return words.y;
+    }
+    if (channel == 2) {
+        return words.z;
+    }
+    return words.w;
+}
+ivec2 indexTexelOf(int j) {
+    return dataTexelOf(ivec2(uvec2((uvec2(ivec2(j, 0)).x / 4), 0)).x);
+}
+int litLightOf(ivec4 cluster, int k) {
+    int j = cluster.x + k;
+    return indexOfWord(texelFetch(usampler2D(clusterIndices, clusterSampler), indexTexelOf(j), 0), j);
 }
 vec3 toonPointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, float normalWeight, float levels) {
     vec3 toLight = at.xyz - position;
@@ -791,6 +950,13 @@ vec3 toonPointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, float no
     float energy = ((falloff * falloff) * facing) * at.w;
     float level = floor(((energy * levels) + 0.35)) / levels;
     return srgbToLinear(tint.rgb) * level;
+}
+const int RECORD_TEXELS = 6;
+ivec2 recordTexelOf(int light, int texel) {
+    return dataTexelOf(((light * RECORD_TEXELS) + texel));
+}
+vec4 litTexelOf(int light, int texel) {
+    return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
 vec3 saturated(vec3 rgb, float amount) {
     if (amount == 0.0) {
@@ -805,7 +971,7 @@ vec3 linearToSrgb(vec3 rgb) {
     vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
-vec4 toonShade(vec3 n, vec3 position, vec4 surfaceColor) {
+vec4 toonShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor) {
     vec4 params = materialOf();
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
@@ -813,9 +979,10 @@ vec4 toonShade(vec3 n, vec3 position, vec4 surfaceColor) {
     lambert = lambert * dirShadowAt(position);
 #endif
     vec3 light = srgbToLinear(ambient.rgb) + (srgbToLinear(dirColor.rgb) * lambert);
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        vec4 at = pointLight[i];
-        light = light + toonPointLightAt(position, n, at, pointColor[i], 1.0, params.x);
+    ivec4 cluster = litClusterOf(frag, position);
+    for (int k = 0; k < (cluster.y + cluster.z); k++) {
+        int i = litLightOf(cluster, k);
+        light = light + toonPointLightAt(position, n, litTexelOf(i, 0), litTexelOf(i, 1), 1.0, params.x);
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, params.y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
@@ -860,7 +1027,7 @@ void main() {
     vec4 params = materialOf();
     vec3 n = facingNormal(normalize(worldNormal), params.z, gl_FrontFacing);
     vec4 surfaceColor = tintedSurface(baseColor);
-    vec4 shaded = toonShade(n, worldPosition, surfaceColor);
+    vec4 shaded = toonShade(n, worldPosition, gl_FragCoord.xy, surfaceColor);
 #ifdef CUTOUT
     if (shaded.a < params.w) {
         discard;
@@ -1035,12 +1202,10 @@ layout(binding=1) uniform lightParams {
     vec4 ambient;
     vec4 dirLight;
     vec4 dirColor;
-    vec4 pointLight[4];
-    vec4 pointColor[4];
-    vec4 shapeA[4];
-    vec4 shapeB[4];
-    vec4 shapeC[4];
-    vec4 shapeD[4];
+    vec4 clusterGrid;
+    vec4 clusterFactors;
+    vec4 clusterView;
+    vec4 clusterScreen;
 };
 layout(binding=6) uniform frameParams {
     vec4 frame;
@@ -1049,15 +1214,16 @@ layout(binding=6) uniform frameParams {
 };
 #ifdef SHADOWED
 layout(binding=5) uniform shadowParams {
-    mat4 shadowMatrix;
-    vec4 shadow;
+    mat4 cascadeMatrices[4];
+    vec4 cascadeFar;
+    vec4 cascadeInfo;
+    vec4 cascadeView;
     mat4 spotMatrix;
     vec4 spotShadow;
 };
 #endif
 #ifdef SHADOWED
-@image_sample_type shadowMap unfilterable_float
-layout(binding=4) uniform texture2D shadowMap;
+layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
@@ -1080,6 +1246,14 @@ layout(binding=3) uniform texture2D emissiveTexture;
 #ifdef NORMAL_MAP
 layout(binding=5) uniform texture2D normalTexture;
 #endif
+@image_sample_type lightRecords unfilterable_float
+layout(binding=9) uniform texture2D lightRecords;
+@image_sample_type clusterRecords uint
+layout(binding=10) uniform utexture2D clusterRecords;
+@image_sample_type clusterIndices uint
+layout(binding=11) uniform utexture2D clusterIndices;
+@sampler_type clusterSampler nonfiltering
+layout(binding=5) uniform sampler clusterSampler;
 #ifdef NORMAL_MAP
 in vec4 worldTangent;
 #endif
@@ -1233,6 +1407,41 @@ vec4 tintedSurface(vec4 color_1) {
     return color_1 * materialColorOf();
 }
 #ifdef SHADOWED
+float cascadeDepthOf(vec3 position, vec3 eye, vec4 view) {
+    return dot((position - eye), view.xyz);
+}
+#endif
+#ifdef SHADOWED
+int cascadeCountOf(vec4 info) {
+    return int(info.x + 0.5);
+}
+#endif
+#ifdef SHADOWED
+float farOf(vec4 far, int cascade) {
+    if (cascade == 0) {
+        return far.x;
+    }
+    if (cascade == 1) {
+        return far.y;
+    }
+    if (cascade == 2) {
+        return far.z;
+    }
+    return far.w;
+}
+#endif
+#ifdef SHADOWED
+int cascadeIndexOf(float depth, vec4 far, vec4 info) {
+    int count = cascadeCountOf(info);
+    for (int i = 0; i < count; i++) {
+        if (depth < farOf(far, i)) {
+            return i;
+        }
+    }
+    return count;
+}
+#endif
+#ifdef SHADOWED
 vec4 mapCoord(vec3 position, mat4 matrix) {
     vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
@@ -1246,27 +1455,131 @@ vec4 mapCoord(vec3 position, mat4 matrix) {
 }
 #endif
 #ifdef SHADOWED
+vec4 cascadeTexelOf(vec3 position, mat4 matrix, vec4 view) {
+    vec4 at = mapCoord(position, matrix);
+    if (at.w < 0.5) {
+        return vec4(0.0, 0.0, 0.0, 0.0);
+    }
+    int size = int(view.w + 0.5);
+    ivec2 texel = clamp(ivec2((at.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    return vec4(float(texel.x), float(texel.y), at.z, 1.0);
+}
+#endif
+#ifdef SHADOWED
 float mapLit(float z, float depth, float bias, float opacity) {
     float lit = ((clamp(z, 0.0, 1.0) - bias) > depth) ? 0.0 : 1.0;
     return mix(1.0, lit, opacity);
 }
 #endif
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, shadowMatrix);
-    if (p.w < 0.5) {
+float cascadeLitOf(vec4 texel, float stored, vec4 info) {
+    if (texel.w < 0.5) {
         return 1.0;
     }
-    ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(size))), ivec2(0, 0), (size - ivec2(1, 1)));
-    float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).x;
-    return mapLit(p.z, depth, shadow.x, shadow.y);
+    return mapLit(texel.z, stored, info.z, info.w);
+}
+#endif
+#ifdef SHADOWED
+float cascadeShadowAt(vec3 position, int cascade) {
+    vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
+    float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
+    return cascadeLitOf(texel, stored, cascadeInfo);
+}
+#endif
+#ifdef SHADOWED
+float cascadeBlendOf(float depth, int cascade, vec4 far, vec4 info) {
+    if ((cascade + 1) >= cascadeCountOf(info)) {
+        return 0.0;
+    }
+    float bound = farOf(far, cascade);
+    float nextNear = (1.0 - info.y) * bound;
+    if (depth < nextNear) {
+        return 0.0;
+    }
+    return (depth - nextNear) / (bound - nextNear);
+}
+#endif
+#ifdef SHADOWED
+float dirShadowAt(vec3 position) {
+    float depth = cascadeDepthOf(position, cameraPosition.xyz, cascadeView);
+    int cascade = cascadeIndexOf(depth, cascadeFar, cascadeInfo);
+    if (cascade >= cascadeCountOf(cascadeInfo)) {
+        return 1.0;
+    }
+    float lit = cascadeShadowAt(position, cascade);
+    float blend = cascadeBlendOf(depth, cascade, cascadeFar, cascadeInfo);
+    if (blend > 0.0) {
+        return mix(lit, cascadeShadowAt(position, (cascade + 1)), blend);
+    }
+    return lit;
 }
 #endif
 vec3 srgbToLinear(vec3 srgb) {
     vec3 low = srgb * 0.0773993808;
     vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
     return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+int cellOf(float position, int cells) {
+    if (!(position > 0.0)) {
+        return 0;
+    }
+    if (position >= float(cells)) {
+        return cells - 1;
+    }
+    return int(position);
+}
+int clusterSliceOf(float depth, vec4 grid, vec4 factors) {
+    int slices = int(grid.z + 0.5);
+    if (grid.w > 0.5) {
+        return cellOf(floor(((depth - factors.z) * factors.w)), slices);
+    }
+    return cellOf((((log(depth) * factors.z) - factors.w) + 1.0), slices);
+}
+int clusterAtCell(vec2 cell, float depth, vec4 grid, vec4 factors) {
+    int columns = int(grid.x + 0.5);
+    int x = cellOf(cell.x, columns);
+    int y = cellOf(cell.y, int(grid.y + 0.5));
+    return (((y * columns) + x) * int(grid.z + 0.5)) + clusterSliceOf(depth, grid, factors);
+}
+int clusterIndexOf(vec2 frag, float depth, vec4 grid, vec4 factors) {
+    return clusterAtCell((frag * factors.xy), depth, grid, factors);
+}
+float clusterDepthOf(vec3 position, vec4 view) {
+    return dot(position, view.xyz) + view.w;
+}
+int fragmentClusterOf(vec2 frag, vec3 position, vec4 grid, vec4 factors, vec4 view, vec4 screen) {
+    float row = (screen.x > 0.5) ? (screen.y - frag.y) : frag.y;
+    return clusterIndexOf(vec2(frag.x, row), clusterDepthOf(position, view), grid, factors);
+}
+const uint DATA_ROW = 256;
+ivec2 dataTexelOf(int i) {
+    uint at = uvec2(ivec2(i, 0)).x;
+    return ivec2(uvec2((at % DATA_ROW), (at / DATA_ROW)));
+}
+ivec4 litClusterOf(vec2 frag, vec3 position) {
+    int cluster = fragmentClusterOf(frag, position, clusterGrid, clusterFactors, clusterView, clusterScreen);
+    return ivec4(texelFetch(usampler2D(clusterRecords, clusterSampler), dataTexelOf(cluster), 0));
+}
+int indexOfWord(uvec4 texel, int j) {
+    ivec4 words = ivec4(texel);
+    uint channel = uvec2(ivec2(j, 0)).x % 4;
+    if (channel == 0) {
+        return words.x;
+    }
+    if (channel == 1) {
+        return words.y;
+    }
+    if (channel == 2) {
+        return words.z;
+    }
+    return words.w;
+}
+ivec2 indexTexelOf(int j) {
+    return dataTexelOf(ivec2(uvec2((uvec2(ivec2(j, 0)).x / 4), 0)).x);
+}
+int litLightOf(ivec4 cluster, int k) {
+    int j = cluster.x + k;
+    return indexOfWord(texelFetch(usampler2D(clusterIndices, clusterSampler), indexTexelOf(j), 0), j);
 }
 vec3 toonPointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, float normalWeight, float levels) {
     vec3 toLight = at.xyz - position;
@@ -1276,6 +1589,13 @@ vec3 toonPointLightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, float no
     float energy = ((falloff * falloff) * facing) * at.w;
     float level = floor(((energy * levels) + 0.35)) / levels;
     return srgbToLinear(tint.rgb) * level;
+}
+const int RECORD_TEXELS = 6;
+ivec2 recordTexelOf(int light, int texel) {
+    return dataTexelOf(((light * RECORD_TEXELS) + texel));
+}
+vec4 litTexelOf(int light, int texel) {
+    return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
 vec3 saturated(vec3 rgb, float amount) {
     if (amount == 0.0) {
@@ -1290,7 +1610,7 @@ vec3 linearToSrgb(vec3 rgb) {
     vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
-vec4 toonShade(vec3 n, vec3 position, vec4 surfaceColor) {
+vec4 toonShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor) {
     vec4 params = materialOf();
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
@@ -1298,9 +1618,10 @@ vec4 toonShade(vec3 n, vec3 position, vec4 surfaceColor) {
     lambert = lambert * dirShadowAt(position);
 #endif
     vec3 light = srgbToLinear(ambient.rgb) + (srgbToLinear(dirColor.rgb) * lambert);
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        vec4 at = pointLight[i];
-        light = light + toonPointLightAt(position, n, at, pointColor[i], 1.0, params.x);
+    ivec4 cluster = litClusterOf(frag, position);
+    for (int k = 0; k < (cluster.y + cluster.z); k++) {
+        int i = litLightOf(cluster, k);
+        light = light + toonPointLightAt(position, n, litTexelOf(i, 0), litTexelOf(i, 1), 1.0, params.x);
     }
     vec3 surface = srgbToLinear(saturated(surfaceColor.rgb, params.y));
     return vec4(linearToSrgb((surface * light)), surfaceColor.a);
@@ -1405,7 +1726,7 @@ void main() {
     n = mappedNormal(normalize(worldNormal), worldTangent, face, normalTexel);
 #endif
     vec4 surfaceColor = tintedSurface(vec4((baseColor.rgb * texel.rgb), (baseColor.a * texel.a)));
-    vec4 shaded = toonShade(n, worldPosition, surfaceColor);
+    vec4 shaded = toonShade(n, worldPosition, gl_FragCoord.xy, surfaceColor);
 #ifdef EMISSIVE
     vec3 glow = texture(sampler2D(emissiveTexture, baseSampler), uv).rgb;
     shaded = emittedOver(shaded, glow, emissiveOf());
