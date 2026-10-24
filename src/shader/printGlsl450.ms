@@ -301,7 +301,8 @@ function binaryText(op: BinaryOp): string {
 }
 
 function isIntegerScalar(t: ShaderType): boolean {
-	return t.kind == ShaderTypeKind.Scalar && (t.scalar == ScalarKind.I32 || t.scalar == ScalarKind.U32);
+	return t.kind == ShaderTypeKind.Scalar &&
+		(t.scalar == ScalarKind.I32 || t.scalar == ScalarKind.U32);
 }
 
 function value(p: Glsl, e: ShaderExpr): string {
@@ -321,7 +322,8 @@ function value(p: Glsl, e: ShaderExpr): string {
 		const operand = e.operands[0];
 		const op = e.unary == UnaryOp.Negate ? "-" :
 			operand.type.scalar == ScalarKind.Bool ? "!" : "~";
-		return op + (operand.kind == ExprKind.Unary ? "(" + value(p, operand) + ")" : expr(p, operand));
+		return op +
+			(operand.kind == ExprKind.Unary ? "(" + value(p, operand) + ")" : expr(p, operand));
 	}
 	if (e.kind == ExprKind.Conditional) {
 		return expr(p, e.operands[0]) + " ? " + expr(p, e.operands[1]) + " : " +
@@ -531,7 +533,8 @@ function compared(e: ShaderExpr, args: string[]): string {
 function simple(p: Glsl, s: ShaderStmt): string {
 	if (s.kind == StmtKind.Let) {
 		const local = p.module.functions[p.fn].locals[s.local];
-		return typeName(p, local.type) + " " + p.localNames[p.fn][s.local] + " = " + value(p, s.expr);
+		return typeName(p, local.type) + " " + p.localNames[p.fn][s.local] + " = " +
+			value(p, s.expr);
 	}
 	if (s.kind == StmtKind.Call) { return expr(p, s.expr); }
 	const target = expr(p, s.target);
@@ -714,7 +717,9 @@ function nameDeclarations(p: Glsl): void {
 	}
 	for (let i = 0; i < m.ios.length; i++) {
 		const io = m.ios[i];
-		if (io.stage == p.entry.stage && io.builtin == Builtin.None) { names.globals.push(p.ioNames[i]); }
+		if (io.stage == p.entry.stage && io.builtin == Builtin.None) {
+			names.globals.push(p.ioNames[i]);
+		}
 	}
 	for (const s of m.structs) {
 		p.structNames.push("");
@@ -780,7 +785,9 @@ export function printGlsl450(m: ShaderModule): string {
 			attributes.push(io.name);
 		}
 	}
-	for (const io of m.ios) { p.ioNames.push(isVarying(io) ? suffixed(io.name, attributes) : io.name); }
+	for (const io of m.ios) {
+		p.ioNames.push(isVarying(io) ? suffixed(io.name, attributes) : io.name);
+	}
 	nameDeclarations(p);
 
 	let out = "";
@@ -794,7 +801,8 @@ export function printGlsl450(m: ShaderModule): string {
 		const s = m.structs[d.index];
 		out += "struct " + p.structNames[d.index] + " {\n";
 		for (let f = 0; f < s.members.length; f++) {
-			out += "    " + typeName(p, s.members[f].type) + " " + p.structFields[d.index][f] + ";\n";
+			out += "    " + typeName(p, s.members[f].type) + " " + p.structFields[d.index][f] +
+				";\n";
 		}
 		out += "};\n";
 	}
@@ -810,7 +818,8 @@ export function printGlsl450(m: ShaderModule): string {
 	for (const direction of [IoDirection.In, IoDirection.Out]) {
 		for (let i = 0; i < m.ios.length; i++) {
 			const io = m.ios[i];
-			if (io.stage == p.entry.stage && io.direction == direction && io.builtin == Builtin.None) {
+			if (io.stage == p.entry.stage && io.direction == direction &&
+				io.builtin == Builtin.None) {
 				out += gated(io.condition, ioText(p, i));
 			}
 		}
