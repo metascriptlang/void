@@ -37,6 +37,12 @@ The reflection is the `GPUShaderModuleDescriptor` of `src/webgpu/types.ms`, writ
 to it is agreed with the gpu-ms arc first ([GPU-MS.md](GPU-MS.md) "Working together"), because
 a backend reading a field the printer no longer writes fails only at draw time.
 
+A binding is one entry per `(group, binding)`: its `visibility` is WebGPU's `GPUShaderStage`
+mask of the stages that read it, and a view both render stages read takes the first native
+slot free in each, the same in both stages' text, so D3D11 and Metal bind it once per stage
+at one register. GL gives a combined sampler one unit for the whole program, since a linked
+program refuses one uniform declared at two bindings.
+
 - `DUMMY_SAMPLER_BINDING` (`-1`): GL has no fetch without a sampler, so a `textureLoad` texture
   that its stage samples through no sampler is paired with this binding, and the GL backend
   binds a sampler of its own there (`src/webgpu/gl/backend.ms`). No other backend sees it.
