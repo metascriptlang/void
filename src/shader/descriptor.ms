@@ -360,22 +360,23 @@ export function isComputeSource(s: ProgramSource): boolean {
 	return s.computeCode != "" || s.reflection.workgroupSize[0] > 0;
 }
 
-function textBeside(code: string, bytecode: string, keepSource: boolean): string {
-	return bytecode == "[]" || keepSource ? quotedSource(code) : quotedSource("");
-}
-
-export function descriptorSource(name: string, s: ProgramSource, bytecode: string[], keepSource: boolean): string {
+export function descriptorSource(
+	name: string,
+	s: ProgramSource,
+	code: string[],
+	bytecode: string[],
+): string {
 	const refused = s.refusal != "" ? "\t// " + s.refusal + "\n" : "";
 	const stages = isComputeSource(s) ?
-		"\t\t\tcomputeCode: " + textBeside(s.computeCode, bytecode[0], keepSource) + ",\n" +
+		"\t\t\tcomputeCode: " + code[0] + ",\n" +
 		"\t\t\tcomputeEntryPoint: " + quotedSource(s.entryPoint) + ",\n" +
 		"\t\t\tcomputeBytecode: " + bytecode[0] + ",\n" +
 		"\t\t\tworkgroupSize: [" + s.reflection.workgroupSize.map((n) => String(n)).join(", ") +
 		"],\n" :
-		"\t\t\tvertexCode: " + textBeside(s.vertexCode, bytecode[0], keepSource) + ",\n" +
+		"\t\t\tvertexCode: " + code[0] + ",\n" +
 		"\t\t\tvertexEntryPoint: " + quotedSource(s.entryPoint) + ",\n" +
 		"\t\t\tvertexBytecode: " + bytecode[0] + ",\n" +
-		"\t\t\tfragmentCode: " + textBeside(s.fragmentCode, bytecode[1], keepSource) + ",\n" +
+		"\t\t\tfragmentCode: " + code[1] + ",\n" +
 		"\t\t\tfragmentEntryPoint: " + quotedSource(s.entryPoint) + ",\n" +
 		"\t\t\tfragmentBytecode: " + bytecode[1] + ",\n";
 	return refused + "\texport function " + name + "ShaderModule(): GPUShaderModuleDescriptor {\n" +

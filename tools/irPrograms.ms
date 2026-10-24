@@ -449,18 +449,11 @@ function stageBytecode(
 	];
 }
 
-function textShared(
-	texts: Map<string, string>,
-	descriptor: string,
-	field: string,
-	code: string,
-	bytecode: string,
-): string {
-	if (code == "" || bytecode != "[]") { return descriptor; }
-	const quoted = quotedSource(code);
+function textShared(texts: Map<string, string>, code: string, bytecode: string): string {
+	if (bytecode != "[]") { return quotedSource(""); }
 	const key = sha256(code.asBytes()).toHex();
-	texts.set(key, quoted);
-	return descriptor.replaceAll(field + ": " + quoted + ",\n", field + ": TEXT_" + key + ",\n");
+	texts.set(key, quotedSource(code));
+	return "TEXT_" + key;
 }
 
 function moduleText(
@@ -511,16 +504,13 @@ function moduleText(
 			const bytecode = LANGUAGES[targetIndex][0] == "hlsl5" ?
 				stageBytecode(dxbc, constants, stageSource, programs[i].name) :
 				isComputeSource(stageSource) ? ["[]"] : ["[]", "[]"];
-			let descriptor = descriptorSource(programs[i].name, stageSource, bytecode);
-			if (isComputeSource(stageSource)) {
-				descriptor = textShared(texts, descriptor, "computeCode", stageSource.computeCode,
-					bytecode[0]);
-			} else {
-				descriptor = textShared(texts, descriptor, "vertexCode", stageSource.vertexCode,
-					bytecode[0]);
-				descriptor = textShared(texts, descriptor, "fragmentCode", stageSource.fragmentCode,
-					bytecode[1]);
-			}
+			const code = isComputeSource(stageSource) ?
+				[textShared(texts, stageSource.computeCode, bytecode[0])] :
+				[
+					textShared(texts, stageSource.vertexCode, bytecode[0]),
+					textShared(texts, stageSource.fragmentCode, bytecode[1]),
+				];
+			const descriptor = descriptorSource(programs[i].name, stageSource, code, bytecode);
 			functions.push(descriptor);
 		}
 		let blobs = "";
