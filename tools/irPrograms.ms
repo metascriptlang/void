@@ -537,7 +537,7 @@ function moduleText(programs: Program[], typesPath: string, dispatcher: string,
 				stageBytecode((code, stage, entry, what) =>
 					metallibOf(metallib, constants, language, code, entry, what), s, programs[i].name) :
 				none;
-			functions.push(descriptorSource(programs[i].name, s, bytecode));
+			functions.push(descriptorSource(programs[i].name, s, bytecode, language == "metal_ios"));
 		}
 		let blobs = "";
 		for (const [key, base64] of constants) {
