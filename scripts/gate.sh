@@ -655,6 +655,8 @@ if "$MSC" build tests/integration/viewSamples.ms --output=out/viewSamples.exe > 
 	for samples in 1 2 4 8; do
 		if VOID_VIEW_SAMPLES=$samples out/viewSamples.exe > out/gate-view-samples-$samples.log 2>&1; then
 			pass "$(grep -o 'view samples: .*' out/gate-view-samples-$samples.log)"
+		elif grep -q "sampleCount '$samples' is not supported" out/gate-view-samples-$samples.log; then
+			pass "a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)"
 		else
 			fail "a host view at $samples samples — see out/gate-view-samples-$samples.log"
 		fi
