@@ -1577,6 +1577,13 @@ test "a pass names a view per color attachment and one for depth" {
 	assert PASS_VIEW_SLOTS == DOOR_MAX_COLOR_ATTACHMENTS + 1;
 }
 
+test "the pass and pipeline words of doorWords.h lay out one entry per color attachment" {
+	assert DOOR_PASS_COLOR_LOAD - DOOR_PASS_COLOR_VIEW == DOOR_MAX_COLOR_ATTACHMENTS;
+	assert DOOR_PASS_DEPTH_VIEW - DOOR_PASS_COLOR_LOAD == DOOR_MAX_COLOR_ATTACHMENTS;
+	assert DOOR_PASS_CLEAR_DEPTH == DOOR_MAX_COLOR_ATTACHMENTS * 4;
+	assert DOOR_PIPELINE_DEPTH_FORMAT - DOOR_PIPELINE_COLOR_FORMAT == DOOR_MAX_COLOR_ATTACHMENTS;
+}
+
 test "doorFrameStat answers each stat from its own field of the previous frame" {
 	lastFrameStats = { draws: 1, pipelines: 2, passes: 3, bufferBytes: 4, imageBytes: 5 };
 	assert doorFrameStat(DOOR_STAT_DRAWS) == 1;
