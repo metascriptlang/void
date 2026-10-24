@@ -1426,7 +1426,6 @@ export function inverse(m: Mat4x4f): Mat4x4f {
 	));
 }
 
-
 export function abs(x: float32): float32 { return Math.abs(x) as float32; }
 export function sign(x: float32): float32 { return Math.sign(x) as float32; }
 export function floor(x: float32): float32 { return Math.floor(x) as float32; }
@@ -2067,6 +2066,10 @@ export function textureLoad(texture: StorageTexture3d, at: Vec3i): Vec4f {
 	return loadTexel(texture.texels, first);
 }
 
+function insideTexture(width: int32, height: int32, at: Vec2i): boolean {
+	return at.x >= 0 && at.y >= 0 && at.x < width && at.y < height;
+}
+
 function storageTexel(
 	width: int32,
 	height: int32,
@@ -2099,7 +2102,7 @@ export function textureDimensions(texture: Texture2d, level: int32): Vec2i {
 
 export function textureLoad(texture: Texture2d, at: Vec2i, level: int32): Vec4f {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
+	if (!insideTexture(texture.width, texture.height, at)) {
 		unreachable("textureLoad: the texel is outside the texture");
 	}
 	return texelAt(texture, at.x, at.y);
@@ -2114,7 +2117,7 @@ export struct Texture2dU32 {
 
 export function textureLoad(texture: Texture2dU32, at: Vec2i, level: int32): Vec4u {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
+	if (!insideTexture(texture.width, texture.height, at)) {
 		unreachable("textureLoad: the texel is outside the texture");
 	}
 	const first = (at.y * texture.width + at.x) * 4;
@@ -2130,12 +2133,20 @@ export struct Texture2dArray {
 	texels: float32[];
 }
 
+function sliceTexels(texels: float32[], first: int32, count: int32): float32[] {
+	let slice: float32[] = [];
+	for (let i = 0; i < count; i++) { slice.push(texels[first + i]); }
+	return slice;
+}
+
 function layerOf(texture: Texture2dArray, layer: int32): Texture2d {
 	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
 	const size = texture.width * texture.height * 4;
-	let texels: float32[] = [];
-	for (let i = 0; i < size; i++) { texels.push(texture.texels[layer * size + i]); }
-	return { width: texture.width, height: texture.height, texels };
+	return {
+		width: texture.width,
+		height: texture.height,
+		texels: sliceTexels(texture.texels, layer * size, size),
+	};
 }
 
 export function textureLoad(
@@ -2233,9 +2244,11 @@ function cubeFaceOf(texture: TextureCube, dir: Vec3f): Texture2d {
 	const face = ax >= ay && ax >= az ? (dir.x >= 0.0 ? 0 : 1) :
 		ay >= az ? (dir.y >= 0.0 ? 2 : 3) : (dir.z >= 0.0 ? 4 : 5);
 	const size = texture.size * texture.size * 4;
-	let texels: float32[] = [];
-	for (let i = 0; i < size; i++) { texels.push(texture.texels[face * size + i]); }
-	return { width: texture.size, height: texture.size, texels };
+	return {
+		width: texture.size,
+		height: texture.size,
+		texels: sliceTexels(texture.texels, face * size, size),
+	};
 }
 
 function cubeFaceUv(dir: Vec3f): Vec2f {
