@@ -5846,6 +5846,33 @@ LDR path; a cube source (`Environment.new` with a cube texture); drawing the env
 Heaps' specular edge fix-up (`cubeScaleFactor`), which seamless cube sampling makes unneeded on
 every sokol backend; Bevy's blue-noise sample rotation.
 
+### Material colour, as built (2026-10-24)
+
+A lit or pbr material carries a colour of its own, as Heaps' `BaseMesh` `@param var color`
+(`h3d/shader/BaseMesh.hx:64`, `pixelColor = color` at `:81`, then times the vertex colour and the
+texture) and Bevy's `StandardMaterial::base_color` (`pbr_material.rs:35`, multiplied in at
+`pbr_fragment.wesl:101`). It reuses the unlit block's idiom: the lit block grows from 4 to 8
+floats, the colour gamma-encoded at `MATERIAL_COLOR` (4), so a lit and an unlit block now share
+one layout, and the pbr, moving and emissive layouts that start after it moved up by 4.
+
+- **Where it multiplies.** `tintedSurface` (`shader3d.ms`) multiplies the vertex colour, times the
+  texel when textured, by the material colour before the surface is shaded, in every lit, pbr and
+  pixel-art fragment, and the shadow pass's alpha cut reads the product's alpha. The product is
+  taken on the gamma-encoded values, as the lit path already multiplies the vertex colour by the
+  texel and as Heaps multiplies its colours; Bevy multiplies in linear light, the same for a
+  white or black channel and different between. White leaves every pixel as it was, so the
+  goldens are expected to stay byte-identical (unmeasured, waits for a GPU slot).
+- **Defaults.** `pbrBlock` and `movingDefaults` write white. A block written by hand writes its
+  colour: a block of zeros draws black, as an unlit block already did. A block of the old length
+  is refused at `writeUniforms` (`UniformError.WrongLength`) and at `beginFrame`
+  (`RendererError.MaterialBlock`), so no caller keeps reading the colour out of a short block.
+- **glTF** still bakes `baseColorFactor` into the vertex colours; the setup's colour multiplies
+  on top of it.
+
+Pinned by `litShaderCheck.ms` (lit and textured: the colour and alpha multiply) and
+`pbrLitCheck.ms` (a tinted pbr surface lights as its vertex colour times the tint would; `pbrBlock`
+writes white).
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
