@@ -39,6 +39,7 @@ export class Reflection {
 	bindings: GPUShaderBinding[] = [];
 	attributes: GPUShaderAttribute[] = [];
 	workgroupSize: int32[] = [0, 0, 0];
+	readsInstanceIndex: boolean = false;
 }
 
 function kindName(kind: ResourceKind): GPUShaderBindingKind {
@@ -214,6 +215,8 @@ export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 	const f = try entryOf(m, fragment, ShaderStage.Fragment);
 	const _count = try bindingsOf(m, [v, f], target, out);
 	const gl = target == ShaderTarget.Glsl430 || target == ShaderTarget.Glsl300es;
+	out.readsInstanceIndex = m.ios.some((io) => io.stage == ShaderStage.Vertex &&
+		io.builtin == Builtin.InstanceIndex);
 	let ordinal = 0;
 	for (const io of m.ios) {
 		if (io.stage != ShaderStage.Vertex || io.direction != IoDirection.In ||
