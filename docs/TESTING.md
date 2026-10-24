@@ -322,7 +322,9 @@ number typed into the script.
    twice, compare the two, gate per-scene counters, write the PNG, then
    `tests/golden/compare.ms` judges all **82** against `tests/golden/d3d11/` and prints
    `N px differ, max delta M, bbox` and a pass rate.
-5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
+5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet;
+   then the shader modules' freshness (`regen-shaders.sh --check`) and every printed stage through
+   fxc and naga, with GLSL and MSL as named SKIPs (docs/SHADER-IR.md "Validators").
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
    reported with a warn threshold. Object-growth checks and linked wasm budget declarations
    also gate; declaration validation does not re-link the measured entries.

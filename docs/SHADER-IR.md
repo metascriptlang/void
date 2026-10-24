@@ -73,9 +73,12 @@ fxc (`scripts/validateHlsl.sh`, the flags `D3DCompile` gets at load), naga for W
 probe directories (`out/hlslProbe/`, `out/wgslProbe/`, `out/glslProbe/`, `out/shadyPrograms/`),
 which the shader checks write. They are developer and CI tools: no binary carries a validator,
 and an app's program is printed by `shaderProgram` while msc compiles it, then compiled by the
-driver as any source. On 2026-10-23 no gate step runs them; a printer change runs them by hand,
-and naga reads GL GLSL only after a rewrite to Vulkan 450 (combined samplers split, locations
-added) that lives outside the repository. MSL has no validator on Windows.
+driver as any source. The gate's oracle step runs `regen-shaders.sh --check`, which leaves every
+stage of every program in `out/irPrograms/`, then fxc and naga over it: 518 HLSL stages in 26 s
+and 518 WGSL files in 18 s, the regen itself about 4 min (2026-10-24, Windows); a missing tool
+is a named SKIP. GLSL stays a SKIP: naga reads GL GLSL only after a rewrite to Vulkan 450
+(combined samplers split, locations added) that lives outside the repository. MSL is compiled
+by hand on a Mac (`xcrun metal`); Windows has no validator for it.
 
 ## The DXBC cache
 
