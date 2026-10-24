@@ -187,7 +187,8 @@ backend module. Metal follows it with a `.m`.
   frame, so the frame in flight keeps reading the old one (sokol's `num_slots`,
   `_sg_mtl_update_buffer`). A resource that a GPU copy has written, a mappable buffer, and an
   attachment texture keep one live copy: a CPU write to them is a staging buffer and a blit in the
-  frame's command buffer, ordered behind the frame's earlier reads, and stops inside a render pass.
+  frame's command buffer, ordered behind the frame's earlier reads. Inside a pass no blit can be
+  encoded, so there a texture no GPU work has used yet is written by the CPU and any other stops.
   A `writeTexture` that is not a whole single-subresource texture, or a second one in a frame,
   takes the same blit path; a whole write of a mipped, array or 3d texture is a sub-rectangle write
   of its subresource. A second `writeBuffer` over bytes the frame already wrote stops, as before.
