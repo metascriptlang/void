@@ -41,6 +41,7 @@ import {
 	unspecialized,
 } from "./irWalk";
 import { binaryOperator, mathName } from "./spelling";
+import { claimName } from "./names";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 function hlslKeywords(): string[] {
@@ -125,14 +126,7 @@ function isReserved(p: Printer, name: string): boolean {
 }
 
 function claim(p: Printer, taken: string[], name: string): string {
-	let candidate = name;
-	let n = 1;
-	while (isReserved(p, candidate) || taken.includes(candidate)) {
-		candidate = name + "_" + String(n);
-		n++;
-	}
-	taken.push(candidate);
-	return candidate;
+	return claimName(taken, (n) => isReserved(p, n), name);
 }
 
 enum Nesting {

@@ -86,3 +86,18 @@ export function nameLocal(names: Names, name: string): string {
 	names.locals.push(spelled);
 	return spelled;
 }
+
+export function claimName(
+	taken: string[],
+	reserved: (name: string) => boolean,
+	name: string,
+): string {
+	let candidate = name;
+	let n = 1;
+	while (reserved(candidate) || taken.includes(candidate)) {
+		candidate = name + "_" + String(n);
+		n++;
+	}
+	taken.push(candidate);
+	return candidate;
+}

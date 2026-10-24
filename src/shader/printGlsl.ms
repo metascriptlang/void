@@ -42,6 +42,7 @@ import {
 	unspecialized,
 } from "./irWalk";
 import { binaryOperator, mathName } from "./spelling";
+import { claimName } from "./names";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 export enum GlslTarget {
@@ -174,14 +175,7 @@ function claim(p: Printer, taken: string[], name: string): string {
 	if (name.startsWith("gl_") || name.includes("__")) {
 		return fail(p, "'" + name + "' is a name GLSL reserves to itself");
 	}
-	let candidate = name;
-	let n = 1;
-	while (isReserved(p, candidate) || taken.includes(candidate)) {
-		candidate = name + "_" + String(n);
-		n++;
-	}
-	taken.push(candidate);
-	return candidate;
+	return claimName(taken, (n) => isReserved(p, n), name);
 }
 
 function claimFixed(p: Printer, name: string, what: string): string {

@@ -29,6 +29,7 @@ import {
 } from "./ir";
 import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
+import { claimName } from "./names";
 import { readsFrom, strayWorkgroup } from "./specialize";
 import { binaryOperator, mathName } from "./spelling";
 
@@ -179,14 +180,7 @@ function isIdentifier(name: string): boolean {
 
 function nameIn(p: Printer, scope: string[], name: string): string {
 	if (!isIdentifier(name)) { return refusal(p, "'" + name + "' is no WGSL identifier"); }
-	let candidate = name;
-	let n = 1;
-	while (p.reserved.includes(candidate) || scope.includes(candidate)) {
-		candidate = name + "_" + String(n);
-		n++;
-	}
-	scope.push(candidate);
-	return candidate;
+	return claimName(scope, (n) => p.reserved.includes(n), name);
 }
 
 function scalarText(s: ScalarKind): string {
