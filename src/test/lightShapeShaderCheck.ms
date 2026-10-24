@@ -25,6 +25,7 @@ import {
 	linearToSrgb,
 } from "../void3d/shader3d";
 import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 const QUARTER: float32 = 0.7853981633974483;
 
@@ -256,6 +257,8 @@ test "the specular direction moves the highlight and leaves n.l alone" {
 function bindingsWith(
 	at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f, c: Vec4f, d: Vec4f,
 ): LitBindings {
+	const lights: SceneLights = sceneLights(vec4f(0.0, 0.0, 0.0, 1.0), none(), none(),
+		[{ at: at, tint: tint, shapeA: a, shapeB: b, shapeC: c, shapeD: d }]);
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
@@ -266,17 +269,11 @@ function bindingsWith(
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
 			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		},
-		lightParams: {
-			ambient: vec4f(0.0, 0.0, 0.0, 1.0),
-			dirLight: none(),
-			dirColor: none(),
-			pointLight: [at, none(), none(), none()],
-			pointColor: [tint, none(), none(), none()],
-			shapeA: [a, none(), none(), none()],
-			shapeB: [b, none(), none(), none()],
-			shapeC: [c, none(), none(), none()],
-			shapeD: [d, none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
+		clusterSampler: lights.clusterSampler,
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),

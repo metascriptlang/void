@@ -27,6 +27,7 @@ import {
 } from "../void3d/pbrResponse";
 import {
 	LitBindings,
+	LitFragmentInput,
 	LitKey,
 	VertexBindings,
 	linearToSrgb,
@@ -39,6 +40,7 @@ import {
 	srgbToLinear,
 } from "../void3d/shader3d";
 import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 function near(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 2e-5 * Math.max(1.0, Math.abs(b));
@@ -163,19 +165,19 @@ const BASE: Vec4f = vec4f(0.9, 0.5, 0.25, 1.0);
 function bindingsAt(
 	camera: Vec3, metalness: float32, roughness: float32, occlusion: float32, depth: float32,
 ): LitBindings {
+	const lights: SceneLights = sceneLights(vec4f(SKY.x, SKY.y, SKY.z, 0.0),
+		vec4f(SUN.x, SUN.y, SUN.z, 1.0), vec4f(1.0, 1.0, 1.0, 1.0), []);
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
 			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 			pbr: vec4f(metalness, roughness, occlusion, 0.0),
 		},
-		lightParams: {
-			ambient: vec4f(SKY.x, SKY.y, SKY.z, 0.0),
-			dirLight: vec4f(SUN.x, SUN.y, SUN.z, 1.0),
-			dirColor: vec4f(1.0, 1.0, 1.0, 1.0),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
+		clusterSampler: lights.clusterSampler,
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(camera.x, camera.y, camera.z, 1.0),
@@ -276,7 +278,7 @@ test "a pbr key's material colour lights as the vertex colour times it would" {
 	const tint = vec4f(0.5, 1.0, 0.25, 0.8);
 	let tinted: LitBindings = bindingsAt(CAMERA, 0.3, 0.6, 1.0, 1.0);
 	tinted.pbrMaterialParams.materialColor = tint;
-	const surface = {
+	const surface: LitFragmentInput = {
 		worldPosition: toVec3f(POSITION), worldNormal: toVec3f(UP), baseColor: BASE,
 		frontFacing: true,
 	};

@@ -18,6 +18,7 @@ import {
 	toonPointLightAt,
 } from "../void3d/pixelArt3d";
 import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, pointRecord, sceneLights } from "./lightHelpers";
 
 function within(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 1e-4;
@@ -53,16 +54,17 @@ function put(texture: Texture2d, x: int32, y: int32, value: Vec4f): void {
 // White ambient light, no directional or point light, the identity tone.
 function plainLit(): LitBindings {
 	const white = grid(1, 1, vec4f(1, 1, 1, 1));
+	const lights: SceneLights = sceneLights(vec4f(1, 1, 1, 0), none(), none(), []);
 	return {
 		materialParams: {
 			material: vec4f(4.0, 0.0, 0.0, 0.5),
 			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		},
-		lightParams: {
-			ambient: vec4f(1, 1, 1, 0), dirLight: none(), dirColor: none(),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
+		clusterSampler: lights.clusterSampler,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
 		shadowMap: oneLayer(white), shadowSampler: { nearest: true },
@@ -139,13 +141,15 @@ test "pixel-art billboard lights by distance and writes cutout alpha 0" {
 		uv: vec2f(0.5, 0.5), rootPosition: vec3f(0.0), instanceColor: vec4f(0.5, 0.25, 1, 0.75),
 		depth01: 0.5,
 	};
+	const lights: SceneLights = sceneLights(vec4f(0, 0, 0, 1), none(), none(),
+		[pointRecord(vec4f(0, 0, 1, 1), vec4f(1, 1, 1, 4))]);
 	let b: BillboardBindings = {
 		billboardParams: { billboardColor: vec4f(1, 1, 1, 1), billboard: none() },
-		lightParams: {
-			ambient: vec4f(0, 0, 0, 1), dirLight: none(), dirColor: none(),
-			pointLight: [vec4f(0, 0, 1, 1), none(), none(), none()],
-			pointColor: [vec4f(1, 1, 1, 4), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
+		clusterSampler: lights.clusterSampler,
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
 		billboardTexture: grid(1, 1, vec4f(1, 1, 1, 1)),
 		billboardSampler: { nearest: true },

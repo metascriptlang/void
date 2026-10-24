@@ -33,6 +33,7 @@ import {
 	unlitTexturedVs,
 } from "../void3d/shader3d";
 import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 function within(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 1e-4;
@@ -65,18 +66,17 @@ function nearUv(a: Vec2f, b: Vec2f): boolean {
 
 // White ambient light, no directional or point light, no saturation, exposure 0, linear curve.
 function plainBindings(): LitBindings {
+	const lights: SceneLights = sceneLights(vec4f(1.0, 1.0, 1.0, 0.0), none(), none(), []);
 	return {
 		materialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
 			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		},
-		lightParams: {
-			ambient: vec4f(1.0, 1.0, 1.0, 0.0),
-			dirLight: none(),
-			dirColor: none(),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
+		clusterSampler: lights.clusterSampler,
 		frameParams: { frame: vec4f(0.0, 1.0, 0.0, 0.0) },
 		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
 		shadowMap: oneLayer(white()),

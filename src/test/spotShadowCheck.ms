@@ -21,9 +21,9 @@ import {
 	SHADOW_SPOT_OPACITY,
 	SHADOW_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
-	LIGHT_SHAPE_BASE,
-	LIGHT_SHAPE_ARRAY_LENGTH,
-	MAX_POINT_LIGHTS,
+	LIGHT_RECORD_COLOR,
+	LIGHT_RECORD_LENGTH,
+	LIGHT_RECORD_SHAPE,
 	VERTEX_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { CameraView } from "../void3d/camera";
@@ -52,16 +52,21 @@ import {
 	dirShadowAt,
 	litFs,
 	spotShadowAt,
-	slotShadowAt,
+	recordShadowAt,
+	litTexelOf,
+	LitKey,
 } from "../void3d/shader3d";
 import { CascadeError, MAX_CASCADES } from "../void3d/cascades";
 import { oneLayer, shadowParamsOf } from "./shadowHelpers";
+import { SceneLights, recordsOf, sceneLights, withTexel } from "./lightHelpers";
 
 const NO_SHAPE: LightShape = {
 	angle: 0.0, verticalAngle: 0.0, falloff: 0.0, width: 0.0, height: 0.0, length: 0.0,
 	capsuleRadius: 0.0,
 };
 const RIGHT_ANGLE: float32 = 1.5707963268;
+const SHAPE: int32 = LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_SHAPE;
+const CONE: int32 = SHAPE + 4;
 const UNIT: Vec3 = vec3(1, 1, 1);
 const DOWN: Quat = axisAngle(vec3(1, 0, 0), RIGHT_ANGLE);
 
@@ -128,7 +133,7 @@ function clipOf(m: Mat4, p: Vec3): Vec4f {
 
 test "a spot shadow's camera takes near range/20, far range and the full angle as fovY" {
 	const values: Vec<float32> = downSpot(true);
-	assert near(values[LIGHT_SHAPE_BASE + 1], -1.0);
+	assert near(values[SHAPE + 1], -1.0);
 	const m: Mat4 = viewOf(values).viewProj;
 	const nearest: Vec4f = clipOf(m, vec3(0, 4.0 - 0.4, 0));
 	assert near(nearest.z / nearest.w, 0.0, 1e-5) && near(nearest.w, 0.4);
@@ -145,11 +150,11 @@ test "a spot shadow's camera takes near range/20, far range and the full angle a
 test "the shadowing spot is the slot that carries the flag, with its full angle beside the cone" {
 	const lit: Vec<float32> = downSpot(true);
 	assert shadowedSpotCount(lit) == 1 && firstShadowedSpot(lit) == 0;
-	assert lit[LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + 2] == 1.0;
-	assert near(lit[LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + 3], RIGHT_ANGLE);
+	assert lit[CONE + 2] == 1.0;
+	assert near(lit[CONE + 3], RIGHT_ANGLE);
 	const plain: Vec<float32> = downSpot(false);
 	assert shadowedSpotCount(plain) == 0 && firstShadowedSpot(plain) == -1;
-	assert plain[LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + 2] == 0.0;
+	assert plain[CONE + 2] == 0.0;
 }
 
 test "a rectangle's right axis in the cone slot's third float is not a shadow flag" {
@@ -158,13 +163,13 @@ test "a rectangle's right axis in the cone slot's third float is not a shadow fl
 	place(scene, otherOf(LightKind.Rectangle, false), vec3(0, 3, 0), axisAngle(vec3(0, 1, 0), 0.7));
 	let values = block();
 	assert errorOf(collectLights(scene, values)) === null;
-	assert values[LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + 2] != 0.0;
+	assert values[CONE + 2] != 0.0;
 	assert shadowedSpotCount(values) == 0 && firstShadowedSpot(values) == -1;
 }
 
 test "a spot slot that cannot make a camera is a named error, not a guess" {
 	let values: Vec<float32> = downSpot(true);
-	values[12 + MAX_POINT_LIGHTS * 4 + 3] = 0.0;
+	values[LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_COLOR + 3] = 0.0;
 	const view: Result<CameraView, SpotShadowError> = spotShadowView(values, 0);
 	assert !view.ok && view.error == SpotShadowError.BadSpot;
 }
@@ -189,10 +194,6 @@ test "two shadowing spots, or a shadowed point, rectangle, capsule or sun, are r
 	}
 }
 
-function slotOf(values: Vec<float32>, base: int32): Vec4f {
-	return vec4f(values[base], values[base + 1], values[base + 2], values[base + 3]);
-}
-
 function depthTexture(depth: float32): Texture2d {
 	return { width: 1, height: 1, texels: [depth, depth, depth, depth] };
 }
@@ -204,7 +205,8 @@ const NO_MAP: Mat4x4f = mat4x4f(
 const NONE: Vec4f = vec4f(0.0, 0.0, 0.0, 0.0);
 
 function spotLights(values: Vec<float32>): LitBindings {
-	const colour: int32 = 12 + MAX_POINT_LIGHTS * 4;
+	const lights: SceneLights =
+		sceneLights(vec4f(0.0, 0.0, 0.0, 1.0), NONE, NONE, recordsOf(values));
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
@@ -215,17 +217,11 @@ function spotLights(values: Vec<float32>): LitBindings {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
 			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		},
-		lightParams: {
-			ambient: vec4f(0.0, 0.0, 0.0, 1.0),
-			dirLight: NONE,
-			dirColor: NONE,
-			pointLight: [slotOf(values, 12), NONE, NONE, NONE],
-			pointColor: [slotOf(values, colour), NONE, NONE, NONE],
-			shapeA: [slotOf(values, LIGHT_SHAPE_BASE), NONE, NONE, NONE],
-			shapeB: [slotOf(values, LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH), NONE, NONE, NONE],
-			shapeC: [NONE, NONE, NONE, NONE],
-			shapeD: [NONE, NONE, NONE, NONE],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
+		clusterSampler: lights.clusterSampler,
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),
@@ -329,19 +325,23 @@ test "a block half nobody wrote shades nothing, whatever its map holds" {
 	assert spotShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
 }
 
-test "only the flagged spot slot reads the spot map, and only in a shadowed program" {
+function firstShadowAt(position: Vec3f, b: LitBindings, key: LitKey): float32 {
+	return recordShadowAt(position, b, key, litTexelOf(b, 0, 2), litTexelOf(b, 0, 3));
+}
+
+test "only the flagged spot record reads the spot map, and only in a shadowed program" {
 	const view: CameraView = viewOf(downSpot(true));
 	const blocked: LitBindings = spotMapped(spotLights(downSpot(true)), view, 0.0, 0.0, 1.0);
 	const under: Vec3f = vec3f(0.0, 2.0, 0.0);
-	assert slotShadowAt(under, blocked, { shadowed: true }, 0) == 0.0;
-	assert slotShadowAt(under, blocked, { shadowed: false }, 0) == 1.0;
+	assert firstShadowAt(under, blocked, { shadowed: true }) == 0.0;
+	assert firstShadowAt(under, blocked, { shadowed: false }) == 1.0;
 	const unflagged: LitBindings = spotMapped(spotLights(downSpot(false)), view, 0.0, 0.0, 1.0);
-	assert slotShadowAt(under, unflagged, { shadowed: true }, 0) == 1.0;
+	assert firstShadowAt(under, unflagged, { shadowed: true }) == 1.0;
 	const point: LitBindings = {
 		...blocked,
-		lightParams: { ...blocked.lightParams, shapeA: [NONE, NONE, NONE, NONE] },
+		lightRecords: withTexel(blocked.lightRecords, 0, 2, NONE),
 	};
-	assert slotShadowAt(under, point, { shadowed: true }, 0) == 1.0;
+	assert firstShadowAt(under, point, { shadowed: true }) == 1.0;
 }
 
 test "the sun and the spot read their own blocks and maps, each ignoring the other's" {
@@ -383,7 +383,7 @@ function withoutSun(b: LitBindings): LitBindings {
 }
 
 function withoutSpot(b: LitBindings): LitBindings {
-	return { ...b, lightParams: { ...b.lightParams, pointColor: [NONE, NONE, NONE, NONE] } };
+	return { ...b, lightRecords: withTexel(b.lightRecords, 0, 1, NONE) };
 }
 
 test "a surface is dark where its own light's map blocks it, in both shading paths" {
@@ -425,10 +425,11 @@ function refusalOf(lights: Vec<float32>, sun: boolean, spot: boolean): RendererE
 	return began.ok ? null : began.error;
 }
 
-test "a frame with two shadowing spot slots is refused before it writes" {
+test "a frame with two shadowing spot records is refused before it writes" {
 	let lights: Vec<float32> = downSpot(true);
-	lights[LIGHT_SHAPE_BASE + 4 + 3] = 1.0;
-	lights[LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + 4 + 2] = 1.0;
+	for (let i = 0; i < LIGHT_RECORD_LENGTH; i++) {
+		lights.push(lights[LIGHT_UNIFORM_LENGTH + i]);
+	}
 	assert shadowedSpotCount(lights) == 2;
 	assert refusalOf(lights, true, true) == RendererError.TooManyShadowedSpots;
 	assert refusalOf(lights, false, true) == RendererError.TooManyShadowedSpots;
@@ -437,7 +438,7 @@ test "a frame with two shadowing spot slots is refused before it writes" {
 
 test "a shadowing spot with no range is refused by the frame, not drawn from a broken camera" {
 	let lights: Vec<float32> = downSpot(true);
-	lights[12 + MAX_POINT_LIGHTS * 4 + 3] = 0.0;
+	lights[LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_COLOR + 3] = 0.0;
 	assert refusalOf(lights, true, true) == RendererError.BadShadowSpot;
 }
 

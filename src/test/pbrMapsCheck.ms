@@ -10,6 +10,7 @@ import {
 } from "../void3d/shader3d";
 import { PbrDirectInput, PbrSurface } from "../void3d/pbrResponse";
 import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 function toVec3f(v: Vec3): Vec3f {
 	return vec3f(v.x, v.y, v.z);
@@ -47,19 +48,19 @@ struct Factors {
 const FULL: Factors = { metalness: 1.0, roughness: 1.0, strength: 1.0 };
 
 function bindingsOf(factors: Factors, packed: Texture2d, occlusion: Texture2d): LitBindings {
+	const lights: SceneLights = sceneLights(vec4f(SKY.x, SKY.y, SKY.z, 0.0),
+		vec4f(SUN.x, SUN.y, SUN.z, 1.0), vec4f(1.0, 1.0, 1.0, 1.0), []);
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
 			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 			pbr: vec4f(factors.metalness, factors.roughness, 1.0, factors.strength),
 		},
-		lightParams: {
-			ambient: vec4f(SKY.x, SKY.y, SKY.z, 0.0),
-			dirLight: vec4f(SUN.x, SUN.y, SUN.z, 1.0),
-			dirColor: vec4f(1.0, 1.0, 1.0, 1.0),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
+		clusterSampler: lights.clusterSampler,
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(CAMERA.x, CAMERA.y, CAMERA.z, 1.0),
