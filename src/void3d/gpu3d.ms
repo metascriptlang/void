@@ -422,14 +422,17 @@ export const LIGHT_KIND_POINT: float32 = 0.0;
 export const LIGHT_KIND_SPOT: float32 = 1.0;
 export const LIGHT_KIND_RECTANGLE: float32 = 2.0;
 export const LIGHT_KIND_CAPSULE: float32 = 3.0;
-// The scene's shadow block (binding=5, shader3d.ms ShadowParams): one light's half is the
-// world-to-map matrix, then the bias and the opacity. The sun's half comes first and the one
-// shadowing spot's at SHADOW_SPOT_BASE; a half nobody wrote is zero and shades nothing.
+// The scene's shadow block (binding=5), laid out as shader3d.ms ShadowParams: the sun's cascades,
+// then the shadowing spot's part. A part nobody wrote is zero and shades nothing.
 export const SHADOW_UNIFORM_SLOT: int32 = 5;
-export const SHADOW_SPOT_BASE: int32 = 20;
-export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_SPOT_BASE * 2;
-export const SHADOW_BIAS: int32 = 16;
-export const SHADOW_OPACITY: int32 = 17;
+export const SHADOW_CASCADE_FAR: int32 = 64;
+export const SHADOW_CASCADE_INFO: int32 = 68;
+export const SHADOW_CASCADE_VIEW: int32 = 72;
+export const SHADOW_SPOT_BASE: int32 = 76;
+export const SHADOW_SPOT_LENGTH: int32 = 20;
+export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_SPOT_BASE + SHADOW_SPOT_LENGTH;
+export const SHADOW_SPOT_BIAS: int32 = SHADOW_SPOT_BASE + 16;
+export const SHADOW_SPOT_OPACITY: int32 = SHADOW_SPOT_BASE + 17;
 // The shadow maps' view and sampler slots (dirShadow's `binding=`), past a material's: the sun's
 // map, then the spot's.
 export const SHADOW_VIEW_SLOT: int32 = 4;

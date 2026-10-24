@@ -15,9 +15,12 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	SHADOW_UNIFORM_SLOT,
 	SHADOW_UNIFORM_LENGTH,
+	SHADOW_CASCADE_FAR,
+	SHADOW_CASCADE_INFO,
+	SHADOW_CASCADE_VIEW,
 	SHADOW_SPOT_BASE,
-	SHADOW_BIAS,
-	SHADOW_OPACITY,
+	SHADOW_SPOT_BIAS,
+	SHADOW_SPOT_OPACITY,
 } from "./gpu3d";
 import {
 	PixelFormat,
@@ -31,12 +34,12 @@ import {
 } from "../gpu/door";
 import { FilterMode, Wrap, RenderState } from "../gpu/state";
 import {
-	RenderTarget,
 	ColorAttachment,
 	TargetLayout,
 	Sampler,
 	beginPass,
 } from "../gpu/target";
+import { ArrayTarget } from "../gpu/arrayTarget";
 import { Material, UniformBlock, Phase, ShadowCasting, shadowFace } from "./material";
 import {
 	DrawContext,
@@ -53,6 +56,9 @@ import { Bounds3D, addPos, addBounds } from "./bounds";
 import { Frustum3D } from "./frustum";
 import { CameraBasis, CameraView, OrthoBounds } from "./camera";
 import { SpotShadowError, firstShadowedSpot, spotShadowView } from "./spotShadow";
+import {
+	Cascade, CascadeConfig, CascadeError, MAX_CASCADES, cascadesOf, viewForward,
+} from "./cascades";
 
 export interface DirShadowMap {
 	context: DrawContext;
@@ -61,7 +67,9 @@ export interface DirShadowMap {
 	spot: boolean;
 	bias: float32;
 	opacity: float32;
-	depthTarget: RenderTarget;
+	// Bevy's CascadeShadowConfig for the sun; null keeps one map fitted to the casters in view.
+	cascades: CascadeConfig | null;
+	depthTarget: ArrayTarget;
 	sampler: Sampler;
 	casters: PassList;
 	cast: Vec<ProgramKey>;
@@ -100,6 +108,12 @@ const BOUNDS_SCALE: float32 = 1.01;
 // A flat caster facing the light has no depth extent, and projectionMatrix divides by it.
 const MIN_EXTENT: float32 = 0.001;
 const NO_COLORS: Vec<ColorAttachment> = [];
+const NO_MAP: Mat4 = {
+	m11: 0.0, m12: 0.0, m13: 0.0, m14: 0.0,
+	m21: 0.0, m22: 0.0, m23: 0.0, m24: 0.0,
+	m31: 0.0, m32: 0.0, m33: 0.0, m34: 0.0,
+	m41: 0.0, m42: 0.0, m43: 0.0, m44: 0.0,
+};
 
 function reserveOwned(context: DrawContext, slot: int32, length: int32): UniformBlock {
 	const reserved: Result<UniformBlock, UniformError> = reserveUniforms(context, slot, length);
@@ -145,7 +159,8 @@ function buildMap(
 		spot: spot,
 		bias: DEFAULT_SHADOW_BIAS,
 		opacity: 1.0,
-		depthTarget: RenderTarget.unallocated(PixelFormat.Depth, true),
+		cascades: null,
+		depthTarget: ArrayTarget.unallocated(size, 1, PixelFormat.Depth),
 		sampler: { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0, generation: 0 },
 		casters: PassList.forPhase(Phase.Opaque),
 		cast: [],
@@ -280,6 +295,34 @@ function stopOnPassOpen(): void {
 	unreachable;
 }
 
+// The sun's cascades: each layer's clip-from-world and far bound in view depth.
+export struct SunLayers {
+	clips: Vec<Mat4>;
+	far: Vec<float32>;
+}
+
+// Past every view depth, so one map covers the whole view.
+const ALL_DEPTHS: float32 = 3.0e38;
+
+// Uses Bevy's cascades (setCascades) on the sun, each its own layer; the spot draws one layer.
+export function setCascades(
+	this shadow: DirShadowMap,
+	config: CascadeConfig | null,
+): Result<int32, CascadeError> {
+	if (shadow.closed) { stopOnClosed("setCascades"); }
+	if (shadow.spot && config !== null) {
+		console.log("void3d: setCascades on a spot's map, which has one view");
+		unreachable;
+	}
+	if (config === null) {
+		shadow.cascades = null;
+		return Result.ok(1);
+	}
+	const count: int32 = try config.validate();
+	shadow.cascades = config;
+	return Result.ok(count);
+}
+
 // DirShadowMap.draw, or SpotShadowMap.draw (SpotShadowMap.hx:107-171) for a map made with
 // createSpot: the shadowing spot's perspective view-projection, or a cleared map with no shadow
 // when no spot of the light block casts.
@@ -300,21 +343,86 @@ export function drawShadows(
 		m31: camera[8], m32: camera[9], m33: camera[10], m34: camera[11],
 		m41: camera[12], m42: camera[13], m43: camera[14], m44: camera[15],
 	};
+	const cameraInverse: Mat4 = cameraViewProj.inverse();
 	collectCasters(shadow.casters, items, context.materials);
-	const bounds: Bounds3D =
-		shadowBounds(basis, casterBounds(shadow, items, basis), cameraViewProj.inverse());
-	let box: OrthoBounds = { minX: -1.0, maxX: 1.0, minY: -1.0, maxY: 1.0, minZ: 0.0, maxZ: 1.0 };
-	if (!bounds.isEmpty()) {
-		box = {
-			minX: bounds.min.x, maxX: bounds.max.x,
-			minY: bounds.min.y, maxY: bounds.max.y,
-			minZ: bounds.min.z, maxZ: bounds.max.z,
-		};
-	} else {
-		shadow.casters.count = 0;
+	const casters: Bounds3D = casterBounds(shadow, items, basis);
+	const layers: SunLayers = sunLayers(shadow, casters, basis, cameraInverse,
+		vec3(camera[24], camera[25], camera[26]));
+	shadow.viewProj = layers.clips[0];
+	shadow.packSun(layers, mapMatrix(), viewForward(cameraInverse));
+	return drawLayers(shadow, items, basis, layers.clips);
+}
+
+// The sun's part of the block: each layer's clip taken on to the map by `map`, its far bound,
+// the count, the overlap, the bias in map depth, the opacity, the view's forward axis, the size.
+export function packSun(
+	this shadow: DirShadowMap,
+	layers: SunLayers,
+	map: Mat4,
+	forward: Vec3,
+): void {
+	if (shadow.closed) { stopOnClosed("packSun"); }
+	const count: int32 = layers.clips.length as int32;
+	if (count < 1 || count > MAX_CASCADES || (layers.far.length as int32) != count) {
+		console.log(`void3d: packSun with ${count} clips and ${layers.far.length} far bounds`);
+		unreachable;
 	}
-	shadow.viewProj = basis.makeCameraMatrix(vec3(0.0, 0.0, 0.0)) * box.projectionMatrix();
-	return drawCasters(shadow, items, basis, shadow.opacity);
+	for (let i = 0; i < MAX_CASCADES; i++) {
+		const clip: Mat4 = i < count ? layers.clips[i] * map : NO_MAP;
+		clip.writeTo(shadow.shadowValues[i * 16..i * 16 + 16], 0);
+		shadow.shadowValues[SHADOW_CASCADE_FAR + i] = i < count ? layers.far[i] : 0.0;
+	}
+	const config: CascadeConfig | null = shadow.cascades;
+	shadow.shadowValues[SHADOW_CASCADE_INFO] = count as float32;
+	shadow.shadowValues[SHADOW_CASCADE_INFO + 1] = config === null ? 0.0 : config.overlap;
+	shadow.shadowValues[SHADOW_CASCADE_INFO + 2] = shadow.bias * map.m33;
+	shadow.shadowValues[SHADOW_CASCADE_INFO + 3] = shadow.opacity;
+	shadow.shadowValues[SHADOW_CASCADE_VIEW] = forward.x;
+	shadow.shadowValues[SHADOW_CASCADE_VIEW + 1] = forward.y;
+	shadow.shadowValues[SHADOW_CASCADE_VIEW + 2] = forward.z;
+	shadow.shadowValues[SHADOW_CASCADE_VIEW + 3] = shadow.size as float32;
+}
+
+// One layer fitted to the casters in view (calcShadowBounds), or one per cascade.
+function sunLayers(
+	shadow: DirShadowMap,
+	casters: Bounds3D,
+	basis: CameraBasis,
+	cameraInverse: Mat4,
+	eye: Vec3,
+): SunLayers {
+	const config: CascadeConfig | null = shadow.cascades;
+	if (config === null) {
+		const bounds: Bounds3D = shadowBounds(basis, casters, cameraInverse);
+		let box: OrthoBounds =
+			{ minX: -1.0, maxX: 1.0, minY: -1.0, maxY: 1.0, minZ: 0.0, maxZ: 1.0 };
+		if (!bounds.isEmpty()) {
+			box = {
+				minX: bounds.min.x, maxX: bounds.max.x,
+				minY: bounds.min.y, maxY: bounds.max.y,
+				minZ: bounds.min.z, maxZ: bounds.max.z,
+			};
+		} else {
+			shadow.casters.count = 0;
+		}
+		return {
+			clips: [basis.makeCameraMatrix(vec3(0.0, 0.0, 0.0)) * box.projectionMatrix()],
+			far: [ALL_DEPTHS],
+		};
+	}
+	const casterNear: float32 = casters.isEmpty() ? 0.0 : casters.min.z;
+	const made: Result<Vec<Cascade>, CascadeError> =
+		cascadesOf(config, cameraInverse, eye, basis, shadow.size, casterNear);
+	if (!made.ok) {
+		console.log(`void3d: drawShadows found its cascades refused (${made.error.toString()})`);
+		unreachable;
+	}
+	let layers: SunLayers = { clips: [], far: [] };
+	for (const cascade of made.value) {
+		layers.clips.push(cascade.clipFromWorld);
+		layers.far.push(cascade.farBound);
+	}
+	return layers;
 }
 
 function drawSpotShadows(
@@ -323,75 +431,106 @@ function drawSpotShadows(
 	lights: Readonly<Span<float32>>,
 ): int32 {
 	const slot: int32 = firstShadowedSpot(lights);
+	let opacity: float32 = shadow.opacity;
+	let basis: CameraBasis = lightBasis(vec3(0.0, 0.0, 0.0));
 	if (slot < 0) {
 		shadow.casters.count = 0;
 		shadow.viewProj = identity();
-		return drawCasters(shadow, items, lightBasis(vec3(0.0, 0.0, 0.0)), 0.0);
+		opacity = 0.0;
+	} else {
+		const view: Result<CameraView, SpotShadowError> = spotShadowView(lights, slot);
+		if (!view.ok) {
+			console.log(
+				`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`,
+			);
+			unreachable;
+		}
+		collectCasters(shadow.casters, items, shadow.context.materials);
+		shadow.viewProj = view.value.viewProj;
+		basis = view.value.basis;
 	}
-	const view: Result<CameraView, SpotShadowError> = spotShadowView(lights, slot);
-	if (!view.ok) {
-		console.log(
-			`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`,
-		);
-		unreachable;
-	}
-	collectCasters(shadow.casters, items, shadow.context.materials);
-	shadow.viewProj = view.value.viewProj;
-	return drawCasters(shadow, items, view.value.basis, shadow.opacity);
+	const map: Mat4 = mapMatrix();
+	const spotPart: Span<float32> = shadow.shadowValues[SHADOW_SPOT_BASE..SHADOW_SPOT_BASE + 16];
+	(shadow.viewProj * map).writeTo(spotPart, 0);
+	shadow.shadowValues[SHADOW_SPOT_BIAS] = shadow.bias * map.m33;
+	shadow.shadowValues[SHADOW_SPOT_OPACITY] = opacity;
+	shadow.shadowValues[SHADOW_SPOT_OPACITY + 1] = shadow.size as float32;
+	return drawLayers(shadow, items, basis, [shadow.viewProj]);
 }
 
-// The frame applies one shadow block, the sun's when there is one: it takes the spot's half from
+// The frame applies one shadow block, the sun's when there is one: it takes the spot's part from
 // the spot map, or zeros it, so a spot map detached since the last frame shades nothing.
 export function carrySpot(sun: DirShadowMap, spot: DirShadowMap | null): void {
 	if (sun.closed) { stopOnClosed("carrySpot"); }
-	for (let i = 0; i < SHADOW_SPOT_BASE; i++) {
+	for (let i = SHADOW_SPOT_BASE; i < SHADOW_UNIFORM_LENGTH; i++) {
 		let value: float32 = 0.0;
-		if (spot !== null) { value = spot.shadowValues[SHADOW_SPOT_BASE + i]; }
-		sun.shadowValues[SHADOW_SPOT_BASE + i] = value;
+		if (spot !== null) { value = spot.shadowValues[i]; }
+		sun.shadowValues[i] = value;
 	}
 	const written: Result<int32, UniformError> =
 		writeUniforms(sun.context, sun.shadowBlock, sun.shadowValues);
 	if (!written.ok) { stopOnLostBlocks(); }
 }
 
-// The pass both lights share, from shadow.viewProj: the casters in its frustum, depth only.
-function drawCasters(
+// The array with one layer per clip, made again when the size or the layer count changed or its
+// context was lost.
+function targetFor(shadow: DirShadowMap, layers: int32): void {
+	const target: ArrayTarget = shadow.depthTarget;
+	if (target.isCurrent() && target.size == shadow.size && target.layers == layers) { return; }
+	target.close();
+	shadow.depthTarget = ArrayTarget.unallocated(shadow.size, layers, PixelFormat.Depth);
+	shadow.depthTarget.allocate();
+}
+
+// The pass every layer takes in turn, depth only: the casters in that layer's frustum, drawn from
+// its clip. The camera block holds one layer's clip at a time; a draw applies it as it is drawn.
+function drawLayers(
 	shadow: DirShadowMap,
 	items: Readonly<Span<DrawItem>>,
 	basis: CameraBasis,
-	opacity: float32,
+	clips: Readonly<Span<Mat4>>,
 ): int32 {
 	const context: DrawContext = shadow.context;
-	if (shadow.casters.count > 0) {
-		const _culled: int32 = filterFrustum(
-			shadow.casters, items, context.meshData, Frustum3D.fromMatrix(shadow.viewProj),
-		);
-	}
-	shadow.viewProj.writeTo(shadow.cameraValues[0..16], 0);
 	shadow.cameraValues[16] = basis.right.x;
 	shadow.cameraValues[17] = basis.right.y;
 	shadow.cameraValues[18] = basis.right.z;
 	shadow.cameraValues[20] = basis.up.x;
 	shadow.cameraValues[21] = basis.up.y;
 	shadow.cameraValues[22] = basis.up.z;
-	const map: Mat4 = mapMatrix();
-	const half: int32 = shadow.spot ? SHADOW_SPOT_BASE : 0;
-	(shadow.viewProj * map).writeTo(shadow.shadowValues[half..half + 16], 0);
-	shadow.shadowValues[half + SHADOW_BIAS] = shadow.bias * map.m33;
-	shadow.shadowValues[half + SHADOW_OPACITY] = opacity;
-	const cameraWritten: Result<int32, UniformError> =
-		writeUniforms(context, shadow.cameraBlock, shadow.cameraValues);
 	const shadowWritten: Result<int32, UniformError> =
 		writeUniforms(context, shadow.shadowBlock, shadow.shadowValues);
-	if (!cameraWritten.ok || !shadowWritten.ok) { stopOnLostBlocks(); }
-
-	shadow.depthTarget.resize(shadow.size, shadow.size);
+	if (!shadowWritten.ok) { stopOnLostBlocks(); }
+	targetFor(shadow, clips.length as int32);
 	if (shadow.sampler.handle == 0 || shadow.sampler.generation != shadow.depthTarget.generation) {
 		shadow.sampler = Sampler.create(shadow.sampler.filter, shadow.sampler.wrap);
 	}
-	beginPass(
-		NO_COLORS, shadow.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.Store),
-	);
+	const anyCasters: boolean = shadow.casters.count > 0;
+	let drawn: int32 = 0;
+	for (let layer = 0; layer < (clips.length as int32); layer++) {
+		if (anyCasters) {
+			collectCasters(shadow.casters, items, context.materials);
+			const _culled: int32 = filterFrustum(
+				shadow.casters, items, context.meshData, Frustum3D.fromMatrix(clips[layer]),
+			);
+		}
+		clips[layer].writeTo(shadow.cameraValues[0..16], 0);
+		const cameraWritten: Result<int32, UniformError> =
+			writeUniforms(context, shadow.cameraBlock, shadow.cameraValues);
+		if (!cameraWritten.ok) { stopOnLostBlocks(); }
+		beginPass(NO_COLORS, shadow.depthTarget.asDepth(
+			layer, LoadAction.Clear, FAR_DEPTH, StoreAction.Store,
+		));
+		drawCasters(shadow, items);
+		endPass();
+		drawn = drawn + shadow.casters.count;
+	}
+	shadow.casterCount = drawn;
+	return drawn;
+}
+
+// The collected casters into the open pass, neighbours that differ only in world as one draw.
+function drawCasters(shadow: DirShadowMap, items: Readonly<Span<DrawItem>>): void {
+	const context: DrawContext = shadow.context;
 	let i: int32 = 0;
 	while (i < shadow.casters.count) {
 		const index: int32 = shadow.casters.indices[i];
@@ -408,9 +547,6 @@ function drawCasters(
 		);
 		i = end;
 	}
-	endPass();
-	shadow.casterCount = shadow.casters.count;
-	return shadow.casters.count;
 }
 
 export function sceneTexture(this shadow: DirShadowMap): SceneTexture {

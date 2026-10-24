@@ -5,6 +5,7 @@ import {
 	Mat4x4f,
 	Sampler,
 	Texture2d,
+	Texture2dArray,
 	TextureCube,
 	Vec2f,
 	Vec3f,
@@ -46,6 +47,14 @@ import {
 	vec4f,
 } from "../shader/std";
 import { mapCoord, mapLit } from "./shadowLookup";
+import {
+	cascadeBlendOf,
+	cascadeCountOf,
+	cascadeDepthOf,
+	cascadeIndexOf,
+	cascadeLitOf,
+	cascadeTexelOf,
+} from "./cascadeShadow";
 
 export struct CopyInput {
 	@builtin(position) position: Vec4f;
@@ -271,8 +280,10 @@ export struct FrameParams {
 }
 
 export struct ShadowParams {
-	shadowMatrix: Mat4x4f;
-	shadow: Vec4f;
+	cascadeMatrices: Mat4x4f[4];
+	cascadeFar: Vec4f;
+	cascadeInfo: Vec4f;
+	cascadeView: Vec4f;
 	spotMatrix: Mat4x4f;
 	spotShadow: Vec4f;
 }
@@ -297,9 +308,9 @@ export struct LitBindings {
 	@binding(1) lightParams: LightParams;
 	@binding(6) frameParams: FrameParams;
 	@binding(5) shadowParams: ShadowParams;
-	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2d;
+	@binding(4) @sampleType(unfilterable_float) shadowMap: Texture2dArray;
 	@binding(2) @samplerType(nonfiltering) shadowSampler: Sampler;
-	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2d;
+	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2dArray;
 	@binding(3) @samplerType(nonfiltering) spotShadowSampler: Sampler;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
@@ -1215,14 +1226,26 @@ export function dissolveEdgeOf(b: LitBindings, key: LitKey): Vec4f {
 // position behind the spot (w <= 0), like a half of the block nobody wrote, reads lit.
 // PENDING3D: spot-shadow-behind-lit
 export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
-	const p = mapCoord(position, b.shadowParams.shadowMatrix);
-	if (p.w < 0.5) {
+	const depth = cascadeDepthOf(position, b.frameParams.cameraPosition.xyz,
+		b.shadowParams.cascadeView);
+	const cascade = cascadeIndexOf(depth, b.shadowParams.cascadeFar, b.shadowParams.cascadeInfo);
+	if (cascade >= cascadeCountOf(b.shadowParams.cascadeInfo)) {
 		return 1.0;
 	}
-	const size = textureDimensions(b.shadowMap, b.shadowSampler, 0);
-	const texel = clamp(vec2i(p.xy * vec2f(size)), vec2i(0, 0), size - vec2i(1, 1));
-	const depth = textureLoad(b.shadowMap, b.shadowSampler, texel, 0).x;
-	return mapLit(p.z, depth, b.shadowParams.shadow.x, b.shadowParams.shadow.y);
+	const lit = cascadeShadowAt(position, b, cascade);
+	const blend = cascadeBlendOf(depth, cascade, b.shadowParams.cascadeFar,
+		b.shadowParams.cascadeInfo);
+	if (blend > 0.0) {
+		return mix(lit, cascadeShadowAt(position, b, cascade + 1), blend);
+	}
+	return lit;
+}
+
+export function cascadeShadowAt(position: Vec3f, b: LitBindings, cascade: int32): float32 {
+	const texel = cascadeTexelOf(position, b.shadowParams.cascadeMatrices[cascade],
+		b.shadowParams.cascadeView);
+	const stored = textureLoad(b.shadowMap, b.shadowSampler, vec2i(texel.xy), cascade, 0).x;
+	return cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
 }
 
 export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
@@ -1230,9 +1253,10 @@ export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
 	if (p.w < 0.5) {
 		return 1.0;
 	}
-	const size = textureDimensions(b.spotShadowMap, b.spotShadowSampler, 0);
-	const texel = clamp(vec2i(p.xy * vec2f(size)), vec2i(0, 0), size - vec2i(1, 1));
-	const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler, texel, 0).x;
+	const size = (b.shadowParams.spotShadow.z + 0.5) as int32;
+	const texel = clamp(vec2i(p.xy * vec2f(size as float32)), vec2i(0, 0),
+		vec2i(size - 1, size - 1));
+	const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler, texel, 0, 0).x;
 	return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
 }
 

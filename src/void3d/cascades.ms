@@ -82,7 +82,7 @@ export function sliceCorners(
 		nearPlane.push(vec3(xs[k], ys[k], 0.0).project(cameraInverse));
 		farPlane.push(vec3(xs[k], ys[k], 1.0).project(cameraInverse));
 	}
-	const forward: Vec3 = (centerOf(farPlane) - centerOf(nearPlane)).normalized();
+	const forward: Vec3 = viewForward(cameraInverse);
 	let corners: Vec<Vec3> = [];
 	for (const depth of [near, far]) {
 		for (let k = 0; k < 4; k++) {
@@ -95,10 +95,11 @@ export function sliceCorners(
 	return corners;
 }
 
-function centerOf(points: Readonly<Span<Vec3>>): Vec3 {
-	let sum: Vec3 = vec3(0.0, 0.0, 0.0);
-	for (const point of points) { sum = sum + point; }
-	return sum.scaled(1.0 / (points.length as float32));
+// The axis view depth is measured along, from the near plane's centre to the far plane's.
+export function viewForward(cameraInverse: Mat4): Vec3 {
+	const near: Vec3 = vec3(0.0, 0.0, 0.0).project(cameraInverse);
+	const far: Vec3 = vec3(0.0, 0.0, 1.0).project(cameraInverse);
+	return (far - near).normalized();
 }
 
 // calculate_cascade, in void3d's light space (lightBasis: +z away from the light, the light's
