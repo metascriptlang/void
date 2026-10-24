@@ -185,14 +185,15 @@ function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget,
 	const slots = try bindingSlots(m, entries, target);
 	for (const s of slots) {
 		const b = try bindingOf(m, s);
-		const held = out.bindings.findIndex((h) => h.group == b.group && h.binding == b.binding &&
-			h.kind == b.kind && h.textureBinding == b.textureBinding && h.nativeName == b.nativeName);
+		const held = out.bindings.findIndex((h) => h.group == b.group &&
+			h.binding == b.binding && h.kind == b.kind &&
+			h.textureBinding == b.textureBinding && h.nativeName == b.nativeName);
 		if (held < 0) {
 			out.bindings.push(b);
 		} else if (out.bindings[held].nativeSlot != b.nativeSlot) {
 			return Result.err("internal: binding " + String(b.binding) + " sits at native slot " +
-				String(out.bindings[held].nativeSlot) + " in one stage and " + String(b.nativeSlot) +
-				" in another");
+				String(out.bindings[held].nativeSlot) + " in one stage and " +
+				String(b.nativeSlot) + " in another");
 		} else {
 			out.bindings[held].visibility = out.bindings[held].visibility | b.visibility;
 		}

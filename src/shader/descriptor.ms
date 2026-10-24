@@ -278,7 +278,8 @@ export class ProgramSource {
 }
 
 // The reflection always; the sources when the target's printer prints them, else its refusal.
-export function programSource(m: ShaderModule, target: ShaderTarget): Result<ProgramSource, string> {
+export function programSource(m: ShaderModule, target: ShaderTarget):
+	Result<ProgramSource, string> {
 	let out = new ProgramSource();
 	out.entryPoint = entryPointOf(target);
 	if (m.entries.length == 1) {

@@ -252,7 +252,8 @@ function samplerlessStmts(stmts: ShaderStmt[], out: int32[]): void {
 	}
 }
 
-function fetchesThrough(m: ShaderModule, use: PairUse, texture: int32, stage: ShaderStage): boolean {
+function fetchesThrough(m: ShaderModule, use: PairUse, texture: int32, stage: ShaderStage):
+	boolean {
 	return use.stage == stage && use.pair.texture == texture && use.pair.sampler >= 0 &&
 		m.resources[use.pair.sampler].samplerType != SamplerType.Comparison;
 }
