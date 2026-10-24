@@ -245,6 +245,12 @@ static VoidAppView *s_view;
 	s_scale = (float)scale;
 	s_fbW = MAX(1, (int)lround(self.bounds.size.width * scale));
 	s_fbH = MAX(1, (int)lround(self.bounds.size.height * scale));
+	// highDpi 0 is the capture configuration (tests/golden/runner.ms): the framebuffer is the
+	// size the program asked for, as a desktop window gives it, and the screen shows it scaled.
+	if (!s_highDpi && s_reqW > 0 && s_reqH > 0) {
+		s_fbW = s_reqW;
+		s_fbH = s_reqH;
+	}
 	const UIEdgeInsets in = self.safeAreaInsets;
 	voidAppSetSafeArea((float)(in.top * scale), (float)(in.left * scale),
 		(float)(in.bottom * scale), (float)(in.right * scale));
@@ -257,6 +263,7 @@ static VoidAppView *s_view;
 	CAMetalLayer *layer = (CAMetalLayer *)self.layer;
 	layer.framebufferOnly = NO;
 	layer.contentsScale = [self pixelScale];
+	if (!s_highDpi && s_reqW > 0 && s_reqH > 0) layer.contentsGravity = kCAGravityResizeAspect;
 	[self measure];
 	self.insets = self.safeAreaInsets;
 	self.viewId = voidViewCreate((long long)(intptr_t)(__bridge void *)layer, s_fbW, s_fbH, s_scale);

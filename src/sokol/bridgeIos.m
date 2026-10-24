@@ -121,9 +121,15 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 
 int voidPlatformSurfaceReady(void *surface) { return voidPresentGateAdmits(((IosSurface *)surface)->gate); }
 
+// The drawable a commit presented stays readable until the surface's next frame, as the macOS
+// window's does, so a capture after commit() reads the frame it showed.
+static IosSurface *s_presented;
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	restoreContextIfLost();
 	IosSurface *s = (IosSurface *)surface;
+	if (s->drawable) CFRelease(s->drawable);
+	s->drawable = NULL;
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
 	voidPresentGateTrack(s->gate, (__bridge void *)drawable);
@@ -132,14 +138,11 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	return 1;
 }
 
-void voidPlatformSurfacePresent(void *surface) {
-	IosSurface *s = (IosSurface *)surface;
-	if (s->drawable) CFRelease(s->drawable);
-	s->drawable = NULL;
-}
+void voidPlatformSurfacePresent(void *surface) { s_presented = (IosSurface *)surface; }
 
 void voidPlatformSurfaceDestroy(void *surface) {
 	IosSurface *s = (IosSurface *)surface;
+	if (s_presented == s) s_presented = NULL;
 	if (s->drawable) CFRelease(s->drawable);
 	releaseMsaa(s);
 	voidPresentGateRelease(s->gate);
@@ -159,7 +162,10 @@ float voidDpiScale(void) { return voidIosAppDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
 void voidDriverPresent(void) { voidViewsPresent(); }
 
-static IosSurface *screenSurface(void) { return (IosSurface *)voidViewsCurrentSurface(); }
+static IosSurface *screenSurface(void) {
+	if (voidCurrentView() == 0 && s_presented) return s_presented;
+	return (IosSurface *)voidViewsCurrentSurface();
+}
 static void *drawableTexture(void *drawable) { return (__bridge void *)((__bridge id<CAMetalDrawable>)drawable).texture; }
 
 int32_t voidSwapchainWidth(void) { return screenSurface()->w; }

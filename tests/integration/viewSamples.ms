@@ -53,11 +53,22 @@ import {
 	drawToScreen,
 } from "../../src/void3d/forwardRenderer";
 import {
+	voidCaptureGrab,
 	voidCaptureGrabSwapChain,
 	voidCapturePixel,
 	voidCaptureEnvInt,
 	voidCaptureExit,
 } from "../capture/capture.h";
+
+@include("../../src/sokol/bridge.h");
+extern function voidRunConfigured(
+	w: int32,
+	h: int32,
+	sampleCount: int32,
+	highDpi: int32,
+	init: () => void,
+	frame: () => void,
+): void;
 
 const WIDTH: int32 = 320;
 const HEIGHT: int32 = 240;
@@ -205,6 +216,10 @@ function run(samples: int32, late: boolean): int32 {
 	check(viewFrame(view), "viewFrame returned false");
 	const grabbed: int32 = voidCaptureGrabSwapChain(0, viewSwapChain(view), PRESENTED_BUFFER);
 	check(grabbed != 0, "readback failed");
+	return judge(samples);
+}
+
+function judge(samples: int32): int32 {
 	check(redOf(WIDTH / 2, HEIGHT / 2) != redOf(WIDTH - 4, 4), "the 3D box is missing");
 	check(redOf(45, 45) > RESOLVED_HIGH, "the 2D quad is missing");
 	const between: int32 = resolvedEdgePixels();
@@ -221,7 +236,27 @@ function run(samples: int32, late: boolean): int32 {
 	return failures == 0 ? 0 : 1;
 }
 
-voidCaptureExit(run(
-	voidCaptureEnvInt("VOID_VIEW_SAMPLES", 4),
-	voidCaptureEnvInt("VOID_VIEW_SAMPLES_LATE", 0) != 0,
-));
+// iOS has no headless view: the app driver owns the one view, and the frame it presented is read
+// back after commit.
+const appSamples: int32 = voidCaptureEnvInt("VOID_VIEW_SAMPLES", 4);
+
+function initApp(): void {
+	initView();
+	check(environmentSampleCount() == appSamples,
+		`the device's pipelines use ${environmentSampleCount()} samples, asked ${appSamples}`);
+}
+
+function frameApp(): void {
+	frameView();
+	check(voidCaptureGrab(0) != 0, "readback failed");
+	voidCaptureExit(judge(appSamples));
+}
+
+when (ios) {
+	voidRunConfigured(WIDTH, HEIGHT, appSamples, 0, initApp, frameApp);
+} else {
+	voidCaptureExit(run(
+		appSamples,
+		voidCaptureEnvInt("VOID_VIEW_SAMPLES_LATE", 0) != 0,
+	));
+}
