@@ -109,8 +109,8 @@ or the WebGL2 context, and gives the door its swapchain views (WebGL2 draws fram
 
 ## The door on this layer
 
-The render layers above keep the door's contract (`src/gpu/door.h`, `door.ms`): flat descriptor
-words, `uint32` ids, programs and layouts registered by index. `src/gpu/doorGpu.ms` carries that
+The render layers above keep the door's contract (`src/gpu/door.h`, `door.ms`): typed pipeline and
+pass descriptors, a flat bindings descriptor, `uint32` ids, programs and layouts registered by index. `src/gpu/doorGpu.ms` carries that
 contract onto the WebGPU-shaped API, adding the two things WebGPU leaves to its caller and
 sokol's WebGPU backend does for it:
 
