@@ -255,19 +255,35 @@ export function doorShutdown(): void {
 
 // sokol's sg_frame_stats, the members frameClock.c reads: counted through a frame and handed
 // over at commit as the previous frame's (sokol_gfx.h _sg_update_stats).
-export const DOOR_STAT_DRAWS = 0;
-export const DOOR_STAT_PIPELINES = 1;
-export const DOOR_STAT_PASSES = 2;
-export const DOOR_STAT_BUFFER_BYTES = 3;
-export const DOOR_STAT_IMAGE_BYTES = 4;
-const STAT_COUNT: int32 = 5;
-let frameStats: int32[STAT_COUNT] = [0, 0, 0, 0, 0];
-let lastFrameStats: int32[STAT_COUNT] = [0, 0, 0, 0, 0];
+export const DOOR_STAT_DRAWS: int32 = 0;
+export const DOOR_STAT_PIPELINES: int32 = 1;
+export const DOOR_STAT_PASSES: int32 = 2;
+export const DOOR_STAT_BUFFER_BYTES: int32 = 3;
+export const DOOR_STAT_IMAGE_BYTES: int32 = 4;
+
+struct FrameStats {
+	draws: int32;
+	pipelines: int32;
+	passes: int32;
+	bufferBytes: int32;
+	imageBytes: int32;
+}
+
+function noFrameStats(): FrameStats {
+	return { draws: 0, pipelines: 0, passes: 0, bufferBytes: 0, imageBytes: 0 };
+}
+
+let frameStats: FrameStats = noFrameStats();
+let lastFrameStats: FrameStats = noFrameStats();
 
 @exportName("doorFrameStat")
 export function doorFrameStat(which: int32): int32 {
-	if (which < 0 || which >= STAT_COUNT) { fail("no frame stat " + String(which)); }
-	return lastFrameStats[which];
+	if (which == DOOR_STAT_DRAWS) { return lastFrameStats.draws; }
+	if (which == DOOR_STAT_PIPELINES) { return lastFrameStats.pipelines; }
+	if (which == DOOR_STAT_PASSES) { return lastFrameStats.passes; }
+	if (which == DOOR_STAT_BUFFER_BYTES) { return lastFrameStats.bufferBytes; }
+	if (which == DOOR_STAT_IMAGE_BYTES) { return lastFrameStats.imageBytes; }
+	fail("no frame stat " + String(which));
 }
 
 @exportName("doorValid")
@@ -926,7 +942,7 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (bytes <= 0 || !buffer.isAlive() || bytes > buffer.size()) { return 0; }
 	device.queue.writeBuffer(buffer, 0, data);
-	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes as int32;
+	frameStats.bufferBytes += bytes as int32;
 	return 1;
 }
 
@@ -960,7 +976,7 @@ export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64
 	const bytes = data.length as int64;
 	if (offset + bytes > buffer.size()) { return -1; }
 	if (bytes > 0) { device.queue.writeBuffer(buffer, offset, data); }
-	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes as int32;
+	frameStats.bufferBytes += bytes as int32;
 	appendCursors[at].position = alignedToFour(offset + bytes);
 	return offset;
 }
@@ -1024,7 +1040,7 @@ export function doorUpdateTextureOf<T>(id: uint32, data: Readonly<Span<T>>): voi
 			String(height) + " high");
 	}
 	const rowBytes = bytes / (height as int64);
-	frameStats[DOOR_STAT_IMAGE_BYTES] += bytes as int32;
+	frameStats.imageBytes += bytes as int32;
 	device.queue.writeTexture(
 		{ texture },
 		data,
@@ -1047,7 +1063,7 @@ export function doorUpdateTextureRect(
 ): void {
 	const texture: GPUTexture = { id };
 	if (!texture.isAlive()) { return; }
-	frameStats[DOOR_STAT_IMAGE_BYTES] += (data.length as int32);
+	frameStats.imageBytes += (data.length as int32);
 	device.queue.writeTexture(
 		{ texture, origin: { x, y, z: 0 } },
 		data,
@@ -1089,7 +1105,7 @@ export function doorViewIsColorAttachment(view: uint32): int32 {
 
 @exportName("doorApplyPipeline")
 export function doorApplyPipeline(pipeline: uint32): void {
-	frameStats[DOOR_STAT_PIPELINES]++;
+	frameStats.pipelines++;
 	const index = pipelineIndex(pipeline);
 	if (index != current) {
 		current = index;
@@ -1211,7 +1227,7 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 
 @exportName("doorDraw")
 export function doorDraw(base: int32, count: int32, instances: int32): void {
-	frameStats[DOOR_STAT_DRAWS]++;
+	frameStats.draws++;
 	if (current >= 0 && pipelines[current].indexed) {
 		pass.drawIndexed(count, instances, base, 0, 0);
 	} else {
@@ -1369,7 +1385,7 @@ export function doorBeginPass(d: Readonly<Span<uint32>>, clear: Readonly<Span<fl
 		};
 	}
 	pass = frameEncoder().beginRenderPass(descriptor);
-	frameStats[DOOR_STAT_PASSES]++;
+	frameStats.passes++;
 	openPass = PassState.Target;
 	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		passViews[i] = d[DOOR_PASS_COLOR_VIEW + i];
@@ -1399,7 +1415,7 @@ export function doorBeginColorPass(
 		storeOp: "store",
 	};
 	pass = frameEncoder().beginRenderPass(descriptor);
-	frameStats[DOOR_STAT_PASSES]++;
+	frameStats.passes++;
 	openPass = PassState.Target;
 	passViews = [view, 0, 0, 0, 0];
 	current = -1;
@@ -1432,7 +1448,7 @@ export function doorBeginScreenPass(
 		};
 	}
 	pass = frameEncoder().beginRenderPass(descriptor);
-	frameStats[DOOR_STAT_PASSES]++;
+	frameStats.passes++;
 	openPass = PassState.Screen;
 	passViews = [0, 0, 0, 0, 0];
 	current = -1;
@@ -1465,7 +1481,7 @@ export function doorSubmitFrame(): void {
 	encoder = { id: 0 };
 	uniformCursor = 0;
 	lastFrameStats = frameStats;
-	frameStats = [0, 0, 0, 0, 0];
+	frameStats = noFrameStats();
 }
 
 @exportName("doorPassState")
@@ -1555,4 +1571,14 @@ test "the binding words of door.h agree with the slot counts" {
 
 test "a pass names a view per color attachment and one for depth" {
 	assert PASS_VIEW_SLOTS == DOOR_MAX_COLOR_ATTACHMENTS + 1;
+}
+
+test "doorFrameStat answers each stat from its own field of the previous frame" {
+	lastFrameStats = { draws: 1, pipelines: 2, passes: 3, bufferBytes: 4, imageBytes: 5 };
+	assert doorFrameStat(DOOR_STAT_DRAWS) == 1;
+	assert doorFrameStat(DOOR_STAT_PIPELINES) == 2;
+	assert doorFrameStat(DOOR_STAT_PASSES) == 3;
+	assert doorFrameStat(DOOR_STAT_BUFFER_BYTES) == 4;
+	assert doorFrameStat(DOOR_STAT_IMAGE_BYTES) == 5;
+	lastFrameStats = noFrameStats();
 }
