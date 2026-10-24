@@ -60,7 +60,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/metalReadback.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -245,7 +245,7 @@ if "$MSC" build tests/integration/screenOver.ms --release --output=out/screenOve
 	status=0
 	out/screenOver.exe > out/gate-screen-over-run.log 2>&1 || status=$?
 	if [ "$status" -eq 3 ]; then
-		skip "screen over: $(grep -E '^SKIP' out/gate-screen-over-run.log | sed 's/^SKIP screen over: //') (backend:metal-macos in tests/PENDING.md)"
+		skip "screen over: $(grep -E '^SKIP' out/gate-screen-over-run.log | sed 's/^SKIP screen over: //') (this backend has no readback)"
 	elif [ "$status" -eq 0 ]; then
 		pass "screen over: $(grep -E '^screen over:' out/gate-screen-over-run.log | sed 's/^screen over: //')"
 	else
@@ -273,7 +273,7 @@ if "$MSC" build tests/integration/layerSlot.ms --release --output=out/layerSlot.
 	status=0
 	out/layerSlot.exe > out/gate-layer-slot-run.log 2>&1 || status=$?
 	if [ "$status" -eq 3 ]; then
-		skip "layer slot: no readback path (backend:metal-macos in tests/PENDING.md)"
+		skip "layer slot: this backend has no readback"
 	elif [ "$status" -eq 0 ]; then
 		pass "layer slot: A under the layer, B and C over it"
 	else
@@ -355,6 +355,7 @@ for glyph_backend in $glyph_backends; do
 	case "$(uname -s):$glyph_backend" in
 		*:gl) colour_backend=4 ;;
 		MINGW*:native|MSYS*:native|CYGWIN*:native) colour_backend=1 ;;
+		Darwin:native) colour_backend=5 ;;
 	esac
 	if "$MSC" build -d:voidColourEmoji $glyph_flags tests/integration/colourSampler.ms \
 			--release --output="$colour_runner" \
@@ -623,6 +624,28 @@ if [ "$(uname -s)" = Darwin ] && [ -x out/twoViews.exe ]; then
 		fail "a view frame autoreleases its drawable with no pool in place — see out/gate-two-views-pools.err"
 	else
 		pass "a view frame releases its drawable in its own autorelease pool"
+	fi
+fi
+if [ "$(uname -s)" = Darwin ]; then
+	if "$MSC" build tests/integration/framePacing.ms --output=out/framePacing.exe > out/gate-frame-pacing.log 2>&1 \
+			&& out/framePacing.exe > out/gate-frame-pacing-run.log 2>&1; then
+		pass "$(grep -E '^PASS frame pacing' out/gate-frame-pacing-run.log | sed 's/^PASS //')"
+	else
+		fail "frame pacing — see out/gate-frame-pacing.log and out/gate-frame-pacing-run.log"
+		grep -E '^FAIL' out/gate-frame-pacing-run.log | sed 's/^/      /' || true
+	fi
+	if "$MSC" build tests/integration/metalReadback.ms --output=out/metalReadback.exe > out/gate-metal-readback.log 2>&1 \
+			&& out/metalReadback.exe > out/gate-metal-readback-run.log 2>&1; then
+		pass "$(grep -E '^PASS metal readback' out/gate-metal-readback-run.log | sed 's/^PASS //')"
+	else
+		fail "metal readback — see out/gate-metal-readback.log and out/gate-metal-readback-run.log"
+	fi
+	open_status=0
+	VOID_READBACK_OPEN=1 out/metalReadback.exe > out/gate-metal-readback-open.log 2>&1 || open_status=$?
+	if [ "$open_status" -ne 0 ] && grep -q 'grab after commit()' out/gate-metal-readback-open.log; then
+		pass "a Metal grab before commit stops and names it instead of waiting"
+	else
+		fail "a Metal grab before commit did not stop with its named error (exit $open_status) — see out/gate-metal-readback-open.log"
 	fi
 fi
 outside_status=0
@@ -1071,7 +1094,20 @@ else
 		conformance_rule gl430 out/gate-golden-gl.log conformance:gl430-pixel-centre
 	fi
 fi
-skip "metal macOS: no readback (~50 lines) — tests/PENDING.md backend:metal-macos"
+if [ "$(uname -s)" != Darwin ]; then
+	skip "metal macOS: runs on a Mac only (sh scripts/golden.sh --backend metal)"
+elif [ "$QUICK" -eq 1 ]; then
+	skip "metal macOS: --quick skips the golden suites (sh scripts/golden.sh --backend metal)"
+else
+	sh scripts/golden.sh --backend metal > out/gate-golden-metal.log 2>&1 || true
+	metal_conformance="$(grep -E '^golden metal' out/gate-golden-metal.log || echo 'no conformance line — see out/gate-golden-metal.log')"
+	echo "      metal    $metal_conformance      (this Mac, every full gate)"
+	if ! echo "$metal_conformance" | grep -q '^golden metal'; then
+		fail "metal macOS conformance did not run — see out/gate-golden-metal.log"
+	else
+		conformance_rule metal out/gate-golden-metal.log conformance:metal-gpu-rounding
+	fi
+fi
 skip "metal iOS: no readback, and the first device run is T5 — tests/PENDING.md backend:metal-ios"
 skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
 skip "webgpu: blocked with the other web runs — tests/PENDING.md web:runs"

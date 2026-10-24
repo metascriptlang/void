@@ -10,6 +10,7 @@
 
 #include "bridge.h"
 #include "views.h"
+#include "presentGate.h"
 #include "sokol_gfx.h"
 #include "sokol_log.h"
 
@@ -20,6 +21,7 @@ static VoidDriver s_driver = DRIVER_NONE;
 static id<MTLDevice>       g_device;
 static CAMetalLayer*       g_layer;
 static id<CAMetalDrawable> g_drawable;
+static void*              g_gate;
 static int g_w = 800, g_h = 600;
 static float g_dpiScale = 1.0f;
 
@@ -27,6 +29,7 @@ static float g_dpiScale = 1.0f;
 static msClosure s_init;
 static msClosure s_frame;
 static int s_frames = 0;
+static int s_frameCommitted = 0;
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -34,49 +37,50 @@ static void call0(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
-// Read the rendered drawable back to a PPM — deterministic Stage-2 proof.
-static void captureDrawable(id<CAMetalDrawable> drawable, const char* path) {
-	id<MTLTexture> tex = drawable.texture;
-	NSUInteger w = tex.width, h = tex.height;
-	MTLTextureDescriptor* desc = [MTLTextureDescriptor
-		texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-		width:w height:h mipmapped:NO];
-	desc.storageMode = MTLStorageModeManaged;
-	desc.usage = MTLTextureUsageShaderRead;
-	id<MTLTexture> staging = [g_device newTextureWithDescriptor:desc];
-	id<MTLCommandQueue> q = [g_device newCommandQueue];
-	id<MTLCommandBuffer> cb = [q commandBuffer];
-	id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
-	[blit copyFromTexture:tex sourceSlice:0 sourceLevel:0
-		sourceOrigin:MTLOriginMake(0,0,0) sourceSize:MTLSizeMake(w,h,1)
-		toTexture:staging destinationSlice:0 destinationLevel:0
-		destinationOrigin:MTLOriginMake(0,0,0)];
-	[blit synchronizeResource:staging];
-	[blit endEncoding];
-	[cb commit];
-	[cb waitUntilCompleted];
-	NSUInteger rowBytes = w * 4;
-	uint8_t* buf = (uint8_t*)malloc(rowBytes * h);
-	[staging getBytes:buf bytesPerRow:rowBytes
-		fromRegion:MTLRegionMake2D(0,0,w,h) mipmapLevel:0];
-	FILE* f = fopen(path, "wb");
-	fprintf(f, "P6\n%lu %lu\n255\n", (unsigned long)w, (unsigned long)h);
-	for (NSUInteger i = 0; i < w*h; i++) {
-		uint8_t b = buf[i*4+0], g = buf[i*4+1], r = buf[i*4+2];
-		fputc(r, f); fputc(g, f); fputc(b, f);
-	}
-	fclose(f);
-	free(buf);
-	NSLog(@"voidEmbed capture: wrote %s %lux%lu", path, (unsigned long)w, (unsigned long)h);
-}
-
 static void tick(void) {
+	if (!voidPresentGateAdmits(g_gate)) return;
 	g_drawable = [g_layer nextDrawable];
 	if (!g_drawable) return;
+	voidPresentGateTrack(g_gate, (__bridge void *)g_drawable);
+	s_frameCommitted = 0;
 	call0(s_frame);
 	s_frames++;
-	(void)captureDrawable;
 	g_drawable = nil;
+}
+
+int voidWindowReadRgba(uint8_t *out, int width, int height) {
+	if (s_driver != DRIVER_WINDOW || !g_drawable) return 0;
+	// sokol enqueues the frame's command buffer at its first pass (sokol_gfx.h _sg_mtl_begin_pass)
+	// and commits it in sg_commit; a blit committed behind it waits for it, so it never returns.
+	if (!s_frameCommitted) voidFail("metal readback: the frame is not committed yet; grab after commit()");
+	id<MTLTexture> tex = g_drawable.texture;
+	if ((int)tex.width != width || (int)tex.height != height) return 0;
+	@autoreleasepool {
+		NSUInteger rowBytes = (NSUInteger)width * 4u;
+		id<MTLBuffer> shared = [g_device newBufferWithLength:rowBytes * (NSUInteger)height
+			options:MTLResourceStorageModeShared];
+		if (!shared) return 0;
+		id<MTLCommandQueue> queue = (__bridge id<MTLCommandQueue>)sg_mtl_command_queue();
+		id<MTLCommandBuffer> cb = [queue commandBuffer];
+		id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+		[blit copyFromTexture:tex sourceSlice:0 sourceLevel:0
+			sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake((NSUInteger)width, (NSUInteger)height, 1)
+			toBuffer:shared destinationOffset:0 destinationBytesPerRow:rowBytes
+			destinationBytesPerImage:rowBytes * (NSUInteger)height];
+		[blit endEncoding];
+		[cb commit];
+		[cb waitUntilCompleted];
+		int ok = cb.status == MTLCommandBufferStatusCompleted;
+		const uint8_t *bgra = (const uint8_t *)shared.contents;
+		for (size_t i = 0; ok && i < (size_t)width * (size_t)height; i++) {
+			out[i * 4 + 0] = bgra[i * 4 + 2];
+			out[i * 4 + 1] = bgra[i * 4 + 1];
+			out[i * 4 + 2] = bgra[i * 4 + 0];
+			out[i * 4 + 3] = bgra[i * 4 + 3];
+		}
+		[shared release];
+		return ok;
+	}
 }
 
 @interface VEAppDelegate : NSObject <NSApplicationDelegate>
@@ -128,6 +132,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 		g_w = (int)(w * g_dpiScale);
 		g_h = (int)(h * g_dpiScale);
 		g_layer.drawableSize = CGSizeMake(g_w, g_h);
+		g_gate = voidPresentGateCreate((__bridge void *)g_layer);
 		[view setLayer:g_layer];
 
 		[win center];
@@ -205,11 +210,13 @@ sg_swapchain voidDriverSwapchain(void) {
 }
 
 void voidDriverPresent(void) {
+	if (s_driver == DRIVER_WINDOW) s_frameCommitted = 1;
 	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
 }
 
 typedef struct {
 	void *layer;
+	void *gate;
 	void *view;
 	void *drawable;
 	void *msaa;
@@ -272,6 +279,7 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	MacSurface *s = (MacSurface *)calloc(1, sizeof(MacSurface));
 	s->layer = (void *)CFBridgingRetain(layer);
+	s->gate = voidPresentGateCreate(s->layer);
 	if (native != NULL) {
 		NSView *view = (__bridge NSView *)native;
 		view.wantsLayer = YES;
@@ -284,10 +292,22 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 
 void voidPlatformSurfaceResize(void *surface, int w, int h) { fitLayer((MacSurface *)surface, w, h); }
 
+static int windowIsVisible(MacSurface *s) {
+	if (!s->view) return 1;
+	NSWindow *window = ((__bridge NSView *)s->view).window;
+	return window != nil && (window.occlusionState & NSWindowOcclusionStateVisible) != 0;
+}
+
+int voidPlatformSurfaceReady(void *surface) {
+	MacSurface *s = (MacSurface *)surface;
+	return windowIsVisible(s) && voidPresentGateAdmits(s->gate);
+}
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	MacSurface *s = (MacSurface *)surface;
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
+	voidPresentGateTrack(s->gate, (__bridge void *)drawable);
 	s->drawable = (void *)CFBridgingRetain(drawable);
 	return 1;
 }
@@ -309,6 +329,7 @@ void voidPlatformSurfaceDestroy(void *surface) {
 	if (s->drawable) CFRelease(s->drawable);
 	releaseMsaa(s);
 	[(__bridge CAMetalLayer *)s->layer removeFromSuperlayer];
+	voidPresentGateRelease(s->gate);
 	CFRelease(s->layer);
 	if (s->view) CFRelease(s->view);
 	free(s);

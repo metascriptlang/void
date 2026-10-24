@@ -4,7 +4,7 @@
 #include <commctrl.h>
 #include <imm.h>
 #include <d3d11.h>
-#include <dxgi1_2.h>
+#include <dxgi1_3.h>
 #include <dwmapi.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -176,6 +176,7 @@ static bool s_committed;
 
 static void _frame(void) {
 	if (s_contextLost) restoreContext();
+	if (!s_sizeMove && !voidWindowAwaitFrame()) return;
 	s_committed = false;
 	call0(s_frame);
 	if (s_committed) voidWindowPresent(s_sizeMove);
@@ -243,9 +244,30 @@ typedef struct {
 	ID3D11RenderTargetView *msaaTarget;
 	ID3D11Texture2D *depth;
 	ID3D11DepthStencilView *depthTarget;
+	HANDLE frameLatency;
 	int w, h, samples;
 	bool hasDepth;
+	bool admitted;
 } WinSurface;
+
+static const UINT VOID_SWAP_FLAGS = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+static const UINT VOID_FRAME_LATENCY = 2;
+
+static void watchFrameLatency(WinSurface *s) {
+	IDXGISwapChain2 *chain2 = NULL;
+	HRESULT hr = IDXGISwapChain1_QueryInterface(s->swapChain, &IID_IDXGISwapChain2, (void **)&chain2);
+	if (FAILED(hr)) voidFail("the swap chain has no IDXGISwapChain2: 0x%08lx", (unsigned long)hr);
+	hr = IDXGISwapChain2_SetMaximumFrameLatency(chain2, VOID_FRAME_LATENCY);
+	if (FAILED(hr)) voidFail("SetMaximumFrameLatency(%u) failed: 0x%08lx", VOID_FRAME_LATENCY, (unsigned long)hr);
+	s->frameLatency = IDXGISwapChain2_GetFrameLatencyWaitableObject(chain2);
+	IDXGISwapChain2_Release(chain2);
+	if (s->frameLatency == NULL) voidFail("the swap chain gave no frame latency waitable object");
+}
+
+static int surfaceReady(WinSurface *s) {
+	if (!s->admitted) s->admitted = WaitForSingleObjectEx(s->frameLatency, 0, FALSE) == WAIT_OBJECT_0;
+	return s->admitted;
+}
 
 static void createDevice(UINT flags) {
 	const D3D_FEATURE_LEVEL wanted[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
@@ -353,12 +375,14 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	desc.Scaling = DXGI_SCALING_STRETCH;
 	desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 	desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
+	desc.Flags = VOID_SWAP_FLAGS;
 	WinSurface *s = (WinSurface *)calloc(1, sizeof(WinSurface));
 	s->w = w;
 	s->h = h;
 	s->samples = voidViewsSampleCount();
 	HRESULT hr = IDXGIFactory2_CreateSwapChainForComposition(s_factory, (IUnknown *)s_device, &desc, NULL, &s->swapChain);
 	if (FAILED(hr)) voidFail("CreateSwapChainForComposition %dx%d failed: 0x%08lx", w, h, (unsigned long)hr);
+	watchFrameLatency(s);
 	makeTarget(s);
 	return s;
 }
@@ -368,10 +392,12 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 	releaseTargets(s);
 	s->w = w;
 	s->h = h;
-	HRESULT hr = IDXGISwapChain1_ResizeBuffers(s->swapChain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, 0);
+	HRESULT hr = IDXGISwapChain1_ResizeBuffers(s->swapChain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, VOID_SWAP_FLAGS);
 	if (FAILED(hr)) voidFail("ResizeBuffers to %dx%d failed: 0x%08lx", w, h, (unsigned long)hr);
 	makeTarget(s);
 }
+
+int voidPlatformSurfaceReady(void *surface) { return surfaceReady((WinSurface *)surface); }
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	(void)surface;
@@ -392,6 +418,7 @@ void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
 }
 
 void voidPlatformSurfacePresent(void *surface) {
+	((WinSurface *)surface)->admitted = false;
 	HRESULT hr = IDXGISwapChain1_Present(((WinSurface *)surface)->swapChain, 1, 0);
 	if (FAILED(hr)) voidFail("IDXGISwapChain1::Present failed: 0x%08lx", (unsigned long)hr);
 }
@@ -399,6 +426,7 @@ void voidPlatformSurfacePresent(void *surface) {
 void voidPlatformSurfaceDestroy(void *surface) {
 	WinSurface *s = (WinSurface *)surface;
 	releaseTargets(s);
+	CloseHandle(s->frameLatency);
 	IDXGISwapChain1_Release(s->swapChain);
 	free(s);
 }
@@ -432,8 +460,10 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	desc.BufferCount = 2;
 	desc.Scaling = DXGI_SCALING_STRETCH;
 	desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	desc.Flags = VOID_SWAP_FLAGS;
 	hr = IDXGIFactory2_CreateSwapChainForHwnd(s_factory, (IUnknown *)s_device, hwnd, &desc, NULL, NULL, &s_window.swapChain);
 	if (FAILED(hr)) voidFail("CreateSwapChainForHwnd %dx%d failed: 0x%08lx", s_window.w, s_window.h, (unsigned long)hr);
+	watchFrameLatency(&s_window);
 	makeTarget(&s_window);
 }
 
@@ -460,7 +490,15 @@ sg_swapchain voidWindowSwapchain(void) {
 	return swapchain;
 }
 
+bool voidWindowAwaitFrame(void) {
+	if (surfaceReady(&s_window)) return true;
+	DWORD woke = MsgWaitForMultipleObjectsEx(1, &s_window.frameLatency, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+	s_window.admitted = woke == WAIT_OBJECT_0;
+	return s_window.admitted;
+}
+
 void voidWindowPresent(bool modal) {
+	s_window.admitted = false;
 	HRESULT hr = modal ? IDXGISwapChain1_Present(s_window.swapChain, 0, DXGI_PRESENT_DO_NOT_WAIT)
 		: IDXGISwapChain1_Present(s_window.swapChain, 1, 0);
 	if (FAILED(hr) && hr != DXGI_ERROR_WAS_STILL_DRAWING) {

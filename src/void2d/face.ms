@@ -40,12 +40,21 @@ when (voidSprites) {
 	extern function void2dGlyphSpriteCell(face: int32, sizePx: float32, out: Span<int32>): void;
 }
 
+when (macos || ios) {
+	@compile("./platformFaceApple.m", "-fobjc-arc");
+	@passL("-framework CoreText");
+	@passL("-framework CoreGraphics");
+	@passL("-framework CoreFoundation");
+	import { void2dGlyphFacePlatform, void2dGlyphFaceIsPlatform } from "./glyph.h";
+}
+
 import {
 	void2dSfntPeek,
 	void2dSfntCovers,
 	void2dSfntSequence,
 	void2dSfntFlags,
 	void2dSfntSummariesRead,
+	void2dFontBytesAdd,
 } from "./sfnt.h";
 import { GlyphPageHandle } from "./glyphAtlas";
 
@@ -110,6 +119,26 @@ export struct FaceSummary {
 	drawable: boolean;
 	colourBitmap: boolean;
 	colourLayers: boolean;
+	osOutlines: boolean;
+}
+
+export enum FaceBytesError {
+	Empty,
+	NameHeld,
+	OutOfMemory,
+}
+
+// Holds a face's bytes under `name`, which peekFace and loadFace then read in place of a file.
+// The same bytes again are accepted; other bytes under a held name are refused.
+export function holdFaceBytes(name: string, bytes: uint8[]): Result<void, FaceBytesError> {
+	if (bytes.length == 0) { return Result.err(FaceBytesError.Empty); }
+	const code: int32 = void2dFontBytesAdd(name, bytes[0], bytes.length as int32);
+	if (code != 0 && code != -3 && code != -4) { unreachable; }
+	return match (code) {
+		0 => Result.ok(null),
+		-4 => Result.err(FaceBytesError.NameHeld),
+		_ => Result.err(FaceBytesError.OutOfMemory),
+	};
 }
 
 export function peekFace(path: string, index: int32 = 0): Result<FaceSummary, SfntError> {
@@ -128,6 +157,7 @@ export function peekFace(path: string, index: int32 = 0): Result<FaceSummary, Sf
 		drawable: (flags & 1) != 0,
 		colourBitmap: (flags & 2) != 0,
 		colourLayers: (flags & 4) != 0,
+		osOutlines: (flags & 8) != 0,
 	});
 }
 
@@ -161,6 +191,22 @@ export function syntheticFace(
 	return faceResult(void2dGlyphFaceSynthetic(face, bold ? 1 : 0, italic ? 1 : 0));
 }
 
+export function platformFacesBuilt(): boolean {
+	when (macos || ios) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+export function isPlatformFace(face: int32): boolean {
+	when (macos || ios) {
+		return void2dGlyphFaceIsPlatform(face) != 0;
+	} else {
+		return false;
+	}
+}
+
 export function isSpriteFace(face: int32): boolean {
 	when (voidSprites) {
 		return void2dGlyphFaceIsSprite(face) != 0;
@@ -189,6 +235,12 @@ when (voidSprites) {
 			topToBaseline: boxSlots[2],
 			lineThickness: boxSlots[3],
 		};
+	}
+}
+
+when (macos || ios) {
+	export function platformFace(base: int32): Result<int32, FaceError> {
+		return faceResult(void2dGlyphFacePlatform(base));
 	}
 }
 

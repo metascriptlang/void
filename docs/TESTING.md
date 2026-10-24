@@ -377,19 +377,19 @@ in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Current status, 2026-10-08: three backends of seven measured, and all three numbers are printed (D3D11, GL core 4.3 desktop (glsl430) and WebGL2). WebGPU is P6's, Metal and Android wait on the human's hardware.**
+**Current status, 2026-10-22: four backends of seven measured, and all four numbers are printed (D3D11, GL core 4.3 desktop (glsl430), WebGL2 and Metal on macOS). WebGPU is P6's; Metal iOS and Android wait on the human's devices.**
 
 | Backend | Conformance | Runs |
 |---|---|---|
 | D3D11 | **120 / 120 scenes byte-identical** | every full gate, this box |
 | GL core 4.3 desktop (glsl430) | **120 / 120**: 94 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
-| Metal macOS | no readback; the Mac is the human's | SKIP |
+| Metal macOS | **102 / 120** on an Apple GPU, 2026-10-22: 15 byte-identical, 87 within the cross-backend bound, 18 over it by delta 2 to 4 spread over many pixels with no shape moved (`conformance:metal-gpu-rounding`). The readback blits the window's drawable into a shared `MTLBuffer` on sokol's own command queue, so it is ordered after the committed frame | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
 | WebGPU | no readback in the wasm build. P6. Headless Chrome does hand it the real adapter here (2026-10-20); liveness only, below | SKIP |
 | WebGL2 | **120 / 120**: 88 byte-identical, 32 within the cross-backend bound, 0 structural failures; measured 2026-10-19, BUILD `4fe2a5eec`, with the runner built on the same module defines as D3D11 (`scripts/goldenDefines.sh`). Before that the web runner carried only `voidProfiler`, so 37 scenes of the text, SVG, emoji and sprite modules failed for want of their module, not for WebGL2; `conformance:webgl2-pixel-centre` is deleted, its four scenes passing. ANGLE on D3D11 on the same GPU proves the GLSL ES path and GL conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web` |
 
-So guardrail 9 is a number now, and the number is **3 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
+So guardrail 9 is a number now, and the number is **4 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
 for WebGPU today is liveness, not conformance: `scripts/webPresent.mjs` loads a built page in
 headless Chrome over DevTools, counts the frames it presents (WebGPU: a rAF tick that took the
 canvas texture and submitted; WebGL2: a draw or clear on the default framebuffer), and screenshots
@@ -413,7 +413,7 @@ What each readback costs:
 |---|---|---|---|
 | D3D11 | staging texture + `CopyResource` + `Map` | this Windows box | exists; needs moving into the repo |
 | GL / GLES3 | `glReadPixels` | this box (desktop GL), the Android device | ~30 lines, and it is shared with WebGL2 |
-| Metal | blit to a shared `MTLBuffer`, or `MTLTexture.getBytes` | the Mac, the iOS device | ~50 lines |
+| Metal | blit to a shared `MTLBuffer` (`voidWindowReadRgba`, `bridgeEmbed.m`) | the Mac; the iOS device still needs it | exists on macOS |
 | WebGPU | `copyTextureToBuffer` + `mapAsync`; `-sASYNCIFY` is already on for the emdawnwebgpu build (`src/sokol/sokolWeb.c`) | headless Chrome on this box | ~60 lines plus a JS hand-off |
 | WebGL2 | the GLES3 path | headless Chrome on this box | shared |
 

@@ -44,6 +44,33 @@ still happen, or the view frame aborts.
 Of these references, only sokol was read at source (`sg_swapchain` in the pinned
 `sokol_gfx.h`). The others are cited from their documented models.
 
+## Frame admission
+
+A view starts a frame only when its surface can take one without waiting for the display.
+`viewReady(v)` answers that without blocking, and `viewFrame(v)` returns false without calling
+the frame closure when it is not. A host that gets false keeps the frame owed and asks its clock
+for the next tick; it never retries in a loop, because the answer changes only when the display
+shows a frame.
+
+| platform | admitted while | primitive |
+|---|---|---|
+| macOS, iOS | frames acquired and not yet shown < `maximumDrawableCount` (set to 3) | `presentGate.m`: an atomic count, `addPresentedHandler` |
+| Windows (D3D11 flip) | the frame-latency waitable object is signalled (latency 2) | `SetMaximumFrameLatency`, `GetFrameLatencyWaitableObject`, polled with timeout 0 |
+| Web | always | `requestAnimationFrame` already holds one frame in flight |
+| Android | always, not measured yet | `eglSwapBuffers` still blocks when the queue is full |
+
+Why: a loop that makes one frame per vsync never drains a queue it once overfilled. On an M1 at
+120 Hz, a Haro window that typed into continuous frames kept a 5–7.5 ms wait in
+`nextDrawable` on the main thread every frame after the typing stopped, with 4 vsyncs from
+acquire to screen instead of 3 (2026-10-22). Admitting at 3 in flight: 0.03 ms waits, 119 fps,
+3 vsyncs. Admitting at 2, or giving the layer 2 drawables, dropped to 40–80 fps. The shape is
+Flutter's (`animator.cc`: a frame whose pipeline is full is skipped and a new frame requested)
+and Chromium's pending-swap limit; wgpu caps latency the same way per backend.
+
+Void's own window driver (`voidRun`) skips its tick on the same gate on macOS. The Windows window
+driver waits for the latency object with `MsgWaitForMultipleObjectsEx`, so input still wakes it;
+the GL window driver (`windowGl.c`) admits every frame and blocks in `SwapBuffers`.
+
 ## Windows: two drivers in one binary
 
 `bridgeWin.c` holds both the sokol_app window driver (`voidRun`, used by the demos, the golden
@@ -84,7 +111,7 @@ sublayer of the view's layer (it sets `wantsLayer`), sized to the view's bounds 
 makes the layer and attaches it nowhere: `viewSwapChain` returns the `CAMetalLayer*`, as it returns
 the `IDXGISwapChain1*` on Windows, and the host adds it to its own layer tree. `w` and `h` are
 pixels. `tests/integration/macViews.ms` creates both and checks sizes, resize and destroy, with no
-pixel readback because the Metal capture path is a stub.
+pixel readback, because the Metal readback reads only the window driver's drawable.
 
 ## iOS: an app driver on the host views
 

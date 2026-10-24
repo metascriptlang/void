@@ -1,0 +1,37 @@
+// The macOS window readback: a grab after commit() reads the frame, and VOID_READBACK_OPEN=1
+// grabs before it, which stops with the named error instead of waiting forever.
+import { gfxSetup } from "../../src/sokol/gpu";
+import { endPass, commit } from "../../src/gpu/door";
+import { beginScreenPass } from "../../src/gpu/target";
+import {
+	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit, voidCaptureEnvInt,
+} from "../capture/capture.h";
+
+@include("../../src/sokol/bridge.h");
+extern function voidRunConfigured(
+	w: int32, h: int32, sampleCount: int32, highDpi: int32,
+	init: () => void, frame: () => void,
+): void;
+
+const grabOpen: boolean = voidCaptureEnvInt("VOID_READBACK_OPEN", 0) != 0;
+
+function init(): void { gfxSetup(); }
+function frame(): void {
+	beginScreenPass({ x: 0.0, y: 0.0, z: 1.0, w: 1.0 });
+	endPass();
+	if (grabOpen) { voidCaptureGrab(0); }
+	commit();
+	if (voidCaptureGrab(0) == 0) {
+		console.log("FAIL metal readback: the grab after commit returned nothing");
+		voidCaptureExit(1);
+	}
+	const pixel: int64 = voidCapturePixel(0, 10, 10);
+	if (pixel != 0x0000FFFF) {
+		console.log(`FAIL metal readback: pixel ${pixel}, expected the blue clear`);
+		voidCaptureExit(1);
+	}
+	console.log("PASS metal readback: a grab after commit reads the cleared frame");
+	voidCaptureExit(0);
+}
+if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
+voidRunConfigured(64, 32, 1, 0, init, frame);

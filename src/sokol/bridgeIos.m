@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include "bridge.h"
+#include "presentGate.h"
 #include "views.h"
 #include "iosApp.h"
 #include "sokol_log.h"
@@ -22,6 +23,7 @@ static id<MTLDevice> g_device;
 
 typedef struct {
 	void *layer;
+	void *gate;
 	void *drawable;
 	void *msaa;
 	int w, h;
@@ -94,6 +96,7 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	layer.drawableSize = CGSizeMake(w, h);
 	IosSurface *s = (IosSurface *)calloc(1, sizeof(IosSurface));
 	s->layer = (void *)CFBridgingRetain(layer);
+	s->gate = voidPresentGateCreate(s->layer);
 	s->w = w;
 	s->h = h;
 	makeMsaa(s);
@@ -109,10 +112,13 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 	makeMsaa(s);
 }
 
+int voidPlatformSurfaceReady(void *surface) { return voidPresentGateAdmits(((IosSurface *)surface)->gate); }
+
 int voidPlatformSurfaceAcquire(void *surface) {
 	IosSurface *s = (IosSurface *)surface;
 	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
 	if (!drawable) return 0;
+	voidPresentGateTrack(s->gate, (__bridge void *)drawable);
 	s->drawable = (void *)CFBridgingRetain(drawable);
 	return 1;
 }
@@ -133,6 +139,7 @@ void voidPlatformSurfaceDestroy(void *surface) {
 	IosSurface *s = (IosSurface *)surface;
 	if (s->drawable) CFRelease(s->drawable);
 	releaseMsaa(s);
+	voidPresentGateRelease(s->gate);
 	CFRelease(s->layer);
 	free(s);
 }

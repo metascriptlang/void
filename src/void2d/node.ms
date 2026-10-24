@@ -47,6 +47,7 @@ import {
 	setLabelDirection,
 	labelDirection,
 	setLabelLines,
+	setLabelCellWidths,
 	labelLines,
 	setLabelSelection,
 	setLabelCursor,
@@ -1569,6 +1570,11 @@ export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): Nod
 
 export function setShapingBreaks(this n: NodeRef, breaks: Readonly<Span<int32>>): NodeRef {
 	setLabelShapingBreaks(textChanged(n, "setShapingBreaks"), breaks);
+	return n;
+}
+
+export function setCellWidths(this n: NodeRef, widths: Readonly<Span<uint8>>): NodeRef {
+	setLabelCellWidths(textChanged(n, "setCellWidths"), widths);
 	return n;
 }
 

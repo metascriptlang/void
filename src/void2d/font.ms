@@ -9,6 +9,9 @@ import {
 	glyphIndex,
 	faceHeights,
 	colourBuilt,
+	platformFacesBuilt,
+	FaceBytesError,
+	holdFaceBytes,
 } from "./face";
 import { graphemeProperty } from "./grapheme";
 
@@ -60,6 +63,7 @@ export enum FontError {
 	NotLoaded,
 	BadFeatureTag,
 	NoRasterizerOnJs,
+	NameHeld,
 }
 
 export enum Presentation {
@@ -140,6 +144,7 @@ struct Fallback {
 let registered: Vec<RegisteredFace> = [];
 let loadedPaths: Vec<LoadedPath> = [];
 let peekedPaths: Vec<PeekedPath> = [];
+let heldNames: Vec<string> = [];
 let synthetics: Vec<Synthetic> = [];
 when (voidSprites) {
 	let spriteFaces: Vec<SpriteOf> = [];
@@ -279,6 +284,49 @@ function defaultFace(): int32 {
 export function registerFace(path: string, family: string, weight: int32, style: FontStyle): void {
 	ensureDefaultFont();
 	registered.push({ path: path, family: family, weight: weight, style: style });
+}
+
+function pathRead(path: string): boolean {
+	for (const loaded of loadedPaths) { if (loaded.path.equals(path)) { return true; } }
+	for (const peeked of peekedPaths) { if (peeked.path.equals(path)) { return true; } }
+	return false;
+}
+
+function holdBytes(name: string, bytes: uint8[]): Result<void, FontError> {
+	when (js) {
+		return Result.err(FontError.NoRasterizerOnJs);
+	} else {
+		let known: boolean = false;
+		for (const held of heldNames) { known = known || held.equals(name); }
+		if (!known && pathRead(name)) { return Result.err(FontError.NameHeld); }
+		const held = holdFaceBytes(name, bytes);
+		if (held.ok) {
+			if (!known) { heldNames.push(name); }
+			return Result.ok(null);
+		}
+		if (held.error == FaceBytesError.NameHeld) { return Result.err(FontError.NameHeld); }
+		return Result.err(FontError.NotLoaded);
+	}
+}
+
+// registerFace for a face given as bytes (an asset read from an APK); `name` stands for its path.
+export function registerFaceBytes(
+	name: string, bytes: uint8[], family: string, weight: int32, style: FontStyle,
+): Result<void, FontError> {
+	try holdBytes(name, bytes);
+	registerFace(name, family, weight, style);
+	return Result.ok(null);
+}
+
+// The default font's bytes, for an app whose assets have no file path; before any text reads it.
+export function defaultFontBytes(bytes: uint8[]): Result<void, FontError> {
+	return holdBytes(DEFAULT_PATH, bytes);
+}
+
+// addFont for a face given as bytes; `name` stands for its path.
+export function addFontBytes(name: string, bytes: uint8[]): Result<FontId, FontError> {
+	try holdBytes(name, bytes);
+	return addFont(name);
 }
 
 export function addFont(path: string): Result<FontId, FontError> {
@@ -495,7 +543,7 @@ function discoveredFace(font: FontId, codepoint: int32, want: Presentation): int
 		const path: string = answers[k].path;
 		const collectionIndex: int32 = answers[k].index;
 		if (drawableAt(path, collectionIndex) && coversAtPath(path, collectionIndex, codepoint) &&
-			presentationOfPath(path, collectionIndex) == want) {
+			presentationOfPath(path, collectionIndex) == want && osOpens(path, collectionIndex)) {
 			discoveries.push({ path: path, index: collectionIndex });
 			chosen = (discoveries.length as int32) - 1;
 			break;
@@ -624,7 +672,14 @@ function drawableAt(path: string, collectionIndex: int32): boolean {
 	const summary = summaryAtPath(path, collectionIndex);
 	if (!summary.ok) { return false; }
 	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
-	return summary.value.drawable || (colour && colourBuilt());
+	return summary.value.drawable || (colour && colourBuilt()) ||
+		(summary.value.osOutlines && platformFacesBuilt());
+}
+
+function osOpens(path: string, collectionIndex: int32): boolean {
+	const summary = summaryAtPath(path, collectionIndex);
+	if (!summary.ok || !summary.value.osOutlines || summary.value.drawable) { return true; }
+	return faceAtPath(path, collectionIndex).ok;
 }
 
 function fallbackUsable(index: int32): boolean {
@@ -632,10 +687,15 @@ function fallbackUsable(index: int32): boolean {
 	const path: string = fallbacks[index].path;
 	const collectionIndex: int32 = fallbacks[index].collectionIndex;
 	const summary = summaryAtPath(path, collectionIndex);
-	if (!summary.ok || drawableAt(path, collectionIndex)) { return true; }
+	if (!summary.ok || (drawableAt(path, collectionIndex) && osOpens(path, collectionIndex))) {
+		return true;
+	}
 	const colour: boolean = summary.value.colourBitmap || summary.value.colourLayers;
 	console.log(
-		colour
+		summary.value.osOutlines && platformFacesBuilt()
+			? `void2d: fallback font ${path} has outlines only the OS draws, and the OS did not ` +
+				`open it; it is skipped`
+			: colour
 			? `void2d: fallback font ${path} holds colour glyphs but no outlines, ` +
 				`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`
 			: `void2d: fallback font ${path} has no outlines or colour glyphs Void can draw; ` +
