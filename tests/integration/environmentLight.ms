@@ -154,6 +154,9 @@ function expectedByte(power: float32): float32 {
 		normalTexture: { width: 0, height: 0, texels: [] },
 		metalRoughTexture: { width: 0, height: 0, texels: [] },
 		occlusionTexture: { width: 0, height: 0, texels: [] },
+		lightRecords: { width: 0, height: 0, texels: [] },
+		clusterRecords: { width: 0, height: 0, texels: [] },
+		clusterIndices: { width: 0, height: 0, texels: [] },
 	};
 	const light = pbrEnvironmentLight(vec3f(1.0), METALNESS, ROUGHNESS, vec3f(0.0, 0.0, 1.0),
 		vec3f(0.0, 0.0, 4.0), 1.0, b);

@@ -73,6 +73,10 @@ import {
 	skinWorld,
 	handednessOf,
 	instanceWorld,
+	litClusterOf,
+	litLightOf,
+	litTexelOf,
+	billboardTexelOf,
 	srgbToLinear,
 	straightTexel,
 	toneMapped,
@@ -96,6 +100,7 @@ export struct PixelArtLitFragmentInput {
 	baseColor: Vec4f;
 	depth01: float32;
 	@builtin(frontFacing) frontFacing: boolean;
+	@builtin(position) fragCoord: Vec4f;
 }
 
 export struct PixelArtLitTexturedVaryings {
@@ -116,6 +121,7 @@ export struct PixelArtLitTexturedFragmentInput {
 	baseColor: Vec4f;
 	depth01: float32;
 	@builtin(frontFacing) frontFacing: boolean;
+	@builtin(position) fragCoord: Vec4f;
 }
 
 export struct PixelArtUnlitTexturedVaryings {
@@ -209,6 +215,7 @@ export function toonPointLightAt(
 export function toonShade(
 	n: Vec3f,
 	position: Vec3f,
+	frag: Vec2f,
 	surfaceColor: Vec4f,
 	b: LitBindings,
 	key: LitKey,
@@ -221,10 +228,11 @@ export function toonShade(
 	}
 	let light = srgbToLinear(b.lightParams.ambient.rgb) +
 		srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
-	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-		const at = b.lightParams.pointLight[i];
+	const cluster = litClusterOf(frag, position, b);
+	for (let k = 0; k < cluster.y + cluster.z; k++) {
+		const i = litLightOf(b, cluster, k);
 		light = light + toonPointLightAt(
-			position, n, at, b.lightParams.pointColor[i], 1.0, params.x,
+			position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1), 1.0, params.x,
 		);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, params.y));
@@ -270,7 +278,7 @@ export function pixelArtLitFs(
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
 	const surfaceColor = tintedSurface(b, key, input.baseColor);
-	const shaded = toonShade(n, input.worldPosition, surfaceColor, b, key);
+	const shaded = toonShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
@@ -356,7 +364,7 @@ export function pixelArtLitTexturedFs(
 	const surfaceColor = tintedSurface(
 		b, key, vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a),
 	);
-	let shaded = toonShade(n, input.worldPosition, surfaceColor, b, key);
+	let shaded = toonShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;
 		shaded = emittedOver(shaded, glow, emissiveOf(b, key));
@@ -471,7 +479,9 @@ export function pixelArtBillboardVs(
 }
 
 // Lit by the point lights at the root raised billboard.z, on billboard.x bands. A cutout pixel
-// writes alpha 0, so the post pass outlines it as background.
+// writes alpha 0, so the post pass outlines it as background. The point it is lit at is not the
+// fragment, whose cluster need not list that point's lights, so every light of the frame is read
+// (clusterScreen.z of them): a pixel-art scene's few lights, not a clustered scene's many.
 export function pixelArtBillboardFs(
 	input: PixelArtBillboardFragmentInput,
 	b: BillboardBindings,
@@ -493,12 +503,10 @@ export function pixelArtBillboardFs(
 	if (shape.y != 0.0) {
 		const lightPoint = input.rootPosition + vec3f(0.0, shape.z, 0.0);
 		let points = vec3f(0.0);
-		for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-			const at = b.lightParams.pointLight[i];
+		for (let i = 0; i < ((b.lightParams.clusterScreen.z + 0.5) as int32); i++) {
 			const up = vec3f(0.0, 1.0, 0.0);
-			points = points + toonPointLightAt(
-				lightPoint, up, at, b.lightParams.pointColor[i], 0.0, shape.x,
-			);
+			points = points + toonPointLightAt(lightPoint, up, billboardTexelOf(b, i, 0),
+				billboardTexelOf(b, i, 1), 0.0, shape.x);
 		}
 		rgb = linearToSrgb(srgbToLinear(rgb) + points);
 	}

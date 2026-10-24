@@ -66,3 +66,22 @@ export function clusterParamsOf(
 			(grid.y as float32) / (screenHeight as float32), factors.x, factors.y),
 	};
 }
+
+export struct RecordTexture {
+	width: int32;
+	height: int32;
+	floats: Vec<float32>;
+}
+
+// The light records texture: `lights` from `first` on (gpu3d.ms LIGHT_RECORD_LENGTH floats a
+// light) in rows of DATA_TEXTURE_WIDTH texels, so texel t sits at (t % width, t / width) as
+// clusterLookup.ms reads.
+export function recordTexture(lights: Readonly<Span<float32>>, first: int32): RecordTexture {
+	const length: int32 = (lights.length as int32) - first;
+	const height: int32 = rowsFor(Math.ceil((length as float64) / 4.0) as int32);
+	let floats: Vec<float32> = [];
+	for (let i = 0; i < DATA_TEXTURE_WIDTH * height * 4; i++) {
+		floats.push(i < length ? lights[first + i] : 0.0);
+	}
+	return { width: DATA_TEXTURE_WIDTH, height: height, floats: floats };
+}

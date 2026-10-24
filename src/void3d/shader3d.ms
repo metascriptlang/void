@@ -6,10 +6,12 @@ import {
 	Sampler,
 	Texture2d,
 	Texture2dArray,
+	Texture2dU32,
 	TextureCube,
 	Vec2f,
 	Vec3f,
 	Vec4f,
+	Vec4i,
 	abs,
 	atan2,
 	binding,
@@ -45,6 +47,7 @@ import {
 	vec2i,
 	vec3f,
 	vec4f,
+	vec4i,
 } from "../shader/std";
 import { mapCoord, mapLit } from "./shadowLookup";
 import {
@@ -55,6 +58,9 @@ import {
 	cascadeLitOf,
 	cascadeTexelOf,
 } from "./cascadeShadow";
+import {
+	dataTexelOf, fragmentClusterOf, indexOfWord, indexTexelOf, recordTexelOf,
+} from "./clusterLookup";
 
 export struct CopyInput {
 	@builtin(position) position: Vec4f;
@@ -131,6 +137,7 @@ export struct LitFragmentInput {
 	worldNormal: Vec3f;
 	baseColor: Vec4f;
 	@builtin(frontFacing) frontFacing: boolean;
+	@builtin(position) fragCoord: Vec4f;
 }
 
 export struct TexturedAttributes {
@@ -166,6 +173,7 @@ export struct LitTexturedFragmentInput {
 	@feature(OCCLUSION_UV_B) surfaceUvB: Vec2f;
 	baseColor: Vec4f;
 	@builtin(frontFacing) frontFacing: boolean;
+	@builtin(position) fragCoord: Vec4f;
 }
 
 export struct UnlitTexturedVaryings {
@@ -265,12 +273,10 @@ export struct LightParams {
 	ambient: Vec4f;
 	dirLight: Vec4f;
 	dirColor: Vec4f;
-	pointLight: Vec4f[4];
-	pointColor: Vec4f[4];
-	shapeA: Vec4f[4];
-	shapeB: Vec4f[4];
-	shapeC: Vec4f[4];
-	shapeD: Vec4f[4];
+	clusterGrid: Vec4f;
+	clusterFactors: Vec4f;
+	clusterView: Vec4f;
+	clusterScreen: Vec4f;
 }
 
 export struct FrameParams {
@@ -324,6 +330,10 @@ export struct LitBindings {
 	@binding(7) envDiffuse: TextureCube;
 	@binding(8) envSpecular: TextureCube;
 	@binding(4) envSampler: Sampler;
+	@binding(9) @sampleType(unfilterable_float) lightRecords: Texture2d;
+	@binding(10) clusterRecords: Texture2dU32;
+	@binding(11) clusterIndices: Texture2dU32;
+	@binding(5) @samplerType(nonfiltering) clusterSampler: Sampler;
 }
 
 export struct UnlitBindings {
@@ -610,6 +620,7 @@ export struct BillboardFragmentInput {
 	towardCamera: Vec3f;
 	uv: Vec2f;
 	instanceColor: Vec4f;
+	@builtin(position) fragCoord: Vec4f;
 }
 
 export struct BillboardParams {
@@ -623,6 +634,10 @@ export struct BillboardBindings {
 	@binding(6) frameParams: FrameParams;
 	@binding(0) billboardTexture: Texture2d;
 	@binding(0) billboardSampler: Sampler;
+	@binding(9) @sampleType(unfilterable_float) lightRecords: Texture2d;
+	@binding(10) clusterRecords: Texture2dU32;
+	@binding(11) clusterIndices: Texture2dU32;
+	@binding(5) @samplerType(nonfiltering) clusterSampler: Sampler;
 }
 
 export struct BillboardKey {
@@ -673,10 +688,12 @@ export function billboardFs(
 		const lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 		let light = srgbToLinear(b.lightParams.ambient.rgb) +
 			srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
-		for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-			light = light + lightAt(input.worldPosition, n, b.lightParams.pointLight[i],
-				b.lightParams.pointColor[i], b.lightParams.shapeA[i], b.lightParams.shapeB[i],
-				b.lightParams.shapeC[i], b.lightParams.shapeD[i]);
+		const cluster = billboardClusterOf(input.fragCoord.xy, input.worldPosition, b);
+		for (let k = 0; k < cluster.y + cluster.z; k++) {
+			const i = billboardLightOf(b, cluster, k);
+			light = light + lightAt(input.worldPosition, n, billboardTexelOf(b, i, 0),
+				billboardTexelOf(b, i, 1), billboardTexelOf(b, i, 2), billboardTexelOf(b, i, 3),
+				billboardTexelOf(b, i, 4), billboardTexelOf(b, i, 5));
 		}
 		pixel = vec4f(linearToSrgb(srgbToLinear(pixel.rgb) * light), pixel.a);
 	}
@@ -863,7 +880,7 @@ export function lightWindow(distance: float32, range: float32): float32 {
 
 // pbr/Light.hx spotLightIntensity's angular half (60-62): theta = dot(delta.normalize(),
 // -spotDir), clamp((theta - angle) / (fallOff - angle)). a: forward, b: cos(angle / 2), cos(inner),
-// then 1 when the spot casts the frame's shadow and its full angle (slotShadowAt, spotShadow.ms).
+// then 1 when the spot casts the frame's shadow and its full angle (recordShadowAt, spotShadow.ms).
 export function spotSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f): Vec4f {
 	const delta = at.xyz - position;
 	const distance = length(delta);
@@ -1260,17 +1277,51 @@ export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
 	return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
 }
 
-// A positioned slot's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless this
-// slot is the spot that casts the spot map (shapeB.z, scene.ms packShape).
-export function slotShadowAt(position: Vec3f, b: LitBindings, key: LitKey, slot: int32): float32 {
+// A positioned light's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless
+// its record's shapes `a` and `bb` name the spot that casts the spot map (shapeB.z, scene.ms
+// packShape).
+export function recordShadowAt(
+	position: Vec3f, b: LitBindings, key: LitKey, a: Vec4f, bb: Vec4f,
+): float32 {
 	if (!key.shadowed) {
 		return 1.0;
 	}
-	const a = b.lightParams.shapeA[slot];
-	if (a.w < 0.5 || a.w > 1.5 || b.lightParams.shapeB[slot].z < 0.5) {
+	if (a.w < 0.5 || a.w > 1.5 || bb.z < 0.5) {
 		return 1.0;
 	}
 	return spotShadowAt(position, b);
+}
+
+// The record of the fragment's cluster: the offset into the index list, the point light count,
+// the spot count.
+export function litClusterOf(frag: Vec2f, position: Vec3f, b: LitBindings): Vec4i {
+	const cluster = fragmentClusterOf(frag, position, b.lightParams.clusterGrid,
+		b.lightParams.clusterFactors, b.lightParams.clusterView, b.lightParams.clusterScreen);
+	return vec4i(textureLoad(b.clusterRecords, b.clusterSampler, dataTexelOf(cluster), 0));
+}
+
+export function litLightOf(b: LitBindings, cluster: Vec4i, k: int32): int32 {
+	const j = cluster.x + k;
+	return indexOfWord(textureLoad(b.clusterIndices, b.clusterSampler, indexTexelOf(j), 0), j);
+}
+
+export function litTexelOf(b: LitBindings, light: int32, texel: int32): Vec4f {
+	return textureLoad(b.lightRecords, b.clusterSampler, recordTexelOf(light, texel), 0);
+}
+
+export function billboardClusterOf(frag: Vec2f, position: Vec3f, b: BillboardBindings): Vec4i {
+	const cluster = fragmentClusterOf(frag, position, b.lightParams.clusterGrid,
+		b.lightParams.clusterFactors, b.lightParams.clusterView, b.lightParams.clusterScreen);
+	return vec4i(textureLoad(b.clusterRecords, b.clusterSampler, dataTexelOf(cluster), 0));
+}
+
+export function billboardLightOf(b: BillboardBindings, cluster: Vec4i, k: int32): int32 {
+	const j = cluster.x + k;
+	return indexOfWord(textureLoad(b.clusterIndices, b.clusterSampler, indexTexelOf(j), 0), j);
+}
+
+export function billboardTexelOf(b: BillboardBindings, light: int32, texel: int32): Vec4f {
+	return textureLoad(b.lightRecords, b.clusterSampler, recordTexelOf(light, texel), 0);
 }
 
 // h3d.shader.pbr.Direct (Lighting.hx:125-145) for one light, in linear light: Cook-Torrance GGX
@@ -1419,10 +1470,11 @@ export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f, occlusionUv: V
 // The lit surface under the PBR path: the material's albedo (linear, saturated as the material
 // says) under the same ambient, directional and point lights litShade reads, from the camera
 // frame.cameraPosition names. The sun is shadowed, as Heaps' `shadow` scales every light of a
-// pass; a point light has no shadow here, and one spot may (slotShadowAt).
+// pass; a point light has no shadow here, and one spot may (recordShadowAt).
 export function pbrShade(
 	n: Vec3f,
 	position: Vec3f,
+	frag: Vec2f,
 	surfaceColor: Vec4f,
 	b: LitBindings,
 	key: LitKey,
@@ -1447,10 +1499,12 @@ export function pbrShade(
 		pbrDirect(albedo, values.x, values.y, n, view, dir.xyz, sun, shadow, 0.0, values.z);
 	const eye = normalize(view);
 	const reflected = -eye - n * (2.0 * dot(-eye, n));
-	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-		const at = b.lightParams.pointLight[i];
-		const tint = b.lightParams.pointColor[i];
-		const a = b.lightParams.shapeA[i];
+	const cluster = litClusterOf(frag, position, b);
+	for (let k = 0; k < cluster.y + cluster.z; k++) {
+		const i = litLightOf(b, cluster, k);
+		const at = litTexelOf(b, i, 0);
+		const tint = litTexelOf(b, i, 1);
+		const a = litTexelOf(b, i, 2);
 		if (a.w < 0.5) {
 			const toLight = at.xyz - position;
 			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
@@ -1458,13 +1512,13 @@ export function pbrShade(
 			light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0,
 				0.0, values.z);
 		} else {
-			const bb = b.lightParams.shapeB[i];
-			const cc = b.lightParams.shapeC[i];
-			const sample = shapedSample(position, n, at, tint, a, bb, cc, b.lightParams.shapeD[i]);
+			const bb = litTexelOf(b, i, 3);
+			const cc = litTexelOf(b, i, 4);
+			const sample = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(b, i, 5));
 			const radiance = srgbToLinear(tint.rgb) * (sample.w * at.w);
 			const specular = shapedSpecularDir(position, reflected, sample.xyz, at, a, bb, cc);
 			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
-				specular, radiance, slotShadowAt(position, b, key, i), 0.0, values.z);
+				specular, radiance, recordShadowAt(position, b, key, a, bb), 0.0, values.z);
 		}
 	}
 	return vec4f(linearToSrgb(light), surfaceColor.a);
@@ -1475,6 +1529,7 @@ export function pbrShade(
 export function litShade(
 	n: Vec3f,
 	position: Vec3f,
+	frag: Vec2f,
 	surfaceColor: Vec4f,
 	b: LitBindings,
 	key: LitKey,
@@ -1486,11 +1541,13 @@ export function litShade(
 	}
 	const ambient = srgbToLinear(b.lightParams.ambient.rgb);
 	let light = ambient + srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
-	for (let i = 0; i < ((b.lightParams.ambient.a + 0.5) as int32); i++) {
-		light = light + lightAt(position, n, b.lightParams.pointLight[i],
-			b.lightParams.pointColor[i],
-			b.lightParams.shapeA[i], b.lightParams.shapeB[i], b.lightParams.shapeC[i],
-			b.lightParams.shapeD[i]) * slotShadowAt(position, b, key, i);
+	const cluster = litClusterOf(frag, position, b);
+	for (let k = 0; k < cluster.y + cluster.z; k++) {
+		const i = litLightOf(b, cluster, k);
+		const a = litTexelOf(b, i, 2);
+		const bb = litTexelOf(b, i, 3);
+		light = light + lightAt(position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1), a, bb,
+			litTexelOf(b, i, 4), litTexelOf(b, i, 5)) * recordShadowAt(position, b, key, a, bb);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);
@@ -1504,9 +1561,10 @@ export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): Lit
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
 		const pbrValues = pbrOf(b, key).xyz;
-		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key, pbrValues);
+		shaded = pbrShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key,
+			pbrValues);
 	} else {
-		shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
+		shaded = litShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
 	}
 	if (key.cutout) {
 		if (shaded.a < params.w) {
@@ -1575,9 +1633,10 @@ export function litTexturedFs(
 			}
 			pbrValues = pbrMapped(b, key, uv, occlusionUv);
 		}
-		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key, pbrValues);
+		shaded = pbrShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key,
+			pbrValues);
 	} else {
-		shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
+		shaded = litShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
 	}
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;

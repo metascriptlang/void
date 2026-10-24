@@ -408,16 +408,18 @@ export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
 export const VERTEX_UNIFORM_LENGTH: int32 = 28;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
-// ambient (rgb + point count), dirLight (direction + power), dirColor, then pointLight[4]
-// (position + power) and pointColor[4] (rgb + radius): two vec4 arrays of one vec4 per light,
-// packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
-export const MAX_POINT_LIGHTS: int32 = 4;
-// The shape block follows, four vec4 arrays of one vec4 per light (shader3d.ms LightParams
-// shapeA..shapeD): shapeA is forward or axis with the kind in w, B, C and D the shape's own
-// numbers (scene.ms collectLights). Kind 0, a point light, reads none of them.
-export const LIGHT_SHAPE_BASE: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
-export const LIGHT_SHAPE_ARRAY_LENGTH: int32 = MAX_POINT_LIGHTS * 4;
-export const LIGHT_UNIFORM_LENGTH: int32 = LIGHT_SHAPE_BASE + 4 * LIGHT_SHAPE_ARRAY_LENGTH;
+// Laid out as shader3d.ms LightParams: ambient, dirLight, dirColor, then the clusters.
+export const LIGHT_CLUSTER_GRID: int32 = 12;
+export const LIGHT_CLUSTER_FACTORS: int32 = 16;
+export const LIGHT_CLUSTER_VIEW: int32 = 20;
+export const LIGHT_CLUSTER_SCREEN: int32 = 24;
+export const LIGHT_UNIFORM_LENGTH: int32 = 28;
+// A positioned light's record, following the block in collectLights' span: position and power,
+// colour and range, then shapeA..shapeD (kind in shapeA.w; a point light reads no shape).
+export const LIGHT_RECORD_TEXELS: int32 = 6;
+export const LIGHT_RECORD_LENGTH: int32 = LIGHT_RECORD_TEXELS * 4;
+export const LIGHT_RECORD_COLOR: int32 = 4;
+export const LIGHT_RECORD_SHAPE: int32 = 8;
 export const LIGHT_KIND_POINT: float32 = 0.0;
 export const LIGHT_KIND_SPOT: float32 = 1.0;
 export const LIGHT_KIND_RECTANGLE: float32 = 2.0;
@@ -452,6 +454,13 @@ export const ENV_SAMPLER_SLOT: int32 = 4;
 export const ENV_SCENE_VIEWS: uint32 =
 	(1 << (ENV_DIFFUSE_VIEW_SLOT as uint32)) | (1 << (ENV_SPECULAR_VIEW_SLOT as uint32));
 export const ENV_SCENE_SAMPLERS: uint32 = 1 << (ENV_SAMPLER_SLOT as uint32);
+export const LIGHT_RECORDS_VIEW_SLOT: int32 = 9;
+export const CLUSTER_RECORDS_VIEW_SLOT: int32 = 10;
+export const CLUSTER_INDICES_VIEW_SLOT: int32 = 11;
+export const CLUSTER_SAMPLER_SLOT: int32 = 5;
+export const CLUSTER_SCENE_VIEWS: uint32 = (1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)) |
+	(1 << (CLUSTER_RECORDS_VIEW_SLOT as uint32)) | (1 << (CLUSTER_INDICES_VIEW_SLOT as uint32));
+export const CLUSTER_SCENE_SAMPLERS: uint32 = 1 << (CLUSTER_SAMPLER_SLOT as uint32);
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel

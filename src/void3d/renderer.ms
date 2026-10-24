@@ -28,8 +28,11 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
-	LIGHT_SHAPE_BASE,
-	MAX_POINT_LIGHTS,
+	LIGHT_RECORD_LENGTH,
+	LIGHT_RECORD_SHAPE,
+	LIGHT_CLUSTER_GRID,
+	CLUSTER_SCENE_VIEWS,
+	CLUSTER_SCENE_SAMPLERS,
 	SHADOW_UNIFORM_SLOT,
 	SHADOW_VIEW_SLOT,
 	FRAME_UNIFORM_SLOT,
@@ -81,6 +84,7 @@ import {
 	destroyImage,
 	destroyView,
 	destroySampler,
+	originTopLeft,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { Environment, compute, isCurrent, specLevels } from "./environment";
@@ -117,6 +121,20 @@ import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
 import { DirShadowMap, castsAll, drawShadows, carrySpot, sceneTexture } from "./dirShadowMap";
 import { shadowedSpotCount, firstShadowedSpot, spotShadowView } from "./spotShadow";
+import { CameraView } from "./camera";
+import { ClusterAssignment, ClusterConfig } from "./clusters";
+import {
+	ClusterFrame,
+	ClusterFrameError,
+	assignFrame,
+	closeClusterFrame,
+	clusterSampler,
+	clustersView,
+	indicesView,
+	recordCountOf,
+	recordsView,
+	uploadFrame,
+} from "./clusterFrame";
 
 export interface Renderer {
 	readonly context: DrawContext;
@@ -149,6 +167,12 @@ export interface Renderer {
 	// The eye a pbr key's view vector starts from (setCameraPosition); a frame drawing a pbr key
 	// without one is refused.
 	cameraPosition: Vec3 | null;
+	// The view the camera block was resolved from (setCameraView), which the frame's lights are
+	// clustered in; a frame with a positioned light and no view is refused.
+	cameraView: CameraView | null;
+	clusters: ClusterFrame;
+	// The light block as written: the caller's ambient and sun, then the clusters' fields.
+	lightValues: Vec<float32>;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
 	preset: Preset;
@@ -205,6 +229,13 @@ export enum RendererError {
 	BadShadowSpot,
 	// A spot slot asks to cast and no spot map is attached (attachSpotShadow).
 	SpotShadowUnattached,
+	// The frame has a positioned light and no view to cluster it in (setCameraView).
+	ClusterViewUnset,
+	// The camera block is not the view's viewProj: the lights would be clustered in another view.
+	ClusterViewStale,
+	// clusters.ms refused the view or a light (a zero-sized target, a light out of range).
+	ClusterAssign,
+	ClusterUpload,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -277,6 +308,9 @@ export function createDrawing(
 		normalMrt: false,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
 		cameraPosition: null,
+		cameraView: null,
+		clusters: ClusterFrame.create(ClusterConfig.defaults()),
+		lightValues: new Array(LIGHT_UNIFORM_LENGTH),
 		readsTime: false,
 		preset: preset,
 		drawn: [],
@@ -447,6 +481,24 @@ export function setCameraPosition(renderer: Renderer, eye: Vec3): void {
 	renderer.changed = true;
 }
 
+export function setCameraView(renderer: Renderer, view: CameraView): void {
+	if (renderer.closed) { stopOnClosed("setCameraView"); }
+	renderer.cameraView = view;
+	renderer.changed = true;
+}
+
+function viewMatches(view: CameraView, camera: Readonly<Span<float32>>): boolean {
+	const m: Mat4 = view.viewProj;
+	const values: Vec<float32> = [
+		m.m11, m.m12, m.m13, m.m14, m.m21, m.m22, m.m23, m.m24,
+		m.m31, m.m32, m.m33, m.m34, m.m41, m.m42, m.m43, m.m44,
+	];
+	for (let i = 0; i < 16; i++) {
+		if (values[i] != camera[i]) { return false; }
+	}
+	return true;
+}
+
 export function setTimeWrap(renderer: Renderer, seconds: float64): void {
 	if (renderer.closed) { stopOnClosed("setTimeWrap"); }
 	if (!(seconds >= 0.0)) {
@@ -549,14 +601,14 @@ export function beginFrame(
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
 	}
-	if ((lights.length as int32) != renderer.lightBlock.length) {
-		return Result.err(RendererError.LightBlockLength);
-	}
+	const counted: Result<int32, ClusterFrameError> = recordCountOf(lights);
+	if (!counted.ok) { return Result.err(RendererError.LightBlockLength); }
+	const records: int32 = counted.value;
 	if (renderer.preset == Preset.PixelArt) {
-		for (let i = 0; i < MAX_POINT_LIGHTS; i++) {
-			if (lights[LIGHT_SHAPE_BASE + i * 4 + 3] != 0.0) {
-				return Result.err(RendererError.ShapedLightPreset);
-			}
+		for (let i = 0; i < records; i++) {
+			const record: int32 = LIGHT_UNIFORM_LENGTH + i * LIGHT_RECORD_LENGTH;
+			const kind: int32 = record + LIGHT_RECORD_SHAPE + 3;
+			if (lights[kind] != 0.0) { return Result.err(RendererError.ShapedLightPreset); }
 		}
 	}
 	if (shadowedSpotCount(lights) > 1) { return Result.err(RendererError.TooManyShadowedSpots); }
@@ -567,11 +619,20 @@ export function beginFrame(
 	if (shadowedSpot >= 0 && spotShadow === null) {
 		return Result.err(RendererError.SpotShadowUnattached);
 	}
+	const view: CameraView | null = renderer.cameraView;
+	if (records > 0 && view === null) { return Result.err(RendererError.ClusterViewUnset); }
+	if (records > 0 && view !== null && !viewMatches(view, camera)) {
+		return Result.err(RendererError.ClusterViewStale);
+	}
 	const cameraWritten: Result<int32, UniformError> =
 		writeUniforms(context, renderer.cameraBlock, camera);
 	if (!cameraWritten.ok) { return Result.err(RendererError.CameraBlockLength); }
+	for (let i = 0; i < LIGHT_CLUSTER_GRID; i++) { renderer.lightValues[i] = lights[i]; }
+	const assigned: Result<ClusterAssignment, ClusterFrameError> = renderer.clusters.assignFrame(
+		lights, view, !originTopLeft(), renderer.lightValues);
+	if (!assigned.ok) { return Result.err(RendererError.ClusterAssign); }
 	const lightsWritten: Result<int32, UniformError> =
-		writeUniforms(context, renderer.lightBlock, lights);
+		writeUniforms(context, renderer.lightBlock, renderer.lightValues);
 	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
 	renderer.time = renderer.time + renderer.elapsedTime;
 	renderer.frameValues[FRAME_TIME] = frameTime(renderer.time, renderer.timeWrap);
@@ -612,6 +673,9 @@ export function beginFrame(
 		renderer.changed = true;
 	}
 	if (!uploadDirtyMeshes(context).ok) { return Result.err(RendererError.MeshWrite); }
+	if (!renderer.clusters.uploadFrame(lights, assigned.value).ok) {
+		return Result.err(RendererError.ClusterUpload);
+	}
 	const environment: Environment | null = renderer.environment;
 	if (environment !== null && !environment.isCurrent()) { environment.compute(); }
 	collect(renderer.opaque, items, context.materials);
@@ -653,7 +717,14 @@ export function drawShadowPass(
 // A frame with one of the two maps binds it at both slots: the absent light's half of the
 // block is zero, so its lookup answers lit before it reads the map.
 function sceneTextureOf(renderer: Renderer): SceneTexture {
-	const shadows: SceneTexture = shadowTextureOf(renderer);
+	const clusters: ClusterFrame = renderer.clusters;
+	const shadows: SceneTexture = {
+		...shadowTextureOf(renderer),
+		lightRecords: clusters.recordsView(),
+		clusterRecords: clusters.clustersView(),
+		clusterIndices: clusters.indicesView(),
+		clusterSampler: clusters.clusterSampler(),
+	};
 	const environment: Environment | null = renderer.environment;
 	if (environment === null) {
 		return {
@@ -815,11 +886,11 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 
 // Every texture view and sampler `program` declares is bound on `material`, each by one field: a
 // raw view or sampler, or a context texture's role. The shadow map's are the scene's to bind for
-// a shadowed program.
+// a shadowed program, and the clustered lights' for every program.
 function texturesFit(program: ProgramKey, material: Material): boolean {
-	const sceneViews: uint32 =
+	const sceneViews: uint32 = CLUSTER_SCENE_VIEWS |
 		(program.shadowed ? SHADOW_SCENE_VIEWS : 0) | (program.pbr ? ENV_SCENE_VIEWS : 0);
-	const sceneSamplers: uint32 =
+	const sceneSamplers: uint32 = CLUSTER_SCENE_SAMPLERS |
 		(program.shadowed ? SHADOW_SCENE_SAMPLERS : 0) | (program.pbr ? ENV_SCENE_SAMPLERS : 0);
 	const views: uint32 = textureSlotMask(program) & ~sceneViews;
 	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;
@@ -918,6 +989,7 @@ export function closeRenderer(renderer: Renderer): void {
 	renderer.blackCube = 0;
 	renderer.blackCubeView = 0;
 	renderer.blackCubeSampler = 0;
+	closeClusterFrame(renderer.clusters);
 	context.meshes[screen].vertexBuffer = 0;
 	const released: Result<int32, HandleError> = releaseMesh(context, renderer.screenMesh);
 	if (!released.ok) { stopOnLostScreenMesh(context, renderer); }

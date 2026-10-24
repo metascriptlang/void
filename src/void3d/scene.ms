@@ -20,9 +20,9 @@ import {
 	composeTransform, multiplyAffine,
 } from "../math/math3d";
 import {
-	MAX_POINT_LIGHTS,
-	LIGHT_SHAPE_BASE,
-	LIGHT_SHAPE_ARRAY_LENGTH,
+	LIGHT_UNIFORM_LENGTH,
+	LIGHT_RECORD_LENGTH,
+	LIGHT_RECORD_SHAPE,
 	LIGHT_KIND_SPOT,
 	LIGHT_KIND_RECTANGLE,
 	LIGHT_KIND_CAPSULE,
@@ -174,7 +174,6 @@ export enum SceneSyncError {
 
 export enum LightError {
 	TooManyDirectionalLights,
-	TooManyPointLights,
 	BadLightShape,
 	TooManyShadowedSpots,
 	UnshadowableLight,
@@ -257,7 +256,7 @@ export interface Scene3D {
 	activeCamera: NodeId3D | null;
 	meshOwners: Vec<int32>;
 	lightOwners: Vec<int32>;
-	// Scratch for collectLights' priority sort; grows only when lights are added.
+	// Scratch for collectLights' positioned lights; grows only when lights are added.
 	lightOrder: Vec<int32>;
 	// h3d.scene.Scene lighting.ambient, fwd.LightSystem's default grey.
 	ambientLight: Vec3;
@@ -1559,29 +1558,27 @@ export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<Draw
 	return collectDrawListFor(scene, camera, items);
 }
 
-// Fills the renderer's light block from the visible light nodes: ambient first, then the one
-// directional slot, then the positioned slots (point, spot, rectangle and capsule share the four
-// of MAX_POINT_LIGHTS) with their shape arrays. `out` is the caller's LIGHT_UNIFORM_LENGTH floats.
-// A second visible directional, or a fifth visible point light, is an error rather than a
-// silent drop: the block cannot express it, and a shader quietly lighting less is the failure
-// this port refuses (fwd.LightSystem sorts by priority and keeps its top N without a word).
-// Syncs first, so a light moved this frame is read at its new place whatever called this.
-export function collectLights(scene: Scene3D, out: Span<float32>): Result<int32, LightError> {
+// Fills `out` from the visible light nodes: the renderer's light block (ambient, then the one
+// directional), then one record per positioned light (gpu3d.ms LIGHT_RECORD_LENGTH; point, spot,
+// rectangle and capsule alike), which the renderer clusters. `out` is resized to hold them all.
+// A second visible directional is an error rather than a silent drop: the block cannot express
+// it. Syncs first, so a light moved this frame is read at its new place whatever called this.
+export function collectLights(scene: Scene3D, ref out: Vec<float32>): Result<int32, LightError> {
 	if (scene.closed) { stopOnClosed("collectLights"); }
 	return collectLightsFor(scene, activeLayers(scene), out);
 }
 
 export function collectLightsFor(
-	scene: Scene3D, layers: uint32, out: Span<float32>,
+	scene: Scene3D, layers: uint32, ref out: Vec<float32>,
 ): Result<int32, LightError> {
 	if (scene.closed) { stopOnClosed("collectLightsFor"); }
 	const _synced: int32 = syncWorld(scene);
-	for (let i = 0; i < (out.length as int32); i++) { out[i] = 0.0; }
-	out[0] = scene.ambientLight.x;
-	out[1] = scene.ambientLight.y;
-	out[2] = scene.ambientLight.z;
+	while ((out.length as int32) > 0) { out.pop(); }
 	while ((scene.lightOrder.length as int32) > 0) { scene.lightOrder.pop(); }
 	let seenDirectional: boolean = false;
+	let toward: Vec3 = vec3(0.0, 0.0, 0.0);
+	let sunPower: float32 = 0.0;
+	let sunColor: Vec3 = vec3(0.0, 0.0, 0.0);
 	if (scene.root != NO_NODE_3D) {
 		let top: int32 = 0;
 		scene.stack[top] = scene.root;
@@ -1601,14 +1598,9 @@ export function collectLightsFor(
 					// vector pointing at the light, which is the front vector negated.
 					const forward: Vec3 = vec3(0.0, 0.0, 1.0);
 					const front: Vec3 = transformDirection(forward, scene.nodes[index].world);
-					const toward: Vec3 = front.scaled(-1.0).normalized();
-					out[4] = toward.x;
-					out[5] = toward.y;
-					out[6] = toward.z;
-					out[7] = light.power;
-					out[8] = light.color.x;
-					out[9] = light.color.y;
-					out[10] = light.color.z;
+					toward = front.scaled(-1.0).normalized();
+					sunPower = light.power;
+					sunColor = light.color;
 				} else {
 					scene.lightOrder.push(index);
 				}
@@ -1620,21 +1612,7 @@ export function collectLightsFor(
 			}
 		}
 	}
-	// Highest priority first, ties keeping declaration order: fwd.LightSystem's sortLight.
-	for (let i = 1; i < (scene.lightOrder.length as int32); i++) {
-		const held: int32 = scene.lightOrder[i];
-		const priority: int32 = scene.lights[scene.nodes[held].payload].priority;
-		let j: int32 = i - 1;
-		while (j >= 0) {
-			const ahead: int32 = scene.lights[scene.nodes[scene.lightOrder[j]].payload].priority;
-			if (ahead >= priority) { break; }
-			scene.lightOrder[j + 1] = scene.lightOrder[j];
-			j = j - 1;
-		}
-		scene.lightOrder[j + 1] = held;
-	}
 	const found: int32 = scene.lightOrder.length as int32;
-	if (found > MAX_POINT_LIGHTS) { return Result.err(LightError.TooManyPointLights); }
 	let shadowedSpots: int32 = 0;
 	for (let i = 0; i < found; i++) {
 		const light: LightInstance = scene.lights[scene.nodes[scene.lightOrder[i]].payload];
@@ -1643,43 +1621,41 @@ export function collectLightsFor(
 		shadowedSpots = shadowedSpots + 1;
 	}
 	if (shadowedSpots > 1) { return Result.err(LightError.TooManyShadowedSpots); }
+	pushQuad(out, vec4(scene.ambientLight.x, scene.ambientLight.y, scene.ambientLight.z, 0.0));
+	pushQuad(out, vec4(toward.x, toward.y, toward.z, sunPower));
+	pushQuad(out, vec4(sunColor.x, sunColor.y, sunColor.z, 0.0));
+	while ((out.length as int32) < LIGHT_UNIFORM_LENGTH) { out.push(0.0); }
 	for (let i = 0; i < found; i++) {
 		const index: int32 = scene.lightOrder[i];
 		const light: LightInstance = scene.lights[scene.nodes[index].payload];
 		const world: Mat4 = scene.nodes[index].world;
-		// The block's arrays are sequential, not interleaved: all four pointLight[4], then all
-		// four pointColor[4]. Each array is one vec4 per light — packoffset(c3)/packoffset(c7)
-		// in the HLSL — so the stride within an array is four floats, not eight.
-		const lightAt: int32 = 12 + i * 4;
-		const colorAt: int32 = 12 + MAX_POINT_LIGHTS * 4 + i * 4;
-		out[lightAt] = world.m41;
-		out[lightAt + 1] = world.m42;
-		out[lightAt + 2] = world.m43;
-		out[lightAt + 3] = light.power;
-		out[colorAt] = light.color.x;
-		out[colorAt + 1] = light.color.y;
-		out[colorAt + 2] = light.color.z;
-		out[colorAt + 3] = light.radius;
-		if (light.kind != LightKind.Point) {
-			if (!packShape(out, i, light, world).ok) {
-				return Result.err(LightError.BadLightShape);
-			}
+		pushQuad(out, vec4(world.m41, world.m42, world.m43, light.power));
+		pushQuad(out, vec4(light.color.x, light.color.y, light.color.z, light.radius));
+		if (light.kind == LightKind.Point) {
+			for (let k = 0; k < LIGHT_RECORD_LENGTH - LIGHT_RECORD_SHAPE; k++) { out.push(0.0); }
+		} else if (!packShape(out, light, world).ok) {
+			return Result.err(LightError.BadLightShape);
 		}
 	}
-	out[3] = found as float32;
 	return Result.ok(found);
 }
 
-// One slot's shape in the block's four shape arrays (gpu3d.ms LIGHT_SHAPE_BASE): shapeA the
-// forward or axis and the kind, B, C and D what shader3d.ms's samplers read. The cosines are
+function pushQuad(ref out: Vec<float32>, v: Vec4): void {
+	out.push(v.x);
+	out.push(v.y);
+	out.push(v.z);
+	out.push(v.w);
+}
+
+// One record's shapes, pushed onto `out` (gpu3d.ms LIGHT_RECORD_SHAPE): shapeA the forward or axis
+// and the kind, B, C and D what shader3d.ms's samplers read. The cosines are
 // lightShape.ms's, so a shape it refuses is refused here, and the node's own axes must stay
 // orthogonal (a shear is BadAxes). The half sizes take the node's scale as RectangleLight.hx:81
 // does; a capsule's length does not (CapsuleLight.hx:69).
 // PENDING3D: light-shape-spot-singular-cone
 function packShape(
-	out: Span<float32>, slot: int32, light: LightInstance, world: Mat4,
+	ref out: Vec<float32>, light: LightInstance, world: Mat4,
 ): Result<void, LightShapeError> {
-	const at: int32 = slot * 4;
 	const position: Vec3 = vec3(world.m41, world.m42, world.m43);
 	const zAxis: Vec3 = transformDirection(vec3(0.0, 0.0, 1.0), world);
 	const forward: Vec3 = zAxis.normalized();
@@ -1722,23 +1698,10 @@ function packShape(
 		const _valid = try capsule.validateCapsule();
 		b = vec4(capsule.halfLength, Math.min(capsule.radius, capsule.range) as float32, 0.0, 0.0);
 	}
-	const arrayB: int32 = LIGHT_SHAPE_BASE + LIGHT_SHAPE_ARRAY_LENGTH + at;
-	out[LIGHT_SHAPE_BASE + at] = forward.x;
-	out[LIGHT_SHAPE_BASE + at + 1] = forward.y;
-	out[LIGHT_SHAPE_BASE + at + 2] = forward.z;
-	out[LIGHT_SHAPE_BASE + at + 3] = kind;
-	out[arrayB] = b.x;
-	out[arrayB + 1] = b.y;
-	out[arrayB + 2] = b.z;
-	out[arrayB + 3] = b.w;
-	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH] = c.x;
-	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 1] = c.y;
-	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 2] = c.z;
-	out[arrayB + LIGHT_SHAPE_ARRAY_LENGTH + 3] = c.w;
-	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH] = d.x;
-	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 1] = d.y;
-	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 2] = d.z;
-	out[arrayB + 2 * LIGHT_SHAPE_ARRAY_LENGTH + 3] = d.w;
+	pushQuad(out, vec4(forward.x, forward.y, forward.z, kind));
+	pushQuad(out, b);
+	pushQuad(out, c);
+	pushQuad(out, d);
 	return Result.ok(null);
 }
 

@@ -48,6 +48,7 @@ import {
 } from "../../src/void3d/scene";
 import { Camera3D, ProjectionKind, CameraView, CameraError } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
+import { setCameraView } from "../../src/void3d/renderer";
 import {
 	ForwardRenderer,
 	ForwardError,
@@ -428,14 +429,16 @@ function checkRemade(): void {
 	}
 }
 
-function drawn(): int32 {
+function drawn(view: CameraView): int32 {
 	if (pixelArt) {
+		setCameraView(preset.core, view);
 		let frame: Result<int32, PixelArtError> =
 			renderPixelArt(preset, items, cameraBlock, lights, SCREEN_MAPPING);
 		if (frame.ok) { return frame.value; }
 		fail(`the pixel-art preset refused the model: ${frame.error.toString()}`);
 		return 0;
 	}
+	setCameraView(forward.core, view);
 	let frame: Result<int32, ForwardError> =
 		prepareFrame(forward, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!frame.ok) {
@@ -465,7 +468,7 @@ export function frameGltf(frameIndex: int32): void {
 	if (!collected.ok) { unreachable; }
 	let view: CameraView = viewOf();
 	view.writeCameraBlock(cameraBlock);
-	if (drawn() != expected) { fail(`the frame did not draw ${expected} meshes`); }
+	if (drawn(view) != expected) { fail(`the frame did not draw ${expected} meshes`); }
 	if (frameIndex == rebuildAt) { checkRemade(); }
 	if (frameIndex == 1 || frameIndex == 6 || frameIndex == 11 || frameIndex == 16) {
 		if (voidCaptureGrab(0) == 0 || voidCaptureGrab(1) == 0) { fail("D3D11 readback failed"); }

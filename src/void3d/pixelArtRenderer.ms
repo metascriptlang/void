@@ -94,6 +94,7 @@ import {
 	drawShadowPass,
 	exposureMultiplier,
 } from "./renderer";
+import { CameraView } from "./camera";
 
 // The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
 // material's block (gpu3d.ms MATERIAL_UNIFORM_SLOT) holds the toon ramp's levels at
@@ -207,6 +208,13 @@ export enum PixelArtError {
 	// As ForwardError.HdrUnsupported.
 	HdrUnsupported,
 	FogRange,
+	// RendererError.ClusterViewUnset, ClusterViewStale, ClusterAssign and ClusterUpload.
+	ClusterViewUnset,
+	ClusterViewStale,
+	ClusterAssign,
+	ClusterUpload,
+	// The view set with setCameraView was resolved for another size than the scene target.
+	ClusterViewSize,
 }
 
 export interface PixelArtRenderer {
@@ -694,6 +702,10 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.TooManyShadowedSpots => PixelArtError.ShapedLight,
 		RendererError.BadShadowSpot => PixelArtError.ShapedLight,
 		RendererError.SpotShadowUnattached => PixelArtError.ShapedLight,
+		RendererError.ClusterViewUnset => PixelArtError.ClusterViewUnset,
+		RendererError.ClusterViewStale => PixelArtError.ClusterViewStale,
+		RendererError.ClusterAssign => PixelArtError.ClusterAssign,
+		RendererError.ClusterUpload => PixelArtError.ClusterUpload,
 	};
 }
 
@@ -818,6 +830,11 @@ export function prepareFrame(
 	const phases: Result<boolean, PixelArtError> =
 		phasesFitTargets(context, items, postReadsDepth(renderer.settings));
 	if (!phases.ok) { return Result.err(phases.error); }
+	const clusterView: CameraView | null = renderer.core.cameraView;
+	if (clusterView !== null &&
+		(clusterView.texelWidth != view.width || clusterView.texelHeight != view.height)) {
+		return Result.err(PixelArtError.ClusterViewSize);
+	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }

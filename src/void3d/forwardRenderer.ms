@@ -73,6 +73,7 @@ import {
 	drawShadowPass,
 	exposureMultiplier,
 } from "./renderer";
+import { CameraView } from "./camera";
 
 export interface ForwardRenderer {
 	core: Renderer;
@@ -132,6 +133,13 @@ export enum ForwardError {
 	OutlineBlendedOpaque,
 	OutlineOpaqueDepth,
 	OutlineTranslucentDepthWrite,
+	// RendererError.ClusterViewUnset, ClusterViewStale, ClusterAssign and ClusterUpload.
+	ClusterViewUnset,
+	ClusterViewStale,
+	ClusterAssign,
+	ClusterUpload,
+	// The view set with setCameraView was resolved for another size than the scene target.
+	ClusterViewSize,
 }
 
 // Floats of the uniform pool the preset needs: the core's blocks, and nothing of its own.
@@ -273,6 +281,10 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.TooManyShadowedSpots => ForwardError.TooManyShadowedSpots,
 		RendererError.BadShadowSpot => ForwardError.BadShadowSpot,
 		RendererError.SpotShadowUnattached => ForwardError.SpotShadowUnattached,
+		RendererError.ClusterViewUnset => ForwardError.ClusterViewUnset,
+		RendererError.ClusterViewStale => ForwardError.ClusterViewStale,
+		RendererError.ClusterAssign => ForwardError.ClusterAssign,
+		RendererError.ClusterUpload => ForwardError.ClusterUpload,
 	};
 }
 
@@ -379,6 +391,11 @@ export function prepareFrame(
 		if (phases !== null) { return Result.err(phases); }
 	}
 	renderer.core.normalMrt = outlined;
+	const clusterView: CameraView | null = renderer.core.cameraView;
+	if (clusterView !== null &&
+		(clusterView.texelWidth != width || clusterView.texelHeight != height)) {
+		return Result.err(ForwardError.ClusterViewSize);
+	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }

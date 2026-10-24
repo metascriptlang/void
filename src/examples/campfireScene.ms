@@ -54,6 +54,7 @@ import {
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
 import { LowResView, ViewError } from "../void3d/blit";
+import { setCameraView } from "../void3d/renderer";
 import { Bounds3D } from "../void3d/bounds";
 import { PaletteError } from "../void3d/palette";
 import {
@@ -1412,6 +1413,7 @@ function frameForward(share: FrameShare): Result<int32, CampfireError> {
 		return Result.err(CampfireError.CameraRefused);
 	}
 	resolved.value.writeCameraBlock(cameraParams);
+	setCameraView(forward.core, resolved.value);
 	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
 	const rendered: Result<int32, ForwardError> = share == FrameShare.Alone ?
 		renderForwardFrame(forward, sceneItems, cameraParams, lightParams, width, height) :
@@ -1498,6 +1500,7 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 	}
 
 	cameraView.writeCameraBlock(cameraParams);
+	setCameraView(renderer.core, cameraView);
 	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
 	applyLookSchedule();
 	const rendered: Result<int32, PixelArtError> = share == FrameShare.Alone ?

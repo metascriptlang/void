@@ -44,6 +44,10 @@ import {
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
 	ENV_SAMPLER_SLOT,
+	LIGHT_RECORDS_VIEW_SLOT,
+	CLUSTER_RECORDS_VIEW_SLOT,
+	CLUSTER_INDICES_VIEW_SLOT,
+	CLUSTER_SAMPLER_SLOT,
 	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
@@ -1692,8 +1696,9 @@ function stopOnLongBlock(program: ProgramKey, block: UniformBlock, declared: int
 	unreachable;
 }
 
-// An hxsl global texture (Heaps' `shadow.map`) of the sun and of the shadowing spot, and the
-// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular), bound past a material's slots.
+// An hxsl global texture (Heaps' `shadow.map`) of the sun and of the shadowing spot, the
+// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular) and the frame's clustered
+// lights (clusterFrame.ms), bound past a material's slots.
 export struct SceneTexture {
 	view: uint32;
 	sampler: uint32;
@@ -1702,10 +1707,15 @@ export struct SceneTexture {
 	envDiffuse: uint32;
 	envSpecular: uint32;
 	envSampler: uint32;
+	lightRecords: uint32;
+	clusterRecords: uint32;
+	clusterIndices: uint32;
+	clusterSampler: uint32;
 }
 
 export const NO_SCENE_TEXTURE: SceneTexture = {
 	view: 0, sampler: 0, spotView: 0, spotSampler: 0, envDiffuse: 0, envSpecular: 0, envSampler: 0,
+	lightRecords: 0, clusterRecords: 0, clusterIndices: 0, clusterSampler: 0,
 };
 
 // `rows` and `rowOffset` are slot 1's buffer and byte offset, 0 for a layout that reads none.
@@ -1746,6 +1756,10 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_VIEW + ENV_DIFFUSE_VIEW_SLOT] = scene.envDiffuse;
 	context.bindings[GPU3D_BINDING_VIEW + ENV_SPECULAR_VIEW_SLOT] = scene.envSpecular;
 	context.bindings[GPU3D_BINDING_SAMPLER + ENV_SAMPLER_SLOT] = scene.envSampler;
+	context.bindings[GPU3D_BINDING_VIEW + LIGHT_RECORDS_VIEW_SLOT] = scene.lightRecords;
+	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_RECORDS_VIEW_SLOT] = scene.clusterRecords;
+	context.bindings[GPU3D_BINDING_VIEW + CLUSTER_INDICES_VIEW_SLOT] = scene.clusterIndices;
+	context.bindings[GPU3D_BINDING_SAMPLER + CLUSTER_SAMPLER_SLOT] = scene.clusterSampler;
 	applyBindings(context.bindings);
 }
 

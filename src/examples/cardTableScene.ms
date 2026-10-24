@@ -97,7 +97,7 @@ import {
 import { layerBit } from "../void3d/layers";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 import { ANCHOR_CENTER } from "../void3d/billboard";
-import { attachShadow } from "../void3d/renderer";
+import { attachShadow, setCameraView } from "../void3d/renderer";
 import { DirShadowMap, ShadowError, DIR_SHADOW_UNIFORM_LENGTH } from "../void3d/dirShadowMap";
 import {
 	ForwardRenderer,
@@ -811,6 +811,7 @@ export function frameCardTable(
 	const lit: Result<int32, LightError> = collectLights(scene, lights);
 	if (!lit.ok) { return Result.err(CardTableError.Lights); }
 	first.value.writeCameraBlock(cameraValues);
+	setCameraView(forward.core, first.value);
 	const prepared: Result<int32, ForwardError> =
 		prepareForward(forward, items, cameraValues, lights, width, height);
 	if (!prepared.ok) { return Result.err(CardTableError.Forward); }
@@ -822,6 +823,7 @@ export function frameCardTable(
 			collectLightsFor(scene, layerBit(1), overlayLights);
 		if (!overlit.ok) { return Result.err(CardTableError.Lights); }
 		second.value.writeCameraBlock(overlayValues);
+		setCameraView(overlay.core, second.value);
 		const prepared2: Result<int32, ForwardError> =
 			prepareForward(overlay, overlayItems, overlayValues, overlayLights, width, height);
 		if (!prepared2.ok) { return Result.err(CardTableError.Overlay); }
