@@ -171,7 +171,7 @@ function arraySuffix(t: ShaderType): string {
 		"[" + String(t.length) + "]" + arraySuffix(t.element[0]) : "";
 }
 
-function textureTypeName(p: Printer, t: ShaderType): string {
+function textureTypeName(t: ShaderType): string {
 	const texel = scalarName(t.scalar) + "4";
 	return match (t.shape) {
 		TextureShape.D2 => "Texture2D<" + texel + ">",
@@ -215,7 +215,7 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Array => typeName(p, innermost(t)),
 		ShaderTypeKind.RuntimeArray => fail(p, "a runtime array is only a storage buffer"),
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
-		ShaderTypeKind.Texture => textureTypeName(p, t),
+		ShaderTypeKind.Texture => textureTypeName(t),
 		ShaderTypeKind.Sampler => "SamplerState",
 		ShaderTypeKind.StorageTexture => match (t.shape) {
 			TextureShape.D2 => "RWTexture2D<" + texelOf(t.format) + ">",
@@ -457,9 +457,7 @@ function helper(p: Printer, key: string, name: string, write: (n: string) => str
 }
 
 function claimHelper(p: Printer, name: string): string {
-	let taken = p.globals.map((n) => n);
-	for (const n of p.localsEver) { taken.push(n); }
-	const named = claim(p, taken, name);
+	const named = claim(p, p.globals.concat(p.localsEver), name);
 	p.globals.push(named);
 	return named;
 }
@@ -1147,7 +1145,7 @@ function resourceText(p: Printer, index: int32, slots: BindingSlot[]): string {
 	const at = registerOf(p, index, slots);
 	return match (r.kind) {
 		ResourceKind.UniformBlock => blockText(p, index, slots),
-		ResourceKind.Texture => textureTypeName(p, r.type) + " " + name + " : " + at + ";\n",
+		ResourceKind.Texture => textureTypeName(r.type) + " " + name + " : " + at + ";\n",
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Comparison ?
 			"SamplerComparisonState " : "SamplerState ") + name + " : " + at + ";\n",
 		ResourceKind.StorageBuffer => (r.access == Access.Read ? "StructuredBuffer<" :
