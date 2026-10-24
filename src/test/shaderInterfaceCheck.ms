@@ -3,8 +3,8 @@
 
 import { glsl, glslLinked } from "../shader/emit";
 import {
-	Sampler, Texture2d, Vec2f, Vec4f, binding, builtin, feature, location, sampleType, samplerType,
-	textureLoad, vec2i, discard,
+	Sampler, Texture2d, Texture2dArray, TextureCube, Vec2f, Vec4f, binding, builtin, feature,
+	location, sampleType, samplerType, textureLoad, textureSampleLevel, vec2i, vec3f, discard,
 } from "../shader/std";
 
 struct Attributes {
@@ -183,4 +183,28 @@ test "a read under a feature and its negation, or under an absorbed term, gates 
 	assert source.includes("#ifdef SHADOWED\nlayout(binding=5) uniform shadowParams {\n");
 	assert source.includes("#ifndef SHADOWED\nlayout(binding=3) uniform materialParams {\n");
 	assert !source.includes("|| !defined(SHADOWED)") && !source.includes("NORMAL_MRT) ||");
+}
+
+struct LayeredBindings {
+	@binding(4) @sampleType(unfilterable_float) layers: Texture2dArray;
+	@binding(6) @sampleType(unfilterable_float) faces: TextureCube;
+	@binding(2) @samplerType(nonfiltering) layerSampler: Sampler;
+}
+
+function layeredFs(b: LayeredBindings): Vec4f {
+	const layer = textureLoad(b.layers, b.layerSampler, vec2i(0, 0), 1, 0);
+	const face = textureSampleLevel(b.faces, b.layerSampler, vec3f(1.0), 0.0);
+	return layer + face;
+}
+
+test "an array or cube texture carries the sample type its field declares" {
+	const source: string = glsl(layeredFs);
+	assert source.includes("@image_sample_type layers unfilterable_float
+" +
+		"layout(binding=4) uniform texture2DArray layers;
+");
+	assert source.includes("@image_sample_type faces unfilterable_float
+" +
+		"layout(binding=6) uniform textureCube faces;
+");
 }
