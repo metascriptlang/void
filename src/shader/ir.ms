@@ -661,6 +661,8 @@ function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
 class Checker {
 	module: ShaderModule = new ShaderModule();
 	errors: string[] = [];
+	current: int32 = -1;
+	callees: int32[][] = [];
 }
 
 function conditionErrors(c: Checker, cond: FeatureCondition, owner: string): void {
@@ -685,7 +687,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		ExprKind.Io => inRange(c, e.index, m.ios.length as int32, "io", owner),
 		ExprKind.Resource | ExprKind.BlockMember =>
 			inRange(c, e.index, m.resources.length as int32, "resource", owner),
-		ExprKind.Call => inRange(c, e.index, m.functions.length as int32, "function", owner),
+		ExprKind.Call => {
+			inRange(c, e.index, m.functions.length as int32, "function", owner);
+			if (e.index >= 0 && e.index < m.functions.length) { c.callees[c.current].push(e.index); }
+		},
 		ExprKind.Workgroup =>
 			inRange(c, e.index, m.workgroups.length as int32, "workgroup variable", owner),
 		_ => {},
@@ -732,6 +737,15 @@ function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string)
 		for (const label of k.labels) { exprErrors(c, label, f, owner); }
 		for (const inner of k.body) { stmtErrors(c, inner, f, owner); }
 	}
+}
+
+function reaches(callees: int32[][], start: int32, target: int32, seen: int32[]): boolean {
+	if (seen.includes(start)) { return false; }
+	seen.push(start);
+	for (const next of callees[start]) {
+		if (next == target || reaches(callees, next, target, seen)) { return true; }
+	}
+	return false;
 }
 
 function varyings(m: ShaderModule, stage: ShaderStage, direction: IoDirection): ShaderIo[] {
@@ -795,7 +809,10 @@ export function irErrors(m: ShaderModule): string[] {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
 		}
 	}
-	for (const f of m.functions) {
+	for (const _f of m.functions) { c.callees.push([]); }
+	for (let i = 0; i < m.functions.length; i++) {
+		const f = m.functions[i];
+		c.current = i;
 		const owner = "function '" + f.name + "'";
 		conditionErrors(c, f.condition, owner);
 		for (const v of f.params.concat(f.locals)) {
@@ -805,6 +822,11 @@ export function irErrors(m: ShaderModule): string[] {
 			}
 		}
 		for (const s of f.body) { stmtErrors(c, s, f, owner); }
+	}
+	for (let i = 0; i < m.functions.length; i++) {
+		if (reaches(c.callees, i, i, [])) {
+			c.errors.push("function '" + m.functions[i].name + "' is recursive");
+		}
 	}
 	for (const w of m.workgroups) {
 		if (!isWorkgroupType(w.type)) {

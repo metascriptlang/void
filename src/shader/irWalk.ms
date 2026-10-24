@@ -51,12 +51,12 @@ export function hasEffect(m: ShaderModule, effects: int32[], e: ShaderExpr): boo
 	return e.operands.some((o) => hasEffect(m, effects, o));
 }
 
-export function exprCalls(e: ShaderExpr, out: int32[]): void {
+function exprCalls(e: ShaderExpr, out: int32[]): void {
 	if (e.kind == ExprKind.Call && !out.includes(e.index)) { out.push(e.index); }
 	for (const o of e.operands) { exprCalls(o, out); }
 }
 
-export function calls(stmts: ShaderStmt[], out: int32[]): void {
+function calls(stmts: ShaderStmt[], out: int32[]): void {
 	for (const s of stmts) {
 		exprCalls(s.expr, out);
 		exprCalls(s.target, out);
@@ -66,6 +66,16 @@ export function calls(stmts: ShaderStmt[], out: int32[]): void {
 			calls(arm.body, out);
 		}
 	}
+}
+
+export function functionOrder(m: ShaderModule, index: int32, path: int32[], out: int32[]): void {
+	if (out.includes(index) || path.includes(index)) { return; }
+	path.push(index);
+	let callees: int32[] = [];
+	calls(m.functions[index].body, callees);
+	for (const c of callees) { functionOrder(m, c, path, out); }
+	path.pop();
+	out.push(index);
 }
 
 export function structOrder(m: ShaderModule, t: ShaderType, out: int32[]): void {

@@ -31,7 +31,7 @@ import {
 	isEffect,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { calls, structOrder } from "./irWalk";
+import { functionOrder, structOrder } from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 // C++14 keywords, the Metal address spaces, attributes and types, and every function this
@@ -925,20 +925,6 @@ function functionText(p: Printer, index: int32): string {
 		header.join(", ") + ") {\n" + p.lines.map((l) => l + "\n").join("") + "}";
 }
 
-function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): void {
-	if (out.includes(index)) { return; }
-	if (path.includes(index)) {
-		fail(p, "function '" + p.module.functions[index].name + "' is recursive");
-		return;
-	}
-	path.push(index);
-	let callees: int32[] = [];
-	calls(p.module.functions[index].body, callees);
-	for (const c of callees) { functionOrder(p, c, path, out); }
-	path.pop();
-	out.push(index);
-}
-
 function threadedOf(p: Printer, index: int32): Threaded {
 	let t = new Threaded();
 	const read = readsFrom(p.module, index);
@@ -1167,7 +1153,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	for (const i of reads.functions) { p.threaded[i] = threadedOf(p, i); }
 
 	let order: int32[] = [];
-	functionOrder(p, e.functionIndex, [], order);
+	functionOrder(m, e.functionIndex, [], order);
 	const functions = order.map((i) => functionText(p, i));
 
 	let structs: int32[] = [];

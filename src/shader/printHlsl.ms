@@ -29,9 +29,9 @@ import {
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
-	calls,
 	constantOrder,
 	exprStructs,
+	functionOrder,
 	hasEffect,
 	innermost,
 	rootOf,
@@ -975,20 +975,6 @@ function functionText(p: Printer, index: int32): string {
 		")\n" + block(p, f.body, 0);
 }
 
-function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): void {
-	if (out.includes(index)) { return; }
-	if (path.includes(index)) {
-		fail(p, "function '" + p.module.functions[index].name + "' is recursive");
-		return;
-	}
-	path.push(index);
-	let callees: int32[] = [];
-	calls(p.module.functions[index].body, callees);
-	for (const c of callees) { functionOrder(p, c, path, out); }
-	path.pop();
-	out.push(index);
-}
-
 function packedSize(t: ShaderType): int32 {
 	return match (t.kind) {
 		ShaderTypeKind.Scalar | ShaderTypeKind.Atomic => 4,
@@ -1257,7 +1243,7 @@ export function printHlsl(
 	p.effects = m.functions.map((_f) => 0);
 
 	let functions: int32[] = [];
-	functionOrder(p, entry.functionIndex, [], functions);
+	functionOrder(m, entry.functionIndex, [], functions);
 	let structs: int32[] = [];
 	for (const f of functions) {
 		const shaderFunction = m.functions[f];
