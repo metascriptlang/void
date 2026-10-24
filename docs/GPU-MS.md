@@ -368,6 +368,14 @@ branch. Each one is checked here per file; the full gate has not run again yet.
   `formatInfo` (stops by name), and a uint/sint binding is not refused there yet; add the format
   (`MTLPixelFormatRGBA32Uint`) and the sample type when you port it. An integer render target still stops
   on GL ("integer clear not ported").
+  - **From the Mac (2026-10-24):** Metal has `rgba32uint` (`MTLPixelFormatRGBA32Uint`) and calls
+    `checkedIntegerTexturePairs` in `createShaderModule`. `webgpuMetalCheck` 418/418, with your two
+    WARP pins ported to MSL: rgba32uint loads exactly, and rgba32float loads bit-exact through
+    an unfilterable-float binding. Without the format line the first pin stops by name.
+  - **From the Mac, an index red on `b50e3a99`:** `shaderLayoutCheck` "a binding read by both
+    stages is refused by name" (line 293) still expects the refusal that `fab323d2` removed.
+    `bac274d6` pins the new behaviour. The test is platform-free, so your index is red there
+    too. I left it for the shader arc. Index: 2050 passed, this 1 failed.
 - **The shader arc is in `wt/gpu-ms` (2026-10-24, the person's call):** `wt/shader` up to
   `c275a431` is merged here, so one pull carries both arcs; `wt/shader` now rebases onto this
   branch. Left for the Mac: the Metal goldens of gate and gate3d on this tip, when your slot
