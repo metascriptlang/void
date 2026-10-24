@@ -810,6 +810,11 @@ function checkError(what: string): void {
 	if (error != 0) { stop(`${what} raised GL error 0x${error.toString(16)}`); }
 }
 
+function checkErrorOf(what: string, label: string | null): void {
+	const error = oglGetError();
+	if (error != 0) { stop(`${what} of ${labelOf(label)} raised GL error 0x${error.toString(16)}`); }
+}
+
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
 @inline function roundUp16(bytes: int64): int64 { return (bytes + 15) & ~(15 as int64); }
@@ -1480,7 +1485,7 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 			cacheRestoreBuffer(slot.target);
 			nameObject(GL_BUFFER, name, descriptor.label);
 		}
-		checkError(`createBuffer of ${labelOf(descriptor.label)}`);
+		checkErrorOf("createBuffer", descriptor.label);
 	}
 	store(buffers, slot);
 	return { id: id };
@@ -1635,7 +1640,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	for (let s = 0; s < slot.slotCount; s++) {
 		nameObject(slot.target == GL_RENDERBUFFER ? GL_RENDERBUFFER : GL_TEXTURE, slot.names[s], descriptor.label);
 	}
-	checkError(`createTexture of ${labelOf(descriptor.label)}`);
+	checkErrorOf("createTexture", descriptor.label);
 	store(textures, slot);
 	return { id: id };
 }
@@ -1885,7 +1890,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	}
 	setSamplerAnisotropy(native, maxAnisotropy);
 	nameObject(GL_SAMPLER, native, descriptor.label);
-	checkError(`createSampler of ${labelOf(descriptor.label)}`);
+	checkErrorOf("createSampler", descriptor.label);
 	const slot: SamplerSlot = { id: id, native: native };
 	store(samplers, slot);
 	return { id: id };
@@ -2016,7 +2021,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	resolveUniforms(slot, descriptor);
 	resolveTextureUnits(slot, descriptor);
 	nameObject(GL_PROGRAM, slot.program, descriptor.label);
-	checkError(`createShaderModule of ${labelOf(descriptor.label)}`);
+	checkErrorOf("createShaderModule", descriptor.label);
 	slot.id = id;
 	store(shaders, slot);
 	return { id: slot.id };
@@ -2439,7 +2444,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		} else {
 			offscreen = true;
 		}
-		checkedSingleSubresource(`colorAttachments[${i}].view`, views.slots[v].attachable);
+		if (!views.slots[v].attachable) { checkedSingleSubresource(attachmentMember(i, "view"), false); }
 		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		const slice = descriptor.colorAttachments[i].depthSlice;
 		if (views.slots[v].dimension == "3d") {
@@ -2608,7 +2613,7 @@ function passExtent(texture: uint32, baseMip: int32): void {
 	if (textures.slots[resolveTexture].sampleCount != 1 || !views.slots[r].color || views.slots[r].swapchain) {
 		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample offscreen color RENDER_ATTACHMENT`);
 	}
-	checkedSingleSubresource(`colorAttachments[${attachment}].resolveTarget`, views.slots[r].attachable);
+	if (!views.slots[r].attachable) { checkedSingleSubresource(attachmentMember(attachment, "resolveTarget"), false); }
 	passExtent(views.slots[r].texture, views.slots[r].baseMip);
 	if (views.slots[r].resolveFramebuffer == 0) {
 		const resolveFramebuffer = oglCreateFramebuffer();
@@ -3744,7 +3749,7 @@ export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 		usedPass: new Array(descriptor.count),
 	};
 	for (let i = 0; i < descriptor.count; i++) { slot.names.push(oglCreateQuery()); }
-	checkError(`createQuerySet of ${labelOf(descriptor.label)}`);
+	checkErrorOf("createQuerySet", descriptor.label);
 	store(querySets, slot);
 	return { id: id };
 }
