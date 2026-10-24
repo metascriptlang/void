@@ -627,6 +627,16 @@ if [ "$(uname -s)" = Darwin ] && [ -x out/twoViews.exe ]; then
 	fi
 fi
 if [ "$(uname -s)" = Darwin ]; then
+	if "$MSC" test src/test/webgpuMetalCheck.ms > out/gate-webgpu-metal.log 2>&1; then
+		metalSummary="$(sed 's/\x1b\[[0-9;]*m//g' out/gate-webgpu-metal.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
+		if echo "$metalSummary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
+			pass "metal backend on the system device:$metalSummary"
+		else
+			fail "metal backend exited 0 without a clean 'Tests N passed (N)' summary — see out/gate-webgpu-metal.log"
+		fi
+	else
+		fail "metal backend: msc test src/test/webgpuMetalCheck.ms — see out/gate-webgpu-metal.log"
+	fi
 	if "$MSC" build tests/integration/framePacing.ms --output=out/framePacing.exe > out/gate-frame-pacing.log 2>&1 \
 			&& out/framePacing.exe > out/gate-frame-pacing-run.log 2>&1; then
 		pass "$(grep -E '^PASS frame pacing' out/gate-frame-pacing-run.log | sed 's/^PASS //')"
