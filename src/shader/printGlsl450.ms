@@ -213,7 +213,7 @@ function atomicName(op: Intrinsic): string {
 	};
 }
 
-function atomicText(p: Glsl, e: ShaderExpr, args: string[]): string {
+function atomicText(e: ShaderExpr, args: string[]): string {
 	const unsigned = e.operands[0].type.scalar == ScalarKind.U32;
 	const rest = match (e.intrinsic) {
 		Intrinsic.AtomicLoad => unsigned ? "0u" : "0",
@@ -475,7 +475,7 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 			broken("AtomicCompareExchangeWeak outside a local's initializer or a statement of " +
 				"its own: atomicCompSwap returns only the old value");
 		},
-		_ => isAtomic(e.intrinsic) ? atomicText(p, e, args) : intrinsicName(e.intrinsic) + all,
+		_ => isAtomic(e.intrinsic) ? atomicText(e, args) : intrinsicName(e.intrinsic) + all,
 	};
 }
 
@@ -602,7 +602,7 @@ function stmt(p: Glsl, s: ShaderStmt, indent: string): string {
 		s.expr.intrinsic == Intrinsic.AtomicCompareExchangeWeak;
 	if (exchange && s.kind == StmtKind.Let) { return exchangeLet(p, s, indent); }
 	if (exchange && s.kind == StmtKind.Call) {
-		return indent + atomicText(p, s.expr, s.expr.operands.map((a) => expr(p, a))) + ";\n";
+		return indent + atomicText(s.expr, s.expr.operands.map((a) => expr(p, a))) + ";\n";
 	}
 	return match (s.kind) {
 		StmtKind.Block => indent + "{\n" + statements(p, s.body, inner) + indent + "}\n",
