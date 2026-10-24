@@ -34,9 +34,11 @@ import {
 	GPUTextureView,
 	GPUTextureViewDimension,
 } from "../webgpu/types.ms";
+import { mkdir, readFile, writeFile } from "std/fs";
 import { exec } from "std/process";
 import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
+import { shaderBytecodeFromBase64 } from "../shader/dxbc.ms";
 import { glslComputeIr } from "../shader/emit";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
 
@@ -2354,5 +2356,64 @@ test "a compute dispatch stops by name when its uniform group is missing or its 
 			assert run.error.output.includes(define == "" ? "the compute pipeline reads bind group 0, which is not set" : "uniform binding 0 at offset 256 overruns its buffer");
 			assert !run.error.output.includes("probe: the faulty dispatch ran");
 		}
+	}
+}
+
+function metallibOf(name: string, msl: string): Vec<uint8> {
+	const _out = mkdir("out");
+	const _dir = mkdir("out/metalBytecode");
+	const base = `out/metalBytecode/${name}`;
+	if (!writeFile(`${base}.metal`, msl).ok) { stopOnMetal(`cannot write ${base}.metal`); }
+	const run = exec(`xcrun -sdk macosx metal -c -std=macos-metal2.4 -mmacosx-version-min=12.0 ${base}.metal -o ${base}.air 2>&1 && xcrun -sdk macosx metallib ${base}.air -o ${base}.metallib 2>&1`);
+	if (!run.ok) { stopOnMetal(`metallib of ${name} failed`); }
+	const blob = readFile(`${base}.metallib`);
+	if (blob.ok) { return shaderBytecodeFromBase64(blob.value.toBase64()); }
+	stopOnMetal(`cannot read ${base}.metallib`);
+	return [];
+}
+
+test "a Metal render module made from metallib bytes draws what its source draws" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "flat",
+		vertexBytecode: metallibOf("vertex", VERTEX_MSL),
+		vertexEntryPoint: "vmain",
+		fragmentBytecode: metallibOf("fragment", FRAGMENT_MSL),
+		fragmentEntryPoint: "fmain",
+	};
+	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const fromBytes = drawTriangleWith(device, device.createShaderModule(descriptor), 1, 0, 0);
+	assert same(fromBytes, drawTriangle(device, 1, 0));
+	device.destroy();
+}
+
+test "a Metal compute module made from metallib bytes doubles a storage buffer as its source does" {
+	const device = openDevice();
+	let descriptor = computeDescriptor("", "", 4, 1);
+	descriptor.computeBytecode = metallibOf("double", DOUBLE_MSL);
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
+	const module = device.createShaderModule(descriptor);
+	const storage = device.createBuffer({ label: "storage", size: 16, usage: STORAGE_BUFFER_USAGE });
+	device.queue.writeBuffer(storage, 0, [1, 2, 3, 40000] as Vec<uint32>);
+	const pipeline = device.createComputePipeline({ label: "double", compute: { module: module, entryPoint: "" } });
+	const group = computeGroup(device, pipeline, { binding: 0, buffer: storage }, noEntry());
+	const read = device.createBuffer({ label: "read", size: 16, usage: MAP_READ_USAGE });
+	const encoder = device.createCommandEncoder();
+	dispatchGroups(device, encoder, pipeline, group, 1);
+	encoder.copyBufferToBuffer(storage, 0, read, 0, 16);
+	device.queue.submit(encoder.finish());
+	const bytes = mappedRead(read, 0, 16);
+	assert bytes[0] == 2 && bytes[4] == 4 && bytes[8] == 6 && bytes[12] == 0x80 && bytes[13] == 0x38;
+	device.destroy();
+}
+
+test "a Metal module stops by stage and label when the device rejects its bytecode" {
+	const run = exec("timeout 120 msc run src/test/metalBytecodeProbe.ms 2>&1");
+	assert !run.ok;
+	if (!run.ok) {
+		assert run.error.output.includes("probe: the control module loaded");
+		assert run.error.output.includes("the device rejected GPUShaderModuleDescriptor.fragmentBytecode of 'garbage'");
+		assert !run.error.output.includes("probe: the corrupted module loaded");
 	}
 }
