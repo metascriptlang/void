@@ -5,6 +5,7 @@
 // BENCH_CUBES_COUNT the cube count; BENCH_CUBES_SECONDS how many lines to print before exiting.
 
 import { env, exit } from "std/process";
+import { FrameTimeLog, positiveEnv, startFrameTimeLog, tick } from "./frameTimeLog";
 import {
 	Mat4, Quat, Vec3, vec3, identity, quatBetween, quatOfRotation, rotationX, rotationZ,
 	identityQuat,
@@ -52,10 +53,6 @@ const LAYOUT_HEIGHT: float64 = 200.0;
 const HALF_SIZE: float32 = 0.5;
 // --benchmark: the camera turns by 0.15 rad per second at a fixed 1/60 s step.
 const CAMERA_STEP: float32 = 0.15 / 60.0;
-// bevy_diagnostic: 120 frames of history, an EMA of factor 2 / (120 + 1), logged every second.
-const HISTORY: int32 = 120;
-const SMOOTHING: float64 = 2.0 / 121.0;
-const LOG_PERIOD_MS: float64 = 1000.0;
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 
 enum Layout {
@@ -74,13 +71,7 @@ let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let layout: Layout = layoutOf(env.get("BENCH_CUBES_LAYOUT"));
 let cameraRotation: Mat4 = identity();
 let cameraPosition: Vec3 = vec3(0.0, 0.0, 0.0);
-let frameTimes: Vec<float64> = [];
-let frameTimeSum: float64 = 0.0;
-let smoothed: float64 = 0.0;
-let lastFrame: float64 = 0.0;
-let lastLog: float64 = 0.0;
-let logged: int32 = 0;
-let frames: int32 = 0;
+let frameLog: FrameTimeLog = startFrameTimeLog(1);
 
 function makeForward(): ForwardRenderer {
 	const made: Result<ForwardRenderer, ForwardError> =
@@ -95,14 +86,6 @@ function layoutOf(name: string): Layout {
 	if (name == "dense") { return Layout.Dense; }
 	console.log(`BENCH_CUBES_LAYOUT must be sphere, cube or dense, got ${name}`);
 	unreachable;
-}
-
-function positiveEnv(name: string, fallback: int32): int32 {
-	const wanted: string = env.get(name);
-	if (wanted == "") { return fallback; }
-	const value: int32 = parseInt(wanted) as int32;
-	if (value <= 0) { console.log(`${name} must be a positive count, got ${wanted}`); unreachable; }
-	return value;
 }
 
 // Bevy's Cuboid: six faces of four vertices, each with its own normal, 24 vertices, 36 indices.
@@ -268,30 +251,7 @@ function init(): void {
 		rotation: quatBetween(vec3(0.0, 0.0, 1.0), vec3(0.0, -1.0, -1.0).normalized()),
 	}, sun);
 	console.log(`cubes.instances ${count}`);
-	lastFrame = performance.now();
-	lastLog = lastFrame;
-}
-
-// FrameTimeDiagnosticsPlugin: the time since the previous frame, a 120-frame mean and an EMA.
-function measure(now: float64): void {
-	const frameTime: float64 = now - lastFrame;
-	lastFrame = now;
-	smoothed = frames == 0 ? frameTime : smoothed + SMOOTHING * (frameTime - smoothed);
-	frameTimes.push(frameTime);
-	frameTimeSum = frameTimeSum + frameTime;
-	if ((frameTimes.length as int32) > HISTORY) {
-		frameTimeSum = frameTimeSum - frameTimes.shift();
-	}
-	frames = frames + 1;
-	if (now - lastLog < LOG_PERIOD_MS) { return; }
-	lastLog = now;
-	const average: float64 = frameTimeSum / (frameTimes.length as float64);
-	console.log(`frame_time: ${smoothed}ms (avg ${average}ms)`);
-	logged = logged + 1;
-	if (logged >= positiveEnv("BENCH_CUBES_SECONDS", 30)) {
-		console.log(`cubes.frames ${frames}`);
-		exit(0);
-	}
+	frameLog = startFrameTimeLog(positiveEnv("BENCH_CUBES_SECONDS", 30));
 }
 
 function cameraView(): CameraView {
@@ -311,7 +271,10 @@ function cameraView(): CameraView {
 }
 
 function frame(): void {
-	measure(performance.now());
+	if (tick(frameLog, performance.now())) {
+		console.log(`cubes.frames ${frameLog.frames}`);
+		exit(0);
+	}
 	// move_camera: rotate_z then rotate_x, both about the world axes, by the fixed step.
 	if (layout != Layout.Dense) {
 		cameraRotation = cameraRotation * rotationZ(CAMERA_STEP) * rotationX(CAMERA_STEP);
