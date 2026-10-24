@@ -57,6 +57,7 @@ import {
 } from "../platform/swapchain.h";
 import "../sokol/gpu";
 import { exit } from "std/process";
+import { Vec4 } from "../math/math3d";
 import {
 	Blend,
 	Compare,
@@ -72,14 +73,6 @@ import {
 	DOOR_BINDING_SAMPLER,
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
-	DOOR_PASS_CLEAR_DEPTH,
-	DOOR_PASS_CLEAR_LENGTH,
-	DOOR_PASS_COLOR_LOAD,
-	DOOR_PASS_COLOR_VIEW,
-	DOOR_PASS_DEPTH_LOAD,
-	DOOR_PASS_DEPTH_STORE,
-	DOOR_PASS_DEPTH_VIEW,
-	DOOR_PASS_LENGTH,
 } from "./doorWords.h";
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
@@ -139,6 +132,23 @@ export struct TargetLayout {
 	color3: PixelFormat;
 	depth: PixelFormat;
 	sampleCount: int32;
+}
+
+export struct ColorAttachment {
+	view: uint32;
+	format: PixelFormat;
+	load: LoadAction;
+	clear: Vec4;
+	generation: int32;
+}
+
+export struct DepthAttachment {
+	view: uint32;
+	format: PixelFormat;
+	load: LoadAction;
+	store: StoreAction;
+	clear: float32;
+	generation: int32;
 }
 
 export struct PipelineDescriptor {
@@ -1336,16 +1346,17 @@ function frameEncoder(): GPUCommandEncoder {
 	return encoder;
 }
 
-export function doorBeginPass(d: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>): void {
-	if (d.length < DOOR_PASS_LENGTH || clear.length < DOOR_PASS_CLEAR_LENGTH) {
-		fail("beginPass descriptor holds " + String(d.length) + " of " + String(DOOR_PASS_LENGTH) +
-			" words and " + String(clear.length) + " of " + String(DOOR_PASS_CLEAR_LENGTH) +
-			" clear values");
+export function doorBeginPass(
+	colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment,
+): void {
+	if ((colors.length as int32) > DOOR_MAX_COLOR_ATTACHMENTS) {
+		fail("beginPass takes at most " + String(DOOR_MAX_COLOR_ATTACHMENTS) +
+			" color attachments, given " + String(colors.length));
 	}
 	stopOnOpenPass("beginPass");
 	let descriptor = { label: null } as GPURenderPassDescriptor;
-	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
-		const view = d[DOOR_PASS_COLOR_VIEW + i];
+	for (let i = 0; i < (colors.length as int32); i++) {
+		const view = colors[i].view;
 		if (view == 0) { continue; }
 		if (doorViewAlive(view) == 0) {
 			fail("beginPass on color attachment " + String(i) + ", whose view " + String(view) +
@@ -1355,35 +1366,35 @@ export function doorBeginPass(d: Readonly<Span<uint32>>, clear: Readonly<Span<fl
 			view: { id: view },
 			resolveTarget: { id: 0 },
 			clearValue: {
-				r: clear[i * 4],
-				g: clear[i * 4 + 1],
-				b: clear[i * 4 + 2],
-				a: clear[i * 4 + 3],
+				r: colors[i].clear.x,
+				g: colors[i].clear.y,
+				b: colors[i].clear.z,
+				a: colors[i].clear.w,
 			},
-			loadOp: LOAD_OPS[(d[DOOR_PASS_COLOR_LOAD + i] as int32) as LoadAction as int32],
+			loadOp: LOAD_OPS[colors[i].load as int32],
 			storeOp: "store",
 		};
 	}
-	const depthView = d[DOOR_PASS_DEPTH_VIEW];
-	if (depthView != 0) {
-		if (doorViewAlive(depthView) == 0) {
-			fail("beginPass on the depth attachment, whose view " + String(depthView) +
+	if (depth.view != 0) {
+		if (doorViewAlive(depth.view) == 0) {
+			fail("beginPass on the depth attachment, whose view " + String(depth.view) +
 				" is not alive");
 		}
 		descriptor.depthStencilAttachment = {
-			view: { id: depthView },
-			depthClearValue: clear[DOOR_PASS_CLEAR_DEPTH],
-			depthLoadOp: LOAD_OPS[(d[DOOR_PASS_DEPTH_LOAD] as int32) as LoadAction as int32],
-			depthStoreOp: STORE_OPS[(d[DOOR_PASS_DEPTH_STORE] as int32) as StoreAction as int32],
+			view: { id: depth.view },
+			depthClearValue: depth.clear,
+			depthLoadOp: LOAD_OPS[depth.load as int32],
+			depthStoreOp: STORE_OPS[depth.store as int32],
 		};
 	}
 	pass = frameEncoder().beginRenderPass(descriptor);
 	frameStats.passes++;
 	openPass = PassState.Target;
-	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
-		passViews[i] = d[DOOR_PASS_COLOR_VIEW + i];
+	passViews = [0, 0, 0, 0, 0];
+	for (let i = 0; i < (colors.length as int32); i++) {
+		passViews[i] = colors[i].view;
 	}
-	passViews[DOOR_MAX_COLOR_ATTACHMENTS] = depthView;
+	passViews[DOOR_MAX_COLOR_ATTACHMENTS] = depth.view;
 	current = -1;
 }
 
@@ -1564,12 +1575,6 @@ test "the binding words of door.h agree with the slot counts" {
 
 test "a pass names a view per color attachment and one for depth" {
 	assert PASS_VIEW_SLOTS == DOOR_MAX_COLOR_ATTACHMENTS + 1;
-}
-
-test "the pass words of doorWords.h lay out one entry per color attachment" {
-	assert DOOR_PASS_COLOR_LOAD - DOOR_PASS_COLOR_VIEW == DOOR_MAX_COLOR_ATTACHMENTS;
-	assert DOOR_PASS_DEPTH_VIEW - DOOR_PASS_COLOR_LOAD == DOOR_MAX_COLOR_ATTACHMENTS;
-	assert DOOR_PASS_CLEAR_DEPTH == DOOR_MAX_COLOR_ATTACHMENTS * 4;
 }
 
 test "doorFrameStat answers each stat from its own field of the previous frame" {

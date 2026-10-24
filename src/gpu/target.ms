@@ -26,22 +26,12 @@ import {
 	environmentColorFormat,
 	environmentDepthFormat,
 	environmentSampleCount,
+	MAX_COLOR_ATTACHMENTS,
 } from "./door";
-import { TargetLayout } from "./doorGpu.ms";
+import { ColorAttachment, DepthAttachment, TargetLayout } from "./doorGpu.ms";
 import { FilterMode, Wrap } from "./state";
-import {
-	DOOR_MAX_COLOR_ATTACHMENTS,
-	DOOR_PASS_COLOR_VIEW,
-	DOOR_PASS_COLOR_LOAD,
-	DOOR_PASS_DEPTH_VIEW,
-	DOOR_PASS_DEPTH_LOAD,
-	DOOR_PASS_DEPTH_STORE,
-	DOOR_PASS_LENGTH,
-	DOOR_PASS_CLEAR_DEPTH,
-	DOOR_PASS_CLEAR_LENGTH,
-} from "./doorWords.h";
 
-export { TargetLayout } from "./doorGpu.ms";
+export { ColorAttachment, DepthAttachment, TargetLayout } from "./doorGpu.ms";
 
 export interface RenderTarget {
 	width: int32;
@@ -53,23 +43,6 @@ export interface RenderTarget {
 	texture: uint32;
 	generation: int32;
 	closed: boolean;
-}
-
-export struct ColorAttachment {
-	view: uint32;
-	format: PixelFormat;
-	load: LoadAction;
-	clear: Vec4;
-	generation: int32;
-}
-
-export struct DepthAttachment {
-	view: uint32;
-	format: PixelFormat;
-	load: LoadAction;
-	store: StoreAction;
-	clear: float32;
-	generation: int32;
 }
 
 // A sampler keeps its settings for the same reason a target does.
@@ -89,14 +62,6 @@ export const NO_DEPTH: DepthAttachment = {
 	generation: 0,
 };
 
-const UNUSED_COLOR: ColorAttachment = {
-	view: 0,
-	format: PixelFormat.None,
-	load: LoadAction.DontCare,
-	clear: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
-	generation: 0,
-};
-
 // The swapchain: formats and MSAA sample count are whatever the host set up.
 export const SWAPCHAIN_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Default,
@@ -108,9 +73,6 @@ export const SWAPCHAIN_LAYOUT: TargetLayout = {
 };
 
 const FORMAT_BITS: int32 = 4;
-
-let passDescriptor: Vec<uint32> = new Array(DOOR_PASS_LENGTH);
-let passClear: Vec<float32> = new Array(DOOR_PASS_CLEAR_LENGTH);
 
 // A `sampled` target also gets a texture view, for a later pass to read it.
 export function allocate(
@@ -327,8 +289,8 @@ function formatAt(colors: Readonly<Span<ColorAttachment>>, index: int32): PixelF
 }
 
 function stopOnTooManyColors(call: string, colors: Readonly<Span<ColorAttachment>>): void {
-	if ((colors.length as int32) <= DOOR_MAX_COLOR_ATTACHMENTS) { return; }
-	console.log(`gpu door: ${call} takes at most ${DOOR_MAX_COLOR_ATTACHMENTS} color ` +
+	if ((colors.length as int32) <= MAX_COLOR_ATTACHMENTS) { return; }
+	console.log(`gpu door: ${call} takes at most ${MAX_COLOR_ATTACHMENTS} color ` +
 		`attachments, given ${colors.length}`);
 	unreachable;
 }
@@ -451,20 +413,7 @@ export function beginPass(colors: Readonly<Span<ColorAttachment>>, depth: DepthA
 	if (depth.view != 0 && depth.generation != generation) {
 		stopOnStaleAttachment(-1, depth.generation);
 	}
-	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
-		const color: ColorAttachment = i < (colors.length as int32) ? colors[i] : UNUSED_COLOR;
-		passDescriptor[DOOR_PASS_COLOR_VIEW + i] = color.view;
-		passDescriptor[DOOR_PASS_COLOR_LOAD + i] = (color.load as int32) as uint32;
-		passClear[i * 4] = color.clear.x;
-		passClear[i * 4 + 1] = color.clear.y;
-		passClear[i * 4 + 2] = color.clear.z;
-		passClear[i * 4 + 3] = color.clear.w;
-	}
-	passDescriptor[DOOR_PASS_DEPTH_VIEW] = depth.view;
-	passDescriptor[DOOR_PASS_DEPTH_LOAD] = (depth.load as int32) as uint32;
-	passDescriptor[DOOR_PASS_DEPTH_STORE] = (depth.store as int32) as uint32;
-	passClear[DOOR_PASS_CLEAR_DEPTH] = depth.clear;
-	beginPassWith(passDescriptor, passClear);
+	beginPassWith(colors, depth);
 }
 
 // The host's swapchain, color cleared to `clear` and depth to 1; pipelines use SWAPCHAIN_LAYOUT.

@@ -1,6 +1,12 @@
 import "../sokol/gpu";
 import { FilterMode, Wrap } from "./state";
-import { PassState, PipelineDescriptor, PixelFormat } from "./doorGpu.ms";
+import {
+	ColorAttachment,
+	DepthAttachment,
+	PassState,
+	PipelineDescriptor,
+	PixelFormat,
+} from "./doorGpu.ms";
 
 import {
 	doorMakeShader,
@@ -180,9 +186,9 @@ export function passAttachesView(view: uint32): boolean {
 }
 
 export function beginPassWith(
-	descriptor: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>,
+	colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment,
 ): void {
-	doorBeginPass(descriptor, clear);
+	doorBeginPass(colors, depth);
 }
 
 export function beginScreenPassWith(
