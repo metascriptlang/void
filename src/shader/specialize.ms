@@ -120,7 +120,16 @@ function walkExpr(w: Walk, e: ShaderExpr): void {
 }
 
 function walkStmts(w: Walk, stmts: ShaderStmt[]): void {
-	for (const s of stmts) { walkStmt(w, s); }
+	for (const s of stmts) {
+		walkStmt(w, s);
+		if (returns(s, w.on)) { return; }
+	}
+}
+
+function returns(s: ShaderStmt, on: string[]): boolean {
+	if (s.kind == StmtKind.Return) { return true; }
+	if (s.kind != StmtKind.FeatureIf) { return false; }
+	return (holds(s.condition, on) ? s.body : s.otherwise).some((t) => returns(t, on));
 }
 
 function walkStmt(w: Walk, s: ShaderStmt): void {
@@ -239,11 +248,13 @@ function copyStmts(r: Remap, stmts: ShaderStmt[]): ShaderStmt[] {
 	for (const s of stmts) {
 		if (s.kind != StmtKind.FeatureIf) {
 			out.push(copyStmt(r, s));
+			if (s.kind == StmtKind.Return) { break; }
 			continue;
 		}
 		for (const inner of copyStmts(r, holds(s.condition, r.on) ? s.body : s.otherwise)) {
 			out.push(inner);
 		}
+		if (returns(s, r.on)) { break; }
 	}
 	return out;
 }
