@@ -17,6 +17,7 @@ import {
 	GPUStencilOperation,
 	GPUTexture,
 	GPUTextureFormat,
+	GPUTextureSampleType,
 	GPUTextureUsage,
 	GPUTextureView,
 } from "../webgpu/types.ms";
@@ -615,6 +616,7 @@ test "every pixel format of the descriptor creates a texture and a view" {
 	assert formatRoundTrip(device, "r32float");
 	assert formatRoundTrip(device, "rg32float");
 	assert formatRoundTrip(device, "rgba32float");
+	assert formatRoundTrip(device, "rgba32uint");
 	assert formatRoundTrip(device, "r32uint");
 	assert formatRoundTrip(device, "rgb10a2unorm");
 	assert formatRoundTrip(device, "rg11b10ufloat");
@@ -1211,6 +1213,75 @@ test "a compute pass writes a storage texture that copies back" {
 	const read = readBack(readback);
 	assert read[0] == 0 && read[4] == 1 && read[12] == 3;
 	assert read[256] == 10 && read[3 * 256 + 3 * 4] == 33;
+	device.destroy();
+}
+
+const LOAD_UINT_HLSL = "Texture2D<uint4> src : register(t0);
+RWByteAddressBuffer dst : register(u0);
+[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, src.Load(int3(id.xy, 0))); }";
+const LOAD_FLOAT_HLSL = "Texture2D<float4> src : register(t0);
+RWByteAddressBuffer dst : register(u0);
+[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, asuint(src.Load(int3(id.xy, 0)))); }";
+
+function u32At(bytes: Vec<uint8>, index: int32): uint32 {
+	const at = index * 4;
+	return (bytes[at] as uint32) | ((bytes[at + 1] as uint32) << 8) | ((bytes[at + 2] as uint32) << 16) | ((bytes[at + 3] as uint32) << 24);
+}
+
+function loadTexels<T>(device: GPUDevice, format: GPUTextureFormat, hlsl: string, sampleType: GPUTextureSampleType, texels: Vec<T>): Vec<uint8> {
+	let descriptor: GPUShaderModuleDescriptor = { label: "load", computeCode: hlsl, computeEntryPoint: "" };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "compute", sampleType: sampleType, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 0 };
+	const module = device.createShaderModule(descriptor);
+	const texture = device.createTexture({
+		label: "data",
+		size: { width: 4, height: 2, depthOrArrayLayers: 1 },
+		format: format,
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	device.queue.writeTexture({ texture: texture }, texels, { offset: 0, bytesPerRow: 64, rowsPerImage: 2 }, { width: 4, height: 2, depthOrArrayLayers: 1 });
+	const storage = device.createBuffer({
+		label: "out",
+		size: 128,
+		usage: (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_SRC as int32),
+	});
+	const pipeline = device.createComputePipeline({ label: "load", compute: { module: module, entryPoint: "" } });
+	let group: GPUBindGroupDescriptor = { label: "load", layout: pipeline.getBindGroupLayout(1) };
+	group.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
+	group.entries[1] = { binding: 1, buffer: storage };
+	const noOffsets: Vec<uint32> = [];
+	const readback = readbackBuffer(device, 128);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, device.createBindGroup(group), noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.end();
+	encoder.copyBufferToBuffer(storage, 0, readback, 0, 128);
+	device.queue.submit(encoder.finish());
+	return readBack(readback);
+}
+
+test "an rgba32uint texture written by writeTexture loads exactly through a uint binding" {
+	const device = openDevice();
+	let values: Vec<uint32> = new Array(32);
+	for (let i = 0; i < 32; i++) { values[i] = 16777217 + (i as uint32); }
+	values[5] = 4294967295;
+	values[31] = 2147483648;
+	const read = loadTexels(device, "rgba32uint", LOAD_UINT_HLSL, "uint", values);
+	for (let i = 0; i < 32; i++) { assert u32At(read, i) == values[i]; }
+	device.destroy();
+}
+
+test "an rgba32float texture loads bit-exact through an unfilterable-float binding" {
+	const device = openDevice();
+	const patterns: Vec<uint32> = [0x3F800000, 0x40200000, 0xC0000000, 0x3DCCCCCD];
+	const floats: Vec<float32> = [1.0, 2.5, -2.0, 0.1];
+	let values: Vec<float32> = new Array(32);
+	for (let i = 0; i < 32; i++) { values[i] = floats[i % 4]; }
+	const read = loadTexels(device, "rgba32float", LOAD_FLOAT_HLSL, "unfilterable-float", values);
+	for (let i = 0; i < 32; i++) { assert u32At(read, i) == patterns[i % 4]; }
 	device.destroy();
 }
 

@@ -51,6 +51,12 @@ const TEXTURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 positio
 const TEXTURED_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_smp;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texture(tex_smp, uv); }\n";
 
 const DUMMY_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_SPIRV_Cross_DummySampler;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texelFetch(tex_SPIRV_Cross_DummySampler, ivec2(uv * 2.0), 0); }\n";
+const UINT_FRAGMENT_GLSL = "#version 430
+layout(binding = 0) uniform usampler2D tex_SPIRV_Cross_DummySampler;
+in vec2 uv;
+layout(location = 0) out vec4 frag_color;
+void main() { uvec4 t = texelFetch(tex_SPIRV_Cross_DummySampler, ivec2(uv * 2.0), 0); frag_color = vec4(t.x == 16777217u ? 1.0 : 0.0, t.y == 4294967295u ? 1.0 : 0.0, 0.0, 1.0); }
+";
 
 function stopOnGl(message: string): void {
 	console.log(`webgpuGlCheck: ${message}`);
@@ -311,6 +317,60 @@ test "a texel-fetching stage binds the backend dummy sampler, which has no bind 
 	assert pixel(pixels, 48, 16) == GREEN;
 	assert pixel(pixels, 16, 48) == BLUE;
 	assert pixel(pixels, 48, 48) == WHITE;
+	device.destroy();
+}
+
+test "an rgba32uint texture fetches exact integers through a uint binding and the dummy sampler" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "uint fetch",
+		vertexCode: TEXTURED_VERTEX_GLSL,
+		vertexEntryPoint: "",
+		fragmentCode: UINT_FRAGMENT_GLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "uint", nativeSlot: -1, textureBinding: -1 };
+	descriptor.bindings[1] = { group: 1, binding: DUMMY_SAMPLER_BINDING, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "tex_SPIRV_Cross_DummySampler", textureBinding: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
+	const module = device.createShaderModule(descriptor);
+	let pipelineDescriptor: GPURenderPipelineDescriptor = { label: "uint fetch" };
+	pipelineDescriptor.vertex.module = module;
+	pipelineDescriptor.vertex.buffers[0].arrayStride = 8;
+	pipelineDescriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	pipelineDescriptor.fragment.module = module;
+	pipelineDescriptor.fragment.targets[0].format = "rgba8unorm";
+	const pipeline = device.createRenderPipeline(pipelineDescriptor);
+	const texture = device.createTexture({
+		label: "records",
+		size: { width: 2, height: 2, depthOrArrayLayers: 1 },
+		format: "rgba32uint",
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	let records: Vec<uint32> = new Array(16);
+	for (let i = 0; i < 4; i++) {
+		records[i * 4] = 16777217;
+		records[i * 4 + 1] = 4294967295;
+	}
+	device.queue.writeTexture({ texture: texture }, records, { offset: 0, bytesPerRow: 32, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	let groupDescriptor: GPUBindGroupDescriptor = { label: "records", layout: pipeline.getBindGroupLayout(1) };
+	groupDescriptor.entries[0] = { binding: 0, textureView: texture.createView({ label: null }) };
+	const group = device.createBindGroup(groupDescriptor);
+	const vertices = fullScreenQuad(device);
+	const target = colourTarget(device, 1);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	const noOffsets: Vec<uint32> = [];
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixelsBottomUp(target);
+	const YELLOW: uint32 = 0xFFFF00FF;
+	assert pixel(pixels, 16, 16) == YELLOW;
+	assert pixel(pixels, 48, 48) == YELLOW;
 	device.destroy();
 }
 
