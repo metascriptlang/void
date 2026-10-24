@@ -431,6 +431,11 @@ function texelCoordinate(p: Printer, at: ShaderExpr): string {
 	return "uint" + rows + "(" + exprText(p, at) + ")";
 }
 
+function isComparisonSampler(p: Printer, sampler: ShaderExpr): boolean {
+	return sampler.kind == ExprKind.Resource &&
+		p.module.resources[sampler.index].samplerType == SamplerType.Comparison;
+}
+
 function sampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	if (o.length < 3 || o[0].type.kind != ShaderTypeKind.Texture ||
@@ -441,8 +446,7 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 	if (t.shape == TextureShape.Multisampled2d) {
 		return fail(p, "TextureSample of a multisampled texture");
 	}
-	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
-	if (sampler !== null && sampler.samplerType == SamplerType.Comparison) {
+	if (isComparisonSampler(p, o[1])) {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
@@ -458,8 +462,7 @@ function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
 	if (e.intrinsic == Intrinsic.TextureSampleBias) { fragmentOnly(p, "TextureSampleBias"); }
-	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
-	if (sampler !== null && sampler.samplerType == SamplerType.Comparison) {
+	if (isComparisonSampler(p, o[1])) {
 		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
 			"depth reference");
 	}
@@ -490,8 +493,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 			"layer, and a depth reference");
 	}
 	if (!level) { fragmentOnly(p, name); }
-	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
-	if (sampler === null || sampler.samplerType != SamplerType.Comparison) {
+	if (!isComparisonSampler(p, o[1])) {
 		return fail(p, name + " through a sampler that is no comparison sampler binding");
 	}
 	const shape = o[0].type.shape;
