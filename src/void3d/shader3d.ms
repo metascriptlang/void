@@ -45,6 +45,7 @@ import {
 	vec3f,
 	vec4f,
 } from "../shader/std";
+import { mapCoord, mapLit } from "./shadowLookup";
 
 export struct CopyInput {
 	@builtin(position) position: Vec4f;
@@ -1251,23 +1252,6 @@ export function dissolveEdgeOf(b: LitBindings, key: LitKey): Vec4f {
 // spot's matrix is perspective, so the product is divided by w (ShadowSampling.hx:49-53); a
 // position behind the spot (w <= 0), like a half of the block nobody wrote, reads lit.
 // PENDING3D: spot-shadow-behind-lit
-function mapCoord(position: Vec3f, matrix: Mat4x4f): Vec4f {
-	const q = matrix * vec4f(position, 1.0);
-	if (q.w <= 0.0) {
-		return vec4f(0.0, 0.0, 0.0, 0.0);
-	}
-	const p = q.xyz / q.w;
-	if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0) {
-		return vec4f(0.0, 0.0, 0.0, 0.0);
-	}
-	return vec4f(p, 1.0);
-}
-
-function mapLit(z: float32, depth: float32, bias: float32, opacity: float32): float32 {
-	const lit: float32 = clamp(z, 0.0, 1.0) - bias > depth ? 0.0 : 1.0;
-	return mix(1.0, lit, opacity);
-}
-
 export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
 	const p = mapCoord(position, b.shadowParams.shadowMatrix);
 	if (p.w < 0.5) {
