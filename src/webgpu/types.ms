@@ -286,6 +286,9 @@ export struct GPUShaderModuleDescriptor {
 	vertexBytecode: Vec<uint8>;
 	fragmentBytecode: Vec<uint8>;
 	computeBytecode: Vec<uint8>;
+	// WGSL instance_index includes firstInstance but HLSL, GLSL and MSL count from 0: a draw with
+	// firstInstance != 0 on a vertex stage that reads it stops instead of differing per backend.
+	readsInstanceIndex: boolean;
 	workgroupSize: int32[3];
 	bindings: GPUShaderBinding[GPU_MAX_SHADER_BINDINGS];
 	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
@@ -504,6 +507,10 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 
 // A backend that has not ported a descriptor member calls the helper for its descriptor: a member
 // at WebGPU's default passes, any other value stops naming the member, the value and the backend.
+export function firstInstanceRefusal(call: string, pipeline: string, firstInstance: int32): string {
+	return `${call} with firstInstance ${firstInstance} on pipeline ${pipeline}: firstInstance must be 0 because the vertex stage reads instance_index`;
+}
+
 @noinline export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUShaderModuleDescriptor): void {
 	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const b = descriptor.bindings[i];

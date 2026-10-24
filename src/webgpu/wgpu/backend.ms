@@ -84,6 +84,7 @@ import {
 	checkedWriteBuffer,
 	featureBit,
 	checkedIntegerTexturePairs,
+	firstInstanceRefusal,
 	checkedVisibility,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
@@ -478,6 +479,7 @@ struct ShaderBinding {
 }
 
 struct ShaderSlot {
+	readsInstanceIndex: boolean;
 	id: uint32;
 	vertex: Ptr<WgModuleImpl>;
 	fragment: Ptr<WgModuleImpl>;
@@ -493,6 +495,8 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
+	label: string | null;
+	readsInstanceIndex: boolean;
 	id: uint32;
 	shader: uint32;
 	native: Ptr<WgPipelineImpl>;
@@ -1691,6 +1695,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		stop(`wgpuDeviceCreateBindGroupLayout failed for ${labelOf(descriptor.label)}`);
 	}
 	slot.id = id;
+	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
 	store(shaders, slot);
 	return { id: slot.id };
 }
@@ -1806,6 +1811,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	const slot: PipelineSlot = {
 		id: id,
 		shader: descriptor.vertex.module.id,
+		label: descriptor.label,
+		readsInstanceIndex: shaders.slots[s].readsInstanceIndex,
 		native: native,
 		stripIndexFormat: stripIndexFormat,
 	};
@@ -2349,6 +2356,12 @@ export function setStencilReference(reference: uint32): void {
 	wgSetStencilReference(reference);
 }
 
+function checkFirstInstance(call: string, firstInstance: int32): void {
+	if (firstInstance == 0) { return; }
+	const p = pipelines.slotIndex(pass.pipeline);
+	if (pipelines.slots[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines.slots[p].label), firstInstance)); }
+}
+
 @inline export function draw(
 	vertexCount: int32,
 	instanceCount: int32,
@@ -2357,6 +2370,7 @@ export function setStencilReference(reference: uint32): void {
 ): void {
 	checkPass("draw");
 	if (pass.pipeline == 0) { stop("draw without setPipeline"); }
+	checkFirstInstance("draw", firstInstance);
 	wgDraw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -2369,6 +2383,7 @@ export function setStencilReference(reference: uint32): void {
 ): void {
 	checkPass("drawIndexed");
 	if (pass.pipeline == 0) { stop("drawIndexed without setPipeline"); }
+	checkFirstInstance("drawIndexed", firstInstance);
 	const strip = pipelines.slots[pipelines.slotIndex(pass.pipeline)].stripIndexFormat;
 	if (strip != 0 && strip != pass.indexFormat) {
 		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");

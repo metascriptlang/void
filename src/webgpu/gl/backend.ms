@@ -86,6 +86,7 @@ import {
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
 	checkedIntegerTexturePairs,
+	firstInstanceRefusal,
 	checkedVisibility,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
@@ -567,6 +568,7 @@ struct ResourceBinding {
 }
 
 struct ShaderSlot {
+	readsInstanceIndex: boolean;
 	id: uint32;
 	program: uint32;
 	uniforms: UniformBinding[8];
@@ -595,6 +597,8 @@ struct VertexAttribute {
 }
 
 struct PipelineSlot {
+	label: string | null;
+	readsInstanceIndex: boolean;
 	id: uint32;
 	shader: uint32;
 	attributes: VertexAttribute[16];
@@ -2071,6 +2075,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	nameObject(GL_PROGRAM, slot.program, descriptor.label);
 	checkErrorOf("createShaderModule", descriptor.label);
 	slot.id = id;
+	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
 	store(shaders, slot);
 	return { id: slot.id };
 }
@@ -2166,7 +2171,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on GL");
 	}
-	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id };
+	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders.slots[s].readsInstanceIndex };
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) { slot.blends[i] = defaultBlend(); }
 	describeAttributes(s, descriptor, slot);
 	describePrimitive(descriptor, slot);
@@ -2801,6 +2806,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush(false);
+	checkFirstInstance("draw", firstInstance);
 	const mode = pipelines.slots[pipelines.slotIndex(bound.pipeline)].primitive;
 	if (instanceCount > 1 || bound.instanced) {
 		if (firstInstance == 0) {
@@ -2822,6 +2828,7 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush(true);
+	checkFirstInstance("drawIndexed", firstInstance);
 	const pipeline = pipelines.slotIndex(bound.pipeline);
 	const mode = pipelines.slots[pipeline].primitive;
 	if (pipelines.slots[pipeline].stripIndexType != 0 && pipelines.slots[pipeline].stripIndexType != bound.indexType) {
@@ -2838,6 +2845,12 @@ export function drawIndexed(
 		return;
 	}
 	drawElementsBaseVertex(mode, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
+}
+
+function checkFirstInstance(call: string, firstInstance: int32): void {
+	if (firstInstance == 0) { return; }
+	const p = pipelines.slotIndex(bound.pipeline);
+	if (pipelines.slots[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines.slots[p].label), firstInstance)); }
 }
 
 function flush(indexed: boolean): void {

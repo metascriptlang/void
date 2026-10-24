@@ -87,6 +87,7 @@ import {
 	checkedWriteBuffer,
 	featureBit,
 	checkedIntegerTexturePairs,
+	firstInstanceRefusal,
 	checkedVisibility,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
@@ -449,6 +450,7 @@ struct NativeBinding {
 }
 
 struct ShaderSlot {
+	readsInstanceIndex: boolean;
 	id: uint32;
 	vertex: Ptr<D3dVertexShaderImpl>;
 	fragment: Ptr<D3dPixelShaderImpl>;
@@ -467,6 +469,8 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
+	label: string | null;
+	readsInstanceIndex: boolean;
 	id: uint32;
 	shader: uint32;
 	rasterizer: Ptr<D3dRasterizerStateImpl>;
@@ -2132,6 +2136,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	}
 	if (cacheBytes > 0) { slot.blockCache = new Array(cacheBytes); }
 	slot.id = id;
+	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
 	store(shaders, slot);
 	return { id: slot.id };
 }
@@ -2208,7 +2213,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on D3D11");
 	}
-	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id };
+	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders.slots[s].readsInstanceIndex };
 	slot.topology = primitiveTopology(descriptor.primitive.topology);
 	slot.stripIndexFormat = stripIndexFormatOf(descriptor.primitive, slot.topology);
 	slot.inputLayout = createInputLayout(s, descriptor, slot);
@@ -2821,6 +2826,7 @@ function applyDepthStencil(p: int32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush(false);
+	checkFirstInstance("draw", firstInstance);
 	if (instanceCount > 1 || firstInstance != 0) {
 		d3dDrawInstanced(context, vertexCount, instanceCount, firstVertex, firstInstance);
 	} else {
@@ -2837,11 +2843,18 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush(true);
+	checkFirstInstance("drawIndexed", firstInstance);
 	if (instanceCount > 1 || firstInstance != 0) {
 		d3dDrawIndexedInstanced(context, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 	} else {
 		d3dDrawIndexed(context, indexCount, firstIndex, baseVertex);
 	}
+}
+
+function checkFirstInstance(call: string, firstInstance: int32): void {
+	if (firstInstance == 0) { return; }
+	const p = pipelines.slotIndex(bound.pipeline);
+	if (pipelines.slots[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines.slots[p].label), firstInstance)); }
 }
 
 function flush(indexed: boolean): void {
