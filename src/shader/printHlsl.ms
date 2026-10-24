@@ -3,7 +3,6 @@ import {
 	AssignOp,
 	BinaryOp,
 	Builtin,
-	ConditionKind,
 	ExprKind,
 	Interpolation,
 	Intrinsic,
@@ -27,9 +26,19 @@ import {
 	irErrors,
 	isArrayTexture,
 	isAtomic,
-	isEffect,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
+import {
+	calls,
+	constantOrder,
+	exprStructs,
+	hasEffect,
+	innermost,
+	rootOf,
+	stmtStructs,
+	structOrder,
+	unspecialized,
+} from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 function hlslKeywords(): string[] {
@@ -166,10 +175,6 @@ function scalarName(s: ScalarKind): string {
 		ScalarKind.U32 => "uint",
 		ScalarKind.Bool => "bool",
 	};
-}
-
-function innermost(t: ShaderType): ShaderType {
-	return t.kind == ShaderTypeKind.Array ? innermost(t.element[0]) : t;
 }
 
 function arraySuffix(t: ShaderType): string {
@@ -335,42 +340,8 @@ function literalText(p: Printer, e: ShaderExpr): string {
 	};
 }
 
-function rootOf(e: ShaderExpr): ShaderExpr {
-	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ||
-		e.kind == ExprKind.Index;
-	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
-}
-
-function stmtsHaveEffect(p: Printer, stmts: ShaderStmt[]): boolean {
-	for (const s of stmts) {
-		const root = rootOf(s.target).kind;
-		const writes = s.kind == StmtKind.Assign &&
-			(root == ExprKind.Io || root == ExprKind.Resource);
-		if (writes || hasEffect(p, s.expr) || hasEffect(p, s.target)) { return true; }
-		for (const list of [s.init, s.update, s.body, s.otherwise]) {
-			if (stmtsHaveEffect(p, list)) { return true; }
-		}
-		for (const arm of s.cases) {
-			if (stmtsHaveEffect(p, arm.body)) { return true; }
-		}
-	}
-	return false;
-}
-
-function hasEffect(p: Printer, e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) { return true; }
-	if (e.kind == ExprKind.Call) {
-		if (p.effects[e.index] == 0) {
-			p.effects[e.index] = 1;
-			p.effects[e.index] = stmtsHaveEffect(p, p.module.functions[e.index].body) ? 2 : 1;
-		}
-		if (p.effects[e.index] == 2) { return true; }
-	}
-	return e.operands.some((o) => hasEffect(p, o));
-}
-
 function bothSides(p: Printer, what: string, sides: ShaderExpr[]): void {
-	if (sides.some((s) => hasEffect(p, s))) {
+	if (sides.some((s) => hasEffect(p.module, p.effects, s))) {
 		fail(p, "'" + what + "' evaluates every operand in HLSL, and one of them has an effect");
 	}
 }
@@ -1004,23 +975,6 @@ function functionText(p: Printer, index: int32): string {
 		")\n" + block(p, f.body, 0);
 }
 
-function exprCalls(e: ShaderExpr, out: int32[]): void {
-	if (e.kind == ExprKind.Call && !out.includes(e.index)) { out.push(e.index); }
-	for (const o of e.operands) { exprCalls(o, out); }
-}
-
-function calls(stmts: ShaderStmt[], out: int32[]): void {
-	for (const s of stmts) {
-		exprCalls(s.expr, out);
-		exprCalls(s.target, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprCalls(label, out); }
-			calls(arm.body, out);
-		}
-	}
-}
-
 function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): void {
 	if (out.includes(index)) { return; }
 	if (path.includes(index)) {
@@ -1033,38 +987,6 @@ function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): v
 	for (const c of callees) { functionOrder(p, c, path, out); }
 	path.pop();
 	out.push(index);
-}
-
-function structOrder(p: Printer, t: ShaderType, out: int32[]): void {
-	for (const e of t.element) { structOrder(p, e, out); }
-	if (t.kind != ShaderTypeKind.Struct || out.includes(t.structIndex)) { return; }
-	for (const f of p.module.structs[t.structIndex].members) { structOrder(p, f.type, out); }
-	out.push(t.structIndex);
-}
-
-function exprStructs(p: Printer, e: ShaderExpr, out: int32[]): void {
-	structOrder(p, e.type, out);
-	for (const o of e.operands) { exprStructs(p, o, out); }
-}
-
-function stmtStructs(p: Printer, stmts: ShaderStmt[], out: int32[]): void {
-	for (const s of stmts) {
-		exprStructs(p, s.expr, out);
-		exprStructs(p, s.target, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { stmtStructs(p, list, out); }
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprStructs(p, label, out); }
-			stmtStructs(p, arm.body, out);
-		}
-	}
-}
-
-function constantOrder(p: Printer, e: ShaderExpr, out: int32[]): void {
-	for (const o of e.operands) { constantOrder(p, o, out); }
-	if (e.kind == ExprKind.Constant && !out.includes(e.index)) {
-		constantOrder(p, p.module.constants[e.index].value, out);
-		out.push(e.index);
-	}
 }
 
 function packedSize(t: ShaderType): int32 {
@@ -1293,29 +1215,6 @@ function mainText(p: Printer, entryIndex: int32): string {
 	return text + "}\n";
 }
 
-function unspecialized(
-	m: ShaderModule,
-	stage: ShaderStage,
-	resources: int32[],
-	functions: int32[],
-): string {
-	const held = (kind: ConditionKind) => kind == ConditionKind.Always;
-	for (const io of m.ios) {
-		if (io.stage == stage && !held(io.condition.kind)) { return "io '" + io.name + "'"; }
-	}
-	for (const r of resources) {
-		if (!held(m.resources[r].condition.kind)) {
-			return "resource '" + m.resources[r].name + "'";
-		}
-	}
-	for (const f of functions) {
-		if (!held(m.functions[f].condition.kind)) {
-			return "function '" + m.functions[f].name + "'";
-		}
-	}
-	return "";
-}
-
 // Matrices print transposed: an HLSL row holds an IR column, so `row_major` storage reads the
 // host's column-major data and M * v is mul(v, M).
 export function printHlsl(
@@ -1362,26 +1261,26 @@ export function printHlsl(
 	let structs: int32[] = [];
 	for (const f of functions) {
 		const shaderFunction = m.functions[f];
-		for (const v of shaderFunction.params) { structOrder(p, v.type, structs); }
-		for (const v of shaderFunction.locals) { structOrder(p, v.type, structs); }
-		structOrder(p, shaderFunction.result, structs);
-		stmtStructs(p, shaderFunction.body, structs);
+		for (const v of shaderFunction.params) { structOrder(m, v.type, structs); }
+		for (const v of shaderFunction.locals) { structOrder(m, v.type, structs); }
+		structOrder(m, shaderFunction.result, structs);
+		stmtStructs(m, shaderFunction.body, false, structs);
 	}
 	for (const r of reads.resources) {
 		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
-			structOrder(p, m.resources[r].type, structs);
+			structOrder(m, m.resources[r].type, structs);
 		}
 	}
-	for (const c of reads.constants) { exprStructs(p, m.constants[c].value, structs); }
+	for (const c of reads.constants) { exprStructs(m, m.constants[c].value, false, structs); }
 	for (const io of m.ios) {
-		if (io.stage == entry.stage) { structOrder(p, io.type, structs); }
+		if (io.stage == entry.stage) { structOrder(m, io.type, structs); }
 	}
 	let constants: int32[] = [];
 	for (const c of reads.constants) {
 		let read = new ShaderExpr();
 		read.kind = ExprKind.Constant;
 		read.index = c;
-		constantOrder(p, read, constants);
+		constantOrder(m, read, constants);
 	}
 	const kinds = [ResourceKind.UniformBlock, ResourceKind.Texture, ResourceKind.Sampler,
 		ResourceKind.StorageBuffer, ResourceKind.StorageTexture];

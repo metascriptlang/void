@@ -3,7 +3,6 @@ import {
 	AssignOp,
 	BinaryOp,
 	Builtin,
-	ConditionKind,
 	ExprKind,
 	Interpolation,
 	Intrinsic,
@@ -28,9 +27,19 @@ import {
 	isShift,
 	isArrayTexture,
 	isAtomic,
-	isEffect,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
+import {
+	calls,
+	constantOrder,
+	exprStructs,
+	hasEffect,
+	innermost,
+	rootOf,
+	stmtStructs,
+	structOrder,
+	unspecialized,
+} from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 export enum GlslTarget {
@@ -200,10 +209,6 @@ function vectorPrefix(s: ScalarKind): string {
 	};
 }
 
-function innermost(t: ShaderType): ShaderType {
-	return t.kind == ShaderTypeKind.Array ? innermost(t.element[0]) : t;
-}
-
 function arraySuffix(p: Printer, t: ShaderType): string {
 	if (t.kind != ShaderTypeKind.Array) { return ""; }
 	if (p.es && t.element[0].kind == ShaderTypeKind.Array) {
@@ -346,42 +351,8 @@ function literalText(p: Printer, e: ShaderExpr): string {
 	};
 }
 
-function rootOf(e: ShaderExpr): ShaderExpr {
-	const through = e.kind == ExprKind.Field || e.kind == ExprKind.Swizzle ||
-		e.kind == ExprKind.Index;
-	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
-}
-
-function stmtsHaveEffect(p: Printer, stmts: ShaderStmt[]): boolean {
-	for (const s of stmts) {
-		const root = rootOf(s.target).kind;
-		const writes = s.kind == StmtKind.Assign &&
-			(root == ExprKind.Io || root == ExprKind.Resource);
-		if (writes || hasEffect(p, s.expr) || hasEffect(p, s.target)) { return true; }
-		for (const list of [s.init, s.update, s.body, s.otherwise]) {
-			if (stmtsHaveEffect(p, list)) { return true; }
-		}
-		for (const arm of s.cases) {
-			if (stmtsHaveEffect(p, arm.body)) { return true; }
-		}
-	}
-	return false;
-}
-
-function hasEffect(p: Printer, e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) { return true; }
-	if (e.kind == ExprKind.Call) {
-		if (p.effects[e.index] == 0) {
-			p.effects[e.index] = 1;
-			p.effects[e.index] = stmtsHaveEffect(p, p.module.functions[e.index].body) ? 2 : 1;
-		}
-		if (p.effects[e.index] == 2) { return true; }
-	}
-	return e.operands.some((o) => hasEffect(p, o));
-}
-
 function pure(p: Printer, what: string, operands: ShaderExpr[]): void {
-	if (operands.some((o) => hasEffect(p, o))) {
+	if (operands.some((o) => hasEffect(p.module, p.effects, o))) {
 		fail(p, "'" + what + "' prints an operand more or fewer times than the IR evaluates " +
 			"it in GLSL, and one of them has an effect");
 	}
@@ -1100,23 +1071,6 @@ function functionText(p: Printer, index: int32): string {
 		params.join(", ") + ")\n" + block(p, f.body, 0);
 }
 
-function exprCalls(e: ShaderExpr, out: int32[]): void {
-	if (e.kind == ExprKind.Call && !out.includes(e.index)) { out.push(e.index); }
-	for (const o of e.operands) { exprCalls(o, out); }
-}
-
-function calls(stmts: ShaderStmt[], out: int32[]): void {
-	for (const s of stmts) {
-		exprCalls(s.expr, out);
-		exprCalls(s.target, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprCalls(label, out); }
-			calls(arm.body, out);
-		}
-	}
-}
-
 function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): void {
 	if (out.includes(index)) { return; }
 	if (path.includes(index)) {
@@ -1129,38 +1083,6 @@ function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): v
 	for (const c of callees) { functionOrder(p, c, path, out); }
 	path.pop();
 	out.push(index);
-}
-
-function structOrder(p: Printer, t: ShaderType, out: int32[]): void {
-	for (const e of t.element) { structOrder(p, e, out); }
-	if (t.kind != ShaderTypeKind.Struct || out.includes(t.structIndex)) { return; }
-	for (const f of p.module.structs[t.structIndex].members) { structOrder(p, f.type, out); }
-	out.push(t.structIndex);
-}
-
-function exprStructs(p: Printer, e: ShaderExpr, out: int32[]): void {
-	if (e.kind != ExprKind.BlockMember) { structOrder(p, e.type, out); }
-	for (const o of e.operands) { exprStructs(p, o, out); }
-}
-
-function stmtStructs(p: Printer, stmts: ShaderStmt[], out: int32[]): void {
-	for (const s of stmts) {
-		exprStructs(p, s.expr, out);
-		exprStructs(p, s.target, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { stmtStructs(p, list, out); }
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprStructs(p, label, out); }
-			stmtStructs(p, arm.body, out);
-		}
-	}
-}
-
-function constantOrder(p: Printer, e: ShaderExpr, out: int32[]): void {
-	for (const o of e.operands) { constantOrder(p, o, out); }
-	if (e.kind == ExprKind.Constant && !out.includes(e.index)) {
-		constantOrder(p, p.module.constants[e.index].value, out);
-		out.push(e.index);
-	}
 }
 
 function structText(p: Printer, structIndex: int32): string {
@@ -1284,29 +1206,6 @@ function ioDeclarations(p: Printer): string {
 	return text;
 }
 
-function unspecialized(
-	m: ShaderModule,
-	stage: ShaderStage,
-	resources: int32[],
-	functions: int32[],
-): string {
-	const held = (kind: ConditionKind) => kind == ConditionKind.Always;
-	for (const io of m.ios) {
-		if (io.stage == stage && !held(io.condition.kind)) { return "io '" + io.name + "'"; }
-	}
-	for (const r of resources) {
-		if (!held(m.resources[r].condition.kind)) {
-			return "resource '" + m.resources[r].name + "'";
-		}
-	}
-	for (const f of functions) {
-		if (!held(m.functions[f].condition.kind)) {
-			return "function '" + m.functions[f].name + "'";
-		}
-	}
-	return "";
-}
-
 // A uniform block is one `vec4 <block>[size / 16]` and each texture-sampler pair one combined
 // sampler, both bound by name (src/webgpu/gl/backend.ms resolveUniforms, resolveTextureUnits).
 export function printGlsl(
@@ -1363,26 +1262,26 @@ export function printGlsl(
 	let structs: int32[] = [];
 	for (const f of functions) {
 		const callee = m.functions[f];
-		for (const v of callee.params) { structOrder(p, v.type, structs); }
-		for (const v of callee.locals) { structOrder(p, v.type, structs); }
-		structOrder(p, callee.result, structs);
-		stmtStructs(p, callee.body, structs);
+		for (const v of callee.params) { structOrder(m, v.type, structs); }
+		for (const v of callee.locals) { structOrder(m, v.type, structs); }
+		structOrder(m, callee.result, structs);
+		stmtStructs(m, callee.body, true, structs);
 	}
 	for (const r of reads.resources) {
 		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
-			structOrder(p, m.resources[r].type, structs);
+			structOrder(m, m.resources[r].type, structs);
 		}
 	}
-	for (const c of reads.constants) { exprStructs(p, m.constants[c].value, structs); }
+	for (const c of reads.constants) { exprStructs(m, m.constants[c].value, true, structs); }
 	for (const io of m.ios) {
-		if (io.stage == entry.stage) { structOrder(p, io.type, structs); }
+		if (io.stage == entry.stage) { structOrder(m, io.type, structs); }
 	}
 	let constants: int32[] = [];
 	for (const c of reads.constants) {
 		let read = new ShaderExpr();
 		read.kind = ExprKind.Constant;
 		read.index = c;
-		constantOrder(p, read, constants);
+		constantOrder(m, read, constants);
 	}
 	const kinds = [ResourceKind.UniformBlock, ResourceKind.StorageBuffer,
 		ResourceKind.StorageTexture];

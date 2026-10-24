@@ -31,6 +31,7 @@ import {
 	isEffect,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
+import { calls, structOrder } from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 // C++14 keywords, the Metal address spaces, attributes and types, and every function this
@@ -924,23 +925,6 @@ function functionText(p: Printer, index: int32): string {
 		header.join(", ") + ") {\n" + p.lines.map((l) => l + "\n").join("") + "}";
 }
 
-function exprCalls(e: ShaderExpr, out: int32[]): void {
-	if (e.kind == ExprKind.Call && !out.includes(e.index)) { out.push(e.index); }
-	for (const o of e.operands) { exprCalls(o, out); }
-}
-
-function calls(stmts: ShaderStmt[], out: int32[]): void {
-	for (const s of stmts) {
-		exprCalls(s.expr, out);
-		exprCalls(s.target, out);
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
-		for (const arm of s.cases) {
-			for (const label of arm.labels) { exprCalls(label, out); }
-			calls(arm.body, out);
-		}
-	}
-}
-
 function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): void {
 	if (out.includes(index)) { return; }
 	if (path.includes(index)) {
@@ -953,13 +937,6 @@ function functionOrder(p: Printer, index: int32, path: int32[], out: int32[]): v
 	for (const c of callees) { functionOrder(p, c, path, out); }
 	path.pop();
 	out.push(index);
-}
-
-function structOrder(p: Printer, t: ShaderType, out: int32[]): void {
-	for (const e of t.element) { structOrder(p, e, out); }
-	if (t.kind != ShaderTypeKind.Struct || out.includes(t.structIndex)) { return; }
-	for (const f of p.module.structs[t.structIndex].members) { structOrder(p, f.type, out); }
-	out.push(t.structIndex);
 }
 
 function threadedOf(p: Printer, index: int32): Threaded {
@@ -1196,7 +1173,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	let structs: int32[] = [];
 	let reached = reads.structs.map((n) => n);
 	reached.sort((a, b) => a - b);
-	for (const i of reached) { structOrder(p, structTypeOf(i), structs); }
+	for (const i of reached) { structOrder(m, structTypeOf(i), structs); }
 	let inputs: string[] = [];
 	let outputs: string[] = [];
 	let params: string[] = [];
@@ -1204,7 +1181,7 @@ export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[])
 	for (let i = 0; i < m.ios.length; i++) {
 		const io = m.ios[i];
 		if (io.stage != e.stage) { continue; }
-		structOrder(p, io.type, structs);
+		structOrder(m, io.type, structs);
 		const input = io.direction == IoDirection.In;
 		const side = input ? 0 : 1;
 		const attribute = interfaceAttribute(p, io, ordinals[side]);
