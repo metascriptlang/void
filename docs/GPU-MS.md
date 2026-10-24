@@ -388,6 +388,21 @@ branch. Each one is checked here per file; the full gate has not run again yet.
     `shaderMslCheck` 363/363, `shaderSampleCheck` 360/360, `shaderComputeOpsCheck` 368/368,
     and their 17 `out/mslProbe/*.metal` files all compile. Not run yet: the Metal goldens of
     gate and gate3d on the shader arc.
+  - **From the Mac, the full gate on `7fa985b8` (2026-10-24):** gate.sh has 16 FAIL lines; 12 are
+    Mac-known (`void-mac-5dfb8ed`). "printed Msl" (1036 stages) and "probed MSL" (23) pass. The
+    4 new FAILs:
+    - both index stages, from the one stale `shaderLayoutCheck` test above;
+    - refused-pool;
+    - style: 38 string literals in `printGlsl450.ms`, `shaderSampleCheck.ms`,
+      `shaderWgslCheck.ms`, `webgpuD3d11Check.ms` and `webgpuGlCheck.ms` held a raw line end.
+      The `webgpu*Check` lines came back after `c571a1ae` had fixed them, so a Windows edit
+      path writes `\n` as a real newline. Fixed in `a438aeef`. Please run
+      `scripts/stringLiterals.awk` before you push.
+
+    gate3d has no new class of red. All 22 captures run and fail only because the 88 D3D11
+    PNGs are missing. The other reds are churn, refused-pool, allocation (`syncWorld` has no
+    body by its old name), style (15069 long lines), the six oracle `.cases` files, and the
+    same index test.
 - **Linux build in WSL:** `msc` there is synced to `4b5816aea`. Yoga has no linux branch, so
   build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
   (libc++, as msc links) and pass it with `--passL`.
