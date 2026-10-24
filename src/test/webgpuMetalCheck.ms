@@ -1592,6 +1592,18 @@ test "a mapAsync that would wait behind the frame's open command buffer stops by
 	}
 }
 
+test "a draw with a nonzero firstInstance stops by name when the vertex stage reads instance_index, through draw and drawIndexed" {
+	for (const define of ["", "-d:firstInstanceIndexed"]) {
+		const run = exec(`timeout 120 msc run ${define} src/test/metalFirstInstanceProbe.ms 2>&1`);
+		if (run.ok) { assert false; }
+		if (!run.ok) {
+			assert run.error.output.includes("probe: the controls drew");
+			assert run.error.output.includes("firstInstance must be 0 because the vertex stage reads instance_index");
+			assert !run.error.output.includes("probe: firstInstance 1 drew");
+		}
+	}
+}
+
 const DOUBLE_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void _main(device uint* data [[buffer(0)]], uint id [[thread_position_in_grid]]) { data[id] = data[id] * 2; }\n";
 const HALVE_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void halve(const device float* source [[buffer(0)]], device float* result [[buffer(1)]], uint id [[thread_position_in_grid]]) { result[id] = source[id] * 0.5; }\n";
 const FILL_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void _main(texture2d<uint, access::write> image [[texture(0)]], uint2 id [[thread_position_in_grid]]) { image.write(uint4(id.x + id.y * 10), id); }\n";
