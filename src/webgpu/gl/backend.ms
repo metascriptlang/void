@@ -115,6 +115,7 @@ import {
 	oglClearDepthStencil,
 	oglColorMask,
 	oglCompileShader,
+	oglConstantsDisagreement,
 	oglCopyBufferDataUncached,
 	oglCopyBytes,
 	oglCopyTexels,
@@ -1267,11 +1268,41 @@ function resetStateCache(): void {
 	resetDesktopState();
 }
 
+function checkMirroredConstants(): void {
+	const values: int32[] = [
+		OGL_CAPABILITY_COMPUTE,
+		OGL_CAPABILITY_DEBUG,
+		OGL_CAPABILITY_TIMER,
+		OGL_CAPABILITY_EXACT_SAMPLES,
+		GL_TEXTURE_3D,
+		GL_TEXTURE_2D_ARRAY,
+		GL_TEXTURE_CUBE_MAP,
+		GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+		GL_BACK,
+		GL_TEXTURE_2D,
+		GL_RENDERBUFFER,
+		GL_DEPTH_COMPONENT,
+		GL_DEPTH_STENCIL,
+		GL_UNPACK_ROW_LENGTH,
+		GL_UNPACK_IMAGE_HEIGHT,
+		GL_NEAREST,
+		GL_FRAMEBUFFER,
+		GL_READ_FRAMEBUFFER,
+		GL_DRAW_FRAMEBUFFER,
+		GL_COLOR_ATTACHMENT0,
+		GL_DEPTH_ATTACHMENT,
+		GL_FRAMEBUFFER_COMPLETE,
+	];
+	const disagreement: string = oglConstantsDisagreement(values[0], values.length as int32);
+	if (disagreement != "") { stop(`a constant of backend.ms disagrees with gl.c, ${disagreement}`); }
+}
+
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (oglLoad() == 0) {
 		const missing: string = oglLoadMissing();
 		stop(`requestDevice needs a current GL context; ${missing} did not load`);
 	}
+	checkMirroredConstants();
 	const version = oglGetInteger(GL_MAJOR_VERSION) * 100 + oglGetInteger(GL_MINOR_VERSION) * 10;
 	checkContextVersion(version);
 	maxVertexAttributes = smaller(oglGetInteger(GL_MAX_VERTEX_ATTRIBS), GPU_MAX_VERTEX_ATTRIBUTES);

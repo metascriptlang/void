@@ -962,3 +962,50 @@ void oglPopDebugGroup(void) { unavailable("glPopDebugGroup"); }
 void oglDebugMarker(const char *label) { unavailable("glDebugMessageInsert"); }
 void oglObjectLabel(int32_t identifier, uint32_t name, const char *label) { unavailable("glObjectLabel"); }
 #endif
+
+typedef struct { const char *name; int32_t value; } DriverConstant;
+
+#define DRIVER(name) { #name, (int32_t)(name) }
+
+static const DriverConstant driverConstants[] = {
+	DRIVER(OGL_CAPABILITY_COMPUTE),
+	DRIVER(OGL_CAPABILITY_DEBUG),
+	DRIVER(OGL_CAPABILITY_TIMER),
+	DRIVER(OGL_CAPABILITY_EXACT_SAMPLES),
+	DRIVER(GL_TEXTURE_3D),
+	DRIVER(GL_TEXTURE_2D_ARRAY),
+	DRIVER(GL_TEXTURE_CUBE_MAP),
+	DRIVER(GL_TEXTURE_CUBE_MAP_POSITIVE_X),
+	DRIVER(GL_BACK),
+	DRIVER(GL_TEXTURE_2D),
+	DRIVER(GL_RENDERBUFFER),
+	DRIVER(GL_DEPTH_COMPONENT),
+	DRIVER(GL_DEPTH_STENCIL),
+	DRIVER(GL_UNPACK_ROW_LENGTH),
+	DRIVER(GL_UNPACK_IMAGE_HEIGHT),
+	DRIVER(GL_NEAREST),
+	DRIVER(GL_FRAMEBUFFER),
+	DRIVER(GL_READ_FRAMEBUFFER),
+	DRIVER(GL_DRAW_FRAMEBUFFER),
+	DRIVER(GL_COLOR_ATTACHMENT0),
+	DRIVER(GL_DEPTH_ATTACHMENT),
+	DRIVER(GL_FRAMEBUFFER_COMPLETE),
+};
+
+static char s_constantsDisagreement[256];
+
+const char *oglConstantsDisagreement(const int32_t *values, int32_t count) {
+	int32_t known = (int32_t)(sizeof driverConstants / sizeof driverConstants[0]);
+	s_constantsDisagreement[0] = 0;
+	if (count != known) {
+		snprintf(s_constantsDisagreement, sizeof s_constantsDisagreement, "backend.ms lists %d constants and gl.c checks %d", (int)count, (int)known);
+		return s_constantsDisagreement;
+	}
+	for (int32_t i = 0; i < known; i++) {
+		if (values[i] == driverConstants[i].value) continue;
+		snprintf(s_constantsDisagreement, sizeof s_constantsDisagreement, "entry %d: %s is %d in gl.c and %d in backend.ms",
+			(int)i, driverConstants[i].name, (int)driverConstants[i].value, (int)values[i]);
+		break;
+	}
+	return s_constantsDisagreement;
+}

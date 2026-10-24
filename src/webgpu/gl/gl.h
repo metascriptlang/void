@@ -198,3 +198,5 @@ void oglPushDebugGroup(const char *label);
 void oglPopDebugGroup(void);
 void oglDebugMarker(const char *label);
 void oglObjectLabel(int32_t identifier, uint32_t name, const char *label);
+
+const char *oglConstantsDisagreement(const int32_t *values, int32_t count);
