@@ -1,0 +1,48 @@
+// A cluster assignment laid out as the two RGBA32UI data textures a lit shader reads with
+// textureLoad (docs/VOID3D.md "Clustered lights: how the clusters reach the shader"). The cluster
+// texture holds one texel per cluster, Bevy's storage-buffer record (bevy_pbr/src/cluster/mod.rs,
+// offsets_and_counts): the offset into the index list, the point light count, the spot light
+// count. The index texture holds four light indices a texel. Both are rows of DATA_TEXTURE_WIDTH
+// texels, so cluster or index i sits at (i % width, i / width).
+
+import { ClusterAssignment } from "./clusters";
+
+export const DATA_TEXTURE_WIDTH: int32 = 256;
+
+export struct DataTexture {
+	width: int32;
+	height: int32;
+	words: Vec<uint32>;
+}
+
+function rowsFor(texels: int32): int32 {
+	return Math.max(1, Math.ceil((texels as float64) / (DATA_TEXTURE_WIDTH as float64)) as int32);
+}
+
+function zeroed(texels: int32): DataTexture {
+	const height: int32 = rowsFor(texels);
+	let words: Vec<uint32> = [];
+	for (let i = 0; i < DATA_TEXTURE_WIDTH * height * 4; i++) { words.push(0); }
+	return { width: DATA_TEXTURE_WIDTH, height: height, words: words };
+}
+
+export function clusterTexture(assignment: ClusterAssignment): DataTexture {
+	const clusters: int32 = assignment.counts.length as int32;
+	let texture: DataTexture = zeroed(clusters);
+	for (let i = 0; i < clusters; i++) {
+		const point: int32 = assignment.pointCounts[i];
+		texture.words[i * 4] = assignment.offsets[i] as uint32;
+		texture.words[i * 4 + 1] = point as uint32;
+		texture.words[i * 4 + 2] = (assignment.counts[i] - point) as uint32;
+	}
+	return texture;
+}
+
+export function indexTexture(assignment: ClusterAssignment): DataTexture {
+	const indices: int32 = assignment.lightIndices.length as int32;
+	let texture: DataTexture = zeroed(Math.ceil((indices as float64) / 4.0) as int32);
+	for (let i = 0; i < indices; i++) {
+		texture.words[i] = assignment.lightIndices[i] as uint32;
+	}
+	return texture;
+}
