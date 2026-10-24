@@ -1190,7 +1190,7 @@ export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 		if (slot.disjoint == null) { stop(`CreateQuery failed for ${labelOf(descriptor.label)}`); }
 		setLabel(slot.disjoint, descriptor.label);
 	}
-		store(querySets, slot);
+	store(querySets, slot);
 	return { id: id };
 }
 
@@ -1401,7 +1401,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		info: info,
 		swapchainView: 0,
 	};
-		store(textures, slot);
+	store(textures, slot);
 	return { id: id };
 }
 
@@ -1798,7 +1798,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	setLabel(slot.renderTarget, descriptor.label);
 	setLabel(slot.depthStencil, descriptor.label);
 	slot.id = id;
-		store(views, slot);
+	store(views, slot);
 	return { id: slot.id };
 }
 
@@ -1874,7 +1874,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	);
 	if (native == null) { stop(`CreateSamplerState failed for ${labelOf(descriptor.label)}`); }
 	setLabel(native, descriptor.label);
-		const slot: SamplerSlot = { id: id, native: native };
+	const slot: SamplerSlot = { id: id, native: native };
 	store(samplers, slot);
 	return { id: id };
 }
@@ -1973,7 +1973,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	}
 	if (cacheBytes > 0) { slot.blockCache = new Array(cacheBytes); }
 	slot.id = id;
-		store(shaders, slot);
+	store(shaders, slot);
 	return { id: slot.id };
 }
 
@@ -2095,7 +2095,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	setLabel(slot.depthStencil, descriptor.label);
 	setLabel(slot.blend, descriptor.label);
 	slot.id = id;
-		store(pipelines, slot);
+	store(pipelines, slot);
 	return { id: slot.id };
 }
 
@@ -2193,7 +2193,7 @@ export function getBindGroupLayout(pipeline: GPURenderPipeline, index: int32): G
 	if (pipelines.slots[p].layouts[index] == 0) {
 		const id = allocate(layouts);
 		const slot: LayoutSlot = { id: id, pipeline: pipeline.id, group: index };
-				store(layouts, slot);
+		store(layouts, slot);
 		pipelines.slots[p].layouts[index] = id;
 	}
 	return { id: pipelines.slots[p].layouts[index] };
@@ -2223,7 +2223,7 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 		slot.dynamicCount += 1;
 	}
 	slot.id = id;
-		store(bindGroups, slot);
+	store(bindGroups, slot);
 	return { id: slot.id };
 }
 
@@ -2490,7 +2490,7 @@ export function createComputePipeline(descriptor: GPUComputePipelineDescriptor):
 	}
 	const id = allocate(pipelines);
 	const slot: PipelineSlot = { id: id, shader: descriptor.compute.module.id, compute: true };
-		store(pipelines, slot);
+	store(pipelines, slot);
 	return { id: id };
 }
 
