@@ -283,14 +283,14 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 		return types;
 	}
 
-	const fs = getType(fragment);
-	const vs = getType(vertex);
-	if (fs == null || fs.kind != NodeKind.TypeFunction || vs == null ||
-		vs.kind != NodeKind.TypeFunction) {
+	const fragmentSignature = getType(fragment);
+	const vertexSignature = getType(vertex);
+	if (fragmentSignature == null || fragmentSignature.kind != NodeKind.TypeFunction ||
+		vertexSignature == null || vertexSignature.kind != NodeKind.TypeFunction) {
 		error("glslLinked: both stages must be functions", fragment);
 	}
 	let input: Node | null = null;
-	for (const t of fs.typExprParams) {
+	for (const t of fragmentSignature.typExprParams) {
 		const fields = getTypeImpl(t);
 		if (fields == null || fields.kind != NodeKind.TypeObject) { continue; }
 		let bindings = false;
@@ -304,11 +304,11 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 		if (!bindings && features < fields.typExprFieldNames.length) { input = t; }
 	}
 	const reads = input == null ? [] : varyingNames(input, fragment);
-	const writes = varyingNames(vs.typExprReturn, vertex);
+	const writes = varyingNames(vertexSignature.typExprReturn, vertex);
 	const readTypes = input == null ? [] : varyingTypes(input, fragment);
-	const writeTypes = varyingTypes(vs.typExprReturn, vertex);
+	const writeTypes = varyingTypes(vertexSignature.typExprReturn, vertex);
 	const readGates = input == null ? [] : varyingFeatures(input, fragment);
-	const writeGates = varyingFeatures(vs.typExprReturn, vertex);
+	const writeGates = varyingFeatures(vertexSignature.typExprReturn, vertex);
 	for (let i = 0; i < reads.length || i < writes.length; i++) {
 		const read = i < reads.length ? reads[i] : "";
 		const written = i < writes.length ? writes[i] : "";
@@ -672,10 +672,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	const outputType = signature.typExprReturn;
-	let vectorOutput = false;
-	for (const v of vectorTypes) {
-		if (outputType != null && sameType(outputType, v)) { vectorOutput = true; }
-	}
+	const vectorOutput = vectorTypes.some((v) => outputType != null && sameType(outputType, v));
 	const outputs = vectorOutput ? null : fieldsOf(outputType);
 	const vertex = outputs != null && hasDecorator(outputs, "builtin");
 	const computeBuiltins = ["globalInvocationId", "localInvocationId", "localInvocationIndex",
@@ -751,8 +748,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	// Blocks at one binding are alternatives a variant chooses between, so they may share members.
 	function claimMember(name: string, slot: int32, at: Node): void {
-		const m = memberNames.indexOf(name);
-		if (m >= 0 && memberSlots[m] == slot) { return; }
+		const seen = memberNames.indexOf(name);
+		if (seen >= 0 && memberSlots[seen] == slot) { return; }
 		claim(name, at);
 		memberNames.push(name);
 		memberSlots.push(slot);
@@ -1791,26 +1788,20 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return s;
 	}
 
-	function isDiscard(callee: Node): boolean {
+	function stdFunctionName(callee: Node): string {
 		const impl = getImpl(callee);
-		return callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule &&
-			impl != null && impl.fnName == "discard";
-	}
-
-	function isStdAtomic(callee: Node): boolean {
-		const impl = getImpl(callee);
-		return callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule &&
-			impl != null && impl.fnName.startsWith("atomic");
+		const inStd = callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule;
+		return inStd && impl != null ? impl.fnName : "";
 	}
 
 	function simple(n: Node): ShaderStmt {
 		if (n.kind == NodeKind.ExprStmt) {
 			const e = n.expr;
-			if (e.kind == NodeKind.CallExpr && isDiscard(e.callee)) {
+			if (e.kind == NodeKind.CallExpr && stdFunctionName(e.callee) == "discard") {
 				return stmtOf(StmtKind.Discard, new ShaderExpr(), []);
 			}
-			if (e.kind == NodeKind.CallExpr &&
-				(typeKind(getType(e)) == TypeKind.Void || isStdAtomic(e.callee))) {
+			if (e.kind == NodeKind.CallExpr && (typeKind(getType(e)) == TypeKind.Void ||
+				stdFunctionName(e.callee).startsWith("atomic"))) {
 				return stmtOf(StmtKind.Call, lower(e), []);
 			}
 			if (e.kind != NodeKind.UpdateExpr && e.kind != NodeKind.BinaryExpr) {
