@@ -1,20 +1,81 @@
 #!/usr/bin/env bash
 # Runs a capture entry on a physical iPhone or iPad (Metal) from this Mac.
 #
-#   VOID_IOS_PROFILE=<file.mobileprovision> bash scripts/iosDevice.sh golden <device> <name>
+#   bash scripts/iosDevice.sh golden <device> [name]
 #     every golden scene on <device>, copied to out/golden/metal-<name>/ and judged against
-#     tests/golden/d3d11 with the @metal budgets
-#   VOID_IOS_PROFILE=<file.mobileprovision> bash scripts/iosDevice.sh samples <device>
+#     tests/golden/d3d11 with the @metal budgets; <name> is ios-<model> when left out
+#   bash scripts/iosDevice.sh samples <device>
 #     tests/integration/viewSamples.ms at 1, 2, 4 and 8 samples
 #
-# <device> is an identifier from `xcrun devicectl list devices`. The profile is a development
-# profile that names the device and an app id covering dev.void.* (a team wildcard does).
+# <device> is `auto` (the first paired, reachable iPhone or iPad), or an identifier, UDID or
+# name from `xcrun devicectl list devices`. VOID_IOS_PROFILE names a development
+# .mobileprovision; unset, the first one under the Xcode and MobileDevice profile folders that
+# lists the device's UDID, allows get-task-allow and covers dev.void.* (a wildcard app id does).
+# Every failure to reach a device exits 1 with a line starting `iosDevice:` that names the fix.
 set -eu
 
-mode="${1:?usage: iosDevice.sh golden <device> <name> | samples <device>}"
-device="${2:?iosDevice.sh: name a device from xcrun devicectl list devices}"
-profile="${VOID_IOS_PROFILE:?iosDevice.sh: set VOID_IOS_PROFILE to a development .mobileprovision}"
+mode="${1:?usage: iosDevice.sh golden <device> [name] | samples <device>}"
+device="${2:?iosDevice.sh: name a device from xcrun devicectl list devices, or auto}"
 mkdir -p out/ios
+
+die() { echo "iosDevice: $*"; exit 1; }
+
+field() { plutil -extract "$2" raw -o - "$1" 2> /dev/null || true; }
+
+xcrun devicectl list devices --json-output out/ios/devices.json > out/ios/devices.log 2>&1 \
+	|| die "devicectl cannot list devices (xcode-select must point at Xcode) — see out/ios/devices.log"
+want=$device
+device=""
+for ((i = 0; ; i++)); do
+	id=$(field out/ios/devices.json "result.devices.$i.identifier")
+	[ -n "$id" ] || break
+	udid=$(field out/ios/devices.json "result.devices.$i.hardwareProperties.udid")
+	dname=$(field out/ios/devices.json "result.devices.$i.deviceProperties.name")
+	platform=$(field out/ios/devices.json "result.devices.$i.hardwareProperties.platform")
+	paired=$(field out/ios/devices.json "result.devices.$i.connectionProperties.pairingState")
+	tunnel=$(field out/ios/devices.json "result.devices.$i.connectionProperties.tunnelState")
+	reachable=0
+	[ "$paired" = paired ] && [ "$tunnel" != unavailable ] && reachable=1
+	if [ "$want" = auto ]; then
+		case "$platform" in iOS | iPadOS) ;; *) continue ;; esac
+		[ "$reachable" -eq 1 ] || continue
+	else
+		[ "$want" = "$id" ] || [ "$want" = "$udid" ] || [ "$want" = "$dname" ] || continue
+		[ "$reachable" -eq 1 ] || die "device '$dname' is $paired and $tunnel — attach it, unlock it and trust this Mac"
+	fi
+	device=$id
+	hwudid=$udid
+	model=$(field out/ios/devices.json "result.devices.$i.hardwareProperties.marketingName" | tr -c 'A-Za-z0-9\n' '-' | sed 's/--*/-/g; s/-$//')
+	break
+done
+if [ -z "$device" ]; then
+	[ "$want" = auto ] && die "no paired, reachable iPhone or iPad — attach and unlock one, or name one from xcrun devicectl list devices"
+	die "device '$want' is not in xcrun devicectl list devices — attach and pair it, or use auto"
+fi
+
+profile="${VOID_IOS_PROFILE:-}"
+if [ -z "$profile" ]; then
+	now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+	for candidate in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"/*.mobileprovision \
+		"$HOME/Library/MobileDevice/Provisioning Profiles"/*.mobileprovision; do
+		[ -f "$candidate" ] || continue
+		security cms -D -i "$candidate" > out/ios/candidate.plist 2> /dev/null || continue
+		plutil -extract ProvisionedDevices xml1 -o - out/ios/candidate.plist 2> /dev/null | grep -q "<string>$hwudid</string>" || continue
+		[ "$(field out/ios/candidate.plist Entitlements.get-task-allow)" = true ] || continue
+		[ "$(field out/ios/candidate.plist ExpirationDate)" \> "$now" ] || continue
+		appid=$(field out/ios/candidate.plist Entitlements.application-identifier)
+		case "${appid#*.}" in
+			'*') ;;
+			*'*') case dev.void.golden in "${appid#*.}"*) ;; *) continue ;; esac ;;
+			*) continue ;;
+		esac
+		profile=$candidate
+		break
+	done
+	[ -n "$profile" ] || die "no development profile lists $model ($hwudid) with a wildcard app id covering dev.void.* — set VOID_IOS_PROFILE to one, or add the device in Xcode"
+fi
+[ -f "$profile" ] || die "VOID_IOS_PROFILE=$profile is not a file"
+echo "iosDevice: $model ($device), profile $(basename "$profile")"
 
 security cms -D -i "$profile" > out/ios/profile.plist
 team=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' out/ios/profile.plist)
@@ -70,23 +131,23 @@ buildApp() {
 	EOF
 	codesign --force --sign "Apple Development" --entitlements "out/ios/$name.entitlements" --timestamp=none "$app"
 	xcrun devicectl device install app --device "$device" "$app" > "out/ios/$name.install.log" 2>&1 \
-		|| { echo "iosDevice: install on $device failed — see out/ios/$name.install.log"; exit 1; }
+		|| die "install on $model failed ($(grep -m1 -iE 'error|locked|trust|profile' "out/ios/$name.install.log" || echo 'no reason logged')) — unlock it; a profile error means set VOID_IOS_PROFILE; see out/ios/$name.install.log"
 }
 
 # launch <bundle id> <environment JSON>: the app's console output
 launch() {
 	timeout 120 xcrun devicectl device process launch --device "$device" --console --terminate-existing \
-		--environment-variables "$2" "$1" 2>&1 || true
+		--environment-variables "$2" "$1" 2>&1 | tee out/ios/launch.log || true
 }
 
 case "$mode" in
 golden)
-	name="${3:?iosDevice.sh golden: name the device set, as in out/golden/metal-<name>}"
+	name="${3:-ios-$model}"
 	. scripts/goldenDefines.sh
 	# shellcheck disable=SC2086
 	buildApp tests/golden/runner.ms VoidGolden dev.void.golden $GOLDEN_DEFINES --release
-	count=$(launch dev.void.golden '{"VOID_SCENE_LIST":"1"}' | grep -c "$(printf '\t')")
-	[ "$count" -gt 0 ] || { echo "iosDevice: the runner listed no scenes"; exit 1; }
+	count=$(launch dev.void.golden '{"VOID_SCENE_LIST":"1"}' | grep -c "$(printf '\t')" || true)
+	[ "$count" -gt 0 ] || die "the runner listed no scenes — unlock $model and keep it awake ($(grep -iom1 'unable to launch[^.]*' out/ios/launch.log || echo 'see out/ios/launch.log'))"
 	failed=0
 	for ((i = 0; i < count; i++)); do
 		verdict=$(launch dev.void.golden "{\"VOID_SCENE\":\"$i\"}" | grep -E '^(CAPTURED|FAIL)' || true)
