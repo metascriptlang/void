@@ -254,6 +254,43 @@ test "A and B together read the constant under both" {
 	}
 }
 
+// twoFeatureModule with an early write and return under B, alone or inside A, before A's reads.
+function earlyReturnModule(insideA: boolean): ShaderModule {
+	let m = twoFeatureModule();
+	const vec4 = vectorType(ScalarKind.F32, 4);
+	const early = [
+		assignOf(exprOf(ExprKind.Io, vec4, 2, []), rgbaOf(exprOf(ExprKind.Local, vec4, 0, []))),
+		ret(new ShaderExpr()),
+	];
+	const main = m.functions[2].body;
+	let body = [main[0], insideA ? featureIf("A", [featureIf("B", early)]) : featureIf("B", early)];
+	for (let i = 1; i < main.length; i++) { body.push(main[i]); }
+	m.functions[2].body = body;
+	return m;
+}
+
+function earlyReturn(insideA: boolean, on: string[]): ShaderModule {
+	const r = specialize(earlyReturnModule(insideA), on);
+	if (!r.ok) { return new ShaderModule(); }
+	return r.value;
+}
+
+test "a feature branch that returns drops what follows it" {
+	for (const insideA of [false, true]) {
+		const m = earlyReturn(insideA, ["A", "B"]);
+		assert decided(m);
+		assert shape(m) ==
+			"resources base; functions mainFs; constants ; structs Base; ios uv,tangent,colour";
+		assert m.functions[m.entries[0].functionIndex].body.length == 3;
+	}
+}
+
+test "a returning branch left out keeps what follows it" {
+	assert shape(earlyReturn(true, ["A"])) == shape(specialized(["A"]));
+	assert shape(earlyReturn(true, ["B"])) == shape(specialized(["B"]));
+	assert shape(earlyReturn(false, ["A"])) == shape(specialized(["A"]));
+}
+
 test "the kept declarations keep their order under the new indices" {
 	const m = specialized(["B"]);
 	assert decided(m);
