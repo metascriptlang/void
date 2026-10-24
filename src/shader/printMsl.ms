@@ -32,7 +32,14 @@ import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } f
 import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
 import { claimName } from "./names";
 import { readsFrom, strayWorkgroup } from "./specialize";
-import { binaryOperator, mathName } from "./spelling";
+import {
+	binaryOperator,
+	floatText,
+	isIntMin,
+	literalFault,
+	mathName,
+	pointed,
+} from "./spelling";
 
 // C++14 keywords, the Metal address spaces, attributes and types, and every function this
 // printer calls.
@@ -285,20 +292,18 @@ function declText(p: Printer, t: ShaderType, name: string): string {
 }
 
 function numberText(p: Printer, value: float64): string {
-	if (value != value || value - value != 0.0) {
-		return fail(p, "a literal that is not finite");
-	}
-	if (value == 0.0 && 1.0 / value < 0.0) { return "(-0.0)"; }
-	const text = String(value);
-	const whole = text.includes(".") || text.includes("e") ? text : text + ".0";
-	return value < 0.0 ? "(" + whole + ")" : whole;
+	const fault = literalFault(ScalarKind.F32, value);
+	if (fault != "") { return fail(p, fault); }
+	const text = pointed(floatText(value));
+	return text.startsWith("-") ? "(" + text + ")" : text;
 }
 
 function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
 	if (s == ScalarKind.Bool) { return value != 0.0 ? "true" : "false"; }
 	if (s == ScalarKind.F32) { return numberText(p, value); }
-	if (value != Math.floor(value)) { return fail(p, "an integer literal with a fraction"); }
-	if (s == ScalarKind.I32 && value == -2147483648.0) { return "(-2147483647 - 1)"; }
+	const fault = literalFault(s, value);
+	if (fault != "") { return fail(p, fault); }
+	if (isIntMin(s, value)) { return "(-2147483647 - 1)"; }
 	const text = String(value as int64) + (s == ScalarKind.U32 ? "u" : "");
 	return value < 0.0 ? "(" + text + ")" : text;
 }

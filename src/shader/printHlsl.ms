@@ -40,7 +40,14 @@ import {
 	structOrder,
 	unspecialized,
 } from "./irWalk";
-import { binaryOperator, mathName } from "./spelling";
+import {
+	binaryOperator,
+	floatText,
+	isIntMin,
+	literalFault,
+	mathName,
+	pointed,
+} from "./spelling";
 import { claimName } from "./names";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
@@ -313,13 +320,11 @@ function isNone(e: ShaderExpr): boolean {
 }
 
 function scalarLiteral(p: Printer, s: ScalarKind, v: float64): string {
-	if (v - v != 0.0) { return fail(p, "a literal that is not finite"); }
+	const fault = literalFault(s, v);
+	if (fault != "") { return fail(p, fault); }
 	return match (s) {
-		ScalarKind.F32 => {
-			const text = String(v);
-			return text.includes(".") || text.includes("e") ? text : text + ".0";
-		},
-		ScalarKind.I32 => String(v as int64),
+		ScalarKind.F32 => pointed(floatText(v)),
+		ScalarKind.I32 => isIntMin(s, v) ? "(-2147483647 - 1)" : String(v as int64),
 		ScalarKind.U32 => String(v as int64) + "u",
 		ScalarKind.Bool => v != 0.0 ? "true" : "false",
 	};

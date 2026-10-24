@@ -31,7 +31,13 @@ import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
 import { claimName } from "./names";
 import { readsFrom, strayWorkgroup } from "./specialize";
-import { binaryOperator, mathName } from "./spelling";
+import {
+	binaryOperator,
+	floatText,
+	isIntMin,
+	literalFault,
+	mathName,
+} from "./spelling";
 
 // WGSL keywords and reserved words (sections 15.1, 15.2), the predeclared types and enumerants
 // a declaration would shadow, and every builtin function this printer calls.
@@ -276,11 +282,9 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 }
 
 function numberText(p: Printer, value: float64): string {
-	if (value != value || value - value != 0.0) {
-		return refusal(p, "a literal that is not finite");
-	}
-	if (value == 0.0 && 1.0 / value < 0.0) { return "-0.0"; }
-	return String(value);
+	const fault = literalFault(ScalarKind.F32, value);
+	if (fault != "") { return refusal(p, fault); }
+	return floatText(value);
 }
 
 function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
@@ -289,8 +293,9 @@ function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
 		const text = numberText(p, value) + "f";
 		return value < 0.0 || text.startsWith("-") ? "(" + text + ")" : text;
 	}
-	if (value != Math.floor(value)) { return refusal(p, "an integer literal with a fraction"); }
-	if (s == ScalarKind.I32 && value == -2147483648.0) { return "(-2147483647i - 1i)"; }
+	const fault = literalFault(s, value);
+	if (fault != "") { return refusal(p, fault); }
+	if (isIntMin(s, value)) { return "(-2147483647i - 1i)"; }
 	const text = String(value as int64) + (s == ScalarKind.I32 ? "i" : "u");
 	return value < 0.0 ? "(" + text + ")" : text;
 }
