@@ -99,17 +99,22 @@ export struct RenderState {
 
 export const COLOR_MASK_ALL: BitSet<ColorChannel> = (15 as uint8) as BitSet<ColorChannel>;
 
-// Bit layout of `bits()`, low to high (field widths fit every enum above).
-const CULLING_SHIFT: int32 = 0;
-const DEPTH_WRITE_SHIFT: int32 = 2;
-const DEPTH_TEST_SHIFT: int32 = 3;
-const BLEND_SOURCE_SHIFT: int32 = 6;
-const BLEND_DESTINATION_SHIFT: int32 = 10;
-const BLEND_ALPHA_SOURCE_SHIFT: int32 = 14;
-const BLEND_ALPHA_DESTINATION_SHIFT: int32 = 18;
-const BLEND_OPERATION_SHIFT: int32 = 22;
-const BLEND_ALPHA_OPERATION_SHIFT: int32 = 25;
-const COLOR_MASK_SHIFT: int32 = 28;
+// Bit layout of `bits()`, low to high: one table read by both `bits` and `fromBits`.
+struct BitField {
+	shift: int32;
+	width: int32;
+}
+
+const CULLING: BitField = { shift: 0, width: 2 };
+const DEPTH_WRITE: BitField = { shift: 2, width: 1 };
+const DEPTH_TEST: BitField = { shift: 3, width: 3 };
+const BLEND_SOURCE: BitField = { shift: 6, width: 4 };
+const BLEND_DESTINATION: BitField = { shift: 10, width: 4 };
+const BLEND_ALPHA_SOURCE: BitField = { shift: 14, width: 4 };
+const BLEND_ALPHA_DESTINATION: BitField = { shift: 18, width: 4 };
+const BLEND_OPERATION: BitField = { shift: 22, width: 3 };
+const BLEND_ALPHA_OPERATION: BitField = { shift: 25, width: 3 };
+const COLOR_MASK: BitField = { shift: 28, width: 4 };
 
 // new h3d.mat.Pass(): back faces culled, depth written and tested with Less, no blending.
 export function defaults(this typeof RenderState): RenderState {
@@ -207,26 +212,29 @@ export function blends(this state: RenderState): boolean {
 		&& state.blendOperation == Operation.Add && state.blendAlphaOperation == Operation.Add);
 }
 
-function field(value: int32, shift: int32): uint32 {
-	return (value as uint32) << (shift as uint32);
+function field(value: int32, f: BitField): uint32 {
+	return (value as uint32) << (f.shift as uint32);
 }
 
-function extract(bits: uint32, shift: int32, width: int32): int32 {
-	const mask: uint32 = ((1 as uint32) << (width as uint32)) - 1;
-	return ((bits >> (shift as uint32)) & mask) as int32;
+function extract(bits: uint32, f: BitField): int32 {
+	return ((bits & fieldMask(f)) >> (f.shift as uint32)) as int32;
+}
+
+function fieldMask(f: BitField): uint32 {
+	return (((1 as uint32) << (f.width as uint32)) - 1) << (f.shift as uint32);
 }
 
 export function bits(this state: RenderState): uint32 {
-	return field(state.culling as int32, CULLING_SHIFT) |
-		field(state.depthWrite ? 1 : 0, DEPTH_WRITE_SHIFT) |
-		field(state.depthTest as int32, DEPTH_TEST_SHIFT) |
-		field(state.blendSource as int32, BLEND_SOURCE_SHIFT) |
-		field(state.blendDestination as int32, BLEND_DESTINATION_SHIFT) |
-		field(state.blendAlphaSource as int32, BLEND_ALPHA_SOURCE_SHIFT) |
-		field(state.blendAlphaDestination as int32, BLEND_ALPHA_DESTINATION_SHIFT) |
-		field(state.blendOperation as int32, BLEND_OPERATION_SHIFT) |
-		field(state.blendAlphaOperation as int32, BLEND_ALPHA_OPERATION_SHIFT) |
-		field((state.colorMask as uint32) as int32, COLOR_MASK_SHIFT);
+	return field(state.culling as int32, CULLING) |
+		field(state.depthWrite ? 1 : 0, DEPTH_WRITE) |
+		field(state.depthTest as int32, DEPTH_TEST) |
+		field(state.blendSource as int32, BLEND_SOURCE) |
+		field(state.blendDestination as int32, BLEND_DESTINATION) |
+		field(state.blendAlphaSource as int32, BLEND_ALPHA_SOURCE) |
+		field(state.blendAlphaDestination as int32, BLEND_ALPHA_DESTINATION) |
+		field(state.blendOperation as int32, BLEND_OPERATION) |
+		field(state.blendAlphaOperation as int32, BLEND_ALPHA_OPERATION) |
+		field((state.colorMask as uint32) as int32, COLOR_MASK);
 }
 
 // One line for logs and cache diagnostics, in the spirit of Heaps' CachedPipeline.getFields.
@@ -244,15 +252,68 @@ export function toString(this state: RenderState): string {
 // Pass.loadBits
 export function fromBits(this typeof RenderState, bits: uint32): RenderState {
 	return {
-		culling: extract(bits, CULLING_SHIFT, 2) as Face,
-		depthWrite: extract(bits, DEPTH_WRITE_SHIFT, 1) != 0,
-		depthTest: extract(bits, DEPTH_TEST_SHIFT, 3) as Compare,
-		blendSource: extract(bits, BLEND_SOURCE_SHIFT, 4) as Blend,
-		blendDestination: extract(bits, BLEND_DESTINATION_SHIFT, 4) as Blend,
-		blendAlphaSource: extract(bits, BLEND_ALPHA_SOURCE_SHIFT, 4) as Blend,
-		blendAlphaDestination: extract(bits, BLEND_ALPHA_DESTINATION_SHIFT, 4) as Blend,
-		blendOperation: extract(bits, BLEND_OPERATION_SHIFT, 3) as Operation,
-		blendAlphaOperation: extract(bits, BLEND_ALPHA_OPERATION_SHIFT, 3) as Operation,
-		colorMask: (extract(bits, COLOR_MASK_SHIFT, 4) as uint8) as BitSet<ColorChannel>,
+		culling: extract(bits, CULLING) as Face,
+		depthWrite: extract(bits, DEPTH_WRITE) != 0,
+		depthTest: extract(bits, DEPTH_TEST) as Compare,
+		blendSource: extract(bits, BLEND_SOURCE) as Blend,
+		blendDestination: extract(bits, BLEND_DESTINATION) as Blend,
+		blendAlphaSource: extract(bits, BLEND_ALPHA_SOURCE) as Blend,
+		blendAlphaDestination: extract(bits, BLEND_ALPHA_DESTINATION) as Blend,
+		blendOperation: extract(bits, BLEND_OPERATION) as Operation,
+		blendAlphaOperation: extract(bits, BLEND_ALPHA_OPERATION) as Operation,
+		colorMask: (extract(bits, COLOR_MASK) as uint8) as BitSet<ColorChannel>,
 	};
+}
+
+const LAYOUT: Vec<BitField> = [
+	CULLING,
+	DEPTH_WRITE,
+	DEPTH_TEST,
+	BLEND_SOURCE,
+	BLEND_DESTINATION,
+	BLEND_ALPHA_SOURCE,
+	BLEND_ALPHA_DESTINATION,
+	BLEND_OPERATION,
+	BLEND_ALPHA_OPERATION,
+	COLOR_MASK,
+];
+
+function fits(lastOrdinal: int32, f: BitField): boolean {
+	return lastOrdinal < (1 << f.width);
+}
+
+test "bit fields do not overlap and fill the word" {
+	let seen: uint32 = 0;
+	for (const f of LAYOUT) {
+		assert (seen & fieldMask(f)) == 0;
+		seen = seen | fieldMask(f);
+	}
+	assert seen == 0xFFFFFFFF;
+}
+
+test "every enum's last ordinal fits its field" {
+	assert fits(Face.Front as int32, CULLING);
+	assert fits(Compare.LessEqual as int32, DEPTH_TEST);
+	assert fits(Blend.OneMinusDestinationColor as int32, BLEND_SOURCE);
+	assert fits(Blend.OneMinusDestinationColor as int32, BLEND_DESTINATION);
+	assert fits(Blend.OneMinusDestinationColor as int32, BLEND_ALPHA_SOURCE);
+	assert fits(Blend.OneMinusDestinationColor as int32, BLEND_ALPHA_DESTINATION);
+	assert fits(Operation.Max as int32, BLEND_OPERATION);
+	assert fits(Operation.Max as int32, BLEND_ALPHA_OPERATION);
+	assert fits(COLOR_MASK_ALL as uint32 as int32, COLOR_MASK);
+}
+
+test "known states pack to the bits the pipeline cache keys were built on" {
+	const defaults: uint32 = 0xF0040435;
+	const alpha: uint32 = 0xF01818B5;
+	const unwritten: uint32 = 0x00040402;
+	const subtract: uint32 = 0xF48080B5;
+	assert RenderState.defaults().bits() == defaults;
+	assert RenderState.defaults().withBlendMode(BlendMode.Alpha).bits() == alpha;
+	assert RenderState.defaults()
+		.withDepth(false, Compare.Always)
+		.withCulling(Face.Front)
+		.withColorMask(false, false, false, false)
+		.bits() == unwritten;
+	assert RenderState.defaults().withBlendMode(BlendMode.Subtract).bits() == subtract;
 }
