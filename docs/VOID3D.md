@@ -5914,6 +5914,30 @@ Pinned by `gltfCheck.ms`: both media types load the same vertices as the bytes s
 wrong type, missing `;base64`, a malformed payload or bytes alongside are refused; a short
 payload is out of range.
 
+### A second uv set for the occlusion map, as built (2026-10-24)
+
+A glTF occlusion map at `texCoord` 1 is read at the primitive's `TEXCOORD_1`, as Bevy reads it:
+its loader gives each texture role a channel (`bevy_gltf/src/loader/mod.rs:1369-1471`,
+`uv_channel` in `loader/gltf_ext/material.rs:57`), the mesh carries `ATTRIBUTE_UV_1`, and
+`pbr_fragment.wesl` samples occlusion at `uv_b` under `STANDARD_MATERIAL_OCCLUSION_UV_B`, moved by
+the same `uv_transform` as the first set (`:135`). Here:
+
+- `MeshData.addUvB` appends two floats per vertex after the tangent and before the skin. A mesh
+  with a second set takes one of four layouts (`VertexLayout.*UvB`, `gpu3d.c` `LAYOUT_*_UV_B`).
+- The program key's bit 18, `occlusionUvB` (`withOcclusionUvB`, which needs `pbrMaps`), is the
+  shader feature `OCCLUSION_UV_B`; `programKeys.txt` declares it on every pbr-maps row, so it is
+  declared wherever its pbr-maps key is. A shadow caster drops it with the other pbr bits.
+- The loader keeps the other roles at `TEXCOORD_0`. Bevy falls back to channel 0 with a warning
+  for a set past 1; here a set a role cannot read is `UnsupportedMaterial`, and a missing
+  `TEXCOORD_1` is `MissingTexCoord`. The second set follows the vertex sources, so flat-normal
+  duplication and MikkTSpace's appended vertices keep their corner's value.
+
+Pinned by `pbrMapsCheck.ms` (the CPU shader reads occlusion at the second set and the packed
+texel at the first), `programKeyCheck.ms` (bit 18, declared on the uv-b layout in every pbr-maps
+variant, the same slots and block, the caster unchanged), `skinMeshCheck.ms` (the attribute's
+place before the skin, the layouts, the refusals) and `gltfMaterialCheck.ms` (`TEXCOORD_1` into
+the mesh and the key; a missing attribute or `texCoord` 2 refused).
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
@@ -5928,7 +5952,7 @@ default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloa
 | 2 | `transform_hierarchy <preset>`: windowless propagation; presets `large_tree` (non-uniform, depth 18, branch 8), `wide_tree`, `deep_tree`, `chain` (depth 2500), `update_leaves`, `update_shallow`, `humanoids_active` / `_inactive` / `_mixed` (4000 rigs of 68 nodes) (`transform_hierarchy.rs:29-156`) | `Scene3D` sync, CPU only | built: `tests/bench/benchHierarchy.ms` with `BENCH_HIERARCHY=<preset>`, group nodes moved with `setLocal` and synced with `syncWorld` each frame. Bevy's rng is unseeded and its step time-driven (`:293`, `:258-263`), so the trees match in shape and update probability, not node for node |
 | 3 | `many_materials`: 10x10 cubes, one material each, every base colour rewritten each frame, a shadowed directional light with Bevy's default 4 cascades (`many_materials.rs:15`, `:71-74`, `:91-106`; `bevy_light/src/cascade.rs:142-156`) | material uniform writes, one shadow map; a material colour in every lit and pbr block (`gpu3d.ms` `MATERIAL_COLOR`, "Material colour, as built") | cascades, or Bevy run against one |
 | 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map; flat normals for `Fox.glb`'s primitive, which has no `NORMAL` ("glTF flat normals, as built"; the asset itself not loaded since) | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade |
-| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU; the loader decodes the asset's `data:` URI buffer ("glTF buffer data: URIs, as built"), and refuses `$.materials[0]`, whose occlusion map reads `TEXCOORD_1` (`gltf.ms` `textureInfoIndex`; probe 2026-10-24) | a second UV set; whatever the load meets after it |
+| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU; the loader decodes the asset's `data:` URI buffer ("glTF buffer data: URIs, as built") and reads its occlusion map at `TEXCOORD_1` ("A second uv set for the occlusion map, as built"; the asset itself not loaded since) | whatever the load meets next |
 | 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | 4 point lights per draw (`gpu3d.ms` `MAX_POINT_LIGHTS`) | clustered forward lighting (Bevy's clusters, not read yet); until then not comparable |
 
 Measured per arm: the median and p99 of the frame time over a fixed number of frames after a
