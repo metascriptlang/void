@@ -16,8 +16,10 @@
 	#define VOID_CAPTURE_D3D11 1
 #elif defined(__APPLE__)
 	#include <TargetConditionals.h>
-	#if TARGET_OS_OSX
-		#define VOID_CAPTURE_METAL 1
+	#define VOID_CAPTURE_METAL 1
+	#if TARGET_OS_IPHONE
+		#include <errno.h>
+		#include <sys/stat.h>
 	#endif
 #endif
 
@@ -255,6 +257,25 @@ int voidCaptureWritePng(int slot, const char *path) {
 		rgb[i * 3u + 1] = s->rgba[i * 4u + 1];
 		rgb[i * 3u + 2] = s->rgba[i * 4u + 2];
 	}
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	// The app bundle is read-only, so a relative path lands under the container's Documents,
+	// which `devicectl device copy from --domain-type appDataContainer` reads back.
+	char full[1024];
+	const char *home = getenv("HOME");
+	if (!home || path[0] == '/'
+		|| snprintf(full, sizeof full, "%s/Documents/%s", home, path) >= (int)sizeof full) {
+		free(rgb);
+		return 0;
+	}
+	for (char *p = full + strlen(home) + 1; *p; p++) {
+		if (*p != '/') continue;
+		*p = 0;
+		int made = mkdir(full, 0755) == 0 || errno == EEXIST;
+		*p = '/';
+		if (!made) { free(rgb); return 0; }
+	}
+	path = full;
+#endif
 	int ok = stbi_write_png(path, s->width, s->height, 3, rgb, s->width * 3) != 0 ? 1 : 0;
 	free(rgb);
 	return ok;
