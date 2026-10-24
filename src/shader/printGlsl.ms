@@ -115,11 +115,11 @@ enum Nesting {
 	Switch,
 }
 
-class Pair {
-	texture: int32 = -1;
-	sampler: int32 = -1;
-	name: string = "";
-	unit: int32 = 0;
+struct Pair {
+	texture: int32;
+	sampler: int32;
+	name: string;
+	unit: int32;
 }
 
 class Printer {
@@ -467,7 +467,7 @@ function narrowed(text: string, to: ShaderType): string {
 }
 
 function pairOf(p: Printer, texture: ShaderExpr, sampler: ShaderExpr | null): Pair {
-	let none = new Pair();
+	const none: Pair = { texture: -1, sampler: -1, name: "", unit: 0 };
 	if (texture.kind != ExprKind.Resource) {
 		fail(p, "a texture passed as a value: GL samples through combined samplers of bindings");
 		return none;
@@ -1373,11 +1373,12 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 		if (s.texture < 0) { continue; }
 		if (!units.includes(s.nativeName)) { units.push(s.nativeName); }
 		if (s.stage == entry.stage) {
-			let pair = new Pair();
-			pair.texture = s.texture;
-			pair.sampler = s.resource;
-			pair.name = claimFixed(p, s.nativeName, "combined sampler");
-			pair.unit = units.indexOf(s.nativeName) as int32;
+			const pair: Pair = {
+				texture: s.texture,
+				sampler: s.resource,
+				name: claimFixed(p, s.nativeName, "combined sampler"),
+				unit: units.indexOf(s.nativeName) as int32,
+			};
 			p.pairs.push(pair);
 		}
 	}
