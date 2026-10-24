@@ -44,6 +44,7 @@ import {
 	GPUSamplerDescriptor,
 	GPUShaderAttribute,
 	GPUShaderBinding,
+	GPUShaderStage,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUStencilFaceState,
@@ -87,6 +88,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	checkedVisibility,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
@@ -761,13 +763,10 @@ function bindingKind(kind: string): BindingKind {
 	};
 }
 
-function vertexStage(stage: string): boolean {
-	const value = match (stage) {
-		"vertex" => 1,
-		"fragment" | "compute" => 0,
-		_ => stopOnMember("GPUShaderBinding.stage", stage),
-	};
-	return value == 1;
+function vertexStage(binding: GPUShaderBinding): boolean {
+	const both = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	if (binding.visibility == both) { stop(`shader binding ${binding.binding} is visible to vertex and fragment, which is not ported to metal yet`); }
+	return binding.visibility == (GPUShaderStage.VERTEX as int32);
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
@@ -1398,14 +1397,11 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
-		const stageName: string = descriptor.bindings[i].stage;
-		if ((stageName == "compute") != compute) {
-			stop(`shader binding ${descriptor.bindings[i].binding} stage '${stageName}' does not match a ${compute ? "compute" : "vertex and fragment"} module`);
-		}
+		checkedVisibility(descriptor.bindings[i], compute);
 		const native: NativeBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: bindingKind(kindName),
-			vertexStage: vertexStage(stageName),
+			vertexStage: vertexStage(descriptor.bindings[i]),
 			computeStage: compute,
 			writable: bindingWritable(descriptor.bindings[i]),
 			nativeSlot: descriptor.bindings[i].nativeSlot,

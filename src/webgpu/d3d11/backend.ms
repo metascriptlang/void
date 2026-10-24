@@ -40,6 +40,7 @@ import {
 	GPUStencilFaceState,
 	GPUShaderAttribute,
 	GPUShaderBinding,
+	GPUShaderStage,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUSupportedFeatures,
@@ -86,6 +87,7 @@ import {
 	checkedWriteBuffer,
 	featureBit,
 	checkedIntegerTexturePairs,
+	checkedVisibility,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
@@ -438,6 +440,7 @@ struct NativeBinding {
 	binding: int32;
 	kind: BindingKind;
 	vertexStage: boolean;
+	fragmentStage: boolean;
 	computeStage: boolean;
 	writable: boolean;
 	nativeSlot: int32;
@@ -868,14 +871,8 @@ function bindingKind(kind: string): BindingKind {
 	};
 }
 
-function vertexStage(stage: string): boolean {
-	const value = match (stage) {
-		"vertex" => 1,
-		"fragment" => 0,
-		"compute" => 0,
-		_ => stopOnMember("GPUShaderBinding.stage", stage),
-	};
-	return value == 1;
+function readsStage(binding: NativeBinding, vertex: int32): boolean {
+	return vertex == 1 ? binding.vertexStage : binding.fragmentStage;
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
@@ -1923,15 +1920,14 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
-		const stageName: string = descriptor.bindings[i].stage;
-		if ((stageName == "compute") != compute) {
-			stop(`shader binding ${descriptor.bindings[i].binding} stage '${stageName}' does not match a ${compute ? "compute" : "vertex and fragment"} module`);
-		}
+		checkedVisibility(descriptor.bindings[i], compute);
+		const visibility = descriptor.bindings[i].visibility;
 		const native: NativeBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: bindingKind(kindName),
-			vertexStage: vertexStage(stageName),
-			computeStage: stageName == "compute",
+			vertexStage: (visibility & (GPUShaderStage.VERTEX as int32)) != 0,
+			fragmentStage: (visibility & (GPUShaderStage.FRAGMENT as int32)) != 0,
+			computeStage: compute,
 			writable: bindingWritable(descriptor.bindings[i]),
 			nativeSlot: descriptor.bindings[i].nativeSlot,
 			size: descriptor.bindings[i].size,
@@ -2719,7 +2715,10 @@ function applyPipeline(p: int32, s: int32): void {
 	d3dVsSetShader(context, shaders.slots[s].vertex);
 	d3dPsSetShader(context, shaders.slots[s].fragment);
 	for (let u = 0; u < shaders.slots[s].uniformCount && !offsetUniforms; u++) {
-		d3dSetConstantBuffer(context, shaders.slots[s].uniforms[u].vertexStage ? 1 : 0, shaders.slots[s].uniforms[u].nativeSlot, shaders.slots[s].constantBuffers[u]);
+		for (let vertex = 0; vertex < 2; vertex++) {
+			if (!readsStage(shaders.slots[s].uniforms[u], vertex)) { continue; }
+			d3dSetConstantBuffer(context, vertex, shaders.slots[s].uniforms[u].nativeSlot, shaders.slots[s].constantBuffers[u]);
+		}
 	}
 	forgetAppliedUniforms();
 	bound.vertexDirty = true;
@@ -2785,18 +2784,24 @@ function applyResources(s: int32): void {
 		if (binding.kind == BindingKind.StorageTexture) { stop("a storage texture in a render stage is not ported to d3d11"); }
 		if (binding.kind == BindingKind.Texture || binding.kind == BindingKind.StorageBuffer) {
 			const view = binding.kind == BindingKind.Texture ? views.slots[views.slotIndex(bindGroups.slots[g].entries[e].textureView.id)].shaderResource : bindGroups.slots[g].srv[e];
-			const cached = (binding.vertexStage ? 0 : MAX_STAGE_SHADER_RESOURCES) + binding.nativeSlot;
-			if (nativeBinds.shaderResource[cached] == view) { continue; }
-			d3dSetShaderResource(context, binding.vertexStage ? 1 : 0, binding.nativeSlot, view);
-			nativeBinds.shaderResource[cached] = view;
-			stats.shaderResources += 1;
+			for (let vertex = 0; vertex < 2; vertex++) {
+				if (!readsStage(binding, vertex)) { continue; }
+				const cached = (vertex == 1 ? 0 : MAX_STAGE_SHADER_RESOURCES) + binding.nativeSlot;
+				if (nativeBinds.shaderResource[cached] == view) { continue; }
+				d3dSetShaderResource(context, vertex, binding.nativeSlot, view);
+				nativeBinds.shaderResource[cached] = view;
+				stats.shaderResources += 1;
+			}
 		} else {
 			const sampler = samplers.slots[samplers.slotIndex(bindGroups.slots[g].entries[e].sampler.id)].native;
-			const cached = (binding.vertexStage ? 0 : MAX_STAGE_SAMPLERS) + binding.nativeSlot;
-			if (nativeBinds.sampler[cached] == sampler) { continue; }
-			d3dSetSampler(context, binding.vertexStage ? 1 : 0, binding.nativeSlot, sampler);
-			nativeBinds.sampler[cached] = sampler;
-			stats.samplers += 1;
+			for (let vertex = 0; vertex < 2; vertex++) {
+				if (!readsStage(binding, vertex)) { continue; }
+				const cached = (vertex == 1 ? 0 : MAX_STAGE_SAMPLERS) + binding.nativeSlot;
+				if (nativeBinds.sampler[cached] == sampler) { continue; }
+				d3dSetSampler(context, vertex, binding.nativeSlot, sampler);
+				nativeBinds.sampler[cached] = sampler;
+				stats.samplers += 1;
+			}
 		}
 	}
 }
@@ -2820,7 +2825,10 @@ function applyUniforms(s: int32): void {
 			if (constants > MAX_BLOCK_CONSTANTS || offset + constants * 16 > roundUp256(buffers.slots[b].size)) {
 				stop(`uniform binding ${block.binding} of ${block.size} bytes at ${offset} does not fit one constant buffer view`);
 			}
-			d3dSetConstantBufferRange(context1, block.vertexStage ? 1 : 0, block.nativeSlot, buffers.slots[b].native, offset / 16, constants);
+			for (let vertex = 0; vertex < 2; vertex++) {
+				if (!readsStage(block, vertex)) { continue; }
+				d3dSetConstantBufferRange(context1, vertex, block.nativeSlot, buffers.slots[b].native, offset / 16, constants);
+			}
 			bound.uniformBuffer[u] = buffers.slots[b].id;
 			bound.uniformFirst[u] = offset;
 		} else {

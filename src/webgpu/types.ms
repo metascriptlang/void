@@ -54,6 +54,12 @@ export enum GPUTextureUsage {
 	RENDER_ATTACHMENT = 0x10,
 }
 
+export enum GPUShaderStage {
+	VERTEX = 0x1,
+	FRAGMENT = 0x2,
+	COMPUTE = 0x4,
+}
+
 export enum GPUColorWrite {
 	RED = 0x1,
 	GREEN = 0x2,
@@ -238,7 +244,6 @@ export struct GPUSamplerDescriptor {
 // A shader module carries one stage's source per entry, compiled for the backend this build
 // targets, and the reflection that maps a WebGPU binding to the backend's register or name.
 export type GPUShaderBindingKind = "uniform" | "texture" | "sampler" | "storage-buffer" | "storage-texture";
-export type GPUShaderStage = "vertex" | "fragment" | "compute";
 export type GPUBufferBindingType = "uniform" | "storage" | "read-only-storage";
 export type GPUStorageTextureAccess = "write-only" | "read-only" | "read-write";
 
@@ -248,7 +253,7 @@ export struct GPUShaderBinding {
 	group: int32;
 	binding: int32;
 	kind: GPUShaderBindingKind;
-	stage: GPUShaderStage;
+	visibility: int32;
 	size: int32;
 	sampleType: GPUTextureSampleType;
 	samplerType: GPUSamplerBindingType;
@@ -528,6 +533,14 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 				stop(`sampler binding ${sampler.binding} is '${samplerType == "" ? "filtering" : samplerType}' but pairs with the ${sampleType} texture binding ${texture.binding}; an integer texture needs a non-filtering sampler`);
 			}
 		}
+	}
+}
+
+@noinline export function checkedVisibility(binding: GPUShaderBinding, compute: boolean): void {
+	const render = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	const allowed = compute ? GPUShaderStage.COMPUTE as int32 : render;
+	if (binding.visibility == 0 || (binding.visibility & ~allowed) != 0) {
+		stop(`shader binding ${binding.binding} has visibility ${binding.visibility}, but a ${compute ? "compute" : "vertex and fragment"} module allows only ${allowed}`);
 	}
 }
 

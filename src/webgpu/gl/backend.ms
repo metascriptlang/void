@@ -86,6 +86,7 @@ import {
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
 	checkedIntegerTexturePairs,
+	checkedVisibility,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
@@ -1052,10 +1053,6 @@ function bindingKind(kind: string): BindingKind {
 	};
 }
 
-@noinline function checkStage(stage: string): void {
-	if (stage != "vertex" && stage != "fragment" && stage != "compute") { stopOnMember("GPUShaderBinding.stage", stage); }
-}
-
 function cacheBindBuffer(target: int32, name: uint32): void {
 	if (target == GL_ARRAY_BUFFER) {
 		if (cache.vertexBuffer != name) {
@@ -1933,11 +1930,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		if (kindName == "") { continue; }
 		const kind = bindingKind(kindName);
 		const binding = descriptor.bindings[i].binding;
-		const stageName: string = descriptor.bindings[i].stage;
-		checkStage(stageName);
-		if ((stageName == "compute") != compute) {
-			stop(`shader binding ${binding} stage '${stageName}' does not match a ${compute ? "compute" : "vertex and fragment"} module`);
-		}
+		checkedVisibility(descriptor.bindings[i], compute);
 		const expectedGroup = kind == BindingKind.Uniform ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
 		if (descriptor.bindings[i].group != expectedGroup) {
 			stop(`shader binding ${binding} (${kind.toString()}) belongs in group ${expectedGroup}, not ${descriptor.bindings[i].group}`);

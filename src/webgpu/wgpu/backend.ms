@@ -42,6 +42,7 @@ import {
 	GPUSampler,
 	GPUSamplerDescriptor,
 	GPUShaderBinding,
+	GPUShaderStage,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUStencilFaceState,
@@ -83,6 +84,7 @@ import {
 	checkedWriteBuffer,
 	featureBit,
 	checkedIntegerTexturePairs,
+	checkedVisibility,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
@@ -262,9 +264,6 @@ const MIPMAP_NEAREST = 1;
 const MIPMAP_LINEAR = 2;
 const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 
-const STAGE_VERTEX = 0x1;
-const STAGE_FRAGMENT = 0x2;
-const STAGE_COMPUTE = 0x4;
 const LAYOUT_UNIFORM = 0;
 const LAYOUT_TEXTURE = 1;
 const LAYOUT_SAMPLER = 2;
@@ -836,15 +835,6 @@ function bindingKind(kind: string): BindingKind {
 		"storage-buffer" => BindingKind.StorageBuffer,
 		"storage-texture" => BindingKind.StorageTexture,
 		_ => stopOnMember("GPUShaderBinding.kind", kind) as BindingKind,
-	};
-}
-
-function visibility(stage: string): int32 {
-	return match (stage) {
-		"vertex" => STAGE_VERTEX,
-		"fragment" => STAGE_FRAGMENT,
-		"compute" => STAGE_COMPUTE,
-		_ => stopOnMember("GPUShaderBinding.stage", stage),
 	};
 }
 
@@ -1422,15 +1412,12 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
-		const stageName: string = descriptor.bindings[i].stage;
-		if ((stageName == "compute") != compute) {
-			stop(`shader binding ${descriptor.bindings[i].binding} stage '${stageName}' does not match a ${compute ? "compute" : "vertex and fragment"} module`);
-		}
+		checkedVisibility(descriptor.bindings[i], compute);
 		const kind = bindingKind(kindName);
 		const native: ShaderBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: kind,
-			visibility: visibility(stageName),
+			visibility: descriptor.bindings[i].visibility,
 			bindingType: bindingType(descriptor.bindings[i], kind),
 			viewDimension: bindingViewDimension(descriptor.bindings[i].viewDimension),
 			storageFormat: kind == BindingKind.StorageTexture ? storageFormatOf(descriptor.bindings[i].storageFormat, "GPUShaderBinding.storageFormat") : 0,
@@ -1533,7 +1520,7 @@ function packLayoutEntry(
 	}
 	const writable = (native.kind == BindingKind.StorageBuffer && native.bindingType == BUFFER_STORAGE)
 		|| (native.kind == BindingKind.StorageTexture && native.bindingType != ACCESS_READ_ONLY);
-	if (writable && native.visibility == STAGE_VERTEX) {
+	if (writable && (native.visibility & (GPUShaderStage.VERTEX as int32)) != 0) {
 		stop(`shader binding ${native.binding} is writable storage in the vertex stage, which WebGPU does not allow`);
 	}
 	if (native.kind == BindingKind.StorageTexture && (native.viewDimension == VIEW_CUBE || native.viewDimension == VIEW_CUBE_ARRAY)) {
