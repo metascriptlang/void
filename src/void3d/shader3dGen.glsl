@@ -818,12 +818,6 @@ layout(binding=0) uniform vertexParams {
     vec4 cameraUp;
     vec4 cameraPosition;
 };
-#ifndef SKINNED
-layout(binding=4) uniform modelParams {
-    mat4 model;
-    mat4 normalModel;
-};
-#endif
 #ifdef SKINNED
 layout(binding=7) uniform skinParams {
     vec4 skinRows[192];
@@ -838,6 +832,10 @@ in vec4 skinJoints;
 #ifdef SKINNED
 in vec4 skinWeights;
 #endif
+in vec4 instanceRow0;
+in vec4 instanceRow1;
+in vec4 instanceRow2;
+in vec4 instanceColor;
 out vec3 worldPosition;
 out vec3 worldNormal;
 out vec4 baseColor;
@@ -851,7 +849,6 @@ mat4 skinWorld(vec4 joints, vec4 weights) {
     return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
-#ifdef SKINNED
 vec3 skinNormal(mat4 world, vec3 normal_1) {
     mat3 linear = mat3(world);
     vec3 a = cross(linear[1], linear[2]);
@@ -859,6 +856,10 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     vec3 c = cross(linear[0], linear[1]);
     float direction = (dot(linear[0], a) < 0.0) ? -1.0 : 1.0;
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
+}
+#ifndef SKINNED
+mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
+    return transpose(mat4(row0, row1, row2, vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
 void main() {
@@ -871,10 +872,11 @@ void main() {
     gl_Position = (viewProj * world);
     return;
 #else
-    vec4 world_1 = model * vec4(position, 1.0);
+    mat4 matrix_1 = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
+    vec4 world_1 = matrix_1 * vec4(position, 1.0);
     worldPosition = world_1.xyz;
-    worldNormal = (mat3(normalModel) * normal);
-    baseColor = color;
+    worldNormal = skinNormal(matrix_1, normal);
+    baseColor = (color * instanceColor);
     gl_Position = (viewProj * world_1);
     return;
 #endif
@@ -1551,12 +1553,6 @@ layout(binding=0) uniform vertexParams {
     vec4 cameraUp;
     vec4 cameraPosition;
 };
-#if !defined(SKINNED) && !defined(INSTANCED)
-layout(binding=4) uniform modelParams {
-    mat4 model;
-    mat4 normalModel;
-};
-#endif
 #ifdef SKINNED
 layout(binding=7) uniform skinParams {
     vec4 skinRows[192];
@@ -1578,18 +1574,10 @@ in vec4 skinJoints;
 #ifdef SKINNED
 in vec4 skinWeights;
 #endif
-#ifdef INSTANCED
 in vec4 instanceRow0;
-#endif
-#ifdef INSTANCED
 in vec4 instanceRow1;
-#endif
-#ifdef INSTANCED
 in vec4 instanceRow2;
-#endif
-#ifdef INSTANCED
 in vec4 instanceColor;
-#endif
 #ifdef NORMAL_MAP
 out vec4 worldTangent;
 #endif
@@ -1610,7 +1598,6 @@ mat4 skinWorld(vec4 joints, vec4 weights) {
     return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
-#if defined(SKINNED) || (!defined(SKINNED) && defined(INSTANCED))
 vec3 skinNormal(mat4 world, vec3 normal_1) {
     mat3 linear = mat3(world);
     vec3 a = cross(linear[1], linear[2]);
@@ -1619,8 +1606,12 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     float direction = (dot(linear[0], a) < 0.0) ? -1.0 : 1.0;
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
 }
+#ifdef NORMAL_MAP
+float handednessOf(mat4 matrix) {
+    return (determinant(mat3(matrix)) < 0.0) ? -1.0 : 1.0;
+}
 #endif
-#if !defined(SKINNED) && defined(INSTANCED)
+#ifndef SKINNED
 mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
     return transpose(mat4(row0, row1, row2, vec4(0.0, 0.0, 0.0, 1.0)));
 }
@@ -1629,11 +1620,10 @@ void main() {
 #ifdef SKINNED
     mat4 matrix = skinWorld(skinJoints, skinWeights);
     vec4 world = matrix * vec4(position, 1.0);
-    float handedness = (determinant(mat3(matrix)) < 0.0) ? -1.0 : 1.0;
     worldPosition = world.xyz;
     worldNormal = skinNormal(matrix, normal);
 #ifdef NORMAL_MAP
-    worldTangent = vec4((mat3(matrix) * tangent.xyz), (tangent.w * handedness));
+    worldTangent = vec4((mat3(matrix) * tangent.xyz), (tangent.w * handednessOf(matrix)));
 #endif
     surfaceUv = uv;
 #ifdef OCCLUSION_UV_B
@@ -1643,33 +1633,20 @@ void main() {
     gl_Position = (viewProj * world);
     return;
 #else
-#ifdef INSTANCED
     mat4 matrix_1 = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
     vec4 world_1 = matrix_1 * vec4(position, 1.0);
     worldPosition = world_1.xyz;
     worldNormal = skinNormal(matrix_1, normal);
 #ifdef NORMAL_MAP
-    worldTangent = vec4((mat3(matrix_1) * tangent.xyz), tangent.w);
-#endif
-    surfaceUv = uv;
-    baseColor = (color * instanceColor);
-    gl_Position = (viewProj * world_1);
-    return;
-#else
-    vec4 world_2 = model * vec4(position, 1.0);
-    worldPosition = world_2.xyz;
-    worldNormal = (mat3(normalModel) * normal);
-#ifdef NORMAL_MAP
-    worldTangent = vec4((mat3(model) * tangent.xyz), tangent.w);
+    worldTangent = vec4((mat3(matrix_1) * tangent.xyz), (tangent.w * handednessOf(matrix_1)));
 #endif
     surfaceUv = uv;
 #ifdef OCCLUSION_UV_B
     surfaceUvB = uvB;
 #endif
-    baseColor = color;
-    gl_Position = (viewProj * world_2);
+    baseColor = (color * instanceColor);
+    gl_Position = (viewProj * world_1);
     return;
-#endif
 #endif
 }
 @end
@@ -2586,17 +2563,6 @@ layout(binding=0) uniform vertexParams {
     vec4 cameraUp;
     vec4 cameraPosition;
 };
-#if !defined(SKINNED) && !defined(INSTANCED) && defined(NORMAL_MRT)
-layout(binding=4) uniform modelParams {
-    mat4 model;
-    mat4 normalModel;
-};
-#endif
-#if !defined(SKINNED) && !defined(INSTANCED) && !defined(NORMAL_MRT)
-layout(binding=4) uniform modelTransformParams {
-    mat4 model;
-};
-#endif
 #ifdef SKINNED
 layout(binding=7) uniform skinParams {
     vec4 skinRows[192];
@@ -2618,18 +2584,10 @@ in vec4 skinJoints;
 #ifdef SKINNED
 in vec4 skinWeights;
 #endif
-#ifdef INSTANCED
 in vec4 instanceRow0;
-#endif
-#ifdef INSTANCED
 in vec4 instanceRow1;
-#endif
-#ifdef INSTANCED
 in vec4 instanceRow2;
-#endif
-#ifdef INSTANCED
 in vec4 instanceColor;
-#endif
 #ifdef NORMAL_MRT
 out vec3 worldNormal;
 #endif
@@ -2645,7 +2603,7 @@ mat4 skinWorld(vec4 joints, vec4 weights) {
     return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
-#if (defined(SKINNED) && defined(NORMAL_MRT)) || (!defined(SKINNED) && defined(INSTANCED) && defined(NORMAL_MRT))
+#ifdef NORMAL_MRT
 vec3 skinNormal(mat4 world, vec3 normal_1) {
     mat3 linear = mat3(world);
     vec3 a = cross(linear[1], linear[2]);
@@ -2655,18 +2613,9 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
 }
 #endif
-#if !defined(SKINNED) && defined(INSTANCED)
+#ifndef SKINNED
 mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
     return transpose(mat4(row0, row1, row2, vec4(0.0, 0.0, 0.0, 1.0)));
-}
-#endif
-#if !defined(SKINNED) && !defined(INSTANCED)
-mat4 unlitModel() {
-#ifdef NORMAL_MRT
-    return model;
-#else
-    return model;
-#endif
 }
 #endif
 void main() {
@@ -2680,7 +2629,6 @@ void main() {
     baseColor = color;
     return;
 #else
-#ifdef INSTANCED
     mat4 matrix_1 = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
     gl_Position = ((viewProj * matrix_1) * vec4(position, 1.0));
 #ifdef NORMAL_MRT
@@ -2689,15 +2637,6 @@ void main() {
     surfaceUv = uv;
     baseColor = (color * instanceColor);
     return;
-#else
-    gl_Position = ((viewProj * unlitModel()) * vec4(position, 1.0));
-#ifdef NORMAL_MRT
-    worldNormal = (mat3(normalModel) * normal);
-#endif
-    surfaceUv = uv;
-    baseColor = color;
-    return;
-#endif
 #endif
 }
 @end
