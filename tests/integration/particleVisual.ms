@@ -17,7 +17,9 @@ import {
 	ParticleSystem, playSystem, updateSystem, POS_X, POS_Y, POS_Z, AGE, FRAME,
 } from "../../src/particles/system";
 import { AtlasTile } from "../../src/void3d/billboard";
-import { ParticleWriter3D, writeParticles } from "../../src/void3d/particleWriter";
+import {
+	ParticleWriter3D, PARTICLE_VISUAL_INSTANCE_STRIDE, writeParticles,
+} from "../../src/void3d/particleWriter";
 import { Camera3D, CameraView, ProjectionKind } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
 import {
@@ -62,8 +64,8 @@ let streams: Vec<MeshId> = [];
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let valuesA: Vec<float32> = new Array(16);
-let valuesB: Vec<float32> = new Array(16);
+let valuesA: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE);
+let valuesB: Vec<float32> = new Array(PARTICLE_VISUAL_INSTANCE_STRIDE);
 let stage: int32 = 0;
 let failedChecks: int32 = 0;
 
