@@ -85,3 +85,6 @@ int macHostDrawableHeight(void) { return (int)[hostedLayer() drawableSize].heigh
 int macHostLayerDrawableWidth(long long layer) {
 	return (int)[(__bridge CAMetalLayer *)(void *)(intptr_t)layer drawableSize].width;
 }
+
+void macHostHide(void) { [s_window orderOut:nil]; }
+void macHostShow(void) { [s_window orderFrontRegardless]; }

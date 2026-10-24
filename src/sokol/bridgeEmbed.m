@@ -260,7 +260,16 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 
 void voidPlatformSurfaceResize(void *surface, int w, int h) { fitLayer((MacSurface *)surface, w, h); }
 
-int voidPlatformSurfaceReady(void *surface) { return voidPresentGateAdmits(((MacSurface *)surface)->gate); }
+static int windowIsVisible(MacSurface *s) {
+	if (!s->view) return 1;
+	NSWindow *window = ((__bridge NSView *)s->view).window;
+	return window != nil && (window.occlusionState & NSWindowOcclusionStateVisible) != 0;
+}
+
+int voidPlatformSurfaceReady(void *surface) {
+	MacSurface *s = (MacSurface *)surface;
+	return windowIsVisible(s) && voidPresentGateAdmits(s->gate);
+}
 
 // The drawable a commit presented stays readable until the surface's next frame, as the window's
 // does, so a capture after the view's frame reads the frame it showed.
