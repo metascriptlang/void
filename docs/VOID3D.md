@@ -5968,6 +5968,30 @@ bit is added. Pinned so far by `cascadesCheck.ms` (the bounds, the refusals, the
 each cascade holding its slice, the texel size kept as the view turns and the centre on whole
 texels, the caster depth).
 
+### Clustered lights: how the clusters reach the shader (decided 2026-10-24, not built)
+
+The light assignment is Bevy's CPU clustering (`bevy_light/src/cluster/assign.rs`, the
+Iterative Sphere Refinement of Persson's "Practical Clustered Shading"). How the shader reads the
+result does not follow Bevy, because neither of Bevy's two paths fits sokol:
+
+- Where storage buffers exist, Bevy binds three read-only storage buffers: the lights, each
+  cluster's offset and count, and the index list (`bevy_pbr/src/cluster/mod.rs:39`). sokol has
+  storage buffers only with `features.compute`, which means GL 4.3 or ES 3.1
+  (`sokol_gfx.h:10505,10632`), so WebGL2 has none. Using that path natively would also need
+  storage bindings in shady and a second shader variant per lit program.
+- On WebGL2, Bevy falls back to 16 KB uniform buffers holding 204 lights and packed `uvec4`
+  lists (`mod.rs:31-46`). sokol's GL backend applies a uniform block as plain `glUniform4fv`
+  arrays, not UBOs (`sokol_gfx.h:12687-12716`), and WebGL2 guarantees only 224 fragment uniform
+  vectors, so 16 KB does not fit.
+
+Decided with void-manager: data textures on every backend. The light records go in an RGBA32F
+texture. The per-cluster offset and count and the index list go in RGBA32UI textures, shady's
+`Texture2dU32`. Each is rewritten once a frame and read with `textureLoad`, the idiom the shadow
+lookups already use. This gives one shader for D3D11, Metal, GL, WebGPU and WebGL2. Filament
+keeps its froxel records in a texture on GL; that is prior art cited from memory, since no
+Filament checkout is read here. A texel fetch costs more than a buffer load. The `many_lights`
+bench against Bevy measures that cost, and a real gap there reopens the storage path.
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
