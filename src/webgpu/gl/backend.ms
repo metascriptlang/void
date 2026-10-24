@@ -439,6 +439,13 @@ enum BindingKind {
 	StorageTexture,
 }
 
+enum ViewDimension {
+	TwoD,
+	TwoDArray,
+	Cube,
+	ThreeD,
+}
+
 struct FormatInfo {
 	internalFormat: int32;
 	pixelFormat: int32;
@@ -521,7 +528,7 @@ struct ViewSlot {
 	color: boolean;
 	depth: boolean;
 	resolveFramebuffer: uint32;
-	dimension: string;
+	dimension: ViewDimension;
 	baseMip: int32;
 	mipCount: int32;
 	baseLayer: int32;
@@ -1754,16 +1761,26 @@ export function writeTexture<T>(
 	cacheRestoreUnit0();
 }
 
-function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): string {
+function viewDimensionName(dimension: ViewDimension): string {
+	if (dimension == ViewDimension.TwoD) { return "2d"; }
+	if (dimension == ViewDimension.TwoDArray) { return "2d-array"; }
+	if (dimension == ViewDimension.Cube) { return "cube"; }
+	return "3d";
+}
+
+function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): ViewDimension {
 	let name: string = descriptor.dimension;
 	if (name == "") { name = textures.slots[t].volume ? "3d" : (textures.slots[t].layers > 1 ? "2d-array" : "2d"); }
 	if ((name == "3d") != textures.slots[t].volume) {
 		stop(`GPUTextureViewDescriptor.dimension '${name}' does not match the ${textures.slots[t].volume ? "3d" : "2d"} GPUTexture ${textures.slots[t].id}`);
 	}
-	if (name != "2d" && name != "2d-array" && name != "cube" && name != "3d") {
-		stopOnMember("GPUTextureViewDescriptor.dimension", name);
-	}
-	return name;
+	return match (name) {
+		"2d" => ViewDimension.TwoD,
+		"2d-array" => ViewDimension.TwoDArray,
+		"cube" => ViewDimension.Cube,
+		"3d" => ViewDimension.ThreeD,
+		_ => stopOnMember("GPUTextureViewDescriptor.dimension", name) as ViewDimension,
+	};
 }
 
 export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
@@ -1780,17 +1797,17 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	const dimension = viewDimensionOf(descriptor, t);
 	let baseLayer = descriptor.baseArrayLayer;
 	let layerCount = descriptor.arrayLayerCount;
-	if (dimension == "3d") {
+	if (dimension == ViewDimension.ThreeD) {
 		checkedView3d(baseLayer, layerCount);
 		baseLayer = 0;
 		layerCount = 1;
 	} else {
-		if (dimension == "2d") { layerCount = 1; }
-		if (dimension == "cube") { layerCount = 6; }
+		if (dimension == ViewDimension.TwoD) { layerCount = 1; }
+		if (dimension == ViewDimension.Cube) { layerCount = 6; }
 		if (layerCount == 0) { layerCount = layers - baseLayer; }
 		checkedViewLayers(textures.slots[t].id, layers, baseLayer, layerCount);
 	}
-	if (dimension == "cube") {
+	if (dimension == ViewDimension.Cube) {
 		if (!textures.slots[t].cube) {
 			stop(`a cube view needs GPUTexture ${textures.slots[t].id} created square with exactly 6 layers and TEXTURE_BINDING: gl makes it a cube map`);
 		}
@@ -1807,7 +1824,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		mipCount: mipCount,
 		baseLayer: baseLayer,
 		layerCount: layerCount,
-		attachable: mipCount == 1 && layerCount == 1 && (dimension == "2d" || dimension == "2d-array" || dimension == "3d"),
+		attachable: mipCount == 1 && layerCount == 1 && dimension != ViewDimension.Cube,
 		storage: has(usage, GPUTextureUsage.STORAGE_BINDING as int32) && mipCount == 1,
 		swapchain: false,
 	};
@@ -1820,12 +1837,12 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	const target = textures.slots[t].target;
 	const dimension = views.slots[v].dimension;
 	const whole = views.slots[v].baseLayer == 0 && views.slots[v].layerCount == textures.slots[t].layers;
-	if (target == GL_TEXTURE_3D && dimension == "3d") { return; }
-	if (target == GL_TEXTURE_CUBE_MAP && dimension == "cube") { return; }
-	if (target == GL_TEXTURE_2D_ARRAY && dimension == "2d-array" && whole) { return; }
-	if (target == GL_TEXTURE_2D && dimension == "2d") { return; }
-	if (target == GL_TEXTURE_2D_MULTISAMPLE && dimension == "2d") { return; }
-	stop(`bind group entry ${binding}: a ${dimension} view of ${layersName(t)} GPUTexture ${textures.slots[t].id} cannot be sampled on gl without texture views (GL 4.3 glTextureView, absent in GLES3)`);
+	if (target == GL_TEXTURE_3D && dimension == ViewDimension.ThreeD) { return; }
+	if (target == GL_TEXTURE_CUBE_MAP && dimension == ViewDimension.Cube) { return; }
+	if (target == GL_TEXTURE_2D_ARRAY && dimension == ViewDimension.TwoDArray && whole) { return; }
+	if (target == GL_TEXTURE_2D && dimension == ViewDimension.TwoD) { return; }
+	if (target == GL_TEXTURE_2D_MULTISAMPLE && dimension == ViewDimension.TwoD) { return; }
+	stop(`bind group entry ${binding}: a ${viewDimensionName(dimension)} view of ${layersName(t)} GPUTexture ${textures.slots[t].id} cannot be sampled on gl without texture views (GL 4.3 glTextureView, absent in GLES3)`);
 }
 
 function layersName(t: int32): string {
@@ -2329,9 +2346,9 @@ function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
 	}
 	const t = textures.slotIndex(views.slots[v].texture);
 	const dimension = views.slots[v].dimension;
-	const whole = dimension == "3d" || (views.slots[v].baseLayer == 0 && views.slots[v].layerCount == textures.slots[t].layers);
-	if (dimension != "2d" && !whole) {
-		stop(`bind group entry ${entry.binding}: a ${dimension} storage view must cover the whole GPUTexture on gl, because glBindImageTexture binds one layer or all of them`);
+	const whole = dimension == ViewDimension.ThreeD || (views.slots[v].baseLayer == 0 && views.slots[v].layerCount == textures.slots[t].layers);
+	if (dimension != ViewDimension.TwoD && !whole) {
+		stop(`bind group entry ${entry.binding}: a ${viewDimensionName(dimension)} storage view must cover the whole GPUTexture on gl, because glBindImageTexture binds one layer or all of them`);
 	}
 	const expected: string = resource.storageFormat;
 	const actual: string = textures.slots[t].format;
@@ -2447,7 +2464,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		if (!views.slots[v].attachable) { checkedSingleSubresource(attachmentMember(i, "view"), false); }
 		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		const slice = descriptor.colorAttachments[i].depthSlice;
-		if (views.slots[v].dimension == "3d") {
+		if (views.slots[v].dimension == ViewDimension.ThreeD) {
 			const slices = Math.max(1, textures.slots[textures.slotIndex(views.slots[v].texture)].layers >> views.slots[v].baseMip);
 			checkedDepthSlice(i, slice, slices, views.slots[v].baseMip, views.slots[v].texture);
 		} else {
@@ -2514,7 +2531,7 @@ function bindOffscreenFramebuffer(colorMask: int32, depthView: int32, depthStenc
 			continue;
 		}
 		const v = views.slotIndex(pass.colorViews[i]);
-		attachView(attachment, v, views.slots[v].dimension == "3d" ? pass.colorSlices[i] : views.slots[v].baseLayer);
+		attachView(attachment, v, views.slots[v].dimension == ViewDimension.ThreeD ? pass.colorSlices[i] : views.slots[v].baseLayer);
 	}
 	if (depthView >= 0) {
 		oglFramebufferDetach(GL_DEPTH_ATTACHMENT);
@@ -3212,7 +3229,7 @@ function bindStorageTexture(resource: ResourceBinding, g: int32): void {
 	const entry: GPUBindGroupEntry = bindGroups.slots[g].entries[entryOf(g, resource.binding)];
 	const v = views.slotIndex(entry.textureView.id);
 	const t = textures.slotIndex(views.slots[v].texture);
-	const layered = views.slots[v].dimension != "2d";
+	const layered = views.slots[v].dimension != ViewDimension.TwoD;
 	oglBindImageTexture(
 		resource.nativeSlot,
 		textureName(t),
