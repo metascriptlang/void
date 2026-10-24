@@ -724,8 +724,11 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 			for (const k of s.cases) {
 				let labels = k.labels.map((l) => exprText(p, l));
 				if (k.isDefault) { labels.push("default"); }
-				emit(p, depth + 1, (k.labels.length == 0 ? "default" : "case " + labels.join(", ")) +
-					": {");
+				emit(
+					p,
+					depth + 1,
+					(k.labels.length == 0 ? "default" : "case " + labels.join(", ")) + ": {",
+				);
 				stmtsText(p, k.body, depth + 2);
 				emit(p, depth + 1, "}");
 			}
@@ -779,7 +782,9 @@ function writtenParams(stmts: ShaderStmt[], written: int32[]): void {
 				written.push(root.index);
 			}
 		}
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { writtenParams(list, written); }
+		for (const list of [s.init, s.update, s.body, s.otherwise]) {
+			writtenParams(list, written);
+		}
 		for (const k of s.cases) { writtenParams(k.body, written); }
 	}
 }
