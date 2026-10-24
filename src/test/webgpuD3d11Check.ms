@@ -1523,17 +1523,27 @@ function resolveInto(device: GPUDevice, resolveView: GPUTextureView): void {
 	device.queue.submit(encoder.finish());
 }
 
+function clearRed(device: GPUDevice, view: GPUTextureView): void {
+	let descriptor = clearingPass(view, { id: 0 });
+	descriptor.colorAttachments[0].clearValue = { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(descriptor).end();
+	device.queue.submit(encoder.finish());
+}
+
 test "a resolve target at baseMipLevel 1 and at baseArrayLayer 1 receives the resolved clear and leaves the other subresources alone" {
 	const device = openDevice();
 	const usage = (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32);
 	const mipped = device.createTexture({ label: "mips", size: { width: 2 * SIZE, height: 2 * SIZE, depthOrArrayLayers: 1 }, format: "rgba8unorm", usage: usage, sampleCount: 1, mipLevelCount: 2 });
+	clearRed(device, mipped.createView({ label: null, baseMipLevel: 0, mipLevelCount: 1 }));
 	resolveInto(device, mipped.createView({ label: null, baseMipLevel: 1, mipLevelCount: 1 }));
 	assert centreOf(readSubresource(mipped, 1, SIZE, SIZE), SIZE) == BLUE;
-	assert centreOf(readSubresource(mipped, 0, 2 * SIZE, 2 * SIZE), 2 * SIZE) == 0;
+	assert centreOf(readSubresource(mipped, 0, 2 * SIZE, 2 * SIZE), 2 * SIZE) == RED;
 	const layered = device.createTexture({ label: "layers", size: { width: SIZE, height: SIZE, depthOrArrayLayers: 2 }, format: "rgba8unorm", usage: usage, sampleCount: 1 });
+	clearRed(device, layered.createView({ label: null, dimension: "2d", baseArrayLayer: 0 }));
 	resolveInto(device, layered.createView({ label: null, dimension: "2d", baseArrayLayer: 1 }));
 	assert centreOf(readSubresource(layered, 1, SIZE, SIZE), SIZE) == BLUE;
-	assert centreOf(readSubresource(layered, 0, SIZE, SIZE), SIZE) == 0;
+	assert centreOf(readSubresource(layered, 0, SIZE, SIZE), SIZE) == RED;
 	device.destroy();
 }
 
