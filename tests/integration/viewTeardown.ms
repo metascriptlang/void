@@ -176,7 +176,7 @@ function openView(): void {
 	viewForward = forwardOf(viewContext, BACKGROUND);
 	viewPixelArt = pixelArtOf(viewContext);
 	upload(viewPixelArt.palette);
-	let setup: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let setup: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	let assets: Result<GltfAssets, GltfSceneError> =
 		addGltfAssets(viewContext, data, { pass: RenderState.defaults(), block: setup });
 	if (!assets.ok) {

@@ -69,6 +69,7 @@ import {
 	materialOf,
 	movedUv,
 	saturated,
+	tintedSurface,
 	skinNormal,
 	skinWorld,
 	instanceWorld,
@@ -267,7 +268,8 @@ export function pixelArtLitFs(
 ): PixelArtOutput {
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
-	const shaded = toonShade(n, input.worldPosition, input.baseColor, b, key);
+	const surfaceColor = tintedSurface(b, key, input.baseColor);
+	const shaded = toonShade(n, input.worldPosition, surfaceColor, b, key);
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
@@ -367,7 +369,9 @@ export function pixelArtLitTexturedFs(
 		const face = faceOf(params.z, input.frontFacing);
 		n = mappedNormal(normalize(input.worldNormal), input.worldTangent, face, normalTexel);
 	}
-	const surfaceColor = vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a);
+	const surfaceColor = tintedSurface(
+		b, key, vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a),
+	);
 	let shaded = toonShade(n, input.worldPosition, surfaceColor, b, key);
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;

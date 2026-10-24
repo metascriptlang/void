@@ -100,7 +100,7 @@ function litMaterial(): MaterialId {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
-	const levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	const levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	const written: Result<int32, UniformError> = writeUniforms(context, reserved.value, levels);
 	if (!written.ok) { unreachable; }
 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);

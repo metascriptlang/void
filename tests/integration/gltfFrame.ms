@@ -160,7 +160,7 @@ function decoded(): GltfData {
 }
 
 function setupBlock(): Vec<float32> {
-	return [4.0, 0.0, 0.0, 0.0];
+	return [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 }
 
 function checkRollback(data: GltfData): void {

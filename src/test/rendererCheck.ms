@@ -538,7 +538,7 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 		const block: Result<UniformBlock, UniformError> =
 			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 		if (!block.ok) { unreachable; }
-		const values: Vec<float32> = [levels, 0.0, 0.0, 0.0];
+		const values: Vec<float32> = [levels, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		if (!writeUniforms(context, block.value, values).ok) { unreachable; }
 		material = { ...material, uniforms: block.value };
 	}

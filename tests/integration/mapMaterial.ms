@@ -125,7 +125,7 @@ function texture(pixels: Vec<uint32>): TextureId {
 // The control draws every quad with its key's features off and names no map.
 function materialFor(key: ProgramKey, strength: float32, colour: Vec3): Material {
 	const drawn: ProgramKey = control ? ProgramKey.of(key.program) : key;
-	let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (drawn.emissive) {
 		for (let i = 0; i < EMISSIVE_LENGTH; i++) { block.push(1.0); }
 		const base: int32 = emissiveBase(drawn);

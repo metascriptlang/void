@@ -137,7 +137,7 @@ function materialFor(key: ProgramKey, values: Vec<float32>, front: boolean): Mat
 	const unlit: boolean = key.program == Program.UnlitTextured;
 	let block: Vec<float32> = values;
 	if (control) {
-		block = unlit ? [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] : [4.0, 0.0, 0.0, 0.0];
+		block = [unlit ? 0.0 : 4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	}
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, block.length as int32);

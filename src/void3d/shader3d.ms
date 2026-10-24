@@ -183,12 +183,14 @@ export struct ModelTransformParams {
 
 export struct MaterialParams {
 	material: Vec4f;
+	materialColor: Vec4f;
 }
 
 // gpu3d.ms MOVING_*: materialParams, then what a key with a UV transform, a back texture or a
 // dissolve reads; the emissive blocks add the emissive vec4 (gpu3d.ms emissiveBase).
 export struct MovingMaterialParams {
 	material: Vec4f;
+	materialColor: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
 	backUvMatrix: Vec4f;
@@ -201,6 +203,7 @@ export struct MovingMaterialParams {
 // UV transform every pbr key reads.
 export struct PbrMaterialParams {
 	material: Vec4f;
+	materialColor: Vec4f;
 	pbr: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
@@ -209,6 +212,7 @@ export struct PbrMaterialParams {
 // gpu3d.ms PBR_* then EMISSIVE_*: a pbr key that emits holds the emissive vec4 after the pbr one.
 export struct PbrEmissiveMaterialParams {
 	material: Vec4f;
+	materialColor: Vec4f;
 	pbr: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
@@ -217,11 +221,13 @@ export struct PbrEmissiveMaterialParams {
 
 export struct EmissiveMaterialParams {
 	material: Vec4f;
+	materialColor: Vec4f;
 	emissive: Vec4f;
 }
 
 export struct MovingEmissiveMaterialParams {
 	material: Vec4f;
+	materialColor: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
 	backUvMatrix: Vec4f;
@@ -1120,6 +1126,36 @@ export function materialOf(b: LitBindings, key: LitKey): Vec4f {
 	}
 }
 
+export function materialColorOf(b: LitBindings, key: LitKey): Vec4f {
+	if (key.pbr) {
+		if (key.emissive) {
+			return b.pbrEmissiveMaterialParams.materialColor;
+		} else {
+			return b.pbrMaterialParams.materialColor;
+		}
+	} else {
+		if (key.uvTransform || key.backTexture || key.dissolve) {
+			if (key.emissive) {
+				return b.movingEmissiveMaterialParams.materialColor;
+			} else {
+				return b.movingMaterialParams.materialColor;
+			}
+		} else {
+			if (key.emissive) {
+				return b.emissiveMaterialParams.materialColor;
+			} else {
+				return b.materialParams.materialColor;
+			}
+		}
+	}
+}
+
+// The surface a lit program shades: `color` (the vertex colour, times the texel when textured)
+// times the material's colour, as Heaps' BaseMesh multiplies its `color` param in.
+export function tintedSurface(b: LitBindings, key: LitKey, color: Vec4f): Vec4f {
+	return color * materialColorOf(b, key);
+}
+
 export function emissiveOf(b: LitBindings, key: LitKey): Vec4f {
 	if (key.pbr) {
 		return b.pbrEmissiveMaterialParams.emissive;
@@ -1487,12 +1523,13 @@ export function litShade(
 export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): LitOutput {
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	const surfaceColor = tintedSurface(b, key, input.baseColor);
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
 		const pbrValues = pbrOf(b, key).xyz;
-		shaded = pbrShade(n, input.worldPosition, input.baseColor, b, key, pbrValues);
+		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key, pbrValues);
 	} else {
-		shaded = litShade(n, input.worldPosition, input.baseColor, b, key);
+		shaded = litShade(n, input.worldPosition, surfaceColor, b, key);
 	}
 	if (key.cutout) {
 		if (shaded.a < params.w) {
@@ -1507,7 +1544,7 @@ export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): Lit
 
 export function shadowLitFs(input: LitFragmentInput, b: LitBindings, key: LitKey): void {
 	if (key.cutout) {
-		if (input.baseColor.a < materialOf(b, key).w) {
+		if (input.baseColor.a * materialColorOf(b, key).a < materialOf(b, key).w) {
 			discard();
 		}
 	}
@@ -1547,7 +1584,9 @@ export function litTexturedFs(
 		const face = faceOf(params.z, input.frontFacing);
 		n = mappedNormal(normalize(input.worldNormal), input.worldTangent, face, normalTexel);
 	}
-	const surfaceColor = vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a);
+	const surfaceColor = tintedSurface(
+		b, key, vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a),
+	);
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
 		let pbrValues = pbrOf(b, key).xyz;
@@ -1590,7 +1629,8 @@ export function shadowLitTexturedFs(
 	}
 	if (key.cutout) {
 		const texel = textureSample(b.baseTexture, b.baseSampler, input.surfaceUv);
-		if (input.baseColor.a * texel.a < materialOf(b, key).w) {
+		const tint = materialColorOf(b, key);
+		if (input.baseColor.a * tint.a * texel.a < materialOf(b, key).w) {
 			discard();
 		}
 	}

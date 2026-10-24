@@ -47,6 +47,7 @@ function bindingsOf(factors: Factors, packed: Texture2d, occlusion: Texture2d): 
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 			pbr: vec4f(factors.metalness, factors.roughness, 1.0, factors.strength),
 		},
 		lightParams: {
@@ -186,6 +187,7 @@ test "a pbr-maps key that emits reads its factors from the emissive layout" {
 	let b: LitBindings = bindingsOf(FULL, texel(0.0, 0.5, 0.5), white);
 	b.pbrEmissiveMaterialParams = {
 		material: vec4f(0.0, 0.0, 0.0, 0.5),
+		materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		pbr: vec4f(0.5, 0.8, 1.0, 1.0),
 		emissive: vec4f(0.0, 0.0, 0.0, 1.0),
 	};

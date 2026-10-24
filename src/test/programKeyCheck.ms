@@ -30,6 +30,7 @@ import {
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
 	UNLIT_MATERIAL_UNIFORM_LENGTH,
 	UNLIT_MATERIAL_COLOR,
+	MATERIAL_COLOR,
 	BACK_VIEW_SLOT,
 	DISSOLVE_VIEW_SLOT,
 	DISSOLVE_SAMPLER_SLOT,
@@ -763,7 +764,7 @@ test "a cutout program refuses a block without a positive alpha-kill threshold" 
 		const reserved: Result<UniformBlock, UniformError> =
 			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 		if (!reserved.ok) { unreachable; }
-		let values: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
+		let values: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		values[MATERIAL_ALPHA_KILL] = threshold;
 		if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 		const made: Result<MaterialId, MaterialError> = addMaterial(context, {
@@ -853,8 +854,8 @@ test "unlit textured programs require colour data and no light uniform block" {
 	assert uniformBlockLength(pixelArt(Program.UnlitTextured), MODEL_SLOT) == MODEL_LENGTH;
 }
 
-test "an unlit material refuses a missing colour block or the old lit block size" {
-	for (const length of [0, MATERIAL_UNIFORM_LENGTH]) {
+test "an unlit material refuses a missing block or one that stops before its colour" {
+	for (const length of [0, UNLIT_MATERIAL_COLOR]) {
 		const context: DrawContext =
 			DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + length);
 		let block: UniformBlock = NO_UNIFORMS;
@@ -995,11 +996,10 @@ test "movingDefaults makes both UV transforms and an unlit colour the identity, 
 		for (let i = 0; i < (values.length as int32); i++) {
 			if (values[i] == 1.0) { ones = ones + 1; } else { assert values[i] == 0.0; }
 		}
-		if (program == Program.UnlitTextured) {
-			for (let i = 0; i < 4; i++) { assert values[UNLIT_MATERIAL_COLOR + i] == 1.0; }
-		}
-		const colour: int32 = program == Program.UnlitTextured ? 4 : 0;
-		assert ones == 4 + colour;
+		const colour: int32 =
+			program == Program.UnlitTextured ? UNLIT_MATERIAL_COLOR : MATERIAL_COLOR;
+		for (let i = 0; i < 4; i++) { assert values[colour + i] == 1.0; }
+		assert ones == 8;
 		for (const matrix of [base + MOVING_UV_MATRIX, base + MOVING_BACK_UV_MATRIX]) {
 			assert values[matrix] == 1.0 && values[matrix + 1] == 0.0;
 			assert values[matrix + 2] == 0.0 && values[matrix + 3] == 1.0;

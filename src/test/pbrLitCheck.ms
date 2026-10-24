@@ -12,6 +12,7 @@ import {
 	PBR_MATERIAL_UNIFORM_LENGTH,
 	PBR_OCCLUSION,
 	PBR_ROUGHNESS,
+	MATERIAL_COLOR,
 	MATERIAL_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
 	declares,
@@ -164,6 +165,7 @@ function bindingsAt(
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 			pbr: vec4f(metalness, roughness, occlusion, 0.0),
 		},
 		lightParams: {
@@ -271,6 +273,22 @@ test "a pbr key reads the camera position: the colour moves with the eye" {
 	assert !nearColor(front, side);
 }
 
+test "a pbr key's material colour lights as the vertex colour times it would" {
+	const key: LitKey = { pbr: true };
+	const tint = vec4f(0.5, 1.0, 0.25, 0.8);
+	let tinted: LitBindings = bindingsAt(CAMERA, 0.3, 0.6, 1.0, 1.0);
+	tinted.pbrMaterialParams.materialColor = tint;
+	const surface = {
+		worldPosition: toVec3f(POSITION), worldNormal: toVec3f(UP), baseColor: BASE,
+		frontFacing: true,
+	};
+	const out = litFs(surface, tinted, key);
+	const premultiplied = litFs({ ...surface, baseColor: BASE * tint },
+		bindingsAt(CAMERA, 0.3, 0.6, 1.0, 1.0), key);
+	assert nearColor(out.color.rgb, premultiplied.color.rgb);
+	assert near(out.color.a, BASE.a * tint.a);
+}
+
 test "ProgramKey.withPbr sets bit 16 and names itself, for the lit programs only" {
 	const lit: ProgramKey = ProgramKey.of(Program.Lit);
 	const pbr: ProgramKey = lit.withPbr();
@@ -289,6 +307,7 @@ test "pbrBlock holds the values at PBR_* after the lit block and refuses roughne
 	assert PBR_METALNESS == MATERIAL_UNIFORM_LENGTH;
 	assert block.value[PBR_METALNESS] == 0.25 && block.value[PBR_ROUGHNESS] == 0.5 &&
 		block.value[PBR_OCCLUSION] == 0.75;
+	for (let i = 0; i < 4; i++) { assert block.value[MATERIAL_COLOR + i] == 1.0; }
 	const heaps = PbrProperties.heapsValues();
 	assert heaps.ok;
 	if (!heaps.ok) { unreachable; }
@@ -315,6 +334,7 @@ function emittingBindings(
 	let b: LitBindings = bindingsAt(CAMERA, 0.9, 0.1, 0.0, 1.0);
 	b.pbrEmissiveMaterialParams = {
 		material: vec4f(0.0, 0.0, 0.0, 0.5),
+		materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		pbr: vec4f(metalness, roughness, 1.0, 0.0),
 		emissive: emitted,
 	};

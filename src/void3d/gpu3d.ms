@@ -440,12 +440,15 @@ export const ENV_SCENE_SAMPLERS: uint32 = 1 << (ENV_SAMPLER_SLOT as uint32);
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
 // whose alpha is below MATERIAL_ALPHA_KILL (material.ms MaterialKind.AlphaKill); a preset may
-// give the other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS).
+// give the other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS). At
+// MATERIAL_COLOR the colour (gamma-encoded rgba) the surface is multiplied by, Heaps' BaseMesh
+// `color` and Bevy's `base_color`: white leaves it alone, and a block of zeros draws black.
 export const MATERIAL_UNIFORM_SLOT: int32 = 3;
-export const MATERIAL_UNIFORM_LENGTH: int32 = 4;
+export const MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const MATERIAL_SATURATION: int32 = 1;
 export const MATERIAL_DOUBLE_SIDED: int32 = 2;
 export const MATERIAL_ALPHA_KILL: int32 = 3;
+export const MATERIAL_COLOR: int32 = 4;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
 // A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3d.ms):

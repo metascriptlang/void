@@ -761,7 +761,7 @@ function setupDraws(): Result<int32, CampfireError> {
 	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
-	const litToon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
+	const litToon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	const grassValues: Vec<float32> = billboardValues(GRASS, true);
 	const flameValues: Vec<float32> = billboardValues(UNTINTED, false);
 	const litBlock: UniformBlock = try reserveUniforms(
@@ -941,7 +941,7 @@ function groundMaterialFor(
 	if (groundSaturation == 0.0 || groundGreyOnCpu) { return Result.ok(litMaterial); }
 	const block: UniformBlock =
 		try reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
-	let toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
+	let toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	toon[MATERIAL_SATURATION] = groundSaturation;
 	const _written: int32 = try writeUniforms(context, block, toon);
 	const ground: Result<MaterialId, MaterialError> = addMaterial(context, {

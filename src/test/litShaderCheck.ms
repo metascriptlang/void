@@ -65,7 +65,10 @@ function nearUv(a: Vec2f, b: Vec2f): boolean {
 // White ambient light, no directional or point light, no saturation, exposure 0, linear curve.
 function plainBindings(): LitBindings {
 	return {
-		materialParams: { material: vec4f(0.0, 0.0, 0.0, 0.5) },
+		materialParams: {
+			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
+		},
 		lightParams: {
 			ambient: vec4f(1.0, 1.0, 1.0, 0.0),
 			dirLight: none(),
@@ -194,6 +197,36 @@ test "a white texel leaves the lit and the unlit surface as the vertex colour" {
 		plainKey(),
 	);
 	assert near(unlit.color.rgb, colour.rgb) && within(unlit.color.a, 0.75);
+}
+
+test "the material colour multiplies the lit surface, alpha included, textured or not" {
+	let tinted: LitBindings = plainBindings();
+	tinted.materialParams.materialColor = vec4f(0.5, 1.0, 0.25, 0.8);
+	const colour = vec4f(0.8, 0.4, 0.1, 0.75);
+	const plain = litFs(
+		{
+			worldPosition: vec3f(0.0, 0.0, 0.0),
+			worldNormal: vec3f(0.0, 0.0, 1.0),
+			baseColor: colour,
+			frontFacing: true,
+		},
+		tinted,
+		plainKey(),
+	);
+	assert near(plain.color.rgb, vec3f(0.4, 0.4, 0.025)) && within(plain.color.a, 0.6);
+	const textured = litTexturedFs(
+		{
+			worldTangent: none(),
+			worldPosition: vec3f(0.0, 0.0, 0.0),
+			worldNormal: vec3f(0.0, 0.0, 1.0),
+			surfaceUv: vec2f(0.5, 0.5),
+			baseColor: colour,
+			frontFacing: true,
+		},
+		tinted,
+		plainKey(),
+	);
+	assert near(textured.color.rgb, plain.color.rgb) && within(textured.color.a, 0.6);
 }
 
 test "a moved uv is the matrix times the uv, then the offset and the motion over time" {

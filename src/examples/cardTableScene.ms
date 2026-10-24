@@ -398,7 +398,7 @@ function block(values: Vec<float32>): UniformBlock {
 }
 
 function litBlock(): UniformBlock {
-	return block([4.0, 0.0, 0.0, 0.0]);
+	return block([4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
 }
 
 // A card cuts at half alpha in colour and in shadow, so a rounded corner casts a rounded
@@ -597,7 +597,7 @@ function torch(x: float32, which: int32): NodeId3D {
 	const _pole: NodeId3D = place(scene.rootId(), poleAt, cube(0.14, 0.9, 0.14), poleMaterial);
 
 	const key: ProgramKey = ProgramKey.of(Program.LitTextured).withEmissive();
-	let bowlValues: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let bowlValues: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	for (let i = 0; i < EMISSIVE_LENGTH; i++) { bowlValues.push(1.0); }
 	const emitted: int32 = emissiveBase(key);
 	bowlValues[emitted + EMISSIVE_COLOR] = 1.0;

@@ -885,11 +885,13 @@ void main() {
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
+    vec4 materialColor;
 };
 #endif
 #if !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -901,12 +903,14 @@ layout(binding=3) uniform movingMaterialParams {
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 emissive;
 };
 #endif
 #if !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -919,6 +923,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
 #if defined(PBR) && !defined(EMISSIVE)
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -927,6 +932,7 @@ layout(binding=3) uniform pbrMaterialParams {
 #if defined(PBR) && defined(EMISSIVE)
 layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -1008,6 +1014,32 @@ vec4 materialOf() {
 }
 vec3 facingNormal(vec3 normal_1, float doubleSided, bool frontFacing) {
     return ((doubleSided > 0.5) && (!frontFacing)) ? (-normal_1) : normal_1;
+}
+vec4 materialColorOf() {
+#ifdef PBR
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#endif
+#endif
+}
+vec4 tintedSurface(vec4 color_1) {
+    return color_1 * materialColorOf();
 }
 #ifdef PBR
 vec4 pbrOf() {
@@ -1371,12 +1403,13 @@ vec3 toneMapped(vec3 rgb, vec4 tone) {
 void main() {
     vec4 params = materialOf();
     vec3 n = facingNormal(normalize(worldNormal), params.z, gl_FrontFacing);
+    vec4 surfaceColor = tintedSurface(baseColor);
     vec4 shaded = vec4(0.0);
 #ifdef PBR
     vec3 pbrValues = pbrOf().xyz;
-    shaded = pbrShade(n, worldPosition, baseColor, pbrValues);
+    shaded = pbrShade(n, worldPosition, surfaceColor, pbrValues);
 #else
-    shaded = litShade(n, worldPosition, baseColor);
+    shaded = litShade(n, worldPosition, surfaceColor);
 #endif
 #ifdef CUTOUT
     if (shaded.a < params.w) {
@@ -1395,11 +1428,13 @@ void main() {
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
+    vec4 materialColor;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -1411,12 +1446,14 @@ layout(binding=3) uniform movingMaterialParams {
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 emissive;
 };
 #endif
 #if defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -1429,6 +1466,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
 #if defined(CUTOUT) && defined(PBR) && !defined(EMISSIVE)
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -1437,6 +1475,7 @@ layout(binding=3) uniform pbrMaterialParams {
 #if defined(CUTOUT) && defined(PBR) && defined(EMISSIVE)
 layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -1446,6 +1485,31 @@ layout(binding=3) uniform pbrEmissiveMaterialParams {
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
+#ifdef CUTOUT
+vec4 materialColorOf() {
+#ifdef PBR
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#endif
+#endif
+}
+#endif
 #ifdef CUTOUT
 vec4 materialOf() {
 #ifdef PBR
@@ -1473,7 +1537,7 @@ vec4 materialOf() {
 #endif
 void main() {
 #ifdef CUTOUT
-    if (baseColor.a < materialOf().w) {
+    if ((baseColor.a * materialColorOf().a) < materialOf().w) {
         discard;
     }
 #endif
@@ -1602,11 +1666,13 @@ void main() {
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
+    vec4 materialColor;
 };
 #endif
 #if (!defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)) || (defined(BACK_TEXTURE) && !defined(EMISSIVE)) || (defined(DISSOLVE) && !defined(EMISSIVE))
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -1618,12 +1684,14 @@ layout(binding=3) uniform movingMaterialParams {
 #if !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 emissive;
 };
 #endif
 #if (!defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)) || (defined(BACK_TEXTURE) && defined(EMISSIVE)) || (defined(DISSOLVE) && defined(EMISSIVE))
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -1636,6 +1704,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
 #if defined(PBR) && !defined(EMISSIVE)
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -1644,6 +1713,7 @@ layout(binding=3) uniform pbrMaterialParams {
 #if defined(PBR) && defined(EMISSIVE)
 layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -1843,6 +1913,32 @@ vec3 mappedNormal(vec3 normal_1, vec4 tangent, float face, vec3 texel) {
     return normalize((((mapped.x * t) + (mapped.y * bitangent)) + (mapped.z * normal_1))) * face;
 }
 #endif
+vec4 materialColorOf() {
+#ifdef PBR
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#endif
+#endif
+}
+vec4 tintedSurface(vec4 color_1) {
+    return color_1 * materialColorOf();
+}
 #ifdef PBR
 vec4 pbrOf() {
 #ifdef EMISSIVE
@@ -2273,7 +2369,7 @@ void main() {
     float face = faceOf(params.z, gl_FrontFacing);
     n = mappedNormal(normalize(worldNormal), worldTangent, face, normalTexel);
 #endif
-    vec4 surfaceColor = vec4((baseColor.rgb * texel.rgb), (baseColor.a * texel.a));
+    vec4 surfaceColor = tintedSurface(vec4((baseColor.rgb * texel.rgb), (baseColor.a * texel.a)));
     vec4 shaded = vec4(0.0);
 #ifdef PBR
     vec3 pbrValues = pbrOf().xyz;
@@ -2312,11 +2408,13 @@ void main() {
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE)
 layout(binding=3) uniform materialParams {
     vec4 material;
+    vec4 materialColor;
 };
 #endif
 #if (defined(DISSOLVE) && !defined(EMISSIVE)) || (defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && !defined(EMISSIVE))
 layout(binding=3) uniform movingMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -2328,12 +2426,14 @@ layout(binding=3) uniform movingMaterialParams {
 #if defined(CUTOUT) && !defined(PBR) && !((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE)
 layout(binding=3) uniform emissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 emissive;
 };
 #endif
 #if (defined(DISSOLVE) && defined(EMISSIVE)) || (defined(CUTOUT) && !defined(PBR) && ((defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)) && defined(EMISSIVE))
 layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 uvMatrix;
     vec4 uvMotion;
     vec4 backUvMatrix;
@@ -2346,6 +2446,7 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
 #if defined(CUTOUT) && defined(PBR) && !defined(EMISSIVE)
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -2354,6 +2455,7 @@ layout(binding=3) uniform pbrMaterialParams {
 #if defined(CUTOUT) && defined(PBR) && defined(EMISSIVE)
 layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 material;
+    vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
@@ -2385,6 +2487,31 @@ vec4 dissolveOf() {
     return dissolve;
 #else
     return dissolve;
+#endif
+}
+#endif
+#ifdef CUTOUT
+vec4 materialColorOf() {
+#ifdef PBR
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#if (defined(UV_TRANSFORM) || defined(BACK_TEXTURE)) || defined(DISSOLVE)
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#else
+#ifdef EMISSIVE
+    return materialColor;
+#else
+    return materialColor;
+#endif
+#endif
 #endif
 }
 #endif
@@ -2422,7 +2549,8 @@ void main() {
 #endif
 #ifdef CUTOUT
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
-    if ((baseColor.a * texel.a) < materialOf().w) {
+    vec4 tint = materialColorOf();
+    if (((baseColor.a * tint.a) * texel.a) < materialOf().w) {
         discard;
     }
 #endif

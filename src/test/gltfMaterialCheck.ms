@@ -453,6 +453,9 @@ test "a binary container that is not one is refused as NotGlb" {
 	if (!noBin.ok) { assert noBin.error == GltfError.OutOfRange; }
 }
 
+const PLAIN: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+const GREY: Vec<float32> = [3.0, -1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+
 function setupOf(values: Readonly<Span<float32>>): GltfMaterialSetup {
 	let block: Vec<float32> = [];
 	for (const value of values) { block.push(value); }
@@ -506,11 +509,11 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 	assert !short.ok;
 	if (!short.ok) { assert short.error == GltfSceneError.BadSetup; }
 	const flagged: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 1.0, 0.0]));
+		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]));
 	assert !flagged.ok;
 	if (!flagged.ok) { assert flagged.error == GltfSceneError.BadSetup; }
 	const killing: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 0.0, 0.5]));
+		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0]));
 	assert !killing.ok;
 	if (!killing.ok) { assert killing.error == GltfSceneError.BadSetup; }
 	let texturedWithoutUvs: GltfData = materialsOnly([
@@ -527,7 +530,7 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 	uvsUntextured.meshes.push(MeshData.withUvs());
 	uvsUntextured.meshMaterials.push(0);
 	for (const data of [texturedWithoutUvs, farTexture, unmatched, uvsUntextured]) {
-		const refused = addGltfAssets(context, data, setupOf([0.0, 0.0, 0.0, 0.0]));
+		const refused = addGltfAssets(context, data, setupOf(PLAIN));
 		assert !refused.ok;
 		if (!refused.ok) { assert refused.error == GltfSceneError.InvalidData; }
 	}
@@ -537,7 +540,7 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 test "a glTF material is the setup's block and culling, double sides unculled and flagged" {
 	let context: DrawContext = DrawContext.withUniformCapacity(64);
 	const made: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, twoMaterials(), setupOf([3.0, -1.0, 0.0, 0.0]));
+		addGltfAssets(context, twoMaterials(), setupOf(GREY));
 	assert made.ok;
 	if (!made.ok) { return; }
 	assert (made.value.materials.length as int32) == 2 && context.liveMaterials() == 2;
@@ -560,7 +563,7 @@ test "a glTF material is the setup's block and culling, double sides unculled an
 test "a glTF material's kind sets its phase, blend and alpha kill over the setup's pass" {
 	let context: DrawContext = DrawContext.withUniformCapacity(64);
 	const made: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, kinds(), setupOf([3.0, -1.0, 0.0, 0.0]));
+		addGltfAssets(context, kinds(), setupOf(GREY));
 	assert made.ok;
 	if (!made.ok) { return; }
 	const cut: Material = context.materials[made.value.materials[0].index];
@@ -580,7 +583,7 @@ test "a glTF material's kind sets its phase, blend and alpha kill over the setup
 test "a full uniform pool is named and gives back the materials already made" {
 	let context: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
 	const full: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 0.0, 0.0]));
+		addGltfAssets(context, twoMaterials(), setupOf(PLAIN));
 	assert !full.ok;
 	if (!full.ok) { assert full.error == GltfSceneError.UniformsFull; }
 	assert context.liveMaterials() == 0;
@@ -689,15 +692,15 @@ test "an emitting material is M37's emissive key, with its block floats after th
 	);
 	const key: ProgramKey = gltfProgramOf(data.materials[0]);
 	assert key == ProgramKey.of(Program.LitTextured).withShadowed().withEmissive();
-	const block: Vec<float32> = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), data.materials[0], key);
+	const block: Vec<float32> = gltfBlockOf(setupOf(GREY), data.materials[0], key);
 	assert (block.length as int32) == MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
 	assert block[0] == 3.0 && block[1] == -1.0 && block[2] == 0.0 && block[3] == 0.0;
-	assert block[4] == linearToSrgb(1.0) && block[5] == linearToSrgb(0.25);
-	assert block[6] == 0.0 && block[7] == 3.0;
+	assert block[8] == linearToSrgb(1.0) && block[9] == linearToSrgb(0.25);
+	assert block[10] == 0.0 && block[11] == 3.0;
 	assert drawnIn(key, Preset.PixelArt, true).ok && drawnIn(key, Preset.Core, false).ok;
 	const plain: GltfData = emittingData("{}");
 	assert gltfProgramOf(plain.materials[0]) == ProgramKey.of(Program.Lit).withShadowed();
-	assert (gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), plain.materials[0],
+	assert (gltfBlockOf(setupOf(GREY), plain.materials[0],
 		gltfProgramOf(plain.materials[0])).length as int32) == MATERIAL_UNIFORM_LENGTH;
 }
 
@@ -711,7 +714,7 @@ test "an emissive material under BLEND has a program, under MASK it is refused b
 		emitting("[1.0,1.0,1.0]", ",\"alphaMode\":\"MASK\"", TEXTURED_BASE),
 	);
 	const refused: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, cut, setupOf([3.0, -1.0, 0.0, 0.0]));
+		addGltfAssets(context, cut, setupOf(GREY));
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == GltfSceneError.UndeclaredProgram; }
 	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
@@ -1122,7 +1125,7 @@ test "a normal-mapped material is M37's normal-map key, with or without emission
 	assert key == plain.withNormalMap() && declares(key);
 	assert drawnIn(key, Preset.PixelArt, true).ok;
 	const block: Vec<float32> =
-		gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), mapped.value.materials[0], key);
+		gltfBlockOf(setupOf(GREY), mapped.value.materials[0], key);
 	assert (block.length as int32) == MATERIAL_UNIFORM_LENGTH;
 	const both = loaded({
 		...texturedParts(), attributes: WITH_TANGENTS,
@@ -1140,7 +1143,7 @@ test "a normal-mapped material is M37's normal-map key, with or without emission
 	assert cut.ok;
 	if (!cut.ok) { return; }
 	const refused: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, cut.value, setupOf([3.0, -1.0, 0.0, 0.0]));
+		addGltfAssets(context, cut.value, setupOf(GREY));
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == GltfSceneError.UndeclaredProgram; }
 	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
@@ -1204,7 +1207,7 @@ test "KHR_texture_transform on the base colour is the material's UV transform ke
 	const key: ProgramKey = gltfProgramOf(material);
 	assert key == ProgramKey.of(Program.LitTextured).withShadowed().withUvTransform();
 	assert drawnIn(key, Preset.Core, false).ok && drawnIn(key, Preset.PixelArt, true).ok;
-	const block: Vec<float32> = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), material, key);
+	const block: Vec<float32> = gltfBlockOf(setupOf(GREY), material, key);
 	assert (block.length as int32) == uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
 	const at: int32 = movingBase(key);
 	assert block[at + MOVING_UV_MATRIX] == 2.0 && block[at + MOVING_UV_MATRIX + 1] == 0.0;
@@ -1225,7 +1228,7 @@ test "a texture transform's rotation turns u toward -v, as Bevy and three.js rea
 	if (!read.ok) { return; }
 	const key: ProgramKey = gltfProgramOf(read.value.materials[0]);
 	const block: Vec<float32> =
-		gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), read.value.materials[0], key);
+		gltfBlockOf(setupOf(GREY), read.value.materials[0], key);
 	const at: int32 = movingBase(key) + MOVING_UV_MATRIX;
 	const u: float32 = block[at] + block[movingBase(key) + MOVING_UV_OFFSET];
 	const v: float32 = block[at + 1] + block[movingBase(key) + MOVING_UV_OFFSET + 1];
@@ -1294,8 +1297,8 @@ test "required emissive strength keeps optional material and block semantics" {
 			assert required.value.textures.length == optional.value.textures.length;
 			const key = gltfProgramOf(actual);
 			assert key == gltfProgramOf(expected);
-			const wanted = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), expected, key);
-			const block = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), actual, key);
+			const wanted = gltfBlockOf(setupOf(GREY), expected, key);
+			const block = gltfBlockOf(setupOf(GREY), actual, key);
 			assert block.length == wanted.length;
 			for (let i = 0; i < block.length; i++) { assert block[i] == wanted[i]; }
 		}
@@ -1473,8 +1476,8 @@ test "texture coordinate override selects UV0 before rejecting a fallback set" {
 				assert actual.uvTransform == expected.uvTransform;
 				const key = gltfProgramOf(actual);
 				assert key == gltfProgramOf(expected);
-				const wanted = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), expected, key);
-				const block = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), actual, key);
+				const wanted = gltfBlockOf(setupOf(GREY), expected, key);
+				const block = gltfBlockOf(setupOf(GREY), actual, key);
 				assert block.length == wanted.length;
 				for (let i = 0; i < block.length; i++) { assert block[i] == wanted[i]; }
 				const mesh = read.value.meshes[0];

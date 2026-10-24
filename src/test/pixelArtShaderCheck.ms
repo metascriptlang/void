@@ -53,7 +53,10 @@ function put(texture: Texture2d, x: int32, y: int32, value: Vec4f): void {
 function plainLit(): LitBindings {
 	const white = grid(1, 1, vec4f(1, 1, 1, 1));
 	return {
-		materialParams: { material: vec4f(4.0, 0.0, 0.0, 0.5) },
+		materialParams: {
+			material: vec4f(4.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
+		},
 		lightParams: {
 			ambient: vec4f(1, 1, 1, 0), dirLight: none(), dirColor: none(),
 			pointLight: [none(), none(), none(), none()],

@@ -177,7 +177,7 @@ function texturedMaterial(image: TextureId): MaterialId {
 	let reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
-	let levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, levels).ok) { unreachable; }
 	let plain: Material =
 		Material.plain(Program.LitTextured, RenderState.defaults(), Phase.Opaque);

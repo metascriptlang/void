@@ -130,7 +130,8 @@ function materialAt(amount: float32): MaterialId {
 	const block = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
 	const owned: UniformBlock = block.value;
-	if (!writeUniforms(context, owned, [4.0, amount, 0.0, 0.0]).ok) { unreachable; }
+	const values: Vec<float32> = [4.0, amount, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+	if (!writeUniforms(context, owned, values).ok) { unreachable; }
 	const made = addMaterial(context, {
 		...Material.plain(Program.Lit, RenderState.defaults().withCulling(Face.None), Phase.Opaque),
 		uniforms: owned,

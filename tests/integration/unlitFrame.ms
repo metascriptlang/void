@@ -109,7 +109,7 @@ function madeMaterial(image: TextureId, lit: boolean, tinted: boolean): Material
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, length);
 	if (!reserved.ok) { unreachable; }
-	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!lit) {
 		values = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 		if (tinted) {

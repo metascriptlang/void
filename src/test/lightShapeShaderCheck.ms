@@ -258,9 +258,13 @@ function bindingsWith(
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 			pbr: vec4f(0.0, 0.7, 1.0, 0.0),
 		},
-		materialParams: { material: vec4f(0.0, 0.0, 0.0, 0.5) },
+		materialParams: {
+			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
+		},
 		lightParams: {
 			ambient: vec4f(0.0, 0.0, 0.0, 1.0),
 			dirLight: none(),
