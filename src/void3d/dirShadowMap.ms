@@ -45,7 +45,7 @@ import {
 	NO_SCENE_TEXTURE,
 	reserveUniforms,
 	writeUniforms,
-	drawItemWith,
+	drawBatchWith,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import { PassList, collectCasters, filterFrustum } from "./passList";
@@ -392,14 +392,21 @@ function drawCasters(
 	beginPass(
 		NO_COLORS, shadow.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.Store),
 	);
-	for (let i = 0; i < shadow.casters.count; i++) {
+	let i: int32 = 0;
+	while (i < shadow.casters.count) {
 		const index: int32 = shadow.casters.indices[i];
 		const material: Material = context.materials[items[index].material.index];
 		const state: RenderState = RenderState.defaults().withCulling(material.shadowFace());
-		drawItemWith(
-			context, items[index], shadow.cast[index], state, SHADOW_LAYOUT, shadow.globals,
-			NO_SCENE_TEXTURE,
+		let end: int32 = i + 1;
+		while (end < shadow.casters.count &&
+			items[index].sameBatch(items[shadow.casters.indices[end]])) {
+			end = end + 1;
+		}
+		drawBatchWith(
+			context, items, shadow.casters.indices[i..end], shadow.cast[index], state,
+			SHADOW_LAYOUT, shadow.globals, NO_SCENE_TEXTURE,
 		);
+		i = end;
 	}
 	endPass();
 	shadow.casterCount = shadow.casters.count;
