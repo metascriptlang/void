@@ -1586,3 +1586,23 @@ test "doorFrameStat answers each stat from its own field of the previous frame" 
 	assert doorFrameStat(DOOR_STAT_IMAGE_BYTES) == 5;
 	lastFrameStats = noFrameStats();
 }
+
+test "the door's ordinals stay the numbers door.h gives the C layers" {
+	assert (PixelFormat.None as int32) == 0;
+	assert (PixelFormat.Rgba8 as int32) == 2;
+	assert (PixelFormat.Depth as int32) == 3;
+	assert (PixelFormat.Bgra8 as int32) == 4;
+	assert (PixelFormat.DepthStencil as int32) == 5;
+	assert (PixelFormat.R8 as int32) == 7;
+	assert (PassState.None as int32) == 0;
+	assert (PassState.Target as int32) == 1;
+	assert (PassState.Screen as int32) == 2;
+	assert DOOR_STAT_DRAWS == 0;
+	assert DOOR_STAT_PIPELINES == 1;
+	assert DOOR_STAT_PASSES == 2;
+	assert DOOR_STAT_BUFFER_BYTES == 3;
+	assert DOOR_STAT_IMAGE_BYTES == 4;
+	assert DOOR_BUFFER_VERTEX == 1;
+	assert DOOR_BUFFER_INDEX == 2;
+	assert DOOR_BUFFER_STREAM == 4;
+}
