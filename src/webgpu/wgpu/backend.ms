@@ -1911,7 +1911,7 @@ export function beginRenderPass(
 		if (attachment.view.id == 0) { continue; }
 		const v = views.slotIndex(attachment.view.id);
 		checkColorAttachment(i, views.slots[v].texture);
-		checkedSingleSubresource(`colorAttachments[${i}].view`, views.slots[v].attachable);
+		if (!views.slots[v].attachable) { checkedSingleSubresource(attachmentMember(i, "view"), false); }
 		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		const slice = attachment.depthSlice;
 		if (views.slots[v].dimension == VIEW_3D) {
@@ -2018,7 +2018,7 @@ function passExtent(texture: uint32, baseMip: int32): void {
 		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample view`);
 	}
 	checkColorAttachment(attachment, views.slots[r].texture);
-	checkedSingleSubresource(`colorAttachments[${attachment}].resolveTarget`, views.slots[r].attachable);
+	if (!views.slots[r].attachable) { checkedSingleSubresource(attachmentMember(attachment, "resolveTarget"), false); }
 	return views.slots[r].native;
 }
 
