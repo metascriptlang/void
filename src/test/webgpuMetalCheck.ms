@@ -40,7 +40,7 @@ import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.m
 import { glslComputeIr } from "../shader/emit";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
 
-import { Cell, PlainBindings, WORKGROUP, plainKernel, shadyComputeDescriptor } from "./metalShadyCompute";
+import { Cell, PlainBindings, ScaledBindings, WORKGROUP, plainKernel, scaledKernel, shadyComputeDescriptor } from "./metalShadyCompute";
 
 @compile("./metalDevice.m");
 
@@ -2280,4 +2280,79 @@ test "a compute program printed by the shader compiler fills a read-write storag
 		assert sameCell(bytes, i, expected);
 	}
 	device.destroy();
+}
+
+function cpuScaled(xs: Vec<float32>, ks: Vec<int32>, shift: int32, scale: float32, bias: float32): Cell[] {
+	let b: ScaledBindings = { params: { scale: scale, bias: bias }, xs: [], ks: [], cells: [] };
+	for (let i = 0; i < WORKGROUP; i++) {
+		b.xs.push({ x: xs[shift + i] });
+		b.ks.push({ k: ks[shift + i] });
+		b.cells.push({ a: { value: 0 }, b: { value: 0 }, c: { value: 0 } });
+	}
+	for (let i = 0; i < WORKGROUP; i++) { scaledKernel({ id: { x: i as uint32, y: 0, z: 0 } }, b); }
+	return b.cells;
+}
+
+test "a compute pass reads a uniform block at each dynamic offset of one buffer, direct and indirect, and the cache moves it by offset alone" {
+	const device = openDevice();
+	const module = device.createShaderModule(shadyComputeDescriptor("scaled", glslComputeIr(scaledKernel, [32, 1, 1])));
+	const pipeline = device.createComputePipeline({ label: "scaled", compute: { module: module, entryPoint: "main0" } });
+	const xs = device.createBuffer({ label: "xs", size: SHADY_COUNT * 4, usage: STORAGE_BUFFER_USAGE });
+	const ks = device.createBuffer({ label: "ks", size: SHADY_COUNT * 4, usage: STORAGE_BUFFER_USAGE });
+	const cells = device.createBuffer({ label: "cells", size: SHADY_COUNT * 12, usage: STORAGE_BUFFER_USAGE });
+	const params = device.createBuffer({ label: "params", size: 512, usage: (GPUBufferUsage.UNIFORM as int32) | (GPUBufferUsage.COPY_DST as int32) });
+	const arguments = device.createBuffer({ label: "arguments", size: 16, usage: (GPUBufferUsage.INDIRECT as int32) | (GPUBufferUsage.COPY_DST as int32) });
+	const floats = shadyFloats();
+	const ints = shadyInts();
+	device.queue.writeBuffer(xs, 0, floats);
+	device.queue.writeBuffer(ks, 0, ints);
+	device.queue.writeBuffer(params, 0, [2.0, 0.5] as Vec<float32>);
+	device.queue.writeBuffer(params, 256, [-1.5, 3.0] as Vec<float32>);
+	device.queue.writeBuffer(arguments, 0, [1, 1, 1] as Vec<uint32>);
+	let uniformEntries: GPUBindGroupDescriptor = { label: "params", layout: pipeline.getBindGroupLayout(0) };
+	uniformEntries.entries[0] = { binding: 0, buffer: params, offset: 0, size: 16 };
+	const uniforms = device.createBindGroup(uniformEntries);
+	const none: Vec<uint32> = [];
+	const read = device.createBuffer({ label: "read", size: SHADY_COUNT * 12, usage: MAP_READ_USAGE });
+	const start = bindStats();
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(0, uniforms, [0] as Vec<uint32>);
+	pass.setBindGroup(1, shadyGroup(device, pipeline, xs, ks, cells, 0), none);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.setBindGroup(0, uniforms, [256] as Vec<uint32>);
+	pass.setBindGroup(1, shadyGroup(device, pipeline, xs, ks, cells, 32), none);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.setBindGroup(0, uniforms, [0] as Vec<uint32>);
+	pass.setBindGroup(1, shadyGroup(device, pipeline, xs, ks, cells, 64), none);
+	pass.dispatchWorkgroupsIndirect(arguments, 0);
+	pass.end();
+	encoder.copyBufferToBuffer(cells, 0, read, 0, SHADY_COUNT * 12);
+	device.queue.submit(encoder.finish());
+	const now = bindStats();
+	assert now.buffers - start.buffers == 4 && now.offsets - start.offsets == 8;
+	const bytes = mappedRead(read, 0, SHADY_COUNT * 12);
+	const first = cpuScaled(floats, ints, 0, 2.0, 0.5);
+	const second = cpuScaled(floats, ints, 32, -1.5, 3.0);
+	const third = cpuScaled(floats, ints, 64, 2.0, 0.5);
+	assert first[0].c.value == -23 && second[0].c.value == 9 && first[2].c.value != cpuScaled(floats, ints, 0, -1.5, 3.0)[2].c.value;
+	for (let i = 0; i < WORKGROUP; i++) {
+		assert sameCell(bytes, i, first[i]);
+		assert sameCell(bytes, SHADY_SHIFT + i, second[i]);
+		assert sameCell(bytes, 2 * SHADY_SHIFT + i, third[i]);
+	}
+	device.destroy();
+}
+
+test "a compute dispatch stops by name when its uniform group is missing or its uniform offset overruns the buffer" {
+	for (const define of ["", "-d:overrun"]) {
+		const run = exec(`timeout 120 msc run ${define} src/test/metalComputeUniformProbe.ms 2>&1`);
+		if (run.ok) { assert false; }
+		if (!run.ok) {
+			assert run.error.output.includes("probe: the control dispatched");
+			assert run.error.output.includes(define == "" ? "the compute pipeline reads bind group 0, which is not set" : "uniform binding 0 at offset 256 overruns its buffer");
+			assert !run.error.output.includes("probe: the faulty dispatch ran");
+		}
+	}
 }

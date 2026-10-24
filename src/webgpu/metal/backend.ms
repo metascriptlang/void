@@ -484,7 +484,8 @@ struct ComputeState {
 	active: boolean;
 	groupBase: int32;
 	pipeline: uint32;
-	bindGroup: uint32;
+	bindGroups: uint32[2];
+	dynamicOffsets: uint32[8];
 	dirty: boolean;
 }
 
@@ -1651,9 +1652,6 @@ function checkBinding(native: NativeBinding, group: int32): void {
 	if (group != expectedGroup) {
 		stop(`shader binding ${native.binding} (${native.kind.toString()}) belongs in group ${expectedGroup}, not ${group}`);
 	}
-	if (native.kind == BindingKind.Uniform && native.computeStage) {
-		stop(`uniform binding ${native.binding} in a compute stage is not ported to metal yet`);
-	}
 	if (native.kind == BindingKind.StorageTexture && !native.computeStage) {
 		stop(`storage texture binding ${native.binding} in a render stage is not ported to metal`);
 	}
@@ -1851,10 +1849,10 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 		slot.entryCount += 1;
 	}
 	for (let i = 0; i < slot.entryCount; i++) {
-		if (slot.entries[i].buffer.id == 0 || uniformOf(shader, slot.entries[i].binding) < 0) { continue; }
+		if (slot.entries[i].buffer.id == 0 || uniformOf(shader, group, slot.entries[i].binding) < 0) { continue; }
 		let rank = 0;
 		for (let j = 0; j < slot.entryCount; j++) {
-			if (slot.entries[j].buffer.id != 0 && uniformOf(shader, slot.entries[j].binding) >= 0 && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
+			if (slot.entries[j].buffer.id != 0 && uniformOf(shader, group, slot.entries[j].binding) >= 0 && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
 		}
 		slot.dynamicIndex[i] = rank;
 		slot.dynamicCount += 1;
@@ -1864,7 +1862,8 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 	return { id: slot.id };
 }
 
-function uniformOf(shader: int32, binding: int32): int32 {
+function uniformOf(shader: int32, group: int32, binding: int32): int32 {
+	if (group != GPU_UNIFORM_GROUP) { return -1; }
 	for (let u = 0; u < shaders.slots[shader].uniformCount; u++) {
 		if (shaders.slots[shader].uniforms[u].binding == binding) { return u; }
 	}
@@ -1892,7 +1891,7 @@ function checkStorageRange(entry: GPUBindGroupEntry, b: int32): void {
 function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
 	if (entry.buffer.id != 0) {
 		const b = buffers.slotIndex(entry.buffer.id);
-		const u = uniformOf(shader, entry.binding);
+		const u = uniformOf(shader, group, entry.binding);
 		if (u >= 0) {
 			const binding = shaders.slots[shader].uniforms[u];
 			if (!has(buffers.slots[b].usage, GPUBufferUsage.UNIFORM as int32)) { stop(`bind group entry ${entry.binding} needs a UNIFORM buffer`); }
@@ -2594,13 +2593,25 @@ export function setComputePipeline(pipeline: GPUComputePipeline): void {
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (!computeBound.active) { stop("setBindGroup outside a compute pass"); }
-	if (index != GPU_RESOURCE_GROUP) { stop(`a compute pipeline has no uniform group: setBindGroup(${index}) takes group ${GPU_RESOURCE_GROUP}`); }
-	if (dynamicOffsets.length != 0) { stop("a compute bind group takes no dynamic offsets"); }
-	if (bindGroup.id != 0 && bindGroups.slots[bindGroups.slotIndex(bindGroup.id)].group != index) {
-		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups.slots[bindGroups.slotIndex(bindGroup.id)].group}`);
-	}
-	computeBound.bindGroup = bindGroup.id;
+	if (index != GPU_UNIFORM_GROUP && index != GPU_RESOURCE_GROUP) { stopOnMember("setBindGroup index", `${index}`); }
+	computeBound.bindGroups[index] = bindGroup.id;
 	computeBound.dirty = true;
+	if (bindGroup.id == 0) { return; }
+	const g = bindGroups.slotIndex(bindGroup.id);
+	if (bindGroups.slots[g].group != index) {
+		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups.slots[g].group}`);
+	}
+	if ((dynamicOffsets.length as int32) != bindGroups.slots[g].dynamicCount) {
+		stop(`setBindGroup(${index}) takes ${bindGroups.slots[g].dynamicCount} dynamic offsets, got ${dynamicOffsets.length}`);
+	}
+	if (index == GPU_UNIFORM_GROUP) {
+		for (let i = 0; i < bindGroups.slots[g].dynamicCount; i++) {
+			if (dynamicOffsets[i] % UNIFORM_OFFSET_ALIGNMENT != 0) {
+				stop(`dynamic offset ${dynamicOffsets[i]} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
+			}
+			computeBound.dynamicOffsets[i] = dynamicOffsets[i];
+		}
+	}
 }
 
 function applyCompute(): int32 {
@@ -2611,12 +2622,28 @@ function applyCompute(): int32 {
 	if (computeBound.dirty) {
 		computeBound.dirty = false;
 		mtlComputeSetPipeline(computeEncoder, pipelines.slots[p].computeState);
+		if (shaders.slots[s].uniformCount > 0) {
+			if (computeBound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the compute pipeline reads bind group 0, which is not set"); }
+			applyComputeUniforms(s, bindGroups.slotIndex(computeBound.bindGroups[GPU_UNIFORM_GROUP]));
+		}
 		if (shaders.slots[s].resourceCount > 0) {
-			if (computeBound.bindGroup == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
-			applyComputeResources(s, bindGroups.slotIndex(computeBound.bindGroup));
+			if (computeBound.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
+			applyComputeResources(s, bindGroups.slotIndex(computeBound.bindGroups[GPU_RESOURCE_GROUP]));
 		}
 	}
 	return s;
+}
+
+function applyComputeUniforms(s: int32, g: int32): void {
+	for (let u = 0; u < shaders.slots[s].uniformCount; u++) {
+		const e = entryOf(g, shaders.slots[s].uniforms[u].binding);
+		const offset = (computeBound.dynamicOffsets[bindGroups.slots[g].dynamicIndex[e]] as int64) + bindGroups.slots[g].entries[e].offset;
+		const b = buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id);
+		if (offset + (shaders.slots[s].uniforms[u].size as int64) > buffers.slots[b].size) {
+			stop(`uniform binding ${shaders.slots[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
+		}
+		bindBuffer(STAGE_COMPUTE, buffers.slots[b].natives[buffers.slots[b].active], offset, shaders.slots[s].uniforms[u].nativeSlot);
+	}
 }
 
 function applyComputeResources(s: int32, g: int32): void {
