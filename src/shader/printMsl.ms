@@ -513,10 +513,14 @@ function loadText(p: Printer, e: ShaderExpr): string {
 	const texture = exprText(p, o[0]);
 	const at = texelCoordinate(p, o[1]);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
-		if (t.access == Access.Write) { return fail(p, "TextureLoad of a write-only storage texture"); }
+		if (t.access == Access.Write) {
+			return fail(p, "TextureLoad of a write-only storage texture");
+		}
 		return texture + ".read(" + at + layerText(p, o) + ")";
 	}
-	if (t.kind != ShaderTypeKind.Texture) { return fail(p, "TextureLoad of a " + t.kind.toString()); }
+	if (t.kind != ShaderTypeKind.Texture) {
+		return fail(p, "TextureLoad of a " + t.kind.toString());
+	}
 	if (t.shape == TextureShape.Cube || t.shape == TextureShape.CubeArray ||
 		t.shape == TextureShape.DepthCube) {
 		return fail(p, "TextureLoad of a cube texture, which names no face");
@@ -1010,7 +1014,9 @@ function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, 
 	let end = 0;
 	for (let k = 0; k < s.members.length; k++) {
 		const f = s.members[k];
-		if (f.type.kind == ShaderTypeKind.Struct) { return owner + " nests struct '" + f.name + "'"; }
+		if (f.type.kind == ShaderTypeKind.Struct) {
+			return owner + " nests struct '" + f.name + "'";
+		}
 		const [align, size] = naturalExtent(m, f.type);
 		const offset = (end + align - 1) / align * align;
 		if (offset != layout.offsets[k]) {
@@ -1108,14 +1114,17 @@ function interfaceAttribute(p: Printer, io: ShaderIo, ordinal: int32): string {
 	if (io.stage == ShaderStage.Fragment && io.direction == IoDirection.Out) {
 		return "[[color(" + location + ")]]";
 	}
-	if (io.stage == ShaderStage.Compute) { return fail(p, "io '" + io.name + "' of a compute entry"); }
+	if (io.stage == ShaderStage.Compute) {
+		return fail(p, "io '" + io.name + "' of a compute entry");
+	}
 	const varying = io.direction == IoDirection.In ? interpolationText(io) : "";
 	return "[[user(locn" + location + ")" + varying + "]]";
 }
 
 function bindingAttribute(kind: ResourceKind, slot: int32): string {
 	return match (kind) {
-		ResourceKind.UniformBlock | ResourceKind.StorageBuffer => "[[buffer(" + String(slot) + ")]]",
+		ResourceKind.UniformBlock | ResourceKind.StorageBuffer =>
+			"[[buffer(" + String(slot) + ")]]",
 		ResourceKind.Texture | ResourceKind.StorageTexture => "[[texture(" + String(slot) + ")]]",
 		ResourceKind.Sampler => "[[sampler(" + String(slot) + ")]]",
 	};
