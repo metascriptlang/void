@@ -108,16 +108,6 @@ export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
 	stop(`program id ${program} was never registered`);
 }
 
-@noinline function stopOnRefusedShader(program: int32): never {
-	stop(`sokol refused the shader of program ${program}; ` +
-		"its pool is full or it did not compile");
-}
-
-@noinline function stopOnRefusedPipeline(key: PipelineKey): never {
-	stop(`sokol refused pipeline ${key.toString()}; ` +
-		"its pool is full or its description is invalid");
-}
-
 @noinline function stopOnClosed(call: string): never {
 	stop(`${call} on a pipeline cache that was closed`);
 }
@@ -147,7 +137,10 @@ export function shaderFor(cache: PipelineCache, program: int32): uint32 {
 	}
 	if (cache.shaders[program] == 0) {
 		const shader: uint32 = makeShader(program);
-		if (shader == 0) { stopOnRefusedShader(program); }
+		if (shader == 0) {
+			stop(`sokol refused the shader of program ${program}; ` +
+				"its pool is full or it did not compile");
+		}
 		cache.shaders[program] = shader;
 		cache.blockSlots[program] = uniformSlotMask(program);
 	}
@@ -205,7 +198,10 @@ export function pipelineFor(
 		indexType: key.indexType,
 	};
 	const pipeline: uint32 = makePipeline(description);
-	if (pipeline == 0) { stopOnRefusedPipeline(key); }
+	if (pipeline == 0) {
+		stop(`sokol refused pipeline ${key.toString()}; ` +
+			"its pool is full or its description is invalid");
+	}
 	if (found == (cache.entries.length as int32)) {
 		cache.entries.push({ key: key, pipeline: pipeline });
 	} else {

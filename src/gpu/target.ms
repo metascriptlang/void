@@ -106,10 +106,6 @@ function stopOnClosedTarget(call: string): never {
 	stop(`${call} on a render target that was closed`);
 }
 
-function stopOnDestroyedView(call: string, view: uint32): never {
-	stop(`${call} on a render target whose view ${view} was destroyed`);
-}
-
 function holdsLive(this target: RenderTarget, call: string): boolean {
 	if (target.image == 0 || target.generation != contextGeneration()) { return false; }
 	if (!imageAlive(target.image)) { stopOnReleased(call, "render target"); }
@@ -126,7 +122,9 @@ function requireLive(this target: RenderTarget, call: string, view: uint32): voi
 	target.requireCurrent(call);
 	if (target.image == 0) { return; }
 	if (!imageAlive(target.image)) { stopOnReleased(call, "render target"); }
-	if (view != 0 && !viewAlive(view)) { stopOnDestroyedView(call, view); }
+	if (view != 0 && !viewAlive(view)) {
+		stop(`${call} on a render target whose view ${view} was destroyed`);
+	}
 }
 
 function destroyHandles(target: RenderTarget): void {
@@ -233,20 +231,15 @@ export function asDepth(
 	};
 }
 
-function stopOnEmptyTarget(): never {
-	stop("asTexture on a render target with no GPU objects; " +
-		"resize allocates it");
-}
-
-function stopOnUnsampledTarget(): never {
-	stop("asTexture on a render target allocated without a texture view");
-}
-
 export function asTexture(this target: RenderTarget): uint32 {
 	if (target.closed) { stopOnClosedTarget("asTexture"); }
-	if (target.image == 0) { stopOnEmptyTarget(); }
+	if (target.image == 0) {
+		stop("asTexture on a render target with no GPU objects; resize allocates it");
+	}
 	target.requireLive("asTexture", target.texture);
-	if (target.image != 0 && target.texture == 0) { stopOnUnsampledTarget(); }
+	if (target.image != 0 && target.texture == 0) {
+		stop("asTexture on a render target allocated without a texture view");
+	}
 	return target.texture;
 }
 
