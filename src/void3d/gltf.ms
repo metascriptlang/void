@@ -53,6 +53,8 @@ import {
 	addTriangle,
 	addTangentsWithSources,
 	addGivenTangents,
+	duplicateVertices,
+	recomputeNormals,
 	addSkinAttributes,
 	vertexCount,
 	indexAt,
@@ -854,7 +856,8 @@ function loadSkins(
 function loadSkinMesh(
 	primitive: JsonValue,
 	source: MeshData,
-	tangentSources: Readonly<Span<int32>>,
+	vertexSources: Readonly<Span<int32>>,
+	sourceCount: int32,
 	accessors: JsonValue,
 	views: JsonValue,
 	buffer: Readonly<Span<uint8>>,
@@ -878,8 +881,7 @@ function loadSkinMesh(
 	}
 	const joints = try accessorSource(accessors, try colourIntField(attributes, "JOINTS_0", -1));
 	const weights = try accessorSource(accessors, try colourIntField(attributes, "WEIGHTS_0", -1));
-	const original: int32 = source.vertexCount() - tangentSources.length as int32;
-	if (joints.count != original || weights.count != original) {
+	if (joints.count != sourceCount || weights.count != sourceCount) {
 		return Result.err(GltfError.CountMismatch);
 	}
 	if (buffers.length == 0) {
@@ -890,15 +892,14 @@ function loadSkinMesh(
 	}
 	const read = SkinInfluences.readSkinInfluences(joints, weights, buffers, accessorViews, 65536);
 	if (!read.ok) { return Result.err(GltfError.Unsupported); }
-	let canonical: SkinInfluences = read.value;
-	let vertexSources: Vec<int32> = [];
-	for (let vertex = 0; vertex < original; vertex++) { vertexSources.push(vertex); }
-	for (const vertex of tangentSources) {
-		if (vertex < 0 || vertex >= original) { return Result.err(GltfError.OutOfRange); }
-		vertexSources.push(vertex);
+	let canonical: SkinInfluences = { joints: [], weights: [] };
+	let sources: Vec<int32> = [];
+	for (const vertex of vertexSources) {
+		if (vertex < 0 || vertex >= sourceCount) { return Result.err(GltfError.OutOfRange); }
+		sources.push(vertex);
 		for (let slot = 0; slot < 4; slot++) {
-			canonical.joints.push(canonical.joints[vertex * 4 + slot]);
-			canonical.weights.push(canonical.weights[vertex * 4 + slot]);
+			canonical.joints.push(read.value.joints[vertex * 4 + slot]);
+			canonical.weights.push(read.value.weights[vertex * 4 + slot]);
 		}
 	}
 	let jointCount: int32 = 1;
@@ -932,7 +933,7 @@ function loadSkinMesh(
 	const added = addSkinAttributes(mesh, split.value.remappedJoints, canonical.weights);
 	if (!added.ok) { return Result.err(GltfError.Unsupported); }
 	const skin: GltfSkinMesh = {
-		vertexSources: move vertexSources,
+		vertexSources: move sources,
 		mesh: mesh, influences: canonical, partition: split.value,
 	};
 	return Result.ok(skin as (GltfSkinMesh | null));
@@ -1077,7 +1078,8 @@ function loadMesh(
 	bufferLength: int32,
 	ref colourBuffers: Vec<GltfAccessorBuffer>,
 	ref colourViews: Vec<GltfAccessorView>,
-	ref tangentSources: Vec<int32>,
+	ref vertexSources: Vec<int32>,
+	ref sourceCount: int32,
 ): Result<MeshData, GltfError> {
 	const mode: int32 = try colourIntField(primitive, "mode", 4);
 	const strip: boolean = mode == 5;
@@ -1092,15 +1094,21 @@ function loadMesh(
 		try colourIntField(attributes, "POSITION", -1));
 	const count = positionSource.count;
 	if (count < 1) { return Result.err(GltfError.OutOfRange); }
+	sourceCount = count;
 	const textured: boolean = read.material.texture != NO_TEXTURE_INDEX;
 	let data: MeshData = textured ? MeshData.withUvs() : MeshData.empty();
 	if (!data.hasRoomFor(count)) { return Result.err(GltfError.MeshTooLarge); }
 	const positions = try positionSource.geometryAttribute(GltfAccessorShape.Vec3, count,
 		views, buffer, bufferLength, colourBuffers, colourViews);
-	const normalSource = try accessorSource(accessors,
-		try colourIntField(attributes, "NORMAL", -1));
-	const normals = try normalSource.geometryAttribute(GltfAccessorShape.Vec3, count,
-		views, buffer, bufferLength, colourBuffers, colourViews);
+	const flat: boolean = !hasField(attributes, "NORMAL");
+	let normalValues: Vec<float64> = [];
+	if (!flat) {
+		const source = try accessorSource(accessors,
+			try colourIntField(attributes, "NORMAL", -1));
+		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec3, count,
+			views, buffer, bufferLength, colourBuffers, colourViews);
+		normalValues = move decoded.values;
+	}
 	let colors: Vec<GltfLinearRgba> = [];
 	if (hasField(attributes, "COLOR_0")) {
 		const source: GltfAccessorSource = try accessorSource(accessors,
@@ -1136,7 +1144,7 @@ function loadMesh(
 	}
 	const tangented: boolean = read.material.normalTexture != NO_TEXTURE_INDEX;
 	let tangentValues: Vec<float64> = [];
-	if (tangented && !isNull(fieldOf(attributes, "TANGENT"))) {
+	if (tangented && !flat && !isNull(fieldOf(attributes, "TANGENT"))) {
 		const source = try accessorSource(accessors,
 			try colourIntField(attributes, "TANGENT", -1));
 		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec4, count,
@@ -1146,7 +1154,7 @@ function loadMesh(
 	let tangents: Vec<float32> = [];
 	for (let i = 0; i < count; i++) {
 		const position: Vec3 = vec3At(positions.values, i);
-		const normal: Vec3 = vec3At(normals.values, i);
+		const normal: Vec3 = flat ? vec3(0.0, 0.0, 0.0) : vec3At(normalValues, i);
 		const rgba: GltfLinearRgba = colors.length > 0
 			? colors[i] : { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 		if (!isFiniteVec3(position) || !isFiniteVec3(normal)) {
@@ -1158,7 +1166,7 @@ function loadMesh(
 		}
 		const normalLength: float32 =
 			normal.x * normal.x + normal.y * normal.y + normal.z * normal.z;
-		if (normalLength < 0.999 || normalLength > 1.001) {
+		if (!flat && (normalLength < 0.999 || normalLength > 1.001)) {
 			return Result.err(GltfError.Unsupported);
 		}
 		// glTF's COLOR_0 and baseColorFactor are linear; the API's colours are gamma-encoded.
@@ -1221,11 +1229,20 @@ function loadMesh(
 			if (!tri.ok) { return Result.err(GltfError.BadIndex); }
 		}
 	}
+	if (flat) {
+		if (!duplicateVertices(data, vertexSources).ok || !recomputeNormals(data).ok) {
+			return Result.err(GltfError.MeshTooLarge);
+		}
+	} else {
+		for (let i = 0; i < count; i++) { vertexSources.push(i); }
+	}
 	if (tangented) {
+		let appended: Vec<int32> = [];
 		const closed: Result<int32, MeshError> =
 			tangentValues.length > 0 ? addGivenTangents(data, tangents) :
-				addTangentsWithSources(data, tangentSources);
+				addTangentsWithSources(data, appended);
 		if (!closed.ok) { return Result.err(GltfError.Unsupported); }
+		for (const vertex of appended) { vertexSources.push(vertexSources[vertex]); }
 	}
 	return Result.ok(data);
 }
@@ -2275,7 +2292,8 @@ function decodeGltf(
 			}
 			const read: MaterialRead =
 				material == DEFAULT_MATERIAL ? DEFAULT_READ : reads[material];
-			let tangentSources: Vec<int32> = [];
+			let vertexSources: Vec<int32> = [];
+			let sourceCount: int32 = 0;
 			const mesh: Result<MeshData, GltfError> =
 				loadMesh(
 					primitive,
@@ -2286,7 +2304,8 @@ function decodeGltf(
 					declaredLength,
 					colourBuffers,
 					colourViews,
-					tangentSources,
+					vertexSources,
+					sourceCount,
 				);
 			if (!mesh.ok) {
 				return Result.err(gltfFailure(mesh.error, source,
@@ -2294,9 +2313,8 @@ function decodeGltf(
 			}
 			if (morphed) {
 				let cause: string = "";
-				const original: int32 = mesh.value.vertexCount() - (tangentSources.length as int32);
-				const targets = loadMorphTargets(primitive, mesh.value, original, accessors, views,
-					buffer, declaredLength, colourBuffers, colourViews, cause);
+				const targets = loadMorphTargets(primitive, mesh.value, sourceCount, accessors,
+					views, buffer, declaredLength, colourBuffers, colourViews, cause);
 				if (!targets.ok) {
 					return Result.err(gltfFailure(targets.error, source,
 						`$.meshes[${i}].primitives[${p}].targets`, base, cause));
@@ -2312,15 +2330,14 @@ function decodeGltf(
 				}
 				if (targetCount > 0) { morphTargetCount = targetCount; }
 				let sourceVertices: Vec<int32> = [];
-				for (let vertex = 0; vertex < original; vertex++) { sourceVertices.push(vertex); }
-				for (const vertex of tangentSources) { sourceVertices.push(vertex); }
+				for (const vertex of vertexSources) { sourceVertices.push(vertex); }
 				morphInputs.push({
-					base: mesh.value, sourceVertexCount: original,
+					base: mesh.value, sourceVertexCount: sourceCount,
 					sourceVertices: move sourceVertices, targets: move targets.value,
 				});
 			}
-			const skinMesh = loadSkinMesh(primitive, mesh.value, tangentSources, accessors, views,
-				buffer, declaredLength, colourBuffers, colourViews);
+			const skinMesh = loadSkinMesh(primitive, mesh.value, vertexSources, sourceCount,
+				accessors, views, buffer, declaredLength, colourBuffers, colourViews);
 			if (!skinMesh.ok) {
 				return Result.err(gltfFailure(skinMesh.error, source,
 					`$.meshes[${i}].primitives[${p}].attributes`, base,
