@@ -4563,8 +4563,6 @@ _Static_assert(sizeof(instancedUnlitTexturedCutout_frameParams_t) == sizeof(lit_
 	"instancedUnlitTexturedCutout must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtInstancedLitTextured_program_position == ATTR_instancedLitTextured_program_position && ATTR_pixelArtInstancedLitTextured_program_normal == ATTR_instancedLitTextured_program_normal && ATTR_pixelArtInstancedLitTextured_program_uv == ATTR_instancedLitTextured_program_uv && ATTR_pixelArtInstancedLitTextured_program_color == ATTR_instancedLitTextured_program_color && ATTR_pixelArtInstancedLitTextured_program_instanceRow0 == ATTR_instancedLitTextured_program_instanceRow0 && ATTR_pixelArtInstancedLitTextured_program_instanceRow1 == ATTR_instancedLitTextured_program_instanceRow1 && ATTR_pixelArtInstancedLitTextured_program_instanceRow2 == ATTR_instancedLitTextured_program_instanceRow2 && ATTR_pixelArtInstancedLitTextured_program_instanceColor == ATTR_instancedLitTextured_program_instanceColor,
 	"pixelArtInstancedLitTextured must take the INSTANCED_LIT_TEXTURED layout as instancedLitTextured does");
-_Static_assert(sizeof(pixelArtInstancedLitTextured_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtInstancedLitTextured_modelParams == UB_lit_modelParams,
-	"pixelArtInstancedLitTextured must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedLitTextured_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtInstancedLitTextured_vertexParams == UB_lit_vertexParams,
 	"pixelArtInstancedLitTextured must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedLitTextured_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtInstancedLitTextured_materialParams == UB_lit_materialParams,
@@ -4575,8 +4573,6 @@ _Static_assert(sizeof(pixelArtInstancedLitTextured_frameParams_t) == sizeof(lit_
 	"pixelArtInstancedLitTextured must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtInstancedLitTexturedPremultiplied_program_position == ATTR_instancedLitTextured_program_position && ATTR_pixelArtInstancedLitTexturedPremultiplied_program_normal == ATTR_instancedLitTextured_program_normal && ATTR_pixelArtInstancedLitTexturedPremultiplied_program_uv == ATTR_instancedLitTextured_program_uv && ATTR_pixelArtInstancedLitTexturedPremultiplied_program_color == ATTR_instancedLitTextured_program_color && ATTR_pixelArtInstancedLitTexturedPremultiplied_program_instanceRow0 == ATTR_instancedLitTextured_program_instanceRow0 && ATTR_pixelArtInstancedLitTexturedPremultiplied_program_instanceRow1 == ATTR_instancedLitTextured_program_instanceRow1 && ATTR_pixelArtInstancedLitTexturedPremultiplied_program_instanceRow2 == ATTR_instancedLitTextured_program_instanceRow2 && ATTR_pixelArtInstancedLitTexturedPremultiplied_program_instanceColor == ATTR_instancedLitTextured_program_instanceColor,
 	"pixelArtInstancedLitTexturedPremultiplied must take the INSTANCED_LIT_TEXTURED layout as instancedLitTextured does");
-_Static_assert(sizeof(pixelArtInstancedLitTexturedPremultiplied_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtInstancedLitTexturedPremultiplied_modelParams == UB_lit_modelParams,
-	"pixelArtInstancedLitTexturedPremultiplied must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedLitTexturedPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtInstancedLitTexturedPremultiplied_vertexParams == UB_lit_vertexParams,
 	"pixelArtInstancedLitTexturedPremultiplied must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedLitTexturedPremultiplied_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtInstancedLitTexturedPremultiplied_materialParams == UB_lit_materialParams,
@@ -4587,8 +4583,6 @@ _Static_assert(sizeof(pixelArtInstancedLitTexturedPremultiplied_frameParams_t) =
 	"pixelArtInstancedLitTexturedPremultiplied must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtInstancedLitTexturedCutout_program_position == ATTR_instancedLitTextured_program_position && ATTR_pixelArtInstancedLitTexturedCutout_program_normal == ATTR_instancedLitTextured_program_normal && ATTR_pixelArtInstancedLitTexturedCutout_program_uv == ATTR_instancedLitTextured_program_uv && ATTR_pixelArtInstancedLitTexturedCutout_program_color == ATTR_instancedLitTextured_program_color && ATTR_pixelArtInstancedLitTexturedCutout_program_instanceRow0 == ATTR_instancedLitTextured_program_instanceRow0 && ATTR_pixelArtInstancedLitTexturedCutout_program_instanceRow1 == ATTR_instancedLitTextured_program_instanceRow1 && ATTR_pixelArtInstancedLitTexturedCutout_program_instanceRow2 == ATTR_instancedLitTextured_program_instanceRow2 && ATTR_pixelArtInstancedLitTexturedCutout_program_instanceColor == ATTR_instancedLitTextured_program_instanceColor,
 	"pixelArtInstancedLitTexturedCutout must take the INSTANCED_LIT_TEXTURED layout as instancedLitTextured does");
-_Static_assert(sizeof(pixelArtInstancedLitTexturedCutout_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtInstancedLitTexturedCutout_modelParams == UB_lit_modelParams,
-	"pixelArtInstancedLitTexturedCutout must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedLitTexturedCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtInstancedLitTexturedCutout_vertexParams == UB_lit_vertexParams,
 	"pixelArtInstancedLitTexturedCutout must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedLitTexturedCutout_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtInstancedLitTexturedCutout_materialParams == UB_lit_materialParams,
@@ -4601,8 +4595,6 @@ _Static_assert(ATTR_pixelArtInstancedUnlitTextured_program_position == ATTR_inst
 	"pixelArtInstancedUnlitTextured must take the INSTANCED_LIT_TEXTURED layout as instancedLitTextured does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTextured_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtInstancedUnlitTextured_vertexParams == UB_lit_vertexParams,
 	"pixelArtInstancedUnlitTextured must take vertexParams as lit does");
-_Static_assert(sizeof(pixelArtInstancedUnlitTextured_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtInstancedUnlitTextured_modelParams == UB_lit_modelParams,
-	"pixelArtInstancedUnlitTextured must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTextured_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_pixelArtInstancedUnlitTextured_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"pixelArtInstancedUnlitTextured must take unlitMaterialParams as unlitTextured does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTextured_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtInstancedUnlitTextured_frameParams == UB_lit_frameParams,
@@ -4611,8 +4603,6 @@ _Static_assert(ATTR_pixelArtInstancedUnlitTexturedPremultiplied_program_position
 	"pixelArtInstancedUnlitTexturedPremultiplied must take the INSTANCED_LIT_TEXTURED layout as instancedLitTextured does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTexturedPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtInstancedUnlitTexturedPremultiplied_vertexParams == UB_lit_vertexParams,
 	"pixelArtInstancedUnlitTexturedPremultiplied must take vertexParams as lit does");
-_Static_assert(sizeof(pixelArtInstancedUnlitTexturedPremultiplied_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtInstancedUnlitTexturedPremultiplied_modelParams == UB_lit_modelParams,
-	"pixelArtInstancedUnlitTexturedPremultiplied must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTexturedPremultiplied_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_pixelArtInstancedUnlitTexturedPremultiplied_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"pixelArtInstancedUnlitTexturedPremultiplied must take unlitMaterialParams as unlitTextured does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTexturedPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtInstancedUnlitTexturedPremultiplied_frameParams == UB_lit_frameParams,
@@ -4621,8 +4611,6 @@ _Static_assert(ATTR_pixelArtInstancedUnlitTexturedCutout_program_position == ATT
 	"pixelArtInstancedUnlitTexturedCutout must take the INSTANCED_LIT_TEXTURED layout as instancedLitTextured does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTexturedCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtInstancedUnlitTexturedCutout_vertexParams == UB_lit_vertexParams,
 	"pixelArtInstancedUnlitTexturedCutout must take vertexParams as lit does");
-_Static_assert(sizeof(pixelArtInstancedUnlitTexturedCutout_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtInstancedUnlitTexturedCutout_modelParams == UB_lit_modelParams,
-	"pixelArtInstancedUnlitTexturedCutout must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTexturedCutout_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_pixelArtInstancedUnlitTexturedCutout_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"pixelArtInstancedUnlitTexturedCutout must take unlitMaterialParams as unlitTextured does");
 _Static_assert(sizeof(pixelArtInstancedUnlitTexturedCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtInstancedUnlitTexturedCutout_frameParams == UB_lit_frameParams,
