@@ -1715,3 +1715,49 @@ test "an occlusion strength outside 0..1 or a missing texture is refused; Legacy
 	assert !legacy.ok;
 	if (!legacy.ok) { assert legacy.error == GltfError.UnsupportedMaterial; }
 }
+
+// TEXCOORD_1 as accessor 7 on its own view of the half-grey colours, so every second uv is 0.5.
+function secondSetLoaded(material: string, attributes: string): Result<GltfData, GltfError> {
+	const document: string = documentOf({ ...texturedParts(), attributes: attributes,
+		materials: material })
+		.replace("\"type\":\"VEC4\"}],", "\"type\":\"VEC4\"},"
+			+ "{\"bufferView\":8,\"componentType\":5126,\"count\":4,\"type\":\"VEC2\"}],")
+		.replace("\"byteLength\":64}],",
+			"\"byteLength\":64},{\"buffer\":0,\"byteOffset\":128,\"byteLength\":32}],");
+	const result = loadGltfDetailed(document, quadBuffer(), "uvb.gltf", GltfMaterialImport.Pbr);
+	if (result.ok) { return Result.ok(result.value); }
+	return Result.err(result.error.code);
+}
+
+const SECOND_SET_OCCLUSION: string =
+	"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}},"
+	+ "\"occlusionTexture\":{\"index\":0,\"texCoord\":1}}";
+
+test "an occlusion map at texCoord 1 reads TEXCOORD_1 into the mesh's second uv set" {
+	const result = secondSetLoaded(SECOND_SET_OCCLUSION, ALL_ATTRIBUTES + ",\"TEXCOORD_1\":7");
+	assert result.ok;
+	if (!result.ok) { return; }
+	const material = result.value.materials[0];
+	const maps = material.pbrMaps;
+	assert maps !== null && maps.occlusionUvB;
+	const mesh = result.value.meshes[0];
+	assert mesh.hasUvB && mesh.stride() == 14 && mesh.vertexCount() == 4;
+	for (let vertex = 0; vertex < 4; vertex++) {
+		assert mesh.vertices[vertex * 14 + 12] == 0.5 && mesh.vertices[vertex * 14 + 13] == 0.5;
+	}
+	const key = gltfProgramOf(material);
+	assert key.pbrMaps && key.occlusionUvB && declares(key);
+	const first = secondSetLoaded(SECOND_SET_OCCLUSION.replace("\"texCoord\":1", "\"texCoord\":0"),
+		ALL_ATTRIBUTES + ",\"TEXCOORD_1\":7");
+	assert first.ok;
+	if (!first.ok) { return; }
+	assert !first.value.meshes[0].hasUvB && !gltfProgramOf(first.value.materials[0]).occlusionUvB;
+}
+
+test "an occlusion map at texCoord 1 without TEXCOORD_1, or at texCoord 2, is refused by name" {
+	const missing = secondSetLoaded(SECOND_SET_OCCLUSION, ALL_ATTRIBUTES);
+	assert !missing.ok && missing.error == GltfError.MissingTexCoord;
+	const third = secondSetLoaded(SECOND_SET_OCCLUSION.replace("\"texCoord\":1", "\"texCoord\":2"),
+		ALL_ATTRIBUTES + ",\"TEXCOORD_1\":7");
+	assert !third.ok && third.error == GltfError.UnsupportedMaterial;
+}

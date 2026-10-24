@@ -149,6 +149,13 @@ function isNormalMappedAt(data: GltfData, mesh: int32): boolean {
 		&& data.materials[material].normalTexture != NO_TEXTURE_INDEX;
 }
 
+function readsUvBAt(data: GltfData, mesh: int32): boolean {
+	const material: int32 = data.meshMaterials[mesh];
+	if (material == DEFAULT_MATERIAL) { return false; }
+	const maps = data.materials[material].pbrMaps;
+	return maps !== null && maps.occlusionUvB;
+}
+
 function hasTextureOrNone(texture: int32, textureCount: int32): boolean {
 	return texture >= NO_TEXTURE_INDEX && texture < textureCount;
 }
@@ -182,6 +189,7 @@ function isConsistent(data: GltfData): boolean {
 		if (material < DEFAULT_MATERIAL || material >= materialCount) { return false; }
 		if (isTexturedAt(data, i) != data.meshes[i].hasUvs) { return false; }
 		if (isNormalMappedAt(data, i) != data.meshes[i].hasTangents) { return false; }
+		if (readsUvBAt(data, i) != data.meshes[i].hasUvB) { return false; }
 	}
 	return true;
 }
@@ -209,9 +217,11 @@ export function gltfProgramOf(source: GltfMaterial): ProgramKey {
 		source.texture != NO_TEXTURE_INDEX ? Program.LitTextured : Program.Lit;
 	const plain: ProgramKey = Material.ofKind(lit, kindOf(source.alphaMode)).program;
 	const pbrKey: ProgramKey = source.pbr !== null ? plain.withPbr() : plain;
+	const maps = source.pbrMaps;
 	const key: ProgramKey =
-		source.pbr !== null && source.pbrMaps !== null && lit == Program.LitTextured
-		? pbrKey.withPbrMaps() : pbrKey;
+		source.pbr !== null && maps !== null && lit == Program.LitTextured
+		? (maps.occlusionUvB ? pbrKey.withPbrMaps().withOcclusionUvB() : pbrKey.withPbrMaps())
+		: pbrKey;
 	const emitting: ProgramKey =
 		source.emissiveTexture != NO_TEXTURE_INDEX ? key.withEmissive() : key;
 	const mapped: ProgramKey =

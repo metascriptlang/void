@@ -53,6 +53,7 @@ import {
 	addTriangle,
 	addTangentsWithSources,
 	addGivenTangents,
+	addUvB,
 	duplicateVertices,
 	recomputeNormals,
 	addSkinAttributes,
@@ -111,7 +112,8 @@ function gltfCause(code: GltfError): string {
 		GltfError.BadImage => "embedded PNG/JPEG bytes or image dimensions are invalid",
 		GltfError.UnsupportedSampler => "sampler filter or wrap is unsupported or incompatible",
 		GltfError.UnsupportedMaterial => "material property or texture combination is unsupported",
-		GltfError.MissingTexCoord => "textured material requires a valid TEXCOORD_0 attribute",
+		GltfError.MissingTexCoord =>
+			"textured material requires a valid attribute for each TEXCOORD_n it samples",
 		GltfError.NoImageDecoderOnJs => "embedded images cannot be decoded on the JS target",
 	};
 }
@@ -274,6 +276,7 @@ export struct GltfPbrMaps {
 	metalRough: int32;
 	occlusion: int32;
 	occlusionStrength: float32;
+	occlusionUvB: boolean;
 }
 
 export struct GltfMaterial {
@@ -1142,6 +1145,19 @@ function loadMesh(
 			views, buffer, bufferLength, colourBuffers, colourViews);
 		uvValues = move decoded.values;
 	}
+	const maps = read.material.pbrMaps;
+	const secondSet: boolean = maps !== null && maps.occlusionUvB;
+	let uvBValues: Vec<float64> = [];
+	if (secondSet) {
+		if (isNull(fieldOf(attributes, "TEXCOORD_1"))) {
+			return Result.err(GltfError.MissingTexCoord);
+		}
+		const source = try accessorSource(accessors,
+			try colourIntField(attributes, "TEXCOORD_1", -1));
+		let decoded = try source.geometryAttribute(GltfAccessorShape.Vec2, count,
+			views, buffer, bufferLength, colourBuffers, colourViews);
+		uvBValues = move decoded.values;
+	}
 	const tangented: boolean = read.material.normalTexture != NO_TEXTURE_INDEX;
 	let tangentValues: Vec<float64> = [];
 	if (tangented && !flat && !isNull(fieldOf(attributes, "TANGENT"))) {
@@ -1243,6 +1259,19 @@ function loadMesh(
 				addTangentsWithSources(data, appended);
 		if (!closed.ok) { return Result.err(GltfError.Unsupported); }
 		for (const vertex of appended) { vertexSources.push(vertexSources[vertex]); }
+	}
+	if (secondSet) {
+		let uvB: Vec<float32> = [];
+		for (const source of vertexSources) {
+			const uv: Uv = uvAt(uvBValues, source);
+			uvB.push(uv.u);
+			uvB.push(uv.v);
+		}
+		const carried: Result<int32, MeshError> = addUvB(data, uvB);
+		if (!carried.ok) {
+			return Result.err(carried.error == MeshError.UvRange
+				? GltfError.OutOfRange : GltfError.MeshTooLarge);
+		}
 	}
 	return Result.ok(data);
 }
@@ -1723,18 +1752,30 @@ function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
 	return Result.ok(value);
 }
 
-// A textureInfo: the index of a texture sampled at TEXCOORD_0. The renderer's textured layout
-// carries one UV set, so another set is refused rather than sampled at the wrong place.
-function textureInfoIndex(info: JsonValue, textureCount: int32): Result<int32, GltfError> {
+// A textureInfo: the index of a texture sampled at one of the first `uvSets` UV sets. Bevy
+// gives each role a channel (bevy_gltf loader/mod.rs:1369-1471, uv_channel); here only the
+// occlusion texture reads TEXCOORD_1, and a set a role cannot read is refused rather than
+// sampled at the wrong place.
+function textureInfoIndex(
+	info: JsonValue,
+	textureCount: int32,
+	uvSets: int32 = 1,
+): Result<int32, GltfError> {
 	if (info.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
 	const base: int32 = hasField(info, "texCoord") ? intValue(fieldOf(info, "texCoord")) : 0;
-	const transform: JsonValue = fieldOf(fieldOf(info, "extensions"), "KHR_texture_transform");
-	const effective: int32 = hasField(transform, "texCoord")
-		? intValue(fieldOf(transform, "texCoord")) : base;
-	if (base < 0 || effective != 0) { return Result.err(GltfError.UnsupportedMaterial); }
+	const set: int32 = textureSetOf(info);
+	if (base < 0 || set < 0 || set >= uvSets) {
+		return Result.err(GltfError.UnsupportedMaterial);
+	}
 	const index: int32 = intField(info, "index", INVALID_INT);
 	if (index < 0 || index >= textureCount) { return Result.err(GltfError.BadReference); }
 	return Result.ok(index);
+}
+
+function textureSetOf(info: JsonValue): int32 {
+	const base: int32 = hasField(info, "texCoord") ? intValue(fieldOf(info, "texCoord")) : 0;
+	const transform: JsonValue = fieldOf(fieldOf(info, "extensions"), "KHR_texture_transform");
+	return hasField(transform, "texCoord") ? intValue(fieldOf(transform, "texCoord")) : base;
 }
 
 // A textureInfo's KHR_texture_transform, the only extension a texture reference may carry here.
@@ -1878,6 +1919,7 @@ function pbrMapsOf(read: MaterialRead): GltfPbrMaps {
 	if (held === null) {
 		return {
 			metalRough: NO_TEXTURE_INDEX, occlusion: NO_TEXTURE_INDEX, occlusionStrength: 1.0,
+			occlusionUvB: false,
 		};
 	}
 	return held;
@@ -1916,7 +1958,8 @@ function loadOcclusion(
 	if (!hasField(material, "occlusionTexture")) { return Result.ok(false); }
 	const info: JsonValue = fieldOf(material, "occlusionTexture");
 	let maps: GltfPbrMaps = pbrMapsOf(read);
-	maps.occlusion = try textureInfoIndex(info, textureCount);
+	maps.occlusion = try textureInfoIndex(info, textureCount, 2);
+	maps.occlusionUvB = textureSetOf(info) == 1;
 	if (hasField(info, "strength")) {
 		const strength: float32 = try numberOf(fieldOf(info, "strength"));
 		if (strength < 0.0 || strength > 1.0) {
