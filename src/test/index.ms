@@ -56,6 +56,7 @@ import "./drawSurfaceCheck";
 import "./bloomCheck";
 import "./bloomKernelCheck";
 import "./dirShadowCheck";
+import "./cascadesCheck";
 import "./cameraCheck";
 import "./frustumCheck";
 import "./planeProjectionCheck";
