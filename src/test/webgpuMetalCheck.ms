@@ -1643,6 +1643,60 @@ function dispatchImage(device: GPUDevice, module: GPUShaderModule, view: GPUText
 
 const IMAGE_USAGE: int32 = (GPUTextureUsage.STORAGE_BINDING as int32) | (GPUTextureUsage.COPY_SRC as int32) | (GPUTextureUsage.COPY_DST as int32);
 
+const LOAD_UINT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void _main(texture2d<uint> src [[texture(0)]], device uint4* dst [[buffer(0)]], uint2 id [[thread_position_in_grid]]) { dst[id.y * 4 + id.x] = src.read(id); }\n";
+const LOAD_FLOAT_MSL = "#include <metal_stdlib>\nusing namespace metal;\nkernel void _main(texture2d<float> src [[texture(0)]], device uint4* dst [[buffer(0)]], uint2 id [[thread_position_in_grid]]) { dst[id.y * 4 + id.x] = as_type<uint4>(src.read(id)); }\n";
+
+function u32At(bytes: Vec<uint8>, index: int32): uint32 {
+	const at = index * 4;
+	return (bytes[at] as uint32) | ((bytes[at + 1] as uint32) << 8) | ((bytes[at + 2] as uint32) << 16) | ((bytes[at + 3] as uint32) << 24);
+}
+
+function loadTexels<T>(device: GPUDevice, format: GPUTextureFormat, msl: string, sampleType: GPUTextureSampleType, texels: Vec<T>): Vec<uint8> {
+	let descriptor = computeDescriptor(msl, "", 4, 2);
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.COMPUTE as int32, sampleType: sampleType, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
+	const module = device.createShaderModule(descriptor);
+	const texture = device.createTexture({
+		label: "data",
+		size: { width: 4, height: 2, depthOrArrayLayers: 1 },
+		format: format,
+		usage: (GPUTextureUsage.TEXTURE_BINDING as int32) | (GPUTextureUsage.COPY_DST as int32),
+		sampleCount: 1,
+	});
+	device.queue.writeTexture({ texture: texture }, texels, { offset: 0, bytesPerRow: 64, rowsPerImage: 2 }, { width: 4, height: 2, depthOrArrayLayers: 1 });
+	const storage = device.createBuffer({ label: "out", size: 128, usage: STORAGE_BUFFER_USAGE });
+	const pipeline = device.createComputePipeline({ label: "load", compute: { module: module, entryPoint: "" } });
+	const group = computeGroup(device, pipeline, { binding: 0, textureView: texture.createView({ label: null }) }, { binding: 1, buffer: storage });
+	const read = device.createBuffer({ label: "read", size: 128, usage: MAP_READ_USAGE });
+	const encoder = device.createCommandEncoder();
+	dispatchGroups(device, encoder, pipeline, group, 1);
+	encoder.copyBufferToBuffer(storage, 0, read, 0, 128);
+	device.queue.submit(encoder.finish());
+	return mappedRead(read, 0, 128);
+}
+
+test "an rgba32uint texture written by writeTexture loads exactly through a uint binding" {
+	const device = openDevice();
+	let values: Vec<uint32> = new Array(32);
+	for (let i = 0; i < 32; i++) { values[i] = 16777217 + (i as uint32); }
+	values[5] = 4294967295;
+	values[31] = 2147483648;
+	const read = loadTexels(device, "rgba32uint", LOAD_UINT_MSL, "uint", values);
+	for (let i = 0; i < 32; i++) { assert u32At(read, i) == values[i]; }
+	device.destroy();
+}
+
+test "an rgba32float texture loads bit-exact through an unfilterable-float binding" {
+	const device = openDevice();
+	const patterns: Vec<uint32> = [0x3F800000, 0x40200000, 0xC0000000, 0x3DCCCCCD];
+	const floats: Vec<float32> = [1.0, 2.5, -2.0, 0.1];
+	let values: Vec<float32> = new Array(32);
+	for (let i = 0; i < 32; i++) { values[i] = floats[i % 4]; }
+	const read = loadTexels(device, "rgba32float", LOAD_FLOAT_MSL, "unfilterable-float", values);
+	for (let i = 0; i < 32; i++) { assert u32At(read, i) == patterns[i % 4]; }
+	device.destroy();
+}
+
 test "a compute pass writes a storage texture that copies back, and a read-write one adds to bytes a writeTexture put there" {
 	const device = openDevice();
 	const image = storageImage(device, "r32uint", IMAGE_USAGE);
