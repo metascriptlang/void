@@ -40,7 +40,7 @@ import {
 	nameStruct,
 	suffixed,
 } from "./names";
-import { binaryOperator } from "./spelling";
+import { binaryOperator, mathName } from "./spelling";
 
 // GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
 // texture and sampler types of Vulkan GLSL.
@@ -357,55 +357,13 @@ function expr(p: Glsl, e: ShaderExpr): string {
 
 function intrinsicName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Abs => "abs",
-		Intrinsic.Sign => "sign",
-		Intrinsic.Floor => "floor",
-		Intrinsic.Ceil => "ceil",
-		Intrinsic.Trunc => "trunc",
 		Intrinsic.Round => "roundEven",
-		Intrinsic.Fract => "fract",
-		Intrinsic.Sqrt => "sqrt",
-		Intrinsic.InverseSqrt => "inversesqrt",
-		Intrinsic.Exp => "exp",
-		Intrinsic.Exp2 => "exp2",
-		Intrinsic.Log => "log",
-		Intrinsic.Log2 => "log2",
-		Intrinsic.Pow => "pow",
-		Intrinsic.Sin => "sin",
-		Intrinsic.Cos => "cos",
-		Intrinsic.Tan => "tan",
-		Intrinsic.Asin => "asin",
-		Intrinsic.Acos => "acos",
-		Intrinsic.Atan | Intrinsic.Atan2 => "atan",
-		Intrinsic.Sinh => "sinh",
-		Intrinsic.Cosh => "cosh",
-		Intrinsic.Tanh => "tanh",
-		Intrinsic.Degrees => "degrees",
-		Intrinsic.Radians => "radians",
-		Intrinsic.Min => "min",
-		Intrinsic.Max => "max",
-		Intrinsic.Clamp | Intrinsic.Saturate => "clamp",
-		Intrinsic.Mix => "mix",
-		Intrinsic.Step => "step",
-		Intrinsic.Smoothstep => "smoothstep",
-		Intrinsic.Fma => "fma",
-		Intrinsic.Dot => "dot",
-		Intrinsic.Cross => "cross",
-		Intrinsic.Length => "length",
-		Intrinsic.Distance => "distance",
-		Intrinsic.Normalize => "normalize",
-		Intrinsic.Reflect => "reflect",
-		Intrinsic.Refract => "refract",
-		Intrinsic.FaceForward => "faceforward",
-		Intrinsic.Transpose => "transpose",
-		Intrinsic.Determinant => "determinant",
+		Intrinsic.Atan2 => "atan",
+		Intrinsic.Saturate => "clamp",
 		Intrinsic.Inverse => "inverse",
 		Intrinsic.UpperLeft3x3 => "mat3",
 		Intrinsic.Select => "mix",
 		Intrinsic.LessThanEqual => "lessThanEqual",
-		Intrinsic.Dpdx => "dFdx",
-		Intrinsic.Dpdy => "dFdy",
-		Intrinsic.Fwidth => "fwidth",
 		Intrinsic.TextureSample => "texture",
 		Intrinsic.TextureLoad => "texelFetch",
 		Intrinsic.TextureStore => "imageStore",
@@ -419,6 +377,7 @@ function intrinsicName(op: Intrinsic): string {
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
 			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
 			Intrinsic.AtomicCompareExchangeWeak => atomicName(op),
+		_ => mathName(op),
 	};
 }
 

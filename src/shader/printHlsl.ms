@@ -40,7 +40,7 @@ import {
 	structOrder,
 	unspecialized,
 } from "./irWalk";
-import { binaryOperator } from "./spelling";
+import { binaryOperator, mathName } from "./spelling";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 function hlslKeywords(): string[] {
@@ -649,53 +649,13 @@ function storeOf(p: Printer, e: ShaderExpr): string {
 
 function intrinsicName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Abs => "abs",
-		Intrinsic.Floor => "floor",
-		Intrinsic.Ceil => "ceil",
-		Intrinsic.Trunc => "trunc",
-		Intrinsic.Round => "round",
 		Intrinsic.Fract => "frac",
-		Intrinsic.Sqrt => "sqrt",
 		Intrinsic.InverseSqrt => "rsqrt",
-		Intrinsic.Exp => "exp",
-		Intrinsic.Exp2 => "exp2",
-		Intrinsic.Log => "log",
-		Intrinsic.Log2 => "log2",
-		Intrinsic.Pow => "pow",
-		Intrinsic.Sin => "sin",
-		Intrinsic.Cos => "cos",
-		Intrinsic.Tan => "tan",
-		Intrinsic.Asin => "asin",
-		Intrinsic.Acos => "acos",
-		Intrinsic.Atan => "atan",
-		Intrinsic.Atan2 => "atan2",
-		Intrinsic.Sinh => "sinh",
-		Intrinsic.Cosh => "cosh",
-		Intrinsic.Tanh => "tanh",
-		Intrinsic.Degrees => "degrees",
-		Intrinsic.Radians => "radians",
-		Intrinsic.Min => "min",
-		Intrinsic.Max => "max",
-		Intrinsic.Clamp => "clamp",
-		Intrinsic.Saturate => "saturate",
 		Intrinsic.Mix => "lerp",
-		Intrinsic.Step => "step",
-		Intrinsic.Smoothstep => "smoothstep",
 		Intrinsic.Fma => "mad",
-		Intrinsic.Dot => "dot",
-		Intrinsic.Cross => "cross",
-		Intrinsic.Length => "length",
-		Intrinsic.Distance => "distance",
-		Intrinsic.Normalize => "normalize",
-		Intrinsic.Reflect => "reflect",
-		Intrinsic.Refract => "refract",
-		Intrinsic.FaceForward => "faceforward",
-		Intrinsic.Transpose => "transpose",
-		Intrinsic.Determinant => "determinant",
 		Intrinsic.Dpdx => "ddx",
 		Intrinsic.Dpdy => "ddy",
-		Intrinsic.Fwidth => "fwidth",
-		_ => "",
+		_ => mathName(op),
 	};
 }
 

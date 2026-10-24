@@ -1,4 +1,4 @@
-import { BinaryOp } from "./ir";
+import { BinaryOp, Intrinsic } from "./ir";
 
 export function binaryOperator(op: BinaryOp): string {
 	return match (op) {
@@ -20,5 +20,58 @@ export function binaryOperator(op: BinaryOp): string {
 		BinaryOp.LessEqual => "<=",
 		BinaryOp.Greater => ">",
 		BinaryOp.GreaterEqual => ">=",
+	};
+}
+
+export function mathName(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.Abs => "abs",
+		Intrinsic.Sign => "sign",
+		Intrinsic.Floor => "floor",
+		Intrinsic.Ceil => "ceil",
+		Intrinsic.Trunc => "trunc",
+		Intrinsic.Round => "round",
+		Intrinsic.Fract => "fract",
+		Intrinsic.Sqrt => "sqrt",
+		Intrinsic.InverseSqrt => "inversesqrt",
+		Intrinsic.Exp => "exp",
+		Intrinsic.Exp2 => "exp2",
+		Intrinsic.Log => "log",
+		Intrinsic.Log2 => "log2",
+		Intrinsic.Pow => "pow",
+		Intrinsic.Sin => "sin",
+		Intrinsic.Cos => "cos",
+		Intrinsic.Tan => "tan",
+		Intrinsic.Asin => "asin",
+		Intrinsic.Acos => "acos",
+		Intrinsic.Atan => "atan",
+		Intrinsic.Atan2 => "atan2",
+		Intrinsic.Sinh => "sinh",
+		Intrinsic.Cosh => "cosh",
+		Intrinsic.Tanh => "tanh",
+		Intrinsic.Degrees => "degrees",
+		Intrinsic.Radians => "radians",
+		Intrinsic.Min => "min",
+		Intrinsic.Max => "max",
+		Intrinsic.Clamp => "clamp",
+		Intrinsic.Saturate => "saturate",
+		Intrinsic.Mix => "mix",
+		Intrinsic.Step => "step",
+		Intrinsic.Smoothstep => "smoothstep",
+		Intrinsic.Fma => "fma",
+		Intrinsic.Dot => "dot",
+		Intrinsic.Cross => "cross",
+		Intrinsic.Length => "length",
+		Intrinsic.Distance => "distance",
+		Intrinsic.Normalize => "normalize",
+		Intrinsic.Reflect => "reflect",
+		Intrinsic.Refract => "refract",
+		Intrinsic.FaceForward => "faceforward",
+		Intrinsic.Transpose => "transpose",
+		Intrinsic.Determinant => "determinant",
+		Intrinsic.Dpdx => "dFdx",
+		Intrinsic.Dpdy => "dFdy",
+		Intrinsic.Fwidth => "fwidth",
+		_ => "",
 	};
 }

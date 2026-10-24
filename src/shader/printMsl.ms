@@ -31,7 +31,7 @@ import {
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
-import { binaryOperator } from "./spelling";
+import { binaryOperator, mathName } from "./spelling";
 
 // C++14 keywords, the Metal address spaces, attributes and types, and every function this
 // printer calls.
@@ -73,51 +73,12 @@ function mslReservedWords(): string[] {
 
 function builtinName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Abs => "abs",
-		Intrinsic.Floor => "floor",
-		Intrinsic.Ceil => "ceil",
-		Intrinsic.Trunc => "trunc",
 		Intrinsic.Round => "rint",
-		Intrinsic.Fract => "fract",
-		Intrinsic.Sqrt => "sqrt",
 		Intrinsic.InverseSqrt => "rsqrt",
-		Intrinsic.Exp => "exp",
-		Intrinsic.Exp2 => "exp2",
-		Intrinsic.Log => "log",
-		Intrinsic.Log2 => "log2",
-		Intrinsic.Pow => "pow",
-		Intrinsic.Sin => "sin",
-		Intrinsic.Cos => "cos",
-		Intrinsic.Tan => "tan",
-		Intrinsic.Asin => "asin",
-		Intrinsic.Acos => "acos",
-		Intrinsic.Atan => "atan",
-		Intrinsic.Atan2 => "atan2",
-		Intrinsic.Sinh => "sinh",
-		Intrinsic.Cosh => "cosh",
-		Intrinsic.Tanh => "tanh",
-		Intrinsic.Min => "min",
-		Intrinsic.Max => "max",
-		Intrinsic.Clamp => "clamp",
-		Intrinsic.Saturate => "saturate",
-		Intrinsic.Mix => "mix",
-		Intrinsic.Step => "step",
-		Intrinsic.Smoothstep => "smoothstep",
-		Intrinsic.Fma => "fma",
-		Intrinsic.Dot => "dot",
-		Intrinsic.Cross => "cross",
-		Intrinsic.Length => "length",
-		Intrinsic.Distance => "distance",
-		Intrinsic.Normalize => "normalize",
-		Intrinsic.Reflect => "reflect",
-		Intrinsic.Refract => "refract",
-		Intrinsic.FaceForward => "faceforward",
-		Intrinsic.Transpose => "transpose",
-		Intrinsic.Determinant => "determinant",
 		Intrinsic.Dpdx => "dfdx",
 		Intrinsic.Dpdy => "dfdy",
-		Intrinsic.Fwidth => "fwidth",
-		_ => "",
+		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians => "",
+		_ => mathName(op),
 	};
 }
 
