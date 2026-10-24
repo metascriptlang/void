@@ -5873,6 +5873,30 @@ Pinned by `litShaderCheck.ms` (lit and textured: the colour and alpha multiply) 
 `pbrLitCheck.ms` (a tinted pbr surface lights as its vertex colour times the tint would; `pbrBlock`
 writes white).
 
+### glTF flat normals, as built (2026-10-24)
+
+A primitive without `NORMAL` loads with flat normals, as glTF 2.0 §3.7.2.1 requires of a client
+("When normals are not specified, client implementations MUST calculate flat normals and the
+provided tangents (if present) MUST be ignored"). The mechanism is Bevy's: the loader calls
+`Mesh::duplicate_vertices` then `compute_flat_normals` (`bevy_gltf/src/loader/mod.rs:887-903`),
+the face normal being `(b - a) x (c - a)` normalized or zero (`bevy_mesh/src/vertex.rs:242`).
+
+- **The mesh.** `duplicateVertices` (`meshData.ms`) gives every triangle corner its own vertex
+  and drops the indices; `recomputeNormals` on that mesh sums one face per vertex, so it writes
+  the face normal, and a degenerate triangle gets a zero normal as `normalize_or_zero` gives.
+  Strips and fans are flattened too: they are triangles by then, where Bevy computes flat normals
+  only for a triangle list.
+- **What follows a vertex.** `loadMesh` records, for every vertex it builds, the glTF vertex it
+  came from (`vertexSources`), which the skin reads its joints and weights through and morph
+  targets their displacements through. This widens the tangent split's source list, which
+  already carried the vertices MikkTSpace appends. A `TANGENT` on such a primitive is ignored and
+  MikkTSpace runs, as the spec says. Bevy's duplicate leaves its morph targets indexed by the old
+  vertices; here they follow the sources.
+
+Pinned by `gltfCheck.ms` (an indexed list and an unindexed strip: a vertex per corner, each
+triangle's normal, zero for a degenerate one) and `gltfSkinCheck.ms` (a fan without `NORMAL`, 8-
+and 16-bit joints: each duplicated corner keeps its source's joints and weights).
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
@@ -5886,7 +5910,7 @@ default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloa
 | 1 | `many_cubes --benchmark`: 1.6M cubes of one mesh and one white `StandardMaterial` on a sphere of radius 500, one directional light without shadows, the camera turning 0.15/60 rad a frame (`many_cubes.rs:61`, `:189-212`, `:355-361`, `:588-601`); also `--layout dense` (every cube in view, static camera) and `--no-indirect-drawing` | one draw per `DrawItem`, CPU frustum culling (M21, world-sphere culling) | the bench program, which opts into `setPresentMode(PresentMode.AutoNoVsync)` (`window.ms`) as `many_cubes` sets `PresentMode::AutoNoVsync` (`many_cubes.rs:135`); on D3D11 that presents at interval 0, with tearing where DXGI allows it. sokol has instancing, `base_instance` and storage buffers but no indirect draw, so `--no-indirect-drawing` is the like-for-like arm and the default arm is reported beside it |
 | 2 | `transform_hierarchy <preset>`: windowless propagation; presets `large_tree` (non-uniform, depth 18, branch 8), `wide_tree`, `deep_tree`, `chain` (depth 2500), `update_leaves`, `update_shallow`, `humanoids_active` / `_inactive` / `_mixed` (4000 rigs of 68 nodes) (`transform_hierarchy.rs:29-156`) | `Scene3D` sync, CPU only | built: `tests/bench/benchHierarchy.ms` with `BENCH_HIERARCHY=<preset>`, group nodes moved with `setLocal` and synced with `syncWorld` each frame. Bevy's rng is unseeded and its step time-driven (`:293`, `:258-263`), so the trees match in shape and update probability, not node for node |
 | 3 | `many_materials`: 10x10 cubes, one material each, every base colour rewritten each frame, a shadowed directional light with Bevy's default 4 cascades (`many_materials.rs:15`, `:71-74`, `:91-106`; `bevy_light/src/cascade.rs:142-156`) | material uniform writes, one shadow map; a material colour in every lit and pbr block (`gpu3d.ms` `MATERIAL_COLOR`, "Material colour, as built") | cascades, or Bevy run against one |
-| 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map; `loadGlbDetailed` refuses `Fox.glb` at `$.meshes[0].primitives[0]` (`Unsupported`), whose primitive has no `NORMAL` (probe 2026-10-24) | flat normals for a primitive without `NORMAL`, which glTF 2.0 §3.7.2.1 requires of a client (Bevy: `compute_flat_normals`, `bevy_gltf/src/loader/mod.rs:895`); cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade |
+| 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map; flat normals for `Fox.glb`'s primitive, which has no `NORMAL` ("glTF flat normals, as built"; the asset itself not loaded since) | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade |
 | 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU; the asset's one buffer is a base64 `data:` URI, which the loader leaves to its caller (`$.buffers[0].byteLength` `OutOfRange` with no bytes), and with the bytes supplied it refuses `$.materials[0]`, whose occlusion map reads `TEXCOORD_1` (`gltf.ms` `textureInfoIndex`; probe 2026-10-24) | a buffer `data:` URI decoded by the loader, as it already decodes an image's; a second UV set; whatever the load meets after those |
 | 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | 4 point lights per draw (`gpu3d.ms` `MAX_POINT_LIGHTS`) | clustered forward lighting (Bevy's clusters, not read yet); until then not comparable |
 
