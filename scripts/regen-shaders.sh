@@ -110,6 +110,7 @@ programTable() {
 # The tools are native binaries that cannot open an MSYS /tmp path, so they write under out/.
 IR=out/irModules
 DXBC=src/shader/dxbc
+METALLIB=src/shader/metallib
 FXC="${FXC-/c/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/fxc.exe}"
 irModules() {
 	rm -rf "$IR"
@@ -117,27 +118,30 @@ irModules() {
 	if [ -n "$FXC" ] && [ -x "$FXC" ]; then
 		fxc=(--fxc "$(cygpath -m "$FXC" 2>/dev/null || echo "$FXC")")
 	fi
-	"${MSC:-msc}" run tools/irPrograms.ms -- "$IR" "$DXBC" "${fxc[@]}" > "$SCRATCH/ir.log" 2>&1 ||
+	"${MSC:-msc}" run tools/irPrograms.ms -- "$IR" "$DXBC" "$METALLIB" "${fxc[@]}" > "$SCRATCH/ir.log" 2>&1 ||
 		{ cat "$SCRATCH/ir.log"; echo "irPrograms failed"; exit 1; }
-	grep "^dxbc miss" "$SCRATCH/ir.log" || true
+	grep -e "^dxbc miss" -e "^metallib miss" "$SCRATCH/ir.log" || true
 }
 
 # Without fxc (macOS, Linux) a missing blob is reported, not stale, so a regen there stays usable:
-# the stage keeps no bytecode and the D3D11 backend compiles its HLSL at load.
-dxbcCache() {
-	for blob in "$IR"/dxbc/*.dxbc; do
+# the stage keeps no bytecode and the D3D11 backend compiles its HLSL at load. Without xcrun
+# (Windows, Linux) a missing metallib is the same, and Metal compiles its MSL at load.
+blobCache() {
+	cache=$1
+	extension=$2
+	for blob in "$IR/$extension"/*."$extension"; do
 		[ -e "$blob" ] || continue
 		if [ "$CHECK" = 1 ]; then
-			echo "stale $DXBC/$(basename "$blob") (missing)"
+			echo "stale $cache/$(basename "$blob") (missing)"
 			STALE=1
 		else
-			mkdir -p "$DXBC"
-			mv "$blob" "$DXBC/"
+			mkdir -p "$cache"
+			mv "$blob" "$cache/"
 		fi
 	done
-	for blob in "$DXBC"/*.dxbc; do
+	for blob in "$cache"/*."$extension"; do
 		[ -e "$blob" ] || continue
-		grep -qx "$(basename "$blob" .dxbc)" "$IR/dxbc.used" && continue
+		grep -qx "$(basename "$blob" ."$extension")" "$IR/$extension.used" && continue
 		if [ "$CHECK" = 1 ]; then
 			echo "stale $blob (unused)"
 			STALE=1
@@ -249,7 +253,8 @@ done
 settle "$SCRATCH/programModules.ms" src/void3d/programModules.ms
 settle "$SCRATCH/shader2dModules.ms" src/void2d/shader2dModules.ms
 settle "$SCRATCH/gpuCopyModules.ms" tests/integration/gpuCopyModules.ms
-dxbcCache
+blobCache "$DXBC" dxbc
+blobCache "$METALLIB" metallib
 slots "$IR/shader2d.glsl" src/void2d/shader2dSlots.h VOID2D_SHADER2D_SLOTS_H
 
 [ "$CHECK" = 1 ] && exit "$STALE"

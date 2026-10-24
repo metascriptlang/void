@@ -4,12 +4,13 @@
 // GPU_COPY_PROGRAMS. Beside the modules it writes each source's stages as GLSL 450 in sokol-shdc's
 // dialect (void3d.glsl, pixelArt3d.glsl, shader2d.glsl, gpuCopy.glsl), which tools/shaderSlots.ms
 // reads and scripts/regen-shaders.sh --oracle-shdc hands to sokol-shdc.
-// Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> [--fxc <fxc path>] [--reflection-only]
+// Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> <metallib cache dir> [--fxc <fxc path>] [--reflection-only]
 // --reflection-only writes a target whose printer refuses the program as its reflection with empty
 // sources and the refusal above the function; without it a refusal stops the tool.
 // Every printed stage lands in out/irPrograms/ for validateHlsl.sh, validateWgsl.sh and the rest.
 // Each HLSL stage's DXBC is <dxbc cache dir>/<key>.dxbc, else fxc compiles it into <out dir>/dxbc/,
-// else the stage has none; <out dir>/dxbc.used lists the keys the modules use.
+// else the stage has none; <out dir>/dxbc.used lists the keys the modules use. Each Metal stage's
+// metallib is the same through xcrun into <metallib cache dir>/<key>.metallib, with metallib.used.
 
 import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
@@ -402,20 +403,97 @@ function bytecodeOf(d: Dxbc, constants: Map<string, string>, code: string, profi
 	return "shaderBytecodeFromBase64(DXBC_" + key + ")";
 }
 
-function stageBytecode(d: Dxbc, constants: Map<string, string>, s: ProgramSource,
-	name: string): string[] {
+// What each Metal language compiles with: the SDK, MSL 2.4 and the OS it starts on (iOS 15.0 as in
+// scripts/iosDevice.sh, macOS 12.0; the printed stages compile down to MSL 2.2), and the fast math
+// newLibraryWithSource defaults to in src/webgpu/metal/metal.m. A blob built for a newer OS or MSL
+// than the device has fails newLibraryWithData.
+function metalFlags(language: string): string[] {
+	return match (language) {
+		"metal_macos" => ["macosx", "-std=macos-metal2.4", "-mmacosx-version-min=12.0", "-ffast-math"],
+		"metal_ios" => ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-ffast-math"],
+		_ => [],
+	};
+}
+
+class Metallib {
+	cache: string = "";
+	fresh: string = "";
+	used: string[] = [];
+	compiled: int32 = 0;
+	missed: int32 = 0;
+	sdks: Map<string, boolean> = new Map();
+}
+
+function hasMetalSdk(m: Metallib, sdk: string): boolean {
+	const known = m.sdks.get(sdk);
+	if (known !== undefined) { return known; }
+	const run = execFileResult("xcrun", ["-sdk", sdk, "-f", "metal"]);
+	const found = run.started && run.exitCode == 0;
+	m.sdks.set(sdk, found);
+	return found;
+}
+
+function xcrunMetal(sdk: string, args: string[], what: string): void {
+	const run = execFileResult("xcrun", ["-sdk", sdk].concat(args));
+	if (!run.started || run.exitCode != 0) {
+		fail("xcrun " + args.join(" ") + " refused " + what + ":\n" + run.output + run.errorOutput);
+	}
+}
+
+function metallibOf(m: Metallib, constants: Map<string, string>, language: string, code: string,
+	entry: string, what: string): string {
+	const flags = metalFlags(language);
+	const sdk = flags[0];
+	const keyed = flags.join(" ") + " " + entry + "\n" + code;
+	const key = sha256(keyed.asBytes()).toHex();
+	let path = m.cache + "/" + key + ".metallib";
+	if (!exists(path)) {
+		path = m.fresh + "/" + key + ".metallib";
+		if (!exists(path)) {
+			if (!hasMetalSdk(m, sdk)) {
+				m.missed++;
+				console.log("metallib miss " + what + " " + key + ": no xcrun " + sdk + " metal");
+				return "[]";
+			}
+			const source = m.fresh + "/" + key + ".metal";
+			keep(source, code);
+			xcrunMetal(sdk, ["metal", "-c"].concat(flags.slice(1)).concat(["-o", m.fresh + "/" + key + ".air",
+				source]), what + " (" + source + ")");
+			xcrunMetal(sdk, ["metallib", m.fresh + "/" + key + ".air", "-o", path], what);
+			m.compiled++;
+		}
+	}
+	if (!m.used.includes(key)) { m.used.push(key); }
+	if (!constants.has(key)) {
+		const blob = readFile(path);
+		if (!blob.ok) { fail("cannot read " + path); }
+		constants.set(key, blob.value.toBase64());
+	}
+	return "shaderBytecodeFromBase64(METALLIB_" + key + ")";
+}
+
+function hlslProfile(stage: string): string {
+	return match (stage) {
+		"vertex" => "vs_5_0",
+		"fragment" => "ps_5_0",
+		_ => "cs_5_0",
+	};
+}
+
+function stageBytecode(blobOf: (code: string, stage: string, entry: string, what: string) => string,
+	s: ProgramSource, name: string): string[] {
 	if (s.refusal != "") { return isComputeSource(s) ? ["[]"] : ["[]", "[]"]; }
 	if (isComputeSource(s)) {
-		return [bytecodeOf(d, constants, s.computeCode, "cs_5_0", s.entryPoint, name + " compute")];
+		return [blobOf(s.computeCode, "compute", s.entryPoint, name + " compute")];
 	}
 	return [
-		bytecodeOf(d, constants, s.vertexCode, "vs_5_0", s.entryPoint, name + " vertex"),
-		bytecodeOf(d, constants, s.fragmentCode, "ps_5_0", s.entryPoint, name + " fragment"),
+		blobOf(s.vertexCode, "vertex", s.entryPoint, name + " vertex"),
+		blobOf(s.fragmentCode, "fragment", s.entryPoint, name + " fragment"),
 	];
 }
 
 function moduleText(programs: Program[], typesPath: string, dispatcher: string,
-	reflectionOnly: boolean, counts: Counts, dxbc: Dxbc): string {
+	reflectionOnly: boolean, counts: Counts, dxbc: Dxbc, metallib: Metallib): string {
 	let sources: ProgramSource[][] = [];
 	let agreement = new Agreement();
 	for (const p of programs) {
@@ -450,14 +528,20 @@ function moduleText(programs: Program[], typesPath: string, dispatcher: string,
 		let functions: string[] = [];
 		for (let i = 0; i < programs.length; i++) {
 			const s = sources[i][t];
-			const bytecode = LANGUAGES[t][0] == "hlsl5" ?
-				stageBytecode(dxbc, constants, s, programs[i].name) :
-				isComputeSource(s) ? ["[]"] : ["[]", "[]"];
+			const language = LANGUAGES[t][0];
+			const none = isComputeSource(s) ? ["[]"] : ["[]", "[]"];
+			const bytecode = language == "hlsl5" ?
+				stageBytecode((code, stage, entry, what) =>
+					bytecodeOf(dxbc, constants, code, hlslProfile(stage), entry, what), s, programs[i].name) :
+				metalFlags(language).length > 0 ?
+				stageBytecode((code, stage, entry, what) =>
+					metallibOf(metallib, constants, language, code, entry, what), s, programs[i].name) :
+				none;
 			functions.push(descriptorSource(programs[i].name, s, bytecode));
 		}
 		let blobs = "";
 		for (const [key, base64] of constants) {
-			blobs += "\tconst DXBC_" + key + " = \"" + base64 + "\";\n";
+			blobs += "\tconst " + (LANGUAGES[t][0] == "hlsl5" ? "DXBC_" : "METALLIB_") + key + " = \"" + base64 + "\";\n";
 		}
 		text += (t == 0 ? "\nwhen (" : " else when (") + LANGUAGES[t][1] + ") {\n" +
 			(blobs != "" ? blobs + "\n" : "") + functions.join("\n") + "}";
@@ -481,6 +565,7 @@ function main(): void {
 	const reflectionOnly = argv.includes("--reflection-only");
 	let dirs: string[] = [];
 	let dxbc = new Dxbc();
+	let metallib = new Metallib();
 	const args = argv.slice(1);
 	for (let i = 0; i < args.length; i++) {
 		if (args[i] == "--fxc" && i + 1 < args.length) {
@@ -490,16 +575,19 @@ function main(): void {
 			dirs.push(args[i]);
 		}
 	}
-	if (dirs.length != 2) {
-		fail("usage: irPrograms <out dir> <dxbc cache dir> [--fxc <fxc path>] [--reflection-only]");
+	if (dirs.length != 3) {
+		fail("usage: irPrograms <out dir> <dxbc cache dir> <metallib cache dir> [--fxc <fxc path>] [--reflection-only]");
 	}
 	const out = dirs[0];
 	dxbc.cache = dirs[1];
 	dxbc.fresh = out + "/dxbc";
+	metallib.cache = dirs[2];
+	metallib.fresh = out + "/metallib";
 	const _out = mkdir("out");
 	const _probes = mkdir("out/irPrograms");
 	const _dir = mkdir(out);
 	const _fresh = mkdir(dxbc.fresh);
+	const _metalFresh = mkdir(metallib.fresh);
 	let counts = new Counts();
 	const keyed = keyedPrograms();
 	const void2d = listedPrograms(VOID2D_PROGRAMS, "VOID2D");
@@ -507,20 +595,22 @@ function main(): void {
 	for (const p of keyed) { checkFeaturesRead(p); }
 	checkBlockHead(keyed);
 	keep(out + "/programModules.ms", moduleText(keyed, "../webgpu/types.ms",
-		"gpu3dShaderModule", reflectionOnly, counts, dxbc));
+		"gpu3dShaderModule", reflectionOnly, counts, dxbc, metallib));
 	keep(out + "/shader2dModules.ms", moduleText(void2d, "../webgpu/types.ms", "", reflectionOnly,
-		counts, dxbc));
+		counts, dxbc, metallib));
 	keep(out + "/gpuCopyModules.ms", moduleText(gpuCopy, "../../src/webgpu/types.ms", "",
-		reflectionOnly, counts, dxbc));
+		reflectionOnly, counts, dxbc, metallib));
 	keep(out + "/void3d.glsl", shdcText("CORE", []));
 	keep(out + "/pixelArt3d.glsl", shdcText("PIXEL_ART", []));
 	keep(out + "/shader2d.glsl", shdcText("VOID2D", void2d));
 	keep(out + "/gpuCopy.glsl", shdcText("GPU_COPY", gpuCopy));
 	keep(out + "/dxbc.used", dxbc.used.join("\n") + "\n");
+	keep(out + "/metallib.used", metallib.used.join("\n") + "\n");
 	console.log("irPrograms: " + String(counts.programs) + " programs, " + String(counts.printed) +
 		" stages printed, " + String(counts.refused) + " target sources refused, " +
 		String(dxbc.used.length) + " DXBC blobs used, " + String(dxbc.compiled) + " compiled by fxc, " +
-		String(dxbc.missed) + " missed");
+		String(dxbc.missed) + " missed, " + String(metallib.used.length) + " metallib blobs used, " +
+		String(metallib.compiled) + " compiled by xcrun, " + String(metallib.missed) + " missed");
 }
 
 main();
