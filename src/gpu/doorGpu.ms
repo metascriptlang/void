@@ -59,7 +59,6 @@ import "../sokol/gpu";
 import { exit } from "std/process";
 import {
 	Blend,
-	ColorChannel,
 	Compare,
 	Face,
 	FilterMode,
@@ -81,23 +80,6 @@ import {
 	DOOR_PASS_DEPTH_STORE,
 	DOOR_PASS_DEPTH_VIEW,
 	DOOR_PASS_LENGTH,
-	DOOR_PIPELINE_BLEND_ALPHA_DESTINATION,
-	DOOR_PIPELINE_BLEND_ALPHA_OPERATION,
-	DOOR_PIPELINE_BLEND_ALPHA_SOURCE,
-	DOOR_PIPELINE_BLEND_DESTINATION,
-	DOOR_PIPELINE_BLEND_OPERATION,
-	DOOR_PIPELINE_BLEND_SOURCE,
-	DOOR_PIPELINE_COLOR_FORMAT,
-	DOOR_PIPELINE_COLOR_MASK,
-	DOOR_PIPELINE_CULLING,
-	DOOR_PIPELINE_DEPTH_FORMAT,
-	DOOR_PIPELINE_DEPTH_TEST,
-	DOOR_PIPELINE_DEPTH_WRITE,
-	DOOR_PIPELINE_INDEX_TYPE,
-	DOOR_PIPELINE_LAYOUT,
-	DOOR_PIPELINE_LENGTH,
-	DOOR_PIPELINE_SAMPLE_COUNT,
-	DOOR_PIPELINE_SHADER,
 } from "./doorWords.h";
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
@@ -148,6 +130,23 @@ export enum IndexType {
 	None,
 	Uint16,
 	Uint32,
+}
+
+export struct TargetLayout {
+	color0: PixelFormat;
+	color1: PixelFormat;
+	color2: PixelFormat;
+	color3: PixelFormat;
+	depth: PixelFormat;
+	sampleCount: int32;
+}
+
+export struct PipelineDescriptor {
+	shader: uint32;
+	layout: int32;
+	state: RenderState;
+	targets: TargetLayout;
+	indexType: IndexType;
 }
 
 export struct DoorLayout { buffers: GPUVertexBufferLayout[GPU_MAX_VERTEX_BUFFERS]; }
@@ -537,30 +536,20 @@ function depthTextureFormat(format: PixelFormat): GPUTextureFormat {
 	return textureFormatOf(format);
 }
 
-function renderStateOf(d: Readonly<Span<uint32>>): RenderState {
-	return {
-		culling: (d[DOOR_PIPELINE_CULLING] as int32) as Face,
-		depthWrite: d[DOOR_PIPELINE_DEPTH_WRITE] != 0,
-		depthTest: (d[DOOR_PIPELINE_DEPTH_TEST] as int32) as Compare,
-		blendSource: (d[DOOR_PIPELINE_BLEND_SOURCE] as int32) as Blend,
-		blendDestination: (d[DOOR_PIPELINE_BLEND_DESTINATION] as int32) as Blend,
-		blendAlphaSource: (d[DOOR_PIPELINE_BLEND_ALPHA_SOURCE] as int32) as Blend,
-		blendAlphaDestination: (d[DOOR_PIPELINE_BLEND_ALPHA_DESTINATION] as int32) as Blend,
-		blendOperation: (d[DOOR_PIPELINE_BLEND_OPERATION] as int32) as Operation,
-		blendAlphaOperation: (d[DOOR_PIPELINE_BLEND_ALPHA_OPERATION] as int32) as Operation,
-		colorMask: ((d[DOOR_PIPELINE_COLOR_MASK] & 15) as uint8) as BitSet<ColorChannel>,
+function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
+	return match (index) {
+		0 => targets.color0,
+		1 => targets.color1,
+		2 => targets.color2,
+		_ => targets.color3,
 	};
 }
 
-@noinline export function doorMakePipeline(d: Readonly<Span<uint32>>): uint32 {
-	if (d.length < DOOR_PIPELINE_LENGTH) {
-		fail("makePipeline descriptor holds " + String(d.length) + " of " +
-			String(DOOR_PIPELINE_LENGTH) + " words");
-	}
-	const program = shaderProgram(d[DOOR_PIPELINE_SHADER]);
+@noinline export function doorMakePipeline(description: PipelineDescriptor): uint32 {
+	const program = shaderProgram(description.shader);
 	const reflected = programAt(program);
-	const layout = layoutAt(d[DOOR_PIPELINE_LAYOUT] as int32);
-	const state = renderStateOf(d);
+	const layout = layoutAt(description.layout);
+	const state = description.state;
 	const srcColor = BLEND_FACTORS[state.blendSource as int32];
 	const dstColor = BLEND_FACTORS[state.blendDestination as int32];
 	const srcAlpha = ALPHA_BLEND_FACTORS[state.blendAlphaSource as int32];
@@ -568,9 +557,9 @@ function renderStateOf(d: Readonly<Span<uint32>>): RenderState {
 	const opColor = BLEND_OPERATIONS[state.blendOperation as int32];
 	const opAlpha = BLEND_OPERATIONS[state.blendAlphaOperation as int32];
 	const writeMask = (state.colorMask as uint32) as int32;
-	const depthFormat = (d[DOOR_PIPELINE_DEPTH_FORMAT] as int32) as PixelFormat;
-	const indexType = (d[DOOR_PIPELINE_INDEX_TYPE] as int32) as IndexType;
-	const module: GPUShaderModule = { id: d[DOOR_PIPELINE_SHADER] };
+	const depthFormat = description.targets.depth;
+	const indexType = description.indexType;
+	const module: GPUShaderModule = { id: description.shader };
 	let descriptor = {
 		label: null,
 		vertex: { module, buffers: layout.buffers },
@@ -579,7 +568,7 @@ function renderStateOf(d: Readonly<Span<uint32>>): RenderState {
 			frontFace: "ccw",
 			cullMode: CULL_MODES[state.culling as int32],
 		},
-		multisample: { count: d[DOOR_PIPELINE_SAMPLE_COUNT] as int32 },
+		multisample: { count: description.targets.sampleCount },
 		fragment: { module },
 	} as GPURenderPipelineDescriptor;
 	if (depthFormat != PixelFormat.None) {
@@ -590,7 +579,7 @@ function renderStateOf(d: Readonly<Span<uint32>>): RenderState {
 		};
 	}
 	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
-		const format = (d[DOOR_PIPELINE_COLOR_FORMAT + i] as int32) as PixelFormat;
+		const format = colorFormatAt(description.targets, i);
 		if (format == PixelFormat.None) { break; }
 		descriptor.fragment.targets[i] = {
 			format: colorTextureFormat(format),
@@ -1577,11 +1566,10 @@ test "a pass names a view per color attachment and one for depth" {
 	assert PASS_VIEW_SLOTS == DOOR_MAX_COLOR_ATTACHMENTS + 1;
 }
 
-test "the pass and pipeline words of doorWords.h lay out one entry per color attachment" {
+test "the pass words of doorWords.h lay out one entry per color attachment" {
 	assert DOOR_PASS_COLOR_LOAD - DOOR_PASS_COLOR_VIEW == DOOR_MAX_COLOR_ATTACHMENTS;
 	assert DOOR_PASS_DEPTH_VIEW - DOOR_PASS_COLOR_LOAD == DOOR_MAX_COLOR_ATTACHMENTS;
 	assert DOOR_PASS_CLEAR_DEPTH == DOOR_MAX_COLOR_ATTACHMENTS * 4;
-	assert DOOR_PIPELINE_DEPTH_FORMAT - DOOR_PIPELINE_COLOR_FORMAT == DOOR_MAX_COLOR_ATTACHMENTS;
 }
 
 test "doorFrameStat answers each stat from its own field of the previous frame" {

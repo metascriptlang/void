@@ -7,7 +7,7 @@
 
 import { RenderState } from "./state";
 import { TargetLayout } from "./target";
-import { IndexType } from "./doorGpu.ms";
+import { IndexType, PipelineDescriptor } from "./doorGpu.ms";
 import {
 	makeShader,
 	uniformSlotMask,
@@ -19,25 +19,6 @@ import {
 	passState,
 	PassState,
 } from "./door";
-import {
-	DOOR_PIPELINE_SHADER,
-	DOOR_PIPELINE_LAYOUT,
-	DOOR_PIPELINE_CULLING,
-	DOOR_PIPELINE_DEPTH_TEST,
-	DOOR_PIPELINE_DEPTH_WRITE,
-	DOOR_PIPELINE_BLEND_SOURCE,
-	DOOR_PIPELINE_BLEND_DESTINATION,
-	DOOR_PIPELINE_BLEND_ALPHA_SOURCE,
-	DOOR_PIPELINE_BLEND_ALPHA_DESTINATION,
-	DOOR_PIPELINE_BLEND_OPERATION,
-	DOOR_PIPELINE_BLEND_ALPHA_OPERATION,
-	DOOR_PIPELINE_COLOR_MASK,
-	DOOR_PIPELINE_COLOR_FORMAT,
-	DOOR_PIPELINE_DEPTH_FORMAT,
-	DOOR_PIPELINE_SAMPLE_COUNT,
-	DOOR_PIPELINE_INDEX_TYPE,
-	DOOR_PIPELINE_LENGTH,
-} from "./doorWords.h";
 
 export { IndexType } from "./doorGpu.ms";
 
@@ -58,7 +39,6 @@ export interface PipelineCache {
 	entries: Vec<PipelineEntry>;
 	shaders: Vec<uint32>;
 	blockSlots: Vec<uint32>;
-	descriptor: Vec<uint32>;
 	// The GPU context its handles belong to: renderers sharing a DrawContext forget them once.
 	generation: int32;
 	closed: boolean;
@@ -69,7 +49,6 @@ export function empty(this typeof PipelineCache): PipelineCache {
 		entries: [],
 		shaders: [],
 		blockSlots: [],
-		descriptor: new Array(DOOR_PIPELINE_LENGTH),
 		generation: 0,
 		closed: false,
 	};
@@ -115,42 +94,6 @@ export function toString(this key: PipelineKey): string {
 	return `program=${key.program} layout=${key.layout} ` +
 		`indexType=${key.indexType.toString()} ` +
 		`${key.targetLayout().toString()} ${key.renderState().toString()}`;
-}
-
-function unsigned(value: int32): uint32 {
-	return value as uint32;
-}
-
-// The flat pipeline descriptor that doorGpu.ms reads (DOOR_PIPELINE_*).
-export function describePipeline(
-	out: Span<uint32>,
-	shader: uint32,
-	layout: int32,
-	indexed: boolean,
-	state: RenderState,
-	targets: TargetLayout,
-	format: IndexType = IndexType.Uint16,
-): void {
-	out[DOOR_PIPELINE_SHADER] = shader;
-	out[DOOR_PIPELINE_LAYOUT] = unsigned(layout);
-	out[DOOR_PIPELINE_CULLING] = unsigned(state.culling as int32);
-	out[DOOR_PIPELINE_DEPTH_TEST] = unsigned(state.depthTest as int32);
-	out[DOOR_PIPELINE_DEPTH_WRITE] = state.depthWrite ? 1 : 0;
-	out[DOOR_PIPELINE_BLEND_SOURCE] = unsigned(state.blendSource as int32);
-	out[DOOR_PIPELINE_BLEND_DESTINATION] = unsigned(state.blendDestination as int32);
-	out[DOOR_PIPELINE_BLEND_ALPHA_SOURCE] = unsigned(state.blendAlphaSource as int32);
-	out[DOOR_PIPELINE_BLEND_ALPHA_DESTINATION] = unsigned(state.blendAlphaDestination as int32);
-	out[DOOR_PIPELINE_BLEND_OPERATION] = unsigned(state.blendOperation as int32);
-	out[DOOR_PIPELINE_BLEND_ALPHA_OPERATION] = unsigned(state.blendAlphaOperation as int32);
-	out[DOOR_PIPELINE_COLOR_MASK] = state.colorMask as uint32;
-	out[DOOR_PIPELINE_COLOR_FORMAT] = unsigned(targets.color0 as int32);
-	out[DOOR_PIPELINE_COLOR_FORMAT + 1] = unsigned(targets.color1 as int32);
-	out[DOOR_PIPELINE_COLOR_FORMAT + 2] = unsigned(targets.color2 as int32);
-	out[DOOR_PIPELINE_COLOR_FORMAT + 3] = unsigned(targets.color3 as int32);
-	out[DOOR_PIPELINE_DEPTH_FORMAT] = unsigned(targets.depth as int32);
-	out[DOOR_PIPELINE_SAMPLE_COUNT] = unsigned(targets.sampleCount);
-	const indexType: IndexType = selectedIndexType(indexed, format);
-	out[DOOR_PIPELINE_INDEX_TYPE] = unsigned(indexType as int32);
 }
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
@@ -245,7 +188,7 @@ export function pipelineFor(
 			found = i;
 		}
 	}
-	return buildPipeline(cache, program, layout, indexed, state, concrete, format, key, found);
+	return buildPipeline(cache, program, layout, state, concrete, key, found);
 }
 
 // The cache-miss path of pipelineFor, out of line so its pipeline description and refusal
@@ -254,16 +197,19 @@ export function pipelineFor(
 	cache: PipelineCache,
 	program: int32,
 	layout: int32,
-	indexed: boolean,
 	state: RenderState,
 	concrete: TargetLayout,
-	format: IndexType,
 	key: PipelineKey,
 	found: int32,
 ): uint32 {
-	const shader: uint32 = shaderFor(cache, program);
-	describePipeline(cache.descriptor, shader, layout, indexed, state, concrete, format);
-	const pipeline: uint32 = makePipeline(cache.descriptor);
+	const description: PipelineDescriptor = {
+		shader: shaderFor(cache, program),
+		layout: layout,
+		state: state,
+		targets: concrete,
+		indexType: key.indexType,
+	};
+	const pipeline: uint32 = makePipeline(description);
 	if (pipeline == 0) { return stopOnRefusedPipeline(key); }
 	if (found == (cache.entries.length as int32)) {
 		cache.entries.push({ key: key, pipeline: pipeline });
@@ -306,7 +252,6 @@ export function closePipelines(cache: PipelineCache): void {
 	cache.entries = [];
 	cache.shaders = [];
 	cache.blockSlots = [];
-	cache.descriptor = [];
 	cache.closed = true;
 }
 

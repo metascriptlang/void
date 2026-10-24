@@ -27,6 +27,7 @@ import {
 	environmentDepthFormat,
 	environmentSampleCount,
 } from "./door";
+import { TargetLayout } from "./doorGpu.ms";
 import { FilterMode, Wrap } from "./state";
 import {
 	DOOR_MAX_COLOR_ATTACHMENTS,
@@ -39,6 +40,8 @@ import {
 	DOOR_PASS_CLEAR_DEPTH,
 	DOOR_PASS_CLEAR_LENGTH,
 } from "./doorWords.h";
+
+export { TargetLayout } from "./doorGpu.ms";
 
 export interface RenderTarget {
 	width: int32;
@@ -67,17 +70,6 @@ export struct DepthAttachment {
 	store: StoreAction;
 	clear: float32;
 	generation: int32;
-}
-
-// The attachment formats a pipeline is built for (the render-target half of Heaps'
-// PipelineBuilder signature). A pipeline only draws into a pass with the same layout.
-export struct TargetLayout {
-	color0: PixelFormat;
-	color1: PixelFormat;
-	color2: PixelFormat;
-	color3: PixelFormat;
-	depth: PixelFormat;
-	sampleCount: int32;
 }
 
 // A sampler keeps its settings for the same reason a target does.

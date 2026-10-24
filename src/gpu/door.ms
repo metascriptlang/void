@@ -1,6 +1,6 @@
 import "../sokol/gpu";
 import { FilterMode, Wrap } from "./state";
-import { PassState, PixelFormat } from "./doorGpu.ms";
+import { PassState, PipelineDescriptor, PixelFormat } from "./doorGpu.ms";
 
 import {
 	doorMakeShader,
@@ -107,7 +107,7 @@ export function layoutPerInstance(layout: int32, buffer: int32): boolean {
 	return doorLayoutPerInstance(layout, buffer) != 0;
 }
 
-export function makePipeline(descriptor: Readonly<Span<uint32>>): uint32 {
+export function makePipeline(descriptor: PipelineDescriptor): uint32 {
 	return doorMakePipeline(descriptor);
 }
 
