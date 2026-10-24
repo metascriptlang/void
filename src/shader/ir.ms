@@ -240,7 +240,8 @@ export function isAtomic(op: Intrinsic): boolean {
 	return match (op) {
 		Intrinsic.AtomicLoad | Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicSub |
 		Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
-		Intrinsic.AtomicXor | Intrinsic.AtomicExchange | Intrinsic.AtomicCompareExchangeWeak => true,
+		Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
+		Intrinsic.AtomicCompareExchangeWeak => true,
 		_ => false,
 	};
 }
@@ -763,7 +764,9 @@ export function irErrors(m: ShaderModule): string[] {
 				r.type.element[0].kind == ShaderTypeKind.Struct,
 			ResourceKind.StorageTexture => r.type.kind == ShaderTypeKind.StorageTexture,
 		};
-		if (!shapeHolds) { c.errors.push(owner + ": its type does not fit a " + r.kind.toString()); }
+		if (!shapeHolds) {
+			c.errors.push(owner + ": its type does not fit a " + r.kind.toString());
+		}
 		if (r.kind == ResourceKind.StorageTexture && r.type.shape != TextureShape.D2 &&
 			r.type.shape != TextureShape.D2Array && r.type.shape != TextureShape.D3) {
 			c.errors.push(owner + ": a storage texture of shape " + r.type.shape.toString() +
@@ -777,7 +780,8 @@ export function irErrors(m: ShaderModule): string[] {
 	for (const io of m.ios) {
 		const owner = "io '" + io.name + "'";
 		conditionErrors(c, io.condition, owner);
-		if (io.builtin != Builtin.None && !builtinStages(io.builtin, io.direction).includes(io.stage)) {
+		if (io.builtin != Builtin.None &&
+			!builtinStages(io.builtin, io.direction).includes(io.stage)) {
 			c.errors.push(owner + ": " + io.builtin.toString() + " is no " + io.stage.toString() +
 				" " + io.direction.toString().toLowerCase() + "put");
 		}
@@ -822,8 +826,10 @@ export function irErrors(m: ShaderModule): string[] {
 		const owner = "entry '" + e.name + "'";
 		inRange(c, e.functionIndex, m.functions.length as int32, "function", owner);
 		stages.push(e.stage);
-		const outputs = m.ios.filter((io) => io.stage == e.stage && io.direction == IoDirection.Out);
-		if (e.stage == ShaderStage.Vertex && !outputs.some((io) => io.builtin == Builtin.Position)) {
+		const outputs = m.ios.filter((io) => io.stage == e.stage &&
+			io.direction == IoDirection.Out);
+		if (e.stage == ShaderStage.Vertex &&
+			!outputs.some((io) => io.builtin == Builtin.Position)) {
 			c.errors.push(owner + ": a vertex entry writes Position");
 		}
 		if (e.stage == ShaderStage.Compute && outputs.length > 0) {
