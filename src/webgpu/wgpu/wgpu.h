@@ -196,3 +196,5 @@ void wgEndOcclusionQuery(void);
 void wgPushDebugGroup(const char *label);
 void wgPopDebugGroup(void);
 void wgInsertDebugMarker(const char *label);
+
+const char *wgConstantsDisagreement(const int32_t *values, int32_t count);

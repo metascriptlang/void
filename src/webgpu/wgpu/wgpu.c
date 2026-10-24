@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <webgpu/webgpu.h>
 #include "wgpu.h"
@@ -48,30 +49,55 @@ void wgShutdown(void) {
 	device = NULL;
 }
 
+enum {
+	LIMIT_TEXTURE_DIMENSION_1D,
+	LIMIT_TEXTURE_DIMENSION_2D,
+	LIMIT_TEXTURE_DIMENSION_3D,
+	LIMIT_TEXTURE_ARRAY_LAYERS,
+	LIMIT_BIND_GROUPS,
+	LIMIT_SAMPLED_TEXTURES,
+	LIMIT_SAMPLERS,
+	LIMIT_STORAGE_BUFFERS,
+	LIMIT_STORAGE_TEXTURES,
+	LIMIT_UNIFORM_BUFFERS,
+	LIMIT_UNIFORM_BINDING_SIZE,
+	LIMIT_STORAGE_BINDING_SIZE,
+	LIMIT_VERTEX_BUFFERS,
+	LIMIT_VERTEX_ATTRIBUTES,
+	LIMIT_COLOR_ATTACHMENTS,
+	LIMIT_WORKGROUP_SIZE_X,
+	LIMIT_WORKGROUP_SIZE_Y,
+	LIMIT_WORKGROUP_SIZE_Z,
+	LIMIT_WORKGROUP_INVOCATIONS,
+	LIMIT_WORKGROUPS_PER_DIMENSION,
+	LIMIT_UNIFORM_ALIGNMENT,
+	LIMIT_STORAGE_ALIGNMENT
+};
+
 int64_t wgLimit(int32_t which) {
 	switch (which) {
-	case 0: return limits.maxTextureDimension1D;
-	case 1: return limits.maxTextureDimension2D;
-	case 2: return limits.maxTextureDimension3D;
-	case 3: return limits.maxTextureArrayLayers;
-	case 4: return limits.maxBindGroups;
-	case 5: return limits.maxSampledTexturesPerShaderStage;
-	case 6: return limits.maxSamplersPerShaderStage;
-	case 7: return limits.maxStorageBuffersPerShaderStage;
-	case 8: return limits.maxStorageTexturesPerShaderStage;
-	case 9: return limits.maxUniformBuffersPerShaderStage;
-	case 10: return (int64_t)limits.maxUniformBufferBindingSize;
-	case 11: return (int64_t)limits.maxStorageBufferBindingSize;
-	case 12: return limits.maxVertexBuffers;
-	case 13: return limits.maxVertexAttributes;
-	case 14: return limits.maxColorAttachments;
-	case 15: return limits.maxComputeWorkgroupSizeX;
-	case 16: return limits.maxComputeWorkgroupSizeY;
-	case 17: return limits.maxComputeWorkgroupSizeZ;
-	case 18: return limits.maxComputeInvocationsPerWorkgroup;
-	case 19: return limits.maxComputeWorkgroupsPerDimension;
-	case 20: return limits.minUniformBufferOffsetAlignment;
-	case 21: return limits.minStorageBufferOffsetAlignment;
+	case LIMIT_TEXTURE_DIMENSION_1D: return limits.maxTextureDimension1D;
+	case LIMIT_TEXTURE_DIMENSION_2D: return limits.maxTextureDimension2D;
+	case LIMIT_TEXTURE_DIMENSION_3D: return limits.maxTextureDimension3D;
+	case LIMIT_TEXTURE_ARRAY_LAYERS: return limits.maxTextureArrayLayers;
+	case LIMIT_BIND_GROUPS: return limits.maxBindGroups;
+	case LIMIT_SAMPLED_TEXTURES: return limits.maxSampledTexturesPerShaderStage;
+	case LIMIT_SAMPLERS: return limits.maxSamplersPerShaderStage;
+	case LIMIT_STORAGE_BUFFERS: return limits.maxStorageBuffersPerShaderStage;
+	case LIMIT_STORAGE_TEXTURES: return limits.maxStorageTexturesPerShaderStage;
+	case LIMIT_UNIFORM_BUFFERS: return limits.maxUniformBuffersPerShaderStage;
+	case LIMIT_UNIFORM_BINDING_SIZE: return (int64_t)limits.maxUniformBufferBindingSize;
+	case LIMIT_STORAGE_BINDING_SIZE: return (int64_t)limits.maxStorageBufferBindingSize;
+	case LIMIT_VERTEX_BUFFERS: return limits.maxVertexBuffers;
+	case LIMIT_VERTEX_ATTRIBUTES: return limits.maxVertexAttributes;
+	case LIMIT_COLOR_ATTACHMENTS: return limits.maxColorAttachments;
+	case LIMIT_WORKGROUP_SIZE_X: return limits.maxComputeWorkgroupSizeX;
+	case LIMIT_WORKGROUP_SIZE_Y: return limits.maxComputeWorkgroupSizeY;
+	case LIMIT_WORKGROUP_SIZE_Z: return limits.maxComputeWorkgroupSizeZ;
+	case LIMIT_WORKGROUP_INVOCATIONS: return limits.maxComputeInvocationsPerWorkgroup;
+	case LIMIT_WORKGROUPS_PER_DIMENSION: return limits.maxComputeWorkgroupsPerDimension;
+	case LIMIT_UNIFORM_ALIGNMENT: return limits.minUniformBufferOffsetAlignment;
+	case LIMIT_STORAGE_ALIGNMENT: return limits.minStorageBufferOffsetAlignment;
 	default: return -1;
 	}
 }
@@ -329,6 +355,8 @@ void wgReleaseModule(WgModule module) {
 
 #define LAYOUT_STRIDE 6
 
+enum { LAYOUT_UNIFORM, LAYOUT_TEXTURE, LAYOUT_SAMPLER, LAYOUT_STORAGE_BUFFER, LAYOUT_STORAGE_TEXTURE };
+
 WgLayout wgCreateLayout(const int32_t *entries, int32_t count, const char *label) {
 	WGPUBindGroupLayoutEntry layoutEntries[MAX_ENTRIES];
 	for (int32_t i = 0; i < count; i++) {
@@ -338,15 +366,15 @@ WgLayout wgCreateLayout(const int32_t *entries, int32_t count, const char *label
 		WGPUBindGroupLayoutEntry entry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
 		entry.binding = (uint32_t)e[0];
 		entry.visibility = (WGPUShaderStage)e[1];
-		if (kind == 0) {
+		if (kind == LAYOUT_UNIFORM) {
 			entry.buffer.type = WGPUBufferBindingType_Uniform;
 			entry.buffer.hasDynamicOffset = 1;
-		} else if (kind == 1) {
+		} else if (kind == LAYOUT_TEXTURE) {
 			entry.texture.sampleType = (WGPUTextureSampleType)bindingType;
 			entry.texture.viewDimension = (WGPUTextureViewDimension)e[4];
-		} else if (kind == 3) {
+		} else if (kind == LAYOUT_STORAGE_BUFFER) {
 			entry.buffer.type = (WGPUBufferBindingType)bindingType;
-		} else if (kind == 4) {
+		} else if (kind == LAYOUT_STORAGE_TEXTURE) {
 			entry.storageTexture.access = (WGPUStorageTextureAccess)bindingType;
 			entry.storageTexture.format = (WGPUTextureFormat)e[5];
 			entry.storageTexture.viewDimension = (WGPUTextureViewDimension)e[4];
@@ -830,4 +858,234 @@ void wgInsertDebugMarker(const char *label) {
 	if (pass) wgpuRenderPassEncoderInsertDebugMarker(pass, text(label));
 	else if (computePass) wgpuComputePassEncoderInsertDebugMarker(computePass, text(label));
 	else wgpuCommandEncoderInsertDebugMarker(encoder, text(label));
+}
+
+typedef struct { const char *name; int32_t value; } DriverConstant;
+
+#define DRIVER(name) { #name, (int32_t)(name) }
+
+static char s_constantsDisagreement[256];
+
+const char *wgConstantsDisagreement(const int32_t *values, int32_t count) {
+	const DriverConstant driverConstants[] = {
+		DRIVER(WGPUTextureFormat_R8Unorm),
+		DRIVER(WGPUTextureFormat_R16Float),
+		DRIVER(WGPUTextureFormat_RG8Unorm),
+		DRIVER(WGPUTextureFormat_R32Float),
+		DRIVER(WGPUTextureFormat_R32Uint),
+		DRIVER(WGPUTextureFormat_RG16Float),
+		DRIVER(WGPUTextureFormat_RGBA8Unorm),
+		DRIVER(WGPUTextureFormat_RGBA8UnormSrgb),
+		DRIVER(WGPUTextureFormat_RGBA8Uint),
+		DRIVER(WGPUTextureFormat_RGBA8Sint),
+		DRIVER(WGPUTextureFormat_BGRA8Unorm),
+		DRIVER(WGPUTextureFormat_BGRA8UnormSrgb),
+		DRIVER(WGPUTextureFormat_RGB10A2Unorm),
+		DRIVER(WGPUTextureFormat_RG11B10Ufloat),
+		DRIVER(WGPUTextureFormat_RG32Float),
+		DRIVER(WGPUTextureFormat_RGBA16Uint),
+		DRIVER(WGPUTextureFormat_RGBA16Float),
+		DRIVER(WGPUTextureFormat_RGBA32Float),
+		DRIVER(WGPUTextureFormat_RGBA32Uint),
+		DRIVER(WGPUTextureFormat_Depth16Unorm),
+		DRIVER(WGPUTextureFormat_Depth24PlusStencil8),
+		DRIVER(WGPUTextureFormat_Depth32Float),
+		DRIVER(WGPUFeatureName_DepthClipControl),
+		DRIVER(WGPUFeatureName_Depth32FloatStencil8),
+		DRIVER(WGPUFeatureName_TextureCompressionBC),
+		DRIVER(WGPUFeatureName_TextureCompressionETC2),
+		DRIVER(WGPUFeatureName_TextureCompressionASTC),
+		DRIVER(WGPUFeatureName_TimestampQuery),
+		DRIVER(WGPUFeatureName_IndirectFirstInstance),
+		DRIVER(WGPUFeatureName_ShaderF16),
+		DRIVER(WGPUFeatureName_RG11B10UfloatRenderable),
+		DRIVER(WGPUFeatureName_BGRA8UnormStorage),
+		DRIVER(WGPUFeatureName_Float32Filterable),
+		DRIVER(WGPUFeatureName_Float32Blendable),
+		DRIVER(WGPUFeatureName_DualSourceBlending),
+		DRIVER(WGPUPrimitiveTopology_PointList),
+		DRIVER(WGPUPrimitiveTopology_LineList),
+		DRIVER(WGPUPrimitiveTopology_LineStrip),
+		DRIVER(WGPUPrimitiveTopology_TriangleList),
+		DRIVER(WGPUPrimitiveTopology_TriangleStrip),
+		DRIVER(WGPUTextureDimension_2D),
+		DRIVER(WGPUTextureDimension_3D),
+		DRIVER(WGPUTextureViewDimension_2D),
+		DRIVER(WGPUTextureViewDimension_2DArray),
+		DRIVER(WGPUTextureViewDimension_Cube),
+		DRIVER(WGPUTextureViewDimension_CubeArray),
+		DRIVER(WGPUTextureViewDimension_3D),
+		DRIVER(WGPUMipmapFilterMode_Nearest),
+		DRIVER(WGPUMipmapFilterMode_Linear),
+		DRIVER(WGPUBufferBindingType_Storage),
+		DRIVER(WGPUBufferBindingType_ReadOnlyStorage),
+		DRIVER(WGPUStorageTextureAccess_WriteOnly),
+		DRIVER(WGPUStorageTextureAccess_ReadOnly),
+		DRIVER(WGPUStorageTextureAccess_ReadWrite),
+		DRIVER(WGPUTextureSampleType_Float),
+		DRIVER(WGPUTextureSampleType_UnfilterableFloat),
+		DRIVER(WGPUTextureSampleType_Sint),
+		DRIVER(WGPUTextureSampleType_Uint),
+		DRIVER(WGPUSamplerBindingType_Filtering),
+		DRIVER(WGPUSamplerBindingType_NonFiltering),
+		DRIVER(WGPUTextureAspect_All),
+		DRIVER(WGPUTextureAspect_DepthOnly),
+		DRIVER(WGPULoadOp_Load),
+		DRIVER(WGPULoadOp_Clear),
+		DRIVER(WGPUStoreOp_Store),
+		DRIVER(WGPUStoreOp_Discard),
+		DRIVER(WGPUVertexStepMode_Vertex),
+		DRIVER(WGPUVertexStepMode_Instance),
+		DRIVER(WGPUCullMode_None),
+		DRIVER(WGPUCullMode_Front),
+		DRIVER(WGPUCullMode_Back),
+		DRIVER(WGPUFrontFace_CCW),
+		DRIVER(WGPUFrontFace_CW),
+		DRIVER(WGPUCompareFunction_Never),
+		DRIVER(WGPUCompareFunction_Less),
+		DRIVER(WGPUCompareFunction_Equal),
+		DRIVER(WGPUCompareFunction_LessEqual),
+		DRIVER(WGPUCompareFunction_Greater),
+		DRIVER(WGPUCompareFunction_NotEqual),
+		DRIVER(WGPUCompareFunction_GreaterEqual),
+		DRIVER(WGPUCompareFunction_Always),
+		DRIVER(WGPUBlendFactor_Zero),
+		DRIVER(WGPUBlendFactor_One),
+		DRIVER(WGPUBlendFactor_Src),
+		DRIVER(WGPUBlendFactor_OneMinusSrc),
+		DRIVER(WGPUBlendFactor_SrcAlpha),
+		DRIVER(WGPUBlendFactor_OneMinusSrcAlpha),
+		DRIVER(WGPUBlendFactor_Dst),
+		DRIVER(WGPUBlendFactor_OneMinusDst),
+		DRIVER(WGPUBlendFactor_DstAlpha),
+		DRIVER(WGPUBlendFactor_OneMinusDstAlpha),
+		DRIVER(WGPUBlendFactor_SrcAlphaSaturated),
+		DRIVER(WGPUBlendFactor_Constant),
+		DRIVER(WGPUBlendFactor_OneMinusConstant),
+		DRIVER(WGPUBlendOperation_Add),
+		DRIVER(WGPUBlendOperation_Subtract),
+		DRIVER(WGPUBlendOperation_ReverseSubtract),
+		DRIVER(WGPUBlendOperation_Min),
+		DRIVER(WGPUBlendOperation_Max),
+		DRIVER(WGPUStencilOperation_Keep),
+		DRIVER(WGPUStencilOperation_Zero),
+		DRIVER(WGPUStencilOperation_Replace),
+		DRIVER(WGPUStencilOperation_Invert),
+		DRIVER(WGPUStencilOperation_IncrementClamp),
+		DRIVER(WGPUStencilOperation_DecrementClamp),
+		DRIVER(WGPUStencilOperation_IncrementWrap),
+		DRIVER(WGPUStencilOperation_DecrementWrap),
+		DRIVER(WGPUVertexFormat_Float32),
+		DRIVER(WGPUVertexFormat_Float32x2),
+		DRIVER(WGPUVertexFormat_Float32x3),
+		DRIVER(WGPUVertexFormat_Float32x4),
+		DRIVER(WGPUVertexFormat_Uint32),
+		DRIVER(WGPUVertexFormat_Uint32x2),
+		DRIVER(WGPUVertexFormat_Uint32x3),
+		DRIVER(WGPUVertexFormat_Uint32x4),
+		DRIVER(WGPUVertexFormat_Sint32),
+		DRIVER(WGPUVertexFormat_Sint32x2),
+		DRIVER(WGPUVertexFormat_Sint32x3),
+		DRIVER(WGPUVertexFormat_Sint32x4),
+		DRIVER(WGPUVertexFormat_Uint8x2),
+		DRIVER(WGPUVertexFormat_Uint8x4),
+		DRIVER(WGPUVertexFormat_Sint8x2),
+		DRIVER(WGPUVertexFormat_Sint8x4),
+		DRIVER(WGPUVertexFormat_Unorm8x2),
+		DRIVER(WGPUVertexFormat_Unorm8x4),
+		DRIVER(WGPUVertexFormat_Snorm8x2),
+		DRIVER(WGPUVertexFormat_Snorm8x4),
+		DRIVER(WGPUVertexFormat_Uint16x2),
+		DRIVER(WGPUVertexFormat_Uint16x4),
+		DRIVER(WGPUVertexFormat_Sint16x2),
+		DRIVER(WGPUVertexFormat_Sint16x4),
+		DRIVER(WGPUVertexFormat_Unorm16x2),
+		DRIVER(WGPUVertexFormat_Unorm16x4),
+		DRIVER(WGPUVertexFormat_Snorm16x2),
+		DRIVER(WGPUVertexFormat_Snorm16x4),
+		DRIVER(WGPUVertexFormat_Float16x2),
+		DRIVER(WGPUVertexFormat_Float16x4),
+		DRIVER(WGPUAddressMode_ClampToEdge),
+		DRIVER(WGPUAddressMode_Repeat),
+		DRIVER(WGPUAddressMode_MirrorRepeat),
+		DRIVER(WGPUFilterMode_Nearest),
+		DRIVER(WGPUFilterMode_Linear),
+		DRIVER(WGPUIndexFormat_Uint16),
+		DRIVER(WGPUIndexFormat_Uint32),
+		DRIVER(WGPUColorWriteMask_All),
+		DRIVER(LIMIT_TEXTURE_DIMENSION_1D),
+		DRIVER(LIMIT_TEXTURE_DIMENSION_2D),
+		DRIVER(LIMIT_TEXTURE_DIMENSION_3D),
+		DRIVER(LIMIT_TEXTURE_ARRAY_LAYERS),
+		DRIVER(LIMIT_BIND_GROUPS),
+		DRIVER(LIMIT_SAMPLED_TEXTURES),
+		DRIVER(LIMIT_SAMPLERS),
+		DRIVER(LIMIT_STORAGE_BUFFERS),
+		DRIVER(LIMIT_STORAGE_TEXTURES),
+		DRIVER(LIMIT_UNIFORM_BUFFERS),
+		DRIVER(LIMIT_UNIFORM_BINDING_SIZE),
+		DRIVER(LIMIT_STORAGE_BINDING_SIZE),
+		DRIVER(LIMIT_VERTEX_BUFFERS),
+		DRIVER(LIMIT_VERTEX_ATTRIBUTES),
+		DRIVER(LIMIT_COLOR_ATTACHMENTS),
+		DRIVER(LIMIT_WORKGROUP_SIZE_X),
+		DRIVER(LIMIT_WORKGROUP_SIZE_Y),
+		DRIVER(LIMIT_WORKGROUP_SIZE_Z),
+		DRIVER(LIMIT_WORKGROUP_INVOCATIONS),
+		DRIVER(LIMIT_WORKGROUPS_PER_DIMENSION),
+		DRIVER(LIMIT_UNIFORM_ALIGNMENT),
+		DRIVER(LIMIT_STORAGE_ALIGNMENT),
+		DRIVER(LAYOUT_UNIFORM),
+		DRIVER(LAYOUT_TEXTURE),
+		DRIVER(LAYOUT_SAMPLER),
+		DRIVER(LAYOUT_STORAGE_BUFFER),
+		DRIVER(LAYOUT_STORAGE_TEXTURE),
+		DRIVER(LAYOUT_STRIDE),
+		DRIVER(PL_BUFFER_COUNT),
+		DRIVER(PL_TARGET_COUNT),
+		DRIVER(PL_TOPOLOGY),
+		DRIVER(PL_STRIP_INDEX_FORMAT),
+		DRIVER(PL_CULL_MODE),
+		DRIVER(PL_FRONT_FACE),
+		DRIVER(PL_SAMPLE_COUNT),
+		DRIVER(PL_DEPTH_FORMAT),
+		DRIVER(PL_DEPTH_WRITE),
+		DRIVER(PL_DEPTH_COMPARE),
+		DRIVER(PL_STENCIL_READ_MASK),
+		DRIVER(PL_STENCIL_WRITE_MASK),
+		DRIVER(PL_DEPTH_BIAS),
+		DRIVER(PL_STENCIL_FRONT),
+		DRIVER(PL_STENCIL_BACK),
+		DRIVER(PL_BUFFERS),
+		DRIVER(PL_TARGET_STRIDE),
+		DRIVER(PASS_COLOR_COUNT),
+		DRIVER(PASS_WIDTH),
+		DRIVER(PASS_HEIGHT),
+		DRIVER(PASS_TIMESTAMP_BEGIN),
+		DRIVER(PASS_TIMESTAMP_END),
+		DRIVER(PASS_DEPTH_LOAD),
+		DRIVER(PASS_DEPTH_STORE),
+		DRIVER(PASS_DEPTH_STENCIL),
+		DRIVER(PASS_COLOR_OPS),
+		DRIVER(PASS_COLOR_OP_STRIDE),
+		DRIVER(PL_BUFFER_STRIDE),
+		DRIVER(PL_TARGETS),
+		DRIVER(PASS_DEPTH_CLEAR),
+		DRIVER(MAX_BUFFERS),
+		DRIVER(MAX_ATTRIBUTES),
+		DRIVER(MAX_TARGETS),
+	};
+	int32_t known = (int32_t)(sizeof driverConstants / sizeof driverConstants[0]);
+	s_constantsDisagreement[0] = 0;
+	if (count != known) {
+		snprintf(s_constantsDisagreement, sizeof s_constantsDisagreement, "backend.ms lists %d constants and wgpu.c checks %d", (int)count, (int)known);
+		return s_constantsDisagreement;
+	}
+	for (int32_t i = 0; i < known; i++) {
+		if (values[i] == driverConstants[i].value) continue;
+		snprintf(s_constantsDisagreement, sizeof s_constantsDisagreement, "entry %d: %s is %d in webgpu.h or wgpu.c and %d in backend.ms",
+			(int)i, driverConstants[i].name, (int)driverConstants[i].value, (int)values[i]);
+		break;
+	}
+	return s_constantsDisagreement;
 }
