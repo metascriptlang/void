@@ -1715,7 +1715,8 @@ the existing parameter vector followed by an RGBA colour vector. `gpu3d.ms`
 `renderer.blockFits` refuses a missing or old-sized block before drawing. The unlit
 program does not interpret a colour channel as a toon-ramp level.
 
-**Model cost and preset limit.** The core declares only a model matrix: 16 floats.
+**Model cost and preset limit** (superseded: the model block is gone, see "Every mesh draw
+reads an instance row"). The core declares only a model matrix: 16 floats.
 `draw.ms` `drawItem` uses the actual reflected length, so it does not compute a normal
 inverse or upload its second matrix for that program. **MRT32 still needs the normal**:
 the pixel-art twin writes the preset's normal/depth attachment and retains the 32-float
@@ -6001,6 +6002,42 @@ measured when the lit program reads it. Texel arithmetic is unsigned, because sh
 `clusterLookupCheck.ms` holds the lookup to the clusters' own tiling and finds each light through
 both textures at its centre. The light records texture, the lit shaders' loop and the renderer
 wait for the rebase.
+
+### Every mesh draw reads an instance row, as built (2026-10-24)
+
+A mesh draw no longer takes its world matrix from a uniform. Every mesh layout carries a
+per-instance stream in vertex slot 1: 16 floats, the world matrix's three rows (row-major 3x4) and
+a straight RGBA colour that multiplies the vertex colour. A lone draw is a run of one row. This is
+Bevy's `MeshUniform` (`bevy_pbr/src/render/mesh.rs:526`, `world_from_local: [Vec4; 3]`, read by
+instance index in `mesh_functions.wesl:15`) and Bevy's sorted-phase batching, where each item
+gets the range `index..index + 1` in the instance buffer and neighbours with equal batch data
+merge their ranges (`bevy_render/src/batching/no_gpu_preprocessing.rs:97-98`,
+`batching/mod.rs:200-240`). The row is a vertex stream rather than a storage buffer, because
+WebGL2 has none (see the clustered lights above).
+
+- `draw.ms` stages the rows a draw needs and appends them to one per-frame row buffer
+  (`appendRows`, `sg_append_buffer`), so a frame writes 64 B per drawn item and no uniform. A
+  frame that outgrows the buffer moves to one twice as large.
+- `drawPassList` and the shadow caster pass draw neighbours that differ only in their world
+  matrices (`sameBatch`: same mesh, material and range, no skin, no instance run) as one
+  instanced draw, in list order, so a blended list keeps its look.
+- An `InstanceRun` binds a `VertexLayout.MeshInstances` stream in place of the staged rows; this
+  is the particle mesh path (`PARTICLES-RENDER.md` A.2.1), now on every non-skinned mesh program
+  rather than a separate program.
+- The normal is the cofactor of the row's 3x3 (`skinNormal`), and a tangent's handedness flips
+  with a mirroring row (`handednessOf`), the treatment skinned vertices already had.
+- A skinned program declares the row and never reads it; its pose comes from the skin block.
+  shady gates an input only by its own feature, so the row is not left out of the skinned layouts,
+  and a skinned draw binds a row of one.
+
+Removed with it: the program key's `instanced` bit (`occlusionUvB` moves to bit 18 and
+`KEY_LIMIT` to 524288), `withInstanced`, the `InstancedLitTextured` layout and its 16
+`programKeys.txt` rows, and the model block at uniform slot 4 (`ModelParams`,
+`ModelTransformParams`, `MODEL_SLOT`). The M6, M8 and M28 notes above on that block describe what
+was built then. Pinned by `drawCheck.ms` (every mesh layout reads a 16-float slot 1, a run's
+stream is refused on a skinned or non-mesh program, `sameBatch`), `programKeyCheck.ms` (mesh
+programs and their casters carry the row, bit 18) and `litShaderCheck.ms` (a translated, mirrored
+row with a colour, and skinned vertices that ignore the row).
 
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
