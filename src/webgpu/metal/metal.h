@@ -109,7 +109,20 @@ void mtlBlitTextureToTexture(
 	int32_t destinationX,
 	int32_t destinationY,
 	int32_t destinationZ);
-void mtlWriteTexture(MtlTexture texture, void *data, int64_t offset, int32_t bytesPerRow, int32_t width, int32_t height);
+void mtlWriteTexture(
+	MtlTexture texture,
+	void *data,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t bytesPerImage,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t slice,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z);
 
 MtlSampler mtlNewSampler(
 	MtlDevice device,

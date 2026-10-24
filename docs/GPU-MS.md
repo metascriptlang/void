@@ -188,8 +188,7 @@ and campfire draw under `MTL_DEBUG_LAYER=1` with no validation message; `nm` fin
   `VoidAppEvent` and runs on the iOS simulator (iPhone 17 Pro, iOS 26.5): it draws, delivers
   focus/suspend/resume, and `loseContext()` rebuilds the door (generation 1 → 2). Touch and keys
   were not driven: the Mac has no tool here that taps the simulator.
-- **Partial `writeTexture` on Metal stays refused**, with the measurement and the upgrade trigger
-  in `docs/GPU.md` "Metal".
+- Partial `writeTexture` on Metal: ported since, see `docs/GPU.md` "Metal".
 
 ### 2026-10-23, main merged into the branch
 
@@ -445,12 +444,10 @@ branch. Each one is checked here per file; the full gate has not run again yet.
   bytes changed; sokol uploads every applied block. Unmeasured until a GO.
 - `writeTexture` takes WebGPU's `origin` + `size` (control sokol's whole-image `sg_update_image`
   lacks) on D3D11 (a `COPY_DST` texture is DEFAULT, written by `UpdateSubresource` with a box), GL
-  (`glTexSubImage2D` in place; a whole write still rotates the copy) and wgpu. Metal stops on a
-  write that is not the whole texture until it ports the same (`MTLRegionMake2D(x, y, w, h)` and
-  the copy rotation only for a whole write). Its caller: a glyph page uploads only the union of
-  the tiles written since its last upload (`doorUpdateTextureRect`); `batcher.c` keeps the
-  whole-page upload under `__APPLE__` until Metal has the partial write. The DEFAULT texture's
-  cost for a whole-texture stream is unmeasured until a GO.
+  (`glTexSubImage2D` in place; a whole write still rotates the copy), wgpu and Metal (a blit, or
+  the CPU inside a pass; `docs/GPU.md` "Metal"), so a glyph page uploads only the union of the
+  tiles written since its last upload (`doorUpdateTextureRect`). The DEFAULT texture's cost for a
+  whole-texture stream is unmeasured until a GO.
 - D3D11 skips a vertex buffer, index buffer, shader resource or sampler bind the context already
   holds (sokol re-issues all of them every apply); GL already caches them as sokol does. Both
   count the native binds they issue (`bindStats()`), pinned by the check files.

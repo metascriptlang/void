@@ -164,7 +164,10 @@ function drawTriangle(device: GPUDevice, sampleCount: int32, dynamicOffset: uint
 }
 
 function drawTriangleAt(device: GPUDevice, sampleCount: int32, dynamicOffset: uint32, entryOffset: int64): Vec<uint8> {
-	const module = flatShader(device);
+	return drawTriangleWith(device, flatShader(device), sampleCount, dynamicOffset, entryOffset);
+}
+
+function drawTriangleWith(device: GPUDevice, module: GPUShaderModule, sampleCount: int32, dynamicOffset: uint32, entryOffset: int64): Vec<uint8> {
 	const pipeline = flatPipeline(device, module, sampleCount);
 	const uniforms = colourUniforms(device);
 	const group = uniformGroupAt(device, pipeline, uniforms, entryOffset);
@@ -201,6 +204,25 @@ test "a Metal triangle takes its colour from the uniform block at the dynamic of
 	assert pixel(pixels, 63, 63) == BLUE;
 	const live = device.liveCounts();
 	assert live.buffers == 2 && live.textures == 1 && live.views == 1 && live.shaderModules == 1 && live.pipelines == 1;
+	device.destroy();
+}
+
+const SHIFTED_VERTEX_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct Params { float4 color; };\nstruct In { float2 position [[attribute(0)]]; };\nstruct Out { float4 position [[position]]; };\nvertex Out vshift(In in [[stage_in]], constant Params& params [[buffer(0)]]) { Out out; out.position = float4(in.position + float2(params.color.g * 0.5, 0.0), 0.0, 1.0); return out; }\n";
+
+test "a uniform block both stages read reaches the vertex and the fragment stage" {
+	const device = openDevice();
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "both stages",
+		vertexCode: SHIFTED_VERTEX_MSL,
+		vertexEntryPoint: "vshift",
+		fragmentCode: FRAGMENT_MSL,
+		fragmentEntryPoint: "fmain",
+	};
+	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32), size: 16, nativeSlot: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const pixels = drawTriangleWith(device, device.createShaderModule(descriptor), 1, 256, 0);
+	assert pixel(pixels, 30, 32) == BLUE;
+	assert pixel(pixels, 48, 32) == GREEN;
 	device.destroy();
 }
 
@@ -292,6 +314,10 @@ function samplerBinding(samplerType: GPUSamplerBindingType): GPUShaderBinding {
 const NO_BINDING: GPUShaderBinding = { group: 1, binding: 1 };
 
 function sampleCentreWith(device: GPUDevice, module: GPUShaderModule, view: GPUTextureView, sampler: GPUSampler): uint32 {
+	return pixel(sampledPixelsWith(device, module, view, sampler), 32, 32);
+}
+
+function sampledPixelsWith(device: GPUDevice, module: GPUShaderModule, view: GPUTextureView, sampler: GPUSampler): Vec<uint8> {
 	const pipeline = flatPipeline(device, module, 1);
 	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
 	descriptor.entries[0] = { binding: 0, textureView: view };
@@ -310,7 +336,7 @@ function sampleCentreWith(device: GPUDevice, module: GPUShaderModule, view: GPUT
 	pass.draw(6, 1, 0, 0);
 	pass.end();
 	device.queue.submit(encoder.finish());
-	return pixel(readPixels(target), 32, 32);
+	return readPixels(target);
 }
 
 function clearedDepth(device: GPUDevice, value: float32): GPUTextureView {
@@ -1060,6 +1086,30 @@ test "each mip of a texture is a render attachment sized by its mip, and views s
 	device.destroy();
 }
 
+const HALF_VERTEX_READ_MSL = "#include <metal_stdlib>\nusing namespace metal;\nstruct In { float2 position [[attribute(0)]]; };\nstruct Out { float4 position [[position]]; };\nvertex Out vhalf(In in [[stage_in]], texture2d<float> tex [[texture(0)]]) { Out out; out.position = float4(in.position * 0.5 + float2(tex.read(uint2(0, 0)).g * 0.5, 0.0), 0.0, 1.0); return out; }\n";
+
+test "a texture both stages read is bound to the vertex and the fragment stage" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 8, 8, 1, 1, "2d");
+	clearView(device, viewOf(texture, "2d", 0, 1, 0, 1), 0.0, 1.0, 0.0, 0);
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "both stages",
+		vertexCode: HALF_VERTEX_READ_MSL,
+		vertexEntryPoint: "vhalf",
+		fragmentCode: READ_FIRST_MSL,
+		fragmentEntryPoint: "first",
+	};
+	let binding = textureBinding("float", "2d", false);
+	binding.visibility = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	descriptor.bindings[0] = binding;
+	descriptor.bindings[1] = NO_BINDING;
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const pixels = sampledPixelsWith(device, device.createShaderModule(descriptor), viewOf(texture, "2d", 0, 1, 0, 1), { id: 0 });
+	assert pixel(pixels, 30, 32) == BLUE;
+	assert pixel(pixels, 48, 32) == GREEN;
+	device.destroy();
+}
+
 test "a draw into mip 1 covers that mip's whole extent and leaves mip 0 alone" {
 	const device = openDevice();
 	const texture = sizedTexture(device, 8, 8, 1, 2, "2d");
@@ -1460,6 +1510,27 @@ test "writeTexture writes a sub-rectangle in place over a whole write of the sam
 	const volume = copyTexture(device, "r8unorm", 4, 4, 4, 1, "3d");
 	device.queue.writeTexture({ texture: volume, origin: { x: 0, y: 0, z: 1 } }, fill(32, 0x88), { offset: 0, bytesPerRow: 4, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 2 });
 	flush(device);
+	assert readBytes(volume, 0, 0, 1, 4, 4, 1)[5] == 0x88 && readBytes(volume, 0, 0, 2, 4, 4, 1)[5] == 0x88;
+	assert readBytes(volume, 0, 0, 0, 4, 4, 1)[5] == 0 && readBytes(volume, 0, 0, 3, 4, 4, 1)[5] == 0;
+	device.destroy();
+}
+
+test "inside a pass, writeTexture writes a mip, two layers and two 3d slices of textures no GPU work has used" {
+	const device = openDevice();
+	const mips = copyTexture(device, "r8unorm", 8, 8, 1, 3, "2d");
+	const layers = copyTexture(device, "rgba8unorm", 4, 4, 3, 1, "2d");
+	const volume = copyTexture(device, "r8unorm", 4, 4, 4, 1, "3d");
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(colourTarget(device, 1).createView({ label: null }), { id: 0 }));
+	device.queue.writeTexture({ texture: mips, mipLevel: 1, origin: { x: 1, y: 1, z: 0 } }, fill(4, 0x66), { offset: 0, bytesPerRow: 2, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	device.queue.writeTexture({ texture: layers, origin: { x: 1, y: 1, z: 1 } }, fill(32, 0x77), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 2 });
+	device.queue.writeTexture({ texture: volume, origin: { x: 0, y: 0, z: 1 } }, fill(32, 0x88), { offset: 0, bytesPerRow: 4, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 2 });
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const level = readBytes(mips, 1, 0, 0, 4, 4, 1);
+	assert level[1 * 4 + 1] == 0x66 && level[2 * 4 + 2] == 0x66 && level[0] == 0 && level[3 * 4 + 3] == 0;
+	assert readBytes(layers, 0, 1, 0, 4, 4, 4)[(1 * 4 + 1) * 4] == 0x77 && readBytes(layers, 0, 2, 0, 4, 4, 4)[(2 * 4 + 2) * 4] == 0x77;
+	assert readBytes(layers, 0, 0, 0, 4, 4, 4)[(1 * 4 + 1) * 4] == 0;
 	assert readBytes(volume, 0, 0, 1, 4, 4, 1)[5] == 0x88 && readBytes(volume, 0, 0, 2, 4, 4, 1)[5] == 0x88;
 	assert readBytes(volume, 0, 0, 0, 4, 4, 1)[5] == 0 && readBytes(volume, 0, 0, 3, 4, 4, 1)[5] == 0;
 	device.destroy();

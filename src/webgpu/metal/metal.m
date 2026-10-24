@@ -282,13 +282,26 @@ void mtlBlitTextureToTexture(
 	}
 }
 
-void mtlWriteTexture(MtlTexture texture, void *data, int64_t offset, int32_t bytesPerRow, int32_t width, int32_t height) {
-	[(id<MTLTexture>)texture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)width, (NSUInteger)height)
-		mipmapLevel:0
-		slice:0
+void mtlWriteTexture(
+	MtlTexture texture,
+	void *data,
+	int64_t offset,
+	int32_t bytesPerRow,
+	int32_t bytesPerImage,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t slice,
+	int32_t level,
+	int32_t x,
+	int32_t y,
+	int32_t z) {
+	[(id<MTLTexture>)texture replaceRegion:MTLRegionMake3D((NSUInteger)x, (NSUInteger)y, (NSUInteger)z, (NSUInteger)width, (NSUInteger)height, (NSUInteger)depth)
+		mipmapLevel:(NSUInteger)level
+		slice:(NSUInteger)slice
 		withBytes:(const uint8_t *)data + offset
 		bytesPerRow:(NSUInteger)bytesPerRow
-		bytesPerImage:0];
+		bytesPerImage:(NSUInteger)bytesPerImage];
 }
 
 MtlSampler mtlNewSampler(

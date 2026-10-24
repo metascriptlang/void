@@ -363,6 +363,7 @@ struct TextureSlot {
 	active: int32;
 	writtenFrame: int64;
 	inPlace: boolean;
+	gpuUsed: boolean;
 	swapchainView: uint32;
 }
 
@@ -392,6 +393,7 @@ struct NativeBinding {
 	binding: int32;
 	kind: BindingKind;
 	vertexStage: boolean;
+	fragmentStage: boolean;
 	computeStage: boolean;
 	writable: boolean;
 	nativeSlot: int32;
@@ -765,12 +767,6 @@ function bindingKind(kind: string): BindingKind {
 	};
 }
 
-function vertexStage(binding: GPUShaderBinding): boolean {
-	const both = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
-	if (binding.visibility == both) { stop(`shader binding ${binding.binding} is visible to vertex and fragment, which is not ported to metal yet`); }
-	return binding.visibility == (GPUShaderStage.VERTEX as int32);
-}
-
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (environment.device === null) { stop("requestDevice needs the native MTLDevice"); }
 	device = mtlDeviceFrom(environment.device);
@@ -906,8 +902,7 @@ export function adapterInfo(): GPUAdapterInfo {
 }
 
 export function nativeTexture(texture: GPUTexture): Ptr<void> {
-	const t = textures.slotIndex(texture.id);
-	return mtlTextureNative(textures.slots[t].natives[textures.slots[t].active]);
+	return mtlTextureNative(liveTexture(textures.slotIndex(texture.id)));
 }
 
 export function nativeQueue(): Ptr<void> { return mtlQueueNative(queue); }
@@ -1062,6 +1057,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		active: 0,
 		writtenFrame: -1,
 		inPlace: false,
+		gpuUsed: false,
 		swapchainView: 0,
 	};
 	store(textures, slot);
@@ -1135,12 +1131,13 @@ export function writeTexture<T>(
 	if (textures.slots[index].writtenFrame >= 0) { nextTextureCopy(index); }
 	textures.slots[index].writtenFrame = frame;
 	const native = textures.slots[index].natives[textures.slots[index].active];
-	mtlWriteTexture(native, data[0], layout.offset, rowPitch, slot.width, slot.height);
+	mtlWriteTexture(native, data[0], layout.offset, rowPitch, 0, slot.width, slot.height, 1, 0, 0, 0, 0, 0);
 }
 
 // A write that is not a whole single-subresource texture lands through a staging buffer and a blit
 // in the frame's command buffer, so it follows the frame's earlier reads of the texture in queue
-// order; a CPU `replaceRegion` would not.
+// order; a CPU `replaceRegion` would not. Inside a pass no blit can be encoded, so only a texture
+// no command has used yet is written there, by the CPU.
 function writeTextureByBlit<T>(
 	index: int32,
 	data: Readonly<Span<T>>,
@@ -1149,9 +1146,16 @@ function writeTextureByBlit<T>(
 	rowPitch: int32,
 	size: GPUExtent3D,
 ): void {
-	if (pass.active || computeBound.active) { stop(`writeTexture of ${size.width}x${size.height} on GPUTexture ${textures.slots[index].id} inside a pass: a partial or repeated write is a GPU copy`); }
-	const bytesPerPixel = formatInfo(textures.slots[index].format, "texture format").bytesPerPixel;
 	const imageBytes = (rowPitch as int64) * (layout.rowsPerImage as int64);
+	if (pass.active || computeBound.active) {
+		const private = has(textures.slots[index].usage, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.STORAGE_BINDING as int32));
+		if (textures.slots[index].gpuUsed || private) {
+			stop(`writeTexture of ${size.width}x${size.height} on GPUTexture ${textures.slots[index].id} inside a pass: a texture GPU work already uses, or one only the GPU holds, is written by a GPU copy`);
+		}
+		writeUnusedTexture(index, data, destination, layout, rowPitch, imageBytes, size);
+		return;
+	}
+	const bytesPerPixel = formatInfo(textures.slots[index].format, "texture format").bytesPerPixel;
 	const span = imageBytes * ((size.depthOrArrayLayers - 1) as int64) + (rowPitch as int64) * ((size.height - 1) as int64) + ((size.width * bytesPerPixel) as int64);
 	beginFrame();
 	const staging = mtlNewStagingBuffer(device, data[0], layout.offset, span);
@@ -1165,6 +1169,27 @@ function writeTextureByBlit<T>(
 		}
 	}
 	mtlReleaseBuffer(staging);
+	textures.slots[index].inPlace = true;
+	textures.slots[index].gpuUsed = true;
+}
+
+function writeUnusedTexture<T>(
+	index: int32,
+	data: Readonly<Span<T>>,
+	destination: GPUTexelCopyTextureInfo,
+	layout: GPUTexelCopyBufferLayout,
+	rowPitch: int32,
+	imageBytes: int64,
+	size: GPUExtent3D,
+): void {
+	const native = textures.slots[index].natives[textures.slots[index].active];
+	if (textures.slots[index].volume) {
+		mtlWriteTexture(native, data[0], layout.offset, rowPitch, imageBytes as int32, size.width, size.height, size.depthOrArrayLayers, 0, destination.mipLevel, destination.origin.x, destination.origin.y, destination.origin.z);
+	} else {
+		for (let i = 0; i < size.depthOrArrayLayers; i++) {
+			mtlWriteTexture(native, data[0], layout.offset + imageBytes * (i as int64), rowPitch, 0, size.width, size.height, 1, destination.origin.z + i, destination.mipLevel, destination.origin.x, destination.origin.y, 0);
+		}
+	}
 	textures.slots[index].inPlace = true;
 }
 
@@ -1284,8 +1309,7 @@ export function viewTexture(view: GPUTextureView): GPUTexture { return { id: vie
 
 function attachmentNative(v: int32): Ptr<MtlTextureImpl> {
 	if (views.slots[v].swapchain) { return views.slots[v].swapchainTexture; }
-	const t = textures.slotIndex(views.slots[v].texture);
-	return textures.slots[t].natives[textures.slots[t].active];
+	return liveTexture(textures.slotIndex(views.slots[v].texture));
 }
 
 function viewNative(v: int32): Ptr<MtlTextureImpl> {
@@ -1401,10 +1425,12 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
 		checkedVisibility(descriptor.bindings[i], compute);
+		const visibility = descriptor.bindings[i].visibility;
 		const native: NativeBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: bindingKind(kindName),
-			vertexStage: vertexStage(descriptor.bindings[i]),
+			vertexStage: (visibility & (GPUShaderStage.VERTEX as int32)) != 0,
+			fragmentStage: (visibility & (GPUShaderStage.FRAGMENT as int32)) != 0,
 			computeStage: compute,
 			writable: bindingWritable(descriptor.bindings[i]),
 			nativeSlot: descriptor.bindings[i].nativeSlot,
@@ -1412,11 +1438,11 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		};
 		checkBinding(native, descriptor.bindings[i].group);
 		if (native.kind == BindingKind.Uniform) {
-			if (slot.uniformCount == GPU_MAX_UNIFORM_BLOCKS) { stop("a shader module has over 8 uniform blocks"); }
+			if (slot.uniformCount == GPU_MAX_UNIFORM_BLOCKS) { stop(`a shader module has over ${GPU_MAX_UNIFORM_BLOCKS} uniform blocks`); }
 			slot.uniforms[slot.uniformCount] = native;
 			slot.uniformCount += 1;
 		} else {
-			if (slot.resourceCount == GPU_MAX_BIND_GROUP_ENTRIES) { stop("a shader module has over 8 resources"); }
+			if (slot.resourceCount == GPU_MAX_BIND_GROUP_ENTRIES) { stop(`a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`); }
 			slot.resources[slot.resourceCount] = native;
 			slot.resourceCount += 1;
 		}
@@ -2083,25 +2109,17 @@ function applyResources(): void {
 		const e = entryOf(g, binding.binding);
 		if (binding.kind == BindingKind.Texture) {
 			const texture = viewNative(views.slotIndex(bindGroups.slots[g].entries[e].textureView.id));
-			if (binding.vertexStage) {
-				mtlSetVertexTexture(encoder, texture, binding.nativeSlot);
-			} else {
-				mtlSetFragmentTexture(encoder, texture, binding.nativeSlot);
-			}
+			if (binding.vertexStage) { mtlSetVertexTexture(encoder, texture, binding.nativeSlot); }
+			if (binding.fragmentStage) { mtlSetFragmentTexture(encoder, texture, binding.nativeSlot); }
 		} else if (binding.kind == BindingKind.StorageBuffer) {
 			const native = liveBuffer(buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id));
-			if (binding.vertexStage) {
-				mtlSetVertexBuffer(encoder, native, bindGroups.slots[g].entries[e].offset, binding.nativeSlot);
-			} else {
-				mtlSetFragmentBuffer(encoder, native, bindGroups.slots[g].entries[e].offset, binding.nativeSlot);
-			}
+			const offset = bindGroups.slots[g].entries[e].offset;
+			if (binding.vertexStage) { mtlSetVertexBuffer(encoder, native, offset, binding.nativeSlot); }
+			if (binding.fragmentStage) { mtlSetFragmentBuffer(encoder, native, offset, binding.nativeSlot); }
 		} else {
 			const sampler = samplers.slots[samplers.slotIndex(bindGroups.slots[g].entries[e].sampler.id)].native;
-			if (binding.vertexStage) {
-				mtlSetVertexSampler(encoder, sampler, binding.nativeSlot);
-			} else {
-				mtlSetFragmentSampler(encoder, sampler, binding.nativeSlot);
-			}
+			if (binding.vertexStage) { mtlSetVertexSampler(encoder, sampler, binding.nativeSlot); }
+			if (binding.fragmentStage) { mtlSetFragmentSampler(encoder, sampler, binding.nativeSlot); }
 		}
 	}
 }
@@ -2128,11 +2146,14 @@ function applyUniforms(): void {
 				mtlSetVertexBuffer(encoder, native, offset, slot);
 				passVertexUniforms[slot] = native;
 			}
-		} else if (passFragmentUniforms[slot] == native) {
-			mtlSetFragmentBufferOffset(encoder, offset, slot);
-		} else {
-			mtlSetFragmentBuffer(encoder, native, offset, slot);
-			passFragmentUniforms[slot] = native;
+		}
+		if (shaders.slots[s].uniforms[u].fragmentStage) {
+			if (passFragmentUniforms[slot] == native) {
+				mtlSetFragmentBufferOffset(encoder, offset, slot);
+			} else {
+				mtlSetFragmentBuffer(encoder, native, offset, slot);
+				passFragmentUniforms[slot] = native;
+			}
 		}
 	}
 }
@@ -2191,7 +2212,10 @@ function texelCopyBytes(index: int32, member: string, writes: boolean, copy: GPU
 	return format.bytesPerPixel;
 }
 
-function liveTexture(index: int32): Ptr<MtlTextureImpl> { return textures.slots[index].natives[textures.slots[index].active]; }
+function liveTexture(index: int32): Ptr<MtlTextureImpl> {
+	textures.slots[index].gpuUsed = true;
+	return textures.slots[index].natives[textures.slots[index].active];
+}
 function liveBuffer(index: int32): Ptr<MtlBufferImpl> { return buffers.slots[index].natives[buffers.slots[index].active]; }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
