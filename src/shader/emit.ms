@@ -592,13 +592,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (t == null) { fail(at, "the expression has no type"); }
 		const atomic = atomicOrExchange(t);
 		if (atomic != null) { return atomic; }
-		const kind = typeKind(t);
-		if (kind == TypeKind.Float32) { return scalarType(ScalarKind.F32); }
-		if (kind == TypeKind.Int32) { return scalarType(ScalarKind.I32); }
-		if (kind == TypeKind.Uint32) { return scalarType(ScalarKind.U32); }
-		if (kind == TypeKind.Boolean) { return scalarType(ScalarKind.Bool); }
-		if (kind == TypeKind.SizedArray) {
-			return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
+		match (typeKind(t)) {
+			TypeKind.Float32 => { return scalarType(ScalarKind.F32); },
+			TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
+			TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
+			TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
+			TypeKind.SizedArray => {
+				return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
+			},
+			_ => {},
 		}
 		for (let i = 0; i < vectorTypes.length; i++) {
 			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
@@ -1011,15 +1013,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function looseType(t: Node | null): ShaderType {
 		if (t == null) { return new ShaderType(); }
-		const kind = typeKind(t);
-		if (kind == TypeKind.Float32 || kind == TypeKind.Float64) {
-			return scalarType(ScalarKind.F32);
-		}
-		if (kind == TypeKind.Int32) { return scalarType(ScalarKind.I32); }
-		if (kind == TypeKind.Uint32) { return scalarType(ScalarKind.U32); }
-		if (kind == TypeKind.Boolean) { return scalarType(ScalarKind.Bool); }
-		if (kind == TypeKind.SizedArray) {
-			return arrayType(looseType(t.typExprElement), t.typExprSize as int32);
+		match (typeKind(t)) {
+			TypeKind.Float32 | TypeKind.Float64 => { return scalarType(ScalarKind.F32); },
+			TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
+			TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
+			TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
+			TypeKind.SizedArray => {
+				return arrayType(looseType(t.typExprElement), t.typExprSize as int32);
+			},
+			_ => {},
 		}
 		for (let i = 0; i < vectorTypes.length; i++) {
 			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
@@ -1500,13 +1502,17 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	function kindOf(n: Node): TypeKind { return typeKind(getType(n)); }
 
 	function scalar(n: Node): boolean {
-		const kind = kindOf(n);
-		return kind == TypeKind.Float32 || kind == TypeKind.Int32 || kind == TypeKind.Uint32 ||
-			kind == TypeKind.Boolean;
+		return match (kindOf(n)) {
+			TypeKind.Float32 | TypeKind.Int32 | TypeKind.Uint32 | TypeKind.Boolean => true,
+			_ => false,
+		};
 	}
 
 	function integer(n: Node): boolean {
-		return kindOf(n) == TypeKind.Int32 || kindOf(n) == TypeKind.Uint32;
+		return match (kindOf(n)) {
+			TypeKind.Int32 | TypeKind.Uint32 => true,
+			_ => false,
+		};
 	}
 
 	function unsigned(n: Node): boolean {
@@ -1537,22 +1543,31 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function binary(n: Node): ShaderExpr {
 		const op = n.operator == "===" ? "==" : n.operator == "!==" ? "!=" : n.operator;
-		if (["&&", "||"].includes(op)) {
-			if (kindOf(n.left) != TypeKind.Boolean || kindOf(n.right) != TypeKind.Boolean) {
-				fail(n, "'" + op + "' takes booleans in a shader");
-			}
-		} else if (["<", "<=", ">", ">=", "==", "!="].includes(op)) {
-			if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
-		} else if (op == "%" && integer(n.left) && !unsigned(n)) {
-			fail(n, "'%' has a GLSL form for uint32 operands only: GLSL leaves a negative " +
-				"int32 operand undefined");
-		} else if (op == "/" && integer(n.left) && !unsigned(n)) {
-			fail(n, "'/' has no GLSL form: GLSL does not truncate as MetaScript does");
-		} else if (op == "%" && !integer(n.left)) {
-		} else if (["&", "|", "^", "<<", ">>"].includes(op)) {
-			if (!integral(n.left)) { fail(n, "'" + op + "' takes integers in a shader"); }
-		} else if (op != "+" && op != "-" && op != "*" && op != "/" && op != "%") {
-			fail(n, "operator '" + op + "' has no GLSL form yet");
+		match (op) {
+			"&&" | "||" => {
+				if (kindOf(n.left) != TypeKind.Boolean || kindOf(n.right) != TypeKind.Boolean) {
+					fail(n, "'" + op + "' takes booleans in a shader");
+				}
+			},
+			"<" | "<=" | ">" | ">=" | "==" | "!=" => {
+				if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
+			},
+			"%" => {
+				if (integer(n.left) && !unsigned(n)) {
+					fail(n, "'%' has a GLSL form for uint32 operands only: GLSL leaves a " +
+						"negative int32 operand undefined");
+				}
+			},
+			"/" => {
+				if (integer(n.left) && !unsigned(n)) {
+					fail(n, "'/' has no GLSL form: GLSL does not truncate as MetaScript does");
+				}
+			},
+			"&" | "|" | "^" | "<<" | ">>" => {
+				if (!integral(n.left)) { fail(n, "'" + op + "' takes integers in a shader"); }
+			},
+			"+" | "-" | "*" => {},
+			_ => { fail(n, "operator '" + op + "' has no GLSL form yet"); },
 		}
 		const left = lower(n.left);
 		const right = op == "<<" || op == ">>" ? shiftAmount(n.right) : lower(n.right);
