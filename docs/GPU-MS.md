@@ -327,6 +327,15 @@ branch. Each one is checked here per file; the full gate has not run again yet.
   `webgpuGlCheck.ms` ran only by hand, so a backend regression reached the gate only through the
   goldens. On the Mac the gate now runs `webgpuMetalCheck` (`94879ff0`). **For you:** the same
   line for `webgpuD3d11Check` (WARP) and `webgpuGlCheck` on Windows, which only you can verify.
+- Metal applies uniform blocks in a compute pass (`5cc6d61e`): `setBindGroup(0)` in a compute pass
+  with dynamic offsets, a missing group 0 and an overrun stop by name
+  (`src/test/metalComputeUniformProbe.ms`). A compute program from the shader arc now runs on the
+  device and its storage buffer is checked against the CPU run (`0c4b5142`,
+  `src/test/metalShadyCompute.ms`). **For you:** D3D11 (`backend.ms:2176`) and GL (`:2000`) still
+  stop on a compute uniform. Their `checkEntry` (d3d11 `:2431`, gl `:2399`) also matches a buffer
+  entry to a uniform by binding number alone, so a storage buffer at group 1 binding 0 of a
+  program with a uniform at group 0 binding 0 is refused as "needs a UNIFORM buffer". Metal had
+  the same bug; its lookup now takes the group.
 
 ## From Windows (2026-10-23)
 
