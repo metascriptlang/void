@@ -5,7 +5,9 @@
 // roughness, and the specular mip 0 is the source itself. The shaders are environmentShader.ms.
 
 import { Vec4 } from "../math/math3d";
-import { PixelFormat, LoadAction, endPass, formatRenderable, makeSamplerEx, destroySampler } from "../gpu/door";
+import {
+	PixelFormat, LoadAction, endPass, formatRenderable, makeSamplerEx, destroySampler,
+} from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { ColorAttachment, NO_DEPTH, beginPass, layoutOf } from "../gpu/target";
 import { PipelineCache, closePipelines, pipelineFor } from "../gpu/pipeline";
@@ -207,7 +209,8 @@ function allocateGpu(environment: Environment): void {
 	if (environment.triangle == 0) { environment.triangle = makeScreenTriangle(); }
 	if (environment.sampler == 0) {
 		environment.sampler = makeSamplerEx(FilterMode.Linear as int32, FilterMode.Linear as int32,
-			TextureMipFilter.Linear as int32, Wrap.Clamp as int32, Wrap.Clamp as int32, 0.0, 1000.0, 1);
+			TextureMipFilter.Linear as int32, Wrap.Clamp as int32, Wrap.Clamp as int32, 0.0, 1000.0,
+			1);
 	}
 	environment.env.allocate();
 	environment.scratch.allocate();
@@ -246,7 +249,8 @@ export function compute(this environment: Environment): void {
 	bakeCube(environment, EnvironmentProgram.Irradiance, environment.diffuse, 0, source);
 
 	const specular: CubeTarget = environment.specular;
-	const matched: float32 = Math.max(Math.log2((size as float64) / (specular.size as float64)), 0.0) as float32;
+	const matched: float32 =
+		Math.max(Math.log2((size as float64) / (specular.size as float64)), 0.0) as float32;
 	writeBake(environment, matched, 0.0, size, specular.size);
 	bakeCube(environment, EnvironmentProgram.Resample, specular, 0, source);
 	for (let level = 1; level < specular.levels; level++) {

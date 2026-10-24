@@ -185,7 +185,8 @@ export function environmentRadianceFs(input: EnvironmentInput, b: CubeBakeBindin
 		if (nl > 0.0) {
 			const denominator = vh * vh * (a2 - 1.0) + 1.0;
 			const pdf = a2 / (PI * denominator * denominator) / 4.0;
-			const lod = sampleLod(pdf, b.environmentParams.envBake.z, b.environmentParams.envBake.y);
+			const lod =
+				sampleLod(pdf, b.environmentParams.envBake.z, b.environmentParams.envBake.y);
 			color = color + clampedSource(b, l, lod) * nl;
 			total = total + nl;
 		}

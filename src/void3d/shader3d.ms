@@ -1351,8 +1351,10 @@ export function splitSum(roughness: float32, nv: float32): Vec2f {
 	const rx = 1.0 - roughness;
 	const ry = 0.0425 - 0.0275 * roughness;
 	const a004 = min(rx * rx, exp2(-9.28 * nv)) * rx + ry;
-	return max(vec2f(-1.04 * a004 + 1.04 - 0.572 * roughness, 1.04 * a004 - 0.04 + 0.022 * roughness),
-		vec2f(0.00005));
+	return max(
+		vec2f(-1.04 * a004 + 1.04 - 0.572 * roughness, 1.04 * a004 - 0.04 + 0.022 * roughness),
+		vec2f(0.00005),
+	);
 }
 
 // Renderer.hx:716 irrRotation turned about this frame's up axis, Heaps' z.
@@ -1380,8 +1382,8 @@ export function pbrEnvironmentLight(
 		f0 + (max(vec3f(1.0 - roughness), f0) - f0) * exp2((-5.55473 * nv - 6.98316) * nv);
 	const turn = b.frameParams.envParams;
 	const irradiance = textureSampleLevel(b.envDiffuse, b.envSampler, envTurned(n, turn), 0.0).rgb;
-	const radiance = textureSampleLevel(b.envSpecular, b.envSampler, envTurned(reflect(-v, n), turn),
-		roughness * turn.y).rgb;
+	const radiance = textureSampleLevel(b.envSpecular, b.envSampler,
+		envTurned(reflect(-v, n), turn), roughness * turn.y).rgb;
 	const lut = splitSum(roughness, nv);
 	const specular = radiance * (fresnel * lut.x + lut.y);
 	return (irradiance * albedo * (1.0 - metalness) * (1.0 - fresnel) + specular) *

@@ -351,7 +351,9 @@ function makeBlackCube(renderer: Renderer): void {
 	renderer.blackCubeView = makeTextureView(renderer.blackCube);
 	renderer.blackCubeSampler = makeSampler(FilterMode.Linear, Wrap.Clamp);
 	if (renderer.blackCube == 0 || renderer.blackCubeView == 0 || renderer.blackCubeSampler == 0) {
-		console.log("void3d: the GPU refused the 1x1 black cube a pbr key reads without an environment");
+		console.log(
+			"void3d: the GPU refused the 1x1 black cube a pbr key reads without an environment",
+		);
 		unreachable;
 	}
 }
