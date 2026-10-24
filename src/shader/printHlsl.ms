@@ -37,26 +37,27 @@ function hlslKeywords(): string[] {
 		"AppendStructuredBuffer", "asm", "asm_fragment", "BlendState", "bool", "break", "Buffer",
 		"ByteAddressBuffer", "case", "cbuffer", "centroid", "class", "column_major", "compile",
 		"compile_fragment", "CompileShader", "const", "continue", "ComputeShader",
-		"ConsumeStructuredBuffer", "default", "DepthStencilState", "DepthStencilView", "discard", "do",
-		"double", "DomainShader", "dword", "else", "export", "extern", "false", "float", "for",
-		"fxgroup", "GeometryShader", "groupshared", "half", "Hullshader", "HullShader", "if", "in",
-		"inline", "inout", "InputPatch", "int", "interface", "line", "lineadj", "linear", "LineStream",
-		"matrix", "min16float", "min10float", "min16int", "min12int", "min16uint", "namespace",
-		"nointerpolation", "noperspective", "NULL", "out", "OutputPatch", "packoffset", "pass",
-		"pixelfragment", "PixelShader", "point", "PointStream", "precise", "RasterizerState",
-		"RenderTargetView", "return", "register", "row_major", "RWBuffer", "RWByteAddressBuffer",
-		"RWStructuredBuffer", "RWTexture1D", "RWTexture1DArray", "RWTexture2D", "RWTexture2DArray",
-		"RWTexture3D", "sample", "sampler", "SamplerState", "SamplerComparisonState", "shared",
-		"snorm", "stateblock", "stateblock_state", "static", "string", "struct", "switch",
-		"StructuredBuffer", "tbuffer", "technique", "technique10", "technique11", "texture",
-		"Texture1D", "Texture1DArray", "Texture2D", "Texture2DArray", "Texture2DMS",
-		"Texture2DMSArray", "Texture3D", "TextureCube", "TextureCubeArray", "true", "typedef",
-		"triangle", "triangleadj", "TriangleStream", "uint", "uniform", "unorm", "unsigned", "vector",
-		"vertexfragment", "VertexShader", "void", "volatile", "while", "sampler1D", "sampler2D",
-		"sampler3D", "samplerCUBE", "sampler_state", "auto", "catch", "char", "const_cast",
-		"delete", "dynamic_cast", "enum", "explicit", "friend", "goto", "long", "mutable", "new",
-		"operator", "private", "protected", "public", "reinterpret_cast", "short", "signed", "sizeof",
-		"static_cast", "template", "this", "throw", "try", "typename", "union", "using", "virtual",
+		"ConsumeStructuredBuffer", "default", "DepthStencilState", "DepthStencilView", "discard",
+		"do", "double", "DomainShader", "dword", "else", "export", "extern", "false", "float",
+		"for", "fxgroup", "GeometryShader", "groupshared", "half", "Hullshader", "HullShader", "if",
+		"in", "inline", "inout", "InputPatch", "int", "interface", "line", "lineadj", "linear",
+		"LineStream", "matrix", "min16float", "min10float", "min16int", "min12int", "min16uint",
+		"namespace", "nointerpolation", "noperspective", "NULL", "out", "OutputPatch", "packoffset",
+		"pass", "pixelfragment", "PixelShader", "point", "PointStream", "precise",
+		"RasterizerState", "RenderTargetView", "return", "register", "row_major", "RWBuffer",
+		"RWByteAddressBuffer", "RWStructuredBuffer", "RWTexture1D", "RWTexture1DArray",
+		"RWTexture2D", "RWTexture2DArray", "RWTexture3D", "sample", "sampler", "SamplerState",
+		"SamplerComparisonState", "shared", "snorm", "stateblock", "stateblock_state", "static",
+		"string", "struct", "switch", "StructuredBuffer", "tbuffer", "technique", "technique10",
+		"technique11", "texture", "Texture1D", "Texture1DArray", "Texture2D", "Texture2DArray",
+		"Texture2DMS", "Texture2DMSArray", "Texture3D", "TextureCube", "TextureCubeArray", "true",
+		"typedef", "triangle", "triangleadj", "TriangleStream", "uint", "uniform", "unorm",
+		"unsigned", "vector", "vertexfragment", "VertexShader", "void", "volatile", "while",
+		"sampler1D", "sampler2D", "sampler3D", "samplerCUBE", "sampler_state", "auto", "catch",
+		"char", "const_cast", "delete", "dynamic_cast", "enum", "explicit", "friend", "goto",
+		"long", "mutable", "new", "operator", "private", "protected", "public", "reinterpret_cast",
+		"short", "signed", "sizeof", "static_cast", "template", "this", "throw", "try", "typename",
+		"union", "using", "virtual",
 	];
 }
 
@@ -67,38 +68,43 @@ function hlslIntrinsics(): string[] {
 		"CheckAccessFullyMapped", "clamp", "clip", "cos", "cosh", "countbits", "cross",
 		"D3DCOLORtoUBYTE4", "ddx", "ddx_coarse", "ddx_fine", "ddy", "ddy_coarse", "ddy_fine",
 		"degrees", "determinant", "DeviceMemoryBarrier", "DeviceMemoryBarrierWithGroupSync",
-		"distance", "dot", "dst", "errorf", "EvaluateAttributeAtCentroid", "EvaluateAttributeAtSample",
-		"EvaluateAttributeSnapped", "exp", "exp2", "f16tof32", "f32tof16", "faceforward",
-		"firstbithigh", "firstbitlow", "floor", "fma", "fmod", "frac", "frexp", "fwidth",
-		"GetRenderTargetSampleCount", "GetRenderTargetSamplePosition", "GroupMemoryBarrier",
-		"GroupMemoryBarrierWithGroupSync", "InterlockedAdd", "InterlockedAnd",
+		"distance", "dot", "dst", "errorf", "EvaluateAttributeAtCentroid",
+		"EvaluateAttributeAtSample", "EvaluateAttributeSnapped", "exp", "exp2", "f16tof32",
+		"f32tof16", "faceforward", "firstbithigh", "firstbitlow", "floor", "fma", "fmod", "frac",
+		"frexp", "fwidth", "GetRenderTargetSampleCount", "GetRenderTargetSamplePosition",
+		"GroupMemoryBarrier", "GroupMemoryBarrierWithGroupSync", "InterlockedAdd", "InterlockedAnd",
 		"InterlockedCompareExchange", "InterlockedCompareStore", "InterlockedExchange",
 		"InterlockedMax", "InterlockedMin", "InterlockedOr", "InterlockedXor", "isfinite", "isinf",
-		"isnan", "ldexp", "length", "lerp", "lit", "log", "log10", "log2", "mad", "max", "min", "modf",
-		"msad4", "mul", "noise", "normalize", "pow", "printf", "Process2DQuadTessFactorsAvg",
-		"Process2DQuadTessFactorsMax", "Process2DQuadTessFactorsMin", "ProcessIsolineTessFactors",
-		"ProcessQuadTessFactorsAvg", "ProcessQuadTessFactorsMax", "ProcessQuadTessFactorsMin",
-		"ProcessTriTessFactorsAvg", "ProcessTriTessFactorsMax", "ProcessTriTessFactorsMin",
-		"radians", "rcp", "reflect", "refract", "reversebits", "round", "rsqrt", "saturate", "sign",
-		"sin", "sincos", "smoothstep", "sqrt", "step", "tan", "tanh", "tex1D", "tex1Dbias",
-		"tex1Dgrad", "tex1Dlod", "tex1Dproj", "tex2D", "tex2Dbias", "tex2Dgrad", "tex2Dlod",
-		"tex2Dproj", "tex3D", "tex3Dbias", "tex3Dgrad", "tex3Dlod", "tex3Dproj", "texCUBE",
-		"texCUBEbias", "texCUBEgrad", "texCUBElod", "texCUBEproj", "transpose", "trunc",
+		"isnan", "ldexp", "length", "lerp", "lit", "log", "log10", "log2", "mad", "max", "min",
+		"modf", "msad4", "mul", "noise", "normalize", "pow", "printf",
+		"Process2DQuadTessFactorsAvg", "Process2DQuadTessFactorsMax", "Process2DQuadTessFactorsMin",
+		"ProcessIsolineTessFactors", "ProcessQuadTessFactorsAvg", "ProcessQuadTessFactorsMax",
+		"ProcessQuadTessFactorsMin", "ProcessTriTessFactorsAvg", "ProcessTriTessFactorsMax",
+		"ProcessTriTessFactorsMin", "radians", "rcp", "reflect", "refract", "reversebits", "round",
+		"rsqrt", "saturate", "sign", "sin", "sincos", "smoothstep", "sqrt", "step", "tan", "tanh",
+		"tex1D", "tex1Dbias", "tex1Dgrad", "tex1Dlod", "tex1Dproj", "tex2D", "tex2Dbias",
+		"tex2Dgrad", "tex2Dlod", "tex2Dproj", "tex3D", "tex3Dbias", "tex3Dgrad", "tex3Dlod",
+		"tex3Dproj", "texCUBE", "texCUBEbias", "texCUBEgrad", "texCUBElod", "texCUBEproj",
+		"transpose", "trunc",
 	];
 }
 
 const SWIZZLE = "xyzw";
 
 function isNumericTypeName(name: string): boolean {
-	for (const base of [
-	"bool", "int", "uint", "dword", "half", "float", "double", "min16float", "min10float",
-	"min16int", "min12int", "min16uint",
-]) {
+	const bases = [
+		"bool", "int", "uint", "dword", "half", "float", "double", "min16float", "min10float",
+		"min16int", "min12int", "min16uint",
+	];
+	for (const base of bases) {
 		if (!name.startsWith(base)) { continue; }
 		const rest = name.substring(base.length);
-		const digit = (at: int32) => rest.length > at && "1234".includes(rest.substring(at, at + 1));
+		const digit = (at: int32) =>
+			rest.length > at && "1234".includes(rest.substring(at, at + 1));
 		if (rest.length == 1 && digit(0)) { return true; }
-		if (rest.length == 3 && digit(0) && rest.substring(1, 2) == "x" && digit(2)) { return true; }
+		if (rest.length == 3 && digit(0) && rest.substring(1, 2) == "x" && digit(2)) {
+			return true;
+		}
 	}
 	return false;
 }
@@ -276,7 +282,8 @@ function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string):
 		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
 		_ => expr(p, o[1]),
 	};
-	const exchange = e.intrinsic == Intrinsic.AtomicStore || e.intrinsic == Intrinsic.AtomicExchange;
+	const exchange = e.intrinsic == Intrinsic.AtomicStore ||
+		e.intrinsic == Intrinsic.AtomicExchange;
 	let out = result;
 	let head = "";
 	if (out == "" && exchange) {
@@ -570,7 +577,9 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 		return (unsigned ? "uint4(" : "float4(") + texel +
 			(unsigned ? ", 0u, 0u, 1u)" : ", 0.0, 0.0, 1.0)");
 	}
-	if (t.kind != ShaderTypeKind.Texture) { return fail(p, "TextureLoad of a " + t.kind.toString()); }
+	if (t.kind != ShaderTypeKind.Texture) {
+		return fail(p, "TextureLoad of a " + t.kind.toString());
+	}
 	return match (t.shape) {
 		TextureShape.D2 | TextureShape.Depth2d =>
 			texture + ".Load(int3(" + at + ", " + level + "))",
@@ -596,7 +605,8 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 			"texture, a layer");
 	}
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
-	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
+	if (texture.type.kind != ShaderTypeKind.Texture ||
+		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, "TextureSample takes a texture and a sampler first");
 	}
 	if (texture.type.shape == TextureShape.Multisampled2d) {
@@ -637,7 +647,8 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	}
 	const [texture, sampler] = [e.operands[0], e.operands[1]];
 	const reference = e.operands[e.operands.length - 1];
-	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
+	if (texture.type.kind != ShaderTypeKind.Texture ||
+		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
 	}
 	if (!level && p.stage != ShaderStage.Fragment) {
@@ -777,8 +788,8 @@ function structMaker(p: Printer, structIndex: int32): string {
 		const params = s.members.map((f, i) => declaration(p, f.type, "v" + String(i)));
 		const sets = s.members.map((f, i) => "    r." + p.fieldNames[structIndex][i] + " = v" +
 			String(i) + ";\n");
-		return typeText + " " + n + "(" + params.join(", ") + ")\n{\n    " + typeText + " r = (" + typeText +
-			")0;\n" + sets.join("") + "    return r;\n}\n";
+		return typeText + " " + n + "(" + params.join(", ") + ")\n{\n    " + typeText +
+			" r = (" + typeText + ")0;\n" + sets.join("") + "    return r;\n}\n";
 	});
 }
 
@@ -964,7 +975,8 @@ function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 			nested(p, Nesting.Loop, s.body, depth),
 		StmtKind.For => forText(p, s, depth),
 		StmtKind.Switch => switchText(p, s, depth),
-		StmtKind.Break => p.nesting.length > 0 && p.nesting[p.nesting.length - 1] == Nesting.Switch ?
+		StmtKind.Break => p.nesting.length > 0 &&
+			p.nesting[p.nesting.length - 1] == Nesting.Switch ?
 			fail(p, "a break inside a switch case, which HLSL reads as leaving the switch") :
 			at + "break;\n",
 		StmtKind.Continue => at + "continue;\n",
@@ -1141,7 +1153,8 @@ function blockText(p: Printer, index: int32, slots: BindingSlot[]): string {
 	let text = "cbuffer " + p.resourceNames[index] + " : " + registerOf(p, index, slots) + "\n{\n";
 	for (let i = 0; i < members.length; i++) {
 		const offset = layout.value.offsets[i];
-		const component = offset % 16 == 0 ? "" : "." + SWIZZLE.substring((offset % 16) / 4, (offset % 16) / 4 + 1);
+		const lane = (offset % 16) / 4;
+		const component = offset % 16 == 0 ? "" : "." + SWIZZLE.substring(lane, lane + 1);
 		text += "    " + declaration(p, members[i].type, p.memberNames[index][i]) +
 			" : packoffset(c" + String(offset / 16) + component + ");\n";
 	}
@@ -1281,25 +1294,36 @@ function mainText(p: Printer, entryIndex: int32): string {
 	return text + "}\n";
 }
 
-function unspecialized(m: ShaderModule, stage: ShaderStage, resources: int32[],
-	functions: int32[]): string {
+function unspecialized(
+	m: ShaderModule,
+	stage: ShaderStage,
+	resources: int32[],
+	functions: int32[],
+): string {
 	const held = (kind: ConditionKind) => kind == ConditionKind.Always;
 	for (const io of m.ios) {
 		if (io.stage == stage && !held(io.condition.kind)) { return "io '" + io.name + "'"; }
 	}
 	for (const r of resources) {
-		if (!held(m.resources[r].condition.kind)) { return "resource '" + m.resources[r].name + "'"; }
+		if (!held(m.resources[r].condition.kind)) {
+			return "resource '" + m.resources[r].name + "'";
+		}
 	}
 	for (const f of functions) {
-		if (!held(m.functions[f].condition.kind)) { return "function '" + m.functions[f].name + "'"; }
+		if (!held(m.functions[f].condition.kind)) {
+			return "function '" + m.functions[f].name + "'";
+		}
 	}
 	return "";
 }
 
 // Matrices print transposed: an HLSL row holds an IR column, so `row_major` storage reads the
 // host's column-major data and M * v is mul(v, M).
-export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot[]):
-	Result<string, string> {
+export function printHlsl(
+	m: ShaderModule,
+	entryIndex: int32,
+	slots: BindingSlot[],
+): Result<string, string> {
 	const invalid = irErrors(m);
 	if (invalid.length > 0) { return Result.err("printHlsl: " + invalid[0]); }
 	if (entryIndex < 0 || entryIndex >= m.entries.length) {
