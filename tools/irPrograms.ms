@@ -83,8 +83,7 @@ import {
 } from "../src/void2d/shader2d";
 import { gpuCopyFs } from "../tests/integration/gpuCopyShader";
 
-// [source, stage name as the program lines give it, lowered stage]; the names are those of
-// genShaders.ms, genShadersPixelArt.ms, genShaders2d.ms and genShadersGpuCopy.ms.
+// [source, stage name as the program lines give it, lowered stage].
 const STAGES: string[][] = [
 	["CORE", "fullscreenVs", glslIr(fullscreenVs)],
 	["CORE", "copyFs", glslIr(copyFs)],
