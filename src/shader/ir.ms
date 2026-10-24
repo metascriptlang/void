@@ -809,7 +809,7 @@ export function irErrors(m: ShaderModule): string[] {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
 		}
 	}
-	for (const _f of m.functions) { c.callees.push([]); }
+	c.callees = m.functions.map((): int32[] => []);
 	for (let i = 0; i < m.functions.length; i++) {
 		const f = m.functions[i];
 		c.current = i;
