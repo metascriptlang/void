@@ -198,6 +198,7 @@ import {
 	mtlSetVertexTexture,
 	mtlSetViewport,
 	mtlSupportsSampleCount,
+	mtlTakesBytecode,
 	mtlTextureFrom,
 	mtlTextureNative,
 	mtlUsesSharedStorage,
@@ -1552,13 +1553,16 @@ export function destroySampler(sampler: GPUSampler): void {
 }
 
 function compileLibrary(code: string, bytecode: Readonly<Vec<uint8>>, stage: string, label: string | null): Ptr<MtlLibraryImpl> {
-	if (bytecode.length > 0) {
+	if (bytecode.length > 0 && mtlTakesBytecode() != 0) {
 		const loaded = mtlNewLibraryFromBytes(device, bytecode[0], bytecode.length as int64);
 		if (loaded == null) {
 			const log: string = mtlErrorLog();
 			stop(`the device rejected GPUShaderModuleDescriptor.${stage}Bytecode of ${labelOf(label)}:\n${log}`);
 		}
 		return loaded;
+	}
+	if (code == "") {
+		stop(`the ${stage} of ${labelOf(label)} has no MSL and no bytecode this device takes`);
 	}
 	const library = mtlNewLibrary(device, code);
 	if (library == null) {

@@ -350,6 +350,16 @@ MtlLibrary mtlNewLibrary(MtlDevice device, const char *source) {
 	}
 }
 
+// An iphoneos metallib loads on the iOS simulator but its pipelines fail with "library was not
+// compiled for the simulator" (measured on iOS 26.5), and the generated modules carry no simulator blob.
+int32_t mtlTakesBytecode(void) {
+#if TARGET_OS_SIMULATOR
+	return 0;
+#else
+	return 1;
+#endif
+}
+
 MtlLibrary mtlNewLibraryFromBytes(MtlDevice device, const uint8_t *bytes, int64_t size) {
 	@autoreleasepool {
 		NSError *error = nil;

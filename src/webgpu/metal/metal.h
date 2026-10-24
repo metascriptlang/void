@@ -140,6 +140,7 @@ MtlSampler mtlNewSampler(
 void mtlReleaseSampler(MtlSampler sampler);
 
 MtlLibrary mtlNewLibrary(MtlDevice device, const char *source);
+int32_t mtlTakesBytecode(void);
 MtlLibrary mtlNewLibraryFromBytes(MtlDevice device, const uint8_t *bytes, int64_t size);
 MtlFunction mtlNewFunction(MtlLibrary library, const char *entryPoint);
 const char *mtlErrorLog(void);
