@@ -1178,6 +1178,26 @@ test "particleVisual declares additive program14 layout9 with original billboard
 	assert layoutFloats(VertexLayout.Billboard, 0) == 15;
 }
 
+test "an instanced key sets bit 18, is declared lit and unlit in each preset and casts instanced" {
+	const lit: ProgramKey = ProgramKey.of(Program.LitTextured).withInstanced();
+	assert lit.bits() == ProgramKey.of(Program.LitTextured).bits() + 262144;
+	assert describe(lit).includes(" instanced");
+	const programs: Vec<Program> = [Program.LitTextured, Program.UnlitTextured];
+	const presets: Vec<Preset> = [Preset.Core, Preset.PixelArt];
+	for (const program of programs) {
+		for (const preset of presets) {
+			const key = ProgramKey.of(program).withPreset(preset).withInstanced();
+			assert declares(key) && declares(key.withCutout()) && declares(key.withPremultiplied());
+			assert vertexLayoutOf(key) == VertexLayout.InstancedLitTextured;
+		}
+		const cast = castIn(ProgramKey.of(program).withInstanced().withCutout());
+		assert cast.ok && cast.value.instanced && cast.value.preset == Preset.Shadow;
+		const plain = castIn(ProgramKey.of(program).withInstanced());
+		assert plain.ok && plain.value.instanced;
+		assert !declares({ ...ProgramKey.of(program).withInstanced(), skinned: true });
+	}
+}
+
 test "a pbr-maps key sets bit 17, is declared in all four variants and binds slots 0, 1 and 2" {
 	const base: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
 	assert base.bits() == ProgramKey.of(Program.LitTextured).withPbr().bits() + 131072;

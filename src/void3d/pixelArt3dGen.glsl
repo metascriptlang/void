@@ -861,6 +861,18 @@ in vec4 skinJoints;
 #ifdef SKINNED
 in vec4 skinWeights;
 #endif
+#ifdef INSTANCED
+in vec4 instanceRow0;
+#endif
+#ifdef INSTANCED
+in vec4 instanceRow1;
+#endif
+#ifdef INSTANCED
+in vec4 instanceRow2;
+#endif
+#ifdef INSTANCED
+in vec4 instanceColor;
+#endif
 #ifdef NORMAL_MAP
 out vec4 worldTangent;
 #endif
@@ -1354,6 +1366,18 @@ in vec4 skinJoints;
 #endif
 #ifdef SKINNED
 in vec4 skinWeights;
+#endif
+#ifdef INSTANCED
+in vec4 instanceRow0;
+#endif
+#ifdef INSTANCED
+in vec4 instanceRow1;
+#endif
+#ifdef INSTANCED
+in vec4 instanceRow2;
+#endif
+#ifdef INSTANCED
+in vec4 instanceColor;
 #endif
 out vec3 worldNormal;
 out vec2 surfaceUv;

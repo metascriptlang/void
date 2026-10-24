@@ -124,6 +124,10 @@ export struct TexturedAttributes {
 	@feature(NORMAL_MAP) tangent: Vec4f;
 	@feature(SKINNED) skinJoints: Vec4f;
 	@feature(SKINNED) skinWeights: Vec4f;
+	@feature(INSTANCED) instanceRow0: Vec4f;
+	@feature(INSTANCED) instanceRow1: Vec4f;
+	@feature(INSTANCED) instanceRow2: Vec4f;
+	@feature(INSTANCED) instanceColor: Vec4f;
 }
 
 export struct LitTexturedVaryings {
@@ -320,6 +324,7 @@ export struct LitKey {
 	@feature(NORMAL_MAP) normalMap: boolean;
 	@feature(PBR) pbr: boolean;
 	@feature(PBR_MAPS) pbrMaps: boolean;
+	@feature(INSTANCED) instanced: boolean;
 }
 
 export struct LitOutput {
@@ -338,6 +343,12 @@ export function skinWorld(b: VertexBindings, joints: Vec4f, weights: Vec4f): Mat
 	return transpose(mat4x4f(
 		skinRow(b, joints, weights, 0), skinRow(b, joints, weights, 1),
 		skinRow(b, joints, weights, 2), vec4f(0.0, 0.0, 0.0, 1.0),
+	));
+}
+
+export function instanceWorld(row0: Vec4f, row1: Vec4f, row2: Vec4f): Mat4x4f {
+	return transpose(mat4x4f(
+		row0, row1, row2, vec4f(0.0, 0.0, 0.0, 1.0),
 	));
 }
 
@@ -689,17 +700,32 @@ export function litTexturedVs(
 			clip: b.vertexParams.viewProj * world,
 		};
 	} else {
-		const world = b.modelParams.model * vec4f(input.position, 1.0);
-		return {
-			worldPosition: world.xyz,
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			worldTangent: vec4f(
-				upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
-			),
-			surfaceUv: input.uv,
-			baseColor: input.color,
-			clip: b.vertexParams.viewProj * world,
-		};
+		if (key.instanced) {
+			const matrix = instanceWorld(
+				input.instanceRow0, input.instanceRow1, input.instanceRow2,
+			);
+			const world = matrix * vec4f(input.position, 1.0);
+			return {
+				worldPosition: world.xyz,
+				worldNormal: skinNormal(matrix, input.normal),
+				worldTangent: vec4f(upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w),
+				surfaceUv: input.uv,
+				baseColor: input.color * input.instanceColor,
+				clip: b.vertexParams.viewProj * world,
+			};
+		} else {
+			const world = b.modelParams.model * vec4f(input.position, 1.0);
+			return {
+				worldPosition: world.xyz,
+				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+				worldTangent: vec4f(
+					upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
+				),
+				surfaceUv: input.uv,
+				baseColor: input.color,
+				clip: b.vertexParams.viewProj * world,
+			};
+		}
 	}
 }
 
@@ -726,12 +752,24 @@ export function unlitTexturedVs(
 			baseColor: input.color,
 		};
 	} else {
-		return {
-			clip: b.vertexParams.viewProj * unlitModel(b, key) * vec4f(input.position, 1.0),
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			surfaceUv: input.uv,
-			baseColor: input.color,
-		};
+		if (key.instanced) {
+			const matrix = instanceWorld(
+				input.instanceRow0, input.instanceRow1, input.instanceRow2,
+			);
+			return {
+				clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+				worldNormal: skinNormal(matrix, input.normal),
+				surfaceUv: input.uv,
+				baseColor: input.color * input.instanceColor,
+			};
+		} else {
+			return {
+				clip: b.vertexParams.viewProj * unlitModel(b, key) * vec4f(input.position, 1.0),
+				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+				surfaceUv: input.uv,
+				baseColor: input.color,
+			};
+		}
 	}
 }
 

@@ -199,6 +199,13 @@ test "the quad layouts are the layouts whose one buffer steps per instance" {
 	assert drawsQuads(VertexLayout.Particle) && drawsQuads(VertexLayout.Billboard);
 }
 
+test "the instanced mesh layout steps its mesh per vertex and its particles per instance" {
+	const layout: VertexLayout = VertexLayout.InstancedLitTextured;
+	assert !drawsQuads(layout);
+	assert !layoutPerInstance(layout, 0) && layoutPerInstance(layout, 1);
+	assert layoutFloats(layout, 0) == 12 && layoutFloats(layout, 1) == 16;
+}
+
 function streamError(result: Result<int32, StreamError>): StreamError {
 	return result.ok ? StreamError.BufferRefused : result.error;
 }

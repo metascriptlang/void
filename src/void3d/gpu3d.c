@@ -24,6 +24,7 @@ enum {
 	LAYOUT_SKIN_LIT_TEXTURED,
 	LAYOUT_SKIN_LIT_TEXTURED_TANGENT,
 	LAYOUT_PARTICLE_VISUAL,
+	LAYOUT_INSTANCED_LIT_TEXTURED,
 	LAYOUT_COUNT,
 };
 
@@ -54,11 +55,11 @@ enum {
 };
 
 #define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
-		backTexture, dissolve, emissive, normalMap, skinned, normalMrt, pbr, pbrMaps) \
+		backTexture, dissolve, emissive, normalMap, skinned, normalMrt, pbr, pbrMaps, instanced) \
 	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
 	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11) | ((emissive) << 12) | \
 	((normalMap) << 13) | ((skinned) << 14) | ((normalMrt) << 15) | ((pbr) << 16) | \
-	((pbrMaps) << 17))
+	((pbrMaps) << 17) | ((instanced) << 18))
 
 #include "programTable.h"
 
@@ -135,6 +136,21 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_skinLitTextured_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTextured_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTextured_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
+	case LAYOUT_INSTANCED_LIT_TEXTURED:
+		out->attrs[ATTR_instancedLitTextured_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_instancedLitTextured_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_instancedLitTextured_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_instancedLitTextured_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_instancedLitTextured_program_instanceRow0].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_instancedLitTextured_program_instanceRow0].buffer_index = 1;
+		out->attrs[ATTR_instancedLitTextured_program_instanceRow1].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_instancedLitTextured_program_instanceRow1].buffer_index = 1;
+		out->attrs[ATTR_instancedLitTextured_program_instanceRow2].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_instancedLitTextured_program_instanceRow2].buffer_index = 1;
+		out->attrs[ATTR_instancedLitTextured_program_instanceColor].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_instancedLitTextured_program_instanceColor].buffer_index = 1;
+		out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
 		break;
 	case LAYOUT_SKIN_LIT_TEXTURED_TANGENT:
 		out->attrs[ATTR_skinLitTexturedNormalMap_program_position].format = SG_VERTEXFORMAT_FLOAT3;

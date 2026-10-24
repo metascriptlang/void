@@ -96,15 +96,18 @@ export struct ProgramKey {
 	// metalness, roughness and occlusion (PBR_* below) instead of the legacy lambert.
 	pbr: boolean;
 	pbrMaps: boolean;
+	// Draws the mesh once per particle from a per-instance world affine and colour in vertex
+	// buffer slot 1 (docs/PARTICLES-RENDER.md A.2.1).
+	instanced: boolean;
 }
 
-const KEY_LIMIT: int32 = 262144;
+const KEY_LIMIT: int32 = 524288;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
-		skinned: false, normalMrt: false, pbr: false, pbrMaps: false,
+		skinned: false, normalMrt: false, pbr: false, pbrMaps: false, instanced: false,
 	};
 }
 
@@ -189,6 +192,13 @@ export function withPbrMaps(this key: ProgramKey): ProgramKey {
 	return { ...key, pbrMaps: true };
 }
 
+export function withInstanced(this key: ProgramKey): ProgramKey {
+	const textured: boolean = key.program == Program.LitTextured ||
+		key.program == Program.UnlitTextured;
+	if (!textured || key.skinned || key.normalMap) { return stopOnFeature(key, "instancing"); }
+	return { ...key, instanced: true };
+}
+
 export function withNormalMrt(this key: ProgramKey): ProgramKey {
 	const mesh: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
 		key.program == Program.UnlitTextured;
@@ -213,7 +223,8 @@ export function bits(this key: ProgramKey): int32 {
 		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
 		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
 		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
-		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17);
+		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17) |
+		((key.instanced ? 1 : 0) << 18);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -228,9 +239,10 @@ export function describe(this key: ProgramKey): string {
 	const skin: string = key.skinned ? " skinned" : "";
 	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
 	const pbr: string = (key.pbr ? " pbr" : "") + (key.pbrMaps ? " pbr-maps" : "");
+	const instanced: string = key.instanced ? " instanced" : "";
 	const features: string =
 		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
-		skin + normalMrt + pbr;
+		skin + normalMrt + pbr + instanced;
 	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
@@ -346,6 +358,7 @@ export enum VertexLayout {
 	SkinLitTextured,
 	SkinLitTexturedTangent,
 	ParticleVisual,
+	InstancedLitTextured,
 }
 
 export function vertexLayoutOf(program: ProgramKey): VertexLayout {
@@ -361,6 +374,7 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Fullscreen => false,
 		VertexLayout.LitTextured => false,
 		VertexLayout.LitTexturedTangent => false,
+		VertexLayout.InstancedLitTextured => false,
 		VertexLayout.SkinLit | VertexLayout.SkinLitTextured |
 			VertexLayout.SkinLitTexturedTangent => false,
 	};
