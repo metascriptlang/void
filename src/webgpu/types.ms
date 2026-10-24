@@ -286,7 +286,7 @@ export struct GPUShaderModuleDescriptor {
 	vertexBytecode: Vec<uint8>;
 	fragmentBytecode: Vec<uint8>;
 	computeBytecode: Vec<uint8>;
-	// WGSL instance_index includes firstInstance but HLSL, GLSL and MSL count from 0: a draw with
+	// WGSL instance_index and MSL instance_id include firstInstance but HLSL and GLSL count from 0: a draw with
 	// firstInstance != 0 on a vertex stage that reads it stops instead of differing per backend.
 	readsInstanceIndex: boolean;
 	workgroupSize: int32[3];
