@@ -15,6 +15,7 @@ import {
 	doorMakeCubeTargetImage,
 	doorMakeCubeAttachmentView,
 	doorMakeArrayTargetImage,
+	doorMakeDataImage,
 	doorMakeArrayAttachmentView,
 	doorMakeAttachmentView,
 	doorMakeTextureView,
@@ -63,6 +64,8 @@ extern function doorMakeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): ui
 extern function doorMakeImageMips(
 	rgba: Readonly<Span<uint32>>, width: int32, height: int32, levels: int32,
 ): uint32;
+extern function doorUpdateDataFloats(image: uint32, data: Readonly<Span<float32>>): int32;
+extern function doorUpdateDataWords(image: uint32, data: Readonly<Span<uint32>>): int32;
 extern function doorBeginPass(
 	descriptor: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>,
 ): void;
@@ -76,6 +79,8 @@ export enum PixelFormat {
 	Bgra8,
 	DepthStencil,
 	Rgba16f,
+	Rgba32f,
+	Rgba32ui,
 }
 
 export enum LoadAction {
@@ -172,6 +177,18 @@ export function makeCubeTargetImage(size: int32, levels: int32, format: PixelFor
 
 export function makeCubeAttachmentView(image: uint32, face: int32, level: int32): uint32 {
 	return doorMakeCubeAttachmentView(image, face, level);
+}
+
+export function makeDataImage(width: int32, height: int32, format: PixelFormat): uint32 {
+	return doorMakeDataImage(width, height, format as int32);
+}
+
+export function updateDataFloats(image: uint32, data: Readonly<Span<float32>>): boolean {
+	return doorUpdateDataFloats(image, data) != 0;
+}
+
+export function updateDataWords(image: uint32, data: Readonly<Span<uint32>>): boolean {
+	return doorUpdateDataWords(image, data) != 0;
 }
 
 export function makeArrayTargetImage(size: int32, layers: int32, format: PixelFormat): uint32 {

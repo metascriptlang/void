@@ -73,6 +73,8 @@ enum {
 	FORMAT_BGRA8,
 	FORMAT_DEPTH_STENCIL,
 	FORMAT_RGBA16F,
+	FORMAT_RGBA32F,
+	FORMAT_RGBA32UI,
 };
 static const sg_pixel_format PIXEL_FORMATS[] = {
 	SG_PIXELFORMAT_NONE,
@@ -82,6 +84,8 @@ static const sg_pixel_format PIXEL_FORMATS[] = {
 	SG_PIXELFORMAT_BGRA8,
 	SG_PIXELFORMAT_DEPTH_STENCIL,
 	SG_PIXELFORMAT_RGBA16F,
+	SG_PIXELFORMAT_RGBA32F,
+	SG_PIXELFORMAT_RGBA32UI,
 };
 
 static bool isDepthFormat(int32_t format) {
@@ -124,7 +128,7 @@ _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in st
 _Static_assert(COUNT(ALPHA_CHANNEL_BLEND_FACTORS) == 10,
 	"ALPHA_CHANNEL_BLEND_FACTORS must match Blend in state.ms");
 _Static_assert(COUNT(BLEND_OPERATIONS) == 5, "BLEND_OPERATIONS must match Operation in state.ms");
-_Static_assert(COUNT(PIXEL_FORMATS) == 7, "PIXEL_FORMATS must match PixelFormat in door.ms");
+_Static_assert(COUNT(PIXEL_FORMATS) == 9, "PIXEL_FORMATS must match PixelFormat in door.ms");
 _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in door.ms");
 _Static_assert(COUNT(STORE_ACTIONS) == 2, "STORE_ACTIONS must match StoreAction in door.ms");
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match FilterMode in door.ms");
@@ -524,6 +528,43 @@ uint32_t doorMakeCubeAttachmentView(uint32_t image, int32_t face, int32_t level)
 	desc.color_attachment.slice = face;
 	desc.color_attachment.mip_level = level;
 	return validView(sg_make_view(&desc));
+}
+
+static bool isDataFormat(int32_t format) {
+	return format == FORMAT_RGBA32F || format == FORMAT_RGBA32UI;
+}
+
+uint32_t doorMakeDataImage(int32_t width, int32_t height, int32_t format) {
+	if (width <= 0 || height <= 0 || !isDataFormat(format)) return SG_INVALID_ID;
+	sg_image_desc desc = {0};
+	desc.usage.dynamic_update = true;
+	desc.width = width;
+	desc.height = height;
+	desc.pixel_format = LOOKUP(PIXEL_FORMATS, format);
+	desc.sample_count = 1;
+	return validImage(sg_make_image(&desc));
+}
+
+static int32_t updateDataImage(uint32_t image, const void *data, int64_t words) {
+	sg_image handle = {.id = image};
+	if (data == NULL || sg_query_image_state(handle) != SG_RESOURCESTATE_VALID) return 0;
+	const sg_pixel_format format = sg_query_image_pixelformat(handle);
+	if (format != SG_PIXELFORMAT_RGBA32F && format != SG_PIXELFORMAT_RGBA32UI) return 0;
+	const int64_t texels = (int64_t)sg_query_image_width(handle) * sg_query_image_height(handle);
+	if (words != texels * 4) return 0;
+	sg_image_data content = {0};
+	content.mip_levels[0].ptr = data;
+	content.mip_levels[0].size = (size_t)words * 4;
+	sg_update_image(handle, &content);
+	return 1;
+}
+
+int32_t doorUpdateDataFloats(uint32_t image, const float *data, int64_t length) {
+	return updateDataImage(image, data, length);
+}
+
+int32_t doorUpdateDataWords(uint32_t image, const uint32_t *data, int64_t length) {
+	return updateDataImage(image, data, length);
 }
 
 uint32_t doorMakeArrayTargetImage(int32_t size, int32_t layers, int32_t format) {

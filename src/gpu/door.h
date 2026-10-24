@@ -95,6 +95,12 @@ uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format);
 // for one face of one mip drawn into by doorMakeCubeAttachmentView.
 uint32_t doorMakeCubeTargetImage(int32_t size, int32_t levels, int32_t format);
 uint32_t doorMakeCubeAttachmentView(uint32_t image, int32_t face, int32_t level);
+// A data texture, RGBA32F or RGBA32UI, read with textureLoad and rewritten whole at most once a
+// frame: doorUpdateDataFloats for RGBA32F, doorUpdateDataWords for RGBA32UI, `length` four words a
+// texel; 0 when the image is not a live data image or the length does not fill it.
+uint32_t doorMakeDataImage(int32_t width, int32_t height, int32_t format);
+int32_t doorUpdateDataFloats(uint32_t image, const float *data, int64_t length);
+int32_t doorUpdateDataWords(uint32_t image, const uint32_t *data, int64_t length);
 // A depth array of `layers` square layers, each drawn into through doorMakeArrayAttachmentView
 // and the whole sampled as one 2D array texture.
 uint32_t doorMakeArrayTargetImage(int32_t size, int32_t layers, int32_t format);
