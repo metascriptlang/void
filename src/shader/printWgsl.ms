@@ -345,11 +345,11 @@ function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
 }
 
 function literalText(p: Printer, t: ShaderType, value: float64): string {
-	if (t.kind == ShaderTypeKind.Scalar) { return scalarLiteral(p, t.scalar, value); }
-	if (t.kind == ShaderTypeKind.Vector) {
-		return typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")";
-	}
-	return refusal(p, "a literal of a " + t.kind.toString());
+	return match (t.kind) {
+		ShaderTypeKind.Scalar => scalarLiteral(p, t.scalar, value),
+		ShaderTypeKind.Vector => typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")",
+		_ => refusal(p, "a literal of a " + t.kind.toString()),
+	};
 }
 
 function argsText(p: Printer, args: ShaderExpr[]): string {
@@ -570,11 +570,11 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 }
 
 function memberName(p: Printer, t: ShaderType, member: int32): string {
-	if (t.kind == ShaderTypeKind.ExchangeResult) { return member == 0 ? "old_value" : "exchanged"; }
-	if (t.kind != ShaderTypeKind.Struct) {
-		return refusal(p, "a field of a " + t.kind.toString());
-	}
-	return p.members[t.structIndex][member];
+	return match (t.kind) {
+		ShaderTypeKind.ExchangeResult => member == 0 ? "old_value" : "exchanged",
+		ShaderTypeKind.Struct => p.members[t.structIndex][member],
+		_ => refusal(p, "a field of a " + t.kind.toString()),
+	};
 }
 
 function swizzleText(components: int32[]): string {
