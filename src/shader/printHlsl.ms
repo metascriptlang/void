@@ -343,8 +343,8 @@ function stmtsHaveEffect(p: Printer, stmts: ShaderStmt[]): boolean {
 		for (const list of [s.init, s.update, s.body, s.otherwise]) {
 			if (stmtsHaveEffect(p, list)) { return true; }
 		}
-		for (const k of s.cases) {
-			if (stmtsHaveEffect(p, k.body)) { return true; }
+		for (const arm of s.cases) {
+			if (stmtsHaveEffect(p, arm.body)) { return true; }
 		}
 	}
 	return false;
@@ -470,7 +470,7 @@ function inverseOf(p: Printer, e: ShaderExpr): string {
 	if (!isMatrix(t) || t.columns != t.rows) {
 		return fail(p, "Inverse of a " + t.kind.toString() + " that is no square matrix");
 	}
-	const ty = typeName(p, t);
+	const typeText = typeName(p, t);
 	const body = match (t.rows) {
 		2 => "    return float2x2(m[1][1], -m[0][1], -m[1][0], m[0][0]) / determinant(m);\n",
 		3 => "    float3 a = m[0];\n    float3 b = m[1];\n    float3 c = m[2];\n" +
@@ -488,8 +488,8 @@ function inverseOf(p: Printer, e: ShaderExpr): string {
 			"float4(cross(v, a) - t * x, dot(a, t)), float4(cross(d, u) + s * w, -dot(d, s)), " +
 			"float4(cross(u, c) - s * z, dot(c, s))));\n",
 	};
-	const name = helper(p, "inverse " + ty, "inverse",
-		(n) => ty + " " + n + "(" + ty + " m)\n{\n" + body + "}\n");
+	const name = helper(p, "inverse " + typeText, "inverse",
+		(n) => typeText + " " + n + "(" + typeText + " m)\n{\n" + body + "}\n");
 	return name + "(" + expr(p, e.operands[0]) + ")";
 }
 
@@ -507,7 +507,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	const t = args[0].type;
 	const texture = expr(p, args[0]);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
-		const ty = typeName(p, t);
+		const typeText = typeName(p, t);
 		const deep = t.shape == TextureShape.D3;
 		const sizes = match (t.shape) {
 			TextureShape.D3 => ["width", "height", "depth"],
@@ -516,8 +516,8 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 		};
 		const result = deep ? "uint3" : "uint2";
 		const kept = deep ? "width, height, depth" : "width, height";
-		const name = helper(p, "imageSize " + ty, "imageSize", (n) =>
-			result + " " + n + "(" + ty + " image)\n{\n" +
+		const name = helper(p, "imageSize " + typeText, "imageSize", (n) =>
+			result + " " + n + "(" + typeText + " image)\n{\n" +
 			sizes.map((s) => "    uint " + s + ";\n").join("") +
 			"    image.GetDimensions(" + sizes.join(", ") + ");\n" +
 			"    return " + result + "(" + kept + ");\n}\n");
@@ -527,7 +527,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureDimensions of a " + t.kind.toString());
 	}
 	const level = args.length > 1 ? "uint(" + expr(p, args[1]) + ")" : "0u";
-	const ty = typeName(p, t);
+	const typeText = typeName(p, t);
 	const deep = t.shape == TextureShape.D3;
 	const result = deep ? "uint3" : "uint2";
 	const outs = match (t.shape) {
@@ -537,15 +537,15 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 		_ => ["width", "height", "levels"],
 	};
 	if (t.shape == TextureShape.Multisampled2d) {
-		const name = helper(p, "textureSize " + ty, "textureSize", (n) =>
-			"uint2 " + n + "(" + ty + " t)\n{\n    uint width;\n    uint height;\n" +
+		const name = helper(p, "textureSize " + typeText, "textureSize", (n) =>
+			"uint2 " + n + "(" + typeText + " t)\n{\n    uint width;\n    uint height;\n" +
 			"    uint samples;\n    t.GetDimensions(width, height, samples);\n" +
 			"    return uint2(width, height);\n}\n");
 		return converted(p, name + "(" + texture + ")", "uint2", e.type);
 	}
 	const kept = deep ? "width, height, depth" : "width, height";
-	const name = helper(p, "textureSize " + ty, "textureSize", (n) =>
-		result + " " + n + "(" + ty + " t, uint level)\n{\n" +
+	const name = helper(p, "textureSize " + typeText, "textureSize", (n) =>
+		result + " " + n + "(" + typeText + " t, uint level)\n{\n" +
 		outs.map((o) => "    uint " + o + ";\n").join("") +
 		"    t.GetDimensions(level, " + outs.join(", ") + ");\n" +
 		"    return " + result + "(" + kept + ");\n}\n");
@@ -772,12 +772,12 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 
 function structMaker(p: Printer, structIndex: int32): string {
 	const s = p.module.structs[structIndex];
-	const ty = p.structNames[structIndex];
-	return helper(p, "make " + ty, "make" + ty, (n) => {
+	const typeText = p.structNames[structIndex];
+	return helper(p, "make " + typeText, "make" + typeText, (n) => {
 		const params = s.members.map((f, i) => declaration(p, f.type, "v" + String(i)));
 		const sets = s.members.map((f, i) => "    r." + p.fieldNames[structIndex][i] + " = v" +
 			String(i) + ";\n");
-		return ty + " " + n + "(" + params.join(", ") + ")\n{\n    " + ty + " r = (" + ty +
+		return typeText + " " + n + "(" + params.join(", ") + ")\n{\n    " + typeText + " r = (" + typeText +
 			")0;\n" + sets.join("") + "    return r;\n}\n";
 	});
 }
@@ -922,13 +922,13 @@ function forText(p: Printer, s: ShaderStmt, depth: int32): string {
 
 function switchText(p: Printer, s: ShaderStmt, depth: int32): string {
 	let text = indent(depth) + "switch (" + expr(p, s.expr) + ")\n" + indent(depth) + "{\n";
-	for (const k of s.cases) {
-		for (const label of k.labels) {
+	for (const arm of s.cases) {
+		for (const label of arm.labels) {
 			text += indent(depth + 1) + "case " + expr(p, label) + ":\n";
 		}
-		if (k.isDefault) { text += indent(depth + 1) + "default:\n"; }
+		if (arm.isDefault) { text += indent(depth + 1) + "default:\n"; }
 		p.nesting.push(Nesting.Switch);
-		text += indent(depth + 1) + "{\n" + k.body.map((b) => stmt(p, b, depth + 2)).join("") +
+		text += indent(depth + 1) + "{\n" + arm.body.map((b) => stmt(p, b, depth + 2)).join("") +
 			indent(depth + 2) + "break;\n" + indent(depth + 1) + "}\n";
 		p.nesting.pop();
 	}
@@ -1002,9 +1002,9 @@ function calls(stmts: ShaderStmt[], out: int32[]): void {
 		exprCalls(s.expr, out);
 		exprCalls(s.target, out);
 		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
-		for (const k of s.cases) {
-			for (const label of k.labels) { exprCalls(label, out); }
-			calls(k.body, out);
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { exprCalls(label, out); }
+			calls(arm.body, out);
 		}
 	}
 }
@@ -1040,9 +1040,9 @@ function stmtStructs(p: Printer, stmts: ShaderStmt[], out: int32[]): void {
 		exprStructs(p, s.expr, out);
 		exprStructs(p, s.target, out);
 		for (const list of [s.init, s.update, s.body, s.otherwise]) { stmtStructs(p, list, out); }
-		for (const k of s.cases) {
-			for (const label of k.labels) { exprStructs(p, label, out); }
-			stmtStructs(p, k.body, out);
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { exprStructs(p, label, out); }
+			stmtStructs(p, arm.body, out);
 		}
 	}
 }
@@ -1338,11 +1338,11 @@ export function printHlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	functionOrder(p, entry.functionIndex, [], functions);
 	let structs: int32[] = [];
 	for (const f of functions) {
-		const fn = m.functions[f];
-		for (const v of fn.params) { structOrder(p, v.type, structs); }
-		for (const v of fn.locals) { structOrder(p, v.type, structs); }
-		structOrder(p, fn.result, structs);
-		stmtStructs(p, fn.body, structs);
+		const shaderFunction = m.functions[f];
+		for (const v of shaderFunction.params) { structOrder(p, v.type, structs); }
+		for (const v of shaderFunction.locals) { structOrder(p, v.type, structs); }
+		structOrder(p, shaderFunction.result, structs);
+		stmtStructs(p, shaderFunction.body, structs);
 	}
 	for (const r of reads.resources) {
 		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
