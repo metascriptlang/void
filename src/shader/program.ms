@@ -11,8 +11,11 @@ import {
 	stringValue,
 	typeKind,
 } from "std/meta";
+import { exists, readFile } from "std/fs";
 import { glslIr, glslLinkedIr } from "./emit";
 import { programModule, programSource } from "./descriptor";
+import { dxbcStage, findFxc } from "./dxbcCache";
+import { shaderBytecodeFromBase64 } from "./dxbc";
 import { ShaderTarget } from "./layout";
 import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
@@ -209,7 +212,9 @@ export macro shaderBuild(
 	function called(callee: string, args: Node[]): Node {
 		const symbol = callee == "shaderModuleOf" ?
 			bindSym("shaderModuleOf") :
-			bindSym("shaderProgramRegister");
+			callee == "shaderBytecodeFromBase64" ?
+				bindSym("shaderBytecodeFromBase64") :
+				bindSym("shaderProgramRegister");
 		if (symbol == null) { error(kind + ": " + callee + " is not in scope", name); }
 		return {
 			kind: NodeKind.CallExpr,
@@ -225,12 +230,35 @@ export macro shaderBuild(
 		values.push(text(value));
 	}
 
+	// The cache is src/shader/dxbc beside the working directory, as scripts/regen-shaders.sh reads
+	// it; a build elsewhere has no such directory, so its HLSL stages keep their text.
+	function dxbcBlobs(vertexCode: string, fragmentCode: string, entry: string): string[] {
+		const cache = "src/shader/dxbc";
+		if (targetOf() != ShaderTarget.Hlsl5 || !exists(cache)) { return ["", ""]; }
+		const fxc = findFxc();
+		const blobs: string[] = [];
+		const stages = [["vs_5_0", vertexCode], ["ps_5_0", fragmentCode]];
+		for (const stage of stages) {
+			const found = dxbcStage(cache, cache, fxc, stage[0], entry, stage[1]);
+			if (found.error != "") { refused(found.error); }
+			if (found.path == "") {
+				blobs.push("");
+				continue;
+			}
+			const blob = readFile(found.path);
+			if (!blob.ok) { refused("cannot read " + found.path); }
+			blobs.push(blob.value.toBase64());
+		}
+		return blobs;
+	}
+
 	const module = programModule(stringValue(vertex), stringValue(fragment), []);
 	if (!module.ok) { refused(module.error); }
 	const source = programSource(module.value, targetOf());
 	if (!source.ok) { refused(source.error); }
 	const s = source.value;
 	if (s.refusal != "") { refused(s.refusal); }
+	const blobs = dxbcBlobs(s.vertexCode, s.fragmentCode, s.entryPoint);
 	const bindings: Node[] = [];
 	for (const b of s.reflection.bindings) {
 		const bindingKind: string = b.kind;
@@ -287,26 +315,33 @@ export macro shaderBuild(
 		values.push(integer(a.semanticIndex));
 		attributes.push(object(keys, values));
 	}
-	const descriptor = object(
-		[
-			"label",
-			"vertexCode",
-			"vertexEntryPoint",
-			"fragmentCode",
-			"fragmentEntryPoint",
-			"bindings",
-			"attributes",
-		],
-		[
-			text(base),
-			text(s.vertexCode),
-			text(s.entryPoint),
-			text(s.fragmentCode),
-			text(s.entryPoint),
-			array(bindings),
-			array(attributes),
-		],
-	);
+	const descriptorKeys = [
+		"label",
+		"vertexCode",
+		"vertexEntryPoint",
+		"fragmentCode",
+		"fragmentEntryPoint",
+		"bindings",
+		"attributes",
+	];
+	const descriptorValues = [
+		text(base),
+		text(blobs[0] != "" ? "" : s.vertexCode),
+		text(s.entryPoint),
+		text(blobs[1] != "" ? "" : s.fragmentCode),
+		text(s.entryPoint),
+		array(bindings),
+		array(attributes),
+	];
+	if (blobs[0] != "") {
+		descriptorKeys.push("vertexBytecode");
+		descriptorValues.push(called("shaderBytecodeFromBase64", [text(blobs[0])]));
+	}
+	if (blobs[1] != "") {
+		descriptorKeys.push("fragmentBytecode");
+		descriptorValues.push(called("shaderBytecodeFromBase64", [text(blobs[1])]));
+	}
+	const descriptor = object(descriptorKeys, descriptorValues);
 	if (kind == "shaderModule") { return called("shaderModuleOf", [descriptor]); }
 	const named = reflectProgram(module.value, 0, 1, ShaderTarget.Glsl430);
 	if (!named.ok) { refused(named.error); }
