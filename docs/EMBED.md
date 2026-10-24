@@ -119,50 +119,6 @@ pixel readback, because the Metal readback reads only the window driver's drawab
 runs as a full-screen UIKit app. sokol_app's iOS path was not used: it has no marked text and no
 hardware-key presses, which a terminal and an editor need. The driver is a host of the view
 driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `viewFrame` from a
-`CADisplayLink`, and it builds `sapp_event` values itself and hands them to `appWindow.c`, so
-`window.ms` reads them as on Windows and the web.
-
-- `voidRun` enters `UIApplicationMain` and does not return. The app's `main()` calls `MsMain`
-  (`src/examples/iosAppEntry.m`), as Neon's iOS entry does.
-- Touches arrive in framebuffer pixels in `AppEvent.touches`, with `changed` set on the touches
-  that moved; `safeArea()` gives the insets in pixels and `keyboardHeight()` how far a docked
-  software keyboard covers the view (0 hidden or floating), both changing with a `Resized` event.
-- A hardware key gives `KeyDown`/`KeyUp`; Backspace repeats while held. Typed text gives `Char`
-  per codepoint while text input is off, and `TextInput` plus `Preedit` for marked text while
-  `setTextInput(true)`; only then does the software keyboard show.
-- Demo: `src/examples/iosApp.ms` logs every event; a tap toggles text input.
-
-## Android: an app driver on the host views
-
-`bridgeAndroidApp.c` is the Android twin of `bridgeIosApp.m`, for the activity Ion's Android
-generator emits. Its one view, `VoidAppView` in the Java library `src/sokol/android/app`, is a
-`SurfaceView` that hosts the view driver in `bridgeAndroid.c` (EGL, GLES3) from Choreographer
-frames on the main thread, and sends touches, keys, IME text and window insets back as
-`sapp_event` values for `appWindow.c`.
-
-- The app compiles `src/sokol/androidAppEntry.c`, which defines Ion's `NativeApp` entry points,
-  and declares the Java library with Ion's `androidLibrary`. `NativeApp.start` runs `MsMain`;
-  `voidRun` records the closures and returns, and `start` then adds the view. Void imports
-  nothing from Ion; a Neon widget app defines the same entry points, so only a `voidRun` app
-  compiles this file.
-- The working directory is the app's files dir; APK assets are not extracted there.
-- Touches, `safeArea()` and `keyboardHeight()` (the IME inset, 0 when hidden or floating) are in
-  framebuffer pixels and change with a `Resized` event, as on iOS. Pause and resume give
-  `Suspended` and `Resumed`; the surface is dropped while the activity is stopped and the view
-  recreated on its return, with the same context.
-- A hardware key gives `KeyDown`/`KeyUp` with its modifiers; while text input is on, the IME may
-  take a letter's `KeyDown` and send its text alone. Nothing is committed while ctrl or meta is
-  held. `setImeRect` has no effect: the IME places its candidates itself.
-- `voidAndroidEnv`, `voidAndroidClassLoader` and `voidAndroidActivity` (`androidApp.h`) let code
-  above Void reach Java from the main thread.
-- Demo: `src/examples/iosApp.ms` is built the same way on Android.
-
-## iOS: an app driver on the host views
-
-`bridgeIosApp.m` gives iOS a `voidRun`, so an entry written for `voidRun` (Neon's `runCanvas`)
-runs as a full-screen UIKit app. sokol_app's iOS path was not used: it has no marked text and no
-hardware-key presses, which a terminal and an editor need. The driver is a host of the view
-driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `viewFrame` from a
 `CADisplayLink`, and it builds `VoidAppEvent` values (`src/platform/appEvent.h`) and hands them to `appWindow.c`, so
 `window.ms` reads them as on Windows and the web.
 
@@ -175,6 +131,10 @@ driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `
   per codepoint while text input is off, and `TextInput` plus `Preedit` for marked text while
   `setTextInput(true)`; only then does the software keyboard show.
 - Demo: `src/examples/iosApp.ms` logs every event; a tap toggles text input.
+- `voidRunConfigured(w, h, samples, 0, …)`, highDpi 0, is the capture configuration: the
+  framebuffer is `w`x`h` pixels, as a desktop window gives it, and the screen shows it scaled
+  to fit. The frame a `commit()` presented stays readable until the next frame, so a capture
+  after commit reads what was shown (`scripts/iosDevice.sh` runs the goldens this way).
 
 ## Android: an app driver on the host views
 
