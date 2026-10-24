@@ -244,3 +244,5 @@ void d3dQueryBegin(D3dContext context, D3dQuery query);
 void d3dQueryEnd(D3dContext context, D3dQuery query);
 int32_t d3dQueryTicks(D3dContext context, D3dQuery query, uint64_t *out);
 int32_t d3dQueryFrequency(D3dContext context, D3dQuery query, uint64_t *out);
+
+const char *d3dConstantsDisagreement(const int32_t *values, int32_t count);
