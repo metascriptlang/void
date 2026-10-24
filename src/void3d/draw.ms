@@ -1761,8 +1761,8 @@ export function textureReady(this context: DrawContext, index: int32): boolean {
 }
 
 function stopOnUntakenInstances(program: ProgramKey, layout: VertexLayout): void {
-	console.log(`void3d: drawItem draws ${program.describe()} on a ${layout.toString()} mesh with ` +
-		"instances it does not take");
+	console.log(`void3d: drawItem draws ${program.describe()} on a ${layout.toString()} ` +
+		"mesh with instances it does not take");
 	unreachable;
 }
 
