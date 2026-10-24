@@ -505,12 +505,12 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 	unreachable;
 }
 
-// A backend that has not ported a descriptor member calls the helper for its descriptor: a member
-// at WebGPU's default passes, any other value stops naming the member, the value and the backend.
 export function firstInstanceRefusal(call: string, pipeline: string, firstInstance: int32): string {
 	return `${call} with firstInstance ${firstInstance} on pipeline ${pipeline}: firstInstance must be 0 because the vertex stage reads instance_index`;
 }
 
+// A backend that has not ported a descriptor member calls the helper for its descriptor: a member
+// at WebGPU's default passes, any other value stops naming the member, the value and the backend.
 @noinline export function stopOnUnportedShaderBindings(backend: string, descriptor: GPUShaderModuleDescriptor): void {
 	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const b = descriptor.bindings[i];
