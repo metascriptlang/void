@@ -90,6 +90,7 @@ import {
 	GPUTextureViewDescriptor,
 	checkedVisibility,
 	checkedIntegerTexturePairs,
+	firstInstanceRefusal,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
@@ -401,6 +402,7 @@ struct NativeBinding {
 }
 
 struct ShaderSlot {
+	readsInstanceIndex: boolean;
 	id: uint32;
 	vertexLibrary: Ptr<MtlLibraryImpl>;
 	fragmentLibrary: Ptr<MtlLibraryImpl>;
@@ -418,6 +420,8 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
+	label: string | null;
+	readsInstanceIndex: boolean;
 	id: uint32;
 	shader: uint32;
 	state: Ptr<MtlPipelineImpl>;
@@ -1470,6 +1474,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		slot.fragment = entryFunction(slot.fragmentLibrary, descriptor.fragmentEntryPoint, "fragment", descriptor.label);
 	}
 	slot.id = id;
+	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
 	store(shaders, slot);
 	return { id: slot.id };
 }
@@ -1549,7 +1554,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on Metal");
 	}
-	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id };
+	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders.slots[s].readsInstanceIndex };
 	mtlPipelineReset();
 	mtlPipelineLabel(labelText(descriptor.label));
 	describeVertexLayout(s, descriptor, slot);
@@ -2027,6 +2032,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush();
+	checkFirstInstance("draw", firstInstance);
 	mtlDraw(encoder, pipelines.slots[pipelines.slotIndex(bound.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -2039,6 +2045,7 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush();
+	checkFirstInstance("drawIndexed", firstInstance);
 	if (bound.indexBuffer == 0) { stop("drawIndexed without setIndexBuffer"); }
 	const p = pipelines.slotIndex(bound.pipeline);
 	const primitive = pipelines.slots[p].primitive;
@@ -2057,6 +2064,12 @@ export function drawIndexed(
 		baseVertex,
 		firstInstance,
 	);
+}
+
+function checkFirstInstance(call: string, firstInstance: int32): void {
+	if (firstInstance == 0) { return; }
+	const p = pipelines.slotIndex(bound.pipeline);
+	if (pipelines.slots[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines.slots[p].label), firstInstance)); }
 }
 
 function flush(): void {
