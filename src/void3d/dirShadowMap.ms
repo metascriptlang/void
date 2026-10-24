@@ -49,6 +49,7 @@ import {
 	reserveUniforms,
 	writeUniforms,
 	drawBatchWith,
+	drawItemWith,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import { PassList, collectCasters, filterFrustum } from "./passList";
@@ -541,10 +542,15 @@ function drawCasters(shadow: DirShadowMap, items: Readonly<Span<DrawItem>>): voi
 			items[index].sameBatch(items[shadow.casters.indices[end]])) {
 			end = end + 1;
 		}
-		drawBatchWith(
-			context, items, shadow.casters.indices[i..end], shadow.cast[index], state,
-			SHADOW_LAYOUT, shadow.globals, NO_SCENE_TEXTURE,
-		);
+		if (end - i == 1) {
+			drawItemWith(context, items[index], shadow.cast[index], state, SHADOW_LAYOUT,
+				shadow.globals, NO_SCENE_TEXTURE);
+		} else {
+			drawBatchWith(
+				context, items, shadow.casters.indices[i..end], shadow.cast[index], state,
+				SHADOW_LAYOUT, shadow.globals, NO_SCENE_TEXTURE,
+			);
+		}
 		i = end;
 	}
 }
