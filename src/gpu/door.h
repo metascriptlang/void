@@ -81,7 +81,7 @@ uint32_t doorSamplerSlotMask(int32_t program);
 // `layout`, or -1 for a format that is not float.
 int32_t doorLayoutFloats(int32_t layout, int32_t buffer);
 // 1 when the registered layout's vertex buffer 0 steps per instance (particle, billboard).
-int32_t doorLayoutPerInstance(int32_t layout);
+int32_t doorLayoutPerInstance(int32_t layout, int32_t buffer);
 uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length);
 uint32_t doorMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
 // `levels` is 1 or the full chain down to 1x1 (floor halving, as h3d Texture.mipLevels); `rgba`

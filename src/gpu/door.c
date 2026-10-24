@@ -355,9 +355,10 @@ int32_t doorLayoutFloats(int32_t layout, int32_t buffer) {
 	return floats;
 }
 
-int32_t doorLayoutPerInstance(int32_t layout) {
+int32_t doorLayoutPerInstance(int32_t layout, int32_t buffer) {
 	const sg_vertex_layout_state *state = layoutOf(layout);
-	return state->buffers[0].step_func == SG_VERTEXSTEP_PER_INSTANCE ? 1 : 0;
+	if (buffer < 0 || buffer >= SG_MAX_VERTEXBUFFER_BINDSLOTS) return 0;
+	return state->buffers[buffer].step_func == SG_VERTEXSTEP_PER_INSTANCE ? 1 : 0;
 }
 
 // ---- resources ----

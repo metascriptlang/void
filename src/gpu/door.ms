@@ -135,8 +135,8 @@ export function layoutFloats(layout: int32, buffer: int32): int32 {
 	return doorLayoutFloats(layout, buffer);
 }
 
-export function layoutPerInstance(layout: int32): boolean {
-	return doorLayoutPerInstance(layout) != 0;
+export function layoutPerInstance(layout: int32, buffer: int32): boolean {
+	return doorLayoutPerInstance(layout, buffer) != 0;
 }
 
 export function makePipeline(descriptor: Readonly<Span<uint32>>): uint32 {

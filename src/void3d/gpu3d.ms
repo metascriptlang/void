@@ -515,8 +515,8 @@ export function layoutFloats(layout: VertexLayout, buffer: int32): int32 {
 	return doorLayoutFloats(doorLayout(layout), buffer);
 }
 
-export function layoutPerInstance(layout: VertexLayout): boolean {
-	return doorLayoutPerInstance(doorLayout(layout));
+export function layoutPerInstance(layout: VertexLayout, buffer: int32): boolean {
+	return doorLayoutPerInstance(doorLayout(layout), buffer);
 }
 
 // PipelineBuilder.lookup, on void3d's own enums: the key and the cache are the door's.
