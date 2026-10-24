@@ -1177,11 +1177,11 @@ function resourceText(p: Printer, index: int32, slots: BindingSlot[]): string {
 	};
 }
 
-class Port {
-	io: int32 = -1;
-	type: string = "";
-	semantic: string = "";
-	order: int32 = 0;
+struct Port {
+	io: int32;
+	type: string;
+	semantic: string;
+	order: int32;
 }
 
 function semanticOf(p: Printer, io: ShaderIo): [string, string] {
@@ -1225,8 +1225,7 @@ function ports(p: Printer, direction: IoDirection): Port[] {
 	for (let i = 0; i < m.ios.length; i++) {
 		const io = m.ios[i];
 		if (io.stage != p.stage || io.direction != direction) { continue; }
-		let port = new Port();
-		port.io = i as int32;
+		let port: Port = { io: i as int32, type: "", semantic: "", order: 0 };
 		if (io.builtin == Builtin.None) {
 			const location = io.location >= 0 ? io.location : ordinal;
 			ordinal++;
