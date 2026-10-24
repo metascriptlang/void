@@ -1515,6 +1515,27 @@ test "writeTexture writes a sub-rectangle in place over a whole write of the sam
 	device.destroy();
 }
 
+test "inside a pass, writeTexture writes a mip, two layers and two 3d slices of textures no GPU work has used" {
+	const device = openDevice();
+	const mips = copyTexture(device, "r8unorm", 8, 8, 1, 3, "2d");
+	const layers = copyTexture(device, "rgba8unorm", 4, 4, 3, 1, "2d");
+	const volume = copyTexture(device, "r8unorm", 4, 4, 4, 1, "3d");
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(colourTarget(device, 1).createView({ label: null }), { id: 0 }));
+	device.queue.writeTexture({ texture: mips, mipLevel: 1, origin: { x: 1, y: 1, z: 0 } }, fill(4, 0x66), { offset: 0, bytesPerRow: 2, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	device.queue.writeTexture({ texture: layers, origin: { x: 1, y: 1, z: 1 } }, fill(32, 0x77), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 2 });
+	device.queue.writeTexture({ texture: volume, origin: { x: 0, y: 0, z: 1 } }, fill(32, 0x88), { offset: 0, bytesPerRow: 4, rowsPerImage: 4 }, { width: 4, height: 4, depthOrArrayLayers: 2 });
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const level = readBytes(mips, 1, 0, 0, 4, 4, 1);
+	assert level[1 * 4 + 1] == 0x66 && level[2 * 4 + 2] == 0x66 && level[0] == 0 && level[3 * 4 + 3] == 0;
+	assert readBytes(layers, 0, 1, 0, 4, 4, 4)[(1 * 4 + 1) * 4] == 0x77 && readBytes(layers, 0, 2, 0, 4, 4, 4)[(2 * 4 + 2) * 4] == 0x77;
+	assert readBytes(layers, 0, 0, 0, 4, 4, 4)[(1 * 4 + 1) * 4] == 0;
+	assert readBytes(volume, 0, 0, 1, 4, 4, 1)[5] == 0x88 && readBytes(volume, 0, 0, 2, 4, 4, 1)[5] == 0x88;
+	assert readBytes(volume, 0, 0, 0, 4, 4, 1)[5] == 0 && readBytes(volume, 0, 0, 3, 4, 4, 1)[5] == 0;
+	device.destroy();
+}
+
 test "an attachment texture that is also COPY_DST takes writeTexture and keeps it after a partial write" {
 	const device = openDevice();
 	const target = device.createTexture({
