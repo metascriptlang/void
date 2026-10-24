@@ -361,6 +361,13 @@ branch. Each one is checked here per file; the full gate has not run again yet.
     refuses `GPUSamplerDescriptor.compare` for Metal and `mtlNewSampler` takes no compare function;
     the need is `MTLSamplerDescriptor.compareFunction` (shader side prints `sample_compare`). D3D11,
     GL and wgpu already create comparison samplers.
+- **Integer data textures (2026-10-24, for void3d clustered lights):** `rgba32uint` and
+  `GPUShaderBinding.sampleType` `"uint"`/`"sint"` work on D3D11, GL and wgpu (`7d3dd19d`; WARP pins in
+  `webgpuD3d11Check.ms` read every texel back exactly). A sampler paired with an integer texture must be
+  `"non-filtering"` (`checkedIntegerTexturePairs` in `types.ms`). For Metal: `rgba32uint` is not in its
+  `formatInfo` (stops by name), and a uint/sint binding is not refused there yet; add the format
+  (`MTLPixelFormatRGBA32Uint`) and the sample type when you port it. An integer render target still stops
+  on GL ("integer clear not ported").
 - **The shader arc is in `wt/gpu-ms` (2026-10-24, the person's call):** `wt/shader` up to
   `c275a431` is merged here, so one pull carries both arcs; `wt/shader` now rebases onto this
   branch. Left for the Mac: the Metal goldens of gate and gate3d on this tip, when your slot
