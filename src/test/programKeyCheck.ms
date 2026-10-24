@@ -65,6 +65,7 @@ import {
 	ENV_SCENE_VIEWS,
 	ENV_SCENE_SAMPLERS,
 	CLUSTER_SCENE_VIEWS,
+	LIGHT_RECORDS_VIEW_SLOT,
 	CLUSTER_SCENE_SAMPLERS,
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
@@ -1170,7 +1171,10 @@ test "particleVisual declares additive program14 layout9 with original billboard
 		assert uniformBlockLength(key, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;
 		assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
 		assert uniformBlockLength(key, 4) == 0 && uniformBlockLength(key, SKIN_UNIFORM_SLOT) == 0;
-		assert textureSlotMask(key) == 1 + CLUSTER_SCENE_VIEWS;
+		const lightViews: uint32 = preset == Preset.PixelArt
+			? 1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)
+			: CLUSTER_SCENE_VIEWS;
+		assert textureSlotMask(key) == 1 + lightViews;
 		assert samplerSlotMask(key) == 1 + CLUSTER_SCENE_SAMPLERS;
 		const skin: ProgramKey = { ...key, skinned: true };
 		assert !declares(skin);
