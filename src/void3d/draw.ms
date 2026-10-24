@@ -85,6 +85,7 @@ export struct DoomedTexture {
 }
 import {
 	GPU3D_BINDING_VERTEX_BUFFER,
+	GPU3D_BINDING_VERTEX_OFFSET,
 	GPU3D_BINDING_INDEX_BUFFER,
 	GPU3D_BINDING_VIEW,
 	GPU3D_BINDING_SAMPLER,
@@ -1662,6 +1663,7 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER] =
 		drawsQuads(mesh.layout) ? mesh.instanceBuffer : mesh.vertexBuffer;
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = 0;
+	context.bindings[GPU3D_BINDING_VERTEX_OFFSET] = 0;
 	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = mesh.indexBuffer;
 	context.bindings[GPU3D_BINDING_VIEW] = material.texture0;
 	context.bindings[GPU3D_BINDING_VIEW + 1] = material.texture1;

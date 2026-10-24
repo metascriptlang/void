@@ -310,6 +310,7 @@ void gpu3dApplyBindings(const uint32_t *bindings, int64_t length) {
 	for (int i = 0; i < 2; i++) {
 		desc.vertex_buffers[i] = (sg_buffer){.id = bindings[GPU3D_BINDING_VERTEX_BUFFER + i]};
 	}
+	desc.vertex_buffer_offsets[1] = (int)bindings[GPU3D_BINDING_VERTEX_OFFSET];
 	for (int i = 0; i < GPU3D_BINDING_SAMPLERS; i++) {
 		desc.samplers[i] = (sg_sampler){.id = bindings[GPU3D_BINDING_SAMPLER + i]};
 	}

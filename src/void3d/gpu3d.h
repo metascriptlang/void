@@ -20,7 +20,8 @@ static const int32_t GPU3D_BINDING_VIEW = 3; // seven
 static const int32_t GPU3D_BINDING_VIEWS = 7;
 static const int32_t GPU3D_BINDING_SAMPLER = 10; // four
 static const int32_t GPU3D_BINDING_SAMPLERS = 4;
-static const int32_t GPU3D_BINDING_LENGTH = 14;
+static const int32_t GPU3D_BINDING_VERTEX_OFFSET = 14; // slot 1, in bytes
+static const int32_t GPU3D_BINDING_LENGTH = 15;
 
 int32_t gpu3dProgramBase(void);
 int32_t gpu3dLayoutBase(void);

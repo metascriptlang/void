@@ -1,4 +1,4 @@
-// expect: void3d: applyBindings descriptor holds 13 of 14 words
+// expect: void3d: applyBindings descriptor holds 14 of 15 words
 import { gfxSetup } from "../../src/sokol/gpu";
 import { GPU3D_BINDING_LENGTH } from "../../src/void3d/gpu3d.h";
 import { applyBindings } from "../../src/void3d/gpu3d";
