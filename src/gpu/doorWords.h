@@ -5,11 +5,10 @@
 
 #define DOOR_UNIFORM_SLOT_TABLE_LENGTH 8
 static const int32_t DOOR_UNIFORM_SLOTS = DOOR_UNIFORM_SLOT_TABLE_LENGTH;
+static const int32_t DOOR_MAX_COLOR_ATTACHMENTS = 4;
 
 // `static const` rather than enum or #define so that MetaScript can import these from this
 // header (doorGpu.ms, draw.ms); msc sees neither of the others.
-
-static const int32_t DOOR_MAX_COLOR_ATTACHMENTS = 4;
 
 static const int32_t DOOR_BINDING_VERTEX_BUFFER = 0; // two
 static const int32_t DOOR_BINDING_INDEX_BUFFER = 2;

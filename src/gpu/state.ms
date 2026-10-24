@@ -6,7 +6,6 @@
 //
 // The state is a plain value; `bits()` packs it into the uint32 that the pipeline cache keys
 // on, the way Heaps' BitsBuilder packs Pass.bits, and `RenderState.fromBits` reads it back.
-// The members are sent to doorGpu.ms as ordinals and mapped by its tables, in this order.
 
 // h3d.mat.Data.Face; Both is not ported (sokol has no cull-all mode).
 export enum Face {
