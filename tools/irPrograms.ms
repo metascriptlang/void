@@ -255,20 +255,25 @@ function shdcText(source: string, programs: Program[]): string {
 	return out;
 }
 
-function blockMembers(program: Program, block: string): string[] {
-	const moduleResult = programModule(
+function linkedModule(program: Program): ShaderModule {
+	const result = programModule(
 		stageText(program.source, program.vertex),
 		stageText(program.source, program.fragment),
 		program.features,
 	);
-	if (!moduleResult.ok) { fail(program.name + ": " + moduleResult.error); }
-	const resources = moduleResult.value.resources;
+	if (!result.ok) { fail(program.name + ": " + result.error); }
+	return result.value;
+}
+
+function blockMembers(program: Program, block: string): string[] {
+	const shaderModule = linkedModule(program);
+	const resources = shaderModule.resources;
 	for (let resourceIndex = 0; resourceIndex < resources.length; resourceIndex++) {
 		const resource = resources[resourceIndex];
 		if (resource.kind != ResourceKind.UniformBlock || resource.name != block) { continue; }
-		const layout = uniformBlockLayout(moduleResult.value, resourceIndex);
+		const layout = uniformBlockLayout(shaderModule, resourceIndex);
 		if (!layout.ok) { fail(program.name + ": " + layout.error); }
-		const members = moduleResult.value.structs[resource.type.structIndex].members;
+		const members = shaderModule.structs[resource.type.structIndex].members;
 		let out: string[] = [];
 		for (let i = 0; i < members.length; i++) {
 			out.push(members[i].name + "@" + String(layout.value.offsets[i]));
@@ -277,7 +282,6 @@ function blockMembers(program: Program, block: string): string[] {
 	}
 	fail(program.name + " has no uniform block " + block);
 }
-
 
 function checkFeaturesRead(program: Program): void {
 	const vertexText = stageText(program.source, program.vertex);
@@ -293,6 +297,7 @@ function checkFeaturesRead(program: Program): void {
 		}
 	}
 }
+
 function programNamed(programs: Program[], name: string): Program {
 	for (const program of programs) {
 		if (program.name == name) { return program; }
@@ -513,29 +518,29 @@ function moduleText(programs: Program[], typesPath: string, dispatcher: string,
 	reflectionOnly: boolean, counts: Counts, dxbc: Dxbc, metallib: Metallib): string {
 	let sources: ProgramSource[][] = [];
 	let agreement = new Agreement();
-	for (const p of programs) {
-		const m = programModule(stageText(p.source, p.vertex), stageText(p.source, p.fragment),
-			p.features);
-		if (!m.ok) { fail(p.name + ": " + m.error); }
+	for (const program of programs) {
+		const shaderModule = linkedModule(program);
 		counts.programs++;
 		let row: ProgramSource[] = [];
 		for (const language of LANGUAGES) {
-			const s = programSource(m.value, targetOf(language[0]));
-			if (!s.ok) { fail(p.name + " " + language[0] + ": " + s.error); }
-			if (s.value.refusal != "") {
-				if (!reflectionOnly) { fail(p.name + " " + language[0] + ": " + s.value.refusal); }
+			const printed = programSource(shaderModule, targetOf(language[0]));
+			if (!printed.ok) { fail(program.name + " " + language[0] + ": " + printed.error); }
+			if (printed.value.refusal != "") {
+				const refusal = printed.value.refusal;
+				if (!reflectionOnly) { fail(program.name + " " + language[0] + ": " + refusal); }
 				counts.refused++;
-				console.log("refused " + p.name + " " + language[0] + ": " + s.value.refusal);
+				console.log("refused " + program.name + " " + language[0] + ": " + refusal);
 			} else {
 				const files = stageFiles(language[0]);
-				keep("out/irPrograms/" + p.name + files[0], s.value.vertexCode);
-				keep("out/irPrograms/" + p.name + files[1], s.value.fragmentCode);
+				keep("out/irPrograms/" + program.name + files[0], printed.value.vertexCode);
+				keep("out/irPrograms/" + program.name + files[1], printed.value.fragmentCode);
 				counts.printed += 2;
 			}
-			row.push(s.value);
+			row.push(printed.value);
 		}
-		if (p.layout != "") {
-			agree(agreement, p, m.value, row[LANGUAGES.findIndex((l) => l[0] == "glsl430")]);
+		if (program.layout != "") {
+			const glsl430 = LANGUAGES.findIndex((language) => language[0] == "glsl430");
+			agree(agreement, program, shaderModule, row[glsl430]);
 		}
 		sources.push(row);
 	}
@@ -543,27 +548,22 @@ function moduleText(programs: Program[], typesPath: string, dispatcher: string,
 		"import { GPUShaderModuleDescriptor } from \"" + typesPath + "\";\n" +
 		"import { shaderBytecodeFromBase64 } from \"" +
 		typesPath.replace("webgpu/types.ms", "shader/dxbc.ms") + "\";\n";
-	for (let t = 0; t < LANGUAGES.length; t++) {
+	for (let targetIndex = 0; targetIndex < LANGUAGES.length; targetIndex++) {
 		let constants: Map<string, string> = new Map();
 		let functions: string[] = [];
 		for (let i = 0; i < programs.length; i++) {
-			const s = sources[i][t];
-			const language = LANGUAGES[t][0];
-			const none = isComputeSource(s) ? ["[]"] : ["[]", "[]"];
-			const bytecode = language == "hlsl5" ?
-				stageBytecode((code, stage, entry, what) =>
-					bytecodeOf(dxbc, constants, code, hlslProfile(stage), entry, what), s, programs[i].name) :
-				metalFlags(language).length > 0 ?
-				stageBytecode((code, stage, entry, what) =>
-					metallibOf(metallib, constants, language, code, entry, what), s, programs[i].name) :
-				none;
-			functions.push(descriptorSource(programs[i].name, s, bytecode, language == "metal_ios"));
+			const stageSource = sources[i][targetIndex];
+			const bytecode = LANGUAGES[targetIndex][0] == "hlsl5" ?
+				stageBytecode(dxbc, constants, stageSource, programs[i].name) :
+				isComputeSource(stageSource) ? ["[]"] : ["[]", "[]"];
+			functions.push(descriptorSource(programs[i].name, stageSource, bytecode));
 		}
 		let blobs = "";
 		for (const [key, base64] of constants) {
 			blobs += "\tconst " + (LANGUAGES[t][0] == "hlsl5" ? "DXBC_" : "METALLIB_") + key + " = \"" + base64 + "\";\n";
 		}
-		text += (t == 0 ? "\nwhen (" : " else when (") + LANGUAGES[t][1] + ") {\n" +
+		text += (targetIndex == 0 ? "\nwhen (" : " else when (") + LANGUAGES[targetIndex][1] +
+			") {\n" +
 			(blobs != "" ? blobs + "\n" : "") + functions.join("\n") + "}";
 	}
 	if (dispatcher != "") {
