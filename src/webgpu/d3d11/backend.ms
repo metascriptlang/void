@@ -85,6 +85,7 @@ import {
 	checkedViewport,
 	checkedWriteBuffer,
 	featureBit,
+	checkedIntegerTexturePairs,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
@@ -666,6 +667,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 		"r32float" => colorInfo(DXGI_R32_FLOAT, 4),
 		"rg32float" => colorInfo(DXGI_R32G32_FLOAT, 8),
 		"rgba32float" => colorInfo(DXGI_R32G32B32A32_FLOAT, 16),
+		"rgba32uint" => colorInfo(DXGI_R32G32B32A32_UINT, 16),
 		"r32uint" => colorInfo(DXGI_R32_UINT, 4),
 		"rgb10a2unorm" => colorInfo(DXGI_R10G10B10A2_UNORM, 4),
 		"rg11b10ufloat" => colorInfo(DXGI_R11G11B10_FLOAT, 4),
@@ -1911,6 +1913,7 @@ function compileStage(code: string, entryPoint: string, target: string, label: s
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBindings("d3d11", descriptor);
+	checkedIntegerTexturePairs(descriptor);
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
 	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "" || descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0)) {
 		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");

@@ -78,6 +78,7 @@ export type GPUTextureFormat =
 	| "r32float"
 	| "rg32float"
 	| "rgba32float"
+	| "rgba32uint"
 	| "r32uint"
 	| "rgb10a2unorm"
 	| "rg11b10ufloat"
@@ -502,12 +503,31 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const b = descriptor.bindings[i];
 		const sampleType: string = b.sampleType;
-		if (sampleType != "" && sampleType != "float" && sampleType != "unfilterable-float") {
+		if (sampleType != "" && sampleType != "float" && sampleType != "unfilterable-float" && sampleType != "uint" && sampleType != "sint") {
 			stopOnUnported(backend, `GPUShaderBinding.sampleType '${sampleType}'`);
 		}
 		const samplerType: string = b.samplerType;
 		if (samplerType == "comparison") { stopOnUnported(backend, `GPUShaderBinding.samplerType 'comparison'`); }
 		if (b.multisampled) { stopOnUnported(backend, `GPUShaderBinding.multisampled`); }
+	}
+}
+
+// A uint or sint texture cannot be filtered (WebGPU's bind group layout rule, sokol's
+// VALIDATE_SHADERDESC_NONFILTERING_SAMPLER_REQUIRED), so a sampler paired with one must be non-filtering.
+@noinline export function checkedIntegerTexturePairs(descriptor: GPUShaderModuleDescriptor): void {
+	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
+		const sampler = descriptor.bindings[i];
+		const kind: string = sampler.kind;
+		const samplerType: string = sampler.samplerType;
+		if (kind != "sampler" || sampler.textureBinding < 0 || samplerType == "non-filtering") { continue; }
+		for (let j = 0; j < GPU_MAX_SHADER_BINDINGS; j++) {
+			const texture = descriptor.bindings[j];
+			const textureKind: string = texture.kind;
+			const sampleType: string = texture.sampleType;
+			if (textureKind == "texture" && texture.binding == sampler.textureBinding && (sampleType == "uint" || sampleType == "sint")) {
+				stop(`sampler binding ${sampler.binding} is '${samplerType == "" ? "filtering" : samplerType}' but pairs with the ${sampleType} texture binding ${texture.binding}; an integer texture needs a non-filtering sampler`);
+			}
+		}
 	}
 }
 

@@ -85,6 +85,7 @@ import {
 	checkedWriteBuffer,
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
+	checkedIntegerTexturePairs,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
@@ -298,6 +299,7 @@ const GL_RGBA16UI = 0x8D76;
 const GL_R32F = 0x822E;
 const GL_RG32F = 0x8230;
 const GL_RGBA32F = 0x8814;
+const GL_RGBA32UI = 0x8D70;
 const GL_R32UI = 0x8236;
 const GL_RGB10_A2 = 0x8059;
 const GL_R11F_G11F_B10F = 0x8C3A;
@@ -849,6 +851,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 		"r32float" => colorFormat(GL_R32F, GL_RED, GL_FLOAT, 4, false, true),
 		"rg32float" => colorFormat(GL_RG32F, GL_RG, GL_FLOAT, 8, false, true),
 		"rgba32float" => colorFormat(GL_RGBA32F, GL_RGBA, GL_FLOAT, 16, false, true),
+		"rgba32uint" => colorFormat(GL_RGBA32UI, GL_RGBA_INTEGER, GL_UNSIGNED_INT, 16, true, false),
 		"r32uint" => colorFormat(GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, 4, true, false),
 		"rgb10a2unorm" => colorFormat(GL_RGB10_A2, GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV, 4, false, false),
 		"rg11b10ufloat" => colorFormat(GL_R11F_G11F_B10F, GL_RGB, GL_UNSIGNED_INT_10F_11F_11F_REV, 4, false, true),
@@ -1914,6 +1917,7 @@ function compileStage(stage: int32, code: string, entryPoint: string, label: str
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBindings("gl", descriptor);
+	checkedIntegerTexturePairs(descriptor);
 	stopOnUnportedShaderBytecode("gl", descriptor);
 	const compute = descriptor.computeCode != "";
 	if (compute) {

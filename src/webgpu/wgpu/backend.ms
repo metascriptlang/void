@@ -82,6 +82,7 @@ import {
 	checkedViewport,
 	checkedWriteBuffer,
 	featureBit,
+	checkedIntegerTexturePairs,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
@@ -199,6 +200,7 @@ const FORMAT_RG32_FLOAT = 0x21;
 const FORMAT_RGBA16_UINT = 0x26;
 const FORMAT_RGBA16_FLOAT = 0x28;
 const FORMAT_RGBA32_FLOAT = 0x29;
+const FORMAT_RGBA32_UINT = 0x2A;
 const FORMAT_DEPTH16_UNORM = 0x2D;
 const FORMAT_DEPTH24_PLUS_STENCIL8 = 0x2F;
 const FORMAT_DEPTH32_FLOAT = 0x30;
@@ -275,6 +277,8 @@ const ACCESS_READ_ONLY = 3;
 const ACCESS_READ_WRITE = 4;
 const SAMPLE_FLOAT = 2;
 const SAMPLE_UNFILTERABLE_FLOAT = 3;
+const SAMPLE_SINT = 5;
+const SAMPLE_UINT = 6;
 const SAMPLER_FILTERING = 2;
 const SAMPLER_NON_FILTERING = 3;
 const ASPECT_ALL = 1;
@@ -608,6 +612,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 		"r32float" => colorFormat(FORMAT_R32_FLOAT, 4),
 		"rg32float" => colorFormat(FORMAT_RG32_FLOAT, 8),
 		"rgba32float" => colorFormat(FORMAT_RGBA32_FLOAT, 16),
+		"rgba32uint" => colorFormat(FORMAT_RGBA32_UINT, 16),
 		"r32uint" => colorFormat(FORMAT_R32_UINT, 4),
 		"rgb10a2unorm" => colorFormat(FORMAT_RGB10A2_UNORM, 4),
 		"rg11b10ufloat" => colorFormat(FORMAT_RG11B10_UFLOAT, 4),
@@ -847,6 +852,8 @@ function sampleType(sample: string): int32 {
 	return match (sample) {
 		"" | "float" => SAMPLE_FLOAT,
 		"unfilterable-float" => SAMPLE_UNFILTERABLE_FLOAT,
+		"sint" => SAMPLE_SINT,
+		"uint" => SAMPLE_UINT,
 		_ => stopOnMember("GPUShaderBinding.sampleType", sample),
 	};
 }
@@ -1404,6 +1411,7 @@ function createModule(code: string, label: string | null): Ptr<WgModuleImpl> {
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBindings("wgpu", descriptor);
+	checkedIntegerTexturePairs(descriptor);
 	stopOnUnportedShaderBytecode("wgpu", descriptor);
 	const compute = descriptor.computeCode != "";
 	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
