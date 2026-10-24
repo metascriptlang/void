@@ -179,7 +179,10 @@ function frame(): void {
 	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
 	const got: int32 = red(WIDTH / 2, HEIGHT / 2);
 	const want: float32 = stage == 0 ? 0.0 : expectedByte(power);
-	console.log(`environmentLight: stage ${stage} power ${power} centre ${got} (want ${want})`);
+	const centre: uint32 = voidCapturePixel(0, WIDTH / 2, HEIGHT / 2) as uint32;
+	const corner: uint32 = voidCapturePixel(0, 0, 0) as uint32;
+	console.log(`environmentLight: stage ${stage} power ${power} centre ${got} (want ${want}) ` +
+		`rgba ${centre.toString(16)}, corner ${corner.toString(16)}`);
 	if (Math.abs((got as float32) - want) > TOLERANCE) {
 		fail(`the centre drew ${got}, not ${want}`);
 	}
