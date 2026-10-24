@@ -122,7 +122,7 @@ test "blur prints the interface of the committed GLSL 430 and GLSL ES 3.00" {
 		assert fs.includes("    fragColor = texture(srcTex_srcSmp, uv) * blur_params[0];\n");
 	}
 	assert printed(m, 1, [0, 1], GlslTarget.Glsl300es).startsWith("#version 300 es\n" +
-		"precision mediump float;\nprecision highp int;\n");
+		"precision highp float;\nprecision highp int;\n");
 	assert !printed(m, 0, [0, 1], GlslTarget.Glsl300es).includes("precision");
 }
 

@@ -1287,7 +1287,7 @@ export function printGlsl(
 
 	let head = es ? "#version 300 es\n" : "#version 430\n";
 	if (es && entry.stage == ShaderStage.Fragment) {
-		head += "precision mediump float;\nprecision highp int;\n";
+		head += "precision highp float;\nprecision highp int;\n";
 	}
 	head += "\n";
 	if (entry.stage == ShaderStage.Compute) {
