@@ -353,8 +353,8 @@ function stmtsHaveEffect(p: Printer, stmts: ShaderStmt[]): boolean {
 		for (const list of [s.init, s.update, s.body, s.otherwise]) {
 			if (stmtsHaveEffect(p, list)) { return true; }
 		}
-		for (const k of s.cases) {
-			if (stmtsHaveEffect(p, k.body)) { return true; }
+		for (const arm of s.cases) {
+			if (stmtsHaveEffect(p, arm.body)) { return true; }
 		}
 	}
 	return false;
@@ -863,8 +863,9 @@ function indexText(p: Printer, e: ShaderExpr): string {
 }
 
 function builtinRead(p: Printer, io: ShaderIo): [string, string] {
-	const desktop = (name: string, ty: string): [string, string] =>
-		p.es ? [fail(p, io.builtin.toString() + ": GLSL ES 3.00 has no " + name), ""] : [name, ty];
+	const desktop = (name: string, typeText: string): [string, string] =>
+		p.es ? [fail(p, io.builtin.toString() + ": GLSL ES 3.00 has no " + name), ""] :
+			[name, typeText];
 	return match (io.builtin) {
 		Builtin.VertexIndex => ["gl_VertexID", "int"],
 		Builtin.InstanceIndex => ["gl_InstanceID", "int"],
@@ -890,8 +891,8 @@ function ioText(p: Printer, index: int32): string {
 		return fail(p, "io '" + io.name + "' belongs to the " + io.stage.toString() + " stage");
 	}
 	if (io.builtin == Builtin.None) { return p.ioNames[index]; }
-	const [name, ty] = builtinRead(p, io);
-	return converted(p, name, ty, io.type);
+	const [name, typeText] = builtinRead(p, io);
+	return converted(p, name, typeText, io.type);
 }
 
 function resourceText(p: Printer, index: int32): string {
@@ -1026,13 +1027,13 @@ function forText(p: Printer, s: ShaderStmt, depth: int32): string {
 
 function switchText(p: Printer, s: ShaderStmt, depth: int32): string {
 	let text = indent(depth) + "switch (" + expr(p, s.expr) + ")\n" + indent(depth) + "{\n";
-	for (const k of s.cases) {
-		for (const label of k.labels) {
+	for (const arm of s.cases) {
+		for (const label of arm.labels) {
 			text += indent(depth + 1) + "case " + expr(p, label) + ":\n";
 		}
-		if (k.isDefault) { text += indent(depth + 1) + "default:\n"; }
+		if (arm.isDefault) { text += indent(depth + 1) + "default:\n"; }
 		p.nesting.push(Nesting.Switch);
-		text += indent(depth + 1) + "{\n" + k.body.map((b) => stmt(p, b, depth + 2)).join("") +
+		text += indent(depth + 1) + "{\n" + arm.body.map((b) => stmt(p, b, depth + 2)).join("") +
 			indent(depth + 2) + "break;\n" + indent(depth + 1) + "}\n";
 		p.nesting.pop();
 	}
@@ -1096,9 +1097,9 @@ function calls(stmts: ShaderStmt[], out: int32[]): void {
 		exprCalls(s.expr, out);
 		exprCalls(s.target, out);
 		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
-		for (const k of s.cases) {
-			for (const label of k.labels) { exprCalls(label, out); }
-			calls(k.body, out);
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { exprCalls(label, out); }
+			calls(arm.body, out);
 		}
 	}
 }
@@ -1134,9 +1135,9 @@ function stmtStructs(p: Printer, stmts: ShaderStmt[], out: int32[]): void {
 		exprStructs(p, s.expr, out);
 		exprStructs(p, s.target, out);
 		for (const list of [s.init, s.update, s.body, s.otherwise]) { stmtStructs(p, list, out); }
-		for (const k of s.cases) {
-			for (const label of k.labels) { exprStructs(p, label, out); }
-			stmtStructs(p, k.body, out);
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { exprStructs(p, label, out); }
+			stmtStructs(p, arm.body, out);
 		}
 	}
 }
@@ -1335,11 +1336,11 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	functionOrder(p, entry.functionIndex, [], functions);
 	let structs: int32[] = [];
 	for (const f of functions) {
-		const fn = m.functions[f];
-		for (const v of fn.params) { structOrder(p, v.type, structs); }
-		for (const v of fn.locals) { structOrder(p, v.type, structs); }
-		structOrder(p, fn.result, structs);
-		stmtStructs(p, fn.body, structs);
+		const callee = m.functions[f];
+		for (const v of callee.params) { structOrder(p, v.type, structs); }
+		for (const v of callee.locals) { structOrder(p, v.type, structs); }
+		structOrder(p, callee.result, structs);
+		stmtStructs(p, callee.body, structs);
 	}
 	for (const r of reads.resources) {
 		if (m.resources[r].kind == ResourceKind.StorageBuffer) {
