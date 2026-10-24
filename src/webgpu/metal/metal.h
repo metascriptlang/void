@@ -271,3 +271,5 @@ void mtlResolveCounters(MtlCommandBuffer commandBuffer, MtlSampleBuffer samples,
 void mtlPassSamples(MtlSampleBuffer samples, int32_t startIndex, int32_t endIndex);
 void mtlPassVisibility(MtlBuffer buffer);
 void mtlSetVisibility(MtlEncoder encoder, int32_t enabled, int64_t offset);
+
+const char *mtlConstantsDisagreement(const int32_t *values, int32_t count);

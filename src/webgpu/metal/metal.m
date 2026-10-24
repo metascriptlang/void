@@ -1,5 +1,6 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "metal.h"
@@ -812,4 +813,152 @@ void mtlPassVisibility(MtlBuffer buffer) { s_pass.visibilityResultBuffer = (id<M
 
 void mtlSetVisibility(MtlEncoder encoder, int32_t enabled, int64_t offset) {
 	[(id<MTLRenderCommandEncoder>)encoder setVisibilityResultMode:enabled ? MTLVisibilityResultModeBoolean : MTLVisibilityResultModeDisabled offset:(NSUInteger)offset];
+}
+
+typedef struct { const char *name; int32_t value; } DriverConstant;
+
+#define DRIVER(name) { #name, (int32_t)(name) }
+
+static const DriverConstant driverConstants[] = {
+	DRIVER(MTLPixelFormatInvalid),
+	DRIVER(MTLPixelFormatR8Unorm),
+	DRIVER(MTLPixelFormatRG8Unorm),
+	DRIVER(MTLPixelFormatRGBA8Unorm),
+	DRIVER(MTLPixelFormatRGBA8Unorm_sRGB),
+	DRIVER(MTLPixelFormatBGRA8Unorm),
+	DRIVER(MTLPixelFormatBGRA8Unorm_sRGB),
+	DRIVER(MTLPixelFormatRGBA8Uint),
+	DRIVER(MTLPixelFormatRGBA8Sint),
+	DRIVER(MTLPixelFormatR16Float),
+	DRIVER(MTLPixelFormatRG16Float),
+	DRIVER(MTLPixelFormatRGBA16Float),
+	DRIVER(MTLPixelFormatRGBA16Uint),
+	DRIVER(MTLPixelFormatR32Float),
+	DRIVER(MTLPixelFormatRG32Float),
+	DRIVER(MTLPixelFormatRGBA32Float),
+	DRIVER(MTLPixelFormatRGBA32Uint),
+	DRIVER(MTLPixelFormatR32Uint),
+	DRIVER(MTLPixelFormatRGB10A2Unorm),
+	DRIVER(MTLPixelFormatRG11B10Float),
+	DRIVER(MTLPixelFormatDepth16Unorm),
+	DRIVER(MTLPixelFormatDepth32Float),
+	DRIVER(MTLPixelFormatDepth32Float_Stencil8),
+	DRIVER(MTLVertexFormatUChar2),
+	DRIVER(MTLVertexFormatUChar4),
+	DRIVER(MTLVertexFormatChar2),
+	DRIVER(MTLVertexFormatChar4),
+	DRIVER(MTLVertexFormatUChar2Normalized),
+	DRIVER(MTLVertexFormatUChar4Normalized),
+	DRIVER(MTLVertexFormatChar2Normalized),
+	DRIVER(MTLVertexFormatChar4Normalized),
+	DRIVER(MTLVertexFormatUShort2),
+	DRIVER(MTLVertexFormatUShort4),
+	DRIVER(MTLVertexFormatShort2),
+	DRIVER(MTLVertexFormatShort4),
+	DRIVER(MTLVertexFormatUShort2Normalized),
+	DRIVER(MTLVertexFormatUShort4Normalized),
+	DRIVER(MTLVertexFormatShort2Normalized),
+	DRIVER(MTLVertexFormatShort4Normalized),
+	DRIVER(MTLVertexFormatHalf2),
+	DRIVER(MTLVertexFormatHalf4),
+	DRIVER(MTLVertexFormatFloat),
+	DRIVER(MTLVertexFormatFloat2),
+	DRIVER(MTLVertexFormatFloat3),
+	DRIVER(MTLVertexFormatFloat4),
+	DRIVER(MTLVertexFormatInt),
+	DRIVER(MTLVertexFormatInt2),
+	DRIVER(MTLVertexFormatInt3),
+	DRIVER(MTLVertexFormatInt4),
+	DRIVER(MTLVertexFormatUInt),
+	DRIVER(MTLVertexFormatUInt2),
+	DRIVER(MTLVertexFormatUInt3),
+	DRIVER(MTLVertexFormatUInt4),
+	DRIVER(MTLBlendFactorZero),
+	DRIVER(MTLBlendFactorOne),
+	DRIVER(MTLBlendFactorSourceColor),
+	DRIVER(MTLBlendFactorOneMinusSourceColor),
+	DRIVER(MTLBlendFactorSourceAlpha),
+	DRIVER(MTLBlendFactorOneMinusSourceAlpha),
+	DRIVER(MTLBlendFactorDestinationColor),
+	DRIVER(MTLBlendFactorOneMinusDestinationColor),
+	DRIVER(MTLBlendFactorDestinationAlpha),
+	DRIVER(MTLBlendFactorOneMinusDestinationAlpha),
+	DRIVER(MTLBlendFactorSourceAlphaSaturated),
+	DRIVER(MTLBlendFactorBlendColor),
+	DRIVER(MTLBlendFactorOneMinusBlendColor),
+	DRIVER(MTLBlendOperationAdd),
+	DRIVER(MTLBlendOperationSubtract),
+	DRIVER(MTLBlendOperationReverseSubtract),
+	DRIVER(MTLBlendOperationMin),
+	DRIVER(MTLBlendOperationMax),
+	DRIVER(MTLStencilOperationKeep),
+	DRIVER(MTLStencilOperationZero),
+	DRIVER(MTLStencilOperationReplace),
+	DRIVER(MTLStencilOperationIncrementClamp),
+	DRIVER(MTLStencilOperationDecrementClamp),
+	DRIVER(MTLStencilOperationInvert),
+	DRIVER(MTLStencilOperationIncrementWrap),
+	DRIVER(MTLStencilOperationDecrementWrap),
+	DRIVER(MTLCompareFunctionNever),
+	DRIVER(MTLCompareFunctionNever),
+	DRIVER(MTLCompareFunctionLess),
+	DRIVER(MTLCompareFunctionEqual),
+	DRIVER(MTLCompareFunctionLessEqual),
+	DRIVER(MTLCompareFunctionGreater),
+	DRIVER(MTLCompareFunctionNotEqual),
+	DRIVER(MTLCompareFunctionGreaterEqual),
+	DRIVER(MTLCompareFunctionAlways),
+	DRIVER(MTLCullModeNone),
+	DRIVER(MTLCullModeFront),
+	DRIVER(MTLCullModeBack),
+	DRIVER(MTLWindingClockwise),
+	DRIVER(MTLWindingCounterClockwise),
+	DRIVER(MTLColorWriteMaskRed),
+	DRIVER(MTLColorWriteMaskGreen),
+	DRIVER(MTLColorWriteMaskBlue),
+	DRIVER(MTLColorWriteMaskAlpha),
+	DRIVER(MTLSamplerMinMagFilterNearest),
+	DRIVER(MTLSamplerMinMagFilterLinear),
+	DRIVER(MTLSamplerMipFilterNearest),
+	DRIVER(MTLSamplerMipFilterLinear),
+	DRIVER(MTLSamplerAddressModeClampToEdge),
+	DRIVER(MTLSamplerAddressModeRepeat),
+	DRIVER(MTLSamplerAddressModeMirrorRepeat),
+	DRIVER(MTLPrimitiveTypePoint),
+	DRIVER(MTLPrimitiveTypeLine),
+	DRIVER(MTLPrimitiveTypeLineStrip),
+	DRIVER(MTLPrimitiveTypeTriangle),
+	DRIVER(MTLPrimitiveTypeTriangleStrip),
+	DRIVER(MTLIndexTypeUInt16),
+	DRIVER(MTLIndexTypeUInt32),
+	DRIVER(MTLTextureType2D),
+	DRIVER(MTLTextureType2DArray),
+	DRIVER(MTLTextureType2DMultisample),
+	DRIVER(MTLTextureTypeCube),
+	DRIVER(MTLTextureTypeCubeArray),
+	DRIVER(MTLTextureType3D),
+	DRIVER(MTLLoadActionLoad),
+	DRIVER(MTLLoadActionClear),
+	DRIVER(MTLStoreActionDontCare),
+	DRIVER(MTLStoreActionStore),
+	DRIVER(MTLStoreActionMultisampleResolve),
+	DRIVER(MTLStoreActionStoreAndMultisampleResolve),
+};
+
+static char s_constantsDisagreement[256];
+
+const char *mtlConstantsDisagreement(const int32_t *values, int32_t count) {
+	int32_t known = (int32_t)(sizeof driverConstants / sizeof driverConstants[0]);
+	s_constantsDisagreement[0] = 0;
+	if (count != known) {
+		snprintf(s_constantsDisagreement, sizeof s_constantsDisagreement, "backend.ms lists %d constants and metal.m checks %d", (int)count, (int)known);
+		return s_constantsDisagreement;
+	}
+	for (int32_t i = 0; i < known; i++) {
+		if (values[i] == driverConstants[i].value) continue;
+		snprintf(s_constantsDisagreement, sizeof s_constantsDisagreement, "entry %d: %s is %d in Metal and %d in backend.ms",
+			(int)i, driverConstants[i].name, (int)driverConstants[i].value, (int)values[i]);
+		break;
+	}
+	return s_constantsDisagreement;
 }
