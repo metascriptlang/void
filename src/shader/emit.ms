@@ -885,7 +885,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					textureType(TextureShape.D2, ScalarKind.U32) :
 					textureType(sameType(t, cubeTextureNode) ? TextureShape.Cube :
 						TextureShape.D2Array, ScalarKind.F32), binding);
-				if (uint) { r.sampleType = SampleType.Uint; }
+				r.sampleType = uint ? SampleType.Uint :
+					sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
 			} else if (sameType(t, textureNode)) {
 				const kind = sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
 				const r = addResource(ResourceKind.Texture, name, slot,

@@ -609,6 +609,11 @@ function accessMode(a: Access): string {
 	};
 }
 
+function sampleTag(r: ShaderResource): string {
+	return r.sampleType == SampleType.Float ? "" : "@image_sample_type " + r.name + " " +
+		sampleTypeName(r.sampleType) + "\n";
+}
+
 function resourceText(p: Glsl, r: ShaderResource): string {
 	const at = "layout(binding=" + String(r.binding) + ")";
 	const slot = at + " uniform ";
@@ -617,15 +622,14 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 			p.module.structs[r.type.structIndex].members.map((f) =>
 				"    " + declared(p, f.type, f.name) + ";\n").join("") + "};\n",
 		ResourceKind.Texture => match (r.type.shape) {
-			TextureShape.D2Array => slot + "texture2DArray " + r.name + ";\n",
-			TextureShape.Cube => slot + "textureCube " + r.name + ";\n",
+			TextureShape.D2Array => sampleTag(r) + slot + "texture2DArray " + r.name + ";\n",
+			TextureShape.Cube => sampleTag(r) + slot + "textureCube " + r.name + ";\n",
 			TextureShape.Depth2dArray | TextureShape.DepthCube =>
 				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
 					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
 			_ => r.type.scalar == ScalarKind.U32 ?
 				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
-				(r.sampleType == SampleType.Float ? "" : "@image_sample_type " + r.name + " " +
-					sampleTypeName(r.sampleType) + "\n") + slot + "texture2D " + r.name + ";\n",
+				sampleTag(r) + slot + "texture2D " + r.name + ";\n",
 		},
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Filtering ? "" : "@sampler_type " +
 			r.name + " " + samplerTypeName(r.samplerType) + "\n") + slot + "sampler " + r.name +
