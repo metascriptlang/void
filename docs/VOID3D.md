@@ -5992,6 +5992,16 @@ keeps its froxel records in a texture on GL; that is prior art cited from memory
 Filament checkout is read here. A texel fetch costs more than a buffer load. The `many_lights`
 bench against Bevy measures that cost, and a real gap there reopens the storage path.
 
+Built so far on the CPU (2026-10-24): `clusters.ms` assigns the lights, `clusterTextures.ms` lays
+the assignment out as the two RGBA32UI textures and packs the uniforms, and `clusterLookup.ms` is
+the fragment's side, Bevy's `fragment_cluster_index` and `view_z_to_z_slice`
+(`bevy_pbr/src/render/clustered_forward.wgsl`). The fragment coordinate counts from the top-left,
+as the tile rows do; whether GL's `gl_FragCoord`, which counts bottom-up, needs a flip there is
+measured when the lit program reads it. Texel arithmetic is unsigned, because shady refuses int32 `/` and `%`.
+`clusterLookupCheck.ms` holds the lookup to the clusters' own tiling and finds each light through
+both textures at its centre. The light records texture, the lit shaders' loop and the renderer
+wait for the rebase.
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
