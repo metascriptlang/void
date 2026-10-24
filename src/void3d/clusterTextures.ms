@@ -5,7 +5,9 @@
 // count. The index texture holds four light indices a texel. Both are rows of DATA_TEXTURE_WIDTH
 // texels, so cluster or index i sits at (i % width, i / width).
 
-import { ClusterAssignment } from "./clusters";
+import { vec4f } from "../shader/std";
+import { ClusterParams } from "./clusterLookup";
+import { ClusterAssignment, clusterFactors } from "./clusters";
 
 export const DATA_TEXTURE_WIDTH: int32 = 256;
 
@@ -45,4 +47,22 @@ export function indexTexture(assignment: ClusterAssignment): DataTexture {
 		texture.words[i] = assignment.lightIndices[i] as uint32;
 	}
 	return texture;
+}
+
+// The uniforms clusterLookup.ms reads to find a fragment's cluster in this assignment.
+export function clusterParamsOf(
+	assignment: ClusterAssignment,
+	screenWidth: int32,
+	screenHeight: int32,
+	orthographic: boolean,
+): ClusterParams {
+	const grid = assignment.grid;
+	const factors = clusterFactors(assignment.near, assignment.far, grid.z as float32,
+		orthographic);
+	return {
+		clusterGrid: vec4f(grid.x as float32, grid.y as float32, grid.z as float32,
+			(orthographic ? 1.0 : 0.0) as float32),
+		clusterFactors: vec4f((grid.x as float32) / (screenWidth as float32),
+			(grid.y as float32) / (screenHeight as float32), factors.x, factors.y),
+	};
 }
