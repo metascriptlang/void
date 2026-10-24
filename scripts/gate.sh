@@ -1131,7 +1131,7 @@ else
 		conformance_rule metal out/gate-golden-metal.log conformance:metal-gpu-rounding
 	fi
 fi
-skip "metal iOS: no readback, and the first device run is T5 — tests/PENDING.md backend:metal-ios"
+skip "metal iOS: a device run, not this gate — scripts/iosDevice.sh golden; last result in docs/TESTING.md guardrail 9"
 skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
 skip "webgpu: blocked with the other web runs — tests/PENDING.md web:runs"
 skip "sample_count on iOS and Android: needs the devices — tests/PENDING.md backend:sample-count-mobile"
