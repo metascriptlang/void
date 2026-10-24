@@ -127,16 +127,30 @@ function isGlslIdentifier(name: string): boolean {
 }
 
 export macro glsl(entry: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslAs"),
-		arguments: [entry, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "glsl" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslAs"),
+		arguments: [
+			entry,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "glsl" },
+		],
+	};
 }
 
 // glslIr, glslLinkedIr and glslComputeIr return the lowered module as irText instead of GLSL.
 export macro glslIr(entry: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslAs"),
-		arguments: [entry, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "ir" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslAs"),
+		arguments: [
+			entry,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "ir" },
+		],
+	};
 }
 
 export macro glslAs(entry: Node, form: Node): Node {
@@ -181,15 +195,41 @@ export macro glslAs(entry: Node, form: Node): Node {
 }
 
 export macro glslLinked(fragment: Node, vertex: Node): Node {
-	return { kind: NodeKind.CallExpr, line: fragment.line, column: fragment.column, callee: bindSym("glslLinkedAs"),
-		arguments: [fragment, vertex, { kind: NodeKind.StringLiteral, line: fragment.line, column: fragment.column,
-			value: "glsl" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: fragment.line,
+		column: fragment.column,
+		callee: bindSym("glslLinkedAs"),
+		arguments: [
+			fragment,
+			vertex,
+			{
+				kind: NodeKind.StringLiteral,
+				line: fragment.line,
+				column: fragment.column,
+				value: "glsl",
+			},
+		],
+	};
 }
 
 export macro glslLinkedIr(fragment: Node, vertex: Node): Node {
-	return { kind: NodeKind.CallExpr, line: fragment.line, column: fragment.column, callee: bindSym("glslLinkedAs"),
-		arguments: [fragment, vertex, { kind: NodeKind.StringLiteral, line: fragment.line, column: fragment.column,
-			value: "ir" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: fragment.line,
+		column: fragment.column,
+		callee: bindSym("glslLinkedAs"),
+		arguments: [
+			fragment,
+			vertex,
+			{
+				kind: NodeKind.StringLiteral,
+				line: fragment.line,
+				column: fragment.column,
+				value: "ir",
+			},
+		],
+	};
 }
 
 export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
@@ -298,15 +338,31 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 // glslCompute(entry, [x, y, z]) for a compute entry: its workgroup size is WGSL's
 // @workgroup_size, written where the stage is generated as shdc's local_size.
 export macro glslCompute(entry: Node, workgroupSize: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslComputeAs"),
-		arguments: [entry, workgroupSize, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "glsl" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslComputeAs"),
+		arguments: [
+			entry,
+			workgroupSize,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "glsl" },
+		],
+	};
 }
 
 export macro glslComputeIr(entry: Node, workgroupSize: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslComputeAs"),
-		arguments: [entry, workgroupSize, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "ir" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslComputeAs"),
+		arguments: [
+			entry,
+			workgroupSize,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "ir" },
+		],
+	};
 }
 
 export macro glslComputeAs(entry: Node, workgroupSize: Node, form: Node): Node {
@@ -668,7 +724,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	// the draw must bind. `features` holds the program key conditions around the code being
 	// lowered.
 	let m = new ShaderModule();
-	const stage = compute ? ShaderStage.Compute : vertex ? ShaderStage.Vertex : ShaderStage.Fragment;
+	const stage = compute ? ShaderStage.Compute :
+		vertex ? ShaderStage.Vertex : ShaderStage.Fragment;
 	let features: FeatureCondition[] = [];
 	let globals: string[] = [];
 	let memberNames: string[] = [];
@@ -852,7 +909,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					textureType(TextureShape.D2, ScalarKind.F32), binding);
 				r.sampleType = kind;
 			} else if (sameType(t, samplerNode)) {
-				const kind = samplerKind == null ? SamplerType.Filtering : samplerTypeOf(samplerKind);
+				const kind = samplerKind == null ? SamplerType.Filtering :
+					samplerTypeOf(samplerKind);
 				const r = addResource(ResourceKind.Sampler, name, slot, samplerType(), binding);
 				r.samplerType = kind;
 			} else {
@@ -954,7 +1012,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	function looseType(t: Node | null): ShaderType {
 		if (t == null) { return new ShaderType(); }
 		const kind = typeKind(t);
-		if (kind == TypeKind.Float32 || kind == TypeKind.Float64) { return scalarType(ScalarKind.F32); }
+		if (kind == TypeKind.Float32 || kind == TypeKind.Float64) {
+			return scalarType(ScalarKind.F32);
+		}
 		if (kind == TypeKind.Int32) { return scalarType(ScalarKind.I32); }
 		if (kind == TypeKind.Uint32) { return scalarType(ScalarKind.U32); }
 		if (kind == TypeKind.Boolean) { return scalarType(ScalarKind.Bool); }
@@ -1059,7 +1119,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return index;
 	}
 
-	function swizzleOf(object: ShaderExpr, letters: string, at: Node, type: ShaderType): ShaderExpr {
+	function swizzleOf(
+		object: ShaderExpr,
+		letters: string,
+		at: Node,
+		type: ShaderType,
+	): ShaderExpr {
 		const colour = "rgba".indexOf(letters.slice(0, 1)) >= 0;
 		const set = colour ? "rgba" : "xyzw";
 		let e = exprOf(ExprKind.Swizzle, type, -1, [object]);
@@ -1286,8 +1351,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		const first = binaryOf(BinaryOp.Equal, scalarType(ScalarKind.Bool),
 			exprOf(ExprKind.Io, u32, index as int32, []), literal(u32, 0.0));
-		return [stmtOf(StmtKind.If, first, zeroes),
-			stmtOf(StmtKind.Call, intrinsicOf(Intrinsic.WorkgroupBarrier, new ShaderType(), []), [])];
+		const barrier = intrinsicOf(Intrinsic.WorkgroupBarrier, new ShaderType(), []);
+		return [stmtOf(StmtKind.If, first, zeroes), stmtOf(StmtKind.Call, barrier, [])];
 	}
 
 	function enterScope(module: string, f: ShaderFunction): void {
@@ -1499,7 +1564,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		for (const a of n.arguments) { args.push(lower(a)); }
 		const type = looseType(getType(n));
 		const made = constructors.indexOf(name);
-		if (name != "" && made >= 0) { return exprOf(ExprKind.Construct, vectorAt(made), -1, args); }
+		if (name != "" && made >= 0) {
+			return exprOf(ExprKind.Construct, vectorAt(made), -1, args);
+		}
 		const direct = intrinsicNames.indexOf(name);
 		if (direct >= 0) { return intrinsicOf(intrinsics[direct], type, args); }
 		const fragmentOnly = vertex || compute;
@@ -1942,8 +2009,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				// Every input is declared, read or not: shdc numbers them in declaration order.
 				if (t.kind == NodeKind.TypeArray) {
 					fail(site, vertex ? "attribute '" + name + "' is an array, which neither " +
-						"WGSL nor GLSL ES 3.00 takes as a vertex input: declare one attribute each" :
-						arrayVarying(name));
+						"WGSL nor GLSL ES 3.00 takes as a vertex input: " +
+						"declare one attribute each" : arrayVarying(name));
 				}
 				const spelled = vertex ? name : varyingName(name);
 				const type = member(t, spelled, site);
@@ -2049,7 +2116,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		m.resources[r].condition = declarationCondition(resourceContexts[r]);
 	}
 	for (let f = 0; f < m.functions.length; f++) {
-		if (f != mainIndex) { m.functions[f].condition = declarationCondition(functionContexts[f]); }
+		if (f != mainIndex) {
+			m.functions[f].condition = declarationCondition(functionContexts[f]);
+		}
 	}
 	let stageEntry = new ShaderEntry();
 	stageEntry.name = fn.fnName;
@@ -2071,7 +2140,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 	m.entries.push(stageEntry);
 	const broken = irErrors(m);
-	if (broken.length > 0) { fail(entry, "internal: the lowered module breaks the IR: " + broken[0]); }
+	if (broken.length > 0) {
+		fail(entry, "internal: the lowered module breaks the IR: " + broken[0]);
+	}
 	const formName = form.kind == NodeKind.StringLiteral ? (form as StringLiteralData).value : "";
 	if (formName != "glsl" && formName != "ir") {
 		fail(form, "internal: the stage form is \"glsl\" or \"ir\"");
