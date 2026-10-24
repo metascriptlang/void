@@ -1283,10 +1283,6 @@ export function endOcclusionQuery(): void {
 	pass.occlusionOpen = false;
 }
 
-function storeBuffer(slot: BufferSlot): void {
-		store(buffers, slot);
-}
-
 export function destroyBuffer(buffer: GPUBuffer): void {
 	const index = buffers.slotIndex(buffer.id);
 	d3dRelease(buffers.slots[index].native as Ptr<void>);
