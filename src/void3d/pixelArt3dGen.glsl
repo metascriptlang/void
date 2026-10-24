@@ -837,7 +837,7 @@ layout(binding=0) uniform vertexParams {
     vec4 cameraUp;
     vec4 cameraPosition;
 };
-#ifndef SKINNED
+#if !defined(SKINNED) && !defined(INSTANCED)
 layout(binding=4) uniform modelParams {
     mat4 model;
     mat4 normalModel;
@@ -891,7 +891,7 @@ mat4 skinWorld(vec4 joints, vec4 weights) {
     return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
-#ifdef SKINNED
+#if defined(SKINNED) || (!defined(SKINNED) && defined(INSTANCED))
 vec3 skinNormal(mat4 world, vec3 normal_1) {
     mat3 linear = mat3(world);
     vec3 a = cross(linear[1], linear[2]);
@@ -899,6 +899,11 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     vec3 c = cross(linear[0], linear[1]);
     float direction = (dot(linear[0], a) < 0.0) ? -1.0 : 1.0;
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
+}
+#endif
+#if !defined(SKINNED) && defined(INSTANCED)
+mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
+    return transpose(mat4(row0, row1, row2, vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
 void main() {
@@ -918,18 +923,34 @@ void main() {
     gl_Position = clip;
     return;
 #else
-    vec4 world_1 = model * vec4(position, 1.0);
+#ifdef INSTANCED
+    mat4 matrix_1 = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
+    vec4 world_1 = matrix_1 * vec4(position, 1.0);
     vec4 clip_1 = viewProj * world_1;
     worldPosition = world_1.xyz;
+    worldNormal = skinNormal(matrix_1, normal);
+#ifdef NORMAL_MAP
+    worldTangent = vec4((mat3(matrix_1) * tangent.xyz), tangent.w);
+#endif
+    surfaceUv = uv;
+    baseColor = (color * instanceColor);
+    depth01 = clip_1.z;
+    gl_Position = clip_1;
+    return;
+#else
+    vec4 world_2 = model * vec4(position, 1.0);
+    vec4 clip_2 = viewProj * world_2;
+    worldPosition = world_2.xyz;
     worldNormal = (mat3(normalModel) * normal);
 #ifdef NORMAL_MAP
     worldTangent = vec4((mat3(model) * tangent.xyz), tangent.w);
 #endif
     surfaceUv = uv;
     baseColor = color;
-    depth01 = clip_1.z;
-    gl_Position = clip_1;
+    depth01 = clip_2.z;
+    gl_Position = clip_2;
     return;
+#endif
 #endif
 }
 @end
@@ -1343,7 +1364,7 @@ layout(binding=0) uniform vertexParams {
     vec4 cameraUp;
     vec4 cameraPosition;
 };
-#ifndef SKINNED
+#if !defined(SKINNED) && !defined(INSTANCED)
 layout(binding=4) uniform modelParams {
     mat4 model;
     mat4 normalModel;
@@ -1393,7 +1414,7 @@ mat4 skinWorld(vec4 joints, vec4 weights) {
     return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
-#ifdef SKINNED
+#if defined(SKINNED) || (!defined(SKINNED) && defined(INSTANCED))
 vec3 skinNormal(mat4 world, vec3 normal_1) {
     mat3 linear = mat3(world);
     vec3 a = cross(linear[1], linear[2]);
@@ -1401,6 +1422,11 @@ vec3 skinNormal(mat4 world, vec3 normal_1) {
     vec3 c = cross(linear[0], linear[1]);
     float direction = (dot(linear[0], a) < 0.0) ? -1.0 : 1.0;
     return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
+}
+#endif
+#if !defined(SKINNED) && defined(INSTANCED)
+mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
+    return transpose(mat4(row0, row1, row2, vec4(0.0, 0.0, 0.0, 1.0)));
 }
 #endif
 void main() {
@@ -1414,13 +1440,24 @@ void main() {
     gl_Position = clip;
     return;
 #else
-    vec4 clip_1 = (viewProj * model) * vec4(position, 1.0);
-    worldNormal = (mat3(normalModel) * normal);
+#ifdef INSTANCED
+    mat4 matrix_1 = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
+    vec4 clip_1 = (viewProj * matrix_1) * vec4(position, 1.0);
+    worldNormal = skinNormal(matrix_1, normal);
     surfaceUv = uv;
-    baseColor = color;
+    baseColor = (color * instanceColor);
     depth01 = clip_1.z;
     gl_Position = clip_1;
     return;
+#else
+    vec4 clip_2 = (viewProj * model) * vec4(position, 1.0);
+    worldNormal = (mat3(normalModel) * normal);
+    surfaceUv = uv;
+    baseColor = color;
+    depth01 = clip_2.z;
+    gl_Position = clip_2;
+    return;
+#endif
 #endif
 }
 @end
