@@ -283,12 +283,12 @@ function accessText(a: Access): string {
 }
 
 function typeText(p: Printer, t: ShaderType): string {
-	const n = String(t.rows);
+	const rows = String(t.rows);
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => scalarText(t.scalar),
-		ShaderTypeKind.Vector => t.scalar == ScalarKind.Bool ? "vec" + n + "<bool>" :
-			"vec" + n + scalarText(t.scalar).substring(0, 1),
-		ShaderTypeKind.Matrix => "mat" + String(t.columns) + "x" + n + "f",
+		ShaderTypeKind.Vector => t.scalar == ScalarKind.Bool ? "vec" + rows + "<bool>" :
+			"vec" + rows + scalarText(t.scalar).substring(0, 1),
+		ShaderTypeKind.Matrix => "mat" + String(t.columns) + "x" + rows + "f",
 		ShaderTypeKind.Array => "array<" + typeText(p, t.element[0]) + ", " +
 			String(t.length) + ">",
 		ShaderTypeKind.RuntimeArray => "array<" + typeText(p, t.element[0]) + ">",
@@ -721,18 +721,18 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 		StmtKind.For => forText(p, s, depth),
 		StmtKind.Switch => {
 			emit(p, depth, "switch (" + exprText(p, s.expr) + ") {");
-			for (const k of s.cases) {
-				let labels = k.labels.map((l) => exprText(p, l));
-				if (k.isDefault) { labels.push("default"); }
+			for (const arm of s.cases) {
+				let labels = arm.labels.map((l) => exprText(p, l));
+				if (arm.isDefault) { labels.push("default"); }
 				emit(
 					p,
 					depth + 1,
-					(k.labels.length == 0 ? "default" : "case " + labels.join(", ")) + ": {",
+					(arm.labels.length == 0 ? "default" : "case " + labels.join(", ")) + ": {",
 				);
-				stmtsText(p, k.body, depth + 2);
+				stmtsText(p, arm.body, depth + 2);
 				emit(p, depth + 1, "}");
 			}
-			if (!s.cases.some((k) => k.isDefault)) { emit(p, depth + 1, "default: {}"); }
+			if (!s.cases.some((arm) => arm.isDefault)) { emit(p, depth + 1, "default: {}"); }
 			emit(p, depth, "}");
 		},
 		StmtKind.Break => emit(p, depth, "break;"),
@@ -785,7 +785,7 @@ function writtenParams(stmts: ShaderStmt[], written: int32[]): void {
 		for (const list of [s.init, s.update, s.body, s.otherwise]) {
 			writtenParams(list, written);
 		}
-		for (const k of s.cases) { writtenParams(k.body, written); }
+		for (const arm of s.cases) { writtenParams(arm.body, written); }
 	}
 }
 
