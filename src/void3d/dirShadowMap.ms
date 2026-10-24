@@ -442,7 +442,8 @@ function drawSpotShadows(
 		const view: Result<CameraView, SpotShadowError> = spotShadowView(lights, slot);
 		if (!view.ok) {
 			console.log(
-				`void3d: drawShadows found the shadowing spot unplaceable (${view.error.toString()})`,
+				"void3d: drawShadows found the shadowing spot unplaceable (" +
+					view.error.toString() + ")",
 			);
 			unreachable;
 		}
