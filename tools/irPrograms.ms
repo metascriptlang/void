@@ -274,8 +274,11 @@ function blockMembers(p: Program, block: string): string[] {
 function checkFeaturesRead(p: Program): void {
 	const text = printGlsl450(parsed(stageText(p.source, p.vertex), p.vertex)) +
 		printGlsl450(parsed(stageText(p.source, p.fragment), p.fragment));
+	const lines = text.split("\n");
 	for (const f of p.features) {
-		if (!text.split("\n").includes("#ifdef " + f)) {
+		const read = lines.some((line) => line == "#ifdef " + f ||
+			(line.startsWith("#if ") && line.includes("defined(" + f + ")")));
+		if (!read) {
 			fail("programKeys.txt: row " + p.name + " asks for " + f + ", which " + p.vertex + " and " +
 				p.fragment + " never read");
 		}
