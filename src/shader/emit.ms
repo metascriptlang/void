@@ -1590,118 +1590,125 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function lower(n: Node): ShaderExpr {
-		if (n.kind == NodeKind.NumberLiteral) { return number(n); }
-		if (n.kind == NodeKind.BooleanLiteral) {
-			return literal(scalarType(ScalarKind.Bool), n.boolValue ? 1.0 : 0.0);
-		}
-		if (n.kind == NodeKind.Identifier) { return identifier(n); }
-		if (n.kind == NodeKind.BinaryExpr) { return binary(n); }
-		if (n.kind == NodeKind.UnaryExpr) {
-			const op = n.unaryOp;
-			if (op == "!" && kindOf(n.operand) == TypeKind.Boolean ||
-				op == "~" && integer(n.operand) ||
-				op == "-" && kindOf(n.operand) != TypeKind.Uint32) {
-				let e = exprOf(ExprKind.Unary, looseType(getType(n)), -1, [lower(n.operand)]);
-				e.unary = op == "-" ? UnaryOp.Negate : UnaryOp.Not;
-				return e;
-			}
-			fail(n, "unary '" + op + "' has no GLSL form yet");
-		}
-		if (n.kind == NodeKind.ConditionalExpr) {
-			if (kindOf(n.ternaryCondition) != TypeKind.Boolean) {
-				fail(n, "a shader condition is a boolean");
-			}
-			const test = lower(n.ternaryCondition);
-			const yes = lower(n.ternaryConsequent);
-			const no = lower(n.ternaryAlternate);
-			return exprOf(ExprKind.Conditional, looseType(getType(n)), -1, [test, yes, no]);
-		}
-		if (n.kind == NodeKind.ArrayAccess) {
-			const array = lower(matrixColumns(n.array) ? n.array.object : n.array);
-			const index = lower(n.index);
-			return exprOf(ExprKind.Index, looseType(getType(n)), -1, [array, index]);
-		}
-		if (n.kind == NodeKind.ArrayLiteral) {
-			let elements: ShaderExpr[] = [];
-			for (const e of n.elements) { elements.push(lower(e)); }
-			return exprOf(ExprKind.Construct, valueType(getType(n), n), -1, elements);
-		}
-		if (n.kind == NodeKind.TypeAssertion) {
-			const from = kindOf(n.asExpr);
-			const to = kindOf(n);
-			const exact = (from == TypeKind.Float32 || from == TypeKind.Int32) &&
-				(to == TypeKind.Float32 || to == TypeKind.Int32) ||
-				from == TypeKind.Uint32 && to == TypeKind.Float32;
-			if (exact) {
-				const type = glslType(getType(n), n);
-				return exprOf(ExprKind.Convert, type, -1, [lower(n.asExpr)]);
-			}
-			if (to == TypeKind.Uint32 && n.asExpr.kind == NodeKind.NumberLiteral &&
-				from != TypeKind.Float32 && from != TypeKind.Float64 && intValue(n.asExpr) >= 0) {
-				return exprOf(ExprKind.Convert, scalarType(ScalarKind.U32), -1,
-					[literal(scalarType(ScalarKind.I32), intValue(n.asExpr) as float64)]);
-			}
-			fail(n, "'as' converts float32 and int32 both ways, uint32 to float32 and a " +
-				"non-negative literal to uint32 in a shader; int32 and uint32 convert by their " +
-				"bits through vec2i/vec2u");
-		}
-		if (n.kind == NodeKind.MemberExpr) {
-			const object = n.object;
-			if (isType(object, inputType)) {
-				const b = builtinInputNames.indexOf(n.property);
-				const io = b >= 0 ? builtinInputIos[b] : inputIos[inputNames.indexOf(n.property)];
-				if (b < 0) { use(ioRead, io, n); }
-				return exprOf(ExprKind.Io, m.ios[io].type, io, []);
-			}
-			if (isType(object, bindingsType)) {
-				if (isAuthorStruct(getType(n))) {
-					fail(n, "uniform block '" + n.property + "' is read one member at a time: " +
-						"GLSL declares the block's members, not a value of the block");
+		match (n.kind) {
+			NodeKind.NumberLiteral => { return number(n); },
+			NodeKind.BooleanLiteral => {
+				return literal(scalarType(ScalarKind.Bool), n.boolValue ? 1.0 : 0.0);
+			},
+			NodeKind.Identifier => { return identifier(n); },
+			NodeKind.BinaryExpr => { return binary(n); },
+			NodeKind.UnaryExpr => {
+				const op = n.unaryOp;
+				if (op == "!" && kindOf(n.operand) == TypeKind.Boolean ||
+					op == "~" && integer(n.operand) ||
+					op == "-" && kindOf(n.operand) != TypeKind.Uint32) {
+					let e = exprOf(ExprKind.Unary, looseType(getType(n)), -1, [lower(n.operand)]);
+					e.unary = op == "-" ? UnaryOp.Negate : UnaryOp.Not;
+					return e;
 				}
-				const r = resourceNamed(n.property);
-				use(resourceRead, r, n);
-				return exprOf(ExprKind.Resource, m.resources[r].type, r, []);
-			}
-			if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
-				const r = resourceNamed(object.property);
-				use(resourceRead, r, n);
-				if (m.resources[r].kind != ResourceKind.UniformBlock) {
-					fail(n, "'" + n.property + "' has no GLSL form yet");
+				fail(n, "unary '" + op + "' has no GLSL form yet");
+			},
+			NodeKind.ConditionalExpr => {
+				if (kindOf(n.ternaryCondition) != TypeKind.Boolean) {
+					fail(n, "a shader condition is a boolean");
 				}
-				const members = m.structs[m.resources[r].type.structIndex].members;
-				let at = -1;
-				for (let k = 0; k < members.length; k++) {
-					if (members[k].name == n.property) { at = k; }
+				const test = lower(n.ternaryCondition);
+				const yes = lower(n.ternaryConsequent);
+				const no = lower(n.ternaryAlternate);
+				return exprOf(ExprKind.Conditional, looseType(getType(n)), -1, [test, yes, no]);
+			},
+			NodeKind.ArrayAccess => {
+				const array = lower(matrixColumns(n.array) ? n.array.object : n.array);
+				const index = lower(n.index);
+				return exprOf(ExprKind.Index, looseType(getType(n)), -1, [array, index]);
+			},
+			NodeKind.ArrayLiteral => {
+				let elements: ShaderExpr[] = [];
+				for (const e of n.elements) { elements.push(lower(e)); }
+				return exprOf(ExprKind.Construct, valueType(getType(n), n), -1, elements);
+			},
+			NodeKind.TypeAssertion => {
+				const from = kindOf(n.asExpr);
+				const to = kindOf(n);
+				const exact = (from == TypeKind.Float32 || from == TypeKind.Int32) &&
+					(to == TypeKind.Float32 || to == TypeKind.Int32) ||
+					from == TypeKind.Uint32 && to == TypeKind.Float32;
+				if (exact) {
+					const type = glslType(getType(n), n);
+					return exprOf(ExprKind.Convert, type, -1, [lower(n.asExpr)]);
 				}
-				let e = exprOf(ExprKind.BlockMember, members[at].type, r, []);
-				e.member = at as int32;
-				return e;
-			}
-			if (isType(object, keyType)) {
-				fail(n, "a program key feature is read only as an if condition");
-			}
-			if (matrixColumns(n)) {
-				fail(n, "a matrix's columns are read one at a time, as m.columns[i]: GLSL has " +
-					"no array of a matrix's columns");
-			}
-			return memberOf(lower(object), n);
-		}
-		if (n.kind == NodeKind.ObjectLiteral) { return construction(n); }
-		if (n.kind == NodeKind.CallExpr) {
-			const callee = n.callee;
-			const impl = getImpl(callee);
-			if (callee.resolvedSym == null || impl == null || impl.kind != NodeKind.FunctionDecl) {
-				fail(n, "a shader calls only functions");
-			}
-			if (callee.resolvedSym.modulePath != stdModule) { return call(n, callee, impl); }
-			if (callee.kind == NodeKind.MemberExpr) {
-				if (!impl.fnName.startsWith("get_")) {
-					fail(n, "method calls have no GLSL form yet");
+				if (to == TypeKind.Uint32 && n.asExpr.kind == NodeKind.NumberLiteral &&
+					from != TypeKind.Float32 && from != TypeKind.Float64 &&
+					intValue(n.asExpr) >= 0) {
+					return exprOf(ExprKind.Convert, scalarType(ScalarKind.U32), -1,
+						[literal(scalarType(ScalarKind.I32), intValue(n.asExpr) as float64)]);
 				}
-				return swizzleOf(lower(callee.object), impl.fnName.replace("get_", ""), n,
-					looseType(getType(n)));
-			}
-			return builtinCall(n, impl.fnName);
+				fail(n, "'as' converts float32 and int32 both ways, uint32 to float32 and a " +
+					"non-negative literal to uint32 in a shader; int32 and uint32 convert by " +
+					"their bits through vec2i/vec2u");
+			},
+			NodeKind.MemberExpr => {
+				const object = n.object;
+				if (isType(object, inputType)) {
+					const b = builtinInputNames.indexOf(n.property);
+					const io = b >= 0 ? builtinInputIos[b] :
+						inputIos[inputNames.indexOf(n.property)];
+					if (b < 0) { use(ioRead, io, n); }
+					return exprOf(ExprKind.Io, m.ios[io].type, io, []);
+				}
+				if (isType(object, bindingsType)) {
+					if (isAuthorStruct(getType(n))) {
+						fail(n, "uniform block '" + n.property +
+							"' is read one member at a time: GLSL declares the block's members, " +
+							"not a value of the block");
+					}
+					const r = resourceNamed(n.property);
+					use(resourceRead, r, n);
+					return exprOf(ExprKind.Resource, m.resources[r].type, r, []);
+				}
+				if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
+					const r = resourceNamed(object.property);
+					use(resourceRead, r, n);
+					if (m.resources[r].kind != ResourceKind.UniformBlock) {
+						fail(n, "'" + n.property + "' has no GLSL form yet");
+					}
+					const members = m.structs[m.resources[r].type.structIndex].members;
+					let at = -1;
+					for (let k = 0; k < members.length; k++) {
+						if (members[k].name == n.property) { at = k; }
+					}
+					let e = exprOf(ExprKind.BlockMember, members[at].type, r, []);
+					e.member = at as int32;
+					return e;
+				}
+				if (isType(object, keyType)) {
+					fail(n, "a program key feature is read only as an if condition");
+				}
+				if (matrixColumns(n)) {
+					fail(n, "a matrix's columns are read one at a time, as m.columns[i]: GLSL " +
+						"has no array of a matrix's columns");
+				}
+				return memberOf(lower(object), n);
+			},
+			NodeKind.ObjectLiteral => { return construction(n); },
+			NodeKind.CallExpr => {
+				const callee = n.callee;
+				const impl = getImpl(callee);
+				if (callee.resolvedSym == null || impl == null ||
+					impl.kind != NodeKind.FunctionDecl) {
+					fail(n, "a shader calls only functions");
+				}
+				if (callee.resolvedSym.modulePath != stdModule) { return call(n, callee, impl); }
+				if (callee.kind == NodeKind.MemberExpr) {
+					if (!impl.fnName.startsWith("get_")) {
+						fail(n, "method calls have no GLSL form yet");
+					}
+					return swizzleOf(lower(callee.object), impl.fnName.replace("get_", ""), n,
+						looseType(getType(n)));
+				}
+				return builtinCall(n, impl.fnName);
+			},
+			_ => {},
 		}
 		fail(n, "this expression has no GLSL form yet (node kind " + String(n.kind) + ")");
 	}
@@ -1925,55 +1932,58 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function lowerStmt(n: Node): ShaderStmt[] {
-		if (n.kind == NodeKind.BlockStmt) {
-			return [stmtOf(StmtKind.Block, new ShaderExpr(), lowerBody(n))];
-		}
-		const gate = n.kind == NodeKind.IfStmt ? featureOf(n.condition) : null;
-		if (gate != null) {
-			features.push(gate);
-			let s = featureIf(gate, lowerBody(n.consequent));
-			features.pop();
-			if (n.alternate != null) {
-				features.push(negated(gate));
-				s.otherwise = lowerBody(n.alternate);
+		match (n.kind) {
+			NodeKind.BlockStmt => {
+				return [stmtOf(StmtKind.Block, new ShaderExpr(), lowerBody(n))];
+			},
+			NodeKind.IfStmt => {
+				const gate = featureOf(n.condition);
+				if (gate == null) { return [branches(n)]; }
+				features.push(gate);
+				let s = featureIf(gate, lowerBody(n.consequent));
 				features.pop();
-			}
-			return [s];
+				if (n.alternate != null) {
+					features.push(negated(gate));
+					s.otherwise = lowerBody(n.alternate);
+					features.pop();
+				}
+				return [s];
+			},
+			NodeKind.WhileStmt => {
+				if (n.whileLabel != "") { fail(n, "GLSL has no labelled loops"); }
+				const test = condition(n.whileCondition);
+				return [stmtOf(StmtKind.While, test, loopBody(n.whileBody))];
+			},
+			NodeKind.ForStmt => {
+				if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
+				const outer = locals.length;
+				const init = simple(n.forInit);
+				const test = condition(n.forCondition);
+				const update = assignment(n.forUpdate);
+				let s = stmtOf(StmtKind.For, test, loopBody(n.forBody));
+				s.init = [init];
+				s.update = [update];
+				while (locals.length > outer) { locals.pop(); }
+				return [s];
+			},
+			NodeKind.BreakStmt | NodeKind.ContinueStmt => {
+				const label = n.kind == NodeKind.BreakStmt ? n.breakLabel : n.continueLabel;
+				if (label != "") { fail(n, "GLSL has no labelled loops"); }
+				if (n.kind == NodeKind.BreakStmt && breakOwners.length > 0 &&
+					breakOwners[breakOwners.length - 1] == "match") {
+					fail(n, "a break in a match arm leaves the loop or switch around the match, " +
+						"and in the GLSL switch it would leave only the match; write an if");
+				}
+				const kind = n.kind == NodeKind.BreakStmt ? StmtKind.Break : StmtKind.Continue;
+				return [stmtOf(kind, new ShaderExpr(), [])];
+			},
+			NodeKind.SwitchStmt => { return [choice(n)]; },
+			NodeKind.ExprStmt => {
+				if (n.expr.kind == NodeKind.MatchExpr) { return [choice(n.expr)]; }
+			},
+			NodeKind.ReturnStmt => { return returned(n); },
+			_ => {},
 		}
-		if (n.kind == NodeKind.IfStmt) { return [branches(n)]; }
-		if (n.kind == NodeKind.WhileStmt) {
-			if (n.whileLabel != "") { fail(n, "GLSL has no labelled loops"); }
-			const test = condition(n.whileCondition);
-			return [stmtOf(StmtKind.While, test, loopBody(n.whileBody))];
-		}
-		if (n.kind == NodeKind.ForStmt) {
-			if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
-			const outer = locals.length;
-			const init = simple(n.forInit);
-			const test = condition(n.forCondition);
-			const update = assignment(n.forUpdate);
-			let s = stmtOf(StmtKind.For, test, loopBody(n.forBody));
-			s.init = [init];
-			s.update = [update];
-			while (locals.length > outer) { locals.pop(); }
-			return [s];
-		}
-		if (n.kind == NodeKind.BreakStmt || n.kind == NodeKind.ContinueStmt) {
-			const label = n.kind == NodeKind.BreakStmt ? n.breakLabel : n.continueLabel;
-			if (label != "") { fail(n, "GLSL has no labelled loops"); }
-			if (n.kind == NodeKind.BreakStmt && breakOwners.length > 0 &&
-				breakOwners[breakOwners.length - 1] == "match") {
-				fail(n, "a break in a match arm leaves the loop or switch around the match, " +
-					"and in the GLSL switch it would leave only the match; write an if");
-			}
-			const kind = n.kind == NodeKind.BreakStmt ? StmtKind.Break : StmtKind.Continue;
-			return [stmtOf(kind, new ShaderExpr(), [])];
-		}
-		if (n.kind == NodeKind.SwitchStmt) { return [choice(n)]; }
-		if (n.kind == NodeKind.ExprStmt && n.expr.kind == NodeKind.MatchExpr) {
-			return [choice(n.expr)];
-		}
-		if (n.kind == NodeKind.ReturnStmt) { return returned(n); }
 		return [simple(n)];
 	}
 
