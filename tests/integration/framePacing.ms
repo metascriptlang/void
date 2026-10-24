@@ -1,11 +1,15 @@
 // A host view under continuous frames never waits for a drawable: a burst of frames in one
 // vsync is refused once the layer's drawables are all in flight, the refusal returns at once,
-// and the frames after it keep one per vsync without a call that waits for the display.
+// and the frames after it keep one per vsync without a call that waits for the display. A hidden
+// window refuses frames instead of waiting in nextDrawable, and draws again once shown.
 
 @include("macViewsHost.h");
 @compile("./macViewsHost.m", "-fobjc-arc");
 extern function macHostOpen(width: int32, height: int32): int64;
 extern function macHostAwaitVsync(): void;
+extern function macHostPump(): void;
+extern function macHostHide(): void;
+extern function macHostShow(): void;
 extern function macHostNowMs(): float64;
 extern function macHostClose(): void;
 extern function macHostBackingWidth(): int32;
@@ -25,6 +29,8 @@ const BURST_LIMIT: int32 = 8 as int32;
 const DRAWABLES: int32 = 3 as int32;
 const WAITING_MS: float64 = 4.0;
 const REFUSAL_MS: float64 = 1.0;
+const HIDDEN_MS: float64 = 1000.0;
+const SHOWN_WITHIN_MS: float64 = 1000.0;
 
 let _board: BoardState = boardState(6 as int32, 4 as int32);
 let _scene: Scene2D | null = null;
@@ -97,10 +103,32 @@ function run(): int32 {
 	check(steady.waited <= (2 as int32), `${steady.waited} of ${steady.drawn} frames after the burst took over ${WAITING_MS} ms (slowest ${steady.slowestMs} ms)`);
 	check(steady.drawn * (10 as int32) >= STEADY_TICKS * (9 as int32), `only ${steady.drawn} of ${STEADY_TICKS} vsyncs after the burst drew a frame`);
 
+	macHostHide();
+	const hidden: Tally = { drawn: 0 as int32, waited: 0 as int32, slowestMs: 0.0 };
+	const hiddenStart: float64 = macHostNowMs();
+	while (macHostNowMs() - hiddenStart < HIDDEN_MS) {
+		macHostPump();
+		if (!viewReady(view)) { continue; }
+		const started: float64 = macHostNowMs();
+		if (viewFrame(view)) { hidden.drawn = hidden.drawn + (1 as int32); }
+		const took: float64 = macHostNowMs() - started;
+		if (took > WAITING_MS) { hidden.waited = hidden.waited + (1 as int32); }
+	}
+	check(hidden.waited <= (2 as int32), `a hidden window waited over ${WAITING_MS} ms in ${hidden.waited} of ${hidden.drawn} frames`);
+
+	macHostShow();
+	let shownAfterMs: float64 = -1.0;
+	const shownStart: float64 = macHostNowMs();
+	while (shownAfterMs < 0.0 && macHostNowMs() - shownStart < SHOWN_WITHIN_MS) {
+		macHostPump();
+		if (viewReady(view) && viewFrame(view)) { shownAfterMs = macHostNowMs() - shownStart; }
+	}
+	check(shownAfterMs >= 0.0, `no frame drew within ${SHOWN_WITHIN_MS} ms of showing the window again`);
+
 	viewDestroy(view);
 	macHostClose();
 	if (_failures === (0 as int32)) {
-		console.log(`PASS frame pacing: burst refused after ${admitted} frames in ${refusalMs} ms; ${steady.drawn}/${STEADY_TICKS} vsyncs drawn after it, slowest ${steady.slowestMs} ms`);
+		console.log(`PASS frame pacing: burst refused after ${admitted} frames in ${refusalMs} ms; ${steady.drawn}/${STEADY_TICKS} vsyncs drawn after it, slowest ${steady.slowestMs} ms; hidden ${hidden.drawn} frames, ${hidden.waited} waited; shown again drew after ${shownAfterMs} ms`);
 	}
 	return _failures === (0 as int32) ? (0 as int32) : (1 as int32);
 }
