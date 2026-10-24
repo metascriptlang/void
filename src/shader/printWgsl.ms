@@ -24,12 +24,11 @@ import {
 	TextureShape,
 	UnaryOp,
 	sameShaderType,
-	scalarType,
-	vectorType,
 	isAtomic,
 	isEffect,
 } from "./ir";
 import { BindingSlot } from "./layout";
+import { builtinType, ioLocation } from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 // WGSL keywords and reserved words (sections 15.1, 15.2), the predeclared types and enumerants
@@ -831,17 +830,6 @@ function builtinText(b: Builtin): string {
 	};
 }
 
-function builtinType(b: Builtin): ShaderType {
-	return match (b) {
-		Builtin.Position => vectorType(ScalarKind.F32, 4),
-		Builtin.FrontFacing => scalarType(ScalarKind.Bool),
-		Builtin.FragDepth => scalarType(ScalarKind.F32),
-		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
-			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
-		_ => scalarType(ScalarKind.U32),
-	};
-}
-
 function interpolationText(io: ShaderIo): string {
 	if (io.interpolation == Interpolation.Flat) { return " @interpolate(flat)"; }
 	const linear = io.interpolation == Interpolation.Linear;
@@ -863,7 +851,7 @@ function interfaceText(p: Printer, io: ShaderIo, ordinal: int32): string {
 		}
 		return "@builtin(" + builtinText(io.builtin) + ")";
 	}
-	const location = "@location(" + String(io.location >= 0 ? io.location : ordinal) + ")";
+	const location = "@location(" + String(ioLocation(io, ordinal)) + ")";
 	const varying = io.stage == ShaderStage.Vertex && io.direction == IoDirection.Out ||
 		io.stage == ShaderStage.Fragment && io.direction == IoDirection.In;
 	return varying ? location + interpolationText(io) : location;

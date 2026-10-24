@@ -10,6 +10,7 @@ import {
 	TexelFormat,
 	TextureShape,
 } from "./ir";
+import { ioLocation } from "./irWalk";
 import {
 	BindingSlot,
 	ShaderTarget,
@@ -219,7 +220,7 @@ export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 			io.builtin != Builtin.None) {
 			continue;
 		}
-		const location = io.location >= 0 ? io.location : ordinal;
+		const location = ioLocation(io, ordinal);
 		ordinal++;
 		let a: GPUShaderAttribute = {
 			location: location,

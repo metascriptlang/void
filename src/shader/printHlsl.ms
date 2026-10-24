@@ -34,6 +34,7 @@ import {
 	functionOrder,
 	hasEffect,
 	innermost,
+	ioLocation,
 	rootOf,
 	stmtStructs,
 	structOrder,
@@ -1135,7 +1136,7 @@ function ports(p: Printer, direction: IoDirection): Port[] {
 		if (io.stage != p.stage || io.direction != direction) { continue; }
 		let port: Port = { io: i as int32, type: "", semantic: "", order: 0 };
 		if (io.builtin == Builtin.None) {
-			const location = io.location >= 0 ? io.location : ordinal;
+			const location = ioLocation(io, ordinal);
 			ordinal++;
 			if (p.stage == ShaderStage.Compute) {
 				fail(p, "compute io '" + io.name + "' is no builtin");

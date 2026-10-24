@@ -35,6 +35,7 @@ import {
 	functionOrder,
 	hasEffect,
 	innermost,
+	ioLocation,
 	rootOf,
 	stmtStructs,
 	structOrder,
@@ -1181,7 +1182,7 @@ function ioDeclarations(p: Printer): string {
 			return fail(p, "compute io '" + io.name + "' is no builtin");
 		}
 		const way = io.direction == IoDirection.In ? 0 : 1;
-		const location = io.location >= 0 ? io.location : ordinals[way];
+		const location = ioLocation(io, ordinals[way]);
 		ordinals[way] += 1;
 		const varying = p.stage == ShaderStage.Vertex ? way == 1 : way == 0;
 		const placed = !varying || !p.es ? "layout(location = " + String(location) + ") " : "";

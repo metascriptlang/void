@@ -24,14 +24,12 @@ import {
 	TextureShape,
 	UnaryOp,
 	sameShaderType,
-	scalarType,
-	vectorType,
 	isShift,
 	isAtomic,
 	isEffect,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
-import { functionOrder, structOrder } from "./irWalk";
+import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
 import { readsFrom, strayWorkgroup } from "./specialize";
 
 // C++14 keywords, the Metal address spaces, attributes and types, and every function this
@@ -1041,17 +1039,6 @@ function builtinAttribute(b: Builtin): string {
 	};
 }
 
-function builtinType(b: Builtin): ShaderType {
-	return match (b) {
-		Builtin.Position => vectorType(ScalarKind.F32, 4),
-		Builtin.FrontFacing => scalarType(ScalarKind.Bool),
-		Builtin.FragDepth => scalarType(ScalarKind.F32),
-		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
-			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
-		_ => scalarType(ScalarKind.U32),
-	};
-}
-
 function interpolationText(io: ShaderIo): string {
 	if (io.interpolation == Interpolation.Flat) { return ", flat"; }
 	const linear = io.interpolation == Interpolation.Linear;
@@ -1073,7 +1060,7 @@ function interfaceAttribute(p: Printer, io: ShaderIo, ordinal: int32): string {
 		}
 		return "[[" + builtinAttribute(io.builtin) + "]]";
 	}
-	const location = String(io.location >= 0 ? io.location : ordinal);
+	const location = String(ioLocation(io, ordinal));
 	if (io.stage == ShaderStage.Vertex && io.direction == IoDirection.In) {
 		return "[[attribute(" + location + ")]]";
 	}

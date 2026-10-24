@@ -1,7 +1,10 @@
 import {
+	Builtin,
 	ConditionKind,
 	ExprKind,
+	ScalarKind,
 	ShaderExpr,
+	ShaderIo,
 	ShaderModule,
 	ShaderStage,
 	ShaderStmt,
@@ -9,10 +12,27 @@ import {
 	ShaderTypeKind,
 	StmtKind,
 	isEffect,
+	scalarType,
+	vectorType,
 } from "./ir";
 
 export function innermost(t: ShaderType): ShaderType {
 	return t.kind == ShaderTypeKind.Array ? innermost(t.element[0]) : t;
+}
+
+export function ioLocation(io: ShaderIo, ordinal: int32): int32 {
+	return io.location >= 0 ? io.location : ordinal;
+}
+
+export function builtinType(b: Builtin): ShaderType {
+	return match (b) {
+		Builtin.Position => vectorType(ScalarKind.F32, 4),
+		Builtin.FrontFacing => scalarType(ScalarKind.Bool),
+		Builtin.FragDepth => scalarType(ScalarKind.F32),
+		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
+			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
+		_ => scalarType(ScalarKind.U32),
+	};
 }
 
 export function rootOf(e: ShaderExpr): ShaderExpr {
