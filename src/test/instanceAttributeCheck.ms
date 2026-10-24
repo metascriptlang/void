@@ -2,11 +2,14 @@
 //
 // scripts/instanceLayout.ms is the one description of the lanes. programs.ms builds the
 // registered layouts from it, displayList.ms and batcher.c write the records and the GPU
-// struct from it, and the shader declares the same lanes by hand as `in` variables. The first
-// three consumers share names with the generator; the shader does not, so its declaration
+// struct from it, and the shader declares the same lanes by hand as attribute struct fields. The first
+// three consumers share names with the generator; the shader does not, so its field
 // order is read here, because a swapped pair compiles, links and draws wrong pixels.
 
-import { readFile } from "std/fs";
+import { programModule } from "../shader/descriptor";
+import { glslIr, glslLinkedIr } from "../shader/emit";
+import { Builtin, IoDirection, ShaderStage } from "../shader/ir";
+import { spriteFs, spriteVs, uiFs, uiVs } from "../void2d/shader2d";
 import {
 	void2dUiInstanceOffset, void2dSpriteInstanceOffset,
 } from "../void2d/batcher.h";
@@ -21,24 +24,14 @@ import {
 	UI_STRIDE, UI_ATTRIBUTES, UI_NAMES,
 } from "../void2d/instanceLayout";
 
-const SHADER: string = "src/void2d/shader2dGen.glsl";
 const CORNER_BYTES: int32 = 8;
 
-// The `in` variables of one @vs block, in declaration order.
-function vertexInputs(block: string): string[] {
-	const names: string[] = [];
-	const source = readFile(SHADER);
-	if (!source.ok) { return names; }
-	let inside = false;
-	for (const line of source.value.split("\n")) {
-		if (line.startsWith("@vs " + block)) { inside = true; continue; }
-		if (inside && line.startsWith("@end")) { break; }
-		if (inside && line.startsWith("in ")) {
-			const parts = line.trim().split(" ");
-			names.push(parts[2].replace(";", ""));
-		}
-	}
-	return names;
+// The vertex stage's attributes in the IR's order, which every printer numbers locations by.
+function vertexInputs(vertex: string, fragment: string): string[] {
+	const m = programModule(vertex, fragment, []);
+	if (!m.ok) { return []; }
+	return m.value.ios.filter((io) => io.stage == ShaderStage.Vertex &&
+		io.direction == IoDirection.In && io.builtin == Builtin.None).map((io) => io.name);
 }
 
 test "the UI instance buffer the door registers has the generated offsets and stride" {
@@ -75,7 +68,7 @@ test "the sprite instance buffer the door registers has the generated offsets an
 }
 
 test "the UI vertex shader declares the generated lanes in the generated order" {
-	const inputs = vertexInputs("uiVs");
+	const inputs = vertexInputs(glslIr(uiVs), glslLinkedIr(uiFs, uiVs));
 	assert inputs.length == UI_ATTRIBUTES + 1;
 	assert inputs[INSTANCE_CORNER_LOCATION] == "corner";
 	for (let i = 0; i < UI_ATTRIBUTES; i++) {
@@ -84,7 +77,7 @@ test "the UI vertex shader declares the generated lanes in the generated order" 
 }
 
 test "the sprite vertex shader declares the generated lanes in the generated order" {
-	const inputs = vertexInputs("spriteVs");
+	const inputs = vertexInputs(glslIr(spriteVs), glslLinkedIr(spriteFs, spriteVs));
 	assert inputs.length == SPRITE_ATTRIBUTES + 1;
 	assert inputs[INSTANCE_CORNER_LOCATION] == "corner";
 	for (let i = 0; i < SPRITE_ATTRIBUTES; i++) {
