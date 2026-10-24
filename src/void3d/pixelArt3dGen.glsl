@@ -695,6 +695,7 @@ layout(binding=5) uniform shadowParams {
 };
 #endif
 #ifdef SHADOWED
+@image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED
@@ -1223,6 +1224,7 @@ layout(binding=5) uniform shadowParams {
 };
 #endif
 #ifdef SHADOWED
+@image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED

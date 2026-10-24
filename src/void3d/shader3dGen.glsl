@@ -1041,12 +1041,14 @@ layout(binding=5) uniform shadowParams {
     vec4 spotShadow;
 };
 #ifdef SHADOWED
+@image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
 #endif
+@image_sample_type spotShadowMap unfilterable_float
 layout(binding=6) uniform texture2DArray spotShadowMap;
 @sampler_type spotShadowSampler nonfiltering
 layout(binding=3) uniform sampler spotShadowSampler;
@@ -1966,12 +1968,14 @@ layout(binding=5) uniform shadowParams {
     vec4 spotShadow;
 };
 #ifdef SHADOWED
+@image_sample_type shadowMap unfilterable_float
 layout(binding=4) uniform texture2DArray shadowMap;
 #endif
 #ifdef SHADOWED
 @sampler_type shadowSampler nonfiltering
 layout(binding=2) uniform sampler shadowSampler;
 #endif
+@image_sample_type spotShadowMap unfilterable_float
 layout(binding=6) uniform texture2DArray spotShadowMap;
 @sampler_type spotShadowSampler nonfiltering
 layout(binding=3) uniform sampler spotShadowSampler;

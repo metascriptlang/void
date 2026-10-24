@@ -909,7 +909,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node): Node {
 			if (sameType(t, uintTextureType) || sameType(t, arrayTextureType) ||
 				sameType(t, cubeTextureType)) {
 				const uint = sameType(t, uintTextureType);
-				const tag = uint ? "@image_sample_type " + name + " uint\n" : "";
+				const tag = uint ? "@image_sample_type " + name + " uint\n" :
+					sampleType == null ? "" : "@image_sample_type " + name + " " +
+					argumentName(sampleType) + "\n";
 				const kind = uint ? "utexture2D " :
 					sameType(t, cubeTextureType) ? "textureCube " : "texture2DArray ";
 				declare(name, tag + slot + kind + name + ";\n", false, binding);
