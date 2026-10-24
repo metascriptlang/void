@@ -28,6 +28,7 @@
 #   ANDROID_NDK=<path>     NDK root (default: the Windows SDK location)
 set -u
 cd "$(dirname "$0")/.."
+sh scripts/ensureShaders.sh || exit 1
 . scripts/capturePending.sh
 export MSC_NO_GLOBAL_CACHE=1
 

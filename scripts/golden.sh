@@ -19,6 +19,7 @@
 # targets from another row or hide a leak behind resources that row already allocated.
 set -e
 cd "$(dirname "$0")/.."
+sh scripts/ensureShaders.sh || exit 1
 
 MSC="${MSC:-msc}"
 BACKEND_DIR=d3d11

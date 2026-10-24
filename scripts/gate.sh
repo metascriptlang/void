@@ -10,6 +10,7 @@
 #   sh scripts/gate.sh --quick    skip the golden suite (T0 and bench only)
 set -e
 cd "$(dirname "$0")/.."
+sh scripts/ensureShaders.sh || exit 1
 
 MSC="${MSC:-msc}"
 WEB=0

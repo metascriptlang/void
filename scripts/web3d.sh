@@ -8,6 +8,7 @@
 #   sh scripts/web3d.sh --run      run what out/web3d already holds
 set -e
 cd "$(dirname "$0")/.."
+sh scripts/ensureShaders.sh || exit 1
 PORT="${VOID_WEB_PORT:-8751}"
 OUT=out/web3d
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"

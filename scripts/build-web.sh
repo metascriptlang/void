@@ -16,6 +16,7 @@ LOG_DIR="${VOID_WEB_LOGDIR:-/tmp}"
 mkdir -p "$LOG_DIR"
 
 cd "$(dirname "$0")/.."
+sh scripts/ensureShaders.sh || exit 1
 
 case "$(uname -s)" in
 MINGW*|MSYS*|CYGWIN*)

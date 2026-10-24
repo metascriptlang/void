@@ -2,6 +2,9 @@
 #include "../gpu/door.h"
 #include "shaderBackends.h"
 #include "../../deps/sokol/sokol_gfx.h"
+#if !__has_include("shader3d.glsl.h") || !__has_include("pixelArt3d.glsl.h")
+#error "the void3d shader headers are generated, not committed: run scripts/ensureShaders.sh"
+#endif
 #include "shader3d.glsl.h"
 #include "pixelArt3d.glsl.h"
 #include <stdio.h>

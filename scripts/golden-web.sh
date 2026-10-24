@@ -7,6 +7,7 @@
 #   sh scripts/golden-web.sh --compare  compare what is already in out/golden/webgl2/
 set -e
 cd "$(dirname "$0")/.."
+sh scripts/ensureShaders.sh || exit 1
 MSC="${MSC:-msc}"
 . scripts/goldenDefines.sh
 PORT="${VOID_WEB_PORT:-8741}"

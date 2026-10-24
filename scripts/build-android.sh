@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+sh scripts/ensureShaders.sh || exit 1
 
 NDK="${ANDROID_NDK:-$HOME/Library/Android/sdk/ndk/28.0.13004108}"
 ENTRY="${ENTRY:-src/examples/androidCampfireEntry.ms}"
