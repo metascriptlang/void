@@ -594,9 +594,10 @@ function signText(p: Printer, e: ShaderExpr): string {
 	if (isFloat(x.type)) { return "sign(" + exprText(p, x) + ")"; }
 	if (hasEffect(x)) { return fail(p, "Sign of an integer whose operand calls a function"); }
 	const zero = literalText(p, x.type, 0.0);
-	const t = typeText(p, e.type);
-	const v = exprText(p, x);
-	return "(" + t + "(" + v + " > " + zero + ") - " + t + "(" + v + " < " + zero + "))";
+	const resultText = typeText(p, e.type);
+	const operand = exprText(p, x);
+	return "(" + resultText + "(" + operand + " > " + zero + ") - " + resultText + "(" + operand +
+		" < " + zero + "))";
 }
 
 function selectText(p: Printer, e: ShaderExpr): string {
