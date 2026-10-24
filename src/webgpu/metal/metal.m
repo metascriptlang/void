@@ -350,6 +350,17 @@ MtlLibrary mtlNewLibrary(MtlDevice device, const char *source) {
 	}
 }
 
+MtlLibrary mtlNewLibraryFromBytes(MtlDevice device, const uint8_t *bytes, int64_t size) {
+	@autoreleasepool {
+		NSError *error = nil;
+		dispatch_data_t data = dispatch_data_create(bytes, (size_t)size, NULL, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+		id<MTLLibrary> library = [(id<MTLDevice>)device newLibraryWithData:data error:&error];
+		dispatch_release(data);
+		if (library == nil) keepLog(error);
+		return (MtlLibrary)library;
+	}
+}
+
 MtlFunction mtlNewFunction(MtlLibrary library, const char *entryPoint) {
 	@autoreleasepool {
 		return (MtlFunction)[(id<MTLLibrary>)library newFunctionWithName:[NSString stringWithUTF8String:entryPoint]];
