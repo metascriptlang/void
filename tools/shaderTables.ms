@@ -108,8 +108,9 @@ function nativeSlot(node: Yaml, keys: string[]): string {
 
 function bindingEntry(group: string, binding: string, kind: string, stage: string, size: string,
 	sampleType: string, samplerType: string, slot: string, name: string, textureBinding: string): string {
-	return "{ group: " + group + ", binding: " + binding + ", kind: \"" + kind + "\", stage: \"" + stage +
-		"\", size: " + size +
+	const visibility = stage == "vertex" ? "1" : stage == "fragment" ? "2" : "4";
+	return "{ group: " + group + ", binding: " + binding + ", kind: \"" + kind + "\", visibility: " +
+		visibility + ", size: " + size +
 		(sampleType != "" ? ", sampleType: \"" + sampleType + "\"" : "") +
 		(samplerType != "" ? ", samplerType: \"" + samplerType + "\"" : "") +
 		", nativeSlot: " + slot + (name != "null" ? ", nativeName: " + name : "") +

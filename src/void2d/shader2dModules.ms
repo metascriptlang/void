@@ -14,9 +14,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 2, size: 16, nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -35,9 +35,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -59,10 +59,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: -1, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 144, nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: -1, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 144, nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -89,10 +89,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 112, nativeSlot: -1, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 224, nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 224, nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -112,9 +112,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: -1, nativeName: "blur_params", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 2, size: 16, nativeSlot: -1, nativeName: "blur_params", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "pos", semanticIndex: 0 },
@@ -133,9 +133,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: -1, nativeName: "sprite_params", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "spriteTex_spriteSmp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: -1, nativeName: "sprite_params", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "spriteTex_spriteSmp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "corner", semanticIndex: 0 },
@@ -157,10 +157,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: -1, nativeName: "ui_params", textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 144, nativeSlot: -1, nativeName: "ui_fx", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "uiTex_uiSmp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: -1, nativeName: "ui_params", textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 144, nativeSlot: -1, nativeName: "ui_fx", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "uiTex_uiSmp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "corner", semanticIndex: 0 },
@@ -187,10 +187,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 112, nativeSlot: -1, nativeName: "void2d_params", textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 224, nativeSlot: -1, nativeName: "void2d_fx", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "void2d_params", textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 224, nativeSlot: -1, nativeName: "void2d_fx", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "pos", semanticIndex: 0 },
@@ -210,9 +210,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 2, size: 16, nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -231,9 +231,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -255,10 +255,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: 0, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 144, nativeSlot: 1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 144, nativeSlot: 1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -285,10 +285,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 112, nativeSlot: 0, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 224, nativeSlot: 1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 224, nativeSlot: 1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -308,9 +308,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 2, size: 16, nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -329,9 +329,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -353,10 +353,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: 0, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 144, nativeSlot: 1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 144, nativeSlot: 1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -383,10 +383,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 112, nativeSlot: 0, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 224, nativeSlot: 1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 224, nativeSlot: 1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -406,9 +406,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: -1, nativeName: "blur_params", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 2, size: 16, nativeSlot: -1, nativeName: "blur_params", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "pos", semanticIndex: 0 },
@@ -427,9 +427,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: -1, nativeName: "sprite_params", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "spriteTex_spriteSmp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: -1, nativeName: "sprite_params", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "spriteTex_spriteSmp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "corner", semanticIndex: 0 },
@@ -451,10 +451,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: -1, nativeName: "ui_params", textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 144, nativeSlot: -1, nativeName: "ui_fx", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "uiTex_uiSmp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: -1, nativeName: "ui_params", textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 144, nativeSlot: -1, nativeName: "ui_fx", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "uiTex_uiSmp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "corner", semanticIndex: 0 },
@@ -481,10 +481,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 112, nativeSlot: -1, nativeName: "void2d_params", textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 224, nativeSlot: -1, nativeName: "void2d_fx", textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "void2d_params", textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 224, nativeSlot: -1, nativeName: "void2d_fx", textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "pos", semanticIndex: 0 },
@@ -513,9 +513,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_ad5279ecad329742349db89da74b20a8fed550269cc7f35f242c2ef912ca8c3e),
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 2, size: 16, nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -534,9 +534,9 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_9fba6d9fa74313fc643923382711d2f91b3607e9478915b18a945750f1a96acb),
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -558,10 +558,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_b8599a67cd3d2d090a2cd0559896ab0278ee8372e91d07cfe63381c3e7023e94),
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 64, nativeSlot: 0, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 144, nativeSlot: 1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 64, nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 144, nativeSlot: 1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -588,10 +588,10 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_62d3ec223a6e7f33574e6f21ab5c017236ce82ae3fab3a0fd48eebad7af5aa45),
 			bindings: [
-				{ group: 0, binding: 0, kind: "uniform", stage: "vertex", size: 112, nativeSlot: 0, textureBinding: -1 },
-				{ group: 0, binding: 1, kind: "uniform", stage: "fragment", size: 224, nativeSlot: 1, textureBinding: -1 },
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
-				{ group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
+				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 224, nativeSlot: 1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 32, kind: "sampler", visibility: 2, size: 0, samplerType: "filtering", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },

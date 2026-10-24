@@ -203,9 +203,9 @@ export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node
 	const bindings: Node[] = [];
 	for (const b of s.reflection.bindings) {
 		const bindingKind: string = b.kind;
-		const stage: string = b.stage;
-		const keys = ["group", "binding", "kind", "stage", "size"];
-		const values = [integer(b.group), integer(b.binding), text(bindingKind), text(stage), integer(b.size)];
+		const keys = ["group", "binding", "kind", "visibility", "size"];
+		const values = [integer(b.group), integer(b.binding), text(bindingKind), integer(b.visibility),
+			integer(b.size)];
 		const sampleType: string = b.sampleType;
 		const samplerType: string = b.samplerType;
 		optional(keys, values, "sampleType", sampleType);

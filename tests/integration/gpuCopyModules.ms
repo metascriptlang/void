@@ -14,7 +14,7 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -32,8 +32,8 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: -1, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: -1, kind: "sampler", visibility: 2, size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "position", semanticIndex: 0 },
@@ -51,7 +51,7 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -69,7 +69,7 @@ when (webgpu) {
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },
@@ -87,8 +87,8 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
 			bindings: [
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
-				{ group: 1, binding: -1, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 },
+				{ group: 1, binding: -1, kind: "sampler", visibility: 2, size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "sourceTexture_SPIRV_Cross_DummySampler", textureBinding: 0 },
 			],
 			attributes: [
 				{ location: 0, nativeName: "position", semanticIndex: 0 },
@@ -109,7 +109,7 @@ when (webgpu) {
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_b394fd50df62f3bd67d3dcf124f8ae7c5a1ea6c8519ad03ce095e42bf5cf3bd4),
 			bindings: [
-				{ group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
+				{ group: 1, binding: 0, kind: "texture", visibility: 2, size: 0, sampleType: "float", nativeSlot: 0, textureBinding: -1 },
 			],
 			attributes: [
 				{ location: 0, semanticIndex: 0 },

@@ -1,4 +1,5 @@
 import { shaderModule } from "../shader/program";
+import { GPUShaderStage } from "../webgpu/types.ms";
 import {
 	Sampler,
 	Texture2d,
@@ -55,7 +56,7 @@ test "shaderModule declares the program's WebGPU shader module for this build's 
 
 test "shaderModule numbers bindings as shdc's WGSL output does" {
 	const tint = pictureModule.bindings[0];
-	assert tint.group == 0 && tint.binding == 1 && tint.kind == "uniform" && tint.stage == "fragment";
+	assert tint.group == 0 && tint.binding == 1 && tint.kind == "uniform" && tint.visibility == (GPUShaderStage.FRAGMENT as int32);
 	assert tint.size == 16;
 	const texture = pictureModule.bindings[1];
 	assert texture.group == 1 && texture.binding == 0 && texture.kind == "texture";

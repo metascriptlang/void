@@ -43,7 +43,7 @@ import {
 } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { Reflection, reflectCompute, reflectProgram } from "../shader/reflect";
-import { GPUShaderAttribute, GPUShaderBinding } from "../webgpu/types.ms";
+import { GPUShaderAttribute, GPUShaderBinding, GPUShaderStage } from "../webgpu/types.ms";
 import { blurShaderModule } from "../void2d/shader2dModules";
 
 function field(name: string, type: ShaderType): ShaderField {
@@ -146,9 +146,16 @@ function blurModule(): ShaderModule {
 	return m;
 }
 
+function visibilityName(mask: int32): string {
+	let names: string[] = [];
+	if ((mask & (GPUShaderStage.VERTEX as int32)) != 0) { names.push("vertex"); }
+	if ((mask & (GPUShaderStage.FRAGMENT as int32)) != 0) { names.push("fragment"); }
+	if ((mask & (GPUShaderStage.COMPUTE as int32)) != 0) { names.push("compute"); }
+	return names.join("+");
+}
+
 function describeBinding(b: GPUShaderBinding): string {
 	const kind: string = b.kind;
-	const stage: string = b.stage;
 	const sampleType: string = b.sampleType;
 	const samplerType: string = b.samplerType;
 	const bufferType: string = b.bufferType;
@@ -156,7 +163,7 @@ function describeBinding(b: GPUShaderBinding): string {
 	const storageAccess: string = b.storageAccess;
 	const storageFormat: string = b.storageFormat;
 	const name = b.nativeName;
-	return kind + " " + stage + " " + String(b.group) + "/" + String(b.binding) + " size " +
+	return kind + " " + visibilityName(b.visibility) + " " + String(b.group) + "/" + String(b.binding) + " size " +
 		String(b.size) + " slot " + String(b.nativeSlot) + " name " +
 		(name === null ? "-" : name) + " tb " + String(b.textureBinding) +
 		" [" + sampleType + "|" + samplerType + "|" + bufferType + "|" + viewDimension + "|" +
@@ -192,15 +199,15 @@ function committed(bindings: GPUShaderBinding[], attributes: GPUShaderAttribute[
 function committedWgsl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: -1,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: -1,
 			textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
 			nativeSlot: -1, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
 			samplerType: "filtering", nativeSlot: -1, textureBinding: -1,
 		},
 	], [
@@ -212,15 +219,15 @@ function committedWgsl(): string {
 function committedGl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: -1,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: -1,
 			nativeName: "blur_params", textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
 			nativeSlot: -1, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
 			samplerType: "filtering", nativeSlot: -1, nativeName: "srcTex_srcSmp",
 			textureBinding: 0,
 		},
@@ -233,15 +240,15 @@ function committedGl(): string {
 function committedMsl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0,
 			textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
 			nativeSlot: 0, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
 			samplerType: "filtering", nativeSlot: 0, textureBinding: -1,
 		},
 	], [
@@ -253,15 +260,15 @@ function committedMsl(): string {
 function committedHlsl(): string {
 	return committed([
 		{
-			group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0,
+			group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0,
 			textureBinding: -1,
 		},
 		{
-			group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float",
+			group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float",
 			nativeSlot: 0, textureBinding: -1,
 		},
 		{
-			group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0,
+			group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0,
 			samplerType: "filtering", nativeSlot: 0, textureBinding: -1,
 		},
 	], [

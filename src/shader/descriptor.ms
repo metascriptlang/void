@@ -329,7 +329,6 @@ function optional(name: string, value: string): string {
 export function bindingSource(r: Reflection): string[] {
 	return r.bindings.map((b) => {
 		const kind: string = b.kind;
-		const stage: string = b.stage;
 		const sampleType: string = b.sampleType;
 		const samplerType: string = b.samplerType;
 		const bufferType: string = b.bufferType;
@@ -338,7 +337,7 @@ export function bindingSource(r: Reflection): string[] {
 		const storageFormat: string = b.storageFormat;
 		const name = b.nativeName;
 		return "{ group: " + String(b.group) + ", binding: " + String(b.binding) + ", kind: \"" +
-			kind + "\", stage: \"" + stage + "\", size: " + String(b.size) +
+			kind + "\", visibility: " + String(b.visibility) + ", size: " + String(b.size) +
 			optional("sampleType", sampleType) + optional("samplerType", samplerType) +
 			", nativeSlot: " + String(b.nativeSlot) +
 			(name !== null ? ", nativeName: " + quotedSource(name) : "") +

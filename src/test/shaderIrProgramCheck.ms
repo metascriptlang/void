@@ -77,15 +77,16 @@ function mismatches(reflected: Reflection, committed: GPUShaderModuleDescriptor)
 		const c = committed.bindings[found];
 		const ckind: string = c.kind;
 		const rkind: string = r.kind;
-		const rstage: string = r.stage;
-		const cstage: string = c.stage;
 		const rsample: string = r.sampleType;
 		const csample: string = c.sampleType;
 		const rsampler: string = r.samplerType;
 		const csampler: string = c.samplerType;
 		const rname = r.nativeName ?? "";
 		const cname = c.nativeName ?? "";
-		if (rkind != ckind || rstage != cstage) { out.push(at + rkind + " " + rstage + " against " + ckind + " " + cstage); }
+		if (rkind != ckind || r.visibility != c.visibility) {
+			out.push(at + rkind + " " + String(r.visibility) + " against " + ckind + " " +
+				String(c.visibility));
+		}
 		if (r.size != c.size) { out.push(at + "size " + String(r.size) + " against " + String(c.size)); }
 		if (rsample != csample || rsampler != csampler) { out.push(at + "sample or sampler type"); }
 		if (r.nativeSlot != c.nativeSlot) {

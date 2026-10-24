@@ -50,11 +50,11 @@ function kindName(kind: ResourceKind): GPUShaderBindingKind {
 	};
 }
 
-function stageName(stage: ShaderStage): GPUShaderStage {
+function stageBit(stage: ShaderStage): int32 {
 	return match (stage) {
-		ShaderStage.Vertex => "vertex" as GPUShaderStage,
-		ShaderStage.Fragment => "fragment" as GPUShaderStage,
-		ShaderStage.Compute => "compute" as GPUShaderStage,
+		ShaderStage.Vertex => GPUShaderStage.VERTEX as int32,
+		ShaderStage.Fragment => GPUShaderStage.FRAGMENT as int32,
+		ShaderStage.Compute => GPUShaderStage.COMPUTE as int32,
 	};
 }
 
@@ -117,7 +117,7 @@ function dummySamplerOf(s: BindingSlot): GPUShaderBinding {
 		group: s.group,
 		binding: DUMMY_SAMPLER_BINDING,
 		kind: "sampler",
-		stage: stageName(s.stage),
+		visibility: stageBit(s.stage),
 		size: 0,
 		samplerType: "non-filtering",
 		nativeSlot: -1,
@@ -133,7 +133,7 @@ function bindingOf(m: ShaderModule, s: BindingSlot): Result<GPUShaderBinding, st
 		group: s.group,
 		binding: s.binding,
 		kind: kindName(r.kind),
-		stage: stageName(s.stage),
+		visibility: stageBit(s.stage),
 		size: 0,
 		nativeSlot: s.nativeSlot,
 		textureBinding: s.textureBinding,
@@ -183,12 +183,25 @@ function entryOf(m: ShaderModule, index: int32, stage: ShaderStage): Result<int3
 function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget,
 	out: Reflection): Result<int32, string> {
 	const slots = try bindingSlots(m, entries, target);
-	if (slots.length > MAX_REFLECTED_BINDINGS) {
-		return Result.err("the program reads " + String(slots.length) + " bindings, more than " +
-			String(MAX_REFLECTED_BINDINGS));
+	for (const s of slots) {
+		const b = try bindingOf(m, s);
+		const held = out.bindings.findIndex((h) => h.group == b.group && h.binding == b.binding &&
+			h.kind == b.kind && h.textureBinding == b.textureBinding && h.nativeName == b.nativeName);
+		if (held < 0) {
+			out.bindings.push(b);
+		} else if (out.bindings[held].nativeSlot != b.nativeSlot) {
+			return Result.err("internal: binding " + String(b.binding) + " sits at native slot " +
+				String(out.bindings[held].nativeSlot) + " in one stage and " + String(b.nativeSlot) +
+				" in another");
+		} else {
+			out.bindings[held].visibility = out.bindings[held].visibility | b.visibility;
+		}
 	}
-	for (const s of slots) { out.bindings.push(try bindingOf(m, s)); }
-	return Result.ok(slots.length as int32);
+	if (out.bindings.length > MAX_REFLECTED_BINDINGS) {
+		return Result.err("the program reads " + String(out.bindings.length) + " bindings, more " +
+			"than " + String(MAX_REFLECTED_BINDINGS));
+	}
+	return Result.ok(out.bindings.length as int32);
 }
 
 // HLSL reads attribute n at TEXCOORD<n> (sokol-shdc src/shdc/reflection.cc sem_index = slot).
