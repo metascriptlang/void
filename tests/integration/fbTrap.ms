@@ -23,4 +23,9 @@ function frame(): void {
 }
 
 if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
-voidRunConfigured(1, 1, 1, 0, init, frame);
+// macOS keeps a 1x1 window as asked and clamps only one larger than the screen.
+when (macos) {
+	voidRunConfigured(20000, 20000, 1, 0, init, frame);
+} else {
+	voidRunConfigured(1, 1, 1, 0, init, frame);
+}
