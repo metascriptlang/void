@@ -60,7 +60,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe out/macWindow.exe out/macWindowEscape.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/metalReadback.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe out/macWindow.exe out/macWindowEscape.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -643,6 +643,17 @@ if [ "$(uname -s)" = Darwin ]; then
 			grep -E '^FAIL' out/gate-$test-run.log | sed 's/^/      /' || true
 		fi
 	done
+	if "$MSC" build tests/integration/metalReadback.ms --output=out/metalReadback.exe > out/gate-metal-readback.log 2>&1 \
+			&& out/metalReadback.exe > out/gate-metal-readback-run.log 2>&1; then
+		pass "$(grep -E '^PASS metal readback' out/gate-metal-readback-run.log | sed 's/^PASS //')"
+	else
+		fail "metal readback — see out/gate-metal-readback.log and out/gate-metal-readback-run.log"
+	fi
+	if VOID_READBACK_OPEN=1 out/metalReadback.exe > out/gate-metal-readback-open.log 2>&1; then
+		pass "$(grep -E '^PASS metal readback: a grab before' out/gate-metal-readback-open.log | sed 's/^PASS //')"
+	else
+		fail "metal readback before commit — see out/gate-metal-readback-open.log"
+	fi
 fi
 outside_status=0
 VOID_VIEWS_OUTSIDE=1 out/twoViews.exe > out/gate-two-views-outside.log 2>&1 || outside_status=$?

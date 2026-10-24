@@ -504,6 +504,7 @@ function breakAt(glyphs: Readonly<Span<LaidGlyph>>, next: int32): LineBreak {
 
 function breakAfter(
 	shaped: ShapedText, from: int32, to: int32, room: float32, cell: float32,
+	cellWidths: Readonly<Span<uint8>>,
 ): LineBreak {
 	const whole: LineBreak = { end: to, next: to };
 	if (from >= to) { return whole; }
@@ -518,7 +519,7 @@ function breakAfter(
 		const x: float32 = g.x + delta;
 		const advance: float32 = g.rowAdvance(x, shaped.tabStop);
 		delta = delta + advance - g.advance;
-		if (cells == 0 || g.clusterStart) { cells = cells + 1; }
+		cells = cells + cellsOf(shaped.glyphs, k, from, cellWidths);
 		const right: float32 = cell > 0.0 ? (cells as float32) * cell : x + advance;
 		if (value != SPACE && candidate > from && right > room) {
 			return breakAt(shaped.glyphs, candidate);
@@ -528,21 +529,25 @@ function breakAfter(
 	return whole;
 }
 
-function fitsUnbroken(shaped: ShapedText, room: float32, cell: float32): boolean {
+function fitsUnbroken(
+	shaped: ShapedText, room: float32, cell: float32, cellWidths: Readonly<Span<uint8>>,
+): boolean {
 	const count: int32 = shaped.glyphs.length as int32;
 	let delta: float32 = count > 0 ? -shaped.glyphs[0].x : 0.0;
 	let cells: int32 = 0;
+	let paragraph: int32 = 0;
 	for (let k = 0; k < count; k++) {
 		const g: LaidGlyph = shaped.glyphs[k];
 		if (g.codepoint == NEWLINE) {
 			if (k + 1 < count) { delta = -shaped.glyphs[k + 1].x; }
 			cells = 0;
+			paragraph = k + 1;
 			continue;
 		}
 		const x: float32 = g.x + delta;
 		const advance: float32 = g.rowAdvance(x, shaped.tabStop);
 		delta = delta + advance - g.advance;
-		if (cells == 0 || g.clusterStart) { cells = cells + 1; }
+		cells = cells + cellsOf(shaped.glyphs, k, paragraph, cellWidths);
 		const right: float32 = cell > 0.0 ? (cells as float32) * cell : x + advance;
 		if (g.codepoint != SPACE && right > room) { return false; }
 	}
@@ -1183,26 +1188,49 @@ function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 // it by x, which holds only once a shaper has put the marks over their base. A sprite always
 // moves onto the grid: its tile fills the cell, so a base left within a pixel of it would open
 // a seam against its neighbour.
-function forceCells(glyphs: Span<LaidGlyph>, first: int32, cell: float32): float32 {
+function forceCells(
+	glyphs: Span<LaidGlyph>, first: int32, cell: float32, cellWidths: Readonly<Span<uint8>>,
+): float32 {
 	let cells: int32 = 0;
+	let head: int32 = first;
+	let headCells: int32 = 0;
 	let lastShaped: float32 = 0.0;
 	let lastActual: float32 = 0.0;
 	for (let k = first; k < (glyphs.length as int32); k++) {
 		const shaped: float32 = glyphs[k].x;
 		if (glyphs[k].clusterStart || k == first) {
+			glyphs[head].advance = ((cells - headCells) as float32) * cell;
+			head = k;
+			headCells = cells;
 			const forced: float32 = (cells as float32) * cell;
 			if (Math.abs(shaped - forced) > 1.0 || isSpriteFace(glyphs[k].face)) {
 				glyphs[k].x = forced;
 			}
-			glyphs[k].advance = cell;
 			lastShaped = shaped;
 			lastActual = glyphs[k].x;
-			cells = cells + 1;
 		} else {
 			glyphs[k].x = lastActual + (shaped - lastShaped);
 		}
+		cells = cells + cellsOf(glyphs, k, first, cellWidths);
+	}
+	if (head < (glyphs.length as int32)) {
+		glyphs[head].advance = ((cells - headCells) as float32) * cell;
 	}
 	return (cells as float32) * cell;
+}
+
+// Ghostty shapes with each codepoint's grid column as its cluster (font/shape.zig Cell.x) and
+// Zed starts a run at each cell's column (terminal_element.rs): the terminal's grid decides how
+// many cells a cluster takes, so never derive it here from a Unicode width table.
+function cellsOf(
+	glyphs: Readonly<Span<LaidGlyph>>, k: int32, first: int32, cellWidths: Readonly<Span<uint8>>,
+): int32 {
+	const g: LaidGlyph = glyphs[k];
+	if ((cellWidths.length as int32) == 0) { return g.clusterStart || k == first ? 1 : 0; }
+	if (k > first && glyphs[k - 1].byteStart == g.byteStart) { return 0; }
+	let cells: int32 = 0;
+	for (let b = g.byteStart; b < g.byteEnd; b++) { cells = cells + (cellWidths[b] as int32); }
+	return cells;
 }
 
 function pushLine(
@@ -1334,12 +1362,27 @@ function pushTruncated(
 }
 
 export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOptions): TextLayout {
+	const noCells: Vec<uint8> = new Array(0);
+	return wrapOnGrid(shaped, style, options, noCells);
+}
+
+export function wrapOnGrid(
+	shaped: ShapedText, style: TextStyle, options: LineOptions, cellWidths: Readonly<Span<uint8>>,
+): TextLayout {
+	const widths: int32 = cellWidths.length as int32;
+	if (widths != 0 && widths != shaped.bytes) {
+		console.log(
+			`void2d: cell widths cover ${widths} bytes, the text has ${shaped.bytes}; ` +
+			`laid out one cell per cluster`,
+		);
+		return wrapText(shaped, style, options);
+	}
 	const primary: int32 = fontFace(style.font);
 	const metrics = faceMetrics(primary, style.size);
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
 	const truncating: boolean = style.maxWidth > 0.0 && options.truncate != Truncate.None;
 	const wrapping: boolean = style.maxWidth > 0.0 && !truncating &&
-		!fitsUnbroken(shaped, style.maxWidth, options.forceWidth);
+		!fitsUnbroken(shaped, style.maxWidth, options.forceWidth, cellWidths);
 	const count: int32 = shaped.glyphs.length as int32;
 	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
 		shaped.breaks = lineBreaks(shaped.values);
@@ -1369,7 +1412,7 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 			const indent: float32 = continuation ? options.hangingIndent : 0.0;
 			const room: float32 = style.maxWidth - indent;
 			const lineBreak: LineBreak = wrapping
-				? breakAfter(shaped, lineStart, paragraphEnd, room, options.forceWidth)
+				? breakAfter(shaped, lineStart, paragraphEnd, room, options.forceWidth, cellWidths)
 				: { end: paragraphEnd, next: paragraphEnd };
 			const end: int32 = lineBreak.end;
 			const lineIndex: int32 = lines.length as int32;
@@ -1382,7 +1425,7 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 				pushLine(shaped, lineStart, end, lineIndex, glyphs);
 			}
 			let lineWidth: float32 = options.forceWidth > 0.0
-				? forceCells(glyphs, firstGlyph, options.forceWidth)
+				? forceCells(glyphs, firstGlyph, options.forceWidth, cellWidths)
 				: lineWidthOf(glyphs, firstGlyph);
 			reorderRow(shaped, lineStart, glyphs, firstGlyph, lineWidth, layoutBidi);
 			for (let k = firstGlyph; k < (glyphs.length as int32); k++) {
