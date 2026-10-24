@@ -6032,6 +6032,15 @@ Wired on the CPU (2026-10-24), shaders not regenerated, nothing run on a GPU yet
 - `litFs`, the textured, billboard and pixel-art programs loop over the fragment's cluster
   (`litClusterOf`, `litLightOf`, `litTexelOf` and their billboard twins); a shader helper takes no
   texture, so the reads sit in helpers that take the bindings.
+- One place the assignment does not do what Bevy does: `cluster_space_clusterable_object_aabb`
+  holds a light box's depth in front of the eye for every projection (`assign.rs:972-973`), for a
+  reason its comment gives for perspective only, where the projection flips behind the eye. An
+  orthographic projection is affine and its near plane may lie behind the eye: the campfire views
+  sit at the scene's centre with `nearPlane: -50`. There the clamp drops each light from the
+  slices behind the eye, which the shader still slices linearly from the near plane, and the
+  first gate3d run lost the fire's light on the pillars facing the camera. `coveredRange` keeps
+  the clamp for perspective and the box's own depth for orthographic; `clusterAssignCheck` holds a
+  light around, behind and in front of the eye against the oracle with the near plane at -50.
 
 Still to measure at the GPU slot: GL's bottom-up fragment rows (the `rows from bottom` flag), a
 second write of the data images within one frame (they are remade rather than updated twice),
