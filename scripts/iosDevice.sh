@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Runs a capture entry on a physical iPhone or iPad (Metal) from this Mac.
 #
-#   VOID_IOS_PROFILE=<file.mobileprovision> scripts/iosDevice.sh golden <device> <name>
+#   VOID_IOS_PROFILE=<file.mobileprovision> bash scripts/iosDevice.sh golden <device> <name>
 #     every golden scene on <device>, copied to out/golden/metal-<name>/ and judged against
 #     tests/golden/d3d11 with the @metal budgets
-#   VOID_IOS_PROFILE=<file.mobileprovision> scripts/iosDevice.sh samples <device>
+#   VOID_IOS_PROFILE=<file.mobileprovision> bash scripts/iosDevice.sh samples <device>
 #     tests/integration/viewSamples.ms at 1, 2, 4 and 8 samples
 #
 # <device> is an identifier from `xcrun devicectl list devices`. The profile is a development
