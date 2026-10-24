@@ -819,11 +819,11 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 		StmtKind.For => forText(p, s, depth),
 		StmtKind.Switch => {
 			emit(p, depth, "switch (" + exprText(p, s.expr) + ") {");
-			for (const k of s.cases) {
-				let labels = k.labels.map((l) => "case " + exprText(p, l) + ":");
-				if (k.isDefault || k.labels.length == 0) { labels.push("default:"); }
+			for (const arm of s.cases) {
+				let labels = arm.labels.map((l) => "case " + exprText(p, l) + ":");
+				if (arm.isDefault || arm.labels.length == 0) { labels.push("default:"); }
 				emit(p, depth + 1, labels.join(" ") + " {");
-				stmtsText(p, k.body, depth + 2);
+				stmtsText(p, arm.body, depth + 2);
 				emit(p, depth + 2, "break;");
 				emit(p, depth + 1, "}");
 			}
@@ -927,9 +927,9 @@ function calls(stmts: ShaderStmt[], out: int32[]): void {
 		exprCalls(s.expr, out);
 		exprCalls(s.target, out);
 		for (const list of [s.init, s.update, s.body, s.otherwise]) { calls(list, out); }
-		for (const k of s.cases) {
-			for (const label of k.labels) { exprCalls(label, out); }
-			calls(k.body, out);
+		for (const arm of s.cases) {
+			for (const label of arm.labels) { exprCalls(label, out); }
+			calls(arm.body, out);
 		}
 	}
 }
