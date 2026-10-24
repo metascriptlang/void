@@ -24,6 +24,7 @@ const box: NodeRef = s.add(s.rect(20.0, 20.0, red).at(10.0, 10.0));
 const sprite: NodeRef = s.add(s.sprite(whiteTile(20.0, 20.0)).at(40.0, 10.0).setColor(red));
 const mesh: NodeRef = s.add(s.graphics().fillRect(70.0, 10.0, 20.0, 20.0, red));
 let stage: int32 = 0;
+const METAL_READS_BACK_ONLY_AFTER_COMMIT: int32 = 5;
 
 function init(): void { gfxSetup(); setup2d(); }
 function drawScene(): void {
@@ -55,10 +56,10 @@ function frame(): void {
 		sprite.setColor(blue);
 		mesh.clear().fillRect(70.0, 10.0, 20.0, 20.0, blue);
 		drawScene();
-		checkBlue("second dirty bracket");
+		if (voidCaptureBackend() != METAL_READS_BACK_ONLY_AFTER_COMMIT) { checkBlue("second dirty bracket"); }
 		drawScene();
-		checkBlue("third clean bracket");
 		commit();
+		checkBlue("third clean bracket");
 		stage = 1;
 		return;
 	}
