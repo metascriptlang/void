@@ -672,16 +672,17 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 		ResourceKind.UniformBlock => slot + r.name + " {\n" +
 			p.module.structs[r.type.structIndex].members.map((f) =>
 				"    " + declared(p, f.type, f.name) + ";\n").join("") + "};\n",
-		ResourceKind.Texture => r.type.shape == TextureShape.D2Array ?
-			slot + "texture2DArray " + r.name + ";\n" :
-			r.type.shape == TextureShape.Cube ? slot + "textureCube " + r.name + ";\n" :
-			r.type.shape == TextureShape.Depth2dArray || r.type.shape == TextureShape.DepthCube ?
-			"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
-				TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n" :
-			r.type.scalar == ScalarKind.U32 ?
-			"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
-			(r.sampleType == SampleType.Float ? "" : "@image_sample_type " + r.name + " " +
-				sampleTypeName(r.sampleType) + "\n") + slot + "texture2D " + r.name + ";\n",
+		ResourceKind.Texture => match (r.type.shape) {
+			TextureShape.D2Array => slot + "texture2DArray " + r.name + ";\n",
+			TextureShape.Cube => slot + "textureCube " + r.name + ";\n",
+			TextureShape.Depth2dArray | TextureShape.DepthCube =>
+				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
+					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
+			_ => r.type.scalar == ScalarKind.U32 ?
+				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
+				(r.sampleType == SampleType.Float ? "" : "@image_sample_type " + r.name + " " +
+					sampleTypeName(r.sampleType) + "\n") + slot + "texture2D " + r.name + ";\n",
+		},
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Filtering ? "" : "@sampler_type " +
 			r.name + " " + samplerTypeName(r.samplerType) + "\n") + slot + "sampler " + r.name +
 			";\n",
