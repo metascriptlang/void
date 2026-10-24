@@ -201,6 +201,8 @@ let pass: GPURenderPassEncoder = { id: 0 };
 let current: int32 = -1;
 let openPass: PassState = PassState.None;
 let passViews: uint32[PASS_VIEW_SLOTS] = [0, 0, 0, 0, 0];
+// Cube images by id, so a texture view of one samples it as a cube, as sokol's does.
+let cubeImages: Vec<uint32> = [];
 
 @noinline function fail(message: string): never {
 	console.error("gpu door: " + message);
@@ -233,6 +235,7 @@ export function doorSetup(
 	pipelines.length = 0;
 	bindCache.length = 0;
 	appendCursors.length = 0;
+	cubeImages.length = 0;
 	uniformRing = device.createBuffer({
 		label: "uniforms",
 		size: UNIFORM_RING_BYTES,
@@ -240,8 +243,12 @@ export function doorSetup(
 	});
 	uniformCursor = 0;
 	encoder = { id: 0 };
+	pass = { id: 0 };
 	openPass = PassState.None;
+	passViews = [0, 0, 0, 0, 0];
 	current = -1;
+	frameStats = noFrameStats();
+	lastFrameStats = noFrameStats();
 	if (everSetUp) { generation++; }
 	everSetUp = true;
 }
@@ -703,9 +710,6 @@ export function doorMakeImageMips(
 	}
 	return texture.id;
 }
-
-// Cube images by id, so a texture view of one samples it as a cube, as sokol's does.
-let cubeImages: Vec<uint32> = [];
 
 function cubeSize(size: int32): GPUExtent3D {
 	return { width: size, height: size, depthOrArrayLayers: CUBE_FACES };
