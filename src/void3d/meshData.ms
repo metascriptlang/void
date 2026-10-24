@@ -506,6 +506,30 @@ function coordinateInRange(value: float64): boolean {
 	return value >= -FLOAT32_MAX && value <= FLOAT32_MAX;
 }
 
+// Gives every triangle corner a vertex of its own and drops the indices, Bevy's
+// `Mesh::duplicate_vertices`; `sources` receives the vertex each new one copies.
+export function duplicateVertices(
+	ref data: MeshData,
+	ref sources: Vec<int32>,
+): Result<void, MeshError> {
+	if (!data.validIndices()) { return Result.err(MeshError.IndexOutOfRange); }
+	const width: int32 = data.stride();
+	const corners: int32 = data.triangleCount() * 3;
+	if (corners > MAX_MESH_VERTICES / width) { return Result.err(MeshError.TooManyVertices); }
+	const indexed: boolean = data.isIndexed();
+	let vertices: Vec<float32> = [];
+	for (let corner = 0; corner < corners; corner++) {
+		const vertex: int32 = indexed ? data.indexAt(corner) as int32 : corner;
+		sources.push(vertex);
+		for (let k = 0; k < width; k++) { vertices.push(data.vertices[vertex * width + k]); }
+	}
+	data.vertices = move vertices;
+	data.indices = [];
+	data.wideIndices = null;
+	recomputeBounds(data);
+	return Result.ok(null);
+}
+
 export function recomputeNormals(ref data: MeshData): Result<void, MeshError> {
 	const width: int32 = data.stride();
 	if (data.vertices.length > MAX_MESH_VERTICES || data.vertices.length % width != 0) {
