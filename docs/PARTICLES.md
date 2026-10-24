@@ -172,7 +172,7 @@ Parity:
   `m16anchor_*`, all four frames each. Measured on main 075e0660: the scene without particles
   stayed byte-identical to `before_*`, and each particle frame differs from it in 1756 to
   1768 pixels, the snow and the embers. Emitting on Unity's float32 sub-step clock moved frames
-  1 and 11 of all three again (measured on 74f314b3 over main f82970f8): the scene without
+  1 and 11 of all three again (measured on deb0fe55 over main 4e94dd3d): the scene without
   particles still byte-identical, the particle frames 1740 to 1776 pixels from it, frames 6 and
   16 unchanged.
 
