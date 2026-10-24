@@ -526,6 +526,27 @@ uint32_t doorMakeCubeAttachmentView(uint32_t image, int32_t face, int32_t level)
 	return validView(sg_make_view(&desc));
 }
 
+uint32_t doorMakeArrayTargetImage(int32_t size, int32_t layers, int32_t format) {
+	if (size <= 0 || layers < 1 || !isDepthFormat(format)) return SG_INVALID_ID;
+	sg_image_desc desc = {0};
+	desc.type = SG_IMAGETYPE_ARRAY;
+	desc.usage.depth_stencil_attachment = true;
+	desc.width = size;
+	desc.height = size;
+	desc.num_slices = layers;
+	desc.pixel_format = LOOKUP(PIXEL_FORMATS, format);
+	desc.sample_count = 1;
+	return validImage(sg_make_image(&desc));
+}
+
+uint32_t doorMakeArrayAttachmentView(uint32_t image, int32_t layer) {
+	if (layer < 0) return SG_INVALID_ID;
+	sg_view_desc desc = {0};
+	desc.depth_stencil_attachment.image = (sg_image){.id = image};
+	desc.depth_stencil_attachment.slice = layer;
+	return validView(sg_make_view(&desc));
+}
+
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format) {
 	sg_view_desc desc = {0};
 	if (isDepthFormat(format)) {

@@ -14,6 +14,8 @@ import {
 	doorMakeTargetImage,
 	doorMakeCubeTargetImage,
 	doorMakeCubeAttachmentView,
+	doorMakeArrayTargetImage,
+	doorMakeArrayAttachmentView,
 	doorMakeAttachmentView,
 	doorMakeTextureView,
 	doorMakeSampler,
@@ -170,6 +172,14 @@ export function makeCubeTargetImage(size: int32, levels: int32, format: PixelFor
 
 export function makeCubeAttachmentView(image: uint32, face: int32, level: int32): uint32 {
 	return doorMakeCubeAttachmentView(image, face, level);
+}
+
+export function makeArrayTargetImage(size: int32, layers: int32, format: PixelFormat): uint32 {
+	return doorMakeArrayTargetImage(size, layers, format as int32);
+}
+
+export function makeArrayAttachmentView(image: uint32, layer: int32): uint32 {
+	return doorMakeArrayAttachmentView(image, layer);
 }
 
 export function makeAttachmentView(image: uint32, format: PixelFormat): uint32 {

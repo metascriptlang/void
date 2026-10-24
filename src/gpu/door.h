@@ -95,6 +95,10 @@ uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format);
 // for one face of one mip drawn into by doorMakeCubeAttachmentView.
 uint32_t doorMakeCubeTargetImage(int32_t size, int32_t levels, int32_t format);
 uint32_t doorMakeCubeAttachmentView(uint32_t image, int32_t face, int32_t level);
+// A depth array of `layers` square layers, each drawn into through doorMakeArrayAttachmentView
+// and the whole sampled as one 2D array texture.
+uint32_t doorMakeArrayTargetImage(int32_t size, int32_t layers, int32_t format);
+uint32_t doorMakeArrayAttachmentView(uint32_t image, int32_t layer);
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format);
 uint32_t doorMakeTextureView(uint32_t image);
 uint32_t doorMakeSampler(int32_t filter, int32_t wrap);
