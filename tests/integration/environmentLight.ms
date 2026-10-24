@@ -161,7 +161,7 @@ function expectedByte(power: float32): float32 {
 }
 
 function red(x: int32, y: int32): int32 {
-	return (voidCapturePixel(0, x, y) & 255) as int32;
+	return ((voidCapturePixel(0, x, y) >> 24) & 255) as int32;
 }
 
 function frame(): void {
