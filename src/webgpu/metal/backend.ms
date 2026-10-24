@@ -89,6 +89,7 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedVisibility,
+	checkedIntegerTexturePairs,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
@@ -561,6 +562,7 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 		"r32float" => colorInfo(55, 4),
 		"rg32float" => colorInfo(105, 8),
 		"rgba32float" => colorInfo(125, 16),
+		"rgba32uint" => colorInfo(123, 16),
 		"r32uint" => colorInfo(53, 4),
 		"rgb10a2unorm" => colorInfo(90, 4),
 		"rg11b10ufloat" => colorInfo(92, 4),
@@ -1388,6 +1390,7 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBytecode("metal", descriptor);
+	checkedIntegerTexturePairs(descriptor);
 	const compute = descriptor.computeCode != "";
 	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
 		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");
