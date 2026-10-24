@@ -324,7 +324,8 @@ number typed into the script.
    `N px differ, max delta M, bbox` and a pass rate.
 5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet;
    then the shader modules' freshness (`regen-shaders.sh --check`) and every printed stage through
-   fxc and naga, with GLSL and MSL as named SKIPs (docs/SHADER-IR.md "Validators").
+   fxc, naga and, on a Mac, `xcrun metal`, which also compiles the shader checks' `out/mslProbe/`;
+   GLSL is a named SKIP, as is MSL off a Mac (docs/SHADER-IR.md "Validators").
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
    reported with a warn threshold. Object-growth checks and linked wasm budget declarations
    also gate; declaration validation does not re-link the measured entries.
