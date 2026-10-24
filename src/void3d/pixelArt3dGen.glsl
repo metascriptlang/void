@@ -895,6 +895,9 @@ in vec4 color;
 #ifdef NORMAL_MAP
 in vec4 tangent;
 #endif
+#ifdef OCCLUSION_UV_B
+in vec2 uvB;
+#endif
 #ifdef SKINNED
 in vec4 skinJoints;
 #endif
@@ -1474,6 +1477,9 @@ in vec2 uv;
 in vec4 color;
 #ifdef NORMAL_MAP
 in vec4 tangent;
+#endif
+#ifdef OCCLUSION_UV_B
+in vec2 uvB;
 #endif
 #ifdef SKINNED
 in vec4 skinJoints;

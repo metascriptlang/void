@@ -5,7 +5,9 @@
 
 import { Vec3, vec3 } from "../math/math3d";
 import { Texture2d, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
-import { LitBindings, LitKey, linearToSrgb, litTexturedFs, srgbToLinear } from "../void3d/shader3d";
+import {
+	LitBindings, LitKey, LitTexturedFragmentInput, linearToSrgb, litTexturedFs, srgbToLinear,
+} from "../void3d/shader3d";
 import { PbrDirectInput, PbrSurface } from "../void3d/pbrResponse";
 
 function toVec3f(v: Vec3): Vec3f {
@@ -200,4 +202,32 @@ test "a pbr-maps key that emits reads its factors from the emissive layout" {
 	}, b, { pbr: true, pbrMaps: true, emissive: true }).color.rgb;
 	assert nearColor(color, expectedColor(0.25, 0.4, 1.0));
 	assert !nearColor(color, expectedColor(0.5, 0.5, 1.0));
+}
+
+function twoTexels(left: Vec3f, right: Vec3f): Texture2d {
+	return {
+		width: 2, height: 1,
+		texels: [left.x, left.y, left.z, 1.0, right.x, right.y, right.z, 1.0],
+	};
+}
+
+test "an occlusion-uv-b key reads occlusion at the second uv set, the packed texel at the first" {
+	const packed: Texture2d = twoTexels(vec3f(0.0, 0.3, 0.9), vec3f(0.0, 0.8, 0.1));
+	const occlusion: Texture2d = twoTexels(vec3f(0.2, 0.0, 0.0), vec3f(1.0, 1.0, 1.0));
+	let b: LitBindings = bindingsOf(FULL, packed, occlusion);
+	b.pbrMaterialParams.uvMatrix = vec4f(1.0, 0.0, 0.0, 1.0);
+	const input: LitTexturedFragmentInput = {
+		worldPosition: toVec3f(POSITION),
+		worldNormal: toVec3f(UP),
+		surfaceUv: vec2f(0.25, 0.5),
+		surfaceUvB: vec2f(0.75, 0.5),
+		baseColor: BASE,
+		frontFacing: true,
+	};
+	const second: Vec3f =
+		litTexturedFs(input, b, { pbr: true, pbrMaps: true, occlusionUvB: true }).color.rgb;
+	assert nearColor(second, expectedColor(0.9, 0.3, 1.0));
+	const first: Vec3f = litTexturedFs(input, b, MAPS).color.rgb;
+	assert nearColor(first, expectedColor(0.9, 0.3, 0.2));
+	assert !nearColor(second, first);
 }

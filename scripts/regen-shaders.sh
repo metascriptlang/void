@@ -93,6 +93,10 @@ attributesOf() {
 		SKIN_LIT_TEXTURED) echo "position normal uv color skinJoints skinWeights" ;;
 		SKIN_LIT_TEXTURED_TANGENT) echo "position normal uv color tangent skinJoints skinWeights" ;;
 		INSTANCED_LIT_TEXTURED) echo "position normal uv color instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		LIT_TEXTURED_UV_B) echo "position normal uv color uvB" ;;
+		LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB" ;;
+		SKIN_LIT_TEXTURED_UV_B) echo "position normal uv color uvB skinJoints skinWeights" ;;
+		SKIN_LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB skinJoints skinWeights" ;;
 		FULLSCREEN)   echo "position" ;;
 		*) echo "programKeys.txt: unknown layout $1" >&2; return 1 ;;
 	esac
@@ -139,6 +143,7 @@ regenKeys() {
 		pbr=0
 		pbrMaps=0
 		instanced=0
+		occlusionUvB=0
 		defines=""
 		if [ "$features" != "-" ]; then
 			for feature in $(echo "$features" | tr ':' ' '); do
@@ -156,6 +161,7 @@ regenKeys() {
 					PBR)           pbr=1 ;;
 					PBR_MAPS)      pbrMaps=1 ;;
 					INSTANCED)     instanced=1 ;;
+					OCCLUSION_UV_B) occlusionUvB=1 ;;
 					*) echo "programKeys.txt: row $module names unknown feature $feature"; exit 1 ;;
 				esac
 			done
@@ -179,10 +185,10 @@ regenKeys() {
 
 		printf '\t%s_program_shader_desc,\n' "$module" >> "$work/descs"
 		printf '\tLAYOUT_%s,\n' "$layout" >> "$work/layouts"
-		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s),\n'
+		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s),\n'
 		printf "$key" "$program" "$preset" "$premultiplied" "$cutout" "$shadowed" \
 			"$uvTransform" "$backTexture" "$dissolve" "$emissive" "$normalMap" "$skinned" \
-			"$normalMrt" "$pbr" "$pbrMaps" "$instanced" >> "$work/keys"
+			"$normalMrt" "$pbr" "$pbrMaps" "$instanced" "$occlusionUvB" >> "$work/keys"
 		first=$(tr -d "\r" < "$KEYS" | awk -v l="$layout" '$1 !~ /^#/ && $7 == l { print $1; exit }')
 		if [ "$first" != "$module" ]; then
 			same=""

@@ -1231,6 +1231,45 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 	assert !declares({ ...ProgramKey.of(Program.Lit).withPbr(), pbrMaps: true });
 }
 
+function uvBLayoutOf(key: ProgramKey): VertexLayout {
+	if (key.skinned) {
+		return key.normalMap
+			? VertexLayout.SkinLitTexturedTangentUvB : VertexLayout.SkinLitTexturedUvB;
+	}
+	return key.normalMap ? VertexLayout.LitTexturedTangentUvB : VertexLayout.LitTexturedUvB;
+}
+
+test "an occlusion-uv-b key sets bit 19 and is declared on a uv-b layout wherever pbr-maps is" {
+	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
+	assert maps.withOcclusionUvB().bits() == maps.bits() + 524288;
+	assert describe(maps.withOcclusionUvB()).includes(" occlusion-uv-b");
+	const emitting: ProgramKey = maps.withEmissive();
+	const variants: Vec<ProgramKey> = [
+		maps, maps.withNormalMap(), maps.withSkin(), maps.withNormalMap().withSkin(),
+		emitting, emitting.withNormalMap(),
+	];
+	for (const key of variants) {
+		for (const cut of [false, true]) {
+			for (const shadowed of [false, true]) {
+				let made: ProgramKey = cut ? key.withCutout() : key;
+				made = shadowed ? made.withShadowed() : made;
+				const second: ProgramKey = made.withOcclusionUvB();
+				assert declares(made) && declares(second);
+				assert vertexLayoutOf(second) == uvBLayoutOf(made);
+				assert textureSlotMask(second) == textureSlotMask(made);
+				assert samplerSlotMask(second) == samplerSlotMask(made);
+				assert uniformBlockLength(second, MATERIAL_UNIFORM_SLOT) ==
+					uniformBlockLength(made, MATERIAL_UNIFORM_SLOT);
+				const cast = castIn(second);
+				const plain = castIn(made);
+				assert cast.ok == plain.ok;
+				if (cast.ok && plain.ok) { assert cast.value.bits() == plain.value.bits(); }
+			}
+		}
+	}
+	assert !declares({ ...ProgramKey.of(Program.LitTextured).withPbr(), occlusionUvB: true });
+}
+
 test "a skinned pbr key is declared on the skinned layout in every variant a glTF material makes" {
 	const lit: ProgramKey = ProgramKey.of(Program.Lit).withPbr();
 	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();

@@ -531,6 +531,7 @@ function validateSkinMesh(
 		context.meshData[mesh.index].hasSkin != geometry.source.hasSkin ||
 		context.meshData[mesh.index].hasUvs != geometry.source.hasUvs ||
 		context.meshData[mesh.index].hasTangents != geometry.source.hasTangents ||
+		context.meshData[mesh.index].hasUvB != geometry.source.hasUvB ||
 		total != (geometry.source.isIndexed() ? geometry.source.indexCount() : count)) {
 		return Result.err(SceneError.SkinMesh);
 	}
@@ -635,7 +636,8 @@ function validateMorphMesh(
 			morph.geometry.meshes[primitive].vertices.length ||
 		context.meshData[index].indexCount() != morph.geometry.meshes[primitive].indexCount() ||
 		context.meshData[index].hasUvs != morph.geometry.meshes[primitive].hasUvs ||
-		context.meshData[index].hasTangents != morph.geometry.meshes[primitive].hasTangents) {
+		context.meshData[index].hasTangents != morph.geometry.meshes[primitive].hasTangents ||
+		context.meshData[index].hasUvB != morph.geometry.meshes[primitive].hasUvB) {
 		return Result.err(MorphNodeError.Mesh);
 	}
 	for (let i = 0; i < morph.geometry.meshes[primitive].indexCount(); i++) {

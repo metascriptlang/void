@@ -2,6 +2,7 @@ import {
 	MeshData,
 	MeshError,
 	addSkinAttributes,
+	addUvB,
 	stride,
 	vertexCount,
 	addVertex,
@@ -142,4 +143,50 @@ test "packed skin geometry refuses re-packing and geometry builders" {
 	const tangent = addTangents(data);
 	assert !tangent.ok && tangent.error == MeshError.SkinAdded;
 	assert data.vertices.length == 60 && data.vertexCount() == 3;
+}
+
+test "a second uv set follows the tangent, precedes the skin and takes the uv-b layouts" {
+	const uvs: Vec<float32> = [0.5, 0.25, 0.75, 1.0, 0.0, 0.125];
+	for (const base of [12, 16]) {
+		let data = triangle(base);
+		assert addUvB(data, uvs).ok;
+		assert data.stride() == base + 2;
+		assert data.meshFor(1, 2, 7).layout ==
+			(base == 12 ? VertexLayout.LitTexturedUvB : VertexLayout.LitTexturedTangentUvB);
+		assert addSkinAttributes(data, jointSlots(), weights()).ok;
+		assert data.stride() == base + 10;
+		for (let vertex = 0; vertex < 3; vertex++) {
+			const at: int32 = vertex * data.stride();
+			assert data.vertices[at + base - 1] == (vertex * 100 + base - 1) as float32;
+			assert data.vertices[at + base] == uvs[vertex * 2];
+			assert data.vertices[at + base + 1] == uvs[vertex * 2 + 1];
+			assert data.vertices[at + base + 2] == jointSlots()[vertex * 4] as float32;
+		}
+		assert data.meshFor(1, 2, 7).layout == (base == 12
+			? VertexLayout.SkinLitTexturedUvB : VertexLayout.SkinLitTexturedTangentUvB);
+	}
+}
+
+test "a second uv set is refused without a first, twice, after the skin, short or not finite" {
+	const uvs: Vec<float32> = [0.5, 0.25, 0.75, 1.0, 0.0, 0.125];
+	let plain = triangle(10);
+	const first = addUvB(plain, uvs);
+	assert !first.ok && first.error == MeshError.UvMismatch;
+	let short = triangle(12);
+	const missing = addUvB(short, [0.5, 0.25]);
+	assert !missing.ok && missing.error == MeshError.UvBCount;
+	let broken: Vec<float32> = [0.5, 0.25, 0.75, 1.0, 0.0, 0.0];
+	broken[5] = NaN as float32;
+	const nan = addUvB(short, broken);
+	assert !nan.ok && nan.error == MeshError.UvRange && !short.hasUvB;
+	assert short.vertices.length == 36;
+	assert addUvB(short, uvs).ok;
+	const again = addUvB(short, uvs);
+	assert !again.ok && again.error == MeshError.UvBAdded;
+	const tangent = addTangents(short);
+	assert !tangent.ok && tangent.error == MeshError.UvBAdded;
+	let skinned = triangle(12);
+	assert addSkinAttributes(skinned, jointSlots(), weights()).ok;
+	const late = addUvB(skinned, uvs);
+	assert !late.ok && late.error == MeshError.SkinAdded;
 }

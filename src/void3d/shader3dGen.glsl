@@ -1569,6 +1569,9 @@ in vec4 color;
 #ifdef NORMAL_MAP
 in vec4 tangent;
 #endif
+#ifdef OCCLUSION_UV_B
+in vec2 uvB;
+#endif
 #ifdef SKINNED
 in vec4 skinJoints;
 #endif
@@ -1593,6 +1596,9 @@ out vec4 worldTangent;
 out vec3 worldPosition;
 out vec3 worldNormal;
 out vec2 surfaceUv;
+#ifdef OCCLUSION_UV_B
+out vec2 surfaceUvB;
+#endif
 out vec4 baseColor;
 #ifdef SKINNED
 vec4 skinRow(vec4 joints, vec4 weights, int column) {
@@ -1630,6 +1636,9 @@ void main() {
     worldTangent = vec4((mat3(matrix) * tangent.xyz), (tangent.w * handedness));
 #endif
     surfaceUv = uv;
+#ifdef OCCLUSION_UV_B
+    surfaceUvB = uvB;
+#endif
     baseColor = color;
     gl_Position = (viewProj * world);
     return;
@@ -1654,6 +1663,9 @@ void main() {
     worldTangent = vec4((mat3(model) * tangent.xyz), tangent.w);
 #endif
     surfaceUv = uv;
+#ifdef OCCLUSION_UV_B
+    surfaceUvB = uvB;
+#endif
     baseColor = color;
     gl_Position = (viewProj * world_2);
     return;
@@ -1792,6 +1804,9 @@ in vec4 worldTangent;
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec2 surfaceUv;
+#ifdef OCCLUSION_UV_B
+in vec2 surfaceUvB;
+#endif
 in vec4 baseColor;
 layout(location=0) out vec4 color;
 #ifdef NORMAL_MRT
@@ -1949,9 +1964,9 @@ vec4 pbrOf() {
 }
 #endif
 #if defined(PBR) && defined(PBR_MAPS)
-vec3 pbrMapped(vec2 uv) {
+vec3 pbrMapped(vec2 uv, vec2 occlusionUv) {
     vec4 metalRoughTexel = texture(sampler2D(metalRoughTexture, baseSampler), uv);
-    float occluded = texture(sampler2D(occlusionTexture, baseSampler), uv).r;
+    float occluded = texture(sampler2D(occlusionTexture, baseSampler), occlusionUv).r;
     vec4 values = pbrOf();
     return vec3((values.x * metalRoughTexel.b), max((values.y * metalRoughTexel.g), 0.089), (values.z * (1.0 + (values.w * (occluded - 1.0)))));
 }
@@ -2374,7 +2389,11 @@ void main() {
 #ifdef PBR
     vec3 pbrValues = pbrOf().xyz;
 #ifdef PBR_MAPS
-    pbrValues = pbrMapped(uv);
+    vec2 occlusionUv = uv;
+#ifdef OCCLUSION_UV_B
+    occlusionUv = movedUv(surfaceUvB, uvMatrixOf(), uvMotionOf(), frame.x);
+#endif
+    pbrValues = pbrMapped(uv, occlusionUv);
 #endif
     shaded = pbrShade(n, worldPosition, surfaceColor, pbrValues);
 #else
@@ -2480,6 +2499,9 @@ in vec4 worldTangent;
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec2 surfaceUv;
+#ifdef OCCLUSION_UV_B
+in vec2 surfaceUvB;
+#endif
 in vec4 baseColor;
 #ifdef DISSOLVE
 vec4 dissolveOf() {
@@ -2586,6 +2608,9 @@ in vec2 uv;
 in vec4 color;
 #ifdef NORMAL_MAP
 in vec4 tangent;
+#endif
+#ifdef OCCLUSION_UV_B
+in vec2 uvB;
 #endif
 #ifdef SKINNED
 in vec4 skinJoints;

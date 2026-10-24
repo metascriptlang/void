@@ -28,6 +28,10 @@ enum {
 	LAYOUT_SKIN_LIT_TEXTURED_TANGENT,
 	LAYOUT_PARTICLE_VISUAL,
 	LAYOUT_INSTANCED_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED_UV_B,
+	LAYOUT_LIT_TEXTURED_TANGENT_UV_B,
+	LAYOUT_SKIN_LIT_TEXTURED_UV_B,
+	LAYOUT_SKIN_LIT_TEXTURED_TANGENT_UV_B,
 	LAYOUT_COUNT,
 };
 
@@ -58,11 +62,12 @@ enum {
 };
 
 #define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
-		backTexture, dissolve, emissive, normalMap, skinned, normalMrt, pbr, pbrMaps, instanced) \
+		backTexture, dissolve, emissive, normalMap, skinned, normalMrt, pbr, pbrMaps, instanced, \
+		occlusionUvB) \
 	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
 	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11) | ((emissive) << 12) | \
 	((normalMap) << 13) | ((skinned) << 14) | ((normalMrt) << 15) | ((pbr) << 16) | \
-	((pbrMaps) << 17) | ((instanced) << 18))
+	((pbrMaps) << 17) | ((instanced) << 18) | ((occlusionUvB) << 19))
 
 #include "programTable.h"
 
@@ -164,6 +169,40 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_skinLitTexturedNormalMap_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTexturedNormalMap_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
 		break;
+	case LAYOUT_LIT_TEXTURED_UV_B:
+		out->attrs[ATTR_litTexturedPbrMapsUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTexturedPbrMapsUvB_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTexturedPbrMapsUvB_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_litTexturedPbrMapsUvB_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_litTexturedPbrMapsUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
+		break;
+	case LAYOUT_LIT_TEXTURED_TANGENT_UV_B:
+		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
+		break;
+	case LAYOUT_SKIN_LIT_TEXTURED_UV_B:
+		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
+	case LAYOUT_SKIN_LIT_TEXTURED_TANGENT_UV_B:
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
 	default:
 		// clip-space position of a fullscreen triangle (copy, post, blit)
 		out->attrs[ATTR_copy_program_position].format = SG_VERTEXFORMAT_FLOAT2;
@@ -186,6 +225,13 @@ _Static_assert(sizeof(lit_lightParams_t) == 108 * 4, "lightParams must match LIG
 _Static_assert(sizeof(lit_modelParams_t) == 32 * 4, "modelParams must match MODEL_LENGTH in draw.ms");
 _Static_assert(sizeof(unlitTextured_modelTransformParams_t) == 16 * 4,
 	"modelTransformParams must contain one matrix");
+_Static_assert(ATTR_litTexturedPbrMapsUvB_program_uvB == 4
+	&& ATTR_litTexturedPbrMapsNormalMapUvB_program_uvB == 5
+	&& ATTR_skinLitTexturedPbrMapsUvB_program_uvB == 4
+	&& ATTR_skinLitTexturedPbrMapsUvB_program_skinJoints == 5
+	&& ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_uvB == 5
+	&& ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_skinJoints == 6,
+	"the second uv set follows the tangent and precedes the skin, as meshData.ms addUvB writes it");
 _Static_assert(sizeof(unlitTextured_unlitMaterialParams_t) == 8 * 4
 	&& UB_unlitTextured_unlitMaterialParams == UB_lit_materialParams,
 	"unlit material colour and parameters must share the material slot");

@@ -336,3 +336,29 @@ shadowInstancedLitTextured              LIT_TEXTURED    SHADOW    INSTANCED     
 shadowInstancedLitTexturedCutout        LIT_TEXTURED    SHADOW    INSTANCED:CUTOUT                             litTexturedVs   shadowLitTexturedFs   INSTANCED_LIT_TEXTURED
 shadowInstancedUnlitTextured            UNLIT_TEXTURED  SHADOW    INSTANCED                                    unlitTexturedVs shadowUnlitTexturedFs INSTANCED_LIT_TEXTURED
 shadowInstancedUnlitTexturedCutout      UNLIT_TEXTURED  SHADOW    INSTANCED:CUTOUT                             unlitTexturedVs shadowUnlitTexturedFs INSTANCED_LIT_TEXTURED
+# The occlusion map at the second uv set (shader3d.ms pbrMapped, Bevy occlusion_channel Uv1): every
+# pbr-maps row again with OCCLUSION_UV_B, on the layouts that carry uvB.
+litTexturedPbrMapsUvB LIT_TEXTURED CORE PBR:PBR_MAPS:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrMapsShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrMapsCutoutUvB LIT_TEXTURED CORE PBR:PBR_MAPS:CUTOUT:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrMapsCutoutShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:CUTOUT:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrMapsNormalMapUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
+litTexturedPbrMapsNormalMapShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
+litTexturedPbrMapsNormalMapCutoutUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:CUTOUT:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
+litTexturedPbrMapsNormalMapCutoutShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:CUTOUT:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
+skinLitTexturedPbrMapsUvB LIT_TEXTURED CORE PBR:PBR_MAPS:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_UV_B
+skinLitTexturedPbrMapsShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:SHADOWED:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_UV_B
+skinLitTexturedPbrMapsCutoutUvB LIT_TEXTURED CORE PBR:PBR_MAPS:CUTOUT:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_UV_B
+skinLitTexturedPbrMapsCutoutShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:CUTOUT:SHADOWED:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_UV_B
+skinLitTexturedPbrMapsNormalMapUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_TANGENT_UV_B
+skinLitTexturedPbrMapsNormalMapShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:SHADOWED:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_TANGENT_UV_B
+skinLitTexturedPbrMapsNormalMapCutoutUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:CUTOUT:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_TANGENT_UV_B
+skinLitTexturedPbrMapsNormalMapCutoutShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:NORMAL_MAP:CUTOUT:SHADOWED:SKINNED:OCCLUSION_UV_B litTexturedVs litTexturedFs SKIN_LIT_TEXTURED_TANGENT_UV_B
+litTexturedPbrEmissiveMapsUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrEmissiveMapsShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrEmissiveMapsCutoutUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:CUTOUT:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrEmissiveMapsCutoutShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:CUTOUT:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B
+litTexturedPbrEmissiveMapsNormalMapUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
+litTexturedPbrEmissiveMapsNormalMapShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
+litTexturedPbrEmissiveMapsNormalMapCutoutUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:CUTOUT:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B
+litTexturedPbrEmissiveMapsNormalMapCutoutShadowedUvB LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:CUTOUT:SHADOWED:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT_UV_B

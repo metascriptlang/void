@@ -195,6 +195,14 @@ test "the quad layouts are the layouts whose one buffer steps per instance" {
 		VertexLayout.ParticleVisual,
 		VertexLayout.Fullscreen,
 		VertexLayout.LitTextured,
+		VertexLayout.LitTexturedTangent,
+		VertexLayout.SkinLit,
+		VertexLayout.SkinLitTextured,
+		VertexLayout.SkinLitTexturedTangent,
+		VertexLayout.LitTexturedUvB,
+		VertexLayout.LitTexturedTangentUvB,
+		VertexLayout.SkinLitTexturedUvB,
+		VertexLayout.SkinLitTexturedTangentUvB,
 	];
 	for (const layout of layouts) {
 		assert drawsQuads(layout) == layoutPerInstance(layout, 0);

@@ -125,6 +125,7 @@ export struct TexturedAttributes {
 	uv: Vec2f;
 	color: Vec4f;
 	@feature(NORMAL_MAP) tangent: Vec4f;
+	@feature(OCCLUSION_UV_B) uvB: Vec2f;
 	@feature(SKINNED) skinJoints: Vec4f;
 	@feature(SKINNED) skinWeights: Vec4f;
 	@feature(INSTANCED) instanceRow0: Vec4f;
@@ -138,6 +139,7 @@ export struct LitTexturedVaryings {
 	worldPosition: Vec3f;
 	worldNormal: Vec3f;
 	surfaceUv: Vec2f;
+	@feature(OCCLUSION_UV_B) surfaceUvB: Vec2f;
 	baseColor: Vec4f;
 	@builtin(position) clip: Vec4f;
 }
@@ -147,6 +149,7 @@ export struct LitTexturedFragmentInput {
 	worldPosition: Vec3f;
 	worldNormal: Vec3f;
 	surfaceUv: Vec2f;
+	@feature(OCCLUSION_UV_B) surfaceUvB: Vec2f;
 	baseColor: Vec4f;
 	@builtin(frontFacing) frontFacing: boolean;
 }
@@ -343,6 +346,7 @@ export struct LitKey {
 	@feature(PBR) pbr: boolean;
 	@feature(PBR_MAPS) pbrMaps: boolean;
 	@feature(INSTANCED) instanced: boolean;
+	@feature(OCCLUSION_UV_B) occlusionUvB: boolean;
 }
 
 export struct LitOutput {
@@ -714,6 +718,7 @@ export function litTexturedVs(
 				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handedness,
 			),
 			surfaceUv: input.uv,
+			surfaceUvB: input.uvB,
 			baseColor: input.color,
 			clip: b.vertexParams.viewProj * world,
 		};
@@ -728,6 +733,7 @@ export function litTexturedVs(
 				worldNormal: skinNormal(matrix, input.normal),
 				worldTangent: vec4f(upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w),
 				surfaceUv: input.uv,
+				surfaceUvB: input.uvB,
 				baseColor: input.color * input.instanceColor,
 				clip: b.vertexParams.viewProj * world,
 			};
@@ -740,6 +746,7 @@ export function litTexturedVs(
 					upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
 				),
 				surfaceUv: input.uv,
+				surfaceUvB: input.uvB,
 				baseColor: input.color,
 				clip: b.vertexParams.viewProj * world,
 			};
@@ -1428,9 +1435,9 @@ export function pbrEnvironmentLight(
 
 // Roughness floors at 0.089 as Bevy's clampedPerceptualRoughness (pbr_lighting.wesl:550): a
 // texel of 0 has no BRDF response, and a texture cannot be refused per pixel.
-export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f): Vec3f {
+export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f, occlusionUv: Vec2f): Vec3f {
 	const metalRoughTexel = textureSample(b.metalRoughTexture, b.baseSampler, uv);
-	const occluded = textureSample(b.occlusionTexture, b.baseSampler, uv).r;
+	const occluded = textureSample(b.occlusionTexture, b.baseSampler, occlusionUv).r;
 	const values = pbrOf(b, key);
 	return vec3f(
 		values.x * metalRoughTexel.b,
@@ -1591,7 +1598,12 @@ export function litTexturedFs(
 	if (key.pbr) {
 		let pbrValues = pbrOf(b, key).xyz;
 		if (key.pbrMaps) {
-			pbrValues = pbrMapped(b, key, uv);
+			let occlusionUv = uv;
+			if (key.occlusionUvB) {
+				occlusionUv = movedUv(input.surfaceUvB, uvMatrixOf(b, key), uvMotionOf(b, key),
+					b.frameParams.frame.x);
+			}
+			pbrValues = pbrMapped(b, key, uv, occlusionUv);
 		}
 		shaded = pbrShade(n, input.worldPosition, surfaceColor, b, key, pbrValues);
 	} else {

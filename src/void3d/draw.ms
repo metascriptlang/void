@@ -500,6 +500,13 @@ export function addMesh(context: DrawContext, mesh: GpuMesh): Result<MeshId, Mes
 }
 
 function layoutOf(this data: MeshData): VertexLayout {
+	if (data.hasUvB) {
+		if (data.hasSkin) {
+			return data.hasTangents
+				? VertexLayout.SkinLitTexturedTangentUvB : VertexLayout.SkinLitTexturedUvB;
+		}
+		return data.hasTangents ? VertexLayout.LitTexturedTangentUvB : VertexLayout.LitTexturedUvB;
+	}
 	if (data.hasSkin) {
 		if (data.hasTangents) { return VertexLayout.SkinLitTexturedTangent; }
 		return data.hasUvs ? VertexLayout.SkinLitTextured : VertexLayout.SkinLit;
@@ -724,6 +731,7 @@ export function setMeshVertices(
 		context.meshData[index].indexCount() != source.indexCount() ||
 		context.meshData[index].hasUvs != source.hasUvs ||
 		context.meshData[index].hasTangents != source.hasTangents ||
+		context.meshData[index].hasUvB != source.hasUvB ||
 		context.meshData[index].hasSkin != source.hasSkin) {
 		return Result.err(MeshWriteError.Shape);
 	}
