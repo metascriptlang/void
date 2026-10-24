@@ -406,7 +406,10 @@ function remainder(p: Printer, a: ShaderExpr, b: ShaderExpr): string {
 }
 
 function unaryText(e: ShaderExpr): string {
-	return e.unary == UnaryOp.Negate ? "-" : e.operands[0].type.scalar == ScalarKind.Bool ? "!" : "~";
+	return match (e.unary) {
+		UnaryOp.Negate => "-",
+		UnaryOp.Not => e.operands[0].type.scalar == ScalarKind.Bool ? "!" : "~",
+	};
 }
 
 function binaryText(p: Printer, e: ShaderExpr): string {
