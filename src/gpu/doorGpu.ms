@@ -103,11 +103,13 @@ import {
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;
 const VIEW_SLOTS: int32 = 9;
+const PASS_VIEW_SLOTS: int32 = 5;
 const SAMPLER_SLOTS: int32 = 5;
 const SAMPLER_BINDING_BASE: int32 = 32;
 const UNIFORM_RING_BYTES: int64 = 4 * 1024 * 1024;
 const UNIFORM_ALIGNMENT: int64 = 256;
 const BIND_GROUP_CACHE: int32 = 1024;
+const CUBE_FACES: int32 = 6;
 
 // Default is the swapchain's own format, for pipelines drawn to the screen. The ordinals are
 // door.h's DOOR_PIXEL_FORMAT_*.
@@ -148,7 +150,7 @@ export enum IndexType {
 	Uint32,
 }
 
-export struct DoorLayout { buffers: GPUVertexBufferLayout[2]; }
+export struct DoorLayout { buffers: GPUVertexBufferLayout[GPU_MAX_VERTEX_BUFFERS]; }
 
 export struct DoorProgram {
 	source: (index: int32) => GPUShaderModuleDescriptor;
@@ -198,7 +200,7 @@ let encoder: GPUCommandEncoder = { id: 0 };
 let pass: GPURenderPassEncoder = { id: 0 };
 let current: int32 = -1;
 let openPass: PassState = PassState.None;
-let passViews: uint32[5] = [0, 0, 0, 0, 0];
+let passViews: uint32[PASS_VIEW_SLOTS] = [0, 0, 0, 0, 0];
 
 @noinline function fail(message: string): never {
 	console.error("gpu door: " + message);
@@ -299,7 +301,7 @@ export function doorLayout(
 	steps: Readonly<Span<GPUVertexStepMode>>,
 ): DoorLayout {
 	let layout: DoorLayout = {};
-	let counts: int32[2] = [0, 0];
+	let counts: int32[GPU_MAX_VERTEX_BUFFERS] = [0, 0];
 	for (const attribute of attributes) {
 		if (attribute.buffer < 0 || attribute.buffer >= GPU_MAX_VERTEX_BUFFERS) {
 			fail("attribute " + String(attribute.location) + " names vertex buffer " +
@@ -690,11 +692,12 @@ export function doorMakeImageMips(
 let cubeImages: Vec<uint32> = [];
 
 function cubeSize(size: int32): GPUExtent3D {
-	return { width: size, height: size, depthOrArrayLayers: 6 };
+	return { width: size, height: size, depthOrArrayLayers: CUBE_FACES };
 }
 
 export function doorMakeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): uint32 {
-	if (size <= 0 || rgba.length != (size as int64) * (size as int64) * 6) { return 0; }
+	const texels = (size as int64) * (size as int64) * (CUBE_FACES as int64);
+	if (size <= 0 || rgba.length != texels) { return 0; }
 	const texture = device.createTexture({
 		label: null,
 		size: cubeSize(size),
@@ -733,7 +736,7 @@ export function doorMakeCubeTargetImage(size: int32, levels: int32, format: int3
 }
 
 export function doorMakeCubeAttachmentView(image: uint32, face: int32, level: int32): uint32 {
-	if (face < 0 || face >= 6 || level < 0) { return 0; }
+	if (face < 0 || face >= CUBE_FACES || level < 0) { return 0; }
 	const texture: GPUTexture = { id: image };
 	return texture.createView({
 		label: null,
@@ -1548,4 +1551,8 @@ test "the binding words of door.h agree with the slot counts" {
 	assert VIEW_SLOTS == DOOR_BINDING_SAMPLER - DOOR_BINDING_VIEW;
 	assert SAMPLER_SLOTS == DOOR_BINDING_LENGTH - DOOR_BINDING_SAMPLER;
 	assert DOOR_BINDING_INDEX_BUFFER == GPU_MAX_VERTEX_BUFFERS;
+}
+
+test "a pass names a view per color attachment and one for depth" {
+	assert PASS_VIEW_SLOTS == DOOR_MAX_COLOR_ATTACHMENTS + 1;
 }
