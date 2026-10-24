@@ -11,7 +11,7 @@ import {
 	stringValue,
 	typeKind,
 } from "std/meta";
-import { exists, readFile } from "std/fs";
+import { exists, mkdir, readFile } from "std/fs";
 import { glslIr, glslLinkedIr } from "./emit";
 import { programModule, programSource } from "./descriptor";
 import { dxbcStage, findFxc } from "./dxbcCache";
@@ -236,10 +236,12 @@ export macro shaderBuild(
 		const cache = "src/shader/dxbc";
 		if (targetOf() != ShaderTarget.Hlsl5 || !exists(cache)) { return ["", ""]; }
 		const fxc = findFxc();
+		const fresh = "out/dxbc";
+		if (fxc != "" && !exists(fresh)) { const _made = mkdir(fresh); }
 		const blobs: string[] = [];
 		const stages = [["vs_5_0", vertexCode], ["ps_5_0", fragmentCode]];
 		for (const stage of stages) {
-			const found = dxbcStage(cache, cache, fxc, stage[0], entry, stage[1]);
+			const found = dxbcStage(cache, fresh, fxc, stage[0], entry, stage[1]);
 			if (found.error != "") { refused(found.error); }
 			if (found.path == "") {
 				blobs.push("");
