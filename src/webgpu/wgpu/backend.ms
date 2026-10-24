@@ -1011,6 +1011,7 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 	store(textures, {
 		id: textureId,
 		format: format,
+		info: formatInfo(format, "the swapchain format"),
 		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
 		sampleCount: 1,
 		mipLevels: 1,
