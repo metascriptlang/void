@@ -1,11 +1,4 @@
-// glsl(entry) reads a vertex entry, or a fragment entry that reads no varyings, and returns it as
-// Vulkan-style GLSL 450 for sokol-shdc: the signature becomes the stage's interface, the body
-// becomes main(), and each function and module constant the body reaches is defined above main(),
-// after what it reads. glslLinked(fragment, vertex) does the same for a fragment fed by that vertex
-// entry, after checking its varyings are the vertex outputs: shdc numbers varyings in declaration
-// order, so a name, type or place that differs would read another output with no error.
-// The node walk sits in functions nested in the macro body: only there are Node fields readable;
-// it lowers the entry into a ShaderModule (./ir), and printGlsl450 writes the text.
+// The node walk sits in functions nested in the macro body: only there are Node fields readable.
 
 import {
 	DeclKind,
@@ -374,7 +367,6 @@ export macro glslComputeAs(entry: Node, workgroupSize: Node, form: Node): Node {
 		callee: bindSym("glslStage"), arguments: [entry, workgroupSize, entry, form] };
 }
 
-
 function shaderField(name: string, type: ShaderType): ShaderField {
 	let f = new ShaderField();
 	f.name = name;
@@ -424,7 +416,6 @@ function featureNames(c: FeatureCondition, names: string[]): void {
 	for (const o of c.operands) { featureNames(o, names); }
 }
 
-// Every set of the names' features, as the list of those defined.
 function featureSets(names: string[]): string[][] {
 	let sets: string[][] = [[]];
 	for (const name of names) {
@@ -518,9 +509,6 @@ function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition 
 	return conditionOf(ConditionKind.Any, products.map((p) => productCondition(p)));
 }
 
-
-// The stage both glsl and glslLinked expand to, once their checks hold: the walk lowers the entry
-// into a ShaderModule, and printGlsl450 writes its text.
 export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
@@ -718,10 +706,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return own != null && sameType(own, t);
 	}
 
-	// Declarations come in interface order, each under the conditions its reads run under, and an
-	// unread one holds under no features: a declared but unread uniform or texture is still one
-	// the draw must bind. `features` holds the program key conditions around the code being
-	// lowered.
 	let m = new ShaderModule();
 	const stage = compute ? ShaderStage.Compute :
 		vertex ? ShaderStage.Vertex : ShaderStage.Fragment;
