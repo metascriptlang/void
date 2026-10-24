@@ -5,6 +5,7 @@
 // what both render layers build pipelines through, and each adds its own base to its
 // ordinals (void3d: gpu3d.ms doorProgram / doorLayout).
 
+import { stop } from "./stop";
 import { RenderState } from "./state";
 import { TargetLayout } from "./target";
 import { IndexType, PipelineDescriptor } from "./doorGpu.ms";
@@ -57,8 +58,7 @@ export function empty(this typeof PipelineCache): PipelineCache {
 function selectedIndexType(indexed: boolean, format: IndexType): IndexType {
 	if (!indexed) { return IndexType.None; }
 	if (format != IndexType.Uint16 && format != IndexType.Uint32) {
-		console.log(`gpu door: indexed pipeline with invalid index type ${format.toString()}`);
-		unreachable;
+		stop(`indexed pipeline with invalid index type ${format.toString()}`);
 	}
 	return format;
 }
@@ -104,31 +104,26 @@ export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
 	return false;
 }
 
-@noinline function stopOnUnregisteredProgram(program: int32): uint32 {
-	console.log(`gpu door: program id ${program} was never registered`);
-	unreachable;
+@noinline function stopOnUnregisteredProgram(program: int32): never {
+	stop(`program id ${program} was never registered`);
 }
 
-@noinline function stopOnRefusedShader(program: int32): uint32 {
-	console.log(`gpu door: sokol refused the shader of program ${program}; ` +
+@noinline function stopOnRefusedShader(program: int32): never {
+	stop(`sokol refused the shader of program ${program}; ` +
 		"its pool is full or it did not compile");
-	unreachable;
 }
 
-@noinline function stopOnRefusedPipeline(key: PipelineKey): uint32 {
-	console.log(`gpu door: sokol refused pipeline ${key.toString()}; ` +
+@noinline function stopOnRefusedPipeline(key: PipelineKey): never {
+	stop(`sokol refused pipeline ${key.toString()}; ` +
 		"its pool is full or its description is invalid");
-	unreachable;
 }
 
-@noinline function stopOnClosed(call: string): void {
-	console.log(`gpu door: ${call} on a pipeline cache that was closed`);
-	unreachable;
+@noinline function stopOnClosed(call: string): never {
+	stop(`${call} on a pipeline cache that was closed`);
 }
 
-@noinline function stopInsidePass(call: string): void {
-	console.log(`gpu door: ${call} with a pass already open; endPass ends it`);
-	unreachable;
+@noinline function stopInsidePass(call: string): never {
+	stop(`${call} with a pass already open; endPass ends it`);
 }
 
 function registered(program: int32): boolean {
@@ -144,7 +139,7 @@ function adoptContext(cache: PipelineCache): void {
 
 export function shaderFor(cache: PipelineCache, program: int32): uint32 {
 	if (cache.closed) { stopOnClosed("shaderFor"); }
-	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
+	if (!registered(program)) { stopOnUnregisteredProgram(program); }
 	adoptContext(cache);
 	for (let i = cache.shaders.length as int32; i <= program; i++) {
 		cache.shaders.push(0);
@@ -152,7 +147,7 @@ export function shaderFor(cache: PipelineCache, program: int32): uint32 {
 	}
 	if (cache.shaders[program] == 0) {
 		const shader: uint32 = makeShader(program);
-		if (shader == 0) { return stopOnRefusedShader(program); }
+		if (shader == 0) { stopOnRefusedShader(program); }
 		cache.shaders[program] = shader;
 		cache.blockSlots[program] = uniformSlotMask(program);
 	}
@@ -177,7 +172,7 @@ export function pipelineFor(
 	format: IndexType = IndexType.Uint16,
 ): uint32 {
 	if (cache.closed) { stopOnClosed("pipelineFor"); }
-	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
+	if (!registered(program)) { stopOnUnregisteredProgram(program); }
 	adoptContext(cache);
 	const concrete: TargetLayout = targets.resolved();
 	const key: PipelineKey = pipelineKey(program, layout, indexed, state, concrete, format);
@@ -210,7 +205,7 @@ export function pipelineFor(
 		indexType: key.indexType,
 	};
 	const pipeline: uint32 = makePipeline(description);
-	if (pipeline == 0) { return stopOnRefusedPipeline(key); }
+	if (pipeline == 0) { stopOnRefusedPipeline(key); }
 	if (found == (cache.entries.length as int32)) {
 		cache.entries.push({ key: key, pipeline: pipeline });
 	} else {

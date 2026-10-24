@@ -29,6 +29,7 @@ import {
 	MAX_COLOR_ATTACHMENTS,
 } from "./door";
 import { ColorAttachment, DepthAttachment, TargetLayout } from "./doorGpu.ms";
+import { stop } from "./stop";
 import { FilterMode, Wrap } from "./state";
 
 export { ColorAttachment, DepthAttachment, TargetLayout } from "./doorGpu.ms";
@@ -87,25 +88,26 @@ export function allocate(
 	return target;
 }
 
-function stopOnOtherContext(call: string, what: string, generation: int32, remedy: string): void {
-	console.log(`gpu door: ${call} on a ${what} of GPU context ${generation}; the context is now ` +
+function stopOnOtherContext(
+	call: string,
+	what: string,
+	generation: int32,
+	remedy: string,
+): never {
+	stop(`${call} on a ${what} of GPU context ${generation}; the context is now ` +
 		`${contextGeneration()}, and ${remedy}`);
-	unreachable;
 }
 
-function stopOnReleased(call: string, what: string): void {
-	console.log(`gpu door: ${call} on a ${what} that was released`);
-	unreachable;
+function stopOnReleased(call: string, what: string): never {
+	stop(`${call} on a ${what} that was released`);
 }
 
-function stopOnClosedTarget(call: string): void {
-	console.log(`gpu door: ${call} on a render target that was closed`);
-	unreachable;
+function stopOnClosedTarget(call: string): never {
+	stop(`${call} on a render target that was closed`);
 }
 
-function stopOnDestroyedView(call: string, view: uint32): void {
-	console.log(`gpu door: ${call} on a render target whose view ${view} was destroyed`);
-	unreachable;
+function stopOnDestroyedView(call: string, view: uint32): never {
+	stop(`${call} on a render target whose view ${view} was destroyed`);
 }
 
 function holdsLive(this target: RenderTarget, call: string): boolean {
@@ -172,14 +174,13 @@ function forgetHandles(target: RenderTarget): void {
 	target.generation = 0;
 }
 
-function stopOnRefusedTarget(target: RenderTarget, what: string): void {
+function stopOnRefusedTarget(target: RenderTarget, what: string): never {
 	if (target.texture != 0) { destroyView(target.texture); }
 	if (target.attachment != 0) { destroyView(target.attachment); }
 	if (target.image != 0) { destroyImage(target.image); }
 	forgetHandles(target);
-	console.log(`gpu door: resize refused a ${target.width}x${target.height} ` +
+	stop(`resize refused a ${target.width}x${target.height} ` +
 		`${target.format.toString()} target ${what}`);
-	unreachable;
 }
 
 export function resize(this target: RenderTarget, width: int32, height: int32): void {
@@ -232,15 +233,13 @@ export function asDepth(
 	};
 }
 
-function stopOnEmptyTarget(): void {
-	console.log("gpu door: asTexture on a render target with no GPU objects; " +
+function stopOnEmptyTarget(): never {
+	stop("asTexture on a render target with no GPU objects; " +
 		"resize allocates it");
-	unreachable;
 }
 
-function stopOnUnsampledTarget(): void {
-	console.log("gpu door: asTexture on a render target allocated without a texture view");
-	unreachable;
+function stopOnUnsampledTarget(): never {
+	stop("asTexture on a render target allocated without a texture view");
 }
 
 export function asTexture(this target: RenderTarget): uint32 {
@@ -273,8 +272,7 @@ export function released(this sampler: Sampler): Sampler {
 
 export function asHandle(this sampler: Sampler): uint32 {
 	if (sampler.handle == 0) {
-		console.log("gpu door: asHandle on a sampler with no handle; Sampler.create makes one");
-		unreachable;
+		stop("asHandle on a sampler with no handle; Sampler.create makes one");
 	}
 	if (sampler.generation != contextGeneration()) {
 		stopOnOtherContext("asHandle", "sampler", sampler.generation,
@@ -290,9 +288,8 @@ function formatAt(colors: Readonly<Span<ColorAttachment>>, index: int32): PixelF
 
 function stopOnTooManyColors(call: string, colors: Readonly<Span<ColorAttachment>>): void {
 	if ((colors.length as int32) <= MAX_COLOR_ATTACHMENTS) { return; }
-	console.log(`gpu door: ${call} takes at most ${MAX_COLOR_ATTACHMENTS} color ` +
+	stop(`${call} takes at most ${MAX_COLOR_ATTACHMENTS} color ` +
 		`attachments, given ${colors.length}`);
-	unreachable;
 }
 
 // Offscreen targets are single-sampled (doorGpu.ms makes them with sampleCount 1).
@@ -389,17 +386,15 @@ export function toString(this layout: TargetLayout): string {
 	return `colors=${colors} depth=${layout.depth.toString()} sampleCount=${layout.sampleCount}`;
 }
 
-function stopOnEmptyAttachment(index: int32): void {
+function stopOnEmptyAttachment(index: int32): never {
 	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
-	console.log(`gpu door: beginPass on ${what}, which has no view; resize allocates its target`);
-	unreachable;
+	stop(`beginPass on ${what}, which has no view; resize allocates its target`);
 }
 
-function stopOnStaleAttachment(index: int32, generation: int32): void {
+function stopOnStaleAttachment(index: int32, generation: int32): never {
 	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
-	console.log(`gpu door: beginPass on ${what} of GPU context ${generation}; the context is now ` +
+	stop(`beginPass on ${what} of GPU context ${generation}; the context is now ` +
 		`${contextGeneration()}`);
-	unreachable;
 }
 
 export function beginPass(colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment): void {

@@ -12,6 +12,7 @@ import {
 	viewAlive,
 	contextGeneration,
 } from "./door";
+import { stop } from "./stop";
 
 export enum TextureError {
 	BadSize,
@@ -119,15 +120,13 @@ export function adopt(
 	};
 }
 
-function stopOnClosed(call: string): void {
-	console.log(`gpu door: ${call} on a texture that was closed`);
-	unreachable;
+function stopOnClosed(call: string): never {
+	stop(`${call} on a texture that was closed`);
 }
 
-function stopOnRefusedRealloc(texture: Texture, error: TextureError): void {
-	console.log(`gpu door: a ${texture.width}x${texture.height} texture's realloc could not ` +
+function stopOnRefusedRealloc(texture: Texture, error: TextureError): never {
+	stop(`a ${texture.width}x${texture.height} texture's realloc could not ` +
 		`upload its pixels again: ${error.toString()}`);
-	unreachable;
 }
 
 function holdsCurrent(this texture: Texture): boolean {
@@ -169,16 +168,14 @@ export function uploadMips(
 ): Result<int32, TextureError> {
 	if (texture.closed) { stopOnClosed("upload"); }
 	if (!texture.owned) {
-		console.log("gpu door: upload on an adopted texture; its image is the caller's");
-		unreachable;
+		stop("upload on an adopted texture; its image is the caller's");
 	}
 	if ((pixels.length as int64) != mipChainWords(texture.width, texture.height, levels)) {
 		return Result.err(TextureError.BadSize);
 	}
 	if (texture.holdsCurrent()) {
-		console.log("gpu door: upload on a texture that holds a live image; its image is " +
+		stop("upload on a texture that holds a live image; its image is " +
 			"immutable, so make a new Texture for new pixels");
-		unreachable;
 	}
 	forgetHandles(texture);
 	const image: uint32 = levels == 1
@@ -196,41 +193,37 @@ export function uploadMips(
 	return Result.ok(0);
 }
 
-function stopOnLost(texture: Texture): void {
+function stopOnLost(texture: Texture): never {
 	const remedy: string = texture.owned
 		? "the texture has no realloc, so upload its pixels again"
 		: "the adopted image died with it, so adopt the caller's new one";
-	console.log(`gpu door: asView on a texture of GPU context ${texture.generation}; the context ` +
+	stop(`asView on a texture of GPU context ${texture.generation}; the context ` +
 		`is now ${contextGeneration()} and ${remedy} (isLost tells when)`);
-	unreachable;
 }
 
 export function asView(this texture: Texture): uint32 {
 	if (texture.closed) { stopOnClosed("asView"); }
 	if (texture.holdsCurrent()) {
 		if (texture.owned && (!imageAlive(texture.image) || !viewAlive(texture.view))) {
-			console.log("gpu door: asView on a texture whose image or view was destroyed");
-			unreachable;
+			stop("asView on a texture whose image or view was destroyed");
 		}
 		return texture.view;
 	}
 	const realloc = texture.realloc;
 	if (realloc === null) {
 		if (texture.view == 0) {
-			console.log(`gpu door: asView on a ${texture.width}x${texture.height} texture with ` +
+			stop(`asView on a ${texture.width}x${texture.height} texture with ` +
 				"no pixels uploaded and no realloc");
 		} else {
 			stopOnLost(texture);
 		}
-		unreachable;
 	} else {
 		forgetHandles(texture);
 		realloc(texture);
 	}
 	if (!texture.holdsCurrent()) {
-		console.log(`gpu door: a ${texture.width}x${texture.height} texture's realloc returned ` +
+		stop(`a ${texture.width}x${texture.height} texture's realloc returned ` +
 			"without uploading pixels");
-		unreachable;
 	}
 	return texture.view;
 }

@@ -56,7 +56,7 @@ import {
 	voidSwapchainWidth,
 } from "../platform/swapchain.h";
 import "../sokol/gpu";
-import { exit } from "std/process";
+import { stop } from "./stop";
 import { Vec4 } from "../math/math3d";
 import {
 	Blend,
@@ -213,11 +213,6 @@ let passViews: uint32[PASS_VIEW_SLOTS] = [0, 0, 0, 0, 0];
 // Cube images by id, so a texture view of one samples it as a cube, as sokol's does.
 let cubeImages: Vec<uint32> = [];
 
-@noinline function fail(message: string): never {
-	console.error("gpu door: " + message);
-	exit(1);
-}
-
 // The platform hands its device over once it exists, and again after a device loss; ids made
 // before a new setup are stale, which doorContextGeneration tells the layers above. It starts at
 // 1 and only a setup after the first moves it, as bridgeWin.c and bridgeWeb.c counted, so 0 stays
@@ -299,7 +294,7 @@ export function doorFrameStat(which: int32): int32 {
 	if (which == DOOR_STAT_PASSES) { return lastFrameStats.passes; }
 	if (which == DOOR_STAT_BUFFER_BYTES) { return lastFrameStats.bufferBytes; }
 	if (which == DOOR_STAT_IMAGE_BYTES) { return lastFrameStats.imageBytes; }
-	fail("no frame stat " + String(which));
+	stop("no frame stat " + String(which));
 }
 
 @exportName("doorValid")
@@ -322,7 +317,7 @@ function formatBytes(format: GPUVertexFormat): int32 {
 		"float32x2" => 8,
 		"float32x3" => 12,
 		"float32x4" => 16,
-		_ => { fail("vertex format " + format + " has no size"); },
+		_ => { stop("vertex format " + format + " has no size"); },
 	};
 }
 
@@ -336,7 +331,7 @@ export function doorLayout(
 	let counts: int32[GPU_MAX_VERTEX_BUFFERS] = [0, 0];
 	for (const attribute of attributes) {
 		if (attribute.buffer < 0 || attribute.buffer >= GPU_MAX_VERTEX_BUFFERS) {
-			fail("attribute " + String(attribute.location) + " names vertex buffer " +
+			stop("attribute " + String(attribute.location) + " names vertex buffer " +
 				String(attribute.buffer));
 		}
 		const buffer = attribute.buffer;
@@ -398,14 +393,14 @@ export function doorRegisterPrograms(
 
 function programAt(program: int32): DoorProgram {
 	if (program < 0 || program >= (programs.length as int32)) {
-		fail("unregistered program id " + String(program));
+		stop("unregistered program id " + String(program));
 	}
 	return programs[program];
 }
 
 function layoutAt(layout: int32): DoorLayout {
 	if (layout < 0 || layout >= (layouts.length as int32)) {
-		fail("unregistered layout id " + String(layout));
+		stop("unregistered layout id " + String(layout));
 	}
 	return layouts[layout];
 }
@@ -467,7 +462,7 @@ function shaderProgram(shader: uint32): int32 {
 	for (const record of shaders) {
 		if (record.module.id == shader) { return record.program; }
 	}
-	fail("pipeline names shader " + String(shader) + ", which the door did not make");
+	stop("pipeline names shader " + String(shader) + ", which the door did not make");
 }
 
 const CULL_MODES: GPUCullMode[3] = ["none", "back", "front"];
@@ -533,7 +528,7 @@ function textureFormatOf(format: PixelFormat): GPUTextureFormat {
 	if (format == PixelFormat.DepthStencil) { return "depth24plus-stencil8"; }
 	if (format == PixelFormat.Rgba16f) { return "rgba16float"; }
 	if (format == PixelFormat.R8) { return "r8unorm"; }
-	fail("PixelFormat " + format.toString() + " names no texture format");
+	stop("PixelFormat " + format.toString() + " names no texture format");
 }
 
 function colorTextureFormat(format: PixelFormat): GPUTextureFormat {
@@ -638,7 +633,7 @@ function pipelineIndex(pipeline: uint32): int32 {
 	for (let i = 0; i < pipelines.length; i++) {
 		if (pipelines[i].pipeline.id == pipeline) { return i as int32; }
 	}
-	fail("apply of pipeline " + String(pipeline) + ", which the door did not make");
+	stop("apply of pipeline " + String(pipeline) + ", which the door did not make");
 }
 
 function texture2dSize(width: int32, height: int32): GPUExtent3D {
@@ -1039,7 +1034,7 @@ export function doorUpdateTextureOf<T>(id: uint32, data: Readonly<Span<T>>): voi
 	const height = texture.height();
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (bytes % (height as int64) != 0) {
-		fail("updateTexture of " + String(bytes) + " bytes is not whole rows of a texture " +
+		stop("updateTexture of " + String(bytes) + " bytes is not whole rows of a texture " +
 			String(height) + " high");
 	}
 	const rowBytes = bytes / (height as int64);
@@ -1175,10 +1170,10 @@ export function doorApplyBindings(
 	vertexOffsets: Readonly<Span<int32>>,
 ): void {
 	if (bindings.length < DOOR_BINDING_LENGTH) {
-		fail("applyBindings descriptor holds " + String(bindings.length) + " of " +
+		stop("applyBindings descriptor holds " + String(bindings.length) + " of " +
 			String(DOOR_BINDING_LENGTH) + " words");
 	}
-	if (current < 0) { fail("applyBindings before applyPipeline"); }
+	if (current < 0) { stop("applyBindings before applyPipeline"); }
 	for (let i = 0; i < GPU_MAX_VERTEX_BUFFERS; i++) {
 		const buffer = bindings[DOOR_BINDING_VERTEX_BUFFER + i];
 		if (buffer != 0) {
@@ -1208,12 +1203,12 @@ export function doorApplyUniforms(slot: int32, data: Readonly<Span<uint8>>): voi
 }
 
 export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
-	if (current < 0) { fail("applyUniforms before applyPipeline"); }
-	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { fail("applyUniforms to slot " + String(slot)); }
+	if (current < 0) { stop("applyUniforms before applyPipeline"); }
+	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("applyUniforms to slot " + String(slot)); }
 	const record = pipelines[current];
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (uniformCursor + bytes > UNIFORM_RING_BYTES) {
-		fail("uniform ring of 4 MiB is full this frame");
+		stop("uniform ring of 4 MiB is full this frame");
 	}
 	device.queue.writeBuffer(uniformRing, uniformCursor, data);
 	uniformOffsets[slot] = uniformCursor as uint32;
@@ -1261,7 +1256,7 @@ function readTexture(
 	if (width <= 0 || height <= 0 || (out.length as int64) != expectedBytes) { return 0; }
 	const format = texture.format();
 	if (format != "rgba8unorm" && format != "bgra8unorm") {
-		fail("readTexture of " + format + ", which is neither rgba8unorm nor bgra8unorm");
+		stop("readTexture of " + format + ", which is neither rgba8unorm nor bgra8unorm");
 	}
 	const rowBytes = width * 4;
 	const bytesPerRow = (rowBytes + READBACK_ROW_ALIGNMENT - 1) & ~(READBACK_ROW_ALIGNMENT - 1);
@@ -1306,7 +1301,7 @@ export function doorReadTexture(
 ): int32 {
 	const texture: GPUTexture = { id: image };
 	if (!texture.isAlive()) {
-		fail("readTexture of image " + String(image) + ", which is not alive");
+		stop("readTexture of image " + String(image) + ", which is not alive");
 	}
 	return readTexture(texture, x, y, width, height, out);
 }
@@ -1338,7 +1333,7 @@ export function doorReadScreen(out: Span<uint8>): int32 {
 // ---- passes ----
 
 @noinline function stopOnOpenPass(call: string): void {
-	if (openPass != PassState.None) { fail(call + " with a pass already open; endPass ends it"); }
+	if (openPass != PassState.None) { stop(call + " with a pass already open; endPass ends it"); }
 }
 
 function frameEncoder(): GPUCommandEncoder {
@@ -1350,7 +1345,7 @@ export function doorBeginPass(
 	colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment,
 ): void {
 	if ((colors.length as int32) > DOOR_MAX_COLOR_ATTACHMENTS) {
-		fail("beginPass takes at most " + String(DOOR_MAX_COLOR_ATTACHMENTS) +
+		stop("beginPass takes at most " + String(DOOR_MAX_COLOR_ATTACHMENTS) +
 			" color attachments, given " + String(colors.length));
 	}
 	stopOnOpenPass("beginPass");
@@ -1359,7 +1354,7 @@ export function doorBeginPass(
 		const view = colors[i].view;
 		if (view == 0) { continue; }
 		if (doorViewAlive(view) == 0) {
-			fail("beginPass on color attachment " + String(i) + ", whose view " + String(view) +
+			stop("beginPass on color attachment " + String(i) + ", whose view " + String(view) +
 				" is not alive");
 		}
 		descriptor.colorAttachments[i] = {
@@ -1377,7 +1372,7 @@ export function doorBeginPass(
 	}
 	if (depth.view != 0) {
 		if (doorViewAlive(depth.view) == 0) {
-			fail("beginPass on the depth attachment, whose view " + String(depth.view) +
+			stop("beginPass on the depth attachment, whose view " + String(depth.view) +
 				" is not alive");
 		}
 		descriptor.depthStencilAttachment = {
@@ -1408,7 +1403,7 @@ export function doorBeginColorPass(
 ): void {
 	stopOnOpenPass("beginColorPass");
 	if (doorViewAlive(view) == 0) {
-		fail("beginColorPass on view " + String(view) + ", which is not a live attachment");
+		stop("beginColorPass on view " + String(view) + ", which is not a live attachment");
 	}
 	let descriptor = { label: null } as GPURenderPassDescriptor;
 	descriptor.colorAttachments[0] = {
@@ -1460,7 +1455,7 @@ export function doorBeginScreenPass(
 
 @exportName("doorEndPass")
 export function doorEndPass(): void {
-	if (openPass == PassState.None) { fail("endPass with no pass open"); }
+	if (openPass == PassState.None) { stop("endPass with no pass open"); }
 	pass.end();
 	openPass = PassState.None;
 	passViews = [0, 0, 0, 0, 0];
@@ -1502,10 +1497,10 @@ export function doorPassAttachesView(view: uint32): boolean {
 export function doorFormatRenderable(format: int32): boolean {
 	const pixelFormat = format as PixelFormat;
 	if (pixelFormat == PixelFormat.None || pixelFormat == PixelFormat.Default) {
-		fail("formatRenderable was asked about PixelFormat " + pixelFormat.toString() +
+		stop("formatRenderable was asked about PixelFormat " + pixelFormat.toString() +
 			", which names no one format");
 	}
-	if (device.id == 0) { fail("formatRenderable was asked before gfxSetup made the device"); }
+	if (device.id == 0) { stop("formatRenderable was asked before gfxSetup made the device"); }
 	return device.isRenderable(textureFormatOf(pixelFormat));
 }
 
@@ -1518,14 +1513,14 @@ function pixelFormatOf(format: GPUTextureFormat, role: string): PixelFormat {
 		"depth24plus-stencil8" => PixelFormat.DepthStencil,
 		"rgba16float" => PixelFormat.Rgba16f,
 		_ => {
-			fail("the environment's default " + role + " is " + format +
+			stop("the environment's default " + role + " is " + format +
 				", which PixelFormat does not name");
 		},
 	};
 }
 
 function environment(): GPUCanvasConfiguration {
-	if (device.id == 0) { fail("a screen layout was resolved before gfxSetup made the device"); }
+	if (device.id == 0) { stop("a screen layout was resolved before gfxSetup made the device"); }
 	return device.getCanvasConfiguration();
 }
 

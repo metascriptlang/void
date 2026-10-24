@@ -1,5 +1,5 @@
 import "./door";
-import { exit } from "std/process";
+import { stop } from "./stop";
 import {
 	DOOR_BUFFER_INDEX,
 	DOOR_BUFFER_STREAM,
@@ -57,9 +57,8 @@ export function applyPipeline(pipeline: uint32): void { doorApplyPipeline(pipeli
 
 export function applyBindings(bindings: Readonly<Span<uint32>>): void {
 	if (bindings.length < BINDING_LENGTH) {
-		console.error("gpu door: applyBindings descriptor holds " + String(bindings.length) +
+		stop("applyBindings descriptor holds " + String(bindings.length) +
 			" of " + String(BINDING_LENGTH) + " words");
-		exit(1);
 	}
 	const offsets: int32[2] = [0, bindings[BINDING_VERTEX_OFFSET] as int32];
 	doorApplyBindings(bindings[0..DOOR_BINDING_LENGTH], offsets);
