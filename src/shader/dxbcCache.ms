@@ -1,6 +1,6 @@
 import { sha256 } from "std/crypto/sha256";
 import { exists, mkdir, remove, writeFile } from "std/fs";
-import { env, execFileResult, findOnPath, platform } from "std/process";
+import { execFileResult } from "std/process";
 
 export class DxbcStage {
 	key: string = "";
@@ -59,15 +59,4 @@ export function dxbcStage(
 	stage.path = made;
 	stage.compiled = true;
 	return stage;
-}
-
-// $FXC, else fxc on PATH, else the Windows Kit's; empty when this host has none.
-export function findFxc(): string {
-	const named = env.get("FXC");
-	if (named != "") { return exists(named) ? named : ""; }
-	const onPath = findOnPath("fxc");
-	if (onPath != "") { return onPath; }
-	if (platform != "windows") { return ""; }
-	const kit = "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/fxc.exe";
-	return exists(kit) ? kit : "";
 }

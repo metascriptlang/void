@@ -114,12 +114,6 @@ fxc and the runtime `D3DCompile` (`d3dcompiler_47.dll`) gave the same bytes for 
 one no stage uses; `--check` reports either as stale. Where fxc is absent (macOS, Linux) a miss is
 printed, not stale: that stage keeps no bytecode and compiles at load until a Windows regen.
 
-`shaderProgram` and `shaderModule` (`src/shader/program.ms`) read the same cache at msc compile time on the
-windows target: `dxbcStage` of `src/shader/dxbcCache.ms`, the one key, lookup and fxc call `irPrograms.ms` also uses,
-finds `src/shader/dxbc/<key>.dxbc` relative to the working directory, else compiles with fxc (`$FXC`, fxc on PATH,
-the Windows Kit's) and stores the blob there, and the stage then carries empty text. A build whose working directory has
-no `src/shader/dxbc`, or a host with no fxc and no cached blob, keeps the stage's HLSL text and `D3DCompile` at load.
-
 ## The oracle and when it goes
 
 sokol-shdc is on no build path. `scripts/regen-shaders.sh --oracle-shdc` still compiles the
