@@ -321,13 +321,14 @@ function cellAt(
 }
 
 // cluster_space_clusterable_object_aabb and the two ndc_position_to_cluster calls on its corners:
-// the clusters the sphere's view-space box covers, with the depth held in front of the eye so a
-// box that reaches behind it still projects.
+// the clusters the sphere's view-space box covers. A perspective box has its depth held in front
+// of the eye, where the projection does not flip it; an orthographic one keeps its depth, since
+// its near plane can lie behind the eye and the slices there are lit too.
 function coveredRange(setup: ClusterSetup, sphere: ViewSphere): ClusterRange {
 	const low: Vec3 = sphere.center - vec3(sphere.radius, sphere.radius, sphere.radius);
 	const high: Vec3 = sphere.center + vec3(sphere.radius, sphere.radius, sphere.radius);
-	const nearDepth: float32 = Math.max(low.z, MIN_POSITIVE);
-	const farDepth: float32 = Math.max(high.z, MIN_POSITIVE);
+	const nearDepth: float32 = setup.orthographic ? low.z : Math.max(low.z, MIN_POSITIVE);
+	const farDepth: float32 = setup.orthographic ? high.z : Math.max(high.z, MIN_POSITIVE);
 	const corners: Vec<Vec3> = [
 		vec3(low.x, low.y, nearDepth),
 		vec3(low.x, low.y, farDepth),

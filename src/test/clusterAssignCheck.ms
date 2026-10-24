@@ -24,11 +24,16 @@ const WIDTH: int32 = 1920;
 const HEIGHT: int32 = 1080;
 const FOV: float32 = 0.8;
 const WORLD_PER_TEXEL: float32 = 0.02;
+const NEAR_PLANE: float32 = 0.1;
 // The refinement tests the sphere against tile planes that run on past the cluster's box, so it
 // keeps a few cells whose box the sphere just misses: at most 6% of the range in the cases below.
 const REFINEMENT_SLACK: float32 = 0.08;
 
 function camera(orthographic: boolean): CameraView {
+	return cameraFrom(orthographic, NEAR_PLANE);
+}
+
+function cameraFrom(orthographic: boolean, nearPlane: float32): CameraView {
 	const made: Camera3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: 0.0,
@@ -36,7 +41,7 @@ function camera(orthographic: boolean): CameraView {
 		projection: orthographic
 			? { kind: ProjectionKind.Orthographic, worldPerTexel: WORLD_PER_TEXEL, snap: false }
 			: { kind: ProjectionKind.Perspective, fovY: FOV },
-		nearPlane: 0.1,
+		nearPlane: nearPlane,
 		farPlane: 500.0,
 	};
 	const view = made.resolve(WIDTH, HEIGHT);
@@ -65,7 +70,16 @@ function assign(
 	previous: float32 | null,
 	lights: Readonly<Span<ClusterLight>>,
 ): ClusterAssignment {
-	const result = assignLights(config, camera(orthographic), WIDTH, HEIGHT, previous, lights);
+	return assignFrom(config, camera(orthographic), previous, lights);
+}
+
+function assignFrom(
+	config: ClusterConfig,
+	view: CameraView,
+	previous: float32 | null,
+	lights: Readonly<Span<ClusterLight>>,
+): ClusterAssignment {
+	const result = assignLights(config, view, WIDTH, HEIGHT, previous, lights);
 	if (!result.ok) { unreachable; }
 	return result.value;
 }
@@ -209,8 +223,18 @@ function checkAgainstOracle(
 	depth: float32,
 	range: float32,
 ): boolean {
-	const result: ClusterAssignment =
-		assign(config, orthographic, null, [pointLight(depth, range)]);
+	return checkNearAgainstOracle(config, orthographic, NEAR_PLANE, depth, range);
+}
+
+function checkNearAgainstOracle(
+	config: ClusterConfig,
+	orthographic: boolean,
+	nearPlane: float32,
+	depth: float32,
+	range: float32,
+): boolean {
+	const result: ClusterAssignment = assignFrom(config, cameraFrom(orthographic, nearPlane), null,
+		[pointLight(depth, range)]);
 	const grid = result.grid;
 	const center: Vec3 = vec3(0.0, 0.0, depth);
 	let assignedCount: int32 = 0;
@@ -288,6 +312,15 @@ test "a point light on the axis is in the clusters its sphere reaches and in no 
 	assert checkAgainstOracle(constantFar(40.0), true, 12.0, 4.0);
 	const ortho: ClusterAssignment = assign(constantFar(40.0), true, null, []);
 	assert approx(ortho.near, 0.1) && ortho.far == 40.0;
+}
+
+test "an orthographic view whose near plane is behind the eye lights the slices behind it" {
+	assert checkNearAgainstOracle(constantFar(50.0), true, -50.0, 0.0, 9.0);
+	assert checkNearAgainstOracle(constantFar(50.0), true, -50.0, -20.0, 6.0);
+	assert checkNearAgainstOracle(constantFar(50.0), true, -50.0, 15.0, 4.0);
+	const behind: ClusterAssignment = assignFrom(constantFar(50.0), cameraFrom(true, -50.0), null,
+		[pointLight(-20.0, 6.0)]);
+	assert approx(behind.near, -50.0) && behind.lightIndices.length > 0;
 }
 
 test "a light behind the camera or outside the frustum is in no cluster" {
