@@ -870,7 +870,7 @@ else
 	fail "shader modules: stale or unprintable — see out/gate-shaders.log (sh scripts/regen-shaders.sh)"
 	grep -E '^(stale|dxbc miss)' out/gate-shaders.log | head -4 | sed 's/^/      /'
 fi
-for validator in Hlsl Wgsl; do
+for validator in Hlsl Wgsl Msl; do
 	status=0
 	sh "scripts/validate$validator.sh" out/irPrograms > "out/gate-validate$validator.log" 2>&1 || status=$?
 	verdict=$(grep "^validate" "out/gate-validate$validator.log" | tail -1)
@@ -880,12 +880,15 @@ for validator in Hlsl Wgsl; do
 		*) fail "printed $validator: $verdict — see out/gate-validate$validator.log" ;;
 	esac
 done
+status=0
+sh scripts/validateMsl.sh out/mslProbe > out/gate-validateMslProbe.log 2>&1 || status=$?
+verdict=$(grep "^validate" out/gate-validateMslProbe.log | tail -1)
+case "$status" in
+	0) pass "probed MSL: $verdict" ;;
+	2) skip "probed MSL: $verdict" ;;
+	*) fail "probed MSL: $verdict — see out/gate-validateMslProbe.log" ;;
+esac
 skip "printed GLSL 430 / ES 3.00: naga reads GL GLSL only after a Vulkan 450 rewrite that is not in this repository"
-if command -v xcrun > /dev/null; then
-	skip "printed MSL: no gate step yet; the Mac compiles out/irPrograms/*.metal by hand (docs/GPU-MS.md)"
-else
-	skip "printed MSL: xcrun metal exists only on macOS"
-fi
 t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"
 
 echo
