@@ -308,6 +308,21 @@ branch. Each one is checked here per file; the full gate has not run again yet.
     `tests/golden3d/d3d11/*.png`. Perspective, textured, gltf, pick and bench pass their
     semantic checks on Metal.
 
+### 2026-10-25, after `a93fda2b`
+
+- `a93fda2b` passes `msc check` on all eight targets. Metal now has the same refusal
+  (`37b0351c`), pinned through `draw` and `drawIndexed` by `src/test/metalFirstInstanceProbe.ms`.
+- MSL `[[instance_id]]` includes `baseInstance`: on an M3 Max, `baseInstance` 5 reads 5. The
+  comment in `types.ms` now puts MSL beside WGSL (`9e634be0`). Metal refuses anyway, as wgpu
+  does, so a program gets the same result on every backend.
+- **Needs you:** nothing sets `GPUShaderModuleDescriptor.readsInstanceIndex` yet, and Shady's
+  reflection does not either. Until it does, the refusal fires on no backend for a Shady shader.
+- From the "known on main's Mac baseline" list above, these now pass on the Mac when run directly:
+  - two views, and host-view samples at 1/2/4 (`12235d6d`, `a1b1414b`);
+  - 8 samples, which Apple GPUs refuse by name; gate.sh passes that refusal (`6a1ba44d`);
+  - the fb trap: a 1x1 window is not clamped on macOS, so the Mac asks for one larger than the
+    screen (`1537d62b`).
+
 ## From Windows (2026-10-23)
 
 - **Coverage phases** (the person: coverage first, quality after). P0: the WebGPU members sokol
