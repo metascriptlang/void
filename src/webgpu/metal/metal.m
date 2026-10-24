@@ -747,6 +747,10 @@ void mtlComputeSetBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, i
 	[(id<MTLComputeCommandEncoder>)encoder setBuffer:(id<MTLBuffer>)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index];
 }
 
+void mtlComputeSetBufferOffset(MtlEncoder encoder, int64_t offset, int32_t index) {
+	[(id<MTLComputeCommandEncoder>)encoder setBufferOffset:(NSUInteger)offset atIndex:(NSUInteger)index];
+}
+
 void mtlComputeSetTexture(MtlEncoder encoder, MtlTexture texture, int32_t index) {
 	[(id<MTLComputeCommandEncoder>)encoder setTexture:(id<MTLTexture>)texture atIndex:(NSUInteger)index];
 }

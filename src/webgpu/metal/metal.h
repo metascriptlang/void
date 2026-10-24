@@ -260,6 +260,7 @@ void mtlReleaseComputePipeline(MtlComputePipeline pipeline);
 MtlEncoder mtlBeginComputePass(MtlCommandBuffer commandBuffer, const char *label);
 void mtlComputeSetPipeline(MtlEncoder encoder, MtlComputePipeline pipeline);
 void mtlComputeSetBuffer(MtlEncoder encoder, MtlBuffer buffer, int64_t offset, int32_t index);
+void mtlComputeSetBufferOffset(MtlEncoder encoder, int64_t offset, int32_t index);
 void mtlComputeSetTexture(MtlEncoder encoder, MtlTexture texture, int32_t index);
 void mtlComputeSetSampler(MtlEncoder encoder, MtlSampler sampler, int32_t index);
 void mtlDispatch(MtlEncoder encoder, int32_t x, int32_t y, int32_t z, int32_t threadsX, int32_t threadsY, int32_t threadsZ);

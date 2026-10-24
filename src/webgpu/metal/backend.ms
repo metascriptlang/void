@@ -114,6 +114,7 @@ import {
 	mtlBlitTextureToTexture,
 	mtlComputeMaxThreads,
 	mtlComputeSetBuffer,
+	mtlComputeSetBufferOffset,
 	mtlComputeSetPipeline,
 	mtlComputeSetSampler,
 	mtlComputeSetTexture,
@@ -235,6 +236,10 @@ const MAX_DISPATCH_GROUPS = 65535;
 const STORAGE_OFFSET_ALIGNMENT = 32;
 const QUERY_BYTES = 8;
 const VERTEX_BUFFER_BASE = 23;
+const STAGE_VERTEX = 0;
+const STAGE_FRAGMENT = 1;
+const STAGE_COMPUTE = 2;
+const STAGE_COUNT = 3;
 
 const PIXEL_INVALID = 0;
 const PIXEL_R8_UNORM = 10;
@@ -307,6 +312,7 @@ const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 const COMPARE_NEVER = 0;
 const COMPARE_ALWAYS = 7;
 
+const NO_SAMPLER = null as unknown as Ptr<MtlSamplerImpl>;
 const NO_BUFFER = null as unknown as Ptr<MtlBufferImpl>;
 const NO_TEXTURE = null as unknown as Ptr<MtlTextureImpl>;
 const NO_COMMAND_BUFFER = null as unknown as Ptr<MtlCommandBufferImpl>;
@@ -467,6 +473,13 @@ struct PassState {
 	screen: boolean;
 }
 
+export struct BindStats {
+	buffers: int64;
+	offsets: int64;
+	textures: int64;
+	samplers: int64;
+}
+
 struct ComputeState {
 	active: boolean;
 	groupBase: int32;
@@ -513,8 +526,11 @@ let computeEncoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let groupDepth: int32 = 0;
 let passSerial: int64 = 0;
 let bound: BoundState = { pipeline: 0 };
-let passVertexUniforms: Vec<Ptr<MtlBufferImpl>> = [];
-let passFragmentUniforms: Vec<Ptr<MtlBufferImpl>> = [];
+let boundBuffers: Vec<Ptr<MtlBufferImpl>> = [];
+let boundOffsets: Vec<int64> = [];
+let boundTextures: Vec<Ptr<MtlTextureImpl>> = [];
+let boundSamplers: Vec<Ptr<MtlSamplerImpl>> = [];
+let stats: BindStats = { buffers: 0 };
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
 let canvas: GPUCanvasConfiguration = { format: "bgra8unorm", depthFormat: "depth32float", sampleCount: 1 };
@@ -901,6 +917,8 @@ function checkMirroredConstants(): void {
 	const disagreement: string = mtlConstantsDisagreement(values[0], values.length as int32);
 	if (disagreement != "") { stop(`a constant of backend.ms disagrees with metal.m, ${disagreement}`); }
 }
+
+export function bindStats(): BindStats { return stats; }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
 	if (environment.device === null) { stop("requestDevice needs the native MTLDevice"); }
@@ -1968,12 +1986,7 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	pass = { active: true, serial: passSerial, groupBase: groupDepth, occlusionSet: descriptor.occlusionQuerySet.id };
 	beginFrame();
 	mtlPassReset();
-	passVertexUniforms = [];
-	passFragmentUniforms = [];
-	for (let i = 0; i < MAX_STAGE_UNIFORM_BUFFERS; i++) {
-		passVertexUniforms.push(NO_BUFFER);
-		passFragmentUniforms.push(NO_BUFFER);
-	}
+	clearBinds();
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const viewId = descriptor.colorAttachments[i].view.id;
 		if (viewId == 0) { continue; }
@@ -2225,13 +2238,81 @@ function applyPipeline(): void {
 	bound.uniformsDirty = true;
 }
 
+function clearBinds(): void {
+	boundBuffers = [];
+	boundOffsets = [];
+	boundTextures = [];
+	boundSamplers = [];
+	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_BUFFERS; i++) {
+		boundBuffers.push(NO_BUFFER);
+		boundOffsets.push(0);
+	}
+	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_TEXTURES; i++) { boundTextures.push(NO_TEXTURE); }
+	for (let i = 0; i < STAGE_COUNT * MAX_STAGE_SAMPLERS; i++) { boundSamplers.push(NO_SAMPLER); }
+}
+
+function bindBuffer(stage: int32, native: Ptr<MtlBufferImpl>, offset: int64, slot: int32): void {
+	const i = stage * MAX_STAGE_BUFFERS + slot;
+	if (boundBuffers[i] == native) {
+		if (boundOffsets[i] == offset) { return; }
+		if (stage == STAGE_VERTEX) {
+			mtlSetVertexBufferOffset(encoder, offset, slot);
+		} else if (stage == STAGE_FRAGMENT) {
+			mtlSetFragmentBufferOffset(encoder, offset, slot);
+		} else {
+			mtlComputeSetBufferOffset(computeEncoder, offset, slot);
+		}
+		boundOffsets[i] = offset;
+		stats.offsets += 1;
+		return;
+	}
+	if (stage == STAGE_VERTEX) {
+		mtlSetVertexBuffer(encoder, native, offset, slot);
+	} else if (stage == STAGE_FRAGMENT) {
+		mtlSetFragmentBuffer(encoder, native, offset, slot);
+	} else {
+		mtlComputeSetBuffer(computeEncoder, native, offset, slot);
+	}
+	boundBuffers[i] = native;
+	boundOffsets[i] = offset;
+	stats.buffers += 1;
+}
+
+function bindTexture(stage: int32, texture: Ptr<MtlTextureImpl>, slot: int32): void {
+	const i = stage * MAX_STAGE_TEXTURES + slot;
+	if (boundTextures[i] == texture) { return; }
+	if (stage == STAGE_VERTEX) {
+		mtlSetVertexTexture(encoder, texture, slot);
+	} else if (stage == STAGE_FRAGMENT) {
+		mtlSetFragmentTexture(encoder, texture, slot);
+	} else {
+		mtlComputeSetTexture(computeEncoder, texture, slot);
+	}
+	boundTextures[i] = texture;
+	stats.textures += 1;
+}
+
+function bindSampler(stage: int32, sampler: Ptr<MtlSamplerImpl>, slot: int32): void {
+	const i = stage * MAX_STAGE_SAMPLERS + slot;
+	if (boundSamplers[i] == sampler) { return; }
+	if (stage == STAGE_VERTEX) {
+		mtlSetVertexSampler(encoder, sampler, slot);
+	} else if (stage == STAGE_FRAGMENT) {
+		mtlSetFragmentSampler(encoder, sampler, slot);
+	} else {
+		mtlComputeSetSampler(computeEncoder, sampler, slot);
+	}
+	boundSamplers[i] = sampler;
+	stats.samplers += 1;
+}
+
 function applyVertexBuffers(): void {
 	const p = pipelines.slotIndex(bound.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if (pipelines.slots[p].strides[slot] == 0) { continue; }
 		if (bound.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
 		const b = buffers.slotIndex(bound.vertexBuffers[slot]);
-		mtlSetVertexBuffer(encoder, buffers.slots[b].natives[buffers.slots[b].active], bound.vertexOffsets[slot], VERTEX_BUFFER_BASE + slot);
+		bindBuffer(STAGE_VERTEX, buffers.slots[b].natives[buffers.slots[b].active], bound.vertexOffsets[slot], VERTEX_BUFFER_BASE + slot);
 	}
 	bound.vertexDirty = false;
 }
@@ -2254,17 +2335,17 @@ function applyResources(): void {
 		const e = entryOf(g, binding.binding);
 		if (binding.kind == BindingKind.Texture) {
 			const texture = viewNative(views.slotIndex(bindGroups.slots[g].entries[e].textureView.id));
-			if (binding.vertexStage) { mtlSetVertexTexture(encoder, texture, binding.nativeSlot); }
-			if (binding.fragmentStage) { mtlSetFragmentTexture(encoder, texture, binding.nativeSlot); }
+			if (binding.vertexStage) { bindTexture(STAGE_VERTEX, texture, binding.nativeSlot); }
+			if (binding.fragmentStage) { bindTexture(STAGE_FRAGMENT, texture, binding.nativeSlot); }
 		} else if (binding.kind == BindingKind.StorageBuffer) {
 			const native = liveBuffer(buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id));
 			const offset = bindGroups.slots[g].entries[e].offset;
-			if (binding.vertexStage) { mtlSetVertexBuffer(encoder, native, offset, binding.nativeSlot); }
-			if (binding.fragmentStage) { mtlSetFragmentBuffer(encoder, native, offset, binding.nativeSlot); }
+			if (binding.vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, binding.nativeSlot); }
+			if (binding.fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, binding.nativeSlot); }
 		} else {
 			const sampler = samplers.slots[samplers.slotIndex(bindGroups.slots[g].entries[e].sampler.id)].native;
-			if (binding.vertexStage) { mtlSetVertexSampler(encoder, sampler, binding.nativeSlot); }
-			if (binding.fragmentStage) { mtlSetFragmentSampler(encoder, sampler, binding.nativeSlot); }
+			if (binding.vertexStage) { bindSampler(STAGE_VERTEX, sampler, binding.nativeSlot); }
+			if (binding.fragmentStage) { bindSampler(STAGE_FRAGMENT, sampler, binding.nativeSlot); }
 		}
 	}
 }
@@ -2284,22 +2365,8 @@ function applyUniforms(): void {
 		}
 		const native = buffers.slots[b].natives[buffers.slots[b].active];
 		const slot = shaders.slots[s].uniforms[u].nativeSlot;
-		if (shaders.slots[s].uniforms[u].vertexStage) {
-			if (passVertexUniforms[slot] == native) {
-				mtlSetVertexBufferOffset(encoder, offset, slot);
-			} else {
-				mtlSetVertexBuffer(encoder, native, offset, slot);
-				passVertexUniforms[slot] = native;
-			}
-		}
-		if (shaders.slots[s].uniforms[u].fragmentStage) {
-			if (passFragmentUniforms[slot] == native) {
-				mtlSetFragmentBufferOffset(encoder, offset, slot);
-			} else {
-				mtlSetFragmentBuffer(encoder, native, offset, slot);
-				passFragmentUniforms[slot] = native;
-			}
-		}
+		if (shaders.slots[s].uniforms[u].vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, slot); }
+		if (shaders.slots[s].uniforms[u].fragmentStage) { bindBuffer(STAGE_FRAGMENT, native, offset, slot); }
 	}
 }
 
@@ -2514,6 +2581,7 @@ export function beginComputePass(passEncoder: GPUCommandEncoder, descriptor: GPU
 	computeEncoder = mtlBeginComputePass(commandBuffer, labelText(descriptor.label));
 	if (computeEncoder == null) { stop("computeCommandEncoder returned nil"); }
 	computeBound = { active: true, groupBase: groupDepth };
+	clearBinds();
 	return { id: 1 };
 }
 
@@ -2556,11 +2624,11 @@ function applyComputeResources(s: int32, g: int32): void {
 		const binding: NativeBinding = shaders.slots[s].resources[r];
 		const entry: GPUBindGroupEntry = bindGroups.slots[g].entries[entryOf(g, binding.binding)];
 		if (binding.kind == BindingKind.Sampler) {
-			mtlComputeSetSampler(computeEncoder, samplers.slots[samplers.slotIndex(entry.sampler.id)].native, binding.nativeSlot);
+			bindSampler(STAGE_COMPUTE, samplers.slots[samplers.slotIndex(entry.sampler.id)].native, binding.nativeSlot);
 		} else if (binding.kind == BindingKind.StorageBuffer) {
-			mtlComputeSetBuffer(computeEncoder, liveBuffer(buffers.slotIndex(entry.buffer.id)), entry.offset, binding.nativeSlot);
+			bindBuffer(STAGE_COMPUTE, liveBuffer(buffers.slotIndex(entry.buffer.id)), entry.offset, binding.nativeSlot);
 		} else {
-			mtlComputeSetTexture(computeEncoder, viewNative(views.slotIndex(entry.textureView.id)), binding.nativeSlot);
+			bindTexture(STAGE_COMPUTE, viewNative(views.slotIndex(entry.textureView.id)), binding.nativeSlot);
 		}
 	}
 }
