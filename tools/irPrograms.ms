@@ -388,23 +388,29 @@ class Dxbc {
 	missed: int32 = 0;
 }
 
-function bytecodeOf(d: Dxbc, constants: Map<string, string>, code: string, profile: string,
-	entry: string, what: string): string {
+function bytecodeOf(
+	dxbc: Dxbc,
+	constants: Map<string, string>,
+	code: string,
+	profile: string,
+	entry: string,
+	what: string,
+): string {
 	const keyed = profile + " " + entry + " " + FXC_FLAGS.join(" ") + "\n" + code;
 	const key = sha256(keyed.asBytes()).toHex();
-	let path = d.cache + "/" + key + ".dxbc";
+	let path = dxbc.cache + "/" + key + ".dxbc";
 	if (!exists(path)) {
-		path = d.fresh + "/" + key + ".dxbc";
+		path = dxbc.fresh + "/" + key + ".dxbc";
 		if (!exists(path)) {
-			if (d.fxc == "") {
-				d.missed++;
+			if (dxbc.fxc == "") {
+				dxbc.missed++;
 				console.log("dxbc miss " + what + " " + key + ": no fxc");
 				return "[]";
 			}
-			const source = d.fresh + "/" + key + ".hlsl";
+			const source = dxbc.fresh + "/" + key + ".hlsl";
 			keep(source, code);
 			const run = execFileResult(
-				d.fxc,
+				dxbc.fxc,
 				["-nologo", "-T", profile, "-E", entry]
 					.concat(FXC_FLAGS)
 					.concat(["-Fo", path, source]),
@@ -413,10 +419,10 @@ function bytecodeOf(d: Dxbc, constants: Map<string, string>, code: string, profi
 				fail("fxc " + profile + " refused " + what + " (" + source + "):\n" + run.output +
 					run.errorOutput);
 			}
-			d.compiled++;
+			dxbc.compiled++;
 		}
 	}
-	if (!d.used.includes(key)) { d.used.push(key); }
+	if (!dxbc.used.includes(key)) { dxbc.used.push(key); }
 	if (!constants.has(key)) {
 		const blob = readFile(path);
 		if (!blob.ok) { fail("cannot read " + path); }
@@ -425,97 +431,33 @@ function bytecodeOf(d: Dxbc, constants: Map<string, string>, code: string, profi
 	return "shaderBytecodeFromBase64(DXBC_" + key + ")";
 }
 
-// What each Metal language compiles with: the SDK, MSL 2.4 and the OS it starts on (iOS 15.0 as in
-// scripts/iosDevice.sh, macOS 12.0; the printed stages compile down to MSL 2.2), and the fast math
-// newLibraryWithSource defaults to in src/webgpu/metal/metal.m. A blob built for a newer OS or MSL
-// than the device has fails newLibraryWithData.
-function metalFlags(language: string): string[] {
-	return match (language) {
-		"metal_macos" => ["macosx", "-std=macos-metal2.4", "-mmacosx-version-min=12.0", "-ffast-math"],
-		"metal_ios" => ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-ffast-math"],
-		_ => [],
-	};
-}
-
-class Metallib {
-	cache: string = "";
-	fresh: string = "";
-	used: string[] = [];
-	compiled: int32 = 0;
-	missed: int32 = 0;
-	sdks: Map<string, boolean> = new Map();
-}
-
-function hasMetalSdk(m: Metallib, sdk: string): boolean {
-	const known = m.sdks.get(sdk);
-	if (known !== undefined) { return known; }
-	const run = execFileResult("xcrun", ["-sdk", sdk, "-f", "metal"]);
-	const found = run.started && run.exitCode == 0;
-	m.sdks.set(sdk, found);
-	return found;
-}
-
-function xcrunMetal(sdk: string, args: string[], what: string): void {
-	const run = execFileResult("xcrun", ["-sdk", sdk].concat(args));
-	if (!run.started || run.exitCode != 0) {
-		fail("xcrun " + args.join(" ") + " refused " + what + ":\n" + run.output + run.errorOutput);
-	}
-}
-
-function metallibOf(m: Metallib, constants: Map<string, string>, language: string, code: string,
-	entry: string, what: string): string {
-	const flags = metalFlags(language);
-	const sdk = flags[0];
-	const keyed = flags.join(" ") + " " + entry + "\n" + code;
-	const key = sha256(keyed.asBytes()).toHex();
-	let path = m.cache + "/" + key + ".metallib";
-	if (!exists(path)) {
-		path = m.fresh + "/" + key + ".metallib";
-		if (!exists(path)) {
-			if (!hasMetalSdk(m, sdk)) {
-				m.missed++;
-				console.log("metallib miss " + what + " " + key + ": no xcrun " + sdk + " metal");
-				return "[]";
-			}
-			const source = m.fresh + "/" + key + ".metal";
-			keep(source, code);
-			xcrunMetal(sdk, ["metal", "-c"].concat(flags.slice(1)).concat(["-o", m.fresh + "/" + key + ".air",
-				source]), what + " (" + source + ")");
-			xcrunMetal(sdk, ["metallib", m.fresh + "/" + key + ".air", "-o", path], what);
-			m.compiled++;
-		}
-	}
-	if (!m.used.includes(key)) { m.used.push(key); }
-	if (!constants.has(key)) {
-		const blob = readFile(path);
-		if (!blob.ok) { fail("cannot read " + path); }
-		constants.set(key, blob.value.toBase64());
-	}
-	return "shaderBytecodeFromBase64(METALLIB_" + key + ")";
-}
-
-function hlslProfile(stage: string): string {
-	return match (stage) {
-		"vertex" => "vs_5_0",
-		"fragment" => "ps_5_0",
-		_ => "cs_5_0",
-	};
-}
-
-function stageBytecode(blobOf: (code: string, stage: string, entry: string, what: string) => string,
-	s: ProgramSource, name: string): string[] {
-	if (s.refusal != "") { return isComputeSource(s) ? ["[]"] : ["[]", "[]"]; }
-	if (isComputeSource(s)) {
-		return [blobOf(s.computeCode, "compute", s.entryPoint, name + " compute")];
+function stageBytecode(
+	dxbc: Dxbc,
+	constants: Map<string, string>,
+	source: ProgramSource,
+	name: string,
+): string[] {
+	if (source.refusal != "") { return isComputeSource(source) ? ["[]"] : ["[]", "[]"]; }
+	const entry = source.entryPoint;
+	if (isComputeSource(source)) {
+		return [
+			bytecodeOf(dxbc, constants, source.computeCode, "cs_5_0", entry, name + " compute"),
+		];
 	}
 	return [
-		blobOf(s.vertexCode, "vertex", s.entryPoint, name + " vertex"),
-		blobOf(s.fragmentCode, "fragment", s.entryPoint, name + " fragment"),
+		bytecodeOf(dxbc, constants, source.vertexCode, "vs_5_0", entry, name + " vertex"),
+		bytecodeOf(dxbc, constants, source.fragmentCode, "ps_5_0", entry, name + " fragment"),
 	];
 }
 
-function moduleText(programs: Program[], typesPath: string, dispatcher: string,
-	reflectionOnly: boolean, counts: Counts, dxbc: Dxbc, metallib: Metallib): string {
+function moduleText(
+	programs: Program[],
+	typesPath: string,
+	dispatcher: string,
+	reflectionOnly: boolean,
+	counts: Counts,
+	dxbc: Dxbc,
+): string {
 	let sources: ProgramSource[][] = [];
 	let agreement = new Agreement();
 	for (const program of programs) {
