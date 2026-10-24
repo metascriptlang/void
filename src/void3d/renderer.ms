@@ -22,7 +22,7 @@ import {
 	drawnIn,
 	VertexLayout,
 	SKIN_UNIFORM_SLOT,
-	vertexLayoutOf,
+	meshLayoutOf,
 	drawsQuads,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
@@ -171,6 +171,7 @@ export enum RendererError {
 	ProgramNotCast,
 	CasterBlock,
 	SkinPose,
+	Instances,
 	DrawRange,
 	CameraPosition,
 	MeshWrite,
@@ -449,6 +450,9 @@ export function beginFrame(
 			return Result.err(RendererError.CameraPosition);
 		}
 		if (!item.validSkin(drawn.value)) { return Result.err(RendererError.SkinPose); }
+		if (!item.validInstances(context, drawn.value)) {
+			return Result.err(RendererError.Instances);
+		}
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
 		}
@@ -459,7 +463,7 @@ export function beginFrame(
 			return Result.err(RendererError.MaterialBlock);
 		}
 		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
-		if (layout != vertexLayoutOf(drawn.value)) {
+		if (layout != meshLayoutOf(drawn.value)) {
 			return Result.err(RendererError.VertexLayout);
 		}
 		if (drawsQuads(layout) && !context.meshes[item.mesh.index].isQuadShaped()) {

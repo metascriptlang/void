@@ -365,6 +365,13 @@ export function vertexLayoutOf(program: ProgramKey): VertexLayout {
 	return (doorProgramLayout(doorProgram(program)) - layoutBase) as VertexLayout;
 }
 
+// The layout of the mesh a draw item names: an instanced program reads that mesh in slot 0 and
+// its instances from a stream in slot 1.
+export function meshLayoutOf(program: ProgramKey): VertexLayout {
+	const layout: VertexLayout = vertexLayoutOf(program);
+	return layout == VertexLayout.InstancedLitTextured ? VertexLayout.LitTextured : layout;
+}
+
 export function drawsQuads(layout: VertexLayout): boolean {
 	return match (layout) {
 		VertexLayout.Lit => false,

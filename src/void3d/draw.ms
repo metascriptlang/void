@@ -15,6 +15,8 @@ import {
 	SKIN_UNIFORM_LENGTH,
 	Program,
 	drawsQuads,
+	vertexLayoutOf,
+	meshLayoutOf,
 	doorProgram,
 	applyPipeline,
 	applyBindings,
@@ -196,12 +198,35 @@ export struct DrawItem {
 	skinGeometry: SkinGeometry | null;
 	skinPalette: int32;
 	range: DrawRange | null;
+	instances: InstanceRun | null;
+}
+
+// What an instanced program draws the item's mesh once each for: `count` instances of the
+// stream `stream` from instance `first` (docs/PARTICLES-RENDER.md A.2.1).
+export struct InstanceRun {
+	stream: MeshId;
+	first: int32;
+	count: int32;
 }
 
 export function validRange(this item: Readonly<DrawItem>, total: int32): boolean {
 	const range = item.range;
 	return range === null || (range.base >= 0 && range.count >= 0 &&
 		range.base <= total && range.count <= total - range.base);
+}
+
+export function validInstances(
+	this item: Readonly<DrawItem>,
+	context: DrawContext,
+	program: ProgramKey,
+): boolean {
+	const run = item.instances;
+	if (!program.instanced) { return run === null; }
+	if (run === null || !context.hasMesh(run.stream)) { return false; }
+	const stream: GpuMesh = context.meshes[run.stream.index];
+	return stream.layout == VertexLayout.InstancedLitTextured && run.first >= 0 &&
+		run.count >= 0 && run.first <= stream.instanceCount &&
+		run.count <= stream.instanceCount - run.first;
 }
 
 export function skinPoseOf(this item: Readonly<DrawItem>): Readonly<SkinPose> | null {
@@ -752,6 +777,7 @@ export function isStream(this mesh: GpuMesh): boolean {
 function streamStride(layout: VertexLayout): int32 {
 	if (layout == VertexLayout.Particle) { return STREAM_INSTANCE_STRIDE; }
 	if (layout == VertexLayout.ParticleVisual) { return 36; }
+	if (layout == VertexLayout.InstancedLitTextured) { return 16; }
 	console.error(`void3d: ${layout.toString()} is not a particle stream layout`);
 	unreachable;
 }
@@ -1657,6 +1683,7 @@ export const NO_SCENE_TEXTURE: SceneTexture = { view: 0, sampler: 0, spotView: 0
 function bindItem(
 	context: DrawContext,
 	mesh: GpuMesh,
+	instances: InstanceRun | null,
 	material: Material,
 	scene: SceneTexture,
 ): void {
@@ -1664,6 +1691,12 @@ function bindItem(
 		drawsQuads(mesh.layout) ? mesh.instanceBuffer : mesh.vertexBuffer;
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = 0;
 	context.bindings[GPU3D_BINDING_VERTEX_OFFSET] = 0;
+	if (instances !== null) {
+		const stream: GpuMesh = context.meshes[instances.stream.index];
+		context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = stream.instanceBuffer;
+		context.bindings[GPU3D_BINDING_VERTEX_OFFSET] =
+			(instances.first * streamStride(stream.layout) * 4) as uint32;
+	}
 	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = mesh.indexBuffer;
 	context.bindings[GPU3D_BINDING_VIEW] = material.texture0;
 	context.bindings[GPU3D_BINDING_VIEW + 1] = material.texture1;
@@ -1794,7 +1827,15 @@ export function drawItemWith(
 		console.log("void3d: drawItem with invalid skin pose or element range");
 		unreachable;
 	}
-	if (mesh.hasNothingToDraw()) { return; }
+	if (!item.validInstances(context, program) ||
+		(program.instanced && mesh.layout != meshLayoutOf(program))) {
+		console.log(`void3d: drawItem draws ${program.describe()} on a ` +
+			`${mesh.layout.toString()} mesh with instances it does not take`);
+		unreachable;
+	}
+	const run = item.instances;
+	const instanceCount: int32 = run === null ? mesh.instanceCount : run.count;
+	if (mesh.hasNothingToDraw() || instanceCount == 0) { return; }
 	if (context.meshStorage[item.mesh.index] == VertexStorage.Pending) {
 		console.log("void3d: drawItem on a dynamic mesh whose vertices were not uploaded; " +
 			"beginFrame uploads them, so this frame changed the mesh after it began");
@@ -1819,14 +1860,14 @@ export function drawItemWith(
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,
 		program,
-		mesh.layout,
+		program.instanced ? vertexLayoutOf(program) : mesh.layout,
 		mesh.isIndexed(),
 		state,
 		targets,
 		mesh.indexType(),
 	);
 	applyPipeline(pipeline);
-	bindItem(context, mesh, material, scene);
+	bindItem(context, mesh, run, material, scene);
 	let globalProgram: int32 = doorProgram(program);
 	if (context.pipelines.declaresBlock(globalProgram, MODEL_SLOT)) {
 		const modelLength: int32 = uniformBlockLength(program, MODEL_SLOT);
@@ -1851,9 +1892,9 @@ export function drawItemWith(
 	}
 	const range = item.range;
 	if (range === null) {
-		draw(0, mesh.elementCount(), mesh.instanceCount);
+		draw(0, mesh.elementCount(), instanceCount);
 	} else {
-		draw(range.base, range.count, mesh.instanceCount);
+		draw(range.base, range.count, instanceCount);
 	}
 }
 
