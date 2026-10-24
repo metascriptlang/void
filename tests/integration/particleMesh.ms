@@ -45,7 +45,7 @@ extern function voidRunConfigured(
 // shows as its particle missing.
 const WIDTH: int32 = 320;
 const HEIGHT: int32 = 240;
-const CAPACITY: int32 = 4;
+const CAPACITY: int32 = 2;
 const GREY: Vec4 = { x: 0.2, y: 0.2, z: 0.2, w: 1 };
 const SCREEN: LowResView = { width: WIDTH, height: HEIGHT, scale: 1, offsetX: 0, offsetY: 0 };
 const RED: Rgba = { red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0 };
