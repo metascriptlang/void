@@ -2371,7 +2371,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		pass.colorViews[i] = viewId;
 		pass.resolveViews[i] = checkResolve(i, views.slots[v].texture, descriptor.colorAttachments[i].resolveTarget.id);
-		checkStoreOp(descriptor.colorAttachments[i].storeOp, `colorAttachments[${i}].storeOp`);
+		checkStoreOp(descriptor.colorAttachments[i].storeOp, i, "storeOp");
 	}
 	let depth = NO_DSV;
 	const depthView = descriptor.depthStencilAttachment.view.id;
@@ -2382,7 +2382,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		depth = views.slots[v].depthStencil;
 		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		depthStencil = textures.slots[textures.slotIndex(views.slots[v].texture)].info.stencil;
-		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, "depthStencilAttachment.depthStoreOp");
+		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, -1, "depthStoreOp");
 	}
 	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	d3dSetRenderTargets(context, targets[0], targets[1], targets[2], targets[3], depth);
@@ -2390,12 +2390,12 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	d3dSetScissorRect(context, 0, 0, pass.width, pass.height);
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (pass.colorViews[i] == 0) { continue; }
-		if (isClear(descriptor.colorAttachments[i].loadOp, `colorAttachments[${i}].loadOp`)) {
+		if (isClear(descriptor.colorAttachments[i].loadOp, i, "loadOp")) {
 			const color = descriptor.colorAttachments[i].clearValue;
 			d3dClearRtv(context, targets[i], color.r, color.g, color.b, color.a);
 		}
 	}
-	if (depthView != 0 && isClear(descriptor.depthStencilAttachment.depthLoadOp, "depthStencilAttachment.depthLoadOp")) {
+	if (depthView != 0 && isClear(descriptor.depthStencilAttachment.depthLoadOp, -1, "depthLoadOp")) {
 		const flags = depthStencil ? CLEAR_DEPTH | CLEAR_STENCIL : CLEAR_DEPTH;
 		d3dClearDsv(context, depth, flags, descriptor.depthStencilAttachment.depthClearValue, 0);
 	}
@@ -2438,17 +2438,21 @@ function passExtent(texture: uint32, baseMip: int32): void {
 	return resolveId;
 }
 
-function isClear(loadOp: string, member: string): boolean {
+function attachmentMember(index: int32, field: string): string {
+	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
+}
+
+function isClear(loadOp: string, index: int32, field: string): boolean {
 	const value = match (loadOp) {
 		"clear" => 1,
 		"load" => 0,
-		_ => stopOnMember(member, loadOp),
+		_ => stopOnMember(attachmentMember(index, field), loadOp),
 	};
 	return value == 1;
 }
 
-@noinline function checkStoreOp(storeOp: string, member: string): void {
-	if (storeOp != "store" && storeOp != "discard") { stopOnMember(member, storeOp); }
+@noinline function checkStoreOp(storeOp: string, index: int32, field: string): void {
+	if (storeOp != "store" && storeOp != "discard") { stopOnMember(attachmentMember(index, field), storeOp); }
 }
 
 export function endPass(): void {
