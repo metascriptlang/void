@@ -30,6 +30,12 @@ uniform blocks in group 0, textures and samplers in group 1, a sampler at `MAX_V
 its binding; HLSL and MSL take a uniform block's or sampler's native register from the
 author's `@binding`.
 
+Two resources of one kind may share a binding in a module, as `LitBindings` gives one view slot
+to `backTexture` and to `metalRoughTexture`, because each program key reads at most one of them:
+sokol-shdc laid out each `#ifdef` variant alone, and Heaps flattens each variant alone. The
+check that holds is per program after specialization (`bindingSlots`: "this program reads
+both"); `irErrors` refuses only two kinds at one binding.
+
 ## Reflection and its markers
 
 The reflection is the `GPUShaderModuleDescriptor` of `src/webgpu/types.ms`, written by
