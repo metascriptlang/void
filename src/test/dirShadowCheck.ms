@@ -44,8 +44,6 @@ import {
 	MeshId,
 	MaterialId,
 	MaterialError,
-	MODEL_SLOT,
-	MODEL_LENGTH,
 	addMaterial,
 	reserveUniforms,
 	releaseUniforms,
@@ -152,7 +150,6 @@ test "the shadow pass casts a caster's depth on its layout, cut only where its m
 			uniformBlockLength(ProgramKey.of(program), MATERIAL_UNIFORM_SLOT);
 		assert textureSlotMask(cut) == textureSlotMask(ProgramKey.of(program));
 	}
-	assert uniformBlockLength(castAs(ProgramKey.of(Program.Lit)), MODEL_SLOT) == MODEL_LENGTH;
 	const premultiplied: ProgramKey =
 		castAs(ProgramKey.of(Program.LitTextured).withPremultiplied());
 	assert !premultiplied.premultiplied;

@@ -83,20 +83,19 @@ headerOf() {
 
 attributesOf() {
 	case "$1" in
-		LIT)          echo "position normal color" ;;
+		LIT)          echo "position normal color instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
 		PARTICLE)     echo "root color" ;;
 		PARTICLE_VISUAL) echo "root shape tile color velocity look scale pull emitterRight emitterUp" ;;
 		BILLBOARD)    echo "position size anchor tile color" ;;
-		LIT_TEXTURED) echo "position normal uv color" ;;
-		LIT_TEXTURED_TANGENT) echo "position normal uv color tangent" ;;
-		SKIN_LIT) echo "position normal color skinJoints skinWeights" ;;
-		SKIN_LIT_TEXTURED) echo "position normal uv color skinJoints skinWeights" ;;
-		SKIN_LIT_TEXTURED_TANGENT) echo "position normal uv color tangent skinJoints skinWeights" ;;
-		INSTANCED_LIT_TEXTURED) echo "position normal uv color instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
-		LIT_TEXTURED_UV_B) echo "position normal uv color uvB" ;;
-		LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB" ;;
-		SKIN_LIT_TEXTURED_UV_B) echo "position normal uv color uvB skinJoints skinWeights" ;;
-		SKIN_LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB skinJoints skinWeights" ;;
+		LIT_TEXTURED) echo "position normal uv color instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		LIT_TEXTURED_TANGENT) echo "position normal uv color tangent instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		SKIN_LIT) echo "position normal color skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		SKIN_LIT_TEXTURED) echo "position normal uv color skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		SKIN_LIT_TEXTURED_TANGENT) echo "position normal uv color tangent skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		LIT_TEXTURED_UV_B) echo "position normal uv color uvB instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		SKIN_LIT_TEXTURED_UV_B) echo "position normal uv color uvB skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
+		SKIN_LIT_TEXTURED_TANGENT_UV_B) echo "position normal uv color tangent uvB skinJoints skinWeights instanceRow0 instanceRow1 instanceRow2 instanceColor" ;;
 		FULLSCREEN)   echo "position" ;;
 		*) echo "programKeys.txt: unknown layout $1" >&2; return 1 ;;
 	esac
@@ -142,7 +141,6 @@ regenKeys() {
 		normalMrt=0
 		pbr=0
 		pbrMaps=0
-		instanced=0
 		occlusionUvB=0
 		defines=""
 		if [ "$features" != "-" ]; then
@@ -160,7 +158,6 @@ regenKeys() {
 					NORMAL_MRT)    normalMrt=1 ;;
 					PBR)           pbr=1 ;;
 					PBR_MAPS)      pbrMaps=1 ;;
-					INSTANCED)     instanced=1 ;;
 					OCCLUSION_UV_B) occlusionUvB=1 ;;
 					*) echo "programKeys.txt: row $module names unknown feature $feature"; exit 1 ;;
 				esac
@@ -185,10 +182,10 @@ regenKeys() {
 
 		printf '\t%s_program_shader_desc,\n' "$module" >> "$work/descs"
 		printf '\tLAYOUT_%s,\n' "$layout" >> "$work/layouts"
-		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s),\n'
+		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s),\n'
 		printf "$key" "$program" "$preset" "$premultiplied" "$cutout" "$shadowed" \
 			"$uvTransform" "$backTexture" "$dissolve" "$emissive" "$normalMap" "$skinned" \
-			"$normalMrt" "$pbr" "$pbrMaps" "$instanced" "$occlusionUvB" >> "$work/keys"
+			"$normalMrt" "$pbr" "$pbrMaps" "$occlusionUvB" >> "$work/keys"
 		first=$(tr -d "\r" < "$KEYS" | awk -v l="$layout" '$1 !~ /^#/ && $7 == l { print $1; exit }')
 		if [ "$first" != "$module" ]; then
 			same=""

@@ -144,10 +144,11 @@ test "a vertex under identity matrices lands where it is, its normal and colour 
 			position: vec3f(0.25, -0.5, 0.75),
 			normal: vec3f(0.0, 1.0, 0.0),
 			color: vec4f(1.0, 0.5, 0.25, 1.0),
+			instanceRow0: vec4f(1.0, 0.0, 0.0, 0.0), instanceRow1: vec4f(0.0, 1.0, 0.0, 0.0),
+			instanceRow2: vec4f(0.0, 0.0, 1.0, 0.0), instanceColor: vec4f(1.0),
 		},
 		{
 			vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none() },
-			modelParams: { model: identity(), normalModel: identity() },
 		},
 		plainKey(),
 	);
@@ -257,17 +258,30 @@ function skinBindings(): VertexBindings {
 	rows[3] = vec4f(2.0, 0.0, 0.0, -1.0);
 	rows[4] = vec4f(0.0, 3.0, 0.0, 1.0);
 	rows[5] = vec4f(0.0, 0.0, 4.0, -2.0);
-	let model = identity();
-	model.columns[3] = vec4f(1000.0, 2000.0, 3000.0, 1.0);
 	return {
 		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none() },
-		modelParams: { model: model, normalModel: model },
-		modelTransformParams: { model: model },
 		skinParams: { skinRows: rows },
 	};
 }
 
-test "generated skin vertices share weighted rows, cofactor normals and no extra mesh model" {
+test "a vertex takes its world from the instance row and its colour times the row's colour" {
+	const out = litTexturedVs({
+		position: vec3f(1.0, 2.0, 3.0), normal: vec3f(1.0, 0.0, 0.0), uv: vec2f(0.0),
+		color: vec4f(1.0, 0.5, 0.25, 1.0), tangent: vec4f(0.0, 1.0, 0.0, 1.0),
+		instanceRow0: vec4f(-1.0, 0.0, 0.0, 10.0), instanceRow1: vec4f(0.0, 2.0, 0.0, 20.0),
+		instanceRow2: vec4f(0.0, 0.0, 1.0, 30.0), instanceColor: vec4f(0.5, 1.0, 1.0, 0.5),
+	}, {
+		vertexParams: {
+			viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none(),
+		},
+	}, { ...plainKey(), normalMap: true });
+	assert near(out.worldPosition, vec3f(9.0, 24.0, 33.0)) && near(out.clip.xyz, out.worldPosition);
+	assert within(out.worldNormal.y, 0.0) && within(out.worldNormal.z, 0.0);
+	assert near(out.worldTangent.xyz, vec3f(0.0, 2.0, 0.0)) && within(out.worldTangent.w, -1.0);
+	assert near(out.baseColor.rgb, vec3f(0.5, 0.5, 0.25)) && within(out.baseColor.a, 0.5);
+}
+
+test "generated skin vertices share weighted rows, cofactor normals and no instance row" {
 	const b = skinBindings();
 	const key: LitKey = { ...plainKey(), skinned: true, normalMap: true };
 	const input: TexturedAttributes = {

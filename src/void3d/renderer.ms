@@ -22,7 +22,7 @@ import {
 	drawnIn,
 	VertexLayout,
 	SKIN_UNIFORM_SLOT,
-	meshLayoutOf,
+	vertexLayoutOf,
 	drawsQuads,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
@@ -104,7 +104,6 @@ import {
 	validSkin,
 	validRange,
 	elementCount,
-	MODEL_SLOT,
 	SceneTexture,
 	NO_SCENE_TEXTURE,
 	slotBit,
@@ -529,7 +528,7 @@ export function beginFrame(
 			return Result.err(RendererError.MaterialBlock);
 		}
 		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
-		if (layout != meshLayoutOf(drawn.value)) {
+		if (layout != vertexLayoutOf(drawn.value)) {
 			return Result.err(RendererError.VertexLayout);
 		}
 		if (drawsQuads(layout) && !context.meshes[item.mesh.index].isQuadShaped()) {
@@ -797,13 +796,13 @@ function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide
-// nor the model matrix, at the length its shader declares; none when it declares no such slot.
+// nor the skin pose, at the length its shader declares; none when it declares no such slot.
 function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	let own: int32 = -1;
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
 		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT ||
 			slot == SHADOW_UNIFORM_SLOT || slot == FRAME_UNIFORM_SLOT;
-		if (passWide || slot == MODEL_SLOT || slot == SKIN_UNIFORM_SLOT ||
+		if (passWide || slot == SKIN_UNIFORM_SLOT ||
 			uniformBlockLength(program, slot) == 0) {
 			continue;
 		}

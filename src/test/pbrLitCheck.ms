@@ -378,12 +378,8 @@ function skinnedPosition(x: float32, y: float32, z: float32): Vec3f {
 	rows[0] = vec4f(1.0, 0.0, 0.0, x);
 	rows[1] = vec4f(0.0, 1.0, 0.0, y);
 	rows[2] = vec4f(0.0, 0.0, 1.0, z);
-	let model = identity();
-	model.columns[3] = vec4f(1000.0, 2000.0, 3000.0, 1.0);
 	const b: VertexBindings = {
 		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none() },
-		modelParams: { model: model, normalModel: model },
-		modelTransformParams: { model: model },
 		skinParams: { skinRows: rows },
 	};
 	return litVs({

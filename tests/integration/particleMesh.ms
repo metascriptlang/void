@@ -152,17 +152,16 @@ function init(): void {
 		if (!writeUniforms(context, block.value, uniforms).ok) { fail("uniform write refused"); }
 		const base = Material.ofKind(Program.UnlitTextured, kind);
 		const added = addMaterial(context, {
-			...base, program: base.program.withInstanced(),
-			pass: { ...base.pass, culling: Face.None },
+			...base, pass: { ...base.pass, culling: Face.None },
 			texture: white.value, uniforms: block.value,
 		});
-		if (!added.ok) { fail("instanced material refused"); unreachable; }
+		if (!added.ok) { fail("material refused"); unreachable; }
 		materials.push(added.value);
 	}
 	if (!releaseTexture(context, white.value).ok) { fail("texture caller lease refused"); }
 	meshes.push(quad(RED));
 	meshes.push(quad(BLUE));
-	const made = addStreamMesh(context, CAPACITY, VertexLayout.InstancedLitTextured);
+	const made = addStreamMesh(context, CAPACITY, VertexLayout.MeshInstances);
 	if (!made.ok) { fail("instance stream refused"); unreachable; }
 	stream = made.value;
 	playSystem(system, identity());

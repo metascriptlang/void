@@ -104,6 +104,10 @@ export struct LitAttributes {
 	color: Vec4f;
 	@feature(SKINNED) skinJoints: Vec4f;
 	@feature(SKINNED) skinWeights: Vec4f;
+	instanceRow0: Vec4f;
+	instanceRow1: Vec4f;
+	instanceRow2: Vec4f;
+	instanceColor: Vec4f;
 }
 
 export struct LitVaryings {
@@ -129,10 +133,10 @@ export struct TexturedAttributes {
 	@feature(OCCLUSION_UV_B) uvB: Vec2f;
 	@feature(SKINNED) skinJoints: Vec4f;
 	@feature(SKINNED) skinWeights: Vec4f;
-	@feature(INSTANCED) instanceRow0: Vec4f;
-	@feature(INSTANCED) instanceRow1: Vec4f;
-	@feature(INSTANCED) instanceRow2: Vec4f;
-	@feature(INSTANCED) instanceColor: Vec4f;
+	instanceRow0: Vec4f;
+	instanceRow1: Vec4f;
+	instanceRow2: Vec4f;
+	instanceColor: Vec4f;
 }
 
 export struct LitTexturedVaryings {
@@ -174,15 +178,6 @@ export struct VertexParams {
 	cameraRight: Vec4f;
 	cameraUp: Vec4f;
 	cameraPosition: Vec4f;
-}
-
-export struct ModelParams {
-	model: Mat4x4f;
-	normalModel: Mat4x4f;
-}
-
-export struct ModelTransformParams {
-	model: Mat4x4f;
 }
 
 export struct MaterialParams {
@@ -289,8 +284,6 @@ export struct SkinParams {
 
 export struct VertexBindings {
 	@binding(0) vertexParams: VertexParams;
-	@binding(4) modelParams: ModelParams;
-	@binding(4) modelTransformParams: ModelTransformParams;
 	@binding(7) skinParams: SkinParams;
 }
 
@@ -346,7 +339,6 @@ export struct LitKey {
 	@feature(NORMAL_MAP) normalMap: boolean;
 	@feature(PBR) pbr: boolean;
 	@feature(PBR_MAPS) pbrMaps: boolean;
-	@feature(INSTANCED) instanced: boolean;
 	@feature(OCCLUSION_UV_B) occlusionUvB: boolean;
 }
 
@@ -695,14 +687,20 @@ export function litVs(input: LitAttributes, b: VertexBindings, key: LitKey): Lit
 			clip: b.vertexParams.viewProj * world,
 		};
 	} else {
-		const world = b.modelParams.model * vec4f(input.position, 1.0);
+		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const world = matrix * vec4f(input.position, 1.0);
 		return {
 			worldPosition: world.xyz,
-			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-			baseColor: input.color,
+			worldNormal: skinNormal(matrix, input.normal),
+			baseColor: input.color * input.instanceColor,
 			clip: b.vertexParams.viewProj * world,
 		};
 	}
+}
+
+// -1 for a world matrix that mirrors, whose tangent frame flips with it.
+export function handednessOf(matrix: Mat4x4f): float32 {
+	return determinant(upperLeft3x3(matrix)) < 0.0 ? -1.0 : 1.0;
 }
 
 export function litTexturedVs(
@@ -711,12 +709,11 @@ export function litTexturedVs(
 	if (key.skinned) {
 		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
 		const world = matrix * vec4f(input.position, 1.0);
-		const handedness: float32 = determinant(upperLeft3x3(matrix)) < 0.0 ? -1.0 : 1.0;
 		return {
 			worldPosition: world.xyz,
 			worldNormal: skinNormal(matrix, input.normal),
 			worldTangent: vec4f(
-				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handedness,
+				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handednessOf(matrix),
 			),
 			surfaceUv: input.uv,
 			surfaceUvB: input.uvB,
@@ -724,43 +721,19 @@ export function litTexturedVs(
 			clip: b.vertexParams.viewProj * world,
 		};
 	} else {
-		if (key.instanced) {
-			const matrix = instanceWorld(
-				input.instanceRow0, input.instanceRow1, input.instanceRow2,
-			);
-			const world = matrix * vec4f(input.position, 1.0);
-			return {
-				worldPosition: world.xyz,
-				worldNormal: skinNormal(matrix, input.normal),
-				worldTangent: vec4f(upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w),
-				surfaceUv: input.uv,
-				surfaceUvB: input.uvB,
-				baseColor: input.color * input.instanceColor,
-				clip: b.vertexParams.viewProj * world,
-			};
-		} else {
-			const world = b.modelParams.model * vec4f(input.position, 1.0);
-			return {
-				worldPosition: world.xyz,
-				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-				worldTangent: vec4f(
-					upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
-				),
-				surfaceUv: input.uv,
-				surfaceUvB: input.uvB,
-				baseColor: input.color,
-				clip: b.vertexParams.viewProj * world,
-			};
-		}
-	}
-}
-
-// An unlit draw needs the normal matrix only for the normal target.
-function unlitModel(b: VertexBindings, key: LitKey): Mat4x4f {
-	if (key.normalMrt) {
-		return b.modelParams.model;
-	} else {
-		return b.modelTransformParams.model;
+		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		const world = matrix * vec4f(input.position, 1.0);
+		return {
+			worldPosition: world.xyz,
+			worldNormal: skinNormal(matrix, input.normal),
+			worldTangent: vec4f(
+				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handednessOf(matrix),
+			),
+			surfaceUv: input.uv,
+			surfaceUvB: input.uvB,
+			baseColor: input.color * input.instanceColor,
+			clip: b.vertexParams.viewProj * world,
+		};
 	}
 }
 
@@ -778,24 +751,13 @@ export function unlitTexturedVs(
 			baseColor: input.color,
 		};
 	} else {
-		if (key.instanced) {
-			const matrix = instanceWorld(
-				input.instanceRow0, input.instanceRow1, input.instanceRow2,
-			);
-			return {
-				clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
-				worldNormal: skinNormal(matrix, input.normal),
-				surfaceUv: input.uv,
-				baseColor: input.color * input.instanceColor,
-			};
-		} else {
-			return {
-				clip: b.vertexParams.viewProj * unlitModel(b, key) * vec4f(input.position, 1.0),
-				worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-				surfaceUv: input.uv,
-				baseColor: input.color,
-			};
-		}
+		const matrix = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+		return {
+			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			worldNormal: skinNormal(matrix, input.normal),
+			surfaceUv: input.uv,
+			baseColor: input.color * input.instanceColor,
+		};
 	}
 }
 

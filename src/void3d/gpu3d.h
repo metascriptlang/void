@@ -43,6 +43,10 @@ uint32_t gpu3dMakeStreamBuffer(int64_t length);
 // At most once per frame per buffer, before the pass that draws it. 0 when refused: a buffer that
 // is not valid, or more floats than it holds.
 int32_t gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length);
+// Any number of times per frame on a stream buffer that is not updated in that frame: the byte
+// offset the floats landed at, or -1 when refused (a buffer that is not valid, or more floats
+// than this frame's appends have left in it).
+int32_t gpu3dAppendBuffer(uint32_t buffer, const float *data, int64_t length);
 void gpu3dDestroyBuffer(uint32_t buffer);
 void gpu3dDestroyImage(uint32_t image);
 

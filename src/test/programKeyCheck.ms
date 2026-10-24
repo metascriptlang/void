@@ -50,6 +50,7 @@ import {
 	BILLBOARD_UNIFORM_LENGTH,
 	uniformBlockLength,
 	vertexLayoutOf,
+	readsInstanceRows,
 	MATERIAL_ALPHA_KILL,
 	METAL_ROUGH_VIEW_SLOT,
 	OCCLUSION_VIEW_SLOT,
@@ -88,8 +89,6 @@ import {
 	MeshId,
 	MaterialId,
 	MaterialError,
-	MODEL_SLOT,
-	MODEL_LENGTH,
 	addMesh,
 	addMaterial,
 	releaseMaterial,
@@ -262,7 +261,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 	assert declared == 174 + 6;
 }
 
-test "skin programs own slot7, omit mesh model and keep matching colour/shadow layouts" {
+test "skin programs own slot7 and keep matching colour/shadow layouts" {
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
 		const key = ProgramKey.of(program).withSkin();
 		assert key.bits() == (ProgramKey.of(program).bits() | (1 << 14));
@@ -271,7 +270,6 @@ test "skin programs own slot7, omit mesh model and keep matching colour/shadow l
 			assert drawn.ok;
 			if (!drawn.ok) { continue; }
 			assert uniformBlockLength(drawn.value, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
-			assert uniformBlockLength(drawn.value, MODEL_SLOT) == 0;
 			const expected: int32 = program == Program.Lit ? 18 : 20;
 			assert layoutFloats(vertexLayoutOf(drawn.value), 0) == expected;
 		}
@@ -313,7 +311,6 @@ test "every core normal MRT mesh key retains its skinned palette and separate fe
 			assert skin.bits() == (key.bits() | (1 << 14));
 			assert skin.bits() >= (1 << 15) && skin.bits() < 65536;
 			assert uniformBlockLength(skin, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
-			assert uniformBlockLength(skin, MODEL_SLOT) == 0;
 			checked++;
 		}
 	}
@@ -542,9 +539,8 @@ test "every block the CPU writes is the length its shader declares, read off the
 		assert uniformBlockLength(lit, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;
-		assert uniformBlockLength(lit, MODEL_SLOT) == MODEL_LENGTH;
 		assert uniformBlockLength(lit, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
-		assert declaredSlots(lit) == 5;
+		assert declaredSlots(lit) == 4;
 	}
 	for (const billboard of [ProgramKey.of(Program.Billboard), pixelArt(Program.Billboard)]) {
 		assert uniformBlockLength(billboard, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
@@ -736,7 +732,7 @@ test "the core owns its camera and light blocks, so only it could give them back
 }
 
 const UNIFORM_SLOTS_OF_LIT: Vec<int32> =
-	[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT, MODEL_SLOT];
+	[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT];
 
 test "each cutout key keeps the uncut key's layout and blocks, in both presets" {
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
@@ -850,8 +846,6 @@ test "unlit textured programs require colour data and no light uniform block" {
 		assert uniformBlockLength(program, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(program, MATERIAL_UNIFORM_SLOT) == 8;
 	}
-	assert uniformBlockLength(ProgramKey.of(Program.UnlitTextured), MODEL_SLOT) == 16;
-	assert uniformBlockLength(pixelArt(Program.UnlitTextured), MODEL_SLOT) == MODEL_LENGTH;
 }
 
 test "an unlit material refuses a missing block or one that stops before its colour" {
@@ -1188,24 +1182,22 @@ test "particleVisual declares additive program14 layout9 with original billboard
 	assert layoutFloats(VertexLayout.Billboard, 0) == 15;
 }
 
-test "an instanced key sets bit 18, is declared lit and unlit in each preset and casts instanced" {
-	const lit: ProgramKey = ProgramKey.of(Program.LitTextured).withInstanced();
-	assert lit.bits() == ProgramKey.of(Program.LitTextured).bits() + 262144;
-	assert describe(lit).includes(" instanced");
-	const programs: Vec<Program> = [Program.LitTextured, Program.UnlitTextured];
+test "every mesh program and its shadow casters have a layout carrying the instance row" {
+	const programs: Vec<Program> = [Program.Lit, Program.LitTextured, Program.UnlitTextured];
 	const presets: Vec<Preset> = [Preset.Core, Preset.PixelArt];
 	for (const program of programs) {
 		for (const preset of presets) {
-			const key = ProgramKey.of(program).withPreset(preset).withInstanced();
-			assert declares(key) && declares(key.withCutout()) && declares(key.withPremultiplied());
-			assert vertexLayoutOf(key) == VertexLayout.InstancedLitTextured;
+			const key = ProgramKey.of(program).withPreset(preset);
+			assert declares(key) && readsInstanceRows(vertexLayoutOf(key));
+			assert readsInstanceRows(vertexLayoutOf(key.withSkin()));
 		}
-		const cast = castIn(ProgramKey.of(program).withInstanced().withCutout());
-		assert cast.ok && cast.value.instanced && cast.value.preset == Preset.Shadow;
-		const plain = castIn(ProgramKey.of(program).withInstanced());
-		assert plain.ok && plain.value.instanced;
-		assert !declares({ ...ProgramKey.of(program).withInstanced(), skinned: true });
+		for (const caster of [ProgramKey.of(program), ProgramKey.of(program).withCutout()]) {
+			const cast = castIn(caster);
+			assert cast.ok && cast.value.preset == Preset.Shadow;
+			if (cast.ok) { assert readsInstanceRows(vertexLayoutOf(cast.value)); }
+		}
 	}
+	assert !readsInstanceRows(vertexLayoutOf(ProgramKey.of(Program.Billboard)));
 }
 
 test "a pbr-maps key sets bit 17, is declared in all four variants and binds slots 0, 1 and 2" {
@@ -1239,9 +1231,9 @@ function uvBLayoutOf(key: ProgramKey): VertexLayout {
 	return key.normalMap ? VertexLayout.LitTexturedTangentUvB : VertexLayout.LitTexturedUvB;
 }
 
-test "an occlusion-uv-b key sets bit 19 and is declared on a uv-b layout wherever pbr-maps is" {
+test "an occlusion-uv-b key sets bit 18 and is declared on a uv-b layout wherever pbr-maps is" {
 	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
-	assert maps.withOcclusionUvB().bits() == maps.bits() + 524288;
+	assert maps.withOcclusionUvB().bits() == maps.bits() + 262144;
 	assert describe(maps.withOcclusionUvB()).includes(" occlusion-uv-b");
 	const emitting: ProgramKey = maps.withEmissive();
 	const variants: Vec<ProgramKey> = [

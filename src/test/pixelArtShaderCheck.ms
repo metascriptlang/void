@@ -118,10 +118,13 @@ test "pixel-art lit stages carry the clip depth into the normal target" {
 				vec4f(0, 0, 0.5, 0), vec4f(0, 0, 0, 1)),
 			cameraRight: vec4f(1, 0, 0, 0), cameraUp: vec4f(0, 1, 0, 0), cameraPosition: none(),
 		},
-		modelParams: { model: identity(), normalModel: identity() },
 	};
 	const point = pixelArtLitVs(
-		{ position: vec3f(1, 2, 3), normal: vec3f(0, 0, 1), color: vec4f(1, 1, 1, 1) },
+		{
+			position: vec3f(1, 2, 3), normal: vec3f(0, 0, 1), color: vec4f(1, 1, 1, 1),
+			instanceRow0: vec4f(1.0, 0.0, 0.0, 0.0), instanceRow1: vec4f(0.0, 1.0, 0.0, 0.0),
+			instanceRow2: vec4f(0.0, 0.0, 1.0, 0.0), instanceColor: vec4f(1.0),
+		},
 		bindings, noKey(),
 	);
 	assert point.depth01 == 1.5 && point.clip.z == 1.5 && point.worldNormal.z == 1;

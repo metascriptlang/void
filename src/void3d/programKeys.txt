@@ -320,22 +320,6 @@ litTexturedPbrEmissiveMapsNormalMap LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORM
 litTexturedPbrEmissiveMapsNormalMapShadowed LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:SHADOWED litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT
 litTexturedPbrEmissiveMapsNormalMapCutout LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:CUTOUT litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT
 litTexturedPbrEmissiveMapsNormalMapCutoutShadowed LIT_TEXTURED CORE PBR:PBR_MAPS:EMISSIVE:NORMAL_MAP:CUTOUT:SHADOWED litTexturedVs litTexturedFs LIT_TEXTURED_TANGENT
-instancedLitTextured                    LIT_TEXTURED    CORE      INSTANCED                                    litTexturedVs   litTexturedFs         INSTANCED_LIT_TEXTURED
-instancedLitTexturedPremultiplied       LIT_TEXTURED    CORE      INSTANCED:PREMULTIPLIED                      litTexturedVs   litTexturedFs         INSTANCED_LIT_TEXTURED
-instancedLitTexturedCutout              LIT_TEXTURED    CORE      INSTANCED:CUTOUT                             litTexturedVs   litTexturedFs         INSTANCED_LIT_TEXTURED
-instancedUnlitTextured                  UNLIT_TEXTURED  CORE      INSTANCED                                    unlitTexturedVs unlitTexturedFs       INSTANCED_LIT_TEXTURED
-instancedUnlitTexturedPremultiplied     UNLIT_TEXTURED  CORE      INSTANCED:PREMULTIPLIED                      unlitTexturedVs unlitTexturedFs       INSTANCED_LIT_TEXTURED
-instancedUnlitTexturedCutout            UNLIT_TEXTURED  CORE      INSTANCED:CUTOUT                             unlitTexturedVs unlitTexturedFs       INSTANCED_LIT_TEXTURED
-pixelArtInstancedLitTextured            LIT_TEXTURED    PIXEL_ART INSTANCED                                    litTexturedVs   litTexturedFs         INSTANCED_LIT_TEXTURED
-pixelArtInstancedLitTexturedPremultiplied LIT_TEXTURED   PIXEL_ART INSTANCED:PREMULTIPLIED                      litTexturedVs   litTexturedFs         INSTANCED_LIT_TEXTURED
-pixelArtInstancedLitTexturedCutout      LIT_TEXTURED    PIXEL_ART INSTANCED:CUTOUT                             litTexturedVs   litTexturedFs         INSTANCED_LIT_TEXTURED
-pixelArtInstancedUnlitTextured          UNLIT_TEXTURED  PIXEL_ART INSTANCED                                    unlitTexturedVs unlitTexturedFs       INSTANCED_LIT_TEXTURED
-pixelArtInstancedUnlitTexturedPremultiplied UNLIT_TEXTURED PIXEL_ART INSTANCED:PREMULTIPLIED                      unlitTexturedVs unlitTexturedFs       INSTANCED_LIT_TEXTURED
-pixelArtInstancedUnlitTexturedCutout    UNLIT_TEXTURED  PIXEL_ART INSTANCED:CUTOUT                             unlitTexturedVs unlitTexturedFs       INSTANCED_LIT_TEXTURED
-shadowInstancedLitTextured              LIT_TEXTURED    SHADOW    INSTANCED                                    litTexturedVs   shadowLitTexturedFs   INSTANCED_LIT_TEXTURED
-shadowInstancedLitTexturedCutout        LIT_TEXTURED    SHADOW    INSTANCED:CUTOUT                             litTexturedVs   shadowLitTexturedFs   INSTANCED_LIT_TEXTURED
-shadowInstancedUnlitTextured            UNLIT_TEXTURED  SHADOW    INSTANCED                                    unlitTexturedVs shadowUnlitTexturedFs INSTANCED_LIT_TEXTURED
-shadowInstancedUnlitTexturedCutout      UNLIT_TEXTURED  SHADOW    INSTANCED:CUTOUT                             unlitTexturedVs shadowUnlitTexturedFs INSTANCED_LIT_TEXTURED
 # The occlusion map at the second uv set (shader3d.ms pbrMapped, Bevy occlusion_channel Uv1): every
 # pbr-maps row again with OCCLUSION_UV_B, on the layouts that carry uvB.
 litTexturedPbrMapsUvB LIT_TEXTURED CORE PBR:PBR_MAPS:OCCLUSION_UV_B litTexturedVs litTexturedFs LIT_TEXTURED_UV_B

@@ -27,7 +27,6 @@ enum {
 	LAYOUT_SKIN_LIT_TEXTURED,
 	LAYOUT_SKIN_LIT_TEXTURED_TANGENT,
 	LAYOUT_PARTICLE_VISUAL,
-	LAYOUT_INSTANCED_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED_UV_B,
 	LAYOUT_LIT_TEXTURED_TANGENT_UV_B,
 	LAYOUT_SKIN_LIT_TEXTURED_UV_B,
@@ -62,12 +61,11 @@ enum {
 };
 
 #define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
-		backTexture, dissolve, emissive, normalMap, skinned, normalMrt, pbr, pbrMaps, instanced, \
-		occlusionUvB) \
+		backTexture, dissolve, emissive, normalMap, skinned, normalMrt, pbr, pbrMaps, occlusionUvB) \
 	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
 	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11) | ((emissive) << 12) | \
 	((normalMap) << 13) | ((skinned) << 14) | ((normalMrt) << 15) | ((pbr) << 16) | \
-	((pbrMaps) << 17) | ((instanced) << 18) | ((occlusionUvB) << 19))
+	((pbrMaps) << 17) | ((occlusionUvB) << 18))
 
 #include "programTable.h"
 
@@ -79,6 +77,16 @@ _Static_assert(ATTR_skinLit_program_skinJoints == 3 &&
 	ATTR_skinLitTexturedNormalMap_program_skinJoints == 5 &&
 	ATTR_skinLitTexturedNormalMap_program_skinWeights == 6, "skin attribute ABI");
 
+// Slot 1 steps once per instance: the world affine's three rows and a colour, 16 floats
+// (draw.ms writeInstanceRow, shader3d.ms instanceWorld).
+static void describeInstanceRow(sg_vertex_layout_state *out, int row0) {
+	out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+	for (int i = 0; i < 4; i++) {
+		out->attrs[row0 + i].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[row0 + i].buffer_index = 1;
+	}
+}
+
 static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 	switch (layout) {
 	case LAYOUT_LIT:
@@ -86,6 +94,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_lit_program_position].format = SG_VERTEXFORMAT_FLOAT3;
 		out->attrs[ATTR_lit_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
 		out->attrs[ATTR_lit_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		describeInstanceRow(out, ATTR_lit_program_instanceRow0);
 		break;
 	case LAYOUT_PARTICLE:
 		// buffer 0: root + rgba per instance; the vertex index makes the corners (quadCorner).
@@ -122,6 +131,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_litTextured_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
 		out->attrs[ATTR_litTextured_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_litTextured_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		describeInstanceRow(out, ATTR_litTextured_program_instanceRow0);
 		break;
 	case LAYOUT_LIT_TEXTURED_TANGENT:
 		out->attrs[ATTR_litTexturedNormalMap_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -129,6 +139,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_litTexturedNormalMap_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_litTexturedNormalMap_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_litTexturedNormalMap_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
+		describeInstanceRow(out, ATTR_litTexturedNormalMap_program_instanceRow0);
 		break;
 	case LAYOUT_SKIN_LIT:
 		out->attrs[ATTR_skinLit_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -136,6 +147,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_skinLit_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLit_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLit_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		describeInstanceRow(out, ATTR_skinLit_program_instanceRow0);
 		break;
 	case LAYOUT_SKIN_LIT_TEXTURED:
 		out->attrs[ATTR_skinLitTextured_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -144,21 +156,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_skinLitTextured_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTextured_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTextured_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
-		break;
-	case LAYOUT_INSTANCED_LIT_TEXTURED:
-		out->attrs[ATTR_instancedLitTextured_program_position].format = SG_VERTEXFORMAT_FLOAT3;
-		out->attrs[ATTR_instancedLitTextured_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
-		out->attrs[ATTR_instancedLitTextured_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
-		out->attrs[ATTR_instancedLitTextured_program_color].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_instancedLitTextured_program_instanceRow0].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_instancedLitTextured_program_instanceRow0].buffer_index = 1;
-		out->attrs[ATTR_instancedLitTextured_program_instanceRow1].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_instancedLitTextured_program_instanceRow1].buffer_index = 1;
-		out->attrs[ATTR_instancedLitTextured_program_instanceRow2].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_instancedLitTextured_program_instanceRow2].buffer_index = 1;
-		out->attrs[ATTR_instancedLitTextured_program_instanceColor].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_instancedLitTextured_program_instanceColor].buffer_index = 1;
-		out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+		describeInstanceRow(out, ATTR_skinLitTextured_program_instanceRow0);
 		break;
 	case LAYOUT_SKIN_LIT_TEXTURED_TANGENT:
 		out->attrs[ATTR_skinLitTexturedNormalMap_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -168,6 +166,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_skinLitTexturedNormalMap_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTexturedNormalMap_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTexturedNormalMap_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		describeInstanceRow(out, ATTR_skinLitTexturedNormalMap_program_instanceRow0);
 		break;
 	case LAYOUT_LIT_TEXTURED_UV_B:
 		out->attrs[ATTR_litTexturedPbrMapsUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -175,6 +174,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_litTexturedPbrMapsUvB_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_litTexturedPbrMapsUvB_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_litTexturedPbrMapsUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
+		describeInstanceRow(out, ATTR_litTexturedPbrMapsUvB_program_instanceRow0);
 		break;
 	case LAYOUT_LIT_TEXTURED_TANGENT_UV_B:
 		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -183,6 +183,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_litTexturedPbrMapsNormalMapUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
+		describeInstanceRow(out, ATTR_litTexturedPbrMapsNormalMapUvB_program_instanceRow0);
 		break;
 	case LAYOUT_SKIN_LIT_TEXTURED_UV_B:
 		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -192,6 +193,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTexturedPbrMapsUvB_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		describeInstanceRow(out, ATTR_skinLitTexturedPbrMapsUvB_program_instanceRow0);
 		break;
 	case LAYOUT_SKIN_LIT_TEXTURED_TANGENT_UV_B:
 		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_position].format = SG_VERTEXFORMAT_FLOAT3;
@@ -202,6 +204,7 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_uvB].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		describeInstanceRow(out, ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_instanceRow0);
 		break;
 	default:
 		// clip-space position of a fullscreen triangle (copy, post, blit)
@@ -222,9 +225,6 @@ _Static_assert(ATTR_lit_program_position == 0 && ATTR_lit_program_normal == 1 &&
 	"sokol lays a buffer out in attribute slot order, which must be the order its writer writes:"
 	" meshData.ms, particleWriter.ms writeParticlePoints, billboard.ms pushTo");
 _Static_assert(sizeof(lit_lightParams_t) == 108 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
-_Static_assert(sizeof(lit_modelParams_t) == 32 * 4, "modelParams must match MODEL_LENGTH in draw.ms");
-_Static_assert(sizeof(unlitTextured_modelTransformParams_t) == 16 * 4,
-	"modelTransformParams must contain one matrix");
 _Static_assert(ATTR_litTexturedPbrMapsUvB_program_uvB == 4
 	&& ATTR_litTexturedPbrMapsNormalMapUvB_program_uvB == 5
 	&& ATTR_skinLitTexturedPbrMapsUvB_program_uvB == 4
@@ -235,6 +235,18 @@ _Static_assert(ATTR_litTexturedPbrMapsUvB_program_uvB == 4
 _Static_assert(sizeof(unlitTextured_unlitMaterialParams_t) == 8 * 4
 	&& UB_unlitTextured_unlitMaterialParams == UB_lit_materialParams,
 	"unlit material colour and parameters must share the material slot");
+
+_Static_assert(ATTR_lit_program_instanceColor == ATTR_lit_program_instanceRow0 + 3
+	&& ATTR_litTextured_program_instanceColor == ATTR_litTextured_program_instanceRow0 + 3
+	&& ATTR_litTexturedNormalMap_program_instanceColor == ATTR_litTexturedNormalMap_program_instanceRow0 + 3
+	&& ATTR_skinLit_program_instanceColor == ATTR_skinLit_program_instanceRow0 + 3
+	&& ATTR_skinLitTextured_program_instanceColor == ATTR_skinLitTextured_program_instanceRow0 + 3
+	&& ATTR_skinLitTexturedNormalMap_program_instanceColor == ATTR_skinLitTexturedNormalMap_program_instanceRow0 + 3
+	&& ATTR_litTexturedPbrMapsUvB_program_instanceColor == ATTR_litTexturedPbrMapsUvB_program_instanceRow0 + 3
+	&& ATTR_litTexturedPbrMapsNormalMapUvB_program_instanceColor == ATTR_litTexturedPbrMapsNormalMapUvB_program_instanceRow0 + 3
+	&& ATTR_skinLitTexturedPbrMapsUvB_program_instanceColor == ATTR_skinLitTexturedPbrMapsUvB_program_instanceRow0 + 3
+	&& ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_instanceColor == ATTR_skinLitTexturedPbrMapsNormalMapUvB_program_instanceRow0 + 3,
+	"a layout's instance row follows its vertex attributes as describeInstanceRow reads it");
 
 static int32_t g_programBase = -1;
 static int32_t g_layoutBase = -1;
@@ -323,6 +335,14 @@ int32_t gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length) {
 	if (size > sg_query_buffer_size(handle)) return 0;
 	sg_update_buffer(handle, &(sg_range){.ptr = data, .size = size});
 	return 1;
+}
+
+int32_t gpu3dAppendBuffer(uint32_t buffer, const float *data, int64_t length) {
+	sg_buffer handle = {.id = buffer};
+	if (length <= 0 || sg_query_buffer_state(handle) != SG_RESOURCESTATE_VALID) return -1;
+	const size_t size = (size_t)length * sizeof(float);
+	if (sg_query_buffer_will_overflow(handle, size)) return -1;
+	return sg_append_buffer(handle, &(sg_range){.ptr = data, .size = size});
 }
 
 uint32_t gpu3dMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height) {
