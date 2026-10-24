@@ -1297,6 +1297,41 @@ run_particle_fade() {
 	rm -rf out/debug/.cache
 }
 
+run_particle_mesh() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "particle-mesh: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/particleMesh.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/particleMesh.ms --output="$exe" \
+		> "$WORK/particleMesh.build.log" 2>&1; then
+		fail "particle-mesh: tests/integration/particleMesh.ms does not build — see $WORK/particleMesh.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		log="$WORK/particleMesh.$preset.log"
+		status=0
+		VOID_PARTICLE_MESH_PIXEL_ART=$preset "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "particle-mesh: no readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || [ "$(grep -c '^PASS particle mesh:' "$log")" -ne 2 ]; then
+			fail "particle-mesh: preset=$preset — see $log"
+			continue
+		fi
+		status=0
+		VOID_PARTICLE_MESH_PIXEL_ART=$preset VOID_PARTICLE_MESH_CONTROL=1 "$exe" \
+			> "$log.control" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'stage=0: the blue particle is not blue' "$log.control"; then
+			fail "particle-mesh: preset=$preset run-offset control not red — see $log.control"
+			continue
+		fi
+		pass "particle-mesh: preset=$preset; by mesh, in draw order, run-offset control red"
+	done
+}
+
 run_bloom() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "bloom: GATE_SKIP_CAPTURE=1 — nothing was read back"
@@ -3001,6 +3036,7 @@ run_exposure
 run_hdr
 run_bloom
 run_particle_fade
+run_particle_mesh
 run_mesh_lod
 run_gl_core
 run_stores
