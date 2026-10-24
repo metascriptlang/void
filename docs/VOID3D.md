@@ -5938,6 +5938,36 @@ variant, the same slots and block, the caster unchanged), `skinMeshCheck.ms` (th
 place before the skin, the layouts, the refusals) and `gltfMaterialCheck.ms` (`TEXCOORD_1` into
 the mesh and the key; a missing attribute or `texCoord` 2 refused).
 
+### Cascaded sun shadows, as built so far (2026-10-24)
+
+The sun's single fitted map becomes up to four cascades, each its own orthographic map in one
+layer of a depth array. The split and the boxes are Bevy's; Heaps' `CascadeShadowMap` has the same
+shape (a `Sampler2DArray`, `MAX_CASCADE_COUNT` 4, a blend across `transitionFraction`), so neither
+is a new mechanism.
+
+- `cascades.ms` `cascadeBounds` is `calculate_cascade_bounds` (`bevy_light/src/cascade.rs`): far
+  bounds growing by one ratio from the first to the maximum. `CascadeConfig` holds the bounds, the
+  overlap and the minimum distance, as Bevy's `CascadeShadowConfig` does after its builder; a
+  config with no cascade or more than four, bounds that do not rise past the minimum distance, an
+  overlap outside 0..1 or a negative minimum distance is refused, where the builder asserts.
+- `cascadeOf` is `calculate_cascade`. The slice's eight corners go to light space; the diameter is
+  the larger of the body and far-face diagonals, rounded up, so it holds whatever the view turns;
+  the centre is snapped to whole texels so the shadow does not shimmer as the view moves. One
+  difference: Bevy keeps the box's near side at the slice and draws casters in front of it with
+  depth clamping, which sokol does not expose, so the box reaches back to the nearest caster's
+  light depth (`casterNear`) instead.
+- `cascadesOf` starts cascade i at the previous far bound times (1 - overlap), the first at the
+  minimum distance, as `build_directional_light_cascades` does; the receiver blends the two across
+  that overlap (Bevy `shadows.wesl:134-262`).
+- The door's `ArrayTarget` (`src/gpu/arrayTarget.ms`, `doorMakeArrayTargetImage`) is a depth
+  array drawn one layer at a time, the CubeTarget idiom with layers for faces.
+
+Not built yet: the shadow block with the cascades' matrices and far bounds, the receivers reading
+the array, one caster pass per layer. One cascade will reproduce today's sun map, so no program key
+bit is added. Pinned so far by `cascadesCheck.ms` (the bounds, the refusals, the slice corners,
+each cascade holding its slice, the texel size kept as the view turns and the centre on whole
+texels, the caster depth).
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
