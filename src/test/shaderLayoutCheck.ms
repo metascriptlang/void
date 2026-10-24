@@ -289,12 +289,15 @@ test "GL pairs a texture fetched with no sampler with a dummy sampler" {
 	assert !slots(depthModule(), ShaderTarget.Hlsl5).includes(DUMMY_SAMPLER);
 }
 
-test "a binding read by both stages is refused by name" {
+test "a binding read by both stages takes one native slot in each" {
 	let m = slotModule();
 	m.functions[0].body[0].expr.operands[0].operands[1].index = 6;
-	assert slots(m, ShaderTarget.Hlsl5) ==
-		"resource 'linearSmp' is read by the Vertex and the Fragment entry; " +
-		"a binding belongs to one stage";
+	const shared = slots(m, ShaderTarget.Hlsl5)
+		.split("; ")
+		.filter((s) => s.startsWith("linearSmp "))
+		.map((s) => s.split(" "));
+	assert shared.length == 2 && shared[0][3] == shared[1][3];
+	assert shared.some((f) => f[1] == "Vertex") && shared.some((f) => f[1] == "Fragment");
 }
 
 test "two read views at one slot are refused by name" {
