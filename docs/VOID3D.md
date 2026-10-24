@@ -5963,11 +5963,23 @@ is a new mechanism.
 - The door's `ArrayTarget` (`src/gpu/arrayTarget.ms`, `doorMakeArrayTargetImage`) is a depth
   array drawn one layer at a time, the CubeTarget idiom with layers for faces.
 
-Not built yet: the shadow block with the cascades' matrices and far bounds, the receivers reading
-the array, one caster pass per layer. One cascade will reproduce today's sun map, so no program key
-bit is added. Pinned so far by `cascadesCheck.ms` (the bounds, the refusals, the slice corners,
-each cascade holding its slice, the texel size kept as the view turns and the centre on whole
-texels, the caster depth).
+- The shadow block (`gpu3d.ms` `SHADOW_CASCADE_*`, `shader3d.ms` `ShadowParams`) carries four
+  map matrices, the far bounds, the count, overlap, bias and opacity, and the view's forward axis
+  with the map size; the spot's part follows. The receiver (`dirShadowAt`) takes the view depth
+  along that axis, picks the first cascade whose far bound lies past it, fetches that layer and
+  mixes in the next across the overlap; past the last bound it is lit, as Bevy's
+  `fetch_directional_shadow` is. A block nobody wrote has count 0 and shades nothing.
+- `DirShadowMap.setCascades` takes a config (null keeps one map fitted to the casters in view,
+  Heaps' default); `drawShadows` draws each cascade into its layer with the casters re-culled to
+  its box. The spot's map is a one-layer array, so both maps bind as arrays and a frame that has
+  only one of them substitutes it into the other's slot unchanged.
+- One cascade with an unbounded far bound is today's sun map, so no program key bit is added.
+
+Pinned by `cascadesCheck.ms` (the bounds, the refusals, the slice corners, each cascade holding
+its slice, the texel size kept as the view turns and the centre on whole texels, the caster
+depth), `cascadeShadowCheck.ms` (the cascade pick, the blend, the layer fetch in the GLSL) and
+`spotShadowCheck.ms` (a packed two-cascade block read back by `dirShadowAt`). Not run yet: the
+regenerated shaders and the goldens on the GPU.
 
 ### Clustered lights: how the clusters reach the shader (decided 2026-10-24, not built)
 
