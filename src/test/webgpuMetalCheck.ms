@@ -36,7 +36,7 @@ import {
 } from "../webgpu/types.ms";
 import { exec } from "std/process";
 import { getCurrentDepthTexture, getCurrentTexture, requestDevice } from "../webgpu/device.ms";
-import { nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
+import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.ms";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
 
 @compile("./metalDevice.m");
@@ -2024,5 +2024,170 @@ test "an occlusion query counts samples over a drawn triangle, none over an empt
 	device.queue.submit(encoder.finish());
 	counts = readCounters(device, resolved, 34);
 	assert counts[32] == 0 && counts[33] > 0;
+	device.destroy();
+}
+
+function solidView(device: GPUDevice, r: float64, g: float64): GPUTextureView {
+	const view = viewOf(sizedTexture(device, 8, 8, 1, 1, "2d"), "2d", 0, 1, 0, 1);
+	clearView(device, view, r, g, 0.0, 0);
+	return view;
+}
+
+function texturedGroup(device: GPUDevice, pipeline: GPURenderPipeline, view: GPUTextureView, sampler: GPUSampler): GPUBindGroup {
+	let descriptor: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
+	descriptor.entries[0] = { binding: 0, textureView: view };
+	descriptor.entries[1] = { binding: 1, sampler: sampler };
+	return device.createBindGroup(descriptor);
+}
+
+test "a bind that did not change issues no native call, and every change or new pass issues one" {
+	const device = openDevice();
+	const module = sampledShader(device, TEXTURED_FRAGMENT_MSL, "tmain", textureBinding("float", "2d", false), samplerBinding("filtering"));
+	const pipeline = flatPipeline(device, module, 1);
+	const sampler = device.createSampler({ label: "nearest", magFilter: "nearest", minFilter: "nearest" });
+	const greenGroup = texturedGroup(device, pipeline, solidView(device, 0.0, 1.0), sampler);
+	const redGroup = texturedGroup(device, pipeline, solidView(device, 1.0, 0.0), sampler);
+	const vertices = vertexBuffer(device, 96);
+	const full: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0];
+	const left: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 0.0, 1.0, -1.0, -1.0, 0.0, 1.0, 0.0, -1.0];
+	device.queue.writeBuffer(vertices, 0, full);
+	device.queue.writeBuffer(vertices, 48, left);
+	const target = colourTarget(device, 1);
+	const noOffsets: Vec<uint32> = [];
+	const start = bindStats();
+	let encoder = device.createCommandEncoder();
+	let pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, greenGroup, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	let now = bindStats();
+	assert now.buffers - start.buffers == 1 && now.textures - start.textures == 1 && now.samplers - start.samplers == 1 && now.offsets - start.offsets == 0;
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, greenGroup, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	now = bindStats();
+	assert now.buffers - start.buffers == 1 && now.textures - start.textures == 1 && now.samplers - start.samplers == 1 && now.offsets - start.offsets == 0;
+	pass.setBindGroup(1, redGroup, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	now = bindStats();
+	assert now.buffers - start.buffers == 1 && now.textures - start.textures == 2 && now.samplers - start.samplers == 1;
+	pass.setVertexBuffer(0, vertices, 48);
+	pass.setBindGroup(1, greenGroup, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	now = bindStats();
+	assert now.buffers - start.buffers == 1 && now.offsets - start.offsets == 1 && now.textures - start.textures == 3 && now.samplers - start.samplers == 1;
+	pass.end();
+	device.queue.submit(encoder.finish());
+	let pixels = readPixels(target);
+	assert pixel(pixels, 16, 32) == GREEN;
+	assert pixel(pixels, 48, 32) == RED;
+	const second = bindStats();
+	encoder = device.createCommandEncoder();
+	pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, redGroup, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	now = bindStats();
+	assert now.buffers - second.buffers == 1 && now.textures - second.textures == 1 && now.samplers - second.samplers == 1 && now.offsets - second.offsets == 0;
+	pixels = readPixels(target);
+	assert pixel(pixels, 16, 32) == RED && pixel(pixels, 48, 32) == RED;
+	device.destroy();
+}
+
+test "a texture both stages read counts one bind per stage, and a repeat of the draw binds none" {
+	const device = openDevice();
+	const texture = sizedTexture(device, 8, 8, 1, 1, "2d");
+	clearView(device, viewOf(texture, "2d", 0, 1, 0, 1), 0.0, 1.0, 0.0, 0);
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "both stages",
+		vertexCode: HALF_VERTEX_READ_MSL,
+		vertexEntryPoint: "vhalf",
+		fragmentCode: READ_FIRST_MSL,
+		fragmentEntryPoint: "first",
+	};
+	let binding = textureBinding("float", "2d", false);
+	binding.visibility = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	descriptor.bindings[0] = binding;
+	descriptor.bindings[1] = NO_BINDING;
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	const pipeline = flatPipeline(device, device.createShaderModule(descriptor), 1);
+	let entries: GPUBindGroupDescriptor = { label: "resources", layout: pipeline.getBindGroupLayout(1) };
+	entries.entries[0] = { binding: 0, textureView: viewOf(texture, "2d", 0, 1, 0, 1) };
+	const group = device.createBindGroup(entries);
+	const vertices = vertexBuffer(device, 48);
+	device.queue.writeBuffer(vertices, 0, [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0] as Vec<float32>);
+	const target = colourTarget(device, 1);
+	const noOffsets: Vec<uint32> = [];
+	const start = bindStats();
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	pass.setPipeline(pipeline);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	let now = bindStats();
+	assert now.textures - start.textures == 2 && now.buffers - start.buffers == 1;
+	pass.setBindGroup(1, group, noOffsets);
+	pass.draw(6, 1, 0, 0);
+	now = bindStats();
+	assert now.textures - start.textures == 2 && now.buffers - start.buffers == 1;
+	pass.end();
+	device.queue.submit(encoder.finish());
+	const pixels = readPixels(target);
+	assert pixel(pixels, 30, 32) == BLUE;
+	assert pixel(pixels, 48, 32) == GREEN;
+	device.destroy();
+}
+
+test "a compute pass skips a buffer it already holds, moves it by offset alone, and starts empty in the next pass" {
+	const device = openDevice();
+	let descriptor = computeDescriptor(HALVE_MSL, "halve", 4, 1);
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "read-only-storage", nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 1 };
+	const pipeline = device.createComputePipeline({ label: "halve", compute: { module: device.createShaderModule(descriptor), entryPoint: "halve" } });
+	const source = device.createBuffer({ label: "source", size: 16, usage: STORAGE_BUFFER_USAGE });
+	device.queue.writeBuffer(source, 0, [2.0, 4.0, 6.0, 8.0] as Vec<float32>);
+	const result = device.createBuffer({ label: "result", size: 64, usage: STORAGE_BUFFER_USAGE });
+	const atStart = computeGroup(device, pipeline, { binding: 0, buffer: source }, { binding: 1, buffer: result, offset: 0, size: 16 });
+	const shifted = computeGroup(device, pipeline, { binding: 0, buffer: source }, { binding: 1, buffer: result, offset: 32, size: 16 });
+	const read = device.createBuffer({ label: "read", size: 64, usage: MAP_READ_USAGE });
+	const noOffsets: Vec<uint32> = [];
+	const start = bindStats();
+	let encoder = device.createCommandEncoder();
+	let pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, atStart, noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	let now = bindStats();
+	assert now.buffers - start.buffers == 2 && now.offsets - start.offsets == 0;
+	pass.setBindGroup(1, atStart, noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	now = bindStats();
+	assert now.buffers - start.buffers == 2 && now.offsets - start.offsets == 0;
+	pass.setBindGroup(1, shifted, noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	now = bindStats();
+	assert now.buffers - start.buffers == 2 && now.offsets - start.offsets == 1;
+	pass.end();
+	encoder.copyBufferToBuffer(result, 0, read, 0, 64);
+	device.queue.submit(encoder.finish());
+	const bytes = mappedRead(read, 0, 64);
+	assert bytes[2] == 0x80 && bytes[3] == 0x3F && bytes[15] == 0x40;
+	assert bytes[18] == 0 && bytes[31] == 0;
+	assert bytes[34] == 0x80 && bytes[35] == 0x3F && bytes[47] == 0x40;
+	const second = bindStats();
+	encoder = device.createCommandEncoder();
+	pass = encoder.beginComputePass({ label: null });
+	pass.setPipeline(pipeline);
+	pass.setBindGroup(1, shifted, noOffsets);
+	pass.dispatchWorkgroups(1, 1, 1);
+	pass.end();
+	device.queue.submit(encoder.finish());
+	now = bindStats();
+	assert now.buffers - second.buffers == 2 && now.offsets - second.offsets == 0;
 	device.destroy();
 }
