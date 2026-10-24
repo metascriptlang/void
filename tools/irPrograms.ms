@@ -24,6 +24,7 @@ import {
 	isComputeSource,
 	programModule,
 	programSource,
+	quotedSource,
 } from "../src/shader/descriptor";
 import { irFromText } from "../src/shader/irText";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
@@ -448,6 +449,20 @@ function stageBytecode(
 	];
 }
 
+function textShared(
+	texts: Map<string, string>,
+	descriptor: string,
+	field: string,
+	code: string,
+	bytecode: string,
+): string {
+	if (code == "" || bytecode != "[]") { return descriptor; }
+	const quoted = quotedSource(code);
+	const key = sha256(code.asBytes()).toHex();
+	texts.set(key, quoted);
+	return descriptor.replaceAll(field + ": " + quoted + ",\n", field + ": TEXT_" + key + ",\n");
+}
+
 function moduleText(
 	programs: Program[],
 	typesPath: string,
@@ -496,9 +511,22 @@ function moduleText(
 			const bytecode = LANGUAGES[targetIndex][0] == "hlsl5" ?
 				stageBytecode(dxbc, constants, stageSource, programs[i].name) :
 				isComputeSource(stageSource) ? ["[]"] : ["[]", "[]"];
-			functions.push(descriptorSource(programs[i].name, stageSource, bytecode));
+			let descriptor = descriptorSource(programs[i].name, stageSource, bytecode);
+			if (isComputeSource(stageSource)) {
+				descriptor = textShared(texts, descriptor, "computeCode", stageSource.computeCode,
+					bytecode[0]);
+			} else {
+				descriptor = textShared(texts, descriptor, "vertexCode", stageSource.vertexCode,
+					bytecode[0]);
+				descriptor = textShared(texts, descriptor, "fragmentCode", stageSource.fragmentCode,
+					bytecode[1]);
+			}
+			functions.push(descriptor);
 		}
 		let blobs = "";
+		for (const [key, quoted] of texts) {
+			blobs += "\tconst TEXT_" + key + " = " + quoted + ";\n";
+		}
 		for (const [key, base64] of constants) {
 			blobs += "\tconst " + (LANGUAGES[t][0] == "hlsl5" ? "DXBC_" : "METALLIB_") + key + " = \"" + base64 + "\";\n";
 		}
