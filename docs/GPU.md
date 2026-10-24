@@ -207,8 +207,10 @@ backend module. Metal follows it with a `.m`.
   backend 256-aligned offsets. It costs uniform-buffer space only.
 - **Compute and storage run on the frame's command buffer.** A compute pass, a render pass and a
   blit share it, so Metal orders them by the resources they touch. A compute module takes MSL
-  (`computeCode`) and its `workgroupSize`, which the shader arc does not emit for Metal yet, so
-  the pins write MSL by hand. Storage bindings are never clamped to the device's range, and a
+  (`computeCode`) and its `workgroupSize`; the shader arc prints both (`main0`), and a pin runs
+  such a program on the GPU. A compute stage reads uniform blocks from group 0 as a render stage
+  does, through `setBindGroup(0, group, offsets)`, and the pass stops on a missing group or an
+  offset past the buffer. Storage bindings are never clamped to the device's range, and a
   storage range's offset is a multiple of 32.
 - **Timestamps need `MTLCounterSamplingPointAtStageBoundary` and are refused on Intel.** A render
   pass writes them; `timestampWrites` on a compute pass stops by name, because on an Apple GPU the
