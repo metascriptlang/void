@@ -335,6 +335,15 @@ export macro shaderBuild(
 		array(bindings),
 		array(attributes),
 	];
+	if (s.reflection.readsInstanceIndex) {
+		descriptorKeys.push("readsInstanceIndex");
+		descriptorValues.push({
+			kind: NodeKind.BooleanLiteral,
+			line: name.line,
+			column: name.column,
+			boolValue: true,
+		});
+	}
 	if (blobs[0] != "") {
 		descriptorKeys.push("vertexBytecode");
 		descriptorValues.push(called("shaderBytecodeFromBase64", [text(blobs[0])]));

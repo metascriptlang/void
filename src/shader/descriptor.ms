@@ -378,7 +378,8 @@ export function descriptorSource(
 		"\t\t\tvertexBytecode: " + bytecode[0] + ",\n" +
 		"\t\t\tfragmentCode: " + code[1] + ",\n" +
 		"\t\t\tfragmentEntryPoint: " + quotedSource(s.entryPoint) + ",\n" +
-		"\t\t\tfragmentBytecode: " + bytecode[1] + ",\n";
+		"\t\t\tfragmentBytecode: " + bytecode[1] + ",\n" +
+		(s.reflection.readsInstanceIndex ? "\t\t\treadsInstanceIndex: true,\n" : "");
 	return refused + "\texport function " + name + "ShaderModule(): GPUShaderModuleDescriptor {\n" +
 		"\t\treturn {\n" +
 		"\t\t\tlabel: " + quotedSource(name) + ",\n" +
