@@ -52,12 +52,7 @@ const TEXTURED_VERTEX_GLSL = "#version 430\nlayout(location = 0) in vec2 positio
 const TEXTURED_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_smp;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texture(tex_smp, uv); }\n";
 
 const DUMMY_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform sampler2D tex_SPIRV_Cross_DummySampler;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { frag_color = texelFetch(tex_SPIRV_Cross_DummySampler, ivec2(uv * 2.0), 0); }\n";
-const UINT_FRAGMENT_GLSL = "#version 430
-layout(binding = 0) uniform usampler2D tex_SPIRV_Cross_DummySampler;
-in vec2 uv;
-layout(location = 0) out vec4 frag_color;
-void main() { uvec4 t = texelFetch(tex_SPIRV_Cross_DummySampler, ivec2(uv * 2.0), 0); frag_color = vec4(t.x == 16777217u ? 1.0 : 0.0, t.y == 4294967295u ? 1.0 : 0.0, 0.0, 1.0); }
-";
+const UINT_FRAGMENT_GLSL = "#version 430\nlayout(binding = 0) uniform usampler2D tex_SPIRV_Cross_DummySampler;\nin vec2 uv;\nlayout(location = 0) out vec4 frag_color;\nvoid main() { uvec4 t = texelFetch(tex_SPIRV_Cross_DummySampler, ivec2(uv * 2.0), 0); frag_color = vec4(t.x == 16777217u ? 1.0 : 0.0, t.y == 4294967295u ? 1.0 : 0.0, 0.0, 1.0); }\n";
 
 function stopOnGl(message: string): void {
 	console.log(`webgpuGlCheck: ${message}`);

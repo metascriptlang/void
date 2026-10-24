@@ -1217,12 +1217,8 @@ test "a compute pass writes a storage texture that copies back" {
 	device.destroy();
 }
 
-const LOAD_UINT_HLSL = "Texture2D<uint4> src : register(t0);
-RWByteAddressBuffer dst : register(u0);
-[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, src.Load(int3(id.xy, 0))); }";
-const LOAD_FLOAT_HLSL = "Texture2D<float4> src : register(t0);
-RWByteAddressBuffer dst : register(u0);
-[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, asuint(src.Load(int3(id.xy, 0)))); }";
+const LOAD_UINT_HLSL = "Texture2D<uint4> src : register(t0);\nRWByteAddressBuffer dst : register(u0);\n[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, src.Load(int3(id.xy, 0))); }";
+const LOAD_FLOAT_HLSL = "Texture2D<float4> src : register(t0);\nRWByteAddressBuffer dst : register(u0);\n[numthreads(4, 2, 1)] void main(uint3 id : SV_DispatchThreadID) { dst.Store4((id.y * 4 + id.x) * 16, asuint(src.Load(int3(id.xy, 0)))); }";
 
 function u32At(bytes: Vec<uint8>, index: int32): uint32 {
 	const at = index * 4;
@@ -1483,13 +1479,8 @@ test "a cube view at baseArrayLayer 6 samples the second cube of a twelve-layer 
 	device.destroy();
 }
 
-const HALF_TEXEL_VERTEX_HLSL = "Texture2D tex : register(t0);
-SamplerState smp : register(s0);
-struct Out { float4 position : SV_Position; float4 color : TEXCOORD0; };
-Out main(float2 position : TEXCOORD0) { Out o; o.position = float4(position, 0.0, 1.0); o.color = tex.SampleLevel(smp, float2(0.5, 0.5), 0) * 0.5; return o; }";
-const HALF_TEXEL_FRAGMENT_HLSL = "Texture2D tex : register(t0);
-SamplerState smp : register(s0);
-float4 main(float4 p : SV_Position, float4 color : TEXCOORD0) : SV_Target0 { return color + tex.Sample(smp, float2(0.5, 0.5)) * 0.5; }";
+const HALF_TEXEL_VERTEX_HLSL = "Texture2D tex : register(t0);\nSamplerState smp : register(s0);\nstruct Out { float4 position : SV_Position; float4 color : TEXCOORD0; };\nOut main(float2 position : TEXCOORD0) { Out o; o.position = float4(position, 0.0, 1.0); o.color = tex.SampleLevel(smp, float2(0.5, 0.5), 0) * 0.5; return o; }";
+const HALF_TEXEL_FRAGMENT_HLSL = "Texture2D tex : register(t0);\nSamplerState smp : register(s0);\nfloat4 main(float4 p : SV_Position, float4 color : TEXCOORD0) : SV_Target0 { return color + tex.Sample(smp, float2(0.5, 0.5)) * 0.5; }";
 
 function halfTexelShader(device: GPUDevice, visibility: int32): GPUShaderModule {
 	let descriptor: GPUShaderModuleDescriptor = {

@@ -576,15 +576,13 @@ function caseText(p: Glsl, labels: string[], body: ShaderStmt[], indent: string)
 }
 
 function switchText(p: Glsl, s: ShaderStmt, indent: string): string {
-	let text = indent + "switch (" + value(p, s.expr) + ") {
-";
+	let text = indent + "switch (" + value(p, s.expr) + ") {\n";
 	for (const c of s.cases) {
 		let labels: string[] = c.isDefault ? ["default:"] : [];
 		for (const l of c.labels) { labels.push("case " + value(p, l) + ":"); }
 		text += caseText(p, labels, c.body, indent + "    ");
 	}
-	return text + indent + "}
-";
+	return text + indent + "}\n";
 }
 
 function outputName(p: Glsl): string {

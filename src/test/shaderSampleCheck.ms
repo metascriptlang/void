@@ -233,41 +233,30 @@ test "every target samples a cube texture along a direction" {
 	const m = linked.value;
 	assert irErrors(m).length == 0;
 	assert printedFor(m, 0, ShaderTarget.Wgsl, "sky").includes(
-		"  var glow : vec4f = textureSampleLevel(horizon, horizonSampler, direction_1, 0f);
-");
+		"  var glow : vec4f = textureSampleLevel(horizon, horizonSampler, direction_1, 0f);\n");
 	const wgsl = printedFor(m, 1, ShaderTarget.Wgsl, "sky");
-	assert wgsl.includes("@binding(0) @group(1) var sky : texture_cube<f32>;
-");
+	assert wgsl.includes("@binding(0) @group(1) var sky : texture_cube<f32>;\n");
 	assert wgsl.includes("  fragColor = (textureSample(sky, skySampler, direction) + " +
-		"textureSampleLevel(sky, skySampler, direction, 2f));
-");
+		"textureSampleLevel(sky, skySampler, direction, 2f));\n");
 	assert printedFor(m, 0, ShaderTarget.Hlsl5, "sky").includes(
-		"    float4 glow = horizon.SampleLevel(horizonSampler, direction_1, 0.0);
-");
+		"    float4 glow = horizon.SampleLevel(horizonSampler, direction_1, 0.0);\n");
 	const hlsl = printedFor(m, 1, ShaderTarget.Hlsl5, "sky");
-	assert hlsl.startsWith("TextureCube<float4> sky : register(t0);
-");
+	assert hlsl.startsWith("TextureCube<float4> sky : register(t0);\n");
 	assert hlsl.includes("    fragColor = sky.Sample(skySampler, direction) + " +
-		"sky.SampleLevel(skySampler, direction, 2.0);
-");
+		"sky.SampleLevel(skySampler, direction, 2.0);\n");
 	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es]) {
 		assert printedFor(m, 0, target, "sky").includes(
-			"    vec4 glow = textureLod(horizon_horizonSampler, direction_1, 0.0);
-");
+			"    vec4 glow = textureLod(horizon_horizonSampler, direction_1, 0.0);\n");
 		const gl = printedFor(m, 1, target, "sky");
-		assert gl.includes(" samplerCube sky_skySampler;
-");
+		assert gl.includes(" samplerCube sky_skySampler;\n");
 		assert gl.includes("    fragColor = texture(sky_skySampler, direction) + " +
-			"textureLod(sky_skySampler, direction, 2.0);
-");
+			"textureLod(sky_skySampler, direction, 2.0);\n");
 	}
 	assert printedFor(m, 0, ShaderTarget.Msl, "sky").includes(
-		"  float4 glow = horizon.sample(horizonSampler, direction_1, level(0.0));
-");
+		"  float4 glow = horizon.sample(horizonSampler, direction_1, level(0.0));\n");
 	assert printedFor(m, 1, ShaderTarget.Msl, "sky").includes(
 		"  out.fragColor = (sky.sample(skySampler, in.direction) + " +
-		"sky.sample(skySampler, in.direction, level(2.0)));
-");
+		"sky.sample(skySampler, in.direction, level(2.0)));\n");
 	const reflected = reflectProgram(m, 0, 1, ShaderTarget.Wgsl);
 	assert reflected.ok && reflected.value.bindings.filter((b) => b.kind == "texture" &&
 		b.viewDimension == "cube").length == 2;
