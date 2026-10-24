@@ -363,6 +363,7 @@ struct TextureSlot {
 	active: int32;
 	writtenFrame: int64;
 	inPlace: boolean;
+	gpuUsed: boolean;
 	swapchainView: uint32;
 }
 
@@ -901,8 +902,7 @@ export function adapterInfo(): GPUAdapterInfo {
 }
 
 export function nativeTexture(texture: GPUTexture): Ptr<void> {
-	const t = textures.slotIndex(texture.id);
-	return mtlTextureNative(textures.slots[t].natives[textures.slots[t].active]);
+	return mtlTextureNative(liveTexture(textures.slotIndex(texture.id)));
 }
 
 export function nativeQueue(): Ptr<void> { return mtlQueueNative(queue); }
@@ -1057,6 +1057,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 		active: 0,
 		writtenFrame: -1,
 		inPlace: false,
+		gpuUsed: false,
 		swapchainView: 0,
 	};
 	store(textures, slot);
@@ -1130,12 +1131,13 @@ export function writeTexture<T>(
 	if (textures.slots[index].writtenFrame >= 0) { nextTextureCopy(index); }
 	textures.slots[index].writtenFrame = frame;
 	const native = textures.slots[index].natives[textures.slots[index].active];
-	mtlWriteTexture(native, data[0], layout.offset, rowPitch, slot.width, slot.height);
+	mtlWriteTexture(native, data[0], layout.offset, rowPitch, 0, slot.width, slot.height, 1, 0, 0, 0, 0, 0);
 }
 
 // A write that is not a whole single-subresource texture lands through a staging buffer and a blit
 // in the frame's command buffer, so it follows the frame's earlier reads of the texture in queue
-// order; a CPU `replaceRegion` would not.
+// order; a CPU `replaceRegion` would not. Inside a pass no blit can be encoded, so only a texture
+// no command has used yet is written there, by the CPU.
 function writeTextureByBlit<T>(
 	index: int32,
 	data: Readonly<Span<T>>,
@@ -1144,9 +1146,16 @@ function writeTextureByBlit<T>(
 	rowPitch: int32,
 	size: GPUExtent3D,
 ): void {
-	if (pass.active || computeBound.active) { stop(`writeTexture of ${size.width}x${size.height} on GPUTexture ${textures.slots[index].id} inside a pass: a partial or repeated write is a GPU copy`); }
-	const bytesPerPixel = formatInfo(textures.slots[index].format, "texture format").bytesPerPixel;
 	const imageBytes = (rowPitch as int64) * (layout.rowsPerImage as int64);
+	if (pass.active || computeBound.active) {
+		const private = has(textures.slots[index].usage, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.STORAGE_BINDING as int32));
+		if (textures.slots[index].gpuUsed || private) {
+			stop(`writeTexture of ${size.width}x${size.height} on GPUTexture ${textures.slots[index].id} inside a pass: a texture GPU work already uses, or one only the GPU holds, is written by a GPU copy`);
+		}
+		writeUnusedTexture(index, data, destination, layout, rowPitch, imageBytes, size);
+		return;
+	}
+	const bytesPerPixel = formatInfo(textures.slots[index].format, "texture format").bytesPerPixel;
 	const span = imageBytes * ((size.depthOrArrayLayers - 1) as int64) + (rowPitch as int64) * ((size.height - 1) as int64) + ((size.width * bytesPerPixel) as int64);
 	beginFrame();
 	const staging = mtlNewStagingBuffer(device, data[0], layout.offset, span);
@@ -1160,6 +1169,27 @@ function writeTextureByBlit<T>(
 		}
 	}
 	mtlReleaseBuffer(staging);
+	textures.slots[index].inPlace = true;
+	textures.slots[index].gpuUsed = true;
+}
+
+function writeUnusedTexture<T>(
+	index: int32,
+	data: Readonly<Span<T>>,
+	destination: GPUTexelCopyTextureInfo,
+	layout: GPUTexelCopyBufferLayout,
+	rowPitch: int32,
+	imageBytes: int64,
+	size: GPUExtent3D,
+): void {
+	const native = textures.slots[index].natives[textures.slots[index].active];
+	if (textures.slots[index].volume) {
+		mtlWriteTexture(native, data[0], layout.offset, rowPitch, imageBytes as int32, size.width, size.height, size.depthOrArrayLayers, 0, destination.mipLevel, destination.origin.x, destination.origin.y, destination.origin.z);
+	} else {
+		for (let i = 0; i < size.depthOrArrayLayers; i++) {
+			mtlWriteTexture(native, data[0], layout.offset + imageBytes * (i as int64), rowPitch, 0, size.width, size.height, 1, destination.origin.z + i, destination.mipLevel, destination.origin.x, destination.origin.y, 0);
+		}
+	}
 	textures.slots[index].inPlace = true;
 }
 
@@ -1279,8 +1309,7 @@ export function viewTexture(view: GPUTextureView): GPUTexture { return { id: vie
 
 function attachmentNative(v: int32): Ptr<MtlTextureImpl> {
 	if (views.slots[v].swapchain) { return views.slots[v].swapchainTexture; }
-	const t = textures.slotIndex(views.slots[v].texture);
-	return textures.slots[t].natives[textures.slots[t].active];
+	return liveTexture(textures.slotIndex(views.slots[v].texture));
 }
 
 function viewNative(v: int32): Ptr<MtlTextureImpl> {
@@ -2183,7 +2212,10 @@ function texelCopyBytes(index: int32, member: string, writes: boolean, copy: GPU
 	return format.bytesPerPixel;
 }
 
-function liveTexture(index: int32): Ptr<MtlTextureImpl> { return textures.slots[index].natives[textures.slots[index].active]; }
+function liveTexture(index: int32): Ptr<MtlTextureImpl> {
+	textures.slots[index].gpuUsed = true;
+	return textures.slots[index].natives[textures.slots[index].active];
+}
 function liveBuffer(index: int32): Ptr<MtlBufferImpl> { return buffers.slots[index].natives[buffers.slots[index].active]; }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
