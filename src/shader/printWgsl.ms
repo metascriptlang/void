@@ -397,11 +397,12 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 	return (e.binary == BinaryOp.Equal ? "all" : "any") + text;
 }
 
+function runsEffect(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic);
+}
+
 function hasEffect(e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
-		return true;
-	}
-	return e.operands.some((o) => hasEffect(o));
+	return runsEffect(e) || e.operands.some((o) => hasEffect(o));
 }
 
 // select evaluates both arms, so a conditional with a call in an arm becomes a var assigned in
@@ -416,10 +417,7 @@ function hoists(e: ShaderExpr): boolean {
 
 function bareEffect(e: ShaderExpr): boolean {
 	if (isHoisted(e)) { return false; }
-	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
-		return true;
-	}
-	return e.operands.some((o) => bareEffect(o));
+	return runsEffect(e) || e.operands.some((o) => bareEffect(o));
 }
 
 function keepsOrder(e: ShaderExpr): boolean {
