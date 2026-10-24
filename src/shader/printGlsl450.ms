@@ -310,9 +310,10 @@ function value(p: Glsl, e: ShaderExpr): string {
 		const left = e.operands[0];
 		const right = e.operands[1];
 		if (e.binary == BinaryOp.Mod && !isIntegerScalar(left.type)) {
-			const a = expr(p, left);
-			const b = expr(p, right);
-			return a + " - " + b + " * trunc(" + a + " / " + b + ")";
+			const leftText = expr(p, left);
+			const rightText = expr(p, right);
+			return leftText + " - " + rightText + " * trunc(" + leftText + " / " + rightText +
+				")";
 		}
 		const amount = isShift(e.binary) && right.kind != ExprKind.Literal ?
 			"(" + expr(p, right) + " & 31u)" : expr(p, right);
@@ -580,10 +581,10 @@ function caseText(p: Glsl, labels: string[], body: ShaderStmt[], indent: string)
 
 function switchText(p: Glsl, s: ShaderStmt, indent: string): string {
 	let text = indent + "switch (" + value(p, s.expr) + ") {\n";
-	for (const c of s.cases) {
-		let labels: string[] = c.isDefault ? ["default:"] : [];
-		for (const l of c.labels) { labels.push("case " + value(p, l) + ":"); }
-		text += caseText(p, labels, c.body, indent + "    ");
+	for (const arm of s.cases) {
+		let labels: string[] = arm.isDefault ? ["default:"] : [];
+		for (const label of arm.labels) { labels.push("case " + value(p, label) + ":"); }
+		text += caseText(p, labels, arm.body, indent + "    ");
 	}
 	return text + indent + "}\n";
 }
