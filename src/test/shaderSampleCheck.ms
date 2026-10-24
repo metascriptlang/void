@@ -9,6 +9,7 @@ import { glsl, glslIr, glslLinkedIr } from "../shader/emit";
 import { Intrinsic, ShaderModule, StmtKind, TextureShape, irErrors } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { reflectProgram } from "../shader/reflect";
+import { GPUShaderStage } from "../webgpu/types.ms";
 import {
 	Sampler,
 	Texture2d,
@@ -283,6 +284,12 @@ test "a texture and sampler both stages read are one binding, at one native slot
 	assert linked.ok;
 	const m = linked.value;
 	assert irErrors(m).length == 0 && m.resources.length == 2;
+	const both = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	for (const target of [ShaderTarget.Hlsl5, ShaderTarget.Wgsl, ShaderTarget.Msl]) {
+		const reflected = reflectProgram(m, 0, 1, target);
+		assert reflected.ok && reflected.value.bindings.length == 2 &&
+			reflected.value.bindings.filter((b) => b.visibility == both).length == 2;
+	}
 	for (const entry of [0, 1]) {
 		const wgsl = printedFor(m, entry, ShaderTarget.Wgsl, "dome");
 		assert wgsl.includes("@binding(0) @group(1) var sky : texture_cube<f32>;") &&
@@ -326,6 +333,10 @@ test "a shared view takes the first native slot free in every stage that reads i
 	assert linked.ok;
 	const m = linked.value;
 	assert m.resources.length == 3;
+	const reflected = reflectProgram(m, 0, 1, ShaderTarget.Hlsl5);
+	assert reflected.ok;
+	const visible = reflected.value.bindings.map((b) => String(b.binding) + ":" + String(b.visibility));
+	assert visible.join(" ") == "1:1 2:3 33:3";
 	for (const entry of [0, 1]) {
 		const hlsl = printedFor(m, entry, ShaderTarget.Hlsl5, "rim");
 		assert hlsl.includes("TextureCube<float4> rim : register(t1);") &&
