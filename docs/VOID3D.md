@@ -5865,8 +5865,15 @@ default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloa
 
 Measured per arm: the median and p99 of the frame time over a fixed number of frames after a
 warm-up, with the CPU-load bracket of `scripts/bench-ab.sh` and its NOISY and five-clean-pairs
-rules; void3d prints rows (`cubes.present.ms`, `cubes.draws`, `cubes.instances`), Bevy's
-`LogDiagnosticsPlugin` prints `frame_time`. Only `many_cubes` and `bevymark_3d` step by a fixed
+rules. Both sides print bevy_diagnostic's line once a second, `frame_time: <ema>ms (avg <mean
+of the last 120 frames>ms)`: Bevy through `LogDiagnosticsPlugin`, void3d's `tests/bench/benchCubes.ms`
+by the same arithmetic, timing from frame start to frame start as Bevy's `Time` delta does. One
+reader, `scripts/frameTime.sh <log> [warm]`, gives the median and maximum of the per-second
+averages for either log. `benchCubes.ms` takes the layout, count and seconds from
+`BENCH_CUBES_LAYOUT`, `BENCH_CUBES_COUNT` and `BENCH_CUBES_SECONDS`, builds the cubes as scene
+nodes as Bevy spawns entities, and runs at Bevy's window: 1920x1080, scale 1, 4x MSAA, no vsync.
+One value differs: Bevy draws the cube's half size from a seeded rng in [0.25, 0.75]
+(`many_cubes.rs:447-450`), and void3d uses 0.5 until a Bevy run gives the real one. Only `many_cubes` and `bevymark_3d` step by a fixed
 1/60 (`--benchmark`); the others are time-driven, so their camera or animation phase differs
 between arms and only a static view (`many_materials`, `many_foxes` with `--sync`) is compared frame
 for frame.
