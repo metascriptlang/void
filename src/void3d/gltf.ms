@@ -1490,29 +1490,45 @@ function loadInlineImage(uri: string, image: JsonValue): Result<ImageView, GltfE
 		const declared: ImageFormat = try formatForMime(fieldOf(image, "mimeType").asString());
 		if (declared != format) { return Result.err(GltfError.BadImage); }
 	}
-	const payload: string = uri.substring(comma + 1);
+	let inlineBytes: Vec<uint8> = try base64Bytes(uri.substring(comma + 1), GltfError.BadImage);
+	const count: int32 = inlineBytes.length as int32;
+	return Result.ok({ offset: 0, length: count, format: format, inlineBytes: move inlineBytes });
+}
+
+// A buffer embedded as a data: URI, in the two media types Bevy's `load_buffers` takes.
+function inlineBuffer(uri: string): Result<Vec<uint8>, GltfError> {
+	const comma: int32 = uri.indexOf(",") as int32;
+	if (comma < 5) { return Result.err(GltfError.Unsupported); }
+	const header: string = uri.substring(5, comma);
+	if (header != "application/octet-stream;base64" && header != "application/gltf-buffer;base64") {
+		return Result.err(GltfError.Unsupported);
+	}
+	return base64Bytes(uri.substring(comma + 1), GltfError.Unsupported);
+}
+
+function base64Bytes(payload: string, malformed: GltfError): Result<Vec<uint8>, GltfError> {
 	const chars: int64 = payload.length as int64;
 	if (chars > 2147483647) { return Result.err(GltfError.OutOfRange); }
-	if (chars == 0 || chars % 4 != 0) { return Result.err(GltfError.BadImage); }
+	if (chars == 0 || chars % 4 != 0) { return Result.err(malformed); }
 	const padding: int32 = payload.endsWith("==") ? 2 : (payload.endsWith("=") ? 1 : 0);
 	const contentChars: int32 = (chars as int32) - padding;
 	for (let i = 0; i < contentChars; i++) {
 		const code: int32 = payload.charCodeAt(i) as int32;
 		if (!((code >= 65 && code <= 90) || (code >= 97 && code <= 122)
 			|| (code >= 48 && code <= 57) || code == 43 || code == 47)) {
-			return Result.err(GltfError.BadImage);
+			return Result.err(malformed);
 		}
 	}
 	const count: int32 = ((chars / 4) * 3) as int32 - padding;
 	const decoded = Buffer.fromString(payload, "base64");
 	if (decoded.toStringEncoded("base64", 0.0, count as float64) != payload) {
-		return Result.err(GltfError.BadImage);
+		return Result.err(malformed);
 	}
-	let inlineBytes: Vec<uint8> = new Array(count);
+	let bytes: Vec<uint8> = new Array(count);
 	for (let i = 0; i < count; i++) {
-		inlineBytes[i] = decoded.readUInt8(i as float64) as uint8;
+		bytes[i] = decoded.readUInt8(i as float64) as uint8;
 	}
-	return Result.ok({ offset: 0, length: count, format: format, inlineBytes: move inlineBytes });
+	return Result.ok(move bytes);
 }
 
 function loadImageView(
@@ -2108,7 +2124,7 @@ function validateAttributeStrides(
 
 function decodeGltf(
 	json: string,
-	buffer: Readonly<Span<uint8>>,
+	supplied: Readonly<Span<uint8>>,
 	fromGlb: boolean,
 	source: string = "<memory>",
 	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
@@ -2179,17 +2195,34 @@ function decodeGltf(
 			"this loader accepts at most one supplied buffer and requires it for meshes"));
 	}
 	let declaredLength: int32 = 0;
+	let inlined: Vec<uint8> = [];
+	let inline: boolean = false;
 	if (bufferCount == 1) {
 		const bufferInfo: JsonValue = at(buffers, 0);
-		if (fromGlb && !isNull(fieldOf(bufferInfo, "uri"))) {
+		const uri: JsonValue = fieldOf(bufferInfo, "uri");
+		if (fromGlb && !isNull(uri)) {
 			return Result.err(gltfFailure(GltfError.Unsupported, source, "$.buffers[0].uri"));
 		}
+		if (!isNull(uri) && uri.kind == JsonKind.String && uri.strVal.startsWith("data:")) {
+			if (supplied.length > 0) {
+				return Result.err(gltfFailure(GltfError.Unsupported, source, "$.buffers[0].uri",
+					"", "a buffer embedded as a data: URI takes no supplied bytes"));
+			}
+			const decoded = inlineBuffer(uri.strVal);
+			if (!decoded.ok) {
+				return Result.err(gltfFailure(decoded.error, source, "$.buffers[0].uri", "",
+					"a data: URI buffer is base64 application/octet-stream or gltf-buffer"));
+			}
+			inlined = move decoded.value;
+			inline = true;
+		}
 		declaredLength = intField(bufferInfo, "byteLength", -1);
-		const actualLength: int32 = buffer.length as int32;
+		const actualLength: int32 = (inline ? inlined.length : supplied.length) as int32;
 		if (declaredLength < 0 || declaredLength > actualLength) {
 			return Result.err(gltfFailure(GltfError.OutOfRange, source, "$.buffers[0].byteLength"));
 		}
 	}
+	const buffer: Readonly<Span<uint8>> = inline ? inlined : supplied;
 	const samplerArray: JsonValue = arrayOf(root, "samplers");
 	let samplers: Vec<Sampling> = [];
 	for (let i = 0; i < countOf(samplerArray); i++) {

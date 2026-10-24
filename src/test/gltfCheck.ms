@@ -406,6 +406,56 @@ test "a primitive without NORMAL gets a vertex per corner and its triangle's fla
 	assert !normalIs(strip.value.meshes[0], 4, 0.0, 0.0, 1.0);
 }
 
+// triangleBuffer() in base64.
+const TRIANGLE_BASE64: string =
+	"AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/"
+	+ "AAAAAAAAAAAAAIA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAABAAIA";
+
+function embedded(uri: string): string {
+	return "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
+		+ "\"indices\":2}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":108,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":114,\"uri\":\"" + uri + "\"}]}";
+}
+
+test "a buffer embedded as a base64 data: URI loads as the same bytes supplied would" {
+	const supplied = loadGltf(embedded("triangle.bin"), triangleBuffer());
+	assert supplied.ok;
+	if (!supplied.ok) { return; }
+	for (const mime of ["application/octet-stream", "application/gltf-buffer"]) {
+		const inline = loadGltf(embedded(`data:${mime};base64,${TRIANGLE_BASE64}`), []);
+		assert inline.ok;
+		if (!inline.ok) { continue; }
+		const mesh: MeshData = inline.value.meshes[0];
+		assert mesh.vertexCount() == 3 && mesh.indexCount() == 3;
+		for (let i = 0; i < mesh.vertices.length; i++) {
+			assert mesh.vertices[i] == supplied.value.meshes[0].vertices[i];
+		}
+	}
+	const both = loadGltf(embedded(`data:application/octet-stream;base64,${TRIANGLE_BASE64}`),
+		triangleBuffer());
+	assert !both.ok && both.error == GltfError.Unsupported;
+	for (const uri of [
+		`data:image/png;base64,${TRIANGLE_BASE64}`,
+		`data:application/octet-stream,${TRIANGLE_BASE64}`,
+		`data:application/octet-stream;base64,${TRIANGLE_BASE64.substring(1)}`,
+	]) {
+		const refused = loadGltf(embedded(uri), []);
+		assert !refused.ok && refused.error == GltfError.Unsupported;
+	}
+	const short = loadGltf(embedded("data:application/gltf-buffer;base64,AAAA"), []);
+	assert !short.ok && short.error == GltfError.OutOfRange;
+}
+
 test "malformed TRS, cyclic nodes and accessors past their buffer view fail loudly" {
 	const badScale = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
