@@ -302,8 +302,7 @@ test "depth comparison prints on every depth shape" {
 	const fs = wgslOf(m, 1, slots);
 	assert writeProbe("depthVs", vs);
 	assert writeProbe("depthFs", fs);
-	assert vs.includes("@binding(33) @group(1) var heightSmp : sampler_comparison;
-");
+	assert vs.includes("@binding(33) @group(1) var heightSmp : sampler_comparison;\n");
 	assert vs.includes("textureSampleCompareLevel(heightMap, heightSmp, vec2f(0.5f), 0.5f)");
 	assert vs.includes("f32(vec2i(textureDimensions(heightMap)).x)");
 	for (const fragment of [
