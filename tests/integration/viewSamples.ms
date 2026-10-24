@@ -214,7 +214,12 @@ function run(samples: int32, late: boolean): int32 {
 	check(environmentSampleCount() == samples,
 		`the device's pipelines use ${environmentSampleCount()} samples, asked ${samples}`);
 	check(viewFrame(view), "viewFrame returned false");
-	const grabbed: int32 = voidCaptureGrabSwapChain(0, viewSwapChain(view), PRESENTED_BUFFER);
+	let grabbed: int32 = 0;
+	when (macos) {
+		grabbed = voidCaptureGrab(0);
+	} else {
+		grabbed = voidCaptureGrabSwapChain(0, viewSwapChain(view), PRESENTED_BUFFER);
+	}
 	check(grabbed != 0, "readback failed");
 	return judge(samples);
 }

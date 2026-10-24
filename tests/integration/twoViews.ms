@@ -15,6 +15,7 @@ import {
 	OverlayState, overlayState, overlayScene, layoutOverlay,
 } from "../../src/examples/viewScenes";
 import {
+	voidCaptureGrab,
 	voidCaptureGrabSwapChain,
 	voidCaptureWidth,
 	voidCaptureHeight,
@@ -114,8 +115,13 @@ function drawAndGrab(
 	check(_seenScale === scale, `${what}: the frame saw dpiScale ${_seenScale}, expected ${scale}`);
 	check(currentView() === ViewInvalid,
 		`${what}: view ${currentView()} is still current after the frame`);
-	check(voidCaptureGrabSwapChain(slot, viewSwapChain(view), PRESENTED_BUFFER) !== (0 as int32),
-		`${what}: readback failed`);
+	let grabbed: int32 = 0;
+	when (macos) {
+		grabbed = voidCaptureGrab(slot);
+	} else {
+		grabbed = voidCaptureGrabSwapChain(slot, viewSwapChain(view), PRESENTED_BUFFER);
+	}
+	check(grabbed !== (0 as int32), `${what}: readback failed`);
 	check(voidCaptureWidth(slot) === w && voidCaptureHeight(slot) === h,
 		`${what}: the swapchain is ${voidCaptureWidth(slot)}x${voidCaptureHeight(slot)}, expected ` +
 			`${w}x${h}`);
