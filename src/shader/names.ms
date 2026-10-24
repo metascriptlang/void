@@ -34,54 +34,55 @@ export function fieldNames(reserved: string[], names: string[]): string[] {
 	return spelled;
 }
 
-function taken(n: Names, name: string, parameterTypes: string, local: boolean): boolean {
-	if (n.reserved.includes(name) || n.values.includes(name) || n.globals.includes(name)) {
+function taken(names: Names, name: string, parameterTypes: string, local: boolean): boolean {
+	if (names.reserved.includes(name) || names.values.includes(name) ||
+		names.globals.includes(name)) {
 		return true;
 	}
-	if (parameterTypes != "") { return n.signatures.includes(name + parameterTypes); }
-	if (n.functions.includes(name) || n.constants.includes(name)) { return true; }
-	return local && (n.params.includes(name) || n.locals.includes(name));
+	if (parameterTypes != "") { return names.signatures.includes(name + parameterTypes); }
+	if (names.functions.includes(name) || names.constants.includes(name)) { return true; }
+	return local && (names.params.includes(name) || names.locals.includes(name));
 }
 
-function free(n: Names, name: string, parameterTypes: string, local: boolean): string {
+function free(names: Names, name: string, parameterTypes: string, local: boolean): string {
 	let unique = name;
 	let suffix = 0;
-	while (taken(n, unique, parameterTypes, local)) {
+	while (taken(names, unique, parameterTypes, local)) {
 		suffix += 1;
 		unique = name + "_" + String(suffix);
 	}
 	return unique;
 }
 
-export function nameStruct(n: Names, name: string): string {
-	const spelled = free(n, name, "", false);
-	n.values.push(spelled);
+export function nameStruct(names: Names, name: string): string {
+	const spelled = free(names, name, "", false);
+	names.values.push(spelled);
 	return spelled;
 }
 
-export function nameConstant(n: Names, name: string): string {
-	const spelled = free(n, name, "", false);
-	n.constants.push(spelled);
+export function nameConstant(names: Names, name: string): string {
+	const spelled = free(names, name, "", false);
+	names.constants.push(spelled);
 	return spelled;
 }
 
-export function nameFunction(n: Names, name: string, parameterTypes: string): string {
-	const spelled = free(n, name, parameterTypes, false);
-	n.functions.push(spelled);
-	n.signatures.push(spelled + parameterTypes);
-	n.params = [];
-	n.locals = [];
+export function nameFunction(names: Names, name: string, parameterTypes: string): string {
+	const spelled = free(names, name, parameterTypes, false);
+	names.functions.push(spelled);
+	names.signatures.push(spelled + parameterTypes);
+	names.params = [];
+	names.locals = [];
 	return spelled;
 }
 
-export function nameParam(n: Names, name: string): string {
-	const spelled = free(n, name, "", true);
-	n.params.push(spelled);
+export function nameParam(names: Names, name: string): string {
+	const spelled = free(names, name, "", true);
+	names.params.push(spelled);
 	return spelled;
 }
 
-export function nameLocal(n: Names, name: string): string {
-	const spelled = free(n, name, "", true);
-	n.locals.push(spelled);
+export function nameLocal(names: Names, name: string): string {
+	const spelled = free(names, name, "", true);
+	names.locals.push(spelled);
 	return spelled;
 }
