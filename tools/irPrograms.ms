@@ -174,8 +174,8 @@ function fail(message: string): never {
 }
 
 function stageText(source: string, name: string): string {
-	for (const s of STAGES) {
-		if (s[0] == source && s[1] == name) { return s[2]; }
+	for (const stage of STAGES) {
+		if (stage[0] == source && stage[1] == name) { return stage[2]; }
 	}
 	fail("no " + source + " stage '" + name + "'");
 }
@@ -203,14 +203,14 @@ function keyedPrograms(): Program[] {
 		if (columns.length != 7) {
 			fail("programKeys.txt: row " + columns[0] + " is not seven columns");
 		}
-		let p = new Program();
-		p.name = columns[0];
-		p.source = columns[2] == "PIXEL_ART" ? "PIXEL_ART" : "CORE";
-		p.features = columns[3] == "-" ? [] : columns[3].split(":");
-		p.vertex = columns[4];
-		p.fragment = columns[5];
-		p.layout = columns[6];
-		out.push(p);
+		let program = new Program();
+		program.name = columns[0];
+		program.source = columns[2] == "PIXEL_ART" ? "PIXEL_ART" : "CORE";
+		program.features = columns[3] == "-" ? [] : columns[3].split(":");
+		program.vertex = columns[4];
+		program.fragment = columns[5];
+		program.layout = columns[6];
+		out.push(program);
 	}
 	return out;
 }
@@ -226,71 +226,76 @@ const GPU_COPY_PROGRAMS: string[][] = [["gpuCopy", "gpuCopyVs", "gpuCopyFs"]];
 
 function listedPrograms(rows: string[][], source: string): Program[] {
 	return rows.map((row) => {
-		let p = new Program();
-		p.name = row[0];
-		p.source = source;
-		p.vertex = row[1];
-		p.fragment = row[2];
-		return p;
+		let program = new Program();
+		program.name = row[0];
+		program.source = source;
+		program.vertex = row[1];
+		program.fragment = row[2];
+		return program;
 	});
 }
 
 function parsed(text: string, what: string): ShaderModule {
-	const m = irFromText(text);
-	if (!m.ok) { fail(what + ": " + m.error); }
-	return m.value;
+	const result = irFromText(text);
+	if (!result.ok) { fail(what + ": " + result.error); }
+	return result.value;
 }
 
 function shdcText(source: string, programs: Program[]): string {
 	let out = "";
-	for (const s of STAGES) {
-		if (s[0] != source) { continue; }
-		const m = parsed(s[2], source + " " + s[1]);
-		const kind = m.entries[0].stage == ShaderStage.Vertex ? "@vs " : "@fs ";
-		out += kind + s[1] + "\n" + printGlsl450(m) + "@end\n\n";
+	for (const stage of STAGES) {
+		if (stage[0] != source) { continue; }
+		const shaderModule = parsed(stage[2], source + " " + stage[1]);
+		const kind = shaderModule.entries[0].stage == ShaderStage.Vertex ? "@vs " : "@fs ";
+		out += kind + stage[1] + "\n" + printGlsl450(shaderModule) + "@end\n\n";
 	}
-	for (const p of programs) {
-		out += "@program " + p.name + " " + p.vertex + " " + p.fragment + "\n";
+	for (const program of programs) {
+		out += "@program " + program.name + " " + program.vertex + " " + program.fragment + "\n";
 	}
 	return out;
 }
 
-function blockMembers(p: Program, block: string): string[] {
-	const m = programModule(stageText(p.source, p.vertex), stageText(p.source, p.fragment),
-		p.features);
-	if (!m.ok) { fail(p.name + ": " + m.error); }
-	for (let r = 0; r < m.value.resources.length; r++) {
-		const resource = m.value.resources[r];
+function blockMembers(program: Program, block: string): string[] {
+	const moduleResult = programModule(
+		stageText(program.source, program.vertex),
+		stageText(program.source, program.fragment),
+		program.features,
+	);
+	if (!moduleResult.ok) { fail(program.name + ": " + moduleResult.error); }
+	const resources = moduleResult.value.resources;
+	for (let resourceIndex = 0; resourceIndex < resources.length; resourceIndex++) {
+		const resource = resources[resourceIndex];
 		if (resource.kind != ResourceKind.UniformBlock || resource.name != block) { continue; }
-		const layout = uniformBlockLayout(m.value, r);
-		if (!layout.ok) { fail(p.name + ": " + layout.error); }
-		const members = m.value.structs[resource.type.structIndex].members;
+		const layout = uniformBlockLayout(moduleResult.value, resourceIndex);
+		if (!layout.ok) { fail(program.name + ": " + layout.error); }
+		const members = moduleResult.value.structs[resource.type.structIndex].members;
 		let out: string[] = [];
 		for (let i = 0; i < members.length; i++) {
 			out.push(members[i].name + "@" + String(layout.value.offsets[i]));
 		}
 		return out;
 	}
-	fail(p.name + " has no uniform block " + block);
+	fail(program.name + " has no uniform block " + block);
 }
 
 
-function checkFeaturesRead(p: Program): void {
-	const text = printGlsl450(parsed(stageText(p.source, p.vertex), p.vertex)) +
-		printGlsl450(parsed(stageText(p.source, p.fragment), p.fragment));
-	const lines = text.split("\n");
-	for (const f of p.features) {
-		const read = lines.some((line) => line == "#ifdef " + f ||
-			(line.startsWith("#if ") && line.includes("defined(" + f + ")")));
+function checkFeaturesRead(program: Program): void {
+	const vertexText = stageText(program.source, program.vertex);
+	const fragmentText = stageText(program.source, program.fragment);
+	const lines = (printGlsl450(parsed(vertexText, program.vertex)) +
+		printGlsl450(parsed(fragmentText, program.fragment))).split("\n");
+	for (const feature of program.features) {
+		const read = lines.some((line) => line == "#ifdef " + feature ||
+			(line.startsWith("#if ") && line.includes("defined(" + feature + ")")));
 		if (!read) {
-			fail("programKeys.txt: row " + p.name + " asks for " + f + ", which " + p.vertex +
-				" and " + p.fragment + " never read");
+			fail("programKeys.txt: row " + program.name + " asks for " + feature + ", which " +
+				program.vertex + " and " + program.fragment + " never read");
 		}
 	}
 }
 function programNamed(programs: Program[], name: string): Program {
-	for (const p of programs) {
-		if (p.name == name) { return p; }
+	for (const program of programs) {
+		if (program.name == name) { return program; }
 	}
 	fail("programKeys.txt has no row " + name);
 }
@@ -329,34 +334,39 @@ class Agreement {
 
 // Every program of one vertex layout reads its attributes at the same slots, and a uniform block
 // that programs share by name has one size and one slot, so one layout and one writer serve all.
-function agree(a: Agreement, p: Program, m: ShaderModule, gl: ProgramSource): void {
+function agree(
+	agreement: Agreement,
+	program: Program,
+	shaderModule: ShaderModule,
+	glsl430: ProgramSource,
+): void {
 	let attributes: string[] = [];
-	for (const attribute of gl.reflection.attributes) {
+	for (const attribute of glsl430.reflection.attributes) {
 		attributes.push((attribute.nativeName ?? "") + "@" + String(attribute.location));
 	}
 	attributes.sort();
 	const slots = attributes.join(" ");
-	const layoutSlots = a.layoutSlots.get(p.layout);
+	const layoutSlots = agreement.layoutSlots.get(program.layout);
 	if (layoutSlots === undefined) {
-		a.layoutSlots.set(p.layout, slots);
-		a.layoutOwner.set(p.layout, p.name);
+		agreement.layoutSlots.set(program.layout, slots);
+		agreement.layoutOwner.set(program.layout, program.name);
 	} else if (layoutSlots != slots) {
-		fail(p.name + " reads layout " + p.layout + " as " + slots + ", " +
-			(a.layoutOwner.get(p.layout) ?? "") + " as " + layoutSlots);
+		fail(program.name + " reads layout " + program.layout + " as " + slots + ", " +
+			(agreement.layoutOwner.get(program.layout) ?? "") + " as " + layoutSlots);
 	}
-	for (let r = 0; r < m.resources.length; r++) {
-		const resource = m.resources[r];
+	for (let resourceIndex = 0; resourceIndex < shaderModule.resources.length; resourceIndex++) {
+		const resource = shaderModule.resources[resourceIndex];
 		if (resource.kind != ResourceKind.UniformBlock) { continue; }
-		const layout = uniformBlockLayout(m, r);
-		if (!layout.ok) { fail(p.name + ": " + layout.error); }
+		const layout = uniformBlockLayout(shaderModule, resourceIndex);
+		if (!layout.ok) { fail(program.name + ": " + layout.error); }
 		const shape = String(layout.value.size) + " bytes at slot " + String(resource.binding);
-		const held = a.blockShape.get(resource.name);
+		const held = agreement.blockShape.get(resource.name);
 		if (held === undefined) {
-			a.blockShape.set(resource.name, shape);
-			a.blockOwner.set(resource.name, p.name);
+			agreement.blockShape.set(resource.name, shape);
+			agreement.blockOwner.set(resource.name, program.name);
 		} else if (held != shape) {
-			fail(p.name + " declares " + resource.name + " as " + shape + ", " +
-				(a.blockOwner.get(resource.name) ?? "") + " as " + held);
+			fail(program.name + " declares " + resource.name + " as " + shape + ", " +
+				(agreement.blockOwner.get(resource.name) ?? "") + " as " + held);
 		}
 	}
 }
