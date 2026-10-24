@@ -230,13 +230,14 @@ test "a feature condition holds per program key" {
 	assert !holds(both, ["SKIN"]) && holds(both, ["SKIN", "CUTOUT"]);
 }
 
-test "uniform blocks may share a binding, a texture may not" {
+test "resources of one kind may share a binding, two kinds may not" {
 	let m = texturedModule();
 	m.resources.push(resource(ResourceKind.UniformBlock, "movingMaterial", 0, structType(0)));
-	assert irErrors(m).length == 0;
 	m.resources.push(resource(ResourceKind.Texture, "normalMap", 1,
 		textureType(TextureShape.D2, ScalarKind.F32)));
-	assert irErrors(m)[0] == "resource 'normalMap': binding 1 is also 'albedo'";
+	assert irErrors(m).length == 0;
+	m.resources.push(resource(ResourceKind.StorageBuffer, "particles", 1, structType(0)));
+	assert irErrors(m).includes("resource 'particles': binding 1 is also 'albedo'");
 }
 
 test "a uniform block holds no struct and a sampler is typed a sampler" {

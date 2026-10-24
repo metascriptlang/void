@@ -747,8 +747,7 @@ export function irErrors(m: ShaderModule): string[] {
 		conditionErrors(c, r.condition, owner);
 		for (let j = 0; j < i; j++) {
 			const other = m.resources[j];
-			const alternatives = r.kind == ResourceKind.UniformBlock &&
-				other.kind == ResourceKind.UniformBlock;
+			const alternatives = r.kind == other.kind;
 			if (other.group == r.group && other.binding == r.binding && !alternatives) {
 				c.errors.push(owner + ": binding " + String(r.binding) + " is also '" +
 					other.name + "'");
