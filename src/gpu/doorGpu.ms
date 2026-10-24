@@ -648,6 +648,10 @@ function fullMipChain(largest: int32): int32 {
 	return levels;
 }
 
+function mipSide(size: int32, level: int32): int32 {
+	return Math.max(1, size >> level);
+}
+
 export function doorMakeImageMips(
 	rgba: Readonly<Span<uint32>>, width: int32, height: int32, levels: int32,
 ): uint32 {
@@ -655,7 +659,7 @@ export function doorMakeImageMips(
 	if (levels != 1 && levels != fullMipChain(width > height ? width : height)) { return 0; }
 	let words: int64 = 0;
 	for (let level = 0; level < levels; level++) {
-		words += ((width >> level) > 1 ? width >> level : 1) as int64 * (((height >> level) > 1 ? height >> level : 1) as int64);
+		words += (mipSide(width, level) as int64) * (mipSide(height, level) as int64);
 	}
 	if (rgba.length != words) { return 0; }
 	const texture = device.createTexture({
@@ -669,8 +673,8 @@ export function doorMakeImageMips(
 	if (texture.id == 0) { return 0; }
 	let offset: int64 = 0;
 	for (let level = 0; level < levels; level++) {
-		const w = (width >> level) > 1 ? width >> level : 1;
-		const h = (height >> level) > 1 ? height >> level : 1;
+		const w = mipSide(width, level);
+		const h = mipSide(height, level);
 		device.queue.writeTexture(
 			{ texture, mipLevel: level },
 			rgba,
@@ -711,7 +715,9 @@ export function doorMakeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): ui
 
 export function doorMakeCubeTargetImage(size: int32, levels: int32, format: int32): uint32 {
 	const pixelFormat = format as PixelFormat;
-	if (size <= 0 || levels < 1 || levels > fullMipChain(size) || isDepthFormat(pixelFormat)) { return 0; }
+	if (size <= 0 || levels < 1 || levels > fullMipChain(size) || isDepthFormat(pixelFormat)) {
+		return 0;
+	}
 	const texture = device.createTexture({
 		label: null,
 		size: cubeSize(size),
@@ -761,7 +767,9 @@ export function doorMakeAttachmentView(image: uint32, format: int32): uint32 {
 @exportName("doorMakeTextureView")
 export function doorMakeTextureView(image: uint32): uint32 {
 	const texture: GPUTexture = { id: image };
-	if (cubeImages.includes(image)) { return texture.createView({ label: null, dimension: "cube" }).id; }
+	if (cubeImages.includes(image)) {
+		return texture.createView({ label: null, dimension: "cube" }).id;
+	}
 	return texture.createView({ label: null }).id;
 }
 
