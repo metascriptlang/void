@@ -555,14 +555,20 @@ function main(): void {
 	const keyed = keyedPrograms();
 	const void2d = listedPrograms(VOID2D_PROGRAMS, "VOID2D");
 	const gpuCopy = listedPrograms(GPU_COPY_PROGRAMS, "GPU_COPY");
-	for (const p of keyed) { checkFeaturesRead(p); }
+	for (const program of keyed) { checkFeaturesRead(program); }
 	checkBlockHead(keyed);
-	keep(out + "/programModules.ms", moduleText(keyed, "../webgpu/types.ms",
-		"gpu3dShaderModule", reflectionOnly, counts, dxbc, metallib));
-	keep(out + "/shader2dModules.ms", moduleText(void2d, "../webgpu/types.ms", "", reflectionOnly,
-		counts, dxbc, metallib));
-	keep(out + "/gpuCopyModules.ms", moduleText(gpuCopy, "../../src/webgpu/types.ms", "",
-		reflectionOnly, counts, dxbc, metallib));
+	keep(
+		out + "/programModules.ms",
+		moduleText(keyed, "../webgpu/types.ms", "gpu3dShaderModule", reflectionOnly, counts, dxbc),
+	);
+	keep(
+		out + "/shader2dModules.ms",
+		moduleText(void2d, "../webgpu/types.ms", "", reflectionOnly, counts, dxbc),
+	);
+	keep(
+		out + "/gpuCopyModules.ms",
+		moduleText(gpuCopy, "../../src/webgpu/types.ms", "", reflectionOnly, counts, dxbc),
+	);
 	keep(out + "/void3d.glsl", shdcText("CORE", []));
 	keep(out + "/pixelArt3d.glsl", shdcText("PIXEL_ART", []));
 	keep(out + "/shader2d.glsl", shdcText("VOID2D", void2d));
