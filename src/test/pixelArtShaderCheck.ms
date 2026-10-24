@@ -17,6 +17,7 @@ import {
 	postFs,
 	toonPointLightAt,
 } from "../void3d/pixelArt3d";
+import { oneCascade, oneLayer } from "./shadowHelpers";
 
 function within(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 1e-4;
@@ -63,12 +64,9 @@ function plainLit(): LitBindings {
 			pointColor: [none(), none(), none(), none()],
 		},
 		frameParams: { frame: vec4f(0, 1, 0, 0) },
-		shadowParams: {
-			shadowMatrix: identity(), shadow: none(),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: white, shadowSampler: { nearest: true },
-		spotShadowMap: white, spotShadowSampler: { nearest: true },
+		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
+		shadowMap: oneLayer(white), shadowSampler: { nearest: true },
+		spotShadowMap: oneLayer(white), spotShadowSampler: { nearest: true },
 		baseTexture: white, baseSampler: { nearest: true },
 		backTexture: white, dissolveTexture: white, dissolveSampler: { nearest: true },
 		emissiveTexture: white, normalTexture: white,

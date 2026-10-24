@@ -32,6 +32,7 @@ import {
 	unlitTexturedFs,
 	unlitTexturedVs,
 } from "../void3d/shader3d";
+import { oneCascade, oneLayer } from "./shadowHelpers";
 
 function within(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 1e-4;
@@ -77,13 +78,10 @@ function plainBindings(): LitBindings {
 			pointColor: [none(), none(), none(), none()],
 		},
 		frameParams: { frame: vec4f(0.0, 1.0, 0.0, 0.0) },
-		shadowParams: {
-			shadowMatrix: identity(), shadow: none(),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: white(),
+		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
+		shadowMap: oneLayer(white()),
 		shadowSampler: { nearest: true },
-		spotShadowMap: white(),
+		spotShadowMap: oneLayer(white()),
 		spotShadowSampler: { nearest: true },
 		baseTexture: white(),
 		baseSampler: { nearest: true },

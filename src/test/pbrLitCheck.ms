@@ -38,6 +38,7 @@ import {
 	splitSum,
 	srgbToLinear,
 } from "../void3d/shader3d";
+import { oneCascade, oneLayer } from "./shadowHelpers";
 
 function near(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 2e-5 * Math.max(1.0, Math.abs(b));
@@ -179,13 +180,10 @@ function bindingsAt(
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(camera.x, camera.y, camera.z, 1.0),
 		},
-		shadowParams: {
-			shadowMatrix: identity(), shadow: vec4f(0.0, 1.0, 0.0, 0.0),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: texture(depth),
+		shadowParams: oneCascade(identity(), vec4f(0.0, 1.0, 0.0, 0.0), identity(), none(), 1.0),
+		shadowMap: oneLayer(texture(depth)),
 		shadowSampler: { nearest: true },
-		spotShadowMap: texture(depth),
+		spotShadowMap: oneLayer(texture(depth)),
 		spotShadowSampler: { nearest: true },
 		baseTexture: texture(1.0),
 		baseSampler: { nearest: true },

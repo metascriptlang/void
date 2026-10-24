@@ -1,4 +1,6 @@
-import { Vec3, Quat, Mat4, vec3, axisAngle, identityQuat } from "../math/math3d";
+import {
+	Vec3, Quat, Mat4, vec3, axisAngle, identity, identityQuat, translation,
+} from "../math/math3d";
 import { Texture2d, Vec3f, Vec4f, Mat4x4f, mat4x4f, vec3f, vec4f } from "../shader/std";
 import {
 	Scene3D,
@@ -13,9 +15,10 @@ import {
 } from "../void3d/scene";
 import { DrawContext, DrawItem } from "../void3d/draw";
 import {
-	SHADOW_SPOT_BASE,
-	SHADOW_BIAS,
-	SHADOW_OPACITY,
+	SHADOW_CASCADE_FAR,
+	SHADOW_CASCADE_INFO,
+	SHADOW_SPOT_BIAS,
+	SHADOW_SPOT_OPACITY,
 	SHADOW_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 	LIGHT_SHAPE_BASE,
@@ -51,6 +54,8 @@ import {
 	spotShadowAt,
 	slotShadowAt,
 } from "../void3d/shader3d";
+import { CascadeError, MAX_CASCADES } from "../void3d/cascades";
+import { oneLayer, shadowParamsOf } from "./shadowHelpers";
 
 const NO_SHAPE: LightShape = {
 	angle: 0.0, verticalAngle: 0.0, falloff: 0.0, width: 0.0, height: 0.0, length: 0.0,
@@ -225,10 +230,13 @@ function spotLights(values: Vec<float32>): LitBindings {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),
 		},
-		shadowParams: { shadowMatrix: NO_MAP, shadow: NONE, spotMatrix: NO_MAP, spotShadow: NONE },
-		shadowMap: depthTexture(1.0),
+		shadowParams: {
+			cascadeMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP], cascadeFar: NONE,
+			cascadeInfo: NONE, cascadeView: NONE, spotMatrix: NO_MAP, spotShadow: NONE,
+		},
+		shadowMap: oneLayer(depthTexture(1.0)),
 		shadowSampler: { nearest: true },
-		spotShadowMap: depthTexture(1.0),
+		spotShadowMap: oneLayer(depthTexture(1.0)),
 		spotShadowSampler: { nearest: true },
 		baseTexture: depthTexture(1.0),
 		baseSampler: { nearest: true },
@@ -265,24 +273,28 @@ function spotMapped(
 	return {
 		...b,
 		shadowParams: {
-			...b.shadowParams, spotMatrix: spotMapOf(view), spotShadow: vec4f(bias, opacity, 0.0, 0.0),
+			...b.shadowParams, spotMatrix: spotMapOf(view), spotShadow: vec4f(bias, opacity, 1.0, 0.0),
 		},
-		spotShadowMap: depthTexture(depth),
+		spotShadowMap: oneLayer(depthTexture(depth)),
 	};
 }
+
+const SUN_MAP: Mat4x4f = mat4x4f(
+	vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0),
+	vec4f(0.0, 0.0, 1.0, 0.0), vec4f(0.5, 0.5, 0.9, 1.0),
+);
 
 function sunMapped(b: LitBindings, depth: float32, opacity: float32): LitBindings {
 	return {
 		...b,
 		shadowParams: {
 			...b.shadowParams,
-			shadowMatrix: mat4x4f(
-				vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0),
-				vec4f(0.0, 0.0, 1.0, 0.0), vec4f(0.5, 0.5, 0.9, 1.0),
-			),
-			shadow: vec4f(0.0, opacity, 0.0, 0.0),
+			cascadeMatrices: [SUN_MAP, SUN_MAP, SUN_MAP, SUN_MAP],
+			cascadeFar: vec4f(3.0e38, 0.0, 0.0, 0.0),
+			cascadeInfo: vec4f(1.0, 0.0, 0.0, opacity),
+			cascadeView: vec4f(0.0, 0.0, 1.0, 1.0),
 		},
-		shadowMap: depthTexture(depth),
+		shadowMap: oneLayer(depthTexture(depth)),
 	};
 }
 
@@ -310,7 +322,8 @@ test "the lookup divides by w and compares the map as SpotShadow's sampleShadow 
 test "a block half nobody wrote shades nothing, whatever its map holds" {
 	const base: LitBindings = spotLights(downSpot(true));
 	const empty: LitBindings = {
-		...base, shadowMap: depthTexture(0.0), spotShadowMap: depthTexture(0.0),
+		...base, shadowMap: oneLayer(depthTexture(0.0)),
+		spotShadowMap: oneLayer(depthTexture(0.0)),
 	};
 	assert dirShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
 	assert spotShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
@@ -449,19 +462,62 @@ test "the sun's map and the spot's are made apart, and a frame applies the sun's
 	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == spot.shadowBlock;
 	attachShadow(core, sun);
 	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == sun.shadowBlock;
-	sun.shadowValues[SHADOW_BIAS] = 0.125;
-	spot.shadowValues[SHADOW_SPOT_BASE + SHADOW_BIAS] = 0.25;
-	spot.shadowValues[SHADOW_SPOT_BASE + SHADOW_OPACITY] = 0.5;
+	sun.shadowValues[SHADOW_CASCADE_INFO + 2] = 0.125;
+	spot.shadowValues[SHADOW_SPOT_BIAS] = 0.25;
+	spot.shadowValues[SHADOW_SPOT_OPACITY] = 0.5;
 	carrySpot(sun, spot);
 	const at: int32 = sun.shadowBlock.offset;
-	assert context.uniforms.values[at + SHADOW_BIAS] == 0.125;
-	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_BIAS] == 0.25;
-	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_OPACITY] == 0.5;
+	assert context.uniforms.values[at + SHADOW_CASCADE_INFO + 2] == 0.125;
+	assert context.uniforms.values[at + SHADOW_SPOT_BIAS] == 0.25;
+	assert context.uniforms.values[at + SHADOW_SPOT_OPACITY] == 0.5;
 	attachSpotShadow(core, null);
 	carrySpot(sun, null);
-	assert context.uniforms.values[at + SHADOW_BIAS] == 0.125;
-	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_BIAS] == 0.0;
-	assert context.uniforms.values[at + SHADOW_SPOT_BASE + SHADOW_OPACITY] == 0.0;
+	assert context.uniforms.values[at + SHADOW_CASCADE_INFO + 2] == 0.125;
+	assert context.uniforms.values[at + SHADOW_SPOT_BIAS] == 0.0;
+	assert context.uniforms.values[at + SHADOW_SPOT_OPACITY] == 0.0;
 	attachShadow(core, null);
 	assert core.sceneGlobals.length == 3;
+}
+
+function sunCascades(first: float32, second: float32): LitBindings {
+	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
+	if (!made.ok) { unreachable; }
+	let sun: DirShadowMap = made.value;
+	const set: Result<int32, CascadeError> =
+		sun.setCascades({ bounds: [10.0, 20.0], overlap: 0.2, minimumDistance: 0.1 });
+	if (!set.ok || set.value != 2) { unreachable; }
+	const flat: Mat4 = { ...translation(0.5, 0.5, 0.9), m11: 0.0, m22: 0.0, m33: 0.0 };
+	sun.packSun({ clips: [identity(), identity()], far: [10.0, 20.0] }, flat, vec3(0.0, 0.0, 1.0));
+	return {
+		...spotLights(downSpot(true)),
+		shadowParams: shadowParamsOf(sun.shadowValues),
+		shadowMap: {
+			width: 1, height: 1, layers: 2, texels: [first, 0.0, 0.0, 1.0, second, 0.0, 0.0, 1.0],
+		},
+	};
+}
+
+function sunAt(depth: float32, b: LitBindings): float32 {
+	return dirShadowAt(vec3f(0.0, 5.0, 1.0 + depth), b);
+}
+
+test "a packed two-cascade sun reads each depth's layer, blends the overlap, and lights past it" {
+	assert MAX_CASCADES * 16 == SHADOW_CASCADE_FAR;
+	const nearBlocked: LitBindings = sunCascades(0.5, 1.0);
+	assert sunAt(5.0, nearBlocked) == 0.0 && near(sunAt(9.0, nearBlocked), 0.5);
+	assert sunAt(15.0, nearBlocked) == 1.0 && sunAt(25.0, nearBlocked) == 1.0;
+	const farBlocked: LitBindings = sunCascades(1.0, 0.5);
+	assert sunAt(5.0, farBlocked) == 1.0 && near(sunAt(9.0, farBlocked), 0.5);
+	assert sunAt(15.0, farBlocked) == 0.0 && sunAt(25.0, farBlocked) == 1.0;
+}
+
+test "a sun refuses a cascade config whose bounds do not rise, keeping the one it had" {
+	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
+	if (!made.ok) { unreachable; }
+	let sun: DirShadowMap = made.value;
+	const falling: Result<int32, CascadeError> =
+		sun.setCascades({ bounds: [20.0, 10.0], overlap: 0.2, minimumDistance: 0.1 });
+	assert !falling.ok && falling.error == CascadeError.Bounds && sun.cascades === null;
 }

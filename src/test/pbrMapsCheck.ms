@@ -9,6 +9,7 @@ import {
 	LitBindings, LitKey, LitTexturedFragmentInput, linearToSrgb, litTexturedFs, srgbToLinear,
 } from "../void3d/shader3d";
 import { PbrDirectInput, PbrSurface } from "../void3d/pbrResponse";
+import { oneCascade, oneLayer } from "./shadowHelpers";
 
 function toVec3f(v: Vec3): Vec3f {
 	return vec3f(v.x, v.y, v.z);
@@ -63,13 +64,10 @@ function bindingsOf(factors: Factors, packed: Texture2d, occlusion: Texture2d): 
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(CAMERA.x, CAMERA.y, CAMERA.z, 1.0),
 		},
-		shadowParams: {
-			shadowMatrix: identity(), shadow: none(),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: texel(1.0, 1.0, 1.0),
+		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
+		shadowMap: oneLayer(texel(1.0, 1.0, 1.0)),
 		shadowSampler: { nearest: true },
-		spotShadowMap: texel(1.0, 1.0, 1.0),
+		spotShadowMap: oneLayer(texel(1.0, 1.0, 1.0)),
 		spotShadowSampler: { nearest: true },
 		baseTexture: texel(1.0, 1.0, 1.0),
 		baseSampler: { nearest: true },

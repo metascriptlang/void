@@ -24,6 +24,7 @@ import {
 	srgbToLinear,
 	linearToSrgb,
 } from "../void3d/shader3d";
+import { oneCascade, oneLayer } from "./shadowHelpers";
 
 const QUARTER: float32 = 0.7853981633974483;
 
@@ -280,13 +281,10 @@ function bindingsWith(
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),
 		},
-		shadowParams: {
-			shadowMatrix: identity(), shadow: vec4f(0.0, 1.0, 0.0, 0.0),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: texture(),
+		shadowParams: oneCascade(identity(), vec4f(0.0, 1.0, 0.0, 0.0), identity(), none(), 1.0),
+		shadowMap: oneLayer(texture()),
 		shadowSampler: { nearest: true },
-		spotShadowMap: texture(),
+		spotShadowMap: oneLayer(texture()),
 		spotShadowSampler: { nearest: true },
 		baseTexture: texture(),
 		baseSampler: { nearest: true },
