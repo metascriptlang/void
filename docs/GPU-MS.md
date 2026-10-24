@@ -336,6 +336,17 @@ branch. Each one is checked here per file; the full gate has not run again yet.
   entry to a uniform by binding number alone, so a storage buffer at group 1 binding 0 of a
   program with a uniform at group 0 binding 0 is refused as "needs a UNIFORM buffer". Metal had
   the same bug; its lookup now takes the group.
+- Metal loads metallib bytecode, carried like DXBC (`f0bdae3e`, `5b90f9b6`): `tools/irPrograms.ms`
+  compiles each `metal_macos` and `metal_ios` stage with `xcrun metal` into the committed cache
+  `src/shader/metallib/` (416 blobs, 4.5 MB). **For your regens:** without xcrun a stage whose MSL
+  changed prints `metallib miss` and keeps `[]`, as a DXBC miss does on the Mac; the Mac's next
+  regen fills the blob. iOS descriptors keep their MSL beside the blob (`71158c7d`), because the
+  simulator rejects an iphoneos metallib's pipelines; macOS descriptors drop it, as D3D11's do.
+- `src/sokol/window.ms` held `currentTouches()` twice (`3ac71ddd` and `5f50c3e4`, one commit
+  picked twice); the current `msc` refuses the ambiguous call, so the index went red. `b12739ff`
+  drops the second copy.
+- The Mac gate now runs the iOS goldens and view samples on an attached iPhone or iPad
+  (`3920c9c8`); `backend:metal-ios` is closed in `tests/PENDING.md`.
 
 ## From Windows (2026-10-23)
 
