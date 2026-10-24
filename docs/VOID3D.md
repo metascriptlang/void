@@ -5897,6 +5897,23 @@ Pinned by `gltfCheck.ms` (an indexed list and an unindexed strip: a vertex per c
 triangle's normal, zero for a degenerate one) and `gltfSkinCheck.ms` (a fan without `NORMAL`, 8-
 and 16-bit joints: each duplicated corner keeps its source's joints and weights).
 
+### glTF buffer data: URIs, as built (2026-10-24)
+
+A `.gltf` whose one buffer is embedded as a base64 `data:` URI loads with no bytes from the
+caller. As in Bevy's `load_buffers` (`bevy_gltf/src/loader/mod.rs:2094-2134`, `DataUri` at
+`:2151`), the media type is `application/octet-stream` or `application/gltf-buffer`. Another type
+is refused, where Bevy reports `BufferFormatUnsupported`. The decoding is the one an embedded image
+already used (`base64Bytes`, factored out of `loadInlineImage`): strict base64, padding checked,
+re-encoded to reject a payload that does not round-trip. Every refusal is `Unsupported` at
+`$.buffers[0].uri`. That covers a URI that is not base64 (the image path refuses it too) and a
+data URI that also gets bytes from the caller, since the two sources would disagree. A
+`byteLength` past the decoded bytes is `OutOfRange`, as with supplied bytes. Any other URI is
+still the caller's to read and pass in.
+
+Pinned by `gltfCheck.ms`: both media types load the same vertices as the bytes supplied; a
+wrong type, missing `;base64`, a malformed payload or bytes alongside are refused; a short
+payload is out of range.
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
@@ -5911,7 +5928,7 @@ default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloa
 | 2 | `transform_hierarchy <preset>`: windowless propagation; presets `large_tree` (non-uniform, depth 18, branch 8), `wide_tree`, `deep_tree`, `chain` (depth 2500), `update_leaves`, `update_shallow`, `humanoids_active` / `_inactive` / `_mixed` (4000 rigs of 68 nodes) (`transform_hierarchy.rs:29-156`) | `Scene3D` sync, CPU only | built: `tests/bench/benchHierarchy.ms` with `BENCH_HIERARCHY=<preset>`, group nodes moved with `setLocal` and synced with `syncWorld` each frame. Bevy's rng is unseeded and its step time-driven (`:293`, `:258-263`), so the trees match in shape and update probability, not node for node |
 | 3 | `many_materials`: 10x10 cubes, one material each, every base colour rewritten each frame, a shadowed directional light with Bevy's default 4 cascades (`many_materials.rs:15`, `:71-74`, `:91-106`; `bevy_light/src/cascade.rs:142-156`) | material uniform writes, one shadow map; a material colour in every lit and pbr block (`gpu3d.ms` `MATERIAL_COLOR`, "Material colour, as built") | cascades, or Bevy run against one |
 | 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map; flat normals for `Fox.glb`'s primitive, which has no `NORMAL` ("glTF flat normals, as built"; the asset itself not loaded since) | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade |
-| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU; the asset's one buffer is a base64 `data:` URI, which the loader leaves to its caller (`$.buffers[0].byteLength` `OutOfRange` with no bytes), and with the bytes supplied it refuses `$.materials[0]`, whose occlusion map reads `TEXCOORD_1` (`gltf.ms` `textureInfoIndex`; probe 2026-10-24) | a buffer `data:` URI decoded by the loader, as it already decodes an image's; a second UV set; whatever the load meets after those |
+| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU; the loader decodes the asset's `data:` URI buffer ("glTF buffer data: URIs, as built"), and refuses `$.materials[0]`, whose occlusion map reads `TEXCOORD_1` (`gltf.ms` `textureInfoIndex`; probe 2026-10-24) | a second UV set; whatever the load meets after it |
 | 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | 4 point lights per draw (`gpu3d.ms` `MAX_POINT_LIGHTS`) | clustered forward lighting (Bevy's clusters, not read yet); until then not comparable |
 
 Measured per arm: the median and p99 of the frame time over a fixed number of frames after a
