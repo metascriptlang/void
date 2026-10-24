@@ -392,6 +392,7 @@ struct NativeBinding {
 	binding: int32;
 	kind: BindingKind;
 	vertexStage: boolean;
+	fragmentStage: boolean;
 	computeStage: boolean;
 	writable: boolean;
 	nativeSlot: int32;
@@ -763,12 +764,6 @@ function bindingKind(kind: string): BindingKind {
 		"storage-texture" => BindingKind.StorageTexture,
 		_ => stopOnMember("GPUShaderBinding.kind", kind) as BindingKind,
 	};
-}
-
-function vertexStage(binding: GPUShaderBinding): boolean {
-	const both = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
-	if (binding.visibility == both) { stop(`shader binding ${binding.binding} is visible to vertex and fragment, which is not ported to metal yet`); }
-	return binding.visibility == (GPUShaderStage.VERTEX as int32);
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
@@ -1401,10 +1396,12 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
 		checkedVisibility(descriptor.bindings[i], compute);
+		const visibility = descriptor.bindings[i].visibility;
 		const native: NativeBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: bindingKind(kindName),
-			vertexStage: vertexStage(descriptor.bindings[i]),
+			vertexStage: (visibility & (GPUShaderStage.VERTEX as int32)) != 0,
+			fragmentStage: (visibility & (GPUShaderStage.FRAGMENT as int32)) != 0,
 			computeStage: compute,
 			writable: bindingWritable(descriptor.bindings[i]),
 			nativeSlot: descriptor.bindings[i].nativeSlot,
@@ -1412,11 +1409,11 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		};
 		checkBinding(native, descriptor.bindings[i].group);
 		if (native.kind == BindingKind.Uniform) {
-			if (slot.uniformCount == GPU_MAX_UNIFORM_BLOCKS) { stop("a shader module has over 8 uniform blocks"); }
+			if (slot.uniformCount == GPU_MAX_UNIFORM_BLOCKS) { stop(`a shader module has over ${GPU_MAX_UNIFORM_BLOCKS} uniform blocks`); }
 			slot.uniforms[slot.uniformCount] = native;
 			slot.uniformCount += 1;
 		} else {
-			if (slot.resourceCount == GPU_MAX_BIND_GROUP_ENTRIES) { stop("a shader module has over 8 resources"); }
+			if (slot.resourceCount == GPU_MAX_BIND_GROUP_ENTRIES) { stop(`a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`); }
 			slot.resources[slot.resourceCount] = native;
 			slot.resourceCount += 1;
 		}
@@ -2083,25 +2080,17 @@ function applyResources(): void {
 		const e = entryOf(g, binding.binding);
 		if (binding.kind == BindingKind.Texture) {
 			const texture = viewNative(views.slotIndex(bindGroups.slots[g].entries[e].textureView.id));
-			if (binding.vertexStage) {
-				mtlSetVertexTexture(encoder, texture, binding.nativeSlot);
-			} else {
-				mtlSetFragmentTexture(encoder, texture, binding.nativeSlot);
-			}
+			if (binding.vertexStage) { mtlSetVertexTexture(encoder, texture, binding.nativeSlot); }
+			if (binding.fragmentStage) { mtlSetFragmentTexture(encoder, texture, binding.nativeSlot); }
 		} else if (binding.kind == BindingKind.StorageBuffer) {
 			const native = liveBuffer(buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id));
-			if (binding.vertexStage) {
-				mtlSetVertexBuffer(encoder, native, bindGroups.slots[g].entries[e].offset, binding.nativeSlot);
-			} else {
-				mtlSetFragmentBuffer(encoder, native, bindGroups.slots[g].entries[e].offset, binding.nativeSlot);
-			}
+			const offset = bindGroups.slots[g].entries[e].offset;
+			if (binding.vertexStage) { mtlSetVertexBuffer(encoder, native, offset, binding.nativeSlot); }
+			if (binding.fragmentStage) { mtlSetFragmentBuffer(encoder, native, offset, binding.nativeSlot); }
 		} else {
 			const sampler = samplers.slots[samplers.slotIndex(bindGroups.slots[g].entries[e].sampler.id)].native;
-			if (binding.vertexStage) {
-				mtlSetVertexSampler(encoder, sampler, binding.nativeSlot);
-			} else {
-				mtlSetFragmentSampler(encoder, sampler, binding.nativeSlot);
-			}
+			if (binding.vertexStage) { mtlSetVertexSampler(encoder, sampler, binding.nativeSlot); }
+			if (binding.fragmentStage) { mtlSetFragmentSampler(encoder, sampler, binding.nativeSlot); }
 		}
 	}
 }
@@ -2128,11 +2117,14 @@ function applyUniforms(): void {
 				mtlSetVertexBuffer(encoder, native, offset, slot);
 				passVertexUniforms[slot] = native;
 			}
-		} else if (passFragmentUniforms[slot] == native) {
-			mtlSetFragmentBufferOffset(encoder, offset, slot);
-		} else {
-			mtlSetFragmentBuffer(encoder, native, offset, slot);
-			passFragmentUniforms[slot] = native;
+		}
+		if (shaders.slots[s].uniforms[u].fragmentStage) {
+			if (passFragmentUniforms[slot] == native) {
+				mtlSetFragmentBufferOffset(encoder, offset, slot);
+			} else {
+				mtlSetFragmentBuffer(encoder, native, offset, slot);
+				passFragmentUniforms[slot] = native;
+			}
 		}
 	}
 }
