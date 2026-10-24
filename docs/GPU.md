@@ -212,6 +212,13 @@ backend module. Metal follows it with a `.m`.
   does, through `setBindGroup(0, group, offsets)`, and the pass stops on a missing group or an
   offset past the buffer. Storage bindings are never clamped to the device's range, and a
   storage range's offset is a multiple of 32.
+- **A stage loads from metallib bytes when the descriptor has them, else compiles its MSL.**
+  `createShaderModule` takes `vertexBytecode`, `fragmentBytecode` and `computeBytecode` through
+  `newLibraryWithData` (sokol `_sg_mtl_library_from_bytecode`, `sokol_gfx.h:16565`), and
+  `tools/irPrograms.ms` fills them for `metal_macos` (MSL 2.4, macOS 12) and `metal_ios` (MSL 2.4,
+  iOS 15) from `src/shader/metallib/`, as it does DXBC. A cold Metal cache spends 160-240 ms per
+  module on source and 0.03 ms on a metallib. The iOS simulator takes no bytecode: an iphoneos
+  metallib loads there but its pipelines fail, so a stage with no source stops by name.
 - **Timestamps need `MTLCounterSamplingPointAtStageBoundary` and are refused on Intel.** A render
   pass writes them; `timestampWrites` on a compute pass stops by name, because on an Apple GPU the
   compute sample is not written before a resolve that follows it in the same command buffer

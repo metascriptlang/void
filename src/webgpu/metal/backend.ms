@@ -91,7 +91,6 @@ import {
 	checkedVisibility,
 	checkedIntegerTexturePairs,
 	firstInstanceRefusal,
-	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
 	MtlBufferImpl,
@@ -162,6 +161,7 @@ import {
 	mtlNewDepthState,
 	mtlNewFunction,
 	mtlNewLibrary,
+	mtlNewLibraryFromBytes,
 	mtlNewPipeline,
 	mtlNewSampler,
 	mtlNewTexture,
@@ -198,6 +198,7 @@ import {
 	mtlSetVertexTexture,
 	mtlSetViewport,
 	mtlSupportsSampleCount,
+	mtlTakesBytecode,
 	mtlTextureFrom,
 	mtlTextureNative,
 	mtlUsesSharedStorage,
@@ -1551,7 +1552,18 @@ export function destroySampler(sampler: GPUSampler): void {
 	release(samplers, sampler.id);
 }
 
-function compileLibrary(code: string, stage: string, label: string | null): Ptr<MtlLibraryImpl> {
+function compileLibrary(code: string, bytecode: Readonly<Vec<uint8>>, stage: string, label: string | null): Ptr<MtlLibraryImpl> {
+	if (bytecode.length > 0 && mtlTakesBytecode() != 0) {
+		const loaded = mtlNewLibraryFromBytes(device, bytecode[0], bytecode.length as int64);
+		if (loaded == null) {
+			const log: string = mtlErrorLog();
+			stop(`the device rejected GPUShaderModuleDescriptor.${stage}Bytecode of ${labelOf(label)}:\n${log}`);
+		}
+		return loaded;
+	}
+	if (code == "") {
+		stop(`the ${stage} of ${labelOf(label)} has no MSL and no bytecode this device takes`);
+	}
 	const library = mtlNewLibrary(device, code);
 	if (library == null) {
 		const log: string = mtlErrorLog();
@@ -1568,10 +1580,9 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
-	stopOnUnportedShaderBytecode("metal", descriptor);
 	checkedIntegerTexturePairs(descriptor);
-	const compute = descriptor.computeCode != "";
-	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
+	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
+	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "" || descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0)) {
 		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");
 	}
 	const id = allocate(shaders);
@@ -1616,11 +1627,11 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		}
 		slot.workgroup = size;
 		slot.computeEntry = descriptor.computeEntryPoint == "" ? "_main" : descriptor.computeEntryPoint;
-		slot.computeLibrary = compileLibrary(descriptor.computeCode, "compute", descriptor.label);
+		slot.computeLibrary = compileLibrary(descriptor.computeCode, descriptor.computeBytecode, "compute", descriptor.label);
 		slot.compute = entryFunction(slot.computeLibrary, slot.computeEntry, "compute", descriptor.label);
 	} else {
-		slot.vertexLibrary = compileLibrary(descriptor.vertexCode, "vertex", descriptor.label);
-		slot.fragmentLibrary = compileLibrary(descriptor.fragmentCode, "fragment", descriptor.label);
+		slot.vertexLibrary = compileLibrary(descriptor.vertexCode, descriptor.vertexBytecode, "vertex", descriptor.label);
+		slot.fragmentLibrary = compileLibrary(descriptor.fragmentCode, descriptor.fragmentBytecode, "fragment", descriptor.label);
 		slot.vertex = entryFunction(slot.vertexLibrary, descriptor.vertexEntryPoint, "vertex", descriptor.label);
 		slot.fragment = entryFunction(slot.fragmentLibrary, descriptor.fragmentEntryPoint, "fragment", descriptor.label);
 	}
