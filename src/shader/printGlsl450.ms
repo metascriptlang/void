@@ -377,8 +377,14 @@ function intrinsicName(op: Intrinsic): string {
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
 			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
 			Intrinsic.AtomicCompareExchangeWeak => atomicName(op),
-		_ => mathName(op),
+		_ => mathOrStop(op),
 	};
+}
+
+function mathOrStop(op: Intrinsic): string {
+	const name = mathName(op);
+	if (name == "") { throw new Error("internal: printGlsl450 has no spelling for " + op.toString()); }
+	return name;
 }
 
 function intrinsic(p: Glsl, e: ShaderExpr): string {
