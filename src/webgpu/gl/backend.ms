@@ -1256,7 +1256,7 @@ function resetStateCache(): void {
 	oglColorMask(COLOR_WRITE_ALL);
 	oglPolygonOffset(0, 0);
 	oglDisable(GL_POLYGON_OFFSET_FILL);
-	oglDisable(GL_PRIMITIVE_RESTART_FIXED_INDEX);
+	setPrimitiveRestart(false);
 	oglDepthRange(0, 1);
 	oglDisable(GL_CULL_FACE);
 	oglFrontFace(GL_CW);
@@ -2834,7 +2834,7 @@ function applyPipeline(): void {
 	if (pipelines.slots[p].colorCount > 0) { applyBlendState(p); }
 	if (pipelines.slots[p].stripRestart != cache.primitiveRestart) {
 		cache.primitiveRestart = pipelines.slots[p].stripRestart;
-		if (cache.primitiveRestart) { oglEnable(GL_PRIMITIVE_RESTART_FIXED_INDEX); } else { oglDisable(GL_PRIMITIVE_RESTART_FIXED_INDEX); }
+		setPrimitiveRestart(cache.primitiveRestart);
 	}
 	if (pipelines.slots[p].cullFace != cache.cullFace) {
 		cache.cullFace = pipelines.slots[p].cullFace;
@@ -2858,6 +2858,13 @@ function applyPipeline(): void {
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
+}
+
+// WebGL2 always restarts a strip at the all-ones index and refuses the capability's enum.
+function setPrimitiveRestart(on: boolean): void {
+	when (!webgl2) {
+		if (on) { oglEnable(GL_PRIMITIVE_RESTART_FIXED_INDEX); } else { oglDisable(GL_PRIMITIVE_RESTART_FIXED_INDEX); }
+	}
 }
 
 function applyDepthState(p: int32): void {
