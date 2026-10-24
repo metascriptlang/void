@@ -5981,7 +5981,7 @@ depth), `cascadeShadowCheck.ms` (the cascade pick, the blend, the layer fetch in
 `spotShadowCheck.ms` (a packed two-cascade block read back by `dirShadowAt`). Not run yet: the
 regenerated shaders and the goldens on the GPU.
 
-### Clustered lights: how the clusters reach the shader (decided 2026-10-24, not built)
+### Clustered lights: how the clusters reach the shader (decided 2026-10-24, wired on the CPU)
 
 The light assignment is Bevy's CPU clustering (`bevy_light/src/cluster/assign.rs`, the
 Iterative Sphere Refinement of Persson's "Practical Clustered Shading"). How the shader reads the
@@ -6012,8 +6012,30 @@ the fragment's side, Bevy's `fragment_cluster_index` and `view_z_to_z_slice`
 as the tile rows do; whether GL's `gl_FragCoord`, which counts bottom-up, needs a flip there is
 measured when the lit program reads it. Texel arithmetic is unsigned, because shady refuses int32 `/` and `%`.
 `clusterLookupCheck.ms` holds the lookup to the clusters' own tiling and finds each light through
-both textures at its centre. The light records texture, the lit shaders' loop and the renderer
-wait for the rebase.
+both textures at its centre.
+
+Wired on the CPU (2026-10-24), shaders not regenerated, nothing run on a GPU yet:
+
+- `collectLights` writes a 28-float header (ambient, the sun, then the cluster fields: grid,
+  slice factors, the view's depth plane `(forward, -dot(forward, eye))` and the screen
+  `(rows from bottom, height, record count, 0)`) followed by one 24-float record per positioned
+  light, six texels: position and power, colour and range, then the four shape vectors. Every
+  visible light is collected in scene order; the four point slots, the priority sort and
+  `LightError.TooManyPointLights` of the `collectLights` note above are gone.
+- `clusterFrame.ms` is the renderer's per-frame side: it counts the records, turns each into a
+  `ClusterLight` (a spot by its cone, any other shape by its range sphere), assigns them to the
+  view's clusters, writes the header's cluster fields and rewrites the three data images. A frame
+  with no record lists one empty cluster and needs no view.
+- The renderer takes the view with `setCameraView` and refuses a frame with records and no view
+  (`ClusterViewUnset`), a view other than the camera block drawn (`ClusterViewStale`), and, in the
+  presets, a view of another size than the target (`ClusterViewSize`).
+- `litFs`, the textured, billboard and pixel-art programs loop over the fragment's cluster
+  (`litClusterOf`, `litLightOf`, `litTexelOf` and their billboard twins); a shader helper takes no
+  texture, so the reads sit in helpers that take the bindings.
+
+Still to measure at the GPU slot: GL's bottom-up fragment rows (the `rows from bottom` flag), a
+second write of the data images within one frame (they are remade rather than updated twice),
+and the `many_lights` bench.
 
 ### Every mesh draw reads an instance row, as built (2026-10-24)
 
@@ -6066,7 +6088,7 @@ default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloa
 | 3 | `many_materials`: 10x10 cubes, one material each, every base colour rewritten each frame, a shadowed directional light with Bevy's default 4 cascades (`many_materials.rs:15`, `:71-74`, `:91-106`; `bevy_light/src/cascade.rs:142-156`) | material uniform writes, one shadow map; a material colour in every lit and pbr block (`gpu3d.ms` `MATERIAL_COLOR`, "Material colour, as built") | cascades, or Bevy run against one |
 | 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map; flat normals for `Fox.glb`'s primitive, which has no `NORMAL` ("glTF flat normals, as built"; the asset itself not loaded since) | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade |
 | 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU; the loader decodes the asset's `data:` URI buffer ("glTF buffer data: URIs, as built") and reads its occlusion map at `TEXCOORD_1` ("A second uv set for the occlusion map, as built"; the asset itself not loaded since) | whatever the load meets next |
-| 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | 4 point lights per draw (`gpu3d.ms` `MAX_POINT_LIGHTS`) | clustered forward lighting (Bevy's clusters, not read yet); until then not comparable |
+| 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | clustered forward lighting over data textures, wired on the CPU ("Clustered lights") | the regenerated shaders and a GPU run |
 
 Measured per arm: the median and p99 of the frame time over a fixed number of frames after a
 warm-up, with the CPU-load bracket of `scripts/bench-ab.sh` and its NOISY and five-clean-pairs
