@@ -60,6 +60,7 @@ import "./cascadesCheck";
 import "./cascadeShadowCheck";
 import "./clusterAssignCheck";
 import "./clusterTexturesCheck";
+import "./clusterLookupCheck";
 import "./cameraCheck";
 import "./frustumCheck";
 import "./planeProjectionCheck";
