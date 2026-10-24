@@ -403,7 +403,10 @@ function remainder(p: Printer, a: ShaderExpr, b: ShaderExpr): string {
 }
 
 function unaryText(e: ShaderExpr): string {
-	return e.unary == UnaryOp.Negate ? "-" : e.operands[0].type.scalar == ScalarKind.Bool ? "!" : "~";
+	return match (e.unary) {
+		UnaryOp.Negate => "-",
+		UnaryOp.Not => e.operands[0].type.scalar == ScalarKind.Bool ? "!" : "~",
+	};
 }
 
 function binaryText(p: Printer, e: ShaderExpr): string {
@@ -506,8 +509,11 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const ty = typeName(p, t);
 		const deep = t.shape == TextureShape.D3;
-		const sizes = deep ? ["width", "height", "depth"] :
-			t.shape == TextureShape.D2Array ? ["width", "height", "layers"] : ["width", "height"];
+		const sizes = match (t.shape) {
+			TextureShape.D3 => ["width", "height", "depth"],
+			TextureShape.D2Array => ["width", "height", "layers"],
+			_ => ["width", "height"],
+		};
 		const result = deep ? "uint3" : "uint2";
 		const kept = deep ? "width, height, depth" : "width, height";
 		const name = helper(p, "imageSize " + ty, "imageSize", (n) =>
@@ -523,11 +529,13 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	const level = args.length > 1 ? "uint(" + expr(p, args[1]) + ")" : "0u";
 	const ty = typeName(p, t);
 	const deep = t.shape == TextureShape.D3;
-	const layered = t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray ||
-		t.shape == TextureShape.CubeArray;
 	const result = deep ? "uint3" : "uint2";
-	const outs = deep ? ["width", "height", "depth", "levels"] :
-		layered ? ["width", "height", "layers", "levels"] : ["width", "height", "levels"];
+	const outs = match (t.shape) {
+		TextureShape.D3 => ["width", "height", "depth", "levels"],
+		TextureShape.D2Array | TextureShape.Depth2dArray | TextureShape.CubeArray =>
+			["width", "height", "layers", "levels"],
+		_ => ["width", "height", "levels"],
+	};
 	if (t.shape == TextureShape.Multisampled2d) {
 		const name = helper(p, "textureSize " + ty, "textureSize", (n) =>
 			"uint2 " + n + "(" + ty + " t)\n{\n    uint width;\n    uint height;\n" +
@@ -535,7 +543,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 			"    return uint2(width, height);\n}\n");
 		return converted(p, name + "(" + texture + ")", "uint2", e.type);
 	}
-	const kept = result == "uint3" ? "width, height, depth" : "width, height";
+	const kept = deep ? "width, height, depth" : "width, height";
 	const name = helper(p, "textureSize " + ty, "textureSize", (n) =>
 		result + " " + n + "(" + ty + " t, uint level)\n{\n" +
 		outs.map((o) => "    uint " + o + ";\n").join("") +
@@ -777,21 +785,22 @@ function structMaker(p: Printer, structIndex: int32): string {
 function constructText(p: Printer, e: ShaderExpr): string {
 	const t = e.type;
 	const args = e.operands.map((o) => expr(p, o)).join(", ");
-	if (t.kind == ShaderTypeKind.Struct) { return structMaker(p, t.structIndex) + "(" + args + ")"; }
-	if (t.kind == ShaderTypeKind.Array) {
-		return fail(p, "an array value outside a local's or constant's initializer");
-	}
-	if (t.kind != ShaderTypeKind.Vector && t.kind != ShaderTypeKind.Matrix) {
-		return fail(p, "Construct of a " + t.kind.toString());
-	}
-	if (e.operands.length == 1 && e.operands[0].type.kind == ShaderTypeKind.Scalar) {
-		if (isMatrix(t)) { return fail(p, "a matrix built from one scalar"); }
-		return "((" + typeName(p, t) + ")" + operand(p, e.operands[0]) + ")";
-	}
-	if (e.operands.length == 1 && isMatrix(e.operands[0].type)) {
-		return "((" + typeName(p, t) + ")" + operand(p, e.operands[0]) + ")";
-	}
-	return typeName(p, t) + "(" + args + ")";
+	return match (t.kind) {
+		ShaderTypeKind.Struct => structMaker(p, t.structIndex) + "(" + args + ")",
+		ShaderTypeKind.Array =>
+			fail(p, "an array value outside a local's or constant's initializer"),
+		ShaderTypeKind.Vector | ShaderTypeKind.Matrix => {
+			if (e.operands.length == 1 && e.operands[0].type.kind == ShaderTypeKind.Scalar) {
+				if (isMatrix(t)) { return fail(p, "a matrix built from one scalar"); }
+				return "((" + typeName(p, t) + ")" + operand(p, e.operands[0]) + ")";
+			}
+			if (e.operands.length == 1 && isMatrix(e.operands[0].type)) {
+				return "((" + typeName(p, t) + ")" + operand(p, e.operands[0]) + ")";
+			}
+			return typeName(p, t) + "(" + args + ")";
+		},
+		_ => fail(p, "Construct of a " + t.kind.toString()),
+	};
 }
 
 function initializer(p: Printer, e: ShaderExpr): string {
