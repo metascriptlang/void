@@ -25,6 +25,7 @@ when (windows) {
 	@compile("./bridge.c");
 	@passL("-ld3d11");
 	@passL("-ldxgi");
+	@passL("-ldxguid");
 	@passL("-ldwmapi");
 	@passL("-limm32");
 	@passL("-lcomctl32");

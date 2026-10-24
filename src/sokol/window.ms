@@ -24,6 +24,7 @@ extern function voidEventCursor(): int32;
 extern function voidSetTextInput(on: int32): void;
 extern function voidSetImeRect(x: int32, y: int32, w: int32, h: int32): void;
 extern function voidSetWindowTitle(title: cstring): void;
+extern function voidSetPresentMode(mode: int32): void;
 extern function voidEventTouchCount(): int32;
 extern function voidEventTouchId(index: int32): int64;
 extern function voidEventTouchX(index: int32): float32;
@@ -149,6 +150,14 @@ export function onAppEvent(handler: (e: AppEvent) => void): void {
 }
 
 export function setWindowTitle(title: string): void { voidSetWindowTitle(title); }
+
+// bevy_window's PresentMode, ordinals as bridge.h voidSetPresentMode: set it before voidRun.
+export enum PresentMode {
+	AutoVsync,
+	AutoNoVsync,
+}
+
+export function setPresentMode(mode: PresentMode): void { voidSetPresentMode(mode as int32); }
 
 // While on, an IME composition reaches the event handler as Preedit events (`text` with its
 // caret `cursor` in UTF-16 units; an empty text ends it) and its result as one TextInput

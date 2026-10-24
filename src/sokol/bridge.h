@@ -49,6 +49,10 @@ int voidEventFramebufferWidth(void);
 int voidEventFramebufferHeight(void);
 int voidEventCursor(void);
 void voidSetWindowTitle(const char *title);
+// bevy_window's PresentMode, before voidRun: 0 AutoVsync, the default, or 1 AutoNoVsync, which
+// presents without waiting for the display where the driver can (tearing, else a flip that
+// replaces the queued frame) and with vsync where it cannot (the browser, Metal, Android).
+void voidSetPresentMode(int mode);
 // The touch points of a Touches* event, in framebuffer pixels; `changed` is 1 for the points
 // this event began, moved, ended or cancelled.
 int voidEventTouchCount(void);
