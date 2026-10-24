@@ -14,6 +14,7 @@ import {
 	GPUSampler,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUShaderStage,
 	GPUStencilOperation,
 	GPUTexture,
 	GPUTextureFormat,
@@ -87,7 +88,7 @@ function flatShader(device: GPUDevice): GPUShaderModule {
 		fragmentCode: FRAGMENT_HLSL,
 		fragmentEntryPoint: "",
 	};
-	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
@@ -222,7 +223,7 @@ test "a module built from precompiled DXBC with empty text draws, and a stage wi
 test "a compute module built from precompiled DXBC with empty text doubles a storage buffer" {
 	const device = openDevice();
 	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: "", computeEntryPoint: "", computeBytecode: dxbc(DOUBLE_HLSL, "cs_5_0") };
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
 	const module = device.createShaderModule(descriptor);
 	const storage = device.createBuffer({
 		label: "storage",
@@ -339,8 +340,8 @@ function texturedShader(device: GPUDevice): GPUShaderModule {
 		fragmentCode: TEXTURED_FRAGMENT_HLSL,
 		fragmentEntryPoint: "",
 	};
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, nativeSlot: 0 };
-	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, nativeSlot: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
@@ -1116,13 +1117,13 @@ const DOUBLE_HLSL = "RWByteAddressBuffer data : register(u0);\n[numthreads(4, 1,
 function computeModule(device: GPUDevice, code: string, kind: string, nativeSlot: int32): GPUShaderModule {
 	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: code, computeEntryPoint: "" };
 	if (kind == "storage-buffer") {
-		descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: nativeSlot };
+		descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: nativeSlot };
 	} else {
 		descriptor.bindings[0] = {
 			group: 1,
 			binding: 0,
 			kind: "storage-texture",
-			stage: "compute",
+			visibility: GPUShaderStage.COMPUTE as int32,
 			storageAccess: "write-only",
 			storageFormat: "r32uint",
 			nativeSlot: nativeSlot,
@@ -1230,8 +1231,8 @@ function u32At(bytes: Vec<uint8>, index: int32): uint32 {
 
 function loadTexels<T>(device: GPUDevice, format: GPUTextureFormat, hlsl: string, sampleType: GPUTextureSampleType, texels: Vec<T>): Vec<uint8> {
 	let descriptor: GPUShaderModuleDescriptor = { label: "load", computeCode: hlsl, computeEntryPoint: "" };
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "compute", sampleType: sampleType, nativeSlot: 0 };
-	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.COMPUTE as int32, sampleType: sampleType, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
 	const module = device.createShaderModule(descriptor);
 	const texture = device.createTexture({
 		label: "data",
@@ -1298,7 +1299,7 @@ test "a fragment shader reads a read-only storage buffer" {
 		group: 1,
 		binding: 0,
 		kind: "storage-buffer",
-		stage: "fragment",
+		visibility: GPUShaderStage.FRAGMENT as int32,
 		bufferType: "read-only-storage",
 		nativeSlot: 0,
 	};
@@ -1473,12 +1474,45 @@ test "a cube view at baseArrayLayer 6 samples the second cube of a twelve-layer 
 		fragmentCode: CUBE_FRAGMENT_HLSL,
 		fragmentEntryPoint: "",
 	};
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, nativeSlot: 0 };
-	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, nativeSlot: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	const module = device.createShaderModule(descriptor);
 	assert sampleCentreWith(device, module, texture.createView({ label: null, dimension: "cube", baseArrayLayer: 6 })) == BLUE;
 	assert sampleCentreWith(device, module, texture.createView({ label: null, dimension: "cube", baseArrayLayer: 0 })) == RED;
+	device.destroy();
+}
+
+const HALF_TEXEL_VERTEX_HLSL = "Texture2D tex : register(t0);
+SamplerState smp : register(s0);
+struct Out { float4 position : SV_Position; float4 color : TEXCOORD0; };
+Out main(float2 position : TEXCOORD0) { Out o; o.position = float4(position, 0.0, 1.0); o.color = tex.SampleLevel(smp, float2(0.5, 0.5), 0) * 0.5; return o; }";
+const HALF_TEXEL_FRAGMENT_HLSL = "Texture2D tex : register(t0);
+SamplerState smp : register(s0);
+float4 main(float4 p : SV_Position, float4 color : TEXCOORD0) : SV_Target0 { return color + tex.Sample(smp, float2(0.5, 0.5)) * 0.5; }";
+
+function halfTexelShader(device: GPUDevice, visibility: int32): GPUShaderModule {
+	let descriptor: GPUShaderModuleDescriptor = {
+		label: "half texel",
+		vertexCode: HALF_TEXEL_VERTEX_HLSL,
+		vertexEntryPoint: "",
+		fragmentCode: HALF_TEXEL_FRAGMENT_HLSL,
+		fragmentEntryPoint: "",
+	};
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: visibility, size: 0, nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", visibility: visibility, size: 0, nativeSlot: 0 };
+	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
+	return device.createShaderModule(descriptor);
+}
+
+test "a texture and sampler visible to vertex and fragment are bound in both stages" {
+	const device = openDevice();
+	const texture = sampledTexture(device);
+	device.queue.writeTexture({ texture: texture }, texels(255, 0, 0, 4), { offset: 0, bytesPerRow: 8, rowsPerImage: 2 }, { width: 2, height: 2, depthOrArrayLayers: 1 });
+	const view = texture.createView({ label: null });
+	const both = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	assert sampleCentreWith(device, halfTexelShader(device, both), view) == RED;
+	assert sampleCentreWith(device, halfTexelShader(device, GPUShaderStage.FRAGMENT as int32), view) != RED;
 	device.destroy();
 }
 

@@ -23,6 +23,7 @@ import {
 	GPUShaderBinding,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUShaderStage,
 	GPUStencilOperation,
 	GPUStorageTextureAccess,
 	GPUTexture,
@@ -73,7 +74,7 @@ function flatShader(device: GPUDevice): GPUShaderModule {
 		fragmentCode: FRAGMENT_MSL,
 		fragmentEntryPoint: "fmain",
 	};
-	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
@@ -275,7 +276,7 @@ function textureBinding(sampleType: GPUTextureSampleType, viewDimension: GPUText
 		group: 1,
 		binding: 0,
 		kind: "texture",
-		stage: "fragment",
+		visibility: GPUShaderStage.FRAGMENT as int32,
 		size: 0,
 		nativeSlot: 0,
 		sampleType: sampleType,
@@ -285,7 +286,7 @@ function textureBinding(sampleType: GPUTextureSampleType, viewDimension: GPUText
 }
 
 function samplerBinding(samplerType: GPUSamplerBindingType): GPUShaderBinding {
-	return { group: 1, binding: 1, kind: "sampler", stage: "fragment", size: 0, nativeSlot: 0, samplerType: samplerType };
+	return { group: 1, binding: 1, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, nativeSlot: 0, samplerType: samplerType };
 }
 
 const NO_BINDING: GPUShaderBinding = { group: 1, binding: 1 };
@@ -544,7 +545,7 @@ function depthBiasScene(device: GPUDevice, compare: GPUCompareFunction, depthBia
 		fragmentCode: FRAGMENT_MSL,
 		fragmentEntryPoint: "fmain",
 	};
-	shader.bindings[0] = { group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0 };
+	shader.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0 };
 	shader.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	const module = device.createShaderModule(shader);
 	let descriptor: GPURenderPipelineDescriptor = { label: "depth" };
@@ -628,7 +629,7 @@ function drawTopology(device: GPUDevice, vertexCode: string, entryPoint: string,
 		fragmentCode: FRAGMENT_MSL,
 		fragmentEntryPoint: "fmain",
 	};
-	shader.bindings[0] = { group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: 0 };
+	shader.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: 0 };
 	shader.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	const module = device.createShaderModule(shader);
 	const pipeline = device.createRenderPipeline(topologyDescriptor(module, topology));
@@ -1539,13 +1540,13 @@ function computeDescriptor(code: string, entry: string, x: int32, y: int32): GPU
 
 function storageBufferModule(device: GPUDevice, code: string, entry: string, workgroup: int32): GPUShaderModule {
 	let descriptor = computeDescriptor(code, entry, workgroup, 1);
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
 	return device.createShaderModule(descriptor);
 }
 
 function storageTextureModule(device: GPUDevice, code: string, access: GPUStorageTextureAccess, format: GPUTextureFormat): GPUShaderModule {
 	let descriptor = computeDescriptor(code, "", 4, 4);
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-texture", stage: "compute", storageAccess: access, storageFormat: format, nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-texture", visibility: GPUShaderStage.COMPUTE as int32, storageAccess: access, storageFormat: format, nativeSlot: 0 };
 	return device.createShaderModule(descriptor);
 }
 
@@ -1603,8 +1604,8 @@ test "a compute pass doubles a storage buffer, then again through an indirect di
 test "a compute pass reads a read-only float buffer and writes a read-write one at a bound offset" {
 	const device = openDevice();
 	let descriptor = computeDescriptor(HALVE_MSL, "halve", 4, 1);
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "read-only-storage", nativeSlot: 0 };
-	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 1 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "read-only-storage", nativeSlot: 0 };
+	descriptor.bindings[1] = { group: 1, binding: 1, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 1 };
 	const module = device.createShaderModule(descriptor);
 	const source = device.createBuffer({ label: "source", size: 16, usage: STORAGE_BUFFER_USAGE });
 	device.queue.writeBuffer(source, 0, [2.0, 4.0, 6.0, 8.0] as Vec<float32>);
@@ -1694,7 +1695,7 @@ test "a render pass reads the read-only storage buffer a compute pass of the sam
 		fragmentCode: STORAGE_FRAGMENT_MSL,
 		fragmentEntryPoint: "smain",
 	};
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "fragment", bufferType: "read-only-storage", nativeSlot: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.FRAGMENT as int32, bufferType: "read-only-storage", nativeSlot: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: null, semanticIndex: 0 };
 	const renderPipeline = flatPipeline(device, device.createShaderModule(descriptor), 1);
 	let render: GPUBindGroupDescriptor = { label: "colours", layout: renderPipeline.getBindGroupLayout(1) };

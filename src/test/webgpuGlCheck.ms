@@ -12,6 +12,7 @@ import {
 	GPUSampler,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUShaderStage,
 	GPUTexture,
 	GPUTextureUsage,
 	GPUTextureView,
@@ -85,7 +86,7 @@ function flatShader(device: GPUDevice): GPUShaderModule {
 		fragmentCode: FRAGMENT_GLSL,
 		fragmentEntryPoint: "",
 	};
-	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", stage: "fragment", size: 16, nativeSlot: -1, nativeName: "params", textureBinding: -1 };
+	descriptor.bindings[0] = { group: 0, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16, nativeSlot: -1, nativeName: "params", textureBinding: -1 };
 	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
@@ -98,8 +99,8 @@ function texturedShader(device: GPUDevice): GPUShaderModule {
 		fragmentCode: TEXTURED_FRAGMENT_GLSL,
 		fragmentEntryPoint: "",
 	};
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 };
-	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", stage: "fragment", size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "float", nativeSlot: -1, textureBinding: -1 };
+	descriptor.bindings[1] = { group: 1, binding: 32, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, samplerType: "filtering", nativeSlot: -1, nativeName: "tex_smp", textureBinding: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
@@ -112,8 +113,8 @@ function dummySamplerShader(device: GPUDevice): GPUShaderModule {
 		fragmentCode: DUMMY_FRAGMENT_GLSL,
 		fragmentEntryPoint: "",
 	};
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "unfilterable-float", nativeSlot: -1, textureBinding: -1 };
-	descriptor.bindings[1] = { group: 1, binding: DUMMY_SAMPLER_BINDING, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "tex_SPIRV_Cross_DummySampler", textureBinding: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "unfilterable-float", nativeSlot: -1, textureBinding: -1 };
+	descriptor.bindings[1] = { group: 1, binding: DUMMY_SAMPLER_BINDING, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "tex_SPIRV_Cross_DummySampler", textureBinding: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
 	return device.createShaderModule(descriptor);
 }
@@ -329,8 +330,8 @@ test "an rgba32uint texture fetches exact integers through a uint binding and th
 		fragmentCode: UINT_FRAGMENT_GLSL,
 		fragmentEntryPoint: "",
 	};
-	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", stage: "fragment", size: 0, sampleType: "uint", nativeSlot: -1, textureBinding: -1 };
-	descriptor.bindings[1] = { group: 1, binding: DUMMY_SAMPLER_BINDING, kind: "sampler", stage: "fragment", size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "tex_SPIRV_Cross_DummySampler", textureBinding: 0 };
+	descriptor.bindings[0] = { group: 1, binding: 0, kind: "texture", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, sampleType: "uint", nativeSlot: -1, textureBinding: -1 };
+	descriptor.bindings[1] = { group: 1, binding: DUMMY_SAMPLER_BINDING, kind: "sampler", visibility: GPUShaderStage.FRAGMENT as int32, size: 0, samplerType: "non-filtering", nativeSlot: -1, nativeName: "tex_SPIRV_Cross_DummySampler", textureBinding: 0 };
 	descriptor.attributes[0] = { location: 0, nativeName: "position", semanticIndex: 0 };
 	const module = device.createShaderModule(descriptor);
 	let pipelineDescriptor: GPURenderPipelineDescriptor = { label: "uint fetch" };
@@ -751,13 +752,13 @@ function computeModule(device: GPUDevice, code: string, kind: string, workgroupX
 	let descriptor: GPUShaderModuleDescriptor = { label: "compute", computeCode: code, computeEntryPoint: "" };
 	descriptor.workgroupSize = [workgroupX, workgroupY, 1];
 	if (kind == "storage-buffer") {
-		descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", stage: "compute", bufferType: "storage", nativeSlot: 0 };
+		descriptor.bindings[0] = { group: 1, binding: 0, kind: "storage-buffer", visibility: GPUShaderStage.COMPUTE as int32, bufferType: "storage", nativeSlot: 0 };
 	} else {
 		descriptor.bindings[0] = {
 			group: 1,
 			binding: 0,
 			kind: "storage-texture",
-			stage: "compute",
+			visibility: GPUShaderStage.COMPUTE as int32,
 			storageAccess: "write-only",
 			storageFormat: "r32uint",
 			nativeSlot: 0,
@@ -862,7 +863,7 @@ test "a fragment shader reads a read-only storage buffer" {
 		group: 1,
 		binding: 0,
 		kind: "storage-buffer",
-		stage: "fragment",
+		visibility: GPUShaderStage.FRAGMENT as int32,
 		bufferType: "read-only-storage",
 		nativeSlot: 0,
 	};
