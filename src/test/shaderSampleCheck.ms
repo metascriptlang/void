@@ -271,3 +271,71 @@ test "every target samples a cube texture along a direction" {
 	assert reflected.ok && reflected.value.bindings.filter((b) => b.kind == "texture" &&
 		b.viewDimension == "cube").length == 2;
 }
+
+export function domeVs(input: Corner, b: Sky): SkyRay {
+	const direction = vec3f(input.position.x, input.position.y, 1.0);
+	const glow = textureSampleLevel(b.sky, b.skySampler, direction, 0.0);
+	return { clip: vec4f(input.position.x, input.position.y, glow.x, 1.0), direction };
+}
+
+test "a texture and sampler both stages read are one binding, at one native slot" {
+	const linked = programModule(glslIr(domeVs), glslLinkedIr(skyFs, domeVs), []);
+	assert linked.ok;
+	const m = linked.value;
+	assert irErrors(m).length == 0 && m.resources.length == 2;
+	for (const entry of [0, 1]) {
+		const wgsl = printedFor(m, entry, ShaderTarget.Wgsl, "dome");
+		assert wgsl.includes("@binding(0) @group(1) var sky : texture_cube<f32>;") &&
+			wgsl.includes("@binding(32) @group(1) var skySampler : sampler;");
+		const hlsl = printedFor(m, entry, ShaderTarget.Hlsl5, "dome");
+		assert hlsl.includes("TextureCube<float4> sky : register(t0);") &&
+			hlsl.includes("SamplerState skySampler : register(s0);");
+		assert printedFor(m, entry, ShaderTarget.Glsl430, "dome").includes(
+			"layout(binding = 0) uniform samplerCube sky_skySampler;");
+		assert printedFor(m, entry, ShaderTarget.Glsl300es, "dome").includes(
+			"uniform highp samplerCube sky_skySampler;");
+		assert printedFor(m, entry, ShaderTarget.Msl, "dome").includes(
+			"texturecube<float> sky [[texture(0)]], sampler skySampler [[sampler(0)]]");
+	}
+}
+
+export struct Rim {
+	@binding(1) horizon: TextureCube;
+	@binding(2) rim: TextureCube;
+	@binding(1) horizonSampler: Sampler;
+}
+
+export struct RimOnly {
+	@binding(2) rim: TextureCube;
+	@binding(1) horizonSampler: Sampler;
+}
+
+export function rimVs(input: Corner, b: Rim): SkyRay {
+	const direction = vec3f(input.position.x, input.position.y, 1.0);
+	const glow = textureSampleLevel(b.horizon, b.horizonSampler, direction, 0.0) +
+		textureSampleLevel(b.rim, b.horizonSampler, direction, 0.0);
+	return { clip: vec4f(input.position.x, input.position.y, glow.x, 1.0), direction };
+}
+
+export function rimFs(input: SkyRay, b: RimOnly): Vec4f {
+	return textureSample(b.rim, b.horizonSampler, input.direction);
+}
+
+test "a shared view takes the first native slot free in every stage that reads it" {
+	const linked = programModule(glslIr(rimVs), glslLinkedIr(rimFs, rimVs), []);
+	assert linked.ok;
+	const m = linked.value;
+	assert m.resources.length == 3;
+	for (const entry of [0, 1]) {
+		const hlsl = printedFor(m, entry, ShaderTarget.Hlsl5, "rim");
+		assert hlsl.includes("TextureCube<float4> rim : register(t1);") &&
+			hlsl.includes("SamplerState horizonSampler : register(s1);");
+		assert printedFor(m, entry, ShaderTarget.Msl, "rim").includes(
+			"texturecube<float> rim [[texture(1)]], sampler horizonSampler [[sampler(1)]]");
+		assert printedFor(m, entry, ShaderTarget.Glsl430, "rim").includes(
+			"layout(binding = 1) uniform samplerCube rim_horizonSampler;");
+	}
+	assert printedFor(m, 0, ShaderTarget.Hlsl5, "rim").startsWith(
+		"TextureCube<float4> horizon : register(t0);");
+}
+
