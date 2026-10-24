@@ -131,13 +131,13 @@ verified until those tests run; no component may lift an importer refusal or reg
 | Component owner | Exclusive files | Contract at the integration boundary |
 |---|---|---|
 | Accessor | `gltfAccessor.ms`, `gltfColour.ms`, dedicated checks | Owned decoded values from validated caller-supplied byte tables; stride/sparse/normalization and RGBA preservation. No URI policy or index-width GPU change. |
-| Direct PBR | `pbrResponse.ms`, `pbrResponse.glsl`, dedicated check | Heaps direct response and separate glTF map interpretation in linear space. No legacy look change, view-slot choice or invented zero-roughness floor. |
+| Direct PBR | `pbrResponse.ms`, `shader3d.ms` `pbrDirect`, dedicated check | Heaps direct response and separate glTF map interpretation in linear space. No legacy look change, view-slot choice or invented zero-roughness floor. |
 | Mip data | `textureMip.ms`, dedicated check | Explicit supplied mip chains and complete supported sampler identity. No automatic generation, GPU door, cube target or environment approximation. |
 | Light shape | `lightShape.ms`, dedicated check | Spot angular evaluation/camera data; rectangle/capsule closest-point math. No scene enum, attenuation replacement or unsafe culling copied by convenience. |
 | Clip composition | `animationCompose.ms`, dedicated check | Staged TRS composition, captured-rest fallback and source-index exclusive masks; glTF intra-track SLERP and legacy sampling unchanged. |
 | Morph data | `morphGeometry.ms`, dedicated check | Owned base/deltas and instance weights; atomic mesh-space position/normal/tangent deformation before skin. No GPU-only spatial proxy or dynamic-buffer policy. |
 | LOD | `meshLod.ms`, dedicated check | Validated ordered thresholds and material/range-preserving CPU selection. No generic instance ABI or shared independent actor palettes. |
-| Colour effects | `colorMatrixPass.ms`, `fxaaFilter.glsl`, dedicated check | Distinct material/screen matrix alpha rules and Heaps color-only FXAA block. No registry, preset ordering, AO/decal/SSR input invention. |
+| Colour effects | `colorMatrixPass.ms`, `post3d.ms` FXAA, dedicated check | Distinct material/screen matrix alpha rules and Heaps color-only FXAA block. No registry, preset ordering, AO/decal/SSR input invention. |
 | Particle visuals | `particleWriter.ms` (`writeParticles`), `particleWriterCheck.ms` | Rotation/aspect/frame sampling and owned extended visual records, preserving current eight-float output and continuous Alpha. No compute or collision policy. |
 | Acceptance asset | `tests/fixtures/gltf/generateSkinnedAsymmetric.py`, `skinnedAsymmetric.glb` | Independently computed asymmetric joints/IBMs/TRS, duplicate names, multiple materials and clone expectations. No private asset committed or GPU receipt inferred. |
 
