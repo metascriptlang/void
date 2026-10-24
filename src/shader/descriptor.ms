@@ -304,18 +304,14 @@ export function programSource(m: ShaderModule, target: ShaderTarget): Result<Pro
 export function quotedSource(text: string): string {
 	let out = "\"";
 	for (let i = 0; i < text.length; i++) {
-		const c = text[i];
-		if (c == "\\") {
-			out += "\\\\";
-		} else if (c == "\"") {
-			out += "\\\"";
-		} else if (c == "\n") {
-			out += "\\n";
-		} else if (c == "\t") {
-			out += "\\t";
-		} else if (c != "\r") {
-			out += c;
-		}
+		out += match (text[i]) {
+			"\\" => "\\\\",
+			"\"" => "\\\"",
+			"\n" => "\\n",
+			"\t" => "\\t",
+			"\r" => "",
+			_ => text[i],
+		};
 	}
 	return out + "\"";
 }
