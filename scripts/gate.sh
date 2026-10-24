@@ -1141,9 +1141,9 @@ else
 	fi
 fi
 if [ "$(uname -s)" != Darwin ]; then
-	skip "metal macOS: runs on a Mac only (sh scripts/golden.sh --backend metal)"
+	skip "metal macOS and iOS: run on a Mac only (sh scripts/golden.sh --backend metal; bash scripts/iosDevice.sh golden auto)"
 elif [ "$QUICK" -eq 1 ]; then
-	skip "metal macOS: --quick skips the golden suites (sh scripts/golden.sh --backend metal)"
+	skip "metal macOS and iOS: --quick skips the golden suites (sh scripts/golden.sh --backend metal; bash scripts/iosDevice.sh golden auto)"
 else
 	sh scripts/golden.sh --backend metal > out/gate-golden-metal.log 2>&1 || true
 	metal_conformance="$(grep -E '^golden metal' out/gate-golden-metal.log || echo 'no conformance line — see out/gate-golden-metal.log')"
@@ -1153,11 +1153,38 @@ else
 	else
 		conformance_rule metal out/gate-golden-metal.log conformance:metal-gpu-rounding
 	fi
+	ios_device="${VOID_IOS_DEVICE:-auto}"
+	rm -f out/golden-metal-ios-*.log
+	ios_status=0
+	bash scripts/iosDevice.sh golden "$ios_device" > out/gate-ios-golden.log 2>&1 || ios_status=$?
+	ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-golden.log | head -1)"
+	ios_log="out/golden-metal-ios-$ios_model.log"
+	if [ -n "$ios_model" ] && grep -q '^golden metal' "$ios_log" 2> /dev/null; then
+		echo "      metal    iOS $ios_model: $(grep -E '^golden metal' "$ios_log")      (attached device, every full gate)"
+		conformance_rule "metal iOS $ios_model" "$ios_log" conformance:metal-gpu-rounding
+	else
+		fail "metal iOS golden did not run to a verdict: $(grep '^iosDevice:' out/gate-ios-golden.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-golden.log"
+		grep -E '^FAIL scene' out/gate-ios-golden.log | sed 's/^/      /' || true
+	fi
+	ios_status=0
+	bash scripts/iosDevice.sh samples "$ios_device" > out/gate-ios-samples.log 2>&1 || ios_status=$?
+	ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-samples.log | head -1)"
+	if [ -z "$ios_model" ] || ! grep -q '^[1248]: ' out/gate-ios-samples.log; then
+		fail "metal iOS view samples did not run: $(grep '^iosDevice:' out/gate-ios-samples.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-samples.log"
+	else
+		for samples in 1 2 4 8; do
+			ios_line="$(grep "^$samples: " out/gate-ios-samples.log || true)"
+			case "$ios_line" in
+				*"PASS view samples"*) pass "iOS $ios_model: ${ios_line#*: }" ;;
+				*"sampleCount '$samples' is not supported"*) pass "iOS $ios_model: a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)" ;;
+				*) fail "iOS $ios_model: a host view at $samples samples: ${ios_line:-no result} — see out/gate-ios-samples.log" ;;
+			esac
+		done
+	fi
 fi
-skip "metal iOS: a device run, not this gate — bash scripts/iosDevice.sh golden; last result in docs/TESTING.md guardrail 9"
 skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
 skip "webgpu: blocked with the other web runs — tests/PENDING.md web:runs"
-skip "sample_count on iOS and Android: needs the devices — tests/PENDING.md backend:sample-count-mobile"
+skip "sample_count on Android: needs the device — tests/PENDING.md backend:sample-count-mobile"
 if [ "$WEB" -eq 1 ]; then
 	sh scripts/golden-web.sh > out/gate-golden-web.log 2>&1 || true
 	webgl2_conformance="$(grep -E '^golden webgl2' out/gate-golden-web.log || echo 'no conformance line — see out/gate-golden-web.log')"
