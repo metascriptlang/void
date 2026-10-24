@@ -2,6 +2,7 @@
 #import <Metal/Metal.h>
 
 #include <stdatomic.h>
+#include <TargetConditionals.h>
 
 #include "presentGate.h"
 
@@ -32,6 +33,19 @@ void voidPresentGateRelease(void *gate) {
 	if (gate) CFRelease(gate);
 }
 
+#if TARGET_OS_SIMULATOR
+static const bool VOID_SIMULATOR_DRAWABLE_HAS_NO_PRESENTED_HANDLER = true;
+
+int voidPresentGateAdmits(void *gate) {
+	(void)gate;
+	return VOID_SIMULATOR_DRAWABLE_HAS_NO_PRESENTED_HANDLER;
+}
+
+void voidPresentGateTrack(void *gate, void *drawable) {
+	(void)gate;
+	(void)drawable;
+}
+#else
 int voidPresentGateAdmits(void *gate) {
 	VoidPresentGate *g = (__bridge VoidPresentGate *)gate;
 	return atomic_load(&g->pending) < g->cap;
@@ -45,3 +59,4 @@ void voidPresentGateTrack(void *gate, void *drawable) {
 		atomic_fetch_sub(&g->pending, 1);
 	}];
 }
+#endif
