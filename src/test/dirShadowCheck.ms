@@ -25,6 +25,7 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	MOVING_MATERIAL_UNIFORM_LENGTH,
+	CLUSTER_SCENE_VIEWS,
 } from "../void3d/gpu3d";
 import { RenderState, Face } from "../gpu/state";
 import {
@@ -148,7 +149,8 @@ test "the shadow pass casts a caster's depth on its layout, cut only where its m
 		assert cut.cutout;
 		assert uniformBlockLength(cut, MATERIAL_UNIFORM_SLOT) ==
 			uniformBlockLength(ProgramKey.of(program), MATERIAL_UNIFORM_SLOT);
-		assert textureSlotMask(cut) == textureSlotMask(ProgramKey.of(program));
+		const drawn: uint32 = textureSlotMask(ProgramKey.of(program));
+		assert textureSlotMask(cut) == (drawn & ~CLUSTER_SCENE_VIEWS);
 	}
 	const premultiplied: ProgramKey =
 		castAs(ProgramKey.of(Program.LitTextured).withPremultiplied());

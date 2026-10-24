@@ -64,6 +64,8 @@ import {
 	SHADOW_SCENE_SAMPLERS,
 	ENV_SCENE_VIEWS,
 	ENV_SCENE_SAMPLERS,
+	CLUSTER_SCENE_VIEWS,
+	CLUSTER_SCENE_SAMPLERS,
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
 	ENV_SAMPLER_SLOT,
@@ -919,8 +921,8 @@ test "an untextured shadowed key reads only the scene maps, in either preset" {
 		const key: ProgramKey = ProgramKey.of(Program.Lit).withShadowed().withPreset(preset);
 		assert declares(key);
 		assert textureSlotMask(key) != 0;
-		assert (textureSlotMask(key) & ~SHADOW_SCENE_VIEWS) == 0;
-		assert (samplerSlotMask(key) & ~SHADOW_SCENE_SAMPLERS) == 0;
+		assert (textureSlotMask(key) & ~(SHADOW_SCENE_VIEWS | CLUSTER_SCENE_VIEWS)) == 0;
+		assert (samplerSlotMask(key) & ~(SHADOW_SCENE_SAMPLERS | CLUSTER_SCENE_SAMPLERS)) == 0;
 	}
 }
 
@@ -1110,7 +1112,7 @@ test "a premultiplied card can cut and dissolve, and its caster cuts and dissolv
 			assert castCut.value.cutout && !castCut.value.premultiplied;
 			assert uniformBlockLength(castCut.value, MATERIAL_UNIFORM_SLOT) ==
 				uniformBlockLength(cut, MATERIAL_UNIFORM_SLOT);
-			assert textureSlotMask(castCut.value) == textureSlotMask(cut);
+			assert textureSlotMask(castCut.value) == (textureSlotMask(cut) & ~CLUSTER_SCENE_VIEWS);
 		}
 		const castMelting: Result<ProgramKey, ProgramError> = castIn(melting);
 		assert castMelting.ok;
@@ -1168,7 +1170,8 @@ test "particleVisual declares additive program14 layout9 with original billboard
 		assert uniformBlockLength(key, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;
 		assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
 		assert uniformBlockLength(key, 4) == 0 && uniformBlockLength(key, SKIN_UNIFORM_SLOT) == 0;
-		assert textureSlotMask(key) == 1 && samplerSlotMask(key) == 1;
+		assert textureSlotMask(key) == 1 + CLUSTER_SCENE_VIEWS;
+		assert samplerSlotMask(key) == 1 + CLUSTER_SCENE_SAMPLERS;
 		const skin: ProgramKey = { ...key, skinned: true };
 		assert !declares(skin);
 	}
@@ -1213,10 +1216,10 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 			assert !cast.ok || !cast.value.pbrMaps;
 		}
 	}
-	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS;
-	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS;
-	assert textureSlotMask(base.withShadowed()) == 23 + 64 + ENV_SCENE_VIEWS;
-	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS;
+	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
+	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS + CLUSTER_SCENE_SAMPLERS;
+	assert textureSlotMask(base.withShadowed()) == 23 + 64 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
+	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert viewSlotOf(5) == METAL_ROUGH_VIEW_SLOT && viewSlotOf(6) == OCCLUSION_VIEW_SLOT;
 	assert METAL_ROUGH_VIEW_SLOT == 1 && OCCLUSION_VIEW_SLOT == 2;
 	assert MATERIAL_TEXTURE_ROLES == 7 && !colorRole(5) && !colorRole(6) && colorRole(0);
@@ -1313,9 +1316,10 @@ test "an emitting pbr key keeps its emissive vec4 after the pbr one and binds vi
 			}
 		}
 	}
-	assert textureSlotMask(base) == 9 + ENV_SCENE_VIEWS;
-	assert textureSlotMask(maps) == 15 + ENV_SCENE_VIEWS;
-	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41 + ENV_SCENE_VIEWS;
+	const scene: uint32 = ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
+	assert textureSlotMask(base) == 9 + scene;
+	assert textureSlotMask(maps) == 15 + scene;
+	assert NORMAL_VIEW_SLOT == 5 && textureSlotMask(base.withNormalMap()) == 41 + scene;
 }
 
 test "every pbr key reads the environment's cubes past the shadow maps, and no other key does" {
