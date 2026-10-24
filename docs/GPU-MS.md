@@ -323,6 +323,11 @@ branch. Each one is checked here per file; the full gate has not run again yet.
   - the fb trap: a 1x1 window is not clamped on macOS, so the Mac asks for one larger than the
     screen (`1537d62b`).
 
+- `scripts/gate.sh` ran no backend check: `webgpuMetalCheck.ms`, `webgpuD3d11Check.ms` and
+  `webgpuGlCheck.ms` ran only by hand, so a backend regression reached the gate only through the
+  goldens. On the Mac the gate now runs `webgpuMetalCheck` (`94879ff0`). **For you:** the same
+  line for `webgpuD3d11Check` (WARP) and `webgpuGlCheck` on Windows, which only you can verify.
+
 ## From Windows (2026-10-23)
 
 - **Coverage phases** (the person: coverage first, quality after). P0: the WebGPU members sokol
