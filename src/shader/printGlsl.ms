@@ -1364,18 +1364,18 @@ export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot
 	}
 
 	claimFixed(p, "main", "entry");
-	let unit = 0;
+	let units: string[] = [];
 	for (const s of slots) {
 		if (s.texture < 0) { continue; }
+		if (!units.includes(s.nativeName)) { units.push(s.nativeName); }
 		if (s.stage == entry.stage) {
 			let pair = new Pair();
 			pair.texture = s.texture;
 			pair.sampler = s.resource;
 			pair.name = claimFixed(p, s.nativeName, "combined sampler");
-			pair.unit = unit;
+			pair.unit = units.indexOf(s.nativeName) as int32;
 			p.pairs.push(pair);
 		}
-		unit++;
 	}
 	for (const r of resources) {
 		if (m.resources[r].kind != ResourceKind.UniformBlock) { continue; }

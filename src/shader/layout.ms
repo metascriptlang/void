@@ -175,6 +175,15 @@ class PairUse {
 	stage: ShaderStage = ShaderStage.Vertex;
 }
 
+const UNPLACED = -2;
+
+// A view every listed stage reads takes one native slot in all of them, the first free in each.
+function highest(next: int32[], stages: int32[]): int32 {
+	let slot = 0;
+	for (const st of stages) { if (next[st] > slot) { slot = next[st]; } }
+	return slot;
+}
+
 function stageIndex(s: ShaderStage): int32 {
 	return match (s) {
 		ShaderStage.Vertex => 0,
@@ -260,12 +269,12 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 			const r = m.resources[index];
 			const owner = "resource '" + r.name + "'";
 			const seen = used.filter((u) => u.resource == index);
+			if (seen.some((u) => u.stage == entry.stage)) { continue; }
 			if (seen.length > 0) {
-				if (seen[0].stage != entry.stage) {
-					return Result.err(owner + " is read by the " + seen[0].stage.toString() +
-						" and the " + entry.stage.toString() +
-						" entry; a binding belongs to one stage");
-				}
+				let shared = new Used();
+				shared.resource = index;
+				shared.stage = entry.stage;
+				used.push(shared);
 				continue;
 			}
 			if (r.binding < 0 || r.binding >= slotLimit(r.kind)) {
@@ -317,32 +326,43 @@ export function bindingSlots(m: ShaderModule, entries: int32[], target: ShaderTa
 	let mslTexture = [0, 0, 0];
 	let mslBuffer = [MAX_UNIFORM_SLOTS, MAX_UNIFORM_SLOTS, MAX_UNIFORM_SLOTS];
 	let glImage = [0, 0, 0];
+	let placed: int32[] = [];
+	for (let i = 0; i < m.resources.length; i++) { placed.push(UNPLACED); }
 	for (const u of used) {
 		const r = m.resources[u.resource];
 		if (!isView(r.kind)) { continue; }
-		const st = stageIndex(u.stage);
 		let s = slotOf(m, u, target);
+		if (placed[u.resource] != UNPLACED) {
+			s.nativeSlot = placed[u.resource];
+			slots.push(s);
+			continue;
+		}
+		const stages = used.filter((v) => v.resource == u.resource).map((v) => stageIndex(v.stage));
 		const writable = r.kind == ResourceKind.StorageTexture ||
 			r.kind == ResourceKind.StorageBuffer && r.access != Access.Read;
-		const hlsl = writable ? viewU[st] : viewT[st];
-		const msl = r.kind == ResourceKind.StorageBuffer ? mslBuffer[st] : mslTexture[st];
+		const hlsl = highest(writable ? viewU : viewT, stages);
+		const msl = highest(r.kind == ResourceKind.StorageBuffer ? mslBuffer : mslTexture, stages);
+		const image = highest(glImage, stages);
 		s.nativeSlot = match (target) {
 			ShaderTarget.Hlsl5 => hlsl,
 			ShaderTarget.Msl => msl,
 			ShaderTarget.Glsl430 => match (r.kind) {
 				ResourceKind.StorageBuffer => r.binding,
-				ResourceKind.StorageTexture => glImage[st],
+				ResourceKind.StorageTexture => image,
 				_ => -1,
 			},
 			_ => -1,
 		};
-		if (writable) { viewU[st] += 1; } else { viewT[st] += 1; }
-		if (r.kind == ResourceKind.StorageBuffer) {
-			mslBuffer[st] += 1;
-		} else {
-			mslTexture[st] += 1;
+		for (const st of stages) {
+			if (writable) { viewU[st] = hlsl + 1; } else { viewT[st] = hlsl + 1; }
+			if (r.kind == ResourceKind.StorageBuffer) {
+				mslBuffer[st] = msl + 1;
+			} else {
+				mslTexture[st] = msl + 1;
+			}
+			if (r.kind == ResourceKind.StorageTexture) { glImage[st] = image + 1; }
 		}
-		if (r.kind == ResourceKind.StorageTexture) { glImage[st] += 1; }
+		placed[u.resource] = s.nativeSlot;
 		slots.push(s);
 	}
 	if (target != ShaderTarget.Glsl430 && target != ShaderTarget.Glsl300es) {

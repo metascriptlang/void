@@ -3,6 +3,7 @@
 // reflection comes from reflect.ms and the source from that target's printer.
 
 import {
+	ConditionKind,
 	DeclarationKind,
 	ExprKind,
 	IoDirection,
@@ -14,8 +15,10 @@ import {
 	ShaderTypeKind,
 	StmtKind,
 	assignOf,
+	conditionOf,
 	exprOf,
 	irErrors,
+	sameShaderType,
 	stmtOf,
 } from "./ir";
 import { irFromText } from "./irText";
@@ -30,7 +33,7 @@ import { specialize } from "./specialize";
 class Offsets {
 	structs: int32 = 0;
 	constants: int32 = 0;
-	resources: int32 = 0;
+	resources: int32[] = [];
 	ios: int32[] = [];
 	functions: int32 = 0;
 	workgroups: int32 = 0;
@@ -46,7 +49,7 @@ function shiftExpr(o: Offsets, e: ShaderExpr): void {
 	match (e.kind) {
 		ExprKind.Constant => { e.index += o.constants; },
 		ExprKind.Io => { e.index = o.ios[e.index]; },
-		ExprKind.Resource | ExprKind.BlockMember => { e.index += o.resources; },
+		ExprKind.Resource | ExprKind.BlockMember => { e.index = o.resources[e.index]; },
 		ExprKind.Call => { e.index += o.functions; },
 		ExprKind.Workgroup => { e.index += o.workgroups; },
 		_ => {},
@@ -66,6 +69,23 @@ function shiftStmts(o: Offsets, stmts: ShaderStmt[]): void {
 	}
 }
 
+// One resource both stages declare: the same block struct by name and members, else the same type.
+function sameResourceType(m: ShaderModule, a: ShaderType, b: ShaderType): boolean {
+	if (a.kind != ShaderTypeKind.Struct || b.kind != ShaderTypeKind.Struct) {
+		return sameShaderType(a, b);
+	}
+	const x = m.structs[a.structIndex];
+	const y = m.structs[b.structIndex];
+	if (x.name != y.name || x.members.length != y.members.length) { return false; }
+	for (let i = 0; i < x.members.length; i++) {
+		if (x.members[i].name != y.members[i].name ||
+			!sameResourceType(m, x.members[i].type, y.members[i].type)) {
+			return false;
+		}
+	}
+	return true;
+}
+
 // Appends `from` to `into`, moving every index of `from` past what `into` already holds; `from`
 // is consumed. Only the ios of `from`'s own stage come along: a linked fragment also holds its
 // vertex entry's inputs, which glslLinked reads to name the varyings apart from them.
@@ -74,7 +94,6 @@ function append(into: ShaderModule, from: ShaderModule): void {
 	let o = new Offsets();
 	o.structs = into.structs.length as int32;
 	o.constants = into.constants.length as int32;
-	o.resources = into.resources.length as int32;
 	let next = into.ios.length as int32;
 	for (const io of from.ios) {
 		o.ios.push(io.stage == stage ? next : -1);
@@ -93,7 +112,20 @@ function append(into: ShaderModule, from: ShaderModule): void {
 	}
 	for (const r of from.resources) {
 		shiftType(o, r.type);
-		into.resources.push(r);
+		const same = into.resources.findIndex((held) => held.name == r.name &&
+			held.kind == r.kind && held.group == r.group && held.binding == r.binding &&
+			sameResourceType(into, held.type, r.type));
+		if (same < 0) {
+			o.resources.push(into.resources.length as int32);
+			into.resources.push(r);
+			continue;
+		}
+		o.resources.push(same as int32);
+		const held = into.resources[same];
+		if (held.condition.kind != ConditionKind.Always) {
+			held.condition = r.condition.kind == ConditionKind.Always ? r.condition :
+				conditionOf(ConditionKind.Any, [held.condition, r.condition]);
+		}
 	}
 	for (const io of from.ios) {
 		if (io.stage != stage) { continue; }
@@ -207,24 +239,30 @@ export function entryPointOf(target: ShaderTarget): string {
 	return target == ShaderTarget.Msl ? "main0" : "main";
 }
 
+function programEntries(m: ShaderModule): int32[] {
+	let out: int32[] = [];
+	for (let i = 0; i < m.entries.length; i++) { out.push(i); }
+	return out;
+}
+
 export function stageSource(m: ShaderModule, entry: int32, target: ShaderTarget):
 	Result<string, string> {
 	return match (target) {
 		ShaderTarget.Hlsl5 => {
-			const slots = try bindingSlots(m, [entry], target);
+			const slots = try bindingSlots(m, programEntries(m), target);
 			return printHlsl(m, entry, slots);
 		},
 		ShaderTarget.Wgsl => {
-			const slots = try bindingSlots(m, [entry], target);
+			const slots = try bindingSlots(m, programEntries(m), target);
 			return printWgsl(m, entry, slots);
 		},
 		ShaderTarget.Glsl430 | ShaderTarget.Glsl300es => {
-			const slots = try bindingSlots(m, [entry], target);
+			const slots = try bindingSlots(m, programEntries(m), target);
 			return printGlsl(m, entry, slots, target == ShaderTarget.Glsl430 ? GlslTarget.Glsl430 :
 				GlslTarget.Glsl300es);
 		},
 		ShaderTarget.Msl => {
-			const slots = try bindingSlots(m, [entry], target);
+			const slots = try bindingSlots(m, programEntries(m), target);
 			return printMsl(m, entry, slots);
 		},
 	};
