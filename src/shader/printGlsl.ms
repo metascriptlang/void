@@ -540,7 +540,9 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		return narrowed("imageLoad(" + expr(p, args[0]) + ", " + imageAt(p, args) + ")", e.type);
 	}
-	if (t.kind != ShaderTypeKind.Texture) { return fail(p, "TextureLoad of a " + t.kind.toString()); }
+	if (t.kind != ShaderTypeKind.Texture) {
+		return fail(p, "TextureLoad of a " + t.kind.toString());
+	}
 	const pair = pairOf(p, args[0], samplerOperand(e));
 	if (isComparison(p, pair)) {
 		return fail(p, "TextureLoad through comparison sampler pair '" + pair.name + "'");
@@ -565,7 +567,8 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 			"texture, a layer");
 	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
-	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
+	if (texture.type.kind != ShaderTypeKind.Texture ||
+		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, "TextureSample takes a texture and a sampler first");
 	}
 	if (texture.type.shape == TextureShape.Multisampled2d) {
@@ -612,7 +615,8 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
 	const reference = e.operands[e.operands.length - 1];
-	if (texture.type.kind != ShaderTypeKind.Texture || sampler.type.kind != ShaderTypeKind.Sampler) {
+	if (texture.type.kind != ShaderTypeKind.Texture ||
+		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
 	}
 	if (!level && p.stage != ShaderStage.Fragment) {
@@ -1068,7 +1072,8 @@ function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 			nested(p, Nesting.Loop, s.body, depth),
 		StmtKind.For => forText(p, s, depth),
 		StmtKind.Switch => switchText(p, s, depth),
-		StmtKind.Break => p.nesting.length > 0 && p.nesting[p.nesting.length - 1] == Nesting.Switch ?
+		StmtKind.Break => p.nesting.length > 0 &&
+			p.nesting[p.nesting.length - 1] == Nesting.Switch ?
 			fail(p, "a break inside a switch case, which GLSL reads as leaving the switch") :
 			at + "break;\n",
 		StmtKind.Continue => at + "continue;\n",
@@ -1244,7 +1249,8 @@ function interpolation(p: Printer, io: ShaderIo): string {
 	const mode = match (io.interpolation) {
 		Interpolation.Perspective => "",
 		Interpolation.Linear => p.es ?
-			fail(p, "io '" + io.name + "' is linear, which GLSL ES 3.00 has not") : "noperspective ",
+			fail(p, "io '" + io.name + "' is linear, which GLSL ES 3.00 has not") :
+			"noperspective ",
 		Interpolation.Flat => "flat ",
 	};
 	const sampling = match (io.sampling) {
@@ -1278,25 +1284,37 @@ function ioDeclarations(p: Printer): string {
 	return text;
 }
 
-function unspecialized(m: ShaderModule, stage: ShaderStage, resources: int32[],
-	functions: int32[]): string {
+function unspecialized(
+	m: ShaderModule,
+	stage: ShaderStage,
+	resources: int32[],
+	functions: int32[],
+): string {
 	const held = (kind: ConditionKind) => kind == ConditionKind.Always;
 	for (const io of m.ios) {
 		if (io.stage == stage && !held(io.condition.kind)) { return "io '" + io.name + "'"; }
 	}
 	for (const r of resources) {
-		if (!held(m.resources[r].condition.kind)) { return "resource '" + m.resources[r].name + "'"; }
+		if (!held(m.resources[r].condition.kind)) {
+			return "resource '" + m.resources[r].name + "'";
+		}
 	}
 	for (const f of functions) {
-		if (!held(m.functions[f].condition.kind)) { return "function '" + m.functions[f].name + "'"; }
+		if (!held(m.functions[f].condition.kind)) {
+			return "function '" + m.functions[f].name + "'";
+		}
 	}
 	return "";
 }
 
 // A uniform block is one `vec4 <block>[size / 16]` and each texture-sampler pair one combined
 // sampler, both bound by name (src/webgpu/gl/backend.ms resolveUniforms, resolveTextureUnits).
-export function printGlsl(m: ShaderModule, entryIndex: int32, slots: BindingSlot[],
-	target: GlslTarget): Result<string, string> {
+export function printGlsl(
+	m: ShaderModule,
+	entryIndex: int32,
+	slots: BindingSlot[],
+	target: GlslTarget,
+): Result<string, string> {
 	const invalid = irErrors(m);
 	if (invalid.length > 0) { return Result.err("printGlsl: " + invalid[0]); }
 	if (entryIndex < 0 || entryIndex >= m.entries.length) {
