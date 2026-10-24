@@ -145,19 +145,6 @@ function currentTouches(): AppTouch[] {
 	return out;
 }
 
-function currentTouches(): AppTouch[] {
-	const out: AppTouch[] = [];
-	for (let i: int32 = 0; i < voidEventTouchCount(); i++) {
-		out.push({
-			id: voidEventTouchId(i),
-			x: voidEventTouchX(i),
-			y: voidEventTouchY(i),
-			changed: voidEventTouchChanged(i) !== 0,
-		});
-	}
-	return out;
-}
-
 function currentEvent(): AppEvent {
 	return {
 		type: voidEventType() as AppEventType,
