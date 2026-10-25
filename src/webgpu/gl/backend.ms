@@ -65,7 +65,6 @@ import {
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	checkedUnmap,
-	checkedWriteBuffer,
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
 	firstInstanceRefusal,
@@ -82,6 +81,7 @@ import {
 	cachedLimits,
 	addressesBinding,
 	checkedBindGroupSet,
+	checkedBufferRewrite,
 	checkedComputeModule,
 	checkedComputePipeline,
 	checkedRenderPassPipeline,
@@ -94,6 +94,7 @@ import {
 	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
+	markBufferWritten,
 	occlusionQueryIndex,
 	occlusionSetId,
 	openDebugGroups,
@@ -510,8 +511,6 @@ struct BufferSlot {
 	slotCount: int32;
 	activeSlot: int32;
 	shadow: Vec<uint8>;
-	writtenFrame: int64;
-	writtenEnd: int64;
 }
 
 struct TextureSlot {
@@ -1362,8 +1361,6 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 		target: has(usage, GPUBufferUsage.INDEX as int32) ? GL_ELEMENT_ARRAY_BUFFER : GL_ARRAY_BUFFER,
 		slotCount: writable && !mapRead && !storage && !indirect && !resolve ? INFLIGHT_SLOTS : 1,
 		activeSlot: 0,
-		writtenFrame: writable ? -1 : -2,
-		writtenEnd: 0,
 	};
 	if (uniform) {
 		slot.shadow = new Array(roundUp16(descriptor.size));
@@ -1395,10 +1392,9 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 }
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
-	const index = writableBuffer(buffer.id, offset, bytes);
-	claimBufferWrite(index, offset, bytes, "writeBuffer");
+	const index = bufferRecords.slotIndex(buffer.id);
+	rotateOnFirstWrite(index);
 	if (buffers[index].uniform) {
 		oglCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
@@ -1411,26 +1407,18 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	cacheRestoreBuffer(target);
 }
 
-function claimBufferWrite(index: int32, offset: int64, bytes: int64, member: string): void {
-	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${bufferRecords.slots[index].id} was created without COPY_DST`); }
-	if (buffers[index].mapRead) { return; }
-	const fresh = buffers[index].writtenFrame != currentFrame();
-	if (!fresh && offset < buffers[index].writtenEnd) {
-		stop(`${member} at ${offset} on GPUBuffer ${bufferRecords.slots[index].id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
-	}
-	buffers[index].writtenFrame = currentFrame();
-	buffers[index].writtenEnd = offset + bytes;
-	if (fresh && !buffers[index].uniform) {
-		buffers[index].activeSlot = (buffers[index].activeSlot + 1) % buffers[index].slotCount;
-		bound.vertexDirty = true;
-		bound.indexDirty = true;
-	}
+function rotateOnFirstWrite(index: int32): void {
+	if (buffers[index].uniform || bufferRecords.slots[index].writtenFrame == currentFrame()) { return; }
+	buffers[index].activeSlot = (buffers[index].activeSlot + 1) % buffers[index].slotCount;
+	bound.vertexDirty = true;
+	bound.indexDirty = true;
 }
 
-function writableBuffer(id: uint32, offset: int64, bytes: int64): int32 {
-	const index = bufferRecords.slotIndex(id);
-	checkedWriteBuffer(id, bufferRecords.slots[index].size, offset, bytes);
-	return index;
+function claimBufferCopy(index: int32, offset: int64, bytes: int64, member: string): void {
+	if (buffers[index].mapRead) { return; }
+	checkedBufferRewrite(index, member, offset);
+	rotateOnFirstWrite(index);
+	markBufferWritten(index, offset, bytes);
 }
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
@@ -2938,7 +2926,7 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 	checkedBufferCopy(source.id, bufferRecords.slots[from].size, sourceOffset, destination.id, bufferRecords.slots[to].size, destinationOffset, size);
 	if (size == 0) { return; }
 	if (from == to) { stop(`copyBufferToBuffer inside GPUBuffer ${source.id} is not ported to gl yet: a written buffer rotates its in-flight copies`); }
-	claimBufferWrite(to, destinationOffset, size, "copyBufferToBuffer");
+	claimBufferCopy(to, destinationOffset, size, "copyBufferToBuffer");
 	oglCopyBufferDataUncached(bufferName(from), sourceOffset, bufferName(to), destinationOffset, size);
 	checkError("copyBufferToBuffer");
 }
@@ -2975,7 +2963,7 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 	const imageBytes = (bytesPerRow as int64) * (rowsPerImage as int64);
 	const span = imageBytes * ((size.depthOrArrayLayers - 1) as int64) + (bytesPerRow as int64) * ((size.height - 1) as int64)
 		+ ((size.width * info.bytesPerPixel) as int64);
-	claimBufferWrite(to, destination.offset, span, "copyTextureToBuffer");
+	claimBufferCopy(to, destination.offset, span, "copyTextureToBuffer");
 	checkError("copyTextureToBuffer");
 	if (textureRecords.slots[from].swapchainView != 0) {
 		const format: string = textureRecords.slots[from].format;

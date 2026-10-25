@@ -101,6 +101,8 @@ import {
 	checkedTexture,
 	checkedViewRange,
 	checkedViewport,
+	checkedWriteBuffer,
+	markBufferWritten,
 	markIndexSet,
 	markPipelineSet,
 	resetEncoder,
@@ -183,7 +185,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createBuffer(this self: GPUDevice, descriptor: GPUBufferDescriptor): GPUBuffer {
 	checkedBuffer(descriptor.size, descriptor.usage);
 	const id = allocate(bufferRecords);
-	store(bufferRecords, { id: id, size: descriptor.size, usage: descriptor.usage });
+	store(bufferRecords, { id: id, size: descriptor.size, usage: descriptor.usage, writtenFrame: -1 });
 	backend.createBuffer(id, descriptor);
 	return { id: id };
 }
@@ -333,7 +335,12 @@ function destroyPipeline(pipeline: uint32): void {
 @inline export function texture(this self: GPUTextureView): GPUTexture { return { id: viewRecords.record(self.id).texture }; }
 
 @inline export function writeBuffer<T>(this self: GPUQueue, buffer: GPUBuffer, bufferOffset: int64, data: Readonly<Span<T>>): void {
+	if (data.length == 0) { return; }
+	const bytes = (data.length as int64) * (sizeof T as int64);
+	const index = bufferRecords.slotIndex(buffer.id);
+	checkedWriteBuffer(index, bufferOffset, bytes);
 	backend.writeBuffer(buffer, bufferOffset, data);
+	markBufferWritten(index, bufferOffset, bytes);
 }
 
 @inline export function writeTexture<T>(

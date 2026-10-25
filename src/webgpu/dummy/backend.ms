@@ -81,7 +81,6 @@ import {
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	checkedUnmap,
-	checkedWriteBuffer,
 	featureBit,
 	firstInstanceRefusal,
 	linearFilter,
@@ -171,9 +170,6 @@ struct FormatInfo {
 
 struct BufferSlot {
 	bytes: Vec<uint8>;
-	writtenFrame: int64;
-	writtenEnd: int64;
-	inPlace: boolean;
 	mapMode: int32;
 	mapOffset: int64;
 	mapSize: int64;
@@ -424,17 +420,7 @@ export function adapterInfo(): GPUAdapterInfo {
 }
 
 export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void {
-	const usage = descriptor.usage;
-	const inPlace = has(usage, GPUBufferUsage.MAP_READ as int32)
-		|| has(usage, GPUBufferUsage.MAP_WRITE as int32)
-		|| has(usage, GPUBufferUsage.STORAGE as int32)
-		|| has(usage, GPUBufferUsage.QUERY_RESOLVE as int32);
-	const slot: BufferSlot = {
-		bytes: new Array(descriptor.size),
-		writtenFrame: has(usage, GPUBufferUsage.COPY_DST as int32) ? -1 : -2,
-		writtenEnd: 0,
-		inPlace: inPlace,
-	};
+	const slot: BufferSlot = { bytes: new Array(descriptor.size) };
 	put(buffers, id, slot);
 }
 
@@ -442,25 +428,10 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 	vacate(buffers, buffer.id);
 }
 
-function claimBufferWrite(index: int32, offset: int64, bytes: int64, member: string): void {
-	const id = bufferRecords.slots[index].id;
-	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${id} was created without COPY_DST`); }
-	if (buffers[index].mapMode != 0) { stop(`${member} on GPUBuffer ${id}, which is mapped`); }
-	if (buffers[index].inPlace) { return; }
-	const fresh = buffers[index].writtenFrame != currentFrame();
-	if (!fresh && offset < buffers[index].writtenEnd) {
-		stop(`${member} at ${offset} on GPUBuffer ${id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
-	}
-	buffers[index].writtenFrame = currentFrame();
-	buffers[index].writtenEnd = offset + bytes;
-}
-
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	checkedWriteBuffer(buffer.id, bufferRecords.slots[index].size, offset, bytes);
-	claimBufferWrite(index, offset, bytes, "writeBuffer");
+	if (buffers[index].mapMode != 0) { stop(`writeBuffer on GPUBuffer ${buffer.id}, which is mapped`); }
 	dummyCopyBytes(buffers[index].bytes[0], offset, data[0], bytes);
 }
 

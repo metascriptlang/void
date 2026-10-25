@@ -75,7 +75,9 @@ import {
 	textureRefusal,
 	uniformEntryRefusal,
 	viewportRefusal,
+	writeBufferRefusal,
 } from "../webgpu/validate";
+import { BufferRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -207,6 +209,7 @@ const MAP_WRITE = GPUBufferUsage.MAP_WRITE as int32;
 const COPY_SRC = GPUBufferUsage.COPY_SRC as int32;
 const COPY_DST = GPUBufferUsage.COPY_DST as int32;
 const VERTEX = GPUBufferUsage.VERTEX as int32;
+const STORAGE = GPUBufferUsage.STORAGE as int32;
 const ATTACHMENT = GPUTextureUsage.RENDER_ATTACHMENT as int32;
 const SAMPLED = GPUTextureUsage.TEXTURE_BINDING as int32;
 const RENDER_STAGES = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
@@ -227,6 +230,27 @@ test "a buffer needs a positive size and a mappable buffer only its direction's 
 	assert bufferRefusal(16, MAP_READ | VERTEX) == "GPUBufferUsage MAP_READ combines only with COPY_DST";
 	assert bufferRefusal(16, MAP_WRITE | COPY_SRC) == "";
 	assert bufferRefusal(16, MAP_WRITE | COPY_DST) == "GPUBufferUsage MAP_WRITE combines only with COPY_SRC";
+}
+
+function written(usage: int32, frame: int64, end: int64): BufferRecord {
+	return { id: 7, size: 64, usage: usage, writtenFrame: frame, writtenEnd: end };
+}
+
+test "writeBuffer needs COPY_DST and a 4-byte-aligned offset inside the buffer" {
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 0, 64, 3) == "";
+	assert writeBufferRefusal(written(VERTEX, -1, 0), 0, 16, 3) == "GPUBuffer 7 was created without COPY_DST";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 56, 16, 3) == "writeBuffer of 16 bytes at 56 overruns GPUBuffer 7 of 64";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), -4, 4, 3) == "writeBuffer of 4 bytes at -4 overruns GPUBuffer 7 of 64";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 2, 4, 3) == "writeBuffer offset 2 is not a multiple of 4";
+}
+
+test "a frame writes each buffer's bytes once, appending after its last write, whatever the usage" {
+	const rewrite = "writeBuffer at 8 on GPUBuffer 7 rewrites bytes this frame already wrote, up to 16";
+	assert writeBufferRefusal(written(VERTEX | COPY_DST, 3, 16), 8, 4, 3) == rewrite;
+	assert writeBufferRefusal(written(STORAGE | COPY_DST, 3, 16), 8, 4, 3) == rewrite;
+	assert writeBufferRefusal(written(MAP_READ | COPY_DST, 3, 16), 8, 4, 3) == rewrite;
+	assert writeBufferRefusal(written(STORAGE | COPY_DST, 3, 16), 16, 4, 3) == "";
+	assert writeBufferRefusal(written(STORAGE | COPY_DST, 2, 16), 0, 4, 3) == "";
 }
 
 test "a texture size is positive and inside the backend's limits for its dimension" {

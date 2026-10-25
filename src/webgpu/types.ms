@@ -806,13 +806,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	if (mapMode == 0) { stop(`unmap on GPUBuffer ${id}, which is not mapped`); }
 }
 
-@noinline export function checkedWriteBuffer(id: uint32, bufferSize: int64, offset: int64, bytes: int64): void {
-	if (offset < 0 || offset + bytes > bufferSize) {
-		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${id} of ${bufferSize}`);
-	}
-	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
-}
-
 export function viewMipsRefusal(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): string {
 	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > mipLevels) {
 		return `view mips ${baseMip}+${mipCount} overrun GPUTexture ${id}, which has ${mipLevels} mips`;

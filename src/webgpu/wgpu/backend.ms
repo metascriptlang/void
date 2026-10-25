@@ -64,7 +64,6 @@ import {
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
-	checkedWriteBuffer,
 	featureBit,
 	firstInstanceRefusal,
 	vertexOffsetRefusal,
@@ -441,8 +440,6 @@ struct FormatInfo {
 
 struct BufferSlot {
 	native: Ptr<WgBufferImpl>;
-	writtenFrame: int64;
-	writtenEnd: int64;
 }
 
 struct TextureSlot {
@@ -1131,7 +1128,7 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 	}
 	const native = wgCreateBuffer(descriptor.size, usage, labelText(descriptor.label));
 	if (native == null) { stop(`wgpuDeviceCreateBuffer failed for ${labelOf(descriptor.label)}`); }
-	const slot: BufferSlot = { native: native, writtenFrame: -1, writtenEnd: 0 };
+	const slot: BufferSlot = { native: native };
 	put(buffers, id, slot);
 }
 
@@ -1142,20 +1139,8 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 }
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
-	const index = bufferRecords.slotIndex(buffer.id);
-	if (!has(bufferRecords.slots[index].usage, GPUBufferUsage.COPY_DST as int32)) {
-		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
-	}
-	checkedWriteBuffer(buffer.id, bufferRecords.slots[index].size, offset, bytes);
-	if (buffers[index].writtenFrame != currentFrame()) {
-		buffers[index].writtenFrame = currentFrame();
-	} else if (offset < buffers[index].writtenEnd) {
-		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
-	}
-	buffers[index].writtenEnd = offset + bytes;
-	wgWriteBuffer(buffers[index].native, offset, data[0], bytes);
+	wgWriteBuffer(buffers[bufferRecords.slotIndex(buffer.id)].native, offset, data[0], bytes);
 }
 
 export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {

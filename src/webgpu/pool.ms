@@ -111,6 +111,8 @@ export struct BufferRecord {
 	id: uint32;
 	size: int64;
 	usage: int32;
+	writtenFrame: int64;
+	writtenEnd: int64;
 }
 
 export struct TextureRecord {

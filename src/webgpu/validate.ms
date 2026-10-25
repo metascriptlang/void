@@ -38,7 +38,7 @@ import {
 	viewLayersRefusal,
 	viewMipsRefusal,
 } from "./types.ms";
-import { TextureRecord, ViewRecord } from "./pool.ms";
+import { BufferRecord, TextureRecord, ViewRecord, bufferRecords } from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -344,7 +344,29 @@ export function textureRecordOf(id: uint32, descriptor: GPUTextureDescriptor): T
 	};
 }
 
+export function bufferRewriteRefusal(buffer: BufferRecord, member: string, offset: int64, frame: int64): string {
+	if (buffer.writtenFrame == frame && offset < buffer.writtenEnd) {
+		return `${member} at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffer.writtenEnd}`;
+	}
+	return "";
+}
+
+export function writeBufferRefusal(buffer: BufferRecord, offset: int64, bytes: int64, frame: int64): string {
+	if ((buffer.usage & (GPUBufferUsage.COPY_DST as int32)) == 0) { return `GPUBuffer ${buffer.id} was created without COPY_DST`; }
+	if (offset < 0 || offset + bytes > buffer.size) { return `writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${buffer.size}`; }
+	if ((offset & 3) != 0) { return `writeBuffer offset ${offset} is not a multiple of 4`; }
+	return bufferRewriteRefusal(buffer, "writeBuffer", offset, frame);
+}
+
 export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRefusal(size, usage)); }
+export function checkedWriteBuffer(index: int32, offset: int64, bytes: int64): void { refuse(writeBufferRefusal(bufferRecords.slots[index], offset, bytes, frame)); }
+export function checkedBufferRewrite(index: int32, member: string, offset: int64): void { refuse(bufferRewriteRefusal(bufferRecords.slots[index], member, offset, frame)); }
+
+// Runs after the backend's write: a backend reads writtenFrame to tell a frame's first write (sokol_gfx.h:27536).
+export function markBufferWritten(index: int32, offset: int64, bytes: int64): void {
+	bufferRecords.slots[index].writtenFrame = frame;
+	bufferRecords.slots[index].writtenEnd = offset + bytes;
+}
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
 
 function visibilityRefusal(binding: GPUShaderBinding, compute: boolean): string {

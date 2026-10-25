@@ -78,7 +78,6 @@ import {
 	checkedTexelWritePitch,
 	checkedResolveQuerySet,
 	checkedTimestampWrites,
-	checkedWriteBuffer,
 	featureBit,
 	GPUTexture,
 	GPUTextureDescriptor,
@@ -359,8 +358,6 @@ struct FormatInfo {
 struct BufferSlot {
 	natives: Ptr<MtlBufferImpl>[2];
 	active: int32;
-	writtenFrame: int64;
-	writtenEnd: int64;
 	inPlace: boolean;
 	gpuUseFrame: int64;
 	mapMode: int32;
@@ -954,8 +951,6 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 	const slot: BufferSlot = {
 		natives: [native, NO_BUFFER],
 		active: 0,
-		writtenFrame: has(usage, GPUBufferUsage.COPY_DST as int32) ? -1 : -2,
-		writtenEnd: 0,
 		inPlace: mapped || has(usage, GPUBufferUsage.STORAGE as int32) || has(usage, GPUBufferUsage.QUERY_RESOLVE as int32),
 		gpuUseFrame: -1,
 	};
@@ -971,27 +966,18 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 }
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	checkedWriteBuffer(buffer.id, bufferRecords.slots[index].size, offset, bytes);
-	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${buffer.id} was created without COPY_DST`); }
 	if (buffers[index].mapMode != 0) { stop(`writeBuffer on GPUBuffer ${buffer.id}, which is mapped`); }
 	if (buffers[index].inPlace) {
 		writeBufferInPlace(index, offset, data, bytes);
 		return;
 	}
 	beginFrame();
-	if (buffers[index].writtenFrame != currentFrame()) {
-		if (buffers[index].writtenFrame >= 0) { nextBufferCopy(index); }
-		buffers[index].writtenFrame = currentFrame();
-		buffers[index].writtenEnd = 0;
-	} else if (offset < buffers[index].writtenEnd) {
-		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
-	}
+	const written = bufferRecords.slots[index].writtenFrame;
+	if (written >= 0 && written != currentFrame()) { nextBufferCopy(index); }
 	const native = buffers[index].natives[buffers[index].active];
 	mtlWriteBuffer(native, offset, data[0], bytes, sharedStorage ? 0 : 1);
-	buffers[index].writtenEnd = offset + bytes;
 }
 
 // A buffer a GPU copy writes, or a mappable one, keeps one live copy, so a CPU write joins the
