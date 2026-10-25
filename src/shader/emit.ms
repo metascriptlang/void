@@ -2198,11 +2198,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			}
 			stageEntry.workgroupSize[a] = n == null ? 1 : intValue(n) as int32;
 		}
-		let invocations: int64 = 1;
-		for (const n of workgroupSize.elements) { invocations *= intValue(n); }
-		if (invocations % 32 != 0) {
-			fail(workgroupSize, "a workgroup is a multiple of 32 invocations, as shdc requires");
-		}
 	}
 	m.entries.push(stageEntry);
 	const broken = irErrors(m);

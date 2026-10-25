@@ -526,7 +526,7 @@ design and measurements in `src/shader/CLAUDE.md`; tiers in `docs/SHADER.md:5-47
 | Texture fetch in a vertex entry | `textureLoad` (texelFetch, with a sampler) yes; `textureSample` refused outside a fragment, as are derivatives | `emit.ms:1525-1530`, `:1504-1506`; std `textureLoad` `std.ms:1804-` |
 | Uniform blocks | author struct packed into float/int/vec/mat members; arrays only vec4, ivec4, mat4 | src/shader/CLAUDE.md:19-23 |
 | uint32 hashing | wraps on CPU as on GPU, so a PCG hash is bit-identical; int32 overflow traps on the CPU | src/shader/CLAUDE.md:95-102 |
-| Compute entries | yes: `glslCompute(entry, [x, y, z])`, compute builtins, workgroup a multiple of 32, entry returns nothing | `emit.ms:285-300`, `:433-437`, `:1008`, `:1811-1824`; `src/test/shaderComputeCheck.ms:59-76` pins the GLSL |
+| Compute entries | yes: `glslCompute(entry, [x, y, z])`, compute builtins, entry returns nothing | `emit.ms:285-300`, `:433-437`, `:1008`, `:1811-1824`; `src/test/shaderComputeCheck.ms:59-76` pins the GLSL |
 | Storage buffers | yes, an unsized array of an author struct per binding; `readonly` unless `@access(read_write)`, which only a compute entry may use; a read-only one is accepted in a vertex entry | `emit.ms:867-881`, `:1781-1782`; `std.ms:1744-1753` |
 | Storage textures | compute only; 8 formats | `emit.ms:883-904`; `std.ms:1775-1797` |
 | Atomics, barriers, workgroup shared memory | **absent** from std (0 matches for atomic/barrier/shared in `std.ms`); GLSL names only reserved (`emit.ms:81-89`). shdc compiles them on every backend but ES300 (src/shader/CLAUDE.md:204-207) | grep of `std.ms` |

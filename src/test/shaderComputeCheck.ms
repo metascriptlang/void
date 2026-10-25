@@ -75,3 +75,8 @@ test "a compute entry is emitted with its workgroup size, storage buffer and sto
 		"    }\n" +
 		"}\n";
 }
+
+test "a workgroup of 16 invocations prints, no target needs a multiple of 32" {
+	assert glslCompute(commandsToImage, [4, 4, 1]).startsWith(
+		"layout(local_size_x=4, local_size_y=4, local_size_z=1) in;\n");
+}
