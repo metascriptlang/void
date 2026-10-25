@@ -401,7 +401,9 @@ static void transitionToVisible(void) {
 @implementation VoidMacosAppDelegate
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
 	(void)notification;
-	NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+	const char *quietValue = getenv("VOID_QUIET_WINDOW");
+	const bool quiet = quietValue != NULL && strcmp(quietValue, "1") == 0;
+	NSApp.activationPolicy = quiet ? NSApplicationActivationPolicyAccessory : NSApplicationActivationPolicyRegular;
 	initCursors();
 	s.dpiScale = s.desc.highDpi ? (float)NSScreen.mainScreen.backingScaleFactor : 1.0f;
 	initDefaultDimensions();
@@ -420,8 +422,15 @@ static void transitionToVisible(void) {
 	[s_window makeFirstResponder:s_view];
 	[s_window center];
 	s.valid = true;
-	[NSApp activateIgnoringOtherApps:YES];
-	[s_window makeKeyAndOrderFront:nil];
+	if (quiet) {
+		s_window.alphaValue = 0;
+		s_window.ignoresMouseEvents = YES;
+		[s_window orderFrontRegardless];
+		[s_window makeKeyWindow];
+	} else {
+		[NSApp activateIgnoringOtherApps:YES];
+		[s_window makeKeyAndOrderFront:nil];
+	}
 	updateDimensions();
 	NSEvent *focus = [NSEvent otherEventWithType:NSEventTypeAppKitDefined location:NSZeroPoint
 		modifierFlags:0x40 timestamp:0 windowNumber:0 context:nil
