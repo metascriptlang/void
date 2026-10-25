@@ -86,6 +86,7 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	cachedLimits,
 	addressesBinding,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
@@ -756,7 +757,6 @@ let timerSupported = false;
 let exactSamples = false;
 let maxStorageBindings: int32 = 0;
 let maxImageUnits: int32 = 0;
-let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
 let deviceFeatures: GPUSupportedFeatures = { bits: 0 };
 export struct BindStats {
 	vertexBuffers: int64;
@@ -1296,7 +1296,10 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	debugSupported = (capabilities & OGL_CAPABILITY_DEBUG) != 0 && version >= DEBUG_CONTEXT_VERSION;
 	timerSupported = (capabilities & OGL_CAPABILITY_TIMER) != 0 && oglQueryCounterBits() > 0;
 	exactSamples = (capabilities & OGL_CAPABILITY_EXACT_SAMPLES) != 0;
-	deviceLimits = queryLimits();
+	if (computeSupported) {
+		maxStorageBindings = oglGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);
+		maxImageUnits = oglGetInteger(GL_MAX_IMAGE_UNITS);
+	}
 	deviceFeatures = queryFeatures();
 	vertexArray = oglCreateVertexArray();
 	oglBindVertexArray(vertexArray);
@@ -1467,8 +1470,8 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	if (resolve && (uniform || has(usage, vertexOrIndex))) {
 		stop("a QUERY_RESOLVE buffer cannot also be UNIFORM, VERTEX or INDEX on GL");
 	}
-	if (storage && descriptor.size > deviceLimits.maxStorageBufferBindingSize) {
-		stop(`a STORAGE buffer of ${descriptor.size} bytes is over the limit of ${deviceLimits.maxStorageBufferBindingSize}`);
+	if (storage && descriptor.size > cachedLimits().maxStorageBufferBindingSize) {
+		stop(`a STORAGE buffer of ${descriptor.size} bytes is over the limit of ${cachedLimits().maxStorageBufferBindingSize}`);
 	}
 	if (storage && descriptor.size % 4 != 0) { stop("a STORAGE buffer takes a size that is a multiple of 4"); }
 	when (webgl2) {
@@ -2324,7 +2327,7 @@ function resourceOf(shader: int32, group: int32, binding: int32, kind: BindingKi
 			}
 		}
 		if (resourceOf(shader, group, entry.binding, BindingKind.StorageBuffer) >= 0) {
-			checkedStorageEntry(entry, buffers.slots[b].storage, buffers.slots[b].size, STORAGE_OFFSET_ALIGNMENT as int64, deviceLimits.maxStorageBufferBindingSize);
+			checkedStorageEntry(entry, buffers.slots[b].storage, buffers.slots[b].size, STORAGE_OFFSET_ALIGNMENT as int64, cachedLimits().maxStorageBufferBindingSize);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
@@ -3563,7 +3566,7 @@ function nameObject(identifier: int32, name: uint32, label: string | null): void
 	oglObjectLabel(identifier, name, label);
 }
 
-function queryLimits(): GPUSupportedLimits {
+export function limits(): GPUSupportedLimits {
 	const textureSize = oglGetInteger(GL_MAX_TEXTURE_SIZE);
 	const units = smaller(smaller(oglGetInteger(GL_MAX_TEXTURE_IMAGE_UNITS), maxTextureUnits), GPU_MAX_BIND_GROUP_ENTRIES);
 	const uniformComponents = smaller(oglGetInteger(GL_MAX_VERTEX_UNIFORM_COMPONENTS), oglGetInteger(GL_MAX_FRAGMENT_UNIFORM_COMPONENTS));
@@ -3592,8 +3595,6 @@ function queryLimits(): GPUSupportedLimits {
 		minStorageBufferOffsetAlignment: STORAGE_OFFSET_ALIGNMENT,
 	};
 	if (!computeSupported) { return value; }
-	maxStorageBindings = oglGetInteger(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS);
-	maxImageUnits = oglGetInteger(GL_MAX_IMAGE_UNITS);
 	value.maxStorageBuffersPerShaderStage = smaller(smaller(oglGetInteger(GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS), maxStorageBindings), GPU_MAX_BIND_GROUP_ENTRIES);
 	value.maxStorageTexturesPerShaderStage = smaller(smaller(oglGetInteger(GL_MAX_COMPUTE_IMAGE_UNIFORMS), maxImageUnits), GPU_MAX_BIND_GROUP_ENTRIES);
 	value.maxStorageBufferBindingSize = oglGetInteger64(GL_MAX_SHADER_STORAGE_BLOCK_SIZE);
@@ -3614,8 +3615,6 @@ function queryFeatures(): GPUSupportedFeatures {
 	bits |= floatFeatureBits();
 	return { bits: bits };
 }
-
-export function limits(): GPUSupportedLimits { return deviceLimits; }
 
 export function features(): GPUSupportedFeatures { return deviceFeatures; }
 

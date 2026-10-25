@@ -85,6 +85,7 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	cachedLimits,
 	addressesBinding,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
@@ -557,7 +558,6 @@ struct BindGroupSlot {
 let frame: int64 = 0;
 let pass: PassState = { timestampEnd: -1 };
 let computeBound: ComputeState = { timestampEnd: -1 };
-let deviceLimits: GPUSupportedLimits = { maxTextureDimension1D: 0 };
 let uniformAlignment = 256;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
@@ -1133,7 +1133,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	checkMirroredConstants();
 	if (wgSetup(environment.device) == 0) { stop("the WGPUDevice gave no queue or no limits"); }
 	uniformAlignment = wgMinUniformBufferOffsetAlignment();
-	deviceLimits = readLimits();
 	frame = 0;
 	pass.pipeline = 0;
 	computeBound.pipeline = 0;
@@ -1956,8 +1955,8 @@ function storageEntrySize(shader: int32, group: int32, entry: GPUBindGroupEntry)
 		entry,
 		has(buffers.slots[b].usage, GPUBufferUsage.STORAGE as int32),
 		buffers.slots[b].size,
-		deviceLimits.minStorageBufferOffsetAlignment as int64,
-		deviceLimits.maxStorageBufferBindingSize,
+		cachedLimits().minStorageBufferOffsetAlignment as int64,
+		cachedLimits().maxStorageBufferBindingSize,
 	);
 	return entryBytes(entry, buffers.slots[b].size);
 }
@@ -2545,7 +2544,7 @@ export function endOcclusionQuery(): void {
 
 function limitOf(which: int32): int32 { return wgLimit(which) as int32; }
 
-function readLimits(): GPUSupportedLimits {
+export function limits(): GPUSupportedLimits {
 	return {
 		maxTextureDimension1D: limitOf(LIMIT_TEXTURE_DIMENSION_1D),
 		maxTextureDimension2D: limitOf(LIMIT_TEXTURE_DIMENSION_2D),
@@ -2572,7 +2571,6 @@ function readLimits(): GPUSupportedLimits {
 	};
 }
 
-export function limits(): GPUSupportedLimits { return deviceLimits; }
 
 function featureBits(bits: uint32, native: int32, name: GPUFeatureName): uint32 {
 	return wgHasFeature(native) != 0 ? bits | featureBit(name) : bits;

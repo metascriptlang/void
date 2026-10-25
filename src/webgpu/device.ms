@@ -45,6 +45,8 @@ import {
 	PASS_COMPUTE,
 	PASS_RENDER,
 	attachOcclusionSet,
+	cacheLimits,
+	cachedLimits,
 	checkedBeginOcclusion,
 	checkedBeginPass,
 	checkedBindGroupIndex,
@@ -90,7 +92,9 @@ export type GPUNativeSwapchain = backend.NativeSwapchain;
 
 export function requestDevice(environment: GPUNativeEnvironment): GPUDevice {
 	resetEncoder();
-	return backend.setup(environment);
+	const device = backend.setup(environment);
+	cacheLimits(backend.limits());
+	return device;
 }
 
 export function destroy(this self: GPUDevice): void {
@@ -107,7 +111,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createTexture(this self: GPUDevice, descriptor: GPUTextureDescriptor): GPUTexture {
-	checkedTexture(descriptor, backend.limits());
+	checkedTexture(descriptor, cachedLimits());
 	return backend.createTexture(descriptor);
 }
 
@@ -117,7 +121,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createShaderModule(this self: GPUDevice, descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
-	checkedShaderModule(descriptor, backend.limits());
+	checkedShaderModule(descriptor, cachedLimits());
 	return backend.createShaderModule(descriptor);
 }
 
@@ -144,7 +148,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	return backend.createQuerySet(descriptor);
 }
 
-@inline export function limits(this self: GPUDevice): GPUSupportedLimits { return backend.limits(); }
+@inline export function limits(this self: GPUDevice): GPUSupportedLimits { return cachedLimits(); }
 @inline export function features(this self: GPUDevice): GPUSupportedFeatures { return backend.features(); }
 @inline export function has(this self: GPUSupportedFeatures, name: GPUFeatureName): boolean { return (self.bits & featureBit(name)) != 0; }
 
@@ -221,7 +225,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function dispatchWorkgroups(this self: GPUComputePassEncoder, x: int32, y: int32, z: int32): void {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroups");
 	checkedPipelineSet("dispatchWorkgroups");
-	checkedDispatch(x, y, z, backend.limits().maxComputeWorkgroupsPerDimension);
+	checkedDispatch(x, y, z, cachedLimits().maxComputeWorkgroupsPerDimension);
 	backend.dispatchWorkgroups(x, y, z);
 }
 

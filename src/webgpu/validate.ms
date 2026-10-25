@@ -164,6 +164,7 @@ export function shutdownRefusal(this s: EncoderState): string {
 }
 
 let encoder: EncoderState = { open: false };
+let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
 
 @inline function refuse(message: string): void {
 	if (message != "") { stop(message); }
@@ -176,7 +177,10 @@ let encoder: EncoderState = { open: false };
 @inline export function computePassOpen(): boolean { return encoder.pass == PASS_COMPUTE; }
 @inline export function openDebugGroups(): int32 { return encoder.depth; }
 
+@inline export function cachedLimits(): GPUSupportedLimits { return deviceLimits; }
+
 export function resetEncoder(): void { encoder = { open: false }; }
+export function cacheLimits(limits: GPUSupportedLimits): void { deviceLimits = limits; }
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
 export function markPipelineSet(): void { encoder.markPipeline(); }
 export function markIndexSet(): void { encoder.markIndexBuffer(); }
