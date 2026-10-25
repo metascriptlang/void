@@ -2,12 +2,12 @@
 #define VOID_BACKEND_H
 
 #if defined(VOID_METAL) + defined(VOID_D3D11) + defined(VOID_GLES3) + defined(VOID_WGPU) + \
-	defined(VOID_GLCORE) > 1
+	defined(VOID_GLCORE) + defined(VOID_DUMMY) > 1
 #error "void: more than one VOID_<backend> is defined"
 #endif
 
 #if !defined(VOID_METAL) && !defined(VOID_D3D11) && !defined(VOID_GLES3) && \
-	!defined(VOID_WGPU) && !defined(VOID_GLCORE)
+	!defined(VOID_WGPU) && !defined(VOID_GLCORE) && !defined(VOID_DUMMY)
 #if defined(_WIN32)
 #define VOID_D3D11
 #elif defined(__APPLE__)

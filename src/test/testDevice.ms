@@ -1,17 +1,25 @@
 import { GPUDevice } from "../webgpu/types.ms";
 import { requestDevice } from "../webgpu/device.ms";
 
-when (windows) {
+when (windows && !voidDummy) {
 	import { warpDevice, warpContext } from "./d3d11Warp.h";
 	@passL("-ld3d11");
 }
-when (macos) {
+when (macos && !voidDummy) {
 	import { metalSystemDevice } from "./metalDevice.h";
 	@compile("./metalDevice.m");
 }
 
 export function openTestDevice(): GPUDevice {
-	when (windows) {
+	when (voidDummy) {
+		return requestDevice({
+			device: null,
+			context: null,
+			colorFormat: "rgba8unorm",
+			depthFormat: "depth32float",
+			sampleCount: 1,
+		});
+	} else when (windows) {
 		return requestDevice({
 			device: warpDevice(),
 			context: warpContext(),

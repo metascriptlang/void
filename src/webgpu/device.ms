@@ -42,7 +42,9 @@ import {
 	featureBit,
 } from "./types.ms";
 
-when (webgpu) {
+when (voidDummy) {
+	import * as backend from "./dummy/backend.ms";
+} else when (webgpu) {
 	import * as backend from "./wgpu/backend.ms";
 } else when (windows && !voidGlCore) {
 	import * as backend from "./d3d11/backend.ms";
