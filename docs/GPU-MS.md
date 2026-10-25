@@ -761,3 +761,16 @@ and Vulkan's `backend.ms` follows it from its first line:
 - Run on WARP after merging: D3D11 refuses a compute pipeline in a render pass and a multi-mip or
   multi-layer color attachment with the shared messages, and lists `GPU_MAX_ANISOTROPY` in its
   constant mirror.
+
+Progress, step 3 (merged at `e3cd35ef`): `device.ms` allocates every id and keeps each resource's
+common record (`pool.ms`, after sokol `_sg_buffer_common_t` `:6643`); a backend keeps only its
+native record in a plain `Vec` (`put`/`vacate`). Shutdown destroys every live resource before the
+backend tears down (`_sg_discard_all_resources` `:26431`). A Vulkan `backend.ms` therefore:
+- exports `BACKEND`, `adoptSwapchain(color, depth)` and `acquireSwapchain(swapchain): void`;
+- takes `createX(id, descriptor): void`, `createTexture(TextureRecord, …)`, `createView(ViewRecord, …)`;
+- on destroy releases its natives and calls `vacate`, never frees the id;
+- reads `currentFrame()` and `cachedCanvas()`;
+- has no accessors, `*Alive`, `liveCounts`, `getBindGroupLayout`, `attachmentFacts`, `canvasOf`,
+  `frameIndex` or shutdown loop of its own. `pool.ms` keeps `Pool`/`allocate`/`store`/`release`
+  until `vulkan/resources.ms` moves over.
+At shutdown D3D11 now releases resources before `ClearState`: a WARP run confirms it.
