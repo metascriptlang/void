@@ -30,6 +30,7 @@ import {
 	releasePipelines,
 	closePipelines,
 	IndexType,
+	record,
 } from "../gpu/pipeline";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { DrawContext, reserveUniforms, writeUniforms } from "../void3d/draw";
@@ -336,7 +337,7 @@ test "a layout that names its formats is left as it is" {
 
 test "releasing a cache of another GPU context drops its handles without destroying them" {
 	const cache: PipelineCache = PipelineCache.empty();
-	cache.entries.push({ key: litKey(false, sceneState()), pipeline: 7 });
+	record(cache, litKey(false, sceneState()), 7);
 	cache.shaders.push(9);
 	cache.generation = contextGeneration() + 1;
 	releasePipelines(cache);
@@ -345,7 +346,7 @@ test "releasing a cache of another GPU context drops its handles without destroy
 
 test "closing a cache of another GPU context empties it and answers false after" {
 	const cache: PipelineCache = PipelineCache.empty();
-	cache.entries.push({ key: litKey(false, sceneState()), pipeline: 7 });
+	record(cache, litKey(false, sceneState()), 7);
 	cache.shaders.push(9);
 	cache.blockSlots.push(1);
 	cache.generation = contextGeneration() + 1;

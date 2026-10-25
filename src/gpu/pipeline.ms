@@ -101,11 +101,7 @@ export function toString(this key: PipelineKey): string {
 }
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
-	if (cache.closed) { return false; }
-	for (const entry of cache.entries) {
-		if (entry.key == key) { return true; }
-	}
-	return false;
+	return !cache.closed && cache.indexOf(key) >= 0;
 }
 
 function keyHash(key: PipelineKey): uint32 {
@@ -117,8 +113,8 @@ function keyHash(key: PipelineKey): uint32 {
 	return h ^ (h >> 15);
 }
 
-// PipelineCache.lookup: the key's hash picks a bucket and the keys in it are compared. The
-// entry's index, -1 when the cache holds none for `key`.
+// The key's hash picks a bucket and the keys in it are compared. The entry's index, -1 when the
+// cache holds none for `key`.
 export function indexOf(this cache: PipelineCache, key: PipelineKey): int32 {
 	if (cache.slots.length == 0) { return -1; }
 	const mask: uint32 = ((cache.slots.length as int32) - 1) as uint32;
