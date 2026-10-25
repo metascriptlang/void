@@ -16,13 +16,16 @@ import {
 } from "./vulkan.h";
 import { formatInfo, imageUsageFlags } from "./conv";
 import {
+	ResourceError,
 	SwapchainImage,
+	VULKAN_OK,
 	VulkanResources,
 	adoptSwapchainImage,
+	failure,
 	markAcquired,
 	releaseSwapchainImage,
 } from "./resources";
-import { GPUTextureFormat } from "../types.ms";
+import { GPUTextureFormat, stop } from "../types.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 
@@ -32,13 +35,8 @@ export enum SurfaceError {
 	Outdated,
 	Lost,
 	ZeroExtent,
-	FormatUnsupported,
-	UsageUnsupported,
-	QueryFailed,
-	CreateFailed,
-	AcquireFailed,
-	PresentFailed,
-	DestroyFailed,
+	OutOfMemory,
+	DeviceLost,
 }
 
 export const PRESENT_IMMEDIATE: uint32 = 0;
@@ -59,7 +57,6 @@ export const ALPHA_INHERIT: uint32 = 0x8;
 export const UNDEFINED_EXTENT: uint32 = 0xFFFFFFFF;
 export const COLOR_SPACE_SRGB_NONLINEAR: uint32 = 0;
 
-const VULKAN_OK: int32 = 0;
 const VULKAN_SUBOPTIMAL: int32 = 7;
 const VULKAN_OUT_OF_DATE: int32 = 8;
 const VULKAN_SURFACE_LOST: int32 = 9;
@@ -120,9 +117,18 @@ export struct Swapchain {
 	suboptimal: boolean;
 }
 
-@noinline function stop(message: string): void {
-	console.log(`webgpu vulkan: ${message}`);
-	unreachable;
+function surfaceFailure(code: int32): SurfaceError {
+	if (code == VULKAN_OUT_OF_DATE) { return SurfaceError.Outdated; }
+	if (code == VULKAN_SURFACE_LOST) { return SurfaceError.Lost; }
+	return match (failure(code)) {
+		ResourceError.OutOfMemory => SurfaceError.OutOfMemory,
+		ResourceError.DeviceLost => SurfaceError.DeviceLost,
+	};
+}
+
+function surfaceChecked(code: int32): Result<void, SurfaceError> {
+	if (code != VULKAN_OK) { return Result.err(surfaceFailure(code)); }
+	return Result.ok(null);
 }
 
 function swappedOrder(format: GPUTextureFormat): GPUTextureFormat {
@@ -132,7 +138,6 @@ function swappedOrder(format: GPUTextureFormat): GPUTextureFormat {
 	if (format == "bgra8unorm-srgb") { return "rgba8unorm-srgb"; }
 	const value: string = format;
 	stop(`GPUCanvasConfiguration.format '${value}' is not a swapchain format: use rgba8unorm, bgra8unorm or their -srgb forms`);
-	return format;
 }
 
 function listed(formats: Readonly<Span<SurfaceFormat>>, native: int32): boolean {
@@ -142,11 +147,12 @@ function listed(formats: Readonly<Span<SurfaceFormat>>, native: int32): boolean 
 	return false;
 }
 
-export function chooseFormat(formats: Readonly<Span<SurfaceFormat>>, wanted: GPUTextureFormat): Result<GPUTextureFormat, SurfaceError> {
+export function chooseFormat(formats: Readonly<Span<SurfaceFormat>>, wanted: GPUTextureFormat): GPUTextureFormat {
 	const other = swappedOrder(wanted);
-	if (listed(formats, formatInfo(wanted, 0, "GPUCanvasConfiguration.format").native)) { return Result.ok(wanted); }
-	if (listed(formats, formatInfo(other, 0, "GPUCanvasConfiguration.format").native)) { return Result.ok(other); }
-	return Result.err(SurfaceError.FormatUnsupported);
+	if (listed(formats, formatInfo(wanted, 0, "GPUCanvasConfiguration.format").native)) { return wanted; }
+	if (listed(formats, formatInfo(other, 0, "GPUCanvasConfiguration.format").native)) { return other; }
+	const value: string = wanted;
+	stop(`GPUCanvasConfiguration.format '${value}' is not supported by the surface, nor is its swapped channel order`);
 }
 
 function presentModeCode(mode: PresentMode): uint32 {
@@ -156,10 +162,7 @@ function presentModeCode(mode: PresentMode): uint32 {
 		"mailbox" => PRESENT_MAILBOX as int32,
 		"fifo-relaxed" => PRESENT_FIFO_RELAXED as int32,
 		"fifo" => PRESENT_FIFO as int32,
-		_ => {
-			stop(`present mode '${value}' is not supported`);
-			return 0;
-		},
+		_ => { stop(`present mode '${value}' is not supported`); },
 	};
 	return code as uint32;
 }
@@ -176,7 +179,6 @@ export function choosePresentMode(modes: Readonly<Span<uint32>>, wanted: Present
 		index++;
 	}
 	stop("the surface lists no FIFO present mode, which every Vulkan surface must support");
-	return PRESENT_FIFO;
 }
 
 export function chooseImageCount(caps: SurfaceCaps, presentMode: uint32): uint32 {
@@ -203,14 +205,15 @@ export function chooseCompositeAlpha(supported: uint32): uint32 {
 		if ((supported & order[i]) != 0) { return order[i]; }
 	}
 	stop(`the surface supports no composite alpha mode (flags ${supported})`);
-	return ALPHA_OPAQUE;
 }
 
 export function planSwapchain(info: SurfaceInfo, config: SurfaceConfig): Result<SwapchainPlan, SurfaceError> {
 	const caps = info.caps;
-	const format = try chooseFormat(info.formats, config.format);
+	const format = chooseFormat(info.formats, config.format);
 	const usage = imageUsageFlags(config.usage, false);
-	if ((usage & ~caps.usage) != 0) { return Result.err(SurfaceError.UsageUnsupported); }
+	if ((usage & ~caps.usage) != 0) {
+		stop(`GPUCanvasConfiguration.usage ${config.usage} needs image usage ${usage}, beyond the surface's ${caps.usage}`);
+	}
 	let width = caps.currentWidth;
 	let height = caps.currentHeight;
 	if (width == UNDEFINED_EXTENT) {
@@ -238,9 +241,7 @@ export function planSwapchain(info: SurfaceInfo, config: SurfaceConfig): Result<
 }
 
 export function querySurface(): Result<SurfaceInfo, SurfaceError> {
-	const code = vulkanSurfaceQuery();
-	if (code == VULKAN_SURFACE_LOST) { return Result.err(SurfaceError.Lost); }
-	if (code != VULKAN_OK) { return Result.err(SurfaceError.QueryFailed); }
+	try surfaceChecked(vulkanSurfaceQuery());
 	let info: SurfaceInfo = {
 		caps: {
 			minImages: vulkanSurfaceCapability(0),
@@ -262,7 +263,7 @@ export function querySurface(): Result<SurfaceInfo, SurfaceError> {
 	for (let i: int32 = 0; i < vulkanSurfaceFormatCount(); i++) {
 		let native: int32 = 0;
 		let colorSpace: uint32 = 0;
-		if (vulkanSurfaceFormat(i, native, colorSpace) != VULKAN_OK) { return Result.err(SurfaceError.QueryFailed); }
+		try surfaceChecked(vulkanSurfaceFormat(i, native, colorSpace));
 		info.formats.push({ native: native, colorSpace: colorSpace });
 	}
 	for (let i: int32 = 0; i < vulkanSurfacePresentModeCount(); i++) { info.presentModes.push(vulkanSurfacePresentMode(i)); }
@@ -301,7 +302,7 @@ export function configureSurface(ref r: VulkanResources, ref chain: Swapchain): 
 	const info = try querySurface();
 	const plan = try planSwapchain(info, chain.config);
 	dropImages(r, chain);
-	const code = vulkanSwapchainCreate(
+	try surfaceChecked(vulkanSwapchainCreate(
 		plan.native,
 		plan.colorSpace,
 		plan.width,
@@ -311,9 +312,7 @@ export function configureSurface(ref r: VulkanResources, ref chain: Swapchain): 
 		plan.preTransform,
 		plan.compositeAlpha,
 		plan.presentMode,
-	);
-	if (code == VULKAN_SURFACE_LOST) { return Result.err(SurfaceError.Lost); }
-	if (code != VULKAN_OK) { return Result.err(SurfaceError.CreateFailed); }
+	));
 	chain.plan = plan;
 	chain.suboptimal = false;
 	for (let i: uint32 = 0; i < vulkanSwapchainImageCount(); i++) {
@@ -355,12 +354,8 @@ export function acquireImage(ref r: VulkanResources, ref chain: Swapchain): Resu
 		code = acquireOnce(r, chain);
 	}
 	if (code == VULKAN_OK || code == VULKAN_SUBOPTIMAL) { return Result.ok(chain.images[chain.current]); }
-	if (code == VULKAN_OUT_OF_DATE) { return Result.err(SurfaceError.Outdated); }
-	if (code == VULKAN_SURFACE_LOST) {
-		try releaseSurface(r, chain);
-		return Result.err(SurfaceError.Lost);
-	}
-	return Result.err(SurfaceError.AcquireFailed);
+	if (code == VULKAN_SURFACE_LOST) { try releaseSurface(r, chain); }
+	return Result.err(surfaceFailure(code));
 }
 
 export function present(ref r: VulkanResources, ref chain: Swapchain): Result<void, SurfaceError> {
@@ -371,23 +366,17 @@ export function present(ref r: VulkanResources, ref chain: Swapchain): Result<vo
 		chain.suboptimal = true;
 		return Result.ok(null);
 	}
-	if (code == VULKAN_OUT_OF_DATE) { return Result.err(SurfaceError.Outdated); }
-	if (code == VULKAN_SURFACE_LOST) {
-		try releaseSurface(r, chain);
-		return Result.err(SurfaceError.Lost);
-	}
-	return Result.err(SurfaceError.PresentFailed);
+	if (code == VULKAN_SURFACE_LOST) { try releaseSurface(r, chain); }
+	return Result.err(surfaceFailure(code));
 }
 
 export function releaseSwapchain(ref r: VulkanResources, ref chain: Swapchain): Result<void, SurfaceError> {
 	if (chain.images.length == 0) { return Result.ok(null); }
 	dropImages(r, chain);
-	if (vulkanSwapchainDestroy() != VULKAN_OK) { return Result.err(SurfaceError.DestroyFailed); }
-	return Result.ok(null);
+	return surfaceChecked(vulkanSwapchainDestroy());
 }
 
 export function releaseSurface(ref r: VulkanResources, ref chain: Swapchain): Result<void, SurfaceError> {
 	dropImages(r, chain);
-	if (vulkanSurfaceDestroy() != VULKAN_OK) { return Result.err(SurfaceError.DestroyFailed); }
-	return Result.ok(null);
+	return surfaceChecked(vulkanSurfaceDestroy());
 }

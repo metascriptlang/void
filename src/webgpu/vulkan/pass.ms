@@ -1,4 +1,4 @@
-import { vulkanPassBegin, vulkanPassEnd, vulkanRenderPassCreate } from "./vulkan.h";
+import { vulkanPassBegin, vulkanPassEnd, vulkanRenderPassCreate, vulkanRenderPassDestroy } from "./vulkan.h";
 import {
 	ACCESS_COLOR_ATTACHMENT_READ,
 	ACCESS_COLOR_ATTACHMENT_WRITE,
@@ -17,7 +17,17 @@ import {
 } from "./conv";
 import { writeToTexture } from "./tracker";
 import { slotIndex } from "../pool.ms";
-import { TextureRecord, ViewRecord, VulkanResources, flush, settle } from "./resources";
+import {
+	ResourceError,
+	TextureRecord,
+	VULKAN_OK,
+	ViewRecord,
+	VulkanResources,
+	checked,
+	flush,
+	settle,
+	stopOnVulkan,
+} from "./resources";
 import {
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPURenderPassDescriptor,
@@ -25,21 +35,14 @@ import {
 	checkedPassExtent,
 	checkedResolveTarget,
 	checkedSingleSubresource,
+	stop,
 } from "../types.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 
-export enum PassError {
-	BarrierFailed,
-	CreateFailed,
-	BeginFailed,
-	EndFailed,
-}
-
 export const COLOR_KEY_WORDS: int32 = 5;
 export const DEPTH_KEY_WORDS: int32 = 8;
 
-const VULKAN_OK: int32 = 0;
 const COLOR_ACCESS: uint32 = ACCESS_COLOR_ATTACHMENT_READ | ACCESS_COLOR_ATTACHMENT_WRITE;
 const DEPTH_ACCESS: uint32 = ACCESS_DEPTH_STENCIL_ATTACHMENT_READ | ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE;
 const DEPTH_STAGES: uint32 = STAGE_EARLY_FRAGMENT_TESTS | STAGE_LATE_FRAGMENT_TESTS;
@@ -47,7 +50,7 @@ const DEPTH_STAGES: uint32 = STAGE_EARLY_FRAGMENT_TESTS | STAGE_LATE_FRAGMENT_TE
 struct CachedPass {
 	start: int32;
 	words: int32;
-	native: uint32;
+	native: uint64;
 }
 
 export struct RenderPassCache {
@@ -95,7 +98,7 @@ export function noDepthKeyWords(ref key: Vec<uint32>): void {
 	for (let i: int32 = 0; i < DEPTH_KEY_WORDS; i++) { key.push(0); }
 }
 
-export function cachedPass(this cache: RenderPassCache, key: Readonly<Span<uint32>>): uint32 {
+export function cachedPass(this cache: RenderPassCache, key: Readonly<Span<uint32>>): uint64 {
 	for (const pass of cache.passes) {
 		if (pass.words != key.length) { continue; }
 		let same = true;
@@ -105,14 +108,15 @@ export function cachedPass(this cache: RenderPassCache, key: Readonly<Span<uint3
 	return 0;
 }
 
-export function rememberPass(ref cache: RenderPassCache, key: Readonly<Span<uint32>>, native: uint32): void {
+export function rememberPass(ref cache: RenderPassCache, key: Readonly<Span<uint32>>, native: uint64): void {
 	cache.passes.push({ start: cache.keys.length, words: key.length, native: native });
 	for (const word of key) { cache.keys.push(word); }
 }
 
-@noinline function stop(message: string): void {
-	console.log(`webgpu vulkan: ${message}`);
-	unreachable;
+export function closeRenderPasses(ref cache: RenderPassCache): void {
+	for (const pass of cache.passes) { vulkanRenderPassDestroy(pass.native); }
+	cache.passes.length = 0;
+	cache.keys.length = 0;
 }
 
 function mipExtent(size: int32, mip: int32): int32 {
@@ -127,10 +131,10 @@ export function beginRenderPass(
 	ref r: VulkanResources,
 	ref cache: RenderPassCache,
 	descriptor: GPURenderPassDescriptor,
-): Result<void, PassError> {
+): Result<void, ResourceError> {
 	settle(r);
 	let key = newPassKey();
-	let views: Vec<uint32> = [];
+	let views: Vec<uint64> = [];
 	let clears: Vec<float32> = [];
 	let width: int32 = 0;
 	let height: int32 = 0;
@@ -210,28 +214,25 @@ export function beginRenderPass(
 		noDepthKeyWords(key);
 	}
 	if (width == 0) { stop("beginRenderPass without an attachment"); }
-	const flushed = flush(r);
-	if (!flushed.ok) { return Result.err(PassError.BarrierFailed); }
+	try flush(r);
 	let native = cache.cachedPass(key);
 	if (native == 0) {
-		native = vulkanRenderPassCreate(key[0], key.length as uint32);
-		if (native == 0) { return Result.err(PassError.CreateFailed); }
+		try checked(vulkanRenderPassCreate(key[0], key.length as uint32, native));
 		rememberPass(cache, key, native);
 	}
-	const code = vulkanPassBegin(
+	return checked(vulkanPassBegin(
 		native,
+		key[0],
+		key.length as uint32,
 		views[0],
 		views.length as uint32,
 		width as uint32,
 		height as uint32,
 		clears[0],
 		clears.length as uint32,
-	);
-	if (code != VULKAN_OK) { return Result.err(PassError.BeginFailed); }
-	return Result.ok(null);
+	));
 }
 
-export function endRenderPass(): Result<void, PassError> {
-	if (vulkanPassEnd() != VULKAN_OK) { return Result.err(PassError.EndFailed); }
-	return Result.ok(null);
+export function endRenderPass(): void {
+	if (vulkanPassEnd() != VULKAN_OK) { stopOnVulkan(); }
 }

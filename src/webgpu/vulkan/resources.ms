@@ -2,8 +2,6 @@ import {
 	vulkanAdapterLimit,
 	vulkanBarrierFlush,
 	vulkanBarrierImage,
-	vulkanBlockAllocate,
-	vulkanBlockFree,
 	vulkanBufferBind,
 	vulkanBufferCreate,
 	vulkanBufferDestroy,
@@ -20,8 +18,11 @@ import {
 	vulkanImageRequirements,
 	vulkanMappedRead,
 	vulkanMappedWrite,
+	vulkanMemoryAllocate,
+	vulkanMemoryFree,
 	vulkanMemoryHeapCount,
 	vulkanMemoryHeapSize,
+	vulkanMemoryMap,
 	vulkanMemoryType,
 	vulkanMemoryTypeCount,
 	vulkanRecordingSerial,
@@ -41,6 +42,7 @@ import {
 	MemoryError,
 	MemoryKind,
 	MemoryRequest,
+	OpenedBlock,
 	Tiling,
 	memoryAllocate,
 	memoryFree,
@@ -48,6 +50,7 @@ import {
 } from "./memory";
 import {
 	ACCESS_TRANSFER_WRITE,
+	ASPECT_STENCIL,
 	FormatInfo,
 	IMAGE_CREATE_CUBE_COMPATIBLE,
 	IMAGE_TYPE_2D,
@@ -101,14 +104,16 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedCubeView,
+	checkedDepthTexelCopy,
 	checkedSamplerAnisotropy,
 	checkedSamplerLod,
 	checkedView3d,
 	checkedViewLayers,
 	checkedViewMips,
+	stop,
 } from "../types.ms";
 import { checkedViewDimension } from "../validate.ms";
-import { Pool, allocate, newPool, release, slotIndex, store } from "../pool.ms";
+import { Pool, allocate, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 when (linux) {
@@ -117,25 +122,12 @@ when (linux) {
 
 export enum ResourceError {
 	OutOfMemory,
-	InvalidAllocation,
-	NoCompatibleMemory,
-	AllocationCountExceeded,
-	BlockAllocationFailed,
-	CreateFailed,
-	BindFailed,
-	ViewFailed,
-	SamplerFailed,
-	BarrierFailed,
-	CopyFailed,
-	UploadTooLarge,
-	SubmitFailed,
-	WaitFailed,
-	NotMappable,
-	StillInFlight,
-	MapFailed,
+	DeviceLost,
 }
 
-const VULKAN_OK: int32 = 0;
+export const VULKAN_OK: int32 = 0;
+const VULKAN_OUT_OF_MEMORY: int32 = 10;
+const VULKAN_DEVICE_LOST: int32 = 11;
 const LIMIT_NON_COHERENT_ATOM_SIZE: int32 = 22;
 const LIMIT_MEMORY_ALLOCATION_COUNT: int32 = 23;
 const UPLOAD_PAGE_SIZE: uint64 = 64 * 1024 * 1024;
@@ -144,7 +136,7 @@ const MAX_ANISOTROPY = 16;
 
 struct BufferRecord {
 	id: uint32;
-	native: uint32;
+	native: uint64;
 	size: int64;
 	usage: int32;
 	rest: BufferRest;
@@ -154,7 +146,7 @@ struct BufferRecord {
 
 export struct TextureRecord {
 	id: uint32;
-	native: uint32;
+	native: uint64;
 	format: GPUTextureFormat;
 	info: FormatInfo;
 	width: int32;
@@ -171,7 +163,7 @@ export struct TextureRecord {
 
 export struct ViewRecord {
 	id: uint32;
-	native: uint32;
+	native: uint64;
 	texture: uint32;
 	baseMip: int32;
 	mipCount: int32;
@@ -186,7 +178,7 @@ export struct SwapchainImage {
 
 struct SamplerRecord {
 	id: uint32;
-	native: uint32;
+	native: uint64;
 }
 
 enum RetiredKind {
@@ -198,7 +190,7 @@ enum RetiredKind {
 }
 
 struct UploadPage {
-	native: uint32;
+	native: uint64;
 	memory: MemoryAllocation;
 	next: uint64;
 }
@@ -206,15 +198,14 @@ struct UploadPage {
 struct Retired {
 	serial: uint64;
 	kind: RetiredKind;
-	native: uint32;
+	native: uint64;
 	memory: MemoryAllocation;
 }
 
 struct Staged {
-	native: uint32;
-	block: uint32;
-	blockOffset: uint64;
-	bufferOffset: uint64;
+	native: uint64;
+	memory: MemoryAllocation;
+	offset: uint64;
 }
 
 export struct VulkanResources {
@@ -228,16 +219,21 @@ export struct VulkanResources {
 	freePages: Vec<UploadPage>;
 	page: UploadPage;
 	depthStencil: int32;
-	acquired: uint32;
+	acquired: uint64;
 }
 
-const NO_ALLOCATION: MemoryAllocation = { block: 0, offset: 0, size: 0, typeIndex: -1, group: -1, slot: -1, node: 0 };
+const NO_ALLOCATION: MemoryAllocation = {
+	memory: 0,
+	mapped: 0,
+	offset: 0,
+	size: 0,
+	typeIndex: -1,
+	group: -1,
+	slot: -1,
+	node: 0,
+};
 const NO_PAGE: UploadPage = { native: 0, memory: NO_ALLOCATION, next: 0 };
-
-@noinline function stop(message: string): void {
-	console.log(`webgpu vulkan: ${message}`);
-	unreachable;
-}
+const NO_BLOCK: OpenedBlock = { memory: 0, mapped: 0 };
 
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
@@ -245,14 +241,19 @@ function alignUp(value: uint64, alignment: uint64): uint64 {
 	return (value + alignment - 1) / alignment * alignment;
 }
 
-function memoryFailure(error: MemoryError): ResourceError {
-	return match (error) {
-		MemoryError.OutOfMemory => ResourceError.OutOfMemory,
-		MemoryError.InvalidAllocation => ResourceError.InvalidAllocation,
-		MemoryError.NoCompatibleMemory => ResourceError.NoCompatibleMemory,
-		MemoryError.AllocationCountExceeded => ResourceError.AllocationCountExceeded,
-		MemoryError.BlockAllocationFailed => ResourceError.BlockAllocationFailed,
-	};
+@noinline export function stopOnVulkan(): never {
+	stop(`vulkan: ${vulkanError()}`);
+}
+
+export function failure(code: int32): ResourceError {
+	if (code == VULKAN_OUT_OF_MEMORY) { return ResourceError.OutOfMemory; }
+	if (code == VULKAN_DEVICE_LOST) { return ResourceError.DeviceLost; }
+	stopOnVulkan();
+}
+
+export function checked(code: int32): Result<void, ResourceError> {
+	if (code != VULKAN_OK) { return Result.err(failure(code)); }
+	return Result.ok(null);
 }
 
 function memoryDevice(): MemoryDevice {
@@ -261,24 +262,35 @@ function memoryDevice(): MemoryDevice {
 		heapSizes: [],
 		nonCoherentAtomSize: vulkanAdapterLimit(LIMIT_NON_COHERENT_ATOM_SIZE) as uint64,
 		maxAllocationCount: vulkanAdapterLimit(LIMIT_MEMORY_ALLOCATION_COUNT) as uint32,
-		openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner): uint32 => {
-			return vulkanBlockAllocate(typeIndex, size, owner.buffer, owner.image);
+		openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner, map: boolean): OpenedBlock => {
+			let memory: uint64 = 0;
+			const allocated = vulkanMemoryAllocate(typeIndex, size, owner.buffer, owner.image, memory);
+			if (allocated == VULKAN_OUT_OF_MEMORY) { return NO_BLOCK; }
+			if (allocated != VULKAN_OK) { stopOnVulkan(); }
+			let mapped: uint64 = 0;
+			if (map) {
+				const mapping = vulkanMemoryMap(memory, mapped);
+				if (mapping == VULKAN_OUT_OF_MEMORY) {
+					vulkanMemoryFree(memory);
+					return NO_BLOCK;
+				}
+				if (mapping != VULKAN_OK) { stopOnVulkan(); }
+			}
+			return { memory: memory, mapped: mapped };
 		},
-		closeBlock: (block: uint32): void => {
-			if (vulkanBlockFree(block) != VULKAN_OK) { stop(vulkanError()); }
-		},
+		closeBlock: (memory: uint64): void => { vulkanMemoryFree(memory); },
 	};
 	for (let i: int32 = 0; i < vulkanMemoryTypeCount(); i++) {
 		let flags: uint32 = 0;
 		let heap: int32 = 0;
-		if (vulkanMemoryType(i, flags, heap) != VULKAN_OK) { stop(vulkanError()); }
+		if (vulkanMemoryType(i, flags, heap) != VULKAN_OK) { stopOnVulkan(); }
 		device.types.push({ properties: memoryPropertiesOf(flags), heap: heap });
 	}
 	for (let i: int32 = 0; i < vulkanMemoryHeapCount(); i++) { device.heapSizes.push(vulkanMemoryHeapSize(i)); }
 	return device;
 }
 
-export function openResources(): VulkanResources {
+export function resourcesFor(device: MemoryDevice, depthStencil: int32): VulkanResources {
 	const noBuffer: BufferRecord = {
 		id: 0,
 		native: 0,
@@ -301,13 +313,13 @@ export function openResources(): VulkanResources {
 		cube: false,
 		samples: 0,
 		swapchain: false,
-		rest: { stages: 0, access: 0, layout: 0 },
+		rest: { stages: 0, access: 0, layout: 0, aspect: 0 },
 		memory: NO_ALLOCATION,
 	};
 	const noView: ViewRecord = { id: 0, native: 0, texture: 0, baseMip: 0, mipCount: 0, layerCount: 0, swapchain: false };
 	const noSampler: SamplerRecord = { id: 0, native: 0 };
 	return {
-		memory: MemoryAllocator.forDevice(memoryDevice()),
+		memory: MemoryAllocator.forDevice(device),
 		tracker: newTracker(),
 		buffers: newPool<BufferRecord>("vulkan", "GPUBuffer", "buffer", noBuffer),
 		textures: newPool<TextureRecord>("vulkan", "GPUTexture", "texture", noTexture),
@@ -316,9 +328,13 @@ export function openResources(): VulkanResources {
 		retired: [],
 		freePages: [],
 		page: NO_PAGE,
-		depthStencil: depthStencilNative(vulkanFormatOptimalFeatures(d24s8Format())),
+		depthStencil: depthStencil,
 		acquired: 0,
 	};
+}
+
+export function openResources(): VulkanResources {
+	return resourcesFor(memoryDevice(), depthStencilNative(vulkanFormatOptimalFeatures(d24s8Format())));
 }
 
 function dedicationOf(code: int32): Dedication {
@@ -326,20 +342,37 @@ function dedicationOf(code: int32): Dedication {
 		0 => Dedication.None,
 		1 => Dedication.Preferred,
 		2 => Dedication.Required,
-		_ => {
-			stop(`a memory requirement query answered dedication ${code}`);
-			return Dedication.Required;
-		},
+		_ => { stop(`vulkan: a memory requirement query answered dedication ${code}`); },
 	};
 }
 
-function placeBuffer(ref r: VulkanResources, native: uint32, kind: MemoryKind): Result<MemoryAllocation, ResourceError> {
+function place(ref r: VulkanResources, request: MemoryRequest): Result<MemoryAllocation, ResourceError> {
+	const placed = memoryAllocate(r.memory, request);
+	if (placed.ok) { return Result.ok(placed.value); }
+	return match (placed.error) {
+		MemoryError.OutOfMemory | MemoryError.AllocationCountExceeded | MemoryError.BlockAllocationFailed =>
+			Result.err(ResourceError.OutOfMemory),
+		MemoryError.NoCompatibleMemory => {
+			stop(`vulkan: no memory type in memoryTypeBits ${request.typeBits} is ${request.kind.toString()}`);
+		},
+		MemoryError.InvalidAllocation => { stop("vulkan: memoryAllocate answered InvalidAllocation"); },
+	};
+}
+
+function freeMemory(ref r: VulkanResources, allocation: MemoryAllocation): void {
+	const freed = memoryFree(r.memory, allocation);
+	if (!freed.ok) {
+		stop(`vulkan: freeing ${allocation.size} bytes at ${allocation.offset} answered ${freed.error.toString()}`);
+	}
+}
+
+function placeBuffer(ref r: VulkanResources, native: uint64, kind: MemoryKind): Result<MemoryAllocation, ResourceError> {
 	let size: uint64 = 0;
 	let alignment: uint64 = 0;
 	let typeBits: uint32 = 0;
 	let dedication: int32 = 0;
-	if (vulkanBufferRequirements(native, size, alignment, typeBits, dedication) != VULKAN_OK) { stop(vulkanError()); }
-	const request: MemoryRequest = {
+	vulkanBufferRequirements(native, size, alignment, typeBits, dedication);
+	const placed = try place(r, {
 		size: size,
 		alignment: alignment,
 		typeBits: typeBits,
@@ -347,23 +380,22 @@ function placeBuffer(ref r: VulkanResources, native: uint32, kind: MemoryKind): 
 		tiling: Tiling.Linear,
 		dedication: dedicationOf(dedication),
 		owner: { buffer: native, image: 0 },
-	};
-	const placed = memoryAllocate(r.memory, request);
-	if (!placed.ok) { return Result.err(memoryFailure(placed.error)); }
-	if (vulkanBufferBind(native, placed.value.block, placed.value.offset) != VULKAN_OK) {
-		memoryFree(r.memory, placed.value);
-		return Result.err(ResourceError.BindFailed);
+	});
+	const bound = vulkanBufferBind(native, placed.memory, placed.offset);
+	if (bound != VULKAN_OK) {
+		freeMemory(r, placed);
+		return Result.err(failure(bound));
 	}
-	return Result.ok(placed.value);
+	return Result.ok(placed);
 }
 
-function placeImage(ref r: VulkanResources, native: uint32): Result<MemoryAllocation, ResourceError> {
+function placeImage(ref r: VulkanResources, native: uint64): Result<MemoryAllocation, ResourceError> {
 	let size: uint64 = 0;
 	let alignment: uint64 = 0;
 	let typeBits: uint32 = 0;
 	let dedication: int32 = 0;
-	if (vulkanImageRequirements(native, size, alignment, typeBits, dedication) != VULKAN_OK) { stop(vulkanError()); }
-	const request: MemoryRequest = {
+	vulkanImageRequirements(native, size, alignment, typeBits, dedication);
+	const placed = try place(r, {
 		size: size,
 		alignment: alignment,
 		typeBits: typeBits,
@@ -371,14 +403,13 @@ function placeImage(ref r: VulkanResources, native: uint32): Result<MemoryAlloca
 		tiling: Tiling.Optimal,
 		dedication: dedicationOf(dedication),
 		owner: { buffer: 0, image: native },
-	};
-	const placed = memoryAllocate(r.memory, request);
-	if (!placed.ok) { return Result.err(memoryFailure(placed.error)); }
-	if (vulkanImageBind(native, placed.value.block, placed.value.offset) != VULKAN_OK) {
-		memoryFree(r.memory, placed.value);
-		return Result.err(ResourceError.BindFailed);
+	});
+	const bound = vulkanImageBind(native, placed.memory, placed.offset);
+	if (bound != VULKAN_OK) {
+		freeMemory(r, placed);
+		return Result.err(failure(bound));
 	}
-	return Result.ok(placed.value);
+	return Result.ok(placed);
 }
 
 export function flush(ref r: VulkanResources): Result<void, ResourceError> {
@@ -386,6 +417,7 @@ export function flush(ref r: VulkanResources): Result<void, ResourceError> {
 	for (const barrier of r.tracker.images) {
 		const code = vulkanBarrierImage(
 			barrier.image,
+			barrier.aspect,
 			barrier.sourceAccess,
 			barrier.targetAccess,
 			barrier.oldLayout,
@@ -393,7 +425,7 @@ export function flush(ref r: VulkanResources): Result<void, ResourceError> {
 		);
 		if (code != VULKAN_OK) {
 			cleared(r.tracker);
-			return Result.err(ResourceError.BarrierFailed);
+			return Result.err(failure(code));
 		}
 	}
 	const code = vulkanBarrierFlush(
@@ -403,14 +435,13 @@ export function flush(ref r: VulkanResources): Result<void, ResourceError> {
 		r.tracker.targetAccess,
 	);
 	cleared(r.tracker);
-	if (code != VULKAN_OK) { return Result.err(ResourceError.BarrierFailed); }
-	return Result.ok(null);
+	return checked(code);
 }
 
 export function createBuffer(ref r: VulkanResources, descriptor: GPUBufferDescriptor): Result<GPUBuffer, ResourceError> {
 	const size = Math.max(descriptor.size, 4 as int64);
-	const native = vulkanBufferCreate(size as uint64, bufferUsageFlags(descriptor.usage));
-	if (native == 0) { return Result.err(ResourceError.CreateFailed); }
+	let native: uint64 = 0;
+	try checked(vulkanBufferCreate(size as uint64, bufferUsageFlags(descriptor.usage), native));
 	const placed = placeBuffer(r, native, bufferMemoryKind(descriptor.usage));
 	if (!placed.ok) {
 		vulkanBufferDestroy(native);
@@ -442,7 +473,8 @@ export function createTexture(ref r: VulkanResources, descriptor: GPUTextureDesc
 	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
 	const samples = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	const cube = cubeCompatible(volume, width, height, layers, samples);
-	const native = vulkanImageCreate(
+	let native: uint64 = 0;
+	try checked(vulkanImageCreate(
 		volume ? IMAGE_TYPE_3D : IMAGE_TYPE_2D,
 		info.native,
 		width as uint32,
@@ -453,19 +485,18 @@ export function createTexture(ref r: VulkanResources, descriptor: GPUTextureDesc
 		samples as uint32,
 		imageUsageFlags(descriptor.usage, info.depth),
 		cube ? IMAGE_CREATE_CUBE_COMPATIBLE : 0,
-		info.aspect,
-	);
-	if (native == 0) { return Result.err(ResourceError.CreateFailed); }
+		native,
+	));
 	const placed = placeImage(r, native);
 	if (!placed.ok) {
 		vulkanImageDestroy(native);
 		return Result.err(placed.error);
 	}
-	const rest = textureRest(descriptor.usage, info.depth);
+	const rest = textureRest(descriptor.usage, info.aspect);
 	initTexture(r.tracker, native, rest);
 	const initialized = flush(r);
 	if (!initialized.ok) {
-		memoryFree(r.memory, placed.value);
+		freeMemory(r, placed.value);
 		vulkanImageDestroy(native);
 		return Result.err(initialized.error);
 	}
@@ -512,7 +543,8 @@ export function createView(
 		checkedViewLayers(texture.id, t.layers, baseLayer, layerCount);
 	}
 	if (dimension == "cube" || dimension == "cube-array") { checkedCubeView(texture.id, t.cube, baseLayer, layerCount); }
-	const native = vulkanViewCreate(
+	let native: uint64 = 0;
+	try checked(vulkanViewCreate(
 		t.native,
 		viewType(dimension),
 		t.info.native,
@@ -521,8 +553,8 @@ export function createView(
 		mipCount as uint32,
 		baseLayer as uint32,
 		layerCount as uint32,
-	);
-	if (native == 0) { return Result.err(ResourceError.ViewFailed); }
+		native,
+	));
 	const id = allocate(r.views);
 	store(r.views, {
 		id: id,
@@ -538,8 +570,8 @@ export function createView(
 
 export function adoptSwapchainImage(
 	ref r: VulkanResources,
-	image: uint32,
-	view: uint32,
+	image: uint64,
+	view: uint64,
 	format: GPUTextureFormat,
 	width: int32,
 	height: int32,
@@ -585,7 +617,7 @@ export function settle(ref r: VulkanResources): void {
 	}
 }
 
-@noinline function refuseSwapchainOwned(call: string, kind: string, id: uint32): void {
+@noinline function refuseSwapchainOwned(call: string, kind: string, id: uint32): never {
 	stop(`${call}: ${kind} ${id} belongs to the swapchain`);
 }
 
@@ -598,7 +630,8 @@ export function createSampler(ref r: VulkanResources, descriptor: GPUSamplerDesc
 	checkedSamplerAnisotropy(maxAnisotropy, magFilter == 1 && minFilter == 1 && mipmapMode == 1);
 	if (descriptor.lodMinClamp < 0) { stop(`GPUSamplerDescriptor.lodMinClamp '${descriptor.lodMinClamp}' is not supported`); }
 	const maxLod = checkedSamplerLod(descriptor.lodMinClamp, descriptor.lodMaxClamp);
-	const native = vulkanSamplerCreate(
+	let native: uint64 = 0;
+	try checked(vulkanSamplerCreate(
 		magFilter,
 		minFilter,
 		mipmapMode,
@@ -609,14 +642,14 @@ export function createSampler(ref r: VulkanResources, descriptor: GPUSamplerDesc
 		maxLod,
 		compareOp(descriptor.compare, "GPUSamplerDescriptor.compare"),
 		maxAnisotropy as uint32,
-	);
-	if (native == 0) { return Result.err(ResourceError.SamplerFailed); }
+		native,
+	));
 	const id = allocate(r.samplers);
 	store(r.samplers, { id: id, native: native });
 	return Result.ok({ id: id });
 }
 
-function retire(ref r: VulkanResources, kind: RetiredKind, native: uint32, memory: MemoryAllocation): void {
+function retire(ref r: VulkanResources, kind: RetiredKind, native: uint64, memory: MemoryAllocation): void {
 	r.retired.push({ serial: vulkanRecordingSerial(), kind: kind, native: native, memory: memory });
 }
 
@@ -650,19 +683,19 @@ export function destroySampler(ref r: VulkanResources, sampler: GPUSampler): voi
 	release(r.samplers, sampler.id);
 }
 
-function nativeFree(kind: RetiredKind, native: uint32): int32 {
-	return match (kind) {
-		RetiredKind.Buffer => vulkanBufferDestroy(native),
-		RetiredKind.Page => vulkanBufferDestroy(native),
-		RetiredKind.Image => vulkanImageDestroy(native),
-		RetiredKind.View => vulkanViewDestroy(native),
-		RetiredKind.Sampler => vulkanSamplerDestroy(native),
+function freeRetired(ref r: VulkanResources, retired: Retired): void {
+	match (retired.kind) {
+		RetiredKind.Buffer | RetiredKind.Page => vulkanBufferDestroy(retired.native),
+		RetiredKind.Image => vulkanImageDestroy(retired.native),
+		RetiredKind.View => vulkanViewDestroy(retired.native),
+		RetiredKind.Sampler => vulkanSamplerDestroy(retired.native),
 	};
+	if (retired.memory.memory != 0) { freeMemory(r, retired.memory); }
 }
 
 export function collect(ref r: VulkanResources): Result<uint64, ResourceError> {
 	let completed: uint64 = 0;
-	if (vulkanCompletedSerial(completed) != VULKAN_OK) { return Result.err(ResourceError.WaitFailed); }
+	try checked(vulkanCompletedSerial(completed));
 	let kept: Vec<Retired> = [];
 	for (const retired of r.retired) {
 		if (retired.serial > completed) {
@@ -670,11 +703,7 @@ export function collect(ref r: VulkanResources): Result<uint64, ResourceError> {
 		} else if (retired.kind == RetiredKind.Page) {
 			r.freePages.push({ native: retired.native, memory: retired.memory, next: 0 });
 		} else {
-			if (nativeFree(retired.kind, retired.native) != VULKAN_OK) { stop(vulkanError()); }
-			if (retired.memory.block != 0) {
-				const freed = memoryFree(r.memory, retired.memory);
-				if (!freed.ok) { return Result.err(memoryFailure(freed.error)); }
-			}
+			freeRetired(r, retired);
 		}
 	}
 	r.retired = kept;
@@ -688,8 +717,8 @@ function uploadPage(ref r: VulkanResources): Result<UploadPage, ResourceError> {
 		return Result.ok(page);
 	}
 	const usage = (GPUBufferUsage.MAP_WRITE as int32) | (GPUBufferUsage.COPY_SRC as int32);
-	const native = vulkanBufferCreate(UPLOAD_PAGE_SIZE, bufferUsageFlags(usage));
-	if (native == 0) { return Result.err(ResourceError.CreateFailed); }
+	let native: uint64 = 0;
+	try checked(vulkanBufferCreate(UPLOAD_PAGE_SIZE, bufferUsageFlags(usage), native));
 	const placed = placeBuffer(r, native, MemoryKind.WriteMappable);
 	if (!placed.ok) {
 		vulkanBufferDestroy(native);
@@ -699,27 +728,49 @@ function uploadPage(ref r: VulkanResources): Result<UploadPage, ResourceError> {
 }
 
 function upload(ref r: VulkanResources, bytes: uint64): Result<Staged, ResourceError> {
-	if (bytes > UPLOAD_PAGE_SIZE) { return Result.err(ResourceError.UploadTooLarge); }
+	if (bytes > UPLOAD_PAGE_SIZE) {
+		stop(`vulkan: an upload of ${bytes} bytes is larger than the ${UPLOAD_PAGE_SIZE}-byte upload page`);
+	}
 	if (r.page.native == 0 || r.page.next + bytes > UPLOAD_PAGE_SIZE) {
 		if (r.page.native != 0) { retire(r, RetiredKind.Page, r.page.native, r.page.memory); }
 		r.page = NO_PAGE;
-		const page = uploadPage(r);
-		if (!page.ok) { return Result.err(page.error); }
-		r.page = page.value;
+		r.page = try uploadPage(r);
 	}
 	const offset = r.page.next;
 	r.page.next = alignUp(offset + bytes, UPLOAD_ALIGNMENT);
-	return Result.ok({
-		native: r.page.native,
-		block: r.page.memory.block,
-		blockOffset: r.page.memory.offset + offset,
-		bufferOffset: offset,
-	});
+	return Result.ok({ native: r.page.native, memory: r.page.memory, offset: offset });
+}
+
+function stagedWrite(
+	ref r: VulkanResources,
+	staged: Staged,
+	at: uint64,
+	data: Readonly<Span<uint8>>,
+	dataOffset: uint64,
+	rowBytes: uint64,
+	sourcePitch: uint64,
+	rows: uint32,
+): Result<void, ResourceError> {
+	const offset = staged.offset + at;
+	const range = r.memory.mappedRange(staged.memory, offset, rowBytes * (rows as uint64));
+	return checked(vulkanMappedWrite(
+		staged.memory.memory,
+		staged.memory.mapped,
+		staged.memory.offset + offset,
+		data[0],
+		dataOffset,
+		rowBytes,
+		sourcePitch,
+		rowBytes,
+		rows,
+		range.offset,
+		range.size,
+	));
 }
 
 function copyIntoBuffer(
 	ref r: VulkanResources,
-	source: uint32,
+	source: uint64,
 	sourceOffset: uint64,
 	target: int32,
 	targetOffset: uint64,
@@ -728,9 +779,7 @@ function copyIntoBuffer(
 	copyFromBuffer(r.tracker, source);
 	writeToBuffer(r.tracker, r.buffers.slots[target].native, r.buffers.slots[target].rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE);
 	try flush(r);
-	if (vulkanCopyBuffer(source, sourceOffset, r.buffers.slots[target].native, targetOffset, bytes) != VULKAN_OK) {
-		return Result.err(ResourceError.CopyFailed);
-	}
+	try checked(vulkanCopyBuffer(source, sourceOffset, r.buffers.slots[target].native, targetOffset, bytes));
 	r.buffers.slots[target].lastWrite = vulkanRecordingSerial();
 	return Result.ok(null);
 }
@@ -745,10 +794,8 @@ export function writeBuffer(
 	const bytes = data.length as uint64;
 	if (bytes == 0) { return Result.ok(null); }
 	const staged = try upload(r, bytes);
-	if (vulkanMappedWrite(staged.block, staged.blockOffset, data[0], 0, bytes, bytes, bytes, 1) != VULKAN_OK) {
-		return Result.err(ResourceError.MapFailed);
-	}
-	return copyIntoBuffer(r, staged.native, staged.bufferOffset, target, offset as uint64, bytes);
+	try stagedWrite(r, staged, 0, data, 0, bytes, bytes, 1);
+	return copyIntoBuffer(r, staged.native, staged.offset, target, offset as uint64, bytes);
 }
 
 export function copyBufferToBuffer(
@@ -764,10 +811,10 @@ export function copyBufferToBuffer(
 	return copyIntoBuffer(r, from, sourceOffset as uint64, target, destinationOffset as uint64, size as uint64);
 }
 
-@noinline function copyableTexel(member: string, t: TextureRecord): int32 {
-	if (t.info.texelBytes == 0) {
-		const name: string = t.format;
-		stop(`${member}: ${name} GPUTexture ${t.id} has no single copyable aspect`);
+function copiedTexel(member: string, t: TextureRecord, writes: boolean, mipLevel: int32, size: GPUExtent3D): int32 {
+	if (t.info.depth) {
+		const stencil = (t.info.aspect & ASPECT_STENCIL) != 0;
+		checkedDepthTexelCopy(member, t.id, t.format, stencil, writes, t.width, t.height, mipLevel, size);
 	}
 	return t.info.texelBytes;
 }
@@ -781,7 +828,7 @@ export function writeTexture(
 ): Result<void, ResourceError> {
 	const index = r.textures.slotIndex(destination.texture.id);
 	const t = r.textures.slots[index];
-	const texelBytes = copyableTexel("writeTexture", t);
+	const texelBytes = copiedTexel("writeTexture", t, true, destination.mipLevel, size);
 	const rowBytes = (size.width * texelBytes) as uint64;
 	const rows = size.height as uint32;
 	const images = size.depthOrArrayLayers == 0 ? 1 : size.depthOrArrayLayers;
@@ -791,25 +838,15 @@ export function writeTexture(
 	for (let image: int32 = 0; image < images; image++) {
 		const imageBytes = rowBytes * (rows as uint64) * (image as uint64);
 		const dataOffset = (layout.offset as uint64) + sourcePitch * rowsPerImage * (image as uint64);
-		const code = vulkanMappedWrite(
-			staged.block,
-			staged.blockOffset + imageBytes,
-			data[0],
-			dataOffset,
-			rowBytes,
-			sourcePitch,
-			rowBytes,
-			rows,
-		);
-		if (code != VULKAN_OK) { return Result.err(ResourceError.MapFailed); }
+		try stagedWrite(r, staged, imageBytes, data, dataOffset, rowBytes, sourcePitch, rows);
 	}
 	copyFromBuffer(r.tracker, staged.native);
 	writeToTexture(r.tracker, t.native, t.rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE, LAYOUT_TRANSFER_DST);
 	try flush(r);
 	const origin = destination.origin;
-	const code = vulkanCopyBufferToImage(
+	return checked(vulkanCopyBufferToImage(
 		staged.native,
-		staged.bufferOffset,
+		staged.offset,
 		size.width as uint32,
 		rows,
 		t.native,
@@ -823,9 +860,7 @@ export function writeTexture(
 		size.width as uint32,
 		rows,
 		(t.volume ? images : 1) as uint32,
-	);
-	if (code != VULKAN_OK) { return Result.err(ResourceError.CopyFailed); }
-	return Result.ok(null);
+	));
 }
 
 export function copyTextureToBuffer(
@@ -836,7 +871,7 @@ export function copyTextureToBuffer(
 ): Result<void, ResourceError> {
 	const t = r.textures.slots[r.textures.slotIndex(source.texture.id)];
 	const target = r.buffers.slotIndex(destination.buffer.id);
-	const texelBytes = copyableTexel("copyTextureToBuffer", t);
+	const texelBytes = copiedTexel("copyTextureToBuffer", t, false, source.mipLevel, size);
 	const bytesPerRow = destination.bytesPerRow == 0 ? size.width * texelBytes : destination.bytesPerRow;
 	if (bytesPerRow % texelBytes != 0) {
 		stop(`copyTextureToBuffer: bytesPerRow ${bytesPerRow} is not a multiple of the ${texelBytes}-byte texel`);
@@ -847,7 +882,7 @@ export function copyTextureToBuffer(
 	writeToBuffer(r.tracker, r.buffers.slots[target].native, r.buffers.slots[target].rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE);
 	try flush(r);
 	const origin = source.origin;
-	const code = vulkanCopyImageToBuffer(
+	try checked(vulkanCopyImageToBuffer(
 		r.buffers.slots[target].native,
 		destination.offset as uint64,
 		rowLength(bytesPerRow, texelBytes),
@@ -863,8 +898,7 @@ export function copyTextureToBuffer(
 		size.width as uint32,
 		size.height as uint32,
 		(t.volume ? images : 1) as uint32,
-	);
-	if (code != VULKAN_OK) { return Result.err(ResourceError.CopyFailed); }
+	));
 	r.buffers.slots[target].lastWrite = vulkanRecordingSerial();
 	return Result.ok(null);
 }
@@ -874,7 +908,7 @@ export function submit(ref r: VulkanResources): Result<uint64, ResourceError> {
 	endPass(r.tracker);
 	try flush(r);
 	let serial: uint64 = 0;
-	if (vulkanSubmit(serial) != VULKAN_OK) { return Result.err(ResourceError.SubmitFailed); }
+	try checked(vulkanSubmit(serial));
 	if (r.page.native != 0) {
 		r.retired.push({ serial: serial, kind: RetiredKind.Page, native: r.page.native, memory: r.page.memory });
 		r.page = NO_PAGE;
@@ -883,20 +917,66 @@ export function submit(ref r: VulkanResources): Result<uint64, ResourceError> {
 }
 
 export function wait(ref r: VulkanResources, serial: uint64): Result<uint64, ResourceError> {
-	if (vulkanWaitSerial(serial) != VULKAN_OK) { return Result.err(ResourceError.WaitFailed); }
+	try checked(vulkanWaitSerial(serial));
 	return collect(r);
 }
 
 export function readMapped(ref r: VulkanResources, buffer: GPUBuffer, offset: int64, size: int64): Result<Vec<uint8>, ResourceError> {
-	const index = r.buffers.slotIndex(buffer.id);
-	const slot = r.buffers.slots[index];
-	if (!has(slot.usage, GPUBufferUsage.MAP_READ as int32)) { return Result.err(ResourceError.NotMappable); }
+	const slot = r.buffers.slots[r.buffers.slotIndex(buffer.id)];
+	if (!has(slot.usage, GPUBufferUsage.MAP_READ as int32)) {
+		stop(`readMapped: GPUBuffer ${buffer.id} was not created with MAP_READ`);
+	}
+	if (offset < 0 || size < 0 || offset + size > slot.size) {
+		stop(`readMapped of ${size} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${slot.size}`);
+	}
 	const completed = try collect(r);
-	if (slot.lastWrite > completed) { return Result.err(ResourceError.StillInFlight); }
+	if (slot.lastWrite > completed) {
+		stop(`readMapped: GPUBuffer ${buffer.id} is written by submission ${slot.lastWrite}, which has not completed`);
+	}
 	let bytes: Vec<uint8> = new Array(size);
 	if (size == 0) { return Result.ok(bytes); }
-	if (vulkanMappedRead(slot.memory.block, slot.memory.offset + (offset as uint64), bytes[0], size as uint64) != VULKAN_OK) {
-		return Result.err(ResourceError.MapFailed);
-	}
+	const range = r.memory.mappedRange(slot.memory, offset as uint64, size as uint64);
+	try checked(vulkanMappedRead(
+		slot.memory.memory,
+		slot.memory.mapped,
+		slot.memory.offset + (offset as uint64),
+		bytes[0],
+		size as uint64,
+		range.offset,
+		range.size,
+	));
 	return Result.ok(bytes);
+}
+
+export function resetRecords(ref r: VulkanResources): void {
+	reset(r.buffers);
+	reset(r.textures);
+	reset(r.views);
+	reset(r.samplers);
+}
+
+function drain(ref r: VulkanResources): Result<uint64, ResourceError> {
+	const serial = try submit(r);
+	return wait(r, serial);
+}
+
+export function closeResources(ref r: VulkanResources): Result<void, ResourceError> {
+	for (const id of r.samplers.liveIds()) { destroySampler(r, { id: id }); }
+	for (const id of r.views.liveIds()) {
+		if (!r.views.slots[r.views.slotIndex(id)].swapchain) { destroyView(r, { id: id }); }
+	}
+	for (const id of r.textures.liveIds()) {
+		if (!r.textures.slots[r.textures.slotIndex(id)].swapchain) { destroyTexture(r, { id: id }); }
+	}
+	for (const id of r.buffers.liveIds()) { destroyBuffer(r, { id: id }); }
+	const drained = drain(r);
+	if (r.page.native != 0) { retire(r, RetiredKind.Page, r.page.native, r.page.memory); }
+	r.page = NO_PAGE;
+	for (const page of r.freePages) { retire(r, RetiredKind.Page, page.native, page.memory); }
+	r.freePages.length = 0;
+	for (const retired of r.retired) { freeRetired(r, retired); }
+	r.retired.length = 0;
+	resetRecords(r);
+	if (!drained.ok) { return Result.err(drained.error); }
+	return Result.ok(null);
 }

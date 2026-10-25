@@ -12,10 +12,12 @@ export struct TextureRest {
 	stages: uint32;
 	access: uint32;
 	layout: int32;
+	aspect: uint32;
 }
 
 export struct ImageBarrier {
-	image: uint32;
+	image: uint64;
+	aspect: uint32;
 	sourceAccess: uint32;
 	targetAccess: uint32;
 	oldLayout: int32;
@@ -23,14 +25,14 @@ export struct ImageBarrier {
 }
 
 struct BufferWrite {
-	id: uint32;
+	id: uint64;
 	stages: uint32;
 	access: uint32;
 	rest: BufferRest;
 }
 
 struct TextureWrite {
-	id: uint32;
+	id: uint64;
 	stages: uint32;
 	access: uint32;
 	layout: int32;
@@ -38,13 +40,13 @@ struct TextureWrite {
 }
 
 struct TextureCopy {
-	id: uint32;
+	id: uint64;
 	rest: TextureRest;
 }
 
 export struct StateTracker {
 	writtenBuffers: Vec<BufferWrite>;
-	copyBuffers: Vec<uint32>;
+	copyBuffers: Vec<uint64>;
 	writtenTextures: Vec<TextureWrite>;
 	copyTextures: Vec<TextureCopy>;
 	images: Vec<ImageBarrier>;
@@ -68,28 +70,28 @@ export function newTracker(): StateTracker {
 	};
 }
 
-function writtenBuffer(this t: StateTracker, id: uint32): int32 {
+function writtenBuffer(this t: StateTracker, id: uint64): int32 {
 	for (let i: int32 = 0; i < t.writtenBuffers.length; i++) {
 		if (t.writtenBuffers[i].id == id) { return i; }
 	}
 	return -1;
 }
 
-function copiedBuffer(this t: StateTracker, id: uint32): int32 {
+function copiedBuffer(this t: StateTracker, id: uint64): int32 {
 	for (let i: int32 = 0; i < t.copyBuffers.length; i++) {
 		if (t.copyBuffers[i] == id) { return i; }
 	}
 	return -1;
 }
 
-function writtenTexture(this t: StateTracker, id: uint32): int32 {
+function writtenTexture(this t: StateTracker, id: uint64): int32 {
 	for (let i: int32 = 0; i < t.writtenTextures.length; i++) {
 		if (t.writtenTextures[i].id == id) { return i; }
 	}
 	return -1;
 }
 
-function copiedTexture(this t: StateTracker, id: uint32): int32 {
+function copiedTexture(this t: StateTracker, id: uint64): int32 {
 	for (let i: int32 = 0; i < t.copyTextures.length; i++) {
 		if (t.copyTextures[i].id == id) { return i; }
 	}
@@ -98,7 +100,8 @@ function copiedTexture(this t: StateTracker, id: uint32): int32 {
 
 function addImageBarrier(
 	ref t: StateTracker,
-	image: uint32,
+	image: uint64,
+	aspect: uint32,
 	sourceAccess: uint32,
 	targetAccess: uint32,
 	oldLayout: int32,
@@ -106,6 +109,7 @@ function addImageBarrier(
 ): void {
 	t.images.push({
 		image: image,
+		aspect: aspect,
 		sourceAccess: sourceAccess,
 		targetAccess: targetAccess,
 		oldLayout: oldLayout,
@@ -115,21 +119,22 @@ function addImageBarrier(
 
 function textureDependency(
 	ref t: StateTracker,
-	image: uint32,
+	image: uint64,
+	aspect: uint32,
 	sourceAccess: uint32,
 	targetAccess: uint32,
 	oldLayout: int32,
 	newLayout: int32,
 ): void {
 	if (oldLayout != newLayout) {
-		addImageBarrier(t, image, sourceAccess, targetAccess, oldLayout, newLayout);
+		addImageBarrier(t, image, aspect, sourceAccess, targetAccess, oldLayout, newLayout);
 		return;
 	}
 	t.sourceAccess |= sourceAccess;
 	t.targetAccess |= targetAccess;
 }
 
-export function writeToBuffer(ref t: StateTracker, id: uint32, rest: BufferRest, stages: uint32, access: uint32): void {
+export function writeToBuffer(ref t: StateTracker, id: uint64, rest: BufferRest, stages: uint32, access: uint32): void {
 	const written = t.writtenBuffer(id);
 	const copied = t.copiedBuffer(id);
 	if (written >= 0) {
@@ -149,7 +154,7 @@ export function writeToBuffer(ref t: StateTracker, id: uint32, rest: BufferRest,
 
 export function writeToTexture(
 	ref t: StateTracker,
-	id: uint32,
+	id: uint64,
 	rest: TextureRest,
 	stages: uint32,
 	access: uint32,
@@ -172,11 +177,11 @@ export function writeToTexture(
 		t.sourceStages |= rest.stages;
 	}
 	t.targetStages |= stages;
-	textureDependency(t, id, sourceAccess, access, oldLayout, layout);
+	textureDependency(t, id, rest.aspect, sourceAccess, access, oldLayout, layout);
 	t.writtenTextures.push({ id: id, stages: stages, access: access, layout: layout, rest: rest });
 }
 
-export function readFromBuffer(ref t: StateTracker, id: uint32, stages: uint32, access: uint32): void {
+export function readFromBuffer(ref t: StateTracker, id: uint64, stages: uint32, access: uint32): void {
 	const written = t.writtenBuffer(id);
 	if (written >= 0) {
 		t.sourceStages |= t.writtenBuffers[written].stages;
@@ -190,14 +195,14 @@ export function readFromBuffer(ref t: StateTracker, id: uint32, stages: uint32, 
 	if (copied >= 0) { t.copyBuffers.splice(copied, 1); }
 }
 
-export function copyFromBuffer(ref t: StateTracker, id: uint32): void {
+export function copyFromBuffer(ref t: StateTracker, id: uint64): void {
 	readFromBuffer(t, id, STAGE_TRANSFER, ACCESS_TRANSFER_READ);
 	t.copyBuffers.push(id);
 }
 
 export function readFromTexture(
 	ref t: StateTracker,
-	id: uint32,
+	id: uint64,
 	rest: TextureRest,
 	stages: uint32,
 	access: uint32,
@@ -220,21 +225,21 @@ export function readFromTexture(
 		t.sourceStages |= rest.stages;
 	}
 	t.targetStages |= stages;
-	textureDependency(t, id, sourceAccess, access, oldLayout, layout);
+	textureDependency(t, id, rest.aspect, sourceAccess, access, oldLayout, layout);
 }
 
-export function copyFromTexture(ref t: StateTracker, id: uint32, rest: TextureRest): void {
+export function copyFromTexture(ref t: StateTracker, id: uint64, rest: TextureRest): void {
 	readFromTexture(t, id, rest, STAGE_TRANSFER, ACCESS_TRANSFER_READ, LAYOUT_TRANSFER_SRC);
 	t.copyTextures.push({ id: id, rest: rest });
 }
 
-export function acquireTexture(ref t: StateTracker, id: uint32, rest: TextureRest): void {
+export function acquireTexture(ref t: StateTracker, id: uint64, rest: TextureRest): void {
 	t.writtenTextures.push({ id: id, stages: rest.stages, access: 0, layout: LAYOUT_UNDEFINED, rest: rest });
 }
 
-export function initTexture(ref t: StateTracker, id: uint32, rest: TextureRest): void {
+export function initTexture(ref t: StateTracker, id: uint64, rest: TextureRest): void {
 	t.targetStages |= rest.stages;
-	addImageBarrier(t, id, 0, rest.access, LAYOUT_UNDEFINED, rest.layout);
+	addImageBarrier(t, id, rest.aspect, 0, rest.access, LAYOUT_UNDEFINED, rest.layout);
 }
 
 export function pending(this t: StateTracker): boolean {
@@ -261,14 +266,14 @@ export function endPass(ref t: StateTracker): void {
 	for (const write of t.writtenTextures) {
 		t.sourceStages |= write.stages;
 		t.targetStages |= write.rest.stages;
-		textureDependency(t, write.id, write.access, write.rest.access, write.layout, write.rest.layout);
+		textureDependency(t, write.id, write.rest.aspect, write.access, write.rest.access, write.layout, write.rest.layout);
 	}
 	t.writtenTextures.length = 0;
 	for (const copy of t.copyTextures) {
 		if (copy.rest.layout != LAYOUT_TRANSFER_SRC) {
 			t.sourceStages |= STAGE_TRANSFER;
 			t.targetStages |= copy.rest.stages;
-			addImageBarrier(t, copy.id, 0, copy.rest.access, LAYOUT_TRANSFER_SRC, copy.rest.layout);
+			addImageBarrier(t, copy.id, copy.rest.aspect, 0, copy.rest.access, LAYOUT_TRANSFER_SRC, copy.rest.layout);
 		}
 	}
 	t.copyTextures.length = 0;
