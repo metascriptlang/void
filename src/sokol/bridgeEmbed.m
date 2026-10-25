@@ -64,7 +64,7 @@ void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 static void windowInit(void) {
 	NSView *view = (__bridge NSView *)voidMacosView();
 	view.wantsLayer = YES;
-	g_dpiScale = voidMacosDpiScale();
+	g_dpiScale = voidWindowDpiScale();
 	g_device = MTLCreateSystemDefaultDevice();
 	g_layer = [CAMetalLayer layer];
 	g_layer.device = g_device;
@@ -72,8 +72,8 @@ static void windowInit(void) {
 	g_layer.framebufferOnly = NO;
 	g_layer.frame = view.bounds;
 	g_layer.contentsScale = (CGFloat)g_dpiScale;
-	g_w = voidMacosWidth();
-	g_h = voidMacosHeight();
+	g_w = voidWindowWidth();
+	g_h = voidWindowHeight();
 	g_layer.drawableSize = CGSizeMake(g_w, g_h);
 	g_gate = voidPresentGateCreate((__bridge void *)g_layer);
 	[view setLayer:g_layer];
@@ -82,9 +82,9 @@ static void windowInit(void) {
 
 static void fitWindowLayer(void) {
 	NSView *view = (__bridge NSView *)voidMacosView();
-	g_dpiScale = voidMacosDpiScale();
-	g_w = voidMacosWidth();
-	g_h = voidMacosHeight();
+	g_dpiScale = voidWindowDpiScale();
+	g_w = voidWindowWidth();
+	g_h = voidWindowHeight();
 	[CATransaction begin];
 	[CATransaction setDisableActions:YES];
 	g_layer.frame = view.bounds;
@@ -105,7 +105,7 @@ static void windowEvent(const VoidAppEvent *e) {
 	if (e->type == VOID_EVENT_KEY_DOWN) s_keys[e->keyCode] = true;
 	else if (e->type == VOID_EVENT_KEY_UP) s_keys[e->keyCode] = false;
 	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidMacosRequestQuit();
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
 }
 
 static void windowCleanup(void) { doorShutdown(); }

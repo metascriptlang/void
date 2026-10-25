@@ -90,7 +90,7 @@ static void _event(const VoidAppEvent *e) {
 	if (e->type == VOID_EVENT_KEY_DOWN) s_keys[e->keyCode] = true;
 	else if (e->type == VOID_EVENT_KEY_UP) s_keys[e->keyCode] = false;
 	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidLinuxRequestQuit();
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
 }
 
 static void _cleanup(void) { doorShutdown(); }
@@ -128,7 +128,7 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 }
 
 static void requireWindow(const char *op) {
-	if (!voidLinuxValid()) voidFail("%s before voidRun made the window", op);
+	if (!voidWindowValid()) voidFail("%s before voidRun made the window", op);
 }
 
 void voidGfxSetup(void) {
@@ -138,17 +138,17 @@ void voidGfxSetup(void) {
 
 int voidFbWidth(void) {
 	requireWindow("fbWidth");
-	return voidLinuxWidth();
+	return voidWindowWidth();
 }
 
 int voidFbHeight(void) {
 	requireWindow("fbHeight");
-	return voidLinuxHeight();
+	return voidWindowHeight();
 }
 
 float voidDpiScale(void) {
 	requireWindow("dpiScale");
-	return voidLinuxDpiScale();
+	return voidWindowDpiScale();
 }
 
 int voidKeyDown(int keycode) {
@@ -159,12 +159,12 @@ int voidKeyDown(int keycode) {
 // The screen pass draws into the window's framebuffer 0, which has no view objects.
 int32_t voidSwapchainWidth(void) {
 	requireWindow("beginPass");
-	return voidLinuxWidth();
+	return voidWindowWidth();
 }
 
 int32_t voidSwapchainHeight(void) {
 	requireWindow("beginPass");
-	return voidLinuxHeight();
+	return voidWindowHeight();
 }
 
 int32_t voidSwapchainSampleCount(void) { return s_sampleCount; }

@@ -1,6 +1,6 @@
 // The Windows window's device and swapchain, which Void owns because its window
 // (src/platform/win32/window.c) has no graphics API: D3D11 in bridgeWin.c, GL core in
-// windowGl.c. The surface follows voidWin32Width/voidWin32Height; a frame presents only once drawn.
+// windowGl.c. The surface follows voidWindowWidth/voidWindowHeight; a frame presents only once drawn.
 #ifndef VOID_SOKOL_WINDOW_SURFACE_H
 #define VOID_SOKOL_WINDOW_SURFACE_H
 

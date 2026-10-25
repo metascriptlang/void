@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "window.h"
-#include "../frameTiming.h"
 
 #if !__has_feature(objc_arc)
 #error "window.m is written for ARC"
@@ -130,37 +129,14 @@ static const int16_t keyTable[KEY_TABLE_SIZE] = {
 
 static struct {
 	VoidMacosDesc desc;
-	bool valid;
-	bool initCalled;
-	bool cleanupCalled;
-	bool quitRequested;
-	bool quitOrdered;
-	bool fullscreen;
 	bool textInput;
-	float dpiScale;
-	uint64_t frameCount;
-	int windowWidth;
-	int windowHeight;
-	int framebufferWidth;
-	int framebufferHeight;
-	struct {
-		float x, y, dx, dy;
-		bool posValid;
-		bool shown;
-		bool locked;
-		int cursor;
-		uint8_t buttons;
-	} mouse;
+	uint8_t mouseButtons;
 	uint32_t flagsChanged;
-	VoidKeysHeld keysHeld;
-	VoidFrameTiming timing;
-	int droppedCount;
-	char **droppedPaths;
-	char *clipboard;
 	NSRange markedSelection;
 	NSRect imeRect;
-	VoidAppEvent event;
 } s;
+
+VoidWindow voidWindow;
 
 static NSWindow *s_window;
 static NSView *s_view;
@@ -183,33 +159,6 @@ static int roundAtLeastOne(CGFloat f) {
 	return v <= 0 ? 1 : v;
 }
 
-static bool eventsEnabled(void) { return s.desc.event != NULL && s.initCalled; }
-
-static void initEvent(VoidAppEventType type) {
-	memset(&s.event, 0, sizeof s.event);
-	s.event.type = type;
-	s.event.frameCount = s.frameCount;
-	s.event.mouseButton = VOID_MOUSE_INVALID;
-	s.event.windowWidth = s.windowWidth;
-	s.event.windowHeight = s.windowHeight;
-	s.event.framebufferWidth = s.framebufferWidth;
-	s.event.framebufferHeight = s.framebufferHeight;
-	s.event.mouseX = s.mouse.x;
-	s.event.mouseY = s.mouse.y;
-	s.event.mouseDx = s.mouse.dx;
-	s.event.mouseDy = s.mouse.dy;
-}
-
-static void callEvent(void) {
-	if (!s.cleanupCalled) s.desc.event(&s.event);
-}
-
-static void appEvent(VoidAppEventType type) {
-	if (!eventsEnabled()) return;
-	initEvent(type);
-	callEvent();
-}
-
 static uint32_t mods(NSEvent *ev) {
 	const NSEventModifierFlags f = ev == nil ? NSEvent.modifierFlags : ev.modifierFlags;
 	const NSUInteger b = NSEvent.pressedMouseButtons;
@@ -225,21 +174,21 @@ static uint32_t mods(NSEvent *ev) {
 }
 
 static void mouseEvent(VoidAppEventType type, VoidMouseButton button, uint32_t modifiers) {
-	if (!eventsEnabled()) return;
-	initEvent(type);
-	s.event.mouseButton = button;
-	s.event.modifiers = modifiers;
-	callEvent();
+	if (!voidWindowEventsEnabled()) return;
+	voidWindowInitEvent(type);
+	voidWindow.event.mouseButton = button;
+	voidWindow.event.modifiers = modifiers;
+	voidWindowCallEvent();
 }
 
 static void keyEvent(VoidAppEventType type, VoidKeyCode key, bool repeat, uint32_t modifiers) {
-	if (!eventsEnabled()) return;
-	voidKeysHeldTrack(&s.keysHeld, type, key);
-	initEvent(type);
-	s.event.keyCode = key;
-	s.event.keyRepeat = repeat;
-	s.event.modifiers = modifiers;
-	callEvent();
+	if (!voidWindowEventsEnabled()) return;
+	voidKeysHeldTrack(&voidWindow.keysHeld, type, key);
+	voidWindowInitEvent(type);
+	voidWindow.event.keyCode = key;
+	voidWindow.event.keyRepeat = repeat;
+	voidWindow.event.modifiers = modifiers;
+	voidWindowCallEvent();
 }
 
 static void releaseKey(VoidKeyCode key) { keyEvent(VOID_EVENT_KEY_UP, key, false, 0); }
@@ -251,49 +200,49 @@ static VoidKeyCode translateKey(int scanCode) {
 
 static void initDefaultDimensions(void) {
 	const NSRect screen = NSScreen.mainScreen.frame;
-	if (s.windowWidth == 0) s.windowWidth = roundAtLeastOne(screen.size.width * 4.0 / 5.0);
-	if (s.windowHeight == 0) s.windowHeight = roundAtLeastOne(screen.size.height * 4.0 / 5.0);
+	if (voidWindow.windowWidth == 0) voidWindow.windowWidth = roundAtLeastOne(screen.size.width * 4.0 / 5.0);
+	if (voidWindow.windowHeight == 0) voidWindow.windowHeight = roundAtLeastOne(screen.size.height * 4.0 / 5.0);
 }
 
 static void updateDimensions(void) {
-	s.dpiScale = s.desc.highDpi ? (float)s_window.screen.backingScaleFactor : 1.0f;
-	s_view.layer.contentsScale = s.dpiScale;
+	voidWindow.dpiScale = s.desc.highDpi ? (float)s_window.screen.backingScaleFactor : 1.0f;
+	s_view.layer.contentsScale = voidWindow.dpiScale;
 	const NSRect bounds = s_view.bounds;
-	s.windowWidth = roundAtLeastOne(bounds.size.width);
-	s.windowHeight = roundAtLeastOne(bounds.size.height);
-	const int fbWidth = roundAtLeastOne(bounds.size.width * s.dpiScale);
-	const int fbHeight = roundAtLeastOne(bounds.size.height * s.dpiScale);
-	const bool changed = fbWidth != s.framebufferWidth || fbHeight != s.framebufferHeight;
-	s.framebufferWidth = fbWidth;
-	s.framebufferHeight = fbHeight;
-	if (changed) appEvent(VOID_EVENT_RESIZED);
+	voidWindow.windowWidth = roundAtLeastOne(bounds.size.width);
+	voidWindow.windowHeight = roundAtLeastOne(bounds.size.height);
+	const int fbWidth = roundAtLeastOne(bounds.size.width * voidWindow.dpiScale);
+	const int fbHeight = roundAtLeastOne(bounds.size.height * voidWindow.dpiScale);
+	const bool changed = fbWidth != voidWindow.framebufferWidth || fbHeight != voidWindow.framebufferHeight;
+	voidWindow.framebufferWidth = fbWidth;
+	voidWindow.framebufferHeight = fbHeight;
+	if (changed) voidWindowAppEvent(VOID_EVENT_RESIZED);
 }
 
 static void mouseUpdateFromPoint(NSPoint p, bool clearDxDy) {
-	if (s.mouse.locked) return;
-	const float x = (float)p.x * s.dpiScale;
-	const float y = (float)s.framebufferHeight - (float)p.y * s.dpiScale - 1.0f;
+	if (voidWindow.mouse.locked) return;
+	const float x = (float)p.x * voidWindow.dpiScale;
+	const float y = (float)voidWindow.framebufferHeight - (float)p.y * voidWindow.dpiScale - 1.0f;
 	if (clearDxDy) {
-		s.mouse.dx = 0.0f;
-		s.mouse.dy = 0.0f;
-	} else if (s.mouse.posValid) {
-		s.mouse.dx = x - s.mouse.x;
-		s.mouse.dy = y - s.mouse.y;
+		voidWindow.mouse.dx = 0.0f;
+		voidWindow.mouse.dy = 0.0f;
+	} else if (voidWindow.mouse.posValid) {
+		voidWindow.mouse.dx = x - voidWindow.mouse.x;
+		voidWindow.mouse.dy = y - voidWindow.mouse.y;
 	}
-	s.mouse.x = x;
-	s.mouse.y = y;
-	s.mouse.posValid = true;
+	voidWindow.mouse.x = x;
+	voidWindow.mouse.y = y;
+	voidWindow.mouse.posValid = true;
 }
 
 static void updateCursor(int cursor, bool shown) {
-	if (shown != s.mouse.shown) {
+	if (shown != voidWindow.mouse.shown) {
 		if (shown) [NSCursor unhide];
 		else [NSCursor hide];
 	}
 	NSCursor *ns = s_cursors[cursor] != nil ? s_cursors[cursor] : [NSCursor arrowCursor];
 	[ns set];
-	s.mouse.cursor = cursor;
-	s.mouse.shown = shown;
+	voidWindow.mouse.cursor = cursor;
+	voidWindow.mouse.shown = shown;
 }
 
 @interface NSCursor ()
@@ -316,15 +265,8 @@ static void initCursors(void) {
 	s_cursors[VOID_CURSOR_NOT_ALLOWED] = [NSCursor operationNotAllowedCursor];
 }
 
-static void clearDropped(void) {
-	for (int i = 0; i < s.droppedCount; i++) free(s.droppedPaths[i]);
-	free(s.droppedPaths);
-	s.droppedPaths = NULL;
-	s.droppedCount = 0;
-}
-
 static void textEvent(int type, NSString *text, NSUInteger cursor) {
-	if (!s.initCalled) return;
+	if (!voidWindow.initCalled) return;
 	s.desc.text(type, text.UTF8String, (int)cursor);
 }
 
@@ -336,16 +278,11 @@ static void clearMarked(void) {
 }
 
 static void frame(void) {
-	voidFrameTimingUpdate(&s.timing, 0.0);
-	if (!s.initCalled) {
-		if (s.desc.init) s.desc.init();
-		s.initCalled = true;
-	}
+	voidFrameTimingUpdate(&voidWindow.timing, 0.0);
 	@autoreleasepool {
-		if (s.desc.frame) s.desc.frame();
+		voidWindowFrame();
 	}
-	s.frameCount++;
-	if (s.quitRequested || s.quitOrdered) [s_window performClose:nil];
+	if (voidWindow.quitRequested || voidWindow.quitOrdered) [s_window performClose:nil];
 }
 
 static bool displayLinkActive(void) { return s_displayLink != nil && !s_displayLink.paused; }
@@ -408,11 +345,11 @@ static void transitionToVisible(void) {
 	const bool quiet = quietValue != NULL && strcmp(quietValue, "1") == 0;
 	NSApp.activationPolicy = quiet ? NSApplicationActivationPolicyAccessory : NSApplicationActivationPolicyRegular;
 	initCursors();
-	s.dpiScale = s.desc.highDpi ? (float)NSScreen.mainScreen.backingScaleFactor : 1.0f;
+	voidWindow.dpiScale = s.desc.highDpi ? (float)NSScreen.mainScreen.backingScaleFactor : 1.0f;
 	initDefaultDimensions();
 	const NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
 		| NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
-	s_window = [[VoidMacosWindow alloc] initWithContentRect:NSMakeRect(0, 0, s.windowWidth, s.windowHeight)
+	s_window = [[VoidMacosWindow alloc] initWithContentRect:NSMakeRect(0, 0, voidWindow.windowWidth, voidWindow.windowHeight)
 		styleMask:style backing:NSBackingStoreBuffered defer:NO];
 	s_window.releasedWhenClosed = NO;
 	s_window.title = [NSString stringWithUTF8String:s.desc.title];
@@ -424,7 +361,7 @@ static void transitionToVisible(void) {
 	s_window.contentView = s_view;
 	[s_window makeFirstResponder:s_view];
 	[s_window center];
-	s.valid = true;
+	voidWindow.valid = true;
 	if (quiet) {
 		s_window.alphaValue = 0;
 		s_window.ignoresMouseEvents = YES;
@@ -449,27 +386,21 @@ static void transitionToVisible(void) {
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
 	(void)notification;
-	if (s.cleanupCalled) return;
-	if (s.desc.cleanup) s.desc.cleanup();
-	s.cleanupCalled = true;
+	voidWindowCleanup();
 }
 @end
 
 @implementation VoidMacosWindowDelegate
 - (BOOL)windowShouldClose:(id)sender {
 	(void)sender;
-	if (!s.quitOrdered) {
-		s.quitRequested = true;
-		appEvent(VOID_EVENT_QUIT_REQUESTED);
-		if (s.quitRequested) s.quitOrdered = true;
-	}
-	return s.quitOrdered ? YES : NO;
+	voidWindowAskQuit();
+	return voidWindow.quitOrdered ? YES : NO;
 }
 
 - (void)windowWillStartLiveResize:(NSNotification *)notification {
 	(void)notification;
-	const bool fromLeft = s.mouse.x < (float)s.windowWidth / 2;
-	const bool fromTop = s.mouse.y < (float)s.windowHeight / 2;
+	const bool fromLeft = voidWindow.mouse.x < (float)voidWindow.windowWidth / 2;
+	const bool fromTop = voidWindow.mouse.y < (float)voidWindow.windowHeight / 2;
 	NSViewLayerContentsPlacement placement;
 	if (fromLeft) placement = fromTop ? NSViewLayerContentsPlacementBottomRight : NSViewLayerContentsPlacementTopRight;
 	else placement = fromTop ? NSViewLayerContentsPlacementBottomLeft : NSViewLayerContentsPlacementTopLeft;
@@ -489,13 +420,13 @@ static void transitionToVisible(void) {
 - (void)windowDidMiniaturize:(NSNotification *)notification {
 	(void)notification;
 	transitionToOccluded();
-	appEvent(VOID_EVENT_ICONIFIED);
+	voidWindowAppEvent(VOID_EVENT_ICONIFIED);
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
 	(void)notification;
 	transitionToVisible();
-	appEvent(VOID_EVENT_RESTORED);
+	voidWindowAppEvent(VOID_EVENT_RESTORED);
 }
 
 - (void)windowDidChangeOcclusionState:(NSNotification *)notification {
@@ -506,24 +437,24 @@ static void transitionToVisible(void) {
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
 	(void)notification;
-	appEvent(VOID_EVENT_FOCUSED);
+	voidWindowAppEvent(VOID_EVENT_FOCUSED);
 }
 
 - (void)windowDidResignKey:(NSNotification *)notification {
 	(void)notification;
-	voidKeysHeldRelease(&s.keysHeld, releaseKey);
+	voidKeysHeldRelease(&voidWindow.keysHeld, releaseKey);
 	s.flagsChanged = 0;
-	appEvent(VOID_EVENT_UNFOCUSED);
+	voidWindowAppEvent(VOID_EVENT_UNFOCUSED);
 }
 
 - (void)windowDidEnterFullScreen:(NSNotification *)notification {
 	(void)notification;
-	s.fullscreen = true;
+	voidWindow.fullscreen = true;
 }
 
 - (void)windowDidExitFullScreen:(NSNotification *)notification {
 	(void)notification;
-	s.fullscreen = false;
+	voidWindow.fullscreen = false;
 }
 @end
 
@@ -549,21 +480,19 @@ static void transitionToVisible(void) {
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
 	NSPasteboard *pboard = [sender draggingPasteboard];
 	if (![pboard.types containsObject:NSPasteboardTypeFileURL]) return NO;
-	clearDropped();
 	const int count = (int)pboard.pasteboardItems.count;
-	s.droppedPaths = (char **)calloc((size_t)(count > 0 ? count : 1), sizeof(char *));
-	if (s.droppedPaths == NULL) fail("calloc for the dropped file paths");
+	voidWindowBeginDrop((size_t)count);
 	for (int i = 0; i < count; i++) {
 		NSURL *url = [NSURL fileURLWithPath:[pboard.pasteboardItems[(NSUInteger)i] stringForType:NSPasteboardTypeFileURL]];
-		s.droppedPaths[i] = strdup(url.standardizedURL.path.UTF8String);
-		if (s.droppedPaths[i] == NULL) fail("strdup for a dropped file path");
+		voidWindow.droppedPaths[i] = strdup(url.standardizedURL.path.UTF8String);
+		if (voidWindow.droppedPaths[i] == NULL) fail("strdup for a dropped file path");
 	}
-	s.droppedCount = count;
-	if (eventsEnabled()) {
+	voidWindow.droppedCount = count;
+	if (voidWindowEventsEnabled()) {
 		mouseUpdateFromPoint(sender.draggingLocation, true);
-		initEvent(VOID_EVENT_FILES_DROPPED);
-		s.event.modifiers = mods(nil);
-		callEvent();
+		voidWindowInitEvent(VOID_EVENT_FILES_DROPPED);
+		voidWindow.event.modifiers = mods(nil);
+		voidWindowCallEvent();
 	}
 	return YES;
 }
@@ -594,19 +523,19 @@ static void transitionToVisible(void) {
 
 - (void)mouseEntered:(NSEvent *)event {
 	mouseUpdateFromPoint(event.locationInWindow, true);
-	if (s.mouse.buttons == 0) mouseEvent(VOID_EVENT_MOUSE_ENTER, VOID_MOUSE_INVALID, mods(event));
+	if (s.mouseButtons == 0) mouseEvent(VOID_EVENT_MOUSE_ENTER, VOID_MOUSE_INVALID, mods(event));
 }
 
 - (void)mouseExited:(NSEvent *)event {
 	mouseUpdateFromPoint(event.locationInWindow, true);
-	if (s.mouse.buttons == 0) mouseEvent(VOID_EVENT_MOUSE_LEAVE, VOID_MOUSE_INVALID, mods(event));
+	if (s.mouseButtons == 0) mouseEvent(VOID_EVENT_MOUSE_LEAVE, VOID_MOUSE_INVALID, mods(event));
 }
 
 - (void)button:(VoidMouseButton)button down:(BOOL)down event:(NSEvent *)event {
 	mouseUpdateFromPoint(event.locationInWindow, false);
 	mouseEvent(down ? VOID_EVENT_MOUSE_DOWN : VOID_EVENT_MOUSE_UP, button, mods(event));
-	if (down) s.mouse.buttons |= (uint8_t)(1 << button);
-	else s.mouse.buttons &= (uint8_t)~(1 << button);
+	if (down) s.mouseButtons |= (uint8_t)(1 << button);
+	else s.mouseButtons &= (uint8_t)~(1 << button);
 }
 
 - (void)mouseDown:(NSEvent *)event { [self button:VOID_MOUSE_LEFT down:YES event:event]; }
@@ -624,9 +553,9 @@ static void transitionToVisible(void) {
 
 - (void)moved:(NSEvent *)event {
 	mouseUpdateFromPoint(event.locationInWindow, false);
-	if (s.mouse.locked) {
-		s.mouse.dx = (float)event.deltaX;
-		s.mouse.dy = (float)event.deltaY;
+	if (voidWindow.mouse.locked) {
+		voidWindow.mouse.dx = (float)event.deltaX;
+		voidWindow.mouse.dy = (float)event.deltaY;
 	}
 	mouseEvent(VOID_EVENT_MOUSE_MOVE, VOID_MOUSE_INVALID, mods(event));
 }
@@ -641,7 +570,7 @@ static void transitionToVisible(void) {
 
 - (void)scrollWheel:(NSEvent *)event {
 	mouseUpdateFromPoint(event.locationInWindow, true);
-	if (!eventsEnabled()) return;
+	if (!voidWindowEventsEnabled()) return;
 	float dx = (float)event.scrollingDeltaX;
 	float dy = (float)event.scrollingDeltaY;
 	if (event.hasPreciseScrollingDeltas) {
@@ -649,16 +578,16 @@ static void transitionToVisible(void) {
 		dy *= 0.1f;
 	}
 	if (fabsf(dx) > 0.0f || fabsf(dy) > 0.0f) {
-		initEvent(VOID_EVENT_MOUSE_SCROLL);
-		s.event.modifiers = mods(event);
-		s.event.scrollX = dx;
-		s.event.scrollY = dy;
-		callEvent();
+		voidWindowInitEvent(VOID_EVENT_MOUSE_SCROLL);
+		voidWindow.event.modifiers = mods(event);
+		voidWindow.event.scrollX = dx;
+		voidWindow.event.scrollY = dy;
+		voidWindowCallEvent();
 	}
 }
 
 - (void)keyDown:(NSEvent *)event {
-	if (!eventsEnabled()) return;
+	if (!voidWindowEventsEnabled()) return;
 	const uint32_t modifiers = mods(event);
 	const VoidKeyCode key = translateKey(event.keyCode);
 	keyEvent(VOID_EVENT_KEY_DOWN, key, event.isARepeat, modifiers);
@@ -679,14 +608,14 @@ static void transitionToVisible(void) {
 				c = ((high - 0xD800) << 10 | (c - 0xDC00)) + 0x10000;
 				high = 0;
 			}
-			initEvent(VOID_EVENT_CHAR);
-			s.event.modifiers = modifiers;
-			s.event.charCode = c;
-			s.event.keyRepeat = event.isARepeat;
-			callEvent();
+			voidWindowInitEvent(VOID_EVENT_CHAR);
+			voidWindow.event.modifiers = modifiers;
+			voidWindow.event.charCode = c;
+			voidWindow.event.keyRepeat = event.isARepeat;
+			voidWindowCallEvent();
 		}
 	}
-	if (modifiers == VOID_MODIFIER_SUPER && key == VOID_KEY_V) appEvent(VOID_EVENT_CLIPBOARD_PASTED);
+	if (modifiers == VOID_MODIFIER_SUPER && key == VOID_KEY_V) voidWindowAppEvent(VOID_EVENT_CLIPBOARD_PASTED);
 }
 
 - (BOOL)performKeyEquivalent:(NSEvent *)event {
@@ -726,7 +655,7 @@ static void transitionToVisible(void) {
 
 - (void)cursorUpdate:(NSEvent *)event {
 	(void)event;
-	updateCursor(s.mouse.cursor, s.mouse.shown);
+	updateCursor(voidWindow.mouse.cursor, voidWindow.mouse.shown);
 }
 
 - (BOOL)hasMarkedText { return s_marked.length > 0; }
@@ -786,11 +715,8 @@ static void transitionToVisible(void) {
 void voidMacosRun(const VoidMacosDesc *desc) {
 	if (desc->text == NULL) fail("voidMacosRun: the desc has no text callback");
 	s.desc = *desc;
-	s.windowWidth = s.framebufferWidth = desc->width;
-	s.windowHeight = s.framebufferHeight = desc->height;
-	s.mouse.shown = true;
+	voidWindowStart(desc->init, desc->frame, desc->event, desc->cleanup, desc->width, desc->height);
 	s_marked = @"";
-	voidFrameTimingInit(&s.timing);
 	@autoreleasepool {
 		[NSApplication sharedApplication];
 		s_appDelegate = [VoidMacosAppDelegate new];
@@ -804,21 +730,13 @@ void voidMacosRun(const VoidMacosDesc *desc) {
 	}
 }
 
-bool voidMacosValid(void) { return s.valid; }
 void *voidMacosView(void) { return (__bridge void *)s_view; }
-int voidMacosWidth(void) { return s.framebufferWidth > 0 ? s.framebufferWidth : 1; }
-int voidMacosHeight(void) { return s.framebufferHeight > 0 ? s.framebufferHeight : 1; }
-float voidMacosDpiScale(void) { return s.dpiScale; }
-uint64_t voidMacosFrameCount(void) { return s.frameCount; }
-void voidMacosRequestQuit(void) { s.quitRequested = true; }
-void voidMacosCancelQuit(void) { s.quitRequested = false; }
-double voidMacosFrameDuration(void) { return s.timing.smoothDt; }
 
-void voidMacosSetTitle(const char *title) {
+void voidWindowSetTitle(const char *title) {
 	s_window.title = [NSString stringWithUTF8String:title];
 }
 
-void voidMacosSetClipboard(const char *utf8) {
+void voidWindowSetClipboard(const char *utf8) {
 	@autoreleasepool {
 		NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
 		[pasteboard declareTypes:@[NSPasteboardTypeString] owner:nil];
@@ -826,34 +744,31 @@ void voidMacosSetClipboard(const char *utf8) {
 	}
 }
 
-const char *voidMacosClipboard(void) {
-	free(s.clipboard);
-	s.clipboard = strdup("");
+const char *voidWindowClipboard(void) {
+	free(voidWindow.clipboard);
+	voidWindow.clipboard = strdup("");
 	@autoreleasepool {
 		NSString *str = [[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
 		if (str != nil) {
-			free(s.clipboard);
-			s.clipboard = strdup(str.UTF8String);
+			free(voidWindow.clipboard);
+			voidWindow.clipboard = strdup(str.UTF8String);
 		}
 	}
-	if (s.clipboard == NULL) fail("strdup for the clipboard");
-	return s.clipboard;
+	if (voidWindow.clipboard == NULL) fail("strdup for the clipboard");
+	return voidWindow.clipboard;
 }
 
-void voidMacosSetCursor(int cursor) { updateCursor(cursor, s.mouse.shown); }
-int voidMacosCursor(void) { return s.mouse.cursor; }
+void voidWindowSetCursor(int cursor) { updateCursor(cursor, voidWindow.mouse.shown); }
 
-void voidMacosShowMouse(bool shown) {
-	if (s.mouse.shown != shown) updateCursor(s.mouse.cursor, shown);
+void voidWindowShowMouse(bool shown) {
+	if (voidWindow.mouse.shown != shown) updateCursor(voidWindow.mouse.cursor, shown);
 }
 
-bool voidMacosMouseShown(void) { return s.mouse.shown; }
-
-void voidMacosLockMouse(bool locked) {
-	if (locked == s.mouse.locked) return;
-	s.mouse.dx = 0.0f;
-	s.mouse.dy = 0.0f;
-	s.mouse.locked = locked;
+void voidWindowLockMouse(bool locked) {
+	if (locked == voidWindow.mouse.locked) return;
+	voidWindow.mouse.dx = 0.0f;
+	voidWindow.mouse.dy = 0.0f;
+	voidWindow.mouse.locked = locked;
 	if (locked) {
 		CGAssociateMouseAndMouseCursorPosition(NO);
 		[NSCursor hide];
@@ -863,16 +778,10 @@ void voidMacosLockMouse(bool locked) {
 	}
 }
 
-bool voidMacosMouseLocked(void) { return s.mouse.locked; }
-
-void voidMacosToggleFullscreen(void) {
-	s.fullscreen = !s.fullscreen;
+void voidWindowToggleFullscreen(void) {
+	voidWindow.fullscreen = !voidWindow.fullscreen;
 	[s_window toggleFullScreen:nil];
 }
-
-bool voidMacosIsFullscreen(void) { return s.fullscreen; }
-int voidMacosDroppedCount(void) { return s.droppedCount; }
-const char *voidMacosDroppedPath(int i) { return s.droppedPaths[i]; }
 
 void voidMacosSetTextInput(bool on) {
 	if (s.textInput == on) return;
@@ -884,7 +793,7 @@ void voidMacosSetTextInput(bool on) {
 }
 
 void voidMacosSetImeRect(int x, int y, int w, int h) {
-	const CGFloat scale = s.dpiScale > 0 ? s.dpiScale : 1.0;
+	const CGFloat scale = voidWindow.dpiScale > 0 ? voidWindow.dpiScale : 1.0;
 	const CGFloat height = s_view != nil ? s_view.bounds.size.height : 0;
 	s.imeRect = NSMakeRect(x / scale, height - (y + h) / scale, w / scale, h / scale);
 	[s_view.inputContext invalidateCharacterCoordinates];

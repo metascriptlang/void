@@ -64,7 +64,7 @@ static RECT s_imeRect;
 static bool s_preeditActive;
 
 static HWND windowHwnd(void) {
-	return s_driver == DRIVER_WINDOW && voidWin32Valid() ? voidWin32Hwnd() : NULL;
+	return s_driver == DRIVER_WINDOW && voidWindowValid() ? voidWin32Hwnd() : NULL;
 }
 
 static bool imeTaken(void) { return s_textInput == 1 && voidAppEventHandlerSet(); }
@@ -203,7 +203,7 @@ static void _event(const VoidAppEvent *e) {
 		s_keys[e->keyCode] = false;
 	}
 	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWin32RequestQuit();
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
 }
 
 static void _cleanup(void) {
@@ -459,8 +459,8 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	IDXGIDevice1_SetMaximumFrameLatency(dxgiDevice, 1);
 	IDXGIDevice1_Release(dxgiDevice);
 	IDXGIFactory2_MakeWindowAssociation(s_factory, hwnd, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_PRINT_SCREEN);
-	s_window.w = voidWin32Width();
-	s_window.h = voidWin32Height();
+	s_window.w = voidWindowWidth();
+	s_window.h = voidWindowHeight();
 	s_window.samples = samples;
 	s_window.hasDepth = true;
 	DXGI_SWAP_CHAIN_DESC1 desc;
@@ -529,19 +529,19 @@ void voidGfxSetup(void) {
 }
 
 int voidFbWidth(void) {
-	if (s_driver == DRIVER_WINDOW) return voidWin32Width();
+	if (s_driver == DRIVER_WINDOW) return voidWindowWidth();
 	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
 	return voidViewsFbWidth();
 }
 
 int voidFbHeight(void) {
-	if (s_driver == DRIVER_WINDOW) return voidWin32Height();
+	if (s_driver == DRIVER_WINDOW) return voidWindowHeight();
 	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
 	return voidViewsFbHeight();
 }
 
 float voidDpiScale(void) {
-	if (s_driver == DRIVER_WINDOW) return voidWin32DpiScale();
+	if (s_driver == DRIVER_WINDOW) return voidWindowDpiScale();
 	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
 	return voidViewsDpiScale();
 }
@@ -560,8 +560,8 @@ static WinSurface *screenSurface(void) {
 		s = (WinSurface *)voidViewsCurrentSurface();
 	} else {
 #if defined(VOID_D3D11)
-		if (voidWin32Width() != s_window.w || voidWin32Height() != s_window.h) {
-			voidPlatformSurfaceResize(&s_window, voidWin32Width(), voidWin32Height());
+		if (voidWindowWidth() != s_window.w || voidWindowHeight() != s_window.h) {
+			voidPlatformSurfaceResize(&s_window, voidWindowWidth(), voidWindowHeight());
 		}
 		s = &s_window;
 #endif
@@ -576,12 +576,12 @@ static WinSurface *screenSurface(void) {
 
 int32_t voidSwapchainWidth(void) {
 	const WinSurface *s = screenSurface();
-	return s ? s->w : voidWin32Width();
+	return s ? s->w : voidWindowWidth();
 }
 
 int32_t voidSwapchainHeight(void) {
 	const WinSurface *s = screenSurface();
-	return s ? s->h : voidWin32Height();
+	return s ? s->h : voidWindowHeight();
 }
 
 int32_t voidSwapchainSampleCount(void) {

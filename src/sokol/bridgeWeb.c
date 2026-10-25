@@ -110,7 +110,7 @@ EM_JS(void, voidJsImeRect, (double x, double y, double w, double h), {
 });
 
 static void applyImeRect(void) {
-	const double scale = voidWebDpiScale();
+	const double scale = voidWindowDpiScale();
 	voidJsImeRect(s_imeX / scale, s_imeY / scale, s_imeW / scale, s_imeH / scale);
 }
 
@@ -179,7 +179,7 @@ static void _event(const VoidAppEvent *e) {
 		s_keys[e->keyCode] = false;
 	}
 	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWebRequestQuit();
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
 }
 
 static void _cleanup(void) { doorShutdown(); }
@@ -587,17 +587,17 @@ void voidGfxSetup(void) {
 
 int voidFbWidth(void) {
 	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
-	return s_driver == DRIVER_VIEWS ? voidViewsFbWidth() : voidWebWidth();
+	return s_driver == DRIVER_VIEWS ? voidViewsFbWidth() : voidWindowWidth();
 }
 
 int voidFbHeight(void) {
 	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
-	return s_driver == DRIVER_VIEWS ? voidViewsFbHeight() : voidWebHeight();
+	return s_driver == DRIVER_VIEWS ? voidViewsFbHeight() : voidWindowHeight();
 }
 
 float voidDpiScale(void) {
 	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
-	return s_driver == DRIVER_VIEWS ? voidViewsDpiScale() : voidWebDpiScale();
+	return s_driver == DRIVER_VIEWS ? voidViewsDpiScale() : voidWindowDpiScale();
 }
 
 int voidKeyDown(int keycode) {
@@ -611,11 +611,11 @@ static VoidDriver screenDriver(void) {
 }
 
 int32_t voidSwapchainWidth(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsFbWidth() : voidWebWidth();
+	return screenDriver() == DRIVER_VIEWS ? voidViewsFbWidth() : voidWindowWidth();
 }
 
 int32_t voidSwapchainHeight(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsFbHeight() : voidWebHeight();
+	return screenDriver() == DRIVER_VIEWS ? voidViewsFbHeight() : voidWindowHeight();
 }
 
 int32_t voidSwapchainSampleCount(void) {

@@ -8,18 +8,12 @@
 #endif
 #endif
 
-#if defined(__EMSCRIPTEN__)
-#include "../platform/web/window.h"
-#elif defined(VOID_MACOS)
-#include "../platform/macos/window.h"
-#elif defined(__APPLE__)
-#include "iosApp.h"
-#elif defined(__ANDROID__)
+#if defined(__ANDROID__)
 #include "androidApp.h"
-#elif defined(__linux__)
-#include "../platform/linux/window.h"
+#elif defined(__APPLE__) && !defined(VOID_MACOS)
+#include "iosApp.h"
 #else
-#include "../platform/win32/window.h"
+#include "../platform/windowCore.h"
 #endif
 #include <stdarg.h>
 #include <stdbool.h>
@@ -131,30 +125,18 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	VoidAppEvent e;
 	memset(&e, 0, sizeof e);
 	e.type = (VoidAppEventType)type;
-#if defined(__EMSCRIPTEN__)
-	e.frameCount = voidWebFrameCount();
-	e.framebufferWidth = voidWebWidth();
-	e.framebufferHeight = voidWebHeight();
-#elif defined(VOID_MACOS)
-	e.frameCount = voidMacosFrameCount();
-	e.framebufferWidth = voidMacosWidth();
-	e.framebufferHeight = voidMacosHeight();
-#elif defined(__APPLE__)
-	e.frameCount = voidIosFrameCount();
-	e.framebufferWidth = voidIosWidth();
-	e.framebufferHeight = voidIosHeight();
-#elif defined(__ANDROID__)
+#if defined(__ANDROID__)
 	e.frameCount = voidAndroidFrameCount();
 	e.framebufferWidth = voidAndroidWidth();
 	e.framebufferHeight = voidAndroidHeight();
-#elif defined(__linux__)
-	e.frameCount = voidLinuxFrameCount();
-	e.framebufferWidth = voidLinuxWidth();
-	e.framebufferHeight = voidLinuxHeight();
+#elif defined(__APPLE__) && !defined(VOID_MACOS)
+	e.frameCount = voidIosFrameCount();
+	e.framebufferWidth = voidIosWidth();
+	e.framebufferHeight = voidIosHeight();
 #else
-	e.frameCount = voidWin32FrameCount();
-	e.framebufferWidth = voidWin32Width();
-	e.framebufferHeight = voidWin32Height();
+	e.frameCount = voidWindowFrameCount();
+	e.framebufferWidth = voidWindowWidth();
+	e.framebufferHeight = voidWindowHeight();
 #endif
 	s_text = utf8;
 	s_cursor = cursor;
@@ -170,24 +152,15 @@ void voidSetWindowTitle(const char *title) {
 	if (strlen(title) >= sizeof s_title) fail("voidSetWindowTitle: the title is %d bytes; at most %d fit", (int)strlen(title), (int)sizeof s_title - 1);
 	strcpy(s_title, title);
 	s_titleSet = true;
-#if defined(__EMSCRIPTEN__)
-	if (voidWebValid()) voidWebSetTitle(s_title);
-#elif defined(VOID_MACOS)
-	if (voidMacosValid()) voidMacosSetTitle(s_title);
-#elif defined(__APPLE__) || defined(__ANDROID__)
-#elif defined(__linux__)
-	if (voidLinuxValid()) voidLinuxSetTitle(s_title);
-#else
-	if (voidWin32Valid()) voidWin32SetTitle(s_title);
+#if !defined(__ANDROID__) && !(defined(__APPLE__) && !defined(VOID_MACOS))
+	if (voidWindowValid()) voidWindowSetTitle(s_title);
 #endif
 }
 
 const char *voidWindowTitle(void) { return s_title; }
 int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 
-#if defined(__EMSCRIPTEN__)
-#define PLATFORM(name) voidWeb##name
-#elif defined(__ANDROID__)
+#if defined(__ANDROID__)
 #define PLATFORM(name) voidAndroid##name
 #define ANDROID_CLIPBOARD_SIZE 8192
 static char s_androidClipboard[ANDROID_CLIPBOARD_SIZE];
@@ -210,11 +183,7 @@ static void voidAndroidToggleFullscreen(void) {}
 static bool voidAndroidIsFullscreen(void) { return false; }
 static int voidAndroidDroppedCount(void) { return 0; }
 static const char *voidAndroidDroppedPath(int i) { (void)i; return ""; }
-#elif defined(__linux__)
-#define PLATFORM(name) voidLinux##name
-#elif defined(VOID_MACOS)
-#define PLATFORM(name) voidMacos##name
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && !defined(VOID_MACOS)
 #define PLATFORM(name) voidIos##name
 #define IOS_CLIPBOARD_SIZE 8192
 static char s_iosClipboard[IOS_CLIPBOARD_SIZE];
@@ -239,7 +208,7 @@ static bool voidIosIsFullscreen(void) { return false; }
 static int voidIosDroppedCount(void) { return 0; }
 static const char *voidIosDroppedPath(int i) { (void)i; return ""; }
 #else
-#define PLATFORM(name) voidWin32##name
+#define PLATFORM(name) voidWindow##name
 #endif
 
 static void needWindow(const char *what) {
