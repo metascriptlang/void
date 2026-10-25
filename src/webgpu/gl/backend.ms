@@ -17,7 +17,6 @@ import {
 	GPUBuffer,
 	GPUBufferDescriptor,
 	GPUBufferUsage,
-	GPUCanvasConfiguration,
 	GPUCommandBuffer,
 	GPUColor,
 	GPUCommandEncoder,
@@ -76,6 +75,7 @@ import {
 	labelOf,
 } from "../types.ms";
 import {
+	currentFrame,
 	checkedCopyRegion,
 	entryOf,
 	clampedAnisotropy,
@@ -718,7 +718,6 @@ struct StateCache {
 	unpackImageHeight: int32;
 }
 
-let frame: int64 = 0;
 let pass: PassState = { width: 0 };
 let bound: BoundState = { pipeline: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
@@ -751,7 +750,6 @@ let maxVertexAttributes: int32 = 0;
 let maxTextureUnits: int32 = 0;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
-let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
 
 export const BACKEND = "gl";
 
@@ -1288,43 +1286,23 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	enableSeamlessCubemaps();
 	resetStateCache();
 	checkError("setup");
-	frame = 0;
 	pass = { width: 0 };
 	bound = { pipeline: 0 };
 	computeBound = { pipeline: 0 };
-	canvas = canvasOf(environment);
 	return { id: 1, queue: { id: 1 } };
 }
 
 export function adoptSwapchain(color: uint32, depth: uint32): void {
 	swapchainColor = color;
 	swapchainDepth = depth;
-	for (const id of [color, depth]) {
-		if (id != 0) {
-			put(textures, id, { info: formatInfo(textureRecords.record(id).format, "canvas format") });
-			put(views, textureRecords.record(id).swapchainView, views[0]);
-		}
-	}
+	adoptSwapchainTexture(color, "NativeEnvironment.colorFormat");
+	if (depth != 0) { adoptSwapchainTexture(depth, "NativeEnvironment.depthFormat"); }
 }
 
-function canvasOf(environment: NativeEnvironment): GPUCanvasConfiguration {
-	const colorFormat: string = environment.colorFormat;
-	if (colorFormat == "") { stop("NativeEnvironment.colorFormat is required"); }
-	if (formatInfo(environment.colorFormat, "NativeEnvironment.colorFormat").depth) {
-		stopOnMember("NativeEnvironment.colorFormat", colorFormat);
-	}
-	const depthFormat: string = environment.depthFormat;
-	if (depthFormat != "" && !formatInfo(environment.depthFormat, "NativeEnvironment.depthFormat").depth) {
-		stopOnMember("NativeEnvironment.depthFormat", depthFormat);
-	}
-	return {
-		format: environment.colorFormat,
-		depthFormat: environment.depthFormat,
-		sampleCount: environment.sampleCount == 0 ? 1 : environment.sampleCount,
-	};
+function adoptSwapchainTexture(id: uint32, member: string): void {
+	put(textures, id, { info: formatInfo(textureRecords.record(id).format, member) });
+	put(views, textureRecords.record(id).swapchainView, views[0]);
 }
-
-export function canvasConfiguration(): GPUCanvasConfiguration { return canvas; }
 
 export function formatRenderable(format: GPUTextureFormat): boolean {
 	const value: string = format;
@@ -1332,8 +1310,6 @@ export function formatRenderable(format: GPUTextureFormat): boolean {
 	const info = formatInfo(format, "formatRenderable format");
 	return !info.integer && !lacksColorBufferFloat(info);
 }
-
-export function frameIndex(): uint32 { return (frame + 1) as uint32; }
 
 export function shutdown(): void {
 	cacheInvalidateTextureSampler(0, dummySampler);
@@ -1439,11 +1415,11 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 function claimBufferWrite(index: int32, offset: int64, bytes: int64, member: string): void {
 	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${bufferRecords.slots[index].id} was created without COPY_DST`); }
 	if (buffers[index].mapRead) { return; }
-	const fresh = buffers[index].writtenFrame != frame;
+	const fresh = buffers[index].writtenFrame != currentFrame();
 	if (!fresh && offset < buffers[index].writtenEnd) {
 		stop(`${member} at ${offset} on GPUBuffer ${bufferRecords.slots[index].id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
 	}
-	buffers[index].writtenFrame = frame;
+	buffers[index].writtenFrame = currentFrame();
 	buffers[index].writtenEnd = offset + bytes;
 	if (fresh && !buffers[index].uniform) {
 		buffers[index].activeSlot = (buffers[index].activeSlot + 1) % buffers[index].slotCount;
@@ -2161,7 +2137,6 @@ export function submit(commandBuffer: GPUCommandBuffer): void {
 	bound.vertexDirty = true;
 	bound.indexDirty = true;
 	bound.resourcesDirty = true;
-	frame += 1;
 }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {

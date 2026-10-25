@@ -19,7 +19,6 @@ import {
 	GPUBuffer,
 	GPUBufferDescriptor,
 	GPUBufferUsage,
-	GPUCanvasConfiguration,
 	GPUCommandBuffer,
 	GPUColor,
 	GPUCommandEncoder,
@@ -78,6 +77,8 @@ import {
 	labelOf,
 } from "../types.ms";
 import {
+	cachedCanvas,
+	currentFrame,
 	checkedCopyRegion,
 	entryOf,
 	clampedAnisotropy,
@@ -562,7 +563,6 @@ let device: Ptr<D3dDeviceImpl> = null as unknown as Ptr<D3dDeviceImpl>;
 let context: Ptr<D3dContextImpl> = null as unknown as Ptr<D3dContextImpl>;
 let context1: Ptr<D3dContext1Impl> = null as unknown as Ptr<D3dContext1Impl>;
 let offsetUniforms = false;
-let frame: int64 = 0;
 let pass: PassState = { width: 0 };
 let bound: BoundState = { pipeline: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
@@ -570,7 +570,6 @@ let nativeBinds: NativeBinds = { indexFormat: 0 };
 let stats: BindStats = { vertexBuffers: 0 };
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
-let canvas: GPUCanvasConfiguration = { format: "bgra8unorm", depthFormat: "depth32float", sampleCount: 1 };
 
 export const BACKEND = "d3d11";
 
@@ -1001,52 +1000,30 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	checkDriverConstants();
 	device = d3dDeviceFrom(environment.device);
 	context = d3dContextFrom(environment.context);
-	frame = 0;
 	pass = { width: 0 };
 	bound = { pipeline: 0 };
 	computeBound = { pipeline: 0 };
 	context1 = d3dUniformOffsetting(device, context);
 	offsetUniforms = context1 != null;
-	canvas = canvasOf(environment);
 	return { id: 1, queue: { id: 1 } };
 }
 
 export function adoptSwapchain(color: uint32, depth: uint32): void {
 	swapchainColor = color;
 	swapchainDepth = depth;
-	for (const id of [color, depth]) {
-		if (id != 0) {
-			put(textures, id, { native: NO_TEXTURE, info: formatInfo(textureRecords.record(id).format, "swapchain format") });
-			put(views, textureRecords.record(id).swapchainView, views[0]);
-		}
-	}
+	adoptSwapchainTexture(color, "NativeEnvironment.colorFormat");
+	if (depth != 0) { adoptSwapchainTexture(depth, "NativeEnvironment.depthFormat"); }
 }
 
-function canvasOf(environment: NativeEnvironment): GPUCanvasConfiguration {
-	const colorFormat: string = environment.colorFormat;
-	if (colorFormat == "") { stop("NativeEnvironment.colorFormat is required"); }
-	if (formatInfo(environment.colorFormat, "NativeEnvironment.colorFormat").depth) {
-		stopOnMember("NativeEnvironment.colorFormat", colorFormat);
-	}
-	const depthFormat: string = environment.depthFormat;
-	if (depthFormat != "" && !formatInfo(environment.depthFormat, "NativeEnvironment.depthFormat").depth) {
-		stopOnMember("NativeEnvironment.depthFormat", depthFormat);
-	}
-	return {
-		format: environment.colorFormat,
-		depthFormat: environment.depthFormat,
-		sampleCount: environment.sampleCount == 0 ? 1 : environment.sampleCount,
-	};
+function adoptSwapchainTexture(id: uint32, member: string): void {
+	put(textures, id, { native: NO_TEXTURE, info: formatInfo(textureRecords.record(id).format, member) });
+	put(views, textureRecords.record(id).swapchainView, views[0]);
 }
-
-export function canvasConfiguration(): GPUCanvasConfiguration { return canvas; }
 
 export function formatRenderable(format: GPUTextureFormat): boolean {
 	formatInfo(format, "formatRenderable format");
 	return true;
 }
-
-export function frameIndex(): uint32 { return (frame + 1) as uint32; }
 
 export function shutdown(): void {
 	d3dClearState(context);
@@ -1318,9 +1295,9 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	if (buffers[index].writtenFrame == -2) {
 		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
 	}
-	const discard = buffers[index].writtenFrame != frame;
+	const discard = buffers[index].writtenFrame != currentFrame();
 	if (discard) {
-		buffers[index].writtenFrame = frame;
+		buffers[index].writtenFrame = currentFrame();
 	} else if (offset < buffers[index].writtenEnd) {
 		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
 	}
@@ -2168,7 +2145,7 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 	return { id: 1 };
 }
 
-export function submit(commandBuffer: GPUCommandBuffer): void { frame += 1; }
+export function submit(commandBuffer: GPUCommandBuffer): void {}
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
@@ -2260,7 +2237,7 @@ export function endPass(): void {
 		if (pass.colorViews[i] == 0) { continue; }
 		const v = viewRecords.slotIndex(pass.colorViews[i]);
 		if (viewRecords.slots[v].swapchain && views[v].swapchainResolve != null) {
-			const format = formatInfo(canvas.format, "canvas format").renderTarget;
+			const format = formatInfo(cachedCanvas().format, "canvas format").renderTarget;
 			d3dResolveViews(context, views[v].swapchainResolve, views[v].renderTarget, format);
 		}
 		if (pass.resolveViews[i] != 0) {

@@ -33,7 +33,6 @@ import {
 	GPUBuffer,
 	GPUBufferDescriptor,
 	GPUBufferUsage,
-	GPUCanvasConfiguration,
 	GPUColor,
 	GPUColorWrite,
 	GPUCommandBuffer,
@@ -92,6 +91,8 @@ import {
 	labelOf,
 } from "../types.ms";
 import {
+	cachedCanvas,
+	currentFrame,
 	checkedCopyRegion,
 	entryOf,
 	clampedAnisotropy,
@@ -492,7 +493,6 @@ let queue: Ptr<MtlQueueImpl> = null as unknown as Ptr<MtlQueueImpl>;
 let sharedStorage = true;
 let commandBuffer: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
 let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
-let frame: int64 = 0;
 let pass: PassState = { width: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
 let computeEncoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
@@ -504,7 +504,6 @@ let boundSamplers: Vec<Ptr<MtlSamplerImpl>> = [];
 let stats: BindStats = { buffers: 0 };
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
-let canvas: GPUCanvasConfiguration = { format: "bgra8unorm", depthFormat: "depth32float", sampleCount: 1 };
 
 
 export const BACKEND = "metal";
@@ -887,51 +886,34 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	mtlFrameSemaphoreCreate(FRAMES_IN_FLIGHT);
 	commandBuffer = NO_COMMAND_BUFFER;
 	encoder = NO_ENCODER;
-	frame = 0;
 	pass = { width: 0 };
 	computeBound = { pipeline: 0 };
 	computeEncoder = NO_ENCODER;
 	bound = { pipeline: 0 };
-	canvas = canvasOf(environment);
+	const sampleCount = cachedCanvas().sampleCount;
+	if (mtlSupportsSampleCount(device, sampleCount) == 0) {
+		stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`);
+	}
 	return { id: 1, queue: { id: 1 } };
 }
 
 export function adoptSwapchain(color: uint32, depth: uint32): void {
 	swapchainColor = color;
 	swapchainDepth = depth;
-	for (const id of [color, depth]) {
-		if (id != 0) {
-			put(textures, id, textures[0]);
-			put(views, textureRecords.record(id).swapchainView, views[0]);
-		}
-	}
+	adoptSwapchainTexture(color, "NativeEnvironment.colorFormat");
+	if (depth != 0) { adoptSwapchainTexture(depth, "NativeEnvironment.depthFormat"); }
 }
 
-function canvasOf(environment: NativeEnvironment): GPUCanvasConfiguration {
-	const colorFormat: string = environment.colorFormat;
-	if (colorFormat == "") { stop("NativeEnvironment.colorFormat is required"); }
-	if (formatInfo(environment.colorFormat, "NativeEnvironment.colorFormat").depth) {
-		stopOnMember("NativeEnvironment.colorFormat", colorFormat);
-	}
-	const depthFormat: string = environment.depthFormat;
-	if (depthFormat != "" && !formatInfo(environment.depthFormat, "NativeEnvironment.depthFormat").depth) {
-		stopOnMember("NativeEnvironment.depthFormat", depthFormat);
-	}
-	const sampleCount = environment.sampleCount == 0 ? 1 : environment.sampleCount;
-	if (mtlSupportsSampleCount(device, sampleCount) == 0) {
-		stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`);
-	}
-	return { format: environment.colorFormat, depthFormat: environment.depthFormat, sampleCount: sampleCount };
+function adoptSwapchainTexture(id: uint32, member: string): void {
+	formatInfo(textureRecords.record(id).format, member);
+	put(textures, id, textures[0]);
+	put(views, textureRecords.record(id).swapchainView, views[0]);
 }
-
-export function canvasConfiguration(): GPUCanvasConfiguration { return canvas; }
 
 export function formatRenderable(format: GPUTextureFormat): boolean {
 	formatInfo(format, "formatRenderable format");
 	return true;
 }
-
-export function frameIndex(): uint32 { return (frame + 1) as uint32; }
 
 export function shutdown(): void {
 	if (commandBuffer != null) {
@@ -1001,9 +983,9 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 		return;
 	}
 	beginFrame();
-	if (buffers[index].writtenFrame != frame) {
+	if (buffers[index].writtenFrame != currentFrame()) {
 		if (buffers[index].writtenFrame >= 0) { nextBufferCopy(index); }
-		buffers[index].writtenFrame = frame;
+		buffers[index].writtenFrame = currentFrame();
 		buffers[index].writtenEnd = 0;
 	} else if (offset < buffers[index].writtenEnd) {
 		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
@@ -1022,7 +1004,7 @@ function writeBufferInPlace<T>(index: int32, offset: int64, data: Readonly<Span<
 	if (staging == null) { stop(`newBufferWithBytes failed for the write to GPUBuffer ${bufferRecords.slots[index].id}`); }
 	mtlBlitBufferToBuffer(commandBuffer, staging, 0, buffers[index].natives[buffers[index].active], offset, bytes);
 	mtlReleaseBuffer(staging);
-	buffers[index].gpuUseFrame = frame;
+	buffers[index].gpuUseFrame = currentFrame();
 }
 
 function nextBufferCopy(index: int32): void {
@@ -1105,13 +1087,13 @@ export function writeTexture<T>(
 	const slot = textureRecords.slots[index];
 	const wholeOnly = slot.mipLevels == 1 && slot.layers == 1 && !slot.volume;
 	const whole = wholeOnly && destination.origin.x == 0 && destination.origin.y == 0 && size.width == slot.width && size.height == slot.height;
-	if (!whole || textures[index].inPlace || has(slot.usage, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.STORAGE_BINDING as int32)) || textures[index].writtenFrame == frame) {
+	if (!whole || textures[index].inPlace || has(slot.usage, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.STORAGE_BINDING as int32)) || textures[index].writtenFrame == currentFrame()) {
 		writeTextureByBlit(index, data, destination, layout, rowPitch, size);
 		return;
 	}
 	beginFrame();
 	if (textures[index].writtenFrame >= 0) { nextTextureCopy(index); }
-	textures[index].writtenFrame = frame;
+	textures[index].writtenFrame = currentFrame();
 	const native = textures[index].natives[textures[index].active];
 	mtlWriteTexture(native, data[0], layout.offset, rowPitch, 0, slot.width, slot.height, 1, 0, 0, 0, 0, 0);
 }
@@ -1668,7 +1650,6 @@ export function submit(submitted: GPUCommandBuffer): void {
 		mtlCommit(commandBuffer);
 		commandBuffer = NO_COMMAND_BUFFER;
 	}
-	frame += 1;
 }
 
 function loadAction(loadOp: string, member: string): int32 {
@@ -2060,8 +2041,8 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 	if (size == 0) { return; }
 	beginFrame();
 	mtlBlitBufferToBuffer(commandBuffer, liveBuffer(from), sourceOffset, liveBuffer(to), destinationOffset, size);
-	buffers[from].gpuUseFrame = frame;
-	buffers[to].gpuUseFrame = frame;
+	buffers[from].gpuUseFrame = currentFrame();
+	buffers[to].gpuUseFrame = currentFrame();
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
@@ -2080,7 +2061,7 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 			mtlBlitTextureToBuffer(commandBuffer, liveTexture(from), source.origin.z + i, source.mipLevel, source.origin.x, source.origin.y, 0, size.width, size.height, 1, liveBuffer(to), destination.offset + imageBytes * (i as int64), bytesPerRow, (bytesPerRow * size.height));
 		}
 	}
-	buffers[to].gpuUseFrame = frame;
+	buffers[to].gpuUseFrame = currentFrame();
 }
 
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
@@ -2099,7 +2080,7 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 			mtlBlitBufferToTexture(commandBuffer, liveBuffer(from), source.offset + imageBytes * (i as int64), bytesPerRow, 0, size.width, size.height, 1, liveTexture(to), destination.origin.z + i, destination.mipLevel, destination.origin.x, destination.origin.y, 0);
 		}
 	}
-	buffers[from].gpuUseFrame = frame;
+	buffers[from].gpuUseFrame = currentFrame();
 }
 
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
@@ -2137,7 +2118,7 @@ export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: in
 	const index = bufferRecords.slotIndex(buffer.id);
 	const length = checkedMapAsync(buffer.id, bufferRecords.slots[index].usage, buffers[index].mapMode, bufferRecords.slots[index].size, mode, offset, size);
 	if (buffers[index].gpuUseFrame >= 0) {
-		if (commandBuffer != null && buffers[index].gpuUseFrame == frame) {
+		if (commandBuffer != null && buffers[index].gpuUseFrame == currentFrame()) {
 			stop(`mapAsync on GPUBuffer ${buffer.id} would wait for the frame's command buffer, which is not committed: submit the copy first`);
 		}
 		if (mtlWaitCommitted() == 0) { stop(`mapAsync on GPUBuffer ${buffer.id}: the command buffer that wrote it failed`); }
@@ -2435,7 +2416,7 @@ export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryC
 	} else {
 		mtlBlitBufferToBuffer(commandBuffer, querySets[q].visibility, (firstQuery as int64) * QUERY_BYTES, liveBuffer(b), destinationOffset, bytes);
 	}
-	buffers[b].gpuUseFrame = frame;
+	buffers[b].gpuUseFrame = currentFrame();
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {

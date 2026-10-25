@@ -18,7 +18,6 @@ import {
 	GPUBuffer,
 	GPUBufferDescriptor,
 	GPUBufferUsage,
-	GPUCanvasConfiguration,
 	GPUCommandBuffer,
 	GPUColor,
 	GPUCommandEncoder,
@@ -75,6 +74,7 @@ import {
 	labelOf,
 } from "../types.ms";
 import {
+	currentFrame,
 	checkedCopyRegion,
 	clampedAnisotropy,
 	cachedLimits,
@@ -529,17 +529,11 @@ struct BindGroupSlot {
 	dynamicCount: int32;
 }
 
-let frame: int64 = 0;
 let pass: PassState = { timestampEnd: -1 };
 let computeBound: ComputeState = { timestampEnd: -1 };
 let uniformAlignment = 256;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
-let canvas: GPUCanvasConfiguration = {
-	format: "bgra8unorm",
-	depthFormat: "depth32float",
-	sampleCount: 1,
-};
 
 export const BACKEND = "wgpu";
 
@@ -1098,50 +1092,27 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	checkMirroredConstants();
 	if (wgSetup(environment.device) == 0) { stop("the WGPUDevice gave no queue or no limits"); }
 	uniformAlignment = wgMinUniformBufferOffsetAlignment();
-	frame = 0;
 	pass.pipeline = 0;
 	computeBound.pipeline = 0;
-	canvas = canvasOf(environment);
 	return { id: 1, queue: { id: 1 } };
 }
 
 export function adoptSwapchain(color: uint32, depth: uint32): void {
 	swapchainColor = color;
 	swapchainDepth = depth;
-	for (const id of [color, depth]) {
-		if (id != 0) {
-			put(textures, id, { info: formatInfo(textureRecords.record(id).format, "the swapchain format"), native: NO_TEXTURE });
-			put(views, textureRecords.record(id).swapchainView, { native: NO_VIEW, binding: NO_VIEW, swapchainResolve: NO_VIEW });
-		}
-	}
+	adoptSwapchainTexture(color, "NativeEnvironment.colorFormat");
+	if (depth != 0) { adoptSwapchainTexture(depth, "NativeEnvironment.depthFormat"); }
 }
 
-function canvasOf(environment: NativeEnvironment): GPUCanvasConfiguration {
-	const colorFormat: string = environment.colorFormat;
-	if (colorFormat == "") { stop("NativeEnvironment.colorFormat is required"); }
-	if (formatInfo(environment.colorFormat, "NativeEnvironment.colorFormat").depth) {
-		stopOnMember("NativeEnvironment.colorFormat", colorFormat);
-	}
-	const depthFormat: string = environment.depthFormat;
-	if (depthFormat != "") {
-		const info = formatInfo(environment.depthFormat, "NativeEnvironment.depthFormat");
-		if (!info.depth) { stopOnMember("NativeEnvironment.depthFormat", depthFormat); }
-	}
-	return {
-		format: environment.colorFormat,
-		depthFormat: environment.depthFormat,
-		sampleCount: environment.sampleCount == 0 ? 1 : environment.sampleCount,
-	};
+function adoptSwapchainTexture(id: uint32, member: string): void {
+	put(textures, id, { info: formatInfo(textureRecords.record(id).format, member), native: NO_TEXTURE });
+	put(views, textureRecords.record(id).swapchainView, { native: NO_VIEW, binding: NO_VIEW, swapchainResolve: NO_VIEW });
 }
-
-export function canvasConfiguration(): GPUCanvasConfiguration { return canvas; }
 
 export function formatRenderable(format: GPUTextureFormat): boolean {
 	formatInfo(format, "formatRenderable format");
 	return true;
 }
-
-export function frameIndex(): uint32 { return (frame + 1) as uint32; }
 
 export function shutdown(): void {
 	wgShutdown();
@@ -1179,8 +1150,8 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
 	}
 	checkedWriteBuffer(buffer.id, bufferRecords.slots[index].size, offset, bytes);
-	if (buffers[index].writtenFrame != frame) {
-		buffers[index].writtenFrame = frame;
+	if (buffers[index].writtenFrame != currentFrame()) {
+		buffers[index].writtenFrame = currentFrame();
 	} else if (offset < buffers[index].writtenEnd) {
 		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
 	}
@@ -1774,7 +1745,6 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 
 export function submit(commandBuffer: GPUCommandBuffer): void {
 	wgSubmit();
-	frame += 1;
 }
 
 export function beginRenderPass(

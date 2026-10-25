@@ -32,7 +32,6 @@ import {
 	GPUBuffer,
 	GPUBufferDescriptor,
 	GPUBufferUsage,
-	GPUCanvasConfiguration,
 	GPUColor,
 	GPUCommandBuffer,
 	GPUCommandEncoder,
@@ -90,6 +89,8 @@ import {
 	labelOf,
 } from "../types.ms";
 import {
+	cachedCanvas,
+	currentFrame,
 	checkedCopyRegion,
 	entryOf,
 	addressesBinding,
@@ -245,14 +246,12 @@ struct BoundState {
 	dynamicOffsets: uint32[8];
 }
 
-let frame: int64 = 0;
 let ticks: uint64 = 0;
 let pass: PassState = { timestampSet: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
 let bound: BoundState = { pipeline: 0 };
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
-let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
 
 export const BACKEND = "dummy";
 
@@ -397,43 +396,26 @@ function storeOp(value: string, member: string): int32 {
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {
-	frame = 0;
 	ticks = 0;
 	pass = { timestampSet: 0 };
 	computeBound = { pipeline: 0 };
 	bound = { pipeline: 0 };
-	canvas = canvasOf(environment);
+	const sampleCount = cachedCanvas().sampleCount;
+	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`); }
 	return { id: 1, queue: { id: 1 } };
 }
 
 export function adoptSwapchain(color: uint32, depth: uint32): void {
 	swapchainColor = color;
 	swapchainDepth = depth;
+	formatInfo(cachedCanvas().format, "NativeEnvironment.colorFormat");
+	if (depth != 0) { formatInfo(cachedCanvas().depthFormat, "NativeEnvironment.depthFormat"); }
 }
-
-function canvasOf(environment: NativeEnvironment): GPUCanvasConfiguration {
-	const colorFormat: string = environment.colorFormat;
-	if (colorFormat == "") { stop("NativeEnvironment.colorFormat is required"); }
-	if (formatInfo(environment.colorFormat, "NativeEnvironment.colorFormat").depth) {
-		stopOnMember("NativeEnvironment.colorFormat", colorFormat);
-	}
-	const depthFormat: string = environment.depthFormat;
-	if (depthFormat != "" && !formatInfo(environment.depthFormat, "NativeEnvironment.depthFormat").depth) {
-		stopOnMember("NativeEnvironment.depthFormat", depthFormat);
-	}
-	const sampleCount = environment.sampleCount == 0 ? 1 : environment.sampleCount;
-	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`); }
-	return { format: environment.colorFormat, depthFormat: environment.depthFormat, sampleCount: sampleCount };
-}
-
-export function canvasConfiguration(): GPUCanvasConfiguration { return canvas; }
 
 export function formatRenderable(format: GPUTextureFormat): boolean {
 	formatInfo(format, "formatRenderable format");
 	return true;
 }
-
-export function frameIndex(): uint32 { return (frame + 1) as uint32; }
 
 export function shutdown(): void {}
 
@@ -465,11 +447,11 @@ function claimBufferWrite(index: int32, offset: int64, bytes: int64, member: str
 	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${id} was created without COPY_DST`); }
 	if (buffers[index].mapMode != 0) { stop(`${member} on GPUBuffer ${id}, which is mapped`); }
 	if (buffers[index].inPlace) { return; }
-	const fresh = buffers[index].writtenFrame != frame;
+	const fresh = buffers[index].writtenFrame != currentFrame();
 	if (!fresh && offset < buffers[index].writtenEnd) {
 		stop(`${member} at ${offset} on GPUBuffer ${id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
 	}
-	buffers[index].writtenFrame = frame;
+	buffers[index].writtenFrame = currentFrame();
 	buffers[index].writtenEnd = offset + bytes;
 }
 
@@ -852,7 +834,6 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 }
 
 export function submit(submitted: GPUCommandBuffer): void {
-	frame += 1;
 }
 
 export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {

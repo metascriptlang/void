@@ -2,6 +2,7 @@ import {
 	BindingKind,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPUCanvasConfiguration,
 	GPUPrimitiveState,
 	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
@@ -183,6 +184,8 @@ export function shutdownRefusal(this s: EncoderState): string {
 
 let encoder: EncoderState = { open: false };
 let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
+let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
+let frame: int64 = 0;
 
 @inline export function occlusionSetId(): uint32 { return encoder.occlusionSet; }
 @inline export function occlusionQueryIndex(): int32 { return encoder.occlusionIndex; }
@@ -192,9 +195,25 @@ let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
 @inline export function openDebugGroups(): int32 { return encoder.depth; }
 
 @inline export function cachedLimits(): GPUSupportedLimits { return deviceLimits; }
+@inline export function cachedCanvas(): GPUCanvasConfiguration { return canvas; }
+@inline export function currentFrame(): int64 { return frame; }
 
 export function resetEncoder(): void { encoder = { open: false }; }
 export function cacheLimits(limits: GPUSupportedLimits): void { deviceLimits = limits; }
+export function resetFrame(): void { frame = 0; }
+export function advanceFrame(): void { frame += 1; }
+
+export function canvasRefusal(color: string, depth: string): string {
+	if (color == "") { return "NativeEnvironment.colorFormat is required"; }
+	if (isDepthFormat(color)) { return `NativeEnvironment.colorFormat '${color}' is not supported`; }
+	if (depth != "" && !isDepthFormat(depth)) { return `NativeEnvironment.depthFormat '${depth}' is not supported`; }
+	return "";
+}
+
+export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, sampleCount: int32): void {
+	refuse(canvasRefusal(colorFormat, depthFormat));
+	canvas = { format: colorFormat, depthFormat: depthFormat, sampleCount: sampleCount == 0 ? 1 : sampleCount };
+}
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
 export function markPipelineSet(): void { encoder.markPipeline(); }
 export function markIndexSet(): void { encoder.markIndexBuffer(); }
@@ -267,7 +286,7 @@ export function bufferRefusal(size: int64, usage: int32): string {
 	return "";
 }
 
-export function isDepthFormat(format: GPUTextureFormat): boolean {
+export function isDepthFormat(format: string): boolean {
 	return format == "depth16unorm" || format == "depth32float" || format == "depth24plus-stencil8";
 }
 

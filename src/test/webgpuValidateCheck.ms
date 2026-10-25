@@ -27,6 +27,7 @@ import {
 	bindGroupSetRefusal,
 	beginPassRefusal,
 	bufferRefusal,
+	canvasRefusal,
 	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
@@ -721,4 +722,12 @@ test "a resolve target is a single-sample color attachment of its multisampled v
 	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget needs a single-sample color RENDER_ATTACHMENT";
 	facts.colors[0].sampleCount = 1;
 	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget needs a multisampled view";
+}
+
+test "a canvas names a color format and, when it has one, a depth format" {
+	assert canvasRefusal("bgra8unorm", "depth32float") == "";
+	assert canvasRefusal("rgba8unorm", "") == "";
+	assert canvasRefusal("", "") == "NativeEnvironment.colorFormat is required";
+	assert canvasRefusal("depth32float", "") == "NativeEnvironment.colorFormat 'depth32float' is not supported";
+	assert canvasRefusal("bgra8unorm", "rgba8unorm") == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
 }

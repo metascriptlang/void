@@ -104,7 +104,12 @@ import {
 	markIndexSet,
 	markPipelineSet,
 	resetEncoder,
+	resetFrame,
 	textureRecordOf,
+	advanceFrame,
+	cacheCanvas,
+	cachedCanvas,
+	currentFrame,
 } from "./validate.ms";
 
 when (voidDummy) {
@@ -124,10 +129,12 @@ export type GPUNativeSwapchain = backend.NativeSwapchain;
 
 export function requestDevice(environment: GPUNativeEnvironment): GPUDevice {
 	resetEncoder();
+	resetFrame();
 	resetRecords(backend.BACKEND);
+	cacheCanvas(environment.colorFormat, environment.depthFormat, environment.sampleCount);
 	const device = backend.setup(environment);
 	cacheLimits(backend.limits());
-	const canvas = backend.canvasConfiguration();
+	const canvas = cachedCanvas();
 	const depthFormat: string = canvas.depthFormat;
 	backend.adoptSwapchain(
 		reserveSwapchainTexture(canvas.format, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32)),
@@ -338,6 +345,7 @@ function destroyPipeline(pipeline: uint32): void {
 
 @inline export function submit(this self: GPUQueue, commandBuffer: GPUCommandBuffer): void {
 	backend.submit(commandBuffer);
+	advanceFrame();
 }
 
 @inline export function beginRenderPass(this self: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
@@ -605,14 +613,14 @@ export function getCurrentTexture(swapchain: GPUNativeSwapchain): GPUTexture {
 export function getCurrentDepthTexture(): GPUTexture { return backend.swapchainDepthTexture(); }
 
 export function getCanvasConfiguration(this self: GPUDevice): GPUCanvasConfiguration {
-	return backend.canvasConfiguration();
+	return cachedCanvas();
 }
 
 export function isRenderable(this self: GPUDevice, format: GPUTextureFormat): boolean {
 	return backend.formatRenderable(format);
 }
 
-export function frameIndex(this self: GPUDevice): uint32 { return backend.frameIndex(); }
+export function frameIndex(this self: GPUDevice): uint32 { return (currentFrame() + 1) as uint32; }
 
 export function liveCounts(this self: GPUDevice): GPULiveCounts {
 	let counts: GPULiveCounts = { buffers: bufferRecords.live() };
