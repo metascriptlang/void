@@ -297,6 +297,12 @@ spirv-val and naga check the printer's output.
 Sokol's `_sg_vk_*` is a comparison only. It requires Vulkan 1.3 and `VK_EXT_descriptor_buffer`
 (sokol_app.h 4447, 4558) and calls itself highly experimental.
 
+Every platform compiles the backend against one pinned copy of Khronos Vulkan-Headers,
+v1.4.341, kept in `deps/vulkan-headers/include`. The OS's own headers are not used. Mach
+(`build.zig.zon:52`), Dawn (`DEPS:396`) and Godot (`thirdparty/vulkan`) each pin their own copy
+the same way. The Windows toolchain ships no Vulkan headers, and a pin keeps Windows, Linux
+and Android on one API version.
+
 ## Beyond sokol on the frame path
 
 Each item is built once a probe shows the cost it removes; the A/B against main decides.
