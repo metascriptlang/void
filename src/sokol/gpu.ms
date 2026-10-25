@@ -70,9 +70,20 @@ when (linux && !voidDummy) {
 	@compile("./appWindow.c");
 	@compile("./bridge.c");
 	@passL("-lX11");
-	@passL("-lGL");
 	@passL("-ldl");
 	@passL("-lm");
+}
+
+when (linux && voidGles3 && !voidDummy) {
+	@passC("-DVOID_GLES3");
+	@passL("-lEGL");
+	@passL("-lGLESv2");
+} else when (linux && voidEgl && !voidDummy) {
+	@passC("-DVOID_FORCE_EGL");
+	@passL("-lEGL");
+	@passL("-lGL");
+} else when (linux && !voidDummy) {
+	@passL("-lGL");
 }
 
 when (voidDummy) {

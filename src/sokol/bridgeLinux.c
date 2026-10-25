@@ -1,5 +1,6 @@
-// Void driver — Linux: the X11 window and its GLX context (src/platform/linux/window.c) drive
-// voidRun; the GPU door's GL backend (src/webgpu/gl, GL core) draws into framebuffer 0.
+// Void driver — Linux: the X11 window and its GLX or EGL context (src/platform/linux/window.c)
+// drive voidRun; the GPU door's GL backend (src/webgpu/gl, GL core or GLES3) draws into
+// framebuffer 0.
 // Host views are not offered on Linux, so views.c is not part of this build.
 
 #include <stdarg.h>
@@ -46,7 +47,7 @@ static int s_contextLost = 0;
 
 static void setupDoor(void) {
 	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, s_sampleCount);
-	if (!doorValid()) voidFail("doorSetup on the GLX context failed");
+	if (!doorValid()) voidFail("doorSetup on the window's GL context failed");
 }
 
 int voidGpuGeneration(void) { return s_generation; }
