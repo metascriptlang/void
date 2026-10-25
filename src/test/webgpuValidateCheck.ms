@@ -3,6 +3,7 @@ import {
 	GPUBindGroupEntry,
 	GPUBufferUsage,
 	GPUPrimitiveState,
+	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUSamplerDescriptor,
@@ -14,7 +15,9 @@ import {
 	GPUTextureViewDescriptor,
 } from "../webgpu/types";
 import {
+	AttachmentFacts,
 	EncoderState,
+	RenderPassFacts,
 	PASS_COMPUTE,
 	PASS_RENDER,
 	addressesBinding,
@@ -59,6 +62,8 @@ import {
 	primitiveRefusal,
 	pushGroupRefusal,
 	renderModuleRefusal,
+	renderPassExtent,
+	renderPassRefusal,
 	renderPassPipelineRefusal,
 	renderPipelineRefusal,
 	samplerRefusal,
@@ -652,4 +657,68 @@ test "a texture view binds as a sampled texture or a one-mip storage texture onl
 	assert storageViewRefusal(3, true, 1) == "";
 	assert storageViewRefusal(3, false, 1) == "bind group entry 3: the view's texture lacks STORAGE_BINDING";
 	assert storageViewRefusal(3, true, 2) == "bind group entry 3: a storage texture view takes exactly one mip";
+}
+
+function colorTarget(width: int32, height: int32, sampleCount: int32): AttachmentFacts {
+	return { texture: 5, renderable: true, single: true, width: width, height: height, layers: 1, sampleCount: sampleCount };
+}
+
+function onePass(color: AttachmentFacts): RenderPassFacts {
+	let facts: RenderPassFacts = { depth: { texture: 0 } };
+	facts.colors[0] = color;
+	return facts;
+}
+
+function colorPass(): GPURenderPassDescriptor {
+	let descriptor: GPURenderPassDescriptor = { label: null };
+	descriptor.colorAttachments[0].view = { id: 1 };
+	return descriptor;
+}
+
+test "a render pass takes renderable one-mip one-layer attachments of one size" {
+	let descriptor = colorPass();
+	let facts = onePass(colorTarget(64, 32, 1));
+	assert renderPassRefusal(descriptor, facts) == "";
+	assert renderPassExtent(descriptor, facts).width == 64 && renderPassExtent(descriptor, facts).height == 32;
+	facts.colors[0].depth = true;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].view is not a color RENDER_ATTACHMENT";
+	facts.colors[0] = { ...colorTarget(64, 32, 1), single: false };
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].view spans several mips or layers: a render attachment is one mip of one layer";
+	facts.colors[0] = { ...colorTarget(64, 32, 1), baseMip: 1 };
+	assert renderPassExtent(descriptor, facts).width == 32;
+	descriptor.depthStencilAttachment.view = { id: 2 };
+	facts.depth = { ...colorTarget(64, 32, 1), depth: true };
+	assert renderPassRefusal(descriptor, facts) == "render pass attachments differ in size";
+	facts.depth = colorTarget(32, 16, 1);
+	assert renderPassRefusal(descriptor, facts) == "depthStencilAttachment.view is not a depth RENDER_ATTACHMENT";
+	facts.depth = { ...colorTarget(32, 16, 1), depth: true, single: false };
+	assert renderPassRefusal(descriptor, facts) == "depthStencilAttachment.view spans several mips or layers: a render attachment is one mip of one layer";
+	assert renderPassRefusal({ label: null }, facts) == "beginRenderPass without an attachment";
+}
+
+test "a render pass color attachment names a depth slice only on a 3d view, inside its mip" {
+	let descriptor = colorPass();
+	let facts = onePass(colorTarget(16, 16, 1));
+	descriptor.colorAttachments[0].depthSlice = 2;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].depthSlice 2 needs a 3d view";
+	facts.colors[0] = { ...colorTarget(16, 16, 1), volume: true, layers: 8, baseMip: 2 };
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].depthSlice 2 is outside the 2 slices of mip 2 of GPUTexture 5";
+	descriptor.colorAttachments[0].depthSlice = 1;
+	assert renderPassRefusal(descriptor, facts) == "";
+}
+
+test "a resolve target is a single-sample color attachment of its multisampled view's size" {
+	let descriptor = colorPass();
+	descriptor.colorAttachments[0].resolveTarget = { id: 3 };
+	let facts = onePass(colorTarget(16, 16, 4));
+	facts.resolves[0] = colorTarget(16, 16, 1);
+	assert renderPassRefusal(descriptor, facts) == "";
+	facts.resolves[0].single = false;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget spans several mips or layers: a render attachment is one mip of one layer";
+	facts.resolves[0] = colorTarget(8, 16, 1);
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget differs in size from its multisampled view";
+	facts.resolves[0] = colorTarget(16, 16, 4);
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget needs a single-sample color RENDER_ATTACHMENT";
+	facts.colors[0].sampleCount = 1;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget needs a multisampled view";
 }

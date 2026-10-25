@@ -57,17 +57,12 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedBufferCopy,
-	checkedDepthSlice,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
 	checkedMapAsync,
 	checkedMappedRange,
-	checkedNoDepthSlice,
-	checkedPassExtent,
 	checkedResolveQuerySet,
-	checkedResolveTarget,
 	samplerMaxLod,
-	checkedSingleSubresource,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
@@ -82,6 +77,8 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	attachmentFactsOf,
+	AttachmentFacts,
 	checkedCopyRegion,
 	entryOf,
 	checkedViewRange,
@@ -536,8 +533,6 @@ struct ViewSlot {
 	id: uint32;
 	texture: uint32;
 	sampled: boolean;
-	color: boolean;
-	depth: boolean;
 	resolveFramebuffer: uint32;
 	dimension: ViewDimension;
 	baseMip: int32;
@@ -1407,8 +1402,6 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 	store(views, {
 		id: viewId,
 		texture: textureId,
-		color: !info.depth,
-		depth: info.depth,
 		attachable: true,
 		swapchain: true,
 	});
@@ -1785,9 +1778,7 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	const t = textures.slotIndex(texture.id);
 	if (textures.slots[t].swapchainView != 0) { return { id: textures.slots[t].swapchainView }; }
 	const id = allocate(views);
-	const info = textures.slots[t].info;
 	const usage = textures.slots[t].usage;
-	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	const layers = textures.slots[t].layers;
 	const volume = textures.slots[t].volume;
 	const webgpuCube = cubeCapable(volume, layers, textures.slots[t].width, textures.slots[t].height, usage, textures.slots[t].sampleCount);
@@ -1804,8 +1795,6 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		id: id,
 		texture: texture.id,
 		sampled: has(usage, GPUTextureUsage.TEXTURE_BINDING as int32),
-		color: attachment && !info.depth,
-		depth: attachment && info.depth,
 		resolveFramebuffer: 0,
 		dimension: dimension,
 		baseMip: baseMip,
@@ -2358,7 +2347,13 @@ export function submit(commandBuffer: GPUCommandBuffer): void {
 	frame += 1;
 }
 
-export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+export function attachmentFacts(view: GPUTextureView): AttachmentFacts {
+	const v = views.slotIndex(view.id);
+	const t = textures.slotIndex(views.slots[v].texture);
+	return attachmentFactsOf(views.slots[v], textures.slots[t], textures.slots[t].info.depth, views.slots[v].dimension == ViewDimension.ThreeD);
+}
+
+export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	if (descriptor.occlusionQuerySet.id != 0) {
 		checkedOcclusionSetKind(querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
@@ -2366,6 +2361,8 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	pass = {
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
+		width: extent.width,
+		height: extent.height,
 	};
 	pass.labeled = labelPass(descriptor.label);
 	if (pass.timestampSet != 0 && descriptor.timestampWrites.beginningOfPassWriteIndex >= 0) {
@@ -2377,7 +2374,6 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		const viewId = descriptor.colorAttachments[i].view.id;
 		if (viewId == 0) { continue; }
 		const v = views.slotIndex(viewId);
-		if (!views.slots[v].color) { stop(`colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`); }
 		if (views.slots[v].swapchain) {
 			if (i != 0) { stop(`colorAttachments[${i}] is the canvas, which GL draws only as attachment 0`); }
 			if (descriptor.colorAttachments[i].resolveTarget.id != 0) {
@@ -2387,18 +2383,9 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		} else {
 			offscreen = true;
 		}
-		if (!views.slots[v].attachable) { checkedSingleSubresource(attachmentMember(i, "view"), false); }
-		passExtent(views.slots[v].texture, views.slots[v].baseMip);
-		const slice = descriptor.colorAttachments[i].depthSlice;
-		if (views.slots[v].dimension == ViewDimension.ThreeD) {
-			const slices = Math.max(1, textures.slots[textures.slotIndex(views.slots[v].texture)].layers >> views.slots[v].baseMip);
-			checkedDepthSlice(i, slice, slices, views.slots[v].baseMip, views.slots[v].texture);
-		} else {
-			checkedNoDepthSlice(i, slice);
-		}
-		pass.colorSlices[i] = slice;
+		pass.colorSlices[i] = descriptor.colorAttachments[i].depthSlice;
 		pass.colorViews[i] = viewId;
-		pass.resolveViews[i] = checkResolve(i, views.slots[v].texture, descriptor.colorAttachments[i].resolveTarget.id);
+		pass.resolveViews[i] = resolveView(i, descriptor.colorAttachments[i].resolveTarget.id);
 		colorMask |= 1 << i;
 		checkStoreOp(descriptor.colorAttachments[i].storeOp, i, "storeOp");
 	}
@@ -2408,16 +2395,12 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	let depthStencil = false;
 	if (depthView != 0) {
 		const v = views.slotIndex(depthView);
-		if (!views.slots[v].depth) { stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"); }
-		if (!views.slots[v].attachable) { stop("depthStencilAttachment.view spans several mips or layers: a render attachment is one mip of one layer"); }
 		if (views.slots[v].swapchain) { pass.swapchain = true; } else { offscreen = true; }
-		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		depthViewSlot = v;
 		depthTexture = textures.slotIndex(views.slots[v].texture);
 		depthStencil = textures.slots[depthTexture].info.stencil;
 		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, -1, "depthStoreOp");
 	}
-	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	if (pass.swapchain && offscreen) {
 		stop("a render pass mixes the canvas with offscreen attachments; GL draws the canvas through framebuffer 0");
 	}
@@ -2531,33 +2514,12 @@ function clearAttachments(descriptor: GPURenderPassDescriptor, hasDepth: boolean
 	}
 }
 
-function passExtent(texture: uint32, baseMip: int32): void {
-	const t = textures.slotIndex(texture);
-	const width = Math.max(1, textures.slots[t].width >> baseMip);
-	const height = Math.max(1, textures.slots[t].height >> baseMip);
-	checkedPassExtent(pass.width, pass.height, width, height);
-	pass.width = width;
-	pass.height = height;
-}
-
-@noinline function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): uint32 {
+@noinline function resolveView(attachment: int32, resolveId: uint32): uint32 {
 	if (resolveId == 0) { return 0; }
 	const r = views.slotIndex(resolveId);
-	const resolveTexture = textures.slotIndex(views.slots[r].texture);
-	const color = textures.slotIndex(colorTexture);
-	checkedResolveTarget(
-		attachment,
-		textures.slots[color].sampleCount,
-		textures.slots[color].width,
-		textures.slots[color].height,
-		Math.max(1, textures.slots[resolveTexture].width >> views.slots[r].baseMip),
-		Math.max(1, textures.slots[resolveTexture].height >> views.slots[r].baseMip),
-	);
-	if (textures.slots[resolveTexture].sampleCount != 1 || !views.slots[r].color || views.slots[r].swapchain) {
-		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample offscreen color RENDER_ATTACHMENT`);
+	if (views.slots[r].swapchain) {
+		stop(`colorAttachments[${attachment}].resolveTarget is the canvas, which GL draws only through framebuffer 0`);
 	}
-	if (!views.slots[r].attachable) { checkedSingleSubresource(attachmentMember(attachment, "resolveTarget"), false); }
-	passExtent(views.slots[r].texture, views.slots[r].baseMip);
 	if (views.slots[r].resolveFramebuffer == 0) {
 		const resolveFramebuffer = oglCreateFramebuffer();
 		oglBindFramebuffer(GL_FRAMEBUFFER, resolveFramebuffer);

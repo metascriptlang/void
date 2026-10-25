@@ -59,15 +59,10 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedBufferCopy,
-	checkedDepthSlice,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
-	checkedNoDepthSlice,
-	checkedPassExtent,
 	checkedResolveQuerySet,
-	checkedResolveTarget,
 	samplerMaxLod,
-	checkedSingleSubresource,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
@@ -80,6 +75,8 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	attachmentFactsOf,
+	AttachmentFacts,
 	checkedCopyRegion,
 	checkedViewRange,
 	cubeCapable,
@@ -1987,15 +1984,22 @@ export function submit(commandBuffer: GPUCommandBuffer): void {
 	frame += 1;
 }
 
+export function attachmentFacts(view: GPUTextureView): AttachmentFacts {
+	const v = views.slotIndex(view.id);
+	const t = textures.slotIndex(views.slots[v].texture);
+	return attachmentFactsOf(views.slots[v], textures.slots[t], textures.slots[t].info.depth, views.slots[v].dimension == VIEW_3D);
+}
+
 export function beginRenderPass(
 	encoder: GPUCommandEncoder,
 	descriptor: GPURenderPassDescriptor,
+	extent: GPUExtent3D,
 ): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	const occlusionId = descriptor.occlusionQuerySet.id;
 	if (occlusionId != 0) { checkedOcclusionSetKind(querySets.slots[querySets.slotIndex(occlusionId)].timestamp); }
-	pass.width = 0;
-	pass.height = 0;
+	pass.width = extent.width;
+	pass.height = extent.height;
 	let count = 0;
 	let ints: int32[PASS_SIZE] = [0];
 	let reals: float64[PASS_DEPTH_CLEAR + 1] = [0];
@@ -2008,20 +2012,9 @@ export function beginRenderPass(
 		ints[op + 2] = -1;
 		if (attachment.view.id == 0) { continue; }
 		const v = views.slotIndex(attachment.view.id);
-		checkColorAttachment(i, views.slots[v].texture);
-		if (!views.slots[v].attachable) { checkedSingleSubresource(attachmentMember(i, "view"), false); }
-		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		const slice = attachment.depthSlice;
-		if (views.slots[v].dimension == VIEW_3D) {
-			const slices = Math.max(1, textures.slots[textures.slotIndex(views.slots[v].texture)].layers >> views.slots[v].baseMip);
-			checkedDepthSlice(i, slice, slices, views.slots[v].baseMip, views.slots[v].texture);
-		} else {
-			checkedNoDepthSlice(i, slice);
-		}
 		let resolve = views.slots[v].swapchainResolve;
-		if (attachment.resolveTarget.id != 0) {
-			resolve = checkResolve(i, views.slots[v].texture, attachment.resolveTarget.id);
-		}
+		if (attachment.resolveTarget.id != 0) { resolve = views.slots[views.slotIndex(attachment.resolveTarget.id)].native; }
 		const color = attachment.clearValue;
 		colorViews[i] = views.slots[v].native;
 		resolveViews[i] = resolve;
@@ -2037,13 +2030,7 @@ export function beginRenderPass(
 	const depthView = descriptor.depthStencilAttachment.view.id;
 	if (depthView != 0) {
 		const v = views.slotIndex(depthView);
-		const t = textures.slotIndex(views.slots[v].texture);
-		if (!views.slots[v].attachable) { stop("depthStencilAttachment.view spans several mips or layers: a render attachment is one mip of one layer"); }
-		passExtent(views.slots[v].texture, views.slots[v].baseMip);
-		const info = textures.slots[t].info;
-		if (!info.depth || !has(textures.slots[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
-			stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT");
-		}
+		const info = textures.slots[textures.slotIndex(views.slots[v].texture)].info;
 		const depth = descriptor.depthStencilAttachment;
 		depthNative = views.slots[v].native;
 		ints[PASS_DEPTH_LOAD] = loadOp(depth.depthLoadOp, -1, "depthLoadOp");
@@ -2051,7 +2038,6 @@ export function beginRenderPass(
 		ints[PASS_DEPTH_STENCIL] = info.stencil ? 1 : 0;
 		reals[PASS_DEPTH_CLEAR] = depth.depthClearValue;
 	}
-	if (count == 0 && depthView == 0) { stop("beginRenderPass without an attachment"); }
 	const writes = descriptor.timestampWrites;
 	ints[PASS_COLOR_COUNT] = count;
 	ints[PASS_WIDTH] = pass.width;
@@ -2076,43 +2062,6 @@ export function beginRenderPass(
 	pass.pipeline = 0;
 	pass.indexFormat = 0;
 	return { id: 1 };
-}
-
-function passExtent(texture: uint32, baseMip: int32): void {
-	const t = textures.slotIndex(texture);
-	const width = Math.max(1, textures.slots[t].width >> baseMip);
-	const height = Math.max(1, textures.slots[t].height >> baseMip);
-	checkedPassExtent(pass.width, pass.height, width, height);
-	pass.width = width;
-	pass.height = height;
-}
-
-@noinline function checkColorAttachment(attachment: int32, texture: uint32): void {
-	const t = textures.slotIndex(texture);
-	const attachable = has(textures.slots[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
-	if (textures.slots[t].info.depth || !attachable) {
-		stop(`colorAttachments[${attachment}].view is not a color RENDER_ATTACHMENT`);
-	}
-}
-
-@noinline function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): Ptr<WgViewImpl> {
-	const r = views.slotIndex(resolveId);
-	const resolveTexture = textures.slotIndex(views.slots[r].texture);
-	const color = textures.slotIndex(colorTexture);
-	checkedResolveTarget(
-		attachment,
-		textures.slots[color].sampleCount,
-		textures.slots[color].width,
-		textures.slots[color].height,
-		Math.max(1, textures.slots[resolveTexture].width >> views.slots[r].baseMip),
-		Math.max(1, textures.slots[resolveTexture].height >> views.slots[r].baseMip),
-	);
-	if (textures.slots[resolveTexture].sampleCount != 1) {
-		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample view`);
-	}
-	checkColorAttachment(attachment, views.slots[r].texture);
-	if (!views.slots[r].attachable) { checkedSingleSubresource(attachmentMember(attachment, "resolveTarget"), false); }
-	return views.slots[r].native;
 }
 
 export function endPass(): void {

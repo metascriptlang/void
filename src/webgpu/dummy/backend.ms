@@ -59,16 +59,11 @@ import {
 	GPUTextureViewDescriptor,
 	bindingKind,
 	checkedBufferCopy,
-	checkedDepthSlice,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
 	checkedMapAsync,
 	checkedMappedRange,
-	checkedNoDepthSlice,
-	checkedPassExtent,
 	checkedResolveQuerySet,
-	checkedResolveTarget,
-	checkedSingleSubresource,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
@@ -81,6 +76,8 @@ import {
 	vertexOffsetRefusal,
 } from "../types.ms";
 import {
+	attachmentFactsOf,
+	AttachmentFacts,
 	checkedCopyRegion,
 	entryOf,
 	checkedViewRange,
@@ -265,8 +262,6 @@ struct QuerySetSlot {
 struct PassState {
 	timestampSet: uint32;
 	timestampEnd: int32;
-	width: int32;
-	height: int32;
 }
 
 struct ComputeState {
@@ -287,7 +282,7 @@ struct BoundState {
 
 let frame: int64 = 0;
 let ticks: uint64 = 0;
-let pass: PassState = { width: 0 };
+let pass: PassState = { timestampSet: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
 let bound: BoundState = { pipeline: 0 };
 let swapchainColor: uint32 = 0;
@@ -446,7 +441,7 @@ function labelOf(label: string | null): string {
 export function setup(environment: NativeEnvironment): GPUDevice {
 	frame = 0;
 	ticks = 0;
-	pass = { width: 0 };
+	pass = { timestampSet: 0 };
 	computeBound = { pipeline: 0 };
 	bound = { pipeline: 0 };
 	reset(buffers);
@@ -1084,85 +1079,33 @@ export function submit(submitted: GPUCommandBuffer): void {
 	frame += 1;
 }
 
-export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+export function attachmentFacts(view: GPUTextureView): AttachmentFacts {
+	const v = views.slotIndex(view.id);
+	const t = textures.slotIndex(views.slots[v].texture);
+	return attachmentFactsOf(views.slots[v], textures.slots[t], formatInfo(textures.slots[t].format, "texture format").depth, views.slots[v].volumeTarget);
+}
+
+export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	const occlusionSet = descriptor.occlusionQuerySet.id;
 	if (occlusionSet != 0) {
 		checkedOcclusionSetKind(querySets.slots[querySets.slotIndex(occlusionSet)].timestamp);
 	}
-	pass = { width: 0 };
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
-		const viewId = descriptor.colorAttachments[i].view.id;
-		if (viewId == 0) { continue; }
-		const v = views.slotIndex(viewId);
-		const t = textures.slotIndex(views.slots[v].texture);
-		const color = !formatInfo(textures.slots[t].format, "texture format").depth;
-		if (!color || !has(textures.slots[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
-			stop(`colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`);
-		}
-		checkedSingleSubresource(`colorAttachments[${i}].view`, views.slots[v].attachable);
-		const slice = descriptor.colorAttachments[i].depthSlice;
-		if (views.slots[v].volumeTarget) {
-			const slices = Math.max(1, textures.slots[t].layers >> views.slots[v].baseMip);
-			checkedDepthSlice(i, slice, slices, views.slots[v].baseMip, textures.slots[t].id);
-		} else {
-			checkedNoDepthSlice(i, slice);
-		}
-		passExtent(v);
-		checkResolve(i, v, descriptor.colorAttachments[i].resolveTarget.id);
+		if (descriptor.colorAttachments[i].view.id == 0) { continue; }
 		loadOp(descriptor.colorAttachments[i].loadOp, `colorAttachments[${i}].loadOp`);
 		storeOp(descriptor.colorAttachments[i].storeOp, `colorAttachments[${i}].storeOp`);
 	}
-	const depthView = descriptor.depthStencilAttachment.view.id;
-	if (depthView != 0) {
-		const v = views.slotIndex(depthView);
-		const t = textures.slotIndex(views.slots[v].texture);
-		const depth = formatInfo(textures.slots[t].format, "depth format").depth;
-		if (!depth || !has(textures.slots[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
-			stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT");
-		}
-		checkedSingleSubresource("depthStencilAttachment.view", views.slots[v].attachable);
-		passExtent(v);
+	if (descriptor.depthStencilAttachment.view.id != 0) {
 		loadOp(descriptor.depthStencilAttachment.depthLoadOp, "depthStencilAttachment.depthLoadOp");
 		storeOp(descriptor.depthStencilAttachment.depthStoreOp, "depthStencilAttachment.depthStoreOp");
 	}
-	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	const writes = descriptor.timestampWrites;
-	pass.timestampSet = writes.querySet.id;
-	pass.timestampEnd = writes.endOfPassWriteIndex;
+	pass = { timestampSet: writes.querySet.id, timestampEnd: writes.endOfPassWriteIndex };
 	if (writes.querySet.id != 0 && writes.beginningOfPassWriteIndex >= 0) {
 		writeTimestamp(writes.querySet.id, writes.beginningOfPassWriteIndex);
 	}
 	return { id: 1 };
-}
-
-function passExtent(v: int32): void {
-	const t = textures.slotIndex(views.slots[v].texture);
-	const width = Math.max(1, textures.slots[t].width >> views.slots[v].baseMip);
-	const height = Math.max(1, textures.slots[t].height >> views.slots[v].baseMip);
-	checkedPassExtent(pass.width, pass.height, width, height);
-	pass.width = width;
-	pass.height = height;
-}
-
-function checkResolve(attachment: int32, colorView: int32, resolveId: uint32): void {
-	if (resolveId == 0) { return; }
-	const colorTexture = textures.slotIndex(views.slots[colorView].texture);
-	const r = views.slotIndex(resolveId);
-	const resolve = textures.slotIndex(views.slots[r].texture);
-	checkedSingleSubresource(`colorAttachments[${attachment}].resolveTarget`, views.slots[r].attachable);
-	checkedResolveTarget(
-		attachment,
-		textures.slots[colorTexture].sampleCount,
-		textures.slots[colorTexture].width,
-		textures.slots[colorTexture].height,
-		Math.max(1, textures.slots[resolve].width >> views.slots[r].baseMip),
-		Math.max(1, textures.slots[resolve].height >> views.slots[r].baseMip),
-	);
-	const single = textures.slots[resolve].sampleCount == 1;
-	if (!single || !has(textures.slots[resolve].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
-		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample color RENDER_ATTACHMENT`);
-	}
 }
 
 export function endPass(): void {

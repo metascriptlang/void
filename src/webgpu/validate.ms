@@ -3,6 +3,7 @@ import {
 	GPUBindGroupEntry,
 	GPUBufferUsage,
 	GPUPrimitiveState,
+	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUSamplerDescriptor,
@@ -18,12 +19,18 @@ import {
 	GPUTextureViewDescriptor,
 	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
+	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 	checkedTexelCopyRegion,
 	cubeViewRefusal,
+	depthSliceRefusal,
+	noDepthSliceRefusal,
+	passExtentRefusal,
 	refuse,
+	resolveTargetRefusal,
+	singleSubresourceRefusal,
 	samplerMaxLod,
 	stop,
 	view3dRefusal,
@@ -619,4 +626,103 @@ export function entryOf<T>(group: T, binding: int32): int32 {
 		if (group.entries[e].binding == binding) { return e; }
 	}
 	stop(`a bound bind group has no entry for binding ${binding}`);
+}
+
+// What a backend knows of a view used as a render attachment. `width`, `height` and `layers` are
+// the texture's own; `single` is one mip of one layer; `volume` is a 3d view.
+export struct AttachmentFacts {
+	texture: uint32;
+	depth: boolean;
+	renderable: boolean;
+	single: boolean;
+	volume: boolean;
+	baseMip: int32;
+	width: int32;
+	height: int32;
+	layers: int32;
+	sampleCount: int32;
+}
+
+export struct RenderPassFacts {
+	colors: AttachmentFacts[GPU_MAX_COLOR_ATTACHMENTS];
+	resolves: AttachmentFacts[GPU_MAX_COLOR_ATTACHMENTS];
+	depth: AttachmentFacts;
+}
+
+// `view` and `texture` are a backend's own slots; `depth` and `volume` are read the backend's way.
+export function attachmentFactsOf<V, T>(view: V, texture: T, depth: boolean, volume: boolean): AttachmentFacts {
+	return {
+		texture: texture.id,
+		depth: depth,
+		renderable: (texture.usage & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0,
+		single: view.attachable,
+		volume: volume,
+		baseMip: view.baseMip,
+		width: texture.width,
+		height: texture.height,
+		layers: texture.layers,
+		sampleCount: texture.sampleCount,
+	};
+}
+
+@inline function mipWidth(view: AttachmentFacts): int32 { return Math.max(1, view.width >> view.baseMip); }
+@inline function mipHeight(view: AttachmentFacts): int32 { return Math.max(1, view.height >> view.baseMip); }
+
+function colorAttachmentRefusal(i: int32, descriptor: GPURenderPassDescriptor, view: AttachmentFacts, resolve: AttachmentFacts): string {
+	if (view.depth || !view.renderable) { return `colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`; }
+	const single = singleSubresourceRefusal(`colorAttachments[${i}].view`, view.single);
+	if (single != "") { return single; }
+	const slice = descriptor.colorAttachments[i].depthSlice;
+	const slices = view.volume ? depthSliceRefusal(i, slice, Math.max(1, view.layers >> view.baseMip), view.baseMip, view.texture) : noDepthSliceRefusal(i, slice);
+	if (slices != "" || descriptor.colorAttachments[i].resolveTarget.id == 0) { return slices; }
+	const resolveSingle = singleSubresourceRefusal(`colorAttachments[${i}].resolveTarget`, resolve.single);
+	if (resolveSingle != "") { return resolveSingle; }
+	const sizes = resolveTargetRefusal(i, view.sampleCount, view.width, view.height, mipWidth(resolve), mipHeight(resolve));
+	if (sizes != "") { return sizes; }
+	if (resolve.sampleCount != 1 || resolve.depth || !resolve.renderable) {
+		return `colorAttachments[${i}].resolveTarget needs a single-sample color RENDER_ATTACHMENT`;
+	}
+	return "";
+}
+
+// sokol _sg_validate_begin_pass (sokol_gfx.h:24757): every attachment is a renderable view of one
+// mip and layer, all of one size, and a resolve target matches its multisampled view.
+export function renderPassRefusal(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): string {
+	let width: int32 = 0;
+	let height: int32 = 0;
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		if (descriptor.colorAttachments[i].view.id == 0) { continue; }
+		const view = facts.colors[i];
+		const color = colorAttachmentRefusal(i, descriptor, view, facts.resolves[i]);
+		if (color != "") { return color; }
+		const extent = passExtentRefusal(width, height, mipWidth(view), mipHeight(view));
+		if (extent != "") { return extent; }
+		width = mipWidth(view);
+		height = mipHeight(view);
+	}
+	if (descriptor.depthStencilAttachment.view.id != 0) {
+		const view = facts.depth;
+		if (!view.depth || !view.renderable) { return "depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"; }
+		const single = singleSubresourceRefusal("depthStencilAttachment.view", view.single);
+		if (single != "") { return single; }
+		const extent = passExtentRefusal(width, height, mipWidth(view), mipHeight(view));
+		if (extent != "") { return extent; }
+		width = mipWidth(view);
+	}
+	return width == 0 ? "beginRenderPass without an attachment" : "";
+}
+
+// The first attachment's mip size; renderPassRefusal has checked that every other one matches.
+export function renderPassExtent(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): GPUExtent3D {
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		if (descriptor.colorAttachments[i].view.id != 0) {
+			return { width: mipWidth(facts.colors[i]), height: mipHeight(facts.colors[i]), depthOrArrayLayers: 1 };
+		}
+	}
+	return { width: mipWidth(facts.depth), height: mipHeight(facts.depth), depthOrArrayLayers: 1 };
+}
+
+export function checkedRenderPass(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): GPUExtent3D {
+	refuse(renderPassRefusal(descriptor, facts));
+	return renderPassExtent(descriptor, facts);
 }

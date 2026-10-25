@@ -63,12 +63,7 @@ import {
 	checkedUnmap,
 	samplerMaxLod,
 	checkedTexelWritePitch,
-	checkedDepthSlice,
-	checkedNoDepthSlice,
-	checkedPassExtent,
 	checkedResolveQuerySet,
-	checkedResolveTarget,
-	checkedSingleSubresource,
 	checkedTimestampWrites,
 	checkedWriteBuffer,
 	featureBit,
@@ -81,6 +76,8 @@ import {
 	firstInstanceRefusal,
 } from "../types.ms";
 import {
+	attachmentFactsOf,
+	AttachmentFacts,
 	checkedCopyRegion,
 	entryOf,
 	checkedViewRange,
@@ -1893,12 +1890,18 @@ function storeAction(storeOp: string, resolve: boolean, member: string): int32 {
 	};
 }
 
-export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+export function attachmentFacts(view: GPUTextureView): AttachmentFacts {
+	const v = views.slotIndex(view.id);
+	const t = textures.slotIndex(views.slots[v].texture);
+	return attachmentFactsOf(views.slots[v], textures.slots[t], formatInfo(textures.slots[t].format, "texture format").depth, views.slots[v].volumeTarget);
+}
+
+export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	if (descriptor.occlusionQuerySet.id != 0) {
 		checkedOcclusionSetKind(querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
 	}
-	pass = { width: 0 };
+	pass = { width: extent.width, height: extent.height };
 	beginFrame();
 	mtlPassReset();
 	clearBinds();
@@ -1906,20 +1909,9 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 		const viewId = descriptor.colorAttachments[i].view.id;
 		if (viewId == 0) { continue; }
 		const v = views.slotIndex(viewId);
-		const t = textures.slotIndex(views.slots[v].texture);
-		if (formatInfo(textures.slots[t].format, "texture format").depth || !has(textures.slots[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
-			stop(`colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`);
-		}
-		checkedSingleSubresource(`colorAttachments[${i}].view`, views.slots[v].attachable);
 		const slice = descriptor.colorAttachments[i].depthSlice;
-		if (views.slots[v].volumeTarget) {
-			checkedDepthSlice(i, slice, Math.max(1, textures.slots[t].layers >> views.slots[v].baseMip), views.slots[v].baseMip, textures.slots[t].id);
-		} else {
-			checkedNoDepthSlice(i, slice);
-		}
-		passExtent(v);
 		const resolveId = descriptor.colorAttachments[i].resolveTarget.id;
-		const resolve = resolveTexture(i, v, resolveId);
+		const resolve = resolveTexture(v, resolveId);
 		const r = resolveId == 0 ? v : views.slotIndex(resolveId);
 		if (views.slots[v].swapchain) { pass.screen = true; }
 		const color = descriptor.colorAttachments[i].clearValue;
@@ -1943,13 +1935,7 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	const depthView = descriptor.depthStencilAttachment.view.id;
 	if (depthView != 0) {
 		const v = views.slotIndex(depthView);
-		const t = textures.slotIndex(views.slots[v].texture);
-		const info = formatInfo(textures.slots[t].format, "depth format");
-		if (!info.depth || !has(textures.slots[t].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
-			stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT");
-		}
-		checkedSingleSubresource("depthStencilAttachment.view", views.slots[v].attachable);
-		passExtent(v);
+		const info = formatInfo(textures.slots[textures.slotIndex(views.slots[v].texture)].format, "depth format");
 		mtlPassDepth(
 			attachmentNative(v),
 			views.slots[v].baseMip,
@@ -1960,7 +1946,6 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 			info.stencil ? 1 : 0,
 		);
 	}
-	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	if (descriptor.timestampWrites.querySet.id != 0) {
 		const q = querySets.slotIndex(descriptor.timestampWrites.querySet.id);
 		mtlPassSamples(querySets.slots[q].samples, descriptor.timestampWrites.beginningOfPassWriteIndex, descriptor.timestampWrites.endOfPassWriteIndex);
@@ -1978,34 +1963,10 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	return { id: 1 };
 }
 
-function passExtent(v: int32): void {
-	const t = textures.slotIndex(views.slots[v].texture);
-	const width = Math.max(1, textures.slots[t].width >> views.slots[v].baseMip);
-	const height = Math.max(1, textures.slots[t].height >> views.slots[v].baseMip);
-	checkedPassExtent(pass.width, pass.height, width, height);
-	pass.width = width;
-	pass.height = height;
-}
-
-function resolveTexture(attachment: int32, colorView: int32, resolveId: uint32): Ptr<MtlTextureImpl> {
-	const colorTexture = textures.slotIndex(views.slots[colorView].texture);
+function resolveTexture(colorView: int32, resolveId: uint32): Ptr<MtlTextureImpl> {
 	if (views.slots[colorView].swapchain && resolveId == 0) { return views.slots[colorView].swapchainResolve; }
 	if (resolveId == 0) { return NO_TEXTURE; }
-	const r = views.slotIndex(resolveId);
-	const resolve = textures.slotIndex(views.slots[r].texture);
-	checkedSingleSubresource(`colorAttachments[${attachment}].resolveTarget`, views.slots[r].attachable);
-	checkedResolveTarget(
-		attachment,
-		textures.slots[colorTexture].sampleCount,
-		textures.slots[colorTexture].width,
-		textures.slots[colorTexture].height,
-		Math.max(1, textures.slots[resolve].width >> views.slots[r].baseMip),
-		Math.max(1, textures.slots[resolve].height >> views.slots[r].baseMip),
-	);
-	if (textures.slots[resolve].sampleCount != 1 || !has(textures.slots[resolve].usage, GPUTextureUsage.RENDER_ATTACHMENT as int32)) {
-		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample color RENDER_ATTACHMENT`);
-	}
-	return attachmentNative(r);
+	return attachmentNative(views.slotIndex(resolveId));
 }
 
 export function endPass(): void {

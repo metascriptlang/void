@@ -842,39 +842,49 @@ export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, l
 export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void { refuse(cubeViewRefusal(id, cubeCapable, baseLayer, layerCount)); }
 
 // `slices` is the depth of the 3d view's mip.
-@noinline export function checkedDepthSlice(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): void {
+export function depthSliceRefusal(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): string {
 	if (slice < 0 || slice >= slices) {
-		stop(`colorAttachments[${attachment}].depthSlice ${slice} is outside the ${slices} slices of mip ${baseMip} of GPUTexture ${textureId}`);
+		return `colorAttachments[${attachment}].depthSlice ${slice} is outside the ${slices} slices of mip ${baseMip} of GPUTexture ${textureId}`;
 	}
+	return "";
 }
 
-@noinline export function checkedNoDepthSlice(attachment: int32, slice: int32): void {
-	if (slice != 0) { stop(`colorAttachments[${attachment}].depthSlice ${slice} needs a 3d view`); }
+export function noDepthSliceRefusal(attachment: int32, slice: int32): string {
+	return slice != 0 ? `colorAttachments[${attachment}].depthSlice ${slice} needs a 3d view` : "";
 }
 
 // A pass width of 0 means no attachment has set the extent yet.
-@noinline export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void {
-	if (passWidth != 0 && (passWidth != width || passHeight != height)) { stop("render pass attachments differ in size"); }
+export function passExtentRefusal(passWidth: int32, passHeight: int32, width: int32, height: int32): string {
+	return passWidth != 0 && (passWidth != width || passHeight != height) ? "render pass attachments differ in size" : "";
 }
 
 // `member` is the attachment's field, such as `colorAttachments[0].view`.
-@noinline export function checkedSingleSubresource(member: string, attachable: boolean): void {
-	if (!attachable) { stop(`${member} spans several mips or layers: a render attachment is one mip of one layer`); }
+export function singleSubresourceRefusal(member: string, attachable: boolean): string {
+	return attachable ? "" : `${member} spans several mips or layers: a render attachment is one mip of one layer`;
 }
 
 // The sizes are the color view's and the resolve view's own mip.
-@noinline export function checkedResolveTarget(
+export function resolveTargetRefusal(
 	attachment: int32,
 	colorSamples: int32,
 	colorWidth: int32,
 	colorHeight: int32,
 	resolveWidth: int32,
 	resolveHeight: int32,
-): void {
-	if (colorSamples == 1) { stop(`colorAttachments[${attachment}].resolveTarget needs a multisampled view`); }
+): string {
+	if (colorSamples == 1) { return `colorAttachments[${attachment}].resolveTarget needs a multisampled view`; }
 	if (resolveWidth != colorWidth || resolveHeight != colorHeight) {
-		stop(`colorAttachments[${attachment}].resolveTarget differs in size from its multisampled view`);
+		return `colorAttachments[${attachment}].resolveTarget differs in size from its multisampled view`;
 	}
+	return "";
+}
+
+export function checkedNoDepthSlice(attachment: int32, slice: int32): void { refuse(noDepthSliceRefusal(attachment, slice)); }
+export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void { refuse(passExtentRefusal(passWidth, passHeight, width, height)); }
+export function checkedSingleSubresource(member: string, attachable: boolean): void { refuse(singleSubresourceRefusal(member, attachable)); }
+
+export function checkedResolveTarget(attachment: int32, colorSamples: int32, colorWidth: int32, colorHeight: int32, resolveWidth: int32, resolveHeight: int32): void {
+	refuse(resolveTargetRefusal(attachment, colorSamples, colorWidth, colorHeight, resolveWidth, resolveHeight));
 }
 
 @noinline export function checkedSamplerAnisotropy(maxAnisotropy: int32, allLinear: boolean): void {

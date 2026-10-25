@@ -39,11 +39,13 @@ import {
 	GPUTextureDescriptor,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPU_MAX_COLOR_ATTACHMENTS,
 	featureBit,
 } from "./types.ms";
 import {
 	PASS_COMPUTE,
 	PASS_RENDER,
+	RenderPassFacts,
 	attachOcclusionSet,
 	cacheLimits,
 	cachedLimits,
@@ -64,6 +66,7 @@ import {
 	checkedPopGroup,
 	checkedPushGroup,
 	checkedQuerySet,
+	checkedRenderPass,
 	checkedRenderPipeline,
 	checkedSampler,
 	checkedShaderModule,
@@ -202,7 +205,19 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function beginRenderPass(this self: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
 	checkedBeginPass(PASS_RENDER);
 	attachOcclusionSet(descriptor.occlusionQuerySet.id);
-	return backend.beginRenderPass(self, descriptor);
+	return backend.beginRenderPass(self, descriptor, checkedRenderPass(descriptor, renderPassFacts(descriptor)));
+}
+
+function renderPassFacts(descriptor: GPURenderPassDescriptor): RenderPassFacts {
+	let facts: RenderPassFacts = { depth: { texture: 0 } };
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		const attachment = descriptor.colorAttachments[i];
+		if (attachment.view.id != 0) { facts.colors[i] = backend.attachmentFacts(attachment.view); }
+		if (attachment.resolveTarget.id != 0) { facts.resolves[i] = backend.attachmentFacts(attachment.resolveTarget); }
+	}
+	const depth = descriptor.depthStencilAttachment.view;
+	if (depth.id != 0) { facts.depth = backend.attachmentFacts(depth); }
+	return facts;
 }
 
 @inline export function beginComputePass(this self: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
