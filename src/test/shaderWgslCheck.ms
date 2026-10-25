@@ -246,7 +246,7 @@ test "what WGSL cannot say is refused by name" {
 	assert refused(tiny(fragment, column(intrinsicOf(Intrinsic.Inverse, matrixType(4, 3),
 		[model()])))) == "printWgsl: inverse of a Matrix that is no square matrix";
 	assert refused(tiny(ShaderStage.Vertex, intrinsicOf(Intrinsic.Dpdx, VEC4,
-		[literal(VEC4, 1.0)]))) == "printWgsl: dpdx outside a fragment entry";
+		[literal(VEC4, 1.0)]))) == "printWgsl: entry 'tinyEntry': Dpdx outside a fragment entry";
 	assert refused(tiny(fragment, column(literal(MAT4, 1.0)))) ==
 		"printWgsl: a literal of a Matrix";
 	assert refused(tiny(fragment, literal(VEC4, 1.0 / 0.0))) ==
@@ -334,7 +334,7 @@ test "depth comparison is refused by name where it cannot print" {
 	assert refused(compared(ShaderStage.Vertex, LEVEL, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
-		"printWgsl: TextureSampleCompare outside a fragment entry";
+		"printWgsl: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
 	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
 		"printWgsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
 	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==

@@ -2,6 +2,9 @@
 // names each broken invariant.
 
 import { Node, NodeKind } from "std/meta";
+import { stageSource } from "../shader/descriptor";
+import { ShaderTarget } from "../shader/layout";
+import { VEC4, prepend, tiny } from "./shaderProbeModules";
 import {
 	Access,
 	AssignOp,
@@ -297,4 +300,43 @@ test "every reference names a declaration that exists" {
 	const errors = irErrors(m);
 	assert errors[0] == "function 'commandsToImage': resource 7 is out of range";
 	assert errors[1] == "entry 'commandsToImage': function 3 is out of range";
+}
+
+const STAGE_TARGETS = [ShaderTarget.Hlsl5, ShaderTarget.Wgsl, ShaderTarget.Glsl430, ShaderTarget.Msl];
+
+function refusedOn(m: ShaderModule, rule: string): boolean {
+	const named = "entry 'tinyEntry': " + rule;
+	if (!irErrors(m).includes(named)) { return false; }
+	for (const target of STAGE_TARGETS) {
+		const printed = stageSource(m, 0, target);
+		if (printed.ok || !printed.error.endsWith(": " + named)) { return false; }
+	}
+	return true;
+}
+
+test "a discard is a fragment entry's" {
+	let m = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
+	prepend(m.functions[0], stmtOf(StmtKind.Discard, new ShaderExpr(), []));
+	assert refusedOn(m, "Discard outside a fragment entry");
+}
+
+test "a derivative is a fragment entry's, also through a helper" {
+	let m = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
+	prepend(m.functions[0], stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.Dpdx, VEC4, [literal(VEC4, 1.0)]), []));
+	assert refusedOn(m, "Dpdx outside a fragment entry");
+
+	let helped = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
+	helped.functions.push(shaderFunction("slope", [], [stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.Fwidth, VEC4, [literal(VEC4, 1.0)]), []), ret()]));
+	prepend(helped.functions[0], stmtOf(StmtKind.Call, exprOf(ExprKind.Call, new ShaderType(), 1,
+		[]), []));
+	assert refusedOn(helped, "Fwidth outside a fragment entry");
+}
+
+test "a barrier is a compute entry's" {
+	let m = tiny(ShaderStage.Fragment, literal(VEC4, 0.0));
+	prepend(m.functions[0], stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.StorageBarrier, new ShaderType(), []), []));
+	assert refusedOn(m, "StorageBarrier outside a compute entry");
 }

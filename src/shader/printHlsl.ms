@@ -574,9 +574,6 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (e.intrinsic == Intrinsic.TextureSampleBias && p.stage != ShaderStage.Fragment) {
-		return fail(p, "TextureSampleBias outside a fragment stage");
-	}
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "float4(" :
 		"float3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
@@ -601,9 +598,6 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	if (texture.type.kind != ShaderTypeKind.Texture ||
 		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
-	}
-	if (!level && p.stage != ShaderStage.Fragment) {
-		return fail(p, name + " outside a fragment stage");
 	}
 	if (sampler.kind != ExprKind.Resource ||
 		p.module.resources[sampler.index].samplerType != SamplerType.Comparison) {
@@ -656,13 +650,6 @@ function intrinsicName(op: Intrinsic): string {
 	};
 }
 
-function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
-	if (p.stage != ShaderStage.Compute) {
-		return fail(p, e.intrinsic.toString() + " outside a compute entry");
-	}
-	return text;
-}
-
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	return match (e.intrinsic) {
@@ -683,8 +670,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			explicitSampleOf(p, e),
-		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "GroupMemoryBarrierWithGroupSync()"),
-		Intrinsic.StorageBarrier => computeOnly(p, e, "DeviceMemoryBarrierWithGroupSync()"),
+		Intrinsic.WorkgroupBarrier => "GroupMemoryBarrierWithGroupSync()",
+		Intrinsic.StorageBarrier => "DeviceMemoryBarrierWithGroupSync()",
 		_ => isAtomic(e.intrinsic) ? fail(p, e.intrinsic.toString() + " inside an expression or " +
 			"a for header: Interlocked* hands its result back through an out parameter, so an " +
 			"atomic is a statement or a local's initializer") :

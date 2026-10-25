@@ -315,7 +315,7 @@ test "a depth comparison GLSL cannot spell is refused by name" {
 	vertex.functions[0].body[1].expr.operands[2].operands[0].intrinsic =
 		Intrinsic.TextureSampleCompare;
 	assert refusal(vertex, 0, GlslTarget.Glsl430) ==
-		"printGlsl: TextureSampleCompare outside a fragment stage";
+		"printGlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
 
 	let filtering = depthModule();
 	filtering.resources[6].samplerType = SamplerType.Filtering;

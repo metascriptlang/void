@@ -350,10 +350,6 @@ function hasEffect(e: ShaderExpr): boolean {
 	return e.operands.some((o) => hasEffect(o));
 }
 
-function fragmentOnly(p: Printer, what: string): void {
-	if (p.stage != ShaderStage.Fragment) { fail(p, what + " outside a fragment entry"); }
-}
-
 function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
 	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
 }
@@ -398,7 +394,6 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (e.intrinsic == Intrinsic.TextureSampleBias) { fragmentOnly(p, "TextureSampleBias"); }
 	if (isComparisonSampler(p, o[1])) {
 		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
 			"depth reference");
@@ -429,7 +424,6 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
 			"layer, and a depth reference");
 	}
-	if (!level) { fragmentOnly(p, name); }
 	if (!isComparisonSampler(p, o[1])) {
 		return fail(p, name + " through a sampler that is no comparison sampler binding");
 	}
@@ -554,20 +548,10 @@ function inverseCall(p: Printer, e: ShaderExpr): string {
 	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
 }
 
-function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
-	if (p.stage != ShaderStage.Compute) {
-		return fail(p, e.intrinsic.toString() + " outside a compute entry");
-	}
-	return text;
-}
-
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
 	const name = builtinName(op);
-	if (op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth) {
-		fragmentOnly(p, name);
-	}
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
 	if (op == Intrinsic.UpperLeft3x3) { p.upperLeft = true; }
 	return match (op) {
@@ -587,8 +571,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			explicitSampleText(p, e),
 		Intrinsic.WorkgroupBarrier =>
-			computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_threadgroup)"),
-		Intrinsic.StorageBarrier => computeOnly(p, e, "threadgroup_barrier(mem_flags::mem_device)"),
+			"threadgroup_barrier(mem_flags::mem_threadgroup)",
+		Intrinsic.StorageBarrier => "threadgroup_barrier(mem_flags::mem_device)",
 		_ => isAtomic(op) ? atomicText(p, e) : fail(p, op.toString() + " has no MSL spelling"),
 	};
 }
@@ -777,10 +761,7 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 		StmtKind.Continue => emit(p, depth, "continue;"),
 		StmtKind.Return => emit(p, depth, isVoid(s.expr) ? "return;" :
 			"return " + exprText(p, s.expr) + ";"),
-		StmtKind.Discard => {
-			fragmentOnly(p, "discard");
-			emit(p, depth, "discard_fragment();");
-		},
+		StmtKind.Discard => emit(p, depth, "discard_fragment();"),
 	}
 }
 

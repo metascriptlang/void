@@ -395,20 +395,13 @@ function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
 	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
 }
 
-function fragmentOnly(p: Printer, what: string): void {
-	if (p.stage != ShaderStage.Fragment) {
-		refusal(p, what + " outside a fragment entry");
-	}
-	p.derivatives = true;
-}
-
 function isDepth(t: ShaderType): boolean {
 	return t.shape == TextureShape.Depth2d || t.shape == TextureShape.Depth2dArray ||
 		t.shape == TextureShape.DepthCube;
 }
 
 function biasText(p: Printer, o: ShaderExpr[]): string {
-	fragmentOnly(p, "TextureSampleBias");
+	p.derivatives = true;
 	return "textureSampleBias(" + argsText(p, o) + ")";
 }
 
@@ -421,7 +414,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
 			"a layer, and a depth reference");
 	}
-	if (!level) { fragmentOnly(p, name); }
+	if (!level) { p.derivatives = true; }
 	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
 	if (sampler === null || sampler.samplerType != SamplerType.Comparison) {
 		return refusal(p, name + " through a sampler that is no comparison sampler binding");
@@ -433,19 +426,12 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + argsText(p, o) + ")";
 }
 
-function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
-	if (p.stage != ShaderStage.Compute) {
-		return refusal(p, e.intrinsic.toString() + " outside a compute entry");
-	}
-	return text;
-}
-
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
 	const name = builtinName(op);
 	if (op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth) {
-		fragmentOnly(p, name);
+		p.derivatives = true;
 	}
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
 	if (op == Intrinsic.UpperLeft3x3) { p.upperLeft = true; }
@@ -471,8 +457,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleLevel => "textureSampleLevel(" + argsText(p, o) + ")",
 		Intrinsic.TextureSampleBias => biasText(p, o),
 		Intrinsic.TextureSampleGrad => "textureSampleGrad(" + argsText(p, o) + ")",
-		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "workgroupBarrier()"),
-		Intrinsic.StorageBarrier => computeOnly(p, e, "storageBarrier()"),
+		Intrinsic.WorkgroupBarrier => "workgroupBarrier()",
+		Intrinsic.StorageBarrier => "storageBarrier()",
 		_ => isAtomic(op) ? atomicText(p, e) : refusal(p, op.toString() + " has no WGSL spelling"),
 	};
 }

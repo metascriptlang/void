@@ -663,6 +663,44 @@ class Checker {
 	errors: string[] = [];
 	current: int32 = -1;
 	callees: int32[][] = [];
+	fragmentOnly: string[][] = [];
+	computeOnly: string[][] = [];
+}
+
+function isFragmentOnly(op: Intrinsic): boolean {
+	return op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth ||
+		op == Intrinsic.TextureSampleBias || op == Intrinsic.TextureSampleCompare;
+}
+
+function isComputeOnly(op: Intrinsic): boolean {
+	return op == Intrinsic.WorkgroupBarrier || op == Intrinsic.StorageBarrier;
+}
+
+function noted(list: string[], what: string): void {
+	if (!list.includes(what)) { list.push(what); }
+}
+
+function stageOnlyErrors(c: Checker, e: ShaderEntry, owner: string): void {
+	let reached = [e.functionIndex];
+	for (let k = 0; k < reached.length; k++) {
+		for (const callee of c.callees[reached[k]]) {
+			if (!reached.includes(callee)) { reached.push(callee); }
+		}
+	}
+	let refused: string[] = [];
+	for (const i of reached) {
+		if (e.stage != ShaderStage.Fragment) {
+			for (const what of c.fragmentOnly[i]) {
+				noted(refused, what + " outside a fragment entry");
+			}
+		}
+		if (e.stage != ShaderStage.Compute) {
+			for (const what of c.computeOnly[i]) {
+				noted(refused, what + " outside a compute entry");
+			}
+		}
+	}
+	for (const message of refused) { c.errors.push(owner + ": " + message); }
 }
 
 function conditionErrors(c: Checker, cond: FeatureCondition, owner: string): void {
@@ -694,6 +732,12 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 		ExprKind.Workgroup =>
 			inRange(c, e.index, m.workgroups.length as int32, "workgroup variable", owner),
 		_ => {},
+	}
+	if (e.kind == ExprKind.Intrinsic && isFragmentOnly(e.intrinsic)) {
+		noted(c.fragmentOnly[c.current], e.intrinsic.toString());
+	}
+	if (e.kind == ExprKind.Intrinsic && isComputeOnly(e.intrinsic)) {
+		noted(c.computeOnly[c.current], e.intrinsic.toString());
 	}
 	const shift = e.kind == ExprKind.Binary && isShift(e.binary);
 	if (shift && (e.operands.length != 2 || e.operands[1].type.scalar != ScalarKind.U32)) {
@@ -730,6 +774,7 @@ function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string)
 		inRange(c, s.local, f.locals.length as int32, "local", owner);
 	}
 	if (s.kind == StmtKind.FeatureIf) { conditionErrors(c, s.condition, owner); }
+	if (s.kind == StmtKind.Discard) { noted(c.fragmentOnly[c.current], "Discard"); }
 	for (const list of [s.init, s.update, s.body, s.otherwise]) {
 		for (const inner of list) { stmtErrors(c, inner, f, owner); }
 	}
@@ -810,6 +855,8 @@ export function irErrors(m: ShaderModule): string[] {
 		}
 	}
 	c.callees = m.functions.map((): int32[] => []);
+	c.fragmentOnly = m.functions.map((): string[] => []);
+	c.computeOnly = m.functions.map((): string[] => []);
 	for (let i = 0; i < m.functions.length; i++) {
 		const f = m.functions[i];
 		c.current = i;
@@ -847,6 +894,9 @@ export function irErrors(m: ShaderModule): string[] {
 	for (const e of m.entries) {
 		const owner = "entry '" + e.name + "'";
 		inRange(c, e.functionIndex, m.functions.length as int32, "function", owner);
+		if (e.functionIndex >= 0 && e.functionIndex < m.functions.length) {
+			stageOnlyErrors(c, e, owner);
+		}
 		stages.push(e.stage);
 		const outputs = m.ios.filter((io) => io.stage == e.stage &&
 			io.direction == IoDirection.Out);

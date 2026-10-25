@@ -277,7 +277,7 @@ test "a depth comparison HLSL cannot spell is refused by name" {
 	let vertex = depthModule();
 	vertex.functions[0].body[1].expr.operands[2].operands[0].intrinsic =
 		Intrinsic.TextureSampleCompare;
-	assert refusal(vertex, 0) == "printHlsl: TextureSampleCompare outside a fragment stage";
+	assert refusal(vertex, 0) == "printHlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
 
 	let filtering = depthModule();
 	filtering.resources[6].samplerType = SamplerType.Filtering;

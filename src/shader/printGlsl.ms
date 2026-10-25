@@ -537,9 +537,6 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (e.intrinsic == Intrinsic.TextureSampleBias && p.stage != ShaderStage.Fragment) {
-		return fail(p, "TextureSampleBias outside a fragment stage");
-	}
 	const pair = pairOf(p, o[0], o[1]);
 	if (isComparison(p, pair)) {
 		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
@@ -569,9 +566,6 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	if (texture.type.kind != ShaderTypeKind.Texture ||
 		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
-	}
-	if (!level && p.stage != ShaderStage.Fragment) {
-		return fail(p, name + " outside a fragment stage");
 	}
 	const pair = pairOf(p, texture, sampler);
 	if (!isComparison(p, pair)) {
@@ -658,20 +652,8 @@ function selectText(p: Printer, e: ShaderExpr): string {
 		operand(p, falseValue) + ")";
 }
 
-function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
-	if (p.stage != ShaderStage.Compute) {
-		return fail(p, e.intrinsic.toString() + " outside a compute entry");
-	}
-	return text;
-}
-
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
-	const derivative = e.intrinsic == Intrinsic.Dpdx || e.intrinsic == Intrinsic.Dpdy ||
-		e.intrinsic == Intrinsic.Fwidth;
-	if (derivative && p.stage != ShaderStage.Fragment) {
-		return fail(p, e.intrinsic.toString() + " outside a fragment stage");
-	}
 	return match (e.intrinsic) {
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", typeName(p, e.operands[0].type),
 			e.type),
@@ -696,8 +678,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			explicitSampleOf(p, e),
-		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "memoryBarrierShared(); barrier()"),
-		Intrinsic.StorageBarrier => computeOnly(p, e, "memoryBarrierBuffer(); barrier()"),
+		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
+		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
 		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,
 			"AtomicCompareExchangeWeak outside a " +
 			"local's initializer: atomicCompSwap returns only the old value"),
@@ -987,8 +969,7 @@ function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 		StmtKind.Continue => at + "continue;\n",
 		StmtKind.Return => isNone(s.expr) ? at + "return;\n" :
 			at + "return " + expr(p, s.expr) + ";\n",
-		StmtKind.Discard => p.stage == ShaderStage.Fragment ? at + "discard;\n" :
-			fail(p, "Discard outside a fragment stage"),
+		StmtKind.Discard => at + "discard;\n",
 	};
 }
 
