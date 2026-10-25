@@ -176,8 +176,9 @@ golden)
 samples)
 	buildApp tests/integration/viewSamples.ms VoidSamples dev.void.samples
 	for samples in 1 2 4 8; do
-		echo "$samples: $(launch dev.void.samples "{\"VOID_VIEW_SAMPLES\":\"$samples\"}" \
+		verdict="$(launch dev.void.samples "{\"VOID_VIEW_SAMPLES\":\"$samples\"}" \
 			| grep -E '^(PASS|FAIL)|not supported' | tr '\n' ' ')"
+		echo "$samples: ${verdict:-no verdict — unlock $model and keep it awake ($(grep -iom1 'unable to launch[^.]*' out/ios/launch.log || echo 'see out/ios/launch.log'))}"
 	done
 	;;
 *)
