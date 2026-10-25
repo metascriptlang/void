@@ -306,39 +306,64 @@ Concrete mechanisms, because the phrase on its own does nothing:
   shader declares agrees with the one the emitter writes; every shader `mode` is reachable
   from an emitter; production T1 scenes reach every `BreakReason` including view, effect and
   pipeline, while a target bracket reaches barrier; every command kind has a batch-break rule.
-- **The build trap is part of the gate.** `msc build` answers "Up to date" after a header that a compiled `.c` includes has changed, and the global object cache is keyed on the `.c` and not its includes — `--force` does not bypass it (`~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md`). Every shader regeneration hits this. The gate's first step, and `scripts/golden.sh` before each build, delete the output binaries and `out/{debug,release}/.cache`, and both set `MSC_NO_GLOBAL_CACHE=1`, msc's own opt-out, so no build of theirs reads or writes the machine-wide `~/.metascript/cache/objects`. A gate that silently tests the previous binary is worse than no gate. Until P3.5's land the gate deleted that machine-wide directory instead: it wiped every other session's objects, and while another session's `msc` wrote there the deletion failed with "Directory not empty" and the gate went RED.
+- **The build trap is closed in the compiler, not in the gate.** `msc` used to answer "Up to date" after a header that a compiled `.c` includes had changed, and its object cache was keyed on the `.c` alone (`~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md`), so the gates deleted every binary and `out/{debug,release}/.cache` and switched the machine-wide cache off. msc `32b8ce353` sees a change two includes deep, and a `--passC=-D` or `-d:` change, with the global cache on (probed 2026-10-26), so the gates keep the caches and the binaries: a cold all-off T0 had cost 11.2 min against 1.7 min warm. What still guards a stale binary is the build's own exit status: a check runs a program only after its build succeeded.
 
 ## The gate
 
-`scripts/gate.sh`, the first one this repo has had. Each step prints PASS, FAIL or SKIP
-**with a reason**; a SKIP is loud and counted, and nothing may report PASS for a backend it
-did not run — the conformance line for a backend is the comparator's own output, never a
-number typed into the script.
+`scripts/gate.sh` is the gate every land runs. `scripts/gate3d.sh` runs beside it when a change
+reaches void3d, never instead of it: it holds only what `gate.sh` does not, so the test index,
+the shader freshness check, `mixedFrame` and `targetOwner` run once, in `gate.sh`. Each step
+prints PASS, FAIL or SKIP **with a reason**; a SKIP is loud and counted, and nothing may report
+PASS for a backend it did not run — the conformance line for a backend is the comparator's own
+output, never a number typed into the script.
+
+Both gates and `scripts/golden.sh` export `VOID_QUIET_WINDOW=1`: every window they open is
+invisible, takes no focus and puts no icon in the Dock. Every section header prints the seconds
+since the gate started (`=== 3. T2 — golden images === at N s`), so what a section costs is
+read from the log.
 
 0. Name the compiler: `msc --version`, its path, and the `BUILD` file beside the binary. A gate
    that cannot name what it certified fails.
-1. Evict the caches (above): the output binaries and `out/{debug,release}/.cache`; the
-   machine-wide object cache is switched off for the run, not deleted.
-2. `msc test src/test/index.ms` — T0 and T1; then each `tests/isolated/*.ms` in a process of its
-   own, for a test that exhausts process-wide state (the glyph page table) and would starve the
-   tests after it. Then `msc test --target=js tests/js/targetCheck.ms` with every module flag off
-   and on: Void compiles on JS, and what needs C (decoding images, loading fonts) answers with a
-   named error there, because JS has no C to call.
-3. The demo entry builds.
-4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
+1. `msc test src/test/index.ms` — T0 and T1, with every module flag off and then on; then each
+   `tests/isolated/*.ms` in a process of its own, for a test that exhausts process-wide state
+   (the glyph page table) and would starve the tests after it. Then `msc test --target=js
+   tests/js/targetCheck.ms` with every module flag off and on: Void compiles on JS, and what needs
+   C (decoding images, loading fonts) answers with a named error there, because JS has no C to call.
+2. The demo entry builds and runs, then the integration programs, each with its named misuse
+   runs; `mixedFrame` with its controls and both registration orders.
+3. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
-   `tests/golden/compare.ms` judges all **82** against `tests/golden/d3d11/` and prints
-   `N px differ, max delta M, bbox` and a pass rate.
-5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet;
+   `tests/golden/compare.ms` judges every scene against `tests/golden/d3d11/` and prints
+   `N px differ, max delta M, bbox` and a pass rate. Then the bare build, every module flag off,
+   on D3D11 on Windows and on Metal on a Mac. A Mac has no D3D11, so there the D3D11 suite is
+   a SKIP that names the host.
+4. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet;
    then the shader modules' freshness (`regen-shaders.sh --check`) and every printed stage through
    fxc, naga and, on a Mac, `xcrun metal`, which also compiles the shader checks' `out/mslProbe/`;
    GLSL is a named SKIP, as is MSL off a Mac (docs/SHADER-IR.md "Validators").
-6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
-   reported with a warn threshold. Object-growth checks and linked wasm budget declarations
-   also gate; declaration validation does not re-link the measured entries.
-7. Guardrail 9: the D3D11 conformance line, then one named SKIP per backend that has no
-   readback. With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
+5. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
+   reported with a warn threshold; a bench program that does not build fails by name. Object-growth
+   checks and linked wasm budget declarations also gate; declaration validation does not re-link
+   the measured entries.
+6. Guardrail 9: the D3D11 and GL core conformance lines on Windows, the Metal line on a Mac, each
+   absent backend a SKIP that names the host, then one named SKIP per backend that has no readback.
+   With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
+7. The record against the code: `tests/record/check.ms`, the style checks, and the conformance
+   rows of this file against this run's logs (the D3D11 row is a SKIP on a Mac).
 8. The tier table, the PENDING count, and the SKIP and FAIL totals.
+
+Flags:
+
+- `--quick` skips the golden suites.
+- `--web` adds the two web builds, the WebGL2 goldens and the headless-Chrome liveness check.
+- `--window` runs `framePacing`, `macWindow`, `macWindowEscape` and `macWindowFps` in a visible,
+  focused window (`VOID_QUIET_WINDOW` unset for them). They need focus, vsync and real full
+  screen, which `macWindow` toggles, and flake about one run in four, so without the flag they
+  are one SKIP line. Pass it when a change touches `src/platform/macos/*`,
+  `src/sokol/bridgeEmbed.m`, `tests/capture/capture.c` or `src/gpu/gpuTimer.ms`.
+- `--ios` runs the Metal goldens and view samples on an attached iPhone or iPad
+  (`scripts/iosDevice.sh`); without it they are one SKIP line. The device must be paired and
+  unlocked, or every iOS line fails by name.
 
 `tests/integration/sceneTarget.ms` holds the caller-owned target boundary in a native process:
 prepared replay inside the 3D prepare phase, full-RGBA comparisons against direct screen replay,
@@ -348,7 +373,7 @@ unprepared, consumed, expired, open-pass, wrong-size/DPI, empty, closed/destroye
 foreign-context and non-Rgba8 targets; the same gate stage runs each mode in a separate process
 and requires both a nonzero exit and its diagnostic.
 
-`tests/integration/targetOwner.ms` holds the shared reference-owner lifecycle in both gates:
+`tests/integration/targetOwner.ms` holds the shared reference-owner lifecycle in `gate.sh`:
 real sampled pixels through a value holder after in-place resize, same-size storage reuse,
 exact image/view retirement on terminal close, and an independent owner's surviving pixels.
 Its older-epoch adoption and `targetPresetEpoch.ms`'s all-target preset rebuild are generation-write
@@ -370,11 +395,6 @@ consumers must be rejected by the missing identifiers. An unavailable compiler o
 header graph fails the positive control, not the negative pins. This is a published-header
 boundary, not a linker permission claim about C clients declaring private symbols themselves.
 
-Measured 2026-09-20: **GATE GREEN, 13 loud skips, about 40 seconds** on this box, starting
-from a tree with no `out/` directory at all.
-`--quick` skips the golden suite; `--web` adds the two web builds and the headless-Chrome
-liveness check.
-
 Green before every commit, as in rexa (`AGENTS.md:301-302`). A bug gets its regression case
 in the same change as the fix.
 
@@ -387,12 +407,12 @@ in the same change as the fix.
 | D3D11 | **120 / 120 scenes byte-identical** | every full gate, this box |
 | GL core 4.3 desktop (glsl430) | **120 / 120**: 94 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | **120 / 120** on an Apple GPU, 2026-10-23: 15 byte-identical, 87 within the cross-backend bound, 18 within their measured `@metal` budgets (`tests/PENDING.md`, delta 2 to 4 spread over many pixels with no shape moved). The readback is `doorReadScreen`, the door's swapchain copy, as on D3D11 and GL; it stops by name rather than wait behind a command buffer that is not committed | `sh scripts/golden.sh --backend metal`, and every full gate on a Mac |
-| Metal iOS | **120 / 120** on an iPhone 13 Pro (iOS 27.0.1) and an iPad Pro 12.9-inch 5th generation (iPadOS 26.6.1), 2026-10-24, BUILD `6b8655024`: the same verdict as Metal macOS (15 byte-identical, 87 within the bound, 18 within their `@metal` budgets). The two device sets are byte-identical to each other, and 116 of 120 to the Mac's (`prim/boxFills`, `dashedBorder`, `gradientOklab`, `textModes` differ, inside their bounds). Same `doorReadScreen` readback; on iOS the PNGs land in the app's Documents and are copied off with `devicectl` | `bash scripts/iosDevice.sh golden auto`, and every full gate on a Mac: it picks the first paired, reachable device (`VOID_IOS_DEVICE` names one, `VOID_IOS_PROFILE` a profile) and fails by name when there is none, the device is locked, or the install is refused |
+| Metal iOS | **120 / 120** on an iPhone 13 Pro (iOS 27.0.1) and an iPad Pro 12.9-inch 5th generation (iPadOS 26.6.1), 2026-10-24, BUILD `6b8655024`: the same verdict as Metal macOS (15 byte-identical, 87 within the bound, 18 within their `@metal` budgets). The two device sets are byte-identical to each other, and 116 of 120 to the Mac's (`prim/boxFills`, `dashedBorder`, `gradientOklab`, `textModes` differ, inside their bounds). Same `doorReadScreen` readback; on iOS the PNGs land in the app's Documents and are copied off with `devicectl` | `bash scripts/iosDevice.sh golden auto`, and the gate on a Mac with `--ios`: it picks the first paired, reachable device (`VOID_IOS_DEVICE` names one, `VOID_IOS_PROFILE` a profile) and fails by name when there is none, the device is locked, or the install is refused |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
 | WebGPU | no readback in the wasm build. P6. Headless Chrome does hand it the real adapter here (2026-10-20); liveness only, below | SKIP |
 | WebGL2 | **120 / 120**: 88 byte-identical, 32 within the cross-backend bound, 0 structural failures; measured 2026-10-19, BUILD `4fe2a5eec`, with the runner built on the same module defines as D3D11 (`scripts/goldenDefines.sh`). Before that the web runner carried only `voidProfiler`, so 37 scenes of the text, SVG, emoji and sprite modules failed for want of their module, not for WebGL2; `conformance:webgl2-pixel-centre` is deleted, its four scenes passing. ANGLE on D3D11 on the same GPU proves the GLSL ES path and GL conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web` |
 
-So guardrail 9 is a number now, and the number is **5 of 7 surfaces measured**; the full gate runs D3D11, GL core, Metal on macOS and Metal on iOS, and WebGL2 with `--web`. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
+So guardrail 9 is a number now, and the number is **5 of 7 surfaces measured**; the full gate runs D3D11 and GL core on Windows, Metal on macOS on a Mac, Metal on iOS with `--ios`, and WebGL2 with `--web`. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
 for WebGPU today is liveness, not conformance: `scripts/webPresent.mjs` loads a built page in
 headless Chrome over DevTools, counts the frames it presents (WebGPU: a rAF tick that took the
 canvas texture and submitted; WebGL2: a draw or clear on the default framebuffer), and screenshots
@@ -441,7 +461,7 @@ the missing piece is the readback and not the driver:
 The comparator does not change: `tests/golden/compare.ms` reads two PNGs and knows nothing
 about where they came from.
 
-**Cadence**, because not every backend is on this machine: D3D11 runs in every gate, WebGL2 with `--web` since P3, and WebGPU once it has a readback (P6). Metal on macOS and iOS devices runs in every full gate on a Mac, with a device attached; GLES3 on the Android device runs **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
+**Cadence**, because not every backend is on this machine: D3D11 runs in every gate, WebGL2 with `--web` since P3, and WebGPU once it has a readback (P6). Metal on macOS runs in every full gate on a Mac, and on iOS devices in a gate with `--ios`; GLES3 on the Android device runs **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
 
 **Cross-backend tolerance is not the same as within-backend tolerance.** Different GPUs round rasterization and interpolation differently. The starting bound is: delta ≤ 1 ignored, fail at max delta ≥ 4 or above 0.05% of pixels at delta 2–3; every scene that cannot meet it gets a PENDING entry naming the backend and the cause. A scene that differs **structurally** between backends — a glyph one pixel over, a border one device pixel wide instead of two, a gradient banded on one backend and dithered on another — is not a tolerance question and never gets a budget. That is the class of bug guardrail 9 exists to catch, and it is the class that hand-ported shaders produce in all three references (GPUI's gradients and dither, Ghostty's cursor colour, Makepad's `modf` — VOID2D.md "Frame shape").
 
