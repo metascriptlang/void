@@ -33,14 +33,26 @@ static int s_reqH = 0;
 
 static int s_generation = 1;
 static int s_contextLost = 0;
+static int s_deviceRemoved = 0;
+
+enum { REMOVAL_NONE, REMOVAL_RECOVER, REMOVAL_FATAL };
+int32_t voidD3d11RemovalAction(int32_t hr);
 
 static void setupViewsGfx(void);
 
 int voidGpuGeneration(void) { return s_generation; }
 void voidLoseContext(void) { s_contextLost = 1; }
 
+#if defined(VOID_D3D11)
+static void recreateWindowDevice(void);
+#endif
+
 static void restoreContext(void) {
 	doorShutdown();
+#if defined(VOID_D3D11)
+	if (s_deviceRemoved) recreateWindowDevice();
+#endif
+	s_deviceRemoved = 0;
 	if (s_driver == DRIVER_WINDOW) voidWindowDoorSetup();
 	else setupViewsGfx();
 	s_generation++;
@@ -233,6 +245,21 @@ static IDXGIFactory2 *s_factory;
 static int s_doorSamples;
 static bool s_doorDepth;
 
+static void deviceRemoved(const char *what, HRESULT hr) {
+	if (voidD3d11RemovalAction((int32_t)hr) == REMOVAL_NONE) voidFail("%s failed: 0x%08lx", what, (unsigned long)hr);
+	HRESULT reason = ID3D11Device_GetDeviceRemovedReason(s_device);
+	if (voidD3d11RemovalAction((int32_t)reason) != REMOVAL_RECOVER) {
+		voidFail("%s failed: 0x%08lx, the device was removed for 0x%08lx, which Void does not recover from",
+			what, (unsigned long)hr, (unsigned long)reason);
+	}
+	if (s_driver != DRIVER_WINDOW) {
+		voidFail("%s failed: 0x%08lx, the device was removed for 0x%08lx and host views cannot rebuild their swap chains",
+			what, (unsigned long)hr, (unsigned long)reason);
+	}
+	s_deviceRemoved = 1;
+	s_contextLost = 1;
+}
+
 void *voidD3d11Device(void) { return s_device; }
 void *voidD3d11Context(void) { return s_context; }
 
@@ -391,7 +418,7 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 	s->w = w;
 	s->h = h;
 	HRESULT hr = IDXGISwapChain1_ResizeBuffers(s->swapChain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, VOID_SWAP_FLAGS);
-	if (FAILED(hr)) voidFail("ResizeBuffers to %dx%d failed: 0x%08lx", w, h, (unsigned long)hr);
+	if (FAILED(hr)) deviceRemoved("IDXGISwapChain1::ResizeBuffers", hr);
 	makeTarget(s);
 }
 
@@ -406,7 +433,7 @@ int voidPlatformSurfaceAcquire(void *surface) {
 void voidPlatformSurfacePresent(void *surface) {
 	((WinSurface *)surface)->admitted = false;
 	HRESULT hr = IDXGISwapChain1_Present(((WinSurface *)surface)->swapChain, 1, 0);
-	if (FAILED(hr)) voidFail("IDXGISwapChain1::Present failed: 0x%08lx", (unsigned long)hr);
+	if (FAILED(hr)) deviceRemoved("IDXGISwapChain1::Present", hr);
 }
 
 void voidPlatformSurfaceDestroy(void *surface) {
@@ -468,17 +495,22 @@ void voidWindowPresent(bool modal) {
 	s_window.admitted = false;
 	HRESULT hr = modal ? IDXGISwapChain1_Present(s_window.swapChain, 0, DXGI_PRESENT_DO_NOT_WAIT)
 		: IDXGISwapChain1_Present(s_window.swapChain, 1, 0);
-	if (FAILED(hr) && hr != DXGI_ERROR_WAS_STILL_DRAWING) {
-		voidFail("IDXGISwapChain1::Present failed: 0x%08lx", (unsigned long)hr);
-	}
+	if (FAILED(hr) && hr != DXGI_ERROR_WAS_STILL_DRAWING) deviceRemoved("IDXGISwapChain1::Present", hr);
 }
 
 void voidWindowSurfaceDestroy(void) {
 	releaseTargets(&s_window);
+	CloseHandle(s_window.frameLatency);
 	IDXGISwapChain1_Release(s_window.swapChain);
 	IDXGIFactory2_Release(s_factory);
 	ID3D11DeviceContext_Release(s_context);
 	ID3D11Device_Release(s_device);
+}
+
+static void recreateWindowDevice(void) {
+	int samples = s_window.samples;
+	voidWindowSurfaceDestroy();
+	voidWindowSurfaceCreate(voidWin32Hwnd(), samples);
 }
 
 void *voidWindowSwapChain(void) { return s_window.swapChain; }
