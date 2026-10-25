@@ -60,6 +60,7 @@ import {
 	querySetRecords,
 	record,
 	textureRecords,
+	viewRecords,
 } from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
@@ -762,9 +763,14 @@ export function sampledViewRefusal(binding: int32, textureIsSampled: boolean): s
 	return textureIsSampled ? "" : `bind group entry ${binding}: the view's texture lacks TEXTURE_BINDING`;
 }
 
-export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mipCount: int32): string {
+export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mipCount: int32, declared: GPUTextureFormat, actual: GPUTextureFormat): string {
 	if (!textureIsStorage) { return `bind group entry ${binding}: the view's texture lacks STORAGE_BINDING`; }
 	if (mipCount != 1) { return `bind group entry ${binding}: a storage texture view takes exactly one mip`; }
+	const expected: string = declared;
+	const format: string = actual;
+	if (expected != "" && expected != format) {
+		return `bind group entry ${binding}: the shader declares storage format '${expected}' and the view's texture is '${format}'`;
+	}
 	return "";
 }
 
@@ -779,7 +785,11 @@ export function checkedStorageEntry(entry: GPUBindGroupEntry, bufferIsStorage: b
 }
 
 export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }
-export function checkedStorageView(binding: int32, textureIsStorage: boolean, mipCount: int32): void { refuse(storageViewRefusal(binding, textureIsStorage, mipCount)); }
+export function checkedStorageView(binding: int32, v: int32, declared: GPUTextureFormat): void {
+	const texture = textureRecords.record(viewRecords.slots[v].texture);
+	const storage = (texture.usage & (GPUTextureUsage.STORAGE_BINDING as int32)) != 0;
+	refuse(storageViewRefusal(binding, storage, viewRecords.slots[v].mipCount, declared, texture.format));
+}
 
 export function checkedCopyRegion<T>(member: string, texture: T, info: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	checkedTexelCopyRegion(member, texture.id, texture.width, texture.height, texture.mipLevels, texture.layers, texture.volume, info, size);

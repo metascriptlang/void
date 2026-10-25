@@ -2009,16 +2009,11 @@ function resourceOf(shader: int32, group: int32, binding: int32, kind: BindingKi
 
 @noinline function checkStorageView(entry: GPUBindGroupEntry, v: int32, resource: ResourceBinding): void {
 	const t = textureRecords.slotIndex(viewRecords.slots[v].texture);
-	checkedStorageView(entry.binding, has(textureRecords.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32), viewRecords.slots[v].mipCount);
+	checkedStorageView(entry.binding, v, resource.storageFormat);
 	const dimension = views[v].dimension;
 	const whole = dimension == ViewDimension.ThreeD || (viewRecords.slots[v].baseLayer == 0 && viewRecords.slots[v].layerCount == textureRecords.slots[t].layers);
 	if (dimension != ViewDimension.TwoD && !whole) {
 		stop(`bind group entry ${entry.binding}: a ${viewDimensionName(dimension)} storage view must cover the whole GPUTexture on gl, because glBindImageTexture binds one layer or all of them`);
-	}
-	const expected: string = resource.storageFormat;
-	const actual: string = textureRecords.slots[t].format;
-	if (expected != "" && expected != actual) {
-		stop(`bind group entry ${entry.binding}: the shader declares storage format '${expected}' and the view's texture is '${actual}'`);
 	}
 }
 

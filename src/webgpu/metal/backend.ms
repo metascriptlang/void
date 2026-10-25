@@ -366,6 +366,7 @@ struct NativeBinding {
 	writable: boolean;
 	nativeSlot: int32;
 	size: int32;
+	storageFormat: GPUTextureFormat;
 }
 
 struct ShaderSlot {
@@ -1285,6 +1286,7 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 			writable: bindingWritable(descriptor.bindings[i]),
 			nativeSlot: descriptor.bindings[i].nativeSlot,
 			size: descriptor.bindings[i].size,
+			storageFormat: descriptor.bindings[i].storageFormat,
 		};
 		checkBinding(native);
 		if (native.kind == BindingKind.Uniform) {
@@ -1558,7 +1560,7 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 			return;
 		}
 		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
-			checkedStorageView(entry.binding, has(textureRecords.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32), viewRecords.slots[v].mipCount);
+			checkedStorageView(entry.binding, v, shaders[shader].resources[r].storageFormat);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);

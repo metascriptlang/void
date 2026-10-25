@@ -719,13 +719,7 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 		}
 		const r = resourceOf(shader, group, entry.binding, BindingKind.StorageTexture);
 		if (r >= 0) {
-			const storage = has(textureRecords.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32);
-			checkedStorageView(entry.binding, storage, viewRecords.slots[v].mipCount);
-			const expected: string = shaders[shader].resources[r].storageFormat;
-			const actual: string = textureRecords.slots[t].format;
-			if (expected != "" && expected != actual) {
-				stop(`bind group entry ${entry.binding}: the shader declares storage format '${expected}' and the view's texture is '${actual}'`);
-			}
+			checkedStorageView(entry.binding, v, shaders[shader].resources[r].storageFormat);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);

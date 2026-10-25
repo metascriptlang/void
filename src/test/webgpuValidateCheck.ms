@@ -9,6 +9,7 @@ import {
 	GPUQuerySetDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUSamplerDescriptor,
+	GPUShaderBinding,
 	GPUShaderModuleDescriptor,
 	GPUShaderStage,
 	GPUSupportedLimits,
@@ -743,9 +744,12 @@ test "a storage entry is a positive multiple of 4 bytes inside a STORAGE buffer,
 test "a texture view binds as a sampled texture or a one-mip storage texture only if its texture allows it" {
 	assert sampledViewRefusal(3, true) == "";
 	assert sampledViewRefusal(3, false) == "bind group entry 3: the view's texture lacks TEXTURE_BINDING";
-	assert storageViewRefusal(3, true, 1) == "";
-	assert storageViewRefusal(3, false, 1) == "bind group entry 3: the view's texture lacks STORAGE_BINDING";
-	assert storageViewRefusal(3, true, 2) == "bind group entry 3: a storage texture view takes exactly one mip";
+	assert storageViewRefusal(3, true, 1, "rgba8unorm", "rgba8unorm") == "";
+	assert storageViewRefusal(3, false, 1, "rgba8unorm", "rgba8unorm") == "bind group entry 3: the view's texture lacks STORAGE_BINDING";
+	assert storageViewRefusal(3, true, 2, "rgba8unorm", "rgba8unorm") == "bind group entry 3: a storage texture view takes exactly one mip";
+	assert storageViewRefusal(3, true, 1, "r32float", "rgba8unorm") == "bind group entry 3: the shader declares storage format 'r32float' and the view's texture is 'rgba8unorm'";
+	const undeclared: GPUShaderBinding = { kind: "storage-texture" };
+	assert storageViewRefusal(3, true, 1, undeclared.storageFormat, "rgba8unorm") == "";
 }
 
 function colorTarget(width: int32, height: int32, sampleCount: int32): AttachmentFacts {

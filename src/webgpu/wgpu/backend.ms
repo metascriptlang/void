@@ -446,6 +446,7 @@ struct ShaderBinding {
 	viewDimension: int32;
 	storageFormat: int32;
 	size: int32;
+	format: GPUTextureFormat;
 }
 
 struct ShaderSlot {
@@ -1310,6 +1311,7 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 			viewDimension: bindingViewDimension(descriptor.bindings[i].viewDimension),
 			storageFormat: kind == BindingKind.StorageTexture ? storageFormatOf(descriptor.bindings[i].storageFormat, "GPUShaderBinding.storageFormat") : 0,
 			size: descriptor.bindings[i].size,
+			format: descriptor.bindings[i].storageFormat,
 		};
 		checkBinding(native, descriptor.bindings[i].group);
 		if (kind == BindingKind.Uniform) {
@@ -1642,14 +1644,10 @@ function storageEntrySize(shader: int32, group: int32, entry: GPUBindGroupEntry)
 }
 
 function storageView(shader: int32, r: int32, v: int32, binding: int32): Ptr<WgViewImpl> {
-	const t = textureRecords.slotIndex(viewRecords.slots[v].texture);
-	checkedStorageView(binding, has(textureRecords.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32), viewRecords.slots[v].mipCount);
 	const expected = shaders[shader].resources[r];
+	checkedStorageView(binding, v, expected.format);
 	if (views[v].dimension != expected.viewDimension) {
 		stop(`bind group entry ${binding}: the view dimension ${views[v].dimension} differs from the shader's ${expected.viewDimension}`);
-	}
-	if (textures[t].info.native != expected.storageFormat) {
-		stop(`bind group entry ${binding}: the texture format '${textureRecords.slots[t].format}' differs from the shader's storage format`);
 	}
 	return views[v].native;
 }
