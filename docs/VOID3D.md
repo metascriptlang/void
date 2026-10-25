@@ -6107,7 +6107,7 @@ and the lit share averaged, so the opacity mix is unchanged.
   two, the worst-case diagonal. The sun's texel is its cascade's, its world size read off the
   cascade matrix's scale (`cascadeShadow.ms` `cascadeReceiverOf`); the cube's is a 90-degree
   face's, 2 / size, times the receiver's distance to the light (`cubeShadowAt`); the spot's is
-  2 / (size · its projection's y scale), Bevy's 2·tan(half angle) / size, times the distance to
+  2 / (size Â· its projection's y scale), Bevy's 2Â·tan(half angle) / size, times the distance to
   the spot, whose position rides beside the bias (`SHADOW_SPOT_NORMAL_BIAS`, `spotShadowAt`).
   The sun and the cube took one free slot each; the spot's part grew from 20 to 24 floats.
   Bevy's `shadow_depth_bias` is not taken; the depth bias stays Heaps'. Pinned on the CPU by
