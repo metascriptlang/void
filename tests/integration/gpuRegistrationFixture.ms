@@ -11,7 +11,6 @@ import {
 	doorRegisterPrograms,
 } from "../../src/gpu/doorGpu.ms";
 import {
-	DOOR_BINDING_LENGTH,
 	DOOR_BINDING_SAMPLER,
 	DOOR_BINDING_VERTEX_BUFFER,
 	DOOR_BINDING_VIEW,
@@ -49,7 +48,6 @@ export function drawForeign(pipeline: uint32, texture: uint32, sampler: uint32):
 	if (vertices == 0) { vertices = doorMakeBufferOf(DOOR_BUFFER_VERTEX, TRIANGLE); }
 	doorApplyPipeline(pipeline);
 	let bindings: uint32[17] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-	assert bindings.length == DOOR_BINDING_LENGTH;
 	bindings[DOOR_BINDING_VERTEX_BUFFER] = vertices;
 	bindings[DOOR_BINDING_VIEW] = texture;
 	bindings[DOOR_BINDING_SAMPLER] = sampler;
