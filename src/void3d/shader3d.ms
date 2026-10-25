@@ -1548,8 +1548,9 @@ export function pbrEnvironmentLight(
 }
 
 // Heaps' Parallax (h3d/shader/Parallax.hx) at PbrMaterial's steps, 6 to 24, reading the height
-// from the pbr-maps texture's alpha as PbrMaterial hands it its props texture. The tangent basis is
-// mappedNormal's, so the steps and the mapped normal agree on the bitangent's sign.
+// from the pbr-maps texture's alpha as PbrMaterial hands it its props texture. Its bitangent is
+// n x t where NormalMap's is n x t * -w, so it is mappedNormal's negated: the tangent's w still
+// turns it on a mirrored island, where Heaps leaves that to invertBasis.
 export function parallaxUv(
 	b: LitBindings,
 	uv: Vec2f,
@@ -1560,7 +1561,7 @@ export function parallaxUv(
 ): Vec2f {
 	const t = normalize(tangent.xyz);
 	const sign: float32 = tangent.w < 0.0 ? -1.0 : 1.0;
-	const bitangent = normalize(cross(normal, t)) * sign;
+	const bitangent = normalize(cross(normal, t)) * -sign;
 	const viewNs = normalize(vec3f(dot(view, t), dot(view, bitangent), dot(view, normal)));
 	const layers = mix(24.0, 6.0, clamp(abs(viewNs.z), 0.0, 1.0));
 	const layerDepth = 1.0 / layers;

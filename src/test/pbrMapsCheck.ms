@@ -257,10 +257,10 @@ test "parallax moves the uv along the view to the depth under 1 minus alpha, as 
 	assert nearUv(steppedUv(0.0, vec3f(0.0, 0.0, 1.0), 1.0), vec2f(0.5, 0.5));
 }
 
-test "the tangent's w turns the bitangent, as the normal map's basis does" {
+test "the tangent's w turns the bitangent, the normal map's negated as Heaps' Parallax has it" {
 	const along: Vec3f = vec3f(0.0, 0.6, 0.8);
-	assert nearUv(steppedUv(0.5, along, 1.0), vec2f(0.5, 0.5 - 0.0375));
-	assert nearUv(steppedUv(0.5, along, -1.0), vec2f(0.5, 0.5 + 0.0375));
+	assert nearUv(steppedUv(0.5, along, 1.0), vec2f(0.5, 0.5 + 0.0375));
+	assert nearUv(steppedUv(0.5, along, -1.0), vec2f(0.5, 0.5 - 0.0375));
 }
 
 function tangentColor(b: LitBindings, uv: Vec2f, key: LitKey): Vec3f {

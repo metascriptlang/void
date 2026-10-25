@@ -696,6 +696,7 @@ layout(binding=5) uniform shadowParams {
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;
+    vec4 cubeRange;
 };
 #endif
 #ifdef SHADOWED
@@ -1262,6 +1263,7 @@ layout(binding=5) uniform shadowParams {
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;
+    vec4 cubeRange;
 };
 #endif
 #ifdef SHADOWED

@@ -1043,6 +1043,7 @@ layout(binding=5) uniform shadowParams {
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;
+    vec4 cubeRange;
 };
 #ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
@@ -1459,14 +1460,21 @@ int cubeFaceOf(vec3 toPosition) {
     return (toPosition.z > 0.0) ? 4 : 5;
 }
 float cubeTapAt(vec3 position) {
-    int face = cubeFaceOf((position - cubeLight.xyz));
+    vec3 toPosition = position - cubeLight.xyz;
+    int face = cubeFaceOf(toPosition);
     vec4 p = mapCoord(position, cubeMatrices[face]);
     if (p.w < 0.5) {
         return 1.0;
     }
     int size = int(cubeShadow.z + 0.5);
     float depth = texelFetch(sampler2DArray(cubeShadowMap, spotShadowSampler), ivec3(pcfTexelOf(p, size, vec2(0.0)), face), 0).x;
-    return mapLit(p.z, depth, cubeShadow.x, cubeShadow.y);
+    float near = cubeRange.x;
+    float far = cubeRange.y;
+    vec3 axes = abs(toPosition);
+    float axis = max(axes.x, max(axes.y, axes.z));
+    float distance_1 = length(toPosition);
+    float stored = ((near * far) / (far - (depth * (far - near)))) * (distance_1 / axis);
+    return mapLit((distance_1 / far), (stored / far), (cubeShadow.x / far), cubeShadow.y);
 }
 const int CUBE_PCF_SAMPLES = 20;
 const vec3[20] CUBE_PCF_OFFSETS = vec3[20](vec3(1.0, 1.0, 1.0), vec3(1.0, -1.0, 1.0), vec3(-1.0, -1.0, 1.0), vec3(-1.0, 1.0, 1.0), vec3(1.0, 1.0, -1.0), vec3(1.0, -1.0, -1.0), vec3(-1.0, -1.0, -1.0), vec3(-1.0, 1.0, -1.0), vec3(1.0, 1.0, 0.0), vec3(1.0, -1.0, 0.0), vec3(-1.0, -1.0, 0.0), vec3(-1.0, 1.0, 0.0), vec3(1.0, 0.0, 1.0), vec3(-1.0, 0.0, 1.0), vec3(1.0, 0.0, -1.0), vec3(-1.0, 0.0, -1.0), vec3(0.0, 1.0, 1.0), vec3(0.0, -1.0, 1.0), vec3(0.0, -1.0, -1.0), vec3(0.0, 1.0, -1.0));
@@ -2053,6 +2061,7 @@ layout(binding=5) uniform shadowParams {
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;
+    vec4 cubeRange;
 };
 #ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
@@ -2188,7 +2197,7 @@ vec4 uvMotionOf() {
 vec2 parallaxUv(vec2 uv, vec3 view, vec3 normal_1, vec4 tangent, float amount) {
     vec3 t = normalize(tangent.xyz);
     float sign_1 = (tangent.w < 0.0) ? -1.0 : 1.0;
-    vec3 bitangent = normalize(cross(normal_1, t)) * sign_1;
+    vec3 bitangent = normalize(cross(normal_1, t)) * (-sign_1);
     vec3 viewNs = normalize(vec3(dot(view, t), dot(view, bitangent), dot(view, normal_1)));
     float layers = mix(24.0, 6.0, clamp(abs(viewNs.z), 0.0, 1.0));
     float layerDepth = 1.0 / layers;
@@ -2620,14 +2629,21 @@ int cubeFaceOf(vec3 toPosition) {
     return (toPosition.z > 0.0) ? 4 : 5;
 }
 float cubeTapAt(vec3 position) {
-    int face = cubeFaceOf((position - cubeLight.xyz));
+    vec3 toPosition = position - cubeLight.xyz;
+    int face = cubeFaceOf(toPosition);
     vec4 p = mapCoord(position, cubeMatrices[face]);
     if (p.w < 0.5) {
         return 1.0;
     }
     int size = int(cubeShadow.z + 0.5);
     float depth = texelFetch(sampler2DArray(cubeShadowMap, spotShadowSampler), ivec3(pcfTexelOf(p, size, vec2(0.0)), face), 0).x;
-    return mapLit(p.z, depth, cubeShadow.x, cubeShadow.y);
+    float near = cubeRange.x;
+    float far = cubeRange.y;
+    vec3 axes = abs(toPosition);
+    float axis = max(axes.x, max(axes.y, axes.z));
+    float distance_1 = length(toPosition);
+    float stored = ((near * far) / (far - (depth * (far - near)))) * (distance_1 / axis);
+    return mapLit((distance_1 / far), (stored / far), (cubeShadow.x / far), cubeShadow.y);
 }
 const int CUBE_PCF_SAMPLES = 20;
 const vec3[20] CUBE_PCF_OFFSETS = vec3[20](vec3(1.0, 1.0, 1.0), vec3(1.0, -1.0, 1.0), vec3(-1.0, -1.0, 1.0), vec3(-1.0, 1.0, 1.0), vec3(1.0, 1.0, -1.0), vec3(1.0, -1.0, -1.0), vec3(-1.0, -1.0, -1.0), vec3(-1.0, 1.0, -1.0), vec3(1.0, 1.0, 0.0), vec3(1.0, -1.0, 0.0), vec3(-1.0, -1.0, 0.0), vec3(-1.0, 1.0, 0.0), vec3(1.0, 0.0, 1.0), vec3(-1.0, 0.0, 1.0), vec3(1.0, 0.0, -1.0), vec3(-1.0, 0.0, -1.0), vec3(0.0, 1.0, 1.0), vec3(0.0, -1.0, 1.0), vec3(0.0, -1.0, -1.0), vec3(0.0, 1.0, -1.0));
