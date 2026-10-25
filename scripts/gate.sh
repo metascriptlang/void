@@ -748,21 +748,31 @@ if "$MSC" build tests/integration/viewSamples.ms --output=out/viewSamples.exe > 
 else
 	fail "tests/integration/viewSamples.ms does not build — see out/gate-view-samples.log"
 fi
-for program in tests/aborts/*.ms; do
+for program in tests/aborts/cases/*.ms; do
 	name=$(basename "$program" .ms)
-	expected=$(sed -n '1s#^// expect: ##p' "$program")
-	flags=$(sed -n '2s#^// flags: ##p' "$program")
-	log="out/gate-abort-$name.log"
-	status=0
+	flags=$(sed -n 's#^// flags: ##p' "$program" | tr -d '\r')
+	cases=$(sed -n 's#^// expect \([A-Za-z0-9_.]*\): .*#\1#p' "$program" | tr -d '\r')
+	if [ -z "$cases" ]; then
+		fail "aborts: $name names no case"
+		continue
+	fi
 	rm -f "out/abort-$name.exe"
 	# shellcheck disable=SC2086
-	"$MSC" build $flags "$program" --output="out/abort-$name.exe" > "$log" 2>&1 || true
-	"out/abort-$name.exe" >> "$log" 2>&1 || status=$?
-	if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
-		pass "$name stops and says: $expected"
-	else
-		fail "$name did not stop with '$expected' (exit $status) — see $log"
+	if ! "$MSC" build $flags "$program" --output="out/abort-$name.exe" > "out/gate-abort-$name.build.log" 2>&1; then
+		fail "aborts: $name does not build — see out/gate-abort-$name.build.log"
+		continue
 	fi
+	for case in $cases; do
+		expected=$(sed -n "s#^// expect $case: ##p" "$program" | tr -d '\r')
+		log="out/gate-abort-$name-$case.log"
+		status=0
+		"out/abort-$name.exe" "$case" > "$log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
+			pass "$case stops and says: $expected"
+		else
+			fail "$case did not stop with '$expected' (exit $status) — see $log"
+		fi
+	done
 done
 
 root=$(pwd -W 2>/dev/null || pwd)
