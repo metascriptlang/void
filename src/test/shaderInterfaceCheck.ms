@@ -199,12 +199,8 @@ function layeredFs(b: LayeredBindings): Vec4f {
 
 test "an array or cube texture carries the sample type its field declares" {
 	const source: string = glsl(layeredFs);
-	assert source.includes("@image_sample_type layers unfilterable_float
-" +
-		"layout(binding=4) uniform texture2DArray layers;
-");
-	assert source.includes("@image_sample_type faces unfilterable_float
-" +
-		"layout(binding=6) uniform textureCube faces;
-");
+	assert source.includes("@image_sample_type layers unfilterable_float\n" +
+		"layout(binding=4) uniform texture2DArray layers;\n");
+	assert source.includes("@image_sample_type faces unfilterable_float\n" +
+		"layout(binding=6) uniform textureCube faces;\n");
 }
