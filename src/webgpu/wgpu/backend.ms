@@ -1,4 +1,6 @@
 import {
+	BindingKind,
+	bindingKind,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_SHADER_BINDINGS,
@@ -409,14 +411,6 @@ const NO_VIEW = null as unknown as Ptr<WgViewImpl>;
 const NO_SAMPLER = null as unknown as Ptr<WgSamplerImpl>;
 const NO_BIND_GROUP = null as unknown as Ptr<WgBindGroupImpl>;
 const NO_QUERY_SET = null as unknown as Ptr<WgQuerySetImpl>;
-
-enum BindingKind {
-	Uniform,
-	Texture,
-	Sampler,
-	StorageBuffer,
-	StorageTexture,
-}
 
 struct FormatInfo {
 	native: int32;
@@ -829,17 +823,6 @@ function storeOp(op: string, index: int32, field: string): int32 {
 		"store" => STORE_STORE,
 		"discard" => STORE_DISCARD,
 		_ => stopOnMember(attachmentMember(index, field), op),
-	};
-}
-
-function bindingKind(kind: string): BindingKind {
-	return match (kind) {
-		"uniform" => BindingKind.Uniform,
-		"texture" => BindingKind.Texture,
-		"sampler" => BindingKind.Sampler,
-		"storage-buffer" => BindingKind.StorageBuffer,
-		"storage-texture" => BindingKind.StorageTexture,
-		_ => stopOnMember("GPUShaderBinding.kind", kind) as BindingKind,
 	};
 }
 
@@ -1633,7 +1616,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
 		checkedVisibility(descriptor.bindings[i], compute);
-		const kind = bindingKind(kindName);
+		const kind = bindingKind(kindName, "wgpu");
 		const native: ShaderBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: kind,

@@ -451,6 +451,39 @@ export function featureBit(name: GPUFeatureName): uint32 {
 	};
 }
 
+export enum BindingKind {
+	Uniform,
+	Texture,
+	Sampler,
+	StorageBuffer,
+	StorageTexture,
+}
+
+@noinline function stopOnMember(backend: string, member: string, value: string): int32 {
+	console.log(`webgpu ${backend}: ${member} '${value}' is not supported`);
+	unreachable;
+}
+
+export function bindingKind(kind: string, backend: string): BindingKind {
+	return match (kind) {
+		"uniform" => BindingKind.Uniform,
+		"texture" => BindingKind.Texture,
+		"sampler" => BindingKind.Sampler,
+		"storage-buffer" => BindingKind.StorageBuffer,
+		"storage-texture" => BindingKind.StorageTexture,
+		_ => stopOnMember(backend, "GPUShaderBinding.kind", kind) as BindingKind,
+	};
+}
+
+export function linearFilter(filter: string, member: string, backend: string): boolean {
+	const value = match (filter) {
+		"" | "nearest" => 0,
+		"linear" => 1,
+		_ => stopOnMember(backend, member, filter),
+	};
+	return value == 1;
+}
+
 export struct GPUBindGroupEntry {
 	binding: int32;
 	buffer: GPUBuffer;

@@ -1,4 +1,7 @@
 import {
+	BindingKind,
+	bindingKind,
+	linearFilter,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
@@ -366,14 +369,6 @@ enum QueryState {
 	Unwritten,
 	Open,
 	Written,
-}
-
-enum BindingKind {
-	Uniform,
-	Texture,
-	Sampler,
-	StorageBuffer,
-	StorageTexture,
 }
 
 struct FormatInfo {
@@ -847,32 +842,12 @@ function addressMode(mode: string, member: string): int32 {
 	};
 }
 
-function linearFilter(filter: string, member: string): boolean {
-	const value = match (filter) {
-		"" | "nearest" => 0,
-		"linear" => 1,
-		_ => stopOnMember(member, filter),
-	};
-	return value == 1;
-}
-
 function indexFormat(format: GPUIndexFormat): int32 {
 	const value: string = format;
 	return match (value) {
 		"uint16" => DXGI_R16_UINT,
 		"uint32" => DXGI_R32_UINT,
 		_ => stopOnMember("setIndexBuffer indexFormat", value),
-	};
-}
-
-function bindingKind(kind: string): BindingKind {
-	return match (kind) {
-		"uniform" => BindingKind.Uniform,
-		"texture" => BindingKind.Texture,
-		"sampler" => BindingKind.Sampler,
-		"storage-buffer" => BindingKind.StorageBuffer,
-		"storage-texture" => BindingKind.StorageTexture,
-		_ => stopOnMember("GPUShaderBinding.kind", kind) as BindingKind,
 	};
 }
 
@@ -2005,9 +1980,9 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const id = allocate(samplers);
-	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
-	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
-	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter");
+	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter", "d3d11");
+	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter", "d3d11");
+	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter", "d3d11");
 	const compare: string = descriptor.compare;
 	let maxAnisotropy = descriptor.maxAnisotropy;
 	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
@@ -2083,7 +2058,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		const visibility = descriptor.bindings[i].visibility;
 		const native: NativeBinding = {
 			binding: descriptor.bindings[i].binding,
-			kind: bindingKind(kindName),
+			kind: bindingKind(kindName, "d3d11"),
 			vertexStage: (visibility & (GPUShaderStage.VERTEX as int32)) != 0,
 			fragmentStage: (visibility & (GPUShaderStage.FRAGMENT as int32)) != 0,
 			computeStage: compute,

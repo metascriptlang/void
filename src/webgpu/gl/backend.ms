@@ -1,4 +1,7 @@
 import {
+	BindingKind,
+	bindingKind,
+	linearFilter,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
@@ -432,14 +435,6 @@ const GL_BUFFER = 0x82E0;
 const GL_PROGRAM = 0x82E2;
 const GL_SAMPLER = 0x82E6;
 const GL_TEXTURE = 0x1702;
-
-enum BindingKind {
-	Uniform,
-	Texture,
-	Sampler,
-	StorageBuffer,
-	StorageTexture,
-}
 
 enum ViewDimension {
 	TwoD,
@@ -1047,26 +1042,6 @@ function addressMode(mode: string, member: string): int32 {
 		"repeat" => GL_REPEAT,
 		"mirror-repeat" => GL_MIRRORED_REPEAT,
 		_ => stopOnMember(member, mode),
-	};
-}
-
-function linearFilter(filter: string, member: string): boolean {
-	const value = match (filter) {
-		"" | "nearest" => 0,
-		"linear" => 1,
-		_ => stopOnMember(member, filter),
-	};
-	return value == 1;
-}
-
-function bindingKind(kind: string): BindingKind {
-	return match (kind) {
-		"uniform" => BindingKind.Uniform,
-		"texture" => BindingKind.Texture,
-		"sampler" => BindingKind.Sampler,
-		"storage-buffer" => BindingKind.StorageBuffer,
-		"storage-texture" => BindingKind.StorageTexture,
-		_ => stopOnMember("GPUShaderBinding.kind", kind) as BindingKind,
 	};
 }
 
@@ -1913,9 +1888,9 @@ function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
 
 export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const id = allocate(samplers);
-	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
-	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
-	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter");
+	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter", "gl");
+	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter", "gl");
+	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter", "gl");
 	let maxAnisotropy = descriptor.maxAnisotropy;
 	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
 	checkedSamplerAnisotropy(maxAnisotropy, minLinear && magLinear && mipLinear);
@@ -1985,7 +1960,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
-		const kind = bindingKind(kindName);
+		const kind = bindingKind(kindName, "gl");
 		const binding = descriptor.bindings[i].binding;
 		checkedVisibility(descriptor.bindings[i], compute);
 		const expectedGroup = kind == BindingKind.Uniform ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
