@@ -35,8 +35,10 @@ mkdir -p out out/golden
 pass() { echo "PASS  $1"; passes=$((passes + 1)); }
 fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
 skip() { echo "SKIP  $1"; skips=$((skips + 1)); }
+gate_start=$(date +%s)
+section() { echo "=== $1 === at $(( $(date +%s) - gate_start )) s"; }
 
-echo "=== 0. the compiler under test ========================================"
+section "0. the compiler under test"
 mscPath="$(command -v "$MSC" || true)"
 mscVersion="$("$MSC" --version 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | head -1 || true)"
 mscBuild="$(dirname "${mscPath:-.}")/../BUILD"
@@ -54,7 +56,8 @@ else
 	fail "oracle case ID checks — see out/gate-oracle-ids.log"
 fi
 
-echo "=== 2. T0 and T1 — msc test ==========================================="
+echo
+section "1. T0 and T1 — msc test"
 # msc exits 0 for a crashed test binary: ~/metascript/.inbox/compiler/2026-09-23-crash-exit-status-lost.md
 if "$MSC" test src/test/index.ms > out/gate-t0.log 2>&1; then
 	t0Summary="$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
@@ -141,7 +144,7 @@ else
 fi
 
 echo
-echo "=== 3. the demo still builds and runs ================================="
+section "2. the demo still builds and runs"
 if "$MSC" build src/examples/mainSokol2d.ms --output=out/demo2d.exe > out/gate-demo.log 2>&1; then
 	pass "src/examples/renderer2d.ms builds through src/examples/mainSokol2d.ms"
 	# Building is not enough. The entry used to declare `function main()` with nothing
@@ -727,7 +730,7 @@ for program in tests/refusals/*.ms; do
 done
 
 echo
-echo "=== 4. T2 — golden images, D3D11 ======================================"
+section "3. T2 — golden images, D3D11"
 # The runner's own verdict logic first, against known inputs, and before it is trusted to say
 # what was captured. It needs no build and no GPU, so it runs even under --quick.
 if sh scripts/golden.sh --self-check > out/gate-verdict.log 2>&1; then
@@ -786,7 +789,7 @@ else
 fi
 
 echo
-echo "=== 5. T3 — oracles ==================================================="
+section "4. T3 — oracles"
 t3_pass_before=$passes
 t3_skip_before=$skips
 pass "coverage oracle: rounded rect, 16x16 supersampled, in T0 (straight edge exact, corner <= 0.06)"
@@ -919,7 +922,7 @@ skip "printed GLSL 430 / ES 3.00: naga reads GL GLSL only after a Vulkan 450 rew
 t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"
 
 echo
-echo "=== 6. T4 — budget ===================================================="
+section "5. T4 — budget"
 bench_broken=""
 bench_build() {  # bench_build <log> <output> <msc build arguments...>
 	log=$1
@@ -1110,7 +1113,7 @@ conformance_rule() {
 }
 
 echo
-echo "=== 7. guardrail 9 — same pixels on every platform ===================="
+section "6. guardrail 9 — same pixels on every platform"
 echo "      One golden set, authored on D3D11, every backend compared against it."
 echo "      Conformance, per backend:"
 # Never a fixed number here: the gate may not report a result it did not produce.
@@ -1228,7 +1231,7 @@ else
 fi
 
 echo
-echo "=== 8. the record against the code ===================================="
+section "7. the record against the code"
 if "$MSC" build tests/record/check.ms --output=out/recordCheck.exe > out/gate-record.log 2>&1 \
 		&& out/recordCheck.exe >> out/gate-record.log 2>&1; then
 	pass "$(grep -E '^record:' out/gate-record.log)"
@@ -1292,7 +1295,7 @@ if [ "$WEB" -eq 1 ] && grep -q '^golden webgl2' out/gate-golden-web.log; then
 	fi
 fi
 
-echo "=== 9. summary ========================================================"
+section "8. summary"
 # Shape, not an allowlist of id prefixes: an allowlist silently undercounts the moment
 # someone adds a row with a new prefix, and a count that is off by one is worse than none.
 pending=$(grep -cE '^\| [A-Za-z][A-Za-z0-9:/._-]* \| T[0-5] \|' tests/PENDING.md || true)

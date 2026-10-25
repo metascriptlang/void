@@ -37,6 +37,9 @@ pass() { echo "PASS     $*"; }
 fail() { echo "FAIL     $*"; FAILURES=$((FAILURES + 1)); }
 skip() { echo "SKIP     $*"; SKIPPED=$((SKIPPED + 1)); }
 note() { echo "         $*"; }
+gate_start=$(date +%s)
+section() { echo "=== $1 === at $(( $(date +%s) - gate_start )) s"; }
+stage() { section "${1#run_}"; "$1"; }
 
 TMP=out/tmp
 CAPTURE=$TMP/capture
@@ -3033,6 +3036,7 @@ fi
 echo "  commit   $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --abbrev-ref HEAD 2>/dev/null)$dirty"
 echo
 
+section prepare
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
@@ -3040,54 +3044,55 @@ if prepare_scene; then
 else
 	fail "prepare: the capture entries were not written"
 fi
-run_entries
-run_shaders
-run_pending
-run_tests
-run_gltf_cpu
-run_captures
-run_compose
-run_perspective
-run_textured
-run_unlit_textured
-run_target_texture
-run_mrt_blend
-run_alpha_kill
-run_billboard_blend
-run_sort_layer
-run_render_order
-run_dir_shadow
-run_moving_material
-run_map_material
-run_camera_rig
-run_reparent
-run_gltf
-run_both_layers
-run_world_label
-run_card_table
-run_exposure
-run_environment_light
-run_hdr
-run_bloom
-run_particle_fade
-run_particle_mesh
-run_mesh_lod
-run_gl_core
-run_stores
-run_views
-run_target_owner
-run_aborts
-run_manifest
-run_allocation
-run_oracle
-run_style
-run_device
-run_pick
-run_bench
-run_churn
-run_android
+stage run_entries
+stage run_shaders
+stage run_pending
+stage run_tests
+stage run_gltf_cpu
+stage run_captures
+stage run_compose
+stage run_perspective
+stage run_textured
+stage run_unlit_textured
+stage run_target_texture
+stage run_mrt_blend
+stage run_alpha_kill
+stage run_billboard_blend
+stage run_sort_layer
+stage run_render_order
+stage run_dir_shadow
+stage run_moving_material
+stage run_map_material
+stage run_camera_rig
+stage run_reparent
+stage run_gltf
+stage run_both_layers
+stage run_world_label
+stage run_card_table
+stage run_exposure
+stage run_environment_light
+stage run_hdr
+stage run_bloom
+stage run_particle_fade
+stage run_particle_mesh
+stage run_mesh_lod
+stage run_gl_core
+stage run_stores
+stage run_views
+stage run_target_owner
+stage run_aborts
+stage run_manifest
+stage run_allocation
+stage run_oracle
+stage run_style
+stage run_device
+stage run_pick
+stage run_bench
+stage run_churn
+stage run_android
 
 echo
+section summary
 if [ "$FAILURES" -gt 0 ]; then
 	echo "GATE FAILED — $FAILURES failing stage(s), $SKIPPED skipped"
 	exit 1
