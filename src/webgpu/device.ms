@@ -50,6 +50,7 @@ import {
 	checkedBindGroupIndex,
 	checkedBuffer,
 	checkedCreateEncoder,
+	checkedDispatch,
 	checkedDrawState,
 	checkedEndOcclusion,
 	checkedEndPass,
@@ -59,11 +60,14 @@ import {
 	checkedOutsidePass,
 	checkedPipelineSet,
 	checkedPopGroup,
-	checkedPrimitive,
 	checkedPushGroup,
+	checkedQuerySet,
+	checkedRenderPipeline,
+	checkedSampler,
 	checkedShaderModule,
 	checkedShutdown,
 	checkedTexture,
+	checkedViewport,
 	markIndexSet,
 	markPipelineSet,
 	resetEncoder,
@@ -108,6 +112,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createSampler(this self: GPUDevice, descriptor: GPUSamplerDescriptor): GPUSampler {
+	checkedSampler(descriptor);
 	return backend.createSampler(descriptor);
 }
 
@@ -117,7 +122,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createRenderPipeline(this self: GPUDevice, descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
-	checkedPrimitive(descriptor.primitive);
+	checkedRenderPipeline(descriptor);
 	return backend.createRenderPipeline(descriptor);
 }
 
@@ -135,6 +140,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createQuerySet(this self: GPUDevice, descriptor: GPUQuerySetDescriptor): GPUQuerySet {
+	checkedQuerySet(descriptor);
 	return backend.createQuerySet(descriptor);
 }
 
@@ -215,6 +221,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function dispatchWorkgroups(this self: GPUComputePassEncoder, x: int32, y: int32, z: int32): void {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroups");
 	checkedPipelineSet("dispatchWorkgroups");
+	checkedDispatch(x, y, z, backend.limits().maxComputeWorkgroupsPerDimension);
 	backend.dispatchWorkgroups(x, y, z);
 }
 
@@ -390,6 +397,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	maxDepth: float32,
 ): void {
 	checkedInPass(PASS_RENDER, "setViewport");
+	checkedViewport(width, height, minDepth, maxDepth);
 	backend.setViewport(x, y, width, height, minDepth, maxDepth);
 }
 

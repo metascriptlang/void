@@ -564,33 +564,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	}
 }
 
-// A uint or sint texture cannot be filtered (WebGPU's bind group layout rule, sokol's
-// VALIDATE_SHADERDESC_NONFILTERING_SAMPLER_REQUIRED), so a sampler paired with one must be non-filtering.
-@noinline export function checkedIntegerTexturePairs(descriptor: GPUShaderModuleDescriptor): void {
-	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
-		const sampler = descriptor.bindings[i];
-		const kind: string = sampler.kind;
-		const samplerType: string = sampler.samplerType;
-		if (kind != "sampler" || sampler.textureBinding < 0 || samplerType == "non-filtering") { continue; }
-		for (let j = 0; j < GPU_MAX_SHADER_BINDINGS; j++) {
-			const texture = descriptor.bindings[j];
-			const textureKind: string = texture.kind;
-			const sampleType: string = texture.sampleType;
-			if (textureKind == "texture" && texture.binding == sampler.textureBinding && (sampleType == "uint" || sampleType == "sint")) {
-				stop(`sampler binding ${sampler.binding} is '${samplerType == "" ? "filtering" : samplerType}' but pairs with the ${sampleType} texture binding ${texture.binding}; an integer texture needs a non-filtering sampler`);
-			}
-		}
-	}
-}
-
-@noinline export function checkedVisibility(binding: GPUShaderBinding, compute: boolean): void {
-	const render = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
-	const allowed = compute ? GPUShaderStage.COMPUTE as int32 : render;
-	if (binding.visibility == 0 || (binding.visibility & ~allowed) != 0) {
-		stop(`shader binding ${binding.binding} has visibility ${binding.visibility}, but a ${compute ? "compute" : "vertex and fragment"} module allows only ${allowed}`);
-	}
-}
-
 @noinline export function stopOnUnportedShaderBytecode(backend: string, descriptor: GPUShaderModuleDescriptor): void {
 	if (descriptor.vertexBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.vertexBytecode`); }
 	if (descriptor.fragmentBytecode.length > 0) { stopOnUnported(backend, `GPUShaderModuleDescriptor.fragmentBytecode`); }
@@ -855,18 +828,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
 }
 
-@noinline export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
-	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
-		stop(`setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`);
-	}
-}
-
-@noinline export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void {
-	if (x < 0 || y < 0 || z < 0 || x > limit || y > limit || z > limit) {
-		stop(`dispatchWorkgroups ${x},${y},${z} is outside 0..${limit}`);
-	}
-}
-
 // `groupBase` is the depth the open pass (or none) started at: a pass cannot pop a group it did not push.
 @noinline export function checkedPopDebugGroup(groupDepth: int32, groupBase: int32): void {
 	if (groupDepth <= groupBase) { stop("popDebugGroup without a matching pushDebugGroup"); }
@@ -914,9 +875,11 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	}
 }
 
-// A lodMaxClamp of 0 means WebGPU's default of 32; returns the effective maximum.
+// A lodMaxClamp of 0 means WebGPU's default of 32.
+export function samplerMaxLod(lodMaxClamp: float32): float32 { return lodMaxClamp == 0 ? 32.0 : lodMaxClamp; }
+
 @noinline export function checkedSamplerLod(lodMinClamp: float32, lodMaxClamp: float32): float32 {
-	const maxLod: float32 = lodMaxClamp == 0 ? 32.0 : lodMaxClamp;
+	const maxLod = samplerMaxLod(lodMaxClamp);
 	if (maxLod < lodMinClamp) { stop(`GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${lodMinClamp}`); }
 	return maxLod;
 }
@@ -926,10 +889,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	if (offset < 0 || offset % 4 != 0 || offset + 12 > bufferSize) {
 		stop(`dispatchWorkgroupsIndirect offset ${offset} is not a multiple of 4 with 12 bytes inside GPUBuffer ${id} of ${bufferSize}`);
 	}
-}
-
-@noinline export function checkedQuerySetCount(count: int32): void {
-	if (count < 1 || count > 4096) { stop(`GPUQuerySetDescriptor.count ${count} is outside 1..4096`); }
 }
 
 // `count` is the query set's size; an occlusion set cannot take timestamp writes.
