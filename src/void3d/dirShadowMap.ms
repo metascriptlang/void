@@ -19,13 +19,16 @@ import {
 	SHADOW_CASCADE_FAR,
 	SHADOW_CASCADE_INFO,
 	SHADOW_CASCADE_VIEW,
+	SHADOW_CASCADE_FILTER,
 	SHADOW_SPOT_BASE,
 	SHADOW_SPOT_BIAS,
 	SHADOW_SPOT_OPACITY,
+	SHADOW_SPOT_FILTER,
 	SHADOW_POINT_BASE,
 	SHADOW_POINT_FACES,
 	SHADOW_POINT_BIAS,
 	SHADOW_POINT_OPACITY,
+	SHADOW_POINT_FILTER,
 	SHADOW_POINT_POSITION,
 } from "./gpu3d";
 import {
@@ -76,6 +79,13 @@ export enum ShadowKind {
 	Point,
 }
 
+// h3d.pass.Shadows' samplingKind without ESM, which reads a blurred float map this depth map
+// is not.
+export enum ShadowSamplingKind {
+	None,
+	Pcf,
+}
+
 export interface DirShadowMap {
 	context: DrawContext;
 	// opacity is Godot's shadow_opacity; Heaps' DefaultShadowMap tints by a colour instead.
@@ -83,6 +93,9 @@ export interface DirShadowMap {
 	kind: ShadowKind;
 	bias: float32;
 	opacity: float32;
+	samplingKind: ShadowSamplingKind;
+	// In texels; Heaps' pcfScale is the same number, divided by the map's width in the shader.
+	pcfScale: float32;
 	// Bevy's CascadeShadowConfig for the sun; null keeps one map fitted to the casters in view.
 	cascades: CascadeConfig | null;
 	depthTarget: ArrayTarget;
@@ -183,6 +196,8 @@ function buildMap(
 		kind: kind,
 		bias: DEFAULT_SHADOW_BIAS,
 		opacity: 1.0,
+		samplingKind: ShadowSamplingKind.None,
+		pcfScale: 1.0,
 		cascades: null,
 		depthTarget: ArrayTarget.unallocated(size, 1, PixelFormat.Depth),
 		sampler: { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0, generation: 0 },
@@ -409,6 +424,18 @@ export function packSun(
 	shadow.shadowValues[SHADOW_CASCADE_VIEW + 1] = forward.y;
 	shadow.shadowValues[SHADOW_CASCADE_VIEW + 2] = forward.z;
 	shadow.shadowValues[SHADOW_CASCADE_VIEW + 3] = shadow.size as float32;
+	shadow.shadowValues[SHADOW_CASCADE_FILTER] = filterScaleOf(shadow);
+}
+
+// The PCF scale a part of the block carries: 0 reads one texel.
+function filterScaleOf(shadow: DirShadowMap): float32 {
+	if (shadow.samplingKind == ShadowSamplingKind.None) { return 0.0; }
+	if (!(shadow.pcfScale > 0.0) || !Number.isFinite(shadow.pcfScale)) {
+		console.log(`void3d: a Pcf shadow map with pcfScale ${shadow.pcfScale}; it must be ` +
+			"a positive number of texels");
+		unreachable;
+	}
+	return shadow.pcfScale;
 }
 
 // One layer fitted to the casters in view (calcShadowBounds), or one per cascade.
@@ -484,6 +511,7 @@ function drawSpotShadows(
 	shadow.shadowValues[SHADOW_SPOT_BIAS] = shadow.bias * map.m33;
 	shadow.shadowValues[SHADOW_SPOT_OPACITY] = opacity;
 	shadow.shadowValues[SHADOW_SPOT_OPACITY + 1] = shadow.size as float32;
+	shadow.shadowValues[SHADOW_SPOT_FILTER] = filterScaleOf(shadow);
 	return drawLayers(shadow, items, [basis], [shadow.viewProj]);
 }
 
@@ -548,6 +576,7 @@ export function packPoint(
 	shadow.shadowValues[SHADOW_POINT_BIAS] = shadow.bias * map.m33;
 	shadow.shadowValues[SHADOW_POINT_OPACITY] = opacity;
 	shadow.shadowValues[SHADOW_POINT_OPACITY + 1] = shadow.size as float32;
+	shadow.shadowValues[SHADOW_POINT_FILTER] = filterScaleOf(shadow);
 	shadow.shadowValues[SHADOW_POINT_POSITION] = position.x;
 	shadow.shadowValues[SHADOW_POINT_POSITION + 1] = position.y;
 	shadow.shadowValues[SHADOW_POINT_POSITION + 2] = position.z;

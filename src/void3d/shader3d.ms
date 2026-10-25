@@ -49,7 +49,16 @@ import {
 	vec4f,
 	vec4i,
 } from "../shader/std";
-import { mapCoord, mapLit } from "./shadowLookup";
+import {
+	CUBE_PCF_OFFSETS,
+	CUBE_PCF_SAMPLES,
+	PCF_SAMPLES,
+	mapCoord,
+	mapLit,
+	pcfTexelOf,
+	poissonOffset,
+	poissonRotation,
+} from "./shadowLookup";
 import {
 	cascadeBlendOf,
 	cascadeCountOf,
@@ -290,6 +299,7 @@ export struct ShadowParams {
 	cascadeFar: Vec4f;
 	cascadeInfo: Vec4f;
 	cascadeView: Vec4f;
+	cascadeFilter: Vec4f;
 	spotMatrix: Mat4x4f;
 	spotShadow: Vec4f;
 	pointMatrices: Mat4x4f[6];
@@ -1265,8 +1275,21 @@ export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
 export function cascadeShadowAt(position: Vec3f, b: LitBindings, cascade: int32): float32 {
 	const texel = cascadeTexelOf(position, b.shadowParams.cascadeMatrices[cascade],
 		b.shadowParams.cascadeView);
-	const stored = textureLoad(b.shadowMap, b.shadowSampler, vec2i(texel.xy), cascade, 0).x;
-	return cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
+	const scale = b.shadowParams.cascadeFilter.x;
+	if (texel.w < 0.5 || scale <= 0.0) {
+		const stored = textureLoad(b.shadowMap, b.shadowSampler, vec2i(texel.xy), cascade, 0).x;
+		return cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
+	}
+	const uv = mapCoord(position, b.shadowParams.cascadeMatrices[cascade]);
+	const size = (b.shadowParams.cascadeView.w + 0.5) as int32;
+	const rotation = poissonRotation(position);
+	let lit: float32 = 0.0;
+	for (let tap = 0; tap < PCF_SAMPLES; tap++) {
+		const at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
+		const stored = textureLoad(b.shadowMap, b.shadowSampler, at, cascade, 0).x;
+		lit = lit + cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
+	}
+	return lit / (PCF_SAMPLES as float32);
 }
 
 export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
@@ -1275,10 +1298,20 @@ export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
 		return 1.0;
 	}
 	const size = (b.shadowParams.spotShadow.z + 0.5) as int32;
-	const texel = clamp(vec2i(p.xy * vec2f(size as float32)), vec2i(0, 0),
-		vec2i(size - 1, size - 1));
-	const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler, texel, 0, 0).x;
-	return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
+	const scale = b.shadowParams.spotShadow.w;
+	if (scale <= 0.0) {
+		const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler,
+			pcfTexelOf(p, size, vec2f(0.0)), 0, 0).x;
+		return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
+	}
+	const rotation = poissonRotation(position);
+	let lit: float32 = 0.0;
+	for (let tap = 0; tap < PCF_SAMPLES; tap++) {
+		const at = pcfTexelOf(p, size, poissonOffset(tap, rotation, scale));
+		const depth = textureLoad(b.spotShadowMap, b.spotShadowSampler, at, 0, 0).x;
+		lit = lit + mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
+	}
+	return lit / (PCF_SAMPLES as float32);
 }
 
 export function pointFaceOf(toPosition: Vec3f): int32 {
@@ -1292,17 +1325,35 @@ export function pointFaceOf(toPosition: Vec3f): int32 {
 	return toPosition.z > 0.0 ? 4 : 5;
 }
 
-export function pointShadowAt(position: Vec3f, b: LitBindings): float32 {
+function pointTapAt(position: Vec3f, b: LitBindings): float32 {
 	const face = pointFaceOf(position - b.shadowParams.pointLight.xyz);
 	const p = mapCoord(position, b.shadowParams.pointMatrices[face]);
 	if (p.w < 0.5) {
 		return 1.0;
 	}
 	const size = (b.shadowParams.pointShadow.z + 0.5) as int32;
-	const texel = clamp(vec2i(p.xy * vec2f(size as float32)), vec2i(0, 0),
-		vec2i(size - 1, size - 1));
-	const depth = textureLoad(b.pointShadowMap, b.spotShadowSampler, texel, face, 0).x;
+	const depth = textureLoad(b.pointShadowMap, b.spotShadowSampler,
+		pcfTexelOf(p, size, vec2f(0.0)), face, 0).x;
 	return mapLit(p.z, depth, b.shadowParams.pointShadow.x, b.shadowParams.pointShadow.y);
+}
+
+// cubeShadowPcf's taps turn the light-to-receiver direction and keep its distance, each read
+// from the face it then points into.
+export function pointShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const scale = b.shadowParams.pointShadow.w / b.shadowParams.pointShadow.z;
+	const light = b.shadowParams.pointLight.xyz;
+	const toPosition = position - light;
+	const distance = length(toPosition);
+	if (!(scale > 0.0) || !(distance > 0.0)) {
+		return pointTapAt(position, b);
+	}
+	const direction = toPosition / distance;
+	let lit: float32 = 0.0;
+	for (let tap = 0; tap < CUBE_PCF_SAMPLES; tap++) {
+		const turned = normalize(direction + CUBE_PCF_OFFSETS[tap] * scale);
+		lit = lit + pointTapAt(light + turned * distance, b);
+	}
+	return lit / (CUBE_PCF_SAMPLES as float32);
 }
 
 // A positioned light's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless

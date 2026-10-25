@@ -690,6 +690,7 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFar;
     vec4 cascadeInfo;
     vec4 cascadeView;
+    vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
     mat4 pointMatrices[6];
@@ -845,10 +846,43 @@ float cascadeLitOf(vec4 texel, float stored, vec4 info) {
 }
 #endif
 #ifdef SHADOWED
+vec2 poissonRotation(vec3 position) {
+    float dp = dot(vec4(((position.x + position.y) + position.z)), vec4(12.9898, 78.233, 45.164, 94.673));
+    float rotation = (fract((sin(dp) * 43758.5453)) * 3.14) * 2.0;
+    return vec2(cos(rotation), sin(rotation));
+}
+#endif
+const int PCF_SAMPLES = 16;
+#ifdef SHADOWED
+ivec2 pcfTexelOf(vec4 uv, int size, vec2 offset) {
+    return clamp(ivec2(((uv.xy * vec2(float(size))) + offset)), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+}
+#endif
+const vec2[16] POISSON_DISK = vec2[16](vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725), vec2(-0.0941841, -0.9293887), vec2(0.34495938, 0.2938776), vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464), vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379), vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.4737342), vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188), vec2(-0.2418884, 0.99706507), vec2(-0.81409955, 0.9143759), vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.1410079));
+#ifdef SHADOWED
+vec2 poissonOffset(int tap, vec2 rotation, float scale) {
+    vec2 o = POISSON_DISK[tap] * scale;
+    return vec2(((rotation.x * o.x) - (rotation.y * o.y)), ((rotation.x * o.y) + (rotation.y * o.x)));
+}
+#endif
+#ifdef SHADOWED
 float cascadeShadowAt(vec3 position, int cascade) {
     vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
-    float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
-    return cascadeLitOf(texel, stored, cascadeInfo);
+    float scale = cascadeFilter.x;
+    if ((texel.w < 0.5) || (scale <= 0.0)) {
+        float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
+        return cascadeLitOf(texel, stored, cascadeInfo);
+    }
+    vec4 uv = mapCoord(position, cascadeMatrices[cascade]);
+    int size = int(cascadeView.w + 0.5);
+    vec2 rotation = poissonRotation(position);
+    float lit = 0.0;
+    for (int tap = 0; tap < PCF_SAMPLES; tap++) {
+        ivec2 at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
+        float stored_1 = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(at, cascade), 0).x;
+        lit = lit + cascadeLitOf(texel, stored_1, cascadeInfo);
+    }
+    return lit / float(PCF_SAMPLES);
 }
 #endif
 #ifdef SHADOWED
@@ -1222,6 +1256,7 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFar;
     vec4 cascadeInfo;
     vec4 cascadeView;
+    vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
     mat4 pointMatrices[6];
@@ -1488,10 +1523,43 @@ float cascadeLitOf(vec4 texel, float stored, vec4 info) {
 }
 #endif
 #ifdef SHADOWED
+vec2 poissonRotation(vec3 position) {
+    float dp = dot(vec4(((position.x + position.y) + position.z)), vec4(12.9898, 78.233, 45.164, 94.673));
+    float rotation = (fract((sin(dp) * 43758.5453)) * 3.14) * 2.0;
+    return vec2(cos(rotation), sin(rotation));
+}
+#endif
+const int PCF_SAMPLES = 16;
+#ifdef SHADOWED
+ivec2 pcfTexelOf(vec4 uv, int size, vec2 offset) {
+    return clamp(ivec2(((uv.xy * vec2(float(size))) + offset)), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+}
+#endif
+const vec2[16] POISSON_DISK = vec2[16](vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725), vec2(-0.0941841, -0.9293887), vec2(0.34495938, 0.2938776), vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464), vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379), vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.4737342), vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188), vec2(-0.2418884, 0.99706507), vec2(-0.81409955, 0.9143759), vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.1410079));
+#ifdef SHADOWED
+vec2 poissonOffset(int tap, vec2 rotation, float scale) {
+    vec2 o = POISSON_DISK[tap] * scale;
+    return vec2(((rotation.x * o.x) - (rotation.y * o.y)), ((rotation.x * o.y) + (rotation.y * o.x)));
+}
+#endif
+#ifdef SHADOWED
 float cascadeShadowAt(vec3 position, int cascade) {
     vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
-    float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
-    return cascadeLitOf(texel, stored, cascadeInfo);
+    float scale = cascadeFilter.x;
+    if ((texel.w < 0.5) || (scale <= 0.0)) {
+        float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
+        return cascadeLitOf(texel, stored, cascadeInfo);
+    }
+    vec4 uv = mapCoord(position, cascadeMatrices[cascade]);
+    int size = int(cascadeView.w + 0.5);
+    vec2 rotation = poissonRotation(position);
+    float lit = 0.0;
+    for (int tap = 0; tap < PCF_SAMPLES; tap++) {
+        ivec2 at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
+        float stored_1 = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(at, cascade), 0).x;
+        lit = lit + cascadeLitOf(texel, stored_1, cascadeInfo);
+    }
+    return lit / float(PCF_SAMPLES);
 }
 #endif
 #ifdef SHADOWED
