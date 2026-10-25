@@ -8,6 +8,9 @@
 #define VULKAN_ERROR_EXTENSION 4
 #define VULKAN_ERROR_ADAPTER 5
 #define VULKAN_ERROR_ORDER 6
+#define VULKAN_SUBOPTIMAL 7
+#define VULKAN_OUT_OF_DATE 8
+#define VULKAN_SURFACE_LOST 9
 
 #define VULKAN_POWER_DEFAULT 0
 #define VULKAN_POWER_LOW 1
@@ -42,6 +45,19 @@
 #define VULKAN_LIMIT_NON_COHERENT_ATOM_SIZE 22
 #define VULKAN_LIMIT_MEMORY_ALLOCATION_COUNT 23
 
+#define VULKAN_SURFACE_MIN_IMAGES 0
+#define VULKAN_SURFACE_MAX_IMAGES 1
+#define VULKAN_SURFACE_CURRENT_WIDTH 2
+#define VULKAN_SURFACE_CURRENT_HEIGHT 3
+#define VULKAN_SURFACE_MIN_WIDTH 4
+#define VULKAN_SURFACE_MIN_HEIGHT 5
+#define VULKAN_SURFACE_MAX_WIDTH 6
+#define VULKAN_SURFACE_MAX_HEIGHT 7
+#define VULKAN_SURFACE_CURRENT_TRANSFORM 8
+#define VULKAN_SURFACE_TRANSFORMS 9
+#define VULKAN_SURFACE_COMPOSITE_ALPHA 10
+#define VULKAN_SURFACE_USAGE 11
+
 #define VULKAN_DEDICATED_NONE 0
 #define VULKAN_DEDICATED_PREFERRED 1
 #define VULKAN_DEDICATED_REQUIRED 2
@@ -57,6 +73,13 @@ int32_t vulkanValidationWarnings(void);
 int32_t vulkanSurfaceCreateWin32(void *hinstance, void *hwnd);
 int32_t vulkanSurfaceCreateXlib(void *display, uint64_t window);
 int32_t vulkanSurfaceCreateAndroid(void *window);
+int32_t vulkanSurfaceQuery(void);
+uint32_t vulkanSurfaceCapability(int32_t field);
+int32_t vulkanSurfaceFormatCount(void);
+int32_t vulkanSurfaceFormat(int32_t index, int32_t *format, uint32_t *colorSpace);
+int32_t vulkanSurfacePresentModeCount(void);
+uint32_t vulkanSurfacePresentMode(int32_t index);
+int32_t vulkanSurfaceDestroy(void);
 
 int32_t vulkanAdapterSelect(int32_t powerPreference);
 uint32_t vulkanAdapterVendorId(void);
@@ -171,6 +194,37 @@ int32_t vulkanCopyImageToBuffer(
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth);
+
+uint32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words);
+int32_t vulkanPassBegin(
+	uint32_t renderPass,
+	const uint32_t *views,
+	uint32_t viewCount,
+	uint32_t width,
+	uint32_t height,
+	const float *clears,
+	uint32_t clearCount);
+int32_t vulkanPassEnd(void);
+
+int32_t vulkanSwapchainCreate(
+	int32_t format,
+	uint32_t colorSpace,
+	uint32_t width,
+	uint32_t height,
+	uint32_t minImageCount,
+	uint32_t usage,
+	uint32_t preTransform,
+	uint32_t compositeAlpha,
+	uint32_t presentMode);
+uint32_t vulkanSwapchainImageCount(void);
+uint32_t vulkanSwapchainImage(uint32_t index);
+uint32_t vulkanSwapchainView(uint32_t index);
+int32_t vulkanSwapchainAcquire(uint32_t *index);
+int32_t vulkanSwapchainPresent(void);
+int32_t vulkanSwapchainDestroy(void);
+
+int32_t vulkanFramesCreate(uint32_t count);
+int32_t vulkanFrameBegin(uint32_t slot, uint64_t waitSerial);
 
 int32_t vulkanSubmit(uint64_t *serial);
 uint64_t vulkanRecordingSerial(void);
