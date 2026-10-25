@@ -93,6 +93,8 @@ import {
 } from "../types.ms";
 import {
 	addressesBinding,
+	checkedBindGroupIndex,
+	checkedBindGroupSet,
 	checkedBindingGroup,
 	checkedComputeModule,
 	checkedComputePipeline,
@@ -100,8 +102,12 @@ import {
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
 	checkedRenderModule,
+	checkedSampledView,
+	checkedStorageEntry,
+	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
+	checkedViewDimension,
 	occlusionQueryIndex,
 	occlusionSetId,
 	openDebugGroups,
@@ -544,7 +550,6 @@ struct ViewSlot {
 	baseLayer: int32;
 	layerCount: int32;
 	attachable: boolean;
-	storage: boolean;
 	swapchain: boolean;
 }
 
@@ -1770,11 +1775,7 @@ function viewDimensionName(dimension: ViewDimension): string {
 }
 
 function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): ViewDimension {
-	let name: string = descriptor.dimension;
-	if (name == "") { name = textures.slots[t].volume ? "3d" : (textures.slots[t].layers > 1 ? "2d-array" : "2d"); }
-	if ((name == "3d") != textures.slots[t].volume) {
-		stop(`GPUTextureViewDescriptor.dimension '${name}' does not match the ${textures.slots[t].volume ? "3d" : "2d"} GPUTexture ${textures.slots[t].id}`);
-	}
+	const name = checkedViewDimension(descriptor.dimension, textures.slots[t].volume, textures.slots[t].layers, textures.slots[t].id);
 	return match (name) {
 		"2d" => ViewDimension.TwoD,
 		"2d-array" => ViewDimension.TwoDArray,
@@ -1826,7 +1827,6 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 		baseLayer: baseLayer,
 		layerCount: layerCount,
 		attachable: mipCount == 1 && layerCount == 1 && dimension != ViewDimension.Cube,
-		storage: has(usage, GPUTextureUsage.STORAGE_BINDING as int32) && mipCount == 1,
 		swapchain: false,
 	};
 	store(views, slot);
@@ -2312,25 +2312,9 @@ function resourceOf(shader: int32, group: int32, binding: int32, kind: BindingKi
 	return -1;
 }
 
-function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
-	if (entry.offset < 0 || entry.offset % (STORAGE_OFFSET_ALIGNMENT as int64) != 0) {
-		stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${STORAGE_OFFSET_ALIGNMENT}`);
-	}
-	const bytes = entry.size == 0 ? buffers.slots[b].size - entry.offset : entry.size;
-	if (bytes <= 0 || bytes % 4 != 0 || entry.offset + bytes > buffers.slots[b].size) {
-		stop(`bind group entry ${entry.binding} range ${entry.offset}+${bytes} is not a positive multiple of 4 inside its buffer of ${buffers.slots[b].size}`);
-	}
-	if (bytes > deviceLimits.maxStorageBufferBindingSize) {
-		stop(`bind group entry ${entry.binding} range of ${bytes} bytes is over the limit of ${deviceLimits.maxStorageBufferBindingSize}`);
-	}
-	return bytes;
-}
-
 @noinline function checkStorageView(entry: GPUBindGroupEntry, v: int32, resource: ResourceBinding): void {
-	if (!views.slots[v].storage) {
-		stop(`bind group entry ${entry.binding}: the view's texture lacks STORAGE_BINDING or the view spans several mips`);
-	}
 	const t = textures.slotIndex(views.slots[v].texture);
+	checkedStorageView(entry.binding, has(textures.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32), views.slots[v].mipCount);
 	const dimension = views.slots[v].dimension;
 	const whole = dimension == ViewDimension.ThreeD || (views.slots[v].baseLayer == 0 && views.slots[v].layerCount == textures.slots[t].layers);
 	if (dimension != ViewDimension.TwoD && !whole) {
@@ -2354,8 +2338,7 @@ function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
 			}
 		}
 		if (resourceOf(shader, group, entry.binding, BindingKind.StorageBuffer) >= 0) {
-			if (!buffers.slots[b].storage) { stop(`bind group entry ${entry.binding} needs a STORAGE buffer`); }
-			storageRange(entry, b);
+			checkedStorageEntry(entry, buffers.slots[b].storage, buffers.slots[b].size, STORAGE_OFFSET_ALIGNMENT as int64, deviceLimits.maxStorageBufferBindingSize);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
@@ -2363,7 +2346,7 @@ function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
 	if (entry.textureView.id != 0) {
 		const v = views.slotIndex(entry.textureView.id);
 		if (resourceOf(shader, group, entry.binding, BindingKind.Texture) >= 0) {
-			if (!views.slots[v].sampled) { stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`); }
+			checkedSampledView(entry.binding, views.slots[v].sampled);
 			checkSampledView(entry.binding, v);
 			return;
 		}
@@ -2674,21 +2657,12 @@ export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	if (index != GPU_UNIFORM_GROUP && index != GPU_RESOURCE_GROUP) { stopOnMember("setBindGroup index", `${index}`); }
 	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroups.slotIndex(bindGroup.id);
-	if (bindGroups.slots[g].group != index) {
-		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups.slots[g].group}`);
-	}
-	if ((dynamicOffsets.length as int32) != bindGroups.slots[g].dynamicCount) {
-		stop(`setBindGroup(${index}) takes ${bindGroups.slots[g].dynamicCount} dynamic offsets, got ${dynamicOffsets.length}`);
-	}
+	checkedBindGroupSet(index, bindGroups.slots[g].group, bindGroups.slots[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
 		for (let i = 0; i < bindGroups.slots[g].dynamicCount; i++) {
-			if (dynamicOffsets[i] % UNIFORM_OFFSET_ALIGNMENT != 0) {
-				stop(`dynamic offset ${dynamicOffsets[i]} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
-			}
 			bound.dynamicOffsets[i] = dynamicOffsets[i];
 		}
 		bound.uniformsDirty = true;

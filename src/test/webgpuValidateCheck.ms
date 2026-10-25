@@ -15,6 +15,8 @@ import {
 	addressesBinding,
 	attachOcclusion,
 	beginOcclusionRefusal,
+	bindGroupIndexRefusal,
+	bindGroupSetRefusal,
 	beginPassRefusal,
 	bufferRefusal,
 	computeModuleRefusal,
@@ -22,6 +24,7 @@ import {
 	createRefusal,
 	drawRefusal,
 	endOcclusionRefusal,
+	entryBytes,
 	endPassRefusal,
 	finishRefusal,
 	groupOfKind,
@@ -35,6 +38,11 @@ import {
 	occlusionReuseRefusal,
 	occlusionSetKindRefusal,
 	pipelineSetRefusal,
+	resolvedViewDimension,
+	sampledViewRefusal,
+	storageEntryRefusal,
+	storageViewRefusal,
+	viewDimensionRefusal,
 	outsidePassRefusal,
 	popGroupRefusal,
 	primitiveRefusal,
@@ -451,4 +459,61 @@ test "an occlusion index is inside its set and used once per pass, across passes
 test "an occlusion slot takes an occlusion set, not a timestamp set" {
 	assert occlusionSetKindRefusal(false) == "";
 	assert occlusionSetKindRefusal(true) == "GPURenderPassDescriptor.occlusionQuerySet is a timestamp set: an occlusion set is required";
+}
+
+test "a view takes its texture's dimension unless it names one, and 3d goes with 3d only" {
+	assert resolvedViewDimension("", false, 1) == "2d";
+	assert resolvedViewDimension("", false, 6) == "2d-array";
+	assert resolvedViewDimension("", true, 1) == "3d";
+	assert resolvedViewDimension("cube", false, 6) == "cube";
+	assert viewDimensionRefusal("2d", false, 9) == "";
+	assert viewDimensionRefusal("3d", true, 9) == "";
+	assert viewDimensionRefusal("3d", false, 9) == "GPUTextureViewDescriptor.dimension '3d' does not match the 2d GPUTexture 9";
+	assert viewDimensionRefusal("2d-array", true, 9) == "GPUTextureViewDescriptor.dimension '2d-array' does not match the 3d GPUTexture 9";
+}
+
+test "setBindGroup takes the door's two groups" {
+	assert bindGroupIndexRefusal(0) == "";
+	assert bindGroupIndexRefusal(1) == "";
+	assert bindGroupIndexRefusal(2) == "setBindGroup index 2 is outside the 2 bind groups";
+	assert bindGroupIndexRefusal(-1) == "setBindGroup index -1 is outside the 2 bind groups";
+}
+
+test "a bind group is set in the group it was made for, with its dynamic offsets aligned" {
+	const none: Vec<uint32> = [];
+	const aligned: Vec<uint32> = [0, 512];
+	const crooked: Vec<uint32> = [256, 100];
+	assert bindGroupSetRefusal(0, 0, 0, none, 256) == "";
+	assert bindGroupSetRefusal(0, 0, 2, aligned, 256) == "";
+	assert bindGroupSetRefusal(1, 0, 0, none, 256) == "setBindGroup(1) with a bind group made for group 0";
+	assert bindGroupSetRefusal(0, 0, 1, none, 256) == "setBindGroup(0) takes 1 dynamic offsets, got 0";
+	assert bindGroupSetRefusal(0, 0, 0, aligned, 256) == "setBindGroup(0) takes 0 dynamic offsets, got 2";
+	assert bindGroupSetRefusal(0, 0, 2, crooked, 256) == "dynamic offset 100 is not a multiple of 256";
+	assert bindGroupSetRefusal(0, 0, 2, crooked, 4) == "";
+	assert bindGroupSetRefusal(1, 1, 1, aligned, 256) == "setBindGroup(1) takes 1 dynamic offsets, got 2";
+}
+
+test "a storage entry is a positive multiple of 4 bytes inside a STORAGE buffer, on the backend's alignment and limit" {
+	assert entryBytes(entryAt(0, 0), 64) == 64;
+	assert entryBytes(entryAt(16, 0), 64) == 48;
+	assert entryBytes(entryAt(16, 8), 64) == 8;
+	assert storageEntryRefusal(entryAt(0, 0), true, 64, 32, 1024) == "";
+	assert storageEntryRefusal(entryAt(32, 32), true, 64, 32, 1024) == "";
+	assert storageEntryRefusal(entryAt(0, 0), false, 64, 32, 1024) == "bind group entry 2 needs a STORAGE buffer";
+	assert storageEntryRefusal(entryAt(16, 0), true, 64, 32, 1024) == "bind group entry 2 offset 16 is not a multiple of 32";
+	assert storageEntryRefusal(entryAt(-32, 0), true, 64, 32, 1024) == "bind group entry 2 offset -32 is not a multiple of 32";
+	assert storageEntryRefusal(entryAt(0, 6), true, 64, 32, 1024) == "bind group entry 2 range 0+6 is not a positive multiple of 4 inside its buffer of 64";
+	assert storageEntryRefusal(entryAt(0, 68), true, 64, 32, 1024) == "bind group entry 2 range 0+68 is not a positive multiple of 4 inside its buffer of 64";
+	assert storageEntryRefusal(entryAt(64, 0), true, 64, 32, 1024) == "bind group entry 2 range 64+0 is not a positive multiple of 4 inside its buffer of 64";
+	assert storageEntryRefusal(entryAt(0, 0), true, 66, 32, 1024) == "bind group entry 2 range 0+66 is not a positive multiple of 4 inside its buffer of 66";
+	assert storageEntryRefusal(entryAt(0, 64), true, 64, 32, 32) == "bind group entry 2 range of 64 bytes is over the limit of 32";
+	assert storageEntryRefusal(entryAt(0, 64), true, 64, 256, 64) == "";
+}
+
+test "a texture view binds as a sampled texture or a one-mip storage texture only if its texture allows it" {
+	assert sampledViewRefusal(3, true) == "";
+	assert sampledViewRefusal(3, false) == "bind group entry 3: the view's texture lacks TEXTURE_BINDING";
+	assert storageViewRefusal(3, true, 1) == "";
+	assert storageViewRefusal(3, false, 1) == "bind group entry 3: the view's texture lacks STORAGE_BINDING";
+	assert storageViewRefusal(3, true, 2) == "bind group entry 3: a storage texture view takes exactly one mip";
 }

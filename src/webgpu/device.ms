@@ -47,6 +47,7 @@ import {
 	attachOcclusionSet,
 	checkedBeginOcclusion,
 	checkedBeginPass,
+	checkedBindGroupIndex,
 	checkedBuffer,
 	checkedCreateEncoder,
 	checkedDrawState,
@@ -205,6 +206,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_COMPUTE, "setBindGroup");
+	checkedBindGroupIndex(index);
 	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
 }
 
@@ -367,6 +369,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function setBindGroup(this self: GPURenderPassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_RENDER, "setBindGroup");
+	checkedBindGroupIndex(index);
 	backend.setBindGroup(index, bindGroup, dynamicOffsets);
 }
 

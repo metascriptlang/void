@@ -92,6 +92,8 @@ import {
 } from "../types.ms";
 import {
 	addressesBinding,
+	checkedBindGroupIndex,
+	checkedBindGroupSet,
 	checkedBindingGroup,
 	checkedComputeModule,
 	checkedComputePipeline,
@@ -99,8 +101,12 @@ import {
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
 	checkedRenderModule,
+	checkedSampledView,
+	checkedStorageEntry,
+	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
+	checkedViewDimension,
 	computePassOpen,
 	occlusionQueryIndex,
 	occlusionSetId,
@@ -1361,11 +1367,7 @@ function textureCopyPitch(
 }
 
 function viewTypeOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {
-	let name: string = descriptor.dimension;
-	if (name == "") { name = textures.slots[t].volume ? "3d" : (textures.slots[t].layers > 1 ? "2d-array" : "2d"); }
-	if ((name == "3d") != textures.slots[t].volume) {
-		stop(`GPUTextureViewDescriptor.dimension '${name}' does not match the ${textures.slots[t].volume ? "3d" : "2d"} GPUTexture ${textures.slots[t].id}`);
-	}
+	const name = checkedViewDimension(descriptor.dimension, textures.slots[t].volume, textures.slots[t].layers, textures.slots[t].id);
 	if (name == "2d") { return textures.slots[t].sampleCount > 1 ? TYPE_2D_MULTISAMPLE : TYPE_2D; }
 	if (name == "2d-array") { return TYPE_2D_ARRAY; }
 	if (name == "cube") { return TYPE_CUBE; }
@@ -1841,17 +1843,6 @@ function resourceOf(shader: int32, group: int32, binding: int32): int32 {
 	return -1;
 }
 
-function checkStorageRange(entry: GPUBindGroupEntry, b: int32): void {
-	if (!has(buffers.slots[b].usage, GPUBufferUsage.STORAGE as int32)) { stop(`bind group entry ${entry.binding} needs a STORAGE buffer`); }
-	if (entry.offset < 0 || entry.offset % STORAGE_OFFSET_ALIGNMENT != 0) {
-		stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${STORAGE_OFFSET_ALIGNMENT}`);
-	}
-	const bytes = entry.size == 0 ? buffers.slots[b].size - entry.offset : entry.size;
-	if (bytes <= 0 || entry.offset + bytes > buffers.slots[b].size) {
-		stop(`bind group entry ${entry.binding} range ${entry.offset}+${bytes} is not a positive size inside its buffer of ${buffers.slots[b].size}`);
-	}
-}
-
 function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
 	if (entry.buffer.id != 0) {
 		const b = buffers.slotIndex(entry.buffer.id);
@@ -1869,7 +1860,13 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 		}
 		const r = resourceOf(shader, group, entry.binding);
 		if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.StorageBuffer) {
-			checkStorageRange(entry, b);
+			checkedStorageEntry(
+				entry,
+				has(buffers.slots[b].usage, GPUBufferUsage.STORAGE as int32),
+				buffers.slots[b].size,
+				STORAGE_OFFSET_ALIGNMENT as int64,
+				mtlMaxBufferLength(device),
+			);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
@@ -1879,15 +1876,11 @@ function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void
 		const v = views.slotIndex(entry.textureView.id);
 		const t = textures.slotIndex(views.slots[v].texture);
 		if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.Texture) {
-			if (!has(textures.slots[t].usage, GPUTextureUsage.TEXTURE_BINDING as int32)) {
-				stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`);
-			}
+			checkedSampledView(entry.binding, has(textures.slots[t].usage, GPUTextureUsage.TEXTURE_BINDING as int32));
 			return;
 		}
 		if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.StorageTexture) {
-			if (!has(textures.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32) || views.slots[v].mipCount != 1) {
-				stop(`bind group entry ${entry.binding}: the view's texture lacks STORAGE_BINDING or the view spans several mips`);
-			}
+			checkedStorageView(entry.binding, has(textures.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32), views.slots[v].mipCount);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);
@@ -2074,21 +2067,12 @@ export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	if (index != GPU_UNIFORM_GROUP && index != GPU_RESOURCE_GROUP) { stopOnMember("setBindGroup index", `${index}`); }
 	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroups.slotIndex(bindGroup.id);
-	if (bindGroups.slots[g].group != index) {
-		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups.slots[g].group}`);
-	}
-	if ((dynamicOffsets.length as int32) != bindGroups.slots[g].dynamicCount) {
-		stop(`setBindGroup(${index}) takes ${bindGroups.slots[g].dynamicCount} dynamic offsets, got ${dynamicOffsets.length}`);
-	}
+	checkedBindGroupSet(index, bindGroups.slots[g].group, bindGroups.slots[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
 		for (let i = 0; i < bindGroups.slots[g].dynamicCount; i++) {
-			if (dynamicOffsets[i] % UNIFORM_OFFSET_ALIGNMENT != 0) {
-				stop(`dynamic offset ${dynamicOffsets[i]} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
-			}
 			bound.dynamicOffsets[i] = dynamicOffsets[i];
 		}
 		bound.uniformsDirty = true;
@@ -2528,22 +2512,13 @@ export function setComputePipeline(pipeline: GPUComputePipeline): void {
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	if (index != GPU_UNIFORM_GROUP && index != GPU_RESOURCE_GROUP) { stopOnMember("setBindGroup index", `${index}`); }
 	computeBound.bindGroups[index] = bindGroup.id;
 	computeBound.dirty = true;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroups.slotIndex(bindGroup.id);
-	if (bindGroups.slots[g].group != index) {
-		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups.slots[g].group}`);
-	}
-	if ((dynamicOffsets.length as int32) != bindGroups.slots[g].dynamicCount) {
-		stop(`setBindGroup(${index}) takes ${bindGroups.slots[g].dynamicCount} dynamic offsets, got ${dynamicOffsets.length}`);
-	}
+	checkedBindGroupSet(index, bindGroups.slots[g].group, bindGroups.slots[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
 		for (let i = 0; i < bindGroups.slots[g].dynamicCount; i++) {
-			if (dynamicOffsets[i] % UNIFORM_OFFSET_ALIGNMENT != 0) {
-				stop(`dynamic offset ${dynamicOffsets[i]} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
-			}
 			computeBound.dynamicOffsets[i] = dynamicOffsets[i];
 		}
 	}

@@ -366,3 +366,91 @@ export function checkedRenderModule(moduleIsCompute: boolean): void { refuse(ren
 export function checkedComputeModule(moduleIsCompute: boolean, entry: string, moduleEntry: string): void { refuse(computeModuleRefusal(moduleIsCompute, entry, moduleEntry)); }
 export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): void { refuse(computePipelineRefusal(pipeline, isCompute)); }
 export function checkedStripDraw(strip: boolean, matches: boolean): void { refuse(stripDrawRefusal(strip, matches)); }
+
+// A view without a dimension takes its texture's; a 3d view needs a 3d texture and no other does.
+export function resolvedViewDimension(dimension: string, volume: boolean, layers: int32): string {
+	if (dimension != "") { return dimension; }
+	return volume ? "3d" : (layers > 1 ? "2d-array" : "2d");
+}
+
+export function viewDimensionRefusal(name: string, volume: boolean, texture: uint32): string {
+	if ((name == "3d") != volume) {
+		return `GPUTextureViewDescriptor.dimension '${name}' does not match the ${volume ? "3d" : "2d"} GPUTexture ${texture}`;
+	}
+	return "";
+}
+
+export function checkedViewDimension(dimension: string, volume: boolean, layers: int32, texture: uint32): string {
+	const name = resolvedViewDimension(dimension, volume, layers);
+	refuse(viewDimensionRefusal(name, volume, texture));
+	return name;
+}
+
+// `index` is already inside the door's two groups. The group a bind group was made for is the
+// backend's record, as are its dynamic offset count and the alignment its buffers need.
+export function bindGroupSetRefusal(
+	index: int32,
+	madeFor: int32,
+	dynamicCount: int32,
+	dynamicOffsets: Readonly<Span<uint32>>,
+	alignment: uint32,
+): string {
+	if (madeFor != index) { return `setBindGroup(${index}) with a bind group made for group ${madeFor}`; }
+	if ((dynamicOffsets.length as int32) != dynamicCount) {
+		return `setBindGroup(${index}) takes ${dynamicCount} dynamic offsets, got ${dynamicOffsets.length}`;
+	}
+	for (let i = 0; i < dynamicCount; i++) {
+		if (dynamicOffsets[i] % alignment != 0) { return `dynamic offset ${dynamicOffsets[i]} is not a multiple of ${alignment}`; }
+	}
+	return "";
+}
+
+export function bindGroupIndexRefusal(index: int32): string {
+	if (index < GPU_UNIFORM_GROUP || index > GPU_RESOURCE_GROUP) {
+		return `setBindGroup index ${index} is outside the ${GPU_RESOURCE_GROUP + 1} bind groups`;
+	}
+	return "";
+}
+
+// The bytes a storage binding covers: size 0 means the rest of the buffer past the offset.
+export function entryBytes(entry: GPUBindGroupEntry, bufferSize: int64): int64 {
+	return entry.size == 0 ? bufferSize - entry.offset : entry.size;
+}
+
+// WebGPU (GPUBindGroup creation): a storage binding's effective size is a positive multiple of 4
+// inside its buffer, on every backend. `alignment` and `limit` are the backend's own.
+export function storageEntryRefusal(entry: GPUBindGroupEntry, bufferIsStorage: boolean, bufferSize: int64, alignment: int64, limit: int64): string {
+	if (!bufferIsStorage) { return `bind group entry ${entry.binding} needs a STORAGE buffer`; }
+	if (entry.offset < 0 || entry.offset % alignment != 0) {
+		return `bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${alignment}`;
+	}
+	const bytes = entryBytes(entry, bufferSize);
+	if (bytes <= 0 || bytes % 4 != 0 || entry.offset + bytes > bufferSize) {
+		return `bind group entry ${entry.binding} range ${entry.offset}+${bytes} is not a positive multiple of 4 inside its buffer of ${bufferSize}`;
+	}
+	if (bytes > limit) { return `bind group entry ${entry.binding} range of ${bytes} bytes is over the limit of ${limit}`; }
+	return "";
+}
+
+export function sampledViewRefusal(binding: int32, textureIsSampled: boolean): string {
+	return textureIsSampled ? "" : `bind group entry ${binding}: the view's texture lacks TEXTURE_BINDING`;
+}
+
+export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mipCount: int32): string {
+	if (!textureIsStorage) { return `bind group entry ${binding}: the view's texture lacks STORAGE_BINDING`; }
+	if (mipCount != 1) { return `bind group entry ${binding}: a storage texture view takes exactly one mip`; }
+	return "";
+}
+
+export function checkedBindGroupIndex(index: int32): void { refuse(bindGroupIndexRefusal(index)); }
+
+export function checkedBindGroupSet(index: int32, madeFor: int32, dynamicCount: int32, dynamicOffsets: Readonly<Span<uint32>>, alignment: uint32): void {
+	refuse(bindGroupSetRefusal(index, madeFor, dynamicCount, dynamicOffsets, alignment));
+}
+
+export function checkedStorageEntry(entry: GPUBindGroupEntry, bufferIsStorage: boolean, bufferSize: int64, alignment: int64, limit: int64): void {
+	refuse(storageEntryRefusal(entry, bufferIsStorage, bufferSize, alignment, limit));
+}
+
+export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }
+export function checkedStorageView(binding: int32, textureIsStorage: boolean, mipCount: int32): void { refuse(storageViewRefusal(binding, textureIsStorage, mipCount)); }
