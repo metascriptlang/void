@@ -245,7 +245,7 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Vector => scalarText(t.scalar) + n,
 		ShaderTypeKind.Matrix => "float" + String(t.columns) + "x" + n,
 		ShaderTypeKind.Array => fail(p, "an array where only a declaration can hold one"),
-		ShaderTypeKind.RuntimeArray => fail(p, "a runtime array outside a storage buffer"),
+		ShaderTypeKind.RuntimeArray => typeText(p, t.element[0]),
 		ShaderTypeKind.Struct => p.structs[t.structIndex],
 		ShaderTypeKind.Texture => textureText(p, t),
 		ShaderTypeKind.Sampler => "sampler",

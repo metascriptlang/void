@@ -658,6 +658,12 @@ function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
 	return t.element.some((e) => holdsAtomic(m, e));
 }
 
+const RUNTIME_ARRAY = "is a runtime array, which only a storage buffer is";
+
+function holdsRuntimeArray(t: ShaderType): boolean {
+	return t.kind == ShaderTypeKind.RuntimeArray || t.element.some((e) => holdsRuntimeArray(e));
+}
+
 class Checker {
 	module: ShaderModule = new ShaderModule();
 	errors: string[] = [];
@@ -762,6 +768,9 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 	const fault = literalError(e);
 	if (fault != "") { c.errors.push(owner + ": " + fault); }
+	if (e.type.kind == ShaderTypeKind.RuntimeArray && e.kind != ExprKind.Resource) {
+		c.errors.push(owner + ": a runtime array is read only through its storage buffer");
+	}
 	const shift = e.kind == ExprKind.Binary && isShift(e.binary);
 	if (shift && (e.operands.length != 2 || e.operands[1].type.scalar != ScalarKind.U32)) {
 		c.errors.push(owner + ": a shift amount is a u32, as WGSL's");
@@ -873,11 +882,23 @@ export function irErrors(m: ShaderModule): string[] {
 		if (varying && isIntegral(io.type) && io.interpolation != Interpolation.Flat) {
 			c.errors.push(owner + ": an integer varying is flat");
 		}
+		if (holdsRuntimeArray(io.type)) { c.errors.push(owner + ": it " + RUNTIME_ARRAY); }
 		if (io.builtin == Builtin.None && io.type.kind == ShaderTypeKind.Array) {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
 		}
 	}
-	for (const k of m.constants) { constantErrors(c, k.value, "constant '" + k.name + "'"); }
+	for (const s of m.structs) {
+		for (const f of s.members) {
+			if (holdsRuntimeArray(f.type)) {
+				c.errors.push("struct '" + s.name + "': member '" + f.name + "' " + RUNTIME_ARRAY);
+			}
+		}
+	}
+	for (const k of m.constants) {
+		const owner = "constant '" + k.name + "'";
+		if (holdsRuntimeArray(k.type)) { c.errors.push(owner + ": it " + RUNTIME_ARRAY); }
+		constantErrors(c, k.value, owner);
+	}
 	c.callees = m.functions.map((): int32[] => []);
 	c.fragmentOnly = m.functions.map((): string[] => []);
 	c.computeOnly = m.functions.map((): string[] => []);
@@ -886,7 +907,11 @@ export function irErrors(m: ShaderModule): string[] {
 		c.current = i;
 		const owner = "function '" + f.name + "'";
 		conditionErrors(c, f.condition, owner);
+		if (holdsRuntimeArray(f.result)) { c.errors.push(owner + ": its result " + RUNTIME_ARRAY); }
 		for (const v of f.params.concat(f.locals)) {
+			if (holdsRuntimeArray(v.type)) {
+				c.errors.push(owner + ": '" + v.name + "' " + RUNTIME_ARRAY);
+			}
 			if (holdsAtomic(m, v.type)) {
 				c.errors.push(owner + ": '" + v.name + "' holds an atomic, which lives only in a " +
 					"storage buffer or workgroup memory, as WGSL's");

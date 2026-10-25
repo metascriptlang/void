@@ -358,3 +358,29 @@ test "a literal is finite, and an integer literal has no fraction, for every tar
 	constant.constants.push(k);
 	assert refusedAs(constant, "constant 'limit': a literal that is not finite");
 }
+
+test "a runtime array is a storage buffer's type and nothing else's" {
+	const runtime = arrayType(scalarType(ScalarKind.F32), -1);
+	let member = computeModule();
+	member.structs[0].members.push(field("tail", runtime));
+	assert irErrors(member)[0] ==
+		"struct 'Command': member 'tail' is a runtime array, which only a storage buffer is";
+	let local = computeModule();
+	local.functions[0].locals.push(field("scratch", runtime));
+	assert irErrors(local)[0] ==
+		"function 'commandsToImage': 'scratch' is a runtime array, which only a storage buffer is";
+	let constant = computeModule();
+	let k = new ShaderConstant();
+	k.name = "table";
+	k.type = runtime;
+	k.value = literal(scalarType(ScalarKind.F32), 0.0);
+	constant.constants.push(k);
+	assert irErrors(constant)[0] ==
+		"constant 'table': it is a runtime array, which only a storage buffer is";
+	let read = computeModule();
+	read.functions[0].body.splice(0, 0, stmtOf(StmtKind.Call,
+		exprOf(ExprKind.Local, runtime, 0, []), []));
+	assert irErrors(read)[0] ==
+		"function 'commandsToImage': a runtime array is read only through its storage buffer";
+	assert irErrors(computeModule()).length == 0;
+}

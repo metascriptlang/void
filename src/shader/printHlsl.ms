@@ -223,7 +223,7 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Vector => scalarName(t.scalar) + String(t.rows),
 		ShaderTypeKind.Matrix => "float" + String(t.columns) + "x" + String(t.rows),
 		ShaderTypeKind.Array => typeName(p, innermost(t)),
-		ShaderTypeKind.RuntimeArray => fail(p, "a runtime array is only a storage buffer"),
+		ShaderTypeKind.RuntimeArray => typeName(p, t.element[0]),
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
 		ShaderTypeKind.Texture => textureTypeName(t),
 		ShaderTypeKind.Sampler => "SamplerState",
