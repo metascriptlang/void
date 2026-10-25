@@ -82,7 +82,6 @@ import {
 } from "../types.ms";
 import {
 	cachedCanvas,
-	currentFrame,
 	checkedCopyRegion,
 	entryOf,
 	addressesBinding,

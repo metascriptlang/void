@@ -71,7 +71,6 @@ import {
 	labelOf,
 } from "../types.ms";
 import {
-	currentFrame,
 	checkedCopyRegion,
 	clampedAnisotropy,
 	cachedLimits,
