@@ -47,7 +47,7 @@ function morphInput(base: MeshData): MorphPrimitiveInput {
 	};
 }
 
-function morphOf(base: MeshData): Readonly<MorphData> {
+function morphOf(base: MeshData): MorphData {
 	const made = MorphData.create([morphInput(base)], 2);
 	if (!made.ok) { unreachable; }
 	return made.value;
