@@ -1426,7 +1426,6 @@ export function inverse(m: Mat4x4f): Mat4x4f {
 	));
 }
 
-
 export function abs(x: float32): float32 { return Math.abs(x) as float32; }
 export function sign(x: float32): float32 { return Math.sign(x) as float32; }
 export function floor(x: float32): float32 { return Math.floor(x) as float32; }
@@ -2067,6 +2066,10 @@ export function textureLoad(texture: StorageTexture3d, at: Vec3i): Vec4f {
 	return loadTexel(texture.texels, first);
 }
 
+function insideTexture(width: int32, height: int32, at: Vec2i): boolean {
+	return at.x >= 0 && at.y >= 0 && at.x < width && at.y < height;
+}
+
 function storageTexel(
 	width: int32,
 	height: int32,
@@ -2099,7 +2102,7 @@ export function textureDimensions(texture: Texture2d, level: int32): Vec2i {
 
 export function textureLoad(texture: Texture2d, at: Vec2i, level: int32): Vec4f {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
+	if (!insideTexture(texture.width, texture.height, at)) {
 		unreachable("textureLoad: the texel is outside the texture");
 	}
 	return texelAt(texture, at.x, at.y);
@@ -2114,12 +2117,12 @@ export struct Texture2dU32 {
 
 export function textureLoad(texture: Texture2dU32, at: Vec2i, level: int32): Vec4u {
 	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
-	if (at.x < 0 || at.y < 0 || at.x >= texture.width || at.y >= texture.height) {
+	if (!insideTexture(texture.width, texture.height, at)) {
 		unreachable("textureLoad: the texel is outside the texture");
 	}
 	const first = (at.y * texture.width + at.x) * 4;
-	const t = texture.texels;
-	return { x: t[first], y: t[first + 1], z: t[first + 2], w: t[first + 3] };
+	const texels = texture.texels;
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
 }
 
 // WGSL's texture_2d_array<f32>: layers of one size, one picked by its index.
@@ -2130,12 +2133,20 @@ export struct Texture2dArray {
 	texels: float32[];
 }
 
+function sliceTexels(texels: float32[], first: int32, count: int32): float32[] {
+	let slice: float32[] = [];
+	for (let i = 0; i < count; i++) { slice.push(texels[first + i]); }
+	return slice;
+}
+
 function layerOf(texture: Texture2dArray, layer: int32): Texture2d {
 	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
 	const size = texture.width * texture.height * 4;
-	let texels: float32[] = [];
-	for (let i = 0; i < size; i++) { texels.push(texture.texels[layer * size + i]); }
-	return { width: texture.width, height: texture.height, texels };
+	return {
+		width: texture.width,
+		height: texture.height,
+		texels: sliceTexels(texture.texels, layer * size, size),
+	};
 }
 
 export function textureLoad(
@@ -2233,9 +2244,11 @@ function cubeFaceOf(texture: TextureCube, dir: Vec3f): Texture2d {
 	const face = ax >= ay && ax >= az ? (dir.x >= 0.0 ? 0 : 1) :
 		ay >= az ? (dir.y >= 0.0 ? 2 : 3) : (dir.z >= 0.0 ? 4 : 5);
 	const size = texture.size * texture.size * 4;
-	let texels: float32[] = [];
-	for (let i = 0; i < size; i++) { texels.push(texture.texels[face * size + i]); }
-	return { width: texture.size, height: texture.size, texels };
+	return {
+		width: texture.size,
+		height: texture.size,
+		texels: sliceTexels(texture.texels, face * size, size),
+	};
 }
 
 function cubeFaceUv(dir: Vec3f): Vec2f {
@@ -2278,8 +2291,8 @@ export function textureSampleLevel(
 
 function texelAt(texture: Texture2d, x: int32, y: int32): Vec4f {
 	const first = (y * texture.width + x) * 4;
-	const t = texture.texels;
-	return { x: t[first], y: t[first + 1], z: t[first + 2], w: t[first + 3] };
+	const texels = texture.texels;
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
 }
 
 // The Vulkan specification's "Wrapping Operation", on a texel index.
@@ -2312,23 +2325,24 @@ function lerp(a: Vec4f, b: Vec4f, t: float32): Vec4f {
 
 // WGSL's textureSample on a texture of one mip level, as void3d's are.
 export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): Vec4f {
-	const w = texture.width;
-	const h = texture.height;
+	const width = texture.width;
+	const height = texture.height;
 	const wrap = sampler.wrap;
 	if (sampler.nearest) {
-		const x = wrapped(texelIndex(uv.x * (w as float32)), w, wrap);
-		return texelAt(texture, x, wrapped(texelIndex(uv.y * (h as float32)), h, wrap));
+		const x = wrapped(texelIndex(uv.x * (width as float32)), width, wrap);
+		return texelAt(texture, x, wrapped(texelIndex(uv.y * (height as float32)), height, wrap));
 	}
-	const u: float32 = uv.x * (w as float32) - 0.5;
-	const v: float32 = uv.y * (h as float32) - 0.5;
-	const i = texelIndex(u);
-	const j = texelIndex(v);
-	const x0 = wrapped(i, w, wrap);
-	const x1 = wrapped(i + 1, w, wrap);
-	const y0 = wrapped(j, h, wrap);
-	const y1 = wrapped(j + 1, h, wrap);
-	const a: float32 = u - (i as float32);
-	const b: float32 = v - (j as float32);
-	const top = lerp(texelAt(texture, x0, y0), texelAt(texture, x1, y0), a);
-	return lerp(top, lerp(texelAt(texture, x0, y1), texelAt(texture, x1, y1), a), b);
+	const u: float32 = uv.x * (width as float32) - 0.5;
+	const v: float32 = uv.y * (height as float32) - 0.5;
+	const column = texelIndex(u);
+	const row = texelIndex(v);
+	const x0 = wrapped(column, width, wrap);
+	const x1 = wrapped(column + 1, width, wrap);
+	const y0 = wrapped(row, height, wrap);
+	const y1 = wrapped(row + 1, height, wrap);
+	const fractionU: float32 = u - (column as float32);
+	const fractionV: float32 = v - (row as float32);
+	const top = lerp(texelAt(texture, x0, y0), texelAt(texture, x1, y0), fractionU);
+	const bottom = lerp(texelAt(texture, x0, y1), texelAt(texture, x1, y1), fractionU);
+	return lerp(top, bottom, fractionV);
 }

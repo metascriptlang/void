@@ -45,16 +45,19 @@ function roundUp(n: int32, to: int32): int32 {
 
 function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int32] {
 	const std140 = rule == LayoutRule.Std140;
-	if (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Atomic) { return [4, 4]; }
-	if (t.kind == ShaderTypeKind.Vector) { return [t.rows == 2 ? 8 : 16, 4 * t.rows]; }
-	if (t.kind == ShaderTypeKind.Matrix) {
-		const column = t.rows == 2 && !std140 ? 8 : 16;
-		return [column, column * t.columns];
-	}
-	if (t.kind == ShaderTypeKind.Array) {
-		const [elementAlign, elementSize] = extentOf(m, t.element[0], rule);
-		const align = std140 ? roundUp(elementAlign, 16) : elementAlign;
-		return [align, roundUp(elementSize, align) * t.length];
+	match (t.kind) {
+		ShaderTypeKind.Scalar | ShaderTypeKind.Atomic => { return [4, 4]; },
+		ShaderTypeKind.Vector => { return [t.rows == 2 ? 8 : 16, 4 * t.rows]; },
+		ShaderTypeKind.Matrix => {
+			const column = t.rows == 2 && !std140 ? 8 : 16;
+			return [column, column * t.columns];
+		},
+		ShaderTypeKind.Array => {
+			const [elementAlign, elementSize] = extentOf(m, t.element[0], rule);
+			const align = std140 ? roundUp(elementAlign, 16) : elementAlign;
+			return [align, roundUp(elementSize, align) * t.length];
+		},
+		_ => {},
 	}
 	const s = structLayoutOf(m, t.structIndex, rule);
 	return [s.align, s.size];
@@ -121,17 +124,20 @@ export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 }
 
 function storageMemberError(m: ShaderModule, t: ShaderType, path: string): string {
-	if (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) {
-		return t.scalar == ScalarKind.Bool ? path + " is a bool, which has no host layout" : "";
-	}
-	if (t.kind == ShaderTypeKind.Matrix || t.kind == ShaderTypeKind.Atomic) { return ""; }
-	if (t.kind == ShaderTypeKind.Array) { return storageMemberError(m, t.element[0], path); }
-	if (t.kind == ShaderTypeKind.Struct) {
-		for (const f of m.structs[t.structIndex].members) {
-			const error = storageMemberError(m, f.type, path + "." + f.name);
-			if (error != "") { return error; }
-		}
-		return "";
+	match (t.kind) {
+		ShaderTypeKind.Scalar | ShaderTypeKind.Vector => {
+			return t.scalar == ScalarKind.Bool ? path + " is a bool, which has no host layout" : "";
+		},
+		ShaderTypeKind.Matrix | ShaderTypeKind.Atomic => { return ""; },
+		ShaderTypeKind.Array => { return storageMemberError(m, t.element[0], path); },
+		ShaderTypeKind.Struct => {
+			for (const f of m.structs[t.structIndex].members) {
+				const error = storageMemberError(m, f.type, path + "." + f.name);
+				if (error != "") { return error; }
+			}
+			return "";
+		},
+		_ => {},
 	}
 	return path + " is a " + t.kind.toString() + ", which a storage buffer cannot hold";
 }
@@ -246,7 +252,8 @@ function samplerlessStmts(stmts: ShaderStmt[], out: int32[]): void {
 	}
 }
 
-function fetchesThrough(m: ShaderModule, use: PairUse, texture: int32, stage: ShaderStage): boolean {
+function fetchesThrough(m: ShaderModule, use: PairUse, texture: int32, stage: ShaderStage):
+	boolean {
 	return use.stage == stage && use.pair.texture == texture && use.pair.sampler >= 0 &&
 		m.resources[use.pair.sampler].samplerType != SamplerType.Comparison;
 }

@@ -285,7 +285,7 @@ test "what MSL cannot say is refused by name" {
 		[]), [])]);
 	helper.result = VEC4;
 	recursive.functions.push(helper);
-	assert refused(recursive) == "printMsl: function 'helper' is recursive";
+	assert irErrors(recursive).includes("function 'helper' is recursive");
 
 	let packed = tiny(fragment, literal(VEC4, 0.0));
 	packed.structs.push(block("Light", [field("colour", VEC3), field("power", F32)]));

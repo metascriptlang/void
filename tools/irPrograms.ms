@@ -4,7 +4,8 @@
 // GPU_COPY_PROGRAMS. Beside the modules it writes each source's stages as GLSL 450 in sokol-shdc's
 // dialect (void3d.glsl, pixelArt3d.glsl, shader2d.glsl, gpuCopy.glsl), which tools/shaderSlots.ms
 // reads and scripts/regen-shaders.sh --oracle-shdc hands to sokol-shdc.
-// Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> <metallib cache dir> [--fxc <fxc path>] [--reflection-only]
+// Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> [--fxc <fxc path>]
+//   [--reflection-only]
 // --reflection-only writes a target whose printer refuses the program as its reflection with empty
 // sources and the refusal above the function; without it a refusal stops the tool.
 // Every printed stage lands in out/irPrograms/ for validateHlsl.sh, validateWgsl.sh and the rest.
@@ -23,7 +24,9 @@ import {
 	isComputeSource,
 	programModule,
 	programSource,
+	quotedSource,
 } from "../src/shader/descriptor";
+import { dxbcStage } from "../src/shader/dxbcCache";
 import { irFromText } from "../src/shader/irText";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
 import { ShaderTarget, uniformBlockLayout } from "../src/shader/layout";
@@ -82,8 +85,6 @@ import {
 } from "../src/void2d/shader2d";
 import { gpuCopyFs } from "../tests/integration/gpuCopyShader";
 
-// [source, stage name as the program lines give it, lowered stage]; the names are those of
-// genShaders.ms, genShadersPixelArt.ms, genShaders2d.ms and genShadersGpuCopy.ms.
 const STAGES: string[][] = [
 	["CORE", "fullscreenVs", glslIr(fullscreenVs)],
 	["CORE", "copyFs", glslIr(copyFs)],
@@ -173,8 +174,8 @@ function fail(message: string): never {
 }
 
 function stageText(source: string, name: string): string {
-	for (const s of STAGES) {
-		if (s[0] == source && s[1] == name) { return s[2]; }
+	for (const stage of STAGES) {
+		if (stage[0] == source && stage[1] == name) { return stage[2]; }
 	}
 	fail("no " + source + " stage '" + name + "'");
 }
@@ -199,15 +200,17 @@ function keyedPrograms(): Program[] {
 	for (const line of lines("src/void3d/programKeys.txt")) {
 		const columns = line.trim().split(" ").filter((c) => c != "");
 		if (columns.length == 0 || columns[0].startsWith("#")) { continue; }
-		if (columns.length != 7) { fail("programKeys.txt: row " + columns[0] + " is not seven columns"); }
-		let p = new Program();
-		p.name = columns[0];
-		p.source = columns[2] == "PIXEL_ART" ? "PIXEL_ART" : "CORE";
-		p.features = columns[3] == "-" ? [] : columns[3].split(":");
-		p.vertex = columns[4];
-		p.fragment = columns[5];
-		p.layout = columns[6];
-		out.push(p);
+		if (columns.length != 7) {
+			fail("programKeys.txt: row " + columns[0] + " is not seven columns");
+		}
+		let program = new Program();
+		program.name = columns[0];
+		program.source = columns[2] == "PIXEL_ART" ? "PIXEL_ART" : "CORE";
+		program.features = columns[3] == "-" ? [] : columns[3].split(":");
+		program.vertex = columns[4];
+		program.fragment = columns[5];
+		program.layout = columns[6];
+		out.push(program);
 	}
 	return out;
 }
@@ -223,71 +226,81 @@ const GPU_COPY_PROGRAMS: string[][] = [["gpuCopy", "gpuCopyVs", "gpuCopyFs"]];
 
 function listedPrograms(rows: string[][], source: string): Program[] {
 	return rows.map((row) => {
-		let p = new Program();
-		p.name = row[0];
-		p.source = source;
-		p.vertex = row[1];
-		p.fragment = row[2];
-		return p;
+		let program = new Program();
+		program.name = row[0];
+		program.source = source;
+		program.vertex = row[1];
+		program.fragment = row[2];
+		return program;
 	});
 }
 
 function parsed(text: string, what: string): ShaderModule {
-	const m = irFromText(text);
-	if (!m.ok) { fail(what + ": " + m.error); }
-	return m.value;
+	const result = irFromText(text);
+	if (!result.ok) { fail(what + ": " + result.error); }
+	return result.value;
 }
 
 function shdcText(source: string, programs: Program[]): string {
 	let out = "";
-	for (const s of STAGES) {
-		if (s[0] != source) { continue; }
-		const m = parsed(s[2], source + " " + s[1]);
-		const kind = m.entries[0].stage == ShaderStage.Vertex ? "@vs " : "@fs ";
-		out += kind + s[1] + "\n" + printGlsl450(m) + "@end\n\n";
+	for (const stage of STAGES) {
+		if (stage[0] != source) { continue; }
+		const shaderModule = parsed(stage[2], source + " " + stage[1]);
+		const kind = shaderModule.entries[0].stage == ShaderStage.Vertex ? "@vs " : "@fs ";
+		out += kind + stage[1] + "\n" + printGlsl450(shaderModule) + "@end\n\n";
 	}
-	for (const p of programs) {
-		out += "@program " + p.name + " " + p.vertex + " " + p.fragment + "\n";
+	for (const program of programs) {
+		out += "@program " + program.name + " " + program.vertex + " " + program.fragment + "\n";
 	}
 	return out;
 }
 
-function blockMembers(p: Program, block: string): string[] {
-	const m = programModule(stageText(p.source, p.vertex), stageText(p.source, p.fragment),
-		p.features);
-	if (!m.ok) { fail(p.name + ": " + m.error); }
-	for (let r = 0; r < m.value.resources.length; r++) {
-		const resource = m.value.resources[r];
+function linkedModule(program: Program): ShaderModule {
+	const result = programModule(
+		stageText(program.source, program.vertex),
+		stageText(program.source, program.fragment),
+		program.features,
+	);
+	if (!result.ok) { fail(program.name + ": " + result.error); }
+	return result.value;
+}
+
+function blockMembers(program: Program, block: string): string[] {
+	const shaderModule = linkedModule(program);
+	const resources = shaderModule.resources;
+	for (let resourceIndex = 0; resourceIndex < resources.length; resourceIndex++) {
+		const resource = resources[resourceIndex];
 		if (resource.kind != ResourceKind.UniformBlock || resource.name != block) { continue; }
-		const layout = uniformBlockLayout(m.value, r);
-		if (!layout.ok) { fail(p.name + ": " + layout.error); }
-		const members = m.value.structs[resource.type.structIndex].members;
+		const layout = uniformBlockLayout(shaderModule, resourceIndex);
+		if (!layout.ok) { fail(program.name + ": " + layout.error); }
+		const members = shaderModule.structs[resource.type.structIndex].members;
 		let out: string[] = [];
 		for (let i = 0; i < members.length; i++) {
 			out.push(members[i].name + "@" + String(layout.value.offsets[i]));
 		}
 		return out;
 	}
-	fail(p.name + " has no uniform block " + block);
+	fail(program.name + " has no uniform block " + block);
 }
 
-
-function checkFeaturesRead(p: Program): void {
-	const text = printGlsl450(parsed(stageText(p.source, p.vertex), p.vertex)) +
-		printGlsl450(parsed(stageText(p.source, p.fragment), p.fragment));
-	const lines = text.split("\n");
-	for (const f of p.features) {
-		const read = lines.some((line) => line == "#ifdef " + f ||
-			(line.startsWith("#if ") && line.includes("defined(" + f + ")")));
+function checkFeaturesRead(program: Program): void {
+	const vertexText = stageText(program.source, program.vertex);
+	const fragmentText = stageText(program.source, program.fragment);
+	const lines = (printGlsl450(parsed(vertexText, program.vertex)) +
+		printGlsl450(parsed(fragmentText, program.fragment))).split("\n");
+	for (const feature of program.features) {
+		const read = lines.some((line) => line == "#ifdef " + feature ||
+			(line.startsWith("#if ") && line.includes("defined(" + feature + ")")));
 		if (!read) {
-			fail("programKeys.txt: row " + p.name + " asks for " + f + ", which " + p.vertex + " and " +
-				p.fragment + " never read");
+			fail("programKeys.txt: row " + program.name + " asks for " + feature + ", which " +
+				program.vertex + " and " + program.fragment + " never read");
 		}
 	}
 }
+
 function programNamed(programs: Program[], name: string): Program {
-	for (const p of programs) {
-		if (p.name == name) { return p; }
+	for (const program of programs) {
+		if (program.name == name) { return program; }
 	}
 	fail("programKeys.txt has no row " + name);
 }
@@ -326,40 +339,42 @@ class Agreement {
 
 // Every program of one vertex layout reads its attributes at the same slots, and a uniform block
 // that programs share by name has one size and one slot, so one layout and one writer serve all.
-function agree(a: Agreement, p: Program, m: ShaderModule, gl: ProgramSource): void {
+function agree(
+	agreement: Agreement,
+	program: Program,
+	shaderModule: ShaderModule,
+	glsl430: ProgramSource,
+): void {
 	let attributes: string[] = [];
-	for (const attribute of gl.reflection.attributes) {
+	for (const attribute of glsl430.reflection.attributes) {
 		attributes.push((attribute.nativeName ?? "") + "@" + String(attribute.location));
 	}
 	attributes.sort();
 	const slots = attributes.join(" ");
-	const layoutSlots = a.layoutSlots.get(p.layout);
+	const layoutSlots = agreement.layoutSlots.get(program.layout);
 	if (layoutSlots === undefined) {
-		a.layoutSlots.set(p.layout, slots);
-		a.layoutOwner.set(p.layout, p.name);
+		agreement.layoutSlots.set(program.layout, slots);
+		agreement.layoutOwner.set(program.layout, program.name);
 	} else if (layoutSlots != slots) {
-		fail(p.name + " reads layout " + p.layout + " as " + slots + ", " +
-			(a.layoutOwner.get(p.layout) ?? "") + " as " + layoutSlots);
+		fail(program.name + " reads layout " + program.layout + " as " + slots + ", " +
+			(agreement.layoutOwner.get(program.layout) ?? "") + " as " + layoutSlots);
 	}
-	for (let r = 0; r < m.resources.length; r++) {
-		const resource = m.resources[r];
+	for (let resourceIndex = 0; resourceIndex < shaderModule.resources.length; resourceIndex++) {
+		const resource = shaderModule.resources[resourceIndex];
 		if (resource.kind != ResourceKind.UniformBlock) { continue; }
-		const layout = uniformBlockLayout(m, r);
-		if (!layout.ok) { fail(p.name + ": " + layout.error); }
+		const layout = uniformBlockLayout(shaderModule, resourceIndex);
+		if (!layout.ok) { fail(program.name + ": " + layout.error); }
 		const shape = String(layout.value.size) + " bytes at slot " + String(resource.binding);
-		const held = a.blockShape.get(resource.name);
+		const held = agreement.blockShape.get(resource.name);
 		if (held === undefined) {
-			a.blockShape.set(resource.name, shape);
-			a.blockOwner.set(resource.name, p.name);
+			agreement.blockShape.set(resource.name, shape);
+			agreement.blockOwner.set(resource.name, program.name);
 		} else if (held != shape) {
-			fail(p.name + " declares " + resource.name + " as " + shape + ", " +
-				(a.blockOwner.get(resource.name) ?? "") + " as " + held);
+			fail(program.name + " declares " + resource.name + " as " + shape + ", " +
+				(agreement.blockOwner.get(resource.name) ?? "") + " as " + held);
 		}
 	}
 }
-
-// The flags src/webgpu/d3d11/d3d11.c passes D3DCompile, in fxc's spelling; keep them in step.
-const FXC_FLAGS: string[] = ["-Zpc", "-O3"];
 
 class Dxbc {
 	cache: string = "";
@@ -370,31 +385,25 @@ class Dxbc {
 	missed: int32 = 0;
 }
 
-function bytecodeOf(d: Dxbc, constants: Map<string, string>, code: string, profile: string,
-	entry: string, what: string): string {
-	const keyed = profile + " " + entry + " " + FXC_FLAGS.join(" ") + "\n" + code;
-	const key = sha256(keyed.asBytes()).toHex();
-	let path = d.cache + "/" + key + ".dxbc";
-	if (!exists(path)) {
-		path = d.fresh + "/" + key + ".dxbc";
-		if (!exists(path)) {
-			if (d.fxc == "") {
-				d.missed++;
-				console.log("dxbc miss " + what + " " + key + ": no fxc");
-				return "[]";
-			}
-			const source = d.fresh + "/" + key + ".hlsl";
-			keep(source, code);
-			const run = execFileResult(d.fxc, ["-nologo", "-T", profile, "-E", entry].concat(FXC_FLAGS)
-				.concat(["-Fo", path, source]));
-			if (!run.started || run.exitCode != 0) {
-				fail("fxc " + profile + " refused " + what + " (" + source + "):\n" + run.output +
-					run.errorOutput);
-			}
-			d.compiled++;
-		}
+function bytecodeOf(
+	dxbc: Dxbc,
+	constants: Map<string, string>,
+	code: string,
+	profile: string,
+	entry: string,
+	what: string,
+): string {
+	const stage = dxbcStage(dxbc.cache, dxbc.fresh, dxbc.fxc, profile, entry, code);
+	if (stage.error != "") { fail(what + ": " + stage.error); }
+	const key = stage.key;
+	if (stage.path == "") {
+		dxbc.missed++;
+		console.log("dxbc miss " + what + " " + key + ": no fxc");
+		return "[]";
 	}
-	if (!d.used.includes(key)) { d.used.push(key); }
+	if (stage.compiled) { dxbc.compiled++; }
+	const path = stage.path;
+	if (!dxbc.used.includes(key)) { dxbc.used.push(key); }
 	if (!constants.has(key)) {
 		const blob = readFile(path);
 		if (!blob.ok) { fail("cannot read " + path); }
@@ -440,12 +449,17 @@ function xcrunMetal(sdk: string, args: string[], what: string): void {
 	}
 }
 
-function metallibOf(m: Metallib, constants: Map<string, string>, language: string, code: string,
-	entry: string, what: string): string {
+function metallibOf(
+	m: Metallib,
+	constants: Map<string, string>,
+	language: string,
+	code: string,
+	entry: string,
+	what: string,
+): string {
 	const flags = metalFlags(language);
 	const sdk = flags[0];
-	const keyed = flags.join(" ") + " " + entry + "\n" + code;
-	const key = sha256(keyed.asBytes()).toHex();
+	const key = sha256((flags.join(" ") + " " + entry + "\n" + code).asBytes()).toHex();
 	let path = m.cache + "/" + key + ".metallib";
 	if (!exists(path)) {
 		path = m.fresh + "/" + key + ".metallib";
@@ -456,10 +470,11 @@ function metallibOf(m: Metallib, constants: Map<string, string>, language: strin
 				return "[]";
 			}
 			const source = m.fresh + "/" + key + ".metal";
+			const air = m.fresh + "/" + key + ".air";
 			keep(source, code);
-			xcrunMetal(sdk, ["metal", "-c"].concat(flags.slice(1)).concat(["-o", m.fresh + "/" + key + ".air",
-				source]), what + " (" + source + ")");
-			xcrunMetal(sdk, ["metallib", m.fresh + "/" + key + ".air", "-o", path], what);
+			xcrunMetal(sdk, ["metal", "-c"].concat(flags.slice(1)).concat(["-o", air, source]),
+				what + " (" + source + ")");
+			xcrunMetal(sdk, ["metallib", air, "-o", path], what);
 			m.compiled++;
 		}
 	}
@@ -480,70 +495,107 @@ function hlslProfile(stage: string): string {
 	};
 }
 
-function stageBytecode(blobOf: (code: string, stage: string, entry: string, what: string) => string,
-	s: ProgramSource, name: string): string[] {
-	if (s.refusal != "") { return isComputeSource(s) ? ["[]"] : ["[]", "[]"]; }
-	if (isComputeSource(s)) {
-		return [blobOf(s.computeCode, "compute", s.entryPoint, name + " compute")];
+function stageBytecode(
+	blobOf: (code: string, stage: string, entry: string, what: string) => string,
+	source: ProgramSource,
+	name: string,
+): string[] {
+	if (source.refusal != "") { return isComputeSource(source) ? ["[]"] : ["[]", "[]"]; }
+	const entry = source.entryPoint;
+	if (isComputeSource(source)) {
+		return [blobOf(source.computeCode, "compute", entry, name + " compute")];
 	}
 	return [
-		blobOf(s.vertexCode, "vertex", s.entryPoint, name + " vertex"),
-		blobOf(s.fragmentCode, "fragment", s.entryPoint, name + " fragment"),
+		blobOf(source.vertexCode, "vertex", entry, name + " vertex"),
+		blobOf(source.fragmentCode, "fragment", entry, name + " fragment"),
 	];
 }
 
-function moduleText(programs: Program[], typesPath: string, dispatcher: string,
-	reflectionOnly: boolean, counts: Counts, dxbc: Dxbc, metallib: Metallib): string {
+function textShared(texts: Map<string, string>, code: string, bytecode: string,
+	keepSource: boolean): string {
+	if (bytecode != "[]" && !keepSource) { return quotedSource(""); }
+	const key = sha256(code.asBytes()).toHex();
+	texts.set(key, quotedSource(code));
+	return "TEXT_" + key;
+}
+
+function moduleText(
+	programs: Program[],
+	typesPath: string,
+	dispatcher: string,
+	reflectionOnly: boolean,
+	counts: Counts,
+	dxbc: Dxbc,
+	metallib: Metallib,
+): string {
 	let sources: ProgramSource[][] = [];
 	let agreement = new Agreement();
-	for (const p of programs) {
-		const m = programModule(stageText(p.source, p.vertex), stageText(p.source, p.fragment),
-			p.features);
-		if (!m.ok) { fail(p.name + ": " + m.error); }
+	for (const program of programs) {
+		const shaderModule = linkedModule(program);
 		counts.programs++;
 		let row: ProgramSource[] = [];
 		for (const language of LANGUAGES) {
-			const s = programSource(m.value, targetOf(language[0]));
-			if (!s.ok) { fail(p.name + " " + language[0] + ": " + s.error); }
-			if (s.value.refusal != "") {
-				if (!reflectionOnly) { fail(p.name + " " + language[0] + ": " + s.value.refusal); }
+			const printed = programSource(shaderModule, targetOf(language[0]));
+			if (!printed.ok) { fail(program.name + " " + language[0] + ": " + printed.error); }
+			if (printed.value.refusal != "") {
+				const refusal = printed.value.refusal;
+				if (!reflectionOnly) { fail(program.name + " " + language[0] + ": " + refusal); }
 				counts.refused++;
-				console.log("refused " + p.name + " " + language[0] + ": " + s.value.refusal);
+				console.log("refused " + program.name + " " + language[0] + ": " + refusal);
 			} else {
 				const files = stageFiles(language[0]);
-				keep("out/irPrograms/" + p.name + files[0], s.value.vertexCode);
-				keep("out/irPrograms/" + p.name + files[1], s.value.fragmentCode);
+				keep("out/irPrograms/" + program.name + files[0], printed.value.vertexCode);
+				keep("out/irPrograms/" + program.name + files[1], printed.value.fragmentCode);
 				counts.printed += 2;
 			}
-			row.push(s.value);
+			row.push(printed.value);
 		}
-		if (p.layout != "") { agree(agreement, p, m.value, row[LANGUAGES.findIndex((l) => l[0] == "glsl430")]); }
+		if (program.layout != "") {
+			const glsl430 = LANGUAGES.findIndex((language) => language[0] == "glsl430");
+			agree(agreement, program, shaderModule, row[glsl430]);
+		}
 		sources.push(row);
 	}
 	let text = "// Generated by tools/irPrograms.ms from the shader IR; do not edit.\n\n" +
 		"import { GPUShaderModuleDescriptor } from \"" + typesPath + "\";\n" +
-		"import { shaderBytecodeFromBase64 } from \"" + typesPath.replace("webgpu/types.ms", "shader/dxbc.ms") + "\";\n";
-	for (let t = 0; t < LANGUAGES.length; t++) {
+		"import { shaderBytecodeFromBase64 } from \"" +
+		typesPath.replace("webgpu/types.ms", "shader/dxbc.ms") + "\";\n";
+	for (let targetIndex = 0; targetIndex < LANGUAGES.length; targetIndex++) {
+		const language = LANGUAGES[targetIndex][0];
+		const keepSource = language == "metal_ios";
+		let texts: Map<string, string> = new Map();
 		let constants: Map<string, string> = new Map();
 		let functions: string[] = [];
 		for (let i = 0; i < programs.length; i++) {
-			const s = sources[i][t];
-			const language = LANGUAGES[t][0];
-			const none = isComputeSource(s) ? ["[]"] : ["[]", "[]"];
+			const stageSource = sources[i][targetIndex];
+			const name = programs[i].name;
 			const bytecode = language == "hlsl5" ?
 				stageBytecode((code, stage, entry, what) =>
-					bytecodeOf(dxbc, constants, code, hlslProfile(stage), entry, what), s, programs[i].name) :
+					bytecodeOf(dxbc, constants, code, hlslProfile(stage), entry, what),
+					stageSource, name) :
 				metalFlags(language).length > 0 ?
 				stageBytecode((code, stage, entry, what) =>
-					metallibOf(metallib, constants, language, code, entry, what), s, programs[i].name) :
-				none;
-			functions.push(descriptorSource(programs[i].name, s, bytecode, language == "metal_ios"));
+					metallibOf(metallib, constants, language, code, entry, what), stageSource, name) :
+				isComputeSource(stageSource) ? ["[]"] : ["[]", "[]"];
+			const code = isComputeSource(stageSource) ?
+				[textShared(texts, stageSource.computeCode, bytecode[0], keepSource)] :
+				[
+					textShared(texts, stageSource.vertexCode, bytecode[0], keepSource),
+					textShared(texts, stageSource.fragmentCode, bytecode[1], keepSource),
+				];
+			const descriptor = descriptorSource(programs[i].name, stageSource, code, bytecode);
+			functions.push(descriptor);
 		}
 		let blobs = "";
-		for (const [key, base64] of constants) {
-			blobs += "\tconst " + (LANGUAGES[t][0] == "hlsl5" ? "DXBC_" : "METALLIB_") + key + " = \"" + base64 + "\";\n";
+		for (const [key, quoted] of texts) {
+			blobs += "\tconst TEXT_" + key + " = " + quoted + ";\n";
 		}
-		text += (t == 0 ? "\nwhen (" : " else when (") + LANGUAGES[t][1] + ") {\n" +
+		for (const [key, base64] of constants) {
+			blobs += "\tconst " + (language == "hlsl5" ? "DXBC_" : "METALLIB_") + key + " = \"" +
+				base64 + "\";\n";
+		}
+		text += (targetIndex == 0 ? "\nwhen (" : " else when (") + LANGUAGES[targetIndex][1] +
+			") {\n" +
 			(blobs != "" ? blobs + "\n" : "") + functions.join("\n") + "}";
 	}
 	if (dispatcher != "") {
@@ -552,7 +604,8 @@ function moduleText(programs: Program[], typesPath: string, dispatcher: string,
 			arms += "\t\t" + String(i) + " => " + programs[i].name + "ShaderModule(),\n";
 		}
 		arms += "\t\t_ => " + programs[programs.length - 1].name + "ShaderModule(),\n";
-		text += "\n\nexport function " + dispatcher + "(index: int32): GPUShaderModuleDescriptor {\n" +
+		text += "\n\nexport function " + dispatcher +
+			"(index: int32): GPUShaderModuleDescriptor {\n" +
 			"\tif (index < 0 || index >= " + String(programs.length) + ") {\n" +
 			"\t\tconsole.error(\"" + dispatcher + ": no program at index \" + String(index));\n" +
 			"\t\tunreachable;\n\t}\n" +
@@ -576,7 +629,8 @@ function main(): void {
 		}
 	}
 	if (dirs.length != 3) {
-		fail("usage: irPrograms <out dir> <dxbc cache dir> <metallib cache dir> [--fxc <fxc path>] [--reflection-only]");
+		fail("usage: irPrograms <out dir> <dxbc cache dir> <metallib cache dir> " +
+			"[--fxc <fxc path>] [--reflection-only]");
 	}
 	const out = dirs[0];
 	dxbc.cache = dirs[1];
@@ -592,14 +646,23 @@ function main(): void {
 	const keyed = keyedPrograms();
 	const void2d = listedPrograms(VOID2D_PROGRAMS, "VOID2D");
 	const gpuCopy = listedPrograms(GPU_COPY_PROGRAMS, "GPU_COPY");
-	for (const p of keyed) { checkFeaturesRead(p); }
+	for (const program of keyed) { checkFeaturesRead(program); }
 	checkBlockHead(keyed);
-	keep(out + "/programModules.ms", moduleText(keyed, "../webgpu/types.ms",
-		"gpu3dShaderModule", reflectionOnly, counts, dxbc, metallib));
-	keep(out + "/shader2dModules.ms", moduleText(void2d, "../webgpu/types.ms", "", reflectionOnly,
-		counts, dxbc, metallib));
-	keep(out + "/gpuCopyModules.ms", moduleText(gpuCopy, "../../src/webgpu/types.ms", "",
-		reflectionOnly, counts, dxbc, metallib));
+	keep(
+		out + "/programModules.ms",
+		moduleText(keyed, "../webgpu/types.ms", "gpu3dShaderModule", reflectionOnly, counts, dxbc,
+			metallib),
+	);
+	keep(
+		out + "/shader2dModules.ms",
+		moduleText(void2d, "../webgpu/types.ms", "", reflectionOnly, counts, dxbc,
+			metallib),
+	);
+	keep(
+		out + "/gpuCopyModules.ms",
+		moduleText(gpuCopy, "../../src/webgpu/types.ms", "", reflectionOnly, counts, dxbc,
+			metallib),
+	);
 	keep(out + "/void3d.glsl", shdcText("CORE", []));
 	keep(out + "/pixelArt3d.glsl", shdcText("PIXEL_ART", []));
 	keep(out + "/shader2d.glsl", shdcText("VOID2D", void2d));
@@ -608,9 +671,10 @@ function main(): void {
 	keep(out + "/metallib.used", metallib.used.join("\n") + "\n");
 	console.log("irPrograms: " + String(counts.programs) + " programs, " + String(counts.printed) +
 		" stages printed, " + String(counts.refused) + " target sources refused, " +
-		String(dxbc.used.length) + " DXBC blobs used, " + String(dxbc.compiled) + " compiled by fxc, " +
-		String(dxbc.missed) + " missed, " + String(metallib.used.length) + " metallib blobs used, " +
-		String(metallib.compiled) + " compiled by xcrun, " + String(metallib.missed) + " missed");
+		String(dxbc.used.length) + " DXBC blobs used, " + String(dxbc.compiled) +
+		" compiled by fxc, " + String(dxbc.missed) + " missed, " + String(metallib.used.length) +
+		" metallib blobs used, " + String(metallib.compiled) + " compiled by xcrun, " +
+		String(metallib.missed) + " missed");
 }
 
 main();

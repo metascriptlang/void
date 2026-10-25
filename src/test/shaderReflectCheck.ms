@@ -447,3 +447,16 @@ test "a samplerless texel fetch reflects the GL dummy sampler and nothing elsewh
 	assert hlsl[0] == "texture fragment 1/0 size 0 slot 0 name - tb -1 [float||||||]";
 	assert hlsl[1] == "0 - 0";
 }
+
+test "a vertex entry that takes instanceIndex says so in its reflection" {
+	let m = blurModule();
+	const before = reflectProgram(m, 0, 1, ShaderTarget.Wgsl);
+	assert before.ok && !before.value.readsInstanceIndex;
+	m.ios.push(io("instanceIndex", ShaderStage.Vertex, IoDirection.In,
+		scalarType(ScalarKind.U32), Builtin.InstanceIndex));
+	for (const target of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl300es]) {
+		const after = reflectProgram(m, 0, 1, target);
+		assert after.ok && after.value.readsInstanceIndex;
+		assert after.value.attributes.length == before.value.attributes.length;
+	}
+}

@@ -24,13 +24,20 @@ import {
 	TextureShape,
 	UnaryOp,
 	sameShaderType,
-	scalarType,
-	vectorType,
 	isAtomic,
 	isEffect,
 } from "./ir";
 import { BindingSlot } from "./layout";
+import { builtinType, ioLocation } from "./irWalk";
+import { claimName } from "./names";
 import { readsFrom, strayWorkgroup } from "./specialize";
+import {
+	binaryOperator,
+	floatText,
+	isIntMin,
+	literalFault,
+	mathName,
+} from "./spelling";
 
 // WGSL keywords and reserved words (sections 15.1, 15.2), the predeclared types and enumerants
 // a declaration would shadow, and every builtin function this printer calls.
@@ -91,55 +98,12 @@ function wgslReservedWords(): string[] {
 
 function builtinName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Abs => "abs",
-		Intrinsic.Sign => "sign",
-		Intrinsic.Floor => "floor",
-		Intrinsic.Ceil => "ceil",
-		Intrinsic.Trunc => "trunc",
-		Intrinsic.Round => "round",
-		Intrinsic.Fract => "fract",
-		Intrinsic.Sqrt => "sqrt",
 		Intrinsic.InverseSqrt => "inverseSqrt",
-		Intrinsic.Exp => "exp",
-		Intrinsic.Exp2 => "exp2",
-		Intrinsic.Log => "log",
-		Intrinsic.Log2 => "log2",
-		Intrinsic.Pow => "pow",
-		Intrinsic.Sin => "sin",
-		Intrinsic.Cos => "cos",
-		Intrinsic.Tan => "tan",
-		Intrinsic.Asin => "asin",
-		Intrinsic.Acos => "acos",
-		Intrinsic.Atan => "atan",
-		Intrinsic.Atan2 => "atan2",
-		Intrinsic.Sinh => "sinh",
-		Intrinsic.Cosh => "cosh",
-		Intrinsic.Tanh => "tanh",
-		Intrinsic.Degrees => "degrees",
-		Intrinsic.Radians => "radians",
-		Intrinsic.Min => "min",
-		Intrinsic.Max => "max",
-		Intrinsic.Clamp => "clamp",
-		Intrinsic.Saturate => "saturate",
-		Intrinsic.Mix => "mix",
-		Intrinsic.Step => "step",
-		Intrinsic.Smoothstep => "smoothstep",
-		Intrinsic.Fma => "fma",
-		Intrinsic.Dot => "dot",
-		Intrinsic.Cross => "cross",
-		Intrinsic.Length => "length",
-		Intrinsic.Distance => "distance",
-		Intrinsic.Normalize => "normalize",
-		Intrinsic.Reflect => "reflect",
-		Intrinsic.Refract => "refract",
 		Intrinsic.FaceForward => "faceForward",
-		Intrinsic.Transpose => "transpose",
-		Intrinsic.Determinant => "determinant",
-		Intrinsic.Select => "select",
 		Intrinsic.Dpdx => "dpdx",
 		Intrinsic.Dpdy => "dpdy",
-		Intrinsic.Fwidth => "fwidth",
-		_ => "",
+		Intrinsic.Select => "select",
+		_ => mathName(op),
 	};
 }
 
@@ -222,14 +186,7 @@ function isIdentifier(name: string): boolean {
 
 function nameIn(p: Printer, scope: string[], name: string): string {
 	if (!isIdentifier(name)) { return refusal(p, "'" + name + "' is no WGSL identifier"); }
-	let candidate = name;
-	let n = 1;
-	while (p.reserved.includes(candidate) || scope.includes(candidate)) {
-		candidate = name + "_" + String(n);
-		n++;
-	}
-	scope.push(candidate);
-	return candidate;
+	return claimName(scope, (n) => p.reserved.includes(n), name);
 }
 
 function scalarText(s: ScalarKind): string {
@@ -283,12 +240,12 @@ function accessText(a: Access): string {
 }
 
 function typeText(p: Printer, t: ShaderType): string {
-	const n = String(t.rows);
+	const rows = String(t.rows);
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => scalarText(t.scalar),
-		ShaderTypeKind.Vector => t.scalar == ScalarKind.Bool ? "vec" + n + "<bool>" :
-			"vec" + n + scalarText(t.scalar).substring(0, 1),
-		ShaderTypeKind.Matrix => "mat" + String(t.columns) + "x" + n + "f",
+		ShaderTypeKind.Vector => t.scalar == ScalarKind.Bool ? "vec" + rows + "<bool>" :
+			"vec" + rows + scalarText(t.scalar).substring(0, 1),
+		ShaderTypeKind.Matrix => "mat" + String(t.columns) + "x" + rows + "f",
 		ShaderTypeKind.Array => "array<" + typeText(p, t.element[0]) + ", " +
 			String(t.length) + ">",
 		ShaderTypeKind.RuntimeArray => "array<" + typeText(p, t.element[0]) + ">",
@@ -325,11 +282,9 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 }
 
 function numberText(p: Printer, value: float64): string {
-	if (value != value || value - value != 0.0) {
-		return refusal(p, "a literal that is not finite");
-	}
-	if (value == 0.0 && 1.0 / value < 0.0) { return "-0.0"; }
-	return String(value);
+	const fault = literalFault(ScalarKind.F32, value);
+	if (fault != "") { return refusal(p, fault); }
+	return floatText(value);
 }
 
 function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
@@ -338,45 +293,23 @@ function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
 		const text = numberText(p, value) + "f";
 		return value < 0.0 || text.startsWith("-") ? "(" + text + ")" : text;
 	}
-	if (value != Math.floor(value)) { return refusal(p, "an integer literal with a fraction"); }
-	if (s == ScalarKind.I32 && value == -2147483648.0) { return "(-2147483647i - 1i)"; }
+	const fault = literalFault(s, value);
+	if (fault != "") { return refusal(p, fault); }
+	if (isIntMin(s, value)) { return "(-2147483647i - 1i)"; }
 	const text = String(value as int64) + (s == ScalarKind.I32 ? "i" : "u");
 	return value < 0.0 ? "(" + text + ")" : text;
 }
 
 function literalText(p: Printer, t: ShaderType, value: float64): string {
-	if (t.kind == ShaderTypeKind.Scalar) { return scalarLiteral(p, t.scalar, value); }
-	if (t.kind == ShaderTypeKind.Vector) {
-		return typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")";
-	}
-	return refusal(p, "a literal of a " + t.kind.toString());
+	return match (t.kind) {
+		ShaderTypeKind.Scalar => scalarLiteral(p, t.scalar, value),
+		ShaderTypeKind.Vector => typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")",
+		_ => refusal(p, "a literal of a " + t.kind.toString()),
+	};
 }
 
 function argsText(p: Printer, args: ShaderExpr[]): string {
 	return args.map((a) => exprText(p, a)).join(", ");
-}
-
-function binaryOperator(op: BinaryOp): string {
-	return match (op) {
-		BinaryOp.Add => "+",
-		BinaryOp.Sub => "-",
-		BinaryOp.Mul => "*",
-		BinaryOp.Div => "/",
-		BinaryOp.Mod => "%",
-		BinaryOp.BitAnd => "&",
-		BinaryOp.BitOr => "|",
-		BinaryOp.BitXor => "^",
-		BinaryOp.ShiftLeft => "<<",
-		BinaryOp.ShiftRight => ">>",
-		BinaryOp.LogicalAnd => "&&",
-		BinaryOp.LogicalOr => "||",
-		BinaryOp.Equal => "==",
-		BinaryOp.NotEqual => "!=",
-		BinaryOp.Less => "<",
-		BinaryOp.LessEqual => "<=",
-		BinaryOp.Greater => ">",
-		BinaryOp.GreaterEqual => ">=",
-	};
 }
 
 function binaryText(p: Printer, e: ShaderExpr): string {
@@ -397,11 +330,12 @@ function binaryText(p: Printer, e: ShaderExpr): string {
 	return (e.binary == BinaryOp.Equal ? "all" : "any") + text;
 }
 
+function runsEffect(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic);
+}
+
 function hasEffect(e: ShaderExpr): boolean {
-	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
-		return true;
-	}
-	return e.operands.some((o) => hasEffect(o));
+	return runsEffect(e) || e.operands.some((o) => hasEffect(o));
 }
 
 // select evaluates both arms, so a conditional with a call in an arm becomes a var assigned in
@@ -416,10 +350,7 @@ function hoists(e: ShaderExpr): boolean {
 
 function bareEffect(e: ShaderExpr): boolean {
 	if (isHoisted(e)) { return false; }
-	if (e.kind == ExprKind.Call || e.kind == ExprKind.Intrinsic && isEffect(e.intrinsic)) {
-		return true;
-	}
-	return e.operands.some((o) => bareEffect(o));
+	return runsEffect(e) || e.operands.some((o) => bareEffect(o));
 }
 
 function keepsOrder(e: ShaderExpr): boolean {
@@ -570,11 +501,11 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 }
 
 function memberName(p: Printer, t: ShaderType, member: int32): string {
-	if (t.kind == ShaderTypeKind.ExchangeResult) { return member == 0 ? "old_value" : "exchanged"; }
-	if (t.kind != ShaderTypeKind.Struct) {
-		return refusal(p, "a field of a " + t.kind.toString());
-	}
-	return p.members[t.structIndex][member];
+	return match (t.kind) {
+		ShaderTypeKind.ExchangeResult => member == 0 ? "old_value" : "exchanged",
+		ShaderTypeKind.Struct => p.members[t.structIndex][member],
+		_ => refusal(p, "a field of a " + t.kind.toString()),
+	};
 }
 
 function swizzleText(components: int32[]): string {
@@ -721,15 +652,18 @@ function stmtText(p: Printer, s: ShaderStmt, depth: int32): void {
 		StmtKind.For => forText(p, s, depth),
 		StmtKind.Switch => {
 			emit(p, depth, "switch (" + exprText(p, s.expr) + ") {");
-			for (const k of s.cases) {
-				let labels = k.labels.map((l) => exprText(p, l));
-				if (k.isDefault) { labels.push("default"); }
-				emit(p, depth + 1, (k.labels.length == 0 ? "default" : "case " + labels.join(", ")) +
-					": {");
-				stmtsText(p, k.body, depth + 2);
+			for (const arm of s.cases) {
+				let labels = arm.labels.map((l) => exprText(p, l));
+				if (arm.isDefault) { labels.push("default"); }
+				emit(
+					p,
+					depth + 1,
+					(arm.labels.length == 0 ? "default" : "case " + labels.join(", ")) + ": {",
+				);
+				stmtsText(p, arm.body, depth + 2);
 				emit(p, depth + 1, "}");
 			}
-			if (!s.cases.some((k) => k.isDefault)) { emit(p, depth + 1, "default: {}"); }
+			if (!s.cases.some((arm) => arm.isDefault)) { emit(p, depth + 1, "default: {}"); }
 			emit(p, depth, "}");
 		},
 		StmtKind.Break => emit(p, depth, "break;"),
@@ -779,8 +713,10 @@ function writtenParams(stmts: ShaderStmt[], written: int32[]): void {
 				written.push(root.index);
 			}
 		}
-		for (const list of [s.init, s.update, s.body, s.otherwise]) { writtenParams(list, written); }
-		for (const k of s.cases) { writtenParams(k.body, written); }
+		for (const list of [s.init, s.update, s.body, s.otherwise]) {
+			writtenParams(list, written);
+		}
+		for (const arm of s.cases) { writtenParams(arm.body, written); }
 	}
 }
 
@@ -828,17 +764,6 @@ function builtinText(b: Builtin): string {
 	};
 }
 
-function builtinType(b: Builtin): ShaderType {
-	return match (b) {
-		Builtin.Position => vectorType(ScalarKind.F32, 4),
-		Builtin.FrontFacing => scalarType(ScalarKind.Bool),
-		Builtin.FragDepth => scalarType(ScalarKind.F32),
-		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
-			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
-		_ => scalarType(ScalarKind.U32),
-	};
-}
-
 function interpolationText(io: ShaderIo): string {
 	if (io.interpolation == Interpolation.Flat) { return " @interpolate(flat)"; }
 	const linear = io.interpolation == Interpolation.Linear;
@@ -860,7 +785,7 @@ function interfaceText(p: Printer, io: ShaderIo, ordinal: int32): string {
 		}
 		return "@builtin(" + builtinText(io.builtin) + ")";
 	}
-	const location = "@location(" + String(io.location >= 0 ? io.location : ordinal) + ")";
+	const location = "@location(" + String(ioLocation(io, ordinal)) + ")";
 	const varying = io.stage == ShaderStage.Vertex && io.direction == IoDirection.Out ||
 		io.stage == ShaderStage.Fragment && io.direction == IoDirection.In;
 	return varying ? location + interpolationText(io) : location;

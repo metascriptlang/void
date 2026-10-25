@@ -40,6 +40,7 @@ import {
 	nameStruct,
 	suffixed,
 } from "./names";
+import { binaryOperator, mathName } from "./spelling";
 
 // GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
 // texture and sampler types of Vulkan GLSL.
@@ -213,7 +214,7 @@ function atomicName(op: Intrinsic): string {
 	};
 }
 
-function atomicText(p: Glsl, e: ShaderExpr, args: string[]): string {
+function atomicText(e: ShaderExpr, args: string[]): string {
 	const unsigned = e.operands[0].type.scalar == ScalarKind.U32;
 	const rest = match (e.intrinsic) {
 		Intrinsic.AtomicLoad => unsigned ? "0u" : "0",
@@ -277,31 +278,9 @@ function literalText(e: ShaderExpr): string {
 	return text.indexOf(".") >= 0 || text.indexOf("e") >= 0 ? text : text + ".0";
 }
 
-function binaryText(op: BinaryOp): string {
-	return match (op) {
-		BinaryOp.Add => "+",
-		BinaryOp.Sub => "-",
-		BinaryOp.Mul => "*",
-		BinaryOp.Div => "/",
-		BinaryOp.Mod => "%",
-		BinaryOp.BitAnd => "&",
-		BinaryOp.BitOr => "|",
-		BinaryOp.BitXor => "^",
-		BinaryOp.ShiftLeft => "<<",
-		BinaryOp.ShiftRight => ">>",
-		BinaryOp.LogicalAnd => "&&",
-		BinaryOp.LogicalOr => "||",
-		BinaryOp.Equal => "==",
-		BinaryOp.NotEqual => "!=",
-		BinaryOp.Less => "<",
-		BinaryOp.LessEqual => "<=",
-		BinaryOp.Greater => ">",
-		BinaryOp.GreaterEqual => ">=",
-	};
-}
-
 function isIntegerScalar(t: ShaderType): boolean {
-	return t.kind == ShaderTypeKind.Scalar && (t.scalar == ScalarKind.I32 || t.scalar == ScalarKind.U32);
+	return t.kind == ShaderTypeKind.Scalar &&
+		(t.scalar == ScalarKind.I32 || t.scalar == ScalarKind.U32);
 }
 
 function value(p: Glsl, e: ShaderExpr): string {
@@ -309,19 +288,21 @@ function value(p: Glsl, e: ShaderExpr): string {
 		const left = e.operands[0];
 		const right = e.operands[1];
 		if (e.binary == BinaryOp.Mod && !isIntegerScalar(left.type)) {
-			const a = expr(p, left);
-			const b = expr(p, right);
-			return a + " - " + b + " * trunc(" + a + " / " + b + ")";
+			const leftText = expr(p, left);
+			const rightText = expr(p, right);
+			return leftText + " - " + rightText + " * trunc(" + leftText + " / " + rightText +
+				")";
 		}
 		const amount = isShift(e.binary) && right.kind != ExprKind.Literal ?
 			"(" + expr(p, right) + " & 31u)" : expr(p, right);
-		return expr(p, left) + " " + binaryText(e.binary) + " " + amount;
+		return expr(p, left) + " " + binaryOperator(e.binary) + " " + amount;
 	}
 	if (e.kind == ExprKind.Unary) {
 		const operand = e.operands[0];
 		const op = e.unary == UnaryOp.Negate ? "-" :
 			operand.type.scalar == ScalarKind.Bool ? "!" : "~";
-		return op + (operand.kind == ExprKind.Unary ? "(" + value(p, operand) + ")" : expr(p, operand));
+		return op +
+			(operand.kind == ExprKind.Unary ? "(" + value(p, operand) + ")" : expr(p, operand));
 	}
 	if (e.kind == ExprKind.Conditional) {
 		return expr(p, e.operands[0]) + " ? " + expr(p, e.operands[1]) + " : " +
@@ -376,55 +357,13 @@ function expr(p: Glsl, e: ShaderExpr): string {
 
 function intrinsicName(op: Intrinsic): string {
 	return match (op) {
-		Intrinsic.Abs => "abs",
-		Intrinsic.Sign => "sign",
-		Intrinsic.Floor => "floor",
-		Intrinsic.Ceil => "ceil",
-		Intrinsic.Trunc => "trunc",
 		Intrinsic.Round => "roundEven",
-		Intrinsic.Fract => "fract",
-		Intrinsic.Sqrt => "sqrt",
-		Intrinsic.InverseSqrt => "inversesqrt",
-		Intrinsic.Exp => "exp",
-		Intrinsic.Exp2 => "exp2",
-		Intrinsic.Log => "log",
-		Intrinsic.Log2 => "log2",
-		Intrinsic.Pow => "pow",
-		Intrinsic.Sin => "sin",
-		Intrinsic.Cos => "cos",
-		Intrinsic.Tan => "tan",
-		Intrinsic.Asin => "asin",
-		Intrinsic.Acos => "acos",
-		Intrinsic.Atan | Intrinsic.Atan2 => "atan",
-		Intrinsic.Sinh => "sinh",
-		Intrinsic.Cosh => "cosh",
-		Intrinsic.Tanh => "tanh",
-		Intrinsic.Degrees => "degrees",
-		Intrinsic.Radians => "radians",
-		Intrinsic.Min => "min",
-		Intrinsic.Max => "max",
-		Intrinsic.Clamp | Intrinsic.Saturate => "clamp",
-		Intrinsic.Mix => "mix",
-		Intrinsic.Step => "step",
-		Intrinsic.Smoothstep => "smoothstep",
-		Intrinsic.Fma => "fma",
-		Intrinsic.Dot => "dot",
-		Intrinsic.Cross => "cross",
-		Intrinsic.Length => "length",
-		Intrinsic.Distance => "distance",
-		Intrinsic.Normalize => "normalize",
-		Intrinsic.Reflect => "reflect",
-		Intrinsic.Refract => "refract",
-		Intrinsic.FaceForward => "faceforward",
-		Intrinsic.Transpose => "transpose",
-		Intrinsic.Determinant => "determinant",
+		Intrinsic.Atan2 => "atan",
+		Intrinsic.Saturate => "clamp",
 		Intrinsic.Inverse => "inverse",
 		Intrinsic.UpperLeft3x3 => "mat3",
 		Intrinsic.Select => "mix",
 		Intrinsic.LessThanEqual => "lessThanEqual",
-		Intrinsic.Dpdx => "dFdx",
-		Intrinsic.Dpdy => "dFdy",
-		Intrinsic.Fwidth => "fwidth",
 		Intrinsic.TextureSample => "texture",
 		Intrinsic.TextureLoad => "texelFetch",
 		Intrinsic.TextureStore => "imageStore",
@@ -438,7 +377,14 @@ function intrinsicName(op: Intrinsic): string {
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
 			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
 			Intrinsic.AtomicCompareExchangeWeak => atomicName(op),
+		_ => mathOrStop(op),
 	};
+}
+
+function mathOrStop(op: Intrinsic): string {
+	const name = mathName(op);
+	if (name == "") { throw new Error("internal: printGlsl450 has no spelling for " + op.toString()); }
+	return name;
 }
 
 function intrinsic(p: Glsl, e: ShaderExpr): string {
@@ -473,7 +419,7 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 			broken("AtomicCompareExchangeWeak outside a local's initializer or a statement of " +
 				"its own: atomicCompSwap returns only the old value");
 		},
-		_ => isAtomic(e.intrinsic) ? atomicText(p, e, args) : intrinsicName(e.intrinsic) + all,
+		_ => isAtomic(e.intrinsic) ? atomicText(e, args) : intrinsicName(e.intrinsic) + all,
 	};
 }
 
@@ -531,7 +477,8 @@ function compared(e: ShaderExpr, args: string[]): string {
 function simple(p: Glsl, s: ShaderStmt): string {
 	if (s.kind == StmtKind.Let) {
 		const local = p.module.functions[p.fn].locals[s.local];
-		return typeName(p, local.type) + " " + p.localNames[p.fn][s.local] + " = " + value(p, s.expr);
+		return typeName(p, local.type) + " " + p.localNames[p.fn][s.local] + " = " +
+			value(p, s.expr);
 	}
 	if (s.kind == StmtKind.Call) { return expr(p, s.expr); }
 	const target = expr(p, s.target);
@@ -577,10 +524,10 @@ function caseText(p: Glsl, labels: string[], body: ShaderStmt[], indent: string)
 
 function switchText(p: Glsl, s: ShaderStmt, indent: string): string {
 	let text = indent + "switch (" + value(p, s.expr) + ") {\n";
-	for (const c of s.cases) {
-		let labels: string[] = c.isDefault ? ["default:"] : [];
-		for (const l of c.labels) { labels.push("case " + value(p, l) + ":"); }
-		text += caseText(p, labels, c.body, indent + "    ");
+	for (const arm of s.cases) {
+		let labels: string[] = arm.isDefault ? ["default:"] : [];
+		for (const label of arm.labels) { labels.push("case " + value(p, label) + ":"); }
+		text += caseText(p, labels, arm.body, indent + "    ");
 	}
 	return text + indent + "}\n";
 }
@@ -599,7 +546,7 @@ function stmt(p: Glsl, s: ShaderStmt, indent: string): string {
 		s.expr.intrinsic == Intrinsic.AtomicCompareExchangeWeak;
 	if (exchange && s.kind == StmtKind.Let) { return exchangeLet(p, s, indent); }
 	if (exchange && s.kind == StmtKind.Call) {
-		return indent + atomicText(p, s.expr, s.expr.operands.map((a) => expr(p, a))) + ";\n";
+		return indent + atomicText(s.expr, s.expr.operands.map((a) => expr(p, a))) + ";\n";
 	}
 	return match (s.kind) {
 		StmtKind.Block => indent + "{\n" + statements(p, s.body, inner) + indent + "}\n",
@@ -662,6 +609,11 @@ function accessMode(a: Access): string {
 	};
 }
 
+function sampleTag(r: ShaderResource): string {
+	return r.sampleType == SampleType.Float ? "" : "@image_sample_type " + r.name + " " +
+		sampleTypeName(r.sampleType) + "\n";
+}
+
 function resourceText(p: Glsl, r: ShaderResource): string {
 	const at = "layout(binding=" + String(r.binding) + ")";
 	const slot = at + " uniform ";
@@ -669,16 +621,16 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 		ResourceKind.UniformBlock => slot + r.name + " {\n" +
 			p.module.structs[r.type.structIndex].members.map((f) =>
 				"    " + declared(p, f.type, f.name) + ";\n").join("") + "};\n",
-		ResourceKind.Texture => r.type.shape == TextureShape.D2Array ?
-			slot + "texture2DArray " + r.name + ";\n" :
-			r.type.shape == TextureShape.Cube ? slot + "textureCube " + r.name + ";\n" :
-			r.type.shape == TextureShape.Depth2dArray || r.type.shape == TextureShape.DepthCube ?
-			"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
-				TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n" :
-			r.type.scalar == ScalarKind.U32 ?
-			"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
-			(r.sampleType == SampleType.Float ? "" : "@image_sample_type " + r.name + " " +
-				sampleTypeName(r.sampleType) + "\n") + slot + "texture2D " + r.name + ";\n",
+		ResourceKind.Texture => match (r.type.shape) {
+			TextureShape.D2Array => sampleTag(r) + slot + "texture2DArray " + r.name + ";\n",
+			TextureShape.Cube => sampleTag(r) + slot + "textureCube " + r.name + ";\n",
+			TextureShape.Depth2dArray | TextureShape.DepthCube =>
+				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
+					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
+			_ => r.type.scalar == ScalarKind.U32 ?
+				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
+				sampleTag(r) + slot + "texture2D " + r.name + ";\n",
+		},
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Filtering ? "" : "@sampler_type " +
 			r.name + " " + samplerTypeName(r.samplerType) + "\n") + slot + "sampler " + r.name +
 			";\n",
@@ -714,7 +666,9 @@ function nameDeclarations(p: Glsl): void {
 	}
 	for (let i = 0; i < m.ios.length; i++) {
 		const io = m.ios[i];
-		if (io.stage == p.entry.stage && io.builtin == Builtin.None) { names.globals.push(p.ioNames[i]); }
+		if (io.stage == p.entry.stage && io.builtin == Builtin.None) {
+			names.globals.push(p.ioNames[i]);
+		}
 	}
 	for (const s of m.structs) {
 		p.structNames.push("");
@@ -780,7 +734,9 @@ export function printGlsl450(m: ShaderModule): string {
 			attributes.push(io.name);
 		}
 	}
-	for (const io of m.ios) { p.ioNames.push(isVarying(io) ? suffixed(io.name, attributes) : io.name); }
+	for (const io of m.ios) {
+		p.ioNames.push(isVarying(io) ? suffixed(io.name, attributes) : io.name);
+	}
 	nameDeclarations(p);
 
 	let out = "";
@@ -794,7 +750,8 @@ export function printGlsl450(m: ShaderModule): string {
 		const s = m.structs[d.index];
 		out += "struct " + p.structNames[d.index] + " {\n";
 		for (let f = 0; f < s.members.length; f++) {
-			out += "    " + typeName(p, s.members[f].type) + " " + p.structFields[d.index][f] + ";\n";
+			out += "    " + typeName(p, s.members[f].type) + " " + p.structFields[d.index][f] +
+				";\n";
 		}
 		out += "};\n";
 	}
@@ -810,7 +767,8 @@ export function printGlsl450(m: ShaderModule): string {
 	for (const direction of [IoDirection.In, IoDirection.Out]) {
 		for (let i = 0; i < m.ios.length; i++) {
 			const io = m.ios[i];
-			if (io.stage == p.entry.stage && io.direction == direction && io.builtin == Builtin.None) {
+			if (io.stage == p.entry.stage && io.direction == direction &&
+				io.builtin == Builtin.None) {
 				out += gated(io.condition, ioText(p, i));
 			}
 		}

@@ -1,11 +1,4 @@
-// glsl(entry) reads a vertex entry, or a fragment entry that reads no varyings, and returns it as
-// Vulkan-style GLSL 450 for sokol-shdc: the signature becomes the stage's interface, the body
-// becomes main(), and each function and module constant the body reaches is defined above main(),
-// after what it reads. glslLinked(fragment, vertex) does the same for a fragment fed by that vertex
-// entry, after checking its varyings are the vertex outputs: shdc numbers varyings in declaration
-// order, so a name, type or place that differs would read another output with no error.
-// The node walk sits in functions nested in the macro body: only there are Node fields readable;
-// it lowers the entry into a ShaderModule (./ir), and printGlsl450 writes the text.
+// The node walk sits in functions nested in the macro body: only there are Node fields readable.
 
 import {
 	DeclKind,
@@ -127,16 +120,30 @@ function isGlslIdentifier(name: string): boolean {
 }
 
 export macro glsl(entry: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslAs"),
-		arguments: [entry, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "glsl" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslAs"),
+		arguments: [
+			entry,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "glsl" },
+		],
+	};
 }
 
 // glslIr, glslLinkedIr and glslComputeIr return the lowered module as irText instead of GLSL.
 export macro glslIr(entry: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslAs"),
-		arguments: [entry, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "ir" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslAs"),
+		arguments: [
+			entry,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "ir" },
+		],
+	};
 }
 
 export macro glslAs(entry: Node, form: Node): Node {
@@ -181,15 +188,41 @@ export macro glslAs(entry: Node, form: Node): Node {
 }
 
 export macro glslLinked(fragment: Node, vertex: Node): Node {
-	return { kind: NodeKind.CallExpr, line: fragment.line, column: fragment.column, callee: bindSym("glslLinkedAs"),
-		arguments: [fragment, vertex, { kind: NodeKind.StringLiteral, line: fragment.line, column: fragment.column,
-			value: "glsl" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: fragment.line,
+		column: fragment.column,
+		callee: bindSym("glslLinkedAs"),
+		arguments: [
+			fragment,
+			vertex,
+			{
+				kind: NodeKind.StringLiteral,
+				line: fragment.line,
+				column: fragment.column,
+				value: "glsl",
+			},
+		],
+	};
 }
 
 export macro glslLinkedIr(fragment: Node, vertex: Node): Node {
-	return { kind: NodeKind.CallExpr, line: fragment.line, column: fragment.column, callee: bindSym("glslLinkedAs"),
-		arguments: [fragment, vertex, { kind: NodeKind.StringLiteral, line: fragment.line, column: fragment.column,
-			value: "ir" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: fragment.line,
+		column: fragment.column,
+		callee: bindSym("glslLinkedAs"),
+		arguments: [
+			fragment,
+			vertex,
+			{
+				kind: NodeKind.StringLiteral,
+				line: fragment.line,
+				column: fragment.column,
+				value: "ir",
+			},
+		],
+	};
 }
 
 export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
@@ -243,14 +276,14 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 		return types;
 	}
 
-	const fs = getType(fragment);
-	const vs = getType(vertex);
-	if (fs == null || fs.kind != NodeKind.TypeFunction || vs == null ||
-		vs.kind != NodeKind.TypeFunction) {
+	const fragmentSignature = getType(fragment);
+	const vertexSignature = getType(vertex);
+	if (fragmentSignature == null || fragmentSignature.kind != NodeKind.TypeFunction ||
+		vertexSignature == null || vertexSignature.kind != NodeKind.TypeFunction) {
 		error("glslLinked: both stages must be functions", fragment);
 	}
 	let input: Node | null = null;
-	for (const t of fs.typExprParams) {
+	for (const t of fragmentSignature.typExprParams) {
 		const fields = getTypeImpl(t);
 		if (fields == null || fields.kind != NodeKind.TypeObject) { continue; }
 		let bindings = false;
@@ -264,11 +297,11 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 		if (!bindings && features < fields.typExprFieldNames.length) { input = t; }
 	}
 	const reads = input == null ? [] : varyingNames(input, fragment);
-	const writes = varyingNames(vs.typExprReturn, vertex);
+	const writes = varyingNames(vertexSignature.typExprReturn, vertex);
 	const readTypes = input == null ? [] : varyingTypes(input, fragment);
-	const writeTypes = varyingTypes(vs.typExprReturn, vertex);
+	const writeTypes = varyingTypes(vertexSignature.typExprReturn, vertex);
 	const readGates = input == null ? [] : varyingFeatures(input, fragment);
-	const writeGates = varyingFeatures(vs.typExprReturn, vertex);
+	const writeGates = varyingFeatures(vertexSignature.typExprReturn, vertex);
 	for (let i = 0; i < reads.length || i < writes.length; i++) {
 		const read = i < reads.length ? reads[i] : "";
 		const written = i < writes.length ? writes[i] : "";
@@ -298,15 +331,31 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 // glslCompute(entry, [x, y, z]) for a compute entry: its workgroup size is WGSL's
 // @workgroup_size, written where the stage is generated as shdc's local_size.
 export macro glslCompute(entry: Node, workgroupSize: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslComputeAs"),
-		arguments: [entry, workgroupSize, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "glsl" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslComputeAs"),
+		arguments: [
+			entry,
+			workgroupSize,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "glsl" },
+		],
+	};
 }
 
 export macro glslComputeIr(entry: Node, workgroupSize: Node): Node {
-	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column, callee: bindSym("glslComputeAs"),
-		arguments: [entry, workgroupSize, { kind: NodeKind.StringLiteral, line: entry.line, column: entry.column,
-			value: "ir" }] };
+	return {
+		kind: NodeKind.CallExpr,
+		line: entry.line,
+		column: entry.column,
+		callee: bindSym("glslComputeAs"),
+		arguments: [
+			entry,
+			workgroupSize,
+			{ kind: NodeKind.StringLiteral, line: entry.line, column: entry.column, value: "ir" },
+		],
+	};
 }
 
 export macro glslComputeAs(entry: Node, workgroupSize: Node, form: Node): Node {
@@ -317,7 +366,6 @@ export macro glslComputeAs(entry: Node, workgroupSize: Node, form: Node): Node {
 	return { kind: NodeKind.CallExpr, line: entry.line, column: entry.column,
 		callee: bindSym("glslStage"), arguments: [entry, workgroupSize, entry, form] };
 }
-
 
 function shaderField(name: string, type: ShaderType): ShaderField {
 	let f = new ShaderField();
@@ -368,7 +416,6 @@ function featureNames(c: FeatureCondition, names: string[]): void {
 	for (const o of c.operands) { featureNames(o, names); }
 }
 
-// Every set of the names' features, as the list of those defined.
 function featureSets(names: string[]): string[][] {
 	let sets: string[][] = [[]];
 	for (const name of names) {
@@ -462,9 +509,6 @@ function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition 
 	return conditionOf(ConditionKind.Any, products.map((p) => productCondition(p)));
 }
 
-
-// The stage both glsl and glslLinked expand to, once their checks hold: the walk lowers the entry
-// into a ShaderModule, and printGlsl450 writes its text.
 export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
@@ -536,13 +580,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		if (t == null) { fail(at, "the expression has no type"); }
 		const atomic = atomicOrExchange(t);
 		if (atomic != null) { return atomic; }
-		const kind = typeKind(t);
-		if (kind == TypeKind.Float32) { return scalarType(ScalarKind.F32); }
-		if (kind == TypeKind.Int32) { return scalarType(ScalarKind.I32); }
-		if (kind == TypeKind.Uint32) { return scalarType(ScalarKind.U32); }
-		if (kind == TypeKind.Boolean) { return scalarType(ScalarKind.Bool); }
-		if (kind == TypeKind.SizedArray) {
-			return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
+		match (typeKind(t)) {
+			TypeKind.Float32 => { return scalarType(ScalarKind.F32); },
+			TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
+			TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
+			TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
+			TypeKind.SizedArray => {
+				return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
+			},
+			_ => {},
 		}
 		for (let i = 0; i < vectorTypes.length; i++) {
 			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
@@ -614,10 +660,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	const outputType = signature.typExprReturn;
-	let vectorOutput = false;
-	for (const v of vectorTypes) {
-		if (outputType != null && sameType(outputType, v)) { vectorOutput = true; }
-	}
+	const vectorOutput = vectorTypes.some((v) => outputType != null && sameType(outputType, v));
 	const outputs = vectorOutput ? null : fieldsOf(outputType);
 	const vertex = outputs != null && hasDecorator(outputs, "builtin");
 	const computeBuiltins = ["globalInvocationId", "localInvocationId", "localInvocationIndex",
@@ -663,12 +706,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return own != null && sameType(own, t);
 	}
 
-	// Declarations come in interface order, each under the conditions its reads run under, and an
-	// unread one holds under no features: a declared but unread uniform or texture is still one
-	// the draw must bind. `features` holds the program key conditions around the code being
-	// lowered.
 	let m = new ShaderModule();
-	const stage = compute ? ShaderStage.Compute : vertex ? ShaderStage.Vertex : ShaderStage.Fragment;
+	const stage = compute ? ShaderStage.Compute :
+		vertex ? ShaderStage.Vertex : ShaderStage.Fragment;
 	let features: FeatureCondition[] = [];
 	let globals: string[] = [];
 	let memberNames: string[] = [];
@@ -692,8 +732,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	// Blocks at one binding are alternatives a variant chooses between, so they may share members.
 	function claimMember(name: string, slot: int32, at: Node): void {
-		const m = memberNames.indexOf(name);
-		if (m >= 0 && memberSlots[m] == slot) { return; }
+		const seen = memberNames.indexOf(name);
+		if (seen >= 0 && memberSlots[seen] == slot) { return; }
 		claim(name, at);
 		memberNames.push(name);
 		memberSlots.push(slot);
@@ -845,14 +885,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					textureType(TextureShape.D2, ScalarKind.U32) :
 					textureType(sameType(t, cubeTextureNode) ? TextureShape.Cube :
 						TextureShape.D2Array, ScalarKind.F32), binding);
-				if (uint) { r.sampleType = SampleType.Uint; }
+				r.sampleType = uint ? SampleType.Uint :
+					sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
 			} else if (sameType(t, textureNode)) {
 				const kind = sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
 				const r = addResource(ResourceKind.Texture, name, slot,
 					textureType(TextureShape.D2, ScalarKind.F32), binding);
 				r.sampleType = kind;
 			} else if (sameType(t, samplerNode)) {
-				const kind = samplerKind == null ? SamplerType.Filtering : samplerTypeOf(samplerKind);
+				const kind = samplerKind == null ? SamplerType.Filtering :
+					samplerTypeOf(samplerKind);
 				const r = addResource(ResourceKind.Sampler, name, slot, samplerType(), binding);
 				r.samplerType = kind;
 			} else {
@@ -953,13 +995,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function looseType(t: Node | null): ShaderType {
 		if (t == null) { return new ShaderType(); }
-		const kind = typeKind(t);
-		if (kind == TypeKind.Float32 || kind == TypeKind.Float64) { return scalarType(ScalarKind.F32); }
-		if (kind == TypeKind.Int32) { return scalarType(ScalarKind.I32); }
-		if (kind == TypeKind.Uint32) { return scalarType(ScalarKind.U32); }
-		if (kind == TypeKind.Boolean) { return scalarType(ScalarKind.Bool); }
-		if (kind == TypeKind.SizedArray) {
-			return arrayType(looseType(t.typExprElement), t.typExprSize as int32);
+		match (typeKind(t)) {
+			TypeKind.Float32 | TypeKind.Float64 => { return scalarType(ScalarKind.F32); },
+			TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
+			TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
+			TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
+			TypeKind.SizedArray => {
+				return arrayType(looseType(t.typExprElement), t.typExprSize as int32);
+			},
+			_ => {},
 		}
 		for (let i = 0; i < vectorTypes.length; i++) {
 			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
@@ -1059,7 +1103,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return index;
 	}
 
-	function swizzleOf(object: ShaderExpr, letters: string, at: Node, type: ShaderType): ShaderExpr {
+	function swizzleOf(
+		object: ShaderExpr,
+		letters: string,
+		at: Node,
+		type: ShaderType,
+	): ShaderExpr {
 		const colour = "rgba".indexOf(letters.slice(0, 1)) >= 0;
 		const set = colour ? "rgba" : "xyzw";
 		let e = exprOf(ExprKind.Swizzle, type, -1, [object]);
@@ -1286,8 +1335,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		const first = binaryOf(BinaryOp.Equal, scalarType(ScalarKind.Bool),
 			exprOf(ExprKind.Io, u32, index as int32, []), literal(u32, 0.0));
-		return [stmtOf(StmtKind.If, first, zeroes),
-			stmtOf(StmtKind.Call, intrinsicOf(Intrinsic.WorkgroupBarrier, new ShaderType(), []), [])];
+		const barrier = intrinsicOf(Intrinsic.WorkgroupBarrier, new ShaderType(), []);
+		return [stmtOf(StmtKind.If, first, zeroes), stmtOf(StmtKind.Call, barrier, [])];
 	}
 
 	function enterScope(module: string, f: ShaderFunction): void {
@@ -1435,13 +1484,17 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	function kindOf(n: Node): TypeKind { return typeKind(getType(n)); }
 
 	function scalar(n: Node): boolean {
-		const kind = kindOf(n);
-		return kind == TypeKind.Float32 || kind == TypeKind.Int32 || kind == TypeKind.Uint32 ||
-			kind == TypeKind.Boolean;
+		return match (kindOf(n)) {
+			TypeKind.Float32 | TypeKind.Int32 | TypeKind.Uint32 | TypeKind.Boolean => true,
+			_ => false,
+		};
 	}
 
 	function integer(n: Node): boolean {
-		return kindOf(n) == TypeKind.Int32 || kindOf(n) == TypeKind.Uint32;
+		return match (kindOf(n)) {
+			TypeKind.Int32 | TypeKind.Uint32 => true,
+			_ => false,
+		};
 	}
 
 	function unsigned(n: Node): boolean {
@@ -1472,22 +1525,31 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	function binary(n: Node): ShaderExpr {
 		const op = n.operator == "===" ? "==" : n.operator == "!==" ? "!=" : n.operator;
-		if (["&&", "||"].includes(op)) {
-			if (kindOf(n.left) != TypeKind.Boolean || kindOf(n.right) != TypeKind.Boolean) {
-				fail(n, "'" + op + "' takes booleans in a shader");
-			}
-		} else if (["<", "<=", ">", ">=", "==", "!="].includes(op)) {
-			if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
-		} else if (op == "%" && integer(n.left) && !unsigned(n)) {
-			fail(n, "'%' has a GLSL form for uint32 operands only: GLSL leaves a negative " +
-				"int32 operand undefined");
-		} else if (op == "/" && integer(n.left) && !unsigned(n)) {
-			fail(n, "'/' has no GLSL form: GLSL does not truncate as MetaScript does");
-		} else if (op == "%" && !integer(n.left)) {
-		} else if (["&", "|", "^", "<<", ">>"].includes(op)) {
-			if (!integral(n.left)) { fail(n, "'" + op + "' takes integers in a shader"); }
-		} else if (op != "+" && op != "-" && op != "*" && op != "/" && op != "%") {
-			fail(n, "operator '" + op + "' has no GLSL form yet");
+		match (op) {
+			"&&" | "||" => {
+				if (kindOf(n.left) != TypeKind.Boolean || kindOf(n.right) != TypeKind.Boolean) {
+					fail(n, "'" + op + "' takes booleans in a shader");
+				}
+			},
+			"<" | "<=" | ">" | ">=" | "==" | "!=" => {
+				if (!scalar(n.left)) { fail(n, "'" + op + "' compares scalars in a shader"); }
+			},
+			"%" => {
+				if (integer(n.left) && !unsigned(n)) {
+					fail(n, "'%' has a GLSL form for uint32 operands only: GLSL leaves a " +
+						"negative int32 operand undefined");
+				}
+			},
+			"/" => {
+				if (integer(n.left) && !unsigned(n)) {
+					fail(n, "'/' has no GLSL form: GLSL does not truncate as MetaScript does");
+				}
+			},
+			"&" | "|" | "^" | "<<" | ">>" => {
+				if (!integral(n.left)) { fail(n, "'" + op + "' takes integers in a shader"); }
+			},
+			"+" | "-" | "*" => {},
+			_ => { fail(n, "operator '" + op + "' has no GLSL form yet"); },
 		}
 		const left = lower(n.left);
 		const right = op == "<<" || op == ">>" ? shiftAmount(n.right) : lower(n.right);
@@ -1499,7 +1561,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		for (const a of n.arguments) { args.push(lower(a)); }
 		const type = looseType(getType(n));
 		const made = constructors.indexOf(name);
-		if (name != "" && made >= 0) { return exprOf(ExprKind.Construct, vectorAt(made), -1, args); }
+		if (name != "" && made >= 0) {
+			return exprOf(ExprKind.Construct, vectorAt(made), -1, args);
+		}
 		const direct = intrinsicNames.indexOf(name);
 		if (direct >= 0) { return intrinsicOf(intrinsics[direct], type, args); }
 		const fragmentOnly = vertex || compute;
@@ -1523,118 +1587,125 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function lower(n: Node): ShaderExpr {
-		if (n.kind == NodeKind.NumberLiteral) { return number(n); }
-		if (n.kind == NodeKind.BooleanLiteral) {
-			return literal(scalarType(ScalarKind.Bool), n.boolValue ? 1.0 : 0.0);
-		}
-		if (n.kind == NodeKind.Identifier) { return identifier(n); }
-		if (n.kind == NodeKind.BinaryExpr) { return binary(n); }
-		if (n.kind == NodeKind.UnaryExpr) {
-			const op = n.unaryOp;
-			if (op == "!" && kindOf(n.operand) == TypeKind.Boolean ||
-				op == "~" && integer(n.operand) ||
-				op == "-" && kindOf(n.operand) != TypeKind.Uint32) {
-				let e = exprOf(ExprKind.Unary, looseType(getType(n)), -1, [lower(n.operand)]);
-				e.unary = op == "-" ? UnaryOp.Negate : UnaryOp.Not;
-				return e;
-			}
-			fail(n, "unary '" + op + "' has no GLSL form yet");
-		}
-		if (n.kind == NodeKind.ConditionalExpr) {
-			if (kindOf(n.ternaryCondition) != TypeKind.Boolean) {
-				fail(n, "a shader condition is a boolean");
-			}
-			const test = lower(n.ternaryCondition);
-			const yes = lower(n.ternaryConsequent);
-			const no = lower(n.ternaryAlternate);
-			return exprOf(ExprKind.Conditional, looseType(getType(n)), -1, [test, yes, no]);
-		}
-		if (n.kind == NodeKind.ArrayAccess) {
-			const array = lower(matrixColumns(n.array) ? n.array.object : n.array);
-			const index = lower(n.index);
-			return exprOf(ExprKind.Index, looseType(getType(n)), -1, [array, index]);
-		}
-		if (n.kind == NodeKind.ArrayLiteral) {
-			let elements: ShaderExpr[] = [];
-			for (const e of n.elements) { elements.push(lower(e)); }
-			return exprOf(ExprKind.Construct, valueType(getType(n), n), -1, elements);
-		}
-		if (n.kind == NodeKind.TypeAssertion) {
-			const from = kindOf(n.asExpr);
-			const to = kindOf(n);
-			const exact = (from == TypeKind.Float32 || from == TypeKind.Int32) &&
-				(to == TypeKind.Float32 || to == TypeKind.Int32) ||
-				from == TypeKind.Uint32 && to == TypeKind.Float32;
-			if (exact) {
-				const type = glslType(getType(n), n);
-				return exprOf(ExprKind.Convert, type, -1, [lower(n.asExpr)]);
-			}
-			if (to == TypeKind.Uint32 && n.asExpr.kind == NodeKind.NumberLiteral &&
-				from != TypeKind.Float32 && from != TypeKind.Float64 && intValue(n.asExpr) >= 0) {
-				return exprOf(ExprKind.Convert, scalarType(ScalarKind.U32), -1,
-					[literal(scalarType(ScalarKind.I32), intValue(n.asExpr) as float64)]);
-			}
-			fail(n, "'as' converts float32 and int32 both ways, uint32 to float32 and a " +
-				"non-negative literal to uint32 in a shader; int32 and uint32 convert by their " +
-				"bits through vec2i/vec2u");
-		}
-		if (n.kind == NodeKind.MemberExpr) {
-			const object = n.object;
-			if (isType(object, inputType)) {
-				const b = builtinInputNames.indexOf(n.property);
-				const io = b >= 0 ? builtinInputIos[b] : inputIos[inputNames.indexOf(n.property)];
-				if (b < 0) { use(ioRead, io, n); }
-				return exprOf(ExprKind.Io, m.ios[io].type, io, []);
-			}
-			if (isType(object, bindingsType)) {
-				if (isAuthorStruct(getType(n))) {
-					fail(n, "uniform block '" + n.property + "' is read one member at a time: " +
-						"GLSL declares the block's members, not a value of the block");
+		match (n.kind) {
+			NodeKind.NumberLiteral => { return number(n); },
+			NodeKind.BooleanLiteral => {
+				return literal(scalarType(ScalarKind.Bool), n.boolValue ? 1.0 : 0.0);
+			},
+			NodeKind.Identifier => { return identifier(n); },
+			NodeKind.BinaryExpr => { return binary(n); },
+			NodeKind.UnaryExpr => {
+				const op = n.unaryOp;
+				if (op == "!" && kindOf(n.operand) == TypeKind.Boolean ||
+					op == "~" && integer(n.operand) ||
+					op == "-" && kindOf(n.operand) != TypeKind.Uint32) {
+					let e = exprOf(ExprKind.Unary, looseType(getType(n)), -1, [lower(n.operand)]);
+					e.unary = op == "-" ? UnaryOp.Negate : UnaryOp.Not;
+					return e;
 				}
-				const r = resourceNamed(n.property);
-				use(resourceRead, r, n);
-				return exprOf(ExprKind.Resource, m.resources[r].type, r, []);
-			}
-			if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
-				const r = resourceNamed(object.property);
-				use(resourceRead, r, n);
-				if (m.resources[r].kind != ResourceKind.UniformBlock) {
-					fail(n, "'" + n.property + "' has no GLSL form yet");
+				fail(n, "unary '" + op + "' has no GLSL form yet");
+			},
+			NodeKind.ConditionalExpr => {
+				if (kindOf(n.ternaryCondition) != TypeKind.Boolean) {
+					fail(n, "a shader condition is a boolean");
 				}
-				const members = m.structs[m.resources[r].type.structIndex].members;
-				let at = -1;
-				for (let k = 0; k < members.length; k++) {
-					if (members[k].name == n.property) { at = k; }
+				const test = lower(n.ternaryCondition);
+				const yes = lower(n.ternaryConsequent);
+				const no = lower(n.ternaryAlternate);
+				return exprOf(ExprKind.Conditional, looseType(getType(n)), -1, [test, yes, no]);
+			},
+			NodeKind.ArrayAccess => {
+				const array = lower(matrixColumns(n.array) ? n.array.object : n.array);
+				const index = lower(n.index);
+				return exprOf(ExprKind.Index, looseType(getType(n)), -1, [array, index]);
+			},
+			NodeKind.ArrayLiteral => {
+				let elements: ShaderExpr[] = [];
+				for (const e of n.elements) { elements.push(lower(e)); }
+				return exprOf(ExprKind.Construct, valueType(getType(n), n), -1, elements);
+			},
+			NodeKind.TypeAssertion => {
+				const from = kindOf(n.asExpr);
+				const to = kindOf(n);
+				const exact = (from == TypeKind.Float32 || from == TypeKind.Int32) &&
+					(to == TypeKind.Float32 || to == TypeKind.Int32) ||
+					from == TypeKind.Uint32 && to == TypeKind.Float32;
+				if (exact) {
+					const type = glslType(getType(n), n);
+					return exprOf(ExprKind.Convert, type, -1, [lower(n.asExpr)]);
 				}
-				let e = exprOf(ExprKind.BlockMember, members[at].type, r, []);
-				e.member = at as int32;
-				return e;
-			}
-			if (isType(object, keyType)) {
-				fail(n, "a program key feature is read only as an if condition");
-			}
-			if (matrixColumns(n)) {
-				fail(n, "a matrix's columns are read one at a time, as m.columns[i]: GLSL has " +
-					"no array of a matrix's columns");
-			}
-			return memberOf(lower(object), n);
-		}
-		if (n.kind == NodeKind.ObjectLiteral) { return construction(n); }
-		if (n.kind == NodeKind.CallExpr) {
-			const callee = n.callee;
-			const impl = getImpl(callee);
-			if (callee.resolvedSym == null || impl == null || impl.kind != NodeKind.FunctionDecl) {
-				fail(n, "a shader calls only functions");
-			}
-			if (callee.resolvedSym.modulePath != stdModule) { return call(n, callee, impl); }
-			if (callee.kind == NodeKind.MemberExpr) {
-				if (!impl.fnName.startsWith("get_")) {
-					fail(n, "method calls have no GLSL form yet");
+				if (to == TypeKind.Uint32 && n.asExpr.kind == NodeKind.NumberLiteral &&
+					from != TypeKind.Float32 && from != TypeKind.Float64 &&
+					intValue(n.asExpr) >= 0) {
+					return exprOf(ExprKind.Convert, scalarType(ScalarKind.U32), -1,
+						[literal(scalarType(ScalarKind.I32), intValue(n.asExpr) as float64)]);
 				}
-				return swizzleOf(lower(callee.object), impl.fnName.replace("get_", ""), n,
-					looseType(getType(n)));
-			}
-			return builtinCall(n, impl.fnName);
+				fail(n, "'as' converts float32 and int32 both ways, uint32 to float32 and a " +
+					"non-negative literal to uint32 in a shader; int32 and uint32 convert by " +
+					"their bits through vec2i/vec2u");
+			},
+			NodeKind.MemberExpr => {
+				const object = n.object;
+				if (isType(object, inputType)) {
+					const b = builtinInputNames.indexOf(n.property);
+					const io = b >= 0 ? builtinInputIos[b] :
+						inputIos[inputNames.indexOf(n.property)];
+					if (b < 0) { use(ioRead, io, n); }
+					return exprOf(ExprKind.Io, m.ios[io].type, io, []);
+				}
+				if (isType(object, bindingsType)) {
+					if (isAuthorStruct(getType(n))) {
+						fail(n, "uniform block '" + n.property +
+							"' is read one member at a time: GLSL declares the block's members, " +
+							"not a value of the block");
+					}
+					const r = resourceNamed(n.property);
+					use(resourceRead, r, n);
+					return exprOf(ExprKind.Resource, m.resources[r].type, r, []);
+				}
+				if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
+					const r = resourceNamed(object.property);
+					use(resourceRead, r, n);
+					if (m.resources[r].kind != ResourceKind.UniformBlock) {
+						fail(n, "'" + n.property + "' has no GLSL form yet");
+					}
+					const members = m.structs[m.resources[r].type.structIndex].members;
+					let at = -1;
+					for (let k = 0; k < members.length; k++) {
+						if (members[k].name == n.property) { at = k; }
+					}
+					let e = exprOf(ExprKind.BlockMember, members[at].type, r, []);
+					e.member = at as int32;
+					return e;
+				}
+				if (isType(object, keyType)) {
+					fail(n, "a program key feature is read only as an if condition");
+				}
+				if (matrixColumns(n)) {
+					fail(n, "a matrix's columns are read one at a time, as m.columns[i]: GLSL " +
+						"has no array of a matrix's columns");
+				}
+				return memberOf(lower(object), n);
+			},
+			NodeKind.ObjectLiteral => { return construction(n); },
+			NodeKind.CallExpr => {
+				const callee = n.callee;
+				const impl = getImpl(callee);
+				if (callee.resolvedSym == null || impl == null ||
+					impl.kind != NodeKind.FunctionDecl) {
+					fail(n, "a shader calls only functions");
+				}
+				if (callee.resolvedSym.modulePath != stdModule) { return call(n, callee, impl); }
+				if (callee.kind == NodeKind.MemberExpr) {
+					if (!impl.fnName.startsWith("get_")) {
+						fail(n, "method calls have no GLSL form yet");
+					}
+					return swizzleOf(lower(callee.object), impl.fnName.replace("get_", ""), n,
+						looseType(getType(n)));
+				}
+				return builtinCall(n, impl.fnName);
+			},
+			_ => {},
 		}
 		fail(n, "this expression has no GLSL form yet (node kind " + String(n.kind) + ")");
 	}
@@ -1702,26 +1773,20 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return s;
 	}
 
-	function isDiscard(callee: Node): boolean {
+	function stdFunctionName(callee: Node): string {
 		const impl = getImpl(callee);
-		return callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule &&
-			impl != null && impl.fnName == "discard";
-	}
-
-	function isStdAtomic(callee: Node): boolean {
-		const impl = getImpl(callee);
-		return callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule &&
-			impl != null && impl.fnName.startsWith("atomic");
+		const inStd = callee.resolvedSym != null && callee.resolvedSym.modulePath == stdModule;
+		return inStd && impl != null ? impl.fnName : "";
 	}
 
 	function simple(n: Node): ShaderStmt {
 		if (n.kind == NodeKind.ExprStmt) {
 			const e = n.expr;
-			if (e.kind == NodeKind.CallExpr && isDiscard(e.callee)) {
+			if (e.kind == NodeKind.CallExpr && stdFunctionName(e.callee) == "discard") {
 				return stmtOf(StmtKind.Discard, new ShaderExpr(), []);
 			}
-			if (e.kind == NodeKind.CallExpr &&
-				(typeKind(getType(e)) == TypeKind.Void || isStdAtomic(e.callee))) {
+			if (e.kind == NodeKind.CallExpr && (typeKind(getType(e)) == TypeKind.Void ||
+				stdFunctionName(e.callee).startsWith("atomic"))) {
 				return stmtOf(StmtKind.Call, lower(e), []);
 			}
 			if (e.kind != NodeKind.UpdateExpr && e.kind != NodeKind.BinaryExpr) {
@@ -1858,55 +1923,58 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function lowerStmt(n: Node): ShaderStmt[] {
-		if (n.kind == NodeKind.BlockStmt) {
-			return [stmtOf(StmtKind.Block, new ShaderExpr(), lowerBody(n))];
-		}
-		const gate = n.kind == NodeKind.IfStmt ? featureOf(n.condition) : null;
-		if (gate != null) {
-			features.push(gate);
-			let s = featureIf(gate, lowerBody(n.consequent));
-			features.pop();
-			if (n.alternate != null) {
-				features.push(negated(gate));
-				s.otherwise = lowerBody(n.alternate);
+		match (n.kind) {
+			NodeKind.BlockStmt => {
+				return [stmtOf(StmtKind.Block, new ShaderExpr(), lowerBody(n))];
+			},
+			NodeKind.IfStmt => {
+				const gate = featureOf(n.condition);
+				if (gate == null) { return [branches(n)]; }
+				features.push(gate);
+				let s = featureIf(gate, lowerBody(n.consequent));
 				features.pop();
-			}
-			return [s];
+				if (n.alternate != null) {
+					features.push(negated(gate));
+					s.otherwise = lowerBody(n.alternate);
+					features.pop();
+				}
+				return [s];
+			},
+			NodeKind.WhileStmt => {
+				if (n.whileLabel != "") { fail(n, "GLSL has no labelled loops"); }
+				const test = condition(n.whileCondition);
+				return [stmtOf(StmtKind.While, test, loopBody(n.whileBody))];
+			},
+			NodeKind.ForStmt => {
+				if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
+				const outer = locals.length;
+				const init = simple(n.forInit);
+				const test = condition(n.forCondition);
+				const update = assignment(n.forUpdate);
+				let s = stmtOf(StmtKind.For, test, loopBody(n.forBody));
+				s.init = [init];
+				s.update = [update];
+				while (locals.length > outer) { locals.pop(); }
+				return [s];
+			},
+			NodeKind.BreakStmt | NodeKind.ContinueStmt => {
+				const label = n.kind == NodeKind.BreakStmt ? n.breakLabel : n.continueLabel;
+				if (label != "") { fail(n, "GLSL has no labelled loops"); }
+				if (n.kind == NodeKind.BreakStmt && breakOwners.length > 0 &&
+					breakOwners[breakOwners.length - 1] == "match") {
+					fail(n, "a break in a match arm leaves the loop or switch around the match, " +
+						"and in the GLSL switch it would leave only the match; write an if");
+				}
+				const kind = n.kind == NodeKind.BreakStmt ? StmtKind.Break : StmtKind.Continue;
+				return [stmtOf(kind, new ShaderExpr(), [])];
+			},
+			NodeKind.SwitchStmt => { return [choice(n)]; },
+			NodeKind.ExprStmt => {
+				if (n.expr.kind == NodeKind.MatchExpr) { return [choice(n.expr)]; }
+			},
+			NodeKind.ReturnStmt => { return returned(n); },
+			_ => {},
 		}
-		if (n.kind == NodeKind.IfStmt) { return [branches(n)]; }
-		if (n.kind == NodeKind.WhileStmt) {
-			if (n.whileLabel != "") { fail(n, "GLSL has no labelled loops"); }
-			const test = condition(n.whileCondition);
-			return [stmtOf(StmtKind.While, test, loopBody(n.whileBody))];
-		}
-		if (n.kind == NodeKind.ForStmt) {
-			if (n.forLabel != "") { fail(n, "GLSL has no labelled loops"); }
-			const outer = locals.length;
-			const init = simple(n.forInit);
-			const test = condition(n.forCondition);
-			const update = assignment(n.forUpdate);
-			let s = stmtOf(StmtKind.For, test, loopBody(n.forBody));
-			s.init = [init];
-			s.update = [update];
-			while (locals.length > outer) { locals.pop(); }
-			return [s];
-		}
-		if (n.kind == NodeKind.BreakStmt || n.kind == NodeKind.ContinueStmt) {
-			const label = n.kind == NodeKind.BreakStmt ? n.breakLabel : n.continueLabel;
-			if (label != "") { fail(n, "GLSL has no labelled loops"); }
-			if (n.kind == NodeKind.BreakStmt && breakOwners.length > 0 &&
-				breakOwners[breakOwners.length - 1] == "match") {
-				fail(n, "a break in a match arm leaves the loop or switch around the match, " +
-					"and in the GLSL switch it would leave only the match; write an if");
-			}
-			const kind = n.kind == NodeKind.BreakStmt ? StmtKind.Break : StmtKind.Continue;
-			return [stmtOf(kind, new ShaderExpr(), [])];
-		}
-		if (n.kind == NodeKind.SwitchStmt) { return [choice(n)]; }
-		if (n.kind == NodeKind.ExprStmt && n.expr.kind == NodeKind.MatchExpr) {
-			return [choice(n.expr)];
-		}
-		if (n.kind == NodeKind.ReturnStmt) { return returned(n); }
 		return [simple(n)];
 	}
 
@@ -1942,8 +2010,8 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				// Every input is declared, read or not: shdc numbers them in declaration order.
 				if (t.kind == NodeKind.TypeArray) {
 					fail(site, vertex ? "attribute '" + name + "' is an array, which neither " +
-						"WGSL nor GLSL ES 3.00 takes as a vertex input: declare one attribute each" :
-						arrayVarying(name));
+						"WGSL nor GLSL ES 3.00 takes as a vertex input: " +
+						"declare one attribute each" : arrayVarying(name));
 				}
 				const spelled = vertex ? name : varyingName(name);
 				const type = member(t, spelled, site);
@@ -2049,7 +2117,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		m.resources[r].condition = declarationCondition(resourceContexts[r]);
 	}
 	for (let f = 0; f < m.functions.length; f++) {
-		if (f != mainIndex) { m.functions[f].condition = declarationCondition(functionContexts[f]); }
+		if (f != mainIndex) {
+			m.functions[f].condition = declarationCondition(functionContexts[f]);
+		}
 	}
 	let stageEntry = new ShaderEntry();
 	stageEntry.name = fn.fnName;
@@ -2071,7 +2141,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 	m.entries.push(stageEntry);
 	const broken = irErrors(m);
-	if (broken.length > 0) { fail(entry, "internal: the lowered module breaks the IR: " + broken[0]); }
+	if (broken.length > 0) {
+		fail(entry, "internal: the lowered module breaks the IR: " + broken[0]);
+	}
 	const formName = form.kind == NodeKind.StringLiteral ? (form as StringLiteralData).value : "";
 	if (formName != "glsl" && formName != "ir") {
 		fail(form, "internal: the stage form is \"glsl\" or \"ir\"");

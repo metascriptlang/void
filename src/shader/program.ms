@@ -23,9 +23,15 @@ export function shaderModuleOf(descriptor: GPUShaderModuleDescriptor): GPUShader
 	return descriptor;
 }
 
-export function shaderProgramRegister(descriptor: GPUShaderModuleDescriptor, layout: DoorLayout): int32 {
+export function shaderProgramRegister(
+	descriptor: GPUShaderModuleDescriptor,
+	layout: DoorLayout,
+): int32 {
 	const layoutId = doorRegisterLayouts([layout]);
-	return doorRegisterPrograms((index: int32): GPUShaderModuleDescriptor => descriptor, [layoutId]);
+	return doorRegisterPrograms(
+		(index: int32): GPUShaderModuleDescriptor => descriptor,
+		[layoutId],
+	);
 }
 
 export macro vertexFormats(vertex: Node, fragment: Node): Node {
@@ -35,8 +41,8 @@ export macro vertexFormats(vertex: Node, fragment: Node): Node {
 			for (const d of fields.typExprFieldDecorators[f]) {
 				if (d.macroName == "feature") {
 					error("shaderProgram builds one program, so '" + fields.typExprFieldNames[f] +
-						"' cannot be @feature; a program family is a row of src/void3d/programKeys.txt",
-						d);
+						"' cannot be @feature; a program family is a row of " +
+						"src/void3d/programKeys.txt", d);
 				}
 			}
 		}
@@ -139,7 +145,13 @@ export macro shaderProgram(name: Node, vertex: Node, fragment: Node): Node {
 	};
 }
 
-export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node, product: Node): Node {
+export macro shaderBuild(
+	name: Node,
+	vertex: Node,
+	fragment: Node,
+	formats: Node,
+	product: Node,
+): Node {
 	const kind = stringValue(product);
 	const base = stringValue(name);
 	function targetOf(): ShaderTarget {
@@ -168,7 +180,13 @@ export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node
 			isBitPattern: false,
 		};
 		if (value >= 0) { return literal; }
-		return { kind: NodeKind.UnaryExpr, line: name.line, column: name.column, unaryOp: "-", operand: literal };
+		return {
+			kind: NodeKind.UnaryExpr,
+			line: name.line,
+			column: name.column,
+			unaryOp: "-",
+			operand: literal,
+		};
 	}
 	function object(keys: string[], values: Node[]): Node {
 		return {
@@ -181,12 +199,25 @@ export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node
 		};
 	}
 	function array(elements: Node[]): Node {
-		return { kind: NodeKind.ArrayLiteral, line: name.line, column: name.column, elements: elements };
+		return {
+			kind: NodeKind.ArrayLiteral,
+			line: name.line,
+			column: name.column,
+			elements: elements,
+		};
 	}
 	function called(callee: string, args: Node[]): Node {
-		const symbol = callee == "shaderModuleOf" ? bindSym("shaderModuleOf") : bindSym("shaderProgramRegister");
+		const symbol = callee == "shaderModuleOf" ?
+			bindSym("shaderModuleOf") :
+			bindSym("shaderProgramRegister");
 		if (symbol == null) { error(kind + ": " + callee + " is not in scope", name); }
-		return { kind: NodeKind.CallExpr, line: name.line, column: name.column, callee: symbol, arguments: args };
+		return {
+			kind: NodeKind.CallExpr,
+			line: name.line,
+			column: name.column,
+			callee: symbol,
+			arguments: args,
+		};
 	}
 	function optional(keys: string[], values: Node[], key: string, value: string): void {
 		if (value == "") { return; }
@@ -204,8 +235,13 @@ export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node
 	for (const b of s.reflection.bindings) {
 		const bindingKind: string = b.kind;
 		const keys = ["group", "binding", "kind", "visibility", "size"];
-		const values = [integer(b.group), integer(b.binding), text(bindingKind), integer(b.visibility),
-			integer(b.size)];
+		const values = [
+			integer(b.group),
+			integer(b.binding),
+			text(bindingKind),
+			integer(b.visibility),
+			integer(b.size),
+		];
 		const sampleType: string = b.sampleType;
 		const samplerType: string = b.samplerType;
 		optional(keys, values, "sampleType", sampleType);
@@ -227,7 +263,12 @@ export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node
 		optional(keys, values, "viewDimension", viewDimension);
 		if (b.multisampled) {
 			keys.push("multisampled");
-			values.push({ kind: NodeKind.BooleanLiteral, line: name.line, column: name.column, boolValue: true });
+			values.push({
+				kind: NodeKind.BooleanLiteral,
+				line: name.line,
+				column: name.column,
+				boolValue: true,
+			});
 		}
 		optional(keys, values, "storageAccess", storageAccess);
 		optional(keys, values, "storageFormat", storageFormat);
@@ -246,18 +287,34 @@ export macro shaderBuild(name: Node, vertex: Node, fragment: Node, formats: Node
 		values.push(integer(a.semanticIndex));
 		attributes.push(object(keys, values));
 	}
-	const descriptor = object(
-		["label", "vertexCode", "vertexEntryPoint", "fragmentCode", "fragmentEntryPoint", "bindings", "attributes"],
-		[
-			text(base),
-			text(s.vertexCode),
-			text(s.entryPoint),
-			text(s.fragmentCode),
-			text(s.entryPoint),
-			array(bindings),
-			array(attributes),
-		],
-	);
+	const descriptorKeys = [
+		"label",
+		"vertexCode",
+		"vertexEntryPoint",
+		"fragmentCode",
+		"fragmentEntryPoint",
+		"bindings",
+		"attributes",
+	];
+	const descriptorValues = [
+		text(base),
+		text(s.vertexCode),
+		text(s.entryPoint),
+		text(s.fragmentCode),
+		text(s.entryPoint),
+		array(bindings),
+		array(attributes),
+	];
+	if (s.reflection.readsInstanceIndex) {
+		descriptorKeys.push("readsInstanceIndex");
+		descriptorValues.push({
+			kind: NodeKind.BooleanLiteral,
+			line: name.line,
+			column: name.column,
+			boolValue: true,
+		});
+	}
+	const descriptor = object(descriptorKeys, descriptorValues);
 	if (kind == "shaderModule") { return called("shaderModuleOf", [descriptor]); }
 	const named = reflectProgram(module.value, 0, 1, ShaderTarget.Glsl430);
 	if (!named.ok) { refused(named.error); }

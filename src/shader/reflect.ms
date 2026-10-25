@@ -10,6 +10,7 @@ import {
 	TexelFormat,
 	TextureShape,
 } from "./ir";
+import { ioLocation } from "./irWalk";
 import {
 	BindingSlot,
 	ShaderTarget,
@@ -38,6 +39,7 @@ export class Reflection {
 	bindings: GPUShaderBinding[] = [];
 	attributes: GPUShaderAttribute[] = [];
 	workgroupSize: int32[] = [0, 0, 0];
+	readsInstanceIndex: boolean = false;
 }
 
 function kindName(kind: ResourceKind): GPUShaderBindingKind {
@@ -185,14 +187,15 @@ function bindingsOf(m: ShaderModule, entries: int32[], target: ShaderTarget,
 	const slots = try bindingSlots(m, entries, target);
 	for (const s of slots) {
 		const b = try bindingOf(m, s);
-		const held = out.bindings.findIndex((h) => h.group == b.group && h.binding == b.binding &&
-			h.kind == b.kind && h.textureBinding == b.textureBinding && h.nativeName == b.nativeName);
+		const held = out.bindings.findIndex((h) => h.group == b.group &&
+			h.binding == b.binding && h.kind == b.kind &&
+			h.textureBinding == b.textureBinding && h.nativeName == b.nativeName);
 		if (held < 0) {
 			out.bindings.push(b);
 		} else if (out.bindings[held].nativeSlot != b.nativeSlot) {
 			return Result.err("internal: binding " + String(b.binding) + " sits at native slot " +
-				String(out.bindings[held].nativeSlot) + " in one stage and " + String(b.nativeSlot) +
-				" in another");
+				String(out.bindings[held].nativeSlot) + " in one stage and " +
+				String(b.nativeSlot) + " in another");
 		} else {
 			out.bindings[held].visibility = out.bindings[held].visibility | b.visibility;
 		}
@@ -212,13 +215,15 @@ export function reflectProgram(m: ShaderModule, vertex: int32, fragment: int32,
 	const f = try entryOf(m, fragment, ShaderStage.Fragment);
 	const _count = try bindingsOf(m, [v, f], target, out);
 	const gl = target == ShaderTarget.Glsl430 || target == ShaderTarget.Glsl300es;
+	out.readsInstanceIndex = m.ios.some((io) => io.stage == ShaderStage.Vertex &&
+		io.builtin == Builtin.InstanceIndex);
 	let ordinal = 0;
 	for (const io of m.ios) {
 		if (io.stage != ShaderStage.Vertex || io.direction != IoDirection.In ||
 			io.builtin != Builtin.None) {
 			continue;
 		}
-		const location = io.location >= 0 ? io.location : ordinal;
+		const location = ioLocation(io, ordinal);
 		ordinal++;
 		let a: GPUShaderAttribute = {
 			location: location,
