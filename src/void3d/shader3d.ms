@@ -1278,20 +1278,22 @@ export function cascadeShadowAt(position: Vec3f, b: LitBindings, cascade: int32)
 	const texel = cascadeTexelOf(position, b.shadowParams.cascadeMatrices[cascade],
 		b.shadowParams.cascadeView);
 	const scale = b.shadowParams.cascadeFilter.x;
+	let lit: float32 = 0.0;
 	if (texel.w < 0.5 || scale <= 0.0) {
 		const stored = textureLoad(b.shadowMap, b.shadowSampler, vec2i(texel.xy), cascade, 0).x;
-		return cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
+		lit = cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
+	} else {
+		const uv = mapCoord(position, b.shadowParams.cascadeMatrices[cascade]);
+		const size = (b.shadowParams.cascadeView.w + 0.5) as int32;
+		const rotation = poissonRotation(position);
+		for (let tap = 0; tap < PCF_SAMPLES; tap++) {
+			const at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
+			const stored = textureLoad(b.shadowMap, b.shadowSampler, at, cascade, 0).x;
+			lit = lit + cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
+		}
+		lit = lit / (PCF_SAMPLES as float32);
 	}
-	const uv = mapCoord(position, b.shadowParams.cascadeMatrices[cascade]);
-	const size = (b.shadowParams.cascadeView.w + 0.5) as int32;
-	const rotation = poissonRotation(position);
-	let lit: float32 = 0.0;
-	for (let tap = 0; tap < PCF_SAMPLES; tap++) {
-		const at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
-		const stored = textureLoad(b.shadowMap, b.shadowSampler, at, cascade, 0).x;
-		lit = lit + cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
-	}
-	return lit / (PCF_SAMPLES as float32);
+	return lit;
 }
 
 export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
@@ -1356,33 +1358,34 @@ export function cubeShadowAt(position: Vec3f, b: LitBindings): float32 {
 	const light = b.shadowParams.cubeLight.xyz;
 	const toPosition = position - light;
 	const distance = length(toPosition);
-	if (!(scale > 0.0) || !(distance > 0.0)) {
-		return cubeTapAt(position, b);
-	}
-	const direction = toPosition / distance;
 	let lit: float32 = 0.0;
-	for (let tap = 0; tap < CUBE_PCF_SAMPLES; tap++) {
-		const turned = normalize(direction + CUBE_PCF_OFFSETS[tap] * scale);
-		lit = lit + cubeTapAt(light + turned * distance, b);
+	if (!(scale > 0.0) || !(distance > 0.0)) {
+		lit = cubeTapAt(position, b);
+	} else {
+		const direction = toPosition / distance;
+		for (let tap = 0; tap < CUBE_PCF_SAMPLES; tap++) {
+			const turned = normalize(direction + CUBE_PCF_OFFSETS[tap] * scale);
+			lit = lit + cubeTapAt(light + turned * distance, b);
+		}
+		lit = lit / (CUBE_PCF_SAMPLES as float32);
 	}
-	return lit / (CUBE_PCF_SAMPLES as float32);
+	return lit;
 }
 
 // A positioned light's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless
 // record `i` is the one the light block names as the spot map's or the cube map's caster
 // (gpu3d.ms LIGHT_SPOT_CASTER, LIGHT_CUBE_CASTER).
 export function recordShadowAt(position: Vec3f, b: LitBindings, key: LitKey, i: int32): float32 {
-	if (!key.shadowed) {
-		return 1.0;
+	let lit: float32 = 1.0;
+	if (key.shadowed) {
+		const named = (i + 1) as float32;
+		if (b.lightParams.ambient.w == named) {
+			lit = spotShadowAt(position, b);
+		} else if (b.lightParams.dirColor.w == named) {
+			lit = cubeShadowAt(position, b);
+		}
 	}
-	const named = (i + 1) as float32;
-	if (b.lightParams.ambient.w == named) {
-		return spotShadowAt(position, b);
-	}
-	if (b.lightParams.dirColor.w == named) {
-		return cubeShadowAt(position, b);
-	}
-	return 1.0;
+	return lit;
 }
 
 // The record of the fragment's cluster: the offset into the index list, the point light count,
