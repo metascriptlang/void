@@ -28,6 +28,7 @@ import {
 	beginPassRefusal,
 	bufferRefusal,
 	canvasRefusal,
+	resolvedRenderPipeline,
 	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
@@ -730,4 +731,19 @@ test "a canvas names a color format and, when it has one, a depth format" {
 	assert canvasRefusal("", "") == "NativeEnvironment.colorFormat is required";
 	assert canvasRefusal("depth32float", "") == "NativeEnvironment.colorFormat 'depth32float' is not supported";
 	assert canvasRefusal("bgra8unorm", "rgba8unorm") == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
+}
+
+test "a render pipeline's zero sample count and stencil masks resolve to WebGPU's defaults" {
+	let descriptor: GPURenderPipelineDescriptor = {};
+	const resolved = resolvedRenderPipeline(descriptor);
+	assert resolved.multisample.count == 1;
+	assert resolved.depthStencil.stencilReadMask == 0xFFFFFFFF;
+	assert resolved.depthStencil.stencilWriteMask == 0xFFFFFFFF;
+	descriptor.multisample.count = 4;
+	descriptor.depthStencil.stencilReadMask = 0x0F;
+	descriptor.depthStencil.stencilWriteMask = 0xF0;
+	const kept = resolvedRenderPipeline(descriptor);
+	assert kept.multisample.count == 4;
+	assert kept.depthStencil.stencilReadMask == 0x0F;
+	assert kept.depthStencil.stencilWriteMask == 0xF0;
 }

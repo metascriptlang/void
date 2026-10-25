@@ -287,7 +287,6 @@ const VIEW_CUBE_ARRAY = 5;
 const VIEW_3D = 6;
 const MIPMAP_NEAREST = 1;
 const MIPMAP_LINEAR = 2;
-const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 
 const LAYOUT_UNIFORM = 0;
 const LAYOUT_TEXTURE = 1;
@@ -1467,8 +1466,8 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 		state[PL_DEPTH_FORMAT] = info.native;
 		state[PL_DEPTH_WRITE] = ds.depthWriteEnabled ? 1 : 0;
 		state[PL_DEPTH_COMPARE] = compareFunction(ds.depthCompare, "depthStencil.depthCompare");
-		state[PL_STENCIL_READ_MASK] = (ds.stencilReadMask == 0 ? STENCIL_MASK_ALL : ds.stencilReadMask) as int32;
-		state[PL_STENCIL_WRITE_MASK] = (ds.stencilWriteMask == 0 ? STENCIL_MASK_ALL : ds.stencilWriteMask) as int32;
+		state[PL_STENCIL_READ_MASK] = ds.stencilReadMask as int32;
+		state[PL_STENCIL_WRITE_MASK] = ds.stencilWriteMask as int32;
 		state[PL_DEPTH_BIAS] = ds.depthBias;
 		depthBias[0] = ds.depthBiasSlopeScale;
 		depthBias[1] = ds.depthBiasClamp;
@@ -1480,7 +1479,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	state[PL_STRIP_INDEX_FORMAT] = stripIndexFormat;
 	state[PL_CULL_MODE] = cullMode(descriptor.primitive.cullMode);
 	state[PL_FRONT_FACE] = frontFace(descriptor.primitive.frontFace);
-	state[PL_SAMPLE_COUNT] = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	state[PL_SAMPLE_COUNT] = descriptor.multisample.count;
 	const native = wgCreatePipeline(
 		shaders[s].vertex,
 		shaders[s].vertexEntry,

@@ -332,7 +332,6 @@ const STORE_DONT_CARE = 0;
 const STORE_STORE = 1;
 const STORE_RESOLVE = 2;
 const STORE_STORE_AND_RESOLVE = 3;
-const STENCIL_MASK_ALL: uint32 = 0xFFFFFFFF;
 const COMPARE_NEVER = 0;
 const COMPARE_ALWAYS = 7;
 
@@ -1441,7 +1440,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 		depthPixel = info.pixel;
 		if (info.stencil) { stencilPixel = info.pixel; }
 	}
-	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	const sampleCount = descriptor.multisample.count;
 	slot.state = mtlNewPipeline(device, shaders[s].vertex, shaders[s].fragment, depthPixel, stencilPixel, sampleCount);
 	if (slot.state == null) {
 		const log: string = mtlErrorLog();
@@ -1457,8 +1456,8 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 		depthFormat == "" ? COMPARE_ALWAYS : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
 		depthFormat != "" && descriptor.depthStencil.depthWriteEnabled ? 1 : 0,
 		stencil ? 1 : 0,
-		readMask == 0 ? STENCIL_MASK_ALL : readMask,
-		writeMask == 0 ? STENCIL_MASK_ALL : writeMask,
+		readMask,
+		writeMask,
 		stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
 		stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
 		stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),

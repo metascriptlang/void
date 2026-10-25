@@ -648,7 +648,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	if (cull != "" && cull != "none" && cull != "front" && cull != "back") { stopOnMember("primitive.cullMode", cull); }
 	const face: string = descriptor.primitive.frontFace;
 	if (face != "" && face != "ccw" && face != "cw") { stopOnMember("primitive.frontFace", face); }
-	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	const sampleCount = descriptor.multisample.count;
 	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("multisample.count", `${sampleCount}`); }
 	put(pipelines, id, slot);
 }

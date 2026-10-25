@@ -352,7 +352,6 @@ const FILTER_MIN_LINEAR = 0x10;
 const FILTER_COMPARISON = 0x80;
 const FILTER_ANISOTROPIC = 0x55;
 const COMPARISON_NEVER = 1;
-const STENCIL_MASK_DEFAULT: uint32 = 0xFF;
 const ADDRESS_WRAP = 1;
 const ADDRESS_MIRROR = 2;
 const ADDRESS_CLAMP = 3;
@@ -1918,7 +1917,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	slot.topology = primitiveTopology(descriptor.primitive.topology);
 	slot.stripIndexFormat = stripIndexFormatOf(descriptor.primitive);
 	slot.inputLayout = createInputLayout(s, descriptor, slot);
-	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	const sampleCount = descriptor.multisample.count;
 	slot.rasterizer = d3dCreateRasterizerState(
 		device,
 		cullMode(descriptor.primitive.cullMode),
@@ -1940,8 +1939,8 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 		depthFormat != "" && descriptor.depthStencil.depthWriteEnabled ? 1 : 0,
 		depthFormat == "" ? 8 : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
 		stencil ? 1 : 0,
-		(readMask == 0 ? STENCIL_MASK_DEFAULT : readMask) as int32,
-		(writeMask == 0 ? STENCIL_MASK_DEFAULT : writeMask) as int32,
+		readMask as int32,
+		writeMask as int32,
 		stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
 		stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
 		stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),

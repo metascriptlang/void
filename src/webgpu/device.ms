@@ -105,6 +105,7 @@ import {
 	markPipelineSet,
 	resetEncoder,
 	resetFrame,
+	resolvedRenderPipeline,
 	textureRecordOf,
 	advanceFrame,
 	cacheCanvas,
@@ -215,7 +216,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	checkedRenderPipeline(descriptor);
 	const id = allocate(pipelineRecords);
 	store(pipelineRecords, { id: id });
-	backend.createRenderPipeline(id, descriptor);
+	backend.createRenderPipeline(id, resolvedRenderPipeline(descriptor));
 	return { id: id };
 }
 

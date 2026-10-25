@@ -331,7 +331,6 @@ const GL_R32UI = 0x8236;
 const GL_RGB10_A2 = 0x8059;
 const GL_R11F_G11F_B10F = 0x8C3A;
 const GL_DEPTH_COMPONENT16 = 0x81A5;
-const STENCIL_MASK_ALL = -1;
 const GL_SRC_COLOR = 0x0300;
 const GL_ONE_MINUS_SRC_COLOR = 0x0301;
 const GL_SRC_ALPHA = 0x0302;
@@ -1902,7 +1901,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	describeBlend(descriptor, slot);
 	slot.cullFace = cullFace(descriptor.primitive.cullMode);
 	slot.frontFace = frontFace(descriptor.primitive.frontFace);
-	slot.sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	slot.sampleCount = descriptor.multisample.count;
 	put(pipelines, id, slot);
 }
 
@@ -1934,8 +1933,8 @@ function describeDepthStencil(descriptor: GPURenderPipelineDescriptor, ref slot:
 	slot.depthBias = state.depthBias;
 	slot.depthSlope = state.depthBiasSlopeScale;
 	slot.stencil = info.stencil;
-	slot.stencilReadMask = state.stencilReadMask == 0 ? STENCIL_MASK_ALL : (state.stencilReadMask as int32);
-	slot.stencilWriteMask = state.stencilWriteMask == 0 ? STENCIL_MASK_ALL : (state.stencilWriteMask as int32);
+	slot.stencilReadMask = state.stencilReadMask as int32;
+	slot.stencilWriteMask = state.stencilWriteMask as int32;
 	slot.stencilFront = stencilFace(state.stencilFront, "depthStencil.stencilFront");
 	slot.stencilBack = stencilFace(state.stencilBack, "depthStencil.stencilBack");
 }

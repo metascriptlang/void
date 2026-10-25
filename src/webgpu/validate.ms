@@ -430,6 +430,14 @@ export function primitiveRefusal(primitive: GPUPrimitiveState): string {
 	return "";
 }
 
+export function resolvedRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipelineDescriptor {
+	let resolved = descriptor;
+	if (resolved.multisample.count == 0) { resolved.multisample.count = 1; }
+	if (resolved.depthStencil.stencilReadMask == 0) { resolved.depthStencil.stencilReadMask = 0xFFFFFFFF; }
+	if (resolved.depthStencil.stencilWriteMask == 0) { resolved.depthStencil.stencilWriteMask = 0xFFFFFFFF; }
+	return resolved;
+}
+
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		return "vertex and fragment stages come from one GPUShaderModule in Void";
