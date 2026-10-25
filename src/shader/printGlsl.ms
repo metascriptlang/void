@@ -264,7 +264,11 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 	const value = match (e.intrinsic) {
 		Intrinsic.AtomicLoad => o[0].type.scalar == ScalarKind.U32 ? "0u" : "0",
 		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
-		_ => o.slice(1).map((a) => expr(p, a)).join(", "),
+		Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicMax | Intrinsic.AtomicMin |
+			Intrinsic.AtomicAnd | Intrinsic.AtomicOr | Intrinsic.AtomicXor |
+			Intrinsic.AtomicExchange =>
+			o.slice(1).map((a) => expr(p, a)).join(", "),
+		_ => fail(p, e.intrinsic.toString() + " is no GLSL atomic expression"),
 	};
 	return glslAtomicName(e.intrinsic) + "(" + expr(p, o[0]) + ", " + value + ")";
 }
@@ -450,7 +454,8 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 		return match (t.shape) {
 			TextureShape.D3 => converted(p, size, "ivec3", e.type),
 			TextureShape.D2Array => converted(p, size + ".xy", "ivec2", e.type),
-			_ => converted(p, size, "ivec2", e.type),
+			TextureShape.D2 => converted(p, size, "ivec2", e.type),
+			_ => fail(p, "a storage texture of shape " + t.shape.toString()),
 		};
 	}
 	if (t.kind != ShaderTypeKind.Texture) {
@@ -533,7 +538,8 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const name = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => "textureLod(",
 		Intrinsic.TextureSampleBias => "texture(",
-		_ => "textureGrad(",
+		Intrinsic.TextureSampleGrad => "textureGrad(",
+		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	};
 	return narrowed(name + pair.name + ", " + at + ", " + tail + ")", e.type);
 }

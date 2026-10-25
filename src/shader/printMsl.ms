@@ -390,6 +390,16 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
 }
 
+function gradientName(p: Printer, shape: TextureShape): string {
+	return match (shape) {
+		TextureShape.D3 => "gradient3d(",
+		TextureShape.Cube | TextureShape.CubeArray | TextureShape.DepthCube => "gradientcube(",
+		TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d |
+			TextureShape.Depth2dArray => "gradient2d(",
+		TextureShape.Multisampled2d => fail(p, "a gradient sample of a multisampled texture"),
+	};
+}
+
 function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
@@ -401,15 +411,12 @@ function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layer == 1) { args.push("uint(" + exprText(p, o[3]) + ")"); }
 	const at = 3 + layer;
-	const gradient = match (t.shape) {
-		TextureShape.D3 => "gradient3d(",
-		TextureShape.Cube | TextureShape.CubeArray => "gradientcube(",
-		_ => "gradient2d(",
-	};
 	args.push(match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => "level(" + exprText(p, o[at]) + ")",
 		Intrinsic.TextureSampleBias => "bias(" + exprText(p, o[at]) + ")",
-		_ => gradient + exprText(p, o[at]) + ", " + exprText(p, o[at + 1]) + ")",
+		Intrinsic.TextureSampleGrad => gradientName(p, t.shape) + exprText(p, o[at]) + ", " +
+			exprText(p, o[at + 1]) + ")",
+		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	});
 	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
 }

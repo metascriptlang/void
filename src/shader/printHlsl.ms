@@ -212,7 +212,8 @@ function texelWidth(format: TexelFormat): int32 {
 	return match (format) {
 		TexelFormat.R32float | TexelFormat.R32uint => 1,
 		TexelFormat.Rg32float => 2,
-		_ => 4,
+		TexelFormat.Rgba8unorm | TexelFormat.Rgba8snorm | TexelFormat.Rgba8uint |
+			TexelFormat.Rgba16float | TexelFormat.Rgba32float => 4,
 	};
 }
 
@@ -285,7 +286,11 @@ function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string):
 	const value = match (e.intrinsic) {
 		Intrinsic.AtomicLoad => "0",
 		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
-		_ => expr(p, o[1]),
+		Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicMax | Intrinsic.AtomicMin |
+			Intrinsic.AtomicAnd | Intrinsic.AtomicOr | Intrinsic.AtomicXor |
+			Intrinsic.AtomicExchange =>
+			expr(p, o[1]),
+		_ => fail(p, e.intrinsic.toString() + " has no Interlocked spelling"),
 	};
 	const exchange = e.intrinsic == Intrinsic.AtomicStore ||
 		e.intrinsic == Intrinsic.AtomicExchange;
@@ -457,6 +462,14 @@ function converted(p: Printer, text: string, from: string, to: ShaderType): stri
 	return from == target ? text : target + "(" + text + ")";
 }
 
+function storageSizeNames(p: Printer, shape: TextureShape): string[] {
+	if (shape == TextureShape.D3) { return ["width", "height", "depth"]; }
+	if (shape == TextureShape.D2Array) { return ["width", "height", "layers"]; }
+	if (shape == TextureShape.D2) { return ["width", "height"]; }
+	fail(p, "a storage texture of shape " + shape.toString());
+	return [];
+}
+
 function sizeOf(p: Printer, e: ShaderExpr): string {
 	const args = withoutSampler(e);
 	const t = args[0].type;
@@ -464,11 +477,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const typeText = typeName(p, t);
 		const deep = t.shape == TextureShape.D3;
-		const sizes = match (t.shape) {
-			TextureShape.D3 => ["width", "height", "depth"],
-			TextureShape.D2Array => ["width", "height", "layers"],
-			_ => ["width", "height"],
-		};
+		const sizes = storageSizeNames(p, t.shape);
 		const result = deep ? "uint3" : "uint2";
 		const kept = deep ? "width, height, depth" : "width, height";
 		const name = helper(p, "imageSize " + typeText, "imageSize", (n) =>
@@ -489,7 +498,8 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 		TextureShape.D3 => ["width", "height", "depth", "levels"],
 		TextureShape.D2Array | TextureShape.Depth2dArray | TextureShape.CubeArray =>
 			["width", "height", "layers", "levels"],
-		_ => ["width", "height", "levels"],
+		TextureShape.D2 | TextureShape.Cube | TextureShape.Depth2d | TextureShape.DepthCube |
+			TextureShape.Multisampled2d => ["width", "height", "levels"],
 	};
 	if (t.shape == TextureShape.Multisampled2d) {
 		const name = helper(p, "textureSize " + typeText, "textureSize", (n) =>
@@ -582,7 +592,8 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const method = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => ".SampleLevel(",
 		Intrinsic.TextureSampleBias => ".SampleBias(",
-		_ => ".SampleGrad(",
+		Intrinsic.TextureSampleGrad => ".SampleGrad(",
+		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	};
 	return operand(p, o[0]) + method + expr(p, o[1]) + ", " + at + ", " + tail + ")";
 }
@@ -907,7 +918,9 @@ function packedSize(t: ShaderType): int32 {
 		ShaderTypeKind.Vector => 4 * t.rows,
 		ShaderTypeKind.Matrix => 4 * t.rows * t.columns,
 		ShaderTypeKind.Array => t.length * packedSize(t.element[0]),
-		_ => -1,
+		ShaderTypeKind.Void | ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct |
+			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
+			ShaderTypeKind.ExchangeResult => -1,
 	};
 }
 
@@ -941,9 +954,11 @@ function storageStructText(p: Printer, structIndex: int32, resource: int32): str
 		if (loose) {
 			return fail(p, owner + " has a std430 stride a structured buffer does not pack");
 		}
+		const size = packedSize(t);
+		if (size < 0) { return fail(p, owner + " is a " + own.kind.toString() + " with no size"); }
 		pad(layout.value.offsets[i]);
 		text += "    " + declaration(p, t, p.fieldNames[structIndex][i]) + ";\n";
-		end += packedSize(t);
+		end += size;
 	}
 	pad(layout.value.size);
 	return text + "};\n\n";
@@ -974,7 +989,8 @@ function registerOf(p: Printer, index: int32, slots: BindingSlot[]): string {
 	const space = match (r.kind) {
 		ResourceKind.UniformBlock => "b",
 		ResourceKind.Sampler => "s",
-		_ => writable ? "u" : "t",
+		ResourceKind.Texture => "t",
+		ResourceKind.StorageBuffer | ResourceKind.StorageTexture => writable ? "u" : "t",
 	};
 	return "register(" + space + String(found[0].nativeSlot) + ")";
 }
