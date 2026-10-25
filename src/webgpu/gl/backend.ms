@@ -1396,6 +1396,7 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 		sampleCount: 1,
 		mipLevels: 1,
 		layers: 1,
+		info: info,
 		swapchainView: viewId,
 	});
 	store(views, {
