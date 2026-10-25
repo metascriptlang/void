@@ -375,6 +375,7 @@ export struct LitKey {
 	@feature(PBR) pbr: boolean;
 	@feature(PBR_MAPS) pbrMaps: boolean;
 	@feature(OCCLUSION_UV_B) occlusionUvB: boolean;
+	@feature(PARALLAX) parallax: boolean;
 }
 
 export struct LitOutput {
@@ -1535,6 +1536,39 @@ export function pbrEnvironmentLight(
 		(turn.x * occlusion);
 }
 
+// Heaps' Parallax (h3d/shader/Parallax.hx) at PbrMaterial's steps, 6 to 24, reading the height
+// from the pbr-maps texture's alpha as PbrMaterial hands it its props texture. The tangent basis is
+// mappedNormal's, so the steps and the mapped normal agree on the bitangent's sign.
+export function parallaxUv(
+	b: LitBindings,
+	uv: Vec2f,
+	view: Vec3f,
+	normal: Vec3f,
+	tangent: Vec4f,
+	amount: float32,
+): Vec2f {
+	const t = normalize(tangent.xyz);
+	const sign: float32 = tangent.w < 0.0 ? -1.0 : 1.0;
+	const bitangent = normalize(cross(normal, t)) * sign;
+	const viewNs = normalize(vec3f(dot(view, t), dot(view, bitangent), dot(view, normal)));
+	const layers = mix(24.0, 6.0, clamp(abs(viewNs.z), 0.0, 1.0));
+	const layerDepth = 1.0 / layers;
+	const delta = viewNs.xy * (-amount / (viewNs.z * layers));
+	let at = uv;
+	let depth = 1.0 - textureSampleLevel(b.metalRoughTexture, b.baseSampler, at, 0.0).a;
+	let layer: float32 = 0.0;
+	while (layer < depth) {
+		at = at + delta;
+		depth = 1.0 - textureSampleLevel(b.metalRoughTexture, b.baseSampler, at, 0.0).a;
+		layer = layer + layerDepth;
+	}
+	const previous = at - delta;
+	const after = depth - layer;
+	const before = 1.0 - textureSample(b.metalRoughTexture, b.baseSampler, previous).a - layer +
+		layerDepth;
+	return mix(at, previous, after / (after - before));
+}
+
 // Roughness floors at 0.089 as Bevy's clampedPerceptualRoughness (pbr_lighting.wesl:550): a
 // texel of 0 has no BRDF response, and a texture cannot be refused per pixel.
 export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f, occlusionUv: Vec2f): Vec3f {
@@ -1676,6 +1710,11 @@ export function litTexturedFs(
 	if (key.uvTransform || key.pbr) {
 		const time = b.frameParams.frame.x;
 		uv = movedUv(input.surfaceUv, uvMatrixOf(b, key), uvMotionOf(b, key), time);
+	}
+	if (key.normalMap && key.parallax) {
+		const view = normalize(b.frameParams.cameraPosition.xyz - input.worldPosition);
+		uv = parallaxUv(b, uv, view, normalize(input.worldNormal), input.worldTangent,
+			materialOf(b, key).x);
 	}
 	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
 	if (key.backTexture) {

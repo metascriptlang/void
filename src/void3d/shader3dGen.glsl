@@ -2085,7 +2085,7 @@ layout(binding=3) uniform texture2D emissiveTexture;
 #ifdef NORMAL_MAP
 layout(binding=5) uniform texture2D normalTexture;
 #endif
-#if defined(PBR) && defined(PBR_MAPS)
+#if (defined(NORMAL_MAP) && defined(PARALLAX)) || (defined(PBR) && defined(PBR_MAPS))
 layout(binding=1) uniform texture2D metalRoughTexture;
 #endif
 #if defined(PBR) && defined(PBR_MAPS)
@@ -2182,6 +2182,29 @@ vec4 uvMotionOf() {
     return uvMotion;
 #endif
 #endif
+}
+#endif
+#if defined(NORMAL_MAP) && defined(PARALLAX)
+vec2 parallaxUv(vec2 uv, vec3 view, vec3 normal_1, vec4 tangent, float amount) {
+    vec3 t = normalize(tangent.xyz);
+    float sign_1 = (tangent.w < 0.0) ? -1.0 : 1.0;
+    vec3 bitangent = normalize(cross(normal_1, t)) * sign_1;
+    vec3 viewNs = normalize(vec3(dot(view, t), dot(view, bitangent), dot(view, normal_1)));
+    float layers = mix(24.0, 6.0, clamp(abs(viewNs.z), 0.0, 1.0));
+    float layerDepth = 1.0 / layers;
+    vec2 delta = viewNs.xy * ((-amount) / (viewNs.z * layers));
+    vec2 at = uv;
+    float depth = 1.0 - textureLod(sampler2D(metalRoughTexture, baseSampler), at, 0.0).a;
+    float layer = 0.0;
+    while (layer < depth) {
+        at = at + delta;
+        depth = 1.0 - textureLod(sampler2D(metalRoughTexture, baseSampler), at, 0.0).a;
+        layer = layer + layerDepth;
+    }
+    vec2 previous = at - delta;
+    float after = depth - layer;
+    float before = ((1.0 - texture(sampler2D(metalRoughTexture, baseSampler), previous).a) - layer) + layerDepth;
+    return mix(at, previous, (after / (after - before)));
 }
 #endif
 #ifdef BACK_TEXTURE
@@ -2899,6 +2922,10 @@ void main() {
 #if defined(UV_TRANSFORM) || defined(PBR)
     float time = frame.x;
     uv = movedUv(surfaceUv, uvMatrixOf(), uvMotionOf(), time);
+#endif
+#if defined(NORMAL_MAP) && defined(PARALLAX)
+    vec3 view = normalize((cameraPosition.xyz - worldPosition));
+    uv = parallaxUv(uv, view, normalize(worldNormal), worldTangent, materialOf().x);
 #endif
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), uv);
 #ifdef BACK_TEXTURE

@@ -100,15 +100,19 @@ export struct ProgramKey {
 	// Samples the occlusion map at the mesh's second uv set (MeshData.hasUvB), as Bevy's
 	// occlusion_channel Uv1.
 	occlusionUvB: boolean;
+	// Heaps' Parallax as PbrMaterial adds it: the UV steps along the view, in the normal map's
+	// tangent basis, until it passes the height in the pbr-maps texture's alpha.
+	parallax: boolean;
 }
 
-const KEY_LIMIT: int32 = 524288;
+const KEY_LIMIT: int32 = 1048576;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
 		skinned: false, normalMrt: false, pbr: false, pbrMaps: false, occlusionUvB: false,
+		parallax: false,
 	};
 }
 
@@ -200,6 +204,11 @@ export function withOcclusionUvB(this key: ProgramKey): ProgramKey {
 	return { ...key, occlusionUvB: true };
 }
 
+export function withParallax(this key: ProgramKey): ProgramKey {
+	if (!key.pbrMaps || !key.normalMap) { return stopOnFeature(key, "parallax"); }
+	return { ...key, parallax: true };
+}
+
 export function withNormalMrt(this key: ProgramKey): ProgramKey {
 	const mesh: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
 		key.program == Program.UnlitTextured;
@@ -225,7 +234,7 @@ export function bits(this key: ProgramKey): int32 {
 		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
 		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15) |
 		((key.pbr ? 1 : 0) << 16) | ((key.pbrMaps ? 1 : 0) << 17) |
-		((key.occlusionUvB ? 1 : 0) << 18);
+		((key.occlusionUvB ? 1 : 0) << 18) | ((key.parallax ? 1 : 0) << 19);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -240,7 +249,7 @@ export function describe(this key: ProgramKey): string {
 	const skin: string = key.skinned ? " skinned" : "";
 	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
 	const pbr: string = (key.pbr ? " pbr" : "") + (key.pbrMaps ? " pbr-maps" : "") +
-		(key.occlusionUvB ? " occlusion-uv-b" : "");
+		(key.occlusionUvB ? " occlusion-uv-b" : "") + (key.parallax ? " parallax" : "");
 	const features: string =
 		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
 		skin + normalMrt + pbr;
@@ -342,6 +351,7 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
 		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
 		emissive: false, normalMrt: false, pbr: false, pbrMaps: false, occlusionUvB: false,
+		parallax: key.parallax && key.cutout,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);
@@ -484,6 +494,8 @@ export const CLUSTER_SCENE_SAMPLERS: uint32 = 1 << (CLUSTER_SAMPLER_SLOT as uint
 // `color` and Bevy's `base_color`: white leaves it alone, and a block of zeros draws black.
 export const MATERIAL_UNIFORM_SLOT: int32 = 3;
 export const MATERIAL_UNIFORM_LENGTH: int32 = 8;
+// A parallax key's amount (Heaps' Parallax.amount), in UV units at full depth.
+export const MATERIAL_PARALLAX: int32 = 0;
 export const MATERIAL_SATURATION: int32 = 1;
 export const MATERIAL_DOUBLE_SIDED: int32 = 2;
 export const MATERIAL_ALPHA_KILL: int32 = 3;
