@@ -522,22 +522,10 @@ export function createView(view: ViewRecord, descriptor: GPUTextureViewDescripto
 
 export function destroyView(view: GPUTextureView): void {}
 
-export function swapchainTexture(swapchain: NativeSwapchain): GPUTexture {
+export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	if (swapchain.width <= 0 || swapchain.height <= 0) {
 		stop(`the swapchain size ${swapchain.width}x${swapchain.height} is not positive`);
 	}
-	updateSwapchainTexture(swapchainColor, swapchain);
-	if (swapchainDepth != 0) { updateSwapchainTexture(swapchainDepth, swapchain); }
-	return { id: swapchainColor };
-}
-
-export function swapchainDepthTexture(): GPUTexture { return { id: swapchainDepth }; }
-
-function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
-	const t = textureRecords.slotIndex(id);
-	textureRecords.slots[t].width = swapchain.width;
-	textureRecords.slots[t].height = swapchain.height;
-	textureRecords.slots[t].sampleCount = swapchain.sampleCount == 0 ? 1 : swapchain.sampleCount;
 }
 
 export function createSampler(id: uint32, descriptor: GPUSamplerDescriptor): void {

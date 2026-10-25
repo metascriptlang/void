@@ -1250,29 +1250,17 @@ function viewNative(v: int32): Ptr<MtlTextureImpl> {
 	return views[v].natives[active];
 }
 
-export function swapchainTexture(swapchain: NativeSwapchain): GPUTexture {
+export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	if (swapchain.renderView === null) { stop("the native swapchain has no render view"); }
-	updateSwapchainTexture(swapchainColor, swapchain);
 	const v = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainColor)].swapchainView);
 	views[v].swapchainTexture = mtlTextureFrom(swapchain.renderView);
 	views[v].swapchainResolve = swapchain.resolveView === null ? NO_TEXTURE : mtlTextureFrom(swapchain.resolveView);
 	textures[textureRecords.slotIndex(swapchainColor)].natives[0] = swapchain.sampleCount > 1 ? views[v].swapchainResolve : views[v].swapchainTexture;
 	if (swapchainDepth != 0) {
 		if (swapchain.depthStencilView === null) { stop("the canvas has a depth format and the native swapchain no depth view"); }
-		updateSwapchainTexture(swapchainDepth, swapchain);
 		const d = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainDepth)].swapchainView);
 		views[d].swapchainTexture = mtlTextureFrom(swapchain.depthStencilView);
 	}
-	return { id: swapchainColor };
-}
-
-export function swapchainDepthTexture(): GPUTexture { return { id: swapchainDepth }; }
-
-function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
-	const t = textureRecords.slotIndex(id);
-	textureRecords.slots[t].width = swapchain.width;
-	textureRecords.slots[t].height = swapchain.height;
-	textureRecords.slots[t].sampleCount = swapchain.sampleCount == 0 ? 1 : swapchain.sampleCount;
 }
 
 export function createSampler(id: uint32, descriptor: GPUSamplerDescriptor): void {

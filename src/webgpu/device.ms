@@ -127,6 +127,9 @@ when (voidDummy) {
 export type GPUNativeEnvironment = backend.NativeEnvironment;
 export type GPUNativeSwapchain = backend.NativeSwapchain;
 
+let swapchainColor: uint32 = 0;
+let swapchainDepth: uint32 = 0;
+
 export function requestDevice(environment: GPUNativeEnvironment): GPUDevice {
 	resetEncoder();
 	resetFrame();
@@ -136,10 +139,9 @@ export function requestDevice(environment: GPUNativeEnvironment): GPUDevice {
 	cacheLimits(backend.limits());
 	const canvas = cachedCanvas();
 	const depthFormat: string = canvas.depthFormat;
-	backend.adoptSwapchain(
-		reserveSwapchainTexture(canvas.format, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32)),
-		depthFormat == "" ? 0 : reserveSwapchainTexture(canvas.depthFormat, GPUTextureUsage.RENDER_ATTACHMENT as int32),
-	);
+	swapchainColor = reserveSwapchainTexture(canvas.format, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32));
+	swapchainDepth = depthFormat == "" ? 0 : reserveSwapchainTexture(canvas.depthFormat, GPUTextureUsage.RENDER_ATTACHMENT as int32);
+	backend.adoptSwapchain(swapchainColor, swapchainDepth);
 	return device;
 }
 
@@ -606,11 +608,21 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 }
 
 export function getCurrentTexture(swapchain: GPUNativeSwapchain): GPUTexture {
-	return backend.swapchainTexture(swapchain);
+	updateSwapchainTexture(swapchainColor, swapchain);
+	if (swapchainDepth != 0) { updateSwapchainTexture(swapchainDepth, swapchain); }
+	backend.acquireSwapchain(swapchain);
+	return { id: swapchainColor };
+}
+
+function updateSwapchainTexture(id: uint32, swapchain: GPUNativeSwapchain): void {
+	const t = textureRecords.slotIndex(id);
+	textureRecords.slots[t].width = swapchain.width;
+	textureRecords.slots[t].height = swapchain.height;
+	textureRecords.slots[t].sampleCount = swapchain.sampleCount == 0 ? 1 : swapchain.sampleCount;
 }
 
 // The depth attachment the window adds to the canvas; valid after getCurrentTexture this frame.
-export function getCurrentDepthTexture(): GPUTexture { return backend.swapchainDepthTexture(); }
+export function getCurrentDepthTexture(): GPUTexture { return { id: swapchainDepth }; }
 
 export function getCanvasConfiguration(this self: GPUDevice): GPUCanvasConfiguration {
 	return cachedCanvas();
