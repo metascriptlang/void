@@ -2,6 +2,7 @@ import {
 	BindingKind,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPUMapMode,
 	GPUPrimitiveState,
 	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
@@ -242,6 +243,13 @@ test "writeBuffer needs COPY_DST and a 4-byte-aligned offset inside the buffer" 
 	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 56, 16, 3) == "writeBuffer of 16 bytes at 56 overruns GPUBuffer 7 of 64";
 	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), -4, 4, 3) == "writeBuffer of 4 bytes at -4 overruns GPUBuffer 7 of 64";
 	assert writeBufferRefusal(written(VERTEX | COPY_DST, -1, 0), 2, 4, 3) == "writeBuffer offset 2 is not a multiple of 4";
+}
+
+test "writeBuffer takes an unmapped MAP_READ buffer and refuses it while mapped" {
+	let buffer = written(MAP_READ | COPY_DST, -1, 0);
+	assert writeBufferRefusal(buffer, 0, 16, 3) == "";
+	buffer.mapMode = GPUMapMode.READ as int32;
+	assert writeBufferRefusal(buffer, 0, 16, 3) == "writeBuffer on GPUBuffer 7, which is mapped";
 }
 
 test "a frame writes each buffer's bytes once, appending after its last write, whatever the usage" {

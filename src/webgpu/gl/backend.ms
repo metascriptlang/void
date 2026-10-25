@@ -56,15 +56,12 @@ import {
 	checkedBufferCopy,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
-	checkedMapAsync,
-	checkedMappedRange,
 	checkedResolveQuerySet,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
-	checkedUnmap,
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
 	firstInstanceRefusal,
@@ -503,9 +500,6 @@ struct BufferSlot {
 	uniform: boolean;
 	storage: boolean;
 	mapRead: boolean;
-	mapMode: int32;
-	mapOffset: int64;
-	mapSize: int64;
 	target: int32;
 	names: uint32[2];
 	slotCount: int32;
@@ -2891,7 +2885,7 @@ function applyUniforms(): void {
 function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
 	const index = bufferRecords.slotIndex(buffer.id);
 	if (!has(bufferRecords.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
-	if (buffers[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
+	if (bufferRecords.slots[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
 	if (buffers[index].uniform) { stop(`${member}: GPUBuffer ${buffer.id} is a CPU shadow uniform block on gl and cannot be copied`); }
 	return index;
 }
@@ -3106,50 +3100,30 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	if (copied < 0) { stop(`copyTextureToTexture: this GL target refused the copy between ${fromFormat} GPUTexture ${source.texture.id} and ${destination.texture.id}`); }
 }
 
-export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {
 	const index = bufferRecords.slotIndex(buffer.id);
-	const read = mode == (GPUMapMode.READ as int32);
-	const length = checkedMapAsync(buffer.id, bufferRecords.slots[index].usage, buffers[index].mapMode, bufferRecords.slots[index].size, mode, offset, size);
-	if (read) {
+	if (mode == (GPUMapMode.READ as int32)) {
 		if (oglGetBufferDataUncached(bufferName(index), offset, buffers[index].shadow[offset], length) == 0) {
 			stop(`mapAsync READ of GPUBuffer ${buffer.id}: this GL target cannot read a buffer back`);
 		}
 		checkError("mapAsync");
 	}
-	buffers[index].mapMode = mode;
-	buffers[index].mapOffset = offset;
-	buffers[index].mapSize = length;
 }
 
-function mappedRange(member: string, buffer: GPUBuffer, mode: int32, offset: int64, size: int64): int64 {
-	const index = bufferRecords.slotIndex(buffer.id);
-	const slot = buffers[index];
-	return checkedMappedRange(member, buffer.id, bufferRecords.slots[index].size, slot.mapMode, slot.mapOffset, slot.mapSize, mode, offset, size);
-}
-
-export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
-	const length = mappedRange("getMappedRange", buffer, GPUMapMode.READ as int32, offset, size);
+export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
 	let bytes: Vec<uint8> = new Array(length);
 	oglCopyBytes(bytes[0], 0, buffers[bufferRecords.slotIndex(buffer.id)].shadow[offset], length);
 	return bytes;
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
-	mappedRange("writeMappedRange", buffer, GPUMapMode.WRITE as int32, offset, bytes);
 	const index = bufferRecords.slotIndex(buffer.id);
 	const target = buffers[index].target;
 	cacheStoreBuffer(target);
 	cacheBindBuffer(target, bufferName(index));
 	oglBufferSubData(target, offset, data[0], bytes);
 	cacheRestoreBuffer(target);
-}
-
-export function unmap(buffer: GPUBuffer): void {
-	const index = bufferRecords.slotIndex(buffer.id);
-	checkedUnmap(buffer.id, buffers[index].mapMode);
-	buffers[index].mapMode = 0;
 }
 
 export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {

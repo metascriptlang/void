@@ -47,7 +47,6 @@ import {
 	GPUShaderModuleDescriptor,
 	GPUSupportedFeatures,
 	GPUSupportedLimits,
-	GPUMapMode,
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
@@ -60,15 +59,12 @@ import {
 	checkedBufferCopy,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
-	checkedMapAsync,
-	checkedMappedRange,
 	checkedResolveQuerySet,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
-	checkedUnmap,
 	featureBit,
 	firstInstanceRefusal,
 	vertexOffsetRefusal,
@@ -406,9 +402,6 @@ struct BufferSlot {
 	storage: boolean;
 	staging: boolean;
 	updatable: boolean;
-	mapMode: int32;
-	mapOffset: int64;
-	mapSize: int64;
 	native: Ptr<D3dBufferImpl>;
 	shadow: Vec<uint8>;
 }
@@ -1280,7 +1273,10 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	if (buffers[index].staging) { stop(`writeBuffer on GPUBuffer ${buffer.id}, a MAP buffer: write it through mapAsync and writeMappedRange or a copy`); }
+	if (buffers[index].staging) {
+		if (d3dMapWrite(context, buffers[index].native, MAP_WRITE, offset, data[0], bytes) == 0) { stop(`Map for writeBuffer failed on GPUBuffer ${buffer.id}`); }
+		return;
+	}
 	if (buffers[index].updatable) {
 		d3dUpdateBuffer(context, buffers[index].native, offset, data[0], bytes);
 		return;
@@ -1426,7 +1422,7 @@ export function writeTexture<T>(
 function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
 	const index = bufferRecords.slotIndex(buffer.id);
 	if (!has(bufferRecords.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
-	if (buffers[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
+	if (bufferRecords.slots[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
 	if (buffers[index].native == null) { stop(`${member}: GPUBuffer ${buffer.id} is a CPU shadow uniform block on d3d11 and cannot be copied`); }
 	return index;
 }
@@ -1597,23 +1593,10 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 
 // A MAP buffer is a STAGING resource: mapAsync marks the range, and the Map call that reads or
 // writes it blocks until the GPU copies into it are done.
-export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
-	const index = bufferRecords.slotIndex(buffer.id);
-	const length = checkedMapAsync(buffer.id, bufferRecords.slots[index].usage, buffers[index].mapMode, bufferRecords.slots[index].size, mode, offset, size);
-	buffers[index].mapMode = mode;
-	buffers[index].mapOffset = offset;
-	buffers[index].mapSize = length;
-}
-
-function mappedRange(member: string, buffer: GPUBuffer, mode: int32, offset: int64, size: int64): int64 {
-	const index = bufferRecords.slotIndex(buffer.id);
-	const slot = buffers[index];
-	return checkedMappedRange(member, buffer.id, bufferRecords.slots[index].size, slot.mapMode, slot.mapOffset, slot.mapSize, mode, offset, size);
-}
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {}
 
 // A copy of the mapped bytes: WebGPU's ArrayBuffer view has no MetaScript counterpart on a native pointer.
-export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
-	const length = mappedRange("getMappedRange", buffer, GPUMapMode.READ as int32, offset, size);
+export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
 	let bytes: Vec<uint8> = new Array(length);
 	if (d3dReadBuffer(context, buffers[bufferRecords.slotIndex(buffer.id)].native, offset, bytes[0], length) == 0) {
 		stop(`Map for getMappedRange failed on GPUBuffer ${buffer.id}`);
@@ -1622,18 +1605,10 @@ export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): V
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
-	mappedRange("writeMappedRange", buffer, GPUMapMode.WRITE as int32, offset, bytes);
 	if (d3dMapWrite(context, buffers[bufferRecords.slotIndex(buffer.id)].native, MAP_WRITE, offset, data[0], bytes) == 0) {
 		stop(`Map for writeMappedRange failed on GPUBuffer ${buffer.id}`);
 	}
-}
-
-export function unmap(buffer: GPUBuffer): void {
-	const index = bufferRecords.slotIndex(buffer.id);
-	checkedUnmap(buffer.id, buffers[index].mapMode);
-	buffers[index].mapMode = 0;
 }
 
 function viewDimensionOf(name: string): int32 {

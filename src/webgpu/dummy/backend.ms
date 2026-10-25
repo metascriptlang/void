@@ -42,7 +42,6 @@ import {
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
-	GPUMapMode,
 	GPUPassTimestampWrites,
 	GPUPrimitiveState,
 	GPUQuerySet,
@@ -73,14 +72,11 @@ import {
 	checkedBufferCopy,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
-	checkedMapAsync,
-	checkedMappedRange,
 	checkedResolveQuerySet,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
-	checkedUnmap,
 	featureBit,
 	firstInstanceRefusal,
 	linearFilter,
@@ -170,9 +166,6 @@ struct FormatInfo {
 
 struct BufferSlot {
 	bytes: Vec<uint8>;
-	mapMode: int32;
-	mapOffset: int64;
-	mapSize: int64;
 }
 
 struct ShaderBinding {
@@ -431,7 +424,6 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	if (buffers[index].mapMode != 0) { stop(`writeBuffer on GPUBuffer ${buffer.id}, which is mapped`); }
 	dummyCopyBytes(buffers[index].bytes[0], offset, data[0], bytes);
 }
 
@@ -941,7 +933,7 @@ function checkBoundGroups(s: int32, groups: uint32[2], dynamicOffsets: uint32[8]
 function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
 	const index = bufferRecords.slotIndex(buffer.id);
 	if (!has(bufferRecords.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
-	if (buffers[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
+	if (bufferRecords.slots[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
 	return index;
 }
 
@@ -1024,56 +1016,19 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	);
 }
 
-export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
-	const index = bufferRecords.slotIndex(buffer.id);
-	const length = checkedMapAsync(
-		buffer.id,
-		bufferRecords.slots[index].usage,
-		buffers[index].mapMode,
-		bufferRecords.slots[index].size,
-		mode,
-		offset,
-		size,
-	);
-	buffers[index].mapMode = mode;
-	buffers[index].mapOffset = offset;
-	buffers[index].mapSize = length;
-}
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {}
 
-function mappedRange(member: string, index: int32, mode: int32, offset: int64, size: int64): int64 {
-	return checkedMappedRange(
-		member,
-		bufferRecords.slots[index].id,
-		bufferRecords.slots[index].size,
-		buffers[index].mapMode,
-		buffers[index].mapOffset,
-		buffers[index].mapSize,
-		mode,
-		offset,
-		size,
-	);
-}
-
-export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
+export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
 	const index = bufferRecords.slotIndex(buffer.id);
-	const length = mappedRange("getMappedRange", index, GPUMapMode.READ as int32, offset, size);
 	let bytes: Vec<uint8> = new Array(length);
 	if (length > 0) { dummyCopyBytes(bytes[0], 0, buffers[index].bytes[offset], length); }
 	return bytes;
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	mappedRange("writeMappedRange", index, GPUMapMode.WRITE as int32, offset, bytes);
 	dummyCopyBytes(buffers[index].bytes[0], offset, data[0], bytes);
-}
-
-export function unmap(buffer: GPUBuffer): void {
-	const index = bufferRecords.slotIndex(buffer.id);
-	checkedUnmap(buffer.id, buffers[index].mapMode);
-	buffers[index].mapMode = 0;
 }
 
 export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {

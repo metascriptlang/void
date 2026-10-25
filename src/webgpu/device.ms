@@ -19,6 +19,7 @@ import {
 	GPUFeatureName,
 	GPUExtent3D,
 	GPUIndexFormat,
+	GPUMapMode,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPUQueue,
@@ -43,6 +44,9 @@ import {
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 	GPUTextureUsage,
+	checkedMapAsync,
+	checkedMappedRange,
+	checkedUnmap,
 	featureBit,
 	stop,
 } from "./types.ms";
@@ -520,19 +524,36 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 // mapAsync blocks on native: the buffer is readable or writable on return. `size` 0 maps to the end.
 @inline export function mapAsync(this self: GPUBuffer, mode: int32, offset: int64, size: int64): void {
-	backend.mapAsync(self, mode, offset, size);
+	const index = bufferRecords.slotIndex(self.id);
+	const record = bufferRecords.slots[index];
+	const length = checkedMapAsync(self.id, record.usage, record.mapMode, record.size, mode, offset, size);
+	backend.mapAsync(self, mode, offset, length);
+	bufferRecords.slots[index].mapMode = mode;
+	bufferRecords.slots[index].mapOffset = offset;
+	bufferRecords.slots[index].mapSize = length;
+}
+
+function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offset: int64, size: int64): int64 {
+	const record = bufferRecords.record(buffer.id);
+	return checkedMappedRange(member, buffer.id, record.size, record.mapMode, record.mapOffset, record.mapSize, mode as int32, offset, size);
 }
 
 // A copy of the mapped bytes, not WebGPU's live ArrayBuffer view; a MAP_WRITE buffer takes writeMappedRange instead.
 @inline export function getMappedRange(this self: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
-	return backend.getMappedRange(self, offset, size);
+	return backend.getMappedRange(self, offset, mappedLength("getMappedRange", self, GPUMapMode.READ, offset, size));
 }
 
 @inline export function writeMappedRange<T>(this self: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
+	if (data.length == 0) { return; }
+	mappedLength("writeMappedRange", self, GPUMapMode.WRITE, offset, (data.length as int64) * (sizeof T as int64));
 	backend.writeMappedRange(self, offset, data);
 }
 
-@inline export function unmap(this self: GPUBuffer): void { backend.unmap(self); }
+@inline export function unmap(this self: GPUBuffer): void {
+	const index = bufferRecords.slotIndex(self.id);
+	checkedUnmap(self.id, bufferRecords.slots[index].mapMode);
+	bufferRecords.slots[index].mapMode = 0;
+}
 
 @inline export function finish(this self: GPUCommandEncoder): GPUCommandBuffer {
 	checkedFinish();

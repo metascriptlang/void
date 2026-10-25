@@ -352,6 +352,7 @@ export function bufferRewriteRefusal(buffer: BufferRecord, member: string, offse
 }
 
 export function writeBufferRefusal(buffer: BufferRecord, offset: int64, bytes: int64, frame: int64): string {
+	if (buffer.mapMode != 0) { return `writeBuffer on GPUBuffer ${buffer.id}, which is mapped`; }
 	if ((buffer.usage & (GPUBufferUsage.COPY_DST as int32)) == 0) { return `GPUBuffer ${buffer.id} was created without COPY_DST`; }
 	if (offset < 0 || offset + bytes > buffer.size) { return `writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${buffer.size}`; }
 	if ((offset & 3) != 0) { return `writeBuffer offset ${offset} is not a multiple of 4`; }

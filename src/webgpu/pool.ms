@@ -113,6 +113,9 @@ export struct BufferRecord {
 	usage: int32;
 	writtenFrame: int64;
 	writtenEnd: int64;
+	mapMode: int32;
+	mapOffset: int64;
+	mapSize: int64;
 }
 
 export struct TextureRecord {

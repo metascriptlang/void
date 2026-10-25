@@ -2018,20 +2018,16 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	);
 }
 
-export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {
 	stop("mapAsync is not ported to wgpu: wgpuBufferMapAsync completes in the browser's event loop, and the build has neither ASYNCIFY nor JSPI to block on it");
 }
 
-export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
+export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
 	stop("getMappedRange is not ported to wgpu: it needs mapAsync");
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	stop("writeMappedRange is not ported to wgpu: it needs mapAsync");
-}
-
-export function unmap(buffer: GPUBuffer): void {
-	stop("unmap is not ported to wgpu: it needs mapAsync");
 }
 
 export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {
