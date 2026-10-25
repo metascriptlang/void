@@ -10,7 +10,6 @@ import {
 	LoadAction,
 	StoreAction,
 	makeTargetImage,
-	makeAttachmentView,
 	makeTextureView,
 	makeSampler,
 	destroyImage,
@@ -192,7 +191,7 @@ export function resize(this target: RenderTarget, width: int32, height: int32): 
 	target.height = height;
 	target.image = makeTargetImage(width, height, target.format);
 	if (target.image == 0) { stopOnRefusedTarget(target, "image"); }
-	target.attachment = makeAttachmentView(target.image, target.format);
+	target.attachment = makeTextureView(target.image);
 	if (target.attachment == 0) { stopOnRefusedTarget(target, "attachment view"); }
 	target.texture = target.sampled ? makeTextureView(target.image) : 0;
 	if (target.sampled && target.texture == 0) { stopOnRefusedTarget(target, "texture view"); }

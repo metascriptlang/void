@@ -777,10 +777,6 @@ export function doorMakeTargetImage(width: int32, height: int32, format: int32):
 	}).id;
 }
 
-export function doorMakeAttachmentView(image: uint32, format: int32): uint32 {
-	return doorMakeTextureView(image);
-}
-
 @exportName("doorMakeTextureView")
 export function doorMakeTextureView(image: uint32): uint32 {
 	const texture: GPUTexture = { id: image };

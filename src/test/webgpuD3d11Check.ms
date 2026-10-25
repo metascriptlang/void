@@ -26,7 +26,7 @@ import { getCurrentTexture, requestDevice } from "../webgpu/device.ms";
 import {
 	doorBeginColorPass,
 	doorEndPass,
-	doorMakeAttachmentView,
+	doorMakeTextureView,
 	doorMakeTargetImage,
 	doorReadTexture,
 	doorSetup,
@@ -1633,7 +1633,7 @@ test "the swapchain texture copies out of the back buffer, resolved when it is m
 test "the door reads a cleared bgra8 target back as RGBA and refuses a buffer of the wrong size" {
 	doorSetup(warpDevice(), warpContext(), 2, 0, 1);
 	const image = doorMakeTargetImage(8, 8, 4);
-	const view = doorMakeAttachmentView(image, 4);
+	const view = doorMakeTextureView(image);
 	doorBeginColorPass(view, 0.0, 0.0, 1.0, 1.0);
 	doorEndPass();
 	let out: Vec<uint8> = new Array(8 * 8 * 4);
