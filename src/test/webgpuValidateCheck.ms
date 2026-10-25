@@ -13,18 +13,28 @@ import {
 	PASS_COMPUTE,
 	PASS_RENDER,
 	addressesBinding,
+	attachOcclusion,
+	beginOcclusionRefusal,
 	beginPassRefusal,
 	bufferRefusal,
 	computeModuleRefusal,
 	computePipelineRefusal,
 	createRefusal,
+	drawRefusal,
+	endOcclusionRefusal,
 	endPassRefusal,
 	finishRefusal,
 	groupOfKind,
 	inPassRefusal,
 	isDepthFormat,
 	isStripTopology,
+	markIndexBuffer,
+	markPipeline,
 	markerRefusal,
+	occlusionRangeRefusal,
+	occlusionReuseRefusal,
+	occlusionSetKindRefusal,
+	pipelineSetRefusal,
 	outsidePassRefusal,
 	popGroupRefusal,
 	primitiveRefusal,
@@ -352,4 +362,93 @@ test "an indexed strip draw needs the pipeline's strip index format to be the bo
 	assert stripDrawRefusal(false, false) == "";
 	assert stripDrawRefusal(true, true) == "";
 	assert stripDrawRefusal(true, false) == "an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format";
+}
+
+test "a draw needs a pipeline and an indexed draw an index buffer, both set in this pass" {
+	let s = openEncoder();
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	assert s.drawRefusal("draw", false) == "draw without setPipeline";
+	assert s.drawRefusal("drawIndexed", true) == "drawIndexed without setPipeline";
+	s.markPipeline();
+	assert s.drawRefusal("draw", false) == "";
+	assert s.drawRefusal("drawIndexed", true) == "drawIndexed without setIndexBuffer";
+	s.markIndexBuffer();
+	assert s.drawRefusal("drawIndexed", true) == "";
+}
+
+test "a new pass starts with no pipeline and no index buffer, whatever the last pass set" {
+	let s = openEncoder();
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	s.markPipeline();
+	s.markIndexBuffer();
+	assert s.endPassRefusal(PASS_RENDER) == "";
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	assert s.drawRefusal("draw", false) == "draw without setPipeline";
+	s.markPipeline();
+	assert s.drawRefusal("drawIndexed", true) == "drawIndexed without setIndexBuffer";
+}
+
+test "a dispatch needs the pipeline its compute pass set, naming the call" {
+	let s = openEncoder();
+	assert s.beginPassRefusal(PASS_COMPUTE) == "";
+	assert s.pipelineSetRefusal("dispatchWorkgroups") == "dispatchWorkgroups without setPipeline";
+	assert s.pipelineSetRefusal("dispatchWorkgroupsIndirect") == "dispatchWorkgroupsIndirect without setPipeline";
+	s.markPipeline();
+	assert s.pipelineSetRefusal("dispatchWorkgroups") == "";
+	assert s.endPassRefusal(PASS_COMPUTE) == "";
+	assert s.beginPassRefusal(PASS_COMPUTE) == "";
+	assert s.pipelineSetRefusal("dispatchWorkgroups") == "dispatchWorkgroups without setPipeline";
+}
+
+test "an occlusion query needs the pass's occlusion set, one open at a time, closed before the pass ends" {
+	let none = openEncoder();
+	assert none.beginPassRefusal(PASS_RENDER) == "";
+	assert none.beginOcclusionRefusal(0) == "beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet";
+	let s = openEncoder();
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	s.attachOcclusion(5);
+	assert s.beginOcclusionRefusal(2) == "";
+	assert s.occlusionIndex == 2;
+	assert s.beginOcclusionRefusal(3) == "beginOcclusionQuery with an occlusion query already open";
+	assert s.endPassRefusal(PASS_RENDER) == "end with an occlusion query still open";
+	assert s.endOcclusionRefusal() == "";
+	assert s.endOcclusionRefusal() == "endOcclusionQuery without an open occlusion query";
+	assert s.endPassRefusal(PASS_RENDER) == "";
+}
+
+test "a pass keeps no occlusion set of the pass before it" {
+	let s = openEncoder();
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	s.attachOcclusion(5);
+	assert s.beginOcclusionRefusal(0) == "";
+	assert s.endOcclusionRefusal() == "";
+	assert s.endPassRefusal(PASS_RENDER) == "";
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	assert s.beginOcclusionRefusal(0) == "beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet";
+}
+
+test "an occlusion index is inside its set and used once per pass, across passes and encoders" {
+	assert occlusionRangeRefusal(0, 4) == "";
+	assert occlusionRangeRefusal(3, 4) == "";
+	assert occlusionRangeRefusal(4, 4) == "beginOcclusionQuery index 4 is outside the query set of 4";
+	assert occlusionRangeRefusal(-1, 4) == "beginOcclusionQuery index -1 is outside the query set of 4";
+	let s = openEncoder();
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	const first = s.serial;
+	assert s.occlusionReuseRefusal(1, 0) == "";
+	assert s.occlusionReuseRefusal(1, first) == "beginOcclusionQuery index 1 was already used in this pass";
+	assert s.endPassRefusal(PASS_RENDER) == "";
+	assert s.beginPassRefusal(PASS_COMPUTE) == "";
+	assert s.endPassRefusal(PASS_COMPUTE) == "";
+	assert s.finishRefusal() == "";
+	assert s.createRefusal() == "";
+	assert s.beginPassRefusal(PASS_RENDER) == "";
+	assert s.serial == first + 2;
+	assert s.occlusionReuseRefusal(1, first) == "";
+	assert s.occlusionReuseRefusal(1, s.serial) != "";
+}
+
+test "an occlusion slot takes an occlusion set, not a timestamp set" {
+	assert occlusionSetKindRefusal(false) == "";
+	assert occlusionSetKindRefusal(true) == "GPURenderPassDescriptor.occlusionQuerySet is a timestamp set: an occlusion set is required";
 }

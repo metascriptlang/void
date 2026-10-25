@@ -23,11 +23,20 @@ export const PASS_RENDER: int32 = 1;
 export const PASS_COMPUTE: int32 = 2;
 
 // One open command encoder: Void's backends record on one native encoder, so a second one is refused.
+// The pass record rides here too: what a pass has set and its occlusion query, which WebGPU
+// resets at every pass. `serial` counts passes for the life of the device so that a query index
+// a backend remembers as used names the pass that used it.
 export struct EncoderState {
 	open: boolean;
 	pass: int32;
 	depth: int32;
 	base: int32;
+	serial: int64;
+	pipelineSet: boolean;
+	indexSet: boolean;
+	occlusionSet: uint32;
+	occlusionOpen: boolean;
+	occlusionIndex: int32;
 }
 
 @noinline function stop(message: string): never {
@@ -39,7 +48,7 @@ function passName(kind: int32): string { return kind == PASS_RENDER ? "render" :
 
 export function createRefusal(this ref s: EncoderState): string {
 	if (s.open) { return "createCommandEncoder with the frame's encoder not yet finished"; }
-	s = { open: true };
+	s = { open: true, serial: s.serial };
 	return "";
 }
 
@@ -47,7 +56,7 @@ export function finishRefusal(this ref s: EncoderState): string {
 	if (s.pass != PASS_NONE) { return `finish with a ${passName(s.pass)} pass still open`; }
 	if (s.depth != 0) { return `finish with ${s.depth} debug groups still open`; }
 	if (!s.open) { return "finish without createCommandEncoder"; }
-	s = { open: false };
+	s = { open: false, serial: s.serial };
 	return "";
 }
 
@@ -57,14 +66,23 @@ export function beginPassRefusal(this ref s: EncoderState, kind: int32): string 
 	if (!s.open) { return `${call} without createCommandEncoder`; }
 	s.pass = kind;
 	s.base = s.depth;
+	s.serial += 1;
+	s.pipelineSet = false;
+	s.indexSet = false;
+	s.occlusionSet = 0;
+	s.occlusionOpen = false;
 	return "";
 }
 
 export function endPassRefusal(this ref s: EncoderState, kind: int32): string {
 	if (s.pass != kind) { return `end without an open ${passName(kind)} pass`; }
 	if (s.depth != s.base) { return `end with ${s.depth - s.base} debug groups still open`; }
+	if (s.occlusionOpen) { return "end with an occlusion query still open"; }
 	s.pass = PASS_NONE;
 	s.base = 0;
+	s.pipelineSet = false;
+	s.indexSet = false;
+	s.occlusionSet = 0;
 	return "";
 }
 
@@ -96,6 +114,49 @@ export function markerRefusal(this s: EncoderState): string {
 	return s.open ? "" : "insertDebugMarker without createCommandEncoder";
 }
 
+export function attachOcclusion(this ref s: EncoderState, set: uint32): void { s.occlusionSet = set; }
+export function markPipeline(this ref s: EncoderState): void { s.pipelineSet = true; }
+export function markIndexBuffer(this ref s: EncoderState): void { s.indexSet = true; }
+
+// A draw or a dispatch names the call; a pass that never set a pipeline has none, whatever an earlier pass set.
+export function pipelineSetRefusal(this s: EncoderState, call: string): string {
+	return s.pipelineSet ? "" : `${call} without setPipeline`;
+}
+
+export function drawRefusal(this s: EncoderState, call: string, indexed: boolean): string {
+	if (!s.pipelineSet) { return `${call} without setPipeline`; }
+	if (indexed && !s.indexSet) { return `${call} without setIndexBuffer`; }
+	return "";
+}
+
+export function beginOcclusionRefusal(this ref s: EncoderState, queryIndex: int32): string {
+	if (s.occlusionSet == 0) { return "beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet"; }
+	if (s.occlusionOpen) { return "beginOcclusionQuery with an occlusion query already open"; }
+	s.occlusionOpen = true;
+	s.occlusionIndex = queryIndex;
+	return "";
+}
+
+export function endOcclusionRefusal(this ref s: EncoderState): string {
+	if (!s.occlusionOpen) { return "endOcclusionQuery without an open occlusion query"; }
+	s.occlusionOpen = false;
+	return "";
+}
+
+export function occlusionRangeRefusal(queryIndex: int32, count: int32): string {
+	if (queryIndex < 0 || queryIndex >= count) { return `beginOcclusionQuery index ${queryIndex} is outside the query set of ${count}`; }
+	return "";
+}
+
+// `lastPass` is the serial of the pass the backend last saw use this index; 0 is never.
+export function occlusionReuseRefusal(this s: EncoderState, queryIndex: int32, lastPass: int64): string {
+	return lastPass == s.serial ? `beginOcclusionQuery index ${queryIndex} was already used in this pass` : "";
+}
+
+export function occlusionSetKindRefusal(isTimestampSet: boolean): string {
+	return isTimestampSet ? "GPURenderPassDescriptor.occlusionQuerySet is a timestamp set: an occlusion set is required" : "";
+}
+
 export function shutdownRefusal(this s: EncoderState): string {
 	return s.pass == PASS_NONE ? "" : `shutdown with a ${passName(s.pass)} pass still open`;
 }
@@ -106,11 +167,24 @@ let encoder: EncoderState = { open: false };
 	if (message != "") { stop(message); }
 }
 
+@inline export function occlusionSetId(): uint32 { return encoder.occlusionSet; }
+@inline export function occlusionQueryIndex(): int32 { return encoder.occlusionIndex; }
+@inline export function passSerial(): int64 { return encoder.serial; }
 @inline export function renderPassOpen(): boolean { return encoder.pass == PASS_RENDER; }
 @inline export function computePassOpen(): boolean { return encoder.pass == PASS_COMPUTE; }
 @inline export function openDebugGroups(): int32 { return encoder.depth; }
 
 export function resetEncoder(): void { encoder = { open: false }; }
+export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
+export function markPipelineSet(): void { encoder.markPipeline(); }
+export function markIndexSet(): void { encoder.markIndexBuffer(); }
+export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
+export function checkedDrawState(call: string, indexed: boolean): void { refuse(encoder.drawRefusal(call, indexed)); }
+export function checkedBeginOcclusion(queryIndex: int32): void { refuse(encoder.beginOcclusionRefusal(queryIndex)); }
+export function checkedEndOcclusion(): void { refuse(encoder.endOcclusionRefusal()); }
+export function checkedOcclusionRange(queryIndex: int32, count: int32): void { refuse(occlusionRangeRefusal(queryIndex, count)); }
+export function checkedOcclusionReuse(queryIndex: int32, lastPass: int64): void { refuse(encoder.occlusionReuseRefusal(queryIndex, lastPass)); }
+export function checkedOcclusionSetKind(isTimestampSet: boolean): void { refuse(occlusionSetKindRefusal(isTimestampSet)); }
 export function checkedShutdown(): void { refuse(encoder.shutdownRefusal()); }
 export function checkedCreateEncoder(): void { refuse(encoder.createRefusal()); }
 export function checkedFinish(): void { refuse(encoder.finishRefusal()); }

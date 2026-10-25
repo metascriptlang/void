@@ -94,11 +94,17 @@ import {
 import {
 	addressesBinding,
 	checkedBindingGroup,
-	checkedUniformEntry,
 	checkedComputeModule,
 	checkedComputePipeline,
+	checkedOcclusionRange,
+	checkedOcclusionReuse,
+	checkedOcclusionSetKind,
 	checkedRenderModule,
 	checkedStripDraw,
+	checkedUniformEntry,
+	occlusionQueryIndex,
+	occlusionSetId,
+	passSerial,
 } from "../validate.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
 import {
@@ -517,13 +523,9 @@ struct QuerySetSlot {
 }
 
 struct PassState {
-	serial: int64;
 	labeled: boolean;
 	timestampSet: uint32;
 	timestampEnd: int32;
-	occlusionSet: uint32;
-	occlusionOpen: boolean;
-	occlusionIndex: int32;
 	width: int32;
 	height: int32;
 	colorViews: uint32[GPU_MAX_COLOR_ATTACHMENTS];
@@ -583,8 +585,7 @@ let context: Ptr<D3dContextImpl> = null as unknown as Ptr<D3dContextImpl>;
 let context1: Ptr<D3dContext1Impl> = null as unknown as Ptr<D3dContext1Impl>;
 let offsetUniforms = false;
 let frame: int64 = 0;
-let passSerial: int64 = 0;
-let pass: PassState = { serial: 0 };
+let pass: PassState = { width: 0 };
 let bound: BoundState = { pipeline: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
 let nativeBinds: NativeBinds = { indexFormat: 0 };
@@ -1023,8 +1024,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	device = d3dDeviceFrom(environment.device);
 	context = d3dContextFrom(environment.context);
 	frame = 0;
-	passSerial = 0;
-	pass = { serial: 0 };
+	pass = { width: 0 };
 	bound = { pipeline: 0 };
 	computeBound = { pipeline: 0 };
 	context1 = d3dUniformOffsetting(device, context);
@@ -1386,28 +1386,18 @@ export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryC
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	if (pass.occlusionSet == 0) { stop("beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet"); }
-	if (pass.occlusionOpen) { stop("beginOcclusionQuery with an occlusion query already open"); }
-	const q = querySets.slotIndex(pass.occlusionSet);
-	if (queryIndex < 0 || queryIndex >= querySets.slots[q].count) {
-		stop(`beginOcclusionQuery index ${queryIndex} is outside the query set of ${querySets.slots[q].count}`);
-	}
-	if (querySets.slots[q].usedPass[queryIndex] == pass.serial) {
-		stop(`beginOcclusionQuery index ${queryIndex} was already used in this pass`);
-	}
-	querySets.slots[q].usedPass[queryIndex] = pass.serial;
+	const q = querySets.slotIndex(occlusionSetId());
+	checkedOcclusionRange(queryIndex, querySets.slots[q].count);
+	checkedOcclusionReuse(queryIndex, querySets.slots[q].usedPass[queryIndex]);
+	querySets.slots[q].usedPass[queryIndex] = passSerial();
 	querySets.slots[q].state[queryIndex] = QueryState.Open;
 	d3dQueryBegin(context, querySets.slots[q].queries[queryIndex]);
-	pass.occlusionOpen = true;
-	pass.occlusionIndex = queryIndex;
 }
 
 export function endOcclusionQuery(): void {
-	if (!pass.occlusionOpen) { stop("endOcclusionQuery without an open occlusion query"); }
-	const q = querySets.slotIndex(pass.occlusionSet);
-	d3dQueryEnd(context, querySets.slots[q].queries[pass.occlusionIndex]);
-	querySets.slots[q].state[pass.occlusionIndex] = QueryState.Written;
-	pass.occlusionOpen = false;
+	const q = querySets.slotIndex(occlusionSetId());
+	d3dQueryEnd(context, querySets.slots[q].queries[occlusionQueryIndex()]);
+	querySets.slots[q].state[occlusionQueryIndex()] = QueryState.Written;
 }
 
 export function destroyBuffer(buffer: GPUBuffer): void {
@@ -2414,15 +2404,12 @@ export function submit(commandBuffer: GPUCommandBuffer): void { frame += 1; }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
-	if (descriptor.occlusionQuerySet.id != 0 && querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp) {
-		stop("GPURenderPassDescriptor.occlusionQuerySet is a timestamp set: an occlusion set is required");
+	if (descriptor.occlusionQuerySet.id != 0) {
+		checkedOcclusionSetKind(querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
 	}
-	passSerial += 1;
 	pass = {
-		serial: passSerial,
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
-		occlusionSet: descriptor.occlusionQuerySet.id,
 	};
 	pass.labeled = labelPass(descriptor.label);
 	if (pass.timestampSet != 0 && descriptor.timestampWrites.beginningOfPassWriteIndex >= 0) {
@@ -2535,7 +2522,6 @@ function isClear(loadOp: string, index: int32, field: string): boolean {
 }
 
 export function endPass(): void {
-	if (pass.occlusionOpen) { stop("end with an occlusion query still open"); }
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (pass.colorViews[i] == 0) { continue; }
 		const v = views.slotIndex(pass.colorViews[i]);
@@ -2601,7 +2587,6 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 }
 
 function applyCompute(): void {
-	if (computeBound.pipeline == 0) { stop("dispatch without setPipeline"); }
 	if (!computeBound.dirty) { return; }
 	const s = shaders.slotIndex(pipelines.slots[pipelines.slotIndex(computeBound.pipeline)].shader);
 	d3dCsClearViews(context);
@@ -2762,7 +2747,6 @@ function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int3
 }
 
 function flush(indexed: boolean): void {
-	if (bound.pipeline == 0) { stop("draw without setPipeline"); }
 	const p = pipelines.slotIndex(bound.pipeline);
 	const s = liveShader(p);
 	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(p, s); }
@@ -2825,7 +2809,6 @@ function applyVertexBuffers(p: int32): void {
 }
 
 function applyIndexBuffer(): void {
-	if (bound.indexBuffer == 0) { stop("drawIndexed without setIndexBuffer"); }
 	const b = buffers.slotIndex(bound.indexBuffer);
 	const native = buffers.slots[b].native;
 	const offset = bound.indexOffset as int32;

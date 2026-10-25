@@ -93,13 +93,19 @@ import {
 import {
 	addressesBinding,
 	checkedBindingGroup,
-	checkedUniformEntry,
-	computePassOpen,
-	renderPassOpen,
 	checkedComputeModule,
 	checkedComputePipeline,
+	checkedOcclusionRange,
+	checkedOcclusionReuse,
+	checkedOcclusionSetKind,
 	checkedRenderModule,
 	checkedStripDraw,
+	checkedUniformEntry,
+	computePassOpen,
+	occlusionQueryIndex,
+	occlusionSetId,
+	passSerial,
+	renderPassOpen,
 } from "../validate.ms";
 import {
 	MtlBufferImpl,
@@ -464,10 +470,6 @@ struct BindGroupSlot {
 }
 
 struct PassState {
-	serial: int64;
-	occlusionSet: uint32;
-	occlusionOpen: boolean;
-	occlusionIndex: int32;
 	width: int32;
 	height: int32;
 	screen: boolean;
@@ -519,10 +521,9 @@ let sharedStorage = true;
 let commandBuffer: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
 let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let frame: int64 = 0;
-let pass: PassState = { serial: 0 };
+let pass: PassState = { width: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
 let computeEncoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
-let passSerial: int64 = 0;
 let bound: BoundState = { pipeline: 0 };
 let boundBuffers: Vec<Ptr<MtlBufferImpl>> = [];
 let boundOffsets: Vec<int64> = [];
@@ -914,7 +915,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	commandBuffer = NO_COMMAND_BUFFER;
 	encoder = NO_ENCODER;
 	frame = 0;
-	pass = { serial: 0 };
+	pass = { width: 0 };
 	computeBound = { pipeline: 0 };
 	computeEncoder = NO_ENCODER;
 	bound = { pipeline: 0 };
@@ -1934,11 +1935,10 @@ function storeAction(storeOp: string, resolve: boolean, member: string): int32 {
 
 export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
-	if (descriptor.occlusionQuerySet.id != 0 && querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp) {
-		stop("GPURenderPassDescriptor.occlusionQuerySet is a timestamp set: an occlusion set is required");
+	if (descriptor.occlusionQuerySet.id != 0) {
+		checkedOcclusionSetKind(querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
 	}
-	passSerial += 1;
-	pass = { serial: passSerial, occlusionSet: descriptor.occlusionQuerySet.id };
+	pass = { width: 0 };
 	beginFrame();
 	mtlPassReset();
 	clearBinds();
@@ -2006,7 +2006,7 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 		mtlPassSamples(querySets.slots[q].samples, descriptor.timestampWrites.beginningOfPassWriteIndex, descriptor.timestampWrites.endOfPassWriteIndex);
 		markTimestampsWritten(q, descriptor.timestampWrites);
 	}
-	if (pass.occlusionSet != 0) { mtlPassVisibility(querySets.slots[querySets.slotIndex(pass.occlusionSet)].visibility); }
+	if (descriptor.occlusionQuerySet.id != 0) { mtlPassVisibility(querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].visibility); }
 	encoder = mtlBeginPass(commandBuffer);
 	if (encoder == null) { stop("renderCommandEncoderWithDescriptor returned nil"); }
 	mtlSetLabel(encoder as Ptr<void>, labelText(descriptor.label));
@@ -2049,7 +2049,6 @@ function resolveTexture(attachment: int32, colorView: int32, resolveId: uint32):
 }
 
 export function endPass(): void {
-	if (pass.occlusionOpen) { stop("end with an occlusion query still open"); }
 	mtlEndPass(encoder);
 	encoder = NO_ENCODER;
 	if (pass.screen) { mtlPresentDrawable(commandBuffer); }
@@ -2139,7 +2138,6 @@ export function drawIndexed(
 	if (instanceCount == 0) { return; }
 	flush();
 	checkFirstInstance("drawIndexed", firstInstance);
-	if (bound.indexBuffer == 0) { stop("drawIndexed without setIndexBuffer"); }
 	const p = pipelines.slotIndex(bound.pipeline);
 	const primitive = pipelines.slots[p].primitive;
 	checkedStripDraw(primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP, pipelines.slots[p].stripIndexType == bound.indexType);
@@ -2164,7 +2162,6 @@ function checkFirstInstance(call: string, firstInstance: int32): void {
 }
 
 function flush(): void {
-	if (bound.pipeline == 0) { stop("draw without setPipeline"); }
 	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(); }
 	if (bound.vertexDirty) { applyVertexBuffers(); }
 	if (bound.resourcesDirty) { applyResources(); }
@@ -2553,7 +2550,6 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 }
 
 function applyCompute(): int32 {
-	if (computeBound.pipeline == 0) { stop("dispatch without setPipeline"); }
 	const p = pipelines.slotIndex(computeBound.pipeline);
 	const s = shaders.slotIndex(pipelines.slots[p].shader);
 	if (computeBound.dirty) {
@@ -2777,26 +2773,16 @@ export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryC
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	if (pass.occlusionSet == 0) { stop("beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet"); }
-	if (pass.occlusionOpen) { stop("beginOcclusionQuery with an occlusion query already open"); }
-	const q = querySets.slotIndex(pass.occlusionSet);
-	if (queryIndex < 0 || queryIndex >= querySets.slots[q].count) {
-		stop(`beginOcclusionQuery index ${queryIndex} is outside the query set of ${querySets.slots[q].count}`);
-	}
-	if (querySets.slots[q].usedPass[queryIndex] == pass.serial) {
-		stop(`beginOcclusionQuery index ${queryIndex} was already used in this pass`);
-	}
-	querySets.slots[q].usedPass[queryIndex] = pass.serial;
+	const q = querySets.slotIndex(occlusionSetId());
+	checkedOcclusionRange(queryIndex, querySets.slots[q].count);
+	checkedOcclusionReuse(queryIndex, querySets.slots[q].usedPass[queryIndex]);
+	querySets.slots[q].usedPass[queryIndex] = passSerial();
 	querySets.slots[q].state[queryIndex] = QueryState.Open;
 	mtlSetVisibility(encoder, 1, (queryIndex as int64) * QUERY_BYTES);
-	pass.occlusionOpen = true;
-	pass.occlusionIndex = queryIndex;
 }
 
 export function endOcclusionQuery(): void {
-	if (!pass.occlusionOpen) { stop("endOcclusionQuery without an open occlusion query"); }
-	const q = querySets.slotIndex(pass.occlusionSet);
-	mtlSetVisibility(encoder, 0, (pass.occlusionIndex as int64) * QUERY_BYTES);
-	querySets.slots[q].state[pass.occlusionIndex] = QueryState.Written;
-	pass.occlusionOpen = false;
+	const q = querySets.slotIndex(occlusionSetId());
+	mtlSetVisibility(encoder, 0, (occlusionQueryIndex() as int64) * QUERY_BYTES);
+	querySets.slots[q].state[occlusionQueryIndex()] = QueryState.Written;
 }
