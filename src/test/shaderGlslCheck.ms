@@ -98,11 +98,14 @@ function interfaceLines(text: string): string[] {
 function committed(version: string, stage: string): string {
 	const source = readFile("src/void2d/shader2dModules.ms");
 	if (!source.ok) { return "unread"; }
-	const start = stage + "Code: \"" + version;
-	const at = source.value.indexOf(start);
+	const arm = source.value.indexOf(" = \"" + version);
+	const field = stage + "Code: ";
+	const at = arm < 0 ? -1 : source.value.indexOf(field, arm);
 	if (at < 0) { return "absent"; }
-	const from = at + start.length - version.length;
-	const end = source.value.indexOf("\",", from);
+	const name = source.value.substring(at + field.length, source.value.indexOf(",", at));
+	const declared = "const " + name + " = \"";
+	const from = source.value.indexOf(declared) + declared.length;
+	const end = source.value.indexOf("\";\n", from);
 	return source.value.substring(from, end).split("\\n").join("\n");
 }
 
