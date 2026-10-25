@@ -105,6 +105,7 @@ import "./gltfColourImportCheck";
 import "./slotsCheck";
 import "./poolCheck";
 import "./vulkanMemoryCheck";
+import "./vulkanResourcesCheck";
 import "./featureBitCheck";
 import "./webgpuValidateCheck";
 import "./uniformPoolCheck";

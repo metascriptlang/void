@@ -1,6 +1,8 @@
 import {
 	AllocationSizes,
 	DEFAULT_MAX_ALLOCATIONS,
+	DedicatedOwner,
+	Dedication,
 	MemoryAllocation,
 	MemoryAllocator,
 	MemoryDevice,
@@ -24,6 +26,7 @@ const ALL_TYPES: uint32 = 0xFFFFFFFF;
 let nextBlock: uint32 = 0;
 let openBlocks: int32 = 0;
 let openedSizes: Vec<uint64> = [];
+let openedOwners: Vec<DedicatedOwner> = [];
 
 function deviceOf(
 	flags: Readonly<Span<uint32>>,
@@ -36,10 +39,11 @@ function deviceOf(
 		heapSizes: [],
 		nonCoherentAtomSize: 64,
 		maxAllocationCount: cap,
-		openBlock: (typeIndex: int32, size: uint64): uint32 => {
+		openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner): uint32 => {
 			nextBlock += 1;
 			openBlocks += 1;
 			openedSizes.push(size);
+			openedOwners.push(owner);
 			return nextBlock;
 		},
 		closeBlock: (block: uint32): void => {
@@ -89,7 +93,22 @@ function nonCoherentHost(): MemoryDevice {
 }
 
 function request(size: uint64, alignment: uint64, kind: MemoryKind, tiling: Tiling): MemoryRequest {
-	return { size: size, alignment: alignment, typeBits: ALL_TYPES, kind: kind, tiling: tiling };
+	return {
+		size: size,
+		alignment: alignment,
+		typeBits: ALL_TYPES,
+		kind: kind,
+		tiling: tiling,
+		dedication: Dedication.None,
+		owner: { buffer: 0, image: 0 },
+	};
+}
+
+function dedicatedTo(image: uint32, dedication: Dedication): MemoryRequest {
+	let r = request(4096, 256, MemoryKind.DeviceLocal, Tiling.Optimal);
+	r.dedication = dedication;
+	r.owner = { buffer: 0, image: image };
+	return r;
 }
 
 function take(ref m: MemoryAllocator, r: MemoryRequest): MemoryAllocation {
@@ -416,4 +435,44 @@ test "a stale allocation is refused once its block is gone" {
 	const again = memoryFree(m, first);
 	assert !again.ok;
 	if (!again.ok) { assert again.error == MemoryError.InvalidAllocation; }
+}
+
+test "a required dedication opens a block of the resource's own size handed its owner" {
+	openedSizes = [];
+	openedOwners = [];
+	let m = MemoryAllocator.forDevice(nvidia(4096));
+	const shared = take(m, request(4096, 256, MemoryKind.DeviceLocal, Tiling.Optimal));
+	const own = take(m, dedicatedTo(7, Dedication.Required));
+	assert own.block != shared.block;
+	assert own.offset == 0;
+	assert m.groups[own.group].blocks[own.slot].dedicated;
+	assert openedSizes[1] == 4096;
+	assert openedOwners[0].image == 0 && openedOwners[0].buffer == 0;
+	assert openedOwners[1].image == 7;
+	give(m, own);
+	give(m, shared);
+	assert m.blockCount == 0;
+}
+
+test "a preferred dedication is dropped above three quarters of the allocation cap as VMA does" {
+	let m = MemoryAllocator.forDevice(nvidia(4));
+	const shared = take(m, request(4096, 256, MemoryKind.DeviceLocal, Tiling.Optimal));
+	const first = take(m, dedicatedTo(1, Dedication.Preferred));
+	const second = take(m, dedicatedTo(2, Dedication.Preferred));
+	const third = take(m, dedicatedTo(3, Dedication.Preferred));
+	assert m.groups[first.group].blocks[first.slot].dedicated;
+	assert m.groups[second.group].blocks[second.slot].dedicated;
+	assert m.groups[third.group].blocks[third.slot].dedicated;
+	assert m.blockCount == 4;
+	const fourth = take(m, dedicatedTo(4, Dedication.Preferred));
+	assert fourth.block == shared.block;
+	const required = memoryAllocate(m, dedicatedTo(5, Dedication.Required));
+	assert !required.ok;
+	if (!required.ok) { assert required.error == MemoryError.AllocationCountExceeded; }
+	give(m, first);
+	give(m, second);
+	give(m, third);
+	give(m, fourth);
+	give(m, shared);
+	assert m.blockCount == 0;
 }
