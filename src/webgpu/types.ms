@@ -537,6 +537,16 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 	unreachable;
 }
 
+export function labelText(label: string | null): string {
+	if (label === null) { return ""; }
+	return label;
+}
+
+export function labelOf(label: string | null): string {
+	if (label === null) { return "an unlabeled resource"; }
+	return `'${label}'`;
+}
+
 @noinline function stopOnUnported(backend: string, what: string): void {
 	console.log(`webgpu ${backend}: ${what} is not ported to ${backend} yet`);
 	unreachable;

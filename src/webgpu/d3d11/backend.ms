@@ -77,6 +77,7 @@ import {
 	firstInstanceRefusal,
 	vertexOffsetRefusal,
 	stopOnUnportedShaderBindings,
+	labelOf,
 } from "../types.ms";
 import {
 	attachmentFactsOf,
@@ -1211,11 +1212,6 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	setLabel(slot.native, descriptor.label);
 	store(buffers, slot);
 	return { id: id };
-}
-
-function labelOf(label: string | null): string {
-	if (label === null) { return "an unlabeled resource"; }
-	return `'${label}'`;
 }
 
 function setLabel<T>(object: Ptr<T>, label: string | null): void {

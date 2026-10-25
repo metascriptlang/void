@@ -73,6 +73,8 @@ import {
 	vertexOffsetRefusal,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
+	labelText,
+	labelOf,
 } from "../types.ms";
 import {
 	attachmentFactsOf,
@@ -895,16 +897,6 @@ function storageFormatOf(format: GPUTextureFormat, member: string): int32 {
 	const info = formatInfo(format, member);
 	if (!storageCapable(info.native)) { stop(`${member} '${name}' is not a WebGPU storage texture format (bgra8unorm needs the device feature bgra8unorm-storage)`); }
 	return info.native;
-}
-
-function labelText(label: string | null): string {
-	if (label === null) { return ""; }
-	return label;
-}
-
-function labelOf(label: string | null): string {
-	if (label === null) { return "an unlabeled resource"; }
-	return `'${label}'`;
 }
 
 function checkMirroredConstants(): void {

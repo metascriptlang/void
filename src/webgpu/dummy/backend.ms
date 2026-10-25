@@ -74,6 +74,7 @@ import {
 	firstInstanceRefusal,
 	linearFilter,
 	vertexOffsetRefusal,
+	labelOf,
 } from "../types.ms";
 import {
 	attachmentFactsOf,
@@ -431,11 +432,6 @@ function storeOp(value: string, member: string): int32 {
 		"store" | "discard" => 0,
 		_ => stopOnMember(member, value),
 	};
-}
-
-function labelOf(label: string | null): string {
-	if (label === null) { return "an unlabeled resource"; }
-	return `'${label}'`;
 }
 
 export function setup(environment: NativeEnvironment): GPUDevice {

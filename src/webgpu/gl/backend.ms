@@ -75,6 +75,7 @@ import {
 	vertexOffsetRefusal,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
+	labelOf,
 } from "../types.ms";
 import {
 	attachmentFactsOf,
@@ -1500,11 +1501,6 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	}
 	store(buffers, slot);
 	return { id: id };
-}
-
-function labelOf(label: string | null): string {
-	if (label === null) { return "an unlabeled resource"; }
-	return `'${label}'`;
 }
 
 export function destroyBuffer(buffer: GPUBuffer): void {
