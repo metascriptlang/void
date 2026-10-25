@@ -41,6 +41,21 @@ import {
 	GPUTextureViewDescriptor,
 	featureBit,
 } from "./types.ms";
+import {
+	PASS_COMPUTE,
+	PASS_RENDER,
+	checkedBeginPass,
+	checkedCreateEncoder,
+	checkedEndPass,
+	checkedFinish,
+	checkedInPass,
+	checkedMarker,
+	checkedOutsidePass,
+	checkedPopGroup,
+	checkedPushGroup,
+	checkedShutdown,
+	resetEncoder,
+} from "./validate.ms";
 
 when (webgpu) {
 	import * as backend from "./wgpu/backend.ms";
@@ -56,10 +71,15 @@ export type GPUNativeEnvironment = backend.NativeEnvironment;
 export type GPUNativeSwapchain = backend.NativeSwapchain;
 
 export function requestDevice(environment: GPUNativeEnvironment): GPUDevice {
+	resetEncoder();
 	return backend.setup(environment);
 }
 
-export function destroy(this self: GPUDevice): void { backend.shutdown(); }
+export function destroy(this self: GPUDevice): void {
+	checkedShutdown();
+	backend.shutdown();
+	resetEncoder();
+}
 
 export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return backend.adapterInfo(); }
 
@@ -92,6 +112,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createCommandEncoder(this self: GPUDevice): GPUCommandEncoder {
+	checkedCreateEncoder();
 	return backend.createCommandEncoder();
 }
 
@@ -151,30 +172,39 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function beginRenderPass(this self: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+	checkedBeginPass(PASS_RENDER);
 	return backend.beginRenderPass(self, descriptor);
 }
 
 @inline export function beginComputePass(this self: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
+	checkedBeginPass(PASS_COMPUTE);
 	return backend.beginComputePass(self, descriptor);
 }
 
 @inline export function setPipeline(this self: GPUComputePassEncoder, pipeline: GPUComputePipeline): void {
+	checkedInPass(PASS_COMPUTE, "setPipeline");
 	backend.setComputePipeline(pipeline);
 }
 
 @inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	checkedInPass(PASS_COMPUTE, "setBindGroup");
 	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
 }
 
 @inline export function dispatchWorkgroups(this self: GPUComputePassEncoder, x: int32, y: int32, z: int32): void {
+	checkedInPass(PASS_COMPUTE, "dispatchWorkgroups");
 	backend.dispatchWorkgroups(x, y, z);
 }
 
 @inline export function dispatchWorkgroupsIndirect(this self: GPUComputePassEncoder, buffer: GPUBuffer, offset: int64): void {
+	checkedInPass(PASS_COMPUTE, "dispatchWorkgroupsIndirect");
 	backend.dispatchWorkgroupsIndirect(buffer, offset);
 }
 
-@inline export function end(this self: GPUComputePassEncoder): void { backend.endComputePass(); }
+@inline export function end(this self: GPUComputePassEncoder): void {
+	checkedEndPass(PASS_COMPUTE);
+	backend.endComputePass();
+}
 
 @inline export function copyBufferToBuffer(
 	this self: GPUCommandEncoder,
@@ -184,6 +214,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	destinationOffset: int64,
 	size: int64,
 ): void {
+	checkedOutsidePass("copyBufferToBuffer");
 	backend.copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
 }
 
@@ -193,6 +224,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	destination: GPUTexelCopyTextureInfo,
 	copySize: GPUExtent3D,
 ): void {
+	checkedOutsidePass("copyBufferToTexture");
 	backend.copyBufferToTexture(source, destination, copySize);
 }
 
@@ -202,6 +234,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	destination: GPUTexelCopyBufferInfo,
 	copySize: GPUExtent3D,
 ): void {
+	checkedOutsidePass("copyTextureToBuffer");
 	backend.copyTextureToBuffer(source, destination, copySize);
 }
 
@@ -211,6 +244,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	destination: GPUTexelCopyTextureInfo,
 	copySize: GPUExtent3D,
 ): void {
+	checkedOutsidePass("copyTextureToTexture");
 	backend.copyTextureToTexture(source, destination, copySize);
 }
 
@@ -223,20 +257,51 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	destination: GPUBuffer,
 	destinationOffset: int64,
 ): void {
+	checkedOutsidePass("resolveQuerySet");
 	backend.resolveQuerySet(querySet, firstQuery, queryCount, destination, destinationOffset);
 }
 
-@inline export function pushDebugGroup(this self: GPUCommandEncoder, label: string): void { backend.pushDebugGroup(label); }
-@inline export function popDebugGroup(this self: GPUCommandEncoder): void { backend.popDebugGroup(); }
-@inline export function insertDebugMarker(this self: GPUCommandEncoder, label: string): void { backend.insertDebugMarker(label); }
-@inline export function pushDebugGroup(this self: GPURenderPassEncoder, label: string): void { backend.pushDebugGroup(label); }
-@inline export function popDebugGroup(this self: GPURenderPassEncoder): void { backend.popDebugGroup(); }
-@inline export function insertDebugMarker(this self: GPURenderPassEncoder, label: string): void { backend.insertDebugMarker(label); }
-@inline export function pushDebugGroup(this self: GPUComputePassEncoder, label: string): void { backend.pushDebugGroup(label); }
-@inline export function popDebugGroup(this self: GPUComputePassEncoder): void { backend.popDebugGroup(); }
-@inline export function insertDebugMarker(this self: GPUComputePassEncoder, label: string): void { backend.insertDebugMarker(label); }
+@inline export function pushDebugGroup(this self: GPUCommandEncoder, label: string): void {
+	checkedPushGroup();
+	backend.pushDebugGroup(label);
+}
+@inline export function popDebugGroup(this self: GPUCommandEncoder): void {
+	checkedPopGroup();
+	backend.popDebugGroup();
+}
+@inline export function insertDebugMarker(this self: GPUCommandEncoder, label: string): void {
+	checkedMarker();
+	backend.insertDebugMarker(label);
+}
+@inline export function pushDebugGroup(this self: GPURenderPassEncoder, label: string): void {
+	checkedPushGroup();
+	backend.pushDebugGroup(label);
+}
+@inline export function popDebugGroup(this self: GPURenderPassEncoder): void {
+	checkedPopGroup();
+	backend.popDebugGroup();
+}
+@inline export function insertDebugMarker(this self: GPURenderPassEncoder, label: string): void {
+	checkedMarker();
+	backend.insertDebugMarker(label);
+}
+@inline export function pushDebugGroup(this self: GPUComputePassEncoder, label: string): void {
+	checkedPushGroup();
+	backend.pushDebugGroup(label);
+}
+@inline export function popDebugGroup(this self: GPUComputePassEncoder): void {
+	checkedPopGroup();
+	backend.popDebugGroup();
+}
+@inline export function insertDebugMarker(this self: GPUComputePassEncoder, label: string): void {
+	checkedMarker();
+	backend.insertDebugMarker(label);
+}
 
-@inline export function beginOcclusionQuery(this self: GPURenderPassEncoder, queryIndex: int32): void { backend.beginOcclusionQuery(queryIndex); }
+@inline export function beginOcclusionQuery(this self: GPURenderPassEncoder, queryIndex: int32): void {
+	checkedInPass(PASS_RENDER, "beginOcclusionQuery");
+	backend.beginOcclusionQuery(queryIndex);
+}
 @inline export function endOcclusionQuery(this self: GPURenderPassEncoder): void { backend.endOcclusionQuery(); }
 
 // mapAsync blocks on native: the buffer is readable or writable on return. `size` 0 maps to the end.
@@ -255,25 +320,33 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function unmap(this self: GPUBuffer): void { backend.unmap(self); }
 
-@inline export function finish(this self: GPUCommandEncoder): GPUCommandBuffer { return backend.finish(self); }
+@inline export function finish(this self: GPUCommandEncoder): GPUCommandBuffer {
+	checkedFinish();
+	return backend.finish(self);
+}
 
 @inline export function setPipeline(this self: GPURenderPassEncoder, pipeline: GPURenderPipeline): void {
+	checkedInPass(PASS_RENDER, "setPipeline");
 	backend.setPipeline(pipeline);
 }
 
 @inline export function setVertexBuffer(this self: GPURenderPassEncoder, slot: int32, buffer: GPUBuffer, offset: int64): void {
+	checkedInPass(PASS_RENDER, "setVertexBuffer");
 	backend.setVertexBuffer(slot, buffer, offset);
 }
 
 @inline export function setIndexBuffer(this self: GPURenderPassEncoder, buffer: GPUBuffer, indexFormat: GPUIndexFormat, offset: int64): void {
+	checkedInPass(PASS_RENDER, "setIndexBuffer");
 	backend.setIndexBuffer(buffer, indexFormat, offset);
 }
 
 @inline export function setBindGroup(this self: GPURenderPassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	checkedInPass(PASS_RENDER, "setBindGroup");
 	backend.setBindGroup(index, bindGroup, dynamicOffsets);
 }
 
 @inline export function setScissorRect(this self: GPURenderPassEncoder, x: int32, y: int32, width: int32, height: int32): void {
+	checkedInPass(PASS_RENDER, "setScissorRect");
 	backend.setScissorRect(x, y, width, height);
 }
 
@@ -286,18 +359,22 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	minDepth: float32,
 	maxDepth: float32,
 ): void {
+	checkedInPass(PASS_RENDER, "setViewport");
 	backend.setViewport(x, y, width, height, minDepth, maxDepth);
 }
 
 @inline export function setBlendConstant(this self: GPURenderPassEncoder, color: GPUColor): void {
+	checkedInPass(PASS_RENDER, "setBlendConstant");
 	backend.setBlendConstant(color);
 }
 
 @inline export function setStencilReference(this self: GPURenderPassEncoder, reference: uint32): void {
+	checkedInPass(PASS_RENDER, "setStencilReference");
 	backend.setStencilReference(reference);
 }
 
 @inline export function draw(this self: GPURenderPassEncoder, vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
+	checkedInPass(PASS_RENDER, "draw");
 	backend.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -309,10 +386,14 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	baseVertex: int32,
 	firstInstance: int32,
 ): void {
+	checkedInPass(PASS_RENDER, "drawIndexed");
 	backend.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
-@inline export function end(this self: GPURenderPassEncoder): void { backend.endPass(); }
+@inline export function end(this self: GPURenderPassEncoder): void {
+	checkedEndPass(PASS_RENDER);
+	backend.endPass();
+}
 
 export function getCurrentTexture(swapchain: GPUNativeSwapchain): GPUTexture {
 	return backend.swapchainTexture(swapchain);

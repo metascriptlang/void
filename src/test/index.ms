@@ -102,6 +102,7 @@ import "./gltfColourImportCheck";
 import "./slotsCheck";
 import "./poolCheck";
 import "./featureBitCheck";
+import "./webgpuValidateCheck";
 import "./uniformPoolCheck";
 import "./lifetimeCheck";
 import "./storeCheck";
