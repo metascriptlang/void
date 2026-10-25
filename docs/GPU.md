@@ -265,6 +265,22 @@ The Vulkan backend ports Mach's `src/sysgpu/vulkan.zig`:
 - the barrier tracker's hazard rules with resting layouts (vulkan.zig:2755-3088);
 - the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117).
 
+The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanResourcesCheck.ms`
+or `vulkanMemoryCheck.ms`:
+- a buffer-to-image row length counts texels of the format, not `bytes_per_row / 4`
+  (vulkan.zig:2625; Dawn `UtilsVulkan.cpp:262-267`);
+- `rgb10a2unorm` is `A2B10G10R10` (64), where `conv.zig` gives the red-blue swapped 58
+  (Dawn `TextureVk.cpp:480`);
+- copy usages add the transfer stage to a resource's resting state, and a layout change waits on
+  the stages it leaves rather than on top-of-pipe, because either gap leaves a copy hazard
+  unordered; the synchronization validation layer reports it when the fix is reverted;
+- a cube-compatible image needs one sample (VUID-VkImageCreateInfo-samples-02257).
+
+A resource whose driver requires its own allocation gets a dedicated block, and one that only
+prefers it gets one until a quarter of `maxMemoryAllocationCount` is left, as VMA does (Godot
+`876b290` `vk_mem_alloc.h` 13274-13280, 13555-13590, 13726). Mach, Heaps and Dawn do not read the
+dedicated requirements of ordinary resources.
+
 Mach's Vulkan file has gaps, filled from Mach and Heaps first:
 - **Memory:** Mach allocates per resource (vulkan.zig:1247, 1416). The backend suballocates
   through Mach's own `gpu_allocator.zig`, which only its D3D12 backend uses (d3d12.zig:696-872).
