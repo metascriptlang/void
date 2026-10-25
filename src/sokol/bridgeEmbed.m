@@ -43,10 +43,10 @@ static void call0(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
-static void restoreContextIfLost(void);
+static void restoreMetal(void);
 
 static void tick(void) {
-	restoreContextIfLost();
+	voidRestoreContextIfLost(restoreMetal);
 	if (!voidPresentGateAdmits(g_gate)) return;
 	g_drawable = [g_layer nextDrawable];
 	if (!g_drawable) return;
@@ -142,15 +142,7 @@ static void setupMetal(int samples) {
 	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
 }
 
-static int s_contextLost = 0;
-void voidLoseContext(void) { s_contextLost = 1; }
-
-static void restoreContextIfLost(void) {
-	if (!s_contextLost) return;
-	doorShutdown();
-	setupMetal(s_driver == DRIVER_WINDOW ? 1 : voidViewsSampleCount());
-	s_contextLost = 0;
-}
+static void restoreMetal(void) { setupMetal(s_driver == DRIVER_WINDOW ? 1 : voidViewsSampleCount()); }
 
 __attribute__((noreturn)) static void noDriver(const char *op) {
 	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
@@ -289,7 +281,7 @@ int voidPlatformSurfaceReady(void *surface) {
 static MacSurface *s_presented;
 
 int voidPlatformSurfaceAcquire(void *surface) {
-	restoreContextIfLost();
+	voidRestoreContextIfLost(restoreMetal);
 	MacSurface *s = (MacSurface *)surface;
 	if (s->drawable) CFRelease(s->drawable);
 	s->drawable = NULL;

@@ -42,22 +42,9 @@ static int s_reqH = 0;
 static int s_sampleCount;
 static bool s_committed;
 
-static int s_generation = 1;
-static int s_contextLost = 0;
-
 static void setupDoor(void) {
 	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, s_sampleCount);
 	if (!doorValid()) voidFail("doorSetup on the window's GL context failed");
-}
-
-int voidGpuGeneration(void) { return s_generation; }
-void voidLoseContext(void) { s_contextLost = 1; }
-
-static void restoreContext(void) {
-	doorShutdown();
-	setupDoor();
-	s_generation++;
-	s_contextLost = 0;
 }
 
 // sokol_app's X11 backend has no input method: keys arrive through XLookupString as Char
@@ -73,7 +60,7 @@ void voidSetImeRect(int x, int y, int w, int h) {
 static void _init(void) { voidCallClosure(s_init); }
 
 static void _frame(void) {
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(setupDoor);
 	s_committed = false;
 	voidCallClosure(s_frame);
 	if (s_committed) voidLinuxSwapBuffers();

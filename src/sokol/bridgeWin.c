@@ -31,8 +31,6 @@ static bool s_keys[VOID_KEY_COUNT];
 static int s_reqW = 0;
 static int s_reqH = 0;
 
-static int s_generation = 1;
-static int s_contextLost = 0;
 static int s_deviceRemoved = 0;
 
 enum { REMOVAL_NONE, REMOVAL_RECOVER, REMOVAL_FATAL };
@@ -40,23 +38,17 @@ int32_t voidD3d11RemovalAction(int32_t hr);
 
 static void setupViewsGfx(void);
 
-int voidGpuGeneration(void) { return s_generation; }
-void voidLoseContext(void) { s_contextLost = 1; }
-
 #if defined(VOID_D3D11)
 static void recreateWindowDevice(void);
 #endif
 
-static void restoreContext(void) {
-	doorShutdown();
+static void restoreDoor(void) {
 #if defined(VOID_D3D11)
 	if (s_deviceRemoved) recreateWindowDevice();
 #endif
 	s_deviceRemoved = 0;
 	if (s_driver == DRIVER_WINDOW) voidWindowDoorSetup();
 	else setupViewsGfx();
-	s_generation++;
-	s_contextLost = 0;
 }
 
 static int s_textInput = -1;
@@ -181,7 +173,7 @@ static void _init(void) {
 static bool s_committed;
 
 static void _frame(void) {
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	if (!s_sizeMove && !voidWindowAwaitFrame()) return;
 	s_committed = false;
 	voidCallClosure(s_frame);
@@ -257,7 +249,7 @@ static void deviceRemoved(const char *what, HRESULT hr) {
 			what, (unsigned long)hr, (unsigned long)reason);
 	}
 	s_deviceRemoved = 1;
-	s_contextLost = 1;
+	voidLoseContext();
 }
 
 void *voidD3d11Device(void) { return s_device; }
@@ -426,7 +418,7 @@ int voidPlatformSurfaceReady(void *surface) { return surfaceReady((WinSurface *)
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	(void)surface;
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	return 1;
 }
 

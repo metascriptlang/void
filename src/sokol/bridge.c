@@ -6,6 +6,7 @@
 #include "views.h"
 #include "../gpu/door.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -23,6 +24,19 @@ uint32_t voidMakeImage(const void *rgba, int w, int h) {
 
 uint32_t voidMakeView(uint32_t image) {
 	return doorMakeTextureView(image);
+}
+
+// --- Context loss ---
+
+static bool s_contextLost;
+
+void voidLoseContext(void) { s_contextLost = true; }
+
+void voidRestoreContextIfLost(void (*setup)(void)) {
+	if (!s_contextLost) return;
+	doorShutdown();
+	setup();
+	s_contextLost = false;
 }
 
 // --- Frame sequence ---

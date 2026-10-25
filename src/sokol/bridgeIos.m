@@ -45,16 +45,6 @@ void voidPlatformDeviceEnsure(void) {
 	setupMetal();
 }
 
-static int s_contextLost = 0;
-void voidLoseContext(void) { s_contextLost = 1; }
-
-static void restoreContextIfLost(void) {
-	if (!s_contextLost) return;
-	doorShutdown();
-	setupMetal();
-	s_contextLost = 0;
-}
-
 // Void's asset loaders use relative paths ("assets/test.png", "assets/font.ttf").
 // Point the CWD at the app bundle for the init window (where images + fonts load),
 // then restore — so the host app's CWD is untouched outside this call.
@@ -126,7 +116,7 @@ int voidPlatformSurfaceReady(void *surface) { return voidPresentGateAdmits(((Ios
 static IosSurface *s_presented;
 
 int voidPlatformSurfaceAcquire(void *surface) {
-	restoreContextIfLost();
+	voidRestoreContextIfLost(setupMetal);
 	IosSurface *s = (IosSurface *)surface;
 	if (s->drawable) CFRelease(s->drawable);
 	s->drawable = NULL;

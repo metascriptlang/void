@@ -124,8 +124,10 @@ VoidViewId voidCurrentView(void);
 void voidEmbedSetMessagePump(msClosure pump);
 void voidEmbedPumpMessages(void);
 
-int voidGpuGeneration(void);
+// A lost context (or voidLoseContext) shuts the door down at the driver's next frame, which
+// then calls `setup` to set the door up again.
 void voidLoseContext(void);
+void voidRestoreContextIfLost(void (*setup)(void));
 void voidEmbedLoseContext(void);
 void voidEmbedDetach(void);
 void voidEmbedSetAssetRoot(const char *path);

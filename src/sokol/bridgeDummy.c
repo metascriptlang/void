@@ -32,8 +32,6 @@ VoidWindow voidWindow;
 static int s_reqW = 0;
 static int s_reqH = 0;
 static int s_sampleCount = 1;
-static int s_generation = 1;
-static int s_contextLost = 0;
 static msClosure s_pump;
 
 static void needWindow(const char *what) {
@@ -56,16 +54,6 @@ static void setupDoor(void) {
 	if (!doorValid()) voidFail("doorSetup on the dummy backend failed");
 }
 
-int voidGpuGeneration(void) { return s_generation; }
-void voidLoseContext(void) { s_contextLost = 1; }
-
-static void restoreContext(void) {
-	doorShutdown();
-	setupDoor();
-	s_generation++;
-	s_contextLost = 0;
-}
-
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	(void)highDpi;
 	if (voidWindow.valid) voidFail("voidRun: this process already runs a Void window");
@@ -79,7 +67,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	s_sampleCount = sampleCount;
 	voidCallClosure(init);
 	for (int i = 0; i < frames && !voidWindow.quitRequested; i++) {
-		if (s_contextLost) restoreContext();
+		voidRestoreContextIfLost(setupDoor);
 		voidCallClosure(frame);
 	}
 	if (doorValid()) doorShutdown();

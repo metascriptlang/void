@@ -23,21 +23,13 @@
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
-static int s_generation = 1;
-static int s_contextLost = 0;
 
 static void setupWindowDoor(void);
 static void setupViewsGfx(void);
 
-int voidGpuGeneration(void) { return s_generation; }
-void voidLoseContext(void) { s_contextLost = 1; }
-
-static void restoreContext(void) {
-	doorShutdown();
+static void restoreDoor(void) {
 	if (s_driver == DRIVER_WINDOW) setupWindowDoor();
 	else setupViewsGfx();
-	s_generation++;
-	s_contextLost = 0;
 }
 
 static msClosure s_init;
@@ -156,7 +148,7 @@ static void _init(void) {
 }
 
 static void _frame(void) {
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	voidCallClosure(s_frame);
 }
 
@@ -170,7 +162,7 @@ static void _event(const VoidAppEvent *e) {
 		voidProfileInput();
 	}
 #endif
-	if (e->type == VOID_EVENT_RESUMED) s_contextLost = 1;
+	if (e->type == VOID_EVENT_RESUMED) voidLoseContext();
 	if (imeTookKey(e)) return;
 	keepKeysFromBrowser(e);
 	if (e->type == VOID_EVENT_KEY_DOWN) {
@@ -424,7 +416,7 @@ int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	WGPUSurfaceTexture current = {0};
 	wgpuSurfaceGetCurrentTexture(s->surface, &current);
 	if (current.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
@@ -457,7 +449,6 @@ static void dropSurface(WebSurface *s) {
 #else // VOID_GLES3
 
 static WebSurface *s_glView = NULL;
-static bool s_glEverSetUp = false;
 
 static void setupWindowDoor(void) {
 	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, voidWebSampleCount());
@@ -477,8 +468,7 @@ static void setupViewsGfx(void) {
 
 // A WebGL2 context belongs to its canvas, so the device of this driver is the one live view's
 // context: a second live view is refused, and a view made after a stop sets the door up again
-// on its own context and bumps the GPU generation, whose owners drop the old ids
-// (bridgeAndroid.c restore_context, doorContextGeneration).
+// on its own context, which bumps doorContextGeneration so the owners of the old ids drop them.
 static bool makeSurface(WebSurface *s) {
 	if (s_glView) {
 		voidFail("voidViewCreate: WebGL2 runs one view at a time; stop view %d first", s_glView->id);
@@ -496,8 +486,6 @@ static bool makeSurface(WebSurface *s) {
 	emscripten_webgl_make_context_current(s->context);
 	emscripten_set_canvas_element_size(s->selector, s->w, s->h);
 	setupViewsGfx();
-	if (s_glEverSetUp) s_generation++;
-	s_glEverSetUp = true;
 	s_glView = s;
 	return true;
 }
@@ -510,7 +498,7 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
 	if (emscripten_is_webgl_context_lost(s->context)) return 0;
 	emscripten_webgl_make_context_current(s->context);
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	return 1;
 }
 
