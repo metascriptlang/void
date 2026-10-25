@@ -211,7 +211,7 @@ when (webgl2) {
 	import { oglQueryAvailable } from "./gl.h";
 }
 
-when (webgl2 || android) {
+when (webgl2 || android || (linux && voidGles3)) {
 	import { oglHasExtension } from "./gl.h";
 } else {
 	import {
@@ -2973,7 +2973,7 @@ function applyBlendAll(next: BlendState, current: BlendState): void {
 	}
 }
 
-when (webgl2 || android) {
+when (webgl2 || android || (linux && voidGles3)) {
 	const COMPUTE_CONTEXT_VERSION = 310;
 	const DEBUG_CONTEXT_VERSION = 320;
 
@@ -3774,7 +3774,7 @@ function timestampReason(): string {
 	when (webgl2) {
 		return "WebGL2 hands back query results only after the page returns to the event loop, so the blocking resolveQuerySet could never read a timestamp";
 	} else {
-		when (android) {
+		when (android || (linux && voidGles3)) {
 			return "the GLES backend does not load EXT_disjoint_timer_query, and GLES 3.2 has no GL_TIMESTAMP counter";
 		} else {
 			return "GL_TIMESTAMP reports 0 counter bits on this context";

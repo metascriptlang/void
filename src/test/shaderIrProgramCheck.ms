@@ -37,7 +37,7 @@ import { blurShaderModule, uiShaderModule } from "../void2d/shader2dModules";
 
 when (webgpu) {
 	function builtTarget(): ShaderTarget { return ShaderTarget.Wgsl; }
-} else when (webgl2 || android) {
+} else when (webgl2 || android || (linux && voidGles3)) {
 	function builtTarget(): ShaderTarget { return ShaderTarget.Glsl300es; }
 } else when (ios || macos) {
 	function builtTarget(): ShaderTarget { return ShaderTarget.Msl; }

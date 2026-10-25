@@ -279,7 +279,7 @@ function committedHlsl(): string {
 
 when (webgpu) {
 	const HOST_TARGET = ShaderTarget.Wgsl;
-} else when (webgl2 || android) {
+} else when (webgl2 || android || (linux && voidGles3)) {
 	const HOST_TARGET = ShaderTarget.Glsl300es;
 } else when (ios || macos) {
 	const HOST_TARGET = ShaderTarget.Msl;
