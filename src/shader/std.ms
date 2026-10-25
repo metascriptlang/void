@@ -1808,6 +1808,7 @@ export function binding(): void {}
 export function sampleType(): void {}
 export function samplerType(): void {}
 export function feature(): void {}
+export function interpolate(): void {}
 export function access(): void {}
 export function format(): void {}
 

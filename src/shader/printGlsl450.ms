@@ -8,6 +8,7 @@ import {
 	ExprKind,
 	FeatureCondition,
 	Interpolation,
+	Sampling,
 	Intrinsic,
 	IoDirection,
 	ResourceKind,
@@ -669,8 +670,17 @@ function ioText(p: Glsl, index: int32): string {
 	if (io.direction == IoDirection.Out && io.stage == ShaderStage.Fragment) {
 		return "layout(location=" + String(io.location) + ") out " + spelled + ";\n";
 	}
-	return (io.interpolation == Interpolation.Flat ? "flat " : "") +
-		(io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
+	const mode = match (io.interpolation) {
+		Interpolation.Perspective => "",
+		Interpolation.Linear => "noperspective ",
+		Interpolation.Flat => "flat ",
+	};
+	const sampling = match (io.sampling) {
+		Sampling.Center => "",
+		Sampling.Centroid => "centroid ",
+		Sampling.Sample => "sample ",
+	};
+	return mode + sampling + (io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
 }
 
 function nameDeclarations(p: Glsl): void {

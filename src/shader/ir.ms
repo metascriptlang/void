@@ -963,6 +963,9 @@ export function irErrors(m: ShaderModule): string[] {
 		if (varying && isIntegral(io.type) && io.interpolation != Interpolation.Flat) {
 			c.errors.push(owner + ": an integer varying is flat");
 		}
+		if (varying && io.interpolation == Interpolation.Flat && io.sampling != Sampling.Center) {
+			c.errors.push(owner + ": a flat varying takes no sampling, as WGSL's");
+		}
 		if (holdsRuntimeArray(io.type)) { c.errors.push(owner + ": it " + RUNTIME_ARRAY); }
 		if (io.builtin == Builtin.None && io.type.kind == ShaderTypeKind.Array) {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
@@ -1051,6 +1054,10 @@ export function irErrors(m: ShaderModule): string[] {
 			if (!linked) {
 				c.errors.push("varying " + String(i) + " differs between the vertex output and " +
 					"the fragment input");
+			} else if (written[i].interpolation != read[i].interpolation ||
+				written[i].sampling != read[i].sampling) {
+				c.errors.push("varying " + String(i) + " is interpolated differently by the vertex " +
+					"output and the fragment input");
 			}
 		}
 	}

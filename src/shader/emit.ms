@@ -68,6 +68,7 @@ import {
 	IoDirection,
 	ResourceKind,
 	SampleType,
+	Sampling,
 	SamplerType,
 	ShaderCase,
 	ShaderConstant,
@@ -789,11 +790,45 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return feature == null ? new FeatureCondition() : noted(featureOn(argumentName(feature)));
 	}
 
-	function interpolationOf(t: Node, at: Node): Interpolation {
+	function interpolationOf(t: Node, at: Node, decorators: Node[]): Interpolation {
 		const own = glslType(t.kind == NodeKind.TypeArray ? t.typExprElement : t, at);
 		const integral = (own.kind == ShaderTypeKind.Scalar || own.kind == ShaderTypeKind.Vector) &&
 			(own.scalar == ScalarKind.I32 || own.scalar == ScalarKind.U32);
-		return integral ? Interpolation.Flat : Interpolation.Perspective;
+		const d = decorator(decorators, "interpolate");
+		if (d == null) { return integral ? Interpolation.Flat : Interpolation.Perspective; }
+		const kind = interpolateWord(d, 0);
+		if (kind == "flat") {
+			if (d.macroArgs.length > 1) { fail(d, "@interpolate(flat) takes no sampling, as WGSL's"); }
+			return Interpolation.Flat;
+		}
+		if (integral) { fail(d, "an integer varying is @interpolate(flat), as WGSL's"); }
+		if (kind == "linear") { return Interpolation.Linear; }
+		if (kind == "perspective") { return Interpolation.Perspective; }
+		return fail(d, "@interpolate takes flat, linear or perspective, as WGSL's");
+	}
+
+	function interpolateWord(d: Node, at: int32): string {
+		if (d.macroArgs.length < 1 || d.macroArgs.length > 2) {
+			fail(d, "@interpolate takes a kind and an optional sampling");
+		}
+		const a = d.macroArgs[at];
+		if (a.kind != NodeKind.Identifier) { fail(d, "@interpolate takes names"); }
+		return a.name;
+	}
+
+	function samplingOf(decorators: Node[]): Sampling {
+		const d = decorator(decorators, "interpolate");
+		if (d == null || d.macroArgs.length < 2) { return Sampling.Center; }
+		const word = interpolateWord(d, 1);
+		if (word == "center") { return Sampling.Center; }
+		if (word == "centroid") { return Sampling.Centroid; }
+		if (word == "sample") { return Sampling.Sample; }
+		return fail(d, "@interpolate's sampling is center, centroid or sample, as WGSL's");
+	}
+
+	function noInterpolate(decorators: Node[], what: string): void {
+		const d = decorator(decorators, "interpolate");
+		if (d != null) { fail(d, "@interpolate sits on a varying, not " + what + ", as WGSL's"); }
 	}
 
 	function arrayVarying(name: string): string {
@@ -2037,14 +2072,19 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				const spelled = vertex ? name : varyingName(name);
 				const type = member(t, spelled, site);
 				const gate = featureCondition(inputs.typExprFieldDecorators[f]);
-				const interpolation = vertex ? Interpolation.Perspective : interpolationOf(t, site);
+				if (vertex) { noInterpolate(inputs.typExprFieldDecorators[f], "a vertex attribute"); }
+				const interpolation = vertex ? Interpolation.Perspective :
+					interpolationOf(t, site, inputs.typExprFieldDecorators[f]);
 				claim(spelled, site);
 				const io = addIo(stage, name, IoDirection.In, type, Builtin.None, gate);
 				m.ios[io].interpolation = interpolation;
+				m.ios[io].sampling = vertex ? Sampling.Center :
+					samplingOf(inputs.typExprFieldDecorators[f]);
 				inputNames.push(name);
 				inputIos.push(io);
 				continue;
 			}
+			noInterpolate(inputs.typExprFieldDecorators[f], "a builtin");
 			const which = argumentName(builtin);
 			const computeAt = computeBuiltins.indexOf(which);
 			const kind = compute ? (computeAt >= 0 ? computeKinds[computeAt] : Builtin.None) :
@@ -2082,6 +2122,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const builtin = decorator(decorators, "builtin");
 			const t = outputs.typExprFieldTypes[f];
 			if (builtin != null) {
+				noInterpolate(decorators, "a builtin");
 				const which = argumentName(builtin);
 				if (vertex ? which != "position" : which != "fragDepth") {
 					fail(builtin, "output field '" + name + "': a vertex entry writes " +
@@ -2095,13 +2136,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				if (t.kind == NodeKind.TypeArray) { fail(site, arrayVarying(name)); }
 				const spelled = varyingName(name);
 				const type = member(t, spelled, site);
-				const interpolation = interpolationOf(t, site);
+				const interpolation = interpolationOf(t, site, decorators);
 				claim(spelled, site);
 				const io = addIo(stage, name, IoDirection.Out, type, Builtin.None, gate);
 				m.ios[io].interpolation = interpolation;
+				m.ios[io].sampling = samplingOf(decorators);
 				outputIos.push(io);
 				continue;
 			}
+			noInterpolate(decorators, "a fragment output");
 			const location = decorator(decorators, "location");
 			if (location == null) {
 				fail(site, "fragment output '" + name + "' has no @location(n)");
