@@ -14,6 +14,7 @@ import {
 import {
 	ResourceError,
 	VulkanResources,
+	closeResources,
 	copyTextureToBuffer,
 	createBuffer,
 	createTexture,
@@ -23,7 +24,13 @@ import {
 	submit,
 	wait,
 } from "../../src/webgpu/vulkan/resources";
-import { PassError, RenderPassCache, beginRenderPass, endRenderPass, newRenderPassCache } from "../../src/webgpu/vulkan/pass";
+import {
+	RenderPassCache,
+	beginRenderPass,
+	closeRenderPasses,
+	endRenderPass,
+	newRenderPassCache,
+} from "../../src/webgpu/vulkan/pass";
 import {
 	GPUBuffer,
 	GPUBufferUsage,
@@ -95,9 +102,10 @@ function emptyPass(): GPURenderPassDescriptor {
 	return descriptor;
 }
 
-function pass(ref r: VulkanResources, ref cache: RenderPassCache, descriptor: GPURenderPassDescriptor): Result<void, PassError> {
+function pass(ref r: VulkanResources, ref cache: RenderPassCache, descriptor: GPURenderPassDescriptor): Result<void, ResourceError> {
 	try beginRenderPass(r, cache, descriptor);
-	return endRenderPass();
+	endRenderPass();
+	return Result.ok(null);
 }
 
 function copied(ref r: VulkanResources, t: Target): Result<void, ResourceError> {
@@ -124,14 +132,13 @@ function matches(ref r: VulkanResources, name: string, t: Target, texel: uint8[4
 	return true;
 }
 
-function clears(ref r: VulkanResources): int32 {
+function clears(ref r: VulkanResources, ref cache: RenderPassCache): int32 {
 	const unorm = target(r, "rgba8unorm");
 	if (!unorm.ok) { return refused("rgba8unorm target", unorm.error.toString()); }
 	const uint = target(r, "rgba8uint");
 	if (!uint.ok) { return refused("rgba8uint target", uint.error.toString()); }
 	const depth = target(r, "depth32float");
 	if (!depth.ok) { return refused("depth32float target", depth.error.toString()); }
-	let cache = newRenderPassCache();
 
 	let first = emptyPass();
 	first.colorAttachments[0].view = unorm.value.view;
@@ -188,7 +195,11 @@ function main(): int32 {
 	if (!step("vulkanDeviceCreate", vulkanDeviceCreate())) { return 1; }
 	console.log(`adapter ${vulkanAdapterName()}`);
 	let r = openResources();
-	if (clears(r) != 0) { return 1; }
+	let cache = newRenderPassCache();
+	if (clears(r, cache) != 0) { return 1; }
+	closeRenderPasses(cache);
+	const closed = closeResources(r);
+	if (!closed.ok) { return refused("closeResources", closed.error.toString()); }
 	const validated: boolean = vulkanValidationEnabled() != 0;
 	vulkanShutdown();
 	const errors: int32 = vulkanValidationErrors();

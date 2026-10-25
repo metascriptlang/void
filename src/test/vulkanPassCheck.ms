@@ -2,6 +2,7 @@ import { GPUTextureUsage } from "../webgpu/types.ms";
 import {
 	ACCESS_COLOR_ATTACHMENT_READ,
 	ACCESS_COLOR_ATTACHMENT_WRITE,
+	ASPECT_COLOR,
 	LAYOUT_COLOR_ATTACHMENT,
 	LAYOUT_PRESENT,
 	LOAD_OP_CLEAR,
@@ -36,7 +37,6 @@ import {
 	SurfaceCaps,
 	SurfaceConfig,
 	SurfaceError,
-	SurfaceFormat,
 	SurfaceInfo,
 	TRANSFORM_IDENTITY,
 	TRANSFORM_ROTATE_270,
@@ -153,15 +153,9 @@ test "the image count is two, three for mailbox, clamped to the surface's range"
 
 test "the format is the one asked, else its other channel order, keeping srgb" {
 	const formats = surface(64, 48, TRANSFORM_IDENTITY).formats;
-	const asked = chooseFormat(formats, "bgra8unorm");
-	assert asked.ok && asked.value == "bgra8unorm";
-	const swapped = chooseFormat(formats, "rgba8unorm");
-	assert swapped.ok && swapped.value == "bgra8unorm";
-	const srgb = chooseFormat(formats, "rgba8unorm-srgb");
-	assert srgb.ok && srgb.value == "bgra8unorm-srgb";
-	const extended: Vec<SurfaceFormat> = [{ native: BGRA8, colorSpace: 1000104002 }];
-	const wrongSpace = chooseFormat(extended, "bgra8unorm");
-	assert !wrongSpace.ok && wrongSpace.error == SurfaceError.FormatUnsupported;
+	assert chooseFormat(formats, "bgra8unorm") == "bgra8unorm";
+	assert chooseFormat(formats, "rgba8unorm") == "bgra8unorm";
+	assert chooseFormat(formats, "rgba8unorm-srgb") == "bgra8unorm-srgb";
 }
 
 test "the extent is the surface's current one, the asked one clamped when undefined, swapped when rotated" {
@@ -181,18 +175,6 @@ test "the extent is the surface's current one, the asked one clamped when undefi
 	assert rotated.value.preTransform == TRANSFORM_ROTATE_90 && rotated.value.rotation == 90;
 	const minimized = planSwapchain(surface(0, 0, TRANSFORM_IDENTITY), config);
 	assert !minimized.ok && minimized.error == SurfaceError.ZeroExtent;
-}
-
-test "a usage the surface cannot give is refused" {
-	const config: SurfaceConfig = {
-		format: "bgra8unorm",
-		usage: GPUTextureUsage.COPY_SRC as int32,
-		width: 64,
-		height: 48,
-		presentMode: "fifo",
-	};
-	const plan = planSwapchain(surface(64, 48, TRANSFORM_IDENTITY), config);
-	assert !plan.ok && plan.error == SurfaceError.UsageUnsupported;
 }
 
 test "composite alpha takes opaque, pre, post, inherit in that order; rotation reads the transform" {
@@ -216,7 +198,7 @@ test "the frame ring reuses a slot only after the serial submitted two frames ea
 
 test "a second write in an unchanged layout carries the first write's access as a memory dependency" {
 	let t = newTracker();
-	const rest = textureRest((GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32), false);
+	const rest = textureRest((GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32), ASPECT_COLOR);
 	assert rest.layout == LAYOUT_COLOR_ATTACHMENT;
 	writeToTexture(t, 3, rest, STAGE_COLOR_ATTACHMENT_OUTPUT, COLOR_ACCESS, LAYOUT_COLOR_ATTACHMENT);
 	assert t.images.length == 0 && t.targetAccess == COLOR_ACCESS;

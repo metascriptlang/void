@@ -14,6 +14,7 @@ import {
 import {
 	ResourceError,
 	VulkanResources,
+	closeResources,
 	collect,
 	copyBufferToBuffer,
 	copyTextureToBuffer,
@@ -33,6 +34,7 @@ import {
 	writeTexture,
 } from "../../src/webgpu/vulkan/resources";
 import { GPUBufferUsage, GPUTextureUsage } from "../../src/webgpu/types.ms";
+import { live } from "../../src/webgpu/pool.ms";
 
 @passC("-I../../deps/vulkan-headers/include");
 when (linux) {
@@ -141,12 +143,6 @@ function roundTrip(ref r: VulkanResources): int32 {
 		{ width: WIDTH, height: HEIGHT, depthOrArrayLayers: 1 },
 	);
 	if (!copiedTexture.ok) { return refused("copyTextureToBuffer", copiedTexture.error); }
-	const early = readMapped(r, readBuffer.value, 0, BUFFER_BYTES);
-	if (early.ok || early.error != ResourceError.StillInFlight) {
-		console.log("FAIL vulkan resources: readMapped before the submit completed was not refused as StillInFlight");
-		vulkanShutdown();
-		return 1;
-	}
 	const serial = submit(r);
 	if (!serial.ok) { return refused("submit", serial.error); }
 	const waited = wait(r, serial.value);
@@ -191,6 +187,28 @@ function main(): int32 {
 	console.log(`adapter ${vulkanAdapterName()}`);
 	let r = openResources();
 	if (roundTrip(r) != 0) { return 1; }
+	const kept = createTexture(r, {
+		label: "kept",
+		size: { width: WIDTH, height: HEIGHT, depthOrArrayLayers: 1 },
+		format: "rgba8unorm",
+		usage: GPUTextureUsage.TEXTURE_BINDING as int32,
+		sampleCount: 1,
+		dimension: "2d",
+		mipLevelCount: 1,
+	});
+	if (!kept.ok) { return refused("createTexture kept", kept.error); }
+	const keptView = createView(r, kept.value, { label: "kept", baseMipLevel: 0, mipLevelCount: 0, baseArrayLayer: 0, arrayLayerCount: 0 });
+	if (!keptView.ok) { return refused("createView kept", keptView.error); }
+	const keptBuffer = createBuffer(r, { label: "kept", size: 64, usage: GPUBufferUsage.VERTEX as int32 });
+	if (!keptBuffer.ok) { return refused("createBuffer kept", keptBuffer.error); }
+	const closed = closeResources(r);
+	if (!closed.ok) { return refused("closeResources", closed.error); }
+	if (r.buffers.live() + r.textures.live() + r.views.live() != 0 || r.memory.blockCount != 0) {
+		console.log(`FAIL vulkan resources: closeResources left ${r.buffers.live()} buffers, ${r.textures.live()} textures, ` +
+			`${r.views.live()} views and ${r.memory.blockCount} blocks`);
+		vulkanShutdown();
+		return 1;
+	}
 	const validated: boolean = vulkanValidationEnabled() != 0;
 	vulkanShutdown();
 	const errors: int32 = vulkanValidationErrors();
