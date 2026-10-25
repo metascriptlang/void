@@ -16,9 +16,6 @@
 #include "presentGate.h"
 #include "appWindow.h"
 #include "../platform/macos/window.h"
-#ifdef VOID_PROFILER
-#include "../void2d/frameClock.h"
-#endif
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
@@ -35,7 +32,6 @@ static float g_dpiScale = 1.0f;
 static msClosure s_init;
 static msClosure s_frame;
 static int s_frames = 0;
-static bool s_keys[VOID_KEY_COUNT];
 
 static void restoreMetal(void);
 
@@ -88,18 +84,8 @@ static void fitWindowLayer(void) {
 }
 
 static void windowEvent(const VoidAppEvent *e) {
-#ifdef VOID_PROFILER
-	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
-		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
-		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
-		voidProfileInput();
-	}
-#endif
 	if (e->type == VOID_EVENT_RESIZED) fitWindowLayer();
-	if (e->type == VOID_EVENT_KEY_DOWN) s_keys[e->keyCode] = true;
-	else if (e->type == VOID_EVENT_KEY_UP) s_keys[e->keyCode] = false;
-	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
+	voidAppWindowEvent(e);
 }
 
 static void windowCleanup(void) { doorShutdown(); }
@@ -169,8 +155,7 @@ float voidDpiScale(void) {
 }
 
 int voidKeyDown(int keycode) {
-	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
-	return s_keys[keycode] ? 1 : 0;
+	return s_driver == DRIVER_WINDOW && voidKeysHeldDown(&voidWindow.keysHeld, keycode);
 }
 
 void voidSetTextInput(int on) { voidMacosSetTextInput(on != 0); }

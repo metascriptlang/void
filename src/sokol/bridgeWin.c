@@ -18,16 +18,12 @@
 
 #include "appWindow.h"
 #include "../platform/win32/window.h"
-#ifdef VOID_PROFILER
-#include "../void2d/frameClock.h"
-#endif
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
 
 static msClosure s_init;
 static msClosure s_frame;
-static bool s_keys[VOID_KEY_COUNT];
 static int s_reqW = 0;
 static int s_reqH = 0;
 
@@ -181,23 +177,6 @@ static void _frame(void) {
 	else if (!s_sizeMove) DwmFlush();
 }
 
-static void _event(const VoidAppEvent *e) {
-#ifdef VOID_PROFILER
-	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
-		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
-		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
-		voidProfileInput();
-	}
-#endif
-	if (e->type == VOID_EVENT_KEY_DOWN) {
-		s_keys[e->keyCode] = true;
-	} else if (e->type == VOID_EVENT_KEY_UP) {
-		s_keys[e->keyCode] = false;
-	}
-	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
-}
-
 static void _cleanup(void) {
 	doorShutdown();
 	voidWindowSurfaceDestroy();
@@ -214,7 +193,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	VoidWin32Desc d = {0};
 	d.init = _init;
 	d.frame = _frame;
-	d.event = _event;
+	d.event = voidAppWindowEvent;
 	d.cleanup = _cleanup;
 	d.width = w;
 	d.height = h;
@@ -539,8 +518,7 @@ float voidDpiScale(void) {
 }
 
 int voidKeyDown(int keycode) {
-	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
-	return s_keys[keycode] ? 1 : 0;
+	return s_driver == DRIVER_WINDOW && voidKeysHeldDown(&voidWindow.keysHeld, keycode);
 }
 
 // The surface the door's screen pass draws into, or NULL for the GL window, whose default

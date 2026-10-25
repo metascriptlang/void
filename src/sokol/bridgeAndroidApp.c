@@ -464,7 +464,7 @@ void voidSetTextInput(int on) {
 
 void voidSetImeRect(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; }
 
-int voidKeyDown(int keycode) { return keycode > VOID_KEY_INVALID && keycode < VOID_KEY_COUNT && s_keysHeld.down[keycode]; }
+int voidKeyDown(int keycode) { return voidKeysHeldDown(&s_keysHeld, keycode); }
 
 int voidAndroidAppFbWidth(void) { return s_running && voidCurrentView() == 0 ? s_fbW : voidViewsFbWidth(); }
 int voidAndroidAppFbHeight(void) { return s_running && voidCurrentView() == 0 ? s_fbH : voidViewsFbHeight(); }

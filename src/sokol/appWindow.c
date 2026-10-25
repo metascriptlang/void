@@ -30,6 +30,9 @@
 #include "bridge.h"
 #include "appWindow.h"
 #include "appText.h"
+#ifdef VOID_PROFILER
+#include "../void2d/frameClock.h"
+#endif
 
 static msClosure s_handler;
 static const VoidAppEvent *s_event;
@@ -47,6 +50,20 @@ int voidAppDeliver(const VoidAppEvent *e) {
 	s_event = NULL;
 	return 1;
 }
+
+#if !defined(VOID_ANDROID_APP) && !defined(VOID_IOS_APP)
+void voidAppWindowEvent(const VoidAppEvent *e) {
+#ifdef VOID_PROFILER
+	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
+		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
+		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
+		voidProfileInput();
+	}
+#endif
+	if (voidAppDeliver(e)) return;
+	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
+}
+#endif
 
 static const VoidAppEvent *current(const char *field) {
 	if (!s_event) voidFail("voidEvent%s: read outside the event handler voidSetEventHandler registered", field);

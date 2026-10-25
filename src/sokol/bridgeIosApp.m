@@ -637,7 +637,7 @@ void voidSetImeRect(int x, int y, int w, int h) {
 	s_imeRect = CGRectMake(x / s_scale, y / s_scale, w / s_scale, h / s_scale);
 }
 
-int voidKeyDown(int keycode) { return keycode > VOID_KEY_INVALID && keycode < VOID_KEY_COUNT && s_keysHeld.down[keycode]; }
+int voidKeyDown(int keycode) { return voidKeysHeldDown(&s_keysHeld, keycode); }
 
 int voidIosAppFbWidth(void) { return s_running && voidCurrentView() == 0 ? s_fbW : voidViewsFbWidth(); }
 int voidIosAppFbHeight(void) { return s_running && voidCurrentView() == 0 ? s_fbH : voidViewsFbHeight(); }

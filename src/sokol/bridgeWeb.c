@@ -17,9 +17,6 @@
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "../platform/web/window.h"
-#ifdef VOID_PROFILER
-#include "../void2d/frameClock.h"
-#endif
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
@@ -34,7 +31,6 @@ static void restoreDoor(void) {
 
 static msClosure s_init;
 static msClosure s_frame;
-static bool s_keys[VOID_KEY_COUNT];
 
 static int s_textInput = -1;
 
@@ -155,23 +151,10 @@ static void _frame(void) {
 static int s_reqW = 0;
 static int s_reqH = 0;
 static void _event(const VoidAppEvent *e) {
-#ifdef VOID_PROFILER
-	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
-		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
-		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
-		voidProfileInput();
-	}
-#endif
 	if (e->type == VOID_EVENT_RESUMED) voidLoseContext();
 	if (imeTookKey(e)) return;
 	keepKeysFromBrowser(e);
-	if (e->type == VOID_EVENT_KEY_DOWN) {
-		s_keys[e->keyCode] = true;
-	} else if (e->type == VOID_EVENT_KEY_UP) {
-		s_keys[e->keyCode] = false;
-	}
-	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
+	voidAppWindowEvent(e);
 }
 
 static void _cleanup(void) { doorShutdown(); }
@@ -589,8 +572,7 @@ float voidDpiScale(void) {
 }
 
 int voidKeyDown(int keycode) {
-	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
-	return s_keys[keycode] ? 1 : 0;
+	return s_driver == DRIVER_WINDOW && voidKeysHeldDown(&voidWindow.keysHeld, keycode);
 }
 
 static VoidDriver screenDriver(void) {

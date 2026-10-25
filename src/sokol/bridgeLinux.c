@@ -14,16 +14,12 @@
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "../platform/linux/window.h"
-#ifdef VOID_PROFILER
-#include "../void2d/frameClock.h"
-#endif
 
 void voidDriverPresent(void);
 
 static bool s_running;
 static msClosure s_init;
 static msClosure s_frame;
-static bool s_keys[VOID_KEY_COUNT];
 static int s_reqW = 0;
 static int s_reqH = 0;
 static int s_sampleCount;
@@ -53,20 +49,6 @@ static void _frame(void) {
 	if (s_committed) voidLinuxSwapBuffers();
 }
 
-static void _event(const VoidAppEvent *e) {
-#ifdef VOID_PROFILER
-	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
-		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
-		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
-		voidProfileInput();
-	}
-#endif
-	if (e->type == VOID_EVENT_KEY_DOWN) s_keys[e->keyCode] = true;
-	else if (e->type == VOID_EVENT_KEY_UP) s_keys[e->keyCode] = false;
-	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWindowRequestQuit();
-}
-
 static void _cleanup(void) { doorShutdown(); }
 
 // highDpi is not read: sokol_app on X11 always maps window pixels 1:1 to the framebuffer and
@@ -83,7 +65,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	VoidLinuxDesc d = {0};
 	d.init = _init;
 	d.frame = _frame;
-	d.event = _event;
+	d.event = voidAppWindowEvent;
 	d.cleanup = _cleanup;
 	d.width = w;
 	d.height = h;
@@ -126,8 +108,7 @@ float voidDpiScale(void) {
 }
 
 int voidKeyDown(int keycode) {
-	if (keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
-	return s_keys[keycode] ? 1 : 0;
+	return voidKeysHeldDown(&voidWindow.keysHeld, keycode);
 }
 
 // The screen pass draws into the window's framebuffer 0, which has no view objects.
