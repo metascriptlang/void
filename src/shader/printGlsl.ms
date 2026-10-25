@@ -242,7 +242,7 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Matrix => t.columns == t.rows ? "mat" + String(t.rows) :
 			"mat" + String(t.columns) + "x" + String(t.rows),
 		ShaderTypeKind.Array => typeName(p, innermost(t)),
-		ShaderTypeKind.RuntimeArray => typeName(p, t.element[0]),
+		ShaderTypeKind.RuntimeArray => fail(p, "a runtime array is only a storage buffer"),
 		ShaderTypeKind.Struct => p.structNames[t.structIndex],
 		ShaderTypeKind.Texture | ShaderTypeKind.Sampler =>
 			fail(p, "a " + t.kind.toString() + " outside a texture operation: GL samples through " +
