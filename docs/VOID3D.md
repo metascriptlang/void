@@ -5939,6 +5939,37 @@ variant, the same slots and block, the caster unchanged), `skinMeshCheck.ms` (th
 place before the skin, the layouts, the refusals) and `gltfMaterialCheck.ms` (`TEXCOORD_1` into
 the mesh and the key; a missing attribute or `texCoord` 2 refused).
 
+### Parallax, as built so far (2026-10-25)
+
+Heaps' `h3d/shader/Parallax.hx` as `PbrMaterial` adds it (`mat/PbrMaterial.hx:354-366`): when
+`parallax > 0` the material's UV steps along the view, in the tangent basis, through layers of
+depth until it passes under the height map, and the last two steps are blended. `PbrMaterial`
+hands the shader its props texture as the height map, read in alpha. Here:
+
+- The program key's bit 19, `parallax` (`withParallax`, which needs `pbrMaps` and `normalMap`), is
+  the shader feature `PARALLAX`; `programKeys.txt` declares it on every pbr-maps row with a normal
+  map (24 rows). `shader3d.ms` `parallaxUv` moves the UV after the UV transform, and every map of
+  the colour pass reads at the moved UV; the occlusion map at the second uv set keeps its own.
+- The height is the pbr-maps texture's alpha, as Heaps reads its props texture's; glTF's packing
+  leaves that alpha free. The amount is `MATERIAL_PARALLAX` (x of the block's first vec4, which
+  the core read nowhere), so no view, sampler or block member is added.
+- The steps are Heaps' defaults, 6 face-on to 24 at grazing (`MIN_LAYERS`, `MAX_LAYERS`, the
+  count `PbrMaterial` uses when `parallaxSteps` is 0 or unset). A material's own step count and
+  the single-offset path of `maxLayers == 0` are not offered; a material that needs either is
+  the trigger to add a step count to the block.
+- Heaps' `invertBasis` flips the bitangent by hand; here the tangent's w does, as in
+  `mappedNormal`, so the steps and the mapped normal agree.
+- A caster drops the bit, as Heaps' shadow pass has no parallax. A cutout parallax key is not
+  cast (`castIn`): its colour pass cuts at the moved UV, and the caster rule refuses a cut at
+  another texel.
+- glTF has no height map, so the loader never sets the bit; an app sets it on its material.
+- Cost: the key index (`indexPrograms`) doubles to 2^20 entries, 4 MB, built once at start.
+
+Pinned by `pbrMapsCheck.ms` (over a flat depth the UV lands where one ray meets it, the tangent's
+w turns the bitangent, and the colour pass samples at the moved UV) and `programKeyCheck.ms`
+(bit 19, declared in every normal-mapped pbr-maps variant with the same layout, slots and block,
+the cutout caster refused). Not run yet: shader regeneration, the GPU, the web builds.
+
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
 The sun's single fitted map becomes up to four cascades, each its own orthographic map in one
