@@ -21,6 +21,8 @@ void macHostResignKey(void);
 void macHostBecomeKey(void);
 void macHostMiniaturize(int on);
 int macHostMiniaturized(void);
+void macHostRaise(void);
+int macHostWindowVisible(void);
 int macHostFullscreenStyle(void);
 void macHostSetContentSize(int w, int h);
 int macHostContentWidth(void);
@@ -28,5 +30,7 @@ int macHostLayerDrawableWidth(void);
 int macHostLayerDrawableHeight(void);
 int macHostDrop(const char *path);
 float macHostScale(void);
+int macHostMaxFps(void);
+double macHostNowMs(void);
 
 #endif

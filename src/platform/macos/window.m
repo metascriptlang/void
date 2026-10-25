@@ -1,4 +1,5 @@
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/QuartzCore.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -168,6 +169,8 @@ static NSCursor *s_cursors[VOID_CURSOR_COUNT];
 static id s_appDelegate;
 static id s_windowDelegate;
 static id s_keyUpMonitor;
+static CADisplayLink *s_displayLink;
+static NSTimer *s_frameTimer;
 
 __attribute__((noreturn)) static void fail(const char *what) {
 	fprintf(stderr, "void: %s\n", what);
@@ -342,6 +345,47 @@ static void frame(void) {
 	if (s.quitRequested || s.quitOrdered) [s_window performClose:nil];
 }
 
+static bool displayLinkActive(void) { return s_displayLink != nil && !s_displayLink.paused; }
+
+static void startFrameTimer(void) {
+	if (s_frameTimer != nil) return;
+	s_frameTimer = [NSTimer timerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *t) { (void)t; frame(); }];
+	[[NSRunLoop currentRunLoop] addTimer:s_frameTimer forMode:NSRunLoopCommonModes];
+}
+
+static void stopFrameTimer(void) {
+	[s_frameTimer invalidate];
+	s_frameTimer = nil;
+}
+
+static void startDisplayLink(void) {
+	if (s_displayLink != nil) {
+		s_displayLink.paused = NO;
+		return;
+	}
+	const float maxFps = (float)NSScreen.mainScreen.maximumFramesPerSecond;
+	s_displayLink = [s_view displayLinkWithTarget:s_view selector:@selector(displayLinkFired:)];
+	s_displayLink.preferredFrameRateRange = CAFrameRateRangeMake(maxFps, maxFps, maxFps);
+	[s_displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
+}
+
+static void startFrames(void) {
+	if (@available(macOS 14.0, *)) startDisplayLink();
+	else startFrameTimer();
+}
+
+static void transitionToOccluded(void) {
+	if (!displayLinkActive()) return;
+	s_displayLink.paused = YES;
+	startFrameTimer();
+}
+
+static void transitionToVisible(void) {
+	if (displayLinkActive() || s_displayLink == nil) return;
+	stopFrameTimer();
+	startDisplayLink();
+}
+
 @interface VoidMacosAppDelegate : NSObject <NSApplicationDelegate>
 @end
 
@@ -383,8 +427,7 @@ static void frame(void) {
 		modifierFlags:0x40 timestamp:0 windowNumber:0 context:nil
 		subtype:NSEventSubtypeApplicationActivated data1:0 data2:0];
 	[NSApp postEvent:focus atStart:YES];
-	NSTimer *timer = [NSTimer timerWithTimeInterval:1.0 / 60.0 repeats:YES block:^(NSTimer *t) { (void)t; frame(); }];
-	[[NSRunLoop currentRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+	startFrames();
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
@@ -426,12 +469,20 @@ static void frame(void) {
 
 - (void)windowDidMiniaturize:(NSNotification *)notification {
 	(void)notification;
+	transitionToOccluded();
 	appEvent(VOID_EVENT_ICONIFIED);
 }
 
 - (void)windowDidDeminiaturize:(NSNotification *)notification {
 	(void)notification;
+	transitionToVisible();
 	appEvent(VOID_EVENT_RESTORED);
+}
+
+- (void)windowDidChangeOcclusionState:(NSNotification *)notification {
+	(void)notification;
+	if (s_window.occlusionState & NSWindowOcclusionStateVisible) transitionToVisible();
+	else transitionToOccluded();
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
@@ -501,6 +552,12 @@ static void frame(void) {
 
 @implementation VoidMacosView
 - (BOOL)isOpaque { return YES; }
+
+- (void)displayLinkFired:(id)sender {
+	(void)sender;
+	if (s_frameTimer == nil) frame();
+}
+
 - (BOOL)canBecomeKeyView { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
 
