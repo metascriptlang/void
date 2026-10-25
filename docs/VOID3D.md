@@ -5981,55 +5981,64 @@ depth), `cascadeShadowCheck.ms` (the cascade pick, the blend, the layer fetch in
 `spotShadowCheck.ms` (a packed two-cascade block read back by `dirShadowAt`). Not run yet: the
 regenerated shaders and the goldens on the GPU.
 
-### Point-light shadows, as built so far (2026-10-25)
+### Cube shadows: point, rectangle and capsule lights, as built so far (2026-10-25)
 
-One point light per frame casts, as one spot does. The shape follows Heaps'
-`h3d.pass.PointShadowMap` (`CubeShadowMap.hx` draw): six faces, each drawn by a square 90-degree
-camera from the light's position (`Camera.setCubeMap`'s forward and up per face, +Y looking with
-up -Z and -Y with up +Z), near `PointLight.zNear` 0.02 and far the light's range
-(`pointShadow.ms` `pointShadowViews`). The receiver picks the face by the largest axis of the
-light-to-receiver vector, which is the face a cube lookup selects (Heaps samples its cube map,
-Bevy's `fetch_point_shadow` its cube array), then projects through that face's matrix and
-compares the stored depth (`shader3d.ms` `pointShadowAt`).
+One point, rectangle or capsule light per frame casts the cube map, beside one spot. The shape
+follows Heaps' `h3d.pass.CubeShadowMap`, which `PointShadowMap`, `RectangleShadowMap` and
+`CapsuleShadowMap` all extend: six faces, each drawn by a square 90-degree camera from the
+light's position (`Camera.setCubeMap`'s forward and up per face, +Y looking with up -Z and -Y
+with up +Z), far the light's range, near the kind's: `PointLight.zNear` and `CapsuleLight.zNear`
+0.02, `RectangleShadowMap`'s 0.01 (`cubeShadow.ms` `cubeShadowViews`). The receiver picks the
+face by the largest axis of the light-to-receiver vector, which is the face a cube lookup selects
+(Heaps samples its cube map, Bevy's `fetch_point_shadow` its cube array), then projects through
+that face's matrix and compares the stored depth (`shader3d.ms` `cubeShadowAt`).
 
 - The faces are six layers of the door's `ArrayTarget`, the idiom cascades and the spot already
   use, not a depth cube. Drawing and lookup share the same six matrices, so the cube-face
   orientation rules of each backend never enter; a cube would add a second target kind and a
   per-backend face table for the same result.
-- The block (`gpu3d.ms` `SHADOW_POINT_*`) carries the six map matrices, bias, opacity and size,
+- The block (`gpu3d.ms` `SHADOW_CUBE_*`) carries the six map matrices, bias, opacity and size,
   and the light's position; it follows the spot's part, and `carryShadows` copies it into the
   block of the first attached map. The map binds at view 12 and reads with the spot's sampler.
-- A point record's shape slot carries the casts flag as the spot's does; `collectLights` refuses a
-  second casting point (`TooManyShadowedPoints`), and the frame refuses a casting point with no
-  range past zNear (`BadShadowPoint`) or no attached map (`PointShadowUnattached`).
+- The light block's header names the casters: `ambient.w` holds the spot caster's record + 1,
+  `dirColor.w` the cube caster's (`LIGHT_SPOT_CASTER`, `LIGHT_CUBE_CASTER`, 0 for none), and a
+  record's shadow is read only when its index is named (`recordShadowAt`). A per-record flag
+  cannot carry it, because a rectangle record's shape slots are all taken. `collectLights`
+  refuses a second caster of one map (`TooManyShadowedSpots`, `TooManyCubeCasters`), and the
+  frame refuses a header naming no record of the right kind or a caster with no range past its
+  near (`BadShadowSpot`, `BadCubeShadow`) and a caster with no attached map
+  (`SpotShadowUnattached`, `CubeShadowUnattached`).
+- A capsule's cube sits at its centre with far its range, as `CapsuleShadowMap` sets its camera;
+  Heaps' wider `range + length` applies to its radial-distance shader, which this lookup does not
+  use.
 
-Pinned by `pointShadowCheck.ms` (the six faces, the refusals, a packed block read back by
-`pointShadowAt` per face, the record flag, the carried block). Not run yet: the regenerated
-shaders and a golden on the GPU.
+Pinned by `cubeShadowCheck.ms` (the six faces, the rectangle's and capsule's near planes, the
+header and the refusals, a packed block read back by `cubeShadowAt` per face, the named record
+of each kind, the carried block). Not run yet: the regenerated shaders and a golden on the GPU.
 
 ### Shadow filtering: PCF, as built so far (2026-10-25)
 
-Every shadow map (sun, spot, point) takes Heaps' `Shadows.samplingKind` and `pcfScale`
+Every shadow map (sun, spot, cube) takes Heaps' `Shadows.samplingKind` and `pcfScale`
 (`dirShadowMap.ms` `ShadowSamplingKind`, default `None` as in Heaps). `Pcf` follows
 `h3d/shader/ShadowSampling.hx`: for the sun's cascades and the spot, 16 Poisson-disk taps turned
-by the hash of the world position (`shadowPcf`, `shadowArrayPcf`); for the point, the 20
+by the hash of the world position (`shadowPcf`, `shadowArrayPcf`); for the cube, the 20
 `cubeShadowPcf` directions added to the light-to-receiver direction scaled by pcfScale / size,
 each tap kept at the receiver's distance and read from the face it points into
-(`shader3d.ms` `pointShadowAt`, helpers in `shadowLookup.ms`). Each tap is compared as before
+(`shader3d.ms` `cubeShadowAt`, helpers in `shadowLookup.ms`). Each tap is compared as before
 and the lit share averaged, so the opacity mix is unchanged.
 
 - Heaps chooses the mode per shader (`@const SAMPLING_MODE`); here it is a number in each light's
-  part of the shadow block (`SHADOW_CASCADE_FILTER`, `SHADOW_SPOT_FILTER`, `SHADOW_POINT_FILTER`,
+  part of the shadow block (`SHADOW_CASCADE_FILTER`, `SHADOW_SPOT_FILTER`, `SHADOW_CUBE_FILTER`,
   0 for one texel), so the program keys and the generated headers do not double. The cost is
   one uniform branch per lookup.
 - `pcfScale` is in texels; Heaps passes `pcfScale / texture.width` in uv, the same footprint.
 - ESM is not offered: Heaps' ESM reads a blurred R16F map, and these maps are depth.
-- A point's taps are compared at the receiver's distance against the face's perspective depth,
+- A cube's taps are compared at the receiver's distance against the face's perspective depth,
   where Heaps compares radial distances in a cube; how far the two differ on screen is not
   measured.
 
 Pinned by `spotShadowCheck.ms` (an 8x8 split map: one texel without PCF, a soft edge with it,
-whole far sides; the sun's packed scale) and `pointShadowCheck.ms` (taps turned into other
+whole far sides; the sun's packed scale) and `cubeShadowCheck.ms` (taps turned into other
 faces average, the packed scale). Not run yet: the GPU and the goldens.
 
 ### Clustered lights: how the clusters reach the shader (decided 2026-10-24, wired on the CPU)
