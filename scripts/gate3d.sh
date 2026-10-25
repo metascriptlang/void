@@ -29,6 +29,7 @@
 set -u
 cd "$(dirname "$0")/.."
 . scripts/capturePending.sh
+export VOID_QUIET_WINDOW=1
 
 FAILURES=0
 SKIPPED=0

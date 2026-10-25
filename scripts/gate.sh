@@ -10,6 +10,7 @@
 #   sh scripts/gate.sh --quick    skip the golden suite (T0 and bench only)
 set -e
 cd "$(dirname "$0")/.."
+export VOID_QUIET_WINDOW=1
 
 MSC="${MSC:-msc}"
 WEB=0
