@@ -5,7 +5,7 @@ import { IndexType } from "../../src/gpu/pipeline";
 import {
 	liveBuffers, liveImages, liveViews, liveSamplers, liveShaders, livePipelines, contextGeneration,
 } from "../../src/gpu/door";
-import { Bounds3D } from "../../src/void3d/bounds";
+import { boundingRadius } from "../../src/void3d/bounds";
 import { MeshData, Rgba, addVertex, addTriangle } from "../../src/void3d/meshData";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import {
@@ -116,16 +116,6 @@ function appendGroup(ref data: MeshData, group: int32): void {
 	if (!a.ok || !b.ok || !c.ok) { unreachable; }
 }
 
-function originRadius(this bounds: Readonly<Bounds3D>): float64 {
-	const x: float64 = (bounds.max.x as float64) - (bounds.min.x as float64);
-	const y: float64 = (bounds.max.y as float64) - (bounds.min.y as float64);
-	const z: float64 = (bounds.max.z as float64) - (bounds.min.z as float64);
-	const cx: float64 = ((bounds.max.x as float64) + (bounds.min.x as float64)) * 0.5;
-	const cy: float64 = ((bounds.max.y as float64) + (bounds.min.y as float64)) * 0.5;
-	const cz: float64 = ((bounds.max.z as float64) + (bounds.min.z as float64)) * 0.5;
-	return Math.sqrt(x * x + y * y + z * z) * 0.5 + Math.sqrt(cx * cx + cy * cy + cz * cz);
-}
-
 function materialAt(amount: float32): MaterialId {
 	const block = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
@@ -159,7 +149,7 @@ function init(): void {
 		const base: int32 = (control == 7 ? 0 : vertexBase) + group * 3;
 		if (!addTriangle(data, base, base + 1, base + 2).ok) { unreachable; }
 	}
-	radius = data.bounds.originRadius();
+	radius = data.bounds.boundingRadius();
 	const uploaded = addMeshData(context, data);
 	if (!uploaded.ok) { fail(`mesh upload ${uploaded.error.toString()}`); unreachable; }
 	mesh = uploaded.value;
