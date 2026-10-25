@@ -156,7 +156,10 @@ export macro shaderBuild(
 	const base = stringValue(name);
 	function targetOf(): ShaderTarget {
 		if (define("webgpu") != "") { return ShaderTarget.Wgsl; }
-		if (define("webgl2") != "" || define("android") != "") { return ShaderTarget.Glsl300es; }
+		if (define("webgl2") != "" || define("android") != "" ||
+			(define("linux") != "" && define("voidGles3") != "")) {
+			return ShaderTarget.Glsl300es;
+		}
 		if (define("ios") != "" || define("macos") != "") { return ShaderTarget.Msl; }
 		if (define("voidGlCore") != "" || define("linux") != "") { return ShaderTarget.Glsl430; }
 		if (define("windows") != "") { return ShaderTarget.Hlsl5; }

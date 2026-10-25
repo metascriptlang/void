@@ -21,9 +21,15 @@
 #include "../clock.h"
 #include "../frameTiming.h"
 
+#if defined(VOID_GLES3) || defined(VOID_FORCE_EGL)
+#define VOID_LINUX_EGL 1
+#include <EGL/egl.h>
+#endif
+
 #define X11_KEYCODES 256
 #define XDND_VERSION 5
 
+#if !defined(VOID_LINUX_EGL)
 #define GLX_VENDOR 1
 #define GLX_RGBA_BIT 0x00000001
 #define GLX_WINDOW_BIT 0x00000001
@@ -67,6 +73,7 @@ typedef XVisualInfo *(*GlxGetVisualFromFBConfigFn)(Display *, GLXFBConfig);
 typedef GLXWindow (*GlxCreateWindowFn)(Display *, GLXFBConfig, Window, const int *);
 typedef void (*GlxDestroyWindowFn)(Display *, GLXWindow);
 typedef GLXContext (*GlxCreateContextAttribsFn)(Display *, GLXFBConfig, GLXContext, Bool, const int *);
+#endif
 
 typedef char *(*XcursorGetThemeFn)(Display *);
 typedef int (*XcursorGetDefaultSizeFn)(Display *);
@@ -910,12 +917,14 @@ static const struct {
 	{ 0xffbd, 0x003d },
 };
 
+#if !defined(VOID_LINUX_EGL)
 typedef struct {
 	int redBits, greenBits, blueBits, alphaBits, depthBits, stencilBits, samples;
 	bool doublebuffer;
 	bool srgbCapable;
 	GLXFBConfig handle;
 } FbConfig;
+#endif
 
 static struct {
 	VoidLinuxDesc desc;
@@ -983,6 +992,13 @@ static struct {
 			XiSelectEventsFn SelectEvents;
 		} xi;
 	} x11;
+#if defined(VOID_LINUX_EGL)
+	struct {
+		EGLDisplay display;
+		EGLContext context;
+		EGLSurface surface;
+	} egl;
+#else
 	struct {
 		void *libgl;
 		int major, minor, eventBase, errorBase;
@@ -1011,6 +1027,7 @@ static struct {
 		bool ARB_create_context;
 		bool ARB_create_context_profile;
 	} glx;
+#endif
 	VoidKeysHeld keysHeld;
 } s;
 
@@ -1351,6 +1368,7 @@ static void querySystemDpi(void) {
 	XrmDestroyDatabase(db);
 }
 
+#if !defined(VOID_LINUX_EGL)
 static bool hasExtension(const char *ext, const char *extensions) {
 	if (extensions == NULL) return false;
 	const char *start = extensions;
@@ -1548,6 +1566,7 @@ static void swapInterval(int interval) {
 	if (s.glx.EXT_swap_control) s.glx.SwapIntervalEXT(s.x11.display, s.glx.window, interval);
 	else if (s.glx.MESA_swap_control) s.glx.SwapIntervalMESA(interval);
 }
+#endif
 
 static bool waitForEvent(int eventType, int64_t timeoutNs, XEvent *out) {
 	const int64_t start = voidPlatformClockNow();
@@ -1646,6 +1665,114 @@ static void showWindow(void) {
 	XRaiseWindow(s.x11.display, s.x11.window);
 	XFlush(s.x11.display);
 }
+
+#if defined(VOID_LINUX_EGL)
+static bool eglConfigIs(EGLConfig c, EGLint alpha, EGLint depth, EGLint stencil, EGLint samples) {
+	EGLint r, g, b, a, d, st, n;
+	return eglGetConfigAttrib(s.egl.display, c, EGL_RED_SIZE, &r) && eglGetConfigAttrib(s.egl.display, c, EGL_GREEN_SIZE, &g)
+		&& eglGetConfigAttrib(s.egl.display, c, EGL_BLUE_SIZE, &b) && eglGetConfigAttrib(s.egl.display, c, EGL_ALPHA_SIZE, &a)
+		&& eglGetConfigAttrib(s.egl.display, c, EGL_DEPTH_SIZE, &d) && eglGetConfigAttrib(s.egl.display, c, EGL_STENCIL_SIZE, &st)
+		&& eglGetConfigAttrib(s.egl.display, c, EGL_SAMPLES, &n) && r == 8 && g == 8 && b == 8 && a == alpha && d == depth
+		&& st == stencil && n == samples;
+}
+
+static void initEgl(void) {
+#if defined(VOID_GLES3)
+	if (!eglBindAPI(EGL_OPENGL_ES_API)) fail("eglBindAPI(EGL_OPENGL_ES_API) failed");
+#else
+	if (!eglBindAPI(EGL_OPENGL_API)) fail("eglBindAPI(EGL_OPENGL_API) failed");
+#endif
+	s.egl.display = eglGetDisplay((EGLNativeDisplayType)s.x11.display);
+	if (s.egl.display == EGL_NO_DISPLAY) fail("eglGetDisplay() failed");
+	EGLint major, minor;
+	if (!eglInitialize(s.egl.display, &major, &minor)) fail("eglInitialize() failed");
+	const bool wantsMsaa = s.desc.sampleCount > 1;
+	const EGLint sampleBuffers = wantsMsaa ? 1 : 0;
+	const EGLint sampleCount = wantsMsaa ? s.desc.sampleCount : 0;
+	const EGLint alphaSize = 0;
+	const EGLint depthSize = 24;
+	const EGLint stencilSize = 0;
+	const EGLint configAttribs[] = {
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+#if defined(VOID_GLES3)
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+#else
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+#endif
+		EGL_RED_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE, 8,
+		EGL_ALPHA_SIZE, alphaSize,
+		EGL_DEPTH_SIZE, depthSize,
+		EGL_STENCIL_SIZE, stencilSize,
+		EGL_SAMPLE_BUFFERS, sampleBuffers,
+		EGL_SAMPLES, sampleCount,
+		EGL_NONE,
+	};
+	EGLConfig configs[32];
+	EGLint configCount = 0;
+	if (!eglChooseConfig(s.egl.display, configAttribs, configs, 32, &configCount) || configCount == 0) {
+		fail("eglChooseConfig() returned no configs");
+	}
+	EGLConfig config = configs[0];
+	for (int i = 0; i < configCount; i++) {
+		if (eglConfigIs(configs[i], alphaSize, depthSize, stencilSize, sampleCount)) {
+			config = configs[i];
+			break;
+		}
+	}
+	EGLint samples = 0;
+	eglGetConfigAttrib(s.egl.display, config, EGL_SAMPLES, &samples);
+	if (wantsMsaa && samples != sampleCount) {
+		fprintf(stderr, "void: no EGLConfig with %d samples (the closest has %d)\n", sampleCount, samples);
+		abort();
+	}
+	EGLint visualId;
+	if (!eglGetConfigAttrib(s.egl.display, config, EGL_NATIVE_VISUAL_ID, &visualId)) {
+		fail("eglGetConfigAttrib() for EGL_NATIVE_VISUAL_ID failed");
+	}
+	XVisualInfo visualTemplate;
+	memset(&visualTemplate, 0, sizeof visualTemplate);
+	visualTemplate.visualid = (VisualID)visualId;
+	int visualCount = 0;
+	XVisualInfo *visualInfo = XGetVisualInfo(s.x11.display, VisualIDMask, &visualTemplate, &visualCount);
+	if (visualInfo == NULL) fail("XGetVisualInfo() failed");
+	createWindow(visualInfo->visual, visualInfo->depth);
+	XFree(visualInfo);
+	s.egl.surface = eglCreateWindowSurface(s.egl.display, config, (EGLNativeWindowType)s.x11.window, NULL);
+	if (s.egl.surface == EGL_NO_SURFACE) fail("eglCreateWindowSurface() failed");
+	const EGLint contextAttribs[] = {
+#if defined(VOID_GLES3)
+		EGL_CONTEXT_MAJOR_VERSION, 3,
+		EGL_CONTEXT_MINOR_VERSION, 1,
+#else
+		EGL_CONTEXT_MAJOR_VERSION, 4,
+		EGL_CONTEXT_MINOR_VERSION, 3,
+		EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+#endif
+		EGL_NONE,
+	};
+	s.egl.context = eglCreateContext(s.egl.display, config, EGL_NO_CONTEXT, contextAttribs);
+	if (s.egl.context == EGL_NO_CONTEXT) fail("eglCreateContext() failed");
+	if (!eglMakeCurrent(s.egl.display, s.egl.surface, s.egl.surface, s.egl.context)) fail("eglMakeCurrent() failed");
+	eglSwapInterval(s.egl.display, 1);
+}
+
+static void destroyEgl(void) {
+	if (s.egl.display == EGL_NO_DISPLAY) return;
+	eglMakeCurrent(s.egl.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	if (s.egl.context != EGL_NO_CONTEXT) {
+		eglDestroyContext(s.egl.display, s.egl.context);
+		s.egl.context = EGL_NO_CONTEXT;
+	}
+	if (s.egl.surface != EGL_NO_SURFACE) {
+		eglDestroySurface(s.egl.display, s.egl.surface);
+		s.egl.surface = EGL_NO_SURFACE;
+	}
+	eglTerminate(s.egl.display);
+	s.egl.display = EGL_NO_DISPLAY;
+}
+#endif
 
 static int windowState(void) {
 	int result = WithdrawnState;
@@ -2223,6 +2350,9 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	createCursors();
 	XkbSetDetectableAutoRepeat(s.x11.display, True, NULL);
 	initKeytable();
+#if defined(VOID_LINUX_EGL)
+	initEgl();
+#else
 	initGlx();
 	Visual *visual = NULL;
 	int depth = 0;
@@ -2230,6 +2360,7 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	createWindow(visual, depth);
 	createContext();
 	swapInterval(1);
+#endif
 	s.valid = true;
 	showWindow();
 	XFlush(s.x11.display);
@@ -2253,7 +2384,11 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 		if (s.desc.cleanup) s.desc.cleanup();
 		s.cleanupCalled = true;
 	}
+#if defined(VOID_LINUX_EGL)
+	destroyEgl();
+#else
 	destroyContext();
+#endif
 	destroyWindow();
 	destroyCursors();
 	clearDropped();
@@ -2269,7 +2404,11 @@ float voidLinuxDpiScale(void) { return s.dpiScale; }
 uint64_t voidLinuxFrameCount(void) { return s.frameCount; }
 void voidLinuxRequestQuit(void) { s.quitRequested = true; }
 void voidLinuxSetTitle(const char *title) { updateWindowTitle(title); }
+#if defined(VOID_LINUX_EGL)
+void voidLinuxSwapBuffers(void) { eglSwapBuffers(s.egl.display, s.egl.surface); }
+#else
 void voidLinuxSwapBuffers(void) { s.glx.SwapBuffers(s.x11.display, s.glx.window); }
+#endif
 
 
 void voidLinuxCancelQuit(void) { s.quitRequested = false; }

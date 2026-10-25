@@ -4,7 +4,7 @@
 @include("bridge.h");
 import "../gpu/doorGpu";
 
-when (macos) {
+when (macos && !voidDummy) {
 	@passL("-framework Cocoa");
 	@passL("-framework QuartzCore");
 	@passL("-framework Metal");
@@ -17,7 +17,7 @@ when (macos) {
 	@compile("./bridge.c");
 }
 
-when (windows) {
+when (windows && !voidDummy) {
 	@compile("../platform/win32/window.c");
 	@compile("./bridgeWin.c");
 	@compile("./appWindow.c");
@@ -33,12 +33,12 @@ when (windows) {
 	@passL("-lshell32");
 }
 
-when (windows && voidGlCore) {
+when (windows && voidGlCore && !voidDummy) {
 	@compile("./windowGl.c");
 	@passL("-lopengl32");
 }
 
-when (android) {
+when (android && !voidDummy) {
 	@compile("./bridgeAndroid.c");
 	@compile("./bridgeAndroidApp.c");
 	@compile("./appWindow.c");
@@ -50,7 +50,7 @@ when (android) {
 	@passL("-llog");
 }
 
-when (ios) {
+when (ios && !voidDummy) {
 	@compile("./bridgeIos.m");
 	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./bridgeIosApp.m", "-fobjc-arc");
@@ -64,18 +64,34 @@ when (ios) {
 	@passL("-framework Foundation");
 }
 
-when (linux) {
+when (linux && !voidDummy) {
 	@compile("../platform/linux/window.c");
 	@compile("./bridgeLinux.c");
 	@compile("./appWindow.c");
 	@compile("./bridge.c");
 	@passL("-lX11");
-	@passL("-lGL");
 	@passL("-ldl");
 	@passL("-lm");
 }
 
-when (macos || (windows && !voidGlCore) || ios || android) {
+when (linux && voidGles3 && !voidDummy) {
+	@passC("-DVOID_GLES3");
+	@passL("-lEGL");
+	@passL("-lGLESv2");
+} else when (linux && voidEgl && !voidDummy) {
+	@passC("-DVOID_FORCE_EGL");
+	@passL("-lEGL");
+	@passL("-lGL");
+} else when (linux && !voidDummy) {
+	@passL("-lGL");
+}
+
+when (voidDummy) {
+	@compile("./bridgeDummy.c");
+	@compile("./bridge.c");
+}
+
+when ((macos || (windows && !voidGlCore) || ios || android) && !voidDummy) {
 	extern function voidEmbedRegister(init: () => void, frame: () => void): void;
 	extern function voidViewsSetSampleCount(count: int32): void;
 	extern function voidViewCreate(native: int64, w: int32, h: int32, scale: float32): int32;

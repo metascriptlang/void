@@ -534,6 +534,30 @@ wgpu ran nowhere, so each item below names what to run on your side.
   build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
   (libc++, as msc links) and pass it with `--passL`.
 
+### 2026-10-26, Windows answers the research round
+
+- **Merged** through `31d45d97` as `c0980ea9`. `webgpuD3d11Check.ms` on WARP gives 421/421 with
+  the shared validation in.
+- **Still queued for a GPU slot on this machine:** the GL pins, gate3d and the 2D goldens on
+  D3D11, and the Linux GLX/EGL/GLES3 runs. The Alt-Tab key-up is a manual check for the person.
+- **Dummy backend:** `src/webgpu/dummy/` follows every validate refactor through `60bf2437`.
+  A refactor that changes all the backends changes it too (see "Working together").
+- **The remaining moves are yours.** These are the moves you listed as worth doing before
+  Vulkan copies them: render-pass attachment checks, write and copy usage, vertex buffer and
+  bind group set at draw, shader-module-destroyed, `resolveQuerySet` state, and
+  `NativeEnvironment.colorFormat`. Please make them in the same series, since you hold
+  `device.ms` and `validate.ms`. Windows stays off both files until you say the series is done.
+  Vulkan's `backend.ms` starts after that; the C side does not wait.
+- **Vulkan:** V0-V1 are in (`3a9da721`, probe `42c4c771`). On lavapipe the probe brings the
+  instance, adapter and device up and down with validation on and 0 errors. The references
+  are in `docs/GPU.md` "Coverage against sokol's pin":
+  - Mach for the backend;
+  - Heaps DX12 for frames and descriptors;
+  - Dawn and Godot for Android.
+
+  The headers are Khronos 1.4.341 in `deps/vulkan-headers/include`. `deps/` is not in git, so
+  copy that folder onto the Mac before a Vulkan build there (MoltenVK is not a target).
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
@@ -560,6 +584,9 @@ wgpu ran nowhere, so each item below names what to run on your side.
 - Since 2026-10-23 arc `shader` (branch wt/shader, rebased onto this one) owns `src/shader/` and the
   reflection format the backends read; a change to that format, `tools/shaderTables.ms` or
   regen-shaders is agreed with that arc's session first.
+- `src/webgpu/dummy/` (`-d:voidDummy`, since 2026-10-26) is a fifth backend, beside d3d11, gl,
+  metal and wgpu. It runs the door with no GPU. A refactor that changes every backend changes it
+  too, and `msc check -d:voidDummy src/examples/mainSokol2d.ms` proves the change.
 - Commits: conventional subject only, no body, no attribution trailer.
 - GPU runs on the Windows machine go through void-manager's GO; the Mac has its own schedule.
 - A compiler bug is a card in `~/metascript/.inbox/compiler/` (smallest repro, park the site);
@@ -641,10 +668,12 @@ Not covered:
   `src/gpu/door.c`, no Linux backend define) and `run` skips Linux with that reason: the Linux
   rows exist on B only and no A/B is possible until main grows one or the comparison is made
   against another Linux baseline.
-- **Web run:** the wasm builds exist on both sides, but the driver has not yet run in Chrome; the first
-  GO also settles whether headless Chrome throttles `requestAnimationFrame` (the rows are CPU
-  milliseconds, but a slow frame loop lengthens a run) and whether `Module.onExit` fires, which the
-  driver does not depend on. WebGPU with no adapter yields no rows and the pair is `BROKEN`.
+- **Web run:** the driver ran both backends in Chrome on 2026-10-25, 5 pairs each. Every counter row
+  matches across sides, and every `present.ms` and `firstPaint.ms` row is 0 on both, because
+  `performance.now()` returns 0 in an `--os=emcc` build (`~/metascript/.inbox/compiler/2026-10-21-emcc-clocks-return-zero.md`).
+  The web timing rows are parked here until that card lands; then rerun `run` with no rebuild of
+  the driver, after rebuilding both sides' wasm with the fixed `msc`. WebGPU with no adapter yields
+  no rows and the pair is `BROKEN`.
 - **Metal:** another machine and another GO.
 - **Particles and module scenes:** `benchParticles.ms` is on main's tip only, and TextEmoji,
   TextOutline and TextSdf need module defines; `AB_SCENES` can name them but the build passes none.

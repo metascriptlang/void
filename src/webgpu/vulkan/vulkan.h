@@ -1,0 +1,180 @@
+#pragma once
+#include <stdint.h>
+
+#define VULKAN_OK 0
+#define VULKAN_ERROR_LIBRARY 1
+#define VULKAN_ERROR_FUNCTION 2
+#define VULKAN_ERROR_CALL 3
+#define VULKAN_ERROR_EXTENSION 4
+#define VULKAN_ERROR_ADAPTER 5
+#define VULKAN_ERROR_ORDER 6
+
+#define VULKAN_POWER_DEFAULT 0
+#define VULKAN_POWER_LOW 1
+#define VULKAN_POWER_HIGH 2
+
+#define VULKAN_FEATURE_BC 0x2
+#define VULKAN_FEATURE_ETC2 0x4
+#define VULKAN_FEATURE_ASTC 0x8
+
+#define VULKAN_LIMIT_TEXTURE_DIMENSION_1D 0
+#define VULKAN_LIMIT_TEXTURE_DIMENSION_2D 1
+#define VULKAN_LIMIT_TEXTURE_DIMENSION_3D 2
+#define VULKAN_LIMIT_TEXTURE_ARRAY_LAYERS 3
+#define VULKAN_LIMIT_BIND_GROUPS 4
+#define VULKAN_LIMIT_SAMPLED_TEXTURES_PER_STAGE 5
+#define VULKAN_LIMIT_SAMPLERS_PER_STAGE 6
+#define VULKAN_LIMIT_STORAGE_BUFFERS_PER_STAGE 7
+#define VULKAN_LIMIT_STORAGE_TEXTURES_PER_STAGE 8
+#define VULKAN_LIMIT_UNIFORM_BUFFERS_PER_STAGE 9
+#define VULKAN_LIMIT_UNIFORM_BUFFER_BINDING_SIZE 10
+#define VULKAN_LIMIT_STORAGE_BUFFER_BINDING_SIZE 11
+#define VULKAN_LIMIT_VERTEX_BUFFERS 12
+#define VULKAN_LIMIT_VERTEX_ATTRIBUTES 13
+#define VULKAN_LIMIT_COLOR_ATTACHMENTS 14
+#define VULKAN_LIMIT_WORKGROUP_SIZE_X 15
+#define VULKAN_LIMIT_WORKGROUP_SIZE_Y 16
+#define VULKAN_LIMIT_WORKGROUP_SIZE_Z 17
+#define VULKAN_LIMIT_WORKGROUP_INVOCATIONS 18
+#define VULKAN_LIMIT_WORKGROUPS_PER_DIMENSION 19
+#define VULKAN_LIMIT_UNIFORM_OFFSET_ALIGNMENT 20
+#define VULKAN_LIMIT_STORAGE_OFFSET_ALIGNMENT 21
+#define VULKAN_LIMIT_NON_COHERENT_ATOM_SIZE 22
+#define VULKAN_LIMIT_MEMORY_ALLOCATION_COUNT 23
+
+#define VULKAN_DEDICATED_NONE 0
+#define VULKAN_DEDICATED_PREFERRED 1
+#define VULKAN_DEDICATED_REQUIRED 2
+
+int32_t vulkanLoaderOpen(void);
+const char *vulkanError(void);
+
+int32_t vulkanInstanceCreate(void);
+int32_t vulkanValidationEnabled(void);
+int32_t vulkanValidationErrors(void);
+int32_t vulkanValidationWarnings(void);
+
+int32_t vulkanSurfaceCreateWin32(void *hinstance, void *hwnd);
+int32_t vulkanSurfaceCreateXlib(void *display, uint64_t window);
+int32_t vulkanSurfaceCreateAndroid(void *window);
+
+int32_t vulkanAdapterSelect(int32_t powerPreference);
+uint32_t vulkanAdapterVendorId(void);
+uint32_t vulkanAdapterDeviceId(void);
+const char *vulkanAdapterName(void);
+uint32_t vulkanAdapterDriverVersion(void);
+uint32_t vulkanAdapterApiVersion(void);
+int32_t vulkanAdapterQueueFamily(void);
+int64_t vulkanAdapterLimit(int32_t limit);
+
+int32_t vulkanDeviceCreate(void);
+uint32_t vulkanDeviceFeatures(void);
+
+int32_t vulkanMemoryTypeCount(void);
+int32_t vulkanMemoryType(int32_t index, uint32_t *flags, int32_t *heap);
+int32_t vulkanMemoryHeapCount(void);
+uint64_t vulkanMemoryHeapSize(int32_t heap);
+
+uint32_t vulkanFormatOptimalFeatures(int32_t format);
+
+uint32_t vulkanBlockAllocate(int32_t typeIndex, uint64_t size, uint32_t dedicatedBuffer, uint32_t dedicatedImage);
+int32_t vulkanBlockFree(uint32_t block);
+void *vulkanBlockMap(uint32_t block);
+int32_t vulkanMappedWrite(
+	uint32_t block,
+	uint64_t offset,
+	void *data,
+	uint64_t dataOffset,
+	uint64_t rowBytes,
+	uint64_t sourcePitch,
+	uint64_t targetPitch,
+	uint32_t rows);
+int32_t vulkanMappedRead(uint32_t block, uint64_t offset, void *out, uint64_t bytes);
+
+uint32_t vulkanBufferCreate(uint64_t size, uint32_t usage);
+int32_t vulkanBufferRequirements(uint32_t buffer, uint64_t *size, uint64_t *alignment, uint32_t *typeBits, int32_t *dedication);
+int32_t vulkanBufferBind(uint32_t buffer, uint32_t block, uint64_t offset);
+int32_t vulkanBufferDestroy(uint32_t buffer);
+
+uint32_t vulkanImageCreate(
+	int32_t imageType,
+	int32_t format,
+	uint32_t width,
+	uint32_t height,
+	uint32_t depth,
+	uint32_t mipLevels,
+	uint32_t layers,
+	uint32_t samples,
+	uint32_t usage,
+	uint32_t flags,
+	uint32_t aspect);
+int32_t vulkanImageRequirements(uint32_t image, uint64_t *size, uint64_t *alignment, uint32_t *typeBits, int32_t *dedication);
+int32_t vulkanImageBind(uint32_t image, uint32_t block, uint64_t offset);
+int32_t vulkanImageDestroy(uint32_t image);
+
+uint32_t vulkanViewCreate(
+	uint32_t image,
+	int32_t viewType,
+	int32_t format,
+	uint32_t aspect,
+	uint32_t baseMip,
+	uint32_t mipCount,
+	uint32_t baseLayer,
+	uint32_t layerCount);
+int32_t vulkanViewDestroy(uint32_t view);
+
+uint32_t vulkanSamplerCreate(
+	int32_t magFilter,
+	int32_t minFilter,
+	int32_t mipmapMode,
+	int32_t addressU,
+	int32_t addressV,
+	int32_t addressW,
+	float lodMin,
+	float lodMax,
+	int32_t compareOp,
+	uint32_t maxAnisotropy);
+int32_t vulkanSamplerDestroy(uint32_t sampler);
+
+int32_t vulkanBarrierImage(uint32_t image, uint32_t sourceAccess, uint32_t targetAccess, int32_t oldLayout, int32_t newLayout);
+int32_t vulkanBarrierFlush(uint32_t sourceStages, uint32_t targetStages, uint32_t sourceAccess, uint32_t targetAccess);
+int32_t vulkanCopyBuffer(uint32_t source, uint64_t sourceOffset, uint32_t target, uint64_t targetOffset, uint64_t bytes);
+int32_t vulkanCopyBufferToImage(
+	uint32_t buffer,
+	uint64_t offset,
+	uint32_t rowLength,
+	uint32_t imageHeight,
+	uint32_t image,
+	uint32_t aspect,
+	uint32_t mip,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	uint32_t baseLayer,
+	uint32_t layerCount,
+	uint32_t width,
+	uint32_t height,
+	uint32_t depth);
+int32_t vulkanCopyImageToBuffer(
+	uint32_t buffer,
+	uint64_t offset,
+	uint32_t rowLength,
+	uint32_t imageHeight,
+	uint32_t image,
+	uint32_t aspect,
+	uint32_t mip,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	uint32_t baseLayer,
+	uint32_t layerCount,
+	uint32_t width,
+	uint32_t height,
+	uint32_t depth);
+
+int32_t vulkanSubmit(uint64_t *serial);
+uint64_t vulkanRecordingSerial(void);
+int32_t vulkanCompletedSerial(uint64_t *serial);
+int32_t vulkanWaitSerial(uint64_t serial);
+
+void vulkanShutdown(void);

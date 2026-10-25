@@ -139,7 +139,7 @@ const STAGES: string[][] = [
 // Each shdc language, the `when` that compiles it and the IR target that prints it.
 const LANGUAGES: string[][] = [
 	["wgsl", "webgpu"],
-	["glsl300es", "webgl2 || android"],
+	["glsl300es", "webgl2 || android || (linux && voidGles3)"],
 	["metal_ios", "ios"],
 	["metal_macos", "macos"],
 	["glsl430", "voidGlCore || linux"],

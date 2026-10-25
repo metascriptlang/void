@@ -5,12 +5,12 @@
 #include <string.h>
 #include "gl.h"
 
-#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__) || (defined(__linux__) && defined(VOID_GLES3))
 #define OGL_GLES 1
 #include <GLES3/gl3.h>
 #if defined(__EMSCRIPTEN__)
 void glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *data);
-#elif __ANDROID_API__ >= 24
+#elif defined(__ANDROID__) && __ANDROID_API__ >= 24
 #include <GLES3/gl32.h>
 #define OGL_DEBUG 1
 #else
@@ -20,7 +20,7 @@ void glGetBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, void *d
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
 #elif !defined(_WIN32)
-#error "the GL backend loads GL through WGL, links libGL on Linux or takes GLES3 from emscripten or Android; another platform needs its GL headers and loader here"
+#error "the GL backend loads GL through WGL, links libGL or libGLESv2 on Linux or takes GLES3 from emscripten or Android; another platform needs its GL headers and loader here"
 #else
 
 #ifndef WIN32_LEAN_AND_MEAN
