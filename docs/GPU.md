@@ -255,6 +255,30 @@ on it. As of `932a1562`:
 GL core on macOS is deprecated by Apple and stays out unless asked. Wayland is beyond sokol,
 whose `sokol_app.h` has no Wayland path.
 
+The Vulkan backend ports wgpu-hal's `vulkan/` (100c142) and checks barriers, frame sync and
+driver workarounds against Dawn's `native/vulkan/` (1716e88). Sokol's `_sg_vk_*` is a
+comparison only, because it requires Vulkan 1.3 and `VK_EXT_descriptor_buffer` (sokol_app.h
+4447, 4558) and calls itself highly experimental (footnote 7). wgpu-hal starts at Vulkan 1.0
+(instance.rs:791), makes dynamic rendering optional (adapter.rs:1344) and binds uniforms as
+`UNIFORM_BUFFER_DYNAMIC` (conv.rs:887), which is the door's uniform ring with dynamic offsets.
+
+## Beyond sokol on the frame path
+
+Each item is built once a probe shows the cost it removes; the A/B against main decides.
+
+- The door's frame calls (pass begin, pipeline, bindings, uniforms, draw) reach each backend
+  as integer-typed calls, as `sg_*` reach `_sg_<backend>_*`. The WebGPU descriptors stay the
+  public surface for creation, compute and the web backend, so an author's `loadOp: "clear"`
+  is unchanged.
+- D3D11 keeps native state across passes instead of `ClearState` at every pass end. A pass end
+  unbinds the shader-resource and sampler ranges it bound, and a target that a bound view
+  aliases is unbound before it is set (Dawn `BindGroupTrackerD3D11.cpp:200-216`,
+  `PipelineStateTrackerD3D11`; Heaps `DirectXDriver.hx:969-980`). A test binds a texture,
+  then renders into it in the next pass.
+- void2d writes instances straight into mapped vertex memory through a reserve and finish
+  pair (GPUI `metal_renderer.rs:1531-1574`; wgpu `write_buffer_with`, `queue.rs:218-233`).
+  The reserve checks the bounds, and a draw while a buffer is mapped stops.
+
 ## Steps
 
 The card `~/metascript/.wt/gpu-ms.md` tracks where the branch is. The order: the API module
