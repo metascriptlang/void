@@ -89,7 +89,15 @@ import {
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
-import { addressesBinding, checkedBindingGroup, checkedUniformEntry } from "../validate.ms";
+import {
+	addressesBinding,
+	checkedBindingGroup,
+	checkedUniformEntry,
+	checkedComputeModule,
+	checkedComputePipeline,
+	checkedRenderModule,
+	checkedStripDraw,
+} from "../validate.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
 import {
 	WgBindGroupImpl,
@@ -495,6 +503,7 @@ struct PipelineSlot {
 	shader: uint32;
 	native: Ptr<WgPipelineImpl>;
 	stripIndexFormat: int32;
+	strip: boolean;
 	layouts: uint32[2];
 	compute: boolean;
 }
@@ -1576,9 +1585,6 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	checkedIntegerTexturePairs(descriptor);
 	stopOnUnportedShaderBytecode("wgpu", descriptor);
 	const compute = descriptor.computeCode != "";
-	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "")) {
-		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");
-	}
 	const id = allocate(shaders);
 	let slot: ShaderSlot = { id: 0 };
 	for (let i = 0; i < descriptor.bindings.length; i++) {
@@ -1597,24 +1603,14 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		};
 		checkBinding(native, descriptor.bindings[i].group);
 		if (kind == BindingKind.Uniform) {
-			if (slot.uniformCount == GPU_MAX_UNIFORM_BLOCKS) {
-				stop("a shader module has over 8 uniform blocks");
-			}
 			slot.uniforms[slot.uniformCount] = native;
 			slot.uniformCount += 1;
 		} else {
-			if (slot.resourceCount == GPU_MAX_BIND_GROUP_ENTRIES) {
-				stop(`a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`);
-			}
 			slot.resources[slot.resourceCount] = native;
 			slot.resourceCount += 1;
 		}
 	}
 	if (compute) {
-		const size: int32[3] = descriptor.workgroupSize;
-		if (size[0] > deviceLimits.maxComputeWorkgroupSizeX || size[1] > deviceLimits.maxComputeWorkgroupSizeY || size[2] > deviceLimits.maxComputeWorkgroupSizeZ || size[0] * size[1] * size[2] > deviceLimits.maxComputeInvocationsPerWorkgroup) {
-			stop(`workgroupSize ${size[0]}x${size[1]}x${size[2]} is over the device limits ${deviceLimits.maxComputeWorkgroupSizeX}x${deviceLimits.maxComputeWorkgroupSizeY}x${deviceLimits.maxComputeWorkgroupSizeZ} and ${deviceLimits.maxComputeInvocationsPerWorkgroup} invocations`);
-		}
 		slot.compute = createModule(descriptor.computeCode, descriptor.label);
 		slot.computeEntry = entryPoint(descriptor.computeEntryPoint);
 	} else {
@@ -1682,12 +1678,6 @@ function packLayoutEntry(
 		const binding = native.binding;
 		stop(`shader binding ${binding} is outside the WGSL group ${group} range 0..${last}`);
 	}
-	if (native.kind == BindingKind.Uniform && native.size <= 0) {
-		stop(`uniform binding ${native.binding} needs its block size`);
-	}
-	if (native.kind == BindingKind.Uniform && (native.size as int64) > deviceLimits.maxUniformBufferBindingSize) {
-		stop(`uniform binding ${native.binding} of ${native.size} bytes is over the limit of ${deviceLimits.maxUniformBufferBindingSize}`);
-	}
 	const writable = (native.kind == BindingKind.StorageBuffer && native.bindingType == BUFFER_STORAGE)
 		|| (native.kind == BindingKind.StorageTexture && native.bindingType != ACCESS_READ_ONLY);
 	if (writable && (native.visibility & (GPUShaderStage.VERTEX as int32)) != 0) {
@@ -1712,14 +1702,14 @@ export function destroyShaderModule(module: GPUShaderModule): void {
 export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
 	const id = allocate(pipelines);
 	const s = shaders.slotIndex(descriptor.vertex.module.id);
-	if (shaders.slots[s].compute != null) { stop("a compute GPUShaderModule cannot make a GPURenderPipeline"); }
+	checkedRenderModule(shaders.slots[s].compute != null);
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule in Void");
 	}
 	const state = new Array<int32>(PL_SIZE);
 	let depthBias: float64[2] = [0, 0];
 	const topology = primitiveTopology(descriptor.primitive.topology);
-	const stripIndexFormat = stripIndexFormatOf(descriptor.primitive, topology);
+	const stripIndexFormat = stripIndexFormatOf(descriptor.primitive);
 	state[PL_BUFFER_COUNT] = describeVertexBuffers(descriptor, state);
 	const depthFormat: string = descriptor.depthStencil.format;
 	if (depthFormat != "") {
@@ -1765,6 +1755,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		readsVertexIndex: shaders.slots[s].readsVertexIndex,
 		native: native,
 		stripIndexFormat: stripIndexFormat,
+		strip: topology == TOPOLOGY_LINE_STRIP || topology == TOPOLOGY_TRIANGLE_STRIP,
 	};
 	store(pipelines, slot);
 	return { id: slot.id };
@@ -1777,12 +1768,9 @@ function packStencilFace(state: int32[], at: int32, face: GPUStencilFaceState, m
 	state[at + 3] = stencilOperation(face.passOp, `${member}.passOp`);
 }
 
-function stripIndexFormatOf(state: GPUPrimitiveState, topology: int32): int32 {
+function stripIndexFormatOf(state: GPUPrimitiveState): int32 {
 	const format: string = state.stripIndexFormat;
 	if (format == "") { return 0; }
-	if (topology != TOPOLOGY_LINE_STRIP && topology != TOPOLOGY_TRIANGLE_STRIP) {
-		stop(`primitive.stripIndexFormat '${format}' needs a strip topology`);
-	}
 	return indexFormat(state.stripIndexFormat);
 }
 
@@ -2297,9 +2285,7 @@ function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int3
 	if (pass.pipeline == 0) { stop("drawIndexed without setPipeline"); }
 	checkDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance);
 	const strip = pipelines.slots[pipelines.slotIndex(pass.pipeline)].stripIndexFormat;
-	if (strip != 0 && strip != pass.indexFormat) {
-		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
-	}
+	checkedStripDraw(pipelines.slots[pipelines.slotIndex(pass.pipeline)].strip, strip == pass.indexFormat);
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
@@ -2448,11 +2434,8 @@ export function unmap(buffer: GPUBuffer): void {
 
 export function createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const s = shaders.slotIndex(descriptor.compute.module.id);
-	if (shaders.slots[s].compute == null) { stop("createComputePipeline needs a GPUShaderModule made with computeCode"); }
 	const entry = entryPoint(descriptor.compute.entryPoint);
-	if (entry != shaders.slots[s].computeEntry) {
-		stop(`compute.entryPoint '${entry}' differs from the module's computeEntryPoint '${shaders.slots[s].computeEntry}'`);
-	}
+	checkedComputeModule(shaders.slots[s].compute != null, entry, shaders.slots[s].computeEntry);
 	const id = allocate(pipelines);
 	const native = wgCreateComputePipeline(
 		shaders.slots[s].compute,
@@ -2488,7 +2471,7 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
 	const p = pipelines.slotIndex(pipeline.id);
-	if (!pipelines.slots[p].compute) { stop(`GPUPipeline ${pipeline.id} is not a compute pipeline`); }
+	checkedComputePipeline(pipeline.id, pipelines.slots[p].compute);
 	wgSetComputePipeline(pipelines.slots[p].native);
 	computeBound.pipeline = pipeline.id;
 }

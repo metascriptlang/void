@@ -2,10 +2,14 @@ import {
 	BindingKind,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPUPrimitiveState,
+	GPUShaderModuleDescriptor,
 	GPUSupportedLimits,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
 	GPUTextureUsage,
+	GPU_MAX_BIND_GROUP_ENTRIES,
+	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 } from "./types.ms";
@@ -214,3 +218,77 @@ export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupp
 
 export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRefusal(size, usage)); }
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
+
+// The descriptor-only rules of a shader module: one kind of code, the binding counts a bind group
+// holds, a uniform block's size against the uniform limit, and the workgroup against the compute limits.
+export function shaderModuleRefusal(descriptor: GPUShaderModuleDescriptor, limits: GPUSupportedLimits): string {
+	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
+	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "" || descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0)) {
+		return "a GPUShaderModule is either a compute module or a vertex and fragment module";
+	}
+	let uniforms = 0;
+	let resources = 0;
+	for (let i = 0; i < descriptor.bindings.length; i++) {
+		const kind: string = descriptor.bindings[i].kind;
+		if (kind == "") { continue; }
+		if (kind == "uniform") {
+			const size = descriptor.bindings[i].size;
+			const binding = descriptor.bindings[i].binding;
+			if (size <= 0) { return `uniform binding ${binding} needs its block size`; }
+			if ((size as int64) > limits.maxUniformBufferBindingSize) {
+				return `uniform binding ${binding} of ${size} bytes is over the limit of ${limits.maxUniformBufferBindingSize}`;
+			}
+			uniforms += 1;
+			if (uniforms > GPU_MAX_UNIFORM_BLOCKS) { return `a shader module has over ${GPU_MAX_UNIFORM_BLOCKS} uniform blocks`; }
+		} else {
+			resources += 1;
+			if (resources > GPU_MAX_BIND_GROUP_ENTRIES) { return `a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`; }
+		}
+	}
+	const size: int32[3] = descriptor.workgroupSize;
+	if (compute && (size[0] > limits.maxComputeWorkgroupSizeX || size[1] > limits.maxComputeWorkgroupSizeY
+		|| size[2] > limits.maxComputeWorkgroupSizeZ || size[0] * size[1] * size[2] > limits.maxComputeInvocationsPerWorkgroup)) {
+		return `workgroupSize ${size[0]}x${size[1]}x${size[2]} is over the limits ${limits.maxComputeWorkgroupSizeX}x${limits.maxComputeWorkgroupSizeY}x${limits.maxComputeWorkgroupSizeZ} and ${limits.maxComputeInvocationsPerWorkgroup} invocations`;
+	}
+	return "";
+}
+
+export function isStripTopology(topology: string): boolean {
+	return topology == "line-strip" || topology == "triangle-strip";
+}
+
+export function primitiveRefusal(primitive: GPUPrimitiveState): string {
+	const format: string = primitive.stripIndexFormat;
+	if (format != "" && !isStripTopology(primitive.topology)) {
+		return `primitive.stripIndexFormat '${format}' needs a strip topology`;
+	}
+	return "";
+}
+
+// A backend passes whether its module holds compute code: the module record is the backend's own.
+export function renderModuleRefusal(moduleIsCompute: boolean): string {
+	return moduleIsCompute ? "a compute GPUShaderModule cannot make a GPURenderPipeline" : "";
+}
+
+export function computeModuleRefusal(moduleIsCompute: boolean, entry: string, moduleEntry: string): string {
+	if (!moduleIsCompute) { return "createComputePipeline needs a GPUShaderModule made with computeCode"; }
+	if (entry != moduleEntry) { return `compute.entryPoint '${entry}' differs from the module's computeEntryPoint '${moduleEntry}'`; }
+	return "";
+}
+
+export function computePipelineRefusal(pipeline: uint32, isCompute: boolean): string {
+	return isCompute ? "" : `GPUPipeline ${pipeline} is not a compute pipeline`;
+}
+
+// `matches` is whether the pipeline's strip index format is the bound index format; none never matches.
+export function stripDrawRefusal(strip: boolean, matches: boolean): string {
+	if (strip && !matches) { return "an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format"; }
+	return "";
+}
+
+export function checkedShaderModule(descriptor: GPUShaderModuleDescriptor, limits: GPUSupportedLimits): void { refuse(shaderModuleRefusal(descriptor, limits)); }
+export function checkedPrimitive(primitive: GPUPrimitiveState): void { refuse(primitiveRefusal(primitive)); }
+export function checkedRenderModule(moduleIsCompute: boolean): void { refuse(renderModuleRefusal(moduleIsCompute)); }
+export function checkedComputeModule(moduleIsCompute: boolean, entry: string, moduleEntry: string): void { refuse(computeModuleRefusal(moduleIsCompute, entry, moduleEntry)); }
+export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): void { refuse(computePipelineRefusal(pipeline, isCompute)); }
+export function checkedStripDraw(strip: boolean, matches: boolean): void { refuse(stripDrawRefusal(strip, matches)); }

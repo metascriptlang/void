@@ -2,7 +2,8 @@ import {
 	BindingKind,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
-	GPUExtent3D,
+	GPUPrimitiveState,
+	GPUShaderModuleDescriptor,
 	GPUSupportedLimits,
 	GPUTextureDescriptor,
 	GPUTextureUsage,
@@ -14,17 +15,24 @@ import {
 	addressesBinding,
 	beginPassRefusal,
 	bufferRefusal,
+	computeModuleRefusal,
+	computePipelineRefusal,
 	createRefusal,
 	endPassRefusal,
 	finishRefusal,
 	groupOfKind,
 	inPassRefusal,
 	isDepthFormat,
+	isStripTopology,
 	markerRefusal,
 	outsidePassRefusal,
 	popGroupRefusal,
+	primitiveRefusal,
 	pushGroupRefusal,
+	renderModuleRefusal,
+	shaderModuleRefusal,
 	shutdownRefusal,
+	stripDrawRefusal,
 	textureRefusal,
 	uniformEntryRefusal,
 } from "../webgpu/validate";
@@ -248,4 +256,100 @@ test "a depth or stencil format is a 2d texture only" {
 	t.dimension = "2d";
 	t.size.depthOrArrayLayers = 1;
 	assert textureRefusal(t, limits) == "";
+}
+
+function computeLimits(): GPUSupportedLimits {
+	return {
+		maxUniformBufferBindingSize: 65536,
+		maxComputeWorkgroupSizeX: 1024,
+		maxComputeWorkgroupSizeY: 1024,
+		maxComputeWorkgroupSizeZ: 64,
+		maxComputeInvocationsPerWorkgroup: 1024,
+	};
+}
+
+function computeModule(x: int32, y: int32, z: int32): GPUShaderModuleDescriptor {
+	return { computeCode: "kernel", workgroupSize: [x, y, z] };
+}
+
+test "a shader module is a compute module or a vertex and fragment module, in code or bytecode" {
+	const limits = computeLimits();
+	assert shaderModuleRefusal(computeModule(8, 8, 1), limits) == "";
+	let mixed = computeModule(8, 8, 1);
+	mixed.vertexCode = "vs";
+	assert shaderModuleRefusal(mixed, limits) == "a GPUShaderModule is either a compute module or a vertex and fragment module";
+	let bytes = computeModule(8, 8, 1);
+	bytes.fragmentBytecode = [1, 2, 3];
+	assert shaderModuleRefusal(bytes, limits) == "a GPUShaderModule is either a compute module or a vertex and fragment module";
+	let compiled = computeModule(8, 8, 1);
+	compiled.computeCode = "";
+	compiled.computeBytecode = [1];
+	compiled.vertexCode = "vs";
+	assert shaderModuleRefusal(compiled, limits) != "";
+	const render: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	assert shaderModuleRefusal(render, limits) == "";
+}
+
+test "a compute workgroup is refused past any one axis or the invocation total of the backend's limits" {
+	const limits = computeLimits();
+	assert shaderModuleRefusal(computeModule(1024, 1, 1), limits) == "";
+	assert shaderModuleRefusal(computeModule(1025, 1, 1), limits) == "workgroupSize 1025x1x1 is over the limits 1024x1024x64 and 1024 invocations";
+	assert shaderModuleRefusal(computeModule(1, 1, 65), limits) == "workgroupSize 1x1x65 is over the limits 1024x1024x64 and 1024 invocations";
+	assert shaderModuleRefusal(computeModule(64, 32, 1), limits) != "";
+	let small = computeLimits();
+	small.maxComputeInvocationsPerWorkgroup = 256;
+	assert shaderModuleRefusal(computeModule(16, 16, 1), small) == "";
+	assert shaderModuleRefusal(computeModule(32, 16, 1), small) != "";
+	const render: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs", workgroupSize: [4096, 1, 1] };
+	assert shaderModuleRefusal(render, limits) == "";
+}
+
+test "a shader module holds at most 8 uniform blocks and 16 resources, and a block has a size inside the limit" {
+	const limits = computeLimits();
+	let blocks: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	for (let i = 0; i < 8; i++) { blocks.bindings[i] = { binding: i, kind: "uniform", size: 16 }; }
+	assert shaderModuleRefusal(blocks, limits) == "";
+	blocks.bindings[8] = { binding: 8, kind: "uniform", size: 16 };
+	assert shaderModuleRefusal(blocks, limits) == "a shader module has over 8 uniform blocks";
+	let resources: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	for (let i = 0; i < 16; i++) { resources.bindings[i] = { binding: i, kind: "texture" }; }
+	assert shaderModuleRefusal(resources, limits) == "";
+	resources.bindings[16] = { binding: 16, kind: "sampler" };
+	assert shaderModuleRefusal(resources, limits) == "a shader module has over 16 resources";
+	let sized: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	sized.bindings[0] = { binding: 3, kind: "uniform", size: 0 };
+	assert shaderModuleRefusal(sized, limits) == "uniform binding 3 needs its block size";
+	sized.bindings[0].size = 65536;
+	assert shaderModuleRefusal(sized, limits) == "";
+	sized.bindings[0].size = 65552;
+	assert shaderModuleRefusal(sized, limits) == "uniform binding 3 of 65552 bytes is over the limit of 65536";
+}
+
+test "a stripIndexFormat needs a strip topology" {
+	assert isStripTopology("line-strip");
+	assert isStripTopology("triangle-strip");
+	assert !isStripTopology("triangle-list");
+	assert !isStripTopology("");
+	const strip: GPUPrimitiveState = { topology: "triangle-strip", stripIndexFormat: "uint16" };
+	assert primitiveRefusal(strip) == "";
+	const list: GPUPrimitiveState = { topology: "triangle-list", stripIndexFormat: "uint32" };
+	assert primitiveRefusal(list) == "primitive.stripIndexFormat 'uint32' needs a strip topology";
+	const none: GPUPrimitiveState = { topology: "line-list" };
+	assert primitiveRefusal(none) == "";
+}
+
+test "a pipeline takes the module kind it is for, and a compute entry point the module declares" {
+	assert renderModuleRefusal(false) == "";
+	assert renderModuleRefusal(true) == "a compute GPUShaderModule cannot make a GPURenderPipeline";
+	assert computeModuleRefusal(true, "main", "main") == "";
+	assert computeModuleRefusal(false, "main", "main") == "createComputePipeline needs a GPUShaderModule made with computeCode";
+	assert computeModuleRefusal(true, "other", "main") == "compute.entryPoint 'other' differs from the module's computeEntryPoint 'main'";
+	assert computePipelineRefusal(7, true) == "";
+	assert computePipelineRefusal(7, false) == "GPUPipeline 7 is not a compute pipeline";
+}
+
+test "an indexed strip draw needs the pipeline's strip index format to be the bound index format, none included" {
+	assert stripDrawRefusal(false, false) == "";
+	assert stripDrawRefusal(true, true) == "";
+	assert stripDrawRefusal(true, false) == "an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format";
 }

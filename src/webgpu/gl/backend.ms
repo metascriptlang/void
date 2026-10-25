@@ -91,7 +91,16 @@ import {
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
-import { addressesBinding, checkedBindingGroup, checkedUniformEntry, openDebugGroups } from "../validate.ms";
+import {
+	addressesBinding,
+	checkedBindingGroup,
+	checkedUniformEntry,
+	openDebugGroups,
+	checkedComputeModule,
+	checkedComputePipeline,
+	checkedRenderModule,
+	checkedStripDraw,
+} from "../validate.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
 import {
 	oglActiveTexture,
@@ -1933,9 +1942,6 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	const compute = descriptor.computeCode != "";
 	if (compute) {
 		stopOnNoCompute("a compute GPUShaderModule");
-		if (descriptor.vertexCode != "" || descriptor.fragmentCode != "") {
-			stop("a GPUShaderModule is either a compute module or a vertex and fragment module");
-		}
 	}
 	const id = allocate(shaders);
 	let slot: ShaderSlot = { id: 0 };
@@ -1953,11 +1959,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		if (kind == BindingKind.Uniform) {
 			if (compute) { stop(`uniform binding ${binding} in a compute stage is not ported to gl yet`); }
 			const size = descriptor.bindings[i].size;
-			if (size <= 0 || size % 16 != 0) { stop(`uniform binding ${binding} needs a block size in whole vec4s, not ${size}`); }
-			if ((size as int64) > deviceLimits.maxUniformBufferBindingSize) {
-				stop(`uniform binding ${binding} of ${size} bytes is over the limit of ${deviceLimits.maxUniformBufferBindingSize}`);
-			}
-			if (slot.uniformCount == GPU_MAX_UNIFORM_BLOCKS) { stop("a shader module has over 8 uniform blocks"); }
+			if (size % 16 != 0) { stop(`uniform binding ${binding} needs a block size in whole vec4s, not ${size}`); }
 			slot.uniforms[slot.uniformCount] = { binding: binding, size: size, location: -1, count: size / 16 };
 			slot.uniformCount += 1;
 			continue;
@@ -2006,13 +2008,6 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	if (compute) {
 		slot.compute = true;
 		slot.computeEntry = descriptor.computeEntryPoint == "" ? "main" : descriptor.computeEntryPoint;
-		const size: int32[3] = descriptor.workgroupSize;
-		if (
-			size[0] > deviceLimits.maxComputeWorkgroupSizeX || size[1] > deviceLimits.maxComputeWorkgroupSizeY
-				|| size[2] > deviceLimits.maxComputeWorkgroupSizeZ || size[0] * size[1] * size[2] > deviceLimits.maxComputeInvocationsPerWorkgroup
-		) {
-			stop(`workgroupSize ${size[0]}x${size[1]}x${size[2]} is over the limits ${deviceLimits.maxComputeWorkgroupSizeX}x${deviceLimits.maxComputeWorkgroupSizeY}x${deviceLimits.maxComputeWorkgroupSizeZ} and ${deviceLimits.maxComputeInvocationsPerWorkgroup} invocations`);
-		}
 		const shader = compileStage(GL_COMPUTE_SHADER, descriptor.computeCode, descriptor.computeEntryPoint, descriptor.label);
 		slot.program = oglLinkComputeProgram(shader);
 	} else {
@@ -2122,7 +2117,7 @@ function attributeNameOf(shader: int32, location: int32): string | null {
 export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
 	const id = allocate(pipelines);
 	const s = shaders.slotIndex(descriptor.vertex.module.id);
-	if (shaders.slots[s].compute) { stop("a compute GPUShaderModule cannot make a GPURenderPipeline"); }
+	checkedRenderModule(shaders.slots[s].compute);
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on GL");
 	}
@@ -2146,7 +2141,6 @@ function describePrimitive(descriptor: GPURenderPipelineDescriptor, ref slot: Pi
 	slot.stripRestart = strip;
 	const format: string = descriptor.primitive.stripIndexFormat;
 	if (format == "") { return; }
-	if (!strip) { stop(`primitive.stripIndexFormat '${format}' needs a strip topology`); }
 	slot.stripIndexType = match (format) {
 		"uint16" => GL_UNSIGNED_SHORT,
 		"uint32" => GL_UNSIGNED_INT,
@@ -2765,9 +2759,7 @@ export function drawIndexed(
 	checkDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance);
 	const pipeline = pipelines.slotIndex(bound.pipeline);
 	const mode = pipelines.slots[pipeline].primitive;
-	if (pipelines.slots[pipeline].stripIndexType != 0 && pipelines.slots[pipeline].stripIndexType != bound.indexType) {
-		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
-	}
+	checkedStripDraw(mode == GL_LINE_STRIP || mode == GL_TRIANGLE_STRIP, pipelines.slots[pipeline].stripIndexType == bound.indexType);
 	const offset = (firstIndex as int64) * (bound.indexSize as int64) + bound.indexOffset;
 	const indexType = bound.indexType;
 	if (baseVertex == 0 && firstInstance == 0) {
@@ -3526,11 +3518,8 @@ export function unmap(buffer: GPUBuffer): void {
 
 export function createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const s = shaders.slotIndex(descriptor.compute.module.id);
-	if (!shaders.slots[s].compute) { stop("createComputePipeline needs a GPUShaderModule made with computeCode"); }
 	const entry = descriptor.compute.entryPoint == "" ? "main" : descriptor.compute.entryPoint;
-	if (entry != shaders.slots[s].computeEntry) {
-		stop(`compute.entryPoint '${entry}' differs from the module's computeEntryPoint '${shaders.slots[s].computeEntry}'`);
-	}
+	checkedComputeModule(shaders.slots[s].compute, entry, shaders.slots[s].computeEntry);
 	const id = allocate(pipelines);
 	const slot: PipelineSlot = { id: id, shader: descriptor.compute.module.id, compute: true };
 	store(pipelines, slot);
@@ -3551,7 +3540,7 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	if (!pipelines.slots[pipelines.slotIndex(pipeline.id)].compute) { stop(`GPUPipeline ${pipeline.id} is not a compute pipeline`); }
+	checkedComputePipeline(pipeline.id, pipelines.slots[pipelines.slotIndex(pipeline.id)].compute);
 	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }

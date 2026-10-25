@@ -53,7 +53,9 @@ import {
 	checkedMarker,
 	checkedOutsidePass,
 	checkedPopGroup,
+	checkedPrimitive,
 	checkedPushGroup,
+	checkedShaderModule,
 	checkedShutdown,
 	checkedTexture,
 	resetEncoder,
@@ -100,10 +102,12 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createShaderModule(this self: GPUDevice, descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+	checkedShaderModule(descriptor, backend.limits());
 	return backend.createShaderModule(descriptor);
 }
 
 @inline export function createRenderPipeline(this self: GPUDevice, descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
+	checkedPrimitive(descriptor.primitive);
 	return backend.createRenderPipeline(descriptor);
 }
 

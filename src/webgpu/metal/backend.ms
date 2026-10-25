@@ -90,7 +90,17 @@ import {
 	checkedIntegerTexturePairs,
 	firstInstanceRefusal,
 } from "../types.ms";
-import { addressesBinding, checkedBindingGroup, checkedUniformEntry, computePassOpen, renderPassOpen } from "../validate.ms";
+import {
+	addressesBinding,
+	checkedBindingGroup,
+	checkedUniformEntry,
+	computePassOpen,
+	renderPassOpen,
+	checkedComputeModule,
+	checkedComputePipeline,
+	checkedRenderModule,
+	checkedStripDraw,
+} from "../validate.ms";
 import {
 	MtlBufferImpl,
 	MtlCommandBufferImpl,
@@ -747,12 +757,9 @@ function primitiveType(topology: string): int32 {
 	};
 }
 
-function stripIndexTypeOf(state: GPUPrimitiveState, primitive: int32): int32 {
+function stripIndexTypeOf(state: GPUPrimitiveState): int32 {
 	const format: string = state.stripIndexFormat;
 	if (format == "") { return NO_STRIP_INDEX; }
-	if (primitive != PRIMITIVE_LINE_STRIP && primitive != PRIMITIVE_TRIANGLE_STRIP) {
-		stop(`primitive.stripIndexFormat '${format}' needs a strip topology`);
-	}
 	return indexType(state.stripIndexFormat);
 }
 
@@ -1544,9 +1551,6 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	checkedIntegerTexturePairs(descriptor);
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
-	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "" || descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0)) {
-		stop("a GPUShaderModule is either a compute module or a vertex and fragment module");
-	}
 	const id = allocate(shaders);
 	let slot: ShaderSlot = { id: 0 };
 	for (let i = 0; i < descriptor.bindings.length; i++) {
@@ -1566,11 +1570,9 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		};
 		checkBinding(native, descriptor.bindings[i].group);
 		if (native.kind == BindingKind.Uniform) {
-			if (slot.uniformCount == GPU_MAX_UNIFORM_BLOCKS) { stop(`a shader module has over ${GPU_MAX_UNIFORM_BLOCKS} uniform blocks`); }
 			slot.uniforms[slot.uniformCount] = native;
 			slot.uniformCount += 1;
 		} else {
-			if (slot.resourceCount == GPU_MAX_BIND_GROUP_ENTRIES) { stop(`a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`); }
 			slot.resources[slot.resourceCount] = native;
 			slot.resourceCount += 1;
 		}
@@ -1580,12 +1582,6 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		const size: int32[3] = descriptor.workgroupSize;
 		if (size[0] <= 0 || size[1] <= 0 || size[2] <= 0) {
 			stop("a compute GPUShaderModule needs workgroupSize: Metal takes the threadgroup size at dispatch");
-		}
-		const limitX = mtlMaxThreadsPerThreadgroup(device, 0);
-		const limitY = mtlMaxThreadsPerThreadgroup(device, 1);
-		const limitZ = mtlMaxThreadsPerThreadgroup(device, 2);
-		if (size[0] > limitX || size[1] > limitY || size[2] > limitZ || size[0] * size[1] * size[2] > limitX) {
-			stop(`workgroupSize ${size[0]}x${size[1]}x${size[2]} is over the limits ${limitX}x${limitY}x${limitZ} and ${limitX} invocations`);
 		}
 		slot.workgroup = size;
 		slot.computeEntry = descriptor.computeEntryPoint == "" ? "_main" : descriptor.computeEntryPoint;
@@ -1638,9 +1634,6 @@ function checkBinding(native: NativeBinding, group: int32): void {
 	if (native.nativeSlot < 0 || native.nativeSlot >= limit) {
 		stop(`shader binding ${native.binding} has MSL slot ${native.nativeSlot}, outside 0..${limit - 1}`);
 	}
-	if (native.kind == BindingKind.Uniform && native.size <= 0) {
-		stop(`uniform binding ${native.binding} needs its block size`);
-	}
 }
 
 export function destroyShaderModule(module: GPUShaderModule): void {
@@ -1668,7 +1661,7 @@ function checkAttribute(shader: int32, location: int32): void {
 export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
 	const id = allocate(pipelines);
 	const s = shaders.slotIndex(descriptor.vertex.module.id);
-	if (shaders.slots[s].compute != null) { stop("a compute GPUShaderModule cannot make a GPURenderPipeline"); }
+	checkedRenderModule(shaders.slots[s].compute != null);
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		stop("vertex and fragment stages come from one GPUShaderModule on Metal");
 	}
@@ -1718,7 +1711,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	slot.depthBiasSlope = descriptor.depthStencil.depthBiasSlopeScale;
 	slot.depthBiasClamp = descriptor.depthStencil.depthBiasClamp;
 	slot.primitive = primitiveType(descriptor.primitive.topology);
-	slot.stripIndexType = stripIndexTypeOf(descriptor.primitive, slot.primitive);
+	slot.stripIndexType = stripIndexTypeOf(descriptor.primitive);
 	slot.cullMode = cullMode(descriptor.primitive.cullMode);
 	slot.winding = winding(descriptor.primitive.frontFace);
 	slot.id = id;
@@ -2149,9 +2142,7 @@ export function drawIndexed(
 	if (bound.indexBuffer == 0) { stop("drawIndexed without setIndexBuffer"); }
 	const p = pipelines.slotIndex(bound.pipeline);
 	const primitive = pipelines.slots[p].primitive;
-	if ((primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP) && pipelines.slots[p].stripIndexType != bound.indexType) {
-		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
-	}
+	checkedStripDraw(primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP, pipelines.slots[p].stripIndexType == bound.indexType);
 	const b = buffers.slotIndex(bound.indexBuffer);
 	mtlDrawIndexed(
 		encoder,
@@ -2503,11 +2494,8 @@ export function unmap(buffer: GPUBuffer): void {
 }
 export function createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const s = shaders.slotIndex(descriptor.compute.module.id);
-	if (shaders.slots[s].compute == null) { stop("createComputePipeline needs a GPUShaderModule made with computeCode"); }
 	const entry = descriptor.compute.entryPoint == "" ? "_main" : descriptor.compute.entryPoint;
-	if (entry != shaders.slots[s].computeEntry) {
-		stop(`compute.entryPoint '${entry}' differs from the module's computeEntryPoint '${shaders.slots[s].computeEntry}'`);
-	}
+	checkedComputeModule(shaders.slots[s].compute != null, entry, shaders.slots[s].computeEntry);
 	const id = allocate(pipelines);
 	const state = mtlNewComputePipeline(device, shaders.slots[s].compute, labelText(descriptor.label));
 	if (state == null) {
@@ -2537,7 +2525,7 @@ export function beginComputePass(passEncoder: GPUCommandEncoder, descriptor: GPU
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	if (!pipelines.slots[pipelines.slotIndex(pipeline.id)].compute) { stop(`GPUPipeline ${pipeline.id} is not a compute pipeline`); }
+	checkedComputePipeline(pipeline.id, pipelines.slots[pipelines.slotIndex(pipeline.id)].compute);
 	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }
