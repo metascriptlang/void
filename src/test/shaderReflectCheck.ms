@@ -458,5 +458,19 @@ test "a vertex entry that takes instanceIndex says so in its reflection" {
 		const after = reflectProgram(m, 0, 1, target);
 		assert after.ok && after.value.readsInstanceIndex;
 		assert after.value.attributes.length == before.value.attributes.length;
+		assert !after.value.readsVertexIndex;
+	}
+}
+
+test "a vertex entry that takes vertexIndex says so in its reflection" {
+	let m = blurModule();
+	const before = reflectProgram(m, 0, 1, ShaderTarget.Wgsl);
+	assert before.ok && !before.value.readsVertexIndex;
+	m.ios.push(io("vertexIndex", ShaderStage.Vertex, IoDirection.In,
+		scalarType(ScalarKind.U32), Builtin.VertexIndex));
+	for (const target of [ShaderTarget.Wgsl, ShaderTarget.Hlsl5, ShaderTarget.Glsl300es]) {
+		const after = reflectProgram(m, 0, 1, target);
+		assert after.ok && after.value.readsVertexIndex && !after.value.readsInstanceIndex;
+		assert after.value.attributes.length == before.value.attributes.length;
 	}
 }

@@ -237,6 +237,7 @@ when (webgpu) {
 			fragmentCode: TEXT_25ffdf0eb0321eee853bfdad508dbf26161c96460468372e8d42c6f2369ffae7,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, textureBinding: -1 },
@@ -257,6 +258,7 @@ when (webgpu) {
 			fragmentCode: TEXT_c79d9ff2c5cc394fb41575ea1c7a919482bfd1ed0332d6dd4b7f119156df8385,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, textureBinding: -1 },
@@ -277,6 +279,7 @@ when (webgpu) {
 			fragmentCode: TEXT_d63834a979464fed62e2437803b2c786e9cd11ef247a49f9ff8d221a8fd4e72b,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -304,6 +307,7 @@ when (webgpu) {
 			fragmentCode: TEXT_d63834a979464fed62e2437803b2c786e9cd11ef247a49f9ff8d221a8fd4e72b,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -336,6 +340,7 @@ when (webgpu) {
 			fragmentCode: TEXT_c7c0c771ee6a747e51d4a1226c67eb22c637369164aa64eb3692ee07735b1795,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -368,6 +373,7 @@ when (webgpu) {
 			fragmentCode: TEXT_8c1a18dec9cc6ca2c035813f80156eff72be360decb959c0bf2a79613dd1f6a8,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -400,6 +406,7 @@ when (webgpu) {
 			fragmentCode: TEXT_54730c0fa9753ba54e90816225b1c7666d45bacd7afd58e30687c8ba377aab8a,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -432,6 +439,7 @@ when (webgpu) {
 			fragmentCode: TEXT_5b5a8b34b6809d15da0c0727e23a3bc62c9326abebd820782ab11e1240f3e1af,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -464,6 +472,7 @@ when (webgpu) {
 			fragmentCode: TEXT_8f877ce9ff399e43103db0190efbae9518f7f33596be02ea7bdbdec4d8620d11,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -538,6 +547,7 @@ when (webgpu) {
 			fragmentCode: TEXT_2249fc2c0111b77bac63270ae887d82b94a46f9940da006bb96d95bf7ab3b410,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, textureBinding: -1 },
@@ -558,6 +568,7 @@ when (webgpu) {
 			fragmentCode: TEXT_3d672bdc78553ffd577a150d612ff6314537b7b481b4be299602d4da86ef360a,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, textureBinding: -1 },
@@ -578,6 +589,7 @@ when (webgpu) {
 			fragmentCode: TEXT_54730c0fa9753ba54e90816225b1c7666d45bacd7afd58e30687c8ba377aab8a,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -2678,6 +2690,7 @@ when (webgpu) {
 			fragmentCode: TEXT_c7c0c771ee6a747e51d4a1226c67eb22c637369164aa64eb3692ee07735b1795,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -2705,6 +2718,7 @@ when (webgpu) {
 			fragmentCode: TEXT_5b5a8b34b6809d15da0c0727e23a3bc62c9326abebd820782ab11e1240f3e1af,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -2784,6 +2798,7 @@ when (webgpu) {
 			fragmentCode: TEXT_8c1a18dec9cc6ca2c035813f80156eff72be360decb959c0bf2a79613dd1f6a8,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -2811,6 +2826,7 @@ when (webgpu) {
 			fragmentCode: TEXT_8f877ce9ff399e43103db0190efbae9518f7f33596be02ea7bdbdec4d8620d11,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, textureBinding: -1 },
@@ -10020,6 +10036,7 @@ when (webgpu) {
 			fragmentCode: TEXT_24bf3736fbce6053792627fe3ce1bf167b0006de9d20a9e6582c907ec7a76e7b,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -10040,6 +10057,7 @@ when (webgpu) {
 			fragmentCode: TEXT_a3da5ed4b4589fae7526b25ae87977fc1769e47385c5fb904d74c773ad805c25,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -10060,6 +10078,7 @@ when (webgpu) {
 			fragmentCode: TEXT_bee5f2a38bcf3f32ad12133dd30d9f616f533c65693c3e75410a3ba3dc27fc28,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -10087,6 +10106,7 @@ when (webgpu) {
 			fragmentCode: TEXT_bee5f2a38bcf3f32ad12133dd30d9f616f533c65693c3e75410a3ba3dc27fc28,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -10119,6 +10139,7 @@ when (webgpu) {
 			fragmentCode: TEXT_87d452b7862d1661739026f52f7d81f0522f812aa89b6b7c885a55eb3055659b,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -10151,6 +10172,7 @@ when (webgpu) {
 			fragmentCode: TEXT_6821cc822462050dabb147de975aa2588ba3196e2025bec682dd6ce62153c3a9,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -10183,6 +10205,7 @@ when (webgpu) {
 			fragmentCode: TEXT_5bb0ab766c59a9a780477bddcfc0840ad0093dace14ffaab316c6e97ca4a2cca,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -10215,6 +10238,7 @@ when (webgpu) {
 			fragmentCode: TEXT_840f123597808e6b8d5df3d33cc8fd935c393868e5e26ae74dfa826d47162dce,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -10247,6 +10271,7 @@ when (webgpu) {
 			fragmentCode: TEXT_04161da6a5bfea6054a01f74773268cd35a6cde090bca13e61e7f52d2aec9332,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -10322,6 +10347,7 @@ when (webgpu) {
 			fragmentCode: TEXT_3e4fa3fe5269be0ab3af70bd0d4cc91602308f946ca4e793511e50c54ea3637a,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -10342,6 +10368,7 @@ when (webgpu) {
 			fragmentCode: TEXT_1dc9397eb374037bde851d34e9378bd366790a8453e2a8fef45308ec2f0ada87,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -10362,6 +10389,7 @@ when (webgpu) {
 			fragmentCode: TEXT_5bb0ab766c59a9a780477bddcfc0840ad0093dace14ffaab316c6e97ca4a2cca,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -12532,6 +12560,7 @@ when (webgpu) {
 			fragmentCode: TEXT_87d452b7862d1661739026f52f7d81f0522f812aa89b6b7c885a55eb3055659b,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -12559,6 +12588,7 @@ when (webgpu) {
 			fragmentCode: TEXT_840f123597808e6b8d5df3d33cc8fd935c393868e5e26ae74dfa826d47162dce,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -12638,6 +12668,7 @@ when (webgpu) {
 			fragmentCode: TEXT_6821cc822462050dabb147de975aa2588ba3196e2025bec682dd6ce62153c3a9,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -12665,6 +12696,7 @@ when (webgpu) {
 			fragmentCode: TEXT_04161da6a5bfea6054a01f74773268cd35a6cde090bca13e61e7f52d2aec9332,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -20422,6 +20454,7 @@ when (webgpu) {
 			fragmentCode: TEXT_14d3c1a26b3f189b9819cdfb991bf926b1c13c7d058036459fde8ee9ff86b9b4,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_dbf1cac8fa7feab3412fce27949eccde4dd248a9930c471169fea1b8b9266c96),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -20442,6 +20475,7 @@ when (webgpu) {
 			fragmentCode: TEXT_d27950b7828f2c8f3caf254150619269fdf418b3b44bb4732e789b64ec4e7d1f,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_c258209947041308e053da85964a9a0d01dce071e7e6207be7d2194ed314b4d3),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -20462,6 +20496,7 @@ when (webgpu) {
 			fragmentCode: TEXT_3e37dd52209d33162465295843317346fa91ab5fbf2a2a8db870b595d0c4957a,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_07c4219ca0a9d551a8b0806ff7a8cb87ddec381219a10b850294daad1d7539d0),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -20489,6 +20524,7 @@ when (webgpu) {
 			fragmentCode: TEXT_3e37dd52209d33162465295843317346fa91ab5fbf2a2a8db870b595d0c4957a,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_07c4219ca0a9d551a8b0806ff7a8cb87ddec381219a10b850294daad1d7539d0),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -20521,6 +20557,7 @@ when (webgpu) {
 			fragmentCode: TEXT_c9e5819db1a300cce19a3c6cfe692a43cd53590a240b2ca81d69002a5ea85f4c,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_4ca153825126b1a895aac07aa999b53229d770752392edcaa341529dfe2f8024),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -20553,6 +20590,7 @@ when (webgpu) {
 			fragmentCode: TEXT_cd200c70f97f8623aef150d7a02eb0935be816d2b540b8b0c55b698106d3f8e2,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_04c226861bab907dcf191ff74bdaa669c7f6c62fb84f0ff04b31719a2c39b3e3),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -20585,6 +20623,7 @@ when (webgpu) {
 			fragmentCode: TEXT_c4639ef158038e7593962b351b15c53ce2bf1613e94ea8407a2fd6f17d2d5683,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_bb5b23284abb1a475afa6e4428941f49c8043c6270a1ad826fb4d12b80fd76e0),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -20617,6 +20656,7 @@ when (webgpu) {
 			fragmentCode: TEXT_7d5db7d05a45c7ec7e816aff921b9c064b78402c3565a310be51f4ac0fefc4f4,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_238dae9733649ec7174f25f6c92105214a6cd955e370ee0005eef63f7acdab4d),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -20649,6 +20689,7 @@ when (webgpu) {
 			fragmentCode: TEXT_99c8d6fbd421d160588fd6e7b3d09b1b92fd6d358e884ee68a6b045b360d0aab,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_afd0091e8a00891959731812490650b430972eab4676b3ce6e5e9a238210edd8),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -20723,6 +20764,7 @@ when (webgpu) {
 			fragmentCode: TEXT_bead502919bf531e4ca9f52ebc39cbd759ca785ae3bb8a92e33d6eda50962fa1,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_6c61ba01dfae99e4a3df37e7021ba8fa49ef88a2965fd3a02ebb5e7c055dd268),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -20743,6 +20785,7 @@ when (webgpu) {
 			fragmentCode: TEXT_5265c02923e39472607327e5531dc3a38e5ada0588403f58cdc7424888e99ddc,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_7760a08dc59ea514950a2517ce561e54814f798de44e70629795835a611b7eb5),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -20763,6 +20806,7 @@ when (webgpu) {
 			fragmentCode: TEXT_c4639ef158038e7593962b351b15c53ce2bf1613e94ea8407a2fd6f17d2d5683,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_bb5b23284abb1a475afa6e4428941f49c8043c6270a1ad826fb4d12b80fd76e0),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -22863,6 +22907,7 @@ when (webgpu) {
 			fragmentCode: TEXT_c9e5819db1a300cce19a3c6cfe692a43cd53590a240b2ca81d69002a5ea85f4c,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_4ca153825126b1a895aac07aa999b53229d770752392edcaa341529dfe2f8024),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -22890,6 +22935,7 @@ when (webgpu) {
 			fragmentCode: TEXT_7d5db7d05a45c7ec7e816aff921b9c064b78402c3565a310be51f4ac0fefc4f4,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_238dae9733649ec7174f25f6c92105214a6cd955e370ee0005eef63f7acdab4d),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -22969,6 +23015,7 @@ when (webgpu) {
 			fragmentCode: TEXT_cd200c70f97f8623aef150d7a02eb0935be816d2b540b8b0c55b698106d3f8e2,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_04c226861bab907dcf191ff74bdaa669c7f6c62fb84f0ff04b31719a2c39b3e3),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -22996,6 +23043,7 @@ when (webgpu) {
 			fragmentCode: TEXT_99c8d6fbd421d160588fd6e7b3d09b1b92fd6d358e884ee68a6b045b360d0aab,
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_afd0091e8a00891959731812490650b430972eab4676b3ce6e5e9a238210edd8),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30205,6 +30253,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_b6a6a4801a4461484a69635db49157ec4e7ff90460df1b240a149d915db2b1db),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -30225,6 +30274,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_5c21abb208b2b3d1f04e73128fa011bde4bb3010f4f638c675f90339945e49fc),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -30245,6 +30295,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_7fd0a9c3cfd1ff0345bf06ea86114ad6a0d6fbc5b6be97a597b7a1aadffc0c8f),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30272,6 +30323,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_7fd0a9c3cfd1ff0345bf06ea86114ad6a0d6fbc5b6be97a597b7a1aadffc0c8f),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30304,6 +30356,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_5905355054f18e738e07ebffb59a99d2a6fcf526cc32e7a3958e0ad50b055521),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30336,6 +30389,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_c05fdbd5881115e71f6cfc6a94569ad02518006a91ec4ce0c2d1ab0b1962ce62),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30368,6 +30422,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_4efc674b7de31d67399befe5f579b680b44c8ded4f2fa66f92468b56e75f6b09),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30400,6 +30455,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_a06d53955410e7133ee9fb4daa3a775303588ead4a12e32eff43762283566d0a),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30432,6 +30488,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_d86a788b6ce59d71d48714dac10f897d9f50b72adbd2783c0bd660dc37cd7606),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -30506,6 +30563,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_fb2aa69331f9ce35ff188e856b92df9e740a7c25c3ad2a27011249b12a590741),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -30526,6 +30584,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_eb97a22f391fb3078f5ad841a15e54d3d83f99caf916598b69cba9d26b674e0d),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -30546,6 +30605,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_4efc674b7de31d67399befe5f579b680b44c8ded4f2fa66f92468b56e75f6b09),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -32646,6 +32706,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_5905355054f18e738e07ebffb59a99d2a6fcf526cc32e7a3958e0ad50b055521),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -32673,6 +32734,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_a06d53955410e7133ee9fb4daa3a775303588ead4a12e32eff43762283566d0a),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -32752,6 +32814,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_c05fdbd5881115e71f6cfc6a94569ad02518006a91ec4ce0c2d1ab0b1962ce62),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -32779,6 +32842,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main0",
 			fragmentBytecode: shaderBytecodeFromBase64(METALLIB_d86a788b6ce59d71d48714dac10f897d9f50b72adbd2783c0bd660dc37cd7606),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -39988,6 +40052,7 @@ when (webgpu) {
 			fragmentCode: TEXT_f30a0e119964cb34cc751a1ebfe579559beb9f8b923347c8442f831ce44753cd,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -40008,6 +40073,7 @@ when (webgpu) {
 			fragmentCode: TEXT_d0be1d76249261308143ca0ee7610026ffe17686818a47ba15791b675cd7e18e,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -40028,6 +40094,7 @@ when (webgpu) {
 			fragmentCode: TEXT_3696aa1d7113093a1c613acfa0dc53cdf6933c102121088b58e402493bf4c193,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -40055,6 +40122,7 @@ when (webgpu) {
 			fragmentCode: TEXT_3696aa1d7113093a1c613acfa0dc53cdf6933c102121088b58e402493bf4c193,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -40087,6 +40155,7 @@ when (webgpu) {
 			fragmentCode: TEXT_762aa82b710ac61c319b8280b78a3937e54a22a0cbe1ee166d7f554b1d527c84,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -40119,6 +40188,7 @@ when (webgpu) {
 			fragmentCode: TEXT_40665cc79a6632ff4e8ab4a9b536d8f3411295f65d683a5fc43aac1eb802f7bc,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -40151,6 +40221,7 @@ when (webgpu) {
 			fragmentCode: TEXT_4c85a044d74dd6217d59b6240595979f43131a121ac01dc610cbf5374e6988c7,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -40183,6 +40254,7 @@ when (webgpu) {
 			fragmentCode: TEXT_68b5374caf201500660d62161d728dffbeefb9bf90a567da9df005a3d84ba45c,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -40215,6 +40287,7 @@ when (webgpu) {
 			fragmentCode: TEXT_4aee5df5ec79d37f0ec3a4aad3f7f9737b2a6b7fbac71cb88eed35d4ef07ed61,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -40290,6 +40363,7 @@ when (webgpu) {
 			fragmentCode: TEXT_e29a84189bff7cc5c02f42a110e31b59bfc491d6d73f5ddcaf0329ae4e5d3c3c,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -40310,6 +40384,7 @@ when (webgpu) {
 			fragmentCode: TEXT_df3c26e3a187bfaf302f68dc111c32d302415701177d5658ef308f27bbf03b9f,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: -1, nativeName: "frameParams", textureBinding: -1 },
@@ -40330,6 +40405,7 @@ when (webgpu) {
 			fragmentCode: TEXT_4c85a044d74dd6217d59b6240595979f43131a121ac01dc610cbf5374e6988c7,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -42500,6 +42576,7 @@ when (webgpu) {
 			fragmentCode: TEXT_762aa82b710ac61c319b8280b78a3937e54a22a0cbe1ee166d7f554b1d527c84,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -42527,6 +42604,7 @@ when (webgpu) {
 			fragmentCode: TEXT_68b5374caf201500660d62161d728dffbeefb9bf90a567da9df005a3d84ba45c,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -42606,6 +42684,7 @@ when (webgpu) {
 			fragmentCode: TEXT_40665cc79a6632ff4e8ab4a9b536d8f3411295f65d683a5fc43aac1eb802f7bc,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -42633,6 +42712,7 @@ when (webgpu) {
 			fragmentCode: TEXT_4aee5df5ec79d37f0ec3a4aad3f7f9737b2a6b7fbac71cb88eed35d4ef07ed61,
 			fragmentEntryPoint: "main",
 			fragmentBytecode: [],
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: -1, nativeName: "vertexParams", textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: -1, nativeName: "lightParams", textureBinding: -1 },
@@ -50205,6 +50285,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_659c0657e7260498bc0630345b175e88c7d78f99439538ba4cfeda411eb1761e),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -50225,6 +50306,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_bcf08e81a54e16e6db33d72b34a3e687c8e4b683c827c6576557896fc8d85241),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -50245,6 +50327,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_d177c8234f67d054f27e70bba19f7043774d1b1f9dc30f741be946a9e2e50aed),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -50272,6 +50355,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_d177c8234f67d054f27e70bba19f7043774d1b1f9dc30f741be946a9e2e50aed),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -50304,6 +50388,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_fae4ae69b2105a0bb7133d65c4d495849d89c2ced5c44ea36295012ca8acc417),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -50336,6 +50421,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_54b2f378d806a1767e2a1344afa42d82b51fb7b5151ff2a44b84086b43fc1a0b),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -50368,6 +50454,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_6245416cb1607211269439eaf974c7cffdf9f9e1091ddadadf2de3c766a1b3de),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -50400,6 +50487,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_467ebfd3dd023d470dc98a4470304eaebe6e28d291fcf23923855f786bfe186c),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -50432,6 +50520,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_7bf30e2359044f9e9636dce3fce97edd57bb4f953db3b2f46a7350efb6a54c04),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -50506,6 +50595,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_3cadd9b89ae7b6a22fb270e58a059480925e7261ca52e7eed2f597e263a5c459),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -50526,6 +50616,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_ef968594aa46f3b89d87b05310c35cd70187fcdc25c630f11665249896bde66d),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 6, kind: "uniform", visibility: 2, size: 48, nativeSlot: 6, textureBinding: -1 },
@@ -50546,6 +50637,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_6245416cb1607211269439eaf974c7cffdf9f9e1091ddadadf2de3c766a1b3de),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -52646,6 +52738,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_fae4ae69b2105a0bb7133d65c4d495849d89c2ced5c44ea36295012ca8acc417),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -52673,6 +52766,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_467ebfd3dd023d470dc98a4470304eaebe6e28d291fcf23923855f786bfe186c),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -52752,6 +52846,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_54b2f378d806a1767e2a1344afa42d82b51fb7b5151ff2a44b84086b43fc1a0b),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
@@ -52779,6 +52874,7 @@ when (webgpu) {
 			fragmentCode: "",
 			fragmentEntryPoint: "main",
 			fragmentBytecode: shaderBytecodeFromBase64(DXBC_7bf30e2359044f9e9636dce3fce97edd57bb4f953db3b2f46a7350efb6a54c04),
+			readsVertexIndex: true,
 			bindings: [
 				{ group: 0, binding: 0, kind: "uniform", visibility: 1, size: 112, nativeSlot: 0, textureBinding: -1 },
 				{ group: 0, binding: 1, kind: "uniform", visibility: 2, size: 432, nativeSlot: 1, textureBinding: -1 },
