@@ -23,6 +23,35 @@ export function binaryOperator(op: BinaryOp): string {
 	};
 }
 
+function unspelled(what: string, op: Intrinsic): never {
+	throw new Error("internal: no " + what + " spelling for " + op.toString());
+}
+
+export function isMath(op: Intrinsic): boolean {
+	return match (op) {
+		Intrinsic.Inverse | Intrinsic.UpperLeft3x3 | Intrinsic.Select | Intrinsic.LessThanEqual |
+			Intrinsic.TextureSample | Intrinsic.TextureLoad | Intrinsic.TextureStore |
+			Intrinsic.TextureDimensions | Intrinsic.TextureSampleCompare |
+			Intrinsic.TextureSampleCompareLevel | Intrinsic.TextureSampleLevel |
+			Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad | Intrinsic.WorkgroupBarrier |
+			Intrinsic.StorageBarrier | Intrinsic.AtomicLoad | Intrinsic.AtomicStore |
+			Intrinsic.AtomicAdd | Intrinsic.AtomicSub | Intrinsic.AtomicMax | Intrinsic.AtomicMin |
+			Intrinsic.AtomicAnd | Intrinsic.AtomicOr | Intrinsic.AtomicXor |
+			Intrinsic.AtomicExchange | Intrinsic.AtomicCompareExchangeWeak => false,
+		Intrinsic.Abs | Intrinsic.Sign | Intrinsic.Floor | Intrinsic.Ceil | Intrinsic.Trunc |
+			Intrinsic.Round | Intrinsic.Fract | Intrinsic.Sqrt | Intrinsic.InverseSqrt |
+			Intrinsic.Exp | Intrinsic.Exp2 | Intrinsic.Log | Intrinsic.Log2 | Intrinsic.Pow |
+			Intrinsic.Sin | Intrinsic.Cos | Intrinsic.Tan | Intrinsic.Asin | Intrinsic.Acos |
+			Intrinsic.Atan | Intrinsic.Atan2 | Intrinsic.Sinh | Intrinsic.Cosh | Intrinsic.Tanh |
+			Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min | Intrinsic.Max |
+			Intrinsic.Clamp | Intrinsic.Saturate | Intrinsic.Mix | Intrinsic.Step |
+			Intrinsic.Smoothstep | Intrinsic.Fma | Intrinsic.Dot | Intrinsic.Cross |
+			Intrinsic.Length | Intrinsic.Distance | Intrinsic.Normalize | Intrinsic.Reflect |
+			Intrinsic.Refract | Intrinsic.FaceForward | Intrinsic.Transpose |
+			Intrinsic.Determinant | Intrinsic.Dpdx | Intrinsic.Dpdy | Intrinsic.Fwidth => true,
+	};
+}
+
 export function mathName(op: Intrinsic): string {
 	return match (op) {
 		Intrinsic.Abs => "abs",
@@ -72,9 +101,56 @@ export function mathName(op: Intrinsic): string {
 		Intrinsic.Dpdx => "dFdx",
 		Intrinsic.Dpdy => "dFdy",
 		Intrinsic.Fwidth => "fwidth",
-		_ => "",
+		_ => { unspelled("math", op); },
 	};
 }
+
+export enum AtomicOp {
+	Load,
+	Store,
+	Add,
+	Sub,
+	Max,
+	Min,
+	And,
+	Or,
+	Xor,
+	Exchange,
+	CompareExchange,
+}
+
+export function atomicOp(op: Intrinsic): AtomicOp {
+	return match (op) {
+		Intrinsic.AtomicLoad => AtomicOp.Load,
+		Intrinsic.AtomicStore => AtomicOp.Store,
+		Intrinsic.AtomicAdd => AtomicOp.Add,
+		Intrinsic.AtomicSub => AtomicOp.Sub,
+		Intrinsic.AtomicMax => AtomicOp.Max,
+		Intrinsic.AtomicMin => AtomicOp.Min,
+		Intrinsic.AtomicAnd => AtomicOp.And,
+		Intrinsic.AtomicOr => AtomicOp.Or,
+		Intrinsic.AtomicXor => AtomicOp.Xor,
+		Intrinsic.AtomicExchange => AtomicOp.Exchange,
+		Intrinsic.AtomicCompareExchangeWeak => AtomicOp.CompareExchange,
+		_ => { unspelled("atomic", op); },
+	};
+}
+
+// GLSL 4.30 has no atomic load or store: a load is an add of 0 and a store an exchange.
+export function glslAtomicName(op: Intrinsic): string {
+	return match (atomicOp(op)) {
+		AtomicOp.Load | AtomicOp.Add | AtomicOp.Sub => "atomicAdd",
+		AtomicOp.Max => "atomicMax",
+		AtomicOp.Min => "atomicMin",
+		AtomicOp.And => "atomicAnd",
+		AtomicOp.Or => "atomicOr",
+		AtomicOp.Xor => "atomicXor",
+		AtomicOp.CompareExchange => "atomicCompSwap",
+		AtomicOp.Store | AtomicOp.Exchange => "atomicExchange",
+	};
+}
+
+export function exchangeSlot(scalar: ScalarKind): int32 { return scalar == ScalarKind.I32 ? 0 : 1; }
 
 export function floatText(v: float64): string {
 	return v == 0.0 && 1.0 / v < 0.0 ? "-0.0" : String(v);

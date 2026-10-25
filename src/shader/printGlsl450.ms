@@ -40,7 +40,7 @@ import {
 	nameStruct,
 	suffixed,
 } from "./names";
-import { binaryOperator, mathName } from "./spelling";
+import { binaryOperator, exchangeSlot, glslAtomicName, mathName } from "./spelling";
 
 // GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
 // texture and sampler types of Vulkan GLSL.
@@ -199,21 +199,6 @@ function typeName(p: Glsl, t: ShaderType): string {
 	};
 }
 
-function exchangeSlot(scalar: ScalarKind): int32 { return scalar == ScalarKind.I32 ? 0 : 1; }
-
-function atomicName(op: Intrinsic): string {
-	return match (op) {
-		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",
-		Intrinsic.AtomicMax => "atomicMax",
-		Intrinsic.AtomicMin => "atomicMin",
-		Intrinsic.AtomicAnd => "atomicAnd",
-		Intrinsic.AtomicOr => "atomicOr",
-		Intrinsic.AtomicXor => "atomicXor",
-		Intrinsic.AtomicCompareExchangeWeak => "atomicCompSwap",
-		_ => "atomicExchange",
-	};
-}
-
 function atomicText(e: ShaderExpr, args: string[]): string {
 	const unsigned = e.operands[0].type.scalar == ScalarKind.U32;
 	const rest = match (e.intrinsic) {
@@ -221,7 +206,7 @@ function atomicText(e: ShaderExpr, args: string[]): string {
 		Intrinsic.AtomicSub => "-(" + args[1] + ")",
 		_ => args.slice(1).join(", "),
 	};
-	return atomicName(e.intrinsic) + "(" + args[0] + ", " + rest + ")";
+	return glslAtomicName(e.intrinsic) + "(" + args[0] + ", " + rest + ")";
 }
 
 function exchangeLet(p: Glsl, s: ShaderStmt, indent: string): string {
@@ -376,15 +361,9 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.AtomicLoad | Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicSub |
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
 			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
-			Intrinsic.AtomicCompareExchangeWeak => atomicName(op),
-		_ => mathOrStop(op),
+			Intrinsic.AtomicCompareExchangeWeak => glslAtomicName(op),
+		_ => mathName(op),
 	};
-}
-
-function mathOrStop(op: Intrinsic): string {
-	const name = mathName(op);
-	if (name == "") { throw new Error("internal: printGlsl450 has no spelling for " + op.toString()); }
-	return name;
 }
 
 function intrinsic(p: Glsl, e: ShaderExpr): string {

@@ -32,9 +32,12 @@ import { builtinType, ioLocation } from "./irWalk";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
 import {
+	AtomicOp,
+	atomicOp,
 	binaryOperator,
 	floatText,
 	isIntMin,
+	isMath,
 	mathName,
 } from "./spelling";
 
@@ -89,7 +92,9 @@ function wgslReservedWords(): string[] {
 		}
 	}
 	for (let i = 0; i <= (Intrinsic.TextureDimensions as int32); i++) {
-		const name = builtinName(i as Intrinsic);
+		const op = i as Intrinsic;
+		if (!isMath(op) && op != Intrinsic.Select) { continue; }
+		const name = builtinName(op);
 		if (name != "") { words.push(name); }
 	}
 	return words;
@@ -264,18 +269,18 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const place = "&" + exprText(p, o[0]);
 	const rest = o.slice(1).map((a) => ", " + exprText(p, a)).join("");
-	const name = match (e.intrinsic) {
-		Intrinsic.AtomicLoad => "atomicLoad",
-		Intrinsic.AtomicStore => "atomicStore",
-		Intrinsic.AtomicAdd => "atomicAdd",
-		Intrinsic.AtomicSub => "atomicSub",
-		Intrinsic.AtomicMax => "atomicMax",
-		Intrinsic.AtomicMin => "atomicMin",
-		Intrinsic.AtomicAnd => "atomicAnd",
-		Intrinsic.AtomicOr => "atomicOr",
-		Intrinsic.AtomicXor => "atomicXor",
-		Intrinsic.AtomicExchange => "atomicExchange",
-		_ => "atomicCompareExchangeWeak",
+	const name = match (atomicOp(e.intrinsic)) {
+		AtomicOp.Load => "atomicLoad",
+		AtomicOp.Store => "atomicStore",
+		AtomicOp.Add => "atomicAdd",
+		AtomicOp.Sub => "atomicSub",
+		AtomicOp.Max => "atomicMax",
+		AtomicOp.Min => "atomicMin",
+		AtomicOp.And => "atomicAnd",
+		AtomicOp.Or => "atomicOr",
+		AtomicOp.Xor => "atomicXor",
+		AtomicOp.Exchange => "atomicExchange",
+		AtomicOp.CompareExchange => "atomicCompareExchangeWeak",
 	};
 	return name + "(" + place + rest + ")";
 }
@@ -420,7 +425,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
-	const name = builtinName(op);
+	const name = isMath(op) || op == Intrinsic.Select ? builtinName(op) : "";
 	if (op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth) {
 		p.derivatives = true;
 	}

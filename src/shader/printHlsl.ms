@@ -38,6 +38,8 @@ import {
 	structOrder,
 } from "./irWalk";
 import {
+	AtomicOp,
+	atomicOp,
 	binaryOperator,
 	floatText,
 	isIntMin,
@@ -251,15 +253,17 @@ function temporary(p: Printer, name: string): string {
 	return named;
 }
 
-function interlockedName(op: Intrinsic): string {
-	return match (op) {
-		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "InterlockedAdd",
-		Intrinsic.AtomicMax => "InterlockedMax",
-		Intrinsic.AtomicMin => "InterlockedMin",
-		Intrinsic.AtomicAnd => "InterlockedAnd",
-		Intrinsic.AtomicOr => "InterlockedOr",
-		Intrinsic.AtomicXor => "InterlockedXor",
-		_ => "InterlockedExchange",
+function interlockedName(p: Printer, op: Intrinsic): string {
+	return match (atomicOp(op)) {
+		AtomicOp.Load | AtomicOp.Add | AtomicOp.Sub => "InterlockedAdd",
+		AtomicOp.Max => "InterlockedMax",
+		AtomicOp.Min => "InterlockedMin",
+		AtomicOp.And => "InterlockedAnd",
+		AtomicOp.Or => "InterlockedOr",
+		AtomicOp.Xor => "InterlockedXor",
+		AtomicOp.Store | AtomicOp.Exchange => "InterlockedExchange",
+		AtomicOp.CompareExchange => fail(p, "an atomic compare-exchange through " +
+			"InterlockedExchange"),
 	};
 }
 
@@ -294,7 +298,7 @@ function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string):
 		out = temporary(p, "exchanged");
 		head = at + scalar + " " + out + ";\n";
 	}
-	return head + at + interlockedName(e.intrinsic) + "(" + place + ", " + value +
+	return head + at + interlockedName(p, e.intrinsic) + "(" + place + ", " + value +
 		(out == "" ? "" : ", " + out) + ");\n";
 }
 

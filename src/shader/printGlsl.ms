@@ -41,7 +41,9 @@ import {
 } from "./irWalk";
 import {
 	binaryOperator,
+	exchangeSlot,
 	floatText,
+	glslAtomicName,
 	isIntMin,
 	mathName,
 	pointed,
@@ -254,21 +256,6 @@ function typeName(p: Printer, t: ShaderType): string {
 	};
 }
 
-function exchangeSlot(scalar: ScalarKind): int32 { return scalar == ScalarKind.I32 ? 0 : 1; }
-
-function atomicName(op: Intrinsic): string {
-	return match (op) {
-		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",
-		Intrinsic.AtomicMax => "atomicMax",
-		Intrinsic.AtomicMin => "atomicMin",
-		Intrinsic.AtomicAnd => "atomicAnd",
-		Intrinsic.AtomicOr => "atomicOr",
-		Intrinsic.AtomicXor => "atomicXor",
-		Intrinsic.AtomicCompareExchangeWeak => "atomicCompSwap",
-		_ => "atomicExchange",
-	};
-}
-
 // SPIRV-Cross's GLSL atomics (measured through sokol-shdc): GLSL 4.30 has no atomic load or
 // store, so a load is an add of 0 and a store an exchange.
 function atomicText(p: Printer, e: ShaderExpr): string {
@@ -279,7 +266,7 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
 		_ => o.slice(1).map((a) => expr(p, a)).join(", "),
 	};
-	return atomicName(e.intrinsic) + "(" + expr(p, o[0]) + ", " + value + ")";
+	return glslAtomicName(e.intrinsic) + "(" + expr(p, o[0]) + ", " + value + ")";
 }
 
 function exchangeLet(p: Printer, s: ShaderStmt, at: string): string {
