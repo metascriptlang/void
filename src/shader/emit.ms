@@ -28,6 +28,7 @@ import {
 	Mat3x3f,
 	Mat4x4f,
 	Sampler,
+	SamplerComparison,
 	StorageTexture2d,
 	StorageTexture2dArray,
 	StorageTexture3d,
@@ -35,6 +36,9 @@ import {
 	Texture2dArray,
 	Texture2dU32,
 	TextureCube,
+	TextureDepth2d,
+	TextureDepth2dArray,
+	TextureDepthCube,
 	Vec2f,
 	Vec2i,
 	Vec2u,
@@ -515,9 +519,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const storageTextureNodes = [getTypeImpl(StorageTexture2d),
 		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d)];
 	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
-	const uintTextureNode = getTypeImpl(Texture2dU32);
-	const arrayTextureNode = getTypeImpl(Texture2dArray);
-	const cubeTextureNode = getTypeImpl(TextureCube);
+	const viewNodes = [getTypeImpl(Texture2dU32), getTypeImpl(Texture2dArray),
+		getTypeImpl(TextureCube), getTypeImpl(TextureDepth2d),
+		getTypeImpl(TextureDepth2dArray), getTypeImpl(TextureDepthCube)];
+	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube,
+		TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube];
+	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32,
+		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
+	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float,
+		SampleType.Depth, SampleType.Depth, SampleType.Depth];
+	const comparisonNode = getTypeImpl(SamplerComparison);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
 	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
@@ -876,14 +887,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				r.access = mode;
 				continue;
 			}
-			if (sameType(t, uintTextureNode) || sameType(t, arrayTextureNode) ||
-				sameType(t, cubeTextureNode)) {
-				const uint = sameType(t, uintTextureNode);
-				const r = addResource(ResourceKind.Texture, name, slot, uint ?
-					textureType(TextureShape.D2, ScalarKind.U32) :
-					textureType(sameType(t, cubeTextureNode) ? TextureShape.Cube :
-						TextureShape.D2Array, ScalarKind.F32), binding);
-				r.sampleType = uint ? SampleType.Uint :
+			const view = viewNodes.findIndex((n) => sameType(t, n));
+			if (view >= 0) {
+				const r = addResource(ResourceKind.Texture, name, slot,
+					textureType(viewShapes[view], viewTexels[view]), binding);
+				r.sampleType = viewSamples[view] != SampleType.Float ? viewSamples[view] :
 					sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
 			} else if (sameType(t, textureNode)) {
 				const kind = sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
@@ -895,6 +903,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					samplerTypeOf(samplerKind);
 				const r = addResource(ResourceKind.Sampler, name, slot, samplerType(), binding);
 				r.samplerType = kind;
+			} else if (sameType(t, comparisonNode)) {
+				const r = addResource(ResourceKind.Sampler, name, slot, samplerType(), binding);
+				r.samplerType = SamplerType.Comparison;
 			} else {
 				const block = fieldsOf(t);
 				if (block == null) {
@@ -1005,12 +1016,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
 		}
 		if (sameType(t, textureNode)) { return textureType(TextureShape.D2, ScalarKind.F32); }
-		if (sameType(t, uintTextureNode)) { return textureType(TextureShape.D2, ScalarKind.U32); }
-		if (sameType(t, arrayTextureNode)) {
-			return textureType(TextureShape.D2Array, ScalarKind.F32);
-		}
-		if (sameType(t, cubeTextureNode)) { return textureType(TextureShape.Cube, ScalarKind.F32); }
-		if (sameType(t, samplerNode)) { return samplerType(); }
+		const view = viewNodes.findIndex((n) => sameType(t, n));
+		if (view >= 0) { return textureType(viewShapes[view], viewTexels[view]); }
+		if (sameType(t, samplerNode) || sameType(t, comparisonNode)) { return samplerType(); }
 		const atomic = atomicOrExchange(t);
 		if (atomic != null) { return atomic; }
 		if (isAuthorStruct(t)) { return structType(knownStruct(t)); }
@@ -1576,6 +1584,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
 				intrinsicOf(name == "textureSample" ? Intrinsic.TextureSample :
 					Intrinsic.TextureSampleBias, type, args),
+			"textureSampleCompare" => fragmentOnly ?
+				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
+				intrinsicOf(Intrinsic.TextureSampleCompare, type, args),
+			"textureSampleCompareLevel" =>
+				intrinsicOf(Intrinsic.TextureSampleCompareLevel, type, args),
 			"textureSampleLevel" => intrinsicOf(Intrinsic.TextureSampleLevel, type, args),
 			"textureSampleGrad" => intrinsicOf(Intrinsic.TextureSampleGrad, type, args),
 			_ => fail(n, "./std's '" + name + "' has no GLSL spelling"),

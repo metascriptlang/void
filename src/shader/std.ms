@@ -1,4 +1,4 @@
-import { Wrap } from "../gpu/state";
+import { Compare, Wrap } from "../gpu/state";
 
 export struct Vec2f {
 	x: float32;
@@ -2223,12 +2223,16 @@ export struct TextureCube {
 
 // The face a direction reads and where on it, by the OpenGL specification's cube map table
 // ("Cube Map Texture Selection"): the major axis picks the face, a tie going to x, then y.
-function cubeFaceOf(texture: TextureCube, dir: Vec3f): Texture2d {
+function cubeFaceIndex(dir: Vec3f): int32 {
 	const ax = abs(dir.x);
 	const ay = abs(dir.y);
 	const az = abs(dir.z);
-	const face = ax >= ay && ax >= az ? (dir.x >= 0.0 ? 0 : 1) :
+	return ax >= ay && ax >= az ? (dir.x >= 0.0 ? 0 : 1) :
 		ay >= az ? (dir.y >= 0.0 ? 2 : 3) : (dir.z >= 0.0 ? 4 : 5);
+}
+
+function cubeFaceOf(texture: TextureCube, dir: Vec3f): Texture2d {
+	const face = cubeFaceIndex(dir);
 	const size = texture.size * texture.size * 4;
 	return {
 		width: texture.size,
@@ -2331,4 +2335,135 @@ export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): 
 	const top = lerp(texelAt(texture, x0, y0), texelAt(texture, x1, y0), fractionU);
 	const bottom = lerp(texelAt(texture, x0, y1), texelAt(texture, x1, y1), fractionU);
 	return lerp(top, bottom, fractionV);
+}
+
+// WGSL's sampler_comparison: Sampler's filter and wrap, and the function a depth texel is
+// compared with, as the Vulkan specification's "Depth Compare Operation" (reference OP texel).
+export struct SamplerComparison {
+	nearest: boolean;
+	wrap: Wrap;
+	compare: Compare;
+}
+
+// WGSL's texture_depth_2d, texture_depth_2d_array and texture_depth_cube: one float32 a texel.
+export struct TextureDepth2d {
+	width: int32;
+	height: int32;
+	texels: float32[];
+}
+
+export struct TextureDepth2dArray {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: float32[];
+}
+
+export struct TextureDepthCube {
+	size: int32;
+	texels: float32[];
+}
+
+function depthPasses(compare: Compare, reference: float32, depth: float32): float32 {
+	const passes = match (compare) {
+		Compare.Always => true,
+		Compare.Never => false,
+		Compare.Equal => reference == depth,
+		Compare.NotEqual => reference != depth,
+		Compare.Greater => reference > depth,
+		Compare.GreaterEqual => reference >= depth,
+		Compare.Less => reference < depth,
+		Compare.LessEqual => reference <= depth,
+	};
+	return passes ? 1.0 : 0.0;
+}
+
+// The comparison runs per texel before the filter mixes the results (PCF), so the compared
+// texels become a color texture whose x is the result, and textureSample does the rest.
+function comparedTexels(
+	sampler: SamplerComparison,
+	reference: float32,
+	texels: float32[],
+	first: int32,
+	size: Vec2i,
+): Texture2d {
+	let compared: float32[] = [];
+	for (let i = 0; i < size.x * size.y; i++) {
+		compared.push(depthPasses(sampler.compare, reference, texels[first + i]));
+		compared.push(0.0);
+		compared.push(0.0);
+		compared.push(0.0);
+	}
+	return { width: size.x, height: size.y, texels: compared };
+}
+
+function plainSampler(sampler: SamplerComparison): Sampler {
+	return { nearest: sampler.nearest, wrap: sampler.wrap };
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels, 0, size);
+	return textureSample(compared, plainSampler(sampler), uv).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels,
+		layer * texture.width * texture.height, size);
+	return textureSample(compared, plainSampler(sampler), uv).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepthCube,
+	sampler: SamplerComparison,
+	dir: Vec3f,
+	reference: float32,
+): float32 {
+	const size: Vec2i = { x: texture.size, y: texture.size };
+	const compared = comparedTexels(sampler, reference, texture.texels,
+		cubeFaceIndex(dir) * texture.size * texture.size, size);
+	const clamped: Sampler = { nearest: sampler.nearest, wrap: Wrap.Clamp };
+	return textureSample(compared, clamped, cubeFaceUv(dir)).x;
+}
+
+// A CPU depth texture has one level, so the level form compares as textureSampleCompare does.
+export function textureSampleCompareLevel(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, reference);
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, layer, reference);
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepthCube,
+	sampler: SamplerComparison,
+	dir: Vec3f,
+	reference: float32,
+): float32 {
+	return textureSampleCompare(texture, sampler, dir, reference);
 }
