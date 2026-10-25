@@ -305,6 +305,15 @@ export macro shaderBuild(
 		array(bindings),
 		array(attributes),
 	];
+	if (s.reflection.readsVertexIndex) {
+		descriptorKeys.push("readsVertexIndex");
+		descriptorValues.push({
+			kind: NodeKind.BooleanLiteral,
+			line: name.line,
+			column: name.column,
+			boolValue: true,
+		});
+	}
 	if (s.reflection.readsInstanceIndex) {
 		descriptorKeys.push("readsInstanceIndex");
 		descriptorValues.push({
