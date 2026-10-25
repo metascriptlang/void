@@ -10,6 +10,12 @@ import {
 	doorRegisterLayouts,
 	doorRegisterPrograms,
 } from "../../src/gpu/doorGpu.ms";
+import {
+	DOOR_BINDING_LENGTH,
+	DOOR_BINDING_SAMPLER,
+	DOOR_BINDING_VERTEX_BUFFER,
+	DOOR_BINDING_VIEW,
+} from "../../src/gpu/doorWords.h";
 import { GPUShaderModuleDescriptor } from "../../src/webgpu/types.ms";
 import { gpuCopyShaderModule } from "./gpuCopyModules.ms";
 import { env } from "std/process";
@@ -42,7 +48,11 @@ export function foreignLayout(): int32 {
 export function drawForeign(pipeline: uint32, texture: uint32, sampler: uint32): void {
 	if (vertices == 0) { vertices = doorMakeBufferOf(DOOR_BUFFER_VERTEX, TRIANGLE); }
 	doorApplyPipeline(pipeline);
-	const bindings: uint32[12] = [vertices, 0, 0, texture, 0, 0, 0, 0, 0, sampler, 0, 0];
+	let bindings: uint32[17] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+	assert bindings.length == DOOR_BINDING_LENGTH;
+	bindings[DOOR_BINDING_VERTEX_BUFFER] = vertices;
+	bindings[DOOR_BINDING_VIEW] = texture;
+	bindings[DOOR_BINDING_SAMPLER] = sampler;
 	doorApplyBindings(bindings, []);
 	doorDraw(0, 3, 1);
 }
