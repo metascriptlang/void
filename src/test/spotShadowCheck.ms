@@ -17,6 +17,7 @@ import { DrawContext, DrawItem } from "../void3d/draw";
 import {
 	SHADOW_CASCADE_FAR,
 	SHADOW_CASCADE_INFO,
+	SHADOW_CASCADE_FILTER,
 	SHADOW_SPOT_BIAS,
 	SHADOW_SPOT_OPACITY,
 	SHADOW_UNIFORM_LENGTH,
@@ -38,6 +39,8 @@ import {
 	ShadowError,
 	DIR_SHADOW_UNIFORM_LENGTH,
 	ShadowKind,
+	ShadowSamplingKind,
+	SunLayers,
 	carryShadows,
 } from "../void3d/dirShadowMap";
 import {
@@ -229,7 +232,8 @@ function spotLights(values: Vec<float32>): LitBindings {
 		},
 		shadowParams: {
 			cascadeMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP], cascadeFar: NONE,
-			cascadeInfo: NONE, cascadeView: NONE, spotMatrix: NO_MAP, spotShadow: NONE,
+			cascadeInfo: NONE, cascadeView: NONE, cascadeFilter: NONE, spotMatrix: NO_MAP,
+			spotShadow: NONE,
 			pointMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP], pointShadow: NONE,
 			pointLight: NONE,
 		},
@@ -526,4 +530,49 @@ test "a sun refuses a cascade config whose bounds do not rise, keeping the one i
 	const falling: Result<int32, CascadeError> =
 		sun.setCascades({ bounds: [20.0, 10.0], overlap: 0.2, minimumDistance: 0.1 });
 	assert !falling.ok && falling.error == CascadeError.Bounds && sun.cascades === null;
+}
+
+// An 8x8 spot map shadowed left of its middle column and open right of it.
+function spotSplit(b: LitBindings, view: CameraView, pcf: float32): LitBindings {
+	let texels: float32[] = [];
+	for (let y = 0; y < 8; y++) {
+		for (let x = 0; x < 8; x++) {
+			const depth: float32 = x < 4 ? 0.0 : 1.0;
+			const texel: float32[] = [depth, 0.0, 0.0, 1.0];
+			for (const v of texel) { texels.push(v); }
+		}
+	}
+	return {
+		...b,
+		shadowParams: {
+			...b.shadowParams, spotMatrix: spotMapOf(view), spotShadow: vec4f(0.0, 1.0, 8.0, pcf),
+		},
+		spotShadowMap: { width: 8, height: 8, layers: 1, texels: texels },
+	};
+}
+
+test "a Pcf spot map softens the edge over its Poisson taps and leaves the far sides whole" {
+	const view: CameraView = viewOf(downSpot(true));
+	const base: LitBindings = spotLights(downSpot(true));
+	const middle: Vec3f = vec3f(0.0, 2.0, 0.0);
+	assert spotShadowAt(middle, spotSplit(base, view, 0.0)) == 1.0;
+	const soft: float32 = spotShadowAt(middle, spotSplit(base, view, 2.0));
+	assert soft > 0.0 && soft < 1.0;
+	const left: float32 = spotShadowAt(vec3f(-1.4, 2.0, 0.0), spotSplit(base, view, 2.0));
+	const right: float32 = spotShadowAt(vec3f(1.4, 2.0, 0.0), spotSplit(base, view, 2.0));
+	assert Math.min(left, right) == 0.0 && Math.max(left, right) == 1.0;
+}
+
+test "a map packs its PCF scale only when it samples with Pcf" {
+	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
+	if (!made.ok) { unreachable; }
+	let sun: DirShadowMap = made.value;
+	const layers: SunLayers = { clips: [identity()], far: [10.0] };
+	sun.packSun(layers, identity(), vec3(0.0, 0.0, 1.0));
+	assert sun.shadowValues[SHADOW_CASCADE_FILTER] == 0.0;
+	sun.samplingKind = ShadowSamplingKind.Pcf;
+	sun.pcfScale = 1.5;
+	sun.packSun(layers, identity(), vec3(0.0, 0.0, 1.0));
+	assert sun.shadowValues[SHADOW_CASCADE_FILTER] == 1.5;
 }

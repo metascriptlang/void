@@ -3,6 +3,7 @@ import {
 	SHADOW_CASCADE_FAR,
 	SHADOW_CASCADE_INFO,
 	SHADOW_CASCADE_VIEW,
+	SHADOW_CASCADE_FILTER,
 	SHADOW_SPOT_BASE,
 	SHADOW_SPOT_BIAS,
 	SHADOW_POINT_BASE,
@@ -33,6 +34,7 @@ export function oneCascade(
 		cascadeFar: vec4f(ALL_DEPTHS, 0.0, 0.0, 0.0),
 		cascadeInfo: vec4f(1.0, 0.0, sun.x, sun.y),
 		cascadeView: vec4f(0.0, 0.0, 1.0, size),
+		cascadeFilter: NONE,
 		spotMatrix: spotMatrix,
 		spotShadow: vec4f(spot.x, spot.y, size, 0.0),
 		pointMatrices: [ZERO, ZERO, ZERO, ZERO, ZERO, ZERO],
@@ -58,6 +60,7 @@ export function shadowParamsOf(values: Vec<float32>): ShadowParams {
 		cascadeFar: quadAt(values, SHADOW_CASCADE_FAR),
 		cascadeInfo: quadAt(values, SHADOW_CASCADE_INFO),
 		cascadeView: quadAt(values, SHADOW_CASCADE_VIEW),
+		cascadeFilter: quadAt(values, SHADOW_CASCADE_FILTER),
 		spotMatrix: matrixAt(values, SHADOW_SPOT_BASE),
 		spotShadow: quadAt(values, SHADOW_SPOT_BIAS),
 		pointMatrices: [

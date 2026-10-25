@@ -14,6 +14,7 @@ import {
 	SHADOW_POINT_BASE,
 	SHADOW_POINT_OPACITY,
 	SHADOW_POINT_POSITION,
+	SHADOW_POINT_FILTER,
 	LIGHT_UNIFORM_LENGTH,
 	LIGHT_RECORD_COLOR,
 	LIGHT_RECORD_LENGTH,
@@ -31,6 +32,7 @@ import {
 	DirShadowMap,
 	ShadowError,
 	ShadowKind,
+	ShadowSamplingKind,
 	DIR_SHADOW_UNIFORM_LENGTH,
 	carryShadows,
 } from "../void3d/dirShadowMap";
@@ -161,11 +163,15 @@ function faces(blocked: float32): Texture2dArray {
 	return { width: 1, height: 1, layers: 6, texels: texels };
 }
 
-function packed(values: Vec<float32>, opacity: float32): Vec<float32> {
+function packed(values: Vec<float32>, opacity: float32, pcf: float32): Vec<float32> {
 	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.createPoint(context, 1);
 	if (!made.ok) { unreachable; }
 	let map: DirShadowMap = made.value;
+	if (pcf > 0.0) {
+		map.samplingKind = ShadowSamplingKind.Pcf;
+		map.pcfScale = pcf;
+	}
 	let clips: Vec<Mat4> = [];
 	for (const view of viewsOf(values)) { clips.push(view.viewProj); }
 	map.packPoint(clips, TOP_LEFT_MAP, LIGHT_AT, opacity);
@@ -174,7 +180,9 @@ function packed(values: Vec<float32>, opacity: float32): Vec<float32> {
 	return move out;
 }
 
-function pointBindings(values: Vec<float32>, opacity: float32, blocked: float32): LitBindings {
+function pointBindings(
+	values: Vec<float32>, opacity: float32, blocked: float32, pcf: float32 = 0.0,
+): LitBindings {
 	const lights: SceneLights =
 		sceneLights(vec4f(0.0, 0.0, 0.0, 1.0), NONE, NONE, recordsOf(values));
 	return {
@@ -196,7 +204,7 @@ function pointBindings(values: Vec<float32>, opacity: float32, blocked: float32)
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),
 		},
-		shadowParams: shadowParamsOf(packed(values, opacity)),
+		shadowParams: shadowParamsOf(packed(values, opacity, pcf)),
 		shadowMap: oneLayer(white()),
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(white()),
@@ -299,4 +307,16 @@ test "a point map alone owns the frame's block, and beside the sun's it lends it
 	attachShadow(core, null);
 	attachPointShadow(core, null);
 	assert core.sceneGlobals.length == 3;
+}
+
+test "a Pcf point map turns its taps around the receiver's direction and averages their faces" {
+	const values: Vec<float32> = pointLights(true);
+	const at: Vec3f = vec3f(LIGHT_AT.x + 2.0, LIGHT_AT.y + 0.3, LIGHT_AT.z - 0.2);
+	assert pointShadowAt(at, pointBindings(values, 1.0, 0.0)) == 0.0;
+	const filtered: float32 = pointShadowAt(at, pointBindings(values, 1.0, 0.0, 0.5));
+	assert filtered > 0.0 && filtered < 1.0;
+	assert pointShadowAt(at, pointBindings(values, 1.0, 1.0, 0.5)) == 1.0;
+	const packedScale: Vec<float32> = packed(values, 1.0, 0.5);
+	assert packedScale[SHADOW_POINT_FILTER] == 0.5;
+	assert packed(values, 1.0, 0.0)[SHADOW_POINT_FILTER] == 0.0;
 }
