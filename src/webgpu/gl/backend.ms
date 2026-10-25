@@ -53,14 +53,12 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
-	checkedBufferCopy,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
 	checkedResolveQuerySet,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
-	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
@@ -70,7 +68,6 @@ import {
 } from "../types.ms";
 import {
 	currentFrame,
-	checkedCopyRegion,
 	entryOf,
 	clampedAnisotropy,
 	cachedLimits,
@@ -2856,22 +2853,9 @@ function applyUniforms(): void {
 	}
 }
 
-function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
+function copyableBuffer(buffer: GPUBuffer, member: string): int32 {
 	const index = bufferRecords.slotIndex(buffer.id);
-	if (!has(bufferRecords.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
-	if (bufferRecords.slots[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
 	if (buffers[index].uniform) { stop(`${member}: GPUBuffer ${buffer.id} is a CPU shadow uniform block on gl and cannot be copied`); }
-	return index;
-}
-
-function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
-	const index = textureRecords.slotIndex(info.texture.id);
-	if (!has(textureRecords.slots[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
-	if (textureRecords.slots[index].swapchainView != 0) {
-		if (flag != (GPUTextureUsage.COPY_SRC as int32)) { stop(`${member}: the swapchain texture is the default framebuffer on gl and is only read`); }
-		return index;
-	}
-	if (textureRecords.slots[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
 	return index;
 }
 
@@ -2889,10 +2873,8 @@ function texelFormatOf(index: int32, member: string, writes: boolean, copy: GPUT
 @inline function textureName(index: int32): uint32 { return textures[index].names[textures[index].activeSlot]; }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
-	const from = copyableBuffer(source, "copyBufferToBuffer source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyableBuffer(destination, "copyBufferToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
-	checkedBufferCopy(source.id, bufferRecords.slots[from].size, sourceOffset, destination.id, bufferRecords.slots[to].size, destinationOffset, size);
-	if (size == 0) { return; }
+	const from = copyableBuffer(source, "copyBufferToBuffer source");
+	const to = copyableBuffer(destination, "copyBufferToBuffer destination");
 	if (from == to) { stop(`copyBufferToBuffer inside GPUBuffer ${source.id} is not ported to gl yet: a written buffer rotates its in-flight copies`); }
 	claimBufferCopy(to, destinationOffset, size, "copyBufferToBuffer");
 	oglCopyBufferDataUncached(bufferName(from), sourceOffset, bufferName(to), destinationOffset, size);
@@ -2921,9 +2903,8 @@ function flipBufferRows(index: int32, offset: int64, span: int64, rowStride: int
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
-	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyableBuffer(destination.buffer, "copyTextureToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
-	checkedCopyRegion("copyTextureToBuffer source", textureRecords.slots[from], source, size);
+	const from = textureRecords.slotIndex(source.texture.id);
+	const to = copyableBuffer(destination.buffer, "copyTextureToBuffer destination");
 	const info = texelFormatOf(from, "copyTextureToBuffer source", false, source, size);
 	checkDepthReadback(info);
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", info.bytesPerPixel, bufferRecords.slots[to].size, destination, size);
@@ -2978,9 +2959,8 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 }
 
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	checkedCopyRegion("copyBufferToTexture destination", textureRecords.slots[to], destination, size);
+	const from = copyableBuffer(source.buffer, "copyBufferToTexture source");
+	const to = textureRecords.slotIndex(destination.texture.id);
 	const info = texelFormatOf(to, "copyBufferToTexture destination", true, destination, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", info.bytesPerPixel, bufferRecords.slots[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
@@ -3029,24 +3009,10 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 }
 
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
+	const from = textureRecords.slotIndex(source.texture.id);
+	const to = textureRecords.slotIndex(destination.texture.id);
 	if (textures[from].info.depth) { stop("copyTextureToTexture of a depth GPUTexture is not ported to gl yet"); }
 	if (textureRecords.slots[from].swapchainView != 0) { stop("copyTextureToTexture from the swapchain texture: the default framebuffer reads only into a buffer on gl"); }
-	checkedCopyRegion("copyTextureToTexture source", textureRecords.slots[from], source, size);
-	checkedCopyRegion("copyTextureToTexture destination", textureRecords.slots[to], destination, size);
-	checkedTextureToTextureCopy(
-		source,
-		destination,
-		size,
-		textureRecords.slots[from].format,
-		textureRecords.slots[to].format,
-		textureRecords.slots[from].volume,
-		textureRecords.slots[to].volume,
-		textures[from].info.depth,
-		textureRecords.slots[from].width,
-		textureRecords.slots[from].height,
-	);
 	if (from != to) { rotateOnWholeWrite(to, size); }
 	const fromFormat: string = textureRecords.slots[from].format;
 	checkError("copyTextureToTexture");

@@ -27,6 +27,8 @@ import {
 	beginOcclusionRefusal,
 	bindGroupIndexRefusal,
 	bindGroupSetRefusal,
+	copyBufferRefusal,
+	copyTextureRefusal,
 	uniformEntryCount,
 	beginPassRefusal,
 	bufferRefusal,
@@ -81,7 +83,7 @@ import {
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
-import { BufferRecord, PipelineRecord } from "../webgpu/pool";
+import { BufferRecord, PipelineRecord, TextureRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -253,6 +255,25 @@ test "writeBuffer takes an unmapped MAP_READ buffer and refuses it while mapped"
 	assert writeBufferRefusal(buffer, 0, 16, 3) == "";
 	buffer.mapMode = GPUMapMode.READ as int32;
 	assert writeBufferRefusal(buffer, 0, 16, 3) == "writeBuffer on GPUBuffer 7, which is mapped";
+}
+
+test "a copy reads a COPY_SRC buffer and writes a COPY_DST one, neither of them mapped" {
+	let buffer = written(COPY_SRC, -1, 0);
+	assert copyBufferRefusal("copyBufferToBuffer", buffer, true) == "";
+	assert copyBufferRefusal("copyBufferToBuffer", buffer, false) == "copyBufferToBuffer destination: GPUBuffer 7 was created without COPY_DST";
+	assert copyBufferRefusal("copyTextureToBuffer", written(VERTEX, -1, 0), true) == "copyTextureToBuffer source: GPUBuffer 7 was created without COPY_SRC";
+	buffer.mapMode = GPUMapMode.WRITE as int32;
+	assert copyBufferRefusal("copyBufferToBuffer", buffer, true) == "copyBufferToBuffer source: GPUBuffer 7 is mapped";
+}
+
+test "a copy reads a COPY_SRC texture and writes a COPY_DST one, single-sampled unless it is the swapchain's" {
+	let texture: TextureRecord = { id: 9, width: 4, height: 4, format: "rgba8unorm", usage: GPUTextureUsage.COPY_SRC as int32, sampleCount: 1 };
+	assert copyTextureRefusal("copyTextureToTexture", texture, true) == "";
+	assert copyTextureRefusal("copyTextureToTexture", texture, false) == "copyTextureToTexture destination: GPUTexture 9 was created without COPY_DST";
+	texture.sampleCount = 4;
+	assert copyTextureRefusal("copyTextureToBuffer", texture, true) == "copyTextureToBuffer source: GPUTexture 9 is multisampled";
+	texture.swapchainView = 3;
+	assert copyTextureRefusal("copyTextureToBuffer", texture, true) == "";
 }
 
 test "a frame writes each buffer's bytes once, appending after its last write, whatever the usage" {

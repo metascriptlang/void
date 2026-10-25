@@ -86,7 +86,10 @@ import {
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
 	checkedBuffer,
+	checkedBufferToBuffer,
 	checkedComputePipeline,
+	checkedCopyBuffer,
+	checkedCopyTexture,
 	checkedCreateEncoder,
 	checkedDispatch,
 	checkedDrawOffsets,
@@ -108,6 +111,7 @@ import {
 	checkedShaderModule,
 	checkedShutdown,
 	checkedTexture,
+	checkedTextureToTexture,
 	checkedViewRange,
 	checkedViewport,
 	checkedWriteBuffer,
@@ -454,6 +458,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	size: int64,
 ): void {
 	checkedOutsidePass("copyBufferToBuffer");
+	checkedBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
+	if (size == 0) { return; }
 	backend.copyBufferToBuffer(source, sourceOffset, destination, destinationOffset, size);
 }
 
@@ -464,6 +470,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	copySize: GPUExtent3D,
 ): void {
 	checkedOutsidePass("copyBufferToTexture");
+	checkedCopyBuffer("copyBufferToTexture", source.buffer, true);
+	checkedCopyTexture("copyBufferToTexture", destination, false, copySize);
 	backend.copyBufferToTexture(source, destination, copySize);
 }
 
@@ -474,6 +482,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	copySize: GPUExtent3D,
 ): void {
 	checkedOutsidePass("copyTextureToBuffer");
+	checkedCopyTexture("copyTextureToBuffer", source, true, copySize);
+	checkedCopyBuffer("copyTextureToBuffer", destination.buffer, false);
 	backend.copyTextureToBuffer(source, destination, copySize);
 }
 
@@ -484,6 +494,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	copySize: GPUExtent3D,
 ): void {
 	checkedOutsidePass("copyTextureToTexture");
+	checkedTextureToTexture(source, destination, copySize);
 	backend.copyTextureToTexture(source, destination, copySize);
 }
 

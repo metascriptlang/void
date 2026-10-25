@@ -2,6 +2,7 @@ import {
 	BindingKind,
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
+	GPUBuffer,
 	GPUBufferUsage,
 	GPUCanvasConfiguration,
 	GPUPrimitiveState,
@@ -25,7 +26,9 @@ import {
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
+	checkedBufferCopy,
 	checkedTexelCopyRegion,
+	checkedTextureToTextureCopy,
 	cubeViewRefusal,
 	depthSliceRefusal,
 	firstInstanceRefusal,
@@ -42,7 +45,7 @@ import {
 	viewLayersRefusal,
 	viewMipsRefusal,
 } from "./types.ms";
-import { BufferRecord, PipelineRecord, TextureRecord, ViewRecord, bufferRecords, pipelineRecords, record } from "./pool.ms";
+import { BufferRecord, PipelineRecord, TextureRecord, ViewRecord, bufferRecords, pipelineRecords, record, textureRecords } from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -718,6 +721,44 @@ export function checkedStorageView(binding: int32, textureIsStorage: boolean, mi
 
 export function checkedCopyRegion<T>(member: string, texture: T, info: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	checkedTexelCopyRegion(member, texture.id, texture.width, texture.height, texture.mipLevels, texture.layers, texture.volume, info, size);
+}
+
+export function copyBufferRefusal(call: string, buffer: BufferRecord, source: boolean): string {
+	const side = source ? "source" : "destination";
+	const flag = source ? GPUBufferUsage.COPY_SRC as int32 : GPUBufferUsage.COPY_DST as int32;
+	if ((buffer.usage & flag) == 0) { return `${call} ${side}: GPUBuffer ${buffer.id} was created without ${source ? "COPY_SRC" : "COPY_DST"}`; }
+	if (buffer.mapMode != 0) { return `${call} ${side}: GPUBuffer ${buffer.id} is mapped`; }
+	return "";
+}
+
+export function copyTextureRefusal(call: string, texture: TextureRecord, source: boolean): string {
+	const side = source ? "source" : "destination";
+	const flag = source ? GPUTextureUsage.COPY_SRC as int32 : GPUTextureUsage.COPY_DST as int32;
+	if ((texture.usage & flag) == 0) { return `${call} ${side}: GPUTexture ${texture.id} was created without ${source ? "COPY_SRC" : "COPY_DST"}`; }
+	if (texture.swapchainView == 0 && texture.sampleCount != 1) { return `${call} ${side}: GPUTexture ${texture.id} is multisampled`; }
+	return "";
+}
+
+export function checkedCopyBuffer(call: string, buffer: GPUBuffer, source: boolean): void { refuse(copyBufferRefusal(call, bufferRecords.record(buffer.id), source)); }
+
+export function checkedCopyTexture(call: string, info: GPUTexelCopyTextureInfo, source: boolean, size: GPUExtent3D): void {
+	const texture = textureRecords.record(info.texture.id);
+	refuse(copyTextureRefusal(call, texture, source));
+	checkedCopyRegion(`${call} ${source ? "source" : "destination"}`, texture, info, size);
+}
+
+export function checkedBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
+	checkedCopyBuffer("copyBufferToBuffer", source, true);
+	checkedCopyBuffer("copyBufferToBuffer", destination, false);
+	checkedBufferCopy(source.id, bufferRecords.record(source.id).size, sourceOffset, destination.id, bufferRecords.record(destination.id).size, destinationOffset, size);
+}
+
+export function checkedTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	checkedCopyTexture("copyTextureToTexture", source, true, size);
+	checkedCopyTexture("copyTextureToTexture", destination, false, size);
+	const from = textureRecords.record(source.texture.id);
+	const to = textureRecords.record(destination.texture.id);
+	checkedTextureToTextureCopy(source, destination, size, from.format, to.format, from.volume, to.volume, isDepthFormat(from.format), from.width, from.height);
 }
 
 export function entryOf<T>(group: T, binding: int32): int32 {

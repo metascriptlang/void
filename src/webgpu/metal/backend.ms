@@ -65,11 +65,9 @@ import {
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
-	checkedBufferCopy,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
 	checkedTexelBufferLayout,
-	checkedTextureToTextureCopy,
 	samplerMaxLod,
 	checkedTexelWritePitch,
 	checkedResolveQuerySet,
@@ -87,7 +85,6 @@ import {
 import {
 	cachedCanvas,
 	currentFrame,
-	checkedCopyRegion,
 	entryOf,
 	clampedAnisotropy,
 	addressesBinding,
@@ -1935,32 +1932,20 @@ function applyUniforms(): void {
 	}
 }
 
-function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
+function copyDestinationBuffer(buffer: GPUBuffer): int32 {
 	const index = bufferRecords.slotIndex(buffer.id);
-	if (!has(bufferRecords.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
-	if (bufferRecords.slots[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
-	return index;
-}
-
-function copyDestinationBuffer(buffer: GPUBuffer, member: string): int32 {
-	const index = copyableBuffer(buffer, member, GPUBufferUsage.COPY_DST as int32, "COPY_DST");
 	buffers[index].inPlace = true;
 	return index;
 }
 
-function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
+function copyableTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {
 	const index = textureRecords.slotIndex(info.texture.id);
-	if (!has(textureRecords.slots[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
-	if (textureRecords.slots[index].swapchainView != 0) {
-		if (textures[index].natives[0] == null) { stop(`${member}: the swapchain texture has no back buffer to copy`); }
-		return index;
-	}
-	if (textureRecords.slots[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
+	if (textureRecords.slots[index].swapchainView != 0 && textures[index].natives[0] == null) { stop(`${member}: the swapchain texture has no back buffer to copy`); }
 	return index;
 }
 
 function copyDestinationTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {
-	const index = copyableTexture(info, member, GPUTextureUsage.COPY_DST as int32, "COPY_DST");
+	const index = copyableTexture(info, member);
 	textures[index].inPlace = true;
 	return index;
 }
@@ -1981,10 +1966,8 @@ function liveTexture(index: int32): Ptr<MtlTextureImpl> {
 function liveBuffer(index: int32): Ptr<MtlBufferImpl> { return buffers[index].natives[buffers[index].active]; }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
-	const from = copyableBuffer(source, "copyBufferToBuffer source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyDestinationBuffer(destination, "copyBufferToBuffer destination");
-	checkedBufferCopy(source.id, bufferRecords.slots[from].size, sourceOffset, destination.id, bufferRecords.slots[to].size, destinationOffset, size);
-	if (size == 0) { return; }
+	const from = bufferRecords.slotIndex(source.id);
+	const to = copyDestinationBuffer(destination);
 	beginFrame();
 	mtlBlitBufferToBuffer(commandBuffer, liveBuffer(from), sourceOffset, liveBuffer(to), destinationOffset, size);
 	buffers[from].gpuUseFrame = currentFrame();
@@ -1992,9 +1975,8 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
-	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyDestinationBuffer(destination.buffer, "copyTextureToBuffer destination");
-	checkedCopyRegion("copyTextureToBuffer source", textureRecords.slots[from], source, size);
+	const from = copyableTexture(source, "copyTextureToBuffer source");
+	const to = copyDestinationBuffer(destination.buffer);
 	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source", false, source, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, bufferRecords.slots[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
@@ -2011,9 +1993,8 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 }
 
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
+	const from = bufferRecords.slotIndex(source.buffer.id);
 	const to = copyDestinationTexture(destination, "copyBufferToTexture destination");
-	checkedCopyRegion("copyBufferToTexture destination", textureRecords.slots[to], destination, size);
 	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination", true, destination, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, bufferRecords.slots[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
@@ -2030,22 +2011,8 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 }
 
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
+	const from = copyableTexture(source, "copyTextureToTexture source");
 	const to = copyDestinationTexture(destination, "copyTextureToTexture destination");
-	checkedCopyRegion("copyTextureToTexture source", textureRecords.slots[from], source, size);
-	checkedCopyRegion("copyTextureToTexture destination", textureRecords.slots[to], destination, size);
-	checkedTextureToTextureCopy(
-		source,
-		destination,
-		size,
-		textureRecords.slots[from].format,
-		textureRecords.slots[to].format,
-		textureRecords.slots[from].volume,
-		textureRecords.slots[to].volume,
-		formatInfo(textureRecords.slots[from].format, "texture format").depth,
-		textureRecords.slots[from].width,
-		textureRecords.slots[from].height,
-	);
 	beginFrame();
 	if (textureRecords.slots[from].volume) {
 		mtlBlitTextureToTexture(commandBuffer, liveTexture(from), 0, source.mipLevel, source.origin.x, source.origin.y, source.origin.z, size.width, size.height, size.depthOrArrayLayers, liveTexture(to), 0, destination.mipLevel, destination.origin.x, destination.origin.y, destination.origin.z);
