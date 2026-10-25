@@ -34,7 +34,9 @@ import {
 	StorageTexture3d,
 	Texture2d,
 	Texture2dArray,
+	Texture2dI32,
 	Texture2dU32,
+	Texture3d,
 	TextureCube,
 	TextureDepth2d,
 	TextureDepth2dArray,
@@ -520,14 +522,15 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d)];
 	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
 	const viewNodes = [getTypeImpl(Texture2dU32), getTypeImpl(Texture2dArray),
-		getTypeImpl(TextureCube), getTypeImpl(TextureDepth2d),
-		getTypeImpl(TextureDepth2dArray), getTypeImpl(TextureDepthCube)];
-	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube,
-		TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube];
-	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32,
-		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
-	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float,
-		SampleType.Depth, SampleType.Depth, SampleType.Depth];
+		getTypeImpl(TextureCube), getTypeImpl(Texture2dI32), getTypeImpl(Texture3d),
+		getTypeImpl(TextureDepth2d), getTypeImpl(TextureDepth2dArray),
+		getTypeImpl(TextureDepthCube)];
+	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube, TextureShape.D2,
+		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube];
+	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32, ScalarKind.I32,
+		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
+	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float, SampleType.Sint,
+		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth];
 	const comparisonNode = getTypeImpl(SamplerComparison);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];

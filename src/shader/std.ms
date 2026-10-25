@@ -2337,6 +2337,80 @@ export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): 
 	return lerp(top, bottom, fractionV);
 }
 
+// WGSL's texture_2d<i32>: four int32 a texel, fetched, never filtered.
+export struct Texture2dI32 {
+	width: int32;
+	height: int32;
+	texels: int32[];
+}
+
+export function textureLoad(texture: Texture2dI32, at: Vec2i, level: int32): Vec4i {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	const first = (at.y * texture.width + at.x) * 4;
+	const texels = texture.texels;
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+// WGSL's texture_3d<f32>: slices of one size, four floats a texel.
+export struct Texture3d {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: float32[];
+}
+
+function sliceOf(texture: Texture3d, z: int32): Texture2d {
+	const size = texture.width * texture.height * 4;
+	return {
+		width: texture.width,
+		height: texture.height,
+		texels: sliceTexels(texture.texels, z * size, size),
+	};
+}
+
+export function textureDimensions(texture: Texture3d, level: int32): Vec3i {
+	if (level != 0) { unreachable("textureDimensions: the CPU texture has no mip levels"); }
+	return { x: texture.width, y: texture.height, z: texture.depth };
+}
+
+export function textureLoad(texture: Texture3d, at: Vec3i, level: int32): Vec4f {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (at.z < 0 || at.z >= texture.depth ||
+		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return texelAt(sliceOf(texture, at.z), at.x, at.y);
+}
+
+// Trilinear on a texture of one level: each of the two slices around the coordinate is sampled
+// as textureSample, then the results mix by the coordinate's fraction between them.
+export function textureSample(texture: Texture3d, sampler: Sampler, uv: Vec3f): Vec4f {
+	const depth = texture.depth;
+	const flat: Vec2f = { x: uv.x, y: uv.y };
+	if (sampler.nearest) {
+		const z = wrapped(texelIndex(uv.z * (depth as float32)), depth, sampler.wrap);
+		return textureSample(sliceOf(texture, z), sampler, flat);
+	}
+	const w: float32 = uv.z * (depth as float32) - 0.5;
+	const slice = texelIndex(w);
+	const z0 = wrapped(slice, depth, sampler.wrap);
+	const z1 = wrapped(slice + 1, depth, sampler.wrap);
+	return lerp(textureSample(sliceOf(texture, z0), sampler, flat),
+		textureSample(sliceOf(texture, z1), sampler, flat), w - (slice as float32));
+}
+
+export function textureSampleLevel(
+	texture: Texture3d,
+	sampler: Sampler,
+	uv: Vec3f,
+	level: float32,
+): Vec4f {
+	return textureSample(texture, sampler, uv);
+}
+
 // WGSL's sampler_comparison: Sampler's filter and wrap, and the function a depth texel is
 // compared with, as the Vulkan specification's "Depth Compare Operation" (reference OP texel).
 export struct SamplerComparison {

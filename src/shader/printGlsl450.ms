@@ -380,8 +380,11 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const texture = e.operands.length > 0 ? e.operands[0].type : new ShaderType();
 	const layered = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.D2Array;
 	const cube = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.Cube;
-	const shape = texture.kind == ShaderTypeKind.Texture && texture.scalar == ScalarKind.U32 ?
-		"usampler2D(" : layered ? "sampler2DArray(" : cube ? "samplerCube(" : "sampler2D(";
+	const isTexture = texture.kind == ShaderTypeKind.Texture;
+	const shape = isTexture && texture.scalar == ScalarKind.U32 ? "usampler2D(" :
+		isTexture && texture.scalar == ScalarKind.I32 ? "isampler2D(" :
+		isTexture && texture.shape == TextureShape.D3 ? "sampler3D(" :
+		layered ? "sampler2DArray(" : cube ? "samplerCube(" : "sampler2D(";
 	const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 	return match (e.intrinsic) {
 		Intrinsic.Saturate => "clamp(" + args[0] + ", 0.0, 1.0)",
@@ -619,8 +622,11 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 			TextureShape.Depth2dArray | TextureShape.DepthCube =>
 				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
 					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
+			TextureShape.D3 => sampleTag(r) + slot + "texture3D " + r.name + ";\n",
 			TextureShape.D2 | TextureShape.Depth2d => r.type.scalar == ScalarKind.U32 ?
 				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
+				r.type.scalar == ScalarKind.I32 ?
+				"@image_sample_type " + r.name + " sint\n" + slot + "itexture2D " + r.name + ";\n" :
 				sampleTag(r) + slot + "texture2D " + r.name + ";\n",
 			_ => { broken(r.name + " is a " + r.type.shape.toString() + " texture, no GLSL 450"); },
 		},
