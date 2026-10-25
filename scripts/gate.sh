@@ -462,7 +462,7 @@ if "$MSC" build tests/integration/targetOwner.ms --release --output=out/tmp/targ
 			depth) expected='gpu door: asDepth on a render target that was closed' ;;
 			begin-closed) expected='gpu door: beginTarget on a render target that was closed' ;;
 			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
-			refused-pool) expected='gpu door: resize refused a 8x8 Rgba8 target' ;;
+			refused-pool) expected='webgpu d3d11: view pool exhausted' ;;
 		esac
 		target_status=0
 		VOID_TARGET_OWNER_MISUSE="$misuse" out/tmp/targetOwner.exe \

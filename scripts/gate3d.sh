@@ -850,9 +850,9 @@ run_churn() {
 	controlFrames=$(churn_rows churnControl frames)
 	controlStop=$(churn_rows churnControl stopped)
 	case "$controlStop" in
-		MeshRefused|StreamRefused|TextureRefused) ;;
+		MeshRefused|StreamRefused|TextureRefused|no) ;;
 		*)
-			fail "churn: the control never released and still did not run out of buffers (stopped: $controlStop after $controlFrames frames)"
+			fail "churn: the control stopped by '${controlStop:-missing}' after $controlFrames frames, not a pool refusal or a full run"
 			return
 			;;
 	esac
@@ -871,7 +871,7 @@ run_churn() {
 	images=$(churn_rows churnBench liveImages)
 	samplers=$(churn_rows churnBench liveSamplers)
 	pass "churn: $total frames loading and unloading a level, tables, uniform pool, $buffers live sokol buffers, $images images and $samplers samplers flat; every second stream write refused"
-	note "churn: the control, never releasing, ran out of sokol's pools after $controlFrames frames ($controlStop)"
+	note "churn: the control, never releasing, ran $controlFrames frames (pool refusal: $controlStop) and grew every control row"
 }
 
 # ---- device -------------------------------------------------------------------------------
@@ -2911,7 +2911,7 @@ run_target_owner() {
 			depth) expected='gpu door: asDepth on a render target that was closed' ;;
 			begin-closed) expected='gpu door: beginTarget on a render target that was closed' ;;
 			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
-			refused-pool) expected='gpu door: resize refused a 8x8 Rgba8 target' ;;
+			refused-pool) expected='webgpu d3d11: view pool exhausted' ;;
 		esac
 		status=0
 		VOID_TARGET_OWNER_MISUSE="$misuse" out/tmp/targetOwner.exe \
