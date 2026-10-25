@@ -122,14 +122,11 @@ export enum ForwardError {
 	DrawRange,
 	CameraPosition,
 	MeshWrite,
-	// RendererError.TooManyShadowedSpots, BadShadowSpot and SpotShadowUnattached, and their
-	// point counterparts.
-	TooManyShadowedSpots,
+	// RendererError.BadShadowSpot and SpotShadowUnattached, and their cube counterparts.
 	BadShadowSpot,
 	SpotShadowUnattached,
-	TooManyShadowedPoints,
-	BadShadowPoint,
-	PointShadowUnattached,
+	BadCubeShadow,
+	CubeShadowUnattached,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
@@ -282,12 +279,10 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.CameraPosition => ForwardError.CameraPosition,
 		RendererError.MeshWrite => ForwardError.MeshWrite,
 		RendererError.ShapedLightPreset => { unreachable; },
-		RendererError.TooManyShadowedSpots => ForwardError.TooManyShadowedSpots,
 		RendererError.BadShadowSpot => ForwardError.BadShadowSpot,
 		RendererError.SpotShadowUnattached => ForwardError.SpotShadowUnattached,
-		RendererError.TooManyShadowedPoints => ForwardError.TooManyShadowedPoints,
-		RendererError.BadShadowPoint => ForwardError.BadShadowPoint,
-		RendererError.PointShadowUnattached => ForwardError.PointShadowUnattached,
+		RendererError.BadCubeShadow => ForwardError.BadCubeShadow,
+		RendererError.CubeShadowUnattached => ForwardError.CubeShadowUnattached,
 		RendererError.ClusterViewUnset => ForwardError.ClusterViewUnset,
 		RendererError.ClusterViewStale => ForwardError.ClusterViewStale,
 		RendererError.ClusterAssign => ForwardError.ClusterAssign,

@@ -122,8 +122,8 @@ import { Frustum3D } from "./frustum";
 import {
 	DirShadowMap, ShadowKind, castsAll, drawShadows, carryShadows, sceneTexture,
 } from "./dirShadowMap";
-import { shadowedSpotCount, firstShadowedSpot, spotShadowView } from "./spotShadow";
-import { shadowedPointCount, firstShadowedPoint, pointShadowViews } from "./pointShadow";
+import { SpotShadowError, spotCaster, spotShadowView } from "./spotShadow";
+import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
 import { CameraView } from "./camera";
 import { ClusterAssignment, ClusterConfig } from "./clusters";
 import {
@@ -183,7 +183,7 @@ export interface Renderer {
 	drawn: Vec<ProgramKey>;
 	shadow: DirShadowMap | null;
 	spotShadow: DirShadowMap | null;
-	pointShadow: DirShadowMap | null;
+	cubeShadow: DirShadowMap | null;
 	// h3d.scene.pbr.Renderer's `env`: the image-based light of every pbr key (attachEnvironment).
 	environment: Environment | null;
 	// What a pbr key reads with no environment attached, made once per GPU context.
@@ -227,18 +227,16 @@ export enum RendererError {
 	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
 	// toon term there, and drawing it as a point would light the wrong place.
 	ShapedLightPreset,
-	// Two spot slots of the light block cast: the frame has one spot shadow map.
-	TooManyShadowedSpots,
-	// The shadowing spot's slot does not make a camera (lightShape.ms perspectiveCamera).
+	// The light block's spot caster is no spot record of it, or makes no camera
+	// (lightShape.ms perspectiveCamera).
 	BadShadowSpot,
-	// A spot slot asks to cast and no spot map is attached (attachSpotShadow).
+	// The light block names a spot caster and no spot map is attached (attachSpotShadow).
 	SpotShadowUnattached,
-	// Two point slots of the light block cast: the frame has one point shadow map.
-	TooManyShadowedPoints,
-	// The shadowing point's range does not reach past PointLight.zNear (pointShadow.ms).
-	BadShadowPoint,
-	// A point slot asks to cast and no point map is attached (attachPointShadow).
-	PointShadowUnattached,
+	// The light block's cube caster is no point, rectangle or capsule record of it, or its range
+	// does not reach past its near plane (cubeShadow.ms).
+	BadCubeShadow,
+	// The light block names a cube caster and no cube map is attached (attachCubeShadow).
+	CubeShadowUnattached,
 	// The frame has a positioned light and no view to cluster it in (setCameraView).
 	ClusterViewUnset,
 	// The camera block is not the view's viewProj: the lights would be clustered in another view.
@@ -326,7 +324,7 @@ export function createDrawing(
 		drawn: [],
 		shadow: null,
 		spotShadow: null,
-		pointShadow: null,
+		cubeShadow: null,
 		environment: null,
 		blackCube: 0,
 		blackCubeView: 0,
@@ -381,14 +379,14 @@ export function attachSpotShadow(renderer: Renderer, shadow: DirShadowMap | null
 	renderer.changed = true;
 }
 
-export function attachPointShadow(renderer: Renderer, shadow: DirShadowMap | null): void {
-	if (renderer.closed) { stopOnClosed("attachPointShadow"); }
+export function attachCubeShadow(renderer: Renderer, shadow: DirShadowMap | null): void {
+	if (renderer.closed) { stopOnClosed("attachCubeShadow"); }
 	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
-	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachPointShadow"); }
-	if (shadow !== null && shadow.kind != ShadowKind.Point) {
-		stopOnWrongShadow("attachPointShadow", shadow.kind);
+	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachCubeShadow"); }
+	if (shadow !== null && shadow.kind != ShadowKind.Cube) {
+		stopOnWrongShadow("attachCubeShadow", shadow.kind);
 	}
-	renderer.pointShadow = shadow;
+	renderer.cubeShadow = shadow;
 	renderer.sceneGlobals = shadowGlobals(renderer);
 	renderer.changed = true;
 }
@@ -441,7 +439,7 @@ function castError(error: ProgramError): RendererError {
 
 function stopOnWrongShadow(call: string, found: ShadowKind): void {
 	console.log(`void3d: ${call} with a ${found.toString()} shadow map; DirShadowMap.create ` +
-		"makes the sun's, createSpot the spot's and createPoint the point's");
+		"makes the sun's, createSpot the spot's and createCube the point's");
 	unreachable;
 }
 
@@ -452,7 +450,7 @@ function shadowOwner(renderer: Renderer): DirShadowMap | null {
 	if (sun !== null) { return sun; }
 	const spot: DirShadowMap | null = renderer.spotShadow;
 	if (spot !== null) { return spot; }
-	return renderer.pointShadow;
+	return renderer.cubeShadow;
 }
 
 function shadowGlobals(renderer: Renderer): Vec<UniformBlock> {
@@ -578,11 +576,11 @@ export function beginFrame(
 	}
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
-	const pointShadow: DirShadowMap | null = renderer.pointShadow;
+	const cubeShadow: DirShadowMap | null = renderer.cubeShadow;
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
 	if (spotShadow !== null && spotShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
-	if (pointShadow !== null && pointShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
-	const shadowed: boolean = shadow !== null || spotShadow !== null || pointShadow !== null;
+	if (cubeShadow !== null && cubeShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
+	const shadowed: boolean = shadow !== null || spotShadow !== null || cubeShadow !== null;
 	for (const item of items) {
 		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
 		if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
@@ -631,8 +629,8 @@ export function beginFrame(
 		const cast: Result<int32, ProgramError> = spotShadow.castsAll(items);
 		if (!cast.ok) { return Result.err(castError(cast.error)); }
 	}
-	if (pointShadow !== null) {
-		const cast: Result<int32, ProgramError> = pointShadow.castsAll(items);
+	if (cubeShadow !== null) {
+		const cast: Result<int32, ProgramError> = cubeShadow.castsAll(items);
 		if (!cast.ok) { return Result.err(castError(cast.error)); }
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
@@ -648,21 +646,23 @@ export function beginFrame(
 			if (lights[kind] != 0.0) { return Result.err(RendererError.ShapedLightPreset); }
 		}
 	}
-	if (shadowedSpotCount(lights) > 1) { return Result.err(RendererError.TooManyShadowedSpots); }
-	const shadowedSpot: int32 = firstShadowedSpot(lights);
+	const spotCast: Result<int32, SpotShadowError> = spotCaster(lights);
+	if (!spotCast.ok) { return Result.err(RendererError.BadShadowSpot); }
+	const shadowedSpot: int32 = spotCast.value;
 	if (shadowedSpot >= 0 && !spotShadowView(lights, shadowedSpot).ok) {
 		return Result.err(RendererError.BadShadowSpot);
 	}
 	if (shadowedSpot >= 0 && spotShadow === null) {
 		return Result.err(RendererError.SpotShadowUnattached);
 	}
-	if (shadowedPointCount(lights) > 1) { return Result.err(RendererError.TooManyShadowedPoints); }
-	const shadowedPoint: int32 = firstShadowedPoint(lights);
-	if (shadowedPoint >= 0 && !pointShadowViews(lights, shadowedPoint).ok) {
-		return Result.err(RendererError.BadShadowPoint);
+	const cubeCast: Result<int32, CubeShadowError> = cubeCaster(lights);
+	if (!cubeCast.ok) { return Result.err(RendererError.BadCubeShadow); }
+	const shadowedCube: int32 = cubeCast.value;
+	if (shadowedCube >= 0 && !cubeShadowViews(lights, shadowedCube).ok) {
+		return Result.err(RendererError.BadCubeShadow);
 	}
-	if (shadowedPoint >= 0 && pointShadow === null) {
-		return Result.err(RendererError.PointShadowUnattached);
+	if (shadowedCube >= 0 && cubeShadow === null) {
+		return Result.err(RendererError.CubeShadowUnattached);
 	}
 	const view: CameraView | null = renderer.cameraView;
 	if (records > 0 && view === null) { return Result.err(RendererError.ClusterViewUnset); }
@@ -752,15 +752,15 @@ export function drawShadowPass(
 	if (renderer.closed) { stopOnClosed("drawShadowPass"); }
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
-	const pointShadow: DirShadowMap | null = renderer.pointShadow;
+	const cubeShadow: DirShadowMap | null = renderer.cubeShadow;
 	let casters: int32 = 0;
 	if (shadow !== null) { casters = drawShadows(shadow, items, camera, lights); }
 	if (spotShadow !== null) { casters = casters + drawShadows(spotShadow, items, camera, lights); }
-	if (pointShadow !== null) {
-		casters = casters + drawShadows(pointShadow, items, camera, lights);
+	if (cubeShadow !== null) {
+		casters = casters + drawShadows(cubeShadow, items, camera, lights);
 	}
 	const owner: DirShadowMap | null = shadowOwner(renderer);
-	if (owner !== null) { carryShadows(owner, spotShadow, pointShadow); }
+	if (owner !== null) { carryShadows(owner, spotShadow, cubeShadow); }
 	return casters;
 }
 
@@ -798,13 +798,13 @@ function shadowTextureOf(renderer: Renderer): SceneTexture {
 	const first: SceneTexture = owner.sceneTexture();
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
-	const pointShadow: DirShadowMap | null = renderer.pointShadow;
+	const cubeShadow: DirShadowMap | null = renderer.cubeShadow;
 	const sun: SceneTexture = shadow === null ? first : shadow.sceneTexture();
 	const spot: SceneTexture = spotShadow === null ? first : spotShadow.sceneTexture();
-	const point: SceneTexture = pointShadow === null ? first : pointShadow.sceneTexture();
+	const point: SceneTexture = cubeShadow === null ? first : cubeShadow.sceneTexture();
 	return {
 		view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler,
-		pointView: point.view,
+		cubeView: point.view,
 	};
 }
 

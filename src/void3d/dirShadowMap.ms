@@ -2,8 +2,8 @@
 // SAMPLING_NONE): a depth-only pass from the directional light into a square target the caller
 // sizes, which every shadowed lit program samples (shader3d.ms dirShadowAt). The same map, made
 // with createSpot, is h3d.pass.SpotShadowMap's: the shadowing spot's own map and shadow block half
-// (shader3d.ms spotShadowAt), and with createPoint h3d.pass.PointShadowMap's, one layer per cube
-// face (shader3d.ms pointShadowAt).
+// (shader3d.ms spotShadowAt), and with createCube h3d.pass.PointShadowMap's, one layer per cube
+// face (shader3d.ms cubeShadowAt).
 
 import { Vec3, Mat4, vec3, identity } from "../math/math3d";
 import {
@@ -24,12 +24,12 @@ import {
 	SHADOW_SPOT_BIAS,
 	SHADOW_SPOT_OPACITY,
 	SHADOW_SPOT_FILTER,
-	SHADOW_POINT_BASE,
-	SHADOW_POINT_FACES,
-	SHADOW_POINT_BIAS,
-	SHADOW_POINT_OPACITY,
-	SHADOW_POINT_FILTER,
-	SHADOW_POINT_POSITION,
+	SHADOW_CUBE_BASE,
+	SHADOW_CUBE_FACES,
+	SHADOW_CUBE_BIAS,
+	SHADOW_CUBE_OPACITY,
+	SHADOW_CUBE_FILTER,
+	SHADOW_CUBE_POSITION,
 } from "./gpu3d";
 import {
 	PixelFormat,
@@ -65,10 +65,10 @@ import { PassList, collectCasters, filterFrustum } from "./passList";
 import { Bounds3D, addPos, addBounds } from "./bounds";
 import { Frustum3D } from "./frustum";
 import { CameraBasis, CameraView, OrthoBounds } from "./camera";
-import { SpotShadowError, firstShadowedSpot, spotShadowView } from "./spotShadow";
+import { SpotShadowError, spotCaster, spotShadowView } from "./spotShadow";
 import {
-	PointShadowError, firstShadowedPoint, pointShadowViews, pointPosition,
-} from "./pointShadow";
+	CubeShadowError, cubeCaster, cubeShadowViews, cubePosition,
+} from "./cubeShadow";
 import {
 	Cascade, CascadeConfig, CascadeError, MAX_CASCADES, cascadesOf, viewForward,
 } from "./cascades";
@@ -76,7 +76,7 @@ import {
 export enum ShadowKind {
 	Sun,
 	Spot,
-	Point,
+	Cube,
 }
 
 // h3d.pass.Shadows' samplingKind without ESM, which reads a blurred float map this depth map
@@ -167,12 +167,12 @@ export function createSpot(
 	return buildMap(context, size, ShadowKind.Spot);
 }
 
-export function createPoint(
+export function createCube(
 	this typeof DirShadowMap,
 	context: DrawContext,
 	size: int32,
 ): Result<DirShadowMap, ShadowError> {
-	return buildMap(context, size, ShadowKind.Point);
+	return buildMap(context, size, ShadowKind.Cube);
 }
 
 function buildMap(
@@ -375,7 +375,7 @@ export function drawShadows(
 	if (shadow.closed) { stopOnClosed("drawShadows"); }
 	if (passState() != PassState.None) { stopOnPassOpen(); }
 	if (shadow.kind == ShadowKind.Spot) { return drawSpotShadows(shadow, items, lights); }
-	if (shadow.kind == ShadowKind.Point) { return drawPointShadows(shadow, items, lights); }
+	if (shadow.kind == ShadowKind.Cube) { return drawCubeShadows(shadow, items, lights); }
 	const context: DrawContext = shadow.context;
 	const basis: CameraBasis = lightBasis(vec3(lights[4], lights[5], lights[6]));
 	const cameraViewProj: Mat4 = {
@@ -485,7 +485,12 @@ function drawSpotShadows(
 	items: Readonly<Span<DrawItem>>,
 	lights: Readonly<Span<float32>>,
 ): int32 {
-	const slot: int32 = firstShadowedSpot(lights);
+	const caster: Result<int32, SpotShadowError> = spotCaster(lights);
+	if (!caster.ok) {
+		console.log(`void3d: drawShadows found the spot caster bad (${caster.error.toString()})`);
+		unreachable;
+	}
+	const slot: int32 = caster.value;
 	let opacity: float32 = shadow.opacity;
 	let basis: CameraBasis = lightBasis(vec3(0.0, 0.0, 0.0));
 	if (slot < 0) {
@@ -515,14 +520,19 @@ function drawSpotShadows(
 	return drawLayers(shadow, items, [basis], [shadow.viewProj]);
 }
 
-// PointShadowMap.draw (CubeShadowMap.hx draw): the shadowing point's six faces, each a layer, or
-// cleared layers with no shadow when no point of the light block casts.
-function drawPointShadows(
+// CubeShadowMap.draw: the casting light's six faces, each a layer, or cleared layers with no
+// shadow when no light of the light block casts the cube map.
+function drawCubeShadows(
 	shadow: DirShadowMap,
 	items: Readonly<Span<DrawItem>>,
 	lights: Readonly<Span<float32>>,
 ): int32 {
-	const slot: int32 = firstShadowedPoint(lights);
+	const caster: Result<int32, CubeShadowError> = cubeCaster(lights);
+	if (!caster.ok) {
+		console.log(`void3d: drawShadows found the cube caster bad (${caster.error.toString()})`);
+		unreachable;
+	}
+	const slot: int32 = caster.value;
 	let opacity: float32 = shadow.opacity;
 	let clips: Vec<Mat4> = [];
 	let bases: Vec<CameraBasis> = [];
@@ -530,15 +540,15 @@ function drawPointShadows(
 	if (slot < 0) {
 		shadow.casters.count = 0;
 		opacity = 0.0;
-		for (let face = 0; face < SHADOW_POINT_FACES; face++) {
+		for (let face = 0; face < SHADOW_CUBE_FACES; face++) {
 			clips.push(identity());
 			bases.push(lightBasis(vec3(0.0, 0.0, 0.0)));
 		}
 	} else {
-		const views: Result<Vec<CameraView>, PointShadowError> = pointShadowViews(lights, slot);
+		const views: Result<Vec<CameraView>, CubeShadowError> = cubeShadowViews(lights, slot);
 		if (!views.ok) {
 			console.log(
-				"void3d: drawShadows found the shadowing point unplaceable (" +
+				"void3d: drawShadows found the cube caster unplaceable (" +
 					views.error.toString() + ")",
 			);
 			unreachable;
@@ -548,38 +558,38 @@ function drawPointShadows(
 			clips.push(view.viewProj);
 			bases.push(view.basis);
 		}
-		position = pointPosition(lights, slot);
+		position = cubePosition(lights, slot);
 	}
 	shadow.viewProj = clips[0];
-	shadow.packPoint(clips, mapMatrix(), position, opacity);
+	shadow.packCube(clips, mapMatrix(), position, opacity);
 	return drawLayers(shadow, items, bases, clips);
 }
 
 // The point's part of the block: each face's clip taken on to the map by `map`, the bias in map
 // depth, the opacity, the size and the light's position, which picks the face.
-export function packPoint(
+export function packCube(
 	this shadow: DirShadowMap,
 	clips: Readonly<Span<Mat4>>,
 	map: Mat4,
 	position: Vec3,
 	opacity: float32,
 ): void {
-	if (shadow.closed) { stopOnClosed("packPoint"); }
-	if ((clips.length as int32) != SHADOW_POINT_FACES) {
-		console.log(`void3d: packPoint with ${clips.length} clips for six faces`);
+	if (shadow.closed) { stopOnClosed("packCube"); }
+	if ((clips.length as int32) != SHADOW_CUBE_FACES) {
+		console.log(`void3d: packCube with ${clips.length} clips for six faces`);
 		unreachable;
 	}
-	for (let face = 0; face < SHADOW_POINT_FACES; face++) {
-		const at: int32 = SHADOW_POINT_BASE + face * 16;
+	for (let face = 0; face < SHADOW_CUBE_FACES; face++) {
+		const at: int32 = SHADOW_CUBE_BASE + face * 16;
 		(clips[face] * map).writeTo(shadow.shadowValues[at..at + 16], 0);
 	}
-	shadow.shadowValues[SHADOW_POINT_BIAS] = shadow.bias * map.m33;
-	shadow.shadowValues[SHADOW_POINT_OPACITY] = opacity;
-	shadow.shadowValues[SHADOW_POINT_OPACITY + 1] = shadow.size as float32;
-	shadow.shadowValues[SHADOW_POINT_FILTER] = filterScaleOf(shadow);
-	shadow.shadowValues[SHADOW_POINT_POSITION] = position.x;
-	shadow.shadowValues[SHADOW_POINT_POSITION + 1] = position.y;
-	shadow.shadowValues[SHADOW_POINT_POSITION + 2] = position.z;
+	shadow.shadowValues[SHADOW_CUBE_BIAS] = shadow.bias * map.m33;
+	shadow.shadowValues[SHADOW_CUBE_OPACITY] = opacity;
+	shadow.shadowValues[SHADOW_CUBE_OPACITY + 1] = shadow.size as float32;
+	shadow.shadowValues[SHADOW_CUBE_FILTER] = filterScaleOf(shadow);
+	shadow.shadowValues[SHADOW_CUBE_POSITION] = position.x;
+	shadow.shadowValues[SHADOW_CUBE_POSITION + 1] = position.y;
+	shadow.shadowValues[SHADOW_CUBE_POSITION + 2] = position.z;
 }
 
 // The frame applies one shadow block, the first of the sun's, the spot's and the point's maps:
@@ -592,7 +602,7 @@ export function carryShadows(
 ): void {
 	if (owner.closed) { stopOnClosed("carryShadows"); }
 	for (let i = SHADOW_SPOT_BASE; i < SHADOW_UNIFORM_LENGTH; i++) {
-		const from: DirShadowMap | null = i < SHADOW_POINT_BASE ? spot : point;
+		const from: DirShadowMap | null = i < SHADOW_CUBE_BASE ? spot : point;
 		let value: float32 = 0.0;
 		if (from !== null) { value = from.shadowValues[i]; }
 		owner.shadowValues[i] = value;

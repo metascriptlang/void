@@ -302,9 +302,9 @@ export struct ShadowParams {
 	cascadeFilter: Vec4f;
 	spotMatrix: Mat4x4f;
 	spotShadow: Vec4f;
-	pointMatrices: Mat4x4f[6];
-	pointShadow: Vec4f;
-	pointLight: Vec4f;
+	cubeMatrices: Mat4x4f[6];
+	cubeShadow: Vec4f;
+	cubeLight: Vec4f;
 }
 
 // The blocks at one binding are the layouts a program key chooses between.
@@ -331,7 +331,7 @@ export struct LitBindings {
 	@binding(2) @samplerType(nonfiltering) shadowSampler: Sampler;
 	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2dArray;
 	@binding(3) @samplerType(nonfiltering) spotShadowSampler: Sampler;
-	@binding(12) @sampleType(unfilterable_float) pointShadowMap: Texture2dArray;
+	@binding(12) @sampleType(unfilterable_float) cubeShadowMap: Texture2dArray;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
 	@binding(1) backTexture: Texture2d;
@@ -894,7 +894,7 @@ export function lightWindow(distance: float32, range: float32): float32 {
 
 // pbr/Light.hx spotLightIntensity's angular half (60-62): theta = dot(delta.normalize(),
 // -spotDir), clamp((theta - angle) / (fallOff - angle)). a: forward, b: cos(angle / 2), cos(inner),
-// then 1 when the spot casts the frame's shadow and its full angle (recordShadowAt, spotShadow.ms).
+// then 0 and its full angle (spotShadow.ms).
 export function spotSample(position: Vec3f, at: Vec4f, tint: Vec4f, a: Vec4f, b: Vec4f): Vec4f {
 	const delta = at.xyz - position;
 	const distance = length(delta);
@@ -1314,7 +1314,7 @@ export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
 	return lit / (PCF_SAMPLES as float32);
 }
 
-export function pointFaceOf(toPosition: Vec3f): int32 {
+export function cubeFaceOf(toPosition: Vec3f): int32 {
 	const axes = abs(toPosition);
 	if (axes.x >= axes.y && axes.x >= axes.z) {
 		return toPosition.x > 0.0 ? 0 : 1;
@@ -1325,53 +1325,52 @@ export function pointFaceOf(toPosition: Vec3f): int32 {
 	return toPosition.z > 0.0 ? 4 : 5;
 }
 
-function pointTapAt(position: Vec3f, b: LitBindings): float32 {
-	const face = pointFaceOf(position - b.shadowParams.pointLight.xyz);
-	const p = mapCoord(position, b.shadowParams.pointMatrices[face]);
+function cubeTapAt(position: Vec3f, b: LitBindings): float32 {
+	const face = cubeFaceOf(position - b.shadowParams.cubeLight.xyz);
+	const p = mapCoord(position, b.shadowParams.cubeMatrices[face]);
 	if (p.w < 0.5) {
 		return 1.0;
 	}
-	const size = (b.shadowParams.pointShadow.z + 0.5) as int32;
-	const depth = textureLoad(b.pointShadowMap, b.spotShadowSampler,
+	const size = (b.shadowParams.cubeShadow.z + 0.5) as int32;
+	const depth = textureLoad(b.cubeShadowMap, b.spotShadowSampler,
 		pcfTexelOf(p, size, vec2f(0.0)), face, 0).x;
-	return mapLit(p.z, depth, b.shadowParams.pointShadow.x, b.shadowParams.pointShadow.y);
+	return mapLit(p.z, depth, b.shadowParams.cubeShadow.x, b.shadowParams.cubeShadow.y);
 }
 
 // cubeShadowPcf's taps turn the light-to-receiver direction and keep its distance, each read
 // from the face it then points into.
-export function pointShadowAt(position: Vec3f, b: LitBindings): float32 {
-	const scale = b.shadowParams.pointShadow.w / b.shadowParams.pointShadow.z;
-	const light = b.shadowParams.pointLight.xyz;
+export function cubeShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const scale = b.shadowParams.cubeShadow.w / b.shadowParams.cubeShadow.z;
+	const light = b.shadowParams.cubeLight.xyz;
 	const toPosition = position - light;
 	const distance = length(toPosition);
 	if (!(scale > 0.0) || !(distance > 0.0)) {
-		return pointTapAt(position, b);
+		return cubeTapAt(position, b);
 	}
 	const direction = toPosition / distance;
 	let lit: float32 = 0.0;
 	for (let tap = 0; tap < CUBE_PCF_SAMPLES; tap++) {
 		const turned = normalize(direction + CUBE_PCF_OFFSETS[tap] * scale);
-		lit = lit + pointTapAt(light + turned * distance, b);
+		lit = lit + cubeTapAt(light + turned * distance, b);
 	}
 	return lit / (CUBE_PCF_SAMPLES as float32);
 }
 
 // A positioned light's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless
-// its record's shapes `a` and `bb` name the spot that casts the spot map or the point that casts
-// the point map (shapeB.z, scene.ms packShape).
-export function recordShadowAt(
-	position: Vec3f, b: LitBindings, key: LitKey, a: Vec4f, bb: Vec4f,
-): float32 {
+// record `i` is the one the light block names as the spot map's or the cube map's caster
+// (gpu3d.ms LIGHT_SPOT_CASTER, LIGHT_CUBE_CASTER).
+export function recordShadowAt(position: Vec3f, b: LitBindings, key: LitKey, i: int32): float32 {
 	if (!key.shadowed) {
 		return 1.0;
 	}
-	if (a.w > 1.5 || bb.z < 0.5) {
-		return 1.0;
+	const named = (i + 1) as float32;
+	if (b.lightParams.ambient.w == named) {
+		return spotShadowAt(position, b);
 	}
-	if (a.w < 0.5) {
-		return pointShadowAt(position, b);
+	if (b.lightParams.dirColor.w == named) {
+		return cubeShadowAt(position, b);
 	}
-	return spotShadowAt(position, b);
+	return 1.0;
 }
 
 // The record of the fragment's cluster: the offset into the index list, the point light count,
@@ -1593,14 +1592,14 @@ export function pbrShade(
 			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
 			const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
 			light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance,
-				recordShadowAt(position, b, key, a, bb), 0.0, values.z);
+				recordShadowAt(position, b, key, i), 0.0, values.z);
 		} else {
 			const cc = litTexelOf(b, i, 4);
 			const sample = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(b, i, 5));
 			const radiance = srgbToLinear(tint.rgb) * (sample.w * at.w);
 			const specular = shapedSpecularDir(position, reflected, sample.xyz, at, a, bb, cc);
 			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
-				specular, radiance, recordShadowAt(position, b, key, a, bb), 0.0, values.z);
+				specular, radiance, recordShadowAt(position, b, key, i), 0.0, values.z);
 		}
 	}
 	return vec4f(linearToSrgb(light), surfaceColor.a);
@@ -1626,10 +1625,9 @@ export function litShade(
 	const cluster = litClusterOf(frag, position, b);
 	for (let k = 0; k < cluster.y + cluster.z; k++) {
 		const i = litLightOf(b, cluster, k);
-		const a = litTexelOf(b, i, 2);
-		const bb = litTexelOf(b, i, 3);
-		light = light + lightAt(position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1), a, bb,
-			litTexelOf(b, i, 4), litTexelOf(b, i, 5)) * recordShadowAt(position, b, key, a, bb);
+		light = light + lightAt(position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1),
+			litTexelOf(b, i, 2), litTexelOf(b, i, 3), litTexelOf(b, i, 4), litTexelOf(b, i, 5)) *
+			recordShadowAt(position, b, key, i);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);

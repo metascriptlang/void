@@ -41,7 +41,7 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
 	SPOT_SHADOW_SAMPLER_SLOT,
-	POINT_SHADOW_VIEW_SLOT,
+	CUBE_SHADOW_VIEW_SLOT,
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
 	ENV_SAMPLER_SLOT,
@@ -1705,7 +1705,7 @@ export struct SceneTexture {
 	sampler: uint32;
 	spotView: uint32;
 	spotSampler: uint32;
-	pointView: uint32;
+	cubeView: uint32;
 	envDiffuse: uint32;
 	envSpecular: uint32;
 	envSampler: uint32;
@@ -1716,7 +1716,7 @@ export struct SceneTexture {
 }
 
 export const NO_SCENE_TEXTURE: SceneTexture = {
-	view: 0, sampler: 0, spotView: 0, spotSampler: 0, pointView: 0, envDiffuse: 0, envSpecular: 0,
+	view: 0, sampler: 0, spotView: 0, spotSampler: 0, cubeView: 0, envDiffuse: 0, envSpecular: 0,
 	envSampler: 0, lightRecords: 0, clusterRecords: 0, clusterIndices: 0, clusterSampler: 0,
 };
 
@@ -1755,7 +1755,7 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_SAMPLER + SHADOW_SAMPLER_SLOT] = scene.sampler;
 	context.bindings[GPU3D_BINDING_VIEW + SPOT_SHADOW_VIEW_SLOT] = scene.spotView;
 	context.bindings[GPU3D_BINDING_SAMPLER + SPOT_SHADOW_SAMPLER_SLOT] = scene.spotSampler;
-	context.bindings[GPU3D_BINDING_VIEW + POINT_SHADOW_VIEW_SLOT] = scene.pointView;
+	context.bindings[GPU3D_BINDING_VIEW + CUBE_SHADOW_VIEW_SLOT] = scene.cubeView;
 	context.bindings[GPU3D_BINDING_VIEW + ENV_DIFFUSE_VIEW_SLOT] = scene.envDiffuse;
 	context.bindings[GPU3D_BINDING_VIEW + ENV_SPECULAR_VIEW_SLOT] = scene.envSpecular;
 	context.bindings[GPU3D_BINDING_SAMPLER + ENV_SAMPLER_SLOT] = scene.envSampler;

@@ -8,6 +8,7 @@ import {
 	LIGHT_RECORD_COLOR,
 	LIGHT_RECORD_SHAPE,
 	LIGHT_KIND_SPOT,
+	LIGHT_SPOT_CASTER,
 } from "./gpu3d";
 import { Vec3, vec3 } from "../math/math3d";
 import { SpotLightShape, LightShapeError, perspectiveCamera } from "./lightShape";
@@ -16,10 +17,11 @@ import { Camera3D, CameraView, CameraError, resolve } from "./camera";
 export enum SpotShadowError {
 	BadSpot,
 	BadCamera,
+	// The light block's header names a record that is not a spot of the block.
+	BadCaster,
 }
 
 const CONE: int32 = LIGHT_RECORD_SHAPE + 4;
-const CASTS: int32 = 2;
 const FULL_ANGLE: int32 = 3;
 
 function recordAt(light: int32): int32 {
@@ -30,26 +32,29 @@ export function recordCount(lights: Readonly<Span<float32>>): int32 {
 	return ((lights.length as int32) - LIGHT_UNIFORM_LENGTH) / LIGHT_RECORD_LENGTH;
 }
 
-function casts(lights: Readonly<Span<float32>>, light: int32): boolean {
-	const at: int32 = recordAt(light);
-	return lights[at + LIGHT_RECORD_SHAPE + 3] == LIGHT_KIND_SPOT &&
-		lights[at + CONE + CASTS] > 0.5;
+export function recordKind(lights: Readonly<Span<float32>>, light: int32): float32 {
+	return lights[recordAt(light) + LIGHT_RECORD_SHAPE + 3];
 }
 
-export function shadowedSpotCount(lights: Readonly<Span<float32>>): int32 {
-	let count: int32 = 0;
-	for (let light = 0; light < recordCount(lights); light++) {
-		if (casts(lights, light)) { count = count + 1; }
-	}
-	return count;
+export const NOT_A_RECORD: int32 = -2;
+
+// The record a header slot names as a map's caster (gpu3d.ms LIGHT_SPOT_CASTER and
+// LIGHT_CUBE_CASTER hold record + 1), -1 for none, NOT_A_RECORD when it names no record.
+export function casterRecord(lights: Readonly<Span<float32>>, slot: int32): int32 {
+	const named: float32 = lights[slot];
+	if (!(named >= 0.0) || !(named <= (recordCount(lights) as float32))) { return NOT_A_RECORD; }
+	if (((named as int32) as float32) != named) { return NOT_A_RECORD; }
+	return (named as int32) - 1;
 }
 
-// The record of the first shadowing spot, or -1.
-export function firstShadowedSpot(lights: Readonly<Span<float32>>): int32 {
-	for (let light = 0; light < recordCount(lights); light++) {
-		if (casts(lights, light)) { return light; }
+// The record that casts the spot map, or -1.
+export function spotCaster(lights: Readonly<Span<float32>>): Result<int32, SpotShadowError> {
+	const light: int32 = casterRecord(lights, LIGHT_SPOT_CASTER);
+	if (light == -1) { return Result.ok(-1); }
+	if (light == NOT_A_RECORD || recordKind(lights, light) != LIGHT_KIND_SPOT) {
+		return Result.err(SpotShadowError.BadCaster);
 	}
-	return -1;
+	return Result.ok(light);
 }
 
 // The reference axis and the right and up it gives are lightBasis's (dirShadowMap.ms), so the

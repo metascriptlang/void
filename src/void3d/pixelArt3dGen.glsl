@@ -693,9 +693,9 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
-    mat4 pointMatrices[6];
-    vec4 pointShadow;
-    vec4 pointLight;
+    mat4 cubeMatrices[6];
+    vec4 cubeShadow;
+    vec4 cubeLight;
 };
 #endif
 #ifdef SHADOWED
@@ -1259,9 +1259,9 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
-    mat4 pointMatrices[6];
-    vec4 pointShadow;
-    vec4 pointLight;
+    mat4 cubeMatrices[6];
+    vec4 cubeShadow;
+    vec4 cubeLight;
 };
 #endif
 #ifdef SHADOWED
