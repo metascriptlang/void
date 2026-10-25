@@ -1,3 +1,4 @@
+import "./lost";
 import {
 	BindingKind,
 	bindingKind,
