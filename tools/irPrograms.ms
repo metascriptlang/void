@@ -401,11 +401,15 @@ function bytecodeOf(
 // newLibraryWithSource defaults to in src/webgpu/metal/metal.m. A blob built for a newer OS or MSL
 // than the device has fails newLibraryWithData.
 function metalFlags(language: string): string[] {
-	return match (language) {
-		"metal_macos" => ["macosx", "-std=macos-metal2.4", "-mmacosx-version-min=12.0", "-ffast-math"],
-		"metal_ios" => ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-ffast-math"],
-		_ => [],
-	};
+	if (language == "metal_macos") {
+		return ["macosx", "-std=macos-metal2.4", "-mmacosx-version-min=12.0", "-ffast-math"];
+	}
+	if (language == "metal_ios") {
+		return ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-ffast-math"];
+	}
+	if (language == "wgsl" || language == "glsl300es" || language == "glsl430" ||
+		language == "hlsl5") { return []; }
+	fail("no Metal flags decision for " + language);
 }
 
 class Metallib {
@@ -472,11 +476,10 @@ function metallibOf(
 }
 
 function hlslProfile(stage: string): string {
-	return match (stage) {
-		"vertex" => "vs_5_0",
-		"fragment" => "ps_5_0",
-		_ => "cs_5_0",
-	};
+	if (stage == "vertex") { return "vs_5_0"; }
+	if (stage == "fragment") { return "ps_5_0"; }
+	if (stage == "compute") { return "cs_5_0"; }
+	fail("no HLSL profile for stage " + stage);
 }
 
 function stageBytecode(
