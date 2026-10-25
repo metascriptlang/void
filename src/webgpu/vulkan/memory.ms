@@ -22,6 +22,12 @@ export enum Tiling {
 	Optimal,
 }
 
+export enum Dedication {
+	None,
+	Preferred,
+	Required,
+}
+
 export enum MemoryError {
 	OutOfMemory,
 	InvalidAllocation,
@@ -77,6 +83,11 @@ export struct AllocationSizes {
 	hostBlockSize: uint64;
 }
 
+export struct DedicatedOwner {
+	buffer: uint32;
+	image: uint32;
+}
+
 export struct MemoryType {
 	properties: BitSet<MemoryProperty>;
 	heap: int32;
@@ -87,7 +98,7 @@ export struct MemoryDevice {
 	heapSizes: Vec<uint64>;
 	nonCoherentAtomSize: uint64;
 	maxAllocationCount: uint32;
-	openBlock: (typeIndex: int32, size: uint64) => uint32;
+	openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner) => uint32;
 	closeBlock: (block: uint32) => void;
 }
 
@@ -118,6 +129,8 @@ export struct MemoryRequest {
 	typeBits: uint32;
 	kind: MemoryKind;
 	tiling: Tiling;
+	dedication: Dedication;
+	owner: DedicatedOwner;
 }
 
 export struct MemoryAllocation {
@@ -459,13 +472,14 @@ function addBlock(
 	ref m: MemoryAllocator,
 	group: int32,
 	size: uint64,
+	owner: DedicatedOwner,
 	dedicated: boolean,
 	replace: int32,
 ): Result<int32, MemoryError> {
 	if (m.blockCount >= m.device.maxAllocationCount) {
 		return Result.err(MemoryError.AllocationCountExceeded);
 	}
-	const id = m.device.openBlock(m.groups[group].typeIndex, size);
+	const id = m.device.openBlock(m.groups[group].typeIndex, size, owner);
 	if (id == 0) { return Result.err(MemoryError.BlockAllocationFailed); }
 	m.blockCount += 1;
 	const block: MemoryBlock = {
@@ -520,6 +534,16 @@ function placed(
 	};
 }
 
+const NO_OWNER: DedicatedOwner = { buffer: 0, image: 0 };
+
+function wantsDedicated(this m: MemoryAllocator, dedication: Dedication): boolean {
+	return match (dedication) {
+		Dedication.None => false,
+		Dedication.Preferred => m.blockCount <= m.device.maxAllocationCount / 4 * 3,
+		Dedication.Required => true,
+	};
+}
+
 export function memoryAllocate(
 	ref m: MemoryAllocator,
 	request: MemoryRequest,
@@ -535,12 +559,12 @@ export function memoryAllocate(
 
 	const blockSize = m.blockSizeOf(typeIndex);
 	const padded = request.size + alignment - 1;
-	if (padded > blockSize) {
+	if (padded > blockSize || m.wantsDedicated(request.dedication)) {
 		let free: int32 = -1;
 		for (let i: int32 = 0; i < m.groups[group].blocks.length && free < 0; i++) {
 			if (m.groups[group].blocks[i].id == 0) { free = i; }
 		}
-		const slot = try addBlock(m, group, request.size, true, free);
+		const slot = try addBlock(m, group, request.size, request.owner, true, free);
 		const whole = try blockAllocate(m.groups[group].blocks[slot], request.size);
 		return Result.ok(m.placed(group, slot, whole, request, 1));
 	}
@@ -554,7 +578,7 @@ export function memoryAllocate(
 		const inBlock = blockAllocate(m.groups[group].blocks[i], padded);
 		if (inBlock.ok) { return Result.ok(m.placed(group, i, inBlock.value, request, alignment)); }
 	}
-	const slot = try addBlock(m, group, blockSize, false, empty);
+	const slot = try addBlock(m, group, blockSize, NO_OWNER, false, empty);
 	const inBlock = try blockAllocate(m.groups[group].blocks[slot], padded);
 	return Result.ok(m.placed(group, slot, inBlock, request, alignment));
 }
