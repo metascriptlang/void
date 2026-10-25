@@ -984,7 +984,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/animationCheck.ms tests/integration/cameraRigFrame.ms
 	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
 	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms
-	tests/integration/mapMaterial.ms tests/integration/billboardBlend.ms"
+	tests/integration/mapMaterial.ms tests/integration/billboardBlend.ms
+	tests/integration/lightShadows.ms tests/integration/parallaxFrame.ms"
 
 run_style() {
 	long=$(
@@ -2561,6 +2562,68 @@ run_map_material() {
 	pass "map-material: an emissive map and its strength over a black surface, and a normal map tilting toward +u and the image's top, mirrored islands included, in both presets; the featureless control fails on each"
 }
 
+# Cases are tests/integration/lightShadows.ms `Case` ordinals: a spot, then the cube map's point,
+# rectangle and capsule. The control draws each without its shadow and must find the ground under
+# the light at least as bright as the open ground, so the darkening is the shadow's.
+LIGHT_SHADOW_CASES="0 1 2 3"
+
+run_light_shadows() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "light-shadows: GATE_SKIP_CAPTURE=1 — no spot or cube shadow was read back"
+		return
+	fi
+	exe="$WORK/lightShadows.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/lightShadows.ms --output="$exe" 		> "$WORK/lightShadows.build.log" 2>&1; then
+		fail "light-shadows: tests/integration/lightShadows.ms does not build — see $WORK/lightShadows.build.log"
+		return
+	fi
+	for case in $LIGHT_SHADOW_CASES; do
+		for mode in "0 0" "1 0" "0 1"; do
+			set -- $mode
+			log="$WORK/lightShadows.$case.$1.$2.log"
+			status=0
+			VOID_LIGHT_SHADOW_CASE=$case VOID_LIGHT_SHADOW_PCF=$1 VOID_LIGHT_SHADOW_CONTROL=$2 				"$exe" > "$log" 2>&1 || status=$?
+			if [ "$status" -eq 3 ]; then
+				skip "light-shadows: no native readback backend"
+				return
+			fi
+			if [ "$status" -ne 0 ] || ! grep -q '^PASS light shadow: ' "$log"; then
+				fail "light-shadows: case $case, pcf $1, control $2 (exit $status) — see $log"
+				return
+			fi
+		done
+	done
+	pass "light-shadows: a spot's map and the cube map of a point, rectangle and capsule darken the ground under a caster, compared and with PCF; each control without its shadow does not"
+}
+
+run_parallax() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "parallax: GATE_SKIP_CAPTURE=1 — no parallax was read back"
+		return
+	fi
+	exe="$WORK/parallaxFrame.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/parallaxFrame.ms --output="$exe" 		> "$WORK/parallaxFrame.build.log" 2>&1; then
+		fail "parallax: tests/integration/parallaxFrame.ms does not build — see $WORK/parallaxFrame.build.log"
+		return
+	fi
+	for control in 0 1; do
+		log="$WORK/parallaxFrame.$control.log"
+		status=0
+		VOID_PARALLAX_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "parallax: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS parallax' "$log"; then
+			fail "parallax: control $control (exit $status) — see $log"
+			return
+		fi
+	done
+	pass "parallax: the pbr-maps height moves a base texture's edge along the view, and the amount-0 control leaves it in place"
+}
+
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
 # 7 (DissolveControl) the control of 6 (Dissolve), and 8 (BackFace) of 9 (BackFaceBothSides);
 DIR_SHADOW_CASES="0 2 3 4 5 6 8 9 14 15"
@@ -3051,6 +3114,8 @@ run_render_order
 run_dir_shadow
 run_moving_material
 run_map_material
+run_light_shadows
+run_parallax
 run_camera_rig
 run_reparent
 run_gltf
