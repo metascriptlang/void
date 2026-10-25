@@ -5355,7 +5355,8 @@ These formats are core glTF animation encodings, not dependent on `KHR_mesh_quan
 glTF `b43260ee` animation sampler table permits snorm8, unorm8, snorm16 and unorm16 rotations.
 The current boundary is `gltf.ms` `animationValues` (FLOAT only), followed by
 `gltfCurve.ms` `forValues` (unit-quaternion validation). Merely admitting integer formats
-would not handle their quantization error.
+would not handle their quantization error. Weights outputs have no unit check, so
+`gltf.ms` `weightTrack` takes the four normalized encodings (`gltfMorphImportCheck.ms`).
 
 Arithmetic probe at source tree `a8f2354587ce1c304c9a07114d00f8790f4db0ac`, using Python
 `v = struct.unpack('<f', struct.pack('<f', n/d))[0]` and `abs(2*v*v-1)` for `(0,0,v,v)`:
