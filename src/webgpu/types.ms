@@ -531,7 +531,7 @@ export struct GPUTexelCopyTextureInfo { texture: GPUTexture; mipLevel: int32; or
 export struct GPUTexelCopyBufferLayout { offset: int64; bytesPerRow: int32; rowsPerImage: int32; }
 export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPerRow: int32; rowsPerImage: int32; }
 
-@noinline function stop(message: string): void {
+@noinline export function stop(message: string): never {
 	console.log(`webgpu: ${message}`);
 	unreachable;
 }

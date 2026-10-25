@@ -18,6 +18,7 @@ import {
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 	samplerMaxLod,
+	stop,
 } from "./types.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
@@ -43,11 +44,6 @@ export struct EncoderState {
 	occlusionSet: uint32;
 	occlusionOpen: boolean;
 	occlusionIndex: int32;
-}
-
-@noinline function stop(message: string): never {
-	console.log(`webgpu: ${message}`);
-	unreachable;
 }
 
 function passName(kind: int32): string { return kind == PASS_RENDER ? "render" : "compute"; }
