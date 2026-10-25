@@ -1,7 +1,6 @@
 // The IR path's reflection, lowered again in this binary, equals the committed descriptors, field
 // by field and in any binding order, for a sample of programs on the target this binary is built
-// for; scripts/regen-shaders.sh --oracle-shdc compares every program on every target with the
-// reflection sokol-shdc gives the same stages.
+// for.
 
 import { glslIr, glslLinkedIr } from "../shader/emit";
 import { programModule, programSource } from "../shader/descriptor";

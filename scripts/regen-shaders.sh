@@ -6,15 +6,11 @@ set -e
 cd "$(dirname "$0")/.."
 
 # --check regenerates into a scratch directory and compares instead of writing; the gate runs it.
-# --oracle-shdc compiles the same stages with sokol-shdc and compares its reflection with the
-# committed modules, the A/B kept while the IR printers replace shdc.
 CHECK=0
-ORACLE=0
 case "$1" in
 	--check) CHECK=1 ;;
-	--oracle-shdc) ORACLE=1 ;;
 	"") ;;
-	*) echo "usage: regen-shaders.sh [--check | --oracle-shdc]"; exit 2 ;;
+	*) echo "usage: regen-shaders.sh [--check]"; exit 2 ;;
 esac
 STALE=0
 SCRATCH=$(mktemp -d)
@@ -159,93 +155,8 @@ slots() {
 	settle "$out" "$2"
 }
 
-# ---- --oracle-shdc ----
-
-shdcPath() {
-	case "$(uname -s)-$(uname -m)" in
-		Darwin-arm64)         echo "deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc" ;;
-		Darwin-*)             echo "deps/sokol-tools-bin/bin/osx/sokol-shdc" ;;
-		Linux-aarch64)        echo "deps/sokol-tools-bin/bin/linux_arm64/sokol-shdc" ;;
-		Linux-*)              echo "deps/sokol-tools-bin/bin/linux/sokol-shdc" ;;
-		MINGW*|MSYS*|CYGWIN*) echo "deps/sokol-tools-bin/bin/win32/sokol-shdc.exe" ;;
-		*) echo "no sokol-shdc for $(uname -s)-$(uname -m)" >&2; return 1 ;;
-	esac
-}
-
-# Every shdc language a program ships in, iOS (device + simulator) included.
-LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5"
-
-# sokol-shdc embeds every stage it is given, used or not: keep the key's two stages.
-stagesOf() {
-	awk -v vs="$2" -v fs="$3" '
-		{ sub(/\r$/, "") }
-		/^@program / { next }
-		/^@(vs|fs) / { skip = ($2 != vs && $2 != fs) }
-		!skip { print }
-		skip && /^@end/ { skip = 0 }
-	' "$1"
-}
-
-# A module's reflection: every line but the header and the sources, each program's bindings
-# sorted, since shdc does not list them by slot.
-reflectionOf() {
-	tr -d "\r" < "$1" | tail -n +2 | grep -v -e 'Code: "' -e 'Bytecode: ' -e '^	// ' | awk '
-		/bindings: \[/ { print; open = 1; n = 0; next }
-		open && /^\t*\],/ { asort(held); for (i = 1; i <= n; i++) print held[i]; delete held; open = 0 }
-		open { held[++n] = $0; next }
-		{ print }
-	'
-}
-
-oracle() {
-	SHDC=$(shdcPath)
-	tables="out/shaderTables"
-	rm -rf "$tables"
-	mkdir -p "$tables/void3d"
-	: > "$tables/void3d/rows"
-	while read -r module program preset features vs fs layout extra; do
-		case "$module" in ''|'#'*) continue ;; esac
-		src="$IR/void3d.glsl"
-		[ "$preset" = "PIXEL_ART" ] && src="$IR/pixelArt3d.glsl"
-		input="$tables/void3d/$module.glsl"
-		{
-			stagesOf "$src" "$vs" "$fs"
-			echo "@program program $vs $fs"
-		} > "$input"
-		defines=""
-		[ "$features" != "-" ] && defines="--defines=$features"
-		"$SHDC" -i "$input" -o "$tables/void3d/$module" -l "$LANGS_IOS" -f bare_yaml -m "$module" \
-			$defines >/dev/null
-		echo "$module $tables/void3d/${module}_${module}_reflection.yaml $layout" >> "$tables/void3d/rows"
-	done < <(tr -d "\r" < "$KEYS")
-	"${MSC:-msc}" run tools/shaderTables.ms -- --rows "$tables/void3d/rows" \
-		"$tables/programModules.ms" ../webgpu/types.ms gpu3dShaderModule > "$SCRATCH/tables.log" 2>&1 ||
-		{ cat "$SCRATCH/tables.log"; echo "shaderTables programKeys.txt failed"; exit 1; }
-	for pair in "shader2d shader2dModules ../webgpu/types.ms" \
-		"gpuCopy gpuCopyModules ../../src/webgpu/types.ms"; do
-		set -- $pair
-		"$SHDC" -i "$IR/$1.glsl" -o "$tables/$1" -l "$LANGS_IOS" -f bare_yaml >/dev/null
-		"${MSC:-msc}" run tools/shaderTables.ms -- "$tables/${1}_reflection.yaml" "$tables/$2.ms" "$3" \
-			> "$SCRATCH/tables.log" 2>&1 || { cat "$SCRATCH/tables.log"; echo "shaderTables $1 failed"; exit 1; }
-	done
-	MISMATCH=0
-	for committed in src/void3d/programModules.ms src/void2d/shader2dModules.ms \
-		tests/integration/gpuCopyModules.ms; do
-		shdc="$tables/$(basename "$committed")"
-		if cmp -s <(reflectionOf "$shdc") <(reflectionOf "$committed"); then
-			echo "same reflection $committed"
-		else
-			echo "reflection differs $committed:"
-			diff <(reflectionOf "$shdc") <(reflectionOf "$committed") | head -20
-			MISMATCH=1
-		fi
-	done
-	exit "$MISMATCH"
-}
-
-[ "$CHECK" = 1 ] || [ "$ORACLE" = 1 ] || echo "Regenerating shader modules..."
+[ "$CHECK" = 1 ] || echo "Regenerating shader modules..."
 irModules
-[ "$ORACLE" = 1 ] && oracle
 programTable
 for module in programModules shader2dModules gpuCopyModules; do
 	cp "$IR/$module.ms" "$SCRATCH/$module.ms"

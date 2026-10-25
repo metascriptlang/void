@@ -3,7 +3,7 @@
 // (glslIr); the programs are the rows of src/void3d/programKeys.txt, VOID2D_PROGRAMS and
 // GPU_COPY_PROGRAMS. Beside the modules it writes each source's stages as GLSL 450 in sokol-shdc's
 // dialect (void3d.glsl, pixelArt3d.glsl, shader2d.glsl, gpuCopy.glsl), which tools/shaderSlots.ms
-// reads and scripts/regen-shaders.sh --oracle-shdc hands to sokol-shdc.
+// reads.
 // Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> [--fxc <fxc path>]
 //   [--reflection-only]
 // --reflection-only writes a target whose printer refuses the program as its reflection with empty
@@ -136,8 +136,7 @@ const STAGES: string[][] = [
 	["GPU_COPY", "gpuCopyFs", glslIr(gpuCopyFs)],
 ];
 
-// Each shdc language, the `when` that compiles it and the IR target that prints it, in
-// tools/shaderTables.ms's order.
+// Each shdc language, the `when` that compiles it and the IR target that prints it.
 const LANGUAGES: string[][] = [
 	["wgsl", "webgpu"],
 	["glsl300es", "webgl2 || android"],

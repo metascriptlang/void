@@ -114,12 +114,8 @@ fxc and the runtime `D3DCompile` (`d3dcompiler_47.dll`) gave the same bytes for 
 one no stage uses; `--check` reports either as stale. Where fxc is absent (macOS, Linux) a miss is
 printed, not stale: that stage keeps no bytecode and compiles at load until a Windows regen.
 
-## The oracle and when it goes
+## The oracle
 
-sokol-shdc is on no build path. `scripts/regen-shaders.sh --oracle-shdc` still compiles the
-GLSL 450 of the same stages and compares its reflection with the committed modules, and it
-stops at the first stage that fetches without a sampler, which shdc refuses (src/shader/CLAUDE.md
-"No fetch without a sampler"). It is retired, with `deps/sokol-tools-bin`, once the golden
-captures (`docs/baselines3d.sha256`, `scripts/web3d.sh`) are green from the IR-printed modules on
-every backend gpu-ms draws; from then on the goldens are the oracle and the GLSL 450 printer's
-text is only a regression pin.
+sokol-shdc is on no build or regeneration path, and `deps/sokol-tools-bin` is not fetched. The
+golden captures (`docs/baselines3d.sha256`, `scripts/web3d.sh`) drawn from the IR-printed modules
+are the oracle; the GLSL 450 printer's text is only a regression pin.

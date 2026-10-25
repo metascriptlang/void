@@ -321,8 +321,7 @@ function optional(name: string, value: string): string {
 	return value != "" ? ", " + name + ": \"" + value + "\"" : "";
 }
 
-// The binding and attribute lines as tools/shaderTables.ms writes them from shdc's reflection,
-// so the two generators' modules diff line by line; members shdc never reflects follow.
+// The binding and attribute lines in shdc's reflection order; members shdc never reflects follow.
 export function bindingSource(r: Reflection): string[] {
 	return r.bindings.map((b) => {
 		const kind: string = b.kind;
@@ -355,7 +354,6 @@ export function attributeSource(r: Reflection): string[] {
 	});
 }
 
-// One `export function <name>ShaderModule()` as tools/shaderTables.ms writes it.
 export function isComputeSource(s: ProgramSource): boolean {
 	return s.computeCode != "" || s.reflection.workgroupSize[0] > 0;
 }
