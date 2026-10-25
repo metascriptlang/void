@@ -5957,8 +5957,11 @@ hands the shader its props texture as the height map, read in alpha. Here:
   count `PbrMaterial` uses when `parallaxSteps` is 0 or unset). A material's own step count and
   the single-offset path of `maxLayers == 0` are not offered; a material that needs either is
   the trigger to add a step count to the block.
-- Heaps' `invertBasis` flips the bitangent by hand; here the tangent's w does, as in
-  `mappedNormal`, so the steps and the mapped normal agree.
+- Heaps' Parallax takes the bitangent as n x t where its NormalMap takes n x t * -w, so on an
+  unmirrored island the steps run along the mapped normal's bitangent negated, and `invertBasis`
+  flips it by hand. Here it is `mappedNormal`'s bitangent negated, so the tangent's w turns it on
+  a mirrored island and no flag is needed. Sharing `mappedNormal`'s sign moved the UV toward the
+  eye instead of away from it; the GPU golden caught it.
 - A caster drops the bit, as Heaps' shadow pass has no parallax. A cutout parallax key is not
   cast (`castIn`): its colour pass cuts at the moved UV, and the caster rule refuses a cut at
   another texel.
@@ -5966,9 +5969,11 @@ hands the shader its props texture as the height map, read in alpha. Here:
 - Cost: the key index (`indexPrograms`) doubles to 2^20 entries, 4 MB, built once at start.
 
 Pinned by `pbrMapsCheck.ms` (over a flat depth the UV lands where one ray meets it, the tangent's
-w turns the bitangent, and the colour pass samples at the moved UV) and `programKeyCheck.ms`
+w turns the bitangent, and the colour pass samples at the moved UV), `programKeyCheck.ms`
 (bit 19, declared in every normal-mapped pbr-maps variant with the same layout, slots and block,
-the cutout caster refused). Not run yet: shader regeneration, the GPU, the web builds.
+the cutout caster refused), and on the GPU by `tests/integration/parallaxFrame.ms` (gate3d
+`parallax`: a base texture's edge moves away from the eye by the height's depth, and the amount-0
+control leaves it).
 
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
@@ -6022,7 +6027,17 @@ with up +Z), far the light's range, near the kind's: `PointLight.zNear` and `Cap
 0.02, `RectangleShadowMap`'s 0.01 (`cubeShadow.ms` `cubeShadowViews`). The receiver picks the
 face by the largest axis of the light-to-receiver vector, which is the face a cube lookup selects
 (Heaps samples its cube map, Bevy's `fetch_point_shadow` its cube array), then projects through
-that face's matrix and compares the stored depth (`shader3d.ms` `cubeShadowAt`).
+that face's matrix and reads the stored depth (`shader3d.ms` `cubeShadowAt`).
+
+- The comparison is Heaps' for a cube, not the spot's: `CubeShadowMap.isUsingWorldDist` stores
+  the distance to the light over the range and `ShadowSampling.compareDepth` tests
+  `zMax - bias > depth * range`, the bias in world units. The map here holds the face's depth,
+  so the lookup turns it back into the distance along the face's axis from the near and far
+  planes the block carries (`SHADOW_CUBE_RANGE`), takes it on to the receiver's ray, and
+  compares both over the range. The bias is packed as is (`packCube`). Comparing in stored depth
+  with the bias scaled into it, as the spot does, swallowed every shadow on the GPU: with a near
+  of 0.02 the depths of a caster 2 away and of a receiver 3 away differ by 0.003, under the 0.01
+  bias.
 
 - The faces are six layers of the door's `ArrayTarget`, the idiom cascades and the spot already
   use, not a depth cube. Drawing and lookup share the same six matrices, so the cube-face
@@ -6044,8 +6059,9 @@ that face's matrix and compares the stored depth (`shader3d.ms` `cubeShadowAt`).
   use.
 
 Pinned by `cubeShadowCheck.ms` (the six faces, the rectangle's and capsule's near planes, the
-header and the refusals, a packed block read back by `cubeShadowAt` per face, the named record
-of each kind, the carried block). Not run yet: the regenerated shaders and a golden on the GPU.
+header and the refusals, a packed block read back by `cubeShadowAt` per face, the world-unit bias
+around the receiver's distance, the named record of each kind, the carried block) and on the GPU
+by `tests/integration/lightShadows.ms` (gate3d `light-shadows`).
 
 ### Shadow filtering: PCF, as built so far (2026-10-25)
 
