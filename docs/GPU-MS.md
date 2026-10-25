@@ -650,10 +650,12 @@ Not covered:
   `src/gpu/door.c`, no Linux backend define) and `run` skips Linux with that reason: the Linux
   rows exist on B only and no A/B is possible until main grows one or the comparison is made
   against another Linux baseline.
-- **Web run:** the wasm builds exist on both sides, but the driver has not yet run in Chrome; the first
-  GO also settles whether headless Chrome throttles `requestAnimationFrame` (the rows are CPU
-  milliseconds, but a slow frame loop lengthens a run) and whether `Module.onExit` fires, which the
-  driver does not depend on. WebGPU with no adapter yields no rows and the pair is `BROKEN`.
+- **Web run:** the driver ran both backends in Chrome on 2026-10-25, 5 pairs each. Every counter row
+  matches across sides, and every `present.ms` and `firstPaint.ms` row is 0 on both, because
+  `performance.now()` returns 0 in an `--os=emcc` build (`~/metascript/.inbox/compiler/2026-10-21-emcc-clocks-return-zero.md`).
+  The web timing rows are parked here until that card lands; then rerun `run` with no rebuild of
+  the driver, after rebuilding both sides' wasm with the fixed `msc`. WebGPU with no adapter yields
+  no rows and the pair is `BROKEN`.
 - **Metal:** another machine and another GO.
 - **Particles and module scenes:** `benchParticles.ms` is on main's tip only, and TextEmoji,
   TextOutline and TextSdf need module defines; `AB_SCENES` can name them but the build passes none.
