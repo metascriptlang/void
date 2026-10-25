@@ -82,7 +82,9 @@ import {
 	cachedLimits,
 	checkedBeginOcclusion,
 	checkedBeginPass,
+	uniformEntryCount,
 	checkedBindGroupIndex,
+	checkedBindGroupSet,
 	checkedBuffer,
 	checkedComputePipeline,
 	checkedCreateEncoder,
@@ -248,8 +250,9 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createBindGroup(this self: GPUDevice, descriptor: GPUBindGroupDescriptor): GPUBindGroup {
+	const group = layoutRecords.record(descriptor.layout.id).group;
 	const id = allocate(bindGroupRecords);
-	store(bindGroupRecords, { id: id });
+	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0 });
 	backend.createBindGroup(id, descriptor);
 	return { id: id };
 }
@@ -293,6 +296,13 @@ export function createView(this self: GPUTexture, descriptor: GPUTextureViewDesc
 
 @inline export function getBindGroupLayout(this self: GPURenderPipeline, index: int32): GPUBindGroupLayout { return layoutOf(self.id, index); }
 @inline export function getBindGroupLayout(this self: GPUComputePipeline, index: int32): GPUBindGroupLayout { return layoutOf(self.id, index); }
+
+function checkedBoundGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
+	checkedBindGroupIndex(index);
+	if (bindGroup.id == 0) { return; }
+	const record = bindGroupRecords.record(bindGroup.id);
+	checkedBindGroupSet(index, record.group, record.dynamicCount, dynamicOffsets, cachedLimits().minUniformBufferOffsetAlignment as uint32);
+}
 
 function layoutOf(pipeline: uint32, index: int32): GPUBindGroupLayout {
 	const p = pipelineRecords.slotIndex(pipeline);
@@ -413,7 +423,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_COMPUTE, "setBindGroup");
-	checkedBindGroupIndex(index);
+	checkedBoundGroup(index, bindGroup, dynamicOffsets);
 	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
 }
 
@@ -595,7 +605,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setBindGroup(this self: GPURenderPassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_RENDER, "setBindGroup");
-	checkedBindGroupIndex(index);
+	checkedBoundGroup(index, bindGroup, dynamicOffsets);
 	backend.setBindGroup(index, bindGroup, dynamicOffsets);
 }
 

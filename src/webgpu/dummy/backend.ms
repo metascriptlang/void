@@ -86,7 +86,6 @@ import {
 	checkedCopyRegion,
 	entryOf,
 	addressesBinding,
-	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
@@ -193,7 +192,6 @@ struct BindGroupSlot {
 	entries: GPUBindGroupEntry[16];
 	entryCount: int32;
 	dynamicIndex: int32[16];
-	dynamicCount: int32;
 }
 
 struct QuerySetSlot {
@@ -687,7 +685,6 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 			if (uniform && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
 		}
 		slot.dynamicIndex[i] = rank;
-		slot.dynamicCount += 1;
 	}
 	put(bindGroups, id, slot);
 }
@@ -818,14 +815,7 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(
-		index,
-		bindGroups[g].group,
-		bindGroups[g].dynamicCount,
-		dynamicOffsets,
-		UNIFORM_OFFSET_ALIGNMENT,
-	);
-	for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
+	for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
 		bound.dynamicOffsets[i] = dynamicOffsets[i];
 	}
 }
@@ -1033,14 +1023,7 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 	computeBound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(
-		index,
-		bindGroups[g].group,
-		bindGroups[g].dynamicCount,
-		dynamicOffsets,
-		UNIFORM_OFFSET_ALIGNMENT,
-	);
-	for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
+	for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
 		computeBound.dynamicOffsets[i] = dynamicOffsets[i];
 	}
 }

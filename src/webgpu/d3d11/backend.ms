@@ -76,7 +76,6 @@ import {
 	entryOf,
 	clampedAnisotropy,
 	addressesBinding,
-	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
@@ -467,7 +466,6 @@ struct BindGroupSlot {
 	uav: Ptr<D3dUavImpl>[GPU_MAX_BIND_GROUP_ENTRIES];
 	entryCount: int32;
 	dynamicIndex: int32[GPU_MAX_BIND_GROUP_ENTRIES];
-	dynamicCount: int32;
 }
 
 struct QuerySetSlot {
@@ -1999,7 +1997,6 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 			if (slot.entries[j].buffer.id != 0 && buffers[bufferRecords.slotIndex(slot.entries[j].buffer.id)].uniform && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
 		}
 		slot.dynamicIndex[i] = rank;
-		slot.dynamicCount += 1;
 	}
 	put(bindGroups, id, slot);
 }
@@ -2216,10 +2213,6 @@ export function setComputePipeline(pipeline: GPUComputePipeline): void {
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (index != GPU_RESOURCE_GROUP) { stop(`a compute pipeline has no uniform group: setBindGroup(${index}) takes group ${GPU_RESOURCE_GROUP}`); }
-	if (dynamicOffsets.length != 0) { stop("a compute bind group takes no dynamic offsets"); }
-	if (bindGroup.id != 0 && bindGroups[bindGroupRecords.slotIndex(bindGroup.id)].group != index) {
-		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups[bindGroupRecords.slotIndex(bindGroup.id)].group}`);
-	}
 	computeBound.bindGroup = bindGroup.id;
 	computeBound.dirty = true;
 }
@@ -2293,9 +2286,8 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, bindGroups[g].group, bindGroups[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
+		for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
 			bound.dynamicOffsets[i] = dynamicOffsets[i];
 		}
 		bound.uniformsDirty = true;

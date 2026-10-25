@@ -1,5 +1,6 @@
 import {
 	BindingKind,
+	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
 	GPUCanvasConfiguration,
@@ -655,6 +656,14 @@ export function bindGroupSetRefusal(
 		if (dynamicOffsets[i] % alignment != 0) { return `dynamic offset ${dynamicOffsets[i]} is not a multiple of ${alignment}`; }
 	}
 	return "";
+}
+
+export function uniformEntryCount(descriptor: GPUBindGroupDescriptor): int32 {
+	let count = 0;
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
+		if (descriptor.entries[i].buffer.id != 0) { count += 1; }
+	}
+	return count;
 }
 
 export function bindGroupIndexRefusal(index: int32): string {

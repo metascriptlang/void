@@ -76,7 +76,6 @@ import {
 	clampedAnisotropy,
 	cachedLimits,
 	addressesBinding,
-	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
@@ -513,7 +512,6 @@ struct ComputeState {
 struct BindGroupSlot {
 	group: int32;
 	native: Ptr<WgBindGroupImpl>;
-	dynamicCount: int32;
 }
 
 let pass: PassState = { timestampEnd: -1 };
@@ -1584,7 +1582,6 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 				entryBuffers[count] = buffer;
 				ranges[count * 2] = entry.offset;
 				ranges[count * 2 + 1] = size;
-				slot.dynamicCount += 1;
 			} else {
 				const size = storageEntrySize(shader, group, entry);
 				entryBuffers[count] = buffer;
@@ -1831,13 +1828,12 @@ function stageBindGroup(
 		return;
 	}
 	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, bindGroups[g].group, bindGroups[g].dynamicCount, dynamicOffsets, uniformAlignment as uint32);
-	for (let i = 0; i < bindGroups[g].dynamicCount; i++) { offsets[i] = dynamicOffsets[i]; }
+	for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) { offsets[i] = dynamicOffsets[i]; }
 	if (compute) {
-		wgSetComputeBindGroup(index, bindGroups[g].native, bindGroups[g].dynamicCount, offsets[0]);
+		wgSetComputeBindGroup(index, bindGroups[g].native, bindGroupRecords.slots[g].dynamicCount, offsets[0]);
 		computeBound.groupMask |= 1 << index;
 	} else {
-		wgSetBindGroup(index, bindGroups[g].native, bindGroups[g].dynamicCount, offsets[0]);
+		wgSetBindGroup(index, bindGroups[g].native, bindGroupRecords.slots[g].dynamicCount, offsets[0]);
 	}
 }
 

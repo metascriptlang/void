@@ -1,5 +1,6 @@
 import {
 	BindingKind,
+	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
 	GPUMapMode,
@@ -26,6 +27,7 @@ import {
 	beginOcclusionRefusal,
 	bindGroupIndexRefusal,
 	bindGroupSetRefusal,
+	uniformEntryCount,
 	beginPassRefusal,
 	bufferRefusal,
 	canvasRefusal,
@@ -677,6 +679,15 @@ test "a bind group is set in the group it was made for, with its dynamic offsets
 	assert bindGroupSetRefusal(0, 0, 2, crooked, 256) == "dynamic offset 100 is not a multiple of 256";
 	assert bindGroupSetRefusal(0, 0, 2, crooked, 4) == "";
 	assert bindGroupSetRefusal(1, 1, 1, aligned, 256) == "setBindGroup(1) takes 1 dynamic offsets, got 2";
+}
+
+test "a uniform group takes one dynamic offset per buffer entry" {
+	let descriptor: GPUBindGroupDescriptor = { label: null };
+	assert uniformEntryCount(descriptor) == 0;
+	descriptor.entries[0].buffer = { id: 5 };
+	descriptor.entries[1].sampler = { id: 7 };
+	descriptor.entries[3].buffer = { id: 6 };
+	assert uniformEntryCount(descriptor) == 2;
 }
 
 test "a storage entry is a positive multiple of 4 bytes inside a STORAGE buffer, on the backend's alignment and limit" {

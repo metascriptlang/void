@@ -91,7 +91,6 @@ import {
 	entryOf,
 	clampedAnisotropy,
 	addressesBinding,
-	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
@@ -423,7 +422,6 @@ struct BindGroupSlot {
 	entries: GPUBindGroupEntry[8];
 	entryCount: int32;
 	dynamicIndex: int32[8];
-	dynamicCount: int32;
 }
 
 struct PassState {
@@ -1525,7 +1523,6 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 			if (slot.entries[j].buffer.id != 0 && uniformOf(shader, group, slot.entries[j].binding) >= 0 && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
 		}
 		slot.dynamicIndex[i] = rank;
-		slot.dynamicCount += 1;
 	}
 	put(bindGroups, id, slot);
 }
@@ -1727,9 +1724,8 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, bindGroups[g].group, bindGroups[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
+		for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
 			bound.dynamicOffsets[i] = dynamicOffsets[i];
 		}
 		bound.uniformsDirty = true;
@@ -2124,9 +2120,8 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 	computeBound.dirty = true;
 	if (bindGroup.id == 0) { return; }
 	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, bindGroups[g].group, bindGroups[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
+		for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
 			computeBound.dynamicOffsets[i] = dynamicOffsets[i];
 		}
 	}
