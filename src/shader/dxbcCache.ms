@@ -2,7 +2,7 @@ import { sha256 } from "std/crypto/sha256";
 import { exists, mkdir, remove, writeFile } from "std/fs";
 import { execFileResult } from "std/process";
 
-export class DxbcStage {
+class DxbcStage {
 	key: string = "";
 	path: string = "";
 	compiled: boolean = false;
@@ -12,7 +12,7 @@ export class DxbcStage {
 // The flags src/webgpu/d3d11/d3d11.c passes D3DCompile, in fxc's spelling; keep them in step.
 function fxcFlags(): string[] { return ["-Zpc", "-O3"]; }
 
-export function dxbcKey(profile: string, entry: string, code: string): string {
+function dxbcKey(profile: string, entry: string, code: string): string {
 	const keyed = profile + " " + entry + " " + fxcFlags().join(" ") + "\n" + code;
 	return sha256(keyed.asBytes()).toHex();
 }

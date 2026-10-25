@@ -31,7 +31,6 @@ import { blurShaderModule } from "../void2d/shader2dModules";
 import {
 	BOOL,
 	F32,
-	I32,
 	MAT4,
 	U32,
 	UVEC3,

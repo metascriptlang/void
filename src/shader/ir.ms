@@ -203,7 +203,7 @@ export enum Intrinsic {
 	TextureSampleGrad,
 }
 
-export function isExplicitSample(op: Intrinsic): boolean {
+function isExplicitSample(op: Intrinsic): boolean {
 	return op == Intrinsic.TextureSampleLevel || op == Intrinsic.TextureSampleBias ||
 		op == Intrinsic.TextureSampleGrad;
 }

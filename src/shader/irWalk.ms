@@ -43,7 +43,7 @@ export function rootOf(e: ShaderExpr): ShaderExpr {
 	return through && e.operands.length > 0 ? rootOf(e.operands[0]) : e;
 }
 
-export function stmtsHaveEffect(m: ShaderModule, effects: int32[], stmts: ShaderStmt[]): boolean {
+function stmtsHaveEffect(m: ShaderModule, effects: int32[], stmts: ShaderStmt[]): boolean {
 	for (const s of stmts) {
 		const root = rootOf(s.target).kind;
 		const writes = s.kind == StmtKind.Assign &&

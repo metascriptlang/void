@@ -235,7 +235,7 @@ export function targetName(target: ShaderTarget): string {
 	};
 }
 
-export class TargetArm {
+class TargetArm {
 	language: string = "";
 	target: ShaderTarget = ShaderTarget.Wgsl;
 	anyOfAll: string[][] = [];
@@ -265,7 +265,7 @@ export function armCondition(a: TargetArm): string {
 		.join(" || ");
 }
 
-export function entryPointOf(target: ShaderTarget): string {
+function entryPointOf(target: ShaderTarget): string {
 	return target == ShaderTarget.Msl ? "main0" : "main";
 }
 
@@ -352,7 +352,7 @@ function optional(name: string, value: string): string {
 }
 
 // The binding and attribute lines in shdc's reflection order; members shdc never reflects follow.
-export function bindingSource(r: Reflection): string[] {
+function bindingSource(r: Reflection): string[] {
 	return r.bindings.map((b) => {
 		const kind: string = b.kind;
 		const sampleType: string = b.sampleType;
@@ -375,7 +375,7 @@ export function bindingSource(r: Reflection): string[] {
 	});
 }
 
-export function attributeSource(r: Reflection): string[] {
+function attributeSource(r: Reflection): string[] {
 	return r.attributes.map((a) => {
 		const name = a.nativeName;
 		return "{ location: " + String(a.location) +

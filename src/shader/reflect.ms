@@ -32,8 +32,8 @@ import {
 } from "../webgpu/types.ms";
 import { DUMMY_SAMPLER_BINDING } from "../webgpu/types.ms";
 
-export const MAX_REFLECTED_BINDINGS = 24;
-export const MAX_REFLECTED_ATTRIBUTES = 16;
+const MAX_REFLECTED_BINDINGS = 24;
+const MAX_REFLECTED_ATTRIBUTES = 16;
 
 export class Reflection {
 	bindings: GPUShaderBinding[] = [];

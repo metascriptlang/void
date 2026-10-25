@@ -44,7 +44,7 @@ import { binaryOperator, exchangeSlot, glslAtomicName, mathName } from "./spelli
 
 // GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
 // texture and sampler types of Vulkan GLSL.
-export function glslReservedWords(): string[] {
+function glslReservedWords(): string[] {
 	let words = [
 		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
 		"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
