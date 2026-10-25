@@ -65,6 +65,7 @@ import {
 	cascadeDepthOf,
 	cascadeIndexOf,
 	cascadeLitOf,
+	cascadeReceiverOf,
 	cascadeTexelOf,
 } from "./cascadeShadow";
 import {
@@ -1258,24 +1259,31 @@ export function dissolveEdgeOf(b: LitBindings, key: LitKey): Vec4f {
 // spot's matrix is perspective, so the product is divided by w (ShadowSampling.hx:49-53); a
 // position behind the spot (w <= 0), like a half of the block nobody wrote, reads lit.
 // PENDING3D: spot-shadow-behind-lit
-export function dirShadowAt(position: Vec3f, b: LitBindings): float32 {
+export function dirShadowAt(position: Vec3f, normal: Vec3f, b: LitBindings): float32 {
 	const depth = cascadeDepthOf(position, b.frameParams.cameraPosition.xyz,
 		b.shadowParams.cascadeView);
 	const cascade = cascadeIndexOf(depth, b.shadowParams.cascadeFar, b.shadowParams.cascadeInfo);
 	if (cascade >= cascadeCountOf(b.shadowParams.cascadeInfo)) {
 		return 1.0;
 	}
-	const lit = cascadeShadowAt(position, b, cascade);
+	const lit = cascadeShadowAt(position, normal, b, cascade);
 	const blend = cascadeBlendOf(depth, cascade, b.shadowParams.cascadeFar,
 		b.shadowParams.cascadeInfo);
 	if (blend > 0.0) {
-		return mix(lit, cascadeShadowAt(position, b, cascade + 1), blend);
+		return mix(lit, cascadeShadowAt(position, normal, b, cascade + 1), blend);
 	}
 	return lit;
 }
 
-export function cascadeShadowAt(position: Vec3f, b: LitBindings, cascade: int32): float32 {
-	const texel = cascadeTexelOf(position, b.shadowParams.cascadeMatrices[cascade],
+export function cascadeShadowAt(
+	position: Vec3f,
+	normal: Vec3f,
+	b: LitBindings,
+	cascade: int32,
+): float32 {
+	const at = cascadeReceiverOf(position, normal, b.shadowParams.cascadeMatrices[cascade],
+		b.shadowParams.cascadeView, b.shadowParams.cascadeFilter.y);
+	const texel = cascadeTexelOf(at, b.shadowParams.cascadeMatrices[cascade],
 		b.shadowParams.cascadeView);
 	const scale = b.shadowParams.cascadeFilter.x;
 	let lit: float32 = 0.0;
@@ -1283,9 +1291,9 @@ export function cascadeShadowAt(position: Vec3f, b: LitBindings, cascade: int32)
 		const stored = textureLoad(b.shadowMap, b.shadowSampler, vec2i(texel.xy), cascade, 0).x;
 		lit = cascadeLitOf(texel, stored, b.shadowParams.cascadeInfo);
 	} else {
-		const uv = mapCoord(position, b.shadowParams.cascadeMatrices[cascade]);
+		const uv = mapCoord(at, b.shadowParams.cascadeMatrices[cascade]);
 		const size = (b.shadowParams.cascadeView.w + 0.5) as int32;
-		const rotation = poissonRotation(position);
+		const rotation = poissonRotation(at);
 		for (let tap = 0; tap < PCF_SAMPLES; tap++) {
 			const at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
 			const stored = textureLoad(b.shadowMap, b.shadowSampler, at, cascade, 0).x;
@@ -1603,6 +1611,7 @@ export function pbrMapped(b: LitBindings, key: LitKey, uv: Vec2f, occlusionUv: V
 // pass; a point light has no shadow here, and one spot may (recordShadowAt).
 export function pbrShade(
 	n: Vec3f,
+	surfaceNormal: Vec3f,
 	position: Vec3f,
 	frag: Vec2f,
 	surfaceColor: Vec4f,
@@ -1615,7 +1624,7 @@ export function pbrShade(
 	const dir = b.lightParams.dirLight;
 	let shadow: float32 = 1.0;
 	if (key.shadowed) {
-		shadow = dirShadowAt(position, b);
+		shadow = dirShadowAt(position, surfaceNormal, b);
 	}
 	const sun = srgbToLinear(b.lightParams.dirColor.rgb) * dir.w;
 	let light = vec3f(0.0);
@@ -1658,6 +1667,7 @@ export function pbrShade(
 // ambient, directional and point lights, saturated as the material says.
 export function litShade(
 	n: Vec3f,
+	surfaceNormal: Vec3f,
 	position: Vec3f,
 	frag: Vec2f,
 	surfaceColor: Vec4f,
@@ -1667,7 +1677,7 @@ export function litShade(
 	const dir = b.lightParams.dirLight;
 	let lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 	if (key.shadowed) {
-		lambert = lambert * dirShadowAt(position, b);
+		lambert = lambert * dirShadowAt(position, surfaceNormal, b);
 	}
 	const ambient = srgbToLinear(b.lightParams.ambient.rgb);
 	let light = ambient + srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
@@ -1686,14 +1696,16 @@ export function litShade(
 export function litFs(input: LitFragmentInput, b: LitBindings, key: LitKey): LitOutput {
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	const surfaceNormal = n;
 	const surfaceColor = tintedSurface(b, key, input.baseColor);
 	let shaded = vec4f(0.0);
 	if (key.pbr) {
 		const pbrValues = pbrOf(b, key).xyz;
-		shaded = pbrShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key,
-			pbrValues);
+		shaded = pbrShade(n, surfaceNormal, input.worldPosition, input.fragCoord.xy,
+			surfaceColor, b, key, pbrValues);
 	} else {
-		shaded = litShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
+		shaded = litShade(n, surfaceNormal, input.worldPosition, input.fragCoord.xy,
+			surfaceColor, b, key);
 	}
 	if (key.cutout) {
 		if (shaded.a < params.w) {
@@ -1747,7 +1759,8 @@ export function litTexturedFs(
 	if (key.premultiplied) {
 		texel = straightTexel(texel);
 	}
-	let n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	const surfaceNormal = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	let n = surfaceNormal;
 	if (key.normalMap) {
 		const normalTexel = textureSample(b.normalTexture, b.baseSampler, uv).rgb;
 		const face = faceOf(params.z, input.frontFacing);
@@ -1767,10 +1780,11 @@ export function litTexturedFs(
 			}
 			pbrValues = pbrMapped(b, key, uv, occlusionUv);
 		}
-		shaded = pbrShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key,
-			pbrValues);
+		shaded = pbrShade(n, surfaceNormal, input.worldPosition, input.fragCoord.xy,
+			surfaceColor, b, key, pbrValues);
 	} else {
-		shaded = litShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
+		shaded = litShade(n, surfaceNormal, input.worldPosition, input.fragCoord.xy,
+			surfaceColor, b, key);
 	}
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;

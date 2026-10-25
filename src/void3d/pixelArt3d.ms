@@ -214,6 +214,7 @@ export function toonPointLightAt(
 // The core's litShade with the point lights on the toon ramp, material.x bands.
 export function toonShade(
 	n: Vec3f,
+	surfaceNormal: Vec3f,
 	position: Vec3f,
 	frag: Vec2f,
 	surfaceColor: Vec4f,
@@ -224,7 +225,7 @@ export function toonShade(
 	const dir = b.lightParams.dirLight;
 	let lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 	if (key.shadowed) {
-		lambert = lambert * dirShadowAt(position, b);
+		lambert = lambert * dirShadowAt(position, surfaceNormal, b);
 	}
 	let light = srgbToLinear(b.lightParams.ambient.rgb) +
 		srgbToLinear(b.lightParams.dirColor.rgb) * lambert;
@@ -278,7 +279,7 @@ export function pixelArtLitFs(
 	const params = materialOf(b, key);
 	const n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
 	const surfaceColor = tintedSurface(b, key, input.baseColor);
-	const shaded = toonShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
+	const shaded = toonShade(n, n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
 	if (key.cutout) {
 		if (shaded.a < params.w) {
 			discard();
@@ -355,7 +356,8 @@ export function pixelArtLitTexturedFs(
 	if (key.premultiplied) {
 		texel = straightTexel(texel);
 	}
-	let n = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	const surfaceNormal = facingNormal(normalize(input.worldNormal), params.z, input.frontFacing);
+	let n = surfaceNormal;
 	if (key.normalMap) {
 		const normalTexel = textureSample(b.normalTexture, b.baseSampler, uv).rgb;
 		const face = faceOf(params.z, input.frontFacing);
@@ -364,7 +366,8 @@ export function pixelArtLitTexturedFs(
 	const surfaceColor = tintedSurface(
 		b, key, vec4f(input.baseColor.rgb * texel.rgb, input.baseColor.a * texel.a),
 	);
-	let shaded = toonShade(n, input.worldPosition, input.fragCoord.xy, surfaceColor, b, key);
+	let shaded = toonShade(n, surfaceNormal, input.worldPosition, input.fragCoord.xy,
+		surfaceColor, b, key);
 	if (key.emissive) {
 		const glow = textureSample(b.emissiveTexture, b.baseSampler, uv).rgb;
 		shaded = emittedOver(shaded, glow, emissiveOf(b, key));

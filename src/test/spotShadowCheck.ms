@@ -18,6 +18,7 @@ import {
 	SHADOW_CASCADE_FAR,
 	SHADOW_CASCADE_INFO,
 	SHADOW_CASCADE_FILTER,
+	SHADOW_CASCADE_NORMAL_BIAS,
 	SHADOW_SPOT_BIAS,
 	SHADOW_SPOT_OPACITY,
 	SHADOW_UNIFORM_LENGTH,
@@ -308,6 +309,8 @@ function sunMapped(b: LitBindings, depth: float32, opacity: float32): LitBinding
 	};
 }
 
+const UP: Vec3f = vec3f(0.0, 1.0, 0.0);
+
 function depthAt(distance: float32): float32 {
 	return 8.0 * (distance - 0.4) / ((8.0 - 0.4) * distance);
 }
@@ -335,7 +338,7 @@ test "a block half nobody wrote shades nothing, whatever its map holds" {
 		...base, shadowMap: oneLayer(depthTexture(0.0)),
 		spotShadowMap: oneLayer(depthTexture(0.0)),
 	};
-	assert dirShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
+	assert dirShadowAt(vec3f(0.0, 0.0, 0.0), UP, empty) == 1.0;
 	assert spotShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
 }
 
@@ -368,15 +371,15 @@ test "the sun and the spot read their own blocks and maps, each ignoring the oth
 	const at: Vec3f = vec3f(0.0, 0.0, 0.0);
 	const base: LitBindings = spotLights(downSpot(true));
 	const bothOpen: LitBindings = spotMapped(sunMapped(base, 1.0, 1.0), view, 1.0, 0.0, 1.0);
-	assert dirShadowAt(at, bothOpen) == 1.0 && spotShadowAt(at, bothOpen) == 1.0;
+	assert dirShadowAt(at, UP, bothOpen) == 1.0 && spotShadowAt(at, bothOpen) == 1.0;
 	const sunBlocked: LitBindings = spotMapped(sunMapped(base, 0.5, 1.0), view, 1.0, 0.0, 1.0);
-	assert dirShadowAt(at, sunBlocked) == 0.0 && spotShadowAt(at, sunBlocked) == 1.0;
+	assert dirShadowAt(at, UP, sunBlocked) == 0.0 && spotShadowAt(at, sunBlocked) == 1.0;
 	const spotBlocked: LitBindings = spotMapped(sunMapped(base, 1.0, 1.0), view, 0.5, 0.0, 1.0);
-	assert dirShadowAt(at, spotBlocked) == 1.0 && spotShadowAt(at, spotBlocked) == 0.0;
+	assert dirShadowAt(at, UP, spotBlocked) == 1.0 && spotShadowAt(at, spotBlocked) == 0.0;
 	const sunOnly: LitBindings = sunMapped(base, 0.5, 0.5);
-	assert near(dirShadowAt(at, sunOnly), 0.5) && spotShadowAt(at, sunOnly) == 1.0;
+	assert near(dirShadowAt(at, UP, sunOnly), 0.5) && spotShadowAt(at, sunOnly) == 1.0;
 	const spotOnly: LitBindings = spotMapped(base, view, 0.5, 0.0, 0.25);
-	assert dirShadowAt(at, spotOnly) == 1.0 && near(spotShadowAt(at, spotOnly), 0.75);
+	assert dirShadowAt(at, UP, spotOnly) == 1.0 && near(spotShadowAt(at, spotOnly), 0.75);
 }
 
 function surface(b: LitBindings, pbr: boolean): Vec3f {
@@ -517,7 +520,7 @@ function sunCascades(first: float32, second: float32): LitBindings {
 }
 
 function sunAt(depth: float32, b: LitBindings): float32 {
-	return dirShadowAt(vec3f(0.0, 5.0, 1.0 + depth), b);
+	return dirShadowAt(vec3f(0.0, 5.0, 1.0 + depth), UP, b);
 }
 
 test "a packed two-cascade sun reads each depth's layer, blends the overlap, and lights past it" {
@@ -583,4 +586,54 @@ test "a map packs its PCF scale only when it samples with Pcf" {
 	sun.pcfScale = 1.5;
 	sun.packSun(layers, identity(), vec3(0.0, 0.0, 1.0));
 	assert sun.shadowValues[SHADOW_CASCADE_FILTER] == 1.5;
+}
+
+// An 8x8 sun map shadowed left of its middle column and open right of it, `perWorld` of the
+// map's width to a world unit.
+function sunSplit(b: LitBindings, perWorld: float32, normalBias: float32): LitBindings {
+	let texels: float32[] = [];
+	for (let y = 0; y < 8; y++) {
+		for (let x = 0; x < 8; x++) {
+			const texel: float32[] = [x < 4 ? 0.0 : 1.0, 0.0, 0.0, 1.0];
+			for (const v of texel) { texels.push(v); }
+		}
+	}
+	const map: Mat4x4f = mat4x4f(
+		vec4f(perWorld, 0.0, 0.0, 0.0), vec4f(0.0, perWorld, 0.0, 0.0),
+		vec4f(0.0, 0.0, 0.0, 0.0), vec4f(0.5, 0.5, 0.9, 1.0),
+	);
+	return {
+		...b,
+		shadowParams: {
+			...b.shadowParams,
+			cascadeMatrices: [map, map, map, map],
+			cascadeFar: vec4f(3.0e38, 0.0, 0.0, 0.0),
+			cascadeInfo: vec4f(1.0, 0.0, 0.0, 1.0),
+			cascadeView: vec4f(0.0, 0.0, 1.0, 8.0),
+			cascadeFilter: vec4f(0.0, normalBias, 0.0, 0.0),
+		},
+		shadowMap: { width: 8, height: 8, layers: 1, texels: texels },
+	};
+}
+
+test "the sun's normal bias moves the receiver along its normal by texels of the cascade" {
+	const base: LitBindings = spotLights(downSpot(true));
+	const right: Vec3f = vec3f(1.0, 0.0, 0.0);
+	assert dirShadowAt(vec3f(-0.5, 0.0, 0.0), right, sunSplit(base, 0.125, 0.0)) == 0.0;
+	assert dirShadowAt(vec3f(-0.5, 0.0, 0.0), right, sunSplit(base, 0.125, 1.0)) == 1.0;
+	assert dirShadowAt(vec3f(0.5, 0.0, 0.0), -right, sunSplit(base, 0.125, 1.0)) == 0.0;
+	assert dirShadowAt(vec3f(-1.5, 0.0, 0.0), right, sunSplit(base, 0.0625, 0.5)) == 0.0;
+	assert dirShadowAt(vec3f(-1.5, 0.0, 0.0), right, sunSplit(base, 0.0625, 1.0)) == 1.0;
+}
+
+test "a sun packs its normal bias, zero unless set as Heaps has none" {
+	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
+	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
+	if (!made.ok) { unreachable; }
+	let sun: DirShadowMap = made.value;
+	assert sun.normalBias == 0.0;
+	sun.normalBias = 1.5;
+	sun.packSun({ clips: [identity()], far: [10.0] }, identity(), vec3(0.0, 0.0, 1.0));
+	assert sun.shadowValues[SHADOW_CASCADE_NORMAL_BIAS] == 1.5;
+	assert shadowParamsOf(sun.shadowValues).cascadeFilter.y == 1.5;
 }

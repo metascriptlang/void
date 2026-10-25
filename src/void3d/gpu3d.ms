@@ -445,6 +445,7 @@ export const SHADOW_CASCADE_INFO: int32 = 68;
 export const SHADOW_CASCADE_VIEW: int32 = 72;
 // Each part's PCF scale in texels (h3d.pass.Shadows pcfScale), 0 for one compared texel.
 export const SHADOW_CASCADE_FILTER: int32 = 76;
+export const SHADOW_CASCADE_NORMAL_BIAS: int32 = SHADOW_CASCADE_FILTER + 1;
 export const SHADOW_SPOT_BASE: int32 = 80;
 export const SHADOW_SPOT_LENGTH: int32 = 20;
 export const SHADOW_SPOT_BIAS: int32 = SHADOW_SPOT_BASE + 16;

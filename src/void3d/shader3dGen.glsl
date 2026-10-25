@@ -1201,6 +1201,16 @@ int cascadeIndexOf(float depth, vec4 far, vec4 info) {
 }
 #endif
 #ifdef SHADOWED
+vec3 cascadeReceiverOf(vec3 position, vec3 normal_1, mat4 matrix, vec4 view, float normalBias) {
+    vec3 at = position;
+    if (normalBias > 0.0) {
+        vec3 across = vec3((matrix * vec4(1.0, 0.0, 0.0, 0.0)).x, (matrix * vec4(0.0, 1.0, 0.0, 0.0)).x, (matrix * vec4(0.0, 0.0, 1.0, 0.0)).x);
+        at = position + (normal_1 * (normalBias / (length(across) * view.w)));
+    }
+    return at;
+}
+#endif
+#ifdef SHADOWED
 vec4 mapCoord(vec3 position, mat4 matrix) {
     vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
@@ -1259,20 +1269,21 @@ vec2 poissonOffset(int tap, vec2 rotation, float scale) {
 }
 #endif
 #ifdef SHADOWED
-float cascadeShadowAt(vec3 position, int cascade) {
-    vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
+float cascadeShadowAt(vec3 position, vec3 normal_1, int cascade) {
+    vec3 at = cascadeReceiverOf(position, normal_1, cascadeMatrices[cascade], cascadeView, cascadeFilter.y);
+    vec4 texel = cascadeTexelOf(at, cascadeMatrices[cascade], cascadeView);
     float scale = cascadeFilter.x;
     float lit = 0.0;
     if ((texel.w < 0.5) || (scale <= 0.0)) {
         float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
         lit = cascadeLitOf(texel, stored, cascadeInfo);
     } else {
-        vec4 uv = mapCoord(position, cascadeMatrices[cascade]);
+        vec4 uv = mapCoord(at, cascadeMatrices[cascade]);
         int size = int(cascadeView.w + 0.5);
-        vec2 rotation = poissonRotation(position);
+        vec2 rotation = poissonRotation(at);
         for (int tap = 0; tap < PCF_SAMPLES; tap++) {
-            ivec2 at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
-            float stored_1 = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(at, cascade), 0).x;
+            ivec2 at_1 = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
+            float stored_1 = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(at_1, cascade), 0).x;
             lit = lit + cascadeLitOf(texel, stored_1, cascadeInfo);
         }
         lit = lit / float(PCF_SAMPLES);
@@ -1294,16 +1305,16 @@ float cascadeBlendOf(float depth, int cascade, vec4 far, vec4 info) {
 }
 #endif
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
+float dirShadowAt(vec3 position, vec3 normal_1) {
     float depth = cascadeDepthOf(position, cameraPosition.xyz, cascadeView);
     int cascade = cascadeIndexOf(depth, cascadeFar, cascadeInfo);
     if (cascade >= cascadeCountOf(cascadeInfo)) {
         return 1.0;
     }
-    float lit = cascadeShadowAt(position, cascade);
+    float lit = cascadeShadowAt(position, normal_1, cascade);
     float blend = cascadeBlendOf(depth, cascade, cascadeFar, cascadeInfo);
     if (blend > 0.0) {
-        return mix(lit, cascadeShadowAt(position, (cascade + 1)), blend);
+        return mix(lit, cascadeShadowAt(position, normal_1, (cascade + 1)), blend);
     }
     return lit;
 }
@@ -1642,13 +1653,13 @@ vec3 linearToSrgb(vec3 rgb) {
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
 #ifdef PBR
-vec4 pbrShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) {
+vec4 pbrShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) {
     vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     vec3 view = cameraPosition.xyz - position;
     vec4 dir = dirLight;
     float shadow = 1.0;
 #ifdef SHADOWED
-    shadow = dirShadowAt(position);
+    shadow = dirShadowAt(position, surfaceNormal);
 #endif
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
     vec3 light = vec3(0.0);
@@ -1705,11 +1716,11 @@ vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, v
 }
 #endif
 #ifndef PBR
-vec4 litShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor) {
+vec4 litShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 #ifdef SHADOWED
-    lambert = lambert * dirShadowAt(position);
+    lambert = lambert * dirShadowAt(position, surfaceNormal);
 #endif
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
@@ -1761,13 +1772,14 @@ vec3 toneMapped(vec3 rgb, vec4 tone) {
 void main() {
     vec4 params = materialOf();
     vec3 n = facingNormal(normalize(worldNormal), params.z, gl_FrontFacing);
+    vec3 surfaceNormal = n;
     vec4 surfaceColor = tintedSurface(baseColor);
     vec4 shaded = vec4(0.0);
 #ifdef PBR
     vec3 pbrValues = pbrOf().xyz;
-    shaded = pbrShade(n, worldPosition, gl_FragCoord.xy, surfaceColor, pbrValues);
+    shaded = pbrShade(n, surfaceNormal, worldPosition, gl_FragCoord.xy, surfaceColor, pbrValues);
 #else
-    shaded = litShade(n, worldPosition, gl_FragCoord.xy, surfaceColor);
+    shaded = litShade(n, surfaceNormal, worldPosition, gl_FragCoord.xy, surfaceColor);
 #endif
 #ifdef CUTOUT
     if (shaded.a < params.w) {
@@ -2399,6 +2411,16 @@ int cascadeIndexOf(float depth, vec4 far, vec4 info) {
 }
 #endif
 #ifdef SHADOWED
+vec3 cascadeReceiverOf(vec3 position, vec3 normal_1, mat4 matrix, vec4 view, float normalBias) {
+    vec3 at = position;
+    if (normalBias > 0.0) {
+        vec3 across = vec3((matrix * vec4(1.0, 0.0, 0.0, 0.0)).x, (matrix * vec4(0.0, 1.0, 0.0, 0.0)).x, (matrix * vec4(0.0, 0.0, 1.0, 0.0)).x);
+        at = position + (normal_1 * (normalBias / (length(across) * view.w)));
+    }
+    return at;
+}
+#endif
+#ifdef SHADOWED
 vec4 mapCoord(vec3 position, mat4 matrix) {
     vec4 q = matrix * vec4(position, 1.0);
     if (q.w <= 0.0) {
@@ -2457,20 +2479,21 @@ vec2 poissonOffset(int tap, vec2 rotation, float scale) {
 }
 #endif
 #ifdef SHADOWED
-float cascadeShadowAt(vec3 position, int cascade) {
-    vec4 texel = cascadeTexelOf(position, cascadeMatrices[cascade], cascadeView);
+float cascadeShadowAt(vec3 position, vec3 normal_1, int cascade) {
+    vec3 at = cascadeReceiverOf(position, normal_1, cascadeMatrices[cascade], cascadeView, cascadeFilter.y);
+    vec4 texel = cascadeTexelOf(at, cascadeMatrices[cascade], cascadeView);
     float scale = cascadeFilter.x;
     float lit = 0.0;
     if ((texel.w < 0.5) || (scale <= 0.0)) {
         float stored = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(ivec2(texel.xy), cascade), 0).x;
         lit = cascadeLitOf(texel, stored, cascadeInfo);
     } else {
-        vec4 uv = mapCoord(position, cascadeMatrices[cascade]);
+        vec4 uv = mapCoord(at, cascadeMatrices[cascade]);
         int size = int(cascadeView.w + 0.5);
-        vec2 rotation = poissonRotation(position);
+        vec2 rotation = poissonRotation(at);
         for (int tap = 0; tap < PCF_SAMPLES; tap++) {
-            ivec2 at = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
-            float stored_1 = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(at, cascade), 0).x;
+            ivec2 at_1 = pcfTexelOf(uv, size, poissonOffset(tap, rotation, scale));
+            float stored_1 = texelFetch(sampler2DArray(shadowMap, shadowSampler), ivec3(at_1, cascade), 0).x;
             lit = lit + cascadeLitOf(texel, stored_1, cascadeInfo);
         }
         lit = lit / float(PCF_SAMPLES);
@@ -2492,16 +2515,16 @@ float cascadeBlendOf(float depth, int cascade, vec4 far, vec4 info) {
 }
 #endif
 #ifdef SHADOWED
-float dirShadowAt(vec3 position) {
+float dirShadowAt(vec3 position, vec3 normal_1) {
     float depth = cascadeDepthOf(position, cameraPosition.xyz, cascadeView);
     int cascade = cascadeIndexOf(depth, cascadeFar, cascadeInfo);
     if (cascade >= cascadeCountOf(cascadeInfo)) {
         return 1.0;
     }
-    float lit = cascadeShadowAt(position, cascade);
+    float lit = cascadeShadowAt(position, normal_1, cascade);
     float blend = cascadeBlendOf(depth, cascade, cascadeFar, cascadeInfo);
     if (blend > 0.0) {
-        return mix(lit, cascadeShadowAt(position, (cascade + 1)), blend);
+        return mix(lit, cascadeShadowAt(position, normal_1, (cascade + 1)), blend);
     }
     return lit;
 }
@@ -2840,13 +2863,13 @@ vec3 linearToSrgb(vec3 rgb) {
     return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
 }
 #ifdef PBR
-vec4 pbrShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) {
+vec4 pbrShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) {
     vec3 albedo = srgbToLinear(saturated(surfaceColor.rgb, materialOf().y));
     vec3 view = cameraPosition.xyz - position;
     vec4 dir = dirLight;
     float shadow = 1.0;
 #ifdef SHADOWED
-    shadow = dirShadowAt(position);
+    shadow = dirShadowAt(position, surfaceNormal);
 #endif
     vec3 sun = srgbToLinear(dirColor.rgb) * dir.w;
     vec3 light = vec3(0.0);
@@ -2903,11 +2926,11 @@ vec3 lightAt(vec3 position, vec3 normal_1, vec4 at, vec4 tint, vec4 a, vec4 b, v
 }
 #endif
 #ifndef PBR
-vec4 litShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor) {
+vec4 litShade(vec3 n, vec3 surfaceNormal, vec3 position, vec2 frag, vec4 surfaceColor) {
     vec4 dir = dirLight;
     float lambert = max(dot(n, dir.xyz), 0.0) * dir.w;
 #ifdef SHADOWED
-    lambert = lambert * dirShadowAt(position);
+    lambert = lambert * dirShadowAt(position, surfaceNormal);
 #endif
     vec3 ambient_1 = srgbToLinear(ambient.rgb);
     vec3 light = ambient_1 + (srgbToLinear(dirColor.rgb) * lambert);
@@ -3017,7 +3040,8 @@ void main() {
 #ifdef PREMULTIPLIED
     texel = straightTexel(texel);
 #endif
-    vec3 n = facingNormal(normalize(worldNormal), params.z, gl_FrontFacing);
+    vec3 surfaceNormal = facingNormal(normalize(worldNormal), params.z, gl_FrontFacing);
+    vec3 n = surfaceNormal;
 #ifdef NORMAL_MAP
     vec3 normalTexel = texture(sampler2D(normalTexture, baseSampler), uv).rgb;
     float face = faceOf(params.z, gl_FrontFacing);
@@ -3034,9 +3058,9 @@ void main() {
 #endif
     pbrValues = pbrMapped(uv, occlusionUv);
 #endif
-    shaded = pbrShade(n, worldPosition, gl_FragCoord.xy, surfaceColor, pbrValues);
+    shaded = pbrShade(n, surfaceNormal, worldPosition, gl_FragCoord.xy, surfaceColor, pbrValues);
 #else
-    shaded = litShade(n, worldPosition, gl_FragCoord.xy, surfaceColor);
+    shaded = litShade(n, surfaceNormal, worldPosition, gl_FragCoord.xy, surfaceColor);
 #endif
 #ifdef EMISSIVE
     vec3 glow = texture(sampler2D(emissiveTexture, baseSampler), uv).rgb;

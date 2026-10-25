@@ -5,7 +5,9 @@
 // read at its texel as the single sun map is; the read itself sits with the program's bindings,
 // and a uniform block reaches these helpers one member at a time.
 
-import { Mat4x4f, Vec3f, Vec4f, clamp, dot, vec2f, vec2i, vec4f } from "../shader/std";
+import {
+	Mat4x4f, Vec3f, Vec4f, clamp, dot, length, vec2f, vec2i, vec3f, vec4f,
+} from "../shader/std";
 import { mapCoord, mapLit } from "./shadowLookup";
 
 // cascadeMatrices[i] takes a world position to layer i's texel space and depth (cascade i's
@@ -75,6 +77,22 @@ export function cascadeTexelOf(position: Vec3f, matrix: Mat4x4f, view: Vec4f): V
 	const texel = clamp(vec2i(at.xy * vec2f(size as float32)), vec2i(0, 0),
 		vec2i(size - 1, size - 1));
 	return vec4f(texel.x as float32, texel.y as float32, at.z, 1.0);
+}
+
+export function cascadeReceiverOf(
+	position: Vec3f,
+	normal: Vec3f,
+	matrix: Mat4x4f,
+	view: Vec4f,
+	normalBias: float32,
+): Vec3f {
+	let at = position;
+	if (normalBias > 0.0) {
+		const across = vec3f((matrix * vec4f(1.0, 0.0, 0.0, 0.0)).x,
+			(matrix * vec4f(0.0, 1.0, 0.0, 0.0)).x, (matrix * vec4f(0.0, 0.0, 1.0, 0.0)).x);
+		at = position + normal * (normalBias / (length(across) * view.w));
+	}
+	return at;
 }
 
 // The lit share of a fragment whose texel holds `stored`.

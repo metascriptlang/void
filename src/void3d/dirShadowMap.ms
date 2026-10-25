@@ -20,6 +20,7 @@ import {
 	SHADOW_CASCADE_INFO,
 	SHADOW_CASCADE_VIEW,
 	SHADOW_CASCADE_FILTER,
+	SHADOW_CASCADE_NORMAL_BIAS,
 	SHADOW_SPOT_BASE,
 	SHADOW_SPOT_BIAS,
 	SHADOW_SPOT_OPACITY,
@@ -93,6 +94,7 @@ export interface DirShadowMap {
 	size: int32;
 	kind: ShadowKind;
 	bias: float32;
+	normalBias: float32;
 	opacity: float32;
 	samplingKind: ShadowSamplingKind;
 	// In texels; Heaps' pcfScale is the same number, divided by the map's width in the shader.
@@ -196,6 +198,7 @@ function buildMap(
 		size: size,
 		kind: kind,
 		bias: DEFAULT_SHADOW_BIAS,
+		normalBias: 0.0,
 		opacity: 1.0,
 		samplingKind: ShadowSamplingKind.None,
 		pcfScale: 1.0,
@@ -426,6 +429,7 @@ export function packSun(
 	shadow.shadowValues[SHADOW_CASCADE_VIEW + 2] = forward.z;
 	shadow.shadowValues[SHADOW_CASCADE_VIEW + 3] = shadow.size as float32;
 	shadow.shadowValues[SHADOW_CASCADE_FILTER] = filterScaleOf(shadow);
+	shadow.shadowValues[SHADOW_CASCADE_NORMAL_BIAS] = shadow.normalBias;
 }
 
 // The PCF scale a part of the block carries: 0 reads one texel.
