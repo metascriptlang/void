@@ -305,6 +305,7 @@ export struct ShadowParams {
 	cubeMatrices: Mat4x4f[6];
 	cubeShadow: Vec4f;
 	cubeLight: Vec4f;
+	cubeRange: Vec4f;
 }
 
 // The blocks at one binding are the layouts a program key chooses between.
@@ -1326,8 +1327,11 @@ export function cubeFaceOf(toPosition: Vec3f): int32 {
 	return toPosition.z > 0.0 ? 4 : 5;
 }
 
+// Unlike the spot's, CubeShadowMap compares world distances with a world-unit bias
+// (isUsingWorldDist, ShadowSampling.compareDepth), so the stored depth is turned back into one.
 function cubeTapAt(position: Vec3f, b: LitBindings): float32 {
-	const face = cubeFaceOf(position - b.shadowParams.cubeLight.xyz);
+	const toPosition = position - b.shadowParams.cubeLight.xyz;
+	const face = cubeFaceOf(toPosition);
 	const p = mapCoord(position, b.shadowParams.cubeMatrices[face]);
 	if (p.w < 0.5) {
 		return 1.0;
@@ -1335,7 +1339,14 @@ function cubeTapAt(position: Vec3f, b: LitBindings): float32 {
 	const size = (b.shadowParams.cubeShadow.z + 0.5) as int32;
 	const depth = textureLoad(b.cubeShadowMap, b.spotShadowSampler,
 		pcfTexelOf(p, size, vec2f(0.0)), face, 0).x;
-	return mapLit(p.z, depth, b.shadowParams.cubeShadow.x, b.shadowParams.cubeShadow.y);
+	const near = b.shadowParams.cubeRange.x;
+	const far = b.shadowParams.cubeRange.y;
+	const axes = abs(toPosition);
+	const axis = max(axes.x, max(axes.y, axes.z));
+	const distance = length(toPosition);
+	const stored = near * far / (far - depth * (far - near)) * (distance / axis);
+	return mapLit(distance / far, stored / far, b.shadowParams.cubeShadow.x / far,
+		b.shadowParams.cubeShadow.y);
 }
 
 // cubeShadowPcf's taps turn the light-to-receiver direction and keep its distance, each read

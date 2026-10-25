@@ -27,6 +27,7 @@ import {
 	POINT_SHADOW_NEAR,
 	RECTANGLE_SHADOW_NEAR,
 	cubeCaster,
+	cubeNear,
 	cubeShadowViews,
 } from "../void3d/cubeShadow";
 import {
@@ -215,7 +216,7 @@ function packed(values: Vec<float32>, opacity: float32, pcf: float32): Vec<float
 	}
 	let clips: Vec<Mat4> = [];
 	for (const view of viewsOf(values)) { clips.push(view.viewProj); }
-	map.packCube(clips, TOP_LEFT_MAP, LIGHT_AT, opacity);
+	map.packCube(clips, TOP_LEFT_MAP, LIGHT_AT, opacity, cubeNear(values, 0), RANGE);
 	let out: Vec<float32> = [];
 	for (const v of map.shadowValues) { out.push(v); }
 	return move out;
@@ -275,6 +276,26 @@ test "the lookup reads the layer of the face the receiver lies on, through the p
 	assert near(cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 0.25, 0.0)),
 		0.75);
 	assert cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 1.0, 1.0)) == 1.0;
+}
+
+const RECEIVER: Vec3f = vec3f(2.0, 0.3, -0.2);
+const RECEIVER_DISTANCE: float32 = Math.sqrt(4.0 + 0.09 + 0.04) as float32;
+
+// The receiver's light behind a caster `radial` from the light on its ray, which the +X face
+// stores at the depth of the ray's x.
+function litBehind(radial: float32): float32 {
+	const values: Vec<float32> = pointLights(true);
+	const x: float32 = radial * RECEIVER.x / RECEIVER_DISTANCE;
+	const depth: float32 = ndcOf(viewsOf(values)[0].viewProj, LIGHT_AT + vec3(x, 0, 0)).z;
+	const at: Vec3f = vec3f(LIGHT_AT.x, LIGHT_AT.y, LIGHT_AT.z) + RECEIVER;
+	return cubeShadowAt(at, pointBindings(values, 1.0, depth));
+}
+
+test "the cube compares world distances, its 0.01 bias in world units, as CubeShadowMap does" {
+	assert litBehind(1.0) == 0.0;
+	assert litBehind(RECEIVER_DISTANCE - 0.02) == 0.0;
+	assert litBehind(RECEIVER_DISTANCE - 0.005) == 1.0;
+	assert litBehind(RECEIVER_DISTANCE) == 1.0;
 }
 
 function firstShadowAt(position: Vec3f, b: LitBindings, key: LitKey): float32 {

@@ -456,7 +456,8 @@ export const SHADOW_CUBE_BIAS: int32 = SHADOW_CUBE_BASE + SHADOW_CUBE_FACES * 16
 export const SHADOW_CUBE_OPACITY: int32 = SHADOW_CUBE_BIAS + 1;
 export const SHADOW_CUBE_FILTER: int32 = SHADOW_CUBE_BIAS + 3;
 export const SHADOW_CUBE_POSITION: int32 = SHADOW_CUBE_BIAS + 4;
-export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_CUBE_POSITION + 4;
+export const SHADOW_CUBE_RANGE: int32 = SHADOW_CUBE_POSITION + 4;
+export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_CUBE_RANGE + 4;
 // The shadow maps' view and sampler slots (dirShadow's `binding=`), past a material's: the sun's
 // map, then the spot's, then the cube's, which reads with the spot's sampler.
 export const SHADOW_VIEW_SLOT: int32 = 4;

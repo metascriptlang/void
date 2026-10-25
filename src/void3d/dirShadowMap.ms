@@ -30,6 +30,7 @@ import {
 	SHADOW_CUBE_OPACITY,
 	SHADOW_CUBE_FILTER,
 	SHADOW_CUBE_POSITION,
+	SHADOW_CUBE_RANGE,
 } from "./gpu3d";
 import {
 	PixelFormat,
@@ -67,7 +68,7 @@ import { Frustum3D } from "./frustum";
 import { CameraBasis, CameraView, OrthoBounds } from "./camera";
 import { SpotShadowError, spotCaster, spotShadowView } from "./spotShadow";
 import {
-	CubeShadowError, cubeCaster, cubeShadowViews, cubePosition,
+	CubeShadowError, cubeCaster, cubeShadowViews, cubePosition, cubeNear, cubeRange,
 } from "./cubeShadow";
 import {
 	Cascade, CascadeConfig, CascadeError, MAX_CASCADES, cascadesOf, viewForward,
@@ -537,6 +538,8 @@ function drawCubeShadows(
 	let clips: Vec<Mat4> = [];
 	let bases: Vec<CameraBasis> = [];
 	let position: Vec3 = vec3(0.0, 0.0, 0.0);
+	let near: float32 = 0.0;
+	let far: float32 = 0.0;
 	if (slot < 0) {
 		shadow.casters.count = 0;
 		opacity = 0.0;
@@ -559,20 +562,25 @@ function drawCubeShadows(
 			bases.push(view.basis);
 		}
 		position = cubePosition(lights, slot);
+		near = cubeNear(lights, slot);
+		far = cubeRange(lights, slot);
 	}
 	shadow.viewProj = clips[0];
-	shadow.packCube(clips, mapMatrix(), position, opacity);
+	shadow.packCube(clips, mapMatrix(), position, opacity, near, far);
 	return drawLayers(shadow, items, bases, clips);
 }
 
-// The point's part of the block: each face's clip taken on to the map by `map`, the bias in map
-// depth, the opacity, the size and the light's position, which picks the face.
+// The point's part of the block: each face's clip taken on to the map by `map`, the bias in world
+// units, the opacity, the size, the light's position, which picks the face, and the faces' near
+// and far planes.
 export function packCube(
 	this shadow: DirShadowMap,
 	clips: Readonly<Span<Mat4>>,
 	map: Mat4,
 	position: Vec3,
 	opacity: float32,
+	near: float32,
+	far: float32,
 ): void {
 	if (shadow.closed) { stopOnClosed("packCube"); }
 	if ((clips.length as int32) != SHADOW_CUBE_FACES) {
@@ -583,13 +591,15 @@ export function packCube(
 		const at: int32 = SHADOW_CUBE_BASE + face * 16;
 		(clips[face] * map).writeTo(shadow.shadowValues[at..at + 16], 0);
 	}
-	shadow.shadowValues[SHADOW_CUBE_BIAS] = shadow.bias * map.m33;
+	shadow.shadowValues[SHADOW_CUBE_BIAS] = shadow.bias;
 	shadow.shadowValues[SHADOW_CUBE_OPACITY] = opacity;
 	shadow.shadowValues[SHADOW_CUBE_OPACITY + 1] = shadow.size as float32;
 	shadow.shadowValues[SHADOW_CUBE_FILTER] = filterScaleOf(shadow);
 	shadow.shadowValues[SHADOW_CUBE_POSITION] = position.x;
 	shadow.shadowValues[SHADOW_CUBE_POSITION + 1] = position.y;
 	shadow.shadowValues[SHADOW_CUBE_POSITION + 2] = position.z;
+	shadow.shadowValues[SHADOW_CUBE_RANGE] = near;
+	shadow.shadowValues[SHADOW_CUBE_RANGE + 1] = far;
 }
 
 // The frame applies one shadow block, the first of the sun's, the spot's and the point's maps:

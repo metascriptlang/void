@@ -48,6 +48,10 @@ export function cubeNear(lights: Readonly<Span<float32>>, light: int32): float32
 		RECTANGLE_SHADOW_NEAR : POINT_SHADOW_NEAR;
 }
 
+export function cubeRange(lights: Readonly<Span<float32>>, light: int32): float32 {
+	return lights[recordAt(light) + LIGHT_RECORD_COLOR + 3];
+}
+
 export function cubePosition(lights: Readonly<Span<float32>>, light: int32): Vec3 {
 	const at: int32 = recordAt(light);
 	return vec3(lights[at], lights[at + 1], lights[at + 2]);
@@ -76,7 +80,7 @@ export function cubeShadowViews(
 	lights: Readonly<Span<float32>>,
 	light: int32,
 ): Result<Vec<CameraView>, CubeShadowError> {
-	const range: float32 = lights[recordAt(light) + LIGHT_RECORD_COLOR + 3];
+	const range: float32 = cubeRange(lights, light);
 	const near: float32 = cubeNear(lights, light);
 	if (!(range > near) || !Number.isFinite(range)) {
 		return Result.err(CubeShadowError.BadRange);

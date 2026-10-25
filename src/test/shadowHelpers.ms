@@ -9,6 +9,7 @@ import {
 	SHADOW_CUBE_BASE,
 	SHADOW_CUBE_BIAS,
 	SHADOW_CUBE_POSITION,
+	SHADOW_CUBE_RANGE,
 } from "../void3d/gpu3d";
 import { ShadowParams } from "../void3d/shader3d";
 
@@ -70,5 +71,6 @@ export function shadowParamsOf(values: Vec<float32>): ShadowParams {
 		],
 		cubeShadow: quadAt(values, SHADOW_CUBE_BIAS),
 		cubeLight: quadAt(values, SHADOW_CUBE_POSITION),
+		cubeRange: quadAt(values, SHADOW_CUBE_RANGE),
 	};
 }
