@@ -198,7 +198,6 @@ void voidGfxSetup(void) {
 int voidFbWidth(void) { return voidAndroidAppFbWidth(); }
 int voidFbHeight(void) { return voidAndroidAppFbHeight(); }
 float voidDpiScale(void) { return voidAndroidAppDpiScale(); }
-int voidKeyDown(int keycode) { (void)keycode; return 0; }
 
 // The screen pass draws into the current view's EGL surface, which is framebuffer 0 on GL and
 // has no view objects.
