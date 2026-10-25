@@ -1,7 +1,5 @@
-// Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> [--fxc <fxc path>]
-//   [--reflection-only]
-// --reflection-only writes a target whose printer refuses the program as its reflection with empty
-// sources and the refusal above the function; without it a refusal stops the tool.
+// Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> <metallib cache dir>
+//   [--fxc <fxc path>]
 
 import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
@@ -292,7 +290,6 @@ function checkBlockHead(programs: Program[]): void {
 
 class Counts {
 	programs: int32 = 0;
-	refused: int32 = 0;
 	printed: int32 = 0;
 }
 
@@ -471,7 +468,6 @@ function stageBytecode(
 	source: ProgramSource,
 	name: string,
 ): string[] {
-	if (source.refusal != "") { return isComputeSource(source) ? ["[]"] : ["[]", "[]"]; }
 	const entry = source.entryPoint;
 	if (isComputeSource(source)) {
 		return [blobOf(source.computeCode, "compute", entry, name + " compute")];
@@ -494,7 +490,6 @@ function moduleText(
 	programs: Program[],
 	typesPath: string,
 	dispatcher: string,
-	reflectionOnly: boolean,
 	counts: Counts,
 	dxbc: Dxbc,
 	metallib: Metallib,
@@ -515,16 +510,12 @@ function moduleText(
 				printed = fresh.value;
 			}
 			if (printed.refusal != "") {
-				const refusal = printed.refusal;
-				if (!reflectionOnly) { fail(program.name + " " + language + ": " + refusal); }
-				counts.refused++;
-				console.log("refused " + program.name + " " + language + ": " + refusal);
-			} else {
-				const files = stageFiles(language);
-				keep("out/irPrograms/" + program.name + files[0], printed.vertexCode);
-				keep("out/irPrograms/" + program.name + files[1], printed.fragmentCode);
-				counts.printed += 2;
+				fail(program.name + " " + language + ": " + printed.refusal);
 			}
+			const files = stageFiles(language);
+			keep("out/irPrograms/" + program.name + files[0], printed.vertexCode);
+			keep("out/irPrograms/" + program.name + files[1], printed.fragmentCode);
+			counts.printed += 2;
 			row.push(printed);
 		}
 		if (program.layout != "") {
@@ -593,7 +584,6 @@ function moduleText(
 }
 
 function main(): void {
-	const reflectionOnly = argv.includes("--reflection-only");
 	let dirs: string[] = [];
 	let dxbc = new Dxbc();
 	let metallib = new Metallib();
@@ -602,13 +592,13 @@ function main(): void {
 		if (args[i] == "--fxc" && i + 1 < args.length) {
 			i++;
 			dxbc.fxc = args[i];
-		} else if (args[i] != "--reflection-only" && args[i] != "--") {
+		} else if (args[i] != "--") {
 			dirs.push(args[i]);
 		}
 	}
 	if (dirs.length != 3) {
 		fail("usage: irPrograms <out dir> <dxbc cache dir> <metallib cache dir> " +
-			"[--fxc <fxc path>] [--reflection-only]");
+			"[--fxc <fxc path>]");
 	}
 	const out = dirs[0];
 	dxbc.cache = dirs[1];
@@ -628,18 +618,15 @@ function main(): void {
 	checkBlockHead(keyed);
 	keep(
 		out + "/programModules.ms",
-		moduleText(keyed, "../webgpu/types.ms", "gpu3dShaderModule", reflectionOnly, counts, dxbc,
-			metallib),
+		moduleText(keyed, "../webgpu/types.ms", "gpu3dShaderModule", counts, dxbc, metallib),
 	);
 	keep(
 		out + "/shader2dModules.ms",
-		moduleText(void2d, "../webgpu/types.ms", "", reflectionOnly, counts, dxbc,
-			metallib),
+		moduleText(void2d, "../webgpu/types.ms", "", counts, dxbc, metallib),
 	);
 	keep(
 		out + "/gpuCopyModules.ms",
-		moduleText(gpuCopy, "../../src/webgpu/types.ms", "", reflectionOnly, counts, dxbc,
-			metallib),
+		moduleText(gpuCopy, "../../src/webgpu/types.ms", "", counts, dxbc, metallib),
 	);
 	keep(out + "/void3d.glsl", shdcText("CORE", []));
 	keep(out + "/pixelArt3d.glsl", shdcText("PIXEL_ART", []));
@@ -648,9 +635,9 @@ function main(): void {
 	keep(out + "/dxbc.used", dxbc.used.join("\n") + "\n");
 	keep(out + "/metallib.used", metallib.used.join("\n") + "\n");
 	console.log("irPrograms: " + String(counts.programs) + " programs, " + String(counts.printed) +
-		" stages printed, " + String(counts.refused) + " target sources refused, " +
-		String(dxbc.used.length) + " DXBC blobs used, " + String(dxbc.compiled) +
-		" compiled by fxc, " + String(dxbc.missed) + " missed, " + String(metallib.used.length) +
+		" stages printed, " + String(dxbc.used.length) + " DXBC blobs used, " +
+		String(dxbc.compiled) + " compiled by fxc, " + String(dxbc.missed) + " missed, " +
+		String(metallib.used.length) +
 		" metallib blobs used, " + String(metallib.compiled) + " compiled by xcrun, " +
 		String(metallib.missed) + " missed");
 }
