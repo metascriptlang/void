@@ -100,6 +100,7 @@ import "./gltfColourCheck";
 import "./gltfColourImportCheck";
 import "./slotsCheck";
 import "./poolCheck";
+import "./featureBitCheck";
 import "./uniformPoolCheck";
 import "./lifetimeCheck";
 import "./storeCheck";
