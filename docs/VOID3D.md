@@ -6098,18 +6098,21 @@ and the lit share averaged, so the opacity mix is unchanged.
   one uniform branch per lookup.
 - `pcfScale` is in texels; Heaps passes `pcfScale / texture.width` in uv, the same footprint.
 - ESM is not offered: Heaps' ESM reads a blurred R16F map, and these maps are depth.
-- The sun and the cube take Bevy's `shadow_normal_bias` (`bevy_pbr` `shadows.wesl`
-  `fetch_directional_shadow`, `fetch_point_shadow`; the scale is `render/light.rs`'s):
+- Every light takes Bevy's `shadow_normal_bias` (`bevy_pbr` `shadows.wesl`
+  `fetch_directional_shadow`, `fetch_point_shadow`, `fetch_spot_shadow`; the scale is
+  `render/light.rs`'s):
   `DirShadowMap.normalBias`, in texels, moves the receiver along its geometric normal before the
   lookup, so a surface steep to the light stops reading its own texel. Heaps has no such bias,
   so the default is 0 and an unset map draws as before. As in Bevy the bias is times the root of
   two, the worst-case diagonal. The sun's texel is its cascade's, its world size read off the
   cascade matrix's scale (`cascadeShadow.ms` `cascadeReceiverOf`); the cube's is a 90-degree
-  face's, 2 / size, times the receiver's distance to the light (`cubeShadowAt`). Each needs one
-  slot (`SHADOW_CASCADE_NORMAL_BIAS`, `SHADOW_CUBE_NORMAL_BIAS`), both free before. The spot
-  takes none yet: its part of the block has no free slot, so it waits on growing the block.
+  face's, 2 / size, times the receiver's distance to the light (`cubeShadowAt`); the spot's is
+  2 / (size · its projection's y scale), Bevy's 2·tan(half angle) / size, times the distance to
+  the spot, whose position rides beside the bias (`SHADOW_SPOT_NORMAL_BIAS`, `spotShadowAt`).
+  The sun and the cube took one free slot each; the spot's part grew from 20 to 24 floats.
   Bevy's `shadow_depth_bias` is not taken; the depth bias stays Heaps'. Pinned on the CPU by
-  `spotShadowCheck.ms` and `cubeShadowCheck.ms`; no GPU golden yet.
+  `spotShadowCheck.ms` and `cubeShadowCheck.ms`, except the spot's packing, which runs inside
+  its draw; no GPU golden yet.
 - A cube's taps are compared at the receiver's distance against the face's perspective depth,
   where Heaps compares radial distances in a cube; how far the two differ on screen is not
   measured.
