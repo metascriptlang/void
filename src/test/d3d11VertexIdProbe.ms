@@ -27,18 +27,18 @@ descriptor.fragment.targets[0].format = "rgba8unorm";
 descriptor.primitive.topology = "point-list";
 const pipeline: GPURenderPipeline = device.createRenderPipeline(descriptor);
 const indices = device.createBuffer({ label: "indices", size: 4, usage: (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32) });
-device.queue.writeBuffer(indices, 0, [0, 0] as Vec<uint16>);
+device.queue.writeBuffer(indices, 0, [0, 1] as Vec<uint16>);
 
-function litColumns(dev: GPUDevice, indexed: boolean): string {
+function litColumns(dev: GPUDevice, indexed: boolean, count: int32): string {
 	const target = colourTarget(dev, 1);
 	const encoder = dev.createCommandEncoder();
 	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
 	pass.setPipeline(pipeline);
 	if (indexed) {
 		pass.setIndexBuffer(indices, "uint16", 0);
-		pass.drawIndexed(1, 1, 0, BASE, 0);
+		pass.drawIndexed(count, 1, 0, BASE, 0);
 	} else {
-		pass.draw(1, 1, START, 0);
+		pass.draw(count, 1, START, 0);
 	}
 	pass.end();
 	dev.queue.submit(encoder.finish());
@@ -54,5 +54,5 @@ function litColumns(dev: GPUDevice, indexed: boolean): string {
 	return lit;
 }
 
-console.log(`draw firstVertex ${START}: lit columns${litColumns(device, false)}`);
-console.log(`drawIndexed index 0 baseVertex ${BASE}: lit columns${litColumns(device, true)}`);
+console.log(`draw firstVertex ${START} count 2: lit columns${litColumns(device, false, 2)}`);
+console.log(`drawIndexed indices 0 1 baseVertex ${BASE}: lit columns${litColumns(device, true, 2)}`);
