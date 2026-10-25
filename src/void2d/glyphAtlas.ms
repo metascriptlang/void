@@ -109,6 +109,7 @@ struct AtlasPage {
 	handle: GlyphPageHandle;
 	top: int32;
 	drawnFrame: int32;
+	placedArea: int32;
 }
 
 export interface GlyphAtlas {
@@ -330,6 +331,7 @@ export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 				handle: handle as GlyphPageHandle,
 				top: 0,
 				drawnFrame: -1,
+				placedArea: 0,
 			});
 			first = (atlas.pages.length as int32) - 1;
 		}
@@ -343,6 +345,11 @@ export function pagesOfKind(this atlas: GlyphAtlas, kind: PageKind): int32 {
 		if (page.kind == kind) { pages = pages + 1; }
 	}
 	return pages;
+}
+
+export function occupancy(this atlas: GlyphAtlas, page: GlyphPage): float32 {
+	const side: float32 = atlas.pageSize as float32;
+	return (atlas.pages[page as int32].placedArea as float32) / (side * side);
 }
 
 export function bytesOfKind(this atlas: GlyphAtlas, kind: PageKind): int32 {
@@ -404,6 +411,7 @@ function placeOnPage(
 			height * 4 >= shelf.height * 3 && shelf.cursor + width <= size;
 		if (fits) {
 			atlas.shelves[s].cursor = shelf.cursor + width;
+			atlas.pages[page as int32].placedArea += width * height;
 			return Result.ok([shelf.cursor, shelf.y]);
 		}
 	}
@@ -411,6 +419,7 @@ function placeOnPage(
 	if (top + height > size || width > size) { return Result.err(AtlasError.Full); }
 	atlas.shelves.push({ page: page, y: top, height: height, cursor: width });
 	atlas.pages[page as int32].top = top + height;
+	atlas.pages[page as int32].placedArea += width * height;
 	return Result.ok([0, top]);
 }
 
@@ -434,6 +443,7 @@ function reclaimPage(atlas: GlyphAtlas, kind: PageKind): Result<GlyphPage, Atlas
 		}
 		atlas.shelves = kept;
 		atlas.pages[p].top = 0;
+		atlas.pages[p].placedArea = 0;
 		void2dGlyphPageClear(atlas.pages[p].handle as int32);
 		atlas.reclaims = atlas.reclaims + 1;
 		return Result.ok(page);
@@ -461,7 +471,7 @@ function allocate(
 		? void2dGlyphPageCreate(atlas.pageSize, kind as int32)
 		: -1;
 	if (handle >= 0) {
-		atlas.pages.push({ kind: kind, handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1 });
+		atlas.pages.push({ kind: kind, handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1, placedArea: 0 });
 		page = ((atlas.pages.length as int32) - 1) as GlyphPage;
 	} else {
 		const reclaimed = try reclaimPage(atlas, kind);

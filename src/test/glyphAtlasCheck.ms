@@ -9,6 +9,7 @@ import {
 	AtlasError,
 	PageKind,
 	SUBPIXEL_VARIANTS,
+	GLYPH_GUTTER,
 	quantizeX,
 	snapBaseline,
 	NO_GLYPH_PAGE,
@@ -244,6 +245,28 @@ test "a page with no live tile is reclaimed whole and bytes stay bounded" {
 	const again = atlas.acquire(keyFor(face, "A".code, 40.0, 0));
 	assert again.ok;
 	assert atlas.rasterizations == (held.length as int32) + 2;
+}
+
+test "a page's occupancy is the area its tiles were placed in, and a reclaim empties it" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
+	const first = atlas.acquire(keyFor(face, "A".code, 40.0, 0));
+	assert first.ok;
+	const a = atlas.tile(first.value);
+	const placedA: float32 = ((a.width + GLYPH_GUTTER) * (a.height + GLYPH_GUTTER)) as float32;
+	assert atlas.occupancy(a.page) == placedA / 4096.0;
+	const held = fillUntilFull(atlas, face);
+	assert atlas.occupancy(a.page) > placedA / 4096.0;
+	assert atlas.occupancy(a.page) <= 1.0;
+	atlas.release(first.value);
+	for (const index of held) { atlas.release(index); }
+	const next = atlas.acquire(keyFor(face, "Q".code, 41.0, 0));
+	assert next.ok;
+	assert atlas.reclaims == 1;
+	const q = atlas.tile(next.value);
+	const placedQ: float32 = ((q.width + GLYPH_GUTTER) * (q.height + GLYPH_GUTTER)) as float32;
+	assert atlas.occupancy(q.page) == placedQ / 4096.0;
 }
 
 test "an atlas under its page limit reclaims its own page when the process has no slot left" {
