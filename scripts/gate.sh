@@ -9,6 +9,7 @@
 #   sh scripts/gate.sh --web      also build both web backends (slow; needs emsdk)
 #   sh scripts/gate.sh --quick    skip the golden suite (T0 and bench only)
 #   sh scripts/gate.sh --window   also the macOS window behaviour tests, in a visible focused window
+#   sh scripts/gate.sh --ios      also the Metal goldens and view samples on an attached iOS device
 set -e
 cd "$(dirname "$0")/.."
 export VOID_QUIET_WINDOW=1
@@ -17,11 +18,13 @@ MSC="${MSC:-msc}"
 WEB=0
 QUICK=0
 WINDOW=0
+IOS=0
 for arg in "$@"; do
 	case "$arg" in
 		--web) WEB=1 ;;
 		--quick) QUICK=1 ;;
 		--window) WINDOW=1 ;;
+		--ios) IOS=1 ;;
 		*) echo "gate.sh: unknown flag $arg" >&2; exit 2 ;;
 	esac
 done
@@ -30,6 +33,9 @@ fails=0
 skips=0
 passes=0
 d3d11_conformance="not run"
+# D3D11 and GL core run on the Windows box; a Mac has neither, and runs Metal instead.
+golden_host=d3d11
+[ "$(uname -s)" != Darwin ] || golden_host=metal
 
 # out/ is gitignored, so on a clean clone the first redirect into it would abort under set -e
 # before any step had a chance to report.
@@ -734,7 +740,7 @@ for program in tests/refusals/*.ms; do
 done
 
 echo
-section "3. T2 — golden images, D3D11"
+section "3. T2 — golden images"
 # The runner's own verdict logic first, against known inputs, and before it is trusted to say
 # what was captured. It needs no build and no GPU, so it runs even under --quick.
 if sh scripts/golden.sh --self-check > out/gate-verdict.log 2>&1; then
@@ -746,7 +752,10 @@ fi
 if [ "$QUICK" -eq 1 ]; then
 	skip "golden suite: --quick"
 else
-	if sh scripts/golden.sh > out/gate-golden.log 2>&1; then
+	if [ "$golden_host" = metal ]; then
+		d3d11_conformance="not run: this host is $(uname -s), which has no D3D11"
+		skip "golden suite on D3D11: this host is $(uname -s), which has no D3D11; Metal is judged in section 6"
+	elif sh scripts/golden.sh > out/gate-golden.log 2>&1; then
 		# `|| echo` matters under set -e: a bare assignment whose command substitution fails
 		# takes grep's status and kills the gate mid-run, with no summary and no message.
 		d3d11_conformance="$(grep -E '^golden ' out/gate-golden.log || echo 'no conformance line in the log')"
@@ -760,7 +769,7 @@ else
 	echo "      harness self-checks: hand-computed scene, deliberately wrong golden,"
 	echo "      two draws of the same state compared before either is written out,"
 	echo "      and the verdict decision proved above"
-	GOLDEN_DEFINES= sh scripts/golden.sh > out/gate-golden-bare.log 2>&1 || true
+	GOLDEN_DEFINES= sh scripts/golden.sh --backend "$golden_host" > out/gate-golden-bare.log 2>&1 || true
 	bare_failing=$(tr -d '\r' < out/gate-golden-bare.log | grep -E '^FAIL' | awk '{ print $2 }' | sort -u)
 	module_rows=$(tr -d '\r' < tests/golden/moduleRows.txt | sort -u)
 	bare_leaked=""
@@ -771,14 +780,14 @@ else
 	for scene in $module_rows; do
 		case " $(echo $bare_failing) " in *" $scene "*) ;; *) bare_stale="$bare_stale $scene" ;; esac
 	done
-	if ! tr -d '\r' < out/gate-golden-bare.log | grep -q '^golden d3d11'; then
+	if ! tr -d '\r' < out/gate-golden-bare.log | grep -q "^golden $golden_host"; then
 		fail "bare build golden did not run — see out/gate-golden-bare.log"
 	elif [ -n "$bare_leaked" ]; then
 		fail "bare build: rows that need no module moved:$bare_leaked (tests/golden/moduleRows.txt)"
 	elif [ -n "$bare_stale" ]; then
 		fail "bare build: rows listed as needing a module match without one:$bare_stale — drop them from tests/golden/moduleRows.txt"
 	else
-		pass "bare build: every row that needs no module is byte-identical; the $(echo $module_rows | wc -w) module rows differ, as listed"
+		pass "bare build on $golden_host: every row that needs no module matches; the $(echo $module_rows | wc -w) module rows differ, as listed"
 	fi
 fi
 if "$MSC" build tests/golden/invariants.ms --output=out/goldenInvariants.exe > out/gate-invariants.log 2>&1 \
@@ -1123,9 +1132,13 @@ echo "      Conformance, per backend:"
 # Never a fixed number here: the gate may not report a result it did not produce.
 echo "      d3d11    $d3d11_conformance      (this box, every gate)"
 gl_conformance="not run"
+gl_ran=0
 if [ "$QUICK" -eq 1 ]; then
 	skip "GL core 4.3 desktop (glsl430): --quick skips the golden suites (sh scripts/golden.sh --backend gl)"
+elif [ "$golden_host" = metal ]; then
+	skip "GL core 4.3 desktop (glsl430): this host is $(uname -s), where the GL core capture does not compile; it runs on Windows (sh scripts/golden.sh --backend gl)"
 else
+	gl_ran=1
 	sh scripts/golden.sh --backend gl > out/gate-golden-gl.log 2>&1 || true
 	gl_conformance="$(tr -d '\r' < out/gate-golden-gl.log | grep -E '^golden gl430' || echo 'no conformance line — see out/gate-golden-gl.log')"
 	echo "      gl430    $gl_conformance      (this box, every full gate)"
@@ -1149,33 +1162,37 @@ else
 	else
 		conformance_rule metal out/gate-golden-metal.log conformance:metal-gpu-rounding
 	fi
-	ios_device="${VOID_IOS_DEVICE:-auto}"
-	rm -f out/golden-metal-ios-*.log
-	ios_status=0
-	bash scripts/iosDevice.sh golden "$ios_device" > out/gate-ios-golden.log 2>&1 || ios_status=$?
-	ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-golden.log | head -1)"
-	ios_log="out/golden-metal-ios-$ios_model.log"
-	if [ -n "$ios_model" ] && grep -q '^golden metal' "$ios_log" 2> /dev/null; then
-		echo "      metal    iOS $ios_model: $(grep -E '^golden metal' "$ios_log")      (attached device, every full gate)"
-		conformance_rule "metal iOS $ios_model" "$ios_log" conformance:metal-gpu-rounding
+	if [ "$IOS" -eq 0 ]; then
+		skip "metal iOS golden and view samples: pass --ios with an unlocked, paired device attached (bash scripts/iosDevice.sh golden auto)"
 	else
-		fail "metal iOS golden did not run to a verdict: $(grep '^iosDevice:' out/gate-ios-golden.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-golden.log"
-		grep -E '^FAIL scene' out/gate-ios-golden.log | sed 's/^/      /' || true
-	fi
-	ios_status=0
-	bash scripts/iosDevice.sh samples "$ios_device" > out/gate-ios-samples.log 2>&1 || ios_status=$?
-	ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-samples.log | head -1)"
-	if [ -z "$ios_model" ] || ! grep -q '^[1248]: ' out/gate-ios-samples.log; then
-		fail "metal iOS view samples did not run: $(grep '^iosDevice:' out/gate-ios-samples.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-samples.log"
-	else
-		for samples in 1 2 4 8; do
-			ios_line="$(grep "^$samples: " out/gate-ios-samples.log || true)"
-			case "$ios_line" in
-				*"PASS view samples"*) pass "iOS $ios_model: ${ios_line#*: }" ;;
-				"8: "*"sampleCount '8' is not supported"*) pass "iOS $ios_model: a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)" ;;
-				*) fail "iOS $ios_model: a host view at $samples samples: ${ios_line:-no result} — see out/gate-ios-samples.log" ;;
-			esac
-		done
+		ios_device="${VOID_IOS_DEVICE:-auto}"
+		rm -f out/golden-metal-ios-*.log
+		ios_status=0
+		bash scripts/iosDevice.sh golden "$ios_device" > out/gate-ios-golden.log 2>&1 || ios_status=$?
+		ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-golden.log | head -1)"
+		ios_log="out/golden-metal-ios-$ios_model.log"
+		if [ -n "$ios_model" ] && grep -q '^golden metal' "$ios_log" 2> /dev/null; then
+			echo "      metal    iOS $ios_model: $(grep -E '^golden metal' "$ios_log")      (attached device, every full gate)"
+			conformance_rule "metal iOS $ios_model" "$ios_log" conformance:metal-gpu-rounding
+		else
+			fail "metal iOS golden did not run to a verdict: $(grep '^iosDevice:' out/gate-ios-golden.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-golden.log"
+			grep -E '^FAIL scene' out/gate-ios-golden.log | sed 's/^/      /' || true
+		fi
+		ios_status=0
+		bash scripts/iosDevice.sh samples "$ios_device" > out/gate-ios-samples.log 2>&1 || ios_status=$?
+		ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-samples.log | head -1)"
+		if [ -z "$ios_model" ] || ! grep -q '^[1248]: ' out/gate-ios-samples.log; then
+			fail "metal iOS view samples did not run: $(grep '^iosDevice:' out/gate-ios-samples.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-samples.log"
+		else
+			for samples in 1 2 4 8; do
+				ios_line="$(grep "^$samples: " out/gate-ios-samples.log || true)"
+				case "$ios_line" in
+					*"PASS view samples"*) pass "iOS $ios_model: ${ios_line#*: }" ;;
+					"8: "*"sampleCount '8' is not supported"*) pass "iOS $ios_model: a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)" ;;
+					*) fail "iOS $ios_model: a host view at $samples samples: ${ios_line:-no result} — see out/gate-ios-samples.log" ;;
+				esac
+			done
+		fi
 	fi
 fi
 skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
@@ -1260,7 +1277,9 @@ else
 fi
 # The conformance rows of docs/TESTING.md against the logs this run wrote; a skipped suite has
 # no log from this run, so its row is not judged.
-if [ "$QUICK" -eq 0 ]; then
+if [ "$QUICK" -eq 0 ] && [ "$golden_host" = metal ]; then
+	skip "docs/TESTING.md's D3D11 row: this host is $(uname -s), which ran no D3D11 golden to judge it by"
+elif [ "$QUICK" -eq 0 ]; then
 	d3d11=$(tr -d '\r' < out/gate-golden.log | sed -nE 's/^golden d3d11: ([0-9]+) pass, [0-9]+ pending, [0-9]+ fail of ([0-9]+)$/\1 \2/p')
 	claim="| D3D11 | **${d3d11% *} / ${d3d11#* } scenes byte-identical**"
 	if [ -n "$d3d11" ] && grep -qF "$claim" docs/TESTING.md; then
@@ -1269,7 +1288,7 @@ if [ "$QUICK" -eq 0 ]; then
 		fail "docs/TESTING.md's D3D11 row does not match this run's '$(grep -E '^golden d3d11' out/gate-golden.log)'"
 	fi
 fi
-if [ "$QUICK" -eq 0 ] && grep -q '^golden gl430' out/gate-golden-gl.log; then
+if [ "$gl_ran" -eq 1 ] && grep -q '^golden gl430' out/gate-golden-gl.log; then
 	claim=$(tr -d '\r' < out/gate-golden-gl.log | awk '
 		/^golden gl430: [0-9]+ pass, [0-9]+ pending, [0-9]+ fail of [0-9]+( \([0-9]+ excluded\))?$/ {
 			p = $3; q = $5; f = $7; n = $10; e = 0
