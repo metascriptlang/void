@@ -5,6 +5,8 @@ import {
 	Transform2D,
 	Bounds2D,
 	Filter,
+	FilterChain,
+	FilterKind,
 	Smooth,
 	Camera,
 	ScaleMode,
@@ -16,9 +18,10 @@ import {
 	inverse2d,
 	trs2d,
 	vec2,
-	noFilter,
+	noFilters,
 	emptyBounds,
 } from "./types";
+import { checkFilterChain } from "./filterPlan";
 import { BlendMode } from "../gpu/state";
 when (voidProfiler) {
 	import { profilerInvalidated } from "./frameMarks";
@@ -246,7 +249,7 @@ export interface Scene2D {
 	locals: Vec<Local2D>;
 	paints: Vec<Paint2D>;
 	contents: Vec<Content2D>;
-	filters: Vec<Filter>;
+	filters: Vec<FilterChain>;
 	orders: Vec<Order2D>;
 	layouts: Vec<Layout2D>;
 	parents: Vec<int32>;
@@ -413,7 +416,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 		s.locals[i] = defaultLocal();
 		s.paints[i] = defaultPaint();
 		s.contents[i] = defaultContent();
-		s.filters[i] = noFilter();
+		s.filters[i] = noFilters();
 		s.orders[i] = order;
 		s.layouts[i] = noLayout();
 		s.parents[i] = NO_NODE_2D;
@@ -444,7 +447,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 	s.locals.push(defaultLocal());
 	s.paints.push(defaultPaint());
 	s.contents.push(defaultContent());
-	s.filters.push(noFilter());
+	s.filters.push(noFilters());
 	s.orders.push(order);
 	s.layouts.push(noLayout());
 	s.parents.push(NO_NODE_2D);
@@ -569,7 +572,9 @@ export function paint(this n: NodeRef): Paint2D { return n.scene.paints[n.liveRo
 export function content(this n: NodeRef): Content2D {
 	return n.scene.contents[n.liveRow("content")];
 }
-export function filter(this n: NodeRef): Filter { return n.scene.filters[n.liveRow("filter")]; }
+export function filterChain(this n: NodeRef): FilterChain {
+	return n.scene.filters[n.liveRow("filterChain")];
+}
 export function order(this n: NodeRef): Order2D { return n.scene.orders[n.liveRow("order")]; }
 
 function putLocal(this s: Scene2D, i: int32, l: Local2D): void {
@@ -613,14 +618,23 @@ export function setContent(this n: NodeRef, c: Content2D): NodeRef {
 	return n;
 }
 
-function putFilter(this s: Scene2D, i: int32, f: Filter): void {
-	if (s.filters[i] == f) { return; }
-	s.filters[i] = f;
+function putFilter(this s: Scene2D, i: int32, c: FilterChain): void {
+	checkFilterChain(c);
+	if (s.filters[i] == c) { return; }
+	s.filters[i] = c;
 	s.markChanged(i, Changed.Filter);
 }
 
 export function setFilter(this n: NodeRef, f: Filter): NodeRef {
-	n.scene.putFilter(n.liveRow("setFilter"), f);
+	const steps: Vec<Filter> = f.kind === FilterKind.None ? [] : [f];
+	n.scene.putFilter(n.liveRow("setFilter"), { steps: steps });
+	return n;
+}
+
+export function setFilters(this n: NodeRef, steps: Readonly<Span<Filter>>): NodeRef {
+	let chain: Vec<Filter> = [];
+	for (let k: int32 = 0; k < (steps.length as int32); k++) { chain.push(steps[k]); }
+	n.scene.putFilter(n.liveRow("setFilters"), { steps: chain });
 	return n;
 }
 

@@ -68,7 +68,6 @@ import {
 	checkedMultisample,
 	checkedNoDepthSlice,
 	checkedPassExtent,
-	checkedPopDebugGroup,
 	checkedQuerySetCount,
 	checkedResolveQuerySet,
 	checkedResolveTarget,
@@ -95,6 +94,7 @@ import {
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
+import { addressesBinding, checkedBindingGroup, checkedUniformEntry, openDebugGroups } from "../validate.ms";
 import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
 import {
 	oglActiveTexture,
@@ -649,9 +649,7 @@ struct QuerySetSlot {
 }
 
 struct ComputeState {
-	active: boolean;
 	labeled: boolean;
-	groupBase: int32;
 	timestampSet: uint32;
 	timestampEnd: int32;
 	pipeline: uint32;
@@ -661,10 +659,8 @@ struct ComputeState {
 }
 
 struct PassState {
-	active: boolean;
 	serial: int64;
 	labeled: boolean;
-	groupBase: int32;
 	timestampSet: uint32;
 	timestampEnd: int32;
 	occlusionSet: uint32;
@@ -743,11 +739,10 @@ struct StateCache {
 }
 
 let frame: int64 = 0;
-let pass: PassState = { active: false };
+let pass: PassState = { serial: 0 };
 let bound: BoundState = { pipeline: 0 };
-let computeBound: ComputeState = { active: false };
+let computeBound: ComputeState = { pipeline: 0 };
 let passSerial: int64 = 0;
-let groupDepth: int32 = 0;
 let contextVersion: int32 = 0;
 let computeSupported = false;
 let debugSupported = false;
@@ -1312,11 +1307,10 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	resetStateCache();
 	checkError("setup");
 	frame = 0;
-	pass = { active: false };
+	pass = { serial: 0 };
 	bound = { pipeline: 0 };
-	computeBound = { active: false };
+	computeBound = { pipeline: 0 };
 	passSerial = 0;
-	groupDepth = 0;
 	reset(buffers);
 	reset(textures);
 	reset(views);
@@ -1414,8 +1408,6 @@ function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
 }
 
 export function shutdown(): void {
-	if (pass.active) { stop("shutdown with a render pass still open"); }
-	if (computeBound.active) { stop("shutdown with a compute pass still open"); }
 	for (const id of querySets.liveIds()) { destroyQuerySet({ id: id }); }
 	for (const id of bindGroups.liveIds()) { destroyBindGroup({ id: id }); }
 	for (const id of pipelines.liveIds()) { destroyRenderPipeline({ id: id }); }
@@ -1967,10 +1959,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		const kind = bindingKind(kindName, "gl");
 		const binding = descriptor.bindings[i].binding;
 		checkedVisibility(descriptor.bindings[i], compute);
-		const expectedGroup = kind == BindingKind.Uniform ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
-		if (descriptor.bindings[i].group != expectedGroup) {
-			stop(`shader binding ${binding} (${kind.toString()}) belongs in group ${expectedGroup}, not ${descriptor.bindings[i].group}`);
-		}
+		checkedBindingGroup(binding, kind, descriptor.bindings[i].group);
 		const writable = bindingWritable(descriptor.bindings[i]);
 		if (writable && !compute) {
 			stop(`shader binding ${binding} is writable storage in a render stage, which gl does not port: bind it read-only or write it from a compute pass`);
@@ -2335,9 +2324,10 @@ export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGrou
 	return { id: slot.id };
 }
 
-function resourceOf(shader: int32, binding: int32, kind: BindingKind): int32 {
+function resourceOf(shader: int32, group: int32, binding: int32, kind: BindingKind): int32 {
 	for (let r = 0; r < shaders.slots[shader].resourceCount; r++) {
-		if (shaders.slots[shader].resources[r].binding == binding && shaders.slots[shader].resources[r].kind == kind) { return r; }
+		const resource = shaders.slots[shader].resources[r];
+		if (addressesBinding(group, binding, resource.binding, resource.kind) && resource.kind == kind) { return r; }
 	}
 	return -1;
 }
@@ -2378,21 +2368,12 @@ function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
 		const b = buffers.slotIndex(entry.buffer.id);
 		for (let u = 0; u < shaders.slots[shader].uniformCount; u++) {
 			const binding = shaders.slots[shader].uniforms[u];
-			if (binding.binding == entry.binding) {
-				if (!buffers.slots[b].uniform) { stop(`bind group entry ${entry.binding} needs a UNIFORM buffer`); }
-				if (entry.offset < 0 || entry.offset % (UNIFORM_OFFSET_ALIGNMENT as int64) != 0) {
-					stop(`bind group entry ${entry.binding} offset ${entry.offset} is not a multiple of ${UNIFORM_OFFSET_ALIGNMENT}`);
-				}
-				if (entry.offset + (binding.size as int64) > buffers.slots[b].size) {
-					stop(`bind group entry ${entry.binding} offset ${entry.offset} overruns its buffer`);
-				}
-				if (entry.size != 0 && entry.size < (binding.size as int64)) {
-					stop(`bind group entry ${entry.binding} size ${entry.size} is below its block of ${binding.size}`);
-				}
+			if (addressesBinding(group, entry.binding, binding.binding, BindingKind.Uniform)) {
+				checkedUniformEntry(entry, buffers.slots[b].uniform, buffers.slots[b].size, binding.size, UNIFORM_OFFSET_ALIGNMENT as int64);
 				return;
 			}
 		}
-		if (resourceOf(shader, entry.binding, BindingKind.StorageBuffer) >= 0) {
+		if (resourceOf(shader, group, entry.binding, BindingKind.StorageBuffer) >= 0) {
 			if (!buffers.slots[b].storage) { stop(`bind group entry ${entry.binding} needs a STORAGE buffer`); }
 			storageRange(entry, b);
 			return;
@@ -2401,12 +2382,12 @@ function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
 	}
 	if (entry.textureView.id != 0) {
 		const v = views.slotIndex(entry.textureView.id);
-		if (resourceOf(shader, entry.binding, BindingKind.Texture) >= 0) {
+		if (resourceOf(shader, group, entry.binding, BindingKind.Texture) >= 0) {
 			if (!views.slots[v].sampled) { stop(`bind group entry ${entry.binding}: the view's texture lacks TEXTURE_BINDING`); }
 			checkSampledView(entry.binding, v);
 			return;
 		}
-		const r = resourceOf(shader, entry.binding, BindingKind.StorageTexture);
+		const r = resourceOf(shader, group, entry.binding, BindingKind.StorageTexture);
 		if (r >= 0) {
 			checkStorageView(entry, v, shaders.slots[shader].resources[r]);
 			return;
@@ -2414,7 +2395,7 @@ function storageRange(entry: GPUBindGroupEntry, b: int32): int64 {
 		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);
 	}
 	samplers.slotIndex(entry.sampler.id);
-	if (resourceOf(shader, entry.binding, BindingKind.Sampler) >= 0) { return; }
+	if (resourceOf(shader, group, entry.binding, BindingKind.Sampler) >= 0) { return; }
 	stop(`bind group ${group} entry ${entry.binding} (sampler) is not a binding of the pipeline's shader`);
 }
 
@@ -2427,9 +2408,6 @@ export function destroyBindGroup(bindGroup: GPUBindGroup): void {
 export function createCommandEncoder(): GPUCommandEncoder { return { id: 1 }; }
 
 export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
-	if (pass.active) { stop("finish with a render pass still open"); }
-	if (computeBound.active) { stop("finish with a compute pass still open"); }
-	checkGroupsClosed(0, "finish");
 	return { id: 1 };
 }
 
@@ -2443,16 +2421,13 @@ export function submit(commandBuffer: GPUCommandBuffer): void {
 }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
-	if (pass.active || computeBound.active) { stop("beginRenderPass with a pass already open"); }
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	if (descriptor.occlusionQuerySet.id != 0 && querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp) {
 		stop("GPURenderPassDescriptor.occlusionQuerySet is a timestamp set: an occlusion set is required");
 	}
 	passSerial += 1;
 	pass = {
-		active: true,
 		serial: passSerial,
-		groupBase: groupDepth,
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
 		occlusionSet: descriptor.occlusionQuerySet.id,
@@ -2678,9 +2653,7 @@ function isClear(loadOp: string, index: int32, field: string): boolean {
 }
 
 export function endPass(): void {
-	if (!pass.active) { stop("end without an open render pass"); }
 	if (pass.occlusionOpen) { stop("end with an occlusion query still open"); }
-	checkGroupsClosed(pass.groupBase, "end");
 	let readBound = false;
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (pass.resolveViews[i] == 0) { continue; }
@@ -2695,7 +2668,6 @@ export function endPass(): void {
 	}
 	if (pass.timestampSet != 0 && pass.timestampEnd >= 0) { writeTimestamp(pass.timestampSet, pass.timestampEnd); }
 	if (pass.labeled) { endLabel(); }
-	pass.active = false;
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
@@ -2750,12 +2722,10 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 }
 
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
-	if (!pass.active) { stop("setScissorRect outside a render pass"); }
 	oglScissor(x, pass.height - (y + height), width, height);
 }
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
-	if (!pass.active) { stop("setViewport outside a render pass"); }
 	checkedViewport(width, height, minDepth, maxDepth);
 	const left = x as int32;
 	const top = y as int32;
@@ -2770,13 +2740,11 @@ export function setViewport(x: float32, y: float32, width: float32, height: floa
 }
 
 export function setBlendConstant(color: GPUColor): void {
-	if (!pass.active) { stop("setBlendConstant outside a render pass"); }
 	oglBlendColor(color.r, color.g, color.b, color.a);
 	cache.blendConstantSet = true;
 }
 
 export function setStencilReference(reference: uint32): void {
-	if (!pass.active) { stop("setStencilReference outside a render pass"); }
 	bound.stencilReference = reference as int32;
 	if (bound.appliedPipeline != 0 && pipelines.slots[pipelines.slotIndex(bound.appliedPipeline)].stencil) {
 		applyStencilFaces(pipelines.slotIndex(bound.appliedPipeline));
@@ -2837,7 +2805,6 @@ function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int3
 }
 
 function flush(indexed: boolean): void {
-	if (!pass.active) { stop("draw outside a render pass"); }
 	if (bound.pipeline == 0) { stop("draw without setPipeline"); }
 	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(); }
 	if (bound.vertexDirty) { applyVertexBuffers(); }
@@ -3295,7 +3262,6 @@ function applyUniforms(): void {
 }
 
 function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
-	if (pass.active || computeBound.active) { stop(`${member} inside a pass`); }
 	const index = buffers.slotIndex(buffer.id);
 	if (!has(buffers.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
 	if (buffers.slots[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
@@ -3304,7 +3270,6 @@ function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName
 }
 
 function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
-	if (pass.active || computeBound.active) { stop(`${member} inside a pass`); }
 	const index = textures.slotIndex(info.texture.id);
 	if (!has(textures.slots[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
 	if (textures.slots[index].swapchainView != 0) {
@@ -3587,11 +3552,8 @@ export function createComputePipeline(descriptor: GPUComputePipelineDescriptor):
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
-	if (pass.active || computeBound.active) { stop("beginComputePass with a pass already open"); }
 	checkTimestampWrites("GPUComputePassDescriptor.timestampWrites", descriptor.timestampWrites);
 	computeBound = {
-		active: true,
-		groupBase: groupDepth,
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
 	};
@@ -3603,14 +3565,12 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	if (!computeBound.active) { stop("setPipeline outside a compute pass"); }
 	if (!pipelines.slots[pipelines.slotIndex(pipeline.id)].compute) { stop(`GPUPipeline ${pipeline.id} is not a compute pipeline`); }
 	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	if (!computeBound.active) { stop("setBindGroup outside a compute pass"); }
 	if (index != GPU_RESOURCE_GROUP) { stop(`a compute pipeline has no uniform group: setBindGroup(${index}) takes group ${GPU_RESOURCE_GROUP}`); }
 	if (dynamicOffsets.length != 0) { stop("a compute bind group takes no dynamic offsets"); }
 	if (bindGroup.id != 0 && bindGroups.slots[bindGroups.slotIndex(bindGroup.id)].group != index) {
@@ -3621,7 +3581,6 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 }
 
 function applyCompute(): int32 {
-	if (!computeBound.active) { stop("dispatch outside a compute pass"); }
 	if (computeBound.pipeline == 0) { stop("dispatch without setPipeline"); }
 	const s = shaders.slotIndex(pipelines.slots[pipelines.slotIndex(computeBound.pipeline)].shader);
 	if (computeBound.pendingBarrier) {
@@ -3659,14 +3618,12 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 }
 
 export function endComputePass(): void {
-	if (!computeBound.active) { stop("end without an open compute pass"); }
-	checkGroupsClosed(computeBound.groupBase, "end");
 	if (computeBound.pendingBarrier) { oglMemoryBarrier(BARRIER_ALL); }
 	if (computeBound.timestampSet != 0 && computeBound.timestampEnd >= 0) {
 		writeTimestamp(computeBound.timestampSet, computeBound.timestampEnd);
 	}
 	if (computeBound.labeled) { endLabel(); }
-	computeBound = { active: false };
+	computeBound = { pipeline: 0 };
 }
 
 @noinline function stopOnNoCompute(what: string): void {
@@ -3740,16 +3697,12 @@ export function limits(): GPUSupportedLimits { return deviceLimits; }
 export function features(): GPUSupportedFeatures { return deviceFeatures; }
 
 export function pushDebugGroup(label: string): void {
-	if (groupDepth >= MAX_DEBUG_GROUPS) { stop(`pushDebugGroup nested over ${MAX_DEBUG_GROUPS} deep, the minimum GL_MAX_DEBUG_GROUP_STACK_DEPTH leaves`); }
+	if (openDebugGroups() > MAX_DEBUG_GROUPS) { stop(`pushDebugGroup nested over ${MAX_DEBUG_GROUPS} deep, the minimum GL_MAX_DEBUG_GROUP_STACK_DEPTH leaves`); }
 	if (debugSupported) { oglPushDebugGroup(label); }
-	groupDepth += 1;
 }
 
 export function popDebugGroup(): void {
-	const base = pass.active ? pass.groupBase : (computeBound.active ? computeBound.groupBase : 0);
-	checkedPopDebugGroup(groupDepth, base);
 	if (debugSupported) { oglPopDebugGroup(); }
-	groupDepth -= 1;
 }
 
 export function insertDebugMarker(label: string): void {
@@ -3764,10 +3717,6 @@ function labelPass(label: string | null): boolean {
 
 function endLabel(): void {
 	if (debugSupported) { oglPopDebugGroup(); }
-}
-
-@noinline function checkGroupsClosed(base: int32, what: string): void {
-	if (groupDepth != base) { stop(`${what} with ${groupDepth - base} debug groups still open`); }
 }
 
 function timestampReason(): string {
@@ -3825,7 +3774,6 @@ function writeTimestamp(querySet: uint32, queryIndex: int32): void {
 }
 
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
-	if (pass.active || computeBound.active) { stop("resolveQuerySet inside a pass"); }
 	const q = querySets.slotIndex(querySet.id);
 	const b = buffers.slotIndex(destination.id);
 	const bytes = checkedResolveQuerySet(
@@ -3864,7 +3812,6 @@ function occlusionTarget(): int32 {
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	if (!pass.active) { stop("beginOcclusionQuery outside a render pass"); }
 	if (pass.occlusionSet == 0) { stop("beginOcclusionQuery needs GPURenderPassDescriptor.occlusionQuerySet"); }
 	if (pass.occlusionOpen) { stop("beginOcclusionQuery with an occlusion query already open"); }
 	const q = querySets.slotIndex(pass.occlusionSet);
@@ -3882,7 +3829,7 @@ export function beginOcclusionQuery(queryIndex: int32): void {
 }
 
 export function endOcclusionQuery(): void {
-	if (!pass.active || !pass.occlusionOpen) { stop("endOcclusionQuery without an open occlusion query"); }
+	if (!pass.occlusionOpen) { stop("endOcclusionQuery without an open occlusion query"); }
 	const q = querySets.slotIndex(pass.occlusionSet);
 	oglEndQuery(occlusionTarget());
 	querySets.slots[q].state[pass.occlusionIndex] = QUERY_WRITTEN;

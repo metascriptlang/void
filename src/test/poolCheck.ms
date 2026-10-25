@@ -56,12 +56,49 @@ test "a slot at its last generation is retired and never handed out again" {
 	assert slotOf(make(pool)) != index;
 }
 
-test "reset empties the pool and starts handles over" {
+test "reset empties the pool and refuses every id from before it" {
 	let pool = fresh();
 	const first = make(pool);
 	make(pool);
 	reset(pool);
 	assert pool.live() == 0;
 	assert !pool.alive(first);
-	assert make(pool) == first;
+	const after = make(pool);
+	assert after != first;
+	assert slotOf(after) == slotOf(first);
+	assert pool.alive(after) && !pool.alive(first);
+}
+
+test "reset refuses stale ids over several slots, a released slot and a retired slot" {
+	let pool = fresh();
+	let before: Vec<uint32> = [];
+	for (let i = 0; i < 5; i++) { before.push(make(pool)); }
+	destroy(pool, before[1]);
+	const retired = make(pool);
+	pool.core.generations[slotOf(retired)] = SLOT_MASK;
+	destroy(pool, retired);
+	reset(pool);
+	for (let i = 0; i < before.length; i++) { assert !pool.alive(before[i]); }
+	assert !pool.alive(retired);
+	let seen: Vec<int32> = [];
+	for (let i = 0; i < 6; i++) {
+		const id = make(pool);
+		assert pool.alive(id);
+		assert slotOf(id) != slotOf(retired);
+		for (let j = 0; j < before.length; j++) { assert id != before[j]; }
+		seen.push(slotOf(id));
+	}
+	assert seen[0] == 1 && seen[1] == 3;
+	assert pool.live() == 6;
+}
+
+test "reset twice keeps counting generations" {
+	let pool = fresh();
+	const first = make(pool);
+	reset(pool);
+	const second = make(pool);
+	reset(pool);
+	const third = make(pool);
+	assert first != second && second != third && first != third;
+	assert !pool.alive(first) && !pool.alive(second) && pool.alive(third);
 }
