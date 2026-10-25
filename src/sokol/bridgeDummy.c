@@ -2,7 +2,6 @@
 // VOID_DUMMY_FRAMES times (1 when unset) or until voidRequestQuit, over the GPU door's dummy
 // backend (src/webgpu/dummy) at the size voidRunConfigured asked for.
 
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -15,17 +14,6 @@
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "../platform/windowCore.h"
-
-void voidFail(const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	fprintf(stderr, "void: ");
-	vfprintf(stderr, fmt, args);
-	fprintf(stderr, "\n");
-	va_end(args);
-	fflush(stderr);
-	abort();
-}
 
 VoidWindow voidWindow;
 

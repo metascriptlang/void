@@ -13,12 +13,14 @@
 
 #if defined(VOID_ANDROID_APP)
 #include "androidApp.h"
+#define PLATFORM(name) voidAndroid##name
 #elif defined(VOID_IOS_APP)
 #include "iosApp.h"
+#define PLATFORM(name) voidIos##name
 #else
 #include "../platform/windowCore.h"
+#define PLATFORM(name) voidWindow##name
 #endif
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,16 +30,6 @@
 #include "bridge.h"
 #include "appWindow.h"
 #include "appText.h"
-
-__attribute__((noreturn)) static void fail(const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	fputs("void: ", stderr);
-	vfprintf(stderr, fmt, args);
-	fputc('\n', stderr);
-	va_end(args);
-	abort();
-}
 
 static msClosure s_handler;
 static const VoidAppEvent *s_event;
@@ -57,7 +49,7 @@ int voidAppDeliver(const VoidAppEvent *e) {
 }
 
 static const VoidAppEvent *current(const char *field) {
-	if (!s_event) fail("voidEvent%s: read outside the event handler voidSetEventHandler registered", field);
+	if (!s_event) voidFail("voidEvent%s: read outside the event handler voidSetEventHandler registered", field);
 	return s_event;
 }
 
@@ -77,7 +69,7 @@ int voidEventFramebufferWidth(void) { return current("FramebufferWidth")->frameb
 int voidEventFramebufferHeight(void) { return current("FramebufferHeight")->framebufferHeight; }
 static const VoidTouchPoint *touchAt(const char *field, int index) {
 	const VoidAppEvent *e = current(field);
-	if (index < 0 || index >= e->touchCount) fail("voidEvent%s(%d): the event has %d touch points", field, index, e->touchCount);
+	if (index < 0 || index >= e->touchCount) voidFail("voidEvent%s(%d): the event has %d touch points", field, index, e->touchCount);
 	return &e->touches[index];
 }
 
@@ -128,19 +120,9 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	VoidAppEvent e;
 	memset(&e, 0, sizeof e);
 	e.type = (VoidAppEventType)type;
-#if defined(VOID_ANDROID_APP)
-	e.frameCount = voidAndroidFrameCount();
-	e.framebufferWidth = voidAndroidWidth();
-	e.framebufferHeight = voidAndroidHeight();
-#elif defined(VOID_IOS_APP)
-	e.frameCount = voidIosFrameCount();
-	e.framebufferWidth = voidIosWidth();
-	e.framebufferHeight = voidIosHeight();
-#else
-	e.frameCount = voidWindowFrameCount();
-	e.framebufferWidth = voidWindowWidth();
-	e.framebufferHeight = voidWindowHeight();
-#endif
+	e.frameCount = PLATFORM(FrameCount)();
+	e.framebufferWidth = PLATFORM(Width)();
+	e.framebufferHeight = PLATFORM(Height)();
 	s_text = utf8;
 	s_cursor = cursor;
 	voidAppDeliver(&e);
@@ -152,7 +134,7 @@ static char s_title[256] = "Void — sokol";
 static bool s_titleSet = false;
 
 void voidSetWindowTitle(const char *title) {
-	if (strlen(title) >= sizeof s_title) fail("voidSetWindowTitle: the title is %d bytes; at most %d fit", (int)strlen(title), (int)sizeof s_title - 1);
+	if (strlen(title) >= sizeof s_title) voidFail("voidSetWindowTitle: the title is %d bytes; at most %d fit", (int)strlen(title), (int)sizeof s_title - 1);
 	strcpy(s_title, title);
 	s_titleSet = true;
 #if !defined(VOID_ANDROID_APP) && !defined(VOID_IOS_APP)
@@ -164,7 +146,6 @@ const char *voidWindowTitle(void) { return s_title; }
 int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 
 #if defined(VOID_ANDROID_APP)
-#define PLATFORM(name) voidAndroid##name
 #define ANDROID_CLIPBOARD_SIZE 8192
 static char s_androidClipboard[ANDROID_CLIPBOARD_SIZE];
 static int s_androidCursor = 0;
@@ -172,7 +153,7 @@ static bool s_androidMouseShown = true;
 static bool s_androidMouseLocked = false;
 static void voidAndroidCancelQuit(void) {}
 static void voidAndroidSetClipboard(const char *utf8) {
-	if (strlen(utf8) >= sizeof s_androidClipboard) fail("the clipboard holds at most %d bytes on Android; got %d", (int)sizeof s_androidClipboard - 1, (int)strlen(utf8));
+	if (strlen(utf8) >= sizeof s_androidClipboard) voidFail("the clipboard holds at most %d bytes on Android; got %d", (int)sizeof s_androidClipboard - 1, (int)strlen(utf8));
 	strcpy(s_androidClipboard, utf8);
 }
 static const char *voidAndroidClipboard(void) { return s_androidClipboard; }
@@ -187,7 +168,6 @@ static bool voidAndroidIsFullscreen(void) { return false; }
 static int voidAndroidDroppedCount(void) { return 0; }
 static const char *voidAndroidDroppedPath(int i) { (void)i; return ""; }
 #elif defined(VOID_IOS_APP)
-#define PLATFORM(name) voidIos##name
 #define IOS_CLIPBOARD_SIZE 8192
 static char s_iosClipboard[IOS_CLIPBOARD_SIZE];
 static int s_iosCursor = 0;
@@ -196,7 +176,7 @@ static bool s_iosMouseLocked = false;
 static void voidIosRequestQuit(void) {}
 static void voidIosCancelQuit(void) {}
 static void voidIosSetClipboard(const char *utf8) {
-	if (strlen(utf8) >= sizeof s_iosClipboard) fail("the clipboard holds at most %d bytes on iOS; got %d", (int)sizeof s_iosClipboard - 1, (int)strlen(utf8));
+	if (strlen(utf8) >= sizeof s_iosClipboard) voidFail("the clipboard holds at most %d bytes on iOS; got %d", (int)sizeof s_iosClipboard - 1, (int)strlen(utf8));
 	strcpy(s_iosClipboard, utf8);
 }
 static const char *voidIosClipboard(void) { return s_iosClipboard; }
@@ -210,12 +190,10 @@ static void voidIosToggleFullscreen(void) {}
 static bool voidIosIsFullscreen(void) { return false; }
 static int voidIosDroppedCount(void) { return 0; }
 static const char *voidIosDroppedPath(int i) { (void)i; return ""; }
-#else
-#define PLATFORM(name) voidWindow##name
 #endif
 
 static void needWindow(const char *what) {
-	if (!PLATFORM(Valid)()) fail("%s: the window does not exist yet; call it from the event handler or after init", what);
+	if (!PLATFORM(Valid)()) voidFail("%s: the window does not exist yet; call it from the event handler or after init", what);
 }
 
 void voidRequestQuit(void) {
@@ -245,7 +223,7 @@ msString voidClipboard(void) {
 
 void voidSetMouseCursor(int cursor) {
 	needWindow("voidSetMouseCursor");
-	if (cursor < 0 || cursor >= VOID_CURSOR_COUNT) fail("voidSetMouseCursor: cursor %d is not a VoidMouseCursor (0..%d)", cursor, VOID_CURSOR_COUNT - 1);
+	if (cursor < 0 || cursor >= VOID_CURSOR_COUNT) voidFail("voidSetMouseCursor: cursor %d is not a VoidMouseCursor (0..%d)", cursor, VOID_CURSOR_COUNT - 1);
 	PLATFORM(SetCursor)(cursor);
 }
 
@@ -291,7 +269,7 @@ int voidDroppedFileCount(void) {
 
 msString voidDroppedFilePath(int i) {
 	needWindow("voidDroppedFilePath");
-	if (i < 0 || i >= PLATFORM(DroppedCount)()) fail("voidDroppedFilePath: index %d of %d dropped files", i, PLATFORM(DroppedCount)());
+	if (i < 0 || i >= PLATFORM(DroppedCount)()) voidFail("voidDroppedFilePath: index %d of %d dropped files", i, PLATFORM(DroppedCount)());
 	return msStringFromCStr(PLATFORM(DroppedPath)(i));
 }
 

@@ -6,6 +6,7 @@
 #include "views.h"
 #include "../gpu/door.h"
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +14,17 @@
 // The door's GPU submit, which only voidCommit calls, so no consumer can end a frame around the
 // commit hook (door.h offers doorCommit).
 void doorSubmitFrame(void);
+
+void voidFail(const char *fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	fprintf(stderr, "void: ");
+	vfprintf(stderr, fmt, args);
+	fprintf(stderr, "\n");
+	va_end(args);
+	fflush(stderr);
+	abort();
+}
 
 // --- Resource creation (door ids, 0 = invalid) ---
 

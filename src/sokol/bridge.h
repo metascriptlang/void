@@ -19,6 +19,8 @@ static inline void voidCallClosure(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
+__attribute__((noreturn, format(printf, 1, 2))) void voidFail(const char *fmt, ...);
+
 // Lifecycle — MetaScript main() drives via init/frame closures.
 void voidRun(int w, int h, msClosure init, msClosure frame);
 

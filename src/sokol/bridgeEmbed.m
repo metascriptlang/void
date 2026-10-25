@@ -37,12 +37,6 @@ static msClosure s_frame;
 static int s_frames = 0;
 static bool s_keys[VOID_KEY_COUNT];
 
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
 static void restoreMetal(void);
 
 static void tick(void) {
@@ -52,7 +46,7 @@ static void tick(void) {
 	if (!g_drawable) return;
 	voidPresentGateTrack(g_gate, (__bridge void *)g_drawable);
 	mtlSetDrawable((__bridge void *)g_drawable);
-	call0(s_frame);
+	voidCallClosure(s_frame);
 	s_frames++;
 	g_drawable = nil;
 }
@@ -77,7 +71,7 @@ static void windowInit(void) {
 	g_layer.drawableSize = CGSizeMake(g_w, g_h);
 	g_gate = voidPresentGateCreate((__bridge void *)g_layer);
 	[view setLayer:g_layer];
-	call0(s_init);
+	voidCallClosure(s_init);
 }
 
 static void fitWindowLayer(void) {
@@ -227,7 +221,7 @@ void voidPlatformDeviceEnsure(void) {
 	s_driver = DRIVER_VIEWS;
 }
 
-void voidPlatformRunInit(msClosure init) { call0(init); }
+void voidPlatformRunInit(msClosure init) { voidCallClosure(init); }
 
 static void fitLayer(MacSurface *s, int w, int h) {
 	CAMetalLayer *layer = (__bridge CAMetalLayer *)s->layer;

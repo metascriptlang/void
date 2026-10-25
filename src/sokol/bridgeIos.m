@@ -27,12 +27,6 @@ typedef struct {
 	int w, h;
 } IosSurface;
 
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
 static void setupMetal(void) {
 	doorSetup((__bridge void *)g_device, NULL, DOOR_PIXEL_FORMAT_BGRA8, DOOR_PIXEL_FORMAT_NONE, voidViewsSampleCount());
 	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
@@ -53,7 +47,7 @@ void voidPlatformRunInit(msClosure init) {
 	const char *got = getcwd(prev, sizeof prev);
 	const char *res = [[[NSBundle mainBundle] resourcePath] fileSystemRepresentation];
 	if (res) chdir(res);
-	call0(init);
+	voidCallClosure(init);
 	if (got) chdir(prev);
 }
 

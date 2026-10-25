@@ -3,7 +3,6 @@
 // framebuffer 0.
 // Host views are not offered on Linux, so views.c is not part of this build.
 
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -20,18 +19,6 @@
 #endif
 
 void voidDriverPresent(void);
-__attribute__((noreturn)) void voidFail(const char *fmt, ...);
-
-void voidFail(const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	fprintf(stderr, "void: ");
-	vfprintf(stderr, fmt, args);
-	fprintf(stderr, "\n");
-	va_end(args);
-	fflush(stderr);
-	abort();
-}
 
 static bool s_running;
 static msClosure s_init;
