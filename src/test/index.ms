@@ -141,6 +141,7 @@ import "./animationBlendSpaceCheck";
 import "./pickCheck";
 import "./layersCheck";
 import "./renderOrderCheck";
+import "./passListSortCheck";
 import "./particleFadeCheck";
 import "./trailCheck";
 import "./graphics3dCheck";

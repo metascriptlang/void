@@ -37,17 +37,23 @@ extern function voidRunConfigured(
 	init: () => void, frame: () => void,
 ): void;
 
-// Two rows of eight quads. The top row is one pipeline. The bottom row alternates two pipelines
-// (the second turns culling off) through a layer per quad, so no sort can group them. Each stage
-// draws a prefix of one row; the stats of its frame are read in the next frame, and what a
-// stage adds over the stage before it, per quad, is what a draw costs.
+// Three rows of eight quads. The first row is one pipeline. The second alternates two pipelines
+// (the second turns culling off) through a layer per quad, so no sort can group them. The third
+// alternates the same two in one layer, which a sort by pipeline groups. Each stage draws a prefix
+// of one row; the stats of its frame are read in the next frame, and what a stage adds over the
+// one before it, per quad, is what a draw costs.
 const WIDTH: int32 = 320;
 const HEIGHT: int32 = 240;
 const HALF: float32 = 0.3;
 const SPACING: float32 = 0.7;
 const ROW: int32 = 8;
-const SAME_Y: float32 = 0.8;
-const ALTERNATING_Y: float32 = -0.8;
+const SAME_Y: float32 = 1.2;
+const ALTERNATING_Y: float32 = 0.0;
+const MIXED_Y: float32 = -1.2;
+const ROWS: int32 = 3;
+const SAME_ROW: int32 = 0;
+const ALTERNATING_ROW: int32 = 1;
+const MIXED_ROW: int32 = 2;
 const WORLD_PER_TEXEL: float32 = 0.02;
 const GREY: Vec4 = { x: 0.2, y: 0.2, z: 0.2, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -55,7 +61,7 @@ const RED: Vec4 = { x: 1.0, y: 0.0, z: 0.0, w: 1.0 };
 const GREEN: Vec4 = { x: 0.0, y: 1.0, z: 0.0, w: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + 2 * ROW * UNLIT_MATERIAL_UNIFORM_LENGTH,
+	FORWARD_UNIFORM_LENGTH + ROWS * ROW * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -63,14 +69,14 @@ let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = -1;
-let first: int32 = 0;
+let row: int32 = 0;
 let count: int32 = 0;
 let applies: Vec<int32> = [];
 let changes: Vec<int32> = [];
 let ringBytes: Vec<int32> = [];
 
 function fail(message: string): void {
-	console.log(`FAIL global uniforms: stage ${stage}: ${message}`);
+	console.log(`FAIL draw frame stats: stage ${stage}: ${message}`);
 	voidCaptureExit(1);
 }
 
@@ -136,6 +142,9 @@ function init(): void {
 	for (let i = 0; i < ROW; i++) {
 		quad(columnX(i), ALTERNATING_Y, material(i % 2 == 0 ? RED : GREEN, i % 2 == 0, i, image));
 	}
+	for (let i = 0; i < ROW; i++) {
+		quad(columnX(i), MIXED_Y, material(i % 2 == 0 ? RED : GREEN, i % 2 == 0, 0, image));
+	}
 }
 
 function viewOf(): CameraView {
@@ -154,44 +163,58 @@ function viewOf(): CameraView {
 function red(pixel: int64): int64 { return (pixel >> 24) & 255; }
 function green(pixel: int64): int64 { return (pixel >> 16) & 255; }
 
+function rowY(): float32 {
+	return row == SAME_ROW ? SAME_Y : (row == ALTERNATING_ROW ? ALTERNATING_Y : MIXED_Y);
+}
+
 function checkPictures(view: CameraView): void {
 	for (let i = 0; i < count; i++) {
-		const same: boolean = first == 0;
-		const at: Vec3 = view.project(
-			vec3(columnX(i), same ? SAME_Y : ALTERNATING_Y, 0.0), SCREEN, true);
+		const at: Vec3 = view.project(vec3(columnX(i), rowY(), 0.0), SCREEN, true);
 		const pixel: int64 = voidCapturePixel(0, at.x as int32, at.y as int32);
-		const wantRed: boolean = same || i % 2 == 0;
+		const wantRed: boolean = row == SAME_ROW || i % 2 == 0;
 		if (wantRed ? (red(pixel) != 255 || green(pixel) != 0) :
 			(green(pixel) != 255 || red(pixel) != 0)) {
-			fail(`quad ${i} of the ${same ? "same" : "alternating"} row drew ${pixel}`);
+			fail(`quad ${i} of row ${row} drew ${pixel}`);
 		}
 	}
 }
 
-// The second pipeline of the alternating row differs only in culling, so both declare the
-// same blocks and a switch must apply every global again.
+// The second pipeline of the last two rows differs only in culling, so both declare the same
+// blocks and a switch must apply every global again.
 function report(): void {
-	const quads: int32 = 6;
-	const sameSlope: int32 = (applies[1] - applies[0]) / quads;
-	const alternatingSlope: int32 = (applies[3] - applies[2]) / quads;
-	console.log(`global uniforms: applies per added quad ${sameSlope} in one pipeline, ` +
-		`${alternatingSlope} alternating; ring bytes ${ringBytes[0]} / ${ringBytes[1]} / ` +
-		`${ringBytes[2]} / ${ringBytes[3]}; pipeline changes ${changes[0]} / ${changes[1]} / ` +
-		`${changes[2]} / ${changes[3]}`);
-	if ((applies[1] - applies[0]) % quads != 0 || (applies[3] - applies[2]) % quads != 0) {
-		fail("applies do not grow by a whole number per quad");
+	const quads: int32 = ROW - 2;
+	let slopes: Vec<int32> = [];
+	let switches: Vec<int32> = [];
+	for (let r = 0; r < ROWS; r++) {
+		const small: int32 = 2 * r;
+		if ((applies[small + 1] - applies[small]) % quads != 0) {
+			fail(`applies do not grow by a whole number per quad in row ${r}`);
+		}
+		slopes.push((applies[small + 1] - applies[small]) / quads);
+		switches.push(changes[small + 1] - changes[small]);
 	}
-	if (sameSlope != 2) {
-		fail(`a quad in one pipeline applied ${sameSlope} blocks; its model and material only ` +
-			"are two, the globals belong to the pipeline change");
+	console.log(`draw frame stats: applies per added quad ${slopes[0]} / ${slopes[1]} / ` +
+		`${slopes[2]}, pipeline changes per row ${switches[0]} / ${switches[1]} / ${switches[2]}, ` +
+		`ring bytes of the full rows ${ringBytes[1]} / ${ringBytes[3]} / ${ringBytes[5]}`);
+	if (slopes[SAME_ROW] != 2) {
+		fail(`a quad in one pipeline applied ${slopes[SAME_ROW]} blocks; its model and material ` +
+			"only are two, the globals belong to the pipeline change");
 	}
-	if (alternatingSlope <= sameSlope) {
-		fail(`alternating pipelines applied ${alternatingSlope} blocks per quad, no more than ` +
-			`${sameSlope}: a pipeline change must apply the globals again`);
+	if (slopes[ALTERNATING_ROW] <= slopes[SAME_ROW]) {
+		fail(`alternating pipelines applied ${slopes[ALTERNATING_ROW]} blocks per quad, no more ` +
+			`than ${slopes[SAME_ROW]}: a pipeline change must apply the globals again`);
 	}
-	if (changes[1] != changes[0] || changes[3] - changes[2] != quads) {
+	if (switches[SAME_ROW] != 0 || switches[ALTERNATING_ROW] != quads) {
 		fail("one pipeline changed with its quad count, or the alternating row did not change " +
 			"pipeline at every quad");
+	}
+	if (switches[MIXED_ROW] != 0) {
+		fail(`two interleaved pipelines in one layer changed pipeline ${switches[MIXED_ROW]} ` +
+			"more times with six more quads; a sort by pipeline groups them");
+	}
+	if (slopes[MIXED_ROW] != slopes[SAME_ROW]) {
+		fail(`the grouped row applied ${slopes[MIXED_ROW]} blocks per added quad, not ` +
+			`${slopes[SAME_ROW]}`);
 	}
 }
 
@@ -202,22 +225,22 @@ function frame(): void {
 		changes.push(doorFrameStat(DOOR_STAT_PIPELINE_CHANGES));
 		ringBytes.push(doorFrameStat(DOOR_STAT_UNIFORM_RING_BYTES));
 	}
-	if (stage == 3) {
+	if (stage == 5) {
 		report();
-		console.log("PASS global uniforms: globals apply once per pipeline change");
+		console.log("PASS draw frame stats: globals apply once per pipeline change and a sort groups pipelines");
 		voidCaptureExit(0);
 		return;
 	}
-	if (refresh(scene, items) != 2 * ROW) { fail("the scene does not draw its sixteen quads"); }
+	if (refresh(scene, items) != ROWS * ROW) { fail("the scene does not draw its quads"); }
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
 	const view: CameraView = viewOf();
 	view.writeCameraBlock(cameraValues);
 	stage = stage + 1;
-	first = stage < 2 ? 0 : ROW;
+	row = stage / 2;
 	count = stage % 2 == 0 ? 2 : ROW;
 	const drawn: Result<int32, ForwardError> =
-		renderForward(forward, items[first..first + count], cameraValues, lights, WIDTH, HEIGHT);
+		renderForward(forward, items[row * ROW..row * ROW + count], cameraValues, lights, WIDTH, HEIGHT);
 	if (!drawn.ok) { fail(`forward refused: ${drawn.error.toString()}`); }
 	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
 	checkPictures(view);
