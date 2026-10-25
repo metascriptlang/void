@@ -1990,10 +1990,6 @@ function filterStage(f: Filter, src: RenderTarget, w: int32, h: int32, scale: fl
 	const wf: float32 = w as float32;
 	const hf: float32 = h as float32;
 	const none: Color = rgba(0.0, 0.0, 0.0, 0.0);
-	if (f.kind === FilterKind.None) {
-		console.log("void2d filter: a FilterKind.None step reached the renderer");
-		unreachable;
-	}
 	if (f.kind === FilterKind.Blur && f.radius <= 0.0) { return src; }
 	let blurred: RenderTarget = src;
 	if (f.kind !== FilterKind.Outline && f.radius > 0.0) {
