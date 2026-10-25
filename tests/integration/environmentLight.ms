@@ -147,6 +147,7 @@ function expectedByte(power: float32): float32 {
 		envSpecular: constantCube(value),
 		shadowMap: { width: 0, height: 0, layers: 1, texels: [] },
 		spotShadowMap: { width: 0, height: 0, layers: 1, texels: [] },
+		cubeShadowMap: { width: 0, height: 0, layers: 1, texels: [] },
 		baseTexture: { width: 0, height: 0, texels: [] },
 		backTexture: { width: 0, height: 0, texels: [] },
 		dissolveTexture: { width: 0, height: 0, texels: [] },
