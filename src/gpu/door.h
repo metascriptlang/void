@@ -25,12 +25,17 @@ static const int32_t DOOR_STAT_IMAGE_BYTES = 4;
 static const int32_t DOOR_STAT_UNIFORM_APPLIES = 5;
 static const int32_t DOOR_STAT_UNIFORM_RING_BYTES = 6;
 static const int32_t DOOR_STAT_PIPELINE_CHANGES = 7;
+// The bytes alive now, not the previous frame's: they are not reset per frame.
+static const int32_t DOOR_STAT_RESIDENT_BUFFER_BYTES = 8;
+static const int32_t DOOR_STAT_RESIDENT_IMAGE_BYTES = 9;
+static const int32_t DOOR_STAT_RESIDENT_TARGET_BYTES = 10;
+static const int32_t DOOR_STAT_COUNT = 11;
 
 void doorSetup(void *device, void *context, int32_t colorFormat, int32_t depthFormat, int32_t sampleCount);
 void doorShutdown(void);
 int32_t doorValid(void);
 int32_t doorContextGeneration(void);
-int32_t doorFrameStat(int32_t which);
+int64_t doorFrameStat(int32_t which);
 int32_t doorOriginTopLeft(void);
 
 uint32_t doorMakeBuffer(int32_t usage, const uint8_t *data, int64_t length, int64_t size);

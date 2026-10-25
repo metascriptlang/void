@@ -10,6 +10,7 @@ import {
 	GPUCanvasConfiguration,
 	GPUBlendOperation,
 	GPUBuffer,
+	GPUBufferDescriptor,
 	GPUBufferUsage,
 	GPUMapMode,
 	GPUCommandEncoder,
@@ -30,6 +31,7 @@ import {
 	GPUShaderModuleDescriptor,
 	GPUStoreOp,
 	GPUTexture,
+	GPUTextureDescriptor,
 	GPUTextureFormat,
 	GPUTextureUsage,
 	GPUTextureView,
@@ -256,8 +258,7 @@ export function doorSetup(
 	openPass = PassState.None;
 	passViews = [0, 0, 0, 0, 0];
 	current = -1;
-	frameStats = noFrameStats();
-	lastFrameStats = noFrameStats();
+	resetStats();
 	if (everSetUp) { generation++; }
 	everSetUp = true;
 }
@@ -267,10 +268,13 @@ export function doorShutdown(): void {
 	if (device.id == 0) { return; }
 	device.destroy();
 	device = { id: 0, queue: { id: 0 } };
+	resetStats();
 }
 
 // sokol's sg_frame_stats, the members frameClock.c reads: counted through a frame and handed
-// over at commit as the previous frame's (sokol_gfx.h _sg_update_stats).
+// over at commit as the previous frame's (sokol_gfx.h _sg_update_stats). The first
+// DOOR_STAT_PER_FRAME_COUNT are those per-frame counts; the DOOR_STAT_RESIDENT_* after them are
+// the bytes alive now, never reset per frame, and read live rather than from the previous frame.
 export const DOOR_STAT_DRAWS: int32 = 0;
 export const DOOR_STAT_PIPELINES: int32 = 1;
 export const DOOR_STAT_PASSES: int32 = 2;
@@ -279,39 +283,115 @@ export const DOOR_STAT_IMAGE_BYTES: int32 = 4;
 export const DOOR_STAT_UNIFORM_APPLIES: int32 = 5;
 export const DOOR_STAT_UNIFORM_RING_BYTES: int32 = 6;
 export const DOOR_STAT_PIPELINE_CHANGES: int32 = 7;
+export const DOOR_STAT_PER_FRAME_COUNT: int32 = 8;
+export const DOOR_STAT_RESIDENT_BUFFER_BYTES: int32 = 8;
+export const DOOR_STAT_RESIDENT_IMAGE_BYTES: int32 = 9;
+export const DOOR_STAT_RESIDENT_TARGET_BYTES: int32 = 10;
+export const DOOR_STAT_COUNT: int32 = 11;
 
-struct FrameStats {
-	draws: int32;
-	pipelines: int32;
-	passes: int32;
-	bufferBytes: int32;
-	imageBytes: int32;
-	uniformApplies: int32;
-	uniformRingBytes: int32;
-	pipelineChanges: int32;
-}
-
-function noFrameStats(): FrameStats {
-	return {
-		draws: 0, pipelines: 0, passes: 0, bufferBytes: 0, imageBytes: 0,
-		uniformApplies: 0, uniformRingBytes: 0, pipelineChanges: 0,
-	};
-}
-
-let frameStats: FrameStats = noFrameStats();
-let lastFrameStats: FrameStats = noFrameStats();
+let frameStats: int64[DOOR_STAT_COUNT] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+let lastFrameStats: int64[DOOR_STAT_COUNT] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 @exportName("doorFrameStat")
-export function doorFrameStat(which: int32): int32 {
-	if (which == DOOR_STAT_DRAWS) { return lastFrameStats.draws; }
-	if (which == DOOR_STAT_PIPELINES) { return lastFrameStats.pipelines; }
-	if (which == DOOR_STAT_PASSES) { return lastFrameStats.passes; }
-	if (which == DOOR_STAT_BUFFER_BYTES) { return lastFrameStats.bufferBytes; }
-	if (which == DOOR_STAT_IMAGE_BYTES) { return lastFrameStats.imageBytes; }
-	if (which == DOOR_STAT_UNIFORM_APPLIES) { return lastFrameStats.uniformApplies; }
-	if (which == DOOR_STAT_UNIFORM_RING_BYTES) { return lastFrameStats.uniformRingBytes; }
-	if (which == DOOR_STAT_PIPELINE_CHANGES) { return lastFrameStats.pipelineChanges; }
-	stop("no frame stat " + String(which));
+export function doorFrameStat(which: int32): int64 {
+	if (which < 0 || which >= DOOR_STAT_COUNT) {
+		stop("no frame stat " + String(which) + ", the door counts " + String(DOOR_STAT_COUNT));
+	}
+	return which < DOOR_STAT_PER_FRAME_COUNT ? lastFrameStats[which] : frameStats[which];
+}
+
+function endFrameStats(): void {
+	lastFrameStats = frameStats;
+	for (let i = 0; i < DOOR_STAT_PER_FRAME_COUNT; i++) { frameStats[i] = 0; }
+}
+
+struct ResidentBuffer { id: uint32; bytes: int64; }
+struct ResidentTexture { id: uint32; bytes: int64; stat: int32; }
+
+let residentBuffers: Vec<ResidentBuffer> = [];
+let residentTextures: Vec<ResidentTexture> = [];
+
+// A device is gone with everything it made, so the ids and bytes of the old one go with it.
+function resetStats(): void {
+	residentBuffers.length = 0;
+	residentTextures.length = 0;
+	for (let i = 0; i < DOOR_STAT_COUNT; i++) {
+		frameStats[i] = 0;
+		lastFrameStats[i] = 0;
+	}
+}
+
+export function trackBuffer(id: uint32, bytes: int64): void {
+	for (let i = 0; i < residentBuffers.length; i++) {
+		if (residentBuffers[i].id == id) { stop("buffer " + String(id) + " is made twice"); }
+	}
+	residentBuffers.push({ id, bytes });
+	frameStats[DOOR_STAT_RESIDENT_BUFFER_BYTES] += bytes;
+}
+
+export function untrackBuffer(id: uint32): void {
+	for (let i = 0; i < residentBuffers.length; i++) {
+		if (residentBuffers[i].id == id) {
+			frameStats[DOOR_STAT_RESIDENT_BUFFER_BYTES] -= residentBuffers[i].bytes;
+			residentBuffers.splice(i, 1);
+			return;
+		}
+	}
+	stop("destroy of buffer " + String(id) + ", which the door did not make or already destroyed");
+}
+
+export function trackTexture(id: uint32, bytes: int64, target: boolean): void {
+	for (let i = 0; i < residentTextures.length; i++) {
+		if (residentTextures[i].id == id) { stop("image " + String(id) + " is made twice"); }
+	}
+	const stat = target ? DOOR_STAT_RESIDENT_TARGET_BYTES : DOOR_STAT_RESIDENT_IMAGE_BYTES;
+	residentTextures.push({ id, bytes, stat });
+	frameStats[stat] += bytes;
+}
+
+export function untrackTexture(id: uint32): void {
+	for (let i = 0; i < residentTextures.length; i++) {
+		if (residentTextures[i].id == id) {
+			frameStats[residentTextures[i].stat] -= residentTextures[i].bytes;
+			residentTextures.splice(i, 1);
+			return;
+		}
+	}
+	stop("destroy of image " + String(id) + ", which the door did not make or already destroyed");
+}
+
+export function texelBytes(format: GPUTextureFormat): int64 {
+	if (format == "rgba8unorm" || format == "bgra8unorm" || format == "depth32float" ||
+		format == "depth24plus-stencil8") { return 4; }
+	if (format == "rgba16float") { return 8; }
+	if (format == "r8unorm") { return 1; }
+	stop("no texel size for texture format " + format);
+}
+
+// The bytes of every mip level of every layer; depth24plus-stencil8 counts its nominal 4 bytes,
+// the backend picks the real layout.
+export function textureBytes(format: GPUTextureFormat, size: GPUExtent3D, levels: int32): int64 {
+	let texels: int64 = 0;
+	for (let level = 0; level < levels; level++) {
+		texels += (mipSide(size.width, level) as int64) * (mipSide(size.height, level) as int64) *
+			(size.depthOrArrayLayers as int64);
+	}
+	return texels * texelBytes(format);
+}
+
+function makeTexture(descriptor: GPUTextureDescriptor, target: boolean): GPUTexture {
+	const texture = device.createTexture(descriptor);
+	if (texture.id != 0) {
+		const levels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
+		trackTexture(texture.id, textureBytes(descriptor.format, descriptor.size, levels), target);
+	}
+	return texture;
+}
+
+function makeBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
+	const buffer = device.createBuffer(descriptor);
+	if (buffer.id != 0) { trackBuffer(buffer.id, descriptor.size); }
+	return buffer;
 }
 
 @exportName("doorValid")
@@ -661,13 +741,13 @@ export function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height
 	if (width <= 0 || height <= 0 || rgba.length != (width as int64) * (height as int64)) {
 		return 0;
 	}
-	const texture = device.createTexture({
+	const texture = makeTexture({
 		label: null,
 		size: texture2dSize(width, height),
 		format: "rgba8unorm",
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
 		sampleCount: 1,
-	});
+	}, false);
 	if (texture.id == 0) { return 0; }
 	device.queue.writeTexture(
 		{ texture },
@@ -698,14 +778,14 @@ export function doorMakeImageMips(
 		words += (mipSide(width, level) as int64) * (mipSide(height, level) as int64);
 	}
 	if (rgba.length != words) { return 0; }
-	const texture = device.createTexture({
+	const texture = makeTexture({
 		label: null,
 		size: texture2dSize(width, height),
 		format: "rgba8unorm",
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
 		sampleCount: 1,
 		mipLevelCount: levels,
-	});
+	}, false);
 	if (texture.id == 0) { return 0; }
 	let offset: int64 = 0;
 	for (let level = 0; level < levels; level++) {
@@ -729,13 +809,13 @@ function cubeSize(size: int32): GPUExtent3D {
 export function doorMakeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): uint32 {
 	const texels = (size as int64) * (size as int64) * (CUBE_FACES as int64);
 	if (size <= 0 || rgba.length != texels) { return 0; }
-	const texture = device.createTexture({
+	const texture = makeTexture({
 		label: null,
 		size: cubeSize(size),
 		format: "rgba8unorm",
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
 		sampleCount: 1,
-	});
+	}, false);
 	if (texture.id == 0) { return 0; }
 	device.queue.writeTexture(
 		{ texture },
@@ -752,7 +832,7 @@ export function doorMakeCubeTargetImage(size: int32, levels: int32, format: int3
 	if (size <= 0 || levels < 1 || levels > fullMipChain(size) || isDepthFormat(pixelFormat)) {
 		return 0;
 	}
-	const texture = device.createTexture({
+	const texture = makeTexture({
 		label: null,
 		size: cubeSize(size),
 		format: colorTextureFormat(pixelFormat),
@@ -760,7 +840,7 @@ export function doorMakeCubeTargetImage(size: int32, levels: int32, format: int3
 			GPUTextureUsage.COPY_SRC,
 		sampleCount: 1,
 		mipLevelCount: levels,
-	});
+	}, true);
 	if (texture.id == 0) { return 0; }
 	cubeImages.push(texture.id);
 	return texture.id;
@@ -782,7 +862,7 @@ export function doorMakeCubeAttachmentView(image: uint32, face: int32, level: in
 export function doorMakeTargetImage(width: int32, height: int32, format: int32): uint32 {
 	if (width <= 0 || height <= 0) { return 0; }
 	const pixelFormat = format as PixelFormat;
-	return device.createTexture({
+	return makeTexture({
 		label: null,
 		size: texture2dSize(width, height),
 		format: isDepthFormat(pixelFormat)
@@ -791,7 +871,7 @@ export function doorMakeTargetImage(width: int32, height: int32, format: int32):
 		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING |
 			GPUTextureUsage.COPY_SRC,
 		sampleCount: 1,
-	}).id;
+	}, true).id;
 }
 
 @exportName("doorMakeTextureView")
@@ -887,6 +967,7 @@ export function doorDestroyImage(image: uint32): void {
 	if (image == 0) { return; }
 	const cube = cubeImages.indexOf(image);
 	if (cube >= 0) { cubeImages.splice(cube, 1); }
+	untrackTexture(image);
 	const texture: GPUTexture = { id: image };
 	texture.destroy();
 }
@@ -919,7 +1000,7 @@ function alignedToFour(bytes: int64): int64 {
 export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: int64): uint32 {
 	const bytes = data.length > 0 ? data.length as int64 : size;
 	if (bytes <= 0) { return 0; }
-	const buffer = device.createBuffer({
+	const buffer = makeBuffer({
 		label: null,
 		size: alignedToFour(bytes),
 		usage: doorBufferUsage(usage),
@@ -930,7 +1011,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 
 export function doorMakeBufferOf<T>(usage: int32, data: Readonly<Span<T>>): uint32 {
 	if (data.length == 0) { return 0; }
-	const buffer = device.createBuffer({
+	const buffer = makeBuffer({
 		label: null,
 		size: alignedToFour((data.length as int64) * (sizeof(T) as int64)),
 		usage: doorBufferUsage(usage),
@@ -952,7 +1033,7 @@ export function doorUpdateBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int3
 	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (bytes <= 0 || !buffer.isAlive() || bytes > buffer.size()) { return 0; }
 	device.queue.writeBuffer(buffer, 0, data);
-	frameStats.bufferBytes += bytes as int32;
+	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
 	return 1;
 }
 
@@ -986,7 +1067,7 @@ export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64
 	const bytes = data.length as int64;
 	if (offset + bytes > buffer.size()) { return -1; }
 	if (bytes > 0) { device.queue.writeBuffer(buffer, offset, data); }
-	frameStats.bufferBytes += bytes as int32;
+	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
 	appendCursors[at].position = alignedToFour(offset + bytes);
 	return offset;
 }
@@ -994,6 +1075,7 @@ export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64
 @exportName("doorDestroyBuffer")
 export function doorDestroyBuffer(id: uint32): void {
 	if (id == 0) { return; }
+	untrackBuffer(id);
 	const buffer: GPUBuffer = { id };
 	buffer.destroy();
 	const at = appendCursorOf(id);
@@ -1021,14 +1103,14 @@ export function doorMakeTexture(
 	data: Readonly<Span<uint8>>,
 ): uint32 {
 	if (width <= 0 || height <= 0) { return 0; }
-	const texture = device.createTexture({
+	const texture = makeTexture({
 		label: null,
 		size: texture2dSize(width, height),
 		format: textureFormatOf(format as PixelFormat),
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
 			GPUTextureUsage.COPY_SRC,
 		sampleCount: 1,
-	});
+	}, false);
 	if (texture.id != 0 && data.length > 0) { doorUpdateTexture(texture.id, data); }
 	return texture.id;
 }
@@ -1050,7 +1132,7 @@ export function doorUpdateTextureOf<T>(id: uint32, data: Readonly<Span<T>>): voi
 			String(height) + " high");
 	}
 	const rowBytes = bytes / (height as int64);
-	frameStats.imageBytes += bytes as int32;
+	frameStats[DOOR_STAT_IMAGE_BYTES] += bytes;
 	device.queue.writeTexture(
 		{ texture },
 		data,
@@ -1073,7 +1155,7 @@ export function doorUpdateTextureRect(
 ): void {
 	const texture: GPUTexture = { id };
 	if (!texture.isAlive()) { return; }
-	frameStats.imageBytes += (data.length as int32);
+	frameStats[DOOR_STAT_IMAGE_BYTES] += data.length as int64;
 	device.queue.writeTexture(
 		{ texture, origin: { x, y, z: 0 } },
 		data,
@@ -1115,10 +1197,10 @@ export function doorViewIsColorAttachment(view: uint32): int32 {
 
 @exportName("doorApplyPipeline")
 export function doorApplyPipeline(pipeline: uint32): void {
-	frameStats.pipelines++;
+	frameStats[DOOR_STAT_PIPELINES]++;
 	const index = pipelineIndex(pipeline);
 	if (index != current) {
-		frameStats.pipelineChanges++;
+		frameStats[DOOR_STAT_PIPELINE_CHANGES]++;
 		current = index;
 		pass.setPipeline(pipelines[current].pipeline);
 		uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -1233,7 +1315,7 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 		stop("uniform ring of 4 MiB is full this frame");
 	}
 	device.queue.writeBuffer(uniformRing, uniformCursor, data);
-	frameStats.uniformApplies++;
+	frameStats[DOOR_STAT_UNIFORM_APPLIES]++;
 	uniformStampCounter++;
 	uniformStamps[slot] = uniformStampCounter;
 	uniformOffsets[slot] = uniformCursor as uint32;
@@ -1260,7 +1342,7 @@ function requireAppliedBlocks(): void {
 
 @exportName("doorDraw")
 export function doorDraw(base: int32, count: int32, instances: int32): void {
-	frameStats.draws++;
+	frameStats[DOOR_STAT_DRAWS]++;
 	if (current >= 0) { requireAppliedBlocks(); }
 	if (current >= 0 && pipelines[current].indexed) {
 		pass.drawIndexed(count, instances, base, 0, 0);
@@ -1419,7 +1501,7 @@ export function doorBeginPass(
 		};
 	}
 	pass = frameEncoder().beginRenderPass(descriptor);
-	frameStats.passes++;
+	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Target;
 	passViews = [0, 0, 0, 0, 0];
 	for (let i = 0; i < (colors.length as int32); i++) {
@@ -1450,7 +1532,7 @@ export function doorBeginColorPass(
 		storeOp: "store",
 	};
 	pass = frameEncoder().beginRenderPass(descriptor);
-	frameStats.passes++;
+	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Target;
 	passViews = [view, 0, 0, 0, 0];
 	current = -1;
@@ -1483,7 +1565,7 @@ export function doorBeginScreenPass(
 		};
 	}
 	pass = frameEncoder().beginRenderPass(descriptor);
-	frameStats.passes++;
+	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Screen;
 	passViews = [0, 0, 0, 0, 0];
 	current = -1;
@@ -1514,10 +1596,9 @@ export function doorSubmitFrame(): void {
 	stopOnOpenPass("commit");
 	device.queue.submit(frameEncoder().finish());
 	encoder = { id: 0 };
-	frameStats.uniformRingBytes = uniformCursor as int32;
+	frameStats[DOOR_STAT_UNIFORM_RING_BYTES] = uniformCursor;
 	uniformCursor = 0;
-	lastFrameStats = frameStats;
-	frameStats = noFrameStats();
+	endFrameStats();
 }
 
 @exportName("doorPassState")
@@ -1609,14 +1690,15 @@ test "a pass names a view per color attachment and one for depth" {
 	assert PASS_VIEW_SLOTS == DOOR_MAX_COLOR_ATTACHMENTS + 1;
 }
 
-test "doorFrameStat answers each stat from its own field of the previous frame" {
-	lastFrameStats = { draws: 1, pipelines: 2, passes: 3, bufferBytes: 4, imageBytes: 5 };
-	assert doorFrameStat(DOOR_STAT_DRAWS) == 1;
-	assert doorFrameStat(DOOR_STAT_PIPELINES) == 2;
-	assert doorFrameStat(DOOR_STAT_PASSES) == 3;
-	assert doorFrameStat(DOOR_STAT_BUFFER_BYTES) == 4;
-	assert doorFrameStat(DOOR_STAT_IMAGE_BYTES) == 5;
-	lastFrameStats = noFrameStats();
+test "doorFrameStat answers each stat from its own slot of the previous frame" {
+	resetStats();
+	for (let i = 0; i < DOOR_STAT_PER_FRAME_COUNT; i++) { frameStats[i] = (i as int64) + 1; }
+	endFrameStats();
+	for (let i = 0; i < DOOR_STAT_PER_FRAME_COUNT; i++) {
+		assert doorFrameStat(i) == (i as int64) + 1;
+		assert frameStats[i] == 0;
+	}
+	resetStats();
 }
 
 test "the door's ordinals stay the numbers door.h gives the C layers" {
@@ -1634,6 +1716,13 @@ test "the door's ordinals stay the numbers door.h gives the C layers" {
 	assert DOOR_STAT_PASSES == 2;
 	assert DOOR_STAT_BUFFER_BYTES == 3;
 	assert DOOR_STAT_IMAGE_BYTES == 4;
+	assert DOOR_STAT_UNIFORM_APPLIES == 5;
+	assert DOOR_STAT_UNIFORM_RING_BYTES == 6;
+	assert DOOR_STAT_PIPELINE_CHANGES == 7;
+	assert DOOR_STAT_RESIDENT_BUFFER_BYTES == 8;
+	assert DOOR_STAT_RESIDENT_IMAGE_BYTES == 9;
+	assert DOOR_STAT_RESIDENT_TARGET_BYTES == 10;
+	assert DOOR_STAT_COUNT == 11;
 	assert DOOR_BUFFER_VERTEX == 1;
 	assert DOOR_BUFFER_INDEX == 2;
 }

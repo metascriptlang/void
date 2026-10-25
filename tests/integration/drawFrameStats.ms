@@ -26,7 +26,18 @@ import {
 	DOOR_STAT_UNIFORM_APPLIES,
 	DOOR_STAT_UNIFORM_RING_BYTES,
 	DOOR_STAT_PIPELINE_CHANGES,
+	DOOR_STAT_RESIDENT_BUFFER_BYTES,
+	DOOR_STAT_RESIDENT_IMAGE_BYTES,
+	DOOR_STAT_RESIDENT_TARGET_BYTES,
+	doorMakeBuffer,
+	doorDestroyBuffer,
+	doorMakeImage,
+	doorMakeImageMips,
+	doorMakeTargetImage,
+	doorDestroyImage,
+	DOOR_BUFFER_VERTEX,
 } from "../../src/gpu/doorGpu.ms";
+import { contextGeneration, loseContext, liveBuffers, liveImages } from "../../src/gpu/door";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
@@ -69,6 +80,7 @@ let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = -1;
+let firstGeneration: int32 = 0;
 let row: int32 = 0;
 let count: int32 = 0;
 let applies: Vec<int32> = [];
@@ -218,16 +230,81 @@ function report(): void {
 	}
 }
 
+const BUFFER_BYTES: int64 = 1000;
+const ODD_BUFFER_BYTES: int64 = 6;
+const ODD_BUFFER_ALIGNED: int64 = 8;
+const IMAGE_BYTES: int64 = 8 * 4 * 4;
+const MIP_IMAGE_BYTES: int64 = (4 * 4 + 2 * 2 + 1) * 4;
+const TARGET_BYTES: int64 = 16 * 16 * 4;
+
+function expectResident(what: string, stat: int32, want: int64): void {
+	if (doorFrameStat(stat) != want) {
+		fail(`${what}: resident stat ${stat} is ${doorFrameStat(stat)}, not ${want}`);
+	}
+}
+
+function pixels(count: int32): Vec<uint32> {
+	let made: Vec<uint32> = new Array(0);
+	for (let i = 0; i < count; i++) { made.push(0xFF808080 as uint32); }
+	return made;
+}
+
+// Bytes alive now, whichever the scene already holds: a make raises its stat by its size, two
+// buffer sizes and two image kinds, and the destroys return it exactly.
+function checkResidentBytes(): void {
+	const buffers: int64 = doorFrameStat(DOOR_STAT_RESIDENT_BUFFER_BYTES);
+	const images: int64 = doorFrameStat(DOOR_STAT_RESIDENT_IMAGE_BYTES);
+	const targets: int64 = doorFrameStat(DOOR_STAT_RESIDENT_TARGET_BYTES);
+	const empty: Vec<uint8> = [];
+	const buffer: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, empty, BUFFER_BYTES);
+	const odd: uint32 = doorMakeBuffer(DOOR_BUFFER_VERTEX, empty, ODD_BUFFER_BYTES);
+	const image: uint32 = doorMakeImage(pixels(8 * 4), 8, 4);
+	const mips: uint32 = doorMakeImageMips(pixels(21), 4, 4, 3);
+	const target: uint32 = doorMakeTargetImage(16, 16, 2);
+	expectResident("made", DOOR_STAT_RESIDENT_BUFFER_BYTES, buffers + BUFFER_BYTES + ODD_BUFFER_ALIGNED);
+	expectResident("made", DOOR_STAT_RESIDENT_IMAGE_BYTES, images + IMAGE_BYTES + MIP_IMAGE_BYTES);
+	expectResident("made", DOOR_STAT_RESIDENT_TARGET_BYTES, targets + TARGET_BYTES);
+	doorDestroyBuffer(odd);
+	expectResident("odd buffer destroyed", DOOR_STAT_RESIDENT_BUFFER_BYTES, buffers + BUFFER_BYTES);
+	doorDestroyBuffer(buffer);
+	doorDestroyImage(mips);
+	expectResident("mip image destroyed", DOOR_STAT_RESIDENT_IMAGE_BYTES, images + IMAGE_BYTES);
+	doorDestroyImage(image);
+	doorDestroyImage(target);
+	expectResident("destroyed", DOOR_STAT_RESIDENT_BUFFER_BYTES, buffers);
+	expectResident("destroyed", DOOR_STAT_RESIDENT_IMAGE_BYTES, images);
+	expectResident("destroyed", DOOR_STAT_RESIDENT_TARGET_BYTES, targets);
+}
+
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
 	if (stage >= 0) {
-		applies.push(doorFrameStat(DOOR_STAT_UNIFORM_APPLIES));
-		changes.push(doorFrameStat(DOOR_STAT_PIPELINE_CHANGES));
-		ringBytes.push(doorFrameStat(DOOR_STAT_UNIFORM_RING_BYTES));
+		applies.push(doorFrameStat(DOOR_STAT_UNIFORM_APPLIES) as int32);
+		changes.push(doorFrameStat(DOOR_STAT_PIPELINE_CHANGES) as int32);
+		ringBytes.push(doorFrameStat(DOOR_STAT_UNIFORM_RING_BYTES) as int32);
 	}
 	if (stage == 5) {
 		report();
-		console.log("PASS draw frame stats: globals apply once per pipeline change and a sort groups pipelines");
+		checkResidentBytes();
+		if (doorFrameStat(DOOR_STAT_RESIDENT_BUFFER_BYTES) == 0 ||
+			doorFrameStat(DOOR_STAT_RESIDENT_IMAGE_BYTES) == 0) {
+			fail("the scene holds no resident bytes before the loss");
+		}
+		firstGeneration = contextGeneration();
+		stage = 6;
+		loseContext();
+		return;
+	}
+	if (stage == 6) {
+		if (contextGeneration() != firstGeneration + 1) { fail("the context was not rebuilt"); }
+		console.log(`resident after the loss: buffers ${doorFrameStat(DOOR_STAT_RESIDENT_BUFFER_BYTES)}, ` +
+			`images ${doorFrameStat(DOOR_STAT_RESIDENT_IMAGE_BYTES)}, targets ${doorFrameStat(DOOR_STAT_RESIDENT_TARGET_BYTES)}`);
+		if (liveBuffers() != 0 || liveImages() != 0) { fail("the loss left resources alive"); }
+		expectResident("after the loss", DOOR_STAT_RESIDENT_BUFFER_BYTES, 0);
+		expectResident("after the loss", DOOR_STAT_RESIDENT_IMAGE_BYTES, 0);
+		expectResident("after the loss", DOOR_STAT_RESIDENT_TARGET_BYTES, 0);
+		checkResidentBytes();
+		console.log("PASS draw frame stats: globals apply once per pipeline change, a sort groups pipelines, resident bytes rise and return exactly across a loss");
 		voidCaptureExit(0);
 		return;
 	}

@@ -58,6 +58,7 @@ import "./rendererCheck";
 import "./programKeyCheck";
 import "./drawSurfaceCheck";
 import "./bloomCheck";
+import "./doorResidentCheck";
 import "./bloomKernelCheck";
 import "./dirShadowCheck";
 import "./cameraCheck";
