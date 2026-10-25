@@ -7,6 +7,7 @@
 #include <GLES3/gl3.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "bridge.h"
 #include "views.h"
@@ -75,9 +76,9 @@ void voidPlatformDeviceEnsure(void) {
 static char g_assetRoot[1024] = {0};
 
 void voidEmbedSetAssetRoot(const char *p) {
-	size_t n = 0;
-	while (p[n] && n < sizeof(g_assetRoot) - 1) { g_assetRoot[n] = p[n]; n++; }
-	g_assetRoot[n] = 0;
+	const size_t n = strlen(p);
+	if (n >= sizeof(g_assetRoot)) voidFail("voidEmbedSetAssetRoot: the path is %zu bytes, longer than %zu", n, sizeof(g_assetRoot) - 1);
+	memcpy(g_assetRoot, p, n + 1);
 }
 
 const char *voidAndroidAssetDir(void) { return g_assetRoot; }
