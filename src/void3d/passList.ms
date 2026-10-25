@@ -98,9 +98,10 @@ export function filterFrustum(
 	for (let i = 0; i < list.count; i++) {
 		let index: int32 = list.indices[i];
 		const geometry = items[index].skinGeometry;
-		const visible: boolean = geometry === null ?
+		const pick = items[index].lod;
+		const visible: boolean = (pick === null || !pick.culled) && (geometry === null ?
 			frustum.intersectsBounds(meshes[items[index].mesh.index].bounds, items[index].world) :
-			frustum.intersectsBounds(geometry.mesh.bounds, identity());
+			frustum.intersectsBounds(geometry.mesh.bounds, identity()));
 		if (visible) {
 			list.indices[count] = index;
 			list.layers[count] = list.layers[i];

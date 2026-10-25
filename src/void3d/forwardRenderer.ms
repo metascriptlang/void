@@ -120,6 +120,7 @@ export enum ForwardError {
 	SkinPose,
 	Instances,
 	DrawRange,
+	MeshLod,
 	CameraPosition,
 	MeshWrite,
 	// RendererError.BadShadowSpot and SpotShadowUnattached, and their cube counterparts.
@@ -276,6 +277,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.SkinPose => ForwardError.SkinPose,
 		RendererError.Instances => ForwardError.Instances,
 		RendererError.DrawRange => ForwardError.DrawRange,
+		RendererError.MeshLod => ForwardError.MeshLod,
 		RendererError.CameraPosition => ForwardError.CameraPosition,
 		RendererError.MeshWrite => ForwardError.MeshWrite,
 		RendererError.ShapedLightPreset => { unreachable; },

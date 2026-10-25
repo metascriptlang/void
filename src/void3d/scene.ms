@@ -69,6 +69,8 @@ import {
 	clearMaterialTally,
 } from "./draw";
 import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
+import { MeshLod, MeshLodRange, MeshLodRanges, MeshLodPick } from "./meshLod";
+import { boundingRadius } from "./bounds";
 import { Camera3D, CameraError, rotationOfBasis } from "./camera";
 import {
 	DEFAULT_LAYERS,
@@ -154,6 +156,7 @@ export enum SceneError {
 	SkinPalette,
 	SkinMesh,
 	DrawRange,
+	MeshLod,
 }
 
 export enum MorphNodeError {
@@ -230,6 +233,7 @@ export struct MeshInstance {
 	morph: SceneMorph | null;
 	morphPrimitive: int32;
 	morphRevision: uint64;
+	lod: MeshLodPick | null;
 }
 
 // The morph state of one glTF node instance, shared by the mesh nodes of its primitives: weights
@@ -480,7 +484,7 @@ export function addMeshNode(
 	const payload: int32 = scene.meshes.length as int32;
 	scene.meshes.push({ mesh: mesh, material: material,
 		skinGeometry: null, skinPalette: 0, range: null,
-		morph: null, morphPrimitive: 0, morphRevision: 0 });
+		morph: null, morphPrimitive: 0, morphRevision: 0, lod: null });
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Mesh,
 		flags: freshFlags(),
@@ -575,6 +579,55 @@ function validateSkinMesh(
 		}
 	}
 	return Result.ok(total);
+}
+
+export function addLodMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, config: Readonly<MeshLod>, ranges: Readonly<MeshLodRanges>,
+	slot: int32,
+): Result<NodeId3D, SceneError> {
+	scene.requireOpen("addLodMeshNode");
+	const context: DrawContext = scene.context;
+	context.requireOpen("addLodMeshNode");
+	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
+	if (config.lodCount != ranges.lodCount ||
+		context.meshes[mesh.index].elementCount() != ranges.elementCount) {
+		return Result.err(SceneError.MeshLod);
+	}
+	const first = ranges.rangeAt(slot, 0);
+	if (!first.ok) { return Result.err(SceneError.MeshLod); }
+	if (!config.select(0.0).ok) { return Result.err(SceneError.MeshLod); }
+	const node: NodeId3D = try addMeshNode(scene, parent, local, mesh, material);
+	const row: int32 = scene.nodes[node.index].payload;
+	let thresholds: Vec<float64> = [];
+	for (const threshold of config.thresholds) { thresholds.push(threshold); }
+	let levels: Vec<MeshLodRange> = [];
+	for (const range of ranges.ranges) { levels.push(range); }
+	scene.meshes[row].range = { base: first.value.base, count: first.value.count };
+	scene.meshes[row].lod = {
+		config: {
+			lodCount: config.lodCount, thresholds: move thresholds,
+			cullingScreenRatio: config.cullingScreenRatio,
+		},
+		ranges: {
+			lodCount: ranges.lodCount, materialCount: ranges.materialCount,
+			elementCount: ranges.elementCount, ranges: move levels,
+		},
+		material: slot,
+		localOriginRadius: context.meshData[mesh.index].bounds.boundingRadius(),
+		forcedLod: -1,
+		range: first.value,
+		culled: false,
+	};
+	return Result.ok(node);
+}
+
+export function setForcedLod(scene: Scene3D, id: NodeId3D, level: int32): Result<void, SceneError> {
+	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setForcedLod");
+	const lod = scene.meshes[scene.nodes[node].payload].lod;
+	if (lod === null || level < -1) { return Result.err(SceneError.MeshLod); }
+	lod.forcedLod = level;
+	return Result.ok(null);
 }
 
 export function addSkinMeshNode(
@@ -1120,6 +1173,11 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 		const _valid: int32 = try validateSkinMesh(scene, mesh, scene.meshes[row].material,
 			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range);
 	}
+	const lod = scene.meshes[row].lod;
+	if (lod !== null && (!context.hasMesh(mesh) ||
+		context.meshes[mesh.index].elementCount() != lod.ranges.elementCount)) {
+		return Result.err(SceneError.MeshLod);
+	}
 	const holds: boolean = context.hasMesh(shown);
 	if (holds && context.meshPinned(shown) < 1) { stopOnPinTaken("setMeshOf"); }
 	if (!pinMesh(context, mesh).ok) { return Result.err(meshError(context, mesh)); }
@@ -1368,7 +1426,7 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 				world: scene.nodes[index].world,
 				order: scene.nodes[index].renderOrder,
 				skin: null, skinGeometry: instance.skinGeometry,
-				skinPalette: instance.skinPalette, range: instance.range,
+				skinPalette: instance.skinPalette, range: instance.range, lod: instance.lod,
 			});
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
@@ -1520,6 +1578,7 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 					items[at].skinGeometry = instance.skinGeometry;
 					items[at].skinPalette = instance.skinPalette;
 					items[at].range = instance.range;
+					items[at].lod = instance.lod;
 				} else {
 					items.push({
 						mesh: instance.mesh,
@@ -1527,7 +1586,7 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 						world: scene.nodes[index].world,
 						order: scene.nodes[index].renderOrder,
 						skin: null, skinGeometry: instance.skinGeometry,
-						skinPalette: instance.skinPalette, range: instance.range,
+						skinPalette: instance.skinPalette, range: instance.range, lod: instance.lod,
 					});
 				}
 				at = at + 1;

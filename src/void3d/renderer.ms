@@ -69,7 +69,7 @@ import {
 	samplerSlotOf,
 } from "./material";
 import { TextureId } from "./texture";
-import { Vec3 } from "../math/math3d";
+import { Vec3, vec3 } from "../math/math3d";
 import { TargetLayout } from "../gpu/target";
 import {
 	PassState,
@@ -124,7 +124,10 @@ import {
 } from "./dirShadowMap";
 import { SpotShadowError, spotCaster, spotShadowView } from "./spotShadow";
 import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
-import { CameraView } from "./camera";
+import {
+	CameraView, CAMERA_EYE, CAMERA_NEAR, CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y,
+} from "./camera";
+import { pickFor } from "./meshLod";
 import { ClusterAssignment, ClusterConfig } from "./clusters";
 import {
 	ClusterFrame,
@@ -199,6 +202,7 @@ export interface Renderer {
 	prepared: boolean;
 	preparedFrame: uint32;
 	culledCount: int32;
+	meshLodScale: float64;
 	closed: boolean;
 }
 
@@ -222,6 +226,7 @@ export enum RendererError {
 	SkinPose,
 	Instances,
 	DrawRange,
+	MeshLod,
 	CameraPosition,
 	MeshWrite,
 	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
@@ -335,6 +340,7 @@ export function createDrawing(
 		prepared: false,
 		preparedFrame: 0,
 		culledCount: 0,
+		meshLodScale: 1.0,
 		closed: false,
 	});
 }
@@ -635,6 +641,15 @@ export function beginFrame(
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
+	}
+	const lodEye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
+	for (let i = 0; i < (items.length as int32); i++) {
+		const pick = items[i].lod;
+		if (pick === null) { continue; }
+		if (!pick.pickFor(items[i].world, lodEye, camera[CAMERA_PROJECTION_X],
+			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale).ok) {
+			return Result.err(RendererError.MeshLod);
+		}
 	}
 	const counted: Result<int32, ClusterFrameError> = recordCountOf(lights);
 	if (!counted.ok) { return Result.err(RendererError.LightBlockLength); }
