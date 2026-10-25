@@ -1039,6 +1039,9 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeView;
     mat4 spotMatrix;
     vec4 spotShadow;
+    mat4 pointMatrices[6];
+    vec4 pointShadow;
+    vec4 pointLight;
 };
 #ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
@@ -1052,6 +1055,8 @@ layout(binding=2) uniform sampler shadowSampler;
 layout(binding=6) uniform texture2DArray spotShadowMap;
 @sampler_type spotShadowSampler nonfiltering
 layout(binding=3) uniform sampler spotShadowSampler;
+@image_sample_type pointShadowMap unfilterable_float
+layout(binding=12) uniform texture2DArray pointShadowMap;
 #ifdef PBR
 layout(binding=7) uniform textureCube envDiffuse;
 #endif
@@ -1395,6 +1400,49 @@ ivec2 recordTexelOf(int light, int texel) {
 vec4 litTexelOf(int light, int texel) {
     return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
+int pointFaceOf(vec3 toPosition) {
+    vec3 axes = abs(toPosition);
+    if ((axes.x >= axes.y) && (axes.x >= axes.z)) {
+        return (toPosition.x > 0.0) ? 0 : 1;
+    }
+    if (axes.y >= axes.z) {
+        return (toPosition.y > 0.0) ? 2 : 3;
+    }
+    return (toPosition.z > 0.0) ? 4 : 5;
+}
+float pointShadowAt(vec3 position) {
+    int face = pointFaceOf((position - pointLight.xyz));
+    vec4 p = mapCoord(position, pointMatrices[face]);
+    if (p.w < 0.5) {
+        return 1.0;
+    }
+    int size = int(pointShadow.z + 0.5);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    float depth = texelFetch(sampler2DArray(pointShadowMap, spotShadowSampler), ivec3(texel, face), 0).x;
+    return mapLit(p.z, depth, pointShadow.x, pointShadow.y);
+}
+float spotShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, spotMatrix);
+    if (p.w < 0.5) {
+        return 1.0;
+    }
+    int size = int(spotShadow.z + 0.5);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(texel, 0), 0).x;
+    return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
+}
+float recordShadowAt(vec3 position, vec4 a, vec4 bb) {
+#ifndef SHADOWED
+    return 1.0;
+#endif
+    if ((a.w > 1.5) || (bb.z < 0.5)) {
+        return 1.0;
+    }
+    if (a.w < 0.5) {
+        return pointShadowAt(position);
+    }
+    return spotShadowAt(position);
+}
 float lightWindow(float distance_1, float range) {
     float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
     return window * window;
@@ -1495,25 +1543,6 @@ vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec
     return diffuse;
 }
 #endif
-float spotShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, spotMatrix);
-    if (p.w < 0.5) {
-        return 1.0;
-    }
-    int size = int(spotShadow.z + 0.5);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
-    float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(texel, 0), 0).x;
-    return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
-}
-float recordShadowAt(vec3 position, vec4 a, vec4 bb) {
-#ifndef SHADOWED
-    return 1.0;
-#endif
-    if (((a.w < 0.5) || (a.w > 1.5)) || (bb.z < 0.5)) {
-        return 1.0;
-    }
-    return spotShadowAt(position);
-}
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
     vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
@@ -1544,13 +1573,13 @@ vec4 pbrShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) 
         vec4 at = litTexelOf(i, 0);
         vec4 tint = litTexelOf(i, 1);
         vec4 a = litTexelOf(i, 2);
+        vec4 bb = litTexelOf(i, 3);
         if (a.w < 0.5) {
             vec3 toLight = at.xyz - position;
             float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
             vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
-            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, recordShadowAt(position, a, bb), 0.0, values.z);
         } else {
-            vec4 bb = litTexelOf(i, 3);
             vec4 cc = litTexelOf(i, 4);
             vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
             vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);
@@ -1966,6 +1995,9 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeView;
     mat4 spotMatrix;
     vec4 spotShadow;
+    mat4 pointMatrices[6];
+    vec4 pointShadow;
+    vec4 pointLight;
 };
 #ifdef SHADOWED
 @image_sample_type shadowMap unfilterable_float
@@ -1979,6 +2011,8 @@ layout(binding=2) uniform sampler shadowSampler;
 layout(binding=6) uniform texture2DArray spotShadowMap;
 @sampler_type spotShadowSampler nonfiltering
 layout(binding=3) uniform sampler spotShadowSampler;
+@image_sample_type pointShadowMap unfilterable_float
+layout(binding=12) uniform texture2DArray pointShadowMap;
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 #ifdef BACK_TEXTURE
@@ -2450,6 +2484,49 @@ ivec2 recordTexelOf(int light, int texel) {
 vec4 litTexelOf(int light, int texel) {
     return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
+int pointFaceOf(vec3 toPosition) {
+    vec3 axes = abs(toPosition);
+    if ((axes.x >= axes.y) && (axes.x >= axes.z)) {
+        return (toPosition.x > 0.0) ? 0 : 1;
+    }
+    if (axes.y >= axes.z) {
+        return (toPosition.y > 0.0) ? 2 : 3;
+    }
+    return (toPosition.z > 0.0) ? 4 : 5;
+}
+float pointShadowAt(vec3 position) {
+    int face = pointFaceOf((position - pointLight.xyz));
+    vec4 p = mapCoord(position, pointMatrices[face]);
+    if (p.w < 0.5) {
+        return 1.0;
+    }
+    int size = int(pointShadow.z + 0.5);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    float depth = texelFetch(sampler2DArray(pointShadowMap, spotShadowSampler), ivec3(texel, face), 0).x;
+    return mapLit(p.z, depth, pointShadow.x, pointShadow.y);
+}
+float spotShadowAt(vec3 position) {
+    vec4 p = mapCoord(position, spotMatrix);
+    if (p.w < 0.5) {
+        return 1.0;
+    }
+    int size = int(spotShadow.z + 0.5);
+    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
+    float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(texel, 0), 0).x;
+    return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
+}
+float recordShadowAt(vec3 position, vec4 a, vec4 bb) {
+#ifndef SHADOWED
+    return 1.0;
+#endif
+    if ((a.w > 1.5) || (bb.z < 0.5)) {
+        return 1.0;
+    }
+    if (a.w < 0.5) {
+        return pointShadowAt(position);
+    }
+    return spotShadowAt(position);
+}
 float lightWindow(float distance_1, float range) {
     float window = clamp((1.0 - (distance_1 / range)), 0.0, 1.0);
     return window * window;
@@ -2550,25 +2627,6 @@ vec3 shapedSpecularDir(vec3 position, vec3 reflected, vec3 diffuse, vec4 at, vec
     return diffuse;
 }
 #endif
-float spotShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, spotMatrix);
-    if (p.w < 0.5) {
-        return 1.0;
-    }
-    int size = int(spotShadow.z + 0.5);
-    ivec2 texel = clamp(ivec2((p.xy * vec2(float(size)))), ivec2(0, 0), ivec2((size - 1), (size - 1)));
-    float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(texel, 0), 0).x;
-    return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
-}
-float recordShadowAt(vec3 position, vec4 a, vec4 bb) {
-#ifndef SHADOWED
-    return 1.0;
-#endif
-    if (((a.w < 0.5) || (a.w > 1.5)) || (bb.z < 0.5)) {
-        return 1.0;
-    }
-    return spotShadowAt(position);
-}
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
     vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
@@ -2599,13 +2657,13 @@ vec4 pbrShade(vec3 n, vec3 position, vec2 frag, vec4 surfaceColor, vec3 values) 
         vec4 at = litTexelOf(i, 0);
         vec4 tint = litTexelOf(i, 1);
         vec4 a = litTexelOf(i, 2);
+        vec4 bb = litTexelOf(i, 3);
         if (a.w < 0.5) {
             vec3 toLight = at.xyz - position;
             float falloff = clamp((1.0 - (length(toLight) / tint.a)), 0.0, 1.0);
             vec3 radiance = srgbToLinear(tint.rgb) * ((falloff * falloff) * at.w);
-            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0, 0.0, values.z);
+            light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, recordShadowAt(position, a, bb), 0.0, values.z);
         } else {
-            vec4 bb = litTexelOf(i, 3);
             vec4 cc = litTexelOf(i, 4);
             vec4 sample_1 = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(i, 5));
             vec3 radiance_1 = srgbToLinear(tint.rgb) * (sample_1.w * at.w);

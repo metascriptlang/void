@@ -23,6 +23,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	LIGHT_RECORD_LENGTH,
 	LIGHT_RECORD_SHAPE,
+	LIGHT_KIND_POINT,
 	LIGHT_KIND_SPOT,
 	LIGHT_KIND_RECTANGLE,
 	LIGHT_KIND_CAPSULE,
@@ -134,9 +135,10 @@ export struct LightInstance {
 	power: float32;
 	priority: int32;
 	shape: LightShape;
-	// A spot's shadows.enabled (LightBuffer.hx:180-186): it casts its own shadow map, beside the
-	// sun's (spotShadow.ms). Any other kind with it set is
-	// LightError.UnshadowableLight, and a second spot with it set LightError.TooManyShadowedSpots.
+	// A spot's or a point's shadows.enabled (LightBuffer.hx:180-186): it casts its own shadow map,
+	// beside the sun's (spotShadow.ms, pointShadow.ms). Any other kind with it set is
+	// LightError.UnshadowableLight, and a second spot or point with it set
+	// LightError.TooManyShadowedSpots or TooManyShadowedPoints.
 	shadows: boolean;
 }
 
@@ -177,6 +179,7 @@ export enum LightError {
 	BadLightShape,
 	TooManyShadowedSpots,
 	UnshadowableLight,
+	TooManyShadowedPoints,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -1614,13 +1617,20 @@ export function collectLightsFor(
 	}
 	const found: int32 = scene.lightOrder.length as int32;
 	let shadowedSpots: int32 = 0;
+	let shadowedPoints: int32 = 0;
 	for (let i = 0; i < found; i++) {
 		const light: LightInstance = scene.lights[scene.nodes[scene.lightOrder[i]].payload];
 		if (!light.shadows) { continue; }
-		if (light.kind != LightKind.Spot) { return Result.err(LightError.UnshadowableLight); }
-		shadowedSpots = shadowedSpots + 1;
+		if (light.kind == LightKind.Spot) {
+			shadowedSpots = shadowedSpots + 1;
+		} else if (light.kind == LightKind.Point) {
+			shadowedPoints = shadowedPoints + 1;
+		} else {
+			return Result.err(LightError.UnshadowableLight);
+		}
 	}
 	if (shadowedSpots > 1) { return Result.err(LightError.TooManyShadowedSpots); }
+	if (shadowedPoints > 1) { return Result.err(LightError.TooManyShadowedPoints); }
 	pushQuad(out, vec4(scene.ambientLight.x, scene.ambientLight.y, scene.ambientLight.z, 0.0));
 	pushQuad(out, vec4(toward.x, toward.y, toward.z, sunPower));
 	pushQuad(out, vec4(sunColor.x, sunColor.y, sunColor.z, 0.0));
@@ -1632,7 +1642,9 @@ export function collectLightsFor(
 		pushQuad(out, vec4(world.m41, world.m42, world.m43, light.power));
 		pushQuad(out, vec4(light.color.x, light.color.y, light.color.z, light.radius));
 		if (light.kind == LightKind.Point) {
-			for (let k = 0; k < LIGHT_RECORD_LENGTH - LIGHT_RECORD_SHAPE; k++) { out.push(0.0); }
+			pushQuad(out, vec4(0.0, 0.0, 0.0, LIGHT_KIND_POINT));
+			pushQuad(out, vec4(0.0, 0.0, light.shadows ? 1.0 : 0.0, 0.0));
+			for (let k = 8; k < LIGHT_RECORD_LENGTH - LIGHT_RECORD_SHAPE; k++) { out.push(0.0); }
 		} else if (!packShape(out, light, world).ok) {
 			return Result.err(LightError.BadLightShape);
 		}

@@ -292,6 +292,9 @@ export struct ShadowParams {
 	cascadeView: Vec4f;
 	spotMatrix: Mat4x4f;
 	spotShadow: Vec4f;
+	pointMatrices: Mat4x4f[6];
+	pointShadow: Vec4f;
+	pointLight: Vec4f;
 }
 
 // The blocks at one binding are the layouts a program key chooses between.
@@ -318,6 +321,7 @@ export struct LitBindings {
 	@binding(2) @samplerType(nonfiltering) shadowSampler: Sampler;
 	@binding(6) @sampleType(unfilterable_float) spotShadowMap: Texture2dArray;
 	@binding(3) @samplerType(nonfiltering) spotShadowSampler: Sampler;
+	@binding(12) @sampleType(unfilterable_float) pointShadowMap: Texture2dArray;
 	@binding(0) baseTexture: Texture2d;
 	@binding(0) baseSampler: Sampler;
 	@binding(1) backTexture: Texture2d;
@@ -1277,17 +1281,44 @@ export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
 	return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
 }
 
+export function pointFaceOf(toPosition: Vec3f): int32 {
+	const axes = abs(toPosition);
+	if (axes.x >= axes.y && axes.x >= axes.z) {
+		return toPosition.x > 0.0 ? 0 : 1;
+	}
+	if (axes.y >= axes.z) {
+		return toPosition.y > 0.0 ? 2 : 3;
+	}
+	return toPosition.z > 0.0 ? 4 : 5;
+}
+
+export function pointShadowAt(position: Vec3f, b: LitBindings): float32 {
+	const face = pointFaceOf(position - b.shadowParams.pointLight.xyz);
+	const p = mapCoord(position, b.shadowParams.pointMatrices[face]);
+	if (p.w < 0.5) {
+		return 1.0;
+	}
+	const size = (b.shadowParams.pointShadow.z + 0.5) as int32;
+	const texel = clamp(vec2i(p.xy * vec2f(size as float32)), vec2i(0, 0),
+		vec2i(size - 1, size - 1));
+	const depth = textureLoad(b.pointShadowMap, b.spotShadowSampler, texel, face, 0).x;
+	return mapLit(p.z, depth, b.shadowParams.pointShadow.x, b.shadowParams.pointShadow.y);
+}
+
 // A positioned light's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless
-// its record's shapes `a` and `bb` name the spot that casts the spot map (shapeB.z, scene.ms
-// packShape).
+// its record's shapes `a` and `bb` name the spot that casts the spot map or the point that casts
+// the point map (shapeB.z, scene.ms packShape).
 export function recordShadowAt(
 	position: Vec3f, b: LitBindings, key: LitKey, a: Vec4f, bb: Vec4f,
 ): float32 {
 	if (!key.shadowed) {
 		return 1.0;
 	}
-	if (a.w < 0.5 || a.w > 1.5 || bb.z < 0.5) {
+	if (a.w > 1.5 || bb.z < 0.5) {
 		return 1.0;
+	}
+	if (a.w < 0.5) {
+		return pointShadowAt(position, b);
 	}
 	return spotShadowAt(position, b);
 }
@@ -1505,14 +1536,14 @@ export function pbrShade(
 		const at = litTexelOf(b, i, 0);
 		const tint = litTexelOf(b, i, 1);
 		const a = litTexelOf(b, i, 2);
+		const bb = litTexelOf(b, i, 3);
 		if (a.w < 0.5) {
 			const toLight = at.xyz - position;
 			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
 			const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
-			light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance, 1.0,
-				0.0, values.z);
+			light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance,
+				recordShadowAt(position, b, key, a, bb), 0.0, values.z);
 		} else {
-			const bb = litTexelOf(b, i, 3);
 			const cc = litTexelOf(b, i, 4);
 			const sample = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(b, i, 5));
 			const radiance = srgbToLinear(tint.rgb) * (sample.w * at.w);

@@ -425,25 +425,32 @@ export const LIGHT_KIND_SPOT: float32 = 1.0;
 export const LIGHT_KIND_RECTANGLE: float32 = 2.0;
 export const LIGHT_KIND_CAPSULE: float32 = 3.0;
 // The scene's shadow block (binding=5), laid out as shader3d.ms ShadowParams: the sun's cascades,
-// then the shadowing spot's part. A part nobody wrote is zero and shades nothing.
+// then the shadowing spot's part, then the point's. A part nobody wrote is zero and shades nothing.
 export const SHADOW_UNIFORM_SLOT: int32 = 5;
 export const SHADOW_CASCADE_FAR: int32 = 64;
 export const SHADOW_CASCADE_INFO: int32 = 68;
 export const SHADOW_CASCADE_VIEW: int32 = 72;
 export const SHADOW_SPOT_BASE: int32 = 76;
 export const SHADOW_SPOT_LENGTH: int32 = 20;
-export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_SPOT_BASE + SHADOW_SPOT_LENGTH;
 export const SHADOW_SPOT_BIAS: int32 = SHADOW_SPOT_BASE + 16;
 export const SHADOW_SPOT_OPACITY: int32 = SHADOW_SPOT_BASE + 17;
+export const SHADOW_POINT_FACES: int32 = 6;
+export const SHADOW_POINT_BASE: int32 = SHADOW_SPOT_BASE + SHADOW_SPOT_LENGTH;
+export const SHADOW_POINT_BIAS: int32 = SHADOW_POINT_BASE + SHADOW_POINT_FACES * 16;
+export const SHADOW_POINT_OPACITY: int32 = SHADOW_POINT_BIAS + 1;
+export const SHADOW_POINT_POSITION: int32 = SHADOW_POINT_BIAS + 4;
+export const SHADOW_UNIFORM_LENGTH: int32 = SHADOW_POINT_POSITION + 4;
 // The shadow maps' view and sampler slots (dirShadow's `binding=`), past a material's: the sun's
-// map, then the spot's.
+// map, then the spot's, then the point's, which reads with the spot's sampler.
 export const SHADOW_VIEW_SLOT: int32 = 4;
 export const SHADOW_SAMPLER_SLOT: int32 = 2;
 export const SPOT_SHADOW_VIEW_SLOT: int32 = 6;
 export const SPOT_SHADOW_SAMPLER_SLOT: int32 = 3;
+export const POINT_SHADOW_VIEW_SLOT: int32 = 12;
 // The slots a shadowed program reads the scene's maps at, which no material binds.
 export const SHADOW_SCENE_VIEWS: uint32 =
-	(1 << (SHADOW_VIEW_SLOT as uint32)) | (1 << (SPOT_SHADOW_VIEW_SLOT as uint32));
+	(1 << (SHADOW_VIEW_SLOT as uint32)) | (1 << (SPOT_SHADOW_VIEW_SLOT as uint32)) |
+	(1 << (POINT_SHADOW_VIEW_SLOT as uint32));
 export const SHADOW_SCENE_SAMPLERS: uint32 =
 	(1 << (SHADOW_SAMPLER_SLOT as uint32)) | (1 << (SPOT_SHADOW_SAMPLER_SLOT as uint32));
 // The environment's cubes (shader3d.ms pbrEnvironmentLight), which a pbr program reads and the

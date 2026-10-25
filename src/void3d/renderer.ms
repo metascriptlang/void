@@ -119,8 +119,11 @@ import {
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
-import { DirShadowMap, castsAll, drawShadows, carrySpot, sceneTexture } from "./dirShadowMap";
+import {
+	DirShadowMap, ShadowKind, castsAll, drawShadows, carryShadows, sceneTexture,
+} from "./dirShadowMap";
 import { shadowedSpotCount, firstShadowedSpot, spotShadowView } from "./spotShadow";
+import { shadowedPointCount, firstShadowedPoint, pointShadowViews } from "./pointShadow";
 import { CameraView } from "./camera";
 import { ClusterAssignment, ClusterConfig } from "./clusters";
 import {
@@ -180,6 +183,7 @@ export interface Renderer {
 	drawn: Vec<ProgramKey>;
 	shadow: DirShadowMap | null;
 	spotShadow: DirShadowMap | null;
+	pointShadow: DirShadowMap | null;
 	// h3d.scene.pbr.Renderer's `env`: the image-based light of every pbr key (attachEnvironment).
 	environment: Environment | null;
 	// What a pbr key reads with no environment attached, made once per GPU context.
@@ -229,6 +233,12 @@ export enum RendererError {
 	BadShadowSpot,
 	// A spot slot asks to cast and no spot map is attached (attachSpotShadow).
 	SpotShadowUnattached,
+	// Two point slots of the light block cast: the frame has one point shadow map.
+	TooManyShadowedPoints,
+	// The shadowing point's range does not reach past PointLight.zNear (pointShadow.ms).
+	BadShadowPoint,
+	// A point slot asks to cast and no point map is attached (attachPointShadow).
+	PointShadowUnattached,
 	// The frame has a positioned light and no view to cluster it in (setCameraView).
 	ClusterViewUnset,
 	// The camera block is not the view's viewProj: the lights would be clustered in another view.
@@ -316,6 +326,7 @@ export function createDrawing(
 		drawn: [],
 		shadow: null,
 		spotShadow: null,
+		pointShadow: null,
 		environment: null,
 		blackCube: 0,
 		blackCubeView: 0,
@@ -350,7 +361,9 @@ export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): v
 	if (renderer.closed) { stopOnClosed("attachShadow"); }
 	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachShadow"); }
-	if (shadow !== null && shadow.spot) { stopOnWrongShadow("attachShadow", "a spot"); }
+	if (shadow !== null && shadow.kind != ShadowKind.Sun) {
+		stopOnWrongShadow("attachShadow", shadow.kind);
+	}
 	renderer.shadow = shadow;
 	renderer.sceneGlobals = shadowGlobals(renderer);
 	renderer.changed = true;
@@ -360,8 +373,22 @@ export function attachSpotShadow(renderer: Renderer, shadow: DirShadowMap | null
 	if (renderer.closed) { stopOnClosed("attachSpotShadow"); }
 	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachSpotShadow"); }
-	if (shadow !== null && !shadow.spot) { stopOnWrongShadow("attachSpotShadow", "a sun"); }
+	if (shadow !== null && shadow.kind != ShadowKind.Spot) {
+		stopOnWrongShadow("attachSpotShadow", shadow.kind);
+	}
 	renderer.spotShadow = shadow;
+	renderer.sceneGlobals = shadowGlobals(renderer);
+	renderer.changed = true;
+}
+
+export function attachPointShadow(renderer: Renderer, shadow: DirShadowMap | null): void {
+	if (renderer.closed) { stopOnClosed("attachPointShadow"); }
+	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
+	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachPointShadow"); }
+	if (shadow !== null && shadow.kind != ShadowKind.Point) {
+		stopOnWrongShadow("attachPointShadow", shadow.kind);
+	}
+	renderer.pointShadow = shadow;
 	renderer.sceneGlobals = shadowGlobals(renderer);
 	renderer.changed = true;
 }
@@ -412,22 +439,26 @@ function castError(error: ProgramError): RendererError {
 		: RendererError.ProgramNotCast;
 }
 
-function stopOnWrongShadow(call: string, found: string): void {
-	console.log(`void3d: ${call} with ${found} shadow map; DirShadowMap.create makes the sun's ` +
-		"and createSpot the spot's");
+function stopOnWrongShadow(call: string, found: ShadowKind): void {
+	console.log(`void3d: ${call} with a ${found.toString()} shadow map; DirShadowMap.create ` +
+		"makes the sun's, createSpot the spot's and createPoint the point's");
 	unreachable;
 }
 
-// One shadow block reaches the programs, the sun's with the spot's half carried in
-// (dirShadowMap.ms carrySpot); with no sun map it is the spot map's own, whose sun half is zero.
-function shadowGlobals(renderer: Renderer): Vec<UniformBlock> {
+// The map whose block reaches the programs: the first of the sun's, the spot's and the point's,
+// with the others' parts carried in (dirShadowMap.ms carryShadows).
+function shadowOwner(renderer: Renderer): DirShadowMap | null {
 	const sun: DirShadowMap | null = renderer.shadow;
+	if (sun !== null) { return sun; }
 	const spot: DirShadowMap | null = renderer.spotShadow;
-	if (sun !== null) {
-		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, sun.shadowBlock];
-	}
-	if (spot !== null) {
-		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, spot.shadowBlock];
+	if (spot !== null) { return spot; }
+	return renderer.pointShadow;
+}
+
+function shadowGlobals(renderer: Renderer): Vec<UniformBlock> {
+	const owner: DirShadowMap | null = shadowOwner(renderer);
+	if (owner !== null) {
+		return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, owner.shadowBlock];
 	}
 	return [renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock];
 }
@@ -547,9 +578,11 @@ export function beginFrame(
 	}
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
+	const pointShadow: DirShadowMap | null = renderer.pointShadow;
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
 	if (spotShadow !== null && spotShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
-	const shadowed: boolean = shadow !== null || spotShadow !== null;
+	if (pointShadow !== null && pointShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
+	const shadowed: boolean = shadow !== null || spotShadow !== null || pointShadow !== null;
 	for (const item of items) {
 		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
 		if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
@@ -598,6 +631,10 @@ export function beginFrame(
 		const cast: Result<int32, ProgramError> = spotShadow.castsAll(items);
 		if (!cast.ok) { return Result.err(castError(cast.error)); }
 	}
+	if (pointShadow !== null) {
+		const cast: Result<int32, ProgramError> = pointShadow.castsAll(items);
+		if (!cast.ok) { return Result.err(castError(cast.error)); }
+	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
 	}
@@ -618,6 +655,14 @@ export function beginFrame(
 	}
 	if (shadowedSpot >= 0 && spotShadow === null) {
 		return Result.err(RendererError.SpotShadowUnattached);
+	}
+	if (shadowedPointCount(lights) > 1) { return Result.err(RendererError.TooManyShadowedPoints); }
+	const shadowedPoint: int32 = firstShadowedPoint(lights);
+	if (shadowedPoint >= 0 && !pointShadowViews(lights, shadowedPoint).ok) {
+		return Result.err(RendererError.BadShadowPoint);
+	}
+	if (shadowedPoint >= 0 && pointShadow === null) {
+		return Result.err(RendererError.PointShadowUnattached);
 	}
 	const view: CameraView | null = renderer.cameraView;
 	if (records > 0 && view === null) { return Result.err(RendererError.ClusterViewUnset); }
@@ -707,14 +752,19 @@ export function drawShadowPass(
 	if (renderer.closed) { stopOnClosed("drawShadowPass"); }
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
+	const pointShadow: DirShadowMap | null = renderer.pointShadow;
 	let casters: int32 = 0;
 	if (shadow !== null) { casters = drawShadows(shadow, items, camera, lights); }
 	if (spotShadow !== null) { casters = casters + drawShadows(spotShadow, items, camera, lights); }
-	if (shadow !== null) { carrySpot(shadow, spotShadow); }
+	if (pointShadow !== null) {
+		casters = casters + drawShadows(pointShadow, items, camera, lights);
+	}
+	const owner: DirShadowMap | null = shadowOwner(renderer);
+	if (owner !== null) { carryShadows(owner, spotShadow, pointShadow); }
 	return casters;
 }
 
-// A frame with one of the two maps binds it at both slots: the absent light's half of the
+// A frame without one of the maps binds another in its slot: the absent light's part of the
 // block is zero, so its lookup answers lit before it reads the map.
 function sceneTextureOf(renderer: Renderer): SceneTexture {
 	const clusters: ClusterFrame = renderer.clusters;
@@ -743,27 +793,19 @@ function sceneTextureOf(renderer: Renderer): SceneTexture {
 }
 
 function shadowTextureOf(renderer: Renderer): SceneTexture {
+	const owner: DirShadowMap | null = shadowOwner(renderer);
+	if (owner === null) { return NO_SCENE_TEXTURE; }
+	const first: SceneTexture = owner.sceneTexture();
 	const shadow: DirShadowMap | null = renderer.shadow;
 	const spotShadow: DirShadowMap | null = renderer.spotShadow;
-	if (shadow !== null) {
-		const sun: SceneTexture = shadow.sceneTexture();
-		if (spotShadow === null) {
-			return {
-				view: sun.view, sampler: sun.sampler, spotView: sun.view, spotSampler: sun.sampler,
-			};
-		}
-		const spot: SceneTexture = spotShadow.sceneTexture();
-		return {
-			view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler,
-		};
-	}
-	if (spotShadow !== null) {
-		const spot: SceneTexture = spotShadow.sceneTexture();
-		return {
-			view: spot.view, sampler: spot.sampler, spotView: spot.view, spotSampler: spot.sampler,
-		};
-	}
-	return NO_SCENE_TEXTURE;
+	const pointShadow: DirShadowMap | null = renderer.pointShadow;
+	const sun: SceneTexture = shadow === null ? first : shadow.sceneTexture();
+	const spot: SceneTexture = spotShadow === null ? first : spotShadow.sceneTexture();
+	const point: SceneTexture = pointShadow === null ? first : pointShadow.sceneTexture();
+	return {
+		view: sun.view, sampler: sun.sampler, spotView: spot.view, spotSampler: spot.sampler,
+		pointView: point.view,
+	};
 }
 
 // fwd.Renderer's default, alpha and additive passes, into the current pass (`targets` is
