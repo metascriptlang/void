@@ -37,7 +37,8 @@ import {
 	DirShadowMap,
 	ShadowError,
 	DIR_SHADOW_UNIFORM_LENGTH,
-	carrySpot,
+	ShadowKind,
+	carryShadows,
 } from "../void3d/dirShadowMap";
 import {
 	Renderer,
@@ -174,7 +175,7 @@ test "a spot slot that cannot make a camera is a named error, not a guess" {
 	assert !view.ok && view.error == SpotShadowError.BadSpot;
 }
 
-test "two shadowing spots, or a shadowed point, rectangle, capsule or sun, are refused by name" {
+test "two shadowing spots, or a shadowed rectangle, capsule or sun, are refused by name" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	defer closeScene(scene);
 	place(scene, spotOf(8, true), vec3(0, 4, 0), DOWN);
@@ -184,7 +185,7 @@ test "two shadowing spots, or a shadowed point, rectangle, capsule or sun, are r
 	place(scene, spotOf(8, true), vec3(2, 4, 0), DOWN);
 	assert errorOf(collectLights(scene, values)) == LightError.TooManyShadowedSpots;
 	const kinds: Vec<LightKind> =
-		[LightKind.Point, LightKind.Rectangle, LightKind.Capsule, LightKind.Directional];
+		[LightKind.Rectangle, LightKind.Capsule, LightKind.Directional];
 	for (const kind of kinds) {
 		const other = Scene3D.create(DrawContext.withUniformCapacity(0));
 		defer closeScene(other);
@@ -229,11 +230,14 @@ function spotLights(values: Vec<float32>): LitBindings {
 		shadowParams: {
 			cascadeMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP], cascadeFar: NONE,
 			cascadeInfo: NONE, cascadeView: NONE, spotMatrix: NO_MAP, spotShadow: NONE,
+			pointMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP], pointShadow: NONE,
+			pointLight: NONE,
 		},
 		shadowMap: oneLayer(depthTexture(1.0)),
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(depthTexture(1.0)),
 		spotShadowSampler: { nearest: true },
+		pointShadowMap: oneLayer(depthTexture(1.0)),
 		baseTexture: depthTexture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: depthTexture(1.0),
@@ -458,7 +462,8 @@ test "the sun's map and the spot's are made apart, and a frame applies the sun's
 	let core: Renderer = created.value;
 	const sun: DirShadowMap = sunMap.value;
 	const spot: DirShadowMap = spotMap.value;
-	assert !sun.spot && spot.spot && sun.shadowBlock.length == SHADOW_UNIFORM_LENGTH;
+	assert sun.kind == ShadowKind.Sun && spot.kind == ShadowKind.Spot;
+	assert sun.shadowBlock.length == SHADOW_UNIFORM_LENGTH;
 	attachSpotShadow(core, spot);
 	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == spot.shadowBlock;
 	attachShadow(core, sun);
@@ -466,13 +471,13 @@ test "the sun's map and the spot's are made apart, and a frame applies the sun's
 	sun.shadowValues[SHADOW_CASCADE_INFO + 2] = 0.125;
 	spot.shadowValues[SHADOW_SPOT_BIAS] = 0.25;
 	spot.shadowValues[SHADOW_SPOT_OPACITY] = 0.5;
-	carrySpot(sun, spot);
+	carryShadows(sun, spot, null);
 	const at: int32 = sun.shadowBlock.offset;
 	assert context.uniforms.values[at + SHADOW_CASCADE_INFO + 2] == 0.125;
 	assert context.uniforms.values[at + SHADOW_SPOT_BIAS] == 0.25;
 	assert context.uniforms.values[at + SHADOW_SPOT_OPACITY] == 0.5;
 	attachSpotShadow(core, null);
-	carrySpot(sun, null);
+	carryShadows(sun, null, null);
 	assert context.uniforms.values[at + SHADOW_CASCADE_INFO + 2] == 0.125;
 	assert context.uniforms.values[at + SHADOW_SPOT_BIAS] == 0.0;
 	assert context.uniforms.values[at + SHADOW_SPOT_OPACITY] == 0.0;

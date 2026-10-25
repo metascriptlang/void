@@ -60,6 +60,7 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
 	SPOT_SHADOW_SAMPLER_SLOT,
+	POINT_SHADOW_VIEW_SLOT,
 	SHADOW_SCENE_VIEWS,
 	SHADOW_SCENE_SAMPLERS,
 	ENV_SCENE_VIEWS,
@@ -893,7 +894,7 @@ function bit(mask: uint32, slot: int32): boolean {
 	return (mask & ((1 as uint32) << (slot as uint32))) != 0;
 }
 
-test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot map at 6, 3" {
+test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot and point maps" {
 	let shadowedKeys: int32 = 0;
 	for (const key of everyKey()) {
 		if (!declares(key)) { continue; }
@@ -906,6 +907,7 @@ test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot
 		assert sun == bit(samplers, SHADOW_SAMPLER_SLOT);
 		assert spot == bit(views, SPOT_SHADOW_VIEW_SLOT);
 		assert spot == bit(samplers, SPOT_SHADOW_SAMPLER_SLOT);
+		assert spot == bit(views, POINT_SHADOW_VIEW_SLOT);
 		assert uniformBlockLength(key, SHADOW_UNIFORM_SLOT) == (sun ? SHADOW_UNIFORM_LENGTH : 0);
 		if (sun) {
 			assert key.shadowed;
@@ -913,7 +915,7 @@ test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot
 		}
 	}
 	assert shadowedKeys > 0;
-	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6;
+	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6 && POINT_SHADOW_VIEW_SLOT == 12;
 	assert SHADOW_SAMPLER_SLOT == 2 && SPOT_SHADOW_SAMPLER_SLOT == 3;
 }
 
@@ -1222,7 +1224,8 @@ test "a pbr-maps key sets bit 17, is declared in all four variants and binds slo
 	}
 	assert textureSlotMask(base) == 7 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert samplerSlotMask(base) == 1 + ENV_SCENE_SAMPLERS + CLUSTER_SCENE_SAMPLERS;
-	assert textureSlotMask(base.withShadowed()) == 23 + 64 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
+	assert textureSlotMask(base.withShadowed()) ==
+		23 + 64 + 4096 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert textureSlotMask(tangent) == 39 + ENV_SCENE_VIEWS + CLUSTER_SCENE_VIEWS;
 	assert viewSlotOf(5) == METAL_ROUGH_VIEW_SLOT && viewSlotOf(6) == OCCLUSION_VIEW_SLOT;
 	assert METAL_ROUGH_VIEW_SLOT == 1 && OCCLUSION_VIEW_SLOT == 2;

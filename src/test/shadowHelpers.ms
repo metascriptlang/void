@@ -5,17 +5,22 @@ import {
 	SHADOW_CASCADE_VIEW,
 	SHADOW_SPOT_BASE,
 	SHADOW_SPOT_BIAS,
+	SHADOW_POINT_BASE,
+	SHADOW_POINT_BIAS,
+	SHADOW_POINT_POSITION,
 } from "../void3d/gpu3d";
 import { ShadowParams } from "../void3d/shader3d";
 
 const ALL_DEPTHS: float32 = 3.0e38;
+const NONE: Vec4f = vec4f(0.0, 0.0, 0.0, 0.0);
+const ZERO: Mat4x4f = mat4x4f(NONE, NONE, NONE, NONE);
 
 export function oneLayer(texture: Texture2d): Texture2dArray {
 	return { width: texture.width, height: texture.height, layers: 1, texels: texture.texels };
 }
 
 // The block a one-cascade sun map writes: `sun` and `spot` carry each map's bias and opacity in x
-// and y, and `size` is both maps' width in texels.
+// and y, and `size` is both maps' width in texels. Its point part is zero.
 export function oneCascade(
 	sunMatrix: Mat4x4f,
 	sun: Vec4f,
@@ -30,6 +35,9 @@ export function oneCascade(
 		cascadeView: vec4f(0.0, 0.0, 1.0, size),
 		spotMatrix: spotMatrix,
 		spotShadow: vec4f(spot.x, spot.y, size, 0.0),
+		pointMatrices: [ZERO, ZERO, ZERO, ZERO, ZERO, ZERO],
+		pointShadow: NONE,
+		pointLight: NONE,
 	};
 }
 
@@ -52,5 +60,12 @@ export function shadowParamsOf(values: Vec<float32>): ShadowParams {
 		cascadeView: quadAt(values, SHADOW_CASCADE_VIEW),
 		spotMatrix: matrixAt(values, SHADOW_SPOT_BASE),
 		spotShadow: quadAt(values, SHADOW_SPOT_BIAS),
+		pointMatrices: [
+			matrixAt(values, SHADOW_POINT_BASE), matrixAt(values, SHADOW_POINT_BASE + 16),
+			matrixAt(values, SHADOW_POINT_BASE + 32), matrixAt(values, SHADOW_POINT_BASE + 48),
+			matrixAt(values, SHADOW_POINT_BASE + 64), matrixAt(values, SHADOW_POINT_BASE + 80),
+		],
+		pointShadow: quadAt(values, SHADOW_POINT_BIAS),
+		pointLight: quadAt(values, SHADOW_POINT_POSITION),
 	};
 }

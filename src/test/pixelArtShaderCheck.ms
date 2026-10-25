@@ -69,6 +69,7 @@ function plainLit(): LitBindings {
 		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
 		shadowMap: oneLayer(white), shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(white), spotShadowSampler: { nearest: true },
+		pointShadowMap: oneLayer(white),
 		baseTexture: white, baseSampler: { nearest: true },
 		backTexture: white, dissolveTexture: white, dissolveSampler: { nearest: true },
 		emissiveTexture: white, normalTexture: white,
