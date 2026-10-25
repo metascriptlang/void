@@ -289,6 +289,9 @@ export struct GPUShaderModuleDescriptor {
 	// WGSL instance_index and MSL instance_id include firstInstance but HLSL and GLSL count from 0: a draw with
 	// firstInstance != 0 on a vertex stage that reads it stops instead of differing per backend.
 	readsInstanceIndex: boolean;
+	// WGSL vertex_index, GLSL gl_VertexID and MSL vertex_id include firstVertex and baseVertex but HLSL SV_VertexID
+	// does not: a draw with either != 0 on a vertex stage that reads it stops instead of differing per backend.
+	readsVertexIndex: boolean;
 	workgroupSize: int32[3];
 	bindings: GPUShaderBinding[GPU_MAX_SHADER_BINDINGS];
 	attributes: GPUShaderAttribute[GPU_MAX_VERTEX_ATTRIBUTES];
@@ -540,6 +543,10 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 
 export function firstInstanceRefusal(call: string, pipeline: string, firstInstance: int32): string {
 	return `${call} with firstInstance ${firstInstance} on pipeline ${pipeline}: firstInstance must be 0 because the vertex stage reads instance_index`;
+}
+
+export function vertexOffsetRefusal(call: string, pipeline: string, member: string, offset: int32): string {
+	return `${call} with ${member} ${offset} on pipeline ${pipeline}: ${member} must be 0 because the vertex stage reads vertex_index`;
 }
 
 // A backend that has not ported a descriptor member calls the helper for its descriptor: a member

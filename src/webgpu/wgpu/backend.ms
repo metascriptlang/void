@@ -87,6 +87,7 @@ import {
 	featureBit,
 	checkedIntegerTexturePairs,
 	firstInstanceRefusal,
+	vertexOffsetRefusal,
 	checkedVisibility,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
@@ -474,6 +475,7 @@ struct ShaderBinding {
 
 struct ShaderSlot {
 	readsInstanceIndex: boolean;
+	readsVertexIndex: boolean;
 	id: uint32;
 	vertex: Ptr<WgModuleImpl>;
 	fragment: Ptr<WgModuleImpl>;
@@ -491,6 +493,7 @@ struct ShaderSlot {
 struct PipelineSlot {
 	label: string | null;
 	readsInstanceIndex: boolean;
+	readsVertexIndex: boolean;
 	id: uint32;
 	shader: uint32;
 	native: Ptr<WgPipelineImpl>;
@@ -1679,6 +1682,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	}
 	slot.id = id;
 	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
+	slot.readsVertexIndex = descriptor.readsVertexIndex;
 	store(shaders, slot);
 	return { id: slot.id };
 }
@@ -1796,6 +1800,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		shader: descriptor.vertex.module.id,
 		label: descriptor.label,
 		readsInstanceIndex: shaders.slots[s].readsInstanceIndex,
+		readsVertexIndex: shaders.slots[s].readsVertexIndex,
 		native: native,
 		stripIndexFormat: stripIndexFormat,
 	};
@@ -2339,10 +2344,13 @@ export function setStencilReference(reference: uint32): void {
 	wgSetStencilReference(reference);
 }
 
-function checkFirstInstance(call: string, firstInstance: int32): void {
-	if (firstInstance == 0) { return; }
+function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
+	if (vertexOffset == 0 && firstInstance == 0) { return; }
 	const p = pipelines.slotIndex(pass.pipeline);
-	if (pipelines.slots[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines.slots[p].label), firstInstance)); }
+	if (firstInstance != 0 && pipelines.slots[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines.slots[p].label), firstInstance)); }
+	if (vertexOffset != 0 && pipelines.slots[p].readsVertexIndex) {
+		stop(vertexOffsetRefusal(call, labelOf(pipelines.slots[p].label), vertexMember, vertexOffset));
+	}
 }
 
 @inline export function draw(
@@ -2353,7 +2361,7 @@ function checkFirstInstance(call: string, firstInstance: int32): void {
 ): void {
 	checkPass("draw");
 	if (pass.pipeline == 0) { stop("draw without setPipeline"); }
-	checkFirstInstance("draw", firstInstance);
+	checkDrawOffsets("draw", "firstVertex", firstVertex, firstInstance);
 	wgDraw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -2366,7 +2374,7 @@ function checkFirstInstance(call: string, firstInstance: int32): void {
 ): void {
 	checkPass("drawIndexed");
 	if (pass.pipeline == 0) { stop("drawIndexed without setPipeline"); }
-	checkFirstInstance("drawIndexed", firstInstance);
+	checkDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance);
 	const strip = pipelines.slots[pipelines.slotIndex(pass.pipeline)].stripIndexFormat;
 	if (strip != 0 && strip != pass.indexFormat) {
 		stop("an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format");
