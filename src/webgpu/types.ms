@@ -828,11 +828,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
 }
 
-// `groupBase` is the depth the open pass (or none) started at: a pass cannot pop a group it did not push.
-@noinline export function checkedPopDebugGroup(groupDepth: int32, groupBase: int32): void {
-	if (groupDepth <= groupBase) { stop("popDebugGroup without a matching pushDebugGroup"); }
-}
-
 // `slices` is the depth of the 3d view's mip.
 @noinline export function checkedDepthSlice(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): void {
 	if (slice < 0 || slice >= slices) {
