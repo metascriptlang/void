@@ -272,6 +272,10 @@ static VoidAppView *s_view;
 	self.insets = self.safeAreaInsets;
 	self.viewId = voidViewCreate((long long)(intptr_t)(__bridge void *)layer, s_fbW, s_fbH, s_scale);
 	self.link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick)];
+	if (@available(iOS 15.0, *)) {
+		const float maxFps = (float)self.window.screen.maximumFramesPerSecond;
+		self.link.preferredFrameRateRange = CAFrameRateRangeMake(maxFps, maxFps, maxFps);
+	}
 	[self.link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
 	[self becomeFirstResponder];
 }
