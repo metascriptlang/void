@@ -18,6 +18,7 @@ import {
 	ResourceKind,
 	SamplerType,
 	ScalarKind,
+	ShaderConstant,
 	ShaderEntry,
 	ShaderExpr,
 	ShaderField,
@@ -305,7 +306,10 @@ test "every reference names a declaration that exists" {
 const STAGE_TARGETS = [ShaderTarget.Hlsl5, ShaderTarget.Wgsl, ShaderTarget.Glsl430, ShaderTarget.Msl];
 
 function refusedOn(m: ShaderModule, rule: string): boolean {
-	const named = "entry 'tinyEntry': " + rule;
+	return refusedAs(m, "entry 'tinyEntry': " + rule);
+}
+
+function refusedAs(m: ShaderModule, named: string): boolean {
 	if (!irErrors(m).includes(named)) { return false; }
 	for (const target of STAGE_TARGETS) {
 		const printed = stageSource(m, 0, target);
@@ -339,4 +343,18 @@ test "a barrier is a compute entry's" {
 	prepend(m.functions[0], stmtOf(StmtKind.Call,
 		intrinsicOf(Intrinsic.StorageBarrier, new ShaderType(), []), []));
 	assert refusedOn(m, "StorageBarrier outside a compute entry");
+}
+
+test "a literal is finite, and an integer literal has no fraction, for every target" {
+	assert refusedAs(tiny(ShaderStage.Fragment, literal(VEC4, 1.0 / 0.0)),
+		"function 'tinyEntry': a literal that is not finite");
+	assert refusedAs(tiny(ShaderStage.Fragment, literal(scalarType(ScalarKind.I32), 1.5)),
+		"function 'tinyEntry': an integer literal with a fraction");
+	let constant = tiny(ShaderStage.Fragment, literal(VEC4, 0.0));
+	let k = new ShaderConstant();
+	k.name = "limit";
+	k.type = scalarType(ScalarKind.F32);
+	k.value = literal(k.type, 0.0 / 0.0);
+	constant.constants.push(k);
+	assert refusedAs(constant, "constant 'limit': a literal that is not finite");
 }

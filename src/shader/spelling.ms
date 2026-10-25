@@ -76,14 +76,6 @@ export function mathName(op: Intrinsic): string {
 	};
 }
 
-export function literalFault(s: ScalarKind, v: float64): string {
-	if (v - v != 0.0) { return "a literal that is not finite"; }
-	if (s != ScalarKind.F32 && s != ScalarKind.Bool && v != Math.floor(v)) {
-		return "an integer literal with a fraction";
-	}
-	return "";
-}
-
 export function floatText(v: float64): string {
 	return v == 0.0 && 1.0 / v < 0.0 ? "-0.0" : String(v);
 }

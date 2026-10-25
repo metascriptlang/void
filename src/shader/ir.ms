@@ -716,6 +716,27 @@ function inRange(c: Checker, index: int32, count: int32, what: string, owner: st
 	}
 }
 
+function literalFault(s: ScalarKind, v: float64): string {
+	if (v - v != 0.0) { return "a literal that is not finite"; }
+	if (s != ScalarKind.F32 && s != ScalarKind.Bool && v != Math.floor(v)) {
+		return "an integer literal with a fraction";
+	}
+	return "";
+}
+
+function literalError(e: ShaderExpr): string {
+	const t = e.type;
+	const spelled = t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector;
+	if (e.kind != ExprKind.Literal || !spelled) { return ""; }
+	return literalFault(t.scalar, e.value);
+}
+
+function constantErrors(c: Checker, e: ShaderExpr, owner: string): void {
+	const fault = literalError(e);
+	if (fault != "") { c.errors.push(owner + ": " + fault); }
+	for (const o of e.operands) { constantErrors(c, o, owner); }
+}
+
 function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string): void {
 	const m = c.module;
 	match (e.kind) {
@@ -739,6 +760,8 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	if (e.kind == ExprKind.Intrinsic && isComputeOnly(e.intrinsic)) {
 		noted(c.computeOnly[c.current], e.intrinsic.toString());
 	}
+	const fault = literalError(e);
+	if (fault != "") { c.errors.push(owner + ": " + fault); }
 	const shift = e.kind == ExprKind.Binary && isShift(e.binary);
 	if (shift && (e.operands.length != 2 || e.operands[1].type.scalar != ScalarKind.U32)) {
 		c.errors.push(owner + ": a shift amount is a u32, as WGSL's");
@@ -854,6 +877,7 @@ export function irErrors(m: ShaderModule): string[] {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
 		}
 	}
+	for (const k of m.constants) { constantErrors(c, k.value, "constant '" + k.name + "'"); }
 	c.callees = m.functions.map((): int32[] => []);
 	c.fragmentOnly = m.functions.map((): string[] => []);
 	c.computeOnly = m.functions.map((): string[] => []);

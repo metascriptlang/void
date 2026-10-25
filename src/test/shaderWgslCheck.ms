@@ -250,7 +250,7 @@ test "what WGSL cannot say is refused by name" {
 	assert refused(tiny(fragment, column(literal(MAT4, 1.0)))) ==
 		"printWgsl: a literal of a Matrix";
 	assert refused(tiny(fragment, literal(VEC4, 1.0 / 0.0))) ==
-		"printWgsl: a literal that is not finite";
+		"printWgsl: function 'tinyEntry': a literal that is not finite";
 	assert refusalOf(tiny(fragment, column(model())), 0, []) ==
 		"printWgsl: resource 'params' has no binding slot";
 	assert refusalOf(tiny(fragment, column(model())), 1, []) == "printWgsl: entry 1 is out of range";

@@ -43,7 +43,6 @@ import {
 	binaryOperator,
 	floatText,
 	isIntMin,
-	literalFault,
 	mathName,
 	pointed,
 } from "./spelling";
@@ -327,9 +326,7 @@ function isNone(e: ShaderExpr): boolean {
 	return e.kind == ExprKind.Literal && e.type.kind == ShaderTypeKind.Void;
 }
 
-function scalarLiteral(p: Printer, s: ScalarKind, v: float64): string {
-	const fault = literalFault(s, v);
-	if (fault != "") { return fail(p, fault); }
+function scalarLiteral(s: ScalarKind, v: float64): string {
 	return match (s) {
 		ScalarKind.F32 => pointed(floatText(v)),
 		ScalarKind.I32 => isIntMin(s, v) ? "(-2147483647 - 1)" : String(v as int64),
@@ -340,7 +337,7 @@ function scalarLiteral(p: Printer, s: ScalarKind, v: float64): string {
 
 function literalText(p: Printer, e: ShaderExpr): string {
 	const t = e.type;
-	const one = scalarLiteral(p, t.scalar, e.value);
+	const one = scalarLiteral(t.scalar, e.value);
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => one,
 		ShaderTypeKind.Vector => typeName(p, t) + "(" + one + ")",

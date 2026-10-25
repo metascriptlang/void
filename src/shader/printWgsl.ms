@@ -35,7 +35,6 @@ import {
 	binaryOperator,
 	floatText,
 	isIntMin,
-	literalFault,
 	mathName,
 } from "./spelling";
 
@@ -281,20 +280,12 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 	return name + "(" + place + rest + ")";
 }
 
-function numberText(p: Printer, value: float64): string {
-	const fault = literalFault(ScalarKind.F32, value);
-	if (fault != "") { return refusal(p, fault); }
-	return floatText(value);
-}
-
-function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
+function scalarLiteral(s: ScalarKind, value: float64): string {
 	if (s == ScalarKind.Bool) { return value != 0.0 ? "true" : "false"; }
 	if (s == ScalarKind.F32) {
-		const text = numberText(p, value) + "f";
+		const text = floatText(value) + "f";
 		return value < 0.0 || text.startsWith("-") ? "(" + text + ")" : text;
 	}
-	const fault = literalFault(s, value);
-	if (fault != "") { return refusal(p, fault); }
 	if (isIntMin(s, value)) { return "(-2147483647i - 1i)"; }
 	const text = String(value as int64) + (s == ScalarKind.I32 ? "i" : "u");
 	return value < 0.0 ? "(" + text + ")" : text;
@@ -302,8 +293,8 @@ function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
 
 function literalText(p: Printer, t: ShaderType, value: float64): string {
 	return match (t.kind) {
-		ShaderTypeKind.Scalar => scalarLiteral(p, t.scalar, value),
-		ShaderTypeKind.Vector => typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")",
+		ShaderTypeKind.Scalar => scalarLiteral(t.scalar, value),
+		ShaderTypeKind.Vector => typeText(p, t) + "(" + scalarLiteral(t.scalar, value) + ")",
 		_ => refusal(p, "a literal of a " + t.kind.toString()),
 	};
 }

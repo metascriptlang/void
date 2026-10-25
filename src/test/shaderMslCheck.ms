@@ -262,7 +262,7 @@ test "what MSL cannot say is refused by name" {
 		[literal(VEC4, 1.0)]))) == "printMsl: entry 'tinyEntry': Dpdx outside a fragment entry";
 	assert refused(tiny(fragment, column(literal(MAT4, 1.0)))) == "printMsl: a literal of a Matrix";
 	assert refused(tiny(fragment, literal(VEC4, 1.0 / 0.0))) ==
-		"printMsl: a literal that is not finite";
+		"printMsl: function 'tinyEntry': a literal that is not finite";
 	assert refusalOf(tiny(fragment, column(model())), 0, []) ==
 		"printMsl: resource 'params' has no MSL slot";
 	assert refusalOf(tiny(fragment, column(model())), 1, []) == "printMsl: entry 1 is out of range";
