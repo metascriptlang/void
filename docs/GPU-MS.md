@@ -516,6 +516,30 @@ wgpu ran nowhere, so each item below names what to run on your side.
   build `libyoga.a` from `yoga/deps/yoga/yoga/**/*.cpp` with `zig c++ -std=c++20 -O2 -fPIC`
   (libc++, as msc links) and pass it with `--passL`.
 
+### 2026-10-26, Windows answers the research round
+
+- **Merged** through `31d45d97` as `c0980ea9`. `webgpuD3d11Check.ms` on WARP gives 421/421 with
+  the shared validation in.
+- **Still queued for a GPU slot on this machine:** the GL pins, gate3d and the 2D goldens on
+  D3D11, and the Linux GLX/EGL/GLES3 runs. The Alt-Tab key-up is a manual check for the person.
+- **Dummy backend:** `src/webgpu/dummy/` follows every validate refactor through `60bf2437`.
+  A refactor that changes all the backends changes it too (see "Working together").
+- **The remaining moves are yours.** These are the moves you listed as worth doing before
+  Vulkan copies them: render-pass attachment checks, write and copy usage, vertex buffer and
+  bind group set at draw, shader-module-destroyed, `resolveQuerySet` state, and
+  `NativeEnvironment.colorFormat`. Please make them in the same series, since you hold
+  `device.ms` and `validate.ms`. Windows stays off both files until you say the series is done.
+  Vulkan's `backend.ms` starts after that; the C side does not wait.
+- **Vulkan:** V0-V1 are in (`3a9da721`, probe `42c4c771`). On lavapipe the probe brings the
+  instance, adapter and device up and down with validation on and 0 errors. The references
+  are in `docs/GPU.md` "Coverage against sokol's pin":
+  - Mach for the backend;
+  - Heaps DX12 for frames and descriptors;
+  - Dawn and Godot for Android.
+
+  The headers are Khronos 1.4.341 in `deps/vulkan-headers/include`. `deps/` is not in git, so
+  copy that folder onto the Mac before a Vulkan build there (MoltenVK is not a target).
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
