@@ -39,6 +39,8 @@
 #define VULKAN_LIMIT_WORKGROUPS_PER_DIMENSION 19
 #define VULKAN_LIMIT_UNIFORM_OFFSET_ALIGNMENT 20
 #define VULKAN_LIMIT_STORAGE_OFFSET_ALIGNMENT 21
+#define VULKAN_LIMIT_NON_COHERENT_ATOM_SIZE 22
+#define VULKAN_LIMIT_MEMORY_ALLOCATION_COUNT 23
 
 int32_t vulkanLoaderOpen(void);
 const char *vulkanError(void);
@@ -63,5 +65,14 @@ int64_t vulkanAdapterLimit(int32_t limit);
 
 int32_t vulkanDeviceCreate(void);
 uint32_t vulkanDeviceFeatures(void);
+
+int32_t vulkanMemoryTypeCount(void);
+int32_t vulkanMemoryType(int32_t index, uint32_t *flags, int32_t *heap);
+int32_t vulkanMemoryHeapCount(void);
+uint64_t vulkanMemoryHeapSize(int32_t heap);
+
+uint32_t vulkanBlockAllocate(int32_t typeIndex, uint64_t size);
+int32_t vulkanBlockFree(uint32_t block);
+void *vulkanBlockMap(uint32_t block);
 
 void vulkanShutdown(void);

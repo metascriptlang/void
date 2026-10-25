@@ -194,12 +194,26 @@ static struct {
 	VkPhysicalDevice physicalDevice;
 	VkPhysicalDeviceProperties properties;
 	VkPhysicalDeviceFeatures supported;
+	VkPhysicalDeviceMemoryProperties memory;
 	uint32_t queueFamily;
 	VkDevice device;
 	VkQueue queue;
 	uint32_t features;
 	int32_t validation;
 } s_vk;
+
+typedef struct {
+	VkDeviceMemory memory;
+	void *mapped;
+	uint32_t typeIndex;
+	uint32_t generation;
+} VulkanBlock;
+
+#define BLOCK_SLOT_BITS 16
+#define BLOCK_SLOT_MASK 0xFFFFu
+
+static VulkanBlock *s_blocks;
+static uint32_t s_blockCapacity;
 
 static int32_t s_validationErrors;
 static int32_t s_validationWarnings;
@@ -582,7 +596,10 @@ int32_t vulkanAdapterSelect(int32_t powerPreference) {
 		? chooseAdapter(devices, count, powerPreference)
 		: failCall("vkEnumeratePhysicalDevices", result);
 	free(devices);
-	if (status == VULKAN_OK) vki.vkGetPhysicalDeviceFeatures(s_vk.physicalDevice, &s_vk.supported);
+	if (status == VULKAN_OK) {
+		vki.vkGetPhysicalDeviceFeatures(s_vk.physicalDevice, &s_vk.supported);
+		vki.vkGetPhysicalDeviceMemoryProperties(s_vk.physicalDevice, &s_vk.memory);
+	}
 	return status;
 }
 
@@ -624,6 +641,8 @@ int64_t vulkanAdapterLimit(int32_t limit) {
 			l->maxComputeWorkGroupCount[2]);
 	case VULKAN_LIMIT_UNIFORM_OFFSET_ALIGNMENT: return (int64_t)l->minUniformBufferOffsetAlignment;
 	case VULKAN_LIMIT_STORAGE_OFFSET_ALIGNMENT: return (int64_t)l->minStorageBufferOffsetAlignment;
+	case VULKAN_LIMIT_NON_COHERENT_ATOM_SIZE: return (int64_t)l->nonCoherentAtomSize;
+	case VULKAN_LIMIT_MEMORY_ALLOCATION_COUNT: return l->maxMemoryAllocationCount;
 	default:
 		fail(VULKAN_ERROR_ORDER, "vulkanAdapterLimit has no limit %d", (int)limit);
 		return -1;
@@ -688,7 +707,123 @@ int32_t vulkanDeviceCreate(void) {
 
 uint32_t vulkanDeviceFeatures(void) { return s_vk.features; }
 
+int32_t vulkanMemoryTypeCount(void) { return (int32_t)s_vk.memory.memoryTypeCount; }
+
+int32_t vulkanMemoryType(int32_t index, uint32_t *flags, int32_t *heap) {
+	if (index < 0 || (uint32_t)index >= s_vk.memory.memoryTypeCount) {
+		return fail(VULKAN_ERROR_ORDER, "vulkanMemoryType %d is not below the %u memory types",
+			(int)index, s_vk.memory.memoryTypeCount);
+	}
+	*flags = s_vk.memory.memoryTypes[index].propertyFlags;
+	*heap = (int32_t)s_vk.memory.memoryTypes[index].heapIndex;
+	return VULKAN_OK;
+}
+
+int32_t vulkanMemoryHeapCount(void) { return (int32_t)s_vk.memory.memoryHeapCount; }
+
+uint64_t vulkanMemoryHeapSize(int32_t heap) {
+	if (heap < 0 || (uint32_t)heap >= s_vk.memory.memoryHeapCount) {
+		fail(VULKAN_ERROR_ORDER, "vulkanMemoryHeapSize %d is not below the %u memory heaps",
+			(int)heap, s_vk.memory.memoryHeapCount);
+		return 0;
+	}
+	return s_vk.memory.memoryHeaps[heap].size;
+}
+
+static VulkanBlock *liveBlock(uint32_t block, const char *caller) {
+	uint32_t slot = (block & BLOCK_SLOT_MASK) - 1;
+	if ((block & BLOCK_SLOT_MASK) == 0 || slot >= s_blockCapacity || s_blocks[slot].memory == VK_NULL_HANDLE ||
+		s_blocks[slot].generation != block >> BLOCK_SLOT_BITS) {
+		fail(VULKAN_ERROR_ORDER, "%s: block %u is not live", caller, block);
+		return NULL;
+	}
+	return &s_blocks[slot];
+}
+
+uint32_t vulkanBlockAllocate(int32_t typeIndex, uint64_t size) {
+	if (s_vk.device == NULL) {
+		fail(VULKAN_ERROR_ORDER, "vulkanBlockAllocate before vulkanDeviceCreate");
+		return 0;
+	}
+	if (typeIndex < 0 || (uint32_t)typeIndex >= s_vk.memory.memoryTypeCount || size == 0) {
+		fail(VULKAN_ERROR_ORDER, "vulkanBlockAllocate of %llu bytes on memory type %d of %u",
+			(unsigned long long)size, (int)typeIndex, s_vk.memory.memoryTypeCount);
+		return 0;
+	}
+	uint32_t slot = 0;
+	while (slot < s_blockCapacity && s_blocks[slot].memory != VK_NULL_HANDLE) slot++;
+	if (slot == BLOCK_SLOT_MASK) {
+		fail(VULKAN_ERROR_ORDER, "vulkanBlockAllocate: all %u block slots are live", BLOCK_SLOT_MASK);
+		return 0;
+	}
+	if (slot == s_blockCapacity) {
+		uint32_t capacity = s_blockCapacity > 0 ? s_blockCapacity * 2 : 64;
+		if (capacity > BLOCK_SLOT_MASK) capacity = BLOCK_SLOT_MASK;
+		VulkanBlock *grown = realloc(s_blocks, sizeof *grown * capacity);
+		if (grown == NULL) {
+			fail(VULKAN_ERROR_CALL, "out of memory growing the block table to %u", capacity);
+			return 0;
+		}
+		memset(grown + s_blockCapacity, 0, sizeof *grown * (capacity - s_blockCapacity));
+		s_blocks = grown;
+		s_blockCapacity = capacity;
+	}
+	VkMemoryAllocateInfo info = { .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
+	info.allocationSize = size;
+	info.memoryTypeIndex = (uint32_t)typeIndex;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkResult result = vkd.vkAllocateMemory(s_vk.device, &info, NULL, &memory);
+	if (result != VK_SUCCESS) {
+		failCall("vkAllocateMemory", result);
+		return 0;
+	}
+	VulkanBlock *fresh = &s_blocks[slot];
+	fresh->memory = memory;
+	fresh->mapped = NULL;
+	fresh->typeIndex = (uint32_t)typeIndex;
+	fresh->generation = (fresh->generation + 1) & BLOCK_SLOT_MASK;
+	return (fresh->generation << BLOCK_SLOT_BITS) | (slot + 1);
+}
+
+void *vulkanBlockMap(uint32_t block) {
+	VulkanBlock *live = liveBlock(block, "vulkanBlockMap");
+	if (live == NULL) return NULL;
+	if (live->mapped != NULL) return live->mapped;
+	VkMemoryPropertyFlags flags = s_vk.memory.memoryTypes[live->typeIndex].propertyFlags;
+	if ((flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0) {
+		fail(VULKAN_ERROR_ORDER, "vulkanBlockMap: block %u is on memory type %u, which is not host-visible",
+			block, live->typeIndex);
+		return NULL;
+	}
+	VkResult result = vkd.vkMapMemory(s_vk.device, live->memory, 0, VK_WHOLE_SIZE, 0, &live->mapped);
+	if (result != VK_SUCCESS) {
+		live->mapped = NULL;
+		failCall("vkMapMemory", result);
+	}
+	return live->mapped;
+}
+
+static void blockRelease(VulkanBlock *block) {
+	if (block->mapped != NULL) vkd.vkUnmapMemory(s_vk.device, block->memory);
+	vkd.vkFreeMemory(s_vk.device, block->memory, NULL);
+	block->memory = VK_NULL_HANDLE;
+	block->mapped = NULL;
+}
+
+int32_t vulkanBlockFree(uint32_t block) {
+	VulkanBlock *live = liveBlock(block, "vulkanBlockFree");
+	if (live == NULL) return VULKAN_ERROR_ORDER;
+	blockRelease(live);
+	return VULKAN_OK;
+}
+
 void vulkanShutdown(void) {
+	for (uint32_t i = 0; i < s_blockCapacity; i++) {
+		if (s_blocks[i].memory != VK_NULL_HANDLE) blockRelease(&s_blocks[i]);
+	}
+	free(s_blocks);
+	s_blocks = NULL;
+	s_blockCapacity = 0;
 	if (s_vk.device != NULL && vkd.vkDestroyDevice != NULL) {
 		if (vkd.vkDeviceWaitIdle != NULL) vkd.vkDeviceWaitIdle(s_vk.device);
 		vkd.vkDestroyDevice(s_vk.device, NULL);
