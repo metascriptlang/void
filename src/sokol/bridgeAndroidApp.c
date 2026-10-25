@@ -8,6 +8,7 @@
 #include <jni.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -133,33 +134,42 @@ static size_t codepointsOf(JNIEnv *e, jstring s, uint32_t *out, size_t cap) {
 	return count;
 }
 
-#define TEXT_CAP 256
+typedef struct {
+	char *utf8;
+	uint32_t *codepoints;
+	size_t count;
+} JavaText;
 
-static void textOf(JNIEnv *e, jstring s, char *utf8, uint32_t *codepoints, size_t *count) {
-	*count = codepointsOf(e, s, codepoints, TEXT_CAP);
+static JavaText textOf(JNIEnv *e, jstring s) {
+	const size_t units = (size_t)(*e)->GetStringLength(e, s);
+	JavaText t = { malloc(units * 3 + 1), malloc((units + 1) * sizeof(uint32_t)), 0 };
+	if (!t.utf8 || !t.codepoints) voidFail("text input: out of memory for %zu UTF-16 units", units);
+	t.count = codepointsOf(e, s, t.codepoints, units);
 	size_t at = 0;
-	for (size_t i = 0; i < *count; i++) at += putUtf8(utf8 + at, codepoints[i]);
-	utf8[at] = '\0';
+	for (size_t i = 0; i < t.count; i++) at += putUtf8(t.utf8 + at, t.codepoints[i]);
+	t.utf8[at] = '\0';
+	return t;
+}
+
+static void textFree(JavaText t) {
+	free(t.utf8);
+	free(t.codepoints);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeCommit(JNIEnv *e, jobject self, jstring text) {
 	(void)self;
 	if (chordHeld()) return;
-	char utf8[TEXT_CAP * 4 + 1];
-	uint32_t codepoints[TEXT_CAP];
-	size_t count;
-	textOf(e, text, utf8, codepoints, &count);
-	voidMobileCommit(s_textInput, utf8, codepoints, count);
+	JavaText t = textOf(e, text);
+	voidMobileCommit(s_textInput, t.utf8, t.codepoints, t.count);
+	textFree(t);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativePreedit(JNIEnv *e, jobject self, jstring text, jint cursor) {
 	(void)self;
 	if (!s_textInput) return;
-	char utf8[TEXT_CAP * 4 + 1];
-	uint32_t codepoints[TEXT_CAP];
-	size_t count;
-	textOf(e, text, utf8, codepoints, &count);
-	voidAppTextDeliver(VOID_EVENT_PREEDIT, utf8, cursor);
+	JavaText t = textOf(e, text);
+	voidAppTextDeliver(VOID_EVENT_PREEDIT, t.utf8, cursor);
+	textFree(t);
 }
 
 JNIEXPORT jboolean JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeKey(JNIEnv *e, jobject self,
