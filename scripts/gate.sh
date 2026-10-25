@@ -8,6 +8,7 @@
 #   sh scripts/gate.sh            T0, the golden suite on D3D11, the bench, the tier report
 #   sh scripts/gate.sh --web      also build both web backends (slow; needs emsdk)
 #   sh scripts/gate.sh --quick    skip the golden suite (T0 and bench only)
+#   sh scripts/gate.sh --window   also the macOS window behaviour tests, in a visible focused window
 set -e
 cd "$(dirname "$0")/.."
 export VOID_QUIET_WINDOW=1
@@ -15,10 +16,12 @@ export VOID_QUIET_WINDOW=1
 MSC="${MSC:-msc}"
 WEB=0
 QUICK=0
+WINDOW=0
 for arg in "$@"; do
 	case "$arg" in
 		--web) WEB=1 ;;
 		--quick) QUICK=1 ;;
+		--window) WINDOW=1 ;;
 		*) echo "gate.sh: unknown flag $arg" >&2; exit 2 ;;
 	esac
 done
@@ -626,22 +629,23 @@ if [ "$(uname -s)" = Darwin ]; then
 	else
 		fail "metal backend: msc test src/test/webgpuMetalCheck.ms — see out/gate-webgpu-metal.log"
 	fi
-	if "$MSC" build tests/integration/framePacing.ms --output=out/framePacing.exe > out/gate-frame-pacing.log 2>&1 \
-			&& out/framePacing.exe > out/gate-frame-pacing-run.log 2>&1; then
-		pass "$(grep -E '^PASS frame pacing' out/gate-frame-pacing-run.log | sed 's/^PASS //')"
+	window_tests="framePacing macWindow macWindowEscape macWindowFps"
+	if [ "$WINDOW" -eq 1 ]; then
+		for test in $window_tests; do
+			if "$MSC" build tests/integration/$test.ms --output=out/$test.exe > out/gate-$test.log 2>&1 \
+					&& env -u VOID_QUIET_WINDOW out/$test.exe > out/gate-$test-run.log 2>&1; then
+				case "$test" in
+					framePacing) pass "$(grep -E '^PASS frame pacing' out/gate-$test-run.log | sed 's/^PASS //')" ;;
+					*) pass "$test: the macOS window driver delivers AppKit events through the app event API" ;;
+				esac
+			else
+				fail "$test — see out/gate-$test.log and out/gate-$test-run.log"
+				grep -E '^FAIL' out/gate-$test-run.log | sed 's/^/      /' || true
+			fi
+		done
 	else
-		fail "frame pacing — see out/gate-frame-pacing.log and out/gate-frame-pacing-run.log"
-		grep -E '^FAIL' out/gate-frame-pacing-run.log | sed 's/^/      /' || true
+		skip "window behaviour ($window_tests): pass --window when src/platform/macos/*, src/sokol/bridgeEmbed.m, tests/capture/capture.c or src/gpu/gpuTimer.ms changed; they need a visible focused window, and macWindow toggles full screen"
 	fi
-	for test in macWindow macWindowEscape macWindowFps; do
-		if "$MSC" build tests/integration/$test.ms --output=out/$test.exe > out/gate-$test.log 2>&1 \
-				&& out/$test.exe > out/gate-$test-run.log 2>&1; then
-			pass "$test: the macOS window driver delivers AppKit events through the app event API"
-		else
-			fail "$test — see out/gate-$test.log and out/gate-$test-run.log"
-			grep -E '^FAIL' out/gate-$test-run.log | sed 's/^/      /' || true
-		fi
-	done
 	if "$MSC" build tests/integration/metalReadback.ms --output=out/metalReadback.exe > out/gate-metal-readback.log 2>&1; then
 		if out/metalReadback.exe > out/gate-metal-readback-run.log 2>&1; then
 			pass "$(grep -E '^PASS metal readback' out/gate-metal-readback-run.log | sed 's/^PASS //')"
