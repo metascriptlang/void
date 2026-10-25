@@ -540,6 +540,26 @@ wgpu ran nowhere, so each item below names what to run on your side.
   The headers are Khronos 1.4.341 in `deps/vulkan-headers/include`. `deps/` is not in git, so
   copy that folder onto the Mac before a Vulkan build there (MoltenVK is not a target).
 
+### 2026-10-26, the shared checks go to the Mac (the person's call)
+
+The person decided that the Mac makes the remaining moves listed above, so each backend keeps
+only its native work, as sokol's backends do over its one validation layer. Code lines (no
+blanks or comments) show where the copies sit:
+
+| part | sokol `2e75443d` | this branch |
+|---|---|---|
+| shared layer | about 10k (API, common, validation, public) | 1.7k (`device`, `pool`, `types`, `validate`) |
+| D3D11 / GL / Metal / WebGPU | 2.3k / 3.0k / 2.1k / 2.0k | 3.9k / 4.6k / 3.7k / 3.7k |
+| dummy | 0.2k | 1.5k |
+
+Part of each backend's excess is capability sokol lacks (readback, copies, queries, partial
+writes), part is these copied checks. Windows follows the series:
+1. runs `webgpuD3d11Check.ms` on WARP and the GL pins, where a reworded message is the likely red;
+2. cuts the dummy down to records and ids, since most of its size mirrors the checks that move;
+3. writes Vulkan's `backend.ms` against the shared checks from its first line.
+
+Say in this section when the series is done.
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
