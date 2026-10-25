@@ -1041,6 +1041,7 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
+    vec4 spotReceiver;
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;
@@ -1461,8 +1462,10 @@ vec4 litTexelOf(int light, int texel) {
     return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
 #ifdef SHADOWED
-float spotShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, spotMatrix);
+float spotShadowAt(vec3 position, vec3 normal_1) {
+    vec4 receiver = spotReceiver;
+    vec3 biased = position + (normal_1 * (receiver.x * length((position - receiver.yzw))));
+    vec4 p = mapCoord(biased, spotMatrix);
     if (p.w < 0.5) {
         return 1.0;
     }
@@ -1472,7 +1475,7 @@ float spotShadowAt(vec3 position) {
         float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(pcfTexelOf(p, size, vec2(0.0)), 0), 0).x;
         return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
     }
-    vec2 rotation = poissonRotation(position);
+    vec2 rotation = poissonRotation(biased);
     float lit = 0.0;
     for (int tap = 0; tap < PCF_SAMPLES; tap++) {
         ivec2 at = pcfTexelOf(p, size, poissonOffset(tap, rotation, scale));
@@ -1541,7 +1544,7 @@ float recordShadowAt(vec3 position, vec3 normal_1, int i) {
 #ifdef SHADOWED
     float named = float(i + 1);
     if (ambient.w == named) {
-        lit = spotShadowAt(position);
+        lit = spotShadowAt(position, normal_1);
     } else if (dirColor.w == named) {
         lit = cubeShadowAt(position, normal_1);
     }
@@ -2101,6 +2104,7 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
+    vec4 spotReceiver;
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;
@@ -2672,8 +2676,10 @@ vec4 litTexelOf(int light, int texel) {
     return texelFetch(sampler2D(lightRecords, clusterSampler), recordTexelOf(light, texel), 0);
 }
 #ifdef SHADOWED
-float spotShadowAt(vec3 position) {
-    vec4 p = mapCoord(position, spotMatrix);
+float spotShadowAt(vec3 position, vec3 normal_1) {
+    vec4 receiver = spotReceiver;
+    vec3 biased = position + (normal_1 * (receiver.x * length((position - receiver.yzw))));
+    vec4 p = mapCoord(biased, spotMatrix);
     if (p.w < 0.5) {
         return 1.0;
     }
@@ -2683,7 +2689,7 @@ float spotShadowAt(vec3 position) {
         float depth = texelFetch(sampler2DArray(spotShadowMap, spotShadowSampler), ivec3(pcfTexelOf(p, size, vec2(0.0)), 0), 0).x;
         return mapLit(p.z, depth, spotShadow.x, spotShadow.y);
     }
-    vec2 rotation = poissonRotation(position);
+    vec2 rotation = poissonRotation(biased);
     float lit = 0.0;
     for (int tap = 0; tap < PCF_SAMPLES; tap++) {
         ivec2 at = pcfTexelOf(p, size, poissonOffset(tap, rotation, scale));
@@ -2752,7 +2758,7 @@ float recordShadowAt(vec3 position, vec3 normal_1, int i) {
 #ifdef SHADOWED
     float named = float(i + 1);
     if (ambient.w == named) {
-        lit = spotShadowAt(position);
+        lit = spotShadowAt(position, normal_1);
     } else if (dirColor.w == named) {
         lit = cubeShadowAt(position, normal_1);
     }

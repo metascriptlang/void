@@ -321,15 +321,15 @@ test "the lookup divides by w and compares the map as SpotShadow's sampleShadow 
 	const under: Vec3f = vec3f(0.0, 2.0, 0.0);
 	const z: float32 = depthAt(2.0);
 	assert near(z, 0.8421053);
-	assert spotShadowAt(under, spotMapped(base, view, 0.5, 0.0, 1.0)) == 0.0;
-	assert spotShadowAt(under, spotMapped(base, view, 0.95, 0.0, 1.0)) == 1.0;
-	assert spotShadowAt(under, spotMapped(base, view, z - 0.001, 0.0, 1.0)) == 0.0;
-	assert spotShadowAt(under, spotMapped(base, view, z - 0.001, 0.01, 1.0)) == 1.0;
-	assert near(spotShadowAt(under, spotMapped(base, view, 0.5, 0.0, 0.25)), 0.75);
+	assert spotShadowAt(under, UP, spotMapped(base, view, 0.5, 0.0, 1.0)) == 0.0;
+	assert spotShadowAt(under, UP, spotMapped(base, view, 0.95, 0.0, 1.0)) == 1.0;
+	assert spotShadowAt(under, UP, spotMapped(base, view, z - 0.001, 0.0, 1.0)) == 0.0;
+	assert spotShadowAt(under, UP, spotMapped(base, view, z - 0.001, 0.01, 1.0)) == 1.0;
+	assert near(spotShadowAt(under, UP, spotMapped(base, view, 0.5, 0.0, 0.25)), 0.75);
 	const outside: Vec3f = vec3f(5.0, 2.0, 0.0);
-	assert spotShadowAt(outside, spotMapped(base, view, 0.0, 0.0, 1.0)) == 1.0;
+	assert spotShadowAt(outside, UP, spotMapped(base, view, 0.0, 0.0, 1.0)) == 1.0;
 	const behind: Vec3f = vec3f(0.0, 6.0, 0.0);
-	assert spotShadowAt(behind, spotMapped(base, view, 0.0, 0.0, 1.0)) == 1.0;
+	assert spotShadowAt(behind, UP, spotMapped(base, view, 0.0, 0.0, 1.0)) == 1.0;
 }
 
 test "a block half nobody wrote shades nothing, whatever its map holds" {
@@ -339,7 +339,7 @@ test "a block half nobody wrote shades nothing, whatever its map holds" {
 		spotShadowMap: oneLayer(depthTexture(0.0)),
 	};
 	assert dirShadowAt(vec3f(0.0, 0.0, 0.0), UP, empty) == 1.0;
-	assert spotShadowAt(vec3f(0.0, 0.0, 0.0), empty) == 1.0;
+	assert spotShadowAt(vec3f(0.0, 0.0, 0.0), UP, empty) == 1.0;
 }
 
 function firstShadowAt(position: Vec3f, b: LitBindings, key: LitKey): float32 {
@@ -371,15 +371,15 @@ test "the sun and the spot read their own blocks and maps, each ignoring the oth
 	const at: Vec3f = vec3f(0.0, 0.0, 0.0);
 	const base: LitBindings = spotLights(downSpot(true));
 	const bothOpen: LitBindings = spotMapped(sunMapped(base, 1.0, 1.0), view, 1.0, 0.0, 1.0);
-	assert dirShadowAt(at, UP, bothOpen) == 1.0 && spotShadowAt(at, bothOpen) == 1.0;
+	assert dirShadowAt(at, UP, bothOpen) == 1.0 && spotShadowAt(at, UP, bothOpen) == 1.0;
 	const sunBlocked: LitBindings = spotMapped(sunMapped(base, 0.5, 1.0), view, 1.0, 0.0, 1.0);
-	assert dirShadowAt(at, UP, sunBlocked) == 0.0 && spotShadowAt(at, sunBlocked) == 1.0;
+	assert dirShadowAt(at, UP, sunBlocked) == 0.0 && spotShadowAt(at, UP, sunBlocked) == 1.0;
 	const spotBlocked: LitBindings = spotMapped(sunMapped(base, 1.0, 1.0), view, 0.5, 0.0, 1.0);
-	assert dirShadowAt(at, UP, spotBlocked) == 1.0 && spotShadowAt(at, spotBlocked) == 0.0;
+	assert dirShadowAt(at, UP, spotBlocked) == 1.0 && spotShadowAt(at, UP, spotBlocked) == 0.0;
 	const sunOnly: LitBindings = sunMapped(base, 0.5, 0.5);
-	assert near(dirShadowAt(at, UP, sunOnly), 0.5) && spotShadowAt(at, sunOnly) == 1.0;
+	assert near(dirShadowAt(at, UP, sunOnly), 0.5) && spotShadowAt(at, UP, sunOnly) == 1.0;
 	const spotOnly: LitBindings = spotMapped(base, view, 0.5, 0.0, 0.25);
-	assert dirShadowAt(at, UP, spotOnly) == 1.0 && near(spotShadowAt(at, spotOnly), 0.75);
+	assert dirShadowAt(at, UP, spotOnly) == 1.0 && near(spotShadowAt(at, UP, spotOnly), 0.75);
 }
 
 function surface(b: LitBindings, pbr: boolean): Vec3f {
@@ -566,12 +566,35 @@ test "a Pcf spot map softens the edge over its Poisson taps and leaves the far s
 	const view: CameraView = viewOf(downSpot(true));
 	const base: LitBindings = spotLights(downSpot(true));
 	const middle: Vec3f = vec3f(0.0, 2.0, 0.0);
-	assert spotShadowAt(middle, spotSplit(base, view, 0.0)) == 1.0;
-	const soft: float32 = spotShadowAt(middle, spotSplit(base, view, 2.0));
+	assert spotShadowAt(middle, UP, spotSplit(base, view, 0.0)) == 1.0;
+	const soft: float32 = spotShadowAt(middle, UP, spotSplit(base, view, 2.0));
 	assert soft > 0.0 && soft < 1.0;
-	const left: float32 = spotShadowAt(vec3f(-1.4, 2.0, 0.0), spotSplit(base, view, 2.0));
-	const right: float32 = spotShadowAt(vec3f(1.4, 2.0, 0.0), spotSplit(base, view, 2.0));
+	const left: float32 = spotShadowAt(vec3f(-1.4, 2.0, 0.0), UP, spotSplit(base, view, 2.0));
+	const right: float32 = spotShadowAt(vec3f(1.4, 2.0, 0.0), UP, spotSplit(base, view, 2.0));
 	assert Math.min(left, right) == 0.0 && Math.max(left, right) == 1.0;
+}
+
+function spotReceiving(b: LitBindings, view: CameraView, normalBias: float32): LitBindings {
+	return {
+		...b,
+		shadowParams: {
+			...b.shadowParams,
+			spotReceiver: vec4f(normalBias, view.eye.x, view.eye.y, view.eye.z),
+		},
+	};
+}
+
+test "the spot's normal bias moves the receiver along its normal, scaled by its distance" {
+	const view: CameraView = viewOf(downSpot(true));
+	const split: LitBindings = spotSplit(spotLights(downSpot(true)), view, 0.0);
+	const left: Vec3f = vec3f(-1.4, 2.0, 0.0);
+	const right: Vec3f = vec3f(1.0, 0.0, 0.0);
+	const unbiased: float32 = spotShadowAt(left, right, split);
+	const across: float32 = spotShadowAt(vec3f(1.4, 2.0, 0.0), right, split);
+	assert unbiased != across;
+	assert spotShadowAt(left, right, spotReceiving(split, view, 0.0)) == unbiased;
+	assert spotShadowAt(left, right, spotReceiving(split, view, 1.15)) == across;
+	assert spotShadowAt(left, -right, spotReceiving(split, view, 0.2)) == unbiased;
 }
 
 test "a map packs its PCF scale only when it samples with Pcf" {

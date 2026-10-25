@@ -693,6 +693,7 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
+    vec4 spotReceiver;
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;
@@ -1273,6 +1274,7 @@ layout(binding=5) uniform shadowParams {
     vec4 cascadeFilter;
     mat4 spotMatrix;
     vec4 spotShadow;
+    vec4 spotReceiver;
     mat4 cubeMatrices[6];
     vec4 cubeShadow;
     vec4 cubeLight;

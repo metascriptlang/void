@@ -26,6 +26,8 @@ import {
 	SHADOW_SPOT_BIAS,
 	SHADOW_SPOT_OPACITY,
 	SHADOW_SPOT_FILTER,
+	SHADOW_SPOT_NORMAL_BIAS,
+	SHADOW_SPOT_POSITION,
 	SHADOW_CUBE_BASE,
 	SHADOW_CUBE_FACES,
 	SHADOW_CUBE_BIAS,
@@ -501,6 +503,8 @@ function drawSpotShadows(
 	const slot: int32 = caster.value;
 	let opacity: float32 = shadow.opacity;
 	let basis: CameraBasis = lightBasis(vec3(0.0, 0.0, 0.0));
+	let eye: Vec3 = vec3(0.0, 0.0, 0.0);
+	let texel: float32 = 0.0;
 	if (slot < 0) {
 		shadow.casters.count = 0;
 		shadow.viewProj = identity();
@@ -517,6 +521,8 @@ function drawSpotShadows(
 		collectCasters(shadow.casters, items, shadow.context.materials);
 		shadow.viewProj = view.value.viewProj;
 		basis = view.value.basis;
+		eye = view.value.eye;
+		texel = 2.0 / (view.value.projectionY * (shadow.size as float32));
 	}
 	const map: Mat4 = mapMatrix();
 	const spotPart: Span<float32> = shadow.shadowValues[SHADOW_SPOT_BASE..SHADOW_SPOT_BASE + 16];
@@ -525,6 +531,10 @@ function drawSpotShadows(
 	shadow.shadowValues[SHADOW_SPOT_OPACITY] = opacity;
 	shadow.shadowValues[SHADOW_SPOT_OPACITY + 1] = shadow.size as float32;
 	shadow.shadowValues[SHADOW_SPOT_FILTER] = filterScaleOf(shadow);
+	shadow.shadowValues[SHADOW_SPOT_NORMAL_BIAS] = shadow.normalBias * texel * TEXEL_DIAGONAL;
+	shadow.shadowValues[SHADOW_SPOT_POSITION] = eye.x;
+	shadow.shadowValues[SHADOW_SPOT_POSITION + 1] = eye.y;
+	shadow.shadowValues[SHADOW_SPOT_POSITION + 2] = eye.z;
 	return drawLayers(shadow, items, [basis], [shadow.viewProj]);
 }
 

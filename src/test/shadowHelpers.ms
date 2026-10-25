@@ -6,6 +6,7 @@ import {
 	SHADOW_CASCADE_FILTER,
 	SHADOW_SPOT_BASE,
 	SHADOW_SPOT_BIAS,
+	SHADOW_SPOT_NORMAL_BIAS,
 	SHADOW_CUBE_BASE,
 	SHADOW_CUBE_BIAS,
 	SHADOW_CUBE_POSITION,
@@ -64,6 +65,7 @@ export function shadowParamsOf(values: Vec<float32>): ShadowParams {
 		cascadeFilter: quadAt(values, SHADOW_CASCADE_FILTER),
 		spotMatrix: matrixAt(values, SHADOW_SPOT_BASE),
 		spotShadow: quadAt(values, SHADOW_SPOT_BIAS),
+		spotReceiver: quadAt(values, SHADOW_SPOT_NORMAL_BIAS),
 		cubeMatrices: [
 			matrixAt(values, SHADOW_CUBE_BASE), matrixAt(values, SHADOW_CUBE_BASE + 16),
 			matrixAt(values, SHADOW_CUBE_BASE + 32), matrixAt(values, SHADOW_CUBE_BASE + 48),

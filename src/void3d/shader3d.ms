@@ -303,6 +303,7 @@ export struct ShadowParams {
 	cascadeFilter: Vec4f;
 	spotMatrix: Mat4x4f;
 	spotShadow: Vec4f;
+	spotReceiver: Vec4f;
 	cubeMatrices: Mat4x4f[6];
 	cubeShadow: Vec4f;
 	cubeLight: Vec4f;
@@ -1304,8 +1305,10 @@ export function cascadeShadowAt(
 	return lit;
 }
 
-export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
-	const p = mapCoord(position, b.shadowParams.spotMatrix);
+export function spotShadowAt(position: Vec3f, normal: Vec3f, b: LitBindings): float32 {
+	const receiver = b.shadowParams.spotReceiver;
+	const biased = position + normal * (receiver.x * length(position - receiver.yzw));
+	const p = mapCoord(biased, b.shadowParams.spotMatrix);
 	if (p.w < 0.5) {
 		return 1.0;
 	}
@@ -1316,7 +1319,7 @@ export function spotShadowAt(position: Vec3f, b: LitBindings): float32 {
 			pcfTexelOf(p, size, vec2f(0.0)), 0, 0).x;
 		return mapLit(p.z, depth, b.shadowParams.spotShadow.x, b.shadowParams.spotShadow.y);
 	}
-	const rotation = poissonRotation(position);
+	const rotation = poissonRotation(biased);
 	let lit: float32 = 0.0;
 	for (let tap = 0; tap < PCF_SAMPLES; tap++) {
 		const at = pcfTexelOf(p, size, poissonOffset(tap, rotation, scale));
@@ -1395,7 +1398,7 @@ export function recordShadowAt(
 	if (key.shadowed) {
 		const named = (i + 1) as float32;
 		if (b.lightParams.ambient.w == named) {
-			lit = spotShadowAt(position, b);
+			lit = spotShadowAt(position, normal, b);
 		} else if (b.lightParams.dirColor.w == named) {
 			lit = cubeShadowAt(position, normal, b);
 		}
