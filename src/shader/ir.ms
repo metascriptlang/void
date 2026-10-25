@@ -619,7 +619,10 @@ function builtinStages(b: Builtin, direction: IoDirection): ShaderStage[] {
 		return match (b) {
 			Builtin.Position => [ShaderStage.Vertex],
 			Builtin.FragDepth | Builtin.SampleMask => [ShaderStage.Fragment],
-			_ => [],
+			Builtin.None | Builtin.VertexIndex | Builtin.InstanceIndex | Builtin.FrontFacing |
+				Builtin.LocalInvocationId | Builtin.LocalInvocationIndex |
+				Builtin.GlobalInvocationId | Builtin.WorkgroupId | Builtin.NumWorkgroups |
+				Builtin.SampleIndex => [],
 		};
 	}
 	return match (b) {
@@ -627,7 +630,8 @@ function builtinStages(b: Builtin, direction: IoDirection): ShaderStage[] {
 		Builtin.Position | Builtin.FrontFacing | Builtin.SampleIndex | Builtin.SampleMask =>
 			[ShaderStage.Fragment],
 		Builtin.None | Builtin.FragDepth => [],
-		_ => [ShaderStage.Compute],
+		Builtin.LocalInvocationId | Builtin.LocalInvocationIndex | Builtin.GlobalInvocationId |
+			Builtin.WorkgroupId | Builtin.NumWorkgroups => [ShaderStage.Compute],
 	};
 }
 

@@ -31,7 +31,9 @@ export function builtinType(b: Builtin): ShaderType {
 		Builtin.FragDepth => scalarType(ScalarKind.F32),
 		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
 			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
-		_ => scalarType(ScalarKind.U32),
+		Builtin.VertexIndex | Builtin.InstanceIndex | Builtin.LocalInvocationIndex |
+			Builtin.SampleIndex | Builtin.SampleMask => scalarType(ScalarKind.U32),
+		Builtin.None => { throw new Error("internal: builtinType of Builtin.None"); },
 	};
 }
 
