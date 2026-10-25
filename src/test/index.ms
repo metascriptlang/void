@@ -105,6 +105,7 @@ import "./poolCheck";
 import "./featureBitCheck";
 import "./webgpuValidateCheck";
 import "./uniformPoolCheck";
+import "./uniformPoolGrowCheck";
 import "./lifetimeCheck";
 import "./storeCheck";
 import "./closeCheck";

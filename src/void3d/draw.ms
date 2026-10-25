@@ -365,6 +365,16 @@ let contextSerials: int32 = 0;
 
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
 export function withUniformCapacity(this typeof DrawContext, capacity: int32): DrawContext {
+	return contextOf(UniformPool.withCapacity(capacity));
+}
+
+// The uniform pool starts at `initial` floats and grows when a reserve needs more, keeping every
+// reserved block's offset (uniformPool.ms).
+export function withGrowingUniforms(this typeof DrawContext, initial: int32): DrawContext {
+	return contextOf(UniformPool.growing(initial));
+}
+
+function contextOf(uniforms: UniformPool): DrawContext {
 	let bindings: Vec<uint32> = new Array(GPU3D_BINDING_LENGTH);
 	for (let i = 0; i < GPU3D_BINDING_LENGTH; i++) {
 		bindings[i] = 0;
@@ -378,7 +388,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		samplers[i] = 0;
 	}
 	if (contextSerials == LAST_GENERATION) {
-		console.log("void3d: DrawContext.withUniformCapacity has no serial left for a new context");
+		console.log("void3d: a DrawContext has no serial left for a new context");
 		unreachable;
 	}
 	contextSerials = contextSerials + 1;
@@ -410,7 +420,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		samplerGeneration: 0,
 		textureMips: [],
 		mipSamplers: [],
-		uniforms: UniformPool.withCapacity(capacity),
+		uniforms: uniforms,
 		doomed: [],
 		pipelines: PipelineCache.empty(),
 		bindings: bindings,
