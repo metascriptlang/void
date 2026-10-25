@@ -13,13 +13,19 @@ import {
 	GPUTextureDescriptor,
 	GPUTextureFormat,
 	GPUTextureUsage,
+	GPUTextureViewDescriptor,
 	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
+	cubeViewRefusal,
+	refuse,
 	samplerMaxLod,
 	stop,
+	view3dRefusal,
+	viewLayersRefusal,
+	viewMipsRefusal,
 } from "./types.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
@@ -166,10 +172,6 @@ export function shutdownRefusal(this s: EncoderState): string {
 
 let encoder: EncoderState = { open: false };
 let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
-
-@inline function refuse(message: string): void {
-	if (message != "") { stop(message); }
-}
 
 @inline export function occlusionSetId(): uint32 { return encoder.occlusionSet; }
 @inline export function occlusionQueryIndex(): int32 { return encoder.occlusionIndex; }
@@ -476,6 +478,64 @@ export function checkedViewDimension(dimension: string, volume: boolean, layers:
 	const name = resolvedViewDimension(dimension, volume, layers);
 	refuse(viewDimensionRefusal(name, volume, texture));
 	return name;
+}
+
+export function cubeCapable(volume: boolean, layers: int32, width: int32, height: int32, usage: int32, sampleCount: int32): boolean {
+	return !volume && layers % 6 == 0 && width == height && (usage & (GPUTextureUsage.TEXTURE_BINDING as int32)) != 0 && sampleCount == 1;
+}
+
+export struct ViewRange {
+	dimension: string;
+	baseMip: int32;
+	mipCount: int32;
+	baseLayer: int32;
+	layerCount: int32;
+}
+
+// A count of 0 is the rest of the texture; a 2d view is one layer, a cube six, a 3d view the whole volume.
+export function resolvedViewRange(descriptor: GPUTextureViewDescriptor, mipLevels: int32, layers: int32, volume: boolean): ViewRange {
+	const dimension = resolvedViewDimension(descriptor.dimension, volume, layers);
+	const baseMip = descriptor.baseMipLevel;
+	const mipCount = descriptor.mipLevelCount == 0 ? mipLevels - baseMip : descriptor.mipLevelCount;
+	let layerCount = descriptor.arrayLayerCount;
+	if (dimension == "2d" || dimension == "3d") { layerCount = 1; }
+	if (dimension == "cube") { layerCount = 6; }
+	if (layerCount == 0) { layerCount = layers - descriptor.baseArrayLayer; }
+	const baseLayer = dimension == "3d" ? 0 : descriptor.baseArrayLayer;
+	return { dimension: dimension, baseMip: baseMip, mipCount: mipCount, baseLayer: baseLayer, layerCount: layerCount };
+}
+
+// sokol _sg_validate_view_desc (sokol_gfx.h:24606), in its order: mips, dimension, layers, cube.
+export function viewRangeRefusal(
+	descriptor: GPUTextureViewDescriptor,
+	range: ViewRange,
+	texture: uint32,
+	mipLevels: int32,
+	layers: int32,
+	volume: boolean,
+	cube: boolean,
+): string {
+	const mips = viewMipsRefusal(texture, mipLevels, range.baseMip, range.mipCount);
+	if (mips != "") { return mips; }
+	const dimension = viewDimensionRefusal(range.dimension, volume, texture);
+	if (dimension != "") { return dimension; }
+	if (range.dimension == "3d") { return view3dRefusal(descriptor.baseArrayLayer, descriptor.arrayLayerCount); }
+	const span = viewLayersRefusal(texture, layers, range.baseLayer, range.layerCount);
+	if (span != "" || (range.dimension != "cube" && range.dimension != "cube-array")) { return span; }
+	return cubeViewRefusal(texture, cube, range.baseLayer, range.layerCount);
+}
+
+export function checkedViewRange(
+	descriptor: GPUTextureViewDescriptor,
+	texture: uint32,
+	mipLevels: int32,
+	layers: int32,
+	volume: boolean,
+	cube: boolean,
+): ViewRange {
+	const range = resolvedViewRange(descriptor, mipLevels, layers, volume);
+	refuse(viewRangeRefusal(descriptor, range, texture, mipLevels, layers, volume, cube));
+	return range;
 }
 
 // `index` is already inside the door's two groups. The group a bind group was made for is the

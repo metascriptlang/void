@@ -11,6 +11,7 @@ import {
 	GPUSupportedLimits,
 	GPUTextureDescriptor,
 	GPUTextureUsage,
+	GPUTextureViewDescriptor,
 } from "../webgpu/types";
 import {
 	EncoderState,
@@ -46,6 +47,9 @@ import {
 	pipelineSetRefusal,
 	querySetRefusal,
 	resolvedViewDimension,
+	resolvedViewRange,
+	cubeCapable,
+	viewRangeRefusal,
 	sampledViewRefusal,
 	storageEntryRefusal,
 	storageViewRefusal,
@@ -569,6 +573,39 @@ test "a view takes its texture's dimension unless it names one, and 3d goes with
 	assert viewDimensionRefusal("3d", true, 9) == "";
 	assert viewDimensionRefusal("3d", false, 9) == "GPUTextureViewDescriptor.dimension '3d' does not match the 2d GPUTexture 9";
 	assert viewDimensionRefusal("2d-array", true, 9) == "GPUTextureViewDescriptor.dimension '2d-array' does not match the 3d GPUTexture 9";
+}
+
+function viewRefusal(descriptor: GPUTextureViewDescriptor, mipLevels: int32, layers: int32, volume: boolean, cube: boolean): string {
+	return viewRangeRefusal(descriptor, resolvedViewRange(descriptor, mipLevels, layers, volume), 9, mipLevels, layers, volume, cube);
+}
+
+test "a view range takes the rest of the texture for a count of 0, one layer for 2d and six for a cube" {
+	const rest = resolvedViewRange({ baseMipLevel: 1, baseArrayLayer: 2 }, 4, 6, false);
+	assert rest.dimension == "2d-array" && rest.mipCount == 3 && rest.baseLayer == 2 && rest.layerCount == 4;
+	assert resolvedViewRange({ dimension: "2d", baseArrayLayer: 3 }, 1, 6, false).layerCount == 1;
+	assert resolvedViewRange({ dimension: "cube" }, 1, 12, false).layerCount == 6;
+	const volume = resolvedViewRange({}, 2, 8, true);
+	assert volume.dimension == "3d" && volume.baseLayer == 0 && volume.layerCount == 1;
+}
+
+test "a view range stays inside its texture's mips and layers, and a cube view takes whole cubes" {
+	assert viewRefusal({}, 4, 6, false, true) == "";
+	assert viewRefusal({ baseMipLevel: 2, mipLevelCount: 3 }, 4, 1, false, false) == "view mips 2+3 overrun GPUTexture 9, which has 4 mips";
+	assert viewRefusal({ dimension: "3d" }, 1, 1, false, false) == "GPUTextureViewDescriptor.dimension '3d' does not match the 2d GPUTexture 9";
+	assert viewRefusal({ baseArrayLayer: 1 }, 1, 8, true, false) == "a 3d view takes no baseArrayLayer or arrayLayerCount";
+	assert viewRefusal({ baseArrayLayer: 4, arrayLayerCount: 4 }, 1, 6, false, false) == "view layers 4+4 overrun GPUTexture 9, which has 6 layers";
+	assert viewRefusal({ dimension: "cube" }, 1, 6, false, false) == "a cube view needs GPUTexture 9 created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6";
+	assert viewRefusal({ dimension: "cube-array", arrayLayerCount: 9 }, 1, 12, false, true) == "a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6";
+	assert viewRefusal({ dimension: "cube", baseArrayLayer: 6 }, 1, 12, false, true) == "";
+}
+
+test "a texture can take a cube view when square, sampled, single-sample and a multiple of 6 layers" {
+	const sampled = GPUTextureUsage.TEXTURE_BINDING as int32;
+	assert cubeCapable(false, 12, 64, 64, sampled, 1);
+	assert !cubeCapable(false, 6, 64, 32, sampled, 1);
+	assert !cubeCapable(false, 6, 64, 64, 0, 1);
+	assert !cubeCapable(false, 6, 64, 64, sampled, 4);
+	assert !cubeCapable(true, 6, 64, 64, sampled, 1);
 }
 
 test "setBindGroup takes the door's two groups" {

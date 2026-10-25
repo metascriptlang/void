@@ -803,31 +803,43 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
 }
 
-@noinline export function checkedViewMips(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): void {
+export function viewMipsRefusal(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): string {
 	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > mipLevels) {
-		stop(`view mips ${baseMip}+${mipCount} overrun GPUTexture ${id}, which has ${mipLevels} mips`);
+		return `view mips ${baseMip}+${mipCount} overrun GPUTexture ${id}, which has ${mipLevels} mips`;
 	}
+	return "";
 }
 
 // A 3d view spans the whole volume slice stack, so it names no layer range.
-@noinline export function checkedView3d(baseLayer: int32, layerCount: int32): void {
-	if (baseLayer != 0 || layerCount > 1) { stop("a 3d view takes no baseArrayLayer or arrayLayerCount"); }
+export function view3dRefusal(baseLayer: int32, layerCount: int32): string {
+	return baseLayer != 0 || layerCount > 1 ? "a 3d view takes no baseArrayLayer or arrayLayerCount" : "";
 }
 
 // `layerCount` is resolved (a 0 count already means the rest of the layers).
-@noinline export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): void {
+export function viewLayersRefusal(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): string {
 	if (baseLayer < 0 || layerCount < 1 || baseLayer + layerCount > layers) {
-		stop(`view layers ${baseLayer}+${layerCount} overrun GPUTexture ${id}, which has ${layers} layers`);
+		return `view layers ${baseLayer}+${layerCount} overrun GPUTexture ${id}, which has ${layers} layers`;
 	}
+	return "";
 }
 
 // `cubeCapable` is the texture's own square, TEXTURE_BINDING, multiple-of-6 test made at creation.
-@noinline export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void {
+export function cubeViewRefusal(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): string {
 	if (!cubeCapable) {
-		stop(`a cube view needs GPUTexture ${id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
+		return `a cube view needs GPUTexture ${id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`;
 	}
-	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
+	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { return "a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"; }
+	return "";
 }
+
+@inline export function refuse(message: string): void {
+	if (message != "") { stop(message); }
+}
+
+export function checkedViewMips(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): void { refuse(viewMipsRefusal(id, mipLevels, baseMip, mipCount)); }
+export function checkedView3d(baseLayer: int32, layerCount: int32): void { refuse(view3dRefusal(baseLayer, layerCount)); }
+export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): void { refuse(viewLayersRefusal(id, layers, baseLayer, layerCount)); }
+export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void { refuse(cubeViewRefusal(id, cubeCapable, baseLayer, layerCount)); }
 
 // `slices` is the depth of the 3d view's mip.
 @noinline export function checkedDepthSlice(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): void {

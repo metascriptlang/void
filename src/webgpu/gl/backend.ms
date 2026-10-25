@@ -74,9 +74,6 @@ import {
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	checkedUnmap,
-	checkedView3d,
-	checkedViewLayers,
-	checkedViewMips,
 	checkedWriteBuffer,
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
@@ -86,6 +83,8 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	checkedViewRange,
+	cubeCapable,
 	clampedAnisotropy,
 	cachedLimits,
 	addressesBinding,
@@ -103,7 +102,6 @@ import {
 	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
-	checkedViewDimension,
 	occlusionQueryIndex,
 	occlusionSetId,
 	openDebugGroups,
@@ -1602,7 +1600,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	if (attachment && lacksColorBufferFloat(info)) {
 		stop(`${descriptor.format} as RENDER_ATTACHMENT needs EXT_color_buffer_float, which the GLES backend does not query yet`);
 	}
-	const cube = !volume && layers == 6 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
+	const cube = cubeCapable(volume, layers, width, height, usage, sampleCount) && layers == 6;
 	let target = GL_TEXTURE_2D;
 	if (volume) {
 		target = GL_TEXTURE_3D;
@@ -1772,8 +1770,7 @@ function viewDimensionName(dimension: ViewDimension): string {
 	return "3d";
 }
 
-function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): ViewDimension {
-	const name = checkedViewDimension(descriptor.dimension, textures.slots[t].volume, textures.slots[t].layers, textures.slots[t].id);
+function viewDimensionOf(name: string): ViewDimension {
 	return match (name) {
 		"2d" => ViewDimension.TwoD,
 		"2d-array" => ViewDimension.TwoDArray,
@@ -1791,26 +1788,16 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	const usage = textures.slots[t].usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	const layers = textures.slots[t].layers;
-	const baseMip = descriptor.baseMipLevel;
-	const mipCount = descriptor.mipLevelCount == 0 ? textures.slots[t].mipLevels - baseMip : descriptor.mipLevelCount;
-	checkedViewMips(textures.slots[t].id, textures.slots[t].mipLevels, baseMip, mipCount);
-	const dimension = viewDimensionOf(descriptor, t);
-	let baseLayer = descriptor.baseArrayLayer;
-	let layerCount = descriptor.arrayLayerCount;
-	if (dimension == ViewDimension.ThreeD) {
-		checkedView3d(baseLayer, layerCount);
-		baseLayer = 0;
-		layerCount = 1;
-	} else {
-		if (dimension == ViewDimension.TwoD) { layerCount = 1; }
-		if (dimension == ViewDimension.Cube) { layerCount = 6; }
-		if (layerCount == 0) { layerCount = layers - baseLayer; }
-		checkedViewLayers(textures.slots[t].id, layers, baseLayer, layerCount);
-	}
-	if (dimension == ViewDimension.Cube) {
-		if (!textures.slots[t].cube) {
-			stop(`a cube view needs GPUTexture ${textures.slots[t].id} created square with exactly 6 layers and TEXTURE_BINDING: gl makes it a cube map`);
-		}
+	const volume = textures.slots[t].volume;
+	const webgpuCube = cubeCapable(volume, layers, textures.slots[t].width, textures.slots[t].height, usage, textures.slots[t].sampleCount);
+	const range = checkedViewRange(descriptor, textures.slots[t].id, textures.slots[t].mipLevels, layers, volume, webgpuCube);
+	const baseMip = range.baseMip;
+	const mipCount = range.mipCount;
+	const baseLayer = range.baseLayer;
+	const layerCount = range.layerCount;
+	const dimension = viewDimensionOf(range.dimension);
+	if (dimension == ViewDimension.Cube && !textures.slots[t].cube) {
+		stop(`a cube view needs GPUTexture ${textures.slots[t].id} created square with exactly 6 layers and TEXTURE_BINDING: gl makes it a cube map`);
 	}
 	const slot: ViewSlot = {
 		id: id,

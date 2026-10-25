@@ -61,7 +61,6 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedBufferCopy,
-	checkedCubeView,
 	checkedDepthSlice,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
@@ -78,9 +77,6 @@ import {
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	checkedUnmap,
-	checkedView3d,
-	checkedViewLayers,
-	checkedViewMips,
 	checkedWriteBuffer,
 	featureBit,
 	firstInstanceRefusal,
@@ -88,6 +84,8 @@ import {
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
 import {
+	checkedViewRange,
+	cubeCapable,
 	clampedAnisotropy,
 	addressesBinding,
 	checkedBindGroupIndex,
@@ -104,7 +102,6 @@ import {
 	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
-	checkedViewDimension,
 	entryBytes,
 	occlusionQueryIndex,
 	occlusionSetId,
@@ -1467,7 +1464,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	if (attachment && copyDestination) {
 		stop("COPY_DST with RENDER_ATTACHMENT has no Void caller: a multisampled target takes no UpdateSubresource");
 	}
-	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
+	const cube = cubeCapable(volume, layers, width, height, usage, sampleCount);
 	let bindFlags = BIND_SHADER_RESOURCE;
 	if (attachment) { bindFlags |= info.depth ? BIND_DEPTH_STENCIL : BIND_RENDER_TARGET; }
 	if (has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) {
@@ -1823,8 +1820,7 @@ export function unmap(buffer: GPUBuffer): void {
 	buffers.slots[index].mapMode = 0;
 }
 
-function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {
-	const name = checkedViewDimension(descriptor.dimension, textures.slots[t].volume, textures.slots[t].layers, textures.slots[t].id);
+function viewDimensionOf(name: string): int32 {
 	if (name == "2d") { return VIEW_2D; }
 	if (name == "2d-array") { return VIEW_2D_ARRAY; }
 	if (name == "cube") { return VIEW_CUBE; }
@@ -1842,26 +1838,13 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	const usage = textures.slots[t].usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	const layers = textures.slots[t].layers;
-	const baseMip = descriptor.baseMipLevel;
-	const mipCount = descriptor.mipLevelCount == 0 ? textures.slots[t].mipLevels - baseMip : descriptor.mipLevelCount;
-	checkedViewMips(textures.slots[t].id, textures.slots[t].mipLevels, baseMip, mipCount);
-	let dimension = viewDimensionOf(descriptor, t);
-	let baseLayer = descriptor.baseArrayLayer;
-	let layerCount = descriptor.arrayLayerCount;
-	if (dimension == VIEW_3D) {
-		checkedView3d(baseLayer, layerCount);
-		baseLayer = 0;
-		layerCount = 1;
-	} else {
-		if (dimension == VIEW_2D) { layerCount = 1; }
-		if (dimension == VIEW_CUBE) { layerCount = 6; }
-		if (layerCount == 0) { layerCount = layers - baseLayer; }
-		checkedViewLayers(textures.slots[t].id, layers, baseLayer, layerCount);
-	}
-	if (dimension == VIEW_CUBE || dimension == VIEW_CUBE_ARRAY) {
-		checkedCubeView(textures.slots[t].id, textures.slots[t].cube, baseLayer, layerCount);
-		if (dimension == VIEW_CUBE && baseLayer != 0) { dimension = VIEW_CUBE_ARRAY; }
-	}
+	const range = checkedViewRange(descriptor, textures.slots[t].id, textures.slots[t].mipLevels, layers, textures.slots[t].volume, textures.slots[t].cube);
+	const baseMip = range.baseMip;
+	const mipCount = range.mipCount;
+	const baseLayer = range.baseLayer;
+	const layerCount = range.layerCount;
+	let dimension = viewDimensionOf(range.dimension);
+	if (dimension == VIEW_CUBE && baseLayer != 0) { dimension = VIEW_CUBE_ARRAY; }
 	const volumeTarget = attachment && mipCount == 1 && dimension == VIEW_3D && !info.depth;
 	const attachable = mipCount == 1 && layerCount == 1 && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY);
 	const arrayed = layers > 1 ? 1 : 0;

@@ -64,7 +64,6 @@ import {
 	checkedUnmap,
 	samplerMaxLod,
 	checkedTexelWritePitch,
-	checkedCubeView,
 	checkedDepthSlice,
 	checkedNoDepthSlice,
 	checkedPassExtent,
@@ -72,9 +71,6 @@ import {
 	checkedResolveTarget,
 	checkedSingleSubresource,
 	checkedTimestampWrites,
-	checkedViewLayers,
-	checkedViewMips,
-	checkedView3d,
 	checkedWriteBuffer,
 	featureBit,
 	GPUTexture,
@@ -86,6 +82,8 @@ import {
 	firstInstanceRefusal,
 } from "../types.ms";
 import {
+	checkedViewRange,
+	cubeCapable,
 	clampedAnisotropy,
 	addressesBinding,
 	checkedBindGroupIndex,
@@ -102,7 +100,6 @@ import {
 	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
-	checkedViewDimension,
 	computePassOpen,
 	occlusionQueryIndex,
 	occlusionSetId,
@@ -1163,7 +1160,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	const storage = has(usage, GPUTextureUsage.STORAGE_BINDING as int32);
 	if (storage && (sampleCount != 1 || info.depth)) { stop("GPUTextureUsage.STORAGE_BINDING takes a single-sample colour texture"); }
-	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
+	const cube = cubeCapable(volume, layers, width, height, usage, sampleCount);
 	const native = newTexture(width, height, layers, mipLevels, volume, info.pixel, sampleCount, attachment, storage);
 	if (native == null) { stop(`newTextureWithDescriptor failed for ${labelOf(descriptor.label)}`); }
 	mtlSetLabel(native as Ptr<void>, labelText(descriptor.label));
@@ -1359,8 +1356,7 @@ function textureCopyPitch(
 	);
 }
 
-function viewTypeOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {
-	const name = checkedViewDimension(descriptor.dimension, textures.slots[t].volume, textures.slots[t].layers, textures.slots[t].id);
+function viewTypeOf(name: string, t: int32): int32 {
 	if (name == "2d") { return textures.slots[t].sampleCount > 1 ? TYPE_2D_MULTISAMPLE : TYPE_2D; }
 	if (name == "2d-array") { return TYPE_2D_ARRAY; }
 	if (name == "cube") { return TYPE_CUBE; }
@@ -1374,26 +1370,13 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	if (textures.slots[t].swapchainView != 0) { return { id: textures.slots[t].swapchainView }; }
 	const id = allocate(views);
 	const layers = textures.slots[t].layers;
-	const baseMip = descriptor.baseMipLevel;
-	const mipCount = descriptor.mipLevelCount == 0 ? textures.slots[t].mipLevels - baseMip : descriptor.mipLevelCount;
-	checkedViewMips(textures.slots[t].id, textures.slots[t].mipLevels, baseMip, mipCount);
-	const viewType = viewTypeOf(descriptor, t);
-	let baseLayer = descriptor.baseArrayLayer;
-	let layerCount = descriptor.arrayLayerCount;
-	if (viewType == TYPE_3D) {
-		checkedView3d(baseLayer, layerCount);
-		baseLayer = 0;
-		layerCount = 1;
-	} else {
-		if (viewType == TYPE_2D || viewType == TYPE_2D_MULTISAMPLE) { layerCount = 1; }
-		if (viewType == TYPE_CUBE) { layerCount = 6; }
-		if (layerCount == 0) { layerCount = layers - baseLayer; }
-		checkedViewLayers(textures.slots[t].id, layers, baseLayer, layerCount);
-	}
-	if (viewType == TYPE_CUBE || viewType == TYPE_CUBE_ARRAY) {
-		checkedCubeView(textures.slots[t].id, textures.slots[t].cube, baseLayer, layerCount);
-	}
 	const volume = textures.slots[t].volume;
+	const range = checkedViewRange(descriptor, textures.slots[t].id, textures.slots[t].mipLevels, layers, volume, textures.slots[t].cube);
+	const baseMip = range.baseMip;
+	const mipCount = range.mipCount;
+	const baseLayer = range.baseLayer;
+	const layerCount = range.layerCount;
+	const viewType = viewTypeOf(range.dimension, t);
 	const direct = viewType == naturalType(volume, layers, textures.slots[t].sampleCount)
 		&& baseMip == 0 && mipCount == textures.slots[t].mipLevels && baseLayer == 0 && (volume || layerCount == layers);
 	const slot: ViewSlot = {

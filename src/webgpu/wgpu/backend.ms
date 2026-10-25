@@ -59,7 +59,6 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedBufferCopy,
-	checkedCubeView,
 	checkedDepthSlice,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
@@ -74,9 +73,6 @@ import {
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
-	checkedView3d,
-	checkedViewLayers,
-	checkedViewMips,
 	checkedWriteBuffer,
 	featureBit,
 	firstInstanceRefusal,
@@ -85,6 +81,8 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	checkedViewRange,
+	cubeCapable,
 	clampedAnisotropy,
 	cachedLimits,
 	addressesBinding,
@@ -102,7 +100,6 @@ import {
 	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
-	checkedViewDimension,
 	entryBytes,
 	occlusionQueryIndex,
 	occlusionSetId,
@@ -1323,7 +1320,7 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	if (attachment && info.native == FORMAT_RG11B10_UFLOAT && wgHasFeature(FEATURE_RG11B10_UFLOAT_RENDERABLE) == 0) {
 		stop("rg11b10ufloat as RENDER_ATTACHMENT needs the device feature rg11b10ufloat-renderable, which this device was not created with");
 	}
-	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
+	const cube = cubeCapable(volume, layers, width, height, usage, sampleCount);
 	const label = labelText(descriptor.label);
 	const native = wgCreateTexture(
 		width,
@@ -1429,8 +1426,7 @@ export function writeTexture<T>(
 	);
 }
 
-function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {
-	const name = checkedViewDimension(descriptor.dimension, textures.slots[t].volume, textures.slots[t].layers, textures.slots[t].id);
+function viewDimensionOf(name: string): int32 {
 	if (name == "2d") { return VIEW_2D; }
 	if (name == "2d-array") { return VIEW_2D_ARRAY; }
 	if (name == "cube") { return VIEW_CUBE; }
@@ -1448,26 +1444,12 @@ export function createView(
 	const id = allocate(views);
 	const info = textures.slots[t].info;
 	const label = labelText(descriptor.label);
-	const layers = textures.slots[t].layers;
-	const baseMip = descriptor.baseMipLevel;
-	const mipCount = descriptor.mipLevelCount == 0 ? textures.slots[t].mipLevels - baseMip : descriptor.mipLevelCount;
-	checkedViewMips(textures.slots[t].id, textures.slots[t].mipLevels, baseMip, mipCount);
-	const dimension = viewDimensionOf(descriptor, t);
-	let baseLayer = descriptor.baseArrayLayer;
-	let layerCount = descriptor.arrayLayerCount;
-	if (dimension == VIEW_3D) {
-		checkedView3d(baseLayer, layerCount);
-		baseLayer = 0;
-		layerCount = 1;
-	} else {
-		if (dimension == VIEW_2D) { layerCount = 1; }
-		if (dimension == VIEW_CUBE) { layerCount = 6; }
-		if (layerCount == 0) { layerCount = layers - baseLayer; }
-		checkedViewLayers(textures.slots[t].id, layers, baseLayer, layerCount);
-	}
-	if (dimension == VIEW_CUBE || dimension == VIEW_CUBE_ARRAY) {
-		checkedCubeView(textures.slots[t].id, textures.slots[t].cube, baseLayer, layerCount);
-	}
+	const range = checkedViewRange(descriptor, textures.slots[t].id, textures.slots[t].mipLevels, textures.slots[t].layers, textures.slots[t].volume, textures.slots[t].cube);
+	const baseMip = range.baseMip;
+	const mipCount = range.mipCount;
+	const baseLayer = range.baseLayer;
+	const layerCount = range.layerCount;
+	const dimension = viewDimensionOf(range.dimension);
 	const native = wgCreateView(textures.slots[t].native, ASPECT_ALL, dimension, baseMip, mipCount, baseLayer, layerCount, label);
 	if (native == null) { stop(`wgpuTextureCreateView failed for ${labelOf(descriptor.label)}`); }
 	let binding = NO_VIEW;
