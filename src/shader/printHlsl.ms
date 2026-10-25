@@ -567,6 +567,10 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		p.module.resources[sampler.index].samplerType == SamplerType.Comparison) {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
+	if (p.stage != ShaderStage.Fragment) {
+		return operand(p, texture) + ".SampleLevel(" + expr(p, sampler) + ", " +
+			layeredAt(p, e, layered) + ", 0.0)";
+	}
 	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e, layered) +
 		")";
 }

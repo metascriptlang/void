@@ -42,6 +42,7 @@ import {
 	computeModule,
 	construct,
 	depthModule,
+	everyModule,
 	f32,
 	fragmentModule,
 	i32,
@@ -313,4 +314,10 @@ test "an array texture samples with its layer packed into the coordinates" {
 	const m = layeredBlurModule();
 	assert irErrors(m).length == 0;
 	assert printed(m, 1, [0, 1]).includes("srcTex.Sample(srcSmp, float3(uv, float(2)))");
+}
+
+test "a plain sample outside a fragment entry reads level 0, as WGSL and MSL do" {
+	const m = everyModule();
+	assert irErrors(m).length == 0;
+	assert printed(m, 0, [0, 1]).includes("heightMap.SampleLevel(heightSampler, position, 0.0)");
 }
