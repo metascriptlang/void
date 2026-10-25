@@ -2750,7 +2750,7 @@ run_aborts() {
 			fail "aborts: $name does not build — see $WORK/abort-$name.build.log"
 			continue
 		fi
-		"out/tmp/abort-$name.exe" > "$log" 2>&1 || status=$?
+		VOID_QUIET_WINDOW=1 "out/tmp/abort-$name.exe" > "$log" 2>&1 || status=$?
 		if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
 			pass "aborts: $name stops and says: $expected"
 		else
@@ -2774,8 +2774,8 @@ run_aborts() {
 			expected=$(sed -n "s#^// expect $pattern: ##p" "$program" | tr -d '\r')
 			log="$WORK/abort-$name-$case.log"
 			status=0
-			"out/tmp/abort-$name.exe" "$case" > "$log" 2>&1 || status=$?
-			if [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
+			VOID_QUIET_WINDOW=1 "out/tmp/abort-$name.exe" "$case" > "$log" 2>&1 || status=$?
+			if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
 				pass "aborts: $name $case stops and says: $expected"
 			else
 				fail "aborts: $name $case did not stop with '$expected' (exit $status) — see $log"
