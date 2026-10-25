@@ -125,7 +125,6 @@ export struct NativeSwapchain {
 
 const UNIFORM_OFFSET_ALIGNMENT = 256;
 const STORAGE_OFFSET_ALIGNMENT = 256;
-const MAX_ANISOTROPY = 16;
 const MAX_TEXTURE_DIMENSION_2D = 16384;
 const MAX_TEXTURE_DIMENSION_3D = 1024;
 const MAX_TEXTURE_ARRAY_LAYERS = 1024;
@@ -773,9 +772,6 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter", "dummy");
 	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter", "dummy");
 	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter", "dummy");
-	let maxAnisotropy = descriptor.maxAnisotropy;
-	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
-	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
 	addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU");
 	addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV");
 	addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW");

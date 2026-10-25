@@ -25,6 +25,7 @@ export const GPU_MAX_VERTEX_ATTRIBUTES: int32 = 16;
 export const GPU_MAX_BIND_GROUP_ENTRIES: int32 = 16;
 export const GPU_MAX_UNIFORM_BLOCKS: int32 = 8;
 export const GPU_MAX_SHADER_BINDINGS: int32 = 24;
+export const GPU_MAX_ANISOTROPY: int32 = 16;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
 

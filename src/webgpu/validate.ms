@@ -13,6 +13,7 @@ import {
 	GPUTextureDescriptor,
 	GPUTextureFormat,
 	GPUTextureUsage,
+	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
@@ -411,6 +412,7 @@ export function samplerRefusal(descriptor: GPUSamplerDescriptor): string {
 	const mag: string = descriptor.magFilter;
 	const min: string = descriptor.minFilter;
 	const mip: string = descriptor.mipmapFilter;
+	if (descriptor.maxAnisotropy < 0) { return `GPUSamplerDescriptor.maxAnisotropy ${descriptor.maxAnisotropy} is below 1`; }
 	if (descriptor.maxAnisotropy > 1 && (mag != "linear" || min != "linear" || mip != "linear")) {
 		return "GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter";
 	}
@@ -418,6 +420,11 @@ export function samplerRefusal(descriptor: GPUSamplerDescriptor): string {
 	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
 	if (maxLod < descriptor.lodMinClamp) { return `GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${descriptor.lodMinClamp}`; }
 	return "";
+}
+
+// WebGPU createSampler: the used maxAnisotropy is clamped to what the platform supports.
+export function clampedAnisotropy(maxAnisotropy: int32): int32 {
+	return maxAnisotropy == 0 ? 1 : Math.min(maxAnisotropy, GPU_MAX_ANISOTROPY);
 }
 
 export function querySetRefusal(descriptor: GPUQuerySetDescriptor): string {

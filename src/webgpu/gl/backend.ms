@@ -86,6 +86,7 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	clampedAnisotropy,
 	cachedLimits,
 	addressesBinding,
 	checkedBindGroupIndex,
@@ -1879,9 +1880,6 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter", "gl");
 	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter", "gl");
 	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter", "gl");
-	let maxAnisotropy = descriptor.maxAnisotropy;
-	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
-	checkSamplerAnisotropy(maxAnisotropy);
 	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
 	const native = oglCreateSampler();
 	let minFilter = minLinear ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST;
@@ -1901,7 +1899,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 		oglSamplerParameteri(native, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 		oglSamplerParameteri(native, GL_TEXTURE_COMPARE_FUNC, compareFunction(compare, "GPUSamplerDescriptor.compare"));
 	}
-	setSamplerAnisotropy(native, maxAnisotropy);
+	setSamplerAnisotropy(native, clampedAnisotropy(descriptor.maxAnisotropy));
 	nameObject(GL_SAMPLER, native, descriptor.label);
 	checkErrorOf("createSampler", descriptor.label);
 	const slot: SamplerSlot = { id: id, native: native };
@@ -2906,12 +2904,6 @@ when (webgl2 || android || (linux && voidGles3)) {
 
 	@inline function setSamplerAnisotropy(native: uint32, maxAnisotropy: int32): void {}
 
-	function checkSamplerAnisotropy(maxAnisotropy: int32): void {
-		if (maxAnisotropy > 1) {
-			stop("GPUSamplerDescriptor.maxAnisotropy above 1 needs EXT_texture_filter_anisotropic, which the GLES backend does not query yet");
-		}
-	}
-
 	function checkTargetsAlike(ref slot: PipelineSlot, i: int32, first: int32): void {
 		if (first != -1 && slot.writeMasks[i] != slot.writeMasks[first]) {
 			stop(`fragment.targets[${i}].writeMask differs from target ${first}; GLES3 masks every target alike`);
@@ -2992,8 +2984,6 @@ when (webgl2 || android || (linux && voidGles3)) {
 			oglSamplerParameteri(native, GL_TEXTURE_MAX_ANISOTROPY, smaller(maxAnisotropy, oglGetInteger(GL_MAX_TEXTURE_MAX_ANISOTROPY)));
 		}
 	}
-
-	@inline function checkSamplerAnisotropy(maxAnisotropy: int32): void {}
 
 	@inline function checkTargetsAlike(ref slot: PipelineSlot, i: int32, first: int32): void {}
 

@@ -86,6 +86,7 @@ import {
 	firstInstanceRefusal,
 } from "../types.ms";
 import {
+	clampedAnisotropy,
 	addressesBinding,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
@@ -309,7 +310,6 @@ const FILTER_NEAREST = 0;
 const FILTER_LINEAR = 1;
 const MIP_FILTER_NEAREST = 1;
 const MIP_FILTER_LINEAR = 2;
-const MAX_ANISOTROPY = 16;
 const ADDRESS_CLAMP_TO_EDGE = 0;
 const ADDRESS_REPEAT = 2;
 const ADDRESS_MIRROR_REPEAT = 3;
@@ -1484,9 +1484,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const minFilter = filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
 	const magFilter = filterMode(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
 	const mipFilter = mipFilterMode(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter");
-	let maxAnisotropy = descriptor.maxAnisotropy;
-	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
-	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
+	const maxAnisotropy = clampedAnisotropy(descriptor.maxAnisotropy);
 	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
 	const compare: string = descriptor.compare;
 	const native = mtlNewSampler(

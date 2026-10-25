@@ -23,6 +23,7 @@ import {
 	bindGroupSetRefusal,
 	beginPassRefusal,
 	bufferRefusal,
+	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
 	createRefusal,
@@ -385,12 +386,22 @@ test "an integer texture pairs only with a non-filtering sampler" {
 	assert shaderModuleRefusal(module, limits) == "";
 }
 
+test "a sampler's anisotropy defaults to 1 and is clamped to 16 on every backend" {
+	assert clampedAnisotropy(0) == 1;
+	assert clampedAnisotropy(8) == 8;
+	assert clampedAnisotropy(64) == 16;
+}
+
 test "a sampler's anisotropy needs every filter linear, and its lod range is non-negative and ordered" {
 	let s: GPUSamplerDescriptor = { magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", maxAnisotropy: 8 };
 	assert samplerRefusal(s) == "";
 	s.mipmapFilter = "nearest";
 	assert samplerRefusal(s) == "GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter";
 	s.maxAnisotropy = 1;
+	assert samplerRefusal(s) == "";
+	s.maxAnisotropy = -1;
+	assert samplerRefusal(s) == "GPUSamplerDescriptor.maxAnisotropy -1 is below 1";
+	s.maxAnisotropy = 0;
 	assert samplerRefusal(s) == "";
 	s.lodMinClamp = -1;
 	assert samplerRefusal(s) == "GPUSamplerDescriptor.lodMinClamp -1 is negative";

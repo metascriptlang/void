@@ -1,5 +1,6 @@
 import "./removal";
 import {
+	GPU_MAX_ANISOTROPY,
 	BindingKind,
 	bindingKind,
 	linearFilter,
@@ -87,6 +88,7 @@ import {
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
 import {
+	clampedAnisotropy,
 	addressesBinding,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
@@ -342,7 +344,6 @@ const FILTER_MAG_LINEAR = 0x04;
 const FILTER_MIN_LINEAR = 0x10;
 const FILTER_COMPARISON = 0x80;
 const FILTER_ANISOTROPIC = 0x55;
-const MAX_ANISOTROPY = 16;
 const COMPARISON_NEVER = 1;
 const STENCIL_MASK_DEFAULT: uint32 = 0xFF;
 const ADDRESS_WRAP = 1;
@@ -878,7 +879,7 @@ function checkDriverConstants(): void {
 		MAX_WORKGROUP_SIZE_Y,
 		MAX_WORKGROUP_SIZE_Z,
 		MAX_WORKGROUP_INVOCATIONS,
-		MAX_ANISOTROPY,
+		GPU_MAX_ANISOTROPY,
 		INPUT_ELEMENT_INTS,
 		BLEND_TARGET_INTS,
 		FORMAT_CAP_SAMPLE,
@@ -1950,9 +1951,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter", "d3d11");
 	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter", "d3d11");
 	const compare: string = descriptor.compare;
-	let maxAnisotropy = descriptor.maxAnisotropy;
-	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
-	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
+	const maxAnisotropy = clampedAnisotropy(descriptor.maxAnisotropy);
 	let filter = 0;
 	if (maxAnisotropy > 1) {
 		filter = FILTER_ANISOTROPIC;

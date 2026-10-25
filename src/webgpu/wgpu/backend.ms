@@ -85,6 +85,7 @@ import {
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
 import {
+	clampedAnisotropy,
 	cachedLimits,
 	addressesBinding,
 	checkedBindGroupIndex,
@@ -1538,8 +1539,6 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const magFilter = filterMode(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
 	const minFilter = filterMode(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
 	const mipmapFilter = mipmapFilterMode(descriptor.mipmapFilter);
-	let maxAnisotropy = descriptor.maxAnisotropy;
-	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
 	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
 	const compare: string = descriptor.compare;
 	const native = wgCreateSampler(
@@ -1552,7 +1551,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 		descriptor.lodMinClamp,
 		maxLod,
 		compare == "" ? 0 : compareFunction(compare, "GPUSamplerDescriptor.compare"),
-		maxAnisotropy,
+		clampedAnisotropy(descriptor.maxAnisotropy),
 		labelText(descriptor.label),
 	);
 	if (native == null) { stop(`wgpuDeviceCreateSampler failed for ${labelOf(descriptor.label)}`); }
