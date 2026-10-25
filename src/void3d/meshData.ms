@@ -112,6 +112,16 @@ export function empty(this typeof MeshData): MeshData {
 	};
 }
 
+export function copied(this data: Readonly<MeshData>): MeshData {
+	const wide: Readonly<Vec<uint32> | null> = data.wideIndices;
+	return {
+		...data,
+		vertices: [...data.vertices],
+		indices: [...data.indices],
+		wideIndices: wide !== null ? [...wide] : null,
+	};
+}
+
 export function withUvs(this typeof MeshData): MeshData {
 	return { ...MeshData.empty(), hasUvs: true };
 }

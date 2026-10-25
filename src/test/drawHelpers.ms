@@ -70,7 +70,7 @@ export function writeTables(
 	materials: Readonly<Span<Material>>,
 ): void {
 	for (let i = 0; i < (meshData.length as int32); i++) {
-		context.meshData[i] = { ...meshData[i] };
+		context.meshData[i] = meshData[i].copied();
 	}
 	for (let i = 0; i < (materials.length as int32); i++) {
 		context.materials[i].pass = { ...materials[i].pass };
