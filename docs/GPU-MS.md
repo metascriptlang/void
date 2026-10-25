@@ -497,6 +497,9 @@ Mac side has nothing open of its own. What the Mac verified, and what it still n
 - Since 2026-10-23 arc `shader` (branch wt/shader, rebased onto this one) owns `src/shader/` and the
   reflection format the backends read; a change to that format, `tools/shaderTables.ms` or
   regen-shaders is agreed with that arc's session first.
+- `src/webgpu/dummy/` (`-d:voidDummy`, since 2026-10-26) is a fifth backend, beside d3d11, gl,
+  metal and wgpu. It runs the door with no GPU. A refactor that changes every backend changes it
+  too, and `msc check -d:voidDummy src/examples/mainSokol2d.ms` proves the change.
 - Commits: conventional subject only, no body, no attribution trailer.
 - GPU runs on the Windows machine go through void-manager's GO; the Mac has its own schedule.
 - A compiler bug is a card in `~/metascript/.inbox/compiler/` (smallest repro, park the site);
