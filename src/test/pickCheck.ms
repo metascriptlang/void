@@ -72,6 +72,9 @@ const NO_VIEW: CameraView = {
 	remainderY: 0.0,
 	texelWidth: 0,
 	texelHeight: 0,
+	projectionX: 0.0,
+	projectionY: 0.0,
+	nearPlane: 0.0,
 };
 
 function nearVec(a: Vec3, b: Vec3): boolean {

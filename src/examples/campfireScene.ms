@@ -359,6 +359,9 @@ let shownView: CameraView = {
 	remainderY: 0.0,
 	texelWidth: 0,
 	texelHeight: 0,
+	projectionX: 0.0,
+	projectionY: 0.0,
+	nearPlane: 0.0,
 };
 let shownBlit: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offsetY: 0.0 };
 let shownHeight: int32 = 0;
