@@ -232,6 +232,29 @@ The JS target calls `navigator.gpu` through `extern class` declarations in a `.j
 `Vec<float32>` is a plain JS Array there and only a fixed `float32[N]` is a `Float32Array`, so
 `writeBuffer` copies a growable array into a typed array on JS.
 
+## Coverage against sokol's pin
+
+The layer covers every backend and platform that sokol `2e75443d` covers, Vulkan included and
+supported in full rather than as sokol's experimental backend. A cell counts once goldens run
+on it. As of `932a1562`:
+
+| backend | platform | state |
+|---|---|---|
+| D3D11 | Windows | goldens 119/120 (`prim/boxFills` red) |
+| GL core | Windows (WGL) | goldens 94 pass, 26 pending |
+| GL core | Linux X11 (GLX) | demo in WSLg at `4b66e809`, no goldens |
+| GLES3 | Android | links, never run on a device |
+| GLES3 | Linux (EGL) | missing |
+| WebGL2, WebGPU | browser | demo in headless Chrome, no goldens on this branch |
+| Metal | macOS, iOS | goldens 120/120 |
+| Metal | iOS simulator | demo only |
+| WebGPU native | desktop | missing (sokol: experimental) |
+| dummy | any | missing |
+| Vulkan | Windows, Linux X11 | missing |
+
+GL core on macOS is deprecated by Apple and stays out unless asked. Wayland is beyond sokol,
+whose `sokol_app.h` has no Wayland path.
+
 ## Steps
 
 The card `~/metascript/.wt/gpu-ms.md` tracks where the branch is. The order: the API module
