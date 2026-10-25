@@ -396,11 +396,14 @@ function animationValues(
 	bufferLength: int32, index: int32, components: int32,
 	ref buffers: Vec<GltfAccessorBuffer>, ref accessorViews: Vec<GltfAccessorView>,
 	sparseOk: boolean = false,
+	normalizedOk: boolean = false,
 ): Result<Vec<float32>, GltfError> {
 	const source = try accessorSource(accessors, index, GltfAccessorRole.Other);
 	const shape = components == 1 ? GltfAccessorShape.Scalar :
 		(components == 3 ? GltfAccessorShape.Vec3 : GltfAccessorShape.Vec4);
-	if (source.componentType != COMPONENT_FLOAT || source.normalized || source.shape != shape ||
+	const encoded: boolean = source.componentType == COMPONENT_FLOAT ? !source.normalized :
+		normalizedOk && source.normalized;
+	if (!encoded || source.shape != shape ||
 		(components == 1 && !sparseOk && source.sparse !== null)) {
 		return Result.err(GltfError.Unsupported);
 	}
@@ -436,7 +439,7 @@ function weightTrack(
 	const times = try animationValues(accessors, views, buffer, bufferLength,
 		intField(sampler, "input", -1), 1, buffers, accessorViews);
 	const values = try animationValues(accessors, views, buffer, bufferLength,
-		intField(sampler, "output", -1), 1, buffers, accessorViews, true);
+		intField(sampler, "output", -1), 1, buffers, accessorViews, true, true);
 	const curve = GltfWeightCurve.forWeightValues(mode, targetCount, times, values);
 	if (!curve.ok) {
 		cause = `weights output must hold ${targetCount} scalars per keyframe ` +
