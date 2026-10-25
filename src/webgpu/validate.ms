@@ -10,6 +10,8 @@ import {
 	GPUShaderModuleDescriptor,
 	GPUShaderStage,
 	GPUSupportedLimits,
+	GPUExtent3D,
+	GPUTexelCopyTextureInfo,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
 	GPUTextureUsage,
@@ -19,6 +21,7 @@ import {
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
+	checkedTexelCopyRegion,
 	cubeViewRefusal,
 	refuse,
 	samplerMaxLod,
@@ -606,3 +609,14 @@ export function checkedStorageEntry(entry: GPUBindGroupEntry, bufferIsStorage: b
 
 export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }
 export function checkedStorageView(binding: int32, textureIsStorage: boolean, mipCount: int32): void { refuse(storageViewRefusal(binding, textureIsStorage, mipCount)); }
+
+export function checkedCopyRegion<T>(member: string, texture: T, info: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	checkedTexelCopyRegion(member, texture.id, texture.width, texture.height, texture.mipLevels, texture.layers, texture.volume, info, size);
+}
+
+export function entryOf<T>(group: T, binding: int32): int32 {
+	for (let e = 0; e < group.entryCount; e++) {
+		if (group.entries[e].binding == binding) { return e; }
+	}
+	stop(`a bound bind group has no entry for binding ${binding}`);
+}

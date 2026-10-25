@@ -72,7 +72,6 @@ import {
 	checkedResolveTarget,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
-	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
@@ -84,6 +83,8 @@ import {
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
 import {
+	checkedCopyRegion,
+	entryOf,
 	checkedViewRange,
 	cubeCapable,
 	clampedAnisotropy,
@@ -1621,19 +1622,6 @@ function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: in
 	return index;
 }
 
-function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32, size: GPUExtent3D): void {
-	checkedTexelCopyRegion(
-		member,
-		textures.slots[index].id,
-		textures.slots[index].width,
-		textures.slots[index].height,
-		textures.slots[index].mipLevels,
-		textures.slots[index].layers,
-		textures.slots[index].volume,
-		info,
-		size,
-	);
-}
 
 function texelCopyBytes(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): int32 {
 	const format = textures.slots[index].info;
@@ -1661,7 +1649,7 @@ export function copyBufferToBuffer(
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyDestinationBuffer(destination.buffer, "copyTextureToBuffer destination");
-	copyRegion("copyTextureToBuffer source", source, from, size);
+	checkedCopyRegion("copyTextureToBuffer source", textures.slots[from], source, size);
 	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source", false, source, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, buffers.slots[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
@@ -1688,7 +1676,7 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	copyRegion("copyBufferToTexture destination", destination, to, size);
+	checkedCopyRegion("copyBufferToTexture destination", textures.slots[to], destination, size);
 	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination", true, destination, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, buffers.slots[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
@@ -1726,8 +1714,8 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	copyRegion("copyTextureToTexture source", source, from, size);
-	copyRegion("copyTextureToTexture destination", destination, to, size);
+	checkedCopyRegion("copyTextureToTexture source", textures.slots[from], source, size);
+	checkedCopyRegion("copyTextureToTexture destination", textures.slots[to], destination, size);
 	checkedTextureToTextureCopy(
 		source,
 		destination,
@@ -2555,7 +2543,7 @@ function applyCompute(): void {
 	const g = bindGroups.slotIndex(computeBound.bindGroup);
 	for (let r = 0; r < shaders.slots[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders.slots[s].resources[r];
-		const e = entryOf(g, binding.binding);
+		const e = entryOf(bindGroups.slots[g], binding.binding);
 		if (binding.kind == BindingKind.Texture) {
 			d3dCsSetShaderResource(context, binding.nativeSlot, views.slots[views.slotIndex(bindGroups.slots[g].entries[e].textureView.id)].shaderResource);
 		} else if (binding.kind == BindingKind.Sampler) {
@@ -2768,12 +2756,6 @@ function applyIndexBuffer(): void {
 	stats.indexBuffers += 1;
 }
 
-function entryOf(group: int32, binding: int32): int32 {
-	for (let e = 0; e < bindGroups.slots[group].entryCount; e++) {
-		if (bindGroups.slots[group].entries[e].binding == binding) { return e; }
-	}
-	return stopOnMember("bound bind group: missing entry for binding", `${binding}`);
-}
 
 function applyResources(s: int32): void {
 	bound.resourcesDirty = false;
@@ -2782,7 +2764,7 @@ function applyResources(s: int32): void {
 	const g = bindGroups.slotIndex(bound.bindGroups[GPU_RESOURCE_GROUP]);
 	for (let r = 0; r < shaders.slots[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders.slots[s].resources[r];
-		const e = entryOf(g, binding.binding);
+		const e = entryOf(bindGroups.slots[g], binding.binding);
 		if (binding.kind == BindingKind.StorageTexture) { stop("a storage texture in a render stage is not ported to d3d11"); }
 		if (binding.kind == BindingKind.Texture || binding.kind == BindingKind.StorageBuffer) {
 			const view = binding.kind == BindingKind.Texture ? views.slots[views.slotIndex(bindGroups.slots[g].entries[e].textureView.id)].shaderResource : bindGroups.slots[g].srv[e];
@@ -2814,7 +2796,7 @@ function applyUniforms(s: int32): void {
 	if (bound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
 	const g = bindGroups.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders.slots[s].uniformCount; u++) {
-		const e = entryOf(g, shaders.slots[s].uniforms[u].binding);
+		const e = entryOf(bindGroups.slots[g], shaders.slots[s].uniforms[u].binding);
 		const offset = (bound.dynamicOffsets[bindGroups.slots[g].dynamicIndex[e]] as int64) + bindGroups.slots[g].entries[e].offset;
 		const b = buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id);
 		const block = shaders.slots[s].uniforms[u];

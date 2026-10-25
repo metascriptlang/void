@@ -70,7 +70,6 @@ import {
 	checkedResolveTarget,
 	checkedSingleSubresource,
 	checkedTexelBufferLayout,
-	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
@@ -82,6 +81,8 @@ import {
 	vertexOffsetRefusal,
 } from "../types.ms";
 import {
+	checkedCopyRegion,
+	entryOf,
 	checkedViewRange,
 	cubeCapable,
 	addressesBinding,
@@ -1255,12 +1256,6 @@ function flush(): void {
 	checkBoundGroups(s, bound.bindGroups, bound.dynamicOffsets, "pipeline");
 }
 
-function entryOf(group: int32, binding: int32): int32 {
-	for (let e = 0; e < bindGroups.slots[group].entryCount; e++) {
-		if (bindGroups.slots[group].entries[e].binding == binding) { return e; }
-	}
-	return stopOnMember("bound bind group: missing entry for binding", `${binding}`);
-}
 
 function checkBoundGroups(s: int32, groups: uint32[2], dynamicOffsets: uint32[8], what: string): void {
 	if (shaders.slots[s].uniformCount > 0) {
@@ -1268,7 +1263,7 @@ function checkBoundGroups(s: int32, groups: uint32[2], dynamicOffsets: uint32[8]
 		const g = bindGroups.slotIndex(groups[GPU_UNIFORM_GROUP]);
 		for (let u = 0; u < shaders.slots[s].uniformCount; u++) {
 			const binding = shaders.slots[s].uniforms[u].binding;
-			const e = entryOf(g, binding);
+			const e = entryOf(bindGroups.slots[g], binding);
 			const dynamic = dynamicOffsets[bindGroups.slots[g].dynamicIndex[e]] as int64;
 			const offset = dynamic + bindGroups.slots[g].entries[e].offset;
 			const b = buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id);
@@ -1281,7 +1276,7 @@ function checkBoundGroups(s: int32, groups: uint32[2], dynamicOffsets: uint32[8]
 		if (groups[GPU_RESOURCE_GROUP] == 0) { stop(`the ${what} reads bind group 1, which is not set`); }
 		const g = bindGroups.slotIndex(groups[GPU_RESOURCE_GROUP]);
 		for (let r = 0; r < shaders.slots[s].resourceCount; r++) {
-			const e = entryOf(g, shaders.slots[s].resources[r].binding);
+			const e = entryOf(bindGroups.slots[g], shaders.slots[s].resources[r].binding);
 			const entry: GPUBindGroupEntry = bindGroups.slots[g].entries[e];
 			if (entry.buffer.id != 0) { buffers.slotIndex(entry.buffer.id); }
 			if (entry.textureView.id != 0) { textures.slotIndex(views.slots[views.slotIndex(entry.textureView.id)].texture); }
@@ -1305,19 +1300,6 @@ function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: in
 	return index;
 }
 
-function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32, size: GPUExtent3D): void {
-	checkedTexelCopyRegion(
-		member,
-		textures.slots[index].id,
-		textures.slots[index].width,
-		textures.slots[index].height,
-		textures.slots[index].mipLevels,
-		textures.slots[index].layers,
-		textures.slots[index].volume,
-		info,
-		size,
-	);
-}
 
 function texelCopyBytes(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): int32 {
 	const format = formatInfo(textures.slots[index].format, "texture format");
@@ -1348,7 +1330,7 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableBuffer(destination.buffer, "copyTextureToBuffer destination", GPUBufferUsage.COPY_DST as int32, "COPY_DST");
-	copyRegion("copyTextureToBuffer source", source, from, size);
+	checkedCopyRegion("copyTextureToBuffer source", textures.slots[from], source, size);
 	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source", false, source, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, buffers.slots[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
@@ -1365,7 +1347,7 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	copyRegion("copyBufferToTexture destination", destination, to, size);
+	checkedCopyRegion("copyBufferToTexture destination", textures.slots[to], destination, size);
 	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination", true, destination, size);
 	checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, buffers.slots[from].size, source, size);
 }
@@ -1373,8 +1355,8 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	copyRegion("copyTextureToTexture source", source, from, size);
-	copyRegion("copyTextureToTexture destination", destination, to, size);
+	checkedCopyRegion("copyTextureToTexture source", textures.slots[from], source, size);
+	checkedCopyRegion("copyTextureToTexture destination", textures.slots[to], destination, size);
 	checkedTextureToTextureCopy(
 		source,
 		destination,
