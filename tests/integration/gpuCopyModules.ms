@@ -24,7 +24,7 @@ when (webgpu) {
 			],
 		};
 	}
-} else when (webgl2 || android) {
+} else when (webgl2 || android || (linux && voidGles3)) {
 	const TEXT_6c3aa18c66fe2ef74c2a887f609880b414155149f4a67be1093d6f86ef4d5e62 = "#version 300 es\n\nlayout(location = 0) in vec2 position;\n\nvoid main()\n{\n    gl_Position = vec4(position, 0.5, 1.0);\n    return;\n}\n";
 	const TEXT_ebf4ea704942061fef805cddd111a5571ad7b1bf42cafc6633ce242826fc3e91 = "#version 300 es\nprecision highp float;\nprecision highp int;\n\nuniform highp sampler2D sourceTexture_SPIRV_Cross_DummySampler;\n\nlayout(location = 0) out highp vec4 fragColor;\n\nvoid main()\n{\n    highp ivec2 size = textureSize(sourceTexture_SPIRV_Cross_DummySampler, 0);\n    highp ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));\n    fragColor = vec4(texelFetch(sourceTexture_SPIRV_Cross_DummySampler, p, 0).xyz, 1.0);\n    return;\n}\n";
 
