@@ -1150,6 +1150,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	swapchainColor = reserveSwapchainTexture(canvas.format);
 	const depthFormat: string = canvas.depthFormat;
 	swapchainDepth = depthFormat == "" ? 0 : reserveSwapchainTexture(canvas.depthFormat);
+	textures.slots[textures.slotIndex(swapchainColor)].usage |= GPUTextureUsage.COPY_SRC as int32;
 	return { id: 1, queue: { id: 1 } };
 }
 
