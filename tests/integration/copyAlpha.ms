@@ -57,11 +57,11 @@ function init(): void {
 		width: 4, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	};
 	const uploaded: Result<TextureId, TextureUploadError> = addTexture(context, data);
-	if (!uploaded.ok) { fail("source texture refused"); unreachable; }
+	if (!uploaded.ok) { fail(`source texture refused: ${uploaded.error.toString()}`); unreachable; }
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Copy, screenState(), Phase.Opaque), texture: uploaded.value,
 	});
-	if (!added.ok) { fail("copy material refused"); unreachable; }
+	if (!added.ok) { fail(`copy material refused: ${added.error.toString()}`); unreachable; }
 	copy = added.value;
 	camera[0] = 1.0; camera[5] = 1.0; camera[10] = 1.0; camera[15] = 1.0;
 }
