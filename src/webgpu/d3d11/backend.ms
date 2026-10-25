@@ -66,8 +66,6 @@ import {
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	featureBit,
-	firstInstanceRefusal,
-	vertexOffsetRefusal,
 	stopOnUnportedShaderBindings,
 	labelOf,
 } from "../types.ms";
@@ -80,8 +78,6 @@ import {
 	addressesBinding,
 	checkedBindGroupSet,
 	checkedComputeModule,
-	checkedComputePipeline,
-	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -436,8 +432,6 @@ struct NativeBinding {
 }
 
 struct ShaderSlot {
-	readsInstanceIndex: boolean;
-	readsVertexIndex: boolean;
 	vertex: Ptr<D3dVertexShaderImpl>;
 	fragment: Ptr<D3dPixelShaderImpl>;
 	compute: Ptr<D3dComputeShaderImpl>;
@@ -455,9 +449,6 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
-	label: string | null;
-	readsInstanceIndex: boolean;
-	readsVertexIndex: boolean;
 	shader: uint32;
 	rasterizer: Ptr<D3dRasterizerStateImpl>;
 	depthStencil: Ptr<D3dDepthStencilStateImpl>;
@@ -1805,8 +1796,6 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 		if (slot.constantBuffers[u] == null) { stop(`CreateBuffer of a constant buffer failed for ${labelOf(descriptor.label)}`); }
 	}
 	if (cacheBytes > 0) { slot.blockCache = new Array(cacheBytes); }
-	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
-	slot.readsVertexIndex = descriptor.readsVertexIndex;
 	put(shaders, id, slot);
 }
 
@@ -1867,7 +1856,7 @@ function semanticIndexOf(shader: int32, location: int32): int32 {
 export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDescriptor): void {
 	const s = shaderRecords.slotIndex(descriptor.vertex.module.id);
 	checkedRenderModule(shaders[s].compute != null);
-	let slot: PipelineSlot = { shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders[s].readsInstanceIndex, readsVertexIndex: shaders[s].readsVertexIndex };
+	let slot: PipelineSlot = { shader: descriptor.vertex.module.id };
 	slot.topology = primitiveTopology(descriptor.primitive.topology);
 	slot.stripIndexFormat = stripIndexFormatOf(descriptor.primitive);
 	slot.inputLayout = createInputLayout(s, descriptor, slot);
@@ -2221,7 +2210,6 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	checkedComputePipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }
@@ -2284,7 +2272,6 @@ export function endComputePass(): void {
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
-	checkedRenderPassPipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	bound.pipeline = pipeline.id;
 }
 
@@ -2351,7 +2338,6 @@ function applyDepthStencil(p: int32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush(false);
-	checkDrawOffsets("draw", "firstVertex", firstVertex, firstInstance);
 	if (instanceCount > 1 || firstInstance != 0) {
 		d3dDrawInstanced(context, vertexCount, instanceCount, firstVertex, firstInstance);
 	} else {
@@ -2368,7 +2354,6 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush(true);
-	checkDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance);
 	if (instanceCount > 1 || firstInstance != 0) {
 		d3dDrawIndexedInstanced(context, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 	} else {
@@ -2376,14 +2361,6 @@ export function drawIndexed(
 	}
 }
 
-function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
-	if (vertexOffset == 0 && firstInstance == 0) { return; }
-	const p = pipelineRecords.slotIndex(bound.pipeline);
-	if (firstInstance != 0 && pipelines[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines[p].label), firstInstance)); }
-	if (vertexOffset != 0 && pipelines[p].readsVertexIndex) {
-		stop(vertexOffsetRefusal(call, labelOf(pipelines[p].label), vertexMember, vertexOffset));
-	}
-}
 
 function flush(indexed: boolean): void {
 	const p = pipelineRecords.slotIndex(bound.pipeline);

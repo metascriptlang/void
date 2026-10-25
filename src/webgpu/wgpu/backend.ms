@@ -65,8 +65,6 @@ import {
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	featureBit,
-	firstInstanceRefusal,
-	vertexOffsetRefusal,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 	labelText,
@@ -80,8 +78,6 @@ import {
 	addressesBinding,
 	checkedBindGroupSet,
 	checkedComputeModule,
-	checkedComputePipeline,
-	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -469,8 +465,6 @@ struct ShaderBinding {
 }
 
 struct ShaderSlot {
-	readsInstanceIndex: boolean;
-	readsVertexIndex: boolean;
 	vertex: Ptr<WgModuleImpl>;
 	fragment: Ptr<WgModuleImpl>;
 	compute: Ptr<WgModuleImpl>;
@@ -485,9 +479,6 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
-	label: string | null;
-	readsInstanceIndex: boolean;
-	readsVertexIndex: boolean;
 	shader: uint32;
 	native: Ptr<WgPipelineImpl>;
 	stripIndexFormat: int32;
@@ -1382,8 +1373,6 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 	if (uniformLayout == null || slot.groupLayouts[GPU_RESOURCE_GROUP] == null) {
 		stop(`wgpuDeviceCreateBindGroupLayout failed for ${labelOf(descriptor.label)}`);
 	}
-	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
-	slot.readsVertexIndex = descriptor.readsVertexIndex;
 	put(shaders, id, slot);
 }
 
@@ -1481,9 +1470,6 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	}
 	const slot: PipelineSlot = {
 		shader: descriptor.vertex.module.id,
-		label: descriptor.label,
-		readsInstanceIndex: shaders[s].readsInstanceIndex,
-		readsVertexIndex: shaders[s].readsVertexIndex,
 		native: native,
 		stripIndexFormat: stripIndexFormat,
 		strip: topology == TOPOLOGY_LINE_STRIP || topology == TOPOLOGY_TRIANGLE_STRIP,
@@ -1800,7 +1786,6 @@ export function endPass(): void {
 
 @inline export function setPipeline(pipeline: GPURenderPipeline): void {
 	const p = pipelineRecords.slotIndex(pipeline.id);
-	checkedRenderPassPipeline(pipeline.id, pipelines[p].compute);
 	wgSetPipeline(pipelines[p].native);
 	pass.pipeline = pipeline.id;
 }
@@ -1872,14 +1857,6 @@ export function setStencilReference(reference: uint32): void {
 	wgSetStencilReference(reference);
 }
 
-function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
-	if (vertexOffset == 0 && firstInstance == 0) { return; }
-	const p = pipelineRecords.slotIndex(pass.pipeline);
-	if (firstInstance != 0 && pipelines[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines[p].label), firstInstance)); }
-	if (vertexOffset != 0 && pipelines[p].readsVertexIndex) {
-		stop(vertexOffsetRefusal(call, labelOf(pipelines[p].label), vertexMember, vertexOffset));
-	}
-}
 
 @inline export function draw(
 	vertexCount: int32,
@@ -1887,7 +1864,6 @@ function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int3
 	firstVertex: int32,
 	firstInstance: int32,
 ): void {
-	checkDrawOffsets("draw", "firstVertex", firstVertex, firstInstance);
 	wgDraw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -1898,7 +1874,6 @@ function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int3
 	baseVertex: int32,
 	firstInstance: int32,
 ): void {
-	checkDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance);
 	const strip = pipelines[pipelineRecords.slotIndex(pass.pipeline)].stripIndexFormat;
 	checkedStripDraw(pipelines[pipelineRecords.slotIndex(pass.pipeline)].strip, strip == pass.indexFormat);
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
@@ -2067,7 +2042,6 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
 	const p = pipelineRecords.slotIndex(pipeline.id);
-	checkedComputePipeline(pipeline.id, pipelines[p].compute);
 	wgSetComputePipeline(pipelines[p].native);
 	computeBound.pipeline = pipeline.id;
 }

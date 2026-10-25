@@ -84,8 +84,10 @@ import {
 	checkedBeginPass,
 	checkedBindGroupIndex,
 	checkedBuffer,
+	checkedComputePipeline,
 	checkedCreateEncoder,
 	checkedDispatch,
+	checkedDrawOffsets,
 	checkedDrawState,
 	checkedEndOcclusion,
 	checkedEndPass,
@@ -98,6 +100,7 @@ import {
 	checkedPushGroup,
 	checkedQuerySet,
 	checkedRenderPass,
+	checkedRenderPassPipeline,
 	checkedRenderPipeline,
 	checkedSampler,
 	checkedShaderModule,
@@ -213,22 +216,33 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createShaderModule(this self: GPUDevice, descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	checkedShaderModule(descriptor, cachedLimits());
 	const id = allocate(shaderRecords);
-	store(shaderRecords, { id: id });
+	store(shaderRecords, {
+		id: id,
+		compute: descriptor.computeCode != "" || descriptor.computeBytecode.length > 0,
+		readsInstanceIndex: descriptor.readsInstanceIndex,
+		readsVertexIndex: descriptor.readsVertexIndex,
+	});
 	backend.createShaderModule(id, descriptor);
 	return { id: id };
 }
 
 @inline export function createRenderPipeline(this self: GPUDevice, descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
 	checkedRenderPipeline(descriptor);
+	const shader = shaderRecords.record(descriptor.vertex.module.id);
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, { id: id });
+	store(pipelineRecords, {
+		id: id,
+		label: descriptor.label,
+		readsInstanceIndex: shader.readsInstanceIndex,
+		readsVertexIndex: shader.readsVertexIndex,
+	});
 	backend.createRenderPipeline(id, resolvedRenderPipeline(descriptor));
 	return { id: id };
 }
 
 @inline export function createComputePipeline(this self: GPUDevice, descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, { id: id });
+	store(pipelineRecords, { id: id, label: descriptor.label, compute: true });
 	backend.createComputePipeline(id, descriptor);
 	return { id: id };
 }
@@ -392,7 +406,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function setPipeline(this self: GPUComputePassEncoder, pipeline: GPUComputePipeline): void {
 	checkedInPass(PASS_COMPUTE, "setPipeline");
-	markPipelineSet();
+	checkedComputePipeline(pipeline.id, pipelineRecords.record(pipeline.id).compute);
+	markPipelineSet(pipeline.id);
 	backend.setComputePipeline(pipeline);
 }
 
@@ -562,7 +577,8 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setPipeline(this self: GPURenderPassEncoder, pipeline: GPURenderPipeline): void {
 	checkedInPass(PASS_RENDER, "setPipeline");
-	markPipelineSet();
+	checkedRenderPassPipeline(pipeline.id, pipelineRecords.record(pipeline.id).compute);
+	markPipelineSet(pipeline.id);
 	backend.setPipeline(pipeline);
 }
 
@@ -615,6 +631,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 @inline export function draw(this self: GPURenderPassEncoder, vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	checkedInPass(PASS_RENDER, "draw");
 	checkedDrawState("draw", false);
+	if (instanceCount != 0) { checkedDrawOffsets("draw", "firstVertex", firstVertex, firstInstance); }
 	backend.draw(vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -628,6 +645,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 ): void {
 	checkedInPass(PASS_RENDER, "drawIndexed");
 	checkedDrawState("drawIndexed", true);
+	if (instanceCount != 0) { checkedDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance); }
 	backend.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 

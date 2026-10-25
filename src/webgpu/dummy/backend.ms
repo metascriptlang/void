@@ -78,10 +78,7 @@ import {
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	featureBit,
-	firstInstanceRefusal,
 	linearFilter,
-	vertexOffsetRefusal,
-	labelOf,
 } from "../types.ms";
 import {
 	cachedCanvas,
@@ -91,8 +88,6 @@ import {
 	addressesBinding,
 	checkedBindGroupSet,
 	checkedComputeModule,
-	checkedComputePipeline,
-	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -179,8 +174,6 @@ struct ShaderBinding {
 struct ShaderSlot {
 	compute: boolean;
 	computeEntry: string;
-	readsInstanceIndex: boolean;
-	readsVertexIndex: boolean;
 	uniforms: ShaderBinding[8];
 	uniformCount: int32;
 	resources: ShaderBinding[24];
@@ -188,11 +181,8 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
-	label: string | null;
 	shader: uint32;
 	compute: boolean;
-	readsInstanceIndex: boolean;
-	readsVertexIndex: boolean;
 	primitive: int32;
 	stripIndexSize: int32;
 	strides: int32[2];
@@ -529,8 +519,6 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 		slot.computeEntry = descriptor.computeEntryPoint == "" ? "main" : descriptor.computeEntryPoint;
 	}
 	slot.compute = compute;
-	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
-	slot.readsVertexIndex = descriptor.readsVertexIndex;
 	put(shaders, id, slot);
 }
 
@@ -597,10 +585,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	const s = shaderRecords.slotIndex(descriptor.vertex.module.id);
 	checkedRenderModule(shaders[s].compute);
 	let slot: PipelineSlot = {
-		label: descriptor.label,
 		shader: descriptor.vertex.module.id,
-		readsInstanceIndex: shaders[s].readsInstanceIndex,
-		readsVertexIndex: shaders[s].readsVertexIndex,
 	};
 	describeVertexLayout(descriptor, slot);
 	describeColorTargets(descriptor);
@@ -815,7 +800,6 @@ export function endPass(): void {
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
-	checkedRenderPassPipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	bound.pipeline = pipeline.id;
 }
 
@@ -858,7 +842,6 @@ export function setStencilReference(reference: uint32): void {}
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	checkDrawOffsets("draw", "firstVertex", firstVertex, firstInstance);
 }
 
 export function drawIndexed(
@@ -870,22 +853,12 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	checkDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance);
 	const p = pipelineRecords.slotIndex(bound.pipeline);
 	const primitive = pipelines[p].primitive;
 	const strip = primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP;
 	checkedStripDraw(strip, pipelines[p].stripIndexSize == bound.indexSize);
 }
 
-function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
-	if (vertexOffset == 0 && firstInstance == 0) { return; }
-	const p = pipelineRecords.slotIndex(bound.pipeline);
-	const label = labelOf(pipelines[p].label);
-	if (firstInstance != 0 && pipelines[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, label, firstInstance)); }
-	if (vertexOffset != 0 && pipelines[p].readsVertexIndex) {
-		stop(vertexOffsetRefusal(call, label, vertexMember, vertexOffset));
-	}
-}
 
 function flush(): void {
 	const p = pipelineRecords.slotIndex(bound.pipeline);
@@ -1035,7 +1008,7 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 	const s = shaderRecords.slotIndex(descriptor.compute.module.id);
 	const entry = descriptor.compute.entryPoint == "" ? "main" : descriptor.compute.entryPoint;
 	checkedComputeModule(shaders[s].compute, entry, shaders[s].computeEntry);
-	const slot: PipelineSlot = { label: descriptor.label, shader: descriptor.compute.module.id, compute: true };
+	const slot: PipelineSlot = { shader: descriptor.compute.module.id, compute: true };
 	put(pipelines, id, slot);
 }
 
@@ -1053,7 +1026,6 @@ export function beginComputePass(passEncoder: GPUCommandEncoder, descriptor: GPU
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	checkedComputePipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	computeBound.pipeline = pipeline.id;
 }
 

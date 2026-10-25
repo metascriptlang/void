@@ -81,7 +81,6 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
-	firstInstanceRefusal,
 	labelText,
 	labelOf,
 } from "../types.ms";
@@ -94,8 +93,6 @@ import {
 	addressesBinding,
 	checkedBindGroupSet,
 	checkedComputeModule,
-	checkedComputePipeline,
-	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -390,7 +387,6 @@ struct NativeBinding {
 }
 
 struct ShaderSlot {
-	readsInstanceIndex: boolean;
 	vertexLibrary: Ptr<MtlLibraryImpl>;
 	fragmentLibrary: Ptr<MtlLibraryImpl>;
 	vertex: Ptr<MtlFunctionImpl>;
@@ -407,8 +403,6 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
-	label: string | null;
-	readsInstanceIndex: boolean;
 	shader: uint32;
 	state: Ptr<MtlPipelineImpl>;
 	computeState: Ptr<MtlComputePipelineImpl>;
@@ -1340,7 +1334,6 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 		slot.vertex = entryFunction(slot.vertexLibrary, descriptor.vertexEntryPoint, "vertex", descriptor.label);
 		slot.fragment = entryFunction(slot.fragmentLibrary, descriptor.fragmentEntryPoint, "fragment", descriptor.label);
 	}
-	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
 	put(shaders, id, slot);
 }
 
@@ -1404,7 +1397,7 @@ function checkAttribute(shader: int32, location: int32): void {
 export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDescriptor): void {
 	const s = shaderRecords.slotIndex(descriptor.vertex.module.id);
 	checkedRenderModule(shaders[s].compute != null);
-	let slot: PipelineSlot = { shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders[s].readsInstanceIndex };
+	let slot: PipelineSlot = { shader: descriptor.vertex.module.id };
 	mtlPipelineReset();
 	mtlPipelineLabel(labelText(descriptor.label));
 	describeVertexLayout(s, descriptor, slot);
@@ -1713,7 +1706,6 @@ export function endPass(): void {
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
-	checkedRenderPassPipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	bound.pipeline = pipeline.id;
 }
 
@@ -1772,7 +1764,6 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	checkFirstInstance("draw", firstInstance);
 	mtlDraw(encoder, pipelines[pipelineRecords.slotIndex(bound.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
@@ -1785,7 +1776,6 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	checkFirstInstance("drawIndexed", firstInstance);
 	const p = pipelineRecords.slotIndex(bound.pipeline);
 	const primitive = pipelines[p].primitive;
 	checkedStripDraw(primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP, pipelines[p].stripIndexType == bound.indexType);
@@ -1803,11 +1793,6 @@ export function drawIndexed(
 	);
 }
 
-function checkFirstInstance(call: string, firstInstance: int32): void {
-	if (firstInstance == 0) { return; }
-	const p = pipelineRecords.slotIndex(bound.pipeline);
-	if (pipelines[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines[p].label), firstInstance)); }
-}
 
 function flush(): void {
 	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(); }
@@ -2130,7 +2115,6 @@ export function beginComputePass(passEncoder: GPUCommandEncoder, descriptor: GPU
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	checkedComputePipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }

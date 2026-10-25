@@ -35,6 +35,7 @@ import {
 	computePipelineRefusal,
 	createRefusal,
 	dispatchRefusal,
+	drawOffsetRefusal,
 	drawRefusal,
 	endOcclusionRefusal,
 	entryBytes,
@@ -78,7 +79,7 @@ import {
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
-import { BufferRecord } from "../webgpu/pool";
+import { BufferRecord, PipelineRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -259,6 +260,16 @@ test "a frame writes each buffer's bytes once, appending after its last write, w
 	assert writeBufferRefusal(written(MAP_READ | COPY_DST, 3, 16), 8, 4, 3) == rewrite;
 	assert writeBufferRefusal(written(STORAGE | COPY_DST, 3, 16), 16, 4, 3) == "";
 	assert writeBufferRefusal(written(STORAGE | COPY_DST, 2, 16), 0, 4, 3) == "";
+}
+
+test "a draw refuses firstInstance and firstVertex or baseVertex only where the vertex stage reads their index" {
+	const reads: PipelineRecord = { id: 3, label: "quad", readsInstanceIndex: true, readsVertexIndex: true };
+	const plain: PipelineRecord = { id: 4, label: "plain" };
+	assert drawOffsetRefusal(reads, "draw", "firstVertex", 0, 0) == "";
+	assert drawOffsetRefusal(plain, "draw", "firstVertex", 6, 2) == "";
+	assert drawOffsetRefusal(reads, "draw", "firstVertex", 0, 2) == "draw with firstInstance 2 on pipeline 'quad': firstInstance must be 0 because the vertex stage reads instance_index";
+	assert drawOffsetRefusal(reads, "draw", "firstVertex", 6, 0) == "draw with firstVertex 6 on pipeline 'quad': firstVertex must be 0 because the vertex stage reads vertex_index";
+	assert drawOffsetRefusal(reads, "drawIndexed", "baseVertex", -3, 0) == "drawIndexed with baseVertex -3 on pipeline 'quad': baseVertex must be 0 because the vertex stage reads vertex_index";
 }
 
 test "a texture size is positive and inside the backend's limits for its dimension" {

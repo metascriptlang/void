@@ -147,6 +147,17 @@ export struct ViewRecord {
 export struct PipelineRecord {
 	id: uint32;
 	layouts: uint32[2];
+	label: string | null;
+	compute: boolean;
+	readsInstanceIndex: boolean;
+	readsVertexIndex: boolean;
+}
+
+export struct ShaderRecord {
+	id: uint32;
+	compute: boolean;
+	readsInstanceIndex: boolean;
+	readsVertexIndex: boolean;
 }
 
 export struct LayoutRecord {
@@ -161,7 +172,7 @@ export let bufferRecords: Pool<BufferRecord> = newPool<BufferRecord>("", "GPUBuf
 export let textureRecords: Pool<TextureRecord> = newPool<TextureRecord>("", "GPUTexture", "texture", { id: 0 });
 export let viewRecords: Pool<ViewRecord> = newPool<ViewRecord>("", "GPUTextureView", "view", { id: 0 });
 export let samplerRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUSampler", "sampler", { id: 0 });
-export let shaderRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUShaderModule", "shader module", { id: 0 });
+export let shaderRecords: Pool<ShaderRecord> = newPool<ShaderRecord>("", "GPUShaderModule", "shader module", { id: 0 });
 export let pipelineRecords: Pool<PipelineRecord> = newPool<PipelineRecord>("", "GPURenderPipeline", "render or compute pipeline", { id: 0 });
 export let layoutRecords: Pool<LayoutRecord> = newPool<LayoutRecord>("", "GPUBindGroupLayout", "bind group layout", { id: 0 });
 export let bindGroupRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUBindGroup", "bind group", { id: 0 });

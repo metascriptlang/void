@@ -27,6 +27,8 @@ import {
 	checkedTexelCopyRegion,
 	cubeViewRefusal,
 	depthSliceRefusal,
+	firstInstanceRefusal,
+	labelOf,
 	noDepthSliceRefusal,
 	passExtentRefusal,
 	refuse,
@@ -34,11 +36,12 @@ import {
 	singleSubresourceRefusal,
 	samplerMaxLod,
 	stop,
+	vertexOffsetRefusal,
 	view3dRefusal,
 	viewLayersRefusal,
 	viewMipsRefusal,
 } from "./types.ms";
-import { BufferRecord, TextureRecord, ViewRecord, bufferRecords } from "./pool.ms";
+import { BufferRecord, PipelineRecord, TextureRecord, ViewRecord, bufferRecords, pipelineRecords, record } from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -186,6 +189,7 @@ let encoder: EncoderState = { open: false };
 let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
 let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
 let frame: int64 = 0;
+let boundPipeline: uint32 = 0;
 
 @inline export function occlusionSetId(): uint32 { return encoder.occlusionSet; }
 @inline export function occlusionQueryIndex(): int32 { return encoder.occlusionIndex; }
@@ -215,7 +219,10 @@ export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextu
 	canvas = { format: colorFormat, depthFormat: depthFormat, sampleCount: sampleCount == 0 ? 1 : sampleCount };
 }
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
-export function markPipelineSet(): void { encoder.markPipeline(); }
+export function markPipelineSet(pipeline: uint32): void {
+	encoder.markPipeline();
+	boundPipeline = pipeline;
+}
 export function markIndexSet(): void { encoder.markIndexBuffer(); }
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
 export function checkedDrawState(call: string, indexed: boolean): void { refuse(encoder.drawRefusal(call, indexed)); }
@@ -485,6 +492,16 @@ export function computePipelineRefusal(pipeline: uint32, isCompute: boolean): st
 
 export function renderPassPipelineRefusal(pipeline: uint32, isCompute: boolean): string {
 	return isCompute ? `GPUPipeline ${pipeline} is a compute pipeline: setPipeline on a render pass takes a render pipeline` : "";
+}
+
+export function drawOffsetRefusal(pipeline: PipelineRecord, call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): string {
+	if (firstInstance != 0 && pipeline.readsInstanceIndex) { return firstInstanceRefusal(call, labelOf(pipeline.label), firstInstance); }
+	if (vertexOffset != 0 && pipeline.readsVertexIndex) { return vertexOffsetRefusal(call, labelOf(pipeline.label), vertexMember, vertexOffset); }
+	return "";
+}
+
+export function checkedDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
+	refuse(drawOffsetRefusal(pipelineRecords.record(boundPipeline), call, vertexMember, vertexOffset, firstInstance));
 }
 
 // `matches` is whether the pipeline's strip index format is the bound index format; none never matches.
