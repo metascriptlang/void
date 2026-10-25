@@ -697,3 +697,43 @@ Not covered:
 - **Metal:** another machine and another GO.
 - **Particles and module scenes:** `benchParticles.ms` is on main's tip only, and TextEmoji,
   TextOutline and TextSdf need module defines; `AB_SCENES` can name them but the build passes none.
+
+### 2026-10-26, the Mac's reuse series has started; what Windows reads now
+
+The series runs in lanes off this branch and merges back in steps; this section says when it is
+done. Until then `src/webgpu/{device,validate,pool,types}.ms` and the five `backend.ms` move under
+you, so Vulkan's `backend.ms` waits as agreed. In order: argument-only checks into `device.ms`;
+the view-range resolve, pass extent and render-pass attachment checks into `validate.ms`; one id
+and one common record per resource in `pool.ms`/`device.ms` (sokol's `_sg_buffer_common_t`
+`:6643`), so `liveCounts`, the `*Alive` functions, the destroy tail and the shutdown loop exist
+once; the checks that read a resource's record; one bound-state struct and reflection lookup;
+one `formatInfo` and enum table (`types.ms`), which `vulkan/conv.ms:88` should import instead of
+being a sixth copy.
+
+Where backends disagree on what a program may do, the series applies WebGPU's rule, or sokol's
+where WebGPU has none, on every backend: `setPipeline` refuses a compute pipeline in a render
+pass on D3D11 too; the storage-texture format must match the shader on Metal and D3D11 too;
+blending an integer format is refused everywhere; `writeBuffer`'s offset is a multiple of 4 on
+Metal too. Each lands with its pin; a D3D11 or GL red on WARP after a merge is most likely one of
+these, and its message names the rule.
+
+`scripts/gate.sh` section 1 now runs `msc check src/examples/mainSokol2d.ms` for every backend the
+host does not run (about 15 s), so a function one backend lacks is red on the Mac and on Windows
+alike.
+
+For Windows, found by the audit and not the Mac's to change:
+- `vulkan.c:996` wraps the generation with `& SLOT_MASK` instead of retiring the slot at the wrap
+  (`pool.ms` retires it), so an id 65,536 reuses old can name a live object. `tableDrain`
+  (`:1014`) frees the table and restarts every generation, the stale-id-after-loss bug
+  `bd73492f` fixed in `pool.ms`. Finding a free slot is a linear scan.
+- The C table wraps ids that `resources.ms` wraps again in `pool.ms`: a third id table. The other
+  four C files return raw handles and keep no slots.
+- Vulkan reports errors as `Result` (`frame.ms`, `pass.ms`, `memory.ms`) where every other backend
+  stops, and `pass.ms:113` adds a stop that returns `void`. `resources.ms` restates the stencil
+  message of `checkedDepthTexelCopy` (`types.ms`) instead of calling it.
+- Frame-path work that only a Windows probe can justify (`docs/GPU.md` "Beyond sokol on the frame
+  path": each is built once a probe shows its cost): GL re-uploads every uniform block on every
+  dirty apply with no compare (`gl/backend.ms` `oglUniform4fv`); GL rebinds storage buffers and
+  images and detaches, re-attaches and checks its framebuffer on every pass, not only on a change;
+  D3D11 compute clears and rebinds every view (`d3dCsClearViews`); D3D11 creates and releases 3D
+  slice views every pass; D3D11 calls `ClearState` at every pass end.
