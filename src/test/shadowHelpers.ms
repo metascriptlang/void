@@ -6,9 +6,9 @@ import {
 	SHADOW_CASCADE_FILTER,
 	SHADOW_SPOT_BASE,
 	SHADOW_SPOT_BIAS,
-	SHADOW_POINT_BASE,
-	SHADOW_POINT_BIAS,
-	SHADOW_POINT_POSITION,
+	SHADOW_CUBE_BASE,
+	SHADOW_CUBE_BIAS,
+	SHADOW_CUBE_POSITION,
 } from "../void3d/gpu3d";
 import { ShadowParams } from "../void3d/shader3d";
 
@@ -37,9 +37,9 @@ export function oneCascade(
 		cascadeFilter: NONE,
 		spotMatrix: spotMatrix,
 		spotShadow: vec4f(spot.x, spot.y, size, 0.0),
-		pointMatrices: [ZERO, ZERO, ZERO, ZERO, ZERO, ZERO],
-		pointShadow: NONE,
-		pointLight: NONE,
+		cubeMatrices: [ZERO, ZERO, ZERO, ZERO, ZERO, ZERO],
+		cubeShadow: NONE,
+		cubeLight: NONE,
 	};
 }
 
@@ -63,12 +63,12 @@ export function shadowParamsOf(values: Vec<float32>): ShadowParams {
 		cascadeFilter: quadAt(values, SHADOW_CASCADE_FILTER),
 		spotMatrix: matrixAt(values, SHADOW_SPOT_BASE),
 		spotShadow: quadAt(values, SHADOW_SPOT_BIAS),
-		pointMatrices: [
-			matrixAt(values, SHADOW_POINT_BASE), matrixAt(values, SHADOW_POINT_BASE + 16),
-			matrixAt(values, SHADOW_POINT_BASE + 32), matrixAt(values, SHADOW_POINT_BASE + 48),
-			matrixAt(values, SHADOW_POINT_BASE + 64), matrixAt(values, SHADOW_POINT_BASE + 80),
+		cubeMatrices: [
+			matrixAt(values, SHADOW_CUBE_BASE), matrixAt(values, SHADOW_CUBE_BASE + 16),
+			matrixAt(values, SHADOW_CUBE_BASE + 32), matrixAt(values, SHADOW_CUBE_BASE + 48),
+			matrixAt(values, SHADOW_CUBE_BASE + 64), matrixAt(values, SHADOW_CUBE_BASE + 80),
 		],
-		pointShadow: quadAt(values, SHADOW_POINT_BIAS),
-		pointLight: quadAt(values, SHADOW_POINT_POSITION),
+		cubeShadow: quadAt(values, SHADOW_CUBE_BIAS),
+		cubeLight: quadAt(values, SHADOW_CUBE_POSITION),
 	};
 }

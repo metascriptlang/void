@@ -187,7 +187,7 @@ function bindingsAt(
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(texture(depth)),
 		spotShadowSampler: { nearest: true },
-		pointShadowMap: oneLayer(texture(depth)),
+		cubeShadowMap: oneLayer(texture(depth)),
 		baseTexture: texture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: texture(1.0),

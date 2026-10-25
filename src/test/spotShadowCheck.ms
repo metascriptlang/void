@@ -23,15 +23,15 @@ import {
 	SHADOW_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 	LIGHT_RECORD_COLOR,
-	LIGHT_RECORD_LENGTH,
 	LIGHT_RECORD_SHAPE,
+	LIGHT_SPOT_CASTER,
+	LIGHT_CUBE_CASTER,
 	VERTEX_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { CameraView } from "../void3d/camera";
 import {
 	SpotShadowError,
-	shadowedSpotCount,
-	firstShadowedSpot,
+	spotCaster,
 	spotShadowView,
 } from "../void3d/spotShadow";
 import {
@@ -151,24 +151,32 @@ test "a spot shadow's camera takes near range/20, far range and the full angle a
 	assert near(radial / edge.w, 1.0, 1e-5);
 }
 
-test "the shadowing spot is the slot that carries the flag, with its full angle beside the cone" {
-	const lit: Vec<float32> = downSpot(true);
-	assert shadowedSpotCount(lit) == 1 && firstShadowedSpot(lit) == 0;
-	assert lit[CONE + 2] == 1.0;
-	assert near(lit[CONE + 3], RIGHT_ANGLE);
-	const plain: Vec<float32> = downSpot(false);
-	assert shadowedSpotCount(plain) == 0 && firstShadowedSpot(plain) == -1;
-	assert plain[CONE + 2] == 0.0;
+function casterOf(values: Vec<float32>): int32 {
+	const caster: Result<int32, SpotShadowError> = spotCaster(values);
+	if (!caster.ok) { unreachable; }
+	return caster.value;
 }
 
-test "a rectangle's right axis in the cone slot's third float is not a shadow flag" {
+test "the light block's header names the casting spot, with its full angle beside the cone" {
+	const lit: Vec<float32> = downSpot(true);
+	assert lit[LIGHT_SPOT_CASTER] == 1.0 && casterOf(lit) == 0;
+	assert near(lit[CONE + 3], RIGHT_ANGLE);
+	const plain: Vec<float32> = downSpot(false);
+	assert plain[LIGHT_SPOT_CASTER] == 0.0 && casterOf(plain) == -1;
+}
+
+test "a header that names no spot record of the block is a named error" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	defer closeScene(scene);
 	place(scene, otherOf(LightKind.Rectangle, false), vec3(0, 3, 0), axisAngle(vec3(0, 1, 0), 0.7));
 	let values = block();
 	assert errorOf(collectLights(scene, values)) === null;
-	assert values[CONE + 2] != 0.0;
-	assert shadowedSpotCount(values) == 0 && firstShadowedSpot(values) == -1;
+	const named: float32[] = [1.0, 2.0, 0.5, -1.0, NaN as float32];
+	for (const v of named) {
+		values[LIGHT_SPOT_CASTER] = v;
+		const caster: Result<int32, SpotShadowError> = spotCaster(values);
+		assert !caster.ok && caster.error == SpotShadowError.BadCaster;
+	}
 }
 
 test "a spot slot that cannot make a camera is a named error, not a guess" {
@@ -178,24 +186,22 @@ test "a spot slot that cannot make a camera is a named error, not a guess" {
 	assert !view.ok && view.error == SpotShadowError.BadSpot;
 }
 
-test "two shadowing spots, or a shadowed rectangle, capsule or sun, are refused by name" {
+test "two shadowing spots, or a shadowed sun, are refused by name" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	defer closeScene(scene);
-	place(scene, spotOf(8, true), vec3(0, 4, 0), DOWN);
 	place(scene, spotOf(8, false), vec3(1, 4, 0), DOWN);
+	place(scene, spotOf(8, true), vec3(0, 4, 0), DOWN);
+	place(scene, otherOf(LightKind.Capsule, true), vec3(0, 3, 0), identityQuat());
 	let values = block();
 	assert errorOf(collectLights(scene, values)) === null;
+	assert values[LIGHT_SPOT_CASTER] == 2.0 && values[LIGHT_CUBE_CASTER] == 3.0;
 	place(scene, spotOf(8, true), vec3(2, 4, 0), DOWN);
 	assert errorOf(collectLights(scene, values)) == LightError.TooManyShadowedSpots;
-	const kinds: Vec<LightKind> =
-		[LightKind.Rectangle, LightKind.Capsule, LightKind.Directional];
-	for (const kind of kinds) {
-		const other = Scene3D.create(DrawContext.withUniformCapacity(0));
-		defer closeScene(other);
-		place(other, otherOf(kind, true), vec3(0, 3, 0), identityQuat());
-		let again = block();
-		assert errorOf(collectLights(other, again)) == LightError.UnshadowableLight;
-	}
+	const other = Scene3D.create(DrawContext.withUniformCapacity(0));
+	defer closeScene(other);
+	place(other, otherOf(LightKind.Directional, true), vec3(0, 3, 0), identityQuat());
+	let again = block();
+	assert errorOf(collectLights(other, again)) == LightError.UnshadowableLight;
 }
 
 function depthTexture(depth: float32): Texture2d {
@@ -209,8 +215,8 @@ const NO_MAP: Mat4x4f = mat4x4f(
 const NONE: Vec4f = vec4f(0.0, 0.0, 0.0, 0.0);
 
 function spotLights(values: Vec<float32>): LitBindings {
-	const lights: SceneLights =
-		sceneLights(vec4f(0.0, 0.0, 0.0, 1.0), NONE, NONE, recordsOf(values));
+	const lights: SceneLights = sceneLights(vec4f(0.0, 0.0, 0.0, values[LIGHT_SPOT_CASTER]), NONE,
+		vec4f(0.0, 0.0, 0.0, values[LIGHT_CUBE_CASTER]), recordsOf(values));
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
@@ -234,14 +240,14 @@ function spotLights(values: Vec<float32>): LitBindings {
 			cascadeMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP], cascadeFar: NONE,
 			cascadeInfo: NONE, cascadeView: NONE, cascadeFilter: NONE, spotMatrix: NO_MAP,
 			spotShadow: NONE,
-			pointMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP], pointShadow: NONE,
-			pointLight: NONE,
+			cubeMatrices: [NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP, NO_MAP], cubeShadow: NONE,
+			cubeLight: NONE,
 		},
 		shadowMap: oneLayer(depthTexture(1.0)),
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(depthTexture(1.0)),
 		spotShadowSampler: { nearest: true },
-		pointShadowMap: oneLayer(depthTexture(1.0)),
+		cubeShadowMap: oneLayer(depthTexture(1.0)),
 		baseTexture: depthTexture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: depthTexture(1.0),
@@ -334,10 +340,10 @@ test "a block half nobody wrote shades nothing, whatever its map holds" {
 }
 
 function firstShadowAt(position: Vec3f, b: LitBindings, key: LitKey): float32 {
-	return recordShadowAt(position, b, key, litTexelOf(b, 0, 2), litTexelOf(b, 0, 3));
+	return recordShadowAt(position, b, key, 0);
 }
 
-test "only the flagged spot record reads the spot map, and only in a shadowed program" {
+test "only the record the header names reads the spot map, and only in a shadowed program" {
 	const view: CameraView = viewOf(downSpot(true));
 	const blocked: LitBindings = spotMapped(spotLights(downSpot(true)), view, 0.0, 0.0, 1.0);
 	const under: Vec3f = vec3f(0.0, 2.0, 0.0);
@@ -345,11 +351,16 @@ test "only the flagged spot record reads the spot map, and only in a shadowed pr
 	assert firstShadowAt(under, blocked, { shadowed: false }) == 1.0;
 	const unflagged: LitBindings = spotMapped(spotLights(downSpot(false)), view, 0.0, 0.0, 1.0);
 	assert firstShadowAt(under, unflagged, { shadowed: true }) == 1.0;
-	const point: LitBindings = {
+	assert recordShadowAt(under, blocked, { shadowed: true }, 1) == 1.0;
+	const cube: LitBindings = {
 		...blocked,
-		lightRecords: withTexel(blocked.lightRecords, 0, 2, NONE),
+		lightParams: {
+			...blocked.lightParams,
+			ambient: vec4f(0.0, 0.0, 0.0, 0.0),
+			dirColor: vec4f(0.0, 0.0, 0.0, 1.0),
+		},
 	};
-	assert firstShadowAt(under, point, { shadowed: true }) == 1.0;
+	assert firstShadowAt(under, cube, { shadowed: true }) == 1.0;
 }
 
 test "the sun and the spot read their own blocks and maps, each ignoring the other's" {
@@ -433,15 +444,12 @@ function refusalOf(lights: Vec<float32>, sun: boolean, spot: boolean): RendererE
 	return began.ok ? null : began.error;
 }
 
-test "a frame with two shadowing spot records is refused before it writes" {
+test "a frame whose header names no spot record is refused before it writes" {
 	let lights: Vec<float32> = downSpot(true);
-	for (let i = 0; i < LIGHT_RECORD_LENGTH; i++) {
-		lights.push(lights[LIGHT_UNIFORM_LENGTH + i]);
-	}
-	assert shadowedSpotCount(lights) == 2;
-	assert refusalOf(lights, true, true) == RendererError.TooManyShadowedSpots;
-	assert refusalOf(lights, false, true) == RendererError.TooManyShadowedSpots;
-	assert refusalOf(lights, false, false) == RendererError.TooManyShadowedSpots;
+	lights[LIGHT_SPOT_CASTER] = 2.0;
+	assert refusalOf(lights, true, true) == RendererError.BadShadowSpot;
+	assert refusalOf(lights, false, true) == RendererError.BadShadowSpot;
+	assert refusalOf(lights, false, false) == RendererError.BadShadowSpot;
 }
 
 test "a shadowing spot with no range is refused by the frame, not drawn from a broken camera" {

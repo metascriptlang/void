@@ -60,7 +60,7 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
 	SPOT_SHADOW_SAMPLER_SLOT,
-	POINT_SHADOW_VIEW_SLOT,
+	CUBE_SHADOW_VIEW_SLOT,
 	SHADOW_SCENE_VIEWS,
 	SHADOW_SCENE_SAMPLERS,
 	ENV_SCENE_VIEWS,
@@ -907,7 +907,7 @@ test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot
 		assert sun == bit(samplers, SHADOW_SAMPLER_SLOT);
 		assert spot == bit(views, SPOT_SHADOW_VIEW_SLOT);
 		assert spot == bit(samplers, SPOT_SHADOW_SAMPLER_SLOT);
-		assert spot == bit(views, POINT_SHADOW_VIEW_SLOT);
+		assert spot == bit(views, CUBE_SHADOW_VIEW_SLOT);
 		assert uniformBlockLength(key, SHADOW_UNIFORM_SLOT) == (sun ? SHADOW_UNIFORM_LENGTH : 0);
 		if (sun) {
 			assert key.shadowed;
@@ -915,7 +915,7 @@ test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot
 		}
 	}
 	assert shadowedKeys > 0;
-	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6 && POINT_SHADOW_VIEW_SLOT == 12;
+	assert SHADOW_VIEW_SLOT == 4 && SPOT_SHADOW_VIEW_SLOT == 6 && CUBE_SHADOW_VIEW_SLOT == 12;
 	assert SHADOW_SAMPLER_SLOT == 2 && SPOT_SHADOW_SAMPLER_SLOT == 3;
 }
 

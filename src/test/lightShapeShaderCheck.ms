@@ -283,7 +283,7 @@ function bindingsWith(
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(texture()),
 		spotShadowSampler: { nearest: true },
-		pointShadowMap: oneLayer(texture()),
+		cubeShadowMap: oneLayer(texture()),
 		baseTexture: texture(),
 		baseSampler: { nearest: true },
 		backTexture: texture(),

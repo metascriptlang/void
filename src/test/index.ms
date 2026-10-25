@@ -120,7 +120,7 @@ import "./gltfPbrSceneCheck";
 import "./lightShapeShaderCheck";
 import "./lightShapeSceneCheck";
 import "./spotShadowCheck";
-import "./pointShadowCheck";
+import "./cubeShadowCheck";
 import "./morphSkinSceneCheck";
 import "./lightShapeCheck";
 import "./morphGeometryCheck";

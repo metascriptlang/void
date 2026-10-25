@@ -83,7 +83,7 @@ function plainBindings(): LitBindings {
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(white()),
 		spotShadowSampler: { nearest: true },
-		pointShadowMap: oneLayer(white()),
+		cubeShadowMap: oneLayer(white()),
 		baseTexture: white(),
 		baseSampler: { nearest: true },
 		backTexture: white(),

@@ -11,23 +11,24 @@ import {
 } from "../void3d/scene";
 import { DrawContext, DrawItem } from "../void3d/draw";
 import {
-	SHADOW_POINT_BASE,
-	SHADOW_POINT_OPACITY,
-	SHADOW_POINT_POSITION,
-	SHADOW_POINT_FILTER,
+	SHADOW_CUBE_BASE,
+	SHADOW_CUBE_OPACITY,
+	SHADOW_CUBE_POSITION,
+	SHADOW_CUBE_FILTER,
 	LIGHT_UNIFORM_LENGTH,
 	LIGHT_RECORD_COLOR,
-	LIGHT_RECORD_LENGTH,
+	LIGHT_SPOT_CASTER,
+	LIGHT_CUBE_CASTER,
 	VERTEX_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { CameraView } from "../void3d/camera";
 import {
-	PointShadowError,
+	CubeShadowError,
 	POINT_SHADOW_NEAR,
-	shadowedPointCount,
-	firstShadowedPoint,
-	pointShadowViews,
-} from "../void3d/pointShadow";
+	RECTANGLE_SHADOW_NEAR,
+	cubeCaster,
+	cubeShadowViews,
+} from "../void3d/cubeShadow";
 import {
 	DirShadowMap,
 	ShadowError,
@@ -42,15 +43,14 @@ import {
 	RENDERER_UNIFORM_LENGTH,
 	beginFrame,
 	attachShadow,
-	attachPointShadow,
+	attachCubeShadow,
 } from "../void3d/renderer";
 import {
 	LitBindings,
 	LitKey,
-	pointFaceOf,
-	pointShadowAt,
+	cubeFaceOf,
+	cubeShadowAt,
 	recordShadowAt,
-	litTexelOf,
 } from "../void3d/shader3d";
 import { oneLayer, shadowParamsOf } from "./shadowHelpers";
 import { SceneLights, recordsOf, sceneLights } from "./lightHelpers";
@@ -74,23 +74,23 @@ function near(a: float32, b: float32, tolerance: float32 = 1e-4): boolean {
 	return Math.abs(a - b) <= tolerance;
 }
 
-function pointOf(shadows: boolean): LightInstance {
+function lightOf(kind: LightKind, shadows: boolean): LightInstance {
 	return {
-		kind: LightKind.Point, color: vec3(1, 1, 1), radius: RANGE, power: 1, priority: 0,
+		kind: kind, color: vec3(1, 1, 1), radius: RANGE, power: 1, priority: 0,
 		shape: {
-			angle: 0.0, verticalAngle: 0.0, falloff: 0.0, width: 0.0, height: 0.0, length: 0.0,
-			capsuleRadius: 0.0,
+			angle: 1.0, verticalAngle: 1.0, falloff: 0.0, width: 1.0, height: 1.0, length: 1.0,
+			capsuleRadius: 0.2,
 		},
 		shadows: shadows,
 	};
 }
 
-function collected(flags: Vec<boolean>): Result<Vec<float32>, LightError> {
+function collected(lights: Vec<LightInstance>): Result<Vec<float32>, LightError> {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	defer closeScene(scene);
-	for (const flag of flags) {
+	for (const light of lights) {
 		addLightNode(scene, scene.rootId(),
-			{ position: LIGHT_AT, rotation: identityQuat(), scale: UNIT }, pointOf(flag));
+			{ position: LIGHT_AT, rotation: identityQuat(), scale: UNIT }, light);
 	}
 	let values: Vec<float32> = [];
 	for (let i = 0; i < LIGHT_UNIFORM_LENGTH; i++) { values.push(0); }
@@ -99,14 +99,24 @@ function collected(flags: Vec<boolean>): Result<Vec<float32>, LightError> {
 	return Result.ok(move values);
 }
 
-function pointLights(shadows: boolean): Vec<float32> {
-	const values: Result<Vec<float32>, LightError> = collected([shadows]);
+function lightsOf(kind: LightKind, shadows: boolean): Vec<float32> {
+	const values: Result<Vec<float32>, LightError> = collected([lightOf(kind, shadows)]);
 	if (!values.ok) { unreachable; }
 	return values.value;
 }
 
+function pointLights(shadows: boolean): Vec<float32> {
+	return lightsOf(LightKind.Point, shadows);
+}
+
+function casterOf(values: Vec<float32>): int32 {
+	const caster: Result<int32, CubeShadowError> = cubeCaster(values);
+	if (!caster.ok) { unreachable; }
+	return caster.value;
+}
+
 function viewsOf(values: Vec<float32>): Vec<CameraView> {
-	const views: Result<Vec<CameraView>, PointShadowError> = pointShadowViews(values, 0);
+	const views: Result<Vec<CameraView>, CubeShadowError> = cubeShadowViews(values, 0);
 	if (!views.ok) { unreachable; }
 	return views.value;
 }
@@ -129,24 +139,55 @@ test "a shadowing point's six faces look down the axes from zNear to the range" 
 		const nearest: Vec3 = ndcOf(m, LIGHT_AT + axis.scaled(POINT_SHADOW_NEAR));
 		assert near(nearest.x, 0.0) && near(nearest.y, 0.0) && near(nearest.z, 0.0, 1e-3);
 		assert near(ndcOf(m, LIGHT_AT + axis.scaled(RANGE)).z, 1.0, 1e-5);
-		assert pointFaceOf(vec3f(axis.x, axis.y, axis.z)) == face;
+		assert cubeFaceOf(vec3f(axis.x, axis.y, axis.z)) == face;
 	}
 }
 
-test "the shadowing point is the flagged record, and a second one is refused by name" {
+test "the light block's header names the cube caster, and a second one is refused by name" {
 	const lit: Vec<float32> = pointLights(true);
-	assert shadowedPointCount(lit) == 1 && firstShadowedPoint(lit) == 0;
+	assert lit[LIGHT_CUBE_CASTER] == 1.0 && casterOf(lit) == 0;
 	const plain: Vec<float32> = pointLights(false);
-	assert shadowedPointCount(plain) == 0 && firstShadowedPoint(plain) == -1;
-	const two: Result<Vec<float32>, LightError> = collected([true, false, true]);
-	assert !two.ok && two.error == LightError.TooManyShadowedPoints;
+	assert plain[LIGHT_CUBE_CASTER] == 0.0 && casterOf(plain) == -1;
+	const second: Result<Vec<float32>, LightError> =
+		collected([lightOf(LightKind.Point, false), lightOf(LightKind.Capsule, true)]);
+	assert second.ok && second.value[LIGHT_CUBE_CASTER] == 2.0 && casterOf(second.value) == 1;
+	const kinds: Vec<LightKind> = [LightKind.Point, LightKind.Rectangle, LightKind.Capsule];
+	for (const kind of kinds) {
+		const two: Result<Vec<float32>, LightError> =
+			collected([lightOf(LightKind.Point, true), lightOf(kind, true)]);
+		assert !two.ok && two.error == LightError.TooManyCubeCasters;
+	}
+}
+
+test "a rectangle's faces start at RectangleShadowMap's 0.01 and a capsule's at its zNear" {
+	const rectangle: Vec<CameraView> = viewsOf(lightsOf(LightKind.Rectangle, true));
+	const capsule: Vec<CameraView> = viewsOf(lightsOf(LightKind.Capsule, true));
+	for (let face = 0; face < 6; face++) {
+		const axis: Vec3 = AXES[face];
+		const r: Mat4 = rectangle[face].viewProj;
+		assert near(ndcOf(r, LIGHT_AT + axis.scaled(RECTANGLE_SHADOW_NEAR)).z, 0.0, 1e-3);
+		assert near(ndcOf(r, LIGHT_AT + axis.scaled(RANGE)).z, 1.0, 1e-5);
+		const c: Mat4 = capsule[face].viewProj;
+		assert near(ndcOf(c, LIGHT_AT + axis.scaled(POINT_SHADOW_NEAR)).z, 0.0, 1e-3);
+		assert near(ndcOf(c, LIGHT_AT + axis.scaled(RANGE)).z, 1.0, 1e-5);
+	}
+}
+
+test "a header that names no point, rectangle or capsule record is a named error" {
+	let values: Vec<float32> = lightsOf(LightKind.Spot, false);
+	const named: float32[] = [1.0, 2.0, 0.5, -1.0, NaN as float32];
+	for (const v of named) {
+		values[LIGHT_CUBE_CASTER] = v;
+		const caster: Result<int32, CubeShadowError> = cubeCaster(values);
+		assert !caster.ok && caster.error == CubeShadowError.BadCaster;
+	}
 }
 
 test "a point whose range does not pass zNear is a named error, not a broken camera" {
 	let values: Vec<float32> = pointLights(true);
 	values[LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_COLOR + 3] = POINT_SHADOW_NEAR;
-	const views: Result<Vec<CameraView>, PointShadowError> = pointShadowViews(values, 0);
-	assert !views.ok && views.error == PointShadowError.BadRange;
+	const views: Result<Vec<CameraView>, CubeShadowError> = cubeShadowViews(values, 0);
+	assert !views.ok && views.error == CubeShadowError.BadRange;
 }
 
 function white(): Texture2d {
@@ -165,7 +206,7 @@ function faces(blocked: float32): Texture2dArray {
 
 function packed(values: Vec<float32>, opacity: float32, pcf: float32): Vec<float32> {
 	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
-	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.createPoint(context, 1);
+	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.createCube(context, 1);
 	if (!made.ok) { unreachable; }
 	let map: DirShadowMap = made.value;
 	if (pcf > 0.0) {
@@ -174,7 +215,7 @@ function packed(values: Vec<float32>, opacity: float32, pcf: float32): Vec<float
 	}
 	let clips: Vec<Mat4> = [];
 	for (const view of viewsOf(values)) { clips.push(view.viewProj); }
-	map.packPoint(clips, TOP_LEFT_MAP, LIGHT_AT, opacity);
+	map.packCube(clips, TOP_LEFT_MAP, LIGHT_AT, opacity);
 	let out: Vec<float32> = [];
 	for (const v of map.shadowValues) { out.push(v); }
 	return move out;
@@ -183,8 +224,8 @@ function packed(values: Vec<float32>, opacity: float32, pcf: float32): Vec<float
 function pointBindings(
 	values: Vec<float32>, opacity: float32, blocked: float32, pcf: float32 = 0.0,
 ): LitBindings {
-	const lights: SceneLights =
-		sceneLights(vec4f(0.0, 0.0, 0.0, 1.0), NONE, NONE, recordsOf(values));
+	const lights: SceneLights = sceneLights(vec4f(0.0, 0.0, 0.0, values[LIGHT_SPOT_CASTER]), NONE,
+		vec4f(0.0, 0.0, 0.0, values[LIGHT_CUBE_CASTER]), recordsOf(values));
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
@@ -209,7 +250,7 @@ function pointBindings(
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(white()),
 		spotShadowSampler: { nearest: true },
-		pointShadowMap: faces(blocked),
+		cubeShadowMap: faces(blocked),
 		baseTexture: white(),
 		baseSampler: { nearest: true },
 		backTexture: white(),
@@ -227,26 +268,32 @@ test "the lookup reads the layer of the face the receiver lies on, through the p
 	const values: Vec<float32> = pointLights(true);
 	const blocked: LitBindings = pointBindings(values, 1.0, 0.0);
 	const offset: Vec3f = vec3f(LIGHT_AT.x, LIGHT_AT.y, LIGHT_AT.z);
-	assert pointShadowAt(offset + vec3f(2.0, 0.3, -0.2), blocked) == 0.0;
-	assert pointShadowAt(offset + vec3f(-2.0, 0.3, -0.2), blocked) == 1.0;
-	assert pointShadowAt(offset + vec3f(0.3, 0.2, 2.0), blocked) == 1.0;
-	assert pointShadowAt(offset + vec3f(0.3, -2.0, 0.2), blocked) == 1.0;
-	assert near(pointShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 0.25, 0.0)),
+	assert cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), blocked) == 0.0;
+	assert cubeShadowAt(offset + vec3f(-2.0, 0.3, -0.2), blocked) == 1.0;
+	assert cubeShadowAt(offset + vec3f(0.3, 0.2, 2.0), blocked) == 1.0;
+	assert cubeShadowAt(offset + vec3f(0.3, -2.0, 0.2), blocked) == 1.0;
+	assert near(cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 0.25, 0.0)),
 		0.75);
-	assert pointShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 1.0, 1.0)) == 1.0;
+	assert cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 1.0, 1.0)) == 1.0;
 }
 
 function firstShadowAt(position: Vec3f, b: LitBindings, key: LitKey): float32 {
-	return recordShadowAt(position, b, key, litTexelOf(b, 0, 2), litTexelOf(b, 0, 3));
+	return recordShadowAt(position, b, key, 0);
 }
 
-test "only the flagged point record reads the point map, and only in a shadowed program" {
+test "only the record the header names reads the cube map, and only in a shadowed program" {
 	const at: Vec3f = vec3f(LIGHT_AT.x + 2.0, LIGHT_AT.y, LIGHT_AT.z);
 	const flagged: LitBindings = pointBindings(pointLights(true), 1.0, 0.0);
 	assert firstShadowAt(at, flagged, { shadowed: true }) == 0.0;
 	assert firstShadowAt(at, flagged, { shadowed: false }) == 1.0;
+	assert recordShadowAt(at, flagged, { shadowed: true }, 1) == 1.0;
 	const plain: LitBindings = pointBindings(pointLights(false), 1.0, 0.0);
 	assert firstShadowAt(at, plain, { shadowed: true }) == 1.0;
+	const kinds: Vec<LightKind> = [LightKind.Rectangle, LightKind.Capsule];
+	for (const kind of kinds) {
+		const shaped: LitBindings = pointBindings(lightsOf(kind, true), 1.0, 0.0);
+		assert firstShadowAt(at, shaped, { shadowed: true }) == 0.0;
+	}
 }
 
 function frameOf(lights: Vec<float32>, sun: boolean, point: boolean): RendererError | null {
@@ -255,27 +302,29 @@ function frameOf(lights: Vec<float32>, sun: boolean, point: boolean): RendererEr
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
-	const pointMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createPoint(context, 64);
-	if (!created.ok || !sunMap.ok || !pointMap.ok) { unreachable; }
+	const cubeMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createCube(context, 64);
+	if (!created.ok || !sunMap.ok || !cubeMap.ok) { unreachable; }
 	let core: Renderer = created.value;
 	if (sun) { attachShadow(core, sunMap.value); }
-	if (point) { attachPointShadow(core, pointMap.value); }
+	if (point) { attachCubeShadow(core, cubeMap.value); }
 	const items: Vec<DrawItem> = [];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const began: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
 	return began.ok ? null : began.error;
 }
 
-test "a frame refuses two shadowing points, a point with no range, and a point with no map" {
-	let two: Vec<float32> = pointLights(true);
-	for (let i = 0; i < LIGHT_RECORD_LENGTH; i++) { two.push(two[LIGHT_UNIFORM_LENGTH + i]); }
-	assert frameOf(two, true, true) == RendererError.TooManyShadowedPoints;
-	assert frameOf(two, false, false) == RendererError.TooManyShadowedPoints;
+test "a frame refuses a bad cube caster, a caster with no range, and a caster with no map" {
+	let bad: Vec<float32> = pointLights(true);
+	bad[LIGHT_CUBE_CASTER] = 2.0;
+	assert frameOf(bad, true, true) == RendererError.BadCubeShadow;
+	assert frameOf(bad, false, false) == RendererError.BadCubeShadow;
+	assert frameOf(lightsOf(LightKind.Rectangle, true), false, false) ==
+		RendererError.CubeShadowUnattached;
 	let short: Vec<float32> = pointLights(true);
 	short[LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_COLOR + 3] = POINT_SHADOW_NEAR;
-	assert frameOf(short, false, true) == RendererError.BadShadowPoint;
-	assert frameOf(pointLights(true), true, false) == RendererError.PointShadowUnattached;
-	assert frameOf(pointLights(true), false, false) == RendererError.PointShadowUnattached;
+	assert frameOf(short, false, true) == RendererError.BadCubeShadow;
+	assert frameOf(pointLights(true), true, false) == RendererError.CubeShadowUnattached;
+	assert frameOf(pointLights(true), false, false) == RendererError.CubeShadowUnattached;
 }
 
 test "a point map alone owns the frame's block, and beside the sun's it lends its part" {
@@ -284,39 +333,39 @@ test "a point map alone owns the frame's block, and beside the sun's it lends it
 	);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	const sunMap: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
-	const pointMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createPoint(context, 64);
-	if (!created.ok || !sunMap.ok || !pointMap.ok) { unreachable; }
+	const cubeMap: Result<DirShadowMap, ShadowError> = DirShadowMap.createCube(context, 64);
+	if (!created.ok || !sunMap.ok || !cubeMap.ok) { unreachable; }
 	let core: Renderer = created.value;
 	const sun: DirShadowMap = sunMap.value;
-	const point: DirShadowMap = pointMap.value;
-	assert point.kind == ShadowKind.Point;
-	attachPointShadow(core, point);
+	const point: DirShadowMap = cubeMap.value;
+	assert point.kind == ShadowKind.Cube;
+	attachCubeShadow(core, point);
 	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == point.shadowBlock;
 	attachShadow(core, sun);
 	assert core.sceneGlobals[3] == sun.shadowBlock;
-	point.shadowValues[SHADOW_POINT_BASE] = 0.5;
-	point.shadowValues[SHADOW_POINT_OPACITY] = 0.25;
-	point.shadowValues[SHADOW_POINT_POSITION + 2] = 3.0;
+	point.shadowValues[SHADOW_CUBE_BASE] = 0.5;
+	point.shadowValues[SHADOW_CUBE_OPACITY] = 0.25;
+	point.shadowValues[SHADOW_CUBE_POSITION + 2] = 3.0;
 	carryShadows(sun, null, point);
 	const at: int32 = sun.shadowBlock.offset;
-	assert context.uniforms.values[at + SHADOW_POINT_BASE] == 0.5;
-	assert context.uniforms.values[at + SHADOW_POINT_OPACITY] == 0.25;
-	assert context.uniforms.values[at + SHADOW_POINT_POSITION + 2] == 3.0;
+	assert context.uniforms.values[at + SHADOW_CUBE_BASE] == 0.5;
+	assert context.uniforms.values[at + SHADOW_CUBE_OPACITY] == 0.25;
+	assert context.uniforms.values[at + SHADOW_CUBE_POSITION + 2] == 3.0;
 	carryShadows(sun, null, null);
-	assert context.uniforms.values[at + SHADOW_POINT_OPACITY] == 0.0;
+	assert context.uniforms.values[at + SHADOW_CUBE_OPACITY] == 0.0;
 	attachShadow(core, null);
-	attachPointShadow(core, null);
+	attachCubeShadow(core, null);
 	assert core.sceneGlobals.length == 3;
 }
 
 test "a Pcf point map turns its taps around the receiver's direction and averages their faces" {
 	const values: Vec<float32> = pointLights(true);
 	const at: Vec3f = vec3f(LIGHT_AT.x + 2.0, LIGHT_AT.y + 0.3, LIGHT_AT.z - 0.2);
-	assert pointShadowAt(at, pointBindings(values, 1.0, 0.0)) == 0.0;
-	const filtered: float32 = pointShadowAt(at, pointBindings(values, 1.0, 0.0, 0.5));
+	assert cubeShadowAt(at, pointBindings(values, 1.0, 0.0)) == 0.0;
+	const filtered: float32 = cubeShadowAt(at, pointBindings(values, 1.0, 0.0, 0.5));
 	assert filtered > 0.0 && filtered < 1.0;
-	assert pointShadowAt(at, pointBindings(values, 1.0, 1.0, 0.5)) == 1.0;
+	assert cubeShadowAt(at, pointBindings(values, 1.0, 1.0, 0.5)) == 1.0;
 	const packedScale: Vec<float32> = packed(values, 1.0, 0.5);
-	assert packedScale[SHADOW_POINT_FILTER] == 0.5;
-	assert packed(values, 1.0, 0.0)[SHADOW_POINT_FILTER] == 0.0;
+	assert packedScale[SHADOW_CUBE_FILTER] == 0.5;
+	assert packed(values, 1.0, 0.0)[SHADOW_CUBE_FILTER] == 0.0;
 }
