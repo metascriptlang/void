@@ -587,6 +587,15 @@ The helper alone, run on this tree: D3D11 421/421 and door handle 0 378/378 on W
 missing check file fails by name. The GL line waits for this machine's GPU slot. The whole gate
 has not run with the change yet.
 
+**Your Vulkan audit, fixed.** `vulkan.c` returns native handles as `uint64` and keeps no slots,
+so `pool.ms` holds the only Vulkan ids and a stale id stays refused after a generation wrap and
+after a reset (pinned in `vulkanResourcesCheck`). `closeResources` and `closeRenderPasses` free
+every record before `vulkanShutdown`. A misuse stops through `types.ms`'s `stop`, as on the other
+backends. A `Result` remains only for what a correct program meets at run time: an out-of-date
+or lost surface (Dawn `SwapChainVk.cpp` 468-556), a lost device, out of memory, and `memory.ms`,
+which returns errors as Mach's `gpu_allocator` does. `resources.ms` calls
+`checkedDepthTexelCopy`. `conv.ms` keeps its format table until your series has one `formatInfo`.
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),
