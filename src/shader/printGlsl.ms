@@ -833,8 +833,7 @@ function resourceText(p: Printer, index: int32): string {
 function expr(p: Printer, e: ShaderExpr): string {
 	return match (e.kind) {
 		ExprKind.Literal => literalText(p, e),
-		ExprKind.Local => e.index >= 0 && e.index < p.current.locals.length ?
-			p.scope[p.current.params.length + e.index] : fail(p, "a local out of range"),
+		ExprKind.Local => p.scope[p.current.params.length + e.index],
 		ExprKind.Param => p.scope[e.index],
 		ExprKind.Constant => p.constantNames[e.index],
 		ExprKind.Workgroup => p.workgroupNames[e.index],
@@ -909,7 +908,6 @@ function assignment(p: Printer, s: ShaderStmt): string {
 }
 
 function letText(p: Printer, s: ShaderStmt): string {
-	if (s.local < 0 || s.local >= p.current.locals.length) { return fail(p, "a Let out of range"); }
 	const name = p.scope[p.current.params.length + s.local];
 	const head = declaration(p, p.current.locals[s.local].type, name);
 	return isNone(s.expr) ? head : head + " = " + expr(p, s.expr);
