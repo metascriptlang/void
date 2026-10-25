@@ -56,6 +56,7 @@
 // expect outline.blendNan: void3d: setOutlineBlend needs a finite blend in [0,1]
 // expect outline.blendRange: void3d: setOutlineBlend needs a finite blend in [0,1]
 // expect outline.closed.setOutlineBlend: void3d: setOutlineBlend on a forward preset that was closed
+// expect outline.settingsWidth: void3d: setOutlineSettings needs finite straight RGBA [0,1]
 // expect outline.uniformBudget: void3d: setOutlineBlend needs FORWARD_OUTLINE_PASS_UNIFORM_LENGTH
 import { argv } from "std/process";
 import { gfxSetup } from "../../../src/sokol/gpu";
@@ -91,6 +92,7 @@ import {
 import { GltfAssets, closeGltfAssets } from "../../../src/void3d/gltfScene";
 import { PaletteLut, PaletteError, closePalette } from "../../../src/void3d/palette";
 import { BloomSettings } from "../../../src/void3d/bloom";
+import { ForwardOutlineSettings } from "../../../src/void3d/forwardOutline";
 import { LowResView, ViewError } from "../../../src/void3d/blit";
 import {
 	Renderer,
@@ -111,6 +113,7 @@ import {
 	FORWARD_HDR_UNIFORM_LENGTH,
 	setBloom,
 	setOutlineBlend,
+	setOutlineSettings,
 	prepareFrame,
 	drawToScreen,
 	endPrepared,
@@ -268,6 +271,8 @@ function forwardCase(name: string): boolean {
 		setOutlineBlend(openForward(false), 1.1);
 	} else if (name == "outline.closed.setOutlineBlend") {
 		setOutlineBlend(closedForward(), 0.5);
+	} else if (name == "outline.settingsWidth") {
+		setOutlineSettings(openForward(false), { ...ForwardOutlineSettings.defaults(), pixelWidth: 0.0 });
 	} else if (name == "outline.uniformBudget") {
 		setOutlineBlend(openForward(false), 1.0);
 	} else {
