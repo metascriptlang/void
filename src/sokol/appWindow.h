@@ -26,4 +26,17 @@ void voidAppSetKeyboard(float height);
 const char *voidWindowTitle(void);
 int voidWindowTitleSet(void);
 
+#if defined(VOID_ANDROID_APP) || defined(VOID_IOS_APP)
+#include <stddef.h>
+// The app shells' events (bridgeIosApp.m, bridgeAndroidApp.c), stamped with the shell's frame,
+// framebuffer and modifiers; voidMobileKey keeps voidKeyDown's held keys.
+VoidAppEvent voidMobileEvent(VoidAppEventType type);
+void voidMobileSend(VoidAppEventType type);
+void voidMobileKey(VoidAppEventType type, VoidKeyCode code, bool repeat);
+void voidMobileReleaseKeys(void);
+// Committed text: a lone newline or tab is a key tap unless that key is held; otherwise one
+// TEXT_INPUT while text input is on, else a CHAR per printable codepoint.
+void voidMobileCommit(int textInput, const char *utf8, const uint32_t *codepoints, size_t count);
+#endif
+
 #endif

@@ -32,50 +32,17 @@ static int s_fbW = 1, s_fbH = 1;
 static float s_scale = 1.0f;
 static uint32_t s_modifiers;
 static uint32_t s_heldModifiers;
-static VoidKeysHeld s_keysHeld;
 static int s_textInput;
 static CGRect s_imeRect;
 static BOOL s_backspaceHeld, s_backspaceSent;
-static BOOL s_enterHeld, s_tabHeld;
 
 uint64_t voidIosFrameCount(void) { return s_frameCount; }
 int voidIosWidth(void) { return s_fbW; }
 int voidIosHeight(void) { return s_fbH; }
 bool voidIosValid(void) { return s_running != 0; }
+float voidIosScale(void) { return s_scale; }
+uint32_t voidIosModifiers(void) { return s_modifiers; }
 double voidIosFrameDuration(void) { return s_frameDuration; }
-
-static VoidAppEvent makeEvent(VoidAppEventType type) {
-	VoidAppEvent e;
-	memset(&e, 0, sizeof e);
-	e.type = type;
-	e.frameCount = s_frameCount;
-	e.modifiers = s_modifiers;
-	e.framebufferWidth = s_fbW;
-	e.framebufferHeight = s_fbH;
-	e.windowWidth = (int)(s_fbW / s_scale);
-	e.windowHeight = (int)(s_fbH / s_scale);
-	return e;
-}
-
-static void send(VoidAppEventType type) {
-	VoidAppEvent e = makeEvent(type);
-	voidAppDeliver(&e);
-}
-
-static void sendKey(VoidAppEventType type, VoidKeyCode code, bool repeat) {
-	voidKeysHeldTrack(&s_keysHeld, type, code);
-	VoidAppEvent e = makeEvent(type);
-	e.keyCode = code;
-	e.keyRepeat = repeat;
-	voidAppDeliver(&e);
-}
-
-static void releaseKey(VoidKeyCode key) { sendKey(VOID_EVENT_KEY_UP, key, false); }
-
-static void sendTap(VoidKeyCode code) {
-	sendKey(VOID_EVENT_KEY_DOWN, code, false);
-	sendKey(VOID_EVENT_KEY_UP, code, false);
-}
 
 static VoidKeyCode keyOfHid(long usage) {
 	if (usage >= 0x04 && usage <= 0x1D) return (VoidKeyCode)(VOID_KEY_A + (usage - 0x04));
@@ -222,7 +189,7 @@ static VoidAppView *s_view;
 - (void)setKeyboard:(float)height {
 	if (height == voidKeyboardHeight()) return;
 	voidAppSetKeyboard(height);
-	if (self.viewId != 0) send(VOID_EVENT_RESIZED);
+	if (self.viewId != 0) voidMobileSend(VOID_EVENT_RESIZED);
 }
 
 - (void)keyboardFrame:(NSNotification *)notification {
@@ -287,7 +254,7 @@ static VoidAppView *s_view;
 	if (w == s_fbW && h == s_fbH && UIEdgeInsetsEqualToEdgeInsets(self.insets, self.safeAreaInsets)) return;
 	self.insets = self.safeAreaInsets;
 	voidViewResize(self.viewId, s_fbW, s_fbH, s_scale);
-	send(VOID_EVENT_RESIZED);
+	voidMobileSend(VOID_EVENT_RESIZED);
 }
 
 - (void)layoutSubviews {
@@ -308,7 +275,7 @@ static VoidAppView *s_view;
 }
 
 - (void)sendTouches:(NSSet<UITouch *> *)changed event:(UIEvent *)event type:(VoidAppEventType)type {
-	VoidAppEvent e = makeEvent(type);
+	VoidAppEvent e = voidMobileEvent(type);
 	NSSet<UITouch *> *all = event.allTouches ? event.allTouches : changed;
 	for (UITouch *t in all) {
 		if (e.touchCount == VOID_MAX_TOUCHPOINTS) break;
@@ -351,13 +318,11 @@ static VoidAppView *s_view;
 				continue;
 			}
 			s_backspaceHeld = NO;
-			if (!s_backspaceSent) sendKey(VOID_EVENT_KEY_DOWN, code, false);
-			sendKey(VOID_EVENT_KEY_UP, code, false);
+			if (!s_backspaceSent) voidMobileKey(VOID_EVENT_KEY_DOWN, code, false);
+			voidMobileKey(VOID_EVENT_KEY_UP, code, false);
 			continue;
 		}
-		if (code == VOID_KEY_ENTER) s_enterHeld = down;
-		if (code == VOID_KEY_TAB) s_tabHeld = down;
-		sendKey(down ? VOID_EVENT_KEY_DOWN : VOID_EVENT_KEY_UP, code, false);
+		voidMobileKey(down ? VOID_EVENT_KEY_DOWN : VOID_EVENT_KEY_UP, code, false);
 	}
 }
 
@@ -380,27 +345,8 @@ static VoidAppView *s_view;
 }
 
 - (void)commit:(NSString *)text {
-	if (s_textInput) {
-		NSString *printable = [text stringByTrimmingCharactersInSet:[NSCharacterSet controlCharacterSet]];
-		if (printable.length > 0) voidAppTextDeliver(VOID_EVENT_TEXT_INPUT, text.UTF8String, 0);
-	} else {
-		[text enumerateSubstringsInRange:NSMakeRange(0, text.length)
-			options:NSStringEnumerationByComposedCharacterSequences
-			usingBlock:^(NSString *piece, NSRange r, NSRange er, BOOL *stop) {
-				(void)r; (void)er; (void)stop;
-				NSUInteger used = 0;
-				uint32_t codepoints[16];
-				[piece getBytes:codepoints maxLength:sizeof codepoints usedLength:&used
-					encoding:NSUTF32LittleEndianStringEncoding options:0
-					range:NSMakeRange(0, piece.length) remainingRange:NULL];
-				for (NSUInteger i = 0; i < used / 4; i++) {
-					if (codepoints[i] < 0x20 || codepoints[i] == 0x7F) continue;
-					VoidAppEvent e = makeEvent(VOID_EVENT_CHAR);
-					e.charCode = codepoints[i];
-					voidAppDeliver(&e);
-				}
-			}];
-	}
+	NSData *codepoints = [text dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
+	voidMobileCommit(s_textInput, text.UTF8String, (const uint32_t *)codepoints.bytes, codepoints.length / 4);
 }
 
 - (void)clearMarked {
@@ -415,14 +361,6 @@ static VoidAppView *s_view;
 - (void)insertText:(NSString *)text {
 	if (s_modifiers & (VOID_MODIFIER_CTRL | VOID_MODIFIER_SUPER)) return;
 	[self clearMarked];
-	if ([text isEqualToString:@"\n"] || [text isEqualToString:@"\r"]) {
-		if (!s_enterHeld) sendTap(VOID_KEY_ENTER);
-		return;
-	}
-	if ([text isEqualToString:@"\t"]) {
-		if (!s_tabHeld) sendTap(VOID_KEY_TAB);
-		return;
-	}
 	[self commit:text];
 }
 
@@ -434,11 +372,11 @@ static VoidAppView *s_view;
 		[self sendPreedit];
 		return;
 	}
-	sendKey(VOID_EVENT_KEY_DOWN, VOID_KEY_BACKSPACE, s_backspaceHeld && s_backspaceSent);
+	voidMobileKey(VOID_EVENT_KEY_DOWN, VOID_KEY_BACKSPACE, s_backspaceHeld && s_backspaceSent);
 	if (s_backspaceHeld) {
 		s_backspaceSent = YES;
 	} else {
-		sendKey(VOID_EVENT_KEY_UP, VOID_KEY_BACKSPACE, false);
+		voidMobileKey(VOID_EVENT_KEY_UP, VOID_KEY_BACKSPACE, false);
 	}
 }
 
@@ -580,24 +518,24 @@ static VoidAppView *s_view;
 }
 - (void)applicationDidBecomeActive:(UIApplication *)application {
 	(void)application;
-	if (s_view.viewId != 0) send(VOID_EVENT_FOCUSED);
+	if (s_view.viewId != 0) voidMobileSend(VOID_EVENT_FOCUSED);
 }
 - (void)applicationWillResignActive:(UIApplication *)application {
 	(void)application;
 	s_heldModifiers = 0;
 	s_modifiers = 0;
-	voidKeysHeldRelease(&s_keysHeld, releaseKey);
-	if (s_view.viewId != 0) send(VOID_EVENT_UNFOCUSED);
+	voidMobileReleaseKeys();
+	if (s_view.viewId != 0) voidMobileSend(VOID_EVENT_UNFOCUSED);
 }
 - (void)applicationDidEnterBackground:(UIApplication *)application {
 	(void)application;
 	s_view.link.paused = YES;
-	if (s_view.viewId != 0) send(VOID_EVENT_SUSPENDED);
+	if (s_view.viewId != 0) voidMobileSend(VOID_EVENT_SUSPENDED);
 }
 - (void)applicationWillEnterForeground:(UIApplication *)application {
 	(void)application;
 	s_view.link.paused = NO;
-	if (s_view.viewId != 0) send(VOID_EVENT_RESUMED);
+	if (s_view.viewId != 0) voidMobileSend(VOID_EVENT_RESUMED);
 }
 @end
 
@@ -636,9 +574,3 @@ void voidSetTextInput(int on) {
 void voidSetImeRect(int x, int y, int w, int h) {
 	s_imeRect = CGRectMake(x / s_scale, y / s_scale, w / s_scale, h / s_scale);
 }
-
-int voidKeyDown(int keycode) { return voidKeysHeldDown(&s_keysHeld, keycode); }
-
-int voidIosAppFbWidth(void) { return s_running && voidCurrentView() == 0 ? s_fbW : voidViewsFbWidth(); }
-int voidIosAppFbHeight(void) { return s_running && voidCurrentView() == 0 ? s_fbH : voidViewsFbHeight(); }
-float voidIosAppDpiScale(void) { return s_running && voidCurrentView() == 0 ? s_scale : voidViewsDpiScale(); }

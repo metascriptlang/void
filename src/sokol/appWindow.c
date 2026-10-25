@@ -154,51 +154,108 @@ void voidSetWindowTitle(const char *title) {
 const char *voidWindowTitle(void) { return s_title; }
 int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 
-#if defined(VOID_ANDROID_APP)
-#define ANDROID_CLIPBOARD_SIZE 8192
-static char s_androidClipboard[ANDROID_CLIPBOARD_SIZE];
-static int s_androidCursor = 0;
-static bool s_androidMouseShown = true;
-static bool s_androidMouseLocked = false;
-static void voidAndroidCancelQuit(void) {}
-static void voidAndroidSetClipboard(const char *utf8) {
-	if (strlen(utf8) >= sizeof s_androidClipboard) voidFail("the clipboard holds at most %d bytes on Android; got %d", (int)sizeof s_androidClipboard - 1, (int)strlen(utf8));
-	strcpy(s_androidClipboard, utf8);
+#if defined(VOID_ANDROID_APP) || defined(VOID_IOS_APP)
+#include <unistd.h>
+#include "views.h"
+
+#define CLIPBOARD_SIZE 8192
+static char s_clipboard[CLIPBOARD_SIZE];
+static int s_mouseCursor = 0;
+static bool s_mouseShown = true;
+static bool s_mouseLocked = false;
+#if defined(VOID_IOS_APP)
+static void PLATFORM(RequestQuit)(void) {}
+#endif
+static void PLATFORM(CancelQuit)(void) {}
+static void PLATFORM(SetClipboard)(const char *utf8) {
+	if (strlen(utf8) >= sizeof s_clipboard) voidFail("voidSetClipboard: the clipboard holds at most %d bytes; got %d", (int)sizeof s_clipboard - 1, (int)strlen(utf8));
+	strcpy(s_clipboard, utf8);
 }
-static const char *voidAndroidClipboard(void) { return s_androidClipboard; }
-static void voidAndroidSetCursor(int cursor) { s_androidCursor = cursor; }
-static int voidAndroidCursor(void) { return s_androidCursor; }
-static void voidAndroidShowMouse(bool shown) { s_androidMouseShown = shown; }
-static bool voidAndroidMouseShown(void) { return s_androidMouseShown; }
-static void voidAndroidLockMouse(bool locked) { s_androidMouseLocked = locked; }
-static bool voidAndroidMouseLocked(void) { return s_androidMouseLocked; }
-static void voidAndroidToggleFullscreen(void) {}
-static bool voidAndroidIsFullscreen(void) { return false; }
-static int voidAndroidDroppedCount(void) { return 0; }
-static const char *voidAndroidDroppedPath(int i) { (void)i; return ""; }
-#elif defined(VOID_IOS_APP)
-#define IOS_CLIPBOARD_SIZE 8192
-static char s_iosClipboard[IOS_CLIPBOARD_SIZE];
-static int s_iosCursor = 0;
-static bool s_iosMouseShown = true;
-static bool s_iosMouseLocked = false;
-static void voidIosRequestQuit(void) {}
-static void voidIosCancelQuit(void) {}
-static void voidIosSetClipboard(const char *utf8) {
-	if (strlen(utf8) >= sizeof s_iosClipboard) voidFail("the clipboard holds at most %d bytes on iOS; got %d", (int)sizeof s_iosClipboard - 1, (int)strlen(utf8));
-	strcpy(s_iosClipboard, utf8);
+static const char *PLATFORM(Clipboard)(void) { return s_clipboard; }
+static void PLATFORM(SetCursor)(int cursor) { s_mouseCursor = cursor; }
+static int PLATFORM(Cursor)(void) { return s_mouseCursor; }
+static void PLATFORM(ShowMouse)(bool shown) { s_mouseShown = shown; }
+static bool PLATFORM(MouseShown)(void) { return s_mouseShown; }
+static void PLATFORM(LockMouse)(bool locked) { s_mouseLocked = locked; }
+static bool PLATFORM(MouseLocked)(void) { return s_mouseLocked; }
+static void PLATFORM(ToggleFullscreen)(void) {}
+static bool PLATFORM(IsFullscreen)(void) { return false; }
+static int PLATFORM(DroppedCount)(void) { return 0; }
+static const char *PLATFORM(DroppedPath)(int i) { (void)i; return ""; }
+
+static VoidKeysHeld s_keysHeld;
+
+int voidKeyDown(int keycode) { return voidKeysHeldDown(&s_keysHeld, keycode); }
+
+int voidFbWidth(void) { return PLATFORM(Valid)() && voidCurrentView() == 0 ? PLATFORM(Width)() : voidViewsFbWidth(); }
+int voidFbHeight(void) { return PLATFORM(Valid)() && voidCurrentView() == 0 ? PLATFORM(Height)() : voidViewsFbHeight(); }
+float voidDpiScale(void) { return PLATFORM(Valid)() && voidCurrentView() == 0 ? PLATFORM(Scale)() : voidViewsDpiScale(); }
+
+void voidPlatformRunInit(msClosure init) {
+	const char *dir = PLATFORM(AssetDir)();
+	char prev[4096];
+	const char *got = getcwd(prev, sizeof prev);
+	if (dir && dir[0]) chdir(dir);
+	voidCallClosure(init);
+	if (got) chdir(prev);
 }
-static const char *voidIosClipboard(void) { return s_iosClipboard; }
-static void voidIosSetCursor(int cursor) { s_iosCursor = cursor; }
-static int voidIosCursor(void) { return s_iosCursor; }
-static void voidIosShowMouse(bool shown) { s_iosMouseShown = shown; }
-static bool voidIosMouseShown(void) { return s_iosMouseShown; }
-static void voidIosLockMouse(bool locked) { s_iosMouseLocked = locked; }
-static bool voidIosMouseLocked(void) { return s_iosMouseLocked; }
-static void voidIosToggleFullscreen(void) {}
-static bool voidIosIsFullscreen(void) { return false; }
-static int voidIosDroppedCount(void) { return 0; }
-static const char *voidIosDroppedPath(int i) { (void)i; return ""; }
+
+VoidAppEvent voidMobileEvent(VoidAppEventType type) {
+	VoidAppEvent e;
+	memset(&e, 0, sizeof e);
+	e.type = type;
+	e.frameCount = PLATFORM(FrameCount)();
+	e.modifiers = PLATFORM(Modifiers)();
+	e.framebufferWidth = PLATFORM(Width)();
+	e.framebufferHeight = PLATFORM(Height)();
+	e.windowWidth = (int)(e.framebufferWidth / PLATFORM(Scale)());
+	e.windowHeight = (int)(e.framebufferHeight / PLATFORM(Scale)());
+	return e;
+}
+
+void voidMobileSend(VoidAppEventType type) {
+	VoidAppEvent e = voidMobileEvent(type);
+	voidAppDeliver(&e);
+}
+
+void voidMobileKey(VoidAppEventType type, VoidKeyCode code, bool repeat) {
+	voidKeysHeldTrack(&s_keysHeld, type, code);
+	VoidAppEvent e = voidMobileEvent(type);
+	e.keyCode = code;
+	e.keyRepeat = repeat;
+	voidAppDeliver(&e);
+}
+
+static void releaseKey(VoidKeyCode key) { voidMobileKey(VOID_EVENT_KEY_UP, key, false); }
+
+void voidMobileReleaseKeys(void) { voidKeysHeldRelease(&s_keysHeld, releaseKey); }
+
+static void tapUnlessHeld(VoidKeyCode key) {
+	if (voidKeysHeldDown(&s_keysHeld, key)) return;
+	voidMobileKey(VOID_EVENT_KEY_DOWN, key, false);
+	voidMobileKey(VOID_EVENT_KEY_UP, key, false);
+}
+
+void voidMobileCommit(int textInput, const char *utf8, const uint32_t *codepoints, size_t count) {
+	if (count == 1 && (codepoints[0] == '\n' || codepoints[0] == '\r')) {
+		tapUnlessHeld(VOID_KEY_ENTER);
+		return;
+	}
+	if (count == 1 && codepoints[0] == '\t') {
+		tapUnlessHeld(VOID_KEY_TAB);
+		return;
+	}
+	for (size_t i = 0; i < count; i++) {
+		if (codepoints[i] < 0x20 || codepoints[i] == 0x7F) continue;
+		if (textInput) {
+			voidAppTextDeliver(VOID_EVENT_TEXT_INPUT, utf8, 0);
+			return;
+		}
+		VoidAppEvent e = voidMobileEvent(VOID_EVENT_CHAR);
+		e.charCode = codepoints[i];
+		voidAppDeliver(&e);
+	}
+}
 #endif
 
 static void needWindow(const char *what) {

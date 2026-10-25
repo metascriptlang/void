@@ -7,7 +7,6 @@
 #include <GLES3/gl3.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <unistd.h>
 
 #include "bridge.h"
 #include "views.h"
@@ -81,13 +80,7 @@ void voidEmbedSetAssetRoot(const char *p) {
 	g_assetRoot[n] = 0;
 }
 
-void voidPlatformRunInit(msClosure init) {
-	char prev[1024];
-	const char *got = getcwd(prev, sizeof prev);
-	if (g_assetRoot[0]) chdir(g_assetRoot);
-	voidCallClosure(init);
-	if (got) chdir(prev);
-}
+const char *voidAndroidAssetDir(void) { return g_assetRoot; }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	AndroidSurface *s = (AndroidSurface *)calloc(1, sizeof(AndroidSurface));
@@ -184,10 +177,6 @@ void voidEmbedDetach(void) {
 void voidGfxSetup(void) {
 	if (!doorValid()) voidFail("gfxSetup before voidViewCreate made the EGL context");
 }
-
-int voidFbWidth(void) { return voidAndroidAppFbWidth(); }
-int voidFbHeight(void) { return voidAndroidAppFbHeight(); }
-float voidDpiScale(void) { return voidAndroidAppDpiScale(); }
 
 // The screen pass draws into the current view's EGL surface, which is framebuffer 0 on GL and
 // has no view objects.

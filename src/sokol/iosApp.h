@@ -4,15 +4,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// The framebuffer of the iOS app driver (bridgeIosApp.m) outside a frame; inside one, and
-// in the embed driver, the current view's (views.c).
-int voidIosAppFbWidth(void);
-int voidIosAppFbHeight(void);
-float voidIosAppDpiScale(void);
-
+// The iOS app driver (bridgeIosApp.m) as appWindow.c reads it; the asset dir is bridgeIos.m's.
 bool voidIosValid(void);
 int voidIosWidth(void);
 int voidIosHeight(void);
+float voidIosScale(void);
+uint32_t voidIosModifiers(void);
+const char *voidIosAssetDir(void);
 uint64_t voidIosFrameCount(void);
 // The display link's frame interval, as sokol_app reports it on iOS.
 double voidIosFrameDuration(void);

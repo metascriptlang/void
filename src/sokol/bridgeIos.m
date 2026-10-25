@@ -6,7 +6,6 @@
 #import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
 #include <stdlib.h>
-#include <unistd.h>
 
 #include "bridge.h"
 #include "presentGate.h"
@@ -21,17 +20,8 @@ void voidPlatformDeviceEnsure(void) {
 	voidMetalDoorSetup(voidViewsSampleCount());
 }
 
-// Void's asset loaders use relative paths ("assets/test.png", "assets/font.ttf").
-// Point the CWD at the app bundle for the init window (where images + fonts load),
-// then restore — so the host app's CWD is untouched outside this call.
-void voidPlatformRunInit(msClosure init) {
-	char prev[4096];
-	const char *got = getcwd(prev, sizeof prev);
-	const char *res = [[[NSBundle mainBundle] resourcePath] fileSystemRepresentation];
-	if (res) chdir(res);
-	voidCallClosure(init);
-	if (got) chdir(prev);
-}
+// Void's asset loaders use relative paths ("assets/test.png"); init runs in the app bundle.
+const char *voidIosAssetDir(void) { return [[[NSBundle mainBundle] resourcePath] fileSystemRepresentation]; }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	if (native == NULL) voidFail("voidViewCreate on iOS needs a CAMetalLayer");
@@ -48,9 +38,6 @@ void voidGfxSetup(void) {
 	if (!doorValid()) voidFail("gfxSetup before voidViewCreate made the Metal device");
 }
 
-int voidFbWidth(void) { return voidIosAppFbWidth(); }
-int voidFbHeight(void) { return voidIosAppFbHeight(); }
-float voidDpiScale(void) { return voidIosAppDpiScale(); }
 void voidDriverPresent(void) { voidViewsPresent(); }
 
 const VoidMetalSurface *voidMetalScreen(void) { return voidMetalViewsScreen(); }
