@@ -1,20 +1,31 @@
-import { BindingKind, GPUBindGroupEntry } from "../webgpu/types";
+import {
+	BindingKind,
+	GPUBindGroupEntry,
+	GPUBufferUsage,
+	GPUExtent3D,
+	GPUSupportedLimits,
+	GPUTextureDescriptor,
+	GPUTextureUsage,
+} from "../webgpu/types";
 import {
 	EncoderState,
 	PASS_COMPUTE,
 	PASS_RENDER,
 	addressesBinding,
 	beginPassRefusal,
+	bufferRefusal,
 	createRefusal,
 	endPassRefusal,
 	finishRefusal,
 	groupOfKind,
 	inPassRefusal,
+	isDepthFormat,
 	markerRefusal,
 	outsidePassRefusal,
 	popGroupRefusal,
 	pushGroupRefusal,
 	shutdownRefusal,
+	textureRefusal,
 	uniformEntryRefusal,
 } from "../webgpu/validate";
 
@@ -141,4 +152,100 @@ test "a uniform entry is refused by usage, alignment, overrun and size below its
 	assert uniformEntryRefusal(entryAt(512, 0), true, 512, 64, 256) == "bind group entry 2 offset 512 overruns its buffer";
 	assert uniformEntryRefusal(entryAt(0, 16), true, 512, 64, 256) == "bind group entry 2 size 16 is below its block of 64";
 	assert uniformEntryRefusal(entryAt(0, 16), true, 512, 64, 16) == "bind group entry 2 size 16 is below its block of 64";
+}
+
+const MAP_READ = GPUBufferUsage.MAP_READ as int32;
+const MAP_WRITE = GPUBufferUsage.MAP_WRITE as int32;
+const COPY_SRC = GPUBufferUsage.COPY_SRC as int32;
+const COPY_DST = GPUBufferUsage.COPY_DST as int32;
+const VERTEX = GPUBufferUsage.VERTEX as int32;
+const ATTACHMENT = GPUTextureUsage.RENDER_ATTACHMENT as int32;
+const SAMPLED = GPUTextureUsage.TEXTURE_BINDING as int32;
+
+function smallLimits(): GPUSupportedLimits {
+	return { maxTextureDimension2D: 4096, maxTextureDimension3D: 256, maxTextureArrayLayers: 8 };
+}
+
+function texture(width: int32, height: int32, layers: int32): GPUTextureDescriptor {
+	return { size: { width: width, height: height, depthOrArrayLayers: layers }, format: "rgba8unorm", usage: SAMPLED };
+}
+
+test "a buffer needs a positive size and a mappable buffer only its direction's copy usage" {
+	assert bufferRefusal(16, VERTEX | COPY_DST) == "";
+	assert bufferRefusal(0, VERTEX) == "GPUBufferDescriptor.size must be positive";
+	assert bufferRefusal(-4, VERTEX) == "GPUBufferDescriptor.size must be positive";
+	assert bufferRefusal(16, MAP_READ | COPY_DST) == "";
+	assert bufferRefusal(16, MAP_READ | VERTEX) == "GPUBufferUsage MAP_READ combines only with COPY_DST";
+	assert bufferRefusal(16, MAP_WRITE | COPY_SRC) == "";
+	assert bufferRefusal(16, MAP_WRITE | COPY_DST) == "GPUBufferUsage MAP_WRITE combines only with COPY_SRC";
+}
+
+test "a texture size is positive and inside the backend's limits for its dimension" {
+	const limits = smallLimits();
+	assert textureRefusal(texture(256, 128, 1), limits) == "";
+	assert textureRefusal(texture(0, 128, 1), limits) == "GPUTextureDescriptor.size needs a positive width and height";
+	assert textureRefusal(texture(8, -1, 1), limits) == "GPUTextureDescriptor.size needs a positive width and height";
+	assert textureRefusal(texture(4097, 8, 1), limits) == "GPUTextureDescriptor.size 4097x8x1 is over the limits 4096 per side and 8 array layers";
+	assert textureRefusal(texture(8, 8, 9), limits) == "GPUTextureDescriptor.size 8x8x9 is over the limits 4096 per side and 8 array layers";
+	assert textureRefusal(texture(8, 8, -1), limits) == "GPUTextureDescriptor.size.depthOrArrayLayers is negative";
+	let volume = texture(64, 64, 257);
+	volume.dimension = "3d";
+	assert textureRefusal(volume, limits) == "GPUTextureDescriptor.size 64x64x257 is over the limits 256 per side and 8 array layers";
+	volume.size.depthOrArrayLayers = 200;
+	assert textureRefusal(volume, limits) == "";
+}
+
+test "the same size is refused or accepted by the limits the backend reports, not by a constant" {
+	const big = texture(8192, 8192, 1);
+	assert textureRefusal(big, smallLimits()) != "";
+	let wide = smallLimits();
+	wide.maxTextureDimension2D = 16384;
+	assert textureRefusal(big, wide) == "";
+}
+
+test "a texture mip count stops at the chain its largest side allows, and a 3d texture counts its depth" {
+	const limits = smallLimits();
+	let t = texture(16, 8, 1);
+	t.mipLevelCount = 5;
+	assert textureRefusal(t, limits) == "";
+	t.mipLevelCount = 6;
+	assert textureRefusal(t, limits) == "GPUTextureDescriptor.mipLevelCount 6 is outside 1..5 for a 16x8 texture";
+	t.mipLevelCount = -1;
+	assert textureRefusal(t, limits) == "GPUTextureDescriptor.mipLevelCount -1 is outside 1..5 for a 16x8 texture";
+	let volume = texture(4, 4, 64);
+	volume.dimension = "3d";
+	volume.mipLevelCount = 7;
+	assert textureRefusal(volume, limits) == "";
+}
+
+test "a multisampled texture is a single-mip single-layer 2d render attachment" {
+	const limits = smallLimits();
+	let t = texture(16, 16, 1);
+	t.sampleCount = 4;
+	assert textureRefusal(t, limits) == "a multisampled texture must be a RENDER_ATTACHMENT";
+	t.usage = ATTACHMENT;
+	assert textureRefusal(t, limits) == "";
+	t.size.depthOrArrayLayers = 2;
+	assert textureRefusal(t, limits) == "WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer";
+	t.size.depthOrArrayLayers = 1;
+	t.mipLevelCount = 2;
+	assert textureRefusal(t, limits) == "WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer";
+}
+
+test "a depth or stencil format is a 2d texture only" {
+	const limits = smallLimits();
+	assert isDepthFormat("depth16unorm");
+	assert isDepthFormat("depth32float");
+	assert isDepthFormat("depth24plus-stencil8");
+	assert !isDepthFormat("rgba8unorm");
+	assert !isDepthFormat("r32float");
+	let t = texture(8, 8, 8);
+	t.dimension = "3d";
+	t.format = "depth32float";
+	assert textureRefusal(t, limits) == "WebGPU allows a depth or stencil format only on a 2d texture";
+	t.format = "depth24plus-stencil8";
+	assert textureRefusal(t, limits) == "WebGPU allows a depth or stencil format only on a 2d texture";
+	t.dimension = "2d";
+	t.size.depthOrArrayLayers = 1;
+	assert textureRefusal(t, limits) == "";
 }

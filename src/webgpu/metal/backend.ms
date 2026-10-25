@@ -54,7 +54,6 @@ import {
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
 	checkedBufferCopy,
-	checkedBufferUsage,
 	checkedDepthTexelCopy,
 	checkedDispatch,
 	checkedDispatchIndirect,
@@ -70,8 +69,6 @@ import {
 	checkedTexelWritePitch,
 	checkedCubeView,
 	checkedDepthSlice,
-	checkedMipLevelCount,
-	checkedMultisample,
 	checkedNoDepthSlice,
 	checkedPassExtent,
 	checkedQuerySetCount,
@@ -1049,8 +1046,6 @@ function beginFrame(): void {
 export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	const id = allocate(buffers);
 	const usage = descriptor.usage;
-	if (descriptor.size <= 0) { stop("GPUBufferDescriptor.size must be positive"); }
-	checkedBufferUsage(usage);
 	const mapWrite = has(usage, GPUBufferUsage.MAP_WRITE as int32);
 	const mapped = mapWrite || has(usage, GPUBufferUsage.MAP_READ as int32);
 	const native = mapped
@@ -1148,28 +1143,19 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
 	const width = descriptor.size.width;
 	const height = descriptor.size.height;
-	if (width <= 0 || height <= 0) { stop("GPUTextureDescriptor.size needs a positive width and height"); }
 	const dimension: string = descriptor.dimension;
 	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
 	const volume = dimension == "3d";
-	if (descriptor.size.depthOrArrayLayers < 0) { stop("GPUTextureDescriptor.size.depthOrArrayLayers is negative"); }
 	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
-	const largestSide = volume ? Math.max(Math.max(width, height), layers) : Math.max(width, height);
-	const sideLimit = volume ? MAX_TEXTURE_DIMENSION_3D : MAX_TEXTURE_DIMENSION_2D;
-	if (largestSide > sideLimit || (!volume && layers > MAX_TEXTURE_ARRAY_LAYERS)) {
-		stop(`GPUTextureDescriptor.size ${width}x${height}x${layers} is over the limits ${sideLimit} per side and ${MAX_TEXTURE_ARRAY_LAYERS} array layers`);
-	}
-	const mipLevels = checkedMipLevelCount(descriptor, volume, layers);
+	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	if (sampleCount != 1 && mtlSupportsSampleCount(device, sampleCount) == 0) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
 	const usage = descriptor.usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
-	checkedMultisample(sampleCount, volume, layers, mipLevels, attachment);
 	const storage = has(usage, GPUTextureUsage.STORAGE_BINDING as int32);
 	if (storage && (sampleCount != 1 || info.depth)) { stop("GPUTextureUsage.STORAGE_BINDING takes a single-sample colour texture"); }
-	if (volume && info.depth) { stop("WebGPU allows a depth or stencil format only on a 2d texture"); }
 	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
 	const native = newTexture(width, height, layers, mipLevels, volume, info.pixel, sampleCount, attachment, storage);
 	if (native == null) { stop(`newTextureWithDescriptor failed for ${labelOf(descriptor.label)}`); }

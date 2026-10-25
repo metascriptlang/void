@@ -45,6 +45,7 @@ import {
 	PASS_COMPUTE,
 	PASS_RENDER,
 	checkedBeginPass,
+	checkedBuffer,
 	checkedCreateEncoder,
 	checkedEndPass,
 	checkedFinish,
@@ -54,6 +55,7 @@ import {
 	checkedPopGroup,
 	checkedPushGroup,
 	checkedShutdown,
+	checkedTexture,
 	resetEncoder,
 } from "./validate.ms";
 
@@ -84,10 +86,12 @@ export function destroy(this self: GPUDevice): void {
 export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return backend.adapterInfo(); }
 
 @inline export function createBuffer(this self: GPUDevice, descriptor: GPUBufferDescriptor): GPUBuffer {
+	checkedBuffer(descriptor.size, descriptor.usage);
 	return backend.createBuffer(descriptor);
 }
 
 @inline export function createTexture(this self: GPUDevice, descriptor: GPUTextureDescriptor): GPUTexture {
+	checkedTexture(descriptor, backend.limits());
 	return backend.createTexture(descriptor);
 }
 

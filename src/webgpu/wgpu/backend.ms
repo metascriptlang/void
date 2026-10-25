@@ -63,8 +63,6 @@ import {
 	checkedDepthTexelCopy,
 	checkedDispatch,
 	checkedDispatchIndirect,
-	checkedMipLevelCount,
-	checkedMultisample,
 	checkedNoDepthSlice,
 	checkedPassExtent,
 	checkedQuerySetCount,
@@ -132,7 +130,6 @@ import {
 	wgFinish,
 	wgInsertDebugMarker,
 	wgLimit,
-	wgMaxTextureDimension2D,
 	wgMinUniformBufferOffsetAlignment,
 	wgPopDebugGroup,
 	wgPushDebugGroup,
@@ -549,7 +546,6 @@ let computeBound: ComputeState = { timestampEnd: -1 };
 let passSerial: int64 = 0;
 let deviceLimits: GPUSupportedLimits = { maxTextureDimension1D: 0 };
 let uniformAlignment = 256;
-let maxTextureDimension = 0;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
 let canvas: GPUCanvasConfiguration = {
@@ -1124,7 +1120,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	checkMirroredConstants();
 	if (wgSetup(environment.device) == 0) { stop("the WGPUDevice gave no queue or no limits"); }
 	uniformAlignment = wgMinUniformBufferOffsetAlignment();
-	maxTextureDimension = wgMaxTextureDimension2D();
 	deviceLimits = readLimits();
 	frame = 0;
 	passSerial = 0;
@@ -1254,7 +1249,6 @@ export function adapterInfo(): GPUAdapterInfo {
 export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 	const id = allocate(buffers);
 	const usage = descriptor.usage;
-	if (descriptor.size <= 0) { stop("GPUBufferDescriptor.size must be positive"); }
 	if (has(usage, (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.MAP_WRITE as int32))) {
 		stop("GPUBufferUsage MAP_READ and MAP_WRITE are not ported to wgpu: mapAsync completes in the browser's event loop and cannot block here without ASYNCIFY or JSPI");
 	}
@@ -1302,34 +1296,18 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	if (has(descriptor.usage, GPUTextureUsage.STORAGE_BINDING as int32)) { storageFormatOf(descriptor.format, "GPUTextureDescriptor.format"); }
 	const width = descriptor.size.width;
 	const height = descriptor.size.height;
-	if (width <= 0 || height <= 0) {
-		stop("GPUTextureDescriptor.size needs a positive width and height");
-	}
-	if (width > maxTextureDimension || height > maxTextureDimension) {
-		const limit = maxTextureDimension;
-		stop(`GPUTextureDescriptor.size ${width}x${height} exceeds maxTextureDimension2D ${limit}`);
-	}
 	const dimension: string = descriptor.dimension;
 	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
 	const volume = dimension == "3d";
-	if (descriptor.size.depthOrArrayLayers < 0) { stop("GPUTextureDescriptor.size.depthOrArrayLayers is negative"); }
 	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
-	if (volume && (width > deviceLimits.maxTextureDimension3D || height > deviceLimits.maxTextureDimension3D || layers > deviceLimits.maxTextureDimension3D)) {
-		stop(`GPUTextureDescriptor.size ${width}x${height}x${layers} exceeds maxTextureDimension3D ${deviceLimits.maxTextureDimension3D}`);
-	}
-	if (!volume && layers > deviceLimits.maxTextureArrayLayers) {
-		stop(`GPUTextureDescriptor.size.depthOrArrayLayers ${layers} exceeds maxTextureArrayLayers ${deviceLimits.maxTextureArrayLayers}`);
-	}
-	const mipLevels = checkedMipLevelCount(descriptor, volume, layers);
+	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
 	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
 	const usage = descriptor.usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
-	checkedMultisample(sampleCount, volume, layers, mipLevels, attachment);
 	if (sampleCount > 1 && has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) { stop("a multisampled texture cannot be STORAGE_BINDING"); }
-	if (volume && info.depth) { stop("WebGPU allows a depth or stencil format only on a 2d texture"); }
 	if (attachment && info.native == FORMAT_RG11B10_UFLOAT && wgHasFeature(FEATURE_RG11B10_UFLOAT_RENDERABLE) == 0) {
 		stop("rg11b10ufloat as RENDER_ATTACHMENT needs the device feature rg11b10ufloat-renderable, which this device was not created with");
 	}

@@ -1,4 +1,14 @@
-import { BindingKind, GPUBindGroupEntry, GPU_RESOURCE_GROUP, GPU_UNIFORM_GROUP } from "./types.ms";
+import {
+	BindingKind,
+	GPUBindGroupEntry,
+	GPUBufferUsage,
+	GPUSupportedLimits,
+	GPUTextureDescriptor,
+	GPUTextureFormat,
+	GPUTextureUsage,
+	GPU_RESOURCE_GROUP,
+	GPU_UNIFORM_GROUP,
+} from "./types.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -151,3 +161,56 @@ export function uniformEntryRefusal(
 export function checkedUniformEntry(entry: GPUBindGroupEntry, bufferIsUniform: boolean, bufferSize: int64, blockSize: int32, alignment: int64): void {
 	refuse(uniformEntryRefusal(entry, bufferIsUniform, bufferSize, blockSize, alignment));
 }
+
+// WebGPU lets a mappable buffer carry only the one copy usage that matches its map direction.
+export function bufferRefusal(size: int64, usage: int32): string {
+	const mapRead = GPUBufferUsage.MAP_READ as int32;
+	const mapWrite = GPUBufferUsage.MAP_WRITE as int32;
+	if (size <= 0) { return "GPUBufferDescriptor.size must be positive"; }
+	if ((usage & mapRead) != 0 && usage != (mapRead | (GPUBufferUsage.COPY_DST as int32))) {
+		return "GPUBufferUsage MAP_READ combines only with COPY_DST";
+	}
+	if ((usage & mapWrite) != 0 && usage != (mapWrite | (GPUBufferUsage.COPY_SRC as int32))) {
+		return "GPUBufferUsage MAP_WRITE combines only with COPY_SRC";
+	}
+	return "";
+}
+
+export function isDepthFormat(format: GPUTextureFormat): boolean {
+	return format == "depth16unorm" || format == "depth32float" || format == "depth24plus-stencil8";
+}
+
+// `limits` is the backend's own query. The rules run in the order a descriptor is read: size,
+// layers, the mip chain the largest side allows, multisample, then format against dimension.
+export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): string {
+	const width = descriptor.size.width;
+	const height = descriptor.size.height;
+	const dimension: string = descriptor.dimension;
+	const volume = dimension == "3d";
+	if (width <= 0 || height <= 0) { return "GPUTextureDescriptor.size needs a positive width and height"; }
+	if (descriptor.size.depthOrArrayLayers < 0) { return "GPUTextureDescriptor.size.depthOrArrayLayers is negative"; }
+	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
+	const largestSide = volume ? Math.max(Math.max(width, height), layers) : Math.max(width, height);
+	const sideLimit = volume ? limits.maxTextureDimension3D : limits.maxTextureDimension2D;
+	if (largestSide > sideLimit || (!volume && layers > limits.maxTextureArrayLayers)) {
+		return `GPUTextureDescriptor.size ${width}x${height}x${layers} is over the limits ${sideLimit} per side and ${limits.maxTextureArrayLayers} array layers`;
+	}
+	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
+	let possible = 1;
+	while ((largestSide >> possible) > 0) { possible += 1; }
+	if (mipLevels < 1 || mipLevels > possible) {
+		return `GPUTextureDescriptor.mipLevelCount ${mipLevels} is outside 1..${possible} for a ${width}x${height} texture`;
+	}
+	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
+	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
+		return "WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer";
+	}
+	if (sampleCount > 1 && (descriptor.usage & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) == 0) {
+		return "a multisampled texture must be a RENDER_ATTACHMENT";
+	}
+	if (volume && isDepthFormat(descriptor.format)) { return "WebGPU allows a depth or stencil format only on a 2d texture"; }
+	return "";
+}
+
+export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRefusal(size, usage)); }
+export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
