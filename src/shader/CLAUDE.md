@@ -22,13 +22,10 @@ later replaces the hand-written GLSL source of each base.
   `FeatureCondition` over feature names; per key, the IR is specialized and its unread declarations
   dropped (Heaps `Eval` + `Dce`). Own backends, once rejected because shdc wrote every target, are
   chosen because sokol is being replaced ([docs/GPU.md](../../docs/GPU.md)). sokol-shdc is on no
-  build or regeneration path; it runs only as the opt-in oracle `scripts/regen-shaders.sh
-  --oracle-shdc`, which compiles the GLSL 450 of the same stages and compares its reflection with
-  the committed modules (all three the same, 2026-10-23, BUILD `4b5816aea`, while fetches still
-  took a sampler). Since `textureLoad` and `textureDimensions` take none, shdc refuses every
-  stage that fetches (see "No fetch without a sampler" below), so the oracle stops at the first
-  such program (`copy`); on 2026-10-23 that was 77 of the 254 void3d rows, `shader2d` and
-  `gpuCopy`.
+  build or regeneration path. Its reflection matched the committed modules on all three while
+  fetches still took a sampler (2026-10-23, BUILD `4b5816aea`); it refuses every stage that
+  fetches without one (see "No fetch without a sampler" below), so the goldens replaced it as the
+  oracle.
   `irErrors` names each broken invariant; `src/test/shaderIrCheck.ms` builds modules by hand, also
   inside a macro.
 - **Emitter = macro library, not a compiler backend.** On msc `244ef48c`, `getImpl(bindSym("frag"))`
