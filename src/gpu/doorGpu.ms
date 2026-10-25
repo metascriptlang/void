@@ -13,6 +13,7 @@ import {
 	GPUBufferDescriptor,
 	GPUBufferUsage,
 	GPUMapMode,
+	GPUPassTimestampWrites,
 	GPUCommandEncoder,
 	GPUCompareFunction,
 	GPUCullMode,
@@ -39,6 +40,7 @@ import {
 	GPUVertexFormat,
 	GPUVertexStepMode,
 	GPU_MAX_VERTEX_BUFFERS,
+	GPU_NO_QUERY_INDEX,
 	GPU_UNIFORM_GROUP,
 	GPU_RESOURCE_GROUP,
 	DUMMY_SAMPLER_BINDING,
@@ -59,6 +61,19 @@ import {
 } from "../platform/swapchain.h";
 import "../sokol/gpu";
 import { stop } from "./stop";
+import {
+	GPU_TIMER_ON,
+	timerBufferCount,
+	timerBuild,
+	timerEnable,
+	timerFrameEnd,
+	timerPassWrites,
+	timerResultCount,
+	timerResultFrame,
+	timerResultLabel,
+	timerResultMs,
+	timerState,
+} from "./gpuTimer";
 import { Vec4 } from "../math/math3d";
 import {
 	Blend,
@@ -259,6 +274,7 @@ export function doorSetup(
 	passViews = [0, 0, 0, 0, 0];
 	current = -1;
 	resetStats();
+	timerBuild(device);
 	if (everSetUp) { generation++; }
 	everSetUp = true;
 }
@@ -1454,6 +1470,20 @@ export function doorReadScreen(out: Span<uint8>): int32 {
 	if (openPass != PassState.None) { stop(call + " with a pass already open; endPass ends it"); }
 }
 
+function timestampsOf(label: string): GPUPassTimestampWrites {
+	if (timerState() == GPU_TIMER_ON) { return timerPassWrites(label); }
+	return { querySet: { id: 0 }, beginningOfPassWriteIndex: GPU_NO_QUERY_INDEX, endOfPassWriteIndex: GPU_NO_QUERY_INDEX };
+}
+
+// The GPU time of each pass, read GPU_TIMER_RING - 1 frames after it was drawn so the read never
+// waits (src/gpu/gpuTimer.ms). Returns GPU_TIMER_ON or GPU_TIMER_UNSUPPORTED.
+export function doorEnableGpuTimer(maxPasses: int32): int32 { return timerEnable(device, maxPasses); }
+export function doorGpuTimerState(): int32 { return timerState(); }
+export function doorGpuTimerFrame(): int64 { return timerResultFrame(); }
+export function doorGpuTimerPassCount(): int32 { return timerResultCount(); }
+export function doorGpuTimerPassMs(index: int32): float64 { return timerResultMs(index); }
+export function doorGpuTimerPassLabel(index: int32): string { return timerResultLabel(index); }
+
 function frameEncoder(): GPUCommandEncoder {
 	if (encoder.id == 0) { encoder = device.createCommandEncoder(); }
 	return encoder;
@@ -1500,6 +1530,7 @@ export function doorBeginPass(
 			depthStoreOp: STORE_OPS[depth.store as int32],
 		};
 	}
+	descriptor.timestampWrites = timestampsOf("target");
 	pass = frameEncoder().beginRenderPass(descriptor);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Target;
@@ -1531,6 +1562,7 @@ export function doorBeginColorPass(
 		loadOp: "clear",
 		storeOp: "store",
 	};
+	descriptor.timestampWrites = timestampsOf("color");
 	pass = frameEncoder().beginRenderPass(descriptor);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Target;
@@ -1564,6 +1596,7 @@ export function doorBeginScreenPass(
 			depthStoreOp: "discard",
 		};
 	}
+	descriptor.timestampWrites = timestampsOf("screen");
 	pass = frameEncoder().beginRenderPass(descriptor);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Screen;
@@ -1594,6 +1627,7 @@ export function doorCommit(): void {
 @exportName("doorSubmitFrame")
 export function doorSubmitFrame(): void {
 	stopOnOpenPass("commit");
+	if (timerState() == GPU_TIMER_ON) { timerFrameEnd(frameEncoder()); }
 	device.queue.submit(frameEncoder().finish());
 	encoder = { id: 0 };
 	frameStats[DOOR_STAT_UNIFORM_RING_BYTES] = uniformCursor;
@@ -1653,7 +1687,7 @@ export function doorEnvironmentDepthFormat(): PixelFormat {
 export function doorEnvironmentSampleCount(): int32 { return environment().sampleCount; }
 export function doorFrameIndex(): uint32 { return device.frameIndex(); }
 
-function doorOwnedBuffers(): int32 { return uniformRing.isAlive() ? 1 : 0; }
+function doorOwnedBuffers(): int32 { return (uniformRing.isAlive() ? 1 : 0) + timerBufferCount(); }
 
 export function doorLiveBuffers(): int32 {
 	return device.liveCounts().buffers - doorOwnedBuffers();
