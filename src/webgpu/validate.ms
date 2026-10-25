@@ -37,6 +37,7 @@ import {
 	viewLayersRefusal,
 	viewMipsRefusal,
 } from "./types.ms";
+import { TextureRecord, ViewRecord } from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -273,25 +274,25 @@ export function isDepthFormat(format: GPUTextureFormat): boolean {
 // `limits` is the backend's own query. The rules run in the order a descriptor is read: size,
 // layers, the mip chain the largest side allows, multisample, then format against dimension.
 export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): string {
-	const width = descriptor.size.width;
-	const height = descriptor.size.height;
-	const dimension: string = descriptor.dimension;
-	const volume = dimension == "3d";
+	const texture = textureRecordOf(0, descriptor);
+	const width = texture.width;
+	const height = texture.height;
+	const volume = texture.volume;
 	if (width <= 0 || height <= 0) { return "GPUTextureDescriptor.size needs a positive width and height"; }
 	if (descriptor.size.depthOrArrayLayers < 0) { return "GPUTextureDescriptor.size.depthOrArrayLayers is negative"; }
-	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
+	const layers = texture.layers;
 	const largestSide = volume ? Math.max(Math.max(width, height), layers) : Math.max(width, height);
 	const sideLimit = volume ? limits.maxTextureDimension3D : limits.maxTextureDimension2D;
 	if (largestSide > sideLimit || (!volume && layers > limits.maxTextureArrayLayers)) {
 		return `GPUTextureDescriptor.size ${width}x${height}x${layers} is over the limits ${sideLimit} per side and ${limits.maxTextureArrayLayers} array layers`;
 	}
-	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
+	const mipLevels = texture.mipLevels;
 	let possible = 1;
 	while ((largestSide >> possible) > 0) { possible += 1; }
 	if (mipLevels < 1 || mipLevels > possible) {
 		return `GPUTextureDescriptor.mipLevelCount ${mipLevels} is outside 1..${possible} for a ${width}x${height} texture`;
 	}
-	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
+	const sampleCount = texture.sampleCount;
 	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
 		return "WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer";
 	}
@@ -300,6 +301,28 @@ export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupp
 	}
 	if (volume && isDepthFormat(descriptor.format)) { return "WebGPU allows a depth or stencil format only on a 2d texture"; }
 	return "";
+}
+
+export function textureRecordOf(id: uint32, descriptor: GPUTextureDescriptor): TextureRecord {
+	const width = descriptor.size.width;
+	const height = descriptor.size.height;
+	const dimension: string = descriptor.dimension;
+	const volume = dimension == "3d";
+	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
+	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
+	return {
+		id: id,
+		width: width,
+		height: height,
+		format: descriptor.format,
+		usage: descriptor.usage,
+		sampleCount: sampleCount,
+		mipLevels: descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount,
+		layers: layers,
+		volume: volume,
+		cube: cubeCapable(volume, layers, width, height, descriptor.usage, sampleCount),
+		swapchainView: 0,
+	};
 }
 
 export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRefusal(size, usage)); }
@@ -628,7 +651,7 @@ export function entryOf<T>(group: T, binding: int32): int32 {
 	stop(`a bound bind group has no entry for binding ${binding}`);
 }
 
-// What a backend knows of a view used as a render attachment. `width`, `height` and `layers` are
+// A view used as a render attachment. `width`, `height` and `layers` are
 // the texture's own; `single` is one mip of one layer; `volume` is a 3d view.
 export struct AttachmentFacts {
 	texture: uint32;
@@ -649,14 +672,13 @@ export struct RenderPassFacts {
 	depth: AttachmentFacts;
 }
 
-// `view` and `texture` are a backend's own slots; `depth` and `volume` are read the backend's way.
-export function attachmentFactsOf<V, T>(view: V, texture: T, depth: boolean, volume: boolean): AttachmentFacts {
+export function attachmentFactsOf(view: ViewRecord, texture: TextureRecord): AttachmentFacts {
 	return {
 		texture: texture.id,
-		depth: depth,
+		depth: isDepthFormat(texture.format),
 		renderable: (texture.usage & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0,
 		single: view.attachable,
-		volume: volume,
+		volume: view.dimension == "3d",
 		baseMip: view.baseMip,
 		width: texture.width,
 		height: texture.height,
