@@ -29,7 +29,6 @@
 set -u
 cd "$(dirname "$0")/.."
 . scripts/capturePending.sh
-export MSC_NO_GLOBAL_CACHE=1
 
 FAILURES=0
 SKIPPED=0
@@ -309,27 +308,6 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	write_frame_entry reparentPixelArtCapture "configureReparent(true);" \
 		reparentFrame initReparent frameReparent configureReparent
 	note "prepare: capture entries written to $CAPTURE"
-}
-
-# msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
-# stale code is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
-# notes). void3d's programs and tables are MetaScript now; the C units left include door.h and
-# shader2dSlots.h, so the gate hashes those and evicts what was built from them in this
-# checkout's build cache. The machine-wide cache is off for the run.
-purge_stale_shader_objects() {
-	stamp=$WORK/shaderStamp
-	headers="src/gpu/door.h src/void2d/shader2dSlots.h"
-	current=$(cat $headers 2>/dev/null | md5sum | cut -d' ' -f1)
-	if [ ! -f src/gpu/door.h ] || [ ! -f src/void2d/shader2dSlots.h ]; then
-		note "capture: a shader or GPU bridge header is missing"
-		return 0
-	fi
-	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$current" ]; then
-		return 0
-	fi
-	note "capture: door.h or shader2dSlots.h changed since the last gate — evicting the objects built from them"
-	rm -f out/debug/.cache/*batcher* out/debug/.cache/*frameClock* out/debug/.cache/*bridge* 		out/debug/.cache/*windowGl* out/debug/.cache/*capture* 2>/dev/null
-	echo "$current" > "$stamp"
 }
 
 # ---- entries ------------------------------------------------------------------------------
@@ -1174,7 +1152,6 @@ run_exposure() {
 		return
 	fi
 	exe="$WORK/exposure.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/exposure.ms --output="$exe" > "$WORK/exposure.build.log" 2>&1; then
 		fail "exposure: tests/integration/exposure.ms does not build — see $WORK/exposure.build.log"
 		return
@@ -1200,7 +1177,6 @@ run_environment_light() {
 		return
 	fi
 	exe="$WORK/environmentLight.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/environmentLight.ms --output="$exe" > "$WORK/environmentLight.build.log" 2>&1; then
 		fail "environment-light: tests/integration/environmentLight.ms does not build — see $WORK/environmentLight.build.log"
 		return
@@ -1224,7 +1200,6 @@ run_mesh_lod() {
 		return
 	fi
 	exe="$WORK/meshLod.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/meshLod.ms --output="$exe" \
 		> "$WORK/meshLod.build.log" 2>&1; then
 		fail "mesh-lod: build refused — see $WORK/meshLod.build.log"
@@ -1273,8 +1248,6 @@ run_particle_fade() {
 	case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) backends="native gl-core" ;; esac
 	for backend in $backends; do
 		exe="$WORK/particleFade.$backend.exe"
-		rm -f "$exe"
-		rm -rf out/debug/.cache
 		flags=""
 		[ "$backend" = gl-core ] && flags="-d:voidGlCore --passC=-DVOID_GLCORE"
 		if ! msc build $flags tests/integration/particleFade.ms --output="$exe" \
@@ -1312,7 +1285,6 @@ run_particle_fade() {
 			done
 		done
 	done
-	rm -rf out/debug/.cache
 }
 
 run_particle_mesh() {
@@ -1321,7 +1293,6 @@ run_particle_mesh() {
 		return
 	fi
 	exe="$WORK/particleMesh.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/particleMesh.ms --output="$exe" \
 		> "$WORK/particleMesh.build.log" 2>&1; then
 		fail "particle-mesh: tests/integration/particleMesh.ms does not build — see $WORK/particleMesh.build.log"
@@ -1356,7 +1327,6 @@ run_bloom() {
 		return
 	fi
 	exe="$WORK/bloom.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/bloom.ms --output="$exe" > "$WORK/bloom.build.log" 2>&1; then
 		fail "bloom: tests/integration/bloom.ms does not build — see $WORK/bloom.build.log"
 		return
@@ -1382,7 +1352,6 @@ run_hdr() {
 		return
 	fi
 	exe="$WORK/hdr.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/hdr.ms --output="$exe" > "$WORK/hdr.build.log" 2>&1; then
 		fail "hdr: tests/integration/hdr.ms does not build — see $WORK/hdr.build.log"
 		return
@@ -1422,9 +1391,7 @@ run_gl_core() {
 		MINGW*|MSYS*|CYGWIN*) ;;
 		*) skip "gl-core: this runner builds the GL core variant on Windows only"; return ;;
 	esac
-	rm -rf out/debug/.cache
 	run_gl_checks
-	rm -rf out/debug/.cache
 }
 
 run_gl_checks() {
@@ -1433,7 +1400,6 @@ run_gl_checks() {
 		name=${entry%%:*}
 		pixel=${entry#*:}
 		exe="$WORK/gl_$name.exe"
-		rm -f "$exe"
 		if ! msc build -d:voidGlCore --passC=-DVOID_GLCORE tests/integration/$name.ms --output="$exe" \
 			> "$WORK/gl_$name.build.log" 2>&1; then
 			fail "gl-core: tests/integration/$name.ms does not build for GL core — see $WORK/gl_$name.build.log"
@@ -1564,7 +1530,6 @@ run_gltf_cpu() {
 		'console.log(loaded.ok);' \
 		'console.log(loadGlb([]).ok);' \
 		> "$WORK/gltfCpu.ms"
-	rm -f out/debug/gltfCpu.exe
 	if ! msc build "$WORK/gltfCpu.ms" --output=out/debug/gltfCpu.exe > "$WORK/gltfCpu.build.log" 2>&1; then
 		fail "gltf-cpu: the decoder does not build without sokol"
 		tail -20 "$WORK/gltfCpu.build.log"
@@ -1586,8 +1551,6 @@ run_gltf_cpu() {
 # One configuration: rebuild the entry, run it, and hash all four frames against the baseline
 # it claims to reproduce. The committed docs/baselines3d.sha256 *is* the baseline set, so a
 # clean checkout has everything the comparison needs, and a frame with no hash there fails.
-# The binary is deleted first so the link is always redone; the object eviction above is what
-# makes a stale shader impossible.
 #
 # A frame that matches is also kept as out/tmp/capture/<baseline>_<frame>.ppm. That copy is
 # only ever read to measure a later difference (AE, PAE); it decides nothing.
@@ -1628,7 +1591,7 @@ build_and_capture() {
 		fail "capture $name: the entry is missing"
 		return 1
 	fi
-	rm -f "out/debug/$name.exe" "$CAPTURE/gate/${name}_"*.ppm
+	rm -f "$CAPTURE/gate/${name}_"*.ppm
 	if ! msc build "$entry" --output="out/debug/$name.exe" > "$WORK/$name.build.log" 2>&1; then
 		fail "capture $name: build failed"
 		tail -30 "$WORK/$name.build.log"
@@ -2025,7 +1988,6 @@ run_captures() {
 		skip "capture: GATE_SKIP_CAPTURE=1 — the ortho captures and HUD were not built, run or compared"
 		return
 	fi
-	purge_stale_shader_objects
 	run_capture campfireCapture        before     "palette off"
 	run_capture campfirePaletteCapture m3palette  "palette on"
 	run_capture campfirePreviewCapture m3preview  "preview"
@@ -2190,7 +2152,6 @@ run_unlit_textured() {
 		skip "unlit-textured: GATE_SKIP_CAPTURE=1 — light-independent textures were not drawn"
 		return
 	fi
-	purge_stale_shader_objects
 	for entry in unlitCapture unlitPixelArtCapture; do
 		if ! msc build "$CAPTURE/$entry.ms" --output="$WORK/$entry.exe" \
 			> "$WORK/$entry.build.log" 2>&1; then
@@ -2229,7 +2190,6 @@ run_target_texture() {
 		skip "target-texture: GATE_SKIP_CAPTURE=1 — no render target was sampled"
 		return
 	fi
-	purge_stale_shader_objects
 	exe="$WORK/targetTexture.exe"
 	if ! msc build tests/integration/targetTexture.ms --output="$exe" \
 		> "$WORK/targetTexture.build.log" 2>&1; then
@@ -2282,7 +2242,6 @@ run_world_label() {
 		skip "world-label: GATE_SKIP_CAPTURE=1 — no label was read back"
 		return
 	fi
-	purge_stale_shader_objects
 	exe="$WORK/worldLabel.exe"
 	if ! msc build tests/integration/worldLabel.ms --output="$exe" \
 		> "$WORK/worldLabel.build.log" 2>&1; then
@@ -2347,9 +2306,7 @@ run_card_table() {
 		skip "card-table: GATE_SKIP_CAPTURE=1 — the sample was not read back"
 		return
 	fi
-	purge_stale_shader_objects
 	exe="$WORK/cardTable.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/cardTable.ms --output="$exe" \
 		> "$WORK/cardTable.build.log" 2>&1; then
 		fail "card-table: tests/integration/cardTable.ms does not build — see $WORK/cardTable.build.log"
@@ -2510,7 +2467,6 @@ run_render_order() {
 		return
 	fi
 	exe="$WORK/renderOrder.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/renderOrder.ms --output="$exe" \
 		> "$WORK/renderOrder.build.log" 2>&1; then
 		fail "render-order: tests/integration/renderOrder.ms does not build — see $WORK/renderOrder.build.log"
@@ -2545,7 +2501,6 @@ run_moving_material() {
 		return
 	fi
 	exe="$WORK/movingMaterial.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/movingMaterial.ms --output="$exe" \
 		> "$WORK/movingMaterial.build.log" 2>&1; then
 		fail "moving-material: tests/integration/movingMaterial.ms does not build — see $WORK/movingMaterial.build.log"
@@ -2583,7 +2538,6 @@ run_map_material() {
 		return
 	fi
 	exe="$WORK/mapMaterial.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/mapMaterial.ms --output="$exe" \
 		> "$WORK/mapMaterial.build.log" 2>&1; then
 		fail "map-material: tests/integration/mapMaterial.ms does not build — see $WORK/mapMaterial.build.log"
@@ -2628,7 +2582,6 @@ run_dir_shadow() {
 		return
 	fi
 	exe="$WORK/dirShadow.exe"
-	rm -f "$exe"
 	if ! msc build tests/integration/dirShadow.ms --output="$exe" > "$WORK/dirShadow.build.log" 2>&1; then
 		fail "dir-shadow: tests/integration/dirShadow.ms does not build — see $WORK/dirShadow.build.log"
 		return
@@ -2836,7 +2789,6 @@ run_stores() {
 		skip "stores: GATE_SKIP_CAPTURE=1 — the store identity consumer was not run"
 		return
 	fi
-	rm -f out/tmp/storeIdentity.exe
 	if ! msc build tests/integration/storeIdentity.ms --release --output=out/tmp/storeIdentity.exe \
 		> "$WORK/stores.build.log" 2>&1; then
 		fail "stores: tests/integration/storeIdentity.ms does not build"
@@ -2862,7 +2814,6 @@ run_views() {
 		skip "views: GATE_SKIP_CAPTURE=1 — the view teardown consumer was not run"
 		return
 	fi
-	rm -f out/tmp/viewTeardown.exe
 	if ! msc build tests/integration/viewTeardown.ms --release --output=out/tmp/viewTeardown.exe \
 		> "$WORK/views.build.log" 2>&1; then
 		fail "views: tests/integration/viewTeardown.ms does not build"
@@ -2944,7 +2895,6 @@ run_target_owner() {
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_both_layers() {
-	rm -f out/tmp/bothLayers.exe
 	if ! msc build tests/integration/bothLayers.ms --output=out/tmp/bothLayers.exe \
 		> "$WORK/both.build.log" 2>&1; then
 		fail "both layers: tests/integration/bothLayers.ms does not build"

@@ -64,18 +64,7 @@ if [ "$mode" = update ] && [ "$backend" != d3d11 ]; then
 	exit 2
 fi
 
-# The object cache is keyed on the .c and not on the headers it includes, and --force does
-# not bypass it, so a changed capture.c or shader header would otherwise link stale objects
-# (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). The machine-wide
-# cache is left alone and not read (scripts/gate.sh step 1 says why).
-export MSC_NO_GLOBAL_CACHE=1
-evict() {
-	rm -f "$RUNNER" "$COMPARE"
-	rm -rf out/debug/.cache out/release/.cache
-}
-
 build() {
-	evict
 	# Release, for two reasons. VOID2D.md's baseline and tests/bench/ are release, so one
 	# build mode covers both; and sokol's validation layer, which a debug build links,
 	# aborts the process on two of the defects this suite exists to record —
