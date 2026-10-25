@@ -274,7 +274,17 @@ or `vulkanMemoryCheck.ms`:
 - copy usages add the transfer stage to a resource's resting state, and a layout change waits on
   the stages it leaves rather than on top-of-pipe, because either gap leaves a copy hazard
   unordered; the synchronization validation layer reports it when the fix is reverted;
-- a cube-compatible image needs one sample (VUID-VkImageCreateInfo-samples-02257).
+- a cube-compatible image needs one sample (VUID-VkImageCreateInfo-samples-02257);
+- a texture written twice in an unchanged layout gets a memory dependency, as Mach's buffer path
+  already has; Mach's texture path has none, and sync validation reports write-after-write;
+- a swapchain image enters the tracker at acquire as a write from `UNDEFINED`, and each image has
+  its own present semaphore (Dawn `SwapChainVk.cpp:233-235`), where Mach transitions images at
+  creation, before any acquire, and shares one semaphore;
+- an integer target clears with integer values, where Mach clears every format as float.
+
+Render-pass layouts follow Dawn (`RenderPassCache.cpp:176-208`): a pass starts and ends in the
+attachment layout and the tracker moves the texture before the pass, where Mach's passes move
+it inside the pass from top-of-pipe.
 
 A resource whose driver requires its own allocation gets a dedicated block, and one that only
 prefers it gets one until a quarter of `maxMemoryAllocationCount` is left, as VMA does (Godot
