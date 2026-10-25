@@ -15,6 +15,7 @@ import {
 	imageAlive,
 	contextGeneration,
 } from "./door";
+import { fullMipChain } from "./doorGpu.ms";
 import { ColorAttachment } from "./target";
 import { stop } from "./stop";
 
@@ -34,9 +35,7 @@ export const CUBE_FACES: int32 = 6;
 
 // The mip count of a full chain down to 1x1 (h3d Texture.mipLevels).
 export function cubeFullLevels(size: int32): int32 {
-	let levels: int32 = 1;
-	for (let largest = size; largest > 1; largest = largest >> 1) { levels = levels + 1; }
-	return levels;
+	return fullMipChain(size);
 }
 
 function stopOnClosedCube(call: string): never {

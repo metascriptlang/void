@@ -12,6 +12,7 @@ import {
 	viewAlive,
 	contextGeneration,
 } from "./door";
+import { fullMipChain, mipSide } from "./doorGpu.ms";
 import { stop } from "./stop";
 
 export enum TextureError {
@@ -52,13 +53,7 @@ export function create(
 
 // Levels of the full chain down to 1x1, as h3d Texture.mipLevels counts them (Texture.hx:80-90).
 export function mipLevelCount(width: int32, height: int32): int32 {
-	let count: int32 = 1;
-	let largest: int32 = Math.max(width, height);
-	while (largest > 1) {
-		largest /= 2;
-		count++;
-	}
-	return count;
+	return fullMipChain(Math.max(width, height));
 }
 
 // Pixels of a chain of `levels` (1 or the full chain, as the door takes it), -1 for any other.
@@ -66,12 +61,8 @@ export function mipChainWords(width: int32, height: int32, levels: int32): int64
 	if (width <= 0 || height <= 0 || levels < 1) { return -1; }
 	if (levels != 1 && levels != mipLevelCount(width, height)) { return -1; }
 	let words: int64 = 0;
-	let w: int32 = width;
-	let h: int32 = height;
 	for (let level = 0; level < levels; level++) {
-		words += (w as int64) * (h as int64);
-		w = Math.max(1, w / 2);
-		h = Math.max(1, h / 2);
+		words += (mipSide(width, level) as int64) * (mipSide(height, level) as int64);
 	}
 	return words;
 }

@@ -661,13 +661,13 @@ export function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height
 	return texture.id;
 }
 
-function fullMipChain(largest: int32): int32 {
+export function fullMipChain(largest: int32): int32 {
 	let levels = 1;
 	for (let size = largest; size > 1; size = size / 2) { levels++; }
 	return levels;
 }
 
-function mipSide(size: int32, level: int32): int32 {
+export function mipSide(size: int32, level: int32): int32 {
 	return Math.max(1, size >> level);
 }
 
