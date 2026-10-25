@@ -30,7 +30,7 @@ import {
 import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
 import { claimName } from "./names";
-import { readsFrom, strayWorkgroup } from "./specialize";
+import { printableEntry } from "./specialize";
 import {
 	binaryOperator,
 	floatText,
@@ -827,20 +827,10 @@ function stageText(m: ShaderModule, entry: int32): string {
 
 export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]):
 	Result<string, string> {
-	if (entry < 0 || entry >= m.entries.length) {
-		return Result.err("printWgsl: entry " + String(entry) + " is out of range");
-	}
+	const printable = printableEntry(m, entry);
+	if (!printable.ok) { return Result.err("printWgsl: " + printable.error); }
+	const reads = printable.value;
 	const e = m.entries[entry];
-	const f = m.functions[e.functionIndex];
-	if (f.params.length > 0 || f.result.kind != ShaderTypeKind.Void) {
-		return Result.err("printWgsl: entry '" + e.name + "' takes parameters or returns a " +
-			"value; a stage reads and writes its ios");
-	}
-	const read = readsFrom(m, e.functionIndex);
-	if (!read.ok) { return Result.err("printWgsl: " + read.error); }
-	const reads = read.value;
-	const stray = strayWorkgroup(m, e, reads);
-	if (stray != "") { return Result.err("printWgsl: " + stray); }
 
 	let p = new Printer();
 	p.reserved = wgslReservedWords();

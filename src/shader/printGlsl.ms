@@ -23,7 +23,6 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
-	irErrors,
 	isShift,
 	isArrayTexture,
 	isAtomic,
@@ -39,7 +38,6 @@ import {
 	rootOf,
 	stmtStructs,
 	structOrder,
-	unspecialized,
 } from "./irWalk";
 import {
 	binaryOperator,
@@ -50,7 +48,7 @@ import {
 	pointed,
 } from "./spelling";
 import { claimName } from "./names";
-import { readsFrom, strayWorkgroup } from "./specialize";
+import { printableEntry } from "./specialize";
 
 export enum GlslTarget {
 	Glsl430,
@@ -1139,31 +1137,14 @@ export function printGlsl(
 	slots: BindingSlot[],
 	target: GlslTarget,
 ): Result<string, string> {
-	const invalid = irErrors(m);
-	if (invalid.length > 0) { return Result.err("printGlsl: " + invalid[0]); }
-	if (entryIndex < 0 || entryIndex >= m.entries.length) {
-		return Result.err("printGlsl: entry " + String(entryIndex) + " is out of range");
-	}
+	const printable = printableEntry(m, entryIndex);
+	if (!printable.ok) { return Result.err("printGlsl: " + printable.error); }
+	const reads = printable.value;
 	const entry = m.entries[entryIndex];
 	const es = target == GlslTarget.Glsl300es;
 	if (es && entry.stage == ShaderStage.Compute) {
 		return Result.err("printGlsl: entry '" + entry.name + "' is compute, which GLSL ES 3.00 " +
 			"has not");
-	}
-	const readsResult = readsFrom(m, entry.functionIndex);
-	if (!readsResult.ok) { return Result.err("printGlsl: " + readsResult.error); }
-	const reads = readsResult.value;
-	const stray = strayWorkgroup(m, entry, reads);
-	if (stray != "") { return Result.err("printGlsl: " + stray); }
-	const conditioned = unspecialized(m, entry.stage, reads.resources, reads.functions);
-	if (conditioned != "") {
-		return Result.err("printGlsl: " + conditioned + " is under a feature condition: " +
-			"specialize the module first");
-	}
-	const entryFunction = m.functions[entry.functionIndex];
-	if (entryFunction.params.length > 0 || entryFunction.result.kind != ShaderTypeKind.Void) {
-		return Result.err("printGlsl: entry '" + entry.name + "' takes parameters or returns a " +
-			"value; an entry reads and writes its stage's io");
 	}
 
 	let p = new Printer();

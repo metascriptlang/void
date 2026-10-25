@@ -31,7 +31,7 @@ import {
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
 import { claimName } from "./names";
-import { readsFrom, strayWorkgroup } from "./specialize";
+import { printableEntry, readsFrom } from "./specialize";
 import {
 	binaryOperator,
 	floatText,
@@ -1033,20 +1033,10 @@ function stageKeyword(stage: ShaderStage): string {
 // dispatchThreadgroups, from the reflection's workgroupSize.
 export function printMsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]):
 	Result<string, string> {
-	if (entry < 0 || entry >= m.entries.length) {
-		return Result.err("printMsl: entry " + String(entry) + " is out of range");
-	}
+	const printable = printableEntry(m, entry);
+	if (!printable.ok) { return Result.err("printMsl: " + printable.error); }
+	const reads = printable.value;
 	const e = m.entries[entry];
-	const f = m.functions[e.functionIndex];
-	if (f.params.length > 0 || f.result.kind != ShaderTypeKind.Void) {
-		return Result.err("printMsl: entry '" + e.name + "' takes parameters or returns a " +
-			"value; a stage reads and writes its ios");
-	}
-	const read = readsFrom(m, e.functionIndex);
-	if (!read.ok) { return Result.err("printMsl: " + read.error); }
-	const reads = read.value;
-	const stray = strayWorkgroup(m, e, reads);
-	if (stray != "") { return Result.err("printMsl: " + stray); }
 	for (const index of reads.resources) {
 		const slots = bindings.filter((s) => s.resource == index);
 		if (slots.length == 0 || slots[0].nativeSlot < 0) {

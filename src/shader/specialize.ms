@@ -19,7 +19,9 @@ import {
 	ShaderTypeKind,
 	StmtKind,
 	holds,
+	irErrors,
 } from "./ir";
+import { unspecialized } from "./irWalk";
 
 export class TexturePair {
 	texture: int32 = -1;
@@ -160,7 +162,7 @@ function walkFunction(w: Walk, index: int32): void {
 	walkStmts(w, f.body);
 }
 
-export function strayWorkgroup(m: ShaderModule, e: ShaderEntry, reads: Reads): string {
+function strayWorkgroup(m: ShaderModule, e: ShaderEntry, reads: Reads): string {
 	if (e.stage == ShaderStage.Compute || reads.workgroups.length == 0) { return ""; }
 	return "workgroup variable '" + m.workgroups[reads.workgroups[0]].name +
 		"' is read outside a compute entry";
@@ -172,6 +174,29 @@ export function readsFrom(m: ShaderModule, functionIndex: int32): Result<Reads, 
 	walkFunction(w, functionIndex);
 	if (w.errors.length > 0) { return Result.err(w.errors.join("\n")); }
 	return Result.ok(w.reads);
+}
+
+export function printableEntry(m: ShaderModule, entryIndex: int32): Result<Reads, string> {
+	if (entryIndex < 0 || entryIndex >= m.entries.length) {
+		return Result.err("entry " + String(entryIndex) + " is out of range");
+	}
+	const invalid = irErrors(m);
+	if (invalid.length > 0) { return Result.err(invalid[0]); }
+	const entry = m.entries[entryIndex];
+	const entryFunction = m.functions[entry.functionIndex];
+	if (entryFunction.params.length > 0 || entryFunction.result.kind != ShaderTypeKind.Void) {
+		return Result.err("entry '" + entry.name + "' takes parameters or returns a value; an " +
+			"entry reads and writes its stage's io");
+	}
+	const reads = try readsFrom(m, entry.functionIndex);
+	const stray = strayWorkgroup(m, entry, reads);
+	if (stray != "") { return Result.err(stray); }
+	const conditioned = unspecialized(m, entry.stage, reads.resources, reads.functions);
+	if (conditioned != "") {
+		return Result.err(conditioned + " is under a feature condition: specialize the module " +
+			"first");
+	}
+	return Result.ok(reads);
 }
 
 class Remap {

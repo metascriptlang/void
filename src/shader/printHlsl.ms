@@ -23,7 +23,6 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
-	irErrors,
 	isArrayTexture,
 	isAtomic,
 } from "./ir";
@@ -38,7 +37,6 @@ import {
 	rootOf,
 	stmtStructs,
 	structOrder,
-	unspecialized,
 } from "./irWalk";
 import {
 	binaryOperator,
@@ -49,7 +47,7 @@ import {
 	pointed,
 } from "./spelling";
 import { claimName } from "./names";
-import { readsFrom, strayWorkgroup } from "./specialize";
+import { printableEntry } from "./specialize";
 
 function hlslKeywords(): string[] {
 	return [
@@ -1148,22 +1146,10 @@ export function printHlsl(
 	entryIndex: int32,
 	slots: BindingSlot[],
 ): Result<string, string> {
-	const invalid = irErrors(m);
-	if (invalid.length > 0) { return Result.err("printHlsl: " + invalid[0]); }
-	if (entryIndex < 0 || entryIndex >= m.entries.length) {
-		return Result.err("printHlsl: entry " + String(entryIndex) + " is out of range");
-	}
+	const printable = printableEntry(m, entryIndex);
+	if (!printable.ok) { return Result.err("printHlsl: " + printable.error); }
+	const reads = printable.value;
 	const entry = m.entries[entryIndex];
-	const readsResult = readsFrom(m, entry.functionIndex);
-	if (!readsResult.ok) { return Result.err("printHlsl: " + readsResult.error); }
-	const reads = readsResult.value;
-	const stray = strayWorkgroup(m, entry, reads);
-	if (stray != "") { return Result.err("printHlsl: " + stray); }
-	const conditioned = unspecialized(m, entry.stage, reads.resources, reads.functions);
-	if (conditioned != "") {
-		return Result.err("printHlsl: " + conditioned + " is under a feature condition: " +
-			"specialize the module first");
-	}
 
 	let p = new Printer();
 	p.reserved = hlslKeywords().concat(hlslIntrinsics());
@@ -1236,12 +1222,6 @@ export function printHlsl(
 	for (const f of functions) { p.functionNames[f] = claim(p, p.globals, m.functions[f].name); }
 	for (const w of reads.workgroups) {
 		p.workgroupNames[w] = claim(p, p.globals, m.workgroups[w].name);
-	}
-
-	const entryFunction = m.functions[entry.functionIndex];
-	if (entryFunction.params.length > 0 || entryFunction.result.kind != ShaderTypeKind.Void) {
-		return Result.err("printHlsl: entry '" + entry.name + "' takes parameters or returns a " +
-			"value; an entry reads and writes its stage's io");
 	}
 
 	let head = "";
