@@ -170,6 +170,7 @@ import "./void3dModuleCheck";
 import "./shaderComputeCheck";
 import "./shaderComputeOpsCheck";
 import "./shaderSampleCheck";
+import "./shaderFragDepthCheck";
 import "./shaderIrCheck";
 import "./shaderPrintCheck";
 import "./shaderSpecializeCheck";

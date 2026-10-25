@@ -234,7 +234,13 @@ function isVarying(io: ShaderIo): boolean {
 }
 
 function builtinName(io: ShaderIo): string {
-	if (io.direction == IoDirection.Out) { return "gl_Position"; }
+	if (io.direction == IoDirection.Out) {
+		if (io.builtin == Builtin.FragDepth) { return "gl_FragDepth"; }
+		if (io.builtin != Builtin.Position) {
+			broken("@builtin " + io.builtin.toString() + " has no GLSL output");
+		}
+		return "gl_Position";
+	}
 	return match (io.builtin) {
 		Builtin.VertexIndex => "uint(gl_VertexIndex)",
 		Builtin.InstanceIndex => "uint(gl_InstanceIndex)",

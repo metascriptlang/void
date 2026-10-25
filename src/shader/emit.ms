@@ -155,7 +155,8 @@ export macro glslAs(entry: Node, form: Node): Node {
 	if (output != null && output.kind == NodeKind.TypeObject) {
 		for (const decorators of output.typExprFieldDecorators) {
 			for (const d of decorators) {
-				if (d.macroName == "builtin") { vertex = true; }
+				if (d.macroName == "builtin" && d.macroArgs.length == 1 &&
+					d.macroArgs[0].name == "position") { vertex = true; }
 			}
 		}
 	}
@@ -631,6 +632,14 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return false;
 	}
 
+	function hasPosition(fields: Node): boolean {
+		for (const decorators of fields.typExprFieldDecorators) {
+			const builtin = decorator(decorators, "builtin");
+			if (builtin != null && argumentName(builtin) == "position") { return true; }
+		}
+		return false;
+	}
+
 	function isAuthorStruct(t: Node | null): boolean {
 		if (t == null || fieldsOf(t) == null) { return false; }
 		return t.resolvedSym != null && t.resolvedSym.modulePath != stdModule;
@@ -652,7 +661,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const outputType = signature.typExprReturn;
 	const vectorOutput = vectorTypes.some((v) => outputType != null && sameType(outputType, v));
 	const outputs = vectorOutput ? null : fieldsOf(outputType);
-	const vertex = outputs != null && hasDecorator(outputs, "builtin");
+	const vertex = outputs != null && hasPosition(outputs);
 	const computeBuiltins = ["globalInvocationId", "localInvocationId", "localInvocationIndex",
 		"workgroupId", "numWorkgroups"];
 	const computeKinds = [Builtin.GlobalInvocationId, Builtin.LocalInvocationId,
@@ -1967,7 +1976,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	if (feederType != null && feederType.kind == NodeKind.TypeFunction) {
 		const fedOutputs = fieldsOf(feederType.typExprReturn);
-		const feedsFragments = fedOutputs != null && hasDecorator(fedOutputs, "builtin");
+		const feedsFragments = fedOutputs != null && hasPosition(fedOutputs);
 		for (const t of feedsFragments ? feederType.typExprParams : []) {
 			const fields = fieldsOf(t);
 			if (fields == null || hasDecorator(fields, "binding") ||
@@ -2048,12 +2057,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const builtin = decorator(decorators, "builtin");
 			const t = outputs.typExprFieldTypes[f];
 			if (builtin != null) {
-				if (!vertex || argumentName(builtin) != "position") {
-					fail(builtin, "output field '" + name +
-						"': only a vertex @builtin(position) yet");
+				const which = argumentName(builtin);
+				if (vertex ? which != "position" : which != "fragDepth") {
+					fail(builtin, "output field '" + name + "': a vertex entry writes " +
+						"@builtin(position), a fragment entry @builtin(fragDepth)");
 				}
-				outputIos.push(addIo(stage, name, IoDirection.Out, looseType(t), Builtin.Position,
-					gate));
+				const kind = vertex ? Builtin.Position : Builtin.FragDepth;
+				outputIos.push(addIo(stage, name, IoDirection.Out, looseType(t), kind, gate));
 				continue;
 			}
 			if (vertex) {
