@@ -268,24 +268,13 @@ function programEntries(m: ShaderModule): int32[] {
 
 export function stageSource(m: ShaderModule, entry: int32, target: ShaderTarget):
 	Result<string, string> {
+	const slots = try bindingSlots(m, programEntries(m), target);
 	return match (target) {
-		ShaderTarget.Hlsl5 => {
-			const slots = try bindingSlots(m, programEntries(m), target);
-			return printHlsl(m, entry, slots);
-		},
-		ShaderTarget.Wgsl => {
-			const slots = try bindingSlots(m, programEntries(m), target);
-			return printWgsl(m, entry, slots);
-		},
-		ShaderTarget.Glsl430 | ShaderTarget.Glsl300es => {
-			const slots = try bindingSlots(m, programEntries(m), target);
-			return printGlsl(m, entry, slots, target == ShaderTarget.Glsl430 ? GlslTarget.Glsl430 :
-				GlslTarget.Glsl300es);
-		},
-		ShaderTarget.Msl => {
-			const slots = try bindingSlots(m, programEntries(m), target);
-			return printMsl(m, entry, slots);
-		},
+		ShaderTarget.Hlsl5 => printHlsl(m, entry, slots),
+		ShaderTarget.Wgsl => printWgsl(m, entry, slots),
+		ShaderTarget.Glsl430 => printGlsl(m, entry, slots, GlslTarget.Glsl430),
+		ShaderTarget.Glsl300es => printGlsl(m, entry, slots, GlslTarget.Glsl300es),
+		ShaderTarget.Msl => printMsl(m, entry, slots),
 	};
 }
 
