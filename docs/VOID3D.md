@@ -6007,6 +6007,31 @@ Pinned by `pointShadowCheck.ms` (the six faces, the refusals, a packed block rea
 `pointShadowAt` per face, the record flag, the carried block). Not run yet: the regenerated
 shaders and a golden on the GPU.
 
+### Shadow filtering: PCF, as built so far (2026-10-25)
+
+Every shadow map (sun, spot, point) takes Heaps' `Shadows.samplingKind` and `pcfScale`
+(`dirShadowMap.ms` `ShadowSamplingKind`, default `None` as in Heaps). `Pcf` follows
+`h3d/shader/ShadowSampling.hx`: for the sun's cascades and the spot, 16 Poisson-disk taps turned
+by the hash of the world position (`shadowPcf`, `shadowArrayPcf`); for the point, the 20
+`cubeShadowPcf` directions added to the light-to-receiver direction scaled by pcfScale / size,
+each tap kept at the receiver's distance and read from the face it points into
+(`shader3d.ms` `pointShadowAt`, helpers in `shadowLookup.ms`). Each tap is compared as before
+and the lit share averaged, so the opacity mix is unchanged.
+
+- Heaps chooses the mode per shader (`@const SAMPLING_MODE`); here it is a number in each light's
+  part of the shadow block (`SHADOW_CASCADE_FILTER`, `SHADOW_SPOT_FILTER`, `SHADOW_POINT_FILTER`,
+  0 for one texel), so the program keys and the generated headers do not double. The cost is
+  one uniform branch per lookup.
+- `pcfScale` is in texels; Heaps passes `pcfScale / texture.width` in uv, the same footprint.
+- ESM is not offered: Heaps' ESM reads a blurred R16F map, and these maps are depth.
+- A point's taps are compared at the receiver's distance against the face's perspective depth,
+  where Heaps compares radial distances in a cube; how far the two differ on screen is not
+  measured.
+
+Pinned by `spotShadowCheck.ms` (an 8x8 split map: one texel without PCF, a soft edge with it,
+whole far sides; the sun's packed scale) and `pointShadowCheck.ms` (taps turned into other
+faces average, the packed scale). Not run yet: the GPU and the goldens.
+
 ### Clustered lights: how the clusters reach the shader (decided 2026-10-24, wired on the CPU)
 
 The light assignment is Bevy's CPU clustering (`bevy_light/src/cluster/assign.rs`, the
