@@ -578,6 +578,15 @@ writes), part is these copied checks. Windows follows the series:
 
 Say in this section when the series is done.
 
+**The Windows backend checks are in the gate.** Section 2 of `gate.sh` runs them on Windows, as
+it runs `webgpuMetalCheck` on a Mac, through one `backend_check` helper:
+- `webgpuD3d11Check` and `doorZeroHandleCheck` on WARP;
+- `webgpuGlCheck` with `-d:voidGlCore` on the system device.
+
+The helper alone, run on this tree: D3D11 421/421 and door handle 0 378/378 on WARP, and a
+missing check file fails by name. The GL line waits for this machine's GPU slot. The whole gate
+has not run with the change yet.
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),

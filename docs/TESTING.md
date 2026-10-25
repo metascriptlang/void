@@ -333,7 +333,9 @@ read from the log.
    on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
    a function one backend lacks is red on any host rather than on the first machine that builds it.
 2. The demo entry builds and runs, then the integration programs, each with its named misuse
-   runs; `mixedFrame` with its controls and both registration orders.
+   runs; `mixedFrame` with its controls and both registration orders. Then the backend checks of
+   the host: `webgpuD3d11Check` and `doorZeroHandleCheck` on WARP and `webgpuGlCheck`
+   (`-d:voidGlCore`) on the system device on Windows, `webgpuMetalCheck` on a Mac.
 3. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
    `tests/golden/compare.ms` judges every scene against `tests/golden/d3d11/` and prints

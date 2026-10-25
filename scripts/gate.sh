@@ -680,17 +680,28 @@ if [ "$(uname -s)" = Darwin ] && [ "$two_views_built" -eq 1 ]; then
 		pass "a view frame releases its drawable in its own autorelease pool"
 	fi
 fi
-if [ "$(uname -s)" = Darwin ]; then
-	if "$MSC" test src/test/webgpuMetalCheck.ms > out/gate-webgpu-metal.log 2>&1; then
-		metalSummary="$(sed 's/\x1b\[[0-9;]*m//g' out/gate-webgpu-metal.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
-		if echo "$metalSummary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
-			pass "metal backend on the system device:$metalSummary"
+backend_check() {
+	what="$1"; log="out/gate-$2.log"; shift 2
+	if "$MSC" test "$@" > "$log" 2>&1; then
+		summary="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
+		if echo "$summary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
+			pass "$what:$summary"
 		else
-			fail "metal backend exited 0 without a clean 'Tests N passed (N)' summary — see out/gate-webgpu-metal.log"
+			fail "$what exited 0 without a clean 'Tests N passed (N)' summary — see $log"
 		fi
 	else
-		fail "metal backend: msc test src/test/webgpuMetalCheck.ms — see out/gate-webgpu-metal.log"
+		fail "$what: msc test $* — see $log"
 	fi
+}
+case "$(uname -s)" in
+	MINGW*|MSYS*|CYGWIN*)
+		backend_check "d3d11 backend on WARP" webgpu-d3d11 src/test/webgpuD3d11Check.ms
+		backend_check "door handle 0 on WARP" door-zero-handle src/test/doorZeroHandleCheck.ms
+		backend_check "gl core backend on the system device" webgpu-gl -d:voidGlCore src/test/webgpuGlCheck.ms
+		;;
+esac
+if [ "$(uname -s)" = Darwin ]; then
+	backend_check "metal backend on the system device" webgpu-metal src/test/webgpuMetalCheck.ms
 	window_tests="framePacing macWindow macWindowEscape macWindowFps"
 	if [ "$WINDOW" -eq 1 ]; then
 		for test in $window_tests; do
