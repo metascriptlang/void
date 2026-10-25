@@ -75,6 +75,7 @@ import {
 	checkedViewLayers,
 	checkedViewMips,
 	checkedView3d,
+	checkedWriteBuffer,
 	featureBit,
 	GPUTexture,
 	GPUTextureDescriptor,
@@ -1100,9 +1101,7 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = buffers.slotIndex(buffer.id);
-	if (offset < 0 || offset + bytes > buffers.slots[index].size) {
-		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${buffers.slots[index].size}`);
-	}
+	checkedWriteBuffer(buffer.id, buffers.slots[index].size, offset, bytes);
 	if (buffers.slots[index].writtenFrame == -2) { stop(`GPUBuffer ${buffer.id} was created without COPY_DST`); }
 	if (buffers.slots[index].mapMode != 0) { stop(`writeBuffer on GPUBuffer ${buffer.id}, which is mapped`); }
 	if (buffers.slots[index].inPlace) {
