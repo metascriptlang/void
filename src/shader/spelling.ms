@@ -105,48 +105,18 @@ export function mathName(op: Intrinsic): string {
 	};
 }
 
-export enum AtomicOp {
-	Load,
-	Store,
-	Add,
-	Sub,
-	Max,
-	Min,
-	And,
-	Or,
-	Xor,
-	Exchange,
-	CompareExchange,
-}
-
-export function atomicOp(op: Intrinsic): AtomicOp {
-	return match (op) {
-		Intrinsic.AtomicLoad => AtomicOp.Load,
-		Intrinsic.AtomicStore => AtomicOp.Store,
-		Intrinsic.AtomicAdd => AtomicOp.Add,
-		Intrinsic.AtomicSub => AtomicOp.Sub,
-		Intrinsic.AtomicMax => AtomicOp.Max,
-		Intrinsic.AtomicMin => AtomicOp.Min,
-		Intrinsic.AtomicAnd => AtomicOp.And,
-		Intrinsic.AtomicOr => AtomicOp.Or,
-		Intrinsic.AtomicXor => AtomicOp.Xor,
-		Intrinsic.AtomicExchange => AtomicOp.Exchange,
-		Intrinsic.AtomicCompareExchangeWeak => AtomicOp.CompareExchange,
-		_ => { unspelled("atomic", op); },
-	};
-}
-
 // GLSL 4.30 has no atomic load or store: a load is an add of 0 and a store an exchange.
 export function glslAtomicName(op: Intrinsic): string {
-	return match (atomicOp(op)) {
-		AtomicOp.Load | AtomicOp.Add | AtomicOp.Sub => "atomicAdd",
-		AtomicOp.Max => "atomicMax",
-		AtomicOp.Min => "atomicMin",
-		AtomicOp.And => "atomicAnd",
-		AtomicOp.Or => "atomicOr",
-		AtomicOp.Xor => "atomicXor",
-		AtomicOp.CompareExchange => "atomicCompSwap",
-		AtomicOp.Store | AtomicOp.Exchange => "atomicExchange",
+	return match (op) {
+		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",
+		Intrinsic.AtomicMax => "atomicMax",
+		Intrinsic.AtomicMin => "atomicMin",
+		Intrinsic.AtomicAnd => "atomicAnd",
+		Intrinsic.AtomicOr => "atomicOr",
+		Intrinsic.AtomicXor => "atomicXor",
+		Intrinsic.AtomicCompareExchangeWeak => "atomicCompSwap",
+		Intrinsic.AtomicStore | Intrinsic.AtomicExchange => "atomicExchange",
+		_ => { unspelled("GLSL atomic", op); },
 	};
 }
 

@@ -38,8 +38,6 @@ import {
 	structOrder,
 } from "./irWalk";
 import {
-	AtomicOp,
-	atomicOp,
 	binaryOperator,
 	floatText,
 	isIntMin,
@@ -254,16 +252,15 @@ function temporary(p: Printer, name: string): string {
 }
 
 function interlockedName(p: Printer, op: Intrinsic): string {
-	return match (atomicOp(op)) {
-		AtomicOp.Load | AtomicOp.Add | AtomicOp.Sub => "InterlockedAdd",
-		AtomicOp.Max => "InterlockedMax",
-		AtomicOp.Min => "InterlockedMin",
-		AtomicOp.And => "InterlockedAnd",
-		AtomicOp.Or => "InterlockedOr",
-		AtomicOp.Xor => "InterlockedXor",
-		AtomicOp.Store | AtomicOp.Exchange => "InterlockedExchange",
-		AtomicOp.CompareExchange => fail(p, "an atomic compare-exchange through " +
-			"InterlockedExchange"),
+	return match (op) {
+		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "InterlockedAdd",
+		Intrinsic.AtomicMax => "InterlockedMax",
+		Intrinsic.AtomicMin => "InterlockedMin",
+		Intrinsic.AtomicAnd => "InterlockedAnd",
+		Intrinsic.AtomicOr => "InterlockedOr",
+		Intrinsic.AtomicXor => "InterlockedXor",
+		Intrinsic.AtomicStore | Intrinsic.AtomicExchange => "InterlockedExchange",
+		_ => fail(p, op.toString() + " has no Interlocked spelling"),
 	};
 }
 

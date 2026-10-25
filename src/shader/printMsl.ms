@@ -36,8 +36,6 @@ import {
 	binaryOperator,
 	floatText,
 	isIntMin,
-	AtomicOp,
-	atomicOp,
 	isMath,
 	mathName,
 	pointed,
@@ -272,18 +270,18 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 		p.exchanges[slot] = true;
 		return "atomicCompareExchangeWeak" + exchangeSuffix(slot) + "(" + place + rest + ")";
 	}
-	const name = match (atomicOp(e.intrinsic)) {
-		AtomicOp.Load => "atomic_load_explicit",
-		AtomicOp.Store => "atomic_store_explicit",
-		AtomicOp.Add => "atomic_fetch_add_explicit",
-		AtomicOp.Sub => "atomic_fetch_sub_explicit",
-		AtomicOp.Max => "atomic_fetch_max_explicit",
-		AtomicOp.Min => "atomic_fetch_min_explicit",
-		AtomicOp.And => "atomic_fetch_and_explicit",
-		AtomicOp.Or => "atomic_fetch_or_explicit",
-		AtomicOp.Xor => "atomic_fetch_xor_explicit",
-		AtomicOp.Exchange => "atomic_exchange_explicit",
-		AtomicOp.CompareExchange => fail(p, "an atomic compare-exchange outside its own branch"),
+	const name = match (e.intrinsic) {
+		Intrinsic.AtomicLoad => "atomic_load_explicit",
+		Intrinsic.AtomicStore => "atomic_store_explicit",
+		Intrinsic.AtomicAdd => "atomic_fetch_add_explicit",
+		Intrinsic.AtomicSub => "atomic_fetch_sub_explicit",
+		Intrinsic.AtomicMax => "atomic_fetch_max_explicit",
+		Intrinsic.AtomicMin => "atomic_fetch_min_explicit",
+		Intrinsic.AtomicAnd => "atomic_fetch_and_explicit",
+		Intrinsic.AtomicOr => "atomic_fetch_or_explicit",
+		Intrinsic.AtomicXor => "atomic_fetch_xor_explicit",
+		Intrinsic.AtomicExchange => "atomic_exchange_explicit",
+		_ => fail(p, e.intrinsic.toString() + " has no MSL atomic spelling"),
 	};
 	return name + "(" + place + rest + ", memory_order_relaxed)";
 }

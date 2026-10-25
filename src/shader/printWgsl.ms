@@ -32,8 +32,6 @@ import { builtinType, ioLocation } from "./irWalk";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
 import {
-	AtomicOp,
-	atomicOp,
 	binaryOperator,
 	floatText,
 	isIntMin,
@@ -269,18 +267,19 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const place = "&" + exprText(p, o[0]);
 	const rest = o.slice(1).map((a) => ", " + exprText(p, a)).join("");
-	const name = match (atomicOp(e.intrinsic)) {
-		AtomicOp.Load => "atomicLoad",
-		AtomicOp.Store => "atomicStore",
-		AtomicOp.Add => "atomicAdd",
-		AtomicOp.Sub => "atomicSub",
-		AtomicOp.Max => "atomicMax",
-		AtomicOp.Min => "atomicMin",
-		AtomicOp.And => "atomicAnd",
-		AtomicOp.Or => "atomicOr",
-		AtomicOp.Xor => "atomicXor",
-		AtomicOp.Exchange => "atomicExchange",
-		AtomicOp.CompareExchange => "atomicCompareExchangeWeak",
+	const name = match (e.intrinsic) {
+		Intrinsic.AtomicLoad => "atomicLoad",
+		Intrinsic.AtomicStore => "atomicStore",
+		Intrinsic.AtomicAdd => "atomicAdd",
+		Intrinsic.AtomicSub => "atomicSub",
+		Intrinsic.AtomicMax => "atomicMax",
+		Intrinsic.AtomicMin => "atomicMin",
+		Intrinsic.AtomicAnd => "atomicAnd",
+		Intrinsic.AtomicOr => "atomicOr",
+		Intrinsic.AtomicXor => "atomicXor",
+		Intrinsic.AtomicExchange => "atomicExchange",
+		Intrinsic.AtomicCompareExchangeWeak => "atomicCompareExchangeWeak",
+		_ => refusal(p, e.intrinsic.toString() + " has no WGSL atomic spelling"),
 	};
 	return name + "(" + place + rest + ")";
 }
