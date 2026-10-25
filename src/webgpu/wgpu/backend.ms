@@ -90,6 +90,7 @@ import {
 	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedComputePipeline,
+	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -2140,7 +2141,7 @@ export function endPass(): void {
 
 @inline export function setPipeline(pipeline: GPURenderPipeline): void {
 	const p = pipelines.slotIndex(pipeline.id);
-	if (pipelines.slots[p].compute) { stop(`GPUPipeline ${pipeline.id} is a compute pipeline`); }
+	checkedRenderPassPipeline(pipeline.id, pipelines.slots[p].compute);
 	wgSetPipeline(pipelines.slots[p].native);
 	pass.pipeline = pipeline.id;
 }

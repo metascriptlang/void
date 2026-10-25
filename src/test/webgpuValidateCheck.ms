@@ -54,6 +54,7 @@ import {
 	primitiveRefusal,
 	pushGroupRefusal,
 	renderModuleRefusal,
+	renderPassPipelineRefusal,
 	renderPipelineRefusal,
 	samplerRefusal,
 	shaderModuleRefusal,
@@ -449,6 +450,8 @@ test "a pipeline takes the module kind it is for, and a compute entry point the 
 	assert computeModuleRefusal(true, "other", "main") == "compute.entryPoint 'other' differs from the module's computeEntryPoint 'main'";
 	assert computePipelineRefusal(7, true) == "";
 	assert computePipelineRefusal(7, false) == "GPUPipeline 7 is not a compute pipeline";
+	assert renderPassPipelineRefusal(7, false) == "";
+	assert renderPassPipelineRefusal(7, true) == "GPUPipeline 7 is a compute pipeline: setPipeline on a render pass takes a render pipeline";
 }
 
 test "an indexed strip draw needs the pipeline's strip index format to be the bound index format, none included" {

@@ -397,6 +397,10 @@ export function computePipelineRefusal(pipeline: uint32, isCompute: boolean): st
 	return isCompute ? "" : `GPUPipeline ${pipeline} is not a compute pipeline`;
 }
 
+export function renderPassPipelineRefusal(pipeline: uint32, isCompute: boolean): string {
+	return isCompute ? `GPUPipeline ${pipeline} is a compute pipeline: setPipeline on a render pass takes a render pipeline` : "";
+}
+
 // `matches` is whether the pipeline's strip index format is the bound index format; none never matches.
 export function stripDrawRefusal(strip: boolean, matches: boolean): string {
 	if (strip && !matches) { return "an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format"; }
@@ -441,6 +445,7 @@ export function checkedRenderPipeline(descriptor: GPURenderPipelineDescriptor): 
 export function checkedRenderModule(moduleIsCompute: boolean): void { refuse(renderModuleRefusal(moduleIsCompute)); }
 export function checkedComputeModule(moduleIsCompute: boolean, entry: string, moduleEntry: string): void { refuse(computeModuleRefusal(moduleIsCompute, entry, moduleEntry)); }
 export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): void { refuse(computePipelineRefusal(pipeline, isCompute)); }
+export function checkedRenderPassPipeline(pipeline: uint32, isCompute: boolean): void { refuse(renderPassPipelineRefusal(pipeline, isCompute)); }
 export function checkedStripDraw(strip: boolean, matches: boolean): void { refuse(stripDrawRefusal(strip, matches)); }
 export function checkedSampler(descriptor: GPUSamplerDescriptor): void { refuse(samplerRefusal(descriptor)); }
 export function checkedQuerySet(descriptor: GPUQuerySetDescriptor): void { refuse(querySetRefusal(descriptor)); }
