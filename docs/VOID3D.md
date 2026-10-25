@@ -6098,15 +6098,18 @@ and the lit share averaged, so the opacity mix is unchanged.
   one uniform branch per lookup.
 - `pcfScale` is in texels; Heaps passes `pcfScale / texture.width` in uv, the same footprint.
 - ESM is not offered: Heaps' ESM reads a blurred R16F map, and these maps are depth.
-- The sun takes Bevy's `shadow_normal_bias` (`bevy_pbr` `shadows.wesl`, `fetch_directional_shadow`):
-  `DirShadowMap.normalBias`, in texels of the cascade, moves the receiver along its geometric
-  normal before the lookup (`cascadeShadow.ms` `cascadeReceiverOf`), so a surface steep to the
-  sun stops reading its own texel. Heaps has no such bias, so the default is 0 and an unset sun
-  draws as before. The texel's world size comes off the cascade matrix's scale, so the block
-  gains only `SHADOW_CASCADE_NORMAL_BIAS`. The spot and the cube take none yet: their parts of
-  the block have no free slot, and Bevy scales theirs by the distance to the light. Bevy's
-  `shadow_depth_bias` is not taken; the depth bias stays Heaps'. Pinned on the CPU by
-  `spotShadowCheck.ms`; no GPU golden yet.
+- The sun and the cube take Bevy's `shadow_normal_bias` (`bevy_pbr` `shadows.wesl`
+  `fetch_directional_shadow`, `fetch_point_shadow`; the scale is `render/light.rs`'s):
+  `DirShadowMap.normalBias`, in texels, moves the receiver along its geometric normal before the
+  lookup, so a surface steep to the light stops reading its own texel. Heaps has no such bias,
+  so the default is 0 and an unset map draws as before. As in Bevy the bias is times the root of
+  two, the worst-case diagonal. The sun's texel is its cascade's, its world size read off the
+  cascade matrix's scale (`cascadeShadow.ms` `cascadeReceiverOf`); the cube's is a 90-degree
+  face's, 2 / size, times the receiver's distance to the light (`cubeShadowAt`). Each needs one
+  slot (`SHADOW_CASCADE_NORMAL_BIAS`, `SHADOW_CUBE_NORMAL_BIAS`), both free before. The spot
+  takes none yet: its part of the block has no free slot, so it waits on growing the block.
+  Bevy's `shadow_depth_bias` is not taken; the depth bias stays Heaps'. Pinned on the CPU by
+  `spotShadowCheck.ms` and `cubeShadowCheck.ms`; no GPU golden yet.
 - A cube's taps are compared at the receiver's distance against the face's perspective depth,
   where Heaps compares radial distances in a cube; how far the two differ on screen is not
   measured.
