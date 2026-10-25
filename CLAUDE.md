@@ -28,9 +28,9 @@ Written in MetaScript (TypeScript superset that compiles to C, JS, WASM).
 
 ```
 src/
-├── sokol/    bridge.{h,c}, gpu.ms, gpu.wms, sokolWeb.c, shader.glsl(.h)
+├── sokol/    bridge.{h,c}, gpu.ms, gpu.wms, sokolWeb.c
 │             ← GPU layer: thin sokol_gfx + sokol_app primitives (the "narrow waist")
-├── void2d/   draw.ms, node.ms, types.ms, batcher.{h,c}, shader2d.glsl(.h)
+├── void2d/   draw.ms, node.ms, types.ms, batcher.{h,c}, shader2d.ms
 │             ← 2D layer: batcher + Node2D tree (LOGIC in MetaScript; C = sokol/fontstash glue)
 ├── assets/   image.{h,c}, image.ms      math/  mat4.{h,c}, mat4.ms      ← helpers
 └── examples/ mainSokol2d, renderer2d, mainSokol, rendererSokol, cubedata .ms  ← demos/entries
@@ -65,7 +65,7 @@ Build with **`msc`** — the synced local build on `$PATH` (`~/.metascript/bin/m
 3. **Void = opt-in backend for Neon, not Neon's default.** Neon-default = native components (light, every app). Void = heavy opt-in (games/GPU). Only opted-in apps pay Void's weight.
 4. **Two web builds, runtime feature-detect.** Void picks its backend at **compile time** (`VOID_WGPU` vs `VOID_GLES3`), so a single wasm = one backend. To cover old+new browsers, ship **two wasm artifacts** and a small JS loader that checks `navigator.gpu` and loads the WebGPU build, else the WebGL2 build.
 5. **sokol_app for windowing (native + web).** The implementation uses `sokol_app` (`sapp_run` via `voidRun`) on both native and web — bare-bones is fine for the demos. On Windows `sokol_app` runs without a graphics API and Void owns the device and swapchain (docs/SOKOL.md); elsewhere the swapchain comes via `sglue_swapchain()`. (SDL3 was the original plan but proved unnecessary; revisit if desktop needs richer input.)
-6. **Shaders via sokol-shdc** — author annotated GLSL (`@vs`/`@fs`/`@cs`, separate `texture`+`sampler`), cross-compile offline to GLSL/GLES/HLSL/MSL/**WGSL** + a generated shader-desc header. Replaces the WGSL-only pipeline.
+6. **Shaders are MetaScript functions** — lowered by macros to Void's shader IR and printed per backend (WGSL, GLSL 430 / ES 300, HLSL, MSL) with their reflection; sokol-shdc is retired. See [docs/SHADER.md](docs/SHADER.md) and [docs/SHADER-IR.md](docs/SHADER-IR.md).
 7. **`.wms` extension** — WASM/browser-specific MetaScript. Compiler resolves `.wms → .cms → .ms` for `--os=emcc`/`--os=wasm`.
 8. **Rendering/GPU layer only** — no scene graph, ECS, physics, audio, asset pipeline, editor. (See scope discipline above.)
 9. **Binding generation** — sokol auto-generates bindings for Zig/Nim/Odin/Rust/D/C3/Jai from a machine-readable API description. Follow the same pattern to generate MetaScript externs from `sokol_gfx.h` instead of hand-writing each function.
@@ -78,7 +78,7 @@ Done: sokol + fontstash headers vendored (`deps/sokol/`, `deps/fontstash/`); C b
 
 - **GPU bridge** `src/sokol/bridge.{h,c}` — flattened params, sokol handles as `uint32` ids; `voidRun(w,h,init,frame)` → `sapp_run`. `gpu.ms` (native: frameworks + `@compile bridgeEmbed.m`) / `gpu.wms` (web: `@compile sokolWeb.c`) wrap it with `extern function` (explicit types — needed because `voidRun` takes closures, which import-from-.h mis-types).
 - **void2d batcher** `src/void2d/batcher.{h,c}` — sokol pipeline/buffer + fontstash (raw `fontstash.h` + `stb_truetype.h`); exposes `void2dUploadDraw` + the fontstash glyph iterator. `draw.ms` owns the `Vec<float32>` vertex buffer + geometry and imports the C primitives via **import-from-.h** (cleanly handles its `const char*`/`const float*` params; no closures here).
-- **Shaders** in sokol-shdc dialect (`shader.glsl`, `void2d/shader2d.glsl`); regen: `scripts/regen-shaders.sh` (or inline: `deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc -i X.glsl -o X.glsl.h -l metal_macos:glsl300es:wgsl -f sokol`).
+- **Shaders** are MetaScript functions (`src/void2d/shader2d.ms`, `src/void3d/shader3d.ms`); `scripts/regen-shaders.sh` prints the generated modules, `--check` fails when one is stale. An app's own program uses `shaderProgram` (`src/shader/program.ms`) with no regen step.
 - **GPU data in MetaScript:** sized typed arrays (`float32[]` / `Vec<float32>`) are packed native-size; hand `arr[0]` to a `Borrow<float32>` C param (borrow-promotion) — no C data files, no malloc. Only `number[]` is `double`-backed.
 
 ## MetaScript Essentials
