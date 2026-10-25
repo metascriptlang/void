@@ -44,9 +44,11 @@ import {
 	exchangeSlot,
 	floatText,
 	glslAtomicName,
+	glslBits,
 	isIntMin,
 	mathName,
 	pointed,
+	repeatedBitsOperand,
 } from "./spelling";
 import { claimName } from "./names";
 import { printableEntry } from "./specialize";
@@ -642,11 +644,25 @@ function selectText(p: Printer, e: ShaderExpr): string {
 		operand(p, falseValue) + ")";
 }
 
+function bitsText(p: Printer, e: ShaderExpr): string {
+	if (p.es) {
+		return fail(p, e.intrinsic.toString() + " is not in GLSL ES 3.00 (ES 3.10 has it)");
+	}
+	const at = repeatedBitsOperand(e.intrinsic);
+	if (at >= 0) { pure(p, e.intrinsic.toString(), [e.operands[at]]); }
+	return glslBits(e.intrinsic, e.operands.map((o) => expr(p, o)), typeName(p, e.type),
+		e.type.scalar == ScalarKind.U32);
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	return match (e.intrinsic) {
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", typeName(p, e.operands[0].type),
 			e.type),
+		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
+			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm |
+			Intrinsic.Unpack4x8Snorm => bitsText(p, e),
 		Intrinsic.Saturate => "clamp(" + args() + ", 0.0, 1.0)",
 		Intrinsic.Fma => p.es ? "(" + operand(p, e.operands[0]) + " * " +
 			operand(p, e.operands[1]) + " + " + operand(p, e.operands[2]) + ")" :

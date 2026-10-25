@@ -179,6 +179,22 @@ export enum Intrinsic {
 	Dpdx,
 	Dpdy,
 	Fwidth,
+	CountOneBits,
+	ReverseBits,
+	FirstLeadingBit,
+	FirstTrailingBit,
+	ExtractBits,
+	InsertBits,
+	Pack4x8Unorm,
+	Pack4x8Snorm,
+	Pack2x16Unorm,
+	Pack2x16Snorm,
+	Pack2x16Float,
+	Unpack4x8Unorm,
+	Unpack4x8Snorm,
+	Unpack2x16Unorm,
+	Unpack2x16Snorm,
+	Unpack2x16Float,
 	TextureSample,
 	TextureLoad,
 	TextureStore,
@@ -232,6 +248,61 @@ function explicitSampleError(e: ShaderExpr): string {
 	if (o.length != 3 + (isArrayTexture(t) ? 1 : 0) + tail) {
 		return name + " takes a texture, a sampler, coordinates, a layer of an array, and " +
 			(tail == 2 ? "two derivatives" : "a level or bias") + ", as WGSL's";
+	}
+	return "";
+}
+
+export function isBitsOp(op: Intrinsic): boolean {
+	const at = op as int32;
+	return at >= (Intrinsic.CountOneBits as int32) && at <= (Intrinsic.Unpack2x16Float as int32);
+}
+
+function isBitsOnIntegers(op: Intrinsic): boolean {
+	return (op as int32) <= (Intrinsic.InsertBits as int32);
+}
+
+function bitsOperands(e: ShaderExpr): ShaderType[] {
+	const x = e.operands.length > 0 ? e.operands[0].type : new ShaderType();
+	const u = scalarType(ScalarKind.U32);
+	return match (e.intrinsic) {
+		Intrinsic.ExtractBits => [x, u, u],
+		Intrinsic.InsertBits => [x, x, u, u],
+		Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm => [vectorType(ScalarKind.F32, 4)],
+		Intrinsic.Pack2x16Unorm | Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float =>
+			[vectorType(ScalarKind.F32, 2)],
+		Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm |
+			Intrinsic.Unpack2x16Snorm | Intrinsic.Unpack2x16Float => [u],
+		_ => [x],
+	};
+}
+
+function bitsResult(e: ShaderExpr): ShaderType {
+	return match (e.intrinsic) {
+		Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
+			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float => scalarType(ScalarKind.U32),
+		Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm => vectorType(ScalarKind.F32, 4),
+		Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm | Intrinsic.Unpack2x16Float =>
+			vectorType(ScalarKind.F32, 2),
+		_ => bitsOperands(e)[0],
+	};
+}
+
+function bitsError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const want = bitsOperands(e);
+	if (e.operands.length != want.length) {
+		return name + " takes " + String(want.length) + " operands, as WGSL's";
+	}
+	for (let i = 0; i < want.length; i++) {
+		if (!sameShaderType(e.operands[i].type, want[i])) {
+			return name + ": operand " + String(i) + " is not the type WGSL's takes";
+		}
+	}
+	if (isBitsOnIntegers(e.intrinsic) && !isIntegral(want[0])) {
+		return name + " takes an i32 or u32 scalar or vector, as WGSL's";
+	}
+	if (!sameShaderType(e.type, bitsResult(e))) {
+		return name + " returns another type than WGSL's";
 	}
 	return "";
 }
@@ -783,6 +854,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 	if (e.kind == ExprKind.Intrinsic && isExplicitSample(e.intrinsic)) {
 		const error = explicitSampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && isBitsOp(e.intrinsic)) {
+		const error = bitsError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	const atomic = e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);

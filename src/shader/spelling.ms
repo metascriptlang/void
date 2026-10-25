@@ -48,7 +48,13 @@ export function isMath(op: Intrinsic): boolean {
 			Intrinsic.Smoothstep | Intrinsic.Fma | Intrinsic.Dot | Intrinsic.Cross |
 			Intrinsic.Length | Intrinsic.Distance | Intrinsic.Normalize | Intrinsic.Reflect |
 			Intrinsic.Refract | Intrinsic.FaceForward | Intrinsic.Transpose |
-			Intrinsic.Determinant | Intrinsic.Dpdx | Intrinsic.Dpdy | Intrinsic.Fwidth => true,
+			Intrinsic.Determinant | Intrinsic.Dpdx | Intrinsic.Dpdy | Intrinsic.Fwidth |
+			Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
+			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
+			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
+			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
+			Intrinsic.Unpack2x16Float => true,
 	};
 }
 
@@ -101,6 +107,22 @@ export function mathName(op: Intrinsic): string {
 		Intrinsic.Dpdx => "dFdx",
 		Intrinsic.Dpdy => "dFdy",
 		Intrinsic.Fwidth => "fwidth",
+		Intrinsic.CountOneBits => "bitCount",
+		Intrinsic.ReverseBits => "bitfieldReverse",
+		Intrinsic.FirstLeadingBit => "findMSB",
+		Intrinsic.FirstTrailingBit => "findLSB",
+		Intrinsic.ExtractBits => "bitfieldExtract",
+		Intrinsic.InsertBits => "bitfieldInsert",
+		Intrinsic.Pack4x8Unorm => "packUnorm4x8",
+		Intrinsic.Pack4x8Snorm => "packSnorm4x8",
+		Intrinsic.Pack2x16Unorm => "packUnorm2x16",
+		Intrinsic.Pack2x16Snorm => "packSnorm2x16",
+		Intrinsic.Pack2x16Float => "packHalf2x16",
+		Intrinsic.Unpack4x8Unorm => "unpackUnorm4x8",
+		Intrinsic.Unpack4x8Snorm => "unpackSnorm4x8",
+		Intrinsic.Unpack2x16Unorm => "unpackUnorm2x16",
+		Intrinsic.Unpack2x16Snorm => "unpackSnorm2x16",
+		Intrinsic.Unpack2x16Float => "unpackHalf2x16",
 		_ => { unspelled("math", op); },
 	};
 }
@@ -131,4 +153,37 @@ export function pointed(text: string): string {
 
 export function isIntMin(s: ScalarKind, v: float64): boolean {
 	return s == ScalarKind.I32 && v == -2147483648.0;
+}
+
+export function isNarrowBits(op: Intrinsic): boolean {
+	return op == Intrinsic.CountOneBits || op == Intrinsic.FirstLeadingBit ||
+		op == Intrinsic.FirstTrailingBit;
+}
+
+// The GLSL spelling of the bit and pack builtins, as naga's back-end writes them. bitCount, findMSB
+// and findLSB return int, so an unsigned operand's result is converted back; bitfieldExtract and
+// bitfieldInsert are undefined past the 32 bits WGSL clamps to, so the offset and count clamp first.
+// The offset of an extract and of an insert is printed twice.
+export function glslBits(
+	op: Intrinsic,
+	args: string[],
+	resultType: string,
+	unsigned: boolean,
+): string {
+	const call = mathName(op) + "(" + args.join(", ") + ")";
+	if (isNarrowBits(op)) { return unsigned ? resultType + "(" + call + ")" : call; }
+	if (op == Intrinsic.ExtractBits) {
+		return "bitfieldExtract(" + args[0] + ", int(min(" + args[1] + ", 32u)), int(min(" +
+			args[2] + ", 32u - min(" + args[1] + ", 32u))))";
+	}
+	if (op == Intrinsic.InsertBits) {
+		return "bitfieldInsert(" + args[0] + ", " + args[1] + ", int(min(" + args[2] +
+			", 32u)), int(min(" + args[3] + ", 32u - min(" + args[2] + ", 32u))))";
+	}
+	return call;
+}
+
+// The operand of a bit builtin that a printer repeats.
+export function repeatedBitsOperand(op: Intrinsic): int32 {
+	return op == Intrinsic.ExtractBits ? 1 : op == Intrinsic.InsertBits ? 2 : -1;
 }

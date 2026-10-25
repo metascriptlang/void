@@ -40,7 +40,14 @@ import {
 	nameStruct,
 	suffixed,
 } from "./names";
-import { binaryOperator, exchangeSlot, glslAtomicName, mathName } from "./spelling";
+import {
+	binaryOperator,
+	exchangeSlot,
+	glslAtomicName,
+	glslBits,
+	mathName,
+	repeatedBitsOperand,
+} from "./spelling";
 
 function glslReservedWords(): string[] {
 	let words = [
@@ -374,6 +381,18 @@ function intrinsicName(op: Intrinsic): string {
 	};
 }
 
+function callsFunction(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Call || e.operands.some((o) => callsFunction(o));
+}
+
+function bitsText(p: Glsl, e: ShaderExpr, args: string[]): string {
+	const at = repeatedBitsOperand(e.intrinsic);
+	if (at >= 0 && callsFunction(e.operands[at])) {
+		broken(e.intrinsic.toString() + " prints its offset twice, and the offset calls a function");
+	}
+	return glslBits(e.intrinsic, args, typeName(p, e.type), e.type.scalar == ScalarKind.U32);
+}
+
 function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const args = e.operands.map((a) => expr(p, a));
 	const all = "(" + args.join(", ") + ")";
@@ -387,6 +406,8 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		layered ? "sampler2DArray(" : cube ? "samplerCube(" : "sampler2D(";
 	const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 	return match (e.intrinsic) {
+		Intrinsic.CountOneBits | Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit |
+			Intrinsic.ExtractBits | Intrinsic.InsertBits => bitsText(p, e, args),
 		Intrinsic.Saturate => "clamp(" + args[0] + ", 0.0, 1.0)",
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",

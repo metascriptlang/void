@@ -662,9 +662,94 @@ function intrinsicName(op: Intrinsic): string {
 	};
 }
 
+function packLanes(lanes: int32, width: int32, scale: string, signed: boolean): string {
+	const names = ["x", "y", "z", "w"];
+	let parts: string[] = [];
+	for (let i = 0; i < lanes; i++) {
+		const lane = signed ? "(int(round(clamp(e." + names[i] + ", -1.0, 1.0) * " + scale +
+			")) & " + (width == 8 ? "0xFF" : "0xFFFF") + ")" :
+			"uint(round(clamp(e." + names[i] + ", 0.0, 1.0) * " + scale + "))";
+		parts.push(i == 0 ? lane : "(" + lane + " << " + String(i * width) + ")");
+	}
+	return signed ? "uint(" + parts.join(" | ") + ")" : parts.join(" | ");
+}
+
+function unpackLanes(width: int32, scale: string, signed: boolean): string {
+	if (signed) {
+		const shifts = width == 8 ? ["e << 24", "e << 16", "e << 8", "e"] : ["e << 16", "e"];
+		const lanes = String(shifts.length);
+		return "max(float" + lanes + "(int" + lanes + "(" + shifts.join(", ") + ") >> " +
+			String(32 - width) + ") / " + scale + ", -1.0)";
+	}
+	const fields = width == 8 ? ["e & 0xFF", "(e >> 8) & 0xFF", "(e >> 16) & 0xFF", "e >> 24"] :
+		["e & 0xFFFF", "e >> 16"];
+	return "float" + String(fields.length) + "(" + fields.join(", ") + ") / " + scale;
+}
+
+function packText(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.Pack4x8Unorm => packLanes(4, 8, "255.0", false),
+		Intrinsic.Pack4x8Snorm => packLanes(4, 8, "127.0", true),
+		Intrinsic.Pack2x16Unorm => packLanes(2, 16, "65535.0", false),
+		Intrinsic.Pack2x16Snorm => packLanes(2, 16, "32767.0", true),
+		Intrinsic.Pack2x16Float => "f32tof16(e.x) | (f32tof16(e.y) << 16)",
+		Intrinsic.Unpack4x8Unorm => unpackLanes(8, "255.0", false),
+		Intrinsic.Unpack4x8Snorm => unpackLanes(8, "127.0", true),
+		Intrinsic.Unpack2x16Unorm => unpackLanes(16, "65535.0", false),
+		Intrinsic.Unpack2x16Snorm => unpackLanes(16, "32767.0", true),
+		_ => "float2(f16tof32(e), f16tof32(e >> 16))",
+	};
+}
+
+// HLSL has no intrinsic for these: each is a helper function, as naga writes them, so an operand
+// is evaluated once. FXC has no int overload of countbits, reversebits, firstbithigh and firstbitlow.
+function bitsOf(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const op = e.intrinsic;
+	const isSigned = e.type.scalar == ScalarKind.I32;
+	const t = typeName(p, e.type);
+	if (op == Intrinsic.CountOneBits || op == Intrinsic.ReverseBits) {
+		const call = (op == Intrinsic.CountOneBits ? "countbits(" : "reversebits(") +
+			(isSigned ? "asuint(" + expr(p, o[0]) + "))" : expr(p, o[0]) + ")");
+		return isSigned ? "asint(" + call + ")" : call;
+	}
+	if (op == Intrinsic.FirstLeadingBit || op == Intrinsic.FirstTrailingBit) {
+		const call = (op == Intrinsic.FirstLeadingBit ? "firstbithigh(" : "firstbitlow(") +
+			expr(p, o[0]) + ")";
+		return isSigned ? "asint(" + call + ")" : call;
+	}
+	if (op == Intrinsic.ExtractBits) {
+		const name = helper(p, "extractBits " + t, "extractBits", (n) =>
+			t + " " + n + "(" + t + " e, uint offset, uint count)\n{\n" +
+			"    uint w = 32u;\n    uint o = min(offset, w);\n    uint c = min(count, w - o);\n" +
+			"    if (c == 0u) { return (" + t + ")0; }\n" +
+			"    return (e << (w - c - o)) >> (w - c);\n}\n");
+		return name + "(" + o.map((a) => expr(p, a)).join(", ") + ")";
+	}
+	if (op == Intrinsic.InsertBits) {
+		const name = helper(p, "insertBits " + t, "insertBits", (n) =>
+			t + " " + n + "(" + t + " e, " + t + " newBits, uint offset, uint count)\n{\n" +
+			"    uint w = 32u;\n    uint o = min(offset, w);\n    uint c = min(count, w - o);\n" +
+			"    if (c == 0u) { return e; }\n" +
+			"    uint mask = (0xFFFFFFFFu >> (32u - c)) << o;\n" +
+			"    return (e & ~mask) | ((newBits << o) & mask);\n}\n");
+		return name + "(" + o.map((a) => expr(p, a)).join(", ") + ")";
+	}
+	const from = typeName(p, o[0].type);
+	const name = helper(p, op.toString(), mathName(op), (n) =>
+		t + " " + n + "(" + from + " e)\n{\n    return " + packText(op) + ";\n}\n");
+	return name + "(" + expr(p, o[0]) + ")";
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	return match (e.intrinsic) {
+		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
+			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
+			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
+			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
+			Intrinsic.Unpack2x16Float => bitsOf(p, e),
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", "int", e.type),
 		Intrinsic.Inverse => inverseOf(p, e),
 		Intrinsic.UpperLeft3x3 => "((float3x3)" + operand(p, e.operands[0]) + ")",

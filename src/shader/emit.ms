@@ -984,6 +984,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"textureDimensions", "textureStore", "textureLoad", "atomicLoad", "atomicStore",
 		"atomicAdd", "atomicSub", "atomicMax", "atomicMin", "atomicAnd", "atomicOr", "atomicXor",
 		"atomicExchange", "atomicCompareExchangeWeak",
+		"countOneBits", "reverseBits", "firstLeadingBit", "firstTrailingBit", "extractBits",
+		"insertBits", "pack4x8unorm", "pack4x8snorm", "pack2x16unorm", "pack2x16snorm",
+		"pack2x16float", "unpack4x8unorm", "unpack4x8snorm", "unpack2x16unorm", "unpack2x16snorm",
+		"unpack2x16float",
 	];
 	const intrinsics = [
 		Intrinsic.Abs, Intrinsic.Sign, Intrinsic.Floor, Intrinsic.Ceil, Intrinsic.Trunc,
@@ -1000,7 +1004,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.TextureLoad, Intrinsic.AtomicLoad, Intrinsic.AtomicStore, Intrinsic.AtomicAdd,
 		Intrinsic.AtomicSub, Intrinsic.AtomicMax, Intrinsic.AtomicMin, Intrinsic.AtomicAnd,
 		Intrinsic.AtomicOr, Intrinsic.AtomicXor, Intrinsic.AtomicExchange,
-		Intrinsic.AtomicCompareExchangeWeak,
+		Intrinsic.AtomicCompareExchangeWeak, Intrinsic.CountOneBits, Intrinsic.ReverseBits,
+		Intrinsic.FirstLeadingBit, Intrinsic.FirstTrailingBit, Intrinsic.ExtractBits,
+		Intrinsic.InsertBits, Intrinsic.Pack4x8Unorm, Intrinsic.Pack4x8Snorm,
+		Intrinsic.Pack2x16Unorm, Intrinsic.Pack2x16Snorm, Intrinsic.Pack2x16Float,
+		Intrinsic.Unpack4x8Unorm, Intrinsic.Unpack4x8Snorm, Intrinsic.Unpack2x16Unorm,
+		Intrinsic.Unpack2x16Snorm, Intrinsic.Unpack2x16Float,
 	];
 
 	function looseType(t: Node | null): ShaderType {

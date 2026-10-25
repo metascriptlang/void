@@ -39,6 +39,7 @@ import {
 	isMath,
 	mathName,
 	pointed,
+	repeatedBitsOperand,
 } from "./spelling";
 
 function mslReservedWords(): string[] {
@@ -60,7 +61,8 @@ function mslReservedWords(): string[] {
 		"texture2d", "texture3d", "texturecube", "texture2d_array", "texturecube_array",
 		"texture2d_ms", "depth2d", "depth2d_array", "depthcube", "depth2d_ms", "level", "bias",
 		"discard_fragment", "select", "fmod", "rint", "rsqrt", "faceforward", "dfdx", "dfdy",
-		"all", "any", "as_type",
+		"all", "any", "as_type", "ctz", "clz", "extract_bits", "insert_bits", "popcount", "reverse_bits",
+		"half",
 	];
 	for (const scalar of ["float", "int", "uint", "bool", "half"]) {
 		for (let n = 2; n <= 4; n++) {
@@ -85,6 +87,18 @@ function builtinName(op: Intrinsic): string {
 		Intrinsic.InverseSqrt => "rsqrt",
 		Intrinsic.Dpdx => "dfdx",
 		Intrinsic.Dpdy => "dfdy",
+		Intrinsic.CountOneBits => "popcount",
+		Intrinsic.ReverseBits => "reverse_bits",
+		Intrinsic.Pack4x8Unorm => "pack_float_to_unorm4x8",
+		Intrinsic.Pack4x8Snorm => "pack_float_to_snorm4x8",
+		Intrinsic.Pack2x16Unorm => "pack_float_to_unorm2x16",
+		Intrinsic.Pack2x16Snorm => "pack_float_to_snorm2x16",
+		Intrinsic.Unpack4x8Unorm => "unpack_unorm4x8_to_float",
+		Intrinsic.Unpack4x8Snorm => "unpack_snorm4x8_to_float",
+		Intrinsic.Unpack2x16Unorm => "unpack_unorm2x16_to_float",
+		Intrinsic.Unpack2x16Snorm => "unpack_snorm2x16_to_float",
+		Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits |
+			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float => "",
 		Intrinsic.Sign | Intrinsic.Degrees | Intrinsic.Radians => "",
 		_ => mathName(op),
 	};
@@ -550,6 +564,37 @@ function inverseCall(p: Printer, e: ShaderExpr): string {
 	return inverseName(t.rows) + "(" + exprText(p, e.operands[0]) + ")";
 }
 
+// The compound spellings, as naga's back-end writes them: ctz and clz count the full width, where
+// WGSL answers -1 for no bit, and extract_bits and insert_bits are undefined past the 32 bits
+// WGSL clamps to. An operand printed more than once must not call a function.
+function bitsText(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const op = e.intrinsic;
+	const x = exprText(p, o[0]);
+	const repeated = op == Intrinsic.FirstLeadingBit ? 0 : repeatedBitsOperand(op);
+	if (repeated >= 0 && hasEffect(o[repeated])) {
+		return fail(p, op.toString() + " prints an operand more than once, and it calls a function");
+	}
+	if (op == Intrinsic.FirstTrailingBit) {
+		return "(((ctz(" + x + ") + 1) % 33) - 1)";
+	}
+	if (op == Intrinsic.FirstLeadingBit) {
+		const none = typeText(p, e.type) + "(-1)";
+		if (e.type.scalar == ScalarKind.I32) {
+			return "select(31 - clz(select(" + x + ", ~" + x + ", " + x + " < 0)), " + none + ", " +
+				x + " == 0 || " + x + " == -1)";
+		}
+		return "select(31 - clz(" + x + "), " + none + ", " + x + " == 0)";
+	}
+	if (op == Intrinsic.Pack2x16Float) { return "as_type<uint>(half2(" + x + "))"; }
+	if (op == Intrinsic.Unpack2x16Float) { return "float2(as_type<half2>(" + x + "))"; }
+	const offset = exprText(p, o[op == Intrinsic.ExtractBits ? 1 : 2]);
+	const count = exprText(p, o[op == Intrinsic.ExtractBits ? 2 : 3]);
+	const clamped = "min(" + offset + ", 32u), min(" + count + ", 32u - min(" + offset + ", 32u))";
+	if (op == Intrinsic.ExtractBits) { return "extract_bits(" + x + ", " + clamped + ")"; }
+	return "insert_bits(" + x + ", " + exprText(p, o[1]) + ", " + clamped + ")";
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
@@ -557,6 +602,9 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
 	if (op == Intrinsic.UpperLeft3x3) { p.upperLeft = true; }
 	return match (op) {
+		Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits |
+			Intrinsic.InsertBits | Intrinsic.Pack2x16Float | Intrinsic.Unpack2x16Float =>
+			bitsText(p, e),
 		Intrinsic.Sign => signText(p, e),
 		Intrinsic.Degrees => "(" + exprText(p, o[0]) + " * 57.295779513082323)",
 		Intrinsic.Radians => "(" + exprText(p, o[0]) + " * 0.017453292519943295)",
