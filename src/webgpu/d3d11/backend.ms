@@ -87,7 +87,6 @@ import {
 	cubeCapable,
 	clampedAnisotropy,
 	addressesBinding,
-	checkedBindGroupIndex,
 	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedComputePipeline,

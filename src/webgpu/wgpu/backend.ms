@@ -83,7 +83,6 @@ import {
 	clampedAnisotropy,
 	cachedLimits,
 	addressesBinding,
-	checkedBindGroupIndex,
 	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedComputePipeline,
