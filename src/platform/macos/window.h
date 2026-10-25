@@ -13,6 +13,7 @@ typedef struct {
 	void (*frame)(void);
 	void (*event)(const VoidAppEvent *e);
 	void (*text)(int type, const char *utf8, int cursor);
+	void (*cleanup)(void);
 	int width;
 	int height;
 	bool highDpi;

@@ -329,6 +329,9 @@ read from the log.
    (the glyph page table) and would starve the tests after it. Then `msc test --target=js
    tests/js/targetCheck.ms` with every module flag off and on: Void compiles on JS, and what needs
    C (decoding images, loading fonts) answers with a named error there, because JS has no C to call.
+   Then `msc check src/examples/mainSokol2d.ms` for every backend the host does not run (D3D11, GL
+   on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
+   a function one backend lacks is red on any host rather than on the first machine that builds it.
 2. The demo entry builds and runs, then the integration programs, each with its named misuse
    runs; `mixedFrame` with its controls and both registration orders. Then the backend checks of
    the host: `webgpuD3d11Check` and `doorZeroHandleCheck` on WARP and `webgpuGlCheck`

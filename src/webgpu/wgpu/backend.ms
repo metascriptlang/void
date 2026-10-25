@@ -62,15 +62,12 @@ import {
 	checkedCubeView,
 	checkedDepthSlice,
 	checkedDepthTexelCopy,
-	checkedDispatch,
 	checkedDispatchIndirect,
 	checkedNoDepthSlice,
 	checkedPassExtent,
-	checkedQuerySetCount,
 	checkedResolveQuerySet,
 	checkedResolveTarget,
-	checkedSamplerAnisotropy,
-	checkedSamplerLod,
+	samplerMaxLod,
 	checkedSingleSubresource,
 	checkedTexelBufferLayout,
 	checkedTexelCopyRegion,
@@ -80,13 +77,10 @@ import {
 	checkedView3d,
 	checkedViewLayers,
 	checkedViewMips,
-	checkedViewport,
 	checkedWriteBuffer,
 	featureBit,
-	checkedIntegerTexturePairs,
 	firstInstanceRefusal,
 	vertexOffsetRefusal,
-	checkedVisibility,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
 } from "../types.ms";
@@ -94,9 +88,9 @@ import {
 	addressesBinding,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
-	checkedBindingGroup,
 	checkedComputeModule,
 	checkedComputePipeline,
+	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -1547,9 +1541,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	const mipmapFilter = mipmapFilterMode(descriptor.mipmapFilter);
 	let maxAnisotropy = descriptor.maxAnisotropy;
 	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
-	checkedSamplerAnisotropy(maxAnisotropy, magFilter == FILTER_LINEAR && minFilter == FILTER_LINEAR && mipmapFilter == MIPMAP_LINEAR);
-	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
-	const maxLod = checkedSamplerLod(descriptor.lodMinClamp, descriptor.lodMaxClamp);
+	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
 	const compare: string = descriptor.compare;
 	const native = wgCreateSampler(
 		addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"),
@@ -1586,7 +1578,6 @@ function createModule(code: string, label: string | null): Ptr<WgModuleImpl> {
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	stopOnUnportedShaderBindings("wgpu", descriptor);
-	checkedIntegerTexturePairs(descriptor);
 	stopOnUnportedShaderBytecode("wgpu", descriptor);
 	const compute = descriptor.computeCode != "";
 	const id = allocate(shaders);
@@ -1594,7 +1585,6 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
-		checkedVisibility(descriptor.bindings[i], compute);
 		const kind = bindingKind(kindName, "wgpu");
 		const native: ShaderBinding = {
 			binding: descriptor.bindings[i].binding,
@@ -1675,7 +1665,6 @@ function packLayoutEntry(
 @noinline function checkBinding(native: ShaderBinding, group: int32): void {
 	const uniform = native.kind == BindingKind.Uniform;
 	const kind = native.kind.toString();
-	checkedBindingGroup(native.binding, native.kind, group);
 	const limit = uniform ? MAX_UNIFORM_WGSL_BINDING : MAX_RESOURCE_WGSL_BINDING;
 	if (native.binding < 0 || native.binding >= limit) {
 		const last = limit - 1;
@@ -1707,9 +1696,6 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	const id = allocate(pipelines);
 	const s = shaders.slotIndex(descriptor.vertex.module.id);
 	checkedRenderModule(shaders.slots[s].compute != null);
-	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
-		stop("vertex and fragment stages come from one GPUShaderModule in Void");
-	}
 	const state = new Array<int32>(PL_SIZE);
 	let depthBias: float64[2] = [0, 0];
 	const topology = primitiveTopology(descriptor.primitive.topology);
@@ -2155,7 +2141,7 @@ export function endPass(): void {
 
 @inline export function setPipeline(pipeline: GPURenderPipeline): void {
 	const p = pipelines.slotIndex(pipeline.id);
-	if (pipelines.slots[p].compute) { stop(`GPUPipeline ${pipeline.id} is a compute pipeline`); }
+	checkedRenderPassPipeline(pipeline.id, pipelines.slots[p].compute);
 	wgSetPipeline(pipelines.slots[p].native);
 	pass.pipeline = pipeline.id;
 }
@@ -2216,7 +2202,6 @@ function stageBindGroup(
 }
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
-	checkedViewport(width, height, minDepth, maxDepth);
 	wgSetViewport(x, y, width, height, minDepth, maxDepth);
 }
 
@@ -2463,8 +2448,6 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 	checkDispatch("dispatchWorkgroups");
-	const limit = deviceLimits.maxComputeWorkgroupsPerDimension;
-	checkedDispatch(x, y, z, limit);
 	wgDispatch(x, y, z);
 }
 
@@ -2483,9 +2466,7 @@ export function endComputePass(): void {
 
 export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 	const kind: string = descriptor.type;
-	if (kind != "timestamp" && kind != "occlusion") { stopOnMember("GPUQuerySetDescriptor.type", kind); }
 	const timestamp = kind == "timestamp";
-	checkedQuerySetCount(descriptor.count);
 	if (timestamp && wgHasFeature(FEATURE_TIMESTAMP_QUERY) == 0) {
 		stop("this device has no timestamp queries: features().has('timestamp-query') is false (the window must request the feature when it creates the WGPUDevice)");
 	}

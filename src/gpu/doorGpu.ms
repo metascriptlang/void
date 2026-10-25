@@ -679,7 +679,7 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 	const indexType = description.indexType;
 	const module: GPUShaderModule = { id: description.shader };
 	let descriptor = {
-		label: null,
+		label: "makePipeline",
 		vertex: { module, buffers: layout.buffers },
 		primitive: {
 			topology: "triangle-list",
@@ -714,7 +714,7 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 	let uniformGroup: GPUBindGroup = { id: 0 };
 	if (reflected.uniformMask != 0) {
 		let entries = {
-			label: null,
+			label: "makePipeline uniforms",
 			layout: pipeline.getBindGroupLayout(GPU_UNIFORM_GROUP),
 		} as GPUBindGroupDescriptor;
 		let n = 0;
@@ -758,7 +758,7 @@ export function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height
 		return 0;
 	}
 	const texture = makeTexture({
-		label: null,
+		label: "makeImage",
 		size: texture2dSize(width, height),
 		format: "rgba8unorm",
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
@@ -795,7 +795,7 @@ export function doorMakeImageMips(
 	}
 	if (rgba.length != words) { return 0; }
 	const texture = makeTexture({
-		label: null,
+		label: "makeImageMips",
 		size: texture2dSize(width, height),
 		format: "rgba8unorm",
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
@@ -826,7 +826,7 @@ export function doorMakeCubeImage(rgba: Readonly<Span<uint32>>, size: int32): ui
 	const texels = (size as int64) * (size as int64) * (CUBE_FACES as int64);
 	if (size <= 0 || rgba.length != texels) { return 0; }
 	const texture = makeTexture({
-		label: null,
+		label: "makeCubeImage",
 		size: cubeSize(size),
 		format: "rgba8unorm",
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
@@ -849,7 +849,7 @@ export function doorMakeCubeTargetImage(size: int32, levels: int32, format: int3
 		return 0;
 	}
 	const texture = makeTexture({
-		label: null,
+		label: "makeCubeTargetImage",
 		size: cubeSize(size),
 		format: colorTextureFormat(pixelFormat),
 		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING |
@@ -866,7 +866,7 @@ export function doorMakeCubeAttachmentView(image: uint32, face: int32, level: in
 	if (face < 0 || face >= CUBE_FACES || level < 0) { return 0; }
 	const texture: GPUTexture = { id: image };
 	return texture.createView({
-		label: null,
+		label: "makeCubeAttachmentView",
 		dimension: "2d",
 		baseMipLevel: level,
 		mipLevelCount: 1,
@@ -879,7 +879,7 @@ export function doorMakeTargetImage(width: int32, height: int32, format: int32):
 	if (width <= 0 || height <= 0) { return 0; }
 	const pixelFormat = format as PixelFormat;
 	return makeTexture({
-		label: null,
+		label: isDepthFormat(pixelFormat) ? "makeTargetImage depth" : "makeTargetImage color",
 		size: texture2dSize(width, height),
 		format: isDepthFormat(pixelFormat)
 			? depthTextureFormat(pixelFormat)
@@ -894,9 +894,9 @@ export function doorMakeTargetImage(width: int32, height: int32, format: int32):
 export function doorMakeTextureView(image: uint32): uint32 {
 	const texture: GPUTexture = { id: image };
 	if (cubeImages.includes(image)) {
-		return texture.createView({ label: null, dimension: "cube" }).id;
+		return texture.createView({ label: "makeTextureView cube", dimension: "cube" }).id;
 	}
-	return texture.createView({ label: null }).id;
+	return texture.createView({ label: "makeTextureView" }).id;
 }
 
 @exportName("doorMakeSampler")
@@ -904,7 +904,7 @@ export function doorMakeSampler(filter: int32, wrap: int32): uint32 {
 	const f = FILTERS[filter as FilterMode as int32];
 	const w = WRAPS[wrap as Wrap as int32];
 	return device.createSampler({
-		label: null,
+		label: "makeSampler",
 		addressModeU: w,
 		addressModeV: w,
 		magFilter: f,
@@ -928,7 +928,7 @@ export function doorMakeSamplerEx(
 	if (maxAnisotropy > 1 && (doorAnisotropyPortable() == 0 || minFilter != 1 || magFilter != 1 ||
 		mipFilter != 2)) { return 0; }
 	return device.createSampler({
-		label: null,
+		label: "makeSamplerEx",
 		addressModeU: WRAPS[wrapU],
 		addressModeV: WRAPS[wrapV],
 		magFilter: FILTERS[magFilter],
@@ -1017,7 +1017,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 	const bytes = data.length > 0 ? data.length as int64 : size;
 	if (bytes <= 0) { return 0; }
 	const buffer = makeBuffer({
-		label: null,
+		label: (usage & DOOR_BUFFER_INDEX) != 0 ? "makeBuffer index" : "makeBuffer vertex",
 		size: alignedToFour(bytes),
 		usage: doorBufferUsage(usage),
 	});
@@ -1028,7 +1028,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 export function doorMakeBufferOf<T>(usage: int32, data: Readonly<Span<T>>): uint32 {
 	if (data.length == 0) { return 0; }
 	const buffer = makeBuffer({
-		label: null,
+		label: (usage & DOOR_BUFFER_INDEX) != 0 ? "makeBuffer index" : "makeBuffer vertex",
 		size: alignedToFour((data.length as int64) * (sizeof(T) as int64)),
 		usage: doorBufferUsage(usage),
 	});
@@ -1120,7 +1120,7 @@ export function doorMakeTexture(
 ): uint32 {
 	if (width <= 0 || height <= 0) { return 0; }
 	const texture = makeTexture({
-		label: null,
+		label: "makeTexture",
 		size: texture2dSize(width, height),
 		format: textureFormatOf(format as PixelFormat),
 		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST |
@@ -1261,7 +1261,7 @@ function resourceGroup(key: BindKey): GPUBindGroup {
 	if (bindCache[at].group.id != 0) { bindCache[at].group.destroy(); }
 	const record = pipelines[current];
 	let descriptor = {
-		label: null,
+		label: "applyBindings",
 		layout: record.pipeline.getBindGroupLayout(GPU_RESOURCE_GROUP),
 	} as GPUBindGroupDescriptor;
 	let n = 0;

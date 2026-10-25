@@ -159,7 +159,6 @@ void voidGfxSetup(void) {
 int voidFbWidth(void) { return voidIosAppFbWidth(); }
 int voidFbHeight(void) { return voidIosAppFbHeight(); }
 float voidDpiScale(void) { return voidIosAppDpiScale(); }
-int voidKeyDown(int keycode) { (void)keycode; return 0; }
 void voidDriverPresent(void) { voidViewsPresent(); }
 
 static IosSurface *screenSurface(void) {

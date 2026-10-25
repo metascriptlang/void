@@ -62,18 +62,13 @@ import {
 	checkedCubeView,
 	checkedDepthSlice,
 	checkedDepthTexelCopy,
-	checkedDispatch,
 	checkedDispatchIndirect,
-	checkedIntegerTexturePairs,
 	checkedMapAsync,
 	checkedMappedRange,
 	checkedNoDepthSlice,
 	checkedPassExtent,
-	checkedQuerySetCount,
 	checkedResolveQuerySet,
 	checkedResolveTarget,
-	checkedSamplerAnisotropy,
-	checkedSamplerLod,
 	checkedSingleSubresource,
 	checkedTexelBufferLayout,
 	checkedTexelCopyRegion,
@@ -84,8 +79,6 @@ import {
 	checkedView3d,
 	checkedViewLayers,
 	checkedViewMips,
-	checkedViewport,
-	checkedVisibility,
 	checkedWriteBuffer,
 	featureBit,
 	firstInstanceRefusal,
@@ -95,9 +88,9 @@ import {
 import {
 	addressesBinding,
 	checkedBindGroupSet,
-	checkedBindingGroup,
 	checkedComputeModule,
 	checkedComputePipeline,
+	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -783,9 +776,6 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	let maxAnisotropy = descriptor.maxAnisotropy;
 	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
 	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
-	checkedSamplerAnisotropy(maxAnisotropy, minLinear && magLinear && mipLinear);
-	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
-	checkedSamplerLod(descriptor.lodMinClamp, descriptor.lodMaxClamp);
 	addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU");
 	addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV");
 	addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW");
@@ -801,14 +791,12 @@ export function destroySampler(sampler: GPUSampler): void {
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
-	checkedIntegerTexturePairs(descriptor);
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
 	const id = allocate(shaders);
 	let slot: ShaderSlot = { id: 0 };
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
-		checkedVisibility(descriptor.bindings[i], compute);
 		const binding: ShaderBinding = {
 			binding: descriptor.bindings[i].binding,
 			kind: bindingKind(kindName, "dummy"),
@@ -817,8 +805,6 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 			storageFormat: descriptor.bindings[i].storageFormat,
 		};
 		bindingWritable(descriptor.bindings[i]);
-		const group = descriptor.bindings[i].group;
-		checkedBindingGroup(binding.binding, binding.kind, group);
 		if (binding.kind == BindingKind.Uniform) {
 			slot.uniforms[slot.uniformCount] = binding;
 			slot.uniformCount += 1;
@@ -903,9 +889,6 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	const id = allocate(pipelines);
 	const s = shaders.slotIndex(descriptor.vertex.module.id);
 	checkedRenderModule(shaders.slots[s].compute);
-	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
-		stop("vertex and fragment stages come from one GPUShaderModule in Void");
-	}
 	let slot: PipelineSlot = {
 		id: 0,
 		label: descriptor.label,
@@ -1215,9 +1198,7 @@ export function endPass(): void {
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
-	if (pipelines.slots[pipelines.slotIndex(pipeline.id)].compute) {
-		stop(`GPUPipeline ${pipeline.id} is a compute pipeline: setPipeline on a render pass takes a render pipeline`);
-	}
+	checkedRenderPassPipeline(pipeline.id, pipelines.slots[pipelines.slotIndex(pipeline.id)].compute);
 	bound.pipeline = pipeline.id;
 }
 
@@ -1251,7 +1232,6 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {}
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
-	checkedViewport(width, height, minDepth, maxDepth);
 }
 
 export function setBlendConstant(color: GPUColor): void {}
@@ -1541,7 +1521,6 @@ function checkCompute(): void {
 }
 
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
-	checkedDispatch(x, y, z, MAX_DISPATCH_GROUPS);
 	checkCompute();
 }
 
@@ -1601,8 +1580,6 @@ export function insertDebugMarker(label: string): void {}
 
 export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 	const kind: string = descriptor.type;
-	if (kind != "timestamp" && kind != "occlusion") { stopOnMember("GPUQuerySetDescriptor.type", kind); }
-	checkedQuerySetCount(descriptor.count);
 	const id = allocate(querySets);
 	const slot: QuerySetSlot = {
 		id: id,

@@ -3,7 +3,11 @@ import {
 	GPUBindGroupEntry,
 	GPUBufferUsage,
 	GPUPrimitiveState,
+	GPUQuerySetDescriptor,
+	GPURenderPipelineDescriptor,
+	GPUSamplerDescriptor,
 	GPUShaderModuleDescriptor,
+	GPUShaderStage,
 	GPUSupportedLimits,
 	GPUTextureDescriptor,
 	GPUTextureUsage,
@@ -22,6 +26,7 @@ import {
 	computeModuleRefusal,
 	computePipelineRefusal,
 	createRefusal,
+	dispatchRefusal,
 	drawRefusal,
 	endOcclusionRefusal,
 	entryBytes,
@@ -38,6 +43,7 @@ import {
 	occlusionReuseRefusal,
 	occlusionSetKindRefusal,
 	pipelineSetRefusal,
+	querySetRefusal,
 	resolvedViewDimension,
 	sampledViewRefusal,
 	storageEntryRefusal,
@@ -48,11 +54,15 @@ import {
 	primitiveRefusal,
 	pushGroupRefusal,
 	renderModuleRefusal,
+	renderPassPipelineRefusal,
+	renderPipelineRefusal,
+	samplerRefusal,
 	shaderModuleRefusal,
 	shutdownRefusal,
 	stripDrawRefusal,
 	textureRefusal,
 	uniformEntryRefusal,
+	viewportRefusal,
 } from "../webgpu/validate";
 
 function openEncoder(): EncoderState {
@@ -187,6 +197,7 @@ const COPY_DST = GPUBufferUsage.COPY_DST as int32;
 const VERTEX = GPUBufferUsage.VERTEX as int32;
 const ATTACHMENT = GPUTextureUsage.RENDER_ATTACHMENT as int32;
 const SAMPLED = GPUTextureUsage.TEXTURE_BINDING as int32;
+const RENDER_STAGES = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
 
 function smallLimits(): GPUSupportedLimits {
 	return { maxTextureDimension2D: 4096, maxTextureDimension3D: 256, maxTextureArrayLayers: 8 };
@@ -325,22 +336,97 @@ test "a compute workgroup is refused past any one axis or the invocation total o
 test "a shader module holds at most 8 uniform blocks and 16 resources, and a block has a size inside the limit" {
 	const limits = computeLimits();
 	let blocks: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
-	for (let i = 0; i < 8; i++) { blocks.bindings[i] = { binding: i, kind: "uniform", size: 16 }; }
+	for (let i = 0; i < 8; i++) { blocks.bindings[i] = { binding: i, kind: "uniform", size: 16, visibility: RENDER_STAGES }; }
 	assert shaderModuleRefusal(blocks, limits) == "";
-	blocks.bindings[8] = { binding: 8, kind: "uniform", size: 16 };
+	blocks.bindings[8] = { binding: 8, kind: "uniform", size: 16, visibility: RENDER_STAGES };
 	assert shaderModuleRefusal(blocks, limits) == "a shader module has over 8 uniform blocks";
 	let resources: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
-	for (let i = 0; i < 16; i++) { resources.bindings[i] = { binding: i, kind: "texture" }; }
+	for (let i = 0; i < 16; i++) { resources.bindings[i] = { binding: i, kind: "texture", group: 1, visibility: RENDER_STAGES }; }
 	assert shaderModuleRefusal(resources, limits) == "";
-	resources.bindings[16] = { binding: 16, kind: "sampler" };
+	resources.bindings[16] = { binding: 16, kind: "sampler", group: 1, visibility: RENDER_STAGES };
 	assert shaderModuleRefusal(resources, limits) == "a shader module has over 16 resources";
 	let sized: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
-	sized.bindings[0] = { binding: 3, kind: "uniform", size: 0 };
+	sized.bindings[0] = { binding: 3, kind: "uniform", size: 0, visibility: RENDER_STAGES };
 	assert shaderModuleRefusal(sized, limits) == "uniform binding 3 needs its block size";
 	sized.bindings[0].size = 65536;
 	assert shaderModuleRefusal(sized, limits) == "";
 	sized.bindings[0].size = 65552;
 	assert shaderModuleRefusal(sized, limits) == "uniform binding 3 of 65552 bytes is over the limit of 65536";
+}
+
+test "a shader binding is visible only to its module's stages and lives in its kind's group" {
+	const limits = computeLimits();
+	let render: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	render.bindings[0] = { binding: 2, kind: "texture", group: 1, visibility: GPUShaderStage.FRAGMENT as int32 };
+	assert shaderModuleRefusal(render, limits) == "";
+	render.bindings[0].visibility = 0;
+	assert shaderModuleRefusal(render, limits) == "shader binding 2 has visibility 0, but a vertex and fragment module allows only 3";
+	render.bindings[0].visibility = GPUShaderStage.COMPUTE as int32;
+	assert shaderModuleRefusal(render, limits) == "shader binding 2 has visibility 4, but a vertex and fragment module allows only 3";
+	render.bindings[0].visibility = RENDER_STAGES;
+	render.bindings[0].group = 0;
+	assert shaderModuleRefusal(render, limits) == "shader binding 2 (texture) belongs in group 1, not 0";
+	let kernel = computeModule(8, 1, 1);
+	kernel.bindings[0] = { binding: 0, kind: "uniform", size: 16, group: 1, visibility: GPUShaderStage.COMPUTE as int32 };
+	assert shaderModuleRefusal(kernel, limits) == "shader binding 0 (uniform) belongs in group 0, not 1";
+	kernel.bindings[0].visibility = GPUShaderStage.VERTEX as int32;
+	assert shaderModuleRefusal(kernel, limits) == "shader binding 0 has visibility 1, but a compute module allows only 4";
+}
+
+test "an integer texture pairs only with a non-filtering sampler" {
+	const limits = computeLimits();
+	let module: GPUShaderModuleDescriptor = { vertexCode: "vs", fragmentCode: "fs" };
+	module.bindings[0] = { binding: 0, kind: "texture", sampleType: "uint", group: 1, visibility: RENDER_STAGES };
+	module.bindings[1] = { binding: 1, kind: "sampler", textureBinding: 0, samplerType: "non-filtering", group: 1, visibility: RENDER_STAGES };
+	assert shaderModuleRefusal(module, limits) == "";
+	module.bindings[1].samplerType = "filtering";
+	assert shaderModuleRefusal(module, limits) == "sampler binding 1 is 'filtering' but pairs with the uint texture binding 0; an integer texture needs a non-filtering sampler";
+	module.bindings[0].sampleType = "float";
+	assert shaderModuleRefusal(module, limits) == "";
+}
+
+test "a sampler's anisotropy needs every filter linear, and its lod range is non-negative and ordered" {
+	let s: GPUSamplerDescriptor = { magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", maxAnisotropy: 8 };
+	assert samplerRefusal(s) == "";
+	s.mipmapFilter = "nearest";
+	assert samplerRefusal(s) == "GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter";
+	s.maxAnisotropy = 1;
+	assert samplerRefusal(s) == "";
+	s.lodMinClamp = -1;
+	assert samplerRefusal(s) == "GPUSamplerDescriptor.lodMinClamp -1 is negative";
+	s.lodMinClamp = 4;
+	s.lodMaxClamp = 2;
+	assert samplerRefusal(s) == "GPUSamplerDescriptor.lodMaxClamp 2 is below lodMinClamp 4";
+	s.lodMaxClamp = 0;
+	assert samplerRefusal(s) == "";
+}
+
+test "a query set is a timestamp or occlusion set of 1 to 4096 queries" {
+	const timestamps: GPUQuerySetDescriptor = { type: "timestamp", count: 4096 };
+	assert querySetRefusal(timestamps) == "";
+	const empty: GPUQuerySetDescriptor = { type: "occlusion", count: 0 };
+	assert querySetRefusal(empty) == "GPUQuerySetDescriptor.count 0 is outside 1..4096";
+	const untyped: GPUQuerySetDescriptor = { count: 4 };
+	assert querySetRefusal(untyped) == "GPUQuerySetDescriptor.type '' is neither 'timestamp' nor 'occlusion'";
+}
+
+test "a viewport and a dispatch stay inside WebGPU's ranges and the backend's limit" {
+	assert viewportRefusal(64, 32, 0, 1) == "";
+	assert viewportRefusal(-1, 32, 0, 1) == "setViewport -1x32 depth 0..1 is outside WebGPU's valid range";
+	assert viewportRefusal(64, 32, 0.75, 0.5) == "setViewport 64x32 depth 0.75..0.5 is outside WebGPU's valid range";
+	assert dispatchRefusal(0, 1, 65535, 65535) == "";
+	assert dispatchRefusal(1, 1, 65536, 65535) == "dispatchWorkgroups 1,1,65536 is outside 0..65535";
+	assert dispatchRefusal(-1, 1, 1, 65535) == "dispatchWorkgroups -1,1,1 is outside 0..65535";
+}
+
+test "a render pipeline takes its vertex and fragment stages from one module" {
+	let pipeline: GPURenderPipelineDescriptor = { vertex: { module: { id: 3 } }, fragment: { module: { id: 3 } } };
+	assert renderPipelineRefusal(pipeline) == "";
+	pipeline.fragment.module = { id: 4 };
+	assert renderPipelineRefusal(pipeline) == "vertex and fragment stages come from one GPUShaderModule in Void";
+	pipeline.fragment.module = { id: 3 };
+	pipeline.primitive = { topology: "triangle-list", stripIndexFormat: "uint16" };
+	assert renderPipelineRefusal(pipeline) == "primitive.stripIndexFormat 'uint16' needs a strip topology";
 }
 
 test "a stripIndexFormat needs a strip topology" {
@@ -364,6 +450,8 @@ test "a pipeline takes the module kind it is for, and a compute entry point the 
 	assert computeModuleRefusal(true, "other", "main") == "compute.entryPoint 'other' differs from the module's computeEntryPoint 'main'";
 	assert computePipelineRefusal(7, true) == "";
 	assert computePipelineRefusal(7, false) == "GPUPipeline 7 is not a compute pipeline";
+	assert renderPassPipelineRefusal(7, false) == "";
+	assert renderPassPipelineRefusal(7, true) == "GPUPipeline 7 is a compute pipeline: setPipeline on a render pass takes a render pipeline";
 }
 
 test "an indexed strip draw needs the pipeline's strip index format to be the bound index format, none included" {

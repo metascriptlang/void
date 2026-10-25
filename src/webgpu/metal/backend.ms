@@ -55,23 +55,19 @@ import {
 	GPUTexelCopyTextureInfo,
 	checkedBufferCopy,
 	checkedDepthTexelCopy,
-	checkedDispatch,
 	checkedDispatchIndirect,
 	checkedMapAsync,
 	checkedMappedRange,
-	checkedSamplerAnisotropy,
 	checkedTexelBufferLayout,
 	checkedTexelCopyRegion,
 	checkedTextureToTextureCopy,
 	checkedUnmap,
-	checkedViewport,
-	checkedSamplerLod,
+	samplerMaxLod,
 	checkedTexelWritePitch,
 	checkedCubeView,
 	checkedDepthSlice,
 	checkedNoDepthSlice,
 	checkedPassExtent,
-	checkedQuerySetCount,
 	checkedResolveQuerySet,
 	checkedResolveTarget,
 	checkedSingleSubresource,
@@ -79,6 +75,7 @@ import {
 	checkedViewLayers,
 	checkedViewMips,
 	checkedView3d,
+	checkedWriteBuffer,
 	featureBit,
 	GPUTexture,
 	GPUTextureDescriptor,
@@ -86,17 +83,15 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
-	checkedVisibility,
-	checkedIntegerTexturePairs,
 	firstInstanceRefusal,
 } from "../types.ms";
 import {
 	addressesBinding,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
-	checkedBindingGroup,
 	checkedComputeModule,
 	checkedComputePipeline,
+	checkedRenderPassPipeline,
 	checkedOcclusionRange,
 	checkedOcclusionReuse,
 	checkedOcclusionSetKind,
@@ -1107,9 +1102,7 @@ export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<
 	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = buffers.slotIndex(buffer.id);
-	if (offset < 0 || offset + bytes > buffers.slots[index].size) {
-		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${buffers.slots[index].size}`);
-	}
+	checkedWriteBuffer(buffer.id, buffers.slots[index].size, offset, bytes);
 	if (buffers.slots[index].writtenFrame == -2) { stop(`GPUBuffer ${buffer.id} was created without COPY_DST`); }
 	if (buffers.slots[index].mapMode != 0) { stop(`writeBuffer on GPUBuffer ${buffer.id}, which is mapped`); }
 	if (buffers.slots[index].inPlace) {
@@ -1494,9 +1487,7 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	let maxAnisotropy = descriptor.maxAnisotropy;
 	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
 	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
-	checkedSamplerAnisotropy(maxAnisotropy, minFilter == FILTER_LINEAR && magFilter == FILTER_LINEAR && mipFilter == MIP_FILTER_LINEAR);
-	if (descriptor.lodMinClamp < 0) { stopOnMember("GPUSamplerDescriptor.lodMinClamp", `${descriptor.lodMinClamp}`); }
-	const maxLod = checkedSamplerLod(descriptor.lodMinClamp, descriptor.lodMaxClamp);
+	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
 	const compare: string = descriptor.compare;
 	const native = mtlNewSampler(
 		device,
@@ -1552,14 +1543,12 @@ function entryFunction(library: Ptr<MtlLibraryImpl>, entryPoint: string, stage: 
 }
 
 export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
-	checkedIntegerTexturePairs(descriptor);
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
 	const id = allocate(shaders);
 	let slot: ShaderSlot = { id: 0 };
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
-		checkedVisibility(descriptor.bindings[i], compute);
 		const visibility = descriptor.bindings[i].visibility;
 		const native: NativeBinding = {
 			binding: descriptor.bindings[i].binding,
@@ -1571,7 +1560,7 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 			nativeSlot: descriptor.bindings[i].nativeSlot,
 			size: descriptor.bindings[i].size,
 		};
-		checkBinding(native, descriptor.bindings[i].group);
+		checkBinding(native);
 		if (native.kind == BindingKind.Uniform) {
 			slot.uniforms[slot.uniformCount] = native;
 			slot.uniformCount += 1;
@@ -1619,8 +1608,7 @@ function bindingWritable(binding: GPUShaderBinding): boolean {
 	return false;
 }
 
-function checkBinding(native: NativeBinding, group: int32): void {
-	checkedBindingGroup(native.binding, native.kind, group);
+function checkBinding(native: NativeBinding): void {
 	if (native.kind == BindingKind.StorageTexture && !native.computeStage) {
 		stop(`storage texture binding ${native.binding} in a render stage is not ported to metal`);
 	}
@@ -1665,9 +1653,6 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	const id = allocate(pipelines);
 	const s = shaders.slotIndex(descriptor.vertex.module.id);
 	checkedRenderModule(shaders.slots[s].compute != null);
-	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
-		stop("vertex and fragment stages come from one GPUShaderModule on Metal");
-	}
 	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders.slots[s].readsInstanceIndex };
 	mtlPipelineReset();
 	mtlPipelineLabel(labelText(descriptor.label));
@@ -2048,7 +2033,7 @@ export function endPass(): void {
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
-	if (pipelines.slots[pipelines.slotIndex(pipeline.id)].compute) { stop(`GPUPipeline ${pipeline.id} is a compute pipeline: setPipeline on a render pass takes a render pipeline`); }
+	checkedRenderPassPipeline(pipeline.id, pipelines.slots[pipelines.slotIndex(pipeline.id)].compute);
 	bound.pipeline = pipeline.id;
 }
 
@@ -2093,7 +2078,6 @@ export function setScissorRect(x: int32, y: int32, width: int32, height: int32):
 }
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
-	checkedViewport(width, height, minDepth, maxDepth);
 	mtlSetViewport(encoder, x, y, width, height, minDepth, maxDepth);
 }
 
@@ -2569,7 +2553,6 @@ function applyComputeResources(s: int32, g: int32): void {
 }
 
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
-	checkedDispatch(x, y, z, MAX_DISPATCH_GROUPS);
 	const s = applyCompute();
 	if (x == 0 || y == 0 || z == 0) { return; }
 	const size: int32[3] = shaders.slots[s].workgroup;
@@ -2665,9 +2648,7 @@ export function insertDebugMarker(label: string): void {
 
 export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 	const kind: string = descriptor.type;
-	if (kind != "timestamp" && kind != "occlusion") { stopOnMember("GPUQuerySetDescriptor.type", kind); }
 	const timestamp = kind == "timestamp";
-	checkedQuerySetCount(descriptor.count);
 	if (timestamp && mtlSupportsTimestamps(device) == 0) {
 		stop("this device has no timestamp queries: features().has('timestamp-query') is false (MTLCounterSamplingPointAtStageBoundary and a nanosecond timestamp counter are required)");
 	}

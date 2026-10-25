@@ -32,6 +32,7 @@ static int s_fbW = 1, s_fbH = 1;
 static float s_scale = 1.0f;
 static uint32_t s_modifiers;
 static uint32_t s_heldModifiers;
+static VoidKeysHeld s_keysHeld;
 static int s_textInput;
 static CGRect s_imeRect;
 static BOOL s_backspaceHeld, s_backspaceSent;
@@ -62,11 +63,14 @@ static void send(VoidAppEventType type) {
 }
 
 static void sendKey(VoidAppEventType type, VoidKeyCode code, bool repeat) {
+	voidKeysHeldTrack(&s_keysHeld, type, code);
 	VoidAppEvent e = makeEvent(type);
 	e.keyCode = code;
 	e.keyRepeat = repeat;
 	voidAppDeliver(&e);
 }
+
+static void releaseKey(VoidKeyCode key) { sendKey(VOID_EVENT_KEY_UP, key, false); }
 
 static void sendTap(VoidKeyCode code) {
 	sendKey(VOID_EVENT_KEY_DOWN, code, false);
@@ -268,6 +272,10 @@ static VoidAppView *s_view;
 	self.insets = self.safeAreaInsets;
 	self.viewId = voidViewCreate((long long)(intptr_t)(__bridge void *)layer, s_fbW, s_fbH, s_scale);
 	self.link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick)];
+	if (@available(iOS 15.0, *)) {
+		const float maxFps = (float)self.window.screen.maximumFramesPerSecond;
+		self.link.preferredFrameRateRange = CAFrameRateRangeMake(maxFps, maxFps, maxFps);
+	}
 	[self.link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
 	[self becomeFirstResponder];
 }
@@ -577,6 +585,8 @@ static VoidAppView *s_view;
 - (void)applicationWillResignActive:(UIApplication *)application {
 	(void)application;
 	s_heldModifiers = 0;
+	s_modifiers = 0;
+	voidKeysHeldRelease(&s_keysHeld, releaseKey);
 	if (s_view.viewId != 0) send(VOID_EVENT_UNFOCUSED);
 }
 - (void)applicationDidEnterBackground:(UIApplication *)application {
@@ -626,6 +636,8 @@ void voidSetTextInput(int on) {
 void voidSetImeRect(int x, int y, int w, int h) {
 	s_imeRect = CGRectMake(x / s_scale, y / s_scale, w / s_scale, h / s_scale);
 }
+
+int voidKeyDown(int keycode) { return keycode > VOID_KEY_INVALID && keycode < VOID_KEY_COUNT && s_keysHeld.down[keycode]; }
 
 int voidIosAppFbWidth(void) { return s_running && voidCurrentView() == 0 ? s_fbW : voidViewsFbWidth(); }
 int voidIosAppFbHeight(void) { return s_running && voidCurrentView() == 0 ? s_fbH : voidViewsFbHeight(); }

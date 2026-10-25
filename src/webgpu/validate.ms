@@ -3,7 +3,12 @@ import {
 	GPUBindGroupEntry,
 	GPUBufferUsage,
 	GPUPrimitiveState,
+	GPUQuerySetDescriptor,
+	GPURenderPipelineDescriptor,
+	GPUSamplerDescriptor,
+	GPUShaderBinding,
 	GPUShaderModuleDescriptor,
+	GPUShaderStage,
 	GPUSupportedLimits,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
@@ -12,6 +17,8 @@ import {
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
+	samplerMaxLod,
+	stop,
 } from "./types.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
@@ -37,11 +44,6 @@ export struct EncoderState {
 	occlusionSet: uint32;
 	occlusionOpen: boolean;
 	occlusionIndex: int32;
-}
-
-@noinline function stop(message: string): never {
-	console.log(`webgpu: ${message}`);
-	unreachable;
 }
 
 function passName(kind: int32): string { return kind == PASS_RENDER ? "render" : "compute"; }
@@ -209,13 +211,6 @@ export function addressesBinding(group: int32, entryBinding: int32, binding: int
 	return entryBinding == binding && group == groupOfKind(kind);
 }
 
-export function checkedBindingGroup(binding: int32, kind: BindingKind, group: int32): void {
-	const expected = groupOfKind(kind);
-	if (group != expected) {
-		stop(`shader binding ${binding} (${kind.toString()}) belongs in group ${expected}, not ${group}`);
-	}
-}
-
 export function uniformEntryRefusal(
 	entry: GPUBindGroupEntry,
 	bufferIsUniform: boolean,
@@ -293,8 +288,38 @@ export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupp
 export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRefusal(size, usage)); }
 export function checkedTexture(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): void { refuse(textureRefusal(descriptor, limits)); }
 
-// The descriptor-only rules of a shader module: one kind of code, the binding counts a bind group
-// holds, a uniform block's size against the uniform limit, and the workgroup against the compute limits.
+function visibilityRefusal(binding: GPUShaderBinding, compute: boolean): string {
+	const render = (GPUShaderStage.VERTEX as int32) | (GPUShaderStage.FRAGMENT as int32);
+	const allowed = compute ? GPUShaderStage.COMPUTE as int32 : render;
+	if (binding.visibility == 0 || (binding.visibility & ~allowed) != 0) {
+		return `shader binding ${binding.binding} has visibility ${binding.visibility}, but a ${compute ? "compute" : "vertex and fragment"} module allows only ${allowed}`;
+	}
+	return "";
+}
+
+// A uint or sint texture cannot be filtered (WebGPU's bind group layout rule, sokol's
+// VALIDATE_SHADERDESC_NONFILTERING_SAMPLER_REQUIRED), so a sampler paired with one must be non-filtering.
+function integerTexturePairRefusal(descriptor: GPUShaderModuleDescriptor): string {
+	for (let i = 0; i < descriptor.bindings.length; i++) {
+		const sampler = descriptor.bindings[i];
+		const kind: string = sampler.kind;
+		const samplerType: string = sampler.samplerType;
+		if (kind != "sampler" || sampler.textureBinding < 0 || samplerType == "non-filtering") { continue; }
+		for (let j = 0; j < descriptor.bindings.length; j++) {
+			const texture = descriptor.bindings[j];
+			const textureKind: string = texture.kind;
+			const sampleType: string = texture.sampleType;
+			if (textureKind == "texture" && texture.binding == sampler.textureBinding && (sampleType == "uint" || sampleType == "sint")) {
+				return `sampler binding ${sampler.binding} is '${samplerType == "" ? "filtering" : samplerType}' but pairs with the ${sampleType} texture binding ${texture.binding}; an integer texture needs a non-filtering sampler`;
+			}
+		}
+	}
+	return "";
+}
+
+// The descriptor-only rules of a shader module: one kind of code, each binding's stages and group,
+// the binding counts a bind group holds, a uniform block's size against the uniform limit, the
+// integer textures' samplers, and the workgroup against the compute limits.
 export function shaderModuleRefusal(descriptor: GPUShaderModuleDescriptor, limits: GPUSupportedLimits): string {
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
 	if (compute && (descriptor.vertexCode != "" || descriptor.fragmentCode != "" || descriptor.vertexBytecode.length > 0 || descriptor.fragmentBytecode.length > 0)) {
@@ -305,9 +330,14 @@ export function shaderModuleRefusal(descriptor: GPUShaderModuleDescriptor, limit
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kind: string = descriptor.bindings[i].kind;
 		if (kind == "") { continue; }
+		const visibility = visibilityRefusal(descriptor.bindings[i], compute);
+		if (visibility != "") { return visibility; }
+		const binding = descriptor.bindings[i].binding;
+		const group = descriptor.bindings[i].group;
+		const expected = kind == "uniform" ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
+		if (group != expected) { return `shader binding ${binding} (${kind}) belongs in group ${expected}, not ${group}`; }
 		if (kind == "uniform") {
 			const size = descriptor.bindings[i].size;
-			const binding = descriptor.bindings[i].binding;
 			if (size <= 0) { return `uniform binding ${binding} needs its block size`; }
 			if ((size as int64) > limits.maxUniformBufferBindingSize) {
 				return `uniform binding ${binding} of ${size} bytes is over the limit of ${limits.maxUniformBufferBindingSize}`;
@@ -319,6 +349,8 @@ export function shaderModuleRefusal(descriptor: GPUShaderModuleDescriptor, limit
 			if (resources > GPU_MAX_BIND_GROUP_ENTRIES) { return `a shader module has over ${GPU_MAX_BIND_GROUP_ENTRIES} resources`; }
 		}
 	}
+	const pairs = integerTexturePairRefusal(descriptor);
+	if (pairs != "") { return pairs; }
 	const size: int32[3] = descriptor.workgroupSize;
 	if (compute && (size[0] > limits.maxComputeWorkgroupSizeX || size[1] > limits.maxComputeWorkgroupSizeY
 		|| size[2] > limits.maxComputeWorkgroupSizeZ || size[0] * size[1] * size[2] > limits.maxComputeInvocationsPerWorkgroup)) {
@@ -339,6 +371,13 @@ export function primitiveRefusal(primitive: GPUPrimitiveState): string {
 	return "";
 }
 
+export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
+	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
+		return "vertex and fragment stages come from one GPUShaderModule in Void";
+	}
+	return primitiveRefusal(descriptor.primitive);
+}
+
 // A backend passes whether its module holds compute code: the module record is the backend's own.
 export function renderModuleRefusal(moduleIsCompute: boolean): string {
 	return moduleIsCompute ? "a compute GPUShaderModule cannot make a GPURenderPipeline" : "";
@@ -354,18 +393,60 @@ export function computePipelineRefusal(pipeline: uint32, isCompute: boolean): st
 	return isCompute ? "" : `GPUPipeline ${pipeline} is not a compute pipeline`;
 }
 
+export function renderPassPipelineRefusal(pipeline: uint32, isCompute: boolean): string {
+	return isCompute ? `GPUPipeline ${pipeline} is a compute pipeline: setPipeline on a render pass takes a render pipeline` : "";
+}
+
 // `matches` is whether the pipeline's strip index format is the bound index format; none never matches.
 export function stripDrawRefusal(strip: boolean, matches: boolean): string {
 	if (strip && !matches) { return "an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format"; }
 	return "";
 }
 
+export function samplerRefusal(descriptor: GPUSamplerDescriptor): string {
+	const mag: string = descriptor.magFilter;
+	const min: string = descriptor.minFilter;
+	const mip: string = descriptor.mipmapFilter;
+	if (descriptor.maxAnisotropy > 1 && (mag != "linear" || min != "linear" || mip != "linear")) {
+		return "GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter";
+	}
+	if (descriptor.lodMinClamp < 0) { return `GPUSamplerDescriptor.lodMinClamp ${descriptor.lodMinClamp} is negative`; }
+	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
+	if (maxLod < descriptor.lodMinClamp) { return `GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${descriptor.lodMinClamp}`; }
+	return "";
+}
+
+export function querySetRefusal(descriptor: GPUQuerySetDescriptor): string {
+	const kind: string = descriptor.type;
+	if (kind != "timestamp" && kind != "occlusion") { return `GPUQuerySetDescriptor.type '${kind}' is neither 'timestamp' nor 'occlusion'`; }
+	if (descriptor.count < 1 || descriptor.count > 4096) { return `GPUQuerySetDescriptor.count ${descriptor.count} is outside 1..4096`; }
+	return "";
+}
+
+export function viewportRefusal(width: float32, height: float32, minDepth: float32, maxDepth: float32): string {
+	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
+		return `setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`;
+	}
+	return "";
+}
+
+// `limit` is the backend's maxComputeWorkgroupsPerDimension.
+export function dispatchRefusal(x: int32, y: int32, z: int32, limit: int32): string {
+	if (x < 0 || y < 0 || z < 0 || x > limit || y > limit || z > limit) { return `dispatchWorkgroups ${x},${y},${z} is outside 0..${limit}`; }
+	return "";
+}
+
 export function checkedShaderModule(descriptor: GPUShaderModuleDescriptor, limits: GPUSupportedLimits): void { refuse(shaderModuleRefusal(descriptor, limits)); }
-export function checkedPrimitive(primitive: GPUPrimitiveState): void { refuse(primitiveRefusal(primitive)); }
+export function checkedRenderPipeline(descriptor: GPURenderPipelineDescriptor): void { refuse(renderPipelineRefusal(descriptor)); }
 export function checkedRenderModule(moduleIsCompute: boolean): void { refuse(renderModuleRefusal(moduleIsCompute)); }
 export function checkedComputeModule(moduleIsCompute: boolean, entry: string, moduleEntry: string): void { refuse(computeModuleRefusal(moduleIsCompute, entry, moduleEntry)); }
 export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): void { refuse(computePipelineRefusal(pipeline, isCompute)); }
+export function checkedRenderPassPipeline(pipeline: uint32, isCompute: boolean): void { refuse(renderPassPipelineRefusal(pipeline, isCompute)); }
 export function checkedStripDraw(strip: boolean, matches: boolean): void { refuse(stripDrawRefusal(strip, matches)); }
+export function checkedSampler(descriptor: GPUSamplerDescriptor): void { refuse(samplerRefusal(descriptor)); }
+export function checkedQuerySet(descriptor: GPUQuerySetDescriptor): void { refuse(querySetRefusal(descriptor)); }
+export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void { refuse(viewportRefusal(width, height, minDepth, maxDepth)); }
+export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void { refuse(dispatchRefusal(x, y, z, limit)); }
 
 // A view without a dimension takes its texture's; a 3d view needs a 3d texture and no other does.
 export function resolvedViewDimension(dimension: string, volume: boolean, layers: int32): string {

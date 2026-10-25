@@ -32,6 +32,7 @@ static float s_scale = 1.0f;
 static uint32_t s_modifiers;
 static int s_textInput;
 static VoidFrameTiming s_timing;
+static VoidKeysHeld s_keysHeld;
 
 uint64_t voidAndroidFrameCount(void) { return s_frameCount; }
 int voidAndroidWidth(void) { return s_fbW; }
@@ -64,11 +65,14 @@ static void send(VoidAppEventType type) {
 }
 
 static void sendKey(VoidAppEventType type, VoidKeyCode code, bool repeat) {
+	voidKeysHeldTrack(&s_keysHeld, type, code);
 	VoidAppEvent e = makeEvent(type);
 	e.keyCode = code;
 	e.keyRepeat = repeat;
 	voidAppDeliver(&e);
 }
+
+static void releaseKey(VoidKeyCode key) { sendKey(VOID_EVENT_KEY_UP, key, false); }
 
 static void sendTap(VoidKeyCode code) {
 	sendKey(VOID_EVENT_KEY_DOWN, code, false);
@@ -270,7 +274,10 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeInsets(JNIE
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeFocus(JNIEnv *e, jobject self, jboolean focused) {
 	(void)e; (void)self;
-	if (!focused) s_modifiers = 0;
+	if (!focused) {
+		s_modifiers = 0;
+		voidKeysHeldRelease(&s_keysHeld, releaseKey);
+	}
 	if (s_viewId != 0) send(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 }
 
@@ -456,6 +463,8 @@ void voidSetTextInput(int on) {
 }
 
 void voidSetImeRect(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; }
+
+int voidKeyDown(int keycode) { return keycode > VOID_KEY_INVALID && keycode < VOID_KEY_COUNT && s_keysHeld.down[keycode]; }
 
 int voidAndroidAppFbWidth(void) { return s_running && voidCurrentView() == 0 ? s_fbW : voidViewsFbWidth(); }
 int voidAndroidAppFbHeight(void) { return s_running && voidCurrentView() == 0 ? s_fbH : voidViewsFbHeight(); }

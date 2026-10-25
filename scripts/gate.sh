@@ -111,6 +111,15 @@ for jsStage in off on; do
 		fail "JS target, module stage all-$jsStage: msc test --target=js tests/js/targetCheck.ms — see out/gate-js-$jsStage.log"
 	fi
 done
+for target in "--os=windows" "--os=windows -d:voidGlCore" "--os=linux" "--os=android" "--os=ios" \
+		"--os=emcc -d:webgpu" "--os=emcc -d:webgl2" "-d:voidDummy"; do
+	log="out/gate-backend-check$(echo "$target" | tr -c 'a-zA-Z0-9\n' '-').log"
+	if "$MSC" check $target src/examples/mainSokol2d.ms > "$log" 2>&1; then
+		pass "backend contract, msc check $target: device.ms and its backend type-check"
+	else
+		fail "backend contract, msc check $target src/examples/mainSokol2d.ms — see $log"
+	fi
+done
 if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.log 2>&1 \
 		&& grep -q '^PASS colour memory:' out/gate-colour-memory.log; then
 	pass "colour allocation failures recover without retrying permanent PNG refusals"
