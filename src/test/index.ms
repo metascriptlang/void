@@ -8,6 +8,7 @@ import "./nodeCheck";
 import "./tileGroupCheck";
 import "./sceneCheck";
 import "./effectCheck";
+import "./filterPlanCheck";
 import "./faceCheck";
 import "./glyphAtlasCheck";
 import "./glyphPageReleaseCheck";

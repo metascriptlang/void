@@ -138,6 +138,7 @@ import {
 	emptyBounds,
 } from "./types";
 import { BlendMode } from "../gpu/state";
+import { FilterPlan, planFilter, resolutionScale, targetRect } from "./filterPlan";
 import { sqrtf } from "../math/mat4";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat, contextGeneration } from "../gpu/door";
@@ -1285,9 +1286,13 @@ function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
 
+function filtered(s: Scene2D, i: int32): boolean {
+	return s.filters[i].steps.length > 0;
+}
+
 function drawRow(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32): void {
 	if (!s.orders[i].visible) { return; }
-	if (s.filters[i].kind !== FilterKind.None) {
+	if (filtered(s, i)) {
 		drawFiltered(s, i, a, vw, vh);
 		return;
 	}
@@ -1338,30 +1343,6 @@ function seenAt(b: Bounds2D, shift: Vec2, vw: float32, vh: float32): boolean {
 		&& b.yMax >= 0.0 - shift.y && b.yMin <= vh - shift.y;
 }
 
-function deviceRound(v: float32): float32 {
-	return Math.round(v as float64) as float32;
-}
-
-function targetRect(
-	b: Bounds2D, shift: Vec2, vw: float32, vh: float32, dpi: float32, scoped: boolean,
-): Bounds2D {
-	let x0: float32 = Math.floor((b.xMin * dpi) as float64) as float32;
-	let y0: float32 = Math.floor((b.yMin * dpi) as float64) as float32;
-	let x1: float32 = Math.ceil((b.xMax * dpi) as float64) as float32;
-	let y1: float32 = Math.ceil((b.yMax * dpi) as float64) as float32;
-	if (!scoped) {
-		const sx: float32 = deviceRound(shift.x * dpi);
-		const sy: float32 = deviceRound(shift.y * dpi);
-		const right: float32 = deviceRound(vw * dpi) - sx;
-		const bottom: float32 = deviceRound(vh * dpi) - sy;
-		if (x0 < 0.0 - sx) { x0 = 0.0 - sx; }
-		if (y0 < 0.0 - sy) { y0 = 0.0 - sy; }
-		if (x1 > right) { x1 = right; }
-		if (y1 > bottom) { y1 = bottom; }
-	}
-	return { xMin: x0, yMin: y0, xMax: x1, yMax: y1 };
-}
-
 function panOrder(s: Scene2D, vw: float32, vh: float32): void {
 	const was: Vec2 = s.culledShift;
 	const now: Vec2 = s.viewShift;
@@ -1372,9 +1353,9 @@ function panOrder(s: Scene2D, vw: float32, vh: float32): void {
 		if (reach.xMin > reach.xMax) { continue; }
 		const state: PaintState = paintStateOf(i);
 		if (state == PaintState.InTarget) {
-			if (s.filters[i].kind !== FilterKind.None
-				&& targetRect(reach, was, vw, vh, dpi, false)
-					!= targetRect(reach, now, vw, vh, dpi, false)) {
+			if (filtered(s, i)
+				&& targetRect(reach, was, vw, vh, dpi * s.filters[i].resolutionScale(), false)
+					!= targetRect(reach, now, vw, vh, dpi * s.filters[i].resolutionScale(), false)) {
 				s.scanNeeded = true;
 			}
 		} else if (state == PaintState.InLanes) {
@@ -1659,7 +1640,7 @@ function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DrawContext2D | nu
 		if (!s.orders[i].visible) {
 			markRows(s, p, end, PaintState.Unpainted);
 			p = end;
-		} else if (s.filters[i].kind !== FilterKind.None) {
+		} else if (filtered(s, i)) {
 			markRows(s, p, end, PaintState.InTarget);
 			drawFiltered(s, i, a, vw, vh);
 			p = end;
@@ -1727,7 +1708,7 @@ function joins(s: Scene2D, source: DrawContext2D, q: int32, last: PaintIndex): b
 	const ends: int32 = s.maskEnds.length as int32;
 	if (ends > 0 && s.maskEnds[ends - 1] <= q) { return false; }
 	const j: int32 = s.order[q];
-	if (!s.orders[j].visible || s.filters[j].kind !== FilterKind.None) { return false; }
+	if (!s.orders[j].visible || filtered(s, j)) { return false; }
 	if (s.kinds[j] === DrawKind.Mask || lanesFor(s, j) || s.parents[j] == laneParent(s)) {
 		return false;
 	}
@@ -1915,51 +1896,47 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 //     build, a frame of nothing but the clear colour in release, because the nested `begin2d`
 //     also reset the list the frame was being recorded into.
 function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32): void {
-	const f: Filter = s.filters[i];
+	const steps: Vec<Filter> = s.filters[i].steps;
+	const last: int32 = (steps.length as int32) - 1;
+	const f: Filter = steps[last];
 	const blend: BlendMode = s.paints[i].blend;
 	let b = emptyBounds();
 	boundsRow(s, i, b);
 	s.culls[i] = emptyBounds();
 	if (b.xMin >= b.xMax || b.yMin >= b.yMax) { return; }
-	const pad: float32 = f.radius;
-	let padded: Bounds2D = {
-		xMin: b.xMin - pad, yMin: b.yMin - pad, xMax: b.xMax + pad, yMax: b.yMax + pad,
-	};
-	if (f.kind === FilterKind.DropShadow) {
-		if (f.offsetX < 0.0) {
-			padded = { ...padded, xMin: padded.xMin + f.offsetX };
-		} else {
-			padded = { ...padded, xMax: padded.xMax + f.offsetX };
-		}
-		if (f.offsetY < 0.0) {
-			padded = { ...padded, yMin: padded.yMin + f.offsetY };
-		} else {
-			padded = { ...padded, yMax: padded.yMax + f.offsetY };
-		}
-	}
-	// Clipped to the viewport: a target is only ever needed for the part that can be seen.
-	const reach: Bounds2D = inScope() ? emptyBounds() : padded;
-	s.culls[i] = reach;
 	const dpi: float32 = currentRenderScale();
-	const device: Bounds2D = targetRect(padded, s.viewShift, vw, vh, dpi, inScope());
+	const plan: FilterPlan = planFilter(b, s.filters[i], s.viewShift, vw, vh, dpi, inScope());
+	// Clipped to the viewport: a target is only ever needed for the part that can be seen.
+	const reach: Bounds2D = inScope() ? emptyBounds() : plan.padded;
+	s.culls[i] = reach;
+	const device: Bounds2D = plan.device;
 	if (device.xMax <= device.xMin || device.yMax <= device.yMin) { return; }
-	const xMin: float32 = device.xMin / dpi;
-	const yMin: float32 = device.yMin / dpi;
-	const rtW: int32 = (device.xMax - device.xMin) as int32;
-	const rtH: int32 = (device.yMax - device.yMin) as int32;
-	const logicalW: float32 = (rtW as float32) / dpi;
-	const logicalH: float32 = (rtH as float32) / dpi;
+	const xMin: float32 = device.xMin / plan.scale;
+	const yMin: float32 = device.yMin / plan.scale;
+	const rtW: int32 = plan.width;
+	const rtH: int32 = plan.height;
+	const logicalW: float32 = (rtW as float32) / plan.scale;
+	const logicalH: float32 = (rtH as float32) / plan.scale;
 	const rt: RenderTarget = acquireTarget(rtW, rtH);
 
 	// The subtree at alpha 1, in target space. One walk, one sync, no GPU call.
-	beginTarget(rt, logicalW, logicalH, dpi, xMin, yMin, transparent);
+	beginTarget(rt, logicalW, logicalH, plan.scale, xMin, yMin, transparent);
 	drawContent(s, i, 1.0, 1.0, vw, vh);
 	endTarget();
 	s.culls[i] = reach;
 
-	let src: RenderTarget = rt;
-	if (f.radius > 0.0) {
-		src = blurTargetPooled(rt, rtW, rtH, f.radius * dpi);
+	// Every step but the last renders into a target the next one reads; the last composites into
+	// the open pass, which is the whole path when there is one step.
+	let sharp: RenderTarget = rt;
+	for (let k: int32 = 0; k < last; k++) {
+		sharp = filterStage(steps[k], sharp, rtW, rtH, plan.scale);
+	}
+	if (f.kind === FilterKind.Outline) {
+		sharp = filterStage(f, sharp, rtW, rtH, plan.scale);
+	}
+	let src: RenderTarget = sharp;
+	if (f.radius > 0.0 && f.kind !== FilterKind.Outline) {
+		src = blurTargetPooled(sharp, rtW, rtH, f.radius * plan.scale);
 	}
 
 	const na: float32 = a * s.paints[i].alpha;
@@ -1973,7 +1950,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// sets its own effect and puts this one back afterwards.
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
-	if (f.kind === FilterKind.Blur) {
+	if (f.kind === FilterKind.Blur || f.kind === FilterKind.Outline) {
 		imageQuad(rtTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 			rgba(1.0, 1.0, 1.0, na), blend);
 		return;
@@ -2001,9 +1978,59 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-	const sharpTile: Tile = premultipliedTargetTile(rt, rtW as float32, rtH as float32);
+	const sharpTile: Tile = premultipliedTargetTile(sharp, rtW as float32, rtH as float32);
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);
+}
+
+// One step of a chain rendered into a target of its own, in device pixels from the origin, so
+// the next step reads it like it read the subtree's target. `scale` is device pixels per
+// logical pixel, which turns the step's logical radius and offset into pixels.
+function filterStage(f: Filter, src: RenderTarget, w: int32, h: int32, scale: float32): RenderTarget {
+	const wf: float32 = w as float32;
+	const hf: float32 = h as float32;
+	const none: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	if (f.kind === FilterKind.None) {
+		console.log("void2d filter: a FilterKind.None step reached the renderer");
+		unreachable;
+	}
+	if (f.kind === FilterKind.Blur && f.radius <= 0.0) { return src; }
+	let blurred: RenderTarget = src;
+	if (f.kind !== FilterKind.Outline && f.radius > 0.0) {
+		blurred = blurTargetPooled(src, w, h, f.radius * scale);
+	}
+	const out: RenderTarget = acquireTarget(w, h);
+	beginTarget(out, wf, hf, 1.0, 0.0, 0.0, transparent);
+	if (f.kind === FilterKind.Blur) {
+		blitTarget(blurred, wf, hf);
+		endTarget();
+		return out;
+	}
+	setEffect(colorMatrixAlphaOnly(f.kind === FilterKind.Outline ? f.color.a : f.gain),
+		rgba(f.color.r, f.color.g, f.color.b, 0.0), none);
+	setSampler(Smooth.On, false);
+	const stamp: Tile = premultipliedTargetTile(blurred, wf, hf);
+	const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
+	if (f.kind === FilterKind.Outline) {
+		const step: float32 = 6.2831855 / (f.samples as float32);
+		for (let n: int32 = 1; n <= f.samples; n++) {
+			const ox: float32 = f.radius * scale * cosf(step * (n as float32));
+			const oy: float32 = f.radius * scale * sinf(step * (n as float32));
+			imageQuad(stamp, vec2(ox, oy), vec2(wf + ox, oy), vec2(wf + ox, hf + oy), vec2(ox, hf + oy),
+				white, BlendMode.Max);
+		}
+	} else {
+		const ox: float32 = f.kind === FilterKind.DropShadow ? f.offsetX * scale : 0.0;
+		const oy: float32 = f.kind === FilterKind.DropShadow ? f.offsetY * scale : 0.0;
+		const shadow: BlendMode = f.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
+		imageQuad(stamp, vec2(ox, oy), vec2(wf + ox, oy), vec2(wf + ox, hf + oy), vec2(ox, hf + oy),
+			white, shadow);
+	}
+	setEffect(NO_COLOR_MATRIX, none, none);
+	imageQuad(premultipliedTargetTile(src, wf, hf), vec2(0.0, 0.0), vec2(wf, 0.0), vec2(wf, hf),
+		vec2(0.0, hf), white, BlendMode.Alpha);
+	endTarget();
+	return out;
 }
 
 function scopeShift(s: Scene2D, i: int32, world: Transform2D): Vec2 {
