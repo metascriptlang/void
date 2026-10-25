@@ -288,7 +288,7 @@ static void createSwapchain(bool fromResize) {
 	WGPUSurfaceConfiguration conf = {0};
 	conf.device = s.wgpu.device;
 	conf.format = s.wgpu.format;
-	conf.usage = WGPUTextureUsage_RenderAttachment;
+	conf.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
 	conf.width = (uint32_t)s.framebufferWidth;
 	conf.height = (uint32_t)s.framebufferHeight;
 	conf.alphaMode = WGPUCompositeAlphaMode_Premultiplied;

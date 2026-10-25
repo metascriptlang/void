@@ -366,7 +366,7 @@ static void configure(WebSurface *s) {
 	WGPUSurfaceConfiguration c = {0};
 	c.device = s_device;
 	c.format = s_format;
-	c.usage = WGPUTextureUsage_RenderAttachment;
+	c.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
 	c.width = (uint32_t)s->w;
 	c.height = (uint32_t)s->h;
 	c.alphaMode = WGPUCompositeAlphaMode_Premultiplied;
