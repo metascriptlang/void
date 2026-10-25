@@ -1272,6 +1272,38 @@ test "an occlusion-uv-b key sets bit 18 and is declared on a uv-b layout whereve
 	assert !declares({ ...ProgramKey.of(Program.LitTextured).withPbr(), occlusionUvB: true });
 }
 
+test "a parallax key sets bit 19 on a normal-mapped pbr-maps key and binds no view of its own" {
+	const maps: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps()
+		.withNormalMap();
+	assert maps.withParallax().bits() == maps.bits() + 524288;
+	assert describe(maps.withParallax()).includes(" parallax");
+	const variants: Vec<ProgramKey> = [
+		maps, maps.withSkin(), maps.withEmissive(), maps.withOcclusionUvB(),
+		maps.withSkin().withOcclusionUvB(), maps.withEmissive().withOcclusionUvB(),
+	];
+	for (const key of variants) {
+		for (const cut of [false, true]) {
+			for (const shadowed of [false, true]) {
+				let made: ProgramKey = cut ? key.withCutout() : key;
+				made = shadowed ? made.withShadowed() : made;
+				const stepped: ProgramKey = made.withParallax();
+				assert declares(made) && declares(stepped);
+				assert vertexLayoutOf(stepped) == vertexLayoutOf(made);
+				assert textureSlotMask(stepped) == textureSlotMask(made);
+				assert samplerSlotMask(stepped) == samplerSlotMask(made);
+				assert uniformBlockLength(stepped, MATERIAL_UNIFORM_SLOT) ==
+					uniformBlockLength(made, MATERIAL_UNIFORM_SLOT);
+				const cast = castIn(stepped);
+				const plain = castIn(made);
+				assert cast.ok == (plain.ok && !cut);
+				if (cast.ok && plain.ok) { assert cast.value.bits() == plain.value.bits(); }
+			}
+		}
+	}
+	const unmapped: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps();
+	assert !declares({ ...unmapped, parallax: true });
+}
+
 test "a skinned pbr key is declared on the skinned layout in every variant a glTF material makes" {
 	const lit: ProgramKey = ProgramKey.of(Program.Lit).withPbr();
 	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();
