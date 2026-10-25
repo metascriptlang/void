@@ -150,6 +150,7 @@ static struct {
 		uint8_t buttons;
 	} mouse;
 	uint32_t flagsChanged;
+	VoidKeysHeld keysHeld;
 	VoidFrameTiming timing;
 	int droppedCount;
 	char **droppedPaths;
@@ -227,12 +228,15 @@ static void mouseEvent(VoidAppEventType type, VoidMouseButton button, uint32_t m
 
 static void keyEvent(VoidAppEventType type, VoidKeyCode key, bool repeat, uint32_t modifiers) {
 	if (!eventsEnabled()) return;
+	voidKeysHeldTrack(&s.keysHeld, type, key);
 	initEvent(type);
 	s.event.keyCode = key;
 	s.event.keyRepeat = repeat;
 	s.event.modifiers = modifiers;
 	callEvent();
 }
+
+static void releaseKey(VoidKeyCode key) { keyEvent(VOID_EVENT_KEY_UP, key, false, 0); }
 
 static VoidKeyCode translateKey(int scanCode) {
 	if (scanCode < 0 || scanCode >= KEY_TABLE_SIZE) return VOID_KEY_INVALID;
@@ -437,6 +441,8 @@ static void frame(void) {
 
 - (void)windowDidResignKey:(NSNotification *)notification {
 	(void)notification;
+	voidKeysHeldRelease(&s.keysHeld, releaseKey);
+	s.flagsChanged = 0;
 	appEvent(VOID_EVENT_UNFOCUSED);
 }
 

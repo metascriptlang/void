@@ -170,6 +170,7 @@ static struct {
 		bool initDone;
 	} wgpu;
 #endif
+	VoidKeysHeld keysHeld;
 } s;
 
 __attribute__((noreturn, format(printf, 1, 2))) static void fail(const char *fmt, ...) {
@@ -809,9 +810,11 @@ static bool keyCallback(int type, const EmscriptenKeyboardEvent *e, void *userDa
 		keyUpFollows = eventType == VOID_EVENT_KEY_DOWN && s.event.keyCode != VOID_KEY_LEFT_SUPER
 			&& s.event.keyCode != VOID_KEY_RIGHT_SUPER && (s.event.modifiers & VOID_MODIFIER_SUPER);
 	}
+	voidKeysHeldTrack(&s.keysHeld, eventType, s.event.keyCode);
 	bool consumed = callEvent();
 	if (keyUpFollows) {
 		s.event.type = VOID_EVENT_KEY_UP;
+		voidKeysHeldTrack(&s.keysHeld, VOID_EVENT_KEY_UP, s.event.keyCode);
 		consumed |= callEvent();
 	}
 	return consumed;
@@ -842,9 +845,17 @@ static bool touchCallback(int type, const EmscriptenTouchEvent *e, void *userDat
 	return true;
 }
 
+static void releaseKey(VoidKeyCode key) {
+	if (!eventsEnabled()) return;
+	initEvent(VOID_EVENT_KEY_UP);
+	s.event.keyCode = key;
+	callEvent();
+}
+
 static bool focusCallback(int type, const EmscriptenFocusEvent *e, void *userData) {
 	(void)e;
 	(void)userData;
+	if (type != EMSCRIPTEN_EVENT_FOCUS) voidKeysHeldRelease(&s.keysHeld, releaseKey);
 	appEvent(type == EMSCRIPTEN_EVENT_FOCUS ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 	return true;
 }

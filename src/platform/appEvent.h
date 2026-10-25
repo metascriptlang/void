@@ -231,4 +231,22 @@ typedef struct {
 	VoidTouchPoint touches[VOID_MAX_TOUCHPOINTS];
 } VoidAppEvent;
 
+typedef struct {
+	bool down[VOID_KEY_COUNT];
+} VoidKeysHeld;
+
+static inline void voidKeysHeldTrack(VoidKeysHeld *h, VoidAppEventType type, VoidKeyCode key) {
+	if (key <= VOID_KEY_INVALID || key >= VOID_KEY_COUNT) return;
+	if (type == VOID_EVENT_KEY_DOWN) h->down[key] = true;
+	else if (type == VOID_EVENT_KEY_UP) h->down[key] = false;
+}
+
+static inline void voidKeysHeldRelease(VoidKeysHeld *h, void (*keyUp)(VoidKeyCode key)) {
+	for (int key = VOID_KEY_INVALID + 1; key < VOID_KEY_COUNT; key++) {
+		if (!h->down[key]) continue;
+		h->down[key] = false;
+		keyUp((VoidKeyCode)key);
+	}
+}
+
 #endif
