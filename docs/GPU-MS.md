@@ -348,6 +348,31 @@ branch. Each one is checked here per file; the full gate has not run again yet.
 - The Mac gate now runs the iOS goldens and view samples on an attached iPhone or iPad
   (`3920c9c8`); `backend:metal-ios` is closed in `tests/PENDING.md`.
 
+### 2026-10-25, the Apple half is done; Windows ships
+
+The person's call: Windows finishes the remaining criteria and ships the branch into main. The
+Mac side has nothing open of its own. What the Mac verified, and what it still needs from you:
+
+- Full Mac gate on `fbdd5750`, plus the iOS section rerun on an unlocked iPhone 13 Pro:
+  index 2673/2673 both stages, `webgpuMetalCheck` 434/434, golden metal 15 pass / 105 pending /
+  0 fail of 120 on the Mac and on the iPhone, iOS samples 1/2/4 PASS and 8 named. The 7 FAILs
+  left were D3D11 goldens and their TESTING.md row, bare build, wasm delta and GL 4.3 (none
+  runs on a Mac), view paint and refused-pool, both fixed since.
+- On your `932a1562`, the Mac reran `msc check` (darwin, windows, linux, ios, android: 0 errors),
+  `regen-shaders --check` (fresh), `webgpuMetalCheck` 434/434 and index 2677/2677. Haro
+  `--smoke`, Neon `voidFrames` and `voidDraw` build, draw and carry 0 sokol symbols.
+- `msc` 38009de37 refuses a mutable `Span` of a value parameter's field: `fromHeaps.ms`'s
+  `polynomial` takes `Readonly<Span<float32>>` (`fbdd5750`).
+- refused-pool printed `webgpu metal: view pool exhausted` on the Mac, so `161b3629`'s D3D11
+  string failed there; gate.sh and gate3d now expect the host's backend (`5eb928fc`).
+- view paint was never a Metal bug: `float32(0.1) × 255` is 25.50000038, a rounding tie, and the
+  GPU rounds it to 26 where the test expected 25. The clear colour is now 0.2/0.2/0.4
+  (`7c602fc7`). **For you:** rerun it on D3D11; 51 and 102 are far from any tie.
+- `macos:view-api` is closed in `tests/PENDING.md` (`dfe8b72d`).
+- **When you ship:** after you merge main into the branch, ask for a Mac gate.sh and gate3d on
+  that tree (merge-train slot), because lines inside `__APPLE__` and the Metal backend compile
+  only there. gate3d's Metal captures wait for your `tests/golden3d/d3d11/*.png`.
+
 ## From Windows (2026-10-23)
 
 - **Coverage phases** (the person: coverage first, quality after). P0: the WebGPU members sokol
