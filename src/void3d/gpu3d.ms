@@ -599,6 +599,7 @@ export {
 	applyPipeline,
 	applyBindings,
 	applyUniforms,
+	uniformStamp,
 	draw,
 } from "../gpu/draw";
 

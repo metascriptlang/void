@@ -87,6 +87,13 @@ void macHostMiniaturize(int on) {
 	else [window() deminiaturize:nil];
 }
 
+void macHostRaise(void) {
+	[NSApp activateIgnoringOtherApps:YES];
+	[window() orderFrontRegardless];
+}
+
+int macHostWindowVisible(void) { return (window().occlusionState & NSWindowOcclusionStateVisible) ? 1 : 0; }
+
 int macHostMiniaturized(void) { return window().miniaturized ? 1 : 0; }
 int macHostFullscreenStyle(void) { return (window().styleMask & NSWindowStyleMaskFullScreen) ? 1 : 0; }
 void macHostSetContentSize(int w, int h) { [window() setContentSize:NSMakeSize(w, h)]; }
@@ -95,6 +102,8 @@ int macHostContentWidth(void) { return (int)view().bounds.size.width; }
 int macHostLayerDrawableWidth(void) { return (int)((CAMetalLayer *)view().layer).drawableSize.width; }
 int macHostLayerDrawableHeight(void) { return (int)((CAMetalLayer *)view().layer).drawableSize.height; }
 float macHostScale(void) { return (float)window().backingScaleFactor; }
+int macHostMaxFps(void) { return (int)NSScreen.mainScreen.maximumFramesPerSecond; }
+double macHostNowMs(void) { return CACurrentMediaTime() * 1000.0; }
 
 @interface HostDrag : NSObject <NSDraggingInfo>
 @property(nonatomic, strong) NSPasteboard *board;

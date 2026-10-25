@@ -14,7 +14,6 @@ typedef struct WgQuerySetImpl *WgQuerySet;
 int32_t wgSetup(void *device);
 void wgShutdown(void);
 int64_t wgLimit(int32_t which);
-int32_t wgMaxTextureDimension2D(void);
 int32_t wgMinUniformBufferOffsetAlignment(void);
 int32_t wgHasFeature(int32_t feature);
 WgView wgViewFrom(void *native);

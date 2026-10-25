@@ -756,39 +756,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	return bytesPerRow;
 }
 
-// WebGPU lets a mappable buffer carry only the one copy usage that matches its map direction.
-@noinline export function checkedBufferUsage(usage: int32): void {
-	const mapRead = GPUBufferUsage.MAP_READ as int32;
-	const mapWrite = GPUBufferUsage.MAP_WRITE as int32;
-	if ((usage & mapRead) != 0 && usage != (mapRead | (GPUBufferUsage.COPY_DST as int32))) {
-		stop("GPUBufferUsage MAP_READ combines only with COPY_DST");
-	}
-	if ((usage & mapWrite) != 0 && usage != (mapWrite | (GPUBufferUsage.COPY_SRC as int32))) {
-		stop("GPUBufferUsage MAP_WRITE combines only with COPY_SRC");
-	}
-}
-
-// The mip count a descriptor asks for (0 means 1), checked against the chain its largest side allows.
-@noinline export function checkedMipLevelCount(descriptor: GPUTextureDescriptor, volume: boolean, layers: int32): int32 {
-	const requested = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
-	let largest = Math.max(descriptor.size.width, descriptor.size.height);
-	if (volume) { largest = Math.max(largest, layers); }
-	let possible = 1;
-	while ((largest >> possible) > 0) { possible += 1; }
-	if (requested < 1 || requested > possible) {
-		stop(`GPUTextureDescriptor.mipLevelCount ${requested} is outside 1..${possible} for a ${descriptor.size.width}x${descriptor.size.height} texture`);
-	}
-	return requested;
-}
-
-// `sampleCount` is already resolved (0 means 1); more than one sample is a 2d, single-mip, single-layer attachment.
-@noinline export function checkedMultisample(sampleCount: int32, volume: boolean, layers: int32, mipLevels: int32, attachment: boolean): void {
-	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
-		stop("WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer");
-	}
-	if (sampleCount > 1 && !attachment) { stop("a multisampled texture must be a RENDER_ATTACHMENT"); }
-}
-
 // `from*` describe the source texture at mip 0; the regions are already bounds-checked by checkedTexelCopyRegion.
 @noinline export function checkedTextureToTextureCopy(
 	source: GPUTexelCopyTextureInfo,

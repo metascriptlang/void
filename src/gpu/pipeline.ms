@@ -38,6 +38,9 @@ export struct PipelineEntry {
 
 export interface PipelineCache {
 	entries: Vec<PipelineEntry>;
+	// Open addressing over `entries`, an entry's index plus one in the slot its key hashes to,
+	// 0 when empty: at least twice as many slots as entries, so a lookup probes a few.
+	slots: Vec<int32>;
 	shaders: Vec<uint32>;
 	blockSlots: Vec<uint32>;
 	// The GPU context its handles belong to: renderers sharing a DrawContext forget them once.
@@ -48,6 +51,7 @@ export interface PipelineCache {
 export function empty(this typeof PipelineCache): PipelineCache {
 	return {
 		entries: [],
+		slots: [],
 		shaders: [],
 		blockSlots: [],
 		generation: 0,
@@ -97,11 +101,55 @@ export function toString(this key: PipelineKey): string {
 }
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
-	if (cache.closed) { return false; }
-	for (const entry of cache.entries) {
-		if (entry.key == key) { return true; }
+	return !cache.closed && cache.indexOf(key) >= 0;
+}
+
+function keyHash(key: PipelineKey): uint32 {
+	let h: uint32 = (key.program as uint32) * 2654435761;
+	h = (h ^ (key.layout as uint32)) * 16777619;
+	h = (h ^ ((key.indexType as int32) as uint32)) * 16777619;
+	h = (h ^ key.state) * 16777619;
+	h = (h ^ key.targets) * 16777619;
+	return h ^ (h >> 15);
+}
+
+// The key's hash picks a bucket and the keys in it are compared. The entry's index, -1 when the
+// cache holds none for `key`.
+export function indexOf(this cache: PipelineCache, key: PipelineKey): int32 {
+	if (cache.slots.length == 0) { return -1; }
+	const mask: uint32 = ((cache.slots.length as int32) - 1) as uint32;
+	let at: int32 = (keyHash(key) & mask) as int32;
+	while (cache.slots[at] != 0) {
+		const found: int32 = cache.slots[at] - 1;
+		if (cache.entries[found].key == key) { return found; }
+		at = (at + 1) & (mask as int32);
 	}
-	return false;
+	return -1;
+}
+
+function place(cache: PipelineCache, index: int32): void {
+	const mask: uint32 = ((cache.slots.length as int32) - 1) as uint32;
+	let at: int32 = (keyHash(cache.entries[index].key) & mask) as int32;
+	while (cache.slots[at] != 0) { at = (at + 1) & (mask as int32); }
+	cache.slots[at] = index + 1;
+}
+
+// Adds an entry for a key the cache holds none for, or sets the handle of the one it holds.
+export function record(cache: PipelineCache, key: PipelineKey, pipeline: uint32): void {
+	const found: int32 = cache.indexOf(key);
+	if (found >= 0) {
+		cache.entries[found].pipeline = pipeline;
+		return;
+	}
+	if ((cache.slots.length as int32) < 2 * ((cache.entries.length as int32) + 1)) {
+		let size: int32 = 16;
+		while (size < 4 * ((cache.entries.length as int32) + 1)) { size = size * 2; }
+		cache.slots = new Array(size);
+		for (let i = 0; i < size; i++) { cache.slots[i] = 0; }
+		for (let i = 0; i < (cache.entries.length as int32); i++) { place(cache, i); }
+	}
+	cache.entries.push({ key: key, pipeline: pipeline });
+	place(cache, (cache.entries.length as int32) - 1);
 }
 
 @noinline function stopOnUnregisteredProgram(program: int32): never {
@@ -176,14 +224,9 @@ export function pipelineFor(
 	adoptContext(cache);
 	const concrete: TargetLayout = targets.resolved();
 	const key: PipelineKey = pipelineKey(program, layout, indexed, state, concrete, format);
-	let found: int32 = cache.entries.length as int32;
-	for (let i = 0; i < (cache.entries.length as int32); i++) {
-		if (cache.entries[i].key == key) {
-			if (cache.entries[i].pipeline != 0) { return cache.entries[i].pipeline; }
-			found = i;
-		}
-	}
-	return buildPipeline(cache, program, layout, state, concrete, key, found);
+	const found: int32 = cache.indexOf(key);
+	if (found >= 0 && cache.entries[found].pipeline != 0) { return cache.entries[found].pipeline; }
+	return buildPipeline(cache, program, layout, state, concrete, key);
 }
 
 // The cache-miss path of pipelineFor, out of line so its pipeline description and refusal
@@ -195,7 +238,6 @@ export function pipelineFor(
 	state: RenderState,
 	concrete: TargetLayout,
 	key: PipelineKey,
-	found: int32,
 ): uint32 {
 	const description: PipelineDescriptor = {
 		shader: shaderFor(cache, program),
@@ -206,11 +248,7 @@ export function pipelineFor(
 	};
 	const pipeline: uint32 = makePipeline(description);
 	if (pipeline == 0) { stopOnRefusedPipeline(key); }
-	if (found == (cache.entries.length as int32)) {
-		cache.entries.push({ key: key, pipeline: pipeline });
-	} else {
-		cache.entries[found].pipeline = pipeline;
-	}
+	record(cache, key, pipeline);
 	return pipeline;
 }
 
@@ -245,6 +283,7 @@ export function closePipelines(cache: PipelineCache): void {
 	if (passState() != PassState.None) { stopInsidePass("closePipelines"); }
 	releasePipelines(cache);
 	cache.entries = [];
+	cache.slots = [];
 	cache.shaders = [];
 	cache.blockSlots = [];
 	cache.closed = true;

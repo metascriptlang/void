@@ -1028,6 +1028,7 @@ static struct {
 		bool ARB_create_context_profile;
 	} glx;
 #endif
+	VoidKeysHeld keysHeld;
 } s;
 
 __attribute__((noreturn)) static void fail(const char *what) {
@@ -1867,6 +1868,7 @@ static void scrollEvent(float x, float y, uint32_t modifiers) {
 
 static void keyEvent(VoidAppEventType type, VoidKeyCode key, bool repeat, uint32_t modifiers) {
 	if (!eventsEnabled()) return;
+	voidKeysHeldTrack(&s.keysHeld, type, key);
 	initEvent(type);
 	s.event.keyCode = key;
 	s.event.keyRepeat = repeat;
@@ -1913,9 +1915,12 @@ static void keyreleaseRepeat(int keycode) {
 	if (keycode >= 0 && keycode < X11_KEYCODES) s.x11.keyRepeat[keycode] = false;
 }
 
+static void releaseKey(VoidKeyCode key) { keyEvent(VOID_EVENT_KEY_UP, key, false, 0); }
+
 static void onFocus(const XEvent *event, bool focused) {
 	if (event->xfocus.mode == NotifyGrab || event->xfocus.mode == NotifyUngrab) return;
 	s.x11.windowFocused = focused;
+	if (!focused) voidKeysHeldRelease(&s.keysHeld, releaseKey);
 	appEvent(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 }
 

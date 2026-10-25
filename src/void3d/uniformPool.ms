@@ -1,6 +1,8 @@
-// The floats every uniform block lives in, sized once. A released range is handed out again to the
-// next reserve of the same length, a generation later, and the pool never compacts: a material
-// and a renderer hold their block's offset.
+// The floats every uniform block lives in. A released range is handed out again to the next reserve
+// of the same length, a generation later, and the pool never compacts: a material and a renderer
+// hold their block's offset. A pool made with `withCapacity` is sized once and refuses a reserve it
+// has no room for; one made with `growing` appends room instead, so every offset stays, up to
+// GROWING_POOL_LIMIT floats, past which the reserve is refused the same way.
 
 import { UniformBlock, NO_UNIFORMS } from "./material";
 import { LAST_GENERATION, nextGeneration } from "./slots";
@@ -21,12 +23,30 @@ export interface UniformPool {
 	generations: Vec<int32>;
 	owned: Vec<boolean>;
 	free: Vec<int32>;
+	growable: boolean;
 	closed: boolean;
 }
 
+export const GROWING_POOL_LIMIT: int32 = 1 << 22;
+
 let poolSerials: int32 = 0;
+let writeCount: int64 = 0;
+
+// Counts every write to any pool, so a layer that applied a block earlier can tell the floats
+// it applied are still the floats there.
+export function uniformWrites(): int64 {
+	return writeCount;
+}
 
 export function withCapacity(this typeof UniformPool, capacity: int32): UniformPool {
+	return poolOf(capacity, false);
+}
+
+export function growing(this typeof UniformPool, initial: int32): UniformPool {
+	return poolOf(initial, true);
+}
+
+function poolOf(capacity: int32, growable: boolean): UniformPool {
 	if (poolSerials == LAST_GENERATION) {
 		console.log("void3d: UniformPool.withCapacity has no serial left for a new pool");
 		unreachable;
@@ -48,8 +68,27 @@ export function withCapacity(this typeof UniformPool, capacity: int32): UniformP
 		generations: generations,
 		owned: owned,
 		free: [],
+		growable: growable,
 		closed: false,
 	};
+}
+
+// The most floats a reserve can still take: what is left of the size, or of the limit for a
+// pool that grows.
+function room(this pool: UniformPool): int32 {
+	return pool.growable ? GROWING_POOL_LIMIT - pool.used : pool.unreserved();
+}
+
+function growTo(pool: UniformPool, floats: int32): void {
+	let size: int32 = pool.capacity() * 2;
+	if (size < floats) { size = floats; }
+	if (size > GROWING_POOL_LIMIT) { size = GROWING_POOL_LIMIT; }
+	while (pool.capacity() < size) {
+		pool.values.push(0.0);
+		pool.lengths.push(0);
+		pool.generations.push(0);
+		pool.owned.push(false);
+	}
 }
 
 export function capacity(this pool: UniformPool): int32 {
@@ -81,7 +120,7 @@ export function fits(
 		}
 		if (!found) { fresh = fresh + length; }
 	}
-	if (fresh > pool.unreserved()) { return Result.err(UniformError.PoolFull); }
+	if (fresh > pool.room()) { return Result.err(UniformError.PoolFull); }
 	return Result.ok(fresh);
 }
 
@@ -125,7 +164,8 @@ export function reserveRange(
 		return Result.ok(pool.blockAt(slot, offset));
 	}
 	const offset: int32 = pool.used;
-	if (length > pool.unreserved()) { return Result.err(UniformError.PoolFull); }
+	if (length > pool.room()) { return Result.err(UniformError.PoolFull); }
+	if (length > pool.unreserved()) { growTo(pool, offset + length); }
 	pool.lengths[offset] = length;
 	pool.generations[offset] = 1;
 	pool.used = offset + length;
@@ -181,6 +221,7 @@ export function writeRange(
 	for (let i = 0; i < block.length; i++) {
 		pool.values[block.offset + i] = values[i];
 	}
+	writeCount = writeCount + 1;
 	return Result.ok(block.length);
 }
 

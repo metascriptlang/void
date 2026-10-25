@@ -229,11 +229,27 @@ function stepText(): void {
 	step = step + 1;
 }
 
+const keyV: int32 = 86;
+
 function stepFocus(): void {
 	log = [];
 	macHostResignKey();
+	check(types() === "2 2 2 2 18 ", `resign key with a, S, V and left still down: events ${types()}, want four KeyUp then Unfocused`);
+	check(log.length >= 4 && log[0].keyCode === keyA && log[1].keyCode === keyS && log[2].keyCode === keyV && log[3].keyCode === keyLeft, "the released keys are not a, S, V, left in key order");
 	macHostBecomeKey();
-	check(types() === "18 17 ", `resign and become key: events ${types()}`);
+	log = [];
+	macHostFlags(commandFlag);
+	macHostResignKey();
+	check(types() === "1 2 18 ", `resign key with Command down: events ${types()}`);
+	check(log.length >= 2 && log[1].keyCode === keyLeftSuper, "the released key is not left Command");
+	macHostBecomeKey();
+	log = [];
+	macHostFlags(0);
+	check(types() === "", `Command let go after the focus loss: events ${types()}, want no second KeyUp`);
+	log = [];
+	macHostResignKey();
+	macHostBecomeKey();
+	check(types() === "18 17 ", `resign and become key with nothing down: events ${types()}`);
 	step = step + 1;
 }
 

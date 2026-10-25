@@ -101,7 +101,6 @@ int64_t wgLimit(int32_t which) {
 	default: return -1;
 	}
 }
-int32_t wgMaxTextureDimension2D(void) { return (int32_t)limits.maxTextureDimension2D; }
 int32_t wgMinUniformBufferOffsetAlignment(void) {
 	return (int32_t)limits.minUniformBufferOffsetAlignment;
 }

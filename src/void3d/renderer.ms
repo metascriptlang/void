@@ -111,7 +111,7 @@ import {
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import {
-	PassList, collect, filterFrustum, sortBackToFront, sortByLayer, drawPassList,
+	PassList, collect, filterFrustum, sortBackToFront, sortByLayer, sortByMaterial, drawPassList,
 } from "./passList";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
@@ -629,7 +629,7 @@ export function beginFrame(
 		filterFrustum(renderer.opaque, items, context.meshData, frustum) +
 		filterFrustum(renderer.alpha, items, context.meshData, frustum) +
 		filterFrustum(renderer.additive, items, context.meshData, frustum);
-	sortByLayer(renderer.opaque);
+	sortByMaterial(renderer.opaque, items, renderer.drawn, context.materials);
 	sortBackToFront(renderer.alpha, items, camera);
 	sortByLayer(renderer.additive);
 	return Result.ok(fresh);

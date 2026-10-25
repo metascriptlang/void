@@ -179,6 +179,7 @@ static struct {
 	int droppedCount;
 	char **droppedPaths;
 	char *clipboard;
+	VoidKeysHeld keysHeld;
 	VoidAppEvent event;
 } s;
 
@@ -306,11 +307,19 @@ static void keyEvent(VoidAppEventType type, int scanCode, bool repeat) {
 	s.event.modifiers = mods();
 	s.event.keyCode = (VoidKeyCode)keyTable[scanCode];
 	s.event.keyRepeat = repeat;
+	voidKeysHeldTrack(&s.keysHeld, type, s.event.keyCode);
 	callEvent();
 	if (type == VOID_EVENT_KEY_DOWN && s.event.modifiers == VOID_MODIFIER_CTRL && s.event.keyCode == VOID_KEY_V) {
 		initEvent(VOID_EVENT_CLIPBOARD_PASTED);
 		callEvent();
 	}
+}
+
+static void releaseKey(VoidKeyCode key) {
+	if (!eventsEnabled()) return;
+	initEvent(VOID_EVENT_KEY_UP);
+	s.event.keyCode = key;
+	callEvent();
 }
 
 static void charEvent(uint32_t c, bool repeat) {
@@ -557,7 +566,10 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 			if (s.mouse.locked) rawMouseInput(lParam);
 			break;
 		case WM_SETFOCUS: appEvent(VOID_EVENT_FOCUSED); break;
-		case WM_KILLFOCUS: appEvent(VOID_EVENT_UNFOCUSED); break;
+		case WM_KILLFOCUS:
+			voidKeysHeldRelease(&s.keysHeld, releaseKey);
+			appEvent(VOID_EVENT_UNFOCUSED);
+			break;
 		case WM_DPICHANGED: dpiChanged(hwnd, (const RECT *)lParam); break;
 		case WM_LBUTTONDOWN: mouseButtonEvent(lParam, VOID_EVENT_MOUSE_DOWN, VOID_MOUSE_LEFT); break;
 		case WM_RBUTTONDOWN: mouseButtonEvent(lParam, VOID_EVENT_MOUSE_DOWN, VOID_MOUSE_RIGHT); break;
