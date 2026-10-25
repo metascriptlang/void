@@ -1,16 +1,19 @@
 // The window's app-facing half, shared by the window drivers (bridgeWin.c, bridgeLinux.c,
-// bridgeWeb.c, bridgeEmbed.m and bridgeIosApp.m): the event closure with its getters, the IME events, and the title.
+// bridgeWeb.c, bridgeEmbed.m, bridgeIosApp.m, bridgeAndroidApp.c and bridgeDummy.c): the event
+// closure with its getters, the IME events, and the title.
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
-#if TARGET_OS_OSX
-#define VOID_MACOS 1
 #endif
+#if !defined(VOID_DUMMY) && defined(__ANDROID__)
+#define VOID_ANDROID_APP 1
+#elif !defined(VOID_DUMMY) && defined(__APPLE__) && !TARGET_OS_OSX
+#define VOID_IOS_APP 1
 #endif
 
-#if defined(__ANDROID__)
+#if defined(VOID_ANDROID_APP)
 #include "androidApp.h"
-#elif defined(__APPLE__) && !defined(VOID_MACOS)
+#elif defined(VOID_IOS_APP)
 #include "iosApp.h"
 #else
 #include "../platform/windowCore.h"
@@ -125,11 +128,11 @@ void voidAppTextDeliver(int type, const char *utf8, int cursor) {
 	VoidAppEvent e;
 	memset(&e, 0, sizeof e);
 	e.type = (VoidAppEventType)type;
-#if defined(__ANDROID__)
+#if defined(VOID_ANDROID_APP)
 	e.frameCount = voidAndroidFrameCount();
 	e.framebufferWidth = voidAndroidWidth();
 	e.framebufferHeight = voidAndroidHeight();
-#elif defined(__APPLE__) && !defined(VOID_MACOS)
+#elif defined(VOID_IOS_APP)
 	e.frameCount = voidIosFrameCount();
 	e.framebufferWidth = voidIosWidth();
 	e.framebufferHeight = voidIosHeight();
@@ -152,7 +155,7 @@ void voidSetWindowTitle(const char *title) {
 	if (strlen(title) >= sizeof s_title) fail("voidSetWindowTitle: the title is %d bytes; at most %d fit", (int)strlen(title), (int)sizeof s_title - 1);
 	strcpy(s_title, title);
 	s_titleSet = true;
-#if !defined(__ANDROID__) && !(defined(__APPLE__) && !defined(VOID_MACOS))
+#if !defined(VOID_ANDROID_APP) && !defined(VOID_IOS_APP)
 	if (voidWindowValid()) voidWindowSetTitle(s_title);
 #endif
 }
@@ -160,7 +163,7 @@ void voidSetWindowTitle(const char *title) {
 const char *voidWindowTitle(void) { return s_title; }
 int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 
-#if defined(__ANDROID__)
+#if defined(VOID_ANDROID_APP)
 #define PLATFORM(name) voidAndroid##name
 #define ANDROID_CLIPBOARD_SIZE 8192
 static char s_androidClipboard[ANDROID_CLIPBOARD_SIZE];
@@ -183,7 +186,7 @@ static void voidAndroidToggleFullscreen(void) {}
 static bool voidAndroidIsFullscreen(void) { return false; }
 static int voidAndroidDroppedCount(void) { return 0; }
 static const char *voidAndroidDroppedPath(int i) { (void)i; return ""; }
-#elif defined(__APPLE__) && !defined(VOID_MACOS)
+#elif defined(VOID_IOS_APP)
 #define PLATFORM(name) voidIos##name
 #define IOS_CLIPBOARD_SIZE 8192
 static char s_iosClipboard[IOS_CLIPBOARD_SIZE];
