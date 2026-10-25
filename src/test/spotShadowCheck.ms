@@ -343,7 +343,7 @@ test "a block half nobody wrote shades nothing, whatever its map holds" {
 }
 
 function firstShadowAt(position: Vec3f, b: LitBindings, key: LitKey): float32 {
-	return recordShadowAt(position, b, key, 0);
+	return recordShadowAt(position, UP, b, key, 0);
 }
 
 test "only the record the header names reads the spot map, and only in a shadowed program" {
@@ -354,7 +354,7 @@ test "only the record the header names reads the spot map, and only in a shadowe
 	assert firstShadowAt(under, blocked, { shadowed: false }) == 1.0;
 	const unflagged: LitBindings = spotMapped(spotLights(downSpot(false)), view, 0.0, 0.0, 1.0);
 	assert firstShadowAt(under, unflagged, { shadowed: true }) == 1.0;
-	assert recordShadowAt(under, blocked, { shadowed: true }, 1) == 1.0;
+	assert recordShadowAt(under, UP, blocked, { shadowed: true }, 1) == 1.0;
 	const cube: LitBindings = {
 		...blocked,
 		lightParams: {
@@ -626,7 +626,7 @@ test "the sun's normal bias moves the receiver along its normal by texels of the
 	assert dirShadowAt(vec3f(-1.5, 0.0, 0.0), right, sunSplit(base, 0.0625, 1.0)) == 1.0;
 }
 
-test "a sun packs its normal bias, zero unless set as Heaps has none" {
+test "a sun packs its normal bias times the root of two, zero unless set as Heaps has none" {
 	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 1);
 	if (!made.ok) { unreachable; }
@@ -634,6 +634,6 @@ test "a sun packs its normal bias, zero unless set as Heaps has none" {
 	assert sun.normalBias == 0.0;
 	sun.normalBias = 1.5;
 	sun.packSun({ clips: [identity()], far: [10.0] }, identity(), vec3(0.0, 0.0, 1.0));
-	assert sun.shadowValues[SHADOW_CASCADE_NORMAL_BIAS] == 1.5;
-	assert shadowParamsOf(sun.shadowValues).cascadeFilter.y == 1.5;
+	assert near(sun.shadowValues[SHADOW_CASCADE_NORMAL_BIAS], (1.5 * Math.SQRT2) as float32);
+	assert near(shadowParamsOf(sun.shadowValues).cascadeFilter.y, (1.5 * Math.SQRT2) as float32);
 }

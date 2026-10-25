@@ -1361,14 +1361,15 @@ function cubeTapAt(position: Vec3f, b: LitBindings): float32 {
 
 // cubeShadowPcf's taps turn the light-to-receiver direction and keep its distance, each read
 // from the face it then points into.
-export function cubeShadowAt(position: Vec3f, b: LitBindings): float32 {
+export function cubeShadowAt(position: Vec3f, normal: Vec3f, b: LitBindings): float32 {
 	const scale = b.shadowParams.cubeShadow.w / b.shadowParams.cubeShadow.z;
 	const light = b.shadowParams.cubeLight.xyz;
-	const toPosition = position - light;
+	const at = position + normal * (b.shadowParams.cubeRange.z * length(position - light));
+	const toPosition = at - light;
 	const distance = length(toPosition);
 	let lit: float32 = 0.0;
 	if (!(scale > 0.0) || !(distance > 0.0)) {
-		lit = cubeTapAt(position, b);
+		lit = cubeTapAt(at, b);
 	} else {
 		const direction = toPosition / distance;
 		for (let tap = 0; tap < CUBE_PCF_SAMPLES; tap++) {
@@ -1383,14 +1384,20 @@ export function cubeShadowAt(position: Vec3f, b: LitBindings): float32 {
 // A positioned light's shadow (SpotShadow's sampleShadow, DefaultForward.hx:179-191): 1 unless
 // record `i` is the one the light block names as the spot map's or the cube map's caster
 // (gpu3d.ms LIGHT_SPOT_CASTER, LIGHT_CUBE_CASTER).
-export function recordShadowAt(position: Vec3f, b: LitBindings, key: LitKey, i: int32): float32 {
+export function recordShadowAt(
+	position: Vec3f,
+	normal: Vec3f,
+	b: LitBindings,
+	key: LitKey,
+	i: int32,
+): float32 {
 	let lit: float32 = 1.0;
 	if (key.shadowed) {
 		const named = (i + 1) as float32;
 		if (b.lightParams.ambient.w == named) {
 			lit = spotShadowAt(position, b);
 		} else if (b.lightParams.dirColor.w == named) {
-			lit = cubeShadowAt(position, b);
+			lit = cubeShadowAt(position, normal, b);
 		}
 	}
 	return lit;
@@ -1650,14 +1657,15 @@ export function pbrShade(
 			const falloff = clamp(1.0 - length(toLight) / tint.a, 0.0, 1.0);
 			const radiance = srgbToLinear(tint.rgb) * (falloff * falloff * at.w);
 			light = light + pbrDirect(albedo, values.x, values.y, n, view, toLight, radiance,
-				recordShadowAt(position, b, key, i), 0.0, values.z);
+				recordShadowAt(position, surfaceNormal, b, key, i), 0.0, values.z);
 		} else {
 			const cc = litTexelOf(b, i, 4);
 			const sample = shapedSample(position, n, at, tint, a, bb, cc, litTexelOf(b, i, 5));
 			const radiance = srgbToLinear(tint.rgb) * (sample.w * at.w);
 			const specular = shapedSpecularDir(position, reflected, sample.xyz, at, a, bb, cc);
 			light = light + pbrDirectSpecular(albedo, values.x, values.y, n, view, sample.xyz,
-				specular, radiance, recordShadowAt(position, b, key, i), 0.0, values.z);
+				specular, radiance, recordShadowAt(position, surfaceNormal, b, key, i), 0.0,
+				values.z);
 		}
 	}
 	return vec4f(linearToSrgb(light), surfaceColor.a);
@@ -1686,7 +1694,7 @@ export function litShade(
 		const i = litLightOf(b, cluster, k);
 		light = light + lightAt(position, n, litTexelOf(b, i, 0), litTexelOf(b, i, 1),
 			litTexelOf(b, i, 2), litTexelOf(b, i, 3), litTexelOf(b, i, 4), litTexelOf(b, i, 5)) *
-			recordShadowAt(position, b, key, i);
+			recordShadowAt(position, surfaceNormal, b, key, i);
 	}
 	const surface = srgbToLinear(saturated(surfaceColor.rgb, materialOf(b, key).y));
 	return vec4f(linearToSrgb(surface * light), surfaceColor.a);

@@ -21,6 +21,7 @@ import {
 	SHADOW_CASCADE_VIEW,
 	SHADOW_CASCADE_FILTER,
 	SHADOW_CASCADE_NORMAL_BIAS,
+	SHADOW_CUBE_NORMAL_BIAS,
 	SHADOW_SPOT_BASE,
 	SHADOW_SPOT_BIAS,
 	SHADOW_SPOT_OPACITY,
@@ -124,6 +125,8 @@ export const DIR_SHADOW_UNIFORM_LENGTH: int32 = VERTEX_UNIFORM_LENGTH + SHADOW_U
 
 // Heaps' Shadows.bias default, in [0, 1] map depth.
 export const DEFAULT_SHADOW_BIAS: float32 = 0.01;
+
+const TEXEL_DIAGONAL: float32 = Math.SQRT2 as float32;
 
 export const SHADOW_LAYOUT: TargetLayout = {
 	color0: PixelFormat.None,
@@ -429,7 +432,7 @@ export function packSun(
 	shadow.shadowValues[SHADOW_CASCADE_VIEW + 2] = forward.z;
 	shadow.shadowValues[SHADOW_CASCADE_VIEW + 3] = shadow.size as float32;
 	shadow.shadowValues[SHADOW_CASCADE_FILTER] = filterScaleOf(shadow);
-	shadow.shadowValues[SHADOW_CASCADE_NORMAL_BIAS] = shadow.normalBias;
+	shadow.shadowValues[SHADOW_CASCADE_NORMAL_BIAS] = shadow.normalBias * TEXEL_DIAGONAL;
 }
 
 // The PCF scale a part of the block carries: 0 reads one texel.
@@ -604,6 +607,8 @@ export function packCube(
 	shadow.shadowValues[SHADOW_CUBE_POSITION + 2] = position.z;
 	shadow.shadowValues[SHADOW_CUBE_RANGE] = near;
 	shadow.shadowValues[SHADOW_CUBE_RANGE + 1] = far;
+	shadow.shadowValues[SHADOW_CUBE_NORMAL_BIAS] =
+		shadow.normalBias * 2.0 / (shadow.size as float32) * TEXEL_DIAGONAL;
 }
 
 // The frame applies one shadow block, the first of the sun's, the spot's and the point's maps:

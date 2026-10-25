@@ -15,6 +15,7 @@ import {
 	SHADOW_CUBE_OPACITY,
 	SHADOW_CUBE_POSITION,
 	SHADOW_CUBE_FILTER,
+	SHADOW_CUBE_NORMAL_BIAS,
 	LIGHT_UNIFORM_LENGTH,
 	LIGHT_RECORD_COLOR,
 	LIGHT_SPOT_CASTER,
@@ -60,6 +61,7 @@ const RANGE: float32 = 8.0;
 const LIGHT_AT: Vec3 = vec3(1, 2, 3);
 const UNIT: Vec3 = vec3(1, 1, 1);
 const NONE: Vec4f = vec4f(0.0, 0.0, 0.0, 0.0);
+const UP: Vec3f = vec3f(0.0, 1.0, 0.0);
 const AXES: Vec<Vec3> = [
 	vec3(1, 0, 0), vec3(-1, 0, 0), vec3(0, 1, 0), vec3(0, -1, 0), vec3(0, 0, 1), vec3(0, 0, -1),
 ];
@@ -205,11 +207,14 @@ function faces(blocked: float32): Texture2dArray {
 	return { width: 1, height: 1, layers: 6, texels: texels };
 }
 
-function packed(values: Vec<float32>, opacity: float32, pcf: float32): Vec<float32> {
+function packed(
+	values: Vec<float32>, opacity: float32, pcf: float32, normalBias: float32 = 0.0,
+): Vec<float32> {
 	let context: DrawContext = DrawContext.withUniformCapacity(DIR_SHADOW_UNIFORM_LENGTH);
 	const made: Result<DirShadowMap, ShadowError> = DirShadowMap.createCube(context, 1);
 	if (!made.ok) { unreachable; }
 	let map: DirShadowMap = made.value;
+	map.normalBias = normalBias;
 	if (pcf > 0.0) {
 		map.samplingKind = ShadowSamplingKind.Pcf;
 		map.pcfScale = pcf;
@@ -224,6 +229,7 @@ function packed(values: Vec<float32>, opacity: float32, pcf: float32): Vec<float
 
 function pointBindings(
 	values: Vec<float32>, opacity: float32, blocked: float32, pcf: float32 = 0.0,
+	normalBias: float32 = 0.0,
 ): LitBindings {
 	const lights: SceneLights = sceneLights(vec4f(0.0, 0.0, 0.0, values[LIGHT_SPOT_CASTER]), NONE,
 		vec4f(0.0, 0.0, 0.0, values[LIGHT_CUBE_CASTER]), recordsOf(values));
@@ -246,7 +252,7 @@ function pointBindings(
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(0.0, 5.0, 1.0, 1.0),
 		},
-		shadowParams: shadowParamsOf(packed(values, opacity, pcf)),
+		shadowParams: shadowParamsOf(packed(values, opacity, pcf, normalBias)),
 		shadowMap: oneLayer(white()),
 		shadowSampler: { nearest: true },
 		spotShadowMap: oneLayer(white()),
@@ -269,13 +275,13 @@ test "the lookup reads the layer of the face the receiver lies on, through the p
 	const values: Vec<float32> = pointLights(true);
 	const blocked: LitBindings = pointBindings(values, 1.0, 0.0);
 	const offset: Vec3f = vec3f(LIGHT_AT.x, LIGHT_AT.y, LIGHT_AT.z);
-	assert cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), blocked) == 0.0;
-	assert cubeShadowAt(offset + vec3f(-2.0, 0.3, -0.2), blocked) == 1.0;
-	assert cubeShadowAt(offset + vec3f(0.3, 0.2, 2.0), blocked) == 1.0;
-	assert cubeShadowAt(offset + vec3f(0.3, -2.0, 0.2), blocked) == 1.0;
-	assert near(cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 0.25, 0.0)),
+	assert cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), UP, blocked) == 0.0;
+	assert cubeShadowAt(offset + vec3f(-2.0, 0.3, -0.2), UP, blocked) == 1.0;
+	assert cubeShadowAt(offset + vec3f(0.3, 0.2, 2.0), UP, blocked) == 1.0;
+	assert cubeShadowAt(offset + vec3f(0.3, -2.0, 0.2), UP, blocked) == 1.0;
+	assert near(cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), UP, pointBindings(values, 0.25, 0.0)),
 		0.75);
-	assert cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), pointBindings(values, 1.0, 1.0)) == 1.0;
+	assert cubeShadowAt(offset + vec3f(2.0, 0.3, -0.2), UP, pointBindings(values, 1.0, 1.0)) == 1.0;
 }
 
 const RECEIVER: Vec3f = vec3f(2.0, 0.3, -0.2);
@@ -288,7 +294,7 @@ function litBehind(radial: float32): float32 {
 	const x: float32 = radial * RECEIVER.x / RECEIVER_DISTANCE;
 	const depth: float32 = ndcOf(viewsOf(values)[0].viewProj, LIGHT_AT + vec3(x, 0, 0)).z;
 	const at: Vec3f = vec3f(LIGHT_AT.x, LIGHT_AT.y, LIGHT_AT.z) + RECEIVER;
-	return cubeShadowAt(at, pointBindings(values, 1.0, depth));
+	return cubeShadowAt(at, UP, pointBindings(values, 1.0, depth));
 }
 
 test "the cube compares world distances, its 0.01 bias in world units, as CubeShadowMap does" {
@@ -298,8 +304,27 @@ test "the cube compares world distances, its 0.01 bias in world units, as CubeSh
 	assert litBehind(RECEIVER_DISTANCE) == 1.0;
 }
 
+// The receiver's light behind a caster 0.02 nearer the light on its ray, its normal facing the
+// light or away from it, under Bevy's point normal bias.
+function litFacing(toward: boolean, normalBias: float32): float32 {
+	const values: Vec<float32> = pointLights(true);
+	const radial: float32 = RECEIVER_DISTANCE - 0.02;
+	const x: float32 = radial * RECEIVER.x / RECEIVER_DISTANCE;
+	const depth: float32 = ndcOf(viewsOf(values)[0].viewProj, LIGHT_AT + vec3(x, 0, 0)).z;
+	const at: Vec3f = vec3f(LIGHT_AT.x, LIGHT_AT.y, LIGHT_AT.z) + RECEIVER;
+	const normal: Vec3f = RECEIVER * ((toward ? -1.0 : 1.0) / RECEIVER_DISTANCE);
+	return cubeShadowAt(at, normal, pointBindings(values, 1.0, depth, 0.0, normalBias));
+}
+
+test "the point's normal bias moves the receiver along its normal, scaled by its distance" {
+	assert litFacing(true, 0.0) == 0.0 && litFacing(false, 0.0) == 0.0;
+	assert litFacing(true, 0.02) == 1.0 && litFacing(false, 0.02) == 0.0;
+	const packedBias: float32 = packed(pointLights(true), 1.0, 0.0, 0.02)[SHADOW_CUBE_NORMAL_BIAS];
+	assert near(packedBias, (0.02 * 2.0 * Math.SQRT2) as float32);
+}
+
 function firstShadowAt(position: Vec3f, b: LitBindings, key: LitKey): float32 {
-	return recordShadowAt(position, b, key, 0);
+	return recordShadowAt(position, UP, b, key, 0);
 }
 
 test "only the record the header names reads the cube map, and only in a shadowed program" {
@@ -307,7 +332,7 @@ test "only the record the header names reads the cube map, and only in a shadowe
 	const flagged: LitBindings = pointBindings(pointLights(true), 1.0, 0.0);
 	assert firstShadowAt(at, flagged, { shadowed: true }) == 0.0;
 	assert firstShadowAt(at, flagged, { shadowed: false }) == 1.0;
-	assert recordShadowAt(at, flagged, { shadowed: true }, 1) == 1.0;
+	assert recordShadowAt(at, UP, flagged, { shadowed: true }, 1) == 1.0;
 	const plain: LitBindings = pointBindings(pointLights(false), 1.0, 0.0);
 	assert firstShadowAt(at, plain, { shadowed: true }) == 1.0;
 	const kinds: Vec<LightKind> = [LightKind.Rectangle, LightKind.Capsule];
@@ -382,10 +407,10 @@ test "a point map alone owns the frame's block, and beside the sun's it lends it
 test "a Pcf point map turns its taps around the receiver's direction and averages their faces" {
 	const values: Vec<float32> = pointLights(true);
 	const at: Vec3f = vec3f(LIGHT_AT.x + 2.0, LIGHT_AT.y + 0.3, LIGHT_AT.z - 0.2);
-	assert cubeShadowAt(at, pointBindings(values, 1.0, 0.0)) == 0.0;
-	const filtered: float32 = cubeShadowAt(at, pointBindings(values, 1.0, 0.0, 0.5));
+	assert cubeShadowAt(at, UP, pointBindings(values, 1.0, 0.0)) == 0.0;
+	const filtered: float32 = cubeShadowAt(at, UP, pointBindings(values, 1.0, 0.0, 0.5));
 	assert filtered > 0.0 && filtered < 1.0;
-	assert cubeShadowAt(at, pointBindings(values, 1.0, 1.0, 0.5)) == 1.0;
+	assert cubeShadowAt(at, UP, pointBindings(values, 1.0, 1.0, 0.5)) == 1.0;
 	const packedScale: Vec<float32> = packed(values, 1.0, 0.5);
 	assert packedScale[SHADOW_CUBE_FILTER] == 0.5;
 	assert packed(values, 1.0, 0.0)[SHADOW_CUBE_FILTER] == 0.0;
