@@ -235,6 +235,36 @@ export function targetName(target: ShaderTarget): string {
 	};
 }
 
+export class TargetArm {
+	language: string = "";
+	target: ShaderTarget = ShaderTarget.Wgsl;
+	anyOfAll: string[][] = [];
+}
+
+function arm(language: string, target: ShaderTarget, anyOfAll: string[][]): TargetArm {
+	let out = new TargetArm();
+	out.language = language;
+	out.target = target;
+	out.anyOfAll = anyOfAll;
+	return out;
+}
+
+export function targetArms(): TargetArm[] {
+	return [
+		arm("wgsl", ShaderTarget.Wgsl, [["webgpu"]]),
+		arm("glsl300es", ShaderTarget.Glsl300es, [["webgl2"], ["android"], ["linux", "voidGles3"]]),
+		arm("metal_ios", ShaderTarget.Msl, [["ios"]]),
+		arm("metal_macos", ShaderTarget.Msl, [["macos"]]),
+		arm("glsl430", ShaderTarget.Glsl430, [["voidGlCore"], ["linux"]]),
+		arm("hlsl5", ShaderTarget.Hlsl5, [["windows"]]),
+	];
+}
+
+export function armCondition(a: TargetArm): string {
+	return a.anyOfAll.map((all) => all.length == 1 ? all[0] : "(" + all.join(" && ") + ")")
+		.join(" || ");
+}
+
 export function entryPointOf(target: ShaderTarget): string {
 	return target == ShaderTarget.Msl ? "main0" : "main";
 }

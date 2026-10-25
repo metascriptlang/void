@@ -20,16 +20,18 @@ import { argv, execFileResult, exit } from "std/process";
 import { glslIr, glslLinkedIr } from "../src/shader/emit";
 import {
 	ProgramSource,
+	armCondition,
 	descriptorSource,
 	isComputeSource,
 	programModule,
 	programSource,
 	quotedSource,
+	targetArms,
 } from "../src/shader/descriptor";
 import { dxbcStage } from "../src/shader/dxbcCache";
 import { irFromText } from "../src/shader/irText";
 import { ResourceKind, ShaderModule, ShaderStage } from "../src/shader/ir";
-import { ShaderTarget, uniformBlockLayout } from "../src/shader/layout";
+import { uniformBlockLayout } from "../src/shader/layout";
 import { printGlsl450 } from "../src/shader/printGlsl450";
 import {
 	billboardFs,
@@ -136,25 +138,7 @@ const STAGES: string[][] = [
 	["GPU_COPY", "gpuCopyFs", glslIr(gpuCopyFs)],
 ];
 
-// Each shdc language, the `when` that compiles it and the IR target that prints it.
-const LANGUAGES: string[][] = [
-	["wgsl", "webgpu"],
-	["glsl300es", "webgl2 || android || (linux && voidGles3)"],
-	["metal_ios", "ios"],
-	["metal_macos", "macos"],
-	["glsl430", "voidGlCore || linux"],
-	["hlsl5", "windows"],
-];
-
-function targetOf(language: string): ShaderTarget {
-	return match (language) {
-		"wgsl" => ShaderTarget.Wgsl,
-		"glsl300es" => ShaderTarget.Glsl300es,
-		"glsl430" => ShaderTarget.Glsl430,
-		"hlsl5" => ShaderTarget.Hlsl5,
-		_ => ShaderTarget.Msl,
-	};
-}
+const ARMS = targetArms();
 
 // The file suffixes of a language's vertex and fragment stage, as the validators read them.
 function stageFiles(language: string): string[] {
@@ -163,7 +147,8 @@ function stageFiles(language: string): string[] {
 		"glsl300es" => [".es.vert", ".es.frag"],
 		"glsl430" => [".430.vert", ".430.frag"],
 		"hlsl5" => [".vs.hlsl", ".ps.hlsl"],
-		_ => ["." + language + ".vs.metal", "." + language + ".fs.metal"],
+		"metal_ios" | "metal_macos" => ["." + language + ".vs.metal", "." + language + ".fs.metal"],
+		_ => { fail("no stage files for " + language); },
 	};
 }
 
@@ -533,24 +518,30 @@ function moduleText(
 		const shaderModule = linkedModule(program);
 		counts.programs++;
 		let row: ProgramSource[] = [];
-		for (const language of LANGUAGES) {
-			const printed = programSource(shaderModule, targetOf(language[0]));
-			if (!printed.ok) { fail(program.name + " " + language[0] + ": " + printed.error); }
-			if (printed.value.refusal != "") {
-				const refusal = printed.value.refusal;
-				if (!reflectionOnly) { fail(program.name + " " + language[0] + ": " + refusal); }
+		for (let a = 0; a < ARMS.length; a++) {
+			const language = ARMS[a].language;
+			const earlier = ARMS.findIndex((other) => other.target == ARMS[a].target);
+			let printed = earlier < a ? row[earlier] : new ProgramSource();
+			if (earlier == a) {
+				const fresh = programSource(shaderModule, ARMS[a].target);
+				if (!fresh.ok) { fail(program.name + " " + language + ": " + fresh.error); }
+				printed = fresh.value;
+			}
+			if (printed.refusal != "") {
+				const refusal = printed.refusal;
+				if (!reflectionOnly) { fail(program.name + " " + language + ": " + refusal); }
 				counts.refused++;
-				console.log("refused " + program.name + " " + language[0] + ": " + refusal);
+				console.log("refused " + program.name + " " + language + ": " + refusal);
 			} else {
-				const files = stageFiles(language[0]);
-				keep("out/irPrograms/" + program.name + files[0], printed.value.vertexCode);
-				keep("out/irPrograms/" + program.name + files[1], printed.value.fragmentCode);
+				const files = stageFiles(language);
+				keep("out/irPrograms/" + program.name + files[0], printed.vertexCode);
+				keep("out/irPrograms/" + program.name + files[1], printed.fragmentCode);
 				counts.printed += 2;
 			}
-			row.push(printed.value);
+			row.push(printed);
 		}
 		if (program.layout != "") {
-			const glsl430 = LANGUAGES.findIndex((language) => language[0] == "glsl430");
+			const glsl430 = ARMS.findIndex((a) => a.language == "glsl430");
 			agree(agreement, program, shaderModule, row[glsl430]);
 		}
 		sources.push(row);
@@ -559,8 +550,8 @@ function moduleText(
 		"import { GPUShaderModuleDescriptor } from \"" + typesPath + "\";\n" +
 		"import { shaderBytecodeFromBase64 } from \"" +
 		typesPath.replace("webgpu/types.ms", "shader/dxbc.ms") + "\";\n";
-	for (let targetIndex = 0; targetIndex < LANGUAGES.length; targetIndex++) {
-		const language = LANGUAGES[targetIndex][0];
+	for (let targetIndex = 0; targetIndex < ARMS.length; targetIndex++) {
+		const language = ARMS[targetIndex].language;
 		const keepSource = language == "metal_ios";
 		let texts: Map<string, string> = new Map();
 		let constants: Map<string, string> = new Map();
@@ -593,7 +584,7 @@ function moduleText(
 			blobs += "\tconst " + (language == "hlsl5" ? "DXBC_" : "METALLIB_") + key + " = \"" +
 				base64 + "\";\n";
 		}
-		text += (targetIndex == 0 ? "\nwhen (" : " else when (") + LANGUAGES[targetIndex][1] +
+		text += (targetIndex == 0 ? "\nwhen (" : " else when (") + armCondition(ARMS[targetIndex]) +
 			") {\n" +
 			(blobs != "" ? blobs + "\n" : "") + functions.join("\n") + "}";
 	}
