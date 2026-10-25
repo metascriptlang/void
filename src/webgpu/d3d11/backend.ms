@@ -34,7 +34,6 @@ import {
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
 	GPUSampler,
-	GPUPassTimestampWrites,
 	GPUPrimitiveState,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
@@ -58,11 +57,9 @@ import {
 	GPUTextureViewDescriptor,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
-	checkedResolveQuerySet,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
-	checkedTimestampWrites,
 	featureBit,
 	stopOnUnportedShaderBindings,
 	labelOf,
@@ -74,9 +71,6 @@ import {
 	clampedAnisotropy,
 	addressesBinding,
 	checkedComputeModule,
-	checkedOcclusionRange,
-	checkedOcclusionReuse,
-	checkedOcclusionSetKind,
 	checkedRenderModule,
 	checkedSampledView,
 	checkedStorageEntry,
@@ -86,7 +80,6 @@ import {
 	entryBytes,
 	occlusionQueryIndex,
 	occlusionSetId,
-	passSerial,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -373,12 +366,6 @@ const NO_QUERY = null as unknown as Ptr<D3dQueryImpl>;
 const LABEL_MAX_UNITS = 255;
 const LABEL_TOO_LONG = -2;
 
-enum QueryState {
-	Unwritten,
-	Open,
-	Written,
-}
-
 struct FormatInfo {
 	texture: int32;
 	shaderResource: int32;
@@ -466,11 +453,7 @@ struct BindGroupSlot {
 }
 
 struct QuerySetSlot {
-	timestamp: boolean;
-	count: int32;
 	queries: Vec<Ptr<D3dQueryImpl>>;
-	state: Vec<QueryState>;
-	usedPass: Vec<int64>;
 	disjoint: Ptr<D3dQueryImpl>;
 	disjointOpen: boolean;
 	frequency: uint64;
@@ -1151,13 +1134,8 @@ function labelPass(label: string | null): boolean {
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
 	const kind: string = descriptor.type;
 	const timestamp = kind == "timestamp";
-	if (timestamp && !supportsTimestamps()) { stop("this device has no timestamp queries: features().has('timestamp-query') is false"); }
 	let slot: QuerySetSlot = {
-		timestamp: timestamp,
-		count: descriptor.count,
 		queries: [],
-		state: new Array(descriptor.count),
-		usedPass: new Array(descriptor.count),
 		disjoint: NO_QUERY,
 	};
 	for (let i = 0; i < descriptor.count; i++) {
@@ -1188,33 +1166,12 @@ function writeTimestamp(querySet: uint32, queryIndex: int32): void {
 		querySets[q].disjointOpen = true;
 	}
 	d3dQueryEnd(context, querySets[q].queries[queryIndex]);
-	querySets[q].state[queryIndex] = QueryState.Written;
-}
-
-@noinline function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
-	if (writes.querySet.id == 0) { return; }
-	const q = querySetRecords.slotIndex(writes.querySet.id);
-	checkedTimestampWrites(member, writes, querySets[q].timestamp, querySets[q].count);
 }
 
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
 	const q = querySetRecords.slotIndex(querySet.id);
 	const b = bufferRecords.slotIndex(destination.id);
-	const bytes = checkedResolveQuerySet(
-		querySets[q].count,
-		firstQuery,
-		queryCount,
-		destination.id,
-		bufferRecords.slots[b].usage,
-		bufferRecords.slots[b].size,
-		destinationOffset,
-	);
-	if (queryCount == 0) { return; }
-	for (let i = 0; i < queryCount; i++) {
-		const state = querySets[q].state[firstQuery + i];
-		if (state == QueryState.Unwritten) { stop(`resolveQuerySet: query ${firstQuery + i} was never written`); }
-		if (state == QueryState.Open) { stop(`resolveQuerySet: query ${firstQuery + i} is still open`); }
-	}
+	const bytes = (queryCount as int64) * 8;
 	if (querySets[q].disjointOpen) {
 		d3dQueryEnd(context, querySets[q].disjoint);
 		querySets[q].disjointOpen = false;
@@ -1230,24 +1187,19 @@ export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryC
 		if (d3dQueryTicks(context, querySets[q].queries[firstQuery + i], ticks) == 0) {
 			stop(`query ${firstQuery + i} never arrived from the GPU`);
 		}
-		values[i] = querySets[q].timestamp ? ticksToNanoseconds(ticks, querySets[q].frequency) : ticks;
+		values[i] = querySetRecords.slots[q].timestamp ? ticksToNanoseconds(ticks, querySets[q].frequency) : ticks;
 	}
 	d3dUpdateBuffer(context, buffers[b].native, destinationOffset, values[0], bytes);
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
 	const q = querySetRecords.slotIndex(occlusionSetId());
-	checkedOcclusionRange(queryIndex, querySets[q].count);
-	checkedOcclusionReuse(queryIndex, querySets[q].usedPass[queryIndex]);
-	querySets[q].usedPass[queryIndex] = passSerial();
-	querySets[q].state[queryIndex] = QueryState.Open;
 	d3dQueryBegin(context, querySets[q].queries[queryIndex]);
 }
 
 export function endOcclusionQuery(): void {
 	const q = querySetRecords.slotIndex(occlusionSetId());
 	d3dQueryEnd(context, querySets[q].queries[occlusionQueryIndex()]);
-	querySets[q].state[occlusionQueryIndex()] = QueryState.Written;
 }
 
 export function destroyBuffer(buffer: GPUBuffer): void {
@@ -2047,10 +1999,6 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 export function submit(commandBuffer: GPUCommandBuffer): void {}
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
-	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
-	if (descriptor.occlusionQuerySet.id != 0) {
-		checkedOcclusionSetKind(querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
-	}
 	pass = {
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
@@ -2166,7 +2114,6 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
-	checkTimestampWrites("GPUComputePassDescriptor.timestampWrites", descriptor.timestampWrites);
 	computeBound = {
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,

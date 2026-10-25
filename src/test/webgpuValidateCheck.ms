@@ -56,6 +56,7 @@ import {
 	occlusionReuseRefusal,
 	occlusionSetKindRefusal,
 	pipelineSetRefusal,
+	queriesWrittenRefusal,
 	querySetRefusal,
 	resolvedViewDimension,
 	resolvedViewRange,
@@ -83,7 +84,7 @@ import {
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
-import { BufferRecord, PipelineRecord, TextureRecord } from "../webgpu/pool";
+import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, TextureRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -491,11 +492,22 @@ test "a sampler's anisotropy needs every filter linear, and its lod range is non
 
 test "a query set is a timestamp or occlusion set of 1 to 4096 queries" {
 	const timestamps: GPUQuerySetDescriptor = { type: "timestamp", count: 4096 };
-	assert querySetRefusal(timestamps) == "";
+	assert querySetRefusal(timestamps, true) == "";
 	const empty: GPUQuerySetDescriptor = { type: "occlusion", count: 0 };
-	assert querySetRefusal(empty) == "GPUQuerySetDescriptor.count 0 is outside 1..4096";
+	assert querySetRefusal(empty, true) == "GPUQuerySetDescriptor.count 0 is outside 1..4096";
 	const untyped: GPUQuerySetDescriptor = { count: 4 };
-	assert querySetRefusal(untyped) == "GPUQuerySetDescriptor.type '' is neither 'timestamp' nor 'occlusion'";
+	assert querySetRefusal(untyped, true) == "GPUQuerySetDescriptor.type '' is neither 'timestamp' nor 'occlusion'";
+	assert querySetRefusal(timestamps, false) == "this device has no timestamp queries: features().has('timestamp-query') is false";
+	const occlusion: GPUQuerySetDescriptor = { type: "occlusion", count: 4 };
+	assert querySetRefusal(occlusion, false) == "";
+}
+
+test "resolveQuerySet reads only queries a pass wrote and closed" {
+	let set: QuerySetRecord = { id: 3, count: 3, state: [QueryState.Written, QueryState.Open, QueryState.Unwritten] };
+	assert queriesWrittenRefusal(set, 0, 1) == "";
+	assert queriesWrittenRefusal(set, 0, 2) == "resolveQuerySet: query 1 is still open";
+	assert queriesWrittenRefusal(set, 2, 1) == "resolveQuerySet: query 2 was never written";
+	assert queriesWrittenRefusal(set, 1, 0) == "";
 }
 
 test "a viewport and a dispatch stay inside WebGPU's ranges and the backend's limit" {

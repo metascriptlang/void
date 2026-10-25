@@ -57,11 +57,9 @@ import {
 	GPUTextureViewDescriptor,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
-	checkedResolveQuerySet,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
-	checkedTimestampWrites,
 	featureBit,
 	stopOnUnportedShaderBindings,
 	stopOnUnportedShaderBytecode,
@@ -73,9 +71,6 @@ import {
 	cachedLimits,
 	addressesBinding,
 	checkedComputeModule,
-	checkedOcclusionRange,
-	checkedOcclusionReuse,
-	checkedOcclusionSetKind,
 	checkedRenderModule,
 	checkedSampledView,
 	checkedStorageEntry,
@@ -83,9 +78,6 @@ import {
 	checkedStripDraw,
 	checkedUniformEntry,
 	entryBytes,
-	occlusionQueryIndex,
-	occlusionSetId,
-	passSerial,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -259,9 +251,6 @@ const LIMIT_WORKGROUPS_PER_DIMENSION = 19;
 const LIMIT_UNIFORM_ALIGNMENT = 20;
 const LIMIT_STORAGE_ALIGNMENT = 21;
 
-const QUERY_UNWRITTEN: uint8 = 0;
-const QUERY_OPEN: uint8 = 1;
-const QUERY_WRITTEN: uint8 = 2;
 
 const TOPOLOGY_POINT_LIST = 1;
 const TOPOLOGY_LINE_LIST = 2;
@@ -482,11 +471,7 @@ struct PipelineSlot {
 }
 
 struct QuerySetSlot {
-	timestamp: boolean;
-	count: int32;
 	native: Ptr<WgQuerySetImpl>;
-	state: Vec<uint8>;
-	usedPass: Vec<int64>;
 }
 
 struct PassState {
@@ -1703,9 +1688,7 @@ export function beginRenderPass(
 	descriptor: GPURenderPassDescriptor,
 	extent: GPUExtent3D,
 ): GPURenderPassEncoder {
-	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	const occlusionId = descriptor.occlusionQuerySet.id;
-	if (occlusionId != 0) { checkedOcclusionSetKind(querySets[querySetRecords.slotIndex(occlusionId)].timestamp); }
 	pass.width = extent.width;
 	pass.height = extent.height;
 	let count = 0;
@@ -1766,7 +1749,6 @@ export function beginRenderPass(
 	}
 	pass.timestampSet = writes.querySet.id;
 	pass.timestampEnd = writes.endOfPassWriteIndex;
-	markTimestamp(writes.querySet.id, writes.beginningOfPassWriteIndex);
 	pass.pipeline = 0;
 	pass.indexFormat = 0;
 	return { id: 1 };
@@ -1774,7 +1756,6 @@ export function beginRenderPass(
 
 export function endPass(): void {
 	wgEndPass();
-	markTimestamp(pass.timestampSet, pass.timestampEnd);
 }
 
 @inline export function setPipeline(pipeline: GPURenderPipeline): void {
@@ -1988,7 +1969,6 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
-	checkTimestampWrites("GPUComputePassDescriptor.timestampWrites", descriptor.timestampWrites);
 	const writes = descriptor.timestampWrites;
 	if (wgBeginComputePass(
 		labelText(descriptor.label),
@@ -2000,7 +1980,6 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 	}
 	computeBound.timestampSet = writes.querySet.id;
 	computeBound.timestampEnd = writes.endOfPassWriteIndex;
-	markTimestamp(writes.querySet.id, writes.beginningOfPassWriteIndex);
 	computeBound.pipeline = 0;
 	computeBound.groupMask = 0;
 	return { id: 1 };
@@ -2040,24 +2019,16 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 
 export function endComputePass(): void {
 	wgEndComputePass();
-	markTimestamp(computeBound.timestampSet, computeBound.timestampEnd);
 	computeBound.pipeline = 0;
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
 	const kind: string = descriptor.type;
 	const timestamp = kind == "timestamp";
-	if (timestamp && wgHasFeature(FEATURE_TIMESTAMP_QUERY) == 0) {
-		stop("this device has no timestamp queries: features().has('timestamp-query') is false (the window must request the feature when it creates the WGPUDevice)");
-	}
 	const native = wgCreateQuerySet(timestamp ? 1 : 0, descriptor.count, labelText(descriptor.label));
 	if (native == null) { stop(`wgpuDeviceCreateQuerySet failed for ${labelOf(descriptor.label)}`); }
 	const slot: QuerySetSlot = {
-		timestamp: timestamp,
-		count: descriptor.count,
 		native: native,
-		state: new Array(descriptor.count),
-		usedPass: new Array(descriptor.count),
 	};
 	put(querySets, id, slot);
 }
@@ -2073,50 +2044,19 @@ function timestampNative(writes: GPUPassTimestampWrites): Ptr<WgQuerySetImpl> {
 	return querySets[querySetRecords.slotIndex(writes.querySet.id)].native;
 }
 
-function markTimestamp(querySet: uint32, queryIndex: int32): void {
-	if (querySet == 0 || queryIndex < 0) { return; }
-	querySets[querySetRecords.slotIndex(querySet)].state[queryIndex] = QUERY_WRITTEN;
-}
-
-@noinline function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
-	if (writes.querySet.id == 0) { return; }
-	const q = querySetRecords.slotIndex(writes.querySet.id);
-	checkedTimestampWrites(member, writes, querySets[q].timestamp, querySets[q].count);
-}
-
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
 	const q = querySetRecords.slotIndex(querySet.id);
 	const b = bufferRecords.slotIndex(destination.id);
-	const bytes = checkedResolveQuerySet(
-		querySets[q].count,
-		firstQuery,
-		queryCount,
-		destination.id,
-		bufferRecords.slots[b].usage,
-		bufferRecords.slots[b].size,
-		destinationOffset,
-	);
-	if (queryCount == 0) { return; }
-	for (let i = 0; i < queryCount; i++) {
-		const state = querySets[q].state[firstQuery + i];
-		if (state == QUERY_UNWRITTEN) { stop(`resolveQuerySet: query ${firstQuery + i} was never written`); }
-		if (state == QUERY_OPEN) { stop(`resolveQuerySet: query ${firstQuery + i} is still open`); }
-	}
+	const bytes = (queryCount as int64) * 8;
 	wgResolveQuerySet(querySets[q].native, firstQuery, queryCount, buffers[b].native, destinationOffset);
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	const q = querySetRecords.slotIndex(occlusionSetId());
-	checkedOcclusionRange(queryIndex, querySets[q].count);
-	checkedOcclusionReuse(queryIndex, querySets[q].usedPass[queryIndex]);
-	querySets[q].usedPass[queryIndex] = passSerial();
-	querySets[q].state[queryIndex] = QUERY_OPEN;
 	wgBeginOcclusionQuery(queryIndex);
 }
 
 export function endOcclusionQuery(): void {
 	wgEndOcclusionQuery();
-	querySets[querySetRecords.slotIndex(occlusionSetId())].state[occlusionQueryIndex()] = QUERY_WRITTEN;
 }
 
 function limitOf(which: int32): int32 { return wgLimit(which) as int32; }

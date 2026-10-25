@@ -37,7 +37,6 @@ import {
 	GPUColorWrite,
 	GPUCommandBuffer,
 	GPUCommandEncoder,
-	GPUPassTimestampWrites,
 	GPUPrimitiveState,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
@@ -70,8 +69,6 @@ import {
 	checkedTexelBufferLayout,
 	samplerMaxLod,
 	checkedTexelWritePitch,
-	checkedResolveQuerySet,
-	checkedTimestampWrites,
 	featureBit,
 	GPUTexture,
 	GPUTextureDescriptor,
@@ -89,9 +86,6 @@ import {
 	clampedAnisotropy,
 	addressesBinding,
 	checkedComputeModule,
-	checkedOcclusionRange,
-	checkedOcclusionReuse,
-	checkedOcclusionSetKind,
 	checkedRenderModule,
 	checkedSampledView,
 	checkedStorageEntry,
@@ -100,8 +94,6 @@ import {
 	checkedUniformEntry,
 	computePassOpen,
 	occlusionQueryIndex,
-	occlusionSetId,
-	passSerial,
 	renderPassOpen,
 } from "../validate.ms";
 import {
@@ -331,12 +323,6 @@ const NO_ENCODER = null as unknown as Ptr<MtlEncoderImpl>;
 const NO_COMPUTE_PIPELINE = null as unknown as Ptr<MtlComputePipelineImpl>;
 const NO_SAMPLE_BUFFER = null as unknown as Ptr<MtlSampleBufferImpl>;
 
-enum QueryState {
-	Unwritten,
-	Open,
-	Written,
-}
-
 struct FormatInfo {
 	pixel: int32;
 	bytesPerPixel: int32;
@@ -442,12 +428,8 @@ struct ComputeState {
 }
 
 struct QuerySetSlot {
-	timestamp: boolean;
-	count: int32;
 	samples: Ptr<MtlSampleBufferImpl>;
 	visibility: Ptr<MtlBufferImpl>;
-	state: Vec<QueryState>;
-	usedPass: Vec<int64>;
 }
 
 struct BoundState {
@@ -1621,10 +1603,6 @@ function storeAction(storeOp: string, resolve: boolean, member: string): int32 {
 }
 
 export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
-	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
-	if (descriptor.occlusionQuerySet.id != 0) {
-		checkedOcclusionSetKind(querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
-	}
 	pass = { width: extent.width, height: extent.height };
 	beginFrame();
 	mtlPassReset();
@@ -1673,7 +1651,6 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	if (descriptor.timestampWrites.querySet.id != 0) {
 		const q = querySetRecords.slotIndex(descriptor.timestampWrites.querySet.id);
 		mtlPassSamples(querySets[q].samples, descriptor.timestampWrites.beginningOfPassWriteIndex, descriptor.timestampWrites.endOfPassWriteIndex);
-		markTimestampsWritten(q, descriptor.timestampWrites);
 	}
 	if (descriptor.occlusionQuerySet.id != 0) { mtlPassVisibility(querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].visibility); }
 	encoder = mtlBeginPass(commandBuffer);
@@ -2235,16 +2212,9 @@ export function insertDebugMarker(label: string): void {
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
 	const kind: string = descriptor.type;
 	const timestamp = kind == "timestamp";
-	if (timestamp && mtlSupportsTimestamps(device) == 0) {
-		stop("this device has no timestamp queries: features().has('timestamp-query') is false (MTLCounterSamplingPointAtStageBoundary and a nanosecond timestamp counter are required)");
-	}
 	let slot: QuerySetSlot = {
-		timestamp: timestamp,
-		count: descriptor.count,
 		samples: NO_SAMPLE_BUFFER,
 		visibility: NO_BUFFER,
-		state: new Array(descriptor.count),
-		usedPass: new Array(descriptor.count),
 	};
 	if (timestamp) {
 		slot.samples = mtlNewSampleBuffer(device, descriptor.count, labelText(descriptor.label));
@@ -2262,7 +2232,7 @@ export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): v
 
 export function destroyQuerySet(querySet: GPUQuerySet): void {
 	const index = querySetRecords.slotIndex(querySet.id);
-	if (querySets[index].timestamp) {
+	if (querySetRecords.slots[index].timestamp) {
 		mtlReleaseSampleBuffer(querySets[index].samples);
 	} else {
 		mtlReleaseBuffer(querySets[index].visibility);
@@ -2270,39 +2240,14 @@ export function destroyQuerySet(querySet: GPUQuerySet): void {
 	vacate(querySets, querySet.id);
 }
 
-function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
-	if (writes.querySet.id == 0) { return; }
-	const q = querySetRecords.slotIndex(writes.querySet.id);
-	checkedTimestampWrites(member, writes, querySets[q].timestamp, querySets[q].count);
-}
-
-function markTimestampsWritten(q: int32, writes: GPUPassTimestampWrites): void {
-	if (writes.beginningOfPassWriteIndex >= 0) { querySets[q].state[writes.beginningOfPassWriteIndex] = QueryState.Written; }
-	if (writes.endOfPassWriteIndex >= 0) { querySets[q].state[writes.endOfPassWriteIndex] = QueryState.Written; }
-}
-
 // A timestamp resolves in the counters' own ticks, which are nanoseconds on the devices
 // features() reports timestamp-query for (an Intel GPU's tick is 83.333 ns and is refused).
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
 	const q = querySetRecords.slotIndex(querySet.id);
 	const b = bufferRecords.slotIndex(destination.id);
-	const bytes = checkedResolveQuerySet(
-		querySets[q].count,
-		firstQuery,
-		queryCount,
-		destination.id,
-		bufferRecords.slots[b].usage,
-		bufferRecords.slots[b].size,
-		destinationOffset,
-	);
-	if (queryCount == 0) { return; }
-	for (let i = 0; i < queryCount; i++) {
-		const state = querySets[q].state[firstQuery + i];
-		if (state == QueryState.Unwritten) { stop(`resolveQuerySet: query ${firstQuery + i} was never written`); }
-		if (state == QueryState.Open) { stop(`resolveQuerySet: query ${firstQuery + i} is still open`); }
-	}
+	const bytes = (queryCount as int64) * QUERY_BYTES;
 	beginFrame();
-	if (querySets[q].timestamp) {
+	if (querySetRecords.slots[q].timestamp) {
 		mtlResolveCounters(commandBuffer, querySets[q].samples, firstQuery, queryCount, liveBuffer(b), destinationOffset);
 	} else {
 		mtlBlitBufferToBuffer(commandBuffer, querySets[q].visibility, (firstQuery as int64) * QUERY_BYTES, liveBuffer(b), destinationOffset, bytes);
@@ -2311,16 +2256,9 @@ export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryC
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	const q = querySetRecords.slotIndex(occlusionSetId());
-	checkedOcclusionRange(queryIndex, querySets[q].count);
-	checkedOcclusionReuse(queryIndex, querySets[q].usedPass[queryIndex]);
-	querySets[q].usedPass[queryIndex] = passSerial();
-	querySets[q].state[queryIndex] = QueryState.Open;
 	mtlSetVisibility(encoder, 1, (queryIndex as int64) * QUERY_BYTES);
 }
 
 export function endOcclusionQuery(): void {
-	const q = querySetRecords.slotIndex(occlusionSetId());
 	mtlSetVisibility(encoder, 0, (occlusionQueryIndex() as int64) * QUERY_BYTES);
-	querySets[q].state[occlusionQueryIndex()] = QueryState.Written;
 }

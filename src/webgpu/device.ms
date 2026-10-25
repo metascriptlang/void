@@ -82,7 +82,6 @@ import {
 	cachedLimits,
 	checkedBeginOcclusion,
 	checkedBeginPass,
-	uniformEntryCount,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
 	checkedBuffer,
@@ -99,7 +98,9 @@ import {
 	checkedFinish,
 	checkedInPass,
 	checkedMarker,
+	checkedOcclusionQuery,
 	checkedOutsidePass,
+	checkedPassQueries,
 	checkedPipelineSet,
 	checkedPopGroup,
 	checkedPushGroup,
@@ -107,6 +108,7 @@ import {
 	checkedRenderPass,
 	checkedRenderPassPipeline,
 	checkedRenderPipeline,
+	checkedResolveQueries,
 	checkedSampler,
 	checkedShaderModule,
 	checkedShutdown,
@@ -117,11 +119,15 @@ import {
 	checkedWriteBuffer,
 	markBufferWritten,
 	markIndexSet,
+	markOcclusionBegun,
+	markOcclusionEnded,
 	markPipelineSet,
+	markTimestampsWritten,
 	resetEncoder,
 	resetFrame,
 	resolvedRenderPipeline,
 	textureRecordOf,
+	uniformEntryCount,
 	advanceFrame,
 	cacheCanvas,
 	cachedCanvas,
@@ -267,9 +273,10 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 }
 
 @inline export function createQuerySet(this self: GPUDevice, descriptor: GPUQuerySetDescriptor): GPUQuerySet {
-	checkedQuerySet(descriptor);
+	checkedQuerySet(descriptor, backend.features().has("timestamp-query"));
 	const id = allocate(querySetRecords);
-	store(querySetRecords, { id: id });
+	const kind: string = descriptor.type;
+	store(querySetRecords, { id: id, timestamp: kind == "timestamp", count: descriptor.count, state: new Array(descriptor.count), usedPass: new Array(descriptor.count) });
 	backend.createQuerySet(id, descriptor);
 	return { id: id };
 }
@@ -393,7 +400,10 @@ function destroyPipeline(pipeline: uint32): void {
 @inline export function beginRenderPass(this self: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
 	checkedBeginPass(PASS_RENDER);
 	attachOcclusionSet(descriptor.occlusionQuerySet.id);
-	return backend.beginRenderPass(self, descriptor, checkedRenderPass(descriptor, renderPassFacts(descriptor)));
+	checkedPassQueries("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites, descriptor.occlusionQuerySet.id);
+	const pass = backend.beginRenderPass(self, descriptor, checkedRenderPass(descriptor, renderPassFacts(descriptor)));
+	markTimestampsWritten(descriptor.timestampWrites);
+	return pass;
 }
 
 function renderPassFacts(descriptor: GPURenderPassDescriptor): RenderPassFacts {
@@ -415,7 +425,10 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 
 @inline export function beginComputePass(this self: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
 	checkedBeginPass(PASS_COMPUTE);
-	return backend.beginComputePass(self, descriptor);
+	checkedPassQueries("GPUComputePassDescriptor.timestampWrites", descriptor.timestampWrites, 0);
+	const pass = backend.beginComputePass(self, descriptor);
+	markTimestampsWritten(descriptor.timestampWrites);
+	return pass;
 }
 
 @inline export function setPipeline(this self: GPUComputePassEncoder, pipeline: GPUComputePipeline): void {
@@ -508,6 +521,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	destinationOffset: int64,
 ): void {
 	checkedOutsidePass("resolveQuerySet");
+	checkedResolveQueries(querySet.id, firstQuery, queryCount, destination.id, destinationOffset);
+	if (queryCount == 0) { return; }
 	backend.resolveQuerySet(querySet, firstQuery, queryCount, destination, destinationOffset);
 }
 
@@ -551,11 +566,14 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function beginOcclusionQuery(this self: GPURenderPassEncoder, queryIndex: int32): void {
 	checkedInPass(PASS_RENDER, "beginOcclusionQuery");
 	checkedBeginOcclusion(queryIndex);
+	checkedOcclusionQuery(queryIndex);
 	backend.beginOcclusionQuery(queryIndex);
+	markOcclusionBegun(queryIndex);
 }
 @inline export function endOcclusionQuery(this self: GPURenderPassEncoder): void {
 	checkedEndOcclusion();
 	backend.endOcclusionQuery();
+	markOcclusionEnded();
 }
 
 // mapAsync blocks on native: the buffer is readable or writable on return. `size` 0 maps to the end.

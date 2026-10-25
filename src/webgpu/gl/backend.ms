@@ -32,7 +32,6 @@ import {
 	GPUExtent3D,
 	GPUIndexFormat,
 	GPUMapMode,
-	GPUPassTimestampWrites,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
 	GPURenderPipeline,
@@ -55,11 +54,9 @@ import {
 	GPUTextureViewDescriptor,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
-	checkedResolveQuerySet,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
-	checkedTimestampWrites,
 	DUMMY_SAMPLER_BINDING,
 	featureBit,
 	stopOnUnportedShaderBindings,
@@ -74,9 +71,6 @@ import {
 	addressesBinding,
 	checkedBufferRewrite,
 	checkedComputeModule,
-	checkedOcclusionRange,
-	checkedOcclusionReuse,
-	checkedOcclusionSetKind,
 	checkedRenderModule,
 	checkedSampledView,
 	checkedStorageEntry,
@@ -84,10 +78,8 @@ import {
 	checkedStripDraw,
 	checkedUniformEntry,
 	markBufferWritten,
-	occlusionQueryIndex,
 	occlusionSetId,
 	openDebugGroups,
-	passSerial,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -262,9 +254,6 @@ const MAX_TEXTURE_PAIRS = 16;
 const MAX_SHADER_RESOURCES = 24;
 const MAX_DEBUG_GROUPS = 63;
 const STORAGE_OFFSET_ALIGNMENT = 256;
-const QUERY_UNWRITTEN: uint8 = 0;
-const QUERY_OPEN: uint8 = 1;
-const QUERY_WRITTEN: uint8 = 2;
 const BARRIER_BETWEEN_DISPATCHES = 0x2068;
 const BARRIER_ALL = -1;
 const COLOR_WRITE_ALL = 0xF;
@@ -603,11 +592,7 @@ struct BindGroupSlot {
 }
 
 struct QuerySetSlot {
-	timestamp: boolean;
-	count: int32;
 	names: Vec<uint32>;
-	state: Vec<uint8>;
-	usedPass: Vec<int64>;
 }
 
 struct ComputeState {
@@ -2092,10 +2077,6 @@ export function submit(commandBuffer: GPUCommandBuffer): void {
 }
 
 export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
-	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
-	if (descriptor.occlusionQuerySet.id != 0) {
-		checkedOcclusionSetKind(querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
-	}
 	pass = {
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
@@ -3075,7 +3056,6 @@ export function createComputePipeline(id: uint32, descriptor: GPUComputePipeline
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
-	checkTimestampWrites("GPUComputePassDescriptor.timestampWrites", descriptor.timestampWrites);
 	computeBound = {
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
@@ -3230,31 +3210,8 @@ function endLabel(): void {
 	if (debugSupported) { oglPopDebugGroup(); }
 }
 
-function timestampReason(): string {
-	when (webgl2) {
-		return "WebGL2 hands back query results only after the page returns to the event loop, so the blocking resolveQuerySet could never read a timestamp";
-	} else {
-		when (android || (linux && voidGles3)) {
-			return "the GLES backend does not load EXT_disjoint_timer_query, and GLES 3.2 has no GL_TIMESTAMP counter";
-		} else {
-			return "GL_TIMESTAMP reports 0 counter bits on this context";
-		}
-	}
-}
-
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
-	const kind: string = descriptor.type;
-	const timestamp = kind == "timestamp";
-	if (timestamp && !timerSupported) {
-		stop(`this device has no timestamp queries: features().has('timestamp-query') is false, because ${timestampReason()}`);
-	}
-	let slot: QuerySetSlot = {
-		timestamp: timestamp,
-		count: descriptor.count,
-		names: [],
-		state: new Array(descriptor.count),
-		usedPass: new Array(descriptor.count),
-	};
+	let slot: QuerySetSlot = { names: [] };
 	for (let i = 0; i < descriptor.count; i++) { slot.names.push(oglCreateQuery()); }
 	checkErrorOf("createQuerySet", descriptor.label);
 	put(querySets, id, slot);
@@ -3269,33 +3226,14 @@ export function destroyQuerySet(querySet: GPUQuerySet): void {
 function writeTimestamp(querySet: uint32, queryIndex: int32): void {
 	const q = querySetRecords.slotIndex(querySet);
 	oglQueryCounter(querySets[q].names[queryIndex]);
-	querySets[q].state[queryIndex] = QUERY_WRITTEN;
-}
-
-@noinline function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
-	if (writes.querySet.id == 0) { return; }
-	const q = querySetRecords.slotIndex(writes.querySet.id);
-	checkedTimestampWrites(member, writes, querySets[q].timestamp, querySets[q].count);
 }
 
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
 	const q = querySetRecords.slotIndex(querySet.id);
 	const b = bufferRecords.slotIndex(destination.id);
-	const bytes = checkedResolveQuerySet(
-		querySets[q].count,
-		firstQuery,
-		queryCount,
-		destination.id,
-		bufferRecords.slots[b].usage,
-		bufferRecords.slots[b].size,
-		destinationOffset,
-	);
-	if (queryCount == 0) { return; }
+	const bytes = (queryCount as int64) * 8;
 	let values: Vec<uint64> = new Array(queryCount);
 	for (let i = 0; i < queryCount; i++) {
-		const state = querySets[q].state[firstQuery + i];
-		if (state == QUERY_UNWRITTEN) { stop(`resolveQuerySet: query ${firstQuery + i} was never written`); }
-		if (state == QUERY_OPEN) { stop(`resolveQuerySet: query ${firstQuery + i} is still open`); }
 		const name = querySets[q].names[firstQuery + i];
 		when (webgl2) {
 			if (oglQueryAvailable(name) == 0) {
@@ -3318,15 +3256,10 @@ function occlusionTarget(): int32 {
 
 export function beginOcclusionQuery(queryIndex: int32): void {
 	const q = querySetRecords.slotIndex(occlusionSetId());
-	checkedOcclusionRange(queryIndex, querySets[q].count);
-	checkedOcclusionReuse(queryIndex, querySets[q].usedPass[queryIndex]);
-	querySets[q].usedPass[queryIndex] = passSerial();
-	querySets[q].state[queryIndex] = QUERY_OPEN;
 	oglBeginQuery(occlusionTarget(), querySets[q].names[queryIndex]);
 }
 
 export function endOcclusionQuery(): void {
 	const q = querySetRecords.slotIndex(occlusionSetId());
 	oglEndQuery(occlusionTarget());
-	querySets[q].state[occlusionQueryIndex()] = QUERY_WRITTEN;
 }

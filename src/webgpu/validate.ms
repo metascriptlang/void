@@ -15,6 +15,7 @@ import {
 	GPUShaderStage,
 	GPUSupportedLimits,
 	GPUExtent3D,
+	GPUPassTimestampWrites,
 	GPUTexelCopyTextureInfo,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
@@ -29,6 +30,8 @@ import {
 	checkedBufferCopy,
 	checkedTexelCopyRegion,
 	checkedTextureToTextureCopy,
+	checkedTimestampWrites,
+	checkedResolveQuerySet,
 	cubeViewRefusal,
 	depthSliceRefusal,
 	firstInstanceRefusal,
@@ -45,7 +48,19 @@ import {
 	viewLayersRefusal,
 	viewMipsRefusal,
 } from "./types.ms";
-import { BufferRecord, PipelineRecord, TextureRecord, ViewRecord, bufferRecords, pipelineRecords, record, textureRecords } from "./pool.ms";
+import {
+	BufferRecord,
+	PipelineRecord,
+	QuerySetRecord,
+	QueryState,
+	TextureRecord,
+	ViewRecord,
+	bufferRecords,
+	pipelineRecords,
+	querySetRecords,
+	record,
+	textureRecords,
+} from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -533,10 +548,19 @@ export function clampedAnisotropy(maxAnisotropy: int32): int32 {
 	return maxAnisotropy == 0 ? 1 : Math.min(maxAnisotropy, GPU_MAX_ANISOTROPY);
 }
 
-export function querySetRefusal(descriptor: GPUQuerySetDescriptor): string {
+export function querySetRefusal(descriptor: GPUQuerySetDescriptor, timestamps: boolean): string {
 	const kind: string = descriptor.type;
 	if (kind != "timestamp" && kind != "occlusion") { return `GPUQuerySetDescriptor.type '${kind}' is neither 'timestamp' nor 'occlusion'`; }
 	if (descriptor.count < 1 || descriptor.count > 4096) { return `GPUQuerySetDescriptor.count ${descriptor.count} is outside 1..4096`; }
+	if (kind == "timestamp" && !timestamps) { return "this device has no timestamp queries: features().has('timestamp-query') is false"; }
+	return "";
+}
+
+export function queriesWrittenRefusal(set: QuerySetRecord, firstQuery: int32, queryCount: int32): string {
+	for (let i = firstQuery; i < firstQuery + queryCount; i++) {
+		if (set.state[i] == QueryState.Unwritten) { return `resolveQuerySet: query ${i} was never written`; }
+		if (set.state[i] == QueryState.Open) { return `resolveQuerySet: query ${i} is still open`; }
+	}
 	return "";
 }
 
@@ -561,7 +585,45 @@ export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): vo
 export function checkedRenderPassPipeline(pipeline: uint32, isCompute: boolean): void { refuse(renderPassPipelineRefusal(pipeline, isCompute)); }
 export function checkedStripDraw(strip: boolean, matches: boolean): void { refuse(stripDrawRefusal(strip, matches)); }
 export function checkedSampler(descriptor: GPUSamplerDescriptor): void { refuse(samplerRefusal(descriptor)); }
-export function checkedQuerySet(descriptor: GPUQuerySetDescriptor): void { refuse(querySetRefusal(descriptor)); }
+export function checkedQuerySet(descriptor: GPUQuerySetDescriptor, timestamps: boolean): void { refuse(querySetRefusal(descriptor, timestamps)); }
+
+export function checkedResolveQueries(querySet: uint32, firstQuery: int32, queryCount: int32, destination: uint32, destinationOffset: int64): void {
+	const q = querySetRecords.slotIndex(querySet);
+	const b = bufferRecords.slotIndex(destination);
+	checkedResolveQuerySet(querySetRecords.slots[q].count, firstQuery, queryCount, destination, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, destinationOffset);
+	refuse(queriesWrittenRefusal(querySetRecords.slots[q], firstQuery, queryCount));
+}
+
+export function checkedPassQueries(member: string, writes: GPUPassTimestampWrites, occlusionSet: uint32): void {
+	if (writes.querySet.id != 0) {
+		const q = querySetRecords.slotIndex(writes.querySet.id);
+		checkedTimestampWrites(member, writes, querySetRecords.slots[q].timestamp, querySetRecords.slots[q].count);
+	}
+	if (occlusionSet != 0) { checkedOcclusionSetKind(querySetRecords.slots[querySetRecords.slotIndex(occlusionSet)].timestamp); }
+}
+
+export function markTimestampsWritten(writes: GPUPassTimestampWrites): void {
+	if (writes.querySet.id == 0) { return; }
+	const q = querySetRecords.slotIndex(writes.querySet.id);
+	if (writes.beginningOfPassWriteIndex >= 0) { querySetRecords.slots[q].state[writes.beginningOfPassWriteIndex] = QueryState.Written; }
+	if (writes.endOfPassWriteIndex >= 0) { querySetRecords.slots[q].state[writes.endOfPassWriteIndex] = QueryState.Written; }
+}
+
+export function checkedOcclusionQuery(queryIndex: int32): void {
+	const q = querySetRecords.slotIndex(encoder.occlusionSet);
+	checkedOcclusionRange(queryIndex, querySetRecords.slots[q].count);
+	checkedOcclusionReuse(queryIndex, querySetRecords.slots[q].usedPass[queryIndex]);
+}
+
+export function markOcclusionBegun(queryIndex: int32): void {
+	const q = querySetRecords.slotIndex(encoder.occlusionSet);
+	querySetRecords.slots[q].usedPass[queryIndex] = encoder.serial;
+	querySetRecords.slots[q].state[queryIndex] = QueryState.Open;
+}
+
+export function markOcclusionEnded(): void {
+	querySetRecords.slots[querySetRecords.slotIndex(encoder.occlusionSet)].state[encoder.occlusionIndex] = QueryState.Written;
+}
 export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void { refuse(viewportRefusal(width, height, minDepth, maxDepth)); }
 export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void { refuse(dispatchRefusal(x, y, z, limit)); }
 
