@@ -1,4 +1,4 @@
-import { GPUBufferUsage, GPUTextureFormat, GPUTextureUsage } from "../types.ms";
+import { GPUBufferUsage, GPULoadOp, GPUStoreOp, GPUTextureFormat, GPUTextureUsage } from "../types.ms";
 import { MemoryKind } from "./memory";
 import { ACCESS_TRANSFER_READ, BufferRest, STAGE_TRANSFER, TextureRest } from "./tracker";
 
@@ -18,15 +18,25 @@ export const ACCESS_VERTEX_ATTRIBUTE_READ: uint32 = 0x4;
 export const ACCESS_UNIFORM_READ: uint32 = 0x8;
 export const ACCESS_SHADER_READ: uint32 = 0x20;
 export const ACCESS_COLOR_ATTACHMENT_READ: uint32 = 0x80;
+export const ACCESS_COLOR_ATTACHMENT_WRITE: uint32 = 0x100;
 export const ACCESS_DEPTH_STENCIL_ATTACHMENT_READ: uint32 = 0x200;
+export const ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE: uint32 = 0x400;
 export const ACCESS_TRANSFER_WRITE: uint32 = 0x1000;
 export const ACCESS_HOST_READ: uint32 = 0x2000;
 
 export const LAYOUT_GENERAL: int32 = 1;
 export const LAYOUT_COLOR_ATTACHMENT: int32 = 2;
 export const LAYOUT_DEPTH_STENCIL_ATTACHMENT: int32 = 3;
+export const LAYOUT_DEPTH_STENCIL_READ_ONLY: int32 = 4;
 export const LAYOUT_SHADER_READ_ONLY: int32 = 5;
 export const LAYOUT_TRANSFER_DST: int32 = 7;
+export const LAYOUT_PRESENT: int32 = 1000001002;
+
+export const LOAD_OP_LOAD: uint32 = 0;
+export const LOAD_OP_CLEAR: uint32 = 1;
+export const LOAD_OP_DONT_CARE: uint32 = 2;
+export const STORE_OP_STORE: uint32 = 0;
+export const STORE_OP_DONT_CARE: uint32 = 1;
 
 export const ASPECT_COLOR: uint32 = 0x1;
 export const ASPECT_DEPTH: uint32 = 0x2;
@@ -187,6 +197,30 @@ export function textureRest(usage: int32, depth: boolean): TextureRest {
 		layout = depth ? LAYOUT_DEPTH_STENCIL_ATTACHMENT : LAYOUT_COLOR_ATTACHMENT;
 	}
 	return { stages: stages, access: access, layout: layout };
+}
+
+export function swapchainRest(): TextureRest {
+	return { stages: STAGE_COLOR_ATTACHMENT_OUTPUT, access: 0, layout: LAYOUT_PRESENT };
+}
+
+export function loadOp(op: GPULoadOp, member: string): uint32 {
+	const value: string = op;
+	const code = match (value) {
+		"load" => LOAD_OP_LOAD as int32,
+		"clear" => LOAD_OP_CLEAR as int32,
+		_ => refuse(member, value),
+	};
+	return code as uint32;
+}
+
+export function storeOp(op: GPUStoreOp, member: string): uint32 {
+	const value: string = op;
+	const code = match (value) {
+		"store" => STORE_OP_STORE as int32,
+		"discard" => STORE_OP_DONT_CARE as int32,
+		_ => refuse(member, value),
+	};
+	return code as uint32;
 }
 
 export function cubeCompatible(volume: boolean, width: int32, height: int32, layers: int32, samples: int32): boolean {

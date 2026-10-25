@@ -113,6 +113,22 @@ function addImageBarrier(
 	});
 }
 
+function textureDependency(
+	ref t: StateTracker,
+	image: uint32,
+	sourceAccess: uint32,
+	targetAccess: uint32,
+	oldLayout: int32,
+	newLayout: int32,
+): void {
+	if (oldLayout != newLayout) {
+		addImageBarrier(t, image, sourceAccess, targetAccess, oldLayout, newLayout);
+		return;
+	}
+	t.sourceAccess |= sourceAccess;
+	t.targetAccess |= targetAccess;
+}
+
 export function writeToBuffer(ref t: StateTracker, id: uint32, rest: BufferRest, stages: uint32, access: uint32): void {
 	const written = t.writtenBuffer(id);
 	const copied = t.copiedBuffer(id);
@@ -156,7 +172,7 @@ export function writeToTexture(
 		t.sourceStages |= rest.stages;
 	}
 	t.targetStages |= stages;
-	if (oldLayout != layout) { addImageBarrier(t, id, sourceAccess, access, oldLayout, layout); }
+	textureDependency(t, id, sourceAccess, access, oldLayout, layout);
 	t.writtenTextures.push({ id: id, stages: stages, access: access, layout: layout, rest: rest });
 }
 
@@ -204,12 +220,16 @@ export function readFromTexture(
 		t.sourceStages |= rest.stages;
 	}
 	t.targetStages |= stages;
-	if (oldLayout != layout) { addImageBarrier(t, id, sourceAccess, access, oldLayout, layout); }
+	textureDependency(t, id, sourceAccess, access, oldLayout, layout);
 }
 
 export function copyFromTexture(ref t: StateTracker, id: uint32, rest: TextureRest): void {
 	readFromTexture(t, id, rest, STAGE_TRANSFER, ACCESS_TRANSFER_READ, LAYOUT_TRANSFER_SRC);
 	t.copyTextures.push({ id: id, rest: rest });
+}
+
+export function acquireTexture(ref t: StateTracker, id: uint32, rest: TextureRest): void {
+	t.writtenTextures.push({ id: id, stages: rest.stages, access: 0, layout: LAYOUT_UNDEFINED, rest: rest });
 }
 
 export function initTexture(ref t: StateTracker, id: uint32, rest: TextureRest): void {
@@ -241,9 +261,7 @@ export function endPass(ref t: StateTracker): void {
 	for (const write of t.writtenTextures) {
 		t.sourceStages |= write.stages;
 		t.targetStages |= write.rest.stages;
-		if (write.layout != write.rest.layout) {
-			addImageBarrier(t, write.id, write.access, write.rest.access, write.layout, write.rest.layout);
-		}
+		textureDependency(t, write.id, write.access, write.rest.access, write.layout, write.rest.layout);
 	}
 	t.writtenTextures.length = 0;
 	for (const copy of t.copyTextures) {

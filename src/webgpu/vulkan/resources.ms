@@ -65,6 +65,7 @@ import {
 	formatInfo,
 	imageUsageFlags,
 	rowLength,
+	swapchainRest,
 	textureRest,
 	viewType,
 } from "./conv";
@@ -73,6 +74,7 @@ import {
 	STAGE_TRANSFER,
 	StateTracker,
 	TextureRest,
+	acquireTexture,
 	cleared,
 	copyFromBuffer,
 	copyFromTexture,
@@ -150,7 +152,7 @@ struct BufferRecord {
 	lastWrite: uint64;
 }
 
-struct TextureRecord {
+export struct TextureRecord {
 	id: uint32;
 	native: uint32;
 	format: GPUTextureFormat;
@@ -161,13 +163,25 @@ struct TextureRecord {
 	mipLevels: int32;
 	volume: boolean;
 	cube: boolean;
+	samples: int32;
+	swapchain: boolean;
 	rest: TextureRest;
 	memory: MemoryAllocation;
 }
 
-struct ViewRecord {
+export struct ViewRecord {
 	id: uint32;
 	native: uint32;
+	texture: uint32;
+	baseMip: int32;
+	mipCount: int32;
+	layerCount: int32;
+	swapchain: boolean;
+}
+
+export struct SwapchainImage {
+	texture: GPUTexture;
+	view: GPUTextureView;
 }
 
 struct SamplerRecord {
@@ -214,6 +228,7 @@ export struct VulkanResources {
 	freePages: Vec<UploadPage>;
 	page: UploadPage;
 	depthStencil: int32;
+	acquired: uint32;
 }
 
 const NO_ALLOCATION: MemoryAllocation = { block: 0, offset: 0, size: 0, typeIndex: -1, group: -1, slot: -1, node: 0 };
@@ -284,10 +299,12 @@ export function openResources(): VulkanResources {
 		mipLevels: 0,
 		volume: false,
 		cube: false,
+		samples: 0,
+		swapchain: false,
 		rest: { stages: 0, access: 0, layout: 0 },
 		memory: NO_ALLOCATION,
 	};
-	const noView: ViewRecord = { id: 0, native: 0 };
+	const noView: ViewRecord = { id: 0, native: 0, texture: 0, baseMip: 0, mipCount: 0, layerCount: 0, swapchain: false };
 	const noSampler: SamplerRecord = { id: 0, native: 0 };
 	return {
 		memory: MemoryAllocator.forDevice(memoryDevice()),
@@ -300,6 +317,7 @@ export function openResources(): VulkanResources {
 		freePages: [],
 		page: NO_PAGE,
 		depthStencil: depthStencilNative(vulkanFormatOptimalFeatures(d24s8Format())),
+		acquired: 0,
 	};
 }
 
@@ -363,7 +381,7 @@ function placeImage(ref r: VulkanResources, native: uint32): Result<MemoryAlloca
 	return Result.ok(placed.value);
 }
 
-function flush(ref r: VulkanResources): Result<void, ResourceError> {
+export function flush(ref r: VulkanResources): Result<void, ResourceError> {
 	if (!r.tracker.pending()) { return Result.ok(null); }
 	for (const barrier of r.tracker.images) {
 		const code = vulkanBarrierImage(
@@ -463,6 +481,8 @@ export function createTexture(ref r: VulkanResources, descriptor: GPUTextureDesc
 		mipLevels: mipLevels,
 		volume: volume,
 		cube: cube && has(descriptor.usage, GPUTextureUsage.TEXTURE_BINDING as int32) && layers % 6 == 0,
+		samples: samples,
+		swapchain: false,
 		rest: rest,
 		memory: placed.value,
 	});
@@ -504,8 +524,69 @@ export function createView(
 	);
 	if (native == 0) { return Result.err(ResourceError.ViewFailed); }
 	const id = allocate(r.views);
-	store(r.views, { id: id, native: native });
+	store(r.views, {
+		id: id,
+		native: native,
+		texture: texture.id,
+		baseMip: baseMip,
+		mipCount: mipCount,
+		layerCount: layerCount,
+		swapchain: false,
+	});
 	return Result.ok({ id: id });
+}
+
+export function adoptSwapchainImage(
+	ref r: VulkanResources,
+	image: uint32,
+	view: uint32,
+	format: GPUTextureFormat,
+	width: int32,
+	height: int32,
+): SwapchainImage {
+	const texture = allocate(r.textures);
+	store(r.textures, {
+		id: texture,
+		native: image,
+		format: format,
+		info: formatInfo(format, r.depthStencil, "swapchain format"),
+		width: width,
+		height: height,
+		layers: 1,
+		mipLevels: 1,
+		volume: false,
+		cube: false,
+		samples: 1,
+		swapchain: true,
+		rest: swapchainRest(),
+		memory: NO_ALLOCATION,
+	});
+	const viewId = allocate(r.views);
+	store(r.views, { id: viewId, native: view, texture: texture, baseMip: 0, mipCount: 1, layerCount: 1, swapchain: true });
+	return { texture: { id: texture }, view: { id: viewId } };
+}
+
+export function releaseSwapchainImage(ref r: VulkanResources, image: SwapchainImage): void {
+	r.views.slots[r.views.slotIndex(image.view.id)].id = 0;
+	release(r.views, image.view.id);
+	r.textures.slots[r.textures.slotIndex(image.texture.id)].id = 0;
+	release(r.textures, image.texture.id);
+}
+
+export function markAcquired(ref r: VulkanResources, image: SwapchainImage): void {
+	r.acquired = r.textures.slots[r.textures.slotIndex(image.texture.id)].native;
+}
+
+export function settle(ref r: VulkanResources): void {
+	endPass(r.tracker);
+	if (r.acquired != 0) {
+		acquireTexture(r.tracker, r.acquired, swapchainRest());
+		r.acquired = 0;
+	}
+}
+
+@noinline function refuseSwapchainOwned(call: string, kind: string, id: uint32): void {
+	stop(`${call}: ${kind} ${id} belongs to the swapchain`);
 }
 
 export function createSampler(ref r: VulkanResources, descriptor: GPUSamplerDescriptor): Result<GPUSampler, ResourceError> {
@@ -548,6 +629,7 @@ export function destroyBuffer(ref r: VulkanResources, buffer: GPUBuffer): void {
 
 export function destroyTexture(ref r: VulkanResources, texture: GPUTexture): void {
 	const index = r.textures.slotIndex(texture.id);
+	if (r.textures.slots[index].swapchain) { refuseSwapchainOwned("destroyTexture", "GPUTexture", texture.id); }
 	retire(r, RetiredKind.Image, r.textures.slots[index].native, r.textures.slots[index].memory);
 	r.textures.slots[index].id = 0;
 	release(r.textures, texture.id);
@@ -555,6 +637,7 @@ export function destroyTexture(ref r: VulkanResources, texture: GPUTexture): voi
 
 export function destroyView(ref r: VulkanResources, view: GPUTextureView): void {
 	const index = r.views.slotIndex(view.id);
+	if (r.views.slots[index].swapchain) { refuseSwapchainOwned("destroyView", "GPUTextureView", view.id); }
 	retire(r, RetiredKind.View, r.views.slots[index].native, NO_ALLOCATION);
 	r.views.slots[index].id = 0;
 	release(r.views, view.id);
@@ -787,6 +870,7 @@ export function copyTextureToBuffer(
 }
 
 export function submit(ref r: VulkanResources): Result<uint64, ResourceError> {
+	settle(r);
 	endPass(r.tracker);
 	try flush(r);
 	let serial: uint64 = 0;
