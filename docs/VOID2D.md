@@ -1657,7 +1657,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   layout calls it since 2026-10-08, below). `kb_text_shape` v2.28e is fetched by `setup.sh` into `deps/kb` at
   the pinned commit (zlib, one 1,840,545 B header; `deps/` is not tracked, like sokol and stb).
   **NEW MECHANISM A, the first compile-time module: proven.** `shaper.ms` has `when (voidShaper)`
-  with the real bridge and an `else` stub that stops by name (`tests/aborts/shaperOff.ms`). The
+  with the real bridge and an `else` stub that stops by name (`tests/aborts/cases/plainCases.ms` case `shaperOff`). The
   `import ... from "./shaper.h"` and its companion `shaper.c` sit inside the `when`: a probe built
   with and without `-d:voidShaper` on msc 0.3.2 gave an executable with no `kbts_` string and no
   `shaper.c` object in the build cache when off (0 and 0), and both when on. The C side is one
@@ -1886,7 +1886,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   widget (`widgets/src/map/view.rs:9789-9795`); the mechanism is Godot's and troika's.
   *App-visible.* `node.setOutline(width, color)` on a label; a width of 0 clears it, a negative
   one stops by name, and a build without the module stops by name on a width above 0
-  (`tests/aborts/outlineOff.ms`, `outlineNegative.ms`). The width is in the label's own units,
+  (`tests/aborts/cases/plainCases.ms` case `outlineOff`, `outlineNegative`). The width is in the label's own units,
   like its size, so it scales with the label; it is per label, not per run; shadow, blur and
   stacked outlines are out of scope. **Dilation, not a ring**: the outline tile is the glyph grown by the width, so its
   coverage is 1 under the whole glyph and the fill is drawn over it. A fill with alpha below 1, or a
@@ -1951,7 +1951,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   **NEW MECHANISM 3, the lane in the key.** `GlyphKey.outline` is 8 bits at bit 24 of the packed
   key; the size quanta narrow to 16 bits (a size under 1024 px, which the atlas refused after
   packing anyway). A key whose size does not fit stops by name before it is packed
-  (`tests/aborts/glyphKeyOverflow.ms`); `acquire` answers `TooLarge` for it, except that a glyph
+  (`tests/aborts/cases/plainCases.ms` case `glyphKeyOverflow`); `acquire` answers `TooLarge` for it, except that a glyph
   with no ink at such a size shares one empty tile, as before (`labelTextCheck.ms` holds the count),
   and a mask key counts its width in whole units. The lane is a quarter device pixel (coverage, at
   most 63.75 px) or an eighth texel (SDF, at most 31.875); over it is `AtlasError.OutlineTooWide`.
@@ -2156,10 +2156,10 @@ changes described above on today's compiler; the P4 web archive also takes its r
   **Built 2026-10-07 (V1): `svgMask.{h,c,ms}`, test `src/test/svgMaskCheck.ms`, behind
   `-d:voidSvg`.** Same seam as the shaper: `svgMask.ms` has `when (voidSvg)` around the import of
   `svgMask.h` and its companion `.c`, and an `else` that stops by name
-  (`tests/aborts/svgMaskOff.ms`). A build without the flag has no `linearGradient` and no
+  (`tests/aborts/cases/plainCases.ms` case `svgMaskOff`). A build without the flag has no `linearGradient` and no
   `css selector` string in its executable (0 and 0; 1 and 1 with the flag), and
-  `tests/aborts/svgMaskStaleHandle.ms` pins the stop on a freed handle and
-  `tests/aborts/svgMaskReusedHandle.ms` on a freed handle whose slot a later parse took: a handle
+  `tests/aborts/cases/svgCases.ms` case `svgMaskStaleHandle` pins the stop on a freed handle and
+  `tests/aborts/cases/svgCases.ms` case `svgMaskReusedHandle` on a freed handle whose slot a later parse took: a handle
   carries the slot in its low 16 bits and a generation in the high 15, bumped at every free, so
   it names one parse for ever (a slot whose generation runs out is retired; 65,535 slots).
   `svgMaskParse(string)` copies the source (nanosvg parses in place) and returns a handle with the size the author
@@ -2217,8 +2217,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   linear sampler averages 2x2 texels per pixel. `icon.ms` owns the registry
   (`registerIcon(source)` answers an `IconId` or the module's `SvgMaskRefusal`; ids are not
   reused and a registration is permanent, since nothing in a scene frees the parsed icon;
-  a build without `-d:voidSvg` stops by name at the first call,
-  `tests/aborts/iconOff.ms`) and each node's retained placement, which re-acquires its tile when
+  a build without `-d:voidSvg` stops by name at the first call, through the SVG stub that
+  `tests/aborts/cases/plainCases.ms` case `svgMaskOff` pins) and each node's retained placement, which re-acquires its tile when
   the raster size changes and gives it back when the node leaves the tree. `node.setIcon(id)`
   switches the icon in place, as Heaps' `Bitmap.tile` setter does: the hold moves to the new
   id and the old mask goes back to the atlas.
@@ -2581,7 +2581,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   - **Where it diverges from GPUI.** GPUI's font has 13 letters and skips a character it does
     not know; the counter lines need 14 more glyphs (B D G H I J K P Q V W Y Z and `/`),
     drawn here in the same style, and a character with no glyph stops by name
-    (`tests/aborts/overlayNoGlyph.ms`). GPUI scales its 2 px cell by the float scale factor;
+    (`tests/aborts/cases/profilerCases.ms` case `overlayNoGlyph`). GPUI scales its 2 px cell by the float scale factor;
     here the cell is rounded to whole device pixels, so every edge lands on a device pixel at
     DPI 1.25 and 1.5. GPUI draws no histogram; Full draws the draw-time and the
     dirty-to-present bucket histograms (Makepad's nine fixed edges, ten buckets, `frame_trace.rs:34-62`) as bars, three
@@ -2842,8 +2842,7 @@ native gate ran green with the BiDi oracle in the all-modules T0 stage.
 **Tests.** T3: `bidiOracleCheck.ms` (BidiTest, BidiCharacterTest, sha256 pins), `shapeOracleCheck.ms`
 (forced against auto). T1: `bidiTableCheck.ms`, `bidiOffCheck.ms` (the refusals, with the
 module off), `bidiLayoutCheck.ms`, `bidiCaretCheck.ms`, `bidiSelectionCheck.ms`,
-`bidiShapedCheck.ms`; abort programs `tests/aborts/bidiOff.ms`, `shaperRtl.ms`,
-`bidiArabicNeedsShaper.ms`. T2: seven `text/bidi*` scenes at 320 units wide and DPI 1.25,
+`bidiShapedCheck.ms`; abort case `shaperRtl` in `tests/aborts/cases/shaperCases.ms`. T2: seven `text/bidi*` scenes at 320 units wide and DPI 1.25,
 captured on D3D11 2026-10-08 and read against the visual order UAX #9 gives each line.
 
 **Closes** (`tests/PENDING.md`, checked by the gate): nothing left open. The three rows that were not a difference of engines are deleted: the cluster row of the explicit left-to-right Arabic text agrees once the shaper bridge forces the direction, and the mixed-direction row is replaced by three explicit-direction rows that agree. The glyph row of the explicit left-to-right Arabic text is re-owned as declared with its measured reason.
@@ -3270,7 +3269,7 @@ names `Default` or a zero sample count against sokol's environment defaults (`ta
 `SWAPCHAIN_LAYOUT` and the environment spelled out are one pipeline. The door's `PixelFormat`
 gained `Bgra8` and `DepthStencil`, the formats the environments here default to, and stops on an
 environment format it does not name, or on a resolution before the device exists
-(`tests/aborts/screenLayoutWithoutDevice.ms`). `pipelineFor` checks the program id before it
+(`tests/aborts/cases/plainCases.ms` case `screenLayoutWithoutDevice`). `pipelineFor` checks the program id before it
 asks the device anything, so `unregisteredProgram` still stops on the id. On D3D11, the window at sample count 1, `SWAPCHAIN_LAYOUT`
 keys as `colors=Bgra8 depth=Depth sampleCount=1`. `tests/integration/doorBlendModes.ms` asserts
 that the explicit spelling reuses the Alpha screen pipeline; with the resolution removed it stops

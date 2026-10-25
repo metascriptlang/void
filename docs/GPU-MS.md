@@ -418,6 +418,24 @@ wgpu ran nowhere, so each item below names what to run on your side.
   the app sees the key-up.
 - **macOS display link** (`58d13f08`): nothing for you.
 
+### 2026-10-26, the lean test round; what changes in the gates for Windows
+
+- **Aborts are cases binaries** (`d37716b5` to `746de065`): `tests/aborts` is 5 files in
+  `tests/aborts/cases/` (one per `// flags:` set) and `tests/aborts3d` is 4 cases files plus
+  `viewSlotsRetired.ms`; argv picks the case, `// expect <case>: <text>` names its stop. A new
+  refusal is a case in the file of its flag set, not a new program. **Run:** the aborts loops of
+  both gates on Windows; `presetCases` has never been built (the macro card blocks it here).
+- **Caches are kept** (`583bcf62`): the header-cache card is fixed in msc 32b8ce353 (probed with
+  a header and a header it includes, and with `-D`/`-d:` changes), so no gate evicts objects or
+  deletes binaries; a check runs only after its build succeeded. `iosDevice.sh:92` keeps its
+  eviction (cross build, unprobed).
+- **Duplicates live in `gate.sh` only** (`c713d37b`): gate3d no longer reruns the index, the
+  shader regen check, targetOwner, targetPresetEpoch or mixedFrame.
+- **Host skips** (`73a10a0c`): a Mac skips D3D11 and GL by name. Windows runs them as before.
+- **Not runnable by any gate on Windows yet:** `src/test/webgpuD3d11Check.ms`,
+  `webgpuGlCheck.ms` and `doorZeroHandleCheck.ms` (D3D11 WARP, pins `5cacf730`). Wire them into
+  the Windows gate or say why not.
+
 ## From Windows (2026-10-23)
 
 - **Coverage phases** (the person: coverage first, quality after). P0: the WebGPU members sokol

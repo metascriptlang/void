@@ -8,16 +8,23 @@
 #   sh scripts/gate.sh            T0, the golden suite on D3D11, the bench, the tier report
 #   sh scripts/gate.sh --web      also build both web backends (slow; needs emsdk)
 #   sh scripts/gate.sh --quick    skip the golden suite (T0 and bench only)
+#   sh scripts/gate.sh --window   also the macOS window behaviour tests, in a visible focused window
+#   sh scripts/gate.sh --ios      also the Metal goldens and view samples on an attached iOS device
 set -e
 cd "$(dirname "$0")/.."
+export VOID_QUIET_WINDOW=1
 
 MSC="${MSC:-msc}"
 WEB=0
 QUICK=0
+WINDOW=0
+IOS=0
 for arg in "$@"; do
 	case "$arg" in
 		--web) WEB=1 ;;
 		--quick) QUICK=1 ;;
+		--window) WINDOW=1 ;;
+		--ios) IOS=1 ;;
 		*) echo "gate.sh: unknown flag $arg" >&2; exit 2 ;;
 	esac
 done
@@ -26,6 +33,9 @@ fails=0
 skips=0
 passes=0
 d3d11_conformance="not run"
+# D3D11 and GL core run on the Windows box; a Mac has neither, and runs Metal instead.
+golden_host=d3d11
+[ "$(uname -s)" != Darwin ] || golden_host=metal
 
 # out/ is gitignored, so on a clean clone the first redirect into it would abort under set -e
 # before any step had a chance to report.
@@ -34,8 +44,10 @@ mkdir -p out out/golden
 pass() { echo "PASS  $1"; passes=$((passes + 1)); }
 fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
 skip() { echo "SKIP  $1"; skips=$((skips + 1)); }
+gate_start=$(date +%s)
+section() { echo "=== $1 === at $(( $(date +%s) - gate_start )) s"; }
 
-echo "=== 0. the compiler under test ========================================"
+section "0. the compiler under test"
 mscPath="$(command -v "$MSC" || true)"
 mscVersion="$("$MSC" --version 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | head -1 || true)"
 mscBuild="$(dirname "${mscPath:-.}")/../BUILD"
@@ -53,19 +65,8 @@ else
 	fail "oracle case ID checks — see out/gate-oracle-ids.log"
 fi
 
-echo "=== 1. evict the caches ==============================================="
-# msc answers "Up to date" after a header that a compiled .c includes has changed, and the
-# global object cache is keyed on the .c and not its includes — --force does not bypass it
-# (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). A gate that
-# silently tests the previous binary is worse than no gate. The machine-wide cache stays
-# untouched: deleting it raced every other session's msc and wiped their objects.
-export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/screenOver.exe out/layerSlot.exe out/paintedSlots.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/framePacing.exe out/metalReadback.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe out/macWindow.exe out/macWindowEscape.exe out/macWindowFps.exe
-rm -rf out/debug/.cache out/release/.cache
-pass "caches evicted"
-
 echo
-echo "=== 2. T0 and T1 — msc test ==========================================="
+section "1. T0 and T1 — msc test"
 # msc exits 0 for a crashed test binary: ~/metascript/.inbox/compiler/2026-09-23-crash-exit-status-lost.md
 if "$MSC" test src/test/index.ms > out/gate-t0.log 2>&1; then
 	t0Summary="$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
@@ -152,7 +153,7 @@ else
 fi
 
 echo
-echo "=== 3. the demo still builds and runs ================================="
+section "2. the demo still builds and runs"
 if "$MSC" build src/examples/mainSokol2d.ms --output=out/demo2d.exe > out/gate-demo.log 2>&1; then
 	pass "src/examples/renderer2d.ms builds through src/examples/mainSokol2d.ms"
 	# Building is not enough. The entry used to declare `function main()` with nothing
@@ -169,11 +170,58 @@ else
 	fail "the demo does not build — see out/gate-demo.log"
 fi
 
-if "$MSC" build tests/integration/mixedFrame.ms --release --output=out/mixedFrame.exe > out/gate-mixed-frame.log 2>&1 \
-		&& out/mixedFrame.exe > out/gate-mixed-frame-run.log 2>&1; then
-	pass "mixed frame: 3D + void2d, one shared commit, two fresh frames"
+# A 3D preset and void2d in one screen pass and one commit; the same run with the 3D drawn over
+# void2d, which must fail; preparing twice and drawing after a commit, which must stop by name;
+# and both registration orders of a foreign shader, each with a control that must fail.
+mixed_run() {  # mixed_run <log> <environment...>: the exit status in mixed_status
+	mixed_log=$1
+	shift
+	mixed_status=0
+	env "$@" out/mixedFrame.exe > "$mixed_log" 2>&1 || mixed_status=$?
+}
+if "$MSC" build tests/integration/mixedFrame.ms --release --output=out/mixedFrame.exe > out/gate-mixed-frame.log 2>&1; then
+	mixed_run out/gate-mixed-frame-run.log
+	if [ "$mixed_status" -eq 0 ] && grep -q '^mixed frame:' out/gate-mixed-frame-run.log; then
+		pass "mixed frame: $(grep -E '^mixed frame:' out/gate-mixed-frame-run.log | sed 's/^mixed frame: //')"
+	else
+		fail "mixed 3D/void2d frame lifecycle (exit $mixed_status) — see out/gate-mixed-frame-run.log"
+		grep -E '^FAIL' out/gate-mixed-frame-run.log | sed 's/^/      /' || true
+	fi
+	mixed_run out/gate-mixed-frame-swapped.log VOID_MIXED_3D_OVER_2D=1
+	if [ "$mixed_status" -ne 0 ] && grep -q '^FAIL mixed frame: .* inside the quad' out/gate-mixed-frame-swapped.log; then
+		pass "mixed frame: the control, the 3D drawn over void2d, fails inside the quad"
+	else
+		fail "mixed frame: the control, the 3D drawn over void2d, passed (exit $mixed_status) — see out/gate-mixed-frame-swapped.log"
+	fi
+	mixed_run out/gate-mixed-frame-twice.log VOID_MIXED_PREPARE_TWICE=1
+	if [ "$mixed_status" -ne 0 ] && grep -q 'prepareFrame on a frame no drawToScreen or endPrepared ended' out/gate-mixed-frame-twice.log; then
+		pass "mixed frame: a second prepareFrame before drawToScreen stops and names the call"
+	else
+		fail "mixed frame: a second prepareFrame did not stop (exit $mixed_status) — see out/gate-mixed-frame-twice.log"
+	fi
+	mixed_run out/gate-mixed-frame-next.log VOID_MIXED_SCREEN_NEXT_FRAME=1
+	if [ "$mixed_status" -ne 0 ] && grep -q 'drawToScreen in a later sokol frame' out/gate-mixed-frame-next.log; then
+		pass "mixed frame: a drawToScreen after a commit stops and names the call"
+	else
+		fail "mixed frame: a drawToScreen after a commit did not stop (exit $mixed_status) — see out/gate-mixed-frame-next.log"
+	fi
+	for order in 1 2; do
+		mixed_run "out/gate-registration-$order.log" VOID_GPU_REGISTRATION=$order
+		if [ "$mixed_status" -eq 0 ] && grep -q '^PASS mixed frame:' "out/gate-registration-$order.log"; then
+			pass "registration: order $order, foreign shader draws the same lit frame past the old 16/8 registry widths"
+		else
+			fail "registration: order $order failed (exit $mixed_status) — see out/gate-registration-$order.log"
+		fi
+		mixed_run "out/gate-registration-$order-control.log" VOID_GPU_REGISTRATION=$order VOID_GPU_REGISTRATION_ORDER_CONTROL=1
+		if [ "$mixed_status" -ne 0 ] \
+				&& grep -q '^FAIL mixed frame: the foreign consumer overlaps or misses' "out/gate-registration-$order-control.log"; then
+			pass "registration: order $order, reversed range expectation fails at the registry bound"
+		else
+			fail "registration: order $order, reversed range expectation was not caught — see out/gate-registration-$order-control.log"
+		fi
+	done
 else
-	fail "mixed 3D/void2d frame lifecycle — see out/gate-mixed-frame.log and out/gate-mixed-frame-run.log"
+	fail "tests/integration/mixedFrame.ms does not build — see out/gate-mixed-frame.log"
 fi
 
 if "$MSC" build tests/integration/doorBlendModes.ms --release --output=out/doorBlendModes.exe \
@@ -308,19 +356,22 @@ else
 	fail "tests/integration/layerSlot.ms does not build — see out/gate-layer-slot.log"
 fi
 if "$MSC" build tests/integration/paintedSlots.ms --release --output=out/paintedSlots.exe \
-		> out/gate-painted-slots.log 2>&1 \
-		&& out/paintedSlots.exe > out/gate-painted-slots-run.log 2>&1; then
-	pass "painted slots: paint order, zIndex, hidden and filtered left out, patched frame"
+		> out/gate-painted-slots.log 2>&1; then
+	if out/paintedSlots.exe > out/gate-painted-slots-run.log 2>&1; then
+		pass "painted slots: paint order, zIndex, hidden and filtered left out, patched frame"
+	else
+		fail "painted slots — see out/gate-painted-slots-run.log"
+	fi
+	status=0
+	VOID_PAINTED_SLOTS_MISUSE=unprepared out/paintedSlots.exe > out/gate-painted-slots-unprepared.log 2>&1 \
+		|| status=$?
+	if [ "$status" -ne 0 ] && grep -q 'paintedSlots with no prepared frame' out/gate-painted-slots-unprepared.log; then
+		pass "painted slots before prepare stops with its error"
+	else
+		fail "painted slots before prepare did not name its error"
+	fi
 else
-	fail "painted slots — see out/gate-painted-slots-run.log"
-fi
-status=0
-VOID_PAINTED_SLOTS_MISUSE=unprepared out/paintedSlots.exe > out/gate-painted-slots-unprepared.log 2>&1 \
-	|| status=$?
-if [ "$status" -ne 0 ] && grep -q 'paintedSlots with no prepared frame' out/gate-painted-slots-unprepared.log; then
-	pass "painted slots before prepare stops with its error"
-else
-	fail "painted slots before prepare did not name its error"
+	fail "tests/integration/paintedSlots.ms does not build — see out/gate-painted-slots.log"
 fi
 glyph_backends="native"
 case "$(uname -s)" in
@@ -450,7 +501,6 @@ else
 	fail "Scene2D caller target — see out/gate-scene-target.log and out/gate-scene-target-run.log"
 fi
 
-rm -f out/tmp/targetOwner.exe
 if "$MSC" build tests/integration/targetOwner.ms --release --output=out/tmp/targetOwner.exe \
 		> out/gate-target-owner.log 2>&1 \
 		&& out/tmp/targetOwner.exe > out/gate-target-owner-run.log 2>&1; then
@@ -480,7 +530,6 @@ else
 	fail "target owner — see out/gate-target-owner.log and out/gate-target-owner-run.log"
 fi
 
-rm -f out/tmp/targetPresetEpoch.exe
 if "$MSC" build tests/integration/targetPresetEpoch.ms --release --output=out/tmp/targetPresetEpoch.exe \
 		> out/gate-target-preset-epoch.log 2>&1 \
 		&& out/tmp/targetPresetEpoch.exe > out/gate-target-preset-epoch-run.log 2>&1; then
@@ -489,7 +538,6 @@ else
 	fail "target preset epoch — see out/gate-target-preset-epoch.log and out/gate-target-preset-epoch-run.log"
 fi
 
-rm -f out/viewPaint.exe
 if "$MSC" build tests/integration/viewPaint.ms --release --output=out/viewPaint.exe \
 		> out/gate-view-paint.log 2>&1 \
 		&& out/viewPaint.exe > out/gate-view-paint-run.log 2>&1; then
@@ -506,7 +554,6 @@ else
 	fail "view paint — see out/gate-view-paint.log and out/gate-view-paint-run.log"
 fi
 
-rm -f out/tmp/sceneLifetime.exe
 if "$MSC" build tests/integration/sceneLifetime.ms --release --output=out/tmp/sceneLifetime.exe \
 		> out/gate-scene-lifetime.log 2>&1 \
 		&& out/tmp/sceneLifetime.exe > out/gate-scene-lifetime-run.log 2>&1; then
@@ -525,7 +572,6 @@ else
 	fail "scene lifetime — see out/gate-scene-lifetime.log and out/gate-scene-lifetime-run.log"
 fi
 
-rm -f out/tmp/sceneOcclusion.exe
 if "$MSC" build tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusion.exe 		> out/gate-scene-occlusion.log 2>&1 		&& out/tmp/sceneOcclusion.exe > out/gate-scene-occlusion-run.log 2>&1; then
 	pass "scene occlusion: releaseGpu frees list buffers and filter targets, keeps textures and glyph pages, repaints byte-identical"
 	for misuse in prepared closed; do
@@ -545,7 +591,6 @@ else
 	fail "scene occlusion — see out/gate-scene-occlusion.log and out/gate-scene-occlusion-run.log"
 fi
 
-rm -f out/tmp/sceneOcclusionColour.exe
 if "$MSC" build -d:voidColourEmoji tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusionColour.exe \
 		> out/gate-scene-occlusion-colour.log 2>&1 \
 		&& out/tmp/sceneOcclusionColour.exe > out/gate-scene-occlusion-colour-run.log 2>&1; then
@@ -565,7 +610,6 @@ device_loss_misuse() {
 	fi
 }
 
-rm -f out/tmp/deviceLoss.exe
 if "$MSC" build -d:voidSvg tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLoss.exe \
 		> out/gate-device-loss.log 2>&1 \
 		&& out/tmp/deviceLoss.exe > out/gate-device-loss-run.log 2>&1; then
@@ -576,7 +620,6 @@ else
 	fail "device loss — see out/gate-device-loss.log and out/gate-device-loss-run.log"
 fi
 
-rm -f out/tmp/deviceLossColour.exe
 if "$MSC" build -d:voidColourEmoji tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLossColour.exe \
 		> out/gate-device-loss-colour.log 2>&1 \
 		&& out/tmp/deviceLossColour.exe > out/gate-device-loss-colour-run.log 2>&1; then
@@ -585,7 +628,6 @@ else
 	fail "device loss with colour — see out/gate-device-loss-colour.log and out/gate-device-loss-colour-run.log"
 fi
 
-rm -f out/tmp/deviceLoss3d.exe
 if "$MSC" build tests/integration/deviceLoss3d.ms --release --output=out/tmp/deviceLoss3d.exe \
 		> out/gate-device-loss-3d.log 2>&1; then
 	for preset in forward pixelArt outlined; do
@@ -600,7 +642,6 @@ else
 	fail "device loss 3d — see out/gate-device-loss-3d.log"
 fi
 
-rm -f out/fbTrap.exe
 if "$MSC" build tests/integration/fbTrap.ms --release --output=out/fbTrap.exe \
 		> out/gate-fb-trap.log 2>&1; then
 	fb_status=0
@@ -614,14 +655,15 @@ else
 	fail "fb trap — see out/gate-fb-trap.log"
 fi
 
-if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
-		&& out/twoViews.exe > out/gate-two-views-run.log 2> out/gate-two-views-run.err; then
+two_views_built=0
+"$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 && two_views_built=1
+if [ "$two_views_built" -eq 1 ] && out/twoViews.exe > out/gate-two-views-run.log 2> out/gate-two-views-run.err; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
 else
 	fail "two host views in one process — see out/gate-two-views.log, out/gate-two-views-run.log and .err"
 	grep -E '^FAIL' out/gate-two-views-run.log | sed 's/^/      /' || true
 fi
-if [ "$(uname -s)" = Darwin ] && [ -x out/twoViews.exe ]; then
+if [ "$(uname -s)" = Darwin ] && [ "$two_views_built" -eq 1 ]; then
 	OBJC_DEBUG_MISSING_POOLS=YES out/twoViews.exe > /dev/null 2> out/gate-two-views-pools.err || true
 	if grep -q 'of class CAMetalDrawable autoreleased with no pool' out/gate-two-views-pools.err; then
 		fail "a view frame autoreleases its drawable with no pool in place — see out/gate-two-views-pools.err"
@@ -640,37 +682,41 @@ if [ "$(uname -s)" = Darwin ]; then
 	else
 		fail "metal backend: msc test src/test/webgpuMetalCheck.ms — see out/gate-webgpu-metal.log"
 	fi
-	if "$MSC" build tests/integration/framePacing.ms --output=out/framePacing.exe > out/gate-frame-pacing.log 2>&1 \
-			&& out/framePacing.exe > out/gate-frame-pacing-run.log 2>&1; then
-		pass "$(grep -E '^PASS frame pacing' out/gate-frame-pacing-run.log | sed 's/^PASS //')"
+	window_tests="framePacing macWindow macWindowEscape macWindowFps"
+	if [ "$WINDOW" -eq 1 ]; then
+		for test in $window_tests; do
+			if "$MSC" build tests/integration/$test.ms --output=out/$test.exe > out/gate-$test.log 2>&1 \
+					&& env -u VOID_QUIET_WINDOW out/$test.exe > out/gate-$test-run.log 2>&1; then
+				case "$test" in
+					framePacing) pass "$(grep -E '^PASS frame pacing' out/gate-$test-run.log | sed 's/^PASS //')" ;;
+					*) pass "$test: the macOS window driver delivers AppKit events through the app event API" ;;
+				esac
+			else
+				fail "$test — see out/gate-$test.log and out/gate-$test-run.log"
+				grep -E '^FAIL' out/gate-$test-run.log | sed 's/^/      /' || true
+			fi
+		done
 	else
-		fail "frame pacing — see out/gate-frame-pacing.log and out/gate-frame-pacing-run.log"
-		grep -E '^FAIL' out/gate-frame-pacing-run.log | sed 's/^/      /' || true
+		skip "window behaviour ($window_tests): pass --window when src/platform/macos/*, src/sokol/bridgeEmbed.m, tests/capture/capture.c or src/gpu/gpuTimer.ms changed; they need a visible focused window, and macWindow toggles full screen"
 	fi
-	for test in macWindow macWindowEscape macWindowFps; do
-		if "$MSC" build tests/integration/$test.ms --output=out/$test.exe > out/gate-$test.log 2>&1 \
-				&& out/$test.exe > out/gate-$test-run.log 2>&1; then
-			pass "$test: the macOS window driver delivers AppKit events through the app event API"
+	if "$MSC" build tests/integration/metalReadback.ms --output=out/metalReadback.exe > out/gate-metal-readback.log 2>&1; then
+		if out/metalReadback.exe > out/gate-metal-readback-run.log 2>&1; then
+			pass "$(grep -E '^PASS metal readback' out/gate-metal-readback-run.log | sed 's/^PASS //')"
 		else
-			fail "$test — see out/gate-$test.log and out/gate-$test-run.log"
-			grep -E '^FAIL' out/gate-$test-run.log | sed 's/^/      /' || true
+			fail "metal readback — see out/gate-metal-readback-run.log"
 		fi
-	done
-	if "$MSC" build tests/integration/metalReadback.ms --output=out/metalReadback.exe > out/gate-metal-readback.log 2>&1 \
-			&& out/metalReadback.exe > out/gate-metal-readback-run.log 2>&1; then
-		pass "$(grep -E '^PASS metal readback' out/gate-metal-readback-run.log | sed 's/^PASS //')"
+		if VOID_READBACK_OPEN=1 out/metalReadback.exe > out/gate-metal-readback-open.log 2>&1; then
+			pass "$(grep -E '^PASS metal readback: a grab before' out/gate-metal-readback-open.log | sed 's/^PASS //')"
+		else
+			fail "metal readback before commit — see out/gate-metal-readback-open.log"
+		fi
 	else
-		fail "metal readback — see out/gate-metal-readback.log and out/gate-metal-readback-run.log"
-	fi
-	if VOID_READBACK_OPEN=1 out/metalReadback.exe > out/gate-metal-readback-open.log 2>&1; then
-		pass "$(grep -E '^PASS metal readback: a grab before' out/gate-metal-readback-open.log | sed 's/^PASS //')"
-	else
-		fail "metal readback before commit — see out/gate-metal-readback-open.log"
+		fail "metal readback does not build — see out/gate-metal-readback.log"
 	fi
 fi
 outside_status=0
-VOID_VIEWS_OUTSIDE=1 out/twoViews.exe > out/gate-two-views-outside.log 2>&1 || outside_status=$?
-if [ "$outside_status" -ne 0 ] && grep -q 'fbWidth outside a view frame' out/gate-two-views-outside.log; then
+[ "$two_views_built" -eq 1 ] && { VOID_VIEWS_OUTSIDE=1 out/twoViews.exe > out/gate-two-views-outside.log 2>&1 || outside_status=$?; }
+if [ "$two_views_built" -eq 1 ] && [ "$outside_status" -ne 0 ] && grep -q 'fbWidth outside a view frame' out/gate-two-views-outside.log; then
 	pass "fbWidth outside a view frame aborts and names the call"
 else
 	fail "fbWidth outside a view frame did not abort (exit $outside_status) — see out/gate-two-views-outside.log"
@@ -702,21 +748,31 @@ if "$MSC" build tests/integration/viewSamples.ms --output=out/viewSamples.exe > 
 else
 	fail "tests/integration/viewSamples.ms does not build — see out/gate-view-samples.log"
 fi
-for program in tests/aborts/*.ms; do
+for program in tests/aborts/cases/*.ms; do
 	name=$(basename "$program" .ms)
-	expected=$(sed -n '1s#^// expect: ##p' "$program")
-	flags=$(sed -n '2s#^// flags: ##p' "$program")
-	log="out/gate-abort-$name.log"
-	status=0
+	flags=$(sed -n 's#^// flags: ##p' "$program" | tr -d '\r')
+	cases=$(sed -n 's#^// expect \([A-Za-z0-9_.]*\): .*#\1#p' "$program" | tr -d '\r')
+	if [ -z "$cases" ]; then
+		fail "aborts: $name names no case"
+		continue
+	fi
 	rm -f "out/abort-$name.exe"
 	# shellcheck disable=SC2086
-	"$MSC" build $flags "$program" --output="out/abort-$name.exe" > "$log" 2>&1 || true
-	"out/abort-$name.exe" >> "$log" 2>&1 || status=$?
-	if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
-		pass "$name stops and says: $expected"
-	else
-		fail "$name did not stop with '$expected' (exit $status) — see $log"
+	if ! "$MSC" build $flags "$program" --output="out/abort-$name.exe" > "out/gate-abort-$name.build.log" 2>&1; then
+		fail "aborts: $name does not build — see out/gate-abort-$name.build.log"
+		continue
 	fi
+	for case in $cases; do
+		expected=$(sed -n "s#^// expect $case: ##p" "$program" | tr -d '\r')
+		log="out/gate-abort-$name-$case.log"
+		status=0
+		"out/abort-$name.exe" "$case" > "$log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
+			pass "$case stops and says: $expected"
+		else
+			fail "$case did not stop with '$expected' (exit $status) — see $log"
+		fi
+	done
 done
 
 root=$(pwd -W 2>/dev/null || pwd)
@@ -741,7 +797,7 @@ for program in tests/refusals/*.ms; do
 done
 
 echo
-echo "=== 4. T2 — golden images, D3D11 ======================================"
+section "3. T2 — golden images"
 # The runner's own verdict logic first, against known inputs, and before it is trusted to say
 # what was captured. It needs no build and no GPU, so it runs even under --quick.
 if sh scripts/golden.sh --self-check > out/gate-verdict.log 2>&1; then
@@ -753,7 +809,10 @@ fi
 if [ "$QUICK" -eq 1 ]; then
 	skip "golden suite: --quick"
 else
-	if sh scripts/golden.sh > out/gate-golden.log 2>&1; then
+	if [ "$golden_host" = metal ]; then
+		d3d11_conformance="not run: this host is $(uname -s), which has no D3D11"
+		skip "golden suite on D3D11: this host is $(uname -s), which has no D3D11; Metal is judged in section 6"
+	elif sh scripts/golden.sh > out/gate-golden.log 2>&1; then
 		# `|| echo` matters under set -e: a bare assignment whose command substitution fails
 		# takes grep's status and kills the gate mid-run, with no summary and no message.
 		d3d11_conformance="$(grep -E '^golden ' out/gate-golden.log || echo 'no conformance line in the log')"
@@ -767,7 +826,7 @@ else
 	echo "      harness self-checks: hand-computed scene, deliberately wrong golden,"
 	echo "      two draws of the same state compared before either is written out,"
 	echo "      and the verdict decision proved above"
-	GOLDEN_DEFINES= sh scripts/golden.sh > out/gate-golden-bare.log 2>&1 || true
+	GOLDEN_DEFINES= sh scripts/golden.sh --backend "$golden_host" > out/gate-golden-bare.log 2>&1 || true
 	bare_failing=$(tr -d '\r' < out/gate-golden-bare.log | grep -E '^FAIL' | awk '{ print $2 }' | sort -u)
 	module_rows=$(tr -d '\r' < tests/golden/moduleRows.txt | sort -u)
 	bare_leaked=""
@@ -778,18 +837,18 @@ else
 	for scene in $module_rows; do
 		case " $(echo $bare_failing) " in *" $scene "*) ;; *) bare_stale="$bare_stale $scene" ;; esac
 	done
-	if ! tr -d '\r' < out/gate-golden-bare.log | grep -q '^golden d3d11'; then
+	if ! tr -d '\r' < out/gate-golden-bare.log | grep -q "^golden $golden_host"; then
 		fail "bare build golden did not run — see out/gate-golden-bare.log"
 	elif [ -n "$bare_leaked" ]; then
 		fail "bare build: rows that need no module moved:$bare_leaked (tests/golden/moduleRows.txt)"
 	elif [ -n "$bare_stale" ]; then
 		fail "bare build: rows listed as needing a module match without one:$bare_stale — drop them from tests/golden/moduleRows.txt"
 	else
-		pass "bare build: every row that needs no module is byte-identical; the $(echo $module_rows | wc -w) module rows differ, as listed"
+		pass "bare build on $golden_host: every row that needs no module matches; the $(echo $module_rows | wc -w) module rows differ, as listed"
 	fi
 fi
-"$MSC" build tests/golden/invariants.ms --output=out/goldenInvariants.exe > out/gate-invariants.log 2>&1 || true
-if [ -x out/goldenInvariants.exe ] && out/goldenInvariants.exe >> out/gate-invariants.log 2>&1; then
+if "$MSC" build tests/golden/invariants.ms --output=out/goldenInvariants.exe > out/gate-invariants.log 2>&1 \
+		&& out/goldenInvariants.exe >> out/gate-invariants.log 2>&1; then
 	grep -E '^PASS' out/gate-invariants.log | sed 's/^PASS //' | while read -r held; do
 		echo "PASS  $held"
 	done
@@ -800,7 +859,7 @@ else
 fi
 
 echo
-echo "=== 5. T3 — oracles ==================================================="
+section "4. T3 — oracles"
 t3_pass_before=$passes
 t3_skip_before=$skips
 pass "coverage oracle: rounded rect, 16x16 supersampled, in T0 (straight edge exact, corner <= 0.06)"
@@ -809,8 +868,8 @@ pass "coverage oracle: rounded rect, 16x16 supersampled, in T0 (straight edge ex
 # and merely unchanged for the thing that draws — the shape of the defect that let a squared
 # alpha live through all of P1. This recomputes prim/aaRotatedBox, prim/aaGraphics and
 # prim/aaNonUniformBox from geometry and judges the committed goldens.
-"$MSC" build tests/oracle/captureCheck.ms --output=out/coverageCapture.exe > out/gate-oracle.log 2>&1 || true
-if [ -x out/coverageCapture.exe ] && out/coverageCapture.exe > out/gate-oracle-run.log 2>&1; then
+if "$MSC" build tests/oracle/captureCheck.ms --output=out/coverageCapture.exe > out/gate-oracle.log 2>&1 \
+		&& out/coverageCapture.exe > out/gate-oracle-run.log 2>&1; then
 	pass "coverage oracle: the captures' AA is true area (prim/aaRotatedBox, prim/aaGraphics, prim/aaNonUniformBox)"
 	sed -n 's/^coverage oracle: /      /p' out/gate-oracle-run.log
 else
@@ -821,17 +880,17 @@ pass "coverage oracle: the erf shadow integral, in T0 and judged on the capture 
 # The SDF text shader is a third copy of the ramp (textSdf.ms is the T0 one). This recomputes
 # the coverage of text/sdfRotated, text/sdfZoom4 and text/sdfScaleDown from the glyph outline at
 # the exact device size and judges the committed captures against it.
-"$MSC" build tests/oracle/textSdfCheck.ms --output=out/textSdfCapture.exe > out/gate-oracle-sdf.log 2>&1 || true
-if [ -x out/textSdfCapture.exe ] && out/textSdfCapture.exe > out/gate-oracle-sdf-run.log 2>&1; then
+if "$MSC" build tests/oracle/textSdfCheck.ms --output=out/textSdfCapture.exe > out/gate-oracle-sdf.log 2>&1 \
+		&& out/textSdfCapture.exe > out/gate-oracle-sdf-run.log 2>&1; then
 	pass "text sdf oracle: the SDF captures read as true coverage (text/sdfRotated, sdfZoom4, sdfScaleDown)"
 	sed -n 's/^text sdf oracle: /      /p' out/gate-oracle-sdf-run.log
 else
 	fail "text sdf oracle: an SDF capture disagrees with true coverage — see out/gate-oracle-sdf-run.log"
 	sed -n 's/^/      /p' out/gate-oracle-sdf-run.log 2>/dev/null | head -4
 fi
-"$MSC" build$moduleDefines tests/oracle/textOutlineCheck.ms --output=out/textOutlineCapture.exe \
-	> out/gate-oracle-outline.log 2>&1 || true
-if [ -x out/textOutlineCapture.exe ] && out/textOutlineCapture.exe > out/gate-oracle-outline-run.log 2>&1; then
+if "$MSC" build$moduleDefines tests/oracle/textOutlineCheck.ms --output=out/textOutlineCapture.exe \
+		> out/gate-oracle-outline.log 2>&1 \
+		&& out/textOutlineCapture.exe > out/gate-oracle-outline-run.log 2>&1; then
 	pass "outline capture oracle: the SDF outline captures read as Pillow strokes (text/outlineSdf*)"
 	sed -n 's/^outline capture oracle: /      /p' out/gate-oracle-outline-run.log
 else
@@ -933,37 +992,38 @@ skip "printed GLSL 430 / ES 3.00: naga reads GL GLSL only after a Vulkan 450 rew
 t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"
 
 echo
-echo "=== 6. T4 — budget ===================================================="
-if [ "$QUICK" -eq 1 ] || [ ! -f out/benchUi.exe ]; then
-	"$MSC" build tests/bench/benchUi.ms --release --output=out/benchUi.exe > out/gate-bench.log 2>&1 || true
-	"$MSC" build tests/bench/benchSprites.ms --release --output=out/benchSprites.exe >> out/gate-bench.log 2>&1 || true
-	"$MSC" build tests/bench/benchText.ms --release --output=out/benchText.exe >> out/gate-bench.log 2>&1 || true
-	"$MSC" build tests/bench/benchEditor.ms --release --output=out/benchEditor.exe >> out/gate-bench.log 2>&1 || true
-	"$MSC" build tests/bench/benchScroll.ms --release --output=out/benchScroll.exe >> out/gate-bench.log 2>&1 || true
-	for scene in Ui Sprites Text Editor Scroll; do
-		"$MSC" build -d:voidProfiler "tests/bench/bench$scene.ms" --release \
-			--output="out/bench${scene}Profiler.exe" >> out/gate-bench-profiler.log 2>&1 || true
-	done
-
-	"$MSC" build -d:voidColourEmoji tests/bench/benchTextEmoji.ms --release --output=out/benchTextEmoji.exe >> out/gate-bench.log 2>&1 || true
-	"$MSC" build -d:voidProfiler -d:voidColourEmoji tests/bench/benchTextEmoji.ms --release \
-		--output=out/benchTextEmojiProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true
-	"$MSC" build -d:voidTextOutline tests/bench/benchTextOutline.ms --release --output=out/benchTextOutline.exe >> out/gate-bench.log 2>&1 || true
-	"$MSC" build -d:voidProfiler -d:voidTextOutline tests/bench/benchTextOutline.ms --release \
-		--output=out/benchTextOutlineProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true
-	"$MSC" build -d:voidSdfText tests/bench/benchTextSdf.ms --release --output=out/benchTextSdf.exe >> out/gate-bench.log 2>&1 || true
-	"$MSC" build -d:voidProfiler -d:voidSdfText tests/bench/benchTextSdf.ms --release \
-		--output=out/benchTextSdfProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true
+section "5. T4 — budget"
+bench_broken=""
+bench_build() {  # bench_build <log> <output> <msc build arguments...>
+	log=$1
+	output=$2
+	shift 2
+	"$MSC" build "$@" --release --output="$output" >> "$log" 2>&1 || bench_broken="$bench_broken $output"
+}
+: > out/gate-bench.log
+: > out/gate-bench-profiler.log
+for scene in Ui Sprites Text Editor Scroll; do
+	bench_build out/gate-bench.log "out/bench$scene.exe" "tests/bench/bench$scene.ms"
+	bench_build out/gate-bench-profiler.log "out/bench${scene}Profiler.exe" -d:voidProfiler "tests/bench/bench$scene.ms"
+done
+for module in ColourEmoji:Emoji TextOutline:Outline SdfText:Sdf; do
+	bench_build out/gate-bench.log "out/benchText${module#*:}.exe" "-d:void${module%%:*}" "tests/bench/benchText${module#*:}.ms"
+	bench_build out/gate-bench-profiler.log "out/benchText${module#*:}Profiler.exe" -d:voidProfiler \
+		"-d:void${module%%:*}" "tests/bench/benchText${module#*:}.ms"
+done
+if [ -n "$bench_broken" ]; then
+	fail "bench: these did not build, so the rows below may read a previous gate's binary:$bench_broken — see out/gate-bench.log and out/gate-bench-profiler.log"
 fi
-"$MSC" build tests/bench/check.ms --output=out/benchCheck.exe >> out/gate-bench.log 2>&1 || true
-if [ -x out/benchCheck.exe ] && out/benchCheck.exe > out/gate-bench-rows.log 2>&1; then
+bench_check=0
+"$MSC" build tests/bench/check.ms --output=out/benchCheck.exe >> out/gate-bench.log 2>&1 || bench_check=$?
+if [ "$bench_check" -eq 0 ] && out/benchCheck.exe > out/gate-bench-rows.log 2>&1; then
 	pass "bench counters match tests/bench/baseline.json"
 	grep -E '^(REPORT|WARN)' out/gate-bench-rows.log | sed 's/^/      /'
 else
-	fail "bench — see out/gate-bench-rows.log"
+	fail "bench — see out/gate-bench.log and out/gate-bench-rows.log"
 	grep -E '^FAIL' out/gate-bench-rows.log | sed 's/^/      /' || true
 fi
-if [ -x out/benchCheck.exe ] && BENCH_SUFFIX=Profiler out/benchCheck.exe > out/gate-bench-profiler-rows.log 2>&1; then
+if [ "$bench_check" -eq 0 ] && BENCH_SUFFIX=Profiler out/benchCheck.exe > out/gate-bench-profiler-rows.log 2>&1; then
 	pass "bench counters with -d:voidProfiler and the overlay hidden equal tests/bench/baseline.json"
 	grep -E '^REPORT [a-z]+\.profile' out/gate-bench-profiler-rows.log | sed 's/^/      /'
 else
@@ -1060,7 +1120,6 @@ else
 	fail "module off or wasm delta — see out/gate-wasm-delta.log"
 	grep -E '^FAIL' out/gate-wasm-delta.log | sed 's/^/      /' || true
 fi
-rm -f out/tmp/mainSokol2dOff.exe out/tmp/mainSokol2dColour.exe out/tmp/mainSokol2dOff.pdb out/tmp/mainSokol2dColour.pdb
 if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 \
 		&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
 	module_off_bytes=$(wc -c < out/tmp/mainSokol2dOff.exe)
@@ -1124,15 +1183,19 @@ conformance_rule() {
 }
 
 echo
-echo "=== 7. guardrail 9 — same pixels on every platform ===================="
+section "6. guardrail 9 — same pixels on every platform"
 echo "      One golden set, authored on D3D11, every backend compared against it."
 echo "      Conformance, per backend:"
 # Never a fixed number here: the gate may not report a result it did not produce.
 echo "      d3d11    $d3d11_conformance      (this box, every gate)"
 gl_conformance="not run"
+gl_ran=0
 if [ "$QUICK" -eq 1 ]; then
 	skip "GL core 4.3 desktop (glsl430): --quick skips the golden suites (sh scripts/golden.sh --backend gl)"
+elif [ "$golden_host" = metal ]; then
+	skip "GL core 4.3 desktop (glsl430): this host is $(uname -s), where the GL core capture does not compile; it runs on Windows (sh scripts/golden.sh --backend gl)"
 else
+	gl_ran=1
 	sh scripts/golden.sh --backend gl > out/gate-golden-gl.log 2>&1 || true
 	gl_conformance="$(tr -d '\r' < out/gate-golden-gl.log | grep -E '^golden gl430' || echo 'no conformance line — see out/gate-golden-gl.log')"
 	echo "      gl430    $gl_conformance      (this box, every full gate)"
@@ -1156,33 +1219,37 @@ else
 	else
 		conformance_rule metal out/gate-golden-metal.log conformance:metal-gpu-rounding
 	fi
-	ios_device="${VOID_IOS_DEVICE:-auto}"
-	rm -f out/golden-metal-ios-*.log
-	ios_status=0
-	bash scripts/iosDevice.sh golden "$ios_device" > out/gate-ios-golden.log 2>&1 || ios_status=$?
-	ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-golden.log | head -1)"
-	ios_log="out/golden-metal-ios-$ios_model.log"
-	if [ -n "$ios_model" ] && grep -q '^golden metal' "$ios_log" 2> /dev/null; then
-		echo "      metal    iOS $ios_model: $(grep -E '^golden metal' "$ios_log")      (attached device, every full gate)"
-		conformance_rule "metal iOS $ios_model" "$ios_log" conformance:metal-gpu-rounding
+	if [ "$IOS" -eq 0 ]; then
+		skip "metal iOS golden and view samples: pass --ios with an unlocked, paired device attached (bash scripts/iosDevice.sh golden auto)"
 	else
-		fail "metal iOS golden did not run to a verdict: $(grep '^iosDevice:' out/gate-ios-golden.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-golden.log"
-		grep -E '^FAIL scene' out/gate-ios-golden.log | sed 's/^/      /' || true
-	fi
-	ios_status=0
-	bash scripts/iosDevice.sh samples "$ios_device" > out/gate-ios-samples.log 2>&1 || ios_status=$?
-	ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-samples.log | head -1)"
-	if [ -z "$ios_model" ] || ! grep -q '^[1248]: ' out/gate-ios-samples.log; then
-		fail "metal iOS view samples did not run: $(grep '^iosDevice:' out/gate-ios-samples.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-samples.log"
-	else
-		for samples in 1 2 4 8; do
-			ios_line="$(grep "^$samples: " out/gate-ios-samples.log || true)"
-			case "$ios_line" in
-				*"PASS view samples"*) pass "iOS $ios_model: ${ios_line#*: }" ;;
-				"8: "*"sampleCount '8' is not supported"*) pass "iOS $ios_model: a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)" ;;
-				*) fail "iOS $ios_model: a host view at $samples samples: ${ios_line:-no result} — see out/gate-ios-samples.log" ;;
-			esac
-		done
+		ios_device="${VOID_IOS_DEVICE:-auto}"
+		rm -f out/golden-metal-ios-*.log
+		ios_status=0
+		bash scripts/iosDevice.sh golden "$ios_device" > out/gate-ios-golden.log 2>&1 || ios_status=$?
+		ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-golden.log | head -1)"
+		ios_log="out/golden-metal-ios-$ios_model.log"
+		if [ -n "$ios_model" ] && grep -q '^golden metal' "$ios_log" 2> /dev/null; then
+			echo "      metal    iOS $ios_model: $(grep -E '^golden metal' "$ios_log")      (attached device, every full gate)"
+			conformance_rule "metal iOS $ios_model" "$ios_log" conformance:metal-gpu-rounding
+		else
+			fail "metal iOS golden did not run to a verdict: $(grep '^iosDevice:' out/gate-ios-golden.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-golden.log"
+			grep -E '^FAIL scene' out/gate-ios-golden.log | sed 's/^/      /' || true
+		fi
+		ios_status=0
+		bash scripts/iosDevice.sh samples "$ios_device" > out/gate-ios-samples.log 2>&1 || ios_status=$?
+		ios_model="$(sed -n 's/^iosDevice: \(.*\) (.*), profile .*/\1/p' out/gate-ios-samples.log | head -1)"
+		if [ -z "$ios_model" ] || ! grep -q '^[1248]: ' out/gate-ios-samples.log; then
+			fail "metal iOS view samples did not run: $(grep '^iosDevice:' out/gate-ios-samples.log | tail -1 | cut -c1-300) (exit $ios_status) — see out/gate-ios-samples.log"
+		else
+			for samples in 1 2 4 8; do
+				ios_line="$(grep "^$samples: " out/gate-ios-samples.log || true)"
+				case "$ios_line" in
+					*"PASS view samples"*) pass "iOS $ios_model: ${ios_line#*: }" ;;
+					"8: "*"sampleCount '8' is not supported"*) pass "iOS $ios_model: a host view at $samples samples stops by name: this GPU does not render them (Apple GPUs stop at 4)" ;;
+					*) fail "iOS $ios_model: a host view at $samples samples: ${ios_line:-no result} — see out/gate-ios-samples.log" ;;
+				esac
+			done
+		fi
 	fi
 fi
 skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
@@ -1242,9 +1309,9 @@ else
 fi
 
 echo
-echo "=== 8. the record against the code ===================================="
-"$MSC" build tests/record/check.ms --output=out/recordCheck.exe > out/gate-record.log 2>&1 || true
-if [ -x out/recordCheck.exe ] && out/recordCheck.exe >> out/gate-record.log 2>&1; then
+section "7. the record against the code"
+if "$MSC" build tests/record/check.ms --output=out/recordCheck.exe > out/gate-record.log 2>&1 \
+		&& out/recordCheck.exe >> out/gate-record.log 2>&1; then
 	pass "$(grep -E '^record:' out/gate-record.log)"
 else
 	fail "the record disagrees with the code — see out/gate-record.log"
@@ -1267,7 +1334,9 @@ else
 fi
 # The conformance rows of docs/TESTING.md against the logs this run wrote; a skipped suite has
 # no log from this run, so its row is not judged.
-if [ "$QUICK" -eq 0 ]; then
+if [ "$QUICK" -eq 0 ] && [ "$golden_host" = metal ]; then
+	skip "docs/TESTING.md's D3D11 row: this host is $(uname -s), which ran no D3D11 golden to judge it by"
+elif [ "$QUICK" -eq 0 ]; then
 	d3d11=$(tr -d '\r' < out/gate-golden.log | sed -nE 's/^golden d3d11: ([0-9]+) pass, [0-9]+ pending, [0-9]+ fail of ([0-9]+)$/\1 \2/p')
 	claim="| D3D11 | **${d3d11% *} / ${d3d11#* } scenes byte-identical**"
 	if [ -n "$d3d11" ] && grep -qF "$claim" docs/TESTING.md; then
@@ -1276,7 +1345,7 @@ if [ "$QUICK" -eq 0 ]; then
 		fail "docs/TESTING.md's D3D11 row does not match this run's '$(grep -E '^golden d3d11' out/gate-golden.log)'"
 	fi
 fi
-if [ "$QUICK" -eq 0 ] && grep -q '^golden gl430' out/gate-golden-gl.log; then
+if [ "$gl_ran" -eq 1 ] && grep -q '^golden gl430' out/gate-golden-gl.log; then
 	claim=$(tr -d '\r' < out/gate-golden-gl.log | awk '
 		/^golden gl430: [0-9]+ pass, [0-9]+ pending, [0-9]+ fail of [0-9]+( \([0-9]+ excluded\))?$/ {
 			p = $3; q = $5; f = $7; n = $10; e = 0
@@ -1306,7 +1375,7 @@ if [ "$WEB" -eq 1 ] && grep -q '^golden webgl2' out/gate-golden-web.log; then
 	fi
 fi
 
-echo "=== 9. summary ========================================================"
+section "8. summary"
 # Shape, not an allowlist of id prefixes: an allowlist silently undercounts the moment
 # someone adds a row with a new prefix, and a count that is off by one is worse than none.
 pending=$(grep -cE '^\| [A-Za-z][A-Za-z0-9:/._-]* \| T[0-5] \|' tests/PENDING.md || true)

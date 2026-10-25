@@ -163,7 +163,7 @@ golden)
 		--destination "out/golden/metal-$name" > out/ios/copy.log 2>&1
 	# The comparator reads out/golden/<VOID_CONFORM>; it judges the device set as metal for
 	# the @metal budgets, so the Mac's own set steps aside for the run.
-	MSC_NO_GLOBAL_CACHE=1 msc build tests/golden/compare.ms --output=out/goldenCompare.exe > /dev/null
+	msc build tests/golden/compare.ms --output=out/goldenCompare.exe > /dev/null
 	[ ! -e out/golden/metal ] || mv out/golden/metal out/golden/metal-host
 	ln -s "metal-$name" out/golden/metal
 	status=0

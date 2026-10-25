@@ -52,6 +52,44 @@
 // expect move.foreignBefore.insertBefore: void3d: insertBefore on node 0 of another scene
 // expect move.staleBefore.insertBefore: void3d: insertBefore on stale node 4
 // expect move.wrongBefore.insertBefore: void3d: insertBefore before node has another parent
+// expect closedFrames.bindMeshFrames: void3d: bindMeshFrames on mesh frames that were closed
+// expect closedFrames.syncMeshFrame: void3d: syncMeshFrame on mesh frames that were closed
+// expect closedScene.bindMeshFrames: void3d: bindMeshFrames on a scene that was closed
+// expect closedScene.bindTracks: void3d: bindTracks on a scene that was closed
+// expect closedScene.syncPose: void3d: syncPose on a scene that was closed
+// expect otherScene.bindTracks: void3d: bindTracks on node 0 of another scene
+// expect otherScene.syncPose: void3d: syncPose on node 1 of another scene
+// expect otherScene.bindMeshFrames: void3d: bindMeshFrames on node 0 of another scene
+// expect otherScene.syncMeshFrame: void3d: syncMeshFrame on node 1 of another scene
+// expect pin.syncMeshFrame: void3d: setMeshOf found a node's pin taken through the context
+// expect closedScene.addGltfNodes: void3d: addGltfNodes on a scene that was closed
+// expect closedContext.addGltfNodes: void3d: addGltfNodes on a draw context that was closed
+// expect lightColor.closed: void3d: setLightColor on a scene that was closed
+// expect lightColor.stale: void3d: setLightColor on stale node 1
+// expect lightColor.group: void3d: setLightColor asked of a Group node 0; only a Light node has it
+// expect lightColor.foreign: void3d: setLightColor on node 0 of another scene
+// expect stale.addGroup: void3d: addGroup on stale node 1
+// expect stale.addGltfNodes: void3d: addGltfNodes on stale node 1: the handle has generation 1, the row 2
+// expect stale.addLightNode: void3d: addLightNode on stale node 1: the handle has generation 1, the row 2
+// expect stale.addMeshNode: void3d: addMeshNode on stale node 1: the handle has generation 1, the row 2
+// expect stale.removeChildren: void3d: removeChildren on stale node 1: the handle has generation 1, the row 2
+// expect stale.remove: void3d: remove on stale node 1: the handle has generation 1, the row 2
+// expect stale.setLightPower: void3d: setLightPower on stale node 1: the handle has generation 1, the row 2
+// expect stale.setMeshOf: void3d: setMeshOf on stale node 1: the handle has generation 1, the row 2
+// expect stale.setName: void3d: setName on stale node 1: the handle has generation 1, the row 2
+// expect stale.setPickable: void3d: setPickable on stale node 1: the handle has generation 1, the row 2
+// expect stale.setVisible: void3d: setVisible on stale node 1: the handle has generation 1, the row 2
+// expect stale.setLocal: void3d: setLocal on stale node 1: the handle has generation 1, the row 2
+// expect group.setLightPower: void3d: setLightPower asked of a Group node 1; only a Light node has it
+// expect group.setMeshOf: void3d: setMeshOf asked of a Group node 1; only a Mesh node has it
+// expect foreign.remove: void3d: remove on node 1 of another scene
+// expect root.remove: void3d: remove asked of the scene root; removeChildren empties it
+// expect unset.setLocal: void3d: setLocal on node id -1, which names no node of this scene
+// expect contextClosed.sceneCreate: void3d: Scene3D.create on a draw context that was closed
+// expect closedTwice.closeGltfAssets: void3d: closeGltfAssets on glTF assets that were closed
+// expect closedTwice.closeMeshFrames: void3d: closeMeshFrames on mesh frames that were closed
+// expect otherContext.bindMeshFrames: void3d: bindMeshFrames pairs mesh frames with a scene of another context
+// expect closedScene.syncMeshFrame: void3d: syncMeshFrame on a scene that was closed
 import { argv } from "std/process";
 import { vec3 } from "../../../src/math/math3d";
 import { RenderState } from "../../../src/gpu/state";
@@ -84,6 +122,7 @@ import {
 	LightInstance,
 	LightKind,
 	Transform3D,
+	NO_NODE_ID,
 	addGroup,
 	addMeshNode,
 	addLightNode,
@@ -100,6 +139,7 @@ import {
 	setPickable,
 	setMeshOf,
 	setLightPower,
+	setLightColor,
 	setName,
 	setAmbient,
 	syncWorld,
@@ -111,6 +151,31 @@ import {
 import { Ray } from "../../../src/void3d/ray";
 import { PickHit, PickError, pickNearest } from "../../../src/void3d/pick";
 import { Camera3D, CameraError, ProjectionKind } from "../../../src/void3d/camera";
+import {
+	AnimationClock,
+	AnimationError,
+	Interpolation,
+	ObjectAnimation,
+	MeshFrameAnimation,
+	addTrack,
+	bindTracks,
+	syncPose,
+	bindMeshFrames,
+	syncMeshFrame,
+	closeMeshFrames,
+} from "../../../src/void3d/animation";
+import { GltfData, GltfError, loadGltf } from "../../../src/void3d/gltf";
+import {
+	GltfAssets,
+	GltfMeshBinding,
+	GltfSceneError,
+	addGltfNodes,
+	closeGltfAssets,
+} from "../../../src/void3d/gltfScene";
+
+const DOCUMENT: string = "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+	+ "\"nodes\":[{\"name\":\"only\"}],\"meshes\":[],\"accessors\":[],"
+	+ "\"bufferViews\":[],\"buffers\":[]}";
 
 function cameraRequest(): Camera3D {
 	return {
@@ -332,11 +397,272 @@ function moveMisuse(name: string): boolean {
 	return true;
 }
 
+
+function clockOf(frames: int32): AnimationClock {
+	const made: Result<AnimationClock, AnimationError> =
+		AnimationClock.forFrames(frames, 12.0, Interpolation.Step);
+	if (!made.ok) { unreachable; }
+	return made.value;
+}
+
+function framesOf(context: DrawContext): MeshFrameAnimation {
+	let meshes: Vec<MeshId> = [meshOf(context), meshOf(context)];
+	const made: Result<MeshFrameAnimation, AnimationError> =
+		MeshFrameAnimation.forMeshes(context, clockOf(2), "frames", meshes);
+	if (!made.ok) { unreachable; }
+	return made.value;
+}
+
+function tracksOf(): ObjectAnimation {
+	let animation: ObjectAnimation = ObjectAnimation.forClock(clockOf(2));
+	let keys: Vec<Transform3D> = [Transform3D.identity(), Transform3D.identity()];
+	const added: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
+	if (!added.ok) { unreachable; }
+	return animation;
+}
+
+function namedMeshNode(scene: Scene3D, name: string): NodeId3D {
+	const context: DrawContext = scene.context;
+	const added: Result<NodeId3D, SceneError> = addMeshNode(
+		scene, scene.rootId(), Transform3D.identity(), meshOf(context), materialOf(context),
+	);
+	if (!added.ok) { unreachable; }
+	setName(scene, added.value, name);
+	return added.value;
+}
+
+function animationClosedCase(name: string): boolean {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let scene: Scene3D = Scene3D.create(context);
+	let frames: MeshFrameAnimation = framesOf(context);
+	let tracks: ObjectAnimation = tracksOf();
+	if (name == "closedFrames.bindMeshFrames") {
+		closeMeshFrames(frames);
+		const _r: Result<int32, AnimationError> = bindMeshFrames(frames, scene, scene.rootId());
+	} else if (name == "closedFrames.syncMeshFrame") {
+		closeMeshFrames(frames);
+		const _r: Result<int32, AnimationError> = syncMeshFrame(frames, scene);
+	} else if (name == "closedScene.bindMeshFrames") {
+		closeScene(scene);
+		const _r: Result<int32, AnimationError> = bindMeshFrames(frames, scene, scene.rootId());
+	} else if (name == "closedScene.bindTracks") {
+		closeScene(scene);
+		const _r: Result<int32, AnimationError> = bindTracks(tracks, scene, scene.rootId());
+	} else if (name == "closedScene.syncPose") {
+		const arm: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+		setName(scene, arm, "arm");
+		const _bound: Result<int32, AnimationError> = bindTracks(tracks, scene, scene.rootId());
+		closeScene(scene);
+		const _r: Result<int32, AnimationError> = syncPose(tracks, scene);
+	} else {
+		return false;
+	}
+	return true;
+}
+
+function otherSceneCase(name: string): boolean {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let first: Scene3D = Scene3D.create(context);
+	let second: Scene3D = Scene3D.create(context);
+	let frames: MeshFrameAnimation = framesOf(context);
+	let tracks: ObjectAnimation = tracksOf();
+	if (name == "otherScene.bindTracks") {
+		const _r: Result<int32, AnimationError> = bindTracks(tracks, first, second.rootId());
+	} else if (name == "otherScene.syncPose") {
+		const arm: NodeId3D = addGroup(first, first.rootId(), Transform3D.identity());
+		setName(first, arm, "arm");
+		const _bound: Result<int32, AnimationError> = bindTracks(tracks, first, first.rootId());
+		const _r: Result<int32, AnimationError> = syncPose(tracks, second);
+	} else if (name == "otherScene.bindMeshFrames") {
+		const _r: Result<int32, AnimationError> = bindMeshFrames(frames, first, second.rootId());
+	} else if (name == "otherScene.syncMeshFrame") {
+		const _node: NodeId3D = namedMeshNode(first, "frames");
+		const _bound: Result<int32, AnimationError> = bindMeshFrames(frames, first, first.rootId());
+		const _r: Result<int32, AnimationError> = syncMeshFrame(frames, second);
+	} else {
+		return false;
+	}
+	return true;
+}
+
+function animationPinCase(name: string): boolean {
+	if (name != "pin.syncMeshFrame") { return false; }
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let scene: Scene3D = Scene3D.create(context);
+	let frames: MeshFrameAnimation = framesOf(context);
+	const node: NodeId3D = namedMeshNode(scene, "frames");
+	const _bound: Result<int32, AnimationError> = bindMeshFrames(frames, scene, scene.rootId());
+	const shown: MeshId = scene.meshes[scene.nodes[node.index].payload].mesh;
+	const _taken: Result<int32, HandleError> = unpinMesh(context, shown);
+	const _r: Result<int32, AnimationError> = syncMeshFrame(frames, scene);
+	return true;
+}
+
+function document(): GltfData {
+	let bytes: Vec<uint8> = [];
+	const loaded: Result<GltfData, GltfError> = loadGltf(DOCUMENT, bytes);
+	if (!loaded.ok) { unreachable; }
+	return loaded.value;
+}
+
+function gltfCase(name: string): boolean {
+	if (name != "closedScene.addGltfNodes" && name != "closedContext.addGltfNodes") {
+		return false;
+	}
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let scene: Scene3D = Scene3D.create(context);
+	const root: NodeId3D = scene.rootId();
+	let bindings: Vec<GltfMeshBinding> = [];
+	if (name == "closedScene.addGltfNodes") {
+		closeScene(scene);
+	} else {
+		closeContext(context);
+	}
+	const _r: Result<int32, GltfSceneError> = addGltfNodes(scene, root, document(), bindings);
+	return true;
+}
+
+function lightColorCase(name: string): boolean {
+	if (!name.startsWith("lightColor.")) { return false; }
+	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
+	let id = addLightNode(scene, scene.rootId(), Transform3D.identity(), {
+		kind: LightKind.Point, color: vec3(1, 1, 1), radius: 9, power: 2, priority: 0,
+	});
+	if (name == "lightColor.closed") {
+		closeScene(scene);
+	} else if (name == "lightColor.stale") {
+		const _removed: int32 = remove(scene, id);
+	} else if (name == "lightColor.group") {
+		id = scene.rootId();
+	} else if (name == "lightColor.foreign") {
+		const other = Scene3D.create(scene.context);
+		id = other.rootId();
+	} else {
+		return false;
+	}
+	setLightColor(scene, id, vec3(0.5, 0.25, 1));
+	return true;
+}
+
+function staleCase(name: string): boolean {
+	if (!name.startsWith("stale.")) { return false; }
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let scene: Scene3D = Scene3D.create(context);
+	const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const _removed: int32 = remove(scene, gone);
+	const unbound: MeshId = { store: 0, index: 0, generation: 1 };
+	const noMaterial: MaterialId = { store: 0, index: 0, generation: 1 };
+	if (name == "stale.addGroup") {
+		const _r: NodeId3D = addGroup(scene, gone, Transform3D.identity());
+	} else if (name == "stale.addGltfNodes") {
+		let bindings: Vec<GltfMeshBinding> = [];
+		const _r: Result<int32, GltfSceneError> = addGltfNodes(scene, gone, document(), bindings);
+	} else if (name == "stale.addLightNode") {
+		const _r: NodeId3D = addLightNode(scene, gone, Transform3D.identity(), {
+			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0),
+			radius: 1.0, power: 1.0, priority: 0,
+		});
+	} else if (name == "stale.addMeshNode") {
+		const _r: Result<NodeId3D, SceneError> =
+			addMeshNode(scene, gone, Transform3D.identity(), unbound, noMaterial);
+	} else if (name == "stale.removeChildren") {
+		const _r: int32 = removeChildren(scene, gone);
+	} else if (name == "stale.remove") {
+		const _r: int32 = remove(scene, gone);
+	} else if (name == "stale.setLightPower") {
+		setLightPower(scene, gone, 1.0);
+	} else if (name == "stale.setMeshOf") {
+		const _r: Result<int32, SceneError> = setMeshOf(scene, gone, unbound);
+	} else if (name == "stale.setName") {
+		setName(scene, gone, "x");
+	} else if (name == "stale.setPickable") {
+		setPickable(scene, gone, true);
+	} else if (name == "stale.setVisible") {
+		setVisible(scene, gone, false);
+	} else if (name == "stale.setLocal") {
+		setLocal(scene, gone, Transform3D.identity());
+	} else {
+		return false;
+	}
+	return true;
+}
+
+function nodeMisuse(name: string): boolean {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let scene: Scene3D = Scene3D.create(context);
+	if (name == "group.setLightPower") {
+		const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+		setLightPower(scene, group, 1.0);
+	} else if (name == "group.setMeshOf") {
+		const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+		const _r: Result<int32, SceneError> =
+			setMeshOf(scene, group, { store: 0, index: 0, generation: 1 });
+	} else if (name == "foreign.remove") {
+		let second: Scene3D = Scene3D.create(context);
+		const theirs: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+		const _ours: NodeId3D = addGroup(second, second.rootId(), Transform3D.identity());
+		const _r: int32 = remove(second, theirs);
+	} else if (name == "root.remove") {
+		const _r: int32 = remove(scene, scene.rootId());
+	} else if (name == "unset.setLocal") {
+		setLocal(scene, NO_NODE_ID, Transform3D.identity());
+	} else if (name == "contextClosed.sceneCreate") {
+		let alias: DrawContext = context;
+		closeContext(context);
+		const _scene: Scene3D = Scene3D.create(alias);
+	} else if (name == "closedTwice.closeGltfAssets") {
+		let assets: GltfAssets = {
+			context: context,
+			bindings: [],
+			meshes: [],
+			materials: [],
+			textures: [],
+			closed: false,
+		};
+		let alias: GltfAssets = assets;
+		closeGltfAssets(assets);
+		closeGltfAssets(alias);
+	} else {
+		return false;
+	}
+	return true;
+}
+
+function animationMisuse(name: string): boolean {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	if (name == "closedTwice.closeMeshFrames") {
+		let animation: MeshFrameAnimation = framesOf(context);
+		let alias: MeshFrameAnimation = animation;
+		closeMeshFrames(animation);
+		closeMeshFrames(alias);
+	} else if (name == "otherContext.bindMeshFrames") {
+		let other: DrawContext = DrawContext.withUniformCapacity(0);
+		let scene: Scene3D = Scene3D.create(other);
+		const _r: Result<int32, AnimationError> =
+			bindMeshFrames(framesOf(context), scene, scene.rootId());
+	} else if (name == "closedScene.syncMeshFrame") {
+		let scene: Scene3D = Scene3D.create(context);
+		const frames: MeshFrameAnimation = framesOf(context);
+		closeScene(scene);
+		const _r: Result<int32, AnimationError> = syncMeshFrame(frames, scene);
+	} else {
+		return false;
+	}
+	return true;
+}
+
 function run(name: string): void {
 	const known: boolean =
 		moveMisuse(name) || cameraMisuse(name) || closedCase(name) ||
-		contextClosedCase(name) || pinTakenCase(name);
-	console.log(known ? `${name} returned` : `no case named '${name}'`);
+		contextClosedCase(name) || pinTakenCase(name) || animationClosedCase(name) ||
+		otherSceneCase(name) || animationPinCase(name) || gltfCase(name) ||
+		lightColorCase(name) || staleCase(name) || nodeMisuse(name) ||
+		animationMisuse(name);
+	if (!known) {
+		console.log(`no case named '${name}'`);
+		process.exit(2);
+	}
+	console.log(`${name} returned`);
 }
 
 run((argv.length as int32) > 1 ? argv[1] : "");
