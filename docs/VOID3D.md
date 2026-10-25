@@ -5981,6 +5981,32 @@ depth), `cascadeShadowCheck.ms` (the cascade pick, the blend, the layer fetch in
 `spotShadowCheck.ms` (a packed two-cascade block read back by `dirShadowAt`). Not run yet: the
 regenerated shaders and the goldens on the GPU.
 
+### Point-light shadows, as built so far (2026-10-25)
+
+One point light per frame casts, as one spot does. The shape follows Heaps'
+`h3d.pass.PointShadowMap` (`CubeShadowMap.hx` draw): six faces, each drawn by a square 90-degree
+camera from the light's position (`Camera.setCubeMap`'s forward and up per face, +Y looking with
+up -Z and -Y with up +Z), near `PointLight.zNear` 0.02 and far the light's range
+(`pointShadow.ms` `pointShadowViews`). The receiver picks the face by the largest axis of the
+light-to-receiver vector, which is the face a cube lookup selects (Heaps samples its cube map,
+Bevy's `fetch_point_shadow` its cube array), then projects through that face's matrix and
+compares the stored depth (`shader3d.ms` `pointShadowAt`).
+
+- The faces are six layers of the door's `ArrayTarget`, the idiom cascades and the spot already
+  use, not a depth cube. Drawing and lookup share the same six matrices, so the cube-face
+  orientation rules of each backend never enter; a cube would add a second target kind and a
+  per-backend face table for the same result.
+- The block (`gpu3d.ms` `SHADOW_POINT_*`) carries the six map matrices, bias, opacity and size,
+  and the light's position; it follows the spot's part, and `carryShadows` copies it into the
+  block of the first attached map. The map binds at view 12 and reads with the spot's sampler.
+- A point record's shape slot carries the casts flag as the spot's does; `collectLights` refuses a
+  second casting point (`TooManyShadowedPoints`), and the frame refuses a casting point with no
+  range past zNear (`BadShadowPoint`) or no attached map (`PointShadowUnattached`).
+
+Pinned by `pointShadowCheck.ms` (the six faces, the refusals, a packed block read back by
+`pointShadowAt` per face, the record flag, the carried block). Not run yet: the regenerated
+shaders and a golden on the GPU.
+
 ### Clustered lights: how the clusters reach the shader (decided 2026-10-24, wired on the CPU)
 
 The light assignment is Bevy's CPU clustering (`bevy_light/src/cluster/assign.rs`, the
