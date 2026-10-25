@@ -3761,6 +3761,23 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### Scene3D picks the LOD level itself (2026-10-26)
+
+`addLodMeshNode` takes a `MeshLod`, its `MeshLodRanges` and the material slot, and the node's
+item carries a `MeshLodPick` (`DrawItem.lod`). `beginFrame` picks every such item before it
+writes anything, from the camera block it is given: the eye and, in the block's otherwise unused
+w slots, projection `_11`, `_22` and the near plane (`CAMERA_PROJECTION_X/Y`, `CAMERA_NEAR`).
+A culled pick leaves the pass lists through `filterFrustum`, and the shadow casters run the same
+filter on the same items, so a shadow follows the main camera's level as Heaps' `emit` does
+(`Mesh.hx` 86-166 calls `getLodIndex` once, with the main camera). `setForcedLod` is Heaps'
+`forcedLod`; a level at or past the count hides the mesh. The radius is the mesh data's
+`boundingRadius`, Heaps' `getBoundingRadius`; a mirrored world is refused
+(`RendererError.MeshLod`), as the caller-owned path already refused it.
+
+Not offered: `inheritLod` (no consumer), a pick per instance row of an `InstanceRun`, and LOD
+on skinned or morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`; the GPU golden of
+the automatic path waits for its native slot, so no pixel claim yet.
+
 ### glTF output/topology/mode stack land acceptance
 
 On 2026-10-21, shared `wt.sh land void3d-m5` exited 0 and fast-forwarded Main from
