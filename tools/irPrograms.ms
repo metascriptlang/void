@@ -350,6 +350,16 @@ class Dxbc {
 	missed: int32 = 0;
 }
 
+function blobReference(constants: Map<string, string>, prefix: string, key: string,
+	path: string): string {
+	if (!constants.has(key)) {
+		const blob = readFile(path);
+		if (!blob.ok) { fail("cannot read " + path); }
+		constants.set(key, blob.value.toBase64());
+	}
+	return "shaderBytecodeFromBase64(" + prefix + key + ")";
+}
+
 function bytecodeOf(
 	dxbc: Dxbc,
 	constants: Map<string, string>,
@@ -369,12 +379,7 @@ function bytecodeOf(
 	if (stage.compiled) { dxbc.compiled++; }
 	const path = stage.path;
 	if (!dxbc.used.includes(key)) { dxbc.used.push(key); }
-	if (!constants.has(key)) {
-		const blob = readFile(path);
-		if (!blob.ok) { fail("cannot read " + path); }
-		constants.set(key, blob.value.toBase64());
-	}
-	return "shaderBytecodeFromBase64(DXBC_" + key + ")";
+	return blobReference(constants, "DXBC_", key, path);
 }
 
 // What each Metal language compiles with: the SDK, MSL 2.4 and the OS it starts on (iOS 15.0 as in
@@ -448,12 +453,7 @@ function metallibOf(
 		}
 	}
 	if (!m.used.includes(key)) { m.used.push(key); }
-	if (!constants.has(key)) {
-		const blob = readFile(path);
-		if (!blob.ok) { fail("cannot read " + path); }
-		constants.set(key, blob.value.toBase64());
-	}
-	return "shaderBytecodeFromBase64(METALLIB_" + key + ")";
+	return blobReference(constants, "METALLIB_", key, path);
 }
 
 function hlslProfile(stage: string): string {
