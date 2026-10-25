@@ -1,12 +1,13 @@
 #!/bin/sh
-# The void3d gate: everything a void3d commit has to survive, in one command.
+# The void3d gate: what a void3d commit has to survive beyond scripts/gate.sh, which every land
+# runs too and which alone runs the test index, the shader freshness check, the mixed frame and
+# the target owner.
 #
 #     sh scripts/gate3d.sh
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
 #   prepare   regenerate out/tmp/campfireScene.ms and the capture entries
-#   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
 #   android   build the arm64 .so
@@ -141,15 +142,13 @@ write_entry() {
 }
 
 # Everything else the stages read from out/tmp: the readback harness (tracked in tests/capture3d),
-# the test entry and the arm64 entry, whose imports are relative to out/tmp.
+# and the arm64 entry, whose imports are relative to out/tmp.
 prepare_harness() {
 	mkdir -p "$TMP/android"
 	for file in capture3d.c capture3d.h; do
 		cp "tests/capture3d/$file" "$WORK/$file.new"
 		replace_if_changed "$WORK/$file.new" "$CAPTURE/$file"
 	done
-	echo 'import "../../src/test/index";' > "$WORK/test2d.new"
-	replace_if_changed "$WORK/test2d.new" "$TMP/test2d.ms"
 	sed -e 's|from "./campfireScene"|from "../campfireScene"|' \
 		-e 's|@include("../sokol/|@include("../../../src/sokol/|' \
 		src/examples/androidCampfireEntry.ms > "$WORK/androidEntry.new"
@@ -343,7 +342,7 @@ run_entries() {
 	for entry in src/examples/*.ms; do
 		grep -qE '^(export )?function main\(' "$entry" || continue
 		case "$(basename "$entry")" in
-			ios*|android*) continue ;;
+			ios*|android*|mainSokol2d.ms) continue ;;
 		esac
 		msc build "$entry" > "$WORK/entry-build.log" 2>&1 || broken="$broken $(basename "$entry")"
 	done
@@ -352,26 +351,7 @@ run_entries() {
 		tail -4 "$WORK/entry-build.log" | sed 's/^/         /'
 		return
 	fi
-	pass "entries: $checked entry points declare main() and call it; the host ones build"
-}
-
-# ---- shaders ------------------------------------------------------------------------------
-#
-# REVIEWS-3D M6 defect 12: nothing checked that a generated shader module was regenerated from
-# its source. The regeneration and the comparison are scripts/regen-shaders.sh --check, so the
-# gate cannot drift from the script.
-run_shaders() {
-	if ! bash scripts/regen-shaders.sh --check > "$WORK/shaders.log" 2>&1 && ! grep -q "^stale " "$WORK/shaders.log"; then
-		fail "shaders: scripts/regen-shaders.sh --check failed"
-		cat "$WORK/shaders.log"
-		return
-	fi
-	while read -r state header; do
-		case "$state" in
-			fresh) pass "shaders: $header is a fresh regeneration of the shader IR" ;;
-			stale) fail "shaders: $header is stale — run scripts/regen-shaders.sh and commit it" ;;
-		esac
-	done < "$WORK/shaders.log"
+	pass "entries: $checked entry points declare main() and call it; the host ones build (mainSokol2d in scripts/gate.sh)"
 }
 
 # The bench entry: warm up, measure, print machine-readable rows, quit. It reuses the capture
@@ -1503,30 +1483,6 @@ run_pending() {
 	pass "pending: $count rows in $PENDING, every sentinel present and every sentinel listed"
 }
 
-# ---- tests --------------------------------------------------------------------------------
-
-run_tests() {
-	if [ ! -f "$TMP/test2d.ms" ]; then
-		skip "tests: $TMP/test2d.ms is missing (one line: import \"../../src/test/index\")"
-		return
-	fi
-	if msc test "$TMP/test2d.ms" > "$WORK/tests.log" 2>&1; then
-		summary=$(grep -E '^ *Tests ' "$WORK/tests.log" | tail -1 | tr -s ' ')
-		if [ -z "$summary" ]; then
-			fail "tests: no summary line; msc test exits 0 when the test binary crashes"
-			grep -nE 'terminated|Assertion|×' "$WORK/tests.log" | head -10
-		elif grep -qE 'failed' "$WORK/tests.log"; then
-			fail "tests:$summary"
-			grep -nE 'failed|FAIL' "$WORK/tests.log" | head -20
-		else
-			pass "tests:$summary"
-		fi
-	else
-		fail "tests: msc test exited nonzero"
-		tail -30 "$WORK/tests.log"
-	fi
-}
-
 run_gltf_cpu() {
 	printf '%s\n' \
 		'import { loadGltf, loadGlb } from "../../../src/void3d/gltf";' \
@@ -2012,80 +1968,6 @@ run_captures() {
 	run_capture campfireAnchorCapture      m16anchor      "forward preset, the flame anchored at its bottom left"
 	run_anchor_moves_flame
 	run_hud_over_campfire
-}
-
-# A 3D preset and void2d in one screen pass and one commit (tests/integration/mixedFrame.ms, also
-# in void2d's gate); the same run with the 3D drawn over void2d, which must fail; and runs preparing
-# twice and drawing after a commit, which must stop and say so. It exits 3 with no readback.
-run_compose() {
-	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "compose: GATE_SKIP_CAPTURE=1 — the mixed frame was not run"
-		return
-	fi
-	rm -f out/tmp/mixedFrame.exe
-	if ! msc build tests/integration/mixedFrame.ms --release --output=out/tmp/mixedFrame.exe \
-		> "$WORK/compose.build.log" 2>&1; then
-		fail "compose: tests/integration/mixedFrame.ms does not build"
-		tail -30 "$WORK/compose.build.log"
-		return
-	fi
-	status=0
-	out/tmp/mixedFrame.exe > "$WORK/compose.run.log" 2> "$WORK/compose.run.err" || status=$?
-	if [ "$status" -eq 3 ]; then
-		skip "compose: $(grep -E '^SKIP' "$WORK/compose.run.log" | head -1)"
-		return
-	fi
-	summary=$(grep -E '^mixed frame:' "$WORK/compose.run.log" | sed 's/^mixed frame: //')
-	if [ "$status" -ne 0 ] || [ -z "$summary" ]; then
-		fail "compose: the mixed frame failed (exit $status) — see $WORK/compose.run.log and .err"
-		grep -E '^FAIL' "$WORK/compose.run.log" | sed 's/^/      /'
-		return
-	fi
-	pass "compose: $summary"
-	status=0
-	VOID_MIXED_3D_OVER_2D=1 out/tmp/mixedFrame.exe > "$WORK/compose.swapped.log" \
-		2> "$WORK/compose.swapped.err" || status=$?
-	if [ "$status" -ne 0 ] && grep -q '^FAIL mixed frame: .* inside the quad' "$WORK/compose.swapped.log"; then
-		pass "compose: the control, the 3D drawn over void2d, fails: $(grep -E '^FAIL' \
-			"$WORK/compose.swapped.log" | head -1 | sed 's/^FAIL mixed frame: //')"
-	else
-		fail "compose: the control, the 3D drawn over void2d, passed (exit $status) — see $WORK/compose.swapped.log and .err"
-	fi
-	status=0
-	VOID_MIXED_PREPARE_TWICE=1 out/tmp/mixedFrame.exe > "$WORK/compose.twice.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] && grep -q 'prepareFrame on a frame no drawToScreen or endPrepared ended' \
-		"$WORK/compose.twice.log"; then
-		pass "compose: a second prepareFrame before drawToScreen stops and names the call"
-	else
-		fail "compose: a second prepareFrame did not stop (exit $status)"
-	fi
-	status=0
-	VOID_MIXED_SCREEN_NEXT_FRAME=1 out/tmp/mixedFrame.exe > "$WORK/compose.next.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] && grep -q 'drawToScreen in a later sokol frame' "$WORK/compose.next.log"; then
-		pass "compose: a drawToScreen after a commit stops and names the call"
-	else
-		fail "compose: a drawToScreen after a commit did not stop (exit $status)"
-	fi
-	for order in 1 2; do
-		status=0
-		VOID_GPU_REGISTRATION=$order out/tmp/mixedFrame.exe \
-			> "$WORK/registration-$order.log" 2> "$WORK/registration-$order.err" || status=$?
-		if [ "$status" -eq 0 ] && grep -q '^PASS mixed frame:' "$WORK/registration-$order.log"; then
-			pass "registration: order $order, foreign shader draws the same lit frame past the old 16/8 registry widths"
-		else
-			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log and .err"
-		fi
-		status=0
-		VOID_GPU_REGISTRATION=$order VOID_GPU_REGISTRATION_ORDER_CONTROL=1 \
-			out/tmp/mixedFrame.exe > "$WORK/registration-$order.control.log" 2>&1 || status=$?
-		if [ "$status" -ne 0 ] &&
-			grep -q '^FAIL mixed frame: the foreign consumer overlaps or misses' \
-				"$WORK/registration-$order.control.log"; then
-			pass "registration: order $order, reversed range expectation fails at the registry bound"
-		else
-			fail "registration: order $order, reversed range expectation was not caught"
-		fi
-	done
 }
 
 run_perspective() {
@@ -2838,64 +2720,6 @@ run_views() {
 	pass "views: six views drawn by both presets and closed beside a surviving context; buffers, images, views, samplers, shaders and pipelines back at the first's counts after each of the other five"
 }
 
-run_target_owner() {
-	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "target owner: GATE_SKIP_CAPTURE=1 — the shared owner consumer was not run"
-		return
-	fi
-	rm -f out/tmp/targetOwner.exe
-	if ! msc build tests/integration/targetOwner.ms --release --output=out/tmp/targetOwner.exe \
-		> "$WORK/targetOwner.build.log" 2>&1; then
-		fail "target owner: tests/integration/targetOwner.ms does not build"
-		return
-	fi
-	status=0
-	out/tmp/targetOwner.exe > "$WORK/targetOwner.run.log" 2> "$WORK/targetOwner.run.err" || status=$?
-	if [ "$status" -eq 3 ]; then
-		skip "target owner: no readback backend — the shared owner consumer was not run"
-		return
-	fi
-	if [ "$status" -ne 0 ] || ! grep -q '^PASS target owner:' "$WORK/targetOwner.run.log"; then
-		fail "target owner: shared alias/resize/close consumer failed (exit $status)"
-		return
-	fi
-	pass "target owner: aliases keep one owner through resize and terminal close; independent sampled pixels survive"
-	for misuse in closed-empty color depth begin-closed refused-zero refused-pool; do
-		case "$misuse" in
-			closed-empty) expected='gpu door: resize on a render target that was closed' ;;
-			color) expected='gpu door: asColor on a render target that was closed' ;;
-			depth) expected='gpu door: asDepth on a render target that was closed' ;;
-			begin-closed) expected='gpu door: beginTarget on a render target that was closed' ;;
-			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
-			refused-pool) case "$(uname -s)" in
-				Darwin) expected='webgpu metal: view pool exhausted' ;;
-				*) expected='webgpu d3d11: view pool exhausted' ;;
-			esac ;;
-		esac
-		status=0
-		VOID_TARGET_OWNER_MISUSE="$misuse" out/tmp/targetOwner.exe \
-			> "$WORK/targetOwner-$misuse.run.log" 2>&1 || status=$?
-		if [ "$status" -ne 0 ] && grep -qF "$expected" "$WORK/targetOwner-$misuse.run.log"; then
-			pass "target owner: $misuse stops by name"
-		else
-			fail "target owner: $misuse did not name its owner error"
-		fi
-	done
-	rm -f out/tmp/targetPresetEpoch.exe
-	if ! msc build tests/integration/targetPresetEpoch.ms --release --output=out/tmp/targetPresetEpoch.exe \
-		> "$WORK/targetPresetEpoch.build.log" 2>&1; then
-		fail "target preset epoch: the generation-write control does not build"
-		return
-	fi
-	status=0
-	out/tmp/targetPresetEpoch.exe > "$WORK/targetPresetEpoch.run.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] || ! grep -q '^PASS target preset epoch:' "$WORK/targetPresetEpoch.run.log"; then
-		fail "target preset epoch: generation-write control failed (exit $status)"
-	else
-		pass "target preset epoch: every same-size target in both presets adopts the epoch through one owner"
-	fi
-}
-
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_both_layers() {
@@ -3045,12 +2869,9 @@ else
 	fail "prepare: the capture entries were not written"
 fi
 stage run_entries
-stage run_shaders
 stage run_pending
-stage run_tests
 stage run_gltf_cpu
 stage run_captures
-stage run_compose
 stage run_perspective
 stage run_textured
 stage run_unlit_textured
@@ -3079,7 +2900,6 @@ stage run_mesh_lod
 stage run_gl_core
 stage run_stores
 stage run_views
-stage run_target_owner
 stage run_aborts
 stage run_manifest
 stage run_allocation

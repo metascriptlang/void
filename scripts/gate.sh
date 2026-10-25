@@ -170,11 +170,58 @@ else
 	fail "the demo does not build — see out/gate-demo.log"
 fi
 
-if "$MSC" build tests/integration/mixedFrame.ms --release --output=out/mixedFrame.exe > out/gate-mixed-frame.log 2>&1 \
-		&& out/mixedFrame.exe > out/gate-mixed-frame-run.log 2>&1; then
-	pass "mixed frame: 3D + void2d, one shared commit, two fresh frames"
+# A 3D preset and void2d in one screen pass and one commit; the same run with the 3D drawn over
+# void2d, which must fail; preparing twice and drawing after a commit, which must stop by name;
+# and both registration orders of a foreign shader, each with a control that must fail.
+mixed_run() {  # mixed_run <log> <environment...>: the exit status in mixed_status
+	mixed_log=$1
+	shift
+	mixed_status=0
+	env "$@" out/mixedFrame.exe > "$mixed_log" 2>&1 || mixed_status=$?
+}
+if "$MSC" build tests/integration/mixedFrame.ms --release --output=out/mixedFrame.exe > out/gate-mixed-frame.log 2>&1; then
+	mixed_run out/gate-mixed-frame-run.log
+	if [ "$mixed_status" -eq 0 ] && grep -q '^mixed frame:' out/gate-mixed-frame-run.log; then
+		pass "mixed frame: $(grep -E '^mixed frame:' out/gate-mixed-frame-run.log | sed 's/^mixed frame: //')"
+	else
+		fail "mixed 3D/void2d frame lifecycle (exit $mixed_status) — see out/gate-mixed-frame-run.log"
+		grep -E '^FAIL' out/gate-mixed-frame-run.log | sed 's/^/      /' || true
+	fi
+	mixed_run out/gate-mixed-frame-swapped.log VOID_MIXED_3D_OVER_2D=1
+	if [ "$mixed_status" -ne 0 ] && grep -q '^FAIL mixed frame: .* inside the quad' out/gate-mixed-frame-swapped.log; then
+		pass "mixed frame: the control, the 3D drawn over void2d, fails inside the quad"
+	else
+		fail "mixed frame: the control, the 3D drawn over void2d, passed (exit $mixed_status) — see out/gate-mixed-frame-swapped.log"
+	fi
+	mixed_run out/gate-mixed-frame-twice.log VOID_MIXED_PREPARE_TWICE=1
+	if [ "$mixed_status" -ne 0 ] && grep -q 'prepareFrame on a frame no drawToScreen or endPrepared ended' out/gate-mixed-frame-twice.log; then
+		pass "mixed frame: a second prepareFrame before drawToScreen stops and names the call"
+	else
+		fail "mixed frame: a second prepareFrame did not stop (exit $mixed_status) — see out/gate-mixed-frame-twice.log"
+	fi
+	mixed_run out/gate-mixed-frame-next.log VOID_MIXED_SCREEN_NEXT_FRAME=1
+	if [ "$mixed_status" -ne 0 ] && grep -q 'drawToScreen in a later sokol frame' out/gate-mixed-frame-next.log; then
+		pass "mixed frame: a drawToScreen after a commit stops and names the call"
+	else
+		fail "mixed frame: a drawToScreen after a commit did not stop (exit $mixed_status) — see out/gate-mixed-frame-next.log"
+	fi
+	for order in 1 2; do
+		mixed_run "out/gate-registration-$order.log" VOID_GPU_REGISTRATION=$order
+		if [ "$mixed_status" -eq 0 ] && grep -q '^PASS mixed frame:' "out/gate-registration-$order.log"; then
+			pass "registration: order $order, foreign shader draws the same lit frame past the old 16/8 registry widths"
+		else
+			fail "registration: order $order failed (exit $mixed_status) — see out/gate-registration-$order.log"
+		fi
+		mixed_run "out/gate-registration-$order-control.log" VOID_GPU_REGISTRATION=$order VOID_GPU_REGISTRATION_ORDER_CONTROL=1
+		if [ "$mixed_status" -ne 0 ] \
+				&& grep -q '^FAIL mixed frame: the foreign consumer overlaps or misses' "out/gate-registration-$order-control.log"; then
+			pass "registration: order $order, reversed range expectation fails at the registry bound"
+		else
+			fail "registration: order $order, reversed range expectation was not caught — see out/gate-registration-$order-control.log"
+		fi
+	done
 else
-	fail "mixed 3D/void2d frame lifecycle — see out/gate-mixed-frame.log and out/gate-mixed-frame-run.log"
+	fail "tests/integration/mixedFrame.ms does not build — see out/gate-mixed-frame.log"
 fi
 
 if "$MSC" build tests/integration/doorBlendModes.ms --release --output=out/doorBlendModes.exe \
