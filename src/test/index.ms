@@ -89,6 +89,7 @@ import "./meshNormalsCheck";
 import "./sphereTangentsCheck";
 import "./meshLodCheck";
 import "./meshLodDrawCheck";
+import "./meshLodSceneCheck";
 import "./drawCheck";
 import "./gltfCheck";
 import "./gltfIndexCheck";
