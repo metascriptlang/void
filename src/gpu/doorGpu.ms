@@ -205,6 +205,10 @@ let everSetUp = false;
 let uniformRing: GPUBuffer = { id: 0 };
 let uniformCursor: int64 = 0;
 let uniformOffsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
+// Per slot, which apply last wrote it (counted from 1) and 0 when none has since the pipeline last
+// changed: a block applied once stays bound for every draw of that pipeline.
+let uniformStamps: int32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
+let uniformStampCounter: int32 = 0;
 let encoder: GPUCommandEncoder = { id: 0 };
 let pass: GPURenderPassEncoder = { id: 0 };
 let current: int32 = -1;
@@ -246,6 +250,7 @@ export function doorSetup(
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 	});
 	uniformCursor = 0;
+	uniformStamps = [0, 0, 0, 0, 0, 0, 0, 0];
 	encoder = { id: 0 };
 	pass = { id: 0 };
 	openPass = PassState.None;
@@ -271,6 +276,9 @@ export const DOOR_STAT_PIPELINES: int32 = 1;
 export const DOOR_STAT_PASSES: int32 = 2;
 export const DOOR_STAT_BUFFER_BYTES: int32 = 3;
 export const DOOR_STAT_IMAGE_BYTES: int32 = 4;
+export const DOOR_STAT_UNIFORM_APPLIES: int32 = 5;
+export const DOOR_STAT_UNIFORM_RING_BYTES: int32 = 6;
+export const DOOR_STAT_PIPELINE_CHANGES: int32 = 7;
 
 struct FrameStats {
 	draws: int32;
@@ -278,10 +286,16 @@ struct FrameStats {
 	passes: int32;
 	bufferBytes: int32;
 	imageBytes: int32;
+	uniformApplies: int32;
+	uniformRingBytes: int32;
+	pipelineChanges: int32;
 }
 
 function noFrameStats(): FrameStats {
-	return { draws: 0, pipelines: 0, passes: 0, bufferBytes: 0, imageBytes: 0 };
+	return {
+		draws: 0, pipelines: 0, passes: 0, bufferBytes: 0, imageBytes: 0,
+		uniformApplies: 0, uniformRingBytes: 0, pipelineChanges: 0,
+	};
 }
 
 let frameStats: FrameStats = noFrameStats();
@@ -294,6 +308,9 @@ export function doorFrameStat(which: int32): int32 {
 	if (which == DOOR_STAT_PASSES) { return lastFrameStats.passes; }
 	if (which == DOOR_STAT_BUFFER_BYTES) { return lastFrameStats.bufferBytes; }
 	if (which == DOOR_STAT_IMAGE_BYTES) { return lastFrameStats.imageBytes; }
+	if (which == DOOR_STAT_UNIFORM_APPLIES) { return lastFrameStats.uniformApplies; }
+	if (which == DOOR_STAT_UNIFORM_RING_BYTES) { return lastFrameStats.uniformRingBytes; }
+	if (which == DOOR_STAT_PIPELINE_CHANGES) { return lastFrameStats.pipelineChanges; }
 	stop("no frame stat " + String(which));
 }
 
@@ -1101,10 +1118,20 @@ export function doorApplyPipeline(pipeline: uint32): void {
 	frameStats.pipelines++;
 	const index = pipelineIndex(pipeline);
 	if (index != current) {
+		frameStats.pipelineChanges++;
 		current = index;
 		pass.setPipeline(pipelines[current].pipeline);
+		uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
+		uniformStamps = [0, 0, 0, 0, 0, 0, 0, 0];
 	}
-	uniformOffsets = [0, 0, 0, 0, 0, 0, 0, 0];
+}
+
+// The stamp of the apply that last wrote `slot` for the current pipeline, 0 when none did: a
+// layer that applied a block earlier compares it with the stamp it kept to know the block is
+// still the one bound.
+export function doorUniformStamp(slot: int32): int32 {
+	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("uniform stamp of slot " + String(slot)); }
+	return uniformStamps[slot];
 }
 
 function sameKey(a: BindKey, b: BindKey): boolean {
@@ -1206,6 +1233,9 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 		stop("uniform ring of 4 MiB is full this frame");
 	}
 	device.queue.writeBuffer(uniformRing, uniformCursor, data);
+	frameStats.uniformApplies++;
+	uniformStampCounter++;
+	uniformStamps[slot] = uniformStampCounter;
 	uniformOffsets[slot] = uniformCursor as uint32;
 	uniformCursor = (uniformCursor + bytes + (UNIFORM_ALIGNMENT - 1)) & ~(UNIFORM_ALIGNMENT - 1);
 	let offsets: uint32[DOOR_UNIFORM_SLOTS] = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -1218,9 +1248,20 @@ export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): vo
 	pass.setBindGroup(GPU_UNIFORM_GROUP, record.uniformGroup, offsets[0..n]);
 }
 
+function requireAppliedBlocks(): void {
+	const mask = pipelines[current].uniformMask;
+	for (let s = 0; s < DOOR_UNIFORM_SLOTS; s++) {
+		if ((mask & ((1 as uint32) << (s as uint32))) != 0 && uniformStamps[s] == 0) {
+			stop("draw with a pipeline that declares a uniform block at slot " + String(s) +
+				" and none was applied since the pipeline was set");
+		}
+	}
+}
+
 @exportName("doorDraw")
 export function doorDraw(base: int32, count: int32, instances: int32): void {
 	frameStats.draws++;
+	if (current >= 0) { requireAppliedBlocks(); }
 	if (current >= 0 && pipelines[current].indexed) {
 		pass.drawIndexed(count, instances, base, 0, 0);
 	} else {
@@ -1473,6 +1514,7 @@ export function doorSubmitFrame(): void {
 	stopOnOpenPass("commit");
 	device.queue.submit(frameEncoder().finish());
 	encoder = { id: 0 };
+	frameStats.uniformRingBytes = uniformCursor as int32;
 	uniformCursor = 0;
 	lastFrameStats = frameStats;
 	frameStats = noFrameStats();

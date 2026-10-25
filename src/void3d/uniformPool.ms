@@ -25,6 +25,13 @@ export interface UniformPool {
 }
 
 let poolSerials: int32 = 0;
+let writeCount: int64 = 0;
+
+// Counts every write to any pool, so a layer that applied a block earlier can tell the floats
+// it applied are still the floats there.
+export function uniformWrites(): int64 {
+	return writeCount;
+}
 
 export function withCapacity(this typeof UniformPool, capacity: int32): UniformPool {
 	if (poolSerials == LAST_GENERATION) {
@@ -181,6 +188,7 @@ export function writeRange(
 	for (let i = 0; i < block.length; i++) {
 		pool.values[block.offset + i] = values[i];
 	}
+	writeCount = writeCount + 1;
 	return Result.ok(block.length);
 }
 

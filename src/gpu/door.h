@@ -22,6 +22,9 @@ static const int32_t DOOR_STAT_PIPELINES = 1;
 static const int32_t DOOR_STAT_PASSES = 2;
 static const int32_t DOOR_STAT_BUFFER_BYTES = 3;
 static const int32_t DOOR_STAT_IMAGE_BYTES = 4;
+static const int32_t DOOR_STAT_UNIFORM_APPLIES = 5;
+static const int32_t DOOR_STAT_UNIFORM_RING_BYTES = 6;
+static const int32_t DOOR_STAT_PIPELINE_CHANGES = 7;
 
 void doorSetup(void *device, void *context, int32_t colorFormat, int32_t depthFormat, int32_t sampleCount);
 void doorShutdown(void);

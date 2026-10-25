@@ -6,6 +6,7 @@ import {
 	doorApplyBindings,
 	doorApplyPipeline,
 	doorApplyUniformsOf,
+	doorUniformStamp,
 	doorDestroyBuffer,
 	doorDraw,
 	doorMakeBuffer,
@@ -66,6 +67,8 @@ export function applyBindings(bindings: Readonly<Span<uint32>>): void {
 export function applyUniforms(slot: int32, data: Readonly<Span<float32>>): void {
 	doorApplyUniformsOf(slot, data);
 }
+
+export function uniformStamp(slot: int32): int32 { return doorUniformStamp(slot); }
 
 export function draw(base: int32, count: int32, instances: int32): void {
 	doorDraw(base, count, instances);
