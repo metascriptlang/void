@@ -2912,7 +2912,10 @@ run_target_owner() {
 			depth) expected='gpu door: asDepth on a render target that was closed' ;;
 			begin-closed) expected='gpu door: beginTarget on a render target that was closed' ;;
 			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
-			refused-pool) expected='webgpu d3d11: view pool exhausted' ;;
+			refused-pool) case "$(uname -s)" in
+				Darwin) expected='webgpu metal: view pool exhausted' ;;
+				*) expected='webgpu d3d11: view pool exhausted' ;;
+			esac ;;
 		esac
 		status=0
 		VOID_TARGET_OWNER_MISUSE="$misuse" out/tmp/targetOwner.exe \
