@@ -5,7 +5,7 @@ import { Material, Phase } from "../void3d/material";
 import { TextureData, TextureId, TextureAlpha } from "../void3d/texture";
 import { claim } from "../void3d/slots";
 import { contextGeneration } from "../gpu/door";
-import { MeshData } from "../void3d/meshData";
+import { MeshData, copy } from "../void3d/meshData";
 import {
 	DrawContext,
 	GpuMesh,
@@ -70,7 +70,7 @@ export function writeTables(
 	materials: Readonly<Span<Material>>,
 ): void {
 	for (let i = 0; i < (meshData.length as int32); i++) {
-		context.meshData[i] = { ...meshData[i] };
+		context.meshData[i] = meshData[i].copy();
 	}
 	for (let i = 0; i < (materials.length as int32); i++) {
 		context.materials[i].pass = { ...materials[i].pass };

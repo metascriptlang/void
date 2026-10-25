@@ -59,6 +59,7 @@ import "./programKeyCheck";
 import "./drawSurfaceCheck";
 import "./bloomCheck";
 import "./doorResidentCheck";
+import "./gpuTimerRingCheck";
 import "./bloomKernelCheck";
 import "./dirShadowCheck";
 import "./cameraCheck";
@@ -268,3 +269,4 @@ when (testBuild && voidSdfText && voidShaper) {
 	import "../../tests/integration/fontPanel";
 }
 import "./frameTimingCheck";
+import "./deviceLossCheck";

@@ -41,7 +41,7 @@ function primitive(): MorphPrimitiveInput {
 	};
 }
 
-function morphData(primitives: int32 = 1): Readonly<MorphData> {
+function morphData(primitives: int32 = 1): MorphData {
 	let inputs: Vec<MorphPrimitiveInput> = [];
 	for (let i = 0; i < primitives; i++) { inputs.push(primitive()); }
 	const made = MorphData.create(inputs, 2);

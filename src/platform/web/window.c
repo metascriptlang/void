@@ -168,6 +168,8 @@ static struct {
 		WGPUTextureView depthView;
 		WGPUTextureView swapchainView;
 		bool initDone;
+		bool lostPending;
+		bool recovering;
 	} wgpu;
 #endif
 	VoidKeysHeld keysHeld;
@@ -349,11 +351,26 @@ static void sizeChanged(void) {
 	}
 }
 
+enum { LOST_IGNORE, LOST_RECOVER, LOST_FATAL };
+int32_t voidWebDeviceLostAction(int32_t reason);
+
 static void deviceLost(const WGPUDevice *device, WGPUDeviceLostReason reason, WGPUStringView message, void *userdata1, void *userdata2) {
-	(void)device;
 	(void)userdata1;
 	(void)userdata2;
-	if (reason != WGPUDeviceLostReason_CallbackCancelled) printMessage("the WebGPU device was lost", message);
+	switch (voidWebDeviceLostAction((int32_t)reason)) {
+		case LOST_IGNORE:
+			return;
+		case LOST_RECOVER:
+			if (*device != s.wgpu.device) return;
+			printMessage("the WebGPU device was lost", message);
+			s.wgpu.initDone = false;
+			s.wgpu.lostPending = true;
+			appEvent(VOID_EVENT_SUSPENDED);
+			return;
+		default:
+			printMessage("the WebGPU device was lost", message);
+			fail("the WebGPU device was lost with reason %d, which Void does not recover from", (int)reason);
+	}
 }
 
 static void uncapturedError(const WGPUDevice *device, WGPUErrorType type, WGPUStringView message, void *userdata1, void *userdata2) {
@@ -373,6 +390,10 @@ static void deviceReady(WGPURequestDeviceStatus status, WGPUDevice device, WGPUS
 	s.wgpu.device = device;
 	createSwapchain(false);
 	s.wgpu.initDone = true;
+	if (s.wgpu.recovering) {
+		s.wgpu.recovering = false;
+		appEvent(VOID_EVENT_RESUMED);
+	}
 }
 
 static void requestDevice(void) {
@@ -907,6 +928,12 @@ static bool animationFrame(double time, void *userData) {
 	voidFrameTimingUpdate(&s.timing, time / 1000.0);
 #if defined(VOID_WGPU)
 	wgpuInstanceProcessEvents(s.wgpu.instance);
+	if (s.wgpu.lostPending) {
+		s.wgpu.lostPending = false;
+		s.wgpu.recovering = true;
+		discardGpu();
+		initGpu();
+	}
 	if (s.wgpu.initDone) {
 		frame();
 		if (s.wgpu.swapchainView) {

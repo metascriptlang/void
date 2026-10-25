@@ -1,3 +1,4 @@
+import "./removal";
 import {
 	BindingKind,
 	bindingKind,

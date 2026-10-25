@@ -31,6 +31,12 @@ static const int32_t DOOR_STAT_RESIDENT_IMAGE_BYTES = 9;
 static const int32_t DOOR_STAT_RESIDENT_TARGET_BYTES = 10;
 static const int32_t DOOR_STAT_COUNT = 11;
 
+// doorGpuTimerState: the timer is off until doorEnableGpuTimer; on a device without timestamp
+// queries it is UNSUPPORTED and measures nothing, which is not a 0 ms result.
+static const int32_t DOOR_GPU_TIMER_OFF = 0;
+static const int32_t DOOR_GPU_TIMER_UNSUPPORTED = 1;
+static const int32_t DOOR_GPU_TIMER_ON = 2;
+
 void doorSetup(void *device, void *context, int32_t colorFormat, int32_t depthFormat, int32_t sampleCount);
 void doorShutdown(void);
 int32_t doorValid(void);
