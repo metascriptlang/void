@@ -16,6 +16,9 @@
 #include "presentGate.h"
 #include "appWindow.h"
 #include "../platform/macos/window.h"
+#ifdef VOID_PROFILER
+#include "../void2d/frameClock.h"
+#endif
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
@@ -91,6 +94,13 @@ static void fitWindowLayer(void) {
 }
 
 static void windowEvent(const VoidAppEvent *e) {
+#ifdef VOID_PROFILER
+	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
+		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
+		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
+		voidProfileInput();
+	}
+#endif
 	if (e->type == VOID_EVENT_RESIZED) fitWindowLayer();
 	if (e->type == VOID_EVENT_KEY_DOWN) s_keys[e->keyCode] = true;
 	else if (e->type == VOID_EVENT_KEY_UP) s_keys[e->keyCode] = false;
