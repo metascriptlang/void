@@ -373,6 +373,51 @@ Mac side has nothing open of its own. What the Mac verified, and what it still n
   that tree (merge-train slot), because lines inside `__APPLE__` and the Metal backend compile
   only there. gate3d's Metal captures wait for your `tests/golden3d/d3d11/*.png`.
 
+### 2026-10-26, the research round on the branch; what Windows adapts
+
+The Mac applied the lessons of the sokol, Heaps and Mach reading on the branch (`bd73492f` to
+`60bf2437`). Each landed with `msc check` on darwin, windows, linux, ios, android and emcc
+(webgpu, webgl2) at 0 errors, index green (2739) and `webgpuMetalCheck` 434/434; D3D11, GL and
+wgpu ran nowhere, so each item below names what to run on your side.
+
+- **Shared validation, `src/webgpu/validate.ms`** (`858bcbe2`, `f3e6f51c` and the three before
+  it). The checks the four backends repeated now run once in `device.ms` before `backend.X`:
+  the encoder and pass state, debug groups, copies outside a pass, the draw state (pipeline set,
+  index buffer set), the occlusion query, bind group entries by group and binding, buffer and
+  texture descriptors against `backend.limits()`, the shader module and pipeline rules, and the
+  storage rule (a storage binding covers a positive multiple of 4 bytes, now on Metal too).
+  Behaviour that changes on your backends: a second `createCommandEncoder` before `finish`
+  stops (it returned id 1 again), and every render-pass call stops outside a render pass.
+  Messages print `webgpu: …` instead of `webgpu <backend>: …`.
+- **For Vulkan:** it inherits everything `device.ms` calls. The checks that need a backend's own
+  record are shared refusals the backend calls itself; Vulkan calls them where the other four do:
+  `checkedRenderModule`, `checkedComputeModule`, `checkedComputePipeline`, `checkedStripDraw`,
+  `checkedBindGroupSet`, `checkedStorageEntry`, `checkedSampledView`, `checkedStorageView`,
+  `checkedViewDimension`, `checkedOcclusionRange`, `checkedOcclusionReuse`,
+  `checkedOcclusionSetKind`. Read their call sites in `d3d11/backend.ms` as the map. Still
+  copied per backend and worth moving before Vulkan copies them a fifth time: render-pass
+  attachment checks, write and copy usage checks, vertex buffer and bind group set at draw,
+  shader-module-destroyed, `resolveQuerySet` state, `NativeEnvironment.colorFormat`.
+  **Run:** `webgpuD3d11Check.ms` on WARP and the GL pins; a reworded message your tests grep is
+  the likely red.
+- **Pool generations survive a reset** (`bd73492f`): an id from before a device loss stays
+  stale after it. Your D3D11 `reset` callers needed no edit.
+- **3D draw loop** (`0b172048` to `51aa010e`): globals apply once per pipeline change (a draw
+  whose pipeline declares a block that was never applied now stops), opaque items sort by
+  layer, order, pipeline and texture, pipelines are found by key hash, and
+  `DrawContext.withGrowingUniforms(initial)` is the uniform pool Neon asked for.
+  **Run:** gate3d; its D3D11 hashes should not move, because the pixel order inside a layer and
+  order is the only thing the sort changes and the Metal captures did not move.
+- **2D filters** (`ca3ffbfe`, `86b4e96a`): `setFilters([...])` chains steps, `outlineFilter`,
+  and `Filter.withResolutionScale`. The nine filter goldens are byte-identical on Metal.
+  **Run:** goldens on D3D11.
+- **Frame stats** (`20d4f8e8`): `doorFrameStat` returns `int64` and has resident bytes per
+  buffer, image and target; `door.h` mirrors it.
+- **Held keys** (`4196276c`): every window releases its held keys before `UNFOCUSED`;
+  `win32/window.c` on `WM_KILLFOCUS`, compile-checked only. **Run:** hold a key, Alt-Tab away, and
+  the app sees the key-up.
+- **macOS display link** (`58d13f08`): nothing for you.
+
 ## From Windows (2026-10-23)
 
 - **Coverage phases** (the person: coverage first, quality after). P0: the WebGPU members sokol
