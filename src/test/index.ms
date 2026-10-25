@@ -45,6 +45,7 @@ import "./skinPartitionCheck";
 import "./gltfAnimationCheck";
 import "./skinInfluencesCheck";
 import "./pipelineCheck";
+import "./pipelineLookupCheck";
 import "./instanceLayoutCheck";
 import "./instanceAttributeCheck";
 import "./instanceStreamCheck";
