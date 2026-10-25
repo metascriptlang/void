@@ -137,6 +137,13 @@ void voidEmbedSetAssetRoot(const char *path);
 // Browser only: defines Module.voidStart(canvas), which returns a stop (bridgeWeb.c).
 void voidWebInstall(void);
 
+typedef enum { VOID_DRIVER_NONE, VOID_DRIVER_WINDOW, VOID_DRIVER_VIEWS } VoidDriver;
+// The desktop bridges' driver (bridge.c): voidRun chooses the window, voidViewCreate the host
+// views. voidDriverFor stops naming `op` before either, or while the window does not exist.
+extern VoidDriver voidDriver;
+VoidDriver voidDriverFor(const char *op);
+void voidWindowDoorSetup(void);
+
 void voidGfxSetup(void);
 int voidFbWidth(void);
 int voidFbHeight(void);

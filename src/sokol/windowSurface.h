@@ -9,8 +9,6 @@
 #include <stdbool.h>
 
 void voidWindowSurfaceCreate(HWND hwnd, int samples);
-// doorSetup with this surface's device and formats.
-void voidWindowDoorSetup(void);
 bool voidWindowAwaitFrame(void);
 void voidWindowPresent(bool modal);
 void voidWindowSurfaceDestroy(void);

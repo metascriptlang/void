@@ -22,10 +22,6 @@ static int s_reqH = 0;
 static int s_sampleCount = 1;
 static msClosure s_pump;
 
-static void needWindow(const char *what) {
-	if (!voidWindow.valid) voidFail("%s: the window does not exist yet; call it from the event handler or after init", what);
-}
-
 static int frameCount(void) {
 	const char *text = getenv("VOID_DUMMY_FRAMES");
 	if (text == NULL || text[0] == '\0') return 1;
@@ -37,7 +33,7 @@ static int frameCount(void) {
 	return (int)count;
 }
 
-static void setupDoor(void) {
+void voidWindowDoorSetup(void) {
 	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, s_sampleCount);
 	if (!doorValid()) voidFail("doorSetup on the dummy backend failed");
 }
@@ -50,12 +46,13 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	int frames = frameCount();
 	voidWindowStart(NULL, NULL, NULL, NULL, w, h);
 	voidWindow.valid = true;
+	voidDriver = VOID_DRIVER_WINDOW;
 	s_reqW = w;
 	s_reqH = h;
 	s_sampleCount = sampleCount;
 	voidCallClosure(init);
 	for (int i = 0; i < frames && !voidWindow.quitRequested; i++) {
-		voidRestoreContextIfLost(setupDoor);
+		voidRestoreContextIfLost(voidWindowDoorSetup);
 		voidCallClosure(frame);
 	}
 	if (doorValid()) doorShutdown();
@@ -71,38 +68,13 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	voidRunConfigured(w, h, 4, 1, init, frame);
 }
 
-void voidGfxSetup(void) {
-	needWindow("gfxSetup");
-	setupDoor();
-}
-
-int voidFbWidth(void) {
-	needWindow("fbWidth");
-	return s_reqW;
-}
-
-int voidFbHeight(void) {
-	needWindow("fbHeight");
-	return s_reqH;
-}
-
-float voidDpiScale(void) {
-	needWindow("dpiScale");
-	return 1.0f;
-}
-
-int voidKeyDown(int keycode) {
-	(void)keycode;
-	return 0;
-}
-
 int32_t voidSwapchainWidth(void) {
-	needWindow("beginPass");
+	voidDriverFor("beginPass");
 	return s_reqW;
 }
 
 int32_t voidSwapchainHeight(void) {
-	needWindow("beginPass");
+	voidDriverFor("beginPass");
 	return s_reqH;
 }
 

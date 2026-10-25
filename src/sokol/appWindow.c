@@ -2,14 +2,7 @@
 // bridgeWeb.c, bridgeEmbed.m, bridgeIosApp.m, bridgeAndroidApp.c and bridgeDummy.c): the event
 // closure with its getters, the IME events, and the title.
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
-#if !defined(VOID_DUMMY) && defined(__ANDROID__)
-#define VOID_ANDROID_APP 1
-#elif !defined(VOID_DUMMY) && defined(__APPLE__) && !TARGET_OS_OSX
-#define VOID_IOS_APP 1
-#endif
+#include "appWindow.h"
 
 #if defined(VOID_ANDROID_APP)
 #include "androidApp.h"
@@ -28,7 +21,6 @@
 
 #include "backend.h"
 #include "bridge.h"
-#include "appWindow.h"
 #include "appText.h"
 #ifdef VOID_PROFILER
 #include "../void2d/frameClock.h"

@@ -19,9 +19,6 @@
 #include "appWindow.h"
 #include "../platform/win32/window.h"
 
-typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
-static VoidDriver s_driver = DRIVER_NONE;
-
 static msClosure s_init;
 static msClosure s_frame;
 static int s_reqW = 0;
@@ -43,7 +40,7 @@ static void restoreDoor(void) {
 	if (s_deviceRemoved) recreateWindowDevice();
 #endif
 	s_deviceRemoved = 0;
-	if (s_driver == DRIVER_WINDOW) voidWindowDoorSetup();
+	if (voidDriver == VOID_DRIVER_WINDOW) voidWindowDoorSetup();
 	else setupViewsGfx();
 }
 
@@ -52,7 +49,7 @@ static RECT s_imeRect;
 static bool s_preeditActive;
 
 static HWND windowHwnd(void) {
-	return s_driver == DRIVER_WINDOW && voidWindowValid() ? voidWin32Hwnd() : NULL;
+	return voidDriver == VOID_DRIVER_WINDOW && voidWindowValid() ? voidWin32Hwnd() : NULL;
 }
 
 static bool imeTaken(void) { return s_textInput == 1 && voidAppEventHandlerSet(); }
@@ -183,8 +180,8 @@ static void _cleanup(void) {
 }
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
-	if (s_driver != DRIVER_NONE) voidFail("voidRun: this process already drives Void through host views");
-	s_driver = DRIVER_WINDOW;
+	if (voidDriver != VOID_DRIVER_NONE) voidFail("voidRun: this process already drives Void through host views");
+	voidDriver = VOID_DRIVER_WINDOW;
 	s_reqW = w;
 	s_reqH = h;
 	s_init = init;
@@ -223,7 +220,7 @@ static void deviceRemoved(const char *what, HRESULT hr) {
 		voidFail("%s failed: 0x%08lx, the device was removed for 0x%08lx, which Void does not recover from",
 			what, (unsigned long)hr, (unsigned long)reason);
 	}
-	if (s_driver != DRIVER_WINDOW) {
+	if (voidDriver != VOID_DRIVER_WINDOW) {
 		voidFail("%s failed: 0x%08lx, the device was removed for 0x%08lx and host views cannot rebuild their swap chains",
 			what, (unsigned long)hr, (unsigned long)reason);
 	}
@@ -290,14 +287,14 @@ static void createDevice(UINT flags) {
 }
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Void window");
-	if (s_driver == DRIVER_VIEWS) return;
+	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Void window");
+	if (voidDriver == VOID_DRIVER_VIEWS) return;
 #if defined(VOID_GLCORE)
 	voidFail("voidViewCreate: host views on Windows render through D3D11; this is a GL core build");
 #endif
 	createDevice(0);
 	setupViewsGfx();
-	s_driver = DRIVER_VIEWS;
+	voidDriver = VOID_DRIVER_VIEWS;
 }
 
 static void setupViewsGfx(void) {
@@ -487,46 +484,11 @@ static void recreateWindowDevice(void) {
 void *voidWindowSwapChain(void) { return s_window.swapChain; }
 #endif
 
-__attribute__((noreturn)) static void noDriver(const char *op) {
-	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
-}
-
-void voidGfxSetup(void) {
-	switch (s_driver) {
-		case DRIVER_WINDOW: voidWindowDoorSetup(); break;
-		case DRIVER_VIEWS: break;
-		case DRIVER_NONE: noDriver("gfxSetup");
-	}
-}
-
-int voidFbWidth(void) {
-	if (s_driver == DRIVER_WINDOW) return voidWindowWidth();
-	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
-	return voidViewsFbWidth();
-}
-
-int voidFbHeight(void) {
-	if (s_driver == DRIVER_WINDOW) return voidWindowHeight();
-	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
-	return voidViewsFbHeight();
-}
-
-float voidDpiScale(void) {
-	if (s_driver == DRIVER_WINDOW) return voidWindowDpiScale();
-	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
-	return voidViewsDpiScale();
-}
-
-int voidKeyDown(int keycode) {
-	return s_driver == DRIVER_WINDOW && voidKeysHeldDown(&voidWindow.keysHeld, keycode);
-}
-
 // The surface the door's screen pass draws into, or NULL for the GL window, whose default
 // framebuffer has no view objects.
 static WinSurface *screenSurface(void) {
-	if (s_driver == DRIVER_NONE) noDriver("beginPass");
 	WinSurface *s = NULL;
-	if (s_driver == DRIVER_VIEWS) {
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) {
 		s = (WinSurface *)voidViewsCurrentSurface();
 	} else {
 #if defined(VOID_D3D11)
@@ -576,6 +538,6 @@ void *voidSwapchainDepthStencilView(void) {
 }
 
 void voidDriverPresent(void) {
-	if (s_driver == DRIVER_WINDOW) s_committed = true;
-	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
+	if (voidDriver == VOID_DRIVER_WINDOW) s_committed = true;
+	if (voidDriver == VOID_DRIVER_VIEWS) voidViewsPresent();
 }

@@ -17,7 +17,6 @@
 
 void voidDriverPresent(void);
 
-static bool s_running;
 static msClosure s_init;
 static msClosure s_frame;
 static int s_reqW = 0;
@@ -25,7 +24,7 @@ static int s_reqH = 0;
 static int s_sampleCount;
 static bool s_committed;
 
-static void setupDoor(void) {
+void voidWindowDoorSetup(void) {
 	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, s_sampleCount);
 	if (!doorValid()) voidFail("doorSetup on the window's GL context failed");
 }
@@ -43,7 +42,7 @@ void voidSetImeRect(int x, int y, int w, int h) {
 static void _init(void) { voidCallClosure(s_init); }
 
 static void _frame(void) {
-	voidRestoreContextIfLost(setupDoor);
+	voidRestoreContextIfLost(voidWindowDoorSetup);
 	s_committed = false;
 	voidCallClosure(s_frame);
 	if (s_committed) voidLinuxSwapBuffers();
@@ -55,8 +54,8 @@ static void _cleanup(void) { doorShutdown(); }
 // scales by Xft.dpi (sokol_app.h :14299).
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	(void)highDpi;
-	if (s_running) voidFail("voidRun: this process already runs a Void window");
-	s_running = true;
+	if (voidDriver != VOID_DRIVER_NONE) voidFail("voidRun: this process already runs a Void window");
+	voidDriver = VOID_DRIVER_WINDOW;
 	s_reqW = w;
 	s_reqH = h;
 	s_init = init;
@@ -83,42 +82,14 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	voidRunConfigured(w, h, 4, 1, init, frame);
 }
 
-static void requireWindow(const char *op) {
-	if (!voidWindowValid()) voidFail("%s before voidRun made the window", op);
-}
-
-void voidGfxSetup(void) {
-	requireWindow("gfxSetup");
-	setupDoor();
-}
-
-int voidFbWidth(void) {
-	requireWindow("fbWidth");
-	return voidWindowWidth();
-}
-
-int voidFbHeight(void) {
-	requireWindow("fbHeight");
-	return voidWindowHeight();
-}
-
-float voidDpiScale(void) {
-	requireWindow("dpiScale");
-	return voidWindowDpiScale();
-}
-
-int voidKeyDown(int keycode) {
-	return voidKeysHeldDown(&voidWindow.keysHeld, keycode);
-}
-
 // The screen pass draws into the window's framebuffer 0, which has no view objects.
 int32_t voidSwapchainWidth(void) {
-	requireWindow("beginPass");
+	voidDriverFor("beginPass");
 	return voidWindowWidth();
 }
 
 int32_t voidSwapchainHeight(void) {
-	requireWindow("beginPass");
+	voidDriverFor("beginPass");
 	return voidWindowHeight();
 }
 

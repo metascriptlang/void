@@ -17,16 +17,12 @@
 #include "appWindow.h"
 #include "../platform/macos/window.h"
 
-typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
-static VoidDriver s_driver = DRIVER_NONE;
-
 // --- Host-provided GPU context ---
 static id<MTLDevice>       g_device;
 static CAMetalLayer*       g_layer;
 static id<CAMetalDrawable> g_drawable;
 static void*              g_gate;
 static int g_w = 800, g_h = 600;
-static float g_dpiScale = 1.0f;
 
 // --- Lifecycle closures (driven by voidRun's loop) ---
 static msClosure s_init;
@@ -54,14 +50,13 @@ void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 static void windowInit(void) {
 	NSView *view = (__bridge NSView *)voidMacosView();
 	view.wantsLayer = YES;
-	g_dpiScale = voidWindowDpiScale();
 	g_device = MTLCreateSystemDefaultDevice();
 	g_layer = [CAMetalLayer layer];
 	g_layer.device = g_device;
 	g_layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	g_layer.framebufferOnly = NO;
 	g_layer.frame = view.bounds;
-	g_layer.contentsScale = (CGFloat)g_dpiScale;
+	g_layer.contentsScale = (CGFloat)voidWindowDpiScale();
 	g_w = voidWindowWidth();
 	g_h = voidWindowHeight();
 	g_layer.drawableSize = CGSizeMake(g_w, g_h);
@@ -72,13 +67,12 @@ static void windowInit(void) {
 
 static void fitWindowLayer(void) {
 	NSView *view = (__bridge NSView *)voidMacosView();
-	g_dpiScale = voidWindowDpiScale();
 	g_w = voidWindowWidth();
 	g_h = voidWindowHeight();
 	[CATransaction begin];
 	[CATransaction setDisableActions:YES];
 	g_layer.frame = view.bounds;
-	g_layer.contentsScale = (CGFloat)g_dpiScale;
+	g_layer.contentsScale = (CGFloat)voidWindowDpiScale();
 	g_layer.drawableSize = CGSizeMake(g_w, g_h);
 	[CATransaction commit];
 }
@@ -91,11 +85,11 @@ static void windowEvent(const VoidAppEvent *e) {
 static void windowCleanup(void) { doorShutdown(); }
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
-	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
+	if (voidDriver == VOID_DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
 	if (sampleCount != 1) {
 		voidFail("voidRunConfigured: the macOS window driver renders at 1 sample, not %d", sampleCount);
 	}
-	s_driver = DRIVER_WINDOW;
+	voidDriver = VOID_DRIVER_WINDOW;
 	s_init = init;
 	s_reqW = w;
 	s_reqH = h;
@@ -122,47 +116,15 @@ static void setupMetal(int samples) {
 	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
 }
 
-static void restoreMetal(void) { setupMetal(s_driver == DRIVER_WINDOW ? 1 : voidViewsSampleCount()); }
+static void restoreMetal(void) { setupMetal(voidDriver == VOID_DRIVER_WINDOW ? 1 : voidViewsSampleCount()); }
 
-__attribute__((noreturn)) static void noDriver(const char *op) {
-	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
-}
-
-void voidGfxSetup(void) {
-	switch (s_driver) {
-		case DRIVER_WINDOW: setupMetal(1); break;
-		case DRIVER_VIEWS: break;
-		case DRIVER_NONE: noDriver("gfxSetup");
-	}
-}
-
-int voidFbWidth(void) {
-	if (s_driver == DRIVER_WINDOW) return g_w;
-	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
-	return voidViewsFbWidth();
-}
-
-int voidFbHeight(void) {
-	if (s_driver == DRIVER_WINDOW) return g_h;
-	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
-	return voidViewsFbHeight();
-}
-
-float voidDpiScale(void) {
-	if (s_driver == DRIVER_WINDOW) return g_dpiScale;
-	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
-	return voidViewsDpiScale();
-}
-
-int voidKeyDown(int keycode) {
-	return s_driver == DRIVER_WINDOW && voidKeysHeldDown(&voidWindow.keysHeld, keycode);
-}
+void voidWindowDoorSetup(void) { setupMetal(1); }
 
 void voidSetTextInput(int on) { voidMacosSetTextInput(on != 0); }
 void voidSetImeRect(int x, int y, int w, int h) { voidMacosSetImeRect(x, y, w, h); }
 
 void voidDriverPresent(void) {
-	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
+	if (voidDriver == VOID_DRIVER_VIEWS) voidViewsPresent();
 }
 
 typedef struct {
@@ -198,12 +160,12 @@ static void makeMsaa(MacSurface *s) {
 }
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Cocoa window through voidRun");
-	if (s_driver == DRIVER_VIEWS) return;
+	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Cocoa window through voidRun");
+	if (voidDriver == VOID_DRIVER_VIEWS) return;
 	g_device = MTLCreateSystemDefaultDevice();
 	if (!g_device) voidFail("MTLCreateSystemDefaultDevice returned nil");
 	setupMetal(voidViewsSampleCount());
-	s_driver = DRIVER_VIEWS;
+	voidDriver = VOID_DRIVER_VIEWS;
 }
 
 void voidPlatformRunInit(msClosure init) { voidCallClosure(init); }
@@ -289,8 +251,7 @@ void voidPlatformSurfaceDestroy(void *surface) {
 long long voidPlatformSurfaceNative(void *surface) { return (long long)(intptr_t)((MacSurface *)surface)->layer; }
 
 static MacSurface *screenSurface(void) {
-	if (s_driver == DRIVER_NONE) noDriver("beginPass");
-	if (s_driver == DRIVER_WINDOW) return NULL;
+	if (voidDriverFor("beginPass") == VOID_DRIVER_WINDOW) return NULL;
 	if (voidCurrentView() == 0 && s_presented) return s_presented;
 	return (MacSurface *)voidViewsCurrentSurface();
 }

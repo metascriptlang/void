@@ -18,14 +18,10 @@
 #include "../platform/swapchain.h"
 #include "../platform/web/window.h"
 
-typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
-static VoidDriver s_driver = DRIVER_NONE;
-
-static void setupWindowDoor(void);
 static void setupViewsGfx(void);
 
 static void restoreDoor(void) {
-	if (s_driver == DRIVER_WINDOW) setupWindowDoor();
+	if (voidDriver == VOID_DRIVER_WINDOW) voidWindowDoorSetup();
 	else setupViewsGfx();
 }
 
@@ -162,8 +158,8 @@ static void _cleanup(void) { doorShutdown(); }
 static void leaveCallerSuspendedWhileFramesRun(void) { emscripten_exit_with_live_runtime(); }
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
-	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this document already drives Void through host views");
-	s_driver = DRIVER_WINDOW;
+	if (voidDriver == VOID_DRIVER_VIEWS) voidFail("voidRun: this document already drives Void through host views");
+	voidDriver = VOID_DRIVER_WINDOW;
 	s_init = init;
 	s_reqW = w;
 	s_reqH = h;
@@ -311,7 +307,7 @@ static int32_t doorColorFormat(WGPUTextureFormat format) {
 	}
 }
 
-static void setupWindowDoor(void) {
+void voidWindowDoorSetup(void) {
 	doorSetup(voidWebDevice(), NULL, doorColorFormat(voidWebColorFormat()), DOOR_PIXEL_FORMAT_DEPTH, voidWebSampleCount());
 	if (!doorValid()) voidFail("doorSetup on the browser window's WebGPU device failed");
 }
@@ -321,15 +317,15 @@ EM_JS(int, voidWebPrefersBgra, (void), {
 });
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
-	if (s_driver == DRIVER_VIEWS) return;
+	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
+	if (voidDriver == VOID_DRIVER_VIEWS) return;
 	s_instance = wgpuCreateInstance(NULL);
 	if (!s_instance) voidFail("voidViewCreate: wgpuCreateInstance failed");
 	s_device = emscripten_webgpu_get_device();
 	if (!s_device) voidFail("voidViewCreate: no WebGPU device; Module.voidStart requests one");
 	s_format = voidWebPrefersBgra() ? WGPUTextureFormat_BGRA8Unorm : WGPUTextureFormat_RGBA8Unorm;
 	setupViewsGfx();
-	s_driver = DRIVER_VIEWS;
+	voidDriver = VOID_DRIVER_VIEWS;
 }
 
 static void setupViewsGfx(void) {
@@ -433,15 +429,15 @@ static void dropSurface(WebSurface *s) {
 
 static WebSurface *s_glView = NULL;
 
-static void setupWindowDoor(void) {
+void voidWindowDoorSetup(void) {
 	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, voidWebSampleCount());
 	if (!doorValid()) voidFail("doorSetup on the browser window's WebGL2 context failed");
 }
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
-	if (s_driver == DRIVER_VIEWS) return;
-	s_driver = DRIVER_VIEWS;
+	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
+	if (voidDriver == VOID_DRIVER_VIEWS) return;
+	voidDriver = VOID_DRIVER_VIEWS;
 }
 
 static void setupViewsGfx(void) {
@@ -544,56 +540,20 @@ void voidPlatformSurfaceDestroy(void *surface) {
 
 long long voidPlatformSurfaceNative(void *surface) { return ((WebSurface *)surface)->id; }
 
-__attribute__((noreturn)) static void noDriver(const char *op) {
-	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
-}
-
-void voidGfxSetup(void) {
-	switch (s_driver) {
-		case DRIVER_WINDOW: setupWindowDoor(); break;
-		case DRIVER_VIEWS: break;
-		case DRIVER_NONE: noDriver("gfxSetup");
-	}
-}
-
-int voidFbWidth(void) {
-	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
-	return s_driver == DRIVER_VIEWS ? voidViewsFbWidth() : voidWindowWidth();
-}
-
-int voidFbHeight(void) {
-	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
-	return s_driver == DRIVER_VIEWS ? voidViewsFbHeight() : voidWindowHeight();
-}
-
-float voidDpiScale(void) {
-	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
-	return s_driver == DRIVER_VIEWS ? voidViewsDpiScale() : voidWindowDpiScale();
-}
-
-int voidKeyDown(int keycode) {
-	return s_driver == DRIVER_WINDOW && voidKeysHeldDown(&voidWindow.keysHeld, keycode);
-}
-
-static VoidDriver screenDriver(void) {
-	if (s_driver == DRIVER_NONE) noDriver("beginPass");
-	return s_driver;
-}
-
 int32_t voidSwapchainWidth(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsFbWidth() : voidWindowWidth();
+	return voidDriverFor("beginPass") == VOID_DRIVER_VIEWS ? voidViewsFbWidth() : voidWindowWidth();
 }
 
 int32_t voidSwapchainHeight(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsFbHeight() : voidWindowHeight();
+	return voidDriverFor("beginPass") == VOID_DRIVER_VIEWS ? voidViewsFbHeight() : voidWindowHeight();
 }
 
 int32_t voidSwapchainSampleCount(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsSampleCount() : voidWebSampleCount();
+	return voidDriverFor("beginPass") == VOID_DRIVER_VIEWS ? voidViewsSampleCount() : voidWebSampleCount();
 }
 
 void *voidSwapchainRenderView(void) {
-	if (screenDriver() == DRIVER_VIEWS) return viewRenderView((const WebSurface *)voidViewsCurrentSurface());
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) return viewRenderView((const WebSurface *)voidViewsCurrentSurface());
 #if defined(VOID_WGPU)
 	return voidWebRenderView();
 #else
@@ -602,7 +562,7 @@ void *voidSwapchainRenderView(void) {
 }
 
 void *voidSwapchainResolveView(void) {
-	if (screenDriver() == DRIVER_VIEWS) return viewResolveView((const WebSurface *)voidViewsCurrentSurface());
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) return viewResolveView((const WebSurface *)voidViewsCurrentSurface());
 #if defined(VOID_WGPU)
 	return voidWebResolveView();
 #else
@@ -611,7 +571,7 @@ void *voidSwapchainResolveView(void) {
 }
 
 void *voidSwapchainDepthStencilView(void) {
-	if (screenDriver() == DRIVER_VIEWS) return NULL;
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) return NULL;
 #if defined(VOID_WGPU)
 	return voidWebDepthStencilView();
 #else
@@ -620,5 +580,5 @@ void *voidSwapchainDepthStencilView(void) {
 }
 
 void voidDriverPresent(void) {
-	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
+	if (voidDriver == VOID_DRIVER_VIEWS) voidViewsPresent();
 }

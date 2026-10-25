@@ -89,7 +89,7 @@ when (linux && voidGles3 && !voidDummy) {
 when (voidDummy) {
 	@compile("./bridgeDummy.c");
 	@compile("./appWindow.c", "-DVOID_DUMMY");
-	@compile("./bridge.c");
+	@compile("./bridge.c", "-DVOID_DUMMY");
 }
 
 when ((macos || (windows && !voidGlCore) || ios || android) && !voidDummy) {
