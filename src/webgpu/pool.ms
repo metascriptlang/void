@@ -61,9 +61,13 @@ export function store<T>(ref pool: Pool<T>, slot: T): void {
 export function release<T>(ref pool: Pool<T>, id: uint32): void { releaseId(pool.core, id); }
 
 export function reset<T>(ref pool: Pool<T>): void {
+	const zero = pool.slots[0];
 	while (pool.slots.length > 1) { pool.slots.pop(); }
 	pool.core.free = [];
-	pool.core.generations = [];
+	for (let index = pool.core.generations.length as int32 - 1; index >= 1; index--) {
+		pool.slots.push(zero);
+		if (pool.core.generations[index] < SLOT_MASK) { pool.core.free.push(index); }
+	}
 }
 
 export function alive<T>(this pool: Pool<T>, id: uint32): boolean {
