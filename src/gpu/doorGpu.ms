@@ -892,7 +892,6 @@ export function doorDestroySampler(sampler: uint32): void {
 
 export const DOOR_BUFFER_VERTEX = 1;
 export const DOOR_BUFFER_INDEX = 2;
-export const DOOR_BUFFER_STREAM = 4;
 
 function alignedToFour(bytes: int64): int64 {
 	return (bytes + 3) & ~(3 as int64);
@@ -1595,5 +1594,4 @@ test "the door's ordinals stay the numbers door.h gives the C layers" {
 	assert DOOR_STAT_IMAGE_BYTES == 4;
 	assert DOOR_BUFFER_VERTEX == 1;
 	assert DOOR_BUFFER_INDEX == 2;
-	assert DOOR_BUFFER_STREAM == 4;
 }

@@ -361,7 +361,7 @@ static int ensureVertexBuffer(int bytes) {
 		s_retiredBuf[s_retiredBufCount] = s_vbuf;
 		s_retiredBufCount++;
 	}
-	s_vbuf = makeBuffer(DOOR_BUFFER_VERTEX | DOOR_BUFFER_STREAM, NULL, (size_t)want, "frame vertex");
+	s_vbuf = makeBuffer(DOOR_BUFFER_VERTEX, NULL, (size_t)want, "frame vertex");
 	s_buffersMade++;
 	s_vbufBytes = want;
 	return 1;
@@ -980,7 +980,7 @@ static int ensureListBuffer(void2dList *l, int which, int bytes) {
 		s_retiredBuf[s_retiredBufCount] = l->buf[which];
 		s_retiredBufCount++;
 	}
-	l->buf[which] = makeBuffer(DOOR_BUFFER_VERTEX | DOOR_BUFFER_STREAM, NULL, (size_t)want, "display list");
+	l->buf[which] = makeBuffer(DOOR_BUFFER_VERTEX, NULL, (size_t)want, "display list");
 	s_buffersMade++;
 	l->cap[which] = want;
 	return 1;

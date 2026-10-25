@@ -9,7 +9,6 @@
 // and int64 pair is one MetaScript Span: the length counts elements.
 static const int32_t DOOR_BUFFER_VERTEX = 1;
 static const int32_t DOOR_BUFFER_INDEX = 2;
-static const int32_t DOOR_BUFFER_STREAM = 4;
 static const int32_t DOOR_PIXEL_FORMAT_NONE = 0;
 static const int32_t DOOR_PIXEL_FORMAT_RGBA8 = 2;
 static const int32_t DOOR_PIXEL_FORMAT_DEPTH = 3;
