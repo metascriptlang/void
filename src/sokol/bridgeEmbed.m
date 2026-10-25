@@ -98,6 +98,8 @@ static void windowEvent(const VoidAppEvent *e) {
 	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidMacosRequestQuit();
 }
 
+static void windowCleanup(void) { doorShutdown(); }
+
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
 	if (sampleCount != 1) {
@@ -113,6 +115,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	d.frame = tick;
 	d.event = windowEvent;
 	d.text = voidAppTextDeliver;
+	d.cleanup = windowCleanup;
 	d.width = w;
 	d.height = h;
 	d.highDpi = highDpi != 0;

@@ -132,6 +132,7 @@ static struct {
 	VoidMacosDesc desc;
 	bool valid;
 	bool initCalled;
+	bool cleanupCalled;
 	bool quitRequested;
 	bool quitOrdered;
 	bool fullscreen;
@@ -199,7 +200,9 @@ static void initEvent(VoidAppEventType type) {
 	s.event.mouseDy = s.mouse.dy;
 }
 
-static void callEvent(void) { s.desc.event(&s.event); }
+static void callEvent(void) {
+	if (!s.cleanupCalled) s.desc.event(&s.event);
+}
 
 static void appEvent(VoidAppEventType type) {
 	if (!eventsEnabled()) return;
@@ -442,6 +445,13 @@ static void transitionToVisible(void) {
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
 	(void)sender;
 	return YES;
+}
+
+- (void)applicationWillTerminate:(NSNotification *)notification {
+	(void)notification;
+	if (s.cleanupCalled) return;
+	if (s.desc.cleanup) s.desc.cleanup();
+	s.cleanupCalled = true;
 }
 @end
 
