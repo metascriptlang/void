@@ -1,17 +1,7 @@
-// Writes the GPUShaderModuleDescriptor modules from the shader IR: one function per program, each
-// target's source under the `when` that builds it. The stages are lowered while this tool compiles
-// (glslIr); the programs are the rows of src/void3d/programKeys.txt, VOID2D_PROGRAMS and
-// GPU_COPY_PROGRAMS. Beside the modules it writes each source's stages as GLSL 450 in sokol-shdc's
-// dialect (void3d.glsl, pixelArt3d.glsl, shader2d.glsl, gpuCopy.glsl), which tools/shaderSlots.ms
-// reads.
 // Usage: msc run tools/irPrograms.ms -- <out dir> <dxbc cache dir> [--fxc <fxc path>]
 //   [--reflection-only]
 // --reflection-only writes a target whose printer refuses the program as its reflection with empty
 // sources and the refusal above the function; without it a refusal stops the tool.
-// Every printed stage lands in out/irPrograms/ for validateHlsl.sh, validateWgsl.sh and the rest.
-// Each HLSL stage's DXBC is <dxbc cache dir>/<key>.dxbc, else fxc compiles it into <out dir>/dxbc/,
-// else the stage has none; <out dir>/dxbc.used lists the keys the modules use. Each Metal stage's
-// metallib is the same through xcrun into <metallib cache dir>/<key>.metallib, with metallib.used.
 
 import { Buffer } from "std/core/buffer";
 import { sha256 } from "std/crypto/sha256";
@@ -140,7 +130,6 @@ const STAGES: string[][] = [
 
 const ARMS = targetArms();
 
-// The file suffixes of a language's vertex and fragment stage, as the validators read them.
 function stageFiles(language: string): string[] {
 	return match (language) {
 		"wgsl" => [".vs.wgsl", ".fs.wgsl"],
@@ -199,7 +188,6 @@ function keyedPrograms(): Program[] {
 	return out;
 }
 
-// [program, vertex stage, fragment stage], in name order, as sokol-shdc kept its programs.
 const VOID2D_PROGRAMS: string[][] = [
 	["blur", "blurVs", "blurFs"],
 	["sprite", "spriteVs", "spriteFs"],
@@ -289,8 +277,6 @@ function programNamed(programs: Program[], name: string): Program {
 	fail("programKeys.txt has no row " + name);
 }
 
-// A dissolve caster writes the head of an emissive dissolve's block (src/void3d/draw.ms
-// applyBlockHead), so that block is the caster's, member for member, and then emissive.
 function checkBlockHead(programs: Program[]): void {
 	const caster = blockMembers(programNamed(programs, "shadowLitTexturedDissolve"),
 		"movingMaterialParams");
@@ -321,8 +307,6 @@ class Agreement {
 	blockOwner: Map<string, string> = new Map();
 }
 
-// Every program of one vertex layout reads its attributes at the same slots, and a uniform block
-// that programs share by name has one size and one slot, so one layout and one writer serve all.
 function agree(
 	agreement: Agreement,
 	program: Program,
@@ -568,7 +552,8 @@ function moduleText(
 					stageSource, name) :
 				metalFlags(language).length > 0 ?
 				stageBytecode((code, stage, entry, what) =>
-					metallibOf(metallib, constants, language, code, entry, what), stageSource, name) :
+					metallibOf(metallib, constants, language, code, entry, what),
+					stageSource, name) :
 				isComputeSource(stageSource) ? ["[]"] : ["[]", "[]"];
 			const code = isComputeSource(stageSource) ?
 				[textShared(texts, stageSource.computeCode, bytecode[0], keepSource)] :

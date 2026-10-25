@@ -132,7 +132,6 @@ export macro glsl(entry: Node): Node {
 	};
 }
 
-// glslIr, glslLinkedIr and glslComputeIr return the lowered module as irText instead of GLSL.
 export macro glslIr(entry: Node): Node {
 	return {
 		kind: NodeKind.CallExpr,
@@ -328,8 +327,6 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 			line: fragment.line, column: fragment.column, elements: [] }, vertex, form] };
 }
 
-// glslCompute(entry, [x, y, z]) for a compute entry: its workgroup size is WGSL's
-// @workgroup_size, written where the stage is generated as shdc's local_size.
 export macro glslCompute(entry: Node, workgroupSize: Node): Node {
 	return {
 		kind: NodeKind.CallExpr,
@@ -400,7 +397,6 @@ function covers(a: FeatureCondition[], b: FeatureCondition[]): boolean {
 	return !a.some((c) => !includesCondition(b, c));
 }
 
-// a without the one clause whose negation is b's only other clause, or null.
 function joined(a: FeatureCondition[], b: FeatureCondition[]): FeatureCondition[] | null {
 	if (a.length != b.length) { return null; }
 	const own = a.filter((c) => !includesCondition(b, c));
@@ -437,11 +433,6 @@ function anyHolds(products: FeatureCondition[][], on: string[]): boolean {
 	return products.some((p) => productHolds(p, on));
 }
 
-// The products a declaration is read under, by two laws: one that holds another's every clause
-// adds nothing (c || c && x is c), and two that differ only in a clause and its negation are
-// their common part (c && x || c && !x is c). Then, over every set of the features named, a
-// product the others already hold is dropped, the last read first, and products that hold
-// always are the empty product, which reads always.
 function simplest(contexts: FeatureCondition[][]): FeatureCondition[][] {
 	let products: FeatureCondition[][] = [];
 	for (const c of contexts) { products.push(c.slice(0)); }
@@ -500,7 +491,6 @@ function productCondition(p: FeatureCondition[]): FeatureCondition {
 	return p.length == 1 ? p[0] : conditionOf(ConditionKind.All, p);
 }
 
-// The `||` of every context a declaration is read in; one never read holds under no features.
 function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition {
 	if (contexts.length == 0) { return conditionOf(ConditionKind.Any, []); }
 	const products = simplest(contexts);
@@ -730,7 +720,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		globals.push(name);
 	}
 
-	// Blocks at one binding are alternatives a variant chooses between, so they may share members.
 	function claimMember(name: string, slot: int32, at: Node): void {
 		const seen = memberNames.indexOf(name);
 		if (seen >= 0 && memberSlots[seen] == slot) { return; }
@@ -933,8 +922,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let structTypes: Node[] = [];
 	let structIndices: int32[] = [];
 
-	// A helper's body is lowered once, with no features on; what it reads is kept as a record
-	// and counted at each call, under the features around that call.
 	let recordKinds: int32[][] = [];
 	let recordIndices: int32[][] = [];
 	let recordGates: FeatureCondition[][][] = [];

@@ -39,8 +39,6 @@ import {
 	mathName,
 } from "./spelling";
 
-// WGSL keywords and reserved words (sections 15.1, 15.2), the predeclared types and enumerants
-// a declaration would shadow, and every builtin function this printer calls.
 function wgslReservedWords(): string[] {
 	let words = [
 		"alias", "break", "case", "const", "const_assert", "continue", "continuing", "default",

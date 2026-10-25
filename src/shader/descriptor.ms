@@ -1,7 +1,3 @@
-// A program's GPUShaderModuleDescriptor from the IR: each stage's lowered module (irText) is
-// specialized for the program key, the stages are joined into one module, and per target the
-// reflection comes from reflect.ms and the source from that target's printer.
-
 import {
 	ConditionKind,
 	DeclarationKind,
@@ -69,7 +65,6 @@ function shiftStmts(o: Offsets, stmts: ShaderStmt[]): void {
 	}
 }
 
-// One resource both stages declare: the same block struct by name and members, else the same type.
 function sameResourceType(m: ShaderModule, a: ShaderType, b: ShaderType): boolean {
 	if (a.kind != ShaderTypeKind.Struct || b.kind != ShaderTypeKind.Struct) {
 		return sameShaderType(a, b);
@@ -86,9 +81,6 @@ function sameResourceType(m: ShaderModule, a: ShaderType, b: ShaderType): boolea
 	return true;
 }
 
-// Appends `from` to `into`, moving every index of `from` past what `into` already holds; `from`
-// is consumed. Only the ios of `from`'s own stage come along: a linked fragment also holds its
-// vertex entry's inputs, which glslLinked reads to name the varyings apart from them.
 function append(into: ShaderModule, from: ShaderModule): void {
 	const stage = from.entries[0].stage;
 	let o = new Offsets();
@@ -204,7 +196,6 @@ function checked(m: ShaderModule, what: string): Result<ShaderModule, string> {
 	return Result.ok(m);
 }
 
-// One module holding the program's vertex entry (0) and fragment entry (1) for the features `on`.
 export function programModule(vertexText: string, fragmentText: string, on: string[]):
 	Result<ShaderModule, string> {
 	let m = try stageModule(vertexText, on, "the vertex stage");
@@ -307,7 +298,6 @@ export class ProgramSource {
 	refusal: string = "";
 }
 
-// The reflection always; the sources when the target's printer prints them, else its refusal.
 export function programSource(m: ShaderModule, target: ShaderTarget):
 	Result<ProgramSource, string> {
 	let out = new ProgramSource();
@@ -351,7 +341,6 @@ function optional(name: string, value: string): string {
 	return value != "" ? ", " + name + ": \"" + value + "\"" : "";
 }
 
-// The binding and attribute lines in shdc's reflection order; members shdc never reflects follow.
 function bindingSource(r: Reflection): string[] {
 	return r.bindings.map((b) => {
 		const kind: string = b.kind;

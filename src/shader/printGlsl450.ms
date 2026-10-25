@@ -42,8 +42,6 @@ import {
 } from "./names";
 import { binaryOperator, exchangeSlot, glslAtomicName, mathName } from "./spelling";
 
-// GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
-// texture and sampler types of Vulkan GLSL.
 function glslReservedWords(): string[] {
 	let words = [
 		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
@@ -711,7 +709,6 @@ function nameDeclarations(p: Glsl): void {
 	}
 }
 
-// One stage of a module, its first entry, as Vulkan-style GLSL 450 for sokol-shdc.
 export function printGlsl450(m: ShaderModule): string {
 	let p = new Glsl();
 	p.module = m;

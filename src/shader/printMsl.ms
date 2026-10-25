@@ -41,8 +41,6 @@ import {
 	pointed,
 } from "./spelling";
 
-// C++14 keywords, the Metal address spaces, attributes and types, and every function this
-// printer calls.
 function mslReservedWords(): string[] {
 	let words = [
 		"alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "break",
@@ -142,8 +140,6 @@ function inverseText(n: int32): string {
 		body.map((line) => "  " + line + "\n").join("") + "}";
 }
 
-// The resources and ios a function reads, through every function it calls; each becomes a
-// parameter, since MSL has no module-scope resources or stage variables.
 class Threaded {
 	stageIn: boolean = false;
 	stageOut: boolean = false;
@@ -896,7 +892,6 @@ function naturalExtent(m: ShaderModule, t: ShaderType): [int32, int32] {
 	return [align, (end + align - 1) / align * align];
 }
 
-// A buffer's struct is the host's bytes, so each member sits where std140 or std430 put it.
 function layoutError(m: ShaderModule, structIndex: int32, layout: StructLayout, owner: string,
 	sized: boolean): string {
 	const s = m.structs[structIndex];

@@ -105,7 +105,6 @@ export function mathName(op: Intrinsic): string {
 	};
 }
 
-// GLSL 4.30 has no atomic load or store: a load is an add of 0 and a store an exchange.
 export function glslAtomicName(op: Intrinsic): string {
 	return match (op) {
 		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",

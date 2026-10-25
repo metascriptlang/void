@@ -758,7 +758,9 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 			inRange(c, e.index, m.resources.length as int32, "resource", owner),
 		ExprKind.Call => {
 			inRange(c, e.index, m.functions.length as int32, "function", owner);
-			if (e.index >= 0 && e.index < m.functions.length) { c.callees[c.current].push(e.index); }
+			if (e.index >= 0 && e.index < m.functions.length) {
+				c.callees[c.current].push(e.index);
+			}
 		},
 		ExprKind.Workgroup =>
 			inRange(c, e.index, m.workgroups.length as int32, "workgroup variable", owner),

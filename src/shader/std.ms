@@ -1,7 +1,3 @@
-// What a shader function is written against, named as TypeGPU names it (docs/VOCABULARY.md) and
-// meaning on the CPU what the GPU computes. The glsl macro (./emit.ms) knows a call into this
-// module by the module, and emits it under the GLSL spelling of the declaration's name.
-
 import { Wrap } from "../gpu/state";
 
 export struct Vec2f {
@@ -1806,12 +1802,6 @@ export function le(a: Vec3f, b: Vec3f): Vec3b {
 	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
 }
 
-// Field decorators of a stage's structs, named as WGSL names its attributes: `@builtin(position)`,
-// `@location(1)` on an output, `@binding(3)` on a binding. `@sampleType` and `@samplerType` give
-// a texture or sampler the binding type WebGPU's layout needs (`unfilterable_float`,
-// `nonfiltering`). `@feature(CUTOUT)` marks a boolean as the program key feature of that name.
-// `@access(read_write)` lets a compute entry write a storage buffer or texture (WGSL's access
-// mode), and `@format(rgba8unorm)` is a storage texture's texel format.
 export function builtin(): void {}
 export function location(): void {}
 export function binding(): void {}
@@ -1821,8 +1811,6 @@ export function feature(): void {}
 export function access(): void {}
 export function format(): void {}
 
-// WGSL's workgroupBarrier and storageBarrier; the CPU runs one invocation at a time, so they
-// wait for no one.
 export function workgroupBarrier(): void {}
 export function storageBarrier(): void {}
 
@@ -1837,7 +1825,6 @@ export struct AtomicU32 {
 	value: uint32;
 }
 
-// WGSL's __atomic_compare_exchange_result<T>, its old_value and exchanged.
 export struct AtomicExchangeI32 {
 	oldValue: int32;
 	exchanged: boolean;
@@ -1970,7 +1957,6 @@ export function atomicCompareExchangeWeak(
 	return { oldValue: old, exchanged: old == compare };
 }
 
-// WGSL's discard: the fragment writes nothing. Like TypeGPU's, it has no CPU meaning.
 export function discard(): never {
 	unreachable("discard: a fragment is discarded only on the GPU");
 }

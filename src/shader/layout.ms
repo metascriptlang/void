@@ -183,7 +183,6 @@ class PairUse {
 
 const UNPLACED = -2;
 
-// A view every listed stage reads takes one native slot in all of them, the first free in each.
 function highest(next: int32[], stages: int32[]): int32 {
 	let slot = 0;
 	for (const st of stages) { if (next[st] > slot) { slot = next[st]; } }
