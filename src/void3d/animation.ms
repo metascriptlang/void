@@ -3,7 +3,7 @@
 // swap which uploaded mesh a node draws. docs/VOID3D.md "M9 as built" lists what is not ported.
 import { vec3 } from "../math/math3d";
 import { PassState, passState } from "../gpu/door";
-import { MeshData } from "./meshData";
+import { MeshData, copy } from "./meshData";
 import {
 	DrawContext,
 	MeshId,
@@ -468,7 +468,7 @@ export function addBakedFrames(
 	const count: int32 = try checkBakedFrames(frames);
 	let added: Vec<MeshId> = [];
 	for (let f = 0; f < count; f++) {
-		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, { ...frames[f] });
+		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, frames[f].copy());
 		if (!frame.ok) {
 			for (const mesh of added) {
 				const _left: Result<int32, HandleError> = releaseMesh(context, mesh);
