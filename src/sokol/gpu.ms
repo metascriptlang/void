@@ -11,6 +11,7 @@ when (macos && !voidDummy) {
 	@passL("-framework MetalKit");
 	@compile("../platform/macos/window.m", "-fobjc-arc");
 	@compile("./bridgeEmbed.m");
+	@compile("./metalSurface.m", "-fobjc-arc");
 	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./appWindow.c");
 	@compile("./views.c");
@@ -52,6 +53,7 @@ when (android && !voidDummy) {
 
 when (ios && !voidDummy) {
 	@compile("./bridgeIos.m");
+	@compile("./metalSurface.m", "-fobjc-arc");
 	@compile("./presentGate.m", "-fobjc-arc");
 	@compile("./bridgeIosApp.m", "-fobjc-arc");
 	@compile("./appWindow.c");
