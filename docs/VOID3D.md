@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-07):** M1–M36 are built and reviewed; M35, M36 and M37 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
+**Status (2026-10-07):** M1–M36 are built and reviewed; M35, M36 and M37 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The 3D gate is `sh scripts/gate3d.sh`, run beside `sh scripts/gate.sh`; web/device coverage and deployment remain separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built", "M21 as built" and "M35a as built"; old `pass.ms`,
