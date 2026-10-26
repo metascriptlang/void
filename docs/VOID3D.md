@@ -6115,7 +6115,10 @@ The overlay ports in steps, each with its own check:
    forward readback checks (hdr, exposure, spot cookie, card table, bloom), the mixed goldens and
    web3d (WebGPU and WebGL2) stay green with the depth target sampled.
 3. A decal program and its pass after the translucents, before the tone map, with the box drawn
-   from inside as from outside; a GPU golden. **Program built (2026-10-27); no GPU golden yet.**
+   from inside as from outside; a GPU golden. **Built (2026-10-27).** `tests/integration/decal.ms`
+   reads it back on D3D11, GL core and WebGL2 (gate3d `decal`, gl-core, web3d): the box tints the
+   backdrop with the camera outside it and inside it, and a backdrop off the box's centre fades by
+   the depth it reads (217 against Heaps' 216.75).
    `Program.Decal` draws a Lit-layout box in the core preset only. Its vertex stage makes Heaps'
    `matrix` (the box's inverse world after the inverse viewProj) per vertex, so the camera block
    is unchanged. Its fragment stage reads the stored depth at the pixel and takes it to NDC by
