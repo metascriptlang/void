@@ -889,3 +889,14 @@ Vulkan can drop its own strip-index, indirect-dispatch and destroyed-module chec
 pipeline the same way. Per-draw liveness checks of bound buffers, groups and views stay in the
 backends: they catch a resource destroyed after it was set. `tests/aborts/cases/webgpuDummyCases.ms`
 pins the three moved refusals on the dummy backend, so they run on Windows too.
+
+Frame-path items only Windows can measure (docs/GPU.md "Beyond sokol on the frame path": each is
+built once a probe shows the cost it removes), from the 2026-10-26 audit at `1c02b3df`:
+- D3D11: `d3dClearState` at endPass and endComputePass (Heaps keeps state across passes and unbinds
+  a texture's SRV before it becomes a target, `DirectXDriver.hx:969-980`); compute rebinds every
+  view with no compare (`d3dCsClearViews`); 3D slice views made and released every pass.
+- GL: every dirty apply re-uploads each uniform block with no compare and no per-block frequency
+  (`GlDriver.hx:605-623`); the shared framebuffer detaches, re-attaches and checks status on every
+  pass rather than on a target change (`GlDriver.hx:1842-1867`); storage buffers and images rebind
+  with no compare.
+The Mac side keeps the uniform overrun check, the last copy shared across backends (step 8).
