@@ -275,12 +275,13 @@ function handleClippedEdge(
 	}
 	const left = x as float32;
 	const right = (x + 1) as float32;
+	const slot = base + x;
 	if (x0 <= left && x1 <= left) {
-		buf[base + x] += e.direction * (y1 - y0);
+		buf[slot] += e.direction * (y1 - y0);
 	} else if (x0 >= right && x1 >= right) {
 		return;
 	} else {
-		buf[base + x] += e.direction * (y1 - y0) * (1 - ((x0 - left) + (x1 - left)) / 2);
+		buf[slot] += e.direction * (y1 - y0) * (1 - ((x0 - left) + (x1 - left)) / 2);
 	}
 }
 
@@ -356,7 +357,8 @@ function fillActiveEdges(
 					const height: float32 = (sy1 - sy0) * e.direction;
 					const right = (x as float32) + 1.0;
 					buf[x] += positionTrapezoidArea(height, xTop, right, xBottom, right);
-					buf[fillBase + x] += height;
+					const filled = fillBase + x;
+					buf[filled] += height;
 				} else {
 					if (xTop > xBottom) {
 						sy0 = yBottom - (sy0 - yTop);
@@ -394,7 +396,8 @@ function fillActiveEdges(
 					buf[x2] += area + sign * positionTrapezoidArea(
 						sy1 - yFinal, x2 as float32, rightEdge, xBottom, rightEdge,
 					);
-					buf[fillBase + x2] += sign * (sy1 - sy0);
+					const filledEnd = fillBase + x2;
+					buf[filledEnd] += sign * (sy1 - sy0);
 				}
 			} else {
 				for (let x: int32 = 0; x < len; x++) {
