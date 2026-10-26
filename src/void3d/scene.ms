@@ -1485,16 +1485,17 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 		if (!scene.nodes[index].isVisible()) { continue; }
 		const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
-			const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
-			const pick = instance.lod;
+			const payload: int32 = scene.nodes[index].payload;
+			const pick = scene.meshes[payload].lod;
 			if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
 			items.push({
-				mesh: instance.mesh,
-				material: instance.material,
+				mesh: scene.meshes[payload].mesh,
+				material: scene.meshes[payload].material,
 				world: scene.nodes[index].world,
 				order: scene.nodes[index].renderOrder,
-				skin: null, skinGeometry: instance.skinGeometry,
-				skinPalette: instance.skinPalette, range: instance.range, lod: instance.lod,
+				skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
+				skinPalette: scene.meshes[payload].skinPalette, range: scene.meshes[payload].range,
+				lod: scene.meshes[payload].lod,
 			});
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
@@ -1632,8 +1633,8 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 			if (!scene.nodes[index].isVisible()) { continue; }
 			const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 			if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
-				const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
-				const pick = instance.lod;
+				const payload: int32 = scene.nodes[index].payload;
+				const pick = scene.meshes[payload].lod;
 				if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
 				// The walk can produce more items than the list holds as well as fewer: a node
 				// culled since the last collect drops out, and un-culling it puts it back.
@@ -1641,22 +1642,23 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 				// case, which is a fault, not a wrong pixel.
 				if (at < (items.length as int32)) {
 					items[at].world = scene.nodes[index].world;
-					items[at].mesh = instance.mesh;
-					items[at].material = instance.material;
+					items[at].mesh = scene.meshes[payload].mesh;
+					items[at].material = scene.meshes[payload].material;
 					items[at].order = scene.nodes[index].renderOrder;
 					items[at].skin = null;
-					items[at].skinGeometry = instance.skinGeometry;
-					items[at].skinPalette = instance.skinPalette;
-					items[at].range = instance.range;
-					items[at].lod = instance.lod;
+					items[at].skinGeometry = scene.meshes[payload].skinGeometry;
+					items[at].skinPalette = scene.meshes[payload].skinPalette;
+					items[at].range = scene.meshes[payload].range;
+					items[at].lod = scene.meshes[payload].lod;
 				} else {
 					items.push({
-						mesh: instance.mesh,
-						material: instance.material,
+						mesh: scene.meshes[payload].mesh,
+						material: scene.meshes[payload].material,
 						world: scene.nodes[index].world,
 						order: scene.nodes[index].renderOrder,
-						skin: null, skinGeometry: instance.skinGeometry,
-						skinPalette: instance.skinPalette, range: instance.range, lod: instance.lod,
+						skin: null, skinGeometry: scene.meshes[payload].skinGeometry,
+						skinPalette: scene.meshes[payload].skinPalette,
+						range: scene.meshes[payload].range, lod: scene.meshes[payload].lod,
 					});
 				}
 				at = at + 1;
