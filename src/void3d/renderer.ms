@@ -593,6 +593,7 @@ export function beginFrame(
 	let checkedMaterial: MaterialId = NO_MATERIAL;
 	let checked: ProgramKey = ProgramKey.of(Program.Lit);
 	let checkedTotal: int32 = 0;
+	let lodItems: int32 = 0;
 	for (let i = 0; i < (items.length as int32); i++) {
 		const mesh: MeshId = items[i].mesh;
 		const material: MaterialId = items[i].material;
@@ -602,6 +603,7 @@ export function beginFrame(
 			checkedTotal = context.logicalElementCount(mesh.index);
 		}
 		if (!items[i].validRange(checkedTotal)) { return Result.err(RendererError.DrawRange); }
+		if (items[i].lod !== null) { lodItems += 1; }
 		if (!known) {
 			const pair: Result<ProgramKey, RendererError> =
 				pairProgram(renderer, mesh, material, shadowed);
@@ -632,7 +634,7 @@ export function beginFrame(
 	}
 	const lodEye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
 	const lodPass: int64 = nextPickPass();
-	for (let i = 0; i < (items.length as int32); i++) {
+	for (let i = 0; lodItems > 0 && i < (items.length as int32); i++) {
 		const pick = items[i].lod;
 		if (pick === null) { continue; }
 		if (!pick.pickFor(items[i].world, lodEye, camera[CAMERA_PROJECTION_X],
