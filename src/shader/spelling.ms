@@ -30,15 +30,13 @@ export function isComponentCompare(op: Intrinsic): boolean {
 
 // The operator that spells a componentwise test where the target compares vectors by operator.
 export function componentCompare(op: Intrinsic): BinaryOp {
-	return match (op) {
-		Intrinsic.LessThan => BinaryOp.Less,
-		Intrinsic.LessThanEqual => BinaryOp.LessEqual,
-		Intrinsic.GreaterThan => BinaryOp.Greater,
-		Intrinsic.GreaterThanEqual => BinaryOp.GreaterEqual,
-		Intrinsic.Equal => BinaryOp.Equal,
-		Intrinsic.NotEqual => BinaryOp.NotEqual,
-		_ => { unspelled("componentwise test", op); },
-	};
+	if (op == Intrinsic.LessThan) { return BinaryOp.Less; }
+	if (op == Intrinsic.LessThanEqual) { return BinaryOp.LessEqual; }
+	if (op == Intrinsic.GreaterThan) { return BinaryOp.Greater; }
+	if (op == Intrinsic.GreaterThanEqual) { return BinaryOp.GreaterEqual; }
+	if (op == Intrinsic.Equal) { return BinaryOp.Equal; }
+	if (op == Intrinsic.NotEqual) { return BinaryOp.NotEqual; }
+	unspelled("componentwise test", op);
 }
 
 function unspelled(what: string, op: Intrinsic): never {
