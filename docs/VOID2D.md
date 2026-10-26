@@ -2055,7 +2055,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   remain separate.
   Module off (guardrail 6), measured 2026-10-08 with `sh scripts/wasmModuleDelta.sh` (clang 23.1.0,
   -O2, objects, code plus data bytes, before any link or garbage collection): with the module off
-  no default-layer object (`glyph.c`, `grapheme.c`, `batcher.c`, `sfnt.c`) names a `void2dColour`
+  no default-layer object (`glyph.c`, `grapheme.c`, `batcher.c`) names a `void2dColour`
   symbol, while `glyph.c` built with the module does (the control), and the only `stb_image`
   implementations are the module's own PNG-only copy and `assets/image.c`. The default layer now
   against the commit before the colour item's first default-layer slice (`54bdd52`, the parent of
