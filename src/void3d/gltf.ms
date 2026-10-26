@@ -76,6 +76,7 @@ export enum GltfError {
 	BadReference,
 	ImageByUri,
 	BufferByUri,
+	FileNotFound,
 	BadImage,
 	UnsupportedSampler,
 	UnsupportedMaterial,
@@ -108,10 +109,11 @@ function gltfCause(code: GltfError): string {
 		GltfError.BadNode => "node transform is invalid or not representable",
 		GltfError.NotGlb => "GLB header or aligned JSON/BIN chunk layout is invalid",
 		GltfError.BadReference => "node, mesh, material, texture, or graph reference is invalid",
-		GltfError.ImageByUri => "External URI image loading is not supported; " +
-			"supply an embedded image",
-		GltfError.BufferByUri => "a buffer after the first is read only from a base64 data: URI; " +
-			"embed it, or pass the first buffer's bytes to the loader",
+		GltfError.ImageByUri => "an image named by an external URI needs a GltfFileSystem; " +
+			"pass one, or embed the image",
+		GltfError.BufferByUri => "a buffer named by an external URI needs a GltfFileSystem; " +
+			"pass one, embed it, or pass the first buffer's bytes to the loader",
+		GltfError.FileNotFound => "the GltfFileSystem has no file at this URI",
 		GltfError.BadImage => "embedded PNG/JPEG bytes or image dimensions are invalid",
 		GltfError.UnsupportedSampler => "sampler filter or wrap is unsupported or incompatible",
 		GltfError.UnsupportedMaterial => "material property or texture combination is unsupported",
@@ -344,6 +346,21 @@ struct MaterialRead {
 	realUvs: boolean;
 	emits: boolean;
 	transformRead: boolean;
+}
+
+// The files a .gltf names by URI, handed in by the caller as Heaps' hxd.res.Loader takes an
+// hxd.fs.FileSystem (FileSystem.hx:5-6, Loader.hx:14,31-36): Void reads no disk or network
+// itself. `getBytes` is FileSystem.get(path).getBytes() and is asked only after `exists` said
+// yes. A path is the URI as written, relative to the .gltf.
+export interface GltfFileSystem {
+	exists: (path: string) => boolean;
+	getBytes: (path: string) => Vec<uint8>;
+}
+
+function fileBytes(files: GltfFileSystem, uri: string): Result<Vec<uint8>, GltfError> {
+	if (uri.indexOf("%") >= 0) { return Result.err(GltfError.Unsupported); }
+	if (!files.exists(uri)) { return Result.err(GltfError.FileNotFound); }
+	return Result.ok(files.getBytes(uri));
 }
 
 struct ImageView {
@@ -1494,6 +1511,23 @@ function loadInlineImage(uri: string, image: JsonValue): Result<ImageView, GltfE
 	});
 }
 
+function fileImage(
+	files: GltfFileSystem, uri: string, image: JsonValue,
+): Result<ImageView, GltfError> {
+	let bytes: Vec<uint8> = try fileBytes(files, uri);
+	const sniffed: Result<ImageFormat, ImageError> = imageFormatOf(bytes);
+	if (!sniffed.ok) { return Result.err(GltfError.BadImage); }
+	const format: ImageFormat = sniffed.value;
+	if (hasField(image, "mimeType")) {
+		const declared: ImageFormat = try formatForMime(fieldOf(image, "mimeType").asString());
+		if (declared != format) { return Result.err(GltfError.BadImage); }
+	}
+	const count: int32 = bytes.length as int32;
+	return Result.ok({
+		buffer: -1, offset: 0, length: count, format: format, inlineBytes: move bytes,
+	});
+}
+
 // A buffer embedded as a data: URI, in the two media types Bevy's `load_buffers` takes.
 function inlineBuffer(uri: string): Result<Vec<uint8>, GltfError> {
 	const comma: int32 = uri.indexOf(",") as int32;
@@ -1511,6 +1545,7 @@ function loadBuffer(
 	fromGlb: boolean,
 	supplied: Readonly<Span<uint8>>,
 	source: string,
+	files: GltfFileSystem | null,
 ): Result<GltfAccessorBuffer, GltfDiagnostic> {
 	const path: string = `$.buffers[${index}]`;
 	const uri: JsonValue = fieldOf(info, "uri");
@@ -1528,6 +1563,16 @@ function loadBuffer(
 				"a data: URI buffer is base64 application/octet-stream or gltf-buffer"));
 		}
 		bytes = move decoded.value;
+	} else if (!isNull(uri) && (index > 0 || fromGlb || supplied.length == 0) && files !== null) {
+		if (uri.kind != JsonKind.String) {
+			return Result.err(gltfFailure(GltfError.Unsupported, source, `${path}.uri`));
+		}
+		const read = fileBytes(files, uri.strVal);
+		if (!read.ok) {
+			return Result.err(gltfFailure(read.error, source, `${path}.uri`, uri.strVal,
+				read.error == GltfError.Unsupported ? "a percent-encoded URI is not decoded" : ""));
+		}
+		bytes = move read.value;
 	} else if (index > 0) {
 		return Result.err(gltfFailure(GltfError.BufferByUri, source, `${path}.uri`));
 	} else if (fromGlb && !isNull(uri)) {
@@ -1571,6 +1616,7 @@ function base64Bytes(payload: string, malformed: GltfError): Result<Vec<uint8>, 
 function loadImageView(
 	image: JsonValue,
 	accessorViews: Readonly<Span<GltfAccessorView>>,
+	files: GltfFileSystem | null,
 ): Result<ImageView, GltfError> {
 	if (image === null || image.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
@@ -1579,8 +1625,9 @@ function loadImageView(
 		if (hasField(image, "bufferView")) { return Result.err(GltfError.Unsupported); }
 		const uri: JsonValue = fieldOf(image, "uri");
 		if (uri === null || uri.kind != JsonKind.String) { return Result.err(GltfError.BadImage); }
-		if (!uri.strVal.startsWith("data:")) { return Result.err(GltfError.ImageByUri); }
-		return loadInlineImage(uri.strVal, image);
+		if (uri.strVal.startsWith("data:")) { return loadInlineImage(uri.strVal, image); }
+		if (files === null) { return Result.err(GltfError.ImageByUri); }
+		return fileImage(files, uri.strVal, image);
 	}
 	const viewIndex: int32 = intField(image, "bufferView", INVALID_INT);
 	if (viewIndex < 0 || viewIndex >= (accessorViews.length as int32)) {
@@ -2173,6 +2220,7 @@ function decodeGltf(
 	fromGlb: boolean,
 	source: string = "<memory>",
 	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+	files: GltfFileSystem | null = null,
 ): Result<GltfData, GltfDiagnostic> {
 	const parsed: Result<JsonValue, string> = parseJson(json);
 	if (!parsed.ok) {
@@ -2241,7 +2289,7 @@ function decodeGltf(
 	}
 	let colourBuffers: Vec<GltfAccessorBuffer> = [];
 	for (let i = 0; i < bufferCount; i++) {
-		const loaded = try loadBuffer(at(buffers, i), i, fromGlb, supplied, source);
+		const loaded = try loadBuffer(at(buffers, i), i, fromGlb, supplied, source, files);
 		colourBuffers.push(move loaded);
 	}
 	const viewRead = colourAccessorViews(views, colourBuffers);
@@ -2262,7 +2310,7 @@ function decodeGltf(
 	}
 	let images: Vec<ImageView> = [];
 	for (let i = 0; i < imageCount; i++) {
-		const image = loadImageView(imageArray.at(i), colourViews);
+		const image = loadImageView(imageArray.at(i), colourViews, files);
 		if (!image.ok) {
 			return Result.err(gltfFailure(image.error, source, `$.images[${i}]`,
 				sourceName(imageArray.at(i))));
@@ -2506,8 +2554,9 @@ export function loadGltf(
 	json: string,
 	buffer: Readonly<Span<uint8>>,
 	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+	files: GltfFileSystem | null = null,
 ): Result<GltfData, GltfError> {
-	let decoded = decodeGltf(json, buffer, false, "<memory>", materials);
+	let decoded = decodeGltf(json, buffer, false, "<memory>", materials, files);
 	if (!decoded.ok) { return Result.err(decoded.error.code); }
 	return Result.ok(move decoded.value);
 }
@@ -2517,8 +2566,9 @@ export function loadGltfDetailed(
 	buffer: Readonly<Span<uint8>>,
 	source: string = "<memory>",
 	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+	files: GltfFileSystem | null = null,
 ): Result<GltfData, GltfDiagnostic> {
-	return decodeGltf(json, buffer, false, source, materials);
+	return decodeGltf(json, buffer, false, source, materials, files);
 }
 
 function uint32At(bytes: Readonly<Span<uint8>>, at: int32): uint32 {
@@ -2534,6 +2584,7 @@ export function loadGlbDetailed(
 	bytes: Readonly<Span<uint8>>,
 	source: string = "<memory>",
 	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+	files: GltfFileSystem | null = null,
 ): Result<GltfData, GltfDiagnostic> {
 	const total: int32 = bytes.length as int32;
 	if (total < GLB_HEADER_LENGTH + GLB_CHUNK_HEADER_LENGTH) {
@@ -2580,14 +2631,15 @@ export function loadGlbDetailed(
 		at = end;
 		chunk = chunk + 1;
 	}
-	return decodeGltf(json, bytes[binaryStart..binaryEnd], true, source, materials);
+	return decodeGltf(json, bytes[binaryStart..binaryEnd], true, source, materials, files);
 }
 
 export function loadGlb(
 	bytes: Readonly<Span<uint8>>,
 	materials: GltfMaterialImport = GltfMaterialImport.Legacy,
+	files: GltfFileSystem | null = null,
 ): Result<GltfData, GltfError> {
-	let decoded = loadGlbDetailed(bytes, "<memory>", materials);
+	let decoded = loadGlbDetailed(bytes, "<memory>", materials, files);
 	if (!decoded.ok) { return Result.err(decoded.error.code); }
 	return Result.ok(move decoded.value);
 }
