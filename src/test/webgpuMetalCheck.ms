@@ -44,6 +44,7 @@ import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
 import { doorApplyScissor, doorBeginColorPass, doorEndPass, doorMakeTargetImage, doorMakeTextureView, doorSetup, doorShutdown } from "../gpu/doorGpu.ms";
 
 import { Cell, PlainBindings, ScaledBindings, WORKGROUP, plainKernel, scaledKernel, shadyComputeDescriptor } from "./metalShadyCompute";
+import { drawOverLoadedStencil } from "./webgpuFixtures.ms";
 
 @compile("./metalDevice.m");
 
@@ -492,6 +493,7 @@ function stencilPipeline(
 	compare: GPUCompareFunction,
 	passOp: GPUStencilOperation,
 	writeMask: uint32 | null,
+	topology: GPUPrimitiveTopology,
 ): GPURenderPipeline {
 	let descriptor: GPURenderPipelineDescriptor = { label: "stencil" };
 	descriptor.vertex.module = module;
@@ -504,13 +506,14 @@ function stencilPipeline(
 	descriptor.depthStencil.stencilFront = { compare: compare, passOp: passOp };
 	descriptor.depthStencil.stencilBack = { compare: compare, passOp: passOp };
 	descriptor.depthStencil.stencilWriteMask = writeMask;
+	descriptor.primitive.topology = topology;
 	return device.createRenderPipeline(descriptor);
 }
 
 function stencilScene(device: GPUDevice, writerReference: uint32, testerReference: uint32, writerMask: uint32 | null): Vec<uint8> {
 	const module = flatShader(device);
-	const writer = stencilPipeline(device, module, "always", "replace", writerMask);
-	const tester = stencilPipeline(device, module, "equal", "keep", null);
+	const writer = stencilPipeline(device, module, "always", "replace", writerMask, "triangle-list");
+	const tester = stencilPipeline(device, module, "equal", "keep", null, "triangle-list");
 	const uniforms = colourUniforms(device);
 	const group = uniformGroup(device, writer, uniforms);
 	const vertices = vertexBuffer(device, 96);
@@ -567,6 +570,15 @@ test "a stencil write at a reference masks a later equal-test draw, by reference
 	assert pixel(masked, 16, 32) == GREEN;
 	const maskedMismatch = stencilScene(device, 3, 3, 2);
 	assert pixel(maskedMismatch, 16, 32) == RED;
+	device.destroy();
+}
+
+test "a stencil cleared to 1 and stored is loaded by the next pass while that pass clears its depth" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep", null, "triangle-strip"), target);
+	const pixels = readPixels(target);
+	assert pixel(pixels, 0, 0) == GREEN && pixel(pixels, 63, 63) == GREEN;
 	device.destroy();
 }
 
