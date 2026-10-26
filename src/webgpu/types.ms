@@ -541,6 +541,148 @@ export function nativeAt<T>(table: T[], members: int32, index: int32, backend: s
 	return table[index];
 }
 
+export function compareIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"never" => 0,
+		"less" => 1,
+		"equal" => 2,
+		"less-equal" => 3,
+		"greater" => 4,
+		"not-equal" => 5,
+		"greater-equal" => 6,
+		"" | "always" => 7,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function compareNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 8, compareIndex(value, member, backend), backend, "compare function");
+}
+
+export function blendFactorIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"zero" => 0,
+		"" | "one" => 1,
+		"src" => 2,
+		"one-minus-src" => 3,
+		"src-alpha" => 4,
+		"one-minus-src-alpha" => 5,
+		"dst" => 6,
+		"one-minus-dst" => 7,
+		"dst-alpha" => 8,
+		"one-minus-dst-alpha" => 9,
+		"src-alpha-saturated" => 10,
+		"constant" => 11,
+		"one-minus-constant" => 12,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function blendFactorNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 13, blendFactorIndex(value, member, backend), backend, "blend factor");
+}
+
+export function blendOperationIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"" | "add" => 0,
+		"subtract" => 1,
+		"reverse-subtract" => 2,
+		"min" => 3,
+		"max" => 4,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function blendOperationNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 5, blendOperationIndex(value, member, backend), backend, "blend operation");
+}
+
+export function stencilOperationIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"" | "keep" => 0,
+		"zero" => 1,
+		"replace" => 2,
+		"invert" => 3,
+		"increment-clamp" => 4,
+		"decrement-clamp" => 5,
+		"increment-wrap" => 6,
+		"decrement-wrap" => 7,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function stencilOperationNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 8, stencilOperationIndex(value, member, backend), backend, "stencil operation");
+}
+
+export function vertexFormatIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"uint8x2" => 0,
+		"uint8x4" => 1,
+		"sint8x2" => 2,
+		"sint8x4" => 3,
+		"unorm8x2" => 4,
+		"unorm8x4" => 5,
+		"snorm8x2" => 6,
+		"snorm8x4" => 7,
+		"uint16x2" => 8,
+		"uint16x4" => 9,
+		"sint16x2" => 10,
+		"sint16x4" => 11,
+		"unorm16x2" => 12,
+		"unorm16x4" => 13,
+		"snorm16x2" => 14,
+		"snorm16x4" => 15,
+		"float16x2" => 16,
+		"float16x4" => 17,
+		"float32" => 18,
+		"float32x2" => 19,
+		"float32x3" => 20,
+		"float32x4" => 21,
+		"uint32" => 22,
+		"uint32x2" => 23,
+		"uint32x3" => 24,
+		"uint32x4" => 25,
+		"sint32" => 26,
+		"sint32x2" => 27,
+		"sint32x3" => 28,
+		"sint32x4" => 29,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function vertexFormatNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 30, vertexFormatIndex(value, member, backend), backend, "vertex format");
+}
+
+export function addressModeIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"" | "clamp-to-edge" => 0,
+		"repeat" => 1,
+		"mirror-repeat" => 2,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function addressModeNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 3, addressModeIndex(value, member, backend), backend, "address mode");
+}
+
+export function topologyIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"point-list" => 0,
+		"line-list" => 1,
+		"line-strip" => 2,
+		"" | "triangle-list" => 3,
+		"triangle-strip" => 4,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function topologyNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 5, topologyIndex(value, member, backend), backend, "primitive topology");
+}
+
 export struct GPUBindGroupEntry {
 	binding: int32;
 	buffer: GPUBuffer;

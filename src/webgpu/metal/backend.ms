@@ -18,6 +18,13 @@ import {
 import {
 	BindingKind,
 	bindingKind,
+	compareNative,
+	blendFactorNative,
+	blendOperationNative,
+	stencilOperationNative,
+	vertexFormatNative,
+	addressModeNative,
+	topologyNative,
 	FORMAT_COUNT,
 	nativeAt,
 	textureFormatFacts,
@@ -496,19 +503,9 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	};
 }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"never" => 0,
-		"less" => 1,
-		"equal" => 2,
-		"less-equal" => 3,
-		"greater" => 4,
-		"not-equal" => 5,
-		"greater-equal" => 6,
-		"" | "always" => COMPARE_ALWAYS,
-		_ => stopOnMember(member, compare),
-	};
-}
+const COMPARE_FUNCTIONS: int32[] = [0, 1, 2, 3, 4, 5, 6, COMPARE_ALWAYS];
+
+function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "metal"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -527,24 +524,12 @@ function winding(face: string): int32 {
 	};
 }
 
-function blendFactor(factor: string, member: string): int32 {
-	return match (factor) {
-		"zero" => BLEND_ZERO,
-		"" | "one" => BLEND_ONE,
-		"src" => BLEND_SRC_COLOR,
-		"one-minus-src" => BLEND_ONE_MINUS_SRC_COLOR,
-		"src-alpha" => BLEND_SRC_ALPHA,
-		"one-minus-src-alpha" => BLEND_ONE_MINUS_SRC_ALPHA,
-		"dst" => BLEND_DST_COLOR,
-		"one-minus-dst" => BLEND_ONE_MINUS_DST_COLOR,
-		"dst-alpha" => BLEND_DST_ALPHA,
-		"one-minus-dst-alpha" => BLEND_ONE_MINUS_DST_ALPHA,
-		"src-alpha-saturated" => BLEND_SRC_ALPHA_SATURATED,
-		"constant" => BLEND_COLOR,
-		"one-minus-constant" => BLEND_ONE_MINUS_COLOR,
-		_ => stopOnMember(member, factor),
-	};
-}
+const BLEND_FACTORS: int32[] = [
+	BLEND_ZERO, BLEND_ONE, BLEND_SRC_COLOR, BLEND_ONE_MINUS_SRC_COLOR, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLEND_DST_COLOR, BLEND_ONE_MINUS_DST_COLOR,
+	BLEND_DST_ALPHA, BLEND_ONE_MINUS_DST_ALPHA, BLEND_SRC_ALPHA_SATURATED, BLEND_COLOR, BLEND_ONE_MINUS_COLOR,
+];
+
+function blendFactor(factor: string, member: string): int32 { return blendFactorNative(BLEND_FACTORS, factor, member, "metal"); }
 
 function destinationFactor(factor: string, member: string): int32 {
 	const value: string = factor;
@@ -552,30 +537,13 @@ function destinationFactor(factor: string, member: string): int32 {
 	return blendFactor(value, member);
 }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" => 0,
-		"subtract" => 1,
-		"reverse-subtract" => 2,
-		"min" => 3,
-		"max" => 4,
-		_ => stopOnMember(member, operation),
-	};
-}
+const BLEND_OPERATIONS: int32[] = [0, 1, 2, 3, 4];
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" => 0,
-		"zero" => 1,
-		"replace" => 2,
-		"increment-clamp" => 3,
-		"decrement-clamp" => 4,
-		"invert" => 5,
-		"increment-wrap" => 6,
-		"decrement-wrap" => 7,
-		_ => stopOnMember(member, operation),
-	};
-}
+function blendOperation(operation: string, member: string): int32 { return blendOperationNative(BLEND_OPERATIONS, operation, member, "metal"); }
+
+const STENCIL_OPERATIONS: int32[] = [0, 1, 2, 5, 3, 4, 6, 7];
+
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "metal"); }
 
 function colorWriteMask(mask: int32): int32 {
 	const bits = mask == 0 ? GPUColorWrite.ALL as int32 : mask;
@@ -587,50 +555,18 @@ function colorWriteMask(mask: int32): int32 {
 	return native;
 }
 
-function vertexFormat(format: string): int32 {
-	return match (format) {
-		"uint8x2" => 1,
-		"uint8x4" => 3,
-		"sint8x2" => 4,
-		"sint8x4" => 6,
-		"unorm8x2" => 7,
-		"unorm8x4" => VERTEX_UCHAR4_NORMALIZED,
-		"snorm8x2" => 10,
-		"snorm8x4" => 12,
-		"uint16x2" => 13,
-		"uint16x4" => 15,
-		"sint16x2" => 16,
-		"sint16x4" => 18,
-		"unorm16x2" => 19,
-		"unorm16x4" => 21,
-		"snorm16x2" => 22,
-		"snorm16x4" => 24,
-		"float16x2" => 25,
-		"float16x4" => 27,
-		"float32" => VERTEX_FLOAT,
-		"float32x2" => VERTEX_FLOAT2,
-		"float32x3" => VERTEX_FLOAT3,
-		"float32x4" => VERTEX_FLOAT4,
-		"sint32" => 32,
-		"sint32x2" => 33,
-		"sint32x3" => 34,
-		"sint32x4" => 35,
-		"uint32" => 36,
-		"uint32x2" => 37,
-		"uint32x3" => 38,
-		"uint32x4" => 39,
-		_ => stopOnMember("vertex attribute format", format),
-	};
-}
+const VERTEX_FORMATS: int32[] = [
+	1, 3, 4, 6, 7, VERTEX_UCHAR4_NORMALIZED, 10, 12,
+	13, 15, 16, 18, 19, 21, 22, 24,
+	25, 27, VERTEX_FLOAT, VERTEX_FLOAT2, VERTEX_FLOAT3, VERTEX_FLOAT4, 36, 37,
+	38, 39, 32, 33, 34, 35,
+];
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" => ADDRESS_CLAMP_TO_EDGE,
-		"repeat" => ADDRESS_REPEAT,
-		"mirror-repeat" => ADDRESS_MIRROR_REPEAT,
-		_ => stopOnMember(member, mode),
-	};
-}
+function vertexFormat(format: string): int32 { return vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "metal"); }
+
+const ADDRESS_MODES: int32[] = [ADDRESS_CLAMP_TO_EDGE, ADDRESS_REPEAT, ADDRESS_MIRROR_REPEAT];
+
+function addressMode(mode: string, member: string): int32 { return addressModeNative(ADDRESS_MODES, mode, member, "metal"); }
 
 function filterMode(filter: string, member: string): int32 {
 	return match (filter) {
@@ -648,16 +584,9 @@ function mipFilterMode(filter: string, member: string): int32 {
 	};
 }
 
-function primitiveType(topology: string): int32 {
-	return match (topology) {
-		"point-list" => 0,
-		"line-list" => 1,
-		"line-strip" => PRIMITIVE_LINE_STRIP,
-		"" | "triangle-list" => PRIMITIVE_TRIANGLE,
-		"triangle-strip" => PRIMITIVE_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+const PRIMITIVE_TYPES: int32[] = [0, 1, PRIMITIVE_LINE_STRIP, PRIMITIVE_TRIANGLE, PRIMITIVE_TRIANGLE_STRIP];
+
+function primitiveType(topology: string): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "metal"); }
 
 function stripIndexTypeOf(state: GPUPrimitiveState): int32 {
 	const format: string = state.stripIndexFormat;

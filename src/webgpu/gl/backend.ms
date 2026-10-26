@@ -2,6 +2,13 @@ import {
 	BindingKind,
 	bindingKind,
 	linearFilter,
+	compareNative,
+	blendFactorNative,
+	blendOperationNative,
+	stencilOperationNative,
+	vertexFormatNative,
+	addressModeNative,
+	topologyNative,
 	FORMAT_COUNT,
 	nativeAt,
 	textureFormatFacts,
@@ -730,11 +737,6 @@ let querySets: Vec<QuerySetSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnVertexFormat(value: string): VertexFormatInfo {
-	console.log(`webgpu gl: vertex attribute format '${value}' is not supported`);
-	unreachable;
-}
-
 function nativeNameOf(name: string | null, what: string): string {
 	if (name !== null) { return name; }
 	stop(`${what} needs its GLSL name in nativeName`);
@@ -807,19 +809,9 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	};
 }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"never" => GL_NEVER,
-		"less" => GL_LESS,
-		"equal" => GL_EQUAL,
-		"less-equal" => GL_LEQUAL,
-		"greater" => GL_GREATER,
-		"not-equal" => GL_NOTEQUAL,
-		"greater-equal" => GL_GEQUAL,
-		"" | "always" => GL_ALWAYS,
-		_ => stopOnMember(member, compare),
-	};
-}
+const COMPARE_FUNCTIONS: int32[] = [GL_NEVER, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS];
+
+function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "gl"); }
 
 function cullFace(cull: string): int32 {
 	return match (cull) {
@@ -838,105 +830,68 @@ function frontFace(face: string): int32 {
 	};
 }
 
-function blendFactor(factor: string, member: string): int32 {
-	return match (factor) {
-		"zero" => GL_ZERO,
-		"" | "one" => GL_ONE,
-		"src" => GL_SRC_COLOR,
-		"one-minus-src" => GL_ONE_MINUS_SRC_COLOR,
-		"src-alpha" => GL_SRC_ALPHA,
-		"one-minus-src-alpha" => GL_ONE_MINUS_SRC_ALPHA,
-		"dst" => GL_DST_COLOR,
-		"one-minus-dst" => GL_ONE_MINUS_DST_COLOR,
-		"dst-alpha" => GL_DST_ALPHA,
-		"one-minus-dst-alpha" => GL_ONE_MINUS_DST_ALPHA,
-		"src-alpha-saturated" => GL_SRC_ALPHA_SATURATE,
-		"constant" => GL_CONSTANT_COLOR,
-		"one-minus-constant" => GL_ONE_MINUS_CONSTANT_COLOR,
-		_ => stopOnMember(member, factor),
-	};
-}
+const BLEND_FACTORS: int32[] = [
+	GL_ZERO, GL_ONE, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR,
+	GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, GL_SRC_ALPHA_SATURATE, GL_CONSTANT_COLOR, GL_ONE_MINUS_CONSTANT_COLOR,
+];
+
+function blendFactor(factor: string, member: string): int32 { return blendFactorNative(BLEND_FACTORS, factor, member, "gl"); }
 
 function destinationFactor(factor: string, member: string): int32 {
 	if (factor == "") { return GL_ZERO; }
 	return blendFactor(factor, member);
 }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" => GL_FUNC_ADD,
-		"subtract" => GL_FUNC_SUBTRACT,
-		"reverse-subtract" => GL_FUNC_REVERSE_SUBTRACT,
-		"min" => GL_MIN,
-		"max" => GL_MAX,
-		_ => stopOnMember(member, operation),
-	};
-}
+const BLEND_OPERATIONS: int32[] = [GL_FUNC_ADD, GL_FUNC_SUBTRACT, GL_FUNC_REVERSE_SUBTRACT, GL_MIN, GL_MAX];
+
+function blendOperation(operation: string, member: string): int32 { return blendOperationNative(BLEND_OPERATIONS, operation, member, "gl"); }
 
 function vertexFormat(components: int32, componentType: int32, normalized: int32, integer: boolean): VertexFormatInfo {
 	return { components: components, componentType: componentType, normalized: normalized, integer: integer };
 }
 
-function vertexFormatInfo(format: string): VertexFormatInfo {
-	return match (format) {
-		"float32" => vertexFormat(1, GL_FLOAT, 0, false),
-		"float32x2" => vertexFormat(2, GL_FLOAT, 0, false),
-		"float32x3" => vertexFormat(3, GL_FLOAT, 0, false),
-		"float32x4" => vertexFormat(4, GL_FLOAT, 0, false),
-		"float16x2" => vertexFormat(2, GL_HALF_FLOAT, 0, false),
-		"float16x4" => vertexFormat(4, GL_HALF_FLOAT, 0, false),
-		"uint32" => vertexFormat(1, GL_UNSIGNED_INT, 0, true),
-		"uint32x2" => vertexFormat(2, GL_UNSIGNED_INT, 0, true),
-		"uint32x3" => vertexFormat(3, GL_UNSIGNED_INT, 0, true),
-		"uint32x4" => vertexFormat(4, GL_UNSIGNED_INT, 0, true),
-		"sint32" => vertexFormat(1, GL_INT, 0, true),
-		"sint32x2" => vertexFormat(2, GL_INT, 0, true),
-		"sint32x3" => vertexFormat(3, GL_INT, 0, true),
-		"sint32x4" => vertexFormat(4, GL_INT, 0, true),
-		"uint8x2" => vertexFormat(2, GL_UNSIGNED_BYTE, 0, true),
-		"uint8x4" => vertexFormat(4, GL_UNSIGNED_BYTE, 0, true),
-		"sint8x2" => vertexFormat(2, GL_BYTE, 0, true),
-		"sint8x4" => vertexFormat(4, GL_BYTE, 0, true),
-		"unorm8x2" => vertexFormat(2, GL_UNSIGNED_BYTE, 1, false),
-		"unorm8x4" => vertexFormat(4, GL_UNSIGNED_BYTE, 1, false),
-		"snorm8x2" => vertexFormat(2, GL_BYTE, 1, false),
-		"snorm8x4" => vertexFormat(4, GL_BYTE, 1, false),
-		"uint16x2" => vertexFormat(2, GL_UNSIGNED_SHORT, 0, true),
-		"uint16x4" => vertexFormat(4, GL_UNSIGNED_SHORT, 0, true),
-		"sint16x2" => vertexFormat(2, GL_SHORT, 0, true),
-		"sint16x4" => vertexFormat(4, GL_SHORT, 0, true),
-		"unorm16x2" => vertexFormat(2, GL_UNSIGNED_SHORT, 1, false),
-		"unorm16x4" => vertexFormat(4, GL_UNSIGNED_SHORT, 1, false),
-		"snorm16x2" => vertexFormat(2, GL_SHORT, 1, false),
-		"snorm16x4" => vertexFormat(4, GL_SHORT, 1, false),
-		_ => stopOnVertexFormat(format),
-	};
-}
+const VERTEX_FORMATS: VertexFormatInfo[] = [
+	vertexFormat(2, GL_UNSIGNED_BYTE, 0, true),
+	vertexFormat(4, GL_UNSIGNED_BYTE, 0, true),
+	vertexFormat(2, GL_BYTE, 0, true),
+	vertexFormat(4, GL_BYTE, 0, true),
+	vertexFormat(2, GL_UNSIGNED_BYTE, 1, false),
+	vertexFormat(4, GL_UNSIGNED_BYTE, 1, false),
+	vertexFormat(2, GL_BYTE, 1, false),
+	vertexFormat(4, GL_BYTE, 1, false),
+	vertexFormat(2, GL_UNSIGNED_SHORT, 0, true),
+	vertexFormat(4, GL_UNSIGNED_SHORT, 0, true),
+	vertexFormat(2, GL_SHORT, 0, true),
+	vertexFormat(4, GL_SHORT, 0, true),
+	vertexFormat(2, GL_UNSIGNED_SHORT, 1, false),
+	vertexFormat(4, GL_UNSIGNED_SHORT, 1, false),
+	vertexFormat(2, GL_SHORT, 1, false),
+	vertexFormat(4, GL_SHORT, 1, false),
+	vertexFormat(2, GL_HALF_FLOAT, 0, false),
+	vertexFormat(4, GL_HALF_FLOAT, 0, false),
+	vertexFormat(1, GL_FLOAT, 0, false),
+	vertexFormat(2, GL_FLOAT, 0, false),
+	vertexFormat(3, GL_FLOAT, 0, false),
+	vertexFormat(4, GL_FLOAT, 0, false),
+	vertexFormat(1, GL_UNSIGNED_INT, 0, true),
+	vertexFormat(2, GL_UNSIGNED_INT, 0, true),
+	vertexFormat(3, GL_UNSIGNED_INT, 0, true),
+	vertexFormat(4, GL_UNSIGNED_INT, 0, true),
+	vertexFormat(1, GL_INT, 0, true),
+	vertexFormat(2, GL_INT, 0, true),
+	vertexFormat(3, GL_INT, 0, true),
+	vertexFormat(4, GL_INT, 0, true),
+];
 
-function primitiveMode(topology: string): int32 {
-	return match (topology) {
-		"point-list" => GL_POINTS,
-		"line-list" => GL_LINES,
-		"line-strip" => GL_LINE_STRIP,
-		"" | "triangle-list" => GL_TRIANGLES,
-		"triangle-strip" => GL_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+function vertexFormatInfo(format: string): VertexFormatInfo { return vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "gl"); }
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" => GL_KEEP,
-		"zero" => GL_ZERO,
-		"replace" => GL_REPLACE,
-		"invert" => GL_INVERT,
-		"increment-clamp" => GL_INCR,
-		"decrement-clamp" => GL_DECR,
-		"increment-wrap" => GL_INCR_WRAP,
-		"decrement-wrap" => GL_DECR_WRAP,
-		_ => stopOnMember(member, operation),
-	};
-}
+const PRIMITIVE_MODES: int32[] = [GL_POINTS, GL_LINES, GL_LINE_STRIP, GL_TRIANGLES, GL_TRIANGLE_STRIP];
+
+function primitiveMode(topology: string): int32 { return topologyNative(PRIMITIVE_MODES, topology, "primitive.topology", "gl"); }
+
+const STENCIL_OPERATIONS: int32[] = [GL_KEEP, GL_ZERO, GL_REPLACE, GL_INVERT, GL_INCR, GL_DECR, GL_INCR_WRAP, GL_DECR_WRAP];
+
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "gl"); }
 
 function stencilFace(face: GPUStencilFaceState, member: string): StencilFace {
 	return {
@@ -947,14 +902,9 @@ function stencilFace(face: GPUStencilFaceState, member: string): StencilFace {
 	};
 }
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" => GL_CLAMP_TO_EDGE,
-		"repeat" => GL_REPEAT,
-		"mirror-repeat" => GL_MIRRORED_REPEAT,
-		_ => stopOnMember(member, mode),
-	};
-}
+const ADDRESS_MODES: int32[] = [GL_CLAMP_TO_EDGE, GL_REPEAT, GL_MIRRORED_REPEAT];
+
+function addressMode(mode: string, member: string): int32 { return addressModeNative(ADDRESS_MODES, mode, member, "gl"); }
 
 function cacheBindBuffer(target: int32, name: uint32): void {
 	if (target == GL_ARRAY_BUFFER) {

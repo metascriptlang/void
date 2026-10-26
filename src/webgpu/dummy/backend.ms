@@ -74,6 +74,13 @@ import {
 	featureBit,
 	linearFilter,
 	TextureFormatFacts,
+	compareIndex,
+	blendFactorIndex,
+	blendOperationIndex,
+	stencilOperationIndex,
+	vertexFormatIndex,
+	addressModeIndex,
+	topologyNative,
 	textureFormatFacts,
 } from "../types.ms";
 import {
@@ -215,65 +222,21 @@ function formatInfo(format: GPUTextureFormat, member: string): TextureFormatFact
 	return textureFormatFacts(format, member, "dummy");
 }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"" | "never" | "less" | "equal" | "less-equal" | "greater" | "not-equal" | "greater-equal" | "always" => 0,
-		_ => stopOnMember(member, compare),
-	};
-}
+function compareFunction(compare: string, member: string): int32 { return compareIndex(compare, member, "dummy"); }
 
-function blendFactor(factor: string, member: string): int32 {
-	return match (factor) {
-		"" | "zero" | "one" | "src" | "one-minus-src" | "src-alpha" | "one-minus-src-alpha" => 0,
-		"dst" | "one-minus-dst" | "dst-alpha" | "one-minus-dst-alpha" | "src-alpha-saturated" => 0,
-		"constant" | "one-minus-constant" => 0,
-		_ => stopOnMember(member, factor),
-	};
-}
+function blendFactor(factor: string, member: string): int32 { return blendFactorIndex(factor, member, "dummy"); }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" | "subtract" | "reverse-subtract" | "min" | "max" => 0,
-		_ => stopOnMember(member, operation),
-	};
-}
+function blendOperation(operation: string, member: string): int32 { return blendOperationIndex(operation, member, "dummy"); }
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" | "zero" | "replace" | "invert" => 0,
-		"increment-clamp" | "decrement-clamp" | "increment-wrap" | "decrement-wrap" => 0,
-		_ => stopOnMember(member, operation),
-	};
-}
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationIndex(operation, member, "dummy"); }
 
-function vertexFormat(format: string): int32 {
-	return match (format) {
-		"uint8x2" | "uint8x4" | "sint8x2" | "sint8x4" | "unorm8x2" | "unorm8x4" | "snorm8x2" | "snorm8x4" => 0,
-		"uint16x2" | "uint16x4" | "sint16x2" | "sint16x4" | "unorm16x2" | "unorm16x4" => 0,
-		"snorm16x2" | "snorm16x4" | "float16x2" | "float16x4" => 0,
-		"float32" | "float32x2" | "float32x3" | "float32x4" => 0,
-		"sint32" | "sint32x2" | "sint32x3" | "sint32x4" | "uint32" | "uint32x2" | "uint32x3" | "uint32x4" => 0,
-		_ => stopOnMember("vertex attribute format", format),
-	};
-}
+function vertexFormat(format: string): int32 { return vertexFormatIndex(format, "vertex attribute format", "dummy"); }
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" | "repeat" | "mirror-repeat" => 0,
-		_ => stopOnMember(member, mode),
-	};
-}
+function addressMode(mode: string, member: string): int32 { return addressModeIndex(mode, member, "dummy"); }
 
-function primitiveType(topology: string): int32 {
-	return match (topology) {
-		"point-list" => 0,
-		"line-list" => 1,
-		"line-strip" => PRIMITIVE_LINE_STRIP,
-		"" | "triangle-list" => 3,
-		"triangle-strip" => PRIMITIVE_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+const PRIMITIVE_TYPES: int32[] = [0, 1, PRIMITIVE_LINE_STRIP, 3, PRIMITIVE_TRIANGLE_STRIP];
+
+function primitiveType(topology: string): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "dummy"); }
 
 function indexSize(format: GPUIndexFormat): int32 {
 	const value: string = format;

@@ -2,6 +2,13 @@ import "./lost";
 import {
 	BindingKind,
 	bindingKind,
+	compareNative,
+	blendFactorNative,
+	blendOperationNative,
+	stencilOperationNative,
+	vertexFormatNative,
+	addressModeNative,
+	topologyNative,
 	FORMAT_COUNT,
 	nativeAt,
 	textureFormatFacts,
@@ -541,19 +548,9 @@ function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	};
 }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"never" => COMPARE_NEVER,
-		"less" => COMPARE_LESS,
-		"equal" => COMPARE_EQUAL,
-		"less-equal" => COMPARE_LESS_EQUAL,
-		"greater" => COMPARE_GREATER,
-		"not-equal" => COMPARE_NOT_EQUAL,
-		"greater-equal" => COMPARE_GREATER_EQUAL,
-		"" | "always" => COMPARE_ALWAYS,
-		_ => stopOnMember(member, compare),
-	};
-}
+const COMPARE_FUNCTIONS: int32[] = [COMPARE_NEVER, COMPARE_LESS, COMPARE_EQUAL, COMPARE_LESS_EQUAL, COMPARE_GREATER, COMPARE_NOT_EQUAL, COMPARE_GREATER_EQUAL, COMPARE_ALWAYS];
+
+function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "wgpu"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -572,24 +569,12 @@ function frontFace(face: string): int32 {
 	};
 }
 
-function blendFactor(factor: string, member: string): int32 {
-	return match (factor) {
-		"zero" => BLEND_ZERO,
-		"" | "one" => BLEND_ONE,
-		"src" => BLEND_SRC,
-		"one-minus-src" => BLEND_ONE_MINUS_SRC,
-		"src-alpha" => BLEND_SRC_ALPHA,
-		"one-minus-src-alpha" => BLEND_ONE_MINUS_SRC_ALPHA,
-		"dst" => BLEND_DST,
-		"one-minus-dst" => BLEND_ONE_MINUS_DST,
-		"dst-alpha" => BLEND_DST_ALPHA,
-		"one-minus-dst-alpha" => BLEND_ONE_MINUS_DST_ALPHA,
-		"src-alpha-saturated" => BLEND_SRC_ALPHA_SATURATED,
-		"constant" => BLEND_CONSTANT,
-		"one-minus-constant" => BLEND_ONE_MINUS_CONSTANT,
-		_ => stopOnMember(member, factor),
-	};
-}
+const BLEND_FACTORS: int32[] = [
+	BLEND_ZERO, BLEND_ONE, BLEND_SRC, BLEND_ONE_MINUS_SRC, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLEND_DST, BLEND_ONE_MINUS_DST,
+	BLEND_DST_ALPHA, BLEND_ONE_MINUS_DST_ALPHA, BLEND_SRC_ALPHA_SATURATED, BLEND_CONSTANT, BLEND_ONE_MINUS_CONSTANT,
+];
+
+function blendFactor(factor: string, member: string): int32 { return blendFactorNative(BLEND_FACTORS, factor, member, "wgpu"); }
 
 function destinationFactor(factor: string, member: string): int32 {
 	const value: string = factor;
@@ -597,77 +582,26 @@ function destinationFactor(factor: string, member: string): int32 {
 	return blendFactor(value, member);
 }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" => BLEND_OP_ADD,
-		"subtract" => BLEND_OP_SUBTRACT,
-		"reverse-subtract" => BLEND_OP_REVERSE_SUBTRACT,
-		"min" => BLEND_OP_MIN,
-		"max" => BLEND_OP_MAX,
-		_ => stopOnMember(member, operation),
-	};
-}
+const BLEND_OPERATIONS: int32[] = [BLEND_OP_ADD, BLEND_OP_SUBTRACT, BLEND_OP_REVERSE_SUBTRACT, BLEND_OP_MIN, BLEND_OP_MAX];
 
-function vertexFormat(format: string): int32 {
-	return match (format) {
-		"float32" => VERTEX_FLOAT32,
-		"float32x2" => VERTEX_FLOAT32X2,
-		"float32x3" => VERTEX_FLOAT32X3,
-		"float32x4" => VERTEX_FLOAT32X4,
-		"uint32" => VERTEX_UINT32,
-		"uint32x2" => VERTEX_UINT32X2,
-		"uint32x3" => VERTEX_UINT32X3,
-		"uint32x4" => VERTEX_UINT32X4,
-		"sint32" => VERTEX_SINT32,
-		"sint32x2" => VERTEX_SINT32X2,
-		"sint32x3" => VERTEX_SINT32X3,
-		"sint32x4" => VERTEX_SINT32X4,
-		"uint8x2" => VERTEX_UINT8X2,
-		"uint8x4" => VERTEX_UINT8X4,
-		"sint8x2" => VERTEX_SINT8X2,
-		"sint8x4" => VERTEX_SINT8X4,
-		"unorm8x2" => VERTEX_UNORM8X2,
-		"unorm8x4" => VERTEX_UNORM8X4,
-		"snorm8x2" => VERTEX_SNORM8X2,
-		"snorm8x4" => VERTEX_SNORM8X4,
-		"uint16x2" => VERTEX_UINT16X2,
-		"uint16x4" => VERTEX_UINT16X4,
-		"sint16x2" => VERTEX_SINT16X2,
-		"sint16x4" => VERTEX_SINT16X4,
-		"unorm16x2" => VERTEX_UNORM16X2,
-		"unorm16x4" => VERTEX_UNORM16X4,
-		"snorm16x2" => VERTEX_SNORM16X2,
-		"snorm16x4" => VERTEX_SNORM16X4,
-		"float16x2" => VERTEX_FLOAT16X2,
-		"float16x4" => VERTEX_FLOAT16X4,
-		_ => stopOnMember("vertex attribute format", format),
-	};
-}
+function blendOperation(operation: string, member: string): int32 { return blendOperationNative(BLEND_OPERATIONS, operation, member, "wgpu"); }
 
-function primitiveTopology(topology: string): int32 {
-	return match (topology) {
-		"point-list" => TOPOLOGY_POINT_LIST,
-		"line-list" => TOPOLOGY_LINE_LIST,
-		"line-strip" => TOPOLOGY_LINE_STRIP,
-		"" | "triangle-list" => TOPOLOGY_TRIANGLE_LIST,
-		"triangle-strip" => TOPOLOGY_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+const VERTEX_FORMATS: int32[] = [
+	VERTEX_UINT8X2, VERTEX_UINT8X4, VERTEX_SINT8X2, VERTEX_SINT8X4, VERTEX_UNORM8X2, VERTEX_UNORM8X4, VERTEX_SNORM8X2, VERTEX_SNORM8X4,
+	VERTEX_UINT16X2, VERTEX_UINT16X4, VERTEX_SINT16X2, VERTEX_SINT16X4, VERTEX_UNORM16X2, VERTEX_UNORM16X4, VERTEX_SNORM16X2, VERTEX_SNORM16X4,
+	VERTEX_FLOAT16X2, VERTEX_FLOAT16X4, VERTEX_FLOAT32, VERTEX_FLOAT32X2, VERTEX_FLOAT32X3, VERTEX_FLOAT32X4, VERTEX_UINT32, VERTEX_UINT32X2,
+	VERTEX_UINT32X3, VERTEX_UINT32X4, VERTEX_SINT32, VERTEX_SINT32X2, VERTEX_SINT32X3, VERTEX_SINT32X4,
+];
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" => STENCIL_OP_KEEP,
-		"zero" => STENCIL_OP_ZERO,
-		"replace" => STENCIL_OP_REPLACE,
-		"invert" => STENCIL_OP_INVERT,
-		"increment-clamp" => STENCIL_OP_INCREMENT_CLAMP,
-		"decrement-clamp" => STENCIL_OP_DECREMENT_CLAMP,
-		"increment-wrap" => STENCIL_OP_INCREMENT_WRAP,
-		"decrement-wrap" => STENCIL_OP_DECREMENT_WRAP,
-		_ => stopOnMember(member, operation),
-	};
-}
+function vertexFormat(format: string): int32 { return vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "wgpu"); }
+
+const PRIMITIVE_TOPOLOGIES: int32[] = [TOPOLOGY_POINT_LIST, TOPOLOGY_LINE_LIST, TOPOLOGY_LINE_STRIP, TOPOLOGY_TRIANGLE_LIST, TOPOLOGY_TRIANGLE_STRIP];
+
+function primitiveTopology(topology: string): int32 { return topologyNative(PRIMITIVE_TOPOLOGIES, topology, "primitive.topology", "wgpu"); }
+
+const STENCIL_OPERATIONS: int32[] = [STENCIL_OP_KEEP, STENCIL_OP_ZERO, STENCIL_OP_REPLACE, STENCIL_OP_INVERT, STENCIL_OP_INCREMENT_CLAMP, STENCIL_OP_DECREMENT_CLAMP, STENCIL_OP_INCREMENT_WRAP, STENCIL_OP_DECREMENT_WRAP];
+
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "wgpu"); }
 
 function mipmapFilterMode(filter: string): int32 {
 	return match (filter) {
@@ -685,14 +619,9 @@ function stepMode(mode: string): int32 {
 	};
 }
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" => ADDRESS_CLAMP,
-		"repeat" => ADDRESS_REPEAT,
-		"mirror-repeat" => ADDRESS_MIRROR,
-		_ => stopOnMember(member, mode),
-	};
-}
+const ADDRESS_MODES: int32[] = [ADDRESS_CLAMP, ADDRESS_REPEAT, ADDRESS_MIRROR];
+
+function addressMode(mode: string, member: string): int32 { return addressModeNative(ADDRESS_MODES, mode, member, "wgpu"); }
 
 function filterMode(filter: string, member: string): int32 {
 	return match (filter) {
