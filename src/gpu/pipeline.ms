@@ -29,6 +29,9 @@ export struct PipelineKey {
 	indexType: IndexType;
 	state: uint32;
 	targets: uint32;
+	// RenderState.stencilOps / stencilMasks: both 0 without a stencil.
+	stencilOps: uint32;
+	stencilMasks: uint32;
 }
 
 export struct PipelineEntry {
@@ -81,6 +84,8 @@ export function pipelineKey(
 		indexType: selectedIndexType(indexed, format),
 		state: state.bits(),
 		targets: targets.formatBits(),
+		stencilOps: state.stencilOps(),
+		stencilMasks: state.stencilMasks(),
 	};
 }
 
@@ -89,7 +94,8 @@ export function targetLayout(this key: PipelineKey): TargetLayout {
 }
 
 export function renderState(this key: PipelineKey): RenderState {
-	return RenderState.fromBits(key.state);
+	return RenderState.fromBits(key.state)
+		.withStencil(RenderState.fromStencilWords(key.stencilOps, key.stencilMasks));
 }
 
 // `program=<id> layout=<id> colors=… depth=… sampleCount=… culling=…`: which pipeline a cache
@@ -104,12 +110,14 @@ export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
 	return !cache.closed && cache.indexOf(key) >= 0;
 }
 
-function keyHash(key: PipelineKey): uint32 {
+export function keyHash(key: PipelineKey): uint32 {
 	let h: uint32 = (key.program as uint32) * 2654435761;
 	h = (h ^ (key.layout as uint32)) * 16777619;
 	h = (h ^ ((key.indexType as int32) as uint32)) * 16777619;
 	h = (h ^ key.state) * 16777619;
 	h = (h ^ key.targets) * 16777619;
+	h = (h ^ key.stencilOps) * 16777619;
+	h = (h ^ key.stencilMasks) * 16777619;
 	return h ^ (h >> 15);
 }
 

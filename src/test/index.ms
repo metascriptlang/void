@@ -46,6 +46,7 @@ import "./gltfAnimationCheck";
 import "./skinInfluencesCheck";
 import "./pipelineCheck";
 import "./pipelineLookupCheck";
+import "./stencilStateCheck";
 import "./instanceLayoutCheck";
 import "./instanceAttributeCheck";
 import "./instanceStreamCheck";

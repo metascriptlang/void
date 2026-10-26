@@ -1,8 +1,11 @@
+import { stop } from "./stop";
+
 // Render state of a material pass: port of the fixed-function half of h3d.mat.Pass
 // (culling, depth, blend, colorMask), the one render-state value both render layers share —
 // h3d.mat.BlendMode is h2d's (`h3d/mat/BlendMode.hx:3`), so it goes through the GPU door
-// with the state it selects (docs/VOID3D.md, "Shared with void2d"). Shader lists, stencil,
+// with the state it selects (docs/VOID3D.md, "Shared with void2d"). Shader lists,
 // depth clamp and wireframe are not ported: a Material names one sokol-shdc program instead.
+// Stencil is ported as an optional value outside `bits()`, which is full; see `Stencil`.
 //
 // The state is a plain value; `bits()` packs it into the uint32 that the pipeline cache keys
 // on, the way Heaps' BitsBuilder packs Pass.bits, and `RenderState.fromBits` reads it back.
@@ -65,6 +68,19 @@ export enum BlendMode {
 	Min,
 }
 
+// h3d.mat.Data.StencilOp, in WebGPU's order; Heaps' Increment is the clamping one
+// (`h3d/impl/DX12Driver.hx:3324`, INCR_SAT), IncrementWrap the wrapping one.
+export enum StencilOp {
+	Keep,
+	Zero,
+	Replace,
+	Invert,
+	IncrementClamp,
+	DecrementClamp,
+	IncrementWrap,
+	DecrementWrap,
+}
+
 export enum ColorChannel {
 	Red,
 	Green,
@@ -95,6 +111,26 @@ export struct RenderState {
 	blendOperation: Operation;
 	blendAlphaOperation: Operation;
 	colorMask: BitSet<ColorChannel>;
+	stencil: Stencil | null;
+}
+
+// One face of h3d.mat.Stencil: frontTest/frontSTfail/frontDPfail/frontPass.
+export struct StencilFace {
+	compare: Compare;
+	failOp: StencilOp;
+	depthFailOp: StencilOp;
+	passOp: StencilOp;
+}
+
+// h3d.mat.Stencil without `reference`: Heaps keeps the reference in maskBits but keys its pipelines
+// on the masks and ops alone (`h3d/impl/PipelineCache.hx:304`, `h3d/impl/DirectXDriver.hx:682`)
+// and sets it per draw (`h3d/impl/DX12Driver.hx:3246`), so here it is a draw call's argument.
+// `RenderState.stencil == null` is stencil testing off, a state apart from any mask.
+export struct Stencil {
+	front: StencilFace;
+	back: StencilFace;
+	readMask: uint8;
+	writeMask: uint8;
 }
 
 export const COLOR_MASK_ALL: BitSet<ColorChannel> = (15 as uint8) as BitSet<ColorChannel>;
@@ -116,6 +152,46 @@ const BLEND_OPERATION: BitField = { shift: 22, width: 3 };
 const BLEND_ALPHA_OPERATION: BitField = { shift: 25, width: 3 };
 const COLOR_MASK: BitField = { shift: 28, width: 4 };
 
+// new h3d.mat.Stencil(): keep everything, Always, both masks 0xFF.
+export function defaults(this typeof Stencil): Stencil {
+	const keep: StencilFace = {
+		compare: Compare.Always,
+		failOp: StencilOp.Keep,
+		depthFailOp: StencilOp.Keep,
+		passOp: StencilOp.Keep,
+	};
+	return { front: keep, back: keep, readMask: 0xFF, writeMask: 0xFF };
+}
+
+// Stencil.setOp(stfail, dpfail, pass): both faces.
+export function withOps(
+	this stencil: Stencil,
+	failOp: StencilOp,
+	depthFailOp: StencilOp,
+	passOp: StencilOp,
+): Stencil {
+	return {
+		...stencil,
+		front: { ...stencil.front, failOp: failOp, depthFailOp: depthFailOp, passOp: passOp },
+		back: { ...stencil.back, failOp: failOp, depthFailOp: depthFailOp, passOp: passOp },
+	};
+}
+
+// Stencil.setFunc(f, reference, readMask, writeMask) without the reference: both faces.
+export function withFunc(
+	this stencil: Stencil,
+	compare: Compare,
+	readMask: uint8,
+	writeMask: uint8,
+): Stencil {
+	return {
+		front: { ...stencil.front, compare: compare },
+		back: { ...stencil.back, compare: compare },
+		readMask: readMask,
+		writeMask: writeMask,
+	};
+}
+
 // new h3d.mat.Pass(): back faces culled, depth written and tested with Less, no blending.
 export function defaults(this typeof RenderState): RenderState {
 	return {
@@ -129,12 +205,17 @@ export function defaults(this typeof RenderState): RenderState {
 		blendOperation: Operation.Add,
 		blendAlphaOperation: Operation.Add,
 		colorMask: COLOR_MASK_ALL,
+		stencil: null,
 	};
 }
 
 // Pass.depth(write, test)
 export function withDepth(this state: RenderState, write: boolean, test: Compare): RenderState {
 	return { ...state, depthWrite: write, depthTest: test };
+}
+
+export function withStencil(this state: RenderState, stencil: Stencil | null): RenderState {
+	return { ...state, stencil: stencil };
 }
 
 export function withCulling(this state: RenderState, culling: Face): RenderState {
@@ -246,7 +327,18 @@ export function toString(this state: RenderState): string {
 		` alphaBlend=${state.blendAlphaSource.toString()}` +
 		`,${state.blendAlphaDestination.toString()}` +
 		` operation=${state.blendOperation.toString()},${state.blendAlphaOperation.toString()}` +
-		` colorMask=${state.colorMask as uint32}`;
+		` colorMask=${state.colorMask as uint32}` +
+		(state.stencil == null ? "" : ` stencil=${state.stencil.toString()}`);
+}
+
+function faceToString(face: StencilFace): string {
+	return `${face.compare.toString()}/${face.failOp.toString()},` +
+		`${face.depthFailOp.toString()},${face.passOp.toString()}`;
+}
+
+export function toString(this stencil: Stencil): string {
+	return `front=${faceToString(stencil.front)} back=${faceToString(stencil.back)}` +
+		` readMask=${stencil.readMask} writeMask=${stencil.writeMask}`;
 }
 
 // Pass.loadBits
@@ -262,6 +354,76 @@ export function fromBits(this typeof RenderState, bits: uint32): RenderState {
 		blendOperation: extract(bits, BLEND_OPERATION) as Operation,
 		blendAlphaOperation: extract(bits, BLEND_ALPHA_OPERATION) as Operation,
 		colorMask: (extract(bits, COLOR_MASK) as uint8) as BitSet<ColorChannel>,
+		stencil: null,
+	};
+}
+
+// The stencil does not fit in `bits()`, so it has two key words of its own: ops (front face in the
+// low 12 bits, back face above it, a presence bit) and masks. Both are 0 when `stencil` is null,
+// which is the key every state had before stencils existed; the presence bit keeps a stencil with
+// writeMask 0 and Always/Keep ops from reading as no stencil.
+const FACE_COMPARE: BitField = { shift: 0, width: 3 };
+const FACE_FAIL_OP: BitField = { shift: 3, width: 3 };
+const FACE_DEPTH_FAIL_OP: BitField = { shift: 6, width: 3 };
+const FACE_PASS_OP: BitField = { shift: 9, width: 3 };
+const FACE_BITS: BitField = { shift: 0, width: 12 };
+const BACK_SHIFT: int32 = 12;
+const STENCIL_PRESENT: BitField = { shift: 24, width: 1 };
+const STENCIL_READ_MASK: BitField = { shift: 0, width: 8 };
+const STENCIL_WRITE_MASK: BitField = { shift: 8, width: 8 };
+
+function faceBits(face: StencilFace): uint32 {
+	return field(face.compare as int32, FACE_COMPARE) |
+		field(face.failOp as int32, FACE_FAIL_OP) |
+		field(face.depthFailOp as int32, FACE_DEPTH_FAIL_OP) |
+		field(face.passOp as int32, FACE_PASS_OP);
+}
+
+function faceFromBits(bits: uint32): StencilFace {
+	return {
+		compare: extract(bits, FACE_COMPARE) as Compare,
+		failOp: extract(bits, FACE_FAIL_OP) as StencilOp,
+		depthFailOp: extract(bits, FACE_DEPTH_FAIL_OP) as StencilOp,
+		passOp: extract(bits, FACE_PASS_OP) as StencilOp,
+	};
+}
+
+// The ops key word of the state's stencil, 0 without one.
+export function stencilOps(this state: RenderState): uint32 {
+	const stencil: Stencil | null = state.stencil;
+	if (stencil == null) { return 0; }
+	return faceBits(stencil.front) | (faceBits(stencil.back) << (BACK_SHIFT as uint32)) |
+		field(1, STENCIL_PRESENT);
+}
+
+// The masks key word of the state's stencil, 0 without one.
+export function stencilMasks(this state: RenderState): uint32 {
+	const stencil: Stencil | null = state.stencil;
+	if (stencil == null) { return 0; }
+	return field(stencil.readMask as int32, STENCIL_READ_MASK) |
+		field(stencil.writeMask as int32, STENCIL_WRITE_MASK);
+}
+
+@noinline function stopOnStrayStencilBits(ops: uint32, masks: uint32): never {
+	stop(`stencil key words ops=${ops} masks=${masks} set bits no stencil field owns`);
+}
+
+// The stencil the two key words of `stencilOps` and `stencilMasks` were made from.
+export function fromStencilWords(this typeof RenderState, ops: uint32, masks: uint32): Stencil | null {
+	const present: boolean = extract(ops, STENCIL_PRESENT) != 0;
+	const owned: uint32 = fieldMask(STENCIL_PRESENT) | (fieldMask(FACE_BITS) << (BACK_SHIFT as uint32)) |
+		fieldMask(FACE_BITS);
+	const ownedMasks: uint32 = fieldMask(STENCIL_READ_MASK) | fieldMask(STENCIL_WRITE_MASK);
+	if ((ops & ~owned) != 0 || (masks & ~ownedMasks) != 0) { stopOnStrayStencilBits(ops, masks); }
+	if (!present) {
+		if (ops != 0 || masks != 0) { stopOnStrayStencilBits(ops, masks); }
+		return null;
+	}
+	return {
+		front: faceFromBits(ops),
+		back: faceFromBits(ops >> (BACK_SHIFT as uint32)),
+		readMask: extract(masks, STENCIL_READ_MASK) as uint8,
+		writeMask: extract(masks, STENCIL_WRITE_MASK) as uint8,
 	};
 }
 
@@ -301,6 +463,22 @@ test "every enum's last ordinal fits its field" {
 	assert fits(Operation.Max as int32, BLEND_OPERATION);
 	assert fits(Operation.Max as int32, BLEND_ALPHA_OPERATION);
 	assert fits(COLOR_MASK_ALL as uint32 as int32, COLOR_MASK);
+	assert fits(Compare.LessEqual as int32, FACE_COMPARE);
+	assert fits(StencilOp.DecrementWrap as int32, FACE_FAIL_OP);
+	assert fits(StencilOp.DecrementWrap as int32, FACE_DEPTH_FAIL_OP);
+	assert fits(StencilOp.DecrementWrap as int32, FACE_PASS_OP);
+}
+
+test "stencil fields tile the face and the masks word without overlap" {
+	const face: Vec<BitField> = [FACE_COMPARE, FACE_FAIL_OP, FACE_DEPTH_FAIL_OP, FACE_PASS_OP];
+	let seen: uint32 = 0;
+	for (const f of face) {
+		assert (seen & fieldMask(f)) == 0;
+		seen = seen | fieldMask(f);
+	}
+	assert seen == fieldMask(FACE_BITS);
+	assert (fieldMask(STENCIL_READ_MASK) & fieldMask(STENCIL_WRITE_MASK)) == 0;
+	assert (fieldMask(STENCIL_PRESENT) & (fieldMask(FACE_BITS) << (BACK_SHIFT as uint32))) == 0;
 }
 
 test "known states pack to the bits the pipeline cache keys were built on" {
