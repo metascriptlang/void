@@ -41,6 +41,8 @@ import {
 	CMD_BREAK,
 	CMD_BLEND,
 	CMD_SAMPLER,
+	RoundClip,
+	NO_ROUND_CLIP,
 } from "./displayList";
 import {
 	fillQuad,
@@ -58,7 +60,8 @@ import {
 	setEffect,
 	setGradientEffect,
 	setSampler,
-	pushClip,
+	pushRoundedClip,
+	roundClipOf,
 	popClip,
 	clipIntersectsQuad,
 	glyphPageView,
@@ -1371,12 +1374,13 @@ function panOrder(s: Scene2D, vw: float32, vh: float32): void {
 function pushMask(s: Scene2D, i: int32): boolean {
 	const world = s.worlds[i];
 	const lb = localBounds(s, i, false);
-	return pushClip(
-		vec2(lb.xMin, lb.yMin) * world,
-		vec2(lb.xMax, lb.yMin) * world,
-		vec2(lb.xMax, lb.yMax) * world,
-		vec2(lb.xMin, lb.yMax) * world,
-	);
+	const tl: Vec2 = vec2(lb.xMin, lb.yMin) * world;
+	const tr: Vec2 = vec2(lb.xMax, lb.yMin) * world;
+	const bl: Vec2 = vec2(lb.xMin, lb.yMax) * world;
+	const round: RoundClip = s.maskRounded(i)
+		? roundClipOf(tl, tr, bl, lb.xMax - lb.xMin, lb.yMax - lb.yMin, s.scrolls[s.payloads[i]].radii)
+		: NO_ROUND_CLIP;
+	return pushRoundedClip(tl, tr, vec2(lb.xMax, lb.yMax) * world, bl, round);
 }
 
 export function snappedShift(v: float32, scale: float32): float32 {
