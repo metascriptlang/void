@@ -29,6 +29,8 @@ export const GPU_MAX_ANISOTROPY: int32 = 16;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
 
+export enum DeviceLoss { None, Recover, Fatal }
+
 export enum GPUBufferUsage {
 	MAP_READ = 0x1,
 	MAP_WRITE = 0x2,
