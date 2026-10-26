@@ -70,6 +70,7 @@ function versionKey(version: string): string {
 export function findFxc(named: string): string {
 	if (named != "") { return exists(named) ? named : ""; }
 	const kits = "C:/Program Files (x86)/Windows Kits/10/bin";
+	if (!exists(kits)) { return ""; }
 	let best = "";
 	let bestKey = "";
 	for (const entry of readDir(kits)) {
