@@ -339,7 +339,10 @@ Where neither has the concern, the backend goes elsewhere. Heaps' `VulkanDriver.
 - **Android pre-rotation:** the swapchain presents at identity and the compositor rotates, as
   Dawn does (`SwapChainVk.cpp:326-331`), and `VK_SUBOPTIMAL_KHR` counts as success on acquire and
   present, as in Dawn (482-486) and Godot `876b290` (`rendering_device_driver_vulkan.cpp:2826-2842`),
-  so a rotated display does not recreate the swapchain every frame. Godot pre-rotates instead
+  so a rotated display does not recreate the swapchain every frame. The swapchain takes the
+  configured size whenever it lies in the surface's image-extent range, as Dawn does (279-286),
+  because a rotated Android surface reports `currentExtent` in the display's native orientation;
+  only a size outside the range falls back to `currentExtent`. Godot pre-rotates instead
   (3235-3282) and turns the image in its final compositor blit; the door draws straight into the
   swapchain image and has no such blit. Godot's path becomes worth its extra pass once a rotated
   device measures the compositor's rotation as a cost.
