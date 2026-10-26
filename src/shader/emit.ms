@@ -965,6 +965,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			}
 			const shape = getTypeImpl(t);
 			if (shape != null && shape.kind == NodeKind.TypeArray && shape.typExprSize < 0) {
+				if (access != null && argumentName(access) == "write") {
+					fail(access, "storage buffer '" + name + "' cannot be @access(write): WGSL's " +
+						"storage buffers are read or read_write, and write is a storage texture's mode");
+				}
 				if (writes && !compute) {
 					fail(access, "storage buffer '" + name +
 						"' is written only in a compute entry");
