@@ -646,14 +646,7 @@ function checkBoundGroups(s: int32): void {
 	if (shaders[s].uniformCount > 0) {
 		const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
 		for (let u = 0; u < shaders[s].uniformCount; u++) {
-			const binding = shaders[s].uniforms[u].binding;
-			const e = entryOf(bindGroups[g], binding);
-			const dynamic = boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64;
-			const offset = dynamic + bindGroups[g].entries[e].offset;
-			const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-			if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {
-				stop(`uniform binding ${binding} at offset ${offset} overruns its buffer`);
-			}
+			bufferRecords.slotIndex(bindGroups[g].entries[entryOf(bindGroups[g], shaders[s].uniforms[u].binding)].buffer.id);
 		}
 	}
 	if (shaders[s].resourceCount > 0) {

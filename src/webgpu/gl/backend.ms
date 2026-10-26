@@ -2672,9 +2672,6 @@ function applyUniforms(): void {
 		const e = entryOf(bindGroups[g], uniform.binding);
 		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-		if (offset + (uniform.size as int64) > bufferRecords.slots[b].size) {
-			stop(`uniform binding ${uniform.binding} at offset ${offset} overruns its buffer`);
-		}
 		if (uniform.location == -1) { continue; }
 		oglUniform4fv(uniform.location, uniform.count, buffers[b].shadow[0], offset);
 	}

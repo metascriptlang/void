@@ -52,6 +52,7 @@ import {
 	viewMipsRefusal,
 } from "./types.ms";
 import {
+	BindGroupRecord,
 	BufferRecord,
 	PipelineRecord,
 	QuerySetRecord,
@@ -852,16 +853,41 @@ export function dynamicIndexOf(descriptor: GPUBindGroupDescriptor): int32[GPU_MA
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
-		if (entry.buffer.id != 0) {
-			let rank = 0;
-			for (let j = 0; j < GPU_MAX_BIND_GROUP_ENTRIES; j++) {
-				if (descriptor.entries[j].buffer.id != 0 && descriptor.entries[j].binding < entry.binding) { rank += 1; }
-			}
-			ranks[stored] = rank;
-		}
+		if (entry.buffer.id != 0) { ranks[stored] = dynamicRankOf(descriptor, entry.binding); }
 		stored += 1;
 	}
 	return ranks;
+}
+
+function dynamicRankOf(descriptor: GPUBindGroupDescriptor, binding: int32): int32 {
+	let rank = 0;
+	for (let j = 0; j < GPU_MAX_BIND_GROUP_ENTRIES; j++) {
+		if (descriptor.entries[j].buffer.id != 0 && descriptor.entries[j].binding < binding) { rank += 1; }
+	}
+	return rank;
+}
+
+// The most each dynamic offset may add, by dynamic rank: what is left of the entry's buffer past
+// its offset and the shader's uniform block, which setBindGroup holds the offset to.
+export function dynamicRoomOf(descriptor: GPUBindGroupDescriptor, shader: ShaderRecord): int64[GPU_MAX_BIND_GROUP_ENTRIES] {
+	let room: int64[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
+		const entry = descriptor.entries[i];
+		if (entry.buffer.id == 0) { continue; }
+		const u = shaderBindingAt(shader, GPU_UNIFORM_GROUP, entry.binding, BindingKind.Uniform);
+		if (u < 0) { continue; }
+		room[dynamicRankOf(descriptor, entry.binding)] = bufferRecords.record(entry.buffer.id).size - entry.offset - (shader.bindings[u].size as int64);
+	}
+	return room;
+}
+
+// WebGPU (GPURenderCommandsMixin.setBindGroup, "dynamic offset + binding size <= buffer size"):
+// the offset is held to its entry's buffer when it is set, so a draw or dispatch need not look again.
+export function dynamicRoomRefusal(room: int64[GPU_MAX_BIND_GROUP_ENTRIES], dynamicCount: int32, dynamicOffsets: Readonly<Span<uint32>>): string {
+	for (let i = 0; i < dynamicCount; i++) {
+		if ((dynamicOffsets[i] as int64) > room[i]) { return `dynamic offset ${dynamicOffsets[i]} at index ${i} overruns its uniform buffer`; }
+	}
+	return "";
 }
 
 export function bindGroupIndexRefusal(index: int32): string {
@@ -908,8 +934,9 @@ export function storageViewRefusal(binding: int32, textureIsStorage: boolean, mi
 
 export function checkedBindGroupIndex(index: int32): void { refuse(bindGroupIndexRefusal(index)); }
 
-export function checkedBindGroupSet(index: int32, madeFor: int32, dynamicCount: int32, dynamicOffsets: Readonly<Span<uint32>>, alignment: uint32): void {
-	refuse(bindGroupSetRefusal(index, madeFor, dynamicCount, dynamicOffsets, alignment));
+export function checkedBindGroupSet(index: int32, record: BindGroupRecord, dynamicOffsets: Readonly<Span<uint32>>, alignment: uint32): void {
+	refuse(bindGroupSetRefusal(index, record.group, record.dynamicCount, dynamicOffsets, alignment));
+	refuse(dynamicRoomRefusal(record.dynamicRoom, record.dynamicCount, dynamicOffsets));
 }
 
 export function checkedStorageEntry(entry: GPUBindGroupEntry, bufferIsStorage: boolean, bufferSize: int64, alignment: int64, limit: int64): void {

@@ -1690,9 +1690,6 @@ function applyUniforms(): void {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
 		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-		if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {
-			stop(`uniform binding ${shaders[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
-		}
 		const native = buffers[b].natives[buffers[b].active];
 		const slot = shaders[s].uniforms[u].nativeSlot;
 		if (shaders[s].uniforms[u].vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, slot); }
@@ -1874,9 +1871,6 @@ function applyComputeUniforms(s: int32, g: int32): void {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
 		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-		if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {
-			stop(`uniform binding ${shaders[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
-		}
 		bindBuffer(STAGE_COMPUTE, buffers[b].natives[buffers[b].active], offset, shaders[s].uniforms[u].nativeSlot);
 	}
 }

@@ -186,6 +186,7 @@ export struct BindGroupRecord {
 	group: int32;
 	dynamicCount: int32;
 	dynamicIndex: int32[GPU_MAX_BIND_GROUP_ENTRIES];
+	dynamicRoom: int64[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 export struct IdRecord { id: uint32; }

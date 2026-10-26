@@ -2210,9 +2210,6 @@ function applyUniforms(s: int32): void {
 		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 		const block = shaders[s].uniforms[u];
-		if (offset + (block.size as int64) > bufferRecords.slots[b].size) {
-			stop(`uniform binding ${block.binding} at offset ${offset} overruns its buffer`);
-		}
 		if (offsetUniforms) {
 			if (bound.uniformBuffer[u] == bufferRecords.slots[b].id && bound.uniformFirst[u] == offset) { continue; }
 			const constants = roundUp256(block.size as int64) / 16;
@@ -2228,7 +2225,7 @@ function applyUniforms(s: int32): void {
 		} else {
 			const bytes = roundUp16(block.size as int64);
 			if (offset + bytes > (buffers[b].shadow.length as int64)) {
-				stop(`uniform binding ${block.binding} at offset ${offset} overruns its buffer`);
+				stop(`uniform binding ${block.binding} of ${bytes} bytes at ${offset} overruns the shadow copy of its buffer`);
 			}
 			d3dUpdateIfChanged(context, shaders[s].constantBuffers[u], shaders[s].blockCache[0], shaders[s].cacheOffset[u] as int64, buffers[b].shadow[0], offset, bytes, shaders[s].cacheFresh[u]);
 			shaders[s].cacheFresh[u] = 0;

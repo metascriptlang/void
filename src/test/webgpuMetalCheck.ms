@@ -2354,7 +2354,7 @@ test "a compute dispatch stops by name when its uniform group is missing or its 
 		if (run.ok) { assert false; }
 		if (!run.ok) {
 			assert run.error.output.includes("probe: the control dispatched");
-			assert run.error.output.includes(define == "" ? "the compute pipeline reads bind group 0, which is not set" : "uniform binding 0 at offset 256 overruns its buffer");
+			assert run.error.output.includes(define == "" ? "the compute pipeline reads bind group 0, which is not set" : "dynamic offset 256 at index 0 overruns its uniform buffer");
 			assert !run.error.output.includes("probe: the faulty dispatch ran");
 		}
 	}

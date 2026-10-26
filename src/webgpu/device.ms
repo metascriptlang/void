@@ -140,6 +140,7 @@ import {
 	resolvedRenderPipeline,
 	textureRecordOf,
 	dynamicIndexOf,
+	dynamicRoomOf,
 	groupOfKind,
 	uniformEntryCount,
 	vertexSlotsOf,
@@ -307,7 +308,13 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 		if (entry.buffer.id != 0 || entry.textureView.id != 0 || entry.sampler.id != 0) { checkedBindGroupEntry(entry, group, shader); }
 	}
 	const id = allocate(bindGroupRecords);
-	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0, dynamicIndex: dynamicIndexOf(descriptor) });
+	store(bindGroupRecords, {
+		id: id,
+		group: group,
+		dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0,
+		dynamicIndex: dynamicIndexOf(descriptor),
+		dynamicRoom: group == GPU_UNIFORM_GROUP ? dynamicRoomOf(descriptor, shader) : [0],
+	});
 	backend.createBindGroup(id, descriptor);
 	return { id: id };
 }
@@ -357,7 +364,7 @@ function checkedBoundGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets
 	checkedBindGroupIndex(index);
 	if (bindGroup.id == 0) { return; }
 	const record = bindGroupRecords.record(bindGroup.id);
-	checkedBindGroupSet(index, record.group, record.dynamicCount, dynamicOffsets, cachedLimits().minUniformBufferOffsetAlignment as uint32);
+	checkedBindGroupSet(index, record, dynamicOffsets, cachedLimits().minUniformBufferOffsetAlignment as uint32);
 }
 
 function layoutOf(pipeline: uint32, index: int32): GPUBindGroupLayout {
