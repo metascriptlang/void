@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include "../../src/webgpu/vulkan/vulkan.h"
 
+void *vulkanHostView(uint64_t view) { return (void *)(uintptr_t)view; }
+
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <dlfcn.h>
 
