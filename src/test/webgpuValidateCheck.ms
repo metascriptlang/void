@@ -28,7 +28,10 @@ import {
 	beginOcclusionRefusal,
 	bindGroupIndexRefusal,
 	bindGroupSetRefusal,
+	boundRefusal,
 	dynamicIndexOf,
+	markBindGroupSet,
+	markVertexSet,
 	shaderBindingAt,
 	copyBufferRefusal,
 	copyTextureRefusal,
@@ -226,6 +229,23 @@ test "a vertex buffer slot outside the pipeline's slots is refused" {
 	assert vertexSlotRefusal(1) == "";
 	assert vertexSlotRefusal(2) == "setVertexBuffer slot 2 is outside the 2 vertex buffer slots";
 	assert vertexSlotRefusal(-1) == "setVertexBuffer slot -1 is outside the 2 vertex buffer slots";
+}
+
+test "a draw or dispatch is refused for a vertex buffer or bind group its pipeline reads and the pass never set" {
+	for (let i = 0; i < 2; i++) {
+		markVertexSet(i, 0, 0);
+		markBindGroupSet(i, 0, []);
+	}
+	assert boundRefusal(0, 0, false) == "";
+	assert boundRefusal(1, 0, false) == "the pipeline reads vertex buffer 0, which is not set";
+	assert boundRefusal(2, 0, false) == "the pipeline reads vertex buffer 1, which is not set";
+	assert boundRefusal(0, 1, false) == "the pipeline reads bind group 0, which is not set";
+	assert boundRefusal(0, 2, true) == "the compute pipeline reads bind group 1, which is not set";
+	markVertexSet(0, 5, 0);
+	assert boundRefusal(1, 0, false) == "";
+	assert boundRefusal(3, 0, false) == "the pipeline reads vertex buffer 1, which is not set";
+	markVertexSet(0, 0, 0);
+	assert boundRefusal(1, 0, false) == "the pipeline reads vertex buffer 0, which is not set";
 }
 
 test "a uniform entry is refused by usage, alignment, overrun and size below its block" {

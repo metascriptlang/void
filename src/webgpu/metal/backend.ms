@@ -1752,7 +1752,7 @@ function applyVertexBuffers(): void {
 	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if (pipelines[p].strides[slot] == 0) { continue; }
-		if (boundFacts.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
+		if (boundFacts.vertexBuffers[slot] == 0) { continue; }
 		const b = bufferRecords.slotIndex(boundFacts.vertexBuffers[slot]);
 		bindBuffer(STAGE_VERTEX, buffers[b].natives[buffers[b].active], boundFacts.vertexOffsets[slot], VERTEX_BUFFER_BASE + slot);
 	}
@@ -1764,7 +1764,6 @@ function applyResources(): void {
 	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
 	bound.resourcesDirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
-	if (boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the pipeline reads bind group 1, which is not set"); }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
 	for (let r = 0; r < shaders[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders[s].resources[r];
@@ -1790,7 +1789,6 @@ function applyUniforms(): void {
 	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
-	if (boundFacts.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
@@ -1966,11 +1964,9 @@ function applyCompute(): int32 {
 		computeBound.dirty = false;
 		mtlComputeSetPipeline(computeEncoder, pipelines[p].computeState);
 		if (shaders[s].uniformCount > 0) {
-			if (boundFacts.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the compute pipeline reads bind group 0, which is not set"); }
 			applyComputeUniforms(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]));
 		}
 		if (shaders[s].resourceCount > 0) {
-			if (boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
 			applyComputeResources(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]));
 		}
 	}

@@ -1942,23 +1942,11 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 	stageBindGroup(index, bindGroup, dynamicOffsets, true);
 }
 
-@noinline function checkDispatch(call: string): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
-	if (shaders[s].uniformCount > 0 && boundFacts.bindGroups[GPU_UNIFORM_GROUP] == 0) {
-		stop(`${call}: the compute pipeline reads bind group ${GPU_UNIFORM_GROUP}, which is not set`);
-	}
-	if (shaders[s].resourceCount > 0 && boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) {
-		stop(`${call}: the compute pipeline reads bind group ${GPU_RESOURCE_GROUP}, which is not set`);
-	}
-}
-
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
-	checkDispatch("dispatchWorkgroups");
 	wgDispatch(x, y, z);
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	checkDispatch("dispatchWorkgroupsIndirect");
 	const b = bufferRecords.slotIndex(buffer.id);
 	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
 	wgDispatchIndirect(buffers[b].native, offset);

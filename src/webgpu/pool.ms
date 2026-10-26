@@ -147,6 +147,8 @@ export struct ViewRecord {
 export struct PipelineRecord {
 	id: uint32;
 	shader: uint32;
+	vertexSlots: int32;
+	groups: int32;
 	layouts: uint32[2];
 	label: string | null;
 	compute: boolean;
@@ -166,6 +168,7 @@ export struct ShaderRecord {
 	compute: boolean;
 	bindings: ShaderBindingRecord[GPU_MAX_SHADER_BINDINGS];
 	bindingCount: int32;
+	groups: int32;
 	readsInstanceIndex: boolean;
 	readsVertexIndex: boolean;
 }

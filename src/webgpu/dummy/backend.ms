@@ -728,17 +728,16 @@ function flush(): void {
 	}
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if (pipelines[p].strides[slot] == 0) { continue; }
-		if (boundFacts.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
+		if (boundFacts.vertexBuffers[slot] == 0) { continue; }
 		bufferRecords.slotIndex(boundFacts.vertexBuffers[slot]);
 	}
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
-	checkBoundGroups(s, "pipeline");
+	checkBoundGroups(s);
 }
 
 
-function checkBoundGroups(s: int32, what: string): void {
+function checkBoundGroups(s: int32): void {
 	if (shaders[s].uniformCount > 0) {
-		if (boundFacts.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop(`the ${what} reads bind group 0, which is not set`); }
 		const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
 		for (let u = 0; u < shaders[s].uniformCount; u++) {
 			const binding = shaders[s].uniforms[u].binding;
@@ -752,7 +751,6 @@ function checkBoundGroups(s: int32, what: string): void {
 		}
 	}
 	if (shaders[s].resourceCount > 0) {
-		if (boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop(`the ${what} reads bind group 1, which is not set`); }
 		const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
 		for (let r = 0; r < shaders[s].resourceCount; r++) {
 			const e = entryOf(bindGroups[g], shaders[s].resources[r].binding);
@@ -861,7 +859,7 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 function checkCompute(): void {
 	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
-	checkBoundGroups(s, "compute pipeline");
+	checkBoundGroups(s);
 }
 
 export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {

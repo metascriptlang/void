@@ -2086,7 +2086,6 @@ function applyCompute(): void {
 	d3dCsSetShader(context, shaders[s].compute);
 	computeBound.dirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
-	if (boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
 	for (let r = 0; r < shaders[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders[s].resources[r];
@@ -2252,7 +2251,7 @@ function applyVertexBuffers(p: int32): void {
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		const stride = pipelines[p].strides[slot];
 		if (stride == 0) { continue; }
-		if (boundFacts.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
+		if (boundFacts.vertexBuffers[slot] == 0) { continue; }
 		const b = bufferRecords.slotIndex(boundFacts.vertexBuffers[slot]);
 		const native = buffers[b].native;
 		const offset = boundFacts.vertexOffsets[slot] as int32;
@@ -2283,7 +2282,6 @@ function applyIndexBuffer(): void {
 function applyResources(s: int32): void {
 	bound.resourcesDirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
-	if (boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the pipeline reads bind group 1, which is not set"); }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
 	for (let r = 0; r < shaders[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders[s].resources[r];
@@ -2316,7 +2314,6 @@ function applyResources(s: int32): void {
 function applyUniforms(s: int32): void {
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
-	if (boundFacts.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);

@@ -25,6 +25,7 @@ import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
+	GPU_MAX_VERTEX_ATTRIBUTES,
 	GPU_MAX_VERTEX_BUFFERS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
@@ -63,6 +64,7 @@ import {
 	querySetRecords,
 	record,
 	samplerRecords,
+	slotOf,
 	textureRecords,
 	viewRecords,
 } from "./pool.ms";
@@ -228,6 +230,8 @@ export struct BoundFacts {
 	indexOffset: int64;
 	bindGroups: uint32[2];
 	dynamicOffsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
+	vertexSet: int32;
+	groupSet: int32;
 }
 
 export let boundFacts: BoundFacts = { pipeline: 0 };
@@ -273,6 +277,7 @@ export function vertexSlotRefusal(slot: int32): string {
 export function markVertexSet(slot: int32, buffer: uint32, offset: int64): void {
 	refuse(vertexSlotRefusal(slot));
 	boundFacts.vertexBuffers[slot] = buffer;
+	boundFacts.vertexSet = buffer == 0 ? boundFacts.vertexSet & ~(1 << slot) : boundFacts.vertexSet | (1 << slot);
 	boundFacts.vertexOffsets[slot] = offset;
 }
 
@@ -284,12 +289,47 @@ export function markIndexSet(buffer: uint32, offset: int64): void {
 
 export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets: Readonly<Span<uint32>>): void {
 	boundFacts.bindGroups[index] = bindGroup;
+	boundFacts.groupSet = bindGroup == 0 ? boundFacts.groupSet & ~(1 << index) : boundFacts.groupSet | (1 << index);
 	if (bindGroup == 0 || index != GPU_UNIFORM_GROUP) { return; }
 	const count = bindGroupRecords.record(bindGroup).dynamicCount;
 	for (let i = 0; i < count; i++) { boundFacts.dynamicOffsets[i] = dynamicOffsets[i]; }
 }
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
-export function checkedDrawState(call: string, indexed: boolean): void { refuse(encoder.drawRefusal(call, indexed)); }
+export function checkedDrawState(call: string, indexed: boolean): void {
+	refuse(encoder.drawRefusal(call, indexed));
+	const pipeline = pipelineRecords.slots[slotOf(boundFacts.pipeline)];
+	refuse(boundRefusal(pipeline.vertexSlots, pipeline.groups, false));
+}
+export function checkedDispatchBound(): void {
+	refuse(boundRefusal(0, pipelineRecords.slots[slotOf(boundFacts.pipeline)].groups, true));
+}
+
+// A slot or group the pipeline reads and the pass never set, as sokol refuses it at apply_bindings
+// (sokol_gfx.h:25153 VALIDATE_ABND_EXPECTED_VBUF, 25196 views and 25268 samplers).
+export function boundRefusal(vertexSlots: int32, groups: int32, compute: boolean): string {
+	const missingGroups = groups & ~boundFacts.groupSet;
+	if (missingGroups != 0) {
+		const group = (missingGroups & 1) != 0 ? GPU_UNIFORM_GROUP : GPU_RESOURCE_GROUP;
+		return `the ${compute ? "compute pipeline" : "pipeline"} reads bind group ${group}, which is not set`;
+	}
+	const missingSlots = vertexSlots & ~boundFacts.vertexSet;
+	if (missingSlots != 0) {
+		return `the pipeline reads vertex buffer ${(missingSlots & 1) != 0 ? 0 : 1}, which is not set`;
+	}
+	return "";
+}
+
+export function vertexSlotsOf(descriptor: GPURenderPipelineDescriptor): int32 {
+	let slots = 0;
+	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
+		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
+			const format: string = descriptor.vertex.buffers[b].attributes[a].format;
+			if (format != "") { slots |= 1 << b; }
+		}
+	}
+	return slots;
+}
+
 export function checkedBeginOcclusion(queryIndex: int32): void { refuse(encoder.beginOcclusionRefusal(queryIndex)); }
 export function checkedEndOcclusion(): void { refuse(encoder.endOcclusionRefusal()); }
 export function checkedOcclusionRange(queryIndex: int32, count: int32): void { refuse(occlusionRangeRefusal(queryIndex, count)); }

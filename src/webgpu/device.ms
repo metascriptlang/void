@@ -106,6 +106,7 @@ import {
 	checkedOcclusionQuery,
 	checkedOutsidePass,
 	checkedPassQueries,
+	checkedDispatchBound,
 	checkedPipelineSet,
 	checkedPopGroup,
 	checkedPushGroup,
@@ -137,7 +138,9 @@ import {
 	resolvedRenderPipeline,
 	textureRecordOf,
 	dynamicIndexOf,
+	groupOfKind,
 	uniformEntryCount,
+	vertexSlotsOf,
 	advanceFrame,
 	cacheCanvas,
 	cachedCanvas,
@@ -254,6 +257,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 			storageFormat: descriptor.bindings[i].storageFormat,
 		};
 		record.bindingCount += 1;
+		record.groups |= 1 << groupOfKind(record.bindings[record.bindingCount - 1].kind);
 	}
 	store(shaderRecords, record);
 	backend.createShaderModule(id, descriptor);
@@ -267,6 +271,8 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	store(pipelineRecords, {
 		id: id,
 		shader: descriptor.vertex.module.id,
+		vertexSlots: vertexSlotsOf(descriptor),
+		groups: shader.groups,
 		label: descriptor.label,
 		readsInstanceIndex: shader.readsInstanceIndex,
 		readsVertexIndex: shader.readsVertexIndex,
@@ -277,7 +283,13 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function createComputePipeline(this self: GPUDevice, descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, { id: id, shader: descriptor.compute.module.id, label: descriptor.label, compute: true });
+	store(pipelineRecords, {
+		id: id,
+		shader: descriptor.compute.module.id,
+		groups: shaderRecords.record(descriptor.compute.module.id).groups,
+		label: descriptor.label,
+		compute: true,
+	});
 	backend.createComputePipeline(id, descriptor);
 	return { id: id };
 }
@@ -478,6 +490,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function dispatchWorkgroups(this self: GPUComputePassEncoder, x: int32, y: int32, z: int32): void {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroups");
 	checkedPipelineSet("dispatchWorkgroups");
+	checkedDispatchBound();
 	checkedDispatch(x, y, z, cachedLimits().maxComputeWorkgroupsPerDimension);
 	backend.dispatchWorkgroups(x, y, z);
 }
@@ -485,6 +498,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function dispatchWorkgroupsIndirect(this self: GPUComputePassEncoder, buffer: GPUBuffer, offset: int64): void {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroupsIndirect");
 	checkedPipelineSet("dispatchWorkgroupsIndirect");
+	checkedDispatchBound();
 	backend.dispatchWorkgroupsIndirect(buffer, offset);
 }
 
