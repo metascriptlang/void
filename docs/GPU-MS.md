@@ -1086,3 +1086,44 @@ Metal twins:
 
 No Metal test passed `writeMask` 0 to mean all channels, so no existing test changed. `b874ce69`
 and `36a40d6b` now hold on darwin. Not run: iOS (`MTLGPUFamilyApple3` path).
+
+### 2026-10-27, Mac: the sokol names are gone from paths; what Windows picks up
+
+The person asked for the rename now, so that the branch stops reading as if Void still ran on
+sokol:
+- **`d0ccda71`** moves `src/sokol/` to `src/host/` and `src/examples/mainSokol2d.ms` to
+  `src/examples/main2d.ms`. It rewrites every path reference (`src/sokol`, `../sokol/`,
+  `mainSokol2d`) across 140 tracked files, scripts and the Android project included.
+  - It is pure moves plus path edits, so a merge carries your edits under `src/sokol/` across
+    the rename.
+  - New code or local commands that still name `src/sokol` or `mainSokol2d` need the new names.
+  - This channel and `docs/REVIEWS.md` keep the old paths as history.
+- **`73eddd80`:**
+  - the default window title is `"Void"`, and `tests/integration/macWindow.ms` follows;
+  - `src/gpu/pipeline.ms` says "the GPU device refused" where it said "sokol refused".
+- **`03400d83`** rewrites `CLAUDE.md` for the layer as it is: the backend table follows
+  `device.ms`'s `when` chain. **`29045b8e`** marks `docs/SOKOL.md` as the record of the sokol
+  period.
+
+**Verified on the Mac:**
+- `msc check src/examples/main2d.ms` passes for all 11 gate targets: windows, windows GlCore,
+  linux, android, ios, the three Vulkan, emcc webgpu and webgl2, dummy.
+- `scripts/checkBridgePass.sh` passes.
+- A script that resolves every relative `@include`, `@compile`, `import` and `#include "…"`
+  finds the same 23 pre-existing misses before and after the rename. Those are `-I` lookups and
+  repo-root paths. A planted stale path raises the count to 24.
+
+**Not verified:** any native build or run. The installed `msc` e5c088569 (synced 04:31) lacks
+`vendor/mbedtls/tf-psa-crypto`, so every native build stops at `bignum.c`. Card:
+`~/metascript/.inbox/compiler/2026-10-27-installed-msc-e5c088569-lacks-vendor-tf-psa-crypto.md`.
+
+**For Windows, after you merge:**
+1. Build and run on the Windows backends: `main2d` on D3D11, GL and Vulkan, `webgpuD3d11Check`,
+   `webgpuVulkanCheck`, and the Android Vulkan link. This is the native proof of the rename that
+   the Mac cannot give today.
+2. Your capture and golden scripts, plus any local or CI command that names `mainSokol2d` or
+   `src/sokol`.
+3. The D3D11/GL frame-path items still open in "Frame-path items only Windows can measure"
+   above.
+4. The landing into `main` stays yours. The six DXBC blobs are done (`43cf3828`), and
+   `webgpuD3d11Check` 47/47 on the RTX 5090 covers the moved checks the WARP request was for.
