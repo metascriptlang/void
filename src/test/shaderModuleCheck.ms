@@ -7,6 +7,8 @@ import {
 	Vec4f,
 	binding,
 	builtin,
+	lt,
+	select,
 	textureSample,
 	vec4f,
 } from "../shader/std";
@@ -45,6 +47,16 @@ function pictureFs(input: PictureFragment, b: PictureBindings): Vec4f {
 
 shaderModule(picture, pictureVs, pictureFs);
 
+struct BelowBindings {
+	@binding(0) tintParams: PictureTint;
+}
+
+function belowFs(input: PictureFragment, b: BelowBindings): Vec4f {
+	return select(vec4f(0.0, 0.0, 0.0, 0.0), b.tintParams.tint, lt(b.tintParams.tint, vec4f(0.5, 0.5, 0.5, 0.5)));
+}
+
+shaderModule(below, pictureVs, belowFs);
+
 test "shaderModule declares the program's WebGPU shader module for this build's backend" {
 	assert (pictureModule.label ?? "") == "picture";
 	assert pictureModule.vertexCode.length > 0 && pictureModule.fragmentCode.length > 0;
@@ -64,4 +76,10 @@ test "shaderModule numbers bindings as shdc's WGSL output does" {
 	const sampler = pictureModule.bindings[2];
 	assert sampler.group == 1 && sampler.binding == 32 && sampler.kind == "sampler";
 	assert sampler.samplerType == "filtering";
+}
+
+test "shaderModule spells a componentwise comparison while the macro prints it" {
+	const code = belowModule.fragmentCode;
+	assert code.includes("<") || code.includes("lessThan(");
+	assert !code.includes("null");
 }
