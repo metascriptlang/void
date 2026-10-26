@@ -44,7 +44,7 @@ End-game done when, in addition:
 |---|---|---|
 | Windows | D3D11 (`src/webgpu/d3d11`) | door goldens 120/120 against `tests/golden/d3d11`; WARP check `src/test/webgpuD3d11Check.ms`; index 134 files / 1884 tests green at `b0be359b` |
 | Windows | GL core 4.3 (`src/webgpu/gl`, `-d:voidGlCore`) | `src/test/webgpuGlCheck.ms` 304/304; `sh scripts/golden.sh --backend gl` 94 pass + 26 pending (within `tests/PENDING.md` budgets), 0 fail of 120 |
-| Windows | Vulkan (`src/webgpu/vulkan`, `-d:voidVulkan`) | `src/test/webgpuVulkanCheck.ms` 16/16 and `tests/integration/vulkanSwapchain.ms` PASS on the GPU, tree `f6fe0d70`; `msc check` for Windows, Linux and Android; window host passes the 2D goldens, tree `43cf3828` |
+| Windows | Vulkan (`src/webgpu/vulkan`, `-d:voidVulkan`) | `src/test/webgpuVulkanCheck.ms` 16/16 and `tests/integration/vulkanSwapchain.ms` PASS on the GPU, tree `f6fe0d70`; `msc check` for Windows, Linux and Android; window host passes the 2D goldens, tree `782b2325` |
 | Browser | WebGPU (`src/webgpu/wgpu`, `-d:webgpu`) | `scripts/build-web.sh`, headless Chrome shows the full void2d demo |
 | Browser | WebGL2 (`src/webgpu/gl`, GLES3 path, `-d:webgl2`) | same page, same picture outside the animated node tree |
 | Android | GLES3 (`src/webgpu/gl`, `OGL_GLES`) | check-only: NDK clang `-fsyntax-only` clean, `msc check --os=android` 114 modules; never linked or run |
@@ -694,9 +694,8 @@ validation on, it and `webgpuVulkanCheck` (16/16) end with 0 errors. That run fo
 both fixed: the swapchain depth view leaked when `destroy` freed the texture record before the
 backend shut down, and a copy after a render pass in one flush transitioned the image with no
 source access (`docs/GPU.md`, the barrier against wgpu). The 2D goldens on Vulkan
-(`sh scripts/golden.sh --backend vulkan`, RTX 5090, tree `43cf3828`) pass every row the D3D11
-set covers under the cross-backend bound: 116 of 122, 4 of them pending at delta 1, and the 2
-rows that fail have no D3D11 golden yet.
+(`sh scripts/golden.sh --backend vulkan`, RTX 5090, tree `782b2325`) pass all 122 rows under the
+cross-backend bound, 4 of them pending at delta 1.
 
 ## G7 — after Metal (either side, coordinated)
 
