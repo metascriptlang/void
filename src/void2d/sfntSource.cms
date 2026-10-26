@@ -1,0 +1,57 @@
+@include("stdio.h");
+@include("stddef.h");
+@include("./fontBytes.h");
+
+extern struct FILE;
+extern function cFopen(path: cstring, mode: cstring): Ptr<FILE> from "fopen";
+extern function cFseek(file: Ptr<FILE>, offset: int64, whence: int32): int32 from "fseek";
+extern function cFtell(file: Ptr<FILE>): int64 from "ftell";
+extern function cFread(into: Ptr<uint8>, size: uint64, count: uint64, file: Ptr<FILE>): uint64 from "fread";
+extern function cFclose(file: Ptr<FILE>): int32 from "fclose";
+extern const SEEK_SET: int32;
+extern const SEEK_END: int32;
+
+import { void2dFontBytesFind } from "./fontBytes.h";
+extern function fontBytesFind(name: cstring, length: Ptr<uint64>): Ptr<uint8> | null from "void2dFontBytesFind";
+
+// A face held under `path` by holdFaceBytes wins over a file of that name.
+function held(path: string, length: Span<uint64>): Ptr<uint8> | null {
+	return fontBytesFind(path as cstring, length as Ptr<uint64>);
+}
+
+// The size of the font behind `path`, held bytes or file; -1 when the file cannot be opened.
+export function sfntSourceSize(path: string): int64 {
+	let length: uint64[] = [0];
+	const bytes = held(path, length);
+	if (bytes != null) { return length[0] as int64; }
+	const file = cFopen(path as cstring, "rb" as cstring);
+	if (file == null) { return -1; }
+	cFseek(file, 0, SEEK_END);
+	const measured: int64 = cFtell(file);
+	cFclose(file);
+	return measured < 0 ? 0 : measured;
+}
+
+// Fills `into` with the bytes at `at`; false when the range is not all there.
+export function sfntSourceRead(path: string, at: int64, into: Span<uint8>): boolean {
+	let length: uint64[] = [0];
+	const bytes = held(path, length);
+	const count: int64 = into.length as int64;
+	if (bytes != null) {
+		const size: int64 = length[0] as int64;
+		if (at > size || count > size - at) { return false; }
+		for (let i: int64 = 0; i < count; i++) { into[i] = bytes[at + i]; }
+		return true;
+	}
+	const file = cFopen(path as cstring, "rb" as cstring);
+	if (file == null) { return false; }
+	const wanted = count as uint64;
+	const target = into as Ptr<uint8>;
+	let ok: boolean = false;
+	if (cFseek(file, at, SEEK_SET) == 0) {
+		const got: uint64 = cFread(target, 1, wanted, file);
+		ok = got == wanted;
+	}
+	cFclose(file);
+	return ok;
+}

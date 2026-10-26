@@ -49,12 +49,16 @@ when (macos || ios) {
 }
 
 import {
-	void2dSfntPeek,
-	void2dSfntCovers,
-	void2dSfntSequence,
-	void2dSfntFlags,
-	void2dSfntSummariesRead,
-} from "./sfnt.h";
+	SfntError,
+	SfntSequence,
+	sfntPeek,
+	sfntPeekBytes,
+	sfntCovers,
+	sfntSequence,
+	sfntFlags,
+	sfntSummariesRead,
+} from "./sfnt";
+export { SfntError, SfntSequence } from "./sfnt";
 import { void2dFontBytesAdd } from "./fontBytes.h";
 import { GlyphPageHandle } from "./glyphAtlas";
 
@@ -102,18 +106,6 @@ function faceResult(code: int32): Result<int32, FaceError> {
 	};
 }
 
-export enum SfntError {
-	Unreadable,
-	NotAnSfnt,
-	OutOfMemory,
-}
-
-export enum SfntSequence {
-	None,
-	Default,
-	Specific,
-}
-
 export struct FaceSummary {
 	id: int32;
 	drawable: boolean;
@@ -141,38 +133,42 @@ export function holdFaceBytes(name: string, bytes: uint8[]): Result<void, FaceBy
 	};
 }
 
-export function peekFace(path: string, index: int32 = 0): Result<FaceSummary, SfntError> {
-	const code: int32 = void2dSfntPeek(path, index);
-	if (code < 0) {
-		if (code < -3) { unreachable; }
-		return match (code) {
-			-1 => Result.err(SfntError.Unreadable),
-			-2 => Result.err(SfntError.NotAnSfnt),
-			_ => Result.err(SfntError.OutOfMemory),
-		};
-	}
-	const flags: int32 = void2dSfntFlags(code);
-	return Result.ok({
-		id: code,
+function summaryOf(id: int32): FaceSummary {
+	const flags: int32 = sfntFlags(id);
+	return {
+		id: id,
 		drawable: (flags & 1) != 0,
 		colourBitmap: (flags & 2) != 0,
 		colourLayers: (flags & 4) != 0,
 		osOutlines: (flags & 8) != 0,
-	});
+	};
+}
+
+export function peekFace(path: string, index: int32 = 0): Result<FaceSummary, SfntError> {
+	const id = sfntPeek(path, index);
+	if (!id.ok) { return Result.err(id.error); }
+	return Result.ok(summaryOf(id.value));
+}
+
+// The same peek over a face's bytes, for a target that has no font file to open.
+export function peekFaceBytes(bytes: uint8[], index: int32 = 0): Result<FaceSummary, SfntError> {
+	const id = sfntPeekBytes(bytes, index);
+	if (!id.ok) { return Result.err(id.error); }
+	return Result.ok(summaryOf(id.value));
 }
 
 export function summaryCovers(summary: FaceSummary, codepoint: int32): boolean {
-	return void2dSfntCovers(summary.id, codepoint) != 0;
+	return sfntCovers(summary.id, codepoint);
 }
 
 export function summarySequence(
 	summary: FaceSummary, codepoint: int32, selector: int32,
 ): SfntSequence {
-	return void2dSfntSequence(summary.id, codepoint, selector) as SfntSequence;
+	return sfntSequence(summary.id, codepoint, selector);
 }
 
 export function faceSummariesRead(): int32 {
-	return void2dSfntSummariesRead();
+	return sfntSummariesRead();
 }
 
 export function loadFace(path: string, index: int32 = 0): Result<int32, FaceError> {

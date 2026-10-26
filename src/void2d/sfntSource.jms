@@ -1,0 +1,8 @@
+// A browser has no font files: a face arrives as bytes (peekFaceBytes), and a path stops here.
+export function sfntSourceSize(path: string): int64 {
+	throw new Error(`sfntSource: js cannot open the font file ${path}; pass its bytes to peekFaceBytes`);
+}
+
+export function sfntSourceRead(path: string, at: int64, into: Span<uint8>): boolean {
+	throw new Error(`sfntSource: js cannot read the font file ${path}; pass its bytes to peekFaceBytes`);
+}
