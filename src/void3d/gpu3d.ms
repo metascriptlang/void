@@ -574,7 +574,8 @@ export const FRAME_ENV_SIN: int32 = 11;
 // A pbr key's block (pbrMaterialParams in shader3d.ms): the lit block, then one vec4 holding
 // metalness, roughness and occlusion, all in 0..1, at PBR_VALUES = MATERIAL_UNIFORM_LENGTH for
 // every pbr key, then the UV transform laid out as MOVING_UV_*, which every pbr key reads as
-// Bevy's StandardMaterial reads its uv_transform. It is part of the key's own block, so
+// Bevy's StandardMaterial reads its uv_transform, then a parallax key's step count at
+// PBR_PARALLAX_STEPS. It is part of the key's own block, so
 // emissiveBase starts after it: an emitting key adds the emissive vec4 at emissiveBase
 // (pbrEmissiveMaterialParams).
 // Heaps' defaults (PbrMaterial props): 0, 1 and 1; a block is zero-filled,
@@ -587,7 +588,11 @@ export const PBR_OCCLUSION_STRENGTH: int32 = PBR_VALUES + 3;
 export const PBR_UV_MATRIX: int32 = PBR_VALUES + 4;
 export const PBR_UV_OFFSET: int32 = PBR_VALUES + 8;
 export const PBR_UV_SCROLL: int32 = PBR_VALUES + 10;
-export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 12;
+// PbrMaterial.parallaxSteps (PbrMaterial.hx:84,361): the layers at a grazing view, 0 for Heaps'
+// 24, a whole number up to the 255 its editor offers (PbrMaterial.hx:570). Heaps compiles a
+// program per count; a block float keeps one per key.
+export const PBR_PARALLAX_STEPS: int32 = PBR_VALUES + 12;
+export const PBR_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + 16;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {

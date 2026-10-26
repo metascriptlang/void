@@ -38,6 +38,7 @@ import {
 	Preset,
 	declares,
 	MATERIAL_ALPHA_KILL,
+	PBR_PARALLAX_STEPS,
 	SHADOW_VIEW_SLOT,
 	SHADOW_SAMPLER_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
@@ -378,6 +379,7 @@ export enum MaterialError {
 	StraightTexture,
 	StraightBlend,
 	NoAlphaKill,
+	BadParallaxSteps,
 	UndeclaredProgram,
 }
 
@@ -1078,6 +1080,14 @@ function cutsAbove(this context: DrawContext, block: UniformBlock): boolean {
 	return context.uniforms.values[block.offset + MATERIAL_ALPHA_KILL] > 0.0;
 }
 
+// A step count past 255, below 0 or between whole numbers is no count PbrMaterial can hold, and
+// a large one stalls the GPU in the step loop.
+function stepsFit(this context: DrawContext, block: UniformBlock): boolean {
+	if (block.length <= PBR_PARALLAX_STEPS || !context.uniforms.holds(block)) { return true; }
+	const steps: float32 = context.uniforms.values[block.offset + PBR_PARALLAX_STEPS];
+	return steps >= 0.0 && steps <= 255.0 && Math.floor(steps) == steps;
+}
+
 const PREMULTIPLIED_OVER: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
 
 function blendsPremultiplied(pass: RenderState): boolean {
@@ -1148,6 +1158,9 @@ export function addMaterial(
 		material.program.program == Program.ParticleVisual;
 	if (material.program.cutout && !fixedCut && !context.cutsAbove(material.uniforms)) {
 		return Result.err(MaterialError.NoAlphaKill);
+	}
+	if (material.program.parallax && !context.stepsFit(material.uniforms)) {
+		return Result.err(MaterialError.BadParallaxSteps);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {

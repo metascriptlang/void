@@ -1008,6 +1008,7 @@ layout(binding=3) uniform pbrMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
 };
 #endif
 #if defined(PBR) && defined(EMISSIVE)
@@ -1017,6 +1018,7 @@ layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
     vec4 emissive;
 };
 #endif
@@ -1892,6 +1894,7 @@ layout(binding=3) uniform pbrMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
 };
 #endif
 #if defined(CUTOUT) && defined(PBR) && defined(EMISSIVE)
@@ -1901,6 +1904,7 @@ layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
     vec4 emissive;
 };
 #endif
@@ -2110,22 +2114,24 @@ layout(binding=3) uniform movingEmissiveMaterialParams {
     vec4 emissive;
 };
 #endif
-#if defined(PBR) && !defined(EMISSIVE)
+#if (defined(PBR) && !defined(EMISSIVE)) || ((defined(NORMAL_MAP) && defined(PARALLAX)) && !defined(EMISSIVE))
 layout(binding=3) uniform pbrMaterialParams {
     vec4 material;
     vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
 };
 #endif
-#if defined(PBR) && defined(EMISSIVE)
+#if (defined(PBR) && defined(EMISSIVE)) || ((defined(NORMAL_MAP) && defined(PARALLAX)) && defined(EMISSIVE))
 layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 material;
     vec4 materialColor;
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
     vec4 emissive;
 };
 #endif
@@ -2300,12 +2306,18 @@ vec4 uvMotionOf() {
 }
 #endif
 #if defined(NORMAL_MAP) && defined(PARALLAX)
-vec2 parallaxUv(vec2 uv, vec3 view, vec3 normal_1, vec4 tangent, float amount) {
+float parallaxLayers(float viewZ, float steps) {
+    float most = (steps > 0.0) ? steps : 24.0;
+    return mix(most, 6.0, clamp(abs(viewZ), 0.0, 1.0));
+}
+#endif
+#if defined(NORMAL_MAP) && defined(PARALLAX)
+vec2 parallaxUv(vec2 uv, vec3 view, vec3 normal_1, vec4 tangent, float amount, float steps) {
     vec3 t = normalize(tangent.xyz);
     float sign_1 = (tangent.w < 0.0) ? -1.0 : 1.0;
     vec3 bitangent = normalize(cross(normal_1, t)) * (-sign_1);
     vec3 viewNs = normalize(vec3(dot(view, t), dot(view, bitangent), dot(view, normal_1)));
-    float layers = mix(24.0, 6.0, clamp(abs(viewNs.z), 0.0, 1.0));
+    float layers = parallaxLayers(viewNs.z, steps);
     float layerDepth = 1.0 / layers;
     vec2 delta = viewNs.xy * ((-amount) / (viewNs.z * layers));
     vec2 at = uv;
@@ -2320,6 +2332,15 @@ vec2 parallaxUv(vec2 uv, vec3 view, vec3 normal_1, vec4 tangent, float amount) {
     float after = depth - layer;
     float before = ((1.0 - texture(sampler2D(metalRoughTexture, baseSampler), previous).a) - layer) + layerDepth;
     return mix(at, previous, (after / (after - before)));
+}
+#endif
+#if defined(NORMAL_MAP) && defined(PARALLAX)
+float parallaxStepsOf() {
+#ifdef EMISSIVE
+    return parallax.x;
+#else
+    return parallax.x;
+#endif
 }
 #endif
 #ifdef BACK_TEXTURE
@@ -3124,7 +3145,7 @@ void main() {
 #endif
 #if defined(NORMAL_MAP) && defined(PARALLAX)
     vec3 view = normalize((cameraPosition.xyz - worldPosition));
-    uv = parallaxUv(uv, view, normalize(worldNormal), worldTangent, materialOf().x);
+    uv = parallaxUv(uv, view, normalize(worldNormal), worldTangent, materialOf().x, parallaxStepsOf());
 #endif
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), uv);
 #ifdef BACK_TEXTURE
@@ -3234,6 +3255,7 @@ layout(binding=3) uniform pbrMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
 };
 #endif
 #if defined(CUTOUT) && defined(PBR) && defined(EMISSIVE)
@@ -3243,6 +3265,7 @@ layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
     vec4 emissive;
 };
 #endif

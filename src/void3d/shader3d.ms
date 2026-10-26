@@ -226,13 +226,14 @@ export struct MovingMaterialParams {
 }
 
 // gpu3d.ms PBR_*: materialParams, then metalness, roughness and occlusion in x, y and z, then the
-// UV transform every pbr key reads.
+// UV transform every pbr key reads, then a parallax key's step count in x.
 export struct PbrMaterialParams {
 	material: Vec4f;
 	materialColor: Vec4f;
 	pbr: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
+	parallax: Vec4f;
 }
 
 // gpu3d.ms PBR_* then EMISSIVE_*: a pbr key that emits holds the emissive vec4 after the pbr one.
@@ -242,6 +243,7 @@ export struct PbrEmissiveMaterialParams {
 	pbr: Vec4f;
 	uvMatrix: Vec4f;
 	uvMotion: Vec4f;
+	parallax: Vec4f;
 	emissive: Vec4f;
 }
 
@@ -1235,6 +1237,14 @@ export function pbrOf(b: LitBindings, key: LitKey): Vec4f {
 	}
 }
 
+export function parallaxStepsOf(b: LitBindings, key: LitKey): float32 {
+	if (key.emissive) {
+		return b.pbrEmissiveMaterialParams.parallax.x;
+	} else {
+		return b.pbrMaterialParams.parallax.x;
+	}
+}
+
 export function uvMatrixOf(b: LitBindings, key: LitKey): Vec4f {
 	if (key.pbr) {
 		if (key.emissive) {
@@ -1611,7 +1621,14 @@ export function pbrEnvironmentLight(
 		(turn.x * occlusion);
 }
 
-// Heaps' Parallax (h3d/shader/Parallax.hx) at PbrMaterial's steps, 6 to 24, reading the height
+// Heaps' Parallax layer count (Parallax.hx:40): `steps` at a grazing view down to MIN_LAYERS 6
+// head-on, where PbrMaterial turns a step count of 0 into MAX_LAYERS 24 (PbrMaterial.hx:361).
+export function parallaxLayers(viewZ: float32, steps: float32): float32 {
+	const most: float32 = steps > 0.0 ? steps : 24.0;
+	return mix(most, 6.0, clamp(abs(viewZ), 0.0, 1.0));
+}
+
+// Heaps' Parallax (h3d/shader/Parallax.hx) at the material's step count, reading the height
 // from the pbr-maps texture's alpha as PbrMaterial hands it its props texture. Its bitangent is
 // n x t where NormalMap's is n x t * -w, so it is mappedNormal's negated: the tangent's w still
 // turns it on a mirrored island, where Heaps leaves that to invertBasis.
@@ -1622,12 +1639,13 @@ export function parallaxUv(
 	normal: Vec3f,
 	tangent: Vec4f,
 	amount: float32,
+	steps: float32,
 ): Vec2f {
 	const t = normalize(tangent.xyz);
 	const sign: float32 = tangent.w < 0.0 ? -1.0 : 1.0;
 	const bitangent = normalize(cross(normal, t)) * -sign;
 	const viewNs = normalize(vec3f(dot(view, t), dot(view, bitangent), dot(view, normal)));
-	const layers = mix(24.0, 6.0, clamp(abs(viewNs.z), 0.0, 1.0));
+	const layers = parallaxLayers(viewNs.z, steps);
 	const layerDepth = 1.0 / layers;
 	const delta = viewNs.xy * (-amount / (viewNs.z * layers));
 	let at = uv;
@@ -1812,7 +1830,7 @@ export function litTexturedFs(
 	if (key.normalMap && key.parallax) {
 		const view = normalize(b.frameParams.cameraPosition.xyz - input.worldPosition);
 		uv = parallaxUv(b, uv, view, normalize(input.worldNormal), input.worldTangent,
-			materialOf(b, key).x);
+			materialOf(b, key).x, parallaxStepsOf(b, key));
 	}
 	let texel = textureSample(b.baseTexture, b.baseSampler, uv);
 	if (key.backTexture) {

@@ -660,6 +660,7 @@ layout(binding=3) uniform pbrMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
 };
 #endif
 #if defined(PBR) && defined(EMISSIVE)
@@ -669,6 +670,7 @@ layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
     vec4 emissive;
 };
 #endif
@@ -1243,6 +1245,7 @@ layout(binding=3) uniform pbrMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
 };
 #endif
 #if defined(PBR) && defined(EMISSIVE)
@@ -1252,6 +1255,7 @@ layout(binding=3) uniform pbrEmissiveMaterialParams {
     vec4 pbr;
     vec4 uvMatrix;
     vec4 uvMotion;
+    vec4 parallax;
     vec4 emissive;
 };
 #endif
