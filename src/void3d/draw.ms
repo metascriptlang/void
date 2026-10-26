@@ -110,7 +110,6 @@ import {
 } from "./gpu3d.h";
 import {
 	Material,
-	Phase,
 	isDecalPhase,
 	UniformBlock,
 	NO_UNIFORMS,
