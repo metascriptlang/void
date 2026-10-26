@@ -331,8 +331,13 @@ Where neither has the concern, the backend goes elsewhere. Heaps' `VulkanDriver.
 - **Mobile driver workarounds:** Dawn's vendor toggles (`PhysicalDeviceVk.cpp:1025-1417`).
 - **Validation layer:** wgpu `100c142` probes for it before enabling it (`instance.rs:847-915`),
   which also works from an APK.
-- **Android pre-rotation:** Godot `876b290` `rendering_device_driver_vulkan.cpp` (3162, 3235-3282).
-  Dawn and wgpu present at identity.
+- **Android pre-rotation:** the swapchain presents at identity and the compositor rotates, as
+  Dawn does (`SwapChainVk.cpp:326-331`), and `VK_SUBOPTIMAL_KHR` counts as success on acquire and
+  present, as in Dawn (482-486) and Godot `876b290` (`rendering_device_driver_vulkan.cpp:2826-2842`),
+  so a rotated display does not recreate the swapchain every frame. Godot pre-rotates instead
+  (3235-3282) and turns the image in its final compositor blit; the door draws straight into the
+  swapchain image and has no such blit. Godot's path becomes worth its extra pass once a rotated
+  device measures the compositor's rotation as a cost.
 - **Lifecycle:** Void's own Android host owns it (`bridgeAndroidApp.c:277-298`). The swapchain
   and surface go down in `nativeSurfaceGone`, before the window is released.
 
