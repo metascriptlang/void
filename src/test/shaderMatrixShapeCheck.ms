@@ -6,7 +6,7 @@
 
 import { mkdir, writeFile } from "std/fs";
 import { computeModule, programModule, stageSource } from "../shader/descriptor";
-import { glslComputeIr, glslIr, glslLinked, glslLinkedIr } from "../shader/emit";
+import { glslCompute, glslComputeIr, glslIr, glslLinked, glslLinkedIr } from "../shader/emit";
 import { ShaderModule } from "../shader/ir";
 import { ShaderTarget, storageElementLayout, uniformBlockLayout } from "../shader/layout";
 import { reflectProgram } from "../shader/reflect";
@@ -503,6 +503,59 @@ test "GLSL reads each two-row column as the xy or zw half of its vec4" {
 		assert text.includes(d + "[at]"), text;
 		assert text.includes(a + "[1].x") && text.includes(c + "[1].y"), text;
 	}
+}
+
+function writeProbe(path: string, text: string): string {
+	const _out = mkdir("out");
+	const _folder = mkdir(path.slice(0, path.lastIndexOf("/")));
+	const _written = writeFile(path, text);
+	return text;
+}
+
+test "GLSL 450 declares each two-row column of a uniform block as a vec2 member and rebuilds the matrix at every read" {
+	const text = writeProbe("out/glslProbe/twosMat.450.frag", "#version 450
+" + glslLinked(twosFs, shapeVs));
+	assert text.includes("uniform twos {
+    vec2 a_col0;
+    vec2 a_col1;
+    vec2 b;
+" +
+		"    vec2 c_col0;
+    vec2 c_col1;
+    vec2 c_col2;
+" +
+		"    vec2 d_col0;
+    vec2 d_col1;
+    vec2 d_col2;
+    vec2 d_col3;
+};
+"), text;
+	const a = "mat2(a_col0, a_col1)";
+	const c = "mat3x2(c_col0, c_col1, c_col2)";
+	const d = "mat4x2(d_col0, d_col1, d_col2, d_col3)";
+	assert text.includes("turned = (" + a + " * vec2(amount.x, amount.y)) + b;
+"), text;
+	assert text.includes("mixed = " + c + " * amount;
+"), text;
+	assert text.includes("last = " + d + " * vec4(amount, 1.0);
+"), text;
+	assert text.includes("flipped = transpose(" + c + ");
+"), text;
+	assert text.includes(d + "[at]"), text;
+	assert text.includes(a + "[1].x") && text.includes(c + "[1].y"), text;
+}
+
+test "GLSL 450 keeps the natural matCx2 declaration in a storage element, where std430 strides vec2 columns at 8" {
+	const text = writeProbe("out/glslProbe/cells.450.comp", "#version 450
+" + glslCompute(cellsCs, [4, 1, 1]));
+	assert text.includes("struct Cell {
+    mat2 a;
+    vec2 b;
+    mat3x2 c;
+    mat4x2 d;
+};
+"), text;
+	assert !text.includes("_col"), text;
 }
 
 test "HLSL holds each two-row column as a float2 of the cbuffer and builds the matrix from them" {
