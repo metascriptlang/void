@@ -830,6 +830,11 @@ function moduleConstant(p: Spirv, index: int32): int32 {
 
 function unary(p: Spirv, e: ShaderExpr): int32 {
 	const t = e.type;
+	const operand = e.operands[0];
+	if (p.constantOwner != "" && e.unary == UnaryOp.Negate && operand.kind == ExprKind.Literal &&
+		t.kind == ShaderTypeKind.Scalar && t.scalar != ScalarKind.Bool) {
+		return scalarConstant(p, t.scalar, -operand.value);
+	}
 	const x = value(p, e.operands[0]);
 	if (t.kind != ShaderTypeKind.Scalar && t.kind != ShaderTypeKind.Vector) {
 		return refusal(p, e.unary.toString() + " of a " + t.kind.toString());

@@ -12,6 +12,8 @@ import {
 	ShaderType,
 	StmtKind,
 	TextureShape,
+	UnaryOp,
+	arrayType,
 	assignOf,
 	binaryOf,
 	exprOf,
@@ -37,6 +39,7 @@ import {
 	column,
 	comparisonSampler,
 	computeBuiltinsModule,
+	constantOf,
 	depthCompare,
 	depthModule,
 	depthTexture,
@@ -45,9 +48,11 @@ import {
 	model,
 	prepend,
 	resource,
+	ret,
 	shaderFunction,
 	swizzle,
 	tiny,
+	unaryOf,
 } from "./shaderProbeModules";
 
 class Instruction {
@@ -315,6 +320,25 @@ function compared(stage: ShaderStage, op: Intrinsic, shape: TextureShape,
 	m.resources.push(comparison ? comparisonSampler("shadowSmp", 0) :
 		resource(ResourceKind.Sampler, "shadowSmp", 0, samplerType()));
 	return m;
+}
+
+test "a module constant array with negated literals is a composite constant read at a dynamic index" {
+	let m = tiny(ShaderStage.Fragment, new ShaderExpr());
+	const corner = (x: float64, y: float64): ShaderExpr => exprOf(ExprKind.Construct, VEC2, -1, [
+		unaryOf(UnaryOp.Negate, literal(F32, x)), literal(F32, y)]);
+	const corners = exprOf(ExprKind.Construct, arrayType(VEC2, 2), -1,
+		[corner(0.5, 1.0), corner(2.0, 0.0)]);
+	m.constants = [constantOf("CORNERS", corners)];
+	const at = binaryOf(BinaryOp.Add, I32, literal(I32, 1.0), literal(I32, 0.0));
+	const read = exprOf(ExprKind.Index, VEC2, -1,
+		[exprOf(ExprKind.Constant, corners.type, 0, []), at]);
+	m.functions[0].body = [assignOf(exprOf(ExprKind.Io, VEC4, 0, []),
+		exprOf(ExprKind.Construct, VEC4, -1, [read, read])), ret()];
+	assert irErrors(m).length == 0;
+	assert refused(m) == "printed";
+	const list = instructions(wordsOf(m, 0, slotsOf(m, [0])));
+	assert count(list, 44) == 3;
+	assert count(list, 65) == 2 && count(list, 62) == 3;
 }
 
 test "what SPIR-V cannot print yet is refused by name" {
