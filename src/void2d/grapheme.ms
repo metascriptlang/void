@@ -1,4 +1,5 @@
-import { void2dGraphemeClass } from "./grapheme.h";
+import { GRAPHEME_RANGES } from "./graphemeTable";
+import { rangeValue } from "./unicodeRanges";
 
 export enum ClusterBreak {
 	Other,
@@ -40,8 +41,23 @@ export struct GraphemeCursor {
 	linkerRun: boolean;
 }
 
+const HANGUL_FIRST: int32 = 0xAC00;
+const HANGUL_LAST: int32 = 0xD7A3;
+const HANGUL_T_COUNT: int32 = 28;
+
+export function graphemePacked(codepoint: int32): int32 {
+	if (codepoint < 0 || codepoint > 0x10FFFF) { return 0; }
+	if (codepoint >= 0x20 && codepoint < 0x7F) { return 0; }
+	if (codepoint >= HANGUL_FIRST && codepoint <= HANGUL_LAST) {
+		const syllable: ClusterBreak = (codepoint - HANGUL_FIRST) % HANGUL_T_COUNT == 0 ?
+			ClusterBreak.LV : ClusterBreak.LVT;
+		return syllable as int32;
+	}
+	return rangeValue(GRAPHEME_RANGES, 8, 0xFF, codepoint);
+}
+
 export function graphemeProperty(codepoint: int32): GraphemeProperty {
-	const packed: int32 = void2dGraphemeClass(codepoint);
+	const packed: int32 = graphemePacked(codepoint);
 	return {
 		cluster: (packed & 15) as ClusterBreak,
 		pictographic: (packed & 16) != 0,

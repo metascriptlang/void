@@ -1,4 +1,5 @@
-import { void2dBidiClass, void2dBidiBracket, void2dBidiMirror } from "./bidiClass.h";
+import { BIDI_CLASS_RANGES, BIDI_BRACKETS, BIDI_MIRRORS } from "./bidiTable";
+import { rangeValue, pairValue } from "./unicodeRanges";
 import { TextDirection } from "./textDirection";
 
 export enum BidiClass {
@@ -36,15 +37,16 @@ const OVERRIDE_L: int32 = 1;
 const OVERRIDE_R: int32 = 2;
 
 export function bidiClassOf(codepoint: int32): BidiClass {
-	return void2dBidiClass(codepoint) as BidiClass;
+	if (codepoint < 0 || codepoint > 0x10FFFF) { return BidiClass.L; }
+	return rangeValue(BIDI_CLASS_RANGES, 5, 31, codepoint) as BidiClass;
 }
 
 export function bracketCode(codepoint: int32): int32 {
-	return void2dBidiBracket(codepoint);
+	return pairValue(BIDI_BRACKETS, codepoint);
 }
 
 export function mirrorOf(codepoint: int32): int32 {
-	return void2dBidiMirror(codepoint);
+	return pairValue(BIDI_MIRRORS, codepoint);
 }
 
 export function removedByX9(c: BidiClass): boolean {
