@@ -698,6 +698,7 @@ case "$(uname -s)" in
 	MINGW*|MSYS*|CYGWIN*)
 		backend_check "d3d11 backend on WARP" webgpu-d3d11 src/test/webgpuD3d11Check.ms
 		backend_check "door handle 0 on WARP" door-zero-handle src/test/doorZeroHandleCheck.ms
+		backend_check "door compute on WARP" door-compute src/test/doorComputeCheck.ms
 		backend_check "gl core backend on the system device" webgpu-gl -d:voidGlCore src/test/webgpuGlCheck.ms
 		backend_check "vulkan backend on the system device" webgpu-vulkan -d:voidVulkan src/test/webgpuVulkanCheck.ms
 		;;
