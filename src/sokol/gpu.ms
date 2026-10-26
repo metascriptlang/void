@@ -46,14 +46,20 @@ when (windows && voidGlCore && !voidDummy) {
 	@passL("-lopengl32");
 }
 
-when (android && !voidDummy) {
+when (android && voidVulkan && !voidDummy) {
+	@compile("./bridgeAndroidVulkan.c");
+	import "../webgpu/vulkan/window";
+} else when (android && !voidDummy) {
 	@compile("./bridgeAndroid.c");
+	@passL("-lEGL");
+	@passL("-lGLESv3");
+}
+
+when (android && !voidDummy) {
 	@compile("./bridgeAndroidApp.c");
 	@compile("./appWindow.c");
 	@compile("./views.c");
 	@compile("./bridge.c");
-	@passL("-lEGL");
-	@passL("-lGLESv3");
 	@passL("-landroid");
 	@passL("-llog");
 }
