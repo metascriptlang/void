@@ -577,6 +577,10 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	if (descriptor.depthStencilAttachment.view.id != 0) {
 		loadOp(descriptor.depthStencilAttachment.depthLoadOp, "depthStencilAttachment.depthLoadOp");
 		storeOp(descriptor.depthStencilAttachment.depthStoreOp, "depthStencilAttachment.depthStoreOp");
+		if ((descriptor.depthStencilAttachment.stencilLoadOp as string) != "") {
+			loadOp(descriptor.depthStencilAttachment.stencilLoadOp, "depthStencilAttachment.stencilLoadOp");
+			storeOp(descriptor.depthStencilAttachment.stencilStoreOp, "depthStencilAttachment.stencilStoreOp");
+		}
 	}
 	const writes = descriptor.timestampWrites;
 	pass = { timestampSet: writes.querySet.id, timestampEnd: writes.endOfPassWriteIndex };

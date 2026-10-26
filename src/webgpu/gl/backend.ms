@@ -130,6 +130,7 @@ import {
 	oglClearColor,
 	oglClearDepth,
 	oglClearDepthStencil,
+	oglClearStencil,
 	oglColorMask,
 	oglCompileShader,
 	oglConstantsDisagreement,
@@ -1989,6 +1990,7 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 		depthTexture = textureRecords.slotIndex(viewRecords.slots[v].texture);
 		depthStencil = textures[depthTexture].info.stencil;
 		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, -1, "depthStoreOp");
+		if (depthStencil) { checkStoreOp(descriptor.depthStencilAttachment.stencilStoreOp, -1, "stencilStoreOp"); }
 	}
 	if (pass.swapchain && offscreen) {
 		stop("a render pass mixes the canvas with offscreen attachments; GL draws the canvas through framebuffer 0");
@@ -2066,6 +2068,7 @@ function clearAttachments(descriptor: GPURenderPassDescriptor, hasDepth: boolean
 		}
 	}
 	const clearDepth = hasDepth && isClear(descriptor.depthStencilAttachment.depthLoadOp, -1, "depthLoadOp");
+	const clearStencil = depthStencil && isClear(descriptor.depthStencilAttachment.stencilLoadOp, -1, "stencilLoadOp");
 	if (clearAnyColor) {
 		let flushMask = false;
 		for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
@@ -2085,10 +2088,10 @@ function clearAttachments(descriptor: GPURenderPassDescriptor, hasDepth: boolean
 			cache.depthCompare = GL_ALWAYS;
 			oglDepthFunc(GL_ALWAYS);
 		}
-		if (depthStencil && cache.stencilMask != 0xFF) {
-			cache.stencilMask = 0xFF;
-			oglStencilMask(0xFF);
-		}
+	}
+	if (clearStencil && cache.stencilMask != 0xFF) {
+		cache.stencilMask = 0xFF;
+		oglStencilMask(0xFF);
 	}
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (pass.colorViews[i] == 0) { continue; }
@@ -2097,9 +2100,14 @@ function clearAttachments(descriptor: GPURenderPassDescriptor, hasDepth: boolean
 			oglClearColor(i, color.r, color.g, color.b, color.a);
 		}
 	}
-	if (clearDepth) {
-		const depth = descriptor.depthStencilAttachment.depthClearValue;
-		if (depthStencil) { oglClearDepthStencil(depth, 0); } else { oglClearDepth(depth); }
+	const depth = descriptor.depthStencilAttachment.depthClearValue;
+	const stencil = (descriptor.depthStencilAttachment.stencilClearValue & 0xFF) as int32;
+	if (clearDepth && clearStencil) {
+		oglClearDepthStencil(depth, stencil);
+	} else if (clearDepth) {
+		oglClearDepth(depth);
+	} else if (clearStencil) {
+		oglClearStencil(stencil);
 	}
 }
 

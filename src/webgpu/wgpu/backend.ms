@@ -406,10 +406,13 @@ const PASS_TIMESTAMP_END = 4;
 const PASS_DEPTH_LOAD = 5;
 const PASS_DEPTH_STORE = 6;
 const PASS_DEPTH_STENCIL = 7;
-const PASS_COLOR_OPS = 8;
+const PASS_STENCIL_LOAD = 8;
+const PASS_STENCIL_STORE = 9;
+const PASS_COLOR_OPS = 10;
 const PASS_COLOR_OP_STRIDE = 3;
 const PASS_SIZE = PASS_COLOR_OPS + GPU_MAX_COLOR_ATTACHMENTS * PASS_COLOR_OP_STRIDE;
 const PASS_DEPTH_CLEAR = GPU_MAX_COLOR_ATTACHMENTS * 4;
+const PASS_STENCIL_CLEAR = PASS_DEPTH_CLEAR + 1;
 
 const NO_BUFFER = null as unknown as Ptr<WgBufferImpl>;
 const NO_TEXTURE = null as unknown as Ptr<WgTextureImpl>;
@@ -927,11 +930,14 @@ function checkMirroredConstants(): void {
 		PASS_DEPTH_LOAD,
 		PASS_DEPTH_STORE,
 		PASS_DEPTH_STENCIL,
+		PASS_STENCIL_LOAD,
+		PASS_STENCIL_STORE,
 		PASS_COLOR_OPS,
 		PASS_COLOR_OP_STRIDE,
 		PL_BUFFER_STRIDE,
 		PL_TARGETS,
 		PASS_DEPTH_CLEAR,
+		PASS_STENCIL_CLEAR,
 		GPU_MAX_VERTEX_BUFFERS,
 		GPU_MAX_VERTEX_ATTRIBUTES,
 		GPU_MAX_COLOR_ATTACHMENTS,
@@ -1542,7 +1548,7 @@ export function beginRenderPass(
 	pass.height = extent.height;
 	let count = 0;
 	let ints: int32[PASS_SIZE] = [0];
-	let reals: float64[PASS_DEPTH_CLEAR + 1] = [0];
+	let reals: float64[PASS_STENCIL_CLEAR + 1] = [0];
 	let colorViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
 	let resolveViews: Ptr<WgViewImpl>[GPU_MAX_COLOR_ATTACHMENTS] = [NO_VIEW, NO_VIEW, NO_VIEW, NO_VIEW];
 	let depthNative = NO_VIEW;
@@ -1577,6 +1583,11 @@ export function beginRenderPass(
 		ints[PASS_DEPTH_STORE] = storeOp(depth.depthStoreOp, -1, "depthStoreOp");
 		ints[PASS_DEPTH_STENCIL] = info.stencil ? 1 : 0;
 		reals[PASS_DEPTH_CLEAR] = depth.depthClearValue;
+		if (info.stencil) {
+			ints[PASS_STENCIL_LOAD] = loadOp(depth.stencilLoadOp, -1, "stencilLoadOp");
+			ints[PASS_STENCIL_STORE] = storeOp(depth.stencilStoreOp, -1, "stencilStoreOp");
+			reals[PASS_STENCIL_CLEAR] = depth.stencilClearValue as float64;
+		}
 	}
 	const writes = descriptor.timestampWrites;
 	ints[PASS_COLOR_COUNT] = count;

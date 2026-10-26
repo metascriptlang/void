@@ -151,6 +151,7 @@ void oglBlitColor(int32_t width, int32_t height);
 void oglClearColor(int32_t attachment, double r, double g, double b, double a);
 void oglClearDepth(double depth);
 void oglClearDepthStencil(double depth, int32_t stencil);
+void oglClearStencil(int32_t stencil);
 
 void oglVertexAttribPointer(int32_t index, int32_t size, int32_t type, int32_t normalized, int32_t stride, int64_t offset);
 void oglVertexAttribIPointer(int32_t index, int32_t size, int32_t type, int32_t stride, int64_t offset);

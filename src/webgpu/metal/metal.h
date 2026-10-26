@@ -203,7 +203,7 @@ void mtlPassColor(
 	double g,
 	double b,
 	double a);
-void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil);
+void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil, int32_t stencilLoadAction, int32_t stencilStoreAction, uint32_t stencilClear);
 MtlEncoder mtlBeginPass(MtlCommandBuffer commandBuffer);
 void mtlEndPass(MtlEncoder encoder);
 

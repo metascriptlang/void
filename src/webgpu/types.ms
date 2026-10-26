@@ -362,8 +362,8 @@ export struct GPUDepthStencilState {
 	depthCompare: GPUCompareFunction;
 	stencilFront: GPUStencilFaceState;
 	stencilBack: GPUStencilFaceState;
-	stencilReadMask: uint32;
-	stencilWriteMask: uint32;
+	stencilReadMask: uint32 | null;
+	stencilWriteMask: uint32 | null;
 	depthBias: int32;
 	depthBiasSlopeScale: float32;
 	depthBiasClamp: float32;
@@ -712,6 +712,9 @@ export struct GPURenderPassDepthStencilAttachment {
 	depthClearValue: float32;
 	depthLoadOp: GPULoadOp;
 	depthStoreOp: GPUStoreOp;
+	stencilClearValue: uint32;
+	stencilLoadOp: GPULoadOp;
+	stencilStoreOp: GPUStoreOp;
 }
 
 export struct GPURenderPassDescriptor {

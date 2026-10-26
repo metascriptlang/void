@@ -99,6 +99,7 @@ import {
 	occlusionQueryIndex,
 	renderPassOpen,
 	boundFacts,
+	stencilMask,
 } from "../validate.ms";
 import {
 	MtlBufferImpl,
@@ -1286,8 +1287,8 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	const stencil = stencilPixel != PIXEL_INVALID;
 	const front: GPUStencilFaceState = descriptor.depthStencil.stencilFront;
 	const back: GPUStencilFaceState = descriptor.depthStencil.stencilBack;
-	const readMask = descriptor.depthStencil.stencilReadMask;
-	const writeMask = descriptor.depthStencil.stencilWriteMask;
+	const readMask = stencilMask(descriptor.depthStencil.stencilReadMask);
+	const writeMask = stencilMask(descriptor.depthStencil.stencilWriteMask);
 	slot.depth = mtlNewDepthState(
 		device,
 		depthFormat == "" ? COMPARE_ALWAYS : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
@@ -1454,14 +1455,18 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	if (depthView != 0) {
 		const v = viewRecords.slotIndex(depthView);
 		const info = formatInfo(textureRecords.slots[textureRecords.slotIndex(viewRecords.slots[v].texture)].format, "depth format");
+		const attachment = descriptor.depthStencilAttachment;
 		mtlPassDepth(
 			attachmentNative(v),
 			viewRecords.slots[v].baseMip,
 			viewRecords.slots[v].baseLayer,
-			loadAction(descriptor.depthStencilAttachment.depthLoadOp, "depthStencilAttachment.depthLoadOp"),
-			storeAction(descriptor.depthStencilAttachment.depthStoreOp, false, "depthStencilAttachment.depthStoreOp"),
-			descriptor.depthStencilAttachment.depthClearValue,
+			loadAction(attachment.depthLoadOp, "depthStencilAttachment.depthLoadOp"),
+			storeAction(attachment.depthStoreOp, false, "depthStencilAttachment.depthStoreOp"),
+			attachment.depthClearValue,
 			info.stencil ? 1 : 0,
+			info.stencil ? loadAction(attachment.stencilLoadOp, "depthStencilAttachment.stencilLoadOp") : 0,
+			info.stencil ? storeAction(attachment.stencilStoreOp, false, "depthStencilAttachment.stencilStoreOp") : 0,
+			attachment.stencilClearValue & 0xFF,
 		);
 	}
 	if (descriptor.timestampWrites.querySet.id != 0) {

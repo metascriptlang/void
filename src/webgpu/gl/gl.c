@@ -755,6 +755,11 @@ void oglClearDepth(double depth) {
 
 void oglClearDepthStencil(double depth, int32_t stencil) { glClearBufferfi(GL_DEPTH_STENCIL, 0, (GLfloat)depth, stencil); }
 
+void oglClearStencil(int32_t stencil) {
+	const GLint value = stencil;
+	glClearBufferiv(GL_STENCIL, 0, &value);
+}
+
 void oglVertexAttribPointer(int32_t index, int32_t size, int32_t type, int32_t normalized, int32_t stride, int64_t offset) {
 	glVertexAttribPointer((GLuint)index, size, (GLenum)type, normalized ? GL_TRUE : GL_FALSE, stride, (const void *)(intptr_t)offset);
 }

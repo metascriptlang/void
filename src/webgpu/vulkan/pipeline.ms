@@ -29,8 +29,10 @@ import {
 	DESCRIPTOR_UNIFORM_BUFFER_DYNAMIC,
 	LAYOUT_GENERAL,
 	LAYOUT_SHADER_READ_ONLY,
+	LOAD_OP_DONT_CARE,
 	LOAD_OP_LOAD,
 	STAGE_COMPUTE_SHADER,
+	STORE_OP_DONT_CARE,
 	STORE_OP_STORE,
 	blendOp,
 	cullMode,
@@ -96,7 +98,7 @@ import {
 	stop,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
-import { boundFacts, checkedComputeModule, checkedRenderModule, entryBytes, isStripTopology } from "../validate.ms";
+import { boundFacts, checkedComputeModule, checkedRenderModule, entryBytes, isStripTopology, stencilMask } from "../validate.ms";
 import {
 	bindGroupRecords,
 	bufferRecords,
@@ -368,8 +370,8 @@ function stateWords(descriptor: GPURenderPipelineDescriptor, depth: boolean, ste
 	words.push(stencil ? 1 : 0);
 	stencilFaceWords(words, ds.stencilFront, "depthStencil.stencilFront");
 	stencilFaceWords(words, ds.stencilBack, "depthStencil.stencilBack");
-	words.push(ds.stencilReadMask);
-	words.push(ds.stencilWriteMask);
+	words.push(stencilMask(ds.stencilReadMask));
+	words.push(stencilMask(ds.stencilWriteMask));
 	words.push(ds.depthBias as uint32);
 	if (words.length != RENDER_STATE_WORDS) { stop(`vulkan: render state has ${words.length} words, not ${RENDER_STATE_WORDS}`); }
 	return words;
@@ -438,7 +440,16 @@ function compatiblePass(
 		if (!info.depth) { stop("depthStencil.format is not a depth format"); }
 		depth = true;
 		stencil = (info.aspect & ASPECT_STENCIL) != 0;
-		depthKeyWords(key, info.native, samples, LOAD_OP_LOAD, STORE_OP_STORE, stencil, false);
+		depthKeyWords(
+			key,
+			info.native,
+			samples,
+			LOAD_OP_LOAD,
+			STORE_OP_STORE,
+			stencil ? LOAD_OP_LOAD : LOAD_OP_DONT_CARE,
+			stencil ? STORE_OP_STORE : STORE_OP_DONT_CARE,
+			false,
+		);
 	} else {
 		noDepthKeyWords(key);
 	}

@@ -526,7 +526,7 @@ void mtlPassColor(
 	color.clearColor = MTLClearColorMake(r, g, b, a);
 }
 
-void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil) {
+void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t loadAction, int32_t storeAction, double depth, int32_t stencil, int32_t stencilLoadAction, int32_t stencilStoreAction, uint32_t stencilClear) {
 	s_pass.depthAttachment.texture = (id<MTLTexture>)texture;
 	s_pass.depthAttachment.level = (NSUInteger)level;
 	s_pass.depthAttachment.slice = (NSUInteger)slice;
@@ -537,9 +537,9 @@ void mtlPassDepth(MtlTexture texture, int32_t level, int32_t slice, int32_t load
 		s_pass.stencilAttachment.texture = (id<MTLTexture>)texture;
 		s_pass.stencilAttachment.level = (NSUInteger)level;
 		s_pass.stencilAttachment.slice = (NSUInteger)slice;
-		s_pass.stencilAttachment.loadAction = (MTLLoadAction)loadAction;
-		s_pass.stencilAttachment.storeAction = (MTLStoreAction)storeAction;
-		s_pass.stencilAttachment.clearStencil = 0;
+		s_pass.stencilAttachment.loadAction = (MTLLoadAction)stencilLoadAction;
+		s_pass.stencilAttachment.storeAction = (MTLStoreAction)stencilStoreAction;
+		s_pass.stencilAttachment.clearStencil = stencilClear;
 	}
 }
 

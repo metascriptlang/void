@@ -44,6 +44,7 @@ import {
 	canvasRefusal,
 	resolvedRenderPipeline,
 	stencil8Mask,
+	stencilMask,
 	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
@@ -58,6 +59,7 @@ import {
 	groupOfKind,
 	inPassRefusal,
 	isDepthFormat,
+	isStencilFormat,
 	isStripTopology,
 	markIndexBuffer,
 	markPipeline,
@@ -414,6 +416,8 @@ test "a depth or stencil format is a 2d texture only" {
 	assert isDepthFormat("depth24plus-stencil8");
 	assert !isDepthFormat("rgba8unorm");
 	assert !isDepthFormat("r32float");
+	assert isStencilFormat("depth24plus-stencil8");
+	assert !isStencilFormat("depth32float");
 	let t = texture(8, 8, 8);
 	t.dimension = "3d";
 	t.format = "depth32float";
@@ -891,6 +895,21 @@ test "a render pass takes renderable one-mip one-layer attachments of one size" 
 	assert renderPassRefusal({ label: null }, facts) == "beginRenderPass without an attachment";
 }
 
+test "a depth attachment with a stencil aspect takes both stencil ops, and one without takes neither" {
+	let descriptor = colorPass();
+	let facts = onePass(colorTarget(64, 32, 1));
+	descriptor.depthStencilAttachment.view = { id: 2 };
+	facts.depth = { ...colorTarget(64, 32, 1), depth: true, stencil: true };
+	const required = "depthStencilAttachment.view has a stencil aspect, so stencilLoadOp and stencilStoreOp are required";
+	assert renderPassRefusal(descriptor, facts) == required;
+	descriptor.depthStencilAttachment.stencilLoadOp = "clear";
+	assert renderPassRefusal(descriptor, facts) == required;
+	descriptor.depthStencilAttachment.stencilStoreOp = "discard";
+	assert renderPassRefusal(descriptor, facts) == "";
+	facts.depth.stencil = false;
+	assert renderPassRefusal(descriptor, facts) == "depthStencilAttachment.view has no stencil aspect, so stencilLoadOp and stencilStoreOp must be left out";
+}
+
 test "a render pass color attachment names a depth slice only on a 3d view, inside its mip" {
 	let descriptor = colorPass();
 	let facts = onePass(colorTarget(16, 16, 1));
@@ -927,19 +946,28 @@ test "a canvas names a color format and, when it has one, a depth format" {
 	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
 }
 
-test "a render pipeline's zero sample count and stencil masks resolve to WebGPU's defaults" {
+test "a render pipeline's zero sample count and omitted stencil masks resolve to WebGPU's defaults" {
 	let descriptor: GPURenderPipelineDescriptor = {};
 	const resolved = resolvedRenderPipeline(descriptor);
 	assert resolved.multisample.count == 1;
-	assert resolved.depthStencil.stencilReadMask == 0xFFFFFFFF;
-	assert resolved.depthStencil.stencilWriteMask == 0xFFFFFFFF;
+	assert stencilMask(resolved.depthStencil.stencilReadMask) == 0xFFFFFFFF;
+	assert stencilMask(resolved.depthStencil.stencilWriteMask) == 0xFFFFFFFF;
 	descriptor.multisample.count = 4;
 	descriptor.depthStencil.stencilReadMask = 0x0F;
 	descriptor.depthStencil.stencilWriteMask = 0xF0;
 	const kept = resolvedRenderPipeline(descriptor);
 	assert kept.multisample.count == 4;
-	assert kept.depthStencil.stencilReadMask == 0x0F;
-	assert kept.depthStencil.stencilWriteMask == 0xF0;
+	assert stencilMask(kept.depthStencil.stencilReadMask) == 0x0F;
+	assert stencilMask(kept.depthStencil.stencilWriteMask) == 0xF0;
 	assert stencil8Mask(resolved.depthStencil.stencilReadMask) == 0xFF;
 	assert stencil8Mask(kept.depthStencil.stencilWriteMask) == 0xF0;
+}
+
+test "an explicit stencil mask of 0 survives, so a pipeline can test the stencil without writing it" {
+	let descriptor: GPURenderPipelineDescriptor = {};
+	descriptor.depthStencil.stencilReadMask = 0;
+	descriptor.depthStencil.stencilWriteMask = 0;
+	const resolved = resolvedRenderPipeline(descriptor);
+	assert stencilMask(resolved.depthStencil.stencilReadMask) == 0;
+	assert stencil8Mask(resolved.depthStencil.stencilWriteMask) == 0;
 }

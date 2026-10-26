@@ -11,6 +11,7 @@ import {
 	GPUTexture,
 	GPUTextureUsage,
 	GPUTextureView,
+	GPU_UNIFORM_GROUP,
 } from "../webgpu/types.ms";
 import "../webgpu/device.ms";
 
@@ -48,6 +49,42 @@ export function colourTarget(device: GPUDevice, sampleCount: int32): GPUTexture 
 		usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
 		sampleCount: sampleCount,
 	});
+}
+
+export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeline, target: GPUTexture): void {
+	const vertices = vertexBuffer(device, 32);
+	const full: Vec<float32> = [-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
+	device.queue.writeBuffer(vertices, 0, full);
+	const depth = device.createTexture({
+		label: "depth stencil",
+		size: { width: SIZE, height: SIZE, depthOrArrayLayers: 1 },
+		format: "depth24plus-stencil8",
+		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
+		sampleCount: 1,
+	});
+	let first = clearingPass(target.createView({ label: null }), { id: 0 });
+	first.depthStencilAttachment = {
+		view: depth.createView({ label: null }),
+		depthClearValue: 1.0,
+		depthLoadOp: "clear",
+		depthStoreOp: "store",
+		stencilClearValue: 1,
+		stencilLoadOp: "clear",
+		stencilStoreOp: "store",
+	};
+	let second = first;
+	second.depthStencilAttachment.stencilLoadOp = "load";
+	const encoder = device.createCommandEncoder();
+	encoder.beginRenderPass(first).end();
+	const pass = encoder.beginRenderPass(second);
+	const green: Vec<uint32> = [256];
+	pass.setStencilReference(1);
+	pass.setPipeline(tester);
+	pass.setVertexBuffer(0, vertices, 0);
+	pass.setBindGroup(GPU_UNIFORM_GROUP, uniformGroup(device, tester, colourUniforms(device)), green);
+	pass.draw(4, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
 }
 
 export function clearingPass(view: GPUTextureView, resolve: GPUTextureView): GPURenderPassDescriptor {

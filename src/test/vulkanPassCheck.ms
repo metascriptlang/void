@@ -95,12 +95,13 @@ test "a render pass key holds each color's five words and eight depth words" {
 	assert key[11] == 0;
 }
 
-test "stencil ops follow the depth ops only when the format has stencil" {
+test "the stencil ops sit beside the depth ops in the key, each with its own value" {
 	let stencil = newPassKey();
-	depthKeyWords(stencil, D24S8, 1, LOAD_OP_CLEAR, STORE_OP_STORE, true, false);
-	assert stencil[1] == 1 && stencil[6] == LOAD_OP_CLEAR && stencil[7] == STORE_OP_STORE && stencil[8] == 0;
+	depthKeyWords(stencil, D24S8, 1, LOAD_OP_CLEAR, STORE_OP_STORE, LOAD_OP_LOAD, STORE_OP_DONT_CARE, false);
+	assert stencil[1] == 1 && stencil[4] == LOAD_OP_CLEAR && stencil[5] == STORE_OP_STORE;
+	assert stencil[6] == LOAD_OP_LOAD && stencil[7] == STORE_OP_DONT_CARE && stencil[8] == 0;
 	let depthOnly = newPassKey();
-	depthKeyWords(depthOnly, D32, 1, LOAD_OP_CLEAR, STORE_OP_STORE, false, true);
+	depthKeyWords(depthOnly, D32, 1, LOAD_OP_CLEAR, STORE_OP_STORE, LOAD_OP_DONT_CARE, STORE_OP_DONT_CARE, true);
 	assert depthOnly[6] == LOAD_OP_DONT_CARE && depthOnly[7] == STORE_OP_DONT_CARE && depthOnly[8] == 1;
 }
 

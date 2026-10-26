@@ -1,12 +1,15 @@
 import { GPUBufferUsage, GPUTextureUsage } from "../webgpu/types.ms";
 import {
+	ACCESS_COLOR_ATTACHMENT_WRITE,
 	ACCESS_HOST_READ,
 	ACCESS_SHADER_READ,
 	ACCESS_TRANSFER_WRITE,
 	ASPECT_COLOR,
+	LAYOUT_COLOR_ATTACHMENT,
 	LAYOUT_GENERAL,
 	LAYOUT_SHADER_READ_ONLY,
 	LAYOUT_TRANSFER_DST,
+	STAGE_COLOR_ATTACHMENT_OUTPUT,
 	STAGE_COMPUTE_SHADER,
 	STAGE_FRAGMENT_SHADER,
 	STAGE_HOST,
@@ -112,6 +115,34 @@ test "a new texture leaves undefined for its resting layout, then a write waits 
 	assert t.sourceStages == STAGE_TRANSFER;
 	assert t.images[0].oldLayout == LAYOUT_TRANSFER_DST && t.images[0].newLayout == LAYOUT_TRANSFER_SRC;
 	assert t.images[0].sourceAccess == ACCESS_TRANSFER_WRITE && t.images[0].targetAccess == ACCESS_TRANSFER_READ;
+}
+
+test "a copy that leaves a target's layout before the flush carries the attachment write endPass settled" {
+	let t = newTracker();
+	const rest = textureRest((GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32), ASPECT_COLOR);
+	assert rest.layout == LAYOUT_COLOR_ATTACHMENT;
+	writeToTexture(t, 5, rest, STAGE_COLOR_ATTACHMENT_OUTPUT, ACCESS_COLOR_ATTACHMENT_WRITE, LAYOUT_COLOR_ATTACHMENT);
+	cleared(t);
+	endPass(t);
+	assert t.images.length == 0;
+	copyFromTexture(t, 5, rest);
+	assert t.images.length == 1;
+	assert t.images[0].oldLayout == LAYOUT_COLOR_ATTACHMENT && t.images[0].newLayout == LAYOUT_TRANSFER_SRC;
+	assert t.images[0].sourceAccess == ACCESS_COLOR_ATTACHMENT_WRITE;
+	assert (t.sourceStages & STAGE_COLOR_ATTACHMENT_OUTPUT) != 0;
+}
+
+test "after a flush the settled write is gone, so a copy leaves the resting layout from its reads" {
+	let t = newTracker();
+	const rest = textureRest((GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32), ASPECT_COLOR);
+	writeToTexture(t, 5, rest, STAGE_COLOR_ATTACHMENT_OUTPUT, ACCESS_COLOR_ATTACHMENT_WRITE, LAYOUT_COLOR_ATTACHMENT);
+	cleared(t);
+	endPass(t);
+	cleared(t);
+	copyFromTexture(t, 5, rest);
+	assert t.images.length == 1;
+	assert t.images[0].sourceAccess == 0;
+	assert t.sourceStages == rest.stages;
 }
 
 test "a layout change on a read waits on the stages it leaves" {

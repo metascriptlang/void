@@ -214,6 +214,7 @@ export struct VulkanResources {
 	submitted: uint64;
 	swapchainColor: uint32;
 	swapchainDepth: uint32;
+	swapchainDepthView: uint32;
 	canvasMsaa: TextureNative;
 	canvasMsaaView: uint64;
 	canvasExtent: CanvasExtent;
@@ -337,6 +338,7 @@ function resourcesOn(device: MemoryDevice, depthStencil: int32): VulkanResources
 		submitted: 0,
 		swapchainColor: 0,
 		swapchainDepth: 0,
+		swapchainDepthView: 0,
 		canvasMsaa: NO_TEXTURE,
 		canvasMsaaView: 0,
 		canvasExtent: { width: 0, height: 0 },
@@ -570,6 +572,7 @@ export function createView(ref r: VulkanResources, view: ViewRecord, descriptor:
 export function adoptSwapchain(ref r: VulkanResources, color: uint32, depth: uint32): void {
 	r.swapchainColor = color;
 	r.swapchainDepth = depth;
+	r.swapchainDepthView = depth == 0 ? 0 : textureRecords.record(depth).swapchainView;
 	const colorRecord = textureRecords.record(color);
 	put(r.textures, color, {
 		native: 0,
@@ -588,7 +591,7 @@ export function adoptSwapchain(ref r: VulkanResources, color: uint32, depth: uin
 function retireCanvas(ref r: VulkanResources): void {
 	if (r.swapchainDepth != 0) {
 		const t = slotOf(r.swapchainDepth);
-		const v = slotOf(textureRecords.slots[t].swapchainView);
+		const v = slotOf(r.swapchainDepthView);
 		if (r.views[v].native != 0) { retire(r, RetiredKind.View, r.views[v].native, NO_ALLOCATION); }
 		if (r.textures[t].native != 0) { retire(r, RetiredKind.Image, r.textures[t].native, r.textures[t].memory); }
 		r.views[v] = NO_VIEW;
@@ -612,7 +615,7 @@ function sizeCanvas(ref r: VulkanResources, width: int32, height: int32): Result
 		const t = slotOf(r.swapchainDepth);
 		const image = try createImage(r, r.textures[t].info, record);
 		r.textures[t] = image;
-		r.views[slotOf(record.swapchainView)] = try createNativeView(image, "2d", 0, 1, 0, 1);
+		r.views[slotOf(r.swapchainDepthView)] = try createNativeView(image, "2d", 0, 1, 0, 1);
 	}
 	const color = textureRecords.record(r.swapchainColor);
 	if (color.sampleCount > 1) {

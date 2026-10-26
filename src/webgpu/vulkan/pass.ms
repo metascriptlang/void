@@ -75,7 +75,8 @@ export function depthKeyWords(
 	samples: int32,
 	load: uint32,
 	store: uint32,
-	stencil: boolean,
+	stencilLoad: uint32,
+	stencilStore: uint32,
 	readOnly: boolean,
 ): void {
 	key.push(1);
@@ -83,8 +84,8 @@ export function depthKeyWords(
 	key.push(samples as uint32);
 	key.push(load);
 	key.push(store);
-	key.push(stencil ? load : LOAD_OP_DONT_CARE);
-	key.push(stencil ? store : STORE_OP_DONT_CARE);
+	key.push(stencilLoad);
+	key.push(stencilStore);
 	key.push(readOnly ? 1 : 0);
 }
 
@@ -181,18 +182,20 @@ export function beginRenderPass(
 	if (depth.view.id != 0) {
 		const t = attached("depthStencilAttachment.view", depth.view.id);
 		const texture = r.textures[t];
+		const stencil = (texture.info.aspect & ASPECT_STENCIL) != 0;
 		depthKeyWords(
 			key,
 			texture.info.native,
 			textureRecords.slots[t].sampleCount,
 			loadOp(depth.depthLoadOp, "depthStencilAttachment.depthLoadOp"),
 			storeOp(depth.depthStoreOp, "depthStencilAttachment.depthStoreOp"),
-			(texture.info.aspect & ASPECT_STENCIL) != 0,
+			stencil ? loadOp(depth.stencilLoadOp, "depthStencilAttachment.stencilLoadOp") : LOAD_OP_DONT_CARE,
+			stencil ? storeOp(depth.stencilStoreOp, "depthStencilAttachment.stencilStoreOp") : STORE_OP_DONT_CARE,
 			false,
 		);
 		views.push(r.views[slotOf(depth.view.id)].native);
 		clears.push(depth.depthClearValue);
-		clears.push(0.0);
+		clears.push((depth.stencilClearValue & 0xFF) as float32);
 		writeToTexture(r.tracker, texture.native, texture.rest, DEPTH_STAGES, DEPTH_ACCESS, LAYOUT_DEPTH_STENCIL_ATTACHMENT);
 	} else {
 		noDepthKeyWords(key);
