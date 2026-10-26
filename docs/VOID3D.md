@@ -6049,10 +6049,18 @@ hands the shader its props texture as the height map, read in alpha. Here:
 - The height is the pbr-maps texture's alpha, as Heaps reads its props texture's; glTF's packing
   leaves that alpha free. The amount is `MATERIAL_PARALLAX` (x of the block's first vec4, which
   the core read nowhere), so no view, sampler or block member is added.
-- The steps are Heaps' defaults, 6 face-on to 24 at grazing (`MIN_LAYERS`, `MAX_LAYERS`, the
-  count `PbrMaterial` uses when `parallaxSteps` is 0 or unset). A material's own step count and
-  the single-offset path of `maxLayers == 0` are not offered; a material that needs either is
-  the trigger to add a step count to the block.
+- The layers run from the material's step count at a grazing view down to `MIN_LAYERS` 6
+  face-on (`Parallax.hx:40`, `shader3d.ms` `parallaxLayers`). The count is
+  `PBR_PARALLAX_STEPS`, a float in the pbr block after the UV transform, `PbrMaterial`'s
+  `parallaxSteps` (`PbrMaterial.hx:84,361`): 0 means `MAX_LAYERS` 24, so a zero-filled block
+  keeps the default (added 2026-10-26). Heaps sets it as `maxLayers`, a shader constant, so it
+  compiles one program per count; a block float gives the same layers with one program per
+  key. A constant bound may let the compiler unroll the loop where a uniform one does not; that
+  cost is measured with the perf work, not assumed. `addMaterial` refuses a count that is not a
+  whole number from 0 to 255, the range Heaps' editor offers (`PbrMaterial.hx:570`), as
+  `BadParallaxSteps`, because a fraction is no count Heaps can hold and a large one stalls the
+  GPU in the step loop. The single-offset path of `maxLayers == 0` is not offered: `PbrMaterial`
+  never reaches it, as it turns 0 into 24.
 - Heaps' Parallax takes the bitangent as n x t where its NormalMap takes n x t * -w, so on an
   unmirrored island the steps run along the mapped normal's bitangent negated, and `invertBasis`
   flips it by hand. Here it is `mappedNormal`'s bitangent negated, so the tangent's w turns it on
@@ -6065,9 +6073,10 @@ hands the shader its props texture as the height map, read in alpha. Here:
 - Cost: the key index (`indexPrograms`) doubles to 2^20 entries, 4 MB, built once at start.
 
 Pinned by `pbrMapsCheck.ms` (over a flat depth the UV lands where one ray meets it, the tangent's
-w turns the bitangent, and the colour pass samples at the moved UV), `programKeyCheck.ms`
-(bit 19, declared in every normal-mapped pbr-maps variant with the same layout, slots and block,
-the cutout caster refused), and on the GPU by `tests/integration/parallaxFrame.ms` (gate3d
+w turns the bitangent, the colour pass samples at the moved UV, the layers per step count and
+view, the count read from either pbr block), `programKeyCheck.ms` (bit 19, declared in every
+normal-mapped pbr-maps variant with the same layout, slots and block, the cutout caster refused,
+a count off the whole numbers 0 to 255 refused), and on the GPU by `tests/integration/parallaxFrame.ms` (gate3d
 `parallax`: a base texture's edge moves away from the eye by the height's depth, and the amount-0
 control leaves it).
 
