@@ -6104,7 +6104,15 @@ The overlay ports in steps, each with its own check:
 1. The decal's fragment math on the CPU (`shader3d.ms` `decalLocalAt`, `outsideDecal`,
    `decalFade`, `decalOverlayColor`), held to Heaps' formulas. **Built (2026-10-26)**, pinned by
    `decalCheck.ms`.
-2. A sampled, stored scene depth in the forward renderer, bound at a scene slot.
+2. A sampled, stored scene depth in the forward renderer, bound at a scene slot. **Built
+   (2026-10-27), checked on the CPU only.** `Phase.Decal` is a fourth pass list, culled and
+   sorted by layer as Heaps' `draw` does; the forward preset stores its depth when the frame has
+   a decal and draws the list after the translucents, before the tone map, into the lit colour
+   with no depth attachment (`drawDecals`), the depth bound at view 14 and sampler 7
+   (`SCENE_DEPTH_VIEW_SLOT`). Because that pass has no depth, a Decal-phase material that writes
+   or tests depth is refused when it is added (`MaterialError.DecalDepth`), and the pixel-art
+   preset, which has no decal pass, refuses a decal item (`RendererError.DecalPreset`). Not yet
+   seen on a GPU: the depth target is now sampled on every forward frame.
 3. A decal program and its pass after the translucents, before the tone map, with the box drawn
    from inside as from outside; a GPU golden.
 4. The after-tone-map pass, then the normal fade.
