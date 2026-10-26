@@ -2906,28 +2906,51 @@ function lerp(a: Vec4f, b: Vec4f, t: float32): Vec4f {
 	};
 }
 
-// WGSL's textureSample on a texture of one mip level, as void3d's are.
-export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): Vec4f {
+// WGSL's texture offset is a constant in [-8, 7] added to the texel indices before they wrap
+// (the Vulkan specification's "Texel Offset" and "Wrapping Operation").
+function checkedOffset(offset: Vec2i): Vec2i {
+	if (offset.x < -8 || offset.x > 7 || offset.y < -8 || offset.y > 7) {
+		unreachable("a texture offset is a constant in [-8, 7]");
+	}
+	return offset;
+}
+
+function sampleAt(texture: Texture2d, sampler: Sampler, uv: Vec2f, offset: Vec2i): Vec4f {
 	const width = texture.width;
 	const height = texture.height;
 	const wrap = sampler.wrap;
 	if (sampler.nearest) {
-		const x = wrapped(texelIndex(uv.x * (width as float32)), width, wrap);
-		return texelAt(texture, x, wrapped(texelIndex(uv.y * (height as float32)), height, wrap));
+		const x = wrapped(texelIndex(uv.x * (width as float32)) + offset.x, width, wrap);
+		return texelAt(texture, x,
+			wrapped(texelIndex(uv.y * (height as float32)) + offset.y, height, wrap));
 	}
 	const u: float32 = uv.x * (width as float32) - 0.5;
 	const v: float32 = uv.y * (height as float32) - 0.5;
 	const column = texelIndex(u);
 	const row = texelIndex(v);
-	const x0 = wrapped(column, width, wrap);
-	const x1 = wrapped(column + 1, width, wrap);
-	const y0 = wrapped(row, height, wrap);
-	const y1 = wrapped(row + 1, height, wrap);
+	const x0 = wrapped(column + offset.x, width, wrap);
+	const x1 = wrapped(column + 1 + offset.x, width, wrap);
+	const y0 = wrapped(row + offset.y, height, wrap);
+	const y1 = wrapped(row + 1 + offset.y, height, wrap);
 	const fractionU: float32 = u - (column as float32);
 	const fractionV: float32 = v - (row as float32);
 	const top = lerp(texelAt(texture, x0, y0), texelAt(texture, x1, y0), fractionU);
 	const bottom = lerp(texelAt(texture, x0, y1), texelAt(texture, x1, y1), fractionU);
 	return lerp(top, bottom, fractionV);
+}
+
+// WGSL's textureSample on a texture of one mip level, as void3d's are.
+export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): Vec4f {
+	return sampleAt(texture, sampler, uv, { x: 0, y: 0 });
+}
+
+export function textureSample(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
 }
 
 // WGSL's texture_2d<i32>: four int32 a texel, fetched, never filtered.
@@ -2980,19 +3003,34 @@ export function textureLoad(texture: Texture3d, at: Vec3i, level: int32): Vec4f 
 
 // Trilinear on a texture of one level: each of the two slices around the coordinate is sampled
 // as textureSample, then the results mix by the coordinate's fraction between them.
-export function textureSample(texture: Texture3d, sampler: Sampler, uv: Vec3f): Vec4f {
+function sample3d(texture: Texture3d, sampler: Sampler, uv: Vec3f, offset: Vec3i): Vec4f {
 	const depth = texture.depth;
 	const flat: Vec2f = { x: uv.x, y: uv.y };
+	const plane: Vec2i = checkedOffset({ x: offset.x, y: offset.y });
+	if (offset.z < -8 || offset.z > 7) { unreachable("a texture offset is a constant in [-8, 7]"); }
 	if (sampler.nearest) {
-		const z = wrapped(texelIndex(uv.z * (depth as float32)), depth, sampler.wrap);
-		return textureSample(sliceOf(texture, z), sampler, flat);
+		const z = wrapped(texelIndex(uv.z * (depth as float32)) + offset.z, depth, sampler.wrap);
+		return sampleAt(sliceOf(texture, z), sampler, flat, plane);
 	}
 	const w: float32 = uv.z * (depth as float32) - 0.5;
 	const slice = texelIndex(w);
-	const z0 = wrapped(slice, depth, sampler.wrap);
-	const z1 = wrapped(slice + 1, depth, sampler.wrap);
-	return lerp(textureSample(sliceOf(texture, z0), sampler, flat),
-		textureSample(sliceOf(texture, z1), sampler, flat), w - (slice as float32));
+	const z0 = wrapped(slice + offset.z, depth, sampler.wrap);
+	const z1 = wrapped(slice + 1 + offset.z, depth, sampler.wrap);
+	return lerp(sampleAt(sliceOf(texture, z0), sampler, flat, plane),
+		sampleAt(sliceOf(texture, z1), sampler, flat, plane), w - (slice as float32));
+}
+
+export function textureSample(texture: Texture3d, sampler: Sampler, uv: Vec3f): Vec4f {
+	return sample3d(texture, sampler, uv, { x: 0, y: 0, z: 0 });
+}
+
+export function textureSample(
+	texture: Texture3d,
+	sampler: Sampler,
+	uv: Vec3f,
+	offset: Vec3i,
+): Vec4f {
+	return sample3d(texture, sampler, uv, offset);
 }
 
 export function textureSampleLevel(
@@ -3183,6 +3221,167 @@ export function textureSampleLevel(
 	const colors = depthColor(texture.texels, cubeFaceIndex(dir) * texture.size * texture.size, size);
 	const clamped: Sampler = { nearest: sampler.nearest, wrap: Wrap.Clamp };
 	return textureSample(colors, clamped, cubeFaceUv(dir)).x;
+}
+
+// WGSL's constant texel offset on every sampling builtin that takes one: the last argument,
+// a vec2<i32> (vec3<i32> for a 3d texture) in [-8, 7], shifts the texels read, not the
+// coordinate, so the filter and the wrap act on the shifted indices. A cube has no offset.
+export function textureSample(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	level: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: Texture3d,
+	sampler: Sampler,
+	uv: Vec3f,
+	level: float32,
+	offset: Vec3i,
+): Vec4f {
+	return sample3d(texture, sampler, uv, offset);
+}
+
+export function textureSampleBias(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	bias: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleBias(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	bias: float32,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleGrad(
+	texture: Texture2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	ddx: Vec2f,
+	ddy: Vec2f,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(texture, sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleGrad(
+	texture: Texture2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	ddx: Vec2f,
+	ddy: Vec2f,
+	offset: Vec2i,
+): Vec4f {
+	return sampleAt(layerOf(texture, layer), sampler, uv, checkedOffset(offset));
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2d,
+	sampler: Sampler,
+	uv: Vec2f,
+	level: int32,
+	offset: Vec2i,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	return sampleAt(depthColor(texture.texels, 0, size), sampler, uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleLevel(
+	texture: TextureDepth2dArray,
+	sampler: Sampler,
+	uv: Vec2f,
+	layer: int32,
+	level: int32,
+	offset: Vec2i,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const colors = depthColor(texture.texels, layer * texture.width * texture.height, size);
+	return sampleAt(colors, sampler, uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels, 0, size);
+	return sampleAt(compared, plainSampler(sampler), uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels,
+		layer * texture.width * texture.height, size);
+	return sampleAt(compared, plainSampler(sampler), uv, checkedOffset(offset)).x;
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, reference, offset);
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+	offset: Vec2i,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, layer, reference, offset);
 }
 
 // WGSL's integer bit builtins on one invocation. The core runs on uint32 bits; int32 goes

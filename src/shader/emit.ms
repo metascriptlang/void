@@ -82,6 +82,8 @@ import {
 	Interpolation,
 	Intrinsic,
 	IoDirection,
+	OFFSET_MAX,
+	OFFSET_MIN,
 	ResourceKind,
 	SampleType,
 	Sampling,
@@ -115,14 +117,18 @@ import {
 	exprOf,
 	featureOn,
 	frexpResultType,
+	hasOffset,
 	holds,
 	intrinsicOf,
 	irErrors,
+	isSampling,
 	literal,
 	matrixType,
 	modfResultType,
+	offsetRows,
 	predeclaredMemberType,
 	sameCondition,
+	sampleBase,
 	samplerType,
 	scalarType,
 	stmtOf,
@@ -1686,7 +1692,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(n, name + " exists only in a fragment entry, as WGSL's does") :
 				intrinsicOf(derivatives[derivative], type, args);
 		}
-		return match (name) {
+		return withConstantOffset(n, name, match (name) {
 			"workgroupBarrier" | "storageBarrier" => !compute ?
 				fail(n, name + " exists only in a compute entry, as WGSL's does") :
 				intrinsicOf(name == "workgroupBarrier" ? Intrinsic.WorkgroupBarrier :
@@ -1703,7 +1709,61 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			"textureSampleLevel" => intrinsicOf(Intrinsic.TextureSampleLevel, type, args),
 			"textureSampleGrad" => intrinsicOf(Intrinsic.TextureSampleGrad, type, args),
 			_ => fail(n, "./std's '" + name + "' has no GLSL spelling"),
-		};
+		});
+	}
+
+	function integerConstant(e: ShaderExpr): ShaderExpr | null {
+		if (e.kind == ExprKind.Constant) { return integerConstant(m.constants[e.index].value); }
+		if (e.kind == ExprKind.Literal && e.type.scalar == ScalarKind.I32) { return e; }
+		if (e.kind == ExprKind.Unary && e.unary == UnaryOp.Negate) {
+			const inner = integerConstant(e.operands[0]);
+			return inner == null ? null : literal(inner.type, -inner.value);
+		}
+		return null;
+	}
+
+	function constantParts(e: ShaderExpr): ShaderExpr[] {
+		let parts: ShaderExpr[] = [];
+		if (e.kind == ExprKind.Constant) { return constantParts(m.constants[e.index].value); }
+		if (e.kind != ExprKind.Construct || e.type.kind != ShaderTypeKind.Vector ||
+			e.type.scalar != ScalarKind.I32) {
+			return parts;
+		}
+		for (const o of e.operands) {
+			const part = integerConstant(o);
+			if (part == null) { return []; }
+			parts.push(part);
+		}
+		return parts;
+	}
+
+	function withConstantOffset(n: Node, name: string, call: ShaderExpr): ShaderExpr {
+		if (call.kind != ExprKind.Intrinsic || !isSampling(call.intrinsic) || !hasOffset(call)) {
+			return call;
+		}
+		const at = sampleBase(call);
+		const rows = offsetRows(call.operands[0].type.shape);
+		if (rows == 0) {
+			fail(n, name + " takes no offset on this texture, as WGSL's");
+		}
+		let parts = constantParts(call.operands[at]);
+		if (parts.length == 1) {
+			const only = parts[0];
+			parts = [];
+			for (let i = 0; i < rows; i++) { parts.push(literal(only.type, only.value)); }
+		}
+		if (parts.length != rows) {
+			fail(n, name + " takes a constant offset: a vec" + String(rows) + "i of integer literals, " +
+				"or a module const of one (a function's const is not folded), as WGSL's");
+		}
+		for (const part of parts) {
+			if (part.value < OFFSET_MIN || part.value > OFFSET_MAX) {
+				fail(n, name + " takes a constant offset in [-8, 7], as WGSL's, not " +
+					String(part.value));
+			}
+		}
+		call.operands[at] = exprOf(ExprKind.Construct, vectorType(ScalarKind.I32, rows), -1, parts);
+		return call;
 	}
 
 	function lower(n: Node): ShaderExpr {

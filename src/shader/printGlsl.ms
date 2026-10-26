@@ -25,6 +25,9 @@ import {
 	UnaryOp,
 	isShift,
 	isArrayTexture,
+	hasOffset,
+	offsetOf,
+	sampleBase,
 	isAtomic,
 	sameShaderType,
 } from "./ir";
@@ -529,9 +532,10 @@ function isLayered(t: ShaderType): boolean {
 
 function sampleOf(p: Printer, e: ShaderExpr): string {
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
-	if (e.operands.length != (layered ? 4 : 3)) {
+	const base = layered ? 4 : 3;
+	if (e.operands.length != base && e.operands.length != base + 1) {
 		return fail(p, "TextureSample takes a texture, a sampler, coordinates and, for an array " +
-			"texture, a layer");
+			"texture, a layer, and an optional constant offset");
 	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
 	if (texture.type.kind != ShaderTypeKind.Texture ||
@@ -547,7 +551,8 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 	}
 	const coords = layered ? "vec3(" + expr(p, at) + ", float(" + expr(p, e.operands[3]) + "))" :
 		expr(p, at);
-	return narrowed("texture(" + pair.name + ", " + coords + ")", e.type);
+	return narrowed(e.operands.length == base ? "texture(" + pair.name + ", " + coords + ")" :
+		"textureOffset(" + pair.name + ", " + coords + ", " + expr(p, e.operands[base]) + ")", e.type);
 }
 
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
@@ -561,26 +566,33 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "vec4(" :
 		"vec3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
-	const tail = o.slice(3 + layer).map((a) => a.type.kind == ShaderTypeKind.Scalar &&
+	const tail = o.slice(3 + layer, sampleBase(e)).map((a) => a.type.kind == ShaderTypeKind.Scalar &&
 		a.type.scalar != ScalarKind.F32 ? "float(" + expr(p, a) + ")" : expr(p, a)).join(", ");
+	const offset = hasOffset(e) ? expr(p, offsetOf(e)) : "";
+	const suffix = offset == "" ? "" : "Offset";
 	const name = match (e.intrinsic) {
-		Intrinsic.TextureSampleLevel => "textureLod(",
-		Intrinsic.TextureSampleBias => "texture(",
-		Intrinsic.TextureSampleGrad => "textureGrad(",
+		Intrinsic.TextureSampleLevel => "textureLod" + suffix + "(",
+		Intrinsic.TextureSampleBias => "texture" + suffix + "(",
+		Intrinsic.TextureSampleGrad => "textureGrad" + suffix + "(",
 		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	};
-	return narrowed(name + pair.name + ", " + at + ", " + tail + ")", e.type);
+	const args = e.intrinsic == Intrinsic.TextureSampleBias && offset != "" ?
+		offset + ", " + tail : tail + (offset == "" ? "" : ", " + offset);
+	return narrowed(name + pair.name + ", " + at + ", " + args + ")", e.type);
 }
 
 function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	const name = e.intrinsic.toString();
 	const layered = e.operands.length > 0 && isLayered(e.operands[0].type);
-	if (e.operands.length != (layered ? 5 : 4)) {
+	const base = layered ? 5 : 4;
+	if (e.operands.length != base && e.operands.length != base + 1) {
 		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, and a depth reference");
+			"layer, a depth reference, and an optional constant offset");
 	}
 	const [texture, sampler, at] = [e.operands[0], e.operands[1], e.operands[2]];
-	const reference = e.operands[e.operands.length - 1];
+	const reference = e.operands[base - 1];
+	const offset = e.operands.length == base ? "" : ", " + expr(p, e.operands[base]);
+	const suffix = offset == "" ? "" : "Offset";
 	if (texture.type.kind != ShaderTypeKind.Texture ||
 		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
@@ -592,13 +604,18 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	}
 	const coords = expr(p, at) + (layered ? ", float(" + expr(p, e.operands[3]) + ")" : "") +
 		", " + expr(p, reference);
+	if (p.es && offset != "" && !level && texture.type.shape == TextureShape.Depth2dArray) {
+		return fail(p, name + " of a texture_depth_2d_array with an offset has no GLSL ES 3.00 " +
+			"form: textureOffset on sampler2DArrayShadow is GLSL 4.30's, never ES's");
+	}
 	return match (texture.type.shape) {
 		TextureShape.Depth2d => level ?
-			"textureLod(" + pair.name + ", vec3(" + coords + "), 0.0)" :
-			"texture(" + pair.name + ", vec3(" + coords + "))",
+			"textureLod" + suffix + "(" + pair.name + ", vec3(" + coords + "), 0.0" + offset + ")" :
+			"texture" + suffix + "(" + pair.name + ", vec3(" + coords + ")" + offset + ")",
 		TextureShape.Depth2dArray => level ?
-			"textureGrad(" + pair.name + ", vec4(" + coords + "), vec2(0.0), vec2(0.0))" :
-			"texture(" + pair.name + ", vec4(" + coords + "))",
+			"textureGrad" + suffix + "(" + pair.name + ", vec4(" + coords + "), vec2(0.0), vec2(0.0)" +
+				offset + ")" :
+			"texture" + suffix + "(" + pair.name + ", vec4(" + coords + ")" + offset + ")",
 		TextureShape.DepthCube => level ?
 			"textureGrad(" + pair.name + ", vec4(" + coords + "), vec3(0.0), vec3(0.0))" :
 			"texture(" + pair.name + ", vec4(" + coords + "))",

@@ -24,7 +24,9 @@ import {
 	TextureShape,
 	UnaryOp,
 	sameShaderType,
+	hasOffset,
 	isShift,
+	offsetOf,
 	isAtomic,
 	frexpResultType,
 	modfResultType,
@@ -437,6 +439,7 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 		args.push("uint(" + exprText(p, o[3]) + ")");
 	}
 	if (p.stage != ShaderStage.Fragment) { args.push("level(0.0)"); }
+	if (hasOffset(e)) { args.push(exprText(p, offsetOf(e))); }
 	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
 }
 
@@ -468,6 +471,7 @@ function explicitSampleText(p: Printer, e: ShaderExpr): string {
 			exprText(p, o[at + 1]) + ")",
 		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	});
+	if (hasOffset(e)) { args.push(exprText(p, offsetOf(e))); }
 	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
 }
 
@@ -475,10 +479,11 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
 	const name = e.intrinsic.toString();
 	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
-	if (o.length != (layered ? 5 : 4) || o[0].type.kind != ShaderTypeKind.Texture ||
+	const base = layered ? 5 : 4;
+	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
 		o[1].type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture, a sampler, coordinates, for an array texture a " +
-			"layer, and a depth reference");
+			"layer, a depth reference, and an optional constant offset");
 	}
 	if (!isComparisonSampler(p, o[1])) {
 		return fail(p, name + " through a sampler that is no comparison sampler binding");
@@ -490,8 +495,9 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	}
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layered) { args.push("uint(" + exprText(p, o[3]) + ")"); }
-	args.push(exprText(p, o[o.length - 1]));
+	args.push(exprText(p, o[base - 1]));
 	if (level) { args.push("level(0.0)"); }
+	if (o.length == base + 1) { args.push(exprText(p, o[base])); }
 	return exprText(p, o[0]) + ".sample_compare(" + args.join(", ") + ")";
 }
 

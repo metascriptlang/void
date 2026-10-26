@@ -24,6 +24,8 @@ import {
 	TextureShape,
 	UnaryOp,
 	isArrayTexture,
+	hasOffset,
+	offsetOf,
 	isAtomic,
 	isDerivative,
 	isEffect,
@@ -219,6 +221,7 @@ const STORAGE_BUFFER = 12;
 const IMAGE_BIAS = 1;
 const IMAGE_LOD = 2;
 const IMAGE_GRAD = 4;
+const IMAGE_CONST_OFFSET = 8;
 const IMAGE_SAMPLE = 64;
 
 const GLSL_F_ABS = 4;
@@ -1434,6 +1437,13 @@ function floatLevel(p: Spirv, level: ShaderExpr): int32 {
 		scalarTypeId(p, ScalarKind.F32), [x]);
 }
 
+// The image operands of a sample: their mask, then one id per bit in the order of the bits, the
+// constant offset's last. The offset of a sample is a constant composite, as the image operand needs.
+function imageOperands(p: Spirv, e: ShaderExpr, mask: int32, ids: int32[]): int32[] {
+	if (!hasOffset(e)) { return mask == 0 ? [] : [mask].concat(ids); }
+	return [mask | IMAGE_CONST_OFFSET].concat(ids).concat([value(p, offsetOf(e))]);
+}
+
 function sample(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const o = e.operands;
@@ -1457,19 +1467,21 @@ function sample(p: Spirv, e: ShaderExpr): int32 {
 	let fetched = 0;
 	if (op == Intrinsic.TextureSample) {
 		fetched = p.stage == ShaderStage.Fragment ?
-			typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type, [image, at]) :
-			typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type,
-				[image, at, IMAGE_LOD, scalarConstant(p, ScalarKind.F32, 0.0)]);
+			typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type,
+				[image, at].concat(imageOperands(p, e, 0, []))) :
+			typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at].concat(
+				imageOperands(p, e, IMAGE_LOD, [scalarConstant(p, ScalarKind.F32, 0.0)])));
 	} else if (op == Intrinsic.TextureSampleLevel) {
-		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type,
-			[image, at, IMAGE_LOD, floatLevel(p, o[next])]);
+		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at].concat(
+			imageOperands(p, e, IMAGE_LOD, [floatLevel(p, o[next])])));
 	} else if (op == Intrinsic.TextureSampleBias) {
-		fetched = typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type,
-			[image, at, IMAGE_BIAS, value(p, o[next])]);
+		fetched = typed(p, OP_IMAGE_SAMPLE_IMPLICIT_LOD, type, [image, at].concat(
+			imageOperands(p, e, IMAGE_BIAS, [value(p, o[next])])));
 	} else {
 		const dx = value(p, o[next]);
 		const dy = value(p, o[next + 1]);
-		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at, IMAGE_GRAD, dx, dy]);
+		fetched = typed(p, OP_IMAGE_SAMPLE_EXPLICIT_LOD, type, [image, at].concat(
+			imageOperands(p, e, IMAGE_GRAD, [dx, dy])));
 	}
 	return depthTexel(p, t, e, fetched);
 }
@@ -1479,10 +1491,11 @@ function compare(p: Spirv, e: ShaderExpr): int32 {
 	const name = e.intrinsic.toString();
 	const level = e.intrinsic == Intrinsic.TextureSampleCompareLevel;
 	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
-	if (o.length != (layered ? 5 : 4) || o[0].type.kind != ShaderTypeKind.Texture ||
+	const base = layered ? 5 : 4;
+	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
 		o[1].type.kind != ShaderTypeKind.Sampler) {
 		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
-			"a layer, and a depth reference");
+			"a layer, a depth reference, and an optional constant offset");
 	}
 	if (o[1].kind != ExprKind.Resource || samplerKind(p, o[1]) != SamplerType.Comparison) {
 		return refusal(p, name + " through a sampler that is no comparison sampler binding");
@@ -1496,10 +1509,11 @@ function compare(p: Spirv, e: ShaderExpr): int32 {
 	const reference = value(p, o[layered ? 4 : 3]);
 	const type = scalarTypeId(p, ScalarKind.F32);
 	if (!level && p.stage == ShaderStage.Fragment) {
-		return typed(p, OP_IMAGE_SAMPLE_DREF_IMPLICIT_LOD, type, [image, at, reference]);
+		return typed(p, OP_IMAGE_SAMPLE_DREF_IMPLICIT_LOD, type,
+			[image, at, reference].concat(imageOperands(p, e, 0, [])));
 	}
-	return typed(p, OP_IMAGE_SAMPLE_DREF_EXPLICIT_LOD, type,
-		[image, at, reference, IMAGE_LOD, scalarConstant(p, ScalarKind.F32, 0.0)]);
+	return typed(p, OP_IMAGE_SAMPLE_DREF_EXPLICIT_LOD, type, [image, at, reference].concat(
+		imageOperands(p, e, IMAGE_LOD, [scalarConstant(p, ScalarKind.F32, 0.0)])));
 }
 
 function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {

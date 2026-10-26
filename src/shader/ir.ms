@@ -248,9 +248,81 @@ function isExplicitSample(op: Intrinsic): boolean {
 		op == Intrinsic.TextureSampleGrad;
 }
 
+export function isSampling(op: Intrinsic): boolean {
+	return isExplicitSample(op) || op == Intrinsic.TextureSample ||
+		op == Intrinsic.TextureSampleCompare || op == Intrinsic.TextureSampleCompareLevel;
+}
+
 export function isArrayTexture(t: ShaderType): boolean {
 	return t.shape == TextureShape.D2Array || t.shape == TextureShape.CubeArray ||
 		t.shape == TextureShape.Depth2dArray;
+}
+
+// The operands of a sample before its constant offset: texture, sampler, coordinates, the layer
+// of an array, then the level, bias, reference or two derivatives.
+export function sampleBase(e: ShaderExpr): int32 {
+	let tail = 1;
+	if (e.intrinsic == Intrinsic.TextureSample) { tail = 0; }
+	if (e.intrinsic == Intrinsic.TextureSampleGrad) { tail = 2; }
+	return 3 + (isArrayTexture(e.operands[0].type) ? 1 : 0) + tail;
+}
+
+export function hasOffset(e: ShaderExpr): boolean {
+	return isSampling(e.intrinsic) && e.operands.length > 0 && e.operands.length == sampleBase(e) + 1;
+}
+
+export function offsetOf(e: ShaderExpr): ShaderExpr {
+	return e.operands[sampleBase(e)];
+}
+
+export function offsetRows(shape: TextureShape): int32 {
+	if (shape == TextureShape.D3) { return 3; }
+	const plane = shape == TextureShape.D2 || shape == TextureShape.D2Array ||
+		shape == TextureShape.Depth2d || shape == TextureShape.Depth2dArray;
+	return plane ? 2 : 0;
+}
+
+export const OFFSET_MIN = -8;
+export const OFFSET_MAX = 7;
+
+// The texel offsets of a constant vector of i32 literals, or none when it is anything else.
+export function offsetParts(e: ShaderExpr): float64[] {
+	let parts: float64[] = [];
+	if (e.kind != ExprKind.Construct || e.type.kind != ShaderTypeKind.Vector ||
+		e.type.scalar != ScalarKind.I32 || e.operands.length != e.type.rows) {
+		return parts;
+	}
+	for (const o of e.operands) {
+		if (o.kind != ExprKind.Literal || o.type.kind != ShaderTypeKind.Scalar ||
+			o.type.scalar != ScalarKind.I32) {
+			return [];
+		}
+		parts.push(o.value);
+	}
+	return parts;
+}
+
+function offsetError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	if (o.length == 0 || o[0].type.kind != ShaderTypeKind.Texture) { return ""; }
+	const base = sampleBase(e);
+	if (o.length <= base) { return ""; }
+	const shape = o[0].type.shape;
+	if (o.length > base + 1) { return name + " takes one constant offset, last, as WGSL's"; }
+	const rows = offsetRows(shape);
+	if (rows == 0) { return name + " takes no offset on a " + shape.toString() + " texture, as WGSL's"; }
+	const type = o[base].type;
+	if (type.kind != ShaderTypeKind.Vector || type.scalar != ScalarKind.I32 || type.rows != rows) {
+		return name + " takes a constant offset of " + String(rows) + " i32 for a " +
+			shape.toString() + " texture, as WGSL's";
+	}
+	const parts = offsetParts(o[base]);
+	let inRange = parts.length == rows;
+	for (const part of parts) {
+		if (part < OFFSET_MIN || part > OFFSET_MAX) { inRange = false; }
+	}
+	return inRange ? "" : name + " takes a constant offset in [-8, 7], as WGSL's";
 }
 
 function explicitSampleError(e: ShaderExpr): string {
@@ -272,11 +344,12 @@ function explicitSampleError(e: ShaderExpr): string {
 			": it samples a float color texture here";
 	}
 	const tail = e.intrinsic == Intrinsic.TextureSampleGrad ? 2 : 1;
-	if (o.length != 3 + (isArrayTexture(t) ? 1 : 0) + tail) {
+	const base = 3 + (isArrayTexture(t) ? 1 : 0) + tail;
+	if (o.length != base && o.length != base + 1) {
 		return name + " takes a texture, a sampler, coordinates, a layer of an array, and " +
 			(tail == 2 ? "two derivatives" : "a level or bias") + ", as WGSL's";
 	}
-	const level = o[o.length - 1].type;
+	const level = o[base - 1].type;
 	if (depthLevel && (level.kind != ShaderTypeKind.Scalar ||
 		level.scalar != ScalarKind.I32 && level.scalar != ScalarKind.U32)) {
 		return name + " of a " + t.shape.toString() + " texture takes an i32 or u32 level, as WGSL's";
@@ -983,6 +1056,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 	if (e.kind == ExprKind.Intrinsic && isExplicitSample(e.intrinsic)) {
 		const error = explicitSampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && isSampling(e.intrinsic)) {
+		const error = offsetError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	if (e.kind == ExprKind.Intrinsic && isBitsOp(e.intrinsic)) {

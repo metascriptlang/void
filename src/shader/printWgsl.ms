@@ -25,6 +25,9 @@ import {
 	UnaryOp,
 	sameShaderType,
 	isAtomic,
+	hasOffset,
+	offsetOf,
+	sampleBase,
 	isDerivative,
 	isEffect,
 	isPredeclaredResult,
@@ -428,10 +431,11 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	const o = e.operands;
 	const name = e.intrinsic.toString();
 	const layered = o.length > 0 && o[0].type.shape == TextureShape.Depth2dArray;
-	if (o.length != (layered ? 5 : 4) || o[0].type.kind != ShaderTypeKind.Texture ||
+	const base = layered ? 5 : 4;
+	if (o.length != base && o.length != base + 1 || o[0].type.kind != ShaderTypeKind.Texture ||
 		o[1].type.kind != ShaderTypeKind.Sampler) {
 		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
-			"a layer, and a depth reference");
+			"a layer, a depth reference, and an optional constant offset");
 	}
 	if (!level) { p.derivatives = true; }
 	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
@@ -470,8 +474,10 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 	return match (op) {
 		Intrinsic.Inverse => inverseCall(p, e),
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
-		Intrinsic.TextureSample => "textureSampleLevel(" + argsText(p, o) + ", " +
-			(isDepth(o[0].type) ? "0i" : "0.0f") + ")",
+		Intrinsic.TextureSample => "textureSampleLevel(" +
+			argsText(p, hasOffset(e) ? o.slice(0, sampleBase(e)) : o) + ", " +
+			(isDepth(o[0].type) ? "0i" : "0.0f") + (hasOffset(e) ? ", " + exprText(p, offsetOf(e)) : "") +
+			")",
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",
 		Intrinsic.TextureStore => "textureStore(" + argsText(p, o) + ")",
 		Intrinsic.TextureDimensions => dimensionsText(p, e),

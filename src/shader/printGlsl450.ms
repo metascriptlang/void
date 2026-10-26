@@ -30,6 +30,8 @@ import {
 	TextureShape,
 	UnaryOp,
 	isAtomic,
+	hasOffset,
+	sampleBase,
 	isShift,
 	sameShaderType,
 } from "./ir";
@@ -479,14 +481,15 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		Intrinsic.TextureDimensions | Intrinsic.TextureLoad => fetched(p, e, args),
 		Intrinsic.TextureStore => "imageStore(" + args[0] + ", " + imageAt(e, args) + ", " +
 			args[args.length - 1] + ")",
-		Intrinsic.TextureSample => layered ?
-			"texture(" + sampled + ", vec3(" + args[2] + ", float(" + args[3] + ")))" :
-			"texture(" + sampled + ", " + args[2] + ")",
+		Intrinsic.TextureSample => "texture" + offsetSuffix(e) + "(" + sampled + ", " +
+			(layered ? "vec3(" + args[2] + ", float(" + args[3] + "))" : args[2]) +
+			offsetTail(e, args) + ")",
 		Intrinsic.TextureSampleCompare | Intrinsic.TextureSampleCompareLevel => compared(e, args),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
-			intrinsicName(e.intrinsic) + "(" + sampled + ", " + (layered ? "vec3(" + args[2] +
-				", float(" + args[3] + "))" : args[2]) + ", " + floated(e, args, layered ? 4 : 3) +
-				")" + (isDepthShape(texture.shape) ? ".x" : ""),
+			intrinsicName(e.intrinsic) + offsetSuffix(e) + "(" + sampled + ", " + (layered ?
+				"vec3(" + args[2] + ", float(" + args[3] + "))" : args[2]) + ", " +
+				explicitTail(e, args, layered ? 4 : 3) + ")" +
+				(isDepthShape(texture.shape) ? ".x" : ""),
 		// glslang gives a compute barrier() workgroup-memory semantics, while the OpMemoryBarrier
 		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
 		Intrinsic.WorkgroupBarrier => "barrier()",
@@ -504,12 +507,24 @@ function isDepthShape(shape: TextureShape): boolean {
 		shape == TextureShape.DepthCube;
 }
 
-// A depth texture's level is an integer, and textureLod takes a float.
-function floated(e: ShaderExpr, args: string[], from: int32): string {
-	return args.slice(from).map((a, i) => {
+function offsetSuffix(e: ShaderExpr): string {
+	return hasOffset(e) ? "Offset" : "";
+}
+
+function offsetTail(e: ShaderExpr, args: string[]): string {
+	return hasOffset(e) ? ", " + args[sampleBase(e)] : "";
+}
+
+// A depth texture's level is an integer, and textureLod takes a float. GLSL puts the offset
+// before the bias and after the level and the derivatives.
+function explicitTail(e: ShaderExpr, args: string[], from: int32): string {
+	const rest = args.slice(from, sampleBase(e)).map((a, i) => {
 		const t = e.operands[from + i].type;
 		return t.kind == ShaderTypeKind.Scalar && t.scalar != ScalarKind.F32 ? "float(" + a + ")" : a;
 	}).join(", ");
+	if (!hasOffset(e)) { return rest; }
+	const offset = args[sampleBase(e)];
+	return e.intrinsic == Intrinsic.TextureSampleBias ? offset + ", " + rest : rest + ", " + offset;
 }
 
 function fetched(p: Glsl, e: ShaderExpr, all: string[]): string {
@@ -550,17 +565,21 @@ function compared(e: ShaderExpr, args: string[]): string {
 	const level = e.intrinsic == Intrinsic.TextureSampleCompareLevel;
 	const layered = e.operands[0].type.shape == TextureShape.Depth2dArray;
 	const coords = args[2] + (layered ? ", float(" + args[3] + ")" : "") + ", " +
-		args[args.length - 1];
+		args[sampleBase(e) - 1];
 	const pair = "(" + args[0] + ", " + args[1] + ")";
+	const suffix = offsetSuffix(e);
+	const offset = offsetTail(e, args);
 	return match (e.operands[0].type.shape) {
-		TextureShape.Depth2dArray => level ? "textureGrad(sampler2DArrayShadow" + pair +
-			", vec4(" + coords + "), vec2(0.0), vec2(0.0))" :
-			"texture(sampler2DArrayShadow" + pair + ", vec4(" + coords + "))",
+		TextureShape.Depth2dArray => level ? "textureGrad" + suffix + "(sampler2DArrayShadow" +
+			pair + ", vec4(" + coords + "), vec2(0.0), vec2(0.0)" + offset + ")" :
+			"texture" + suffix + "(sampler2DArrayShadow" + pair + ", vec4(" + coords + ")" +
+				offset + ")",
 		TextureShape.DepthCube => level ? "textureGrad(samplerCubeShadow" + pair + ", vec4(" +
 			coords + "), vec3(0.0), vec3(0.0))" :
 			"texture(samplerCubeShadow" + pair + ", vec4(" + coords + "))",
-		TextureShape.Depth2d => level ? "textureLod(sampler2DShadow" + pair + ", vec3(" + coords +
-			"), 0.0)" : "texture(sampler2DShadow" + pair + ", vec3(" + coords + "))",
+		TextureShape.Depth2d => level ? "textureLod" + suffix + "(sampler2DShadow" + pair +
+			", vec3(" + coords + "), 0.0" + offset + ")" :
+			"texture" + suffix + "(sampler2DShadow" + pair + ", vec3(" + coords + ")" + offset + ")",
 		_ => {
 			broken("a depth compare of a " + e.operands[0].type.shape.toString() + " texture");
 		},
