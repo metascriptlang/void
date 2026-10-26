@@ -900,3 +900,13 @@ built once a probe shows the cost it removes), from the 2026-10-26 audit at `1c0
   pass rather than on a target change (`GlDriver.hx:1842-1867`); storage buffers and images rebind
   with no compare.
 The Mac side keeps the uniform overrun check, the last copy shared across backends (step 8).
+
+Progress, step 8 (merged at `a59ca5ef`): `setBindGroup` refuses a dynamic offset that runs a
+uniform binding past its buffer ("dynamic offset N at index I overruns its uniform buffer"), using
+`BindGroupRecord.dynamicRoom` filled at `createBindGroup`; the four backend copies are gone. A draw
+or dispatch refuses a bound group made for another pipeline ("bind group N (group G) was made for
+GPURenderPipeline P, not the bound pipeline Q"), WebGPU's group-equivalence rule for layouts from
+`getBindGroupLayout` (§8.1.2, "Validate encoder bind groups"). The stencil and blend tests now make
+a uniform group per pipeline; `webgpuD3d11Check`'s stencil test changed the same way and needs a
+WARP run. Vulkan needs no copy of either check. This ends the reuse series on the Mac side:
+`src/webgpu/device.ms` and `validate.ms` are open to Windows again.
