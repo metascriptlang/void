@@ -1419,6 +1419,30 @@ run_hdr() {
 	pass "hdr: an Rgba16f scene target in both presets blends in linear light, keeps sums above 1, and tone maps by Heaps' four curves"
 }
 
+run_decal() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "decal: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/decal.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/decal.ms --output="$exe" > "$WORK/decal.build.log" 2>&1; then
+		fail "decal: tests/integration/decal.ms does not build — see $WORK/decal.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/decal.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "decal: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS decal: ' "$WORK/decal.log"; then
+		fail "decal: the check failed (exit $status) — see $WORK/decal.log"
+		return
+	fi
+	pass "decal: Heaps' DecalOverlay tints the scene depth inside its box from outside and inside, faded along the box"
+}
+
 # ---- gl core -------------------------------------------------------------------------------
 
 # The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
@@ -1428,7 +1452,7 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
-	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1"
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1 decal:-"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -3164,6 +3188,7 @@ run_exposure
 run_environment_light
 run_hdr
 run_bloom
+run_decal
 run_particle_fade
 run_particle_mesh
 run_mesh_lod
