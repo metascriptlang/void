@@ -490,6 +490,57 @@ export function linearFilter(filter: string, member: string, backend: string): b
 	return value == 1;
 }
 
+export struct TextureFormatFacts {
+	index: int32;
+	bytesPerPixel: int32;
+	depth: boolean;
+	stencil: boolean;
+}
+
+export const FORMAT_COUNT = 22;
+
+function colorFacts(index: int32, bytesPerPixel: int32): TextureFormatFacts {
+	return { index: index, bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
+}
+
+@noinline export function stopOnFormat(backend: string, member: string, value: string): TextureFormatFacts {
+	console.log(`webgpu ${backend}: ${member} '${value}' is not supported`);
+	unreachable;
+}
+
+export function textureFormatFacts(format: string, member: string, backend: string): TextureFormatFacts {
+	return match (format) {
+		"r8unorm" => colorFacts(0, 1),
+		"rg8unorm" => colorFacts(1, 2),
+		"rgba8unorm" => colorFacts(2, 4),
+		"rgba8unorm-srgb" => colorFacts(3, 4),
+		"bgra8unorm" => colorFacts(4, 4),
+		"bgra8unorm-srgb" => colorFacts(5, 4),
+		"rgba8uint" => colorFacts(6, 4),
+		"rgba8sint" => colorFacts(7, 4),
+		"r16float" => colorFacts(8, 2),
+		"rg16float" => colorFacts(9, 4),
+		"rgba16float" => colorFacts(10, 8),
+		"rgba16uint" => colorFacts(11, 8),
+		"r32float" => colorFacts(12, 4),
+		"rg32float" => colorFacts(13, 8),
+		"rgba32float" => colorFacts(14, 16),
+		"rgba32uint" => colorFacts(15, 16),
+		"r32uint" => colorFacts(16, 4),
+		"rgb10a2unorm" => colorFacts(17, 4),
+		"rg11b10ufloat" => colorFacts(18, 4),
+		"depth16unorm" => ({ index: 19, bytesPerPixel: 2, depth: true, stencil: false }),
+		"depth32float" => ({ index: 20, bytesPerPixel: 4, depth: true, stencil: false }),
+		"depth24plus-stencil8" => ({ index: 21, bytesPerPixel: 8, depth: true, stencil: true }),
+		_ => stopOnFormat(backend, member, format),
+	};
+}
+
+export function nativeAt<T>(table: T[], members: int32, index: int32, backend: string, what: string): T {
+	if (table.length != members) { stop(`webgpu ${backend}: the ${what} table has ${table.length} entries for ${members} members`); }
+	return table[index];
+}
+
 export struct GPUBindGroupEntry {
 	binding: int32;
 	buffer: GPUBuffer;

@@ -73,6 +73,8 @@ import {
 	checkedTexelWritePitch,
 	featureBit,
 	linearFilter,
+	TextureFormatFacts,
+	textureFormatFacts,
 } from "../types.ms";
 import {
 	cachedCanvas,
@@ -127,12 +129,6 @@ enum ViewDimension {
 	Cube,
 	CubeArray,
 	ThreeD,
-}
-
-struct FormatInfo {
-	bytesPerPixel: int32;
-	depth: boolean;
-	stencil: boolean;
 }
 
 struct BufferSlot {
@@ -213,39 +209,10 @@ let querySets: Vec<QuerySetSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu dummy: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function colorInfo(bytesPerPixel: int32): FormatInfo {
-	return { bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
-}
-
-function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorInfo(1),
-		"rg8unorm" => colorInfo(2),
-		"rgba8unorm" | "rgba8unorm-srgb" | "bgra8unorm" | "bgra8unorm-srgb" => colorInfo(4),
-		"rgba8uint" | "rgba8sint" => colorInfo(4),
-		"r16float" => colorInfo(2),
-		"rg16float" => colorInfo(4),
-		"rgba16float" => colorInfo(8),
-		"rgba16uint" => colorInfo(8),
-		"r32float" => colorInfo(4),
-		"rg32float" => colorInfo(8),
-		"rgba32float" => colorInfo(16),
-		"rgba32uint" => colorInfo(16),
-		"r32uint" => colorInfo(4),
-		"rgb10a2unorm" | "rg11b10ufloat" => colorInfo(4),
-		"depth16unorm" => ({ bytesPerPixel: 2, depth: true, stencil: false }),
-		"depth32float" => ({ bytesPerPixel: 4, depth: true, stencil: false }),
-		"depth24plus-stencil8" => ({ bytesPerPixel: 8, depth: true, stencil: true }),
-		_ => stopOnFormat(member, value),
-	};
+function formatInfo(format: GPUTextureFormat, member: string): TextureFormatFacts {
+	return textureFormatFacts(format, member, "dummy");
 }
 
 function compareFunction(compare: string, member: string): int32 {

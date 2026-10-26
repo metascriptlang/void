@@ -2,6 +2,9 @@ import "./lost";
 import {
 	BindingKind,
 	bindingKind,
+	FORMAT_COUNT,
+	nativeAt,
+	textureFormatFacts,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_SHADER_BINDINGS,
@@ -517,58 +520,24 @@ let bindGroups: Vec<BindGroupSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu wgpu: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function colorFormat(native: int32, bytesPerPixel: int32): FormatInfo {
-	return { native: native, bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
-}
+const NATIVE_FORMATS: int32[] = [
+	FORMAT_R8_UNORM, FORMAT_RG8_UNORM, FORMAT_RGBA8_UNORM, FORMAT_RGBA8_UNORM_SRGB,
+	FORMAT_BGRA8_UNORM, FORMAT_BGRA8_UNORM_SRGB, FORMAT_RGBA8_UINT, FORMAT_RGBA8_SINT,
+	FORMAT_R16_FLOAT, FORMAT_RG16_FLOAT, FORMAT_RGBA16_FLOAT, FORMAT_RGBA16_UINT,
+	FORMAT_R32_FLOAT, FORMAT_RG32_FLOAT, FORMAT_RGBA32_FLOAT, FORMAT_RGBA32_UINT, FORMAT_R32_UINT,
+	FORMAT_RGB10A2_UNORM, FORMAT_RG11B10_UFLOAT,
+	FORMAT_DEPTH16_UNORM, FORMAT_DEPTH32_FLOAT, FORMAT_DEPTH24_PLUS_STENCIL8,
+];
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorFormat(FORMAT_R8_UNORM, 1),
-		"rg8unorm" => colorFormat(FORMAT_RG8_UNORM, 2),
-		"rgba8unorm" => colorFormat(FORMAT_RGBA8_UNORM, 4),
-		"rgba8unorm-srgb" => colorFormat(FORMAT_RGBA8_UNORM_SRGB, 4),
-		"bgra8unorm" => colorFormat(FORMAT_BGRA8_UNORM, 4),
-		"bgra8unorm-srgb" => colorFormat(FORMAT_BGRA8_UNORM_SRGB, 4),
-		"rgba8uint" => colorFormat(FORMAT_RGBA8_UINT, 4),
-		"rgba8sint" => colorFormat(FORMAT_RGBA8_SINT, 4),
-		"r16float" => colorFormat(FORMAT_R16_FLOAT, 2),
-		"rg16float" => colorFormat(FORMAT_RG16_FLOAT, 4),
-		"rgba16float" => colorFormat(FORMAT_RGBA16_FLOAT, 8),
-		"rgba16uint" => colorFormat(FORMAT_RGBA16_UINT, 8),
-		"r32float" => colorFormat(FORMAT_R32_FLOAT, 4),
-		"rg32float" => colorFormat(FORMAT_RG32_FLOAT, 8),
-		"rgba32float" => colorFormat(FORMAT_RGBA32_FLOAT, 16),
-		"rgba32uint" => colorFormat(FORMAT_RGBA32_UINT, 16),
-		"r32uint" => colorFormat(FORMAT_R32_UINT, 4),
-		"rgb10a2unorm" => colorFormat(FORMAT_RGB10A2_UNORM, 4),
-		"rg11b10ufloat" => colorFormat(FORMAT_RG11B10_UFLOAT, 4),
-		"depth16unorm" => ({
-			native: FORMAT_DEPTH16_UNORM,
-			bytesPerPixel: 2,
-			depth: true,
-			stencil: false,
-		}),
-		"depth32float" => ({
-			native: FORMAT_DEPTH32_FLOAT,
-			bytesPerPixel: 4,
-			depth: true,
-			stencil: false,
-		}),
-		"depth24plus-stencil8" => ({
-			native: FORMAT_DEPTH24_PLUS_STENCIL8,
-			bytesPerPixel: 4,
-			depth: true,
-			stencil: true,
-		}),
-		_ => stopOnFormat(member, value),
+	const facts = textureFormatFacts(format, member, "wgpu");
+	return {
+		native: nativeAt(NATIVE_FORMATS, FORMAT_COUNT, facts.index, "wgpu", "native format"),
+		bytesPerPixel: facts.bytesPerPixel,
+		depth: facts.depth,
+		stencil: facts.stencil,
 	};
 }
 

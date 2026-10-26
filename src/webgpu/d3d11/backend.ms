@@ -4,6 +4,9 @@ import {
 	BindingKind,
 	bindingKind,
 	linearFilter,
+	FORMAT_COUNT,
+	nativeAt,
+	textureFormatFacts,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
@@ -539,11 +542,6 @@ let bindGroups: Vec<BindGroupSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu d3d11: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
 @inline function roundUp16(bytes: int64): int64 { return (bytes + 15) & ~(15 as int64); }
@@ -556,80 +554,62 @@ function forgetAppliedUniforms(): void {
 	for (let u = 0; u < GPU_MAX_UNIFORM_BLOCKS; u++) { bound.uniformBuffer[u] = 0; }
 }
 
-function colorInfo(format: int32, bytesPerPixel: int32): FormatInfo {
-	return {
-		texture: format,
-		shaderResource: format,
-		renderTarget: format,
-		depthStencil: DXGI_UNKNOWN,
-		bytesPerPixel: bytesPerPixel,
-		depth: false,
-		stencil: false,
-	};
+struct DxgiFormats {
+	texture: int32;
+	shaderResource: int32;
+	renderTarget: int32;
+	depthStencil: int32;
 }
 
-function srgbInfo(typeless: int32, format: int32): FormatInfo {
-	return {
-		texture: typeless,
-		shaderResource: format,
-		renderTarget: format,
-		depthStencil: DXGI_UNKNOWN,
-		bytesPerPixel: 4,
-		depth: false,
-		stencil: false,
-	};
+function dxgiColor(format: int32): DxgiFormats {
+	return { texture: format, shaderResource: format, renderTarget: format, depthStencil: DXGI_UNKNOWN };
 }
+
+function dxgiSrgb(typeless: int32, format: int32): DxgiFormats {
+	return { texture: typeless, shaderResource: format, renderTarget: format, depthStencil: DXGI_UNKNOWN };
+}
+
+const DXGI_FORMATS: DxgiFormats[] = [
+	dxgiColor(DXGI_R8_UNORM),
+	dxgiColor(DXGI_R8G8_UNORM),
+	dxgiColor(DXGI_R8G8B8A8_UNORM),
+	dxgiSrgb(DXGI_R8G8B8A8_TYPELESS, DXGI_R8G8B8A8_UNORM_SRGB),
+	dxgiColor(DXGI_B8G8R8A8_UNORM),
+	dxgiSrgb(DXGI_B8G8R8A8_TYPELESS, DXGI_B8G8R8A8_UNORM_SRGB),
+	dxgiColor(DXGI_R8G8B8A8_UINT),
+	dxgiColor(DXGI_R8G8B8A8_SINT),
+	dxgiColor(DXGI_R16_FLOAT),
+	dxgiColor(DXGI_R16G16_FLOAT),
+	dxgiColor(DXGI_R16G16B16A16_FLOAT),
+	dxgiColor(DXGI_R16G16B16A16_UINT),
+	dxgiColor(DXGI_R32_FLOAT),
+	dxgiColor(DXGI_R32G32_FLOAT),
+	dxgiColor(DXGI_R32G32B32A32_FLOAT),
+	dxgiColor(DXGI_R32G32B32A32_UINT),
+	dxgiColor(DXGI_R32_UINT),
+	dxgiColor(DXGI_R10G10B10A2_UNORM),
+	dxgiColor(DXGI_R11G11B10_FLOAT),
+	{ texture: DXGI_R16_TYPELESS, shaderResource: DXGI_R16_UNORM, renderTarget: DXGI_R16_UNORM, depthStencil: DXGI_D16_UNORM },
+	{ texture: DXGI_R32_TYPELESS, shaderResource: DXGI_R32_FLOAT, renderTarget: DXGI_R32_FLOAT, depthStencil: DXGI_D32_FLOAT },
+	{
+		texture: DXGI_R32G8X24_TYPELESS,
+		shaderResource: DXGI_R32_FLOAT_X8X24_TYPELESS,
+		renderTarget: DXGI_R32_FLOAT_X8X24_TYPELESS,
+		depthStencil: DXGI_D32_FLOAT_S8X24_UINT,
+	},
+];
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorInfo(DXGI_R8_UNORM, 1),
-		"rg8unorm" => colorInfo(DXGI_R8G8_UNORM, 2),
-		"rgba8unorm" => colorInfo(DXGI_R8G8B8A8_UNORM, 4),
-		"rgba8unorm-srgb" => srgbInfo(DXGI_R8G8B8A8_TYPELESS, DXGI_R8G8B8A8_UNORM_SRGB),
-		"bgra8unorm" => colorInfo(DXGI_B8G8R8A8_UNORM, 4),
-		"bgra8unorm-srgb" => srgbInfo(DXGI_B8G8R8A8_TYPELESS, DXGI_B8G8R8A8_UNORM_SRGB),
-		"rgba8uint" => colorInfo(DXGI_R8G8B8A8_UINT, 4),
-		"rgba8sint" => colorInfo(DXGI_R8G8B8A8_SINT, 4),
-		"r16float" => colorInfo(DXGI_R16_FLOAT, 2),
-		"rg16float" => colorInfo(DXGI_R16G16_FLOAT, 4),
-		"rgba16float" => colorInfo(DXGI_R16G16B16A16_FLOAT, 8),
-		"rgba16uint" => colorInfo(DXGI_R16G16B16A16_UINT, 8),
-		"r32float" => colorInfo(DXGI_R32_FLOAT, 4),
-		"rg32float" => colorInfo(DXGI_R32G32_FLOAT, 8),
-		"rgba32float" => colorInfo(DXGI_R32G32B32A32_FLOAT, 16),
-		"rgba32uint" => colorInfo(DXGI_R32G32B32A32_UINT, 16),
-		"r32uint" => colorInfo(DXGI_R32_UINT, 4),
-		"rgb10a2unorm" => colorInfo(DXGI_R10G10B10A2_UNORM, 4),
-		"rg11b10ufloat" => colorInfo(DXGI_R11G11B10_FLOAT, 4),
-		"depth16unorm" => ({
-			texture: DXGI_R16_TYPELESS,
-			shaderResource: DXGI_R16_UNORM,
-			renderTarget: DXGI_R16_UNORM,
-			depthStencil: DXGI_D16_UNORM,
-			bytesPerPixel: 2,
-			depth: true,
-			stencil: false,
-		}),
-		"depth32float" => ({
-			texture: DXGI_R32_TYPELESS,
-			shaderResource: DXGI_R32_FLOAT,
-			renderTarget: DXGI_R32_FLOAT,
-			depthStencil: DXGI_D32_FLOAT,
-			bytesPerPixel: 4,
-			depth: true,
-			stencil: false,
-		}),
-		"depth24plus-stencil8" => ({
-			texture: DXGI_R32G8X24_TYPELESS,
-			shaderResource: DXGI_R32_FLOAT_X8X24_TYPELESS,
-			renderTarget: DXGI_R32_FLOAT_X8X24_TYPELESS,
-			depthStencil: DXGI_D32_FLOAT_S8X24_UINT,
-			bytesPerPixel: 8,
-			depth: true,
-			stencil: true,
-		}),
-		_ => stopOnFormat(member, value),
+	const facts = textureFormatFacts(format, member, "d3d11");
+	const dxgi = nativeAt(DXGI_FORMATS, FORMAT_COUNT, facts.index, "d3d11", "DXGI format");
+	return {
+		texture: dxgi.texture,
+		shaderResource: dxgi.shaderResource,
+		renderTarget: dxgi.renderTarget,
+		depthStencil: dxgi.depthStencil,
+		bytesPerPixel: facts.bytesPerPixel,
+		depth: facts.depth,
+		stencil: facts.stencil,
 	};
 }
 

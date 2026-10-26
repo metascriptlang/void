@@ -18,6 +18,9 @@ import {
 import {
 	BindingKind,
 	bindingKind,
+	FORMAT_COUNT,
+	nativeAt,
+	textureFormatFacts,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
@@ -473,43 +476,23 @@ function stopOnMember(member: string, value: string): int32 {
 	unreachable;
 }
 
-function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu metal: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function colorInfo(pixel: int32, bytesPerPixel: int32): FormatInfo {
-	return { pixel: pixel, bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
-}
+const PIXEL_FORMATS: int32[] = [
+	PIXEL_R8_UNORM, 30, PIXEL_RGBA8_UNORM, 71, PIXEL_BGRA8_UNORM, 81, 73, 74,
+	25, 65, PIXEL_RGBA16_FLOAT, 113,
+	55, 105, 125, 123, 53,
+	90, 92,
+	250, PIXEL_DEPTH32_FLOAT, PIXEL_DEPTH32_FLOAT_STENCIL8,
+];
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorInfo(PIXEL_R8_UNORM, 1),
-		"rg8unorm" => colorInfo(30, 2),
-		"rgba8unorm" => colorInfo(PIXEL_RGBA8_UNORM, 4),
-		"rgba8unorm-srgb" => colorInfo(71, 4),
-		"bgra8unorm" => colorInfo(PIXEL_BGRA8_UNORM, 4),
-		"bgra8unorm-srgb" => colorInfo(81, 4),
-		"rgba8uint" => colorInfo(73, 4),
-		"rgba8sint" => colorInfo(74, 4),
-		"r16float" => colorInfo(25, 2),
-		"rg16float" => colorInfo(65, 4),
-		"rgba16float" => colorInfo(PIXEL_RGBA16_FLOAT, 8),
-		"rgba16uint" => colorInfo(113, 8),
-		"r32float" => colorInfo(55, 4),
-		"rg32float" => colorInfo(105, 8),
-		"rgba32float" => colorInfo(125, 16),
-		"rgba32uint" => colorInfo(123, 16),
-		"r32uint" => colorInfo(53, 4),
-		"rgb10a2unorm" => colorInfo(90, 4),
-		"rg11b10ufloat" => colorInfo(92, 4),
-		"depth16unorm" => ({ pixel: 250, bytesPerPixel: 2, depth: true, stencil: false }),
-		"depth32float" => ({ pixel: PIXEL_DEPTH32_FLOAT, bytesPerPixel: 4, depth: true, stencil: false }),
-		"depth24plus-stencil8" => ({ pixel: PIXEL_DEPTH32_FLOAT_STENCIL8, bytesPerPixel: 8, depth: true, stencil: true }),
-		_ => stopOnFormat(member, value),
+	const facts = textureFormatFacts(format, member, "metal");
+	return {
+		pixel: nativeAt(PIXEL_FORMATS, FORMAT_COUNT, facts.index, "metal", "pixel format"),
+		bytesPerPixel: facts.bytesPerPixel,
+		depth: facts.depth,
+		stencil: facts.stencil,
 	};
 }
 

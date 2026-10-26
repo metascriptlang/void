@@ -2,6 +2,10 @@ import {
 	BindingKind,
 	bindingKind,
 	linearFilter,
+	FORMAT_COUNT,
+	nativeAt,
+	textureFormatFacts,
+	stopOnFormat,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
@@ -79,6 +83,7 @@ import {
 	openDebugGroups,
 	stencil8Mask,
 	boundFacts,
+	isIntegerFormat,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -730,11 +735,6 @@ let querySets: Vec<QuerySetSlot> = [{}];
 	unreachable;
 }
 
-@noinline function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu gl: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 function nativeNameOf(name: string | null, what: string): string {
 	if (name !== null) { return name; }
 	stop(`${what} needs its GLSL name in nativeName`);
@@ -756,71 +756,54 @@ function checkErrorOf(what: string, label: string | null): void {
 
 @inline function smaller(a: int32, b: int32): int32 { return a < b ? a : b; }
 
-function colorFormat(
-	internalFormat: int32,
-	pixelFormat: int32,
-	pixelType: int32,
-	bytesPerPixel: int32,
-	integer: boolean,
-	needsColorBufferFloat: boolean,
-): FormatInfo {
-	return {
-		internalFormat: internalFormat,
-		pixelFormat: pixelFormat,
-		pixelType: pixelType,
-		bytesPerPixel: bytesPerPixel,
-		depth: false,
-		stencil: false,
-		integer: integer,
-		needsColorBufferFloat: needsColorBufferFloat,
-	};
+struct GlFormat {
+	internalFormat: int32;
+	pixelFormat: int32;
+	pixelType: int32;
+	needsColorBufferFloat: boolean;
 }
+
+const NO_GL_FORMAT: GlFormat = { internalFormat: 0, pixelFormat: 0, pixelType: 0, needsColorBufferFloat: false };
+
+const GL_FORMATS: GlFormat[] = [
+	{ internalFormat: GL_R8, pixelFormat: GL_RED, pixelType: GL_UNSIGNED_BYTE, needsColorBufferFloat: false },
+	{ internalFormat: GL_RG8, pixelFormat: GL_RG, pixelType: GL_UNSIGNED_BYTE, needsColorBufferFloat: false },
+	{ internalFormat: GL_RGBA8, pixelFormat: GL_RGBA, pixelType: GL_UNSIGNED_BYTE, needsColorBufferFloat: false },
+	{ internalFormat: GL_SRGB8_ALPHA8, pixelFormat: GL_RGBA, pixelType: GL_UNSIGNED_BYTE, needsColorBufferFloat: false },
+	NO_GL_FORMAT,
+	NO_GL_FORMAT,
+	{ internalFormat: GL_RGBA8UI, pixelFormat: GL_RGBA_INTEGER, pixelType: GL_UNSIGNED_BYTE, needsColorBufferFloat: false },
+	{ internalFormat: GL_RGBA8I, pixelFormat: GL_RGBA_INTEGER, pixelType: GL_BYTE, needsColorBufferFloat: false },
+	{ internalFormat: GL_R16F, pixelFormat: GL_RED, pixelType: GL_HALF_FLOAT, needsColorBufferFloat: false },
+	{ internalFormat: GL_RG16F, pixelFormat: GL_RG, pixelType: GL_HALF_FLOAT, needsColorBufferFloat: false },
+	{ internalFormat: GL_RGBA16F, pixelFormat: GL_RGBA, pixelType: GL_HALF_FLOAT, needsColorBufferFloat: false },
+	{ internalFormat: GL_RGBA16UI, pixelFormat: GL_RGBA_INTEGER, pixelType: GL_UNSIGNED_SHORT, needsColorBufferFloat: false },
+	{ internalFormat: GL_R32F, pixelFormat: GL_RED, pixelType: GL_FLOAT, needsColorBufferFloat: true },
+	{ internalFormat: GL_RG32F, pixelFormat: GL_RG, pixelType: GL_FLOAT, needsColorBufferFloat: true },
+	{ internalFormat: GL_RGBA32F, pixelFormat: GL_RGBA, pixelType: GL_FLOAT, needsColorBufferFloat: true },
+	{ internalFormat: GL_RGBA32UI, pixelFormat: GL_RGBA_INTEGER, pixelType: GL_UNSIGNED_INT, needsColorBufferFloat: false },
+	{ internalFormat: GL_R32UI, pixelFormat: GL_RED_INTEGER, pixelType: GL_UNSIGNED_INT, needsColorBufferFloat: false },
+	{ internalFormat: GL_RGB10_A2, pixelFormat: GL_RGBA, pixelType: GL_UNSIGNED_INT_2_10_10_10_REV, needsColorBufferFloat: false },
+	{ internalFormat: GL_R11F_G11F_B10F, pixelFormat: GL_RGB, pixelType: GL_UNSIGNED_INT_10F_11F_11F_REV, needsColorBufferFloat: true },
+	{ internalFormat: GL_DEPTH_COMPONENT16, pixelFormat: GL_DEPTH_COMPONENT, pixelType: GL_UNSIGNED_SHORT, needsColorBufferFloat: false },
+	{ internalFormat: GL_DEPTH_COMPONENT32F, pixelFormat: GL_DEPTH_COMPONENT, pixelType: GL_FLOAT, needsColorBufferFloat: false },
+	{ internalFormat: GL_DEPTH32F_STENCIL8, pixelFormat: GL_DEPTH_STENCIL, pixelType: GL_FLOAT_32_UNSIGNED_INT_24_8_REV, needsColorBufferFloat: false },
+];
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
 	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorFormat(GL_R8, GL_RED, GL_UNSIGNED_BYTE, 1, false, false),
-		"rg8unorm" => colorFormat(GL_RG8, GL_RG, GL_UNSIGNED_BYTE, 2, false, false),
-		"rgba8unorm" => colorFormat(GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 4, false, false),
-		"rgba8unorm-srgb" => colorFormat(GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, 4, false, false),
-		"rgba8uint" => colorFormat(GL_RGBA8UI, GL_RGBA_INTEGER, GL_UNSIGNED_BYTE, 4, true, false),
-		"rgba8sint" => colorFormat(GL_RGBA8I, GL_RGBA_INTEGER, GL_BYTE, 4, true, false),
-		"r16float" => colorFormat(GL_R16F, GL_RED, GL_HALF_FLOAT, 2, false, false),
-		"rg16float" => colorFormat(GL_RG16F, GL_RG, GL_HALF_FLOAT, 4, false, false),
-		"rgba16float" => colorFormat(GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, 8, false, false),
-		"rgba16uint" => colorFormat(GL_RGBA16UI, GL_RGBA_INTEGER, GL_UNSIGNED_SHORT, 8, true, false),
-		"r32float" => colorFormat(GL_R32F, GL_RED, GL_FLOAT, 4, false, true),
-		"rg32float" => colorFormat(GL_RG32F, GL_RG, GL_FLOAT, 8, false, true),
-		"rgba32float" => colorFormat(GL_RGBA32F, GL_RGBA, GL_FLOAT, 16, false, true),
-		"rgba32uint" => colorFormat(GL_RGBA32UI, GL_RGBA_INTEGER, GL_UNSIGNED_INT, 16, true, false),
-		"r32uint" => colorFormat(GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, 4, true, false),
-		"rgb10a2unorm" => colorFormat(GL_RGB10_A2, GL_RGBA, GL_UNSIGNED_INT_2_10_10_10_REV, 4, false, false),
-		"rg11b10ufloat" => colorFormat(GL_R11F_G11F_B10F, GL_RGB, GL_UNSIGNED_INT_10F_11F_11F_REV, 4, false, true),
-		"depth16unorm" => ({
-			internalFormat: GL_DEPTH_COMPONENT16,
-			pixelFormat: GL_DEPTH_COMPONENT,
-			pixelType: GL_UNSIGNED_SHORT,
-			bytesPerPixel: 2,
-			depth: true,
-			stencil: false,
-		}),
-		"depth32float" => ({
-			internalFormat: GL_DEPTH_COMPONENT32F,
-			pixelFormat: GL_DEPTH_COMPONENT,
-			pixelType: GL_FLOAT,
-			bytesPerPixel: 4,
-			depth: true,
-			stencil: false,
-		}),
-		"depth24plus-stencil8" => ({
-			internalFormat: GL_DEPTH32F_STENCIL8,
-			pixelFormat: GL_DEPTH_STENCIL,
-			pixelType: GL_FLOAT_32_UNSIGNED_INT_24_8_REV,
-			bytesPerPixel: 8,
-			depth: true,
-			stencil: true,
-		}),
-		_ => stopOnFormat(member, value),
+	const facts = textureFormatFacts(value, member, "gl");
+	const native = nativeAt(GL_FORMATS, FORMAT_COUNT, facts.index, "gl", "GL format");
+	if (native.internalFormat == 0) { stopOnFormat("gl", member, value); }
+	return {
+		internalFormat: native.internalFormat,
+		pixelFormat: native.pixelFormat,
+		pixelType: native.pixelType,
+		bytesPerPixel: facts.bytesPerPixel,
+		depth: facts.depth,
+		stencil: facts.stencil,
+		integer: isIntegerFormat(value),
+		needsColorBufferFloat: native.needsColorBufferFloat,
 	};
 }
 
