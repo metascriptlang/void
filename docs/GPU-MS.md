@@ -849,3 +849,22 @@ the counter sample buffer before the render pass's end sample landed. Metal now 
 on an `MTLSharedEvent` before each resolve on Apple8+ GPUs (`8d8faeda`), as Dawn's
 `metal_serialize_timestamp_generation_and_resolution` does (crbug.com/372698905); 0 of 20 since.
 An `MTLFence` and a plain `MTLEvent` did not fix it. `gpuTimer` now runs on every Mac gate.
+
+Progress, step 5 (merged at `5d300d4f`, pushed with `c7b255e1`): the open pass's state and the
+draw-time rules live above the backends, so Vulkan can drop its copies:
+- `createBindGroup` checks each entry against the shader record's reflected bindings
+  (`checkedBindGroupEntry`, after sokol's `apply_bindings` checks at `sokol_gfx.h:25196`); the
+  record keeps `bindings`, `bindingCount` and `groups`;
+- `BindGroupRecord.dynamicIndex` ranks the dynamic offsets once, at creation;
+- `validate.ms` holds `boundFacts` (pipeline, vertex and index buffers with offsets, bind groups,
+  dynamic offsets), set by `markPipelineSet`, `markVertexSet`, `markIndexSet` and
+  `markBindGroupSet` and reset at pass begin; a backend reads it instead of keeping its own;
+- a draw or dispatch is refused before the backend when the pipeline reads a vertex buffer or a
+  bind group the pass never set. As the spec's "valid to draw" says, a slot is required when its
+  layout is not empty: a stride or an attribute (`vertexSlotsOf`), so a stride-only slot counts.
+A Vulkan "which is not set" stop is now dead code to delete.
+
+Two goldens need a D3D11 capture on WARP: `clip/roundedMask` (rounded Mask clip, `7138b049`) and
+`filter/mask` (Mask filter, `5a60dd23`). The rounded clip changed the `ui`, `sprite` and `void2d`
+programs, so `scripts/regen-shaders.sh` on Windows has six DXBC blobs to rebuild with fxc (vertex
+and fragment of each); the Mac reports them as `dxbc miss … no fxc`.
