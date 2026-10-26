@@ -758,15 +758,17 @@ cross-backend bound, 4 of them pending at delta 1.
 `scripts/abBench.sh` provisions and `scripts/bench-ab.sh` measures (its protocol is docs/TESTING.md
 "T4": interleaved pairs, load sampled on both sides of a run, NOISY pairs and `AB_MIN_CLEAN`).
 The performance clause of "End-game done when" is read from the `tests/bench` entries
-`Ui Sprites Text Editor Scroll`, built `--release` by one `msc` (`msc --version` and
+`Ui Sprites Text Editor Scroll Campfire`, built `--release` by one `msc` (`msc --version` and
 `~/.metascript/BUILD` go to `$TEMP/voidAB/env.txt`) from side A, a detached worktree
 `../void-ab-main` with `deps/` junctioned to the main checkout's, and side B, this tree.
 
 ```sh
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build        # d3d11 and gl, CPU only
+AB_BACKENDS="d3d11 gl vulkan" bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build  # vulkan: B only
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build linux  # both sides in WSL, CPU only
 bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build web    # wasm of both sides, wgpu and gl, CPU only (about 6 min)
 AB_BACKENDS="d3d11 gl linux" sh scripts/abBench.sh run 5                         # opens windows: only inside a granted GO
+AB_SCENES=Campfire AB_BACKENDS="d3d11 gl vulkan" sh scripts/abBench.sh run 1     # the smoke: one scene, one pair, inside a GO
 AB_BACKENDS=linux AB_LINUX_DRIVER=llvmpipe sh scripts/abBench.sh run 5          # the software-GL alternative
 AB_BACKENDS="web-wgpu web-gl" sh scripts/abBench.sh run 5                       # headless Chrome on the GPU: only inside a granted GO
 sh scripts/abBench.sh clean                                                     # deletes $TEMP/voidAB and the main worktree
@@ -780,6 +782,19 @@ sh scripts/abBench.sh clean                                                     
   built once from `yoga/deps/yoga` by `zig c++` (yoga has no linux link line,
   `~/metascript/.inbox/yoga/`). Windows exes land in `$TEMP/voidAB/<backend>/<side>/`; Linux exes in
   WSL's `~/voidAB/<side>/`, which is not under `/mnt/c`, with the trees read through `/mnt/c`.
+- **Campfire** (`tests/bench/benchCampfire.ms`) is the void3d scene of gate3d's bench, log group
+  turning and particles on. Every draw item applies its pipeline and uniform blocks again, so its
+  `present.ms` prices the door's per-draw uniform path: it is the d3d11 uniform-ring bench. Main
+  has no such entry, so `build` copies B's into the A worktree (it imports only the campfire API,
+  the same on both sides) and says `ENTRY Campfire: A runs B's ...`.
+- **Flows**: each row of the table carries its flow (`scripts/benchFlow.awk`): `submit` is
+  `present.ms`, the CPU time of recording and submitting a frame; `frame` is `frame.ms`, the wall
+  time between frames, vsync-bound on both sides (Present interval 1, sokol_app's default
+  swap interval), so it says whether a frame missed vsync rather than how fast it was; `upload`
+  is `firstPaint.ms` and the upload counters; `count` is the scene's shape. Upload time inside a
+  steady frame is not split out of `submit`: that needs a timer in the door, which side A lacks.
+- **Vulkan** runs on B alone (main has no Vulkan backend): `run` prints the median, low and high
+  of the runs per row, with no load sampling, so it is read only from a quiet window.
 - **Rows**: `bench-ab.sh` with `AB_RAW` keeps every bench row of every run and prints, per scene and
   label, the median of the clean pairs. A `.ms` row is `RED` when B is more than `AB_TOL` (3 %)
   slower than A; a counter that differs is `DIFF` (a higher `draws`, `uploads` or `uploadBytes` is a
