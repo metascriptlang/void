@@ -165,6 +165,7 @@ them. A caller that arrives gets a row above.
 | copy of a depth texture, and of the swapchain texture, to a buffer | no copy (see readback) | D3D11 "a depth16unorm texture round-trips a buffer copy…", "the swapchain texture copies out of the back buffer…" |
 | `copyBufferToBuffer`, `copyBufferToTexture`, `copyTextureToTexture`, `writeMappedRange` | no copy | D3D11 and GL "a buffer range copies to a MAP_READ buffer…", "a MAP_WRITE buffer filled through a mapped range…", "copyTextureToTexture copies mip 1…", "a buffer region at an offset…" |
 | `dispatchWorkgroupsIndirect` | `sg_dispatch` `:27469` only; `indirect` has no match | D3D11 and GL "a compute pass doubles a storage buffer, directly and through an indirect dispatch" |
+| `drawIndexedIndirect`, `multiDrawIndexedIndirect`, `doorDrawIndirect` | `indirect` has no match | D3D11 and Vulkan "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" |
 | timestamp writes, occlusion queries, `resolveQuerySet` | `timestamp`, `occlusion` have no match | D3D11 and GL "two timestamps around a render pass…", "an occlusion query counts samples…" |
 | `doorReadTexture` (any texture, door level) | no readback | D3D11 "the door reads a cleared bgra8 target back as RGBA…" |
 
@@ -389,6 +390,18 @@ Each item is built once a probe shows the cost it removes; the A/B against main 
 - **Draw order:** void3d sorts opaque draws by layer, shader and texture, using ids renumbered
   each frame. Alpha draws sort by layer, then depth back to front (Heaps `SortByMaterial.hx:15-29`,
   `scene/Renderer.hx:104-131`). Neither reference packs a radix key.
+- **Indirect draws:** `doorDrawIndirect` is Heaps' `drawInstanced` with a command buffer, records
+  of 20 bytes read on the GPU. D3D11 issues one `DrawIndexedInstancedIndirect` per record
+  (`DirectXDriver.hx:1426-1443`) and GL one `glMultiDrawElementsIndirect` for all of them
+  (`GlDriver.hx:1664-1701`). Vulkan takes them in one `vkCmdDrawIndexedIndirect` when the device
+  has `multiDrawIndirect`, else one call per record. The surface is Dawn's
+  `multiDrawIndexedIndirect` without its count buffer.
+  Dawn validates every record on the GPU (`IndirectDrawValidationEncoder.cpp`); the door refuses
+  instead the three cases that pass would make safe: a device without `indirect-first-instance`,
+  a vertex stage reading `instance_index` or `vertex_index`, and on GL an index buffer set at a
+  nonzero offset, which Dawn folds into firstIndex (`:199-200`). Heaps binds its index buffer at 0
+  (`DirectXDriver.hx:1431`). The upgrade is that validation pass, once a caller needs one of the
+  three; the count buffer waits on GPU culling (Heaps `h3d/shader/InstanceIndirect.hx`).
 - **Instance data:** void2d builds instances in a CPU `Vec` and uploads once per flush, as Heaps
   (`h2d/RenderContext.hx:595-605`) and Mach (`gfx/Sprite.zig:540-561`) do. Writing straight
   into mapped memory (GPUI `metal_renderer.rs:1531-1574`) waits on a measured copy cost,
