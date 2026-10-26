@@ -145,10 +145,19 @@ export function beginRenderPass(
 			continue;
 		}
 		const t = attached(`colorAttachments[${i}].view`, attachment.view.id);
-		const texture = r.textures[t];
+		const canvas = viewRecords.record(attachment.view.id).swapchain && r.canvasMsaa.native != 0;
+		const texture = canvas ? r.canvasMsaa : r.textures[t];
 		let resolveFormat: int32 = 0;
-		views.push(r.views[slotOf(attachment.view.id)].native);
-		if (attachment.resolveTarget.id != 0) {
+		views.push(canvas ? r.canvasMsaaView : r.views[slotOf(attachment.view.id)].native);
+		if (canvas) {
+			if (attachment.resolveTarget.id != 0) {
+				stop(`colorAttachments[${i}].resolveTarget is set on the multisampled canvas, which resolves into the swapchain image itself`);
+			}
+			const swapchain = r.textures[t];
+			resolveFormat = swapchain.info.native;
+			views.push(r.views[slotOf(attachment.view.id)].native);
+			writeToTexture(r.tracker, swapchain.native, swapchain.rest, STAGE_COLOR_ATTACHMENT_OUTPUT, COLOR_ACCESS, LAYOUT_COLOR_ATTACHMENT);
+		} else if (attachment.resolveTarget.id != 0) {
 			const resolve = r.textures[attached(`colorAttachments[${i}].resolveTarget`, attachment.resolveTarget.id)];
 			resolveFormat = resolve.info.native;
 			views.push(r.views[slotOf(attachment.resolveTarget.id)].native);

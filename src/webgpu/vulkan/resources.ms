@@ -191,7 +191,7 @@ struct Staged {
 	offset: uint64;
 }
 
-struct SwapchainDepth {
+struct CanvasExtent {
 	width: int32;
 	height: int32;
 }
@@ -213,7 +213,9 @@ export struct VulkanResources {
 	submitted: uint64;
 	swapchainColor: uint32;
 	swapchainDepth: uint32;
-	depthExtent: SwapchainDepth;
+	canvasMsaa: TextureNative;
+	canvasMsaaView: uint64;
+	canvasExtent: CanvasExtent;
 }
 
 export const NO_ALLOCATION: MemoryAllocation = {
@@ -333,7 +335,9 @@ function resourcesOn(device: MemoryDevice, depthStencil: int32): VulkanResources
 		submitted: 0,
 		swapchainColor: 0,
 		swapchainDepth: 0,
-		depthExtent: { width: 0, height: 0 },
+		canvasMsaa: NO_TEXTURE,
+		canvasMsaaView: 0,
+		canvasExtent: { width: 0, height: 0 },
 	};
 }
 
@@ -577,29 +581,43 @@ export function adoptSwapchain(ref r: VulkanResources, color: uint32, depth: uin
 	const info = formatInfo(depthRecord.format, r.depthStencil, "NativeEnvironment.depthFormat");
 	put(r.textures, depth, { native: 0, info: info, rest: textureRest(depthRecord.usage, info.aspect), memory: NO_ALLOCATION });
 	put(r.views, depthRecord.swapchainView, NO_VIEW);
-	r.depthExtent = { width: 0, height: 0 };
 }
 
-function retireSwapchainDepth(ref r: VulkanResources): void {
-	const t = slotOf(r.swapchainDepth);
-	const v = slotOf(textureRecords.slots[t].swapchainView);
-	if (r.views[v].native != 0) { retire(r, RetiredKind.View, r.views[v].native, NO_ALLOCATION); }
-	if (r.textures[t].native != 0) { retire(r, RetiredKind.Image, r.textures[t].native, r.textures[t].memory); }
-	r.views[v] = NO_VIEW;
-	r.textures[t].native = 0;
-	r.textures[t].memory = NO_ALLOCATION;
-	r.depthExtent = { width: 0, height: 0 };
+function retireCanvas(ref r: VulkanResources): void {
+	if (r.swapchainDepth != 0) {
+		const t = slotOf(r.swapchainDepth);
+		const v = slotOf(textureRecords.slots[t].swapchainView);
+		if (r.views[v].native != 0) { retire(r, RetiredKind.View, r.views[v].native, NO_ALLOCATION); }
+		if (r.textures[t].native != 0) { retire(r, RetiredKind.Image, r.textures[t].native, r.textures[t].memory); }
+		r.views[v] = NO_VIEW;
+		r.textures[t].native = 0;
+		r.textures[t].memory = NO_ALLOCATION;
+	}
+	if (r.canvasMsaa.native != 0) {
+		retire(r, RetiredKind.View, r.canvasMsaaView, NO_ALLOCATION);
+		retire(r, RetiredKind.Image, r.canvasMsaa.native, r.canvasMsaa.memory);
+	}
+	r.canvasMsaa = NO_TEXTURE;
+	r.canvasMsaaView = 0;
+	r.canvasExtent = { width: 0, height: 0 };
 }
 
-function sizeSwapchainDepth(ref r: VulkanResources, width: int32, height: int32): Result<void, ResourceError> {
-	if (r.depthExtent.width == width && r.depthExtent.height == height) { return Result.ok(null); }
-	retireSwapchainDepth(r);
-	const record = textureRecords.record(r.swapchainDepth);
-	const t = slotOf(r.swapchainDepth);
-	const image = try createImage(r, r.textures[t].info, record);
-	r.textures[t] = image;
-	r.views[slotOf(record.swapchainView)] = try createNativeView(image, "2d", 0, 1, 0, 1);
-	r.depthExtent = { width: width, height: height };
+function sizeCanvas(ref r: VulkanResources, width: int32, height: int32): Result<void, ResourceError> {
+	if (r.canvasExtent.width == width && r.canvasExtent.height == height) { return Result.ok(null); }
+	retireCanvas(r);
+	if (r.swapchainDepth != 0) {
+		const record = textureRecords.record(r.swapchainDepth);
+		const t = slotOf(r.swapchainDepth);
+		const image = try createImage(r, r.textures[t].info, record);
+		r.textures[t] = image;
+		r.views[slotOf(record.swapchainView)] = try createNativeView(image, "2d", 0, 1, 0, 1);
+	}
+	const color = textureRecords.record(r.swapchainColor);
+	if (color.sampleCount > 1) {
+		r.canvasMsaa = try createImage(r, r.textures[slotOf(r.swapchainColor)].info, color);
+		r.canvasMsaaView = (try createNativeView(r.canvasMsaa, "2d", 0, 1, 0, 1)).native;
+	}
+	r.canvasExtent = { width: width, height: height };
 	return Result.ok(null);
 }
 
@@ -608,8 +626,7 @@ export function acquireSwapchain(ref r: VulkanResources, width: int32, height: i
 	r.textures[color].native = image;
 	r.views[slotOf(textureRecords.slots[color].swapchainView)] = { native: view, binding: view };
 	r.acquired = image;
-	if (r.swapchainDepth != 0) { try sizeSwapchainDepth(r, width, height); }
-	return Result.ok(null);
+	return sizeCanvas(r, width, height);
 }
 
 export function settle(ref r: VulkanResources): void {
@@ -1058,7 +1075,7 @@ export function writeMapped<T>(ref r: VulkanResources, buffer: GPUBuffer, offset
 }
 
 export function closeResources(ref r: VulkanResources): Result<void, ResourceError> {
-	if (r.swapchainDepth != 0) { retireSwapchainDepth(r); }
+	retireCanvas(r);
 	const submitted = submit(r);
 	const drained: Result<uint64, ResourceError> = submitted.ok ? wait(r, submitted.value) : Result.err(submitted.error);
 	if (r.page.native != 0) { retire(r, RetiredKind.Page, r.page.native, r.page.memory); }

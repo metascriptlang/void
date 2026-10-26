@@ -57,7 +57,6 @@ import {
 	featureBit,
 	stop,
 } from "../types.ms";
-import { cachedCanvas } from "../validate.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 
@@ -136,10 +135,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 		stop("vulkan: requestDevice adopts the device vulkanDeviceCreate opened; NativeEnvironment.device and .context stay null");
 	}
 	commanded(vulkanDeviceReady());
-	const sampleCount = cachedCanvas().sampleCount;
-	if (sampleCount != 1) {
-		stop(`vulkan: NativeEnvironment.sampleCount ${sampleCount} needs a multisampled swapchain, not built on Vulkan yet`);
-	}
 	r = resources.openResources();
 	p = pipelines.openPipelines();
 	cache = pass.newRenderPassCache();
@@ -206,8 +201,8 @@ export function destroyView(view: GPUTextureView): void {
 }
 
 export function acquireSwapchain(swapchain: NativeSwapchain): void {
-	if (swapchain.sampleCount != 1 || swapchain.resolveView !== null) {
-		stop(`vulkan: NativeSwapchain.sampleCount ${swapchain.sampleCount} needs a multisampled swapchain, not built on Vulkan yet`);
+	if (swapchain.resolveView !== null) {
+		stop("vulkan: the backend owns the multisampled canvas and resolves it into renderView; NativeSwapchain.resolveView stays null");
 	}
 	if (swapchain.depthStencilView !== null) {
 		stop("vulkan: the backend owns the swapchain depth; NativeSwapchain.depthStencilView stays null");
