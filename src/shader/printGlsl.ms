@@ -23,7 +23,6 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
-	irErrors,
 	isShift,
 	isArrayTexture,
 	isAtomic,
@@ -39,18 +38,20 @@ import {
 	rootOf,
 	stmtStructs,
 	structOrder,
-	unspecialized,
 } from "./irWalk";
 import {
 	binaryOperator,
+	exchangeSlot,
 	floatText,
+	glslAtomicName,
+	glslBits,
 	isIntMin,
-	literalFault,
 	mathName,
 	pointed,
+	repeatedBitsOperand,
 } from "./spelling";
 import { claimName } from "./names";
-import { readsFrom, strayWorkgroup } from "./specialize";
+import { printableEntry } from "./specialize";
 
 export enum GlslTarget {
 	Glsl430,
@@ -257,21 +258,6 @@ function typeName(p: Printer, t: ShaderType): string {
 	};
 }
 
-function exchangeSlot(scalar: ScalarKind): int32 { return scalar == ScalarKind.I32 ? 0 : 1; }
-
-function atomicName(op: Intrinsic): string {
-	return match (op) {
-		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",
-		Intrinsic.AtomicMax => "atomicMax",
-		Intrinsic.AtomicMin => "atomicMin",
-		Intrinsic.AtomicAnd => "atomicAnd",
-		Intrinsic.AtomicOr => "atomicOr",
-		Intrinsic.AtomicXor => "atomicXor",
-		Intrinsic.AtomicCompareExchangeWeak => "atomicCompSwap",
-		_ => "atomicExchange",
-	};
-}
-
 // SPIRV-Cross's GLSL atomics (measured through sokol-shdc): GLSL 4.30 has no atomic load or
 // store, so a load is an add of 0 and a store an exchange.
 function atomicText(p: Printer, e: ShaderExpr): string {
@@ -280,9 +266,13 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 	const value = match (e.intrinsic) {
 		Intrinsic.AtomicLoad => o[0].type.scalar == ScalarKind.U32 ? "0u" : "0",
 		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
-		_ => o.slice(1).map((a) => expr(p, a)).join(", "),
+		Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicMax | Intrinsic.AtomicMin |
+			Intrinsic.AtomicAnd | Intrinsic.AtomicOr | Intrinsic.AtomicXor |
+			Intrinsic.AtomicExchange =>
+			o.slice(1).map((a) => expr(p, a)).join(", "),
+		_ => fail(p, e.intrinsic.toString() + " is no GLSL atomic expression"),
 	};
-	return atomicName(e.intrinsic) + "(" + expr(p, o[0]) + ", " + value + ")";
+	return glslAtomicName(e.intrinsic) + "(" + expr(p, o[0]) + ", " + value + ")";
 }
 
 function exchangeLet(p: Printer, s: ShaderStmt, at: string): string {
@@ -329,9 +319,7 @@ function isNone(e: ShaderExpr): boolean {
 	return e.kind == ExprKind.Literal && e.type.kind == ShaderTypeKind.Void;
 }
 
-function scalarLiteral(p: Printer, s: ScalarKind, v: float64): string {
-	const fault = literalFault(s, v);
-	if (fault != "") { return fail(p, fault); }
+function scalarLiteral(s: ScalarKind, v: float64): string {
 	return match (s) {
 		ScalarKind.F32 => pointed(floatText(v)),
 		ScalarKind.I32 => isIntMin(s, v) ? "(-2147483647 - 1)" : String(v as int64),
@@ -342,7 +330,7 @@ function scalarLiteral(p: Printer, s: ScalarKind, v: float64): string {
 
 function literalText(p: Printer, e: ShaderExpr): string {
 	const t = e.type;
-	const one = scalarLiteral(p, t.scalar, e.value);
+	const one = scalarLiteral(t.scalar, e.value);
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => one,
 		ShaderTypeKind.Vector => typeName(p, t) + "(" + one + ")",
@@ -468,7 +456,8 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 		return match (t.shape) {
 			TextureShape.D3 => converted(p, size, "ivec3", e.type),
 			TextureShape.D2Array => converted(p, size + ".xy", "ivec2", e.type),
-			_ => converted(p, size, "ivec2", e.type),
+			TextureShape.D2 => converted(p, size, "ivec2", e.type),
+			_ => fail(p, "a storage texture of shape " + t.shape.toString()),
 		};
 	}
 	if (t.kind != ShaderTypeKind.Texture) {
@@ -539,9 +528,6 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (e.intrinsic == Intrinsic.TextureSampleBias && p.stage != ShaderStage.Fragment) {
-		return fail(p, "TextureSampleBias outside a fragment stage");
-	}
 	const pair = pairOf(p, o[0], o[1]);
 	if (isComparison(p, pair)) {
 		return fail(p, e.intrinsic.toString() + " through a comparison sampler, which needs a " +
@@ -554,7 +540,8 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const name = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => "textureLod(",
 		Intrinsic.TextureSampleBias => "texture(",
-		_ => "textureGrad(",
+		Intrinsic.TextureSampleGrad => "textureGrad(",
+		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	};
 	return narrowed(name + pair.name + ", " + at + ", " + tail + ")", e.type);
 }
@@ -571,9 +558,6 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	if (texture.type.kind != ShaderTypeKind.Texture ||
 		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
-	}
-	if (!level && p.stage != ShaderStage.Fragment) {
-		return fail(p, name + " outside a fragment stage");
 	}
 	const pair = pairOf(p, texture, sampler);
 	if (!isComparison(p, pair)) {
@@ -660,23 +644,25 @@ function selectText(p: Printer, e: ShaderExpr): string {
 		operand(p, falseValue) + ")";
 }
 
-function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
-	if (p.stage != ShaderStage.Compute) {
-		return fail(p, e.intrinsic.toString() + " outside a compute entry");
+function bitsText(p: Printer, e: ShaderExpr): string {
+	if (p.es) {
+		return fail(p, e.intrinsic.toString() + " is not in GLSL ES 3.00 (ES 3.10 has it)");
 	}
-	return text;
+	const at = repeatedBitsOperand(e.intrinsic);
+	if (at >= 0) { pure(p, e.intrinsic.toString(), [e.operands[at]]); }
+	return glslBits(e.intrinsic, e.operands.map((o) => expr(p, o)), typeName(p, e.type),
+		e.type.scalar == ScalarKind.U32);
 }
 
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
-	const derivative = e.intrinsic == Intrinsic.Dpdx || e.intrinsic == Intrinsic.Dpdy ||
-		e.intrinsic == Intrinsic.Fwidth;
-	if (derivative && p.stage != ShaderStage.Fragment) {
-		return fail(p, e.intrinsic.toString() + " outside a fragment stage");
-	}
 	return match (e.intrinsic) {
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", typeName(p, e.operands[0].type),
 			e.type),
+		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
+			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm |
+			Intrinsic.Unpack4x8Snorm => bitsText(p, e),
 		Intrinsic.Saturate => "clamp(" + args() + ", 0.0, 1.0)",
 		Intrinsic.Fma => p.es ? "(" + operand(p, e.operands[0]) + " * " +
 			operand(p, e.operands[1]) + " + " + operand(p, e.operands[2]) + ")" :
@@ -698,8 +684,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			explicitSampleOf(p, e),
-		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "memoryBarrierShared(); barrier()"),
-		Intrinsic.StorageBarrier => computeOnly(p, e, "memoryBarrierBuffer(); barrier()"),
+		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
+		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
 		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,
 			"AtomicCompareExchangeWeak outside a " +
 			"local's initializer: atomicCompSwap returns only the old value"),
@@ -833,8 +819,7 @@ function resourceText(p: Printer, index: int32): string {
 function expr(p: Printer, e: ShaderExpr): string {
 	return match (e.kind) {
 		ExprKind.Literal => literalText(p, e),
-		ExprKind.Local => e.index >= 0 && e.index < p.current.locals.length ?
-			p.scope[p.current.params.length + e.index] : fail(p, "a local out of range"),
+		ExprKind.Local => p.scope[p.current.params.length + e.index],
 		ExprKind.Param => p.scope[e.index],
 		ExprKind.Constant => p.constantNames[e.index],
 		ExprKind.Workgroup => p.workgroupNames[e.index],
@@ -909,7 +894,6 @@ function assignment(p: Printer, s: ShaderStmt): string {
 }
 
 function letText(p: Printer, s: ShaderStmt): string {
-	if (s.local < 0 || s.local >= p.current.locals.length) { return fail(p, "a Let out of range"); }
 	const name = p.scope[p.current.params.length + s.local];
 	const head = declaration(p, p.current.locals[s.local].type, name);
 	return isNone(s.expr) ? head : head + " = " + expr(p, s.expr);
@@ -991,8 +975,7 @@ function stmt(p: Printer, s: ShaderStmt, depth: int32): string {
 		StmtKind.Continue => at + "continue;\n",
 		StmtKind.Return => isNone(s.expr) ? at + "return;\n" :
 			at + "return " + expr(p, s.expr) + ";\n",
-		StmtKind.Discard => p.stage == ShaderStage.Fragment ? at + "discard;\n" :
-			fail(p, "Discard outside a fragment stage"),
+		StmtKind.Discard => at + "discard;\n",
 	};
 }
 
@@ -1141,31 +1124,14 @@ export function printGlsl(
 	slots: BindingSlot[],
 	target: GlslTarget,
 ): Result<string, string> {
-	const invalid = irErrors(m);
-	if (invalid.length > 0) { return Result.err("printGlsl: " + invalid[0]); }
-	if (entryIndex < 0 || entryIndex >= m.entries.length) {
-		return Result.err("printGlsl: entry " + String(entryIndex) + " is out of range");
-	}
+	const printable = printableEntry(m, entryIndex);
+	if (!printable.ok) { return Result.err("printGlsl: " + printable.error); }
+	const reads = printable.value;
 	const entry = m.entries[entryIndex];
 	const es = target == GlslTarget.Glsl300es;
 	if (es && entry.stage == ShaderStage.Compute) {
 		return Result.err("printGlsl: entry '" + entry.name + "' is compute, which GLSL ES 3.00 " +
 			"has not");
-	}
-	const readsResult = readsFrom(m, entry.functionIndex);
-	if (!readsResult.ok) { return Result.err("printGlsl: " + readsResult.error); }
-	const reads = readsResult.value;
-	const stray = strayWorkgroup(m, entry, reads);
-	if (stray != "") { return Result.err("printGlsl: " + stray); }
-	const conditioned = unspecialized(m, entry.stage, reads.resources, reads.functions);
-	if (conditioned != "") {
-		return Result.err("printGlsl: " + conditioned + " is under a feature condition: " +
-			"specialize the module first");
-	}
-	const entryFunction = m.functions[entry.functionIndex];
-	if (entryFunction.params.length > 0 || entryFunction.result.kind != ShaderTypeKind.Void) {
-		return Result.err("printGlsl: entry '" + entry.name + "' takes parameters or returns a " +
-			"value; an entry reads and writes its stage's io");
 	}
 
 	let p = new Printer();

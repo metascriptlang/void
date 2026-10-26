@@ -259,17 +259,17 @@ test "what MSL cannot say is refused by name" {
 	assert refused(tiny(fragment, column(intrinsicOf(Intrinsic.Inverse, matrixType(4, 3),
 		[model()])))) == "printMsl: Inverse of a Matrix that is no square matrix";
 	assert refused(tiny(ShaderStage.Vertex, intrinsicOf(Intrinsic.Dpdx, VEC4,
-		[literal(VEC4, 1.0)]))) == "printMsl: dfdx outside a fragment entry";
+		[literal(VEC4, 1.0)]))) == "printMsl: entry 'tinyEntry': Dpdx outside a fragment entry";
 	assert refused(tiny(fragment, column(literal(MAT4, 1.0)))) == "printMsl: a literal of a Matrix";
 	assert refused(tiny(fragment, literal(VEC4, 1.0 / 0.0))) ==
-		"printMsl: a literal that is not finite";
+		"printMsl: function 'tinyEntry': a literal that is not finite";
 	assert refusalOf(tiny(fragment, column(model())), 0, []) ==
 		"printMsl: resource 'params' has no MSL slot";
 	assert refusalOf(tiny(fragment, column(model())), 1, []) == "printMsl: entry 1 is out of range";
 
 	let vertexDiscard = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
 	vertexDiscard.functions[0].body.splice(0, 0, stmtOf(StmtKind.Discard, new ShaderExpr(), []));
-	assert refused(vertexDiscard) == "printMsl: discard outside a fragment entry";
+	assert refused(vertexDiscard) == "printMsl: entry 'tinyEntry': Discard outside a fragment entry";
 
 	let signed = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
 	signed.ios.push(io("vertexIndex", ShaderStage.Vertex, IoDirection.In, I32,
@@ -358,7 +358,7 @@ test "depth comparison is refused by name where it cannot print" {
 	assert refused(compared(ShaderStage.Vertex, LEVEL, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Fragment, COMPARE, D2, true)) == "printed";
 	assert refused(compared(ShaderStage.Vertex, COMPARE, D2, true)) ==
-		"printMsl: TextureSampleCompare outside a fragment entry";
+		"printMsl: entry 'tinyEntry': TextureSampleCompare outside a fragment entry";
 	assert refused(compared(ShaderStage.Fragment, LEVEL, D2, false)) ==
 		"printMsl: TextureSampleCompareLevel through a sampler that is no comparison sampler binding";
 	assert refused(compared(ShaderStage.Fragment, COMPARE, TextureShape.D2, true)) ==

@@ -1,8 +1,4 @@
-// What a shader function is written against, named as TypeGPU names it (docs/VOCABULARY.md) and
-// meaning on the CPU what the GPU computes. The glsl macro (./emit.ms) knows a call into this
-// module by the module, and emits it under the GLSL spelling of the declaration's name.
-
-import { Wrap } from "../gpu/state";
+import { Compare, Wrap } from "../gpu/state";
 
 export struct Vec2f {
 	x: float32;
@@ -1806,23 +1802,16 @@ export function le(a: Vec3f, b: Vec3f): Vec3b {
 	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
 }
 
-// Field decorators of a stage's structs, named as WGSL names its attributes: `@builtin(position)`,
-// `@location(1)` on an output, `@binding(3)` on a binding. `@sampleType` and `@samplerType` give
-// a texture or sampler the binding type WebGPU's layout needs (`unfilterable_float`,
-// `nonfiltering`). `@feature(CUTOUT)` marks a boolean as the program key feature of that name.
-// `@access(read_write)` lets a compute entry write a storage buffer or texture (WGSL's access
-// mode), and `@format(rgba8unorm)` is a storage texture's texel format.
 export function builtin(): void {}
 export function location(): void {}
 export function binding(): void {}
 export function sampleType(): void {}
 export function samplerType(): void {}
 export function feature(): void {}
+export function interpolate(): void {}
 export function access(): void {}
 export function format(): void {}
 
-// WGSL's workgroupBarrier and storageBarrier; the CPU runs one invocation at a time, so they
-// wait for no one.
 export function workgroupBarrier(): void {}
 export function storageBarrier(): void {}
 
@@ -1837,7 +1826,6 @@ export struct AtomicU32 {
 	value: uint32;
 }
 
-// WGSL's __atomic_compare_exchange_result<T>, its old_value and exchanged.
 export struct AtomicExchangeI32 {
 	oldValue: int32;
 	exchanged: boolean;
@@ -1970,7 +1958,6 @@ export function atomicCompareExchangeWeak(
 	return { oldValue: old, exchanged: old == compare };
 }
 
-// WGSL's discard: the fragment writes nothing. Like TypeGPU's, it has no CPU meaning.
 export function discard(): never {
 	unreachable("discard: a fragment is discarded only on the GPU");
 }
@@ -2237,12 +2224,16 @@ export struct TextureCube {
 
 // The face a direction reads and where on it, by the OpenGL specification's cube map table
 // ("Cube Map Texture Selection"): the major axis picks the face, a tie going to x, then y.
-function cubeFaceOf(texture: TextureCube, dir: Vec3f): Texture2d {
+function cubeFaceIndex(dir: Vec3f): int32 {
 	const ax = abs(dir.x);
 	const ay = abs(dir.y);
 	const az = abs(dir.z);
-	const face = ax >= ay && ax >= az ? (dir.x >= 0.0 ? 0 : 1) :
+	return ax >= ay && ax >= az ? (dir.x >= 0.0 ? 0 : 1) :
 		ay >= az ? (dir.y >= 0.0 ? 2 : 3) : (dir.z >= 0.0 ? 4 : 5);
+}
+
+function cubeFaceOf(texture: TextureCube, dir: Vec3f): Texture2d {
+	const face = cubeFaceIndex(dir);
 	const size = texture.size * texture.size * 4;
 	return {
 		width: texture.size,
@@ -2345,4 +2336,563 @@ export function textureSample(texture: Texture2d, sampler: Sampler, uv: Vec2f): 
 	const top = lerp(texelAt(texture, x0, y0), texelAt(texture, x1, y0), fractionU);
 	const bottom = lerp(texelAt(texture, x0, y1), texelAt(texture, x1, y1), fractionU);
 	return lerp(top, bottom, fractionV);
+}
+
+// WGSL's texture_2d<i32>: four int32 a texel, fetched, never filtered.
+export struct Texture2dI32 {
+	width: int32;
+	height: int32;
+	texels: int32[];
+}
+
+export function textureLoad(texture: Texture2dI32, at: Vec2i, level: int32): Vec4i {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	const first = (at.y * texture.width + at.x) * 4;
+	const texels = texture.texels;
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+// WGSL's texture_3d<f32>: slices of one size, four floats a texel.
+export struct Texture3d {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: float32[];
+}
+
+function sliceOf(texture: Texture3d, z: int32): Texture2d {
+	const size = texture.width * texture.height * 4;
+	return {
+		width: texture.width,
+		height: texture.height,
+		texels: sliceTexels(texture.texels, z * size, size),
+	};
+}
+
+export function textureDimensions(texture: Texture3d, level: int32): Vec3i {
+	if (level != 0) { unreachable("textureDimensions: the CPU texture has no mip levels"); }
+	return { x: texture.width, y: texture.height, z: texture.depth };
+}
+
+export function textureLoad(texture: Texture3d, at: Vec3i, level: int32): Vec4f {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (at.z < 0 || at.z >= texture.depth ||
+		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return texelAt(sliceOf(texture, at.z), at.x, at.y);
+}
+
+// Trilinear on a texture of one level: each of the two slices around the coordinate is sampled
+// as textureSample, then the results mix by the coordinate's fraction between them.
+export function textureSample(texture: Texture3d, sampler: Sampler, uv: Vec3f): Vec4f {
+	const depth = texture.depth;
+	const flat: Vec2f = { x: uv.x, y: uv.y };
+	if (sampler.nearest) {
+		const z = wrapped(texelIndex(uv.z * (depth as float32)), depth, sampler.wrap);
+		return textureSample(sliceOf(texture, z), sampler, flat);
+	}
+	const w: float32 = uv.z * (depth as float32) - 0.5;
+	const slice = texelIndex(w);
+	const z0 = wrapped(slice, depth, sampler.wrap);
+	const z1 = wrapped(slice + 1, depth, sampler.wrap);
+	return lerp(textureSample(sliceOf(texture, z0), sampler, flat),
+		textureSample(sliceOf(texture, z1), sampler, flat), w - (slice as float32));
+}
+
+export function textureSampleLevel(
+	texture: Texture3d,
+	sampler: Sampler,
+	uv: Vec3f,
+	level: float32,
+): Vec4f {
+	return textureSample(texture, sampler, uv);
+}
+
+// WGSL's sampler_comparison: Sampler's filter and wrap, and the function a depth texel is
+// compared with, as the Vulkan specification's "Depth Compare Operation" (reference OP texel).
+export struct SamplerComparison {
+	nearest: boolean;
+	wrap: Wrap;
+	compare: Compare;
+}
+
+// WGSL's texture_depth_2d, texture_depth_2d_array and texture_depth_cube: one float32 a texel.
+export struct TextureDepth2d {
+	width: int32;
+	height: int32;
+	texels: float32[];
+}
+
+export struct TextureDepth2dArray {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: float32[];
+}
+
+export struct TextureDepthCube {
+	size: int32;
+	texels: float32[];
+}
+
+function depthPasses(compare: Compare, reference: float32, depth: float32): float32 {
+	const passes = match (compare) {
+		Compare.Always => true,
+		Compare.Never => false,
+		Compare.Equal => reference == depth,
+		Compare.NotEqual => reference != depth,
+		Compare.Greater => reference > depth,
+		Compare.GreaterEqual => reference >= depth,
+		Compare.Less => reference < depth,
+		Compare.LessEqual => reference <= depth,
+	};
+	return passes ? 1.0 : 0.0;
+}
+
+// The comparison runs per texel before the filter mixes the results (PCF), so the compared
+// texels become a color texture whose x is the result, and textureSample does the rest.
+function comparedTexels(
+	sampler: SamplerComparison,
+	reference: float32,
+	texels: float32[],
+	first: int32,
+	size: Vec2i,
+): Texture2d {
+	let compared: float32[] = [];
+	for (let i = 0; i < size.x * size.y; i++) {
+		compared.push(depthPasses(sampler.compare, reference, texels[first + i]));
+		compared.push(0.0);
+		compared.push(0.0);
+		compared.push(0.0);
+	}
+	return { width: size.x, height: size.y, texels: compared };
+}
+
+function plainSampler(sampler: SamplerComparison): Sampler {
+	return { nearest: sampler.nearest, wrap: sampler.wrap };
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+): float32 {
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels, 0, size);
+	return textureSample(compared, plainSampler(sampler), uv).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+): float32 {
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	const size: Vec2i = { x: texture.width, y: texture.height };
+	const compared = comparedTexels(sampler, reference, texture.texels,
+		layer * texture.width * texture.height, size);
+	return textureSample(compared, plainSampler(sampler), uv).x;
+}
+
+export function textureSampleCompare(
+	texture: TextureDepthCube,
+	sampler: SamplerComparison,
+	dir: Vec3f,
+	reference: float32,
+): float32 {
+	const size: Vec2i = { x: texture.size, y: texture.size };
+	const compared = comparedTexels(sampler, reference, texture.texels,
+		cubeFaceIndex(dir) * texture.size * texture.size, size);
+	const clamped: Sampler = { nearest: sampler.nearest, wrap: Wrap.Clamp };
+	return textureSample(compared, clamped, cubeFaceUv(dir)).x;
+}
+
+// A CPU depth texture has one level, so the level form compares as textureSampleCompare does.
+export function textureSampleCompareLevel(
+	texture: TextureDepth2d,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	reference: float32,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, reference);
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepth2dArray,
+	sampler: SamplerComparison,
+	uv: Vec2f,
+	layer: int32,
+	reference: float32,
+): float32 {
+	return textureSampleCompare(texture, sampler, uv, layer, reference);
+}
+
+export function textureSampleCompareLevel(
+	texture: TextureDepthCube,
+	sampler: SamplerComparison,
+	dir: Vec3f,
+	reference: float32,
+): float32 {
+	return textureSampleCompare(texture, sampler, dir, reference);
+}
+
+// WGSL's integer bit builtins on one invocation. The core runs on uint32 bits; int32 goes
+// through int32Bits and uint32Bits, as WGSL's i32 and u32 share their bits.
+export function countOneBits(x: uint32): uint32 {
+	let rest = x;
+	let n: uint32 = 0;
+	while (rest != 0) {
+		n += rest & 1;
+		rest = rest >> 1;
+	}
+	return n;
+}
+
+export function reverseBits(x: uint32): uint32 {
+	let rest = x;
+	let r: uint32 = 0;
+	for (let i = 0; i < 32; i++) {
+		r = (r << 1) | (rest & 1);
+		rest = rest >> 1;
+	}
+	return r;
+}
+
+function highestBit(x: uint32): int32 {
+	let rest = x;
+	let at = -1;
+	while (rest != 0) {
+		at += 1;
+		rest = rest >> 1;
+	}
+	return at;
+}
+
+function lowestBit(x: uint32): int32 {
+	if (x == 0) { return -1; }
+	let rest = x;
+	let at = 0;
+	while ((rest & 1) == 0) {
+		at += 1;
+		rest = rest >> 1;
+	}
+	return at;
+}
+
+// WGSL: the highest 0 bit of a negative i32, and -1 (all ones as u32) when no bit qualifies.
+export function firstLeadingBit(x: uint32): uint32 {
+	const at = highestBit(x);
+	return at < 0 ? 0xFFFFFFFF : at as uint32;
+}
+
+export function firstLeadingBit(x: int32): int32 {
+	return highestBit((x < 0 ? -(x + 1) : x) as uint32);
+}
+
+export function firstTrailingBit(x: uint32): uint32 {
+	const at = lowestBit(x);
+	return at < 0 ? 0xFFFFFFFF : at as uint32;
+}
+
+export function firstTrailingBit(x: int32): int32 { return lowestBit(uint32Bits(x)); }
+
+// The WGSL specification's extractBits and insertBits: offset and count clamp to the 32 bits.
+export function extractBits(e: uint32, offset: uint32, count: uint32): uint32 {
+	const o = min(offset, 32);
+	const c = min(count, 32 - o);
+	if (c == 0) { return 0; }
+	return (e << (32 - c - o)) >> (32 - c);
+}
+
+export function extractBits(e: int32, offset: uint32, count: uint32): int32 {
+	const o = min(offset, 32);
+	const c = min(count, 32 - o);
+	if (c == 0) { return 0; }
+	const bits = extractBits(uint32Bits(e), o, c);
+	const negative = ((bits >> (c - 1)) & 1) == 1;
+	return int32Bits(negative && c < 32 ? bits | (0xFFFFFFFF << c) : bits);
+}
+
+export function insertBits(e: uint32, newBits: uint32, offset: uint32, count: uint32): uint32 {
+	const o = min(offset, 32);
+	const c = min(count, 32 - o);
+	if (c == 0) { return e; }
+	const mask = (0xFFFFFFFF >> (32 - c)) << o;
+	return (e & ~mask) | ((newBits << o) & mask);
+}
+
+export function insertBits(e: int32, newBits: int32, offset: uint32, count: uint32): int32 {
+	return int32Bits(insertBits(uint32Bits(e), uint32Bits(newBits), offset, count));
+}
+
+export function countOneBits(x: int32): int32 { return int32Bits(countOneBits(uint32Bits(x))); }
+export function reverseBits(x: int32): int32 { return int32Bits(reverseBits(uint32Bits(x))); }
+
+export function countOneBits(v: Vec2u): Vec2u {
+	return vec2u(countOneBits(v.x), countOneBits(v.y));
+}
+export function reverseBits(v: Vec2u): Vec2u {
+	return vec2u(reverseBits(v.x), reverseBits(v.y));
+}
+export function firstLeadingBit(v: Vec2u): Vec2u {
+	return vec2u(firstLeadingBit(v.x), firstLeadingBit(v.y));
+}
+export function firstTrailingBit(v: Vec2u): Vec2u {
+	return vec2u(firstTrailingBit(v.x), firstTrailingBit(v.y));
+}
+export function extractBits(e: Vec2u, offset: uint32, count: uint32): Vec2u {
+	return vec2u(extractBits(e.x, offset, count), extractBits(e.y, offset, count));
+}
+export function insertBits(e: Vec2u, newBits: Vec2u, offset: uint32, count: uint32): Vec2u {
+	return vec2u(insertBits(e.x, newBits.x, offset, count), insertBits(e.y, newBits.y, offset, count));
+}
+export function countOneBits(v: Vec3u): Vec3u {
+	return vec3u(countOneBits(v.x), countOneBits(v.y), countOneBits(v.z));
+}
+export function reverseBits(v: Vec3u): Vec3u {
+	return vec3u(reverseBits(v.x), reverseBits(v.y), reverseBits(v.z));
+}
+export function firstLeadingBit(v: Vec3u): Vec3u {
+	return vec3u(firstLeadingBit(v.x), firstLeadingBit(v.y), firstLeadingBit(v.z));
+}
+export function firstTrailingBit(v: Vec3u): Vec3u {
+	return vec3u(firstTrailingBit(v.x), firstTrailingBit(v.y), firstTrailingBit(v.z));
+}
+export function extractBits(e: Vec3u, offset: uint32, count: uint32): Vec3u {
+	return vec3u(
+		extractBits(e.x, offset, count),
+		extractBits(e.y, offset, count),
+		extractBits(e.z, offset, count)
+	);
+}
+export function insertBits(e: Vec3u, newBits: Vec3u, offset: uint32, count: uint32): Vec3u {
+	return vec3u(
+		insertBits(e.x, newBits.x, offset, count),
+		insertBits(e.y, newBits.y, offset, count),
+		insertBits(e.z, newBits.z, offset, count)
+	);
+}
+export function countOneBits(v: Vec4u): Vec4u {
+	return vec4u(countOneBits(v.x), countOneBits(v.y), countOneBits(v.z), countOneBits(v.w));
+}
+export function reverseBits(v: Vec4u): Vec4u {
+	return vec4u(reverseBits(v.x), reverseBits(v.y), reverseBits(v.z), reverseBits(v.w));
+}
+export function firstLeadingBit(v: Vec4u): Vec4u {
+	return vec4u(
+		firstLeadingBit(v.x),
+		firstLeadingBit(v.y),
+		firstLeadingBit(v.z),
+		firstLeadingBit(v.w)
+	);
+}
+export function firstTrailingBit(v: Vec4u): Vec4u {
+	return vec4u(
+		firstTrailingBit(v.x),
+		firstTrailingBit(v.y),
+		firstTrailingBit(v.z),
+		firstTrailingBit(v.w)
+	);
+}
+export function extractBits(e: Vec4u, offset: uint32, count: uint32): Vec4u {
+	return vec4u(
+		extractBits(e.x, offset, count),
+		extractBits(e.y, offset, count),
+		extractBits(e.z, offset, count),
+		extractBits(e.w, offset, count)
+	);
+}
+export function insertBits(e: Vec4u, newBits: Vec4u, offset: uint32, count: uint32): Vec4u {
+	return vec4u(
+		insertBits(e.x, newBits.x, offset, count),
+		insertBits(e.y, newBits.y, offset, count),
+		insertBits(e.z, newBits.z, offset, count),
+		insertBits(e.w, newBits.w, offset, count)
+	);
+}
+export function countOneBits(v: Vec2i): Vec2i {
+	return vec2i(countOneBits(v.x), countOneBits(v.y));
+}
+export function reverseBits(v: Vec2i): Vec2i {
+	return vec2i(reverseBits(v.x), reverseBits(v.y));
+}
+export function firstLeadingBit(v: Vec2i): Vec2i {
+	return vec2i(firstLeadingBit(v.x), firstLeadingBit(v.y));
+}
+export function firstTrailingBit(v: Vec2i): Vec2i {
+	return vec2i(firstTrailingBit(v.x), firstTrailingBit(v.y));
+}
+export function extractBits(e: Vec2i, offset: uint32, count: uint32): Vec2i {
+	return vec2i(extractBits(e.x, offset, count), extractBits(e.y, offset, count));
+}
+export function insertBits(e: Vec2i, newBits: Vec2i, offset: uint32, count: uint32): Vec2i {
+	return vec2i(insertBits(e.x, newBits.x, offset, count), insertBits(e.y, newBits.y, offset, count));
+}
+export function countOneBits(v: Vec3i): Vec3i {
+	return vec3i(countOneBits(v.x), countOneBits(v.y), countOneBits(v.z));
+}
+export function reverseBits(v: Vec3i): Vec3i {
+	return vec3i(reverseBits(v.x), reverseBits(v.y), reverseBits(v.z));
+}
+export function firstLeadingBit(v: Vec3i): Vec3i {
+	return vec3i(firstLeadingBit(v.x), firstLeadingBit(v.y), firstLeadingBit(v.z));
+}
+export function firstTrailingBit(v: Vec3i): Vec3i {
+	return vec3i(firstTrailingBit(v.x), firstTrailingBit(v.y), firstTrailingBit(v.z));
+}
+export function extractBits(e: Vec3i, offset: uint32, count: uint32): Vec3i {
+	return vec3i(
+		extractBits(e.x, offset, count),
+		extractBits(e.y, offset, count),
+		extractBits(e.z, offset, count)
+	);
+}
+export function insertBits(e: Vec3i, newBits: Vec3i, offset: uint32, count: uint32): Vec3i {
+	return vec3i(
+		insertBits(e.x, newBits.x, offset, count),
+		insertBits(e.y, newBits.y, offset, count),
+		insertBits(e.z, newBits.z, offset, count)
+	);
+}
+export function countOneBits(v: Vec4i): Vec4i {
+	return vec4i(countOneBits(v.x), countOneBits(v.y), countOneBits(v.z), countOneBits(v.w));
+}
+export function reverseBits(v: Vec4i): Vec4i {
+	return vec4i(reverseBits(v.x), reverseBits(v.y), reverseBits(v.z), reverseBits(v.w));
+}
+export function firstLeadingBit(v: Vec4i): Vec4i {
+	return vec4i(
+		firstLeadingBit(v.x),
+		firstLeadingBit(v.y),
+		firstLeadingBit(v.z),
+		firstLeadingBit(v.w)
+	);
+}
+export function firstTrailingBit(v: Vec4i): Vec4i {
+	return vec4i(
+		firstTrailingBit(v.x),
+		firstTrailingBit(v.y),
+		firstTrailingBit(v.z),
+		firstTrailingBit(v.w)
+	);
+}
+export function extractBits(e: Vec4i, offset: uint32, count: uint32): Vec4i {
+	return vec4i(
+		extractBits(e.x, offset, count),
+		extractBits(e.y, offset, count),
+		extractBits(e.z, offset, count),
+		extractBits(e.w, offset, count)
+	);
+}
+export function insertBits(e: Vec4i, newBits: Vec4i, offset: uint32, count: uint32): Vec4i {
+	return vec4i(
+		insertBits(e.x, newBits.x, offset, count),
+		insertBits(e.y, newBits.y, offset, count),
+		insertBits(e.z, newBits.z, offset, count),
+		insertBits(e.w, newBits.w, offset, count)
+	);
+}
+
+// WGSL's data packing: component 0 in the low bits, a normalized value ⌊0.5 + scale * clamp⌋ as the
+// specification defines it. A NaN has no defined packing, so the oracle refuses it.
+function packedUnorm(x: float32, scale: float32): uint32 {
+	if (x != x) { unreachable("a pack of NaN is indeterminate"); }
+	return Math.floor(0.5 + scale * Math.min(1.0, Math.max(0.0, x))) as uint32;
+}
+
+function packedSnorm(x: float32, scale: float32, mask: uint32): uint32 {
+	if (x != x) { unreachable("a pack of NaN is indeterminate"); }
+	const n = Math.floor(0.5 + scale * Math.min(1.0, Math.max(-1.0, x)));
+	return uint32Bits(n as int32) & mask;
+}
+
+export function pack4x8unorm(e: Vec4f): uint32 {
+	return packedUnorm(e.x, 255.0) | (packedUnorm(e.y, 255.0) << 8) |
+		(packedUnorm(e.z, 255.0) << 16) | (packedUnorm(e.w, 255.0) << 24);
+}
+
+export function pack4x8snorm(e: Vec4f): uint32 {
+	return packedSnorm(e.x, 127.0, 0xFF) | (packedSnorm(e.y, 127.0, 0xFF) << 8) |
+		(packedSnorm(e.z, 127.0, 0xFF) << 16) | (packedSnorm(e.w, 127.0, 0xFF) << 24);
+}
+
+export function pack2x16unorm(e: Vec2f): uint32 {
+	return packedUnorm(e.x, 65535.0) | (packedUnorm(e.y, 65535.0) << 16);
+}
+
+export function pack2x16snorm(e: Vec2f): uint32 {
+	return packedSnorm(e.x, 32767.0, 0xFFFF) | (packedSnorm(e.y, 32767.0, 0xFFFF) << 16);
+}
+
+function signedField(bits: uint32, width: uint32): int32 {
+	const field = bits & ((1 << width) - 1);
+	return int32Bits(field >= (1 << (width - 1)) ? field | (0xFFFFFFFF << width) : field);
+}
+
+function unorm(bits: uint32, width: uint32, shift: uint32): float32 {
+	const top = (1 << width) - 1;
+	return ((bits >> shift) & top) as float32 / (top as float32);
+}
+
+function snorm(bits: uint32, width: uint32, shift: uint32): float32 {
+	const top = (1 << (width - 1)) - 1;
+	return Math.max(signedField(bits >> shift, width) as float32 / (top as float32), -1.0) as float32;
+}
+
+export function unpack4x8unorm(e: uint32): Vec4f {
+	return vec4f(unorm(e, 8, 0), unorm(e, 8, 8), unorm(e, 8, 16), unorm(e, 8, 24));
+}
+
+export function unpack4x8snorm(e: uint32): Vec4f {
+	return vec4f(snorm(e, 8, 0), snorm(e, 8, 8), snorm(e, 8, 16), snorm(e, 8, 24));
+}
+
+export function unpack2x16unorm(e: uint32): Vec2f { return vec2f(unorm(e, 16, 0), unorm(e, 16, 16)); }
+
+export function unpack2x16snorm(e: uint32): Vec2f { return vec2f(snorm(e, 16, 0), snorm(e, 16, 16)); }
+
+function nearestEven(x: float64): float64 {
+	const down = Math.floor(x);
+	const rest = x - down;
+	return rest > 0.5 || (rest == 0.5 && down % 2.0 == 1.0) ? down + 1.0 : down;
+}
+
+// IEEE binary16 by arithmetic, rounding to nearest even. A component the format cannot hold
+// (|x| >= 65520, NaN) has no defined pack in WGSL, so the oracle refuses it.
+function halfBits(x: float32): uint32 {
+	if (!(Math.abs(x) < 65520.0)) { unreachable("pack2x16float: a component outside f16's range"); }
+	const sign: uint32 = x < 0.0 || (x == 0.0 && 1.0 / x < 0.0) ? 0x8000 : 0;
+	const a = Math.abs(x) as float64;
+	if (a < 0.00006103515625) { return sign | (nearestEven(a * 16777216.0) as uint32); }
+	let e = Math.floor(Math.log2(a));
+	if (Math.pow(2.0, e) > a) { e -= 1.0; }
+	if (Math.pow(2.0, e + 1.0) <= a) { e += 1.0; }
+	let fraction = nearestEven((a / Math.pow(2.0, e) - 1.0) * 1024.0);
+	if (fraction == 1024.0) {
+		e += 1.0;
+		fraction = 0.0;
+	}
+	return sign | (((e + 15.0) as uint32) << 10) | (fraction as uint32);
+}
+
+function halfValue(bits: uint32): float32 {
+	const exponent = (bits >> 10) & 31;
+	if (exponent == 31) { unreachable("unpack2x16float: an infinity or NaN component"); }
+	const fraction = (bits & 1023) as float64;
+	const magnitude = exponent == 0 ? fraction / 16777216.0 :
+		(1.0 + fraction / 1024.0) * Math.pow(2.0, (exponent as float64) - 15.0);
+	return (bits & 0x8000) != 0 ? -magnitude as float32 : magnitude as float32;
+}
+
+export function pack2x16float(e: Vec2f): uint32 { return halfBits(e.x) | (halfBits(e.y) << 16); }
+
+export function unpack2x16float(e: uint32): Vec2f {
+	return vec2f(halfValue(e & 0xFFFF), halfValue(e >> 16));
 }

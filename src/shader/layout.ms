@@ -15,7 +15,7 @@ import {
 } from "./ir";
 import { TexturePair, readsFrom } from "./specialize";
 
-export enum LayoutRule {
+enum LayoutRule {
 	Std140,
 	Std430,
 }
@@ -26,6 +26,7 @@ export enum ShaderTarget {
 	Glsl430,
 	Hlsl5,
 	Msl,
+	Spirv,
 }
 
 export class StructLayout {
@@ -35,9 +36,9 @@ export class StructLayout {
 	align: int32 = 1;
 }
 
-export const MAX_UNIFORM_SLOTS = 8;
-export const MAX_VIEW_SLOTS = 32;
-export const MAX_SAMPLER_SLOTS = 12;
+const MAX_UNIFORM_SLOTS = 8;
+const MAX_VIEW_SLOTS = 32;
+const MAX_SAMPLER_SLOTS = 12;
 
 function roundUp(n: int32, to: int32): int32 {
 	return (n + to - 1) / to * to;
@@ -183,7 +184,6 @@ class PairUse {
 
 const UNPLACED = -2;
 
-// A view every listed stage reads takes one native slot in all of them, the first free in each.
 function highest(next: int32[], stages: int32[]): int32 {
 	let slot = 0;
 	for (const st of stages) { if (next[st] > slot) { slot = next[st]; } }

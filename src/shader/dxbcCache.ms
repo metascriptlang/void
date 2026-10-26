@@ -2,7 +2,7 @@ import { sha256 } from "std/crypto/sha256";
 import { exists, mkdir, remove, writeFile } from "std/fs";
 import { execFileResult } from "std/process";
 
-export class DxbcStage {
+class DxbcStage {
 	key: string = "";
 	path: string = "";
 	compiled: boolean = false;
@@ -12,14 +12,11 @@ export class DxbcStage {
 // The flags src/webgpu/d3d11/d3d11.c passes D3DCompile, in fxc's spelling; keep them in step.
 function fxcFlags(): string[] { return ["-Zpc", "-O3"]; }
 
-export function dxbcKey(profile: string, entry: string, code: string): string {
+function dxbcKey(profile: string, entry: string, code: string): string {
 	const keyed = profile + " " + entry + " " + fxcFlags().join(" ") + "\n" + code;
 	return sha256(keyed.asBytes()).toHex();
 }
 
-// The blob of a stage: `<cache>/<key>.dxbc`, else `<fresh>/<key>.dxbc`, else fxc compiles it into
-// `<fresh>`; with no fxc the path stays empty and the stage has none. A refused compile leaves the
-// source in `<fresh>` and its output in `error`.
 export function dxbcStage(
 	cache: string,
 	fresh: string,
@@ -52,7 +49,8 @@ export function dxbcStage(
 		["-nologo", "-T", profile, "-E", entry].concat(fxcFlags()).concat(["-Fo", made, source]),
 	);
 	if (!run.started || run.exitCode != 0) {
-		stage.error = "fxc " + profile + " refused " + source + ":\n" + run.output + run.errorOutput;
+		stage.error = "fxc " + profile + " refused " + source + ":\n" + run.output +
+			run.errorOutput;
 		return stage;
 	}
 	const _source = remove(source);

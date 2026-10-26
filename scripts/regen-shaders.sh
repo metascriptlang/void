@@ -42,27 +42,17 @@ ordinal() {
 		{ echo "src/void3d/gpu3d.ms enum $1 has no $2" >&2; return 1; }
 }
 
-# The bits of a programKeys.txt feature list, as gpu3d.ms packs a ProgramKey.
+# The bits of a programKeys.txt feature list, read from gpu3d.ms's ProgramKey.bits.
 featureBits() {
 	bits=0
 	[ "$1" = "-" ] && { echo 0; return; }
 	for feature in $(echo "$1" | tr ':' ' '); do
-		case "$feature" in
-			PREMULTIPLIED) bits=$((bits | 1 << 6)) ;;
-			CUTOUT)        bits=$((bits | 1 << 7)) ;;
-			SHADOWED)      bits=$((bits | 1 << 8)) ;;
-			UV_TRANSFORM)  bits=$((bits | 1 << 9)) ;;
-			BACK_TEXTURE)  bits=$((bits | 1 << 10)) ;;
-			DISSOLVE)      bits=$((bits | 1 << 11)) ;;
-			EMISSIVE)      bits=$((bits | 1 << 12)) ;;
-			NORMAL_MAP)    bits=$((bits | 1 << 13)) ;;
-			SKINNED)       bits=$((bits | 1 << 14)) ;;
-			NORMAL_MRT)    bits=$((bits | 1 << 15)) ;;
-			PBR)           bits=$((bits | 1 << 16)) ;;
-			PBR_MAPS)      bits=$((bits | 1 << 17)) ;;
-			INSTANCED)     bits=$((bits | 1 << 18)) ;;
-			*) echo "programKeys.txt: unknown feature $feature" >&2; return 1 ;;
-		esac
+		at=$(tr -d "\r" < src/void3d/gpu3d.ms |
+			grep -oE 'key\.[a-zA-Z]+ \? 1 : 0\) << [0-9]+' |
+			sed -E 's/key\.([a-zA-Z]+) \? 1 : 0\) << ([0-9]+)/\1 \2/; s/([a-z0-9])([A-Z])/\1_\2/g' |
+			tr a-z A-Z | awk -v name="$feature" '$1 == name { print $2; found = 1 } END { exit !found }') ||
+			{ echo "programKeys.txt: unknown feature $feature" >&2; return 1; }
+		bits=$((bits | 1 << at))
 	done
 	echo "$bits"
 }

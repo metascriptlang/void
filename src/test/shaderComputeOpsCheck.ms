@@ -76,6 +76,7 @@ function probePath(target: ShaderTarget, name: string): string {
 		ShaderTarget.Glsl430 => "out/glslProbe/" + name + ".430.comp",
 		ShaderTarget.Glsl300es => "out/glslProbe/" + name + ".es.comp",
 		ShaderTarget.Msl => "out/mslProbe/" + name + ".metal",
+		ShaderTarget.Spirv => "out/spirvProbe/" + name + ".spv",
 	};
 }
 

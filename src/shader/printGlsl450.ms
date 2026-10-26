@@ -8,6 +8,7 @@ import {
 	ExprKind,
 	FeatureCondition,
 	Interpolation,
+	Sampling,
 	Intrinsic,
 	IoDirection,
 	ResourceKind,
@@ -40,11 +41,16 @@ import {
 	nameStruct,
 	suffixed,
 } from "./names";
-import { binaryOperator, mathName } from "./spelling";
+import {
+	binaryOperator,
+	exchangeSlot,
+	glslAtomicName,
+	glslBits,
+	mathName,
+	repeatedBitsOperand,
+} from "./spelling";
 
-// GLSL 4.50 keywords and reserved words (section 3.6), builtin functions (section 8) and the
-// texture and sampler types of Vulkan GLSL.
-export function glslReservedWords(): string[] {
+function glslReservedWords(): string[] {
 	let words = [
 		"attribute", "const", "uniform", "varying", "buffer", "shared", "coherent", "volatile",
 		"restrict", "readonly", "writeonly", "atomic_uint", "layout", "centroid", "flat", "smooth",
@@ -199,29 +205,18 @@ function typeName(p: Glsl, t: ShaderType): string {
 	};
 }
 
-function exchangeSlot(scalar: ScalarKind): int32 { return scalar == ScalarKind.I32 ? 0 : 1; }
-
-function atomicName(op: Intrinsic): string {
-	return match (op) {
-		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "atomicAdd",
-		Intrinsic.AtomicMax => "atomicMax",
-		Intrinsic.AtomicMin => "atomicMin",
-		Intrinsic.AtomicAnd => "atomicAnd",
-		Intrinsic.AtomicOr => "atomicOr",
-		Intrinsic.AtomicXor => "atomicXor",
-		Intrinsic.AtomicCompareExchangeWeak => "atomicCompSwap",
-		_ => "atomicExchange",
-	};
-}
-
 function atomicText(e: ShaderExpr, args: string[]): string {
 	const unsigned = e.operands[0].type.scalar == ScalarKind.U32;
 	const rest = match (e.intrinsic) {
 		Intrinsic.AtomicLoad => unsigned ? "0u" : "0",
 		Intrinsic.AtomicSub => "-(" + args[1] + ")",
-		_ => args.slice(1).join(", "),
+		Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicMax | Intrinsic.AtomicMin |
+			Intrinsic.AtomicAnd | Intrinsic.AtomicOr | Intrinsic.AtomicXor |
+			Intrinsic.AtomicExchange =>
+			args.slice(1).join(", "),
+		_ => { broken(e.intrinsic.toString() + " is no GLSL atomic expression"); },
 	};
-	return atomicName(e.intrinsic) + "(" + args[0] + ", " + rest + ")";
+	return glslAtomicName(e.intrinsic) + "(" + args[0] + ", " + rest + ")";
 }
 
 function exchangeLet(p: Glsl, s: ShaderStmt, indent: string): string {
@@ -247,7 +242,13 @@ function isVarying(io: ShaderIo): boolean {
 }
 
 function builtinName(io: ShaderIo): string {
-	if (io.direction == IoDirection.Out) { return "gl_Position"; }
+	if (io.direction == IoDirection.Out) {
+		if (io.builtin == Builtin.FragDepth) { return "gl_FragDepth"; }
+		if (io.builtin != Builtin.Position) {
+			broken("@builtin " + io.builtin.toString() + " has no GLSL output");
+		}
+		return "gl_Position";
+	}
 	return match (io.builtin) {
 		Builtin.VertexIndex => "uint(gl_VertexIndex)",
 		Builtin.InstanceIndex => "uint(gl_InstanceIndex)",
@@ -376,15 +377,21 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.AtomicLoad | Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicSub |
 			Intrinsic.AtomicMax | Intrinsic.AtomicMin | Intrinsic.AtomicAnd | Intrinsic.AtomicOr |
 			Intrinsic.AtomicXor | Intrinsic.AtomicExchange |
-			Intrinsic.AtomicCompareExchangeWeak => atomicName(op),
-		_ => mathOrStop(op),
+			Intrinsic.AtomicCompareExchangeWeak => glslAtomicName(op),
+		_ => mathName(op),
 	};
 }
 
-function mathOrStop(op: Intrinsic): string {
-	const name = mathName(op);
-	if (name == "") { throw new Error("internal: printGlsl450 has no spelling for " + op.toString()); }
-	return name;
+function callsFunction(e: ShaderExpr): boolean {
+	return e.kind == ExprKind.Call || e.operands.some((o) => callsFunction(o));
+}
+
+function bitsText(p: Glsl, e: ShaderExpr, args: string[]): string {
+	const at = repeatedBitsOperand(e.intrinsic);
+	if (at >= 0 && callsFunction(e.operands[at])) {
+		broken(e.intrinsic.toString() + " prints its offset twice, and the offset calls a function");
+	}
+	return glslBits(e.intrinsic, args, typeName(p, e.type), e.type.scalar == ScalarKind.U32);
 }
 
 function intrinsic(p: Glsl, e: ShaderExpr): string {
@@ -393,10 +400,15 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const texture = e.operands.length > 0 ? e.operands[0].type : new ShaderType();
 	const layered = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.D2Array;
 	const cube = texture.kind == ShaderTypeKind.Texture && texture.shape == TextureShape.Cube;
-	const shape = texture.kind == ShaderTypeKind.Texture && texture.scalar == ScalarKind.U32 ?
-		"usampler2D(" : layered ? "sampler2DArray(" : cube ? "samplerCube(" : "sampler2D(";
+	const isTexture = texture.kind == ShaderTypeKind.Texture;
+	const shape = isTexture && texture.scalar == ScalarKind.U32 ? "usampler2D(" :
+		isTexture && texture.scalar == ScalarKind.I32 ? "isampler2D(" :
+		isTexture && texture.shape == TextureShape.D3 ? "sampler3D(" :
+		layered ? "sampler2DArray(" : cube ? "samplerCube(" : "sampler2D(";
 	const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 	return match (e.intrinsic) {
+		Intrinsic.CountOneBits | Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit |
+			Intrinsic.ExtractBits | Intrinsic.InsertBits => bitsText(p, e, args),
 		Intrinsic.Saturate => "clamp(" + args[0] + ", 0.0, 1.0)",
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",
@@ -452,7 +464,8 @@ function imageName(t: ShaderType): string {
 	return (unsigned ? "u" : "") + match (t.shape) {
 		TextureShape.D2Array => "image2DArray",
 		TextureShape.D3 => "image3D",
-		_ => "image2D",
+		TextureShape.D2 => "image2D",
+		_ => { broken("a storage texture of shape " + t.shape.toString()); },
 	};
 }
 
@@ -469,8 +482,11 @@ function compared(e: ShaderExpr, args: string[]): string {
 		TextureShape.DepthCube => level ? "textureGrad(samplerCubeShadow" + pair + ", vec4(" +
 			coords + "), vec3(0.0), vec3(0.0))" :
 			"texture(samplerCubeShadow" + pair + ", vec4(" + coords + "))",
-		_ => level ? "textureLod(sampler2DShadow" + pair + ", vec3(" + coords + "), 0.0)" :
-			"texture(sampler2DShadow" + pair + ", vec3(" + coords + "))",
+		TextureShape.Depth2d => level ? "textureLod(sampler2DShadow" + pair + ", vec3(" + coords +
+			"), 0.0)" : "texture(sampler2DShadow" + pair + ", vec3(" + coords + "))",
+		_ => {
+			broken("a depth compare of a " + e.operands[0].type.shape.toString() + " texture");
+		},
 	};
 }
 
@@ -491,7 +507,8 @@ function simple(p: Glsl, s: ShaderStmt): string {
 			AssignOp.Mul => "*=",
 			AssignOp.Div => "/=",
 			AssignOp.Mod => "%=",
-			_ => "=",
+			AssignOp.Set => "=",
+			_ => { broken(s.assign.toString() + " is no compound assignment"); },
 		} + " " + (s.target.kind == ExprKind.Io ? expr(p, s.expr) : value(p, s.expr)),
 	};
 }
@@ -627,9 +644,13 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 			TextureShape.Depth2dArray | TextureShape.DepthCube =>
 				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
 					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
-			_ => r.type.scalar == ScalarKind.U32 ?
+			TextureShape.D3 => sampleTag(r) + slot + "texture3D " + r.name + ";\n",
+			TextureShape.D2 | TextureShape.Depth2d => r.type.scalar == ScalarKind.U32 ?
 				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
+				r.type.scalar == ScalarKind.I32 ?
+				"@image_sample_type " + r.name + " sint\n" + slot + "itexture2D " + r.name + ";\n" :
 				sampleTag(r) + slot + "texture2D " + r.name + ";\n",
+			_ => { broken(r.name + " is a " + r.type.shape.toString() + " texture, no GLSL 450"); },
 		},
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Filtering ? "" : "@sampler_type " +
 			r.name + " " + samplerTypeName(r.samplerType) + "\n") + slot + "sampler " + r.name +
@@ -649,8 +670,17 @@ function ioText(p: Glsl, index: int32): string {
 	if (io.direction == IoDirection.Out && io.stage == ShaderStage.Fragment) {
 		return "layout(location=" + String(io.location) + ") out " + spelled + ";\n";
 	}
-	return (io.interpolation == Interpolation.Flat ? "flat " : "") +
-		(io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
+	const mode = match (io.interpolation) {
+		Interpolation.Perspective => "",
+		Interpolation.Linear => "noperspective ",
+		Interpolation.Flat => "flat ",
+	};
+	const sampling = match (io.sampling) {
+		Sampling.Center => "",
+		Sampling.Centroid => "centroid ",
+		Sampling.Sample => "sample ",
+	};
+	return mode + sampling + (io.direction == IoDirection.In ? "in " : "out ") + spelled + ";\n";
 }
 
 function nameDeclarations(p: Glsl): void {
@@ -722,7 +752,6 @@ function nameDeclarations(p: Glsl): void {
 	}
 }
 
-// One stage of a module, its first entry, as Vulkan-style GLSL 450 for sokol-shdc.
 export function printGlsl450(m: ShaderModule): string {
 	let p = new Glsl();
 	p.module = m;

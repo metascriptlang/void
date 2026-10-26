@@ -23,7 +23,6 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
-	irErrors,
 	isArrayTexture,
 	isAtomic,
 } from "./ir";
@@ -35,21 +34,18 @@ import {
 	hasEffect,
 	innermost,
 	ioLocation,
-	rootOf,
 	stmtStructs,
 	structOrder,
-	unspecialized,
 } from "./irWalk";
 import {
 	binaryOperator,
 	floatText,
 	isIntMin,
-	literalFault,
 	mathName,
 	pointed,
 } from "./spelling";
 import { claimName } from "./names";
-import { readsFrom, strayWorkgroup } from "./specialize";
+import { printableEntry } from "./specialize";
 
 function hlslKeywords(): string[] {
 	return [
@@ -216,7 +212,8 @@ function texelWidth(format: TexelFormat): int32 {
 	return match (format) {
 		TexelFormat.R32float | TexelFormat.R32uint => 1,
 		TexelFormat.Rg32float => 2,
-		_ => 4,
+		TexelFormat.Rgba8unorm | TexelFormat.Rgba8snorm | TexelFormat.Rgba8uint |
+			TexelFormat.Rgba16float | TexelFormat.Rgba32float => 4,
 	};
 }
 
@@ -255,7 +252,7 @@ function temporary(p: Printer, name: string): string {
 	return named;
 }
 
-function interlockedName(op: Intrinsic): string {
+function interlockedName(p: Printer, op: Intrinsic): string {
 	return match (op) {
 		Intrinsic.AtomicLoad | Intrinsic.AtomicAdd | Intrinsic.AtomicSub => "InterlockedAdd",
 		Intrinsic.AtomicMax => "InterlockedMax",
@@ -263,7 +260,8 @@ function interlockedName(op: Intrinsic): string {
 		Intrinsic.AtomicAnd => "InterlockedAnd",
 		Intrinsic.AtomicOr => "InterlockedOr",
 		Intrinsic.AtomicXor => "InterlockedXor",
-		_ => "InterlockedExchange",
+		Intrinsic.AtomicStore | Intrinsic.AtomicExchange => "InterlockedExchange",
+		_ => fail(p, op.toString() + " has no Interlocked spelling"),
 	};
 }
 
@@ -288,7 +286,11 @@ function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string):
 	const value = match (e.intrinsic) {
 		Intrinsic.AtomicLoad => "0",
 		Intrinsic.AtomicSub => "-" + operand(p, o[1]),
-		_ => expr(p, o[1]),
+		Intrinsic.AtomicStore | Intrinsic.AtomicAdd | Intrinsic.AtomicMax | Intrinsic.AtomicMin |
+			Intrinsic.AtomicAnd | Intrinsic.AtomicOr | Intrinsic.AtomicXor |
+			Intrinsic.AtomicExchange =>
+			expr(p, o[1]),
+		_ => fail(p, e.intrinsic.toString() + " has no Interlocked spelling"),
 	};
 	const exchange = e.intrinsic == Intrinsic.AtomicStore ||
 		e.intrinsic == Intrinsic.AtomicExchange;
@@ -298,7 +300,7 @@ function atomicStatement(p: Printer, e: ShaderExpr, result: string, at: string):
 		out = temporary(p, "exchanged");
 		head = at + scalar + " " + out + ";\n";
 	}
-	return head + at + interlockedName(e.intrinsic) + "(" + place + ", " + value +
+	return head + at + interlockedName(p, e.intrinsic) + "(" + place + ", " + value +
 		(out == "" ? "" : ", " + out) + ");\n";
 }
 
@@ -319,9 +321,7 @@ function isNone(e: ShaderExpr): boolean {
 	return e.kind == ExprKind.Literal && e.type.kind == ShaderTypeKind.Void;
 }
 
-function scalarLiteral(p: Printer, s: ScalarKind, v: float64): string {
-	const fault = literalFault(s, v);
-	if (fault != "") { return fail(p, fault); }
+function scalarLiteral(s: ScalarKind, v: float64): string {
 	return match (s) {
 		ScalarKind.F32 => pointed(floatText(v)),
 		ScalarKind.I32 => isIntMin(s, v) ? "(-2147483647 - 1)" : String(v as int64),
@@ -332,7 +332,7 @@ function scalarLiteral(p: Printer, s: ScalarKind, v: float64): string {
 
 function literalText(p: Printer, e: ShaderExpr): string {
 	const t = e.type;
-	const one = scalarLiteral(p, t.scalar, e.value);
+	const one = scalarLiteral(t.scalar, e.value);
 	return match (t.kind) {
 		ShaderTypeKind.Scalar => one,
 		ShaderTypeKind.Vector => typeName(p, t) + "(" + repeated(one, t.rows) + ")",
@@ -462,6 +462,14 @@ function converted(p: Printer, text: string, from: string, to: ShaderType): stri
 	return from == target ? text : target + "(" + text + ")";
 }
 
+function storageSizeNames(p: Printer, shape: TextureShape): string[] {
+	if (shape == TextureShape.D3) { return ["width", "height", "depth"]; }
+	if (shape == TextureShape.D2Array) { return ["width", "height", "layers"]; }
+	if (shape == TextureShape.D2) { return ["width", "height"]; }
+	fail(p, "a storage texture of shape " + shape.toString());
+	return [];
+}
+
 function sizeOf(p: Printer, e: ShaderExpr): string {
 	const args = withoutSampler(e);
 	const t = args[0].type;
@@ -469,11 +477,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const typeText = typeName(p, t);
 		const deep = t.shape == TextureShape.D3;
-		const sizes = match (t.shape) {
-			TextureShape.D3 => ["width", "height", "depth"],
-			TextureShape.D2Array => ["width", "height", "layers"],
-			_ => ["width", "height"],
-		};
+		const sizes = storageSizeNames(p, t.shape);
 		const result = deep ? "uint3" : "uint2";
 		const kept = deep ? "width, height, depth" : "width, height";
 		const name = helper(p, "imageSize " + typeText, "imageSize", (n) =>
@@ -494,7 +498,8 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 		TextureShape.D3 => ["width", "height", "depth", "levels"],
 		TextureShape.D2Array | TextureShape.Depth2dArray | TextureShape.CubeArray =>
 			["width", "height", "layers", "levels"],
-		_ => ["width", "height", "levels"],
+		TextureShape.D2 | TextureShape.Cube | TextureShape.Depth2d | TextureShape.DepthCube |
+			TextureShape.Multisampled2d => ["width", "height", "levels"],
 	};
 	if (t.shape == TextureShape.Multisampled2d) {
 		const name = helper(p, "textureSize " + typeText, "textureSize", (n) =>
@@ -569,6 +574,10 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		p.module.resources[sampler.index].samplerType == SamplerType.Comparison) {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
+	if (p.stage != ShaderStage.Fragment) {
+		return operand(p, texture) + ".SampleLevel(" + expr(p, sampler) + ", " +
+			layeredAt(p, e, layered) + ", 0.0)";
+	}
 	return operand(p, texture) + ".Sample(" + expr(p, sampler) + ", " + layeredAt(p, e, layered) +
 		")";
 }
@@ -576,9 +585,6 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const t = o[0].type;
-	if (e.intrinsic == Intrinsic.TextureSampleBias && p.stage != ShaderStage.Fragment) {
-		return fail(p, "TextureSampleBias outside a fragment stage");
-	}
 	const layer = isArrayTexture(t) ? 1 : 0;
 	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "float4(" :
 		"float3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
@@ -586,7 +592,8 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 	const method = match (e.intrinsic) {
 		Intrinsic.TextureSampleLevel => ".SampleLevel(",
 		Intrinsic.TextureSampleBias => ".SampleBias(",
-		_ => ".SampleGrad(",
+		Intrinsic.TextureSampleGrad => ".SampleGrad(",
+		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
 	};
 	return operand(p, o[0]) + method + expr(p, o[1]) + ", " + at + ", " + tail + ")";
 }
@@ -603,9 +610,6 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 	if (texture.type.kind != ShaderTypeKind.Texture ||
 		sampler.type.kind != ShaderTypeKind.Sampler) {
 		return fail(p, name + " takes a texture and a sampler first");
-	}
-	if (!level && p.stage != ShaderStage.Fragment) {
-		return fail(p, name + " outside a fragment stage");
 	}
 	if (sampler.kind != ExprKind.Resource ||
 		p.module.resources[sampler.index].samplerType != SamplerType.Comparison) {
@@ -658,16 +662,94 @@ function intrinsicName(op: Intrinsic): string {
 	};
 }
 
-function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
-	if (p.stage != ShaderStage.Compute) {
-		return fail(p, e.intrinsic.toString() + " outside a compute entry");
+function packLanes(lanes: int32, width: int32, scale: string, signed: boolean): string {
+	const names = ["x", "y", "z", "w"];
+	let parts: string[] = [];
+	for (let i = 0; i < lanes; i++) {
+		const lane = signed ? "(int(round(clamp(e." + names[i] + ", -1.0, 1.0) * " + scale +
+			")) & " + (width == 8 ? "0xFF" : "0xFFFF") + ")" :
+			"uint(round(clamp(e." + names[i] + ", 0.0, 1.0) * " + scale + "))";
+		parts.push(i == 0 ? lane : "(" + lane + " << " + String(i * width) + ")");
 	}
-	return text;
+	return signed ? "uint(" + parts.join(" | ") + ")" : parts.join(" | ");
+}
+
+function unpackLanes(width: int32, scale: string, signed: boolean): string {
+	if (signed) {
+		const shifts = width == 8 ? ["e << 24", "e << 16", "e << 8", "e"] : ["e << 16", "e"];
+		const lanes = String(shifts.length);
+		return "max(float" + lanes + "(int" + lanes + "(" + shifts.join(", ") + ") >> " +
+			String(32 - width) + ") / " + scale + ", -1.0)";
+	}
+	const fields = width == 8 ? ["e & 0xFF", "(e >> 8) & 0xFF", "(e >> 16) & 0xFF", "e >> 24"] :
+		["e & 0xFFFF", "e >> 16"];
+	return "float" + String(fields.length) + "(" + fields.join(", ") + ") / " + scale;
+}
+
+function packText(op: Intrinsic): string {
+	return match (op) {
+		Intrinsic.Pack4x8Unorm => packLanes(4, 8, "255.0", false),
+		Intrinsic.Pack4x8Snorm => packLanes(4, 8, "127.0", true),
+		Intrinsic.Pack2x16Unorm => packLanes(2, 16, "65535.0", false),
+		Intrinsic.Pack2x16Snorm => packLanes(2, 16, "32767.0", true),
+		Intrinsic.Pack2x16Float => "f32tof16(e.x) | (f32tof16(e.y) << 16)",
+		Intrinsic.Unpack4x8Unorm => unpackLanes(8, "255.0", false),
+		Intrinsic.Unpack4x8Snorm => unpackLanes(8, "127.0", true),
+		Intrinsic.Unpack2x16Unorm => unpackLanes(16, "65535.0", false),
+		Intrinsic.Unpack2x16Snorm => unpackLanes(16, "32767.0", true),
+		_ => "float2(f16tof32(e), f16tof32(e >> 16))",
+	};
+}
+
+// HLSL has no intrinsic for these: each is a helper function, as naga writes them, so an operand
+// is evaluated once. FXC has no int overload of countbits, reversebits, firstbithigh and firstbitlow.
+function bitsOf(p: Printer, e: ShaderExpr): string {
+	const o = e.operands;
+	const op = e.intrinsic;
+	const isSigned = e.type.scalar == ScalarKind.I32;
+	const t = typeName(p, e.type);
+	if (op == Intrinsic.CountOneBits || op == Intrinsic.ReverseBits) {
+		const call = (op == Intrinsic.CountOneBits ? "countbits(" : "reversebits(") +
+			(isSigned ? "asuint(" + expr(p, o[0]) + "))" : expr(p, o[0]) + ")");
+		return isSigned ? "asint(" + call + ")" : call;
+	}
+	if (op == Intrinsic.FirstLeadingBit || op == Intrinsic.FirstTrailingBit) {
+		const call = (op == Intrinsic.FirstLeadingBit ? "firstbithigh(" : "firstbitlow(") +
+			expr(p, o[0]) + ")";
+		return isSigned ? "asint(" + call + ")" : call;
+	}
+	if (op == Intrinsic.ExtractBits) {
+		const name = helper(p, "extractBits " + t, "extractBits", (n) =>
+			t + " " + n + "(" + t + " e, uint offset, uint count)\n{\n" +
+			"    uint w = 32u;\n    uint o = min(offset, w);\n    uint c = min(count, w - o);\n" +
+			"    if (c == 0u) { return (" + t + ")0; }\n" +
+			"    return (e << (w - c - o)) >> (w - c);\n}\n");
+		return name + "(" + o.map((a) => expr(p, a)).join(", ") + ")";
+	}
+	if (op == Intrinsic.InsertBits) {
+		const name = helper(p, "insertBits " + t, "insertBits", (n) =>
+			t + " " + n + "(" + t + " e, " + t + " newBits, uint offset, uint count)\n{\n" +
+			"    uint w = 32u;\n    uint o = min(offset, w);\n    uint c = min(count, w - o);\n" +
+			"    if (c == 0u) { return e; }\n" +
+			"    uint mask = (0xFFFFFFFFu >> (32u - c)) << o;\n" +
+			"    return (e & ~mask) | ((newBits << o) & mask);\n}\n");
+		return name + "(" + o.map((a) => expr(p, a)).join(", ") + ")";
+	}
+	const from = typeName(p, o[0].type);
+	const name = helper(p, op.toString(), mathName(op), (n) =>
+		t + " " + n + "(" + from + " e)\n{\n    return " + packText(op) + ";\n}\n");
+	return name + "(" + expr(p, o[0]) + ")";
 }
 
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	return match (e.intrinsic) {
+		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
+			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
+			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
+			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
+			Intrinsic.Unpack2x16Float => bitsOf(p, e),
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", "int", e.type),
 		Intrinsic.Inverse => inverseOf(p, e),
 		Intrinsic.UpperLeft3x3 => "((float3x3)" + operand(p, e.operands[0]) + ")",
@@ -685,8 +767,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleCompareLevel => compareOf(p, e, true),
 		Intrinsic.TextureSampleLevel | Intrinsic.TextureSampleBias | Intrinsic.TextureSampleGrad =>
 			explicitSampleOf(p, e),
-		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "GroupMemoryBarrierWithGroupSync()"),
-		Intrinsic.StorageBarrier => computeOnly(p, e, "DeviceMemoryBarrierWithGroupSync()"),
+		Intrinsic.WorkgroupBarrier => "GroupMemoryBarrierWithGroupSync()",
+		Intrinsic.StorageBarrier => "DeviceMemoryBarrierWithGroupSync()",
 		_ => isAtomic(e.intrinsic) ? fail(p, e.intrinsic.toString() + " inside an expression or " +
 			"a for header: Interlocked* hands its result back through an out parameter, so an " +
 			"atomic is a statement or a local's initializer") :
@@ -738,8 +820,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 	const m = p.module;
 	return match (e.kind) {
 		ExprKind.Literal => literalText(p, e),
-		ExprKind.Local => e.index >= 0 && e.index < p.current.locals.length ?
-			p.scope[p.current.params.length + e.index] : fail(p, "a local out of range"),
+		ExprKind.Local => p.scope[p.current.params.length + e.index],
 		ExprKind.Param => p.scope[e.index],
 		ExprKind.Constant => p.constantNames[e.index],
 		ExprKind.Workgroup => p.workgroupNames[e.index],
@@ -804,7 +885,6 @@ function assignment(p: Printer, s: ShaderStmt): string {
 }
 
 function letText(p: Printer, s: ShaderStmt): string {
-	if (s.local < 0 || s.local >= p.current.locals.length) { return fail(p, "a Let out of range"); }
 	const name = p.scope[p.current.params.length + s.local];
 	const head = declaration(p, p.current.locals[s.local].type, name);
 	return isNone(s.expr) ? head : head + " = " + initializer(p, s.expr);
@@ -923,7 +1003,9 @@ function packedSize(t: ShaderType): int32 {
 		ShaderTypeKind.Vector => 4 * t.rows,
 		ShaderTypeKind.Matrix => 4 * t.rows * t.columns,
 		ShaderTypeKind.Array => t.length * packedSize(t.element[0]),
-		_ => -1,
+		ShaderTypeKind.Void | ShaderTypeKind.RuntimeArray | ShaderTypeKind.Struct |
+			ShaderTypeKind.Texture | ShaderTypeKind.Sampler | ShaderTypeKind.StorageTexture |
+			ShaderTypeKind.ExchangeResult => -1,
 	};
 }
 
@@ -957,9 +1039,11 @@ function storageStructText(p: Printer, structIndex: int32, resource: int32): str
 		if (loose) {
 			return fail(p, owner + " has a std430 stride a structured buffer does not pack");
 		}
+		const size = packedSize(t);
+		if (size < 0) { return fail(p, owner + " is a " + own.kind.toString() + " with no size"); }
 		pad(layout.value.offsets[i]);
 		text += "    " + declaration(p, t, p.fieldNames[structIndex][i]) + ";\n";
-		end += packedSize(t);
+		end += size;
 	}
 	pad(layout.value.size);
 	return text + "};\n\n";
@@ -990,7 +1074,8 @@ function registerOf(p: Printer, index: int32, slots: BindingSlot[]): string {
 	const space = match (r.kind) {
 		ResourceKind.UniformBlock => "b",
 		ResourceKind.Sampler => "s",
-		_ => writable ? "u" : "t",
+		ResourceKind.Texture => "t",
+		ResourceKind.StorageBuffer | ResourceKind.StorageTexture => writable ? "u" : "t",
 	};
 	return "register(" + space + String(found[0].nativeSlot) + ")";
 }
@@ -1150,22 +1235,10 @@ export function printHlsl(
 	entryIndex: int32,
 	slots: BindingSlot[],
 ): Result<string, string> {
-	const invalid = irErrors(m);
-	if (invalid.length > 0) { return Result.err("printHlsl: " + invalid[0]); }
-	if (entryIndex < 0 || entryIndex >= m.entries.length) {
-		return Result.err("printHlsl: entry " + String(entryIndex) + " is out of range");
-	}
+	const printable = printableEntry(m, entryIndex);
+	if (!printable.ok) { return Result.err("printHlsl: " + printable.error); }
+	const reads = printable.value;
 	const entry = m.entries[entryIndex];
-	const readsResult = readsFrom(m, entry.functionIndex);
-	if (!readsResult.ok) { return Result.err("printHlsl: " + readsResult.error); }
-	const reads = readsResult.value;
-	const stray = strayWorkgroup(m, entry, reads);
-	if (stray != "") { return Result.err("printHlsl: " + stray); }
-	const conditioned = unspecialized(m, entry.stage, reads.resources, reads.functions);
-	if (conditioned != "") {
-		return Result.err("printHlsl: " + conditioned + " is under a feature condition: " +
-			"specialize the module first");
-	}
 
 	let p = new Printer();
 	p.reserved = hlslKeywords().concat(hlslIntrinsics());
@@ -1238,12 +1311,6 @@ export function printHlsl(
 	for (const f of functions) { p.functionNames[f] = claim(p, p.globals, m.functions[f].name); }
 	for (const w of reads.workgroups) {
 		p.workgroupNames[w] = claim(p, p.globals, m.workgroups[w].name);
-	}
-
-	const entryFunction = m.functions[entry.functionIndex];
-	if (entryFunction.params.length > 0 || entryFunction.result.kind != ShaderTypeKind.Void) {
-		return Result.err("printHlsl: entry '" + entry.name + "' takes parameters or returns a " +
-			"value; an entry reads and writes its stage's io");
 	}
 
 	let head = "";

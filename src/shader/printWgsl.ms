@@ -30,17 +30,15 @@ import {
 import { BindingSlot } from "./layout";
 import { builtinType, ioLocation } from "./irWalk";
 import { claimName } from "./names";
-import { readsFrom, strayWorkgroup } from "./specialize";
+import { printableEntry } from "./specialize";
 import {
 	binaryOperator,
 	floatText,
 	isIntMin,
-	literalFault,
+	isMath,
 	mathName,
 } from "./spelling";
 
-// WGSL keywords and reserved words (sections 15.1, 15.2), the predeclared types and enumerants
-// a declaration would shadow, and every builtin function this printer calls.
 function wgslReservedWords(): string[] {
 	let words = [
 		"alias", "break", "case", "const", "const_assert", "continue", "continuing", "default",
@@ -90,7 +88,9 @@ function wgslReservedWords(): string[] {
 		}
 	}
 	for (let i = 0; i <= (Intrinsic.TextureDimensions as int32); i++) {
-		const name = builtinName(i as Intrinsic);
+		const op = i as Intrinsic;
+		if (!isMath(op) && op != Intrinsic.Select) { continue; }
+		const name = builtinName(op);
 		if (name != "") { words.push(name); }
 	}
 	return words;
@@ -103,6 +103,22 @@ function builtinName(op: Intrinsic): string {
 		Intrinsic.Dpdx => "dpdx",
 		Intrinsic.Dpdy => "dpdy",
 		Intrinsic.Select => "select",
+		Intrinsic.CountOneBits => "countOneBits",
+		Intrinsic.ReverseBits => "reverseBits",
+		Intrinsic.FirstLeadingBit => "firstLeadingBit",
+		Intrinsic.FirstTrailingBit => "firstTrailingBit",
+		Intrinsic.ExtractBits => "extractBits",
+		Intrinsic.InsertBits => "insertBits",
+		Intrinsic.Pack4x8Unorm => "pack4x8unorm",
+		Intrinsic.Pack4x8Snorm => "pack4x8snorm",
+		Intrinsic.Pack2x16Unorm => "pack2x16unorm",
+		Intrinsic.Pack2x16Snorm => "pack2x16snorm",
+		Intrinsic.Pack2x16Float => "pack2x16float",
+		Intrinsic.Unpack4x8Unorm => "unpack4x8unorm",
+		Intrinsic.Unpack4x8Snorm => "unpack4x8snorm",
+		Intrinsic.Unpack2x16Unorm => "unpack2x16unorm",
+		Intrinsic.Unpack2x16Snorm => "unpack2x16snorm",
+		Intrinsic.Unpack2x16Float => "unpack2x16float",
 		_ => mathName(op),
 	};
 }
@@ -276,25 +292,18 @@ function atomicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.AtomicOr => "atomicOr",
 		Intrinsic.AtomicXor => "atomicXor",
 		Intrinsic.AtomicExchange => "atomicExchange",
-		_ => "atomicCompareExchangeWeak",
+		Intrinsic.AtomicCompareExchangeWeak => "atomicCompareExchangeWeak",
+		_ => refusal(p, e.intrinsic.toString() + " has no WGSL atomic spelling"),
 	};
 	return name + "(" + place + rest + ")";
 }
 
-function numberText(p: Printer, value: float64): string {
-	const fault = literalFault(ScalarKind.F32, value);
-	if (fault != "") { return refusal(p, fault); }
-	return floatText(value);
-}
-
-function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
+function scalarLiteral(s: ScalarKind, value: float64): string {
 	if (s == ScalarKind.Bool) { return value != 0.0 ? "true" : "false"; }
 	if (s == ScalarKind.F32) {
-		const text = numberText(p, value) + "f";
+		const text = floatText(value) + "f";
 		return value < 0.0 || text.startsWith("-") ? "(" + text + ")" : text;
 	}
-	const fault = literalFault(s, value);
-	if (fault != "") { return refusal(p, fault); }
 	if (isIntMin(s, value)) { return "(-2147483647i - 1i)"; }
 	const text = String(value as int64) + (s == ScalarKind.I32 ? "i" : "u");
 	return value < 0.0 ? "(" + text + ")" : text;
@@ -302,8 +311,8 @@ function scalarLiteral(p: Printer, s: ScalarKind, value: float64): string {
 
 function literalText(p: Printer, t: ShaderType, value: float64): string {
 	return match (t.kind) {
-		ShaderTypeKind.Scalar => scalarLiteral(p, t.scalar, value),
-		ShaderTypeKind.Vector => typeText(p, t) + "(" + scalarLiteral(p, t.scalar, value) + ")",
+		ShaderTypeKind.Scalar => scalarLiteral(t.scalar, value),
+		ShaderTypeKind.Vector => typeText(p, t) + "(" + scalarLiteral(t.scalar, value) + ")",
 		_ => refusal(p, "a literal of a " + t.kind.toString()),
 	};
 }
@@ -395,20 +404,13 @@ function withoutSamplers(args: ShaderExpr[]): ShaderExpr[] {
 	return args.filter((a) => a.type.kind != ShaderTypeKind.Sampler);
 }
 
-function fragmentOnly(p: Printer, what: string): void {
-	if (p.stage != ShaderStage.Fragment) {
-		refusal(p, what + " outside a fragment entry");
-	}
-	p.derivatives = true;
-}
-
 function isDepth(t: ShaderType): boolean {
 	return t.shape == TextureShape.Depth2d || t.shape == TextureShape.Depth2dArray ||
 		t.shape == TextureShape.DepthCube;
 }
 
 function biasText(p: Printer, o: ShaderExpr[]): string {
-	fragmentOnly(p, "TextureSampleBias");
+	p.derivatives = true;
 	return "textureSampleBias(" + argsText(p, o) + ")";
 }
 
@@ -421,7 +423,7 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 		return refusal(p, name + " takes a texture, a sampler, coordinates, for an array texture " +
 			"a layer, and a depth reference");
 	}
-	if (!level) { fragmentOnly(p, name); }
+	if (!level) { p.derivatives = true; }
 	const sampler = o[1].kind == ExprKind.Resource ? p.module.resources[o[1].index] : null;
 	if (sampler === null || sampler.samplerType != SamplerType.Comparison) {
 		return refusal(p, name + " through a sampler that is no comparison sampler binding");
@@ -433,19 +435,12 @@ function compareText(p: Printer, e: ShaderExpr, level: boolean): string {
 	return (level ? "textureSampleCompareLevel(" : "textureSampleCompare(") + argsText(p, o) + ")";
 }
 
-function computeOnly(p: Printer, e: ShaderExpr, text: string): string {
-	if (p.stage != ShaderStage.Compute) {
-		return refusal(p, e.intrinsic.toString() + " outside a compute entry");
-	}
-	return text;
-}
-
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
-	const name = builtinName(op);
+	const name = isMath(op) || op == Intrinsic.Select ? builtinName(op) : "";
 	if (op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth) {
-		fragmentOnly(p, name);
+		p.derivatives = true;
 	}
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
 	if (op == Intrinsic.UpperLeft3x3) { p.upperLeft = true; }
@@ -471,8 +466,8 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleLevel => "textureSampleLevel(" + argsText(p, o) + ")",
 		Intrinsic.TextureSampleBias => biasText(p, o),
 		Intrinsic.TextureSampleGrad => "textureSampleGrad(" + argsText(p, o) + ")",
-		Intrinsic.WorkgroupBarrier => computeOnly(p, e, "workgroupBarrier()"),
-		Intrinsic.StorageBarrier => computeOnly(p, e, "storageBarrier()"),
+		Intrinsic.WorkgroupBarrier => "workgroupBarrier()",
+		Intrinsic.StorageBarrier => "storageBarrier()",
 		_ => isAtomic(op) ? atomicText(p, e) : refusal(p, op.toString() + " has no WGSL spelling"),
 	};
 }
@@ -827,20 +822,10 @@ function stageText(m: ShaderModule, entry: int32): string {
 
 export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]):
 	Result<string, string> {
-	if (entry < 0 || entry >= m.entries.length) {
-		return Result.err("printWgsl: entry " + String(entry) + " is out of range");
-	}
+	const printable = printableEntry(m, entry);
+	if (!printable.ok) { return Result.err("printWgsl: " + printable.error); }
+	const reads = printable.value;
 	const e = m.entries[entry];
-	const f = m.functions[e.functionIndex];
-	if (f.params.length > 0 || f.result.kind != ShaderTypeKind.Void) {
-		return Result.err("printWgsl: entry '" + e.name + "' takes parameters or returns a " +
-			"value; a stage reads and writes its ios");
-	}
-	const read = readsFrom(m, e.functionIndex);
-	if (!read.ok) { return Result.err("printWgsl: " + read.error); }
-	const reads = read.value;
-	const stray = strayWorkgroup(m, e, reads);
-	if (stray != "") { return Result.err("printWgsl: " + stray); }
 
 	let p = new Printer();
 	p.reserved = wgslReservedWords();

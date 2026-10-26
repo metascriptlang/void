@@ -179,6 +179,22 @@ export enum Intrinsic {
 	Dpdx,
 	Dpdy,
 	Fwidth,
+	CountOneBits,
+	ReverseBits,
+	FirstLeadingBit,
+	FirstTrailingBit,
+	ExtractBits,
+	InsertBits,
+	Pack4x8Unorm,
+	Pack4x8Snorm,
+	Pack2x16Unorm,
+	Pack2x16Snorm,
+	Pack2x16Float,
+	Unpack4x8Unorm,
+	Unpack4x8Snorm,
+	Unpack2x16Unorm,
+	Unpack2x16Snorm,
+	Unpack2x16Float,
 	TextureSample,
 	TextureLoad,
 	TextureStore,
@@ -203,7 +219,7 @@ export enum Intrinsic {
 	TextureSampleGrad,
 }
 
-export function isExplicitSample(op: Intrinsic): boolean {
+function isExplicitSample(op: Intrinsic): boolean {
 	return op == Intrinsic.TextureSampleLevel || op == Intrinsic.TextureSampleBias ||
 		op == Intrinsic.TextureSampleGrad;
 }
@@ -232,6 +248,61 @@ function explicitSampleError(e: ShaderExpr): string {
 	if (o.length != 3 + (isArrayTexture(t) ? 1 : 0) + tail) {
 		return name + " takes a texture, a sampler, coordinates, a layer of an array, and " +
 			(tail == 2 ? "two derivatives" : "a level or bias") + ", as WGSL's";
+	}
+	return "";
+}
+
+export function isBitsOp(op: Intrinsic): boolean {
+	const at = op as int32;
+	return at >= (Intrinsic.CountOneBits as int32) && at <= (Intrinsic.Unpack2x16Float as int32);
+}
+
+function isBitsOnIntegers(op: Intrinsic): boolean {
+	return (op as int32) <= (Intrinsic.InsertBits as int32);
+}
+
+function bitsOperands(e: ShaderExpr): ShaderType[] {
+	const x = e.operands.length > 0 ? e.operands[0].type : new ShaderType();
+	const u = scalarType(ScalarKind.U32);
+	return match (e.intrinsic) {
+		Intrinsic.ExtractBits => [x, u, u],
+		Intrinsic.InsertBits => [x, x, u, u],
+		Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm => [vectorType(ScalarKind.F32, 4)],
+		Intrinsic.Pack2x16Unorm | Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float =>
+			[vectorType(ScalarKind.F32, 2)],
+		Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm |
+			Intrinsic.Unpack2x16Snorm | Intrinsic.Unpack2x16Float => [u],
+		_ => [x],
+	};
+}
+
+function bitsResult(e: ShaderExpr): ShaderType {
+	return match (e.intrinsic) {
+		Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
+			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float => scalarType(ScalarKind.U32),
+		Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm => vectorType(ScalarKind.F32, 4),
+		Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm | Intrinsic.Unpack2x16Float =>
+			vectorType(ScalarKind.F32, 2),
+		_ => bitsOperands(e)[0],
+	};
+}
+
+function bitsError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const want = bitsOperands(e);
+	if (e.operands.length != want.length) {
+		return name + " takes " + String(want.length) + " operands, as WGSL's";
+	}
+	for (let i = 0; i < want.length; i++) {
+		if (!sameShaderType(e.operands[i].type, want[i])) {
+			return name + ": operand " + String(i) + " is not the type WGSL's takes";
+		}
+	}
+	if (isBitsOnIntegers(e.intrinsic) && !isIntegral(want[0])) {
+		return name + " takes an i32 or u32 scalar or vector, as WGSL's";
+	}
+	if (!sameShaderType(e.type, bitsResult(e))) {
+		return name + " returns another type than WGSL's";
 	}
 	return "";
 }
@@ -619,7 +690,10 @@ function builtinStages(b: Builtin, direction: IoDirection): ShaderStage[] {
 		return match (b) {
 			Builtin.Position => [ShaderStage.Vertex],
 			Builtin.FragDepth | Builtin.SampleMask => [ShaderStage.Fragment],
-			_ => [],
+			Builtin.None | Builtin.VertexIndex | Builtin.InstanceIndex | Builtin.FrontFacing |
+				Builtin.LocalInvocationId | Builtin.LocalInvocationIndex |
+				Builtin.GlobalInvocationId | Builtin.WorkgroupId | Builtin.NumWorkgroups |
+				Builtin.SampleIndex => [],
 		};
 	}
 	return match (b) {
@@ -627,7 +701,8 @@ function builtinStages(b: Builtin, direction: IoDirection): ShaderStage[] {
 		Builtin.Position | Builtin.FrontFacing | Builtin.SampleIndex | Builtin.SampleMask =>
 			[ShaderStage.Fragment],
 		Builtin.None | Builtin.FragDepth => [],
-		_ => [ShaderStage.Compute],
+		Builtin.LocalInvocationId | Builtin.LocalInvocationIndex | Builtin.GlobalInvocationId |
+			Builtin.WorkgroupId | Builtin.NumWorkgroups => [ShaderStage.Compute],
 	};
 }
 
@@ -658,11 +733,55 @@ function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
 	return t.element.some((e) => holdsAtomic(m, e));
 }
 
+const RUNTIME_ARRAY = "is a runtime array, which only a storage buffer is";
+
+function holdsRuntimeArray(t: ShaderType): boolean {
+	return t.kind == ShaderTypeKind.RuntimeArray || t.element.some((e) => holdsRuntimeArray(e));
+}
+
 class Checker {
 	module: ShaderModule = new ShaderModule();
 	errors: string[] = [];
 	current: int32 = -1;
 	callees: int32[][] = [];
+	fragmentOnly: string[][] = [];
+	computeOnly: string[][] = [];
+}
+
+function isFragmentOnly(op: Intrinsic): boolean {
+	return op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth ||
+		op == Intrinsic.TextureSampleBias || op == Intrinsic.TextureSampleCompare;
+}
+
+function isComputeOnly(op: Intrinsic): boolean {
+	return op == Intrinsic.WorkgroupBarrier || op == Intrinsic.StorageBarrier;
+}
+
+function noted(list: string[], what: string): void {
+	if (!list.includes(what)) { list.push(what); }
+}
+
+function stageOnlyErrors(c: Checker, e: ShaderEntry, owner: string): void {
+	let reached = [e.functionIndex];
+	for (let k = 0; k < reached.length; k++) {
+		for (const callee of c.callees[reached[k]]) {
+			if (!reached.includes(callee)) { reached.push(callee); }
+		}
+	}
+	let refused: string[] = [];
+	for (const i of reached) {
+		if (e.stage != ShaderStage.Fragment) {
+			for (const what of c.fragmentOnly[i]) {
+				noted(refused, what + " outside a fragment entry");
+			}
+		}
+		if (e.stage != ShaderStage.Compute) {
+			for (const what of c.computeOnly[i]) {
+				noted(refused, what + " outside a compute entry");
+			}
+		}
+	}
+	for (const message of refused) { c.errors.push(owner + ": " + message); }
 }
 
 function conditionErrors(c: Checker, cond: FeatureCondition, owner: string): void {
@@ -678,6 +797,27 @@ function inRange(c: Checker, index: int32, count: int32, what: string, owner: st
 	}
 }
 
+function literalFault(s: ScalarKind, v: float64): string {
+	if (v - v != 0.0) { return "a literal that is not finite"; }
+	if (s != ScalarKind.F32 && s != ScalarKind.Bool && v != Math.floor(v)) {
+		return "an integer literal with a fraction";
+	}
+	return "";
+}
+
+function literalError(e: ShaderExpr): string {
+	const t = e.type;
+	const spelled = t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector;
+	if (e.kind != ExprKind.Literal || !spelled) { return ""; }
+	return literalFault(t.scalar, e.value);
+}
+
+function constantErrors(c: Checker, e: ShaderExpr, owner: string): void {
+	const fault = literalError(e);
+	if (fault != "") { c.errors.push(owner + ": " + fault); }
+	for (const o of e.operands) { constantErrors(c, o, owner); }
+}
+
 function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string): void {
 	const m = c.module;
 	match (e.kind) {
@@ -689,11 +829,24 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 			inRange(c, e.index, m.resources.length as int32, "resource", owner),
 		ExprKind.Call => {
 			inRange(c, e.index, m.functions.length as int32, "function", owner);
-			if (e.index >= 0 && e.index < m.functions.length) { c.callees[c.current].push(e.index); }
+			if (e.index >= 0 && e.index < m.functions.length) {
+				c.callees[c.current].push(e.index);
+			}
 		},
 		ExprKind.Workgroup =>
 			inRange(c, e.index, m.workgroups.length as int32, "workgroup variable", owner),
 		_ => {},
+	}
+	if (e.kind == ExprKind.Intrinsic && isFragmentOnly(e.intrinsic)) {
+		noted(c.fragmentOnly[c.current], e.intrinsic.toString());
+	}
+	if (e.kind == ExprKind.Intrinsic && isComputeOnly(e.intrinsic)) {
+		noted(c.computeOnly[c.current], e.intrinsic.toString());
+	}
+	const fault = literalError(e);
+	if (fault != "") { c.errors.push(owner + ": " + fault); }
+	if (e.type.kind == ShaderTypeKind.RuntimeArray && e.kind != ExprKind.Resource) {
+		c.errors.push(owner + ": a runtime array is read only through its storage buffer");
 	}
 	const shift = e.kind == ExprKind.Binary && isShift(e.binary);
 	if (shift && (e.operands.length != 2 || e.operands[1].type.scalar != ScalarKind.U32)) {
@@ -701,6 +854,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 	if (e.kind == ExprKind.Intrinsic && isExplicitSample(e.intrinsic)) {
 		const error = explicitSampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && isBitsOp(e.intrinsic)) {
+		const error = bitsError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	const atomic = e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);
@@ -730,6 +887,7 @@ function stmtErrors(c: Checker, s: ShaderStmt, f: ShaderFunction, owner: string)
 		inRange(c, s.local, f.locals.length as int32, "local", owner);
 	}
 	if (s.kind == StmtKind.FeatureIf) { conditionErrors(c, s.condition, owner); }
+	if (s.kind == StmtKind.Discard) { noted(c.fragmentOnly[c.current], "Discard"); }
 	for (const list of [s.init, s.update, s.body, s.otherwise]) {
 		for (const inner of list) { stmtErrors(c, inner, f, owner); }
 	}
@@ -805,17 +963,39 @@ export function irErrors(m: ShaderModule): string[] {
 		if (varying && isIntegral(io.type) && io.interpolation != Interpolation.Flat) {
 			c.errors.push(owner + ": an integer varying is flat");
 		}
+		if (varying && io.interpolation == Interpolation.Flat && io.sampling != Sampling.Center) {
+			c.errors.push(owner + ": a flat varying takes no sampling, as WGSL's");
+		}
+		if (holdsRuntimeArray(io.type)) { c.errors.push(owner + ": it " + RUNTIME_ARRAY); }
 		if (io.builtin == Builtin.None && io.type.kind == ShaderTypeKind.Array) {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
 		}
 	}
+	for (const s of m.structs) {
+		for (const f of s.members) {
+			if (holdsRuntimeArray(f.type)) {
+				c.errors.push("struct '" + s.name + "': member '" + f.name + "' " + RUNTIME_ARRAY);
+			}
+		}
+	}
+	for (const k of m.constants) {
+		const owner = "constant '" + k.name + "'";
+		if (holdsRuntimeArray(k.type)) { c.errors.push(owner + ": it " + RUNTIME_ARRAY); }
+		constantErrors(c, k.value, owner);
+	}
 	c.callees = m.functions.map((): int32[] => []);
+	c.fragmentOnly = m.functions.map((): string[] => []);
+	c.computeOnly = m.functions.map((): string[] => []);
 	for (let i = 0; i < m.functions.length; i++) {
 		const f = m.functions[i];
 		c.current = i;
 		const owner = "function '" + f.name + "'";
 		conditionErrors(c, f.condition, owner);
+		if (holdsRuntimeArray(f.result)) { c.errors.push(owner + ": its result " + RUNTIME_ARRAY); }
 		for (const v of f.params.concat(f.locals)) {
+			if (holdsRuntimeArray(v.type)) {
+				c.errors.push(owner + ": '" + v.name + "' " + RUNTIME_ARRAY);
+			}
 			if (holdsAtomic(m, v.type)) {
 				c.errors.push(owner + ": '" + v.name + "' holds an atomic, which lives only in a " +
 					"storage buffer or workgroup memory, as WGSL's");
@@ -847,6 +1027,9 @@ export function irErrors(m: ShaderModule): string[] {
 	for (const e of m.entries) {
 		const owner = "entry '" + e.name + "'";
 		inRange(c, e.functionIndex, m.functions.length as int32, "function", owner);
+		if (e.functionIndex >= 0 && e.functionIndex < m.functions.length) {
+			stageOnlyErrors(c, e, owner);
+		}
 		stages.push(e.stage);
 		const outputs = m.ios.filter((io) => io.stage == e.stage &&
 			io.direction == IoDirection.Out);
@@ -871,6 +1054,10 @@ export function irErrors(m: ShaderModule): string[] {
 			if (!linked) {
 				c.errors.push("varying " + String(i) + " differs between the vertex output and " +
 					"the fragment input");
+			} else if (written[i].interpolation != read[i].interpolation ||
+				written[i].sampling != read[i].sampling) {
+				c.errors.push("varying " + String(i) + " is interpolated differently by the vertex " +
+					"output and the fragment input");
 			}
 		}
 	}

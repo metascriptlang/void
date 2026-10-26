@@ -2,6 +2,9 @@
 // names each broken invariant.
 
 import { Node, NodeKind } from "std/meta";
+import { stageSource } from "../shader/descriptor";
+import { ShaderTarget } from "../shader/layout";
+import { VEC4, prepend, tiny } from "./shaderProbeModules";
 import {
 	Access,
 	AssignOp,
@@ -15,6 +18,7 @@ import {
 	ResourceKind,
 	SamplerType,
 	ScalarKind,
+	ShaderConstant,
 	ShaderEntry,
 	ShaderExpr,
 	ShaderField,
@@ -297,4 +301,86 @@ test "every reference names a declaration that exists" {
 	const errors = irErrors(m);
 	assert errors[0] == "function 'commandsToImage': resource 7 is out of range";
 	assert errors[1] == "entry 'commandsToImage': function 3 is out of range";
+}
+
+const STAGE_TARGETS = [ShaderTarget.Hlsl5, ShaderTarget.Wgsl, ShaderTarget.Glsl430, ShaderTarget.Msl];
+
+function refusedOn(m: ShaderModule, rule: string): boolean {
+	return refusedAs(m, "entry 'tinyEntry': " + rule);
+}
+
+function refusedAs(m: ShaderModule, named: string): boolean {
+	if (!irErrors(m).includes(named)) { return false; }
+	for (const target of STAGE_TARGETS) {
+		const printed = stageSource(m, 0, target);
+		if (printed.ok || !printed.error.endsWith(": " + named)) { return false; }
+	}
+	return true;
+}
+
+test "a discard is a fragment entry's" {
+	let m = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
+	prepend(m.functions[0], stmtOf(StmtKind.Discard, new ShaderExpr(), []));
+	assert refusedOn(m, "Discard outside a fragment entry");
+}
+
+test "a derivative is a fragment entry's, also through a helper" {
+	let m = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
+	prepend(m.functions[0], stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.Dpdx, VEC4, [literal(VEC4, 1.0)]), []));
+	assert refusedOn(m, "Dpdx outside a fragment entry");
+
+	let helped = tiny(ShaderStage.Vertex, literal(VEC4, 0.0));
+	helped.functions.push(shaderFunction("slope", [], [stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.Fwidth, VEC4, [literal(VEC4, 1.0)]), []), ret()]));
+	prepend(helped.functions[0], stmtOf(StmtKind.Call, exprOf(ExprKind.Call, new ShaderType(), 1,
+		[]), []));
+	assert refusedOn(helped, "Fwidth outside a fragment entry");
+}
+
+test "a barrier is a compute entry's" {
+	let m = tiny(ShaderStage.Fragment, literal(VEC4, 0.0));
+	prepend(m.functions[0], stmtOf(StmtKind.Call,
+		intrinsicOf(Intrinsic.StorageBarrier, new ShaderType(), []), []));
+	assert refusedOn(m, "StorageBarrier outside a compute entry");
+}
+
+test "a literal is finite, and an integer literal has no fraction, for every target" {
+	assert refusedAs(tiny(ShaderStage.Fragment, literal(VEC4, 1.0 / 0.0)),
+		"function 'tinyEntry': a literal that is not finite");
+	assert refusedAs(tiny(ShaderStage.Fragment, literal(scalarType(ScalarKind.I32), 1.5)),
+		"function 'tinyEntry': an integer literal with a fraction");
+	let constant = tiny(ShaderStage.Fragment, literal(VEC4, 0.0));
+	let k = new ShaderConstant();
+	k.name = "limit";
+	k.type = scalarType(ScalarKind.F32);
+	k.value = literal(k.type, 0.0 / 0.0);
+	constant.constants.push(k);
+	assert refusedAs(constant, "constant 'limit': a literal that is not finite");
+}
+
+test "a runtime array is a storage buffer's type and nothing else's" {
+	const runtime = arrayType(scalarType(ScalarKind.F32), -1);
+	let member = computeModule();
+	member.structs[0].members.push(field("tail", runtime));
+	assert irErrors(member)[0] ==
+		"struct 'Command': member 'tail' is a runtime array, which only a storage buffer is";
+	let local = computeModule();
+	local.functions[0].locals.push(field("scratch", runtime));
+	assert irErrors(local)[0] ==
+		"function 'commandsToImage': 'scratch' is a runtime array, which only a storage buffer is";
+	let constant = computeModule();
+	let k = new ShaderConstant();
+	k.name = "table";
+	k.type = runtime;
+	k.value = literal(scalarType(ScalarKind.F32), 0.0);
+	constant.constants.push(k);
+	assert irErrors(constant)[0] ==
+		"constant 'table': it is a runtime array, which only a storage buffer is";
+	let read = computeModule();
+	read.functions[0].body.splice(0, 0, stmtOf(StmtKind.Call,
+		exprOf(ExprKind.Local, runtime, 0, []), []));
+	assert irErrors(read)[0] ==
+		"function 'commandsToImage': a runtime array is read only through its storage buffer";
+	assert irErrors(computeModule()).length == 0;
 }

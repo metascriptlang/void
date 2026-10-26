@@ -31,7 +31,6 @@ import { blurShaderModule } from "../void2d/shader2dModules";
 import {
 	BOOL,
 	F32,
-	I32,
 	MAT4,
 	U32,
 	UVEC3,
@@ -42,6 +41,7 @@ import {
 	computeModule,
 	construct,
 	depthModule,
+	everyModule,
 	f32,
 	fragmentModule,
 	i32,
@@ -277,7 +277,7 @@ test "a depth comparison HLSL cannot spell is refused by name" {
 	let vertex = depthModule();
 	vertex.functions[0].body[1].expr.operands[2].operands[0].intrinsic =
 		Intrinsic.TextureSampleCompare;
-	assert refusal(vertex, 0) == "printHlsl: TextureSampleCompare outside a fragment stage";
+	assert refusal(vertex, 0) == "printHlsl: entry 'depthVs': TextureSampleCompare outside a fragment entry";
 
 	let filtering = depthModule();
 	filtering.resources[6].samplerType = SamplerType.Filtering;
@@ -313,4 +313,10 @@ test "an array texture samples with its layer packed into the coordinates" {
 	const m = layeredBlurModule();
 	assert irErrors(m).length == 0;
 	assert printed(m, 1, [0, 1]).includes("srcTex.Sample(srcSmp, float3(uv, float(2)))");
+}
+
+test "a plain sample outside a fragment entry reads level 0, as WGSL and MSL do" {
+	const m = everyModule();
+	assert irErrors(m).length == 0;
+	assert printed(m, 0, [0, 1]).includes("heightMap.SampleLevel(heightSampler, position, 0.0)");
 }

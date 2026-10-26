@@ -28,13 +28,19 @@ import {
 	Mat3x3f,
 	Mat4x4f,
 	Sampler,
+	SamplerComparison,
 	StorageTexture2d,
 	StorageTexture2dArray,
 	StorageTexture3d,
 	Texture2d,
 	Texture2dArray,
+	Texture2dI32,
 	Texture2dU32,
+	Texture3d,
 	TextureCube,
+	TextureDepth2d,
+	TextureDepth2dArray,
+	TextureDepthCube,
 	Vec2f,
 	Vec2i,
 	Vec2u,
@@ -62,6 +68,7 @@ import {
 	IoDirection,
 	ResourceKind,
 	SampleType,
+	Sampling,
 	SamplerType,
 	ShaderCase,
 	ShaderConstant,
@@ -132,7 +139,6 @@ export macro glsl(entry: Node): Node {
 	};
 }
 
-// glslIr, glslLinkedIr and glslComputeIr return the lowered module as irText instead of GLSL.
 export macro glslIr(entry: Node): Node {
 	return {
 		kind: NodeKind.CallExpr,
@@ -156,7 +162,8 @@ export macro glslAs(entry: Node, form: Node): Node {
 	if (output != null && output.kind == NodeKind.TypeObject) {
 		for (const decorators of output.typExprFieldDecorators) {
 			for (const d of decorators) {
-				if (d.macroName == "builtin") { vertex = true; }
+				if (d.macroName == "builtin" && d.macroArgs.length == 1 &&
+					d.macroArgs[0].name == "position") { vertex = true; }
 			}
 		}
 	}
@@ -328,8 +335,6 @@ export macro glslLinkedAs(fragment: Node, vertex: Node, form: Node): Node {
 			line: fragment.line, column: fragment.column, elements: [] }, vertex, form] };
 }
 
-// glslCompute(entry, [x, y, z]) for a compute entry: its workgroup size is WGSL's
-// @workgroup_size, written where the stage is generated as shdc's local_size.
 export macro glslCompute(entry: Node, workgroupSize: Node): Node {
 	return {
 		kind: NodeKind.CallExpr,
@@ -400,7 +405,6 @@ function covers(a: FeatureCondition[], b: FeatureCondition[]): boolean {
 	return !a.some((c) => !includesCondition(b, c));
 }
 
-// a without the one clause whose negation is b's only other clause, or null.
 function joined(a: FeatureCondition[], b: FeatureCondition[]): FeatureCondition[] | null {
 	if (a.length != b.length) { return null; }
 	const own = a.filter((c) => !includesCondition(b, c));
@@ -437,11 +441,6 @@ function anyHolds(products: FeatureCondition[][], on: string[]): boolean {
 	return products.some((p) => productHolds(p, on));
 }
 
-// The products a declaration is read under, by two laws: one that holds another's every clause
-// adds nothing (c || c && x is c), and two that differ only in a clause and its negation are
-// their common part (c && x || c && !x is c). Then, over every set of the features named, a
-// product the others already hold is dropped, the last read first, and products that hold
-// always are the empty product, which reads always.
 function simplest(contexts: FeatureCondition[][]): FeatureCondition[][] {
 	let products: FeatureCondition[][] = [];
 	for (const c of contexts) { products.push(c.slice(0)); }
@@ -500,7 +499,6 @@ function productCondition(p: FeatureCondition[]): FeatureCondition {
 	return p.length == 1 ? p[0] : conditionOf(ConditionKind.All, p);
 }
 
-// The `||` of every context a declaration is read in; one never read holds under no features.
 function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition {
 	if (contexts.length == 0) { return conditionOf(ConditionKind.Any, []); }
 	const products = simplest(contexts);
@@ -524,9 +522,17 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const storageTextureNodes = [getTypeImpl(StorageTexture2d),
 		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d)];
 	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
-	const uintTextureNode = getTypeImpl(Texture2dU32);
-	const arrayTextureNode = getTypeImpl(Texture2dArray);
-	const cubeTextureNode = getTypeImpl(TextureCube);
+	const viewNodes = [getTypeImpl(Texture2dU32), getTypeImpl(Texture2dArray),
+		getTypeImpl(TextureCube), getTypeImpl(Texture2dI32), getTypeImpl(Texture3d),
+		getTypeImpl(TextureDepth2d), getTypeImpl(TextureDepth2dArray),
+		getTypeImpl(TextureDepthCube)];
+	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube, TextureShape.D2,
+		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube];
+	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32, ScalarKind.I32,
+		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
+	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float, SampleType.Sint,
+		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth];
+	const comparisonNode = getTypeImpl(SamplerComparison);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
 	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
@@ -641,6 +647,14 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return false;
 	}
 
+	function hasPosition(fields: Node): boolean {
+		for (const decorators of fields.typExprFieldDecorators) {
+			const builtin = decorator(decorators, "builtin");
+			if (builtin != null && argumentName(builtin) == "position") { return true; }
+		}
+		return false;
+	}
+
 	function isAuthorStruct(t: Node | null): boolean {
 		if (t == null || fieldsOf(t) == null) { return false; }
 		return t.resolvedSym != null && t.resolvedSym.modulePath != stdModule;
@@ -662,7 +676,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const outputType = signature.typExprReturn;
 	const vectorOutput = vectorTypes.some((v) => outputType != null && sameType(outputType, v));
 	const outputs = vectorOutput ? null : fieldsOf(outputType);
-	const vertex = outputs != null && hasDecorator(outputs, "builtin");
+	const vertex = outputs != null && hasPosition(outputs);
 	const computeBuiltins = ["globalInvocationId", "localInvocationId", "localInvocationIndex",
 		"workgroupId", "numWorkgroups"];
 	const computeKinds = [Builtin.GlobalInvocationId, Builtin.LocalInvocationId,
@@ -730,7 +744,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		globals.push(name);
 	}
 
-	// Blocks at one binding are alternatives a variant chooses between, so they may share members.
 	function claimMember(name: string, slot: int32, at: Node): void {
 		const seen = memberNames.indexOf(name);
 		if (seen >= 0 && memberSlots[seen] == slot) { return; }
@@ -777,11 +790,45 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		return feature == null ? new FeatureCondition() : noted(featureOn(argumentName(feature)));
 	}
 
-	function interpolationOf(t: Node, at: Node): Interpolation {
+	function interpolationOf(t: Node, at: Node, decorators: Node[]): Interpolation {
 		const own = glslType(t.kind == NodeKind.TypeArray ? t.typExprElement : t, at);
 		const integral = (own.kind == ShaderTypeKind.Scalar || own.kind == ShaderTypeKind.Vector) &&
 			(own.scalar == ScalarKind.I32 || own.scalar == ScalarKind.U32);
-		return integral ? Interpolation.Flat : Interpolation.Perspective;
+		const d = decorator(decorators, "interpolate");
+		if (d == null) { return integral ? Interpolation.Flat : Interpolation.Perspective; }
+		const kind = interpolateWord(d, 0);
+		if (kind == "flat") {
+			if (d.macroArgs.length > 1) { fail(d, "@interpolate(flat) takes no sampling, as WGSL's"); }
+			return Interpolation.Flat;
+		}
+		if (integral) { fail(d, "an integer varying is @interpolate(flat), as WGSL's"); }
+		if (kind == "linear") { return Interpolation.Linear; }
+		if (kind == "perspective") { return Interpolation.Perspective; }
+		return fail(d, "@interpolate takes flat, linear or perspective, as WGSL's");
+	}
+
+	function interpolateWord(d: Node, at: int32): string {
+		if (d.macroArgs.length < 1 || d.macroArgs.length > 2) {
+			fail(d, "@interpolate takes a kind and an optional sampling");
+		}
+		const a = d.macroArgs[at];
+		if (a.kind != NodeKind.Identifier) { fail(d, "@interpolate takes names"); }
+		return a.name;
+	}
+
+	function samplingOf(decorators: Node[]): Sampling {
+		const d = decorator(decorators, "interpolate");
+		if (d == null || d.macroArgs.length < 2) { return Sampling.Center; }
+		const word = interpolateWord(d, 1);
+		if (word == "center") { return Sampling.Center; }
+		if (word == "centroid") { return Sampling.Centroid; }
+		if (word == "sample") { return Sampling.Sample; }
+		return fail(d, "@interpolate's sampling is center, centroid or sample, as WGSL's");
+	}
+
+	function noInterpolate(decorators: Node[], what: string): void {
+		const d = decorator(decorators, "interpolate");
+		if (d != null) { fail(d, "@interpolate sits on a varying, not " + what + ", as WGSL's"); }
 	}
 
 	function arrayVarying(name: string): string {
@@ -878,14 +925,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				r.access = mode;
 				continue;
 			}
-			if (sameType(t, uintTextureNode) || sameType(t, arrayTextureNode) ||
-				sameType(t, cubeTextureNode)) {
-				const uint = sameType(t, uintTextureNode);
-				const r = addResource(ResourceKind.Texture, name, slot, uint ?
-					textureType(TextureShape.D2, ScalarKind.U32) :
-					textureType(sameType(t, cubeTextureNode) ? TextureShape.Cube :
-						TextureShape.D2Array, ScalarKind.F32), binding);
-				r.sampleType = uint ? SampleType.Uint :
+			const view = viewNodes.findIndex((n) => sameType(t, n));
+			if (view >= 0) {
+				const r = addResource(ResourceKind.Texture, name, slot,
+					textureType(viewShapes[view], viewTexels[view]), binding);
+				r.sampleType = viewSamples[view] != SampleType.Float ? viewSamples[view] :
 					sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
 			} else if (sameType(t, textureNode)) {
 				const kind = sampleType == null ? SampleType.Float : sampleTypeOf(sampleType);
@@ -897,6 +941,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					samplerTypeOf(samplerKind);
 				const r = addResource(ResourceKind.Sampler, name, slot, samplerType(), binding);
 				r.samplerType = kind;
+			} else if (sameType(t, comparisonNode)) {
+				const r = addResource(ResourceKind.Sampler, name, slot, samplerType(), binding);
+				r.samplerType = SamplerType.Comparison;
 			} else {
 				const block = fieldsOf(t);
 				if (block == null) {
@@ -933,8 +980,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	let structTypes: Node[] = [];
 	let structIndices: int32[] = [];
 
-	// A helper's body is lowered once, with no features on; what it reads is kept as a record
-	// and counted at each call, under the features around that call.
 	let recordKinds: int32[][] = [];
 	let recordIndices: int32[][] = [];
 	let recordGates: FeatureCondition[][][] = [];
@@ -974,6 +1019,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"textureDimensions", "textureStore", "textureLoad", "atomicLoad", "atomicStore",
 		"atomicAdd", "atomicSub", "atomicMax", "atomicMin", "atomicAnd", "atomicOr", "atomicXor",
 		"atomicExchange", "atomicCompareExchangeWeak",
+		"countOneBits", "reverseBits", "firstLeadingBit", "firstTrailingBit", "extractBits",
+		"insertBits", "pack4x8unorm", "pack4x8snorm", "pack2x16unorm", "pack2x16snorm",
+		"pack2x16float", "unpack4x8unorm", "unpack4x8snorm", "unpack2x16unorm", "unpack2x16snorm",
+		"unpack2x16float",
 	];
 	const intrinsics = [
 		Intrinsic.Abs, Intrinsic.Sign, Intrinsic.Floor, Intrinsic.Ceil, Intrinsic.Trunc,
@@ -990,7 +1039,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.TextureLoad, Intrinsic.AtomicLoad, Intrinsic.AtomicStore, Intrinsic.AtomicAdd,
 		Intrinsic.AtomicSub, Intrinsic.AtomicMax, Intrinsic.AtomicMin, Intrinsic.AtomicAnd,
 		Intrinsic.AtomicOr, Intrinsic.AtomicXor, Intrinsic.AtomicExchange,
-		Intrinsic.AtomicCompareExchangeWeak,
+		Intrinsic.AtomicCompareExchangeWeak, Intrinsic.CountOneBits, Intrinsic.ReverseBits,
+		Intrinsic.FirstLeadingBit, Intrinsic.FirstTrailingBit, Intrinsic.ExtractBits,
+		Intrinsic.InsertBits, Intrinsic.Pack4x8Unorm, Intrinsic.Pack4x8Snorm,
+		Intrinsic.Pack2x16Unorm, Intrinsic.Pack2x16Snorm, Intrinsic.Pack2x16Float,
+		Intrinsic.Unpack4x8Unorm, Intrinsic.Unpack4x8Snorm, Intrinsic.Unpack2x16Unorm,
+		Intrinsic.Unpack2x16Snorm, Intrinsic.Unpack2x16Float,
 	];
 
 	function looseType(t: Node | null): ShaderType {
@@ -1009,12 +1063,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
 		}
 		if (sameType(t, textureNode)) { return textureType(TextureShape.D2, ScalarKind.F32); }
-		if (sameType(t, uintTextureNode)) { return textureType(TextureShape.D2, ScalarKind.U32); }
-		if (sameType(t, arrayTextureNode)) {
-			return textureType(TextureShape.D2Array, ScalarKind.F32);
-		}
-		if (sameType(t, cubeTextureNode)) { return textureType(TextureShape.Cube, ScalarKind.F32); }
-		if (sameType(t, samplerNode)) { return samplerType(); }
+		const view = viewNodes.findIndex((n) => sameType(t, n));
+		if (view >= 0) { return textureType(viewShapes[view], viewTexels[view]); }
+		if (sameType(t, samplerNode) || sameType(t, comparisonNode)) { return samplerType(); }
 		const atomic = atomicOrExchange(t);
 		if (atomic != null) { return atomic; }
 		if (isAuthorStruct(t)) { return structType(knownStruct(t)); }
@@ -1580,6 +1631,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
 				intrinsicOf(name == "textureSample" ? Intrinsic.TextureSample :
 					Intrinsic.TextureSampleBias, type, args),
+			"textureSampleCompare" => fragmentOnly ?
+				fail(n, name + " samples only in a fragment entry, as WGSL's does") :
+				intrinsicOf(Intrinsic.TextureSampleCompare, type, args),
+			"textureSampleCompareLevel" =>
+				intrinsicOf(Intrinsic.TextureSampleCompareLevel, type, args),
 			"textureSampleLevel" => intrinsicOf(Intrinsic.TextureSampleLevel, type, args),
 			"textureSampleGrad" => intrinsicOf(Intrinsic.TextureSampleGrad, type, args),
 			_ => fail(n, "./std's '" + name + "' has no GLSL spelling"),
@@ -1980,7 +2036,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 
 	if (feederType != null && feederType.kind == NodeKind.TypeFunction) {
 		const fedOutputs = fieldsOf(feederType.typExprReturn);
-		const feedsFragments = fedOutputs != null && hasDecorator(fedOutputs, "builtin");
+		const feedsFragments = fedOutputs != null && hasPosition(fedOutputs);
 		for (const t of feedsFragments ? feederType.typExprParams : []) {
 			const fields = fieldsOf(t);
 			if (fields == null || hasDecorator(fields, "binding") ||
@@ -2016,14 +2072,19 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				const spelled = vertex ? name : varyingName(name);
 				const type = member(t, spelled, site);
 				const gate = featureCondition(inputs.typExprFieldDecorators[f]);
-				const interpolation = vertex ? Interpolation.Perspective : interpolationOf(t, site);
+				if (vertex) { noInterpolate(inputs.typExprFieldDecorators[f], "a vertex attribute"); }
+				const interpolation = vertex ? Interpolation.Perspective :
+					interpolationOf(t, site, inputs.typExprFieldDecorators[f]);
 				claim(spelled, site);
 				const io = addIo(stage, name, IoDirection.In, type, Builtin.None, gate);
 				m.ios[io].interpolation = interpolation;
+				m.ios[io].sampling = vertex ? Sampling.Center :
+					samplingOf(inputs.typExprFieldDecorators[f]);
 				inputNames.push(name);
 				inputIos.push(io);
 				continue;
 			}
+			noInterpolate(inputs.typExprFieldDecorators[f], "a builtin");
 			const which = argumentName(builtin);
 			const computeAt = computeBuiltins.indexOf(which);
 			const kind = compute ? (computeAt >= 0 ? computeKinds[computeAt] : Builtin.None) :
@@ -2061,25 +2122,29 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const builtin = decorator(decorators, "builtin");
 			const t = outputs.typExprFieldTypes[f];
 			if (builtin != null) {
-				if (!vertex || argumentName(builtin) != "position") {
-					fail(builtin, "output field '" + name +
-						"': only a vertex @builtin(position) yet");
+				noInterpolate(decorators, "a builtin");
+				const which = argumentName(builtin);
+				if (vertex ? which != "position" : which != "fragDepth") {
+					fail(builtin, "output field '" + name + "': a vertex entry writes " +
+						"@builtin(position), a fragment entry @builtin(fragDepth)");
 				}
-				outputIos.push(addIo(stage, name, IoDirection.Out, looseType(t), Builtin.Position,
-					gate));
+				const kind = vertex ? Builtin.Position : Builtin.FragDepth;
+				outputIos.push(addIo(stage, name, IoDirection.Out, looseType(t), kind, gate));
 				continue;
 			}
 			if (vertex) {
 				if (t.kind == NodeKind.TypeArray) { fail(site, arrayVarying(name)); }
 				const spelled = varyingName(name);
 				const type = member(t, spelled, site);
-				const interpolation = interpolationOf(t, site);
+				const interpolation = interpolationOf(t, site, decorators);
 				claim(spelled, site);
 				const io = addIo(stage, name, IoDirection.Out, type, Builtin.None, gate);
 				m.ios[io].interpolation = interpolation;
+				m.ios[io].sampling = samplingOf(decorators);
 				outputIos.push(io);
 				continue;
 			}
+			noInterpolate(decorators, "a fragment output");
 			const location = decorator(decorators, "location");
 			if (location == null) {
 				fail(site, "fragment output '" + name + "' has no @location(n)");
@@ -2132,11 +2197,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				fail(workgroupSize, "a workgroup size is three numbers");
 			}
 			stageEntry.workgroupSize[a] = n == null ? 1 : intValue(n) as int32;
-		}
-		let invocations: int64 = 1;
-		for (const n of workgroupSize.elements) { invocations *= intValue(n); }
-		if (invocations % 32 != 0) {
-			fail(workgroupSize, "a workgroup is a multiple of 32 invocations, as shdc requires");
 		}
 	}
 	m.entries.push(stageEntry);
