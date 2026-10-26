@@ -1,5 +1,7 @@
 # sokol — Void's GPU layer, and how we treat it (2026-09-20)
 
+**Superseded on `wt/gpu-ms`:** Void's GPU layer is its own (`docs/GPU.md`), and sokol at pin `2e75443d` is the reference it ports. This doc records the sokol period and how Void treated sokol upstream.
+
 Void's GPU layer is [sokol](https://github.com/floooh/sokol): `sokol_gfx` is the driver, `sokol-shdc` is the shader compiler, and `sokol_app` provides the window where Void does not bring its own host glue. This doc records why it stays after a deliberate review against the alternatives, and how Void relates to it: **we are ready to hack sokol and to contribute upstream, not only consume it.**
 
 ## Stance: hack it, and send it upstream
