@@ -106,6 +106,7 @@ import {
 	checkedPushGroup,
 	checkedQuerySet,
 	checkedRenderPass,
+	checkedScissor,
 	checkedRenderPassPipeline,
 	checkedRenderPipeline,
 	checkedResolveQueries,
@@ -640,6 +641,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setScissorRect(this self: GPURenderPassEncoder, x: int32, y: int32, width: int32, height: int32): void {
 	checkedInPass(PASS_RENDER, "setScissorRect");
+	checkedScissor(x, y, width, height);
 	backend.setScissorRect(x, y, width, height);
 }
 

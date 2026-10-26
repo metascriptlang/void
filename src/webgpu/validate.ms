@@ -86,6 +86,8 @@ export struct EncoderState {
 	occlusionSet: uint32;
 	occlusionOpen: boolean;
 	occlusionIndex: int32;
+	width: int32;
+	height: int32;
 }
 
 function passName(kind: int32): string { return kind == PASS_RENDER ? "render" : "compute"; }
@@ -573,6 +575,13 @@ export function queriesWrittenRefusal(set: QuerySetRecord, firstQuery: int32, qu
 	return "";
 }
 
+export function scissorRefusal(x: int32, y: int32, width: int32, height: int32, passWidth: int32, passHeight: int32): string {
+	if (x < 0 || y < 0 || width < 0 || height < 0 || (x as int64) + (width as int64) > (passWidth as int64) || (y as int64) + (height as int64) > (passHeight as int64)) {
+		return `setScissorRect ${x},${y} ${width}x${height} lies outside the ${passWidth}x${passHeight} attachment`;
+	}
+	return "";
+}
+
 export function viewportRefusal(width: float32, height: float32, minDepth: float32, maxDepth: float32): string {
 	if (width < 0 || height < 0 || minDepth < 0 || maxDepth > 1 || minDepth > maxDepth) {
 		return `setViewport ${width}x${height} depth ${minDepth}..${maxDepth} is outside WebGPU's valid range`;
@@ -633,6 +642,7 @@ export function markOcclusionBegun(queryIndex: int32): void {
 export function markOcclusionEnded(): void {
 	querySetRecords.slots[querySetRecords.slotIndex(encoder.occlusionSet)].state[encoder.occlusionIndex] = QueryState.Written;
 }
+export function checkedScissor(x: int32, y: int32, width: int32, height: int32): void { refuse(scissorRefusal(x, y, width, height, encoder.width, encoder.height)); }
 export function checkedViewport(width: float32, height: float32, minDepth: float32, maxDepth: float32): void { refuse(viewportRefusal(width, height, minDepth, maxDepth)); }
 export function checkedDispatch(x: int32, y: int32, z: int32, limit: int32): void { refuse(dispatchRefusal(x, y, z, limit)); }
 
@@ -943,5 +953,8 @@ export function renderPassExtent(descriptor: GPURenderPassDescriptor, facts: Ren
 
 export function checkedRenderPass(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): GPUExtent3D {
 	refuse(renderPassRefusal(descriptor, facts));
-	return renderPassExtent(descriptor, facts);
+	const extent = renderPassExtent(descriptor, facts);
+	encoder.width = extent.width;
+	encoder.height = extent.height;
+	return extent;
 }

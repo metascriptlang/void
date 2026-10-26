@@ -1712,13 +1712,7 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 
 // Metal refuses a scissor rect outside the attachment; sokol clips it the same way (_sg_clipi).
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
-	const left = x < 0 ? 0 : (x > pass.width ? pass.width : x);
-	const top = y < 0 ? 0 : (y > pass.height ? pass.height : y);
-	let right = x + width;
-	let bottom = y + height;
-	right = right > pass.width ? pass.width : (right < left ? left : right);
-	bottom = bottom > pass.height ? pass.height : (bottom < top ? top : bottom);
-	mtlSetScissorRect(encoder, left, top, right - left, bottom - top);
+	mtlSetScissorRect(encoder, x, y, width, height);
 }
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {

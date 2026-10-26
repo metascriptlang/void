@@ -76,6 +76,7 @@ import {
 	renderPassRefusal,
 	renderPassPipelineRefusal,
 	renderPipelineRefusal,
+	scissorRefusal,
 	samplerRefusal,
 	shaderModuleRefusal,
 	shutdownRefusal,
@@ -518,6 +519,14 @@ test "a viewport and a dispatch stay inside WebGPU's ranges and the backend's li
 	assert dispatchRefusal(0, 1, 65535, 65535) == "";
 	assert dispatchRefusal(1, 1, 65536, 65535) == "dispatchWorkgroups 1,1,65536 is outside 0..65535";
 	assert dispatchRefusal(-1, 1, 1, 65535) == "dispatchWorkgroups -1,1,1 is outside 0..65535";
+}
+
+test "a scissor rect lies inside the pass attachment" {
+	assert scissorRefusal(0, 0, 64, 32, 64, 32) == "";
+	assert scissorRefusal(8, 8, 0, 0, 64, 32) == "";
+	assert scissorRefusal(1, 0, 64, 32, 64, 32) == "setScissorRect 1,0 64x32 lies outside the 64x32 attachment";
+	assert scissorRefusal(-1, 0, 8, 8, 64, 32) == "setScissorRect -1,0 8x8 lies outside the 64x32 attachment";
+	assert scissorRefusal(0, 30, 8, 3, 64, 32) == "setScissorRect 0,30 8x3 lies outside the 64x32 attachment";
 }
 
 test "a render pipeline takes its vertex and fragment stages from one module" {
