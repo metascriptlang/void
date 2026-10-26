@@ -1,13 +1,14 @@
 // WGSL's non-square matrices authored in MetaScript: Mat2x3f, Mat2x4f, Mat3x2f, Mat3x4f, Mat4x2f and
 // Mat4x3f with their constructors, products, transposes and column reads. The CPU oracle runs every
 // overload against a fixed value, one entry uses the shapes through a uniform block, and the text
-// per target, the probe files that naga, fxc and spirv-val read, and the refusals are pinned.
+// per target and the probe files that naga, fxc and spirv-val read are pinned. A matrix of two rows
+// keeps WGSL's host layout in a uniform block on every target: columns eight bytes apart.
 
 import { mkdir, writeFile } from "std/fs";
-import { programModule, programSource, stageSource, stageWords } from "../shader/descriptor";
-import { glslIr, glslLinked, glslLinkedIr } from "../shader/emit";
+import { computeModule, programModule, stageSource } from "../shader/descriptor";
+import { glslComputeIr, glslIr, glslLinked, glslLinkedIr } from "../shader/emit";
 import { ShaderModule } from "../shader/ir";
-import { ShaderTarget } from "../shader/layout";
+import { ShaderTarget, storageElementLayout, uniformBlockLayout } from "../shader/layout";
 import { reflectProgram } from "../shader/reflect";
 import { opcodeOf, spirvProbe } from "./shaderProbeModules";
 import {
@@ -20,11 +21,15 @@ import {
 	Mat4x2f,
 	Mat4x3f,
 	Mat4x4f,
+	StorageTexture2d,
 	Vec2f,
 	Vec3f,
+	Vec3u,
 	Vec4f,
+	access,
 	binding,
 	builtin,
+	format,
 	mat2x2f,
 	mat2x3f,
 	mat2x4f,
@@ -34,8 +39,10 @@ import {
 	mat4x2f,
 	mat4x3f,
 	mat4x4f,
+	textureStore,
 	transpose,
 	vec2f,
+	vec2i,
 	vec3f,
 	vec4f,
 } from "../shader/std";
@@ -60,12 +67,31 @@ export struct ShapeBindings {
 	@binding(0) shapes: Shapes;
 }
 
-export struct NarrowShapes {
-	flat: Mat3x2f;
+export struct Twos {
+	a: Mat2x2f;
+	b: Vec2f;
+	c: Mat3x2f;
+	d: Mat4x2f;
 }
 
-export struct NarrowBindings {
-	@binding(0) narrow: NarrowShapes;
+export struct TwoBindings {
+	@binding(0) twos: Twos;
+}
+
+export struct CellInput {
+	@builtin(globalInvocationId) id: Vec3u;
+}
+
+export struct Cell {
+	a: Mat2x2f;
+	b: Vec2f;
+	c: Mat3x2f;
+	d: Mat4x2f;
+}
+
+export struct CellBindings {
+	@binding(0) @access(read) cells: Cell[];
+	@binding(1) @format(rgba32float) @access(write) image: StorageTexture2d;
 }
 
 export function shapeVs(input: Corner): Parts {
@@ -92,8 +118,26 @@ export function shapeFs(input: Parts, b: ShapeBindings): Vec4f {
 	);
 }
 
-export function narrowFs(input: Parts, b: NarrowBindings): Vec4f {
-	return vec4f(b.narrow.flat * input.amount, 0.0, 1.0);
+export function twosFs(input: Parts, b: TwoBindings): Vec4f {
+	const turned = b.twos.a * vec2f(input.amount.x, input.amount.y) + b.twos.b;
+	const mixed = b.twos.c * input.amount;
+	const last = b.twos.d * vec4f(input.amount, 1.0);
+	const flipped = transpose(b.twos.c);
+	const at = (input.amount.x * 2.0) as int32;
+	const picked = b.twos.d.columns[at];
+	return vec4f(
+		turned.x + mixed.y,
+		last.x + flipped.columns[1].x,
+		b.twos.a.columns[1].x + picked.y,
+		b.twos.c.columns[1].y,
+	);
+}
+
+export function cellsCs(input: CellInput, b: CellBindings): void {
+	const i = vec2i(input.id.xy).x;
+	const turned = b.cells[i].a * b.cells[i].b + b.cells[i].c * vec3f(1.0, 2.0, 3.0) +
+		b.cells[i].d * vec4f(1.0, 2.0, 3.0, 4.0);
+	textureStore(b.image, vec2i(i, 0), vec4f(turned.x, turned.y, b.cells[i].a.columns[1].x, 1.0));
 }
 
 function shapeBindings(): ShapeBindings {
@@ -103,6 +147,17 @@ function shapeBindings(): ShapeBindings {
 			tall: mat4x3f(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, 1.0), vec3f(1.0, 1.0, 1.0)),
 			basis: mat3x4f(vec4f(1.0, 0.0, 0.0, 0.0), vec4f(0.0, 1.0, 0.0, 0.0), vec4f(0.0, 0.0, 1.0, 1.0)),
 			extra: mat2x4f(vec4f(1.0, 2.0, 3.0, 4.0), vec4f(5.0, 6.0, 7.0, 8.0)),
+		},
+	};
+}
+
+function twoBindings(): TwoBindings {
+	return {
+		twos: {
+			a: mat2x2f(vec2f(1.0, 2.0), vec2f(3.0, 4.0)),
+			b: vec2f(10.0, 20.0),
+			c: mat3x2f(vec2f(1.0, 2.0), vec2f(3.0, 4.0), vec2f(5.0, 6.0)),
+			d: mat4x2f(vec2f(1.0, 2.0), vec2f(3.0, 4.0), vec2f(5.0, 6.0), vec2f(7.0, 8.0)),
 		},
 	};
 }
@@ -222,8 +277,7 @@ test "the entry runs on the CPU" {
 	const parts: Parts = { position: vec4f(0.0), amount: vec3f(0.5, 1.5, 2.5) };
 	const color = shapeFs(parts, shapeBindings());
 	assert close4(color, vec4f(34.5, 17.0, 13.0, 3.0));
-	const narrow: NarrowBindings = { narrow: { flat: mat3x2f(vec2f(1.0, 2.0), vec2f(3.0, 4.0), vec2f(5.0, 6.0)) } };
-	assert close4(narrowFs(parts, narrow), vec4f(0.5 + 4.5 + 12.5, 1.0 + 6.0 + 15.0, 0.0, 1.0));
+	assert close4(twosFs(parts, twoBindings()), vec4f(37.0, 26.5, 7.0, 4.0));
 }
 
 test "every non-square product agrees with the products of its columns" {
@@ -319,8 +373,22 @@ function shapeProgram(): ShaderModule {
 	return m.value;
 }
 
-function narrowProgram(): Result<ShaderModule, string> {
-	return programModule(glslIr(shapeVs), glslLinkedIr(narrowFs, shapeVs), []);
+function twosProgram(): ShaderModule {
+	const m = programModule(glslIr(shapeVs), glslLinkedIr(twosFs, shapeVs), []);
+	if (!m.ok) { throw new Error("twosProgram: " + m.error); }
+	return m.value;
+}
+
+function cellsProgram(): ShaderModule {
+	const m = computeModule(glslComputeIr(cellsCs, [4, 1, 1]), []);
+	if (!m.ok) { throw new Error("cellsProgram: " + m.error); }
+	return m.value;
+}
+
+function resourceNamed(m: ShaderModule, name: string): int32 {
+	const at = m.resources.findIndex((r) => r.name == name);
+	if (at < 0) { throw new Error("no resource " + name); }
+	return at as int32;
 }
 
 function opcodes(words: uint32[][], opcode: int32): int32 {
@@ -390,20 +458,125 @@ test "SPIR-V multiplies each shape with its own opcode and strides every column 
 	assert decorations(words, 5).length == 4;
 }
 
-test "a matrix of two rows is refused in a uniform block, by every printer that lays it out and by reflection" {
-	const m = narrowProgram();
-	assert m.ok;
-	const reason = "member 'flat' is mat3x2, whose vec2 columns sit 8 bytes apart in WGSL's uniform layout " +
-		"and 16 in std140; a uniform matrix has 3 or 4 rows";
-	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es, ShaderTarget.Hlsl5, ShaderTarget.Msl]) {
-		const text = stageSource(m.value, 1, target);
-		assert !text.ok;
-		assert text.error.includes(reason), text.ok ? "printed" : text.error;
+
+function twosText(target: ShaderTarget): string {
+	return printedFor(twosProgram(), 1, target, "twosMat");
+}
+
+function offsetsOf(words: uint32[][]): int32[] {
+	return decorations(words, 35).map((i) => i[4] as int32);
+}
+
+test "a uniform block of two-row matrices takes WGSL's host layout, mat2x2f 16 at 0, vec2f 8 at 16, mat3x2f 24 at 24, mat4x2f 32 at 48" {
+	const m = twosProgram();
+	const layout = uniformBlockLayout(m, resourceNamed(m, "twos"));
+	assert layout.ok, layout.ok ? "" : layout.error;
+	assert layout.value.offsets.length == 4;
+	assert layout.value.offsets[0] == 0 && layout.value.offsets[1] == 16;
+	assert layout.value.offsets[2] == 24 && layout.value.offsets[3] == 48;
+	assert layout.value.size == 80 && layout.value.align == 16;
+	const reflected = reflectProgram(m, 0, 1, ShaderTarget.Wgsl);
+	assert reflected.ok, reflected.ok ? "" : reflected.error;
+	assert reflected.value.bindings.length == 1 && reflected.value.bindings[0].size == 80;
+}
+
+test "a storage element of two-row matrices takes the same offsets" {
+	const m = cellsProgram();
+	const layout = storageElementLayout(m, resourceNamed(m, "cells"));
+	assert layout.ok, layout.ok ? "" : layout.error;
+	assert layout.value.offsets[0] == 0 && layout.value.offsets[1] == 16;
+	assert layout.value.offsets[2] == 24 && layout.value.offsets[3] == 48;
+	assert layout.value.size == 80 && layout.value.align == 8;
+}
+
+test "GLSL reads each two-row column as the xy or zw half of its vec4" {
+	const a = "mat2(twos[0].xy, twos[0].zw)";
+	const c = "mat3x2(twos[1].zw, twos[2].xy, twos[2].zw)";
+	const d = "mat4x2(twos[3].xy, twos[3].zw, twos[4].xy, twos[4].zw)";
+	for (const target of [ShaderTarget.Glsl430, ShaderTarget.Glsl300es]) {
+		const text = twosText(target);
+		assert text.includes("vec4 twos[5];\n"), text;
+		assert text.includes("turned = (" + a + " * vec2(amount.x, amount.y)) + twos[1].xy;\n"), text;
+		assert text.includes("mixed = " + c + " * amount;\n"), text;
+		assert text.includes("last = " + d + " * vec4(amount, 1.0);\n"), text;
+		assert text.includes("flipped = transpose(" + c + ");\n"), text;
+		assert text.includes(d + "[at]"), text;
+		assert text.includes(a + "[1].x") && text.includes(c + "[1].y"), text;
 	}
-	const words = stageWords(m.value, 1);
-	assert !words.ok && words.error.includes(reason);
-	const reflected = reflectProgram(m.value, 0, 1, ShaderTarget.Wgsl);
-	assert !reflected.ok && reflected.error.includes(reason);
-	const wgsl = programSource(m.value, ShaderTarget.Wgsl);
-	assert !wgsl.ok && wgsl.error.includes(reason);
+}
+
+test "HLSL holds each two-row column as a float2 of the cbuffer and builds the matrix from them" {
+	const text = twosText(ShaderTarget.Hlsl5);
+	assert text.includes("cbuffer twos : register(b0)\n{\n" +
+		"    float2 _0_a_0 : packoffset(c0);\n    float2 _0_a_1 : packoffset(c0.z);\n" +
+		"    float2 _0_b : packoffset(c1);\n" +
+		"    float2 _0_c_0 : packoffset(c1.z);\n    float2 _0_c_1 : packoffset(c2);\n" +
+		"    float2 _0_c_2 : packoffset(c2.z);\n" +
+		"    float2 _0_d_0 : packoffset(c3);\n    float2 _0_d_1 : packoffset(c3.z);\n" +
+		"    float2 _0_d_2 : packoffset(c4);\n    float2 _0_d_3 : packoffset(c4.z);\n};\n"), text;
+	const a = "float2x2(_0_a_0, _0_a_1)";
+	const c = "float3x2(_0_c_0, _0_c_1, _0_c_2)";
+	const d = "float4x2(_0_d_0, _0_d_1, _0_d_2, _0_d_3)";
+	assert text.includes("mul(float2(amount.x, amount.y), " + a + ")"), text;
+	assert text.includes("mul(float4(amount, 1.0), " + d + ")"), text;
+	assert text.includes("transpose(" + c + ")"), text;
+	assert text.includes(d + "[at]"), text;
+}
+
+test "MSL and WGSL declare the two-row matrices as they are, which lays them out as WGSL does" {
+	const msl = twosText(ShaderTarget.Msl);
+	assert msl.includes("struct Twos {\n  float2x2 a;\n  float2 b;\n  float3x2 c;\n  float4x2 d;\n};\n"), msl;
+	const wgsl = twosText(ShaderTarget.Wgsl);
+	assert wgsl.includes("struct Twos {\n  a : mat2x2f,\n  b : vec2f,\n  c : mat3x2f,\n  d : mat4x2f,\n}\n"), wgsl;
+}
+
+test "SPIR-V hoists each two-row column into the block as a vec2 eight bytes after the one before" {
+	const m = twosProgram();
+	const _vertex = spirvProbe(m, 0, "twosMat");
+	const words = spirvProbe(m, 1, "twosMat");
+	const offsets = offsetsOf(words);
+	const wanted = [0, 8, 16, 24, 32, 40, 48, 56, 64, 72];
+	assert offsets.length == wanted.length, String(offsets.length);
+	for (let i = 0; i < wanted.length; i++) { assert offsets[i] == wanted[i], String(i); }
+	assert decorations(words, 7).length == 0 && decorations(words, 5).length == 0;
+}
+
+function cellsText(target: ShaderTarget): string {
+	const text = stageSource(cellsProgram(), 0, target);
+	if (!text.ok) { return text.error; }
+	const path = match (target) {
+		ShaderTarget.Wgsl => "out/wgslProbe/cells.wgsl",
+		ShaderTarget.Hlsl5 => "out/hlslProbe/cells.cs.hlsl",
+		ShaderTarget.Glsl430 => "out/glslProbe/cells.430.comp",
+		ShaderTarget.Msl => "out/mslProbe/cells.metal",
+		ShaderTarget.Glsl300es | ShaderTarget.Spirv => "",
+	};
+	const _out = mkdir("out");
+	const _folder = mkdir(path.slice(0, path.lastIndexOf("/")));
+	const _written = writeFile(path, text.value);
+	return text.value;
+}
+
+test "a storage buffer holds two-row matrices at std430's offsets on every target" {
+	const glsl = cellsText(ShaderTarget.Glsl430);
+	assert glsl.includes("struct Cell
+{
+    mat2 a;
+    vec2 b;
+    mat3x2 c;
+    mat4x2 d;
+};
+"), glsl;
+	const hlsl = cellsText(ShaderTarget.Hlsl5);
+	assert hlsl.includes("    row_major float2x2 a;\n    float2 b;\n    row_major float3x2 c;\n" +
+		"    row_major float4x2 d;\n};\n"), hlsl;
+	const msl = cellsText(ShaderTarget.Msl);
+	assert msl.includes("  float2x2 a;\n  float2 b;\n  float3x2 c;\n  float4x2 d;\n"), msl;
+	const wgsl = cellsText(ShaderTarget.Wgsl);
+	assert wgsl.includes("  a : mat2x2f,\n  b : vec2f,\n  c : mat3x2f,\n  d : mat4x2f,\n"), wgsl;
+	const words = spirvProbe(cellsProgram(), 0, "cells");
+	const offsets = offsetsOf(words);
+	assert offsets.length == 5 && offsets[0] == 0 && offsets[1] == 16 && offsets[2] == 24 && offsets[3] == 48;
+	const strides = decorations(words, 7);
+	assert strides.length == 3 && strides.filter((i) => i[4] == 8).length == 3;
 }
