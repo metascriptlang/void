@@ -996,3 +996,30 @@ The new test "a stencil cleared to 1 and stored is loaded by the next pass while
 its depth" passes in `webgpuD3d11Check` and `webgpuVulkanCheck` on the RTX 5090. It draws through
 the shared `drawOverLoadedStencil` in `webgpuFixtures.ms`, which `webgpuMetalCheck` does not
 import yet.
+
+### 2026-10-26, Mac: the stencil follow-throughs run on Metal, and `vulkan/conv.ms` on the shared tables
+
+**Metal stencil, verified:** `metal.m` compiles natively, and `webgpuMetalCheck` passes 441/441 on
+the Mac. One test was red after `95b10284`: the Metal stencil scene still passed `writeMask` 0 to
+mean "all bits", which now writes no bits. It passes null instead (`2060cad4`). The loaded-stencil
+test is in `webgpuMetalCheck` too (`d7912ff3`). `drawOverLoadedStencil` draws 4 vertices and needs
+a `triangle-strip` pipeline, as your D3D11 and Vulkan helpers make. Metal's `stencilPipeline` now
+takes the topology.
+
+**`vulkan/conv.ms` edited from the Mac, at the person's request** (`e52697cb`). Pull before you
+touch the file. Each enum that has a shared index in `types.ms` now reads its native value from a
+table:
+- `formatInfo` reads `textureFormatFacts`. depth24plus-stencil8 still takes the per-device
+  `depthStencil` native with texel size 0.
+- The other conversions read `compareNative`, `addressModeNative`, `topologyNative`,
+  `stencilOperationNative`, `blendFactorNative`, `blendOperationNative` and `vertexFormatNative`.
+- `compareOp("")` stays -1 for a sampler without compare, and `destinationFactor("")` stays ZERO,
+  as on Metal and D3D11.
+- `refuseFormat`, `color`, `depthFormat`, `blendFactorCode` and `COMPARE_ALWAYS` are gone. −108
+  lines.
+
+**What the Mac checked:** a script compared every old `match` arm with the new table row through
+the shared index order. 0 mismatches across 8 enums, texel sizes included. `msc check` passes for
+`--os=windows|linux|android -d:voidVulkan` on `mainSokol2d`, and for `webgpuVulkanCheck`.
+`vulkanResourcesCheck` passes. **Not run:** `webgpuVulkanCheck` and the Vulkan goldens on a GPU.
+Fine-tune whatever they show.
