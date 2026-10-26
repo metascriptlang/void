@@ -184,6 +184,7 @@ import "./shaderLayoutCheck";
 import "./shaderReflectCheck";
 import "./shaderHlslCheck";
 import "./shaderBytecodeCheck";
+import "./shaderBytecodeDeviceCheck";
 import "./shaderWgslCheck";
 import "./shaderIrProgramCheck";
 import "./shaderGlslCheck";
