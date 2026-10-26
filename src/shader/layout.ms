@@ -50,7 +50,7 @@ function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int
 		ShaderTypeKind.Scalar | ShaderTypeKind.Atomic => { return [4, 4]; },
 		ShaderTypeKind.Vector => { return [t.rows == 2 ? 8 : 16, 4 * t.rows]; },
 		ShaderTypeKind.Matrix => {
-			const column = t.rows == 2 && !std140 ? 8 : 16;
+			const column = t.rows == 2 ? 8 : 16;
 			return [column, column * t.columns];
 		},
 		ShaderTypeKind.Array => {
@@ -115,11 +115,6 @@ export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 		if (own.scalar != ScalarKind.F32) {
 			return Result.err(owner + ": member '" + f.name + "' is " + typeName(own) +
 				", and GL carries a uniform block as float vec4s only");
-		}
-		if (own.kind == ShaderTypeKind.Matrix && own.rows == 2) {
-			return Result.err(owner + ": member '" + f.name + "' is " + typeName(own) +
-				", whose vec2 columns sit 8 bytes apart in WGSL's uniform layout and 16 in std140; " +
-				"a uniform matrix has 3 or 4 rows");
 		}
 		if (f.type.kind == ShaderTypeKind.Array && !isVec4OrMat4(own)) {
 			return Result.err(owner + ": member '" + f.name + "' is an array of " +

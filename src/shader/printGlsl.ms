@@ -771,6 +771,16 @@ function matrixRows(p: Printer, r: int32, t: ShaderType, row: (column: int32) =>
 
 function stride(t: ShaderType): int32 { return t.kind == ShaderTypeKind.Matrix ? t.columns : 1; }
 
+function twoRowColumns(p: Printer, r: int32, t: ShaderType, offset: int32): string {
+	let columns: string[] = [];
+	for (let c = 0; c < t.columns; c++) {
+		const at = offset + 8 * c;
+		const lane = (at % 16) / 4;
+		columns.push(blockRow(p, r, String(at / 16)) + "." + SWIZZLE.substring(lane, lane + 2));
+	}
+	return typeName(p, t) + "(" + columns.join(", ") + ")";
+}
+
 function memberText(p: Printer, e: ShaderExpr): string {
 	const r = e.index;
 	const t = e.type;
@@ -783,7 +793,9 @@ function memberText(p: Printer, e: ShaderExpr): string {
 		}
 		return typeName(p, t) + arraySuffix(p, t) + "(" + elements.join(", ") + ")";
 	}
-	if (t.kind == ShaderTypeKind.Matrix) { return elementText(p, r, t, row, ""); }
+	if (t.kind == ShaderTypeKind.Matrix) {
+		return t.rows == 2 ? twoRowColumns(p, r, t, offset) : elementText(p, r, t, row, "");
+	}
 	const lane = (offset % 16) / 4;
 	const width = t.kind == ShaderTypeKind.Vector ? t.rows : 1;
 	const whole = blockRow(p, r, String(row));

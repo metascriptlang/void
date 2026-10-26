@@ -260,6 +260,7 @@ class Spirv {
 	structRules: int32[] = [];
 	structOffsets: int32[][] = [];
 	structSizes: int32[] = [];
+	structSlots: int32[][] = [];
 	resourceVars: int32[] = [];
 	ioVars: int32[] = [];
 	workgroupVars: int32[] = [];
@@ -452,28 +453,69 @@ function runtimeArrayTypeId(p: Spirv, element: ShaderType): int32 {
 	return id;
 }
 
+function isHoisted(p: Spirv, structIndex: int32, t: ShaderType): boolean {
+	return p.structRules[structIndex] == STD140 && t.kind == ShaderTypeKind.Matrix && t.rows == 2;
+}
+
 function structTypeId(p: Spirv, index: int32): int32 {
 	const key = "s" + String(index);
 	const held = cached(p, key);
 	if (held != 0) { return held; }
 	const s = p.module.structs[index];
-	const members = s.members.map((f) => typeId(p, f.type));
+	const rule = p.structRules[index];
+	let members: int32[] = [];
+	let slots: int32[] = [];
+	for (const f of s.members) {
+		slots.push(members.length as int32);
+		if (isHoisted(p, index, f.type)) {
+			const column = typeId(p, vectorType(ScalarKind.F32, 2));
+			for (let c: int32 = 0; c < f.type.columns; c++) { members.push(column); }
+		} else {
+			members.push(typeId(p, f.type));
+		}
+	}
+	p.structSlots[index] = slots;
 	const id = declared(p, key, OP_TYPE_STRUCT, members);
 	name(p, id, s.name);
-	const rule = p.structRules[index];
 	for (let k: int32 = 0; k < s.members.length; k++) {
-		inst(p.names, OP_MEMBER_NAME, [id, k].concat(stringWords(s.members[k].name)));
-		if (rule == 0) { continue; }
-		memberDecorate(p, id, k, DECORATION_OFFSET, [p.structOffsets[index][k]]);
 		const t = s.members[k].type;
+		const at = slots[k];
+		if (isHoisted(p, index, t)) {
+			for (let c: int32 = 0; c < t.columns; c++) {
+				const columnName = s.members[k].name + "_col" + String(c);
+				inst(p.names, OP_MEMBER_NAME, [id, at + c].concat(stringWords(columnName)));
+				memberDecorate(p, id, at + c, DECORATION_OFFSET, [p.structOffsets[index][k] + 8 * c]);
+			}
+			continue;
+		}
+		inst(p.names, OP_MEMBER_NAME, [id, at].concat(stringWords(s.members[k].name)));
+		if (rule == 0) { continue; }
+		memberDecorate(p, id, at, DECORATION_OFFSET, [p.structOffsets[index][k]]);
 		const own = t.kind == ShaderTypeKind.Array ? t.element[0] : t;
 		if (own.kind == ShaderTypeKind.Matrix) {
-			memberDecorate(p, id, k, DECORATION_COL_MAJOR, []);
-			memberDecorate(p, id, k, DECORATION_MATRIX_STRIDE,
-				[rule == STD140 || own.rows != 2 ? 16 : 8]);
+			memberDecorate(p, id, at, DECORATION_COL_MAJOR, []);
+			memberDecorate(p, id, at, DECORATION_MATRIX_STRIDE, [own.rows == 2 ? 8 : 16]);
 		}
 	}
 	return id;
+}
+
+function hoistedMember(p: Spirv, e: ShaderExpr): boolean {
+	return e.kind == ExprKind.BlockMember && e.type.kind == ShaderTypeKind.Matrix &&
+		e.type.rows == 2;
+}
+
+function loadHoisted(p: Spirv, e: ShaderExpr): int32 {
+	const structIndex = p.module.resources[e.index].type.structIndex;
+	const at = p.structSlots[structIndex][e.member];
+	const column = vectorType(ScalarKind.F32, 2);
+	let columns: int32[] = [];
+	for (let c: int32 = 0; c < e.type.columns; c++) {
+		const place = typed(p, OP_ACCESS_CHAIN, pointerTypeId(p, UNIFORM, typeId(p, column)),
+			[p.resourceVars[e.index], intConstant(p, ScalarKind.I32, at + c)]);
+		columns.push(typed(p, OP_LOAD, typeId(p, column), [place]));
+	}
+	return typed(p, OP_COMPOSITE_CONSTRUCT, typeId(p, e.type), columns);
 }
 
 function isDepthShape(shape: TextureShape): boolean {
@@ -714,8 +756,9 @@ function isPlace(p: Spirv, e: ShaderExpr): boolean {
 		ExprKind.Local | ExprKind.Param | ExprKind.Io | ExprKind.Workgroup |
 			ExprKind.BlockMember => true,
 		ExprKind.Resource => p.module.resources[e.index].kind == ResourceKind.StorageBuffer,
-		ExprKind.Field | ExprKind.Index => isPlace(p, e.operands[0]),
-		ExprKind.Swizzle => e.components.length == 1 && isPlace(p, e.operands[0]),
+		ExprKind.Field | ExprKind.Index => isPlace(p, e.operands[0]) && !hoistedMember(p, e.operands[0]),
+		ExprKind.Swizzle => e.components.length == 1 && isPlace(p, e.operands[0]) &&
+			!hoistedMember(p, e.operands[0]),
 		ExprKind.Literal | ExprKind.Constant | ExprKind.Unary | ExprKind.Binary |
 			ExprKind.Conditional | ExprKind.Call | ExprKind.Intrinsic | ExprKind.Construct |
 			ExprKind.Convert => false,
@@ -751,7 +794,8 @@ function placeOf(p: Spirv, e: ShaderExpr): Place {
 		ExprKind.BlockMember => {
 			place.base = p.resourceVars[e.index];
 			place.storage = UNIFORM;
-			place.indices.push(intConstant(p, ScalarKind.I32, e.member));
+			place.indices.push(intConstant(p, ScalarKind.I32,
+				p.structSlots[p.module.resources[e.index].type.structIndex][e.member]));
 		},
 		ExprKind.Resource => {
 			place.base = p.resourceVars[e.index];
@@ -785,6 +829,7 @@ function pointer(p: Spirv, e: ShaderExpr): Place {
 }
 
 function load(p: Spirv, e: ShaderExpr): int32 {
+	if (hoistedMember(p, e)) { return loadHoisted(p, e); }
 	const place = pointer(p, e);
 	return typed(p, OP_LOAD, typeId(p, e.type), [place.id]);
 }
@@ -2071,6 +2116,7 @@ export function printSpirv(m: ShaderModule, entry: int32, bindings: BindingSlot[
 	p.structRules = m.structs.map((): int32 => 0);
 	p.structOffsets = m.structs.map((): int32[] => []);
 	p.structSizes = m.structs.map((): int32 => 0);
+	p.structSlots = m.structs.map((): int32[] => []);
 	p.resourceVars = m.resources.map((): int32 => 0);
 	p.ioVars = m.ios.map((): int32 => 0);
 	p.workgroupVars = m.workgroups.map((): int32 => 0);

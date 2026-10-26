@@ -153,6 +153,7 @@ class Printer {
 	constantNames: string[] = [];
 	resourceNames: string[] = [];
 	memberNames: string[][] = [];
+	memberColumns: string[][][] = [];
 	ioNames: string[] = [];
 	functionNames: string[] = [];
 	workgroupNames: string[] = [];
@@ -392,6 +393,14 @@ function postfixBase(p: Printer, e: ShaderExpr): string {
 }
 
 function isMatrix(t: ShaderType): boolean { return t.kind == ShaderTypeKind.Matrix; }
+
+function isTwoRowMatrix(t: ShaderType): boolean { return isMatrix(t) && t.rows == 2; }
+
+function blockMemberText(p: Printer, e: ShaderExpr): string {
+	const columns = p.memberColumns[e.index][e.member];
+	return columns.length == 0 ? p.memberNames[e.index][e.member] :
+		typeName(p, e.type) + "(" + columns.join(", ") + ")";
+}
 
 function isScalarKind(t: ShaderType, s: ScalarKind): boolean {
 	return (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) && t.scalar == s;
@@ -914,7 +923,7 @@ function expr(p: Printer, e: ShaderExpr): string {
 		ExprKind.Resource => m.resources[e.index].kind == ResourceKind.UniformBlock ?
 			fail(p, "uniform block '" + m.resources[e.index].name + "' read whole") :
 			p.resourceNames[e.index],
-		ExprKind.BlockMember => p.memberNames[e.index][e.member],
+		ExprKind.BlockMember => blockMemberText(p, e),
 		ExprKind.Unary => unaryText(e) + operand(p, e.operands[0]),
 		ExprKind.Binary => binaryText(p, e),
 		ExprKind.Conditional => {
@@ -1176,6 +1185,16 @@ function blockText(p: Printer, index: int32, slots: BindingSlot[]): string {
 	for (let i = 0; i < members.length; i++) {
 		const offset = layout.value.offsets[i];
 		const lane = (offset % 16) / 4;
+		const columns = p.memberColumns[index][i];
+		if (columns.length > 0) {
+			for (let c = 0; c < columns.length; c++) {
+				const at = offset + 8 * c;
+				const half = (at % 16) / 4;
+				text += "    float2 " + columns[c] + " : packoffset(c" + String(at / 16) +
+					(at % 16 == 0 ? "" : "." + SWIZZLE.substring(half, half + 1)) + ");\n";
+			}
+			continue;
+		}
 		const component = offset % 16 == 0 ? "" : "." + SWIZZLE.substring(lane, lane + 1);
 		text += "    " + declaration(p, members[i].type, p.memberNames[index][i]) +
 			" : packoffset(c" + String(offset / 16) + component + ");\n";
@@ -1339,6 +1358,7 @@ export function printHlsl(
 	p.constantNames = m.constants.map((_c) => "");
 	p.resourceNames = m.resources.map((_r) => "");
 	p.memberNames = m.resources.map((_r) => []);
+	p.memberColumns = m.resources.map((_r) => []);
 	p.ioNames = m.ios.map((_io) => "");
 	p.functionNames = m.functions.map((_f) => "");
 	p.workgroupNames = m.workgroups.map((_w) => "");
@@ -1383,6 +1403,14 @@ export function printHlsl(
 		if (m.resources[r].kind != ResourceKind.UniformBlock) { continue; }
 		const members = m.structs[m.resources[r].type.structIndex].members;
 		p.memberNames[r] = members.map((f) => claim(p, p.globals, "_" + String(r) + "_" + f.name));
+		p.memberColumns[r] = members.map((f, i) => {
+			let columns: string[] = [];
+			if (!isTwoRowMatrix(f.type)) { return columns; }
+			for (let c = 0; c < f.type.columns; c++) {
+				columns.push(claim(p, p.globals, p.memberNames[r][i] + "_" + String(c)));
+			}
+			return columns;
+		});
 	}
 	for (const s of structs) {
 		p.structNames[s] = claim(p, p.globals, m.structs[s].name);
