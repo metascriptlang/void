@@ -85,6 +85,7 @@ import {
 	occlusionSetId,
 	stencil8Mask,
 	boundFacts,
+	colorWriteBits,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -1779,7 +1780,7 @@ function createBlendState(descriptor: GPURenderPipelineDescriptor): Ptr<D3dBlend
 		targets[count * BLEND_TARGET_INTS + 5] = blendFactor(alpha.srcFactor, true, "blend.alpha.srcFactor");
 		targets[count * BLEND_TARGET_INTS + 6] = destinationFactor(alpha.dstFactor, true, "blend.alpha.dstFactor");
 		targets[count * BLEND_TARGET_INTS + 7] = blendOperation(alpha.operation, "blend.alpha.operation");
-		targets[count * BLEND_TARGET_INTS + 8] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
+		targets[count * BLEND_TARGET_INTS + 8] = colorWriteBits(writeMask);
 		count += 1;
 	}
 	return d3dCreateBlendState(device, targets[0], count);

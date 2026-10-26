@@ -5,6 +5,7 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUCanvasConfiguration,
+	GPUColorWrite,
 	GPUPrimitiveState,
 	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
@@ -615,6 +616,7 @@ export function resolvedRenderPipeline(descriptor: GPURenderPipelineDescriptor):
 }
 
 export function stencilMask(mask: uint32 | null): uint32 { return mask ?? 0xFFFFFFFF; }
+export function colorWriteBits(mask: int32 | null): int32 { return mask ?? GPUColorWrite.ALL as int32; }
 export function stencil8Mask(mask: uint32 | null): int32 { return (stencilMask(mask) & 0xFF) as int32; }
 
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {

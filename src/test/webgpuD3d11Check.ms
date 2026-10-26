@@ -41,6 +41,7 @@ import {
 	clearingPass,
 	colourTarget,
 	colourUniforms,
+	drawMaskedTriangle,
 	drawOverLoadedStencil,
 	drawTriangleIn,
 	pixel,
@@ -701,6 +702,16 @@ test "a stencil cleared to 1 and stored is loaded by the next pass while that pa
 	drawOverLoadedStencil(device, stencilPipeline(device, flatShader(device), "equal", "keep"), target);
 	const pixels = readPixels(target);
 	assert pixel(pixels, 0, 0) == GREEN && pixel(pixels, 63, 63) == GREEN;
+	device.destroy();
+}
+
+test "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the triangle" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawMaskedTriangle(device, flatShader(device), 0, target);
+	assert pixel(readPixels(target), 32, 32) == BLUE;
+	drawMaskedTriangle(device, flatShader(device), null, target);
+	assert pixel(readPixels(target), 32, 32) == RED;
 	device.destroy();
 }
 

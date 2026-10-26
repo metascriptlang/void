@@ -88,6 +88,7 @@ import {
 	openDebugGroups,
 	stencil8Mask,
 	boundFacts,
+	colorWriteBits,
 	isIntegerFormat,
 } from "../validate.ms";
 import {
@@ -1850,7 +1851,7 @@ function describeBlend(descriptor: GPURenderPipelineDescriptor, ref slot: Pipeli
 		if (format == "") { continue; }
 		const info = formatInfo(descriptor.fragment.targets[i].format, `fragment.targets[${i}].format`);
 		const writeMask = descriptor.fragment.targets[i].writeMask;
-		slot.writeMasks[i] = writeMask == 0 ? COLOR_WRITE_ALL : writeMask;
+		slot.writeMasks[i] = colorWriteBits(writeMask);
 		slot.colorCount = i + 1;
 		const color: GPUBlendComponent = descriptor.fragment.targets[i].blend.color;
 		const alpha: GPUBlendComponent = descriptor.fragment.targets[i].blend.alpha;

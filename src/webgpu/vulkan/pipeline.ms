@@ -79,7 +79,6 @@ import {
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUColor,
-	GPUColorWrite,
 	GPUComputePipelineDescriptor,
 	GPUIndexFormat,
 	GPURenderPipelineDescriptor,
@@ -98,7 +97,7 @@ import {
 	stop,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
-import { boundFacts, checkedComputeModule, checkedRenderModule, entryBytes, isStripTopology, stencilMask } from "../validate.ms";
+import { boundFacts, checkedComputeModule, checkedRenderModule, colorWriteBits, entryBytes, isStripTopology, stencilMask } from "../validate.ms";
 import {
 	bindGroupRecords,
 	bufferRecords,
@@ -334,7 +333,7 @@ function colorTargetWords(ref words: Vec<uint32>, descriptor: GPURenderPipelineD
 	words.push(sourceFactor(target.blend.alpha.srcFactor, `${member}.blend.alpha.srcFactor`));
 	words.push(destinationFactor(target.blend.alpha.dstFactor, `${member}.blend.alpha.dstFactor`));
 	words.push(blendOp(target.blend.alpha.operation, `${member}.blend.alpha.operation`));
-	words.push((target.writeMask == 0 ? GPUColorWrite.ALL as int32 : target.writeMask) as uint32);
+	words.push(colorWriteBits(target.writeMask) as uint32);
 }
 
 function unusedTargetWords(ref words: Vec<uint32>): void {

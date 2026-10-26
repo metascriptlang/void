@@ -45,6 +45,7 @@ import {
 	resolvedRenderPipeline,
 	stencil8Mask,
 	stencilMask,
+	colorWriteBits,
 	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
@@ -944,6 +945,12 @@ test "a canvas names a color format and, when it has one, a depth format" {
 	assert canvasRefusal("depth32float", "", 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
 	assert canvasRefusal("bgra8unorm", "rgba8unorm", 1) == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
 	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
+}
+
+test "an omitted color writeMask writes every channel and an explicit 0 writes none" {
+	assert colorWriteBits(null) == 0xF;
+	assert colorWriteBits(0) == 0;
+	assert colorWriteBits(0x9) == 0x9;
 }
 
 test "a render pipeline's zero sample count and omitted stencil masks resolve to WebGPU's defaults" {

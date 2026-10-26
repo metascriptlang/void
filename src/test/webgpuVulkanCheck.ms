@@ -35,6 +35,7 @@ import {
 	clearingPass,
 	colourTarget,
 	colourUniforms,
+	drawMaskedTriangle,
 	drawOverLoadedStencil,
 	pixel,
 	readBack,
@@ -178,6 +179,16 @@ test "a Vulkan triangle takes its colour from the uniform block at the dynamic o
 	assert pixel(pixels, 63, 63) == BLUE;
 	const live = device.liveCounts();
 	assert live.buffers == 3 && live.textures == 1 && live.views == 1 && live.shaderModules == 1 && live.pipelines == 1;
+	assert validationErrorsAfterClose(device) == 0;
+}
+
+test "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the triangle" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawMaskedTriangle(device, flatShader(device), 0, target);
+	assert pixel(readTexture(device, target), 32, 32) == BLUE;
+	drawMaskedTriangle(device, flatShader(device), null, target);
+	assert pixel(readTexture(device, target), 32, 32) == RED;
 	assert validationErrorsAfterClose(device) == 0;
 }
 

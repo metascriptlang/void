@@ -8,6 +8,8 @@ import {
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
 	GPURenderPipeline,
+	GPURenderPipelineDescriptor,
+	GPUShaderModule,
 	GPUTexture,
 	GPUTextureUsage,
 	GPUTextureView,
@@ -83,6 +85,22 @@ export function drawOverLoadedStencil(device: GPUDevice, tester: GPURenderPipeli
 	pass.setVertexBuffer(0, vertices, 0);
 	pass.setBindGroup(GPU_UNIFORM_GROUP, uniformGroup(device, tester, colourUniforms(device)), green);
 	pass.draw(4, 1, 0, 0);
+	pass.end();
+	device.queue.submit(encoder.finish());
+}
+
+export function drawMaskedTriangle(device: GPUDevice, module: GPUShaderModule, writeMask: int32 | null, target: GPUTexture): void {
+	let descriptor: GPURenderPipelineDescriptor = { label: "masked" };
+	descriptor.vertex.module = module;
+	descriptor.vertex.buffers[0].arrayStride = 8;
+	descriptor.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	descriptor.fragment.module = module;
+	descriptor.fragment.targets[0].format = "rgba8unorm";
+	descriptor.fragment.targets[0].writeMask = writeMask;
+	const pipeline = device.createRenderPipeline(descriptor);
+	const encoder = device.createCommandEncoder();
+	const pass = encoder.beginRenderPass(clearingPass(target.createView({ label: null }), { id: 0 }));
+	drawTriangleIn(device, pipeline, pass);
 	pass.end();
 	device.queue.submit(encoder.finish());
 }

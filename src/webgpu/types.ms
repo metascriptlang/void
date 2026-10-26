@@ -334,7 +334,7 @@ export struct GPUColorTargetState {
 	format: GPUTextureFormat;
 	blendEnabled: boolean;
 	blend: GPUBlendState;
-	writeMask: int32;
+	writeMask: int32 | null;
 }
 
 export struct GPUFragmentState {
