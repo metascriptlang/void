@@ -822,3 +822,30 @@ backend tears down (`_sg_discard_all_resources` `:26431`). A Vulkan `backend.ms`
   `frameIndex` or shutdown loop of its own. `pool.ms` keeps `Pool`/`allocate`/`store`/`release`
   until `vulkan/resources.ms` moves over.
 At shutdown D3D11 now releases resources before `ClearState`: a WARP run confirms it.
+
+Progress, step 4 (merged at `e8f433b8`, pushed with the fixes below): the per-resource rules run in
+`device.ms` before the backend, so Vulkan drops its own copies of them:
+- copies (usage, map state, regions, formats), query sets (timestamp, occlusion, resolve),
+  `setBindGroup` (group and dynamic offsets), `writeBuffer` and the once-per-frame rule, storage
+  view format mismatch, blending an integer format, and a scissor outside the attachment;
+- `pool.ms` holds map state, `writtenFrame`, pipeline kind, shader index reads, bind-group
+  `dynamicCount` and query state; `backend.mapAsync` changed and `unmap` left the backend;
+- any STORAGE buffer size is accepted (an unaligned range is refused only at binding), and a
+  swapchain sample count is refused only where the native API cannot make it;
+- `DeviceLoss { None, Recover, Fatal }` lives once in `types.ms`.
+
+Your stencil red is fixed in `c2b640d6`: `stencil8Mask` in `validate.ms` hands D3D11, GL and wgpu
+the low 8 bits (every stencil format has 8), and `webgpuValidateCheck` pins it. Vulkan's
+`VkStencilOpState` masks are `uint32_t`, so it can take the WebGPU value as is or call the same
+helper. A rerun of `webgpuD3d11Check` on WARP is the check this side cannot make.
+
+The door's scissor now clamps to the pass attachment (`c75feb8f`), as sokol's
+`_sg_clipi` (`sokol_gfx.h:8459`) does on every backend: the batcher's `ceil(logical * dpi)`
+overshoots the swapchain by one pixel at 175% for 262 of 8000 widths, which the shared refusal
+above would stop. `webgpuMetalCheck` pins it red without the clamp and green with it.
+
+`gpuTimer` was red 7 of 12 runs on the M3 Max: `resolveCounters` in the same command buffer read
+the counter sample buffer before the render pass's end sample landed. Metal now signals and waits
+on an `MTLSharedEvent` before each resolve on Apple8+ GPUs (`8d8faeda`), as Dawn's
+`metal_serialize_timestamp_generation_and_resolution` does (crbug.com/372698905); 0 of 20 since.
+An `MTLFence` and a plain `MTLEvent` did not fix it. `gpuTimer` now runs on every Mac gate.
