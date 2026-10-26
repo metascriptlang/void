@@ -15,6 +15,7 @@ import {
 	GPUMapMode,
 	GPUPassTimestampWrites,
 	GPUCommandEncoder,
+	GPUComputePipeline,
 	GPUCompareFunction,
 	GPUCullMode,
 	GPUDevice,
@@ -74,7 +75,7 @@ import {
 	timerResultMs,
 	timerState,
 } from "./gpuTimer";
-import { featureSetup } from "./feature";
+import { Feature, featureSetup, requireFeature } from "./feature";
 import { Vec4 } from "../math/math3d";
 import {
 	Blend,
@@ -96,6 +97,7 @@ import {
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;
 const VIEW_SLOTS: int32 = 9;
+export const DOOR_VIEW_SLOTS: int32 = VIEW_SLOTS;
 const PASS_VIEW_SLOTS: int32 = 5;
 const SAMPLER_SLOTS: int32 = 5;
 const SAMPLER_BINDING_BASE: int32 = 32;
@@ -135,6 +137,7 @@ export enum PassState {
 	None,
 	Target,
 	Screen,
+	Compute,
 }
 
 export enum IndexType {
@@ -1011,6 +1014,7 @@ export function doorDestroySampler(sampler: uint32): void {
 
 export const DOOR_BUFFER_VERTEX = 1;
 export const DOOR_BUFFER_INDEX = 2;
+export const DOOR_BUFFER_STORAGE = 4;
 
 function alignedToFour(bytes: int64): int64 {
 	return (bytes + 3) & ~(3 as int64);
@@ -1022,7 +1026,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 	const bytes = data.length > 0 ? data.length as int64 : size;
 	if (bytes <= 0) { return 0; }
 	const buffer = makeBuffer({
-		label: (usage & DOOR_BUFFER_INDEX) != 0 ? "makeBuffer index" : "makeBuffer vertex",
+		label: bufferLabel(usage),
 		size: alignedToFour(bytes),
 		usage: doorBufferUsage(usage),
 	});
@@ -1033,7 +1037,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 export function doorMakeBufferOf<T>(usage: int32, data: Readonly<Span<T>>): uint32 {
 	if (data.length == 0) { return 0; }
 	const buffer = makeBuffer({
-		label: (usage & DOOR_BUFFER_INDEX) != 0 ? "makeBuffer index" : "makeBuffer vertex",
+		label: bufferLabel(usage),
 		size: alignedToFour((data.length as int64) * (sizeof(T) as int64)),
 		usage: doorBufferUsage(usage),
 	});
@@ -1041,10 +1045,20 @@ export function doorMakeBufferOf<T>(usage: int32, data: Readonly<Span<T>>): uint
 	return buffer.id;
 }
 
+function bufferLabel(usage: int32): string {
+	if ((usage & DOOR_BUFFER_STORAGE) != 0) { return "makeBuffer storage"; }
+	return (usage & DOOR_BUFFER_INDEX) != 0 ? "makeBuffer index" : "makeBuffer vertex";
+}
+
+// A storage buffer also copies out, so a compute result can be read back (doorReadBuffer).
 function doorBufferUsage(usage: int32): int32 {
 	let flags = GPUBufferUsage.COPY_DST as int32;
 	if ((usage & DOOR_BUFFER_VERTEX) != 0) { flags |= GPUBufferUsage.VERTEX as int32; }
 	if ((usage & DOOR_BUFFER_INDEX) != 0) { flags |= GPUBufferUsage.INDEX as int32; }
+	if ((usage & DOOR_BUFFER_STORAGE) != 0) {
+		requireFeature(Feature.StorageBuffers, "makeBuffer with DOOR_BUFFER_STORAGE");
+		flags |= (GPUBufferUsage.STORAGE as int32) | (GPUBufferUsage.COPY_SRC as int32);
+	}
 	return flags;
 }
 
@@ -1218,6 +1232,7 @@ export function doorViewIsColorAttachment(view: uint32): int32 {
 
 @exportName("doorApplyPipeline")
 export function doorApplyPipeline(pipeline: uint32): void {
+	stopInComputePass("applyPipeline");
 	frameStats[DOOR_STAT_PIPELINES]++;
 	const index = pipelineIndex(pipeline);
 	if (index != current) {
@@ -1253,7 +1268,8 @@ function keyHash(key: BindKey): int32 {
 	return (h & ((BIND_GROUP_CACHE - 1) as uint32)) as int32;
 }
 
-function resourceGroup(key: BindKey): GPUBindGroup {
+// The group made for `key`, id 0 when none was.
+function cachedGroup(key: BindKey): GPUBindGroup {
 	if (bindCache.length == 0) {
 		for (let i = 0; i < BIND_GROUP_CACHE; i++) {
 			bindCache.push({ key: { pipeline: 0 }, group: { id: 0 } });
@@ -1263,7 +1279,18 @@ function resourceGroup(key: BindKey): GPUBindGroup {
 	if (bindCache[at].group.id != 0 && sameKey(bindCache[at].key, key)) {
 		return bindCache[at].group;
 	}
+	return { id: 0 };
+}
+
+function cacheGroup(key: BindKey, group: GPUBindGroup): void {
+	const at = keyHash(key);
 	if (bindCache[at].group.id != 0) { bindCache[at].group.destroy(); }
+	bindCache[at] = { key, group };
+}
+
+function resourceGroup(key: BindKey): GPUBindGroup {
+	const held = cachedGroup(key);
+	if (held.id != 0) { return held; }
 	const record = pipelines[current];
 	let descriptor = {
 		label: "applyBindings",
@@ -1284,7 +1311,33 @@ function resourceGroup(key: BindKey): GPUBindGroup {
 		n++;
 	}
 	const group = device.createBindGroup(descriptor);
-	bindCache[at] = { key, group };
+	cacheGroup(key, group);
+	return group;
+}
+
+// The group-1 bind group of a compute pipeline whose storage slots are the bits of `slots`:
+// `buffers[slot]` fills slot `slot`, the same cache and key as a render pipeline's views.
+export function doorStorageGroup(
+	pipeline: GPUComputePipeline, slots: uint32, buffers: Readonly<Span<uint32>>,
+): GPUBindGroup {
+	let key: BindKey = { pipeline: pipeline.id };
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		if ((slots & ((1 as uint32) << (i as uint32))) != 0) { key.views[i] = buffers[i]; }
+	}
+	const held = cachedGroup(key);
+	if (held.id != 0) { return held; }
+	let descriptor = {
+		label: "applyComputeBindings",
+		layout: pipeline.getBindGroupLayout(GPU_RESOURCE_GROUP),
+	} as GPUBindGroupDescriptor;
+	let n = 0;
+	for (let i = 0; i < VIEW_SLOTS; i++) {
+		if ((slots & ((1 as uint32) << (i as uint32))) == 0) { continue; }
+		descriptor.entries[n] = { binding: i, buffer: { id: key.views[i] } };
+		n++;
+	}
+	const group = device.createBindGroup(descriptor);
+	cacheGroup(key, group);
 	return group;
 }
 
@@ -1294,6 +1347,7 @@ export function doorApplyBindings(
 	bindings: Readonly<Span<uint32>>,
 	vertexOffsets: Readonly<Span<int32>>,
 ): void {
+	stopInComputePass("applyBindings");
 	if (bindings.length < DOOR_BINDING_LENGTH) {
 		stop("applyBindings descriptor holds " + String(bindings.length) + " of " +
 			String(DOOR_BINDING_LENGTH) + " words");
@@ -1328,6 +1382,7 @@ export function doorApplyUniforms(slot: int32, data: Readonly<Span<uint8>>): voi
 }
 
 export function doorApplyUniformsOf<T>(slot: int32, data: Readonly<Span<T>>): void {
+	stopInComputePass("applyUniforms");
 	if (current < 0) { stop("applyUniforms before applyPipeline"); }
 	if (slot < 0 || slot >= DOOR_UNIFORM_SLOTS) { stop("applyUniforms to slot " + String(slot)); }
 	const record = pipelines[current];
@@ -1363,6 +1418,7 @@ function requireAppliedBlocks(): void {
 
 @exportName("doorDraw")
 export function doorDraw(base: int32, count: int32, instances: int32): void {
+	stopInComputePass("draw");
 	frameStats[DOOR_STAT_DRAWS]++;
 	if (current >= 0) { requireAppliedBlocks(); }
 	if (current >= 0 && pipelines[current].indexed) {
@@ -1374,6 +1430,7 @@ export function doorDraw(base: int32, count: int32, instances: int32): void {
 
 @exportName("doorApplyScissor")
 export function doorApplyScissor(x: int32, y: int32, width: int32, height: int32): void {
+	stopInComputePass("applyScissor");
 	const left = Math.min(Math.max(x, 0), passWidth);
 	const top = Math.min(Math.max(y, 0), passHeight);
 	const right = Math.max(Math.min(x + width, passWidth), left);
@@ -1480,10 +1537,81 @@ export function doorReadScreen(out: Span<uint8>): int32 {
 	);
 }
 
+// The bytes of a buffer that copies out (a storage buffer), all of them; 0 when `out` is not its
+// size. The copy rides the frame's encoder and submits it, so earlier passes have run.
+export function doorReadBuffer(id: uint32, out: Span<uint8>): int32 {
+	stopOnOpenPass("readBuffer");
+	const buffer: GPUBuffer = { id };
+	if (!buffer.isAlive()) { stop("readBuffer of buffer " + String(id) + ", which is not alive"); }
+	const size = buffer.size();
+	if ((out.length as int64) != size) { return 0; }
+	const staging = device.createBuffer({
+		label: "readBuffer",
+		size,
+		usage: (GPUBufferUsage.MAP_READ as int32) | (GPUBufferUsage.COPY_DST as int32),
+	});
+	frameEncoder().copyBufferToBuffer(buffer, 0, staging, 0, size);
+	device.queue.submit(frameEncoder().finish());
+	encoder = { id: 0 };
+	staging.mapAsync(GPUMapMode.READ as int32, 0, 0);
+	const mapped = staging.getMappedRange(0, 0);
+	for (let i = 0; i < out.length; i++) { out[i] = mapped[i]; }
+	staging.unmap();
+	staging.destroy();
+	return 1;
+}
+
 // ---- passes ----
 
+function endCall(open: PassState): string {
+	return open == PassState.Compute ? "endComputePass" : "endPass";
+}
+
+// Each refusal is "" for a call the open pass allows.
+export function openPassRefusal(call: string, open: PassState): string {
+	if (open == PassState.None) { return ""; }
+	return call + " with a pass already open; " + endCall(open) + " ends it";
+}
+
+export function renderCallRefusal(call: string, open: PassState): string {
+	if (open != PassState.Compute) { return ""; }
+	return call + " inside a compute pass; endComputePass ends it";
+}
+
+export function computeCallRefusal(call: string, open: PassState): string {
+	if (open == PassState.Compute) { return ""; }
+	if (open == PassState.None) {
+		return call + " with no compute pass open; beginComputePass opens one";
+	}
+	return call + " inside a render pass; " + endCall(open) +
+		" ends it before beginComputePass opens a compute pass";
+}
+
 @noinline function stopOnOpenPass(call: string): void {
-	if (openPass != PassState.None) { stop(call + " with a pass already open; endPass ends it"); }
+	const refusal = openPassRefusal(call, openPass);
+	if (refusal != "") { stop(refusal); }
+}
+
+@noinline function stopInComputePass(call: string): void {
+	const refusal = renderCallRefusal(call, openPass);
+	if (refusal != "") { stop(refusal); }
+}
+
+export function doorOpenComputePass(): void {
+	stopOnOpenPass("beginComputePass");
+	openPass = PassState.Compute;
+	current = -1;
+}
+
+export function doorRequireComputePass(call: string): void {
+	const refusal = computeCallRefusal(call, openPass);
+	if (refusal != "") { stop(refusal); }
+}
+
+export function doorCloseComputePass(): void {
+	doorRequireComputePass("endComputePass");
+	openPass = PassState.None;
+	current = -1;
 }
 
 function timestampsOf(label: string): GPUPassTimestampWrites {
@@ -1506,7 +1634,9 @@ export function doorGpuTimerPassCount(): int32 { return timerResultCount(); }
 export function doorGpuTimerPassMs(index: int32): float64 { return timerResultMs(index); }
 export function doorGpuTimerPassLabel(index: int32): string { return timerResultLabel(index); }
 
-function frameEncoder(): GPUCommandEncoder {
+export function doorDevice(): GPUDevice { return device; }
+
+export function frameEncoder(): GPUCommandEncoder {
 	if (encoder.id == 0) { encoder = device.createCommandEncoder(); }
 	return encoder;
 }
@@ -1634,6 +1764,7 @@ export function doorBeginScreenPass(
 @exportName("doorEndPass")
 export function doorEndPass(): void {
 	if (openPass == PassState.None) { stop("endPass with no pass open"); }
+	stopInComputePass("endPass");
 	pass.end();
 	openPass = PassState.None;
 	passViews = [0, 0, 0, 0, 0];
@@ -1786,4 +1917,6 @@ test "the door's ordinals stay the numbers door.h gives the C layers" {
 	assert DOOR_STAT_COUNT == 11;
 	assert DOOR_BUFFER_VERTEX == 1;
 	assert DOOR_BUFFER_INDEX == 2;
+	assert (DOOR_BUFFER_STORAGE & (DOOR_BUFFER_VERTEX | DOOR_BUFFER_INDEX)) == 0;
+	assert (PassState.Compute as int32) == 3;
 }
