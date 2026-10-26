@@ -1009,6 +1009,7 @@ export function doorDestroySampler(sampler: uint32): void {
 
 export const DOOR_BUFFER_VERTEX = 1;
 export const DOOR_BUFFER_INDEX = 2;
+export const DOOR_BUFFER_INDIRECT = 4;
 
 function alignedToFour(bytes: int64): int64 {
 	return (bytes + 3) & ~(3 as int64);
@@ -1020,7 +1021,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 	const bytes = data.length > 0 ? data.length as int64 : size;
 	if (bytes <= 0) { return 0; }
 	const buffer = makeBuffer({
-		label: (usage & DOOR_BUFFER_INDEX) != 0 ? "makeBuffer index" : "makeBuffer vertex",
+		label: bufferLabel(usage),
 		size: alignedToFour(bytes),
 		usage: doorBufferUsage(usage),
 	});
@@ -1031,7 +1032,7 @@ export function doorMakeBuffer(usage: int32, data: Readonly<Span<uint8>>, size: 
 export function doorMakeBufferOf<T>(usage: int32, data: Readonly<Span<T>>): uint32 {
 	if (data.length == 0) { return 0; }
 	const buffer = makeBuffer({
-		label: (usage & DOOR_BUFFER_INDEX) != 0 ? "makeBuffer index" : "makeBuffer vertex",
+		label: bufferLabel(usage),
 		size: alignedToFour((data.length as int64) * (sizeof(T) as int64)),
 		usage: doorBufferUsage(usage),
 	});
@@ -1043,7 +1044,14 @@ function doorBufferUsage(usage: int32): int32 {
 	let flags = GPUBufferUsage.COPY_DST as int32;
 	if ((usage & DOOR_BUFFER_VERTEX) != 0) { flags |= GPUBufferUsage.VERTEX as int32; }
 	if ((usage & DOOR_BUFFER_INDEX) != 0) { flags |= GPUBufferUsage.INDEX as int32; }
+	if ((usage & DOOR_BUFFER_INDIRECT) != 0) { flags |= GPUBufferUsage.INDIRECT as int32; }
 	return flags;
+}
+
+function bufferLabel(usage: int32): string {
+	if ((usage & DOOR_BUFFER_INDEX) != 0) { return "makeBuffer index"; }
+	if ((usage & DOOR_BUFFER_INDIRECT) != 0) { return "makeBuffer indirect"; }
+	return "makeBuffer vertex";
 }
 
 // sokol's sg_update_buffer: the whole content from offset 0, refused past the buffer's size.
@@ -1368,6 +1376,15 @@ export function doorDraw(base: int32, count: int32, instances: int32): void {
 	} else {
 		pass.draw(count, instances, base, 0);
 	}
+}
+
+// Heaps' drawInstanced with a command buffer: `drawCount` records of five uint32 (index count,
+// instance count, first index, base vertex, first instance) from byte `offset` of `buffer`.
+export function doorDrawIndirect(buffer: uint32, offset: int64, drawCount: int32): void {
+	frameStats[DOOR_STAT_DRAWS]++;
+	if (current < 0 || !pipelines[current].indexed) { stop("doorDrawIndirect needs an applied pipeline with an index buffer"); }
+	requireAppliedBlocks();
+	pass.multiDrawIndexedIndirect({ id: buffer }, offset, drawCount);
 }
 
 @exportName("doorApplyScissor")
