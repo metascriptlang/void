@@ -1754,7 +1754,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				intrinsicOf(Intrinsic.TextureSampleCompareLevel, type, args),
 			"textureSampleLevel" => intrinsicOf(Intrinsic.TextureSampleLevel, type, args),
 			"textureSampleGrad" => intrinsicOf(Intrinsic.TextureSampleGrad, type, args),
-			_ => fail(n, "./std's '" + name + "' has no GLSL spelling"),
+			_ => { fail(n, "./std's '" + name + "' has no GLSL spelling"); },
 		});
 	}
 
