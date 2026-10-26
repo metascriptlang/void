@@ -13,14 +13,18 @@ static const int32_t VOID_COUNTER_UI_INSTANCES = 1;
 static const int32_t VOID_COUNTER_SPRITE_INSTANCES = 2;
 static const int32_t VOID_COUNTER_UPLOAD_BYTES = 3;
 static const int32_t VOID_COUNTER_UPLOADS = 4;
-static const int32_t VOID_COUNTER_SOKOL_DRAWS = 5;
-static const int32_t VOID_COUNTER_SOKOL_PIPELINES = 6;
-static const int32_t VOID_COUNTER_SOKOL_PASSES = 7;
-static const int32_t VOID_COUNTER_SOKOL_BUFFER_BYTES = 8;
-static const int32_t VOID_COUNTER_SOKOL_IMAGE_BYTES = 9;
-static const int32_t VOID_COUNTER_SOKOL_MEASURED = 10;
-#define VOID_COUNTER_VOID2D_SLOTS 5
-#define VOID_COUNTER_SLOTS 11
+static const int32_t VOID_COUNTER_COVERED_PIXELS = 5;
+static const int32_t VOID_COUNTER_TARGET_PIXELS = 6;
+static const int32_t VOID_COUNTER_OPAQUE_PIXELS = 7;
+static const int32_t VOID_COUNTER_FRAME_PIXELS = 8;
+static const int32_t VOID_COUNTER_SOKOL_DRAWS = 9;
+static const int32_t VOID_COUNTER_SOKOL_PIPELINES = 10;
+static const int32_t VOID_COUNTER_SOKOL_PASSES = 11;
+static const int32_t VOID_COUNTER_SOKOL_BUFFER_BYTES = 12;
+static const int32_t VOID_COUNTER_SOKOL_IMAGE_BYTES = 13;
+static const int32_t VOID_COUNTER_SOKOL_MEASURED = 14;
+#define VOID_COUNTER_VOID2D_SLOTS 9
+#define VOID_COUNTER_SLOTS 15
 static const int32_t VOID_COUNTER_COUNT = VOID_COUNTER_SLOTS;
 
 static const int32_t VOID_FRAME_IDLE = 0;

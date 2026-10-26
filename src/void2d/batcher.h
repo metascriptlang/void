@@ -61,6 +61,9 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 uint32_t void2dCommandView(const float *cmd);
 void void2dCopyFloats(float *dst, const float *src, int count);
 void void2dSetScopes(const float *scopes, int count);
+double void2dQuadCoverage(const float *affine, float x, float y, float w, float h, float scale,
+                          int x0, int y0, int x1, int y1);
+void void2dSetCoverageSources(const float *vertices, const float *sprites, const float *ui);
 
 void void2dSetDpiScale(float scale);
 int void2dScissorMin(float edge, float scale);
