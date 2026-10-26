@@ -32,7 +32,7 @@ function step(name: string, code: int32): boolean {
 function main(): int32 {
 	if (!step("vulkanLoaderOpen", vulkanLoaderOpen())) { return 1; }
 	if (!step("vulkanInstanceCreate", vulkanInstanceCreate())) { return 1; }
-	if (!step("vulkanAdapterSelect", vulkanAdapterSelect(VULKAN_POWER_HIGH))) { return 1; }
+	if (!step("vulkanAdapterSelect", vulkanAdapterSelect(VULKAN_POWER_HIGH, 0))) { return 1; }
 	if (!step("vulkanDeviceCreate", vulkanDeviceCreate())) { return 1; }
 	const api: uint32 = vulkanAdapterApiVersion();
 	console.log(`adapter ${vulkanAdapterName()}, Vulkan ${api >> 22}.${(api >> 12) & 1023}.` +
