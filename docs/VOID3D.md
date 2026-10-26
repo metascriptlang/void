@@ -3190,8 +3190,8 @@ change is the count: a vertex whose triangles disagree on its tangent is split, 
 `vertexCount()` may exceed the vertices built, and the index list is re-pointed.
 
 **References.** The algorithm is the reference implementation itself, vendored like stb and
-nanosvg: `mmikk/MikkTSpace` pinned in `setup.sh` (zlib), compiled through
-`src/void3d/mikkTangents.c`, which only reads the flat interleaved vertices and writes one tangent
+nanosvg: `mmikk/MikkTSpace` (zlib), since 2026-10-27 transliterated to `src/void3d/mikkTangents.ms`
+(see "Mikk zero-shift UB"), which only reads the flat interleaved vertices and writes one tangent
 per triangle corner. Its header (`mikktspace.h`, `m_setTSpaceBasic`) says the results are per
 corner and that overwriting them through an existing index list gives incorrect results. Godot
 (`SurfaceTool::generate_tangents`, `scene/resources/surface_tool.cpp`) and Bevy
@@ -5156,6 +5156,11 @@ includes it and `setup.sh` no longer fetches MikkTSpace. Red: on BUILD 4b5816aea
 aborted at vendor line 1667 (`shift exponent 32`). Green: `sphereTangentsCheck` 2/2, after the
 check read the tangent at its real offset 12 (it read the colour at 8, never reached before the
 abort); `meshDataCheck`, `skinTangentCheck`, `gltfMaterialCheck`, `skinMeshCheck` unchanged green.
+
+**Ported 2026-10-27 (arc void-js).** The tracked copy and `mikkTangents.c` are replaced by
+`src/void3d/mikkTangents.ms`, the triangle path of the same algorithm with the masked rotation and
+the seeded sorts kept, so it runs on C and `--target=js`. `src/test/mikkTangentsPortCheck.ms` pins
+the digest of 177 meshes that were bit-equal to the C before it was deleted.
 
 ### Bounds intersection, Heaps capability acceptance
 
