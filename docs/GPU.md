@@ -337,6 +337,10 @@ Each item is built once a probe shows the cost it removes; the A/B against main 
   each backend as thin, unchecked calls, as Heaps' `Driver.hx:285-316` does. The WebGPU
   descriptors stay the surface for creation, as in Mach (`main.zig:976-1068`). A resource id
   in these calls indexes a dense array directly.
+  Measured on Metal (2026-10-26, 10k draws a frame, release): a draw costs about 87 ns, of
+  which the shared checks are about 35 ns, about 1 µs for a 36-draw frame. Each check runs once,
+  in `device.ms`; a release build keeps them, because without them a stale id indexes out of
+  bounds.
 - **Uniforms:** stay on the ring with dynamic offsets. Mach binds every backend this way
   (d3d12.zig:3839-3848, metal.zig:2055, opengl.zig:1915), and so does Heaps on DX12 (243-296).
   - An upload whose bytes match the last one is skipped (Heaps `DirectXDriver.hx:1239-1253`).
