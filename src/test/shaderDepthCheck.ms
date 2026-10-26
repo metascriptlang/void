@@ -10,6 +10,7 @@ import { glsl, glslIr } from "../shader/emit";
 import { Intrinsic, ShaderModule, TextureShape, irErrors } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { reflectProgram } from "../shader/reflect";
+import { opcodeOf, spirvProbe } from "./shaderProbeModules";
 import {
 	Sampler,
 	SamplerComparison,
@@ -235,4 +236,11 @@ function gradedProgram(): ShaderModule {
 	const m = programModule(glslIr(plainVs), glslIr(gradedFs), []);
 	if (!m.ok) { return new ShaderModule(); }
 	return m.value;
+}
+
+test "SPIR-V compares with the implicit level in the fragment and level 0 in the vertex stage" {
+	const vs = spirvProbe(programOf(), 0, "shadow");
+	const fs = spirvProbe(programOf(), 1, "shadow");
+	assert fs.filter(i => opcodeOf(i) == 89).length > 0;
+	assert vs.filter(i => opcodeOf(i) == 90).length > 0 && vs.filter(i => opcodeOf(i) == 89).length == 0;
 }

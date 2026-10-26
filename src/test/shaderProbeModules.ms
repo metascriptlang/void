@@ -1,7 +1,7 @@
 // IR modules built by hand for the printer checks: the blur of src/void2d/shader2d.ms, a
 // vertex probe, a fragment probe that holds every intrinsic and statement kind, two compute
-// probes, a pair of entries that between them reach every intrinsic and statement kind, and depth
-// comparison.
+// probes, a pair of entries that between them reach every intrinsic and statement kind, depth
+// comparison, and a SPIR-V writer for spirv-val and naga.
 import {
 	Access,
 	AssignOp,
@@ -48,6 +48,9 @@ import {
 	textureType,
 	vectorType,
 } from "../shader/ir";
+import { Buffer } from "std/core/buffer";
+import { mkdir, writeFile } from "std/fs";
+import { stageWords, wordsBase64 } from "../shader/descriptor";
 
 export const F32 = scalarType(ScalarKind.F32);
 export const I32 = scalarType(ScalarKind.I32);
@@ -960,4 +963,27 @@ export function layeredBlurModule(): ShaderModule {
 	sampled.operands[0].type = LAYERS;
 	sampled.operands.push(i32(2.0));
 	return m;
+}
+
+export function opcodeOf(instruction: uint32[]): int32 {
+	return (instruction[0] & 65535) as int32;
+}
+
+export function spirvProbe(m: ShaderModule, entry: int32, name: string): uint32[][] {
+	const printed = stageWords(m, entry);
+	if (!printed.ok) { throw new Error(name + " prints no SPIR-V: " + printed.error); }
+	const words = printed.value;
+	const _out = mkdir("out");
+	const _folder = mkdir("out/spirvProbe");
+	const path = "out/spirvProbe/" + name + (entry == 0 ? "Vs" : "Fs") + ".spv";
+	const _written = writeFile(path, Buffer.fromString(wordsBase64(words), "base64"));
+	let out: uint32[][] = [];
+	let at = 5;
+	while (at < words.length) {
+		const count = (words[at] >> 16) as int32;
+		if (count == 0) { throw new Error(name + ": a zero-length instruction at word " + String(at)); }
+		out.push(words.slice(at, at + count));
+		at += count;
+	}
+	return out;
 }

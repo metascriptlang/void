@@ -8,6 +8,7 @@ import { glsl, glslIr } from "../shader/emit";
 import { ShaderModule, irErrors } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { Vec2f, Vec4f, builtin, location, vec4f } from "../shader/std";
+import { opcodeOf, spirvProbe } from "./shaderProbeModules";
 
 export struct Pixel {
 	@builtin(position) position: Vec4f;
@@ -85,4 +86,11 @@ function printedFor(m: ShaderModule, entry: int32, target: ShaderTarget, name: s
 	const _folder = mkdir(path.slice(0, path.lastIndexOf("/")));
 	const _written = writeFile(path, text.value);
 	return text.value;
+}
+
+test "SPIR-V writes the fragment depth through BuiltIn FragDepth with DepthReplacing" {
+	const _vertex = spirvProbe(deepOf(), 0, "deep");
+	const fs = spirvProbe(deepOf(), 1, "deep");
+	assert fs.filter(i => opcodeOf(i) == 16 && i[2] == 12).length == 1;
+	assert fs.filter(i => opcodeOf(i) == 71 && i[2] == 11 && i[3] == 22).length == 1;
 }

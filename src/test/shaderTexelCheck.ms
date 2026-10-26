@@ -10,6 +10,7 @@ import { glsl, glslIr } from "../shader/emit";
 import { ShaderModule, irErrors } from "../shader/ir";
 import { ShaderTarget } from "../shader/layout";
 import { reflectProgram } from "../shader/reflect";
+import { opcodeOf, spirvProbe } from "./shaderProbeModules";
 import {
 	Sampler,
 	Texture2dI32,
@@ -195,4 +196,17 @@ test "the reflection names a 3D view and a sint texture" {
 	assert reflected.ok;
 	const texture = reflected.value.bindings.filter((b) => b.kind == "texture");
 	assert texture.map((b) => b.viewDimension + ":" + b.sampleType).join("|") == "3d:float|:sint";
+}
+
+test "SPIR-V declares the 3D image and the signed int image, and samples, fetches and sizes them" {
+	const _vertex = spirvProbe(programOf(), 0, "volume");
+	const fs = spirvProbe(programOf(), 1, "volume");
+	let signedInt: uint32 = 0;
+	for (const i of fs) { if (opcodeOf(i) == 21 && i[2] == 32 && i[3] == 1) { signedInt = i[1]; } }
+	assert signedInt != 0;
+	assert fs.filter(i => opcodeOf(i) == 25 && i[3] == 2).length == 1;
+	assert fs.filter(i => opcodeOf(i) == 25 && i[2] == signedInt && i[3] == 1).length == 1;
+	for (const op of [87, 88, 95, 103]) {
+		assert fs.filter(i => opcodeOf(i) == op).length > 0;
+	}
 }
