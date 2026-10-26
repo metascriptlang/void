@@ -635,6 +635,22 @@ and `tests/integration/storeIdentity.ms` (1 each).
   bound: 16 pass, 90 pending, 14 fail. Every fail is at most delta 2.
 - llvmpipe's delta-210 rows in `demo/` do not appear on the GPU.
 
+### 2026-10-26, Vulkan pipelines and bind groups; one check for your series
+
+**For the shared checks:** `validate.ms` `bindGroupSetRefusal` checks a dynamic offset's count
+and alignment, but not WebGPU's bound that the offset plus the binding's offset and size stays
+inside the buffer. Only `vulkan/pipeline.ms` `setBindGroup` refuses an offset past the buffer
+end; D3D11, GL, Metal and WebGPU accept it. It belongs in your series beside the alignment check,
+and Vulkan then drops its own copy.
+
+**Vulkan pipeline layer** (`src/webgpu/vulkan/pipeline.ms`, `descriptor.ms`): shader modules
+with reflected set layouts, render and compute pipelines against a cached compatible render
+pass, bind groups as descriptor sets, and the draw and dispatch commands. Sets bind at the draw
+or dispatch, as D3D11 binds at its flush. A compute dispatch moves each bound resource through
+the tracker as Mach's `accessBindGroup` does (vulkan.zig:2789, 3115). Writable storage and
+storage textures in a vertex or fragment stage are refused on Vulkan until a consumer needs
+them, because the tracker records render-pass access only for attachments.
+
 ## G7 — after Metal (either side, coordinated)
 
 - Linux (Windows side, WSL2): `src/platform/linux/` (X11 + GLX, port of `_SAPP_LINUX`),

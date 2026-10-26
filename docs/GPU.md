@@ -250,7 +250,7 @@ on it. As of `932a1562`:
 | Metal | iOS simulator | demo only |
 | WebGPU native | desktop | missing (sokol: experimental) |
 | dummy | any | missing |
-| Vulkan | Windows, Linux X11 | missing |
+| Vulkan | Windows, Linux X11 | device, copy, clear, draw, compute and swapchain tests on NVIDIA and AMD, and on lavapipe with sync validation; no goldens until `backend.ms` |
 
 GL core on macOS is deprecated by Apple and stays out unless asked. Wayland is beyond sokol,
 whose `sokol_app.h` has no Wayland path.
@@ -265,8 +265,8 @@ The Vulkan backend ports Mach's `src/sysgpu/vulkan.zig`:
 - the barrier tracker's hazard rules with resting layouts (vulkan.zig:2755-3088);
 - the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117).
 
-The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanResourcesCheck.ms`
-or `vulkanMemoryCheck.ms`:
+The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanResourcesCheck.ms`,
+`vulkanMemoryCheck.ms` or `vulkanDraw.ms`:
 - a buffer-to-image row length counts texels of the format, not `bytes_per_row / 4`
   (vulkan.zig:2625; Dawn `UtilsVulkan.cpp:262-267`);
 - `rgb10a2unorm` is `A2B10G10R10` (64), where `conv.zig` gives the red-blue swapped 58
@@ -280,7 +280,12 @@ or `vulkanMemoryCheck.ms`:
 - a swapchain image enters the tracker at acquire as a write from `UNDEFINED`, and each image has
   its own present semaphore (Dawn `SwapChainVk.cpp:233-235`), where Mach transitions images at
   creation, before any acquire, and shares one semaphore;
-- an integer target clears with integer values, where Mach clears every format as float.
+- an integer target clears with integer values, where Mach clears every format as float;
+- a viewport flips to `y + height` with a negative height, as Dawn does
+  (`CommandBufferVk.cpp:2066-2069`), where Mach's `setViewport` flips to `extent.height - y`
+  (vulkan.zig:3459-3466), which is right only for a viewport that reaches the bottom edge;
+  a zero-width viewport becomes an empty one of width 1 and height 0, because Vulkan requires
+  a positive width (VUID-VkViewport-width-01770).
 
 Render-pass layouts follow Dawn (`RenderPassCache.cpp:176-208`): a pass starts and ends in the
 attachment layout and the tracker moves the texture before the pass, where Mach's passes move
