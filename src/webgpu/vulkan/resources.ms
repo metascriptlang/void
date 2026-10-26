@@ -210,6 +210,7 @@ export struct VulkanResources {
 	page: UploadPage;
 	depthStencil: int32;
 	acquired: uint64;
+	adopted: uint64;
 	submitted: uint64;
 	swapchainColor: uint32;
 	swapchainDepth: uint32;
@@ -332,6 +333,7 @@ function resourcesOn(device: MemoryDevice, depthStencil: int32): VulkanResources
 		page: NO_PAGE,
 		depthStencil: depthStencil,
 		acquired: 0,
+		adopted: 0,
 		submitted: 0,
 		swapchainColor: 0,
 		swapchainDepth: 0,
@@ -622,11 +624,18 @@ function sizeCanvas(ref r: VulkanResources, width: int32, height: int32): Result
 }
 
 export function acquireSwapchain(ref r: VulkanResources, width: int32, height: int32, image: uint64, view: uint64): Result<void, ResourceError> {
+	if (r.adopted == image) { return Result.ok(null); }
 	const color = slotOf(r.swapchainColor);
 	r.textures[color].native = image;
 	r.views[slotOf(textureRecords.slots[color].swapchainView)] = { native: view, binding: view };
 	r.acquired = image;
+	r.adopted = image;
 	return sizeCanvas(r, width, height);
+}
+
+export function presentSwapchain(ref r: VulkanResources, image: uint64): void {
+	if (r.adopted != image) { acquireTexture(r.tracker, image, swapchainRest()); }
+	r.adopted = 0;
 }
 
 export function settle(ref r: VulkanResources): void {

@@ -18,9 +18,16 @@ when (macos && !voidDummy) {
 	@compile("./bridge.c");
 }
 
+when (windows && voidVulkan && !voidDummy) {
+	@compile("./bridgeWin.c", "-DVOID_VULKAN");
+	@compile("./windowVulkan.c", "-DVOID_VULKAN");
+	import "../webgpu/vulkan/window";
+} else when (windows && !voidDummy) {
+	@compile("./bridgeWin.c");
+}
+
 when (windows && !voidDummy) {
 	@compile("../platform/win32/window.c");
-	@compile("./bridgeWin.c");
 	@compile("./appWindow.c");
 	@compile("./views.c");
 	@compile("./bridge.c");

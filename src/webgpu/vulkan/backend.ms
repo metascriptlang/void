@@ -11,6 +11,7 @@ import { TextureRecord, ViewRecord } from "../pool.ms";
 import * as resources from "./resources";
 import * as pass from "./pass";
 import * as pipelines from "./pipeline";
+import { FRAMES_IN_FLIGHT, FrameRing, beginFrame, endFrame, newFrameRing, openFrames } from "./frame";
 import { formatInfo } from "./conv";
 import {
 	GPU_MAX_BIND_GROUP_ENTRIES,
@@ -110,6 +111,7 @@ export const BACKEND = "vulkan";
 let r: resources.VulkanResources = resources.closedResources();
 let p: pipelines.VulkanPipelines = pipelines.openPipelines();
 let cache: pass.RenderPassCache = pass.newRenderPassCache();
+let ring: FrameRing = newFrameRing(0);
 
 @noinline function stopOnResource(call: string, error: resources.ResourceError): never {
 	match (error) {
@@ -156,7 +158,24 @@ export function shutdown(): void {
 	pipelines.closePipelines(p);
 	const closed = resources.closeResources(r);
 	r = resources.closedResources();
+	ring = newFrameRing(0);
 	if (!closed.ok) { stopOnResource("destroy", closed.error); }
+}
+
+export function beginWindowFrame(): void {
+	if (ring.serials.length == 0) {
+		const opened = openFrames(FRAMES_IN_FLIGHT);
+		if (!opened.ok) { stopOnResource("the window's frame ring", opened.error); }
+		ring = opened.value;
+	}
+	const begun = beginFrame(r, ring);
+	if (!begun.ok) { stopOnResource("the window's frame", begun.error); }
+}
+
+export function endWindowFrame(image: uint64): void {
+	resources.presentSwapchain(r, image);
+	const ended = endFrame(r, ring);
+	if (!ended.ok) { stopOnResource("the window's frame", ended.error); }
 }
 
 export function adapterInfo(): GPUAdapterInfo {

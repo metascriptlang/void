@@ -167,7 +167,11 @@ static bool s_committed;
 
 static void _frame(void) {
 	voidRestoreContextIfLost(restoreDoor);
+#if defined(VOID_VULKAN)
+	if (!voidWindowAwaitFrame()) return;
+#else
 	if (!s_sizeMove && !voidWindowAwaitFrame()) return;
+#endif
 	s_committed = false;
 	voidCallClosure(s_frame);
 	if (s_committed) voidWindowPresent(s_sizeMove);
@@ -214,8 +218,8 @@ static int s_doorSamples;
 static bool s_doorDepth;
 
 static void deviceRemoved(const char *what, HRESULT hr) {
-#if defined(VOID_GLCORE)
-	voidFail("%s failed: 0x%08lx in a GL core build, whose host views are refused", what, (unsigned long)hr);
+#if defined(VOID_GLCORE) || defined(VOID_VULKAN)
+	voidFail("%s failed: 0x%08lx in a GL core or Vulkan build, whose host views are refused", what, (unsigned long)hr);
 #else
 	if (voidD3d11RemovalAction((int32_t)hr) == REMOVAL_NONE) voidFail("%s failed: 0x%08lx", what, (unsigned long)hr);
 	HRESULT reason = ID3D11Device_GetDeviceRemovedReason(s_device);
@@ -295,6 +299,8 @@ void voidPlatformDeviceEnsure(void) {
 	if (voidDriver == VOID_DRIVER_VIEWS) return;
 #if defined(VOID_GLCORE)
 	voidFail("voidViewCreate: host views on Windows render through D3D11; this is a GL core build");
+#elif defined(VOID_VULKAN)
+	voidFail("voidViewCreate: host views on Windows render through D3D11; this is a Vulkan build");
 #endif
 	createDevice(0);
 	setupViewsGfx();
@@ -488,6 +494,7 @@ static void recreateWindowDevice(void) {
 void *voidWindowSwapChain(void) { return s_window.swapChain; }
 #endif
 
+#if !defined(VOID_VULKAN)
 // The surface the door's screen pass draws into, or NULL for the GL window, whose default
 // framebuffer has no view objects.
 static WinSurface *screenSurface(void) {
@@ -540,6 +547,7 @@ void *voidSwapchainDepthStencilView(void) {
 	const WinSurface *s = screenSurface();
 	return s ? (void *)s->depthTarget : NULL;
 }
+#endif
 
 void voidDriverPresent(void) {
 	if (voidDriver == VOID_DRIVER_WINDOW) s_committed = true;
