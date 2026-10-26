@@ -155,6 +155,7 @@ export interface Renderer {
 	opaque: PassList;
 	alpha: PassList;
 	additive: PassList;
+	decal: PassList;
 	cameraBlock: UniformBlock;
 	lightBlock: UniformBlock;
 	frameBlock: UniformBlock;
@@ -249,6 +250,8 @@ export enum RendererError {
 	// The pixel-art preset's toon lights are points: a spot, rectangle or capsule slot has no
 	// toon term there, and drawing it as a point would light the wrong place.
 	ShapedLightPreset,
+	// The pixel-art preset has no decal pass, so a Decal-phase item would not be drawn.
+	DecalPreset,
 	// The light block's spot caster is no spot record of it, or makes no camera
 	// (lightShape.ms perspectiveCamera).
 	BadShadowSpot,
@@ -329,6 +332,7 @@ export function createDrawing(
 		opaque: PassList.forPhase(Phase.Opaque),
 		alpha: PassList.forPhase(Phase.Alpha),
 		additive: PassList.forPhase(Phase.Additive),
+		decal: PassList.forPhase(Phase.Decal),
 		cameraBlock: cameraBlock,
 		lightBlock: lightBlock,
 		frameBlock: frameBlock,
@@ -608,12 +612,12 @@ export function needsFrame(this renderer: Renderer): boolean {
 // program reads or has been released, or that lacks a texture or sampler it samples, names a
 // texture it does not sample or another than it was added with, or a mesh whose vertex layout it
 // does not read, or a quad-layout mesh with a vertex buffer or with instances and no instance
-// buffer, is refused before anything changes. Answers true when the context is new: every handle
-// the caller made before is stale then (it may name an object of the new context), so the caller
-// drops its own without destroying them and makes them again before drawing. The core has already
-// dropped the pipelines, remade the screen triangle, and remade every mesh and texture that
-// carries its CPU data (draw.ms rebuildMeshes, rebuildTextures); what is left is whatever the
-// caller uploaded from buffers only it keeps.
+// buffer, or a Decal-phase item under the pixel-art preset, is refused before anything changes.
+// Answers true when the context is new: every handle the caller made before is stale then (it may
+// name an object of the new context), so the caller drops its own without destroying them and makes
+// them again before drawing. The core has already dropped the pipelines, remade the screen
+// triangle, and remade every mesh and texture that carries its CPU data (draw.ms rebuildMeshes,
+// rebuildTextures); what is left is whatever the caller uploaded from buffers only it keeps.
 export function beginFrame(
 	renderer: Renderer,
 	items: Span<DrawItem>,
@@ -641,6 +645,7 @@ export function beginFrame(
 	let opaque: boolean = false;
 	let alpha: boolean = false;
 	let additive: boolean = false;
+	let decal: boolean = false;
 	while ((renderer.pairs.length as int32) < (context.materials.length as int32)) {
 		renderer.pairs.push(ProgramKey.of(Program.Lit));
 	}
@@ -667,11 +672,15 @@ export function beginFrame(
 			opaque = opaque || phase == Phase.Opaque;
 			alpha = alpha || phase == Phase.Alpha;
 			additive = additive || phase == Phase.Additive;
+			decal = decal || phase == Phase.Decal;
 		}
 		if (!items[i].validSkin(checked)) { return Result.err(RendererError.SkinPose); }
 		if (!items[i].validInstances(context, checked)) {
 			return Result.err(RendererError.Instances);
 		}
+	}
+	if (decal && renderer.preset == Preset.PixelArt) {
+		return Result.err(RendererError.DecalPreset);
 	}
 	if (shadow !== null) {
 		const cast: Result<int32, ProgramError> = shadow.castsAll(items);
@@ -810,6 +819,7 @@ export function beginFrame(
 	collectSeen(renderer.opaque, opaque, items, context.materials);
 	collectSeen(renderer.alpha, alpha, items, context.materials);
 	collectSeen(renderer.additive, additive, items, context.materials);
+	collectSeen(renderer.decal, decal, items, context.materials);
 	let viewProj: Mat4 = {
 		m11: camera[0], m12: camera[1], m13: camera[2], m14: camera[3],
 		m21: camera[4], m22: camera[5], m23: camera[6], m24: camera[7],
@@ -820,10 +830,12 @@ export function beginFrame(
 	renderer.culledCount =
 		filterFrustum(renderer.opaque, items, context.meshData, frustum) +
 		filterFrustum(renderer.alpha, items, context.meshData, frustum) +
-		filterFrustum(renderer.additive, items, context.meshData, frustum);
+		filterFrustum(renderer.additive, items, context.meshData, frustum) +
+		filterFrustum(renderer.decal, items, context.meshData, frustum);
 	sortByLayer(renderer.opaque);
 	sortBackToFront(renderer.alpha, items, camera);
 	sortByLayer(renderer.additive);
+	sortByLayer(renderer.decal);
 	return Result.ok(fresh);
 }
 
@@ -957,7 +969,40 @@ export function drawPhase(
 				scene,
 			);
 		},
+		Phase.Decal => {
+			console.log("void3d: drawPhase(Decal) has no scene depth to bind; drawDecals draws " +
+				"the decal list");
+			unreachable;
+		},
 	};
+}
+
+// h3d.scene.pbr.Renderer's draw("beforeTonemappingDecal") (Renderer.hx:864): the decal list
+// into the current pass, which has no depth attachment, with `depthView` (the depth target the
+// scene was drawn into) and `depthSampler` bound at SCENE_DEPTH_VIEW_SLOT.
+export function drawDecals(
+	renderer: Renderer,
+	items: Readonly<Span<DrawItem>>,
+	targets: TargetLayout,
+	depthView: uint32,
+	depthSampler: uint32,
+): void {
+	if (renderer.closed) { stopOnClosed("drawDecals"); }
+	if ((targets.color0 == PixelFormat.Rgba16f) != renderer.linearOutput) {
+		stopOnColourSpace(renderer, targets);
+	}
+	if (targets.depth != PixelFormat.None) {
+		console.log("void3d: drawDecals into a pass with a depth attachment; the scene depth is " +
+			"the texture the decals read");
+		unreachable;
+	}
+	const scene: SceneTexture = {
+		...sceneTextureOf(renderer), depthView: depthView, depthSampler: depthSampler,
+	};
+	drawPassList(
+		renderer.context, renderer.decal, items, renderer.drawn, targets, renderer.sceneGlobals,
+		scene,
+	);
 }
 
 // How many items of `phase` the frame beginFrame accepted draws, after culling.
@@ -967,6 +1012,7 @@ export function phaseCount(this renderer: Renderer, phase: Phase): int32 {
 		Phase.Opaque => renderer.opaque.count,
 		Phase.Alpha => renderer.alpha.count,
 		Phase.Additive => renderer.additive.count,
+		Phase.Decal => renderer.decal.count,
 	};
 }
 

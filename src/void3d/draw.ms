@@ -53,6 +53,8 @@ import {
 	CLUSTER_SAMPLER_SLOT,
 	COOKIE_VIEW_SLOT,
 	COOKIE_SAMPLER_SLOT,
+	SCENE_DEPTH_VIEW_SLOT,
+	SCENE_DEPTH_SAMPLER_SLOT,
 	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
@@ -66,7 +68,7 @@ import {
 	destroySampler,
 	passState,
 } from "../gpu/door";
-import { FilterMode, Wrap, BlendMode, RenderState } from "../gpu/state";
+import { FilterMode, Wrap, BlendMode, RenderState, Compare } from "../gpu/state";
 import { Texture, TextureError, DetachedHandles } from "../gpu/texture";
 import {
 	TextureMipData,
@@ -108,6 +110,7 @@ import {
 } from "./gpu3d.h";
 import {
 	Material,
+	Phase,
 	UniformBlock,
 	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
@@ -381,6 +384,9 @@ export enum MaterialError {
 	NoAlphaKill,
 	BadParallaxSteps,
 	UndeclaredProgram,
+	// A Decal-phase pass writes or tests depth; the decal pass has no depth attachment, the scene
+	// depth being the texture it reads.
+	DecalDepth,
 }
 
 let contextSerials: int32 = 0;
@@ -1162,6 +1168,10 @@ export function addMaterial(
 	if (material.program.parallax && !context.stepsFit(material.uniforms)) {
 		return Result.err(MaterialError.BadParallaxSteps);
 	}
+	if (material.phase == Phase.Decal &&
+		(material.pass.depthWrite || material.pass.depthTest != Compare.Always)) {
+		return Result.err(MaterialError.DecalDepth);
+	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {
 		return Result.err(uniformsError(owned.error));
@@ -1721,8 +1731,8 @@ function stopOnLongBlock(program: ProgramKey, block: UniformBlock, declared: int
 }
 
 // An hxsl global texture (Heaps' `shadow.map`) of the sun, the shadowing spot and point, the
-// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular) and the frame's clustered
-// lights (clusterFrame.ms), bound past a material's slots.
+// environment's cubes (pbrIndirect's irrDiffuse and irrSpecular), the frame's clustered
+// lights (clusterFrame.ms) and, for the decals, the scene depth, bound past a material's slots.
 export struct SceneTexture {
 	view: uint32;
 	sampler: uint32;
@@ -1738,12 +1748,14 @@ export struct SceneTexture {
 	clusterSampler: uint32;
 	cookieView: uint32;
 	cookieSampler: uint32;
+	depthView: uint32;
+	depthSampler: uint32;
 }
 
 export const NO_SCENE_TEXTURE: SceneTexture = {
 	view: 0, sampler: 0, spotView: 0, spotSampler: 0, cubeView: 0, envDiffuse: 0, envSpecular: 0,
 	envSampler: 0, lightRecords: 0, clusterRecords: 0, clusterIndices: 0, clusterSampler: 0,
-	cookieView: 0, cookieSampler: 0,
+	cookieView: 0, cookieSampler: 0, depthView: 0, depthSampler: 0,
 };
 
 // `rows` and `rowOffset` are slot 1's buffer and byte offset, 0 for a layout that reads none.
@@ -1791,6 +1803,8 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_SAMPLER + CLUSTER_SAMPLER_SLOT] = scene.clusterSampler;
 	context.bindings[GPU3D_BINDING_VIEW + COOKIE_VIEW_SLOT] = scene.cookieView;
 	context.bindings[GPU3D_BINDING_SAMPLER + COOKIE_SAMPLER_SLOT] = scene.cookieSampler;
+	context.bindings[GPU3D_BINDING_VIEW + SCENE_DEPTH_VIEW_SLOT] = scene.depthView;
+	context.bindings[GPU3D_BINDING_SAMPLER + SCENE_DEPTH_SAMPLER_SLOT] = scene.depthSampler;
 	applyBindings(context.bindings);
 }
 

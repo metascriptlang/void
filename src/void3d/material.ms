@@ -31,11 +31,14 @@ import { PbrProperties, PbrResponseError } from "./pbrResponse";
 import { TextureId, NO_TEXTURE } from "./texture";
 
 // Which of the renderer's pass lists draws the material: the passes h3d.scene.fwd.Renderer
-// draws, in this order ("default", "alpha" back to front, "additive").
+// draws, in this order ("default", "alpha" back to front, "additive"), then Decal,
+// h3d.scene.pbr.Renderer's "beforeTonemappingDecal" (Renderer.hx:864), drawn by drawDecals over
+// the lit colour with the scene depth as a texture and no depth attachment.
 export enum Phase {
 	Opaque,
 	Alpha,
 	Additive,
+	Decal,
 }
 
 // h3d.mat.Material's DefaultKind without Hidden.

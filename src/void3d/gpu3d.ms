@@ -500,6 +500,9 @@ export const CLUSTER_SCENE_VIEWS: uint32 = (1 << (LIGHT_RECORDS_VIEW_SLOT as uin
 	(1 << (COOKIE_VIEW_SLOT as uint32));
 export const CLUSTER_SCENE_SAMPLERS: uint32 =
 	(1 << (CLUSTER_SAMPLER_SLOT as uint32)) | (1 << (COOKIE_SAMPLER_SLOT as uint32));
+// The scene's depth as a texture (Heaps' `depthMap` global), bound only while the decals draw.
+export const SCENE_DEPTH_VIEW_SLOT: int32 = 14;
+export const SCENE_DEPTH_SAMPLER_SLOT: int32 = 7;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
