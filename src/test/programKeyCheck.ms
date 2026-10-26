@@ -25,6 +25,7 @@ import {
 	PBR_UV_MATRIX,
 	PBR_UV_OFFSET,
 	PBR_UV_SCROLL,
+	PBR_PARALLAX_STEPS,
 	MOVING_BACK_UV_MATRIX,
 	MOVING_MATERIAL_UNIFORM_LENGTH,
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
@@ -1328,6 +1329,28 @@ test "a parallax key sets bit 19 on a normal-mapped pbr-maps key and binds no vi
 	assert !declares({ ...unmapped, parallax: true });
 }
 
+test "a parallax material refuses a step count that is not a whole number from 0 to 255" {
+	const stepped: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr().withPbrMaps()
+		.withNormalMap().withParallax();
+	const counts: Vec<float32> = [0.0, 1.0, 24.0, 255.0, -1.0, 2.5, 256.0];
+	let context: DrawContext =
+		DrawContext.withUniformCapacity((counts.length as int32) * PBR_MATERIAL_UNIFORM_LENGTH);
+	for (const count of counts) {
+		const reserved: Result<UniformBlock, UniformError> =
+			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, PBR_MATERIAL_UNIFORM_LENGTH);
+		if (!reserved.ok) { unreachable; }
+		let values: Vec<float32> = new Array(PBR_MATERIAL_UNIFORM_LENGTH);
+		values[PBR_PARALLAX_STEPS] = count;
+		if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
+		const made: Result<MaterialId, MaterialError> = addMaterial(context, {
+			...Material.keyed(stepped, RenderState.defaults(), Phase.Opaque),
+			uniforms: reserved.value,
+		});
+		assert made.ok == (count >= 0.0 && count <= 255.0 && count != 2.5);
+		if (!made.ok) { assert made.error == MaterialError.BadParallaxSteps; }
+	}
+}
+
 test "a skinned pbr key is declared on the skinned layout in every variant a glTF material makes" {
 	const lit: ProgramKey = ProgramKey.of(Program.Lit).withPbr();
 	const textured: ProgramKey = ProgramKey.of(Program.LitTextured).withPbr();
@@ -1414,5 +1437,6 @@ test "every pbr block holds the UV transform, as its shader declares it" {
 		PBR_MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
 	assert PBR_UV_OFFSET - PBR_UV_MATRIX == MOVING_UV_OFFSET - MOVING_UV_MATRIX;
 	assert PBR_UV_SCROLL - PBR_UV_MATRIX == MOVING_UV_SCROLL - MOVING_UV_MATRIX;
-	assert PBR_UV_SCROLL + 2 <= PBR_MATERIAL_UNIFORM_LENGTH;
+	assert PBR_UV_SCROLL + 2 <= PBR_PARALLAX_STEPS;
+	assert PBR_PARALLAX_STEPS < PBR_MATERIAL_UNIFORM_LENGTH;
 }

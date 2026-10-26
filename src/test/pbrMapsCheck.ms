@@ -7,7 +7,7 @@ import { Vec3, vec3 } from "../math/math3d";
 import { Texture2d, Vec2f, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
 import {
 	LitBindings, LitKey, LitTexturedFragmentInput, linearToSrgb, litTexturedFs, parallaxUv,
-	srgbToLinear,
+	parallaxLayers, parallaxStepsOf, srgbToLinear,
 } from "../void3d/shader3d";
 import { PbrDirectInput, PbrSurface } from "../void3d/pbrResponse";
 import { oneCascade, oneLayer } from "./shadowHelpers";
@@ -241,7 +241,7 @@ function heightOf(alpha: float32): Texture2d {
 function steppedUv(alpha: float32, view: Vec3f, sign: float32): Vec2f {
 	const b: LitBindings = bindingsOf(FULL, heightOf(alpha), texel(1.0, 1.0, 1.0));
 	return parallaxUv(b, vec2f(0.5, 0.5), view, vec3f(0.0, 0.0, 1.0),
-		vec4f(1.0, 0.0, 0.0, sign), 0.1);
+		vec4f(1.0, 0.0, 0.0, sign), 0.1, 0.0);
 }
 
 function nearUv(a: Vec2f, b: Vec2f): boolean {
@@ -262,6 +262,21 @@ test "the tangent's w turns the bitangent, the normal map's negated as Heaps' Pa
 	const along: Vec3f = vec3f(0.0, 0.6, 0.8);
 	assert nearUv(steppedUv(0.5, along, 1.0), vec2f(0.5, 0.5 + 0.0375));
 	assert nearUv(steppedUv(0.5, along, -1.0), vec2f(0.5, 0.5 - 0.0375));
+}
+
+test "the layers run from the material's steps at a grazing view to 6 head-on, 0 steps for 24" {
+	assert parallaxLayers(0.0, 0.0) == 24.0 && parallaxLayers(1.0, 0.0) == 6.0;
+	assert parallaxLayers(0.0, 12.0) == 12.0 && parallaxLayers(-1.0, 12.0) == 6.0;
+	assert parallaxLayers(0.5, 12.0) == 9.0 && parallaxLayers(0.5, 2.0) == 4.0;
+}
+
+test "a parallax key reads its step count from the pbr block it declares" {
+	let b: LitBindings = bindingsOf(FULL, heightOf(0.5), texel(1.0, 1.0, 1.0));
+	b.pbrMaterialParams.parallax = vec4f(12.0, 0.0, 0.0, 0.0);
+	b.pbrEmissiveMaterialParams.parallax = vec4f(7.0, 0.0, 0.0, 0.0);
+	const stepped: LitKey = { pbr: true, pbrMaps: true, parallax: true };
+	assert parallaxStepsOf(b, stepped) == 12.0;
+	assert parallaxStepsOf(b, { ...stepped, emissive: true }) == 7.0;
 }
 
 function tangentColor(b: LitBindings, uv: Vec2f, key: LitKey): Vec3f {
