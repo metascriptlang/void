@@ -387,6 +387,8 @@ export enum MaterialError {
 	// A Decal-phase pass writes or tests depth; the decal pass has no depth attachment, the scene
 	// depth being the texture it reads.
 	DecalDepth,
+	// The decal program outside the Decal phase, the one pass that binds the depth it reads.
+	DecalPhase,
 }
 
 let contextSerials: int32 = 0;
@@ -1171,6 +1173,9 @@ export function addMaterial(
 	if (material.phase == Phase.Decal &&
 		(material.pass.depthWrite || material.pass.depthTest != Compare.Always)) {
 		return Result.err(MaterialError.DecalDepth);
+	}
+	if (material.program.program == Program.Decal && material.phase != Phase.Decal) {
+		return Result.err(MaterialError.DecalPhase);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {

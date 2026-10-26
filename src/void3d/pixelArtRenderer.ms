@@ -785,6 +785,7 @@ function rampsHaveLevels(
 			Program.OutlineMask => true,
 			Program.OutlineMix => true,
 			Program.OutlineWidth => true,
+			Program.Decal => true,
 		};
 		if (!held) { return false; }
 	}

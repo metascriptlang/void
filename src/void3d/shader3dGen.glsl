@@ -3711,3 +3711,159 @@ void main() {
 }
 @end
 
+@vs decalVs
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+    vec4 cameraPosition;
+};
+in vec3 position;
+in vec3 normal;
+in vec4 color;
+#ifdef SKINNED
+in vec4 skinJoints;
+#endif
+#ifdef SKINNED
+in vec4 skinWeights;
+#endif
+in vec4 instanceRow0;
+in vec4 instanceRow1;
+in vec4 instanceRow2;
+in vec4 instanceColor;
+out vec4 screenToLocal0;
+out vec4 screenToLocal1;
+out vec4 screenToLocal2;
+out vec4 screenToLocal3;
+out vec4 baseColor;
+out vec4 screen;
+mat4 instanceWorld(vec4 row0, vec4 row1, vec4 row2) {
+    return transpose(mat4(row0, row1, row2, vec4(0.0, 0.0, 0.0, 1.0)));
+}
+void main() {
+    mat4 world = instanceWorld(instanceRow0, instanceRow1, instanceRow2);
+    vec4 clip = (viewProj * world) * vec4(position, 1.0);
+    mat4 toLocal = inverse(world) * inverse(viewProj);
+    screenToLocal0 = toLocal[0];
+    screenToLocal1 = toLocal[1];
+    screenToLocal2 = toLocal[2];
+    screenToLocal3 = toLocal[3];
+    baseColor = (color * instanceColor);
+    screen = clip;
+    gl_Position = clip;
+    return;
+}
+@end
+
+@fs decalFs
+layout(binding=3) uniform decalParams {
+    vec4 decalColor;
+    vec4 decalFade;
+    vec4 decalMode;
+};
+layout(binding=6) uniform frameParams {
+    vec4 frame;
+    vec4 cameraPosition;
+    vec4 envParams;
+};
+layout(binding=0) uniform texture2D decalTexture;
+layout(binding=0) uniform sampler decalSampler;
+@image_sample_type sceneDepth unfilterable_float
+layout(binding=14) uniform texture2D sceneDepth;
+@sampler_type sceneDepthSampler nonfiltering
+layout(binding=7) uniform sampler sceneDepthSampler;
+in vec4 screenToLocal0;
+in vec4 screenToLocal1;
+in vec4 screenToLocal2;
+in vec4 screenToLocal3;
+in vec4 baseColor;
+in vec4 screen;
+layout(location=0) out vec4 fragColor;
+float ndcDepthOf(float stored, float zeroToOne) {
+    return (zeroToOne == 1.0) ? stored : ((stored * 2.0) - 1.0);
+}
+vec3 decalLocalAt(vec2 screen_1, float depth, mat4 screenToLocal) {
+    vec4 local = screenToLocal * vec4(screen_1.x, screen_1.y, depth, 1.0);
+    return local.xyz / local.w;
+}
+bool outsideDecal(vec3 local) {
+    return ((abs(local.x) > 0.5) || (abs(local.y) > 0.5)) || (abs(local.z) > 0.5);
+}
+float decalFade_1(float z, float start, float end, float power) {
+    return 1.0 - clamp(pow((max(0.0, (abs((z * 2.0)) - start)) / (end - start)), power), 0.0, 1.0);
+}
+vec4 decalOverlayColor(vec4 tint, vec4 texel, float emissive, bool gammaCorrect, bool autoAlpha, float fade) {
+    vec3 rgb = tint.rgb * texel.rgb;
+    if (gammaCorrect) {
+        rgb = rgb * rgb;
+    }
+    rgb = rgb + (rgb * emissive);
+    float alpha = autoAlpha ? clamp(max(max(rgb.r, rgb.g), rgb.b), 0.0, 1.0) : texel.a;
+    return vec4(rgb, (alpha * fade));
+}
+vec3 srgbToLinear(vec3 srgb) {
+    vec3 low = srgb * 0.0773993808;
+    vec3 high = pow(max(((srgb * 0.9478672986) + vec3(0.0521327014)), vec3(0.0)), vec3(2.4));
+    return vec3(((srgb.x <= 0.04045) ? low.x : high.x), ((srgb.y <= 0.04045) ? low.y : high.y), ((srgb.z <= 0.04045) ? low.z : high.z));
+}
+vec3 linearToSrgb(vec3 rgb) {
+    vec3 low = rgb * 12.92;
+    vec3 high = (vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666))) - vec3(0.055);
+    return vec3(((rgb.x <= 0.0031308) ? low.x : high.x), ((rgb.y <= 0.0031308) ? low.y : high.y), ((rgb.z <= 0.0031308) ? low.z : high.z));
+}
+vec3 toneCurved(vec3 exposed, float mode) {
+    if (mode == 1.0) {
+        return exposed / (exposed + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        vec3 a = exposed * ((2.51 * exposed) + 0.03);
+        vec3 b = (exposed * ((2.43 * exposed) + 0.59)) + 0.14;
+        return clamp((a / b), vec3(0.0), vec3(1.0));
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.76;
+        float desaturation = 0.15;
+        float x = min(exposed.x, min(exposed.y, exposed.z));
+        float offset = (x < 0.08) ? (x - ((6.25 * x) * x)) : 0.04;
+        vec3 color = exposed - offset;
+        float peak = max(color.x, max(color.y, color.z));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - ((d * d) / ((peak + d) - startCompression));
+            color = color * (newPeak / peak);
+            float g = 1.0 - (1.0 / ((desaturation * (peak - newPeak)) + 1.0));
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(exposed, vec3(0.0), vec3(1.0));
+}
+vec3 toneMapped(vec3 rgb, vec4 tone) {
+    if (tone.z == 1.0) {
+        return srgbToLinear(rgb);
+    }
+    if ((tone.y == 1.0) && (tone.w == 0.0)) {
+        return rgb;
+    }
+    return linearToSrgb(toneCurved((srgbToLinear(rgb) * tone.y), tone.w));
+}
+void main() {
+    float stored = texelFetch(sampler2D(sceneDepth, sceneDepthSampler), ivec2(gl_FragCoord.xy), 0).x;
+    float depth = ndcDepthOf(stored, cameraPosition.w);
+    mat4 toLocal = mat4(screenToLocal0, screenToLocal1, screenToLocal2, screenToLocal3);
+    vec3 local = decalLocalAt((screen.xy / screen.w), depth, toLocal);
+    if (outsideDecal(local)) {
+        discard;
+    }
+    vec4 fade = decalFade;
+    vec4 mode = decalMode;
+    float faded = decalFade_1(local.z, fade.x, fade.y, fade.z);
+    vec2 uv = (mode.x == 1.0) ? (local.xy + vec2(0.5, 0.5)) : local.xy;
+    vec4 texel = texture(sampler2D(decalTexture, decalSampler), uv);
+    vec4 tint = decalColor * baseColor;
+    vec4 shaded = decalOverlayColor(tint, texel, fade.w, (mode.y == 1.0), (mode.z == 1.0), faded);
+    fragColor = vec4(toneMapped(shaded.rgb, frame), shaded.a);
+    return;
+}
+@end
+

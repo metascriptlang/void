@@ -45,6 +45,7 @@ import {
 	FRAME_LINEAR,
 	FRAME_TONE_MODE,
 	FRAME_CAMERA_POSITION,
+	FRAME_DEPTH_ZERO_TO_ONE,
 	FRAME_ENV_POWER,
 	FRAME_ENV_LEVELS,
 	FRAME_ENV_COS,
@@ -57,6 +58,8 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	SHADOW_SCENE_VIEWS,
 	SHADOW_SCENE_SAMPLERS,
+	SCENE_DEPTH_SCENE_VIEWS,
+	SCENE_DEPTH_SCENE_SAMPLERS,
 	uniformBlockLength,
 	textureSlotMask,
 	samplerSlotMask,
@@ -89,6 +92,7 @@ import {
 	destroyView,
 	destroySampler,
 	originTopLeft,
+	depthZeroToOne,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { Environment, compute, isCurrent, specLevels } from "./environment";
@@ -784,6 +788,7 @@ export function beginFrame(
 	renderer.frameValues[FRAME_EXPOSURE] = exposureMultiplier(renderer.exposure);
 	renderer.frameValues[FRAME_LINEAR] = renderer.linearOutput ? 1.0 : 0.0;
 	renderer.frameValues[FRAME_TONE_MODE] = renderer.toneMode as float32;
+	renderer.frameValues[FRAME_DEPTH_ZERO_TO_ONE] = depthZeroToOne() ? 1.0 : 0.0;
 	const eye: Vec3 | null = renderer.cameraPosition;
 	if (eye !== null) {
 		renderer.frameValues[FRAME_CAMERA_POSITION] = eye.x;
@@ -1107,11 +1112,13 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 
 // Every texture view and sampler `program` declares is bound on `material`, each by one field: a
 // raw view or sampler, or a context texture's role. The shadow map's are the scene's to bind for
-// a shadowed program, and the clustered lights' for every program.
+// a shadowed program, the clustered lights' for every program and the scene depth for a decal.
 function texturesFit(program: ProgramKey, material: Material): boolean {
-	const sceneViews: uint32 = CLUSTER_SCENE_VIEWS |
+	const decal: boolean = program.program == Program.Decal;
+	const sceneViews: uint32 = CLUSTER_SCENE_VIEWS | (decal ? SCENE_DEPTH_SCENE_VIEWS : 0) |
 		(program.shadowed ? SHADOW_SCENE_VIEWS : 0) | (program.pbr ? ENV_SCENE_VIEWS : 0);
 	const sceneSamplers: uint32 = CLUSTER_SCENE_SAMPLERS |
+		(decal ? SCENE_DEPTH_SCENE_SAMPLERS : 0) |
 		(program.shadowed ? SHADOW_SCENE_SAMPLERS : 0) | (program.pbr ? ENV_SCENE_SAMPLERS : 0);
 	const views: uint32 = textureSlotMask(program) & ~sceneViews;
 	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;

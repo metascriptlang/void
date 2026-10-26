@@ -6,6 +6,8 @@ import {
 	billboardFs,
 	billboardVs,
 	copyFs,
+	decalFs,
+	decalVs,
 	litFs,
 	litTexturedFs,
 	litTexturedVs,
@@ -58,3 +60,5 @@ console.log(stage("vs", "unlitTexturedVs", glsl(unlitTexturedVs)));
 console.log(stage("fs", "unlitTexturedFs", glslLinked(unlitTexturedFs, unlitTexturedVs)));
 const shadowUnlit = glslLinked(shadowUnlitTexturedFs, unlitTexturedVs);
 console.log(stage("fs", "shadowUnlitTexturedFs", shadowUnlit));
+console.log(stage("vs", "decalVs", glsl(decalVs)));
+console.log(stage("fs", "decalFs", glslLinked(decalFs, decalVs)));

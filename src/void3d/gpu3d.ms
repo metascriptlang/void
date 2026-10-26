@@ -61,6 +61,8 @@ export enum Program {
 	OutlineMix,
 	OutlineWidth,
 	ParticleVisual,
+	// Heaps' DecalOverlay: a box's Lit-layout mesh, drawn in the Decal phase only (DECAL_*).
+	Decal,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -317,6 +319,7 @@ export function isScreenProgram(program: Program): boolean {
 		Program.OutlineMask => true,
 		Program.OutlineMix => true,
 		Program.OutlineWidth => true,
+		Program.Decal => false,
 	};
 }
 
@@ -503,6 +506,20 @@ export const CLUSTER_SCENE_SAMPLERS: uint32 =
 // The scene's depth as a texture (Heaps' `depthMap` global), bound only while the decals draw.
 export const SCENE_DEPTH_VIEW_SLOT: int32 = 14;
 export const SCENE_DEPTH_SAMPLER_SLOT: int32 = 7;
+export const SCENE_DEPTH_SCENE_VIEWS: uint32 = 1 << (SCENE_DEPTH_VIEW_SLOT as uint32);
+export const SCENE_DEPTH_SCENE_SAMPLERS: uint32 = 1 << (SCENE_DEPTH_SAMPLER_SLOT as uint32);
+// A decal's block (decalParams in shader3d.ms): the tint (gamma-encoded rgba), then
+// DecalOverlay's fadeStart, fadeEnd, fadePower and emissive, then its CENTERED, GAMMA_CORRECT
+// and AUTO_ALPHA constants as 1 or 0 (h3d/shader/pbr/VolumeDecal.hx:68-128).
+export const DECAL_UNIFORM_LENGTH: int32 = 12;
+export const DECAL_COLOR: int32 = 0;
+export const DECAL_FADE_START: int32 = 4;
+export const DECAL_FADE_END: int32 = 5;
+export const DECAL_FADE_POWER: int32 = 6;
+export const DECAL_EMISSIVE: int32 = 7;
+export const DECAL_CENTERED: int32 = 8;
+export const DECAL_GAMMA_CORRECT: int32 = 9;
+export const DECAL_AUTO_ALPHA: int32 = 10;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
@@ -563,9 +580,11 @@ export const FRAME_TIME: int32 = 0;
 export const FRAME_EXPOSURE: int32 = 1;
 export const FRAME_LINEAR: int32 = 2;
 export const FRAME_TONE_MODE: int32 = 3;
-// The camera's world position at FRAME_CAMERA_POSITION (xyz; w unread): the view vector of a pbr
-// key, as Heaps' PropsDefinition `cameraPosition`.
+// The camera's world position at FRAME_CAMERA_POSITION (xyz): the view vector of a pbr key, as
+// Heaps' PropsDefinition `cameraPosition`; in its w, 1 where the backend stores clip depth 0..1 and
+// 0 where it maps -1..1 into the depth buffer (the door's depthZeroToOne), read by a decal.
 export const FRAME_CAMERA_POSITION: int32 = 4;
+export const FRAME_DEPTH_ZERO_TO_ONE: int32 = 7;
 // The attached environment (renderer.ms attachEnvironment), as Heaps' Renderer.hx:715-723 loads
 // pbrIndirect: irrPower (the power squared), irrSpecularLevels, and the cosine and sine of its
 // rotation; a power of 0 lights a pbr key by the flat ambient instead.

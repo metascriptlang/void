@@ -24,6 +24,7 @@ import {
 	dot,
 	exp2,
 	feature,
+	inverse,
 	length,
 	location,
 	mat2x2f,
@@ -2014,13 +2015,9 @@ export function shadowUnlitTexturedFs(
 
 // Heaps' DecalOverlay (h3d/shader/pbr/VolumeDecal.hx:86-106): the scene depth under a fragment
 // back through the camera into the decal's own box, which spans -0.5..0.5 on each axis.
-export function decalLocalAt(
-	screen: Vec2f,
-	depth: float32,
-	inverseViewProj: Mat4x4f,
-	worldToLocal: Mat4x4f,
-): Vec3f {
-	const local = worldToLocal * (inverseViewProj * vec4f(screen.x, screen.y, depth, 1.0));
+// `screenToLocal` is Heaps' `matrix`, the box's inverse world after the inverse viewProj.
+export function decalLocalAt(screen: Vec2f, depth: float32, screenToLocal: Mat4x4f): Vec3f {
+	const local = screenToLocal * vec4f(screen.x, screen.y, depth, 1.0);
 	return local.xyz / local.w;
 }
 
@@ -2049,4 +2046,84 @@ export function decalOverlayColor(
 	rgb = rgb + rgb * emissive;
 	const alpha: float32 = autoAlpha ? clamp(max(max(rgb.r, rgb.g), rgb.b), 0.0, 1.0) : texel.a;
 	return vec4f(rgb, alpha * fade);
+}
+
+// A decal draws its box (a Lit-layout mesh) and reads the scene through it: the box's matrix
+// back from the screen is made per vertex, the same at every vertex of the box.
+export struct DecalVaryings {
+	screenToLocal0: Vec4f;
+	screenToLocal1: Vec4f;
+	screenToLocal2: Vec4f;
+	screenToLocal3: Vec4f;
+	baseColor: Vec4f;
+	screen: Vec4f;
+	@builtin(position) clip: Vec4f;
+}
+
+export struct DecalFragmentInput {
+	screenToLocal0: Vec4f;
+	screenToLocal1: Vec4f;
+	screenToLocal2: Vec4f;
+	screenToLocal3: Vec4f;
+	baseColor: Vec4f;
+	screen: Vec4f;
+	@builtin(position) fragCoord: Vec4f;
+}
+
+// gpu3d.ms DECAL_*: the tint, then fadeStart, fadeEnd, fadePower and emissive, then CENTERED,
+// GAMMA_CORRECT and AUTO_ALPHA as 1 or 0.
+export struct DecalParams {
+	decalColor: Vec4f;
+	decalFade: Vec4f;
+	decalMode: Vec4f;
+}
+
+export struct DecalBindings {
+	@binding(3) decalParams: DecalParams;
+	@binding(6) frameParams: FrameParams;
+	@binding(0) decalTexture: Texture2d;
+	@binding(0) decalSampler: Sampler;
+	@binding(14) @sampleType(unfilterable_float) sceneDepth: Texture2d;
+	@binding(7) @samplerType(nonfiltering) sceneDepthSampler: Sampler;
+}
+
+export function decalVs(input: LitAttributes, b: VertexBindings): DecalVaryings {
+	const world = instanceWorld(input.instanceRow0, input.instanceRow1, input.instanceRow2);
+	const clip = b.vertexParams.viewProj * world * vec4f(input.position, 1.0);
+	const toLocal = inverse(world) * inverse(b.vertexParams.viewProj);
+	return {
+		screenToLocal0: toLocal.columns[0],
+		screenToLocal1: toLocal.columns[1],
+		screenToLocal2: toLocal.columns[2],
+		screenToLocal3: toLocal.columns[3],
+		baseColor: input.color * input.instanceColor,
+		screen: clip,
+		clip: clip,
+	};
+}
+
+// The depth the door's backend stores, in NDC: as is where clip depth spans 0..1, else from -1..1
+// (FrameParams.cameraPosition.w, gpu3d.ms FRAME_DEPTH_ZERO_TO_ONE).
+export function ndcDepthOf(stored: float32, zeroToOne: float32): float32 {
+	return zeroToOne == 1.0 ? stored : stored * 2.0 - 1.0;
+}
+
+export function decalFs(input: DecalFragmentInput, b: DecalBindings): Vec4f {
+	const stored = textureLoad(b.sceneDepth, b.sceneDepthSampler, vec2i(input.fragCoord.xy), 0).x;
+	const depth = ndcDepthOf(stored, b.frameParams.cameraPosition.w);
+	const toLocal = mat4x4f(
+		input.screenToLocal0, input.screenToLocal1, input.screenToLocal2, input.screenToLocal3,
+	);
+	const local = decalLocalAt(input.screen.xy / input.screen.w, depth, toLocal);
+	if (outsideDecal(local)) {
+		discard();
+	}
+	const fade = b.decalParams.decalFade;
+	const mode = b.decalParams.decalMode;
+	const faded = decalFade(local.z, fade.x, fade.y, fade.z);
+	const uv = mode.x == 1.0 ? local.xy + vec2f(0.5, 0.5) : local.xy;
+	const texel = textureSample(b.decalTexture, b.decalSampler, uv);
+	const tint = b.decalParams.decalColor * input.baseColor;
+	const shaded = decalOverlayColor(tint, texel, fade.w, mode.y == 1.0, mode.z == 1.0, faded);
+	return vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
 }

@@ -161,6 +161,7 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.OutlineMask => stopOnNoCutout(program),
 		Program.OutlineMix => stopOnNoCutout(program),
 		Program.OutlineWidth => stopOnNoCutout(program),
+		Program.Decal => stopOnNoCutout(program),
 	};
 }
 
