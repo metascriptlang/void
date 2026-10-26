@@ -438,6 +438,8 @@ export function resolvedRenderPipeline(descriptor: GPURenderPipelineDescriptor):
 	return resolved;
 }
 
+export function stencil8Mask(mask: uint32): int32 { return (mask & 0xFF) as int32; }
+
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		return "vertex and fragment stages come from one GPUShaderModule in Void";

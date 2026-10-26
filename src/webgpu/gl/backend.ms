@@ -98,6 +98,7 @@ import {
 	occlusionSetId,
 	openDebugGroups,
 	passSerial,
+	stencil8Mask,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -1933,8 +1934,8 @@ function describeDepthStencil(descriptor: GPURenderPipelineDescriptor, ref slot:
 	slot.depthBias = state.depthBias;
 	slot.depthSlope = state.depthBiasSlopeScale;
 	slot.stencil = info.stencil;
-	slot.stencilReadMask = state.stencilReadMask as int32;
-	slot.stencilWriteMask = state.stencilWriteMask as int32;
+	slot.stencilReadMask = stencil8Mask(state.stencilReadMask);
+	slot.stencilWriteMask = stencil8Mask(state.stencilWriteMask);
 	slot.stencilFront = stencilFace(state.stencilFront, "depthStencil.stencilFront");
 	slot.stencilBack = stencilFace(state.stencilBack, "depthStencil.stencilBack");
 }

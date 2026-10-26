@@ -100,6 +100,7 @@ import {
 	occlusionQueryIndex,
 	occlusionSetId,
 	passSerial,
+	stencil8Mask,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -1939,8 +1940,8 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 		depthFormat != "" && descriptor.depthStencil.depthWriteEnabled ? 1 : 0,
 		depthFormat == "" ? 8 : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
 		stencil ? 1 : 0,
-		readMask as int32,
-		writeMask as int32,
+		stencil8Mask(readMask),
+		stencil8Mask(writeMask),
 		stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
 		stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
 		stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),

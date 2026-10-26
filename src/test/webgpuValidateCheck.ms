@@ -29,6 +29,7 @@ import {
 	bufferRefusal,
 	canvasRefusal,
 	resolvedRenderPipeline,
+	stencil8Mask,
 	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
@@ -746,4 +747,6 @@ test "a render pipeline's zero sample count and stencil masks resolve to WebGPU'
 	assert kept.multisample.count == 4;
 	assert kept.depthStencil.stencilReadMask == 0x0F;
 	assert kept.depthStencil.stencilWriteMask == 0xF0;
+	assert stencil8Mask(resolved.depthStencil.stencilReadMask) == 0xFF;
+	assert stencil8Mask(kept.depthStencil.stencilWriteMask) == 0xF0;
 }
