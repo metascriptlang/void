@@ -1040,3 +1040,20 @@ test is `drawMaskedTriangle` in `webgpuFixtures.ms`; it has no Metal twin yet.
 
 **Vulkan swapchain at identity** (`2cbc8dee`): it no longer reads `currentTransform` and takes
 `VK_SUBOPTIMAL_KHR` as success. The Android pre-rotation bullet in `docs/GPU.md` records why. No Metal effect.
+
+### 2026-10-26, Windows: indexed indirect draws, one Metal follow-through to run
+
+**New on the door:** `doorDrawIndirect(buffer, offset, drawCount)` with `DOOR_BUFFER_INDIRECT`,
+over `drawIndexedIndirect` and `multiDrawIndexedIndirect` on the render pass (`9a427b4d`,
+`c0080542`). The shape, the refusals and their upgrade are in `docs/GPU.md` ("Indirect draws").
+Verified on the RTX 5090: the D3D11 and Vulkan test "two indexed indirect records in one call
+honour firstIndex, baseVertex and firstInstance" passes, with `webgpuD3d11Check` at 47/47 and
+`webgpuVulkanCheck` at 19/19 and 0 validation errors. `msc check` passes on every target,
+darwin included.
+
+**For the Mac** (`36a40d6b`, darwin unverified): Metal issues one
+`drawIndexedPrimitives:indexType:indexBuffer:indexBufferOffset:indirectBuffer:indirectBufferOffset:`
+per record, and reports `indirect-first-instance` on macOS and on iOS from `MTLGPUFamilyApple3`
+(`mtlSupportsIndirectBaseInstance`). Without that feature the door refuses every indirect draw.
+The fixture is `drawIndirectRows` in `webgpuFixtures.ms`; a Metal twin needs a module with a
+float32x2 position at location 0 and a per-instance unorm8x4 colour at location 1 passed through.
