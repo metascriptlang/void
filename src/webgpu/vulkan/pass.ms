@@ -75,6 +75,10 @@ export function colorKeyWords(ref key: Vec<uint32>, format: int32, samples: int3
 	key.push(resolveFormat as uint32);
 }
 
+export function unusedColorKeyWords(ref key: Vec<uint32>): void {
+	colorKeyWords(key, 0, 1, LOAD_OP_DONT_CARE, STORE_OP_DONT_CARE, 0);
+}
+
 export function depthKeyWords(
 	ref key: Vec<uint32>,
 	format: int32,
@@ -138,9 +142,17 @@ export function beginRenderPass(
 	let clears: Vec<float32> = [];
 	let width: int32 = 0;
 	let height: int32 = 0;
+	let colors: int32 = 0;
 	for (let i: int32 = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		if (descriptor.colorAttachments[i].view.id != 0) { colors = i + 1; }
+	}
+	for (let i: int32 = 0; i < colors; i++) {
 		const attachment = descriptor.colorAttachments[i];
-		if (attachment.view.id == 0) { continue; }
+		if (attachment.view.id == 0) {
+			unusedColorKeyWords(key);
+			for (let c = 0; c < 4; c++) { clears.push(0.0); }
+			continue;
+		}
 		const view = r.views.slots[r.views.slotIndex(attachment.view.id)];
 		const texture = r.textures.slots[r.textures.slotIndex(view.texture)];
 		checkedSingleSubresource(`colorAttachments[${i}].view`, attachable(view, texture));
