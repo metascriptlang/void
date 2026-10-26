@@ -491,7 +491,7 @@ function stencilPipeline(
 	module: GPUShaderModule,
 	compare: GPUCompareFunction,
 	passOp: GPUStencilOperation,
-	writeMask: uint32,
+	writeMask: uint32 | null,
 ): GPURenderPipeline {
 	let descriptor: GPURenderPipelineDescriptor = { label: "stencil" };
 	descriptor.vertex.module = module;
@@ -507,10 +507,10 @@ function stencilPipeline(
 	return device.createRenderPipeline(descriptor);
 }
 
-function stencilScene(device: GPUDevice, writerReference: uint32, testerReference: uint32, writerMask: uint32): Vec<uint8> {
+function stencilScene(device: GPUDevice, writerReference: uint32, testerReference: uint32, writerMask: uint32 | null): Vec<uint8> {
 	const module = flatShader(device);
 	const writer = stencilPipeline(device, module, "always", "replace", writerMask);
-	const tester = stencilPipeline(device, module, "equal", "keep", 0);
+	const tester = stencilPipeline(device, module, "equal", "keep", null);
 	const uniforms = colourUniforms(device);
 	const group = uniformGroup(device, writer, uniforms);
 	const vertices = vertexBuffer(device, 96);
@@ -557,10 +557,10 @@ function stencilScene(device: GPUDevice, writerReference: uint32, testerReferenc
 
 test "a stencil write at a reference masks a later equal-test draw, by reference and by write mask" {
 	const device = openDevice();
-	const matched = stencilScene(device, 1, 1, 0);
+	const matched = stencilScene(device, 1, 1, null);
 	assert pixel(matched, 16, 32) == GREEN;
 	assert pixel(matched, 48, 32) == BLUE;
-	const mismatched = stencilScene(device, 1, 2, 0);
+	const mismatched = stencilScene(device, 1, 2, null);
 	assert pixel(mismatched, 16, 32) == RED;
 	assert pixel(mismatched, 48, 32) == BLUE;
 	const masked = stencilScene(device, 3, 2, 2);
