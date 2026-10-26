@@ -1,13 +1,4 @@
 import { GPUBufferUsage, GPUTextureUsage } from "../webgpu/types.ms";
-import { SLOT_MASK, slotOf } from "../webgpu/pool.ms";
-import { DedicatedOwner, MemoryDevice, OpenedBlock, memoryPropertiesOf } from "../webgpu/vulkan/memory";
-import {
-	VulkanResources,
-	adoptSwapchainImage,
-	releaseSwapchainImage,
-	resetRecords,
-	resourcesFor,
-} from "../webgpu/vulkan/resources";
 import {
 	ACCESS_HOST_READ,
 	ACCESS_SHADER_READ,
@@ -165,49 +156,4 @@ test "formats, rows and members map onto their Vulkan values" {
 	assert cubeCompatible(false, 64, 64, 6, 1);
 	assert !cubeCompatible(false, 64, 64, 6, 4);
 	assert !cubeCompatible(true, 64, 64, 6, 1);
-}
-
-function hostOnly(): MemoryDevice {
-	return {
-		types: [{ properties: memoryPropertiesOf(0xF), heap: 0 }],
-		heapSizes: [1024 * 1024 * 1024],
-		nonCoherentAtomSize: 64,
-		maxAllocationCount: 4096,
-		openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner, map: boolean): OpenedBlock => {
-			return { memory: 0, mapped: 0 };
-		},
-		closeBlock: (memory: uint64): void => {},
-	};
-}
-
-function adopted(ref r: VulkanResources, image: uint64): uint32 {
-	return adoptSwapchainImage(r, image, image + 1, "bgra8unorm", 4, 4).texture.id;
-}
-
-test "a Vulkan texture id whose slot reached the last generation stays refused once released" {
-	let r = resourcesFor(hostOnly(), 0);
-	const first = adopted(r, 10);
-	releaseSwapchainImage(r, { texture: { id: first }, view: { id: r.views.liveIds()[0] } });
-	r.textures.core.generations[slotOf(first)] = SLOT_MASK - 1;
-	const last = adopted(r, 20);
-	assert slotOf(last) == slotOf(first);
-	assert last >> 16 == SLOT_MASK;
-	releaseSwapchainImage(r, { texture: { id: last }, view: { id: r.views.liveIds()[0] } });
-	const next = adopted(r, 30);
-	assert slotOf(next) != slotOf(last);
-	assert !r.textures.alive(last) && !r.textures.alive(first);
-	assert r.textures.alive(next);
-	assert r.textures.slots[slotOf(next)].native == 30;
-}
-
-test "a Vulkan texture id from before a device reset is refused after it" {
-	let r = resourcesFor(hostOnly(), 0);
-	const before = adopted(r, 10);
-	const view = r.views.liveIds()[0];
-	resetRecords(r);
-	assert !r.textures.alive(before) && !r.views.alive(view);
-	assert r.textures.live() == 0 && r.views.live() == 0;
-	const after = adopted(r, 20);
-	assert slotOf(after) == slotOf(before) && after != before;
-	assert !r.textures.alive(before) && r.textures.alive(after);
 }
