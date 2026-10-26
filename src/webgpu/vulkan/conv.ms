@@ -15,6 +15,16 @@ import {
 	GPUTextureUsage,
 	GPUVertexFormat,
 	GPUVertexStepMode,
+	FORMAT_COUNT,
+	addressModeNative,
+	blendFactorNative,
+	blendOperationNative,
+	compareNative,
+	nativeAt,
+	stencilOperationNative,
+	textureFormatFacts,
+	topologyNative,
+	vertexFormatNative,
 } from "../types.ms";
 import { MemoryKind } from "./memory";
 import { ACCESS_TRANSFER_READ, BufferRest, STAGE_TRANSFER, TextureRest } from "./tracker";
@@ -79,20 +89,7 @@ export struct FormatInfo {
 	unreachable;
 }
 
-@noinline function refuseFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu vulkan: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
-
-function color(native: int32, texelBytes: int32): FormatInfo {
-	return { native: native, texelBytes: texelBytes, aspect: ASPECT_COLOR, depth: false };
-}
-
-function depthFormat(native: int32, texelBytes: int32, aspect: uint32): FormatInfo {
-	return { native: native, texelBytes: texelBytes, aspect: aspect, depth: true };
-}
 
 export function depthStencilNative(d24s8Features: uint32): int32 {
 	return (d24s8Features & FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT) != 0
@@ -102,33 +99,13 @@ export function depthStencilNative(d24s8Features: uint32): int32 {
 
 export function d24s8Format(): int32 { return FORMAT_D24_UNORM_S8_UINT; }
 
+const FORMATS: int32[] = [9, 16, 37, 43, 44, 50, 41, 42, 76, 83, 97, 95, 100, 103, 109, 107, 98, 64, 122, 124, 126, 0];
+
 export function formatInfo(format: GPUTextureFormat, depthStencil: int32, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => color(9, 1),
-		"rg8unorm" => color(16, 2),
-		"rgba8unorm" => color(37, 4),
-		"rgba8unorm-srgb" => color(43, 4),
-		"bgra8unorm" => color(44, 4),
-		"bgra8unorm-srgb" => color(50, 4),
-		"rgba8uint" => color(41, 4),
-		"rgba8sint" => color(42, 4),
-		"r16float" => color(76, 2),
-		"rg16float" => color(83, 4),
-		"rgba16float" => color(97, 8),
-		"rgba16uint" => color(95, 8),
-		"r32float" => color(100, 4),
-		"rg32float" => color(103, 8),
-		"rgba32float" => color(109, 16),
-		"rgba32uint" => color(107, 16),
-		"r32uint" => color(98, 4),
-		"rgb10a2unorm" => color(64, 4),
-		"rg11b10ufloat" => color(122, 4),
-		"depth16unorm" => depthFormat(124, 2, ASPECT_DEPTH),
-		"depth32float" => depthFormat(126, 4, ASPECT_DEPTH),
-		"depth24plus-stencil8" => depthFormat(depthStencil, 0, ASPECT_DEPTH | ASPECT_STENCIL),
-		_ => refuseFormat(member, value),
-	};
+	const facts = textureFormatFacts(format, member, "vulkan");
+	if (facts.stencil) { return { native: depthStencil, texelBytes: 0, aspect: ASPECT_DEPTH | ASPECT_STENCIL, depth: true }; }
+	const native = nativeAt(FORMATS, FORMAT_COUNT, facts.index, "vulkan", "VkFormat");
+	return { native: native, texelBytes: facts.bytesPerPixel, aspect: facts.depth ? ASPECT_DEPTH : ASPECT_COLOR, depth: facts.depth };
 }
 
 export function bufferUsageFlags(usage: int32): uint32 {
@@ -264,28 +241,15 @@ export function filter(mode: string, member: string): int32 {
 	};
 }
 
-export function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"repeat" => 0,
-		"mirror-repeat" => 1,
-		"" | "clamp-to-edge" => 2,
-		_ => refuse(member, mode),
-	};
-}
+const ADDRESS_MODES: int32[] = [2, 0, 1];
+
+export function addressMode(mode: string, member: string): int32 { return addressModeNative(ADDRESS_MODES, mode, member, "vulkan"); }
+
+const COMPARE_OPS: int32[] = [0, 1, 2, 3, 4, 5, 6, 7];
 
 export function compareOp(compare: string, member: string): int32 {
-	return match (compare) {
-		"" => -1,
-		"never" => 0,
-		"less" => 1,
-		"equal" => 2,
-		"less-equal" => 3,
-		"greater" => 4,
-		"not-equal" => 5,
-		"greater-equal" => 6,
-		"always" => 7,
-		_ => refuse(member, compare),
-	};
+	if (compare == "") { return -1; }
+	return compareNative(COMPARE_OPS, compare, member, "vulkan");
 }
 
 export function rowLength(bytesPerRow: int32, texelBytes: int32): uint32 {
@@ -310,7 +274,6 @@ export const INPUT_RATE_INSTANCE: uint32 = 1;
 export const TOPOLOGY_LINE_STRIP: uint32 = 2;
 export const TOPOLOGY_TRIANGLE_STRIP: uint32 = 4;
 
-const COMPARE_ALWAYS: int32 = 7;
 const BLEND_ZERO: int32 = 0;
 const BLEND_ONE: int32 = 1;
 
@@ -322,17 +285,10 @@ export function shaderStages(visibility: int32): uint32 {
 	return stages;
 }
 
+const TOPOLOGIES: int32[] = [0, 1, TOPOLOGY_LINE_STRIP as int32, 3, TOPOLOGY_TRIANGLE_STRIP as int32];
+
 export function topology(value: GPUPrimitiveTopology): uint32 {
-	const name: string = value;
-	const code = match (name) {
-		"point-list" => 0,
-		"line-list" => 1,
-		"line-strip" => 2,
-		"" | "triangle-list" => 3,
-		"triangle-strip" => 4,
-		_ => refuse("primitive.topology", name),
-	};
-	return code as uint32;
+	return topologyNative(TOPOLOGIES, value, "primitive.topology", "vulkan") as uint32;
 }
 
 export function indexType(format: GPUIndexFormat, member: string): int32 {
@@ -366,105 +322,41 @@ export function frontFace(face: GPUFrontFace): uint32 {
 }
 
 export function pipelineCompare(compare: GPUCompareFunction, member: string): uint32 {
-	const name: string = compare;
-	if (name == "") { return COMPARE_ALWAYS as uint32; }
-	return compareOp(name, member) as uint32;
+	return compareNative(COMPARE_OPS, compare, member, "vulkan") as uint32;
 }
+
+const STENCIL_OPS: int32[] = [0, 1, 2, 5, 3, 4, 6, 7];
 
 export function stencilOp(op: GPUStencilOperation, member: string): uint32 {
-	const name: string = op;
-	const code = match (name) {
-		"" | "keep" => 0,
-		"zero" => 1,
-		"replace" => 2,
-		"increment-clamp" => 3,
-		"decrement-clamp" => 4,
-		"invert" => 5,
-		"increment-wrap" => 6,
-		"decrement-wrap" => 7,
-		_ => refuse(member, name),
-	};
-	return code as uint32;
+	return stencilOperationNative(STENCIL_OPS, op, member, "vulkan") as uint32;
 }
 
-function blendFactorCode(factor: string, fallback: int32, member: string): uint32 {
-	const code = match (factor) {
-		"" => fallback,
-		"zero" => BLEND_ZERO,
-		"one" => BLEND_ONE,
-		"src" => 2,
-		"one-minus-src" => 3,
-		"dst" => 4,
-		"one-minus-dst" => 5,
-		"src-alpha" => 6,
-		"one-minus-src-alpha" => 7,
-		"dst-alpha" => 8,
-		"one-minus-dst-alpha" => 9,
-		"constant" => 10,
-		"one-minus-constant" => 11,
-		"src-alpha-saturated" => 14,
-		_ => refuse(member, factor),
-	};
-	return code as uint32;
-}
+const BLEND_FACTORS: int32[] = [BLEND_ZERO, BLEND_ONE, 2, 3, 6, 7, 4, 5, 8, 9, 14, 10, 11];
 
 export function sourceFactor(factor: GPUBlendFactor, member: string): uint32 {
-	return blendFactorCode(factor, BLEND_ONE, member);
+	return blendFactorNative(BLEND_FACTORS, factor, member, "vulkan") as uint32;
 }
 
 export function destinationFactor(factor: GPUBlendFactor, member: string): uint32 {
-	return blendFactorCode(factor, BLEND_ZERO, member);
+	const value: string = factor;
+	if (value == "") { return BLEND_ZERO as uint32; }
+	return sourceFactor(factor, member);
 }
+
+const BLEND_OPS: int32[] = [0, 1, 2, 3, 4];
 
 export function blendOp(operation: GPUBlendOperation, member: string): uint32 {
-	const name: string = operation;
-	const code = match (name) {
-		"" | "add" => 0,
-		"subtract" => 1,
-		"reverse-subtract" => 2,
-		"min" => 3,
-		"max" => 4,
-		_ => refuse(member, name),
-	};
-	return code as uint32;
+	return blendOperationNative(BLEND_OPS, operation, member, "vulkan") as uint32;
 }
 
+const VERTEX_FORMATS: int32[] = [
+	20, 41, 21, 42, 16, 37, 17, 38,
+	81, 95, 82, 96, 77, 91, 78, 92, 83, 97,
+	100, 103, 106, 109, 98, 101, 104, 107, 99, 102, 105, 108,
+];
+
 export function vertexFormat(format: GPUVertexFormat, member: string): uint32 {
-	const name: string = format;
-	const code = match (name) {
-		"unorm8x2" => 16,
-		"snorm8x2" => 17,
-		"uint8x2" => 20,
-		"sint8x2" => 21,
-		"unorm8x4" => 37,
-		"snorm8x4" => 38,
-		"uint8x4" => 41,
-		"sint8x4" => 42,
-		"unorm16x2" => 77,
-		"snorm16x2" => 78,
-		"uint16x2" => 81,
-		"sint16x2" => 82,
-		"float16x2" => 83,
-		"unorm16x4" => 91,
-		"snorm16x4" => 92,
-		"uint16x4" => 95,
-		"sint16x4" => 96,
-		"float16x4" => 97,
-		"uint32" => 98,
-		"sint32" => 99,
-		"float32" => 100,
-		"uint32x2" => 101,
-		"sint32x2" => 102,
-		"float32x2" => 103,
-		"uint32x3" => 104,
-		"sint32x3" => 105,
-		"float32x3" => 106,
-		"uint32x4" => 107,
-		"sint32x4" => 108,
-		"float32x4" => 109,
-		_ => refuse(member, name),
-	};
-	return code as uint32;
+	return vertexFormatNative(VERTEX_FORMATS, format, member, "vulkan") as uint32;
 }
 
 export function inputRate(stepMode: GPUVertexStepMode, member: string): uint32 {
