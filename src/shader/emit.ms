@@ -4,6 +4,7 @@ import {
 	DeclKind,
 	Node,
 	NodeKind,
+	StringLiteralData,
 	SymbolKind,
 	TypeArrayData,
 	TypeKind,
