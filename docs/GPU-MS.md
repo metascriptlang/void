@@ -689,9 +689,12 @@ submit of the frame, as Mach does (vulkan.zig:1170-1183). The backend owns the 4
 stays null. The image is adopted once per present, so a second `getCurrentTexture` in a frame
 keeps what the frame drew, and a frame that never asks for it still presents.
 `tests/integration/vulkanSwapchain.ms` passes on the RTX 5090: 8 frames at 4x, 64x48 resized
-to 96x72, each clear read back resolved. Its validation count is 0 only because no layer is
-installed; the lavapipe run with validation in WSL is still to come, and `mainSokol2d` has not
-been run on Vulkan against the goldens.
+to 96x72, each clear read back resolved. On lavapipe in WSL with validation and sync
+validation on, it and `webgpuVulkanCheck` (16/16) end with 0 errors. That run found two bugs,
+both fixed: the swapchain depth view leaked when `destroy` freed the texture record before the
+backend shut down, and a copy after a render pass in one flush transitioned the image with no
+source access (`docs/GPU.md`, the barrier against wgpu). `mainSokol2d` has not been run on
+Vulkan against the goldens.
 
 ## G7 — after Metal (either side, coordinated)
 
