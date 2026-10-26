@@ -2132,7 +2132,7 @@ export function setComputePipeline(pipeline: GPUComputePipeline): void {
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	if (index != GPU_RESOURCE_GROUP) { stop(`a compute pipeline has no uniform group: setBindGroup(${index}) takes group ${GPU_RESOURCE_GROUP}`); }
+	if (index != GPU_RESOURCE_GROUP) { return; }
 	computeBound.bindGroup = bindGroup.id;
 	computeBound.dirty = true;
 }
