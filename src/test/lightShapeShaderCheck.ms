@@ -284,6 +284,7 @@ function bindingsWith(
 		spotShadowMap: oneLayer(texture()),
 		spotShadowSampler: { nearest: true },
 		cubeShadowMap: oneLayer(texture()),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: texture(),
 		baseSampler: { nearest: true },
 		backTexture: texture(),

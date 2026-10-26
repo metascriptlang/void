@@ -258,6 +258,7 @@ function pointBindings(
 		spotShadowMap: oneLayer(white()),
 		spotShadowSampler: { nearest: true },
 		cubeShadowMap: faces(blocked),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: white(),
 		baseSampler: { nearest: true },
 		backTexture: white(),

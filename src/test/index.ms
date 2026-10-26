@@ -121,6 +121,7 @@ import "./gltfPbrSceneCheck";
 import "./lightShapeShaderCheck";
 import "./lightShapeSceneCheck";
 import "./spotShadowCheck";
+import "./spotCookieCheck";
 import "./cubeShadowCheck";
 import "./morphSkinSceneCheck";
 import "./lightShapeCheck";

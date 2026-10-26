@@ -68,6 +68,8 @@ import {
 	CLUSTER_SCENE_VIEWS,
 	LIGHT_RECORDS_VIEW_SLOT,
 	CLUSTER_SCENE_SAMPLERS,
+	COOKIE_VIEW_SLOT,
+	COOKIE_SAMPLER_SLOT,
 	ENV_DIFFUSE_VIEW_SLOT,
 	ENV_SPECULAR_VIEW_SLOT,
 	ENV_SAMPLER_SLOT,
@@ -922,6 +924,23 @@ test "a shadowed key reads the sun map at view 4, sampler 2; a core one the spot
 	assert SHADOW_SAMPLER_SLOT == 2 && SPOT_SHADOW_SAMPLER_SLOT == 3;
 }
 
+test "a core mesh key that reads the light records reads the cookie; a sprite does not" {
+	let cookied: int32 = 0;
+	for (const key of everyKey()) {
+		if (!declares(key)) { continue; }
+		const views: uint32 = textureSlotMask(key);
+		const sprite: boolean =
+			key.program == Program.Billboard || key.program == Program.ParticleVisual;
+		const lit: boolean =
+			bit(views, LIGHT_RECORDS_VIEW_SLOT) && key.preset == Preset.Core && !sprite;
+		assert lit == bit(views, COOKIE_VIEW_SLOT);
+		assert lit == bit(samplerSlotMask(key), COOKIE_SAMPLER_SLOT);
+		if (lit) { cookied = cookied + 1; }
+	}
+	assert cookied > 0;
+	assert COOKIE_VIEW_SLOT == 13 && COOKIE_SAMPLER_SLOT == 6;
+}
+
 test "an untextured shadowed key reads only the scene maps, in either preset" {
 	for (const preset of [Preset.Core, Preset.PixelArt]) {
 		const key: ProgramKey = ProgramKey.of(Program.Lit).withShadowed().withPreset(preset);
@@ -1178,9 +1197,11 @@ test "particleVisual declares additive program14 layout9 with original billboard
 		assert uniformBlockLength(key, 4) == 0 && uniformBlockLength(key, SKIN_UNIFORM_SLOT) == 0;
 		const lightViews: uint32 = preset == Preset.PixelArt
 			? 1 << (LIGHT_RECORDS_VIEW_SLOT as uint32)
-			: CLUSTER_SCENE_VIEWS;
+			: CLUSTER_SCENE_VIEWS & ~(1 << (COOKIE_VIEW_SLOT as uint32));
 		assert textureSlotMask(key) == 1 + lightViews;
-		assert samplerSlotMask(key) == 1 + CLUSTER_SCENE_SAMPLERS;
+		const lightSamplers: uint32 =
+			CLUSTER_SCENE_SAMPLERS & ~(1 << (COOKIE_SAMPLER_SLOT as uint32));
+		assert samplerSlotMask(key) == 1 + lightSamplers;
 		const skin: ProgramKey = { ...key, skinned: true };
 		assert !declares(skin);
 	}

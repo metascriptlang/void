@@ -188,6 +188,7 @@ function bindingsAt(
 		spotShadowMap: oneLayer(texture(depth)),
 		spotShadowSampler: { nearest: true },
 		cubeShadowMap: oneLayer(texture(depth)),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: texture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: texture(1.0),

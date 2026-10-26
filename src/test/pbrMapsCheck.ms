@@ -72,6 +72,7 @@ function bindingsOf(factors: Factors, packed: Texture2d, occlusion: Texture2d): 
 		spotShadowMap: oneLayer(texel(1.0, 1.0, 1.0)),
 		spotShadowSampler: { nearest: true },
 		cubeShadowMap: oneLayer(texel(1.0, 1.0, 1.0)),
+		cookieTexture: { width: 0, height: 0, texels: [] },
 		baseTexture: texel(1.0, 1.0, 1.0),
 		baseSampler: { nearest: true },
 		backTexture: texel(1.0, 1.0, 1.0),
