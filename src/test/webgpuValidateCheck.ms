@@ -28,6 +28,11 @@ import {
 	beginOcclusionRefusal,
 	bindGroupIndexRefusal,
 	bindGroupSetRefusal,
+	boundRefusal,
+	dynamicIndexOf,
+	markBindGroupSet,
+	markVertexSet,
+	shaderBindingAt,
 	copyBufferRefusal,
 	copyTextureRefusal,
 	uniformEntryCount,
@@ -84,10 +89,11 @@ import {
 	stripDrawRefusal,
 	textureRefusal,
 	uniformEntryRefusal,
+	vertexSlotRefusal,
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
-import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, TextureRecord } from "../webgpu/pool";
+import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, ShaderRecord, TextureRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -203,6 +209,43 @@ test "a bind group entry addresses only the bindings of its own group" {
 	assert addressesBinding(1, 3, 3, BindingKind.Texture);
 	assert !addressesBinding(0, 3, 3, BindingKind.Sampler);
 	assert !addressesBinding(0, 3, 4, BindingKind.Uniform);
+}
+
+test "a shader binding is found by its own group, binding and kind" {
+	let shader: ShaderRecord = { id: 1, bindingCount: 3 };
+	shader.bindings[0] = { binding: 0, kind: BindingKind.Uniform, size: 64 };
+	shader.bindings[1] = { binding: 0, kind: BindingKind.Texture };
+	shader.bindings[2] = { binding: 1, kind: BindingKind.Sampler };
+	assert shaderBindingAt(shader, 0, 0, BindingKind.Uniform) == 0;
+	assert shaderBindingAt(shader, 1, 0, BindingKind.Texture) == 1;
+	assert shaderBindingAt(shader, 1, 1, BindingKind.Sampler) == 2;
+	assert shaderBindingAt(shader, 1, 0, BindingKind.Uniform) < 0;
+	assert shaderBindingAt(shader, 1, 0, BindingKind.Sampler) < 0;
+	assert shaderBindingAt(shader, 1, 2, BindingKind.Texture) < 0;
+}
+
+test "a vertex buffer slot outside the pipeline's slots is refused" {
+	assert vertexSlotRefusal(0) == "";
+	assert vertexSlotRefusal(1) == "";
+	assert vertexSlotRefusal(2) == "setVertexBuffer slot 2 is outside the 2 vertex buffer slots";
+	assert vertexSlotRefusal(-1) == "setVertexBuffer slot -1 is outside the 2 vertex buffer slots";
+}
+
+test "a draw or dispatch is refused for a vertex buffer or bind group its pipeline reads and the pass never set" {
+	for (let i = 0; i < 2; i++) {
+		markVertexSet(i, 0, 0);
+		markBindGroupSet(i, 0, []);
+	}
+	assert boundRefusal(0, 0, false) == "";
+	assert boundRefusal(1, 0, false) == "the pipeline reads vertex buffer 0, which is not set";
+	assert boundRefusal(2, 0, false) == "the pipeline reads vertex buffer 1, which is not set";
+	assert boundRefusal(0, 1, false) == "the pipeline reads bind group 0, which is not set";
+	assert boundRefusal(0, 2, true) == "the compute pipeline reads bind group 1, which is not set";
+	markVertexSet(0, 5, 0);
+	assert boundRefusal(1, 0, false) == "";
+	assert boundRefusal(3, 0, false) == "the pipeline reads vertex buffer 1, which is not set";
+	markVertexSet(0, 0, 0);
+	assert boundRefusal(1, 0, false) == "the pipeline reads vertex buffer 0, which is not set";
 }
 
 test "a uniform entry is refused by usage, alignment, overrun and size below its block" {
@@ -742,6 +785,17 @@ test "a uniform group takes one dynamic offset per buffer entry" {
 	descriptor.entries[1].sampler = { id: 7 };
 	descriptor.entries[3].buffer = { id: 6 };
 	assert uniformEntryCount(descriptor) == 2;
+}
+
+test "a buffer entry's dynamic offset is its rank by binding among the stored entries" {
+	let descriptor: GPUBindGroupDescriptor = { label: null };
+	descriptor.entries[0] = { binding: 4, buffer: { id: 5 } };
+	descriptor.entries[2] = { binding: 1, sampler: { id: 7 } };
+	descriptor.entries[3] = { binding: 2, buffer: { id: 6 } };
+	const ranks = dynamicIndexOf(descriptor);
+	assert ranks[0] == 1;
+	assert ranks[1] == 0;
+	assert ranks[2] == 0;
 }
 
 test "a storage entry is a positive multiple of 4 bytes inside a STORAGE buffer, on the backend's alignment and limit" {

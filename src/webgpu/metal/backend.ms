@@ -84,17 +84,13 @@ import {
 	currentFrame,
 	entryOf,
 	clampedAnisotropy,
-	addressesBinding,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedSampledView,
-	checkedStorageEntry,
-	checkedStorageView,
 	checkedStripDraw,
-	checkedUniformEntry,
 	computePassOpen,
 	occlusionQueryIndex,
 	renderPassOpen,
+	boundFacts,
 } from "../validate.ms";
 import {
 	MtlBufferImpl,
@@ -405,7 +401,6 @@ struct BindGroupSlot {
 	group: int32;
 	entries: GPUBindGroupEntry[8];
 	entryCount: int32;
-	dynamicIndex: int32[8];
 }
 
 struct PassState {
@@ -422,9 +417,6 @@ export struct BindStats {
 }
 
 struct ComputeState {
-	pipeline: uint32;
-	bindGroups: uint32[2];
-	dynamicOffsets: uint32[8];
 	dirty: boolean;
 }
 
@@ -434,16 +426,9 @@ struct QuerySetSlot {
 }
 
 struct BoundState {
-	pipeline: uint32;
 	appliedPipeline: uint32;
-	vertexBuffers: uint32[2];
-	vertexOffsets: int64[2];
-	indexBuffer: uint32;
 	indexType: int32;
 	indexBytes: int64;
-	indexOffset: int64;
-	bindGroups: uint32[2];
-	dynamicOffsets: uint32[8];
 	vertexDirty: boolean;
 	resourcesDirty: boolean;
 	uniformsDirty: boolean;
@@ -455,9 +440,9 @@ let sharedStorage = true;
 let commandBuffer: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
 let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let pass: PassState = { width: 0 };
-let computeBound: ComputeState = { pipeline: 0 };
+let computeBound: ComputeState = { dirty: false };
 let computeEncoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
-let bound: BoundState = { pipeline: 0 };
+let bound: BoundState = { appliedPipeline: 0 };
 let boundBuffers: Vec<Ptr<MtlBufferImpl>> = [];
 let boundOffsets: Vec<int64> = [];
 let boundTextures: Vec<Ptr<MtlTextureImpl>> = [];
@@ -848,9 +833,9 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	commandBuffer = NO_COMMAND_BUFFER;
 	encoder = NO_ENCODER;
 	pass = { width: 0 };
-	computeBound = { pipeline: 0 };
+	computeBound = { dirty: false };
 	computeEncoder = NO_ENCODER;
-	bound = { pipeline: 0 };
+	bound = { appliedPipeline: 0 };
 	const sampleCount = cachedCanvas().sampleCount;
 	if (mtlSupportsSampleCount(device, sampleCount) == 0) {
 		stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`);
@@ -1488,86 +1473,14 @@ export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
 export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor): void {
 	const l = layoutRecords.slotIndex(descriptor.layout.id);
 	const group = layoutRecords.slots[l].group;
-	const shader = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(layoutRecords.slots[l].pipeline)].shader);
 	let slot: BindGroupSlot = { group: group };
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
-		checkEntry(shader, group, entry);
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
-	for (let i = 0; i < slot.entryCount; i++) {
-		if (slot.entries[i].buffer.id == 0 || uniformOf(shader, group, slot.entries[i].binding) < 0) { continue; }
-		let rank = 0;
-		for (let j = 0; j < slot.entryCount; j++) {
-			if (slot.entries[j].buffer.id != 0 && uniformOf(shader, group, slot.entries[j].binding) >= 0 && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
-		}
-		slot.dynamicIndex[i] = rank;
-	}
 	put(bindGroups, id, slot);
-}
-
-function uniformOf(shader: int32, group: int32, binding: int32): int32 {
-	for (let u = 0; u < shaders[shader].uniformCount; u++) {
-		if (addressesBinding(group, binding, shaders[shader].uniforms[u].binding, BindingKind.Uniform)) { return u; }
-	}
-	return -1;
-}
-
-function resourceOf(shader: int32, group: int32, binding: int32): int32 {
-	for (let r = 0; r < shaders[shader].resourceCount; r++) {
-		const resource = shaders[shader].resources[r];
-		if (addressesBinding(group, binding, resource.binding, resource.kind)) { return r; }
-	}
-	return -1;
-}
-
-function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
-	if (entry.buffer.id != 0) {
-		const b = bufferRecords.slotIndex(entry.buffer.id);
-		const u = uniformOf(shader, group, entry.binding);
-		if (u >= 0) {
-			const binding = shaders[shader].uniforms[u];
-			checkedUniformEntry(
-				entry,
-				has(bufferRecords.slots[b].usage, GPUBufferUsage.UNIFORM as int32),
-				bufferRecords.slots[b].size,
-				binding.size,
-				UNIFORM_OFFSET_ALIGNMENT as int64,
-			);
-			return;
-		}
-		const r = resourceOf(shader, group, entry.binding);
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageBuffer) {
-			checkedStorageEntry(
-				entry,
-				has(bufferRecords.slots[b].usage, GPUBufferUsage.STORAGE as int32),
-				bufferRecords.slots[b].size,
-				STORAGE_OFFSET_ALIGNMENT as int64,
-				mtlMaxBufferLength(device),
-			);
-			return;
-		}
-		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
-	}
-	const r = resourceOf(shader, group, entry.binding);
-	if (entry.textureView.id != 0) {
-		const v = viewRecords.slotIndex(entry.textureView.id);
-		const t = textureRecords.slotIndex(viewRecords.slots[v].texture);
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Texture) {
-			checkedSampledView(entry.binding, has(textureRecords.slots[t].usage, GPUTextureUsage.TEXTURE_BINDING as int32));
-			return;
-		}
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
-			checkedStorageView(entry.binding, v, shaders[shader].resources[r].storageFormat);
-			return;
-		}
-		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);
-	}
-	samplerRecords.slotIndex(entry.sampler.id);
-	if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Sampler) { return; }
-	stop(`bind group ${group} entry ${entry.binding} (sampler) is not a binding of the pipeline's shader`);
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
@@ -1678,32 +1591,20 @@ export function endPass(): void {
 	if (pass.screen) { mtlPresentDrawable(commandBuffer); }
 }
 
-export function setPipeline(pipeline: GPURenderPipeline): void {
-	bound.pipeline = pipeline.id;
-}
+export function setPipeline(pipeline: GPURenderPipeline): void {}
 
 export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
-	if (slot < 0 || slot >= GPU_MAX_VERTEX_BUFFERS) { stopOnMember("setVertexBuffer slot", `${slot}`); }
-	bound.vertexBuffers[slot] = buffer.id;
-	bound.vertexOffsets[slot] = offset;
 	bound.vertexDirty = true;
 }
 
 export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset: int64): void {
-	bound.indexBuffer = buffer.id;
 	bound.indexType = indexType(format);
 	bound.indexBytes = bound.indexType == INDEX_UINT16 ? 2 : 4;
-	bound.indexOffset = offset;
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
-	const g = bindGroupRecords.slotIndex(bindGroup.id);
 	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
-			bound.dynamicOffsets[i] = dynamicOffsets[i];
-		}
 		bound.uniformsDirty = true;
 	} else {
 		bound.resourcesDirty = true;
@@ -1730,7 +1631,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	mtlDraw(encoder, pipelines[pipelineRecords.slotIndex(bound.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
+	mtlDraw(encoder, pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
 export function drawIndexed(
@@ -1742,16 +1643,16 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	const p = pipelineRecords.slotIndex(bound.pipeline);
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	const primitive = pipelines[p].primitive;
 	checkedStripDraw(primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP, pipelines[p].stripIndexType == bound.indexType);
-	const b = bufferRecords.slotIndex(bound.indexBuffer);
+	const b = bufferRecords.slotIndex(boundFacts.indexBuffer);
 	mtlDrawIndexed(
 		encoder,
 		primitive,
 		buffers[b].natives[buffers[b].active],
 		bound.indexType,
-		bound.indexOffset + (firstIndex as int64) * bound.indexBytes,
+		boundFacts.indexOffset + (firstIndex as int64) * bound.indexBytes,
 		indexCount,
 		instanceCount,
 		baseVertex,
@@ -1761,19 +1662,19 @@ export function drawIndexed(
 
 
 function flush(): void {
-	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(); }
+	if (bound.appliedPipeline != boundFacts.pipeline) { applyPipeline(); }
 	if (bound.vertexDirty) { applyVertexBuffers(); }
 	if (bound.resourcesDirty) { applyResources(); }
 	if (bound.uniformsDirty) { applyUniforms(); }
 }
 
 function applyPipeline(): void {
-	const p = pipelineRecords.slotIndex(bound.pipeline);
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	if (!shaderRecords.alive(pipelines[p].shader)) {
-		stop(`the shader module of GPURenderPipeline ${bound.pipeline} was destroyed`);
+		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
 	}
 	mtlSetPipeline(encoder, pipelines[p].state, pipelines[p].depth, pipelines[p].cullMode, pipelines[p].winding, pipelines[p].depthBias, pipelines[p].depthBiasSlope, pipelines[p].depthBiasClamp);
-	bound.appliedPipeline = bound.pipeline;
+	bound.appliedPipeline = boundFacts.pipeline;
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
@@ -1848,23 +1749,22 @@ function bindSampler(stage: int32, sampler: Ptr<MtlSamplerImpl>, slot: int32): v
 }
 
 function applyVertexBuffers(): void {
-	const p = pipelineRecords.slotIndex(bound.pipeline);
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if (pipelines[p].strides[slot] == 0) { continue; }
-		if (bound.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
-		const b = bufferRecords.slotIndex(bound.vertexBuffers[slot]);
-		bindBuffer(STAGE_VERTEX, buffers[b].natives[buffers[b].active], bound.vertexOffsets[slot], VERTEX_BUFFER_BASE + slot);
+		if (boundFacts.vertexBuffers[slot] == 0) { continue; }
+		const b = bufferRecords.slotIndex(boundFacts.vertexBuffers[slot]);
+		bindBuffer(STAGE_VERTEX, buffers[b].natives[buffers[b].active], boundFacts.vertexOffsets[slot], VERTEX_BUFFER_BASE + slot);
 	}
 	bound.vertexDirty = false;
 }
 
 
 function applyResources(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(bound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
 	bound.resourcesDirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
-	if (bound.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the pipeline reads bind group 1, which is not set"); }
-	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_RESOURCE_GROUP]);
+	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
 	for (let r = 0; r < shaders[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders[s].resources[r];
 		const e = entryOf(bindGroups[g], binding.binding);
@@ -1886,14 +1786,13 @@ function applyResources(): void {
 }
 
 function applyUniforms(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(bound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
-	if (bound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
-	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
+	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
-		const offset = (bound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 		if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {
 			stop(`uniform binding ${shaders[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
@@ -2045,41 +1944,30 @@ export function beginComputePass(passEncoder: GPUCommandEncoder, descriptor: GPU
 	beginFrame();
 	computeEncoder = mtlBeginComputePass(commandBuffer, labelText(descriptor.label));
 	if (computeEncoder == null) { stop("computeCommandEncoder returned nil"); }
-	computeBound = { pipeline: 0 };
+	computeBound = { dirty: false };
 	clearBinds();
 	return { id: 1 };
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	computeBound.bindGroups[index] = bindGroup.id;
 	computeBound.dirty = true;
-	if (bindGroup.id == 0) { return; }
-	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
-			computeBound.dynamicOffsets[i] = dynamicOffsets[i];
-		}
-	}
 }
 
 function applyCompute(): int32 {
-	const p = pipelineRecords.slotIndex(computeBound.pipeline);
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
 	if (computeBound.dirty) {
 		computeBound.dirty = false;
 		mtlComputeSetPipeline(computeEncoder, pipelines[p].computeState);
 		if (shaders[s].uniformCount > 0) {
-			if (computeBound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the compute pipeline reads bind group 0, which is not set"); }
-			applyComputeUniforms(s, bindGroupRecords.slotIndex(computeBound.bindGroups[GPU_UNIFORM_GROUP]));
+			applyComputeUniforms(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]));
 		}
 		if (shaders[s].resourceCount > 0) {
-			if (computeBound.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
-			applyComputeResources(s, bindGroupRecords.slotIndex(computeBound.bindGroups[GPU_RESOURCE_GROUP]));
+			applyComputeResources(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]));
 		}
 	}
 	return s;
@@ -2088,7 +1976,7 @@ function applyCompute(): int32 {
 function applyComputeUniforms(s: int32, g: int32): void {
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
-		const offset = (computeBound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 		if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {
 			stop(`uniform binding ${shaders[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
@@ -2129,7 +2017,7 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 export function endComputePass(): void {
 	mtlEndPass(computeEncoder);
 	computeEncoder = NO_ENCODER;
-	computeBound = { pipeline: 0 };
+	computeBound = { dirty: false };
 }
 
 export function limits(): GPUSupportedLimits {

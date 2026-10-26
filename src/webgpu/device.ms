@@ -4,6 +4,7 @@ import {
 	GPULiveCounts,
 	GPUTextureFormat,
 	GPUBindGroup,
+	GPUBindGroupEntry,
 	GPUBindGroupDescriptor,
 	GPUBindGroupLayout,
 	GPUBuffer,
@@ -40,6 +41,7 @@ import {
 	GPUTextureDescriptor,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
@@ -47,11 +49,13 @@ import {
 	checkedMapAsync,
 	checkedMappedRange,
 	checkedUnmap,
+	bindingKind,
 	featureBit,
 	stop,
 } from "./types.ms";
 import {
 	allocate,
+	ShaderRecord,
 	alive,
 	bindGroupRecords,
 	bufferRecords,
@@ -82,6 +86,7 @@ import {
 	cachedLimits,
 	checkedBeginOcclusion,
 	checkedBeginPass,
+	checkedBindGroupEntry,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
 	checkedBuffer,
@@ -101,6 +106,7 @@ import {
 	checkedOcclusionQuery,
 	checkedOutsidePass,
 	checkedPassQueries,
+	checkedDispatchBound,
 	checkedPipelineSet,
 	checkedPopGroup,
 	checkedPushGroup,
@@ -119,16 +125,22 @@ import {
 	checkedViewport,
 	checkedWriteBuffer,
 	markBufferWritten,
+	markBindGroupSet,
+	markBindGroupSet,
 	markIndexSet,
 	markOcclusionBegun,
 	markOcclusionEnded,
 	markPipelineSet,
+	markVertexSet,
 	markTimestampsWritten,
 	resetEncoder,
 	resetFrame,
 	resolvedRenderPipeline,
 	textureRecordOf,
+	dynamicIndexOf,
+	groupOfKind,
 	uniformEntryCount,
+	vertexSlotsOf,
 	advanceFrame,
 	cacheCanvas,
 	cachedCanvas,
@@ -229,12 +241,25 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createShaderModule(this self: GPUDevice, descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	checkedShaderModule(descriptor, cachedLimits());
 	const id = allocate(shaderRecords);
-	store(shaderRecords, {
+	let record: ShaderRecord = {
 		id: id,
 		compute: descriptor.computeCode != "" || descriptor.computeBytecode.length > 0,
 		readsInstanceIndex: descriptor.readsInstanceIndex,
 		readsVertexIndex: descriptor.readsVertexIndex,
-	});
+	};
+	for (let i = 0; i < descriptor.bindings.length; i++) {
+		const kind: string = descriptor.bindings[i].kind;
+		if (kind == "") { continue; }
+		record.bindings[record.bindingCount] = {
+			binding: descriptor.bindings[i].binding,
+			kind: bindingKind(kind, shaderRecords.core.backend),
+			size: descriptor.bindings[i].size,
+			storageFormat: descriptor.bindings[i].storageFormat,
+		};
+		record.bindingCount += 1;
+		record.groups |= 1 << groupOfKind(record.bindings[record.bindingCount - 1].kind);
+	}
+	store(shaderRecords, record);
 	backend.createShaderModule(id, descriptor);
 	return { id: id };
 }
@@ -245,6 +270,9 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	const id = allocate(pipelineRecords);
 	store(pipelineRecords, {
 		id: id,
+		shader: descriptor.vertex.module.id,
+		vertexSlots: vertexSlotsOf(descriptor),
+		groups: shader.groups,
 		label: descriptor.label,
 		readsInstanceIndex: shader.readsInstanceIndex,
 		readsVertexIndex: shader.readsVertexIndex,
@@ -255,15 +283,27 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function createComputePipeline(this self: GPUDevice, descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, { id: id, label: descriptor.label, compute: true });
+	store(pipelineRecords, {
+		id: id,
+		shader: descriptor.compute.module.id,
+		groups: shaderRecords.record(descriptor.compute.module.id).groups,
+		label: descriptor.label,
+		compute: true,
+	});
 	backend.createComputePipeline(id, descriptor);
 	return { id: id };
 }
 
 @inline export function createBindGroup(this self: GPUDevice, descriptor: GPUBindGroupDescriptor): GPUBindGroup {
-	const group = layoutRecords.record(descriptor.layout.id).group;
+	const layout = layoutRecords.record(descriptor.layout.id);
+	const group = layout.group;
+	const shader = shaderRecords.record(pipelineRecords.record(layout.pipeline).shader);
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
+		const entry: GPUBindGroupEntry = descriptor.entries[i];
+		if (entry.buffer.id != 0 || entry.textureView.id != 0 || entry.sampler.id != 0) { checkedBindGroupEntry(entry, group, shader); }
+	}
 	const id = allocate(bindGroupRecords);
-	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0 });
+	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0, dynamicIndex: dynamicIndexOf(descriptor) });
 	backend.createBindGroup(id, descriptor);
 	return { id: id };
 }
@@ -443,12 +483,14 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_COMPUTE, "setBindGroup");
 	checkedBoundGroup(index, bindGroup, dynamicOffsets);
+	markBindGroupSet(index, bindGroup.id, dynamicOffsets);
 	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
 }
 
 @inline export function dispatchWorkgroups(this self: GPUComputePassEncoder, x: int32, y: int32, z: int32): void {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroups");
 	checkedPipelineSet("dispatchWorkgroups");
+	checkedDispatchBound();
 	checkedDispatch(x, y, z, cachedLimits().maxComputeWorkgroupsPerDimension);
 	backend.dispatchWorkgroups(x, y, z);
 }
@@ -456,6 +498,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function dispatchWorkgroupsIndirect(this self: GPUComputePassEncoder, buffer: GPUBuffer, offset: int64): void {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroupsIndirect");
 	checkedPipelineSet("dispatchWorkgroupsIndirect");
+	checkedDispatchBound();
 	backend.dispatchWorkgroupsIndirect(buffer, offset);
 }
 
@@ -625,18 +668,20 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setVertexBuffer(this self: GPURenderPassEncoder, slot: int32, buffer: GPUBuffer, offset: int64): void {
 	checkedInPass(PASS_RENDER, "setVertexBuffer");
+	markVertexSet(slot, buffer.id, offset);
 	backend.setVertexBuffer(slot, buffer, offset);
 }
 
 @inline export function setIndexBuffer(this self: GPURenderPassEncoder, buffer: GPUBuffer, indexFormat: GPUIndexFormat, offset: int64): void {
 	checkedInPass(PASS_RENDER, "setIndexBuffer");
-	markIndexSet();
+	markIndexSet(buffer.id, offset);
 	backend.setIndexBuffer(buffer, indexFormat, offset);
 }
 
 @inline export function setBindGroup(this self: GPURenderPassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_RENDER, "setBindGroup");
 	checkedBoundGroup(index, bindGroup, dynamicOffsets);
+	markBindGroupSet(index, bindGroup.id, dynamicOffsets);
 	backend.setBindGroup(index, bindGroup, dynamicOffsets);
 }
 
