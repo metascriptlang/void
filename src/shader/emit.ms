@@ -2290,10 +2290,12 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				vertex ? (which == "vertexIndex" ? Builtin.VertexIndex :
 					which == "instanceIndex" ? Builtin.InstanceIndex : Builtin.None) :
 				which == "position" ? Builtin.Position :
-				which == "frontFacing" ? Builtin.FrontFacing : Builtin.None;
+				which == "frontFacing" ? Builtin.FrontFacing :
+				which == "primitiveIndex" ? Builtin.PrimitiveIndex : Builtin.None;
 			if (kind == Builtin.None) {
-				fail(builtin, "input field '" + name + "': @builtin(" + which +
-					") has no GLSL form yet");
+				fail(builtin, "input field '" + name + "': @builtin(" + which + ") " +
+					(which == "primitiveIndex" ? "is read in a fragment entry, as WGSL's is" :
+					"has no GLSL form yet"));
 			}
 			builtinInputNames.push(name);
 			builtinInputIos.push(addIo(stage, name, IoDirection.In, looseType(t), kind,

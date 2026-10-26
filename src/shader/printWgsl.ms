@@ -188,6 +188,7 @@ class Printer {
 	params: string[] = [];
 	locals: string[] = [];
 	derivatives: boolean = false;
+	primitiveIndex: boolean = false;
 	error: string = "";
 	upperLeft: boolean = false;
 	inverses: int32[] = [];
@@ -802,6 +803,7 @@ function builtinText(b: Builtin): string {
 		Builtin.NumWorkgroups => "num_workgroups",
 		Builtin.SampleIndex => "sample_index",
 		Builtin.SampleMask => "sample_mask",
+		Builtin.PrimitiveIndex => "primitive_index",
 	};
 }
 
@@ -824,6 +826,7 @@ function interfaceText(p: Printer, io: ShaderIo, ordinal: int32): string {
 			return refusal(p, "io '" + io.name + "' is " + typeText(p, io.type) + "; @builtin(" +
 				builtinText(io.builtin) + ") is " + typeText(p, wanted));
 		}
+		if (io.builtin == Builtin.PrimitiveIndex) { p.primitiveIndex = true; }
 		return "@builtin(" + builtinText(io.builtin) + ")";
 	}
 	const location = "@location(" + String(ioLocation(io, ordinal)) + ")";
@@ -921,6 +924,7 @@ export function printWgsl(m: ShaderModule, entry: int32, bindings: BindingSlot[]
 	}
 
 	let decls: string[] = [];
+	if (p.primitiveIndex) { decls.push("enable primitive_index;"); }
 	if (p.derivatives) { decls.push("diagnostic(off, derivative_uniformity);"); }
 	for (let i = 0; i < m.structs.length; i++) {
 		if (!structs.includes(i)) { continue; }

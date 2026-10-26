@@ -1313,6 +1313,7 @@ function semanticOf(p: Printer, io: ShaderIo): [string, string] {
 		Builtin.NumWorkgroups => wrong("has no HLSL system value"),
 		Builtin.SampleIndex => ["uint", "SV_SampleIndex"],
 		Builtin.SampleMask => ["uint", "SV_Coverage"],
+		Builtin.PrimitiveIndex => ["uint", "SV_PrimitiveID"],
 		Builtin.None => wrong("is no builtin"),
 	};
 }

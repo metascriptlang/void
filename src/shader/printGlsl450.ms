@@ -307,6 +307,7 @@ function builtinName(io: ShaderIo): string {
 		Builtin.InstanceIndex => "uint(gl_InstanceIndex)",
 		Builtin.Position => "gl_FragCoord",
 		Builtin.FrontFacing => "gl_FrontFacing",
+		Builtin.PrimitiveIndex => "uint(gl_PrimitiveID)",
 		Builtin.GlobalInvocationId => "gl_GlobalInvocationID",
 		Builtin.LocalInvocationId => "gl_LocalInvocationID",
 		Builtin.LocalInvocationIndex => "gl_LocalInvocationIndex",

@@ -193,6 +193,7 @@ const OP_RETURN = 253;
 const OP_RETURN_VALUE = 254;
 
 const CAP_SHADER = 1;
+const CAP_GEOMETRY = 2;
 const CAP_SAMPLE_RATE_SHADING = 35;
 const CAP_SAMPLED_1D = 43;
 const CAP_IMAGE_1D = 44;
@@ -2029,6 +2030,7 @@ function builtinWord(b: Builtin, stage: ShaderStage): int32 {
 		Builtin.NumWorkgroups => 24,
 		Builtin.SampleIndex => 18,
 		Builtin.SampleMask => 20,
+		Builtin.PrimitiveIndex => 7,
 	};
 }
 
@@ -2068,6 +2070,7 @@ function declareIos(p: Spirv, e: ShaderEntry): int32[] {
 		if (io.builtin != Builtin.None) {
 			decorate(p, id, DECORATION_BUILT_IN, [builtinWord(io.builtin, io.stage)]);
 			if (io.builtin == Builtin.SampleIndex) { need(p, CAP_SAMPLE_RATE_SHADING); }
+			if (io.builtin == Builtin.PrimitiveIndex) { need(p, CAP_GEOMETRY); }
 			if (io.builtin == Builtin.FragDepth) { p.depthReplacing = true; }
 			const integral = (io.type.kind == ShaderTypeKind.Scalar ||
 				io.type.kind == ShaderTypeKind.Vector) && io.type.scalar != ScalarKind.F32;

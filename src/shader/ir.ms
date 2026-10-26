@@ -708,6 +708,7 @@ export enum Builtin {
 	NumWorkgroups,
 	SampleIndex,
 	SampleMask,
+	PrimitiveIndex,
 }
 
 export enum Interpolation {
@@ -972,13 +973,13 @@ function builtinStages(b: Builtin, direction: IoDirection): ShaderStage[] {
 			Builtin.None | Builtin.VertexIndex | Builtin.InstanceIndex | Builtin.FrontFacing |
 				Builtin.LocalInvocationId | Builtin.LocalInvocationIndex |
 				Builtin.GlobalInvocationId | Builtin.WorkgroupId | Builtin.NumWorkgroups |
-				Builtin.SampleIndex => [],
+				Builtin.SampleIndex | Builtin.PrimitiveIndex => [],
 		};
 	}
 	return match (b) {
 		Builtin.VertexIndex | Builtin.InstanceIndex => [ShaderStage.Vertex],
-		Builtin.Position | Builtin.FrontFacing | Builtin.SampleIndex | Builtin.SampleMask =>
-			[ShaderStage.Fragment],
+		Builtin.Position | Builtin.FrontFacing | Builtin.SampleIndex | Builtin.SampleMask |
+			Builtin.PrimitiveIndex => [ShaderStage.Fragment],
 		Builtin.None | Builtin.FragDepth => [],
 		Builtin.LocalInvocationId | Builtin.LocalInvocationIndex | Builtin.GlobalInvocationId |
 			Builtin.WorkgroupId | Builtin.NumWorkgroups => [ShaderStage.Compute],

@@ -34,7 +34,8 @@ export function builtinType(b: Builtin): ShaderType {
 		Builtin.LocalInvocationId | Builtin.GlobalInvocationId | Builtin.WorkgroupId |
 			Builtin.NumWorkgroups => vectorType(ScalarKind.U32, 3),
 		Builtin.VertexIndex | Builtin.InstanceIndex | Builtin.LocalInvocationIndex |
-			Builtin.SampleIndex | Builtin.SampleMask => scalarType(ScalarKind.U32),
+			Builtin.SampleIndex | Builtin.SampleMask | Builtin.PrimitiveIndex =>
+			scalarType(ScalarKind.U32),
 		Builtin.None => { throw new Error("internal: builtinType of Builtin.None"); },
 	};
 }

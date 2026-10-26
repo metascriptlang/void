@@ -906,6 +906,7 @@ function builtinRead(p: Printer, io: ShaderIo): [string, string] {
 		Builtin.WorkgroupId => ["gl_WorkGroupID", "uvec3"],
 		Builtin.NumWorkgroups => ["gl_NumWorkGroups", "uvec3"],
 		Builtin.SampleIndex => desktop("gl_SampleID", "int"),
+		Builtin.PrimitiveIndex => desktop("gl_PrimitiveID", "int"),
 		Builtin.SampleMask => desktop(io.direction == IoDirection.In ? "gl_SampleMaskIn[0]" :
 			"gl_SampleMask[0]", "int"),
 		Builtin.None => [fail(p, "io '" + io.name + "' is no builtin"), ""],

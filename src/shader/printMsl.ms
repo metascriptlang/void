@@ -1087,6 +1087,7 @@ function builtinAttribute(b: Builtin): string {
 		Builtin.NumWorkgroups => "threadgroups_per_grid",
 		Builtin.SampleIndex => "sample_id",
 		Builtin.SampleMask => "sample_mask",
+		Builtin.PrimitiveIndex => "primitive_id",
 	};
 }
 
