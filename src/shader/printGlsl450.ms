@@ -498,6 +498,8 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 		// of memoryBarrierShared() is refused by sokol-shdc's WGSL reader (measured, shdc win32).
 		Intrinsic.WorkgroupBarrier => "barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
+		Intrinsic.ArrayLength => e.type.scalar == ScalarKind.I32 ? args[0] + ".length()" :
+			typeName(p, e.type) + "(" + args[0] + ".length())",
 		Intrinsic.AtomicCompareExchangeWeak => {
 			broken("AtomicCompareExchangeWeak outside a local's initializer or a statement of " +
 				"its own: atomicCompSwap returns only the old value");

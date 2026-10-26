@@ -499,6 +499,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.TextureSampleGrad => "textureSampleGrad(" + argsText(p, o) + ")",
 		Intrinsic.WorkgroupBarrier => "workgroupBarrier()",
 		Intrinsic.StorageBarrier => "storageBarrier()",
+		Intrinsic.ArrayLength => lengthText(p, e),
 		_ => isAtomic(op) ? atomicText(p, e) : refusal(p, op.toString() + " has no WGSL spelling"),
 	};
 }
@@ -524,6 +525,11 @@ function storageShapeText(p: Printer, shape: TextureShape): string {
 
 function dimensionsText(p: Printer, e: ShaderExpr): string {
 	const call = "textureDimensions(" + argsText(p, withoutSamplers(e.operands)) + ")";
+	return e.type.scalar == ScalarKind.U32 ? call : typeText(p, e.type) + "(" + call + ")";
+}
+
+function lengthText(p: Printer, e: ShaderExpr): string {
+	const call = "arrayLength(&" + exprText(p, e.operands[0]) + ")";
 	return e.type.scalar == ScalarKind.U32 ? call : typeText(p, e.type) + "(" + call + ")";
 }
 

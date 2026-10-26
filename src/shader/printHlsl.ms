@@ -15,6 +15,7 @@ import {
 	ShaderFunction,
 	ShaderIo,
 	ShaderModule,
+	ShaderResource,
 	ShaderStage,
 	ShaderStmt,
 	ShaderType,
@@ -596,6 +597,14 @@ function samplesOf(p: Printer, e: ShaderExpr): string {
 	return converted(p, name + "(" + expr(p, e.operands[0]) + ")", "uint", e.type);
 }
 
+function lengthOf(p: Printer, e: ShaderExpr): string {
+	const typeText = bufferTypeName(p, p.module.resources[e.operands[0].index]);
+	const name = helper(p, "arrayLength " + typeText, "arrayLength", (n) =>
+		"uint " + n + "(" + typeText + " b)\n{\n    uint count;\n    uint stride;\n" +
+		"    b.GetDimensions(count, stride);\n    return count;\n}\n");
+	return converted(p, name + "(" + expr(p, e.operands[0]) + ")", "uint", e.type);
+}
+
 function loadOf(p: Printer, e: ShaderExpr): string {
 	const args = withoutSampler(e);
 	const t = args[0].type;
@@ -915,6 +924,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => "GroupMemoryBarrierWithGroupSync()",
 		Intrinsic.StorageBarrier => "DeviceMemoryBarrierWithGroupSync()",
+		Intrinsic.ArrayLength => lengthOf(p, e),
 		_ => isAtomic(e.intrinsic) ? fail(p, e.intrinsic.toString() + " inside an expression or " +
 			"a for header: Interlocked* hands its result back through an out parameter, so an " +
 			"atomic is a statement or a local's initializer") :
@@ -1255,6 +1265,11 @@ function blockText(p: Printer, index: int32, slots: BindingSlot[]): string {
 	return text + "};\n\n";
 }
 
+function bufferTypeName(p: Printer, r: ShaderResource): string {
+	return (r.access == Access.Read ? "StructuredBuffer<" : "RWStructuredBuffer<") +
+		p.structNames[r.type.element[0].structIndex] + ">";
+}
+
 function resourceText(p: Printer, index: int32, slots: BindingSlot[]): string {
 	const r = p.module.resources[index];
 	const name = p.resourceNames[index];
@@ -1264,9 +1279,7 @@ function resourceText(p: Printer, index: int32, slots: BindingSlot[]): string {
 		ResourceKind.Texture => textureTypeName(r.type) + " " + name + " : " + at + ";\n",
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Comparison ?
 			"SamplerComparisonState " : "SamplerState ") + name + " : " + at + ";\n",
-		ResourceKind.StorageBuffer => (r.access == Access.Read ? "StructuredBuffer<" :
-			"RWStructuredBuffer<") + p.structNames[r.type.element[0].structIndex] + "> " + name +
-			" : " + at + ";\n",
+		ResourceKind.StorageBuffer => bufferTypeName(p, r) + " " + name + " : " + at + ";\n",
 		ResourceKind.StorageTexture => typeName(p, r.type) + " " + name + " : " + at + ";\n",
 	};
 }

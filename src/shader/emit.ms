@@ -1892,6 +1892,10 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 				if (object.kind == NodeKind.MemberExpr && isType(object.object, bindingsType)) {
 					const r = resourceNamed(object.property);
 					use(resourceRead, r, n);
+					if (m.resources[r].kind == ResourceKind.StorageBuffer && n.property == "length") {
+						return intrinsicOf(Intrinsic.ArrayLength, looseType(getType(n)),
+							[exprOf(ExprKind.Resource, m.resources[r].type, r, [])]);
+					}
 					if (m.resources[r].kind != ResourceKind.UniformBlock) {
 						fail(n, "'" + n.property + "' has no GLSL form yet");
 					}

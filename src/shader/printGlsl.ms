@@ -787,6 +787,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			explicitSampleOf(p, e),
 		Intrinsic.WorkgroupBarrier => "memoryBarrierShared(); barrier()",
 		Intrinsic.StorageBarrier => "memoryBarrierBuffer(); barrier()",
+		Intrinsic.ArrayLength => converted(p, expr(p, e.operands[0]) + ".length()", "int", e.type),
 		Intrinsic.AtomicCompareExchangeWeak => p.es ? atomicText(p, e) : fail(p,
 			"AtomicCompareExchangeWeak outside a " +
 			"local's initializer: atomicCompSwap returns only the old value"),

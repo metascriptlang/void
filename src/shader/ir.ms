@@ -274,6 +274,7 @@ export enum Intrinsic {
 	TextureSampleBias,
 	TextureSampleGrad,
 	TextureNumSamples,
+	ArrayLength,
 }
 
 function isExplicitSample(op: Intrinsic): boolean {
@@ -389,6 +390,16 @@ function storageTexelError(e: ShaderExpr): string {
 	}
 	return e.intrinsic.toString() + " of a " + o[0].type.format.toString() +
 		" storage texture takes a vec4 of " + wanted.toString() + ", as WGSL's";
+}
+
+function arrayLengthError(m: ShaderModule, e: ShaderExpr): string {
+	const o = e.operands;
+	const buffer = o.length == 1 && o[0].kind == ExprKind.Resource && o[0].index >= 0 &&
+		o[0].index < m.resources.length && m.resources[o[0].index].kind == ResourceKind.StorageBuffer;
+	if (!buffer) { return "ArrayLength takes one storage buffer, as WGSL's takes a runtime-sized array"; }
+	const count = e.type.kind == ShaderTypeKind.Scalar &&
+		(e.type.scalar == ScalarKind.U32 || e.type.scalar == ScalarKind.I32);
+	return count ? "" : "ArrayLength gives a u32 or an i32 count";
 }
 
 function explicitSampleError(e: ShaderExpr): string {
@@ -1126,6 +1137,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 	if (e.kind == ExprKind.Intrinsic && isExplicitSample(e.intrinsic)) {
 		const error = explicitSampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && e.intrinsic == Intrinsic.ArrayLength) {
+		const error = arrayLengthError(m, e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||

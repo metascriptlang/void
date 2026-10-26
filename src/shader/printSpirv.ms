@@ -76,6 +76,7 @@ const OP_VARIABLE = 59;
 const OP_LOAD = 61;
 const OP_STORE = 62;
 const OP_ACCESS_CHAIN = 65;
+const OP_ARRAY_LENGTH = 68;
 const OP_DECORATE = 71;
 const OP_MEMBER_DECORATE = 72;
 const OP_VECTOR_EXTRACT_DYNAMIC = 77;
@@ -1614,6 +1615,12 @@ function sampleCount(p: Spirv, e: ShaderExpr): int32 {
 	return e.type.scalar == ScalarKind.U32 ? count : typed(p, OP_BITCAST, typeId(p, e.type), [count]);
 }
 
+function arrayLength(p: Spirv, e: ShaderExpr): int32 {
+	const count = typed(p, OP_ARRAY_LENGTH, typeId(p, scalarType(ScalarKind.U32)),
+		[p.resourceVars[e.operands[0].index], 0]);
+	return e.type.scalar == ScalarKind.U32 ? count : typed(p, OP_BITCAST, typeId(p, e.type), [count]);
+}
+
 function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const o = e.operands;
@@ -1649,6 +1656,7 @@ function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.TextureStore) { return texelStore(p, e); }
 	if (op == Intrinsic.TextureDimensions) { return dimensions(p, e); }
 	if (op == Intrinsic.TextureNumSamples) { return sampleCount(p, e); }
+	if (op == Intrinsic.ArrayLength) { return arrayLength(p, e); }
 	return refusal(p, op.toString() + " is not printed yet");
 }
 

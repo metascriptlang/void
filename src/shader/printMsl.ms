@@ -593,6 +593,11 @@ function samplesText(p: Printer, e: ShaderExpr): string {
 	return typeText(p, e.type) + "(" + exprText(p, e.operands[0]) + ".get_num_samples())";
 }
 
+function lengthText(p: Printer, e: ShaderExpr): string {
+	return fail(p, "ArrayLength of storage buffer '" + p.module.resources[e.operands[0].index].name +
+		"': MSL reads no buffer length, so it needs a sizes buffer the host fills at a reflected slot");
+}
+
 function signText(p: Printer, e: ShaderExpr): string {
 	const x = e.operands[0];
 	if (isFloat(x.type)) { return "sign(" + exprText(p, x) + ")"; }
@@ -688,6 +693,7 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.WorkgroupBarrier =>
 			"threadgroup_barrier(mem_flags::mem_threadgroup)",
 		Intrinsic.StorageBarrier => "threadgroup_barrier(mem_flags::mem_device)",
+		Intrinsic.ArrayLength => lengthText(p, e),
 		_ => isAtomic(op) ? atomicText(p, e) : fail(p, op.toString() + " has no MSL spelling"),
 	};
 }
