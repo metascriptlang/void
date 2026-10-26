@@ -6127,7 +6127,23 @@ The overlay ports in steps, each with its own check:
    `DecalOverlay`'s params and constants into the material block, refuses an empty fade range,
    and gives the pass: alpha blend, no depth, back faces drawn. The program outside the Decal
    phase is refused (`MaterialError.DecalPhase`).
-4. The after-tone-map pass, then the normal fade.
+4. The after-tone-map pass, then the normal fade. **Built (2026-10-27), GPU readback not yet
+   run.** `Phase.DecalAfterToneMap` is a fifth pass list, Heaps' `afterTonemappingDecal`
+   (`Renderer.hx:873`), drawn by `drawDecals` onto the tone-mapped colour: in the forward preset
+   after the Decal list for LDR, and after the tone map for HDR and the outline path. A decal
+   names its pass with `DecalPass`, as PbrMaterial's BeforeTonemappingDecal and
+   AfterTonemappingDecal modes do (`PbrMaterial.hx:245-256`). The pass sets both the material's
+   phase (`Material.decal(pass)`) and the block's tone-map flag (`decalBlock(overlay, pass)`), so
+   only the decal drawn before the tone map goes through it. The normal fade is `BaseDecal`'s
+   `normalFade` and `getWorldNormal` (`VolumeDecal.hx:39-58`): the surface normal from the depth
+   at the pixel and one pixel along each screen axis, and a fade by its angle to the box's z.
+   The neighbours' NDC come from `dpdx`/`dpdy` of the fragment's NDC, which follow the
+   backend's row order, so no pixel size is bound. The normal is turned to face the camera, as
+   Heaps' screen axes turn it, and an empty normal-fade range is refused
+   (`DecalError.NormalFadeRange`). `decalCheck.ms` pins the normal and the fade on the CPU.
+   `tests/integration/decal.ms` adds stages for the tone map (an exposure of two: about 175
+   before, 127.5 after, LDR and HDR) and for the normal fade (full along the box's z, half
+   across it).
 
 ### Cascaded sun shadows, as built so far (2026-10-24)
 
