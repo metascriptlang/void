@@ -152,6 +152,14 @@ Measured facts that shaped the code:
   latency, and writing rows in slot order before permuting them measured no faster. Sorted
   particles past about 100k per system are where the T2 GPU sort is first needed.
 
+  Rerun on 2026-10-26 on main 5f6c6212 (msc f2debffda) in a quiet window: load 22-23 %, no other
+  GPU, bench or WSL gate job, three runs each. Update, SoA: 0.25-0.33 / 2.53-2.85 / 25.9-27.6 ms;
+  sort, radix: 0.06-0.07 / 1.09-1.12 / 101-103 ms (one run of each larger count was an outlier,
+  4.4 and 142); write, SoA: 0.12-0.13 / 1.17-1.33 / 12.3-15.7 ms. The provisional rows hold: SoA
+  updates 30-35 % faster than the AoS arm at 100k and 1M, which was measured only on 2026-10-23
+  since it is retired. Unsorted update and write at 100k cost about 3.7 ms, so 2 ms covers about
+  54k particles on one thread, a quarter to a tenth of RUNTIME §3.9's 200k-500k estimate.
+
 Parity:
 - `tests/unity/goldens` through `src/test/particleUnityCheck.ms`, with the tie cases in
   `tie_*` as counts and remaining time. Unity splits a step into `ceil(dt/0.03)` equal sub-steps
