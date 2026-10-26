@@ -152,6 +152,8 @@ import {
 
 when (voidDummy) {
 	import * as backend from "./dummy/backend.ms";
+} else when (voidVulkan) {
+	import * as backend from "./vulkan/backend.ms";
 } else when (webgpu) {
 	import * as backend from "./wgpu/backend.ms";
 } else when (windows && !voidGlCore) {

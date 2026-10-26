@@ -187,7 +187,7 @@ export type GPUFeatureName =
 	| "indirect-first-instance"
 	| "shader-f16"
 	| "dual-source-blending";
-export type GPUBackend = "d3d11" | "metal" | "glcore" | "gles3" | "webgpu" | "dummy";
+export type GPUBackend = "d3d11" | "metal" | "vulkan" | "glcore" | "gles3" | "webgpu" | "dummy";
 
 export function vertexFormatSize(format: GPUVertexFormat): int32 {
 	return match (format) {
