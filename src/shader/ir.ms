@@ -32,6 +32,7 @@ export enum TextureShape {
 	Depth2dArray,
 	DepthCube,
 	Multisampled2d,
+	D1,
 }
 
 export enum TexelFormat {
@@ -398,8 +399,12 @@ function explicitSampleError(e: ShaderExpr): string {
 		return name + " takes a texture, a sampler and coordinates first";
 	}
 	const t = o[0].type;
+	if (t.shape == TextureShape.D1 && e.intrinsic != Intrinsic.TextureSampleLevel) {
+		return name + " of a D1 texture: WGSL samples it with textureSample and " +
+			"textureSampleLevel only";
+	}
 	const color = t.shape == TextureShape.D2 || t.shape == TextureShape.D2Array ||
-		t.shape == TextureShape.D3 || t.shape == TextureShape.Cube ||
+		t.shape == TextureShape.D1 || t.shape == TextureShape.D3 || t.shape == TextureShape.Cube ||
 		t.shape == TextureShape.CubeArray;
 	const depth = t.shape == TextureShape.Depth2d || t.shape == TextureShape.Depth2dArray ||
 		t.shape == TextureShape.DepthCube;
@@ -1228,10 +1233,11 @@ export function irErrors(m: ShaderModule): string[] {
 		if (!shapeHolds) {
 			c.errors.push(owner + ": its type does not fit a " + r.kind.toString());
 		}
-		if (r.kind == ResourceKind.StorageTexture && r.type.shape != TextureShape.D2 &&
-			r.type.shape != TextureShape.D2Array && r.type.shape != TextureShape.D3) {
+		if (r.kind == ResourceKind.StorageTexture && r.type.shape != TextureShape.D1 &&
+			r.type.shape != TextureShape.D2 && r.type.shape != TextureShape.D2Array &&
+			r.type.shape != TextureShape.D3) {
 			c.errors.push(owner + ": a storage texture of shape " + r.type.shape.toString() +
-				", where WGSL's is 2d, 2d array or 3d");
+				", where WGSL's is 1d, 2d, 2d array or 3d");
 		}
 		const shared = r.kind == ResourceKind.UniformBlock || r.kind == ResourceKind.StorageBuffer;
 		if (shared && holdsBool(m, r.type, [])) {

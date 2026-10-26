@@ -2645,6 +2645,28 @@ export function textureLoad(texture: StorageTexture3d, at: Vec3i): Vec4f {
 	return loadTexel(texture.texels, first);
 }
 
+// WGSL's texture_storage_1d: one row of texels addressed by a scalar, four floats a texel.
+export struct StorageTexture1d {
+	width: int32;
+	texels: float32[];
+}
+
+export function textureDimensions(texture: StorageTexture1d): int32 {
+	return texture.width;
+}
+
+export function textureStore(texture: StorageTexture1d, at: int32, value: Vec4f): void {
+	const first = storageTexel(texture.width, 1, 1, at, 0, 0);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture1d, at: int32): Vec4f {
+	const first = storageTexel(texture.width, 1, 1, at, 0, 0);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
 // WGSL's texture_storage_2d of a uint format (r32uint, rgba16uint, ...): its texel is a
 // vec4<u32>, so the texels are four uint32 each and textureLoad and textureStore take a Vec4u.
 export struct StorageTexture2dU32 {
@@ -3254,6 +3276,40 @@ export function textureLoad(
 	}
 	return loadTexel(texture.texels,
 		((sampleIndex * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
+// WGSL's texture_1d<f32>: one row of texels addressed by a scalar, four floats a texel. WGSL gives
+// it textureSample and textureSampleLevel only, never a bias, derivatives or an offset, and it has
+// one mip level, so a sample is the 2D sample of a one-texel-high texture at the middle of its row.
+export struct Texture1d {
+	width: int32;
+	texels: float32[];
+}
+
+function rowOf(texture: Texture1d): Texture2d {
+	return { width: texture.width, height: 1, texels: texture.texels };
+}
+
+export function textureDimensions(texture: Texture1d, level: int32): int32 {
+	if (level != 0) { unreachable("textureDimensions: the CPU texture has no mip levels"); }
+	return texture.width;
+}
+
+export function textureLoad(texture: Texture1d, at: int32, level: int32): Vec4f {
+	return textureLoad(rowOf(texture), { x: at, y: 0 }, level);
+}
+
+export function textureSample(texture: Texture1d, sampler: Sampler, u: float32): Vec4f {
+	return textureSample(rowOf(texture), sampler, { x: u, y: 0.5 });
+}
+
+export function textureSampleLevel(
+	texture: Texture1d,
+	sampler: Sampler,
+	u: float32,
+	level: float32,
+): Vec4f {
+	return textureSample(texture, sampler, u);
 }
 
 // WGSL's texture_3d<f32>: slices of one size, four floats a texel.

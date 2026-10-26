@@ -489,6 +489,7 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const size = "imageSize(" + expr(p, args[0]) + ")";
 		return match (t.shape) {
+			TextureShape.D1 => converted(p, size, "int", e.type),
 			TextureShape.D3 => converted(p, size, "ivec3", e.type),
 			TextureShape.D2Array => converted(p, size + ".xy", "ivec2", e.type),
 			TextureShape.D2 => converted(p, size, "ivec2", e.type),
@@ -505,6 +506,9 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	const level = args.length > 1 ? intText(p, args[1]) : "0";
 	const call = "textureSize(" + pair.name + ", " + level + ")";
 	if (t.shape == TextureShape.D3) { return converted(p, call, "ivec3", e.type); }
+	if (t.shape == TextureShape.D1) {
+		return p.es ? converted(p, call + ".x", "int", e.type) : converted(p, call, "int", e.type);
+	}
 	const layered = t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray ||
 		t.shape == TextureShape.CubeArray;
 	return converted(p, layered ? call + ".xy" : call, "ivec2", e.type);
@@ -539,17 +543,22 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	const levelAt = layered ? 3 : 2;
 	const level = args.length > levelAt ? intText(p, args[levelAt]) : "0";
 	const at = layered ? "ivec3(" + intText(p, args[1]) + ", " + intText(p, args[2]) + ")" :
+		p.es && t.shape == TextureShape.D1 ? "ivec2(" + intText(p, args[1]) + ", 0)" :
 		intText(p, args[1]);
 	const fetch = "texelFetch(" + pair.name + ", " + at + ", " + level + ")";
 	return match (t.shape) {
-		TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d | TextureShape.D3 |
-			TextureShape.Multisampled2d => narrowed(fetch, e.type),
+		TextureShape.D1 | TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d |
+			TextureShape.D3 | TextureShape.Multisampled2d => narrowed(fetch, e.type),
 		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture"),
 	};
 }
 
 function isLayered(t: ShaderType): boolean {
 	return t.shape == TextureShape.D2Array || t.shape == TextureShape.Depth2dArray;
+}
+
+function rowCoordinate(p: Printer, t: ShaderType, text: string): string {
+	return p.es && t.shape == TextureShape.D1 ? "vec2(" + text + ", 0.0)" : text;
 }
 
 function sampleOf(p: Printer, e: ShaderExpr): string {
@@ -572,7 +581,7 @@ function sampleOf(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureSample through a comparison sampler, which needs a depth reference");
 	}
 	const coords = layered ? "vec3(" + expr(p, at) + ", float(" + expr(p, e.operands[3]) + "))" :
-		expr(p, at);
+		rowCoordinate(p, texture.type, expr(p, at));
 	return narrowed(e.operands.length == base ? "texture(" + pair.name + ", " + coords + ")" :
 		"textureOffset(" + pair.name + ", " + coords + ", " + expr(p, e.operands[base]) + ")", e.type);
 }
@@ -586,7 +595,7 @@ function explicitSampleOf(p: Printer, e: ShaderExpr): string {
 			"depth reference");
 	}
 	const layer = isArrayTexture(t) ? 1 : 0;
-	const at = layer == 0 ? expr(p, o[2]) : (t.shape == TextureShape.CubeArray ? "vec4(" :
+	const at = layer == 0 ? rowCoordinate(p, t, expr(p, o[2])) : (t.shape == TextureShape.CubeArray ? "vec4(" :
 		"vec3(") + expr(p, o[2]) + ", float(" + expr(p, o[3]) + "))";
 	const tail = o.slice(3 + layer, sampleBase(e)).map((a) => a.type.kind == ShaderTypeKind.Scalar &&
 		a.type.scalar != ScalarKind.F32 ? "float(" + expr(p, a) + ")" : expr(p, a)).join(", ");
@@ -648,6 +657,7 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 
 function imageShapeName(p: Printer, shape: TextureShape): string {
 	return match (shape) {
+		TextureShape.D1 => "image1D",
 		TextureShape.D2 => "image2D",
 		TextureShape.D2Array => "image2DArray",
 		TextureShape.D3 => "image3D",
@@ -1137,6 +1147,7 @@ function combinedType(p: Printer, pair: Pair): string {
 		fail(p, "texture '" + p.module.resources[pair.texture].name + "' is " + t.shape.toString() +
 			", which GLSL ES 3.00 has not (" + prefix + "sampler" + shape + ")") : plain(shape);
 	return match (t.shape) {
+		TextureShape.D1 => p.es ? plain("2D") : plain("1D"),
 		TextureShape.D2 => plain("2D"),
 		TextureShape.D2Array => plain("2DArray"),
 		TextureShape.D3 => plain("3D"),

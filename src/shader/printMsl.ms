@@ -238,6 +238,7 @@ function texelText(p: Printer, s: ScalarKind): string {
 function textureText(p: Printer, t: ShaderType): string {
 	const texel = "<" + texelText(p, t.scalar) + ">";
 	return match (t.shape) {
+		TextureShape.D1 => "texture1d" + texel,
 		TextureShape.D2 => "texture2d" + texel,
 		TextureShape.D2Array => "texture2d_array" + texel,
 		TextureShape.D3 => "texture3d" + texel,
@@ -430,7 +431,7 @@ function sampleText(p: Printer, e: ShaderExpr): string {
 		if (o.length < 4) { return fail(p, "TextureSample of an array texture without a layer"); }
 		args.push("uint(" + exprText(p, o[3]) + ")");
 	}
-	if (p.stage != ShaderStage.Fragment) { args.push("level(0.0)"); }
+	if (p.stage != ShaderStage.Fragment && t.shape != TextureShape.D1) { args.push("level(0.0)"); }
 	if (hasOffset(e)) { args.push(exprText(p, offsetOf(e))); }
 	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
 }
@@ -442,6 +443,7 @@ function gradientName(p: Printer, shape: TextureShape): string {
 		TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d |
 			TextureShape.Depth2dArray => "gradient2d(",
 		TextureShape.Multisampled2d => fail(p, "a gradient sample of a multisampled texture"),
+		TextureShape.D1 => fail(p, "a gradient sample of a 1D texture"),
 	};
 }
 
@@ -456,13 +458,15 @@ function explicitSampleText(p: Printer, e: ShaderExpr): string {
 	let args = [exprText(p, o[1]), exprText(p, o[2])];
 	if (layer == 1) { args.push("uint(" + exprText(p, o[3]) + ")"); }
 	const at = 3 + layer;
-	args.push(match (e.intrinsic) {
-		Intrinsic.TextureSampleLevel => "level(" + exprText(p, o[at]) + ")",
-		Intrinsic.TextureSampleBias => "bias(" + exprText(p, o[at]) + ")",
-		Intrinsic.TextureSampleGrad => gradientName(p, t.shape) + exprText(p, o[at]) + ", " +
-			exprText(p, o[at + 1]) + ")",
-		_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
-	});
+	if (e.intrinsic != Intrinsic.TextureSampleLevel || t.shape != TextureShape.D1) {
+		args.push(match (e.intrinsic) {
+			Intrinsic.TextureSampleLevel => "level(" + exprText(p, o[at]) + ")",
+			Intrinsic.TextureSampleBias => "bias(" + exprText(p, o[at]) + ")",
+			Intrinsic.TextureSampleGrad => gradientName(p, t.shape) + exprText(p, o[at]) + ", " +
+				exprText(p, o[at + 1]) + ")",
+			_ => fail(p, e.intrinsic.toString() + " is no explicit sample"),
+		});
+	}
 	if (hasOffset(e)) { args.push(exprText(p, offsetOf(e))); }
 	return exprText(p, o[0]) + ".sample(" + args.join(", ") + ")";
 }
@@ -519,12 +523,15 @@ function loadText(p: Printer, e: ShaderExpr): string {
 			"TextureLoad of a sampled texture takes a level");
 	}
 	let args = [at];
-	for (let k = 2; k < wanted; k++) { args.push("uint(" + exprText(p, o[k]) + ")"); }
+	for (let k = 2; k < wanted && t.shape != TextureShape.D1; k++) {
+		args.push("uint(" + exprText(p, o[k]) + ")");
+	}
 	return texture + ".read(" + args.join(", ") + ")";
 }
 
 function storageShapeText(p: Printer, shape: TextureShape): string {
 	return match (shape) {
+		TextureShape.D1 => "texture1d",
 		TextureShape.D2 => "texture2d",
 		TextureShape.D2Array => "texture2d_array",
 		TextureShape.D3 => "texture3d",
@@ -557,15 +564,19 @@ function dimensionsText(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureDimensions of a " + t.kind.toString());
 	}
 	const levelled = t.kind == ShaderTypeKind.Texture && t.shape != TextureShape.Multisampled2d &&
-		o.length > 1;
+		t.shape != TextureShape.D1 && o.length > 1;
 	if (levelled && hasEffect(o[1])) {
 		return fail(p, "TextureDimensions whose level calls a function");
 	}
 	const level = levelled ? "uint(" + exprText(p, o[1]) + ")" : "";
 	const texture = exprText(p, o[0]);
-	let sizes = [texture + ".get_width(" + level + ")", texture + ".get_height(" + level + ")"];
+	let sizes = [texture + ".get_width(" + level + ")"];
+	if (t.shape != TextureShape.D1) { sizes.push(texture + ".get_height(" + level + ")"); }
 	if (t.shape == TextureShape.D3) {
 		sizes.push(texture + ".get_depth(" + level + ")");
+	}
+	if (sizes.length == 1 && e.type.kind == ShaderTypeKind.Scalar) {
+		return typeText(p, e.type) + "(" + sizes[0] + ")";
 	}
 	if (e.type.kind != ShaderTypeKind.Vector || e.type.rows != sizes.length) {
 		return fail(p, "TextureDimensions of " + String(sizes.length) + " sizes into a " +

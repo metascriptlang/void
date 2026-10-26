@@ -193,6 +193,7 @@ function arraySuffix(t: ShaderType): string {
 function textureTypeName(t: ShaderType): string {
 	const texel = scalarName(t.scalar) + "4";
 	return match (t.shape) {
+		TextureShape.D1 => "Texture1D<" + texel + ">",
 		TextureShape.D2 => "Texture2D<" + texel + ">",
 		TextureShape.D2Array => "Texture2DArray<" + texel + ">",
 		TextureShape.D3 => "Texture3D<" + texel + ">",
@@ -245,6 +246,7 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Texture => textureTypeName(t),
 		ShaderTypeKind.Sampler => "SamplerState",
 		ShaderTypeKind.StorageTexture => match (t.shape) {
+			TextureShape.D1 => "RWTexture1D<" + texelOf(t.format) + ">",
 			TextureShape.D2 => "RWTexture2D<" + texelOf(t.format) + ">",
 			TextureShape.D2Array => "RWTexture2DArray<" + texelOf(t.format) + ">",
 			TextureShape.D3 => "RWTexture3D<" + texelOf(t.format) + ">",
@@ -518,8 +520,21 @@ function storageSizeNames(p: Printer, shape: TextureShape): string[] {
 	if (shape == TextureShape.D3) { return ["width", "height", "depth"]; }
 	if (shape == TextureShape.D2Array) { return ["width", "height", "layers"]; }
 	if (shape == TextureShape.D2) { return ["width", "height"]; }
+	if (shape == TextureShape.D1) { return ["width"]; }
 	fail(p, "a storage texture of shape " + shape.toString());
 	return [];
+}
+
+function sizeRows(shape: TextureShape): int32 {
+	return shape == TextureShape.D3 ? 3 : shape == TextureShape.D1 ? 1 : 2;
+}
+
+function sizeType(shape: TextureShape): string {
+	return sizeRows(shape) == 1 ? "uint" : "uint" + String(sizeRows(shape));
+}
+
+function sizeResult(shape: TextureShape, result: string, kept: string): string {
+	return sizeRows(shape) == 1 ? kept : result + "(" + kept + ")";
 }
 
 function sizeOf(p: Printer, e: ShaderExpr): string {
@@ -528,15 +543,14 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	const texture = expr(p, args[0]);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		const typeText = typeName(p, t);
-		const deep = t.shape == TextureShape.D3;
 		const sizes = storageSizeNames(p, t.shape);
-		const result = deep ? "uint3" : "uint2";
-		const kept = deep ? "width, height, depth" : "width, height";
+		const result = sizeType(t.shape);
+		const kept = sizes.slice(0, sizeRows(t.shape)).join(", ");
 		const name = helper(p, "imageSize " + typeText, "imageSize", (n) =>
 			result + " " + n + "(" + typeText + " image)\n{\n" +
 			sizes.map((s) => "    uint " + s + ";\n").join("") +
 			"    image.GetDimensions(" + sizes.join(", ") + ");\n" +
-			"    return " + result + "(" + kept + ");\n}\n");
+			"    return " + sizeResult(t.shape, result, kept) + ";\n}\n");
 		return converted(p, name + "(" + texture + ")", result, e.type);
 	}
 	if (t.kind != ShaderTypeKind.Texture) {
@@ -544,9 +558,9 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 	}
 	const level = args.length > 1 ? "uint(" + expr(p, args[1]) + ")" : "0u";
 	const typeText = typeName(p, t);
-	const deep = t.shape == TextureShape.D3;
-	const result = deep ? "uint3" : "uint2";
+	const result = sizeType(t.shape);
 	const outs = match (t.shape) {
+		TextureShape.D1 => ["width", "levels"],
 		TextureShape.D3 => ["width", "height", "depth", "levels"],
 		TextureShape.D2Array | TextureShape.Depth2dArray | TextureShape.CubeArray =>
 			["width", "height", "layers", "levels"],
@@ -560,12 +574,12 @@ function sizeOf(p: Printer, e: ShaderExpr): string {
 			"    return uint2(width, height);\n}\n");
 		return converted(p, name + "(" + texture + ")", "uint2", e.type);
 	}
-	const kept = deep ? "width, height, depth" : "width, height";
+	const kept = outs.slice(0, sizeRows(t.shape)).join(", ");
 	const name = helper(p, "textureSize " + typeText, "textureSize", (n) =>
 		result + " " + n + "(" + typeText + " t, uint level)\n{\n" +
 		outs.map((o) => "    uint " + o + ";\n").join("") +
 		"    t.GetDimensions(level, " + outs.join(", ") + ");\n" +
-		"    return " + result + "(" + kept + ");\n}\n");
+		"    return " + sizeResult(t.shape, result, kept) + ";\n}\n");
 	return converted(p, name + "(" + texture + ", " + level + ")", result, e.type);
 }
 
@@ -605,6 +619,7 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureLoad of a " + t.kind.toString());
 	}
 	return match (t.shape) {
+		TextureShape.D1 => texture + ".Load(int2(" + at + ", " + level + "))",
 		TextureShape.D2 | TextureShape.Depth2d =>
 			texture + ".Load(int3(" + at + ", " + level + "))",
 		TextureShape.D3 => texture + ".Load(int4(" + at + ", " + level + "))",
@@ -706,9 +721,11 @@ function compareOf(p: Printer, e: ShaderExpr, level: boolean): string {
 
 function storageAt(p: Printer, args: ShaderExpr[]): string {
 	return match (args[0].type.shape) {
+		TextureShape.D1 => "uint(" + expr(p, args[1]) + ")",
 		TextureShape.D2 => "uint2(" + expr(p, args[1]) + ")",
 		TextureShape.D2Array => "uint3(" + expr(p, args[1]) + ", " + expr(p, args[2]) + ")",
-		_ => "uint3(" + expr(p, args[1]) + ")",
+		TextureShape.D3 => "uint3(" + expr(p, args[1]) + ")",
+		_ => fail(p, "a storage texture of shape " + args[0].type.shape.toString()),
 	};
 }
 

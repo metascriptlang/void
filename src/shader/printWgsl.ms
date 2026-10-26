@@ -234,6 +234,7 @@ function texelText(p: Printer, s: ScalarKind): string {
 function textureText(p: Printer, t: ShaderType): string {
 	const texel = "<" + texelText(p, t.scalar) + ">";
 	return match (t.shape) {
+		TextureShape.D1 => "texture_1d" + texel,
 		TextureShape.D2 => "texture_2d" + texel,
 		TextureShape.D2Array => "texture_2d_array" + texel,
 		TextureShape.D3 => "texture_3d" + texel,
@@ -513,6 +514,7 @@ function inverseCall(p: Printer, e: ShaderExpr): string {
 
 function storageShapeText(p: Printer, shape: TextureShape): string {
 	return match (shape) {
+		TextureShape.D1 => "1d",
 		TextureShape.D2 => "2d",
 		TextureShape.D2Array => "2d_array",
 		TextureShape.D3 => "3d",

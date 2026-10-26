@@ -191,6 +191,8 @@ const OP_RETURN_VALUE = 254;
 
 const CAP_SHADER = 1;
 const CAP_SAMPLE_RATE_SHADING = 35;
+const CAP_SAMPLED_1D = 43;
+const CAP_IMAGE_1D = 44;
 const CAP_SAMPLED_CUBE_ARRAY = 45;
 const CAP_STORAGE_IMAGE_EXTENDED_FORMATS = 49;
 const CAP_IMAGE_QUERY = 50;
@@ -537,12 +539,14 @@ function imageTypeId(p: Spirv, operands: int32[]): int32 {
 function textureTypeId(p: Spirv, t: ShaderType): int32 {
 	if (t.scalar == ScalarKind.Bool) { return refusal(p, "a texture of bool texels"); }
 	const dim = match (t.shape) {
+		TextureShape.D1 => 0,
 		TextureShape.D2 | TextureShape.D2Array | TextureShape.Depth2d | TextureShape.Depth2dArray |
 			TextureShape.Multisampled2d => 1,
 		TextureShape.D3 => 2,
 		TextureShape.Cube | TextureShape.CubeArray | TextureShape.DepthCube => 3,
 	};
 	if (t.shape == TextureShape.CubeArray) { need(p, CAP_SAMPLED_CUBE_ARRAY); }
+	if (t.shape == TextureShape.D1) { need(p, CAP_SAMPLED_1D); }
 	return imageTypeId(p, [
 		scalarTypeId(p, t.scalar),
 		dim,
@@ -579,12 +583,14 @@ function storageTextureTypeId(p: Spirv, t: ShaderType): int32 {
 		need(p, CAP_STORAGE_IMAGE_EXTENDED_FORMATS);
 	}
 	const dim = match (t.shape) {
+		TextureShape.D1 => 0,
 		TextureShape.D2 | TextureShape.D2Array => 1,
 		TextureShape.D3 => 2,
 		TextureShape.Cube | TextureShape.CubeArray | TextureShape.Depth2d |
-			TextureShape.Depth2dArray | TextureShape.DepthCube | TextureShape.Multisampled2d => 0,
+			TextureShape.Depth2dArray | TextureShape.DepthCube | TextureShape.Multisampled2d => -1,
 	};
-	if (dim == 0) { return refusal(p, "a storage texture of shape " + t.shape.toString()); }
+	if (dim < 0) { return refusal(p, "a storage texture of shape " + t.shape.toString()); }
+	if (t.shape == TextureShape.D1) { need(p, CAP_IMAGE_1D); }
 	return imageTypeId(p, [
 		scalarTypeId(p, texelScalar(t.format)),
 		dim,
@@ -1575,14 +1581,15 @@ function texelStore(p: Spirv, e: ShaderExpr): int32 {
 function dimensions(p: Spirv, e: ShaderExpr): int32 {
 	const o = withoutSamplers(e.operands);
 	const t = o[0].type;
-	const dims: int32 = t.shape == TextureShape.D3 ? 3 : 2;
-	if (e.type.kind != ShaderTypeKind.Vector || e.type.rows != dims) {
+	const dims: int32 = t.shape == TextureShape.D3 ? 3 : t.shape == TextureShape.D1 ? 1 : 2;
+	if (rowsOf(e.type) != dims || (dims > 1) != (e.type.kind == ShaderTypeKind.Vector)) {
 		return refusal(p, "TextureDimensions into a " + e.type.kind.toString() + " of " +
 			String(rowsOf(e.type)));
 	}
 	need(p, CAP_IMAGE_QUERY);
 	const layered = isArrayTexture(t);
-	const queried = vectorType(ScalarKind.U32, layered ? dims + 1 : dims);
+	const queried = dims == 1 ? scalarType(ScalarKind.U32) :
+		vectorType(ScalarKind.U32, layered ? dims + 1 : dims);
 	const image = handle(p, o[0]);
 	const lod = t.kind == ShaderTypeKind.Texture && t.shape != TextureShape.Multisampled2d;
 	const size = lod ?

@@ -43,6 +43,7 @@ import {
 	ModfResultVec4f,
 	Sampler,
 	SamplerComparison,
+	StorageTexture1d,
 	StorageTexture2d,
 	StorageTexture2dArray,
 	StorageTexture2dArrayI32,
@@ -52,6 +53,7 @@ import {
 	StorageTexture3d,
 	StorageTexture3dI32,
 	StorageTexture3dU32,
+	Texture1d,
 	Texture2d,
 	Texture2dArray,
 	Texture2dArrayI32,
@@ -560,13 +562,14 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d),
 		getTypeImpl(StorageTexture2dU32), getTypeImpl(StorageTexture2dArrayU32),
 		getTypeImpl(StorageTexture3dU32), getTypeImpl(StorageTexture2dI32),
-		getTypeImpl(StorageTexture2dArrayI32), getTypeImpl(StorageTexture3dI32)];
+		getTypeImpl(StorageTexture2dArrayI32), getTypeImpl(StorageTexture3dI32),
+		getTypeImpl(StorageTexture1d)];
 	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3,
 		TextureShape.D2, TextureShape.D2Array, TextureShape.D3,
-		TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
+		TextureShape.D2, TextureShape.D2Array, TextureShape.D3, TextureShape.D1];
 	const storageChannels = [ScalarKind.F32, ScalarKind.F32, ScalarKind.F32,
 		ScalarKind.U32, ScalarKind.U32, ScalarKind.U32,
-		ScalarKind.I32, ScalarKind.I32, ScalarKind.I32];
+		ScalarKind.I32, ScalarKind.I32, ScalarKind.I32, ScalarKind.F32];
 	function channelName(s: ScalarKind): string {
 		return s == ScalarKind.F32 ? "f32" : s == ScalarKind.U32 ? "u32" : "i32";
 	}
@@ -575,17 +578,17 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		getTypeImpl(TextureDepth2d), getTypeImpl(TextureDepth2dArray),
 		getTypeImpl(TextureDepthCube), getTypeImpl(TextureMultisampled2d),
 		getTypeImpl(Texture2dArrayU32), getTypeImpl(Texture2dArrayI32),
-		getTypeImpl(Texture3dU32), getTypeImpl(Texture3dI32)];
+		getTypeImpl(Texture3dU32), getTypeImpl(Texture3dI32), getTypeImpl(Texture1d)];
 	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube, TextureShape.D2,
 		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube,
 		TextureShape.Multisampled2d, TextureShape.D2Array, TextureShape.D2Array, TextureShape.D3,
-		TextureShape.D3];
+		TextureShape.D3, TextureShape.D1];
 	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32, ScalarKind.I32,
 		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32,
-		ScalarKind.U32, ScalarKind.I32, ScalarKind.U32, ScalarKind.I32];
+		ScalarKind.U32, ScalarKind.I32, ScalarKind.U32, ScalarKind.I32, ScalarKind.F32];
 	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float, SampleType.Sint,
 		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth, SampleType.UnfilterableFloat,
-		SampleType.Uint, SampleType.Sint, SampleType.Uint, SampleType.Sint];
+		SampleType.Uint, SampleType.Sint, SampleType.Uint, SampleType.Sint, SampleType.Float];
 	const comparisonNode = getTypeImpl(SamplerComparison);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];

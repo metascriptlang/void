@@ -468,6 +468,7 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const shape = isTexture && texture.scalar == ScalarKind.U32 ? "usampler2D(" :
 		isTexture && texture.scalar == ScalarKind.I32 ? "isampler2D(" :
 		isTexture && texture.shape == TextureShape.D3 ? "sampler3D(" :
+		isTexture && texture.shape == TextureShape.D1 ? "sampler1D(" :
 		layered ? "sampler2DArray(" : cube ? "samplerCube(" : "sampler2D(";
 	const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 	return match (e.intrinsic) {
@@ -560,6 +561,7 @@ function imageName(t: ShaderType): string {
 		TextureShape.D2Array => "image2DArray",
 		TextureShape.D3 => "image3D",
 		TextureShape.D2 => "image2D",
+		TextureShape.D1 => "image1D",
 		_ => { broken("a storage texture of shape " + t.shape.toString()); },
 	};
 }
@@ -755,6 +757,7 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
 			TextureShape.D3 => sampleTag(r) + slot + vectorPrefix(r.type.scalar) + "texture3D " +
 				r.name + ";\n",
+			TextureShape.D1 => sampleTag(r) + slot + "texture1D " + r.name + ";\n",
 			TextureShape.Multisampled2d => sampleTag(r) + slot + "texture2DMS " + r.name + ";\n",
 			TextureShape.D2 | TextureShape.Depth2d => sampleTag(r) + slot +
 				vectorPrefix(r.type.scalar) + "texture2D " + r.name + ";\n",
