@@ -3,6 +3,7 @@ import {
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPUMapMode,
 	GPUPrimitiveState,
 	GPURenderPassDescriptor,
@@ -30,6 +31,7 @@ import {
 	bindGroupSetRefusal,
 	boundRefusal,
 	dynamicIndexOf,
+	dynamicRoomRefusal,
 	markBindGroupSet,
 	markVertexSet,
 	shaderBindingAt,
@@ -765,6 +767,15 @@ test "a texture can take a cube view when square, sampled, single-sample and a m
 	assert !cubeCapable(false, 6, 64, 64, 0, 1);
 	assert !cubeCapable(false, 6, 64, 64, sampled, 4);
 	assert !cubeCapable(true, 6, 64, 64, sampled, 1);
+}
+
+test "a dynamic offset stops at the room its entry's buffer leaves past its offset and block" {
+	const room: int64[GPU_MAX_BIND_GROUP_ENTRIES] = [256, 0];
+	const within: Vec<uint32> = [256, 0];
+	const past: Vec<uint32> = [0, 256];
+	assert dynamicRoomRefusal(room, 2, within) == "";
+	assert dynamicRoomRefusal(room, 2, past) == "dynamic offset 256 at index 1 overruns its uniform buffer";
+	assert dynamicRoomRefusal(room, 0, past) == "";
 }
 
 test "setBindGroup takes the door's two groups" {

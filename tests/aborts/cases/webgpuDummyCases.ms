@@ -1,6 +1,7 @@
 // flags: -d:voidDummy
 // expect stripIndexMismatch: an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format
 // expect indirectWithoutUsage: dispatchWorkgroupsIndirect: GPUBuffer 65537 was created without INDIRECT
+// expect uniformOverrun: dynamic offset 512 at index 0 overruns its uniform buffer
 // expect shaderDestroyed: the shader module of GPURenderPipeline 65537 was destroyed
 import { argv } from "std/process";
 import {
@@ -42,7 +43,7 @@ function run(name: string): void {
 		console.log("an indirect dispatch from a buffer without INDIRECT returned");
 		return;
 	}
-	if (name != "stripIndexMismatch" && name != "shaderDestroyed") {
+	if (name != "stripIndexMismatch" && name != "shaderDestroyed" && name != "uniformOverrun") {
 		console.log(`no case named '${name}'`);
 		process.exit(2);
 	}
@@ -78,7 +79,7 @@ function run(name: string): void {
 	const indexUsage = (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32);
 	const indices = device.createBuffer({ label: "indices", size: 16, usage: indexUsage });
 	const noResolve: GPUTextureView = { id: 0 };
-	const offsets: Vec<uint32> = [0];
+	const offsets: Vec<uint32> = [name == "uniformOverrun" ? 512 : 0];
 	if (name == "shaderDestroyed") { module.destroy(); }
 	const view = colourTarget(device, 1).createView({ label: null });
 	const pass = encoder.beginRenderPass(clearingPass(view, noResolve));
