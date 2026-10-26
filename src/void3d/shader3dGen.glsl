@@ -3862,7 +3862,8 @@ void main() {
     vec4 texel = texture(sampler2D(decalTexture, decalSampler), uv);
     vec4 tint = decalColor * baseColor;
     vec4 shaded = decalOverlayColor(tint, texel, fade.w, (mode.y == 1.0), (mode.z == 1.0), faded);
-    fragColor = vec4(toneMapped(shaded.rgb, frame), shaded.a);
+    vec3 rgb = (mode.w == 1.0) ? toneMapped(shaded.rgb, frame) : shaded.rgb;
+    fragColor = vec4(rgb, shaded.a);
     return;
 }
 @end

@@ -510,7 +510,9 @@ export const SCENE_DEPTH_SCENE_VIEWS: uint32 = 1 << (SCENE_DEPTH_VIEW_SLOT as ui
 export const SCENE_DEPTH_SCENE_SAMPLERS: uint32 = 1 << (SCENE_DEPTH_SAMPLER_SLOT as uint32);
 // A decal's block (decalParams in shader3d.ms): the tint (gamma-encoded rgba), then
 // DecalOverlay's fadeStart, fadeEnd, fadePower and emissive, then its CENTERED, GAMMA_CORRECT
-// and AUTO_ALPHA constants as 1 or 0 (h3d/shader/pbr/VolumeDecal.hx:68-128).
+// and AUTO_ALPHA constants as 1 or 0 (h3d/shader/pbr/VolumeDecal.hx:68-128), then 1 where the
+// decal draws before the tone map and goes through it as the lit colour does (the GammaCorrect
+// shader PbrMaterial adds to a BeforeTonemappingDecal, PbrMaterial.hx:245-256).
 export const DECAL_UNIFORM_LENGTH: int32 = 12;
 export const DECAL_COLOR: int32 = 0;
 export const DECAL_FADE_START: int32 = 4;
@@ -520,6 +522,7 @@ export const DECAL_EMISSIVE: int32 = 7;
 export const DECAL_CENTERED: int32 = 8;
 export const DECAL_GAMMA_CORRECT: int32 = 9;
 export const DECAL_AUTO_ALPHA: int32 = 10;
+export const DECAL_TONE_MAPPED: int32 = 11;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel

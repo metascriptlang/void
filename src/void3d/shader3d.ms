@@ -2071,7 +2071,7 @@ export struct DecalFragmentInput {
 }
 
 // gpu3d.ms DECAL_*: the tint, then fadeStart, fadeEnd, fadePower and emissive, then CENTERED,
-// GAMMA_CORRECT and AUTO_ALPHA as 1 or 0.
+// GAMMA_CORRECT, AUTO_ALPHA and the tone map as 1 or 0.
 export struct DecalParams {
 	decalColor: Vec4f;
 	decalFade: Vec4f;
@@ -2125,5 +2125,6 @@ export function decalFs(input: DecalFragmentInput, b: DecalBindings): Vec4f {
 	const texel = textureSample(b.decalTexture, b.decalSampler, uv);
 	const tint = b.decalParams.decalColor * input.baseColor;
 	const shaded = decalOverlayColor(tint, texel, fade.w, mode.y == 1.0, mode.z == 1.0, faded);
-	return vec4f(toneMapped(shaded.rgb, b.frameParams.frame), shaded.a);
+	const rgb = mode.w == 1.0 ? toneMapped(shaded.rgb, b.frameParams.frame) : shaded.rgb;
+	return vec4f(rgb, shaded.a);
 }

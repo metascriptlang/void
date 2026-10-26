@@ -68,6 +68,7 @@ import {
 import {
 	Material,
 	Phase,
+	isDecalPhase,
 	UniformBlock,
 	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
@@ -160,6 +161,7 @@ export interface Renderer {
 	alpha: PassList;
 	additive: PassList;
 	decal: PassList;
+	decalAfterToneMap: PassList;
 	cameraBlock: UniformBlock;
 	lightBlock: UniformBlock;
 	frameBlock: UniformBlock;
@@ -337,6 +339,7 @@ export function createDrawing(
 		alpha: PassList.forPhase(Phase.Alpha),
 		additive: PassList.forPhase(Phase.Additive),
 		decal: PassList.forPhase(Phase.Decal),
+		decalAfterToneMap: PassList.forPhase(Phase.DecalAfterToneMap),
 		cameraBlock: cameraBlock,
 		lightBlock: lightBlock,
 		frameBlock: frameBlock,
@@ -650,6 +653,7 @@ export function beginFrame(
 	let alpha: boolean = false;
 	let additive: boolean = false;
 	let decal: boolean = false;
+	let decalAfterToneMap: boolean = false;
 	while ((renderer.pairs.length as int32) < (context.materials.length as int32)) {
 		renderer.pairs.push(ProgramKey.of(Program.Lit));
 	}
@@ -677,13 +681,14 @@ export function beginFrame(
 			alpha = alpha || phase == Phase.Alpha;
 			additive = additive || phase == Phase.Additive;
 			decal = decal || phase == Phase.Decal;
+			decalAfterToneMap = decalAfterToneMap || phase == Phase.DecalAfterToneMap;
 		}
 		if (!items[i].validSkin(checked)) { return Result.err(RendererError.SkinPose); }
 		if (!items[i].validInstances(context, checked)) {
 			return Result.err(RendererError.Instances);
 		}
 	}
-	if (decal && renderer.preset == Preset.PixelArt) {
+	if ((decal || decalAfterToneMap) && renderer.preset == Preset.PixelArt) {
 		return Result.err(RendererError.DecalPreset);
 	}
 	if (shadow !== null) {
@@ -825,6 +830,7 @@ export function beginFrame(
 	collectSeen(renderer.alpha, alpha, items, context.materials);
 	collectSeen(renderer.additive, additive, items, context.materials);
 	collectSeen(renderer.decal, decal, items, context.materials);
+	collectSeen(renderer.decalAfterToneMap, decalAfterToneMap, items, context.materials);
 	let viewProj: Mat4 = {
 		m11: camera[0], m12: camera[1], m13: camera[2], m14: camera[3],
 		m21: camera[4], m22: camera[5], m23: camera[6], m24: camera[7],
@@ -836,11 +842,13 @@ export function beginFrame(
 		filterFrustum(renderer.opaque, items, context.meshData, frustum) +
 		filterFrustum(renderer.alpha, items, context.meshData, frustum) +
 		filterFrustum(renderer.additive, items, context.meshData, frustum) +
-		filterFrustum(renderer.decal, items, context.meshData, frustum);
+		filterFrustum(renderer.decal, items, context.meshData, frustum) +
+		filterFrustum(renderer.decalAfterToneMap, items, context.meshData, frustum);
 	sortByLayer(renderer.opaque);
 	sortBackToFront(renderer.alpha, items, camera);
 	sortByLayer(renderer.additive);
 	sortByLayer(renderer.decal);
+	sortByLayer(renderer.decalAfterToneMap);
 	return Result.ok(fresh);
 }
 
@@ -974,27 +982,40 @@ export function drawPhase(
 				scene,
 			);
 		},
-		Phase.Decal => {
-			console.log("void3d: drawPhase(Decal) has no scene depth to bind; drawDecals draws " +
-				"the decal list");
-			unreachable;
-		},
+		Phase.Decal => stopOnDecalPhase(phase),
+		Phase.DecalAfterToneMap => stopOnDecalPhase(phase),
 	};
 }
 
-// h3d.scene.pbr.Renderer's draw("beforeTonemappingDecal") (Renderer.hx:864): the decal list
-// into the current pass, which has no depth attachment, with `depthView` (the depth target the
-// scene was drawn into) and `depthSampler` bound at SCENE_DEPTH_VIEW_SLOT.
+function stopOnDecalPhase(phase: Phase): void {
+	console.log(`void3d: drawPhase(${phase.toString()}) has no scene depth to bind; drawDecals ` +
+		"draws the decal lists");
+	unreachable;
+}
+
+// h3d.scene.pbr.Renderer's draw("beforeTonemappingDecal") and draw("afterTonemappingDecal")
+// (Renderer.hx:864,873): the list of `phase` into the current pass, which has no depth
+// attachment, with `depthView` (the depth target the scene was drawn into) and `depthSampler`
+// bound at SCENE_DEPTH_VIEW_SLOT. The tone-mapped colour is encoded, never Rgba16f.
 export function drawDecals(
 	renderer: Renderer,
+	phase: Phase,
 	items: Readonly<Span<DrawItem>>,
 	targets: TargetLayout,
 	depthView: uint32,
 	depthSampler: uint32,
 ): void {
 	if (renderer.closed) { stopOnClosed("drawDecals"); }
-	if ((targets.color0 == PixelFormat.Rgba16f) != renderer.linearOutput) {
-		stopOnColourSpace(renderer, targets);
+	if (!isDecalPhase(phase)) {
+		console.log(`void3d: drawDecals(${phase.toString()}); drawPhase draws that list`);
+		unreachable;
+	}
+	const linear: boolean = phase == Phase.Decal && renderer.linearOutput;
+	if ((targets.color0 == PixelFormat.Rgba16f) != linear) {
+		if (phase == Phase.Decal) { stopOnColourSpace(renderer, targets); }
+		console.log(`void3d: drawDecals(DecalAfterToneMap) into a ${targets.color0.toString()} ` +
+			"target; the tone-mapped colour is encoded");
+		unreachable;
 	}
 	if (targets.depth != PixelFormat.None) {
 		console.log("void3d: drawDecals into a pass with a depth attachment; the scene depth is " +
@@ -1004,9 +1025,9 @@ export function drawDecals(
 	const scene: SceneTexture = {
 		...sceneTextureOf(renderer), depthView: depthView, depthSampler: depthSampler,
 	};
+	const list: PassList = phase == Phase.Decal ? renderer.decal : renderer.decalAfterToneMap;
 	drawPassList(
-		renderer.context, renderer.decal, items, renderer.drawn, targets, renderer.sceneGlobals,
-		scene,
+		renderer.context, list, items, renderer.drawn, targets, renderer.sceneGlobals, scene,
 	);
 }
 
@@ -1018,6 +1039,7 @@ export function phaseCount(this renderer: Renderer, phase: Phase): int32 {
 		Phase.Alpha => renderer.alpha.count,
 		Phase.Additive => renderer.additive.count,
 		Phase.Decal => renderer.decal.count,
+		Phase.DecalAfterToneMap => renderer.decalAfterToneMap.count,
 	};
 }
 

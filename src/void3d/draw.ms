@@ -111,6 +111,7 @@ import {
 import {
 	Material,
 	Phase,
+	isDecalPhase,
 	UniformBlock,
 	NO_UNIFORMS,
 	MATERIAL_TEXTURE_ROLES,
@@ -387,7 +388,7 @@ export enum MaterialError {
 	// A Decal-phase pass writes or tests depth; the decal pass has no depth attachment, the scene
 	// depth being the texture it reads.
 	DecalDepth,
-	// The decal program outside the Decal phase, the one pass that binds the depth it reads.
+	// The decal program outside the decal phases, the passes that bind the depth it reads.
 	DecalPhase,
 }
 
@@ -1170,11 +1171,11 @@ export function addMaterial(
 	if (material.program.parallax && !context.stepsFit(material.uniforms)) {
 		return Result.err(MaterialError.BadParallaxSteps);
 	}
-	if (material.phase == Phase.Decal &&
+	if (isDecalPhase(material.phase) &&
 		(material.pass.depthWrite || material.pass.depthTest != Compare.Always)) {
 		return Result.err(MaterialError.DecalDepth);
 	}
-	if (material.program.program == Program.Decal && material.phase != Phase.Decal) {
+	if (material.program.program == Program.Decal && !isDecalPhase(material.phase)) {
 		return Result.err(MaterialError.DecalPhase);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
