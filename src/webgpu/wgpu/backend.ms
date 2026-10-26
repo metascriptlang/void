@@ -68,6 +68,7 @@ import {
 } from "../types.ms";
 import {
 	clampedAnisotropy,
+	cachedCanvas,
 	cachedLimits,
 	addressesBinding,
 	checkedComputeModule,
@@ -1059,6 +1060,8 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	checkMirroredConstants();
 	if (wgSetup(environment.device) == 0) { stop("the WGPUDevice gave no queue or no limits"); }
 	uniformAlignment = wgMinUniformBufferOffsetAlignment();
+	const sampleCount = cachedCanvas().sampleCount;
+	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`); }
 	pass.pipeline = 0;
 	computeBound.pipeline = 0;
 	return { id: 1, queue: { id: 1 } };

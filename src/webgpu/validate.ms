@@ -229,15 +229,16 @@ export function cacheLimits(limits: GPUSupportedLimits): void { deviceLimits = l
 export function resetFrame(): void { frame = 0; }
 export function advanceFrame(): void { frame += 1; }
 
-export function canvasRefusal(color: string, depth: string): string {
+export function canvasRefusal(color: string, depth: string, sampleCount: int32): string {
 	if (color == "") { return "NativeEnvironment.colorFormat is required"; }
 	if (isDepthFormat(color)) { return `NativeEnvironment.colorFormat '${color}' is not supported`; }
 	if (depth != "" && !isDepthFormat(depth)) { return `NativeEnvironment.depthFormat '${depth}' is not supported`; }
+	if (sampleCount < 0) { return `NativeEnvironment.sampleCount ${sampleCount} is negative`; }
 	return "";
 }
 
 export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, sampleCount: int32): void {
-	refuse(canvasRefusal(colorFormat, depthFormat));
+	refuse(canvasRefusal(colorFormat, depthFormat, sampleCount));
 	canvas = { format: colorFormat, depthFormat: depthFormat, sampleCount: sampleCount == 0 ? 1 : sampleCount };
 }
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }

@@ -836,11 +836,12 @@ test "a resolve target is a single-sample color attachment of its multisampled v
 }
 
 test "a canvas names a color format and, when it has one, a depth format" {
-	assert canvasRefusal("bgra8unorm", "depth32float") == "";
-	assert canvasRefusal("rgba8unorm", "") == "";
-	assert canvasRefusal("", "") == "NativeEnvironment.colorFormat is required";
-	assert canvasRefusal("depth32float", "") == "NativeEnvironment.colorFormat 'depth32float' is not supported";
-	assert canvasRefusal("bgra8unorm", "rgba8unorm") == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
+	assert canvasRefusal("bgra8unorm", "depth32float", 4) == "";
+	assert canvasRefusal("rgba8unorm", "", 0) == "";
+	assert canvasRefusal("", "", 1) == "NativeEnvironment.colorFormat is required";
+	assert canvasRefusal("depth32float", "", 1) == "NativeEnvironment.colorFormat 'depth32float' is not supported";
+	assert canvasRefusal("bgra8unorm", "rgba8unorm", 1) == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
+	assert canvasRefusal("bgra8unorm", "", -1) == "NativeEnvironment.sampleCount -1 is negative";
 }
 
 test "a render pipeline's zero sample count and stencil masks resolve to WebGPU's defaults" {

@@ -67,6 +67,7 @@ import {
 	currentFrame,
 	entryOf,
 	clampedAnisotropy,
+	cachedCanvas,
 	cachedLimits,
 	addressesBinding,
 	checkedBufferRewrite,
@@ -405,6 +406,7 @@ const GL_DEPTH_STENCIL_ATTACHMENT = 0x821A;
 const GL_FRAMEBUFFER_COMPLETE = 0x8CD5;
 const GL_MAX_VERTEX_ATTRIBS = 0x8869;
 const GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8B4D;
+const GL_MAX_SAMPLES = 0x8D57;
 const GL_MAJOR_VERSION = 0x821B;
 const GL_MINOR_VERSION = 0x821C;
 const GL_CURRENT_PROGRAM = 0x8B8D;
@@ -1224,6 +1226,7 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	checkContextVersion(version);
 	maxVertexAttributes = smaller(oglGetInteger(GL_MAX_VERTEX_ATTRIBS), GPU_MAX_VERTEX_ATTRIBUTES);
 	maxTextureUnits = smaller(oglGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS), MAX_TEXTURE_UNITS);
+	if (cachedCanvas().sampleCount > oglGetInteger(GL_MAX_SAMPLES)) { stopOnMember("NativeEnvironment.sampleCount", `${cachedCanvas().sampleCount}`); }
 	contextVersion = version;
 	const capabilities = oglCapabilities();
 	computeSupported = (capabilities & OGL_CAPABILITY_COMPUTE) != 0 && version >= COMPUTE_CONTEXT_VERSION;
