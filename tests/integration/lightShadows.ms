@@ -58,12 +58,15 @@ const CASTER_HEIGHT: float32 = 1.0;
 // half 0.75 around the origin.
 const LIGHT_HEIGHT: float32 = 3.0;
 const SHADOW_SIZE: int32 = 512;
+const NORMAL_BIAS: float32 = 50.0;
+const RIM: Vec3 = { x: 0.0, y: 0.0, z: 0.65 };
 const FRAMES: int32 = 3;
 const RIGHT_ANGLE: float32 = 1.5707963268;
 const DOWN: Quat = axisAngle(vec3(1.0, 0.0, 0.0), RIGHT_ANGLE);
 let lightCase: Case = voidCaptureEnvInt("VOID_LIGHT_SHADOW_CASE", 0) as Case;
 let pcf: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_PCF", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_CONTROL", 0) != 0;
+let biased: boolean = voidCaptureEnvInt("VOID_LIGHT_SHADOW_NORMAL_BIAS", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + 2 * DIR_SHADOW_UNIFORM_LENGTH + 2 * MATERIAL_UNIFORM_LENGTH,
 );
@@ -77,7 +80,8 @@ let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
 
 function fail(message: string): void {
-	const mode: string = (pcf ? " pcf" : "") + (control ? " control" : "");
+	const mode: string = (pcf ? " pcf" : "") + (control ? " control" : "") +
+		(biased ? " normal bias" : "");
 	console.log(`FAIL light shadow: ${lightCase.toString()}${mode} stage ${stage}: ${message}`);
 	voidCaptureExit(1);
 }
@@ -155,6 +159,10 @@ function init(): void {
 	const sampling: ShadowSamplingKind = pcf ? ShadowSamplingKind.Pcf : ShadowSamplingKind.None;
 	spotMap.samplingKind = sampling;
 	cubeMap.samplingKind = sampling;
+	if (biased) {
+		spotMap.normalBias = NORMAL_BIAS;
+		cubeMap.normalBias = NORMAL_BIAS;
+	}
 	attachSpotShadow(forward.core, spotMap);
 	attachCubeShadow(forward.core, cubeMap);
 }
@@ -184,14 +192,21 @@ function check(view: CameraView): void {
 	const edge: int64 = greenAt(view, vec3(0.0, 0.0, 0.6));
 	const open: int64 = greenAt(view, vec3(1.5, 0.0, 0.0));
 	const top: int64 = greenAt(view, vec3(0.0, CASTER_HEIGHT, 0.0));
-	console.log(`light shadow: under ${under}, edge ${edge}, open ${open}, caster top ${top}`);
+	const rim: int64 = greenAt(view, RIM);
+	console.log(`light shadow: under ${under}, edge ${edge}, rim ${rim}, open ${open}, ` +
+		`caster top ${top}`);
 	if (top > 60) { fail(`the caster drew green ${top}, not red`); }
 	if (control) {
 		if (under < open) { fail(`unshadowed, the ground under the light drew ${under}`); }
 		return;
 	}
 	if (under + 30 > open) { fail(`no shadow under the caster: ${under} against ${open}`); }
+	if (biased) {
+		if (rim + 30 <= open) { fail(`the normal bias left the rim shadowed: ${rim}`); }
+		return;
+	}
 	if (edge + 30 > open) { fail(`no shadow inside the footprint's edge: ${edge}`); }
+	if (rim + 30 > open) { fail(`no shadow at the rim: ${rim}`); }
 }
 
 function frame(): void {

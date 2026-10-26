@@ -1240,26 +1240,31 @@ run_mesh_lod() {
 	fi
 	for index32 in 0 1; do
 		for outline in 0 1; do
-			status=0
-			log="$WORK/meshLod.$index32.$outline.0.log"
-			VOID_MESH_LOD_CONTROL=0 VOID_MESH_LOD_INDEX32=$index32 \
-				VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
-			if [ "$status" -eq 3 ]; then
-				skip "mesh-lod: no readback backend"
-				return
-			fi
-			if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$log"; then
-				fail "mesh-lod: index32=$index32 outline=$outline — see $log"
-				return
-			fi
+			for picked in 0 1; do
+				status=0
+				log="$WORK/meshLod.$index32.$outline.0.$picked.log"
+				VOID_MESH_LOD_CONTROL=0 VOID_MESH_LOD_INDEX32=$index32 VOID_MESH_LOD_SCENE=$picked \
+					VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+				if [ "$status" -eq 3 ]; then
+					skip "mesh-lod: no readback backend"
+					return
+				fi
+				if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$log"; then
+					fail "mesh-lod: index32=$index32 outline=$outline scene=$picked — see $log"
+					return
+				fi
+			done
 			controls=""
 			if [ "$index32" = "1" ]; then controls="6 7"
-			elif [ "$outline" = "0" ]; then controls="1 2 3 4 5"; fi
+			elif [ "$outline" = "0" ]; then controls="1 2 3 4 5 8"; fi
 			for control in $controls; do
 				status=0
+				picked=0
+				[ "$control" = "8" ] && picked=1
 				log="$WORK/meshLod.$index32.$outline.$control.log"
 				VOID_MESH_LOD_CONTROL=$control VOID_MESH_LOD_INDEX32=$index32 \
-					VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 || status=$?
+					VOID_MESH_LOD_SCENE=$picked VOID_MESH_LOD_OUTLINE=$outline "$exe" > "$log" 2>&1 \
+					|| status=$?
 				if [ "$status" -ne 1 ] || ! grep -qE \
 					'^FAIL mesh LOD: stage .* (silhouette did not match|material was replaced)' \
 					"$log"; then
@@ -1269,7 +1274,7 @@ run_mesh_lod() {
 			done
 		done
 	done
-	pass "mesh-lod: u16/u32, outline, ranges/materials, LOD/reupload/pins/close; nine controls red"
+	pass "mesh-lod: u16/u32, outline, ranges/materials, LOD picked by hand and by Scene3D, reupload/pins/close; ten controls red"
 }
 
 run_particle_fade() {
@@ -2579,22 +2584,23 @@ run_light_shadows() {
 		return
 	fi
 	for case in $LIGHT_SHADOW_CASES; do
-		for mode in "0 0" "1 0" "0 1"; do
+		for mode in "0 0 0" "1 0 0" "0 1 0" "0 0 1" "1 0 1"; do
 			set -- $mode
-			log="$WORK/lightShadows.$case.$1.$2.log"
+			log="$WORK/lightShadows.$case.$1.$2.$3.log"
 			status=0
-			VOID_LIGHT_SHADOW_CASE=$case VOID_LIGHT_SHADOW_PCF=$1 VOID_LIGHT_SHADOW_CONTROL=$2 				"$exe" > "$log" 2>&1 || status=$?
+			VOID_LIGHT_SHADOW_CASE=$case VOID_LIGHT_SHADOW_PCF=$1 VOID_LIGHT_SHADOW_CONTROL=$2 \
+				VOID_LIGHT_SHADOW_NORMAL_BIAS=$3 				"$exe" > "$log" 2>&1 || status=$?
 			if [ "$status" -eq 3 ]; then
 				skip "light-shadows: no native readback backend"
 				return
 			fi
 			if [ "$status" -ne 0 ] || ! grep -q '^PASS light shadow: ' "$log"; then
-				fail "light-shadows: case $case, pcf $1, control $2 (exit $status) — see $log"
+				fail "light-shadows: case $case, pcf $1, control $2, normal bias $3 (exit $status) — see $log"
 				return
 			fi
 		done
 	done
-	pass "light-shadows: a spot's map and the cube map of a point, rectangle and capsule darken the ground under a caster, compared and with PCF; each control without its shadow does not"
+	pass "light-shadows: a spot's map and the cube map of a point, rectangle and capsule darken the ground under a caster, compared and with PCF; each control without its shadow does not; a normal bias pulls the footprint in from its rim"
 }
 
 run_parallax() {
