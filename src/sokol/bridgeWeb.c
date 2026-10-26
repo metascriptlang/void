@@ -17,32 +17,16 @@
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
 #include "../platform/web/window.h"
-#ifdef VOID_PROFILER
-#include "../void2d/frameClock.h"
-#endif
 
-typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
-static VoidDriver s_driver = DRIVER_NONE;
-static int s_generation = 1;
-static int s_contextLost = 0;
-
-static void setupWindowDoor(void);
 static void setupViewsGfx(void);
 
-int voidGpuGeneration(void) { return s_generation; }
-void voidLoseContext(void) { s_contextLost = 1; }
-
-static void restoreContext(void) {
-	doorShutdown();
-	if (s_driver == DRIVER_WINDOW) setupWindowDoor();
+static void restoreDoor(void) {
+	if (voidDriver == VOID_DRIVER_WINDOW) voidWindowDoorSetup();
 	else setupViewsGfx();
-	s_generation++;
-	s_contextLost = 0;
 }
 
 static msClosure s_init;
 static msClosure s_frame;
-static bool s_keys[VOID_KEY_COUNT];
 
 static int s_textInput = -1;
 
@@ -110,7 +94,7 @@ EM_JS(void, voidJsImeRect, (double x, double y, double w, double h), {
 });
 
 static void applyImeRect(void) {
-	const double scale = voidWebDpiScale();
+	const double scale = voidWindowDpiScale();
 	voidJsImeRect(s_imeX / scale, s_imeY / scale, s_imeW / scale, s_imeH / scale);
 }
 
@@ -156,30 +140,17 @@ static void _init(void) {
 }
 
 static void _frame(void) {
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	voidCallClosure(s_frame);
 }
 
 static int s_reqW = 0;
 static int s_reqH = 0;
 static void _event(const VoidAppEvent *e) {
-#ifdef VOID_PROFILER
-	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
-		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
-		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
-		voidProfileInput();
-	}
-#endif
-	if (e->type == VOID_EVENT_RESUMED) s_contextLost = 1;
+	if (e->type == VOID_EVENT_RESUMED) voidLoseContext();
 	if (imeTookKey(e)) return;
 	keepKeysFromBrowser(e);
-	if (e->type == VOID_EVENT_KEY_DOWN) {
-		s_keys[e->keyCode] = true;
-	} else if (e->type == VOID_EVENT_KEY_UP) {
-		s_keys[e->keyCode] = false;
-	}
-	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidWebRequestQuit();
+	voidAppWindowEvent(e);
 }
 
 static void _cleanup(void) { doorShutdown(); }
@@ -187,8 +158,8 @@ static void _cleanup(void) { doorShutdown(); }
 static void leaveCallerSuspendedWhileFramesRun(void) { emscripten_exit_with_live_runtime(); }
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
-	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this document already drives Void through host views");
-	s_driver = DRIVER_WINDOW;
+	if (voidDriver == VOID_DRIVER_VIEWS) voidFail("voidRun: this document already drives Void through host views");
+	voidDriver = VOID_DRIVER_WINDOW;
 	s_init = init;
 	s_reqW = w;
 	s_reqH = h;
@@ -336,7 +307,7 @@ static int32_t doorColorFormat(WGPUTextureFormat format) {
 	}
 }
 
-static void setupWindowDoor(void) {
+void voidWindowDoorSetup(void) {
 	doorSetup(voidWebDevice(), NULL, doorColorFormat(voidWebColorFormat()), DOOR_PIXEL_FORMAT_DEPTH, voidWebSampleCount());
 	if (!doorValid()) voidFail("doorSetup on the browser window's WebGPU device failed");
 }
@@ -346,15 +317,15 @@ EM_JS(int, voidWebPrefersBgra, (void), {
 });
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
-	if (s_driver == DRIVER_VIEWS) return;
+	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
+	if (voidDriver == VOID_DRIVER_VIEWS) return;
 	s_instance = wgpuCreateInstance(NULL);
 	if (!s_instance) voidFail("voidViewCreate: wgpuCreateInstance failed");
 	s_device = emscripten_webgpu_get_device();
 	if (!s_device) voidFail("voidViewCreate: no WebGPU device; Module.voidStart requests one");
 	s_format = voidWebPrefersBgra() ? WGPUTextureFormat_BGRA8Unorm : WGPUTextureFormat_RGBA8Unorm;
 	setupViewsGfx();
-	s_driver = DRIVER_VIEWS;
+	voidDriver = VOID_DRIVER_VIEWS;
 }
 
 static void setupViewsGfx(void) {
@@ -424,7 +395,7 @@ int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
 
 int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	WGPUSurfaceTexture current = {0};
 	wgpuSurfaceGetCurrentTexture(s->surface, &current);
 	if (current.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
@@ -457,17 +428,16 @@ static void dropSurface(WebSurface *s) {
 #else // VOID_GLES3
 
 static WebSurface *s_glView = NULL;
-static bool s_glEverSetUp = false;
 
-static void setupWindowDoor(void) {
+void voidWindowDoorSetup(void) {
 	doorSetup(NULL, NULL, DOOR_PIXEL_FORMAT_RGBA8, DOOR_PIXEL_FORMAT_DEPTH, voidWebSampleCount());
 	if (!doorValid()) voidFail("doorSetup on the browser window's WebGL2 context failed");
 }
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
-	if (s_driver == DRIVER_VIEWS) return;
-	s_driver = DRIVER_VIEWS;
+	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this document already runs a Void canvas window");
+	if (voidDriver == VOID_DRIVER_VIEWS) return;
+	voidDriver = VOID_DRIVER_VIEWS;
 }
 
 static void setupViewsGfx(void) {
@@ -477,8 +447,7 @@ static void setupViewsGfx(void) {
 
 // A WebGL2 context belongs to its canvas, so the device of this driver is the one live view's
 // context: a second live view is refused, and a view made after a stop sets the door up again
-// on its own context and bumps the GPU generation, whose owners drop the old ids
-// (bridgeAndroid.c restore_context, doorContextGeneration).
+// on its own context, which bumps doorContextGeneration so the owners of the old ids drop them.
 static bool makeSurface(WebSurface *s) {
 	if (s_glView) {
 		voidFail("voidViewCreate: WebGL2 runs one view at a time; stop view %d first", s_glView->id);
@@ -496,8 +465,6 @@ static bool makeSurface(WebSurface *s) {
 	emscripten_webgl_make_context_current(s->context);
 	emscripten_set_canvas_element_size(s->selector, s->w, s->h);
 	setupViewsGfx();
-	if (s_glEverSetUp) s_generation++;
-	s_glEverSetUp = true;
 	s_glView = s;
 	return true;
 }
@@ -510,7 +477,7 @@ int voidPlatformSurfaceAcquire(void *surface) {
 	WebSurface *s = (WebSurface *)surface;
 	if (emscripten_is_webgl_context_lost(s->context)) return 0;
 	emscripten_webgl_make_context_current(s->context);
-	if (s_contextLost) restoreContext();
+	voidRestoreContextIfLost(restoreDoor);
 	return 1;
 }
 
@@ -573,57 +540,20 @@ void voidPlatformSurfaceDestroy(void *surface) {
 
 long long voidPlatformSurfaceNative(void *surface) { return ((WebSurface *)surface)->id; }
 
-__attribute__((noreturn)) static void noDriver(const char *op) {
-	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
-}
-
-void voidGfxSetup(void) {
-	switch (s_driver) {
-		case DRIVER_WINDOW: setupWindowDoor(); break;
-		case DRIVER_VIEWS: break;
-		case DRIVER_NONE: noDriver("gfxSetup");
-	}
-}
-
-int voidFbWidth(void) {
-	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
-	return s_driver == DRIVER_VIEWS ? voidViewsFbWidth() : voidWebWidth();
-}
-
-int voidFbHeight(void) {
-	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
-	return s_driver == DRIVER_VIEWS ? voidViewsFbHeight() : voidWebHeight();
-}
-
-float voidDpiScale(void) {
-	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
-	return s_driver == DRIVER_VIEWS ? voidViewsDpiScale() : voidWebDpiScale();
-}
-
-int voidKeyDown(int keycode) {
-	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
-	return s_keys[keycode] ? 1 : 0;
-}
-
-static VoidDriver screenDriver(void) {
-	if (s_driver == DRIVER_NONE) noDriver("beginPass");
-	return s_driver;
-}
-
 int32_t voidSwapchainWidth(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsFbWidth() : voidWebWidth();
+	return voidDriverFor("beginPass") == VOID_DRIVER_VIEWS ? voidViewsFbWidth() : voidWindowWidth();
 }
 
 int32_t voidSwapchainHeight(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsFbHeight() : voidWebHeight();
+	return voidDriverFor("beginPass") == VOID_DRIVER_VIEWS ? voidViewsFbHeight() : voidWindowHeight();
 }
 
 int32_t voidSwapchainSampleCount(void) {
-	return screenDriver() == DRIVER_VIEWS ? voidViewsSampleCount() : voidWebSampleCount();
+	return voidDriverFor("beginPass") == VOID_DRIVER_VIEWS ? voidViewsSampleCount() : voidWebSampleCount();
 }
 
 void *voidSwapchainRenderView(void) {
-	if (screenDriver() == DRIVER_VIEWS) return viewRenderView((const WebSurface *)voidViewsCurrentSurface());
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) return viewRenderView((const WebSurface *)voidViewsCurrentSurface());
 #if defined(VOID_WGPU)
 	return voidWebRenderView();
 #else
@@ -632,7 +562,7 @@ void *voidSwapchainRenderView(void) {
 }
 
 void *voidSwapchainResolveView(void) {
-	if (screenDriver() == DRIVER_VIEWS) return viewResolveView((const WebSurface *)voidViewsCurrentSurface());
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) return viewResolveView((const WebSurface *)voidViewsCurrentSurface());
 #if defined(VOID_WGPU)
 	return voidWebResolveView();
 #else
@@ -641,7 +571,7 @@ void *voidSwapchainResolveView(void) {
 }
 
 void *voidSwapchainDepthStencilView(void) {
-	if (screenDriver() == DRIVER_VIEWS) return NULL;
+	if (voidDriverFor("beginPass") == VOID_DRIVER_VIEWS) return NULL;
 #if defined(VOID_WGPU)
 	return voidWebDepthStencilView();
 #else
@@ -650,5 +580,5 @@ void *voidSwapchainDepthStencilView(void) {
 }
 
 void voidDriverPresent(void) {
-	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
+	if (voidDriver == VOID_DRIVER_VIEWS) voidViewsPresent();
 }

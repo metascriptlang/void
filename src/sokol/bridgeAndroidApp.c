@@ -8,6 +8,7 @@
 #include <jni.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -32,51 +33,19 @@ static float s_scale = 1.0f;
 static uint32_t s_modifiers;
 static int s_textInput;
 static VoidFrameTiming s_timing;
-static VoidKeysHeld s_keysHeld;
 
 uint64_t voidAndroidFrameCount(void) { return s_frameCount; }
 int voidAndroidWidth(void) { return s_fbW; }
 int voidAndroidHeight(void) { return s_fbH; }
 bool voidAndroidValid(void) { return s_running != 0; }
+float voidAndroidScale(void) { return s_scale; }
+uint32_t voidAndroidModifiers(void) { return s_modifiers; }
 double voidAndroidFrameDuration(void) { return s_timing.smoothDt; }
 
 static void check(JNIEnv *e, const char *op) {
 	if (!(*e)->ExceptionCheck(e)) return;
 	(*e)->ExceptionDescribe(e);
 	voidFail("Android app driver: %s threw", op);
-}
-
-static VoidAppEvent makeEvent(VoidAppEventType type) {
-	VoidAppEvent e;
-	memset(&e, 0, sizeof e);
-	e.type = type;
-	e.frameCount = s_frameCount;
-	e.modifiers = s_modifiers;
-	e.framebufferWidth = s_fbW;
-	e.framebufferHeight = s_fbH;
-	e.windowWidth = (int)(s_fbW / s_scale);
-	e.windowHeight = (int)(s_fbH / s_scale);
-	return e;
-}
-
-static void send(VoidAppEventType type) {
-	VoidAppEvent e = makeEvent(type);
-	voidAppDeliver(&e);
-}
-
-static void sendKey(VoidAppEventType type, VoidKeyCode code, bool repeat) {
-	voidKeysHeldTrack(&s_keysHeld, type, code);
-	VoidAppEvent e = makeEvent(type);
-	e.keyCode = code;
-	e.keyRepeat = repeat;
-	voidAppDeliver(&e);
-}
-
-static void releaseKey(VoidKeyCode key) { sendKey(VOID_EVENT_KEY_UP, key, false); }
-
-static void sendTap(VoidKeyCode code) {
-	sendKey(VOID_EVENT_KEY_DOWN, code, false);
-	sendKey(VOID_EVENT_KEY_UP, code, false);
 }
 
 static VoidKeyCode keyOfAndroid(int code) {
@@ -136,13 +105,6 @@ static uint32_t modifiersOf(int meta) {
 
 static int chordHeld(void) { return (s_modifiers & (VOID_MODIFIER_CTRL | VOID_MODIFIER_SUPER)) != 0; }
 
-static void sendChar(uint32_t codepoint) {
-	if (codepoint < 0x20 || codepoint == 0x7F) return;
-	VoidAppEvent e = makeEvent(VOID_EVENT_CHAR);
-	e.charCode = codepoint;
-	voidAppDeliver(&e);
-}
-
 static size_t putUtf8(char *out, uint32_t c) {
 	if (c < 0x80) { out[0] = (char)c; return 1; }
 	if (c < 0x800) { out[0] = (char)(0xC0 | (c >> 6)); out[1] = (char)(0x80 | (c & 0x3F)); return 2; }
@@ -172,51 +134,42 @@ static size_t codepointsOf(JNIEnv *e, jstring s, uint32_t *out, size_t cap) {
 	return count;
 }
 
-#define TEXT_CAP 256
+typedef struct {
+	char *utf8;
+	uint32_t *codepoints;
+	size_t count;
+} JavaText;
 
-static void textOf(JNIEnv *e, jstring s, char *utf8, uint32_t *codepoints, size_t *count) {
-	*count = codepointsOf(e, s, codepoints, TEXT_CAP);
+static JavaText textOf(JNIEnv *e, jstring s) {
+	const size_t units = (size_t)(*e)->GetStringLength(e, s);
+	JavaText t = { malloc(units * 3 + 1), malloc((units + 1) * sizeof(uint32_t)), 0 };
+	if (!t.utf8 || !t.codepoints) voidFail("text input: out of memory for %zu UTF-16 units", units);
+	t.count = codepointsOf(e, s, t.codepoints, units);
 	size_t at = 0;
-	for (size_t i = 0; i < *count; i++) at += putUtf8(utf8 + at, codepoints[i]);
-	utf8[at] = '\0';
+	for (size_t i = 0; i < t.count; i++) at += putUtf8(t.utf8 + at, t.codepoints[i]);
+	t.utf8[at] = '\0';
+	return t;
 }
 
-static void commit(const char *utf8, const uint32_t *codepoints, size_t count) {
-	if (s_textInput) {
-		int printable = 0;
-		for (size_t i = 0; i < count; i++) printable |= codepoints[i] >= 0x20 && codepoints[i] != 0x7F;
-		if (printable) voidAppTextDeliver(VOID_EVENT_TEXT_INPUT, utf8, 0);
-	} else {
-		for (size_t i = 0; i < count; i++) sendChar(codepoints[i]);
-	}
+static void textFree(JavaText t) {
+	free(t.utf8);
+	free(t.codepoints);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeCommit(JNIEnv *e, jobject self, jstring text) {
 	(void)self;
 	if (chordHeld()) return;
-	char utf8[TEXT_CAP * 4 + 1];
-	uint32_t codepoints[TEXT_CAP];
-	size_t count;
-	textOf(e, text, utf8, codepoints, &count);
-	if (count == 1 && (codepoints[0] == '\n' || codepoints[0] == '\r')) {
-		sendTap(VOID_KEY_ENTER);
-		return;
-	}
-	if (count == 1 && codepoints[0] == '\t') {
-		sendTap(VOID_KEY_TAB);
-		return;
-	}
-	commit(utf8, codepoints, count);
+	JavaText t = textOf(e, text);
+	voidMobileCommit(s_textInput, t.utf8, t.codepoints, t.count);
+	textFree(t);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativePreedit(JNIEnv *e, jobject self, jstring text, jint cursor) {
 	(void)self;
 	if (!s_textInput) return;
-	char utf8[TEXT_CAP * 4 + 1];
-	uint32_t codepoints[TEXT_CAP];
-	size_t count;
-	textOf(e, text, utf8, codepoints, &count);
-	voidAppTextDeliver(VOID_EVENT_PREEDIT, utf8, cursor);
+	JavaText t = textOf(e, text);
+	voidAppTextDeliver(VOID_EVENT_PREEDIT, t.utf8, cursor);
+	textFree(t);
 }
 
 JNIEXPORT jboolean JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeKey(JNIEnv *e, jobject self,
@@ -224,13 +177,13 @@ JNIEXPORT jboolean JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeKey(JNI
 	(void)e; (void)self;
 	s_modifiers = modifiersOf(metaState);
 	const VoidKeyCode code = keyOfAndroid(keyCode);
-	if (code != VOID_KEY_INVALID) sendKey(down ? VOID_EVENT_KEY_DOWN : VOID_EVENT_KEY_UP, code, repeat > 0);
+	if (code != VOID_KEY_INVALID) voidMobileKey(down ? VOID_EVENT_KEY_DOWN : VOID_EVENT_KEY_UP, code, repeat > 0);
 	const int typed = down && unicode >= 0x20 && unicode != 0x7F && !chordHeld();
 	if (typed) {
 		char utf8[5];
 		const uint32_t c = (uint32_t)unicode;
 		utf8[putUtf8(utf8, c)] = '\0';
-		commit(utf8, &c, 1);
+		voidMobileCommit(s_textInput, utf8, &c, 1);
 	}
 	return code != VOID_KEY_INVALID || typed;
 }
@@ -242,7 +195,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeTouch(JNIEn
 		VOID_EVENT_TOUCHES_BEGAN, VOID_EVENT_TOUCHES_MOVED, VOID_EVENT_TOUCHES_ENDED, VOID_EVENT_TOUCHES_CANCELLED,
 	};
 	if (phase < 0 || phase > 3) voidFail("Android app driver: touch phase %d is not one of VoidAppView's four", phase);
-	VoidAppEvent ev = makeEvent(types[phase]);
+	VoidAppEvent ev = voidMobileEvent(types[phase]);
 	jsize n = (*e)->GetArrayLength(e, ids);
 	if (n > VOID_MAX_TOUCHPOINTS) n = VOID_MAX_TOUCHPOINTS;
 	jlong *id = (*e)->GetLongArrayElements(e, ids, NULL);
@@ -269,16 +222,16 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeInsets(JNIE
 		right != voidSafeAreaRight() || keyboard != voidKeyboardHeight();
 	voidAppSetSafeArea((float)top, (float)left, (float)bottom, (float)right);
 	voidAppSetKeyboard((float)keyboard);
-	if (changed && s_viewId != 0) send(VOID_EVENT_RESIZED);
+	if (changed && s_viewId != 0) voidMobileSend(VOID_EVENT_RESIZED);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeFocus(JNIEnv *e, jobject self, jboolean focused) {
 	(void)e; (void)self;
 	if (!focused) {
 		s_modifiers = 0;
-		voidKeysHeldRelease(&s_keysHeld, releaseKey);
+		voidMobileReleaseKeys();
 	}
-	if (s_viewId != 0) send(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
+	if (s_viewId != 0) voidMobileSend(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 }
 
 JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeSurface(JNIEnv *e, jobject self, jobject surface, jint width, jint height) {
@@ -292,7 +245,7 @@ JNIEXPORT void JNICALL Java_dev_metascript_voidapp_VoidAppView_nativeSurface(JNI
 	} else {
 		voidViewResize(s_viewId, s_fbW, s_fbH, s_scale);
 	}
-	send(VOID_EVENT_RESIZED);
+	voidMobileSend(VOID_EVENT_RESIZED);
 }
 
 static void dropView(void) {
@@ -398,14 +351,14 @@ void voidAndroidAppPause(JNIEnv *e) {
 	if (!s_view) return;
 	(*e)->CallVoidMethod(e, s_view, s_setRunning, JNI_FALSE);
 	check(e, "VoidAppView.setRunning");
-	if (s_frameCount > 0) send(VOID_EVENT_SUSPENDED);
+	if (s_frameCount > 0) voidMobileSend(VOID_EVENT_SUSPENDED);
 }
 
 void voidAndroidAppResume(JNIEnv *e) {
 	if (!s_view) return;
 	(*e)->CallVoidMethod(e, s_view, s_setRunning, JNI_TRUE);
 	check(e, "VoidAppView.setRunning");
-	if (s_frameCount > 0) send(VOID_EVENT_RESUMED);
+	if (s_frameCount > 0) voidMobileSend(VOID_EVENT_RESUMED);
 }
 
 void voidAndroidAppDestroy(JNIEnv *e) {
@@ -463,9 +416,3 @@ void voidSetTextInput(int on) {
 }
 
 void voidSetImeRect(int x, int y, int w, int h) { (void)x; (void)y; (void)w; (void)h; }
-
-int voidKeyDown(int keycode) { return keycode > VOID_KEY_INVALID && keycode < VOID_KEY_COUNT && s_keysHeld.down[keycode]; }
-
-int voidAndroidAppFbWidth(void) { return s_running && voidCurrentView() == 0 ? s_fbW : voidViewsFbWidth(); }
-int voidAndroidAppFbHeight(void) { return s_running && voidCurrentView() == 0 ? s_fbH : voidViewsFbHeight(); }
-float voidAndroidAppDpiScale(void) { return s_running && voidCurrentView() == 0 ? s_scale : voidViewsDpiScale(); }

@@ -7,7 +7,7 @@
 #include <GLES3/gl3.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 
 #include "bridge.h"
 #include "views.h"
@@ -18,8 +18,6 @@
 static EGLDisplay g_dpy = EGL_NO_DISPLAY;
 static EGLContext g_ctx = EGL_NO_CONTEXT;
 static EGLConfig g_cfg;
-static int g_generation = 1;
-static int g_contextLost = 0;
 
 typedef struct {
 	const void *window;
@@ -78,18 +76,12 @@ void voidPlatformDeviceEnsure(void) {
 static char g_assetRoot[1024] = {0};
 
 void voidEmbedSetAssetRoot(const char *p) {
-	size_t n = 0;
-	while (p[n] && n < sizeof(g_assetRoot) - 1) { g_assetRoot[n] = p[n]; n++; }
-	g_assetRoot[n] = 0;
+	const size_t n = strlen(p);
+	if (n >= sizeof(g_assetRoot)) voidFail("voidEmbedSetAssetRoot: the path is %zu bytes, longer than %zu", n, sizeof(g_assetRoot) - 1);
+	memcpy(g_assetRoot, p, n + 1);
 }
 
-void voidPlatformRunInit(msClosure init) {
-	char prev[1024];
-	const char *got = getcwd(prev, sizeof prev);
-	if (g_assetRoot[0]) chdir(g_assetRoot);
-	voidCallClosure(init);
-	if (got) chdir(prev);
-}
+const char *voidAndroidAssetDir(void) { return g_assetRoot; }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	AndroidSurface *s = (AndroidSurface *)calloc(1, sizeof(AndroidSurface));
@@ -120,15 +112,11 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 // ---- context loss (docs/VOID3D.md, Android lifecycle) ----
 //
 // eglSwapBuffers fails with EGL_CONTEXT_LOST after a power-management event; every GL object
-// is gone. The next frame makes a new context, remakes every view's surface and sets the door
-// up again, then counts a new generation: void3d's renderer sees it (gpu3d contextGeneration),
-// drops its stale handles and rebuilds targets, samplers, pipelines and the palette LUT from
-// CPU data. The app's meshes and textures are not rebuilt yet (void3d M5), nor is void2d.
-
-int voidGpuGeneration(void) { return g_generation; }
+// is gone. The next frame shuts the door down (its GL deletes go to the lost context, which
+// ignores them), makes a new context, remakes every view's surface and sets the door up again,
+// which bumps doorContextGeneration: the owners of the old ids drop them without destroying.
 
 // Forces the rebuild on the next frame, to exercise it on a device without a real loss.
-void voidLoseContext(void) { g_contextLost = 1; }
 void voidEmbedLoseContext(void) { voidLoseContext(); }
 
 static void dropSurface(void *surface) {
@@ -143,35 +131,31 @@ static void remakeSurface(void *surface) {
 	if (s->surf == EGL_NO_SURFACE) voidFail("EGL could not remake a surface after a context loss: 0x%04x", eglGetError());
 }
 
-static void restore_context(AndroidSurface *current) {
-	// The door frees its pools here; the GL deletes it issues go to the lost context, which
-	// ignores them. Stale door ids may be handed out again after doorSetup, so the owners of
-	// the old ones must drop them without destroying (the generation tells them).
-	doorShutdown();
+static AndroidSurface *s_acquired;
+
+static void rebuildContext(void) {
 	eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	voidViewsEachSurface(dropSurface);
 	if (g_ctx != EGL_NO_CONTEXT) eglDestroyContext(g_dpy, g_ctx);
 	g_ctx = EGL_NO_CONTEXT;
 	if (!egl_boot()) voidFail("EGL could not rebuild the context after a loss: 0x%04x", eglGetError());
 	voidViewsEachSurface(remakeSurface);
-	makeCurrent(current);
+	makeCurrent(s_acquired);
 	setupDoor();
-	g_generation++;
-	g_contextLost = 0;
 }
 
 int voidPlatformSurfaceReady(void *surface) { (void)surface; return 1; }
 
 int voidPlatformSurfaceAcquire(void *surface) {
-	AndroidSurface *s = (AndroidSurface *)surface;
-	if (g_contextLost) restore_context(s);
-	makeCurrent(s);
+	s_acquired = (AndroidSurface *)surface;
+	voidRestoreContextIfLost(rebuildContext);
+	makeCurrent(s_acquired);
 	return 1;
 }
 
 void voidPlatformSurfacePresent(void *surface) {
 	AndroidSurface *s = (AndroidSurface *)surface;
-	if (!eglSwapBuffers(g_dpy, s->surf) && eglGetError() == EGL_CONTEXT_LOST) g_contextLost = 1;
+	if (!eglSwapBuffers(g_dpy, s->surf) && eglGetError() == EGL_CONTEXT_LOST) voidLoseContext();
 }
 
 void voidPlatformSurfaceDestroy(void *surface) {
@@ -194,10 +178,6 @@ void voidEmbedDetach(void) {
 void voidGfxSetup(void) {
 	if (!doorValid()) voidFail("gfxSetup before voidViewCreate made the EGL context");
 }
-
-int voidFbWidth(void) { return voidAndroidAppFbWidth(); }
-int voidFbHeight(void) { return voidAndroidAppFbHeight(); }
-float voidDpiScale(void) { return voidAndroidAppDpiScale(); }
 
 // The screen pass draws into the current view's EGL surface, which is framebuffer 0 on GL and
 // has no view objects.

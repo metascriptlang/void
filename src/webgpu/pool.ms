@@ -1,3 +1,5 @@
+import { GPUTextureFormat } from "./types.ms";
+
 export const SLOT_SHIFT = 16;
 export const SLOT_MASK = 0xFFFF;
 
@@ -60,6 +62,19 @@ export function store<T>(ref pool: Pool<T>, slot: T): void {
 
 export function release<T>(ref pool: Pool<T>, id: uint32): void { releaseId(pool.core, id); }
 
+export function free<T>(ref pool: Pool<T>, id: uint32): void {
+	pool.slots[pool.slotIndex(id)] = pool.slots[0];
+	releaseId(pool.core, id);
+}
+
+export function put<T>(ref natives: Vec<T>, id: uint32, native: T): void {
+	const index = slotOf(id);
+	while (natives.length <= index) { natives.push(natives[0]); }
+	natives[index] = native;
+}
+
+export function vacate<T>(ref natives: Vec<T>, id: uint32): void { natives[slotOf(id)] = natives[0]; }
+
 export function reset<T>(ref pool: Pool<T>): void {
 	const zero = pool.slots[0];
 	while (pool.slots.length > 1) { pool.slots.pop(); }
@@ -91,3 +106,77 @@ export function liveIds<T>(this pool: Pool<T>): Vec<uint32> {
 	for (let i: int32 = 1; i < pool.slots.length; i++) { if (pool.slots[i].id != 0) { ids.push(pool.slots[i].id); } }
 	return ids;
 }
+
+export struct BufferRecord {
+	id: uint32;
+	size: int64;
+	usage: int32;
+}
+
+export struct TextureRecord {
+	id: uint32;
+	width: int32;
+	height: int32;
+	format: GPUTextureFormat;
+	usage: int32;
+	sampleCount: int32;
+	mipLevels: int32;
+	layers: int32;
+	volume: boolean;
+	cube: boolean;
+	swapchainView: uint32;
+}
+
+export struct ViewRecord {
+	id: uint32;
+	texture: uint32;
+	dimension: string;
+	baseMip: int32;
+	mipCount: int32;
+	baseLayer: int32;
+	layerCount: int32;
+	attachable: boolean;
+	swapchain: boolean;
+}
+
+export struct PipelineRecord {
+	id: uint32;
+	layouts: uint32[2];
+}
+
+export struct LayoutRecord {
+	id: uint32;
+	pipeline: uint32;
+	group: int32;
+}
+
+export struct IdRecord { id: uint32; }
+
+export let bufferRecords: Pool<BufferRecord> = newPool<BufferRecord>("", "GPUBuffer", "buffer", { id: 0 });
+export let textureRecords: Pool<TextureRecord> = newPool<TextureRecord>("", "GPUTexture", "texture", { id: 0 });
+export let viewRecords: Pool<ViewRecord> = newPool<ViewRecord>("", "GPUTextureView", "view", { id: 0 });
+export let samplerRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUSampler", "sampler", { id: 0 });
+export let shaderRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUShaderModule", "shader module", { id: 0 });
+export let pipelineRecords: Pool<PipelineRecord> = newPool<PipelineRecord>("", "GPURenderPipeline", "render or compute pipeline", { id: 0 });
+export let layoutRecords: Pool<LayoutRecord> = newPool<LayoutRecord>("", "GPUBindGroupLayout", "bind group layout", { id: 0 });
+export let bindGroupRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUBindGroup", "bind group", { id: 0 });
+export let querySetRecords: Pool<IdRecord> = newPool<IdRecord>("", "GPUQuerySet", "query set", { id: 0 });
+
+function resetFor<T>(ref pool: Pool<T>, backend: string): void {
+	reset(pool);
+	pool.core.backend = backend;
+}
+
+export function resetRecords(backend: string): void {
+	resetFor(bufferRecords, backend);
+	resetFor(textureRecords, backend);
+	resetFor(viewRecords, backend);
+	resetFor(samplerRecords, backend);
+	resetFor(shaderRecords, backend);
+	resetFor(pipelineRecords, backend);
+	resetFor(layoutRecords, backend);
+	resetFor(bindGroupRecords, backend);
+	resetFor(querySetRecords, backend);
+}
+
+export function record<T>(this pool: Pool<T>, id: uint32): T { return pool.slots[pool.slotIndex(id)]; }

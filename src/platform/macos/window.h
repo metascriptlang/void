@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../appEvent.h"
+#include "../windowCore.h"
 
 typedef struct {
 	void (*init)(void);
@@ -21,29 +21,8 @@ typedef struct {
 } VoidMacosDesc;
 
 void voidMacosRun(const VoidMacosDesc *desc);
-bool voidMacosValid(void);
 void *voidMacosView(void);
-int voidMacosWidth(void);
-int voidMacosHeight(void);
-float voidMacosDpiScale(void);
-uint64_t voidMacosFrameCount(void);
-void voidMacosRequestQuit(void);
-void voidMacosSetTitle(const char *title);
 
-void voidMacosCancelQuit(void);
-double voidMacosFrameDuration(void);
-void voidMacosSetClipboard(const char *utf8);
-const char *voidMacosClipboard(void);
-void voidMacosSetCursor(int cursor);
-int voidMacosCursor(void);
-void voidMacosShowMouse(bool shown);
-bool voidMacosMouseShown(void);
-void voidMacosLockMouse(bool locked);
-bool voidMacosMouseLocked(void);
-void voidMacosToggleFullscreen(void);
-bool voidMacosIsFullscreen(void);
-int voidMacosDroppedCount(void);
-const char *voidMacosDroppedPath(int i);
 void voidMacosSetTextInput(bool on);
 void voidMacosSetImeRect(int x, int y, int w, int h);
 

@@ -24,6 +24,4 @@ void voidViewsEachSurface(void (*fn)(void *surface));
 
 void voidDriverPresent(void);
 
-__attribute__((noreturn)) void voidFail(const char *fmt, ...);
-
 #endif

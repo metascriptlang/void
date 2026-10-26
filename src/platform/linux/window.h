@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../appEvent.h"
+#include "../windowCore.h"
 
 typedef struct {
 	void (*init)(void);
@@ -22,28 +22,6 @@ typedef struct {
 } VoidLinuxDesc;
 
 void voidLinuxRun(const VoidLinuxDesc *desc);
-bool voidLinuxValid(void);
-int voidLinuxWidth(void);
-int voidLinuxHeight(void);
-float voidLinuxDpiScale(void);
-uint64_t voidLinuxFrameCount(void);
-void voidLinuxRequestQuit(void);
-void voidLinuxSetTitle(const char *title);
 void voidLinuxSwapBuffers(void);
-
-void voidLinuxCancelQuit(void);
-double voidLinuxFrameDuration(void);
-void voidLinuxSetClipboard(const char *utf8);
-const char *voidLinuxClipboard(void);
-void voidLinuxSetCursor(int cursor);
-int voidLinuxCursor(void);
-void voidLinuxShowMouse(bool shown);
-bool voidLinuxMouseShown(void);
-void voidLinuxLockMouse(bool locked);
-bool voidLinuxMouseLocked(void);
-void voidLinuxToggleFullscreen(void);
-bool voidLinuxIsFullscreen(void);
-int voidLinuxDroppedCount(void);
-const char *voidLinuxDroppedPath(int i);
 
 #endif

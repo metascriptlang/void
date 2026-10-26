@@ -19,7 +19,6 @@
 #include <string.h>
 
 #include "../clock.h"
-#include "../frameTiming.h"
 
 #if defined(VOID_GLES3) || defined(VOID_FORCE_EGL)
 #define VOID_LINUX_EGL 1
@@ -928,32 +927,6 @@ typedef struct {
 
 static struct {
 	VoidLinuxDesc desc;
-	bool valid;
-	bool firstFrame;
-	bool initCalled;
-	bool cleanupCalled;
-	bool quitRequested;
-	bool quitOrdered;
-	VoidFrameTiming timing;
-	uint64_t frameCount;
-	int windowWidth;
-	int windowHeight;
-	int framebufferWidth;
-	int framebufferHeight;
-	float dpiScale;
-	struct {
-		float x, y, dx, dy;
-		bool posValid;
-		bool shown;
-		bool locked;
-		bool requestedLock;
-		int cursor;
-	} mouse;
-	bool fullscreen;
-	char *clipboard;
-	int droppedCount;
-	char **droppedPaths;
-	VoidAppEvent event;
 	int16_t keycodes[X11_KEYCODES];
 	struct {
 		uint8_t mouseButtons;
@@ -1028,8 +1001,9 @@ static struct {
 		bool ARB_create_context_profile;
 	} glx;
 #endif
-	VoidKeysHeld keysHeld;
 } s;
+
+VoidWindow voidWindow;
 
 __attribute__((noreturn)) static void fail(const char *what) {
 	fprintf(stderr, "void: %s\n", what);
@@ -1039,33 +1013,6 @@ __attribute__((noreturn)) static void fail(const char *what) {
 static int roundAtLeastOne(float f) {
 	int v = (int)roundf(f);
 	return v <= 0 ? 1 : v;
-}
-
-static bool eventsEnabled(void) { return s.desc.event != NULL && s.initCalled; }
-
-static void initEvent(VoidAppEventType type) {
-	memset(&s.event, 0, sizeof s.event);
-	s.event.type = type;
-	s.event.frameCount = s.frameCount;
-	s.event.mouseButton = VOID_MOUSE_INVALID;
-	s.event.windowWidth = s.windowWidth;
-	s.event.windowHeight = s.windowHeight;
-	s.event.framebufferWidth = s.framebufferWidth;
-	s.event.framebufferHeight = s.framebufferHeight;
-	s.event.mouseX = s.mouse.x;
-	s.event.mouseY = s.mouse.y;
-	s.event.mouseDx = s.mouse.dx;
-	s.event.mouseDy = s.mouse.dy;
-}
-
-static void callEvent(void) {
-	if (!s.cleanupCalled) s.desc.event(&s.event);
-}
-
-static void appEvent(VoidAppEventType type) {
-	if (!eventsEnabled()) return;
-	initEvent(type);
-	callEvent();
 }
 
 static int errorHandler(Display *display, XErrorEvent *event) {
@@ -1581,14 +1528,14 @@ static bool waitForEvent(int eventType, int64_t timeoutNs, XEvent *out) {
 // Window size is X11 pixels over Xft.dpi/96; the framebuffer is X11 pixels (sokol_app.h :13003).
 static void updateDimensions(int x11Width, int x11Height) {
 	const float windowScale = s.x11.dpi / 96.0f;
-	s.windowWidth = roundAtLeastOne((float)x11Width / windowScale);
-	s.windowHeight = roundAtLeastOne((float)x11Height / windowScale);
-	const int fbWidth = roundAtLeastOne((float)s.windowWidth * s.dpiScale);
-	const int fbHeight = roundAtLeastOne((float)s.windowHeight * s.dpiScale);
-	if (fbWidth == s.framebufferWidth && fbHeight == s.framebufferHeight) return;
-	s.framebufferWidth = fbWidth;
-	s.framebufferHeight = fbHeight;
-	if (!s.firstFrame) appEvent(VOID_EVENT_RESIZED);
+	voidWindow.windowWidth = roundAtLeastOne((float)x11Width / windowScale);
+	voidWindow.windowHeight = roundAtLeastOne((float)x11Height / windowScale);
+	const int fbWidth = roundAtLeastOne((float)voidWindow.windowWidth * voidWindow.dpiScale);
+	const int fbHeight = roundAtLeastOne((float)voidWindow.windowHeight * voidWindow.dpiScale);
+	if (fbWidth == voidWindow.framebufferWidth && fbHeight == voidWindow.framebufferHeight) return;
+	voidWindow.framebufferWidth = fbWidth;
+	voidWindow.framebufferHeight = fbHeight;
+	voidWindowAppEvent(VOID_EVENT_RESIZED);
 }
 
 static void updateDimensionsFromWindowSize(void) {
@@ -1619,10 +1566,10 @@ static void createWindow(Visual *visual, int depth) {
 	const int displayWidth = DisplayWidth(s.x11.display, s.x11.screen);
 	const int displayHeight = DisplayHeight(s.x11.display, s.x11.screen);
 	const float windowScale = s.x11.dpi / 96.0f;
-	int x11Width = roundAtLeastOne((float)s.windowWidth * windowScale);
-	int x11Height = roundAtLeastOne((float)s.windowHeight * windowScale);
-	if (s.windowWidth == 0) x11Width = displayWidth * 4 / 5;
-	if (s.windowHeight == 0) x11Height = displayHeight * 4 / 5;
+	int x11Width = roundAtLeastOne((float)voidWindow.windowWidth * windowScale);
+	int x11Height = roundAtLeastOne((float)voidWindow.windowHeight * windowScale);
+	if (voidWindow.windowWidth == 0) x11Width = displayWidth * 4 / 5;
+	if (voidWindow.windowHeight == 0) x11Height = displayHeight * 4 / 5;
 	grabErrorHandler();
 	s.x11.window = XCreateWindow(s.x11.display, s.x11.root, 0, 0, (unsigned)x11Width, (unsigned)x11Height, 0, depth,
 		InputOutput, visual, wamask, &wa);
@@ -1838,51 +1785,51 @@ static void mouseUpdate(int x, int y, bool clearDelta) {
 	const float newX = (float)x;
 	const float newY = (float)y;
 	if (clearDelta) {
-		s.mouse.dx = 0.0f;
-		s.mouse.dy = 0.0f;
-	} else if (s.mouse.posValid) {
-		s.mouse.dx = newX - s.mouse.x;
-		s.mouse.dy = newY - s.mouse.y;
+		voidWindow.mouse.dx = 0.0f;
+		voidWindow.mouse.dy = 0.0f;
+	} else if (voidWindow.mouse.posValid) {
+		voidWindow.mouse.dx = newX - voidWindow.mouse.x;
+		voidWindow.mouse.dy = newY - voidWindow.mouse.y;
 	}
-	s.mouse.x = newX;
-	s.mouse.y = newY;
-	s.mouse.posValid = true;
+	voidWindow.mouse.x = newX;
+	voidWindow.mouse.y = newY;
+	voidWindow.mouse.posValid = true;
 }
 
 static void mouseEvent(VoidAppEventType type, VoidMouseButton button, uint32_t modifiers) {
-	if (!eventsEnabled()) return;
-	initEvent(type);
-	s.event.mouseButton = button;
-	s.event.modifiers = modifiers;
-	callEvent();
+	if (!voidWindowEventsEnabled()) return;
+	voidWindowInitEvent(type);
+	voidWindow.event.mouseButton = button;
+	voidWindow.event.modifiers = modifiers;
+	voidWindowCallEvent();
 }
 
 static void scrollEvent(float x, float y, uint32_t modifiers) {
-	if (!eventsEnabled()) return;
-	initEvent(VOID_EVENT_MOUSE_SCROLL);
-	s.event.modifiers = modifiers;
-	s.event.scrollX = x;
-	s.event.scrollY = y;
-	callEvent();
+	if (!voidWindowEventsEnabled()) return;
+	voidWindowInitEvent(VOID_EVENT_MOUSE_SCROLL);
+	voidWindow.event.modifiers = modifiers;
+	voidWindow.event.scrollX = x;
+	voidWindow.event.scrollY = y;
+	voidWindowCallEvent();
 }
 
 static void keyEvent(VoidAppEventType type, VoidKeyCode key, bool repeat, uint32_t modifiers) {
-	if (!eventsEnabled()) return;
-	voidKeysHeldTrack(&s.keysHeld, type, key);
-	initEvent(type);
-	s.event.keyCode = key;
-	s.event.keyRepeat = repeat;
-	s.event.modifiers = modifiers;
-	callEvent();
+	if (!voidWindowEventsEnabled()) return;
+	voidKeysHeldTrack(&voidWindow.keysHeld, type, key);
+	voidWindowInitEvent(type);
+	voidWindow.event.keyCode = key;
+	voidWindow.event.keyRepeat = repeat;
+	voidWindow.event.modifiers = modifiers;
+	voidWindowCallEvent();
 }
 
 static void charEvent(uint32_t c, bool repeat, uint32_t modifiers) {
-	if (!eventsEnabled()) return;
-	initEvent(VOID_EVENT_CHAR);
-	s.event.charCode = c;
-	s.event.keyRepeat = repeat;
-	s.event.modifiers = modifiers;
-	callEvent();
+	if (!voidWindowEventsEnabled()) return;
+	voidWindowInitEvent(VOID_EVENT_CHAR);
+	voidWindow.event.charCode = c;
+	voidWindow.event.keyRepeat = repeat;
+	voidWindow.event.modifiers = modifiers;
+	voidWindowCallEvent();
 }
 
 static VoidKeyCode translateKey(int scancode) {
@@ -1920,8 +1867,8 @@ static void releaseKey(VoidKeyCode key) { keyEvent(VOID_EVENT_KEY_UP, key, false
 static void onFocus(const XEvent *event, bool focused) {
 	if (event->xfocus.mode == NotifyGrab || event->xfocus.mode == NotifyUngrab) return;
 	s.x11.windowFocused = focused;
-	if (!focused) voidKeysHeldRelease(&s.keysHeld, releaseKey);
-	appEvent(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
+	if (!focused) voidKeysHeldRelease(&voidWindow.keysHeld, releaseKey);
+	voidWindowAppEvent(focused ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 }
 
 // X11 reports the modifier state from before the event, so a modifier key's own bit is added on
@@ -1932,7 +1879,7 @@ static void onKeyPress(XEvent *event) {
 	const bool repeat = keypressRepeat(keycode);
 	const uint32_t modifiers = mods(event->xkey.state) | keyModifierBit(key);
 	if (key != VOID_KEY_INVALID) keyEvent(VOID_EVENT_KEY_DOWN, key, repeat, modifiers);
-	if (key == VOID_KEY_V && modifiers == VOID_MODIFIER_CTRL) appEvent(VOID_EVENT_CLIPBOARD_PASTED);
+	if (key == VOID_KEY_V && modifiers == VOID_MODIFIER_CTRL) voidWindowAppEvent(VOID_EVENT_CLIPBOARD_PASTED);
 	KeySym keysym;
 	XLookupString(&event->xkey, NULL, 0, &keysym, NULL);
 	const int32_t c = keysymToUnicode(keysym);
@@ -1984,8 +1931,8 @@ static void onPropertyNotify(const XEvent *event) {
 	const int state = windowState();
 	if (state == s.x11.windowState) return;
 	s.x11.windowState = state;
-	if (state == IconicState) appEvent(VOID_EVENT_ICONIFIED);
-	else if (state == NormalState) appEvent(VOID_EVENT_RESTORED);
+	if (state == IconicState) voidWindowAppEvent(VOID_EVENT_ICONIFIED);
+	else if (state == NormalState) voidWindowAppEvent(VOID_EVENT_RESTORED);
 }
 
 static void sendRootClientMessage(Atom type, long a, long b) {
@@ -2065,8 +2012,8 @@ static void destroyCursors(void) {
 
 static void updateCursor(void) {
 	if (!s.x11.window) return;
-	if (!s.mouse.shown) XDefineCursor(s.x11.display, s.x11.window, s.x11.hiddenCursor);
-	else if (s.x11.standardCursors[s.mouse.cursor]) XDefineCursor(s.x11.display, s.x11.window, s.x11.standardCursors[s.mouse.cursor]);
+	if (!voidWindow.mouse.shown) XDefineCursor(s.x11.display, s.x11.window, s.x11.hiddenCursor);
+	else if (s.x11.standardCursors[voidWindow.mouse.cursor]) XDefineCursor(s.x11.display, s.x11.window, s.x11.standardCursors[voidWindow.mouse.cursor]);
 	else XUndefineCursor(s.x11.display, s.x11.window);
 	XFlush(s.x11.display);
 }
@@ -2087,40 +2034,40 @@ static void doLockMouse(void) {
 		ButtonPressMask | ButtonReleaseMask | PointerMotionMask, GrabModeAsync, GrabModeAsync, s.x11.window,
 		s.x11.hiddenCursor, CurrentTime);
 	if (result != GrabSuccess) return;
-	s.mouse.locked = true;
-	s.mouse.dx = 0.0f;
-	s.mouse.dy = 0.0f;
+	voidWindow.mouse.locked = true;
+	voidWindow.mouse.dx = 0.0f;
+	voidWindow.mouse.dy = 0.0f;
 	selectRawMotion(true);
 }
 
 static void doUnlockMouse(void) {
 	selectRawMotion(false);
-	s.mouse.dx = 0.0f;
-	s.mouse.dy = 0.0f;
-	s.mouse.locked = false;
-	XWarpPointer(s.x11.display, None, s.x11.window, 0, 0, 0, 0, (int)s.mouse.x, (int)s.mouse.y);
+	voidWindow.mouse.dx = 0.0f;
+	voidWindow.mouse.dy = 0.0f;
+	voidWindow.mouse.locked = false;
+	XWarpPointer(s.x11.display, None, s.x11.window, 0, 0, 0, 0, (int)voidWindow.mouse.x, (int)voidWindow.mouse.y);
 	XUngrabPointer(s.x11.display, CurrentTime);
 }
 
 static void updateMouseLock(void) {
 	if (!s.x11.windowFocused) {
-		if (s.mouse.locked) doUnlockMouse();
+		if (voidWindow.mouse.locked) doUnlockMouse();
 		return;
 	}
-	if (s.mouse.requestedLock == s.mouse.locked) return;
-	if (s.mouse.requestedLock) doLockMouse();
+	if (voidWindow.mouse.requestedLock == voidWindow.mouse.locked) return;
+	if (voidWindow.mouse.requestedLock) doLockMouse();
 	else doUnlockMouse();
 }
 
 static void onGenericEvent(XEvent *event) {
-	if (!s.mouse.locked || !s.x11.xi.available || event->xcookie.extension != s.x11.xi.majorOpcode) return;
+	if (!voidWindow.mouse.locked || !s.x11.xi.available || event->xcookie.extension != s.x11.xi.majorOpcode) return;
 	if (!XGetEventData(s.x11.display, &event->xcookie)) return;
 	if (event->xcookie.evtype == XI_RawMotion) {
 		const XIRawEvent *raw = (const XIRawEvent *)event->xcookie.data;
 		if (raw->valuators.mask_len) {
 			const double *values = raw->raw_values;
-			if (XIMaskIsSet(raw->valuators.mask, 0)) s.mouse.dx = (float)*values++;
-			if (XIMaskIsSet(raw->valuators.mask, 1)) s.mouse.dy = (float)*values;
+			if (XIMaskIsSet(raw->valuators.mask, 0)) voidWindow.mouse.dx = (float)*values++;
+			if (XIMaskIsSet(raw->valuators.mask, 1)) voidWindow.mouse.dy = (float)*values;
 			Window rootReturn, childReturn;
 			int rootX, rootY, winX, winY;
 			unsigned int state = 0;
@@ -2140,19 +2087,10 @@ static unsigned long windowProperty(Window window, Atom property, Atom type, uns
 	return itemCount;
 }
 
-static void clearDropped(void) {
-	for (int i = 0; i < s.droppedCount; i++) free(s.droppedPaths[i]);
-	free(s.droppedPaths);
-	s.droppedPaths = NULL;
-	s.droppedCount = 0;
-}
-
 static bool parseDroppedFilesList(const char *src) {
-	clearDropped();
 	size_t lines = 1;
 	for (const char *p = src; *p; p++) if (*p == '\n') lines++;
-	s.droppedPaths = (char **)calloc(lines, sizeof(char *));
-	if (s.droppedPaths == NULL) fail("calloc for the dropped file paths");
+	voidWindowBeginDrop(lines);
 	const char *p = src;
 	while (*p) {
 		const char *end = p;
@@ -2160,7 +2098,7 @@ static bool parseDroppedFilesList(const char *src) {
 		if (end > p) {
 			if (strncmp(p, "file://", 7) != 0 || end - p < 7) {
 				fprintf(stderr, "void: a dropped file uri has the wrong scheme\n");
-				clearDropped();
+				voidWindowClearDropped();
 				return false;
 			}
 			char *path = (char *)malloc((size_t)(end - p) + 1);
@@ -2176,7 +2114,7 @@ static bool parseDroppedFilesList(const char *src) {
 				}
 			}
 			*dst = 0;
-			s.droppedPaths[s.droppedCount++] = path;
+			voidWindow.droppedPaths[voidWindow.droppedCount++] = path;
 		}
 		p = end;
 		while (*p == '\r' || *p == '\n') p++;
@@ -2208,9 +2146,9 @@ static void onSelectionNotify(const XEvent *event) {
 	const unsigned long result = windowProperty(event->xselection.requestor, event->xselection.property,
 		event->xselection.target, (unsigned char **)&data);
 	if (result && data != NULL && parseDroppedFilesList(data)) {
-		s.mouse.dx = 0.0f;
-		s.mouse.dy = 0.0f;
-		appEvent(VOID_EVENT_FILES_DROPPED);
+		voidWindow.mouse.dx = 0.0f;
+		voidWindow.mouse.dy = 0.0f;
+		voidWindowAppEvent(VOID_EVENT_FILES_DROPPED);
 	}
 	if (s.x11.xdnd.version >= 2) sendXdndReply(s.x11.xdnd.XdndFinished, (long)result, (long)s.x11.xdnd.XdndActionCopy);
 	if (data) XFree(data);
@@ -2257,7 +2195,7 @@ static void onXdndPosition(void) {
 
 static void onSelectionRequest(const XEvent *event) {
 	const XSelectionRequestEvent *req = &event->xselectionrequest;
-	if (req->selection != s.x11.CLIPBOARD || s.clipboard == NULL) return;
+	if (req->selection != s.x11.CLIPBOARD || voidWindow.clipboard == NULL) return;
 	XSelectionEvent reply;
 	memset(&reply, 0, sizeof reply);
 	reply.type = SelectionNotify;
@@ -2269,7 +2207,7 @@ static void onSelectionRequest(const XEvent *event) {
 	reply.time = req->time;
 	if (req->target == s.x11.UTF8_STRING) {
 		XChangeProperty(s.x11.display, req->requestor, req->property, s.x11.UTF8_STRING, 8, PropModeReplace,
-			(const unsigned char *)s.clipboard, (int)strlen(s.clipboard));
+			(const unsigned char *)voidWindow.clipboard, (int)strlen(voidWindow.clipboard));
 	} else if (req->target == s.x11.TARGETS) {
 		XChangeProperty(s.x11.display, req->requestor, req->property, XA_ATOM, 32, PropModeReplace,
 			(const unsigned char *)&s.x11.UTF8_STRING, 1);
@@ -2283,7 +2221,7 @@ static void onClientMessage(XEvent *event) {
 	if (XFilterEvent(event, None)) return;
 	const Atom type = event->xclient.message_type;
 	if (type == s.x11.WM_PROTOCOLS) {
-		if ((Atom)event->xclient.data.l[0] == s.x11.WM_DELETE_WINDOW) s.quitRequested = true;
+		if ((Atom)event->xclient.data.l[0] == s.x11.WM_DELETE_WINDOW) voidWindow.quitRequested = true;
 	} else if (type == s.x11.xdnd.XdndEnter) {
 		onXdndEnter(event);
 	} else if (type == s.x11.xdnd.XdndDrop) {
@@ -2304,7 +2242,7 @@ static void processEvent(XEvent *event) {
 		case EnterNotify: onCrossing(event, VOID_EVENT_MOUSE_ENTER); break;
 		case LeaveNotify: onCrossing(event, VOID_EVENT_MOUSE_LEAVE); break;
 		case MotionNotify:
-			if (s.mouse.locked) break;
+			if (voidWindow.mouse.locked) break;
 			mouseUpdate(event->xmotion.x, event->xmotion.y, false);
 			mouseEvent(VOID_EVENT_MOUSE_MOVE, VOID_MOUSE_INVALID, mods(event->xmotion.state));
 			break;
@@ -2319,22 +2257,13 @@ static void processEvent(XEvent *event) {
 
 static void frame(void) {
 	updateDimensionsFromWindowSize();
-	if (s.firstFrame) {
-		s.firstFrame = false;
-		if (s.desc.init) s.desc.init();
-		s.initCalled = true;
-	}
-	if (!s.cleanupCalled && s.desc.frame) s.desc.frame();
-	s.frameCount++;
+	voidWindowFrame();
 }
 
 void voidLinuxRun(const VoidLinuxDesc *desc) {
 	memset(&s, 0, sizeof s);
 	s.desc = *desc;
-	s.firstFrame = true;
-	voidFrameTimingInit(&s.timing);
-	s.windowWidth = s.framebufferWidth = desc->width;
-	s.windowHeight = s.framebufferHeight = desc->height;
+	voidWindowStart(desc->init, desc->frame, desc->event, desc->cleanup, desc->width, desc->height);
 	s.x11.windowState = NormalState;
 	XInitThreads();
 	XrmInitialize();
@@ -2343,8 +2272,7 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	s.x11.screen = DefaultScreen(s.x11.display);
 	s.x11.root = DefaultRootWindow(s.x11.display);
 	querySystemDpi();
-	s.dpiScale = s.x11.dpi / 96.0f;
-	s.mouse.shown = true;
+	voidWindow.dpiScale = s.x11.dpi / 96.0f;
 	initAtoms();
 	initXinput();
 	createCursors();
@@ -2361,11 +2289,11 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 	createContext();
 	swapInterval(1);
 #endif
-	s.valid = true;
+	voidWindow.valid = true;
 	showWindow();
 	XFlush(s.x11.display);
-	while (!s.quitOrdered) {
-		voidFrameTimingUpdate(&s.timing, 0.0);
+	while (!voidWindow.quitOrdered) {
+		voidFrameTimingUpdate(&voidWindow.timing, 0.0);
 		int count = XPending(s.x11.display);
 		while (count--) {
 			XEvent event;
@@ -2375,15 +2303,9 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 		frame();
 		updateMouseLock();
 		XFlush(s.x11.display);
-		if (s.quitRequested && !s.quitOrdered) {
-			appEvent(VOID_EVENT_QUIT_REQUESTED);
-			if (s.quitRequested) s.quitOrdered = true;
-		}
+		if (voidWindow.quitRequested) voidWindowAskQuit();
 	}
-	if (!s.cleanupCalled) {
-		if (s.desc.cleanup) s.desc.cleanup();
-		s.cleanupCalled = true;
-	}
+	voidWindowCleanup();
 #if defined(VOID_LINUX_EGL)
 	destroyEgl();
 #else
@@ -2391,46 +2313,36 @@ void voidLinuxRun(const VoidLinuxDesc *desc) {
 #endif
 	destroyWindow();
 	destroyCursors();
-	clearDropped();
-	free(s.clipboard);
 	XCloseDisplay(s.x11.display);
+	voidWindowEnd();
 	memset(&s, 0, sizeof s);
 }
 
-bool voidLinuxValid(void) { return s.valid; }
-int voidLinuxWidth(void) { return s.framebufferWidth > 0 ? s.framebufferWidth : 1; }
-int voidLinuxHeight(void) { return s.framebufferHeight > 0 ? s.framebufferHeight : 1; }
-float voidLinuxDpiScale(void) { return s.dpiScale; }
-uint64_t voidLinuxFrameCount(void) { return s.frameCount; }
-void voidLinuxRequestQuit(void) { s.quitRequested = true; }
-void voidLinuxSetTitle(const char *title) { updateWindowTitle(title); }
+void voidWindowSetTitle(const char *title) { updateWindowTitle(title); }
 #if defined(VOID_LINUX_EGL)
 void voidLinuxSwapBuffers(void) { eglSwapBuffers(s.egl.display, s.egl.surface); }
 #else
 void voidLinuxSwapBuffers(void) { s.glx.SwapBuffers(s.x11.display, s.glx.window); }
 #endif
 
-
-void voidLinuxCancelQuit(void) { s.quitRequested = false; }
-double voidLinuxFrameDuration(void) { return s.timing.smoothDt; }
-void voidLinuxSetClipboard(const char *utf8) {
+void voidWindowSetClipboard(const char *utf8) {
 	char *copy = strdup(utf8);
 	if (copy == NULL) fail("strdup for the clipboard");
-	free(s.clipboard);
-	s.clipboard = copy;
+	free(voidWindow.clipboard);
+	voidWindow.clipboard = copy;
 	XSetSelectionOwner(s.x11.display, s.x11.CLIPBOARD, s.x11.window, CurrentTime);
 	if (XGetSelectionOwner(s.x11.display, s.x11.CLIPBOARD) != s.x11.window) fail("becoming the owner of the clipboard");
 }
 
-const char *voidLinuxClipboard(void) {
-	if (s.clipboard == NULL) s.clipboard = strdup("");
-	if (s.clipboard == NULL) fail("strdup for the clipboard");
-	if (XGetSelectionOwner(s.x11.display, s.x11.CLIPBOARD) == s.x11.window) return s.clipboard;
+const char *voidWindowClipboard(void) {
+	if (voidWindow.clipboard == NULL) voidWindow.clipboard = strdup("");
+	if (voidWindow.clipboard == NULL) fail("strdup for the clipboard");
+	if (XGetSelectionOwner(s.x11.display, s.x11.CLIPBOARD) == s.x11.window) return voidWindow.clipboard;
 	Atom property = XInternAtom(s.x11.display, "VOID_SELECTION", False);
 	Atom incremental = XInternAtom(s.x11.display, "INCR", False);
 	XConvertSelection(s.x11.display, s.x11.CLIPBOARD, s.x11.UTF8_STRING, property, s.x11.window, CurrentTime);
 	XEvent event;
-	if (!waitForEvent(SelectionNotify, 100000000, &event) || event.xselection.property == None) return s.clipboard;
+	if (!waitForEvent(SelectionNotify, 100000000, &event) || event.xselection.property == None) return voidWindow.clipboard;
 	char *data = NULL;
 	Atom actualType;
 	int actualFormat;
@@ -2439,46 +2351,35 @@ const char *voidLinuxClipboard(void) {
 		LONG_MAX, True, s.x11.UTF8_STRING, &actualType, &actualFormat, &itemCount, &bytesAfter, (unsigned char **)&data);
 	if (status != Success || data == NULL) {
 		if (data) XFree(data);
-		return s.clipboard;
+		return voidWindow.clipboard;
 	}
 	if (actualType == incremental) {
 		fprintf(stderr, "void: the clipboard owner sends its string in increments, which is not supported\n");
 	} else {
 		char *copy = strdup(data);
 		if (copy == NULL) fail("strdup for the clipboard");
-		free(s.clipboard);
-		s.clipboard = copy;
+		free(voidWindow.clipboard);
+		voidWindow.clipboard = copy;
 	}
 	XFree(data);
-	return s.clipboard;
+	return voidWindow.clipboard;
 }
 
-void voidLinuxSetCursor(int cursor) {
-	s.mouse.cursor = cursor;
+void voidWindowSetCursor(int cursor) {
+	voidWindow.mouse.cursor = cursor;
 	updateCursor();
 }
 
-int voidLinuxCursor(void) { return s.mouse.cursor; }
-
-void voidLinuxShowMouse(bool shown) {
-	s.mouse.shown = shown;
+void voidWindowShowMouse(bool shown) {
+	voidWindow.mouse.shown = shown;
 	updateCursor();
 }
 
-bool voidLinuxMouseShown(void) { return s.mouse.shown; }
-void voidLinuxLockMouse(bool locked) { s.mouse.requestedLock = locked; }
-bool voidLinuxMouseLocked(void) { return s.mouse.locked; }
+void voidWindowLockMouse(bool locked) { voidWindow.mouse.requestedLock = locked; }
 
-void voidLinuxToggleFullscreen(void) {
-	s.fullscreen = !s.fullscreen;
-	setFullscreen(s.fullscreen);
+void voidWindowToggleFullscreen(void) {
+	voidWindow.fullscreen = !voidWindow.fullscreen;
+	setFullscreen(voidWindow.fullscreen);
 	updateDimensionsFromWindowSize();
 }
 
-bool voidLinuxIsFullscreen(void) { return s.fullscreen; }
-int voidLinuxDroppedCount(void) { return s.droppedCount; }
-
-const char *voidLinuxDroppedPath(int i) {
-	if (i < 0 || i >= s.droppedCount) fail("the dropped file index is out of range");
-	return s.droppedPaths[i];
-}

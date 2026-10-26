@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../frameTiming.h"
 
 #define CANVAS "#canvas"
 #define MOUSE_BUTTONS 3
@@ -128,33 +127,7 @@ static const struct {
 
 static struct {
 	VoidWebDesc desc;
-	bool valid;
-	bool initCalled;
-	bool cleanupCalled;
-	bool quitRequested;
-	bool quitOrdered;
-	bool eventConsumed;
-	uint64_t frameCount;
-	float dpiScale;
-	int windowWidth;
-	int windowHeight;
-	int framebufferWidth;
-	int framebufferHeight;
 	uint16_t mouseButtons;
-	struct {
-		float x, y, dx, dy;
-		bool posValid;
-		bool shown;
-		bool locked;
-		bool requestedLock;
-		int cursor;
-	} mouse;
-	VoidFrameTiming timing;
-	bool fullscreen;
-	int droppedCount;
-	char **droppedPaths;
-	char *clipboard;
-	VoidAppEvent event;
 #if defined(VOID_WGPU)
 	struct {
 		WGPUInstance instance;
@@ -172,8 +145,9 @@ static struct {
 		bool recovering;
 	} wgpu;
 #endif
-	VoidKeysHeld keysHeld;
 } s;
+
+VoidWindow voidWindow;
 
 __attribute__((noreturn, format(printf, 1, 2))) static void fail(const char *fmt, ...) {
 	va_list args;
@@ -188,36 +162,6 @@ __attribute__((noreturn, format(printf, 1, 2))) static void fail(const char *fmt
 static int roundAtLeastOne(float f) {
 	int v = (int)roundf(f);
 	return v <= 0 ? 1 : v;
-}
-
-static bool eventsEnabled(void) { return s.desc.event != NULL && s.initCalled; }
-
-static void initEvent(VoidAppEventType type) {
-	memset(&s.event, 0, sizeof s.event);
-	s.event.type = type;
-	s.event.frameCount = s.frameCount;
-	s.event.mouseButton = VOID_MOUSE_INVALID;
-	s.event.windowWidth = s.windowWidth;
-	s.event.windowHeight = s.windowHeight;
-	s.event.framebufferWidth = s.framebufferWidth;
-	s.event.framebufferHeight = s.framebufferHeight;
-	s.event.mouseX = s.mouse.x;
-	s.event.mouseY = s.mouse.y;
-	s.event.mouseDx = s.mouse.dx;
-	s.event.mouseDy = s.mouse.dy;
-}
-
-static bool callEvent(void) {
-	if (!s.cleanupCalled) s.desc.event(&s.event);
-	const bool consumed = s.eventConsumed;
-	s.eventConsumed = false;
-	return consumed;
-}
-
-static void appEvent(VoidAppEventType type) {
-	if (!eventsEnabled()) return;
-	initEvent(type);
-	callEvent();
 }
 
 static uint32_t buttonMods(void) {
@@ -256,14 +200,14 @@ static WGPUTextureView createAttachment(WGPUTexture *texture, WGPUTextureFormat 
 	WGPUTextureDescriptor desc = {0};
 	desc.usage = WGPUTextureUsage_RenderAttachment;
 	desc.dimension = WGPUTextureDimension_2D;
-	desc.size.width = (uint32_t)s.framebufferWidth;
-	desc.size.height = (uint32_t)s.framebufferHeight;
+	desc.size.width = (uint32_t)voidWindow.framebufferWidth;
+	desc.size.height = (uint32_t)voidWindow.framebufferHeight;
 	desc.size.depthOrArrayLayers = 1;
 	desc.format = format;
 	desc.mipLevelCount = 1;
 	desc.sampleCount = samples;
 	*texture = wgpuDeviceCreateTexture(s.wgpu.device, &desc);
-	if (*texture == NULL) fail("wgpuDeviceCreateTexture for the %s %dx%d failed", what, s.framebufferWidth, s.framebufferHeight);
+	if (*texture == NULL) fail("wgpuDeviceCreateTexture for the %s %dx%d failed", what, voidWindow.framebufferWidth, voidWindow.framebufferHeight);
 	WGPUTextureView view = wgpuTextureCreateView(*texture, NULL);
 	if (view == NULL) fail("wgpuTextureCreateView for the %s failed", what);
 	return view;
@@ -289,8 +233,8 @@ static void createSwapchain(bool fromResize) {
 	conf.device = s.wgpu.device;
 	conf.format = s.wgpu.format;
 	conf.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
-	conf.width = (uint32_t)s.framebufferWidth;
-	conf.height = (uint32_t)s.framebufferHeight;
+	conf.width = (uint32_t)voidWindow.framebufferWidth;
+	conf.height = (uint32_t)voidWindow.framebufferHeight;
 	conf.alphaMode = WGPUCompositeAlphaMode_Premultiplied;
 	conf.presentMode = WGPUPresentMode_Fifo;
 	wgpuSurfaceConfigure(s.wgpu.surface, &conf);
@@ -365,7 +309,7 @@ static void deviceLost(const WGPUDevice *device, WGPUDeviceLostReason reason, WG
 			printMessage("the WebGPU device was lost", message);
 			s.wgpu.initDone = false;
 			s.wgpu.lostPending = true;
-			appEvent(VOID_EVENT_SUSPENDED);
+			voidWindowAppEvent(VOID_EVENT_SUSPENDED);
 			return;
 		default:
 			printMessage("the WebGPU device was lost", message);
@@ -392,7 +336,7 @@ static void deviceReady(WGPURequestDeviceStatus status, WGPUDevice device, WGPUS
 	s.wgpu.initDone = true;
 	if (s.wgpu.recovering) {
 		s.wgpu.recovering = false;
-		appEvent(VOID_EVENT_RESUMED);
+		voidWindowAppEvent(VOID_EVENT_RESUMED);
 	}
 }
 
@@ -493,8 +437,8 @@ WGPUTextureView voidWebDepthStencilView(void) { return s.wgpu.depthView; }
 static bool webglContextChanged(int type, const void *reserved, void *userData) {
 	(void)reserved;
 	(void)userData;
-	if (type == EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST) appEvent(VOID_EVENT_SUSPENDED);
-	else if (type == EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED) appEvent(VOID_EVENT_RESUMED);
+	if (type == EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST) voidWindowAppEvent(VOID_EVENT_SUSPENDED);
+	else if (type == EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED) voidWindowAppEvent(VOID_EVENT_RESUMED);
 	return true;
 }
 
@@ -518,49 +462,40 @@ static void initGpu(void) {
 
 EM_JS_DEPS(voidWebWindow, "$findCanvasEventTarget,$specialHTMLTargets,$withStackSave,$stringToUTF8OnStack");
 
-static void clearDropped(void) {
-	for (int i = 0; i < s.droppedCount; i++) free(s.droppedPaths[i]);
-	free(s.droppedPaths);
-	s.droppedPaths = NULL;
-	s.droppedCount = 0;
-}
-
 EMSCRIPTEN_KEEPALIVE void voidWebOnPaste(const char *utf8) {
-	free(s.clipboard);
-	s.clipboard = strdup(utf8);
-	if (s.clipboard == NULL) fail("strdup for the pasted text");
-	appEvent(VOID_EVENT_CLIPBOARD_PASTED);
+	free(voidWindow.clipboard);
+	voidWindow.clipboard = strdup(utf8);
+	if (voidWindow.clipboard == NULL) fail("strdup for the pasted text");
+	voidWindowAppEvent(VOID_EVENT_CLIPBOARD_PASTED);
 }
 
 EMSCRIPTEN_KEEPALIVE void voidWebBeginDrop(int count) {
-	clearDropped();
 	if (count < 0) count = 0;
-	s.droppedPaths = (char **)calloc((size_t)(count > 0 ? count : 1), sizeof(char *));
-	if (s.droppedPaths == NULL) fail("calloc for the dropped file names");
-	s.droppedCount = count;
+	voidWindowBeginDrop((size_t)count);
+	voidWindow.droppedCount = count;
 }
 
 EMSCRIPTEN_KEEPALIVE void voidWebDrop(int i, const char *name) {
-	if (i < 0 || i >= s.droppedCount) fail("a dropped file %d arrived of %d announced", i, s.droppedCount);
-	s.droppedPaths[i] = strdup(name);
-	if (s.droppedPaths[i] == NULL) fail("strdup for a dropped file name");
+	if (i < 0 || i >= voidWindow.droppedCount) fail("a dropped file %d arrived of %d announced", i, voidWindow.droppedCount);
+	voidWindow.droppedPaths[i] = strdup(name);
+	if (voidWindow.droppedPaths[i] == NULL) fail("strdup for a dropped file name");
 }
 
 EMSCRIPTEN_KEEPALIVE void voidWebEndDrop(int x, int y, int dropMods) {
-	if (s.droppedCount == 0 || !eventsEnabled()) return;
-	s.mouse.x = (float)x * s.dpiScale;
-	s.mouse.y = (float)y * s.dpiScale;
-	s.mouse.dx = 0.0f;
-	s.mouse.dy = 0.0f;
-	initEvent(VOID_EVENT_FILES_DROPPED);
-	if (dropMods & 1) s.event.modifiers |= VOID_MODIFIER_SHIFT;
-	if (dropMods & 2) s.event.modifiers |= VOID_MODIFIER_CTRL;
-	if (dropMods & 4) s.event.modifiers |= VOID_MODIFIER_ALT;
-	if (dropMods & 8) s.event.modifiers |= VOID_MODIFIER_SUPER;
-	callEvent();
+	if (voidWindow.droppedCount == 0 || !voidWindowEventsEnabled()) return;
+	voidWindow.mouse.x = (float)x * voidWindow.dpiScale;
+	voidWindow.mouse.y = (float)y * voidWindow.dpiScale;
+	voidWindow.mouse.dx = 0.0f;
+	voidWindow.mouse.dy = 0.0f;
+	voidWindowInitEvent(VOID_EVENT_FILES_DROPPED);
+	if (dropMods & 1) voidWindow.event.modifiers |= VOID_MODIFIER_SHIFT;
+	if (dropMods & 2) voidWindow.event.modifiers |= VOID_MODIFIER_CTRL;
+	if (dropMods & 4) voidWindow.event.modifiers |= VOID_MODIFIER_ALT;
+	if (dropMods & 8) voidWindow.event.modifiers |= VOID_MODIFIER_SUPER;
+	voidWindowCallEvent();
 }
 
-EMSCRIPTEN_KEEPALIVE void voidWebSetFullscreenFlag(int fullscreen) { s.fullscreen = fullscreen != 0; }
+EMSCRIPTEN_KEEPALIVE void voidWebSetFullscreenFlag(int fullscreen) { voidWindow.fullscreen = fullscreen != 0; }
 
 EM_JS(void, voidJsAddClipboardListener, (void), {
 	Module.voidPaste = (event) => {
@@ -674,15 +609,15 @@ EM_JS(void, voidJsRemoveDropListeners, (void), {
 });
 
 static void updateMouseLockState(void) {
-	if (!s.mouse.requestedLock) return;
-	s.mouse.requestedLock = false;
+	if (!voidWindow.mouse.requestedLock) return;
+	voidWindow.mouse.requestedLock = false;
 	voidJsRequestPointerLock();
 }
 
 static bool pointerLockChange(int type, const EmscriptenPointerlockChangeEvent *e, void *userData) {
 	(void)type;
 	(void)userData;
-	s.mouse.locked = e->isActive;
+	voidWindow.mouse.locked = e->isActive;
 	return true;
 }
 
@@ -690,15 +625,15 @@ static bool pointerLockError(int type, const void *reserved, void *userData) {
 	(void)type;
 	(void)reserved;
 	(void)userData;
-	s.mouse.locked = false;
-	s.mouse.requestedLock = false;
+	voidWindow.mouse.locked = false;
+	voidWindow.mouse.requestedLock = false;
 	return true;
 }
 
 static bool fullscreenChange(int type, const EmscriptenFullscreenChangeEvent *e, void *userData) {
 	(void)type;
 	(void)userData;
-	s.fullscreen = e->isFullscreen;
+	voidWindow.fullscreen = e->isFullscreen;
 	return true;
 }
 
@@ -723,38 +658,38 @@ static bool sizeChangedCallback(int type, const EmscriptenUiEvent *ui, void *use
 	double w, h;
 	emscripten_get_element_css_size(CANVAS, &w, &h);
 	if (w < 1.0) w = ui->windowInnerWidth;
-	else s.windowWidth = roundAtLeastOne((float)w);
+	else voidWindow.windowWidth = roundAtLeastOne((float)w);
 	if (h < 1.0) h = ui->windowInnerHeight;
-	else s.windowHeight = roundAtLeastOne((float)h);
-	if (s.desc.highDpi) s.dpiScale = (float)emscripten_get_device_pixel_ratio();
-	s.framebufferWidth = roundAtLeastOne((float)w * s.dpiScale);
-	s.framebufferHeight = roundAtLeastOne((float)h * s.dpiScale);
-	emscripten_set_canvas_element_size(CANVAS, s.framebufferWidth, s.framebufferHeight);
+	else voidWindow.windowHeight = roundAtLeastOne((float)h);
+	if (s.desc.highDpi) voidWindow.dpiScale = (float)emscripten_get_device_pixel_ratio();
+	voidWindow.framebufferWidth = roundAtLeastOne((float)w * voidWindow.dpiScale);
+	voidWindow.framebufferHeight = roundAtLeastOne((float)h * voidWindow.dpiScale);
+	emscripten_set_canvas_element_size(CANVAS, voidWindow.framebufferWidth, voidWindow.framebufferHeight);
 #if defined(VOID_WGPU)
 	sizeChanged();
 #endif
-	appEvent(VOID_EVENT_RESIZED);
+	voidWindowAppEvent(VOID_EVENT_RESIZED);
 	return true;
 }
 
 static bool mouseCallback(int type, const EmscriptenMouseEvent *e, void *userData) {
 	(void)userData;
 	s.mouseButtons = e->buttons;
-	if (s.mouse.locked) {
-		s.mouse.dx = (float)e->movementX;
-		s.mouse.dy = (float)e->movementY;
+	if (voidWindow.mouse.locked) {
+		voidWindow.mouse.dx = (float)e->movementX;
+		voidWindow.mouse.dy = (float)e->movementY;
 	} else {
-		const float x = (float)e->targetX * s.dpiScale;
-		const float y = (float)e->targetY * s.dpiScale;
-		if (s.mouse.posValid) {
-			s.mouse.dx = x - s.mouse.x;
-			s.mouse.dy = y - s.mouse.y;
+		const float x = (float)e->targetX * voidWindow.dpiScale;
+		const float y = (float)e->targetY * voidWindow.dpiScale;
+		if (voidWindow.mouse.posValid) {
+			voidWindow.mouse.dx = x - voidWindow.mouse.x;
+			voidWindow.mouse.dy = y - voidWindow.mouse.y;
 		}
-		s.mouse.x = x;
-		s.mouse.y = y;
-		s.mouse.posValid = true;
+		voidWindow.mouse.x = x;
+		voidWindow.mouse.y = y;
+		voidWindow.mouse.posValid = true;
 	}
-	if (!eventsEnabled() || e->button < 0 || e->button >= MOUSE_BUTTONS) return true;
+	if (!voidWindowEventsEnabled() || e->button < 0 || e->button >= MOUSE_BUTTONS) return true;
 	VoidAppEventType eventType;
 	bool buttonEvent = false;
 	switch (type) {
@@ -766,15 +701,15 @@ static bool mouseCallback(int type, const EmscriptenMouseEvent *e, void *userDat
 		default: fail("mouse callback for emscripten event %d", type);
 	}
 	if (eventType == VOID_EVENT_MOUSE_ENTER || eventType == VOID_EVENT_MOUSE_LEAVE) {
-		s.mouse.dx = 0.0f;
-		s.mouse.dy = 0.0f;
+		voidWindow.mouse.dx = 0.0f;
+		voidWindow.mouse.dy = 0.0f;
 	}
-	initEvent(eventType);
-	s.event.modifiers = mods(e->ctrlKey, e->shiftKey, e->altKey, e->metaKey);
+	voidWindowInitEvent(eventType);
+	voidWindow.event.modifiers = mods(e->ctrlKey, e->shiftKey, e->altKey, e->metaKey);
 	if (buttonEvent) {
-		s.event.mouseButton = e->button == 0 ? VOID_MOUSE_LEFT : e->button == 1 ? VOID_MOUSE_MIDDLE : VOID_MOUSE_RIGHT;
+		voidWindow.event.mouseButton = e->button == 0 ? VOID_MOUSE_LEFT : e->button == 1 ? VOID_MOUSE_MIDDLE : VOID_MOUSE_RIGHT;
 	}
-	callEvent();
+	voidWindowCallEvent();
 	if (buttonEvent) updateMouseLockState();
 	return true;
 }
@@ -783,12 +718,12 @@ static bool wheelCallback(int type, const EmscriptenWheelEvent *e, void *userDat
 	(void)type;
 	(void)userData;
 	s.mouseButtons = e->mouse.buttons;
-	if (!eventsEnabled()) {
+	if (!voidWindowEventsEnabled()) {
 		updateMouseLockState();
 		return true;
 	}
-	initEvent(VOID_EVENT_MOUSE_SCROLL);
-	s.event.modifiers = mods(e->mouse.ctrlKey, e->mouse.shiftKey, e->mouse.altKey, e->mouse.metaKey);
+	voidWindowInitEvent(VOID_EVENT_MOUSE_SCROLL);
+	voidWindow.event.modifiers = mods(e->mouse.ctrlKey, e->mouse.shiftKey, e->mouse.altKey, e->mouse.metaKey);
 	float scale;
 	switch (e->deltaMode) {
 		case DOM_DELTA_PIXEL: scale = -0.01f; break;
@@ -796,9 +731,9 @@ static bool wheelCallback(int type, const EmscriptenWheelEvent *e, void *userDat
 		case DOM_DELTA_PAGE: scale = -10.0f; break;
 		default: fail("wheel event with delta mode %lu", (unsigned long)e->deltaMode);
 	}
-	s.event.scrollX = scale * (float)e->deltaX;
-	s.event.scrollY = scale * (float)e->deltaY;
-	callEvent();
+	voidWindow.event.scrollX = scale * (float)e->deltaX;
+	voidWindow.event.scrollY = scale * (float)e->deltaY;
+	voidWindowCallEvent();
 	updateMouseLockState();
 	return true;
 }
@@ -812,7 +747,7 @@ static VoidKeyCode translateKey(const char *name) {
 
 static bool keyCallback(int type, const EmscriptenKeyboardEvent *e, void *userData) {
 	(void)userData;
-	if (!eventsEnabled()) return false;
+	if (!voidWindowEventsEnabled()) return false;
 	VoidAppEventType eventType;
 	switch (type) {
 		case EMSCRIPTEN_EVENT_KEYDOWN: eventType = VOID_EVENT_KEY_DOWN; break;
@@ -820,30 +755,30 @@ static bool keyCallback(int type, const EmscriptenKeyboardEvent *e, void *userDa
 		case EMSCRIPTEN_EVENT_KEYPRESS: eventType = VOID_EVENT_CHAR; break;
 		default: fail("key callback for emscripten event %d", type);
 	}
-	initEvent(eventType);
-	s.event.keyRepeat = e->repeat;
-	s.event.modifiers = mods(e->ctrlKey, e->shiftKey, e->altKey, e->metaKey);
+	voidWindowInitEvent(eventType);
+	voidWindow.event.keyRepeat = e->repeat;
+	voidWindow.event.modifiers = mods(e->ctrlKey, e->shiftKey, e->altKey, e->metaKey);
 	bool keyUpFollows = false;
 	if (eventType == VOID_EVENT_CHAR) {
-		s.event.charCode = e->charCode;
+		voidWindow.event.charCode = e->charCode;
 	} else {
-		s.event.keyCode = translateKey(e->code[0] != 0 ? e->code : e->key);
-		keyUpFollows = eventType == VOID_EVENT_KEY_DOWN && s.event.keyCode != VOID_KEY_LEFT_SUPER
-			&& s.event.keyCode != VOID_KEY_RIGHT_SUPER && (s.event.modifiers & VOID_MODIFIER_SUPER);
+		voidWindow.event.keyCode = translateKey(e->code[0] != 0 ? e->code : e->key);
+		keyUpFollows = eventType == VOID_EVENT_KEY_DOWN && voidWindow.event.keyCode != VOID_KEY_LEFT_SUPER
+			&& voidWindow.event.keyCode != VOID_KEY_RIGHT_SUPER && (voidWindow.event.modifiers & VOID_MODIFIER_SUPER);
 	}
-	voidKeysHeldTrack(&s.keysHeld, eventType, s.event.keyCode);
-	bool consumed = callEvent();
+	voidKeysHeldTrack(&voidWindow.keysHeld, eventType, voidWindow.event.keyCode);
+	bool consumed = voidWindowCallEvent();
 	if (keyUpFollows) {
-		s.event.type = VOID_EVENT_KEY_UP;
-		voidKeysHeldTrack(&s.keysHeld, VOID_EVENT_KEY_UP, s.event.keyCode);
-		consumed |= callEvent();
+		voidWindow.event.type = VOID_EVENT_KEY_UP;
+		voidKeysHeldTrack(&voidWindow.keysHeld, VOID_EVENT_KEY_UP, voidWindow.event.keyCode);
+		consumed |= voidWindowCallEvent();
 	}
 	return consumed;
 }
 
 static bool touchCallback(int type, const EmscriptenTouchEvent *e, void *userData) {
 	(void)userData;
-	if (!eventsEnabled()) return true;
+	if (!voidWindowEventsEnabled()) return true;
 	VoidAppEventType eventType;
 	switch (type) {
 		case EMSCRIPTEN_EVENT_TOUCHSTART: eventType = VOID_EVENT_TOUCHES_BEGAN; break;
@@ -852,32 +787,32 @@ static bool touchCallback(int type, const EmscriptenTouchEvent *e, void *userDat
 		case EMSCRIPTEN_EVENT_TOUCHCANCEL: eventType = VOID_EVENT_TOUCHES_CANCELLED; break;
 		default: fail("touch callback for emscripten event %d", type);
 	}
-	initEvent(eventType);
-	s.event.modifiers = mods(e->ctrlKey, e->shiftKey, e->altKey, e->metaKey);
-	s.event.touchCount = e->numTouches < VOID_MAX_TOUCHPOINTS ? e->numTouches : VOID_MAX_TOUCHPOINTS;
-	for (int i = 0; i < s.event.touchCount; i++) {
+	voidWindowInitEvent(eventType);
+	voidWindow.event.modifiers = mods(e->ctrlKey, e->shiftKey, e->altKey, e->metaKey);
+	voidWindow.event.touchCount = e->numTouches < VOID_MAX_TOUCHPOINTS ? e->numTouches : VOID_MAX_TOUCHPOINTS;
+	for (int i = 0; i < voidWindow.event.touchCount; i++) {
 		const EmscriptenTouchPoint *src = &e->touches[i];
-		s.event.touches[i].identifier = (uintptr_t)src->identifier;
-		s.event.touches[i].x = (float)src->targetX * s.dpiScale;
-		s.event.touches[i].y = (float)src->targetY * s.dpiScale;
-		s.event.touches[i].changed = src->isChanged;
+		voidWindow.event.touches[i].identifier = (uintptr_t)src->identifier;
+		voidWindow.event.touches[i].x = (float)src->targetX * voidWindow.dpiScale;
+		voidWindow.event.touches[i].y = (float)src->targetY * voidWindow.dpiScale;
+		voidWindow.event.touches[i].changed = src->isChanged;
 	}
-	callEvent();
+	voidWindowCallEvent();
 	return true;
 }
 
 static void releaseKey(VoidKeyCode key) {
-	if (!eventsEnabled()) return;
-	initEvent(VOID_EVENT_KEY_UP);
-	s.event.keyCode = key;
-	callEvent();
+	if (!voidWindowEventsEnabled()) return;
+	voidWindowInitEvent(VOID_EVENT_KEY_UP);
+	voidWindow.event.keyCode = key;
+	voidWindowCallEvent();
 }
 
 static bool focusCallback(int type, const EmscriptenFocusEvent *e, void *userData) {
 	(void)e;
 	(void)userData;
-	if (type != EMSCRIPTEN_EVENT_FOCUS) voidKeysHeldRelease(&s.keysHeld, releaseKey);
-	appEvent(type == EMSCRIPTEN_EVENT_FOCUS ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
+	if (type != EMSCRIPTEN_EVENT_FOCUS) voidKeysHeldRelease(&voidWindow.keysHeld, releaseKey);
+	voidWindowAppEvent(type == EMSCRIPTEN_EVENT_FOCUS ? VOID_EVENT_FOCUSED : VOID_EVENT_UNFOCUSED);
 	return true;
 }
 
@@ -914,18 +849,9 @@ static void setEventHandlers(bool on) {
 #endif
 }
 
-static void frame(void) {
-	if (!s.initCalled) {
-		if (s.desc.init) s.desc.init();
-		s.initCalled = true;
-	}
-	if (!s.cleanupCalled && s.desc.frame) s.desc.frame();
-	s.frameCount++;
-}
-
 static bool animationFrame(double time, void *userData) {
 	(void)userData;
-	voidFrameTimingUpdate(&s.timing, time / 1000.0);
+	voidFrameTimingUpdate(&voidWindow.timing, time / 1000.0);
 #if defined(VOID_WGPU)
 	wgpuInstanceProcessEvents(s.wgpu.instance);
 	if (s.wgpu.lostPending) {
@@ -935,98 +861,70 @@ static bool animationFrame(double time, void *userData) {
 		initGpu();
 	}
 	if (s.wgpu.initDone) {
-		frame();
+		voidWindowFrame();
 		if (s.wgpu.swapchainView) {
 			wgpuTextureViewRelease(s.wgpu.swapchainView);
 			s.wgpu.swapchainView = NULL;
 		}
 	}
 #else
-	frame();
+	voidWindowFrame();
 #endif
-	if (s.quitRequested) {
-		appEvent(VOID_EVENT_QUIT_REQUESTED);
-		if (s.quitRequested) s.quitOrdered = true;
-	}
-	if (!s.quitOrdered) return true;
+	if (voidWindow.quitRequested) voidWindowAskQuit();
+	if (!voidWindow.quitOrdered) return true;
 	setEventHandlers(false);
-	if (!s.cleanupCalled) {
-		if (s.desc.cleanup) s.desc.cleanup();
-		s.cleanupCalled = true;
-	}
+	voidWindowCleanup();
 #if defined(VOID_WGPU)
 	discardGpu();
 #endif
-	clearDropped();
-	free(s.clipboard);
+	voidWindowEnd();
 	memset(&s, 0, sizeof s);
 	return false;
 }
 
 void voidWebRun(const VoidWebDesc *desc) {
-	if (s.valid) fail("voidWebRun: the browser window already runs");
+	if (voidWindow.valid) fail("voidWebRun: the browser window already runs");
 	memset(&s, 0, sizeof s);
 	s.desc = *desc;
-	s.mouse.shown = true;
-	voidFrameTimingInit(&s.timing);
+	voidWindowStart(desc->init, desc->frame, desc->event, desc->cleanup, 0, 0);
 	if (s.desc.sampleCount <= 0) s.desc.sampleCount = 1;
 	if (!voidJsWebInit(CANVAS, desc->title)) fail("no canvas %s: Module.canvas is not an element and the page has no #canvas", CANVAS);
-	s.dpiScale = desc->highDpi ? (float)emscripten_get_device_pixel_ratio() : 1.0f;
+	voidWindow.dpiScale = desc->highDpi ? (float)emscripten_get_device_pixel_ratio() : 1.0f;
 	double w, h;
 	emscripten_get_element_css_size(CANVAS, &w, &h);
-	s.windowWidth = roundAtLeastOne((float)w);
-	s.windowHeight = roundAtLeastOne((float)h);
-	s.framebufferWidth = roundAtLeastOne((float)w * s.dpiScale);
-	s.framebufferHeight = roundAtLeastOne((float)h * s.dpiScale);
-	emscripten_set_canvas_element_size(CANVAS, s.framebufferWidth, s.framebufferHeight);
+	voidWindow.windowWidth = roundAtLeastOne((float)w);
+	voidWindow.windowHeight = roundAtLeastOne((float)h);
+	voidWindow.framebufferWidth = roundAtLeastOne((float)w * voidWindow.dpiScale);
+	voidWindow.framebufferHeight = roundAtLeastOne((float)h * voidWindow.dpiScale);
+	emscripten_set_canvas_element_size(CANVAS, voidWindow.framebufferWidth, voidWindow.framebufferHeight);
 	initGpu();
-	s.valid = true;
+	voidWindow.valid = true;
 	setEventHandlers(true);
 	emscripten_request_animation_frame_loop(animationFrame, NULL);
 }
 
-bool voidWebValid(void) { return s.valid; }
-int voidWebWidth(void) { return s.framebufferWidth > 0 ? s.framebufferWidth : 1; }
-int voidWebHeight(void) { return s.framebufferHeight > 0 ? s.framebufferHeight : 1; }
 int voidWebSampleCount(void) { return s.desc.sampleCount; }
-float voidWebDpiScale(void) { return s.dpiScale; }
-uint64_t voidWebFrameCount(void) { return s.frameCount; }
-void voidWebRequestQuit(void) { s.quitRequested = true; }
-void voidWebConsumeEvent(void) { s.eventConsumed = true; }
-void voidWebSetTitle(const char *title) { voidJsSetDocumentTitle(title); }
+void voidWebConsumeEvent(void) { voidWindow.eventConsumed = true; }
+void voidWindowSetTitle(const char *title) { voidJsSetDocumentTitle(title); }
+void voidWindowSetClipboard(const char *utf8) { voidJsWriteClipboard(utf8); }
+const char *voidWindowClipboard(void) { return voidWindow.clipboard ? voidWindow.clipboard : ""; }
 
-void voidWebCancelQuit(void) { s.quitRequested = false; }
-double voidWebFrameDuration(void) { return s.timing.smoothDt; }
-void voidWebSetClipboard(const char *utf8) { voidJsWriteClipboard(utf8); }
-
-const char *voidWebClipboard(void) { return s.clipboard ? s.clipboard : ""; }
-
-void voidWebSetCursor(int cursor) {
-	s.mouse.cursor = cursor;
-	voidJsSetCursor(cursor, s.mouse.shown ? 1 : 0);
+void voidWindowSetCursor(int cursor) {
+	voidWindow.mouse.cursor = cursor;
+	voidJsSetCursor(cursor, voidWindow.mouse.shown ? 1 : 0);
 }
 
-int voidWebCursor(void) { return s.mouse.cursor; }
-
-void voidWebShowMouse(bool shown) {
-	s.mouse.shown = shown;
-	voidJsSetCursor(s.mouse.cursor, shown ? 1 : 0);
+void voidWindowShowMouse(bool shown) {
+	voidWindow.mouse.shown = shown;
+	voidJsSetCursor(voidWindow.mouse.cursor, shown ? 1 : 0);
 }
 
-bool voidWebMouseShown(void) { return s.mouse.shown; }
-
-void voidWebLockMouse(bool locked) {
-	s.mouse.requestedLock = locked;
+void voidWindowLockMouse(bool locked) {
+	voidWindow.mouse.requestedLock = locked;
 	if (!locked) voidJsExitPointerLock();
 }
 
-bool voidWebMouseLocked(void) { return s.mouse.locked; }
-
-void voidWebToggleFullscreen(void) {
-	s.fullscreen = !s.fullscreen;
+void voidWindowToggleFullscreen(void) {
+	voidWindow.fullscreen = !voidWindow.fullscreen;
 	voidJsToggleFullscreen();
 }
-
-bool voidWebIsFullscreen(void) { return s.fullscreen; }
-int voidWebDroppedCount(void) { return s.droppedCount; }
-const char *voidWebDroppedPath(int i) { return s.droppedPaths[i]; }

@@ -25,6 +25,7 @@ export const GPU_MAX_VERTEX_ATTRIBUTES: int32 = 16;
 export const GPU_MAX_BIND_GROUP_ENTRIES: int32 = 16;
 export const GPU_MAX_UNIFORM_BLOCKS: int32 = 8;
 export const GPU_MAX_SHADER_BINDINGS: int32 = 24;
+export const GPU_MAX_ANISOTROPY: int32 = 16;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
 
@@ -536,6 +537,16 @@ export struct GPUTexelCopyBufferInfo { buffer: GPUBuffer; offset: int64; bytesPe
 	unreachable;
 }
 
+export function labelText(label: string | null): string {
+	if (label === null) { return ""; }
+	return label;
+}
+
+export function labelOf(label: string | null): string {
+	if (label === null) { return "an unlabeled resource"; }
+	return `'${label}'`;
+}
+
 @noinline function stopOnUnported(backend: string, what: string): void {
 	console.log(`webgpu ${backend}: ${what} is not ported to ${backend} yet`);
 	unreachable;
@@ -802,66 +813,88 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
 }
 
-@noinline export function checkedViewMips(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): void {
+export function viewMipsRefusal(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): string {
 	if (baseMip < 0 || mipCount < 1 || baseMip + mipCount > mipLevels) {
-		stop(`view mips ${baseMip}+${mipCount} overrun GPUTexture ${id}, which has ${mipLevels} mips`);
+		return `view mips ${baseMip}+${mipCount} overrun GPUTexture ${id}, which has ${mipLevels} mips`;
 	}
+	return "";
 }
 
 // A 3d view spans the whole volume slice stack, so it names no layer range.
-@noinline export function checkedView3d(baseLayer: int32, layerCount: int32): void {
-	if (baseLayer != 0 || layerCount > 1) { stop("a 3d view takes no baseArrayLayer or arrayLayerCount"); }
+export function view3dRefusal(baseLayer: int32, layerCount: int32): string {
+	return baseLayer != 0 || layerCount > 1 ? "a 3d view takes no baseArrayLayer or arrayLayerCount" : "";
 }
 
 // `layerCount` is resolved (a 0 count already means the rest of the layers).
-@noinline export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): void {
+export function viewLayersRefusal(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): string {
 	if (baseLayer < 0 || layerCount < 1 || baseLayer + layerCount > layers) {
-		stop(`view layers ${baseLayer}+${layerCount} overrun GPUTexture ${id}, which has ${layers} layers`);
+		return `view layers ${baseLayer}+${layerCount} overrun GPUTexture ${id}, which has ${layers} layers`;
 	}
+	return "";
 }
 
 // `cubeCapable` is the texture's own square, TEXTURE_BINDING, multiple-of-6 test made at creation.
-@noinline export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void {
+export function cubeViewRefusal(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): string {
 	if (!cubeCapable) {
-		stop(`a cube view needs GPUTexture ${id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`);
+		return `a cube view needs GPUTexture ${id} created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6`;
 	}
-	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { stop("a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"); }
+	if (layerCount % 6 != 0 || baseLayer % 6 != 0) { return "a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6"; }
+	return "";
 }
+
+@inline export function refuse(message: string): void {
+	if (message != "") { stop(message); }
+}
+
+export function checkedViewMips(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): void { refuse(viewMipsRefusal(id, mipLevels, baseMip, mipCount)); }
+export function checkedView3d(baseLayer: int32, layerCount: int32): void { refuse(view3dRefusal(baseLayer, layerCount)); }
+export function checkedViewLayers(id: uint32, layers: int32, baseLayer: int32, layerCount: int32): void { refuse(viewLayersRefusal(id, layers, baseLayer, layerCount)); }
+export function checkedCubeView(id: uint32, cubeCapable: boolean, baseLayer: int32, layerCount: int32): void { refuse(cubeViewRefusal(id, cubeCapable, baseLayer, layerCount)); }
 
 // `slices` is the depth of the 3d view's mip.
-@noinline export function checkedDepthSlice(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): void {
+export function depthSliceRefusal(attachment: int32, slice: int32, slices: int32, baseMip: int32, textureId: uint32): string {
 	if (slice < 0 || slice >= slices) {
-		stop(`colorAttachments[${attachment}].depthSlice ${slice} is outside the ${slices} slices of mip ${baseMip} of GPUTexture ${textureId}`);
+		return `colorAttachments[${attachment}].depthSlice ${slice} is outside the ${slices} slices of mip ${baseMip} of GPUTexture ${textureId}`;
 	}
+	return "";
 }
 
-@noinline export function checkedNoDepthSlice(attachment: int32, slice: int32): void {
-	if (slice != 0) { stop(`colorAttachments[${attachment}].depthSlice ${slice} needs a 3d view`); }
+export function noDepthSliceRefusal(attachment: int32, slice: int32): string {
+	return slice != 0 ? `colorAttachments[${attachment}].depthSlice ${slice} needs a 3d view` : "";
 }
 
 // A pass width of 0 means no attachment has set the extent yet.
-@noinline export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void {
-	if (passWidth != 0 && (passWidth != width || passHeight != height)) { stop("render pass attachments differ in size"); }
+export function passExtentRefusal(passWidth: int32, passHeight: int32, width: int32, height: int32): string {
+	return passWidth != 0 && (passWidth != width || passHeight != height) ? "render pass attachments differ in size" : "";
 }
 
 // `member` is the attachment's field, such as `colorAttachments[0].view`.
-@noinline export function checkedSingleSubresource(member: string, attachable: boolean): void {
-	if (!attachable) { stop(`${member} spans several mips or layers: a render attachment is one mip of one layer`); }
+export function singleSubresourceRefusal(member: string, attachable: boolean): string {
+	return attachable ? "" : `${member} spans several mips or layers: a render attachment is one mip of one layer`;
 }
 
 // The sizes are the color view's and the resolve view's own mip.
-@noinline export function checkedResolveTarget(
+export function resolveTargetRefusal(
 	attachment: int32,
 	colorSamples: int32,
 	colorWidth: int32,
 	colorHeight: int32,
 	resolveWidth: int32,
 	resolveHeight: int32,
-): void {
-	if (colorSamples == 1) { stop(`colorAttachments[${attachment}].resolveTarget needs a multisampled view`); }
+): string {
+	if (colorSamples == 1) { return `colorAttachments[${attachment}].resolveTarget needs a multisampled view`; }
 	if (resolveWidth != colorWidth || resolveHeight != colorHeight) {
-		stop(`colorAttachments[${attachment}].resolveTarget differs in size from its multisampled view`);
+		return `colorAttachments[${attachment}].resolveTarget differs in size from its multisampled view`;
 	}
+	return "";
+}
+
+export function checkedNoDepthSlice(attachment: int32, slice: int32): void { refuse(noDepthSliceRefusal(attachment, slice)); }
+export function checkedPassExtent(passWidth: int32, passHeight: int32, width: int32, height: int32): void { refuse(passExtentRefusal(passWidth, passHeight, width, height)); }
+export function checkedSingleSubresource(member: string, attachable: boolean): void { refuse(singleSubresourceRefusal(member, attachable)); }
+
+export function checkedResolveTarget(attachment: int32, colorSamples: int32, colorWidth: int32, colorHeight: int32, resolveWidth: int32, resolveHeight: int32): void {
+	refuse(resolveTargetRefusal(attachment, colorSamples, colorWidth, colorHeight, resolveWidth, resolveHeight));
 }
 
 @noinline export function checkedSamplerAnisotropy(maxAnisotropy: int32, allLinear: boolean): void {

@@ -11,50 +11,32 @@
 #include "bridge.h"
 #include "views.h"
 #include "../gpu/door.h"
-#include "../platform/swapchain.h"
 #include "../webgpu/metal/metal.h"
+#include "metalSurface.h"
 #include "presentGate.h"
 #include "appWindow.h"
 #include "../platform/macos/window.h"
-#ifdef VOID_PROFILER
-#include "../void2d/frameClock.h"
-#endif
 
-typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
-static VoidDriver s_driver = DRIVER_NONE;
-
-// --- Host-provided GPU context ---
-static id<MTLDevice>       g_device;
-static CAMetalLayer*       g_layer;
-static id<CAMetalDrawable> g_drawable;
-static void*              g_gate;
-static int g_w = 800, g_h = 600;
-static float g_dpiScale = 1.0f;
+static CAMetalLayer *g_layer;
+static void *g_gate;
+static VoidMetalSurface s_window;
 
 // --- Lifecycle closures (driven by voidRun's loop) ---
 static msClosure s_init;
 static msClosure s_frame;
 static int s_frames = 0;
-static bool s_keys[VOID_KEY_COUNT];
-
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
-static void restoreContextIfLost(void);
 
 static void tick(void) {
-	restoreContextIfLost();
+	voidRestoreContextIfLost(voidWindowDoorSetup);
 	if (!voidPresentGateAdmits(g_gate)) return;
-	g_drawable = [g_layer nextDrawable];
-	if (!g_drawable) return;
-	voidPresentGateTrack(g_gate, (__bridge void *)g_drawable);
-	mtlSetDrawable((__bridge void *)g_drawable);
-	call0(s_frame);
+	id<CAMetalDrawable> drawable = [g_layer nextDrawable];
+	if (!drawable) return;
+	s_window.drawable = (__bridge void *)drawable;
+	voidPresentGateTrack(g_gate, s_window.drawable);
+	mtlSetDrawable(s_window.drawable);
+	voidCallClosure(s_frame);
 	s_frames++;
-	g_drawable = nil;
+	s_window.drawable = NULL;
 }
 
 static int s_reqW = 0;
@@ -64,58 +46,46 @@ void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 static void windowInit(void) {
 	NSView *view = (__bridge NSView *)voidMacosView();
 	view.wantsLayer = YES;
-	g_dpiScale = voidMacosDpiScale();
-	g_device = MTLCreateSystemDefaultDevice();
+	voidMetalDeviceMake();
 	g_layer = [CAMetalLayer layer];
-	g_layer.device = g_device;
+	g_layer.device = voidMetalDevice();
 	g_layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	g_layer.framebufferOnly = NO;
 	g_layer.frame = view.bounds;
-	g_layer.contentsScale = (CGFloat)g_dpiScale;
-	g_w = voidMacosWidth();
-	g_h = voidMacosHeight();
-	g_layer.drawableSize = CGSizeMake(g_w, g_h);
+	g_layer.contentsScale = (CGFloat)voidWindowDpiScale();
+	s_window.w = voidWindowWidth();
+	s_window.h = voidWindowHeight();
+	g_layer.drawableSize = CGSizeMake(s_window.w, s_window.h);
 	g_gate = voidPresentGateCreate((__bridge void *)g_layer);
 	[view setLayer:g_layer];
-	call0(s_init);
+	voidCallClosure(s_init);
 }
 
 static void fitWindowLayer(void) {
 	NSView *view = (__bridge NSView *)voidMacosView();
-	g_dpiScale = voidMacosDpiScale();
-	g_w = voidMacosWidth();
-	g_h = voidMacosHeight();
+	s_window.w = voidWindowWidth();
+	s_window.h = voidWindowHeight();
 	[CATransaction begin];
 	[CATransaction setDisableActions:YES];
 	g_layer.frame = view.bounds;
-	g_layer.contentsScale = (CGFloat)g_dpiScale;
-	g_layer.drawableSize = CGSizeMake(g_w, g_h);
+	g_layer.contentsScale = (CGFloat)voidWindowDpiScale();
+	g_layer.drawableSize = CGSizeMake(s_window.w, s_window.h);
 	[CATransaction commit];
 }
 
 static void windowEvent(const VoidAppEvent *e) {
-#ifdef VOID_PROFILER
-	if (e->type == VOID_EVENT_KEY_DOWN || e->type == VOID_EVENT_KEY_UP
-		|| e->type == VOID_EVENT_CHAR || e->type == VOID_EVENT_MOUSE_DOWN
-		|| e->type == VOID_EVENT_MOUSE_UP || e->type == VOID_EVENT_MOUSE_SCROLL) {
-		voidProfileInput();
-	}
-#endif
 	if (e->type == VOID_EVENT_RESIZED) fitWindowLayer();
-	if (e->type == VOID_EVENT_KEY_DOWN) s_keys[e->keyCode] = true;
-	else if (e->type == VOID_EVENT_KEY_UP) s_keys[e->keyCode] = false;
-	if (voidAppDeliver(e)) return;
-	if (e->type == VOID_EVENT_KEY_DOWN && e->keyCode == VOID_KEY_ESCAPE) voidMacosRequestQuit();
+	voidAppWindowEvent(e);
 }
 
 static void windowCleanup(void) { doorShutdown(); }
 
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
-	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
+	if (voidDriver == VOID_DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
 	if (sampleCount != 1) {
 		voidFail("voidRunConfigured: the macOS window driver renders at 1 sample, not %d", sampleCount);
 	}
-	s_driver = DRIVER_WINDOW;
+	voidDriver = VOID_DRIVER_WINDOW;
 	s_init = init;
 	s_reqW = w;
 	s_reqH = h;
@@ -137,216 +107,67 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	voidRunConfigured(w, h, 1, 1, init, frame);
 }
 
-static void setupMetal(int samples) {
-	doorSetup((__bridge void *)g_device, NULL, DOOR_PIXEL_FORMAT_BGRA8, DOOR_PIXEL_FORMAT_NONE, samples);
-	if (!doorValid()) voidFail("doorSetup on the Metal device failed");
-}
-
-static int s_contextLost = 0;
-void voidLoseContext(void) { s_contextLost = 1; }
-
-static void restoreContextIfLost(void) {
-	if (!s_contextLost) return;
-	doorShutdown();
-	setupMetal(s_driver == DRIVER_WINDOW ? 1 : voidViewsSampleCount());
-	s_contextLost = 0;
-}
-
-__attribute__((noreturn)) static void noDriver(const char *op) {
-	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
-}
-
-void voidGfxSetup(void) {
-	switch (s_driver) {
-		case DRIVER_WINDOW: setupMetal(1); break;
-		case DRIVER_VIEWS: break;
-		case DRIVER_NONE: noDriver("gfxSetup");
-	}
-}
-
-int voidFbWidth(void) {
-	if (s_driver == DRIVER_WINDOW) return g_w;
-	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
-	return voidViewsFbWidth();
-}
-
-int voidFbHeight(void) {
-	if (s_driver == DRIVER_WINDOW) return g_h;
-	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
-	return voidViewsFbHeight();
-}
-
-float voidDpiScale(void) {
-	if (s_driver == DRIVER_WINDOW) return g_dpiScale;
-	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
-	return voidViewsDpiScale();
-}
-
-int voidKeyDown(int keycode) {
-	if (s_driver != DRIVER_WINDOW || keycode < 0 || keycode >= VOID_KEY_COUNT) return 0;
-	return s_keys[keycode] ? 1 : 0;
-}
+void voidWindowDoorSetup(void) { voidMetalDoorSetup(1); }
 
 void voidSetTextInput(int on) { voidMacosSetTextInput(on != 0); }
 void voidSetImeRect(int x, int y, int w, int h) { voidMacosSetImeRect(x, y, w, h); }
 
 void voidDriverPresent(void) {
-	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
-}
-
-typedef struct {
-	void *layer;
-	void *gate;
-	void *view;
-	void *drawable;
-	void *msaa;
-	int w, h;
-} MacSurface;
-
-static void releaseMsaa(MacSurface *s) {
-	if (s->msaa) CFRelease(s->msaa);
-	s->msaa = NULL;
-}
-
-static void makeMsaa(MacSurface *s) {
-	const int samples = voidViewsSampleCount();
-	if (samples == 1) return;
-	if (![g_device supportsTextureSampleCount:(NSUInteger)samples]) {
-		voidFail("the Metal device cannot render at %d samples", samples);
-	}
-	MTLTextureDescriptor *desc = [MTLTextureDescriptor
-		texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-		width:(NSUInteger)s->w height:(NSUInteger)s->h mipmapped:NO];
-	desc.textureType = MTLTextureType2DMultisample;
-	desc.sampleCount = (NSUInteger)samples;
-	desc.usage = MTLTextureUsageRenderTarget;
-	desc.storageMode = MTLStorageModePrivate;
-	id<MTLTexture> texture = [g_device newTextureWithDescriptor:desc];
-	if (!texture) voidFail("the Metal device could not make a %dx%d target at %d samples", s->w, s->h, samples);
-	s->msaa = (void *)CFBridgingRetain(texture);
+	if (voidDriver == VOID_DRIVER_VIEWS) voidViewsPresent();
 }
 
 void voidPlatformDeviceEnsure(void) {
-	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Cocoa window through voidRun");
-	if (s_driver == DRIVER_VIEWS) return;
-	g_device = MTLCreateSystemDefaultDevice();
-	if (!g_device) voidFail("MTLCreateSystemDefaultDevice returned nil");
-	setupMetal(voidViewsSampleCount());
-	s_driver = DRIVER_VIEWS;
+	if (voidDriver == VOID_DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Cocoa window through voidRun");
+	if (voidDriver == VOID_DRIVER_VIEWS) return;
+	voidMetalDeviceMake();
+	voidMetalDoorSetup(voidViewsSampleCount());
+	voidDriver = VOID_DRIVER_VIEWS;
 }
 
-void voidPlatformRunInit(msClosure init) { call0(init); }
+void voidPlatformRunInit(msClosure init) { voidCallClosure(init); }
 
-static void fitLayer(MacSurface *s, int w, int h) {
-	CAMetalLayer *layer = (__bridge CAMetalLayer *)s->layer;
-	layer.drawableSize = CGSizeMake(w, h);
-	s->w = w;
-	s->h = h;
-	releaseMsaa(s);
-	makeMsaa(s);
+static void fitView(VoidMetalSurface *s) {
 	if (!s->view) return;
+	CAMetalLayer *layer = (__bridge CAMetalLayer *)s->layer;
 	NSView *view = (__bridge NSView *)s->view;
 	[CATransaction begin];
 	[CATransaction setDisableActions:YES];
 	layer.frame = view.bounds;
-	if (view.bounds.size.width > 0) layer.contentsScale = w / view.bounds.size.width;
+	if (view.bounds.size.width > 0) layer.contentsScale = s->w / view.bounds.size.width;
 	[CATransaction commit];
 }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
-	CAMetalLayer *layer = [CAMetalLayer layer];
-	layer.device = g_device;
-	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
-	layer.framebufferOnly = NO;
-	MacSurface *s = (MacSurface *)calloc(1, sizeof(MacSurface));
-	s->layer = (void *)CFBridgingRetain(layer);
-	s->gate = voidPresentGateCreate(s->layer);
+	VoidMetalSurface *s = voidMetalSurfaceMake((__bridge void *)[CAMetalLayer layer], w, h);
 	if (native != NULL) {
 		NSView *view = (__bridge NSView *)native;
 		view.wantsLayer = YES;
-		[view.layer addSublayer:layer];
+		[view.layer addSublayer:(__bridge CAMetalLayer *)s->layer];
 		s->view = (void *)CFBridgingRetain(view);
 	}
-	fitLayer(s, w, h);
+	fitView(s);
 	return s;
 }
 
-void voidPlatformSurfaceResize(void *surface, int w, int h) { fitLayer((MacSurface *)surface, w, h); }
+void voidPlatformSurfaceResize(void *surface, int w, int h) {
+	voidMetalSurfaceSize((VoidMetalSurface *)surface, w, h);
+	fitView((VoidMetalSurface *)surface);
+}
 
-static int windowIsVisible(MacSurface *s) {
+static int windowIsVisible(VoidMetalSurface *s) {
 	if (!s->view) return 1;
 	NSWindow *window = ((__bridge NSView *)s->view).window;
 	return window != nil && (window.occlusionState & NSWindowOcclusionStateVisible) != 0;
 }
 
 int voidPlatformSurfaceReady(void *surface) {
-	MacSurface *s = (MacSurface *)surface;
+	VoidMetalSurface *s = (VoidMetalSurface *)surface;
 	return windowIsVisible(s) && voidPresentGateAdmits(s->gate);
 }
 
-// The drawable a commit presented stays readable until the surface's next frame, as the window's
-// does, so a capture after the view's frame reads the frame it showed.
-static MacSurface *s_presented;
+long long voidPlatformSurfaceNative(void *surface) { return (long long)(intptr_t)((VoidMetalSurface *)surface)->layer; }
 
-int voidPlatformSurfaceAcquire(void *surface) {
-	restoreContextIfLost();
-	MacSurface *s = (MacSurface *)surface;
-	if (s->drawable) CFRelease(s->drawable);
-	s->drawable = NULL;
-	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
-	if (!drawable) return 0;
-	voidPresentGateTrack(s->gate, (__bridge void *)drawable);
-	s->drawable = (void *)CFBridgingRetain(drawable);
-	mtlSetDrawable(s->drawable);
-	return 1;
+const VoidMetalSurface *voidMetalScreen(void) {
+	if (voidDriverFor("beginPass") == VOID_DRIVER_WINDOW) return &s_window;
+	return voidMetalViewsScreen();
 }
-
-void voidPlatformSurfacePresent(void *surface) { s_presented = (MacSurface *)surface; }
-
-void voidPlatformSurfaceDestroy(void *surface) {
-	MacSurface *s = (MacSurface *)surface;
-	if (s_presented == s) s_presented = NULL;
-	if (s->drawable) CFRelease(s->drawable);
-	releaseMsaa(s);
-	[(__bridge CAMetalLayer *)s->layer removeFromSuperlayer];
-	voidPresentGateRelease(s->gate);
-	CFRelease(s->layer);
-	if (s->view) CFRelease(s->view);
-	free(s);
-}
-
-long long voidPlatformSurfaceNative(void *surface) { return (long long)(intptr_t)((MacSurface *)surface)->layer; }
-
-static MacSurface *screenSurface(void) {
-	if (s_driver == DRIVER_NONE) noDriver("beginPass");
-	if (s_driver == DRIVER_WINDOW) return NULL;
-	if (voidCurrentView() == 0 && s_presented) return s_presented;
-	return (MacSurface *)voidViewsCurrentSurface();
-}
-
-static void *drawableTexture(void *drawable) { return (__bridge void *)((__bridge id<CAMetalDrawable>)drawable).texture; }
-
-int32_t voidSwapchainWidth(void) {
-	const MacSurface *s = screenSurface();
-	return s ? s->w : g_w;
-}
-
-int32_t voidSwapchainHeight(void) {
-	const MacSurface *s = screenSurface();
-	return s ? s->h : g_h;
-}
-
-int32_t voidSwapchainSampleCount(void) { return screenSurface() ? voidViewsSampleCount() : 1; }
-
-void *voidSwapchainRenderView(void) {
-	const MacSurface *s = screenSurface();
-	if (s == NULL) return drawableTexture((__bridge void *)g_drawable);
-	return s->msaa ? s->msaa : drawableTexture(s->drawable);
-}
-
-void *voidSwapchainResolveView(void) {
-	const MacSurface *s = screenSurface();
-	return s && s->msaa ? drawableTexture(s->drawable) : NULL;
-}
-
-void *voidSwapchainDepthStencilView(void) { return NULL; }

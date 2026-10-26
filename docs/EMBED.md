@@ -6,7 +6,9 @@ A host that owns the window and the frame clock (Ion on Windows and macOS, a Rea
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
 reaches them through `src/sokol/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
 `src/sokol/views.c`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
-`bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser).
+`bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser). macOS and iOS share
+one Metal surface (`metalSurface.m`), and the iOS and Android app shells share their events, typed
+text and framebuffer getters in the mobile section of `appWindow.c`.
 
 The split follows `neon/docs/VISION.md` "Many Void areas in one app": the device, pipelines,
 shaders, glyph atlas and textures exist once per process, and each view owns its surface, its

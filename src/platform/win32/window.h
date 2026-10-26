@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../appEvent.h"
+#include "../windowCore.h"
 
 typedef struct {
 	void (*init)(void);
@@ -24,28 +24,6 @@ typedef struct {
 } VoidWin32Desc;
 
 void voidWin32Run(const VoidWin32Desc *desc);
-bool voidWin32Valid(void);
 HWND voidWin32Hwnd(void);
-int voidWin32Width(void);
-int voidWin32Height(void);
-float voidWin32DpiScale(void);
-uint64_t voidWin32FrameCount(void);
-void voidWin32RequestQuit(void);
-void voidWin32SetTitle(const char *title);
-
-void voidWin32CancelQuit(void);
-double voidWin32FrameDuration(void);
-void voidWin32SetClipboard(const char *utf8);
-const char *voidWin32Clipboard(void);
-void voidWin32SetCursor(int cursor);
-int voidWin32Cursor(void);
-void voidWin32ShowMouse(bool shown);
-bool voidWin32MouseShown(void);
-void voidWin32LockMouse(bool locked);
-bool voidWin32MouseLocked(void);
-void voidWin32ToggleFullscreen(void);
-bool voidWin32IsFullscreen(void);
-int voidWin32DroppedCount(void);
-const char *voidWin32DroppedPath(int i);
 
 #endif

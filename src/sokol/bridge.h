@@ -19,6 +19,8 @@ static inline void voidCallClosure(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
+__attribute__((noreturn, format(printf, 1, 2))) void voidFail(const char *fmt, ...);
+
 // Lifecycle — MetaScript main() drives via init/frame closures.
 void voidRun(int w, int h, msClosure init, msClosure frame);
 
@@ -124,14 +126,23 @@ VoidViewId voidCurrentView(void);
 void voidEmbedSetMessagePump(msClosure pump);
 void voidEmbedPumpMessages(void);
 
-int voidGpuGeneration(void);
+// A lost context (or voidLoseContext) shuts the door down at the driver's next frame, which
+// then calls `setup` to set the door up again.
 void voidLoseContext(void);
+void voidRestoreContextIfLost(void (*setup)(void));
 void voidEmbedLoseContext(void);
 void voidEmbedDetach(void);
 void voidEmbedSetAssetRoot(const char *path);
 
 // Browser only: defines Module.voidStart(canvas), which returns a stop (bridgeWeb.c).
 void voidWebInstall(void);
+
+typedef enum { VOID_DRIVER_NONE, VOID_DRIVER_WINDOW, VOID_DRIVER_VIEWS } VoidDriver;
+// The desktop bridges' driver (bridge.c): voidRun chooses the window, voidViewCreate the host
+// views. voidDriverFor stops naming `op` before either, or while the window does not exist.
+extern VoidDriver voidDriver;
+VoidDriver voidDriverFor(const char *op);
+void voidWindowDoorSetup(void);
 
 void voidGfxSetup(void);
 int voidFbWidth(void);

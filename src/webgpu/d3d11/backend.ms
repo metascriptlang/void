@@ -1,5 +1,6 @@
 import "./removal";
 import {
+	GPU_MAX_ANISOTROPY,
 	BindingKind,
 	bindingKind,
 	linearFilter,
@@ -14,12 +15,10 @@ import {
 	GPUBindGroup,
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
-	GPUBindGroupLayout,
 	GPUBlendComponent,
 	GPUBuffer,
 	GPUBufferDescriptor,
 	GPUBufferUsage,
-	GPUCanvasConfiguration,
 	GPUCommandBuffer,
 	GPUColor,
 	GPUCommandEncoder,
@@ -30,7 +29,6 @@ import {
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
-	GPULiveCounts,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
 	GPURenderPipeline,
@@ -60,35 +58,31 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedBufferCopy,
-	checkedCubeView,
-	checkedDepthSlice,
 	checkedDepthTexelCopy,
 	checkedDispatchIndirect,
 	checkedMapAsync,
 	checkedMappedRange,
-	checkedNoDepthSlice,
-	checkedPassExtent,
 	checkedResolveQuerySet,
-	checkedResolveTarget,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
-	checkedTexelCopyRegion,
 	checkedTexelWritePitch,
 	checkedTextureToTextureCopy,
 	checkedTimestampWrites,
 	checkedUnmap,
-	checkedView3d,
-	checkedViewLayers,
-	checkedViewMips,
 	checkedWriteBuffer,
 	featureBit,
 	firstInstanceRefusal,
 	vertexOffsetRefusal,
 	stopOnUnportedShaderBindings,
+	labelOf,
 } from "../types.ms";
 import {
+	cachedCanvas,
+	currentFrame,
+	checkedCopyRegion,
+	entryOf,
+	clampedAnisotropy,
 	addressesBinding,
-	checkedBindGroupIndex,
 	checkedBindGroupSet,
 	checkedComputeModule,
 	checkedComputePipeline,
@@ -102,13 +96,28 @@ import {
 	checkedStorageView,
 	checkedStripDraw,
 	checkedUniformEntry,
-	checkedViewDimension,
 	entryBytes,
 	occlusionQueryIndex,
 	occlusionSetId,
 	passSerial,
 } from "../validate.ms";
-import { Pool, allocate, alive, live, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
+import {
+	TextureRecord,
+	ViewRecord,
+	bufferRecords,
+	layoutRecords,
+	pipelineRecords,
+	put,
+	querySetRecords,
+	record,
+	samplerRecords,
+	shaderRecords,
+	slotIndex,
+	textureRecords,
+	vacate,
+	viewRecords,
+	bindGroupRecords,
+} from "../pool.ms";
 import {
 	D3dBlobImpl,
 	D3dBlendStateImpl,
@@ -342,9 +351,7 @@ const FILTER_MAG_LINEAR = 0x04;
 const FILTER_MIN_LINEAR = 0x10;
 const FILTER_COMPARISON = 0x80;
 const FILTER_ANISOTROPIC = 0x55;
-const MAX_ANISOTROPY = 16;
 const COMPARISON_NEVER = 1;
-const STENCIL_MASK_DEFAULT: uint32 = 0xFF;
 const ADDRESS_WRAP = 1;
 const ADDRESS_MIRROR = 2;
 const ADDRESS_CLAMP = 3;
@@ -396,9 +403,6 @@ struct FormatInfo {
 }
 
 struct BufferSlot {
-	id: uint32;
-	size: int64;
-	usage: int32;
 	uniform: boolean;
 	storage: boolean;
 	staging: boolean;
@@ -413,38 +417,20 @@ struct BufferSlot {
 }
 
 struct TextureSlot {
-	id: uint32;
-	width: int32;
-	height: int32;
-	format: GPUTextureFormat;
-	usage: int32;
-	sampleCount: int32;
-	mipLevels: int32;
-	layers: int32;
-	volume: boolean;
-	cube: boolean;
 	native: Ptr<D3dTextureImpl>;
 	info: FormatInfo;
-	swapchainView: uint32;
 }
 
 struct ViewSlot {
-	id: uint32;
-	texture: uint32;
 	shaderResource: Ptr<D3dSrvImpl>;
 	renderTarget: Ptr<D3dRtvImpl>;
 	depthStencil: Ptr<D3dDsvImpl>;
 	unordered: Ptr<D3dUavImpl>;
 	swapchainResolve: Ptr<D3dRtvImpl>;
-	baseMip: int32;
-	mipCount: int32;
-	baseLayer: int32;
 	volumeTarget: boolean;
-	swapchain: boolean;
 }
 
 struct SamplerSlot {
-	id: uint32;
 	native: Ptr<D3dSamplerImpl>;
 }
 
@@ -462,7 +448,6 @@ struct NativeBinding {
 struct ShaderSlot {
 	readsInstanceIndex: boolean;
 	readsVertexIndex: boolean;
-	id: uint32;
 	vertex: Ptr<D3dVertexShaderImpl>;
 	fragment: Ptr<D3dPixelShaderImpl>;
 	compute: Ptr<D3dComputeShaderImpl>;
@@ -483,27 +468,18 @@ struct PipelineSlot {
 	label: string | null;
 	readsInstanceIndex: boolean;
 	readsVertexIndex: boolean;
-	id: uint32;
 	shader: uint32;
 	rasterizer: Ptr<D3dRasterizerStateImpl>;
 	depthStencil: Ptr<D3dDepthStencilStateImpl>;
 	blend: Ptr<D3dBlendStateImpl>;
 	inputLayout: Ptr<D3dInputLayoutImpl>;
 	strides: int32[GPU_MAX_VERTEX_BUFFERS];
-	layouts: uint32[2];
 	topology: int32;
 	stripIndexFormat: int32;
 	compute: boolean;
 }
 
-struct LayoutSlot {
-	id: uint32;
-	pipeline: uint32;
-	group: int32;
-}
-
 struct BindGroupSlot {
-	id: uint32;
 	group: int32;
 	entries: GPUBindGroupEntry[GPU_MAX_BIND_GROUP_ENTRIES];
 	srv: Ptr<D3dSrvImpl>[GPU_MAX_BIND_GROUP_ENTRIES];
@@ -514,7 +490,6 @@ struct BindGroupSlot {
 }
 
 struct QuerySetSlot {
-	id: uint32;
 	timestamp: boolean;
 	count: int32;
 	queries: Vec<Ptr<D3dQueryImpl>>;
@@ -587,7 +562,6 @@ let device: Ptr<D3dDeviceImpl> = null as unknown as Ptr<D3dDeviceImpl>;
 let context: Ptr<D3dContextImpl> = null as unknown as Ptr<D3dContextImpl>;
 let context1: Ptr<D3dContext1Impl> = null as unknown as Ptr<D3dContext1Impl>;
 let offsetUniforms = false;
-let frame: int64 = 0;
 let pass: PassState = { width: 0 };
 let bound: BoundState = { pipeline: 0 };
 let computeBound: ComputeState = { pipeline: 0 };
@@ -595,18 +569,17 @@ let nativeBinds: NativeBinds = { indexFormat: 0 };
 let stats: BindStats = { vertexBuffers: 0 };
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
-let canvas: GPUCanvasConfiguration = { format: "bgra8unorm", depthFormat: "depth32float", sampleCount: 1 };
 
+export const BACKEND = "d3d11";
 
-let buffers: Pool<BufferSlot> = newPool<BufferSlot>("d3d11", "GPUBuffer", "buffer", { id: 0 });
-let textures: Pool<TextureSlot> = newPool<TextureSlot>("d3d11", "GPUTexture", "texture", { id: 0 });
-let views: Pool<ViewSlot> = newPool<ViewSlot>("d3d11", "GPUTextureView", "view", { id: 0 });
-let samplers: Pool<SamplerSlot> = newPool<SamplerSlot>("d3d11", "GPUSampler", "sampler", { id: 0 });
-let shaders: Pool<ShaderSlot> = newPool<ShaderSlot>("d3d11", "GPUShaderModule", "shader module", { id: 0 });
-let pipelines: Pool<PipelineSlot> = newPool<PipelineSlot>("d3d11", "GPURenderPipeline", "render or compute pipeline", { id: 0 });
-let layouts: Pool<LayoutSlot> = newPool<LayoutSlot>("d3d11", "GPUBindGroupLayout", "bind group layout", { id: 0 });
-let querySets: Pool<QuerySetSlot> = newPool<QuerySetSlot>("d3d11", "GPUQuerySet", "query set", { id: 0 });
-let bindGroups: Pool<BindGroupSlot> = newPool<BindGroupSlot>("d3d11", "GPUBindGroup", "bind group", { id: 0 });
+let buffers: Vec<BufferSlot> = [{}];
+let textures: Vec<TextureSlot> = [{}];
+let views: Vec<ViewSlot> = [{}];
+let samplers: Vec<SamplerSlot> = [{}];
+let shaders: Vec<ShaderSlot> = [{}];
+let pipelines: Vec<PipelineSlot> = [{}];
+let querySets: Vec<QuerySetSlot> = [{}];
+let bindGroups: Vec<BindGroupSlot> = [{}];
 
 @noinline function stop(message: string): never {
 	console.log(`webgpu d3d11: ${message}`);
@@ -878,7 +851,7 @@ function checkDriverConstants(): void {
 		MAX_WORKGROUP_SIZE_Y,
 		MAX_WORKGROUP_SIZE_Z,
 		MAX_WORKGROUP_INVOCATIONS,
-		MAX_ANISOTROPY,
+		GPU_MAX_ANISOTROPY,
 		INPUT_ELEMENT_INTS,
 		BLEND_TARGET_INTS,
 		FORMAT_CAP_SAMPLE,
@@ -1026,96 +999,29 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	checkDriverConstants();
 	device = d3dDeviceFrom(environment.device);
 	context = d3dContextFrom(environment.context);
-	frame = 0;
 	pass = { width: 0 };
 	bound = { pipeline: 0 };
 	computeBound = { pipeline: 0 };
 	context1 = d3dUniformOffsetting(device, context);
 	offsetUniforms = context1 != null;
-	reset(buffers);
-	reset(textures);
-	reset(views);
-	reset(samplers);
-	reset(shaders);
-	reset(pipelines);
-	reset(layouts);
-	reset(querySets);
-	reset(bindGroups);
-	canvas = canvasOf(environment);
-	swapchainColor = reserveSwapchainTexture(canvas.format);
-	textures.slots[textures.slotIndex(swapchainColor)].usage |= GPUTextureUsage.COPY_SRC as int32;
-	const depthFormat: string = canvas.depthFormat;
-	swapchainDepth = depthFormat == "" ? 0 : reserveSwapchainTexture(canvas.depthFormat);
 	return { id: 1, queue: { id: 1 } };
 }
 
-function canvasOf(environment: NativeEnvironment): GPUCanvasConfiguration {
-	const colorFormat: string = environment.colorFormat;
-	if (colorFormat == "") { stop("NativeEnvironment.colorFormat is required"); }
-	if (formatInfo(environment.colorFormat, "NativeEnvironment.colorFormat").depth) {
-		stopOnMember("NativeEnvironment.colorFormat", colorFormat);
-	}
-	const depthFormat: string = environment.depthFormat;
-	if (depthFormat != "" && !formatInfo(environment.depthFormat, "NativeEnvironment.depthFormat").depth) {
-		stopOnMember("NativeEnvironment.depthFormat", depthFormat);
-	}
-	return {
-		format: environment.colorFormat,
-		depthFormat: environment.depthFormat,
-		sampleCount: environment.sampleCount == 0 ? 1 : environment.sampleCount,
-	};
+export function adoptSwapchain(color: uint32, depth: uint32): void {
+	swapchainColor = color;
+	swapchainDepth = depth;
+	adoptSwapchainTexture(color, "NativeEnvironment.colorFormat");
+	if (depth != 0) { adoptSwapchainTexture(depth, "NativeEnvironment.depthFormat"); }
 }
 
-export function canvasConfiguration(): GPUCanvasConfiguration { return canvas; }
+function adoptSwapchainTexture(id: uint32, member: string): void {
+	put(textures, id, { native: NO_TEXTURE, info: formatInfo(textureRecords.record(id).format, member) });
+	put(views, textureRecords.record(id).swapchainView, views[0]);
+}
 
 export function formatRenderable(format: GPUTextureFormat): boolean {
 	formatInfo(format, "formatRenderable format");
 	return true;
-}
-
-export function frameIndex(): uint32 { return (frame + 1) as uint32; }
-
-export function liveCounts(): GPULiveCounts {
-	let counts: GPULiveCounts = { buffers: buffers.live() };
-	for (const id of textures.liveIds()) { if (textures.slots[textures.slotIndex(id)].swapchainView == 0) { counts.textures += 1; } }
-	for (const id of views.liveIds()) { if (!views.slots[views.slotIndex(id)].swapchain) { counts.views += 1; } }
-	counts.samplers = samplers.live();
-	counts.shaderModules = shaders.live();
-	counts.pipelines = pipelines.live();
-	return counts;
-}
-
-export function bufferAlive(buffer: GPUBuffer): boolean {
-	return buffers.alive(buffer.id);
-}
-
-export function textureAlive(texture: GPUTexture): boolean {
-	return textures.alive(texture.id);
-}
-
-export function viewAlive(view: GPUTextureView): boolean {
-	return views.alive(view.id);
-}
-
-export function samplerAlive(sampler: GPUSampler): boolean {
-	return samplers.alive(sampler.id);
-}
-
-function reserveSwapchainTexture(format: GPUTextureFormat): uint32 {
-	const textureId = allocate(textures);
-	const viewId = allocate(views);
-	store(textures, {
-		id: textureId,
-		format: format,
-		info: formatInfo(format, "swapchain format"),
-		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
-		sampleCount: 1,
-		mipLevels: 1,
-		layers: 1,
-		swapchainView: viewId,
-	});
-	store(views, { id: viewId, texture: textureId, swapchain: true });
-	return textureId;
 }
 
 export function shutdown(): void {
@@ -1123,31 +1029,13 @@ export function shutdown(): void {
 	d3dRelease(context1 as Ptr<void>);
 	context1 = null as unknown as Ptr<D3dContext1Impl>;
 	d3dReleaseAnnotation();
-	for (const id of querySets.liveIds()) { destroyQuerySet({ id: id }); }
-	for (const id of bindGroups.liveIds()) { destroyBindGroup({ id: id }); }
-	for (const id of pipelines.liveIds()) { destroyRenderPipeline({ id: id }); }
-	for (const id of shaders.liveIds()) { destroyShaderModule({ id: id }); }
-	for (const id of samplers.liveIds()) { destroySampler({ id: id }); }
-	for (const id of views.liveIds()) { if (!views.slots[views.slotIndex(id)].swapchain) { destroyView({ id: id }); } }
-	for (const id of textures.liveIds()) { if (textures.slots[textures.slotIndex(id)].swapchainView == 0) { destroyTexture({ id: id }); } }
-	for (const id of buffers.liveIds()) { destroyBuffer({ id: id }); }
-	reset(buffers);
-	reset(textures);
-	reset(views);
-	reset(samplers);
-	reset(shaders);
-	reset(pipelines);
-	reset(layouts);
-	reset(querySets);
-	reset(bindGroups);
 }
 
 export function adapterInfo(): GPUAdapterInfo {
 	return { backend: "d3d11", originTopLeft: true, depthZeroToOne: true };
 }
 
-export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
-	const id = allocate(buffers);
+export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void {
 	const usage = descriptor.usage;
 	const mapRead = has(usage, GPUBufferUsage.MAP_READ as int32);
 	const mapWrite = has(usage, GPUBufferUsage.MAP_WRITE as int32);
@@ -1170,9 +1058,6 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		stop("a UNIFORM buffer is a CPU shadow on D3D11 and cannot also be VERTEX or INDEX");
 	}
 	let slot: BufferSlot = {
-		id: id,
-		size: descriptor.size,
-		usage: usage,
 		uniform: uniform,
 		storage: storage,
 		staging: mapRead || mapWrite,
@@ -1212,13 +1097,7 @@ export function createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
 		if (slot.native == null) { stop(`CreateBuffer failed for ${labelOf(descriptor.label)}`); }
 	}
 	setLabel(slot.native, descriptor.label);
-	store(buffers, slot);
-	return { id: id };
-}
-
-function labelOf(label: string | null): string {
-	if (label === null) { return "an unlabeled resource"; }
-	return `'${label}'`;
+	put(buffers, id, slot);
 }
 
 function setLabel<T>(object: Ptr<T>, label: string | null): void {
@@ -1295,13 +1174,11 @@ function labelPass(label: string | null): boolean {
 	return true;
 }
 
-export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
+export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
 	const kind: string = descriptor.type;
 	const timestamp = kind == "timestamp";
 	if (timestamp && !supportsTimestamps()) { stop("this device has no timestamp queries: features().has('timestamp-query') is false"); }
-	const id = allocate(querySets);
 	let slot: QuerySetSlot = {
-		id: id,
 		timestamp: timestamp,
 		count: descriptor.count,
 		queries: [],
@@ -1320,153 +1197,147 @@ export function createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet {
 		if (slot.disjoint == null) { stop(`CreateQuery failed for ${labelOf(descriptor.label)}`); }
 		setLabel(slot.disjoint, descriptor.label);
 	}
-	store(querySets, slot);
-	return { id: id };
+	put(querySets, id, slot);
 }
 
 export function destroyQuerySet(querySet: GPUQuerySet): void {
-	const index = querySets.slotIndex(querySet.id);
-	for (let i = 0; i < querySets.slots[index].queries.length; i++) { d3dRelease(querySets.slots[index].queries[i] as Ptr<void>); }
-	d3dRelease(querySets.slots[index].disjoint as Ptr<void>);
-	querySets.slots[index] = { id: 0 };
-	release(querySets, querySet.id);
+	const index = querySetRecords.slotIndex(querySet.id);
+	for (let i = 0; i < querySets[index].queries.length; i++) { d3dRelease(querySets[index].queries[i] as Ptr<void>); }
+	d3dRelease(querySets[index].disjoint as Ptr<void>);
+	vacate(querySets, querySet.id);
 }
 
 function writeTimestamp(querySet: uint32, queryIndex: int32): void {
-	const q = querySets.slotIndex(querySet);
-	if (!querySets.slots[q].disjointOpen) {
-		d3dQueryBegin(context, querySets.slots[q].disjoint);
-		querySets.slots[q].disjointOpen = true;
+	const q = querySetRecords.slotIndex(querySet);
+	if (!querySets[q].disjointOpen) {
+		d3dQueryBegin(context, querySets[q].disjoint);
+		querySets[q].disjointOpen = true;
 	}
-	d3dQueryEnd(context, querySets.slots[q].queries[queryIndex]);
-	querySets.slots[q].state[queryIndex] = QueryState.Written;
+	d3dQueryEnd(context, querySets[q].queries[queryIndex]);
+	querySets[q].state[queryIndex] = QueryState.Written;
 }
 
 @noinline function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
 	if (writes.querySet.id == 0) { return; }
-	const q = querySets.slotIndex(writes.querySet.id);
-	checkedTimestampWrites(member, writes, querySets.slots[q].timestamp, querySets.slots[q].count);
+	const q = querySetRecords.slotIndex(writes.querySet.id);
+	checkedTimestampWrites(member, writes, querySets[q].timestamp, querySets[q].count);
 }
 
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
-	const q = querySets.slotIndex(querySet.id);
-	const b = buffers.slotIndex(destination.id);
+	const q = querySetRecords.slotIndex(querySet.id);
+	const b = bufferRecords.slotIndex(destination.id);
 	const bytes = checkedResolveQuerySet(
-		querySets.slots[q].count,
+		querySets[q].count,
 		firstQuery,
 		queryCount,
 		destination.id,
-		buffers.slots[b].usage,
-		buffers.slots[b].size,
+		bufferRecords.slots[b].usage,
+		bufferRecords.slots[b].size,
 		destinationOffset,
 	);
 	if (queryCount == 0) { return; }
 	for (let i = 0; i < queryCount; i++) {
-		const state = querySets.slots[q].state[firstQuery + i];
+		const state = querySets[q].state[firstQuery + i];
 		if (state == QueryState.Unwritten) { stop(`resolveQuerySet: query ${firstQuery + i} was never written`); }
 		if (state == QueryState.Open) { stop(`resolveQuerySet: query ${firstQuery + i} is still open`); }
 	}
-	if (querySets.slots[q].disjointOpen) {
-		d3dQueryEnd(context, querySets.slots[q].disjoint);
-		querySets.slots[q].disjointOpen = false;
+	if (querySets[q].disjointOpen) {
+		d3dQueryEnd(context, querySets[q].disjoint);
+		querySets[q].disjointOpen = false;
 		let frequency: uint64 = 0;
-		const status = d3dQueryFrequency(context, querySets.slots[q].disjoint, frequency);
+		const status = d3dQueryFrequency(context, querySets[q].disjoint, frequency);
 		if (status == 0) { stop("the timestamp frequency never arrived from the GPU"); }
 		if (status < 0) { stop("the GPU clock was disjoint while the timestamps were written: the values are unreliable"); }
-		querySets.slots[q].frequency = frequency;
+		querySets[q].frequency = frequency;
 	}
 	let values: Vec<uint64> = new Array(queryCount);
 	for (let i = 0; i < queryCount; i++) {
 		let ticks: uint64 = 0;
-		if (d3dQueryTicks(context, querySets.slots[q].queries[firstQuery + i], ticks) == 0) {
+		if (d3dQueryTicks(context, querySets[q].queries[firstQuery + i], ticks) == 0) {
 			stop(`query ${firstQuery + i} never arrived from the GPU`);
 		}
-		values[i] = querySets.slots[q].timestamp ? ticksToNanoseconds(ticks, querySets.slots[q].frequency) : ticks;
+		values[i] = querySets[q].timestamp ? ticksToNanoseconds(ticks, querySets[q].frequency) : ticks;
 	}
-	d3dUpdateBuffer(context, buffers.slots[b].native, destinationOffset, values[0], bytes);
+	d3dUpdateBuffer(context, buffers[b].native, destinationOffset, values[0], bytes);
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	const q = querySets.slotIndex(occlusionSetId());
-	checkedOcclusionRange(queryIndex, querySets.slots[q].count);
-	checkedOcclusionReuse(queryIndex, querySets.slots[q].usedPass[queryIndex]);
-	querySets.slots[q].usedPass[queryIndex] = passSerial();
-	querySets.slots[q].state[queryIndex] = QueryState.Open;
-	d3dQueryBegin(context, querySets.slots[q].queries[queryIndex]);
+	const q = querySetRecords.slotIndex(occlusionSetId());
+	checkedOcclusionRange(queryIndex, querySets[q].count);
+	checkedOcclusionReuse(queryIndex, querySets[q].usedPass[queryIndex]);
+	querySets[q].usedPass[queryIndex] = passSerial();
+	querySets[q].state[queryIndex] = QueryState.Open;
+	d3dQueryBegin(context, querySets[q].queries[queryIndex]);
 }
 
 export function endOcclusionQuery(): void {
-	const q = querySets.slotIndex(occlusionSetId());
-	d3dQueryEnd(context, querySets.slots[q].queries[occlusionQueryIndex()]);
-	querySets.slots[q].state[occlusionQueryIndex()] = QueryState.Written;
+	const q = querySetRecords.slotIndex(occlusionSetId());
+	d3dQueryEnd(context, querySets[q].queries[occlusionQueryIndex()]);
+	querySets[q].state[occlusionQueryIndex()] = QueryState.Written;
 }
 
 export function destroyBuffer(buffer: GPUBuffer): void {
-	const index = buffers.slotIndex(buffer.id);
-	d3dRelease(buffers.slots[index].native as Ptr<void>);
-	buffers.slots[index] = { id: 0 };
-	release(buffers, buffer.id);
+	const index = bufferRecords.slotIndex(buffer.id);
+	d3dRelease(buffers[index].native as Ptr<void>);
+	vacate(buffers, buffer.id);
 }
-
-export function bufferSize(buffer: GPUBuffer): int64 { return buffers.slots[buffers.slotIndex(buffer.id)].size; }
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
 	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = writableBuffer(buffer.id, offset, bytes);
-	if (buffers.slots[index].staging) { stop(`writeBuffer on GPUBuffer ${buffer.id}, a MAP buffer: write it through mapAsync and writeMappedRange or a copy`); }
-	if (buffers.slots[index].updatable) {
-		d3dUpdateBuffer(context, buffers.slots[index].native, offset, data[0], bytes);
+	if (buffers[index].staging) { stop(`writeBuffer on GPUBuffer ${buffer.id}, a MAP buffer: write it through mapAsync and writeMappedRange or a copy`); }
+	if (buffers[index].updatable) {
+		d3dUpdateBuffer(context, buffers[index].native, offset, data[0], bytes);
 		return;
 	}
-	if (buffers.slots[index].writtenFrame == -2) {
+	if (buffers[index].writtenFrame == -2) {
 		stop(`GPUBuffer ${buffer.id} was created without COPY_DST`);
 	}
-	const discard = buffers.slots[index].writtenFrame != frame;
+	const discard = buffers[index].writtenFrame != currentFrame();
 	if (discard) {
-		buffers.slots[index].writtenFrame = frame;
-	} else if (offset < buffers.slots[index].writtenEnd) {
-		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers.slots[index].writtenEnd}`);
+		buffers[index].writtenFrame = currentFrame();
+	} else if (offset < buffers[index].writtenEnd) {
+		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
 	}
-	buffers.slots[index].writtenEnd = offset + bytes;
-	if (buffers.slots[index].uniform && !offsetUniforms) {
-		d3dCopyBytes(buffers.slots[index].shadow[0], offset, data[0], bytes);
+	buffers[index].writtenEnd = offset + bytes;
+	if (buffers[index].uniform && !offsetUniforms) {
+		d3dCopyBytes(buffers[index].shadow[0], offset, data[0], bytes);
 		bound.uniformsDirty = true;
 		return;
 	}
 	const mapType = discard ? MAP_WRITE_DISCARD : MAP_WRITE_NO_OVERWRITE;
-	if (d3dMapWrite(context, buffers.slots[index].native, mapType, offset, data[0], bytes) == 0) {
+	if (d3dMapWrite(context, buffers[index].native, mapType, offset, data[0], bytes) == 0) {
 		stop(`Map for writeBuffer failed on GPUBuffer ${buffer.id}`);
 	}
 }
 
 function writableBuffer(id: uint32, offset: int64, bytes: int64): int32 {
-	const index = buffers.slotIndex(id);
-	checkedWriteBuffer(id, buffers.slots[index].size, offset, bytes);
+	const index = bufferRecords.slotIndex(id);
+	checkedWriteBuffer(id, bufferRecords.slots[index].size, offset, bytes);
 	return index;
 }
 
-export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
-	const id = allocate(textures);
+export function createTexture(texture: TextureRecord, descriptor: GPUTextureDescriptor): void {
 	const info = formatInfo(descriptor.format, "GPUTextureDescriptor.format");
-	const width = descriptor.size.width;
-	const height = descriptor.size.height;
+	const width = texture.width;
+	const height = texture.height;
 	const dimension: string = descriptor.dimension;
 	if (dimension != "" && dimension != "2d" && dimension != "3d") { stopOnMember("GPUTextureDescriptor.dimension", dimension); }
-	const volume = dimension == "3d";
-	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
-	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
-	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
+	const volume = texture.volume;
+	const layers = texture.layers;
+	const mipLevels = texture.mipLevels;
+	const sampleCount = texture.sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) {
 		stopOnMember("GPUTextureDescriptor.sampleCount", `${sampleCount}`);
 	}
-	const usage = descriptor.usage;
+	const usage = texture.usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
 	const copyDestination = has(usage, GPUTextureUsage.COPY_DST as int32);
 	if (attachment && copyDestination) {
 		stop("COPY_DST with RENDER_ATTACHMENT has no Void caller: a multisampled target takes no UpdateSubresource");
 	}
-	const cube = !volume && layers % 6 == 0 && width == height && has(usage, GPUTextureUsage.TEXTURE_BINDING as int32) && sampleCount == 1;
+	const cube = texture.cube;
 	let bindFlags = BIND_SHADER_RESOURCE;
 	if (attachment) { bindFlags |= info.depth ? BIND_DEPTH_STENCIL : BIND_RENDER_TARGET; }
 	if (has(usage, GPUTextureUsage.STORAGE_BINDING as int32)) {
@@ -1495,40 +1366,17 @@ export function createTexture(descriptor: GPUTextureDescriptor): GPUTexture {
 	}
 	if (native == null) { stop(`CreateTexture failed for ${labelOf(descriptor.label)}`); }
 	setLabel(native, descriptor.label);
-	const slot: TextureSlot = {
-		id: id,
-		width: width,
-		height: height,
-		format: descriptor.format,
-		usage: usage,
-		sampleCount: sampleCount,
-		mipLevels: mipLevels,
-		layers: layers,
-		volume: volume,
-		cube: cube,
-		native: native,
-		info: info,
-		swapchainView: 0,
-	};
-	store(textures, slot);
-	return { id: id };
+	put(textures, texture.id, { native: native, info: info });
 }
 
 export function destroyTexture(texture: GPUTexture): void {
-	const index = textures.slotIndex(texture.id);
-	if (textures.slots[index].swapchainView != 0) { stop("the swapchain texture belongs to the platform"); }
-	d3dRelease(textures.slots[index].native as Ptr<void>);
-	textures.slots[index] = { id: 0 };
-	release(textures, texture.id);
+	const index = textureRecords.slotIndex(texture.id);
+	d3dRelease(textures[index].native as Ptr<void>);
+	vacate(textures, texture.id);
 }
 
-export function textureWidth(texture: GPUTexture): int32 { return textures.slots[textures.slotIndex(texture.id)].width; }
-export function textureHeight(texture: GPUTexture): int32 { return textures.slots[textures.slotIndex(texture.id)].height; }
-export function textureUsage(texture: GPUTexture): int32 { return textures.slots[textures.slotIndex(texture.id)].usage; }
-export function textureFormat(texture: GPUTexture): GPUTextureFormat { return textures.slots[textures.slotIndex(texture.id)].format; }
-
 export function nativeTexture(texture: GPUTexture): Ptr<void> {
-	return d3dTextureNative(textures.slots[textures.slotIndex(texture.id)].native);
+	return d3dTextureNative(textures[textureRecords.slotIndex(texture.id)].native);
 }
 
 export function writeTexture<T>(
@@ -1537,19 +1385,19 @@ export function writeTexture<T>(
 	layout: GPUTexelCopyBufferLayout,
 	size: GPUExtent3D,
 ): void {
-	const index = textures.slotIndex(destination.texture.id);
+	const index = textureRecords.slotIndex(destination.texture.id);
 	const bytes = (data.length as int64) * (sizeof T as int64);
-	if (!has(textures.slots[index].usage, GPUTextureUsage.COPY_DST as int32)) {
-		stop(`writeTexture on GPUTexture ${textures.slots[index].id}, created without COPY_DST`);
+	if (!has(textureRecords.slots[index].usage, GPUTextureUsage.COPY_DST as int32)) {
+		stop(`writeTexture on GPUTexture ${textureRecords.slots[index].id}, created without COPY_DST`);
 	}
-	const bytesPerPixel = textures.slots[index].info.bytesPerPixel;
+	const bytesPerPixel = textures[index].info.bytesPerPixel;
 	const mip = destination.mipLevel;
-	const mips = textures.slots[index].mipLevels;
-	const volume = textures.slots[index].volume;
-	const depth = volume && mip >= 0 && mip < mips ? Math.max(1, textures.slots[index].layers >> mip) : textures.slots[index].layers;
+	const mips = textureRecords.slots[index].mipLevels;
+	const volume = textureRecords.slots[index].volume;
+	const depth = volume && mip >= 0 && mip < mips ? Math.max(1, textureRecords.slots[index].layers >> mip) : textureRecords.slots[index].layers;
 	const rowPitch = checkedTexelWritePitch(
-		textures.slots[index].width,
-		textures.slots[index].height,
+		textureRecords.slots[index].width,
+		textureRecords.slots[index].height,
 		mips,
 		depth,
 		bytesPerPixel,
@@ -1562,7 +1410,7 @@ export function writeTexture<T>(
 	if (volume) {
 		d3dUpdateTexture(
 			context,
-			textures.slots[index].native,
+			textures[index].native,
 			data[0],
 			layout.offset,
 			rowPitch,
@@ -1580,7 +1428,7 @@ export function writeTexture<T>(
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		d3dUpdateTexture(
 			context,
-			textures.slots[index].native,
+			textures[index].native,
 			data[0],
 			layout.offset + imageBytes * (i as int64),
 			rowPitch,
@@ -1597,52 +1445,39 @@ export function writeTexture<T>(
 }
 
 function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
-	const index = buffers.slotIndex(buffer.id);
-	if (!has(buffers.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
-	if (buffers.slots[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
-	if (buffers.slots[index].native == null) { stop(`${member}: GPUBuffer ${buffer.id} is a CPU shadow uniform block on d3d11 and cannot be copied`); }
+	const index = bufferRecords.slotIndex(buffer.id);
+	if (!has(bufferRecords.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
+	if (buffers[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
+	if (buffers[index].native == null) { stop(`${member}: GPUBuffer ${buffer.id} is a CPU shadow uniform block on d3d11 and cannot be copied`); }
 	return index;
 }
 
 function copyDestinationBuffer(buffer: GPUBuffer, member: string): int32 {
 	const index = copyableBuffer(buffer, member, GPUBufferUsage.COPY_DST as int32, "COPY_DST");
-	if (!buffers.slots[index].staging && !buffers.slots[index].updatable) {
+	if (!buffers[index].staging && !buffers[index].updatable) {
 		stop(`${member}: GPUBuffer ${buffer.id} is a DYNAMIC VERTEX or INDEX buffer written by writeBuffer and cannot take a GPU copy on d3d11 yet`);
 	}
 	return index;
 }
 
 function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
-	const index = textures.slotIndex(info.texture.id);
-	if (!has(textures.slots[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
-	if (textures.slots[index].swapchainView != 0) {
-		if (textures.slots[index].native == null) { stop(`${member}: the swapchain texture has no resolved back buffer to copy`); }
+	const index = textureRecords.slotIndex(info.texture.id);
+	if (!has(textureRecords.slots[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
+	if (textureRecords.slots[index].swapchainView != 0) {
+		if (textures[index].native == null) { stop(`${member}: the swapchain texture has no resolved back buffer to copy`); }
 		return index;
 	}
-	if (textures.slots[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
+	if (textureRecords.slots[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
 	return index;
 }
 
-function copyRegion(member: string, info: GPUTexelCopyTextureInfo, index: int32, size: GPUExtent3D): void {
-	checkedTexelCopyRegion(
-		member,
-		textures.slots[index].id,
-		textures.slots[index].width,
-		textures.slots[index].height,
-		textures.slots[index].mipLevels,
-		textures.slots[index].layers,
-		textures.slots[index].volume,
-		info,
-		size,
-	);
-}
 
 function texelCopyBytes(index: int32, member: string, writes: boolean, copy: GPUTexelCopyTextureInfo, size: GPUExtent3D): int32 {
-	const format = textures.slots[index].info;
+	const format = textures[index].info;
 	if (format.depth) {
-		checkedDepthTexelCopy(member, textures.slots[index].id, textures.slots[index].format, format.stencil, writes, textures.slots[index].width, textures.slots[index].height, copy.mipLevel, size);
+		checkedDepthTexelCopy(member, textureRecords.slots[index].id, textureRecords.slots[index].format, format.stencil, writes, textureRecords.slots[index].width, textureRecords.slots[index].height, copy.mipLevel, size);
 	}
-	if (textures.slots[index].volume) { stop(`${member}: 3d GPUTexture ${textures.slots[index].id} is not ported to d3d11 yet`); }
+	if (textureRecords.slots[index].volume) { stop(`${member}: 3d GPUTexture ${textureRecords.slots[index].id} is not ported to d3d11 yet`); }
 	return format.bytesPerPixel;
 }
 
@@ -1655,30 +1490,30 @@ export function copyBufferToBuffer(
 ): void {
 	const from = copyableBuffer(source, "copyBufferToBuffer source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyDestinationBuffer(destination, "copyBufferToBuffer destination");
-	checkedBufferCopy(source.id, buffers.slots[from].size, sourceOffset, destination.id, buffers.slots[to].size, destinationOffset, size);
+	checkedBufferCopy(source.id, bufferRecords.slots[from].size, sourceOffset, destination.id, bufferRecords.slots[to].size, destinationOffset, size);
 	if (size == 0) { return; }
-	d3dCopyBuffer(context, buffers.slots[to].native, destinationOffset, buffers.slots[from].native, sourceOffset, size);
+	d3dCopyBuffer(context, buffers[to].native, destinationOffset, buffers[from].native, sourceOffset, size);
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyDestinationBuffer(destination.buffer, "copyTextureToBuffer destination");
-	copyRegion("copyTextureToBuffer source", source, from, size);
+	checkedCopyRegion("copyTextureToBuffer source", textureRecords.slots[from], source, size);
 	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source", false, source, size);
-	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, buffers.slots[to].size, destination, size);
+	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, bufferRecords.slots[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
-	const mips = textures.slots[from].mipLevels;
+	const mips = textureRecords.slots[from].mipLevels;
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		const copied = d3dCopyTextureToBuffer(
 			device,
 			context,
-			textures.slots[from].native,
+			textures[from].native,
 			source.mipLevel + (source.origin.z + i) * mips,
 			source.origin.x,
 			source.origin.y,
 			size.width,
 			size.height,
-			buffers.slots[to].native,
+			buffers[to].native,
 			destination.offset + (bytesPerRow as int64) * (rowsPerImage as int64) * (i as int64),
 			bytesPerRow,
 			size.width * bytesPerPixel,
@@ -1690,30 +1525,30 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyBufferToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	copyRegion("copyBufferToTexture destination", destination, to, size);
+	checkedCopyRegion("copyBufferToTexture destination", textureRecords.slots[to], destination, size);
 	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination", true, destination, size);
-	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, buffers.slots[from].size, source, size);
+	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, bufferRecords.slots[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
 	const imageBytes = (bytesPerRow as int64) * (rowsPerImage as int64);
 	const rowBytes = size.width * bytesPerPixel;
-	let readable = buffers.slots[from].native;
+	let readable = buffers[from].native;
 	let offset = source.offset;
-	const temporary = !buffers.slots[from].staging;
+	const temporary = !buffers[from].staging;
 	if (temporary) {
 		const span = imageBytes * ((size.depthOrArrayLayers - 1) as int64) + (bytesPerRow as int64) * ((size.height - 1) as int64) + (rowBytes as int64);
 		readable = d3dCreateBuffer(device, span, USAGE_STAGING, 0, CPU_ACCESS_READ | CPU_ACCESS_WRITE, 0);
 		if (readable == null) { stop(`CreateBuffer failed for the copy of GPUBuffer ${source.buffer.id}`); }
-		d3dCopyBuffer(context, readable, 0, buffers.slots[from].native, offset, span);
+		d3dCopyBuffer(context, readable, 0, buffers[from].native, offset, span);
 		offset = 0;
 	}
-	const mips = textures.slots[to].mipLevels;
+	const mips = textureRecords.slots[to].mipLevels;
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		const copied = d3dCopyBufferToTexture(
 			context,
 			readable,
 			offset + imageBytes * (i as int64),
 			bytesPerRow,
-			textures.slots[to].native,
+			textures[to].native,
 			destination.mipLevel + (destination.origin.z + i) * mips,
 			destination.origin.x,
 			destination.origin.y,
@@ -1728,29 +1563,29 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
 	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
 	const to = copyableTexture(destination, "copyTextureToTexture destination", GPUTextureUsage.COPY_DST as int32, "COPY_DST");
-	copyRegion("copyTextureToTexture source", source, from, size);
-	copyRegion("copyTextureToTexture destination", destination, to, size);
+	checkedCopyRegion("copyTextureToTexture source", textureRecords.slots[from], source, size);
+	checkedCopyRegion("copyTextureToTexture destination", textureRecords.slots[to], destination, size);
 	checkedTextureToTextureCopy(
 		source,
 		destination,
 		size,
-		textures.slots[from].format,
-		textures.slots[to].format,
-		textures.slots[from].volume,
-		textures.slots[to].volume,
-		textures.slots[from].info.depth,
-		textures.slots[from].width,
-		textures.slots[from].height,
+		textureRecords.slots[from].format,
+		textureRecords.slots[to].format,
+		textureRecords.slots[from].volume,
+		textureRecords.slots[to].volume,
+		textures[from].info.depth,
+		textureRecords.slots[from].width,
+		textureRecords.slots[from].height,
 	);
-	if (textures.slots[from].volume) {
+	if (textureRecords.slots[from].volume) {
 		d3dCopyTexture(
 			context,
-			textures.slots[to].native,
+			textures[to].native,
 			destination.mipLevel,
 			destination.origin.x,
 			destination.origin.y,
 			destination.origin.z,
-			textures.slots[from].native,
+			textures[from].native,
 			source.mipLevel,
 			source.origin.x,
 			source.origin.y,
@@ -1764,13 +1599,13 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 	for (let i = 0; i < size.depthOrArrayLayers; i++) {
 		d3dCopyTexture(
 			context,
-			textures.slots[to].native,
-			destination.mipLevel + (destination.origin.z + i) * textures.slots[to].mipLevels,
+			textures[to].native,
+			destination.mipLevel + (destination.origin.z + i) * textureRecords.slots[to].mipLevels,
 			destination.origin.x,
 			destination.origin.y,
 			0,
-			textures.slots[from].native,
-			source.mipLevel + (source.origin.z + i) * textures.slots[from].mipLevels,
+			textures[from].native,
+			source.mipLevel + (source.origin.z + i) * textureRecords.slots[from].mipLevels,
 			source.origin.x,
 			source.origin.y,
 			0,
@@ -1784,24 +1619,24 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 // A MAP buffer is a STAGING resource: mapAsync marks the range, and the Map call that reads or
 // writes it blocks until the GPU copies into it are done.
 export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
-	const index = buffers.slotIndex(buffer.id);
-	const length = checkedMapAsync(buffer.id, buffers.slots[index].usage, buffers.slots[index].mapMode, buffers.slots[index].size, mode, offset, size);
-	buffers.slots[index].mapMode = mode;
-	buffers.slots[index].mapOffset = offset;
-	buffers.slots[index].mapSize = length;
+	const index = bufferRecords.slotIndex(buffer.id);
+	const length = checkedMapAsync(buffer.id, bufferRecords.slots[index].usage, buffers[index].mapMode, bufferRecords.slots[index].size, mode, offset, size);
+	buffers[index].mapMode = mode;
+	buffers[index].mapOffset = offset;
+	buffers[index].mapSize = length;
 }
 
 function mappedRange(member: string, buffer: GPUBuffer, mode: int32, offset: int64, size: int64): int64 {
-	const index = buffers.slotIndex(buffer.id);
-	const slot = buffers.slots[index];
-	return checkedMappedRange(member, buffer.id, slot.size, slot.mapMode, slot.mapOffset, slot.mapSize, mode, offset, size);
+	const index = bufferRecords.slotIndex(buffer.id);
+	const slot = buffers[index];
+	return checkedMappedRange(member, buffer.id, bufferRecords.slots[index].size, slot.mapMode, slot.mapOffset, slot.mapSize, mode, offset, size);
 }
 
 // A copy of the mapped bytes: WebGPU's ArrayBuffer view has no MetaScript counterpart on a native pointer.
 export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
 	const length = mappedRange("getMappedRange", buffer, GPUMapMode.READ as int32, offset, size);
 	let bytes: Vec<uint8> = new Array(length);
-	if (d3dReadBuffer(context, buffers.slots[buffers.slotIndex(buffer.id)].native, offset, bytes[0], length) == 0) {
+	if (d3dReadBuffer(context, buffers[bufferRecords.slotIndex(buffer.id)].native, offset, bytes[0], length) == 0) {
 		stop(`Map for getMappedRange failed on GPUBuffer ${buffer.id}`);
 	}
 	return bytes;
@@ -1811,19 +1646,18 @@ export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Read
 	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	mappedRange("writeMappedRange", buffer, GPUMapMode.WRITE as int32, offset, bytes);
-	if (d3dMapWrite(context, buffers.slots[buffers.slotIndex(buffer.id)].native, MAP_WRITE, offset, data[0], bytes) == 0) {
+	if (d3dMapWrite(context, buffers[bufferRecords.slotIndex(buffer.id)].native, MAP_WRITE, offset, data[0], bytes) == 0) {
 		stop(`Map for writeMappedRange failed on GPUBuffer ${buffer.id}`);
 	}
 }
 
 export function unmap(buffer: GPUBuffer): void {
-	const index = buffers.slotIndex(buffer.id);
-	checkedUnmap(buffer.id, buffers.slots[index].mapMode);
-	buffers.slots[index].mapMode = 0;
+	const index = bufferRecords.slotIndex(buffer.id);
+	checkedUnmap(buffer.id, buffers[index].mapMode);
+	buffers[index].mapMode = 0;
 }
 
-function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 {
-	const name = checkedViewDimension(descriptor.dimension, textures.slots[t].volume, textures.slots[t].layers, textures.slots[t].id);
+function viewDimensionOf(name: string): int32 {
 	if (name == "2d") { return VIEW_2D; }
 	if (name == "2d-array") { return VIEW_2D_ARRAY; }
 	if (name == "cube") { return VIEW_CUBE; }
@@ -1832,60 +1666,38 @@ function viewDimensionOf(descriptor: GPUTextureViewDescriptor, t: int32): int32 
 	return stopOnMember("GPUTextureViewDescriptor.dimension", name);
 }
 
-export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescriptor): GPUTextureView {
-	const t = textures.slotIndex(texture.id);
-	if (textures.slots[t].swapchainView != 0) { return { id: textures.slots[t].swapchainView }; }
-	const id = allocate(views);
-	const info = textures.slots[t].info;
-	const multisampled = textures.slots[t].sampleCount > 1 ? 1 : 0;
-	const usage = textures.slots[t].usage;
+export function createView(view: ViewRecord, descriptor: GPUTextureViewDescriptor): void {
+	const t = textureRecords.slotIndex(view.texture);
+	const info = textures[t].info;
+	const multisampled = textureRecords.slots[t].sampleCount > 1 ? 1 : 0;
+	const usage = textureRecords.slots[t].usage;
 	const attachment = has(usage, GPUTextureUsage.RENDER_ATTACHMENT as int32);
-	const layers = textures.slots[t].layers;
-	const baseMip = descriptor.baseMipLevel;
-	const mipCount = descriptor.mipLevelCount == 0 ? textures.slots[t].mipLevels - baseMip : descriptor.mipLevelCount;
-	checkedViewMips(textures.slots[t].id, textures.slots[t].mipLevels, baseMip, mipCount);
-	let dimension = viewDimensionOf(descriptor, t);
-	let baseLayer = descriptor.baseArrayLayer;
-	let layerCount = descriptor.arrayLayerCount;
-	if (dimension == VIEW_3D) {
-		checkedView3d(baseLayer, layerCount);
-		baseLayer = 0;
-		layerCount = 1;
-	} else {
-		if (dimension == VIEW_2D) { layerCount = 1; }
-		if (dimension == VIEW_CUBE) { layerCount = 6; }
-		if (layerCount == 0) { layerCount = layers - baseLayer; }
-		checkedViewLayers(textures.slots[t].id, layers, baseLayer, layerCount);
-	}
-	if (dimension == VIEW_CUBE || dimension == VIEW_CUBE_ARRAY) {
-		checkedCubeView(textures.slots[t].id, textures.slots[t].cube, baseLayer, layerCount);
-		if (dimension == VIEW_CUBE && baseLayer != 0) { dimension = VIEW_CUBE_ARRAY; }
-	}
+	const layers = textureRecords.slots[t].layers;
+	const baseMip = view.baseMip;
+	const mipCount = view.mipCount;
+	const baseLayer = view.baseLayer;
+	const layerCount = view.layerCount;
+	let dimension = viewDimensionOf(view.dimension);
+	if (dimension == VIEW_CUBE && baseLayer != 0) { dimension = VIEW_CUBE_ARRAY; }
 	const volumeTarget = attachment && mipCount == 1 && dimension == VIEW_3D && !info.depth;
-	const attachable = mipCount == 1 && layerCount == 1 && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY);
+	const attachable = view.attachable && (dimension == VIEW_2D || dimension == VIEW_2D_ARRAY);
 	const arrayed = layers > 1 ? 1 : 0;
 	let slot: ViewSlot = {
-		id: 0,
-		texture: texture.id,
 		shaderResource: NO_SRV,
 		renderTarget: NO_RTV,
 		depthStencil: NO_DSV,
 		unordered: NO_UAV,
 		swapchainResolve: NO_RTV,
-		baseMip: baseMip,
-		mipCount: mipCount,
-		baseLayer: baseLayer,
 		volumeTarget: volumeTarget,
-		swapchain: false,
 	};
-	const native = textures.slots[t].native;
+	const native = textures[t].native;
 	if (has(usage, GPUTextureUsage.TEXTURE_BINDING as int32)) {
 		if (dimension == VIEW_2D && baseLayer > 0) { dimension = VIEW_2D_ARRAY; }
 		slot.shaderResource = d3dCreateSrv(device, native, info.shaderResource, multisampled, dimension, baseMip, mipCount, baseLayer, layerCount);
 		if (slot.shaderResource == null) { stop(`CreateShaderResourceView failed for ${labelOf(descriptor.label)}`); }
 	}
 	if (has(usage, GPUTextureUsage.STORAGE_BINDING as int32) && mipCount == 1) {
-		const uavDimension = textures.slots[t].volume ? VIEW_3D : (layers > 1 ? VIEW_2D_ARRAY : VIEW_2D);
+		const uavDimension = textureRecords.slots[t].volume ? VIEW_3D : (layers > 1 ? VIEW_2D_ARRAY : VIEW_2D);
 		slot.unordered = d3dCreateTextureUav(device, native, info.renderTarget, uavDimension, baseMip, baseLayer, layerCount);
 		if (slot.unordered == null) { stop(`CreateUnorderedAccessView failed for ${labelOf(descriptor.label)}`); }
 	}
@@ -1901,58 +1713,37 @@ export function createView(texture: GPUTexture, descriptor: GPUTextureViewDescri
 	setLabel(slot.unordered, descriptor.label);
 	setLabel(slot.renderTarget, descriptor.label);
 	setLabel(slot.depthStencil, descriptor.label);
-	slot.id = id;
-	store(views, slot);
-	return { id: slot.id };
+	put(views, view.id, slot);
 }
 
 export function destroyView(view: GPUTextureView): void {
-	const index = views.slotIndex(view.id);
-	if (views.slots[index].swapchain) { return; }
-	d3dRelease(views.slots[index].shaderResource as Ptr<void>);
-	d3dRelease(views.slots[index].unordered as Ptr<void>);
-	d3dRelease(views.slots[index].renderTarget as Ptr<void>);
-	d3dRelease(views.slots[index].depthStencil as Ptr<void>);
-	views.slots[index] = { id: 0 };
-	release(views, view.id);
+	const index = viewRecords.slotIndex(view.id);
+	d3dRelease(views[index].shaderResource as Ptr<void>);
+	d3dRelease(views[index].unordered as Ptr<void>);
+	d3dRelease(views[index].renderTarget as Ptr<void>);
+	d3dRelease(views[index].depthStencil as Ptr<void>);
+	vacate(views, view.id);
 }
 
-export function viewTexture(view: GPUTextureView): GPUTexture { return { id: views.slots[views.slotIndex(view.id)].texture }; }
-
-export function swapchainTexture(swapchain: NativeSwapchain): GPUTexture {
+export function acquireSwapchain(swapchain: NativeSwapchain): void {
 	if (swapchain.renderView === null) { stop("the native swapchain has no render view"); }
-	updateSwapchainTexture(swapchainColor, swapchain);
-	const v = views.slotIndex(textures.slots[textures.slotIndex(swapchainColor)].swapchainView);
-	views.slots[v].renderTarget = d3dRtvFrom(swapchain.renderView);
-	views.slots[v].swapchainResolve = d3dRtvFrom(swapchain.resolveView);
-	const resolved = swapchain.sampleCount > 1 ? views.slots[v].swapchainResolve : views.slots[v].renderTarget;
-	textures.slots[textures.slotIndex(swapchainColor)].native = d3dRtvTexture(resolved);
+	const v = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainColor)].swapchainView);
+	views[v].renderTarget = d3dRtvFrom(swapchain.renderView);
+	views[v].swapchainResolve = d3dRtvFrom(swapchain.resolveView);
+	const resolved = swapchain.sampleCount > 1 ? views[v].swapchainResolve : views[v].renderTarget;
+	textures[textureRecords.slotIndex(swapchainColor)].native = d3dRtvTexture(resolved);
 	if (swapchainDepth != 0) {
-		updateSwapchainTexture(swapchainDepth, swapchain);
-		const d = views.slotIndex(textures.slots[textures.slotIndex(swapchainDepth)].swapchainView);
-		views.slots[d].depthStencil = d3dDsvFrom(swapchain.depthStencilView);
+		const d = viewRecords.slotIndex(textureRecords.slots[textureRecords.slotIndex(swapchainDepth)].swapchainView);
+		views[d].depthStencil = d3dDsvFrom(swapchain.depthStencilView);
 	}
-	return { id: swapchainColor };
 }
 
-export function swapchainDepthTexture(): GPUTexture { return { id: swapchainDepth }; }
-
-function updateSwapchainTexture(id: uint32, swapchain: NativeSwapchain): void {
-	const t = textures.slotIndex(id);
-	textures.slots[t].width = swapchain.width;
-	textures.slots[t].height = swapchain.height;
-	textures.slots[t].sampleCount = swapchain.sampleCount == 0 ? 1 : swapchain.sampleCount;
-}
-
-export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
-	const id = allocate(samplers);
+export function createSampler(id: uint32, descriptor: GPUSamplerDescriptor): void {
 	const magLinear = linearFilter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter", "d3d11");
 	const minLinear = linearFilter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter", "d3d11");
 	const mipLinear = linearFilter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter", "d3d11");
 	const compare: string = descriptor.compare;
-	let maxAnisotropy = descriptor.maxAnisotropy;
-	if (maxAnisotropy < 1) { maxAnisotropy = 1; }
-	if (maxAnisotropy > MAX_ANISOTROPY) { stopOnMember("GPUSamplerDescriptor.maxAnisotropy", `${maxAnisotropy}`); }
+	const maxAnisotropy = clampedAnisotropy(descriptor.maxAnisotropy);
 	let filter = 0;
 	if (maxAnisotropy > 1) {
 		filter = FILTER_ANISOTROPIC;
@@ -1976,16 +1767,14 @@ export function createSampler(descriptor: GPUSamplerDescriptor): GPUSampler {
 	);
 	if (native == null) { stop(`CreateSamplerState failed for ${labelOf(descriptor.label)}`); }
 	setLabel(native, descriptor.label);
-	const slot: SamplerSlot = { id: id, native: native };
-	store(samplers, slot);
-	return { id: id };
+	const slot: SamplerSlot = { native: native };
+	put(samplers, id, slot);
 }
 
 export function destroySampler(sampler: GPUSampler): void {
-	const index = samplers.slotIndex(sampler.id);
-	d3dRelease(samplers.slots[index].native as Ptr<void>);
-	samplers.slots[index] = { id: 0 };
-	release(samplers, sampler.id);
+	const index = samplerRecords.slotIndex(sampler.id);
+	d3dRelease(samplers[index].native as Ptr<void>);
+	vacate(samplers, sampler.id);
 }
 
 // A stage's precompiled bytes become its blob and skip D3DCompile; no stage reaching it loads d3dcompiler_47.dll.
@@ -2006,11 +1795,10 @@ function compileStage(code: string, entryPoint: string, target: string, label: s
 	return blob;
 }
 
-export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
+export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescriptor): void {
 	stopOnUnportedShaderBindings("d3d11", descriptor);
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
-	const id = allocate(shaders);
-	let slot: ShaderSlot = { id: 0 };
+	let slot: ShaderSlot = {};
 	for (let i = 0; i < descriptor.bindings.length; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
@@ -2063,11 +1851,9 @@ export function createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUSh
 		if (slot.constantBuffers[u] == null) { stop(`CreateBuffer of a constant buffer failed for ${labelOf(descriptor.label)}`); }
 	}
 	if (cacheBytes > 0) { slot.blockCache = new Array(cacheBytes); }
-	slot.id = id;
 	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
 	slot.readsVertexIndex = descriptor.readsVertexIndex;
-	store(shaders, slot);
-	return { id: slot.id };
+	put(shaders, id, slot);
 }
 
 function bindingWritable(binding: GPUShaderBinding): boolean {
@@ -2106,34 +1892,32 @@ function bindingWritable(binding: GPUShaderBinding): boolean {
 }
 
 export function destroyShaderModule(module: GPUShaderModule): void {
-	const index = shaders.slotIndex(module.id);
-	d3dRelease(shaders.slots[index].vertex as Ptr<void>);
-	d3dRelease(shaders.slots[index].fragment as Ptr<void>);
-	d3dRelease(shaders.slots[index].compute as Ptr<void>);
-	d3dBlobFree(shaders.slots[index].vertexBlob);
-	for (let u = 0; u < shaders.slots[index].uniformCount; u++) { d3dRelease(shaders.slots[index].constantBuffers[u] as Ptr<void>); }
-	shaders.slots[index] = { id: 0 };
-	release(shaders, module.id);
+	const index = shaderRecords.slotIndex(module.id);
+	d3dRelease(shaders[index].vertex as Ptr<void>);
+	d3dRelease(shaders[index].fragment as Ptr<void>);
+	d3dRelease(shaders[index].compute as Ptr<void>);
+	d3dBlobFree(shaders[index].vertexBlob);
+	for (let u = 0; u < shaders[index].uniformCount; u++) { d3dRelease(shaders[index].constantBuffers[u] as Ptr<void>); }
+	vacate(shaders, module.id);
 }
 
 function semanticIndexOf(shader: int32, location: int32): int32 {
 	for (let i = 0; i < GPU_MAX_VERTEX_ATTRIBUTES; i++) {
-		if (shaders.slots[shader].attributes[i].location == location) {
-			return shaders.slots[shader].attributes[i].semanticIndex;
+		if (shaders[shader].attributes[i].location == location) {
+			return shaders[shader].attributes[i].semanticIndex;
 		}
 	}
 	return stopOnMember("vertex attribute shaderLocation (absent from the shader reflection)", `${location}`);
 }
 
-export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
-	const id = allocate(pipelines);
-	const s = shaders.slotIndex(descriptor.vertex.module.id);
-	checkedRenderModule(shaders.slots[s].compute != null);
-	let slot: PipelineSlot = { id: 0, shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders.slots[s].readsInstanceIndex, readsVertexIndex: shaders.slots[s].readsVertexIndex };
+export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDescriptor): void {
+	const s = shaderRecords.slotIndex(descriptor.vertex.module.id);
+	checkedRenderModule(shaders[s].compute != null);
+	let slot: PipelineSlot = { shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders[s].readsInstanceIndex, readsVertexIndex: shaders[s].readsVertexIndex };
 	slot.topology = primitiveTopology(descriptor.primitive.topology);
 	slot.stripIndexFormat = stripIndexFormatOf(descriptor.primitive);
 	slot.inputLayout = createInputLayout(s, descriptor, slot);
-	const sampleCount = descriptor.multisample.count == 0 ? 1 : descriptor.multisample.count;
+	const sampleCount = descriptor.multisample.count;
 	slot.rasterizer = d3dCreateRasterizerState(
 		device,
 		cullMode(descriptor.primitive.cullMode),
@@ -2155,8 +1939,8 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 		depthFormat != "" && descriptor.depthStencil.depthWriteEnabled ? 1 : 0,
 		depthFormat == "" ? 8 : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
 		stencil ? 1 : 0,
-		(readMask == 0 ? STENCIL_MASK_DEFAULT : readMask) as int32,
-		(writeMask == 0 ? STENCIL_MASK_DEFAULT : writeMask) as int32,
+		readMask as int32,
+		writeMask as int32,
 		stencilOperation(front.failOp, "depthStencil.stencilFront.failOp"),
 		stencilOperation(front.depthFailOp, "depthStencil.stencilFront.depthFailOp"),
 		stencilOperation(front.passOp, "depthStencil.stencilFront.passOp"),
@@ -2174,9 +1958,7 @@ export function createRenderPipeline(descriptor: GPURenderPipelineDescriptor): G
 	setLabel(slot.rasterizer, descriptor.label);
 	setLabel(slot.depthStencil, descriptor.label);
 	setLabel(slot.blend, descriptor.label);
-	slot.id = id;
-	store(pipelines, slot);
-	return { id: slot.id };
+	put(pipelines, id, slot);
 }
 
 function stripIndexFormatOf(state: GPUPrimitiveState): int32 {
@@ -2216,7 +1998,7 @@ function createInputLayout(
 		}
 	}
 	if (count == 0) { return null as unknown as Ptr<D3dInputLayoutImpl>; }
-	const layout = d3dCreateInputLayout(device, elements[0], count, shaders.slots[shader].vertexBlob);
+	const layout = d3dCreateInputLayout(device, elements[0], count, shaders[shader].vertexBlob);
 	if (layout == null) { stop(`CreateInputLayout failed for pipeline ${labelOf(descriptor.label)}`); }
 	return layout;
 }
@@ -2246,128 +2028,102 @@ function createBlendState(descriptor: GPURenderPipelineDescriptor): Ptr<D3dBlend
 }
 
 export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
-	const index = pipelines.slotIndex(pipeline.id);
-	d3dRelease(pipelines.slots[index].inputLayout as Ptr<void>);
-	d3dRelease(pipelines.slots[index].rasterizer as Ptr<void>);
-	d3dRelease(pipelines.slots[index].depthStencil as Ptr<void>);
-	d3dRelease(pipelines.slots[index].blend as Ptr<void>);
-	for (let g = 0; g < BIND_GROUPS; g++) {
-		const layout = pipelines.slots[index].layouts[g];
-		if (layout != 0) {
-			layouts.slots[layouts.slotIndex(layout)] = { id: 0 };
-			release(layouts, layout);
-		}
-	}
-	pipelines.slots[index] = { id: 0 };
-	release(pipelines, pipeline.id);
+	const index = pipelineRecords.slotIndex(pipeline.id);
+	d3dRelease(pipelines[index].inputLayout as Ptr<void>);
+	d3dRelease(pipelines[index].rasterizer as Ptr<void>);
+	d3dRelease(pipelines[index].depthStencil as Ptr<void>);
+	d3dRelease(pipelines[index].blend as Ptr<void>);
+	vacate(pipelines, pipeline.id);
 }
 
-export function getBindGroupLayout(pipeline: GPURenderPipeline, index: int32): GPUBindGroupLayout {
-	const p = pipelines.slotIndex(pipeline.id);
-	if (index != GPU_UNIFORM_GROUP && index != GPU_RESOURCE_GROUP) {
-		stopOnMember("getBindGroupLayout index", `${index}`);
-	}
-	if (pipelines.slots[p].layouts[index] == 0) {
-		const id = allocate(layouts);
-		const slot: LayoutSlot = { id: id, pipeline: pipeline.id, group: index };
-		store(layouts, slot);
-		pipelines.slots[p].layouts[index] = id;
-	}
-	return { id: pipelines.slots[p].layouts[index] };
-}
-
-export function createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup {
-	const id = allocate(bindGroups);
-	const l = layouts.slotIndex(descriptor.layout.id);
-	const group = layouts.slots[l].group;
-	const shader = shaders.slotIndex(pipelines.slots[pipelines.slotIndex(layouts.slots[l].pipeline)].shader);
-	let slot: BindGroupSlot = { id: 0, group: group };
+export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor): void {
+	const l = layoutRecords.slotIndex(descriptor.layout.id);
+	const group = layoutRecords.slots[l].group;
+	const shader = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(layoutRecords.slots[l].pipeline)].shader);
+	let slot: BindGroupSlot = { group: group };
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
 		checkEntry(shader, group, entry);
-		if (entry.buffer.id != 0 && buffers.slots[buffers.slotIndex(entry.buffer.id)].storage) { storageViews(slot, shader, entry); }
+		if (entry.buffer.id != 0 && buffers[bufferRecords.slotIndex(entry.buffer.id)].storage) { storageViews(slot, shader, entry); }
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
 	for (let i = 0; i < slot.entryCount; i++) {
-		if (slot.entries[i].buffer.id == 0 || !buffers.slots[buffers.slotIndex(slot.entries[i].buffer.id)].uniform) { continue; }
+		if (slot.entries[i].buffer.id == 0 || !buffers[bufferRecords.slotIndex(slot.entries[i].buffer.id)].uniform) { continue; }
 		let rank = 0;
 		for (let j = 0; j < slot.entryCount; j++) {
-			if (slot.entries[j].buffer.id != 0 && buffers.slots[buffers.slotIndex(slot.entries[j].buffer.id)].uniform && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
+			if (slot.entries[j].buffer.id != 0 && buffers[bufferRecords.slotIndex(slot.entries[j].buffer.id)].uniform && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
 		}
 		slot.dynamicIndex[i] = rank;
 		slot.dynamicCount += 1;
 	}
-	slot.id = id;
-	store(bindGroups, slot);
-	return { id: slot.id };
+	put(bindGroups, id, slot);
 }
 
 function resourceOf(shader: int32, group: int32, binding: int32): int32 {
-	for (let r = 0; r < shaders.slots[shader].resourceCount; r++) {
-		const resource = shaders.slots[shader].resources[r];
+	for (let r = 0; r < shaders[shader].resourceCount; r++) {
+		const resource = shaders[shader].resources[r];
 		if (addressesBinding(group, binding, resource.binding, resource.kind)) { return r; }
 	}
 	return -1;
 }
 
 function storageViews(ref slot: BindGroupSlot, shader: int32, entry: GPUBindGroupEntry): void {
-	const b = buffers.slotIndex(entry.buffer.id);
-	const bytes = entryBytes(entry, buffers.slots[b].size);
-	const binding = shaders.slots[shader].resources[resourceOf(shader, slot.group, entry.binding)];
+	const b = bufferRecords.slotIndex(entry.buffer.id);
+	const bytes = entryBytes(entry, bufferRecords.slots[b].size);
+	const binding = shaders[shader].resources[resourceOf(shader, slot.group, entry.binding)];
 	if (binding.writable) {
-		slot.uav[slot.entryCount] = d3dCreateBufferUav(device, buffers.slots[b].native, entry.offset, bytes);
+		slot.uav[slot.entryCount] = d3dCreateBufferUav(device, buffers[b].native, entry.offset, bytes);
 		if (slot.uav[slot.entryCount] == null) { stop(`CreateUnorderedAccessView failed for bind group entry ${entry.binding}`); }
 	} else {
-		slot.srv[slot.entryCount] = d3dCreateBufferSrv(device, buffers.slots[b].native, entry.offset, bytes);
+		slot.srv[slot.entryCount] = d3dCreateBufferSrv(device, buffers[b].native, entry.offset, bytes);
 		if (slot.srv[slot.entryCount] == null) { stop(`CreateShaderResourceView failed for bind group entry ${entry.binding}`); }
 	}
 }
 
 @noinline function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
 	if (entry.buffer.id != 0) {
-		const b = buffers.slotIndex(entry.buffer.id);
-		for (let u = 0; u < shaders.slots[shader].uniformCount; u++) {
-			const binding = shaders.slots[shader].uniforms[u];
+		const b = bufferRecords.slotIndex(entry.buffer.id);
+		for (let u = 0; u < shaders[shader].uniformCount; u++) {
+			const binding = shaders[shader].uniforms[u];
 			if (addressesBinding(group, entry.binding, binding.binding, BindingKind.Uniform)) {
-				checkedUniformEntry(entry, buffers.slots[b].uniform, buffers.slots[b].size, binding.size, UNIFORM_OFFSET_ALIGNMENT as int64);
+				checkedUniformEntry(entry, buffers[b].uniform, bufferRecords.slots[b].size, binding.size, UNIFORM_OFFSET_ALIGNMENT as int64);
 				return;
 			}
 		}
 		const r = resourceOf(shader, group, entry.binding);
-		if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.StorageBuffer) {
-			checkedStorageEntry(entry, buffers.slots[b].storage, buffers.slots[b].size, STORAGE_OFFSET_ALIGNMENT, MAX_STORAGE_BUFFER_BINDING_SIZE);
+		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageBuffer) {
+			checkedStorageEntry(entry, buffers[b].storage, bufferRecords.slots[b].size, STORAGE_OFFSET_ALIGNMENT, MAX_STORAGE_BUFFER_BINDING_SIZE);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
 	}
 	const r = resourceOf(shader, group, entry.binding);
 	if (entry.textureView.id != 0) {
-		const v = views.slotIndex(entry.textureView.id);
-		if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.Texture) {
-			checkedSampledView(entry.binding, views.slots[v].shaderResource != null);
+		const v = viewRecords.slotIndex(entry.textureView.id);
+		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Texture) {
+			checkedSampledView(entry.binding, views[v].shaderResource != null);
 			return;
 		}
-		if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.StorageTexture) {
-			checkedStorageView(entry.binding, has(textures.slots[textures.slotIndex(views.slots[v].texture)].usage, GPUTextureUsage.STORAGE_BINDING as int32), views.slots[v].mipCount);
+		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
+			checkedStorageView(entry.binding, has(textureRecords.slots[textureRecords.slotIndex(viewRecords.slots[v].texture)].usage, GPUTextureUsage.STORAGE_BINDING as int32), viewRecords.slots[v].mipCount);
 			return;
 		}
 		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);
 	}
-	samplers.slotIndex(entry.sampler.id);
-	if (r >= 0 && shaders.slots[shader].resources[r].kind == BindingKind.Sampler) { return; }
+	samplerRecords.slotIndex(entry.sampler.id);
+	if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Sampler) { return; }
 	stop(`bind group ${group} entry ${entry.binding} (sampler) is not a binding of the pipeline's shader`);
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
-	const index = bindGroups.slotIndex(bindGroup.id);
-	for (let e = 0; e < bindGroups.slots[index].entryCount; e++) {
-		d3dRelease(bindGroups.slots[index].srv[e] as Ptr<void>);
-		d3dRelease(bindGroups.slots[index].uav[e] as Ptr<void>);
+	const index = bindGroupRecords.slotIndex(bindGroup.id);
+	for (let e = 0; e < bindGroups[index].entryCount; e++) {
+		d3dRelease(bindGroups[index].srv[e] as Ptr<void>);
+		d3dRelease(bindGroups[index].uav[e] as Ptr<void>);
 	}
-	bindGroups.slots[index] = { id: 0 };
-	release(bindGroups, bindGroup.id);
+	vacate(bindGroups, bindGroup.id);
 }
 
 export function createCommandEncoder(): GPUCommandEncoder { return { id: 1 }; }
@@ -2376,16 +2132,18 @@ export function finish(encoder: GPUCommandEncoder): GPUCommandBuffer {
 	return { id: 1 };
 }
 
-export function submit(commandBuffer: GPUCommandBuffer): void { frame += 1; }
+export function submit(commandBuffer: GPUCommandBuffer): void {}
 
-export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor): GPURenderPassEncoder {
+export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
 	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
 	if (descriptor.occlusionQuerySet.id != 0) {
-		checkedOcclusionSetKind(querySets.slots[querySets.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
+		checkedOcclusionSetKind(querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
 	}
 	pass = {
 		timestampSet: descriptor.timestampWrites.querySet.id,
 		timestampEnd: descriptor.timestampWrites.endOfPassWriteIndex,
+		width: extent.width,
+		height: extent.height,
 	};
 	pass.labeled = labelPass(descriptor.label);
 	if (pass.timestampSet != 0 && descriptor.timestampWrites.beginningOfPassWriteIndex >= 0) {
@@ -2395,38 +2153,30 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		const viewId = descriptor.colorAttachments[i].view.id;
 		if (viewId == 0) { continue; }
-		const v = views.slotIndex(viewId);
+		const v = viewRecords.slotIndex(viewId);
 		const slice = descriptor.colorAttachments[i].depthSlice;
-		if (views.slots[v].volumeTarget) {
-			const volume = textures.slotIndex(views.slots[v].texture);
-			const slices = Math.max(1, textures.slots[volume].layers >> views.slots[v].baseMip);
-			checkedDepthSlice(i, slice, slices, views.slots[v].baseMip, textures.slots[volume].id);
-			const format = textures.slots[volume].info.renderTarget;
-			pass.sliceTargets[i] = d3dCreateRtv3d(device, textures.slots[volume].native, format, views.slots[v].baseMip, slice);
-			if (pass.sliceTargets[i] == null) { stop(`CreateRenderTargetView failed for slice ${slice} of GPUTexture ${textures.slots[volume].id}`); }
+		if (views[v].volumeTarget) {
+			const volume = textureRecords.slotIndex(viewRecords.slots[v].texture);
+			const format = textures[volume].info.renderTarget;
+			pass.sliceTargets[i] = d3dCreateRtv3d(device, textures[volume].native, format, viewRecords.slots[v].baseMip, slice);
+			if (pass.sliceTargets[i] == null) { stop(`CreateRenderTargetView failed for slice ${slice} of GPUTexture ${textureRecords.slots[volume].id}`); }
 			targets[i] = pass.sliceTargets[i];
 		} else {
-			if (views.slots[v].renderTarget == null) { stop(`colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`); }
-			checkedNoDepthSlice(i, slice);
-			targets[i] = views.slots[v].renderTarget;
+			targets[i] = views[v].renderTarget;
 		}
-		passExtent(views.slots[v].texture, views.slots[v].baseMip);
 		pass.colorViews[i] = viewId;
-		pass.resolveViews[i] = checkResolve(i, views.slots[v].texture, descriptor.colorAttachments[i].resolveTarget.id);
+		pass.resolveViews[i] = descriptor.colorAttachments[i].resolveTarget.id;
 		checkStoreOp(descriptor.colorAttachments[i].storeOp, i, "storeOp");
 	}
 	let depth = NO_DSV;
 	const depthView = descriptor.depthStencilAttachment.view.id;
 	let depthStencil = false;
 	if (depthView != 0) {
-		const v = views.slotIndex(depthView);
-		if (views.slots[v].depthStencil == null) { stop("depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"); }
-		depth = views.slots[v].depthStencil;
-		passExtent(views.slots[v].texture, views.slots[v].baseMip);
-		depthStencil = textures.slots[textures.slotIndex(views.slots[v].texture)].info.stencil;
+		const v = viewRecords.slotIndex(depthView);
+		depth = views[v].depthStencil;
+		depthStencil = textures[textureRecords.slotIndex(viewRecords.slots[v].texture)].info.stencil;
 		checkStoreOp(descriptor.depthStencilAttachment.depthStoreOp, -1, "depthStoreOp");
 	}
-	if (pass.width == 0) { stop("beginRenderPass without an attachment"); }
 	d3dSetRenderTargets(context, targets[0], targets[1], targets[2], targets[3], depth);
 	d3dSetViewport(context, 0.0, 0.0, pass.width, pass.height, 0.0, 1.0);
 	d3dSetScissorRect(context, 0, 0, pass.width, pass.height);
@@ -2452,34 +2202,6 @@ export function beginRenderPass(encoder: GPUCommandEncoder, descriptor: GPURende
 	return { id: 1 };
 }
 
-function passExtent(texture: uint32, baseMip: int32): void {
-	const t = textures.slotIndex(texture);
-	const width = Math.max(1, textures.slots[t].width >> baseMip);
-	const height = Math.max(1, textures.slots[t].height >> baseMip);
-	checkedPassExtent(pass.width, pass.height, width, height);
-	pass.width = width;
-	pass.height = height;
-}
-
-@noinline function checkResolve(attachment: int32, colorTexture: uint32, resolveId: uint32): uint32 {
-	if (resolveId == 0) { return 0; }
-	const r = views.slotIndex(resolveId);
-	const resolveTexture = textures.slotIndex(views.slots[r].texture);
-	const color = textures.slotIndex(colorTexture);
-	checkedResolveTarget(
-		attachment,
-		textures.slots[color].sampleCount,
-		textures.slots[color].width,
-		textures.slots[color].height,
-		Math.max(1, textures.slots[resolveTexture].width >> views.slots[r].baseMip),
-		Math.max(1, textures.slots[resolveTexture].height >> views.slots[r].baseMip),
-	);
-	if (textures.slots[resolveTexture].sampleCount != 1 || views.slots[r].renderTarget == null) {
-		stop(`colorAttachments[${attachment}].resolveTarget needs a single-sample color RENDER_ATTACHMENT`);
-	}
-	return resolveId;
-}
-
 function attachmentMember(index: int32, field: string): string {
 	return index < 0 ? `depthStencilAttachment.${field}` : `colorAttachments[${index}].${field}`;
 }
@@ -2500,18 +2222,18 @@ function isClear(loadOp: string, index: int32, field: string): boolean {
 export function endPass(): void {
 	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (pass.colorViews[i] == 0) { continue; }
-		const v = views.slotIndex(pass.colorViews[i]);
-		if (views.slots[v].swapchain && views.slots[v].swapchainResolve != null) {
-			const format = formatInfo(canvas.format, "canvas format").renderTarget;
-			d3dResolveViews(context, views.slots[v].swapchainResolve, views.slots[v].renderTarget, format);
+		const v = viewRecords.slotIndex(pass.colorViews[i]);
+		if (viewRecords.slots[v].swapchain && views[v].swapchainResolve != null) {
+			const format = formatInfo(cachedCanvas().format, "canvas format").renderTarget;
+			d3dResolveViews(context, views[v].swapchainResolve, views[v].renderTarget, format);
 		}
 		if (pass.resolveViews[i] != 0) {
-			const source = textures.slotIndex(views.slots[v].texture);
-			const destination = textures.slotIndex(views.slots[views.slotIndex(pass.resolveViews[i])].texture);
-			const format = textures.slots[source].info.renderTarget;
-			const target = views.slotIndex(pass.resolveViews[i]);
-			const subresource = views.slots[target].baseMip + views.slots[target].baseLayer * textures.slots[destination].mipLevels;
-			d3dResolveSubresource(context, textures.slots[destination].native, subresource, textures.slots[source].native, format);
+			const source = textureRecords.slotIndex(viewRecords.slots[v].texture);
+			const destination = textureRecords.slotIndex(viewRecords.slots[viewRecords.slotIndex(pass.resolveViews[i])].texture);
+			const format = textures[source].info.renderTarget;
+			const target = viewRecords.slotIndex(pass.resolveViews[i]);
+			const subresource = viewRecords.slots[target].baseMip + viewRecords.slots[target].baseLayer * textureRecords.slots[destination].mipLevels;
+			d3dResolveSubresource(context, textures[destination].native, subresource, textures[source].native, format);
 		}
 		if (pass.sliceTargets[i] != null) {
 			d3dRelease(pass.sliceTargets[i] as Ptr<void>);
@@ -2523,14 +2245,12 @@ export function endPass(): void {
 	d3dClearState(context);
 }
 
-export function createComputePipeline(descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
-	const s = shaders.slotIndex(descriptor.compute.module.id);
+export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {
+	const s = shaderRecords.slotIndex(descriptor.compute.module.id);
 	const entry = descriptor.compute.entryPoint == "" ? "main" : descriptor.compute.entryPoint;
-	checkedComputeModule(shaders.slots[s].compute != null, entry, shaders.slots[s].computeEntry);
-	const id = allocate(pipelines);
-	const slot: PipelineSlot = { id: id, shader: descriptor.compute.module.id, compute: true };
-	store(pipelines, slot);
-	return { id: id };
+	checkedComputeModule(shaders[s].compute != null, entry, shaders[s].computeEntry);
+	const slot: PipelineSlot = { shader: descriptor.compute.module.id, compute: true };
+	put(pipelines, id, slot);
 }
 
 export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComputePassDescriptor): GPUComputePassEncoder {
@@ -2547,7 +2267,7 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	checkedComputePipeline(pipeline.id, pipelines.slots[pipelines.slotIndex(pipeline.id)].compute);
+	checkedComputePipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }
@@ -2555,8 +2275,8 @@ export function setComputePipeline(pipeline: GPUComputePipeline): void {
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (index != GPU_RESOURCE_GROUP) { stop(`a compute pipeline has no uniform group: setBindGroup(${index}) takes group ${GPU_RESOURCE_GROUP}`); }
 	if (dynamicOffsets.length != 0) { stop("a compute bind group takes no dynamic offsets"); }
-	if (bindGroup.id != 0 && bindGroups.slots[bindGroups.slotIndex(bindGroup.id)].group != index) {
-		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups.slots[bindGroups.slotIndex(bindGroup.id)].group}`);
+	if (bindGroup.id != 0 && bindGroups[bindGroupRecords.slotIndex(bindGroup.id)].group != index) {
+		stop(`setBindGroup(${index}) with a bind group made for group ${bindGroups[bindGroupRecords.slotIndex(bindGroup.id)].group}`);
 	}
 	computeBound.bindGroup = bindGroup.id;
 	computeBound.dirty = true;
@@ -2564,28 +2284,28 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 
 function applyCompute(): void {
 	if (!computeBound.dirty) { return; }
-	const s = shaders.slotIndex(pipelines.slots[pipelines.slotIndex(computeBound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(computeBound.pipeline)].shader);
 	d3dCsClearViews(context);
-	d3dCsSetShader(context, shaders.slots[s].compute);
+	d3dCsSetShader(context, shaders[s].compute);
 	computeBound.dirty = false;
-	if (shaders.slots[s].resourceCount == 0) { return; }
+	if (shaders[s].resourceCount == 0) { return; }
 	if (computeBound.bindGroup == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
-	const g = bindGroups.slotIndex(computeBound.bindGroup);
-	for (let r = 0; r < shaders.slots[s].resourceCount; r++) {
-		const binding: NativeBinding = shaders.slots[s].resources[r];
-		const e = entryOf(g, binding.binding);
+	const g = bindGroupRecords.slotIndex(computeBound.bindGroup);
+	for (let r = 0; r < shaders[s].resourceCount; r++) {
+		const binding: NativeBinding = shaders[s].resources[r];
+		const e = entryOf(bindGroups[g], binding.binding);
 		if (binding.kind == BindingKind.Texture) {
-			d3dCsSetShaderResource(context, binding.nativeSlot, views.slots[views.slotIndex(bindGroups.slots[g].entries[e].textureView.id)].shaderResource);
+			d3dCsSetShaderResource(context, binding.nativeSlot, views[viewRecords.slotIndex(bindGroups[g].entries[e].textureView.id)].shaderResource);
 		} else if (binding.kind == BindingKind.Sampler) {
-			d3dCsSetSampler(context, binding.nativeSlot, samplers.slots[samplers.slotIndex(bindGroups.slots[g].entries[e].sampler.id)].native);
+			d3dCsSetSampler(context, binding.nativeSlot, samplers[samplerRecords.slotIndex(bindGroups[g].entries[e].sampler.id)].native);
 		} else if (binding.kind == BindingKind.StorageBuffer) {
 			if (binding.writable) {
-				d3dCsSetUnorderedAccessView(context, binding.nativeSlot, bindGroups.slots[g].uav[e]);
+				d3dCsSetUnorderedAccessView(context, binding.nativeSlot, bindGroups[g].uav[e]);
 			} else {
-				d3dCsSetShaderResource(context, binding.nativeSlot, bindGroups.slots[g].srv[e]);
+				d3dCsSetShaderResource(context, binding.nativeSlot, bindGroups[g].srv[e]);
 			}
 		} else {
-			d3dCsSetUnorderedAccessView(context, binding.nativeSlot, views.slots[views.slotIndex(bindGroups.slots[g].entries[e].textureView.id)].unordered);
+			d3dCsSetUnorderedAccessView(context, binding.nativeSlot, views[viewRecords.slotIndex(bindGroups[g].entries[e].textureView.id)].unordered);
 		}
 	}
 }
@@ -2596,10 +2316,10 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	const b = buffers.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, buffers.slots[b].usage, buffers.slots[b].size, offset);
+	const b = bufferRecords.slotIndex(buffer.id);
+	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
 	applyCompute();
-	d3dDispatchIndirect(context, buffers.slots[b].native, offset);
+	d3dDispatchIndirect(context, buffers[b].native, offset);
 }
 
 export function endComputePass(): void {
@@ -2610,7 +2330,7 @@ export function endComputePass(): void {
 }
 
 export function setPipeline(pipeline: GPURenderPipeline): void {
-	checkedRenderPassPipeline(pipeline.id, pipelines.slots[pipelines.slotIndex(pipeline.id)].compute);
+	checkedRenderPassPipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
 	bound.pipeline = pipeline.id;
 }
 
@@ -2631,10 +2351,10 @@ export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
-	const g = bindGroups.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, bindGroups.slots[g].group, bindGroups.slots[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
+	const g = bindGroupRecords.slotIndex(bindGroup.id);
+	checkedBindGroupSet(index, bindGroups[g].group, bindGroups[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroups.slots[g].dynamicCount; i++) {
+		for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
 			bound.dynamicOffsets[i] = dynamicOffsets[i];
 		}
 		bound.uniformsDirty = true;
@@ -2653,23 +2373,23 @@ export function setViewport(x: float32, y: float32, width: float32, height: floa
 
 export function setBlendConstant(color: GPUColor): void {
 	bound.blendConstant = color;
-	if (bound.appliedPipeline != 0) { applyBlend(pipelines.slotIndex(bound.appliedPipeline)); }
+	if (bound.appliedPipeline != 0) { applyBlend(pipelineRecords.slotIndex(bound.appliedPipeline)); }
 }
 
 export function setStencilReference(reference: uint32): void {
 	bound.stencilReference = reference;
-	if (bound.appliedPipeline != 0) { applyDepthStencil(pipelines.slotIndex(bound.appliedPipeline)); }
+	if (bound.appliedPipeline != 0) { applyDepthStencil(pipelineRecords.slotIndex(bound.appliedPipeline)); }
 }
 
 function applyBlend(p: int32): void {
 	const color = bound.blendConstant;
-	d3dOmSetBlendState(context, pipelines.slots[p].blend, color.r, color.g, color.b, color.a);
+	d3dOmSetBlendState(context, pipelines[p].blend, color.r, color.g, color.b, color.a);
 }
 
 function applyDepthStencil(p: int32): void {
 	d3dOmSetDepthStencilState(
 		context,
-		pipelines.slots[p].depthStencil,
+		pipelines[p].depthStencil,
 		bound.stencilReference as int32,
 	);
 }
@@ -2704,15 +2424,15 @@ export function drawIndexed(
 
 function checkDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
 	if (vertexOffset == 0 && firstInstance == 0) { return; }
-	const p = pipelines.slotIndex(bound.pipeline);
-	if (firstInstance != 0 && pipelines.slots[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines.slots[p].label), firstInstance)); }
-	if (vertexOffset != 0 && pipelines.slots[p].readsVertexIndex) {
-		stop(vertexOffsetRefusal(call, labelOf(pipelines.slots[p].label), vertexMember, vertexOffset));
+	const p = pipelineRecords.slotIndex(bound.pipeline);
+	if (firstInstance != 0 && pipelines[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines[p].label), firstInstance)); }
+	if (vertexOffset != 0 && pipelines[p].readsVertexIndex) {
+		stop(vertexOffsetRefusal(call, labelOf(pipelines[p].label), vertexMember, vertexOffset));
 	}
 }
 
 function flush(indexed: boolean): void {
-	const p = pipelines.slotIndex(bound.pipeline);
+	const p = pipelineRecords.slotIndex(bound.pipeline);
 	const s = liveShader(p);
 	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(p, s); }
 	if (bound.vertexDirty) { applyVertexBuffers(p); }
@@ -2723,25 +2443,25 @@ function flush(indexed: boolean): void {
 }
 
 function liveShader(p: int32): int32 {
-	if (!shaders.alive(pipelines.slots[p].shader)) {
+	if (!shaderRecords.alive(pipelines[p].shader)) {
 		stop(`the shader module of GPURenderPipeline ${bound.pipeline} was destroyed`);
 	}
-	return shaders.slotIndex(pipelines.slots[p].shader);
+	return shaderRecords.slotIndex(pipelines[p].shader);
 }
 
 function applyPipeline(p: int32, s: int32): void {
-	d3dRsSetState(context, pipelines.slots[p].rasterizer);
+	d3dRsSetState(context, pipelines[p].rasterizer);
 	bound.appliedPipeline = bound.pipeline;
 	applyDepthStencil(p);
 	applyBlend(p);
-	d3dIaSetPrimitiveTopology(context, pipelines.slots[p].topology);
-	d3dIaSetInputLayout(context, pipelines.slots[p].inputLayout);
-	d3dVsSetShader(context, shaders.slots[s].vertex);
-	d3dPsSetShader(context, shaders.slots[s].fragment);
-	for (let u = 0; u < shaders.slots[s].uniformCount && !offsetUniforms; u++) {
+	d3dIaSetPrimitiveTopology(context, pipelines[p].topology);
+	d3dIaSetInputLayout(context, pipelines[p].inputLayout);
+	d3dVsSetShader(context, shaders[s].vertex);
+	d3dPsSetShader(context, shaders[s].fragment);
+	for (let u = 0; u < shaders[s].uniformCount && !offsetUniforms; u++) {
 		for (let vertex = 0; vertex < 2; vertex++) {
-			if (!readsStage(shaders.slots[s].uniforms[u], vertex)) { continue; }
-			d3dSetConstantBuffer(context, vertex, shaders.slots[s].uniforms[u].nativeSlot, shaders.slots[s].constantBuffers[u]);
+			if (!readsStage(shaders[s].uniforms[u], vertex)) { continue; }
+			d3dSetConstantBuffer(context, vertex, shaders[s].uniforms[u].nativeSlot, shaders[s].constantBuffers[u]);
 		}
 	}
 	forgetAppliedUniforms();
@@ -2751,17 +2471,17 @@ function applyPipeline(p: int32, s: int32): void {
 }
 
 @noinline function checkStripIndexFormat(p: int32): void {
-	const topology = pipelines.slots[p].topology;
-	checkedStripDraw(topology == TOPOLOGY_LINE_STRIP || topology == TOPOLOGY_TRIANGLE_STRIP, pipelines.slots[p].stripIndexFormat == bound.indexFormat);
+	const topology = pipelines[p].topology;
+	checkedStripDraw(topology == TOPOLOGY_LINE_STRIP || topology == TOPOLOGY_TRIANGLE_STRIP, pipelines[p].stripIndexFormat == bound.indexFormat);
 }
 
 function applyVertexBuffers(p: int32): void {
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
-		const stride = pipelines.slots[p].strides[slot];
+		const stride = pipelines[p].strides[slot];
 		if (stride == 0) { continue; }
 		if (bound.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
-		const b = buffers.slotIndex(bound.vertexBuffers[slot]);
-		const native = buffers.slots[b].native;
+		const b = bufferRecords.slotIndex(bound.vertexBuffers[slot]);
+		const native = buffers[b].native;
 		const offset = bound.vertexOffsets[slot] as int32;
 		if (nativeBinds.vertexBuffer[slot] == native && nativeBinds.vertexStride[slot] == stride && nativeBinds.vertexOffset[slot] == offset) { continue; }
 		d3dIaSetVertexBuffer(context, slot, native, stride, offset);
@@ -2774,8 +2494,8 @@ function applyVertexBuffers(p: int32): void {
 }
 
 function applyIndexBuffer(): void {
-	const b = buffers.slotIndex(bound.indexBuffer);
-	const native = buffers.slots[b].native;
+	const b = bufferRecords.slotIndex(bound.indexBuffer);
+	const native = buffers[b].native;
 	const offset = bound.indexOffset as int32;
 	bound.indexDirty = false;
 	if (nativeBinds.indexBuffer == native && nativeBinds.indexFormat == bound.indexFormat && nativeBinds.indexOffset == offset) { return; }
@@ -2786,24 +2506,18 @@ function applyIndexBuffer(): void {
 	stats.indexBuffers += 1;
 }
 
-function entryOf(group: int32, binding: int32): int32 {
-	for (let e = 0; e < bindGroups.slots[group].entryCount; e++) {
-		if (bindGroups.slots[group].entries[e].binding == binding) { return e; }
-	}
-	return stopOnMember("bound bind group: missing entry for binding", `${binding}`);
-}
 
 function applyResources(s: int32): void {
 	bound.resourcesDirty = false;
-	if (shaders.slots[s].resourceCount == 0) { return; }
+	if (shaders[s].resourceCount == 0) { return; }
 	if (bound.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the pipeline reads bind group 1, which is not set"); }
-	const g = bindGroups.slotIndex(bound.bindGroups[GPU_RESOURCE_GROUP]);
-	for (let r = 0; r < shaders.slots[s].resourceCount; r++) {
-		const binding: NativeBinding = shaders.slots[s].resources[r];
-		const e = entryOf(g, binding.binding);
+	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_RESOURCE_GROUP]);
+	for (let r = 0; r < shaders[s].resourceCount; r++) {
+		const binding: NativeBinding = shaders[s].resources[r];
+		const e = entryOf(bindGroups[g], binding.binding);
 		if (binding.kind == BindingKind.StorageTexture) { stop("a storage texture in a render stage is not ported to d3d11"); }
 		if (binding.kind == BindingKind.Texture || binding.kind == BindingKind.StorageBuffer) {
-			const view = binding.kind == BindingKind.Texture ? views.slots[views.slotIndex(bindGroups.slots[g].entries[e].textureView.id)].shaderResource : bindGroups.slots[g].srv[e];
+			const view = binding.kind == BindingKind.Texture ? views[viewRecords.slotIndex(bindGroups[g].entries[e].textureView.id)].shaderResource : bindGroups[g].srv[e];
 			for (let vertex = 0; vertex < 2; vertex++) {
 				if (!readsStage(binding, vertex)) { continue; }
 				const cached = (vertex == 1 ? 0 : MAX_STAGE_SHADER_RESOURCES) + binding.nativeSlot;
@@ -2813,7 +2527,7 @@ function applyResources(s: int32): void {
 				stats.shaderResources += 1;
 			}
 		} else {
-			const sampler = samplers.slots[samplers.slotIndex(bindGroups.slots[g].entries[e].sampler.id)].native;
+			const sampler = samplers[samplerRecords.slotIndex(bindGroups[g].entries[e].sampler.id)].native;
 			for (let vertex = 0; vertex < 2; vertex++) {
 				if (!readsStage(binding, vertex)) { continue; }
 				const cached = (vertex == 1 ? 0 : MAX_STAGE_SAMPLERS) + binding.nativeSlot;
@@ -2828,36 +2542,36 @@ function applyResources(s: int32): void {
 
 function applyUniforms(s: int32): void {
 	bound.uniformsDirty = false;
-	if (shaders.slots[s].uniformCount == 0) { return; }
+	if (shaders[s].uniformCount == 0) { return; }
 	if (bound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
-	const g = bindGroups.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
-	for (let u = 0; u < shaders.slots[s].uniformCount; u++) {
-		const e = entryOf(g, shaders.slots[s].uniforms[u].binding);
-		const offset = (bound.dynamicOffsets[bindGroups.slots[g].dynamicIndex[e]] as int64) + bindGroups.slots[g].entries[e].offset;
-		const b = buffers.slotIndex(bindGroups.slots[g].entries[e].buffer.id);
-		const block = shaders.slots[s].uniforms[u];
-		if (offset + (block.size as int64) > buffers.slots[b].size) {
+	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
+	for (let u = 0; u < shaders[s].uniformCount; u++) {
+		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
+		const offset = (bound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
+		const block = shaders[s].uniforms[u];
+		if (offset + (block.size as int64) > bufferRecords.slots[b].size) {
 			stop(`uniform binding ${block.binding} at offset ${offset} overruns its buffer`);
 		}
 		if (offsetUniforms) {
-			if (bound.uniformBuffer[u] == buffers.slots[b].id && bound.uniformFirst[u] == offset) { continue; }
+			if (bound.uniformBuffer[u] == bufferRecords.slots[b].id && bound.uniformFirst[u] == offset) { continue; }
 			const constants = roundUp256(block.size as int64) / 16;
-			if (constants > MAX_BLOCK_CONSTANTS || offset + constants * 16 > roundUp256(buffers.slots[b].size)) {
+			if (constants > MAX_BLOCK_CONSTANTS || offset + constants * 16 > roundUp256(bufferRecords.slots[b].size)) {
 				stop(`uniform binding ${block.binding} of ${block.size} bytes at ${offset} does not fit one constant buffer view`);
 			}
 			for (let vertex = 0; vertex < 2; vertex++) {
 				if (!readsStage(block, vertex)) { continue; }
-				d3dSetConstantBufferRange(context1, vertex, block.nativeSlot, buffers.slots[b].native, offset / 16, constants);
+				d3dSetConstantBufferRange(context1, vertex, block.nativeSlot, buffers[b].native, offset / 16, constants);
 			}
-			bound.uniformBuffer[u] = buffers.slots[b].id;
+			bound.uniformBuffer[u] = bufferRecords.slots[b].id;
 			bound.uniformFirst[u] = offset;
 		} else {
 			const bytes = roundUp16(block.size as int64);
-			if (offset + bytes > (buffers.slots[b].shadow.length as int64)) {
+			if (offset + bytes > (buffers[b].shadow.length as int64)) {
 				stop(`uniform binding ${block.binding} at offset ${offset} overruns its buffer`);
 			}
-			d3dUpdateIfChanged(context, shaders.slots[s].constantBuffers[u], shaders.slots[s].blockCache[0], shaders.slots[s].cacheOffset[u] as int64, buffers.slots[b].shadow[0], offset, bytes, shaders.slots[s].cacheFresh[u]);
-			shaders.slots[s].cacheFresh[u] = 0;
+			d3dUpdateIfChanged(context, shaders[s].constantBuffers[u], shaders[s].blockCache[0], shaders[s].cacheOffset[u] as int64, buffers[b].shadow[0], offset, bytes, shaders[s].cacheFresh[u]);
+			shaders[s].cacheFresh[u] = 0;
 		}
 	}
 }

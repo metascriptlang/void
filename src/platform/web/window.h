@@ -10,7 +10,7 @@
 #include <webgpu/webgpu.h>
 #endif
 
-#include "../appEvent.h"
+#include "../windowCore.h"
 
 typedef struct {
 	void (*init)(void);
@@ -25,16 +25,9 @@ typedef struct {
 // Returns once the first animation frame is requested; init and every frame run from it, and
 // on WebGPU only after the device and surface exist.
 void voidWebRun(const VoidWebDesc *desc);
-bool voidWebValid(void);
-int voidWebWidth(void);
-int voidWebHeight(void);
 int voidWebSampleCount(void);
-float voidWebDpiScale(void);
-uint64_t voidWebFrameCount(void);
-void voidWebRequestQuit(void);
 // Inside the event callback: the browser's default action for this event does not run.
 void voidWebConsumeEvent(void);
-void voidWebSetTitle(const char *title);
 
 #if defined(VOID_WGPU)
 WGPUDevice voidWebDevice(void);
@@ -45,20 +38,5 @@ WGPUTextureView voidWebRenderView(void);
 WGPUTextureView voidWebResolveView(void);
 WGPUTextureView voidWebDepthStencilView(void);
 #endif
-
-void voidWebCancelQuit(void);
-double voidWebFrameDuration(void);
-void voidWebSetClipboard(const char *utf8);
-const char *voidWebClipboard(void);
-void voidWebSetCursor(int cursor);
-int voidWebCursor(void);
-void voidWebShowMouse(bool shown);
-bool voidWebMouseShown(void);
-void voidWebLockMouse(bool locked);
-bool voidWebMouseLocked(void);
-void voidWebToggleFullscreen(void);
-bool voidWebIsFullscreen(void);
-int voidWebDroppedCount(void);
-const char *voidWebDroppedPath(int i);
 
 #endif

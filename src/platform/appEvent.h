@@ -241,6 +241,10 @@ static inline void voidKeysHeldTrack(VoidKeysHeld *h, VoidAppEventType type, Voi
 	else if (type == VOID_EVENT_KEY_UP) h->down[key] = false;
 }
 
+static inline bool voidKeysHeldDown(const VoidKeysHeld *h, int key) {
+	return key > VOID_KEY_INVALID && key < VOID_KEY_COUNT && h->down[key];
+}
+
 static inline void voidKeysHeldRelease(VoidKeysHeld *h, void (*keyUp)(VoidKeyCode key)) {
 	for (int key = VOID_KEY_INVALID + 1; key < VOID_KEY_COUNT; key++) {
 		if (!h->down[key]) continue;

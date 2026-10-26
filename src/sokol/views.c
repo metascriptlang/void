@@ -1,4 +1,3 @@
-#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,23 +50,6 @@ static msClosure s_pump;
 static int s_sampleCount = 1;
 static int s_deviceMade = 0;
 
-void voidFail(const char *fmt, ...) {
-	va_list args;
-	va_start(args, fmt);
-	fprintf(stderr, "void: ");
-	vfprintf(stderr, fmt, args);
-	fprintf(stderr, "\n");
-	va_end(args);
-	fflush(stderr);
-	abort();
-}
-
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
 static int slotIndex(VoidViewId v) { return (v & VIEW_SLOT_MASK) - 1; }
 static int idGeneration(VoidViewId v) { return v >> VIEW_SLOT_BITS; }
 
@@ -104,7 +86,7 @@ void voidViewsSetSampleCount(int count) {
 int voidViewsSampleCount(void) { return s_sampleCount; }
 
 void voidEmbedSetMessagePump(msClosure pump) { s_pump = pump; }
-void voidEmbedPumpMessages(void) { call0(s_pump); }
+void voidEmbedPumpMessages(void) { voidCallClosure(s_pump); }
 
 static VoidViewId createView(long long native, int w, int h, float scale) {
 	if (w <= 0 || h <= 0 || scale <= 0.0f) voidFail("voidViewCreate: %dx%d at scale %g is not a drawable size", w, h, scale);
@@ -158,7 +140,7 @@ static int frameView(VoidViewId v) {
 	if (!voidPlatformSurfaceReady(s->surface)) return 0;
 	if (!voidPlatformSurfaceAcquire(s->surface)) return 0;
 	s_current = v;
-	call0(s_frame);
+	voidCallClosure(s_frame);
 	if (s_current != 0) voidFail("the frame closure for view %d returned without commit()", v);
 	return 1;
 }

@@ -18,15 +18,13 @@ JNIEnv *voidAndroidEnv(void);
 jobject voidAndroidClassLoader(void);
 jobject voidAndroidActivity(void);
 
-// The framebuffer of the app driver outside a frame; inside one, and in the embed driver, the
-// current view's (views.c).
-int voidAndroidAppFbWidth(void);
-int voidAndroidAppFbHeight(void);
-float voidAndroidAppDpiScale(void);
-
+// The app driver as appWindow.c reads it; the asset dir is bridgeAndroid.c's.
 bool voidAndroidValid(void);
 int voidAndroidWidth(void);
 int voidAndroidHeight(void);
+float voidAndroidScale(void);
+uint32_t voidAndroidModifiers(void);
+const char *voidAndroidAssetDir(void);
 uint64_t voidAndroidFrameCount(void);
 double voidAndroidFrameDuration(void);
 // Finishes the activity, which the shell then destroys.

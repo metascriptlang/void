@@ -3,6 +3,7 @@ import {
 	GPUBindGroupEntry,
 	GPUBufferUsage,
 	GPUPrimitiveState,
+	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUSamplerDescriptor,
@@ -11,9 +12,12 @@ import {
 	GPUSupportedLimits,
 	GPUTextureDescriptor,
 	GPUTextureUsage,
+	GPUTextureViewDescriptor,
 } from "../webgpu/types";
 import {
+	AttachmentFacts,
 	EncoderState,
+	RenderPassFacts,
 	PASS_COMPUTE,
 	PASS_RENDER,
 	addressesBinding,
@@ -23,6 +27,9 @@ import {
 	bindGroupSetRefusal,
 	beginPassRefusal,
 	bufferRefusal,
+	canvasRefusal,
+	resolvedRenderPipeline,
+	clampedAnisotropy,
 	computeModuleRefusal,
 	computePipelineRefusal,
 	createRefusal,
@@ -45,6 +52,9 @@ import {
 	pipelineSetRefusal,
 	querySetRefusal,
 	resolvedViewDimension,
+	resolvedViewRange,
+	cubeCapable,
+	viewRangeRefusal,
 	sampledViewRefusal,
 	storageEntryRefusal,
 	storageViewRefusal,
@@ -54,6 +64,8 @@ import {
 	primitiveRefusal,
 	pushGroupRefusal,
 	renderModuleRefusal,
+	renderPassExtent,
+	renderPassRefusal,
 	renderPassPipelineRefusal,
 	renderPipelineRefusal,
 	samplerRefusal,
@@ -385,12 +397,22 @@ test "an integer texture pairs only with a non-filtering sampler" {
 	assert shaderModuleRefusal(module, limits) == "";
 }
 
+test "a sampler's anisotropy defaults to 1 and is clamped to 16 on every backend" {
+	assert clampedAnisotropy(0) == 1;
+	assert clampedAnisotropy(8) == 8;
+	assert clampedAnisotropy(64) == 16;
+}
+
 test "a sampler's anisotropy needs every filter linear, and its lod range is non-negative and ordered" {
 	let s: GPUSamplerDescriptor = { magFilter: "linear", minFilter: "linear", mipmapFilter: "linear", maxAnisotropy: 8 };
 	assert samplerRefusal(s) == "";
 	s.mipmapFilter = "nearest";
 	assert samplerRefusal(s) == "GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter";
 	s.maxAnisotropy = 1;
+	assert samplerRefusal(s) == "";
+	s.maxAnisotropy = -1;
+	assert samplerRefusal(s) == "GPUSamplerDescriptor.maxAnisotropy -1 is below 1";
+	s.maxAnisotropy = 0;
 	assert samplerRefusal(s) == "";
 	s.lodMinClamp = -1;
 	assert samplerRefusal(s) == "GPUSamplerDescriptor.lodMinClamp -1 is negative";
@@ -560,6 +582,39 @@ test "a view takes its texture's dimension unless it names one, and 3d goes with
 	assert viewDimensionRefusal("2d-array", true, 9) == "GPUTextureViewDescriptor.dimension '2d-array' does not match the 3d GPUTexture 9";
 }
 
+function viewRefusal(descriptor: GPUTextureViewDescriptor, mipLevels: int32, layers: int32, volume: boolean, cube: boolean): string {
+	return viewRangeRefusal(descriptor, resolvedViewRange(descriptor, mipLevels, layers, volume), 9, mipLevels, layers, volume, cube);
+}
+
+test "a view range takes the rest of the texture for a count of 0, one layer for 2d and six for a cube" {
+	const rest = resolvedViewRange({ baseMipLevel: 1, baseArrayLayer: 2 }, 4, 6, false);
+	assert rest.dimension == "2d-array" && rest.mipCount == 3 && rest.baseLayer == 2 && rest.layerCount == 4;
+	assert resolvedViewRange({ dimension: "2d", baseArrayLayer: 3 }, 1, 6, false).layerCount == 1;
+	assert resolvedViewRange({ dimension: "cube" }, 1, 12, false).layerCount == 6;
+	const volume = resolvedViewRange({}, 2, 8, true);
+	assert volume.dimension == "3d" && volume.baseLayer == 0 && volume.layerCount == 1;
+}
+
+test "a view range stays inside its texture's mips and layers, and a cube view takes whole cubes" {
+	assert viewRefusal({}, 4, 6, false, true) == "";
+	assert viewRefusal({ baseMipLevel: 2, mipLevelCount: 3 }, 4, 1, false, false) == "view mips 2+3 overrun GPUTexture 9, which has 4 mips";
+	assert viewRefusal({ dimension: "3d" }, 1, 1, false, false) == "GPUTextureViewDescriptor.dimension '3d' does not match the 2d GPUTexture 9";
+	assert viewRefusal({ baseArrayLayer: 1 }, 1, 8, true, false) == "a 3d view takes no baseArrayLayer or arrayLayerCount";
+	assert viewRefusal({ baseArrayLayer: 4, arrayLayerCount: 4 }, 1, 6, false, false) == "view layers 4+4 overrun GPUTexture 9, which has 6 layers";
+	assert viewRefusal({ dimension: "cube" }, 1, 6, false, false) == "a cube view needs GPUTexture 9 created square, with TEXTURE_BINDING and a depthOrArrayLayers multiple of 6";
+	assert viewRefusal({ dimension: "cube-array", arrayLayerCount: 9 }, 1, 12, false, true) == "a cube view takes whole cubes: baseArrayLayer and arrayLayerCount multiples of 6";
+	assert viewRefusal({ dimension: "cube", baseArrayLayer: 6 }, 1, 12, false, true) == "";
+}
+
+test "a texture can take a cube view when square, sampled, single-sample and a multiple of 6 layers" {
+	const sampled = GPUTextureUsage.TEXTURE_BINDING as int32;
+	assert cubeCapable(false, 12, 64, 64, sampled, 1);
+	assert !cubeCapable(false, 6, 64, 32, sampled, 1);
+	assert !cubeCapable(false, 6, 64, 64, 0, 1);
+	assert !cubeCapable(false, 6, 64, 64, sampled, 4);
+	assert !cubeCapable(true, 6, 64, 64, sampled, 1);
+}
+
 test "setBindGroup takes the door's two groups" {
 	assert bindGroupIndexRefusal(0) == "";
 	assert bindGroupIndexRefusal(1) == "";
@@ -604,4 +659,91 @@ test "a texture view binds as a sampled texture or a one-mip storage texture onl
 	assert storageViewRefusal(3, true, 1) == "";
 	assert storageViewRefusal(3, false, 1) == "bind group entry 3: the view's texture lacks STORAGE_BINDING";
 	assert storageViewRefusal(3, true, 2) == "bind group entry 3: a storage texture view takes exactly one mip";
+}
+
+function colorTarget(width: int32, height: int32, sampleCount: int32): AttachmentFacts {
+	return { texture: 5, renderable: true, single: true, width: width, height: height, layers: 1, sampleCount: sampleCount };
+}
+
+function onePass(color: AttachmentFacts): RenderPassFacts {
+	let facts: RenderPassFacts = { depth: { texture: 0 } };
+	facts.colors[0] = color;
+	return facts;
+}
+
+function colorPass(): GPURenderPassDescriptor {
+	let descriptor: GPURenderPassDescriptor = { label: null };
+	descriptor.colorAttachments[0].view = { id: 1 };
+	return descriptor;
+}
+
+test "a render pass takes renderable one-mip one-layer attachments of one size" {
+	let descriptor = colorPass();
+	let facts = onePass(colorTarget(64, 32, 1));
+	assert renderPassRefusal(descriptor, facts) == "";
+	assert renderPassExtent(descriptor, facts).width == 64 && renderPassExtent(descriptor, facts).height == 32;
+	facts.colors[0].depth = true;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].view is not a color RENDER_ATTACHMENT";
+	facts.colors[0] = { ...colorTarget(64, 32, 1), single: false };
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].view spans several mips or layers: a render attachment is one mip of one layer";
+	facts.colors[0] = { ...colorTarget(64, 32, 1), baseMip: 1 };
+	assert renderPassExtent(descriptor, facts).width == 32;
+	descriptor.depthStencilAttachment.view = { id: 2 };
+	facts.depth = { ...colorTarget(64, 32, 1), depth: true };
+	assert renderPassRefusal(descriptor, facts) == "render pass attachments differ in size";
+	facts.depth = colorTarget(32, 16, 1);
+	assert renderPassRefusal(descriptor, facts) == "depthStencilAttachment.view is not a depth RENDER_ATTACHMENT";
+	facts.depth = { ...colorTarget(32, 16, 1), depth: true, single: false };
+	assert renderPassRefusal(descriptor, facts) == "depthStencilAttachment.view spans several mips or layers: a render attachment is one mip of one layer";
+	assert renderPassRefusal({ label: null }, facts) == "beginRenderPass without an attachment";
+}
+
+test "a render pass color attachment names a depth slice only on a 3d view, inside its mip" {
+	let descriptor = colorPass();
+	let facts = onePass(colorTarget(16, 16, 1));
+	descriptor.colorAttachments[0].depthSlice = 2;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].depthSlice 2 needs a 3d view";
+	facts.colors[0] = { ...colorTarget(16, 16, 1), volume: true, layers: 8, baseMip: 2 };
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].depthSlice 2 is outside the 2 slices of mip 2 of GPUTexture 5";
+	descriptor.colorAttachments[0].depthSlice = 1;
+	assert renderPassRefusal(descriptor, facts) == "";
+}
+
+test "a resolve target is a single-sample color attachment of its multisampled view's size" {
+	let descriptor = colorPass();
+	descriptor.colorAttachments[0].resolveTarget = { id: 3 };
+	let facts = onePass(colorTarget(16, 16, 4));
+	facts.resolves[0] = colorTarget(16, 16, 1);
+	assert renderPassRefusal(descriptor, facts) == "";
+	facts.resolves[0].single = false;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget spans several mips or layers: a render attachment is one mip of one layer";
+	facts.resolves[0] = colorTarget(8, 16, 1);
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget differs in size from its multisampled view";
+	facts.resolves[0] = colorTarget(16, 16, 4);
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget needs a single-sample color RENDER_ATTACHMENT";
+	facts.colors[0].sampleCount = 1;
+	assert renderPassRefusal(descriptor, facts) == "colorAttachments[0].resolveTarget needs a multisampled view";
+}
+
+test "a canvas names a color format and, when it has one, a depth format" {
+	assert canvasRefusal("bgra8unorm", "depth32float") == "";
+	assert canvasRefusal("rgba8unorm", "") == "";
+	assert canvasRefusal("", "") == "NativeEnvironment.colorFormat is required";
+	assert canvasRefusal("depth32float", "") == "NativeEnvironment.colorFormat 'depth32float' is not supported";
+	assert canvasRefusal("bgra8unorm", "rgba8unorm") == "NativeEnvironment.depthFormat 'rgba8unorm' is not supported";
+}
+
+test "a render pipeline's zero sample count and stencil masks resolve to WebGPU's defaults" {
+	let descriptor: GPURenderPipelineDescriptor = {};
+	const resolved = resolvedRenderPipeline(descriptor);
+	assert resolved.multisample.count == 1;
+	assert resolved.depthStencil.stencilReadMask == 0xFFFFFFFF;
+	assert resolved.depthStencil.stencilWriteMask == 0xFFFFFFFF;
+	descriptor.multisample.count = 4;
+	descriptor.depthStencil.stencilReadMask = 0x0F;
+	descriptor.depthStencil.stencilWriteMask = 0xF0;
+	const kept = resolvedRenderPipeline(descriptor);
+	assert kept.multisample.count == 4;
+	assert kept.depthStencil.stencilReadMask == 0x0F;
+	assert kept.depthStencil.stencilWriteMask == 0xF0;
 }

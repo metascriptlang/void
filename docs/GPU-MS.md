@@ -755,3 +755,31 @@ For Windows, found by the audit and not the Mac's to change:
   images and detaches, re-attaches and checks its framebuffer on every pass, not only on a change;
   D3D11 compute clears and rebinds every view (`d3dCsClearViews`); D3D11 creates and releases 3D
   slice views every pass; D3D11 calls `ClearState` at every pass end.
+
+Progress, 2026-10-26 (merged at `32d20563`): steps 1–2 are in. What a backend exports changed,
+and Vulkan's `backend.ms` follows it from its first line:
+- `limits()` is read once, at `requestDevice`; everything else reads `cachedLimits()`.
+- `attachmentFacts(view)`, built with `attachmentFactsOf` (the view slot carries `attachable` and
+  `baseMip`; the texture slot `id`, `usage`, `width`, `height`, `layers`, `sampleCount`), and
+  `beginRenderPass(encoder, descriptor, extent)`, which only sets up native attachments: the
+  device checks the pass first.
+- A view's mip and layer range comes from `checkedViewRange`; `vulkan/resources.ms:478-494` can
+  call it, and the `checkedViewMips`/`View3d`/`ViewLayers`/`CubeView` wrappers then go.
+- Sampler anisotropy follows WebGPU on every backend: 0 means the default 1, below 0 is refused,
+  above 16 is clamped (`clampedAnisotropy`), so `vulkan/resources.ms:596-598` drops its stop.
+- Run on WARP after merging: D3D11 refuses a compute pipeline in a render pass and a multi-mip or
+  multi-layer color attachment with the shared messages, and lists `GPU_MAX_ANISOTROPY` in its
+  constant mirror.
+
+Progress, step 3 (merged at `e3cd35ef`): `device.ms` allocates every id and keeps each resource's
+common record (`pool.ms`, after sokol `_sg_buffer_common_t` `:6643`); a backend keeps only its
+native record in a plain `Vec` (`put`/`vacate`). Shutdown destroys every live resource before the
+backend tears down (`_sg_discard_all_resources` `:26431`). A Vulkan `backend.ms` therefore:
+- exports `BACKEND`, `adoptSwapchain(color, depth)` and `acquireSwapchain(swapchain): void`;
+- takes `createX(id, descriptor): void`, `createTexture(TextureRecord, …)`, `createView(ViewRecord, …)`;
+- on destroy releases its natives and calls `vacate`, never frees the id;
+- reads `currentFrame()` and `cachedCanvas()`;
+- has no accessors, `*Alive`, `liveCounts`, `getBindGroupLayout`, `attachmentFacts`, `canvasOf`,
+  `frameIndex` or shutdown loop of its own. `pool.ms` keeps `Pool`/`allocate`/`store`/`release`
+  until `vulkan/resources.ms` moves over.
+At shutdown D3D11 now releases resources before `ClearState`: a WARP run confirms it.

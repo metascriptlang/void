@@ -2,7 +2,9 @@ import {
 	BindingKind,
 	GPUBindGroupEntry,
 	GPUBufferUsage,
+	GPUCanvasConfiguration,
 	GPUPrimitiveState,
+	GPURenderPassDescriptor,
 	GPUQuerySetDescriptor,
 	GPURenderPipelineDescriptor,
 	GPUSamplerDescriptor,
@@ -10,16 +12,33 @@ import {
 	GPUShaderModuleDescriptor,
 	GPUShaderStage,
 	GPUSupportedLimits,
+	GPUExtent3D,
+	GPUTexelCopyTextureInfo,
 	GPUTextureDescriptor,
 	GPUTextureFormat,
 	GPUTextureUsage,
+	GPUTextureViewDescriptor,
+	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
+	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
+	checkedTexelCopyRegion,
+	cubeViewRefusal,
+	depthSliceRefusal,
+	noDepthSliceRefusal,
+	passExtentRefusal,
+	refuse,
+	resolveTargetRefusal,
+	singleSubresourceRefusal,
 	samplerMaxLod,
 	stop,
+	view3dRefusal,
+	viewLayersRefusal,
+	viewMipsRefusal,
 } from "./types.ms";
+import { TextureRecord, ViewRecord } from "./pool.ms";
 
 // The checks every backend repeats, once, above the backends: device.ms calls them before it
 // calls backend.X, so a fifth backend gets them without copying. They stay on in release.
@@ -164,10 +183,9 @@ export function shutdownRefusal(this s: EncoderState): string {
 }
 
 let encoder: EncoderState = { open: false };
-
-@inline function refuse(message: string): void {
-	if (message != "") { stop(message); }
-}
+let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
+let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
+let frame: int64 = 0;
 
 @inline export function occlusionSetId(): uint32 { return encoder.occlusionSet; }
 @inline export function occlusionQueryIndex(): int32 { return encoder.occlusionIndex; }
@@ -176,7 +194,26 @@ let encoder: EncoderState = { open: false };
 @inline export function computePassOpen(): boolean { return encoder.pass == PASS_COMPUTE; }
 @inline export function openDebugGroups(): int32 { return encoder.depth; }
 
+@inline export function cachedLimits(): GPUSupportedLimits { return deviceLimits; }
+@inline export function cachedCanvas(): GPUCanvasConfiguration { return canvas; }
+@inline export function currentFrame(): int64 { return frame; }
+
 export function resetEncoder(): void { encoder = { open: false }; }
+export function cacheLimits(limits: GPUSupportedLimits): void { deviceLimits = limits; }
+export function resetFrame(): void { frame = 0; }
+export function advanceFrame(): void { frame += 1; }
+
+export function canvasRefusal(color: string, depth: string): string {
+	if (color == "") { return "NativeEnvironment.colorFormat is required"; }
+	if (isDepthFormat(color)) { return `NativeEnvironment.colorFormat '${color}' is not supported`; }
+	if (depth != "" && !isDepthFormat(depth)) { return `NativeEnvironment.depthFormat '${depth}' is not supported`; }
+	return "";
+}
+
+export function cacheCanvas(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, sampleCount: int32): void {
+	refuse(canvasRefusal(colorFormat, depthFormat));
+	canvas = { format: colorFormat, depthFormat: depthFormat, sampleCount: sampleCount == 0 ? 1 : sampleCount };
+}
 export function attachOcclusionSet(set: uint32): void { encoder.attachOcclusion(set); }
 export function markPipelineSet(): void { encoder.markPipeline(); }
 export function markIndexSet(): void { encoder.markIndexBuffer(); }
@@ -249,32 +286,32 @@ export function bufferRefusal(size: int64, usage: int32): string {
 	return "";
 }
 
-export function isDepthFormat(format: GPUTextureFormat): boolean {
+export function isDepthFormat(format: string): boolean {
 	return format == "depth16unorm" || format == "depth32float" || format == "depth24plus-stencil8";
 }
 
 // `limits` is the backend's own query. The rules run in the order a descriptor is read: size,
 // layers, the mip chain the largest side allows, multisample, then format against dimension.
 export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupportedLimits): string {
-	const width = descriptor.size.width;
-	const height = descriptor.size.height;
-	const dimension: string = descriptor.dimension;
-	const volume = dimension == "3d";
+	const texture = textureRecordOf(0, descriptor);
+	const width = texture.width;
+	const height = texture.height;
+	const volume = texture.volume;
 	if (width <= 0 || height <= 0) { return "GPUTextureDescriptor.size needs a positive width and height"; }
 	if (descriptor.size.depthOrArrayLayers < 0) { return "GPUTextureDescriptor.size.depthOrArrayLayers is negative"; }
-	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
+	const layers = texture.layers;
 	const largestSide = volume ? Math.max(Math.max(width, height), layers) : Math.max(width, height);
 	const sideLimit = volume ? limits.maxTextureDimension3D : limits.maxTextureDimension2D;
 	if (largestSide > sideLimit || (!volume && layers > limits.maxTextureArrayLayers)) {
 		return `GPUTextureDescriptor.size ${width}x${height}x${layers} is over the limits ${sideLimit} per side and ${limits.maxTextureArrayLayers} array layers`;
 	}
-	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
+	const mipLevels = texture.mipLevels;
 	let possible = 1;
 	while ((largestSide >> possible) > 0) { possible += 1; }
 	if (mipLevels < 1 || mipLevels > possible) {
 		return `GPUTextureDescriptor.mipLevelCount ${mipLevels} is outside 1..${possible} for a ${width}x${height} texture`;
 	}
-	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
+	const sampleCount = texture.sampleCount;
 	if (sampleCount > 1 && (volume || layers > 1 || mipLevels > 1)) {
 		return "WebGPU allows a multisampled texture only as a 2d texture with one mip level and one array layer";
 	}
@@ -283,6 +320,28 @@ export function textureRefusal(descriptor: GPUTextureDescriptor, limits: GPUSupp
 	}
 	if (volume && isDepthFormat(descriptor.format)) { return "WebGPU allows a depth or stencil format only on a 2d texture"; }
 	return "";
+}
+
+export function textureRecordOf(id: uint32, descriptor: GPUTextureDescriptor): TextureRecord {
+	const width = descriptor.size.width;
+	const height = descriptor.size.height;
+	const dimension: string = descriptor.dimension;
+	const volume = dimension == "3d";
+	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
+	const sampleCount = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
+	return {
+		id: id,
+		width: width,
+		height: height,
+		format: descriptor.format,
+		usage: descriptor.usage,
+		sampleCount: sampleCount,
+		mipLevels: descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount,
+		layers: layers,
+		volume: volume,
+		cube: cubeCapable(volume, layers, width, height, descriptor.usage, sampleCount),
+		swapchainView: 0,
+	};
 }
 
 export function checkedBuffer(size: int64, usage: int32): void { refuse(bufferRefusal(size, usage)); }
@@ -371,6 +430,14 @@ export function primitiveRefusal(primitive: GPUPrimitiveState): string {
 	return "";
 }
 
+export function resolvedRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipelineDescriptor {
+	let resolved = descriptor;
+	if (resolved.multisample.count == 0) { resolved.multisample.count = 1; }
+	if (resolved.depthStencil.stencilReadMask == 0) { resolved.depthStencil.stencilReadMask = 0xFFFFFFFF; }
+	if (resolved.depthStencil.stencilWriteMask == 0) { resolved.depthStencil.stencilWriteMask = 0xFFFFFFFF; }
+	return resolved;
+}
+
 export function renderPipelineRefusal(descriptor: GPURenderPipelineDescriptor): string {
 	if (descriptor.fragment.module.id != descriptor.vertex.module.id) {
 		return "vertex and fragment stages come from one GPUShaderModule in Void";
@@ -407,6 +474,7 @@ export function samplerRefusal(descriptor: GPUSamplerDescriptor): string {
 	const mag: string = descriptor.magFilter;
 	const min: string = descriptor.minFilter;
 	const mip: string = descriptor.mipmapFilter;
+	if (descriptor.maxAnisotropy < 0) { return `GPUSamplerDescriptor.maxAnisotropy ${descriptor.maxAnisotropy} is below 1`; }
 	if (descriptor.maxAnisotropy > 1 && (mag != "linear" || min != "linear" || mip != "linear")) {
 		return "GPUSamplerDescriptor.maxAnisotropy above 1 needs linear magFilter, minFilter and mipmapFilter";
 	}
@@ -414,6 +482,11 @@ export function samplerRefusal(descriptor: GPUSamplerDescriptor): string {
 	const maxLod = samplerMaxLod(descriptor.lodMaxClamp);
 	if (maxLod < descriptor.lodMinClamp) { return `GPUSamplerDescriptor.lodMaxClamp ${maxLod} is below lodMinClamp ${descriptor.lodMinClamp}`; }
 	return "";
+}
+
+// WebGPU createSampler: the used maxAnisotropy is clamped to what the platform supports.
+export function clampedAnisotropy(maxAnisotropy: int32): int32 {
+	return maxAnisotropy == 0 ? 1 : Math.min(maxAnisotropy, GPU_MAX_ANISOTROPY);
 }
 
 export function querySetRefusal(descriptor: GPUQuerySetDescriptor): string {
@@ -465,6 +538,64 @@ export function checkedViewDimension(dimension: string, volume: boolean, layers:
 	const name = resolvedViewDimension(dimension, volume, layers);
 	refuse(viewDimensionRefusal(name, volume, texture));
 	return name;
+}
+
+export function cubeCapable(volume: boolean, layers: int32, width: int32, height: int32, usage: int32, sampleCount: int32): boolean {
+	return !volume && layers % 6 == 0 && width == height && (usage & (GPUTextureUsage.TEXTURE_BINDING as int32)) != 0 && sampleCount == 1;
+}
+
+export struct ViewRange {
+	dimension: string;
+	baseMip: int32;
+	mipCount: int32;
+	baseLayer: int32;
+	layerCount: int32;
+}
+
+// A count of 0 is the rest of the texture; a 2d view is one layer, a cube six, a 3d view the whole volume.
+export function resolvedViewRange(descriptor: GPUTextureViewDescriptor, mipLevels: int32, layers: int32, volume: boolean): ViewRange {
+	const dimension = resolvedViewDimension(descriptor.dimension, volume, layers);
+	const baseMip = descriptor.baseMipLevel;
+	const mipCount = descriptor.mipLevelCount == 0 ? mipLevels - baseMip : descriptor.mipLevelCount;
+	let layerCount = descriptor.arrayLayerCount;
+	if (dimension == "2d" || dimension == "3d") { layerCount = 1; }
+	if (dimension == "cube") { layerCount = 6; }
+	if (layerCount == 0) { layerCount = layers - descriptor.baseArrayLayer; }
+	const baseLayer = dimension == "3d" ? 0 : descriptor.baseArrayLayer;
+	return { dimension: dimension, baseMip: baseMip, mipCount: mipCount, baseLayer: baseLayer, layerCount: layerCount };
+}
+
+// sokol _sg_validate_view_desc (sokol_gfx.h:24606), in its order: mips, dimension, layers, cube.
+export function viewRangeRefusal(
+	descriptor: GPUTextureViewDescriptor,
+	range: ViewRange,
+	texture: uint32,
+	mipLevels: int32,
+	layers: int32,
+	volume: boolean,
+	cube: boolean,
+): string {
+	const mips = viewMipsRefusal(texture, mipLevels, range.baseMip, range.mipCount);
+	if (mips != "") { return mips; }
+	const dimension = viewDimensionRefusal(range.dimension, volume, texture);
+	if (dimension != "") { return dimension; }
+	if (range.dimension == "3d") { return view3dRefusal(descriptor.baseArrayLayer, descriptor.arrayLayerCount); }
+	const span = viewLayersRefusal(texture, layers, range.baseLayer, range.layerCount);
+	if (span != "" || (range.dimension != "cube" && range.dimension != "cube-array")) { return span; }
+	return cubeViewRefusal(texture, cube, range.baseLayer, range.layerCount);
+}
+
+export function checkedViewRange(
+	descriptor: GPUTextureViewDescriptor,
+	texture: uint32,
+	mipLevels: int32,
+	layers: int32,
+	volume: boolean,
+	cube: boolean,
+): ViewRange {
+	const range = resolvedViewRange(descriptor, mipLevels, layers, volume);
+	refuse(viewRangeRefusal(descriptor, range, texture, mipLevels, layers, volume, cube));
+	return range;
 }
 
 // `index` is already inside the door's two groups. The group a bind group was made for is the
@@ -535,3 +666,112 @@ export function checkedStorageEntry(entry: GPUBindGroupEntry, bufferIsStorage: b
 
 export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }
 export function checkedStorageView(binding: int32, textureIsStorage: boolean, mipCount: int32): void { refuse(storageViewRefusal(binding, textureIsStorage, mipCount)); }
+
+export function checkedCopyRegion<T>(member: string, texture: T, info: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
+	checkedTexelCopyRegion(member, texture.id, texture.width, texture.height, texture.mipLevels, texture.layers, texture.volume, info, size);
+}
+
+export function entryOf<T>(group: T, binding: int32): int32 {
+	for (let e = 0; e < group.entryCount; e++) {
+		if (group.entries[e].binding == binding) { return e; }
+	}
+	stop(`a bound bind group has no entry for binding ${binding}`);
+}
+
+// A view used as a render attachment. `width`, `height` and `layers` are
+// the texture's own; `single` is one mip of one layer; `volume` is a 3d view.
+export struct AttachmentFacts {
+	texture: uint32;
+	depth: boolean;
+	renderable: boolean;
+	single: boolean;
+	volume: boolean;
+	baseMip: int32;
+	width: int32;
+	height: int32;
+	layers: int32;
+	sampleCount: int32;
+}
+
+export struct RenderPassFacts {
+	colors: AttachmentFacts[GPU_MAX_COLOR_ATTACHMENTS];
+	resolves: AttachmentFacts[GPU_MAX_COLOR_ATTACHMENTS];
+	depth: AttachmentFacts;
+}
+
+export function attachmentFactsOf(view: ViewRecord, texture: TextureRecord): AttachmentFacts {
+	return {
+		texture: texture.id,
+		depth: isDepthFormat(texture.format),
+		renderable: (texture.usage & (GPUTextureUsage.RENDER_ATTACHMENT as int32)) != 0,
+		single: view.attachable,
+		volume: view.dimension == "3d",
+		baseMip: view.baseMip,
+		width: texture.width,
+		height: texture.height,
+		layers: texture.layers,
+		sampleCount: texture.sampleCount,
+	};
+}
+
+@inline function mipWidth(view: AttachmentFacts): int32 { return Math.max(1, view.width >> view.baseMip); }
+@inline function mipHeight(view: AttachmentFacts): int32 { return Math.max(1, view.height >> view.baseMip); }
+
+function colorAttachmentRefusal(i: int32, descriptor: GPURenderPassDescriptor, view: AttachmentFacts, resolve: AttachmentFacts): string {
+	if (view.depth || !view.renderable) { return `colorAttachments[${i}].view is not a color RENDER_ATTACHMENT`; }
+	const single = singleSubresourceRefusal(`colorAttachments[${i}].view`, view.single);
+	if (single != "") { return single; }
+	const slice = descriptor.colorAttachments[i].depthSlice;
+	const slices = view.volume ? depthSliceRefusal(i, slice, Math.max(1, view.layers >> view.baseMip), view.baseMip, view.texture) : noDepthSliceRefusal(i, slice);
+	if (slices != "" || descriptor.colorAttachments[i].resolveTarget.id == 0) { return slices; }
+	const resolveSingle = singleSubresourceRefusal(`colorAttachments[${i}].resolveTarget`, resolve.single);
+	if (resolveSingle != "") { return resolveSingle; }
+	const sizes = resolveTargetRefusal(i, view.sampleCount, view.width, view.height, mipWidth(resolve), mipHeight(resolve));
+	if (sizes != "") { return sizes; }
+	if (resolve.sampleCount != 1 || resolve.depth || !resolve.renderable) {
+		return `colorAttachments[${i}].resolveTarget needs a single-sample color RENDER_ATTACHMENT`;
+	}
+	return "";
+}
+
+// sokol _sg_validate_begin_pass (sokol_gfx.h:24757): every attachment is a renderable view of one
+// mip and layer, all of one size, and a resolve target matches its multisampled view.
+export function renderPassRefusal(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): string {
+	let width: int32 = 0;
+	let height: int32 = 0;
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		if (descriptor.colorAttachments[i].view.id == 0) { continue; }
+		const view = facts.colors[i];
+		const color = colorAttachmentRefusal(i, descriptor, view, facts.resolves[i]);
+		if (color != "") { return color; }
+		const extent = passExtentRefusal(width, height, mipWidth(view), mipHeight(view));
+		if (extent != "") { return extent; }
+		width = mipWidth(view);
+		height = mipHeight(view);
+	}
+	if (descriptor.depthStencilAttachment.view.id != 0) {
+		const view = facts.depth;
+		if (!view.depth || !view.renderable) { return "depthStencilAttachment.view is not a depth RENDER_ATTACHMENT"; }
+		const single = singleSubresourceRefusal("depthStencilAttachment.view", view.single);
+		if (single != "") { return single; }
+		const extent = passExtentRefusal(width, height, mipWidth(view), mipHeight(view));
+		if (extent != "") { return extent; }
+		width = mipWidth(view);
+	}
+	return width == 0 ? "beginRenderPass without an attachment" : "";
+}
+
+// The first attachment's mip size; renderPassRefusal has checked that every other one matches.
+export function renderPassExtent(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): GPUExtent3D {
+	for (let i = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
+		if (descriptor.colorAttachments[i].view.id != 0) {
+			return { width: mipWidth(facts.colors[i]), height: mipHeight(facts.colors[i]), depthOrArrayLayers: 1 };
+		}
+	}
+	return { width: mipWidth(facts.depth), height: mipHeight(facts.depth), depthOrArrayLayers: 1 };
+}
+
+export function checkedRenderPass(descriptor: GPURenderPassDescriptor, facts: RenderPassFacts): GPUExtent3D {
+	refuse(renderPassRefusal(descriptor, facts));
+	return renderPassExtent(descriptor, facts);
+}
