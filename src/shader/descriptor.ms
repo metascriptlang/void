@@ -303,10 +303,10 @@ export function wordsBase64(words: uint32[]): string {
 		const b1 = left > 1 ? bytes[i + 1] : 0;
 		const b2 = left > 2 ? bytes[i + 2] : 0;
 		const chunk = bytes[i] * 65536 + b1 * 256 + b2;
-		out.push(BASE64_DIGITS[(chunk / 262144) % 64]);
-		out.push(BASE64_DIGITS[(chunk / 4096) % 64]);
-		out.push(left > 1 ? BASE64_DIGITS[(chunk / 64) % 64] : "=");
-		out.push(left > 2 ? BASE64_DIGITS[chunk % 64] : "=");
+		out.push(BASE64_DIGITS.charAt((chunk / 262144) % 64));
+		out.push(BASE64_DIGITS.charAt((chunk / 4096) % 64));
+		out.push(left > 1 ? BASE64_DIGITS.charAt((chunk / 64) % 64) : "=");
+		out.push(left > 2 ? BASE64_DIGITS.charAt(chunk % 64) : "=");
 	}
 	return out.join("");
 }
