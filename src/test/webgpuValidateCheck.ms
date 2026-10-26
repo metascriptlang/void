@@ -90,6 +90,7 @@ import {
 	textureRefusal,
 	uniformEntryRefusal,
 	vertexSlotRefusal,
+	vertexSlotsOf,
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
@@ -246,6 +247,15 @@ test "a draw or dispatch is refused for a vertex buffer or bind group its pipeli
 	assert boundRefusal(3, 0, false) == "the pipeline reads vertex buffer 1, which is not set";
 	markVertexSet(0, 0, 0);
 	assert boundRefusal(1, 0, false) == "the pipeline reads vertex buffer 0, which is not set";
+}
+
+test "a draw needs every vertex buffer slot whose layout is not empty, attributes or not" {
+	let pipeline: GPURenderPipelineDescriptor = { vertex: { module: { id: 3 } }, fragment: { module: { id: 3 } } };
+	assert vertexSlotsOf(pipeline) == 0;
+	pipeline.vertex.buffers[1].arrayStride = 16;
+	assert vertexSlotsOf(pipeline) == 2;
+	pipeline.vertex.buffers[0].attributes[0] = { format: "float32x2", offset: 0, shaderLocation: 0 };
+	assert vertexSlotsOf(pipeline) == 3;
 }
 
 test "a uniform entry is refused by usage, alignment, overrun and size below its block" {

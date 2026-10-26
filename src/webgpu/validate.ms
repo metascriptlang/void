@@ -322,6 +322,7 @@ export function boundRefusal(vertexSlots: int32, groups: int32, compute: boolean
 export function vertexSlotsOf(descriptor: GPURenderPipelineDescriptor): int32 {
 	let slots = 0;
 	for (let b = 0; b < GPU_MAX_VERTEX_BUFFERS; b++) {
+		if (descriptor.vertex.buffers[b].arrayStride != 0) { slots |= 1 << b; }
 		for (let a = 0; a < GPU_MAX_VERTEX_ATTRIBUTES; a++) {
 			const format: string = descriptor.vertex.buffers[b].attributes[a].format;
 			if (format != "") { slots |= 1 << b; }
