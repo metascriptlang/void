@@ -1,6 +1,6 @@
 // expect forward.closed.prepareFrame: void3d: prepareFrame on a forward preset that was closed
 // expect forward.closed.drawToScreen: void3d: drawToScreen on a forward preset that was closed
-// expect forward.bloom.ldr: void3d: setBloom on a forward preset made by create; bloom needs
+// expect forward.bloom.ldr: void3d: setBloom on a forward preset made by create; bloom needs createHdr
 // expect forward.bloom.settings: void3d: setBloom with intensity -1
 // expect pixelArt.closed.setSettings: void3d: setSettings on a pixel-art preset that was closed
 // expect pixelArt.closed.setLook: void3d: setLook on a pixel-art preset that was closed
@@ -8,7 +8,7 @@
 // expect pixelArt.closed.viewFor: void3d: viewFor on a pixel-art preset that was closed
 // expect pixelArt.closed.drawToScreen: void3d: drawToScreen on a pixel-art preset that was closed
 // expect pixelArt.closed.closePixelArt: void3d: closePixelArt on a pixel-art preset that was closed
-// expect pixelArt.bloom.ldr: void3d: setBloom on a pixel-art preset made by create; bloom needs
+// expect pixelArt.bloom.ldr: void3d: setBloom on a pixel-art preset made by create; bloom needs createHdr
 // expect pixelArt.fog.setLookEqual: void3d: setLook requires finite fog.start < fog.end
 // expect pixelArt.fog.setLookReverse: void3d: setLook requires finite fog.start < fog.end
 // expect pixelArt.fog.setLookNan: void3d: setLook requires finite fog.start < fog.end
@@ -40,22 +40,22 @@
 // expect closeInside.closePalette: void3d: closePalette with a pass open; endPass ends it
 // expect closeInside.closeRenderer: void3d: closeRenderer with a pass open; endPass ends it
 // expect closeInside.closePixelArt: void3d: closePixelArt with a pass open; endPass ends it
-// expect contextClosed.rendererCreate: void3d: Renderer.createDrawing on a draw context that was
-// expect contextClosed.forwardCreate: void3d: ForwardRenderer.create on a draw context that was
-// expect contextClosed.pixelArtCreate: void3d: PixelArtRenderer.create on a draw context that was
+// expect contextClosed.rendererCreate: void3d: Renderer.createDrawing on a draw context that was closed
+// expect contextClosed.forwardCreate: void3d: ForwardRenderer.create on a draw context that was closed
+// expect contextClosed.pixelArtCreate: void3d: PixelArtRenderer.create on a draw context that was closed
 // expect closeInside.closeForward: void3d: closeForward with a pass open; endPass ends it
 // expect forward.closedTwice.closeForward: void3d: closeForward on a forward preset that was closed
 // expect forward.closed.endPrepared: void3d: endPrepared on a forward preset that was closed
-// expect forward.unprepared.endPrepared: void3d: endPrepared with no prepared frame; call
-// expect forward.preparedTwice.prepareFrame: void3d: prepareFrame on a frame no drawToScreen or
-// expect forward.insideScreen.prepareFrame: void3d: prepareFrame with a pass already open; it
-// expect forward.noScreenPass.drawToScreen: void3d: drawToScreen outside a screen pass; open one
-// expect forward.unprepared.drawToScreen: void3d: drawToScreen with no prepared frame; call
+// expect forward.unprepared.endPrepared: void3d: endPrepared with no prepared frame; call prepareFrame first
+// expect forward.preparedTwice.prepareFrame: void3d: prepareFrame on a frame no drawToScreen or endPrepared ended
+// expect forward.insideScreen.prepareFrame: void3d: prepareFrame with a pass already open; it would nest inside it
+// expect forward.noScreenPass.drawToScreen: void3d: drawToScreen outside a screen pass; open one with beginScreenPass
+// expect forward.unprepared.drawToScreen: void3d: drawToScreen with no prepared frame; call prepareFrame first
 // expect pixelArt.closed.endPrepared: void3d: endPrepared on a pixel-art preset that was closed
 // expect pixelArt.closed.prepareFrame: void3d: prepareFrame on a pixel-art preset that was closed
 // expect outline.blendNan: void3d: setOutlineBlend needs a finite blend in [0,1]
 // expect outline.blendRange: void3d: setOutlineBlend needs a finite blend in [0,1]
-// expect outline.closed.setOutlineBlend: void3d: setOutlineBlend on a forward preset that was
+// expect outline.closed.setOutlineBlend: void3d: setOutlineBlend on a forward preset that was closed
 // expect outline.settingsWidth: void3d: setOutlineSettings needs finite straight RGBA [0,1]
 // expect outline.uniformBudget: void3d: setOutlineBlend needs FORWARD_OUTLINE_PASS_UNIFORM_LENGTH
 import { argv } from "std/process";

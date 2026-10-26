@@ -69,18 +69,18 @@
 // expect lightColor.group: void3d: setLightColor asked of a Group node 0; only a Light node has it
 // expect lightColor.foreign: void3d: setLightColor on node 0 of another scene
 // expect stale.addGroup: void3d: addGroup on stale node 1
-// expect stale.addGltfNodes: void3d: addGltfNodes on stale node 1: the handle has generation 1
-// expect stale.addLightNode: void3d: addLightNode on stale node 1: the handle has generation 1
-// expect stale.addMeshNode: void3d: addMeshNode on stale node 1: the handle has generation 1
-// expect stale.removeChildren: void3d: removeChildren on stale node 1: the handle has generation
+// expect stale.addGltfNodes: void3d: addGltfNodes on stale node 1: the handle has generation 1, the row 2
+// expect stale.addLightNode: void3d: addLightNode on stale node 1: the handle has generation 1, the row 2
+// expect stale.addMeshNode: void3d: addMeshNode on stale node 1: the handle has generation 1, the row 2
+// expect stale.removeChildren: void3d: removeChildren on stale node 1: the handle has generation 1, the row 2
 // expect stale.remove: void3d: remove on stale node 1: the handle has generation 1, the row 2
-// expect stale.setLightPower: void3d: setLightPower on stale node 1: the handle has generation 1
+// expect stale.setLightPower: void3d: setLightPower on stale node 1: the handle has generation 1, the row 2
 // expect stale.setMeshOf: void3d: setMeshOf on stale node 1: the handle has generation 1, the row 2
 // expect stale.setName: void3d: setName on stale node 1: the handle has generation 1, the row 2
-// expect stale.setPickable: void3d: setPickable on stale node 1: the handle has generation 1
-// expect stale.setVisible: void3d: setVisible on stale node 1: the handle has generation 1
+// expect stale.setPickable: void3d: setPickable on stale node 1: the handle has generation 1, the row 2
+// expect stale.setVisible: void3d: setVisible on stale node 1: the handle has generation 1, the row 2
 // expect stale.setLocal: void3d: setLocal on stale node 1: the handle has generation 1, the row 2
-// expect group.setLightPower: void3d: setLightPower asked of a Group node 1; only a Light node has
+// expect group.setLightPower: void3d: setLightPower asked of a Group node 1; only a Light node has it
 // expect group.setMeshOf: void3d: setMeshOf asked of a Group node 1; only a Mesh node has it
 // expect foreign.remove: void3d: remove on node 1 of another scene
 // expect root.remove: void3d: remove asked of the scene root; removeChildren empties it
@@ -88,7 +88,7 @@
 // expect contextClosed.sceneCreate: void3d: Scene3D.create on a draw context that was closed
 // expect closedTwice.closeGltfAssets: void3d: closeGltfAssets on glTF assets that were closed
 // expect closedTwice.closeMeshFrames: void3d: closeMeshFrames on mesh frames that were closed
-// expect otherContext.bindMeshFrames: void3d: bindMeshFrames pairs mesh frames with a scene of
+// expect otherContext.bindMeshFrames: void3d: bindMeshFrames pairs mesh frames with a scene of another context
 // expect closedScene.syncMeshFrame: void3d: syncMeshFrame on a scene that was closed
 import { argv } from "std/process";
 import { vec3 } from "../../../src/math/math3d";

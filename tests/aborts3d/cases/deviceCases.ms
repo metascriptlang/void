@@ -1,40 +1,40 @@
 // expect attachment.afterRelease: gpu door: beginPass on color attachment 0, whose view
-// expect attachment.otherContext: gpu door: beginPass on color attachment 0 of GPU context 2; the
+// expect attachment.otherContext: gpu door: beginPass on color attachment 0 of GPU context 2; the context is now 1
 // expect attachment.withoutView: gpu door: beginPass on color attachment 0, which has no view
 // expect depth.withoutView: gpu door: beginPass on the depth attachment, which has no view
 // expect pass.commitInside: gpu door: commit with a pass already open; endPass ends it
 // expect pass.fiveColors: gpu door: beginPass takes at most 4 color attachments, given 5
-// expect pass.foreignScreenTwice: gpu door: beginScreenPass with a pass already open; endPass ends
+// expect pass.foreignScreenTwice: gpu door: beginScreenPass with a pass already open; endPass ends it
 // expect pass.foreignEndNone: gpu door: endPass with no pass open
 // expect pass.screenTwice: gpu door: beginScreenPass with a pass already open; endPass ends it
 // expect pass.targetTwice: gpu door: beginPass with a pass already open; endPass ends it
 // expect sampler.afterRelease: gpu door: asHandle on a sampler that was released
 // expect sampler.empty: gpu door: asHandle on a sampler with no handle
 // expect target.closedTwice: gpu door: close on a render target that was closed
-// expect target.otherContext: gpu door: asColor on a render target of GPU context 2; the context
+// expect target.otherContext: gpu door: asColor on a render target of GPU context 2; the context is now 1
 // expect target.resizedAfterClose: gpu door: resize on a render target that was closed
 // expect target.textureAfterClose: gpu door: asTexture on a render target that was closed
 // expect target.textureUnallocated: gpu door: asTexture on a render target with no GPU objects
 // expect target.viewDestroyed: gpu door: asTexture on a render target whose view
 // expect pipelines.closedInside: gpu door: closePipelines with a pass already open; endPass ends it
 // expect pipelines.closedThroughAlias: gpu door: pipelineFor on a pipeline cache that was closed
-// expect pipelines.releasedInside: gpu door: releasePipelines with a pass already open; endPass
+// expect pipelines.releasedInside: gpu door: releasePipelines with a pass already open; endPass ends it
 // expect bindings.short: gpu door: applyBindings descriptor holds 17 of 18 words
-// expect drawItem.foreignTexture: void3d: drawItem with a material whose texture is not the one it
-// expect drawItem.staleTexture: void3d: drawItem with a material whose texture is not the one it
-// expect drawItem.texturePastTable: void3d: drawItem with a material whose texture is not the one
+// expect drawItem.foreignTexture: void3d: drawItem with a material whose texture is not the one it was added with
+// expect drawItem.staleTexture: void3d: drawItem with a material whose texture is not the one it was added with
+// expect drawItem.texturePastTable: void3d: drawItem with a material whose texture is not the one it was added with
 // expect door.endPassNone: gpu door: endPass with no pass open
 // expect door.fiveColorLayout: gpu door: layoutOf takes at most 4 color attachments, given 5
 // expect door.unknownLayout: gpu door: unregistered layout id
 // expect door.unknownProgram: gpu door: unregistered program id
 // expect pipelines.closedTwice: gpu door: closePipelines on a pipeline cache that was closed
-// expect pipelines.releasedAfterClose: gpu door: releasePipelines on a pipeline cache that was
+// expect pipelines.releasedAfterClose: gpu door: releasePipelines on a pipeline cache that was closed
 // expect pipelines.shaderAfterClose: gpu door: shaderFor on a pipeline cache that was closed
 // expect texture.closedAfterDetach: gpu door: close on a texture that was closed
 // expect texture.detachedTwice: gpu door: detach on a texture that was closed
-// expect view.idAfterRecreate: void: voidViewResize: view 33 was destroyed; a view id names one
+// expect view.idAfterRecreate: void: voidViewResize: view 33 was destroyed; a view id names one view only
 // expect block.neverApplied: gpu door: draw with a pipeline that declares a uniform block at slot
-// expect block.afterPipelineChange: gpu door: draw with a pipeline that declares a uniform block
+// expect block.afterPipelineChange: gpu door: draw with a pipeline that declares a uniform block at slot
 import { argv } from "std/process";
 import { gfxSetup, viewCreate, viewResize, viewDestroy, ViewId } from "../../../src/sokol/gpu";
 import { Vec4, identity } from "../../../src/math/math3d";

@@ -37,15 +37,15 @@
 // expect closed.releaseGpu: void3d: releaseGpu on a palette table that was closed
 // expect closed.closePalette: void3d: closePalette on a palette table that was closed
 // expect closed.upload: void3d: upload on a palette table that was closed
-// expect context.liveHolds: void3d: closeContext with holds still live: meshes 1, materials 0
+// expect context.liveHolds: void3d: closeContext with holds still live: meshes 1, materials 0, textures 0,
 // expect context.usedAfterClose: void3d: addMesh on a draw context that was closed
 // expect pool.liveRange: void3d: closeUniformPool with ranges still reserved: 1
 // expect closedOwner.addTargetTexture: void3d: addTargetTexture on a render target that was closed
-// expect tally.materialForeign: void3d: tallyMaterialPin through a context that did not issue the
+// expect tally.materialForeign: void3d: tallyMaterialPin through a context that did not issue the material
 // expect tally.meshForeign: void3d: tallyMeshPin through a context that did not issue the mesh
 // expect drawItem.foreignBlock: void3d: drawItem with a block at slot 0 its context does not hold
-// expect drawItem.otherLiveBlock: void3d: drawItem with a material whose block is not the one it
-// expect drawItem.releasedBlock: void3d: drawItem with a material whose block is not the one it
+// expect drawItem.otherLiveBlock: void3d: drawItem with a material whose block is not the one it was added with
+// expect drawItem.releasedBlock: void3d: drawItem with a material whose block is not the one it was added with
 // expect blockHead.colour: so a block of 8 is not its own; only a shadow caster takes a head
 // expect blockHead.short: reads 28 floats of slot 3 and its material's block holds 4
 // expect key.emissiveUnlit: void3d: Core UnlitTextured has no emissive variant
@@ -56,7 +56,7 @@
 // expect key.pbrWithUvTransform: void3d: Core LitTextured pbr has no uv transform variant
 // expect key.normalMapUntextured: void3d: Core Lit has no normal map variant
 // expect material.kindWithoutCutout: void3d: MaterialKind.AlphaKill for Copy, which has no cutout
-// expect material.movingDefaultsStill: void3d: movingDefaults for Core LitTextured, which does not
+// expect material.movingDefaultsStill: void3d: movingDefaults for Core LitTextured, which does not move
 // expect camera.orthoBoundsPerspective: void3d: orthoBounds asked of a perspective camera
 import { argv } from "std/process";
 import { identity, vec3 } from "../../../src/math/math3d";
