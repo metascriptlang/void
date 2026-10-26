@@ -95,8 +95,8 @@ function isVec4OrMat4(t: ShaderType): boolean {
 		t.kind == ShaderTypeKind.Matrix && t.columns == 4 && t.rows == 4;
 }
 
-// A uniform block reaches GL as one `vec4 <block>[size / 16]` (sokol-shdc's flattening), so a
-// member that is not float has no place in it.
+// A uniform block reaches GL as one `vec4 <block>[size / 16]`, so a member that is not float has no
+// place in it.
 export function uniformBlockLayout(m: ShaderModule, resourceIndex: int32):
 	Result<StructLayout, string> {
 	const r = m.resources[resourceIndex];

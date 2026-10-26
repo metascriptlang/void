@@ -4,9 +4,10 @@ import {
 	DeclKind,
 	Node,
 	NodeKind,
-	StringLiteralData,
 	SymbolKind,
+	TypeArrayData,
 	TypeKind,
+	TypeObjectData,
 	bindSym,
 	childAt,
 	childCount,
@@ -80,7 +81,6 @@ import {
 	Vec4f,
 	Vec4i,
 	Vec4u,
-	textureLoad,
 } from "./std";
 
 import {
@@ -546,16 +546,176 @@ function declarationCondition(contexts: FeatureCondition[][]): FeatureCondition 
 	return conditionOf(ConditionKind.Any, products.map((p) => productCondition(p)));
 }
 
+const FIRST_MATRIX = 12;
+const MATRIX_SHAPES = [2, 2, 3, 3, 4, 4, 2, 3, 2, 4, 3, 2, 3, 4, 4, 2, 4, 3];
+const NOT_A_SHADER_VALUE = "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
+	"or a struct of those";
+
+export class ShaderTypeNodes {
+	stdModule: string = "";
+	atomics: Node[] = [];
+	exchanges: Node[] = [];
+	modfs: Node[] = [];
+	frexps: Node[] = [];
+	vectors: Node[] = [];
+}
+
+// One field per std type the lowering recognises, in the order shaderTypeNodes reads them. A macro
+// reads a std type's node only from its own body, so the macros that need them hand this struct's.
+export struct ShaderTypeRegistry {
+	atomicI32: AtomicI32;
+	atomicU32: AtomicU32;
+	exchangeI32: AtomicExchangeI32;
+	exchangeU32: AtomicExchangeU32;
+	modfF32: ModfResultF32;
+	modfVec2f: ModfResultVec2f;
+	modfVec3f: ModfResultVec3f;
+	modfVec4f: ModfResultVec4f;
+	frexpF32: FrexpResultF32;
+	frexpVec2f: FrexpResultVec2f;
+	frexpVec3f: FrexpResultVec3f;
+	frexpVec4f: FrexpResultVec4f;
+	vec2f: Vec2f;
+	vec3f: Vec3f;
+	vec4f: Vec4f;
+	vec2i: Vec2i;
+	vec3i: Vec3i;
+	vec4i: Vec4i;
+	vec2u: Vec2u;
+	vec3u: Vec3u;
+	vec4u: Vec4u;
+	vec2b: Vec2b;
+	vec3b: Vec3b;
+	vec4b: Vec4b;
+	mat2x2f: Mat2x2f;
+	mat3x3f: Mat3x3f;
+	mat4x4f: Mat4x4f;
+	mat2x3f: Mat2x3f;
+	mat2x4f: Mat2x4f;
+	mat3x2f: Mat3x2f;
+	mat3x4f: Mat3x4f;
+	mat4x2f: Mat4x2f;
+	mat4x3f: Mat4x3f;
+}
+
+function typesFrom(types: Node[], first: int32, count: int32): Node[] {
+	let out: Node[] = [];
+	for (let i = first; i < first + count; i++) { out.push(types[i]); }
+	return out;
+}
+
+export function shaderTypeNodes(registry: Node): ShaderTypeNodes {
+	const types = objectFields(registry)!.typExprFieldTypes;
+	let nodes = new ShaderTypeNodes();
+	nodes.stdModule = types[0].resolvedSym!.modulePath;
+	nodes.atomics = typesFrom(types, 0, 2);
+	nodes.exchanges = typesFrom(types, 2, 2);
+	nodes.modfs = typesFrom(types, 4, 4);
+	nodes.frexps = typesFrom(types, 8, 4);
+	nodes.vectors = typesFrom(types, 12, 21);
+	return nodes;
+}
+
+function vectorAt(i: number): ShaderType {
+	if (i < 3) { return vectorType(ScalarKind.F32, (i + 2) as int32); }
+	if (i < 6) { return vectorType(ScalarKind.I32, (i - 1) as int32); }
+	if (i < 9) { return vectorType(ScalarKind.U32, (i - 4) as int32); }
+	if (i < 12) { return vectorType(ScalarKind.Bool, (i - 7) as int32); }
+	const at = (i - FIRST_MATRIX) * 2;
+	return matrixType(MATRIX_SHAPES[at] as int32, MATRIX_SHAPES[at + 1] as int32);
+}
+
+function predeclaredTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
+	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
+	for (let i = 0; i < nodes.atomics.length; i++) {
+		if (sameType(t, nodes.atomics[i])) { return atomicType(atomicScalars[i]); }
+		if (sameType(t, nodes.exchanges[i])) { return exchangeResultType(atomicScalars[i]); }
+	}
+	for (let i = 0; i < nodes.modfs.length; i++) {
+		if (sameType(t, nodes.modfs[i])) { return modfResultType((i + 1) as int32); }
+		if (sameType(t, nodes.frexps[i])) { return frexpResultType((i + 1) as int32); }
+	}
+	return null;
+}
+
+// Null when the type is no shader value.
+export function shaderTypeOf(nodes: ShaderTypeNodes, t: Node): ShaderType | null {
+	const predeclared = predeclaredTypeOf(nodes, t);
+	if (predeclared != null) { return predeclared; }
+	match (typeKind(t)) {
+		TypeKind.Float32 => { return scalarType(ScalarKind.F32); },
+		TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
+		TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
+		TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
+		TypeKind.SizedArray => {
+			const array = getTypeImpl(t) as TypeArrayData;
+			const element = shaderTypeOf(nodes, array.typExprElement);
+			return element == null ? null : arrayType(element, array.typExprSize as int32);
+		},
+		_ => {},
+	}
+	for (let i = 0; i < nodes.vectors.length; i++) {
+		if (sameType(t, nodes.vectors[i])) { return vectorAt(i); }
+	}
+	return null;
+}
+
+function objectFields(t: Node | null): TypeObjectData | null {
+	if (t == null) { return null; }
+	const fields = getTypeImpl(t);
+	return fields != null && fields.kind == NodeKind.TypeObject ? fields as TypeObjectData : null;
+}
+
+function isAuthorStructOf(stdModule: string, t: Node | null): boolean {
+	if (t == null || objectFields(t) == null) { return false; }
+	return t.resolvedSym != null && t.resolvedSym.modulePath != stdModule;
+}
+
+// The type of a field of an interface struct: a uniform block member, attribute, varying or output.
+export function interfaceMemberType(nodes: ShaderTypeNodes, t: Node, name: string):
+	Result<ShaderType, string> {
+	const array = t.kind == NodeKind.TypeArray ? t as TypeArrayData : null;
+	if (isAuthorStructOf(nodes.stdModule, array == null ? t : array.typExprElement)) {
+		return Result.err("interface field '" + name + "' is a struct: a uniform block member, " +
+			"attribute, varying or output is a scalar, vector or matrix");
+	}
+	const sized = array != null && array.typExprSize > 0;
+	const own = shaderTypeOf(nodes, sized ? array.typExprElement : t);
+	if (own == null) { return Result.err(NOT_A_SHADER_VALUE); }
+	return Result.ok(sized ? arrayType(own, array.typExprSize as int32) : own);
+}
+
+// The struct a shader declares as a uniform block, built as the lowering of a binding field builds
+// it: one struct and one UniformBlock resource at index 0, ready for uniformBlockLayout.
+export function uniformBlockOf(registry: Node, block: Node): Result<ShaderModule, string> {
+	const nodes = shaderTypeNodes(registry);
+	const fields = objectFields(block);
+	if (fields == null) { return Result.err("a uniform block is a struct"); }
+	let layout = new ShaderStruct();
+	layout.name = fields.typExprTypeName;
+	for (let k = 0; k < fields.typExprFieldNames.length; k++) {
+		const name = fields.typExprFieldNames[k];
+		const own = interfaceMemberType(nodes, fields.typExprFieldTypes[k], name);
+		if (!own.ok) { return Result.err("uniform member '" + name + "': " + own.error); }
+		layout.members.push(shaderField(name, own.value));
+	}
+	let m = new ShaderModule();
+	m.structs.push(layout);
+	let r = new ShaderResource();
+	r.kind = ResourceKind.UniformBlock;
+	r.name = layout.name;
+	r.type = structType(0);
+	m.resources.push(r);
+	return Result.ok(m);
+}
+
 export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Node): Node {
 	function fail(n: Node, msg: string): never {
 		error("glsl: " + msg, n);
 	}
 
-	const stdSymbol = bindSym("textureLoad");
-	if (stdSymbol == null || stdSymbol.resolvedSym == null) {
-		fail(entry, "./std did not resolve");
-	}
-	const stdModule = stdSymbol.resolvedSym.modulePath;
+	const typeNodes = shaderTypeNodes(getTypeImpl(ShaderTypeRegistry)!);
+	const stdModule = typeNodes.stdModule;
 	const textureNode = getTypeImpl(Texture2d);
 	const samplerNode = getTypeImpl(Sampler);
 	const storageTextureNodes = [getTypeImpl(StorageTexture2d),
@@ -590,94 +750,31 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth, SampleType.UnfilterableFloat,
 		SampleType.Uint, SampleType.Sint, SampleType.Uint, SampleType.Sint, SampleType.Float];
 	const comparisonNode = getTypeImpl(SamplerComparison);
-	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
-	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];
-	const atomicScalars = [ScalarKind.I32, ScalarKind.U32];
-	const modfNodes = [getTypeImpl(ModfResultF32), getTypeImpl(ModfResultVec2f),
-		getTypeImpl(ModfResultVec3f), getTypeImpl(ModfResultVec4f)];
-	const frexpNodes = [getTypeImpl(FrexpResultF32), getTypeImpl(FrexpResultVec2f),
-		getTypeImpl(FrexpResultVec3f), getTypeImpl(FrexpResultVec4f)];
-	const vectorTypes = [
-		getTypeImpl(Vec2f),
-		getTypeImpl(Vec3f),
-		getTypeImpl(Vec4f),
-		getTypeImpl(Vec2i),
-		getTypeImpl(Vec3i),
-		getTypeImpl(Vec4i),
-		getTypeImpl(Vec2u),
-		getTypeImpl(Vec3u),
-		getTypeImpl(Vec4u),
-		getTypeImpl(Vec2b),
-		getTypeImpl(Vec3b),
-		getTypeImpl(Vec4b),
-		getTypeImpl(Mat2x2f),
-		getTypeImpl(Mat3x3f),
-		getTypeImpl(Mat4x4f),
-		getTypeImpl(Mat2x3f),
-		getTypeImpl(Mat2x4f),
-		getTypeImpl(Mat3x2f),
-		getTypeImpl(Mat3x4f),
-		getTypeImpl(Mat4x2f),
-		getTypeImpl(Mat4x3f),
-	];
+	const vectorTypes = typeNodes.vectors;
 	const constructors = [
 		"vec2f", "vec3f", "vec4f", "vec2i", "vec3i", "vec4i", "vec2u", "vec3u", "vec4u",
 		"vec2b", "vec3b", "vec4b",
 		"mat2x2f", "mat3x3f", "mat4x4f",
 		"mat2x3f", "mat2x4f", "mat3x2f", "mat3x4f", "mat4x2f", "mat4x3f",
 	];
-	const firstMatrix = 12;
-	const matrixShapes = [2, 2, 3, 3, 4, 4, 2, 3, 2, 4, 3, 2, 3, 4, 4, 2, 4, 3];
-
-	function vectorAt(i: number): ShaderType {
-		if (i < 3) { return vectorType(ScalarKind.F32, (i + 2) as int32); }
-		if (i < 6) { return vectorType(ScalarKind.I32, (i - 1) as int32); }
-		if (i < 9) { return vectorType(ScalarKind.U32, (i - 4) as int32); }
-		if (i < 12) { return vectorType(ScalarKind.Bool, (i - 7) as int32); }
-		const at = (i - firstMatrix) * 2;
-		return matrixType(matrixShapes[at] as int32, matrixShapes[at + 1] as int32);
-	}
-
 	function matrixColumns(n: Node): boolean {
 		if (n.kind != NodeKind.MemberExpr || n.property != "columns") { return false; }
 		const t = getType(n.object);
-		for (let i = firstMatrix; i < vectorTypes.length; i++) {
+		for (let i = FIRST_MATRIX; i < vectorTypes.length; i++) {
 			if (t != null && sameType(t, vectorTypes[i])) { return true; }
 		}
 		return false;
 	}
 
 	function predeclaredType(t: Node): ShaderType | null {
-		for (let i = 0; i < atomicNodes.length; i++) {
-			if (sameType(t, atomicNodes[i])) { return atomicType(atomicScalars[i]); }
-			if (sameType(t, exchangeNodes[i])) { return exchangeResultType(atomicScalars[i]); }
-		}
-		for (let i = 0; i < modfNodes.length; i++) {
-			if (sameType(t, modfNodes[i])) { return modfResultType((i + 1) as int32); }
-			if (sameType(t, frexpNodes[i])) { return frexpResultType((i + 1) as int32); }
-		}
-		return null;
+		return predeclaredTypeOf(typeNodes, t);
 	}
 
 	function glslType(t: Node | null, at: Node): ShaderType {
 		if (t == null) { fail(at, "the expression has no type"); }
-		const predeclared = predeclaredType(t);
-		if (predeclared != null) { return predeclared; }
-		match (typeKind(t)) {
-			TypeKind.Float32 => { return scalarType(ScalarKind.F32); },
-			TypeKind.Int32 => { return scalarType(ScalarKind.I32); },
-			TypeKind.Uint32 => { return scalarType(ScalarKind.U32); },
-			TypeKind.Boolean => { return scalarType(ScalarKind.Bool); },
-			TypeKind.SizedArray => {
-				return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
-			},
-			_ => {},
-		}
-		for (let i = 0; i < vectorTypes.length; i++) {
-			if (sameType(t, vectorTypes[i])) { return vectorAt(i); }
-		}
-		fail(at, "a shader value is float32, int32, uint32, boolean, a ./std vector or matrix, " +
-			"or a struct of those");
+		const found = shaderTypeOf(typeNodes, t);
+		if (found == null) { fail(at, NOT_A_SHADER_VALUE); }
+		return found;
 	}
 
 	function decorator(decorators: Node[], name: string): Node | null {
@@ -733,8 +830,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function isAuthorStruct(t: Node | null): boolean {
-		if (t == null || fieldsOf(t) == null) { return false; }
-		return t.resolvedSym != null && t.resolvedSym.modulePath != stdModule;
+		return isAuthorStructOf(stdModule, t);
 	}
 
 	const fn = getImpl(entry);
@@ -915,14 +1011,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	}
 
 	function member(t: Node, name: string, at: Node): ShaderType {
-		if (isAuthorStruct(t.kind == NodeKind.TypeArray ? t.typExprElement : t)) {
-			fail(at, "interface field '" + name + "' is a struct: a uniform block member, " +
-				"attribute, varying or output is a scalar, vector or matrix");
-		}
-		if (t.kind == NodeKind.TypeArray && t.typExprSize > 0) {
-			return arrayType(glslType(t.typExprElement, at), t.typExprSize as int32);
-		}
-		return glslType(t, at);
+		const own = interfaceMemberType(typeNodes, t, name);
+		if (!own.ok) { fail(at, own.error); }
+		return own.value;
 	}
 
 	function sampleTypeOf(d: Node): SampleType {
