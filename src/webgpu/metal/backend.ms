@@ -99,6 +99,7 @@ import {
 	occlusionQueryIndex,
 	renderPassOpen,
 	boundFacts,
+	stencilMask,
 } from "../validate.ms";
 import {
 	MtlBufferImpl,
@@ -1286,8 +1287,8 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	const stencil = stencilPixel != PIXEL_INVALID;
 	const front: GPUStencilFaceState = descriptor.depthStencil.stencilFront;
 	const back: GPUStencilFaceState = descriptor.depthStencil.stencilBack;
-	const readMask = descriptor.depthStencil.stencilReadMask;
-	const writeMask = descriptor.depthStencil.stencilWriteMask;
+	const readMask = stencilMask(descriptor.depthStencil.stencilReadMask);
+	const writeMask = stencilMask(descriptor.depthStencil.stencilWriteMask);
 	slot.depth = mtlNewDepthState(
 		device,
 		depthFormat == "" ? COMPARE_ALWAYS : compareFunction(descriptor.depthStencil.depthCompare, "depthStencil.depthCompare"),
