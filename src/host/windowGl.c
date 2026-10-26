@@ -3,6 +3,7 @@
 #include "views.h"
 #include "../gpu/door.h"
 #include "../platform/win32/window.h"
+#include "appWindow.h"
 
 #define WGL_DRAW_TO_WINDOW_ARB 0x2001
 #define WGL_ACCELERATION_ARB 0x2003
@@ -97,7 +98,7 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	s_context = s_createContextAttribs(s_dc, NULL, attrs);
 	if (s_context == NULL) voidFail("wglCreateContextAttribsARB for GL core 4.3 failed: 0x%08lx", GetLastError());
 	if (!wglMakeCurrent(s_dc, s_context)) voidFail("wglMakeCurrent on the Void window failed: %lu", GetLastError());
-	s_swapInterval(1);
+	s_swapInterval(voidPresentMode() == 1 ? 0 : 1);
 }
 
 void voidWindowDoorSetup(void) {

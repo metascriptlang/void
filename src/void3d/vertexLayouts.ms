@@ -9,7 +9,7 @@ import {
 	vertexFormatSize,
 } from "../webgpu/types.ms";
 
-export const LAYOUT_COUNT: int32 = 11;
+export const LAYOUT_COUNT: int32 = 14;
 
 function packed(stepMode: GPUVertexStepMode, formats: GPUVertexFormat[]): GPUVertexBufferLayout[2] {
 	let buffers: GPUVertexBufferLayout[2] = [{ arrayStride: 0, stepMode: stepMode }];
@@ -26,22 +26,18 @@ function packed(stepMode: GPUVertexStepMode, formats: GPUVertexFormat[]): GPUVer
 	return buffers;
 }
 
-// A mesh in buffer 0 and one record per instance in buffer 1, whose attributes take the shader
-// slots after the mesh's.
-function instanced(
-	vertex: GPUVertexFormat[],
-	instance: GPUVertexFormat[],
-): GPUVertexBufferLayout[2] {
+// A mesh in buffer 0 and its instance row in buffer 1: the world affine's three rows and a
+// colour, at the shader slots after the mesh's (draw.ms writeInstanceRow, shader3d.ms
+// instanceWorld).
+function mesh(vertex: GPUVertexFormat[]): GPUVertexBufferLayout[2] {
 	let buffers = packed("vertex", vertex);
 	buffers[1].stepMode = "instance";
-	let offset = 0;
-	for (let i = 0; i < instance.length; i++) {
+	for (let i = 0; i < 4; i++) {
 		buffers[1].attributes[i] = {
-			format: instance[i], offset: offset, shaderLocation: vertex.length + i,
+			format: "float32x4", offset: i * 16, shaderLocation: vertex.length + i,
 		};
-		offset += vertexFormatSize(instance[i]);
 	}
-	buffers[1].arrayStride = offset;
+	buffers[1].arrayStride = 64;
 	return buffers;
 }
 
@@ -51,17 +47,15 @@ export function gpu3dVertexLayout(layout: int32): GPUVertexBufferLayout[2] {
 		unreachable;
 	}
 	return match (layout) {
-		0 => packed("vertex", ["float32x3", "float32x3", "float32x4"]),
+		0 => mesh(["float32x3", "float32x3", "float32x4"]),
 		1 => packed("instance", ["float32x4", "float32x4"]),
 		2 => packed("instance", ["float32x3", "float32x2", "float32x2", "float32x4", "float32x4"]),
 		3 => packed("vertex", ["float32x2"]),
-		4 => packed("vertex", ["float32x3", "float32x3", "float32x2", "float32x4"]),
-		5 => packed("vertex", ["float32x3", "float32x3", "float32x2", "float32x4", "float32x4"]),
-		6 => packed("vertex", ["float32x3", "float32x3", "float32x4", "float32x4", "float32x4"]),
-		7 => packed("vertex", [
-			"float32x3", "float32x3", "float32x2", "float32x4", "float32x4", "float32x4",
-		]),
-		8 => packed("vertex", [
+		4 => mesh(["float32x3", "float32x3", "float32x2", "float32x4"]),
+		5 => mesh(["float32x3", "float32x3", "float32x2", "float32x4", "float32x4"]),
+		6 => mesh(["float32x3", "float32x3", "float32x4", "float32x4", "float32x4"]),
+		7 => mesh(["float32x3", "float32x3", "float32x2", "float32x4", "float32x4", "float32x4"]),
+		8 => mesh([
 			"float32x3", "float32x3", "float32x2",
 			"float32x4", "float32x4", "float32x4", "float32x4",
 		]),
@@ -69,7 +63,14 @@ export function gpu3dVertexLayout(layout: int32): GPUVertexBufferLayout[2] {
 			"float32x4", "float32x4", "float32x4", "float32x4",
 			"float32x3", "float32x4", "float32x4", "float32x3", "float32x3", "float32x3",
 		]),
-		_ => instanced(["float32x3", "float32x3", "float32x2", "float32x4"],
-			["float32x4", "float32x4", "float32x4", "float32x4"]),
+		10 => mesh(["float32x3", "float32x3", "float32x2", "float32x4", "float32x2"]),
+		11 => mesh(["float32x3", "float32x3", "float32x2", "float32x4", "float32x4", "float32x2"]),
+		12 => mesh([
+			"float32x3", "float32x3", "float32x2", "float32x4", "float32x2", "float32x4", "float32x4",
+		]),
+		_ => mesh([
+			"float32x3", "float32x3", "float32x2", "float32x4",
+			"float32x4", "float32x2", "float32x4", "float32x4",
+		]),
 	};
 }

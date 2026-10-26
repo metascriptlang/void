@@ -152,6 +152,14 @@ Measured facts that shaped the code:
   latency, and writing rows in slot order before permuting them measured no faster. Sorted
   particles past about 100k per system are where the T2 GPU sort is first needed.
 
+  Rerun on 2026-10-26 on main 5f6c6212 (msc f2debffda) in a quiet window: load 22-23 %, no other
+  GPU, bench or WSL gate job, three runs each. Update, SoA: 0.25-0.33 / 2.53-2.85 / 25.9-27.6 ms;
+  sort, radix: 0.06-0.07 / 1.09-1.12 / 101-103 ms (one run of each larger count was an outlier,
+  4.4 and 142); write, SoA: 0.12-0.13 / 1.17-1.33 / 12.3-15.7 ms. The provisional rows hold: SoA
+  updates 30-35 % faster than the AoS arm at 100k and 1M, which was measured only on 2026-10-23
+  since it is retired. Unsorted update and write at 100k cost about 3.7 ms, so 2 ms covers about
+  54k particles on one thread, a quarter to a tenth of RUNTIME §3.9's 200k-500k estimate.
+
 Parity:
 - `tests/unity/goldens` through `src/test/particleUnityCheck.ms`, with the tie cases in
   `tie_*` as counts and remaining time. Unity splits a step into `ceil(dt/0.03)` equal sub-steps
@@ -163,7 +171,15 @@ Parity:
   `tie_death` cases (life 0.1 at 60 and 120 Hz, 0.3 at 100 Hz, 1.0 at 120 Hz) where Unity removes
   a particle one frame before every float32 age or remaining chain tried does, and the three
   goldens that depend on that death (prewarm_rate10_life1, ring_pause_until_replaced_max4,
-  texture_sheet_4x4_wholesheet, which also has a frame tie).
+  texture_sheet_4x4_wholesheet, which also has a frame tie). `tests/unity/AgeProbe.cs` captured
+  why, on 2026-10-26: Unity keeps a normalized age (the AgePercent vertex stream) and reads
+  remaining as `L * (1 - age)` (680 of 682 frames bit-exact), and in all four cases its age passes
+  1 a step early because it runs a few ulps ahead of `age += dt / L` (life 1.0 at 120 Hz: 0.99166733
+  at step 119 against 0.9916661). The increment itself is not reproduced: against the previous
+  captured age, `dt * (1 / L)` gives the next one in 488 of 682 steps and misses by one ulp
+  otherwise, under no rounding, sub-step, clock or double model tried. Storing a normalized age
+  in Void would not close the cases (counts 894 of 903 against 895 for seconds), so the
+  seconds model stays.
 - `tests/oracle/particles3d.cases` through `fromHeaps`. A case declares what it cannot match with
   `carries=`: `EmissionCeil`, `SpawnAge`, `GradientSampled`, `RandomStream` (Heaps draws from one
   stream, Void from a hash per particle) and `OneShotClock`.
@@ -172,7 +188,7 @@ Parity:
   `m16anchor_*`, all four frames each. Measured on main 075e0660: the scene without particles
   stayed byte-identical to `before_*`, and each particle frame differs from it in 1756 to
   1768 pixels, the snow and the embers. Emitting on Unity's float32 sub-step clock moved frames
-  1 and 11 of all three again (measured on 74f314b3 over main f82970f8): the scene without
+  1 and 11 of all three again (measured on deb0fe55 over main 4e94dd3d): the scene without
   particles still byte-identical, the particle frames 1740 to 1776 pixels from it, frames 6 and
   16 unchanged.
 

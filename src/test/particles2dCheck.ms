@@ -314,6 +314,10 @@ test "stretch: a particle that does not move draws nothing, as Unity's quad coll
 	const n = e.update(UNITY_DT, identity2d(), VIEW);
 	assert n.ok && n.value == 1;
 	assert e.node.count() == 0;
+	const corners = golden("stretch_still").getDynamicField("frames").at(1).getDynamicField("bakedQuads").at(0).getDynamicField("pos");
+	for (let v = 0; v < 4; v++) {
+		assert corners.at(v).at(0).asNumber() == 0.0 && corners.at(v).at(1).asNumber() == 0.0;
+	}
 }
 
 test "billboard: a rotated view billboard turns clockwise on screen about the particle" {

@@ -5,6 +5,8 @@ import { GPUTextureUsage, stop } from "../types.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 
+extern function voidPresentMode(): int32;
+
 struct Screen {
 	chain: Swapchain;
 	stale: boolean;
@@ -62,7 +64,7 @@ export function openSurface(surface: uint64): void {
 			usage: (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32),
 			width: 0,
 			height: 0,
-			presentMode: "fifo",
+			presentMode: voidPresentMode() == 1 ? "immediate" : "fifo",
 		}),
 		stale: false,
 	});

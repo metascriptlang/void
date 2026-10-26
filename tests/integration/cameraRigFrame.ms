@@ -110,7 +110,7 @@ export function initCameraRig(): void {
 	const block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
-	const parameters: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	const parameters: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, block.value, parameters).ok) { unreachable; }
 	const material: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque), uniforms: block.value,

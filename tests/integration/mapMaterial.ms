@@ -7,7 +7,8 @@ import {
 } from "../../src/void3d/meshData";
 import { TextureData, TextureId, TextureUploadError } from "../../src/void3d/texture";
 import {
-	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH,
+	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
+	LIGHT_UNIFORM_LENGTH,
 	EMISSIVE_COLOR, EMISSIVE_STRENGTH, EMISSIVE_LENGTH, emissiveBase,
 } from "../../src/void3d/gpu3d";
 import {
@@ -70,7 +71,8 @@ const LAST_FRAME: int32 = 2;
 let pixelArt: boolean = voidCaptureEnvInt("VOID_MAP_PIXEL_ART", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_MAP_CONTROL", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 6 * 8,
+	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH +
+		6 * (MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH),
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -125,7 +127,7 @@ function texture(pixels: Vec<uint32>): TextureId {
 // The control draws every quad with its key's features off and names no map.
 function materialFor(key: ProgramKey, strength: float32, colour: Vec3): Material {
 	const drawn: ProgramKey = control ? ProgramKey.of(key.program) : key;
-	let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (drawn.emissive) {
 		for (let i = 0; i < EMISSIVE_LENGTH; i++) { block.push(1.0); }
 		const base: int32 = emissiveBase(drawn);

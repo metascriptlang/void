@@ -20,9 +20,11 @@ import {
 	SHADOW_UNIFORM_LENGTH,
 	SHADOW_VIEW_SLOT,
 	SPOT_SHADOW_VIEW_SLOT,
+	CUBE_SHADOW_VIEW_SLOT,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	MOVING_MATERIAL_UNIFORM_LENGTH,
+	CLUSTER_SCENE_VIEWS,
 } from "../void3d/gpu3d";
 import { RenderState, Face } from "../gpu/state";
 import {
@@ -42,8 +44,6 @@ import {
 	MeshId,
 	MaterialId,
 	MaterialError,
-	MODEL_SLOT,
-	MODEL_LENGTH,
 	addMaterial,
 	reserveUniforms,
 	releaseUniforms,
@@ -129,7 +129,7 @@ test "a shadowed program reads the shadow block and map past a material's" {
 			assert uniformBlockLength(shadowed, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;
 			const spot: boolean = preset == Preset.Core;
 			assert textureSlotMask(shadowed) == (textureSlotMask(plain) | bit(SHADOW_VIEW_SLOT) |
-				(spot ? bit(SPOT_SHADOW_VIEW_SLOT) : 0));
+				(spot ? bit(SPOT_SHADOW_VIEW_SLOT) | bit(CUBE_SHADOW_VIEW_SLOT) : 0));
 			assert samplerSlotMask(shadowed) == samplerSlotMask(plain);
 		}
 	}
@@ -147,9 +147,9 @@ test "the shadow pass casts a caster's depth on its layout, cut only where its m
 		assert cut.cutout;
 		assert uniformBlockLength(cut, MATERIAL_UNIFORM_SLOT) ==
 			uniformBlockLength(ProgramKey.of(program), MATERIAL_UNIFORM_SLOT);
-		assert textureSlotMask(cut) == textureSlotMask(ProgramKey.of(program));
+		const drawn: uint32 = textureSlotMask(ProgramKey.of(program));
+		assert textureSlotMask(cut) == (drawn & ~CLUSTER_SCENE_VIEWS);
 	}
-	assert uniformBlockLength(castAs(ProgramKey.of(Program.Lit)), MODEL_SLOT) == MODEL_LENGTH;
 	const premultiplied: ProgramKey =
 		castAs(ProgramKey.of(Program.LitTextured).withPremultiplied());
 	assert !premultiplied.premultiplied;

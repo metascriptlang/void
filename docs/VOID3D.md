@@ -1715,7 +1715,8 @@ the existing parameter vector followed by an RGBA colour vector. `gpu3d.ms`
 `renderer.blockFits` refuses a missing or old-sized block before drawing. The unlit
 program does not interpret a colour channel as a toon-ramp level.
 
-**Model cost and preset limit.** The core declares only a model matrix: 16 floats.
+**Model cost and preset limit** (superseded: the model block is gone, see "Every mesh draw
+reads an instance row"). The core declares only a model matrix: 16 floats.
 `draw.ms` `drawItem` uses the actual reflected length, so it does not compute a normal
 inverse or upload its second matrix for that program. **MRT32 still needs the normal**:
 the pixel-art twin writes the preset's normal/depth attachment and retains the 32-float
@@ -3761,6 +3762,25 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### Scene3D picks the LOD level itself (2026-10-26)
+
+`addLodMeshNode` takes a `MeshLod`, its `MeshLodRanges` and the material slot, and the node's
+item carries a `MeshLodPick` (`DrawItem.lod`). `beginFrame` picks every such item before it
+writes anything, from the camera block it is given: the eye and, in the block's otherwise unused
+w slots, projection `_11`, `_22` and the near plane (`CAMERA_PROJECTION_X/Y`, `CAMERA_NEAR`).
+A culled pick leaves the pass lists through `filterFrustum`, and the shadow casters run the same
+filter on the same items, so a shadow follows the main camera's level as Heaps' `emit` does
+(`Mesh.hx` 86-166 calls `getLodIndex` once, with the main camera). `setForcedLod` is Heaps'
+`forcedLod`; a level at or past the count hides the mesh. The radius is the mesh data's
+`boundingRadius`, Heaps' `getBoundingRadius`; a mirrored world is refused
+(`RendererError.MeshLod`), as the caller-owned path already refused it.
+
+Not offered: `inheritLod` (no consumer), a pick per instance row of an `InstanceRun`, and LOD
+on skinned or morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`, and on D3D11 by
+`tests/integration/meshLod.ms` with `VOID_MESH_LOD_SCENE=1`: the same five stages the hand pick
+draws (near, far, reupload, one consumer, culled) come out of the Scene3D pick, with and without
+the outline pass and on 32-bit indices; control 8 forces level 0 and fails at the far stage.
+
 ### glTF output/topology/mode stack land acceptance
 
 On 2026-10-21, shared `wt.sh land void3d-m5` exited 0 and fast-forwarded Main from
@@ -5355,7 +5375,8 @@ These formats are core glTF animation encodings, not dependent on `KHR_mesh_quan
 glTF `b43260ee` animation sampler table permits snorm8, unorm8, snorm16 and unorm16 rotations.
 The current boundary is `gltf.ms` `animationValues` (FLOAT only), followed by
 `gltfCurve.ms` `forValues` (unit-quaternion validation). Merely admitting integer formats
-would not handle their quantization error.
+would not handle their quantization error. Weights outputs have no unit check, so
+`gltf.ms` `weightTrack` takes the four normalized encodings (`gltfMorphImportCheck.ms`).
 
 Arithmetic probe at source tree `a8f2354587ce1c304c9a07114d00f8790f4db0ac`, using Python
 `v = struct.unpack('<f', struct.pack('<f', n/d))[0]` and `abs(2*v*v-1)` for `(0,0,v,v)`:
@@ -5847,6 +5868,368 @@ LDR path; a cube source (`Environment.new` with a cube texture); drawing the env
 Heaps' specular edge fix-up (`cubeScaleFactor`), which seamless cube sampling makes unneeded on
 every sokol backend; Bevy's blue-noise sample rotation.
 
+### Material colour, as built (2026-10-24)
+
+A lit or pbr material carries a colour of its own, as Heaps' `BaseMesh` `@param var color`
+(`h3d/shader/BaseMesh.hx:64`, `pixelColor = color` at `:81`, then times the vertex colour and the
+texture) and Bevy's `StandardMaterial::base_color` (`pbr_material.rs:35`, multiplied in at
+`pbr_fragment.wesl:101`). It reuses the unlit block's idiom: the lit block grows from 4 to 8
+floats, the colour gamma-encoded at `MATERIAL_COLOR` (4), so a lit and an unlit block now share
+one layout, and the pbr, moving and emissive layouts that start after it moved up by 4.
+
+- **Where it multiplies.** `tintedSurface` (`shader3d.ms`) multiplies the vertex colour, times the
+  texel when textured, by the material colour before the surface is shaded, in every lit, pbr and
+  pixel-art fragment, and the shadow pass's alpha cut reads the product's alpha. The product is
+  taken on the gamma-encoded values, as the lit path already multiplies the vertex colour by the
+  texel and as Heaps multiplies its colours; Bevy multiplies in linear light, the same for a
+  white or black channel and different between. White leaves every pixel as it was, so the
+  goldens are expected to stay byte-identical (unmeasured, waits for a GPU slot).
+- **Defaults.** `pbrBlock` and `movingDefaults` write white. A block written by hand writes its
+  colour: a block of zeros draws black, as an unlit block already did. A block of the old length
+  is refused at `writeUniforms` (`UniformError.WrongLength`) and at `beginFrame`
+  (`RendererError.MaterialBlock`), so no caller keeps reading the colour out of a short block.
+- **glTF** still bakes `baseColorFactor` into the vertex colours; the setup's colour multiplies
+  on top of it.
+
+Pinned by `litShaderCheck.ms` (lit and textured: the colour and alpha multiply) and
+`pbrLitCheck.ms` (a tinted pbr surface lights as its vertex colour times the tint would; `pbrBlock`
+writes white).
+
+### glTF flat normals, as built (2026-10-24)
+
+A primitive without `NORMAL` loads with flat normals, as glTF 2.0 §3.7.2.1 requires of a client
+("When normals are not specified, client implementations MUST calculate flat normals and the
+provided tangents (if present) MUST be ignored"). The mechanism is Bevy's: the loader calls
+`Mesh::duplicate_vertices` then `compute_flat_normals` (`bevy_gltf/src/loader/mod.rs:887-903`),
+the face normal being `(b - a) x (c - a)` normalized or zero (`bevy_mesh/src/vertex.rs:242`).
+
+- **The mesh.** `duplicateVertices` (`meshData.ms`) gives every triangle corner its own vertex
+  and drops the indices; `recomputeNormals` on that mesh sums one face per vertex, so it writes
+  the face normal, and a degenerate triangle gets a zero normal as `normalize_or_zero` gives.
+  Strips and fans are flattened too: they are triangles by then, where Bevy computes flat normals
+  only for a triangle list.
+- **What follows a vertex.** `loadMesh` records, for every vertex it builds, the glTF vertex it
+  came from (`vertexSources`), which the skin reads its joints and weights through and morph
+  targets their displacements through. This widens the tangent split's source list, which
+  already carried the vertices MikkTSpace appends. A `TANGENT` on such a primitive is ignored and
+  MikkTSpace runs, as the spec says. Bevy's duplicate leaves its morph targets indexed by the old
+  vertices; here they follow the sources.
+
+Pinned by `gltfCheck.ms` (an indexed list and an unindexed strip: a vertex per corner, each
+triangle's normal, zero for a degenerate one) and `gltfSkinCheck.ms` (a fan without `NORMAL`, 8-
+and 16-bit joints: each duplicated corner keeps its source's joints and weights).
+
+### glTF buffer data: URIs, as built (2026-10-24)
+
+A `.gltf` whose one buffer is embedded as a base64 `data:` URI loads with no bytes from the
+caller. As in Bevy's `load_buffers` (`bevy_gltf/src/loader/mod.rs:2094-2134`, `DataUri` at
+`:2151`), the media type is `application/octet-stream` or `application/gltf-buffer`. Another type
+is refused, where Bevy reports `BufferFormatUnsupported`. The decoding is the one an embedded image
+already used (`base64Bytes`, factored out of `loadInlineImage`): strict base64, padding checked,
+re-encoded to reject a payload that does not round-trip. Every refusal is `Unsupported` at
+`$.buffers[0].uri`. That covers a URI that is not base64 (the image path refuses it too) and a
+data URI that also gets bytes from the caller, since the two sources would disagree. A
+`byteLength` past the decoded bytes is `OutOfRange`, as with supplied bytes. Any other URI is
+still the caller's to read and pass in.
+
+Pinned by `gltfCheck.ms`: both media types load the same vertices as the bytes supplied; a
+wrong type, missing `;base64`, a malformed payload or bytes alongside are refused; a short
+payload is out of range.
+
+### A second uv set for the occlusion map, as built (2026-10-24)
+
+A glTF occlusion map at `texCoord` 1 is read at the primitive's `TEXCOORD_1`, as Bevy reads it:
+its loader gives each texture role a channel (`bevy_gltf/src/loader/mod.rs:1369-1471`,
+`uv_channel` in `loader/gltf_ext/material.rs:57`), the mesh carries `ATTRIBUTE_UV_1`, and
+`pbr_fragment.wesl` samples occlusion at `uv_b` under `STANDARD_MATERIAL_OCCLUSION_UV_B`, moved by
+the same `uv_transform` as the first set (`:135`). Here:
+
+- `MeshData.addUvB` appends two floats per vertex after the tangent and before the skin. A mesh
+  with a second set takes one of four layouts (`VertexLayout.*UvB`, `gpu3d.c` `LAYOUT_*_UV_B`).
+- The program key's bit 18, `occlusionUvB` (`withOcclusionUvB`, which needs `pbrMaps`), is the
+  shader feature `OCCLUSION_UV_B`; `programKeys.txt` declares it on every pbr-maps row, so it is
+  declared wherever its pbr-maps key is. A shadow caster drops it with the other pbr bits.
+- The loader keeps the other roles at `TEXCOORD_0`. Bevy falls back to channel 0 with a warning
+  for a set past 1; here a set a role cannot read is `UnsupportedMaterial`, and a missing
+  `TEXCOORD_1` is `MissingTexCoord`. The second set follows the vertex sources, so flat-normal
+  duplication and MikkTSpace's appended vertices keep their corner's value.
+
+Pinned by `pbrMapsCheck.ms` (the CPU shader reads occlusion at the second set and the packed
+texel at the first), `programKeyCheck.ms` (bit 18, declared on the uv-b layout in every pbr-maps
+variant, the same slots and block, the caster unchanged), `skinMeshCheck.ms` (the attribute's
+place before the skin, the layouts, the refusals) and `gltfMaterialCheck.ms` (`TEXCOORD_1` into
+the mesh and the key; a missing attribute or `texCoord` 2 refused).
+
+### Parallax, as built so far (2026-10-25)
+
+Heaps' `h3d/shader/Parallax.hx` as `PbrMaterial` adds it (`mat/PbrMaterial.hx:354-366`): when
+`parallax > 0` the material's UV steps along the view, in the tangent basis, through layers of
+depth until it passes under the height map, and the last two steps are blended. `PbrMaterial`
+hands the shader its props texture as the height map, read in alpha. Here:
+
+- The program key's bit 19, `parallax` (`withParallax`, which needs `pbrMaps` and `normalMap`), is
+  the shader feature `PARALLAX`; `programKeys.txt` declares it on every pbr-maps row with a normal
+  map (24 rows). `shader3d.ms` `parallaxUv` moves the UV after the UV transform, and every map of
+  the colour pass reads at the moved UV; the occlusion map at the second uv set keeps its own.
+- The height is the pbr-maps texture's alpha, as Heaps reads its props texture's; glTF's packing
+  leaves that alpha free. The amount is `MATERIAL_PARALLAX` (x of the block's first vec4, which
+  the core read nowhere), so no view, sampler or block member is added.
+- The steps are Heaps' defaults, 6 face-on to 24 at grazing (`MIN_LAYERS`, `MAX_LAYERS`, the
+  count `PbrMaterial` uses when `parallaxSteps` is 0 or unset). A material's own step count and
+  the single-offset path of `maxLayers == 0` are not offered; a material that needs either is
+  the trigger to add a step count to the block.
+- Heaps' Parallax takes the bitangent as n x t where its NormalMap takes n x t * -w, so on an
+  unmirrored island the steps run along the mapped normal's bitangent negated, and `invertBasis`
+  flips it by hand. Here it is `mappedNormal`'s bitangent negated, so the tangent's w turns it on
+  a mirrored island and no flag is needed. Sharing `mappedNormal`'s sign moved the UV toward the
+  eye instead of away from it; the GPU golden caught it.
+- A caster drops the bit, as Heaps' shadow pass has no parallax. A cutout parallax key is not
+  cast (`castIn`): its colour pass cuts at the moved UV, and the caster rule refuses a cut at
+  another texel.
+- glTF has no height map, so the loader never sets the bit; an app sets it on its material.
+- Cost: the key index (`indexPrograms`) doubles to 2^20 entries, 4 MB, built once at start.
+
+Pinned by `pbrMapsCheck.ms` (over a flat depth the UV lands where one ray meets it, the tangent's
+w turns the bitangent, and the colour pass samples at the moved UV), `programKeyCheck.ms`
+(bit 19, declared in every normal-mapped pbr-maps variant with the same layout, slots and block,
+the cutout caster refused), and on the GPU by `tests/integration/parallaxFrame.ms` (gate3d
+`parallax`: a base texture's edge moves away from the eye by the height's depth, and the amount-0
+control leaves it).
+
+### Cascaded sun shadows, as built so far (2026-10-24)
+
+The sun's single fitted map becomes up to four cascades, each its own orthographic map in one
+layer of a depth array. The split and the boxes are Bevy's; Heaps' `CascadeShadowMap` has the same
+shape (a `Sampler2DArray`, `MAX_CASCADE_COUNT` 4, a blend across `transitionFraction`), so neither
+is a new mechanism.
+
+- `cascades.ms` `cascadeBounds` is `calculate_cascade_bounds` (`bevy_light/src/cascade.rs`): far
+  bounds growing by one ratio from the first to the maximum. `CascadeConfig` holds the bounds, the
+  overlap and the minimum distance, as Bevy's `CascadeShadowConfig` does after its builder; a
+  config with no cascade or more than four, bounds that do not rise past the minimum distance, an
+  overlap outside 0..1 or a negative minimum distance is refused, where the builder asserts.
+- `cascadeOf` is `calculate_cascade`. The slice's eight corners go to light space; the diameter is
+  the larger of the body and far-face diagonals, rounded up, so it holds whatever the view turns;
+  the centre is snapped to whole texels so the shadow does not shimmer as the view moves. One
+  difference: Bevy keeps the box's near side at the slice and draws casters in front of it with
+  depth clamping, which sokol does not expose, so the box reaches back to the nearest caster's
+  light depth (`casterNear`) instead.
+- `cascadesOf` starts cascade i at the previous far bound times (1 - overlap), the first at the
+  minimum distance, as `build_directional_light_cascades` does; the receiver blends the two across
+  that overlap (Bevy `shadows.wesl:134-262`).
+- The door's `ArrayTarget` (`src/gpu/arrayTarget.ms`, `doorMakeArrayTargetImage`) is a depth
+  array drawn one layer at a time, the CubeTarget idiom with layers for faces.
+
+- The shadow block (`gpu3d.ms` `SHADOW_CASCADE_*`, `shader3d.ms` `ShadowParams`) carries four
+  map matrices, the far bounds, the count, overlap, bias and opacity, and the view's forward axis
+  with the map size; the spot's part follows. The receiver (`dirShadowAt`) takes the view depth
+  along that axis, picks the first cascade whose far bound lies past it, fetches that layer and
+  mixes in the next across the overlap; past the last bound it is lit, as Bevy's
+  `fetch_directional_shadow` is. A block nobody wrote has count 0 and shades nothing.
+- `DirShadowMap.setCascades` takes a config (null keeps one map fitted to the casters in view,
+  Heaps' default); `drawShadows` draws each cascade into its layer with the casters re-culled to
+  its box. The spot's map is a one-layer array, so both maps bind as arrays and a frame that has
+  only one of them substitutes it into the other's slot unchanged.
+- One cascade with an unbounded far bound is today's sun map, so no program key bit is added.
+
+Pinned by `cascadesCheck.ms` (the bounds, the refusals, the slice corners, each cascade holding
+its slice, the texel size kept as the view turns and the centre on whole texels, the caster
+depth), `cascadeShadowCheck.ms` (the cascade pick, the blend, the layer fetch in the GLSL) and
+`spotShadowCheck.ms` (a packed two-cascade block read back by `dirShadowAt`). Not run yet: the
+regenerated shaders and the goldens on the GPU.
+
+### Cube shadows: point, rectangle and capsule lights, as built so far (2026-10-25)
+
+One point, rectangle or capsule light per frame casts the cube map, beside one spot. The shape
+follows Heaps' `h3d.pass.CubeShadowMap`, which `PointShadowMap`, `RectangleShadowMap` and
+`CapsuleShadowMap` all extend: six faces, each drawn by a square 90-degree camera from the
+light's position (`Camera.setCubeMap`'s forward and up per face, +Y looking with up -Z and -Y
+with up +Z), far the light's range, near the kind's: `PointLight.zNear` and `CapsuleLight.zNear`
+0.02, `RectangleShadowMap`'s 0.01 (`cubeShadow.ms` `cubeShadowViews`). The receiver picks the
+face by the largest axis of the light-to-receiver vector, which is the face a cube lookup selects
+(Heaps samples its cube map, Bevy's `fetch_point_shadow` its cube array), then projects through
+that face's matrix and reads the stored depth (`shader3d.ms` `cubeShadowAt`).
+
+- The comparison is Heaps' for a cube, not the spot's: `CubeShadowMap.isUsingWorldDist` stores
+  the distance to the light over the range and `ShadowSampling.compareDepth` tests
+  `zMax - bias > depth * range`, the bias in world units. The map here holds the face's depth,
+  so the lookup turns it back into the distance along the face's axis from the near and far
+  planes the block carries (`SHADOW_CUBE_RANGE`), takes it on to the receiver's ray, and
+  compares both over the range. The bias is packed as is (`packCube`). Comparing in stored depth
+  with the bias scaled into it, as the spot does, swallowed every shadow on the GPU: with a near
+  of 0.02 the depths of a caster 2 away and of a receiver 3 away differ by 0.003, under the 0.01
+  bias.
+
+- The faces are six layers of the door's `ArrayTarget`, the idiom cascades and the spot already
+  use, not a depth cube. Drawing and lookup share the same six matrices, so the cube-face
+  orientation rules of each backend never enter; a cube would add a second target kind and a
+  per-backend face table for the same result.
+- The block (`gpu3d.ms` `SHADOW_CUBE_*`) carries the six map matrices, bias, opacity and size,
+  and the light's position; it follows the spot's part, and `carryShadows` copies it into the
+  block of the first attached map. The map binds at view 12 and reads with the spot's sampler.
+- The light block's header names the casters: `ambient.w` holds the spot caster's record + 1,
+  `dirColor.w` the cube caster's (`LIGHT_SPOT_CASTER`, `LIGHT_CUBE_CASTER`, 0 for none), and a
+  record's shadow is read only when its index is named (`recordShadowAt`). A per-record flag
+  cannot carry it, because a rectangle record's shape slots are all taken. `collectLights`
+  refuses a second caster of one map (`TooManyShadowedSpots`, `TooManyCubeCasters`), and the
+  frame refuses a header naming no record of the right kind or a caster with no range past its
+  near (`BadShadowSpot`, `BadCubeShadow`) and a caster with no attached map
+  (`SpotShadowUnattached`, `CubeShadowUnattached`).
+- A capsule's cube sits at its centre with far its range, as `CapsuleShadowMap` sets its camera;
+  Heaps' wider `range + length` applies to its radial-distance shader, which this lookup does not
+  use.
+
+Pinned by `cubeShadowCheck.ms` (the six faces, the rectangle's and capsule's near planes, the
+header and the refusals, a packed block read back by `cubeShadowAt` per face, the world-unit bias
+around the receiver's distance, the named record of each kind, the carried block) and on the GPU
+by `tests/integration/lightShadows.ms` (gate3d `light-shadows`).
+
+### Shadow filtering: PCF, as built so far (2026-10-25)
+
+Every shadow map (sun, spot, cube) takes Heaps' `Shadows.samplingKind` and `pcfScale`
+(`dirShadowMap.ms` `ShadowSamplingKind`, default `None` as in Heaps). `Pcf` follows
+`h3d/shader/ShadowSampling.hx`: for the sun's cascades and the spot, 16 Poisson-disk taps turned
+by the hash of the world position (`shadowPcf`, `shadowArrayPcf`); for the cube, the 20
+`cubeShadowPcf` directions added to the light-to-receiver direction scaled by pcfScale / size,
+each tap kept at the receiver's distance and read from the face it points into
+(`shader3d.ms` `cubeShadowAt`, helpers in `shadowLookup.ms`). Each tap is compared as before
+and the lit share averaged, so the opacity mix is unchanged.
+
+- Heaps chooses the mode per shader (`@const SAMPLING_MODE`); here it is a number in each light's
+  part of the shadow block (`SHADOW_CASCADE_FILTER`, `SHADOW_SPOT_FILTER`, `SHADOW_CUBE_FILTER`,
+  0 for one texel), so the program keys and the generated headers do not double. The cost is
+  one uniform branch per lookup.
+- `pcfScale` is in texels; Heaps passes `pcfScale / texture.width` in uv, the same footprint.
+- ESM is not offered: Heaps' ESM reads a blurred R16F map, and these maps are depth.
+- Every light takes Bevy's `shadow_normal_bias` (`bevy_pbr` `shadows.wesl`
+  `fetch_directional_shadow`, `fetch_point_shadow`, `fetch_spot_shadow`; the scale is
+  `render/light.rs`'s):
+  `DirShadowMap.normalBias`, in texels, moves the receiver along its geometric normal before the
+  lookup, so a surface steep to the light stops reading its own texel. Heaps has no such bias,
+  so the default is 0 and an unset map draws as before. As in Bevy the bias is times the root of
+  two, the worst-case diagonal. The sun's texel is its cascade's, its world size read off the
+  cascade matrix's scale (`cascadeShadow.ms` `cascadeReceiverOf`); the cube's is a 90-degree
+  face's, 2 / size, times the receiver's distance to the light (`cubeShadowAt`); the spot's is
+  2 / (size · its projection's y scale), Bevy's 2·tan(half angle) / size, times the distance to
+  the spot, whose position rides beside the bias (`SHADOW_SPOT_NORMAL_BIAS`, `spotShadowAt`).
+  The sun and the cube took one free slot each; the spot's part grew from 20 to 24 floats.
+  Bevy's `shadow_depth_bias` is not taken; the depth bias stays Heaps'. Pinned on the CPU by
+  `spotShadowCheck.ms` and `cubeShadowCheck.ms`, except the spot's packing, which runs inside
+  its draw. On D3D11, `tests/integration/lightShadows.ms` with `VOID_LIGHT_SHADOW_NORMAL_BIAS=1`
+  sets 50 texels on the spot and the cube map: the receiver rises about 0.85 toward the light,
+  so the footprint's rim comes in from 0.75 to about 0.54. Ground at 0.6 and 0.65 turns lit
+  (green 76 to about 175) while the ground under the light stays shadowed, for the spot, point,
+  rectangle and capsule, with and without PCF; the unbiased run is the control. The sun's bias
+  has no pixel check: a sun straight above a flat receiver moves it along its own ray.
+- A cube's taps are compared at the receiver's distance against the face's perspective depth,
+  where Heaps compares radial distances in a cube; how far the two differ on screen is not
+  measured.
+
+Pinned by `spotShadowCheck.ms` (an 8x8 split map: one texel without PCF, a soft edge with it,
+whole far sides; the sun's packed scale) and `cubeShadowCheck.ms` (taps turned into other
+faces average, the packed scale). Not run yet: the GPU and the goldens.
+
+### Clustered lights: how the clusters reach the shader (decided 2026-10-24, wired on the CPU)
+
+The light assignment is Bevy's CPU clustering (`bevy_light/src/cluster/assign.rs`, the
+Iterative Sphere Refinement of Persson's "Practical Clustered Shading"). How the shader reads the
+result does not follow Bevy, because neither of Bevy's two paths fits sokol:
+
+- Where storage buffers exist, Bevy binds three read-only storage buffers: the lights, each
+  cluster's offset and count, and the index list (`bevy_pbr/src/cluster/mod.rs:39`). sokol has
+  storage buffers only with `features.compute`, which means GL 4.3 or ES 3.1
+  (`sokol_gfx.h:10505,10632`), so WebGL2 has none. Using that path natively would also need
+  storage bindings in shady and a second shader variant per lit program.
+- On WebGL2, Bevy falls back to 16 KB uniform buffers holding 204 lights and packed `uvec4`
+  lists (`mod.rs:31-46`). sokol's GL backend applies a uniform block as plain `glUniform4fv`
+  arrays, not UBOs (`sokol_gfx.h:12687-12716`), and WebGL2 guarantees only 224 fragment uniform
+  vectors, so 16 KB does not fit.
+
+Decided with void-manager: data textures on every backend. The light records go in an RGBA32F
+texture. The per-cluster offset and count and the index list go in RGBA32UI textures, shady's
+`Texture2dU32`. Each is rewritten once a frame and read with `textureLoad`, the idiom the shadow
+lookups already use. This gives one shader for D3D11, Metal, GL, WebGPU and WebGL2. Filament
+keeps its froxel records in a texture on GL; that is prior art cited from memory, since no
+Filament checkout is read here. A texel fetch costs more than a buffer load. The `many_lights`
+bench against Bevy measures that cost, and a real gap there reopens the storage path.
+
+Built so far on the CPU (2026-10-24): `clusters.ms` assigns the lights, `clusterTextures.ms` lays
+the assignment out as the two RGBA32UI textures and packs the uniforms, and `clusterLookup.ms` is
+the fragment's side, Bevy's `fragment_cluster_index` and `view_z_to_z_slice`
+(`bevy_pbr/src/render/clustered_forward.wgsl`). The fragment coordinate counts from the top-left,
+as the tile rows do; whether GL's `gl_FragCoord`, which counts bottom-up, needs a flip there is
+measured when the lit program reads it. Texel arithmetic is unsigned, because shady refuses int32 `/` and `%`.
+`clusterLookupCheck.ms` holds the lookup to the clusters' own tiling and finds each light through
+both textures at its centre.
+
+Wired on the CPU (2026-10-24), shaders not regenerated, nothing run on a GPU yet:
+
+- `collectLights` writes a 28-float header (ambient, the sun, then the cluster fields: grid,
+  slice factors, the view's depth plane `(forward, -dot(forward, eye))` and the screen
+  `(rows from bottom, height, record count, 0)`) followed by one 24-float record per positioned
+  light, six texels: position and power, colour and range, then the four shape vectors. Every
+  visible light is collected in scene order; the four point slots, the priority sort and
+  `LightError.TooManyPointLights` of the `collectLights` note above are gone.
+- `clusterFrame.ms` is the renderer's per-frame side: it counts the records, turns each into a
+  `ClusterLight` (a spot by its cone, any other shape by its range sphere), assigns them to the
+  view's clusters, writes the header's cluster fields and rewrites the three data images. A frame
+  with no record lists one empty cluster and needs no view.
+- The renderer takes the view with `setCameraView` and refuses a frame with records and no view
+  (`ClusterViewUnset`), a view other than the camera block drawn (`ClusterViewStale`), and, in the
+  presets, a view of another size than the target (`ClusterViewSize`).
+- `litFs`, the textured, billboard and pixel-art programs loop over the fragment's cluster
+  (`litClusterOf`, `litLightOf`, `litTexelOf` and their billboard twins); a shader helper takes no
+  texture, so the reads sit in helpers that take the bindings.
+- One place the assignment does not do what Bevy does: `cluster_space_clusterable_object_aabb`
+  holds a light box's depth in front of the eye for every projection (`assign.rs:972-973`), for a
+  reason its comment gives for perspective only, where the projection flips behind the eye. An
+  orthographic projection is affine and its near plane may lie behind the eye: the campfire views
+  sit at the scene's centre with `nearPlane: -50`. There the clamp drops each light from the
+  slices behind the eye, which the shader still slices linearly from the near plane, and the
+  first gate3d run lost the fire's light on the pillars facing the camera. `coveredRange` keeps
+  the clamp for perspective and the box's own depth for orthographic; `clusterAssignCheck` holds a
+  light around, behind and in front of the eye against the oracle with the near plane at -50.
+
+Still to measure at the GPU slot: GL's bottom-up fragment rows (the `rows from bottom` flag), a
+second write of the data images within one frame (they are remade rather than updated twice),
+and the `many_lights` bench.
+
+### Every mesh draw reads an instance row, as built (2026-10-24)
+
+A mesh draw no longer takes its world matrix from a uniform. Every mesh layout carries a
+per-instance stream in vertex slot 1: 16 floats, the world matrix's three rows (row-major 3x4) and
+a straight RGBA colour that multiplies the vertex colour. A lone draw is a run of one row. This is
+Bevy's `MeshUniform` (`bevy_pbr/src/render/mesh.rs:526`, `world_from_local: [Vec4; 3]`, read by
+instance index in `mesh_functions.wesl:15`) and Bevy's sorted-phase batching, where each item
+gets the range `index..index + 1` in the instance buffer and neighbours with equal batch data
+merge their ranges (`bevy_render/src/batching/no_gpu_preprocessing.rs:97-98`,
+`batching/mod.rs:200-240`). The row is a vertex stream rather than a storage buffer, because
+WebGL2 has none (see the clustered lights above).
+
+- `draw.ms` stages the rows a draw needs and appends them to one per-frame row buffer
+  (`appendRows`, `sg_append_buffer`), so a frame writes 64 B per drawn item and no uniform. A
+  frame that outgrows the buffer moves to one twice as large.
+- `drawPassList` and the shadow caster pass draw neighbours that differ only in their world
+  matrices (`sameBatch`: same mesh, material and range, no skin, no instance run) as one
+  instanced draw, in list order, so a blended list keeps its look.
+- An `InstanceRun` binds a `VertexLayout.MeshInstances` stream in place of the staged rows; this
+  is the particle mesh path (`PARTICLES-RENDER.md` A.2.1), now on every non-skinned mesh program
+  rather than a separate program.
+- The normal is the cofactor of the row's 3x3 (`skinNormal`), and a tangent's handedness flips
+  with a mirroring row (`handednessOf`), the treatment skinned vertices already had.
+- A skinned program declares the row and never reads it; its pose comes from the skin block.
+  shady gates an input only by its own feature, so the row is not left out of the skinned layouts,
+  and a skinned draw binds a row of one.
+
+Removed with it: the program key's `instanced` bit (`occlusionUvB` moves to bit 18 and
+`KEY_LIMIT` to 524288), `withInstanced`, the `InstancedLitTextured` layout and its 16
+`programKeys.txt` rows, and the model block at uniform slot 4 (`ModelParams`,
+`ModelTransformParams`, `MODEL_SLOT`). The M6, M8 and M28 notes above on that block describe what
+was built then. Pinned by `drawCheck.ms` (every mesh layout reads a 16-float slot 1, a run's
+stream is refused on a skinned or non-mesh program, `sameBatch`), `programKeyCheck.ms` (mesh
+programs and their casters carry the row, bit 18) and `litShaderCheck.ms` (a translated, mirrored
+row with a colour, and skinned vertices that ignore the row).
+
 ### Bevy comparison bench, scope (prepared 2026-10-24, not run)
 
 "Performance of Bevy" is measured, not argued: the same workload as a Bevy stress test, both
@@ -5857,17 +6240,24 @@ default wgpu backend), 1920x1080, no vsync, the frame time compared. The workloa
 
 | Order | Bevy test, default workload | void3d today | What a fair comparison needs first |
 |---|---|---|---|
-| 1 | `many_cubes --benchmark`: 1.6M cubes of one mesh and one white `StandardMaterial` on a sphere of radius 500, one directional light without shadows, the camera turning 0.15/60 rad a frame (`many_cubes.rs:61`, `:189-212`, `:355-361`, `:588-601`); also `--layout dense` (every cube in view, static camera) and `--no-indirect-drawing` | one draw per `DrawItem`, CPU frustum culling (M21, world-sphere culling) | instanced batching of a run of items with one mesh, material and pipeline, ported from Bevy's batching (`bevy_render/src/batching/`, not read yet). sokol has instancing, `base_instance` and storage buffers but no indirect draw, so `--no-indirect-drawing` is the like-for-like arm and the default arm is reported beside it |
-| 2 | `transform_hierarchy <preset>`: windowless propagation; presets `large_tree` (non-uniform, depth 18, branch 8), `wide_tree`, `deep_tree`, `chain` (depth 2500), `update_leaves`, `update_shallow`, `humanoids_active` / `_inactive` / `_mixed` (4000 rigs of 68 nodes) (`transform_hierarchy.rs:29-156`) | `Scene3D` sync, CPU only | nothing; a windowless entry like `benchParticles.ms`. Bevy's rng is unseeded and its step time-driven (`:293`, `:258-263`), so the trees match in shape and update probability, not node for node |
-| 3 | `many_materials`: 10x10 cubes, one material each, every colour rewritten each frame, a shadowed directional light (`many_materials.rs:15`, `:71-74`, `:91-106`) | material uniform writes, one shadow map | nothing |
-| 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade; the asset |
-| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU | the asset |
-| 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | 4 point lights per draw (`gpu3d.ms` `MAX_POINT_LIGHTS`) | clustered forward lighting (Bevy's clusters, not read yet); until then not comparable |
+| 1 | `many_cubes --benchmark`: 1.6M cubes of one mesh and one white `StandardMaterial` on a sphere of radius 500, one directional light without shadows, the camera turning 0.15/60 rad a frame (`many_cubes.rs:61`, `:189-212`, `:355-361`, `:588-601`); also `--layout dense` (every cube in view, static camera) and `--no-indirect-drawing` | one draw per `DrawItem`, CPU frustum culling (M21, world-sphere culling) | the bench program, which opts into `setPresentMode(PresentMode.AutoNoVsync)` (`window.ms`) as `many_cubes` sets `PresentMode::AutoNoVsync` (`many_cubes.rs:135`); on D3D11 that presents at interval 0, with tearing where DXGI allows it. sokol has instancing, `base_instance` and storage buffers but no indirect draw, so `--no-indirect-drawing` is the like-for-like arm and the default arm is reported beside it |
+| 2 | `transform_hierarchy <preset>`: windowless propagation; presets `large_tree` (non-uniform, depth 18, branch 8), `wide_tree`, `deep_tree`, `chain` (depth 2500), `update_leaves`, `update_shallow`, `humanoids_active` / `_inactive` / `_mixed` (4000 rigs of 68 nodes) (`transform_hierarchy.rs:29-156`) | `Scene3D` sync, CPU only | built: `tests/bench/benchHierarchy.ms` with `BENCH_HIERARCHY=<preset>`, group nodes moved with `setLocal` and synced with `syncWorld` each frame. Bevy's rng is unseeded and its step time-driven (`:293`, `:258-263`), so the trees match in shape and update probability, not node for node |
+| 3 | `many_materials`: 10x10 cubes, one material each, every base colour rewritten each frame, a shadowed directional light with Bevy's default 4 cascades (`many_materials.rs:15`, `:71-74`, `:91-106`; `bevy_light/src/cascade.rs:142-156`) | material uniform writes, one shadow map; a material colour in every lit and pbr block (`gpu3d.ms` `MATERIAL_COLOR`, "Material colour, as built") | cascades, or Bevy run against one |
+| 4 | `many_foxes`: 1000 skinned `Fox.glb`, cascaded shadows (`many_foxes.rs:27`, `:245-257`) | skinning, one shadow map; flat normals for `Fox.glb`'s primitive, which has no `NORMAL` ("glTF flat normals, as built"; the asset itself not loaded since) | cascades (absent: "Not built" of the shadow row) or Bevy run against one cascade |
+| 5 | `many_morph_targets`: 1024 `MorphStressTest.gltf` with animated weights (`many_morph_targets.rs:116`) | morph deform on the GPU; the loader decodes the asset's `data:` URI buffer ("glTF buffer data: URIs, as built") and reads its occlusion map at `TEXCOORD_1` ("A second uv set for the occlusion map, as built"; the asset itself not loaded since) | whatever the load meets next |
+| 6 | `many_lights`: 100k point lights of range 0.3 on a sphere of radius 50 (`many_lights.rs:50-82`) | clustered forward lighting over data textures, wired on the CPU ("Clustered lights") | the regenerated shaders and a GPU run |
 
 Measured per arm: the median and p99 of the frame time over a fixed number of frames after a
 warm-up, with the CPU-load bracket of `scripts/bench-ab.sh` and its NOISY and five-clean-pairs
-rules; void3d prints rows (`cubes.present.ms`, `cubes.draws`, `cubes.instances`), Bevy's
-`LogDiagnosticsPlugin` prints `frame_time`. Only `many_cubes` and `bevymark_3d` step by a fixed
+rules. Both sides print bevy_diagnostic's line once a second, `frame_time: <ema>ms (avg <mean
+of the last 120 frames>ms)`: Bevy through `LogDiagnosticsPlugin`, void3d's `tests/bench/benchCubes.ms`
+by the same arithmetic, timing from frame start to frame start as Bevy's `Time` delta does. One
+reader, `scripts/frameTime.sh <log> [warm]`, gives the median and maximum of the per-second
+averages for either log. `benchCubes.ms` takes the layout, count and seconds from
+`BENCH_CUBES_LAYOUT`, `BENCH_CUBES_COUNT` and `BENCH_CUBES_SECONDS`, builds the cubes as scene
+nodes as Bevy spawns entities, and runs at Bevy's window: 1920x1080, scale 1, 4x MSAA, no vsync.
+One value differs: Bevy draws the cube's half size from a seeded rng in [0.25, 0.75]
+(`many_cubes.rs:447-450`), and void3d uses 0.5 until a Bevy run gives the real one. Only `many_cubes` and `bevymark_3d` step by a fixed
 1/60 (`--benchmark`); the others are time-driven, so their camera or animation phase differs
 between arms and only a static view (`many_materials`, `many_foxes` with `--sync`) is compared frame
 for frame.

@@ -66,6 +66,7 @@ export struct MeshData {
 	bounds: Bounds3D;
 	hasUvs: boolean;
 	hasTangents: boolean;
+	hasUvB: boolean;
 	hasSkin: boolean;
 }
 
@@ -99,6 +100,8 @@ export enum MeshError {
 	UvScaleParameters,
 	UvRange,
 	ScaleParameters,
+	UvBAdded,
+	UvBCount,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -108,6 +111,7 @@ export function empty(this typeof MeshData): MeshData {
 		bounds: Bounds3D.empty(),
 		hasUvs: false,
 		hasTangents: false,
+		hasUvB: false,
 		hasSkin: false,
 	};
 }
@@ -129,7 +133,38 @@ export function copy(this data: Readonly<MeshData>): MeshData {
 export function stride(this data: Readonly<MeshData>): int32 {
 	const base: int32 = data.hasTangents ? LIT_TEXTURED_TANGENT_VERTEX_STRIDE :
 		(data.hasUvs ? LIT_TEXTURED_VERTEX_STRIDE : LIT_VERTEX_STRIDE);
-	return base + (data.hasSkin ? 8 : 0);
+	return base + (data.hasUvB ? 2 : 0) + (data.hasSkin ? 8 : 0);
+}
+
+// Appends a second uv set, two floats per vertex, after the tangent and before the skin: the
+// `*UvB` layouts in gpu3d.c, the attribute Bevy calls ATTRIBUTE_UV_1.
+export function addUvB(
+	ref data: MeshData,
+	uvs: Readonly<Span<float32>>,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
+	const count: int32 = data.vertexCount();
+	const base: int32 = data.stride();
+	if (count > MAX_MESH_VERTICES / (base + 2)) { return Result.err(MeshError.TooManyVertices); }
+	if (data.vertices.length != count * base || uvs.length != count * 2) {
+		return Result.err(MeshError.UvBCount);
+	}
+	for (const value of uvs) {
+		if (!Number.isFinite(value)) { return Result.err(MeshError.UvRange); }
+	}
+	let packed: Vec<float32> = [];
+	for (let vertex = 0; vertex < count; vertex++) {
+		for (let field = 0; field < base; field++) {
+			packed.push(data.vertices[vertex * base + field]);
+		}
+		packed.push(uvs[vertex * 2]);
+		packed.push(uvs[vertex * 2 + 1]);
+	}
+	data.vertices = move packed;
+	data.hasUvB = true;
+	return Result.ok(count);
 }
 
 export function addSkinAttributes(
@@ -267,6 +302,7 @@ export function addTexturedVertex(
 	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
 	let index: int32 = data.vertexCount();
 	if (!data.hasRoomFor(1)) { return Result.err(MeshError.TooManyVertices); }
 	data.vertices.push(position.x);
@@ -370,6 +406,7 @@ export function addTangentsWithSources(
 	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
 	if (!data.validIndexStorage()) { return Result.err(MeshError.IndexStorage); }
 	const count: int32 = data.vertexCount();
 	const cornerCount: int32 = data.triangleCount() * 3;
@@ -470,6 +507,7 @@ export function addGivenTangents(
 	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if (data.hasUvB) { return Result.err(MeshError.UvBAdded); }
 	if ((tangents.length as int32) != data.vertexCount() * 4) {
 		return Result.err(MeshError.TangentCount);
 	}
@@ -514,6 +552,30 @@ const FLOAT32_MAX: float64 = 3.4028234663852886e38;
 
 function coordinateInRange(value: float64): boolean {
 	return value >= -FLOAT32_MAX && value <= FLOAT32_MAX;
+}
+
+// Gives every triangle corner a vertex of its own and drops the indices, Bevy's
+// `Mesh::duplicate_vertices`; `sources` receives the vertex each new one copies.
+export function duplicateVertices(
+	ref data: MeshData,
+	ref sources: Vec<int32>,
+): Result<void, MeshError> {
+	if (!data.validIndices()) { return Result.err(MeshError.IndexOutOfRange); }
+	const width: int32 = data.stride();
+	const corners: int32 = data.triangleCount() * 3;
+	if (corners > MAX_MESH_VERTICES / width) { return Result.err(MeshError.TooManyVertices); }
+	const indexed: boolean = data.isIndexed();
+	let vertices: Vec<float32> = [];
+	for (let corner = 0; corner < corners; corner++) {
+		const vertex: int32 = indexed ? data.indexAt(corner) as int32 : corner;
+		sources.push(vertex);
+		for (let k = 0; k < width; k++) { vertices.push(data.vertices[vertex * width + k]); }
+	}
+	data.vertices = move vertices;
+	data.indices = [];
+	data.wideIndices = null;
+	recomputeBounds(data);
+	return Result.ok(null);
 }
 
 export function recomputeNormals(ref data: MeshData): Result<void, MeshError> {

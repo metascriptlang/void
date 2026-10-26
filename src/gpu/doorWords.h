@@ -12,9 +12,9 @@ static const int32_t DOOR_MAX_COLOR_ATTACHMENTS = 4;
 
 static const int32_t DOOR_BINDING_VERTEX_BUFFER = 0; // two
 static const int32_t DOOR_BINDING_INDEX_BUFFER = 2;
-static const int32_t DOOR_BINDING_VIEW = 3; // nine
-static const int32_t DOOR_BINDING_SAMPLER = 12; // five
-static const int32_t DOOR_BINDING_LENGTH = 17;
+static const int32_t DOOR_BINDING_VIEW = 3; // thirteen
+static const int32_t DOOR_BINDING_SAMPLER = 16; // six
+static const int32_t DOOR_BINDING_LENGTH = 22;
 
 // Which pass the door has open, read by MetaScript to stop misuse naming the call.
 enum {

@@ -154,6 +154,16 @@ void voidSetWindowTitle(const char *title) {
 const char *voidWindowTitle(void) { return s_title; }
 int voidWindowTitleSet(void) { return s_titleSet ? 1 : 0; }
 
+static int s_presentMode = 0;
+
+void voidSetPresentMode(int mode) {
+	if (mode != 0 && mode != 1) voidFail("voidSetPresentMode: %d is neither 0 (AutoVsync) nor 1 (AutoNoVsync)", mode);
+	if (PLATFORM(Valid)()) voidFail("voidSetPresentMode: the window already presents; set the mode before voidRun");
+	s_presentMode = mode;
+}
+
+int voidPresentMode(void) { return s_presentMode; }
+
 #if defined(VOID_ANDROID_APP) || defined(VOID_IOS_APP)
 #include <unistd.h>
 #include "views.h"

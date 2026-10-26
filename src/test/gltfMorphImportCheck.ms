@@ -67,19 +67,20 @@ function primitive(targets: string, mode: string = ""): string {
 
 function triangleDocument(
 	primitives: string, meshExtra: string = "", nodeExtra: string = "",
-	animations: string = "", t0Count: int32 = 3,
+	animations: string = "", t0Count: int32 = 3, byteLength: int32 = 272,
+	extraViews: string = "", extraAccessors: string = "",
 ): string {
 	return `{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0,1]}],`
 		+ `"nodes":[{"mesh":0${nodeExtra}},{"name":"plain"}],`
 		+ `"meshes":[{"primitives":[${primitives}]${meshExtra}}],`
-		+ `"buffers":[{"byteLength":272}],"bufferViews":[`
+		+ `"buffers":[{"byteLength":${byteLength}}],"bufferViews":[`
 		+ view(0, 36) + "," + view(36, 36) + "," + view(72, 36) + "," + view(108, 36) + ","
 		+ view(144, 36) + "," + view(180, 12) + "," + view(192, 24) + "," + view(216, 8) + ","
-		+ view(224, 48) + `],"accessors":[`
+		+ view(224, 48) + extraViews + `],"accessors":[`
 		+ vec3Accessor(0, 3) + "," + vec3Accessor(1, 3) + "," + vec3Accessor(2, t0Count) + ","
 		+ vec3Accessor(3, 3) + "," + vec3Accessor(4, 3) + "," + scalarAccessor(5, 3) + ","
 		+ scalarAccessor(6, 6) + "," + scalarAccessor(7, 2) + "," + scalarAccessor(8, 12)
-		+ `]${animations}}`;
+		+ extraAccessors + `]${animations}}`;
 }
 
 function animation(sampler: string, node: int32 = 0, extraChannel: string = ""): string {
@@ -261,6 +262,41 @@ test "weights animation decodes LINEAR STEP and CUBICSPLINE with one value per t
 		const mid = cubic.value.animations[0].weightTracks[0].curve.sampleWeights(0.5);
 		assert mid.ok;
 		if (mid.ok) { assert approx(mid.value[0], 0.75) && approx(mid.value[1], 0.5); }
+	}
+}
+
+// Accessor 9 holds the LINEAR weights [0,0, 1,0.5, 0,1] as normalized ubytes (128 for 0.5),
+// accessor 10 as normalized shorts (16384), the encodings glTF's sampler table allows.
+function quantizedWeights(componentType: int32, normalized: boolean): Result<GltfData, GltfError> {
+	let bytes = triangleBytes();
+	for (const value of [0, 0, 255, 128, 0, 255, 0, 0]) { bytes.push(value as uint8); }
+	for (const value of [0, 0, 32767, 16384, 0, 32767]) {
+		bytes.push((value & 255) as uint8);
+		bytes.push(((value >> 8) & 255) as uint8);
+	}
+	const accessor: int32 = componentType == 5121 ? 9 : 10;
+	const flag: string = normalized ? `,"normalized":true` : "";
+	const accessors: string =
+		`,{"bufferView":9,"componentType":${componentType},"count":6,"type":"SCALAR"${flag}}`
+		+ `,{"bufferView":10,"componentType":${componentType},"count":6,"type":"SCALAR"${flag}}`;
+	return loadGltf(triangleDocument(primitive(TARGETS_TWO), "", "",
+		animation(`{"input":5,"output":${accessor}}`), 3, 292, "," + view(272, 6) + ","
+		+ view(280, 12), accessors), bytes);
+}
+
+test "weights animation reads normalized ubyte and short outputs, not plain integers" {
+	for (const componentType of [5121, 5122]) {
+		const loaded = quantizedWeights(componentType, true);
+		assert loaded.ok;
+		if (!loaded.ok) { continue; }
+		const half = loaded.value.animations[0].weightTracks[0].curve.sampleWeights(0.5);
+		assert half.ok;
+		if (half.ok) { assert approx(half.value[0], 0.5) && approx(half.value[1], 0.25); }
+		const past = loaded.value.animations[0].weightTracks[0].curve.sampleWeights(9.0);
+		assert past.ok;
+		if (past.ok) { assert approx(past.value[0], 0.0) && approx(past.value[1], 1.0); }
+		const plain = quantizedWeights(componentType, false);
+		assert !plain.ok && plain.error == GltfError.Unsupported;
 	}
 }
 

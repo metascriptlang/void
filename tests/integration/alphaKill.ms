@@ -175,7 +175,7 @@ function init(): void {
 	const kind: MaterialKind = control ? MaterialKind.Opaque : MaterialKind.AlphaKill;
 	let unlit: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	unlit[MATERIAL_ALPHA_KILL] = alphaKillFor(kind);
-	let lit: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let lit: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	lit[MATERIAL_ALPHA_KILL] = alphaKillFor(kind);
 	quad(UNLIT_X, HALF, 0.0, material(Program.UnlitTextured, kind, unlit, image));
 	quad(LIT_X, HALF, 0.0, material(Program.LitTextured, kind, lit, image));

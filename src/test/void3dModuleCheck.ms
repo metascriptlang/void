@@ -14,7 +14,6 @@ import {
 	SKIN_UNIFORM_LENGTH,
 	SKIN_UNIFORM_SLOT,
 } from "../void3d/gpu3d";
-import { MODEL_LENGTH, MODEL_SLOT } from "../void3d/draw";
 
 function uniformBytes(module: GPUShaderModuleDescriptor, slot: int32): int32 {
 	for (let b = 0; b < 24; b++) {
@@ -44,10 +43,10 @@ test "every void3d program reads only vertex attributes its layout feeds" {
 	}
 }
 
-test "uniform blocks hold what their writers fill" {
+test "uniform blocks hold what their writers fill, and no mesh reads its world from one" {
 	assert uniformBytes(litShaderModule(), LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH * 4;
-	assert uniformBytes(litShaderModule(), MODEL_SLOT) == MODEL_LENGTH * 4;
+	assert uniformBytes(litShaderModule(), 4) == -1;
 	assert uniformBytes(skinLitShaderModule(), SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH * 4;
-	assert uniformBytes(unlitTexturedShaderModule(), MODEL_SLOT) == 16 * 4;
+	assert uniformBytes(unlitTexturedShaderModule(), 4) == -1;
 	assert uniformBytes(unlitTexturedShaderModule(), MATERIAL_UNIFORM_SLOT) == 8 * 4;
 }

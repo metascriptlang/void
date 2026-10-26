@@ -145,8 +145,9 @@ function expectedByte(power: float32): float32 {
 		frameParams: { envParams: vec4f(power * power, 5.0, 1.0, 0.0) },
 		envDiffuse: constantCube(value),
 		envSpecular: constantCube(value),
-		shadowMap: { width: 0, height: 0, texels: [] },
-		spotShadowMap: { width: 0, height: 0, texels: [] },
+		shadowMap: { width: 0, height: 0, layers: 1, texels: [] },
+		spotShadowMap: { width: 0, height: 0, layers: 1, texels: [] },
+		cubeShadowMap: { width: 0, height: 0, layers: 1, texels: [] },
 		baseTexture: { width: 0, height: 0, texels: [] },
 		backTexture: { width: 0, height: 0, texels: [] },
 		dissolveTexture: { width: 0, height: 0, texels: [] },
@@ -154,6 +155,9 @@ function expectedByte(power: float32): float32 {
 		normalTexture: { width: 0, height: 0, texels: [] },
 		metalRoughTexture: { width: 0, height: 0, texels: [] },
 		occlusionTexture: { width: 0, height: 0, texels: [] },
+		lightRecords: { width: 0, height: 0, texels: [] },
+		clusterRecords: { width: 0, height: 0, texels: [] },
+		clusterIndices: { width: 0, height: 0, texels: [] },
 	};
 	const light = pbrEnvironmentLight(vec3f(1.0), METALNESS, ROUGHNESS, vec3f(0.0, 0.0, 1.0),
 		vec3f(0.0, 0.0, 4.0), 1.0, b);

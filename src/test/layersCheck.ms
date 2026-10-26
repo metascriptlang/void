@@ -9,7 +9,7 @@ import {
 	layersHas,
 } from "../void3d/layers";
 import { vec3 } from "../math/math3d";
-import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS, Program, ProgramKey } from "../void3d/gpu3d";
+import { LIGHT_UNIFORM_LENGTH, Program, ProgramKey } from "../void3d/gpu3d";
 import { Material, Phase } from "../void3d/material";
 import { RenderState, BlendMode } from "../gpu/state";
 import { addMaterial, MaterialId, MaterialError } from "../void3d/draw";
@@ -347,19 +347,19 @@ test "a layer-1 camera is lit by its own directional alone" {
 	assert collectLights(scene, block).ok && block[7] == 0.75;
 }
 
-test "a light on another layer does not stop its children being walked, or count as a fifth point" {
+test "a light on another layer does not stop its children being walked, or count as a point" {
 	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const off: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Point, 1);
-	for (let i = 0; i < MAX_POINT_LIGHTS; i++) {
+	for (let i = 0; i < 4; i++) {
 		const _point: NodeId3D = lightOn(scene, off, LightKind.Point, 0);
 	}
 	let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const lit: Result<int32, LightError> = collectLightsFor(scene, layerBit(0), block);
 	assert lit.ok;
-	if (lit.ok) { assert lit.value == MAX_POINT_LIGHTS; }
-	const over: Result<int32, LightError> = collectLightsFor(scene, ALL_LAYERS, block);
-	assert !over.ok;
-	if (!over.ok) { assert over.error == LightError.TooManyPointLights; }
+	if (lit.ok) { assert lit.value == 4; }
+	const all: Result<int32, LightError> = collectLightsFor(scene, ALL_LAYERS, block);
+	assert all.ok;
+	if (all.ok) { assert all.value == 5; }
 }
 
 test "setLayers on a camera node is the node's own mask and not what the camera draws" {

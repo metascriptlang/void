@@ -25,6 +25,7 @@ void voidAppSetSafeArea(float top, float left, float bottom, float right);
 void voidAppSetKeyboard(float height);
 const char *voidWindowTitle(void);
 int voidWindowTitleSet(void);
+int voidPresentMode(void);
 
 #if defined(VOID_ANDROID_APP) || defined(VOID_IOS_APP)
 #include <stddef.h>

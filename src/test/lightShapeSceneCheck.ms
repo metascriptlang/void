@@ -14,9 +14,9 @@ import {
 import { DrawContext, DrawItem } from "../void3d/draw";
 import {
 	LIGHT_UNIFORM_LENGTH,
-	LIGHT_SHAPE_BASE,
-	LIGHT_SHAPE_ARRAY_LENGTH,
-	MAX_POINT_LIGHTS,
+	LIGHT_RECORD_COLOR,
+	LIGHT_RECORD_LENGTH,
+	LIGHT_RECORD_SHAPE,
 	VERTEX_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { LowResView, lowResView } from "../void3d/blit";
@@ -62,7 +62,12 @@ function placeAt(scene: Scene3D, light: LightInstance): NodeId3D {
 }
 
 function slot(values: Vec<float32>, array: int32, i: int32, k: int32): float32 {
-	return values[LIGHT_SHAPE_BASE + array * LIGHT_SHAPE_ARRAY_LENGTH + i * 4 + k];
+	const record: int32 = LIGHT_UNIFORM_LENGTH + i * LIGHT_RECORD_LENGTH;
+	return values[record + LIGHT_RECORD_SHAPE + array * 4 + k];
+}
+
+function holdsRecords(values: Vec<float32>, count: int32): boolean {
+	return (values.length as int32) == LIGHT_UNIFORM_LENGTH + count * LIGHT_RECORD_LENGTH;
 }
 
 function errorOf(result: Result<int32, LightError>): LightError | null {
@@ -71,16 +76,15 @@ function errorOf(result: Result<int32, LightError>): LightError | null {
 
 const SPOT: LightShape = { ...NO_SHAPE, angle: 1.5707963268, falloff: 0.3490658504 };
 
-test "the shape block follows the point arrays and a point slot leaves it zero" {
-	assert LIGHT_SHAPE_BASE == 12 + 2 * MAX_POINT_LIGHTS * 4;
-	assert LIGHT_UNIFORM_LENGTH == LIGHT_SHAPE_BASE + 4 * LIGHT_SHAPE_ARRAY_LENGTH;
+test "the shape texels close a record and a point record leaves them zero" {
+	assert LIGHT_RECORD_LENGTH == LIGHT_RECORD_SHAPE + 4 * 4;
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	defer closeScene(scene);
 	placeAt(scene, lightOf(LightKind.Point, NO_SHAPE));
 	let values = block();
 	assert errorOf(collectLights(scene, values)) === null;
-	for (let i = LIGHT_SHAPE_BASE; i < LIGHT_UNIFORM_LENGTH; i++) { assert values[i] == 0.0; }
-	assert values[3] == 1.0;
+	assert holdsRecords(values, 1);
+	for (let k = 0; k < 16; k++) { assert slot(values, 0, 0, k) == 0.0; }
 }
 
 test "a spot node packs its forward, its kind and the cosines of its cone" {
@@ -89,8 +93,10 @@ test "a spot node packs its forward, its kind and the cosines of its cone" {
 	placeAt(scene, lightOf(LightKind.Spot, SPOT));
 	let values = block();
 	assert errorOf(collectLights(scene, values)) === null;
-	assert values[3] == 1.0 && values[12] == 1.0 && values[13] == 2.0 && values[14] == 3.0;
-	assert values[15] == 2.0 && values[12 + MAX_POINT_LIGHTS * 4 + 3] == 9.0;
+	const at: int32 = LIGHT_UNIFORM_LENGTH;
+	assert holdsRecords(values, 1);
+	assert values[at] == 1.0 && values[at + 1] == 2.0 && values[at + 2] == 3.0;
+	assert values[at + 3] == 2.0 && values[at + LIGHT_RECORD_COLOR + 3] == 9.0;
 	assert slot(values, 0, 0, 0) == 0.0 && slot(values, 0, 0, 1) == 0.0;
 	assert near(slot(values, 0, 0, 2), 1.0) && slot(values, 0, 0, 3) == 1.0;
 	assert near(slot(values, 1, 0, 0), 0.7071068) && near(slot(values, 1, 0, 1), 0.9396926);
@@ -136,7 +142,7 @@ test "a capsule node packs its axis, half length and radius capped at its range"
 	assert slot(values, 1, 0, 0) == 2.0 && slot(values, 1, 0, 1) == 9.0;
 }
 
-test "spot, rectangle, capsule and point lights share the four slots in priority order" {
+test "spot, rectangle, capsule and point lights share one record layout in scene order" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	defer closeScene(scene);
 	const rectangle: LightShape = {
@@ -148,19 +154,20 @@ test "spot, rectangle, capsule and point lights share the four slots in priority
 	placeAt(scene, { ...lightOf(LightKind.Spot, SPOT), priority: 5 });
 	let values = block();
 	assert errorOf(collectLights(scene, values)) === null;
-	assert values[3] == 4.0;
-	assert slot(values, 0, 0, 3) == 1.0 && slot(values, 0, 1, 3) == 3.0;
-	assert slot(values, 0, 2, 3) == 0.0 && slot(values, 0, 3, 3) == 2.0;
+	assert holdsRecords(values, 4);
+	assert slot(values, 0, 0, 3) == 0.0 && slot(values, 0, 1, 3) == 3.0;
+	assert slot(values, 0, 2, 3) == 2.0 && slot(values, 0, 3, 3) == 1.0;
 }
 
-test "a fifth positioned light of any shape is the existing too-many error" {
+test "a fifth positioned light of any shape is collected like the first four" {
 	const scene = Scene3D.create(DrawContext.withUniformCapacity(0));
 	defer closeScene(scene);
-	for (let i = 0; i < MAX_POINT_LIGHTS; i++) { placeAt(scene, lightOf(LightKind.Spot, SPOT)); }
+	for (let i = 0; i < 4; i++) { placeAt(scene, lightOf(LightKind.Spot, SPOT)); }
+	placeAt(scene, lightOf(LightKind.Point, NO_SHAPE));
 	let values = block();
 	assert errorOf(collectLights(scene, values)) === null;
-	placeAt(scene, lightOf(LightKind.Point, NO_SHAPE));
-	assert errorOf(collectLights(scene, values)) == LightError.TooManyPointLights;
+	assert holdsRecords(values, 5);
+	assert slot(values, 0, 3, 3) == 1.0 && slot(values, 0, 4, 3) == 0.0;
 }
 
 function refused(light: LightInstance, scale: Vec3, rotation: Quat): boolean {
@@ -237,7 +244,8 @@ test "the pixel-art preset refuses a shaped slot instead of toon-lighting it as 
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	for (let kind = 1; kind <= 3; kind++) {
 		let lights: Vec<float32> = block();
-		lights[LIGHT_SHAPE_BASE + 2 * 4 + 3] = kind as float32;
+		for (let i = 0; i < LIGHT_RECORD_LENGTH; i++) { lights.push(0); }
+		lights[LIGHT_UNIFORM_LENGTH + LIGHT_RECORD_SHAPE + 3] = kind as float32;
 		const refusal: Result<int32, PixelArtError> =
 			renderFrame(renderer, items, camera, lights, drawn);
 		assert !refusal.ok && refusal.error == PixelArtError.ShapedLight;

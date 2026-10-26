@@ -6,7 +6,9 @@ import {
 	doorApplyBindings,
 	doorApplyPipeline,
 	doorApplyUniformsOf,
+	doorAppendBufferOf,
 	doorUniformStamp,
+	doorBufferAlive,
 	doorDestroyBuffer,
 	doorDraw,
 	doorMakeBuffer,
@@ -49,6 +51,13 @@ export function makeStreamBuffer(floats: int32): uint32 {
 // One update per buffer per frame, from its start, as sokol's sg_update_buffer allows.
 export function updateBuffer(buffer: uint32, data: Readonly<Span<float32>>): boolean {
 	return doorUpdateBufferOf(buffer, data) != 0;
+}
+
+// The byte offset `data` landed at in `buffer`, after this frame's earlier appends, as sokol's
+// sg_append_buffer places it; -1 when it is empty, the buffer is gone or it does not fit.
+export function appendBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32 {
+	if (data.length == 0 || doorBufferAlive(buffer) == 0) { return -1; }
+	return doorAppendBufferOf(buffer, data) as int32;
 }
 
 export function destroyBuffer(buffer: uint32): void { doorDestroyBuffer(buffer); }

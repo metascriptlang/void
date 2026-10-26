@@ -97,7 +97,7 @@ import {
 import { layerBit } from "../void3d/layers";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 import { ANCHOR_CENTER } from "../void3d/billboard";
-import { attachShadow } from "../void3d/renderer";
+import { attachShadow, setCameraView } from "../void3d/renderer";
 import { DirShadowMap, ShadowError, DIR_SHADOW_UNIFORM_LENGTH } from "../void3d/dirShadowMap";
 import {
 	ForwardRenderer,
@@ -398,7 +398,7 @@ function block(values: Vec<float32>): UniformBlock {
 }
 
 function litBlock(): UniformBlock {
-	return block([4.0, 0.0, 0.0, 0.0]);
+	return block([4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
 }
 
 // A card cuts at half alpha in colour and in shadow, so a rounded corner casts a rounded
@@ -597,7 +597,7 @@ function torch(x: float32, which: int32): NodeId3D {
 	const _pole: NodeId3D = place(scene.rootId(), poleAt, cube(0.14, 0.9, 0.14), poleMaterial);
 
 	const key: ProgramKey = ProgramKey.of(Program.LitTextured).withEmissive();
-	let bowlValues: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let bowlValues: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	for (let i = 0; i < EMISSIVE_LENGTH; i++) { bowlValues.push(1.0); }
 	const emitted: int32 = emissiveBase(key);
 	bowlValues[emitted + EMISSIVE_COLOR] = 1.0;
@@ -811,6 +811,7 @@ export function frameCardTable(
 	const lit: Result<int32, LightError> = collectLights(scene, lights);
 	if (!lit.ok) { return Result.err(CardTableError.Lights); }
 	first.value.writeCameraBlock(cameraValues);
+	setCameraView(forward.core, first.value);
 	const prepared: Result<int32, ForwardError> =
 		prepareForward(forward, items, cameraValues, lights, width, height);
 	if (!prepared.ok) { return Result.err(CardTableError.Forward); }
@@ -822,6 +823,7 @@ export function frameCardTable(
 			collectLightsFor(scene, layerBit(1), overlayLights);
 		if (!overlit.ok) { return Result.err(CardTableError.Lights); }
 		second.value.writeCameraBlock(overlayValues);
+		setCameraView(overlay.core, second.value);
 		const prepared2: Result<int32, ForwardError> =
 			prepareForward(overlay, overlayItems, overlayValues, overlayLights, width, height);
 		if (!prepared2.ok) { return Result.err(CardTableError.Overlay); }

@@ -4,7 +4,7 @@
 #include <commctrl.h>
 #include <imm.h>
 #include <d3d11.h>
-#include <dxgi1_3.h>
+#include <dxgi1_5.h>
 #include <dwmapi.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -257,6 +257,7 @@ typedef struct {
 	int w, h, samples;
 	bool hasDepth;
 	bool admitted;
+	UINT flags;
 } WinSurface;
 
 static const UINT VOID_SWAP_FLAGS = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
@@ -395,7 +396,7 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 	releaseTargets(s);
 	s->w = w;
 	s->h = h;
-	HRESULT hr = IDXGISwapChain1_ResizeBuffers(s->swapChain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, VOID_SWAP_FLAGS);
+	HRESULT hr = IDXGISwapChain1_ResizeBuffers(s->swapChain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, VOID_SWAP_FLAGS | s->flags);
 	if (FAILED(hr)) deviceRemoved("IDXGISwapChain1::ResizeBuffers", hr);
 	makeTarget(s);
 }
@@ -428,6 +429,17 @@ long long voidPlatformSurfaceNative(void *surface) {
 
 #if defined(VOID_D3D11)
 static WinSurface s_window;
+static UINT s_presentInterval = 1;
+static UINT s_presentFlags = 0;
+
+static bool tearingSupported(void) {
+	IDXGIFactory5 *factory = NULL;
+	if (FAILED(IDXGIFactory2_QueryInterface(s_factory, &IID_IDXGIFactory5, (void **)&factory))) return false;
+	BOOL allowed = FALSE;
+	HRESULT hr = IDXGIFactory5_CheckFeatureSupport(factory, DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowed, sizeof allowed);
+	IDXGIFactory5_Release(factory);
+	return SUCCEEDED(hr) && allowed;
+}
 
 void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	createDevice(D3D11_CREATE_DEVICE_SINGLETHREADED);
@@ -451,7 +463,13 @@ void voidWindowSurfaceCreate(HWND hwnd, int samples) {
 	desc.BufferCount = 2;
 	desc.Scaling = DXGI_SCALING_STRETCH;
 	desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	desc.Flags = VOID_SWAP_FLAGS;
+	if (voidPresentMode() == 1) {
+		const bool tearing = tearingSupported();
+		s_presentInterval = 0;
+		s_presentFlags = tearing ? DXGI_PRESENT_ALLOW_TEARING : 0;
+		s_window.flags = tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+	}
+	desc.Flags = VOID_SWAP_FLAGS | s_window.flags;
 	hr = IDXGIFactory2_CreateSwapChainForHwnd(s_factory, (IUnknown *)s_device, hwnd, &desc, NULL, NULL, &s_window.swapChain);
 	if (FAILED(hr)) voidFail("CreateSwapChainForHwnd %dx%d failed: 0x%08lx", s_window.w, s_window.h, (unsigned long)hr);
 	watchFrameLatency(&s_window);
@@ -472,7 +490,7 @@ bool voidWindowAwaitFrame(void) {
 void voidWindowPresent(bool modal) {
 	s_window.admitted = false;
 	HRESULT hr = modal ? IDXGISwapChain1_Present(s_window.swapChain, 0, DXGI_PRESENT_DO_NOT_WAIT)
-		: IDXGISwapChain1_Present(s_window.swapChain, 1, 0);
+		: IDXGISwapChain1_Present(s_window.swapChain, s_presentInterval, s_presentFlags);
 	if (FAILED(hr) && hr != DXGI_ERROR_WAS_STILL_DRAWING) deviceRemoved("IDXGISwapChain1::Present", hr);
 }
 

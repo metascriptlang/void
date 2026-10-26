@@ -21,7 +21,7 @@
 # haxe-prelude: }
 # ms-prelude: import { Scene3D,NodeId3D,Transform3D,LightKind,LightShape,addLightNode,collectLights,closeScene } from "../../../src/void3d/scene";
 # ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
-# ms-prelude: import { LIGHT_UNIFORM_LENGTH,LIGHT_SHAPE_BASE,LIGHT_SHAPE_ARRAY_LENGTH,MAX_POINT_LIGHTS } from "../../../src/void3d/gpu3d";
+# ms-prelude: import { LIGHT_UNIFORM_LENGTH,LIGHT_RECORD_COLOR,LIGHT_RECORD_SHAPE } from "../../../src/void3d/gpu3d";
 # ms-prelude: import { Vec3,vec3,identityQuat } from "../../../src/math/math3d";
 # ms-prelude: const DEG: float32 = 0.017453292519943295;
 # ms-prelude: function shape(angle: float32,vertical: float32,falloff: float32,width: float32,height: float32,length: float32,radius: float32): LightShape {
@@ -39,10 +39,10 @@
 # ms-prelude: return move values;
 # ms-prelude: }
 # ms-prelude: function at(values: Vec<float32>,array: int32,k: int32): float32 {
-# ms-prelude: return values[LIGHT_SHAPE_BASE+array*LIGHT_SHAPE_ARRAY_LENGTH+k];
+# ms-prelude: return values[LIGHT_UNIFORM_LENGTH+LIGHT_RECORD_SHAPE+array*4+k];
 # ms-prelude: }
 # ms-prelude: function rangeOf(values: Vec<float32>): float32 {
-# ms-prelude: return values[12+MAX_POINT_LIGHTS*4+3];
+# ms-prelude: return values[LIGHT_UNIFORM_LENGTH+LIGHT_RECORD_COLOR+3];
 # ms-prelude: }
 
 case spot-cone-cosines tol=1e-6

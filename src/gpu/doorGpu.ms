@@ -95,9 +95,9 @@ import {
 
 export const DOOR_UNIFORM_SLOTS: int32 = 8;
 export const DOOR_MAX_COLOR_ATTACHMENTS: int32 = 4;
-const VIEW_SLOTS: int32 = 9;
+const VIEW_SLOTS: int32 = 13;
 const PASS_VIEW_SLOTS: int32 = 5;
-const SAMPLER_SLOTS: int32 = 5;
+const SAMPLER_SLOTS: int32 = 6;
 const SAMPLER_BINDING_BASE: int32 = 32;
 const UNIFORM_RING_BYTES: int64 = 4 * 1024 * 1024;
 const UNIFORM_ALIGNMENT: int64 = 256;
@@ -115,6 +115,8 @@ export enum PixelFormat {
 	DepthStencil,
 	Rgba16f,
 	R8,
+	Rgba32f,
+	Rgba32ui,
 }
 
 export enum LoadAction {
@@ -236,6 +238,17 @@ let passWidth: int32 = 0;
 let passHeight: int32 = 0;
 // Cube images by id, so a texture view of one samples it as a cube, as sokol's does.
 let cubeImages: Vec<uint32> = [];
+// Depth array images by id, so a texture view of one samples every layer, as sokol's does.
+let arrayImages: Vec<uint32> = [];
+
+struct DataImage {
+	id: uint32;
+	width: int32;
+	height: int32;
+	format: PixelFormat;
+}
+
+let dataImages: Vec<DataImage> = [];
 
 // The platform hands its device over once it exists, and again after a device loss; ids made
 // before a new setup are stale, which doorContextGeneration tells the layers above. It starts at
@@ -264,6 +277,8 @@ export function doorSetup(
 	bindCache.length = 0;
 	appendCursors.length = 0;
 	cubeImages.length = 0;
+	arrayImages.length = 0;
+	dataImages.length = 0;
 	uniformRing = device.createBuffer({
 		label: "uniforms",
 		size: UNIFORM_RING_BYTES,
@@ -384,6 +399,7 @@ export function texelBytes(format: GPUTextureFormat): int64 {
 		format == "depth24plus-stencil8") { return 4; }
 	if (format == "rgba16float") { return 8; }
 	if (format == "r8unorm") { return 1; }
+	if (format == "rgba32float" || format == "rgba32uint") { return 16; }
 	stop("no texel size for texture format " + format);
 }
 
@@ -644,6 +660,8 @@ function textureFormatOf(format: PixelFormat): GPUTextureFormat {
 	if (format == PixelFormat.DepthStencil) { return "depth24plus-stencil8"; }
 	if (format == PixelFormat.Rgba16f) { return "rgba16float"; }
 	if (format == PixelFormat.R8) { return "r8unorm"; }
+	if (format == PixelFormat.Rgba32f) { return "rgba32float"; }
+	if (format == PixelFormat.Rgba32ui) { return "rgba32uint"; }
 	stop("PixelFormat " + format.toString() + " names no texture format");
 }
 
@@ -893,11 +911,84 @@ export function doorMakeTargetImage(width: int32, height: int32, format: int32):
 	}, true).id;
 }
 
+function isDataFormat(format: PixelFormat): boolean {
+	return format == PixelFormat.Rgba32f || format == PixelFormat.Rgba32ui;
+}
+
+export function doorMakeDataImage(width: int32, height: int32, format: int32): uint32 {
+	const pixelFormat = format as PixelFormat;
+	if (width <= 0 || height <= 0 || !isDataFormat(pixelFormat)) { return 0; }
+	const texture = makeTexture({
+		label: "makeDataImage",
+		size: texture2dSize(width, height),
+		format: textureFormatOf(pixelFormat),
+		usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+		sampleCount: 1,
+	}, false);
+	if (texture.id == 0) { return 0; }
+	dataImages.push({ id: texture.id, width, height, format: pixelFormat });
+	return texture.id;
+}
+
+function updateDataImage<T>(image: uint32, data: Readonly<Span<T>>, format: PixelFormat): int32 {
+	for (const d of dataImages) {
+		if (d.id != image) { continue; }
+		if (d.format != format || data.length != (d.width as int64) * (d.height as int64) * 4) {
+			return 0;
+		}
+		device.queue.writeTexture(
+			{ texture: { id: image } },
+			data,
+			{ offset: 0, bytesPerRow: d.width * 16, rowsPerImage: d.height },
+			texture2dSize(d.width, d.height),
+		);
+		return 1;
+	}
+	return 0;
+}
+
+export function doorUpdateDataFloats(image: uint32, data: Readonly<Span<float32>>): int32 {
+	return updateDataImage(image, data, PixelFormat.Rgba32f);
+}
+
+export function doorUpdateDataWords(image: uint32, data: Readonly<Span<uint32>>): int32 {
+	return updateDataImage(image, data, PixelFormat.Rgba32ui);
+}
+
+export function doorMakeArrayTargetImage(size: int32, layers: int32, format: int32): uint32 {
+	const pixelFormat = format as PixelFormat;
+	if (size <= 0 || layers < 1 || !isDepthFormat(pixelFormat)) { return 0; }
+	const texture = makeTexture({
+		label: "makeArrayTargetImage",
+		size: { width: size, height: size, depthOrArrayLayers: layers },
+		format: depthTextureFormat(pixelFormat),
+		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+		sampleCount: 1,
+	}, true);
+	if (texture.id == 0) { return 0; }
+	arrayImages.push(texture.id);
+	return texture.id;
+}
+
+export function doorMakeArrayAttachmentView(image: uint32, layer: int32): uint32 {
+	if (layer < 0) { return 0; }
+	const texture: GPUTexture = { id: image };
+	return texture.createView({
+		label: "makeArrayAttachmentView",
+		dimension: "2d",
+		baseArrayLayer: layer,
+		arrayLayerCount: 1,
+	}).id;
+}
+
 @exportName("doorMakeTextureView")
 export function doorMakeTextureView(image: uint32): uint32 {
 	const texture: GPUTexture = { id: image };
 	if (cubeImages.includes(image)) {
 		return texture.createView({ label: "makeTextureView cube", dimension: "cube" }).id;
+	}
+	if (arrayImages.includes(image)) {
+		return texture.createView({ label: "makeTextureView array", dimension: "2d-array" }).id;
 	}
 	return texture.createView({ label: "makeTextureView" }).id;
 }
@@ -986,6 +1077,10 @@ export function doorDestroyImage(image: uint32): void {
 	if (image == 0) { return; }
 	const cube = cubeImages.indexOf(image);
 	if (cube >= 0) { cubeImages.splice(cube, 1); }
+	const array = arrayImages.indexOf(image);
+	if (array >= 0) { arrayImages.splice(array, 1); }
+	const data = dataImages.findIndex((d) => d.id == image);
+	if (data >= 0) { dataImages.splice(data, 1); }
 	untrackTexture(image);
 	const texture: GPUTexture = { id: image };
 	texture.destroy();
@@ -1078,8 +1173,7 @@ function appendCursorOf(buffer: uint32): int32 {
 
 // sokol's sg_append_buffer: each append lands after the last one this frame, 4-byte aligned,
 // and returns its offset; the first append of a frame starts at 0. -1 when it does not fit.
-@exportName("doorAppendBuffer")
-export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64 {
+export function doorAppendBufferOf<T>(id: uint32, data: Readonly<Span<T>>): int64 {
 	const buffer: GPUBuffer = { id };
 	const frame = device.frameIndex();
 	let at = appendCursorOf(id);
@@ -1091,12 +1185,17 @@ export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64
 		appendCursors[at] = { buffer: id, frame, position: 0 };
 	}
 	const offset = appendCursors[at].position;
-	const bytes = data.length as int64;
+	const bytes = (data.length as int64) * (sizeof(T) as int64);
 	if (offset + bytes > buffer.size()) { return -1; }
 	if (bytes > 0) { device.queue.writeBuffer(buffer, offset, data); }
 	frameStats[DOOR_STAT_BUFFER_BYTES] += bytes;
 	appendCursors[at].position = alignedToFour(offset + bytes);
 	return offset;
+}
+
+@exportName("doorAppendBuffer")
+export function doorAppendBuffer(id: uint32, data: Readonly<Span<uint8>>): int64 {
+	return doorAppendBufferOf(id, data);
 }
 
 @exportName("doorDestroyBuffer")

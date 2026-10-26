@@ -19,7 +19,7 @@
 // expect pipelines.closedInside: gpu door: closePipelines with a pass already open; endPass ends it
 // expect pipelines.closedThroughAlias: gpu door: pipelineFor on a pipeline cache that was closed
 // expect pipelines.releasedInside: gpu door: releasePipelines with a pass already open; endPass ends it
-// expect bindings.short: gpu door: applyBindings descriptor holds 17 of 18 words
+// expect bindings.short: gpu door: applyBindings descriptor holds 22 of 23 words
 // expect drawItem.foreignTexture: void3d: drawItem with a material whose texture is not the one it was added with
 // expect drawItem.staleTexture: void3d: drawItem with a material whose texture is not the one it was added with
 // expect drawItem.texturePastTable: void3d: drawItem with a material whose texture is not the one it was added with

@@ -9,7 +9,7 @@
 // order. The storage grows only when the item count does (a structural change), so a frame
 // allocates nothing.
 
-import { DrawContext, DrawItem, SceneTexture, drawItemWith } from "./draw";
+import { DrawContext, DrawItem, SceneTexture, drawBatchWith, drawItemWith } from "./draw";
 import { TargetLayout } from "../gpu/target";
 import { Material, Phase, UniformBlock, ShadowCasting } from "./material";
 import { ProgramKey } from "./gpu3d";
@@ -204,9 +204,10 @@ export function filterFrustum(
 	for (let i = 0; i < list.count; i++) {
 		let index: int32 = list.indices[i];
 		const geometry = items[index].skinGeometry;
-		const visible: boolean = geometry === null ?
+		const pick = items[index].lod;
+		const visible: boolean = (pick === null || !pick.culled) && (geometry === null ?
 			frustum.intersectsBounds(meshes[items[index].mesh.index].bounds, items[index].world) :
-			frustum.intersectsBounds(geometry.mesh.bounds, identity());
+			frustum.intersectsBounds(geometry.mesh.bounds, identity()));
 		if (visible) {
 			list.indices[count] = index;
 			list.layers[count] = list.layers[i];
@@ -293,7 +294,8 @@ export function sortByMaterial(
 }
 
 // Output.draw: the collected items, in the list's order, into the current pass, each with its
-// program in `drawn`, which is indexed like `items`, and its material's pass.
+// program in `drawn`, which is indexed like `items`, and its material's pass. Neighbours that
+// differ only in their world matrices draw as one batch, whose instances keep the list's order.
 export function drawPassList(
 	context: DrawContext,
 	list: PassList,
@@ -303,9 +305,21 @@ export function drawPassList(
 	globals: Readonly<Span<UniformBlock>>,
 	scene: SceneTexture,
 ): void {
-	for (let i = 0; i < list.count; i++) {
+	let i: int32 = 0;
+	while (i < list.count) {
 		const index: int32 = list.indices[i];
 		const material: Material = context.materials[items[index].material.index];
-		drawItemWith(context, items[index], drawn[index], material.pass, targets, globals, scene);
+		let end: int32 = i + 1;
+		while (end < list.count && items[index].sameBatch(items[list.indices[end]])) {
+			end = end + 1;
+		}
+		if (end - i == 1) {
+			drawItemWith(context, items[index], drawn[index], material.pass, targets, globals,
+				scene);
+		} else {
+			drawBatchWith(context, items, list.indices[i..end], drawn[index], material.pass,
+				targets, globals, scene);
+		}
+		i = end;
 	}
 }

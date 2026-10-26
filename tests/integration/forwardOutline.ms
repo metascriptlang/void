@@ -113,7 +113,7 @@ function init(): void {
 	const block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
-	const values: Vec<float32> = [1.0, 0.0, 0.0, 0.0];
+	const values: Vec<float32> = [1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, block.value, values).ok) { unreachable; }
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque), uniforms: block.value,

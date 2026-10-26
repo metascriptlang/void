@@ -91,7 +91,7 @@ function decoded(): GltfData {
 function bind(): void {
 	const data: GltfData = decoded();
 	const added: Result<GltfAssets, GltfSceneError> = addGltfAssets(context, data, {
-		pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0],
+		pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
 	});
 	if (!added.ok) { fail(`assets refused: ${added.error.toString()}`); return; }
 	model = addGroup(scene, scene.rootId(), Transform3D.identity());

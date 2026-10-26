@@ -12,6 +12,7 @@ import {
 	PBR_MATERIAL_UNIFORM_LENGTH,
 	PBR_OCCLUSION,
 	PBR_ROUGHNESS,
+	MATERIAL_COLOR,
 	MATERIAL_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
 	declares,
@@ -26,6 +27,7 @@ import {
 } from "../void3d/pbrResponse";
 import {
 	LitBindings,
+	LitFragmentInput,
 	LitKey,
 	VertexBindings,
 	linearToSrgb,
@@ -37,6 +39,8 @@ import {
 	splitSum,
 	srgbToLinear,
 } from "../void3d/shader3d";
+import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 function near(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 2e-5 * Math.max(1.0, Math.abs(b));
@@ -161,28 +165,26 @@ const BASE: Vec4f = vec4f(0.9, 0.5, 0.25, 1.0);
 function bindingsAt(
 	camera: Vec3, metalness: float32, roughness: float32, occlusion: float32, depth: float32,
 ): LitBindings {
+	const lights: SceneLights = sceneLights(vec4f(SKY.x, SKY.y, SKY.z, 0.0),
+		vec4f(SUN.x, SUN.y, SUN.z, 1.0), vec4f(1.0, 1.0, 1.0, 1.0), []);
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 			pbr: vec4f(metalness, roughness, occlusion, 0.0),
 		},
-		lightParams: {
-			ambient: vec4f(SKY.x, SKY.y, SKY.z, 0.0),
-			dirLight: vec4f(SUN.x, SUN.y, SUN.z, 1.0),
-			dirColor: vec4f(1.0, 1.0, 1.0, 1.0),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(camera.x, camera.y, camera.z, 1.0),
 		},
-		shadowParams: {
-			shadowMatrix: identity(), shadow: vec4f(0.0, 1.0, 0.0, 0.0),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: texture(depth),
-		spotShadowMap: texture(depth),
+		shadowParams: oneCascade(identity(), vec4f(0.0, 1.0, 0.0, 0.0), identity(), none(), 1.0),
+		shadowMap: oneLayer(texture(depth)),
+		spotShadowMap: oneLayer(texture(depth)),
+		cubeShadowMap: oneLayer(texture(depth)),
 		baseTexture: texture(1.0),
 		baseSampler: { nearest: true },
 		backTexture: texture(1.0),
@@ -269,6 +271,22 @@ test "a pbr key reads the camera position: the colour moves with the eye" {
 	assert !nearColor(front, side);
 }
 
+test "a pbr key's material colour lights as the vertex colour times it would" {
+	const key: LitKey = { pbr: true };
+	const tint = vec4f(0.5, 1.0, 0.25, 0.8);
+	let tinted: LitBindings = bindingsAt(CAMERA, 0.3, 0.6, 1.0, 1.0);
+	tinted.pbrMaterialParams.materialColor = tint;
+	const surface: LitFragmentInput = {
+		worldPosition: toVec3f(POSITION), worldNormal: toVec3f(UP), baseColor: BASE,
+		frontFacing: true,
+	};
+	const out = litFs(surface, tinted, key);
+	const premultiplied = litFs({ ...surface, baseColor: BASE * tint },
+		bindingsAt(CAMERA, 0.3, 0.6, 1.0, 1.0), key);
+	assert nearColor(out.color.rgb, premultiplied.color.rgb);
+	assert near(out.color.a, BASE.a * tint.a);
+}
+
 test "ProgramKey.withPbr sets bit 16 and names itself, for the lit programs only" {
 	const lit: ProgramKey = ProgramKey.of(Program.Lit);
 	const pbr: ProgramKey = lit.withPbr();
@@ -287,6 +305,7 @@ test "pbrBlock holds the values at PBR_* after the lit block and refuses roughne
 	assert PBR_METALNESS == MATERIAL_UNIFORM_LENGTH;
 	assert block.value[PBR_METALNESS] == 0.25 && block.value[PBR_ROUGHNESS] == 0.5 &&
 		block.value[PBR_OCCLUSION] == 0.75;
+	for (let i = 0; i < 4; i++) { assert block.value[MATERIAL_COLOR + i] == 1.0; }
 	const heaps = PbrProperties.heapsValues();
 	assert heaps.ok;
 	if (!heaps.ok) { unreachable; }
@@ -313,6 +332,7 @@ function emittingBindings(
 	let b: LitBindings = bindingsAt(CAMERA, 0.9, 0.1, 0.0, 1.0);
 	b.pbrEmissiveMaterialParams = {
 		material: vec4f(0.0, 0.0, 0.0, 0.5),
+		materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		pbr: vec4f(metalness, roughness, 1.0, 0.0),
 		emissive: emitted,
 	};
@@ -356,12 +376,8 @@ function skinnedPosition(x: float32, y: float32, z: float32): Vec3f {
 	rows[0] = vec4f(1.0, 0.0, 0.0, x);
 	rows[1] = vec4f(0.0, 1.0, 0.0, y);
 	rows[2] = vec4f(0.0, 0.0, 1.0, z);
-	let model = identity();
-	model.columns[3] = vec4f(1000.0, 2000.0, 3000.0, 1.0);
 	const b: VertexBindings = {
 		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none() },
-		modelParams: { model: model, normalModel: model },
-		modelTransformParams: { model: model },
 		skinParams: { skinRows: rows },
 	};
 	return litVs({

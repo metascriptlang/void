@@ -198,7 +198,7 @@ function modelTransform(): GltfTransform {
 }
 
 function modelSetup(): GltfMaterialSetup {
-	return { pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0] };
+	return { pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] };
 }
 
 function churnErrorOf(error: GltfSceneError): ChurnError {
@@ -244,7 +244,7 @@ function litMaterial(program: Program, texture: TextureId): Result<MaterialId, C
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { return Result.err(ChurnError.UniformsRefused); }
-	const levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	const levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	const written: Result<int32, UniformError> = writeUniforms(context, reserved.value, levels);
 	if (!written.ok) { return Result.err(ChurnError.UniformsRefused); }
 	const plain: Material = Material.plain(program, RenderState.defaults(), Phase.Opaque);

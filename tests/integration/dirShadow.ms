@@ -161,7 +161,7 @@ function material(
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
-	const values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	const values: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 	const base = Material.ofKind(Program.Lit, MaterialKind.Opaque).withShadows(cast, receive)
 		.withShadowCulling(culling);
@@ -204,7 +204,7 @@ function dissolvingCaster(): void {
 	const lit: ProgramKey = ProgramKey.of(Program.LitTextured);
 	const key: ProgramKey = shadowCase == Case.DissolveEmissive ?
 		lit.withDissolve().withEmissive() : shadowCase == Case.Dissolve ? lit.withDissolve() : lit;
-	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (key.dissolve) {
 		values = movingDefaults(key);
 		values[0] = 4.0;

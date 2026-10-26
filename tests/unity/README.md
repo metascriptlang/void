@@ -41,6 +41,21 @@ cp "$W/tests/unity/PrefabExport.cs" "$W/out/unity/ParticleCapture/Assets/Editor/
 
 The log ends with `PrefabExport: done`.
 
+## Age probe
+
+`AgeProbe.cs` reruns the 21 `tie_death` cases and records, per frame, the remaining lifetime,
+the custom data of a linear 0-1 curve, and the AgePercent and InvStartLifetime vertex streams
+(`uv0.z`, `uv0.w` of `BakeMesh`). It writes one JSON file, not a golden; docs/PARTICLES.md
+"Parity" holds what it showed. Same project as above:
+
+```sh
+cp "$W/tests/unity/AgeProbe.cs" "$W/out/unity/ParticleCapture/Assets/Editor/"
+"$UNITY" -batchmode -nographics -quit -projectPath "$W/out/unity/ParticleCapture" \
+  -executeMethod AgeProbe.Run -out "$W/out/unity/ageProbe.json" -logFile "$W/out/unity/ageProbe.log"
+```
+
+The log ends with `AgeProbe: done`.
+
 ## Limits
 
 - `textureSheetAnimation` frame is not part of `ParticleSystem.Particle`. The texture sheet

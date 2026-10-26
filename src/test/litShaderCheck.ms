@@ -32,6 +32,8 @@ import {
 	unlitTexturedFs,
 	unlitTexturedVs,
 } from "../void3d/shader3d";
+import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 function within(a: float32, b: float32): boolean {
 	return Math.abs(a - b) <= 1e-4;
@@ -64,22 +66,21 @@ function nearUv(a: Vec2f, b: Vec2f): boolean {
 
 // White ambient light, no directional or point light, no saturation, exposure 0, linear curve.
 function plainBindings(): LitBindings {
+	const lights: SceneLights = sceneLights(vec4f(1.0, 1.0, 1.0, 0.0), none(), none(), []);
 	return {
-		materialParams: { material: vec4f(0.0, 0.0, 0.0, 0.5) },
-		lightParams: {
-			ambient: vec4f(1.0, 1.0, 1.0, 0.0),
-			dirLight: none(),
-			dirColor: none(),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
+		materialParams: {
+			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
 		frameParams: { frame: vec4f(0.0, 1.0, 0.0, 0.0) },
-		shadowParams: {
-			shadowMatrix: identity(), shadow: none(),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: white(),
-		spotShadowMap: white(),
+		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
+		shadowMap: oneLayer(white()),
+		spotShadowMap: oneLayer(white()),
+		cubeShadowMap: oneLayer(white()),
 		baseTexture: white(),
 		baseSampler: { nearest: true },
 		backTexture: white(),
@@ -139,10 +140,11 @@ test "a vertex under identity matrices lands where it is, its normal and colour 
 			position: vec3f(0.25, -0.5, 0.75),
 			normal: vec3f(0.0, 1.0, 0.0),
 			color: vec4f(1.0, 0.5, 0.25, 1.0),
+			instanceRow0: vec4f(1.0, 0.0, 0.0, 0.0), instanceRow1: vec4f(0.0, 1.0, 0.0, 0.0),
+			instanceRow2: vec4f(0.0, 0.0, 1.0, 0.0), instanceColor: vec4f(1.0),
 		},
 		{
 			vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none() },
-			modelParams: { model: identity(), normalModel: identity() },
 		},
 		plainKey(),
 	);
@@ -194,6 +196,36 @@ test "a white texel leaves the lit and the unlit surface as the vertex colour" {
 	assert near(unlit.color.rgb, colour.rgb) && within(unlit.color.a, 0.75);
 }
 
+test "the material colour multiplies the lit surface, alpha included, textured or not" {
+	let tinted: LitBindings = plainBindings();
+	tinted.materialParams.materialColor = vec4f(0.5, 1.0, 0.25, 0.8);
+	const colour = vec4f(0.8, 0.4, 0.1, 0.75);
+	const plain = litFs(
+		{
+			worldPosition: vec3f(0.0, 0.0, 0.0),
+			worldNormal: vec3f(0.0, 0.0, 1.0),
+			baseColor: colour,
+			frontFacing: true,
+		},
+		tinted,
+		plainKey(),
+	);
+	assert near(plain.color.rgb, vec3f(0.4, 0.4, 0.025)) && within(plain.color.a, 0.6);
+	const textured = litTexturedFs(
+		{
+			worldTangent: none(),
+			worldPosition: vec3f(0.0, 0.0, 0.0),
+			worldNormal: vec3f(0.0, 0.0, 1.0),
+			surfaceUv: vec2f(0.5, 0.5),
+			baseColor: colour,
+			frontFacing: true,
+		},
+		tinted,
+		plainKey(),
+	);
+	assert near(textured.color.rgb, plain.color.rgb) && within(textured.color.a, 0.6);
+}
+
 test "a moved uv is the matrix times the uv, then the offset and the motion over time" {
 	const swap = vec4f(0.0, 1.0, 1.0, 0.0);
 	const offset = vec4f(0.5, 0.0, 0.0, 0.0);
@@ -222,17 +254,30 @@ function skinBindings(): VertexBindings {
 	rows[3] = vec4f(2.0, 0.0, 0.0, -1.0);
 	rows[4] = vec4f(0.0, 3.0, 0.0, 1.0);
 	rows[5] = vec4f(0.0, 0.0, 4.0, -2.0);
-	let model = identity();
-	model.columns[3] = vec4f(1000.0, 2000.0, 3000.0, 1.0);
 	return {
 		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none() },
-		modelParams: { model: model, normalModel: model },
-		modelTransformParams: { model: model },
 		skinParams: { skinRows: rows },
 	};
 }
 
-test "generated skin vertices share weighted rows, cofactor normals and no extra mesh model" {
+test "a vertex takes its world from the instance row and its colour times the row's colour" {
+	const out = litTexturedVs({
+		position: vec3f(1.0, 2.0, 3.0), normal: vec3f(1.0, 0.0, 0.0), uv: vec2f(0.0),
+		color: vec4f(1.0, 0.5, 0.25, 1.0), tangent: vec4f(0.0, 1.0, 0.0, 1.0),
+		instanceRow0: vec4f(-1.0, 0.0, 0.0, 10.0), instanceRow1: vec4f(0.0, 2.0, 0.0, 20.0),
+		instanceRow2: vec4f(0.0, 0.0, 1.0, 30.0), instanceColor: vec4f(0.5, 1.0, 1.0, 0.5),
+	}, {
+		vertexParams: {
+			viewProj: identity(), cameraRight: none(), cameraUp: none(), cameraPosition: none(),
+		},
+	}, { ...plainKey(), normalMap: true });
+	assert near(out.worldPosition, vec3f(9.0, 24.0, 33.0)) && near(out.clip.xyz, out.worldPosition);
+	assert within(out.worldNormal.y, 0.0) && within(out.worldNormal.z, 0.0);
+	assert near(out.worldTangent.xyz, vec3f(0.0, 2.0, 0.0)) && within(out.worldTangent.w, -1.0);
+	assert near(out.baseColor.rgb, vec3f(0.5, 0.5, 0.25)) && within(out.baseColor.a, 0.5);
+}
+
+test "generated skin vertices share weighted rows, cofactor normals and no instance row" {
 	const b = skinBindings();
 	const key: LitKey = { ...plainKey(), skinned: true, normalMap: true };
 	const input: TexturedAttributes = {

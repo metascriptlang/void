@@ -1,12 +1,17 @@
 // litTexturedFs under a pbr-maps key run on the CPU: glTF's metallicRoughnessTexture (roughness
 // in G, metalness in B, both times the block's factors) and occlusionTexture (R, scaled by
 // strength, dimming the ambient only), held to pbrResponse.ms and an ambient formula written
-// apart from shader3d.ms.
+// apart from shader3d.ms; then Heaps' parallax, stepping through the packed texel's alpha.
 
 import { Vec3, vec3 } from "../math/math3d";
-import { Texture2d, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
-import { LitBindings, LitKey, linearToSrgb, litTexturedFs, srgbToLinear } from "../void3d/shader3d";
+import { Texture2d, Vec2f, Vec3f, Vec4f, mat4x4f, vec2f, vec3f, vec4f } from "../shader/std";
+import {
+	LitBindings, LitKey, LitTexturedFragmentInput, linearToSrgb, litTexturedFs, parallaxUv,
+	srgbToLinear,
+} from "../void3d/shader3d";
 import { PbrDirectInput, PbrSurface } from "../void3d/pbrResponse";
+import { oneCascade, oneLayer } from "./shadowHelpers";
+import { SceneLights, sceneLights } from "./lightHelpers";
 
 function toVec3f(v: Vec3): Vec3f {
 	return vec3f(v.x, v.y, v.z);
@@ -44,28 +49,26 @@ struct Factors {
 const FULL: Factors = { metalness: 1.0, roughness: 1.0, strength: 1.0 };
 
 function bindingsOf(factors: Factors, packed: Texture2d, occlusion: Texture2d): LitBindings {
+	const lights: SceneLights = sceneLights(vec4f(SKY.x, SKY.y, SKY.z, 0.0),
+		vec4f(SUN.x, SUN.y, SUN.z, 1.0), vec4f(1.0, 1.0, 1.0, 1.0), []);
 	return {
 		pbrMaterialParams: {
 			material: vec4f(0.0, 0.0, 0.0, 0.5),
+			materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 			pbr: vec4f(factors.metalness, factors.roughness, 1.0, factors.strength),
 		},
-		lightParams: {
-			ambient: vec4f(SKY.x, SKY.y, SKY.z, 0.0),
-			dirLight: vec4f(SUN.x, SUN.y, SUN.z, 1.0),
-			dirColor: vec4f(1.0, 1.0, 1.0, 1.0),
-			pointLight: [none(), none(), none(), none()],
-			pointColor: [none(), none(), none(), none()],
-		},
+		lightParams: lights.lightParams,
+		lightRecords: lights.lightRecords,
+		clusterRecords: lights.clusterRecords,
+		clusterIndices: lights.clusterIndices,
 		frameParams: {
 			frame: vec4f(0.0, 1.0, 0.0, 0.0),
 			cameraPosition: vec4f(CAMERA.x, CAMERA.y, CAMERA.z, 1.0),
 		},
-		shadowParams: {
-			shadowMatrix: identity(), shadow: none(),
-			spotMatrix: identity(), spotShadow: none(),
-		},
-		shadowMap: texel(1.0, 1.0, 1.0),
-		spotShadowMap: texel(1.0, 1.0, 1.0),
+		shadowParams: oneCascade(identity(), none(), identity(), none(), 1.0),
+		shadowMap: oneLayer(texel(1.0, 1.0, 1.0)),
+		spotShadowMap: oneLayer(texel(1.0, 1.0, 1.0)),
+		cubeShadowMap: oneLayer(texel(1.0, 1.0, 1.0)),
 		baseTexture: texel(1.0, 1.0, 1.0),
 		baseSampler: { nearest: true },
 		backTexture: texel(1.0, 1.0, 1.0),
@@ -184,6 +187,7 @@ test "a pbr-maps key that emits reads its factors from the emissive layout" {
 	let b: LitBindings = bindingsOf(FULL, texel(0.0, 0.5, 0.5), white);
 	b.pbrEmissiveMaterialParams = {
 		material: vec4f(0.0, 0.0, 0.0, 0.5),
+		materialColor: vec4f(1.0, 1.0, 1.0, 1.0),
 		pbr: vec4f(0.5, 0.8, 1.0, 1.0),
 		emissive: vec4f(0.0, 0.0, 0.0, 1.0),
 	};
@@ -196,4 +200,88 @@ test "a pbr-maps key that emits reads its factors from the emissive layout" {
 	}, b, { pbr: true, pbrMaps: true, emissive: true }).color.rgb;
 	assert nearColor(color, expectedColor(0.25, 0.4, 1.0));
 	assert !nearColor(color, expectedColor(0.5, 0.5, 1.0));
+}
+
+function twoTexels(left: Vec3f, right: Vec3f): Texture2d {
+	return {
+		width: 2, height: 1,
+		texels: [left.x, left.y, left.z, 1.0, right.x, right.y, right.z, 1.0],
+	};
+}
+
+test "an occlusion-uv-b key reads occlusion at the second uv set, the packed texel at the first" {
+	const packed: Texture2d = twoTexels(vec3f(0.0, 0.3, 0.9), vec3f(0.0, 0.8, 0.1));
+	const occlusion: Texture2d = twoTexels(vec3f(0.2, 0.0, 0.0), vec3f(1.0, 1.0, 1.0));
+	let b: LitBindings = bindingsOf(FULL, packed, occlusion);
+	b.pbrMaterialParams.uvMatrix = vec4f(1.0, 0.0, 0.0, 1.0);
+	const input: LitTexturedFragmentInput = {
+		worldPosition: toVec3f(POSITION),
+		worldNormal: toVec3f(UP),
+		surfaceUv: vec2f(0.25, 0.5),
+		surfaceUvB: vec2f(0.75, 0.5),
+		baseColor: BASE,
+		frontFacing: true,
+	};
+	const second: Vec3f =
+		litTexturedFs(input, b, { pbr: true, pbrMaps: true, occlusionUvB: true }).color.rgb;
+	assert nearColor(second, expectedColor(0.9, 0.3, 1.0));
+	const first: Vec3f = litTexturedFs(input, b, MAPS).color.rgb;
+	assert nearColor(first, expectedColor(0.9, 0.3, 0.2));
+	assert !nearColor(second, first);
+}
+
+function heightOf(alpha: float32): Texture2d {
+	return { width: 1, height: 1, texels: [1.0, 1.0, 1.0, alpha] };
+}
+
+function steppedUv(alpha: float32, view: Vec3f, sign: float32): Vec2f {
+	const b: LitBindings = bindingsOf(FULL, heightOf(alpha), texel(1.0, 1.0, 1.0));
+	return parallaxUv(b, vec2f(0.5, 0.5), view, vec3f(0.0, 0.0, 1.0),
+		vec4f(1.0, 0.0, 0.0, sign), 0.1);
+}
+
+function nearUv(a: Vec2f, b: Vec2f): boolean {
+	return Math.abs(a.x - b.x) <= 1e-4 && Math.abs(a.y - b.y) <= 1e-4;
+}
+
+// Over a flat depth d the steps and their blend land where the view ray meets it: the UV moves by
+// -d * amount * view.xy / view.z in the tangent basis.
+test "parallax moves the uv along the view to the depth under 1 minus alpha, as one ray would" {
+	const oblique: Vec3f = vec3f(0.6, 0.0, 0.8);
+	assert nearUv(steppedUv(0.5, oblique, 1.0), vec2f(0.5 - 0.5 * 0.1 * 0.75, 0.5));
+	assert nearUv(steppedUv(0.2, oblique, 1.0), vec2f(0.5 - 0.8 * 0.1 * 0.75, 0.5));
+	assert nearUv(steppedUv(1.0, oblique, 1.0), vec2f(0.5, 0.5));
+	assert nearUv(steppedUv(0.0, vec3f(0.0, 0.0, 1.0), 1.0), vec2f(0.5, 0.5));
+}
+
+test "the tangent's w turns the bitangent, the normal map's negated as Heaps' Parallax has it" {
+	const along: Vec3f = vec3f(0.0, 0.6, 0.8);
+	assert nearUv(steppedUv(0.5, along, 1.0), vec2f(0.5, 0.5 + 0.0375));
+	assert nearUv(steppedUv(0.5, along, -1.0), vec2f(0.5, 0.5 - 0.0375));
+}
+
+function tangentColor(b: LitBindings, uv: Vec2f, key: LitKey): Vec3f {
+	return litTexturedFs({
+		worldPosition: toVec3f(POSITION),
+		worldNormal: toVec3f(UP),
+		worldTangent: vec4f(1.0, 0.0, 0.0, 1.0),
+		surfaceUv: uv,
+		baseColor: BASE,
+		frontFacing: true,
+	}, b, key).color.rgb;
+}
+
+test "a parallax key samples every map at the moved uv" {
+	const red: Vec3f = vec3f(1.0, 0.0, 0.0);
+	const blue: Vec3f = vec3f(0.0, 0.0, 1.0);
+	let b: LitBindings = bindingsOf(FULL, heightOf(0.5), texel(1.0, 1.0, 1.0));
+	b.pbrMaterialParams.uvMatrix = vec4f(1.0, 0.0, 0.0, 1.0);
+	b.pbrMaterialParams.material = vec4f(0.1, 0.0, 0.0, 0.5);
+	b.baseTexture = twoTexels(red, blue);
+	b.normalTexture = texel(0.5, 0.5, 1.0);
+	b.frameParams.cameraPosition = vec4f(POSITION.x + 0.6, POSITION.y, POSITION.z + 0.8, 1.0);
+	const mapped: LitKey = { pbr: true, pbrMaps: true, normalMap: true };
+	const stepped: Vec3f = tangentColor(b, vec2f(0.52, 0.5), { ...mapped, parallax: true });
+	assert nearColor(stepped, tangentColor(b, vec2f(0.4825, 0.5), mapped));
+	assert !nearColor(stepped, tangentColor(b, vec2f(0.52, 0.5), mapped));
 }

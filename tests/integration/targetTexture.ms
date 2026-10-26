@@ -129,7 +129,7 @@ function block(lit: boolean): UniformBlock {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, length);
 	if (!reserved.ok) { unreachable; }
-	const values: Vec<float32> = lit ? [4.0, 0.0, 0.0, 0.0] :
+	const values: Vec<float32> = lit ? [4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] :
 		[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 	return reserved.value;
