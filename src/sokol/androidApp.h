@@ -18,7 +18,7 @@ JNIEnv *voidAndroidEnv(void);
 jobject voidAndroidClassLoader(void);
 jobject voidAndroidActivity(void);
 
-// The app driver as appWindow.c reads it; the asset dir is bridgeAndroid.c's.
+// The app driver as appWindow.c reads it.
 bool voidAndroidValid(void);
 int voidAndroidWidth(void);
 int voidAndroidHeight(void);

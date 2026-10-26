@@ -7,13 +7,11 @@
 #include <GLES3/gl3.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "bridge.h"
 #include "views.h"
 #include "../gpu/door.h"
 #include "../platform/swapchain.h"
-#include "androidApp.h"
 
 static EGLDisplay g_dpy = EGL_NO_DISPLAY;
 static EGLContext g_ctx = EGL_NO_CONTEXT;
@@ -70,18 +68,6 @@ void voidPlatformDeviceEnsure(void) {
 	if (g_ctx != EGL_NO_CONTEXT) return;
 	if (!egl_boot()) voidFail("EGL could not make a GLES3 context: 0x%04x", eglGetError());
 }
-
-// Asset loaders use relative paths ("assets/test.png"); the host extracts APK assets to a
-// real dir and tells us its root, so init2d's loads resolve (scoped chdir, like iOS bundles).
-static char g_assetRoot[1024] = {0};
-
-void voidEmbedSetAssetRoot(const char *p) {
-	const size_t n = strlen(p);
-	if (n >= sizeof(g_assetRoot)) voidFail("voidEmbedSetAssetRoot: the path is %zu bytes, longer than %zu", n, sizeof(g_assetRoot) - 1);
-	memcpy(g_assetRoot, p, n + 1);
-}
-
-const char *voidAndroidAssetDir(void) { return g_assetRoot; }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	AndroidSurface *s = (AndroidSurface *)calloc(1, sizeof(AndroidSurface));
