@@ -1039,4 +1039,4 @@ Metal's `colorWriteMask` reads it (`b874ce69`); darwin unverified. A Metal test 
 test is `drawMaskedTriangle` in `webgpuFixtures.ms`; it has no Metal twin yet.
 
 **Vulkan swapchain at identity** (`2cbc8dee`): it no longer reads `currentTransform` and takes
-`VK_SUBOPTIMAL_KHR` as success. `docs/GPU.md` §Vulkan records why. No Metal effect.
+`VK_SUBOPTIMAL_KHR` as success. The Android pre-rotation bullet in `docs/GPU.md` records why. No Metal effect.
