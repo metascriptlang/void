@@ -94,6 +94,7 @@ int64_t vulkanAdapterLimit(int32_t limit);
 
 int32_t vulkanDeviceCreate(void);
 uint32_t vulkanDeviceFeatures(void);
+int32_t vulkanDeviceReady(void);
 
 int32_t vulkanMemoryTypeCount(void);
 int32_t vulkanMemoryType(int32_t index, uint32_t *flags, int32_t *heap);
@@ -180,6 +181,7 @@ void vulkanSamplerDestroy(uint64_t sampler);
 
 int32_t vulkanBarrierImage(uint64_t image, uint32_t aspect, uint32_t sourceAccess, uint32_t targetAccess, int32_t oldLayout, int32_t newLayout);
 int32_t vulkanBarrierFlush(uint32_t sourceStages, uint32_t targetStages, uint32_t sourceAccess, uint32_t targetAccess);
+int32_t vulkanQueueStream(uint32_t on);
 int32_t vulkanCopyBuffer(uint64_t source, uint64_t sourceOffset, uint64_t target, uint64_t targetOffset, uint64_t bytes);
 int32_t vulkanCopyBufferToImage(
 	uint64_t buffer,
@@ -213,6 +215,27 @@ int32_t vulkanCopyImageToBuffer(
 	uint32_t width,
 	uint32_t height,
 	uint32_t depth);
+int32_t vulkanCopyImage(
+	uint64_t source,
+	uint32_t sourceMip,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	uint32_t sourceLayer,
+	uint64_t target,
+	uint32_t targetMip,
+	int32_t targetX,
+	int32_t targetY,
+	int32_t targetZ,
+	uint32_t targetLayer,
+	uint32_t aspect,
+	uint32_t layerCount,
+	uint32_t width,
+	uint32_t height,
+	uint32_t depth);
+int32_t vulkanCmdPushLabel(const char *label);
+int32_t vulkanCmdPopLabel(void);
+int32_t vulkanCmdInsertLabel(const char *label);
 
 int32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words, uint64_t *renderPass);
 void vulkanRenderPassDestroy(uint64_t renderPass);
@@ -290,6 +313,7 @@ int32_t vulkanSwapchainCreate(
 uint32_t vulkanSwapchainImageCount(void);
 uint64_t vulkanSwapchainImage(uint32_t index);
 uint64_t vulkanSwapchainView(uint32_t index);
+int32_t vulkanSwapchainTarget(void *renderView, uint64_t *image, uint64_t *view);
 int32_t vulkanSwapchainAcquire(uint32_t *index);
 int32_t vulkanSwapchainPresent(void);
 int32_t vulkanSwapchainDestroy(void);
@@ -298,6 +322,7 @@ int32_t vulkanFramesCreate(uint32_t count);
 int32_t vulkanFrameBegin(uint32_t slot, uint64_t waitSerial);
 
 int32_t vulkanSubmit(uint64_t *serial);
+uint32_t vulkanRecordingOpen(void);
 uint64_t vulkanRecordingSerial(void);
 int32_t vulkanCompletedSerial(uint64_t *serial);
 int32_t vulkanWaitSerial(uint64_t serial);

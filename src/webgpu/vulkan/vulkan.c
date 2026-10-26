@@ -225,6 +225,7 @@ static struct {
 typedef struct {
 	VkFence fence;
 	VkCommandBuffer commands;
+	VkCommandBuffer transfer;
 	uint64_t serial;
 	uint32_t owned;
 	VkFramebuffer *framebuffers;
@@ -272,6 +273,8 @@ static uint32_t s_framebufferCount;
 static uint32_t s_framebufferCapacity;
 
 static VkCommandBuffer s_recording;
+static VkCommandBuffer s_transfer;
+static uint32_t s_queueStream;
 static VulkanSubmission *s_submissions;
 static uint32_t s_submissionCount;
 static uint32_t s_submissionCapacity;
@@ -926,6 +929,8 @@ static int32_t deviceReady(const char *caller) {
 	return VULKAN_OK;
 }
 
+int32_t vulkanDeviceReady(void) { return deviceReady("requestDevice"); }
+
 uint32_t vulkanFormatOptimalFeatures(int32_t format) {
 	if (s_vk.physicalDevice == NULL) {
 		fail(VULKAN_ERROR_ORDER, "vulkanFormatOptimalFeatures before vulkanAdapterSelect");
@@ -1233,10 +1238,8 @@ void vulkanSamplerDestroy(uint64_t sampler) {
 	vkd.vkDestroySampler(s_vk.device, HANDLE_IN(VkSampler, sampler), NULL);
 }
 
-static int32_t recording(const char *caller, VkCommandBuffer *commands) {
-	*commands = s_recording;
-	if (s_passOpen) return fail(VULKAN_ERROR_ORDER, "%s inside a render pass", caller);
-	if (s_recording != NULL) return VULKAN_OK;
+static int32_t commandsOpen(const char *caller, VkCommandBuffer *opened) {
+	if (*opened != NULL) return VULKAN_OK;
 	if (s_vk.commandPool == VK_NULL_HANDLE) return fail(VULKAN_ERROR_ORDER, "%s before vulkanDeviceCreate", caller);
 	VkCommandBufferAllocateInfo info = { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
 	info.commandPool = s_vk.commandPool;
@@ -1252,8 +1255,31 @@ static int32_t recording(const char *caller, VkCommandBuffer *commands) {
 		vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &fresh);
 		return failCall("vkBeginCommandBuffer", result);
 	}
-	s_recording = fresh;
-	*commands = fresh;
+	*opened = fresh;
+	return VULKAN_OK;
+}
+
+static int32_t recording(const char *caller, VkCommandBuffer *commands) {
+	*commands = s_recording;
+	if (s_queueStream) return fail(VULKAN_ERROR_ORDER, "%s while the queue stream records", caller);
+	if (s_passOpen) return fail(VULKAN_ERROR_ORDER, "%s inside a render pass", caller);
+	int32_t status = commandsOpen(caller, &s_recording);
+	*commands = s_recording;
+	return status;
+}
+
+static int32_t streamed(const char *caller, VkCommandBuffer *commands) {
+	if (!s_queueStream) return recording(caller, commands);
+	int32_t status = commandsOpen(caller, &s_transfer);
+	*commands = s_transfer;
+	return status;
+}
+
+int32_t vulkanQueueStream(uint32_t on) {
+	if (s_imageBarrierCount != 0) {
+		return fail(VULKAN_ERROR_ORDER, "vulkanQueueStream with %u image barriers never flushed", s_imageBarrierCount);
+	}
+	s_queueStream = on != 0;
 	return VULKAN_OK;
 }
 
@@ -1291,7 +1317,7 @@ int32_t vulkanBarrierFlush(uint32_t sourceStages, uint32_t targetStages, uint32_
 		return fail(VULKAN_ERROR_ORDER, "vulkanBarrierFlush with %u image barriers and no target stage", images);
 	}
 	VkCommandBuffer commands = NULL;
-	int32_t status = recording("vulkanBarrierFlush", &commands);
+	int32_t status = streamed("vulkanBarrierFlush", &commands);
 	if (status != VULKAN_OK) return status;
 	VkMemoryBarrier memory = { .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER };
 	memory.srcAccessMask = sourceAccess;
@@ -1312,7 +1338,7 @@ int32_t vulkanBarrierFlush(uint32_t sourceStages, uint32_t targetStages, uint32_
 
 int32_t vulkanCopyBuffer(uint64_t source, uint64_t sourceOffset, uint64_t target, uint64_t targetOffset, uint64_t bytes) {
 	VkCommandBuffer commands = NULL;
-	int32_t status = recording("vulkanCopyBuffer", &commands);
+	int32_t status = streamed("vulkanCopyBuffer", &commands);
 	if (status != VULKAN_OK) return status;
 	VkBufferCopy region = { .srcOffset = sourceOffset, .dstOffset = targetOffset, .size = bytes };
 	vkd.vkCmdCopyBuffer(commands, HANDLE_IN(VkBuffer, source), HANDLE_IN(VkBuffer, target), 1, &region);
@@ -1364,7 +1390,7 @@ int32_t vulkanCopyBufferToImage(
 	uint32_t height,
 	uint32_t depth) {
 	VkCommandBuffer commands = NULL;
-	int32_t status = recording("vulkanCopyBufferToImage", &commands);
+	int32_t status = streamed("vulkanCopyBufferToImage", &commands);
 	if (status != VULKAN_OK) return status;
 	VkBufferImageCopy region = imageRegion(offset, rowLength, imageHeight, aspect, mip, x, y, z, baseLayer, layerCount,
 		width, height, depth);
@@ -1390,12 +1416,95 @@ int32_t vulkanCopyImageToBuffer(
 	uint32_t height,
 	uint32_t depth) {
 	VkCommandBuffer commands = NULL;
-	int32_t status = recording("vulkanCopyImageToBuffer", &commands);
+	int32_t status = streamed("vulkanCopyImageToBuffer", &commands);
 	if (status != VULKAN_OK) return status;
 	VkBufferImageCopy region = imageRegion(offset, rowLength, imageHeight, aspect, mip, x, y, z, baseLayer, layerCount,
 		width, height, depth);
 	vkd.vkCmdCopyImageToBuffer(
 		commands, HANDLE_IN(VkImage, image), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, HANDLE_IN(VkBuffer, buffer), 1, &region);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCopyImage(
+	uint64_t source,
+	uint32_t sourceMip,
+	int32_t sourceX,
+	int32_t sourceY,
+	int32_t sourceZ,
+	uint32_t sourceLayer,
+	uint64_t target,
+	uint32_t targetMip,
+	int32_t targetX,
+	int32_t targetY,
+	int32_t targetZ,
+	uint32_t targetLayer,
+	uint32_t aspect,
+	uint32_t layerCount,
+	uint32_t width,
+	uint32_t height,
+	uint32_t depth) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = streamed("vulkanCopyImage", &commands);
+	if (status != VULKAN_OK) return status;
+	VkImageCopy region = { 0 };
+	region.srcSubresource.aspectMask = aspect;
+	region.srcSubresource.mipLevel = sourceMip;
+	region.srcSubresource.baseArrayLayer = sourceLayer;
+	region.srcSubresource.layerCount = layerCount;
+	region.srcOffset.x = sourceX;
+	region.srcOffset.y = sourceY;
+	region.srcOffset.z = sourceZ;
+	region.dstSubresource.aspectMask = aspect;
+	region.dstSubresource.mipLevel = targetMip;
+	region.dstSubresource.baseArrayLayer = targetLayer;
+	region.dstSubresource.layerCount = layerCount;
+	region.dstOffset.x = targetX;
+	region.dstOffset.y = targetY;
+	region.dstOffset.z = targetZ;
+	region.extent.width = width;
+	region.extent.height = height;
+	region.extent.depth = depth;
+	vkd.vkCmdCopyImage(commands, HANDLE_IN(VkImage, source), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, HANDLE_IN(VkImage, target),
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	return VULKAN_OK;
+}
+
+static VkDebugUtilsLabelEXT labelOf(const char *label) {
+	VkDebugUtilsLabelEXT info = { .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, .pLabelName = label };
+	return info;
+}
+
+static int32_t labelled(const char *caller, VkCommandBuffer *commands) {
+	if (!s_passOpen || s_queueStream) return recording(caller, commands);
+	*commands = s_recording;
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdPushLabel(const char *label) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = labelled("vulkanCmdPushLabel", &commands);
+	if (status != VULKAN_OK) return status;
+	if (vki.vkCmdBeginDebugUtilsLabelEXT == NULL) return VULKAN_OK;
+	VkDebugUtilsLabelEXT info = labelOf(label);
+	vki.vkCmdBeginDebugUtilsLabelEXT(commands, &info);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdPopLabel(void) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = labelled("vulkanCmdPopLabel", &commands);
+	if (status != VULKAN_OK) return status;
+	if (vki.vkCmdEndDebugUtilsLabelEXT != NULL) vki.vkCmdEndDebugUtilsLabelEXT(commands);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdInsertLabel(const char *label) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = labelled("vulkanCmdInsertLabel", &commands);
+	if (status != VULKAN_OK) return status;
+	if (vki.vkCmdInsertDebugUtilsLabelEXT == NULL) return VULKAN_OK;
+	VkDebugUtilsLabelEXT info = labelOf(label);
+	vki.vkCmdInsertDebugUtilsLabelEXT(commands, &info);
 	return VULKAN_OK;
 }
 
@@ -2234,6 +2343,20 @@ uint64_t vulkanSwapchainView(uint32_t index) {
 	return HANDLE_OUT(s_swap.images[index].view);
 }
 
+int32_t vulkanSwapchainTarget(void *renderView, uint64_t *image, uint64_t *view) {
+	if (sizeof(void *) < sizeof(uint64_t)) {
+		return fail(VULKAN_ERROR_ORDER, "NativeSwapchain.renderView cannot carry a VkImageView in a 32-bit build");
+	}
+	for (uint32_t i = 0; i < s_swap.imageCount; i++) {
+		if (HANDLE_OUT(s_swap.images[i].view) == (uint64_t)(uintptr_t)renderView) {
+			*image = HANDLE_OUT(s_swap.images[i].image);
+			*view = HANDLE_OUT(s_swap.images[i].view);
+			return VULKAN_OK;
+		}
+	}
+	return fail(VULKAN_ERROR_ORDER, "NativeSwapchain.renderView %p is not a view of the Vulkan swapchain", renderView);
+}
+
 int32_t vulkanSwapchainAcquire(uint32_t *index) {
 	if (s_swap.swapchain == VK_NULL_HANDLE) return fail(VULKAN_ERROR_ORDER, "vulkanSwapchainAcquire without a swapchain");
 	if (s_frameOpen < 0) return fail(VULKAN_ERROR_ORDER, "vulkanSwapchainAcquire outside a frame");
@@ -2388,15 +2511,17 @@ static int32_t submissionRoom(void) {
 	return VULKAN_OK;
 }
 
-static void recordingDrop(VkCommandBuffer commands, VulkanFrame *frame) {
-	if (frame == NULL) vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &commands);
+static void recordingDrop(VkCommandBuffer commands, VkCommandBuffer transfer, VulkanFrame *frame) {
+	if (frame == NULL && commands != NULL) vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &commands);
+	if (transfer != NULL) vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &transfer);
 	framebuffersDestroy(s_framebuffers, s_framebufferCount);
 	s_framebufferCount = 0;
 }
 
 int32_t vulkanSubmit(uint64_t *serial) {
 	if (s_passOpen) return fail(VULKAN_ERROR_ORDER, "vulkanSubmit inside a render pass");
-	if (s_recording == NULL) {
+	if (s_queueStream) return fail(VULKAN_ERROR_ORDER, "vulkanSubmit while the queue stream records");
+	if (s_recording == NULL && s_transfer == NULL) {
 		*serial = s_submitted;
 		return VULKAN_OK;
 	}
@@ -2404,25 +2529,33 @@ int32_t vulkanSubmit(uint64_t *serial) {
 		return fail(VULKAN_ERROR_ORDER, "vulkanSubmit with %u image barriers never flushed", s_imageBarrierCount);
 	}
 	VkCommandBuffer commands = s_recording;
+	VkCommandBuffer transfer = s_transfer;
 	VulkanFrame *frame = s_frameOpen >= 0 ? &s_frames[s_frameOpen] : NULL;
 	uint32_t acquired = s_frameAcquired;
 	s_recording = NULL;
+	s_transfer = NULL;
 	s_frameOpen = -1;
 	s_frameAcquired = 0;
-	VkResult result = vkd.vkEndCommandBuffer(commands);
-	if (result != VK_SUCCESS) {
-		recordingDrop(commands, frame);
-		return failCall("vkEndCommandBuffer", result);
+	VkCommandBuffer submitted[2];
+	uint32_t count = 0;
+	if (transfer != NULL) submitted[count++] = transfer;
+	if (commands != NULL) submitted[count++] = commands;
+	for (uint32_t i = 0; i < count; i++) {
+		VkResult ended = vkd.vkEndCommandBuffer(submitted[i]);
+		if (ended != VK_SUCCESS) {
+			recordingDrop(commands, transfer, frame);
+			return failCall("vkEndCommandBuffer", ended);
+		}
 	}
 	if (submissionRoom() != VULKAN_OK) {
-		recordingDrop(commands, frame);
+		recordingDrop(commands, transfer, frame);
 		return VULKAN_OUT_OF_MEMORY;
 	}
 	VkFramebuffer *framebuffers = NULL;
 	if (s_framebufferCount != 0) {
 		framebuffers = malloc(sizeof *framebuffers * s_framebufferCount);
 		if (framebuffers == NULL) {
-			recordingDrop(commands, frame);
+			recordingDrop(commands, transfer, frame);
 			return fail(VULKAN_OUT_OF_MEMORY, "out of memory keeping %u framebuffers", s_framebufferCount);
 		}
 		memcpy(framebuffers, s_framebuffers, sizeof *framebuffers * s_framebufferCount);
@@ -2430,17 +2563,17 @@ int32_t vulkanSubmit(uint64_t *serial) {
 	VkFence fence = frame != NULL ? frame->fence : VK_NULL_HANDLE;
 	if (frame == NULL) {
 		VkFenceCreateInfo fenceInfo = { .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-		result = vkd.vkCreateFence(s_vk.device, &fenceInfo, NULL, &fence);
-		if (result != VK_SUCCESS) {
+		VkResult created = vkd.vkCreateFence(s_vk.device, &fenceInfo, NULL, &fence);
+		if (created != VK_SUCCESS) {
 			free(framebuffers);
-			recordingDrop(commands, frame);
-			return failCall("vkCreateFence", result);
+			recordingDrop(commands, transfer, frame);
+			return failCall("vkCreateFence", created);
 		}
 	}
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkSubmitInfo submit = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO };
-	submit.commandBufferCount = 1;
-	submit.pCommandBuffers = &commands;
+	submit.commandBufferCount = count;
+	submit.pCommandBuffers = submitted;
 	if (acquired) {
 		submit.waitSemaphoreCount = 1;
 		submit.pWaitSemaphores = &frame->acquired;
@@ -2448,17 +2581,18 @@ int32_t vulkanSubmit(uint64_t *serial) {
 		submit.signalSemaphoreCount = 1;
 		submit.pSignalSemaphores = &s_swap.images[s_swap.acquired].presentReady;
 	}
-	result = vkd.vkQueueSubmit(s_vk.queue, 1, &submit, fence);
+	VkResult result = vkd.vkQueueSubmit(s_vk.queue, 1, &submit, fence);
 	if (result != VK_SUCCESS) {
 		if (frame == NULL) vkd.vkDestroyFence(s_vk.device, fence, NULL);
 		free(framebuffers);
-		recordingDrop(commands, frame);
+		recordingDrop(commands, transfer, frame);
 		return failCall("vkQueueSubmit", result);
 	}
 	s_submitted += 1;
 	s_submissions[s_submissionCount++] = (VulkanSubmission){
 		.fence = fence,
 		.commands = commands,
+		.transfer = transfer,
 		.serial = s_submitted,
 		.owned = frame == NULL,
 		.framebuffers = framebuffers,
@@ -2471,13 +2605,16 @@ int32_t vulkanSubmit(uint64_t *serial) {
 	return VULKAN_OK;
 }
 
-uint64_t vulkanRecordingSerial(void) { return s_recording != NULL ? s_submitted + 1 : s_submitted; }
+uint32_t vulkanRecordingOpen(void) { return s_recording != NULL; }
+
+uint64_t vulkanRecordingSerial(void) { return s_recording != NULL || s_transfer != NULL ? s_submitted + 1 : s_submitted; }
 
 static void submissionRelease(VulkanSubmission *submission) {
 	if (submission->owned) {
 		vkd.vkDestroyFence(s_vk.device, submission->fence, NULL);
-		vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &submission->commands);
+		if (submission->commands != NULL) vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &submission->commands);
 	}
+	if (submission->transfer != NULL) vkd.vkFreeCommandBuffers(s_vk.device, s_vk.commandPool, 1, &submission->transfer);
 	framebuffersDestroy(submission->framebuffers, submission->framebufferCount);
 	free(submission->framebuffers);
 	submission->framebuffers = NULL;
@@ -2552,6 +2689,8 @@ void vulkanShutdown(void) {
 	s_imageBarrierCount = 0;
 	s_imageBarrierCapacity = 0;
 	s_recording = NULL;
+	s_transfer = NULL;
+	s_queueStream = 0;
 	s_submitted = 0;
 	s_completed = 0;
 	if (s_vk.surface != VK_NULL_HANDLE && vki.vkDestroySurfaceKHR != NULL) {
