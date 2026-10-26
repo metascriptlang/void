@@ -43,6 +43,7 @@ import {
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE,
 	CMD_CLIP_U_X, CMD_CLIP_U_Y, CMD_CLIP_U_MIN, CMD_CLIP_U_MAX,
 	CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX,
+	CMD_CLIP_ROUND_U, CMD_CLIP_ROUND_V, CMD_CLIP_RADII,
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	commandKindName, breakReasonName, SOURCE_PREMULTIPLIED,
@@ -113,6 +114,16 @@ function f2(v: float32): string {
 	return `${sign}${whole}.${pad}${frac}`;
 }
 
+function floats(i: int32, field: int32): string {
+	return `${f2(commandField(i, field))},${f2(commandField(i, field + 1))},` +
+		`${f2(commandField(i, field + 2))},${f2(commandField(i, field + 3))}`;
+}
+
+function roundedAt(i: int32): boolean {
+	return commandField(i, CMD_CLIP_RADII) > 0.0 || commandField(i, CMD_CLIP_RADII + 1) > 0.0
+		|| commandField(i, CMD_CLIP_RADII + 2) > 0.0 || commandField(i, CMD_CLIP_RADII + 3) > 0.0;
+}
+
 // One line per command, then one per vertex. The break reason is a word and not a number: a
 // regression then names its own cause instead of leaving a count to be explained.
 function formatStream(): string {
@@ -148,6 +159,10 @@ function formatStream(): string {
 			out = out + `,${f2(commandField(i, CMD_CLIP_U_MIN))},${f2(commandField(i, CMD_CLIP_U_MAX))}`;
 			out = out + ` ${f2(commandField(i, CMD_CLIP_V_X))},${f2(commandField(i, CMD_CLIP_V_Y))}`;
 			out = out + `,${f2(commandField(i, CMD_CLIP_V_MIN))},${f2(commandField(i, CMD_CLIP_V_MAX))}`;
+		}
+		if (roundedAt(i)) {
+			out = out + ` round:${floats(i, CMD_CLIP_ROUND_U)} ${floats(i, CMD_CLIP_ROUND_V)}`;
+			out = out + ` radii:${floats(i, CMD_CLIP_RADII)}`;
 		}
 		out = out + "\n";
 	}
@@ -1703,4 +1718,138 @@ when (voidProfiler) {
 		const hidden: string = overlayStream(OverlayMode.Hidden, 384.0, 280.0, 1.0);
 		assert hidden.startsWith("commands 0 draws 0 vertices 0 uiInstances 0");
 	}
+}
+
+// A rounded Mask with a square one inside, then a rotated rounded Mask with four different corners.
+function roundedClipScene(): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const card = s.add(s.mask(40.0, 30.0).at(4.0, 4.0));
+	card.setMaskRadii(uniformRadii(6.0));
+	card.addChild(s.rect(60.0, 60.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-10.0, -10.0));
+	const inner = card.addChild(s.mask(20.0, 20.0).at(30.0, 5.0));
+	inner.addChild(s.rect(30.0, 30.0, rgba(1.0, 0.0, 0.0, 1.0)));
+	const turned = s.add(s.mask(30.0, 20.0).at(80.0, 20.0));
+	turned.setPivot(15.0, 10.0);
+	turned.setRotation(0.4);
+	turned.setMaskRadii({ topLeft: 8.0, topRight: 0.0, bottomRight: 4.0, bottomLeft: 2.0 });
+	turned.addChild(s.rect(50.0, 40.0, rgba(0.0, 0.0, 1.0, 1.0)).at(-10.0, -10.0));
+	return s.refOf(s.root);
+}
+
+test "T1 snapshot: a rounded Mask carries its frame and corners beside the rect clips" {
+	assert snapshot("roundedClip", record(roundedClipScene(), 128.0, 64.0, 1.0));
+}
+
+function firstDraw(): int32 {
+	for (let i: int32 = 0; i < commandCount(); i++) {
+		if (commandField(i, CMD_INSTANCE_COUNT) > 0.0) { return i; }
+	}
+	return -1;
+}
+
+function roundPoint(i: int32, p: Vec2): Vec2 {
+	return vec2(
+		p.x * commandField(i, CMD_CLIP_ROUND_U) + p.y * commandField(i, CMD_CLIP_ROUND_U + 1)
+			- commandField(i, CMD_CLIP_ROUND_U + 2),
+		p.x * commandField(i, CMD_CLIP_ROUND_V) + p.y * commandField(i, CMD_CLIP_ROUND_V + 1)
+			- commandField(i, CMD_CLIP_ROUND_V + 2));
+}
+
+// The parent's scale under the Mask's rotation is a shear, and a negative one a reflection: the
+// frame must still put every local point at its offset from the centre, scaled as the box's SDF is.
+function roundFrameMatchesLocal(sx: float32): boolean {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const parent = s.add(s.group().at(150.0, 40.0));
+	parent.setScaleX(sx);
+	const mask = parent.addChild(s.mask(40.0, 20.0));
+	mask.setRotation(0.4);
+	mask.setMaskRadii(uniformRadii(5.0));
+	mask.addChild(s.rect(80.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-20.0, -10.0));
+	record(s.refOf(s.root), 320.0, 160.0, 1.0);
+	const world = trs2d(150.0, 40.0, 0.0, sx, 1.0) * trs2d(0.0, 0.0, 0.4, 1.0, 1.0);
+	const o: Vec2 = vec2(0.0, 0.0) * world;
+	const ex: Vec2 = vec2(1.0, 0.0) * world;
+	const ey: Vec2 = vec2(0.0, 1.0) * world;
+	const xLength: float64 =
+		Math.sqrt(((ex.x - o.x) * (ex.x - o.x) + (ex.y - o.y) * (ex.y - o.y)) as float64);
+	const yLength: float64 =
+		Math.sqrt(((ey.x - o.x) * (ey.x - o.x) + (ey.y - o.y) * (ey.y - o.y)) as float64);
+	const g: float32 = Math.sqrt(xLength * yLength) as float32;
+	const i: int32 = firstDraw();
+	let ok: boolean = i >= 0 && approx(commandField(i, CMD_CLIP_RADII), 5.0 * g)
+		&& approx(commandField(i, CMD_CLIP_ROUND_U + 3), 20.0 * g)
+		&& approx(commandField(i, CMD_CLIP_ROUND_V + 3), 10.0 * g);
+	const local = [vec2(0.0, 0.0), vec2(40.0, 0.0), vec2(40.0, 20.0), vec2(0.0, 20.0),
+		vec2(20.0, 10.0), vec2(7.0, 13.0)];
+	for (const p of local) {
+		const at: Vec2 = roundPoint(i, p * world);
+		ok = ok && approx(at.x, (p.x - 20.0) * g) && approx(at.y, (p.y - 10.0) * g);
+	}
+	return ok;
+}
+
+test "T1 a rounded Mask's frame is exact under a stretched, sheared or reflected parent" {
+	assert roundFrameMatchesLocal(1.0);
+	assert roundFrameMatchesLocal(2.0);
+	assert roundFrameMatchesLocal(0.5);
+	assert roundFrameMatchesLocal(-2.0);
+}
+
+test "T1 a square Mask records no round shape, so its fragments skip the corner test" {
+	record(clipScene(), 128.0, 64.0, 1.0);
+	for (let i: int32 = 0; i < commandCount(); i++) {
+		for (let f: int32 = 0; f < 12; f++) { assert commandField(i, CMD_CLIP_ROUND_U + f) == 0.0; }
+	}
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.add(s.mask(24.0, 16.0).at(10.0, 4.0));
+	m.setMaskRadii(uniformRadii(3.0));
+	m.setMaskRadii(uniformRadii(0.0));
+	m.addChild(s.rect(40.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)));
+	record(s.refOf(s.root), 128.0, 64.0, 1.0);
+	assert uiInstanceCount() == 1;
+	for (let i: int32 = 0; i < commandCount(); i++) { assert !roundedAt(i); }
+}
+
+function nestedRoundScene(
+	ow: float32, oh: float32, outerRadius: float32, ix: float32, iy: float32, iw: float32,
+	ih: float32, innerRadius: float32,
+): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const outer = s.add(s.mask(ow, oh).at(20.0, 20.0));
+	outer.setMaskRadii(uniformRadii(outerRadius));
+	const inner = outer.addChild(s.mask(iw, ih).at(ix, iy));
+	inner.setMaskRadii(uniformRadii(innerRadius));
+	inner.addChild(s.rect(200.0, 200.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-100.0, -100.0));
+	return s.refOf(s.root);
+}
+
+function drawnRadius(): float32 {
+	const i: int32 = firstDraw();
+	return i < 0 ? -1.0 : commandField(i, CMD_CLIP_RADII);
+}
+
+test "T1 nested rounded Masks clip to the one inside the other, or draw nothing and say so" {
+	record(nestedRoundScene(40.0, 30.0, 6.0, 10.0, 5.0, 20.0, 20.0, 4.0), 128.0, 96.0, 1.0);
+	assert drawnRadius() == 4.0;
+	assert commandField(firstDraw(), CMD_CLIP_ROUND_U + 3) == 10.0;
+	record(nestedRoundScene(40.0, 30.0, 6.0, 0.0, 0.0, 40.0, 30.0, 6.0), 128.0, 96.0, 1.0);
+	assert drawnRadius() == 6.0;
+	record(nestedRoundScene(20.0, 20.0, 4.0, -20.0, -20.0, 60.0, 60.0, 8.0), 128.0, 96.0, 1.0);
+	assert drawnRadius() == 4.0;
+	assert commandField(firstDraw(), CMD_CLIP_ROUND_U + 3) == 10.0;
+	record(nestedRoundScene(40.0, 30.0, 10.0, 20.0, 0.0, 40.0, 30.0, 10.0), 128.0, 96.0, 1.0);
+	assert uiInstanceCount() == 0;
+}
+
+test "T1 a rounded Mask scrolls through the world matrices, as a rotated one does" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const outer = s.add(s.mask(60.0, 40.0));
+	const list = outer.addChild(s.mask(60.0, 40.0));
+	list.scrollTo(0.0, 10.0);
+	assert s.scrollScope(list.liveRow("test"));
+	outer.setMaskRadii(uniformRadii(6.0));
+	assert !s.scrollScope(list.liveRow("test"));
+	list.setMaskRadii(uniformRadii(6.0));
+	assert !s.scrollScope(list.liveRow("test"));
+	assert list.scroll().y == 10.0 && list.scroll().radii.topLeft == 6.0;
 }

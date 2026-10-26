@@ -11,9 +11,12 @@ import {
 	applyContrastAndGamma,
 	bayer4,
 	blurFs,
+	cornerRadius,
 	coverageFromDistance,
 	erfApprox,
 	gaussianPdf,
+	roundClipCoverage,
+	roundClipPoint,
 	roundedRectDistance,
 	sdfCoverage,
 	shadowCoverage,
@@ -112,6 +115,9 @@ function uiAt(mode: float32): Vec4f {
 			viewport: vec4f(100.0, 100.0, 0.0, 1.0),
 			clipU: vec4f(0.0),
 			clipV: vec4f(0.0),
+			clipRoundU: vec4f(0.0),
+			clipRoundV: vec4f(0.0),
+			clipRadii: vec4f(0.0),
 			shift: vec4f(0.0),
 		},
 	});
@@ -124,11 +130,17 @@ test "a glyph keeps no radii and no antialiasing inflation; a box gets one devic
 }
 
 function spriteOf(premultiplied: float32): Vec4f {
+	return spriteAt(premultiplied, vec4f(0.0), vec4f(0.0));
+}
+
+function spriteAt(premultiplied: float32, clipRound: Vec4f, clipCorners: Vec4f): Vec4f {
 	return spriteFs({
 		uv: vec2f(0.5, 0.5),
 		color: vec4f(1.0, 1.0, 1.0, 0.5),
 		srcPremult: premultiplied,
 		clipDistance: vec4f(1.0),
+		clipRound,
+		clipCorners,
 	}, {
 		spriteTex: filled(1, 1, vec4f(0.8, 0.4, 0.2, 1.0)),
 		spriteSmp: { nearest: true, wrap: Wrap.Clamp },
@@ -153,4 +165,34 @@ test "an underline is the straight bar, or a wave centred on the quad's left edg
 	assert underlineDistance(p, half, vec4f(1.5, 0.0, 0.0, 0.0)) ==
 		roundedRectDistance(p, half, 0.0);
 	assert near(underlineDistance(vec2f(-20.0, 0.0), half, vec4f(1.5, 1.0, 0.0, 0.0)), -0.75);
+}
+
+test "a clip with no radii covers every point, so a square clip's fragments keep their colour" {
+	assert roundClipPoint(vec2f(3.0, 4.0), vec4f(1.0, 0.0, 9.0, 5.0), vec4f(0.0, 1.0, 9.0, 5.0),
+		vec4f(0.0)) == vec4f(0.0);
+	assert roundClipCoverage(vec4f(1000.0, -1000.0, 1.0, 1.0), vec4f(0.0)) == 1.0;
+	assert spriteAt(0.0, vec4f(0.0), vec4f(0.0)) == spriteOf(0.0);
+}
+
+test "a rounded clip covers a pixel as the UI box with its corners does, in device pixels" {
+	const scale: float32 = 1.5;
+	const half = vec2f(20.0, 10.0);
+	const radii = vec4f(8.0, 0.0, 4.0, 2.0);
+	const local = [vec2f(-19.0, -9.0), vec2f(-17.2, -7.1), vec2f(19.9, -9.9), vec2f(18.5, 8.6),
+		vec2f(-19.5, 9.5), vec2f(0.0, 0.0), vec2f(20.3, 0.0)];
+	for (const p of local) {
+		const box = coverageFromDistance(roundedRectDistance(p, half, cornerRadius(p, radii)),
+			1.0 / scale);
+		assert near(roundClipCoverage(vec4f(p * scale, half * scale), radii * scale), box);
+	}
+}
+
+test "a rounded clip's point is the world point in its frame, and its fragment is scaled" {
+	const round = roundClipPoint(vec2f(13.0, 7.0), vec4f(0.0, 2.0, 4.0, 6.0),
+		vec4f(-2.0, 0.0, -30.0, 8.0), vec4f(1.0));
+	assert round == vec4f(10.0, 4.0, 6.0, 8.0);
+	const edge = vec4f(-3.0, -7.5, 4.0, 8.0);
+	const coverage = roundClipCoverage(edge, vec4f(2.0, 0.0, 0.0, 0.0));
+	assert coverage > 0.0 && coverage < 1.0;
+	assert near(spriteAt(0.0, edge, vec4f(2.0, 0.0, 0.0, 0.0)), spriteOf(0.0) * coverage);
 }

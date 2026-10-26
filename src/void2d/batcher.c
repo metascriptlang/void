@@ -113,7 +113,7 @@ static int s_closedBufCap;
 // Mirrors src/void2d/displayList.ms. void2dLayoutCheck is what keeps the two honest; it is
 // called from MetaScript with that file's own constants, so a field added on one side and
 // not the other fails at setup rather than drawing garbage.
-#define CMD_FLOATS          32
+#define CMD_FLOATS          44
 #define CMD_KIND            0
 #define CMD_BREAK           1
 #define CMD_VERTEX_OFFSET   2
@@ -136,6 +136,7 @@ static int s_closedBufCap;
 #define CMD_CLIP_U_X        22
 #define CMD_VIEW_HIGH       30
 #define CMD_SCOPE           31
+#define CMD_CLIP_ROUND_U    32
 #define SCOPE_FLOATS        8
 
 #define PIPELINE_VERTEX     0
@@ -250,7 +251,8 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int viewField, int viewHighField, int blendField, int samplerField,
                       int effectField,
                       int samplerCount, int clearRField,
-                      int clipXField, int clipUField, int arg0Field, int rtModeField,
+                      int clipXField, int clipUField, int clipRoundField, int arg0Field,
+                      int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
                       int kindTargetBegin, int kindTargetEnd,
                       int programVertex, int programSprite, int programUi, int programBlur,
@@ -276,6 +278,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& effectField == CMD_EFFECT
 		&& clipXField == CMD_CLIP_X
 		&& clipUField == CMD_CLIP_U_X
+		&& clipRoundField == CMD_CLIP_ROUND_U
 		&& arg0Field == CMD_ARG0
 		&& rtModeField == CMD_RT_MODE
 		&& kindDraw == CMD_KIND_DRAW
@@ -530,11 +533,14 @@ static const float *scopeOf(const float *cmd) {
 	return s_scopes + (size_t)scope * SCOPE_FLOATS;
 }
 
+static float deviceScaleOf(const float *cmd) {
+	return cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
+}
+
 static void applyScissor(const float *cmd, float fbW, float fbH) {
 	// Floor the near edge and ceil the far edge in device pixels. Truncating x/y/w/h
 	// independently can discard a pixel the exact clip planes accept.
-	float targetScale = cmd[CMD_RT_MODE];
-	float scale = targetScale != 0.0f ? targetScale : s_dpiScale;
+	float scale = deviceScaleOf(cmd);
 	int limitW = void2dScissorMax(fbW, scale);
 	int limitH = void2dScissorMax(fbH, scale);
 	float x = cmd[CMD_CLIP_X];
@@ -1081,9 +1087,17 @@ void void2dReplay(const float *commands, int commandCount,
 	if (commandCount <= 0 || !s_frameUploaded) return;
 	runCommands(commands, commandCount, effects, effectCount, fbW, fbH);
 }
-static void copyClipParams(float *clipU, float *clipV, const float *cmd) {
+// The round shape goes up in device pixels, so its fragment test antialiases over one unit.
+static void copyClipParams(float *clipU, float *clipV, float *roundU, float *roundV,
+                           float *radii, const float *cmd) {
 	memcpy(clipU, cmd + CMD_CLIP_U_X, 4 * sizeof(float));
 	memcpy(clipV, cmd + CMD_CLIP_U_X + 4, 4 * sizeof(float));
+	float scale = deviceScaleOf(cmd);
+	for (int i = 0; i < 4; i++) {
+		roundU[i] = cmd[CMD_CLIP_ROUND_U + i] * scale;
+		roundV[i] = cmd[CMD_CLIP_ROUND_U + 4 + i] * scale;
+		radii[i] = cmd[CMD_CLIP_ROUND_U + 8 + i] * scale;
+	}
 }
 
 // One instanced sprite run: the unit quad at slot 0, this run's instances at slot 1, one
@@ -1122,7 +1136,7 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	sp.viewport[3] = premultipliedSource(cmd) ? 1.0f : 0.0f;
 	const float *spriteScope = scopeOf(cmd);
 	if (spriteScope) { sp.shift[0] = spriteScope[0]; sp.shift[1] = spriteScope[1]; }
-	copyClipParams(sp.clipU, sp.clipV, cmd);
+	copyClipParams(sp.clipU, sp.clipV, sp.clipRoundU, sp.clipRoundV, sp.clipRadii, cmd);
 	doorApplyUniforms(UB_sprite_params, (const uint8_t *)&sp, (int64_t)sizeof(sp));
 
 	doorDraw(0, 6, count);
@@ -1168,10 +1182,10 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	up.viewport[0] = fbW;
 	up.viewport[1] = fbH;
 	up.viewport[2] = (sampledTarget(view) && !s_originTopLeft) ? 1.0f : 0.0f;
-	up.viewport[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
+	up.viewport[3] = deviceScaleOf(cmd);
 	const float *uiScope = scopeOf(cmd);
 	if (uiScope) { up.shift[0] = uiScope[0]; up.shift[1] = uiScope[1]; }
-	copyClipParams(up.clipU, up.clipV, cmd);
+	copyClipParams(up.clipU, up.clipV, up.clipRoundU, up.clipRoundV, up.clipRadii, cmd);
 	doorApplyUniforms(UB_ui_params, (const uint8_t *)&up, (int64_t)sizeof(up));
 	ui_fx_t tu = {0};
 	memcpy(tu.gammaRatios, s_textGamma, sizeof(tu.gammaRatios));
@@ -1328,11 +1342,11 @@ static void runCommands(const float *commands, int commandCount,
 		vp.viewport[3] = (premultiplied && noEffect) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
 		vp.model1[2] = glyphPageViewMode(view);
-		vp.model1[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
+		vp.model1[3] = deviceScaleOf(cmd);
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 		const float *vertexScope = scopeOf(cmd);
 		if (vertexScope) { vp.shift[0] = vertexScope[0]; vp.shift[1] = vertexScope[1]; }
-		copyClipParams(vp.clipU, vp.clipV, cmd);
+		copyClipParams(vp.clipU, vp.clipV, vp.clipRoundU, vp.clipRoundV, vp.clipRadii, cmd);
 		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {
 			doorApplyUniforms(UB_void2d_params, (const uint8_t *)&vp, (int64_t)sizeof(vp));
 			lastParams = vp;

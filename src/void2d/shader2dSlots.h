@@ -27,6 +27,9 @@ typedef struct __attribute__((aligned(16))) void2d_params_t {
     float globalColor[4];
     float clipU[4];
     float clipV[4];
+    float clipRoundU[4];
+    float clipRoundV[4];
+    float clipRadii[4];
     float shift[4];
 } void2d_params_t;
 #pragma pack(pop)
@@ -52,6 +55,9 @@ typedef struct __attribute__((aligned(16))) sprite_params_t {
     float viewport[4];
     float clipU[4];
     float clipV[4];
+    float clipRoundU[4];
+    float clipRoundV[4];
+    float clipRadii[4];
     float shift[4];
 } sprite_params_t;
 #pragma pack(pop)
@@ -61,6 +67,9 @@ typedef struct __attribute__((aligned(16))) ui_params_t {
     float viewport[4];
     float clipU[4];
     float clipV[4];
+    float clipRoundU[4];
+    float clipRoundV[4];
+    float clipRadii[4];
     float shift[4];
 } ui_params_t;
 #pragma pack(pop)

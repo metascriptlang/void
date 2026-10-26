@@ -819,6 +819,49 @@ function clipCameraPan(): Scene2D {
 	return s;
 }
 
+// CSS `overflow: hidden` with `border-radius` over every pipeline: a card's box and its rounded
+// Mask share radii, so the children end on the box's antialiased edge; a square Mask crossing a
+// rounded one, a rotated Mask with four different corners over a sprite, a rounded Mask inside a
+// larger one over Graphics, and a scrolled list inside a rounded Mask.
+function clipRoundedMask(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const radii = uniformRadii(16.0);
+	s.add(s.rect(100.0, 64.0, rgba(0.20, 0.24, 0.32, 1.0)).at(12.0, 12.0))
+		.setBoxStyle(BoxStyle.create(radii, uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0)));
+	const card = s.add(s.mask(100.0, 64.0).at(12.0, 12.0));
+	card.setMaskRadii(radii);
+	card.addChild(s.rect(70.0, 30.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-10.0, -10.0));
+	card.addChild(s.rect(60.0, 40.0, rgba(0.30, 0.55, 0.85, 1.0)).at(60.0, 40.0));
+	const corner = card.addChild(s.mask(40.0, 30.0).at(70.0, -6.0));
+	corner.addChild(s.rect(60.0, 60.0, rgba(0.35, 0.80, 0.45, 1.0)).at(-10.0, -10.0));
+
+	const turned = s.add(s.mask(90.0, 60.0).at(190.0, 52.0));
+	turned.setPivot(45.0, 30.0);
+	turned.setRotation(0.5236);
+	turned.setMaskRadii({ topLeft: 24.0, topRight: 0.0, bottomRight: 12.0, bottomLeft: 4.0 });
+	turned.addChild(s.sprite(sheet().sub(0.0, 0.0, 64.0, 64.0)).at(-10.0, -10.0));
+	turned.addChild(s.rect(60.0, 40.0, rgba(0.92, 0.80, 0.30, 1.0)).at(50.0, 30.0));
+
+	const outer = s.add(s.mask(110.0, 60.0).at(12.0, 90.0));
+	outer.setMaskRadii(uniformRadii(18.0));
+	const g = outer.addChild(s.graphics());
+	g.fillCheckerRect(0.0, 0.0, 110.0, 60.0,
+		rgba(0.16, 0.17, 0.20, 1.0), rgba(0.82, 0.84, 0.88, 1.0), 8.0);
+	const inner = outer.addChild(s.mask(50.0, 30.0).at(40.0, 15.0));
+	inner.setMaskRadii(uniformRadii(8.0));
+	inner.addChild(s.rect(80.0, 60.0, rgba(0.95, 0.30, 0.45, 1.0)).at(-15.0, -15.0));
+
+	const frame = s.add(s.mask(100.0, 50.0).at(140.0, 106.0));
+	frame.setMaskRadii(uniformRadii(12.0));
+	const list = frame.addChild(s.mask(100.0, 50.0));
+	for (let i: int32 = 0; i < 8; i++) {
+		const stripe: Color = i % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.30, 0.36, 0.48, 1.0);
+		list.addChild(s.rect(100.0, 14.0, stripe).at(0.0, (i as float32) * 14.0));
+	}
+	list.scrollTo(0.0, 21.0);
+	return s;
+}
+
 // ===== text/ =====
 
 const CODE_LINE: string = "fn main() { let x: i32 = 42; }";
@@ -2341,5 +2384,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/outlineSdfZoom4", build: textOutlineSdfZoom4 },
 		{ name: "text/outlineSdfScaleDown", build: textOutlineSdfScaleDown },
 		{ name: "text/outlineSdfSeam", build: textOutlineSdfSeam },
+		{ name: "clip/roundedMask", build: clipRoundedMask },
 	];
 }
