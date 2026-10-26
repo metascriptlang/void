@@ -145,6 +145,8 @@
 	X(vkCmdSetStencilReference) \
 	X(vkCmdDraw) \
 	X(vkCmdDrawIndexed) \
+	X(vkCmdDrawIndirect) \
+	X(vkCmdDrawIndexedIndirect) \
 	X(vkCmdDispatch) \
 	X(vkCmdDispatchIndirect) \
 	X(vkCmdCopyBuffer) \
@@ -1427,6 +1429,11 @@ int32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words, uint64_t *re
 	uint32_t resolves = 0;
 	for (uint32_t i = 0; i < colors; i++) {
 		const uint32_t *c = key + 1 + i * COLOR_KEY_WORDS;
+		resolveRefs[i] = (VkAttachmentReference){ VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
+		if (c[0] == VK_FORMAT_UNDEFINED) {
+			colorRefs[i] = (VkAttachmentReference){ VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
+			continue;
+		}
 		if (!validLoadStore(c[2], c[3]) || !validSamples(c[1])) {
 			return fail(VULKAN_ERROR_ORDER, "vulkanRenderPassCreate: color %u has load op %u, store op %u and %u samples",
 				i, c[2], c[3], c[1]);
@@ -1440,7 +1447,6 @@ int32_t vulkanRenderPassCreate(const uint32_t *key, uint32_t words, uint64_t *re
 		color.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		colorRefs[i] = (VkAttachmentReference){ count, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
 		attachments[count++] = color;
-		resolveRefs[i] = (VkAttachmentReference){ VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
 		if (c[4] != VK_FORMAT_UNDEFINED) {
 			VkAttachmentDescription resolve = color;
 			resolve.format = (VkFormat)c[4];
@@ -1549,9 +1555,11 @@ int32_t vulkanPassBegin(
 	if (width == 0 || height == 0) return fail(VULKAN_ERROR_ORDER, "vulkanPassBegin with a %ux%u render area", width, height);
 	uint32_t colors = key[0];
 	const uint32_t *depth = key + 1 + colors * COLOR_KEY_WORDS;
-	uint32_t attachmentCount = colors + (depth[0] != 0 ? 1 : 0);
+	uint32_t attachmentCount = depth[0] != 0 ? 1 : 0;
 	for (uint32_t i = 0; i < colors; i++) {
-		if (key[1 + i * COLOR_KEY_WORDS + 4] != VK_FORMAT_UNDEFINED) attachmentCount++;
+		const uint32_t *c = key + 1 + i * COLOR_KEY_WORDS;
+		if (c[0] != VK_FORMAT_UNDEFINED) attachmentCount++;
+		if (c[0] != VK_FORMAT_UNDEFINED && c[4] != VK_FORMAT_UNDEFINED) attachmentCount++;
 	}
 	uint32_t clearWords = colors * 4 + (depth[0] != 0 ? 2 : 0);
 	if (viewCount != attachmentCount || clearCount != clearWords) {
@@ -1564,6 +1572,7 @@ int32_t vulkanPassBegin(
 	uint32_t valueCount = 0;
 	for (uint32_t i = 0; i < colors; i++) {
 		const uint32_t *c = key + 1 + i * COLOR_KEY_WORDS;
+		if (c[0] == VK_FORMAT_UNDEFINED) continue;
 		values[valueCount++] = colorClear((VkFormat)c[0], clears + i * 4);
 		if (c[4] != VK_FORMAT_UNDEFINED) values[valueCount++] = colorClear((VkFormat)c[4], (const float[4]){ 0, 0, 0, 0 });
 	}
@@ -1606,6 +1615,7 @@ int32_t vulkanPassBegin(
 	vkd.vkCmdSetViewport(commands, 0, 1, &viewport);
 	vkd.vkCmdSetScissor(commands, 0, 1, &area);
 	vkd.vkCmdSetStencilReference(commands, VK_STENCIL_FACE_FRONT_AND_BACK, 0);
+	vkd.vkCmdSetBlendConstants(commands, (const float[4]){ 0, 0, 0, 0 });
 	s_passOpen = 1;
 	return VULKAN_OK;
 }
@@ -1614,6 +1624,474 @@ int32_t vulkanPassEnd(void) {
 	if (!s_passOpen) return fail(VULKAN_ERROR_ORDER, "vulkanPassEnd without a render pass");
 	vkd.vkCmdEndRenderPass(s_recording);
 	s_passOpen = 0;
+	return VULKAN_OK;
+}
+
+#define SPIRV_MAGIC 0x07230203u
+#define SET_LAYOUT_ENTRY_WORDS 3
+#define SET_WRITE_WORDS 3
+#define MAX_SET_BINDINGS 32
+#define MAX_PIPELINE_SETS 4
+#define MAX_POOL_SIZES 11
+#define MAX_POOL_SETS 512
+#define VERTEX_BUFFER_WORDS 3
+#define VERTEX_ATTRIBUTE_WORDS 4
+#define MAX_VERTEX_BUFFERS 8
+#define MAX_VERTEX_ATTRIBUTES 16
+#define COLOR_TARGET_WORDS 8
+#define RENDER_STATE_WORDS 20
+
+static VkDescriptorSet s_poolSets[MAX_POOL_SETS];
+static uint32_t s_poolSetCount;
+
+int32_t vulkanShaderModuleCreate(const uint8_t *code, uint64_t bytes, uint64_t *module) {
+	*module = 0;
+	if (deviceReady("vulkanShaderModuleCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	if (bytes < 20 || bytes % 4 != 0) {
+		return fail(VULKAN_ERROR_ORDER, "vulkanShaderModuleCreate: %llu bytes are not a SPIR-V module of whole words with its header",
+			(unsigned long long)bytes);
+	}
+	uint32_t magic;
+	memcpy(&magic, code, sizeof magic);
+	if (magic != SPIRV_MAGIC) return fail(VULKAN_ERROR_ORDER, "vulkanShaderModuleCreate: the code starts with 0x%08x, not the SPIR-V magic number", magic);
+	const uint32_t *words = (const uint32_t *)(const void *)code;
+	uint32_t *copy = NULL;
+	if (((uintptr_t)code & 3) != 0) {
+		copy = malloc((size_t)bytes);
+		if (copy == NULL) return fail(VULKAN_OUT_OF_MEMORY, "out of memory aligning %llu bytes of SPIR-V", (unsigned long long)bytes);
+		memcpy(copy, code, (size_t)bytes);
+		words = copy;
+	}
+	VkShaderModuleCreateInfo info = { .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO };
+	info.codeSize = (size_t)bytes;
+	info.pCode = words;
+	VkShaderModule fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateShaderModule(s_vk.device, &info, NULL, &fresh);
+	free(copy);
+	if (result != VK_SUCCESS) return failCall("vkCreateShaderModule", result);
+	*module = HANDLE_OUT(fresh);
+	return VULKAN_OK;
+}
+
+void vulkanShaderModuleDestroy(uint64_t module) {
+	vkd.vkDestroyShaderModule(s_vk.device, HANDLE_IN(VkShaderModule, module), NULL);
+}
+
+int32_t vulkanSetLayoutCreate(const uint32_t *entries, uint32_t count, uint64_t *layout) {
+	*layout = 0;
+	if (deviceReady("vulkanSetLayoutCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	if (count > MAX_SET_BINDINGS) return fail(VULKAN_ERROR_ORDER, "vulkanSetLayoutCreate: %u bindings are over %u", count, MAX_SET_BINDINGS);
+	VkDescriptorSetLayoutBinding bindings[MAX_SET_BINDINGS];
+	for (uint32_t i = 0; i < count; i++) {
+		const uint32_t *e = entries + i * SET_LAYOUT_ENTRY_WORDS;
+		bindings[i] = (VkDescriptorSetLayoutBinding){ .binding = e[0], .descriptorType = (VkDescriptorType)e[1] };
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = e[2];
+	}
+	VkDescriptorSetLayoutCreateInfo info = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	info.bindingCount = count;
+	info.pBindings = count != 0 ? bindings : NULL;
+	VkDescriptorSetLayout fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateDescriptorSetLayout(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateDescriptorSetLayout", result);
+	*layout = HANDLE_OUT(fresh);
+	return VULKAN_OK;
+}
+
+void vulkanSetLayoutDestroy(uint64_t layout) {
+	vkd.vkDestroyDescriptorSetLayout(s_vk.device, HANDLE_IN(VkDescriptorSetLayout, layout), NULL);
+}
+
+int32_t vulkanPipelineLayoutCreate(const uint64_t *setLayouts, uint32_t count, uint64_t *layout) {
+	*layout = 0;
+	if (deviceReady("vulkanPipelineLayoutCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	if (count > MAX_PIPELINE_SETS) return fail(VULKAN_ERROR_ORDER, "vulkanPipelineLayoutCreate: %u sets are over %u", count, MAX_PIPELINE_SETS);
+	VkDescriptorSetLayout sets[MAX_PIPELINE_SETS];
+	for (uint32_t i = 0; i < count; i++) sets[i] = HANDLE_IN(VkDescriptorSetLayout, setLayouts[i]);
+	VkPipelineLayoutCreateInfo info = { .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
+	info.setLayoutCount = count;
+	info.pSetLayouts = count != 0 ? sets : NULL;
+	VkPipelineLayout fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreatePipelineLayout(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreatePipelineLayout", result);
+	*layout = HANDLE_OUT(fresh);
+	return VULKAN_OK;
+}
+
+void vulkanPipelineLayoutDestroy(uint64_t layout) {
+	vkd.vkDestroyPipelineLayout(s_vk.device, HANDLE_IN(VkPipelineLayout, layout), NULL);
+}
+
+int32_t vulkanDescriptorPoolCreate(const uint32_t *sizes, uint32_t sizeCount, uint32_t maxSets, uint64_t setLayout, uint64_t *pool) {
+	*pool = 0;
+	s_poolSetCount = 0;
+	if (deviceReady("vulkanDescriptorPoolCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	if (sizeCount > MAX_POOL_SIZES || maxSets == 0 || maxSets > MAX_POOL_SETS) {
+		return fail(VULKAN_ERROR_ORDER, "vulkanDescriptorPoolCreate: %u pool sizes and %u sets are outside 0..%u and 1..%u",
+			sizeCount, maxSets, MAX_POOL_SIZES, MAX_POOL_SETS);
+	}
+	VkDescriptorPoolSize poolSizes[MAX_POOL_SIZES];
+	for (uint32_t i = 0; i < sizeCount; i++) {
+		poolSizes[i] = (VkDescriptorPoolSize){ (VkDescriptorType)sizes[i * 2], sizes[i * 2 + 1] };
+	}
+	VkDescriptorPoolCreateInfo info = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO };
+	info.maxSets = maxSets;
+	info.poolSizeCount = sizeCount;
+	info.pPoolSizes = sizeCount != 0 ? poolSizes : NULL;
+	VkDescriptorPool fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateDescriptorPool(s_vk.device, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateDescriptorPool", result);
+	VkDescriptorSetLayout layouts[MAX_POOL_SETS];
+	for (uint32_t i = 0; i < maxSets; i++) layouts[i] = HANDLE_IN(VkDescriptorSetLayout, setLayout);
+	VkDescriptorSetAllocateInfo allocate = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO };
+	allocate.descriptorPool = fresh;
+	allocate.descriptorSetCount = maxSets;
+	allocate.pSetLayouts = layouts;
+	result = vkd.vkAllocateDescriptorSets(s_vk.device, &allocate, s_poolSets);
+	if (result != VK_SUCCESS) {
+		vkd.vkDestroyDescriptorPool(s_vk.device, fresh, NULL);
+		return failCall("vkAllocateDescriptorSets", result);
+	}
+	s_poolSetCount = maxSets;
+	*pool = HANDLE_OUT(fresh);
+	return VULKAN_OK;
+}
+
+uint64_t vulkanDescriptorPoolSet(uint32_t index) {
+	return index < s_poolSetCount ? HANDLE_OUT(s_poolSets[index]) : 0;
+}
+
+void vulkanDescriptorPoolDestroy(uint64_t pool) {
+	vkd.vkDestroyDescriptorPool(s_vk.device, HANDLE_IN(VkDescriptorPool, pool), NULL);
+}
+
+static int32_t isBufferDescriptor(VkDescriptorType type) {
+	return type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+		|| type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+}
+
+int32_t vulkanDescriptorSetWrite(
+	uint64_t set,
+	const uint32_t *words,
+	const uint64_t *handles,
+	const uint64_t *offsets,
+	const uint64_t *ranges,
+	uint32_t count) {
+	if (deviceReady("vulkanDescriptorSetWrite") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	if (count > MAX_SET_BINDINGS) return fail(VULKAN_ERROR_ORDER, "vulkanDescriptorSetWrite: %u entries are over %u", count, MAX_SET_BINDINGS);
+	VkWriteDescriptorSet writes[MAX_SET_BINDINGS];
+	VkDescriptorBufferInfo buffers[MAX_SET_BINDINGS];
+	VkDescriptorImageInfo images[MAX_SET_BINDINGS];
+	for (uint32_t i = 0; i < count; i++) {
+		const uint32_t *w = words + i * SET_WRITE_WORDS;
+		VkDescriptorType type = (VkDescriptorType)w[1];
+		writes[i] = (VkWriteDescriptorSet){ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+		writes[i].dstSet = HANDLE_IN(VkDescriptorSet, set);
+		writes[i].dstBinding = w[0];
+		writes[i].descriptorCount = 1;
+		writes[i].descriptorType = type;
+		if (isBufferDescriptor(type)) {
+			buffers[i] = (VkDescriptorBufferInfo){ HANDLE_IN(VkBuffer, handles[i]), offsets[i], ranges[i] };
+			writes[i].pBufferInfo = &buffers[i];
+		} else if (type == VK_DESCRIPTOR_TYPE_SAMPLER) {
+			images[i] = (VkDescriptorImageInfo){ .sampler = HANDLE_IN(VkSampler, handles[i]) };
+			writes[i].pImageInfo = &images[i];
+		} else if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE) {
+			images[i] = (VkDescriptorImageInfo){ .imageView = HANDLE_IN(VkImageView, handles[i]), .imageLayout = (VkImageLayout)w[2] };
+			writes[i].pImageInfo = &images[i];
+		} else {
+			return fail(VULKAN_ERROR_ORDER, "vulkanDescriptorSetWrite: binding %u has descriptor type %u, which Void does not write", w[0], w[1]);
+		}
+	}
+	vkd.vkUpdateDescriptorSets(s_vk.device, count, writes, 0, NULL);
+	return VULKAN_OK;
+}
+
+static VkPipelineShaderStageCreateInfo shaderStage(VkShaderStageFlagBits stage, uint64_t module, const char *entry) {
+	VkPipelineShaderStageCreateInfo info = { .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+	info.stage = stage;
+	info.module = HANDLE_IN(VkShaderModule, module);
+	info.pName = entry;
+	return info;
+}
+
+static VkStencilOpState stencilFace(const uint32_t *face, uint32_t readMask, uint32_t writeMask) {
+	VkStencilOpState state = { .failOp = (VkStencilOp)face[0], .passOp = (VkStencilOp)face[1] };
+	state.depthFailOp = (VkStencilOp)face[2];
+	state.compareOp = (VkCompareOp)face[3];
+	state.compareMask = readMask;
+	state.writeMask = writeMask;
+	state.reference = 0;
+	return state;
+}
+
+int32_t vulkanRenderPipelineCreate(
+	uint64_t layout,
+	uint64_t renderPass,
+	uint64_t vertexModule,
+	const char *vertexEntry,
+	uint64_t fragmentModule,
+	const char *fragmentEntry,
+	const uint32_t *state,
+	const uint32_t *vertex,
+	uint32_t bufferCount,
+	uint32_t attributeCount,
+	const uint32_t *targets,
+	uint32_t targetCount,
+	float depthBiasSlope,
+	float depthBiasClamp,
+	uint64_t *pipeline) {
+	*pipeline = 0;
+	if (deviceReady("vulkanRenderPipelineCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	if (bufferCount > MAX_VERTEX_BUFFERS || attributeCount > MAX_VERTEX_ATTRIBUTES || targetCount > MAX_COLOR_ATTACHMENTS) {
+		return fail(VULKAN_ERROR_ORDER, "vulkanRenderPipelineCreate: %u vertex buffers, %u attributes and %u color targets are over %u, %u and %u",
+			bufferCount, attributeCount, targetCount, MAX_VERTEX_BUFFERS, MAX_VERTEX_ATTRIBUTES, MAX_COLOR_ATTACHMENTS);
+	}
+	if (!validSamples(state[4])) return fail(VULKAN_ERROR_ORDER, "vulkanRenderPipelineCreate: %u samples", state[4]);
+	VkPipelineShaderStageCreateInfo stages[2];
+	uint32_t stageCount = 0;
+	stages[stageCount++] = shaderStage(VK_SHADER_STAGE_VERTEX_BIT, vertexModule, vertexEntry);
+	if (fragmentModule != 0) stages[stageCount++] = shaderStage(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentModule, fragmentEntry);
+
+	VkVertexInputBindingDescription bindings[MAX_VERTEX_BUFFERS];
+	for (uint32_t i = 0; i < bufferCount; i++) {
+		const uint32_t *b = vertex + i * VERTEX_BUFFER_WORDS;
+		bindings[i] = (VkVertexInputBindingDescription){ b[0], b[1], (VkVertexInputRate)b[2] };
+	}
+	VkVertexInputAttributeDescription attributes[MAX_VERTEX_ATTRIBUTES];
+	const uint32_t *attributeWords = vertex + bufferCount * VERTEX_BUFFER_WORDS;
+	for (uint32_t i = 0; i < attributeCount; i++) {
+		const uint32_t *a = attributeWords + i * VERTEX_ATTRIBUTE_WORDS;
+		attributes[i] = (VkVertexInputAttributeDescription){ a[0], a[1], (VkFormat)a[2], a[3] };
+	}
+	VkPipelineVertexInputStateCreateInfo vertexInput = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+	vertexInput.vertexBindingDescriptionCount = bufferCount;
+	vertexInput.pVertexBindingDescriptions = bufferCount != 0 ? bindings : NULL;
+	vertexInput.vertexAttributeDescriptionCount = attributeCount;
+	vertexInput.pVertexAttributeDescriptions = attributeCount != 0 ? attributes : NULL;
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly = { .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+	inputAssembly.topology = (VkPrimitiveTopology)state[0];
+	inputAssembly.primitiveRestartEnable = state[1] ? VK_TRUE : VK_FALSE;
+
+	VkPipelineViewportStateCreateInfo viewport = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+	viewport.viewportCount = 1;
+	viewport.scissorCount = 1;
+
+	float depthBias = (float)(int32_t)state[19];
+	VkPipelineRasterizationStateCreateInfo rasterization = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+	rasterization.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterization.cullMode = state[2];
+	rasterization.frontFace = (VkFrontFace)state[3];
+	rasterization.depthBiasEnable = depthBias != 0.0f || depthBiasSlope != 0.0f ? VK_TRUE : VK_FALSE;
+	rasterization.depthBiasConstantFactor = depthBias;
+	rasterization.depthBiasClamp = depthBiasClamp;
+	rasterization.depthBiasSlopeFactor = depthBiasSlope;
+	rasterization.lineWidth = 1.0f;
+
+	VkSampleMask sampleMask = 0xFFFFFFFFu;
+	VkPipelineMultisampleStateCreateInfo multisample = { .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+	multisample.rasterizationSamples = (VkSampleCountFlagBits)state[4];
+	multisample.minSampleShading = 1.0f;
+	multisample.pSampleMask = &sampleMask;
+
+	VkPipelineDepthStencilStateCreateInfo depthStencil = { .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+	depthStencil.depthTestEnable = state[5] ? VK_TRUE : VK_FALSE;
+	depthStencil.depthWriteEnable = state[6] ? VK_TRUE : VK_FALSE;
+	depthStencil.depthCompareOp = (VkCompareOp)state[7];
+	depthStencil.stencilTestEnable = state[8] ? VK_TRUE : VK_FALSE;
+	depthStencil.front = stencilFace(state + 9, state[17], state[18]);
+	depthStencil.back = stencilFace(state + 13, state[17], state[18]);
+	depthStencil.minDepthBounds = 0.0f;
+	depthStencil.maxDepthBounds = 1.0f;
+
+	VkPipelineColorBlendAttachmentState blends[MAX_COLOR_ATTACHMENTS];
+	for (uint32_t i = 0; i < targetCount; i++) {
+		const uint32_t *t = targets + i * COLOR_TARGET_WORDS;
+		blends[i] = (VkPipelineColorBlendAttachmentState){ .blendEnable = t[0] ? VK_TRUE : VK_FALSE };
+		blends[i].srcColorBlendFactor = (VkBlendFactor)t[1];
+		blends[i].dstColorBlendFactor = (VkBlendFactor)t[2];
+		blends[i].colorBlendOp = (VkBlendOp)t[3];
+		blends[i].srcAlphaBlendFactor = (VkBlendFactor)t[4];
+		blends[i].dstAlphaBlendFactor = (VkBlendFactor)t[5];
+		blends[i].alphaBlendOp = (VkBlendOp)t[6];
+		blends[i].colorWriteMask = t[7];
+	}
+	VkPipelineColorBlendStateCreateInfo colorBlend = { .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+	colorBlend.attachmentCount = targetCount;
+	colorBlend.pAttachments = targetCount != 0 ? blends : NULL;
+
+	VkDynamicState dynamicStates[] = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_BLEND_CONSTANTS,
+		VK_DYNAMIC_STATE_STENCIL_REFERENCE,
+	};
+	VkPipelineDynamicStateCreateInfo dynamic = { .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+	dynamic.dynamicStateCount = sizeof dynamicStates / sizeof dynamicStates[0];
+	dynamic.pDynamicStates = dynamicStates;
+
+	VkGraphicsPipelineCreateInfo info = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+	info.stageCount = stageCount;
+	info.pStages = stages;
+	info.pVertexInputState = &vertexInput;
+	info.pInputAssemblyState = &inputAssembly;
+	info.pViewportState = &viewport;
+	info.pRasterizationState = &rasterization;
+	info.pMultisampleState = &multisample;
+	info.pDepthStencilState = &depthStencil;
+	info.pColorBlendState = &colorBlend;
+	info.pDynamicState = &dynamic;
+	info.layout = HANDLE_IN(VkPipelineLayout, layout);
+	info.renderPass = HANDLE_IN(VkRenderPass, renderPass);
+	info.subpass = 0;
+	info.basePipelineIndex = -1;
+	VkPipeline fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateGraphicsPipelines(s_vk.device, VK_NULL_HANDLE, 1, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateGraphicsPipelines", result);
+	*pipeline = HANDLE_OUT(fresh);
+	return VULKAN_OK;
+}
+
+int32_t vulkanComputePipelineCreate(uint64_t layout, uint64_t module, const char *entry, uint64_t *pipeline) {
+	*pipeline = 0;
+	if (deviceReady("vulkanComputePipelineCreate") != VULKAN_OK) return VULKAN_ERROR_ORDER;
+	VkComputePipelineCreateInfo info = { .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO };
+	info.stage = shaderStage(VK_SHADER_STAGE_COMPUTE_BIT, module, entry);
+	info.layout = HANDLE_IN(VkPipelineLayout, layout);
+	info.basePipelineIndex = -1;
+	VkPipeline fresh = VK_NULL_HANDLE;
+	VkResult result = vkd.vkCreateComputePipelines(s_vk.device, VK_NULL_HANDLE, 1, &info, NULL, &fresh);
+	if (result != VK_SUCCESS) return failCall("vkCreateComputePipelines", result);
+	*pipeline = HANDLE_OUT(fresh);
+	return VULKAN_OK;
+}
+
+void vulkanPipelineDestroy(uint64_t pipeline) {
+	vkd.vkDestroyPipeline(s_vk.device, HANDLE_IN(VkPipeline, pipeline), NULL);
+}
+
+static int32_t inPass(const char *caller) {
+	if (!s_passOpen) return fail(VULKAN_ERROR_ORDER, "%s outside a render pass", caller);
+	return VULKAN_OK;
+}
+
+static int32_t commandsFor(int32_t compute, const char *caller, VkCommandBuffer *commands) {
+	if (compute) return recording(caller, commands);
+	*commands = s_recording;
+	return inPass(caller);
+}
+
+int32_t vulkanCmdBindPipeline(int32_t compute, uint64_t pipeline) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = commandsFor(compute, "vulkanCmdBindPipeline", &commands);
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdBindPipeline(commands, compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
+		HANDLE_IN(VkPipeline, pipeline));
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdBindSet(int32_t compute, uint64_t layout, uint32_t index, uint64_t set, const uint32_t *offsets, uint32_t offsetCount) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = commandsFor(compute, "vulkanCmdBindSet", &commands);
+	if (status != VULKAN_OK) return status;
+	VkDescriptorSet bound = HANDLE_IN(VkDescriptorSet, set);
+	vkd.vkCmdBindDescriptorSets(commands, compute ? VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS,
+		HANDLE_IN(VkPipelineLayout, layout), index, 1, &bound, offsetCount, offsetCount != 0 ? offsets : NULL);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdBindVertexBuffer(uint32_t slot, uint64_t buffer, uint64_t offset) {
+	int32_t status = inPass("vulkanCmdBindVertexBuffer");
+	if (status != VULKAN_OK) return status;
+	VkBuffer bound = HANDLE_IN(VkBuffer, buffer);
+	VkDeviceSize at = offset;
+	vkd.vkCmdBindVertexBuffers(s_recording, slot, 1, &bound, &at);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdBindIndexBuffer(uint64_t buffer, uint64_t offset, int32_t indexType) {
+	int32_t status = inPass("vulkanCmdBindIndexBuffer");
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdBindIndexBuffer(s_recording, HANDLE_IN(VkBuffer, buffer), offset, (VkIndexType)indexType);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdViewport(float x, float y, float width, float height, float minDepth, float maxDepth) {
+	int32_t status = inPass("vulkanCmdViewport");
+	if (status != VULKAN_OK) return status;
+	VkViewport viewport = { .x = x, .y = y + height, .width = width, .height = -height };
+	viewport.minDepth = minDepth;
+	viewport.maxDepth = maxDepth;
+	if (width == 0.0f) {
+		viewport.x = 0.0f;
+		viewport.width = 1.0f;
+		viewport.height = 0.0f;
+	}
+	vkd.vkCmdSetViewport(s_recording, 0, 1, &viewport);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdScissor(int32_t x, int32_t y, uint32_t width, uint32_t height) {
+	int32_t status = inPass("vulkanCmdScissor");
+	if (status != VULKAN_OK) return status;
+	VkRect2D rect = { .offset = { x, y }, .extent = { width, height } };
+	vkd.vkCmdSetScissor(s_recording, 0, 1, &rect);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdBlendConstants(float r, float g, float b, float a) {
+	int32_t status = inPass("vulkanCmdBlendConstants");
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdSetBlendConstants(s_recording, (const float[4]){ r, g, b, a });
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdStencilReference(uint32_t reference) {
+	int32_t status = inPass("vulkanCmdStencilReference");
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdSetStencilReference(s_recording, VK_STENCIL_FACE_FRONT_AND_BACK, reference);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) {
+	int32_t status = inPass("vulkanCmdDraw");
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdDraw(s_recording, vertexCount, instanceCount, firstVertex, firstInstance);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance) {
+	int32_t status = inPass("vulkanCmdDrawIndexed");
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdDrawIndexed(s_recording, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdDrawIndirect(uint64_t buffer, uint64_t offset, int32_t indexed) {
+	int32_t status = inPass("vulkanCmdDrawIndirect");
+	if (status != VULKAN_OK) return status;
+	if (indexed) {
+		vkd.vkCmdDrawIndexedIndirect(s_recording, HANDLE_IN(VkBuffer, buffer), offset, 1, 0);
+	} else {
+		vkd.vkCmdDrawIndirect(s_recording, HANDLE_IN(VkBuffer, buffer), offset, 1, 0);
+	}
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdDispatch(uint32_t x, uint32_t y, uint32_t z) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = recording("vulkanCmdDispatch", &commands);
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdDispatch(commands, x, y, z);
+	return VULKAN_OK;
+}
+
+int32_t vulkanCmdDispatchIndirect(uint64_t buffer, uint64_t offset) {
+	VkCommandBuffer commands = NULL;
+	int32_t status = recording("vulkanCmdDispatchIndirect", &commands);
+	if (status != VULKAN_OK) return status;
+	vkd.vkCmdDispatchIndirect(commands, HANDLE_IN(VkBuffer, buffer), offset);
 	return VULKAN_OK;
 }
 

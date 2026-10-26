@@ -228,6 +228,55 @@ int32_t vulkanPassBegin(
 	uint32_t clearCount);
 int32_t vulkanPassEnd(void);
 
+int32_t vulkanShaderModuleCreate(const uint8_t *code, uint64_t bytes, uint64_t *module);
+void vulkanShaderModuleDestroy(uint64_t module);
+int32_t vulkanSetLayoutCreate(const uint32_t *entries, uint32_t count, uint64_t *layout);
+void vulkanSetLayoutDestroy(uint64_t layout);
+int32_t vulkanPipelineLayoutCreate(const uint64_t *setLayouts, uint32_t count, uint64_t *layout);
+void vulkanPipelineLayoutDestroy(uint64_t layout);
+int32_t vulkanDescriptorPoolCreate(const uint32_t *sizes, uint32_t sizeCount, uint32_t maxSets, uint64_t setLayout, uint64_t *pool);
+uint64_t vulkanDescriptorPoolSet(uint32_t index);
+void vulkanDescriptorPoolDestroy(uint64_t pool);
+int32_t vulkanDescriptorSetWrite(
+	uint64_t set,
+	const uint32_t *words,
+	const uint64_t *handles,
+	const uint64_t *offsets,
+	const uint64_t *ranges,
+	uint32_t count);
+int32_t vulkanRenderPipelineCreate(
+	uint64_t layout,
+	uint64_t renderPass,
+	uint64_t vertexModule,
+	const char *vertexEntry,
+	uint64_t fragmentModule,
+	const char *fragmentEntry,
+	const uint32_t *state,
+	const uint32_t *vertex,
+	uint32_t bufferCount,
+	uint32_t attributeCount,
+	const uint32_t *targets,
+	uint32_t targetCount,
+	float depthBiasSlope,
+	float depthBiasClamp,
+	uint64_t *pipeline);
+int32_t vulkanComputePipelineCreate(uint64_t layout, uint64_t module, const char *entry, uint64_t *pipeline);
+void vulkanPipelineDestroy(uint64_t pipeline);
+
+int32_t vulkanCmdBindPipeline(int32_t compute, uint64_t pipeline);
+int32_t vulkanCmdBindSet(int32_t compute, uint64_t layout, uint32_t index, uint64_t set, const uint32_t *offsets, uint32_t offsetCount);
+int32_t vulkanCmdBindVertexBuffer(uint32_t slot, uint64_t buffer, uint64_t offset);
+int32_t vulkanCmdBindIndexBuffer(uint64_t buffer, uint64_t offset, int32_t indexType);
+int32_t vulkanCmdViewport(float x, float y, float width, float height, float minDepth, float maxDepth);
+int32_t vulkanCmdScissor(int32_t x, int32_t y, uint32_t width, uint32_t height);
+int32_t vulkanCmdBlendConstants(float r, float g, float b, float a);
+int32_t vulkanCmdStencilReference(uint32_t reference);
+int32_t vulkanCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
+int32_t vulkanCmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance);
+int32_t vulkanCmdDrawIndirect(uint64_t buffer, uint64_t offset, int32_t indexed);
+int32_t vulkanCmdDispatch(uint32_t x, uint32_t y, uint32_t z);
+int32_t vulkanCmdDispatchIndirect(uint64_t buffer, uint64_t offset);
+
 int32_t vulkanSwapchainCreate(
 	int32_t format,
 	uint32_t colorSpace,
