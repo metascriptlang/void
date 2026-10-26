@@ -89,6 +89,11 @@ function builtinName(op: Intrinsic): string {
 		Intrinsic.InverseSqrt => "rsqrt",
 		Intrinsic.Dpdx => "dfdx",
 		Intrinsic.Dpdy => "dfdy",
+		Intrinsic.DpdxCoarse | Intrinsic.DpdxFine => "dfdx",
+		Intrinsic.DpdyCoarse | Intrinsic.DpdyFine => "dfdy",
+		Intrinsic.FwidthCoarse | Intrinsic.FwidthFine => "fwidth",
+		Intrinsic.CountLeadingZeros => "clz",
+		Intrinsic.CountTrailingZeros => "ctz",
 		Intrinsic.CountOneBits => "popcount",
 		Intrinsic.ReverseBits => "reverse_bits",
 		Intrinsic.Pack4x8Unorm => "pack_float_to_unorm4x8",
@@ -600,6 +605,9 @@ function bitsText(p: Printer, e: ShaderExpr): string {
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
+	if (op == Intrinsic.Bitcast) {
+		return "as_type<" + typeText(p, e.type) + ">(" + exprText(p, o[0]) + ")";
+	}
 	const name = isMath(op) ? builtinName(op) : "";
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
 	if (isComponentCompare(op)) {

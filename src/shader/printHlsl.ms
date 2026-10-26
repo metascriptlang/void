@@ -660,6 +660,10 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.Fma => "mad",
 		Intrinsic.Dpdx => "ddx",
 		Intrinsic.Dpdy => "ddy",
+		Intrinsic.DpdxCoarse => "ddx_coarse",
+		Intrinsic.DpdxFine => "ddx_fine",
+		Intrinsic.DpdyCoarse => "ddy_coarse",
+		Intrinsic.DpdyFine => "ddy_fine",
 		_ => mathName(op),
 	};
 }
@@ -720,6 +724,16 @@ function bitsOf(p: Printer, e: ShaderExpr): string {
 			expr(p, o[0]) + ")";
 		return isSigned ? "asint(" + call + ")" : call;
 	}
+	if (op == Intrinsic.CountLeadingZeros) {
+		const call = "(31u - firstbithigh(" + (isSigned ? "asuint(" + expr(p, o[0]) + ")" :
+			expr(p, o[0])) + "))";
+		return isSigned ? "asint" + call : call;
+	}
+	if (op == Intrinsic.CountTrailingZeros) {
+		const call = "min(32u, firstbitlow(" + (isSigned ? "asuint(" + expr(p, o[0]) + ")" :
+			expr(p, o[0])) + "))";
+		return isSigned ? "asint(" + call + ")" : call;
+	}
 	if (op == Intrinsic.ExtractBits) {
 		const name = helper(p, "extractBits " + t, "extractBits", (n) =>
 			t + " " + n + "(" + t + " e, uint offset, uint count)\n{\n" +
@@ -743,6 +757,35 @@ function bitsOf(p: Printer, e: ShaderExpr): string {
 	return name + "(" + expr(p, o[0]) + ")";
 }
 
+// HLSL has no asinh, acosh, atanh or coarse and fine fwidth: each is a helper, as naga writes
+// them, so an operand is evaluated once. asinh is odd by construction, where naga's form loses
+// every digit of a large negative operand to the cancellation in e + sqrt(e * e + 1).
+function polyfillOf(p: Printer, e: ShaderExpr): string {
+	const op = e.intrinsic;
+	const t = typeName(p, e.type);
+	const body = match (op) {
+		Intrinsic.Asinh => "sign(e) * log(abs(e) + sqrt(e * e + 1.0))",
+		Intrinsic.Acosh => "log(e + sqrt(e * e - 1.0))",
+		Intrinsic.Atanh => "0.5 * log((1.0 + e) / (1.0 - e))",
+		Intrinsic.FwidthCoarse => "abs(ddx_coarse(e)) + abs(ddy_coarse(e))",
+		Intrinsic.FwidthFine => "abs(ddx_fine(e)) + abs(ddy_fine(e))",
+		_ => fail(p, op.toString() + " has no HLSL helper"),
+	};
+	const name = helper(p, op.toString() + " " + t, mathName(op), (n) =>
+		t + " " + n + "(" + t + " e)
+{
+    return " + body + ";
+}
+");
+	return name + "(" + expr(p, e.operands[0]) + ")";
+}
+
+function bitcastOf(p: Printer, e: ShaderExpr): string {
+	const to = e.type.scalar;
+	const name = to == ScalarKind.F32 ? "asfloat" : to == ScalarKind.I32 ? "asint" : "asuint";
+	return name + "(" + expr(p, e.operands[0]) + ")";
+}
+
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
 	if (isComponentCompare(e.intrinsic)) {
@@ -751,11 +794,15 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 	}
 	return match (e.intrinsic) {
 		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
+			Intrinsic.ExtractBits | Intrinsic.InsertBits |
 			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
 			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
 			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
 			Intrinsic.Unpack2x16Float => bitsOf(p, e),
+		Intrinsic.Asinh | Intrinsic.Acosh | Intrinsic.Atanh | Intrinsic.FwidthCoarse |
+			Intrinsic.FwidthFine => polyfillOf(p, e),
+		Intrinsic.Bitcast => bitcastOf(p, e),
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", "int", e.type),
 		Intrinsic.Inverse => inverseOf(p, e),
 		Intrinsic.UpperLeft3x3 => "((float3x3)" + operand(p, e.operands[0]) + ")",

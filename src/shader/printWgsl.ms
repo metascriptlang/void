@@ -25,6 +25,7 @@ import {
 	UnaryOp,
 	sameShaderType,
 	isAtomic,
+	isDerivative,
 	isEffect,
 } from "./ir";
 import { BindingSlot } from "./layout";
@@ -104,6 +105,10 @@ function builtinName(op: Intrinsic): string {
 		Intrinsic.FaceForward => "faceForward",
 		Intrinsic.Dpdx => "dpdx",
 		Intrinsic.Dpdy => "dpdy",
+		Intrinsic.DpdxCoarse => "dpdxCoarse",
+		Intrinsic.DpdxFine => "dpdxFine",
+		Intrinsic.DpdyCoarse => "dpdyCoarse",
+		Intrinsic.DpdyFine => "dpdyFine",
 		Intrinsic.Select => "select",
 		Intrinsic.CountOneBits => "countOneBits",
 		Intrinsic.ReverseBits => "reverseBits",
@@ -441,8 +446,9 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const o = e.operands;
 	const op = e.intrinsic;
 	const name = isMath(op) || op == Intrinsic.Select ? builtinName(op) : "";
-	if (op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth) {
-		p.derivatives = true;
+	if (isDerivative(op)) { p.derivatives = true; }
+	if (op == Intrinsic.Bitcast) {
+		return "bitcast<" + typeText(p, e.type) + ">(" + exprText(p, o[0]) + ")";
 	}
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
 	if (isComponentCompare(op)) {

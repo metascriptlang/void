@@ -1473,6 +1473,15 @@ export function atan2(y: float32, x: float32): float32 {
 export function sinh(x: float32): float32 { return Math.sinh(x) as float32; }
 export function cosh(x: float32): float32 { return Math.cosh(x) as float32; }
 export function tanh(x: float32): float32 { return Math.tanh(x) as float32; }
+export function asinh(x: float32): float32 { return Math.asinh(x) as float32; }
+export function acosh(x: float32): float32 {
+	if (!(x >= 1.0)) { unreachable("acosh: the GPU result is undefined below 1"); }
+	return Math.acosh(x) as float32;
+}
+export function atanh(x: float32): float32 {
+	if (!(Math.abs(x) < 1.0)) { unreachable("atanh: the GPU result is undefined at or past -1 and 1"); }
+	return Math.atanh(x) as float32;
+}
 export function degrees(x: float32): float32 { return (x * 180.0 / Math.PI) as float32; }
 export function radians(x: float32): float32 { return (x * Math.PI / 180.0) as float32; }
 
@@ -1597,6 +1606,24 @@ export function cosh(v: Vec4f): Vec4f { return vec4f(cosh(v.x), cosh(v.y), cosh(
 export function tanh(v: Vec2f): Vec2f { return vec2f(tanh(v.x), tanh(v.y)); }
 export function tanh(v: Vec3f): Vec3f { return vec3f(tanh(v.x), tanh(v.y), tanh(v.z)); }
 export function tanh(v: Vec4f): Vec4f { return vec4f(tanh(v.x), tanh(v.y), tanh(v.z), tanh(v.w)); }
+export function asinh(v: Vec2f): Vec2f { return vec2f(asinh(v.x), asinh(v.y)); }
+export function asinh(v: Vec3f): Vec3f { return vec3f(asinh(v.x), asinh(v.y), asinh(v.z)); }
+export function asinh(v: Vec4f): Vec4f { return vec4f(asinh(v.x), asinh(v.y), asinh(v.z), asinh(v.w)); }
+export function acosh(v: Vec2f): Vec2f { return vec2f(acosh(v.x), acosh(v.y)); }
+export function acosh(v: Vec3f): Vec3f { return vec3f(acosh(v.x), acosh(v.y), acosh(v.z)); }
+export function acosh(v: Vec4f): Vec4f { return vec4f(acosh(v.x), acosh(v.y), acosh(v.z), acosh(v.w)); }
+export function atanh(v: Vec2f): Vec2f { return vec2f(atanh(v.x), atanh(v.y)); }
+export function atanh(v: Vec3f): Vec3f { return vec3f(atanh(v.x), atanh(v.y), atanh(v.z)); }
+export function atanh(v: Vec4f): Vec4f { return vec4f(atanh(v.x), atanh(v.y), atanh(v.z), atanh(v.w)); }
+
+// WGSL's ldexp: e1 * 2^e2. The specification leaves an e2 past 128 undefined.
+export function ldexp(x: float32, e: int32): float32 {
+	if (e > 128) { unreachable("ldexp: the exponent is past 128, which WGSL leaves undefined"); }
+	return (x * Math.pow(2.0, e as float64)) as float32;
+}
+export function ldexp(x: Vec2f, e: Vec2i): Vec2f { return vec2f(ldexp(x.x, e.x), ldexp(x.y, e.y)); }
+export function ldexp(x: Vec3f, e: Vec3i): Vec3f { return vec3f(ldexp(x.x, e.x), ldexp(x.y, e.y), ldexp(x.z, e.z)); }
+export function ldexp(x: Vec4f, e: Vec4i): Vec4f { return vec4f(ldexp(x.x, e.x), ldexp(x.y, e.y), ldexp(x.z, e.z), ldexp(x.w, e.w)); }
 export function degrees(v: Vec2f): Vec2f { return vec2f(degrees(v.x), degrees(v.y)); }
 export function degrees(v: Vec3f): Vec3f { return vec3f(degrees(v.x), degrees(v.y), degrees(v.z)); }
 export function degrees(v: Vec4f): Vec4f {
@@ -1784,6 +1811,32 @@ export function fwidth(v: float32): float32 { unreachable("fwidth: only a GPU fr
 export function fwidth(v: Vec2f): Vec2f { unreachable("fwidth: only a GPU fragment has one"); }
 export function fwidth(v: Vec3f): Vec3f { unreachable("fwidth: only a GPU fragment has one"); }
 export function fwidth(v: Vec4f): Vec4f { unreachable("fwidth: only a GPU fragment has one"); }
+
+// The coarse and fine derivatives: a fragment quad's too, so they have no CPU meaning either.
+export function dpdxCoarse(v: float32): float32 { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxCoarse(v: Vec2f): Vec2f { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxCoarse(v: Vec3f): Vec3f { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxCoarse(v: Vec4f): Vec4f { unreachable("dpdxCoarse: only a GPU fragment has one"); }
+export function dpdxFine(v: float32): float32 { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdxFine(v: Vec2f): Vec2f { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdxFine(v: Vec3f): Vec3f { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdxFine(v: Vec4f): Vec4f { unreachable("dpdxFine: only a GPU fragment has one"); }
+export function dpdyCoarse(v: float32): float32 { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyCoarse(v: Vec2f): Vec2f { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyCoarse(v: Vec3f): Vec3f { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyCoarse(v: Vec4f): Vec4f { unreachable("dpdyCoarse: only a GPU fragment has one"); }
+export function dpdyFine(v: float32): float32 { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function dpdyFine(v: Vec2f): Vec2f { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function dpdyFine(v: Vec3f): Vec3f { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function dpdyFine(v: Vec4f): Vec4f { unreachable("dpdyFine: only a GPU fragment has one"); }
+export function fwidthCoarse(v: float32): float32 { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthCoarse(v: Vec2f): Vec2f { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthCoarse(v: Vec3f): Vec3f { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthCoarse(v: Vec4f): Vec4f { unreachable("fwidthCoarse: only a GPU fragment has one"); }
+export function fwidthFine(v: float32): float32 { unreachable("fwidthFine: only a GPU fragment has one"); }
+export function fwidthFine(v: Vec2f): Vec2f { unreachable("fwidthFine: only a GPU fragment has one"); }
+export function fwidthFine(v: Vec3f): Vec3f { unreachable("fwidthFine: only a GPU fragment has one"); }
+export function fwidthFine(v: Vec4f): Vec4f { unreachable("fwidthFine: only a GPU fragment has one"); }
 
 // WGSL's boolean vectors, and the componentwise tests and selects that make and take them.
 export struct Vec2b {
@@ -3023,6 +3076,80 @@ export function insertBits(e: Vec4i, newBits: Vec4i, offset: uint32, count: uint
 		insertBits(e.w, newBits.w, offset, count)
 	);
 }
+
+// WGSL's countLeadingZeros and countTrailingZeros: the full 32 for a zero, where firstLeadingBit and
+// firstTrailingBit answer -1.
+export function countLeadingZeros(x: uint32): uint32 { return (31 - highestBit(x)) as uint32; }
+export function countLeadingZeros(x: int32): int32 {
+	return int32Bits(countLeadingZeros(uint32Bits(x)));
+}
+export function countTrailingZeros(x: uint32): uint32 { return x == 0 ? 32 : lowestBit(x) as uint32; }
+export function countTrailingZeros(x: int32): int32 {
+	return int32Bits(countTrailingZeros(uint32Bits(x)));
+}
+export function countLeadingZeros(v: Vec2u): Vec2u { return vec2u(countLeadingZeros(v.x), countLeadingZeros(v.y)); }
+export function countLeadingZeros(v: Vec3u): Vec3u { return vec3u(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z)); }
+export function countLeadingZeros(v: Vec4u): Vec4u { return vec4u(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z), countLeadingZeros(v.w)); }
+export function countLeadingZeros(v: Vec2i): Vec2i { return vec2i(countLeadingZeros(v.x), countLeadingZeros(v.y)); }
+export function countLeadingZeros(v: Vec3i): Vec3i { return vec3i(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z)); }
+export function countLeadingZeros(v: Vec4i): Vec4i { return vec4i(countLeadingZeros(v.x), countLeadingZeros(v.y), countLeadingZeros(v.z), countLeadingZeros(v.w)); }
+export function countTrailingZeros(v: Vec2u): Vec2u { return vec2u(countTrailingZeros(v.x), countTrailingZeros(v.y)); }
+export function countTrailingZeros(v: Vec3u): Vec3u { return vec3u(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z)); }
+export function countTrailingZeros(v: Vec4u): Vec4u { return vec4u(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z), countTrailingZeros(v.w)); }
+export function countTrailingZeros(v: Vec2i): Vec2i { return vec2i(countTrailingZeros(v.x), countTrailingZeros(v.y)); }
+export function countTrailingZeros(v: Vec3i): Vec3i { return vec3i(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z)); }
+export function countTrailingZeros(v: Vec4i): Vec4i { return vec4i(countTrailingZeros(v.x), countTrailingZeros(v.y), countTrailingZeros(v.z), countTrailingZeros(v.w)); }
+
+// IEEE binary32 by arithmetic, as halfBits is binary16. WGSL leaves the bits of an infinity or NaN
+// indeterminate, so the oracle refuses both ways.
+function floatToBits(x: float32): uint32 {
+	if (!(Math.abs(x) <= 3.4028234663852886e38)) {
+		unreachable("bitcast: an infinity or NaN has no defined bits in WGSL");
+	}
+	const sign: uint32 = x < 0.0 || (x == 0.0 && 1.0 / x < 0.0) ? 0x80000000 : 0;
+	const a = Math.abs(x) as float64;
+	if (a < 1.1754943508222875e-38) { return sign | ((a * Math.pow(2.0, 149.0)) as uint32); }
+	let e = Math.floor(Math.log2(a));
+	if (Math.pow(2.0, e) > a) { e -= 1.0; }
+	if (Math.pow(2.0, e + 1.0) <= a) { e += 1.0; }
+	const fraction = (a / Math.pow(2.0, e) - 1.0) * 8388608.0;
+	return sign | (((e + 127.0) as uint32) << 23) | (fraction as uint32);
+}
+
+function bitsToFloat(bits: uint32): float32 {
+	const exponent = (bits >> 23) & 255;
+	if (exponent == 255) { unreachable("bitcast: bits of an infinity or NaN are indeterminate in WGSL"); }
+	const fraction = (bits & 0x7FFFFF) as float64;
+	const magnitude = exponent == 0 ? fraction * Math.pow(2.0, -149.0) :
+		(1.0 + fraction / 8388608.0) * Math.pow(2.0, (exponent as float64) - 127.0);
+	return (bits & 0x80000000) != 0 ? -magnitude as float32 : magnitude as float32;
+}
+
+// WGSL's bitcast<T>(e) by source and target scalar, in TypeGPU's names.
+export function bitcastF32toU32(x: float32): uint32 { return floatToBits(x); }
+export function bitcastF32toI32(x: float32): int32 { return int32Bits(floatToBits(x)); }
+export function bitcastI32toF32(x: int32): float32 { return bitsToFloat(uint32Bits(x)); }
+export function bitcastI32toU32(x: int32): uint32 { return uint32Bits(x); }
+export function bitcastU32toF32(x: uint32): float32 { return bitsToFloat(x); }
+export function bitcastU32toI32(x: uint32): int32 { return int32Bits(x); }
+export function bitcastF32toU32(v: Vec2f): Vec2u { return vec2u(bitcastF32toU32(v.x), bitcastF32toU32(v.y)); }
+export function bitcastF32toU32(v: Vec3f): Vec3u { return vec3u(bitcastF32toU32(v.x), bitcastF32toU32(v.y), bitcastF32toU32(v.z)); }
+export function bitcastF32toU32(v: Vec4f): Vec4u { return vec4u(bitcastF32toU32(v.x), bitcastF32toU32(v.y), bitcastF32toU32(v.z), bitcastF32toU32(v.w)); }
+export function bitcastF32toI32(v: Vec2f): Vec2i { return vec2i(bitcastF32toI32(v.x), bitcastF32toI32(v.y)); }
+export function bitcastF32toI32(v: Vec3f): Vec3i { return vec3i(bitcastF32toI32(v.x), bitcastF32toI32(v.y), bitcastF32toI32(v.z)); }
+export function bitcastF32toI32(v: Vec4f): Vec4i { return vec4i(bitcastF32toI32(v.x), bitcastF32toI32(v.y), bitcastF32toI32(v.z), bitcastF32toI32(v.w)); }
+export function bitcastI32toF32(v: Vec2i): Vec2f { return vec2f(bitcastI32toF32(v.x), bitcastI32toF32(v.y)); }
+export function bitcastI32toF32(v: Vec3i): Vec3f { return vec3f(bitcastI32toF32(v.x), bitcastI32toF32(v.y), bitcastI32toF32(v.z)); }
+export function bitcastI32toF32(v: Vec4i): Vec4f { return vec4f(bitcastI32toF32(v.x), bitcastI32toF32(v.y), bitcastI32toF32(v.z), bitcastI32toF32(v.w)); }
+export function bitcastI32toU32(v: Vec2i): Vec2u { return vec2u(bitcastI32toU32(v.x), bitcastI32toU32(v.y)); }
+export function bitcastI32toU32(v: Vec3i): Vec3u { return vec3u(bitcastI32toU32(v.x), bitcastI32toU32(v.y), bitcastI32toU32(v.z)); }
+export function bitcastI32toU32(v: Vec4i): Vec4u { return vec4u(bitcastI32toU32(v.x), bitcastI32toU32(v.y), bitcastI32toU32(v.z), bitcastI32toU32(v.w)); }
+export function bitcastU32toF32(v: Vec2u): Vec2f { return vec2f(bitcastU32toF32(v.x), bitcastU32toF32(v.y)); }
+export function bitcastU32toF32(v: Vec3u): Vec3f { return vec3f(bitcastU32toF32(v.x), bitcastU32toF32(v.y), bitcastU32toF32(v.z)); }
+export function bitcastU32toF32(v: Vec4u): Vec4f { return vec4f(bitcastU32toF32(v.x), bitcastU32toF32(v.y), bitcastU32toF32(v.z), bitcastU32toF32(v.w)); }
+export function bitcastU32toI32(v: Vec2u): Vec2i { return vec2i(bitcastU32toI32(v.x), bitcastU32toI32(v.y)); }
+export function bitcastU32toI32(v: Vec3u): Vec3i { return vec3i(bitcastU32toI32(v.x), bitcastU32toI32(v.y), bitcastU32toI32(v.z)); }
+export function bitcastU32toI32(v: Vec4u): Vec4i { return vec4i(bitcastU32toI32(v.x), bitcastU32toI32(v.y), bitcastU32toI32(v.z), bitcastU32toI32(v.w)); }
 
 // WGSL's data packing: component 0 in the low bits, a normalized value ⌊0.5 + scale * clamp⌋ as the
 // specification defines it. A NaN has no defined packing, so the oracle refuses it.

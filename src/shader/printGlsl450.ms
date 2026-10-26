@@ -45,6 +45,7 @@ import {
 	binaryOperator,
 	exchangeSlot,
 	glslAtomicName,
+	glslBitcast,
 	glslBits,
 	mathName,
 	repeatedBitsOperand,
@@ -417,7 +418,10 @@ function intrinsic(p: Glsl, e: ShaderExpr): string {
 	const sampled = args.length >= 2 ? shape + args[0] + ", " + args[1] + ")" : "";
 	return match (e.intrinsic) {
 		Intrinsic.CountOneBits | Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit |
-			Intrinsic.ExtractBits | Intrinsic.InsertBits => bitsText(p, e, args),
+			Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros | Intrinsic.ExtractBits |
+			Intrinsic.InsertBits => bitsText(p, e, args),
+		Intrinsic.Bitcast => glslBitcast(e.operands[0].type.scalar, e.type.scalar,
+			typeName(p, e.type), args[0]),
 		Intrinsic.Saturate => "clamp(" + args[0] + ", 0.0, 1.0)",
 		Intrinsic.Select => e.operands[2].type.kind == ShaderTypeKind.Vector ? "mix" + all :
 			"(" + args[2] + " ? " + args[1] + " : " + args[0] + ")",

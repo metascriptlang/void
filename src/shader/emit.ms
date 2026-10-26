@@ -1028,7 +1028,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"countOneBits", "reverseBits", "firstLeadingBit", "firstTrailingBit", "extractBits",
 		"insertBits", "pack4x8unorm", "pack4x8snorm", "pack2x16unorm", "pack2x16snorm",
 		"pack2x16float", "unpack4x8unorm", "unpack4x8snorm", "unpack2x16unorm", "unpack2x16snorm",
-		"unpack2x16float",
+		"unpack2x16float", "asinh", "acosh", "atanh", "ldexp", "countLeadingZeros",
+		"countTrailingZeros", "bitcastF32toU32", "bitcastF32toI32", "bitcastI32toF32",
+		"bitcastI32toU32", "bitcastU32toF32", "bitcastU32toI32",
 	];
 	const intrinsics = [
 		Intrinsic.Abs, Intrinsic.Sign, Intrinsic.Floor, Intrinsic.Ceil, Intrinsic.Trunc,
@@ -1052,8 +1054,16 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.InsertBits, Intrinsic.Pack4x8Unorm, Intrinsic.Pack4x8Snorm,
 		Intrinsic.Pack2x16Unorm, Intrinsic.Pack2x16Snorm, Intrinsic.Pack2x16Float,
 		Intrinsic.Unpack4x8Unorm, Intrinsic.Unpack4x8Snorm, Intrinsic.Unpack2x16Unorm,
-		Intrinsic.Unpack2x16Snorm, Intrinsic.Unpack2x16Float,
+		Intrinsic.Unpack2x16Snorm, Intrinsic.Unpack2x16Float, Intrinsic.Asinh, Intrinsic.Acosh,
+		Intrinsic.Atanh, Intrinsic.Ldexp, Intrinsic.CountLeadingZeros, Intrinsic.CountTrailingZeros,
+		Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast, Intrinsic.Bitcast,
+		Intrinsic.Bitcast, Intrinsic.Bitcast,
 	];
+	const derivativeNames = ["dpdx", "dpdy", "fwidth", "dpdxCoarse", "dpdxFine", "dpdyCoarse",
+		"dpdyFine", "fwidthCoarse", "fwidthFine"];
+	const derivatives = [Intrinsic.Dpdx, Intrinsic.Dpdy, Intrinsic.Fwidth, Intrinsic.DpdxCoarse,
+		Intrinsic.DpdxFine, Intrinsic.DpdyCoarse, Intrinsic.DpdyFine, Intrinsic.FwidthCoarse,
+		Intrinsic.FwidthFine];
 
 	function looseType(t: Node | null): ShaderType {
 		if (t == null) { return new ShaderType(); }
@@ -1631,11 +1641,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			return negated;
 		}
 		const fragmentOnly = vertex || compute;
-		return match (name) {
-			"dpdx" | "dpdy" | "fwidth" => fragmentOnly ?
+		const derivative = derivativeNames.indexOf(name);
+		if (derivative >= 0) {
+			return fragmentOnly ?
 				fail(n, name + " exists only in a fragment entry, as WGSL's does") :
-				intrinsicOf(name == "dpdx" ? Intrinsic.Dpdx : name == "dpdy" ? Intrinsic.Dpdy :
-					Intrinsic.Fwidth, type, args),
+				intrinsicOf(derivatives[derivative], type, args);
+		}
+		return match (name) {
 			"workgroupBarrier" | "storageBarrier" => !compute ?
 				fail(n, name + " exists only in a compute entry, as WGSL's does") :
 				intrinsicOf(name == "workgroupBarrier" ? Intrinsic.WorkgroupBarrier :

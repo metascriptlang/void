@@ -152,6 +152,10 @@ export enum Intrinsic {
 	Sinh,
 	Cosh,
 	Tanh,
+	Asinh,
+	Acosh,
+	Atanh,
+	Ldexp,
 	Degrees,
 	Radians,
 	Min,
@@ -186,10 +190,19 @@ export enum Intrinsic {
 	Dpdx,
 	Dpdy,
 	Fwidth,
+	DpdxCoarse,
+	DpdxFine,
+	DpdyCoarse,
+	DpdyFine,
+	FwidthCoarse,
+	FwidthFine,
+	Bitcast,
 	CountOneBits,
 	ReverseBits,
 	FirstLeadingBit,
 	FirstTrailingBit,
+	CountLeadingZeros,
+	CountTrailingZeros,
 	ExtractBits,
 	InsertBits,
 	Pack4x8Unorm,
@@ -310,6 +323,40 @@ function bitsError(e: ShaderExpr): string {
 	}
 	if (!sameShaderType(e.type, bitsResult(e))) {
 		return name + " returns another type than WGSL's";
+	}
+	return "";
+}
+
+function isNumericShape(t: ShaderType): boolean {
+	return (t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) &&
+		t.scalar != ScalarKind.Bool;
+}
+
+function sameShape(a: ShaderType, b: ShaderType): boolean {
+	return a.kind == b.kind && (a.kind == ShaderTypeKind.Scalar || a.rows == b.rows);
+}
+
+function isMixedMath(op: Intrinsic): boolean {
+	return op == Intrinsic.Bitcast || op == Intrinsic.Ldexp;
+}
+
+// Bitcast keeps its operand's shape and changes its scalar; ldexp scales an f32 shape by an i32 one.
+function mixedMathError(e: ShaderExpr): string {
+	const name = e.intrinsic.toString();
+	const o = e.operands;
+	const first = o.length > 0 ? o[0].type : new ShaderType();
+	if (e.intrinsic == Intrinsic.Bitcast) {
+		if (o.length != 1 || !isNumericShape(first) || !isNumericShape(e.type) ||
+			!sameShape(first, e.type) || first.scalar == e.type.scalar) {
+			return name + " takes one i32, u32 or f32 scalar or vector and answers the same shape " +
+				"of another scalar";
+		}
+		return "";
+	}
+	if (o.length != 2 || !isNumericShape(first) || first.scalar != ScalarKind.F32 ||
+		!isNumericShape(o[1].type) || o[1].type.scalar != ScalarKind.I32 ||
+		!sameShape(first, o[1].type) || !sameShaderType(e.type, first)) {
+		return name + " takes an f32 scalar or vector and an i32 of its shape, as WGSL's";
 	}
 	return "";
 }
@@ -770,9 +817,15 @@ class Checker {
 	computeOnly: string[][] = [];
 }
 
-function isFragmentOnly(op: Intrinsic): boolean {
+export function isDerivative(op: Intrinsic): boolean {
 	return op == Intrinsic.Dpdx || op == Intrinsic.Dpdy || op == Intrinsic.Fwidth ||
-		op == Intrinsic.TextureSampleBias || op == Intrinsic.TextureSampleCompare;
+		op == Intrinsic.DpdxCoarse || op == Intrinsic.DpdxFine || op == Intrinsic.DpdyCoarse ||
+		op == Intrinsic.DpdyFine || op == Intrinsic.FwidthCoarse || op == Intrinsic.FwidthFine;
+}
+
+function isFragmentOnly(op: Intrinsic): boolean {
+	return isDerivative(op) || op == Intrinsic.TextureSampleBias ||
+		op == Intrinsic.TextureSampleCompare;
 }
 
 function isComputeOnly(op: Intrinsic): boolean {
@@ -880,6 +933,10 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	}
 	if (e.kind == ExprKind.Intrinsic && isBitsOp(e.intrinsic)) {
 		const error = bitsError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && isMixedMath(e.intrinsic)) {
+		const error = mixedMathError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	const atomic = e.kind == ExprKind.Intrinsic && isAtomic(e.intrinsic);

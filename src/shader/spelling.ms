@@ -63,15 +63,18 @@ export function isMath(op: Intrinsic): boolean {
 			Intrinsic.Exp | Intrinsic.Exp2 | Intrinsic.Log | Intrinsic.Log2 | Intrinsic.Pow |
 			Intrinsic.Sin | Intrinsic.Cos | Intrinsic.Tan | Intrinsic.Asin | Intrinsic.Acos |
 			Intrinsic.Atan | Intrinsic.Atan2 | Intrinsic.Sinh | Intrinsic.Cosh | Intrinsic.Tanh |
+			Intrinsic.Asinh | Intrinsic.Acosh | Intrinsic.Atanh | Intrinsic.Ldexp |
 			Intrinsic.Degrees | Intrinsic.Radians | Intrinsic.Min | Intrinsic.Max |
 			Intrinsic.Clamp | Intrinsic.Saturate | Intrinsic.Mix | Intrinsic.Step |
 			Intrinsic.Smoothstep | Intrinsic.Fma | Intrinsic.Dot | Intrinsic.Cross |
 			Intrinsic.Length | Intrinsic.Distance | Intrinsic.Normalize | Intrinsic.Reflect |
 			Intrinsic.Refract | Intrinsic.FaceForward | Intrinsic.Transpose |
 			Intrinsic.Determinant | Intrinsic.Any | Intrinsic.All | Intrinsic.Dpdx | Intrinsic.Dpdy |
-			Intrinsic.Fwidth |
+			Intrinsic.Fwidth | Intrinsic.DpdxCoarse | Intrinsic.DpdxFine | Intrinsic.DpdyCoarse |
+			Intrinsic.DpdyFine | Intrinsic.FwidthCoarse | Intrinsic.FwidthFine | Intrinsic.Bitcast |
 			Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
+			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
+			Intrinsic.ExtractBits | Intrinsic.InsertBits |
 			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
 			Intrinsic.Pack2x16Snorm | Intrinsic.Pack2x16Float | Intrinsic.Unpack4x8Unorm |
 			Intrinsic.Unpack4x8Snorm | Intrinsic.Unpack2x16Unorm | Intrinsic.Unpack2x16Snorm |
@@ -105,6 +108,10 @@ export function mathName(op: Intrinsic): string {
 		Intrinsic.Sinh => "sinh",
 		Intrinsic.Cosh => "cosh",
 		Intrinsic.Tanh => "tanh",
+		Intrinsic.Asinh => "asinh",
+		Intrinsic.Acosh => "acosh",
+		Intrinsic.Atanh => "atanh",
+		Intrinsic.Ldexp => "ldexp",
 		Intrinsic.Degrees => "degrees",
 		Intrinsic.Radians => "radians",
 		Intrinsic.Min => "min",
@@ -130,10 +137,19 @@ export function mathName(op: Intrinsic): string {
 		Intrinsic.Dpdx => "dFdx",
 		Intrinsic.Dpdy => "dFdy",
 		Intrinsic.Fwidth => "fwidth",
+		Intrinsic.DpdxCoarse => "dFdxCoarse",
+		Intrinsic.DpdxFine => "dFdxFine",
+		Intrinsic.DpdyCoarse => "dFdyCoarse",
+		Intrinsic.DpdyFine => "dFdyFine",
+		Intrinsic.FwidthCoarse => "fwidthCoarse",
+		Intrinsic.FwidthFine => "fwidthFine",
+		Intrinsic.Bitcast => "bitcast",
 		Intrinsic.CountOneBits => "bitCount",
 		Intrinsic.ReverseBits => "bitfieldReverse",
 		Intrinsic.FirstLeadingBit => "findMSB",
 		Intrinsic.FirstTrailingBit => "findLSB",
+		Intrinsic.CountLeadingZeros => "countLeadingZeros",
+		Intrinsic.CountTrailingZeros => "countTrailingZeros",
 		Intrinsic.ExtractBits => "bitfieldExtract",
 		Intrinsic.InsertBits => "bitfieldInsert",
 		Intrinsic.Pack4x8Unorm => "packUnorm4x8",
@@ -183,6 +199,10 @@ export function isNarrowBits(op: Intrinsic): boolean {
 		op == Intrinsic.FirstTrailingBit;
 }
 
+function unsignedOf(signedType: string): string {
+	return signedType == "int" ? "uint" : "u" + signedType.substring(1);
+}
+
 // The GLSL spelling of the bit and pack builtins, as naga's back-end writes them. bitCount, findMSB
 // and findLSB return int, so an unsigned operand's result is converted back; bitfieldExtract and
 // bitfieldInsert are undefined past the 32 bits WGSL clamps to, so the offset and count clamp first.
@@ -195,6 +215,16 @@ export function glslBits(
 ): string {
 	const call = mathName(op) + "(" + args.join(", ") + ")";
 	if (isNarrowBits(op)) { return unsigned ? resultType + "(" + call + ")" : call; }
+	if (op == Intrinsic.CountLeadingZeros) {
+		return unsigned ? resultType + "(31 - findMSB(" + args[0] + "))" :
+			"31 - findMSB(" + unsignedOf(resultType) + "(" + args[0] + "))";
+	}
+	if (op == Intrinsic.CountTrailingZeros) {
+		const word = unsigned ? resultType : unsignedOf(resultType);
+		const lowest = word + "(findLSB(" + args[0] + "))";
+		return unsigned ? "min(" + lowest + ", 32u)" :
+			resultType + "(min(" + lowest + ", 32u))";
+	}
 	if (op == Intrinsic.ExtractBits) {
 		return "bitfieldExtract(" + args[0] + ", int(min(" + args[1] + ", 32u)), int(min(" +
 			args[2] + ", 32u - min(" + args[1] + ", 32u))))";
@@ -209,4 +239,21 @@ export function glslBits(
 // The operand of a bit builtin that a printer repeats.
 export function repeatedBitsOperand(op: Intrinsic): int32 {
 	return op == Intrinsic.ExtractBits ? 1 : op == Intrinsic.InsertBits ? 2 : -1;
+}
+
+// GLSL's bitcast: the float functions reinterpret, and an i32 and a u32 share their bits through
+// the constructor, as WGSL's conversion between them does.
+export function glslBitcast(
+	from: ScalarKind,
+	to: ScalarKind,
+	resultType: string,
+	arg: string,
+): string {
+	if (from == ScalarKind.F32) {
+		return (to == ScalarKind.I32 ? "floatBitsToInt(" : "floatBitsToUint(") + arg + ")";
+	}
+	if (to == ScalarKind.F32) {
+		return (from == ScalarKind.I32 ? "intBitsToFloat(" : "uintBitsToFloat(") + arg + ")";
+	}
+	return resultType + "(" + arg + ")";
 }

@@ -25,6 +25,7 @@ import {
 	UnaryOp,
 	isArrayTexture,
 	isAtomic,
+	isDerivative,
 	isEffect,
 	sameShaderType,
 	scalarType,
@@ -152,6 +153,12 @@ const OP_BIT_COUNT = 205;
 const OP_DPDX = 207;
 const OP_DPDY = 208;
 const OP_FWIDTH = 209;
+const OP_DPDX_FINE = 210;
+const OP_DPDY_FINE = 211;
+const OP_FWIDTH_FINE = 212;
+const OP_DPDX_COARSE = 213;
+const OP_DPDY_COARSE = 214;
+const OP_FWIDTH_COARSE = 215;
 const OP_CONTROL_BARRIER = 224;
 const OP_ATOMIC_LOAD = 227;
 const OP_ATOMIC_STORE = 228;
@@ -182,6 +189,7 @@ const CAP_SAMPLE_RATE_SHADING = 35;
 const CAP_SAMPLED_CUBE_ARRAY = 45;
 const CAP_STORAGE_IMAGE_EXTENDED_FORMATS = 49;
 const CAP_IMAGE_QUERY = 50;
+const CAP_DERIVATIVE_CONTROL = 51;
 
 const DECORATION_BLOCK = 2;
 const DECORATION_COL_MAJOR = 5;
@@ -224,6 +232,7 @@ const GLSL_F_MAX = 40;
 const GLSL_U_MAX = 41;
 const GLSL_S_MAX = 42;
 const GLSL_F_CLAMP = 43;
+const GLSL_FIND_I_LSB = 73;
 const GLSL_FIND_S_MSB = 74;
 const GLSL_FIND_U_MSB = 75;
 
@@ -1110,6 +1119,9 @@ function glslNumber(op: Intrinsic): int32 {
 	if (op == Intrinsic.Sinh) { return 19; }
 	if (op == Intrinsic.Cosh) { return 20; }
 	if (op == Intrinsic.Tanh) { return 21; }
+	if (op == Intrinsic.Asinh) { return 22; }
+	if (op == Intrinsic.Acosh) { return 23; }
+	if (op == Intrinsic.Atanh) { return 24; }
 	if (op == Intrinsic.Atan2) { return 25; }
 	if (op == Intrinsic.Pow) { return 26; }
 	if (op == Intrinsic.Exp) { return 27; }
@@ -1123,6 +1135,7 @@ function glslNumber(op: Intrinsic): int32 {
 	if (op == Intrinsic.Step) { return 48; }
 	if (op == Intrinsic.Smoothstep) { return 49; }
 	if (op == Intrinsic.Fma) { return 50; }
+	if (op == Intrinsic.Ldexp) { return 53; }
 	if (op == Intrinsic.Pack4x8Snorm) { return 54; }
 	if (op == Intrinsic.Pack4x8Unorm) { return 55; }
 	if (op == Intrinsic.Pack2x16Snorm) { return 56; }
@@ -1140,8 +1153,20 @@ function glslNumber(op: Intrinsic): int32 {
 	if (op == Intrinsic.FaceForward) { return 70; }
 	if (op == Intrinsic.Reflect) { return 71; }
 	if (op == Intrinsic.Refract) { return 72; }
-	if (op == Intrinsic.FirstTrailingBit) { return 73; }
+	if (op == Intrinsic.FirstTrailingBit) { return GLSL_FIND_I_LSB; }
 	return 0;
+}
+
+function controlledDerivative(p: Spirv, op: Intrinsic): int32 {
+	return match (op) {
+		Intrinsic.DpdxCoarse => OP_DPDX_COARSE,
+		Intrinsic.DpdxFine => OP_DPDX_FINE,
+		Intrinsic.DpdyCoarse => OP_DPDY_COARSE,
+		Intrinsic.DpdyFine => OP_DPDY_FINE,
+		Intrinsic.FwidthCoarse => OP_FWIDTH_COARSE,
+		Intrinsic.FwidthFine => OP_FWIDTH_FINE,
+		_ => refusal(p, op.toString() + " is no coarse or fine derivative"),
+	};
 }
 
 function spreads(op: Intrinsic): boolean {
@@ -1206,6 +1231,19 @@ function math(p: Spirv, e: ShaderExpr): int32 {
 	if (op == Intrinsic.Dpdx) { return typed(p, OP_DPDX, type, args); }
 	if (op == Intrinsic.Dpdy) { return typed(p, OP_DPDY, type, args); }
 	if (op == Intrinsic.Fwidth) { return typed(p, OP_FWIDTH, type, args); }
+	if (isDerivative(op)) {
+		need(p, CAP_DERIVATIVE_CONTROL);
+		return typed(p, controlledDerivative(p, op), type, args);
+	}
+	if (op == Intrinsic.Bitcast) { return typed(p, OP_BITCAST, type, args); }
+	if (op == Intrinsic.CountLeadingZeros) {
+		const highest = ext(p, t, GLSL_FIND_U_MSB, args);
+		return typed(p, OP_I_SUB, type, [splat(p, t, intConstant(p, t.scalar, 31)), highest]);
+	}
+	if (op == Intrinsic.CountTrailingZeros) {
+		const lowest = ext(p, t, GLSL_FIND_I_LSB, args);
+		return ext(p, t, GLSL_U_MIN, [splat(p, t, intConstant(p, t.scalar, 32)), lowest]);
+	}
 	if (op == Intrinsic.CountOneBits) { return typed(p, OP_BIT_COUNT, type, args); }
 	if (op == Intrinsic.ReverseBits) { return typed(p, OP_BIT_REVERSE, type, args); }
 	if (op == Intrinsic.FirstLeadingBit) {

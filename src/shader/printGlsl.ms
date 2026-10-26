@@ -44,6 +44,7 @@ import {
 	exchangeSlot,
 	floatText,
 	glslAtomicName,
+	glslBitcast,
 	glslBits,
 	isIntMin,
 	mathName,
@@ -635,6 +636,9 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.GreaterThanEqual => "greaterThanEqual",
 		Intrinsic.Equal => "equal",
 		Intrinsic.NotEqual => "notEqual",
+		Intrinsic.DpdxCoarse | Intrinsic.DpdxFine => "dFdx",
+		Intrinsic.DpdyCoarse | Intrinsic.DpdyFine => "dFdy",
+		Intrinsic.FwidthCoarse | Intrinsic.FwidthFine => "fwidth",
 		_ => mathName(op),
 	};
 }
@@ -676,9 +680,14 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.Sign => converted(p, "sign(" + args() + ")", typeName(p, e.operands[0].type),
 			e.type),
 		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
-			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
-			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm |
-			Intrinsic.Unpack4x8Snorm => bitsText(p, e),
+			Intrinsic.FirstTrailingBit | Intrinsic.CountLeadingZeros | Intrinsic.CountTrailingZeros |
+			Intrinsic.ExtractBits | Intrinsic.InsertBits | Intrinsic.Pack4x8Unorm |
+			Intrinsic.Pack4x8Snorm | Intrinsic.Unpack4x8Unorm | Intrinsic.Unpack4x8Snorm =>
+			bitsText(p, e),
+		Intrinsic.Bitcast => glslBitcast(e.operands[0].type.scalar, e.type.scalar,
+			typeName(p, e.type), expr(p, e.operands[0])),
+		Intrinsic.Ldexp => p.es ? fail(p, "Ldexp is not in GLSL ES 3.00 (ES 3.10 has it)") :
+			"ldexp(" + args() + ")",
 		Intrinsic.Saturate => "clamp(" + args() + ", 0.0, 1.0)",
 		Intrinsic.Fma => p.es ? "(" + operand(p, e.operands[0]) + " * " +
 			operand(p, e.operands[1]) + " + " + operand(p, e.operands[2]) + ")" :
