@@ -31,7 +31,7 @@ when (windows && !voidDummy && !voidVulkan) {
 }
 
 const RGBA8 = 2;
-const NO_DEPTH = 0;
+const DEPTH_STENCIL = 5;
 const GOOD = "program=1 layout=2 indexType=1 state=3 targets=4 stencilOps=0 stencilMasks=0";
 
 function maskWriter(): Stencil {
@@ -172,9 +172,9 @@ test "a key whose program, layout, index type or targets cannot be built is refu
 when (voidDummy || (windows && !voidVulkan)) {
 	function openDoor(): void {
 		when (voidDummy) {
-			doorSetup(null, null, RGBA8, NO_DEPTH, 1);
+			doorSetup(null, null, RGBA8, DEPTH_STENCIL, 1);
 		} else {
-			doorSetup(warpDevice(), warpContext(), RGBA8, NO_DEPTH, 1);
+			doorSetup(warpDevice(), warpContext(), RGBA8, DEPTH_STENCIL, 1);
 		}
 	}
 

@@ -32,6 +32,8 @@ import {
 	GPUSampler,
 	GPUShaderModule,
 	GPUShaderModuleDescriptor,
+	GPUStencilFaceState,
+	GPUStencilOperation,
 	GPUStoreOp,
 	GPUTexture,
 	GPUTextureDescriptor,
@@ -85,6 +87,9 @@ import {
 	FilterMode,
 	Operation,
 	RenderState,
+	Stencil,
+	StencilFace,
+	StencilOp,
 	Wrap,
 } from "./state";
 import {
@@ -170,6 +175,8 @@ export struct DepthAttachment {
 	load: LoadAction;
 	store: StoreAction;
 	clear: float32;
+	// The value a DepthStencil view's stencil is cleared to; null loads it. The store follows `store`.
+	stencilClear: uint8 | null;
 	generation: int32;
 }
 
@@ -201,6 +208,7 @@ struct PipelineRecord {
 	textureMask: uint32;
 	samplerMask: uint32;
 	uniformGroup: GPUBindGroup;
+	stenciled: boolean;
 }
 
 struct ShaderRecord { module: GPUShaderModule; program: int32; }
@@ -234,6 +242,8 @@ let uniformStampCounter: int32 = 0;
 let encoder: GPUCommandEncoder = { id: 0 };
 let pass: GPURenderPassEncoder = { id: 0 };
 let current: int32 = -1;
+// The stencil reference the open pass has set: 0 at a pass's begin, as on every backend.
+let stencilReference: uint8 = 0;
 let openPass: PassState = PassState.None;
 let passViews: uint32[PASS_VIEW_SLOTS] = [0, 0, 0, 0, 0];
 let passWidth: int32 = 0;
@@ -599,6 +609,24 @@ const COMPARE_FUNCTIONS: GPUCompareFunction[8] = [
 	"less",
 	"less-equal",
 ];
+// A pipeline with no stencil keeps the stencil as it is: Always, with every operation Keep.
+const KEEP_STENCIL_FACE: StencilFace = {
+	compare: Compare.Always,
+	failOp: StencilOp.Keep,
+	depthFailOp: StencilOp.Keep,
+	passOp: StencilOp.Keep,
+};
+// StencilOp in its order.
+const STENCIL_OPERATIONS: GPUStencilOperation[8] = [
+	"keep",
+	"zero",
+	"replace",
+	"invert",
+	"increment-clamp",
+	"decrement-clamp",
+	"increment-wrap",
+	"decrement-wrap",
+];
 const BLEND_FACTORS: GPUBlendFactor[10] = [
 	"one",
 	"zero",
@@ -644,6 +672,22 @@ function isDepthFormat(format: PixelFormat): boolean {
 	return format == PixelFormat.Depth || format == PixelFormat.DepthStencil;
 }
 
+// "" when a pipeline with or without a stencil can draw to a depth attachment of this format.
+export function stencilTargetRefusal(stencil: boolean, depth: PixelFormat): string {
+	if (!stencil || depth == PixelFormat.DepthStencil) { return ""; }
+	return "a stencil on a " + depth.toString() + " target, which has no stencil bits; " +
+		"DepthStencil does";
+}
+
+function stencilFaceOf(face: StencilFace): GPUStencilFaceState {
+	return {
+		compare: COMPARE_FUNCTIONS[face.compare as int32],
+		failOp: STENCIL_OPERATIONS[face.failOp as int32],
+		depthFailOp: STENCIL_OPERATIONS[face.depthFailOp as int32],
+		passOp: STENCIL_OPERATIONS[face.passOp as int32],
+	};
+}
+
 function textureFormatOf(format: PixelFormat): GPUTextureFormat {
 	if (format == PixelFormat.Rgba8) { return "rgba8unorm"; }
 	if (format == PixelFormat.Depth) { return "depth32float"; }
@@ -686,6 +730,12 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 	const opAlpha = BLEND_OPERATIONS[state.blendAlphaOperation as int32];
 	const writeMask = (state.colorMask as uint32) as int32;
 	const depthFormat = description.targets.depth;
+	const stencil: Stencil | null = state.stencil;
+	const stencilRefusal = stencilTargetRefusal(
+		stencil != null,
+		depthFormat == PixelFormat.Default ? doorEnvironmentDepthFormat() : depthFormat,
+	);
+	if (stencilRefusal != "") { stop("makePipeline: " + stencilRefusal); }
 	const indexType = description.indexType;
 	const module: GPUShaderModule = { id: description.shader };
 	let descriptor = {
@@ -704,7 +754,15 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 			format: depthTextureFormat(depthFormat),
 			depthWriteEnabled: state.depthWrite,
 			depthCompare: COMPARE_FUNCTIONS[state.depthTest as int32],
+			stencilFront: stencilFaceOf(KEEP_STENCIL_FACE),
+			stencilBack: stencilFaceOf(KEEP_STENCIL_FACE),
 		};
+		if (stencil != null) {
+			descriptor.depthStencil.stencilFront = stencilFaceOf(stencil.front);
+			descriptor.depthStencil.stencilBack = stencilFaceOf(stencil.back);
+			descriptor.depthStencil.stencilReadMask = stencil.readMask as uint32;
+			descriptor.depthStencil.stencilWriteMask = stencil.writeMask as uint32;
+		}
 	}
 	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		const format = colorFormatAt(description.targets, i);
@@ -747,6 +805,7 @@ function colorFormatAt(targets: TargetLayout, index: int32): PixelFormat {
 		textureMask: reflected.textureMask,
 		samplerMask: reflected.samplerMask,
 		uniformGroup,
+		stenciled: stencil != null,
 	});
 	return pipeline.id;
 }
@@ -1246,6 +1305,21 @@ export function doorApplyPipeline(pipeline: uint32): void {
 	}
 }
 
+// Sets the stencil reference of the draws that follow, which h3d's driver sets per draw when it
+// changed (h3d/impl/DX12Driver.hx:3246): a call with the value the pass already has does nothing.
+// The pipeline applied last must have a stencil.
+export function doorApplyStencilReference(reference: uint8): void {
+	stopInComputePass("applyStencilReference");
+	if (current < 0) { stop("applyStencilReference before applyPipeline"); }
+	if (!pipelines[current].stenciled) {
+		stop("applyStencilReference on pipeline " + String(pipelines[current].pipeline.id) +
+			", which has no stencil");
+	}
+	if (reference == stencilReference) { return; }
+	stencilReference = reference;
+	pass.setStencilReference(reference as uint32);
+}
+
 // The stamp of the apply that last wrote `slot` for the current pipeline, 0 when none did: a
 // layer that applied a block earlier compares it with the stamp it kept to know the block is
 // still the one bound.
@@ -1638,10 +1712,17 @@ export function doorGpuTimerPassLabel(index: int32): string { return timerResult
 
 export function doorDevice(): GPUDevice { return device; }
 
-function withStencilOps(attachment: GPURenderPassDepthStencilAttachment, texture: GPUTexture): GPURenderPassDepthStencilAttachment {
+// The stencil aspect of a depth attachment: only a depth24plus-stencil8 view has one, and the
+// pass then clears it to `clear` or loads it when that is null, and stores it as it stores depth.
+function withStencilOps(
+	attachment: GPURenderPassDepthStencilAttachment,
+	texture: GPUTexture,
+	clear: uint8 | null,
+): GPURenderPassDepthStencilAttachment {
 	if (texture.format() != "depth24plus-stencil8") { return attachment; }
 	let stencil = attachment;
-	stencil.stencilLoadOp = attachment.depthLoadOp;
+	stencil.stencilLoadOp = clear == null ? "load" : "clear";
+	stencil.stencilClearValue = clear == null ? 0 : clear as uint32;
 	stencil.stencilStoreOp = attachment.depthStoreOp;
 	return stencil;
 }
@@ -1685,17 +1766,23 @@ export function doorBeginPass(
 			stop("beginPass on the depth attachment, whose view " + String(depth.view) +
 				" is not alive");
 		}
+		const depthImage: GPUTexture = { id: doorViewImage(depth.view) };
+		if (depth.stencilClear != null && depthImage.format() != "depth24plus-stencil8") {
+			stop("beginPass clears the stencil of the depth attachment, whose view " +
+				String(depth.view) + " has no stencil bits; DepthStencil does");
+		}
 		descriptor.depthStencilAttachment = withStencilOps({
 			view: { id: depth.view },
 			depthClearValue: depth.clear,
 			depthLoadOp: LOAD_OPS[depth.load as int32],
 			depthStoreOp: STORE_OPS[depth.store as int32],
-		}, { id: doorViewImage(depth.view) });
+		}, depthImage, depth.stencilClear);
 	}
 	descriptor.timestampWrites = timestampsOf("target");
 	pass = frameEncoder().beginRenderPass(descriptor);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Target;
+	stencilReference = 0;
 	passViews = [0, 0, 0, 0, 0];
 	for (let i = 0; i < (colors.length as int32); i++) {
 		passViews[i] = colors[i].view;
@@ -1731,6 +1818,7 @@ export function doorBeginColorPass(
 	pass = frameEncoder().beginRenderPass(descriptor);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Target;
+	stencilReference = 0;
 	passViews = [view, 0, 0, 0, 0];
 	measurePass(view);
 	current = -1;
@@ -1760,12 +1848,13 @@ export function doorBeginScreenPass(
 			depthClearValue: 1,
 			depthLoadOp: "clear",
 			depthStoreOp: "discard",
-		}, depth);
+		}, depth, 0);
 	}
 	descriptor.timestampWrites = timestampsOf("screen");
 	pass = frameEncoder().beginRenderPass(descriptor);
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Screen;
+	stencilReference = 0;
 	passViews = [0, 0, 0, 0, 0];
 	measurePass(screen.id);
 	current = -1;

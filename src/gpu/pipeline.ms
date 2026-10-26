@@ -8,7 +8,7 @@
 import { stop } from "./stop";
 import { RenderState } from "./state";
 import { TargetLayout } from "./target";
-import { IndexType, PipelineDescriptor, doorLayoutCount } from "./doorGpu.ms";
+import { IndexType, PipelineDescriptor, doorLayoutCount, stencilTargetRefusal } from "./doorGpu.ms";
 import {
 	makeShader,
 	uniformSlotMask,
@@ -169,6 +169,15 @@ export function record(cache: PipelineCache, key: PipelineKey, pipeline: uint32)
 		"its pool is full or it did not compile");
 }
 
+// "" when the key's stencil, if it has one, has a depth attachment with stencil bits to test.
+function stencilRefusal(key: PipelineKey): string {
+	return stencilTargetRefusal(key.stencilOps != 0, key.targetLayout().depth);
+}
+
+@noinline function stopOnStencilTarget(refusal: string, key: PipelineKey): never {
+	stop(`${refusal}; pipeline ${key.toString()}`);
+}
+
 @noinline function stopOnRefusedPipeline(key: PipelineKey): never {
 	stop(`sokol refused pipeline ${key.toString()}; ` +
 		"its pool is full or its description is invalid");
@@ -247,6 +256,8 @@ export function pipelineFor(
 	concrete: TargetLayout,
 	key: PipelineKey,
 ): uint32 {
+	const refusal: string = stencilRefusal(key);
+	if (refusal != "") { stopOnStencilTarget(refusal, key); }
 	const description: PipelineDescriptor = {
 		shader: shaderFor(cache, program),
 		layout: layout,
@@ -397,6 +408,8 @@ export function prewarmRefusal(key: PipelineKey): string {
 		return `prewarm of ${keyText(key)}: its targets name the environment; ` +
 			"key a prewarm with resolved targets";
 	}
+	const refusal: string = stencilRefusal(key);
+	if (refusal != "") { return `prewarm of ${keyText(key)}: ${refusal}`; }
 	return "";
 }
 
