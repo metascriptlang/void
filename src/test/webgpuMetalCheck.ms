@@ -545,7 +545,7 @@ function stencilScene(device: GPUDevice, writerReference: uint32, testerReferenc
 	pass.setStencilReference(testerReference);
 	pass.setPipeline(tester);
 	pass.setVertexBuffer(0, vertices, 48);
-	pass.setBindGroup(0, group, green);
+	pass.setBindGroup(0, uniformGroup(device, tester, uniforms), green);
 	pass.draw(6, 1, 0, 0);
 	pass.end();
 	device.queue.submit(encoder.finish());
@@ -623,7 +623,7 @@ function depthBiasScene(device: GPUDevice, compare: GPUCompareFunction, depthBia
 	encoded.setBindGroup(0, group, red);
 	encoded.draw(3, 1, 0, 0);
 	encoded.setPipeline(tester);
-	encoded.setBindGroup(0, group, green);
+	encoded.setBindGroup(0, uniformGroup(device, tester, uniforms), green);
 	encoded.draw(3, 1, 0, 0);
 	encoded.end();
 	device.queue.submit(encoder.finish());
