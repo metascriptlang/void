@@ -862,7 +862,7 @@ draw-time rules live above the backends, so Vulkan can drop its copies:
 - a draw or dispatch is refused before the backend when the pipeline reads a vertex buffer or a
   bind group the pass never set. As the spec's "valid to draw" says, a slot is required when its
   layout is not empty: a stride or an attribute (`vertexSlotsOf`), so a stride-only slot counts.
-A Vulkan "which is not set" stop is now dead code to delete.
+Vulkan never had these stops, so it gains them from `device.ms` without a change.
 
 Two goldens need a D3D11 capture on WARP: `clip/roundedMask` (rounded Mask clip, `7138b049`) and
 `filter/mask` (Mask filter, `5a60dd23`). The rounded clip changed the `ui`, `sprite` and `void2d`
