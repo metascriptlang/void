@@ -86,6 +86,7 @@ import {
 	stripDrawRefusal,
 	textureRefusal,
 	uniformEntryRefusal,
+	vertexSlotRefusal,
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
@@ -218,6 +219,13 @@ test "a shader binding is found by its own group, binding and kind" {
 	assert shaderBindingAt(shader, 1, 0, BindingKind.Uniform) < 0;
 	assert shaderBindingAt(shader, 1, 0, BindingKind.Sampler) < 0;
 	assert shaderBindingAt(shader, 1, 2, BindingKind.Texture) < 0;
+}
+
+test "a vertex buffer slot outside the pipeline's slots is refused" {
+	assert vertexSlotRefusal(0) == "";
+	assert vertexSlotRefusal(1) == "";
+	assert vertexSlotRefusal(2) == "setVertexBuffer slot 2 is outside the 2 vertex buffer slots";
+	assert vertexSlotRefusal(-1) == "setVertexBuffer slot -1 is outside the 2 vertex buffer slots";
 }
 
 test "a uniform entry is refused by usage, alignment, overrun and size below its block" {

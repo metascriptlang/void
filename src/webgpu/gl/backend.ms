@@ -78,6 +78,7 @@ import {
 	occlusionSetId,
 	openDebugGroups,
 	stencil8Mask,
+	boundFacts,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -597,8 +598,6 @@ struct ComputeState {
 	labeled: boolean;
 	timestampSet: uint32;
 	timestampEnd: int32;
-	pipeline: uint32;
-	bindGroup: uint32;
 	dirty: boolean;
 	pendingBarrier: boolean;
 }
@@ -616,18 +615,11 @@ struct PassState {
 }
 
 struct BoundState {
-	pipeline: uint32;
 	appliedPipeline: uint32;
 	instanced: boolean;
-	vertexBuffers: uint32[2];
-	vertexOffsets: int64[2];
-	indexBuffer: uint32;
 	indexType: int32;
 	indexSize: int32;
-	indexOffset: int64;
 	stencilReference: int32;
-	bindGroups: uint32[2];
-	dynamicOffsets: uint32[8];
 	vertexDirty: boolean;
 	indexDirty: boolean;
 	resourcesDirty: boolean;
@@ -680,8 +672,8 @@ struct StateCache {
 }
 
 let pass: PassState = { width: 0 };
-let bound: BoundState = { pipeline: 0 };
-let computeBound: ComputeState = { pipeline: 0 };
+let bound: BoundState = { appliedPipeline: 0 };
+let computeBound: ComputeState = { dirty: false };
 let contextVersion: int32 = 0;
 let computeSupported = false;
 let debugSupported = false;
@@ -1249,8 +1241,8 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	resetStateCache();
 	checkError("setup");
 	pass = { width: 0 };
-	bound = { pipeline: 0 };
-	computeBound = { pipeline: 0 };
+	bound = { appliedPipeline: 0 };
+	computeBound = { dirty: false };
 	return { id: 1, queue: { id: 1 } };
 }
 
@@ -2239,14 +2231,9 @@ export function endPass(): void {
 	if (pass.labeled) { endLabel(); }
 }
 
-export function setPipeline(pipeline: GPURenderPipeline): void {
-	bound.pipeline = pipeline.id;
-}
+export function setPipeline(pipeline: GPURenderPipeline): void {}
 
 export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
-	if (slot < 0 || slot >= GPU_MAX_VERTEX_BUFFERS) { stopOnMember("setVertexBuffer slot", `${slot}`); }
-	bound.vertexBuffers[slot] = buffer.id;
-	bound.vertexOffsets[slot] = offset;
 	bound.vertexDirty = true;
 }
 
@@ -2258,19 +2245,12 @@ export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset
 		_ => stopOnMember("setIndexBuffer indexFormat", value),
 	};
 	bound.indexSize = bound.indexType == GL_UNSIGNED_SHORT ? 2 : 4;
-	bound.indexBuffer = buffer.id;
-	bound.indexOffset = offset;
 	bound.indexDirty = true;
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
-	const g = bindGroupRecords.slotIndex(bindGroup.id);
 	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) {
-			bound.dynamicOffsets[i] = dynamicOffsets[i];
-		}
 		bound.uniformsDirty = true;
 	} else {
 		bound.resourcesDirty = true;
@@ -2309,7 +2289,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush(false);
-	const mode = pipelines[pipelineRecords.slotIndex(bound.pipeline)].primitive;
+	const mode = pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].primitive;
 	if (instanceCount > 1 || bound.instanced) {
 		if (firstInstance == 0) {
 			oglDrawArraysInstanced(mode, firstVertex, vertexCount, instanceCount);
@@ -2330,10 +2310,10 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush(true);
-	const pipeline = pipelineRecords.slotIndex(bound.pipeline);
+	const pipeline = pipelineRecords.slotIndex(boundFacts.pipeline);
 	const mode = pipelines[pipeline].primitive;
 	checkedStripDraw(mode == GL_LINE_STRIP || mode == GL_TRIANGLE_STRIP, pipelines[pipeline].stripIndexType == bound.indexType);
-	const offset = (firstIndex as int64) * (bound.indexSize as int64) + bound.indexOffset;
+	const offset = (firstIndex as int64) * (bound.indexSize as int64) + boundFacts.indexOffset;
 	const indexType = bound.indexType;
 	if (baseVertex == 0 && firstInstance == 0) {
 		if (instanceCount > 1 || bound.instanced) {
@@ -2348,7 +2328,7 @@ export function drawIndexed(
 
 
 function flush(indexed: boolean): void {
-	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(); }
+	if (bound.appliedPipeline != boundFacts.pipeline) { applyPipeline(); }
 	if (bound.vertexDirty) { applyVertexBuffers(); }
 	if (indexed && bound.indexDirty) { applyIndexBuffer(); }
 	if (bound.resourcesDirty) { applyResources(); }
@@ -2356,9 +2336,9 @@ function flush(indexed: boolean): void {
 }
 
 function applyPipeline(): void {
-	const p = pipelineRecords.slotIndex(bound.pipeline);
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	if (!shaderRecords.alive(pipelines[p].shader)) {
-		stop(`the shader module of GPURenderPipeline ${bound.pipeline} was destroyed`);
+		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
 	}
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
 	if (shaders[s].program != cache.program) {
@@ -2390,7 +2370,7 @@ function applyPipeline(): void {
 		setMultisample(cache.sampleCount);
 	}
 	bound.instanced = pipelines[p].instanced;
-	bound.appliedPipeline = bound.pipeline;
+	bound.appliedPipeline = boundFacts.pipeline;
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
@@ -2645,9 +2625,9 @@ when (webgl2 || android || (linux && voidGles3)) {
 }
 
 function applyVertexBuffers(): void {
-	const p = pipelineRecords.slotIndex(bound.pipeline);
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
-		if (pipelines[p].strides[slot] != 0 && bound.vertexBuffers[slot] == 0) {
+		if (pipelines[p].strides[slot] != 0 && boundFacts.vertexBuffers[slot] == 0) {
 			stop(`the pipeline reads vertex buffer ${slot}, which is not set`);
 		}
 	}
@@ -2661,9 +2641,9 @@ function applyVertexBuffers(): void {
 			}
 			continue;
 		}
-		const b = bufferRecords.slotIndex(bound.vertexBuffers[attribute.bufferSlot]);
+		const b = bufferRecords.slotIndex(boundFacts.vertexBuffers[attribute.bufferSlot]);
 		const name = buffers[b].names[buffers[b].activeSlot];
-		const offset = bound.vertexOffsets[attribute.bufferSlot] + (attribute.offset as int64);
+		const offset = boundFacts.vertexOffsets[attribute.bufferSlot] + (attribute.offset as int64);
 		if (
 			name != cached.buffer ||
 			attribute.size != cached.size ||
@@ -2703,18 +2683,18 @@ function applyVertexBuffers(): void {
 }
 
 function applyIndexBuffer(): void {
-	const b = bufferRecords.slotIndex(bound.indexBuffer);
+	const b = bufferRecords.slotIndex(boundFacts.indexBuffer);
 	cacheBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffers[b].names[buffers[b].activeSlot]);
 	bound.indexDirty = false;
 }
 
 
 function applyResources(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(bound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
 	bound.resourcesDirty = false;
 	if (shaders[s].pairCount == 0 && shaders[s].storageCount == 0) { return; }
-	if (bound.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the pipeline reads bind group 1, which is not set"); }
-	bindResources(s, bindGroupRecords.slotIndex(bound.bindGroups[GPU_RESOURCE_GROUP]));
+	if (boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the pipeline reads bind group 1, which is not set"); }
+	bindResources(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]));
 }
 
 function bindResources(s: int32, g: int32): void {
@@ -2770,15 +2750,15 @@ function bindStorageTexture(resource: ResourceBinding, g: int32): void {
 }
 
 function applyUniforms(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(bound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
-	if (bound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
-	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
+	if (boundFacts.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
+	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const uniform: UniformBinding = shaders[s].uniforms[u];
 		const e = entryOf(bindGroups[g], uniform.binding);
-		const offset = (bound.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 		if (offset + (uniform.size as int64) > bufferRecords.slots[b].size) {
 			stop(`uniform binding ${uniform.binding} at offset ${offset} overruns its buffer`);
@@ -3022,18 +3002,16 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	if (index != GPU_RESOURCE_GROUP) { return; }
-	computeBound.bindGroup = bindGroup.id;
 	computeBound.dirty = true;
 }
 
 function applyCompute(): int32 {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(computeBound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
 	if (computeBound.pendingBarrier) {
 		oglMemoryBarrier(BARRIER_BETWEEN_DISPATCHES);
 		computeBound.pendingBarrier = false;
@@ -3045,8 +3023,8 @@ function applyCompute(): int32 {
 		oglUseProgram(cache.program);
 	}
 	if (shaders[s].pairCount == 0 && shaders[s].storageCount == 0) { return s; }
-	if (computeBound.bindGroup == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
-	bindResources(s, bindGroupRecords.slotIndex(computeBound.bindGroup));
+	if (boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
+	bindResources(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]));
 	return s;
 }
 
@@ -3072,7 +3050,7 @@ export function endComputePass(): void {
 		writeTimestamp(computeBound.timestampSet, computeBound.timestampEnd);
 	}
 	if (computeBound.labeled) { endLabel(); }
-	computeBound = { pipeline: 0 };
+	computeBound = { dirty: false };
 }
 
 @noinline function stopOnNoCompute(what: string): void {

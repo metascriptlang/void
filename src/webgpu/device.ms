@@ -124,10 +124,13 @@ import {
 	checkedViewport,
 	checkedWriteBuffer,
 	markBufferWritten,
+	markBindGroupSet,
+	markBindGroupSet,
 	markIndexSet,
 	markOcclusionBegun,
 	markOcclusionEnded,
 	markPipelineSet,
+	markVertexSet,
 	markTimestampsWritten,
 	resetEncoder,
 	resetFrame,
@@ -468,6 +471,7 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 @inline export function setBindGroup(this self: GPUComputePassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_COMPUTE, "setBindGroup");
 	checkedBoundGroup(index, bindGroup, dynamicOffsets);
+	markBindGroupSet(index, bindGroup.id, dynamicOffsets);
 	backend.setComputeBindGroup(index, bindGroup, dynamicOffsets);
 }
 
@@ -650,18 +654,20 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setVertexBuffer(this self: GPURenderPassEncoder, slot: int32, buffer: GPUBuffer, offset: int64): void {
 	checkedInPass(PASS_RENDER, "setVertexBuffer");
+	markVertexSet(slot, buffer.id, offset);
 	backend.setVertexBuffer(slot, buffer, offset);
 }
 
 @inline export function setIndexBuffer(this self: GPURenderPassEncoder, buffer: GPUBuffer, indexFormat: GPUIndexFormat, offset: int64): void {
 	checkedInPass(PASS_RENDER, "setIndexBuffer");
-	markIndexSet();
+	markIndexSet(buffer.id, offset);
 	backend.setIndexBuffer(buffer, indexFormat, offset);
 }
 
 @inline export function setBindGroup(this self: GPURenderPassEncoder, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
 	checkedInPass(PASS_RENDER, "setBindGroup");
 	checkedBoundGroup(index, bindGroup, dynamicOffsets);
+	markBindGroupSet(index, bindGroup.id, dynamicOffsets);
 	backend.setBindGroup(index, bindGroup, dynamicOffsets);
 }
 

@@ -76,6 +76,7 @@ import {
 	checkedStripDraw,
 	entryBytes,
 	stencil8Mask,
+	boundFacts,
 } from "../validate.ms";
 import {
 	TextureRecord,
@@ -477,15 +478,12 @@ struct PassState {
 	timestampEnd: int32;
 	width: int32;
 	height: int32;
-	pipeline: uint32;
 	indexFormat: int32;
 }
 
 struct ComputeState {
 	timestampSet: uint32;
 	timestampEnd: int32;
-	pipeline: uint32;
-	groupMask: int32;
 }
 
 struct BindGroupSlot {
@@ -1056,8 +1054,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	if (wgSetup(environment.device) == 0) { stop("the WGPUDevice gave no queue or no limits"); }
 	const sampleCount = cachedCanvas().sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`); }
-	pass.pipeline = 0;
-	computeBound.pipeline = 0;
 	return { id: 1, queue: { id: 1 } };
 }
 
@@ -1531,8 +1527,6 @@ export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
 	} else {
 		wgReleasePipeline(pipelines[index].native);
 	}
-	if (computeBound.pipeline == pipeline.id) { computeBound.pipeline = 0; }
-	if (pass.pipeline == pipeline.id) { pass.pipeline = 0; }
 	vacate(pipelines, pipeline.id);
 }
 
@@ -1712,7 +1706,6 @@ export function beginRenderPass(
 	}
 	pass.timestampSet = writes.querySet.id;
 	pass.timestampEnd = writes.endOfPassWriteIndex;
-	pass.pipeline = 0;
 	pass.indexFormat = 0;
 	return { id: 1 };
 }
@@ -1724,13 +1717,9 @@ export function endPass(): void {
 @inline export function setPipeline(pipeline: GPURenderPipeline): void {
 	const p = pipelineRecords.slotIndex(pipeline.id);
 	wgSetPipeline(pipelines[p].native);
-	pass.pipeline = pipeline.id;
 }
 
 @inline export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
-	if (slot < 0 || slot >= GPU_MAX_VERTEX_BUFFERS) {
-		stopOnMember("setVertexBuffer slot", `${slot}`);
-	}
 	wgSetVertexBuffer(slot, buffers[bufferRecords.slotIndex(buffer.id)].native, offset);
 }
 
@@ -1761,7 +1750,6 @@ function stageBindGroup(
 	if (bindGroup.id == 0) {
 		if (compute) {
 			wgSetComputeBindGroup(index, NO_BIND_GROUP, 0, offsets[0]);
-			computeBound.groupMask &= ~(1 << index);
 		} else {
 			wgSetBindGroup(index, NO_BIND_GROUP, 0, offsets[0]);
 		}
@@ -1771,7 +1759,6 @@ function stageBindGroup(
 	for (let i = 0; i < bindGroupRecords.slots[g].dynamicCount; i++) { offsets[i] = dynamicOffsets[i]; }
 	if (compute) {
 		wgSetComputeBindGroup(index, bindGroups[g].native, bindGroupRecords.slots[g].dynamicCount, offsets[0]);
-		computeBound.groupMask |= 1 << index;
 	} else {
 		wgSetBindGroup(index, bindGroups[g].native, bindGroupRecords.slots[g].dynamicCount, offsets[0]);
 	}
@@ -1810,8 +1797,8 @@ export function setStencilReference(reference: uint32): void {
 	baseVertex: int32,
 	firstInstance: int32,
 ): void {
-	const strip = pipelines[pipelineRecords.slotIndex(pass.pipeline)].stripIndexFormat;
-	checkedStripDraw(pipelines[pipelineRecords.slotIndex(pass.pipeline)].strip, strip == pass.indexFormat);
+	const strip = pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].stripIndexFormat;
+	checkedStripDraw(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].strip, strip == pass.indexFormat);
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
@@ -1943,15 +1930,12 @@ export function beginComputePass(encoder: GPUCommandEncoder, descriptor: GPUComp
 	}
 	computeBound.timestampSet = writes.querySet.id;
 	computeBound.timestampEnd = writes.endOfPassWriteIndex;
-	computeBound.pipeline = 0;
-	computeBound.groupMask = 0;
 	return { id: 1 };
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
 	const p = pipelineRecords.slotIndex(pipeline.id);
 	wgSetComputePipeline(pipelines[p].native);
-	computeBound.pipeline = pipeline.id;
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
@@ -1959,11 +1943,11 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 }
 
 @noinline function checkDispatch(call: string): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(computeBound.pipeline)].shader);
-	if (shaders[s].uniformCount > 0 && (computeBound.groupMask & 1) == 0) {
+	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
+	if (shaders[s].uniformCount > 0 && boundFacts.bindGroups[GPU_UNIFORM_GROUP] == 0) {
 		stop(`${call}: the compute pipeline reads bind group ${GPU_UNIFORM_GROUP}, which is not set`);
 	}
-	if (shaders[s].resourceCount > 0 && (computeBound.groupMask & 2) == 0) {
+	if (shaders[s].resourceCount > 0 && boundFacts.bindGroups[GPU_RESOURCE_GROUP] == 0) {
 		stop(`${call}: the compute pipeline reads bind group ${GPU_RESOURCE_GROUP}, which is not set`);
 	}
 }
@@ -1982,7 +1966,6 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 
 export function endComputePass(): void {
 	wgEndComputePass();
-	computeBound.pipeline = 0;
 }
 
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
