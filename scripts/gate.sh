@@ -717,7 +717,7 @@ if [ "$(uname -s)" = Darwin ]; then
 			fi
 		done
 	else
-		skip "window behaviour ($window_tests): pass --window when src/platform/macos/*, src/sokol/bridgeEmbed.m, tests/capture/capture.c or src/gpu/gpuTimer.ms changed; they need a visible focused window, and macWindow toggles full screen"
+		skip "window behaviour ($window_tests): pass --window when src/platform/macos/*, src/sokol/bridgeEmbed.m, or tests/capture/capture.c changed; they need a visible focused window, and macWindow toggles full screen"
 	fi
 	if "$MSC" build tests/integration/metalReadback.ms --output=out/metalReadback.exe > out/gate-metal-readback.log 2>&1; then
 		if out/metalReadback.exe > out/gate-metal-readback-run.log 2>&1; then
@@ -732,6 +732,12 @@ if [ "$(uname -s)" = Darwin ]; then
 		fi
 	else
 		fail "metal readback does not build — see out/gate-metal-readback.log"
+	fi
+	if "$MSC" build tests/integration/gpuTimer.ms --output=out/gpuTimer.exe > out/gate-gpu-timer.log 2>&1 \
+			&& out/gpuTimer.exe > out/gate-gpu-timer-run.log 2>&1; then
+		pass "$(grep -E '^PASS gpu timer' out/gate-gpu-timer-run.log | sed 's/^PASS //')"
+	else
+		fail "gpu timer — see out/gate-gpu-timer.log and out/gate-gpu-timer-run.log"
 	fi
 fi
 outside_status=0

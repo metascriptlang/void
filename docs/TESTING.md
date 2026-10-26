@@ -365,7 +365,8 @@ Flags:
   focused window (`VOID_QUIET_WINDOW` unset for them). They need focus, vsync and real full
   screen, which `macWindow` toggles, and flake about one run in four, so without the flag they
   are one SKIP line. Pass it when a change touches `src/platform/macos/*`,
-  `src/sokol/bridgeEmbed.m`, `tests/capture/capture.c` or `src/gpu/gpuTimer.ms`.
+  `src/sokol/bridgeEmbed.m` or `tests/capture/capture.c`. `gpuTimer` runs on every Mac gate,
+  in the quiet window.
 - `--ios` runs the Metal goldens and view samples on an attached iPhone or iPad
   (`scripts/iosDevice.sh`); without it they are one SKIP line. The device must be paired and
   unlocked, or every iOS line fails by name.
