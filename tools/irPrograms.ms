@@ -15,6 +15,7 @@ import {
 	programSource,
 	quotedSource,
 	targetArms,
+	wordsBase64,
 } from "../src/shader/descriptor";
 import { dxbcStage } from "../src/shader/dxbcCache";
 import { irFromText } from "../src/shader/irText";
@@ -130,6 +131,7 @@ const ARMS = targetArms();
 
 function stageFiles(language: string): string[] {
 	return match (language) {
+		"spirv" => [".vs.spv", ".fs.spv"],
 		"wgsl" => [".vs.wgsl", ".fs.wgsl"],
 		"glsl300es" => [".es.vert", ".es.frag"],
 		"glsl430" => [".430.vert", ".430.frag"],
@@ -393,7 +395,7 @@ function metalFlags(language: string): string[] {
 	if (language == "metal_ios") {
 		return ["iphoneos", "-std=ios-metal2.4", "-miphoneos-version-min=15.0", "-ffast-math"];
 	}
-	if (language == "wgsl" || language == "glsl300es" || language == "glsl430" ||
+	if (language == "spirv" || language == "wgsl" || language == "glsl300es" || language == "glsl430" ||
 		language == "hlsl5") { return []; }
 	fail("no Metal flags decision for " + language);
 }
@@ -478,6 +480,32 @@ function stageBytecode(
 	];
 }
 
+function spirvReference(constants: Map<string, string>, words: uint32[]): string {
+	const base64 = wordsBase64(words);
+	const key = sha256(base64.asBytes()).toHex();
+	constants.set(key, base64);
+	return "shaderBytecodeFromBase64(SPIRV_" + key + ")";
+}
+
+function spirvBytecode(constants: Map<string, string>, source: ProgramSource): string[] {
+	if (isComputeSource(source)) { return [spirvReference(constants, source.computeWords)]; }
+	return [
+		spirvReference(constants, source.vertexWords),
+		spirvReference(constants, source.fragmentWords),
+	];
+}
+
+function blobPrefix(language: string): string {
+	if (language == "hlsl5") { return "DXBC_"; }
+	if (language == "spirv") { return "SPIRV_"; }
+	if (language == "metal_ios" || language == "metal_macos") { return "METALLIB_"; }
+	fail("no blob prefix for " + language);
+}
+
+function spirvFile(words: uint32[]): string {
+	return Buffer.fromString(wordsBase64(words), "base64");
+}
+
 function textShared(texts: Map<string, string>, code: string, bytecode: string,
 	keepSource: boolean): string {
 	if (bytecode != "[]" && !keepSource) { return quotedSource(""); }
@@ -513,8 +541,10 @@ function moduleText(
 				fail(program.name + " " + language + ": " + printed.refusal);
 			}
 			const files = stageFiles(language);
-			keep("out/irPrograms/" + program.name + files[0], printed.vertexCode);
-			keep("out/irPrograms/" + program.name + files[1], printed.fragmentCode);
+			keep("out/irPrograms/" + program.name + files[0],
+				language == "spirv" ? spirvFile(printed.vertexWords) : printed.vertexCode);
+			keep("out/irPrograms/" + program.name + files[1],
+				language == "spirv" ? spirvFile(printed.fragmentWords) : printed.fragmentCode);
 			counts.printed += 2;
 			row.push(printed);
 		}
@@ -537,7 +567,9 @@ function moduleText(
 		for (let i = 0; i < programs.length; i++) {
 			const stageSource = sources[i][targetIndex];
 			const name = programs[i].name;
-			const bytecode = language == "hlsl5" ?
+			const bytecode = language == "spirv" ?
+				spirvBytecode(constants, stageSource) :
+				language == "hlsl5" ?
 				stageBytecode((code, stage, entry, what) =>
 					bytecodeOf(dxbc, constants, code, hlslProfile(stage), entry, what),
 					stageSource, name) :
@@ -560,7 +592,7 @@ function moduleText(
 			blobs += "\tconst TEXT_" + key + " = " + quoted + ";\n";
 		}
 		for (const [key, base64] of constants) {
-			blobs += "\tconst " + (language == "hlsl5" ? "DXBC_" : "METALLIB_") + key + " = \"" +
+			blobs += "\tconst " + blobPrefix(language) + key + " = \"" +
 				base64 + "\";\n";
 		}
 		text += (targetIndex == 0 ? "\nwhen (" : " else when (") + armCondition(ARMS[targetIndex]) +
