@@ -295,15 +295,19 @@ Render-pass layouts follow Dawn (`RenderPassCache.cpp:176-208`): a pass starts a
 attachment layout and the tracker moves the texture before the pass, where Mach's passes move
 it inside the pass from top-of-pipe.
 
-A layout transition names the access of the write it follows, as wgpu `100c142` does: the
-barrier comes from the texture's current use (`wgpu-core/src/track/texture.rs:1341-1363`), and
-a colour target maps to `COLOR_ATTACHMENT_WRITE` at colour output
-(`wgpu-hal/src/vulkan/conv.rs:345-347`). Mach transitions a texture at rest with no source
-access (vulkan.zig:2910-2943), and its `endPass` settles a write that keeps its layout through
-stages alone (3001-3040). A copy recorded before that settling is flushed then shares one
-`vkCmdPipelineBarrier` with it, and sync validation reports the write-after-write on lavapipe.
-The tracker keeps each write it settled until the flush, and a transition in that flush takes
-the write's access and stage.
+A layout transition starts from the state the texture is really in, the write it follows
+included, as Heaps `b9aa6dcb` does. `DX12Driver.hx` keeps each resource's `state` and
+`targetState` (573-576); a transition requested before the flush only moves `targetState`
+(1371-1395), and the flush emits one barrier from `state` (1397-1430). wgpu `100c142` does the
+same on Vulkan: the barrier comes from the texture's current use
+(`wgpu-core/src/track/texture.rs:1341-1363`), and a colour target maps to
+`COLOR_ATTACHMENT_WRITE` at colour output (`wgpu-hal/src/vulkan/conv.rs:345-347`). Mach is prior
+art with the hazard: it transitions a texture at rest with no source access
+(vulkan.zig:2910-2943), and its `endPass` settles a write that keeps its layout through stages
+alone (3001-3040), so a copy in the same flush shares one `vkCmdPipelineBarrier` with that
+settling, and sync validation reports the write-after-write on lavapipe. The tracker keeps each
+write it settled until the flush, and a transition in that flush takes the write's access and
+stage.
 
 A resource whose driver requires its own allocation gets a dedicated block, and one that only
 prefers it gets one until a quarter of `maxMemoryAllocationCount` is left, as VMA does (Godot
