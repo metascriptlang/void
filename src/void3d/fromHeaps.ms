@@ -319,7 +319,7 @@ function shapeConstant(v: ParticleValue): Result<float32, HeapsLoweringError> {
 	return Result.ok(c);
 }
 
-function polynomial(values: Span<float32>, t: float64): float64 {
+function polynomial(values: Readonly<Span<float32>>, t: float64): float64 {
 	let y: float64 = 0.0;
 	let j: int32 = (values.length as int32) - 1;
 	while (j >= 0) {
@@ -329,7 +329,7 @@ function polynomial(values: Span<float32>, t: float64): float64 {
 	return y;
 }
 
-function polynomialSlope(values: Span<float32>, t: float64): float64 {
+function polynomialSlope(values: Readonly<Span<float32>>, t: float64): float64 {
 	let y: float64 = 0.0;
 	let j: int32 = (values.length as int32) - 1;
 	while (j >= 1) {

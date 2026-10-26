@@ -469,7 +469,7 @@ export function addBakedFrames(
 	const count: int32 = try checkBakedFrames(frames);
 	let added: Vec<MeshId> = [];
 	for (let f = 0; f < count; f++) {
-		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, { ...frames[f] });
+		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, frames[f].copy());
 		if (!frame.ok) {
 			for (const mesh of added) {
 				const _left: Result<int32, HandleError> = releaseMesh(context, mesh);

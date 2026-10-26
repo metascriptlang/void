@@ -1351,7 +1351,7 @@ function sheetFrame(sys: ParticleSystem, seed: uint32, tN: float32, age: float32
 	const progress: float32 = match (sheet.timeMode) {
 		TextureSheetTimeMode.Lifetime => {
 			const local: float32 = tN * cycles;
-			return c.frameOverTime.evaluate(tN >= 1.0 ? 1.0 : fract(local), r);
+			c.frameOverTime.evaluate(tN >= 1.0 ? 1.0 : fract(local), r)
 		},
 		TextureSheetTimeMode.Speed => within(sheet.speedRange, speed),
 		TextureSheetTimeMode.FPS => fract(age * sheet.fps / (frames as float32)),

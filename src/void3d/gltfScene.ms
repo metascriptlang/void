@@ -614,7 +614,7 @@ function attachGltfSkins(
 	data: GltfData,
 	bindings: Readonly<Span<GltfMeshBinding>>,
 	mapped: GltfNodeBinding,
-	morphs: Readonly<Span<SceneMorph | null>>,
+	morphs: Span<SceneMorph | null>,
 ): Result<int32, GltfSceneError> {
 	let addedCount: int32 = 0;
 	for (let node = 0; node < data.nodes.length; node++) {
@@ -838,7 +838,7 @@ export interface GltfMorphPose {
 
 export function bindMorphPose(
 	this typeof GltfMorphPose,
-	morphs: Readonly<Span<SceneMorph | null>>,
+	morphs: Span<SceneMorph | null>,
 	tracks: Readonly<Span<GltfWeightTrack>>,
 ): Result<GltfMorphPose, GltfMorphPoseError> {
 	let pose: GltfMorphPose = { morphs: [], tracks: [] };

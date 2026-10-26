@@ -113,7 +113,7 @@ export function create(
 	this typeof MorphData,
 	inputs: Readonly<Span<MorphPrimitiveInput>>,
 	targetCount: int32,
-): Result<Readonly<MorphData>, MorphGeometryError> {
+): Result<MorphData, MorphGeometryError> {
 	if (targetCount < 1 || inputs.length < 1 || inputs.length > 0x7fffffff) {
 		return Result.err(MorphGeometryError.Shape);
 	}
@@ -176,7 +176,7 @@ export function create(
 // the same order, so a skinned layout of the mesh deforms by the weights the plain one does.
 export function rebased(
 	this data: Readonly<MorphData>, bases: Readonly<Span<MeshData>>,
-): Result<Readonly<MorphData>, MorphGeometryError> {
+): Result<MorphData, MorphGeometryError> {
 	if (bases.length != data.primitives.length) { return Result.err(MorphGeometryError.Shape); }
 	let primitives: Vec<MorphPrimitiveData> = [];
 	for (let primitive = 0; primitive < data.primitives.length; primitive++) {
