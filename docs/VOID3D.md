@@ -6159,6 +6159,54 @@ header and the refusals, a packed block read back by `cubeShadowAt` per face, th
 around the receiver's distance, the named record of each kind, the carried block) and on the GPU
 by `tests/integration/lightShadows.ms` (gate3d `light-shadows`).
 
+### Spot cookies, as built (2026-10-26)
+
+A spot light can carry a cookie: a texture its light passes through, as a slide in a projector.
+`setLightCookie(scene, id, cookie)` puts it on the light, where Heaps keeps `SpotLight.cookie`
+(`h3d/scene/pbr/SpotLight.hx:10,119-126`) and Bevy its `SpotLightTexture`; the scene holds the
+texture's id, not the texture.
+
+- The cookie is projected through the spot's own camera, the one its shadow draws with
+  (`spotShadowView`): square, the full cone angle as its field of view, far at the range, as
+  Heaps builds `lightProj` (`SpotLight.hx:19,41,48,89-94`). The map into the texture is Heaps'
+  `screenToUv` (`renderer.ms` `cookieMapOf`) and is the same on every backend, because an
+  uploaded image's first row is its top everywhere; the shadow's `mapMatrix` flips per backend,
+  the cookie's does not.
+- Inside the texture's window the cookie's `rgb * a` replaces the cone's angular falloff, and the
+  distance window stays, as in `h3d/shader/pbr/Light.hx:147-162`. Outside it the light lights
+  nothing: Heaps discards that light-pass fragment, the clustered loop adds no light for it
+  (`shader3d.ms` `cookieAt`, `recordCookieAt`, in both the lit and the pbr loop).
+- Billboards and particles do not read the cookie: Heaps applies it in its deferred light pass
+  only, and its forward lighting, which lights what is drawn with alpha, evaluates a spot
+  without it (`h3d/shader/pbr/DefaultForward.hx:194-211,303-311`).
+- The window is a square pyramid, as Heaps' `spotLightPrim` (`SpotLight.hx:52-86`), so its
+  corners lie outside the cone. The clusters take the cone around the pyramid, half angle
+  `atan(sqrt(2) * tan(angle / 2))` (`clusterFrame.ms` `clusterLightsOf`), or a cluster in a corner
+  would miss the light.
+- The texture is read at level 0 (`textureSampleLevel`): the clustered loop runs in non-uniform
+  control flow, where WGSL refuses a sample that takes its level from derivatives. A mipmapped
+  cookie therefore reads its top level only, where Heaps' deferred pass would filter by distance.
+- One spot per frame carries a cookie, as one spot casts the spot shadow; `collectLights` refuses
+  a second (`TooManyCookieSpots`) and a cookie on any other kind (`UncookableLight`). The light
+  block's header names it as the casters are named: `LIGHT_COOKIE` holds its record + 1 and the
+  texture id's store, index and generation as floats, exact below 2^24, so a larger id is refused
+  (`CookieIdPastFloat`). The renderer writes the map (`LIGHT_COOKIE_MATRIX`) and refuses a header
+  that names no spot (`BadCookieSpot`) or a released texture (`StaleCookie`).
+- The texture binds at view 13 with sampler 6, in the clustered lights' group
+  (`CLUSTER_SCENE_VIEWS`), so it never counts against a material's slots. With no cookie, or a
+  cookie whose texture is not drawable yet, a 1x1 clear texel binds and the spot lights nothing
+  there, as a material whose texture is not ready draws nothing. The worst program reads 14
+  texture-sampler pairs, under WebGL2's floor of 16. The pixel-art preset refuses spots, cookie
+  or not (`PixelArtError.ShapedLight`).
+
+Pinned on the CPU by `spotCookieCheck.ms` (the header and its refusals, the cluster cone, the map
+sending the axis to the centre and the edges to the border, the texture read per quadrant and
+nothing outside it or behind the light, the named record only, the lit and pbr loops tinted by
+the cookie and lighting a corner the plain cone does not, the renderer's refusals) and
+`programKeyCheck.ms` (every core mesh program reading the light records reads the cookie, no
+billboard or particle does). The bind path needs the GPU and is not pinned yet: a golden waits
+for a GPU slot.
+
 ### Shadow filtering: PCF, as built so far (2026-10-25)
 
 Every shadow map (sun, spot, cube) takes Heaps' `Shadows.samplingKind` and `pcfScale`
