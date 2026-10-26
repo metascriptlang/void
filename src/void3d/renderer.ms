@@ -127,7 +127,7 @@ import { CubeShadowError, cubeCaster, cubeShadowViews } from "./cubeShadow";
 import {
 	CameraView, CAMERA_EYE, CAMERA_NEAR, CAMERA_PROJECTION_X, CAMERA_PROJECTION_Y,
 } from "./camera";
-import { pickFor } from "./meshLod";
+import { pickFor, nextPickPass } from "./meshLod";
 import { ClusterAssignment, ClusterConfig } from "./clusters";
 import {
 	ClusterFrame,
@@ -643,11 +643,12 @@ export function beginFrame(
 		return Result.err(RendererError.CameraBlockLength);
 	}
 	const lodEye: Vec3 = vec3(camera[CAMERA_EYE], camera[CAMERA_EYE + 1], camera[CAMERA_EYE + 2]);
+	const lodPass: int64 = nextPickPass();
 	for (let i = 0; i < (items.length as int32); i++) {
 		const pick = items[i].lod;
 		if (pick === null) { continue; }
 		if (!pick.pickFor(items[i].world, lodEye, camera[CAMERA_PROJECTION_X],
-			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale).ok) {
+			camera[CAMERA_PROJECTION_Y], camera[CAMERA_NEAR], renderer.meshLodScale, lodPass).ok) {
 			return Result.err(RendererError.MeshLod);
 		}
 	}

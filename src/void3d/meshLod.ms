@@ -12,6 +12,7 @@ export enum MeshLodError {
 	InvalidRange,
 	InvalidMaterial,
 	InvalidLod,
+	InheritedBeforeSource,
 }
 
 // Use Bounds.getBoundingRadius (sphere radius + center offset), matrix translation distance,
@@ -219,6 +220,22 @@ export interface MeshLodPick {
 	forcedLod: int32;
 	range: MeshLodRange;
 	culled: boolean;
+	inheritLod: boolean;
+	screenRatio: float64;
+	ratioSource: MeshLodPick | null;
+	pickedPass: int64;
+}
+
+let pickPasses: int64 = 0;
+
+export function nextPickPass(): int64 {
+	pickPasses = pickPasses + 1;
+	return pickPasses;
+}
+
+export function passesRatioDown(this pick: Readonly<MeshLodPick>): boolean {
+	return pick.inheritLod &&
+		(pick.config.lodCount > 1 || pick.config.cullingScreenRatio != 0.0);
 }
 
 function rowLength(x: float32, y: float32, z: float32): float64 {
@@ -233,7 +250,31 @@ export function pickFor(
 	projectionY: float32,
 	nearPlane: float32,
 	meshLodScale: float64,
+	pass: int64,
 ): Result<void, MeshLodError> {
+	const source = pick.ratioSource;
+	if (source !== null && source.pickedPass != pass) {
+		return Result.err(MeshLodError.InheritedBeforeSource);
+	}
+	const ratio: float64 = source !== null ? source.screenRatio
+		: try ownScreenRatio(pick, world, eye, projectionX, projectionY, nearPlane, meshLodScale);
+	const chosen = try pick.config.select(ratio, pick.forcedLod);
+	pick.screenRatio = ratio;
+	pick.pickedPass = pass;
+	pick.culled = chosen.culled;
+	if (!chosen.culled) { pick.range = try pick.ranges.rangeAt(pick.material, chosen.lod); }
+	return Result.ok(null);
+}
+
+function ownScreenRatio(
+	pick: Readonly<MeshLodPick>,
+	world: Mat4,
+	eye: Vec3,
+	projectionX: float32,
+	projectionY: float32,
+	nearPlane: float32,
+	meshLodScale: float64,
+): Result<float64, MeshLodError> {
 	const dx: float64 = (world.m41 - eye.x) as float64;
 	const dy: float64 = (world.m42 - eye.y) as float64;
 	const dz: float64 = (world.m43 - eye.z) as float64;
@@ -249,9 +290,5 @@ export function pickFor(
 		nearPlane: nearPlane as float64,
 		meshLodScale: meshLodScale,
 	};
-	const ratio: float64 = try size.referenceScreenRatioHeuristic();
-	const chosen = try pick.config.select(ratio, pick.forcedLod);
-	pick.culled = chosen.culled;
-	if (!chosen.culled) { pick.range = try pick.ranges.rangeAt(pick.material, chosen.lod); }
-	return Result.ok(null);
+	return size.referenceScreenRatioHeuristic();
 }

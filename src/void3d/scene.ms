@@ -618,6 +618,10 @@ export function addLodMeshNode(
 		forcedLod: -1,
 		range: first.value,
 		culled: false,
+		inheritLod: false,
+		screenRatio: 0.0,
+		ratioSource: null,
+		pickedPass: 0,
 	};
 	return Result.ok(node);
 }
@@ -628,6 +632,29 @@ export function setForcedLod(scene: Scene3D, id: NodeId3D, level: int32): Result
 	if (lod === null || level < -1) { return Result.err(SceneError.MeshLod); }
 	lod.forcedLod = level;
 	return Result.ok(null);
+}
+
+export function setInheritLod(
+	scene: Scene3D, id: NodeId3D, inherit: boolean,
+): Result<void, SceneError> {
+	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setInheritLod");
+	const lod = scene.meshes[scene.nodes[node].payload].lod;
+	if (lod === null) { return Result.err(SceneError.MeshLod); }
+	lod.inheritLod = inherit;
+	return Result.ok(null);
+}
+
+function ratioSourceOf(scene: Scene3D, node: int32, layers: uint32): MeshLodPick | null {
+	let source: MeshLodPick | null = null;
+	let at: int32 = scene.nodes[node].parent;
+	while (at != NO_NODE_3D) {
+		if (scene.nodes[at].kind == NodeKind.Mesh && layersTest(scene.nodes[at].layers, layers)) {
+			const lod = scene.meshes[scene.nodes[at].payload].lod;
+			if (lod !== null && lod.passesRatioDown()) { source = lod; }
+		}
+		at = scene.nodes[at].parent;
+	}
+	return source;
 }
 
 export function addSkinMeshNode(
@@ -1420,6 +1447,8 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 		const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 			const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
+			const pick = instance.lod;
+			if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
 			items.push({
 				mesh: instance.mesh,
 				material: instance.material,
@@ -1565,6 +1594,8 @@ function refreshItemsSynced(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 			const shown: boolean = layersTest(scene.nodes[index].layers, layers);
 			if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 				const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
+				const pick = instance.lod;
+				if (pick !== null) { pick.ratioSource = ratioSourceOf(scene, index, layers); }
 				// The walk can produce more items than the list holds as well as fewer: a node
 				// culled since the last collect drops out, and un-culling it puts it back.
 				// Writing `items[at]` unconditionally would store past the end in that second
