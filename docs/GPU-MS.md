@@ -868,3 +868,14 @@ Two goldens need a D3D11 capture on WARP: `clip/roundedMask` (rounded Mask clip,
 `filter/mask` (Mask filter, `5a60dd23`). The rounded clip changed the `ui`, `sprite` and `void2d`
 programs, so `scripts/regen-shaders.sh` on Windows has six DXBC blobs to rebuild with fxc (vertex
 and fragment of each); the Mac reports them as `dxbc miss … no fxc`.
+
+Progress, step 6 (merged at `3fe40ad4`): format and enum decoding lives once in `types.ms`.
+`textureFormatFacts(format, member, backend)` gives the ordinal, bytes per texel, depth and
+stencil; `compareIndex`, `blendFactorIndex`, `blendOperationIndex`, `stencilOperationIndex`,
+`vertexFormatIndex`, `addressModeIndex` and `topologyIndex` decode a name with WebGPU's `""`
+default and stop by name on an unknown one. A backend keeps one native table per enum, in the
+union order of `types.ms`, read through `nativeAt` or `<enum>Native(table, …)`, which stops when a
+table's length differs from the member count. Every row was checked against the old match arms on
+all five backends; D3D11 keeps a colour and an alpha blend-factor table, GL its BGRA gap. For
+Vulkan: `conv.ms:78-106` (its own `formatInfo`) and `conv.ms:196-237` can become tables read the
+same way. A WARP run of `webgpuD3d11Check` and a GL run are the checks this side cannot make.
