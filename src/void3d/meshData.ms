@@ -5,9 +5,9 @@
 //
 // Heaps keeps points, normals, uvs and colors as four parallel arrays and interleaves them in
 // `getCPUBuffer` at upload. Here the interleave is the storage: one `Vec<float32>` in the layout
-// gpu3d.c describes for it, `Lit` (position 3, normal 3, rgba 4) or, for a mesh that carries
-// uvs, `LitTextured` (position 3, normal 3, uv 2, rgba 4: `getBufferFormat`'s order). The fixed
-// sokol-shdc programs read exactly those two, so four arrays would buy nothing.
+// vertexLayouts.ms describes for it, `Lit` (position 3, normal 3, rgba 4) or, for a mesh that
+// carries uvs, `LitTextured` (position 3, normal 3, uv 2, rgba 4: `getBufferFormat`'s order). The
+// fixed programs read exactly those two, so four arrays would buy nothing.
 //
 // MeshData is a value struct holding owned `Vec`s, so **assigning it to a local copies its
 // arrays**. Reach one through its table by index (`context.meshData[i].bounds`) or take it by
@@ -37,7 +37,7 @@ import { Ray } from "./ray";
 import { Face } from "../gpu/state";
 import { MAX_SKIN_PALETTE_JOINTS } from "./skinPalette";
 
-// position(3) + normal(3) + rgba(4), the `Lit` vertex layout in gpu3d.c describeLayout.
+// position(3) + normal(3) + rgba(4), the `Lit` vertex layout in vertexLayouts.ms.
 export const LIT_VERTEX_STRIDE: int32 = 10;
 export const LIT_TEXTURED_VERTEX_STRIDE: int32 = 12;
 // LitTextured, then glTF's TANGENT: xyz, and in w the sign the bitangent cross(normal, tangent)
@@ -137,7 +137,7 @@ export function stride(this data: Readonly<MeshData>): int32 {
 }
 
 // Appends a second uv set, two floats per vertex, after the tangent and before the skin: the
-// `*UvB` layouts in gpu3d.c, the attribute Bevy calls ATTRIBUTE_UV_1.
+// `*UvB` layouts in vertexLayouts.ms, the attribute Bevy calls ATTRIBUTE_UV_1.
 export function addUvB(
 	ref data: MeshData,
 	uvs: Readonly<Span<float32>>,

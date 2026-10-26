@@ -1,5 +1,5 @@
-// Writes a particle system's live particles as Program.ParticleVisual instances, in the order
-// its renderer sorts them (docs/PARTICLES.md, tier T0's CPU writer; the layout is gpu3d.c's
+// Writes a particle system's live particles as Program.ParticleVisual instances, in the order its
+// renderer sorts them (docs/PARTICLES.md, tier T0's CPU writer; the layout is vertexLayouts.ms's
 // ParticleVisual: position, width, height, anchor, clockwise rotation, uv rect, colour, world
 // velocity, then the system's render mode, which shader3d.ms particleVisualPoint reads).
 // Trails write the same instances, one view-facing quad per trail segment.

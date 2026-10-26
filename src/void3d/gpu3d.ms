@@ -618,7 +618,7 @@ export function samplerSlotMask(program: ProgramKey): uint32 {
 	return doorSamplerSlotMask(doorProgram(program));
 }
 
-// Floats per element of vertex buffer `buffer` of `layout`, as gpu3d.c registered it.
+// Floats per element of vertex buffer `buffer` of `layout`, as vertexLayouts.ms describes it.
 export function layoutFloats(layout: VertexLayout, buffer: int32): int32 {
 	return doorLayoutFloats(doorLayout(layout), buffer);
 }

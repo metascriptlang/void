@@ -1,4 +1,4 @@
-// gpu3d.c describeLayout as WebGPU vertex buffer layouts, indexed by gpu3d.ms VertexLayout: one
+// The WebGPU vertex buffer layouts, indexed by gpu3d.ms VertexLayout: one
 // buffer, attributes at their shader slots, offsets and stride packed in slot order as sokol_gfx
 // computes them when every offset is zero (_sg_pipeline_desc_defaults).
 
