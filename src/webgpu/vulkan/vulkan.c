@@ -631,7 +631,6 @@ uint32_t vulkanSurfaceCapability(int32_t field) {
 	case VULKAN_SURFACE_MIN_HEIGHT: return c->minImageExtent.height;
 	case VULKAN_SURFACE_MAX_WIDTH: return c->maxImageExtent.width;
 	case VULKAN_SURFACE_MAX_HEIGHT: return c->maxImageExtent.height;
-	case VULKAN_SURFACE_CURRENT_TRANSFORM: return (uint32_t)c->currentTransform;
 	case VULKAN_SURFACE_TRANSFORMS: return c->supportedTransforms;
 	case VULKAN_SURFACE_COMPOSITE_ALPHA: return c->supportedCompositeAlpha;
 	case VULKAN_SURFACE_USAGE: return c->supportedUsageFlags;

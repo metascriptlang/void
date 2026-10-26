@@ -72,8 +72,6 @@ export function windowPresent(): void {
 	if (!presented.ok) {
 		if (presented.error != SurfaceError.Outdated) { stopOnSurface("present", presented.error); }
 		stale = true;
-	} else if (chain.suboptimal) {
-		stale = true;
 	}
 }
 
