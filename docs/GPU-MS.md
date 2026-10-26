@@ -1023,3 +1023,20 @@ the shared index order. 0 mismatches across 8 enums, texel sizes included. `msc 
 `--os=windows|linux|android -d:voidVulkan` on `mainSokol2d`, and for `webgpuVulkanCheck`.
 `vulkanResourcesCheck` passes. **Not run:** `webgpuVulkanCheck` and the Vulkan goldens on a GPU.
 Fine-tune whatever they show.
+
+### 2026-10-26, Windows: `e52697cb` holds on the GPU; writeMask 0 and the identity swapchain
+
+**Your `vulkan/conv.ms` tables, verified on the RTX 5090** at `b874ce69`: `webgpuVulkanCheck`
+passes 18/18, `vulkanSwapchain` passes with 0 validation errors, and
+`sh scripts/golden.sh --backend vulkan` gives 118 pass, 4 pending, 0 fail of 122, the
+baseline. Nothing to fine-tune.
+
+**One Metal follow-through to run:** an explicit color `writeMask` of 0 now writes no channel
+(`ad67b7ea`); before it, every backend turned 0 into all four. `GPUColorTargetState.writeMask`
+is `int32 | null`, and `colorWriteBits` in `validate.ms` resolves null to `GPUColorWrite.ALL`.
+Metal's `colorWriteMask` reads it (`b874ce69`); darwin unverified. A Metal test that passes
+`writeMask` 0 to mean all channels now draws nothing and should pass null. The D3D11 and Vulkan
+test is `drawMaskedTriangle` in `webgpuFixtures.ms`; it has no Metal twin yet.
+
+**Vulkan swapchain at identity** (`2cbc8dee`): it no longer reads `currentTransform` and takes
+`VK_SUBOPTIMAL_KHR` as success. `docs/GPU.md` §Vulkan records why. No Metal effect.
