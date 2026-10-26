@@ -98,6 +98,8 @@ import "./gltfMaterialCheck";
 import "./gltfEmbeddedImageCheck";
 import "./gltfCurveCheck";
 import "./gltfPoseCheck";
+import "./floatBitsPortCheck";
+import "./mat4PortCheck";
 import "./gltfComposeSceneCheck";
 import "./gltfAccessorCheck";
 import "./gltfColourCheck";

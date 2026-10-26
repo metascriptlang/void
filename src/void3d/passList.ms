@@ -13,7 +13,7 @@ import { DrawContext, DrawItem, SceneTexture, drawItemWith } from "./draw";
 import { TargetLayout } from "../gpu/target";
 import { Material, Phase, UniformBlock, ShadowCasting } from "./material";
 import { ProgramKey } from "./gpu3d";
-import { sortKeyOf } from "./sortKey.h";
+import { sortKeyOf } from "./sortKey";
 import { RenderState, bits } from "../gpu/state";
 import { TextureId, isTexture } from "./texture";
 import { MeshData } from "./meshData";
