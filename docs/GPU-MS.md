@@ -879,3 +879,13 @@ table's length differs from the member count. Every row was checked against the 
 all five backends; D3D11 keeps a colour and an alpha blend-factor table, GL its BGRA gap. For
 Vulkan: `conv.ms:78-106` (its own `formatInfo`) and `conv.ms:196-237` can become tables read the
 same way. A WARP run of `webgpuD3d11Check` and a GL run are the checks this side cannot make.
+
+Progress, step 7 (merged at `50213677`): the frame calls check each rule once, above the backend.
+`checkedDrawState` now also refuses an indexed strip draw whose index format differs from the
+pipeline's `stripIndexFormat` and a draw whose shader module was destroyed; `device.ms` checks an
+indirect dispatch buffer (`checkedDispatchIndirect`). `checkedDrawState` and `checkedDispatchBound`
+generation-check the bound pipeline, so a backend reads it with `slotOf(boundFacts.pipeline)`.
+Vulkan can drop its own strip-index, indirect-dispatch and destroyed-module checks and read the
+pipeline the same way. Per-draw liveness checks of bound buffers, groups and views stay in the
+backends: they catch a resource destroyed after it was set. `tests/aborts/cases/webgpuDummyCases.ms`
+pins the three moved refusals on the dummy backend, so they run on Windows too.
