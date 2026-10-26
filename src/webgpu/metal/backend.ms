@@ -100,6 +100,7 @@ import {
 	renderPassOpen,
 	boundFacts,
 	stencilMask,
+	colorWriteBits,
 } from "../validate.ms";
 import {
 	MtlBufferImpl,
@@ -542,8 +543,8 @@ const STENCIL_OPERATIONS: int32[] = [0, 1, 2, 5, 3, 4, 6, 7];
 
 function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "metal"); }
 
-function colorWriteMask(mask: int32): int32 {
-	const bits = mask == 0 ? GPUColorWrite.ALL as int32 : mask;
+function colorWriteMask(mask: int32 | null): int32 {
+	const bits = colorWriteBits(mask);
 	let native = 0;
 	if (has(bits, GPUColorWrite.RED as int32)) { native |= WRITE_RED; }
 	if (has(bits, GPUColorWrite.GREEN as int32)) { native |= WRITE_GREEN; }
