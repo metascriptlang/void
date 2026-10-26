@@ -94,6 +94,8 @@ import {
 	DrawItem,
 	MeshId,
 	MaterialId,
+	NO_MESH,
+	NO_MATERIAL,
 	MeshUploadError,
 	addMesh,
 	releaseMesh,
@@ -587,44 +589,30 @@ export function beginFrame(
 	if (spotShadow !== null && spotShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
 	if (cubeShadow !== null && cubeShadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
 	const shadowed: boolean = shadow !== null || spotShadow !== null || cubeShadow !== null;
-	for (const item of items) {
-		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
-		if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
-			return Result.err(RendererError.DrawRange);
+	let checkedMesh: MeshId = NO_MESH;
+	let checkedMaterial: MaterialId = NO_MATERIAL;
+	let checked: ProgramKey = ProgramKey.of(Program.Lit);
+	let checkedTotal: int32 = 0;
+	for (let i = 0; i < (items.length as int32); i++) {
+		const mesh: MeshId = items[i].mesh;
+		const material: MaterialId = items[i].material;
+		const known: boolean = mesh == checkedMesh && material == checkedMaterial;
+		if (!known) {
+			if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
+			checkedTotal = context.logicalElementCount(mesh.index);
 		}
-		if (!context.hasMaterial(item.material)) {
-			return Result.err(materialError(context, item.material));
+		if (!items[i].validRange(checkedTotal)) { return Result.err(RendererError.DrawRange); }
+		if (!known) {
+			const pair: Result<ProgramKey, RendererError> =
+				pairProgram(renderer, mesh, material, shadowed);
+			if (!pair.ok) { return Result.err(pair.error); }
+			checked = pair.value;
+			checkedMesh = mesh;
+			checkedMaterial = material;
 		}
-		const material: int32 = item.material.index;
-		const drawn: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[material].program, renderer.preset, shadowed,
-				renderer.normalMrt && context.materials[material].phase == Phase.Opaque);
-		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
-		if (drawn.value.pbr && renderer.cameraPosition === null) {
-			return Result.err(RendererError.CameraPosition);
-		}
-		if (!item.validSkin(drawn.value)) { return Result.err(RendererError.SkinPose); }
-		if (!item.validInstances(context, drawn.value)) {
+		if (!items[i].validSkin(checked)) { return Result.err(RendererError.SkinPose); }
+		if (!items[i].validInstances(context, checked)) {
 			return Result.err(RendererError.Instances);
-		}
-		if (!context.keepsItsUniforms(item.material)) {
-			return Result.err(RendererError.UniformsReplaced);
-		}
-		if (!context.keepsItsTexture(item.material)) {
-			return Result.err(RendererError.TextureReplaced);
-		}
-		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
-			return Result.err(RendererError.MaterialBlock);
-		}
-		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
-		if (layout != vertexLayoutOf(drawn.value)) {
-			return Result.err(RendererError.VertexLayout);
-		}
-		if (drawsQuads(layout) && !context.meshes[item.mesh.index].isQuadShaped()) {
-			return Result.err(RendererError.QuadMesh);
-		}
-		if (!texturesFit(drawn.value, context.materials[material])) {
-			return Result.err(RendererError.MaterialTexture);
 		}
 	}
 	if (shadow !== null) {
@@ -712,14 +700,20 @@ export function beginFrame(
 		renderer.drawn.push(ProgramKey.of(Program.Lit));
 	}
 	let readsTime: boolean = false;
+	let resolvedMaterial: int32 = -1;
+	let resolvedKey: ProgramKey = ProgramKey.of(Program.Lit);
 	for (let i = 0; i < (items.length as int32); i++) {
-		const resolved: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed,
-				renderer.normalMrt &&
-					context.materials[items[i].material.index].phase == Phase.Opaque);
-		if (!resolved.ok) { unreachable; }
-		renderer.drawn[i] = resolved.value;
-		readsTime = readsTime || scrolls(context, items[i].material.index, resolved.value);
+		const material: int32 = items[i].material.index;
+		if (material != resolvedMaterial) {
+			const resolved: Result<ProgramKey, ProgramError> =
+				drawnIn(context.materials[material].program, renderer.preset, shadowed,
+					renderer.normalMrt && context.materials[material].phase == Phase.Opaque);
+			if (!resolved.ok) { unreachable; }
+			resolvedKey = resolved.value;
+			resolvedMaterial = material;
+			readsTime = readsTime || scrolls(context, material, resolvedKey);
+		}
+		renderer.drawn[i] = resolvedKey;
 	}
 	renderer.readsTime = readsTime;
 	const generation: int32 = contextGeneration();
@@ -916,6 +910,37 @@ export function drawScreen(
 }
 
 // Whether material `index`, drawn as `key`, scrolls its UV with the frame's time.
+// The program `material` draws `mesh` with this frame, once the pair passes every check
+// beginFrame makes of a mesh and a material together.
+function pairProgram(
+	renderer: Renderer,
+	mesh: MeshId,
+	id: MaterialId,
+	shadowed: boolean,
+): Result<ProgramKey, RendererError> {
+	const context: DrawContext = renderer.context;
+	if (!context.hasMaterial(id)) { return Result.err(materialError(context, id)); }
+	const material: Material = context.materials[id.index];
+	const drawn: Result<ProgramKey, ProgramError> = drawnIn(material.program, renderer.preset,
+		shadowed, renderer.normalMrt && material.phase == Phase.Opaque);
+	if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
+	if (drawn.value.pbr && renderer.cameraPosition === null) {
+		return Result.err(RendererError.CameraPosition);
+	}
+	if (!context.keepsItsUniforms(id)) { return Result.err(RendererError.UniformsReplaced); }
+	if (!context.keepsItsTexture(id)) { return Result.err(RendererError.TextureReplaced); }
+	if (!blockFits(drawn.value, material.uniforms)) {
+		return Result.err(RendererError.MaterialBlock);
+	}
+	const layout: VertexLayout = context.meshes[mesh.index].layout;
+	if (layout != vertexLayoutOf(drawn.value)) { return Result.err(RendererError.VertexLayout); }
+	if (drawsQuads(layout) && !context.meshes[mesh.index].isQuadShaped()) {
+		return Result.err(RendererError.QuadMesh);
+	}
+	if (!texturesFit(drawn.value, material)) { return Result.err(RendererError.MaterialTexture); }
+	return Result.ok(drawn.value);
+}
+
 function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
 	if (!key.uvTransform && !key.pbr) { return false; }
 	const block: UniformBlock = context.materials[index].uniforms;
