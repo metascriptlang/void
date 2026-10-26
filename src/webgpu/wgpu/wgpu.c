@@ -101,9 +101,6 @@ int64_t wgLimit(int32_t which) {
 	default: return -1;
 	}
 }
-int32_t wgMinUniformBufferOffsetAlignment(void) {
-	return (int32_t)limits.minUniformBufferOffsetAlignment;
-}
 int32_t wgHasFeature(int32_t feature) {
 	return wgpuDeviceHasFeature(device, (WGPUFeatureName)feature) ? 1 : 0;
 }

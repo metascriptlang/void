@@ -1,4 +1,4 @@
-import { GPUTextureFormat } from "./types.ms";
+import { BindingKind, GPUTextureFormat, GPU_MAX_SHADER_BINDINGS } from "./types.ms";
 
 export const SLOT_SHIFT = 16;
 export const SLOT_MASK = 0xFFFF;
@@ -146,6 +146,7 @@ export struct ViewRecord {
 
 export struct PipelineRecord {
 	id: uint32;
+	shader: uint32;
 	layouts: uint32[2];
 	label: string | null;
 	compute: boolean;
@@ -153,9 +154,18 @@ export struct PipelineRecord {
 	readsVertexIndex: boolean;
 }
 
+export struct ShaderBindingRecord {
+	binding: int32;
+	kind: BindingKind;
+	size: int32;
+	storageFormat: GPUTextureFormat;
+}
+
 export struct ShaderRecord {
 	id: uint32;
 	compute: boolean;
+	bindings: ShaderBindingRecord[GPU_MAX_SHADER_BINDINGS];
+	bindingCount: int32;
 	readsInstanceIndex: boolean;
 	readsVertexIndex: boolean;
 }

@@ -87,11 +87,7 @@ import {
 	addressesBinding,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedSampledView,
-	checkedStorageEntry,
-	checkedStorageView,
 	checkedStripDraw,
-	checkedUniformEntry,
 	computePassOpen,
 	occlusionQueryIndex,
 	renderPassOpen,
@@ -1493,7 +1489,6 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
-		checkEntry(shader, group, entry);
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
@@ -1513,61 +1508,6 @@ function uniformOf(shader: int32, group: int32, binding: int32): int32 {
 		if (addressesBinding(group, binding, shaders[shader].uniforms[u].binding, BindingKind.Uniform)) { return u; }
 	}
 	return -1;
-}
-
-function resourceOf(shader: int32, group: int32, binding: int32): int32 {
-	for (let r = 0; r < shaders[shader].resourceCount; r++) {
-		const resource = shaders[shader].resources[r];
-		if (addressesBinding(group, binding, resource.binding, resource.kind)) { return r; }
-	}
-	return -1;
-}
-
-function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
-	if (entry.buffer.id != 0) {
-		const b = bufferRecords.slotIndex(entry.buffer.id);
-		const u = uniformOf(shader, group, entry.binding);
-		if (u >= 0) {
-			const binding = shaders[shader].uniforms[u];
-			checkedUniformEntry(
-				entry,
-				has(bufferRecords.slots[b].usage, GPUBufferUsage.UNIFORM as int32),
-				bufferRecords.slots[b].size,
-				binding.size,
-				UNIFORM_OFFSET_ALIGNMENT as int64,
-			);
-			return;
-		}
-		const r = resourceOf(shader, group, entry.binding);
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageBuffer) {
-			checkedStorageEntry(
-				entry,
-				has(bufferRecords.slots[b].usage, GPUBufferUsage.STORAGE as int32),
-				bufferRecords.slots[b].size,
-				STORAGE_OFFSET_ALIGNMENT as int64,
-				mtlMaxBufferLength(device),
-			);
-			return;
-		}
-		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
-	}
-	const r = resourceOf(shader, group, entry.binding);
-	if (entry.textureView.id != 0) {
-		const v = viewRecords.slotIndex(entry.textureView.id);
-		const t = textureRecords.slotIndex(viewRecords.slots[v].texture);
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Texture) {
-			checkedSampledView(entry.binding, has(textureRecords.slots[t].usage, GPUTextureUsage.TEXTURE_BINDING as int32));
-			return;
-		}
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
-			checkedStorageView(entry.binding, v, shaders[shader].resources[r].storageFormat);
-			return;
-		}
-		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);
-	}
-	samplerRecords.slotIndex(entry.sampler.id);
-	if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Sampler) { return; }
-	stop(`bind group ${group} entry ${entry.binding} (sampler) is not a binding of the pipeline's shader`);
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {

@@ -53,12 +53,14 @@ import {
 	PipelineRecord,
 	QuerySetRecord,
 	QueryState,
+	ShaderRecord,
 	TextureRecord,
 	ViewRecord,
 	bufferRecords,
 	pipelineRecords,
 	querySetRecords,
 	record,
+	samplerRecords,
 	textureRecords,
 	viewRecords,
 } from "./pool.ms";
@@ -803,6 +805,54 @@ export function checkedBindGroupSet(index: int32, madeFor: int32, dynamicCount: 
 
 export function checkedStorageEntry(entry: GPUBindGroupEntry, bufferIsStorage: boolean, bufferSize: int64, alignment: int64, limit: int64): void {
 	refuse(storageEntryRefusal(entry, bufferIsStorage, bufferSize, alignment, limit));
+}
+
+export function shaderBindingAt(shader: ShaderRecord, group: int32, binding: int32, kind: BindingKind): int32 {
+	for (let i = 0; i < shader.bindingCount; i++) {
+		if (shader.bindings[i].kind == kind && addressesBinding(group, binding, shader.bindings[i].binding, kind)) { return i; }
+	}
+	return -1;
+}
+
+@noinline function notABinding(group: int32, entry: GPUBindGroupEntry, what: string): never {
+	stop(`bind group ${group} entry ${entry.binding} (${what}) is not a binding of the pipeline's shader`);
+}
+
+// The entry against the shader's own reflection, as sokol checks apply_bindings against shd->cmn.views
+// (sokol_gfx.h:25196) and shd->cmn.samplers (sokol_gfx.h:25268). Returns the index of the shader binding it fills.
+export function checkedBindGroupEntry(entry: GPUBindGroupEntry, group: int32, shader: ShaderRecord): int32 {
+	const limits = cachedLimits();
+	if (entry.buffer.id != 0) {
+		const buffer = bufferRecords.record(entry.buffer.id);
+		const u = shaderBindingAt(shader, group, entry.binding, BindingKind.Uniform);
+		if (u >= 0) {
+			const usage = (buffer.usage & (GPUBufferUsage.UNIFORM as int32)) != 0;
+			checkedUniformEntry(entry, usage, buffer.size, shader.bindings[u].size, limits.minUniformBufferOffsetAlignment as int64);
+			return u;
+		}
+		const s = shaderBindingAt(shader, group, entry.binding, BindingKind.StorageBuffer);
+		if (s < 0) { notABinding(group, entry, "buffer"); }
+		const usage = (buffer.usage & (GPUBufferUsage.STORAGE as int32)) != 0;
+		checkedStorageEntry(entry, usage, buffer.size, limits.minStorageBufferOffsetAlignment as int64, limits.maxStorageBufferBindingSize);
+		return s;
+	}
+	if (entry.textureView.id != 0) {
+		const v = viewRecords.slotIndex(entry.textureView.id);
+		const t = shaderBindingAt(shader, group, entry.binding, BindingKind.Texture);
+		if (t >= 0) {
+			const texture = textureRecords.record(viewRecords.slots[v].texture);
+			checkedSampledView(entry.binding, (texture.usage & (GPUTextureUsage.TEXTURE_BINDING as int32)) != 0);
+			return t;
+		}
+		const s = shaderBindingAt(shader, group, entry.binding, BindingKind.StorageTexture);
+		if (s < 0) { notABinding(group, entry, "texture"); }
+		checkedStorageView(entry.binding, v, shader.bindings[s].storageFormat);
+		return s;
+	}
+	samplerRecords.slotIndex(entry.sampler.id);
+	const s = shaderBindingAt(shader, group, entry.binding, BindingKind.Sampler);
+	if (s < 0) { notABinding(group, entry, "sampler"); }
+	return s;
 }
 
 export function checkedSampledView(binding: int32, textureIsSampled: boolean): void { refuse(sampledViewRefusal(binding, textureIsSampled)); }

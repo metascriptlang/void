@@ -73,11 +73,7 @@ import {
 	addressesBinding,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedSampledView,
-	checkedStorageEntry,
-	checkedStorageView,
 	checkedStripDraw,
-	checkedUniformEntry,
 	entryBytes,
 	stencil8Mask,
 } from "../validate.ms";
@@ -137,7 +133,6 @@ import {
 	wgFinish,
 	wgInsertDebugMarker,
 	wgLimit,
-	wgMinUniformBufferOffsetAlignment,
 	wgPopDebugGroup,
 	wgPushDebugGroup,
 	wgReleaseBindGroup,
@@ -500,7 +495,6 @@ struct BindGroupSlot {
 
 let pass: PassState = { timestampEnd: -1 };
 let computeBound: ComputeState = { timestampEnd: -1 };
-let uniformAlignment = 256;
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
 
@@ -1060,7 +1054,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	}
 	checkMirroredConstants();
 	if (wgSetup(environment.device) == 0) { stop("the WGPUDevice gave no queue or no limits"); }
-	uniformAlignment = wgMinUniformBufferOffsetAlignment();
 	const sampleCount = cachedCanvas().sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`); }
 	pass.pipeline = 0;
@@ -1567,7 +1560,7 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 				ranges[count * 2] = entry.offset;
 				ranges[count * 2 + 1] = size;
 			} else {
-				const size = storageEntrySize(shader, group, entry);
+				const size = storageEntrySize(entry);
 				entryBuffers[count] = buffer;
 				ranges[count * 2] = entry.offset;
 				ranges[count * 2 + 1] = size;
@@ -1578,13 +1571,9 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 			if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
 				entryViews[count] = storageView(shader, r, v, entry.binding);
 			} else {
-				checkResource(shader, entry.binding, BindingKind.Texture, group);
-				const view = views[v].binding;
-				checkedSampledView(entry.binding, view != null);
-				entryViews[count] = view;
+				entryViews[count] = views[v].binding;
 			}
 		} else {
-			checkResource(shader, entry.binding, BindingKind.Sampler, group);
 			const sampler = samplers[samplerRecords.slotIndex(entry.sampler.id)].native;
 			entrySamplers[count] = sampler;
 		}
@@ -1608,12 +1597,9 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 }
 
 function uniformEntrySize(shader: int32, entry: GPUBindGroupEntry): int64 {
-	const b = bufferRecords.slotIndex(entry.buffer.id);
-	const isUniform = has(bufferRecords.slots[b].usage, GPUBufferUsage.UNIFORM as int32);
 	for (let u = 0; u < shaders[shader].uniformCount; u++) {
 		const binding = shaders[shader].uniforms[u];
 		if (addressesBinding(GPU_UNIFORM_GROUP, entry.binding, binding.binding, BindingKind.Uniform)) {
-			checkedUniformEntry(entry, isUniform, bufferRecords.slots[b].size, binding.size, uniformAlignment as int64);
 			return entry.size == 0 ? binding.size as int64 : entry.size;
 		}
 	}
@@ -1628,38 +1614,16 @@ function resourceIndex(shader: int32, group: int32, binding: int32): int32 {
 	return -1;
 }
 
-function storageEntrySize(shader: int32, group: int32, entry: GPUBindGroupEntry): int64 {
-	const b = bufferRecords.slotIndex(entry.buffer.id);
-	const r = resourceIndex(shader, group, entry.binding);
-	if (r < 0 || shaders[shader].resources[r].kind != BindingKind.StorageBuffer) {
-		stop(`bind group ${GPU_RESOURCE_GROUP} entry ${entry.binding} (buffer) is not a storage buffer binding of the pipeline's shader`);
-	}
-	checkedStorageEntry(
-		entry,
-		has(bufferRecords.slots[b].usage, GPUBufferUsage.STORAGE as int32),
-		bufferRecords.slots[b].size,
-		cachedLimits().minStorageBufferOffsetAlignment as int64,
-		cachedLimits().maxStorageBufferBindingSize,
-	);
-	return entryBytes(entry, bufferRecords.slots[b].size);
+function storageEntrySize(entry: GPUBindGroupEntry): int64 {
+	return entryBytes(entry, bufferRecords.record(entry.buffer.id).size);
 }
 
 function storageView(shader: int32, r: int32, v: int32, binding: int32): Ptr<WgViewImpl> {
 	const expected = shaders[shader].resources[r];
-	checkedStorageView(binding, v, expected.format);
 	if (views[v].dimension != expected.viewDimension) {
 		stop(`bind group entry ${binding}: the view dimension ${views[v].dimension} differs from the shader's ${expected.viewDimension}`);
 	}
 	return views[v].native;
-}
-
-@noinline function checkResource(shader: int32, binding: int32, kind: BindingKind, group: int32): void {
-	for (let r = 0; r < shaders[shader].resourceCount; r++) {
-		const resource = shaders[shader].resources[r];
-		if (addressesBinding(group, binding, resource.binding, resource.kind) && resource.kind == kind) { return; }
-	}
-	const name = kind.toString();
-	stop(`bind group ${group} entry ${binding} (${name}) is not a binding of the pipeline shader`);
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {

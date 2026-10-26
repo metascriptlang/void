@@ -28,6 +28,7 @@ import {
 	beginOcclusionRefusal,
 	bindGroupIndexRefusal,
 	bindGroupSetRefusal,
+	shaderBindingAt,
 	copyBufferRefusal,
 	copyTextureRefusal,
 	uniformEntryCount,
@@ -87,7 +88,7 @@ import {
 	viewportRefusal,
 	writeBufferRefusal,
 } from "../webgpu/validate";
-import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, TextureRecord } from "../webgpu/pool";
+import { BufferRecord, PipelineRecord, QuerySetRecord, QueryState, ShaderRecord, TextureRecord } from "../webgpu/pool";
 
 function openEncoder(): EncoderState {
 	let s: EncoderState = { open: false };
@@ -203,6 +204,19 @@ test "a bind group entry addresses only the bindings of its own group" {
 	assert addressesBinding(1, 3, 3, BindingKind.Texture);
 	assert !addressesBinding(0, 3, 3, BindingKind.Sampler);
 	assert !addressesBinding(0, 3, 4, BindingKind.Uniform);
+}
+
+test "a shader binding is found by its own group, binding and kind" {
+	let shader: ShaderRecord = { id: 1, bindingCount: 3 };
+	shader.bindings[0] = { binding: 0, kind: BindingKind.Uniform, size: 64 };
+	shader.bindings[1] = { binding: 0, kind: BindingKind.Texture };
+	shader.bindings[2] = { binding: 1, kind: BindingKind.Sampler };
+	assert shaderBindingAt(shader, 0, 0, BindingKind.Uniform) == 0;
+	assert shaderBindingAt(shader, 1, 0, BindingKind.Texture) == 1;
+	assert shaderBindingAt(shader, 1, 1, BindingKind.Sampler) == 2;
+	assert shaderBindingAt(shader, 1, 0, BindingKind.Uniform) < 0;
+	assert shaderBindingAt(shader, 1, 0, BindingKind.Sampler) < 0;
+	assert shaderBindingAt(shader, 1, 2, BindingKind.Texture) < 0;
 }
 
 test "a uniform entry is refused by usage, alignment, overrun and size below its block" {

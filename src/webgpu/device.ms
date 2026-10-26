@@ -4,6 +4,7 @@ import {
 	GPULiveCounts,
 	GPUTextureFormat,
 	GPUBindGroup,
+	GPUBindGroupEntry,
 	GPUBindGroupDescriptor,
 	GPUBindGroupLayout,
 	GPUBuffer,
@@ -40,6 +41,7 @@ import {
 	GPUTextureDescriptor,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
@@ -47,11 +49,13 @@ import {
 	checkedMapAsync,
 	checkedMappedRange,
 	checkedUnmap,
+	bindingKind,
 	featureBit,
 	stop,
 } from "./types.ms";
 import {
 	allocate,
+	ShaderRecord,
 	alive,
 	bindGroupRecords,
 	bufferRecords,
@@ -82,6 +86,7 @@ import {
 	cachedLimits,
 	checkedBeginOcclusion,
 	checkedBeginPass,
+	checkedBindGroupEntry,
 	checkedBindGroupIndex,
 	checkedBindGroupSet,
 	checkedBuffer,
@@ -229,12 +234,24 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 @inline export function createShaderModule(this self: GPUDevice, descriptor: GPUShaderModuleDescriptor): GPUShaderModule {
 	checkedShaderModule(descriptor, cachedLimits());
 	const id = allocate(shaderRecords);
-	store(shaderRecords, {
+	let record: ShaderRecord = {
 		id: id,
 		compute: descriptor.computeCode != "" || descriptor.computeBytecode.length > 0,
 		readsInstanceIndex: descriptor.readsInstanceIndex,
 		readsVertexIndex: descriptor.readsVertexIndex,
-	});
+	};
+	for (let i = 0; i < descriptor.bindings.length; i++) {
+		const kind: string = descriptor.bindings[i].kind;
+		if (kind == "") { continue; }
+		record.bindings[record.bindingCount] = {
+			binding: descriptor.bindings[i].binding,
+			kind: bindingKind(kind, shaderRecords.core.backend),
+			size: descriptor.bindings[i].size,
+			storageFormat: descriptor.bindings[i].storageFormat,
+		};
+		record.bindingCount += 1;
+	}
+	store(shaderRecords, record);
 	backend.createShaderModule(id, descriptor);
 	return { id: id };
 }
@@ -245,6 +262,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 	const id = allocate(pipelineRecords);
 	store(pipelineRecords, {
 		id: id,
+		shader: descriptor.vertex.module.id,
 		label: descriptor.label,
 		readsInstanceIndex: shader.readsInstanceIndex,
 		readsVertexIndex: shader.readsVertexIndex,
@@ -255,13 +273,19 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 
 @inline export function createComputePipeline(this self: GPUDevice, descriptor: GPUComputePipelineDescriptor): GPUComputePipeline {
 	const id = allocate(pipelineRecords);
-	store(pipelineRecords, { id: id, label: descriptor.label, compute: true });
+	store(pipelineRecords, { id: id, shader: descriptor.compute.module.id, label: descriptor.label, compute: true });
 	backend.createComputePipeline(id, descriptor);
 	return { id: id };
 }
 
 @inline export function createBindGroup(this self: GPUDevice, descriptor: GPUBindGroupDescriptor): GPUBindGroup {
-	const group = layoutRecords.record(descriptor.layout.id).group;
+	const layout = layoutRecords.record(descriptor.layout.id);
+	const group = layout.group;
+	const shader = shaderRecords.record(pipelineRecords.record(layout.pipeline).shader);
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
+		const entry: GPUBindGroupEntry = descriptor.entries[i];
+		if (entry.buffer.id != 0 || entry.textureView.id != 0 || entry.sampler.id != 0) { checkedBindGroupEntry(entry, group, shader); }
+	}
 	const id = allocate(bindGroupRecords);
 	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0 });
 	backend.createBindGroup(id, descriptor);
