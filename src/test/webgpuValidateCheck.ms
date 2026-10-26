@@ -51,6 +51,7 @@ import {
 	computePipelineRefusal,
 	createRefusal,
 	dispatchRefusal,
+	drawIndirectRefusal,
 	drawOffsetRefusal,
 	drawRefusal,
 	endOcclusionRefusal,
@@ -59,6 +60,8 @@ import {
 	finishRefusal,
 	groupOfKind,
 	inPassRefusal,
+	indirectFeatureRefusal,
+	indirectPipelineRefusal,
 	isDepthFormat,
 	isStencilFormat,
 	isStripTopology,
@@ -356,6 +359,28 @@ test "a draw refuses firstInstance and firstVertex or baseVertex only where the 
 	assert drawOffsetRefusal(reads, "draw", "firstVertex", 0, 2) == "draw with firstInstance 2 on pipeline 'quad': firstInstance must be 0 because the vertex stage reads instance_index";
 	assert drawOffsetRefusal(reads, "draw", "firstVertex", 6, 0) == "draw with firstVertex 6 on pipeline 'quad': firstVertex must be 0 because the vertex stage reads vertex_index";
 	assert drawOffsetRefusal(reads, "drawIndexed", "baseVertex", -3, 0) == "drawIndexed with baseVertex -3 on pipeline 'quad': baseVertex must be 0 because the vertex stage reads vertex_index";
+}
+
+test "an indexed indirect draw takes an INDIRECT buffer holding every record at a 4-byte offset" {
+	const indirect = GPUBufferUsage.INDIRECT as int32;
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 0, 2) == "";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 20, 1) == "";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 0, 0) == "";
+	assert drawIndirectRefusal("drawIndexedIndirect", 5, GPUBufferUsage.VERTEX as int32, 40, 0, 1) == "drawIndexedIndirect: GPUBuffer 5 was created without INDIRECT";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 0, -1) == "multiDrawIndexedIndirect with maxDrawCount -1: the count cannot be negative";
+	assert drawIndirectRefusal("multiDrawIndexedIndirect", 5, indirect, 40, 4, 2) == "multiDrawIndexedIndirect offset 4 is not a multiple of 4 with 2 records of 20 bytes inside GPUBuffer 5 of 40";
+	assert drawIndirectRefusal("drawIndexedIndirect", 5, indirect, 40, 2, 1) == "drawIndexedIndirect offset 2 is not a multiple of 4 with 1 records of 20 bytes inside GPUBuffer 5 of 40";
+}
+
+test "an indirect draw refuses a vertex stage reading instance_index or vertex_index and a device without indirect-first-instance" {
+	const instance: PipelineRecord = { id: 3, label: "rows", readsInstanceIndex: true };
+	const vertex: PipelineRecord = { id: 4, label: "strip", readsVertexIndex: true };
+	const plain: PipelineRecord = { id: 5, label: "plain" };
+	assert indirectPipelineRefusal(plain, "drawIndexedIndirect") == "";
+	assert indirectPipelineRefusal(instance, "drawIndexedIndirect") == "drawIndexedIndirect on pipeline 'rows': the vertex stage reads instance_index, which backends count from different bases, and an indirect record sets its firstInstance on the GPU";
+	assert indirectPipelineRefusal(vertex, "multiDrawIndexedIndirect") == "multiDrawIndexedIndirect on pipeline 'strip': the vertex stage reads vertex_index, which backends count from different bases, and an indirect record sets its baseVertex on the GPU";
+	assert indirectFeatureRefusal("drawIndexedIndirect", true) == "";
+	assert indirectFeatureRefusal("drawIndexedIndirect", false) == "drawIndexedIndirect on a device without 'indirect-first-instance': a record's firstInstance would be undefined there";
 }
 
 test "a texture size is positive and inside the backend's limits for its dimension" {

@@ -35,6 +35,7 @@ import {
 	clearingPass,
 	colourTarget,
 	colourUniforms,
+	drawIndirectRows,
 	drawMaskedTriangle,
 	drawOverLoadedStencil,
 	pixel,
@@ -45,7 +46,7 @@ import {
 	uniformGroup,
 	vertexBuffer,
 } from "./webgpuFixtures.ms";
-import { spirvCompute, spirvFlat, spirvTextured, spirvTint } from "./vulkanSpirv.ms";
+import { spirvColoured, spirvCompute, spirvFlat, spirvTextured, spirvTint } from "./vulkanSpirv.ms";
 
 @passC("-I../../deps/vulkan-headers/include");
 when (linux) {
@@ -88,6 +89,16 @@ function flatShader(device: GPUDevice): GPUShaderModule {
 	};
 	descriptor.bindings[0] = { group: GPU_UNIFORM_GROUP, binding: 0, kind: "uniform", visibility: GPUShaderStage.FRAGMENT as int32, size: 16 };
 	return device.createShaderModule(descriptor);
+}
+
+function colouredShader(device: GPUDevice): GPUShaderModule {
+	return device.createShaderModule({
+		label: "coloured",
+		vertexEntryPoint: "vs",
+		fragmentEntryPoint: "fs",
+		vertexBytecode: spirvColoured(),
+		fragmentBytecode: spirvColoured(),
+	});
 }
 
 function flatPipeline(device: GPUDevice, sampleCount: int32): GPURenderPipeline {
@@ -189,6 +200,17 @@ test "a colour target with writeMask 0 keeps its clear colour where an omitted m
 	assert pixel(readTexture(device, target), 32, 32) == BLUE;
 	drawMaskedTriangle(device, flatShader(device), null, target);
 	assert pixel(readTexture(device, target), 32, 32) == RED;
+	assert validationErrorsAfterClose(device) == 0;
+}
+
+test "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance" {
+	const device = openDevice();
+	const target = colourTarget(device, 1);
+	drawIndirectRows(device, colouredShader(device), target);
+	const pixels = readTexture(device, target);
+	assert pixel(pixels, 2, 32) == GREEN;
+	assert pixel(pixels, 61, 32) == RED;
+	assert pixel(pixels, 32, 32) == BLUE;
 	assert validationErrorsAfterClose(device) == 0;
 }
 
