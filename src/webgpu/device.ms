@@ -373,6 +373,7 @@ function destroyPipeline(pipeline: uint32): void {
 @inline export function usage(this self: GPUTexture): int32 { return textureRecords.record(self.id).usage; }
 @inline export function format(this self: GPUTexture): GPUTextureFormat { return textureRecords.record(self.id).format; }
 @inline export function texture(this self: GPUTextureView): GPUTexture { return { id: viewRecords.record(self.id).texture }; }
+@inline export function baseMipLevel(this self: GPUTextureView): int32 { return viewRecords.record(self.id).baseMip; }
 
 @inline export function writeBuffer<T>(this self: GPUQueue, buffer: GPUBuffer, bufferOffset: int64, data: Readonly<Span<T>>): void {
 	if (data.length == 0) { return; }
