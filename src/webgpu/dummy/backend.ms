@@ -10,6 +10,7 @@ import {
 	samplerRecords,
 	shaderRecords,
 	slotIndex,
+	slotOf,
 	textureRecords,
 	vacate,
 	viewRecords,
@@ -41,7 +42,6 @@ import {
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
-	GPUPrimitiveState,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPURenderPassDescriptor,
@@ -68,7 +68,6 @@ import {
 	GPUTextureViewDescriptor,
 	bindingKind,
 	checkedDepthTexelCopy,
-	checkedDispatchIndirect,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
 	featureBit,
@@ -88,7 +87,6 @@ import {
 	entryOf,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedStripDraw,
 	occlusionQueryIndex,
 	occlusionSetId,
 	boundFacts,
@@ -162,8 +160,6 @@ struct ShaderSlot {
 struct PipelineSlot {
 	shader: uint32;
 	compute: boolean;
-	primitive: int32;
-	stripIndexSize: int32;
 	strides: int32[2];
 }
 
@@ -187,14 +183,9 @@ struct ComputeState {
 	timestampEnd: int32;
 }
 
-struct BoundState {
-	indexSize: int32;
-}
-
 let ticks: uint64 = 0;
 let pass: PassState = { timestampSet: 0 };
 let computeBound: ComputeState = { timestampSet: 0 };
-let bound: BoundState = { indexSize: 0 };
 let swapchainColor: uint32 = 0;
 let swapchainDepth: uint32 = 0;
 
@@ -247,12 +238,6 @@ function indexSize(format: GPUIndexFormat): int32 {
 	};
 }
 
-function stripIndexSizeOf(state: GPUPrimitiveState): int32 {
-	const format: string = state.stripIndexFormat;
-	if (format == "") { return 0; }
-	return indexSize(state.stripIndexFormat);
-}
-
 function loadOp(value: string, member: string): int32 {
 	return match (value) {
 		"clear" | "load" => 0,
@@ -271,7 +256,6 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	ticks = 0;
 	pass = { timestampSet: 0 };
 	computeBound = { timestampSet: 0 };
-	bound = { indexSize: 0 };
 	const sampleCount = cachedCanvas().sampleCount;
 	if (sampleCount != 1 && sampleCount != 4) { stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`); }
 	return { id: 1, queue: { id: 1 } };
@@ -483,8 +467,7 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	describeVertexLayout(descriptor, slot);
 	describeColorTargets(descriptor);
 	describeDepthStencil(descriptor);
-	slot.primitive = primitiveType(descriptor.primitive.topology);
-	slot.stripIndexSize = stripIndexSizeOf(descriptor.primitive);
+	primitiveType(descriptor.primitive.topology);
 	const cull: string = descriptor.primitive.cullMode;
 	if (cull != "" && cull != "none" && cull != "front" && cull != "back") { stopOnMember("primitive.cullMode", cull); }
 	const face: string = descriptor.primitive.frontFace;
@@ -615,7 +598,7 @@ export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): 
 
 export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset: int64): void {
 	bufferRecords.slotIndex(buffer.id);
-	bound.indexSize = indexSize(format);
+	indexSize(format);
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
@@ -644,18 +627,11 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
-	const primitive = pipelines[p].primitive;
-	const strip = primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP;
-	checkedStripDraw(strip, pipelines[p].stripIndexSize == bound.indexSize);
 }
 
 
 function flush(): void {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
-	if (!shaderRecords.alive(pipelines[p].shader)) {
-		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
-	}
+	const p = slotOf(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if (pipelines[p].strides[slot] == 0) { continue; }
 		if (boundFacts.vertexBuffers[slot] == 0) { continue; }
@@ -787,7 +763,7 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 }
 
 function checkCompute(): void {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
+	const p = slotOf(boundFacts.pipeline);
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
 	checkBoundGroups(s);
 }
@@ -797,8 +773,6 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	const b = bufferRecords.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
 	checkCompute();
 }
 

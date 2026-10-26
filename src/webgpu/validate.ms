@@ -15,6 +15,7 @@ import {
 	GPUShaderStage,
 	GPUSupportedLimits,
 	GPUExtent3D,
+	GPUIndexFormat,
 	GPUPassTimestampWrites,
 	GPUTexelCopyTextureInfo,
 	GPUTextureDescriptor,
@@ -64,7 +65,7 @@ import {
 	querySetRecords,
 	record,
 	samplerRecords,
-	slotOf,
+	shaderRecords,
 	textureRecords,
 	viewRecords,
 } from "./pool.ms";
@@ -228,6 +229,7 @@ export struct BoundFacts {
 	vertexOffsets: int64[GPU_MAX_VERTEX_BUFFERS];
 	indexBuffer: uint32;
 	indexOffset: int64;
+	indexFormat: GPUIndexFormat;
 	bindGroups: uint32[2];
 	dynamicOffsets: uint32[GPU_MAX_BIND_GROUP_ENTRIES];
 	vertexSet: int32;
@@ -281,8 +283,9 @@ export function markVertexSet(slot: int32, buffer: uint32, offset: int64): void 
 	boundFacts.vertexOffsets[slot] = offset;
 }
 
-export function markIndexSet(buffer: uint32, offset: int64): void {
+export function markIndexSet(buffer: uint32, format: GPUIndexFormat, offset: int64): void {
 	encoder.markIndexBuffer();
+	boundFacts.indexFormat = format;
 	boundFacts.indexBuffer = buffer;
 	boundFacts.indexOffset = offset;
 }
@@ -297,11 +300,15 @@ export function markBindGroupSet(index: int32, bindGroup: uint32, dynamicOffsets
 export function checkedPipelineSet(call: string): void { refuse(encoder.pipelineSetRefusal(call)); }
 export function checkedDrawState(call: string, indexed: boolean): void {
 	refuse(encoder.drawRefusal(call, indexed));
-	const pipeline = pipelineRecords.slots[slotOf(boundFacts.pipeline)];
-	refuse(boundRefusal(pipeline.vertexSlots, pipeline.groups, false));
+	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
+	if (!shaderRecords.alive(pipelineRecords.slots[p].shader)) {
+		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
+	}
+	refuse(boundRefusal(pipelineRecords.slots[p].vertexSlots, pipelineRecords.slots[p].groups, false));
+	if (indexed) { refuse(stripDrawRefusal(pipelineRecords.slots[p].strip, pipelineRecords.slots[p].stripIndexFormat == boundFacts.indexFormat)); }
 }
 export function checkedDispatchBound(): void {
-	refuse(boundRefusal(0, pipelineRecords.slots[slotOf(boundFacts.pipeline)].groups, true));
+	refuse(boundRefusal(0, pipelineRecords.slots[pipelineRecords.slotIndex(boundFacts.pipeline)].groups, true));
 }
 
 // A slot or group the pipeline reads and the pass never set, as sokol refuses it at apply_bindings
@@ -689,7 +696,6 @@ export function checkedRenderModule(moduleIsCompute: boolean): void { refuse(ren
 export function checkedComputeModule(moduleIsCompute: boolean, entry: string, moduleEntry: string): void { refuse(computeModuleRefusal(moduleIsCompute, entry, moduleEntry)); }
 export function checkedComputePipeline(pipeline: uint32, isCompute: boolean): void { refuse(computePipelineRefusal(pipeline, isCompute)); }
 export function checkedRenderPassPipeline(pipeline: uint32, isCompute: boolean): void { refuse(renderPassPipelineRefusal(pipeline, isCompute)); }
-export function checkedStripDraw(strip: boolean, matches: boolean): void { refuse(stripDrawRefusal(strip, matches)); }
 export function checkedSampler(descriptor: GPUSamplerDescriptor): void { refuse(samplerRefusal(descriptor)); }
 export function checkedQuerySet(descriptor: GPUQuerySetDescriptor, timestamps: boolean): void { refuse(querySetRefusal(descriptor, timestamps)); }
 

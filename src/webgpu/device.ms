@@ -46,6 +46,7 @@ import {
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 	GPUTextureUsage,
+	checkedDispatchIndirect,
 	checkedMapAsync,
 	checkedMappedRange,
 	checkedUnmap,
@@ -124,6 +125,7 @@ import {
 	checkedViewRange,
 	checkedViewport,
 	checkedWriteBuffer,
+	isStripTopology,
 	markBufferWritten,
 	markBindGroupSet,
 	markBindGroupSet,
@@ -276,6 +278,8 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 		label: descriptor.label,
 		readsInstanceIndex: shader.readsInstanceIndex,
 		readsVertexIndex: shader.readsVertexIndex,
+		strip: isStripTopology(descriptor.primitive.topology),
+		stripIndexFormat: descriptor.primitive.stripIndexFormat,
 	});
 	backend.createRenderPipeline(id, resolvedRenderPipeline(descriptor));
 	return { id: id };
@@ -499,6 +503,8 @@ function attachmentFacts(view: uint32): AttachmentFacts {
 	checkedInPass(PASS_COMPUTE, "dispatchWorkgroupsIndirect");
 	checkedPipelineSet("dispatchWorkgroupsIndirect");
 	checkedDispatchBound();
+	const record = bufferRecords.record(buffer.id);
+	checkedDispatchIndirect(buffer.id, record.usage, record.size, offset);
 	backend.dispatchWorkgroupsIndirect(buffer, offset);
 }
 
@@ -674,7 +680,7 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 
 @inline export function setIndexBuffer(this self: GPURenderPassEncoder, buffer: GPUBuffer, indexFormat: GPUIndexFormat, offset: int64): void {
 	checkedInPass(PASS_RENDER, "setIndexBuffer");
-	markIndexSet(buffer.id, offset);
+	markIndexSet(buffer.id, indexFormat, offset);
 	backend.setIndexBuffer(buffer, indexFormat, offset);
 }
 

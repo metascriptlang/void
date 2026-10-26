@@ -11,6 +11,7 @@ import {
 	samplerRecords,
 	shaderRecords,
 	slotIndex,
+	slotOf,
 	textureRecords,
 	vacate,
 	viewRecords,
@@ -47,7 +48,6 @@ import {
 	GPUColorWrite,
 	GPUCommandBuffer,
 	GPUCommandEncoder,
-	GPUPrimitiveState,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPUSupportedFeatures,
@@ -75,7 +75,6 @@ import {
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
 	checkedDepthTexelCopy,
-	checkedDispatchIndirect,
 	checkedTexelBufferLayout,
 	samplerMaxLod,
 	checkedTexelWritePitch,
@@ -96,7 +95,6 @@ import {
 	clampedAnisotropy,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedStripDraw,
 	computePassOpen,
 	occlusionQueryIndex,
 	renderPassOpen,
@@ -308,7 +306,6 @@ const ADDRESS_REPEAT = 2;
 const ADDRESS_MIRROR_REPEAT = 3;
 const INDEX_UINT16 = 0;
 const INDEX_UINT32 = 1;
-const NO_STRIP_INDEX = -1;
 const PRIMITIVE_LINE_STRIP = 2;
 const PRIMITIVE_TRIANGLE = 3;
 const PRIMITIVE_TRIANGLE_STRIP = 4;
@@ -403,7 +400,6 @@ struct PipelineSlot {
 	depthBiasSlope: float32;
 	depthBiasClamp: float32;
 	primitive: int32;
-	stripIndexType: int32;
 	strides: int32[2];
 }
 
@@ -587,12 +583,6 @@ function mipFilterMode(filter: string, member: string): int32 {
 const PRIMITIVE_TYPES: int32[] = [0, 1, PRIMITIVE_LINE_STRIP, PRIMITIVE_TRIANGLE, PRIMITIVE_TRIANGLE_STRIP];
 
 function primitiveType(topology: string): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "metal"); }
-
-function stripIndexTypeOf(state: GPUPrimitiveState): int32 {
-	const format: string = state.stripIndexFormat;
-	if (format == "") { return NO_STRIP_INDEX; }
-	return indexType(state.stripIndexFormat);
-}
 
 function indexType(format: GPUIndexFormat): int32 {
 	const value: string = format;
@@ -1319,7 +1309,6 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	slot.depthBiasSlope = descriptor.depthStencil.depthBiasSlopeScale;
 	slot.depthBiasClamp = descriptor.depthStencil.depthBiasClamp;
 	slot.primitive = primitiveType(descriptor.primitive.topology);
-	slot.stripIndexType = stripIndexTypeOf(descriptor.primitive);
 	slot.cullMode = cullMode(descriptor.primitive.cullMode);
 	slot.winding = winding(descriptor.primitive.frontFace);
 	put(pipelines, id, slot);
@@ -1543,7 +1532,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	mtlDraw(encoder, pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
+	mtlDraw(encoder, pipelines[slotOf(boundFacts.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
 export function drawIndexed(
@@ -1555,9 +1544,7 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
-	const primitive = pipelines[p].primitive;
-	checkedStripDraw(primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP, pipelines[p].stripIndexType == bound.indexType);
+	const primitive = pipelines[slotOf(boundFacts.pipeline)].primitive;
 	const b = bufferRecords.slotIndex(boundFacts.indexBuffer);
 	mtlDrawIndexed(
 		encoder,
@@ -1581,10 +1568,7 @@ function flush(): void {
 }
 
 function applyPipeline(): void {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
-	if (!shaderRecords.alive(pipelines[p].shader)) {
-		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
-	}
+	const p = slotOf(boundFacts.pipeline);
 	mtlSetPipeline(encoder, pipelines[p].state, pipelines[p].depth, pipelines[p].cullMode, pipelines[p].winding, pipelines[p].depthBias, pipelines[p].depthBiasSlope, pipelines[p].depthBiasClamp);
 	bound.appliedPipeline = boundFacts.pipeline;
 	bound.vertexDirty = true;
@@ -1661,7 +1645,7 @@ function bindSampler(stage: int32, sampler: Ptr<MtlSamplerImpl>, slot: int32): v
 }
 
 function applyVertexBuffers(): void {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
+	const p = slotOf(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if (pipelines[p].strides[slot] == 0) { continue; }
 		if (boundFacts.vertexBuffers[slot] == 0) { continue; }
@@ -1673,7 +1657,7 @@ function applyVertexBuffers(): void {
 
 
 function applyResources(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	bound.resourcesDirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
@@ -1698,7 +1682,7 @@ function applyResources(): void {
 }
 
 function applyUniforms(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
@@ -1870,7 +1854,7 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 }
 
 function applyCompute(): int32 {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
+	const p = slotOf(boundFacts.pipeline);
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
 	if (computeBound.dirty) {
 		computeBound.dirty = false;
@@ -1919,8 +1903,7 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	const b = bufferRecords.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
+	const b = slotOf(buffer.id);
 	const s = applyCompute();
 	const size: int32[3] = shaders[s].workgroup;
 	mtlDispatchIndirect(computeEncoder, liveBuffer(b), offset, size[0], size[1], size[2]);

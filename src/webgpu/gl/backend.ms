@@ -64,7 +64,6 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedDepthTexelCopy,
-	checkedDispatchIndirect,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
@@ -84,7 +83,6 @@ import {
 	checkedBufferRewrite,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedStripDraw,
 	markBufferWritten,
 	occlusionSetId,
 	openDebugGroups,
@@ -105,6 +103,7 @@ import {
 	samplerRecords,
 	shaderRecords,
 	slotIndex,
+	slotOf,
 	textureRecords,
 	vacate,
 	viewRecords,
@@ -589,7 +588,6 @@ struct PipelineSlot {
 	writeMasks: int32[4];
 	primitive: int32;
 	stripRestart: boolean;
-	stripIndexType: int32;
 	cullFace: int32;
 	frontFace: int32;
 	sampleCount: int32;
@@ -1783,13 +1781,6 @@ function describePrimitive(descriptor: GPURenderPipelineDescriptor, ref slot: Pi
 	slot.primitive = primitiveMode(descriptor.primitive.topology);
 	const strip = slot.primitive == GL_LINE_STRIP || slot.primitive == GL_TRIANGLE_STRIP;
 	slot.stripRestart = strip;
-	const format: string = descriptor.primitive.stripIndexFormat;
-	if (format == "") { return; }
-	slot.stripIndexType = match (format) {
-		"uint16" => GL_UNSIGNED_SHORT,
-		"uint32" => GL_UNSIGNED_INT,
-		_ => stopOnMember("primitive.stripIndexFormat", format),
-	};
 }
 
 function describeDepthStencil(descriptor: GPURenderPipelineDescriptor, ref slot: PipelineSlot): void {
@@ -2222,7 +2213,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush(false);
-	const mode = pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].primitive;
+	const mode = pipelines[slotOf(boundFacts.pipeline)].primitive;
 	if (instanceCount > 1 || bound.instanced) {
 		if (firstInstance == 0) {
 			oglDrawArraysInstanced(mode, firstVertex, vertexCount, instanceCount);
@@ -2243,9 +2234,7 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush(true);
-	const pipeline = pipelineRecords.slotIndex(boundFacts.pipeline);
-	const mode = pipelines[pipeline].primitive;
-	checkedStripDraw(mode == GL_LINE_STRIP || mode == GL_TRIANGLE_STRIP, pipelines[pipeline].stripIndexType == bound.indexType);
+	const mode = pipelines[slotOf(boundFacts.pipeline)].primitive;
 	const offset = (firstIndex as int64) * (bound.indexSize as int64) + boundFacts.indexOffset;
 	const indexType = bound.indexType;
 	if (baseVertex == 0 && firstInstance == 0) {
@@ -2269,10 +2258,7 @@ function flush(indexed: boolean): void {
 }
 
 function applyPipeline(): void {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
-	if (!shaderRecords.alive(pipelines[p].shader)) {
-		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
-	}
+	const p = slotOf(boundFacts.pipeline);
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
 	if (shaders[s].program != cache.program) {
 		cache.program = shaders[s].program;
@@ -2558,7 +2544,7 @@ when (webgl2 || android || (linux && voidGles3)) {
 }
 
 function applyVertexBuffers(): void {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
+	const p = slotOf(boundFacts.pipeline);
 	for (let i = 0; i < maxVertexAttributes; i++) {
 		const attribute: VertexAttribute = pipelines[p].attributes[i];
 		const cached = cachedAttributes[i];
@@ -2618,7 +2604,7 @@ function applyIndexBuffer(): void {
 
 
 function applyResources(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	bound.resourcesDirty = false;
 	if (shaders[s].pairCount == 0 && shaders[s].storageCount == 0) { return; }
 	bindResources(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]));
@@ -2677,7 +2663,7 @@ function bindStorageTexture(resource: ResourceBinding, g: int32): void {
 }
 
 function applyUniforms(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
 	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
@@ -2937,7 +2923,7 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 }
 
 function applyCompute(): int32 {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	if (computeBound.pendingBarrier) {
 		oglMemoryBarrier(BARRIER_BETWEEN_DISPATCHES);
 		computeBound.pendingBarrier = false;
@@ -2961,8 +2947,7 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	const b = bufferRecords.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
+	const b = slotOf(buffer.id);
 	const s = applyCompute();
 	oglDispatchComputeIndirectUncached(bufferName(b), offset);
 	if (shaders[s].writes) { computeBound.pendingBarrier = true; }

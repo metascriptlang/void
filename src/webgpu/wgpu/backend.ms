@@ -66,7 +66,6 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedDepthTexelCopy,
-	checkedDispatchIndirect,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
@@ -83,7 +82,6 @@ import {
 	addressesBinding,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedStripDraw,
 	entryBytes,
 	stencil8Mask,
 	boundFacts,
@@ -101,6 +99,7 @@ import {
 	samplerRecords,
 	shaderRecords,
 	slotIndex,
+	slotOf,
 	textureRecords,
 	vacate,
 	viewRecords,
@@ -474,8 +473,6 @@ struct ShaderSlot {
 struct PipelineSlot {
 	shader: uint32;
 	native: Ptr<WgPipelineImpl>;
-	stripIndexFormat: int32;
-	strip: boolean;
 	compute: boolean;
 }
 
@@ -488,7 +485,6 @@ struct PassState {
 	timestampEnd: int32;
 	width: int32;
 	height: int32;
-	indexFormat: int32;
 }
 
 struct ComputeState {
@@ -1340,8 +1336,6 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	const slot: PipelineSlot = {
 		shader: descriptor.vertex.module.id,
 		native: native,
-		stripIndexFormat: stripIndexFormat,
-		strip: topology == TOPOLOGY_LINE_STRIP || topology == TOPOLOGY_TRIANGLE_STRIP,
 	};
 	put(pipelines, id, slot);
 }
@@ -1604,7 +1598,6 @@ export function beginRenderPass(
 	}
 	pass.timestampSet = writes.querySet.id;
 	pass.timestampEnd = writes.endOfPassWriteIndex;
-	pass.indexFormat = 0;
 	return { id: 1 };
 }
 
@@ -1626,8 +1619,7 @@ export function endPass(): void {
 	format: GPUIndexFormat,
 	offset: int64,
 ): void {
-	pass.indexFormat = indexFormat(format);
-	wgSetIndexBuffer(buffers[bufferRecords.slotIndex(buffer.id)].native, pass.indexFormat, offset);
+	wgSetIndexBuffer(buffers[bufferRecords.slotIndex(buffer.id)].native, indexFormat(format), offset);
 }
 
 export function setBindGroup(
@@ -1695,8 +1687,6 @@ export function setStencilReference(reference: uint32): void {
 	baseVertex: int32,
 	firstInstance: int32,
 ): void {
-	const strip = pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].stripIndexFormat;
-	checkedStripDraw(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].strip, strip == pass.indexFormat);
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 }
 
@@ -1845,8 +1835,7 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	const b = bufferRecords.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
+	const b = slotOf(buffer.id);
 	wgDispatchIndirect(buffers[b].native, offset);
 }
 

@@ -44,7 +44,6 @@ import {
 	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
 	GPUSampler,
-	GPUPrimitiveState,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPUSamplerDescriptor,
@@ -66,7 +65,6 @@ import {
 	GPUTextureView,
 	GPUTextureViewDescriptor,
 	checkedDepthTexelCopy,
-	checkedDispatchIndirect,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
 	checkedTexelWritePitch,
@@ -82,7 +80,6 @@ import {
 	addressesBinding,
 	checkedComputeModule,
 	checkedRenderModule,
-	checkedStripDraw,
 	entryBytes,
 	occlusionQueryIndex,
 	occlusionSetId,
@@ -101,6 +98,7 @@ import {
 	samplerRecords,
 	shaderRecords,
 	slotIndex,
+	slotOf,
 	textureRecords,
 	vacate,
 	viewRecords,
@@ -448,7 +446,6 @@ struct PipelineSlot {
 	inputLayout: Ptr<D3dInputLayoutImpl>;
 	strides: int32[GPU_MAX_VERTEX_BUFFERS];
 	topology: int32;
-	stripIndexFormat: int32;
 	compute: boolean;
 }
 
@@ -1683,7 +1680,6 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	checkedRenderModule(shaders[s].compute != null);
 	let slot: PipelineSlot = { shader: descriptor.vertex.module.id };
 	slot.topology = primitiveTopology(descriptor.primitive.topology);
-	slot.stripIndexFormat = stripIndexFormatOf(descriptor.primitive);
 	slot.inputLayout = createInputLayout(s, descriptor, slot);
 	const sampleCount = descriptor.multisample.count;
 	slot.rasterizer = d3dCreateRasterizerState(
@@ -1727,12 +1723,6 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	setLabel(slot.depthStencil, descriptor.label);
 	setLabel(slot.blend, descriptor.label);
 	put(pipelines, id, slot);
-}
-
-function stripIndexFormatOf(state: GPUPrimitiveState): int32 {
-	const format: string = state.stripIndexFormat;
-	if (format == "") { return 0; }
-	return indexFormat(state.stripIndexFormat);
 }
 
 function createInputLayout(
@@ -1995,7 +1985,7 @@ export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynam
 
 function applyCompute(): void {
 	if (!computeBound.dirty) { return; }
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(boundFacts.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	d3dCsClearViews(context);
 	d3dCsSetShader(context, shaders[s].compute);
 	computeBound.dirty = false;
@@ -2026,8 +2016,7 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	const b = bufferRecords.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
+	const b = slotOf(buffer.id);
 	applyCompute();
 	d3dDispatchIndirect(context, buffers[b].native, offset);
 }
@@ -2118,21 +2107,13 @@ export function drawIndexed(
 
 
 function flush(indexed: boolean): void {
-	const p = pipelineRecords.slotIndex(boundFacts.pipeline);
-	const s = liveShader(p);
+	const p = slotOf(boundFacts.pipeline);
+	const s = shaderRecords.slotIndex(pipelines[p].shader);
 	if (bound.appliedPipeline != boundFacts.pipeline) { applyPipeline(p, s); }
 	if (bound.vertexDirty) { applyVertexBuffers(p); }
 	if (indexed && bound.indexDirty) { applyIndexBuffer(); }
-	if (indexed) { checkStripIndexFormat(p); }
 	if (bound.resourcesDirty) { applyResources(s); }
 	if (bound.uniformsDirty) { applyUniforms(s); }
-}
-
-function liveShader(p: int32): int32 {
-	if (!shaderRecords.alive(pipelines[p].shader)) {
-		stop(`the shader module of GPURenderPipeline ${boundFacts.pipeline} was destroyed`);
-	}
-	return shaderRecords.slotIndex(pipelines[p].shader);
 }
 
 function applyPipeline(p: int32, s: int32): void {
@@ -2154,11 +2135,6 @@ function applyPipeline(p: int32, s: int32): void {
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
-}
-
-@noinline function checkStripIndexFormat(p: int32): void {
-	const topology = pipelines[p].topology;
-	checkedStripDraw(topology == TOPOLOGY_LINE_STRIP || topology == TOPOLOGY_TRIANGLE_STRIP, pipelines[p].stripIndexFormat == bound.indexFormat);
 }
 
 function applyVertexBuffers(p: int32): void {
