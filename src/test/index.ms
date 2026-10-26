@@ -32,6 +32,7 @@ import "./fontOracleCheck";
 import "./sfntBoundsCheck";
 import "./sfntCmapCheck";
 import "./sfntPortCheck";
+import "./trueTypePortCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
