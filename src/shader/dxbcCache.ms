@@ -12,7 +12,7 @@ class DxbcStage {
 // The flags src/webgpu/d3d11/d3d11.c passes D3DCompile, in fxc's spelling; keep them in step.
 function fxcFlags(): string[] { return ["-Zpc", "-O3"]; }
 
-function dxbcKey(profile: string, entry: string, code: string): string {
+export function dxbcKey(profile: string, entry: string, code: string): string {
 	const keyed = profile + " " + entry + " " + fxcFlags().join(" ") + "\n" + code;
 	return sha256(keyed.asBytes()).toHex();
 }
