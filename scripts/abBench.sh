@@ -9,17 +9,17 @@
 #   sh scripts/abBench.sh clean              delete the exes and the main worktree
 #
 # Environment: AB_MAIN_SHA (default: the merge base of HEAD and main, so a delta is the GPU layer
-# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add linux,
-# web-wgpu, web-gl; `build web` alone defaults it to "web-wgpu web-gl"),
-# AB_LINUX_DRIVER (d3d12 default, or llvmpipe),
-# AB_SCENES (default "Ui Sprites Text Editor Scroll"), AB_TOL percent of slack on a .ms row
+# and not newer void2d on main; main's tip is `AB_MAIN_SHA=main`), AB_BACKENDS (default "d3d11 gl"; add vulkan,
+# which main lacks and so runs on B alone, linux, web-wgpu, web-gl; `build web` alone defaults it to
+# "web-wgpu web-gl"), AB_LINUX_DRIVER (d3d12 default, or llvmpipe),
+# AB_SCENES (default "Ui Sprites Text Editor Scroll Campfire"), AB_TOL percent of slack on a .ms row
 # (default 3), AB_LOAD_LIMIT percent CPU load that voids a run (default 25), AB_OUT, MSC.
 # Run `build` as `bash ~/metascript/.wt/nim-audit/buildslot.sh sh scripts/abBench.sh build`.
 set -eu
 cd "$(dirname "$0")/.."
 B="$(pwd)"
 MSC="${MSC:-msc}"
-SCENES="${AB_SCENES:-Ui Sprites Text Editor Scroll}"
+SCENES="${AB_SCENES:-Ui Sprites Text Editor Scroll Campfire}"
 BACKENDS="${AB_BACKENDS:-d3d11 gl}"
 TOL="${AB_TOL:-3}"
 LIMIT="${AB_LOAD_LIMIT:-25}"
@@ -33,7 +33,8 @@ backendFlags() {
 	case "$1" in
 		d3d11) echo "" ;;
 		gl) if [ "$2" = A ]; then echo "-d:voidGlCore --passC=-DSOKOL_GLCORE"; else echo "-d:voidGlCore --passC=-DVOID_GLCORE"; fi ;;
-		*) echo "abBench.sh: backend '$1' is not built on this machine (d3d11, gl)" >&2; exit 2 ;;
+		vulkan) echo "-d:voidVulkan" ;;
+		*) echo "abBench.sh: backend '$1' is not built on this machine (d3d11, gl, vulkan)" >&2; exit 2 ;;
 	esac
 }
 
@@ -48,6 +49,14 @@ provision() {
 	elif [ "$(git -C "$A" rev-parse HEAD)" != "$(git rev-parse "$sha")" ]; then
 		git -C "$A" checkout --detach "$sha"
 	fi
+	# An entry sits above void2d and void3d, so a scene main has no entry for runs B's entry on A.
+	for scene in $SCENES; do
+		entry="tests/bench/bench$scene.ms"
+		if ! git -C "$A" cat-file -e "HEAD:$entry" 2>/dev/null; then
+			cp "$B/$entry" "$A/$entry"
+			echo "ENTRY $scene: A runs B's $entry"
+		fi
+	done
 	{
 		echo "A main-side $(git -C "$A" rev-parse HEAD) (main tip $(git rev-parse main))"
 		echo "B gpu-ms $(git rev-parse HEAD)"
@@ -87,6 +96,7 @@ build() {
 	for backend in $BACKENDS; do
 		case "$backend" in web-*) continue ;; esac
 		for side in A B; do
+			if [ "$backend" = vulkan ] && [ "$side" = A ]; then echo "SKIP       vulkan A (main has no Vulkan backend)"; continue; fi
 			flags="$(backendFlags "$backend" "$side")"
 			tree="$A"; [ "$side" = B ] && tree="$B"
 			mkdir -p "$OUT/$backend/$side"
@@ -182,6 +192,31 @@ runWeb() {
 	AB_RUN="node $(cygpath -m "$B")/scripts/webBench.mjs $dir" 		AB_DIR_A="$(cygpath -m "$OUT")/web/A/$dir" AB_DIR_B="$(cygpath -m "$OUT")/web/B/$dir" 		AB_RAW="$OUT/raw-$1.tsv" AB_LABEL="$1" AB_TOL="$TOL" AB_LOAD_LIMIT="$LIMIT" 		sh scripts/bench-ab.sh "$A" "$B" "$2" $SCENES
 }
 
+# Main has no Vulkan backend, so its rows are B's alone: the median, low and high of the runs.
+runAlone() {
+	raw="$OUT/raw-$1.tsv"
+	echo "=== $1 (B only, absolute: main has no $1 backend)"
+	for scene in $SCENES; do
+		rep=1
+		while [ "$rep" -le "$2" ]; do
+			(cd "$B" && "$OUT/$1/B/bench$scene.exe" 2>/dev/null) | tr -d '\r' | awk -v l="$1" -v s="$scene" -v r="$rep" \
+				'/^[A-Za-z0-9]+\.[A-Za-z0-9.]+ -?[0-9.eE+-]+$/ { print l "\t" s "\t" r "\t" $1 "\t" $2 }' >> "$raw"
+			rep=$((rep + 1))
+		done
+	done
+	awk -F'\t' -f scripts/benchFlow.awk -e '
+		{ key = $2 SUBSEP $4; if (!(key in cnt)) keys[++nk] = key; val[key, ++cnt[key]] = $5 }
+		END {
+			printf "%-7s %-8s %-34s %14s %14s %14s %5s\n", "label", "flow", "metric", "B median", "low", "high", "runs"
+			for (i = 1; i <= nk; i++) {
+				key = keys[i]; split(key, q, SUBSEP); n = cnt[key]
+				for (j = 1; j <= n; j++) v[j] = val[key, j]
+				for (j = 2; j <= n; j++) { x = v[j]; k = j - 1; while (k >= 1 && v[k] > x) { v[k + 1] = v[k]; k-- } v[k + 1] = x }
+				printf "%-7s %-8s %-34s %14.4g %14.4g %14.4g %5d\n", label, flow(q[2]), q[2], n % 2 ? v[(n + 1) / 2] : (v[n / 2] + v[n / 2 + 1]) / 2, v[1], v[n], n
+			}
+		}' label="$1" "$raw"
+}
+
 # The protocol (interleaving, load sampling, NOISY, AB_MIN_CLEAN, the all-row table) is
 # scripts/bench-ab.sh's; this only points it at each backend's exes.
 run() {
@@ -191,6 +226,7 @@ run() {
 	cat "$OUT/env.txt"
 	for backend in $BACKENDS; do
 		if [ "$backend" = linux ]; then runLinux "$reps"; continue; fi
+		if [ "$backend" = vulkan ]; then runAlone vulkan "$reps"; continue; fi
 		case "$backend" in web-*) runWeb "$backend" "$reps"; continue ;; esac
 		echo "=== $backend"
 		# shellcheck disable=SC2086
