@@ -633,9 +633,11 @@ test "a decal pass neither writes nor tests depth, and the pixel-art preset draw
 		RenderState.defaults().withDepth(false, Compare.LessEqual),
 	];
 	for (const state of states) {
-		const refused: Result<MaterialId, MaterialError> =
-			addMaterial(context, Material.plain(Program.Particle, state, Phase.Decal));
-		assert !refused.ok && refused.error == MaterialError.DecalDepth;
+		for (const phase of [Phase.Decal, Phase.DecalAfterToneMap]) {
+			const refused: Result<MaterialId, MaterialError> =
+				addMaterial(context, Material.plain(Program.Particle, state, phase));
+			assert !refused.ok && refused.error == MaterialError.DecalDepth;
+		}
 	}
 	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, PixelArtSettings.full(), look());

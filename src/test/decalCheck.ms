@@ -7,7 +7,7 @@ import { Camera3D, CameraError, CameraView, ProjectionKind } from "../void3d/cam
 import {
 	decalFade, decalLocalAt, decalOverlayColor, ndcDepthOf, outsideDecal,
 } from "../void3d/shader3d";
-import { DecalOverlay, DecalError, decalBlock } from "../void3d/decal";
+import { DecalOverlay, DecalError, DecalPass, decalBlock } from "../void3d/decal";
 import { Material, Phase } from "../void3d/material";
 import { Program } from "../void3d/gpu3d";
 import { Compare, Face } from "../gpu/state";
@@ -99,19 +99,25 @@ test "a stored depth is NDC as is on a 0..1 backend and mapped from 0..1 to -1..
 
 test "a decal's block holds DecalOverlay's defaults, and an empty fade range is refused" {
 	const overlay: DecalOverlay = DecalOverlay.defaults();
-	const block: Result<Vec<float32>, DecalError> = decalBlock(overlay);
+	const block: Result<Vec<float32>, DecalError> = decalBlock(overlay, DecalPass.BeforeToneMap);
 	if (!block.ok) { unreachable; }
-	const expected: Vec<float32> = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0];
+	const expected: Vec<float32> = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0];
 	assert block.value.length == expected.length;
 	for (let i = 0; i < expected.length; i++) { assert block.value[i] == expected[i]; }
-	const empty: Result<Vec<float32>, DecalError> = decalBlock({ ...overlay, fadeEnd: 0.0 });
+	const after: Result<Vec<float32>, DecalError> = decalBlock(overlay, DecalPass.AfterToneMap);
+	assert after.ok && after.value[11] == 0.0;
+	const empty: Result<Vec<float32>, DecalError> =
+		decalBlock({ ...overlay, fadeEnd: 0.0 }, DecalPass.BeforeToneMap);
 	assert !empty.ok;
 	if (!empty.ok) { assert empty.error == DecalError.FadeRange; }
 }
 
-test "a decal material draws in the Decal phase with no depth and its back faces" {
-	const material: Material = Material.decal();
-	assert material.program.program == Program.Decal && material.phase == Phase.Decal;
-	assert !material.pass.depthWrite && material.pass.depthTest == Compare.Always;
-	assert material.pass.culling == Face.Front;
+test "a decal material draws in its pass's phase with no depth and its back faces" {
+	const before: Material = Material.decal(DecalPass.BeforeToneMap);
+	assert before.program.program == Program.Decal && before.phase == Phase.Decal;
+	assert !before.pass.depthWrite && before.pass.depthTest == Compare.Always;
+	assert before.pass.culling == Face.Front;
+	const after: Material = Material.decal(DecalPass.AfterToneMap);
+	assert after.program.program == Program.Decal && after.phase == Phase.DecalAfterToneMap;
+	assert after.pass.blendSource == before.pass.blendSource && after.pass.culling == Face.Front;
 }

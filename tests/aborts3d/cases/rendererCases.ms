@@ -12,6 +12,9 @@
 // expect closed.drawDecals: void3d: drawDecals on a renderer that was closed
 // expect decal.drawPhase: void3d: drawPhase(Decal) has no scene depth to bind
 // expect decal.withDepth: void3d: drawDecals into a pass with a depth attachment
+// expect decalAfter.drawPhase: void3d: drawPhase(DecalAfterToneMap) has no scene depth to bind
+// expect opaque.drawDecals: void3d: drawDecals(Opaque); drawPhase draws that list
+// expect decalAfter.intoLinear: void3d: drawDecals(DecalAfterToneMap) into a Rgba16f target
 import { argv } from "std/process";
 import { Vec4 } from "../../../src/math/math3d";
 import { SWAPCHAIN_LAYOUT } from "../../../src/gpu/target";
@@ -99,11 +102,18 @@ function run(name: string): void {
 		drawPhase(openCore(false), Phase.Opaque, items,
 			{ ...SWAPCHAIN_LAYOUT, color0: PixelFormat.Rgba16f });
 	} else if (name == "closed.drawDecals") {
-		drawDecals(closedCore(), items, SWAPCHAIN_LAYOUT, 0, 0);
+		drawDecals(closedCore(), Phase.Decal, items, SWAPCHAIN_LAYOUT, 0, 0);
 	} else if (name == "decal.drawPhase") {
 		drawPhase(openCore(false), Phase.Decal, items, SWAPCHAIN_LAYOUT);
 	} else if (name == "decal.withDepth") {
-		drawDecals(openCore(false), items, SWAPCHAIN_LAYOUT, 0, 0);
+		drawDecals(openCore(false), Phase.Decal, items, SWAPCHAIN_LAYOUT, 0, 0);
+	} else if (name == "decalAfter.drawPhase") {
+		drawPhase(openCore(false), Phase.DecalAfterToneMap, items, SWAPCHAIN_LAYOUT);
+	} else if (name == "opaque.drawDecals") {
+		drawDecals(openCore(false), Phase.Opaque, items, SWAPCHAIN_LAYOUT, 0, 0);
+	} else if (name == "decalAfter.intoLinear") {
+		drawDecals(openCore(true), Phase.DecalAfterToneMap, items,
+			{ ...SWAPCHAIN_LAYOUT, color0: PixelFormat.Rgba16f }, 0, 0);
 	} else {
 		console.log(`no case named '${name}'`);
 		return;
