@@ -17,6 +17,7 @@ import {
 	ScalarKind,
 	ShaderEntry,
 	ShaderExpr,
+	ShaderField,
 	ShaderIo,
 	ShaderModule,
 	ShaderResource,
@@ -223,6 +224,31 @@ function typeName(p: Glsl, t: ShaderType): string {
 	};
 }
 
+function isTwoRowMatrix(t: ShaderType): boolean {
+	return t.kind == ShaderTypeKind.Matrix && t.rows == 2;
+}
+
+function columnName(member: string, column: int32): string {
+	return member + "_col" + String(column);
+}
+
+function blockMemberText(p: Glsl, e: ShaderExpr): string {
+	const name = p.module.structs[p.module.resources[e.index].type.structIndex].members[e.member].name;
+	if (!isTwoRowMatrix(e.type)) { return name; }
+	let columns: string[] = [];
+	for (let c: int32 = 0; c < e.type.columns; c++) { columns.push(columnName(name, c)); }
+	return typeName(p, e.type) + "(" + columns.join(", ") + ")";
+}
+
+function blockMemberDeclarations(p: Glsl, f: ShaderField): string {
+	if (!isTwoRowMatrix(f.type)) { return "    " + declared(p, f.type, f.name) + ";\n"; }
+	let text = "";
+	for (let c: int32 = 0; c < f.type.columns; c++) {
+		text += "    vec2 " + columnName(f.name, c) + ";\n";
+	}
+	return text;
+}
+
 function splitField(e: ShaderExpr): boolean {
 	const kind = e.operands[0].type.kind;
 	return kind == ShaderTypeKind.ModfResult || kind == ShaderTypeKind.FrexpResult;
@@ -366,8 +392,7 @@ function expr(p: Glsl, e: ShaderExpr): string {
 		ExprKind.Io => ioName(p, e.index),
 		ExprKind.Resource => m.resources[e.index].name,
 		ExprKind.Workgroup => p.workgroupNames[e.index],
-		ExprKind.BlockMember =>
-			m.structs[m.resources[e.index].type.structIndex].members[e.member].name,
+		ExprKind.BlockMember => blockMemberText(p, e),
 		ExprKind.Call => p.functionNames[e.index] + listed(p, e.operands),
 		ExprKind.Intrinsic => intrinsic(p, e),
 		ExprKind.Construct => typeName(p, e.type) + listed(p, e.operands),
@@ -674,7 +699,7 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 	return match (r.kind) {
 		ResourceKind.UniformBlock => slot + r.name + " {\n" +
 			p.module.structs[r.type.structIndex].members.map((f) =>
-				"    " + declared(p, f.type, f.name) + ";\n").join("") + "};\n",
+				blockMemberDeclarations(p, f)).join("") + "};\n",
 		ResourceKind.Texture => match (r.type.shape) {
 			TextureShape.D2Array => sampleTag(r) + slot + "texture2DArray " + r.name + ";\n",
 			TextureShape.Cube => sampleTag(r) + slot + "textureCube " + r.name + ";\n",
@@ -729,6 +754,20 @@ function nameDeclarations(p: Glsl): void {
 		names.globals.push(r.name);
 		if (r.kind == ResourceKind.UniformBlock) {
 			for (const f of m.structs[r.type.structIndex].members) { names.globals.push(f.name); }
+		}
+	}
+	for (const r of m.resources) {
+		if (r.kind != ResourceKind.UniformBlock) { continue; }
+		for (const f of m.structs[r.type.structIndex].members) {
+			if (!isTwoRowMatrix(f.type)) { continue; }
+			for (let c: int32 = 0; c < f.type.columns; c++) {
+				const column = columnName(f.name, c);
+				if (names.globals.includes(column)) {
+					broken("the column " + column + " of uniform member " + f.name +
+						" is also the name of a member or resource");
+				}
+				names.globals.push(column);
+			}
 		}
 	}
 	for (let i = 0; i < m.ios.length; i++) {
