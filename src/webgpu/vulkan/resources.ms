@@ -25,9 +25,11 @@ import {
 	vulkanMemoryMap,
 	vulkanMemoryType,
 	vulkanMemoryTypeCount,
+	vulkanPipelineDestroy,
 	vulkanRecordingSerial,
 	vulkanSamplerCreate,
 	vulkanSamplerDestroy,
+	vulkanShaderModuleDestroy,
 	vulkanSubmit,
 	vulkanViewCreate,
 	vulkanViewDestroy,
@@ -48,13 +50,16 @@ import {
 	memoryFree,
 	memoryPropertiesOf,
 } from "./memory";
+import { DescriptorCache, closeDescriptors, finishDeallocations, newDescriptorCache } from "./descriptor";
 import {
 	ACCESS_TRANSFER_WRITE,
+	ASPECT_DEPTH,
 	ASPECT_STENCIL,
 	FormatInfo,
 	IMAGE_CREATE_CUBE_COMPATIBLE,
 	IMAGE_TYPE_2D,
 	IMAGE_TYPE_3D,
+	LAYOUT_SHADER_READ_ONLY,
 	LAYOUT_TRANSFER_DST,
 	addressMode,
 	bufferMemoryKind,
@@ -103,6 +108,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPUTextureViewDimension,
 	checkedCubeView,
 	checkedDepthTexelCopy,
 	checkedSamplerAnisotropy,
@@ -156,6 +162,7 @@ export struct TextureRecord {
 	volume: boolean;
 	cube: boolean;
 	samples: int32;
+	usage: int32;
 	swapchain: boolean;
 	rest: TextureRest;
 	memory: MemoryAllocation;
@@ -164,6 +171,8 @@ export struct TextureRecord {
 export struct ViewRecord {
 	id: uint32;
 	native: uint64;
+	binding: uint64;
+	dimension: GPUTextureViewDimension;
 	texture: uint32;
 	baseMip: int32;
 	mipCount: int32;
@@ -181,12 +190,14 @@ struct SamplerRecord {
 	native: uint64;
 }
 
-enum RetiredKind {
+export enum RetiredKind {
 	Buffer,
 	Image,
 	View,
 	Sampler,
 	Page,
+	Shader,
+	Pipeline,
 }
 
 struct UploadPage {
@@ -211,6 +222,7 @@ struct Staged {
 export struct VulkanResources {
 	memory: MemoryAllocator;
 	tracker: StateTracker;
+	descriptors: DescriptorCache;
 	buffers: Pool<BufferRecord>;
 	textures: Pool<TextureRecord>;
 	views: Pool<ViewRecord>;
@@ -222,7 +234,7 @@ export struct VulkanResources {
 	acquired: uint64;
 }
 
-const NO_ALLOCATION: MemoryAllocation = {
+export const NO_ALLOCATION: MemoryAllocation = {
 	memory: 0,
 	mapped: 0,
 	offset: 0,
@@ -312,15 +324,27 @@ export function resourcesFor(device: MemoryDevice, depthStencil: int32): VulkanR
 		volume: false,
 		cube: false,
 		samples: 0,
+		usage: 0,
 		swapchain: false,
 		rest: { stages: 0, access: 0, layout: 0, aspect: 0 },
 		memory: NO_ALLOCATION,
 	};
-	const noView: ViewRecord = { id: 0, native: 0, texture: 0, baseMip: 0, mipCount: 0, layerCount: 0, swapchain: false };
+	const noView: ViewRecord = {
+		id: 0,
+		native: 0,
+		binding: 0,
+		dimension: "2d",
+		texture: 0,
+		baseMip: 0,
+		mipCount: 0,
+		layerCount: 0,
+		swapchain: false,
+	};
 	const noSampler: SamplerRecord = { id: 0, native: 0 };
 	return {
 		memory: MemoryAllocator.forDevice(device),
 		tracker: newTracker(),
+		descriptors: newDescriptorCache(),
 		buffers: newPool<BufferRecord>("vulkan", "GPUBuffer", "buffer", noBuffer),
 		textures: newPool<TextureRecord>("vulkan", "GPUTexture", "texture", noTexture),
 		views: newPool<ViewRecord>("vulkan", "GPUTextureView", "texture view", noView),
@@ -513,6 +537,7 @@ export function createTexture(ref r: VulkanResources, descriptor: GPUTextureDesc
 		volume: volume,
 		cube: cube && has(descriptor.usage, GPUTextureUsage.TEXTURE_BINDING as int32) && layers % 6 == 0,
 		samples: samples,
+		usage: descriptor.usage,
 		swapchain: false,
 		rest: rest,
 		memory: placed.value,
@@ -555,10 +580,30 @@ export function createView(
 		layerCount as uint32,
 		native,
 	));
+	let binding = native;
+	if (t.info.aspect == (ASPECT_DEPTH | ASPECT_STENCIL) && t.rest.layout == LAYOUT_SHADER_READ_ONLY) {
+		const depthOnly = checked(vulkanViewCreate(
+			t.native,
+			viewType(dimension),
+			t.info.native,
+			ASPECT_DEPTH,
+			baseMip as uint32,
+			mipCount as uint32,
+			baseLayer as uint32,
+			layerCount as uint32,
+			binding,
+		));
+		if (!depthOnly.ok) {
+			vulkanViewDestroy(native);
+			return Result.err(depthOnly.error);
+		}
+	}
 	const id = allocate(r.views);
 	store(r.views, {
 		id: id,
 		native: native,
+		binding: binding,
+		dimension: dimension as GPUTextureViewDimension,
 		texture: texture.id,
 		baseMip: baseMip,
 		mipCount: mipCount,
@@ -589,12 +634,23 @@ export function adoptSwapchainImage(
 		volume: false,
 		cube: false,
 		samples: 1,
+		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
 		swapchain: true,
 		rest: swapchainRest(),
 		memory: NO_ALLOCATION,
 	});
 	const viewId = allocate(r.views);
-	store(r.views, { id: viewId, native: view, texture: texture, baseMip: 0, mipCount: 1, layerCount: 1, swapchain: true });
+	store(r.views, {
+		id: viewId,
+		native: view,
+		binding: view,
+		dimension: "2d",
+		texture: texture,
+		baseMip: 0,
+		mipCount: 1,
+		layerCount: 1,
+		swapchain: true,
+	});
 	return { texture: { id: texture }, view: { id: viewId } };
 }
 
@@ -649,7 +705,7 @@ export function createSampler(ref r: VulkanResources, descriptor: GPUSamplerDesc
 	return Result.ok({ id: id });
 }
 
-function retire(ref r: VulkanResources, kind: RetiredKind, native: uint64, memory: MemoryAllocation): void {
+export function retire(ref r: VulkanResources, kind: RetiredKind, native: uint64, memory: MemoryAllocation): void {
 	r.retired.push({ serial: vulkanRecordingSerial(), kind: kind, native: native, memory: memory });
 }
 
@@ -672,6 +728,9 @@ export function destroyView(ref r: VulkanResources, view: GPUTextureView): void 
 	const index = r.views.slotIndex(view.id);
 	if (r.views.slots[index].swapchain) { refuseSwapchainOwned("destroyView", "GPUTextureView", view.id); }
 	retire(r, RetiredKind.View, r.views.slots[index].native, NO_ALLOCATION);
+	if (r.views.slots[index].binding != r.views.slots[index].native) {
+		retire(r, RetiredKind.View, r.views.slots[index].binding, NO_ALLOCATION);
+	}
 	r.views.slots[index].id = 0;
 	release(r.views, view.id);
 }
@@ -689,6 +748,8 @@ function freeRetired(ref r: VulkanResources, retired: Retired): void {
 		RetiredKind.Image => vulkanImageDestroy(retired.native),
 		RetiredKind.View => vulkanViewDestroy(retired.native),
 		RetiredKind.Sampler => vulkanSamplerDestroy(retired.native),
+		RetiredKind.Shader => vulkanShaderModuleDestroy(retired.native),
+		RetiredKind.Pipeline => vulkanPipelineDestroy(retired.native),
 	};
 	if (retired.memory.memory != 0) { freeMemory(r, retired.memory); }
 }
@@ -707,6 +768,7 @@ export function collect(ref r: VulkanResources): Result<uint64, ResourceError> {
 		}
 	}
 	r.retired = kept;
+	finishDeallocations(r.descriptors, completed);
 	return Result.ok(completed);
 }
 
@@ -976,6 +1038,7 @@ export function closeResources(ref r: VulkanResources): Result<void, ResourceErr
 	r.freePages.length = 0;
 	for (const retired of r.retired) { freeRetired(r, retired); }
 	r.retired.length = 0;
+	closeDescriptors(r.descriptors);
 	resetRecords(r);
 	if (!drained.ok) { return Result.err(drained.error); }
 	return Result.ok(null);
