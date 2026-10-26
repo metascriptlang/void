@@ -19,9 +19,13 @@ export const GPU_TIMER_MAX_PASSES: int32 = 1024;
 const QUERY_BYTES: int64 = 8;
 const NANOSECONDS_PER_MILLISECOND: float64 = 1000000.0;
 
-export function timerWriteSlot(frame: int64, ring: int32): int32 { return (frame % (ring as int64)) as int32; }
+export function timerWriteSlot(frame: int64, ring: int32): int32 {
+	return (frame % (ring as int64)) as int32;
+}
 
-export function timerReadFrame(frame: int64, ring: int32): int64 { return frame - ((ring - 1) as int64); }
+export function timerReadFrame(frame: int64, ring: int32): int64 {
+	return frame - ((ring - 1) as int64);
+}
 
 export function timerReadSlot(frame: int64, ring: int32): int32 {
 	return timerWriteSlot(timerReadFrame(frame, ring) + (ring as int64), ring);
@@ -63,7 +67,11 @@ export function timerBuild(device: GPUDevice): void {
 	for (let i = 0; i < GPU_TIMER_RING; i++) {
 		const bytes = (maxPasses as int64) * 2 * QUERY_BYTES;
 		slots.push({
-			set: device.createQuerySet({ label: "gpuTimer", type: "timestamp", count: maxPasses * 2 }),
+			set: device.createQuerySet({
+				label: "gpuTimer",
+				type: "timestamp",
+				count: maxPasses * 2,
+			}),
 			resolved: device.createBuffer({
 				label: "gpuTimerResolve",
 				size: bytes,
@@ -83,7 +91,10 @@ export function timerBuild(device: GPUDevice): void {
 
 export function timerEnable(device: GPUDevice, max: int32): int32 {
 	if (max < 1 || max > GPU_TIMER_MAX_PASSES) {
-		stop("the GPU timer takes 1.." + String(GPU_TIMER_MAX_PASSES) + " passes per frame, given " + String(max));
+		stop(
+			"the GPU timer takes 1.." + String(GPU_TIMER_MAX_PASSES) + " passes per frame, given " +
+				String(max),
+		);
 	}
 	if (state != GPU_TIMER_OFF) { stop("the GPU timer is already enabled"); }
 	maxPasses = max;
@@ -95,12 +106,19 @@ export function timerPassWrites(label: string): GPUPassTimestampWrites {
 	const slot = timerWriteSlot(frame, GPU_TIMER_RING);
 	const index = slots[slot].passes;
 	if (index == maxPasses) {
-		stop("the GPU timer was enabled for at most " + String(maxPasses) + " passes per frame, and pass " +
-			String(index + 1) + " (" + label + ") of frame " + String(frame) + " is one more");
+		stop(
+			"the GPU timer was enabled for at most " + String(maxPasses) +
+				" passes per frame, and pass " + String(index + 1) + " (" + label + ") of frame " +
+				String(frame) + " is one more",
+		);
 	}
 	slots[slot].passes = index + 1;
 	slots[slot].labels.push(label);
-	return { querySet: slots[slot].set, beginningOfPassWriteIndex: index * 2, endOfPassWriteIndex: index * 2 + 1 };
+	return {
+		querySet: slots[slot].set,
+		beginningOfPassWriteIndex: index * 2,
+		endOfPassWriteIndex: index * 2 + 1,
+	};
 }
 
 // Reads the frame that finished `GPU_TIMER_RING - 1` frames ago, then resolves this frame's passes
@@ -133,7 +151,12 @@ function collect(slot: int32, which: int64): void {
 		for (let i = 0; i < count; i++) {
 			const begin = counter(raw, i * 2);
 			const end = counter(raw, i * 2 + 1);
-			if (end < begin) { stop("GPU timer pass " + String(i) + " of frame " + String(which) + " ended before it began"); }
+			if (end < begin) {
+				stop(
+					"GPU timer pass " + String(i) + " of frame " + String(which) +
+						" ended before it began",
+				);
+			}
 			resultLabels.push(slots[slot].labels[i]);
 			resultMs.push(((end - begin) as float64) / NANOSECONDS_PER_MILLISECOND);
 		}
@@ -149,8 +172,15 @@ function counter(raw: Vec<uint8>, index: int32): uint64 {
 
 function stopUnlessResult(what: string): void {
 	if (state == GPU_TIMER_OFF) { stop(what + ": the GPU timer is not enabled"); }
-	if (state == GPU_TIMER_UNSUPPORTED) { stop(what + ": this device has no timestamp-query, so the GPU timer measures nothing"); }
-	if (resultFrame < 0) { stop(what + ": no frame has been read yet, the first result arrives " + String(GPU_TIMER_RING - 1) + " frames after the timer starts"); }
+	if (state == GPU_TIMER_UNSUPPORTED) {
+		stop(what + ": this device has no timestamp-query, so the GPU timer measures nothing");
+	}
+	if (resultFrame < 0) {
+		stop(
+			what + ": no frame has been read yet, the first result arrives " +
+				String(GPU_TIMER_RING - 1) + " frames after the timer starts",
+		);
+	}
 }
 
 export function timerResultFrame(): int64 { return resultFrame; }
@@ -163,7 +193,10 @@ export function timerResultCount(): int32 {
 export function timerResultMs(index: int32): float64 {
 	stopUnlessResult("gpu timer pass time");
 	if (index < 0 || index >= (resultMs.length as int32)) {
-		stop("gpu timer pass " + String(index) + " is outside the " + String(resultMs.length) + " passes of frame " + String(resultFrame));
+		stop(
+			"gpu timer pass " + String(index) + " is outside the " + String(resultMs.length) +
+				" passes of frame " + String(resultFrame),
+		);
 	}
 	return resultMs[index];
 }
@@ -171,7 +204,10 @@ export function timerResultMs(index: int32): float64 {
 export function timerResultLabel(index: int32): string {
 	stopUnlessResult("gpu timer pass label");
 	if (index < 0 || index >= (resultMs.length as int32)) {
-		stop("gpu timer pass " + String(index) + " is outside the " + String(resultMs.length) + " passes of frame " + String(resultFrame));
+		stop(
+			"gpu timer pass " + String(index) + " is outside the " + String(resultMs.length) +
+				" passes of frame " + String(resultFrame),
+		);
 	}
 	return resultLabels[index];
 }

@@ -1485,12 +1485,18 @@ export function doorReadScreen(out: Span<uint8>): int32 {
 
 function timestampsOf(label: string): GPUPassTimestampWrites {
 	if (timerState() == GPU_TIMER_ON) { return timerPassWrites(label); }
-	return { querySet: { id: 0 }, beginningOfPassWriteIndex: GPU_NO_QUERY_INDEX, endOfPassWriteIndex: GPU_NO_QUERY_INDEX };
+	return {
+		querySet: { id: 0 },
+		beginningOfPassWriteIndex: GPU_NO_QUERY_INDEX,
+		endOfPassWriteIndex: GPU_NO_QUERY_INDEX,
+	};
 }
 
 // The GPU time of each pass, read GPU_TIMER_RING - 1 frames after it was drawn so the read never
 // waits (src/gpu/gpuTimer.ms). Returns GPU_TIMER_ON or GPU_TIMER_UNSUPPORTED.
-export function doorEnableGpuTimer(maxPasses: int32): int32 { return timerEnable(device, maxPasses); }
+export function doorEnableGpuTimer(maxPasses: int32): int32 {
+	return timerEnable(device, maxPasses);
+}
 export function doorGpuTimerState(): int32 { return timerState(); }
 export function doorGpuTimerFrame(): int64 { return timerResultFrame(); }
 export function doorGpuTimerPassCount(): int32 { return timerResultCount(); }
