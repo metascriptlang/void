@@ -1,4 +1,4 @@
-import { BindingKind, GPUTextureFormat, GPU_MAX_SHADER_BINDINGS } from "./types.ms";
+import { BindingKind, GPUTextureFormat, GPU_MAX_BIND_GROUP_ENTRIES, GPU_MAX_SHADER_BINDINGS } from "./types.ms";
 
 export const SLOT_SHIFT = 16;
 export const SLOT_MASK = 0xFFFF;
@@ -180,6 +180,7 @@ export struct BindGroupRecord {
 	id: uint32;
 	group: int32;
 	dynamicCount: int32;
+	dynamicIndex: int32[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 export struct IdRecord { id: uint32; }

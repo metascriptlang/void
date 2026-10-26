@@ -447,7 +447,6 @@ struct BindGroupSlot {
 	srv: Ptr<D3dSrvImpl>[GPU_MAX_BIND_GROUP_ENTRIES];
 	uav: Ptr<D3dUavImpl>[GPU_MAX_BIND_GROUP_ENTRIES];
 	entryCount: int32;
-	dynamicIndex: int32[GPU_MAX_BIND_GROUP_ENTRIES];
 }
 
 struct QuerySetSlot {
@@ -1911,14 +1910,6 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
-	for (let i = 0; i < slot.entryCount; i++) {
-		if (slot.entries[i].buffer.id == 0 || !buffers[bufferRecords.slotIndex(slot.entries[i].buffer.id)].uniform) { continue; }
-		let rank = 0;
-		for (let j = 0; j < slot.entryCount; j++) {
-			if (slot.entries[j].buffer.id != 0 && buffers[bufferRecords.slotIndex(slot.entries[j].buffer.id)].uniform && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
-		}
-		slot.dynamicIndex[i] = rank;
-	}
 	put(bindGroups, id, slot);
 }
 
@@ -2351,7 +2342,7 @@ function applyUniforms(s: int32): void {
 	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
-		const offset = (bound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const offset = (bound.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 		const block = shaders[s].uniforms[u];
 		if (offset + (block.size as int64) > bufferRecords.slots[b].size) {

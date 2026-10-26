@@ -755,6 +755,26 @@ export function uniformEntryCount(descriptor: GPUBindGroupDescriptor): int32 {
 	return count;
 }
 
+// The place of each buffer entry among the group's dynamic offsets: its rank by binding among the
+// buffer entries, in the order the entries are stored.
+export function dynamicIndexOf(descriptor: GPUBindGroupDescriptor): int32[GPU_MAX_BIND_GROUP_ENTRIES] {
+	let ranks: int32[GPU_MAX_BIND_GROUP_ENTRIES] = [0];
+	let stored = 0;
+	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
+		const entry = descriptor.entries[i];
+		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
+		if (entry.buffer.id != 0) {
+			let rank = 0;
+			for (let j = 0; j < GPU_MAX_BIND_GROUP_ENTRIES; j++) {
+				if (descriptor.entries[j].buffer.id != 0 && descriptor.entries[j].binding < entry.binding) { rank += 1; }
+			}
+			ranks[stored] = rank;
+		}
+		stored += 1;
+	}
+	return ranks;
+}
+
 export function bindGroupIndexRefusal(index: int32): string {
 	if (index < GPU_UNIFORM_GROUP || index > GPU_RESOURCE_GROUP) {
 		return `setBindGroup index ${index} is outside the ${GPU_RESOURCE_GROUP + 1} bind groups`;

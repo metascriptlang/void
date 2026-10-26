@@ -77,7 +77,6 @@ import {
 import {
 	cachedCanvas,
 	entryOf,
-	addressesBinding,
 	checkedComputeModule,
 	checkedRenderModule,
 	checkedStripDraw,
@@ -168,7 +167,6 @@ struct BindGroupSlot {
 	group: int32;
 	entries: GPUBindGroupEntry[16];
 	entryCount: int32;
-	dynamicIndex: int32[16];
 }
 
 struct QuerySetSlot {
@@ -639,7 +637,6 @@ export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
 export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor): void {
 	const l = layoutRecords.slotIndex(descriptor.layout.id);
 	const group = layoutRecords.slots[l].group;
-	const shader = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(layoutRecords.slots[l].pipeline)].shader);
 	let slot: BindGroupSlot = { group: group };
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
@@ -647,23 +644,7 @@ export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor):
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
-	for (let i = 0; i < slot.entryCount; i++) {
-		if (slot.entries[i].buffer.id == 0 || uniformOf(shader, group, slot.entries[i].binding) < 0) { continue; }
-		let rank = 0;
-		for (let j = 0; j < slot.entryCount; j++) {
-			const uniform = slot.entries[j].buffer.id != 0 && uniformOf(shader, group, slot.entries[j].binding) >= 0;
-			if (uniform && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
-		}
-		slot.dynamicIndex[i] = rank;
-	}
 	put(bindGroups, id, slot);
-}
-
-function uniformOf(shader: int32, group: int32, binding: int32): int32 {
-	for (let u = 0; u < shaders[shader].uniformCount; u++) {
-		if (addressesBinding(group, binding, shaders[shader].uniforms[u].binding, BindingKind.Uniform)) { return u; }
-	}
-	return -1;
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
@@ -778,7 +759,7 @@ function checkBoundGroups(s: int32, groups: uint32[2], dynamicOffsets: uint32[8]
 		for (let u = 0; u < shaders[s].uniformCount; u++) {
 			const binding = shaders[s].uniforms[u].binding;
 			const e = entryOf(bindGroups[g], binding);
-			const dynamic = dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64;
+			const dynamic = dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64;
 			const offset = dynamic + bindGroups[g].entries[e].offset;
 			const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
 			if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {

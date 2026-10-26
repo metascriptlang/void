@@ -28,6 +28,7 @@ import {
 	beginOcclusionRefusal,
 	bindGroupIndexRefusal,
 	bindGroupSetRefusal,
+	dynamicIndexOf,
 	shaderBindingAt,
 	copyBufferRefusal,
 	copyTextureRefusal,
@@ -756,6 +757,17 @@ test "a uniform group takes one dynamic offset per buffer entry" {
 	descriptor.entries[1].sampler = { id: 7 };
 	descriptor.entries[3].buffer = { id: 6 };
 	assert uniformEntryCount(descriptor) == 2;
+}
+
+test "a buffer entry's dynamic offset is its rank by binding among the stored entries" {
+	let descriptor: GPUBindGroupDescriptor = { label: null };
+	descriptor.entries[0] = { binding: 4, buffer: { id: 5 } };
+	descriptor.entries[2] = { binding: 1, sampler: { id: 7 } };
+	descriptor.entries[3] = { binding: 2, buffer: { id: 6 } };
+	const ranks = dynamicIndexOf(descriptor);
+	assert ranks[0] == 1;
+	assert ranks[1] == 0;
+	assert ranks[2] == 0;
 }
 
 test "a storage entry is a positive multiple of 4 bytes inside a STORAGE buffer, on the backend's alignment and limit" {

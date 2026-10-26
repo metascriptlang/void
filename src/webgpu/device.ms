@@ -133,6 +133,7 @@ import {
 	resetFrame,
 	resolvedRenderPipeline,
 	textureRecordOf,
+	dynamicIndexOf,
 	uniformEntryCount,
 	advanceFrame,
 	cacheCanvas,
@@ -287,7 +288,7 @@ export function getAdapterInfo(this self: GPUDevice): GPUAdapterInfo { return ba
 		if (entry.buffer.id != 0 || entry.textureView.id != 0 || entry.sampler.id != 0) { checkedBindGroupEntry(entry, group, shader); }
 	}
 	const id = allocate(bindGroupRecords);
-	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0 });
+	store(bindGroupRecords, { id: id, group: group, dynamicCount: group == GPU_UNIFORM_GROUP ? uniformEntryCount(descriptor) : 0, dynamicIndex: dynamicIndexOf(descriptor) });
 	backend.createBindGroup(id, descriptor);
 	return { id: id };
 }
