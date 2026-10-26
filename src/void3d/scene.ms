@@ -502,6 +502,21 @@ export function addMeshNode(
 	return Result.ok(id);
 }
 
+function validateSkinNode(
+	scene: Scene3D, mesh: MeshId, material: MaterialId, geometry: Readonly<SkinGeometry>,
+	palette: int32, range: DrawRange | null, lod: Readonly<MeshLodPick> | null,
+): Result<int32, SceneError> {
+	if (lod === null) { return validateSkinMesh(scene, mesh, material, geometry, palette, range); }
+	let total: int32 = 0;
+	for (let level = 0; level < lod.ranges.lodCount; level++) {
+		const levelRange = lod.ranges.rangeAt(lod.material, level);
+		if (!levelRange.ok) { return Result.err(SceneError.MeshLod); }
+		total = try validateSkinMesh(scene, mesh, material, geometry, palette,
+			{ base: levelRange.value.base, count: levelRange.value.count });
+	}
+	return Result.ok(total);
+}
+
 function validateSkinMesh(
 	scene: Scene3D, mesh: MeshId, material: MaterialId,
 	geometry: Readonly<SkinGeometry>, palette: int32, range: DrawRange | null,
@@ -587,8 +602,35 @@ export function addLodMeshNode(
 	slot: int32,
 ): Result<NodeId3D, SceneError> {
 	scene.requireOpen("addLodMeshNode");
-	const context: DrawContext = scene.context;
-	context.requireOpen("addLodMeshNode");
+	scene.context.requireOpen("addLodMeshNode");
+	const pick: MeshLodPick = try lodPickOf(scene.context, mesh, config, ranges, slot);
+	const node: NodeId3D = try addMeshNode(scene, parent, local, mesh, material);
+	const row: int32 = scene.nodes[node.index].payload;
+	scene.meshes[row].range = { base: pick.range.base, count: pick.range.count };
+	scene.meshes[row].lod = pick;
+	return Result.ok(node);
+}
+
+export function addLodSkinMeshNode(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+	mesh: MeshId, material: MaterialId, geometry: SkinGeometry, palette: int32,
+	config: Readonly<MeshLod>, ranges: Readonly<MeshLodRanges>, slot: int32,
+): Result<NodeId3D, SceneError> {
+	scene.requireOpen("addLodSkinMeshNode");
+	scene.context.requireOpen("addLodSkinMeshNode");
+	const pick: MeshLodPick = try lodPickOf(scene.context, mesh, config, ranges, slot);
+	const _valid: int32 =
+		try validateSkinNode(scene, mesh, material, geometry, palette, null, pick);
+	const node: NodeId3D = try addSkinMeshNode(scene, parent, local, mesh, material, geometry,
+		palette, { base: pick.range.base, count: pick.range.count });
+	scene.meshes[scene.nodes[node.index].payload].lod = pick;
+	return Result.ok(node);
+}
+
+function lodPickOf(
+	context: DrawContext, mesh: MeshId, config: Readonly<MeshLod>,
+	ranges: Readonly<MeshLodRanges>, slot: int32,
+): Result<MeshLodPick, SceneError> {
 	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
 	if (config.lodCount != ranges.lodCount ||
 		context.meshes[mesh.index].elementCount() != ranges.elementCount) {
@@ -597,14 +639,11 @@ export function addLodMeshNode(
 	const first = ranges.rangeAt(slot, 0);
 	if (!first.ok) { return Result.err(SceneError.MeshLod); }
 	if (!config.select(0.0).ok) { return Result.err(SceneError.MeshLod); }
-	const node: NodeId3D = try addMeshNode(scene, parent, local, mesh, material);
-	const row: int32 = scene.nodes[node.index].payload;
 	let thresholds: Vec<float64> = [];
 	for (const threshold of config.thresholds) { thresholds.push(threshold); }
 	let levels: Vec<MeshLodRange> = [];
 	for (const range of ranges.ranges) { levels.push(range); }
-	scene.meshes[row].range = { base: first.value.base, count: first.value.count };
-	scene.meshes[row].lod = {
+	return Result.ok({
 		config: {
 			lodCount: config.lodCount, thresholds: move thresholds,
 			cullingScreenRatio: config.cullingScreenRatio,
@@ -622,8 +661,7 @@ export function addLodMeshNode(
 		screenRatio: 0.0,
 		ratioSource: null,
 		pickedPass: 0,
-	};
-	return Result.ok(node);
+	});
 }
 
 export function setForcedLod(scene: Scene3D, id: NodeId3D, level: int32): Result<void, SceneError> {
@@ -1195,15 +1233,15 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 		);
 		unreachable;
 	}
-	const geometry = scene.meshes[row].skinGeometry;
-	if (geometry !== null) {
-		const _valid: int32 = try validateSkinMesh(scene, mesh, scene.meshes[row].material,
-			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range);
-	}
 	const lod = scene.meshes[row].lod;
 	if (lod !== null && (!context.hasMesh(mesh) ||
 		context.meshes[mesh.index].elementCount() != lod.ranges.elementCount)) {
 		return Result.err(SceneError.MeshLod);
+	}
+	const geometry = scene.meshes[row].skinGeometry;
+	if (geometry !== null) {
+		const _valid: int32 = try validateSkinNode(scene, mesh, scene.meshes[row].material,
+			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range, lod);
 	}
 	const holds: boolean = context.hasMesh(shown);
 	if (holds && context.meshPinned(shown) < 1) { stopOnPinTaken("setMeshOf"); }
@@ -1227,8 +1265,9 @@ export function setMaterialOf(
 	}
 	const geometry = scene.meshes[row].skinGeometry;
 	if (geometry !== null) {
-		const _valid: int32 = try validateSkinMesh(scene, scene.meshes[row].mesh, material,
-			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range);
+		const _valid: int32 = try validateSkinNode(scene, scene.meshes[row].mesh, material,
+			geometry, scene.meshes[row].skinPalette, scene.meshes[row].range,
+			scene.meshes[row].lod);
 	}
 	const holds: boolean = context.hasMaterial(shown);
 	if (holds && context.materialPinned(shown) < 1) { stopOnPinTaken("setMaterialOf"); }
