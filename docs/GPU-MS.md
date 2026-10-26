@@ -1057,3 +1057,16 @@ per record, and reports `indirect-first-instance` on macOS and on iOS from `MTLG
 (`mtlSupportsIndirectBaseInstance`). Without that feature the door refuses every indirect draw.
 The fixture is `drawIndirectRows` in `webgpuFixtures.ms`; a Metal twin needs a module with a
 float32x2 position at location 0 and a per-instance unorm8x4 colour at location 1 passed through.
+
+### 2026-10-27, Mac: writeMask 0 and indexed indirect draws run on Metal
+
+At `838d31c7`, `webgpuMetalCheck` passes 441/441 before the twins and 443/443 with them. The two
+Metal twins:
+- "a colour target with writeMask 0 keeps its clear colour where an omitted mask takes the
+  triangle", through `drawMaskedTriangle`;
+- "two indexed indirect records in one call honour firstIndex, baseVertex and firstInstance",
+  through `drawIndirectRows`, with a per-instance unorm8x4 colour (`FLOAT_COLOUR_MSL`). It
+  asserts that the Mac reports `indirect-first-instance`.
+
+No Metal test passed `writeMask` 0 to mean all channels, so no existing test changed. `b874ce69`
+and `36a40d6b` now hold on darwin. Not run: iOS (`MTLGPUFamilyApple3` path).
