@@ -113,7 +113,7 @@ static int s_closedBufCap;
 // Mirrors src/void2d/displayList.ms. void2dLayoutCheck is what keeps the two honest; it is
 // called from MetaScript with that file's own constants, so a field added on one side and
 // not the other fails at setup rather than drawing garbage.
-#define CMD_FLOATS          32
+#define CMD_FLOATS          44
 #define CMD_KIND            0
 #define CMD_BREAK           1
 #define CMD_VERTEX_OFFSET   2
@@ -136,6 +136,7 @@ static int s_closedBufCap;
 #define CMD_CLIP_U_X        22
 #define CMD_VIEW_HIGH       30
 #define CMD_SCOPE           31
+#define CMD_CLIP_ROUND_U    32
 #define SCOPE_FLOATS        8
 
 #define PIPELINE_VERTEX     0
@@ -174,9 +175,25 @@ int void2dDroppedFrames(void) { return s_droppedFrames; }
 #ifdef VOID_PROFILER
 static int s_frameUiInstances;
 static int s_frameSpriteInstances;
+static double s_coveredSwapchain;
+static double s_coveredTargets;
+static double s_coveredOpaque;
+static int s_swapchainPixels;
+static int s_swapchainPass;
+static const float *s_cpuVertices;
+static const float *s_cpuSprites;
+static const float *s_cpuUi;
+void void2dSetCoverageSources(const float *vertices, const float *sprites, const float *ui) {
+	s_cpuVertices = vertices;
+	s_cpuSprites = sprites;
+	s_cpuUi = ui;
+}
 int void2dProfilerCompiled(void) { return 1; }
 #else
 int void2dProfilerCompiled(void) { return 0; }
+void void2dSetCoverageSources(const float *vertices, const float *sprites, const float *ui) {
+	(void)vertices; (void)sprites; (void)ui;
+}
 #endif
 void void2dFailPendingTargets(void) {
 	fprintf(stderr, "void2d: end2d with render-target commands pending; call flushTargets first\n");
@@ -250,7 +267,8 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int viewField, int viewHighField, int blendField, int samplerField,
                       int effectField,
                       int samplerCount, int clearRField,
-                      int clipXField, int clipUField, int arg0Field, int rtModeField,
+                      int clipXField, int clipUField, int clipRoundField, int arg0Field,
+                      int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
                       int kindTargetBegin, int kindTargetEnd,
                       int programVertex, int programSprite, int programUi, int programBlur,
@@ -276,6 +294,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& effectField == CMD_EFFECT
 		&& clipXField == CMD_CLIP_X
 		&& clipUField == CMD_CLIP_U_X
+		&& clipRoundField == CMD_CLIP_ROUND_U
 		&& arg0Field == CMD_ARG0
 		&& rtModeField == CMD_RT_MODE
 		&& kindDraw == CMD_KIND_DRAW
@@ -530,11 +549,14 @@ static const float *scopeOf(const float *cmd) {
 	return s_scopes + (size_t)scope * SCOPE_FLOATS;
 }
 
-static void applyScissor(const float *cmd, float fbW, float fbH) {
+static float deviceScaleOf(const float *cmd) {
+	return cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
+}
+
+static void scissorRect(const float *cmd, float fbW, float fbH, int *rect) {
 	// Floor the near edge and ceil the far edge in device pixels. Truncating x/y/w/h
 	// independently can discard a pixel the exact clip planes accept.
-	float targetScale = cmd[CMD_RT_MODE];
-	float scale = targetScale != 0.0f ? targetScale : s_dpiScale;
+	float scale = deviceScaleOf(cmd);
 	int limitW = void2dScissorMax(fbW, scale);
 	int limitH = void2dScissorMax(fbH, scale);
 	float x = cmd[CMD_CLIP_X];
@@ -559,12 +581,12 @@ static void applyScissor(const float *cmd, float fbW, float fbH) {
 			h = scope[5];
 		}
 		if (w <= 0.0f || h <= 0.0f) {
-			doorApplyScissor(0, 0, 0, 0);
+			rect[0] = 0; rect[1] = 0; rect[2] = 0; rect[3] = 0;
 			return;
 		}
 	}
 	if (w <= 0.0f || h <= 0.0f) {
-		doorApplyScissor(0, 0, limitW, limitH);
+		rect[0] = 0; rect[1] = 0; rect[2] = limitW; rect[3] = limitH;
 		return;
 	}
 	int x0 = void2dScissorMin(x, scale);
@@ -581,8 +603,147 @@ static void applyScissor(const float *cmd, float fbW, float fbH) {
 	if (y1 > limitH) y1 = limitH;
 	if (x1 < x0) x1 = x0;
 	if (y1 < y0) y1 = y0;
-	doorApplyScissor(x0, y0, x1 - x0, y1 - y0);
+	rect[0] = x0; rect[1] = y0; rect[2] = x1; rect[3] = y1;
 }
+
+static void applyScissor(const float *cmd, float fbW, float fbH) {
+	int r[4];
+	scissorRect(cmd, fbW, fbH, r);
+	doorApplyScissor(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+}
+
+#define COVER_MAX_VERTS 12
+
+typedef struct { double x, y; } CoverPoint;
+
+static int clipToHalfPlane(const CoverPoint *in, int n, CoverPoint *out, int axis, double limit, double sign) {
+	int m = 0;
+	for (int i = 0; i < n; i++) {
+		CoverPoint a = in[i], b = in[(i + 1) % n];
+		double da = ((axis ? a.y : a.x) - limit) * sign;
+		double db = ((axis ? b.y : b.x) - limit) * sign;
+		if (da >= 0.0) { out[m++] = a; }
+		if ((da >= 0.0) != (db >= 0.0)) {
+			double t = da / (da - db);
+			out[m].x = a.x + (b.x - a.x) * t;
+			out[m].y = a.y + (b.y - a.y) * t;
+			m++;
+		}
+	}
+	return m;
+}
+
+// Device pixels a convex polygon (device coordinates) covers inside the scissor rect.
+static double clippedArea(const CoverPoint *poly, int n, const int *rect) {
+	CoverPoint a[COVER_MAX_VERTS], b[COVER_MAX_VERTS];
+	memcpy(a, poly, (size_t)n * sizeof(CoverPoint));
+	n = clipToHalfPlane(a, n, b, 0, rect[0], 1.0);
+	if (n) n = clipToHalfPlane(b, n, a, 0, rect[2], -1.0);
+	if (n) n = clipToHalfPlane(a, n, b, 1, rect[1], 1.0);
+	if (n) n = clipToHalfPlane(b, n, a, 1, rect[3], -1.0);
+	double twice = 0.0;
+	for (int i = 0; i < n; i++) {
+		twice += a[i].x * a[(i + 1) % n].y - a[(i + 1) % n].x * a[i].y;
+	}
+	return (twice < 0.0 ? -twice : twice) * 0.5;
+}
+
+static double quadClippedArea(const float *affine, double ox, double oy, double lx0, double ly0,
+                              double lx1, double ly1, double scale, const int *rect) {
+	const double cx[4] = { lx0, lx1, lx1, lx0 };
+	const double cy[4] = { ly0, ly0, ly1, ly1 };
+	CoverPoint q[4];
+	for (int i = 0; i < 4; i++) {
+		q[i].x = (affine[0] * cx[i] + affine[2] * cy[i] + ox) * scale;
+		q[i].y = (affine[1] * cx[i] + affine[3] * cy[i] + oy) * scale;
+	}
+	return clippedArea(q, 4, rect);
+}
+
+// The device pixels one unit-quad instance (affine a b c d, origin, size) covers inside a
+// scissor rect: the arithmetic the profiler's overdraw counter sums.
+double void2dQuadCoverage(const float *affine, float x, float y, float w, float h, float scale,
+                          int x0, int y0, int x1, int y1) {
+	const int rect[4] = { x0, y0, x1, y1 };
+	return quadClippedArea(affine, x, y, 0.0, 0.0, w, h, scale, rect);
+}
+
+#ifdef VOID_PROFILER
+#define BLEND_NONE  0
+#define BLEND_ALPHA 1
+static void addCoverage(double area, int opaque) {
+	if (s_swapchainPass) {
+		s_coveredSwapchain += area;
+		if (opaque) { s_coveredOpaque += area; }
+	} else {
+		s_coveredTargets += area;
+	}
+}
+
+static int opaqueBlend(int blend) { return blend == BLEND_NONE || blend == BLEND_ALPHA; }
+
+static void coverAffineQuad(const float *affine, double ox, double oy, double lx0, double ly0,
+                            double lx1, double ly1, const float *cmd, const int *rect, int opaque,
+                            int blend) {
+	const float *scope = scopeOf(cmd);
+	double area = quadClippedArea(affine, ox + (scope ? scope[0] : 0.0), oy + (scope ? scope[1] : 0.0),
+		lx0, ly0, lx1, ly1, deviceScaleOf(cmd), rect);
+	addCoverage(area, opaque && opaqueBlend(blend));
+}
+
+static void coverUiRun(const float *cmd, int count, int blend, float fbW, float fbH) {
+	if (!s_cpuUi) { return; }
+	int rect[4];
+	scissorRect(cmd, fbW, fbH, rect);
+	double scale = deviceScaleOf(cmd);
+	int fx = (int)cmd[CMD_EFFECT] >= 0;
+	for (int i = 0; i < count; i++) {
+		const float *rec = s_cpuUi + (size_t)((int)cmd[CMD_INSTANCE_OFFSET] + i) * VOID2D_UI_REC_FLOATS;
+		int mode = (int)rec[16];
+		double sx = hypot(rec[0], rec[1]) * scale;
+		double sy = hypot(rec[2], rec[3]) * scale;
+		double s = sqrt(sx * sy);
+		double aa = (mode == 2 || s <= 0.0) ? 0.0 : 1.0 / s;
+		double ix = aa, iy = mode == 5 ? 0.0 : aa;
+		coverAffineQuad(rec, rec[4], rec[5], -ix, -iy, rec[6] + ix, rec[7] + iy, cmd, rect,
+			mode == 0 && rec[27] >= 1.0f && !fx, blend);
+	}
+}
+
+static void coverSpriteRun(const float *cmd, int count, int blend, float fbW, float fbH) {
+	if (!s_cpuSprites) { return; }
+	int rect[4];
+	scissorRect(cmd, fbW, fbH, rect);
+	for (int i = 0; i < count; i++) {
+		const float *rec = s_cpuSprites + (size_t)((int)cmd[CMD_INSTANCE_OFFSET] + i) * 16;
+		coverAffineQuad(rec, rec[4], rec[5], 0.0, 0.0, rec[6], rec[7], cmd, rect, 0, blend);
+	}
+}
+
+static void coverVertexRun(const float *cmd, int count, int blend, uint32_t view, float fbW, float fbH) {
+	if (!s_cpuVertices) { return; }
+	int rect[4];
+	scissorRect(cmd, fbW, fbH, rect);
+	const float *scope = scopeOf(cmd);
+	double scale = deviceScaleOf(cmd);
+	double shiftX = scope ? scope[0] : 0.0, shiftY = scope ? scope[1] : 0.0;
+	const float *v = s_cpuVertices + (size_t)(int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS;
+	int plain = view == s_whiteView && (int)cmd[CMD_EFFECT] < 0 && opaqueBlend(blend);
+	for (int i = 0; i + 2 < count; i += 3) {
+		CoverPoint t[3];
+		int opaque = plain;
+		for (int k = 0; k < 3; k++) {
+			const float *p = v + (size_t)(i + k) * VERTEX_FLOATS;
+			t[k].x = (p[0] + shiftX) * scale;
+			t[k].y = (p[1] + shiftY) * scale;
+			if (p[7] < 1.0f) { opaque = 0; }
+		}
+		addCoverage(clippedArea(t, 3, rect), opaque);
+	}
+}
+
+static int coveredInt(double pixels) { return pixels >= 2147483647.0 ? 2147483647 : (int)(pixels + 0.5); }
+#endif
 
 void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
 
@@ -604,6 +765,10 @@ void void2dFrameBegin(void) {
 	voidProfileBegin();
 	s_frameUiInstances = 0;
 	s_frameSpriteInstances = 0;
+	s_coveredSwapchain = 0.0;
+	s_coveredTargets = 0.0;
+	s_coveredOpaque = 0.0;
+	s_swapchainPixels = 0;
 #endif
 	adoptContext();
 	void2dGlyphPagesFrameBegin();
@@ -629,6 +794,10 @@ void void2dFrameEnd(void) {
 	counters[VOID_COUNTER_SPRITE_INSTANCES] = s_frameSpriteInstances;
 	counters[VOID_COUNTER_UPLOAD_BYTES] = s_uploadBytes;
 	counters[VOID_COUNTER_UPLOADS] = s_uploadCount;
+	counters[VOID_COUNTER_COVERED_PIXELS] = coveredInt(s_coveredSwapchain);
+	counters[VOID_COUNTER_TARGET_PIXELS] = coveredInt(s_coveredTargets);
+	counters[VOID_COUNTER_OPAQUE_PIXELS] = coveredInt(s_coveredOpaque);
+	counters[VOID_COUNTER_FRAME_PIXELS] = s_swapchainPixels;
 	voidProfileCommit(s_frameSerial, counters);
 #endif
 }
@@ -1081,9 +1250,17 @@ void void2dReplay(const float *commands, int commandCount,
 	if (commandCount <= 0 || !s_frameUploaded) return;
 	runCommands(commands, commandCount, effects, effectCount, fbW, fbH);
 }
-static void copyClipParams(float *clipU, float *clipV, const float *cmd) {
+// The round shape goes up in device pixels, so its fragment test antialiases over one unit.
+static void copyClipParams(float *clipU, float *clipV, float *roundU, float *roundV,
+                           float *radii, const float *cmd) {
 	memcpy(clipU, cmd + CMD_CLIP_U_X, 4 * sizeof(float));
 	memcpy(clipV, cmd + CMD_CLIP_U_X + 4, 4 * sizeof(float));
+	float scale = deviceScaleOf(cmd);
+	for (int i = 0; i < 4; i++) {
+		roundU[i] = cmd[CMD_CLIP_ROUND_U + i] * scale;
+		roundV[i] = cmd[CMD_CLIP_ROUND_U + 4 + i] * scale;
+		radii[i] = cmd[CMD_CLIP_ROUND_U + 8 + i] * scale;
+	}
 }
 
 // One instanced sprite run: the unit quad at slot 0, this run's instances at slot 1, one
@@ -1122,13 +1299,14 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	sp.viewport[3] = premultipliedSource(cmd) ? 1.0f : 0.0f;
 	const float *spriteScope = scopeOf(cmd);
 	if (spriteScope) { sp.shift[0] = spriteScope[0]; sp.shift[1] = spriteScope[1]; }
-	copyClipParams(sp.clipU, sp.clipV, cmd);
+	copyClipParams(sp.clipU, sp.clipV, sp.clipRoundU, sp.clipRoundV, sp.clipRadii, cmd);
 	doorApplyUniforms(UB_sprite_params, (const uint8_t *)&sp, (int64_t)sizeof(sp));
 
 	doorDraw(0, 6, count);
 	s_drawCallCount++;
 #ifdef VOID_PROFILER
 	s_frameSpriteInstances += count;
+	coverSpriteRun(cmd, count, blend, fbW, fbH);
 #endif
 }
 
@@ -1168,10 +1346,10 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	up.viewport[0] = fbW;
 	up.viewport[1] = fbH;
 	up.viewport[2] = (sampledTarget(view) && !s_originTopLeft) ? 1.0f : 0.0f;
-	up.viewport[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
+	up.viewport[3] = deviceScaleOf(cmd);
 	const float *uiScope = scopeOf(cmd);
 	if (uiScope) { up.shift[0] = uiScope[0]; up.shift[1] = uiScope[1]; }
-	copyClipParams(up.clipU, up.clipV, cmd);
+	copyClipParams(up.clipU, up.clipV, up.clipRoundU, up.clipRoundV, up.clipRadii, cmd);
 	doorApplyUniforms(UB_ui_params, (const uint8_t *)&up, (int64_t)sizeof(up));
 	ui_fx_t tu = {0};
 	memcpy(tu.gammaRatios, s_textGamma, sizeof(tu.gammaRatios));
@@ -1190,6 +1368,7 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	s_drawCallCount++;
 #ifdef VOID_PROFILER
 	s_frameUiInstances += count;
+	coverUiRun(cmd, count, blend, fbW, fbH);
 #endif
 }
 
@@ -1202,6 +1381,12 @@ static void runCommands(const float *commands, int commandCount,
 	float sizeStack[VOID2D_MAX_TARGET_DEPTH][2];
 	int sizeDepth = 0;
 	const int baseTarget = doorPassState() == DOOR_PASS_TARGET;
+#ifdef VOID_PROFILER
+	s_swapchainPass = !baseTarget;
+	if (s_swapchainPass && fbW > 0.0f && fbH > 0.0f) {
+		s_swapchainPixels = void2dScissorMax(fbW, s_dpiScale) * void2dScissorMax(fbH, s_dpiScale);
+	}
+#endif
 
 	// A uniform block that has not changed is not re-applied. Every doorApplyUniforms costs
 	// 256 bytes of the per-frame uniform buffer whatever the payload, as sokol's WebGPU and
@@ -1248,6 +1433,9 @@ static void runCommands(const float *commands, int commandCount,
 			sizeDepth++;
 			fbW = cmd[CMD_ARG0];
 			fbH = cmd[CMD_ARG1];
+#ifdef VOID_PROFILER
+			s_swapchainPass = 0;
+#endif
 			doorBeginColorPass(void2dCommandView(cmd),
 				cmd[CMD_CLEAR_R], cmd[CMD_CLEAR_R + 1], cmd[CMD_CLEAR_R + 2], cmd[CMD_CLEAR_R + 3]);
 			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
@@ -1260,6 +1448,9 @@ static void runCommands(const float *commands, int commandCount,
 				fbW = sizeStack[sizeDepth][0];
 				fbH = sizeStack[sizeDepth][1];
 			}
+#ifdef VOID_PROFILER
+			s_swapchainPass = sizeDepth == 0 && !baseTarget;
+#endif
 			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
 			continue;
 		}
@@ -1328,11 +1519,11 @@ static void runCommands(const float *commands, int commandCount,
 		vp.viewport[3] = (premultiplied && noEffect) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
 		vp.model1[2] = glyphPageViewMode(view);
-		vp.model1[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
+		vp.model1[3] = deviceScaleOf(cmd);
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 		const float *vertexScope = scopeOf(cmd);
 		if (vertexScope) { vp.shift[0] = vertexScope[0]; vp.shift[1] = vertexScope[1]; }
-		copyClipParams(vp.clipU, vp.clipV, cmd);
+		copyClipParams(vp.clipU, vp.clipV, vp.clipRoundU, vp.clipRoundV, vp.clipRadii, cmd);
 		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {
 			doorApplyUniforms(UB_void2d_params, (const uint8_t *)&vp, (int64_t)sizeof(vp));
 			lastParams = vp;
@@ -1362,5 +1553,8 @@ static void runCommands(const float *commands, int commandCount,
 
 		doorDraw(0, count, 1);
 		s_drawCallCount++;
+#ifdef VOID_PROFILER
+		coverVertexRun(cmd, count, blend, view, fbW, fbH);
+#endif
 	}
 }

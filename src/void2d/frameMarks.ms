@@ -6,7 +6,9 @@ import {
 	voidProfileTakePendingInputs, voidProfileTakeDroppedInputs, voidProfileFirstInput,
 	VOID_MARK_BEGIN, VOID_MARK_COMMIT, VOID_MARK_PRESENT_START, VOID_MARK_PRESENT_END,
 	VOID_COUNTER_DRAWS, VOID_COUNTER_UI_INSTANCES, VOID_COUNTER_SPRITE_INSTANCES,
-	VOID_COUNTER_UPLOAD_BYTES, VOID_COUNTER_UPLOADS, VOID_COUNTER_SOKOL_DRAWS,
+	VOID_COUNTER_UPLOAD_BYTES, VOID_COUNTER_UPLOADS, VOID_COUNTER_COVERED_PIXELS,
+	VOID_COUNTER_TARGET_PIXELS, VOID_COUNTER_OPAQUE_PIXELS, VOID_COUNTER_FRAME_PIXELS,
+	VOID_COUNTER_SOKOL_DRAWS,
 	VOID_COUNTER_SOKOL_PIPELINES, VOID_COUNTER_SOKOL_PASSES, VOID_COUNTER_SOKOL_BUFFER_BYTES,
 	VOID_COUNTER_SOKOL_IMAGE_BYTES, VOID_COUNTER_SOKOL_MEASURED,
 	VOID_FRAME_OPEN, VOID_FRAME_COMMITTED, VOID_FRAME_PRESENTED,
@@ -28,9 +30,21 @@ const NO_RECORD: FrameRecord = {
 	droppedInputs: 0,
 };
 
+export struct FrameCoverage {
+	coveredPixels: int32;
+	targetPixels: int32;
+	opaquePixels: int32;
+	framePixels: int32;
+}
+
+export function overdraw(c: FrameCoverage): float64 {
+	return c.framePixels > 0 ? (c.coveredPixels as float64) / (c.framePixels as float64) : 0.0;
+}
+
 export const frameStats: FrameProfiler = frameProfiler();
 let lastRecord: FrameRecord = NO_RECORD;
 let lastCounters: FrameCounters = noCounters();
+let lastCoverage: FrameCoverage = { coveredPixels: 0, targetPixels: 0, opaquePixels: 0, framePixels: 0 };
 let lastSerial: int32 = 0;
 let commitsWithoutFrame: int32 = 0;
 let agreed: boolean = false;
@@ -56,6 +70,7 @@ export function profilerNow(): int64 { return voidClockNow(); }
 
 export function lastFrameRecord(): FrameRecord { return lastRecord; }
 export function lastFrameCounters(): FrameCounters { return lastCounters; }
+export function lastFrameCoverage(): FrameCoverage { return lastCoverage; }
 export function frameCommitsWithoutFrame(): int32 { return commitsWithoutFrame; }
 export function frameMarksLost(): int32 { return voidProfileLost(); }
 
@@ -121,6 +136,12 @@ export function profilerCollect(): boolean {
 	}
 	lastRecord = frameStats.present(presentStart, presentEnd);
 	lastCounters = readCounters();
+	lastCoverage = {
+		coveredPixels: voidProfileCounter(VOID_COUNTER_COVERED_PIXELS),
+		targetPixels: voidProfileCounter(VOID_COUNTER_TARGET_PIXELS),
+		opaquePixels: voidProfileCounter(VOID_COUNTER_OPAQUE_PIXELS),
+		framePixels: voidProfileCounter(VOID_COUNTER_FRAME_PIXELS),
+	};
 	voidProfileConsume();
 	return true;
 }

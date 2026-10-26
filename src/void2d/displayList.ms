@@ -21,7 +21,8 @@
 // The colour pipeline (a 4x4 matrix, an add and a chroma key: 24 floats) is the bulk of a
 // command and is the identity almost everywhere, so it lives in its own table and a command
 // carries an index into it, or NO_EFFECT. The active rotated clip adds two projection
-// intervals; axis-aligned clips stay in the hardware scissor.
+// intervals, a rounded Mask its own frame and four corner radii; axis-aligned clips stay in
+// the hardware scissor.
 
 import { Color, rgba } from "./types";
 import { Mat4 } from "../math/math3d";
@@ -66,7 +67,7 @@ export enum BreakReason {
 	Pipeline,
 }
 
-export const COMMAND_FLOATS: int32 = 32;
+export const COMMAND_FLOATS: int32 = 44;
 export const EFFECT_FLOATS: int32 = 44;
 export const VERTEX_FLOATS: int32 = 8;
 export const NO_EFFECT: int32 = -1;
@@ -114,6 +115,9 @@ export const CMD_CLIP_V_MIN: int32 = 28;
 export const CMD_CLIP_V_MAX: int32 = 29;
 export const CMD_VIEW_HIGH: int32 = 30;
 export const CMD_SCOPE: int32 = 31;
+export const CMD_CLIP_ROUND_U: int32 = 32;
+export const CMD_CLIP_ROUND_V: int32 = 36;
+export const CMD_CLIP_RADII: int32 = 40;
 export const SCOPE_FLOATS: int32 = 8;
 export const NO_SCOPE: int32 = -1;
 export const EFFECT_GRADIENT_META: int32 = 24;
@@ -160,6 +164,30 @@ function wantPipeline(program: Program2D, blend: BlendMode): void {
 	wantedPipelines[pipelineSlot(program as int32, target, blend as int32)] = true;
 }
 
+// A rounded Mask in its own frame: a world point P sits at (dot(P, (ux, uy)) - uOffset,
+// dot(P, (vx, vy)) - vOffset) from the shape's centre, in the Mask's local units times its
+// geometric-mean world scale, the units the UI box's SDF is antialiased in. Zero radii: no shape.
+export struct RoundClip {
+	ux: float32;
+	uy: float32;
+	uOffset: float32;
+	uHalf: float32;
+	vx: float32;
+	vy: float32;
+	vOffset: float32;
+	vHalf: float32;
+	topLeft: float32;
+	topRight: float32;
+	bottomRight: float32;
+	bottomLeft: float32;
+}
+
+export const NO_ROUND_CLIP: RoundClip = {
+	ux: 0.0, uy: 0.0, uOffset: 0.0, uHalf: 0.0,
+	vx: 0.0, vy: 0.0, vOffset: 0.0, vHalf: 0.0,
+	topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0,
+};
+
 export struct Clip {
 	x: float32;
 	y: float32;
@@ -173,12 +201,14 @@ export struct Clip {
 	vy: float32;
 	vMin: float32;
 	vMax: float32;
+	round: RoundClip;
 }
 
 export const NO_CLIP: Clip = {
 	x: 0.0, y: 0.0, w: 0.0, h: 0.0,
 	ux: 0.0, uy: 0.0, uMin: 0.0, uMax: 0.0,
 	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
+	round: NO_ROUND_CLIP,
 };
 
 export struct MaskClip {
@@ -194,12 +224,14 @@ export struct MaskClip {
 	vy: float32;
 	vMin: float32;
 	vMax: float32;
+	round: RoundClip;
 }
 
 export const NO_MASK_CLIP: MaskClip = {
 	x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0,
 	ux: 0.0, uy: 0.0, uMin: 0.0, uMax: 0.0,
 	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
+	round: NO_ROUND_CLIP,
 };
 
 export const NO_MASK: int32 = -1;
@@ -1053,6 +1085,19 @@ function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	activeContext.commands[base + CMD_CLIP_V_Y] = activeContext.clip.vy;
 	activeContext.commands[base + CMD_CLIP_V_MIN] = activeContext.clip.vMin;
 	activeContext.commands[base + CMD_CLIP_V_MAX] = activeContext.clip.vMax;
+	const round: RoundClip = activeContext.clip.round;
+	activeContext.commands[base + CMD_CLIP_ROUND_U] = round.ux;
+	activeContext.commands[base + CMD_CLIP_ROUND_U + 1] = round.uy;
+	activeContext.commands[base + CMD_CLIP_ROUND_U + 2] = round.uOffset;
+	activeContext.commands[base + CMD_CLIP_ROUND_U + 3] = round.uHalf;
+	activeContext.commands[base + CMD_CLIP_ROUND_V] = round.vx;
+	activeContext.commands[base + CMD_CLIP_ROUND_V + 1] = round.vy;
+	activeContext.commands[base + CMD_CLIP_ROUND_V + 2] = round.vOffset;
+	activeContext.commands[base + CMD_CLIP_ROUND_V + 3] = round.vHalf;
+	activeContext.commands[base + CMD_CLIP_RADII] = round.topLeft;
+	activeContext.commands[base + CMD_CLIP_RADII + 1] = round.topRight;
+	activeContext.commands[base + CMD_CLIP_RADII + 2] = round.bottomRight;
+	activeContext.commands[base + CMD_CLIP_RADII + 3] = round.bottomLeft;
 	activeContext.commands[base + CMD_RT_MODE] = activeContext.renderTargetScale;
 	activeContext.commands[base + CMD_SCOPE] = activeContext.scopeNow as float32;
 	activeContext.commandTotal = activeContext.commandTotal + 1;
@@ -1199,7 +1244,8 @@ export function endTargetList(): boolean {
 }
 
 // The clip the replay should be under from here on. The rect is a coarse hardware scissor;
-// the two projection intervals are the exact four edges of a rotated Mask.
+// the two projection intervals are the exact four edges of a rotated Mask, and the round
+// shape the corners of a rounded one.
 export function recordClip(next: Clip): void {
 	if (activeContext.clipRecorded && next == activeContext.clip) { return; }
 	activeContext.clip = next;
@@ -1220,11 +1266,17 @@ const RUN_FIELDS: int32[] = [
 	CMD_PIPELINE, CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X,
 	CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE, CMD_CLIP_U_X, CMD_CLIP_U_Y, CMD_CLIP_U_MIN,
 	CMD_CLIP_U_MAX, CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX, CMD_SCOPE,
+	CMD_CLIP_ROUND_U, CMD_CLIP_ROUND_U + 1, CMD_CLIP_ROUND_U + 2, CMD_CLIP_ROUND_U + 3,
+	CMD_CLIP_ROUND_V, CMD_CLIP_ROUND_V + 1, CMD_CLIP_ROUND_V + 2, CMD_CLIP_ROUND_V + 3,
+	CMD_CLIP_RADII, CMD_CLIP_RADII + 1, CMD_CLIP_RADII + 2, CMD_CLIP_RADII + 3,
 ];
 const PLACE_FIELDS: int32[] = [
 	CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE, CMD_CLIP_U_X, CMD_CLIP_U_Y,
 	CMD_CLIP_U_MIN, CMD_CLIP_U_MAX, CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX,
 	CMD_SCOPE,
+	CMD_CLIP_ROUND_U, CMD_CLIP_ROUND_U + 1, CMD_CLIP_ROUND_U + 2, CMD_CLIP_ROUND_U + 3,
+	CMD_CLIP_ROUND_V, CMD_CLIP_ROUND_V + 1, CMD_CLIP_ROUND_V + 2, CMD_CLIP_ROUND_V + 3,
+	CMD_CLIP_RADII, CMD_CLIP_RADII + 1, CMD_CLIP_RADII + 2, CMD_CLIP_RADII + 3,
 ];
 
 
@@ -1704,6 +1756,7 @@ test "a draw inherits the clip that was recorded before it" {
 		x: 4.0, y: 5.0, w: 6.0, h: 7.0,
 		ux: 1.0, uy: 0.0, uMin: 4.0, uMax: 10.0,
 		vx: 0.0, vy: 1.0, vMin: 5.0, vMax: 12.0,
+		round: { ...NO_ROUND_CLIP, uHalf: 3.0, vHalf: 3.5, bottomLeft: 2.0 },
 	});
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(1, CMD_CLIP_X) == 4.0;
@@ -1714,6 +1767,9 @@ test "a draw inherits the clip that was recorded before it" {
 	assert commandField(1, CMD_CLIP_U_MIN) == 4.0;
 	assert commandField(1, CMD_CLIP_V_Y) == 1.0;
 	assert commandField(1, CMD_CLIP_V_MAX) == 12.0;
+	assert commandField(1, CMD_CLIP_ROUND_U + 3) == 3.0;
+	assert commandField(1, CMD_CLIP_ROUND_V + 3) == 3.5;
+	assert commandField(1, CMD_CLIP_RADII + 3) == 2.0;
 }
 
 test "no color matrix records the identity" {

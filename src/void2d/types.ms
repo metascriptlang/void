@@ -32,12 +32,14 @@ export enum Smooth { Inherit, Off, On }
 
 export enum ScaleMode { Resize, Stretch, LetterBox, Fixed, Zoom, AutoZoom }
 
-export enum FilterKind { None, Blur, Glow, DropShadow, Outline }
+export enum FilterKind { None, Blur, Glow, DropShadow, Outline, Mask }
 
 // One step of a node's filter chain. `radius` is how far the effect reaches in logical pixels:
 // the blur radius, or the width of an outline. `resolutionScale` is the fraction of the node's
 // device pixel size the step renders at, so 0.5 costs a quarter of the pixels. `samples` is the
-// number of taps around an outline ring and is 0 for every other kind.
+// number of taps around an outline ring and is 0 for every other kind. A Mask step names the node
+// whose subtree is the mask by `mask` (row) and `maskGeneration`, and keeps the filtered pixels
+// where that subtree has alpha: all of it with `smoothAlpha`, otherwise any alpha above zero.
 export struct Filter {
 	kind: FilterKind;
 	radius: float32;
@@ -47,6 +49,9 @@ export struct Filter {
 	offsetY: float32;
 	resolutionScale: float32;
 	samples: int32;
+	mask: int32;
+	maskGeneration: int32;
+	smoothAlpha: boolean;
 }
 
 // The steps a node applies in order, each reading the previous step's target. Empty is no filter.
@@ -56,7 +61,8 @@ export struct FilterChain {
 
 export function noFilter(): Filter {
 	return { kind: FilterKind.None, radius: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), gain: 1.0,
-		offsetX: 0.0, offsetY: 0.0, resolutionScale: 1.0, samples: 0 };
+		offsetX: 0.0, offsetY: 0.0, resolutionScale: 1.0, samples: 0,
+		mask: -1, maskGeneration: 0, smoothAlpha: false };
 }
 
 export function noFilters(): FilterChain {
@@ -87,6 +93,13 @@ export function outlineFilter(color: Color, size: float32, quality: float32): Fi
 	const taps: int32 = (quality * 100.0) as int32;
 	return { ...noFilter(), kind: FilterKind.Outline, radius: size, color: color,
 		samples: taps < 1 ? 1 : taps };
+}
+
+// h2d.filter.Mask (`h2d/filter/Mask.hx:54`): the filtered pixels are kept where the mask subtree's
+// alpha is, `smoothAlpha` false being Heaps' default (`k.a > 0` becomes 1).
+export function maskFilter(mask: int32, maskGeneration: int32, smoothAlpha: boolean): Filter {
+	return { ...noFilter(), kind: FilterKind.Mask, mask: mask, maskGeneration: maskGeneration,
+		smoothAlpha: smoothAlpha };
 }
 
 export function withResolutionScale(this f: Filter, scale: float32): Filter {

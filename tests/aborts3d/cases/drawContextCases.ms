@@ -98,7 +98,14 @@ import {
 	writeRange,
 	closeUniformPool,
 } from "../../../src/void3d/uniformPool";
-import { PaletteLut, PaletteError, fill, upload, releaseGpu, closePalette } from "../../../src/void3d/palette";
+import {
+	PaletteLut,
+	PaletteError,
+	fill,
+	upload,
+	releaseGpu,
+	closePalette,
+} from "../../../src/void3d/palette";
 import {
 	DrawContext,
 	DrawItem,

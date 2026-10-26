@@ -19,6 +19,7 @@ import {
 	trs2d,
 	vec2,
 	noFilters,
+	maskFilter,
 	emptyBounds,
 } from "./types";
 import { checkFilterChain } from "./filterPlan";
@@ -32,6 +33,7 @@ import { NO_COLOR_MATRIX } from "./effect";
 import { FlexStyle, YGNode, freeLayoutTree } from "../../../yoga/src/index";
 import {
 	BoxStyle,
+	CornerRadii,
 	NO_BOX_STYLE,
 	allocateBoxStyle,
 	checkFill,
@@ -185,10 +187,12 @@ export struct Scroll2D {
 	y: float32;
 	bounded: boolean;
 	bounds: Bounds2D;
+	radii: CornerRadii;
 }
 
 const NO_SCROLL: Scroll2D = {
 	x: 0.0, y: 0.0, bounded: false, bounds: { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 },
+	radii: { topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0 },
 };
 
 export struct AnimFrames {
@@ -629,6 +633,14 @@ export function setFilter(this n: NodeRef, f: Filter): NodeRef {
 	const steps: Vec<Filter> = f.kind === FilterKind.None ? [] : [f];
 	n.scene.putFilter(n.liveRow("setFilter"), { steps: steps });
 	return n;
+}
+
+// The Mask filter step whose mask is this node's subtree (h2d.filter.Mask, `Mask.hx:54`):
+// `host.setFilter(maskNode.asMaskFilter(false))`. The node must be in the host's scene, hidden,
+// before the host in the tree and not one of its ancestors; the draw stops on a node that is not.
+export function asMaskFilter(this mask: NodeRef, smoothAlpha: boolean): Filter {
+	const i: int32 = mask.liveRow("asMaskFilter");
+	return maskFilter(i, mask.id.generation, smoothAlpha);
 }
 
 export function setFilters(this n: NodeRef, steps: Readonly<Span<Filter>>): NodeRef {
@@ -1253,12 +1265,38 @@ export function scrollScope(this s: Scene2D, i: int32): boolean {
 	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return false; }
 	let up: int32 = i;
 	while (up != NO_NODE_2D) {
-		if (s.kinds[up] === DrawKind.Mask && (s.worlds[up].b != 0.0 || s.worlds[up].c != 0.0)) {
+		if (s.kinds[up] === DrawKind.Mask && (s.worlds[up].b != 0.0 || s.worlds[up].c != 0.0
+				|| s.maskRounded(up))) {
 			return false;
 		}
 		up = s.parents[up];
 	}
 	return true;
+}
+
+export function maskRounded(this s: Scene2D, i: int32): boolean {
+	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return false; }
+	const r: CornerRadii = s.scrolls[s.payloads[i]].radii;
+	return r.topLeft > 0.0 || r.topRight > 0.0 || r.bottomRight > 0.0 || r.bottomLeft > 0.0;
+}
+
+// CSS `overflow: hidden` with `border-radius`: the Mask clips its children to its rect with these
+// corners, antialiased as a UI box with the same radii is.
+export function setMaskRadii(this n: NodeRef, radii: CornerRadii): NodeRef {
+	const i: int32 = n.liveRow("setMaskRadii");
+	requireKind(n, i, DrawKind.Mask, "setMaskRadii", "corner radii");
+	if (radii.topLeft < 0.0 || radii.topRight < 0.0 || radii.bottomRight < 0.0
+			|| radii.bottomLeft < 0.0) {
+		console.log(`void2d: setMaskRadii takes radii of zero or more, not ${radii.topLeft}, ` +
+			`${radii.topRight}, ${radii.bottomRight}, ${radii.bottomLeft}`);
+		unreachable;
+	}
+	const s: Scene2D = n.scene;
+	if (n.scroll().radii == radii) { return n; }
+	const row: int32 = scrollRow(s, i);
+	s.scrolls[row] = { ...s.scrolls[row], radii: radii };
+	s.markChanged(i, Changed.Local);
+	return n;
 }
 
 export function setScrollX(this n: NodeRef, x: float32): NodeRef {

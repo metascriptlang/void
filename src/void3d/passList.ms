@@ -59,7 +59,8 @@ function noRanks(): Ranks {
 export function forPhase(this typeof PassList, phase: Phase): PassList {
 	return {
 		phase: phase, indices: [], depths: [], layers: [], orders: [], count: 0,
-		highs: [], lows: [], positions: [], spare: [], spareDepths: [], pipelines: noRanks(), textures: noRanks(),
+		highs: [], lows: [], positions: [], spare: [], spareDepths: [],
+		pipelines: noRanks(), textures: noRanks(),
 	};
 }
 

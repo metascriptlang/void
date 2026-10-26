@@ -11,6 +11,7 @@ import {
 	samplerRecords,
 	shaderRecords,
 	slotIndex,
+	slotOf,
 	textureRecords,
 	vacate,
 	viewRecords,
@@ -18,6 +19,16 @@ import {
 import {
 	BindingKind,
 	bindingKind,
+	compareNative,
+	blendFactorNative,
+	blendOperationNative,
+	stencilOperationNative,
+	vertexFormatNative,
+	addressModeNative,
+	topologyNative,
+	FORMAT_COUNT,
+	nativeAt,
+	textureFormatFacts,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_UNIFORM_BLOCKS,
@@ -37,8 +48,6 @@ import {
 	GPUColorWrite,
 	GPUCommandBuffer,
 	GPUCommandEncoder,
-	GPUPassTimestampWrites,
-	GPUPrimitiveState,
 	GPUQuerySet,
 	GPUQuerySetDescriptor,
 	GPUSupportedFeatures,
@@ -50,7 +59,6 @@ import {
 	GPUDevice,
 	GPUExtent3D,
 	GPUIndexFormat,
-	GPUMapMode,
 	GPURenderPassDescriptor,
 	GPURenderPassEncoder,
 	GPURenderPipeline,
@@ -66,19 +74,10 @@ import {
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
-	checkedBufferCopy,
 	checkedDepthTexelCopy,
-	checkedDispatchIndirect,
-	checkedMapAsync,
-	checkedMappedRange,
 	checkedTexelBufferLayout,
-	checkedTextureToTextureCopy,
-	checkedUnmap,
 	samplerMaxLod,
 	checkedTexelWritePitch,
-	checkedResolveQuerySet,
-	checkedTimestampWrites,
-	checkedWriteBuffer,
 	featureBit,
 	GPUTexture,
 	GPUTextureDescriptor,
@@ -86,35 +85,20 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
-	firstInstanceRefusal,
 	labelText,
 	labelOf,
 } from "../types.ms";
 import {
 	cachedCanvas,
 	currentFrame,
-	checkedCopyRegion,
 	entryOf,
 	clampedAnisotropy,
-	addressesBinding,
-	checkedBindGroupSet,
 	checkedComputeModule,
-	checkedComputePipeline,
-	checkedRenderPassPipeline,
-	checkedOcclusionRange,
-	checkedOcclusionReuse,
-	checkedOcclusionSetKind,
 	checkedRenderModule,
-	checkedSampledView,
-	checkedStorageEntry,
-	checkedStorageView,
-	checkedStripDraw,
-	checkedUniformEntry,
 	computePassOpen,
 	occlusionQueryIndex,
-	occlusionSetId,
-	passSerial,
 	renderPassOpen,
+	boundFacts,
 } from "../validate.ms";
 import {
 	MtlBufferImpl,
@@ -322,7 +306,6 @@ const ADDRESS_REPEAT = 2;
 const ADDRESS_MIRROR_REPEAT = 3;
 const INDEX_UINT16 = 0;
 const INDEX_UINT32 = 1;
-const NO_STRIP_INDEX = -1;
 const PRIMITIVE_LINE_STRIP = 2;
 const PRIMITIVE_TRIANGLE = 3;
 const PRIMITIVE_TRIANGLE_STRIP = 4;
@@ -343,12 +326,6 @@ const NO_ENCODER = null as unknown as Ptr<MtlEncoderImpl>;
 const NO_COMPUTE_PIPELINE = null as unknown as Ptr<MtlComputePipelineImpl>;
 const NO_SAMPLE_BUFFER = null as unknown as Ptr<MtlSampleBufferImpl>;
 
-enum QueryState {
-	Unwritten,
-	Open,
-	Written,
-}
-
 struct FormatInfo {
 	pixel: int32;
 	bytesPerPixel: int32;
@@ -359,13 +336,8 @@ struct FormatInfo {
 struct BufferSlot {
 	natives: Ptr<MtlBufferImpl>[2];
 	active: int32;
-	writtenFrame: int64;
-	writtenEnd: int64;
 	inPlace: boolean;
 	gpuUseFrame: int64;
-	mapMode: int32;
-	mapOffset: int64;
-	mapSize: int64;
 }
 
 struct TextureSlot {
@@ -397,10 +369,10 @@ struct NativeBinding {
 	writable: boolean;
 	nativeSlot: int32;
 	size: int32;
+	storageFormat: GPUTextureFormat;
 }
 
 struct ShaderSlot {
-	readsInstanceIndex: boolean;
 	vertexLibrary: Ptr<MtlLibraryImpl>;
 	fragmentLibrary: Ptr<MtlLibraryImpl>;
 	vertex: Ptr<MtlFunctionImpl>;
@@ -417,8 +389,6 @@ struct ShaderSlot {
 }
 
 struct PipelineSlot {
-	label: string | null;
-	readsInstanceIndex: boolean;
 	shader: uint32;
 	state: Ptr<MtlPipelineImpl>;
 	computeState: Ptr<MtlComputePipelineImpl>;
@@ -430,7 +400,6 @@ struct PipelineSlot {
 	depthBiasSlope: float32;
 	depthBiasClamp: float32;
 	primitive: int32;
-	stripIndexType: int32;
 	strides: int32[2];
 }
 
@@ -438,8 +407,6 @@ struct BindGroupSlot {
 	group: int32;
 	entries: GPUBindGroupEntry[8];
 	entryCount: int32;
-	dynamicIndex: int32[8];
-	dynamicCount: int32;
 }
 
 struct PassState {
@@ -456,32 +423,18 @@ export struct BindStats {
 }
 
 struct ComputeState {
-	pipeline: uint32;
-	bindGroups: uint32[2];
-	dynamicOffsets: uint32[8];
 	dirty: boolean;
 }
 
 struct QuerySetSlot {
-	timestamp: boolean;
-	count: int32;
 	samples: Ptr<MtlSampleBufferImpl>;
 	visibility: Ptr<MtlBufferImpl>;
-	state: Vec<QueryState>;
-	usedPass: Vec<int64>;
 }
 
 struct BoundState {
-	pipeline: uint32;
 	appliedPipeline: uint32;
-	vertexBuffers: uint32[2];
-	vertexOffsets: int64[2];
-	indexBuffer: uint32;
 	indexType: int32;
 	indexBytes: int64;
-	indexOffset: int64;
-	bindGroups: uint32[2];
-	dynamicOffsets: uint32[8];
 	vertexDirty: boolean;
 	resourcesDirty: boolean;
 	uniformsDirty: boolean;
@@ -493,9 +446,9 @@ let sharedStorage = true;
 let commandBuffer: Ptr<MtlCommandBufferImpl> = NO_COMMAND_BUFFER;
 let encoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
 let pass: PassState = { width: 0 };
-let computeBound: ComputeState = { pipeline: 0 };
+let computeBound: ComputeState = { dirty: false };
 let computeEncoder: Ptr<MtlEncoderImpl> = NO_ENCODER;
-let bound: BoundState = { pipeline: 0 };
+let bound: BoundState = { appliedPipeline: 0 };
 let boundBuffers: Vec<Ptr<MtlBufferImpl>> = [];
 let boundOffsets: Vec<int64> = [];
 let boundTextures: Vec<Ptr<MtlTextureImpl>> = [];
@@ -526,59 +479,29 @@ function stopOnMember(member: string, value: string): int32 {
 	unreachable;
 }
 
-function stopOnFormat(member: string, value: string): FormatInfo {
-	console.log(`webgpu metal: ${member} '${value}' is not supported`);
-	unreachable;
-}
-
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
-function colorInfo(pixel: int32, bytesPerPixel: int32): FormatInfo {
-	return { pixel: pixel, bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
-}
+const PIXEL_FORMATS: int32[] = [
+	PIXEL_R8_UNORM, 30, PIXEL_RGBA8_UNORM, 71, PIXEL_BGRA8_UNORM, 81, 73, 74,
+	25, 65, PIXEL_RGBA16_FLOAT, 113,
+	55, 105, 125, 123, 53,
+	90, 92,
+	250, PIXEL_DEPTH32_FLOAT, PIXEL_DEPTH32_FLOAT_STENCIL8,
+];
 
 function formatInfo(format: GPUTextureFormat, member: string): FormatInfo {
-	const value: string = format;
-	return match (value) {
-		"r8unorm" => colorInfo(PIXEL_R8_UNORM, 1),
-		"rg8unorm" => colorInfo(30, 2),
-		"rgba8unorm" => colorInfo(PIXEL_RGBA8_UNORM, 4),
-		"rgba8unorm-srgb" => colorInfo(71, 4),
-		"bgra8unorm" => colorInfo(PIXEL_BGRA8_UNORM, 4),
-		"bgra8unorm-srgb" => colorInfo(81, 4),
-		"rgba8uint" => colorInfo(73, 4),
-		"rgba8sint" => colorInfo(74, 4),
-		"r16float" => colorInfo(25, 2),
-		"rg16float" => colorInfo(65, 4),
-		"rgba16float" => colorInfo(PIXEL_RGBA16_FLOAT, 8),
-		"rgba16uint" => colorInfo(113, 8),
-		"r32float" => colorInfo(55, 4),
-		"rg32float" => colorInfo(105, 8),
-		"rgba32float" => colorInfo(125, 16),
-		"rgba32uint" => colorInfo(123, 16),
-		"r32uint" => colorInfo(53, 4),
-		"rgb10a2unorm" => colorInfo(90, 4),
-		"rg11b10ufloat" => colorInfo(92, 4),
-		"depth16unorm" => ({ pixel: 250, bytesPerPixel: 2, depth: true, stencil: false }),
-		"depth32float" => ({ pixel: PIXEL_DEPTH32_FLOAT, bytesPerPixel: 4, depth: true, stencil: false }),
-		"depth24plus-stencil8" => ({ pixel: PIXEL_DEPTH32_FLOAT_STENCIL8, bytesPerPixel: 8, depth: true, stencil: true }),
-		_ => stopOnFormat(member, value),
+	const facts = textureFormatFacts(format, member, "metal");
+	return {
+		pixel: nativeAt(PIXEL_FORMATS, FORMAT_COUNT, facts.index, "metal", "pixel format"),
+		bytesPerPixel: facts.bytesPerPixel,
+		depth: facts.depth,
+		stencil: facts.stencil,
 	};
 }
 
-function compareFunction(compare: string, member: string): int32 {
-	return match (compare) {
-		"never" => 0,
-		"less" => 1,
-		"equal" => 2,
-		"less-equal" => 3,
-		"greater" => 4,
-		"not-equal" => 5,
-		"greater-equal" => 6,
-		"" | "always" => COMPARE_ALWAYS,
-		_ => stopOnMember(member, compare),
-	};
-}
+const COMPARE_FUNCTIONS: int32[] = [0, 1, 2, 3, 4, 5, 6, COMPARE_ALWAYS];
+
+function compareFunction(compare: string, member: string): int32 { return compareNative(COMPARE_FUNCTIONS, compare, member, "metal"); }
 
 function cullMode(cull: string): int32 {
 	return match (cull) {
@@ -597,24 +520,12 @@ function winding(face: string): int32 {
 	};
 }
 
-function blendFactor(factor: string, member: string): int32 {
-	return match (factor) {
-		"zero" => BLEND_ZERO,
-		"" | "one" => BLEND_ONE,
-		"src" => BLEND_SRC_COLOR,
-		"one-minus-src" => BLEND_ONE_MINUS_SRC_COLOR,
-		"src-alpha" => BLEND_SRC_ALPHA,
-		"one-minus-src-alpha" => BLEND_ONE_MINUS_SRC_ALPHA,
-		"dst" => BLEND_DST_COLOR,
-		"one-minus-dst" => BLEND_ONE_MINUS_DST_COLOR,
-		"dst-alpha" => BLEND_DST_ALPHA,
-		"one-minus-dst-alpha" => BLEND_ONE_MINUS_DST_ALPHA,
-		"src-alpha-saturated" => BLEND_SRC_ALPHA_SATURATED,
-		"constant" => BLEND_COLOR,
-		"one-minus-constant" => BLEND_ONE_MINUS_COLOR,
-		_ => stopOnMember(member, factor),
-	};
-}
+const BLEND_FACTORS: int32[] = [
+	BLEND_ZERO, BLEND_ONE, BLEND_SRC_COLOR, BLEND_ONE_MINUS_SRC_COLOR, BLEND_SRC_ALPHA, BLEND_ONE_MINUS_SRC_ALPHA, BLEND_DST_COLOR, BLEND_ONE_MINUS_DST_COLOR,
+	BLEND_DST_ALPHA, BLEND_ONE_MINUS_DST_ALPHA, BLEND_SRC_ALPHA_SATURATED, BLEND_COLOR, BLEND_ONE_MINUS_COLOR,
+];
+
+function blendFactor(factor: string, member: string): int32 { return blendFactorNative(BLEND_FACTORS, factor, member, "metal"); }
 
 function destinationFactor(factor: string, member: string): int32 {
 	const value: string = factor;
@@ -622,30 +533,13 @@ function destinationFactor(factor: string, member: string): int32 {
 	return blendFactor(value, member);
 }
 
-function blendOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "add" => 0,
-		"subtract" => 1,
-		"reverse-subtract" => 2,
-		"min" => 3,
-		"max" => 4,
-		_ => stopOnMember(member, operation),
-	};
-}
+const BLEND_OPERATIONS: int32[] = [0, 1, 2, 3, 4];
 
-function stencilOperation(operation: string, member: string): int32 {
-	return match (operation) {
-		"" | "keep" => 0,
-		"zero" => 1,
-		"replace" => 2,
-		"increment-clamp" => 3,
-		"decrement-clamp" => 4,
-		"invert" => 5,
-		"increment-wrap" => 6,
-		"decrement-wrap" => 7,
-		_ => stopOnMember(member, operation),
-	};
-}
+function blendOperation(operation: string, member: string): int32 { return blendOperationNative(BLEND_OPERATIONS, operation, member, "metal"); }
+
+const STENCIL_OPERATIONS: int32[] = [0, 1, 2, 5, 3, 4, 6, 7];
+
+function stencilOperation(operation: string, member: string): int32 { return stencilOperationNative(STENCIL_OPERATIONS, operation, member, "metal"); }
 
 function colorWriteMask(mask: int32): int32 {
 	const bits = mask == 0 ? GPUColorWrite.ALL as int32 : mask;
@@ -657,50 +551,18 @@ function colorWriteMask(mask: int32): int32 {
 	return native;
 }
 
-function vertexFormat(format: string): int32 {
-	return match (format) {
-		"uint8x2" => 1,
-		"uint8x4" => 3,
-		"sint8x2" => 4,
-		"sint8x4" => 6,
-		"unorm8x2" => 7,
-		"unorm8x4" => VERTEX_UCHAR4_NORMALIZED,
-		"snorm8x2" => 10,
-		"snorm8x4" => 12,
-		"uint16x2" => 13,
-		"uint16x4" => 15,
-		"sint16x2" => 16,
-		"sint16x4" => 18,
-		"unorm16x2" => 19,
-		"unorm16x4" => 21,
-		"snorm16x2" => 22,
-		"snorm16x4" => 24,
-		"float16x2" => 25,
-		"float16x4" => 27,
-		"float32" => VERTEX_FLOAT,
-		"float32x2" => VERTEX_FLOAT2,
-		"float32x3" => VERTEX_FLOAT3,
-		"float32x4" => VERTEX_FLOAT4,
-		"sint32" => 32,
-		"sint32x2" => 33,
-		"sint32x3" => 34,
-		"sint32x4" => 35,
-		"uint32" => 36,
-		"uint32x2" => 37,
-		"uint32x3" => 38,
-		"uint32x4" => 39,
-		_ => stopOnMember("vertex attribute format", format),
-	};
-}
+const VERTEX_FORMATS: int32[] = [
+	1, 3, 4, 6, 7, VERTEX_UCHAR4_NORMALIZED, 10, 12,
+	13, 15, 16, 18, 19, 21, 22, 24,
+	25, 27, VERTEX_FLOAT, VERTEX_FLOAT2, VERTEX_FLOAT3, VERTEX_FLOAT4, 36, 37,
+	38, 39, 32, 33, 34, 35,
+];
 
-function addressMode(mode: string, member: string): int32 {
-	return match (mode) {
-		"" | "clamp-to-edge" => ADDRESS_CLAMP_TO_EDGE,
-		"repeat" => ADDRESS_REPEAT,
-		"mirror-repeat" => ADDRESS_MIRROR_REPEAT,
-		_ => stopOnMember(member, mode),
-	};
-}
+function vertexFormat(format: string): int32 { return vertexFormatNative(VERTEX_FORMATS, format, "vertex attribute format", "metal"); }
+
+const ADDRESS_MODES: int32[] = [ADDRESS_CLAMP_TO_EDGE, ADDRESS_REPEAT, ADDRESS_MIRROR_REPEAT];
+
+function addressMode(mode: string, member: string): int32 { return addressModeNative(ADDRESS_MODES, mode, member, "metal"); }
 
 function filterMode(filter: string, member: string): int32 {
 	return match (filter) {
@@ -718,22 +580,9 @@ function mipFilterMode(filter: string, member: string): int32 {
 	};
 }
 
-function primitiveType(topology: string): int32 {
-	return match (topology) {
-		"point-list" => 0,
-		"line-list" => 1,
-		"line-strip" => PRIMITIVE_LINE_STRIP,
-		"" | "triangle-list" => PRIMITIVE_TRIANGLE,
-		"triangle-strip" => PRIMITIVE_TRIANGLE_STRIP,
-		_ => stopOnMember("primitive.topology", topology),
-	};
-}
+const PRIMITIVE_TYPES: int32[] = [0, 1, PRIMITIVE_LINE_STRIP, PRIMITIVE_TRIANGLE, PRIMITIVE_TRIANGLE_STRIP];
 
-function stripIndexTypeOf(state: GPUPrimitiveState): int32 {
-	const format: string = state.stripIndexFormat;
-	if (format == "") { return NO_STRIP_INDEX; }
-	return indexType(state.stripIndexFormat);
-}
+function primitiveType(topology: string): int32 { return topologyNative(PRIMITIVE_TYPES, topology, "primitive.topology", "metal"); }
 
 function indexType(format: GPUIndexFormat): int32 {
 	const value: string = format;
@@ -886,9 +735,9 @@ export function setup(environment: NativeEnvironment): GPUDevice {
 	commandBuffer = NO_COMMAND_BUFFER;
 	encoder = NO_ENCODER;
 	pass = { width: 0 };
-	computeBound = { pipeline: 0 };
+	computeBound = { dirty: false };
 	computeEncoder = NO_ENCODER;
-	bound = { pipeline: 0 };
+	bound = { appliedPipeline: 0 };
 	const sampleCount = cachedCanvas().sampleCount;
 	if (mtlSupportsSampleCount(device, sampleCount) == 0) {
 		stopOnMember("NativeEnvironment.sampleCount", `${sampleCount}`);
@@ -954,8 +803,6 @@ export function createBuffer(id: uint32, descriptor: GPUBufferDescriptor): void 
 	const slot: BufferSlot = {
 		natives: [native, NO_BUFFER],
 		active: 0,
-		writtenFrame: has(usage, GPUBufferUsage.COPY_DST as int32) ? -1 : -2,
-		writtenEnd: 0,
 		inPlace: mapped || has(usage, GPUBufferUsage.STORAGE as int32) || has(usage, GPUBufferUsage.QUERY_RESOLVE as int32),
 		gpuUseFrame: -1,
 	};
@@ -971,27 +818,17 @@ export function destroyBuffer(buffer: GPUBuffer): void {
 }
 
 export function writeBuffer<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
 	const bytes = (data.length as int64) * (sizeof T as int64);
 	const index = bufferRecords.slotIndex(buffer.id);
-	checkedWriteBuffer(buffer.id, bufferRecords.slots[index].size, offset, bytes);
-	if (buffers[index].writtenFrame == -2) { stop(`GPUBuffer ${buffer.id} was created without COPY_DST`); }
-	if (buffers[index].mapMode != 0) { stop(`writeBuffer on GPUBuffer ${buffer.id}, which is mapped`); }
 	if (buffers[index].inPlace) {
 		writeBufferInPlace(index, offset, data, bytes);
 		return;
 	}
 	beginFrame();
-	if (buffers[index].writtenFrame != currentFrame()) {
-		if (buffers[index].writtenFrame >= 0) { nextBufferCopy(index); }
-		buffers[index].writtenFrame = currentFrame();
-		buffers[index].writtenEnd = 0;
-	} else if (offset < buffers[index].writtenEnd) {
-		stop(`writeBuffer at ${offset} on GPUBuffer ${buffer.id} rewrites bytes this frame already wrote, up to ${buffers[index].writtenEnd}`);
-	}
+	const written = bufferRecords.slots[index].writtenFrame;
+	if (written >= 0 && written != currentFrame()) { nextBufferCopy(index); }
 	const native = buffers[index].natives[buffers[index].active];
 	mtlWriteBuffer(native, offset, data[0], bytes, sharedStorage ? 0 : 1);
-	buffers[index].writtenEnd = offset + bytes;
 }
 
 // A buffer a GPU copy writes, or a mappable one, keeps one live copy, so a CPU write joins the
@@ -1336,6 +1173,7 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 			writable: bindingWritable(descriptor.bindings[i]),
 			nativeSlot: descriptor.bindings[i].nativeSlot,
 			size: descriptor.bindings[i].size,
+			storageFormat: descriptor.bindings[i].storageFormat,
 		};
 		checkBinding(native);
 		if (native.kind == BindingKind.Uniform) {
@@ -1362,7 +1200,6 @@ export function createShaderModule(id: uint32, descriptor: GPUShaderModuleDescri
 		slot.vertex = entryFunction(slot.vertexLibrary, descriptor.vertexEntryPoint, "vertex", descriptor.label);
 		slot.fragment = entryFunction(slot.fragmentLibrary, descriptor.fragmentEntryPoint, "fragment", descriptor.label);
 	}
-	slot.readsInstanceIndex = descriptor.readsInstanceIndex;
 	put(shaders, id, slot);
 }
 
@@ -1426,7 +1263,7 @@ function checkAttribute(shader: int32, location: int32): void {
 export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDescriptor): void {
 	const s = shaderRecords.slotIndex(descriptor.vertex.module.id);
 	checkedRenderModule(shaders[s].compute != null);
-	let slot: PipelineSlot = { shader: descriptor.vertex.module.id, label: descriptor.label, readsInstanceIndex: shaders[s].readsInstanceIndex };
+	let slot: PipelineSlot = { shader: descriptor.vertex.module.id };
 	mtlPipelineReset();
 	mtlPipelineLabel(labelText(descriptor.label));
 	describeVertexLayout(s, descriptor, slot);
@@ -1472,7 +1309,6 @@ export function createRenderPipeline(id: uint32, descriptor: GPURenderPipelineDe
 	slot.depthBiasSlope = descriptor.depthStencil.depthBiasSlopeScale;
 	slot.depthBiasClamp = descriptor.depthStencil.depthBiasClamp;
 	slot.primitive = primitiveType(descriptor.primitive.topology);
-	slot.stripIndexType = stripIndexTypeOf(descriptor.primitive);
 	slot.cullMode = cullMode(descriptor.primitive.cullMode);
 	slot.winding = winding(descriptor.primitive.frontFace);
 	put(pipelines, id, slot);
@@ -1538,87 +1374,14 @@ export function destroyRenderPipeline(pipeline: GPURenderPipeline): void {
 export function createBindGroup(id: uint32, descriptor: GPUBindGroupDescriptor): void {
 	const l = layoutRecords.slotIndex(descriptor.layout.id);
 	const group = layoutRecords.slots[l].group;
-	const shader = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(layoutRecords.slots[l].pipeline)].shader);
 	let slot: BindGroupSlot = { group: group };
 	for (let i = 0; i < GPU_MAX_BIND_GROUP_ENTRIES; i++) {
 		const entry: GPUBindGroupEntry = descriptor.entries[i];
 		if (entry.buffer.id == 0 && entry.textureView.id == 0 && entry.sampler.id == 0) { continue; }
-		checkEntry(shader, group, entry);
 		slot.entries[slot.entryCount] = entry;
 		slot.entryCount += 1;
 	}
-	for (let i = 0; i < slot.entryCount; i++) {
-		if (slot.entries[i].buffer.id == 0 || uniformOf(shader, group, slot.entries[i].binding) < 0) { continue; }
-		let rank = 0;
-		for (let j = 0; j < slot.entryCount; j++) {
-			if (slot.entries[j].buffer.id != 0 && uniformOf(shader, group, slot.entries[j].binding) >= 0 && slot.entries[j].binding < slot.entries[i].binding) { rank += 1; }
-		}
-		slot.dynamicIndex[i] = rank;
-		slot.dynamicCount += 1;
-	}
 	put(bindGroups, id, slot);
-}
-
-function uniformOf(shader: int32, group: int32, binding: int32): int32 {
-	for (let u = 0; u < shaders[shader].uniformCount; u++) {
-		if (addressesBinding(group, binding, shaders[shader].uniforms[u].binding, BindingKind.Uniform)) { return u; }
-	}
-	return -1;
-}
-
-function resourceOf(shader: int32, group: int32, binding: int32): int32 {
-	for (let r = 0; r < shaders[shader].resourceCount; r++) {
-		const resource = shaders[shader].resources[r];
-		if (addressesBinding(group, binding, resource.binding, resource.kind)) { return r; }
-	}
-	return -1;
-}
-
-function checkEntry(shader: int32, group: int32, entry: GPUBindGroupEntry): void {
-	if (entry.buffer.id != 0) {
-		const b = bufferRecords.slotIndex(entry.buffer.id);
-		const u = uniformOf(shader, group, entry.binding);
-		if (u >= 0) {
-			const binding = shaders[shader].uniforms[u];
-			checkedUniformEntry(
-				entry,
-				has(bufferRecords.slots[b].usage, GPUBufferUsage.UNIFORM as int32),
-				bufferRecords.slots[b].size,
-				binding.size,
-				UNIFORM_OFFSET_ALIGNMENT as int64,
-			);
-			return;
-		}
-		const r = resourceOf(shader, group, entry.binding);
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageBuffer) {
-			checkedStorageEntry(
-				entry,
-				has(bufferRecords.slots[b].usage, GPUBufferUsage.STORAGE as int32),
-				bufferRecords.slots[b].size,
-				STORAGE_OFFSET_ALIGNMENT as int64,
-				mtlMaxBufferLength(device),
-			);
-			return;
-		}
-		stop(`bind group ${group} entry ${entry.binding} (buffer) is not a binding of the pipeline's shader`);
-	}
-	const r = resourceOf(shader, group, entry.binding);
-	if (entry.textureView.id != 0) {
-		const v = viewRecords.slotIndex(entry.textureView.id);
-		const t = textureRecords.slotIndex(viewRecords.slots[v].texture);
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Texture) {
-			checkedSampledView(entry.binding, has(textureRecords.slots[t].usage, GPUTextureUsage.TEXTURE_BINDING as int32));
-			return;
-		}
-		if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.StorageTexture) {
-			checkedStorageView(entry.binding, has(textureRecords.slots[t].usage, GPUTextureUsage.STORAGE_BINDING as int32), viewRecords.slots[v].mipCount);
-			return;
-		}
-		stop(`bind group ${group} entry ${entry.binding} (texture) is not a binding of the pipeline's shader`);
-	}
-	samplerRecords.slotIndex(entry.sampler.id);
-	if (r >= 0 && shaders[shader].resources[r].kind == BindingKind.Sampler) { return; }
-	stop(`bind group ${group} entry ${entry.binding} (sampler) is not a binding of the pipeline's shader`);
 }
 
 export function destroyBindGroup(bindGroup: GPUBindGroup): void {
@@ -1656,10 +1419,6 @@ function storeAction(storeOp: string, resolve: boolean, member: string): int32 {
 }
 
 export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPURenderPassDescriptor, extent: GPUExtent3D): GPURenderPassEncoder {
-	checkTimestampWrites("GPURenderPassDescriptor.timestampWrites", descriptor.timestampWrites);
-	if (descriptor.occlusionQuerySet.id != 0) {
-		checkedOcclusionSetKind(querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].timestamp);
-	}
 	pass = { width: extent.width, height: extent.height };
 	beginFrame();
 	mtlPassReset();
@@ -1708,7 +1467,6 @@ export function beginRenderPass(passEncoder: GPUCommandEncoder, descriptor: GPUR
 	if (descriptor.timestampWrites.querySet.id != 0) {
 		const q = querySetRecords.slotIndex(descriptor.timestampWrites.querySet.id);
 		mtlPassSamples(querySets[q].samples, descriptor.timestampWrites.beginningOfPassWriteIndex, descriptor.timestampWrites.endOfPassWriteIndex);
-		markTimestampsWritten(q, descriptor.timestampWrites);
 	}
 	if (descriptor.occlusionQuerySet.id != 0) { mtlPassVisibility(querySets[querySetRecords.slotIndex(descriptor.occlusionQuerySet.id)].visibility); }
 	encoder = mtlBeginPass(commandBuffer);
@@ -1734,34 +1492,20 @@ export function endPass(): void {
 	if (pass.screen) { mtlPresentDrawable(commandBuffer); }
 }
 
-export function setPipeline(pipeline: GPURenderPipeline): void {
-	checkedRenderPassPipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
-	bound.pipeline = pipeline.id;
-}
+export function setPipeline(pipeline: GPURenderPipeline): void {}
 
 export function setVertexBuffer(slot: int32, buffer: GPUBuffer, offset: int64): void {
-	if (slot < 0 || slot >= GPU_MAX_VERTEX_BUFFERS) { stopOnMember("setVertexBuffer slot", `${slot}`); }
-	bound.vertexBuffers[slot] = buffer.id;
-	bound.vertexOffsets[slot] = offset;
 	bound.vertexDirty = true;
 }
 
 export function setIndexBuffer(buffer: GPUBuffer, format: GPUIndexFormat, offset: int64): void {
-	bound.indexBuffer = buffer.id;
 	bound.indexType = indexType(format);
 	bound.indexBytes = bound.indexType == INDEX_UINT16 ? 2 : 4;
-	bound.indexOffset = offset;
 }
 
 export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	bound.bindGroups[index] = bindGroup.id;
 	if (bindGroup.id == 0) { return; }
-	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, bindGroups[g].group, bindGroups[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
 	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
-			bound.dynamicOffsets[i] = dynamicOffsets[i];
-		}
 		bound.uniformsDirty = true;
 	} else {
 		bound.resourcesDirty = true;
@@ -1770,13 +1514,7 @@ export function setBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffse
 
 // Metal refuses a scissor rect outside the attachment; sokol clips it the same way (_sg_clipi).
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
-	const left = x < 0 ? 0 : (x > pass.width ? pass.width : x);
-	const top = y < 0 ? 0 : (y > pass.height ? pass.height : y);
-	let right = x + width;
-	let bottom = y + height;
-	right = right > pass.width ? pass.width : (right < left ? left : right);
-	bottom = bottom > pass.height ? pass.height : (bottom < top ? top : bottom);
-	mtlSetScissorRect(encoder, left, top, right - left, bottom - top);
+	mtlSetScissorRect(encoder, x, y, width, height);
 }
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
@@ -1794,8 +1532,7 @@ export function setStencilReference(reference: uint32): void {
 export function draw(vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	checkFirstInstance("draw", firstInstance);
-	mtlDraw(encoder, pipelines[pipelineRecords.slotIndex(bound.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
+	mtlDraw(encoder, pipelines[slotOf(boundFacts.pipeline)].primitive, vertexCount, instanceCount, firstVertex, firstInstance);
 }
 
 export function drawIndexed(
@@ -1807,17 +1544,14 @@ export function drawIndexed(
 ): void {
 	if (instanceCount == 0) { return; }
 	flush();
-	checkFirstInstance("drawIndexed", firstInstance);
-	const p = pipelineRecords.slotIndex(bound.pipeline);
-	const primitive = pipelines[p].primitive;
-	checkedStripDraw(primitive == PRIMITIVE_LINE_STRIP || primitive == PRIMITIVE_TRIANGLE_STRIP, pipelines[p].stripIndexType == bound.indexType);
-	const b = bufferRecords.slotIndex(bound.indexBuffer);
+	const primitive = pipelines[slotOf(boundFacts.pipeline)].primitive;
+	const b = bufferRecords.slotIndex(boundFacts.indexBuffer);
 	mtlDrawIndexed(
 		encoder,
 		primitive,
 		buffers[b].natives[buffers[b].active],
 		bound.indexType,
-		bound.indexOffset + (firstIndex as int64) * bound.indexBytes,
+		boundFacts.indexOffset + (firstIndex as int64) * bound.indexBytes,
 		indexCount,
 		instanceCount,
 		baseVertex,
@@ -1825,26 +1559,18 @@ export function drawIndexed(
 	);
 }
 
-function checkFirstInstance(call: string, firstInstance: int32): void {
-	if (firstInstance == 0) { return; }
-	const p = pipelineRecords.slotIndex(bound.pipeline);
-	if (pipelines[p].readsInstanceIndex) { stop(firstInstanceRefusal(call, labelOf(pipelines[p].label), firstInstance)); }
-}
 
 function flush(): void {
-	if (bound.appliedPipeline != bound.pipeline) { applyPipeline(); }
+	if (bound.appliedPipeline != boundFacts.pipeline) { applyPipeline(); }
 	if (bound.vertexDirty) { applyVertexBuffers(); }
 	if (bound.resourcesDirty) { applyResources(); }
 	if (bound.uniformsDirty) { applyUniforms(); }
 }
 
 function applyPipeline(): void {
-	const p = pipelineRecords.slotIndex(bound.pipeline);
-	if (!shaderRecords.alive(pipelines[p].shader)) {
-		stop(`the shader module of GPURenderPipeline ${bound.pipeline} was destroyed`);
-	}
+	const p = slotOf(boundFacts.pipeline);
 	mtlSetPipeline(encoder, pipelines[p].state, pipelines[p].depth, pipelines[p].cullMode, pipelines[p].winding, pipelines[p].depthBias, pipelines[p].depthBiasSlope, pipelines[p].depthBiasClamp);
-	bound.appliedPipeline = bound.pipeline;
+	bound.appliedPipeline = boundFacts.pipeline;
 	bound.vertexDirty = true;
 	bound.resourcesDirty = true;
 	bound.uniformsDirty = true;
@@ -1919,23 +1645,22 @@ function bindSampler(stage: int32, sampler: Ptr<MtlSamplerImpl>, slot: int32): v
 }
 
 function applyVertexBuffers(): void {
-	const p = pipelineRecords.slotIndex(bound.pipeline);
+	const p = slotOf(boundFacts.pipeline);
 	for (let slot = 0; slot < GPU_MAX_VERTEX_BUFFERS; slot++) {
 		if (pipelines[p].strides[slot] == 0) { continue; }
-		if (bound.vertexBuffers[slot] == 0) { stop(`the pipeline reads vertex buffer ${slot}, which is not set`); }
-		const b = bufferRecords.slotIndex(bound.vertexBuffers[slot]);
-		bindBuffer(STAGE_VERTEX, buffers[b].natives[buffers[b].active], bound.vertexOffsets[slot], VERTEX_BUFFER_BASE + slot);
+		if (boundFacts.vertexBuffers[slot] == 0) { continue; }
+		const b = bufferRecords.slotIndex(boundFacts.vertexBuffers[slot]);
+		bindBuffer(STAGE_VERTEX, buffers[b].natives[buffers[b].active], boundFacts.vertexOffsets[slot], VERTEX_BUFFER_BASE + slot);
 	}
 	bound.vertexDirty = false;
 }
 
 
 function applyResources(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(bound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	bound.resourcesDirty = false;
 	if (shaders[s].resourceCount == 0) { return; }
-	if (bound.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the pipeline reads bind group 1, which is not set"); }
-	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_RESOURCE_GROUP]);
+	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]);
 	for (let r = 0; r < shaders[s].resourceCount; r++) {
 		const binding: NativeBinding = shaders[s].resources[r];
 		const e = entryOf(bindGroups[g], binding.binding);
@@ -1957,18 +1682,14 @@ function applyResources(): void {
 }
 
 function applyUniforms(): void {
-	const s = shaderRecords.slotIndex(pipelines[pipelineRecords.slotIndex(bound.pipeline)].shader);
+	const s = shaderRecords.slotIndex(pipelines[slotOf(boundFacts.pipeline)].shader);
 	bound.uniformsDirty = false;
 	if (shaders[s].uniformCount == 0) { return; }
-	if (bound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the pipeline reads bind group 0, which is not set"); }
-	const g = bindGroupRecords.slotIndex(bound.bindGroups[GPU_UNIFORM_GROUP]);
+	const g = bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]);
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
-		const offset = (bound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-		if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {
-			stop(`uniform binding ${shaders[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
-		}
 		const native = buffers[b].natives[buffers[b].active];
 		const slot = shaders[s].uniforms[u].nativeSlot;
 		if (shaders[s].uniforms[u].vertexStage) { bindBuffer(STAGE_VERTEX, native, offset, slot); }
@@ -1976,32 +1697,20 @@ function applyUniforms(): void {
 	}
 }
 
-function copyableBuffer(buffer: GPUBuffer, member: string, flag: int32, flagName: string): int32 {
+function copyDestinationBuffer(buffer: GPUBuffer): int32 {
 	const index = bufferRecords.slotIndex(buffer.id);
-	if (!has(bufferRecords.slots[index].usage, flag)) { stop(`${member}: GPUBuffer ${buffer.id} was created without ${flagName}`); }
-	if (buffers[index].mapMode != 0) { stop(`${member}: GPUBuffer ${buffer.id} is mapped`); }
-	return index;
-}
-
-function copyDestinationBuffer(buffer: GPUBuffer, member: string): int32 {
-	const index = copyableBuffer(buffer, member, GPUBufferUsage.COPY_DST as int32, "COPY_DST");
 	buffers[index].inPlace = true;
 	return index;
 }
 
-function copyableTexture(info: GPUTexelCopyTextureInfo, member: string, flag: int32, flagName: string): int32 {
+function copyableTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {
 	const index = textureRecords.slotIndex(info.texture.id);
-	if (!has(textureRecords.slots[index].usage, flag)) { stop(`${member}: GPUTexture ${info.texture.id} was created without ${flagName}`); }
-	if (textureRecords.slots[index].swapchainView != 0) {
-		if (textures[index].natives[0] == null) { stop(`${member}: the swapchain texture has no back buffer to copy`); }
-		return index;
-	}
-	if (textureRecords.slots[index].sampleCount != 1) { stop(`${member}: GPUTexture ${info.texture.id} is multisampled`); }
+	if (textureRecords.slots[index].swapchainView != 0 && textures[index].natives[0] == null) { stop(`${member}: the swapchain texture has no back buffer to copy`); }
 	return index;
 }
 
 function copyDestinationTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {
-	const index = copyableTexture(info, member, GPUTextureUsage.COPY_DST as int32, "COPY_DST");
+	const index = copyableTexture(info, member);
 	textures[index].inPlace = true;
 	return index;
 }
@@ -2022,10 +1731,8 @@ function liveTexture(index: int32): Ptr<MtlTextureImpl> {
 function liveBuffer(index: int32): Ptr<MtlBufferImpl> { return buffers[index].natives[buffers[index].active]; }
 
 export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, destination: GPUBuffer, destinationOffset: int64, size: int64): void {
-	const from = copyableBuffer(source, "copyBufferToBuffer source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyDestinationBuffer(destination, "copyBufferToBuffer destination");
-	checkedBufferCopy(source.id, bufferRecords.slots[from].size, sourceOffset, destination.id, bufferRecords.slots[to].size, destinationOffset, size);
-	if (size == 0) { return; }
+	const from = bufferRecords.slotIndex(source.id);
+	const to = copyDestinationBuffer(destination);
 	beginFrame();
 	mtlBlitBufferToBuffer(commandBuffer, liveBuffer(from), sourceOffset, liveBuffer(to), destinationOffset, size);
 	buffers[from].gpuUseFrame = currentFrame();
@@ -2033,9 +1740,8 @@ export function copyBufferToBuffer(source: GPUBuffer, sourceOffset: int64, desti
 }
 
 export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyBufferInfo, size: GPUExtent3D): void {
-	const from = copyableTexture(source, "copyTextureToBuffer source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
-	const to = copyDestinationBuffer(destination.buffer, "copyTextureToBuffer destination");
-	checkedCopyRegion("copyTextureToBuffer source", textureRecords.slots[from], source, size);
+	const from = copyableTexture(source, "copyTextureToBuffer source");
+	const to = copyDestinationBuffer(destination.buffer);
 	const bytesPerPixel = texelCopyBytes(from, "copyTextureToBuffer source", false, source, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", bytesPerPixel, bufferRecords.slots[to].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
@@ -2052,9 +1758,8 @@ export function copyTextureToBuffer(source: GPUTexelCopyTextureInfo, destination
 }
 
 export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	const from = copyableBuffer(source.buffer, "copyBufferToTexture source", GPUBufferUsage.COPY_SRC as int32, "COPY_SRC");
+	const from = bufferRecords.slotIndex(source.buffer.id);
 	const to = copyDestinationTexture(destination, "copyBufferToTexture destination");
-	checkedCopyRegion("copyBufferToTexture destination", textureRecords.slots[to], destination, size);
 	const bytesPerPixel = texelCopyBytes(to, "copyBufferToTexture destination", true, destination, size);
 	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", bytesPerPixel, bufferRecords.slots[from].size, source, size);
 	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
@@ -2071,22 +1776,8 @@ export function copyBufferToTexture(source: GPUTexelCopyBufferInfo, destination:
 }
 
 export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destination: GPUTexelCopyTextureInfo, size: GPUExtent3D): void {
-	const from = copyableTexture(source, "copyTextureToTexture source", GPUTextureUsage.COPY_SRC as int32, "COPY_SRC");
+	const from = copyableTexture(source, "copyTextureToTexture source");
 	const to = copyDestinationTexture(destination, "copyTextureToTexture destination");
-	checkedCopyRegion("copyTextureToTexture source", textureRecords.slots[from], source, size);
-	checkedCopyRegion("copyTextureToTexture destination", textureRecords.slots[to], destination, size);
-	checkedTextureToTextureCopy(
-		source,
-		destination,
-		size,
-		textureRecords.slots[from].format,
-		textureRecords.slots[to].format,
-		textureRecords.slots[from].volume,
-		textureRecords.slots[to].volume,
-		formatInfo(textureRecords.slots[from].format, "texture format").depth,
-		textureRecords.slots[from].width,
-		textureRecords.slots[from].height,
-	);
 	beginFrame();
 	if (textureRecords.slots[from].volume) {
 		mtlBlitTextureToTexture(commandBuffer, liveTexture(from), 0, source.mipLevel, source.origin.x, source.origin.y, source.origin.z, size.width, size.height, size.depthOrArrayLayers, liveTexture(to), 0, destination.mipLevel, destination.origin.x, destination.origin.y, destination.origin.z);
@@ -2101,45 +1792,25 @@ export function copyTextureToTexture(source: GPUTexelCopyTextureInfo, destinatio
 // work that wrote them is done. The wait is on the last committed command buffer, never on the
 // frame's open one: Metal runs a queue's buffers in order and the open one commits only after
 // this call returns.
-export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, size: int64): void {
+export function mapAsync(buffer: GPUBuffer, mode: int32, offset: int64, length: int64): void {
 	const index = bufferRecords.slotIndex(buffer.id);
-	const length = checkedMapAsync(buffer.id, bufferRecords.slots[index].usage, buffers[index].mapMode, bufferRecords.slots[index].size, mode, offset, size);
 	if (buffers[index].gpuUseFrame >= 0) {
 		if (commandBuffer != null && buffers[index].gpuUseFrame == currentFrame()) {
 			stop(`mapAsync on GPUBuffer ${buffer.id} would wait for the frame's command buffer, which is not committed: submit the copy first`);
 		}
 		if (mtlWaitCommitted() == 0) { stop(`mapAsync on GPUBuffer ${buffer.id}: the command buffer that wrote it failed`); }
 	}
-	buffers[index].mapMode = mode;
-	buffers[index].mapOffset = offset;
-	buffers[index].mapSize = length;
-}
-
-function mappedRange(member: string, buffer: GPUBuffer, mode: int32, offset: int64, size: int64): int64 {
-	const index = bufferRecords.slotIndex(buffer.id);
-	const slot = buffers[index];
-	return checkedMappedRange(member, buffer.id, bufferRecords.slots[index].size, slot.mapMode, slot.mapOffset, slot.mapSize, mode, offset, size);
 }
 
 // A copy of the mapped bytes: WebGPU's ArrayBuffer view has no MetaScript counterpart on a native pointer.
-export function getMappedRange(buffer: GPUBuffer, offset: int64, size: int64): Vec<uint8> {
-	const length = mappedRange("getMappedRange", buffer, GPUMapMode.READ as int32, offset, size);
+export function getMappedRange(buffer: GPUBuffer, offset: int64, length: int64): Vec<uint8> {
 	let bytes: Vec<uint8> = new Array(length);
 	mtlCopyOut(liveBuffer(bufferRecords.slotIndex(buffer.id)), offset, bytes[0], length);
 	return bytes;
 }
 
 export function writeMappedRange<T>(buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): void {
-	if (data.length == 0) { return; }
-	const bytes = (data.length as int64) * (sizeof T as int64);
-	mappedRange("writeMappedRange", buffer, GPUMapMode.WRITE as int32, offset, bytes);
-	mtlCopyIn(liveBuffer(bufferRecords.slotIndex(buffer.id)), offset, data[0], bytes);
-}
-
-export function unmap(buffer: GPUBuffer): void {
-	const index = bufferRecords.slotIndex(buffer.id);
-	checkedUnmap(buffer.id, buffers[index].mapMode);
-	buffers[index].mapMode = 0;
+	mtlCopyIn(liveBuffer(bufferRecords.slotIndex(buffer.id)), offset, data[0], (data.length as int64) * (sizeof T as int64));
 }
 export function createComputePipeline(id: uint32, descriptor: GPUComputePipelineDescriptor): void {
 	const s = shaderRecords.slotIndex(descriptor.compute.module.id);
@@ -2166,43 +1837,30 @@ export function beginComputePass(passEncoder: GPUCommandEncoder, descriptor: GPU
 	beginFrame();
 	computeEncoder = mtlBeginComputePass(commandBuffer, labelText(descriptor.label));
 	if (computeEncoder == null) { stop("computeCommandEncoder returned nil"); }
-	computeBound = { pipeline: 0 };
+	computeBound = { dirty: false };
 	clearBinds();
 	return { id: 1 };
 }
 
 export function setComputePipeline(pipeline: GPUComputePipeline): void {
-	checkedComputePipeline(pipeline.id, pipelines[pipelineRecords.slotIndex(pipeline.id)].compute);
-	computeBound.pipeline = pipeline.id;
 	computeBound.dirty = true;
 }
 
 export function setComputeBindGroup(index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	computeBound.bindGroups[index] = bindGroup.id;
 	computeBound.dirty = true;
-	if (bindGroup.id == 0) { return; }
-	const g = bindGroupRecords.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, bindGroups[g].group, bindGroups[g].dynamicCount, dynamicOffsets, UNIFORM_OFFSET_ALIGNMENT);
-	if (index == GPU_UNIFORM_GROUP) {
-		for (let i = 0; i < bindGroups[g].dynamicCount; i++) {
-			computeBound.dynamicOffsets[i] = dynamicOffsets[i];
-		}
-	}
 }
 
 function applyCompute(): int32 {
-	const p = pipelineRecords.slotIndex(computeBound.pipeline);
+	const p = slotOf(boundFacts.pipeline);
 	const s = shaderRecords.slotIndex(pipelines[p].shader);
 	if (computeBound.dirty) {
 		computeBound.dirty = false;
 		mtlComputeSetPipeline(computeEncoder, pipelines[p].computeState);
 		if (shaders[s].uniformCount > 0) {
-			if (computeBound.bindGroups[GPU_UNIFORM_GROUP] == 0) { stop("the compute pipeline reads bind group 0, which is not set"); }
-			applyComputeUniforms(s, bindGroupRecords.slotIndex(computeBound.bindGroups[GPU_UNIFORM_GROUP]));
+			applyComputeUniforms(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_UNIFORM_GROUP]));
 		}
 		if (shaders[s].resourceCount > 0) {
-			if (computeBound.bindGroups[GPU_RESOURCE_GROUP] == 0) { stop("the compute pipeline reads bind group 1, which is not set"); }
-			applyComputeResources(s, bindGroupRecords.slotIndex(computeBound.bindGroups[GPU_RESOURCE_GROUP]));
+			applyComputeResources(s, bindGroupRecords.slotIndex(boundFacts.bindGroups[GPU_RESOURCE_GROUP]));
 		}
 	}
 	return s;
@@ -2211,11 +1869,8 @@ function applyCompute(): int32 {
 function applyComputeUniforms(s: int32, g: int32): void {
 	for (let u = 0; u < shaders[s].uniformCount; u++) {
 		const e = entryOf(bindGroups[g], shaders[s].uniforms[u].binding);
-		const offset = (computeBound.dynamicOffsets[bindGroups[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
+		const offset = (boundFacts.dynamicOffsets[bindGroupRecords.slots[g].dynamicIndex[e]] as int64) + bindGroups[g].entries[e].offset;
 		const b = bufferRecords.slotIndex(bindGroups[g].entries[e].buffer.id);
-		if (offset + (shaders[s].uniforms[u].size as int64) > bufferRecords.slots[b].size) {
-			stop(`uniform binding ${shaders[s].uniforms[u].binding} at offset ${offset} overruns its buffer`);
-		}
 		bindBuffer(STAGE_COMPUTE, buffers[b].natives[buffers[b].active], offset, shaders[s].uniforms[u].nativeSlot);
 	}
 }
@@ -2242,8 +1897,7 @@ export function dispatchWorkgroups(x: int32, y: int32, z: int32): void {
 }
 
 export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): void {
-	const b = bufferRecords.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, bufferRecords.slots[b].usage, bufferRecords.slots[b].size, offset);
+	const b = slotOf(buffer.id);
 	const s = applyCompute();
 	const size: int32[3] = shaders[s].workgroup;
 	mtlDispatchIndirect(computeEncoder, liveBuffer(b), offset, size[0], size[1], size[2]);
@@ -2252,7 +1906,7 @@ export function dispatchWorkgroupsIndirect(buffer: GPUBuffer, offset: int64): vo
 export function endComputePass(): void {
 	mtlEndPass(computeEncoder);
 	computeEncoder = NO_ENCODER;
-	computeBound = { pipeline: 0 };
+	computeBound = { dirty: false };
 }
 
 export function limits(): GPUSupportedLimits {
@@ -2331,16 +1985,9 @@ export function insertDebugMarker(label: string): void {
 export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): void {
 	const kind: string = descriptor.type;
 	const timestamp = kind == "timestamp";
-	if (timestamp && mtlSupportsTimestamps(device) == 0) {
-		stop("this device has no timestamp queries: features().has('timestamp-query') is false (MTLCounterSamplingPointAtStageBoundary and a nanosecond timestamp counter are required)");
-	}
 	let slot: QuerySetSlot = {
-		timestamp: timestamp,
-		count: descriptor.count,
 		samples: NO_SAMPLE_BUFFER,
 		visibility: NO_BUFFER,
-		state: new Array(descriptor.count),
-		usedPass: new Array(descriptor.count),
 	};
 	if (timestamp) {
 		slot.samples = mtlNewSampleBuffer(device, descriptor.count, labelText(descriptor.label));
@@ -2358,7 +2005,7 @@ export function createQuerySet(id: uint32, descriptor: GPUQuerySetDescriptor): v
 
 export function destroyQuerySet(querySet: GPUQuerySet): void {
 	const index = querySetRecords.slotIndex(querySet.id);
-	if (querySets[index].timestamp) {
+	if (querySetRecords.slots[index].timestamp) {
 		mtlReleaseSampleBuffer(querySets[index].samples);
 	} else {
 		mtlReleaseBuffer(querySets[index].visibility);
@@ -2366,39 +2013,14 @@ export function destroyQuerySet(querySet: GPUQuerySet): void {
 	vacate(querySets, querySet.id);
 }
 
-function checkTimestampWrites(member: string, writes: GPUPassTimestampWrites): void {
-	if (writes.querySet.id == 0) { return; }
-	const q = querySetRecords.slotIndex(writes.querySet.id);
-	checkedTimestampWrites(member, writes, querySets[q].timestamp, querySets[q].count);
-}
-
-function markTimestampsWritten(q: int32, writes: GPUPassTimestampWrites): void {
-	if (writes.beginningOfPassWriteIndex >= 0) { querySets[q].state[writes.beginningOfPassWriteIndex] = QueryState.Written; }
-	if (writes.endOfPassWriteIndex >= 0) { querySets[q].state[writes.endOfPassWriteIndex] = QueryState.Written; }
-}
-
 // A timestamp resolves in the counters' own ticks, which are nanoseconds on the devices
 // features() reports timestamp-query for (an Intel GPU's tick is 83.333 ns and is refused).
 export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryCount: int32, destination: GPUBuffer, destinationOffset: int64): void {
 	const q = querySetRecords.slotIndex(querySet.id);
 	const b = bufferRecords.slotIndex(destination.id);
-	const bytes = checkedResolveQuerySet(
-		querySets[q].count,
-		firstQuery,
-		queryCount,
-		destination.id,
-		bufferRecords.slots[b].usage,
-		bufferRecords.slots[b].size,
-		destinationOffset,
-	);
-	if (queryCount == 0) { return; }
-	for (let i = 0; i < queryCount; i++) {
-		const state = querySets[q].state[firstQuery + i];
-		if (state == QueryState.Unwritten) { stop(`resolveQuerySet: query ${firstQuery + i} was never written`); }
-		if (state == QueryState.Open) { stop(`resolveQuerySet: query ${firstQuery + i} is still open`); }
-	}
+	const bytes = (queryCount as int64) * QUERY_BYTES;
 	beginFrame();
-	if (querySets[q].timestamp) {
+	if (querySetRecords.slots[q].timestamp) {
 		mtlResolveCounters(commandBuffer, querySets[q].samples, firstQuery, queryCount, liveBuffer(b), destinationOffset);
 	} else {
 		mtlBlitBufferToBuffer(commandBuffer, querySets[q].visibility, (firstQuery as int64) * QUERY_BYTES, liveBuffer(b), destinationOffset, bytes);
@@ -2407,16 +2029,9 @@ export function resolveQuerySet(querySet: GPUQuerySet, firstQuery: int32, queryC
 }
 
 export function beginOcclusionQuery(queryIndex: int32): void {
-	const q = querySetRecords.slotIndex(occlusionSetId());
-	checkedOcclusionRange(queryIndex, querySets[q].count);
-	checkedOcclusionReuse(queryIndex, querySets[q].usedPass[queryIndex]);
-	querySets[q].usedPass[queryIndex] = passSerial();
-	querySets[q].state[queryIndex] = QueryState.Open;
 	mtlSetVisibility(encoder, 1, (queryIndex as int64) * QUERY_BYTES);
 }
 
 export function endOcclusionQuery(): void {
-	const q = querySetRecords.slotIndex(occlusionSetId());
 	mtlSetVisibility(encoder, 0, (occlusionQueryIndex() as int64) * QUERY_BYTES);
-	querySets[q].state[occlusionQueryIndex()] = QueryState.Written;
 }

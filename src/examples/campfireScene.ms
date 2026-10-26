@@ -1184,8 +1184,16 @@ function forceRebuild(): void {
 		const at: int32 = i * BILLBOARD_INSTANCE_STRIDE;
 		flameBuffers[i] = makeVertexBuffer(flameInstances[at..at + BILLBOARD_INSTANCE_STRIDE]);
 	}
-	grassImage = makeImage(tuftPixels[0..TUFT_CELL * ATLAS_CELLS * TUFT_CELL], TUFT_CELL * ATLAS_CELLS, TUFT_CELL);
-	flameImage = makeImage(flamePixels[0..FLAME_CELL_WIDTH * FLAME_FRAMES * FLAME_CELL_HEIGHT], FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_CELL_HEIGHT);
+	grassImage = makeImage(
+		tuftPixels[0..TUFT_CELL * ATLAS_CELLS * TUFT_CELL],
+		TUFT_CELL * ATLAS_CELLS,
+		TUFT_CELL,
+	);
+	flameImage = makeImage(
+		flamePixels[0..FLAME_CELL_WIDTH * FLAME_FRAMES * FLAME_CELL_HEIGHT],
+		FLAME_CELL_WIDTH * FLAME_FRAMES,
+		FLAME_CELL_HEIGHT,
+	);
 	grassTexture = makeTextureView(grassImage);
 	flameTexture = makeTextureView(flameImage);
 	pointSampler = Sampler.create(FilterMode.Nearest, Wrap.Clamp);

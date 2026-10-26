@@ -231,6 +231,8 @@ let pass: GPURenderPassEncoder = { id: 0 };
 let current: int32 = -1;
 let openPass: PassState = PassState.None;
 let passViews: uint32[PASS_VIEW_SLOTS] = [0, 0, 0, 0, 0];
+let passWidth: int32 = 0;
+let passHeight: int32 = 0;
 // Cube images by id, so a texture view of one samples it as a cube, as sokol's does.
 let cubeImages: Vec<uint32> = [];
 
@@ -240,8 +242,8 @@ let cubeImages: Vec<uint32> = [];
 // the generation nothing current carries.
 @exportName("doorSetup")
 export function doorSetup(
-	nativeDevice: Ptr<void>,
-	nativeContext: Ptr<void>,
+	nativeDevice: Ptr<void> | null,
+	nativeContext: Ptr<void> | null,
 	colorFormat: int32,
 	depthFormat: int32,
 	sampleCount: int32,
@@ -1369,7 +1371,18 @@ export function doorDraw(base: int32, count: int32, instances: int32): void {
 
 @exportName("doorApplyScissor")
 export function doorApplyScissor(x: int32, y: int32, width: int32, height: int32): void {
-	pass.setScissorRect(x, y, width, height);
+	const left = Math.min(Math.max(x, 0), passWidth);
+	const top = Math.min(Math.max(y, 0), passHeight);
+	const right = Math.max(Math.min(x + width, passWidth), left);
+	const bottom = Math.max(Math.min(y + height, passHeight), top);
+	pass.setScissorRect(left, top, right - left, bottom - top);
+}
+
+function measurePass(view: uint32): void {
+	const attachment: GPUTextureView = { id: view };
+	const level = attachment.baseMipLevel();
+	passWidth = mipSide(attachment.texture().width(), level);
+	passHeight = mipSide(attachment.texture().height(), level);
 }
 
 const READBACK_ROW_ALIGNMENT = 256;
@@ -1472,12 +1485,18 @@ export function doorReadScreen(out: Span<uint8>): int32 {
 
 function timestampsOf(label: string): GPUPassTimestampWrites {
 	if (timerState() == GPU_TIMER_ON) { return timerPassWrites(label); }
-	return { querySet: { id: 0 }, beginningOfPassWriteIndex: GPU_NO_QUERY_INDEX, endOfPassWriteIndex: GPU_NO_QUERY_INDEX };
+	return {
+		querySet: { id: 0 },
+		beginningOfPassWriteIndex: GPU_NO_QUERY_INDEX,
+		endOfPassWriteIndex: GPU_NO_QUERY_INDEX,
+	};
 }
 
 // The GPU time of each pass, read GPU_TIMER_RING - 1 frames after it was drawn so the read never
 // waits (src/gpu/gpuTimer.ms). Returns GPU_TIMER_ON or GPU_TIMER_UNSUPPORTED.
-export function doorEnableGpuTimer(maxPasses: int32): int32 { return timerEnable(device, maxPasses); }
+export function doorEnableGpuTimer(maxPasses: int32): int32 {
+	return timerEnable(device, maxPasses);
+}
 export function doorGpuTimerState(): int32 { return timerState(); }
 export function doorGpuTimerFrame(): int64 { return timerResultFrame(); }
 export function doorGpuTimerPassCount(): int32 { return timerResultCount(); }
@@ -1539,6 +1558,9 @@ export function doorBeginPass(
 		passViews[i] = colors[i].view;
 	}
 	passViews[DOOR_MAX_COLOR_ATTACHMENTS] = depth.view;
+	for (let i = 0; i < PASS_VIEW_SLOTS; i++) {
+		if (passViews[i] != 0) { measurePass(passViews[i]); break; }
+	}
 	current = -1;
 }
 
@@ -1567,6 +1589,7 @@ export function doorBeginColorPass(
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Target;
 	passViews = [view, 0, 0, 0, 0];
+	measurePass(view);
 	current = -1;
 }
 
@@ -1601,6 +1624,7 @@ export function doorBeginScreenPass(
 	frameStats[DOOR_STAT_PASSES]++;
 	openPass = PassState.Screen;
 	passViews = [0, 0, 0, 0, 0];
+	measurePass(screen.id);
 	current = -1;
 }
 

@@ -681,7 +681,7 @@ test "a stencil write at reference 1 masks a later equal-test draw to the left h
 	pass.draw(4, 1, 0, 0);
 	pass.setPipeline(tester);
 	pass.setVertexBuffer(0, vertices, 32);
-	pass.setBindGroup(0, group, green);
+	pass.setBindGroup(0, uniformGroup(device, tester, uniforms), green);
 	pass.draw(4, 1, 0, 0);
 	pass.end();
 	device.queue.submit(encoder.finish());

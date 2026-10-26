@@ -526,6 +526,10 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "text/outlineSdfSeam", phase: "P6", width: 320, height: 96, dpi: 1.0,
 			steps: 0, demo: false },
+		{ name: "clip/roundedMask", phase: "P8", width: 320, height: 200, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "filter/mask", phase: "P8", width: 320, height: 200, dpi: 1.0,
+			steps: 0, demo: false },
 	];
 }
 
@@ -544,6 +548,7 @@ export function sceneDrawCounts(): int32[] {
 		2, 4, 2, 18, 4, 1, 2, 1, 3, 5, 5, 2, 2, 1, 1,
 		1, 1, 1, 1, 1, 1, 1,
 		1, 1, 1, 2, 1, 2, 1, 2, 1, 2,
+		8, 6,
 	];
 }
 
@@ -557,6 +562,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+		0, 19,
 	];
 }
 

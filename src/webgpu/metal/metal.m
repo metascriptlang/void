@@ -791,9 +791,19 @@ void mtlDispatchIndirect(MtlEncoder encoder, MtlBuffer arguments, int64_t offset
 		threadsPerThreadgroup:MTLSizeMake((NSUInteger)threadsX, (NSUInteger)threadsY, (NSUInteger)threadsZ)];
 }
 
+static id<MTLSharedEvent> s_counterWrites;
+static uint64_t s_counterWritesValue;
+
 MtlSampleBuffer mtlNewSampleBuffer(MtlDevice device, int32_t count, const char *label) {
 	@autoreleasepool {
 		id<MTLDevice> d = (id<MTLDevice>)device;
+		if (s_counterWrites == nil && [d supportsFamily:MTLGPUFamilyApple8]) {
+			s_counterWrites = [d newSharedEvent];
+			if (s_counterWrites == nil) {
+				snprintf(s_log, sizeof s_log, "Metal could not make the shared event that orders counter resolves");
+				return NULL;
+			}
+		}
 		id<MTLCounterSet> timestamp = nil;
 		for (id<MTLCounterSet> set in [d counterSets]) {
 			if ([[set name] isEqualToString:MTLCommonCounterSetTimestamp]) timestamp = set;
@@ -814,8 +824,18 @@ MtlSampleBuffer mtlNewSampleBuffer(MtlDevice device, int32_t count, const char *
 
 void mtlReleaseSampleBuffer(MtlSampleBuffer samples) { [(id<MTLCounterSampleBuffer>)samples release]; }
 
+// Apple8+ GPUs resolve counters before an earlier pass's end sample lands (crbug.com/372698905,
+// 7 of 12 gpuTimer runs on an M3 Max); a shared event signalled and awaited serializes them.
+static void waitForCounterWrites(id<MTLCommandBuffer> commandBuffer) {
+	if (s_counterWrites == nil) return;
+	s_counterWritesValue++;
+	[commandBuffer encodeSignalEvent:s_counterWrites value:s_counterWritesValue];
+	[commandBuffer encodeWaitForEvent:s_counterWrites value:s_counterWritesValue];
+}
+
 void mtlResolveCounters(MtlCommandBuffer commandBuffer, MtlSampleBuffer samples, int32_t first, int32_t count, MtlBuffer destination, int64_t destinationOffset) {
 	@autoreleasepool {
+		waitForCounterWrites((id<MTLCommandBuffer>)commandBuffer);
 		id<MTLBlitCommandEncoder> blit = [(id<MTLCommandBuffer>)commandBuffer blitCommandEncoder];
 		[blit resolveCounters:(id<MTLCounterSampleBuffer>)samples
 			inRange:NSMakeRange((NSUInteger)first, (NSUInteger)count)

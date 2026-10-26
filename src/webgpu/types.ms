@@ -29,6 +29,8 @@ export const GPU_MAX_ANISOTROPY: int32 = 16;
 export const GPU_UNIFORM_GROUP = 0;
 export const GPU_RESOURCE_GROUP = 1;
 
+export enum DeviceLoss { None, Recover, Fatal }
+
 export enum GPUBufferUsage {
 	MAP_READ = 0x1,
 	MAP_WRITE = 0x2,
@@ -488,6 +490,199 @@ export function linearFilter(filter: string, member: string, backend: string): b
 	return value == 1;
 }
 
+export struct TextureFormatFacts {
+	index: int32;
+	bytesPerPixel: int32;
+	depth: boolean;
+	stencil: boolean;
+}
+
+export const FORMAT_COUNT = 22;
+
+function colorFacts(index: int32, bytesPerPixel: int32): TextureFormatFacts {
+	return { index: index, bytesPerPixel: bytesPerPixel, depth: false, stencil: false };
+}
+
+@noinline export function stopOnFormat(backend: string, member: string, value: string): TextureFormatFacts {
+	console.log(`webgpu ${backend}: ${member} '${value}' is not supported`);
+	unreachable;
+}
+
+export function textureFormatFacts(format: string, member: string, backend: string): TextureFormatFacts {
+	return match (format) {
+		"r8unorm" => colorFacts(0, 1),
+		"rg8unorm" => colorFacts(1, 2),
+		"rgba8unorm" => colorFacts(2, 4),
+		"rgba8unorm-srgb" => colorFacts(3, 4),
+		"bgra8unorm" => colorFacts(4, 4),
+		"bgra8unorm-srgb" => colorFacts(5, 4),
+		"rgba8uint" => colorFacts(6, 4),
+		"rgba8sint" => colorFacts(7, 4),
+		"r16float" => colorFacts(8, 2),
+		"rg16float" => colorFacts(9, 4),
+		"rgba16float" => colorFacts(10, 8),
+		"rgba16uint" => colorFacts(11, 8),
+		"r32float" => colorFacts(12, 4),
+		"rg32float" => colorFacts(13, 8),
+		"rgba32float" => colorFacts(14, 16),
+		"rgba32uint" => colorFacts(15, 16),
+		"r32uint" => colorFacts(16, 4),
+		"rgb10a2unorm" => colorFacts(17, 4),
+		"rg11b10ufloat" => colorFacts(18, 4),
+		"depth16unorm" => ({ index: 19, bytesPerPixel: 2, depth: true, stencil: false }),
+		"depth32float" => ({ index: 20, bytesPerPixel: 4, depth: true, stencil: false }),
+		"depth24plus-stencil8" => ({ index: 21, bytesPerPixel: 8, depth: true, stencil: true }),
+		_ => stopOnFormat(backend, member, format),
+	};
+}
+
+export function nativeAt<T>(table: T[], members: int32, index: int32, backend: string, what: string): T {
+	if (table.length != members) { stop(`webgpu ${backend}: the ${what} table has ${table.length} entries for ${members} members`); }
+	return table[index];
+}
+
+export function compareIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"never" => 0,
+		"less" => 1,
+		"equal" => 2,
+		"less-equal" => 3,
+		"greater" => 4,
+		"not-equal" => 5,
+		"greater-equal" => 6,
+		"" | "always" => 7,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function compareNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 8, compareIndex(value, member, backend), backend, "compare function");
+}
+
+export function blendFactorIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"zero" => 0,
+		"" | "one" => 1,
+		"src" => 2,
+		"one-minus-src" => 3,
+		"src-alpha" => 4,
+		"one-minus-src-alpha" => 5,
+		"dst" => 6,
+		"one-minus-dst" => 7,
+		"dst-alpha" => 8,
+		"one-minus-dst-alpha" => 9,
+		"src-alpha-saturated" => 10,
+		"constant" => 11,
+		"one-minus-constant" => 12,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function blendFactorNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 13, blendFactorIndex(value, member, backend), backend, "blend factor");
+}
+
+export function blendOperationIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"" | "add" => 0,
+		"subtract" => 1,
+		"reverse-subtract" => 2,
+		"min" => 3,
+		"max" => 4,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function blendOperationNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 5, blendOperationIndex(value, member, backend), backend, "blend operation");
+}
+
+export function stencilOperationIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"" | "keep" => 0,
+		"zero" => 1,
+		"replace" => 2,
+		"invert" => 3,
+		"increment-clamp" => 4,
+		"decrement-clamp" => 5,
+		"increment-wrap" => 6,
+		"decrement-wrap" => 7,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function stencilOperationNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 8, stencilOperationIndex(value, member, backend), backend, "stencil operation");
+}
+
+export function vertexFormatIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"uint8x2" => 0,
+		"uint8x4" => 1,
+		"sint8x2" => 2,
+		"sint8x4" => 3,
+		"unorm8x2" => 4,
+		"unorm8x4" => 5,
+		"snorm8x2" => 6,
+		"snorm8x4" => 7,
+		"uint16x2" => 8,
+		"uint16x4" => 9,
+		"sint16x2" => 10,
+		"sint16x4" => 11,
+		"unorm16x2" => 12,
+		"unorm16x4" => 13,
+		"snorm16x2" => 14,
+		"snorm16x4" => 15,
+		"float16x2" => 16,
+		"float16x4" => 17,
+		"float32" => 18,
+		"float32x2" => 19,
+		"float32x3" => 20,
+		"float32x4" => 21,
+		"uint32" => 22,
+		"uint32x2" => 23,
+		"uint32x3" => 24,
+		"uint32x4" => 25,
+		"sint32" => 26,
+		"sint32x2" => 27,
+		"sint32x3" => 28,
+		"sint32x4" => 29,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function vertexFormatNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 30, vertexFormatIndex(value, member, backend), backend, "vertex format");
+}
+
+export function addressModeIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"" | "clamp-to-edge" => 0,
+		"repeat" => 1,
+		"mirror-repeat" => 2,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function addressModeNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 3, addressModeIndex(value, member, backend), backend, "address mode");
+}
+
+export function topologyIndex(value: string, member: string, backend: string): int32 {
+	return match (value) {
+		"point-list" => 0,
+		"line-list" => 1,
+		"line-strip" => 2,
+		"" | "triangle-list" => 3,
+		"triangle-strip" => 4,
+		_ => stopOnMember(backend, member, value),
+	};
+}
+
+export function topologyNative<T>(table: T[], value: string, member: string, backend: string): T {
+	return nativeAt(table, 5, topologyIndex(value, member, backend), backend, "primitive topology");
+}
+
 export struct GPUBindGroupEntry {
 	binding: int32;
 	buffer: GPUBuffer;
@@ -804,13 +999,6 @@ export function vertexOffsetRefusal(call: string, pipeline: string, member: stri
 
 @noinline export function checkedUnmap(id: uint32, mapMode: int32): void {
 	if (mapMode == 0) { stop(`unmap on GPUBuffer ${id}, which is not mapped`); }
-}
-
-@noinline export function checkedWriteBuffer(id: uint32, bufferSize: int64, offset: int64, bytes: int64): void {
-	if (offset < 0 || offset + bytes > bufferSize) {
-		stop(`writeBuffer of ${bytes} bytes at ${offset} overruns GPUBuffer ${id} of ${bufferSize}`);
-	}
-	if ((offset & 3) != 0) { stop(`writeBuffer offset ${offset} is not a multiple of 4`); }
 }
 
 export function viewMipsRefusal(id: uint32, mipLevels: int32, baseMip: int32, mipCount: int32): string {

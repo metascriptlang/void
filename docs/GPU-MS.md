@@ -838,3 +838,91 @@ backend tears down (`_sg_discard_all_resources` `:26431`). A Vulkan `backend.ms`
   `frameIndex` or shutdown loop of its own. `pool.ms` keeps `Pool`/`allocate`/`store`/`release`
   until `vulkan/resources.ms` moves over.
 At shutdown D3D11 now releases resources before `ClearState`: a WARP run confirms it.
+
+Progress, step 4 (merged at `e8f433b8`, pushed with the fixes below): the per-resource rules run in
+`device.ms` before the backend, so Vulkan drops its own copies of them:
+- copies (usage, map state, regions, formats), query sets (timestamp, occlusion, resolve),
+  `setBindGroup` (group and dynamic offsets), `writeBuffer` and the once-per-frame rule, storage
+  view format mismatch, blending an integer format, and a scissor outside the attachment;
+- `pool.ms` holds map state, `writtenFrame`, pipeline kind, shader index reads, bind-group
+  `dynamicCount` and query state; `backend.mapAsync` changed and `unmap` left the backend;
+- any STORAGE buffer size is accepted (an unaligned range is refused only at binding), and a
+  swapchain sample count is refused only where the native API cannot make it;
+- `DeviceLoss { None, Recover, Fatal }` lives once in `types.ms`.
+
+Your stencil red is fixed in `c2b640d6`: `stencil8Mask` in `validate.ms` hands D3D11, GL and wgpu
+the low 8 bits (every stencil format has 8), and `webgpuValidateCheck` pins it. Vulkan's
+`VkStencilOpState` masks are `uint32_t`, so it can take the WebGPU value as is or call the same
+helper. A rerun of `webgpuD3d11Check` on WARP is the check this side cannot make.
+
+The door's scissor now clamps to the pass attachment (`c75feb8f`), as sokol's
+`_sg_clipi` (`sokol_gfx.h:8459`) does on every backend: the batcher's `ceil(logical * dpi)`
+overshoots the swapchain by one pixel at 175% for 262 of 8000 widths, which the shared refusal
+above would stop. `webgpuMetalCheck` pins it red without the clamp and green with it.
+
+`gpuTimer` was red 7 of 12 runs on the M3 Max: `resolveCounters` in the same command buffer read
+the counter sample buffer before the render pass's end sample landed. Metal now signals and waits
+on an `MTLSharedEvent` before each resolve on Apple8+ GPUs (`8d8faeda`), as Dawn's
+`metal_serialize_timestamp_generation_and_resolution` does (crbug.com/372698905); 0 of 20 since.
+An `MTLFence` and a plain `MTLEvent` did not fix it. `gpuTimer` now runs on every Mac gate.
+
+Progress, step 5 (merged at `5d300d4f`, pushed with `c7b255e1`): the open pass's state and the
+draw-time rules live above the backends, so Vulkan can drop its copies:
+- `createBindGroup` checks each entry against the shader record's reflected bindings
+  (`checkedBindGroupEntry`, after sokol's `apply_bindings` checks at `sokol_gfx.h:25196`); the
+  record keeps `bindings`, `bindingCount` and `groups`;
+- `BindGroupRecord.dynamicIndex` ranks the dynamic offsets once, at creation;
+- `validate.ms` holds `boundFacts` (pipeline, vertex and index buffers with offsets, bind groups,
+  dynamic offsets), set by `markPipelineSet`, `markVertexSet`, `markIndexSet` and
+  `markBindGroupSet` and reset at pass begin; a backend reads it instead of keeping its own;
+- a draw or dispatch is refused before the backend when the pipeline reads a vertex buffer or a
+  bind group the pass never set. As the spec's "valid to draw" says, a slot is required when its
+  layout is not empty: a stride or an attribute (`vertexSlotsOf`), so a stride-only slot counts.
+Vulkan never had these stops, so it gains them from `device.ms` without a change.
+
+Two goldens need a D3D11 capture on WARP: `clip/roundedMask` (rounded Mask clip, `7138b049`) and
+`filter/mask` (Mask filter, `5a60dd23`). The rounded clip changed the `ui`, `sprite` and `void2d`
+programs, so `scripts/regen-shaders.sh` on Windows has six DXBC blobs to rebuild with fxc (vertex
+and fragment of each); the Mac reports them as `dxbc miss … no fxc`.
+
+Progress, step 6 (merged at `3fe40ad4`): format and enum decoding lives once in `types.ms`.
+`textureFormatFacts(format, member, backend)` gives the ordinal, bytes per texel, depth and
+stencil; `compareIndex`, `blendFactorIndex`, `blendOperationIndex`, `stencilOperationIndex`,
+`vertexFormatIndex`, `addressModeIndex` and `topologyIndex` decode a name with WebGPU's `""`
+default and stop by name on an unknown one. A backend keeps one native table per enum, in the
+union order of `types.ms`, read through `nativeAt` or `<enum>Native(table, …)`, which stops when a
+table's length differs from the member count. Every row was checked against the old match arms on
+all five backends; D3D11 keeps a colour and an alpha blend-factor table, GL its BGRA gap. For
+Vulkan: `conv.ms:78-106` (its own `formatInfo`) and `conv.ms:196-237` can become tables read the
+same way. A WARP run of `webgpuD3d11Check` and a GL run are the checks this side cannot make.
+
+Progress, step 7 (merged at `50213677`): the frame calls check each rule once, above the backend.
+`checkedDrawState` now also refuses an indexed strip draw whose index format differs from the
+pipeline's `stripIndexFormat` and a draw whose shader module was destroyed; `device.ms` checks an
+indirect dispatch buffer (`checkedDispatchIndirect`). `checkedDrawState` and `checkedDispatchBound`
+generation-check the bound pipeline, so a backend reads it with `slotOf(boundFacts.pipeline)`.
+Vulkan can drop its own strip-index, indirect-dispatch and destroyed-module checks and read the
+pipeline the same way. Per-draw liveness checks of bound buffers, groups and views stay in the
+backends: they catch a resource destroyed after it was set. `tests/aborts/cases/webgpuDummyCases.ms`
+pins the three moved refusals on the dummy backend, so they run on Windows too.
+
+Frame-path items only Windows can measure (docs/GPU.md "Beyond sokol on the frame path": each is
+built once a probe shows the cost it removes), from the 2026-10-26 audit at `1c02b3df`:
+- D3D11: `d3dClearState` at endPass and endComputePass (Heaps keeps state across passes and unbinds
+  a texture's SRV before it becomes a target, `DirectXDriver.hx:969-980`); compute rebinds every
+  view with no compare (`d3dCsClearViews`); 3D slice views made and released every pass.
+- GL: every dirty apply re-uploads each uniform block with no compare and no per-block frequency
+  (`GlDriver.hx:605-623`); the shared framebuffer detaches, re-attaches and checks status on every
+  pass rather than on a target change (`GlDriver.hx:1842-1867`); storage buffers and images rebind
+  with no compare.
+The Mac side keeps the uniform overrun check, the last copy shared across backends (step 8).
+
+Progress, step 8 (merged at `a59ca5ef`): `setBindGroup` refuses a dynamic offset that runs a
+uniform binding past its buffer ("dynamic offset N at index I overruns its uniform buffer"), using
+`BindGroupRecord.dynamicRoom` filled at `createBindGroup`; the four backend copies are gone. A draw
+or dispatch refuses a bound group made for another pipeline ("bind group N (group G) was made for
+GPURenderPipeline P, not the bound pipeline Q"), WebGPU's group-equivalence rule for layouts from
+`getBindGroupLayout` (§8.1.2, "Validate encoder bind groups"). The stencil and blend tests now make
+a uniform group per pipeline; `webgpuD3d11Check`'s stencil test changed the same way and needs a
+WARP run. Vulkan needs no copy of either check. This ends the reuse series on the Mac side:
+`src/webgpu/device.ms` and `validate.ms` are open to Windows again.

@@ -51,7 +51,8 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int viewField, int viewHighField, int blendField, int samplerField,
                       int effectField,
                       int samplerCount, int clearRField,
-                      int clipXField, int clipUField, int arg0Field, int rtModeField,
+                      int clipXField, int clipUField, int clipRoundField, int arg0Field,
+                      int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
                       int kindTargetBegin, int kindTargetEnd,
                       int programVertex, int programSprite, int programUi, int programBlur,
@@ -60,6 +61,9 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 uint32_t void2dCommandView(const float *cmd);
 void void2dCopyFloats(float *dst, const float *src, int count);
 void void2dSetScopes(const float *scopes, int count);
+double void2dQuadCoverage(const float *affine, float x, float y, float w, float h, float scale,
+                          int x0, int y0, int x1, int y1);
+void void2dSetCoverageSources(const float *vertices, const float *sprites, const float *ui);
 
 void void2dSetDpiScale(float scale);
 int void2dScissorMin(float edge, float scale);

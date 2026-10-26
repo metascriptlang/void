@@ -1677,7 +1677,10 @@ function applyGlobal(context: DrawContext, block: UniformBlock): void {
 	}
 	const stamp: int32 = uniformStamp(slot);
 	const last: GlobalApply = globalApplies[slot];
-	if (stamp != 0 && stamp == last.stamp && last.block == block && last.writes == uniformWrites()) {
+	if (
+		stamp != 0 && stamp == last.stamp && last.block == block &&
+		last.writes == uniformWrites()
+	) {
 		return;
 	}
 	context.applyBlock(block);

@@ -272,7 +272,10 @@ function forwardCase(name: string): boolean {
 	} else if (name == "outline.closed.setOutlineBlend") {
 		setOutlineBlend(closedForward(), 0.5);
 	} else if (name == "outline.settingsWidth") {
-		setOutlineSettings(openForward(false), { ...ForwardOutlineSettings.defaults(), pixelWidth: 0.0 });
+		setOutlineSettings(
+			openForward(false),
+			{ ...ForwardOutlineSettings.defaults(), pixelWidth: 0.0 },
+		);
 	} else if (name == "outline.uniformBudget") {
 		let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
 		setOutlineBlend(forwardOn(context), 1.0);

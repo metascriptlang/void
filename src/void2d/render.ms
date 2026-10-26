@@ -41,6 +41,8 @@ import {
 	CMD_BREAK,
 	CMD_BLEND,
 	CMD_SAMPLER,
+	RoundClip,
+	NO_ROUND_CLIP,
 } from "./displayList";
 import {
 	fillQuad,
@@ -58,7 +60,8 @@ import {
 	setEffect,
 	setGradientEffect,
 	setSampler,
-	pushClip,
+	pushRoundedClip,
+	roundClipOf,
 	popClip,
 	clipIntersectsQuad,
 	glyphPageView,
@@ -142,7 +145,7 @@ import { FilterPlan, planFilter, resolutionScale, targetRect } from "./filterPla
 import { sqrtf } from "../math/mat4";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat, contextGeneration } from "../gpu/door";
-import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
+import { colorMatrixAlphaOnly, colorMatrixAlphaMask, NO_COLOR_MATRIX } from "./effect";
 import {
 	NO_BOX_STYLE, BorderStyle, BorderWidths, BoxFill, BoxFillKind, BoxShadow, CornerRadii, boxStyles,
 } from "./boxStyle";
@@ -1371,12 +1374,13 @@ function panOrder(s: Scene2D, vw: float32, vh: float32): void {
 function pushMask(s: Scene2D, i: int32): boolean {
 	const world = s.worlds[i];
 	const lb = localBounds(s, i, false);
-	return pushClip(
-		vec2(lb.xMin, lb.yMin) * world,
-		vec2(lb.xMax, lb.yMin) * world,
-		vec2(lb.xMax, lb.yMax) * world,
-		vec2(lb.xMin, lb.yMax) * world,
-	);
+	const tl: Vec2 = vec2(lb.xMin, lb.yMin) * world;
+	const tr: Vec2 = vec2(lb.xMax, lb.yMin) * world;
+	const bl: Vec2 = vec2(lb.xMin, lb.yMax) * world;
+	const round: RoundClip = s.maskRounded(i)
+		? roundClipOf(tl, tr, bl, lb.xMax - lb.xMin, lb.yMax - lb.yMin, s.scrolls[s.payloads[i]].radii)
+		: NO_ROUND_CLIP;
+	return pushRoundedClip(tl, tr, vec2(lb.xMax, lb.yMax) * world, bl, round);
 }
 
 export function snappedShift(v: float32, scale: float32): float32 {
@@ -1929,10 +1933,14 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// the open pass, which is the whole path when there is one step.
 	let sharp: RenderTarget = rt;
 	for (let k: int32 = 0; k < last; k++) {
-		sharp = filterStage(steps[k], sharp, rtW, rtH, plan.scale);
+		const mask: RenderTarget = steps[k].kind === FilterKind.Mask
+			? maskTarget(s, i, steps[k], plan, xMin, yMin, vw, vh) : rt;
+		sharp = filterStage(steps[k], sharp, mask, rtW, rtH, plan.scale);
 	}
-	if (f.kind === FilterKind.Outline) {
-		sharp = filterStage(f, sharp, rtW, rtH, plan.scale);
+	if (f.kind === FilterKind.Outline || f.kind === FilterKind.Mask) {
+		const mask: RenderTarget = f.kind === FilterKind.Mask
+			? maskTarget(s, i, f, plan, xMin, yMin, vw, vh) : rt;
+		sharp = filterStage(f, sharp, mask, rtW, rtH, plan.scale);
 	}
 	let src: RenderTarget = sharp;
 	if (f.radius > 0.0 && f.kind !== FilterKind.Outline) {
@@ -1950,7 +1958,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// sets its own effect and puts this one back afterwards.
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
-	if (f.kind === FilterKind.Blur || f.kind === FilterKind.Outline) {
+	if (f.kind === FilterKind.Blur || f.kind === FilterKind.Outline || f.kind === FilterKind.Mask) {
 		imageQuad(rtTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 			rgba(1.0, 1.0, 1.0, na), blend);
 		return;
@@ -1986,11 +1994,72 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 // One step of a chain rendered into a target of its own, in device pixels from the origin, so
 // the next step reads it like it read the subtree's target. `scale` is device pixels per
 // logical pixel, which turns the step's logical radius and offset into pixels.
-function filterStage(f: Filter, src: RenderTarget, w: int32, h: int32, scale: float32): RenderTarget {
+function maskStopOn(what: string): void {
+	console.log(`void2d filter: ${what}`);
+	unreachable;
+}
+
+// The mask subtree of a Mask step, recorded into a target of its own over the same device rect
+// as the filtered subtree, so one uv reads both and the mask matrix h2d builds
+// (`h2d/filter/AbstractMask.hx:getMaskTexture`) is the identity. The same rules h2d states
+// (`AbstractMask.hx` doc of `mask`) hold: not an ancestor, no filter of its own, drawn before the
+// node it masks. The mask node is hidden (`visible` false), which is what h2d's `Hide` filter does.
+function maskTarget(
+	s: Scene2D, i: int32, f: Filter, plan: FilterPlan, xMin: float32, yMin: float32,
+	vw: float32, vh: float32,
+): RenderTarget {
+	const m: int32 = f.mask;
+	const rows: int32 = s.generations.length as int32;
+	if (m < 0 || m >= rows || s.generations[m] != f.maskGeneration) {
+		maskStopOn(`the mask node of node ${i} (row ${f.mask}) is gone`);
+	}
+	if (s.slots[m] == NO_SLOT) { maskStopOn(`the mask node of node ${i} is not in the tree`); }
+	if (s.orders[m].visible) {
+		maskStopOn(`the mask node of node ${i} is visible; hide it with visible false, ` +
+			`it draws only through the mask`);
+	}
+	if (filtered(s, m)) { maskStopOn(`the mask node of node ${i} has a filter of its own`); }
+	for (let up: int32 = s.parents[i]; up != NO_NODE_2D; up = s.parents[up]) {
+		if (up == m) { maskStopOn(`the mask node of node ${i} is one of its ancestors`); }
+	}
+	if (s.slots[m] > s.slots[i]) {
+		maskStopOn(`the mask node of node ${i} comes after it in the tree; ` +
+			`the mask must precede the node it masks`);
+	}
+	if (inScope()) {
+		maskStopOn(`node ${i} is masked inside a scroll scope; a Mask filter outside one only`);
+	}
+	markRows(s, s.slots[m], s.orderEnd[s.slots[m]], PaintState.InTarget);
+	const rtW: int32 = plan.width;
+	const rtH: int32 = plan.height;
+	const mt: RenderTarget = acquireTarget(rtW, rtH);
+	beginTarget(mt, (rtW as float32) / plan.scale, (rtH as float32) / plan.scale, plan.scale,
+		xMin, yMin, transparent);
+	drawContent(s, m, 1.0, 1.0, vw, vh);
+	endTarget();
+	return mt;
+}
+
+function filterStage(
+	f: Filter, src: RenderTarget, mask: RenderTarget, w: int32, h: int32, scale: float32,
+): RenderTarget {
 	const wf: float32 = w as float32;
 	const hf: float32 = h as float32;
 	const none: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	if (f.kind === FilterKind.Blur && f.radius <= 0.0) { return src; }
+	if (f.kind === FilterKind.Mask) {
+		const masked: RenderTarget = acquireTarget(w, h);
+		beginTarget(masked, wf, hf, 1.0, 0.0, 0.0, transparent);
+		blitTarget(src, wf, hf);
+		// Any alpha above zero keeps the pixel unless smoothAlpha: an 8-bit coverage of 1/255 or
+		// more saturates the gain, which is Heaps' `float(k.a > 0)`.
+		setEffect(colorMatrixAlphaMask(f.smoothAlpha ? 1.0 : 255.0), none, none);
+		imageQuad(premultipliedTargetTile(mask, wf, hf), vec2(0.0, 0.0), vec2(wf, 0.0),
+			vec2(wf, hf), vec2(0.0, hf), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Multiply);
+		setEffect(NO_COLOR_MATRIX, none, none);
+		endTarget();
+		return masked;
+	}
 	let blurred: RenderTarget = src;
 	if (f.kind !== FilterKind.Outline && f.radius > 0.0) {
 		blurred = blurTargetPooled(src, w, h, f.radius * scale);

@@ -42,7 +42,9 @@ let layoutBase: int32 = registerLayouts();
 
 function registerPrograms(): int32 {
 	let layouts: Vec<int32> = [];
-	for (let i = 0; i < GPU3D_PROGRAM_TABLE_LENGTH; i++) { layouts.push(layoutBase + PROGRAM_LAYOUTS[i]); }
+	for (let i = 0; i < GPU3D_PROGRAM_TABLE_LENGTH; i++) {
+		layouts.push(layoutBase + PROGRAM_LAYOUTS[i]);
+	}
 	return doorRegisterPrograms(gpu3dShaderModule, layouts);
 }
 

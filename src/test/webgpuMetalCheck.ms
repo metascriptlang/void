@@ -41,6 +41,7 @@ import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.m
 import { shaderBytecodeFromBase64 } from "../shader/dxbc.ms";
 import { glslComputeIr } from "../shader/emit";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
+import { doorApplyScissor, doorBeginColorPass, doorEndPass, doorMakeTargetImage, doorMakeTextureView, doorSetup, doorShutdown } from "../gpu/doorGpu.ms";
 
 import { Cell, PlainBindings, ScaledBindings, WORKGROUP, plainKernel, scaledKernel, shadyComputeDescriptor } from "./metalShadyCompute";
 
@@ -544,7 +545,7 @@ function stencilScene(device: GPUDevice, writerReference: uint32, testerReferenc
 	pass.setStencilReference(testerReference);
 	pass.setPipeline(tester);
 	pass.setVertexBuffer(0, vertices, 48);
-	pass.setBindGroup(0, group, green);
+	pass.setBindGroup(0, uniformGroup(device, tester, uniforms), green);
 	pass.draw(6, 1, 0, 0);
 	pass.end();
 	device.queue.submit(encoder.finish());
@@ -622,7 +623,7 @@ function depthBiasScene(device: GPUDevice, compare: GPUCompareFunction, depthBia
 	encoded.setBindGroup(0, group, red);
 	encoded.draw(3, 1, 0, 0);
 	encoded.setPipeline(tester);
-	encoded.setBindGroup(0, group, green);
+	encoded.setBindGroup(0, uniformGroup(device, tester, uniforms), green);
 	encoded.draw(3, 1, 0, 0);
 	encoded.end();
 	device.queue.submit(encoder.finish());
@@ -2353,7 +2354,7 @@ test "a compute dispatch stops by name when its uniform group is missing or its 
 		if (run.ok) { assert false; }
 		if (!run.ok) {
 			assert run.error.output.includes("probe: the control dispatched");
-			assert run.error.output.includes(define == "" ? "the compute pipeline reads bind group 0, which is not set" : "uniform binding 0 at offset 256 overruns its buffer");
+			assert run.error.output.includes(define == "" ? "the compute pipeline reads bind group 0, which is not set" : "dynamic offset 256 at index 0 overruns its uniform buffer");
 			assert !run.error.output.includes("probe: the faulty dispatch ran");
 		}
 	}
@@ -2416,4 +2417,15 @@ test "a Metal module stops by stage and label when the device rejects its byteco
 		assert run.error.output.includes("the device rejected GPUShaderModuleDescriptor.fragmentBytecode of 'garbage'");
 		assert !run.error.output.includes("probe: the corrupted module loaded");
 	}
+}
+
+test "the door clamps a scissor that runs past its attachment instead of handing setScissorRect a refused rect" {
+	doorSetup(metalSystemDevice(), null, 2, 0, 1);
+	const view = doorMakeTextureView(doorMakeTargetImage(8, 8, 4));
+	doorBeginColorPass(view, 0.0, 0.0, 1.0, 1.0);
+	doorApplyScissor(4, 0, 5, 8);
+	doorApplyScissor(-2, -2, 20, 20);
+	doorApplyScissor(9, 9, 3, 3);
+	doorEndPass();
+	doorShutdown();
 }
