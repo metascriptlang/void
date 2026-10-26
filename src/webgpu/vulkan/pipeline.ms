@@ -1,5 +1,4 @@
 import {
-	vulkanAdapterLimit,
 	vulkanCmdBindIndexBuffer,
 	vulkanCmdBindPipeline,
 	vulkanCmdBindSet,
@@ -9,7 +8,6 @@ import {
 	vulkanCmdDispatchIndirect,
 	vulkanCmdDraw,
 	vulkanCmdDrawIndexed,
-	vulkanCmdDrawIndirect,
 	vulkanCmdScissor,
 	vulkanCmdStencilReference,
 	vulkanCmdViewport,
@@ -74,52 +72,41 @@ import {
 } from "./resources";
 import {
 	BindingKind,
-	GPUBindGroup,
 	GPUBindGroupDescriptor,
 	GPUBindGroupEntry,
 	GPUBuffer,
 	GPUBufferUsage,
 	GPUColor,
 	GPUColorWrite,
-	GPUComputePipeline,
 	GPUComputePipelineDescriptor,
 	GPUIndexFormat,
-	GPURenderPipeline,
 	GPURenderPipelineDescriptor,
 	GPUShaderBinding,
-	GPUShaderModule,
 	GPUShaderModuleDescriptor,
 	GPUStencilFaceState,
-	GPUTextureUsage,
 	GPUTextureViewDimension,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
 	GPU_MAX_SHADER_BINDINGS,
-	GPU_MAX_UNIFORM_BLOCKS,
 	GPU_MAX_VERTEX_ATTRIBUTES,
 	GPU_MAX_VERTEX_BUFFERS,
 	GPU_RESOURCE_GROUP,
 	GPU_UNIFORM_GROUP,
 	bindingKind,
-	checkedDispatchIndirect,
 	stop,
 	stopOnUnportedShaderBindings,
 } from "../types.ms";
+import { boundFacts, checkedComputeModule, checkedRenderModule, entryBytes, isStripTopology } from "../validate.ms";
 import {
-	checkedBindGroupSet,
-	checkedComputeModule,
-	checkedComputePipeline,
-	checkedRenderModule,
-	checkedRenderPassPipeline,
-	checkedSampledView,
-	checkedStorageEntry,
-	checkedStorageView,
-	checkedStripDraw,
-	checkedUniformEntry,
-	entryBytes,
-	isStripTopology,
-} from "../validate.ms";
-import { Pool, allocate, free, liveIds, newPool, slotIndex, store } from "../pool.ms";
+	bindGroupRecords,
+	bufferRecords,
+	layoutRecords,
+	pipelineRecords,
+	put,
+	slotOf,
+	vacate,
+	viewRecords,
+} from "../pool.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 
@@ -131,9 +118,6 @@ const COLOR_TARGET_WORDS: int32 = 8;
 const RENDER_STATE_WORDS: int32 = 20;
 const BLEND_ONE: uint32 = 1;
 const BLEND_OP_ADD: uint32 = 0;
-const LIMIT_UNIFORM_OFFSET_ALIGNMENT: int32 = 20;
-const LIMIT_STORAGE_OFFSET_ALIGNMENT: int32 = 21;
-const LIMIT_STORAGE_BUFFER_BINDING_SIZE: int32 = 11;
 
 struct ShaderBinding {
 	group: int32;
@@ -145,8 +129,7 @@ struct ShaderBinding {
 	viewDimension: GPUTextureViewDimension;
 }
 
-struct ShaderRecord {
-	id: uint32;
+struct ShaderNative {
 	compute: boolean;
 	vertexOrCompute: uint64;
 	fragment: uint64;
@@ -159,15 +142,9 @@ struct ShaderRecord {
 	layout: uint64;
 }
 
-struct PipelineRecord {
-	id: uint32;
+struct PipelineNative {
 	native: uint64;
-	compute: boolean;
-	shader: uint32;
 	layout: uint64;
-	sets: int32[GROUPS];
-	strip: boolean;
-	stripIndexType: int32;
 }
 
 struct GroupAccess {
@@ -176,42 +153,23 @@ struct GroupAccess {
 	id: uint32;
 }
 
-struct DynamicUniform {
-	binding: int32;
-	end: int64;
-	bufferSize: int64;
-}
-
-struct BindGroupRecord {
-	id: uint32;
-	group: int32;
-	setLayout: int32;
+struct BindGroupNative {
 	allocation: SetAllocation;
 	accesses: GroupAccess[GPU_MAX_BIND_GROUP_ENTRIES];
 	accessCount: int32;
-	dynamics: DynamicUniform[GPU_MAX_UNIFORM_BLOCKS];
-	dynamicCount: int32;
 }
 
 struct Bound {
 	compute: boolean;
-	pipeline: uint32;
 	appliedLayout: uint64;
-	groups: uint32[GROUPS];
-	offsets: uint32[GROUPS * GPU_MAX_UNIFORM_BLOCKS];
-	offsetCounts: int32[GROUPS];
 	dirty: boolean[GROUPS];
-	indexType: int32;
 }
 
 export struct VulkanPipelines {
-	shaders: Pool<ShaderRecord>;
-	pipelines: Pool<PipelineRecord>;
-	bindGroups: Pool<BindGroupRecord>;
+	shaders: Vec<ShaderNative>;
+	pipelines: Vec<PipelineNative>;
+	bindGroups: Vec<BindGroupNative>;
 	bound: Bound;
-	uniformAlignment: int64;
-	storageAlignment: int64;
-	storageLimit: int64;
 }
 
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
@@ -219,13 +177,10 @@ export struct VulkanPipelines {
 export function openPipelines(): VulkanPipelines {
 	if (GROUPS != GPU_RESOURCE_GROUP + 1) { stop(`vulkan: GROUPS is ${GROUPS}, the bind groups are ${GPU_RESOURCE_GROUP + 1}`); }
 	return {
-		shaders: newPool<ShaderRecord>("vulkan", "GPUShaderModule", "shader module", { id: 0 }),
-		pipelines: newPool<PipelineRecord>("vulkan", "GPUPipeline", "pipeline", { id: 0 }),
-		bindGroups: newPool<BindGroupRecord>("vulkan", "GPUBindGroup", "bind group", { id: 0, allocation: NO_SET }),
-		bound: { indexType: -1 },
-		uniformAlignment: vulkanAdapterLimit(LIMIT_UNIFORM_OFFSET_ALIGNMENT),
-		storageAlignment: vulkanAdapterLimit(LIMIT_STORAGE_OFFSET_ALIGNMENT),
-		storageLimit: vulkanAdapterLimit(LIMIT_STORAGE_BUFFER_BINDING_SIZE),
+		shaders: [{ compute: false }],
+		pipelines: [{ native: 0, layout: 0 }],
+		bindGroups: [{ allocation: NO_SET }],
+		bound: { compute: false },
 	};
 }
 
@@ -276,42 +231,43 @@ function module(code: string, bytes: Vec<uint8>, stage: string): Result<uint64, 
 
 function entryName(name: string): string { return name == "" ? "main" : name; }
 
-function sortedBindings(ref slot: ShaderRecord): void {
-	for (let i = 1; i < slot.bindingCount; i++) {
-		const moving = slot.bindings[i];
+function sortedBindings(ref shader: ShaderNative): void {
+	for (let i = 1; i < shader.bindingCount; i++) {
+		const moving = shader.bindings[i];
 		let j = i - 1;
-		while (j >= 0 && slot.bindings[j].binding > moving.binding) {
-			slot.bindings[j + 1] = slot.bindings[j];
+		while (j >= 0 && shader.bindings[j].binding > moving.binding) {
+			shader.bindings[j + 1] = shader.bindings[j];
 			j -= 1;
 		}
-		slot.bindings[j + 1] = moving;
+		shader.bindings[j + 1] = moving;
 	}
 }
 
-function setKey(slot: ShaderRecord, group: int32): Vec<uint32> {
+function setKey(shader: ShaderNative, group: int32): Vec<uint32> {
 	let key: Vec<uint32> = [];
-	for (let i = 0; i < slot.bindingCount; i++) {
-		if (slot.bindings[i].group != group) { continue; }
-		key.push(slot.bindings[i].binding as uint32);
-		key.push(descriptorType(slot.bindings[i].kind));
-		key.push(slot.bindings[i].stages);
+	for (let i = 0; i < shader.bindingCount; i++) {
+		if (shader.bindings[i].group != group) { continue; }
+		key.push(shader.bindings[i].binding as uint32);
+		key.push(descriptorType(shader.bindings[i].kind));
+		key.push(shader.bindings[i].stages);
 	}
 	return key;
 }
 
-function retireModules(ref r: VulkanResources, slot: ShaderRecord): void {
-	if (slot.vertexOrCompute != 0) { retire(r, RetiredKind.Shader, slot.vertexOrCompute, NO_ALLOCATION); }
-	if (slot.fragment != 0) { retire(r, RetiredKind.Shader, slot.fragment, NO_ALLOCATION); }
+function retireModules(ref r: VulkanResources, shader: ShaderNative): void {
+	if (shader.vertexOrCompute != 0) { retire(r, RetiredKind.Shader, shader.vertexOrCompute, NO_ALLOCATION); }
+	if (shader.fragment != 0) { retire(r, RetiredKind.Shader, shader.fragment, NO_ALLOCATION); }
 }
 
 export function createShaderModule(
 	ref p: VulkanPipelines,
 	ref r: VulkanResources,
+	id: uint32,
 	descriptor: GPUShaderModuleDescriptor,
-): Result<GPUShaderModule, ResourceError> {
+): Result<void, ResourceError> {
 	stopOnUnportedShaderBindings("vulkan", descriptor);
 	const compute = descriptor.computeCode != "" || descriptor.computeBytecode.length > 0;
-	let slot: ShaderRecord = { compute: compute };
+	let shader: ShaderNative = { compute: compute };
 	for (let i = 0; i < GPU_MAX_SHADER_BINDINGS; i++) {
 		const kindName: string = descriptor.bindings[i].kind;
 		if (kindName == "") { continue; }
@@ -325,46 +281,45 @@ export function createShaderModule(
 			viewDimension: descriptor.bindings[i].viewDimension,
 		};
 		if (!compute && (binding.writable || binding.kind == BindingKind.StorageTexture)) { refuseRenderStorage(binding.binding); }
-		slot.bindings[slot.bindingCount] = binding;
-		slot.bindingCount += 1;
+		shader.bindings[shader.bindingCount] = binding;
+		shader.bindingCount += 1;
 	}
-	sortedBindings(slot);
+	sortedBindings(shader);
 	for (let g = 0; g < GROUPS; g++) {
-		const key = setKey(slot, g);
-		const status = setLayoutIndex(r.descriptors, key, slot.sets[g]);
+		const key = setKey(shader, g);
+		const status = setLayoutIndex(r.descriptors, key, shader.sets[g]);
 		if (status != VULKAN_OK) { return Result.err(failure(status)); }
 	}
 	const layout = pipelineLayoutFor(
 		r.descriptors,
-		r.descriptors.setLayoutNative(slot.sets[GPU_UNIFORM_GROUP]),
-		r.descriptors.setLayoutNative(slot.sets[GPU_RESOURCE_GROUP]),
-		slot.layout,
+		r.descriptors.setLayoutNative(shader.sets[GPU_UNIFORM_GROUP]),
+		r.descriptors.setLayoutNative(shader.sets[GPU_RESOURCE_GROUP]),
+		shader.layout,
 	);
 	if (layout != VULKAN_OK) { return Result.err(failure(layout)); }
 	if (compute) {
-		slot.computeEntry = entryName(descriptor.computeEntryPoint);
-		slot.vertexOrCompute = try module(descriptor.computeCode, descriptor.computeBytecode, "compute");
-		if (slot.vertexOrCompute == 0) { stop("vulkan: a compute GPUShaderModule needs computeBytecode"); }
+		shader.computeEntry = entryName(descriptor.computeEntryPoint);
+		shader.vertexOrCompute = try module(descriptor.computeCode, descriptor.computeBytecode, "compute");
+		if (shader.vertexOrCompute == 0) { stop("vulkan: a compute GPUShaderModule needs computeBytecode"); }
 	} else {
-		slot.vertexEntry = entryName(descriptor.vertexEntryPoint);
-		slot.fragmentEntry = entryName(descriptor.fragmentEntryPoint);
-		slot.vertexOrCompute = try module(descriptor.vertexCode, descriptor.vertexBytecode, "vertex");
-		if (slot.vertexOrCompute == 0) { stop("vulkan: a render GPUShaderModule needs vertexBytecode"); }
+		shader.vertexEntry = entryName(descriptor.vertexEntryPoint);
+		shader.fragmentEntry = entryName(descriptor.fragmentEntryPoint);
+		shader.vertexOrCompute = try module(descriptor.vertexCode, descriptor.vertexBytecode, "vertex");
+		if (shader.vertexOrCompute == 0) { stop("vulkan: a render GPUShaderModule needs vertexBytecode"); }
 		const fragment = module(descriptor.fragmentCode, descriptor.fragmentBytecode, "fragment");
 		if (!fragment.ok) {
-			retireModules(r, slot);
+			retireModules(r, shader);
 			return Result.err(fragment.error);
 		}
-		slot.fragment = fragment.value;
+		shader.fragment = fragment.value;
 	}
-	slot.id = allocate(p.shaders);
-	store(p.shaders, slot);
-	return Result.ok({ id: slot.id });
+	put(p.shaders, id, shader);
+	return Result.ok(null);
 }
 
-export function destroyShaderModule(ref p: VulkanPipelines, ref r: VulkanResources, shader: GPUShaderModule): void {
-	retireModules(r, p.shaders.slots[p.shaders.slotIndex(shader.id)]);
-	free(p.shaders, shader.id);
+export function destroyShaderModule(ref p: VulkanPipelines, ref r: VulkanResources, id: uint32): void {
+	retireModules(r, p.shaders[slotOf(id)]);
+	vacate(p.shaders, id);
 }
 
 function colorTargetWords(ref words: Vec<uint32>, descriptor: GPURenderPipelineDescriptor, i: int32): void {
@@ -500,9 +455,10 @@ export function createRenderPipeline(
 	ref p: VulkanPipelines,
 	ref r: VulkanResources,
 	ref cache: RenderPassCache,
+	id: uint32,
 	descriptor: GPURenderPipelineDescriptor,
-): Result<GPURenderPipeline, ResourceError> {
-	const shader = p.shaders.slots[p.shaders.slotIndex(descriptor.vertex.module.id)];
+): Result<void, ResourceError> {
+	const shader = p.shaders[slotOf(descriptor.vertex.module.id)];
 	checkedRenderModule(shader.compute);
 	let targets: Vec<uint32> = [];
 	let depth = false;
@@ -530,59 +486,23 @@ export function createRenderPipeline(
 		descriptor.depthStencil.depthBiasClamp,
 		native,
 	));
-	const id = allocate(p.pipelines);
-	store(p.pipelines, {
-		id: id,
-		native: native,
-		compute: false,
-		shader: descriptor.vertex.module.id,
-		layout: shader.layout,
-		sets: shader.sets,
-		strip: isStripTopology(descriptor.primitive.topology),
-		stripIndexType: stripIndexType(descriptor.primitive.stripIndexFormat),
-	});
-	return Result.ok({ id: id });
+	put(p.pipelines, id, { native: native, layout: shader.layout });
+	return Result.ok(null);
 }
 
-function stripIndexType(format: GPUIndexFormat): int32 {
-	const name: string = format;
-	return name == "" ? -1 : indexType(format, "primitive.stripIndexFormat");
-}
-
-export function createComputePipeline(
-	ref p: VulkanPipelines,
-	descriptor: GPUComputePipelineDescriptor,
-): Result<GPUComputePipeline, ResourceError> {
-	const shader = p.shaders.slots[p.shaders.slotIndex(descriptor.compute.module.id)];
+export function createComputePipeline(ref p: VulkanPipelines, id: uint32, descriptor: GPUComputePipelineDescriptor): Result<void, ResourceError> {
+	const shader = p.shaders[slotOf(descriptor.compute.module.id)];
 	const entry = entryName(descriptor.compute.entryPoint);
 	checkedComputeModule(shader.compute, entry, shader.computeEntry);
 	let native: uint64 = 0;
 	try checked(vulkanComputePipelineCreate(shader.layout, shader.vertexOrCompute, entry, native));
-	const id = allocate(p.pipelines);
-	store(p.pipelines, {
-		id: id,
-		native: native,
-		compute: true,
-		shader: descriptor.compute.module.id,
-		layout: shader.layout,
-		sets: shader.sets,
-		strip: false,
-		stripIndexType: -1,
-	});
-	return Result.ok({ id: id });
+	put(p.pipelines, id, { native: native, layout: shader.layout });
+	return Result.ok(null);
 }
 
-export function destroyRenderPipeline(ref p: VulkanPipelines, ref r: VulkanResources, pipeline: GPURenderPipeline): void {
-	destroyPipeline(p, r, pipeline.id);
-}
-
-export function destroyComputePipeline(ref p: VulkanPipelines, ref r: VulkanResources, pipeline: GPUComputePipeline): void {
-	destroyPipeline(p, r, pipeline.id);
-}
-
-function destroyPipeline(ref p: VulkanPipelines, ref r: VulkanResources, id: uint32): void {
-	retire(r, RetiredKind.Pipeline, p.pipelines.slots[p.pipelines.slotIndex(id)].native, NO_ALLOCATION);
-	free(p.pipelines, id);
+export function destroyPipeline(ref p: VulkanPipelines, ref r: VulkanResources, id: uint32): void {
+	retire(r, RetiredKind.Pipeline, p.pipelines[slotOf(id)].native, NO_ALLOCATION);
+	vacate(p.pipelines, id);
 }
 
 function entryEmpty(entry: GPUBindGroupEntry): boolean {
@@ -608,182 +528,126 @@ function viewDimensionOf(dimension: GPUTextureViewDimension): string {
 export function createBindGroup(
 	ref p: VulkanPipelines,
 	ref r: VulkanResources,
-	shader: GPUShaderModule,
-	group: int32,
+	id: uint32,
 	descriptor: GPUBindGroupDescriptor,
-): Result<GPUBindGroup, ResourceError> {
-	const s = p.shaders.slotIndex(shader.id);
-	let slot: BindGroupRecord = { group: group, setLayout: p.shaders.slots[s].sets[group], allocation: NO_SET };
-	if (r.descriptors.setLayoutEmpty(slot.setLayout)) { stop(`the shader has no bindings in group ${group}: an empty group takes no bind group`); }
+): Result<void, ResourceError> {
+	const layout = layoutRecords.record(descriptor.layout.id);
+	const group = layout.group;
+	const shader = p.shaders[slotOf(pipelineRecords.record(layout.pipeline).shader)];
+	const setLayout = shader.sets[group];
+	let native: BindGroupNative = { allocation: NO_SET };
 	let words: Vec<uint32> = [];
 	let handles: Vec<uint64> = [];
 	let offsets: Vec<uint64> = [];
 	let ranges: Vec<uint64> = [];
-	let addressed = 0;
-	for (let i = 0; i < p.shaders.slots[s].bindingCount; i++) {
-		const binding = p.shaders.slots[s].bindings[i];
+	for (let i = 0; i < shader.bindingCount; i++) {
+		const binding = shader.bindings[i];
 		if (binding.group != group) { continue; }
 		const entry = descriptor.entries[entryFor(descriptor, group, binding.binding)];
-		addressed += 1;
-		let layout: int32 = 0;
+		let imageLayout: int32 = 0;
 		let handle: uint64 = 0;
 		let offset: uint64 = 0;
 		let range: uint64 = 0;
 		let access: GroupAccess = { kind: binding.kind, writable: binding.writable, id: 0 };
 		if (binding.kind == BindingKind.Uniform || binding.kind == BindingKind.StorageBuffer) {
-			if (entry.buffer.id == 0) { refuseEntry(group, entry, "a buffer"); }
-			const b = r.buffers.slotIndex(entry.buffer.id);
-			const size = r.buffers.slots[b].size;
-			const usage = r.buffers.slots[b].usage;
-			if (binding.kind == BindingKind.Uniform) {
-				checkedUniformEntry(entry, has(usage, GPUBufferUsage.UNIFORM as int32), size, binding.size, p.uniformAlignment);
-				range = binding.size as uint64;
-				slot.dynamics[slot.dynamicCount] = { binding: binding.binding, end: entry.offset + (binding.size as int64), bufferSize: size };
-				slot.dynamicCount += 1;
-			} else {
-				checkedStorageEntry(entry, has(usage, GPUBufferUsage.STORAGE as int32), size, p.storageAlignment, p.storageLimit);
-				range = entryBytes(entry, size) as uint64;
-			}
-			handle = r.buffers.slots[b].native;
+			const b = slotOf(entry.buffer.id);
+			range = binding.kind == BindingKind.Uniform ? binding.size as uint64 : entryBytes(entry, bufferRecords.slots[b].size) as uint64;
+			handle = r.buffers[b].native;
 			offset = entry.offset as uint64;
 			access.id = entry.buffer.id;
 		} else if (binding.kind == BindingKind.Sampler) {
-			if (entry.sampler.id == 0) { refuseEntry(group, entry, "a sampler"); }
-			handle = r.samplers.slots[r.samplers.slotIndex(entry.sampler.id)].native;
+			handle = r.samplers[slotOf(entry.sampler.id)];
 		} else {
-			if (entry.textureView.id == 0) { refuseEntry(group, entry, "a texture view"); }
-			const view = r.views.slots[r.views.slotIndex(entry.textureView.id)];
-			const usage = r.textures.slots[r.textures.slotIndex(view.texture)].usage;
+			const view = viewRecords.record(entry.textureView.id);
 			const wanted = viewDimensionOf(binding.viewDimension);
-			const given: string = view.dimension;
-			if (wanted != given) { refuseEntry(group, entry, `a ${wanted} view, not ${given}`); }
-			if (binding.kind == BindingKind.Texture) {
-				checkedSampledView(entry.binding, has(usage, GPUTextureUsage.TEXTURE_BINDING as int32));
-				layout = LAYOUT_SHADER_READ_ONLY;
-			} else {
-				checkedStorageView(entry.binding, has(usage, GPUTextureUsage.STORAGE_BINDING as int32), view.mipCount);
-				layout = LAYOUT_GENERAL;
-			}
-			handle = view.binding;
+			if (wanted != view.dimension) { refuseEntry(group, entry, `a ${wanted} view, not ${view.dimension}`); }
+			imageLayout = binding.kind == BindingKind.Texture ? LAYOUT_SHADER_READ_ONLY : LAYOUT_GENERAL;
+			handle = r.views[slotOf(entry.textureView.id)].binding;
 			access.id = view.texture;
 		}
 		words.push(binding.binding as uint32);
 		words.push(descriptorType(binding.kind));
-		words.push(layout as uint32);
+		words.push(imageLayout as uint32);
 		handles.push(handle);
 		offsets.push(offset);
 		ranges.push(range);
 		if (binding.kind != BindingKind.Sampler) {
-			slot.accesses[slot.accessCount] = access;
-			slot.accessCount += 1;
+			native.accesses[native.accessCount] = access;
+			native.accessCount += 1;
 		}
 	}
-	for (let e = 0; e < GPU_MAX_BIND_GROUP_ENTRIES; e++) {
-		if (!entryEmpty(descriptor.entries[e])) { addressed -= 1; }
-	}
-	if (addressed != 0) { stop(`bind group ${group} has an entry that is not a binding of the shader's group ${group}`); }
-	const allocated = allocateSet(r.descriptors, slot.setLayout, slot.allocation);
+	const allocated = allocateSet(r.descriptors, setLayout, native.allocation);
 	if (allocated != VULKAN_OK) { return Result.err(failure(allocated)); }
-	const written = vulkanDescriptorSetWrite(slot.allocation.set, words[0], handles[0], offsets[0], ranges[0], handles.length as uint32);
+	const written = vulkanDescriptorSetWrite(native.allocation.set, words[0], handles[0], offsets[0], ranges[0], handles.length as uint32);
 	if (written != VULKAN_OK) {
-		deallocateSet(r.descriptors, slot.allocation, vulkanRecordingSerial());
+		deallocateSet(r.descriptors, native.allocation, vulkanRecordingSerial());
 		return Result.err(failure(written));
 	}
-	slot.id = allocate(p.bindGroups);
-	store(p.bindGroups, slot);
-	return Result.ok({ id: slot.id });
+	put(p.bindGroups, id, native);
+	return Result.ok(null);
 }
 
-export function destroyBindGroup(ref p: VulkanPipelines, ref r: VulkanResources, bindGroup: GPUBindGroup): void {
-	deallocateSet(r.descriptors, p.bindGroups.slots[p.bindGroups.slotIndex(bindGroup.id)].allocation, vulkanRecordingSerial());
-	free(p.bindGroups, bindGroup.id);
+export function destroyBindGroup(ref p: VulkanPipelines, ref r: VulkanResources, id: uint32): void {
+	deallocateSet(r.descriptors, p.bindGroups[slotOf(id)].allocation, vulkanRecordingSerial());
+	vacate(p.bindGroups, id);
 }
 
 export function beginBindings(ref p: VulkanPipelines, compute: boolean): void {
-	p.bound = { compute: compute, indexType: -1 };
+	p.bound = { compute: compute };
 }
 
 function commanded(code: int32): void {
 	if (code != VULKAN_OK) { stopOnVulkan(); }
 }
 
-function bindPipeline(ref p: VulkanPipelines, id: uint32): void {
-	commanded(vulkanCmdBindPipeline(p.bound.compute ? 1 : 0, p.pipelines.slots[p.pipelines.slotIndex(id)].native));
-	p.bound.pipeline = id;
+export function setPipeline(ref p: VulkanPipelines, id: uint32): void {
+	commanded(vulkanCmdBindPipeline(p.bound.compute ? 1 : 0, p.pipelines[slotOf(id)].native));
 }
 
-export function setPipeline(ref p: VulkanPipelines, pipeline: GPURenderPipeline): void {
-	checkedRenderPassPipeline(pipeline.id, p.pipelines.slots[p.pipelines.slotIndex(pipeline.id)].compute);
-	bindPipeline(p, pipeline.id);
-}
-
-export function setComputePipeline(ref p: VulkanPipelines, pipeline: GPUComputePipeline): void {
-	checkedComputePipeline(pipeline.id, p.pipelines.slots[p.pipelines.slotIndex(pipeline.id)].compute);
-	bindPipeline(p, pipeline.id);
-}
-
-@noinline function refuseDynamicOffset(offset: uint32, dynamic: DynamicUniform): never {
-	stop(`dynamic offset ${offset} moves uniform binding ${dynamic.binding} to end at ${dynamic.end + (offset as int64)}, past its buffer of ${dynamic.bufferSize}`);
-}
-
-export function setBindGroup(ref p: VulkanPipelines, index: int32, bindGroup: GPUBindGroup, dynamicOffsets: Readonly<Span<uint32>>): void {
-	p.bound.groups[index] = bindGroup.id;
+export function setBindGroup(ref p: VulkanPipelines, index: int32): void {
 	p.bound.dirty[index] = true;
-	p.bound.offsetCounts[index] = 0;
-	if (bindGroup.id == 0) { return; }
-	const g = p.bindGroups.slotIndex(bindGroup.id);
-	checkedBindGroupSet(index, p.bindGroups.slots[g].group, p.bindGroups.slots[g].dynamicCount, dynamicOffsets, p.uniformAlignment as uint32);
-	for (let i = 0; i < p.bindGroups.slots[g].dynamicCount; i++) {
-		const dynamic = p.bindGroups.slots[g].dynamics[i];
-		if (dynamic.end + (dynamicOffsets[i] as int64) > dynamic.bufferSize) { refuseDynamicOffset(dynamicOffsets[i], dynamic); }
-		p.bound.offsets[index * GPU_MAX_UNIFORM_BLOCKS + i] = dynamicOffsets[i];
-	}
-	p.bound.offsetCounts[index] = p.bindGroups.slots[g].dynamicCount;
 }
 
 // Sets are bound at the draw or dispatch, against the pipeline current then, because WebGPU
 // lets setBindGroup come before setPipeline and Vulkan binds a set through a pipeline layout.
-function applyBindings(ref p: VulkanPipelines, ref r: VulkanResources, call: string): void {
-	if (p.bound.pipeline == 0) { stop(`${call} without a pipeline`); }
-	const pipeline = p.pipelines.slots[p.pipelines.slotIndex(p.bound.pipeline)];
-	const relayout = p.bound.appliedLayout != pipeline.layout;
+function applyBindings(ref p: VulkanPipelines, ref r: VulkanResources): void {
+	const pipeline = slotOf(boundFacts.pipeline);
+	const layout = p.pipelines[pipeline].layout;
+	const groups = pipelineRecords.slots[pipeline].groups;
+	const relayout = p.bound.appliedLayout != layout;
 	for (let g = 0; g < GROUPS; g++) {
-		if (r.descriptors.setLayoutEmpty(pipeline.sets[g])) { continue; }
-		if (p.bound.groups[g] == 0) { stop(`${call}: the pipeline reads bind group ${g}, which is not set`); }
-		const record = p.bindGroups.slots[p.bindGroups.slotIndex(p.bound.groups[g])];
-		if (record.setLayout != pipeline.sets[g]) {
-			stop(`${call}: bind group ${p.bound.groups[g]} was made for another layout of group ${g} than the pipeline's`);
-		}
-		if (p.bound.compute) { accessGroup(r, record); }
+		if ((groups & (1 << g)) == 0) { continue; }
+		const id = boundFacts.bindGroups[g];
+		const native = p.bindGroups[slotOf(id)];
+		if (p.bound.compute) { accessGroup(r, native); }
 		if (!relayout && !p.bound.dirty[g]) { continue; }
+		const dynamics = g == GPU_UNIFORM_GROUP ? bindGroupRecords.slots[slotOf(id)].dynamicCount : 0;
 		commanded(vulkanCmdBindSet(
 			p.bound.compute ? 1 : 0,
-			pipeline.layout,
+			layout,
 			g as uint32,
-			record.allocation.set,
-			p.bound.offsets[g * GPU_MAX_UNIFORM_BLOCKS],
-			p.bound.offsetCounts[g] as uint32,
+			native.allocation.set,
+			boundFacts.dynamicOffsets[0],
+			dynamics as uint32,
 		));
 		p.bound.dirty[g] = false;
 	}
-	p.bound.appliedLayout = pipeline.layout;
+	p.bound.appliedLayout = layout;
 }
 
-function accessGroup(ref r: VulkanResources, record: BindGroupRecord): void {
-	for (let a = 0; a < record.accessCount; a++) {
-		const access = record.accesses[a];
+function accessGroup(ref r: VulkanResources, group: BindGroupNative): void {
+	for (let a = 0; a < group.accessCount; a++) {
+		const access = group.accesses[a];
 		if (access.kind == BindingKind.Uniform || access.kind == BindingKind.StorageBuffer) {
-			const b = r.buffers.slotIndex(access.id);
-			const rest = r.buffers.slots[b].rest;
+			const buffer = r.buffers[slotOf(access.id)];
 			if (access.writable) {
-				writeToBuffer(r.tracker, r.buffers.slots[b].native, rest, STAGE_COMPUTE_SHADER, ACCESS_SHADER_READ | ACCESS_SHADER_WRITE);
+				writeToBuffer(r.tracker, buffer.native, buffer.rest, STAGE_COMPUTE_SHADER, ACCESS_SHADER_READ | ACCESS_SHADER_WRITE);
 			} else {
-				readFromBuffer(r.tracker, r.buffers.slots[b].native, rest.stages, rest.access);
+				readFromBuffer(r.tracker, buffer.native, buffer.rest.stages, buffer.rest.access);
 			}
 			continue;
 		}
-		const t = r.textures.slotIndex(access.id);
-		const texture = r.textures.slots[t];
+		const texture = r.textures[slotOf(access.id)];
 		if (access.kind == BindingKind.Texture) {
 			readFromTexture(r.tracker, texture.native, texture.rest, texture.rest.stages, texture.rest.access, texture.rest.layout);
 		} else {
@@ -793,23 +657,24 @@ function accessGroup(ref r: VulkanResources, record: BindGroupRecord): void {
 }
 
 export function setVertexBuffer(ref r: VulkanResources, slot: int32, buffer: GPUBuffer, offset: int64): void {
-	if (slot < 0 || slot >= GPU_MAX_VERTEX_BUFFERS) { stop(`setVertexBuffer slot ${slot} is outside 0..${GPU_MAX_VERTEX_BUFFERS - 1}`); }
-	const b = r.buffers.slotIndex(buffer.id);
-	if (!has(r.buffers.slots[b].usage, GPUBufferUsage.VERTEX as int32)) { stop(`setVertexBuffer: GPUBuffer ${buffer.id} was created without VERTEX`); }
-	if (offset < 0 || offset > r.buffers.slots[b].size) { stop(`setVertexBuffer offset ${offset} is outside GPUBuffer ${buffer.id} of ${r.buffers.slots[b].size}`); }
-	commanded(vulkanCmdBindVertexBuffer(slot as uint32, r.buffers.slots[b].native, offset as uint64));
+	if (buffer.id == 0) { return; }
+	const b = bufferRecords.slotIndex(buffer.id);
+	if (!has(bufferRecords.slots[b].usage, GPUBufferUsage.VERTEX as int32)) { stop(`setVertexBuffer: GPUBuffer ${buffer.id} was created without VERTEX`); }
+	if (offset < 0 || offset > bufferRecords.slots[b].size) {
+		stop(`setVertexBuffer offset ${offset} is outside GPUBuffer ${buffer.id} of ${bufferRecords.slots[b].size}`);
+	}
+	commanded(vulkanCmdBindVertexBuffer(slot as uint32, r.buffers[b].native, offset as uint64));
 }
 
-export function setIndexBuffer(ref p: VulkanPipelines, ref r: VulkanResources, buffer: GPUBuffer, format: GPUIndexFormat, offset: int64): void {
-	const b = r.buffers.slotIndex(buffer.id);
-	if (!has(r.buffers.slots[b].usage, GPUBufferUsage.INDEX as int32)) { stop(`setIndexBuffer: GPUBuffer ${buffer.id} was created without INDEX`); }
+export function setIndexBuffer(ref r: VulkanResources, buffer: GPUBuffer, format: GPUIndexFormat, offset: int64): void {
+	const b = bufferRecords.slotIndex(buffer.id);
+	if (!has(bufferRecords.slots[b].usage, GPUBufferUsage.INDEX as int32)) { stop(`setIndexBuffer: GPUBuffer ${buffer.id} was created without INDEX`); }
 	const kind = indexType(format, "setIndexBuffer format");
 	const alignment: int64 = kind == 0 ? 2 : 4;
-	if (offset < 0 || offset % alignment != 0 || offset > r.buffers.slots[b].size) {
-		stop(`setIndexBuffer offset ${offset} is not a multiple of ${alignment} inside GPUBuffer ${buffer.id} of ${r.buffers.slots[b].size}`);
+	if (offset < 0 || offset % alignment != 0 || offset > bufferRecords.slots[b].size) {
+		stop(`setIndexBuffer offset ${offset} is not a multiple of ${alignment} inside GPUBuffer ${buffer.id} of ${bufferRecords.slots[b].size}`);
 	}
-	commanded(vulkanCmdBindIndexBuffer(r.buffers.slots[b].native, offset as uint64, kind));
-	p.bound.indexType = kind;
+	commanded(vulkanCmdBindIndexBuffer(r.buffers[b].native, offset as uint64, kind));
 }
 
 export function setViewport(x: float32, y: float32, width: float32, height: float32, minDepth: float32, maxDepth: float32): void {
@@ -817,7 +682,6 @@ export function setViewport(x: float32, y: float32, width: float32, height: floa
 }
 
 export function setScissorRect(x: int32, y: int32, width: int32, height: int32): void {
-	if (x < 0 || y < 0 || width < 0 || height < 0) { stop(`setScissorRect(${x}, ${y}, ${width}, ${height}) has a negative member`); }
 	commanded(vulkanCmdScissor(x, y, width as uint32, height as uint32));
 }
 
@@ -829,16 +693,8 @@ export function setStencilReference(reference: uint32): void {
 	commanded(vulkanCmdStencilReference(reference));
 }
 
-function readyDraw(ref p: VulkanPipelines, ref r: VulkanResources, call: string, indexed: boolean): void {
-	applyBindings(p, r, call);
-	if (!indexed) { return; }
-	if (p.bound.indexType < 0) { stop(`${call} without an index buffer`); }
-	const pipeline = p.pipelines.slots[p.pipelines.slotIndex(p.bound.pipeline)];
-	checkedStripDraw(pipeline.strip, pipeline.stripIndexType == p.bound.indexType);
-}
-
 export function draw(ref p: VulkanPipelines, ref r: VulkanResources, vertexCount: int32, instanceCount: int32, firstVertex: int32, firstInstance: int32): void {
-	readyDraw(p, r, "draw", false);
+	applyBindings(p, r);
 	commanded(vulkanCmdDraw(vertexCount as uint32, instanceCount as uint32, firstVertex as uint32, firstInstance as uint32));
 }
 
@@ -851,48 +707,26 @@ export function drawIndexed(
 	baseVertex: int32,
 	firstInstance: int32,
 ): void {
-	readyDraw(p, r, "drawIndexed", true);
+	applyBindings(p, r);
 	commanded(vulkanCmdDrawIndexed(indexCount as uint32, instanceCount as uint32, firstIndex as uint32, baseVertex, firstInstance as uint32));
 }
 
-function indirectBuffer(ref r: VulkanResources, call: string, buffer: GPUBuffer, offset: int64, bytes: int64): uint64 {
-	const b = r.buffers.slotIndex(buffer.id);
-	if (!has(r.buffers.slots[b].usage, GPUBufferUsage.INDIRECT as int32)) { stop(`${call}: GPUBuffer ${buffer.id} was created without INDIRECT`); }
-	if (offset < 0 || offset % 4 != 0 || offset + bytes > r.buffers.slots[b].size) {
-		stop(`${call} offset ${offset} is not a multiple of 4 with ${bytes} bytes inside GPUBuffer ${buffer.id} of ${r.buffers.slots[b].size}`);
-	}
-	return r.buffers.slots[b].native;
-}
-
-export function drawIndirect(ref p: VulkanPipelines, ref r: VulkanResources, buffer: GPUBuffer, offset: int64): void {
-	const native = indirectBuffer(r, "drawIndirect", buffer, offset, 16);
-	readyDraw(p, r, "drawIndirect", false);
-	commanded(vulkanCmdDrawIndirect(native, offset as uint64, 0));
-}
-
-export function drawIndexedIndirect(ref p: VulkanPipelines, ref r: VulkanResources, buffer: GPUBuffer, offset: int64): void {
-	const native = indirectBuffer(r, "drawIndexedIndirect", buffer, offset, 20);
-	readyDraw(p, r, "drawIndexedIndirect", true);
-	commanded(vulkanCmdDrawIndirect(native, offset as uint64, 1));
-}
-
 export function dispatchWorkgroups(ref p: VulkanPipelines, ref r: VulkanResources, x: int32, y: int32, z: int32): Result<void, ResourceError> {
-	applyBindings(p, r, "dispatchWorkgroups");
+	applyBindings(p, r);
 	try flush(r);
 	return checked(vulkanCmdDispatch(x as uint32, y as uint32, z as uint32));
 }
 
 export function dispatchWorkgroupsIndirect(ref p: VulkanPipelines, ref r: VulkanResources, buffer: GPUBuffer, offset: int64): Result<void, ResourceError> {
-	const b = r.buffers.slotIndex(buffer.id);
-	checkedDispatchIndirect(buffer.id, r.buffers.slots[b].usage, r.buffers.slots[b].size, offset);
-	applyBindings(p, r, "dispatchWorkgroupsIndirect");
-	readFromBuffer(r.tracker, r.buffers.slots[b].native, r.buffers.slots[b].rest.stages, r.buffers.slots[b].rest.access);
+	applyBindings(p, r);
+	const native = r.buffers[slotOf(buffer.id)];
+	readFromBuffer(r.tracker, native.native, native.rest.stages, native.rest.access);
 	try flush(r);
-	return checked(vulkanCmdDispatchIndirect(r.buffers.slots[b].native, offset as uint64));
+	return checked(vulkanCmdDispatchIndirect(native.native, offset as uint64));
 }
 
-export function closePipelines(ref p: VulkanPipelines, ref r: VulkanResources): void {
-	for (const id of p.bindGroups.liveIds()) { destroyBindGroup(p, r, { id: id }); }
-	for (const id of p.pipelines.liveIds()) { destroyPipeline(p, r, id); }
-	for (const id of p.shaders.liveIds()) { destroyShaderModule(p, r, { id: id }); }
+export function closePipelines(ref p: VulkanPipelines): void {
+	p.shaders = [{ compute: false }];
+	p.pipelines = [{ native: 0, layout: 0 }];
+	p.bindGroups = [{ allocation: NO_SET }];
 }

@@ -16,27 +16,17 @@ import {
 	storeOp,
 } from "./conv";
 import { writeToTexture } from "./tracker";
-import { slotIndex } from "../pool.ms";
+import { slotOf, textureRecords, viewRecords } from "../pool.ms";
 import {
 	ResourceError,
-	TextureRecord,
 	VULKAN_OK,
-	ViewRecord,
 	VulkanResources,
 	checked,
 	flush,
 	settle,
 	stopOnVulkan,
 } from "./resources";
-import {
-	GPU_MAX_COLOR_ATTACHMENTS,
-	GPURenderPassDescriptor,
-	checkedNoDepthSlice,
-	checkedPassExtent,
-	checkedResolveTarget,
-	checkedSingleSubresource,
-	stop,
-} from "../types.ms";
+import { GPUExtent3D, GPU_MAX_COLOR_ATTACHMENTS, GPURenderPassDescriptor, stop } from "../types.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 
@@ -123,25 +113,26 @@ export function closeRenderPasses(ref cache: RenderPassCache): void {
 	cache.keys.length = 0;
 }
 
-function mipExtent(size: int32, mip: int32): int32 {
-	return Math.max(1, size >> mip);
+@noinline function refuseSlice(member: string): never {
+	stop(`${member} is a 3d view: a depth-slice attachment is not built on Vulkan`);
 }
 
-function attachable(view: ViewRecord, texture: TextureRecord): boolean {
-	return view.mipCount == 1 && view.layerCount == 1 && !texture.volume;
+function attached(member: string, id: uint32): int32 {
+	const view = viewRecords.record(id);
+	if (view.dimension == "3d") { refuseSlice(member); }
+	return slotOf(view.texture);
 }
 
 export function beginRenderPass(
 	ref r: VulkanResources,
 	ref cache: RenderPassCache,
 	descriptor: GPURenderPassDescriptor,
+	extent: GPUExtent3D,
 ): Result<void, ResourceError> {
 	settle(r);
 	let key = newPassKey();
 	let views: Vec<uint64> = [];
 	let clears: Vec<float32> = [];
-	let width: int32 = 0;
-	let height: int32 = 0;
 	let colors: int32 = 0;
 	for (let i: int32 = 0; i < GPU_MAX_COLOR_ATTACHMENTS; i++) {
 		if (descriptor.colorAttachments[i].view.id != 0) { colors = i + 1; }
@@ -153,41 +144,20 @@ export function beginRenderPass(
 			for (let c = 0; c < 4; c++) { clears.push(0.0); }
 			continue;
 		}
-		const view = r.views.slots[r.views.slotIndex(attachment.view.id)];
-		const texture = r.textures.slots[r.textures.slotIndex(view.texture)];
-		checkedSingleSubresource(`colorAttachments[${i}].view`, attachable(view, texture));
-		if (texture.info.depth) { stop(`colorAttachments[${i}].view is a depth format`); }
-		checkedNoDepthSlice(i, attachment.depthSlice);
-		const w = mipExtent(texture.width, view.baseMip);
-		const h = mipExtent(texture.height, view.baseMip);
-		checkedPassExtent(width, height, w, h);
-		width = w;
-		height = h;
+		const t = attached(`colorAttachments[${i}].view`, attachment.view.id);
+		const texture = r.textures[t];
 		let resolveFormat: int32 = 0;
-		views.push(view.native);
+		views.push(r.views[slotOf(attachment.view.id)].native);
 		if (attachment.resolveTarget.id != 0) {
-			const resolveView = r.views.slots[r.views.slotIndex(attachment.resolveTarget.id)];
-			const resolve = r.textures.slots[r.textures.slotIndex(resolveView.texture)];
-			checkedSingleSubresource(`colorAttachments[${i}].resolveTarget`, attachable(resolveView, resolve));
-			checkedResolveTarget(
-				i,
-				texture.samples,
-				w,
-				h,
-				mipExtent(resolve.width, resolveView.baseMip),
-				mipExtent(resolve.height, resolveView.baseMip),
-			);
-			if (resolve.samples != 1 || resolve.info.depth) {
-				stop(`colorAttachments[${i}].resolveTarget needs a single-sample color RENDER_ATTACHMENT`);
-			}
+			const resolve = r.textures[attached(`colorAttachments[${i}].resolveTarget`, attachment.resolveTarget.id)];
 			resolveFormat = resolve.info.native;
-			views.push(resolveView.native);
+			views.push(r.views[slotOf(attachment.resolveTarget.id)].native);
 			writeToTexture(r.tracker, resolve.native, resolve.rest, STAGE_COLOR_ATTACHMENT_OUTPUT, COLOR_ACCESS, LAYOUT_COLOR_ATTACHMENT);
 		}
 		colorKeyWords(
 			key,
 			texture.info.native,
-			texture.samples,
+			textureRecords.slots[t].sampleCount,
 			loadOp(attachment.loadOp, `colorAttachments[${i}].loadOp`),
 			storeOp(attachment.storeOp, `colorAttachments[${i}].storeOp`),
 			resolveFormat,
@@ -200,32 +170,24 @@ export function beginRenderPass(
 	}
 	const depth = descriptor.depthStencilAttachment;
 	if (depth.view.id != 0) {
-		const view = r.views.slots[r.views.slotIndex(depth.view.id)];
-		const texture = r.textures.slots[r.textures.slotIndex(view.texture)];
-		checkedSingleSubresource("depthStencilAttachment.view", attachable(view, texture));
-		if (!texture.info.depth) { stop("depthStencilAttachment.view is not a depth format"); }
-		const w = mipExtent(texture.width, view.baseMip);
-		const h = mipExtent(texture.height, view.baseMip);
-		checkedPassExtent(width, height, w, h);
-		width = w;
-		height = h;
+		const t = attached("depthStencilAttachment.view", depth.view.id);
+		const texture = r.textures[t];
 		depthKeyWords(
 			key,
 			texture.info.native,
-			texture.samples,
+			textureRecords.slots[t].sampleCount,
 			loadOp(depth.depthLoadOp, "depthStencilAttachment.depthLoadOp"),
 			storeOp(depth.depthStoreOp, "depthStencilAttachment.depthStoreOp"),
 			(texture.info.aspect & ASPECT_STENCIL) != 0,
 			false,
 		);
-		views.push(view.native);
+		views.push(r.views[slotOf(depth.view.id)].native);
 		clears.push(depth.depthClearValue);
 		clears.push(0.0);
 		writeToTexture(r.tracker, texture.native, texture.rest, DEPTH_STAGES, DEPTH_ACCESS, LAYOUT_DEPTH_STENCIL_ATTACHMENT);
 	} else {
 		noDepthKeyWords(key);
 	}
-	if (width == 0) { stop("beginRenderPass without an attachment"); }
 	try flush(r);
 	let native = cache.cachedPass(key);
 	if (native == 0) {
@@ -238,8 +200,8 @@ export function beginRenderPass(
 		key.length as uint32,
 		views[0],
 		views.length as uint32,
-		width as uint32,
-		height as uint32,
+		extent.width as uint32,
+		extent.height as uint32,
 		clears[0],
 		clears.length as uint32,
 	));

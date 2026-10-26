@@ -15,16 +15,7 @@ import {
 	vulkanSwapchainView,
 } from "./vulkan.h";
 import { formatInfo, imageUsageFlags } from "./conv";
-import {
-	ResourceError,
-	SwapchainImage,
-	VULKAN_OK,
-	VulkanResources,
-	adoptSwapchainImage,
-	failure,
-	markAcquired,
-	releaseSwapchainImage,
-} from "./resources";
+import { ResourceError, VULKAN_OK, failure } from "./resources";
 import { GPUTextureFormat, stop } from "../types.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
@@ -107,6 +98,11 @@ export struct SwapchainPlan {
 	rotation: int32;
 	compositeAlpha: uint32;
 	presentMode: uint32;
+}
+
+export struct SwapchainImage {
+	image: uint64;
+	view: uint64;
 }
 
 export struct Swapchain {
@@ -292,16 +288,15 @@ export function newSwapchain(config: SurfaceConfig): Swapchain {
 	};
 }
 
-function dropImages(ref r: VulkanResources, ref chain: Swapchain): void {
-	for (const image of chain.images) { releaseSwapchainImage(r, image); }
+function dropImages(ref chain: Swapchain): void {
 	chain.images.length = 0;
 	chain.current = -1;
 }
 
-export function configureSurface(ref r: VulkanResources, ref chain: Swapchain): Result<void, SurfaceError> {
+export function configureSurface(ref chain: Swapchain): Result<void, SurfaceError> {
 	const info = try querySurface();
 	const plan = try planSwapchain(info, chain.config);
-	dropImages(r, chain);
+	dropImages(chain);
 	try surfaceChecked(vulkanSwapchainCreate(
 		plan.native,
 		plan.colorSpace,
@@ -316,15 +311,7 @@ export function configureSurface(ref r: VulkanResources, ref chain: Swapchain): 
 	chain.plan = plan;
 	chain.suboptimal = false;
 	for (let i: uint32 = 0; i < vulkanSwapchainImageCount(); i++) {
-		const image = adoptSwapchainImage(
-			r,
-			vulkanSwapchainImage(i),
-			vulkanSwapchainView(i),
-			plan.format,
-			plan.width as int32,
-			plan.height as int32,
-		);
-		chain.images.push(image);
+		chain.images.push({ image: vulkanSwapchainImage(i), view: vulkanSwapchainView(i) });
 	}
 	return Result.ok(null);
 }
@@ -336,29 +323,28 @@ export function extentChanged(chain: Swapchain): Result<boolean, SurfaceError> {
 	return Result.ok(plan.width != chain.plan.width || plan.height != chain.plan.height);
 }
 
-function acquireOnce(ref r: VulkanResources, ref chain: Swapchain): int32 {
+function acquireOnce(ref chain: Swapchain): int32 {
 	let index: uint32 = 0;
 	const code = vulkanSwapchainAcquire(index);
 	if (code == VULKAN_OK || code == VULKAN_SUBOPTIMAL) {
 		chain.current = index as int32;
 		chain.suboptimal = code == VULKAN_SUBOPTIMAL;
-		markAcquired(r, chain.images[index as int32]);
 	}
 	return code;
 }
 
-export function acquireImage(ref r: VulkanResources, ref chain: Swapchain): Result<SwapchainImage, SurfaceError> {
-	let code = acquireOnce(r, chain);
+export function acquireImage(ref chain: Swapchain): Result<SwapchainImage, SurfaceError> {
+	let code = acquireOnce(chain);
 	if (code == VULKAN_OUT_OF_DATE) {
-		try configureSurface(r, chain);
-		code = acquireOnce(r, chain);
+		try configureSurface(chain);
+		code = acquireOnce(chain);
 	}
 	if (code == VULKAN_OK || code == VULKAN_SUBOPTIMAL) { return Result.ok(chain.images[chain.current]); }
-	if (code == VULKAN_SURFACE_LOST) { try releaseSurface(r, chain); }
+	if (code == VULKAN_SURFACE_LOST) { try releaseSurface(chain); }
 	return Result.err(surfaceFailure(code));
 }
 
-export function present(ref r: VulkanResources, ref chain: Swapchain): Result<void, SurfaceError> {
+export function present(ref chain: Swapchain): Result<void, SurfaceError> {
 	const code = vulkanSwapchainPresent();
 	chain.current = -1;
 	if (code == VULKAN_OK) { return Result.ok(null); }
@@ -366,17 +352,17 @@ export function present(ref r: VulkanResources, ref chain: Swapchain): Result<vo
 		chain.suboptimal = true;
 		return Result.ok(null);
 	}
-	if (code == VULKAN_SURFACE_LOST) { try releaseSurface(r, chain); }
+	if (code == VULKAN_SURFACE_LOST) { try releaseSurface(chain); }
 	return Result.err(surfaceFailure(code));
 }
 
-export function releaseSwapchain(ref r: VulkanResources, ref chain: Swapchain): Result<void, SurfaceError> {
+export function releaseSwapchain(ref chain: Swapchain): Result<void, SurfaceError> {
 	if (chain.images.length == 0) { return Result.ok(null); }
-	dropImages(r, chain);
+	dropImages(chain);
 	return surfaceChecked(vulkanSwapchainDestroy());
 }
 
-export function releaseSurface(ref r: VulkanResources, ref chain: Swapchain): Result<void, SurfaceError> {
-	dropImages(r, chain);
+export function releaseSurface(ref chain: Swapchain): Result<void, SurfaceError> {
+	dropImages(chain);
 	return surfaceChecked(vulkanSurfaceDestroy());
 }

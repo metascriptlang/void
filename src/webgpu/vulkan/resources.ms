@@ -9,6 +9,7 @@ import {
 	vulkanCompletedSerial,
 	vulkanCopyBuffer,
 	vulkanCopyBufferToImage,
+	vulkanCopyImage,
 	vulkanCopyImageToBuffer,
 	vulkanError,
 	vulkanFormatOptimalFeatures,
@@ -26,6 +27,8 @@ import {
 	vulkanMemoryType,
 	vulkanMemoryTypeCount,
 	vulkanPipelineDestroy,
+	vulkanQueueStream,
+	vulkanRecordingOpen,
 	vulkanRecordingSerial,
 	vulkanSamplerCreate,
 	vulkanSamplerDestroy,
@@ -97,29 +100,30 @@ import {
 	GPUBufferDescriptor,
 	GPUBufferUsage,
 	GPUExtent3D,
-	GPUSampler,
 	GPUSamplerDescriptor,
 	GPUTexelCopyBufferInfo,
 	GPUTexelCopyBufferLayout,
 	GPUTexelCopyTextureInfo,
-	GPUTexture,
 	GPUTextureDescriptor,
-	GPUTextureFormat,
 	GPUTextureUsage,
-	GPUTextureView,
 	GPUTextureViewDescriptor,
-	GPUTextureViewDimension,
-	checkedCubeView,
 	checkedDepthTexelCopy,
-	checkedSamplerAnisotropy,
-	checkedSamplerLod,
-	checkedView3d,
-	checkedViewLayers,
-	checkedViewMips,
+	checkedTexelBufferLayout,
+	checkedTexelWritePitch,
+	samplerMaxLod,
 	stop,
 } from "../types.ms";
-import { checkedViewDimension } from "../validate.ms";
-import { Pool, allocate, liveIds, newPool, release, reset, slotIndex, store } from "../pool.ms";
+import { clampedAnisotropy } from "../validate.ms";
+import {
+	TextureRecord,
+	ViewRecord,
+	bufferRecords,
+	put,
+	slotOf,
+	textureRecords,
+	vacate,
+	viewRecords,
+} from "../pool.ms";
 
 @passC("-I../../../deps/vulkan-headers/include");
 when (linux) {
@@ -138,56 +142,24 @@ const LIMIT_NON_COHERENT_ATOM_SIZE: int32 = 22;
 const LIMIT_MEMORY_ALLOCATION_COUNT: int32 = 23;
 const UPLOAD_PAGE_SIZE: uint64 = 64 * 1024 * 1024;
 const UPLOAD_ALIGNMENT: uint64 = 256;
-const MAX_ANISOTROPY = 16;
 
-struct BufferRecord {
-	id: uint32;
+export struct BufferNative {
 	native: uint64;
-	size: int64;
-	usage: int32;
 	rest: BufferRest;
 	memory: MemoryAllocation;
-	lastWrite: uint64;
+	lastUse: uint64;
 }
 
-export struct TextureRecord {
-	id: uint32;
+export struct TextureNative {
 	native: uint64;
-	format: GPUTextureFormat;
 	info: FormatInfo;
-	width: int32;
-	height: int32;
-	layers: int32;
-	mipLevels: int32;
-	volume: boolean;
-	cube: boolean;
-	samples: int32;
-	usage: int32;
-	swapchain: boolean;
 	rest: TextureRest;
 	memory: MemoryAllocation;
 }
 
-export struct ViewRecord {
-	id: uint32;
+export struct ViewNative {
 	native: uint64;
 	binding: uint64;
-	dimension: GPUTextureViewDimension;
-	texture: uint32;
-	baseMip: int32;
-	mipCount: int32;
-	layerCount: int32;
-	swapchain: boolean;
-}
-
-export struct SwapchainImage {
-	texture: GPUTexture;
-	view: GPUTextureView;
-}
-
-struct SamplerRecord {
-	id: uint32;
-	native: uint64;
 }
 
 export enum RetiredKind {
@@ -219,19 +191,29 @@ struct Staged {
 	offset: uint64;
 }
 
+struct SwapchainDepth {
+	width: int32;
+	height: int32;
+}
+
 export struct VulkanResources {
 	memory: MemoryAllocator;
 	tracker: StateTracker;
+	queue: StateTracker;
 	descriptors: DescriptorCache;
-	buffers: Pool<BufferRecord>;
-	textures: Pool<TextureRecord>;
-	views: Pool<ViewRecord>;
-	samplers: Pool<SamplerRecord>;
+	buffers: Vec<BufferNative>;
+	textures: Vec<TextureNative>;
+	views: Vec<ViewNative>;
+	samplers: Vec<uint64>;
 	retired: Vec<Retired>;
 	freePages: Vec<UploadPage>;
 	page: UploadPage;
 	depthStencil: int32;
 	acquired: uint64;
+	submitted: uint64;
+	swapchainColor: uint32;
+	swapchainDepth: uint32;
+	depthExtent: SwapchainDepth;
 }
 
 export const NO_ALLOCATION: MemoryAllocation = {
@@ -246,6 +228,14 @@ export const NO_ALLOCATION: MemoryAllocation = {
 };
 const NO_PAGE: UploadPage = { native: 0, memory: NO_ALLOCATION, next: 0 };
 const NO_BLOCK: OpenedBlock = { memory: 0, mapped: 0 };
+const NO_BUFFER: BufferNative = { native: 0, rest: { stages: 0, access: 0 }, memory: NO_ALLOCATION, lastUse: 0 };
+const NO_TEXTURE: TextureNative = {
+	native: 0,
+	info: { native: 0, texelBytes: 0, aspect: 0, depth: false },
+	rest: { stages: 0, access: 0, layout: 0, aspect: 0 },
+	memory: NO_ALLOCATION,
+};
+const NO_VIEW: ViewNative = { native: 0, binding: 0 };
 
 @inline function has(flags: int32, flag: int32): boolean { return (flags & flag) != 0; }
 
@@ -302,63 +292,49 @@ function memoryDevice(): MemoryDevice {
 	return device;
 }
 
-export function resourcesFor(device: MemoryDevice, depthStencil: int32): VulkanResources {
-	const noBuffer: BufferRecord = {
-		id: 0,
-		native: 0,
-		size: 0,
-		usage: 0,
-		rest: { stages: 0, access: 0 },
-		memory: NO_ALLOCATION,
-		lastWrite: 0,
+@noinline function refuseClosed(): never {
+	stop("vulkan: a resource was made before requestDevice or after destroy");
+}
+
+function closedMemory(): MemoryDevice {
+	return {
+		types: [],
+		heapSizes: [],
+		nonCoherentAtomSize: 1,
+		maxAllocationCount: 0,
+		openBlock: (typeIndex: int32, size: uint64, owner: DedicatedOwner, map: boolean): OpenedBlock => { refuseClosed(); },
+		closeBlock: (memory: uint64): void => { refuseClosed(); },
 	};
-	const noTexture: TextureRecord = {
-		id: 0,
-		native: 0,
-		format: "rgba8unorm",
-		info: { native: 0, texelBytes: 0, aspect: 0, depth: false },
-		width: 0,
-		height: 0,
-		layers: 0,
-		mipLevels: 0,
-		volume: false,
-		cube: false,
-		samples: 0,
-		usage: 0,
-		swapchain: false,
-		rest: { stages: 0, access: 0, layout: 0, aspect: 0 },
-		memory: NO_ALLOCATION,
-	};
-	const noView: ViewRecord = {
-		id: 0,
-		native: 0,
-		binding: 0,
-		dimension: "2d",
-		texture: 0,
-		baseMip: 0,
-		mipCount: 0,
-		layerCount: 0,
-		swapchain: false,
-	};
-	const noSampler: SamplerRecord = { id: 0, native: 0 };
+}
+
+export function closedResources(): VulkanResources {
+	return resourcesOn(closedMemory(), 0);
+}
+
+export function openResources(): VulkanResources {
+	return resourcesOn(memoryDevice(), depthStencilNative(vulkanFormatOptimalFeatures(d24s8Format())));
+}
+
+function resourcesOn(device: MemoryDevice, depthStencil: int32): VulkanResources {
 	return {
 		memory: MemoryAllocator.forDevice(device),
 		tracker: newTracker(),
+		queue: newTracker(),
 		descriptors: newDescriptorCache(),
-		buffers: newPool<BufferRecord>("vulkan", "GPUBuffer", "buffer", noBuffer),
-		textures: newPool<TextureRecord>("vulkan", "GPUTexture", "texture", noTexture),
-		views: newPool<ViewRecord>("vulkan", "GPUTextureView", "texture view", noView),
-		samplers: newPool<SamplerRecord>("vulkan", "GPUSampler", "sampler", noSampler),
+		buffers: [NO_BUFFER],
+		textures: [NO_TEXTURE],
+		views: [NO_VIEW],
+		samplers: [0],
 		retired: [],
 		freePages: [],
 		page: NO_PAGE,
 		depthStencil: depthStencil,
 		acquired: 0,
+		submitted: 0,
+		swapchainColor: 0,
+		swapchainDepth: 0,
+		depthExtent: { width: 0, height: 0 },
 	};
-}
-
-export function openResources(): VulkanResources {
-	return resourcesFor(memoryDevice(), depthStencilNative(vulkanFormatOptimalFeatures(d24s8Format())));
 }
 
 function dedicationOf(code: int32): Dedication {
@@ -437,8 +413,12 @@ function placeImage(ref r: VulkanResources, native: uint64): Result<MemoryAlloca
 }
 
 export function flush(ref r: VulkanResources): Result<void, ResourceError> {
-	if (!r.tracker.pending()) { return Result.ok(null); }
-	for (const barrier of r.tracker.images) {
+	return flushTracker(r.tracker);
+}
+
+function flushTracker(ref t: StateTracker): Result<void, ResourceError> {
+	if (!t.pending()) { return Result.ok(null); }
+	for (const barrier of t.images) {
 		const code = vulkanBarrierImage(
 			barrier.image,
 			barrier.aspect,
@@ -448,21 +428,29 @@ export function flush(ref r: VulkanResources): Result<void, ResourceError> {
 			barrier.newLayout,
 		);
 		if (code != VULKAN_OK) {
-			cleared(r.tracker);
+			cleared(t);
 			return Result.err(failure(code));
 		}
 	}
-	const code = vulkanBarrierFlush(
-		r.tracker.sourceStages,
-		r.tracker.targetStages,
-		r.tracker.sourceAccess,
-		r.tracker.targetAccess,
-	);
-	cleared(r.tracker);
+	const code = vulkanBarrierFlush(t.sourceStages, t.targetStages, t.sourceAccess, t.targetAccess);
+	cleared(t);
 	return checked(code);
 }
 
-export function createBuffer(ref r: VulkanResources, descriptor: GPUBufferDescriptor): Result<GPUBuffer, ResourceError> {
+function queued(ref r: VulkanResources, recorded: Result<void, ResourceError>): Result<void, ResourceError> {
+	let flushed = recorded;
+	if (recorded.ok) {
+		endPass(r.queue);
+		flushed = flushTracker(r.queue);
+	} else {
+		cleared(r.queue);
+	}
+	const switched = checked(vulkanQueueStream(0));
+	if (!flushed.ok) { return flushed; }
+	return switched;
+}
+
+export function createBuffer(ref r: VulkanResources, id: uint32, descriptor: GPUBufferDescriptor): Result<void, ResourceError> {
 	const size = Math.max(descriptor.size, 4 as int64);
 	let native: uint64 = 0;
 	try checked(vulkanBufferCreate(size as uint64, bufferUsageFlags(descriptor.usage), native));
@@ -471,44 +459,29 @@ export function createBuffer(ref r: VulkanResources, descriptor: GPUBufferDescri
 		vulkanBufferDestroy(native);
 		return Result.err(placed.error);
 	}
-	const id = allocate(r.buffers);
-	store(r.buffers, {
-		id: id,
-		native: native,
-		size: descriptor.size,
-		usage: descriptor.usage,
-		rest: bufferRest(descriptor.usage),
-		memory: placed.value,
-		lastWrite: 0,
-	});
-	return Result.ok({ id: id });
+	put(r.buffers, id, { native: native, rest: bufferRest(descriptor.usage), memory: placed.value, lastUse: 0 });
+	return Result.ok(null);
 }
 
-export function createTexture(ref r: VulkanResources, descriptor: GPUTextureDescriptor): Result<GPUTexture, ResourceError> {
-	const info = formatInfo(descriptor.format, r.depthStencil, "GPUTextureDescriptor.format");
-	const dimension: string = descriptor.dimension;
-	if (dimension != "" && dimension != "2d" && dimension != "3d") {
-		stop(`GPUTextureDescriptor.dimension '${dimension}' is not supported`);
-	}
-	const volume = dimension == "3d";
-	const width = descriptor.size.width;
-	const height = descriptor.size.height;
-	const layers = descriptor.size.depthOrArrayLayers == 0 ? 1 : descriptor.size.depthOrArrayLayers;
-	const mipLevels = descriptor.mipLevelCount == 0 ? 1 : descriptor.mipLevelCount;
-	const samples = descriptor.sampleCount == 0 ? 1 : descriptor.sampleCount;
-	const cube = cubeCompatible(volume, width, height, layers, samples);
+function createImage(
+	ref r: VulkanResources,
+	info: FormatInfo,
+	texture: TextureRecord,
+): Result<TextureNative, ResourceError> {
+	const volume = texture.volume;
+	const layers = texture.layers;
 	let native: uint64 = 0;
 	try checked(vulkanImageCreate(
 		volume ? IMAGE_TYPE_3D : IMAGE_TYPE_2D,
 		info.native,
-		width as uint32,
-		height as uint32,
+		texture.width as uint32,
+		texture.height as uint32,
 		(volume ? layers : 1) as uint32,
-		mipLevels as uint32,
+		texture.mipLevels as uint32,
 		(volume ? 1 : layers) as uint32,
-		samples as uint32,
-		imageUsageFlags(descriptor.usage, info.depth),
-		cube ? IMAGE_CREATE_CUBE_COMPATIBLE : 0,
+		texture.sampleCount as uint32,
+		imageUsageFlags(texture.usage, info.depth),
+		cubeCompatible(volume, texture.width, texture.height, layers, texture.sampleCount) ? IMAGE_CREATE_CUBE_COMPATIBLE : 0,
 		native,
 	));
 	const placed = placeImage(r, native);
@@ -516,64 +489,44 @@ export function createTexture(ref r: VulkanResources, descriptor: GPUTextureDesc
 		vulkanImageDestroy(native);
 		return Result.err(placed.error);
 	}
-	const rest = textureRest(descriptor.usage, info.aspect);
-	initTexture(r.tracker, native, rest);
-	const initialized = flush(r);
+	const rest = textureRest(texture.usage, info.aspect);
+	let initialized = checked(vulkanQueueStream(1));
+	if (initialized.ok) {
+		initTexture(r.queue, native, rest);
+		initialized = queued(r, Result.ok(null));
+	}
 	if (!initialized.ok) {
 		freeMemory(r, placed.value);
 		vulkanImageDestroy(native);
 		return Result.err(initialized.error);
 	}
-	const id = allocate(r.textures);
-	store(r.textures, {
-		id: id,
-		native: native,
-		format: descriptor.format,
-		info: info,
-		width: width,
-		height: height,
-		layers: layers,
-		mipLevels: mipLevels,
-		volume: volume,
-		cube: cube && has(descriptor.usage, GPUTextureUsage.TEXTURE_BINDING as int32) && layers % 6 == 0,
-		samples: samples,
-		usage: descriptor.usage,
-		swapchain: false,
-		rest: rest,
-		memory: placed.value,
-	});
-	return Result.ok({ id: id });
+	return Result.ok({ native: native, info: info, rest: rest, memory: placed.value });
 }
 
-export function createView(
-	ref r: VulkanResources,
-	texture: GPUTexture,
-	descriptor: GPUTextureViewDescriptor,
-): Result<GPUTextureView, ResourceError> {
-	const t = r.textures.slots[r.textures.slotIndex(texture.id)];
-	const baseMip = descriptor.baseMipLevel;
-	const mipCount = descriptor.mipLevelCount == 0 ? t.mipLevels - baseMip : descriptor.mipLevelCount;
-	checkedViewMips(texture.id, t.mipLevels, baseMip, mipCount);
-	const dimension = checkedViewDimension(descriptor.dimension, t.volume, t.layers, texture.id);
-	let baseLayer = descriptor.baseArrayLayer;
-	let layerCount = descriptor.arrayLayerCount;
-	if (dimension == "3d") {
-		checkedView3d(baseLayer, layerCount);
-		baseLayer = 0;
-		layerCount = 1;
-	} else {
-		if (dimension == "2d") { layerCount = 1; }
-		if (dimension == "cube") { layerCount = 6; }
-		if (layerCount == 0) { layerCount = t.layers - baseLayer; }
-		checkedViewLayers(texture.id, t.layers, baseLayer, layerCount);
+export function createTexture(ref r: VulkanResources, texture: TextureRecord, descriptor: GPUTextureDescriptor): Result<void, ResourceError> {
+	const dimension: string = descriptor.dimension;
+	if (dimension != "" && dimension != "2d" && dimension != "3d") {
+		stop(`GPUTextureDescriptor.dimension '${dimension}' is not supported`);
 	}
-	if (dimension == "cube" || dimension == "cube-array") { checkedCubeView(texture.id, t.cube, baseLayer, layerCount); }
+	const info = formatInfo(texture.format, r.depthStencil, "GPUTextureDescriptor.format");
+	put(r.textures, texture.id, try createImage(r, info, texture));
+	return Result.ok(null);
+}
+
+function createNativeView(
+	texture: TextureNative,
+	dimension: string,
+	baseMip: int32,
+	mipCount: int32,
+	baseLayer: int32,
+	layerCount: int32,
+): Result<ViewNative, ResourceError> {
 	let native: uint64 = 0;
 	try checked(vulkanViewCreate(
-		t.native,
+		texture.native,
 		viewType(dimension),
-		t.info.native,
-		t.info.aspect,
+		texture.info.native,
+		texture.info.aspect,
 		baseMip as uint32,
 		mipCount as uint32,
 		baseLayer as uint32,
@@ -581,11 +534,11 @@ export function createView(
 		native,
 	));
 	let binding = native;
-	if (t.info.aspect == (ASPECT_DEPTH | ASPECT_STENCIL) && t.rest.layout == LAYOUT_SHADER_READ_ONLY) {
+	if (texture.info.aspect == (ASPECT_DEPTH | ASPECT_STENCIL) && texture.rest.layout == LAYOUT_SHADER_READ_ONLY) {
 		const depthOnly = checked(vulkanViewCreate(
-			t.native,
+			texture.native,
 			viewType(dimension),
-			t.info.native,
+			texture.info.native,
 			ASPECT_DEPTH,
 			baseMip as uint32,
 			mipCount as uint32,
@@ -598,71 +551,65 @@ export function createView(
 			return Result.err(depthOnly.error);
 		}
 	}
-	const id = allocate(r.views);
-	store(r.views, {
-		id: id,
-		native: native,
-		binding: binding,
-		dimension: dimension as GPUTextureViewDimension,
-		texture: texture.id,
-		baseMip: baseMip,
-		mipCount: mipCount,
-		layerCount: layerCount,
-		swapchain: false,
-	});
-	return Result.ok({ id: id });
+	return Result.ok({ native: native, binding: binding });
 }
 
-export function adoptSwapchainImage(
-	ref r: VulkanResources,
-	image: uint64,
-	view: uint64,
-	format: GPUTextureFormat,
-	width: int32,
-	height: int32,
-): SwapchainImage {
-	const texture = allocate(r.textures);
-	store(r.textures, {
-		id: texture,
-		native: image,
-		format: format,
-		info: formatInfo(format, r.depthStencil, "swapchain format"),
-		width: width,
-		height: height,
-		layers: 1,
-		mipLevels: 1,
-		volume: false,
-		cube: false,
-		samples: 1,
-		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
-		swapchain: true,
+export function createView(ref r: VulkanResources, view: ViewRecord, descriptor: GPUTextureViewDescriptor): Result<void, ResourceError> {
+	const texture = r.textures[textureRecords.slotIndex(view.texture)];
+	const native = try createNativeView(texture, view.dimension, view.baseMip, view.mipCount, view.baseLayer, view.layerCount);
+	put(r.views, view.id, native);
+	return Result.ok(null);
+}
+
+export function adoptSwapchain(ref r: VulkanResources, color: uint32, depth: uint32): void {
+	r.swapchainColor = color;
+	r.swapchainDepth = depth;
+	const colorRecord = textureRecords.record(color);
+	put(r.textures, color, {
+		native: 0,
+		info: formatInfo(colorRecord.format, r.depthStencil, "NativeEnvironment.colorFormat"),
 		rest: swapchainRest(),
 		memory: NO_ALLOCATION,
 	});
-	const viewId = allocate(r.views);
-	store(r.views, {
-		id: viewId,
-		native: view,
-		binding: view,
-		dimension: "2d",
-		texture: texture,
-		baseMip: 0,
-		mipCount: 1,
-		layerCount: 1,
-		swapchain: true,
-	});
-	return { texture: { id: texture }, view: { id: viewId } };
+	put(r.views, colorRecord.swapchainView, NO_VIEW);
+	if (depth == 0) { return; }
+	const depthRecord = textureRecords.record(depth);
+	const info = formatInfo(depthRecord.format, r.depthStencil, "NativeEnvironment.depthFormat");
+	put(r.textures, depth, { native: 0, info: info, rest: textureRest(depthRecord.usage, info.aspect), memory: NO_ALLOCATION });
+	put(r.views, depthRecord.swapchainView, NO_VIEW);
+	r.depthExtent = { width: 0, height: 0 };
 }
 
-export function releaseSwapchainImage(ref r: VulkanResources, image: SwapchainImage): void {
-	r.views.slots[r.views.slotIndex(image.view.id)].id = 0;
-	release(r.views, image.view.id);
-	r.textures.slots[r.textures.slotIndex(image.texture.id)].id = 0;
-	release(r.textures, image.texture.id);
+function retireSwapchainDepth(ref r: VulkanResources): void {
+	const t = slotOf(r.swapchainDepth);
+	const v = slotOf(textureRecords.slots[t].swapchainView);
+	if (r.views[v].native != 0) { retire(r, RetiredKind.View, r.views[v].native, NO_ALLOCATION); }
+	if (r.textures[t].native != 0) { retire(r, RetiredKind.Image, r.textures[t].native, r.textures[t].memory); }
+	r.views[v] = NO_VIEW;
+	r.textures[t].native = 0;
+	r.textures[t].memory = NO_ALLOCATION;
+	r.depthExtent = { width: 0, height: 0 };
 }
 
-export function markAcquired(ref r: VulkanResources, image: SwapchainImage): void {
-	r.acquired = r.textures.slots[r.textures.slotIndex(image.texture.id)].native;
+function sizeSwapchainDepth(ref r: VulkanResources, width: int32, height: int32): Result<void, ResourceError> {
+	if (r.depthExtent.width == width && r.depthExtent.height == height) { return Result.ok(null); }
+	retireSwapchainDepth(r);
+	const record = textureRecords.record(r.swapchainDepth);
+	const t = slotOf(r.swapchainDepth);
+	const image = try createImage(r, r.textures[t].info, record);
+	r.textures[t] = image;
+	r.views[slotOf(record.swapchainView)] = try createNativeView(image, "2d", 0, 1, 0, 1);
+	r.depthExtent = { width: width, height: height };
+	return Result.ok(null);
+}
+
+export function acquireSwapchain(ref r: VulkanResources, width: int32, height: int32, image: uint64, view: uint64): Result<void, ResourceError> {
+	const color = slotOf(r.swapchainColor);
+	r.textures[color].native = image;
+	r.views[slotOf(textureRecords.slots[color].swapchainView)] = { native: view, binding: view };
+	r.acquired = image;
+	if (r.swapchainDepth != 0) { try sizeSwapchainDepth(r, width, height); }
+	return Result.ok(null);
 }
 
 export function settle(ref r: VulkanResources): void {
@@ -673,73 +620,53 @@ export function settle(ref r: VulkanResources): void {
 	}
 }
 
-@noinline function refuseSwapchainOwned(call: string, kind: string, id: uint32): never {
-	stop(`${call}: ${kind} ${id} belongs to the swapchain`);
-}
-
-export function createSampler(ref r: VulkanResources, descriptor: GPUSamplerDescriptor): Result<GPUSampler, ResourceError> {
-	const magFilter = filter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter");
-	const minFilter = filter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter");
-	const mipmapMode = filter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter");
-	const maxAnisotropy = descriptor.maxAnisotropy < 1 ? 1 : descriptor.maxAnisotropy;
-	if (maxAnisotropy > MAX_ANISOTROPY) { stop(`GPUSamplerDescriptor.maxAnisotropy '${maxAnisotropy}' is not supported`); }
-	checkedSamplerAnisotropy(maxAnisotropy, magFilter == 1 && minFilter == 1 && mipmapMode == 1);
-	if (descriptor.lodMinClamp < 0) { stop(`GPUSamplerDescriptor.lodMinClamp '${descriptor.lodMinClamp}' is not supported`); }
-	const maxLod = checkedSamplerLod(descriptor.lodMinClamp, descriptor.lodMaxClamp);
+export function createSampler(ref r: VulkanResources, id: uint32, descriptor: GPUSamplerDescriptor): Result<void, ResourceError> {
 	let native: uint64 = 0;
 	try checked(vulkanSamplerCreate(
-		magFilter,
-		minFilter,
-		mipmapMode,
+		filter(descriptor.magFilter, "GPUSamplerDescriptor.magFilter"),
+		filter(descriptor.minFilter, "GPUSamplerDescriptor.minFilter"),
+		filter(descriptor.mipmapFilter, "GPUSamplerDescriptor.mipmapFilter"),
 		addressMode(descriptor.addressModeU, "GPUSamplerDescriptor.addressModeU"),
 		addressMode(descriptor.addressModeV, "GPUSamplerDescriptor.addressModeV"),
 		addressMode(descriptor.addressModeW, "GPUSamplerDescriptor.addressModeW"),
 		descriptor.lodMinClamp,
-		maxLod,
+		samplerMaxLod(descriptor.lodMaxClamp),
 		compareOp(descriptor.compare, "GPUSamplerDescriptor.compare"),
-		maxAnisotropy as uint32,
+		clampedAnisotropy(descriptor.maxAnisotropy) as uint32,
 		native,
 	));
-	const id = allocate(r.samplers);
-	store(r.samplers, { id: id, native: native });
-	return Result.ok({ id: id });
+	put(r.samplers, id, native);
+	return Result.ok(null);
 }
 
 export function retire(ref r: VulkanResources, kind: RetiredKind, native: uint64, memory: MemoryAllocation): void {
 	r.retired.push({ serial: vulkanRecordingSerial(), kind: kind, native: native, memory: memory });
 }
 
-export function destroyBuffer(ref r: VulkanResources, buffer: GPUBuffer): void {
-	const index = r.buffers.slotIndex(buffer.id);
-	retire(r, RetiredKind.Buffer, r.buffers.slots[index].native, r.buffers.slots[index].memory);
-	r.buffers.slots[index].id = 0;
-	release(r.buffers, buffer.id);
+export function destroyBuffer(ref r: VulkanResources, id: uint32): void {
+	const index = bufferRecords.slotIndex(id);
+	retire(r, RetiredKind.Buffer, r.buffers[index].native, r.buffers[index].memory);
+	vacate(r.buffers, id);
 }
 
-export function destroyTexture(ref r: VulkanResources, texture: GPUTexture): void {
-	const index = r.textures.slotIndex(texture.id);
-	if (r.textures.slots[index].swapchain) { refuseSwapchainOwned("destroyTexture", "GPUTexture", texture.id); }
-	retire(r, RetiredKind.Image, r.textures.slots[index].native, r.textures.slots[index].memory);
-	r.textures.slots[index].id = 0;
-	release(r.textures, texture.id);
+export function destroyTexture(ref r: VulkanResources, id: uint32): void {
+	const index = textureRecords.slotIndex(id);
+	retire(r, RetiredKind.Image, r.textures[index].native, r.textures[index].memory);
+	vacate(r.textures, id);
 }
 
-export function destroyView(ref r: VulkanResources, view: GPUTextureView): void {
-	const index = r.views.slotIndex(view.id);
-	if (r.views.slots[index].swapchain) { refuseSwapchainOwned("destroyView", "GPUTextureView", view.id); }
-	retire(r, RetiredKind.View, r.views.slots[index].native, NO_ALLOCATION);
-	if (r.views.slots[index].binding != r.views.slots[index].native) {
-		retire(r, RetiredKind.View, r.views.slots[index].binding, NO_ALLOCATION);
+export function destroyView(ref r: VulkanResources, id: uint32): void {
+	const index = viewRecords.slotIndex(id);
+	retire(r, RetiredKind.View, r.views[index].native, NO_ALLOCATION);
+	if (r.views[index].binding != r.views[index].native) {
+		retire(r, RetiredKind.View, r.views[index].binding, NO_ALLOCATION);
 	}
-	r.views.slots[index].id = 0;
-	release(r.views, view.id);
+	vacate(r.views, id);
 }
 
-export function destroySampler(ref r: VulkanResources, sampler: GPUSampler): void {
-	const index = r.samplers.slotIndex(sampler.id);
-	retire(r, RetiredKind.Sampler, r.samplers.slots[index].native, NO_ALLOCATION);
-	r.samplers.slots[index].id = 0;
-	release(r.samplers, sampler.id);
+export function destroySampler(ref r: VulkanResources, id: uint32): void {
+	retire(r, RetiredKind.Sampler, r.samplers[slotOf(id)], NO_ALLOCATION);
+	vacate(r.samplers, id);
 }
 
 function freeRetired(ref r: VulkanResources, retired: Retired): void {
@@ -803,22 +730,21 @@ function upload(ref r: VulkanResources, bytes: uint64): Result<Staged, ResourceE
 	return Result.ok({ native: r.page.native, memory: r.page.memory, offset: offset });
 }
 
-function stagedWrite(
+function mappedWrite<T>(
 	ref r: VulkanResources,
-	staged: Staged,
-	at: uint64,
-	data: Readonly<Span<uint8>>,
+	memory: MemoryAllocation,
+	offset: uint64,
+	data: Readonly<Span<T>>,
 	dataOffset: uint64,
 	rowBytes: uint64,
 	sourcePitch: uint64,
 	rows: uint32,
 ): Result<void, ResourceError> {
-	const offset = staged.offset + at;
-	const range = r.memory.mappedRange(staged.memory, offset, rowBytes * (rows as uint64));
+	const range = r.memory.mappedRange(memory, offset, rowBytes * (rows as uint64));
 	return checked(vulkanMappedWrite(
-		staged.memory.memory,
-		staged.memory.mapped,
-		staged.memory.offset + offset,
+		memory.memory,
+		memory.mapped,
+		memory.offset + offset,
 		data[0],
 		dataOffset,
 		rowBytes,
@@ -830,34 +756,29 @@ function stagedWrite(
 	));
 }
 
-function copyIntoBuffer(
-	ref r: VulkanResources,
+function recordBufferCopy(
+	ref t: StateTracker,
 	source: uint64,
 	sourceOffset: uint64,
-	target: int32,
+	target: BufferNative,
 	targetOffset: uint64,
 	bytes: uint64,
 ): Result<void, ResourceError> {
-	copyFromBuffer(r.tracker, source);
-	writeToBuffer(r.tracker, r.buffers.slots[target].native, r.buffers.slots[target].rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE);
-	try flush(r);
-	try checked(vulkanCopyBuffer(source, sourceOffset, r.buffers.slots[target].native, targetOffset, bytes));
-	r.buffers.slots[target].lastWrite = vulkanRecordingSerial();
-	return Result.ok(null);
+	copyFromBuffer(t, source);
+	writeToBuffer(t, target.native, target.rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE);
+	try flushTracker(t);
+	return checked(vulkanCopyBuffer(source, sourceOffset, target.native, targetOffset, bytes));
 }
 
-export function writeBuffer(
-	ref r: VulkanResources,
-	buffer: GPUBuffer,
-	offset: int64,
-	data: Readonly<Span<uint8>>,
-): Result<void, ResourceError> {
-	const target = r.buffers.slotIndex(buffer.id);
-	const bytes = data.length as uint64;
-	if (bytes == 0) { return Result.ok(null); }
+export function writeBuffer<T>(ref r: VulkanResources, buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): Result<void, ResourceError> {
+	const target = bufferRecords.slotIndex(buffer.id);
+	const bytes = (data.length as uint64) * (sizeof T as uint64);
 	const staged = try upload(r, bytes);
-	try stagedWrite(r, staged, 0, data, 0, bytes, bytes, 1);
-	return copyIntoBuffer(r, staged.native, staged.offset, target, offset as uint64, bytes);
+	try mappedWrite(r, staged.memory, staged.offset, data, 0, bytes, bytes, 1);
+	try checked(vulkanQueueStream(1));
+	try queued(r, recordBufferCopy(r.queue, staged.native, staged.offset, r.buffers[target], offset as uint64, bytes));
+	r.buffers[target].lastUse = vulkanRecordingSerial();
+	return Result.ok(null);
 }
 
 export function copyBufferToBuffer(
@@ -868,61 +789,161 @@ export function copyBufferToBuffer(
 	destinationOffset: int64,
 	size: int64,
 ): Result<void, ResourceError> {
-	const from = r.buffers.slots[r.buffers.slotIndex(source.id)].native;
-	const target = r.buffers.slotIndex(destination.id);
-	return copyIntoBuffer(r, from, sourceOffset as uint64, target, destinationOffset as uint64, size as uint64);
+	const from = bufferRecords.slotIndex(source.id);
+	const target = bufferRecords.slotIndex(destination.id);
+	try recordBufferCopy(r.tracker, r.buffers[from].native, sourceOffset as uint64, r.buffers[target], destinationOffset as uint64, size as uint64);
+	r.buffers[from].lastUse = vulkanRecordingSerial();
+	r.buffers[target].lastUse = r.buffers[from].lastUse;
+	return Result.ok(null);
 }
 
-function copiedTexel(member: string, t: TextureRecord, writes: boolean, mipLevel: int32, size: GPUExtent3D): int32 {
-	if (t.info.depth) {
-		const stencil = (t.info.aspect & ASPECT_STENCIL) != 0;
-		checkedDepthTexelCopy(member, t.id, t.format, stencil, writes, t.width, t.height, mipLevel, size);
+function copiedTexel(ref r: VulkanResources, member: string, texture: TextureRecord, writes: boolean, mipLevel: int32, size: GPUExtent3D): int32 {
+	const info = r.textures[slotOf(texture.id)].info;
+	if (info.depth) {
+		const stencil = (info.aspect & ASPECT_STENCIL) != 0;
+		checkedDepthTexelCopy(member, texture.id, texture.format, stencil, writes, texture.width, texture.height, mipLevel, size);
 	}
-	return t.info.texelBytes;
+	return info.texelBytes;
 }
 
-export function writeTexture(
+function copyImageBuffer(
+	buffer: uint64,
+	offset: int64,
+	bytesPerRow: int32,
+	texelBytes: int32,
+	rowsPerImage: int32,
+	texture: TextureRecord,
+	native: TextureNative,
+	info: GPUTexelCopyTextureInfo,
+	size: GPUExtent3D,
+	toImage: boolean,
+): Result<void, ResourceError> {
+	const volume = texture.volume;
+	const origin = info.origin;
+	const images = size.depthOrArrayLayers;
+	if (toImage) {
+		return checked(vulkanCopyBufferToImage(
+			buffer,
+			offset as uint64,
+			rowLength(bytesPerRow, texelBytes),
+			rowsPerImage as uint32,
+			native.native,
+			native.info.aspect,
+			info.mipLevel as uint32,
+			origin.x,
+			origin.y,
+			volume ? origin.z : 0,
+			(volume ? 0 : origin.z) as uint32,
+			(volume ? 1 : images) as uint32,
+			size.width as uint32,
+			size.height as uint32,
+			(volume ? images : 1) as uint32,
+		));
+	}
+	return checked(vulkanCopyImageToBuffer(
+		buffer,
+		offset as uint64,
+		rowLength(bytesPerRow, texelBytes),
+		rowsPerImage as uint32,
+		native.native,
+		native.info.aspect,
+		info.mipLevel as uint32,
+		origin.x,
+		origin.y,
+		volume ? origin.z : 0,
+		(volume ? 0 : origin.z) as uint32,
+		(volume ? 1 : images) as uint32,
+		size.width as uint32,
+		size.height as uint32,
+		(volume ? images : 1) as uint32,
+	));
+}
+
+function recordBufferToImage(
+	ref t: StateTracker,
+	buffer: uint64,
+	offset: int64,
+	bytesPerRow: int32,
+	texelBytes: int32,
+	rowsPerImage: int32,
+	texture: TextureRecord,
+	native: TextureNative,
+	destination: GPUTexelCopyTextureInfo,
+	size: GPUExtent3D,
+): Result<void, ResourceError> {
+	copyFromBuffer(t, buffer);
+	writeToTexture(t, native.native, native.rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE, LAYOUT_TRANSFER_DST);
+	try flushTracker(t);
+	return copyImageBuffer(buffer, offset, bytesPerRow, texelBytes, rowsPerImage, texture, native, destination, size, true);
+}
+
+export function writeTexture<T>(
 	ref r: VulkanResources,
 	destination: GPUTexelCopyTextureInfo,
-	data: Readonly<Span<uint8>>,
+	data: Readonly<Span<T>>,
 	layout: GPUTexelCopyBufferLayout,
 	size: GPUExtent3D,
 ): Result<void, ResourceError> {
-	const index = r.textures.slotIndex(destination.texture.id);
-	const t = r.textures.slots[index];
-	const texelBytes = copiedTexel("writeTexture", t, true, destination.mipLevel, size);
+	const texture = textureRecords.record(destination.texture.id);
+	if (!has(texture.usage, GPUTextureUsage.COPY_DST as int32)) {
+		stop(`writeTexture on GPUTexture ${texture.id}, created without COPY_DST`);
+	}
+	if (texture.sampleCount != 1) { stop(`writeTexture on GPUTexture ${texture.id}, which is multisampled`); }
+	const texelBytes = copiedTexel(r, "writeTexture", texture, true, destination.mipLevel, size);
+	const mip = destination.mipLevel;
+	const depth = texture.volume && mip >= 0 && mip < texture.mipLevels ? Math.max(1, texture.layers >> mip) : texture.layers;
+	const sourcePitch = checkedTexelWritePitch(
+		texture.width,
+		texture.height,
+		texture.mipLevels,
+		depth,
+		texelBytes,
+		(data.length as int64) * (sizeof T as int64),
+		destination,
+		layout,
+		size,
+	);
 	const rowBytes = (size.width * texelBytes) as uint64;
 	const rows = size.height as uint32;
-	const images = size.depthOrArrayLayers == 0 ? 1 : size.depthOrArrayLayers;
-	const sourcePitch = (layout.bytesPerRow == 0 ? size.width * texelBytes : layout.bytesPerRow) as uint64;
+	const images = size.depthOrArrayLayers;
 	const rowsPerImage = (layout.rowsPerImage == 0 ? size.height : layout.rowsPerImage) as uint64;
 	const staged = try upload(r, rowBytes * (rows as uint64) * (images as uint64));
 	for (let image: int32 = 0; image < images; image++) {
-		const imageBytes = rowBytes * (rows as uint64) * (image as uint64);
-		const dataOffset = (layout.offset as uint64) + sourcePitch * rowsPerImage * (image as uint64);
-		try stagedWrite(r, staged, imageBytes, data, dataOffset, rowBytes, sourcePitch, rows);
+		const at = staged.offset + rowBytes * (rows as uint64) * (image as uint64);
+		const dataOffset = (layout.offset as uint64) + (sourcePitch as uint64) * rowsPerImage * (image as uint64);
+		try mappedWrite(r, staged.memory, at, data, dataOffset, rowBytes, sourcePitch as uint64, rows);
 	}
-	copyFromBuffer(r.tracker, staged.native);
-	writeToTexture(r.tracker, t.native, t.rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE, LAYOUT_TRANSFER_DST);
-	try flush(r);
-	const origin = destination.origin;
-	return checked(vulkanCopyBufferToImage(
+	const native = r.textures[slotOf(texture.id)];
+	try checked(vulkanQueueStream(1));
+	return queued(r, recordBufferToImage(
+		r.queue,
 		staged.native,
-		staged.offset,
-		size.width as uint32,
-		rows,
-		t.native,
-		t.info.aspect,
-		destination.mipLevel as uint32,
-		origin.x,
-		origin.y,
-		t.volume ? origin.z : 0,
-		(t.volume ? 0 : origin.z) as uint32,
-		(t.volume ? 1 : images) as uint32,
-		size.width as uint32,
-		rows,
-		(t.volume ? images : 1) as uint32,
+		staged.offset as int64,
+		rowBytes as int32,
+		texelBytes,
+		size.height,
+		texture,
+		native,
+		destination,
+		size,
 	));
+}
+
+export function copyBufferToTexture(
+	ref r: VulkanResources,
+	source: GPUTexelCopyBufferInfo,
+	destination: GPUTexelCopyTextureInfo,
+	size: GPUExtent3D,
+): Result<void, ResourceError> {
+	const from = bufferRecords.slotIndex(source.buffer.id);
+	const texture = textureRecords.record(destination.texture.id);
+	const texelBytes = copiedTexel(r, "copyBufferToTexture destination", texture, true, destination.mipLevel, size);
+	const bytesPerRow = checkedTexelBufferLayout("copyBufferToTexture source", texelBytes, bufferRecords.slots[from].size, source, size);
+	const rowsPerImage = source.rowsPerImage == 0 ? size.height : source.rowsPerImage;
+	const native = r.textures[slotOf(texture.id)];
+	try recordBufferToImage(r.tracker, r.buffers[from].native, source.offset, bytesPerRow, texelBytes, rowsPerImage, texture, native, destination, size);
+	r.buffers[from].lastUse = vulkanRecordingSerial();
+	return Result.ok(null);
 }
 
 export function copyTextureToBuffer(
@@ -931,38 +952,56 @@ export function copyTextureToBuffer(
 	destination: GPUTexelCopyBufferInfo,
 	size: GPUExtent3D,
 ): Result<void, ResourceError> {
-	const t = r.textures.slots[r.textures.slotIndex(source.texture.id)];
-	const target = r.buffers.slotIndex(destination.buffer.id);
-	const texelBytes = copiedTexel("copyTextureToBuffer", t, false, source.mipLevel, size);
-	const bytesPerRow = destination.bytesPerRow == 0 ? size.width * texelBytes : destination.bytesPerRow;
-	if (bytesPerRow % texelBytes != 0) {
-		stop(`copyTextureToBuffer: bytesPerRow ${bytesPerRow} is not a multiple of the ${texelBytes}-byte texel`);
-	}
+	const texture = textureRecords.record(source.texture.id);
+	const target = bufferRecords.slotIndex(destination.buffer.id);
+	const texelBytes = copiedTexel(r, "copyTextureToBuffer source", texture, false, source.mipLevel, size);
+	const bytesPerRow = checkedTexelBufferLayout("copyTextureToBuffer destination", texelBytes, bufferRecords.slots[target].size, destination, size);
 	const rowsPerImage = destination.rowsPerImage == 0 ? size.height : destination.rowsPerImage;
-	const images = size.depthOrArrayLayers == 0 ? 1 : size.depthOrArrayLayers;
-	copyFromTexture(r.tracker, t.native, t.rest);
-	writeToBuffer(r.tracker, r.buffers.slots[target].native, r.buffers.slots[target].rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE);
+	const native = r.textures[slotOf(texture.id)];
+	copyFromTexture(r.tracker, native.native, native.rest);
+	writeToBuffer(r.tracker, r.buffers[target].native, r.buffers[target].rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE);
 	try flush(r);
-	const origin = source.origin;
-	try checked(vulkanCopyImageToBuffer(
-		r.buffers.slots[target].native,
-		destination.offset as uint64,
-		rowLength(bytesPerRow, texelBytes),
-		rowsPerImage as uint32,
-		t.native,
-		t.info.aspect,
+	try copyImageBuffer(r.buffers[target].native, destination.offset, bytesPerRow, texelBytes, rowsPerImage, texture, native, source, size, false);
+	r.buffers[target].lastUse = vulkanRecordingSerial();
+	return Result.ok(null);
+}
+
+export function copyTextureToTexture(
+	ref r: VulkanResources,
+	source: GPUTexelCopyTextureInfo,
+	destination: GPUTexelCopyTextureInfo,
+	size: GPUExtent3D,
+): Result<void, ResourceError> {
+	if (source.texture.id == destination.texture.id) {
+		stop(`copyTextureToTexture within GPUTexture ${source.texture.id} is not built on Vulkan: the tracker keeps one layout per image`);
+	}
+	const fromRecord = textureRecords.record(source.texture.id);
+	const toRecord = textureRecords.record(destination.texture.id);
+	const from = r.textures[slotOf(fromRecord.id)];
+	const to = r.textures[slotOf(toRecord.id)];
+	copyFromTexture(r.tracker, from.native, from.rest);
+	writeToTexture(r.tracker, to.native, to.rest, STAGE_TRANSFER, ACCESS_TRANSFER_WRITE, LAYOUT_TRANSFER_DST);
+	try flush(r);
+	const images = size.depthOrArrayLayers;
+	return checked(vulkanCopyImage(
+		from.native,
 		source.mipLevel as uint32,
-		origin.x,
-		origin.y,
-		t.volume ? origin.z : 0,
-		(t.volume ? 0 : origin.z) as uint32,
-		(t.volume ? 1 : images) as uint32,
+		source.origin.x,
+		source.origin.y,
+		fromRecord.volume ? source.origin.z : 0,
+		(fromRecord.volume ? 0 : source.origin.z) as uint32,
+		to.native,
+		destination.mipLevel as uint32,
+		destination.origin.x,
+		destination.origin.y,
+		toRecord.volume ? destination.origin.z : 0,
+		(toRecord.volume ? 0 : destination.origin.z) as uint32,
+		from.info.aspect,
+		(fromRecord.volume ? 1 : images) as uint32,
 		size.width as uint32,
 		size.height as uint32,
-		(t.volume ? images : 1) as uint32,
+		(fromRecord.volume ? images : 1) as uint32,
 	));
-	r.buffers.slots[target].lastWrite = vulkanRecordingSerial();
-	return Result.ok(null);
 }
 
 export function submit(ref r: VulkanResources): Result<uint64, ResourceError> {
@@ -971,6 +1010,7 @@ export function submit(ref r: VulkanResources): Result<uint64, ResourceError> {
 	try flush(r);
 	let serial: uint64 = 0;
 	try checked(vulkanSubmit(serial));
+	r.submitted = serial;
 	if (r.page.native != 0) {
 		r.retired.push({ serial: serial, kind: RetiredKind.Page, native: r.page.native, memory: r.page.memory });
 		r.page = NO_PAGE;
@@ -983,25 +1023,27 @@ export function wait(ref r: VulkanResources, serial: uint64): Result<uint64, Res
 	return collect(r);
 }
 
+export function mapAsync(ref r: VulkanResources, buffer: GPUBuffer): Result<void, ResourceError> {
+	const lastUse = r.buffers[bufferRecords.slotIndex(buffer.id)].lastUse;
+	if (lastUse > r.submitted) {
+		if (vulkanRecordingOpen() != 0) {
+			stop(`mapAsync: GPUBuffer ${buffer.id} has work that was not submitted while a command encoder records; submit the encoder first`);
+		}
+		try submit(r);
+	}
+	if (lastUse == 0) { return Result.ok(null); }
+	try wait(r, lastUse);
+	return Result.ok(null);
+}
+
 export function readMapped(ref r: VulkanResources, buffer: GPUBuffer, offset: int64, size: int64): Result<Vec<uint8>, ResourceError> {
-	const slot = r.buffers.slots[r.buffers.slotIndex(buffer.id)];
-	if (!has(slot.usage, GPUBufferUsage.MAP_READ as int32)) {
-		stop(`readMapped: GPUBuffer ${buffer.id} was not created with MAP_READ`);
-	}
-	if (offset < 0 || size < 0 || offset + size > slot.size) {
-		stop(`readMapped of ${size} bytes at ${offset} overruns GPUBuffer ${buffer.id} of ${slot.size}`);
-	}
-	const completed = try collect(r);
-	if (slot.lastWrite > completed) {
-		stop(`readMapped: GPUBuffer ${buffer.id} is written by submission ${slot.lastWrite}, which has not completed`);
-	}
+	const memory = r.buffers[bufferRecords.slotIndex(buffer.id)].memory;
 	let bytes: Vec<uint8> = new Array(size);
-	if (size == 0) { return Result.ok(bytes); }
-	const range = r.memory.mappedRange(slot.memory, offset as uint64, size as uint64);
+	const range = r.memory.mappedRange(memory, offset as uint64, size as uint64);
 	try checked(vulkanMappedRead(
-		slot.memory.memory,
-		slot.memory.mapped,
-		slot.memory.offset + (offset as uint64),
+		memory.memory,
+		memory.mapped,
+		memory.offset + (offset as uint64),
 		bytes[0],
 		size as uint64,
 		range.offset,
@@ -1010,28 +1052,15 @@ export function readMapped(ref r: VulkanResources, buffer: GPUBuffer, offset: in
 	return Result.ok(bytes);
 }
 
-export function resetRecords(ref r: VulkanResources): void {
-	reset(r.buffers);
-	reset(r.textures);
-	reset(r.views);
-	reset(r.samplers);
-}
-
-function drain(ref r: VulkanResources): Result<uint64, ResourceError> {
-	const serial = try submit(r);
-	return wait(r, serial);
+export function writeMapped<T>(ref r: VulkanResources, buffer: GPUBuffer, offset: int64, data: Readonly<Span<T>>): Result<void, ResourceError> {
+	const bytes = (data.length as uint64) * (sizeof T as uint64);
+	return mappedWrite(r, r.buffers[bufferRecords.slotIndex(buffer.id)].memory, offset as uint64, data, 0, bytes, bytes, 1);
 }
 
 export function closeResources(ref r: VulkanResources): Result<void, ResourceError> {
-	for (const id of r.samplers.liveIds()) { destroySampler(r, { id: id }); }
-	for (const id of r.views.liveIds()) {
-		if (!r.views.slots[r.views.slotIndex(id)].swapchain) { destroyView(r, { id: id }); }
-	}
-	for (const id of r.textures.liveIds()) {
-		if (!r.textures.slots[r.textures.slotIndex(id)].swapchain) { destroyTexture(r, { id: id }); }
-	}
-	for (const id of r.buffers.liveIds()) { destroyBuffer(r, { id: id }); }
-	const drained = drain(r);
+	if (r.swapchainDepth != 0) { retireSwapchainDepth(r); }
+	const submitted = submit(r);
+	const drained: Result<uint64, ResourceError> = submitted.ok ? wait(r, submitted.value) : Result.err(submitted.error);
 	if (r.page.native != 0) { retire(r, RetiredKind.Page, r.page.native, r.page.memory); }
 	r.page = NO_PAGE;
 	for (const page of r.freePages) { retire(r, RetiredKind.Page, page.native, page.memory); }
@@ -1039,7 +1068,10 @@ export function closeResources(ref r: VulkanResources): Result<void, ResourceErr
 	for (const retired of r.retired) { freeRetired(r, retired); }
 	r.retired.length = 0;
 	closeDescriptors(r.descriptors);
-	resetRecords(r);
+	r.buffers = [NO_BUFFER];
+	r.textures = [NO_TEXTURE];
+	r.views = [NO_VIEW];
+	r.samplers = [0];
 	if (!drained.ok) { return Result.err(drained.error); }
 	return Result.ok(null);
 }
