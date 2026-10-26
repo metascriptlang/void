@@ -41,6 +41,7 @@ import { bindStats, nativeQueue, nativeTexture } from "../webgpu/metal/backend.m
 import { shaderBytecodeFromBase64 } from "../shader/dxbc.ms";
 import { glslComputeIr } from "../shader/emit";
 import { metalLabel, metalReadback, metalSystemDevice } from "./metalDevice.h";
+import { doorApplyScissor, doorBeginColorPass, doorEndPass, doorMakeTargetImage, doorMakeTextureView, doorSetup, doorShutdown } from "../gpu/doorGpu.ms";
 
 import { Cell, PlainBindings, ScaledBindings, WORKGROUP, plainKernel, scaledKernel, shadyComputeDescriptor } from "./metalShadyCompute";
 
@@ -2416,4 +2417,15 @@ test "a Metal module stops by stage and label when the device rejects its byteco
 		assert run.error.output.includes("the device rejected GPUShaderModuleDescriptor.fragmentBytecode of 'garbage'");
 		assert !run.error.output.includes("probe: the corrupted module loaded");
 	}
+}
+
+test "the door clamps a scissor that runs past its attachment instead of handing setScissorRect a refused rect" {
+	doorSetup(metalSystemDevice(), null, 2, 0, 1);
+	const view = doorMakeTextureView(doorMakeTargetImage(8, 8, 4));
+	doorBeginColorPass(view, 0.0, 0.0, 1.0, 1.0);
+	doorApplyScissor(4, 0, 5, 8);
+	doorApplyScissor(-2, -2, 20, 20);
+	doorApplyScissor(9, 9, 3, 3);
+	doorEndPass();
+	doorShutdown();
 }
