@@ -6105,16 +6105,25 @@ The overlay ports in steps, each with its own check:
    `decalFade`, `decalOverlayColor`), held to Heaps' formulas. **Built (2026-10-26)**, pinned by
    `decalCheck.ms`.
 2. A sampled, stored scene depth in the forward renderer, bound at a scene slot. **Built
-   (2026-10-27), checked on the CPU only.** `Phase.Decal` is a fourth pass list, culled and
+   (2026-10-27).** `Phase.Decal` is a fourth pass list, culled and
    sorted by layer as Heaps' `draw` does; the forward preset stores its depth when the frame has
    a decal and draws the list after the translucents, before the tone map, into the lit colour
    with no depth attachment (`drawDecals`), the depth bound at view 14 and sampler 7
    (`SCENE_DEPTH_VIEW_SLOT`). Because that pass has no depth, a Decal-phase material that writes
    or tests depth is refused when it is added (`MaterialError.DecalDepth`), and the pixel-art
-   preset, which has no decal pass, refuses a decal item (`RendererError.DecalPreset`). Not yet
-   seen on a GPU: the depth target is now sampled on every forward frame.
+   preset, which has no decal pass, refuses a decal item (`RendererError.DecalPreset`). The
+   forward readback checks (hdr, exposure, spot cookie, card table, bloom), the mixed goldens and
+   web3d (WebGPU and WebGL2) stay green with the depth target sampled.
 3. A decal program and its pass after the translucents, before the tone map, with the box drawn
-   from inside as from outside; a GPU golden.
+   from inside as from outside; a GPU golden. **Program built (2026-10-27); no GPU golden yet.**
+   `Program.Decal` draws a Lit-layout box in the core preset only. Its vertex stage makes Heaps'
+   `matrix` (the box's inverse world after the inverse viewProj) per vertex, so the camera block
+   is unchanged. Its fragment stage reads the stored depth at the pixel and takes it to NDC by
+   the backend's range (`FRAME_DEPTH_ZERO_TO_ONE`, the w of the camera position). It then runs
+   step 1's math and tone maps the result like the lit colour. `decal.ms` writes
+   `DecalOverlay`'s params and constants into the material block, refuses an empty fade range,
+   and gives the pass: alpha blend, no depth, back faces drawn. The program outside the Decal
+   phase is refused (`MaterialError.DecalPhase`).
 4. The after-tone-map pass, then the normal fade.
 
 ### Cascaded sun shadows, as built so far (2026-10-24)
