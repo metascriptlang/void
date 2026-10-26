@@ -3775,7 +3775,7 @@ filter on the same items, so a shadow follows the main camera's level as Heaps' 
 (`RendererError.MeshLod`), as the caller-owned path already refused it.
 
 Not offered: a pick per instance row of an `InstanceRun`, and LOD
-on skinned or morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`, and on D3D11 by
+on morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`, and on D3D11 by
 `tests/integration/meshLod.ms` with `VOID_MESH_LOD_SCENE=1`: the same five stages the hand pick
 draws (near, far, reupload, one consumer, culled) come out of the Scene3D pick, with and without
 the outline pass and on 32-bit indices; control 8 forces level 0 and fails at the far stage.
@@ -3797,6 +3797,20 @@ Pinned by `src/test/meshLodSceneCheck.ms`: a near child draws level 0 alone and 
 far inheriting parent, forced or not; a middle inheriting mesh and its child take the top one's
 ratio; a pick before its source and a frame whose source is missing are refused; a plain node
 refuses `setInheritLod`.
+
+### A skinned mesh picks its LOD level (2026-10-26)
+
+`addLodSkinMeshNode` gives a skinned node the same pick as `addLodMeshNode`: Heaps' `Skin`
+draws each material at `getLodIndex()` (`h3d/scene/Skin.hx:606`), as a plain mesh does. The
+node takes the skin's arguments and a LOD table instead of a draw range, draws level 0 until
+the renderer picks, and checks the skin of every level's elements when it is made and when
+its mesh or material changes, since a level the first range leaves out can still name a joint
+the palette lacks. The radius is the bind-pose mesh data's, as Heaps reads the primitive's
+bounds. Picking with a ray still reads level 0's elements, as on a plain LOD node.
+
+Pinned by `src/test/skinSceneCheck.ms`: a skinned LOD node draws level 0, then level 1 once
+forced, with a valid skin; a skin whose weights disagree only in level 1's triangle is
+accepted by a plain node drawing level 0 alone and refused by the LOD node.
 
 ### glTF output/topology/mode stack land acceptance
 
