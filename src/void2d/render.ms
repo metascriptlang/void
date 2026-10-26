@@ -2015,16 +2015,20 @@ function maskTarget(
 	}
 	if (s.slots[m] == NO_SLOT) { maskStopOn(`the mask node of node ${i} is not in the tree`); }
 	if (s.orders[m].visible) {
-		maskStopOn(`the mask node of node ${i} is visible; hide it with visible false, it draws only through the mask`);
+		maskStopOn(`the mask node of node ${i} is visible; hide it with visible false, ` +
+			`it draws only through the mask`);
 	}
 	if (filtered(s, m)) { maskStopOn(`the mask node of node ${i} has a filter of its own`); }
 	for (let up: int32 = s.parents[i]; up != NO_NODE_2D; up = s.parents[up]) {
 		if (up == m) { maskStopOn(`the mask node of node ${i} is one of its ancestors`); }
 	}
 	if (s.slots[m] > s.slots[i]) {
-		maskStopOn(`the mask node of node ${i} comes after it in the tree; the mask must precede the node it masks`);
+		maskStopOn(`the mask node of node ${i} comes after it in the tree; ` +
+			`the mask must precede the node it masks`);
 	}
-	if (inScope()) { maskStopOn(`node ${i} is masked inside a scroll scope; a Mask filter outside one only`); }
+	if (inScope()) {
+		maskStopOn(`node ${i} is masked inside a scroll scope; a Mask filter outside one only`);
+	}
 	markRows(s, s.slots[m], s.orderEnd[s.slots[m]], PaintState.InTarget);
 	const rtW: int32 = plan.width;
 	const rtH: int32 = plan.height;

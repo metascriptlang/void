@@ -635,7 +635,7 @@ export function setFilter(this n: NodeRef, f: Filter): NodeRef {
 	return n;
 }
 
-// The Mask filter step whose mask is this node's subtree (h2d.filter.Mask, `h2d/filter/Mask.hx:54`):
+// The Mask filter step whose mask is this node's subtree (h2d.filter.Mask, `Mask.hx:54`):
 // `host.setFilter(maskNode.asMaskFilter(false))`. The node must be in the host's scene, hidden,
 // before the host in the tree and not one of its ancestors; the draw stops on a node that is not.
 export function asMaskFilter(this mask: NodeRef, smoothAlpha: boolean): Filter {

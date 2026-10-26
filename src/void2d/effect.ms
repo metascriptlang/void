@@ -32,8 +32,9 @@ export function colorMatrixAlphaOnly(gain: float32): Mat4 {
 	};
 }
 
-// Alpha into every channel (the fourth column, as `m44` is in colorMatrixAlphaOnly): a premultiplied white of the source's coverage, so a Multiply blend
-// onto a target scales its colour and its alpha by that coverage (h2d.filter.Mask).
+// Alpha into every channel (the fourth column, as `m44` is in colorMatrixAlphaOnly): a
+// premultiplied white of the source's coverage, so a Multiply blend onto a target scales its
+// colour and its alpha by that coverage (h2d.filter.Mask).
 export function colorMatrixAlphaMask(gain: float32): Mat4 {
 	return {
 		m11: 0.0, m12: 0.0, m13: 0.0, m14: 0.0,
