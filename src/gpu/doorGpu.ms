@@ -74,6 +74,7 @@ import {
 	timerResultMs,
 	timerState,
 } from "./gpuTimer";
+import { featureSetup } from "./feature";
 import { Vec4 } from "../math/math3d";
 import {
 	Blend,
@@ -276,6 +277,7 @@ export function doorSetup(
 	passViews = [0, 0, 0, 0, 0];
 	current = -1;
 	resetStats();
+	featureSetup(device);
 	timerBuild(device);
 	if (everSetUp) { generation++; }
 	everSetUp = true;
@@ -286,6 +288,7 @@ export function doorShutdown(): void {
 	if (device.id == 0) { return; }
 	device.destroy();
 	device = { id: 0, queue: { id: 0 } };
+	featureSetup(device);
 	resetStats();
 }
 

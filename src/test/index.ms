@@ -108,6 +108,7 @@ import "./vulkanMemoryCheck";
 import "./vulkanResourcesCheck";
 import "./vulkanPassCheck";
 import "./featureBitCheck";
+import "./featureCheck";
 import "./webgpuValidateCheck";
 import "./uniformPoolCheck";
 import "./uniformPoolGrowCheck";

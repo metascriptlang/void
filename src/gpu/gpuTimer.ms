@@ -1,4 +1,5 @@
 import { stop } from "./stop";
+import { Feature, hasFeature } from "./feature";
 import {
 	GPUBuffer,
 	GPUBufferUsage,
@@ -63,7 +64,7 @@ export function timerBuild(device: GPUDevice): void {
 	slots.length = 0;
 	clearResults();
 	if (maxPasses == 0) { state = GPU_TIMER_OFF; return; }
-	if (!device.features().has("timestamp-query")) { state = GPU_TIMER_UNSUPPORTED; return; }
+	if (!hasFeature(Feature.TimestampQuery)) { state = GPU_TIMER_UNSUPPORTED; return; }
 	for (let i = 0; i < GPU_TIMER_RING; i++) {
 		const bytes = (maxPasses as int64) * 2 * QUERY_BYTES;
 		slots.push({
