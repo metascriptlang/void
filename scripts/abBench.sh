@@ -40,6 +40,12 @@ backendFlags() {
 
 winPath() { cygpath -w "$1"; }
 
+# A tree with uncommitted tracked edits builds what no sha names, so env.txt says so.
+dirtyOf() {
+	n=$(git -C "$1" status --porcelain --untracked-files=no | wc -l | tr -d ' ')
+	[ "$n" = 0 ] || echo " +dirty ($n tracked files differ)"
+}
+
 provision() {
 	sha="${AB_MAIN_SHA:-$(git merge-base HEAD main)}"
 	mkdir -p "$OUT"
@@ -58,8 +64,8 @@ provision() {
 		fi
 	done
 	{
-		echo "A main-side $(git -C "$A" rev-parse HEAD) (main tip $(git rev-parse main))"
-		echo "B gpu-ms $(git rev-parse HEAD)"
+		echo "A main-side $(git -C "$A" rev-parse HEAD)$(dirtyOf "$A") (main tip $(git rev-parse main))"
+		echo "B gpu-ms $(git rev-parse HEAD)$(dirtyOf "$B")"
 		echo "msc $("$MSC" --version | sed 's/\x1b\[[0-9;]*m//g' | head -1)"
 		echo "BUILD $(head -1 "$(dirname "$(command -v "$MSC")")/../BUILD")"
 	} | tee "$OUT/env.txt"
