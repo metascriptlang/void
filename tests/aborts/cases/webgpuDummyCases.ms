@@ -2,6 +2,7 @@
 // expect stripIndexMismatch: an indexed strip draw needs primitive.stripIndexFormat equal to the setIndexBuffer format
 // expect indirectWithoutUsage: dispatchWorkgroupsIndirect: GPUBuffer 65537 was created without INDIRECT
 // expect uniformOverrun: dynamic offset 512 at index 0 overruns its uniform buffer
+// expect groupFromOtherPipeline: was made for GPURenderPipeline 65538, not the bound pipeline 65537
 // expect shaderDestroyed: the shader module of GPURenderPipeline 65537 was destroyed
 import { argv } from "std/process";
 import {
@@ -43,7 +44,7 @@ function run(name: string): void {
 		console.log("an indirect dispatch from a buffer without INDIRECT returned");
 		return;
 	}
-	if (name != "stripIndexMismatch" && name != "shaderDestroyed" && name != "uniformOverrun") {
+	if (name != "stripIndexMismatch" && name != "shaderDestroyed" && name != "uniformOverrun" && name != "groupFromOtherPipeline") {
 		console.log(`no case named '${name}'`);
 		process.exit(2);
 	}
@@ -73,7 +74,7 @@ function run(name: string): void {
 	pd.primitive.topology = "triangle-strip";
 	pd.primitive.stripIndexFormat = "uint16";
 	const pipeline = device.createRenderPipeline(pd);
-	let gd: GPUBindGroupDescriptor = { label: "colour", layout: pipeline.getBindGroupLayout(0) };
+	let gd: GPUBindGroupDescriptor = { label: "colour", layout: (name == "groupFromOtherPipeline" ? device.createRenderPipeline(pd) : pipeline).getBindGroupLayout(0) };
 	gd.entries[0] = { binding: 0, buffer: colourUniforms(device), offset: 0, size: 16 };
 	const group = device.createBindGroup(gd);
 	const indexUsage = (GPUBufferUsage.INDEX as int32) | (GPUBufferUsage.COPY_DST as int32);

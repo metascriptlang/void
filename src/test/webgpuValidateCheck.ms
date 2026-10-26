@@ -32,6 +32,7 @@ import {
 	boundRefusal,
 	dynamicIndexOf,
 	dynamicRoomRefusal,
+	groupOwnerRefusal,
 	markBindGroupSet,
 	markVertexSet,
 	shaderBindingAt,
@@ -776,6 +777,12 @@ test "a dynamic offset stops at the room its entry's buffer leaves past its offs
 	assert dynamicRoomRefusal(room, 2, within) == "";
 	assert dynamicRoomRefusal(room, 2, past) == "dynamic offset 256 at index 1 overruns its uniform buffer";
 	assert dynamicRoomRefusal(room, 0, past) == "";
+}
+
+test "a bound group must have been made for the bound pipeline" {
+	assert groupOwnerRefusal(9, 1, 3, 3, false) == "";
+	assert groupOwnerRefusal(9, 1, 3, 4, false) == "bind group 9 (group 1) was made for GPURenderPipeline 3, not the bound pipeline 4";
+	assert groupOwnerRefusal(9, 0, 3, 4, true) == "bind group 9 (group 0) was made for GPUComputePipeline 3, not the bound pipeline 4";
 }
 
 test "setBindGroup takes the door's two groups" {
