@@ -2392,6 +2392,11 @@ int32_t vulkanSwapchainPresent(void) {
 		return fail(VULKAN_ERROR_ORDER, "vulkanSwapchainPresent before a frame that acquired an image was submitted");
 	}
 	uint32_t image = (uint32_t)s_swap.acquired;
+	VkSubmitInfo signal = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	signal.signalSemaphoreCount = 1;
+	signal.pSignalSemaphores = &s_swap.images[image].presentReady;
+	VkResult signalled = vkd.vkQueueSubmit(s_vk.queue, 1, &signal, VK_NULL_HANDLE);
+	if (signalled != VK_SUCCESS) return failCall("vkQueueSubmit", signalled);
 	s_swap.presentPending = 0;
 	s_swap.acquired = -1;
 	VkPresentInfoKHR info = { .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
@@ -2580,8 +2585,6 @@ int32_t vulkanSubmit(uint64_t *serial) {
 		submit.waitSemaphoreCount = 1;
 		submit.pWaitSemaphores = &frame->acquired;
 		submit.pWaitDstStageMask = &waitStage;
-		submit.signalSemaphoreCount = 1;
-		submit.pSignalSemaphores = &s_swap.images[s_swap.acquired].presentReady;
 	}
 	VkResult result = vkd.vkQueueSubmit(s_vk.queue, 1, &submit, fence);
 	if (result != VK_SUCCESS) {
