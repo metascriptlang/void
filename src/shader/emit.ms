@@ -2317,7 +2317,6 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			const site = fieldSite(inputs.typExprFieldDecorators[f]);
 			const builtin = decorator(inputs.typExprFieldDecorators[f], "builtin");
 			if (builtin == null) {
-				// Every input is declared, read or not: shdc numbers them in declaration order.
 				if (t.kind == NodeKind.TypeArray) {
 					fail(site, vertex ? "attribute '" + name + "' is an array, which neither " +
 						"WGSL nor GLSL ES 3.00 takes as a vertex input: " +
