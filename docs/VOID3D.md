@@ -3775,8 +3775,10 @@ filter on the same items, so a shadow follows the main camera's level as Heaps' 
 (`RendererError.MeshLod`), as the caller-owned path already refused it.
 
 Not offered: `inheritLod` (no consumer), a pick per instance row of an `InstanceRun`, and LOD
-on skinned or morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`; the GPU golden of
-the automatic path waits for its native slot, so no pixel claim yet.
+on skinned or morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`, and on D3D11 by
+`tests/integration/meshLod.ms` with `VOID_MESH_LOD_SCENE=1`: the same five stages the hand pick
+draws (near, far, reupload, one consumer, culled) come out of the Scene3D pick, with and without
+the outline pass and on 32-bit indices; control 8 forces level 0 and fails at the far stage.
 
 ### glTF output/topology/mode stack land acceptance
 
@@ -6112,7 +6114,12 @@ and the lit share averaged, so the opacity mix is unchanged.
   The sun and the cube took one free slot each; the spot's part grew from 20 to 24 floats.
   Bevy's `shadow_depth_bias` is not taken; the depth bias stays Heaps'. Pinned on the CPU by
   `spotShadowCheck.ms` and `cubeShadowCheck.ms`, except the spot's packing, which runs inside
-  its draw; no GPU golden yet.
+  its draw. On D3D11, `tests/integration/lightShadows.ms` with `VOID_LIGHT_SHADOW_NORMAL_BIAS=1`
+  sets 50 texels on the spot and the cube map: the receiver rises about 0.85 toward the light,
+  so the footprint's rim comes in from 0.75 to about 0.54. Ground at 0.6 and 0.65 turns lit
+  (green 76 to about 175) while the ground under the light stays shadowed, for the spot, point,
+  rectangle and capsule, with and without PCF; the unbiased run is the control. The sun's bias
+  has no pixel check: a sun straight above a flat receiver moves it along its own ray.
 - A cube's taps are compared at the receiver's distance against the face's perspective depth,
   where Heaps compares radial distances in a cube; how far the two differ on screen is not
   measured.
