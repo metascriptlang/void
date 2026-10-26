@@ -1726,7 +1726,13 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		const left = lower(n.left);
 		const right = op == "<<" || op == ">>" ? shiftAmount(n.right) : lower(n.right);
-		return binaryOf(binaryOps[binaryTexts.indexOf(op)], looseType(getType(n)), left, right);
+		const type = looseType(getType(n));
+		if ((op == "/" || op == "%") && (type.scalar == ScalarKind.I32 || type.scalar == ScalarKind.U32) &&
+			constantExpr(left) && constantExpr(right) && zeroComponent(right)) {
+			fail(n, "'" + op + "' by a constant zero: an integer " + (op == "/" ? "division" : "remainder") +
+				" of const-expressions by zero is a shader-creation error in WGSL");
+		}
+		return binaryOf(binaryOps[binaryTexts.indexOf(op)], type, left, right);
 	}
 
 	function builtinCall(n: Node, name: string): ShaderExpr {
@@ -1796,6 +1802,34 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 			return inner == null ? null : literal(inner.type, -inner.value);
 		}
 		return null;
+	}
+
+	function constantExpr(e: ShaderExpr): boolean {
+		e = folded(e);
+		if (e.kind == ExprKind.Literal) { return true; }
+		if (e.kind != ExprKind.Unary && e.kind != ExprKind.Binary && e.kind != ExprKind.Construct &&
+			e.kind != ExprKind.Convert && e.kind != ExprKind.Conditional) {
+			return false;
+		}
+		for (const o of e.operands) {
+			if (!constantExpr(o)) { return false; }
+		}
+		return true;
+	}
+
+	function zeroComponent(e: ShaderExpr): boolean {
+		e = folded(e);
+		if (e.kind == ExprKind.Literal) { return e.value == 0.0; }
+		if (e.kind == ExprKind.Unary && e.unary == UnaryOp.Negate) { return zeroComponent(e.operands[0]); }
+		if (e.kind == ExprKind.Convert && e.operands[0].type.scalar != ScalarKind.F32) {
+			return zeroComponent(e.operands[0]);
+		}
+		if (e.kind == ExprKind.Construct) {
+			for (const o of e.operands) {
+				if (zeroComponent(o)) { return true; }
+			}
+		}
+		return false;
 	}
 
 	function constantParts(e: ShaderExpr): ShaderExpr[] {
