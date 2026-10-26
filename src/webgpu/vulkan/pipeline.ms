@@ -8,6 +8,7 @@ import {
 	vulkanCmdDispatchIndirect,
 	vulkanCmdDraw,
 	vulkanCmdDrawIndexed,
+	vulkanCmdDrawIndexedIndirect,
 	vulkanCmdScissor,
 	vulkanCmdStencilReference,
 	vulkanCmdViewport,
@@ -719,6 +720,11 @@ export function drawIndexed(
 ): void {
 	applyBindings(p, r);
 	commanded(vulkanCmdDrawIndexed(indexCount as uint32, instanceCount as uint32, firstIndex as uint32, baseVertex, firstInstance as uint32));
+}
+
+export function multiDrawIndexedIndirect(ref p: VulkanPipelines, ref r: VulkanResources, buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	applyBindings(p, r);
+	commanded(vulkanCmdDrawIndexedIndirect(r.buffers[slotOf(buffer.id)].native, offset as uint64, drawCount as uint32));
 }
 
 export function dispatchWorkgroups(ref p: VulkanPipelines, ref r: VulkanResources, x: int32, y: int32, z: int32): Result<void, ResourceError> {

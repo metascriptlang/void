@@ -83,6 +83,7 @@ import {
 	RenderPassFacts,
 	attachOcclusionSet,
 	attachmentFactsOf,
+	cacheFeatures,
 	cacheLimits,
 	cachedLimits,
 	checkedBeginOcclusion,
@@ -97,6 +98,7 @@ import {
 	checkedCopyTexture,
 	checkedCreateEncoder,
 	checkedDispatch,
+	checkedDrawIndirect,
 	checkedDrawOffsets,
 	checkedDrawState,
 	checkedEndOcclusion,
@@ -177,6 +179,7 @@ export function requestDevice(environment: GPUNativeEnvironment): GPUDevice {
 	cacheCanvas(environment.colorFormat, environment.depthFormat, environment.sampleCount);
 	const device = backend.setup(environment);
 	cacheLimits(backend.limits());
+	cacheFeatures(backend.features());
 	const canvas = cachedCanvas();
 	const depthFormat: string = canvas.depthFormat;
 	swapchainColor = reserveSwapchainTexture(canvas.format, (GPUTextureUsage.RENDER_ATTACHMENT as int32) | (GPUTextureUsage.COPY_SRC as int32));
@@ -750,6 +753,19 @@ function mappedLength(member: string, buffer: GPUBuffer, mode: GPUMapMode, offse
 	checkedDrawState("drawIndexed", true);
 	if (instanceCount != 0) { checkedDrawOffsets("drawIndexed", "baseVertex", baseVertex, firstInstance); }
 	backend.drawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+}
+
+@inline export function drawIndexedIndirect(this self: GPURenderPassEncoder, indirectBuffer: GPUBuffer, indirectOffset: int64): void {
+	checkedInPass(PASS_RENDER, "drawIndexedIndirect");
+	checkedDrawIndirect("drawIndexedIndirect", indirectBuffer.id, indirectOffset, 1);
+	backend.multiDrawIndexedIndirect(indirectBuffer, indirectOffset, 1);
+}
+
+@inline export function multiDrawIndexedIndirect(this self: GPURenderPassEncoder, indirectBuffer: GPUBuffer, indirectOffset: int64, maxDrawCount: int32): void {
+	checkedInPass(PASS_RENDER, "multiDrawIndexedIndirect");
+	checkedDrawIndirect("multiDrawIndexedIndirect", indirectBuffer.id, indirectOffset, maxDrawCount);
+	if (maxDrawCount == 0) { return; }
+	backend.multiDrawIndexedIndirect(indirectBuffer, indirectOffset, maxDrawCount);
 }
 
 @inline export function end(this self: GPURenderPassEncoder): void {

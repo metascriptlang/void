@@ -785,6 +785,10 @@ void wgDrawIndexed(
 		(uint32_t)firstInstance);
 }
 
+void wgDrawIndexedIndirect(WgBuffer buffer, int64_t offset) {
+	wgpuRenderPassEncoderDrawIndexedIndirect(pass, (WGPUBuffer)buffer, (uint64_t)offset);
+}
+
 int32_t wgBeginComputePass(const char *label, WgQuerySet timestampSet, int32_t timestampBegin, int32_t timestampEnd) {
 	WGPUComputePassDescriptor desc = WGPU_COMPUTE_PASS_DESCRIPTOR_INIT;
 	desc.label = text(label);

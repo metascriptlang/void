@@ -796,6 +796,10 @@ void d3dDispatchIndirect(D3dContext context, D3dBuffer arguments, int64_t offset
 	ID3D11DeviceContext_DispatchIndirect(CONTEXT(context), (ID3D11Buffer *)arguments, (UINT)offset);
 }
 
+void d3dDrawIndexedInstancedIndirect(D3dContext context, D3dBuffer arguments, int64_t offset) {
+	ID3D11DeviceContext_DrawIndexedInstancedIndirect(CONTEXT(context), (ID3D11Buffer *)arguments, (UINT)offset);
+}
+
 static const GUID debugObjectName = { 0x429b8c22, 0x9188, 0x4b0c, { 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 } };
 
 void d3dSetName(void *object, const char *name) {

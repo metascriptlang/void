@@ -238,6 +238,7 @@ when (webgl2 || android || (linux && voidGles3)) {
 		oglDisablei,
 		oglDrawElementsInstancedBaseVertexBaseInstance,
 		oglEnablei,
+		oglMultiDrawElementsIndirectUncached,
 		oglSamplerBorderColor,
 		oglTexStorage2DMultisample,
 	} from "./gl.h";
@@ -2257,6 +2258,14 @@ export function drawIndexed(
 	drawElementsBaseVertex(mode, indexCount, indexType, offset, instanceCount, baseVertex, firstInstance);
 }
 
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	if (boundFacts.indexOffset != 0) {
+		stop(`multiDrawIndexedIndirect with the index buffer set at offset ${boundFacts.indexOffset}: a GL indirect draw reads indices from offset 0, so set it there`);
+	}
+	flush(true);
+	multiDrawElementsIndirect(pipelines[slotOf(boundFacts.pipeline)].primitive, bound.indexType, bufferName(slotOf(buffer.id)), offset, drawCount);
+}
+
 
 function flush(indexed: boolean): void {
 	if (bound.appliedPipeline != boundFacts.pipeline) { applyPipeline(); }
@@ -2452,6 +2461,12 @@ when (webgl2 || android || (linux && voidGles3)) {
 		stop(`drawIndexed with baseVertex ${baseVertex} and firstInstance ${firstInstance}: GLES3 has neither`);
 	}
 
+	function indirectFeatureBits(): uint32 { return 0; }
+
+	function multiDrawElementsIndirect(mode: int32, indexType: int32, buffer: uint32, offset: int64, drawCount: int32): void {
+		stop("multiDrawIndexedIndirect: a GLES indirect draw has no base instance");
+	}
+
 	function applyBlend(i: int32, next: BlendState, current: BlendState): void {
 		if (i == 0) { applyBlendAll(next, current); }
 	}
@@ -2530,6 +2545,12 @@ when (webgl2 || android || (linux && voidGles3)) {
 		} else {
 			oglDrawElementsBaseVertex(mode, indexCount, indexType, offset, baseVertex);
 		}
+	}
+
+	function indirectFeatureBits(): uint32 { return featureBit("indirect-first-instance"); }
+
+	function multiDrawElementsIndirect(mode: int32, indexType: int32, buffer: uint32, offset: int64, drawCount: int32): void {
+		oglMultiDrawElementsIndirectUncached(mode, indexType, buffer, offset, drawCount);
 	}
 
 	function applyBlend(i: int32, next: BlendState, current: BlendState): void {
@@ -3030,6 +3051,7 @@ function queryFeatures(): GPUSupportedFeatures {
 	let bits: uint32 = 0;
 	if (timerSupported) { bits |= featureBit("timestamp-query"); }
 	bits |= floatFeatureBits();
+	if (computeSupported) { bits |= indirectFeatureBits(); }
 	return { bits: bits };
 }
 

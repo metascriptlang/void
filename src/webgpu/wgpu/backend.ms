@@ -65,6 +65,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	checkedDepthTexelCopy,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
@@ -138,6 +139,7 @@ import {
 	wgDispatchIndirect,
 	wgDraw,
 	wgDrawIndexed,
+	wgDrawIndexedIndirect,
 	wgEndComputePass,
 	wgEndOcclusionQuery,
 	wgEndPass,
@@ -1700,6 +1702,11 @@ export function setStencilReference(reference: uint32): void {
 	firstInstance: int32,
 ): void {
 	wgDrawIndexed(indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+}
+
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	const native = buffers[slotOf(buffer.id)].native;
+	for (let i = 0; i < drawCount; i++) { wgDrawIndexedIndirect(native, offset + (i as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE); }
 }
 
 function copyableTexture(info: GPUTexelCopyTextureInfo, member: string): int32 {

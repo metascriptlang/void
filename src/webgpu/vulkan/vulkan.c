@@ -145,7 +145,6 @@
 	X(vkCmdSetStencilReference) \
 	X(vkCmdDraw) \
 	X(vkCmdDrawIndexed) \
-	X(vkCmdDrawIndirect) \
 	X(vkCmdDrawIndexedIndirect) \
 	X(vkCmdDispatch) \
 	X(vkCmdDispatchIndirect) \
@@ -212,6 +211,7 @@ static struct {
 	VkQueue queue;
 	VkCommandPool commandPool;
 	uint32_t features;
+	uint32_t indirectDrawsPerCall;
 	int32_t validation;
 } s_vk;
 
@@ -857,7 +857,12 @@ int32_t vulkanDeviceCreate(void) {
 	enabled.depthBiasClamp = VK_TRUE;
 	enabled.fragmentStoresAndAtomics = VK_TRUE;
 	enabled.samplerAnisotropy = VK_TRUE;
+	enabled.multiDrawIndirect = s_vk.supported.multiDrawIndirect;
 	uint32_t features = 0;
+	if (s_vk.supported.drawIndirectFirstInstance) {
+		enabled.drawIndirectFirstInstance = VK_TRUE;
+		features |= VULKAN_FEATURE_INDIRECT_FIRST_INSTANCE;
+	}
 #if defined(__ANDROID__)
 	if (s_vk.supported.textureCompressionETC2) {
 		enabled.textureCompressionETC2 = VK_TRUE;
@@ -887,6 +892,7 @@ int32_t vulkanDeviceCreate(void) {
 		return failCall("vkCreateDevice", result);
 	}
 	s_vk.features = features;
+	s_vk.indirectDrawsPerCall = enabled.multiDrawIndirect ? s_vk.properties.limits.maxDrawIndirectCount : 1;
 
 	s_missing[0] = 0;
 	VULKAN_DEVICE_FUNCS(VULKAN_LOAD_DEVICE)
@@ -2178,13 +2184,14 @@ int32_t vulkanCmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32
 	return VULKAN_OK;
 }
 
-int32_t vulkanCmdDrawIndirect(uint64_t buffer, uint64_t offset, int32_t indexed) {
-	int32_t status = inPass("vulkanCmdDrawIndirect");
+int32_t vulkanCmdDrawIndexedIndirect(uint64_t buffer, uint64_t offset, uint32_t drawCount) {
+	int32_t status = inPass("vulkanCmdDrawIndexedIndirect");
 	if (status != VULKAN_OK) return status;
-	if (indexed) {
-		vkd.vkCmdDrawIndexedIndirect(s_recording, HANDLE_IN(VkBuffer, buffer), offset, 1, 0);
-	} else {
-		vkd.vkCmdDrawIndirect(s_recording, HANDLE_IN(VkBuffer, buffer), offset, 1, 0);
+	const uint32_t stride = (uint32_t)sizeof(VkDrawIndexedIndirectCommand);
+	for (uint64_t first = 0; first < drawCount; first += s_vk.indirectDrawsPerCall) {
+		uint64_t left = drawCount - first;
+		uint32_t count = left < s_vk.indirectDrawsPerCall ? (uint32_t)left : s_vk.indirectDrawsPerCall;
+		vkd.vkCmdDrawIndexedIndirect(s_recording, HANDLE_IN(VkBuffer, buffer), offset + first * stride, count, stride);
 	}
 	return VULKAN_OK;
 }

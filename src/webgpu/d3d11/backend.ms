@@ -64,6 +64,7 @@ import {
 	GPUTextureUsage,
 	GPUTextureView,
 	GPUTextureViewDescriptor,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	checkedDepthTexelCopy,
 	samplerMaxLod,
 	checkedTexelBufferLayout,
@@ -172,6 +173,7 @@ import {
 	d3dDraw,
 	d3dDrawIndexed,
 	d3dDrawIndexedInstanced,
+	d3dDrawIndexedInstancedIndirect,
 	d3dDrawInstanced,
 	d3dDsvFrom,
 	d3dIaSetIndexBuffer,
@@ -1004,6 +1006,7 @@ export function features(): GPUSupportedFeatures {
 	if ((float32 & FORMAT_CAP_SAMPLE) != 0) { bits |= featureBit("float32-filterable"); }
 	if ((float32 & FORMAT_CAP_BLEND) != 0) { bits |= featureBit("float32-blendable"); }
 	if ((formatCaps("rg11b10ufloat") & FORMAT_CAP_RENDER) != 0) { bits |= featureBit("rg11b10ufloat-renderable"); }
+	bits |= featureBit("indirect-first-instance");
 	return { bits: bits };
 }
 
@@ -2107,6 +2110,14 @@ export function drawIndexed(
 		d3dDrawIndexedInstanced(context, indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
 	} else {
 		d3dDrawIndexed(context, indexCount, firstIndex, baseVertex);
+	}
+}
+
+export function multiDrawIndexedIndirect(buffer: GPUBuffer, offset: int64, drawCount: int32): void {
+	flush(true);
+	const native = buffers[slotOf(buffer.id)].native;
+	for (let i = 0; i < drawCount; i++) {
+		d3dDrawIndexedInstancedIndirect(context, native, offset + (i as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE);
 	}
 }
 

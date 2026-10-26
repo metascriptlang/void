@@ -21,6 +21,7 @@
 #define VULKAN_FEATURE_BC 0x2
 #define VULKAN_FEATURE_ETC2 0x4
 #define VULKAN_FEATURE_ASTC 0x8
+#define VULKAN_FEATURE_INDIRECT_FIRST_INSTANCE 0x400
 
 #define VULKAN_LIMIT_TEXTURE_DIMENSION_1D 0
 #define VULKAN_LIMIT_TEXTURE_DIMENSION_2D 1
@@ -295,7 +296,7 @@ int32_t vulkanCmdBlendConstants(float r, float g, float b, float a);
 int32_t vulkanCmdStencilReference(uint32_t reference);
 int32_t vulkanCmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance);
 int32_t vulkanCmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t baseVertex, uint32_t firstInstance);
-int32_t vulkanCmdDrawIndirect(uint64_t buffer, uint64_t offset, int32_t indexed);
+int32_t vulkanCmdDrawIndexedIndirect(uint64_t buffer, uint64_t offset, uint32_t drawCount);
 int32_t vulkanCmdDispatch(uint32_t x, uint32_t y, uint32_t z);
 int32_t vulkanCmdDispatchIndirect(uint64_t buffer, uint64_t offset);
 

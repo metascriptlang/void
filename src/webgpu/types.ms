@@ -1103,6 +1103,8 @@ export function samplerMaxLod(lodMaxClamp: float32): float32 { return lodMaxClam
 	return maxLod;
 }
 
+export const GPU_DRAW_INDEXED_INDIRECT_STRIDE = 20;
+
 @noinline export function checkedDispatchIndirect(id: uint32, usage: int32, bufferSize: int64, offset: int64): void {
 	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { stop(`dispatchWorkgroupsIndirect: GPUBuffer ${id} was created without INDIRECT`); }
 	if (offset < 0 || offset % 4 != 0 || offset + 12 > bufferSize) {

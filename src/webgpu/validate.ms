@@ -14,6 +14,7 @@ import {
 	GPUShaderBinding,
 	GPUShaderModuleDescriptor,
 	GPUShaderStage,
+	GPUSupportedFeatures,
 	GPUSupportedLimits,
 	GPUExtent3D,
 	GPUIndexFormat,
@@ -23,6 +24,7 @@ import {
 	GPUTextureFormat,
 	GPUTextureUsage,
 	GPUTextureViewDescriptor,
+	GPU_DRAW_INDEXED_INDIRECT_STRIDE,
 	GPU_MAX_ANISOTROPY,
 	GPU_MAX_BIND_GROUP_ENTRIES,
 	GPU_MAX_COLOR_ATTACHMENTS,
@@ -38,6 +40,7 @@ import {
 	checkedResolveQuerySet,
 	cubeViewRefusal,
 	depthSliceRefusal,
+	featureBit,
 	firstInstanceRefusal,
 	labelOf,
 	noDepthSliceRefusal,
@@ -218,6 +221,7 @@ export function shutdownRefusal(this s: EncoderState): string {
 
 let encoder: EncoderState = { open: false };
 let deviceLimits: GPUSupportedLimits = { maxBindGroups: 0 };
+let deviceFeatures: GPUSupportedFeatures = { bits: 0 };
 let canvas: GPUCanvasConfiguration = { format: "rgba8unorm", depthFormat: "depth32float", sampleCount: 1 };
 let frame: int64 = 0;
 
@@ -254,6 +258,7 @@ export let boundFacts: BoundFacts = { pipeline: 0 };
 
 export function resetEncoder(): void { encoder = { open: false }; }
 export function cacheLimits(limits: GPUSupportedLimits): void { deviceLimits = limits; }
+export function cacheFeatures(features: GPUSupportedFeatures): void { deviceFeatures = features; }
 export function resetFrame(): void { frame = 0; }
 export function advanceFrame(): void { frame += 1; }
 
@@ -657,6 +662,38 @@ export function drawOffsetRefusal(pipeline: PipelineRecord, call: string, vertex
 
 export function checkedDrawOffsets(call: string, vertexMember: string, vertexOffset: int32, firstInstance: int32): void {
 	refuse(drawOffsetRefusal(pipelineRecords.record(boundFacts.pipeline), call, vertexMember, vertexOffset, firstInstance));
+}
+
+export function drawIndirectRefusal(call: string, buffer: uint32, usage: int32, bufferSize: int64, offset: int64, drawCount: int32): string {
+	if ((usage & (GPUBufferUsage.INDIRECT as int32)) == 0) { return `${call}: GPUBuffer ${buffer} was created without INDIRECT`; }
+	if (drawCount < 0) { return `${call} with maxDrawCount ${drawCount}: the count cannot be negative`; }
+	if (offset < 0 || offset % 4 != 0 || offset + (drawCount as int64) * GPU_DRAW_INDEXED_INDIRECT_STRIDE > bufferSize) {
+		return `${call} offset ${offset} is not a multiple of 4 with ${drawCount} records of ${GPU_DRAW_INDEXED_INDIRECT_STRIDE} bytes inside GPUBuffer ${buffer} of ${bufferSize}`;
+	}
+	return "";
+}
+
+export function indirectPipelineRefusal(pipeline: PipelineRecord, call: string): string {
+	if (pipeline.readsInstanceIndex) {
+		return `${call} on pipeline ${labelOf(pipeline.label)}: the vertex stage reads instance_index, which backends count from different bases, and an indirect record sets its firstInstance on the GPU`;
+	}
+	if (pipeline.readsVertexIndex) {
+		return `${call} on pipeline ${labelOf(pipeline.label)}: the vertex stage reads vertex_index, which backends count from different bases, and an indirect record sets its baseVertex on the GPU`;
+	}
+	return "";
+}
+
+export function indirectFeatureRefusal(call: string, firstInstance: boolean): string {
+	if (firstInstance) { return ""; }
+	return `${call} on a device without 'indirect-first-instance': a record's firstInstance would be undefined there`;
+}
+
+export function checkedDrawIndirect(call: string, buffer: uint32, offset: int64, drawCount: int32): void {
+	checkedDrawState(call, true);
+	const record = bufferRecords.record(buffer);
+	refuse(drawIndirectRefusal(call, buffer, record.usage, record.size, offset, drawCount));
+	refuse(indirectPipelineRefusal(pipelineRecords.record(boundFacts.pipeline), call));
+	refuse(indirectFeatureRefusal(call, (deviceFeatures.bits & featureBit("indirect-first-instance")) != 0));
 }
 
 // `matches` is whether the pipeline's strip index format is the bound index format; none never matches.
