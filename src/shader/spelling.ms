@@ -23,13 +23,33 @@ export function binaryOperator(op: BinaryOp): string {
 	};
 }
 
+export function isComponentCompare(op: Intrinsic): boolean {
+	return op == Intrinsic.LessThan || op == Intrinsic.LessThanEqual || op == Intrinsic.GreaterThan ||
+		op == Intrinsic.GreaterThanEqual || op == Intrinsic.Equal || op == Intrinsic.NotEqual;
+}
+
+// The operator that spells a componentwise test where the target compares vectors by operator.
+export function componentCompare(op: Intrinsic): BinaryOp {
+	return match (op) {
+		Intrinsic.LessThan => BinaryOp.Less,
+		Intrinsic.LessThanEqual => BinaryOp.LessEqual,
+		Intrinsic.GreaterThan => BinaryOp.Greater,
+		Intrinsic.GreaterThanEqual => BinaryOp.GreaterEqual,
+		Intrinsic.Equal => BinaryOp.Equal,
+		Intrinsic.NotEqual => BinaryOp.NotEqual,
+		_ => { unspelled("componentwise test", op); },
+	};
+}
+
 function unspelled(what: string, op: Intrinsic): never {
 	throw new Error("internal: no " + what + " spelling for " + op.toString());
 }
 
 export function isMath(op: Intrinsic): boolean {
 	return match (op) {
-		Intrinsic.Inverse | Intrinsic.UpperLeft3x3 | Intrinsic.Select | Intrinsic.LessThanEqual |
+		Intrinsic.Inverse | Intrinsic.UpperLeft3x3 | Intrinsic.Select | Intrinsic.LessThan |
+			Intrinsic.LessThanEqual | Intrinsic.GreaterThan | Intrinsic.GreaterThanEqual |
+			Intrinsic.Equal | Intrinsic.NotEqual |
 			Intrinsic.TextureSample | Intrinsic.TextureLoad | Intrinsic.TextureStore |
 			Intrinsic.TextureDimensions | Intrinsic.TextureSampleCompare |
 			Intrinsic.TextureSampleCompareLevel | Intrinsic.TextureSampleLevel |
@@ -48,7 +68,8 @@ export function isMath(op: Intrinsic): boolean {
 			Intrinsic.Smoothstep | Intrinsic.Fma | Intrinsic.Dot | Intrinsic.Cross |
 			Intrinsic.Length | Intrinsic.Distance | Intrinsic.Normalize | Intrinsic.Reflect |
 			Intrinsic.Refract | Intrinsic.FaceForward | Intrinsic.Transpose |
-			Intrinsic.Determinant | Intrinsic.Dpdx | Intrinsic.Dpdy | Intrinsic.Fwidth |
+			Intrinsic.Determinant | Intrinsic.Any | Intrinsic.All | Intrinsic.Dpdx | Intrinsic.Dpdy |
+			Intrinsic.Fwidth |
 			Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
 			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
 			Intrinsic.Pack4x8Unorm | Intrinsic.Pack4x8Snorm | Intrinsic.Pack2x16Unorm |
@@ -104,6 +125,8 @@ export function mathName(op: Intrinsic): string {
 		Intrinsic.FaceForward => "faceforward",
 		Intrinsic.Transpose => "transpose",
 		Intrinsic.Determinant => "determinant",
+		Intrinsic.Any => "any",
+		Intrinsic.All => "all",
 		Intrinsic.Dpdx => "dFdx",
 		Intrinsic.Dpdy => "dFdy",
 		Intrinsic.Fwidth => "fwidth",

@@ -139,7 +139,7 @@ test "the fragment probe spells every intrinsic and statement" {
 		"float arr[3] = { f, f, 2.0 };\n",
 		"Sample s = makeSample(f, v2);\n",
 		"int2 size = int2(textureSize(albedo, uint(0)));\n",
-		"bool3 b3 = v3 <= v3;\n",
+		"bool3 b3 = (v3 <= v3);\n",
 		"f = rsqrt(f);\n", "f = mad(f, f, f);\n", "v3 = float3(sign(v3));\n", "v3 = frac(v3);\n",
 		"v3 = lerp(v3, v3, f);\n", "v3 = faceforward(v3, v3, v3);\n", "v3 = (b3 ? v3 : v3);\n",
 		"f = (b ? 1.0 : f);\n", "m4 = inverse(m4);\n", "m3 = ((float3x3)m4);\n",

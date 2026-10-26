@@ -41,6 +41,7 @@ import {
 	TextureDepth2d,
 	TextureDepth2dArray,
 	TextureDepthCube,
+	Vec2b,
 	Vec2f,
 	Vec2i,
 	Vec2u,
@@ -48,6 +49,7 @@ import {
 	Vec3f,
 	Vec3i,
 	Vec3u,
+	Vec4b,
 	Vec4f,
 	Vec4i,
 	Vec4u,
@@ -546,23 +548,26 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		getTypeImpl(Vec2u),
 		getTypeImpl(Vec3u),
 		getTypeImpl(Vec4u),
+		getTypeImpl(Vec2b),
 		getTypeImpl(Vec3b),
+		getTypeImpl(Vec4b),
 		getTypeImpl(Mat2x2f),
 		getTypeImpl(Mat3x3f),
 		getTypeImpl(Mat4x4f),
 	];
 	const constructors = [
-		"vec2f", "vec3f", "vec4f", "vec2i", "vec3i", "vec4i", "vec2u", "vec3u", "vec4u", "",
+		"vec2f", "vec3f", "vec4f", "vec2i", "vec3i", "vec4i", "vec2u", "vec3u", "vec4u",
+		"vec2b", "vec3b", "vec4b",
 		"mat2x2f", "mat3x3f", "mat4x4f",
 	];
-	const firstMatrix = 10;
+	const firstMatrix = 12;
 
 	function vectorAt(i: number): ShaderType {
 		if (i < 3) { return vectorType(ScalarKind.F32, (i + 2) as int32); }
 		if (i < 6) { return vectorType(ScalarKind.I32, (i - 1) as int32); }
 		if (i < 9) { return vectorType(ScalarKind.U32, (i - 4) as int32); }
-		if (i == 9) { return vectorType(ScalarKind.Bool, 3); }
-		return matrixType((i - 8) as int32, (i - 8) as int32);
+		if (i < 12) { return vectorType(ScalarKind.Bool, (i - 7) as int32); }
+		return matrixType((i - 10) as int32, (i - 10) as int32);
 	}
 
 	function matrixColumns(n: Node): boolean {
@@ -1016,6 +1021,7 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		"max", "min", "clamp", "mix", "step", "smoothstep", "fma", "pow", "dot", "cross", "length",
 		"distance", "normalize", "reflect", "refract", "transpose", "determinant", "inverse",
 		"round", "inverseSqrt", "atan2", "faceForward", "saturate", "upperLeft3x3", "select", "le",
+		"lt", "gt", "ge", "eq", "ne", "any", "all",
 		"textureDimensions", "textureStore", "textureLoad", "atomicLoad", "atomicStore",
 		"atomicAdd", "atomicSub", "atomicMax", "atomicMin", "atomicAnd", "atomicOr", "atomicXor",
 		"atomicExchange", "atomicCompareExchangeWeak",
@@ -1035,7 +1041,9 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		Intrinsic.Reflect, Intrinsic.Refract, Intrinsic.Transpose, Intrinsic.Determinant,
 		Intrinsic.Inverse, Intrinsic.Round, Intrinsic.InverseSqrt, Intrinsic.Atan2,
 		Intrinsic.FaceForward, Intrinsic.Saturate, Intrinsic.UpperLeft3x3, Intrinsic.Select,
-		Intrinsic.LessThanEqual, Intrinsic.TextureDimensions, Intrinsic.TextureStore,
+		Intrinsic.LessThanEqual, Intrinsic.LessThan, Intrinsic.GreaterThan,
+		Intrinsic.GreaterThanEqual, Intrinsic.Equal, Intrinsic.NotEqual, Intrinsic.Any, Intrinsic.All,
+		Intrinsic.TextureDimensions, Intrinsic.TextureStore,
 		Intrinsic.TextureLoad, Intrinsic.AtomicLoad, Intrinsic.AtomicStore, Intrinsic.AtomicAdd,
 		Intrinsic.AtomicSub, Intrinsic.AtomicMax, Intrinsic.AtomicMin, Intrinsic.AtomicAnd,
 		Intrinsic.AtomicOr, Intrinsic.AtomicXor, Intrinsic.AtomicExchange,
@@ -1617,6 +1625,11 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 		}
 		const direct = intrinsicNames.indexOf(name);
 		if (direct >= 0) { return intrinsicOf(intrinsics[direct], type, args); }
+		if (name == "not") {
+			let negated = exprOf(ExprKind.Unary, type, -1, args);
+			negated.unary = UnaryOp.Not;
+			return negated;
+		}
 		const fragmentOnly = vertex || compute;
 		return match (name) {
 			"dpdx" | "dpdy" | "fwidth" => fragmentOnly ?

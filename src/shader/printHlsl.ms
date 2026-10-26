@@ -39,7 +39,9 @@ import {
 } from "./irWalk";
 import {
 	binaryOperator,
+	componentCompare,
 	floatText,
+	isComponentCompare,
 	isIntMin,
 	mathName,
 	pointed,
@@ -743,6 +745,10 @@ function bitsOf(p: Printer, e: ShaderExpr): string {
 
 function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const args = () => e.operands.map((o) => expr(p, o)).join(", ");
+	if (isComponentCompare(e.intrinsic)) {
+		return "(" + operand(p, e.operands[0]) + " " + binaryOperator(componentCompare(e.intrinsic)) +
+			" " + operand(p, e.operands[1]) + ")";
+	}
 	return match (e.intrinsic) {
 		Intrinsic.CountOneBits | Intrinsic.ReverseBits | Intrinsic.FirstLeadingBit |
 			Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits | Intrinsic.InsertBits |
@@ -758,7 +764,6 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 			return "(" + operand(p, e.operands[2]) + " ? " + operand(p, e.operands[1]) + " : " +
 				operand(p, e.operands[0]) + ")";
 		},
-		Intrinsic.LessThanEqual => operand(p, e.operands[0]) + " <= " + operand(p, e.operands[1]),
 		Intrinsic.TextureSample => sampleOf(p, e),
 		Intrinsic.TextureLoad => loadOf(p, e),
 		Intrinsic.TextureStore => storeOf(p, e),

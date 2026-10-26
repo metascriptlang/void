@@ -34,7 +34,9 @@ import { claimName } from "./names";
 import { printableEntry, readsFrom } from "./specialize";
 import {
 	binaryOperator,
+	componentCompare,
 	floatText,
+	isComponentCompare,
 	isIntMin,
 	isMath,
 	mathName,
@@ -600,6 +602,10 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 	const op = e.intrinsic;
 	const name = isMath(op) ? builtinName(op) : "";
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
+	if (isComponentCompare(op)) {
+		return "(" + exprText(p, o[0]) + " " + binaryOperator(componentCompare(op)) + " " +
+			exprText(p, o[1]) + ")";
+	}
 	if (op == Intrinsic.UpperLeft3x3) { p.upperLeft = true; }
 	return match (op) {
 		Intrinsic.FirstLeadingBit | Intrinsic.FirstTrailingBit | Intrinsic.ExtractBits |
@@ -611,7 +617,6 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		Intrinsic.Inverse => inverseCall(p, e),
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
 		Intrinsic.Select => selectText(p, e),
-		Intrinsic.LessThanEqual => "(" + exprText(p, o[0]) + " <= " + exprText(p, o[1]) + ")",
 		Intrinsic.TextureSample => sampleText(p, e),
 		Intrinsic.TextureLoad => loadText(p, e),
 		Intrinsic.TextureStore => storeText(p, e),

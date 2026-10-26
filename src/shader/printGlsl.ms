@@ -373,6 +373,11 @@ function remainder(p: Printer, a: ShaderExpr, b: ShaderExpr): string {
 		"undefined");
 }
 
+function notOfVector(e: ShaderExpr): boolean {
+	const t = e.operands[0].type;
+	return e.unary == UnaryOp.Not && t.kind == ShaderTypeKind.Vector && t.scalar == ScalarKind.Bool;
+}
+
 function unaryText(e: ShaderExpr): string {
 	return match (e.unary) {
 		UnaryOp.Negate => "-",
@@ -624,7 +629,12 @@ function intrinsicName(op: Intrinsic): string {
 	return match (op) {
 		Intrinsic.Round => "roundEven",
 		Intrinsic.Atan2 => "atan",
+		Intrinsic.LessThan => "lessThan",
 		Intrinsic.LessThanEqual => "lessThanEqual",
+		Intrinsic.GreaterThan => "greaterThan",
+		Intrinsic.GreaterThanEqual => "greaterThanEqual",
+		Intrinsic.Equal => "equal",
+		Intrinsic.NotEqual => "notEqual",
 		_ => mathName(op),
 	};
 }
@@ -632,12 +642,18 @@ function intrinsicName(op: Intrinsic): string {
 function selectText(p: Printer, e: ShaderExpr): string {
 	const [falseValue, trueValue, condition] = [e.operands[0], e.operands[1], e.operands[2]];
 	if (condition.type.kind == ShaderTypeKind.Vector) {
-		if (!isScalarKind(e.type, ScalarKind.F32)) {
-			return fail(p, "Select of " + e.type.scalar.toString() + " by a bool vector: GLSL " +
-				"mixes float vectors only");
+		if (isScalarKind(e.type, ScalarKind.F32)) {
+			return "mix(" + expr(p, falseValue) + ", " + expr(p, trueValue) + ", " +
+				expr(p, condition) + ")";
 		}
-		return "mix(" + expr(p, falseValue) + ", " + expr(p, trueValue) + ", " +
-			expr(p, condition) + ")";
+		pure(p, "select", [falseValue, trueValue, condition]);
+		let lanes: string[] = [];
+		for (let i = 0; i < e.type.rows; i++) {
+			const lane = "." + SWIZZLE.substring(i, i + 1);
+			lanes.push(postfixBase(p, condition) + lane + " ? " + postfixBase(p, trueValue) + lane +
+				" : " + postfixBase(p, falseValue) + lane);
+		}
+		return typeName(p, e.type) + "(" + lanes.join(", ") + ")";
 	}
 	pure(p, "select", [falseValue, trueValue]);
 	return "(" + operand(p, condition) + " ? " + operand(p, trueValue) + " : " +
@@ -826,7 +842,8 @@ function expr(p: Printer, e: ShaderExpr): string {
 		ExprKind.Io => ioText(p, e.index),
 		ExprKind.Resource => resourceText(p, e.index),
 		ExprKind.BlockMember => memberText(p, e),
-		ExprKind.Unary => unaryText(e) + operand(p, e.operands[0]),
+		ExprKind.Unary => notOfVector(e) ? "not(" + expr(p, e.operands[0]) + ")" :
+			unaryText(e) + operand(p, e.operands[0]),
 		ExprKind.Binary => binaryText(p, e),
 		ExprKind.Conditional => operand(p, e.operands[0]) + " ? " + operand(p, e.operands[1]) +
 			" : " + operand(p, e.operands[2]),

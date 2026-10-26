@@ -1785,11 +1785,10 @@ export function fwidth(v: Vec2f): Vec2f { unreachable("fwidth: only a GPU fragme
 export function fwidth(v: Vec3f): Vec3f { unreachable("fwidth: only a GPU fragment has one"); }
 export function fwidth(v: Vec4f): Vec4f { unreachable("fwidth: only a GPU fragment has one"); }
 
-// WGSL's operand order: the value when false comes first.
-export function select(f: float32, t: float32, cond: boolean): float32 { return cond ? t : f; }
-export function select(f: Vec3f, t: Vec3f, cond: boolean): Vec3f { return cond ? t : f; }
-export function select(f: Vec3f, t: Vec3f, cond: Vec3b): Vec3f {
-	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+// WGSL's boolean vectors, and the componentwise tests and selects that make and take them.
+export struct Vec2b {
+	x: boolean;
+	y: boolean;
 }
 
 export struct Vec3b {
@@ -1798,10 +1797,235 @@ export struct Vec3b {
 	z: boolean;
 }
 
+export struct Vec4b {
+	x: boolean;
+	y: boolean;
+	z: boolean;
+	w: boolean;
+}
+
+export function vec2b(x: boolean, y: boolean): Vec2b { return { x, y }; }
+export function vec3b(x: boolean, y: boolean, z: boolean): Vec3b { return { x, y, z }; }
+export function vec4b(x: boolean, y: boolean, z: boolean, w: boolean): Vec4b {
+	return { x, y, z, w };
+}
+
+export function eq(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x == b.x, y: a.y == b.y }; }
+export function eq(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z };
+}
+export function eq(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z, w: a.w == b.w };
+}
+export function eq(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x == b.x, y: a.y == b.y }; }
+export function eq(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z };
+}
+export function eq(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z, w: a.w == b.w };
+}
+export function eq(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x == b.x, y: a.y == b.y }; }
+export function eq(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z };
+}
+export function eq(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x == b.x, y: a.y == b.y, z: a.z == b.z, w: a.w == b.w };
+}
+
+export function ne(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x != b.x, y: a.y != b.y }; }
+export function ne(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z };
+}
+export function ne(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z, w: a.w != b.w };
+}
+export function ne(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x != b.x, y: a.y != b.y }; }
+export function ne(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z };
+}
+export function ne(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z, w: a.w != b.w };
+}
+export function ne(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x != b.x, y: a.y != b.y }; }
+export function ne(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z };
+}
+export function ne(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x != b.x, y: a.y != b.y, z: a.z != b.z, w: a.w != b.w };
+}
+
+export function lt(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x < b.x, y: a.y < b.y }; }
+export function lt(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z };
+}
+export function lt(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z, w: a.w < b.w };
+}
+export function lt(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x < b.x, y: a.y < b.y }; }
+export function lt(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z };
+}
+export function lt(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z, w: a.w < b.w };
+}
+export function lt(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x < b.x, y: a.y < b.y }; }
+export function lt(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z };
+}
+export function lt(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x < b.x, y: a.y < b.y, z: a.z < b.z, w: a.w < b.w };
+}
+
+export function le(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x <= b.x, y: a.y <= b.y }; }
 export function le(a: Vec3f, b: Vec3f): Vec3b {
 	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
 }
+export function le(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z, w: a.w <= b.w };
+}
+export function le(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x <= b.x, y: a.y <= b.y }; }
+export function le(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
+}
+export function le(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z, w: a.w <= b.w };
+}
+export function le(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x <= b.x, y: a.y <= b.y }; }
+export function le(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z };
+}
+export function le(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x <= b.x, y: a.y <= b.y, z: a.z <= b.z, w: a.w <= b.w };
+}
 
+export function gt(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x > b.x, y: a.y > b.y }; }
+export function gt(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z };
+}
+export function gt(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z, w: a.w > b.w };
+}
+export function gt(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x > b.x, y: a.y > b.y }; }
+export function gt(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z };
+}
+export function gt(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z, w: a.w > b.w };
+}
+export function gt(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x > b.x, y: a.y > b.y }; }
+export function gt(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z };
+}
+export function gt(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x > b.x, y: a.y > b.y, z: a.z > b.z, w: a.w > b.w };
+}
+
+export function ge(a: Vec2f, b: Vec2f): Vec2b { return { x: a.x >= b.x, y: a.y >= b.y }; }
+export function ge(a: Vec3f, b: Vec3f): Vec3b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z };
+}
+export function ge(a: Vec4f, b: Vec4f): Vec4b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z, w: a.w >= b.w };
+}
+export function ge(a: Vec2i, b: Vec2i): Vec2b { return { x: a.x >= b.x, y: a.y >= b.y }; }
+export function ge(a: Vec3i, b: Vec3i): Vec3b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z };
+}
+export function ge(a: Vec4i, b: Vec4i): Vec4b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z, w: a.w >= b.w };
+}
+export function ge(a: Vec2u, b: Vec2u): Vec2b { return { x: a.x >= b.x, y: a.y >= b.y }; }
+export function ge(a: Vec3u, b: Vec3u): Vec3b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z };
+}
+export function ge(a: Vec4u, b: Vec4u): Vec4b {
+	return { x: a.x >= b.x, y: a.y >= b.y, z: a.z >= b.z, w: a.w >= b.w };
+}
+
+export function any(v: Vec2b): boolean { return v.x || v.y; }
+export function any(v: Vec3b): boolean { return v.x || v.y || v.z; }
+export function any(v: Vec4b): boolean { return v.x || v.y || v.z || v.w; }
+export function all(v: Vec2b): boolean { return v.x && v.y; }
+export function all(v: Vec3b): boolean { return v.x && v.y && v.z; }
+export function all(v: Vec4b): boolean { return v.x && v.y && v.z && v.w; }
+export function not(v: boolean): boolean { return !v; }
+export function not(v: Vec2b): Vec2b { return { x: !v.x, y: !v.y }; }
+export function not(v: Vec3b): Vec3b { return { x: !v.x, y: !v.y, z: !v.z }; }
+export function not(v: Vec4b): Vec4b { return { x: !v.x, y: !v.y, z: !v.z, w: !v.w }; }
+
+// WGSL's operand order: the value when false comes first.
+export function select(f: float32, t: float32, cond: boolean): float32 { return cond ? t : f; }
+export function select(f: int32, t: int32, cond: boolean): int32 { return cond ? t : f; }
+export function select(f: uint32, t: uint32, cond: boolean): uint32 { return cond ? t : f; }
+export function select(f: boolean, t: boolean, cond: boolean): boolean { return cond ? t : f; }
+export function select(f: Vec2f, t: Vec2f, cond: boolean): Vec2f { return cond ? t : f; }
+export function select(f: Vec2f, t: Vec2f, cond: Vec2b): Vec2f {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3f, t: Vec3f, cond: boolean): Vec3f { return cond ? t : f; }
+export function select(f: Vec3f, t: Vec3f, cond: Vec3b): Vec3f {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4f, t: Vec4f, cond: boolean): Vec4f { return cond ? t : f; }
+export function select(f: Vec4f, t: Vec4f, cond: Vec4b): Vec4f {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
+export function select(f: Vec2i, t: Vec2i, cond: boolean): Vec2i { return cond ? t : f; }
+export function select(f: Vec2i, t: Vec2i, cond: Vec2b): Vec2i {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3i, t: Vec3i, cond: boolean): Vec3i { return cond ? t : f; }
+export function select(f: Vec3i, t: Vec3i, cond: Vec3b): Vec3i {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4i, t: Vec4i, cond: boolean): Vec4i { return cond ? t : f; }
+export function select(f: Vec4i, t: Vec4i, cond: Vec4b): Vec4i {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
+export function select(f: Vec2u, t: Vec2u, cond: boolean): Vec2u { return cond ? t : f; }
+export function select(f: Vec2u, t: Vec2u, cond: Vec2b): Vec2u {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3u, t: Vec3u, cond: boolean): Vec3u { return cond ? t : f; }
+export function select(f: Vec3u, t: Vec3u, cond: Vec3b): Vec3u {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4u, t: Vec4u, cond: boolean): Vec4u { return cond ? t : f; }
+export function select(f: Vec4u, t: Vec4u, cond: Vec4b): Vec4u {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
+export function select(f: Vec2b, t: Vec2b, cond: boolean): Vec2b { return cond ? t : f; }
+export function select(f: Vec2b, t: Vec2b, cond: Vec2b): Vec2b {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y };
+}
+export function select(f: Vec3b, t: Vec3b, cond: boolean): Vec3b { return cond ? t : f; }
+export function select(f: Vec3b, t: Vec3b, cond: Vec3b): Vec3b {
+	return { x: cond.x ? t.x : f.x, y: cond.y ? t.y : f.y, z: cond.z ? t.z : f.z };
+}
+export function select(f: Vec4b, t: Vec4b, cond: boolean): Vec4b { return cond ? t : f; }
+export function select(f: Vec4b, t: Vec4b, cond: Vec4b): Vec4b {
+	return {
+		x: cond.x ? t.x : f.x,
+		y: cond.y ? t.y : f.y,
+		z: cond.z ? t.z : f.z,
+		w: cond.w ? t.w : f.w,
+	};
+}
 export function builtin(): void {}
 export function location(): void {}
 export function binding(): void {}

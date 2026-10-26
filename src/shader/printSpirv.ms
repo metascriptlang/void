@@ -33,7 +33,7 @@ import {
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, ioLocation, rootOf } from "./irWalk";
 import { Reads, printableEntry } from "./specialize";
-import { isMath } from "./spelling";
+import { componentCompare, isComponentCompare, isMath } from "./spelling";
 
 const OP_NAME = 5;
 const OP_MEMBER_NAME = 6;
@@ -1474,13 +1474,16 @@ function dimensions(p: Spirv, e: ShaderExpr): int32 {
 function intrinsic(p: Spirv, e: ShaderExpr): int32 {
 	const op = e.intrinsic;
 	const o = e.operands;
+	if (op == Intrinsic.Any || op == Intrinsic.All) {
+		return typed(p, op == Intrinsic.Any ? OP_ANY : OP_ALL, typeId(p, e.type), [value(p, o[0])]);
+	}
 	if (isMath(op)) { return math(p, e); }
 	if (isAtomic(op)) { return atomic(p, e); }
 	if (op == Intrinsic.Select) { return selected(p, e); }
-	if (op == Intrinsic.LessThanEqual) {
+	if (isComponentCompare(op)) {
 		const l = value(p, o[0]);
 		const r = value(p, o[1]);
-		return arithmetic(p, BinaryOp.LessEqual, e.type, o[0].type, l, o[1].type, r);
+		return arithmetic(p, componentCompare(op), e.type, o[0].type, l, o[1].type, r);
 	}
 	if (op == Intrinsic.UpperLeft3x3) { return upperLeft(p, e); }
 	if (op == Intrinsic.Inverse) {

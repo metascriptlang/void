@@ -33,7 +33,9 @@ import { claimName } from "./names";
 import { printableEntry } from "./specialize";
 import {
 	binaryOperator,
+	componentCompare,
 	floatText,
+	isComponentCompare,
 	isIntMin,
 	isMath,
 	mathName,
@@ -443,6 +445,10 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 		p.derivatives = true;
 	}
 	if (name != "") { return name + "(" + argsText(p, o) + ")"; }
+	if (isComponentCompare(op)) {
+		return "(" + exprText(p, o[0]) + " " + binaryOperator(componentCompare(op)) + " " +
+			exprText(p, o[1]) + ")";
+	}
 	if (op == Intrinsic.UpperLeft3x3) { p.upperLeft = true; }
 	if (op == Intrinsic.TextureSample && p.stage == ShaderStage.Fragment) {
 		p.derivatives = true;
@@ -455,7 +461,6 @@ function intrinsicText(p: Printer, e: ShaderExpr): string {
 	return match (op) {
 		Intrinsic.Inverse => inverseCall(p, e),
 		Intrinsic.UpperLeft3x3 => UPPER_LEFT + "(" + exprText(p, o[0]) + ")",
-		Intrinsic.LessThanEqual => "(" + exprText(p, o[0]) + " <= " + exprText(p, o[1]) + ")",
 		Intrinsic.TextureSample => "textureSampleLevel(" + argsText(p, o) + ", " +
 			(isDepth(o[0].type) ? "0i" : "0.0f") + ")",
 		Intrinsic.TextureLoad => "textureLoad(" + argsText(p, withoutSamplers(o)) + ")",

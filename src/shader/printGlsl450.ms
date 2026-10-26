@@ -300,6 +300,10 @@ function value(p: Glsl, e: ShaderExpr): string {
 	}
 	if (e.kind == ExprKind.Unary) {
 		const operand = e.operands[0];
+		if (e.unary == UnaryOp.Not && operand.type.kind == ShaderTypeKind.Vector &&
+			operand.type.scalar == ScalarKind.Bool) {
+			return "not(" + expr(p, operand) + ")";
+		}
 		const op = e.unary == UnaryOp.Negate ? "-" :
 			operand.type.scalar == ScalarKind.Bool ? "!" : "~";
 		return op +
@@ -364,7 +368,12 @@ function intrinsicName(op: Intrinsic): string {
 		Intrinsic.Inverse => "inverse",
 		Intrinsic.UpperLeft3x3 => "mat3",
 		Intrinsic.Select => "mix",
+		Intrinsic.LessThan => "lessThan",
 		Intrinsic.LessThanEqual => "lessThanEqual",
+		Intrinsic.GreaterThan => "greaterThan",
+		Intrinsic.GreaterThanEqual => "greaterThanEqual",
+		Intrinsic.Equal => "equal",
+		Intrinsic.NotEqual => "notEqual",
 		Intrinsic.TextureSample => "texture",
 		Intrinsic.TextureLoad => "texelFetch",
 		Intrinsic.TextureStore => "imageStore",

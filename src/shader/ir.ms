@@ -175,7 +175,14 @@ export enum Intrinsic {
 	Inverse,
 	UpperLeft3x3,
 	Select,
+	LessThan,
 	LessThanEqual,
+	GreaterThan,
+	GreaterThanEqual,
+	Equal,
+	NotEqual,
+	Any,
+	All,
 	Dpdx,
 	Dpdy,
 	Fwidth,
@@ -733,6 +740,21 @@ function holdsAtomic(m: ShaderModule, t: ShaderType): boolean {
 	return t.element.some((e) => holdsAtomic(m, e));
 }
 
+function holdsBool(m: ShaderModule, t: ShaderType, seen: int32[]): boolean {
+	if ((t.kind == ShaderTypeKind.Scalar || t.kind == ShaderTypeKind.Vector) &&
+		t.scalar == ScalarKind.Bool) {
+		return true;
+	}
+	if (t.kind == ShaderTypeKind.Struct) {
+		if (t.structIndex < 0 || t.structIndex >= m.structs.length || seen.includes(t.structIndex)) {
+			return false;
+		}
+		seen.push(t.structIndex);
+		return m.structs[t.structIndex].members.some((f) => holdsBool(m, f.type, seen));
+	}
+	return t.element.some((e) => holdsBool(m, e, seen));
+}
+
 const RUNTIME_ARRAY = "is a runtime array, which only a storage buffer is";
 
 function holdsRuntimeArray(t: ShaderType): boolean {
@@ -944,6 +966,10 @@ export function irErrors(m: ShaderModule): string[] {
 			c.errors.push(owner + ": a storage texture of shape " + r.type.shape.toString() +
 				", where WGSL's is 2d, 2d array or 3d");
 		}
+		const shared = r.kind == ResourceKind.UniformBlock || r.kind == ResourceKind.StorageBuffer;
+		if (shared && holdsBool(m, r.type, [])) {
+			c.errors.push(owner + ": a bool is no uniform or storage member, as WGSL's");
+		}
 		if (r.kind == ResourceKind.StorageBuffer && r.access != Access.ReadWrite &&
 			holdsAtomic(m, r.type)) {
 			c.errors.push(owner + ": it holds atomics, so its access is read_write, as WGSL's");
@@ -967,6 +993,9 @@ export function irErrors(m: ShaderModule): string[] {
 			c.errors.push(owner + ": a flat varying takes no sampling, as WGSL's");
 		}
 		if (holdsRuntimeArray(io.type)) { c.errors.push(owner + ": it " + RUNTIME_ARRAY); }
+		if (io.builtin == Builtin.None && holdsBool(m, io.type, [])) {
+			c.errors.push(owner + ": a bool is no attribute, varying or output, as WGSL's");
+		}
 		if (io.builtin == Builtin.None && io.type.kind == ShaderTypeKind.Array) {
 			c.errors.push(owner + ": an attribute, varying or output is no array, as WGSL's");
 		}
