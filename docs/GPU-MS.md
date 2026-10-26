@@ -972,3 +972,27 @@ GPURenderPipeline P, not the bound pipeline Q"), WebGPU's group-equivalence rule
 a uniform group per pipeline; `webgpuD3d11Check`'s stencil test changed the same way and needs a
 WARP run. Vulkan needs no copy of either check. This ends the reuse series on the Mac side:
 `src/webgpu/device.ms` and `validate.ms` are open to Windows again.
+
+### 2026-10-26, the depth attachment's stencil aspect: two Metal follow-throughs to compile
+
+The shader arc's door-side stencil step needs two WebGPU fields that the branch lacked. Both
+follow the spec and are on every backend:
+- `95b10284`: `stencilReadMask` and `stencilWriteMask` are `uint32 | null`. null resolves to
+  `0xFFFFFFFF` through `stencilMask()` in `validate.ms`, so an explicit 0 now survives (a stencil
+  test that never writes);
+- `67396cd8`: `GPURenderPassDepthStencilAttachment` gains `stencilClearValue`, `stencilLoadOp` and
+  `stencilStoreOp`. A view with a stencil aspect requires both ops, a view without one must leave
+  them `""` (`renderPassRefusal`). D3D11, GL (`oglClearStencil`), Vulkan, wgpu and dummy clear and
+  keep the stencil separately from the depth. The door passes stencil ops equal to its depth ops
+  with clear value 0, so what the door draws is unchanged.
+
+The Metal halves are `3b802c2d` (the masks in `createRenderPipeline`) and `185d70cf`:
+`mtlPassDepth` takes the stencil load action, store action and clear value, and
+`webgpuMetalCheck` gives its stencil scene and `clearedDepthBytes` the stencil ops. Windows ran
+`msc check --os=darwin` on `webgpuMetalCheck` and `--os=ios` on `mainSokol2d`. Not verified: the
+native compile of `metal.m` and a Metal run of `webgpuMetalCheck`.
+
+The new test "a stencil cleared to 1 and stored is loaded by the next pass while that pass clears
+its depth" passes in `webgpuD3d11Check` and `webgpuVulkanCheck` on the RTX 5090. It draws through
+the shared `drawOverLoadedStencil` in `webgpuFixtures.ms`, which `webgpuMetalCheck` does not
+import yet.
