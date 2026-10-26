@@ -31,13 +31,20 @@ function copyModule(index: int32): GPUShaderModuleDescriptor {
 
 export function foreignProgram(): int32 {
 	if (program >= 0) { return program; }
-	const position: DoorLayout = doorLayout([{ location: 0, format: "float32x2", buffer: 0 }], ["vertex"]);
+	const position: DoorLayout = doorLayout(
+		[{ location: 0, format: "float32x2", buffer: 0 }],
+		["vertex"],
+	);
 	layout = doorRegisterLayouts([position, position, position, position]) + 3;
-	program = doorRegisterPrograms(copyModule, [layout, layout, layout, layout, layout, layout]) + 5;
+	program = doorRegisterPrograms(
+		copyModule,
+		[layout, layout, layout, layout, layout, layout],
+	) + 5;
 	return program;
 }
 
-export let registrationPreload: int32 = env.get("VOID_GPU_REGISTRATION") == "2" ? foreignProgram() : -1;
+export let registrationPreload: int32 =
+	env.get("VOID_GPU_REGISTRATION") == "2" ? foreignProgram() : -1;
 
 export function foreignLayout(): int32 {
 	foreignProgram();
