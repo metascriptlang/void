@@ -97,8 +97,22 @@ test "a stencil reads back from its key words" {
 		},
 		readMask: 0xA5,
 		writeMask: 0x5A,
+		reference: 0,
 	};
 	assert stenciled(both).renderState().stencil == both;
 	assert stenciled(maskWriter()).renderState().stencil == maskWriter();
 	assert stenciled(Stencil.defaults()).renderState().stencil == Stencil.defaults();
+}
+
+test "stencils differing only in reference key alike and the reference never reaches the key words" {
+	const base: Stencil = maskWriter();
+	assert base.reference == 0 && Stencil.defaults().reference == 0;
+	const referenced: Stencil = base.withReference(0x5A);
+	assert referenced != base && referenced.reference == 0x5A;
+	const key: PipelineKey = stenciled(referenced);
+	assert key == stenciled(base) && keyHash(key) == keyHash(stenciled(base));
+	assert key == stenciled(base.withReference(0xFF));
+	assert key.renderState().stencil == base;
+	assert referenced.withFunc(Compare.Equal, 0x0F, 0xF0).reference == 0x5A;
+	assert referenced.withOps(StencilOp.Zero, StencilOp.Zero, StencilOp.Zero).reference == 0x5A;
 }

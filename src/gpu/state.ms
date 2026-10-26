@@ -122,15 +122,16 @@ export struct StencilFace {
 	passOp: StencilOp;
 }
 
-// h3d.mat.Stencil without `reference`: Heaps keeps the reference in maskBits but keys its pipelines
-// on the masks and ops alone (`h3d/impl/PipelineCache.hx:304`, `h3d/impl/DirectXDriver.hx:682`)
-// and sets it per draw (`h3d/impl/DX12Driver.hx:3246`), so here it is a draw call's argument.
-// `RenderState.stencil == null` is stencil testing off, a state apart from any mask.
+// h3d.mat.Stencil. Heaps keeps `reference` in maskBits but keys its pipelines on the masks and ops
+// alone (`h3d/impl/PipelineCache.hx:304`) and sets it per draw when it changed
+// (`h3d/impl/DX12Driver.hx:3246`), so `reference` is outside the key words and a change of it makes
+// no pipeline. `RenderState.stencil == null` is stencil testing off, a state apart from any mask.
 export struct Stencil {
 	front: StencilFace;
 	back: StencilFace;
 	readMask: uint8;
 	writeMask: uint8;
+	reference: uint8;
 }
 
 export const COLOR_MASK_ALL: BitSet<ColorChannel> = (15 as uint8) as BitSet<ColorChannel>;
@@ -152,7 +153,7 @@ const BLEND_OPERATION: BitField = { shift: 22, width: 3 };
 const BLEND_ALPHA_OPERATION: BitField = { shift: 25, width: 3 };
 const COLOR_MASK: BitField = { shift: 28, width: 4 };
 
-// new h3d.mat.Stencil(): keep everything, Always, both masks 0xFF.
+// new h3d.mat.Stencil(): keep everything, Always, both masks 0xFF, reference 0.
 export function defaults(this typeof Stencil): Stencil {
 	const keep: StencilFace = {
 		compare: Compare.Always,
@@ -160,7 +161,7 @@ export function defaults(this typeof Stencil): Stencil {
 		depthFailOp: StencilOp.Keep,
 		passOp: StencilOp.Keep,
 	};
-	return { front: keep, back: keep, readMask: 0xFF, writeMask: 0xFF };
+	return { front: keep, back: keep, readMask: 0xFF, writeMask: 0xFF, reference: 0 };
 }
 
 // Stencil.setOp(stfail, dpfail, pass): both faces.
@@ -177,7 +178,8 @@ export function withOps(
 	};
 }
 
-// Stencil.setFunc(f, reference, readMask, writeMask) without the reference: both faces.
+// Stencil.setFunc(f, reference, readMask, writeMask) without the reference, which withReference
+// sets: both faces.
 export function withFunc(
 	this stencil: Stencil,
 	compare: Compare,
@@ -185,11 +187,16 @@ export function withFunc(
 	writeMask: uint8,
 ): Stencil {
 	return {
+		...stencil,
 		front: { ...stencil.front, compare: compare },
 		back: { ...stencil.back, compare: compare },
 		readMask: readMask,
 		writeMask: writeMask,
 	};
+}
+
+export function withReference(this stencil: Stencil, reference: uint8): Stencil {
+	return { ...stencil, reference: reference };
 }
 
 // new h3d.mat.Pass(): back faces culled, depth written and tested with Less, no blending.
@@ -408,7 +415,8 @@ export function stencilMasks(this state: RenderState): uint32 {
 	stop(`stencil key words ops=${ops} masks=${masks} set bits no stencil field owns`);
 }
 
-// The stencil the two key words of `stencilOps` and `stencilMasks` were made from.
+// The stencil the two key words of `stencilOps` and `stencilMasks` were made from, with reference 0:
+// the key does not hold it.
 export function fromStencilWords(this typeof RenderState, ops: uint32, masks: uint32): Stencil | null {
 	const present: boolean = extract(ops, STENCIL_PRESENT) != 0;
 	const owned: uint32 = fieldMask(STENCIL_PRESENT) | (fieldMask(FACE_BITS) << (BACK_SHIFT as uint32)) |
@@ -424,6 +432,7 @@ export function fromStencilWords(this typeof RenderState, ops: uint32, masks: ui
 		back: faceFromBits(ops >> (BACK_SHIFT as uint32)),
 		readMask: extract(masks, STENCIL_READ_MASK) as uint8,
 		writeMask: extract(masks, STENCIL_WRITE_MASK) as uint8,
+		reference: 0,
 	};
 }
 
