@@ -266,7 +266,7 @@ The Vulkan backend ports Mach's `src/sysgpu/vulkan.zig`:
 - the swapchain handoff through `oldSwapchain` (vulkan.zig:1001, 1117).
 
 The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanResourcesCheck.ms`,
-`vulkanMemoryCheck.ms` or `vulkanDraw.ms`:
+`vulkanMemoryCheck.ms` or `webgpuVulkanCheck.ms`:
 - a buffer-to-image row length counts texels of the format, not `bytes_per_row / 4`
   (vulkan.zig:2625; Dawn `UtilsVulkan.cpp:262-267`);
 - `rgb10a2unorm` is `A2B10G10R10` (64), where `conv.zig` gives the red-blue swapped 58
@@ -285,7 +285,11 @@ The port leaves Mach where Mach's code is wrong, each case pinned by `vulkanReso
   (`CommandBufferVk.cpp:2066-2069`), where Mach's `setViewport` flips to `extent.height - y`
   (vulkan.zig:3459-3466), which is right only for a viewport that reaches the bottom edge;
   a zero-width viewport becomes an empty one of width 1 and height 0, because Vulkan requires
-  a positive width (VUID-VkViewport-width-01770).
+  a positive width (VUID-VkViewport-width-01770);
+- a `mapAsync` after a `writeBuffer` that no submit has carried yet submits the queue's own
+  command buffer first, as WebGPU orders the map after the write, where Mach's `gpu_count`
+  counts only submitted command buffers (vulkan.zig:1323, 2528-2535) and maps before the copy
+  runs.
 
 Render-pass layouts follow Dawn (`RenderPassCache.cpp:176-208`): a pass starts and ends in the
 attachment layout and the tracker moves the texture before the pass, where Mach's passes move
