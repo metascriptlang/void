@@ -34,6 +34,7 @@ import {
 	sampleBase,
 	isShift,
 	sameShaderType,
+	texelScalar,
 } from "./ir";
 import { splitResults } from "./irWalk";
 import {
@@ -555,8 +556,7 @@ function imageAt(e: ShaderExpr, args: string[]): string {
 }
 
 function imageName(t: ShaderType): string {
-	const unsigned = t.format == TexelFormat.R32uint || t.format == TexelFormat.Rgba8uint;
-	return (unsigned ? "u" : "") + match (t.shape) {
+	return vectorPrefix(texelScalar(t.format)) + match (t.shape) {
 		TextureShape.D2Array => "image2DArray",
 		TextureShape.D3 => "image3D",
 		TextureShape.D2 => "image2D",
@@ -709,11 +709,20 @@ function formatName(f: TexelFormat): string {
 		TexelFormat.Rgba8unorm => "rgba8",
 		TexelFormat.Rgba8snorm => "rgba8_snorm",
 		TexelFormat.Rgba8uint => "rgba8ui",
+		TexelFormat.Rgba8sint => "rgba8i",
+		TexelFormat.Rgba16uint => "rgba16ui",
+		TexelFormat.Rgba16sint => "rgba16i",
 		TexelFormat.Rgba16float => "rgba16f",
+		TexelFormat.Rgba32uint => "rgba32ui",
+		TexelFormat.Rgba32sint => "rgba32i",
 		TexelFormat.Rgba32float => "rgba32f",
 		TexelFormat.R32float => "r32f",
 		TexelFormat.R32uint => "r32ui",
+		TexelFormat.R32sint => "r32i",
 		TexelFormat.Rg32float => "rg32f",
+		TexelFormat.Rg32uint => "rg32ui",
+		TexelFormat.Rg32sint => "rg32i",
+		TexelFormat.Bgra8unorm => { broken("bgra8unorm has no GLSL image format"); },
 	};
 }
 

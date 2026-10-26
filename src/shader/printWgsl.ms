@@ -251,11 +251,20 @@ function formatText(f: TexelFormat): string {
 		TexelFormat.Rgba8unorm => "rgba8unorm",
 		TexelFormat.Rgba8snorm => "rgba8snorm",
 		TexelFormat.Rgba8uint => "rgba8uint",
+		TexelFormat.Rgba8sint => "rgba8sint",
+		TexelFormat.Rgba16uint => "rgba16uint",
+		TexelFormat.Rgba16sint => "rgba16sint",
 		TexelFormat.Rgba16float => "rgba16float",
+		TexelFormat.Rgba32uint => "rgba32uint",
+		TexelFormat.Rgba32sint => "rgba32sint",
 		TexelFormat.Rgba32float => "rgba32float",
 		TexelFormat.R32float => "r32float",
 		TexelFormat.R32uint => "r32uint",
+		TexelFormat.R32sint => "r32sint",
 		TexelFormat.Rg32float => "rg32float",
+		TexelFormat.Rg32uint => "rg32uint",
+		TexelFormat.Rg32sint => "rg32sint",
+		TexelFormat.Bgra8unorm => "bgra8unorm",
 	};
 }
 

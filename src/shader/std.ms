@@ -2645,6 +2645,156 @@ export function textureLoad(texture: StorageTexture3d, at: Vec3i): Vec4f {
 	return loadTexel(texture.texels, first);
 }
 
+// WGSL's texture_storage_2d of a uint format (r32uint, rgba16uint, ...): its texel is a
+// vec4<u32>, so the texels are four uint32 each and textureLoad and textureStore take a Vec4u.
+export struct StorageTexture2dU32 {
+	width: int32;
+	height: int32;
+	texels: uint32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dU32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(texture: StorageTexture2dU32, at: Vec2i, value: Vec4u): void {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dU32, at: Vec2i): Vec4u {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture2dArrayU32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: uint32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dArrayU32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(
+	texture: StorageTexture2dArrayU32,
+	at: Vec2i,
+	layer: int32,
+	value: Vec4u,
+): void {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dArrayU32, at: Vec2i, layer: int32): Vec4u {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture3dU32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: uint32[];
+}
+
+export function textureDimensions(texture: StorageTexture3dU32): Vec3i {
+	return { x: texture.width, y: texture.height, z: texture.depth };
+}
+
+export function textureStore(texture: StorageTexture3dU32, at: Vec3i, value: Vec4u): void {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture3dU32, at: Vec3i): Vec4u {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+// WGSL's texture_storage_2d of a sint format (r32sint, rgba16sint, ...): its texel is a
+// vec4<i32>, so the texels are four int32 each and textureLoad and textureStore take a Vec4i.
+export struct StorageTexture2dI32 {
+	width: int32;
+	height: int32;
+	texels: int32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dI32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(texture: StorageTexture2dI32, at: Vec2i, value: Vec4i): void {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dI32, at: Vec2i): Vec4i {
+	const first = storageTexel(texture.width, texture.height, 1, at.x, at.y, 0);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture2dArrayI32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: int32[];
+}
+
+export function textureDimensions(texture: StorageTexture2dArrayI32): Vec2i {
+	return { x: texture.width, y: texture.height };
+}
+
+export function textureStore(
+	texture: StorageTexture2dArrayI32,
+	at: Vec2i,
+	layer: int32,
+	value: Vec4i,
+): void {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture2dArrayI32, at: Vec2i, layer: int32): Vec4i {
+	const first = storageTexel(texture.width, texture.height, texture.layers, at.x, at.y, layer);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
+export struct StorageTexture3dI32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: int32[];
+}
+
+export function textureDimensions(texture: StorageTexture3dI32): Vec3i {
+	return { x: texture.width, y: texture.height, z: texture.depth };
+}
+
+export function textureStore(texture: StorageTexture3dI32, at: Vec3i, value: Vec4i): void {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureStore: the texel is outside the texture"); }
+	storeTexel(texture.texels, first, value);
+}
+
+export function textureLoad(texture: StorageTexture3dI32, at: Vec3i): Vec4i {
+	const first = storageTexel(texture.width, texture.height, texture.depth, at.x, at.y, at.z);
+	if (first < 0) { unreachable("textureLoad: the texel is outside the texture"); }
+	return loadTexel(texture.texels, first);
+}
+
 function insideTexture(width: int32, height: int32, at: Vec2i): boolean {
 	return at.x >= 0 && at.y >= 0 && at.x < width && at.y < height;
 }
@@ -2669,6 +2819,28 @@ function storeTexel(texels: float32[], first: int32, value: Vec4f): void {
 }
 
 function loadTexel(texels: float32[], first: int32): Vec4f {
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+function storeTexel(texels: uint32[], first: int32, value: Vec4u): void {
+	texels[first] = value.x;
+	texels[first + 1] = value.y;
+	texels[first + 2] = value.z;
+	texels[first + 3] = value.w;
+}
+
+function loadTexel(texels: uint32[], first: int32): Vec4u {
+	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+function storeTexel(texels: int32[], first: int32, value: Vec4i): void {
+	texels[first] = value.x;
+	texels[first + 1] = value.y;
+	texels[first + 2] = value.z;
+	texels[first + 3] = value.w;
+}
+
+function loadTexel(texels: int32[], first: int32): Vec4i {
 	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
 }
 

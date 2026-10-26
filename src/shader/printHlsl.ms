@@ -23,6 +23,7 @@ import {
 	TexelFormat,
 	TextureShape,
 	UnaryOp,
+	texelScalar,
 	hasOffset,
 	isArrayTexture,
 	sampleBase,
@@ -208,20 +209,27 @@ function texelOf(format: TexelFormat): string {
 	return match (format) {
 		TexelFormat.Rgba8unorm => "unorm float4",
 		TexelFormat.Rgba8snorm => "snorm float4",
-		TexelFormat.Rgba8uint => "uint4",
+		TexelFormat.Bgra8unorm => "unorm float4",
+		TexelFormat.Rgba8uint | TexelFormat.Rgba16uint | TexelFormat.Rgba32uint => "uint4",
+		TexelFormat.Rgba8sint | TexelFormat.Rgba16sint | TexelFormat.Rgba32sint => "int4",
 		TexelFormat.Rgba16float | TexelFormat.Rgba32float => "float4",
 		TexelFormat.R32float => "float",
 		TexelFormat.R32uint => "uint",
+		TexelFormat.R32sint => "int",
 		TexelFormat.Rg32float => "float2",
+		TexelFormat.Rg32uint => "uint2",
+		TexelFormat.Rg32sint => "int2",
 	};
 }
 
 function texelWidth(format: TexelFormat): int32 {
 	return match (format) {
-		TexelFormat.R32float | TexelFormat.R32uint => 1,
-		TexelFormat.Rg32float => 2,
+		TexelFormat.R32float | TexelFormat.R32uint | TexelFormat.R32sint => 1,
+		TexelFormat.Rg32float | TexelFormat.Rg32uint | TexelFormat.Rg32sint => 2,
 		TexelFormat.Rgba8unorm | TexelFormat.Rgba8snorm | TexelFormat.Rgba8uint |
-			TexelFormat.Rgba16float | TexelFormat.Rgba32float => 4,
+			TexelFormat.Rgba8sint | TexelFormat.Rgba16uint | TexelFormat.Rgba16sint |
+			TexelFormat.Rgba16float | TexelFormat.Rgba32uint | TexelFormat.Rgba32sint |
+			TexelFormat.Rgba32float | TexelFormat.Bgra8unorm => 4,
 	};
 }
 
@@ -588,9 +596,9 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 		}
 		const texel = texture + "[" + storageAt(p, args) + "]";
 		if (e.type.kind != ShaderTypeKind.Vector) { return texel; }
-		const unsigned = t.format == TexelFormat.R32uint;
-		return (unsigned ? "uint4(" : "float4(") + texel +
-			(unsigned ? ", 0u, 0u, 1u)" : ", 0.0, 0.0, 1.0)");
+		const channel = texelScalar(t.format);
+		return scalarName(channel) + "4(" + texel + (channel == ScalarKind.U32 ? ", 0u, 0u, 1u)" :
+			channel == ScalarKind.I32 ? ", 0, 0, 1)" : ", 0.0, 0.0, 1.0)");
 	}
 	if (t.kind != ShaderTypeKind.Texture) {
 		return fail(p, "TextureLoad of a " + t.kind.toString());

@@ -21,6 +21,7 @@ import {
 	ShaderTypeKind,
 	StmtKind,
 	TexelFormat,
+	texelScalar,
 	TextureShape,
 	UnaryOp,
 	isArrayTexture,
@@ -194,6 +195,8 @@ const CAP_SAMPLED_CUBE_ARRAY = 45;
 const CAP_STORAGE_IMAGE_EXTENDED_FORMATS = 49;
 const CAP_IMAGE_QUERY = 50;
 const CAP_DERIVATIVE_CONTROL = 51;
+const CAP_STORAGE_IMAGE_READ_WITHOUT_FORMAT = 55;
+const CAP_STORAGE_IMAGE_WRITE_WITHOUT_FORMAT = 56;
 
 const DECORATION_BLOCK = 2;
 const DECORATION_COL_MAJOR = 5;
@@ -556,13 +559,25 @@ function storageTextureTypeId(p: Spirv, t: ShaderType): int32 {
 		TexelFormat.Rgba8unorm => 4,
 		TexelFormat.Rgba8snorm => 5,
 		TexelFormat.Rgba8uint => 32,
+		TexelFormat.Rgba8sint => 23,
+		TexelFormat.Rgba16uint => 31,
+		TexelFormat.Rgba16sint => 22,
 		TexelFormat.Rgba16float => 2,
+		TexelFormat.Rgba32uint => 30,
+		TexelFormat.Rgba32sint => 21,
 		TexelFormat.Rgba32float => 1,
 		TexelFormat.R32float => 3,
 		TexelFormat.R32uint => 33,
+		TexelFormat.R32sint => 24,
 		TexelFormat.Rg32float => 6,
+		TexelFormat.Rg32uint => 35,
+		TexelFormat.Rg32sint => 25,
+		TexelFormat.Bgra8unorm => 0,
 	};
-	if (t.format == TexelFormat.Rg32float) { need(p, CAP_STORAGE_IMAGE_EXTENDED_FORMATS); }
+	if (t.format == TexelFormat.Rg32float || t.format == TexelFormat.Rg32uint ||
+		t.format == TexelFormat.Rg32sint) {
+		need(p, CAP_STORAGE_IMAGE_EXTENDED_FORMATS);
+	}
 	const dim = match (t.shape) {
 		TextureShape.D2 | TextureShape.D2Array => 1,
 		TextureShape.D3 => 2,
@@ -570,9 +585,8 @@ function storageTextureTypeId(p: Spirv, t: ShaderType): int32 {
 			TextureShape.Depth2dArray | TextureShape.DepthCube | TextureShape.Multisampled2d => 0,
 	};
 	if (dim == 0) { return refusal(p, "a storage texture of shape " + t.shape.toString()); }
-	const uint = t.format == TexelFormat.Rgba8uint || t.format == TexelFormat.R32uint;
 	return imageTypeId(p, [
-		scalarTypeId(p, uint ? ScalarKind.U32 : ScalarKind.F32),
+		scalarTypeId(p, texelScalar(t.format)),
 		dim,
 		0,
 		isArrayTexture(t) ? 1 : 0,
@@ -1526,6 +1540,7 @@ function texelLoad(p: Spirv, e: ShaderExpr): int32 {
 	const t = o[0].type;
 	const layered = isArrayTexture(t);
 	if (t.kind == ShaderTypeKind.StorageTexture) {
+		if (t.format == TexelFormat.Bgra8unorm) { need(p, CAP_STORAGE_IMAGE_READ_WITHOUT_FORMAT); }
 		const image = handle(p, o[0]);
 		const at = coordinates(p, o[1], layered, o[layered ? 2 : 1]);
 		return typed(p, OP_IMAGE_READ, typeId(p, e.type), [image, at]);
@@ -1549,6 +1564,7 @@ function texelStore(p: Spirv, e: ShaderExpr): int32 {
 		return refusal(p, "TextureStore to a " + t.kind.toString());
 	}
 	const layered = isArrayTexture(t);
+	if (t.format == TexelFormat.Bgra8unorm) { need(p, CAP_STORAGE_IMAGE_WRITE_WITHOUT_FORMAT); }
 	const image = handle(p, o[0]);
 	const at = coordinates(p, o[1], layered, o[layered ? 2 : 1]);
 	const written = value(p, o[layered ? 3 : 2]);

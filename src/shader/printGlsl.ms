@@ -30,6 +30,7 @@ import {
 	sampleBase,
 	isAtomic,
 	sameShaderType,
+	texelScalar,
 } from "./ir";
 import { BindingSlot, storageElementLayout, uniformBlockLayout } from "./layout";
 import {
@@ -235,21 +236,26 @@ function arraySuffix(p: Printer, t: ShaderType): string {
 	return "[" + String(t.length) + "]" + arraySuffix(p, t.element[0]);
 }
 
-function imageFormat(format: TexelFormat): string {
+function imageFormat(p: Printer, format: TexelFormat): string {
 	return match (format) {
 		TexelFormat.Rgba8unorm => "rgba8",
 		TexelFormat.Rgba8snorm => "rgba8_snorm",
 		TexelFormat.Rgba8uint => "rgba8ui",
+		TexelFormat.Rgba8sint => "rgba8i",
+		TexelFormat.Rgba16uint => "rgba16ui",
+		TexelFormat.Rgba16sint => "rgba16i",
 		TexelFormat.Rgba16float => "rgba16f",
+		TexelFormat.Rgba32uint => "rgba32ui",
+		TexelFormat.Rgba32sint => "rgba32i",
 		TexelFormat.Rgba32float => "rgba32f",
 		TexelFormat.R32float => "r32f",
 		TexelFormat.R32uint => "r32ui",
+		TexelFormat.R32sint => "r32i",
 		TexelFormat.Rg32float => "rg32f",
+		TexelFormat.Rg32uint => "rg32ui",
+		TexelFormat.Rg32sint => "rg32i",
+		TexelFormat.Bgra8unorm => fail(p, "bgra8unorm has no GLSL image format"),
 	};
-}
-
-function texelType(format: TexelFormat): string {
-	return format == TexelFormat.Rgba8uint || format == TexelFormat.R32uint ? "uvec4" : "vec4";
 }
 
 function splitNames(p: Printer, t: ShaderType, names: string[]): string {
@@ -274,7 +280,7 @@ function typeName(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Texture | ShaderTypeKind.Sampler =>
 			fail(p, "a " + t.kind.toString() + " outside a texture operation: GL samples through " +
 				"combined samplers"),
-		ShaderTypeKind.StorageTexture => (texelType(t.format) == "uvec4" ? "u" : "") +
+		ShaderTypeKind.StorageTexture => vectorPrefix(texelScalar(t.format)) +
 			imageShapeName(p, t.shape),
 		ShaderTypeKind.Atomic => scalarName(t.scalar),
 		ShaderTypeKind.ExchangeResult => p.exchangeNames[exchangeSlot(t.scalar)],
@@ -657,13 +663,18 @@ function storeOf(p: Printer, e: ShaderExpr): string {
 		return fail(p, "TextureStore takes a storage texture, coordinates, a layer of an " +
 			"array, and a value");
 	}
-	const texel = texelType(o[0].type.format);
+	const channel = texelScalar(o[0].type.format);
+	const texel = vectorPrefix(channel) + "vec4";
 	const value = o[wanted - 1];
 	const rows = value.type.kind == ShaderTypeKind.Vector ? value.type.rows : 1;
-	const zero = texel == "uvec4" ? "0u" : "0.0";
+	const zero = match (channel) {
+		ScalarKind.U32 => "0u",
+		ScalarKind.I32 => "0",
+		ScalarKind.F32 => "0.0",
+		ScalarKind.Bool => fail(p, "a storage texture of bool texels"),
+	};
 	const written = rows == 4 ? converted(p, expr(p, value), typeName(p, value.type),
-		texel == "uvec4" ? vectorTypeOf(ScalarKind.U32) : vectorTypeOf(ScalarKind.F32)) :
-		texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
+		vectorTypeOf(channel)) : texel + "(" + expr(p, value) + ", " + repeated(zero, 4 - rows) + ")";
 	return "imageStore(" + expr(p, o[0]) + ", " + imageAt(p, o) + ", " + written + ")";
 }
 
@@ -1158,7 +1169,7 @@ function resourceDeclaration(p: Printer, index: int32, slots: BindingSlot[]): st
 				p.structNames[r.type.element[0].structIndex] + " data[];\n} " + name + ";\n";
 		},
 		ResourceKind.StorageTexture => "layout(binding = " + String(slotOf(p, index, slots)) +
-			", " + imageFormat(r.type.format) + ") uniform " + accessWord(r.type.access) +
+			", " + imageFormat(p, r.type.format) + ") uniform " + accessWord(r.type.access) +
 			typeName(p, r.type) + " " + name + ";\n",
 	};
 }

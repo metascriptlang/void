@@ -43,6 +43,37 @@ export enum TexelFormat {
 	R32float,
 	R32uint,
 	Rg32float,
+	Rgba8sint,
+	Rgba16uint,
+	Rgba16sint,
+	R32sint,
+	Rg32uint,
+	Rg32sint,
+	Rgba32uint,
+	Rgba32sint,
+	Bgra8unorm,
+}
+
+// The scalar of a storage texel: WGSL's texel format table gives each format the channel type
+// textureLoad returns and textureStore takes, a vec4 of it.
+export function texelScalar(format: TexelFormat): ScalarKind {
+	if (format == TexelFormat.Rgba8uint || format == TexelFormat.Rgba16uint ||
+		format == TexelFormat.R32uint || format == TexelFormat.Rg32uint ||
+		format == TexelFormat.Rgba32uint) {
+		return ScalarKind.U32;
+	}
+	if (format == TexelFormat.Rgba8sint || format == TexelFormat.Rgba16sint ||
+		format == TexelFormat.R32sint || format == TexelFormat.Rg32sint ||
+		format == TexelFormat.Rgba32sint) {
+		return ScalarKind.I32;
+	}
+	if (format == TexelFormat.Rgba8unorm || format == TexelFormat.Rgba8snorm ||
+		format == TexelFormat.Rgba16float || format == TexelFormat.Rgba32float ||
+		format == TexelFormat.R32float || format == TexelFormat.Rg32float ||
+		format == TexelFormat.Bgra8unorm) {
+		return ScalarKind.F32;
+	}
+	throw new Error("texelScalar: a texel format with no channel type");
 }
 
 export enum Access {
@@ -345,6 +376,18 @@ function multisampleError(e: ShaderExpr): string {
 			"index, as WGSL's";
 	}
 	return "";
+}
+
+function storageTexelError(e: ShaderExpr): string {
+	const o = e.operands;
+	if (o.length == 0 || o[0].type.kind != ShaderTypeKind.StorageTexture) { return ""; }
+	const texel = e.intrinsic == Intrinsic.TextureStore ? o[o.length - 1].type : e.type;
+	const wanted = texelScalar(o[0].type.format);
+	if (texel.kind == ShaderTypeKind.Vector && texel.rows == 4 && texel.scalar == wanted) {
+		return "";
+	}
+	return e.intrinsic.toString() + " of a " + o[0].type.format.toString() +
+		" storage texture takes a vec4 of " + wanted.toString() + ", as WGSL's";
 }
 
 function explicitSampleError(e: ShaderExpr): string {
@@ -1083,6 +1126,11 @@ function exprErrors(c: Checker, e: ShaderExpr, f: ShaderFunction, owner: string)
 	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
 		e.intrinsic == Intrinsic.TextureDimensions || e.intrinsic == Intrinsic.TextureNumSamples)) {
 		const error = multisampleError(e);
+		if (error != "") { c.errors.push(owner + ": " + error); }
+	}
+	if (e.kind == ExprKind.Intrinsic && (e.intrinsic == Intrinsic.TextureLoad ||
+		e.intrinsic == Intrinsic.TextureStore)) {
+		const error = storageTexelError(e);
 		if (error != "") { c.errors.push(owner + ": " + error); }
 	}
 	if (e.kind == ExprKind.Intrinsic && isSampling(e.intrinsic)) {

@@ -45,7 +45,13 @@ import {
 	SamplerComparison,
 	StorageTexture2d,
 	StorageTexture2dArray,
+	StorageTexture2dArrayI32,
+	StorageTexture2dArrayU32,
+	StorageTexture2dI32,
+	StorageTexture2dU32,
 	StorageTexture3d,
+	StorageTexture3dI32,
+	StorageTexture3dU32,
 	Texture2d,
 	Texture2dArray,
 	Texture2dI32,
@@ -135,6 +141,7 @@ import {
 	stmtOf,
 	storageTextureType,
 	structType,
+	texelScalar,
 	textureType,
 	vectorType,
 } from "./ir";
@@ -546,8 +553,19 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const textureNode = getTypeImpl(Texture2d);
 	const samplerNode = getTypeImpl(Sampler);
 	const storageTextureNodes = [getTypeImpl(StorageTexture2d),
-		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d)];
-	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
+		getTypeImpl(StorageTexture2dArray), getTypeImpl(StorageTexture3d),
+		getTypeImpl(StorageTexture2dU32), getTypeImpl(StorageTexture2dArrayU32),
+		getTypeImpl(StorageTexture3dU32), getTypeImpl(StorageTexture2dI32),
+		getTypeImpl(StorageTexture2dArrayI32), getTypeImpl(StorageTexture3dI32)];
+	const storageShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.D3,
+		TextureShape.D2, TextureShape.D2Array, TextureShape.D3,
+		TextureShape.D2, TextureShape.D2Array, TextureShape.D3];
+	const storageChannels = [ScalarKind.F32, ScalarKind.F32, ScalarKind.F32,
+		ScalarKind.U32, ScalarKind.U32, ScalarKind.U32,
+		ScalarKind.I32, ScalarKind.I32, ScalarKind.I32];
+	function channelName(s: ScalarKind): string {
+		return s == ScalarKind.F32 ? "f32" : s == ScalarKind.U32 ? "u32" : "i32";
+	}
 	const viewNodes = [getTypeImpl(Texture2dU32), getTypeImpl(Texture2dArray),
 		getTypeImpl(TextureCube), getTypeImpl(Texture2dI32), getTypeImpl(Texture3d),
 		getTypeImpl(TextureDepth2d), getTypeImpl(TextureDepth2dArray),
@@ -956,14 +974,26 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 					fail(binding, "storage texture '" + name + "' has no @format(texel format)");
 				}
 				const texel = argumentName(format);
-				const formats = ["rgba8unorm", "rgba8snorm", "rgba8uint", "rgba16float",
-					"rgba32float", "r32float", "r32uint", "rg32float"];
+				const formats = ["rgba8unorm", "rgba8snorm", "rgba8uint", "rgba8sint",
+					"rgba16uint", "rgba16sint", "rgba16float", "r32uint", "r32sint", "r32float",
+					"rg32uint", "rg32sint", "rg32float", "rgba32uint", "rgba32sint", "rgba32float",
+					"bgra8unorm"];
 				const texels = [TexelFormat.Rgba8unorm, TexelFormat.Rgba8snorm,
-					TexelFormat.Rgba8uint, TexelFormat.Rgba16float, TexelFormat.Rgba32float,
-					TexelFormat.R32float, TexelFormat.R32uint, TexelFormat.Rg32float];
+					TexelFormat.Rgba8uint, TexelFormat.Rgba8sint, TexelFormat.Rgba16uint,
+					TexelFormat.Rgba16sint, TexelFormat.Rgba16float, TexelFormat.R32uint,
+					TexelFormat.R32sint, TexelFormat.R32float, TexelFormat.Rg32uint,
+					TexelFormat.Rg32sint, TexelFormat.Rg32float, TexelFormat.Rgba32uint,
+					TexelFormat.Rgba32sint, TexelFormat.Rgba32float, TexelFormat.Bgra8unorm];
 				const at = formats.indexOf(texel);
 				if (at < 0) {
-					fail(format, "storage texture format '" + texel + "' has no GLSL form yet");
+					fail(format, "storage texture format '" + texel + "' is none of WGSL's core " +
+						"storage texel formats: " + formats.join(", "));
+				}
+				if (texelScalar(texels[at]) != storageChannels[storageShape]) {
+					fail(format, "storage texture '" + name + "' holds " +
+						channelName(storageChannels[storageShape]) + " texels, and @format(" + texel +
+						") gives " + channelName(texelScalar(texels[at])) +
+						": its type is the StorageTexture of that channel type");
 				}
 				const writeOnly = access == null || argumentName(access) == "write";
 				const mode = writeOnly ? Access.Write : writes ? Access.ReadWrite : Access.Read;

@@ -20,7 +20,6 @@ import {
 	ShaderType,
 	ShaderTypeKind,
 	StmtKind,
-	TexelFormat,
 	TextureShape,
 	UnaryOp,
 	sameShaderType,
@@ -31,6 +30,7 @@ import {
 	frexpResultType,
 	modfResultType,
 	isEffect,
+	texelScalar,
 } from "./ir";
 import { BindingSlot, StructLayout, storageElementLayout, uniformBlockLayout } from "./layout";
 import { builtinType, functionOrder, ioLocation, structOrder } from "./irWalk";
@@ -250,14 +250,6 @@ function textureText(p: Printer, t: ShaderType): string {
 	};
 }
 
-function formatTexel(f: TexelFormat): string {
-	return match (f) {
-		TexelFormat.Rgba8uint | TexelFormat.R32uint => "uint",
-		TexelFormat.Rgba8unorm | TexelFormat.Rgba8snorm | TexelFormat.Rgba16float |
-			TexelFormat.Rgba32float | TexelFormat.R32float | TexelFormat.Rg32float => "float",
-	};
-}
-
 function accessText(a: Access): string {
 	return match (a) {
 		Access.Read => "access::read",
@@ -278,7 +270,7 @@ function typeText(p: Printer, t: ShaderType): string {
 		ShaderTypeKind.Texture => textureText(p, t),
 		ShaderTypeKind.Sampler => "sampler",
 		ShaderTypeKind.StorageTexture => storageShapeText(p, t.shape) + "<" +
-			formatTexel(t.format) + ", " + accessText(t.access) + ">",
+			scalarText(texelScalar(t.format)) + ", " + accessText(t.access) + ">",
 		ShaderTypeKind.Atomic => "atomic_" + scalarText(t.scalar),
 		ShaderTypeKind.ExchangeResult => "AtomicExchange" +
 			exchangeSuffix(t.scalar == ScalarKind.I32 ? 0 : 1),

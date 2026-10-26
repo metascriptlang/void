@@ -103,11 +103,20 @@ function storageFormatOf(format: TexelFormat, owner: string): Result<GPUTextureF
 		TexelFormat.Rgba8unorm => "rgba8unorm" as GPUTextureFormat,
 		TexelFormat.Rgba8snorm => null,
 		TexelFormat.Rgba8uint => "rgba8uint" as GPUTextureFormat,
+		TexelFormat.Rgba8sint => "rgba8sint" as GPUTextureFormat,
+		TexelFormat.Rgba16uint => "rgba16uint" as GPUTextureFormat,
+		TexelFormat.Rgba16sint => null,
 		TexelFormat.Rgba16float => "rgba16float" as GPUTextureFormat,
+		TexelFormat.Rgba32uint => "rgba32uint" as GPUTextureFormat,
+		TexelFormat.Rgba32sint => null,
 		TexelFormat.Rgba32float => "rgba32float" as GPUTextureFormat,
 		TexelFormat.R32float => "r32float" as GPUTextureFormat,
 		TexelFormat.R32uint => "r32uint" as GPUTextureFormat,
+		TexelFormat.R32sint => null,
 		TexelFormat.Rg32float => "rg32float" as GPUTextureFormat,
+		TexelFormat.Rg32uint => null,
+		TexelFormat.Rg32sint => null,
+		TexelFormat.Bgra8unorm => "bgra8unorm" as GPUTextureFormat,
 	};
 	if (name === null) {
 		return Result.err(owner + ": " + format.toString() + " is no GPUTextureFormat");
