@@ -200,11 +200,15 @@ export function planSwapchain(info: SurfaceInfo, config: SurfaceConfig): Result<
 	if ((caps.transforms & TRANSFORM_IDENTITY) == 0) {
 		stop(`the surface does not support the identity transform (transforms ${caps.transforms}), which the swapchain presents at`);
 	}
-	let width = caps.currentWidth;
-	let height = caps.currentHeight;
-	if (width == UNDEFINED_EXTENT) {
-		width = clamp(config.width as uint32, caps.minWidth, caps.maxWidth);
-		height = clamp(config.height as uint32, caps.minHeight, caps.maxHeight);
+	let width = config.width as uint32;
+	let height = config.height as uint32;
+	const fits = width >= caps.minWidth && width <= caps.maxWidth && height >= caps.minHeight && height <= caps.maxHeight;
+	if (!fits && caps.currentWidth == UNDEFINED_EXTENT) {
+		width = clamp(width, caps.minWidth, caps.maxWidth);
+		height = clamp(height, caps.minHeight, caps.maxHeight);
+	} else if (!fits) {
+		width = caps.currentWidth;
+		height = caps.currentHeight;
 	}
 	if (width == 0 || height == 0) { return Result.err(SurfaceError.ZeroExtent); }
 	const presentMode = choosePresentMode(info.presentModes, config.presentMode);

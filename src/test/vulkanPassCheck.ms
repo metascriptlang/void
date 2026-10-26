@@ -155,7 +155,7 @@ test "the format is the one asked, else its other channel order, keeping srgb" {
 	assert chooseFormat(formats, "rgba8unorm-srgb") == "bgra8unorm-srgb";
 }
 
-test "the extent is the surface's current one, the asked one clamped when undefined" {
+test "the extent is the asked one inside the surface's range, else its current one, else the asked one clamped" {
 	const config: SurfaceConfig = {
 		format: "bgra8unorm",
 		usage: GPUTextureUsage.RENDER_ATTACHMENT as int32,
@@ -169,6 +169,9 @@ test "the extent is the surface's current one, the asked one clamped when undefi
 	assert undefinedExtent.ok && undefinedExtent.value.width == 16 && undefinedExtent.value.height == 4096;
 	const minimized = planSwapchain(surface(0, 0), config);
 	assert !minimized.ok && minimized.error == SurfaceError.ZeroExtent;
+	const landscape: SurfaceConfig = { ...config, width: 640, height: 320 };
+	const rotated = planSwapchain(surface(320, 640), landscape);
+	assert rotated.ok && rotated.value.width == 640 && rotated.value.height == 320;
 }
 
 test "composite alpha takes opaque, pre, post, inherit in that order" {
