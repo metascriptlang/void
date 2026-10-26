@@ -3774,11 +3774,29 @@ filter on the same items, so a shadow follows the main camera's level as Heaps' 
 `boundingRadius`, Heaps' `getBoundingRadius`; a mirrored world is refused
 (`RendererError.MeshLod`), as the caller-owned path already refused it.
 
-Not offered: `inheritLod` (no consumer), a pick per instance row of an `InstanceRun`, and LOD
+Not offered: a pick per instance row of an `InstanceRun`, and LOD
 on skinned or morphed nodes. Proved on CPU by `src/test/meshLodSceneCheck.ms`, and on D3D11 by
 `tests/integration/meshLod.ms` with `VOID_MESH_LOD_SCENE=1`: the same five stages the hand pick
 draws (near, far, reupload, one consumer, culled) come out of the Scene3D pick, with and without
 the outline pass and on 32-bit indices; control 8 forces level 0 and fails at the far stage.
+
+### A LOD mesh hands its screen ratio down (2026-10-26)
+
+`setInheritLod(scene, node, true)` is Heaps' `Mesh.inheritLod`: the LOD meshes below that node
+pick their level from its screen ratio instead of their own, so a model's parts change level
+together (`Mesh.hx:85-106` sets `ctx.forcedScreenRatio`, `Object.hx:884-898` restores it after
+the children). As in Heaps the topmost inheriting mesh wins, the inheriting mesh keeps its own
+ratio, a forced level on it still hands its ratio down, and a mesh with one level and no
+culling ratio hands nothing down. A parent hidden by the walk's layers hands nothing down, as a
+culled parent emits nothing in Heaps. The draw-list walk links each pick to its source; the
+renderer picks in draw-list order, which is tree order, and refuses a pick whose source was not
+picked in the same pass (`MeshLodError.InheritedBeforeSource`, `RendererError.MeshLod`), so a
+reordered or partial list cannot read last frame's ratio.
+
+Pinned by `src/test/meshLodSceneCheck.ms`: a near child draws level 0 alone and level 1 under a
+far inheriting parent, forced or not; a middle inheriting mesh and its child take the top one's
+ratio; a pick before its source and a frame whose source is missing are refused; a plain node
+refuses `setInheritLod`.
 
 ### glTF output/topology/mode stack land acceptance
 
