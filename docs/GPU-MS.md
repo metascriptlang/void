@@ -48,6 +48,7 @@ End-game done when, in addition:
 | Browser | WebGPU (`src/webgpu/wgpu`, `-d:webgpu`) | `scripts/build-web.sh`, headless Chrome shows the full void2d demo |
 | Browser | WebGL2 (`src/webgpu/gl`, GLES3 path, `-d:webgl2`) | same page, same picture outside the animated node tree |
 | Android | GLES3 (`src/webgpu/gl`, `OGL_GLES`) | check-only: NDK clang `-fsyntax-only` clean, `msc check --os=android` 114 modules; never linked or run |
+| Android | Vulkan (`src/webgpu/vulkan`, `-d:voidVulkan`, views on `src/sokol/bridgeAndroidVulkan.c`) | link-only: the campfire `.so` built with NDK clang needs no EGL or GLES and resolves under `voidJni.c` with `--no-undefined`, tree `9c872362`; never run on a device |
 
 On those targets nothing includes sokol any more. The windows are Void's own: Win32
 (`src/platform/win32/`, ported from `sokol_app.h`), browser (`src/platform/web/`), Android EGL
