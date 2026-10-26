@@ -29,7 +29,7 @@ if [ "${1:-}" = "--wasm" ]; then
 		VOID_WEB_PASSC="-I$ROOT/deps/freetype/include -I$ROOT/tests/experiments" \
 		sh scripts/build-web.sh > out/experiments/rasterizer/web-freetype.log 2>&1
 	for backend in wgpu gl; do
-		plain=$(wc -c < out/experiments/web/plain/$backend/mainSokol2d.wasm)
+		plain=$(wc -c < out/experiments/web/plain/$backend/main2d.wasm)
 		freetype=$(wc -c < out/experiments/web/freetype/$backend/rasterizerWeb.wasm)
 		echo "WASM $backend plain $plain freetype $freetype delta $((freetype - plain))"
 	done

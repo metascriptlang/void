@@ -1,10 +1,10 @@
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { exit } from "std/process";
 import { RenderState, BlendMode } from "../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT, TargetLayout } from "../../src/gpu/target";
 import { PipelineCache } from "../../src/gpu/pipeline";
 import { Program, VertexLayout, pipelineFor, ProgramKey } from "../../src/void3d/gpu3d";
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,

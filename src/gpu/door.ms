@@ -1,4 +1,4 @@
-import "../sokol/gpu";
+import "../host/gpu";
 import { FilterMode, Wrap } from "./state";
 import {
 	ColorAttachment,
@@ -61,7 +61,7 @@ import {
 	DOOR_UNIFORM_SLOTS,
 } from "./doorGpu.ms";
 
-@include("../sokol/bridge.h");
+@include("../host/bridge.h");
 extern function voidLoseContext(): void;
 
 export { PixelFormat, LoadAction, StoreAction, PassState } from "./doorGpu.ms";

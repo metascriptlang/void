@@ -6,7 +6,7 @@
 // expect svgMaskReusedHandle: void2d svg: svgMaskFree: handle 65537 is not a live SVG
 // expect svgMaskStaleHandle: void2d svg: svgMaskRasterize: handle 65537 is not a live SVG
 import { argv } from "std/process";
-import "../../../src/sokol/gpu";
+import "../../../src/host/gpu";
 import { IconId, registerIcon } from "../../../src/void2d/icon";
 import { Scene2D } from "../../../src/void2d/node";
 import "../../../src/void2d/scene";

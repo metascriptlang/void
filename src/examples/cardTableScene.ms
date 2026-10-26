@@ -16,7 +16,7 @@
 // The entry (mainCardTable.ms) and the readback test (tests/integration/cardTable.ms) share
 // both. A featureless setup keeps every object and turns each feature off.
 
-import { gfxSetup } from "../sokol/gpu";
+import { gfxSetup } from "../host/gpu";
 import { Vec3, Vec4, Quat, Mat4, vec3, quatBetween } from "../math/math3d";
 import { RenderState, BlendMode, FilterMode, Wrap } from "../gpu/state";
 import { PixelFormat, endPass, commit, originTopLeft } from "../gpu/door";

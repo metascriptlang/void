@@ -1,4 +1,4 @@
-import "../../src/sokol/gpu";
+import "../../src/host/gpu";
 import { env } from "std/process";
 import {
 	FILTERED_TEXT_SCENE,

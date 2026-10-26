@@ -70,7 +70,7 @@ import {
 	ScaleMode,
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
-import { makeImage, makeView } from "../../src/sokol/gpu";
+import { makeImage, makeView } from "../../src/host/gpu";
 import {
 	HARNESS_CLEAR_R,
 	HARNESS_CLEAR_G,

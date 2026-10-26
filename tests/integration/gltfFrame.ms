@@ -1,5 +1,5 @@
 import { readFile } from "std/fs";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, eulerQuat, srgbToLinear } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";

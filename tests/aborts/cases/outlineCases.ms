@@ -1,7 +1,7 @@
 // flags: -d:voidTextOutline
 // expect outlineNegative: void2d text outline: setOutline width -1 is not zero or above
 import { argv } from "std/process";
-import "../../../src/sokol/gpu";
+import "../../../src/host/gpu";
 import { Scene2D } from "../../../src/void2d/node";
 import "../../../src/void2d/scene";
 import { rgba } from "../../../src/void2d/types";

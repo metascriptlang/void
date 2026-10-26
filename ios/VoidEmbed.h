@@ -1,6 +1,6 @@
 // Void iOS embed — C surface exported by the Void static lib (libVoidIos.a).
 // The host (VoidView / React-Native) calls these; implementations live in
-// src/sokol/bridgeIos.m (voidEmbed*) and the emitted dispatcher (MsMain).
+// src/host/bridgeIos.m (voidEmbed*) and the emitted dispatcher (MsMain).
 #ifndef VOID_EMBED_H
 #define VOID_EMBED_H
 

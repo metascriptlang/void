@@ -4,7 +4,7 @@
 // first one's target, so it reaches `size` past the first. A pixel that only the chain colours
 // is the proof that the steps ran in order and that each read the one before.
 
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { setup2d } from "../../src/void2d/draw";
 import { Scene2D } from "../../src/void2d/node";
 import { presentAt } from "../../src/void2d/scene";
@@ -14,7 +14,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, samples: int32, highDpi: int32,
 	init: () => void, frame: () => void,

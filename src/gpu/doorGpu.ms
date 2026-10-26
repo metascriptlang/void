@@ -60,7 +60,7 @@ import {
 	voidSwapchainSampleCount,
 	voidSwapchainWidth,
 } from "../platform/swapchain.h";
-import "../sokol/gpu";
+import "../host/gpu";
 import { stop } from "./stop";
 import {
 	GPU_TIMER_ON,

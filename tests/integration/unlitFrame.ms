@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { Vec3, Vec4, vec3, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState, BlendMode, FilterMode, Wrap } from "../../src/gpu/state";
 import { PipelineCache, declaresBlock } from "../../src/gpu/pipeline";

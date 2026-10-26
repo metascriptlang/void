@@ -59,7 +59,7 @@
 // expect outline.settingsWidth: void3d: setOutlineSettings needs finite straight RGBA [0,1]
 // expect outline.uniformBudget: void3d: setOutlineBlend needs FORWARD_OUTLINE_PASS_UNIFORM_LENGTH
 import { argv } from "std/process";
-import { gfxSetup } from "../../../src/sokol/gpu";
+import { gfxSetup } from "../../../src/host/gpu";
 import { Vec4 } from "../../../src/math/math3d";
 import { SWAPCHAIN_LAYOUT, beginScreenPass } from "../../../src/gpu/target";
 import { PixelFormat } from "../../../src/gpu/door";
@@ -142,7 +142,7 @@ import {
 	DIR_SHADOW_UNIFORM_LENGTH,
 	closeDirShadow,
 } from "../../../src/void3d/dirShadowMap";
-@include("../../../src/sokol/bridge.h");
+@include("../../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };

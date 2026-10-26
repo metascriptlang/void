@@ -16,7 +16,7 @@ extern function macHostBackingWidth(): int32;
 extern function macHostBackingHeight(): int32;
 extern function macHostScale(): float32;
 
-import { embedRegister, viewCreate, viewReady, viewFrame, viewDestroy, gfxSetup, fbWidth, fbHeight, dpiScale, ViewId, ViewInvalid } from "../../src/sokol/gpu";
+import { embedRegister, viewCreate, viewReady, viewFrame, viewDestroy, gfxSetup, fbWidth, fbHeight, dpiScale, ViewId, ViewInvalid } from "../../src/host/gpu";
 import { setup2d } from "../../src/void2d/draw";
 import { Scene2D } from "../../src/void2d/node";
 import { present } from "../../src/void2d/scene";

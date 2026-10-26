@@ -11,12 +11,12 @@ extern function macHostMiniaturized(): int32;
 extern function macHostRaise(): void;
 extern function macHostWindowVisible(): int32;
 
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { beginScreenPassWith, endPass, commit } from "../../src/gpu/door";
-import { frameDuration } from "../../src/sokol/window";
+import { frameDuration } from "../../src/host/window";
 import { exit } from "std/process";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const WARM_FRAMES: int32 = 60;

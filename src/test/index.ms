@@ -1,5 +1,5 @@
-import "../sokol/gpu";
-import "../sokol/window";
+import "../host/gpu";
+import "../host/window";
 import "./transformCheck";
 import "./tileCheck";
 import "./graphicsCheck";

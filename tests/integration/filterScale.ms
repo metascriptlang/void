@@ -7,7 +7,7 @@
 // both in 0..255. Measured on the Mac Metal window: blur 0.44 and 45, glow 1.04 and 115 (the
 // glow's sharp copy is rendered at the reduced scale too, so its edge softens).
 
-import { gfxSetup } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/host/gpu";
 import { setup2d } from "../../src/void2d/draw";
 import { Scene2D } from "../../src/void2d/node";
 import { presentAt } from "../../src/void2d/scene";
@@ -20,7 +20,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, samples: int32, highDpi: int32,
 	init: () => void, frame: () => void,

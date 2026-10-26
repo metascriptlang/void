@@ -537,7 +537,7 @@ design and measurements in `src/shader/CLAUDE.md`; tiers in `docs/SHADER.md:5-47
 
 | Capability | State | Evidence |
 |---|---|---|
-| Compute pass, compute pipeline, dispatch | **none** in the GPU door, `src/sokol`, void2d or void3d (no `sg_dispatch`, no `.compute` pass) | grep of `src/gpu/*.c`, `src/gpu/*.ms`, `src/sokol/bridge.c` |
+| Compute pass, compute pipeline, dispatch | **none** in the GPU door, `src/host`, void2d or void3d (no `sg_dispatch`, no `.compute` pass) | grep of `src/gpu/*.c`, `src/gpu/*.ms`, `src/host/bridge.c` |
 | Storage buffers | **none**: buffers are vertex or index, optionally dynamic | `src/gpu/draw.c:15-17`; `src/void3d/gpu3d.c:213-270` |
 | sokol's compute matrix | Metal, D3D11, GL 4.3, GLES 3.1, WebGPU; **not** WebGL2, macOS GL or iOS GLES3; storage buffers have the same restriction | SG:815-830 |
 | Indirect draw, readback | none in sokol | docs/SHADER.md walls via src/shader/CLAUDE.md:217-219; runtime report §3.8 |

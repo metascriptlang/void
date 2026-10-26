@@ -126,7 +126,7 @@ TypeGPU's slots take, since Void builds its variants offline by key.
 
 ## GPU layer
 
-`src/gpu` and `src/sokol` keep the names of the references they port, so a port reads one to one
+`src/gpu` and `src/host` keep the names of the references they port, so a port reads one to one
 against its source. Resources and passes use sokol's names (`makePipeline`, `applyBindings`, `beginPass`, `commit`,
 `LoadAction`). Render state uses Heaps' names: `RenderState` is `h3d.mat.Pass` (`culling`, `depthTest`, `depthWrite`), and
 `Face`, `Compare`, `Blend` and `Wrap` are `h3d.mat.Data`'s. No app imports this layer directly: Neon, Lightcube and

@@ -36,7 +36,7 @@
 // expect block.neverApplied: gpu door: draw with a pipeline that declares a uniform block at slot
 // expect block.afterPipelineChange: gpu door: draw with a pipeline that declares a uniform block at slot
 import { argv } from "std/process";
-import { gfxSetup, viewCreate, viewResize, viewDestroy, ViewId } from "../../../src/sokol/gpu";
+import { gfxSetup, viewCreate, viewResize, viewDestroy, ViewId } from "../../../src/host/gpu";
 import { Vec4, identity } from "../../../src/math/math3d";
 import { FilterMode, Wrap, Face, RenderState } from "../../../src/gpu/state";
 import {
@@ -98,7 +98,7 @@ import {
 	releaseTexture,
 	drawItem,
 } from "../../../src/void3d/draw";
-@include("../../../src/sokol/bridge.h");
+@include("../../../src/host/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
 const RED: Vec4 = { x: 1.0, y: 0.0, z: 0.0, w: 1.0 };

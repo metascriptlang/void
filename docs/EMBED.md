@@ -2,10 +2,10 @@
 
 A host that owns the window and the frame clock (Ion on Windows and macOS, a React-Native
 `VoidView` on iOS, a `SurfaceView` on Android) drives Void through **views**. The entry points are in
-`src/sokol/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
+`src/host/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
-reaches them through `src/sokol/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
-`src/sokol/views.c`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
+reaches them through `src/host/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
+`src/host/views.c`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
 `bridgeIos.m`, `bridgeEmbed.m` (macOS), `bridgeAndroid.c` and `bridgeWeb.c` (browser). macOS and iOS share
 one Metal surface (`metalSurface.m`), and the iOS and Android app shells share their events, typed
 text and framebuffer getters in the mobile section of `appWindow.c`.
@@ -141,12 +141,12 @@ driver in `bridgeIos.m`: its one `UIView` calls `viewCreate`, `viewResize` and `
 ## Android: an app driver on the host views
 
 `bridgeAndroidApp.c` is the Android twin of `bridgeIosApp.m`, for the activity Ion's Android
-generator emits. Its one view, `VoidAppView` in the Java library `src/sokol/android/app`, is a
+generator emits. Its one view, `VoidAppView` in the Java library `src/host/android/app`, is a
 `SurfaceView` that hosts the view driver in `bridgeAndroid.c` (EGL, GLES3) from Choreographer
 frames on the main thread, and sends touches, keys, IME text and window insets back as
 `sapp_event` values for `appWindow.c`.
 
-- The app compiles `src/sokol/androidAppEntry.c`, which defines Ion's `NativeApp` entry points,
+- The app compiles `src/host/androidAppEntry.c`, which defines Ion's `NativeApp` entry points,
   and declares the Java library with Ion's `androidLibrary`. `NativeApp.start` runs `MsMain`;
   `voidRun` records the closures and returns, and `start` then adds the view. Void imports
   nothing from Ion; a Neon widget app defines the same entry points, so only a `voidRun` app

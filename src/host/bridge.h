@@ -73,7 +73,7 @@ float voidSafeAreaRight(void);
 // pixels; 0 when it is hidden or floating, and on drivers that have none. Resized follows a change.
 float voidKeyboardHeight(void);
 
-// What sokol_app offers beyond events (src/sokol/appWindow.c over the window drivers: Windows,
+// What sokol_app offers beyond events (src/host/appWindow.c over the window drivers: Windows,
 // the browser and Linux). A feature a driver has not ported aborts naming the feature and the
 // platform. Every call needs the window to exist, so make it from the handler or after init.
 // voidRequestQuit sends QuitRequested to the handler on the next frame, and voidCancelQuit

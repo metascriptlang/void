@@ -1,6 +1,6 @@
 #include "../platform/clock.h"
 #include "../gpu/door.h"
-#include "../sokol/bridge.h"
+#include "../host/bridge.h"
 #include "frameClock.h"
 
 #include <stdio.h>

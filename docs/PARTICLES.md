@@ -128,7 +128,7 @@ Measured facts that shaped the code:
   on wasm32 at `-O2`, `ParticleSystem.create` takes 27 KB of frame, `compileCurves` 25 KB and
   `ParticleSystemAsset.defaults` 14 KB. A caller that builds an asset and creates a system needs
   about 88 KB, past emscripten's 64 KB default stack, and the overflow corrupted the heap instead of
-  trapping (web3d "memory access out of bounds" in a gradient's free). `src/sokol/gpu.wms` links
+  trapping (web3d "memory access out of bounds" in a gradient's free). `src/host/gpu.wms` links
   the browser builds with a 1 MB stack, the native Windows main-thread size. Part of the frame is a
   deep copy of `compiled.value` that the compiler would move at its last read
   (`.inbox/compiler/2026-10-24-field-last-read-in-sink-copies-where-reference-moves.md`).

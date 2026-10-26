@@ -100,7 +100,7 @@ The device and the per-frame target were already Void's on every platform except
 `sokol_app` drove the Windows window (`SOKOL_NOAPI`, `docs/SOKOL.md`) and the web window path
 (with `sokol_glue`). The Windows window is ported from `sokol_app.h` (Win32 `:8635-10514`) into
 `src/platform/win32/`, keeping `sapp_event`'s fields and ordinals in `src/platform/appEvent.h`
-because `src/sokol/window.ms` `AppEventType` mirrors them. The frame clock is
+because `src/host/window.ms` `AppEventType` mirrors them. The frame clock is
 `src/platform/clock.h`, sokol_time's four readings (`QueryPerformanceCounter`,
 `mach_absolute_time`, `emscripten_get_now`, `clock_gettime`) behind one function. The web window
 is ported from the emscripten backend (`:7466-8350`, the WebGPU device and surface `:3909-4366`)

@@ -9,7 +9,7 @@ import { DEFAULT_FONT, addFallbackFont } from "../void2d/font";
 // given build and fail the gate; milliseconds are reported with a warn threshold and never
 // fail a commit, because this is a shared developer box.
 
-import { gfxSetup, makeImage, makeView } from "../sokol/gpu";
+import { gfxSetup, makeImage, makeView } from "../host/gpu";
 import { BlendMode } from "../gpu/state";
 import {
 	setup2d,

@@ -14,7 +14,7 @@ import {
 } from "../../src/examples/campfireScene";
 import { PixelArtSettings } from "../../src/void3d/pixelArtRenderer";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 
 extern function voidRunConfigured(
 	w: int32,

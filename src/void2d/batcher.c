@@ -1,7 +1,7 @@
 // Void 2D — thin GPU door primitives (see batcher.h). Batcher logic is in draw.ms.
 
 #include "batcher.h"
-#include "../sokol/bridge.h"
+#include "../host/bridge.h"
 #include "../gpu/door.h"
 #include "shader2dSlots.h"
 #include "instanceLayout.h"

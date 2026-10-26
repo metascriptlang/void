@@ -6,7 +6,7 @@
 import {
 	embedRegister, viewCreate, viewResize, viewFrame, viewSwapChain, currentView,
 	fbWidth, fbHeight, dpiScale, gfxSetup, ViewId, ViewInvalid,
-} from "../../src/sokol/gpu";
+} from "../../src/host/gpu";
 import { setup2d } from "../../src/void2d/draw";
 import { Scene2D } from "../../src/void2d/node";
 import { present } from "../../src/void2d/scene";

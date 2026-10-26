@@ -1,7 +1,7 @@
 import {
 	embedRegister, viewCreate, viewFrame, viewSwapChain, setViewSampleCount,
 	fbWidth, fbHeight, gfxSetup, ViewId,
-} from "../../src/sokol/gpu";
+} from "../../src/host/gpu";
 import { setup2d, begin2d, fillQuad } from "../../src/void2d/draw";
 import { currentContext } from "../../src/void2d/displayList";
 import { vec2, rgba } from "../../src/void2d/types";
@@ -60,7 +60,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 extern function voidRunConfigured(
 	w: int32,
 	h: int32,

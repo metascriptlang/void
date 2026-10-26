@@ -1,4 +1,4 @@
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/host/gpu";
 import { beginScreenPass } from "../../src/gpu/target";
 import { endPass, commit } from "../../src/gpu/door";
 import { RenderState } from "../../src/gpu/state";
@@ -56,7 +56,7 @@ import {
 	voidCaptureExit,
 } from "../capture/capture.h";
 
-@include("../../src/sokol/bridge.h");
+@include("../../src/host/bridge.h");
 
 extern function voidRunConfigured(
 	w: int32,

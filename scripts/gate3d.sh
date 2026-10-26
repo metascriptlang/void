@@ -108,7 +108,7 @@ write_entry() {
 		fi
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings$extra } from \"../../../src/void3d/pixelArtRenderer\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
@@ -150,7 +150,7 @@ prepare_harness() {
 		replace_if_changed "$WORK/$file.new" "$CAPTURE/$file"
 	done
 	sed -e 's|from "./campfireScene"|from "../campfireScene"|' \
-		-e 's|@include("../sokol/|@include("../../../src/sokol/|' \
+		-e 's|@include("../host/|@include("../../../src/host/|' \
 		src/examples/androidCampfireEntry.ms > "$WORK/androidEntry.new"
 	replace_if_changed "$WORK/androidEntry.new" "$TMP/android/campfireEntry.ms"
 }
@@ -158,7 +158,7 @@ prepare_harness() {
 write_perspective_entry() {
 	{
 		echo 'import { initPerspective, framePerspective } from "../../../tests/integration/perspectiveFrame";'
-		echo '@include("../../../src/sokol/bridge.h");'
+		echo '@include("../../../src/host/bridge.h");'
 		echo '@include("capture3d.h");'
 		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
@@ -190,7 +190,7 @@ write_perspective_entry() {
 write_frame_entry() {
 	{
 		echo "import { $4, $5, $6 } from \"../../../tests/integration/$3\";"
-		echo '@include("../../../src/sokol/bridge.h");'
+		echo '@include("../../../src/host/bridge.h");'
 		echo '@include("capture3d.h");'
 		echo '@compile("./capture3d.c");'
 		echo 'extern function voidRunConfigured('
@@ -317,7 +317,7 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 
 # msc 0.2.53 on Windows does not call main(): a module that only declares `function main()`
 # builds into a binary that exits at once, and under --os=emcc it links the renderer out
-# entirely. It has now been the same bug five times — mainSokol2d (fixed in ef1de70), and the
+# entirely. It has now been the same bug five times — main2d (fixed in ef1de70), and the
 # four void3d entries mainSokol, mainCampfire, iosEntryAnim and iosEmbedEntry. A recurring bug
 # class is infrastructure, not a fifth spot fix, so the sixth one fails here instead of
 # shipping. Compiler card: 2026-09-20-main-not-called-windows.md.
@@ -342,7 +342,7 @@ run_entries() {
 	for entry in src/examples/*.ms; do
 		grep -qE '^(export )?function main\(' "$entry" || continue
 		case "$(basename "$entry")" in
-			ios*|android*|mainSokol2d.ms) continue ;;
+			ios*|android*|main2d.ms) continue ;;
 		esac
 		msc build "$entry" > "$WORK/entry-build.log" 2>&1 || broken="$broken $(basename "$entry")"
 	done
@@ -351,7 +351,7 @@ run_entries() {
 		tail -4 "$WORK/entry-build.log" | sed 's/^/         /'
 		return
 	fi
-	pass "entries: $checked entry points declare main() and call it; the host ones build (mainSokol2d in scripts/gate.sh)"
+	pass "entries: $checked entry points declare main() and call it; the host ones build (main2d in scripts/gate.sh)"
 }
 
 # The bench entry: warm up, measure, print machine-readable rows, quit. It reuses the capture
@@ -370,7 +370,7 @@ write_bench_entry() {
 		echo "	CampfireStats,"
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings } from \"../../../src/void3d/pixelArtRenderer\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
@@ -436,7 +436,7 @@ write_churn_entry() {
 		echo "	ChurnStats,"
 		echo "	ChurnError,"
 		echo "} from \"../../../src/examples/churnScene\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"
@@ -531,11 +531,11 @@ import { CampfireError } from "../campfireScene";
 import { beginScreenPass } from "../../../src/gpu/target";
 import { endPass, commit } from "../../../src/gpu/door";
 import { Vec4 } from "../../../src/math/math3d";
-import { fbWidth, fbHeight } from "../../../src/sokol/gpu";
+import { fbWidth, fbHeight } from "../../../src/host/gpu";
 import { setup2d, begin2d, flushTargets, end2d, fillQuad } from "../../../src/void2d/draw";
 import { Color, vec2, rgba } from "../../../src/void2d/types";
 import { BlendMode } from "../../../src/gpu/state";
-@include("../../../src/sokol/bridge.h");
+@include("../../../src/host/bridge.h");
 @include("capture3d.h");
 @compile("./capture3d.c");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
@@ -617,7 +617,7 @@ write_pick_entry() {
 		echo "import { NodeId3D } from \"../../../src/void3d/scene\";"
 		echo "import { PickHit, PickError } from \"../../../src/void3d/pick\";"
 		echo "import { Vec3 } from \"../../../src/math/math3d\";"
-		echo "@include(\"../../../src/sokol/bridge.h\");"
+		echo "@include(\"../../../src/host/bridge.h\");"
 		echo "@include(\"capture3d.h\");"
 		echo "@compile(\"./capture3d.c\");"
 		echo "extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;"

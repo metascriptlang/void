@@ -4,7 +4,7 @@
 // The hand-built scene this file used to be — one merged MeshData in world space and a draw
 // list assembled by pushing items — is gone with M6.
 
-import { gfxSetup, fbWidth, fbHeight } from "../sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../host/gpu";
 import { sinf, cosf } from "../math/mat4";
 import {
 	LIGHT_UNIFORM_LENGTH,

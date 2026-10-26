@@ -812,7 +812,7 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   `src/gpu/door.{c,h,ms}`, `state.ms`, `target.ms` and `pipeline.ms`.
   The old void3d `pass.ms`, `target.ms` and `pipelineCache.ms` imports are gone.
   `src/void3d/gpu3d.c` remains the layer's registration/upload/draw unit; platform
-  device, swapchain, host views and commit remain under `src/sokol`.
+  device, swapchain, host views and commit remain under `src/host`.
   This is Heaps' shared engine/texture/pass boundary: `h2d.RenderContext` inherits
   h3d's context and uses its `pass` and `engine.pushTarget` (`h2d/RenderContext.hx`).
   Bevy's [RenderDevice](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_render/src/renderer/render_device.rs)
@@ -1116,7 +1116,7 @@ further. Timing is report-only.
 
 **The spike is gone.** After the M22 reviews the human asked for it to be deleted: the textured
 cube demo (`rendererSokol.ms`, `cubedata.ms`, `mainSokol.ms`, `androidCubeEntry.ms`), its shader
-(`src/sokol/shader.glsl`), the cube-only bridge calls in `bridge.c`, `bridgeEmbed.m`,
+(`src/host/shader.glsl`), the cube-only bridge calls in `bridge.c`, `bridgeEmbed.m`,
 `bridge.h`, `gpu.ms` and `gpu.wms` (vertex and index buffers, the cube shader and pipeline, the
 sampler, bindings, the MVP upload, the draw), the global MVP matrices in `src/math/mat4`, and
 `web/index.html`, which loaded it. `build-android.sh` now builds the campfire entry by default.
@@ -3215,7 +3215,7 @@ and after: `gate3d.sh` GREEN, 339 PASS with the 3 known skips (tests 1429/1429; 
 `map-material` and `card-table` stages hold their captures, so the flat board did not move);
 `gate.sh` GREEN (golden 107/107, 7 known skips). A first pair is not counted: msc synced from
 `99a851d7` during its `gate.sh` (its `gate3d.sh`, wholly on `99a851d7`, was also GREEN).
-**Web.** `build-web.sh`'s default entry (`mainSokol2d.ms`) imports no `meshData`, and on
+**Web.** `build-web.sh`'s default entry (`main2d.ms`) imports no `meshData`, and on
 `1090f789` it stops in void2d's `textLayout.ms` (routed to void2d). A void3d-only probe that
 calls `addTangents` (`VOID_WEB_ENTRY=out/tmp/mikkWeb/mikkWeb.ms`) built, compiled and linked
 `mikktspace.c` for both the WebGPU and the WebGL2 build, and each wasm run under node printed
@@ -6041,7 +6041,7 @@ Re-checked on 0.2.55 on 2026-09-24 (`out/tmp/auditProbes`). Two have arrived and
 - `distinct`: **arrived, not adopted.** `type BufferId = distinct uint32` builds and casts both ways. The handles for buffers, images, views, samplers and pipelines are still `uint32`, so a view passed where a buffer is expected (`draw.ms` `bindItem`) still compiles.
 - A generic `ref` parameter: **works for the probed shape, not adopted.** `run<T>(ref p: T)` calling an extension on `p` builds and runs on 0.2.55. The two-parameter shape a core-driven renderer needs, `runFrame<P>(ref core: Core, ref preset: P)`, has not been re-run; on 0.2.53 it failed with `cannot instantiate: 'P'`.
 - A `ref` receiver, still a parse error on 0.2.55 (re-checked: `ref this c: T` is `Expected ')' after the parameters`): `pipelineFor`, `addMesh`, `addMaterial`, `reserveUniforms` and `writeUniforms` would become methods on the cache and the context, and `renderFrame`, `setSettings`, `setLook`, `setPalette`, `markChanged`, `beginFrame`, `drawPassLists`, `drawScreen`, `endFrame`, `collect`, `sortBackToFront`, `fill` and `upload` methods on the renderers, pass list and LUT.
-- A bare `import "path"` now keeps its module and the module's `@compile` (recompiler `9815a716`, BUILD `cf69e040`, card `2026-09-20-unused-module-drops-compile.md` closed). A named import still keeps nothing by itself, and a read exported `const` is folded into its use, so reading one keeps nothing either. `gpu3d.c` calls `sg_*`, so `src/void3d/gpu3d.ms` imports `../sokol/gpu` bare, and anything that reaches void3d links sokol. The oracle's four case files lost their `KEY_W` keepalive with it.
+- A bare `import "path"` now keeps its module and the module's `@compile` (recompiler `9815a716`, BUILD `cf69e040`, card `2026-09-20-unused-module-drops-compile.md` closed). A named import still keeps nothing by itself, and a read exported `const` is folded into its use, so reading one keeps nothing either. `gpu3d.c` calls `sg_*`, so `src/void3d/gpu3d.ms` imports `../host/gpu` bare, and anything that reaches void3d links sokol. The oracle's four case files lost their `KEY_W` keepalive with it.
 
 ## Deferred from void2d: 3D text + SDF
 

@@ -254,7 +254,7 @@ sh scripts/bench-ab.sh . . 6 Particles
 uses the pre-link code-plus-data records in `tests/bench/wasm.json` (`tool` and `meaning`),
 not final wasm bytes. `scripts/experiment-modulesWeb.sh` isolates text cost with its default
 `tests/experiments/modulesWeb.ms` entry, avoiding `node.ms` and its Yoga dependency; the demo
-entry `src/examples/mainSokol2d.ms` includes that retained-scene path. Their linked budgets
+entry `src/examples/main2d.ms` includes that retained-scene path. Their linked budgets
 and measured conditions are in "Linked wasm text modules" below and `tests/bench/wasmBudget.txt`.
 The experiment enforces artifact sizes; the native gate validates those declarations, not a
 fresh link. Neither replaces the object-growth checks.
@@ -329,7 +329,7 @@ read from the log.
    (the glyph page table) and would starve the tests after it. Then `msc test --target=js
    tests/js/targetCheck.ms` with every module flag off and on: Void compiles on JS, and what needs
    C (decoding images, loading fonts) answers with a named error there, because JS has no C to call.
-   Then `msc check src/examples/mainSokol2d.ms` for every backend the host does not run (D3D11, GL
+   Then `msc check src/examples/main2d.ms` for every backend the host does not run (D3D11, GL
    on Windows, Linux and Android, Metal on iOS, both web builds, the dummy), about 15 s in all, so
    a function one backend lacks is red on any host rather than on the first machine that builds it.
 2. The demo entry builds and runs, then the integration programs, each with its named misuse
@@ -365,7 +365,7 @@ Flags:
   focused window (`VOID_QUIET_WINDOW` unset for them). They need focus, vsync and real full
   screen, which `macWindow` toggles, and flake about one run in four, so without the flag they
   are one SKIP line. Pass it when a change touches `src/platform/macos/*`,
-  `src/sokol/bridgeEmbed.m` or `tests/capture/capture.c`. `gpuTimer` runs on every Mac gate,
+  `src/host/bridgeEmbed.m` or `tests/capture/capture.c`. `gpuTimer` runs on every Mac gate,
   in the quiet window.
 - `--ios` runs the Metal goldens and view samples on an attached iPhone or iPad
   (`scripts/iosDevice.sh`); without it they are one SKIP line. The device must be paired and
@@ -443,7 +443,7 @@ What each readback costs:
 | D3D11 | staging texture + `CopyResource` + `Map` | this Windows box | exists; needs moving into the repo |
 | GL / GLES3 | `glReadPixels` | this box (desktop GL), the Android device | ~30 lines, and it is shared with WebGL2 |
 | Metal | `doorReadScreen`: the swapchain copied to a mapped buffer through the door | the Mac, and iOS devices through `scripts/iosDevice.sh` | exists on macOS and iOS |
-| WebGPU | `copyTextureToBuffer` + `mapAsync`; `-sASYNCIFY` is already on for the emdawnwebgpu build (`src/sokol/sokolWeb.c`) | headless Chrome on this box | ~60 lines plus a JS hand-off |
+| WebGPU | `copyTextureToBuffer` + `mapAsync`; `-sASYNCIFY` is already on for the emdawnwebgpu build (`src/host/sokolWeb.c`) | headless Chrome on this box | ~60 lines plus a JS hand-off |
 | WebGL2 | the GLES3 path | headless Chrome on this box | shared |
 
 **What browser conformance would take**, written down rather than attempted at P0, because
@@ -452,7 +452,7 @@ the missing piece is the readback and not the driver:
 1. A wasm-side capture: `glReadPixels` for WebGL2 (the same code already in
    `tests/capture/capture.c`, which compiles under `VOID_GLES3`), and
    `copyTextureToBuffer` + `mapAsync` for WebGPU, where `-sASYNCIFY` is already on for the
-   emdawnwebgpu build (`src/sokol/sokolWeb.c`).
+   emdawnwebgpu build (`src/host/sokolWeb.c`).
 2. A hand-off out of the sandbox: the module writes the RGBA bytes to a JS-visible buffer
    and the page exposes them, or writes into emscripten's virtual FS and the driver reads
    them through `FS.readFile`.
@@ -586,7 +586,7 @@ measured. Unused-import diagnostics were retained, not asserted baseline-equal.
 
 The continuation, working-source tree `20ad6d286fcf45c668c55600c05a909a13d5081c` on the same
 BUILD/toolchain/profile, built colour/sprites/outline for that entry and all six modules one at
-a time for the demo (`VOID_WEB_ENTRY=src/examples/mainSokol2d.ms`). Twenty new compiler calls
+a time for the demo (`VOID_WEB_ENTRY=src/examples/main2d.ms`). Twenty new compiler calls
 succeeded on their first attempts. The initial experiment's off bundles were reused only after
 hashing the unchanged entry/runtime/assets/compiler inputs; they were not compiled for a new
 timestamp. Demo all-off was a new consumer: 974297 B WebGPU, 869347 B WebGL2.

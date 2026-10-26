@@ -6,7 +6,7 @@ import { Texture } from "../gpu/texture";
 import { VoidKeyCode } from "../platform/appEvent.h";
 import {
 	gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight,
-} from "../sokol/gpu";
+} from "../host/gpu";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat } from "../gpu/door";
 import {
