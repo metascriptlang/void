@@ -44,19 +44,35 @@ function roundUp(n: int32, to: int32): int32 {
 	return (n + to - 1) / to * to;
 }
 
+// The bytes a column of this many rows takes in a matrix, and the alignment of a vector of them.
+export function columnStride(rows: int32): int32 {
+	return rows == 2 ? 8 : 16;
+}
+
+function arrayAlign(m: ShaderModule, t: ShaderType, rule: LayoutRule): int32 {
+	const [elementAlign, _elementSize] = extentOf(m, t.element[0], rule);
+	return rule == LayoutRule.Std140 ? roundUp(elementAlign, 16) : elementAlign;
+}
+
+function arrayStride(m: ShaderModule, t: ShaderType, rule: LayoutRule): int32 {
+	const [_elementAlign, elementSize] = extentOf(m, t.element[0], rule);
+	return roundUp(elementSize, arrayAlign(m, t, rule));
+}
+
+export function uniformArrayStride(m: ShaderModule, t: ShaderType): int32 {
+	return arrayStride(m, t, LayoutRule.Std140);
+}
+
 function extentOf(m: ShaderModule, t: ShaderType, rule: LayoutRule): [int32, int32] {
-	const std140 = rule == LayoutRule.Std140;
 	match (t.kind) {
 		ShaderTypeKind.Scalar | ShaderTypeKind.Atomic => { return [4, 4]; },
-		ShaderTypeKind.Vector => { return [t.rows == 2 ? 8 : 16, 4 * t.rows]; },
+		ShaderTypeKind.Vector => { return [columnStride(t.rows), 4 * t.rows]; },
 		ShaderTypeKind.Matrix => {
-			const column = t.rows == 2 ? 8 : 16;
+			const column = columnStride(t.rows);
 			return [column, column * t.columns];
 		},
 		ShaderTypeKind.Array => {
-			const [elementAlign, elementSize] = extentOf(m, t.element[0], rule);
-			const align = std140 ? roundUp(elementAlign, 16) : elementAlign;
-			return [align, roundUp(elementSize, align) * t.length];
+			return [arrayAlign(m, t, rule), arrayStride(m, t, rule) * t.length];
 		},
 		_ => {},
 	}
