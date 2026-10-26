@@ -747,18 +747,17 @@ function resourceText(p: Glsl, r: ShaderResource): string {
 			p.module.structs[r.type.structIndex].members.map((f) =>
 				blockMemberDeclarations(p, f)).join("") + "};\n",
 		ResourceKind.Texture => match (r.type.shape) {
-			TextureShape.D2Array => sampleTag(r) + slot + "texture2DArray " + r.name + ";\n",
+			TextureShape.D2Array => sampleTag(r) + slot + vectorPrefix(r.type.scalar) +
+				"texture2DArray " + r.name + ";\n",
 			TextureShape.Cube => sampleTag(r) + slot + "textureCube " + r.name + ";\n",
 			TextureShape.Depth2dArray | TextureShape.DepthCube =>
 				"@image_sample_type " + r.name + " depth\n" + slot + (r.type.shape ==
 					TextureShape.DepthCube ? "textureCube " : "texture2DArray ") + r.name + ";\n",
-			TextureShape.D3 => sampleTag(r) + slot + "texture3D " + r.name + ";\n",
+			TextureShape.D3 => sampleTag(r) + slot + vectorPrefix(r.type.scalar) + "texture3D " +
+				r.name + ";\n",
 			TextureShape.Multisampled2d => sampleTag(r) + slot + "texture2DMS " + r.name + ";\n",
-			TextureShape.D2 | TextureShape.Depth2d => r.type.scalar == ScalarKind.U32 ?
-				"@image_sample_type " + r.name + " uint\n" + slot + "utexture2D " + r.name + ";\n" :
-				r.type.scalar == ScalarKind.I32 ?
-				"@image_sample_type " + r.name + " sint\n" + slot + "itexture2D " + r.name + ";\n" :
-				sampleTag(r) + slot + "texture2D " + r.name + ";\n",
+			TextureShape.D2 | TextureShape.Depth2d => sampleTag(r) + slot +
+				vectorPrefix(r.type.scalar) + "texture2D " + r.name + ";\n",
 			_ => { broken(r.name + " is a " + r.type.shape.toString() + " texture, no GLSL 450"); },
 		},
 		ResourceKind.Sampler => (r.samplerType == SamplerType.Filtering ? "" : "@sampler_type " +

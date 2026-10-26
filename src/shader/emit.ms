@@ -54,9 +54,13 @@ import {
 	StorageTexture3dU32,
 	Texture2d,
 	Texture2dArray,
+	Texture2dArrayI32,
+	Texture2dArrayU32,
 	Texture2dI32,
 	Texture2dU32,
 	Texture3d,
+	Texture3dI32,
+	Texture3dU32,
 	TextureCube,
 	TextureDepth2d,
 	TextureDepth2dArray,
@@ -569,14 +573,19 @@ export macro glslStage(entry: Node, workgroupSize: Node, feeder: Node, form: Nod
 	const viewNodes = [getTypeImpl(Texture2dU32), getTypeImpl(Texture2dArray),
 		getTypeImpl(TextureCube), getTypeImpl(Texture2dI32), getTypeImpl(Texture3d),
 		getTypeImpl(TextureDepth2d), getTypeImpl(TextureDepth2dArray),
-		getTypeImpl(TextureDepthCube), getTypeImpl(TextureMultisampled2d)];
+		getTypeImpl(TextureDepthCube), getTypeImpl(TextureMultisampled2d),
+		getTypeImpl(Texture2dArrayU32), getTypeImpl(Texture2dArrayI32),
+		getTypeImpl(Texture3dU32), getTypeImpl(Texture3dI32)];
 	const viewShapes = [TextureShape.D2, TextureShape.D2Array, TextureShape.Cube, TextureShape.D2,
 		TextureShape.D3, TextureShape.Depth2d, TextureShape.Depth2dArray, TextureShape.DepthCube,
-		TextureShape.Multisampled2d];
+		TextureShape.Multisampled2d, TextureShape.D2Array, TextureShape.D2Array, TextureShape.D3,
+		TextureShape.D3];
 	const viewTexels = [ScalarKind.U32, ScalarKind.F32, ScalarKind.F32, ScalarKind.I32,
-		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32];
+		ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32, ScalarKind.F32,
+		ScalarKind.U32, ScalarKind.I32, ScalarKind.U32, ScalarKind.I32];
 	const viewSamples = [SampleType.Uint, SampleType.Float, SampleType.Float, SampleType.Sint,
-		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth, SampleType.UnfilterableFloat];
+		SampleType.Float, SampleType.Depth, SampleType.Depth, SampleType.Depth, SampleType.UnfilterableFloat,
+		SampleType.Uint, SampleType.Sint, SampleType.Uint, SampleType.Sint];
 	const comparisonNode = getTypeImpl(SamplerComparison);
 	const atomicNodes = [getTypeImpl(AtomicI32), getTypeImpl(AtomicU32)];
 	const exchangeNodes = [getTypeImpl(AtomicExchangeI32), getTypeImpl(AtomicExchangeU32)];

@@ -588,7 +588,8 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 	const texture = operand(p, args[0]);
 	if (args.length < 2) { return fail(p, "TextureLoad without coordinates"); }
 	const at = expr(p, args[1]);
-	const level = args.length > 2 ? expr(p, args[2]) : "0";
+	const levelAt = t.shape == TextureShape.D2Array ? 3 : 2;
+	const level = args.length > levelAt ? expr(p, args[levelAt]) : "0";
 	if (t.kind == ShaderTypeKind.StorageTexture) {
 		if (texelWidth(t.format) != 1) {
 			return fail(p, "TextureLoad of a " + t.format.toString() + " storage texture: SM5 " +
@@ -607,8 +608,10 @@ function loadOf(p: Printer, e: ShaderExpr): string {
 		TextureShape.D2 | TextureShape.Depth2d =>
 			texture + ".Load(int3(" + at + ", " + level + "))",
 		TextureShape.D3 => texture + ".Load(int4(" + at + ", " + level + "))",
+		TextureShape.D2Array =>
+			texture + ".Load(int4(" + at + ", " + expr(p, args[2]) + ", " + level + "))",
 		TextureShape.Multisampled2d => texture + ".Load(int2(" + at + "), " + level + ")",
-		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture: the IR names no layer"),
+		_ => fail(p, "TextureLoad of a " + t.shape.toString() + " texture"),
 	};
 }
 

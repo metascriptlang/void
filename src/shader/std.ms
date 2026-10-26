@@ -2876,6 +2876,47 @@ export function textureLoad(texture: Texture2dU32, at: Vec2i, level: int32): Vec
 	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
 }
 
+// WGSL's texture_2d_array<u32>: layers of one size, four uint32s a texel, fetched, never filtered.
+export struct Texture2dArrayU32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: uint32[];
+}
+
+export function textureLoad(
+	texture: Texture2dArrayU32,
+	at: Vec2i,
+	layer: int32,
+	level: int32,
+): Vec4u {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((layer * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
+// WGSL's texture_3d<u32>: slices of one size, four uint32s a texel, fetched, never filtered.
+export struct Texture3dU32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: uint32[];
+}
+
+export function textureLoad(texture: Texture3dU32, at: Vec3i, level: int32): Vec4u {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (at.z < 0 || at.z >= texture.depth ||
+		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((at.z * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
 // WGSL's texture_2d_array<f32>: layers of one size, one picked by its index.
 export struct Texture2dArray {
 	width: int32;
@@ -3140,6 +3181,47 @@ export function textureLoad(texture: Texture2dI32, at: Vec2i, level: int32): Vec
 	const first = (at.y * texture.width + at.x) * 4;
 	const texels = texture.texels;
 	return { x: texels[first], y: texels[first + 1], z: texels[first + 2], w: texels[first + 3] };
+}
+
+// WGSL's texture_2d_array<i32>: layers of one size, four int32s a texel, fetched, never filtered.
+export struct Texture2dArrayI32 {
+	width: int32;
+	height: int32;
+	layers: int32;
+	texels: int32[];
+}
+
+export function textureLoad(
+	texture: Texture2dArrayI32,
+	at: Vec2i,
+	layer: int32,
+	level: int32,
+): Vec4i {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (layer < 0 || layer >= texture.layers) { unreachable("the layer is outside the texture"); }
+	if (!insideTexture(texture.width, texture.height, at)) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((layer * texture.height + at.y) * texture.width + at.x) * 4);
+}
+
+// WGSL's texture_3d<i32>: slices of one size, four int32s a texel, fetched, never filtered.
+export struct Texture3dI32 {
+	width: int32;
+	height: int32;
+	depth: int32;
+	texels: int32[];
+}
+
+export function textureLoad(texture: Texture3dI32, at: Vec3i, level: int32): Vec4i {
+	if (level != 0) { unreachable("textureLoad: the CPU texture has no mip levels"); }
+	if (at.z < 0 || at.z >= texture.depth ||
+		!insideTexture(texture.width, texture.height, { x: at.x, y: at.y })) {
+		unreachable("textureLoad: the texel is outside the texture");
+	}
+	return loadTexel(texture.texels,
+		((at.z * texture.height + at.y) * texture.width + at.x) * 4);
 }
 
 // WGSL's texture_multisampled_2d<f32>: `samples` images of one size, four floats a texel, the
