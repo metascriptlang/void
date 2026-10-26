@@ -7,13 +7,23 @@ import {
 	define,
 	getType,
 	getTypeImpl,
+	readFile,
 	sameType,
 	stringValue,
 	typeKind,
+	warning,
 } from "std/meta";
 import { glslIr, glslLinkedIr } from "./emit";
-import { programModule, programSource, targetArms, wordsBase64 } from "./descriptor";
+import {
+	bytesBase64,
+	programModule,
+	programSource,
+	targetArms,
+	wordsBase64,
+} from "./descriptor";
+import { dxbcStage, findFxc } from "./dxbcCache";
 import { shaderBytecodeFromBase64 } from "./dxbc";
+import { metalFlags, metallibStage } from "./metallibCache";
 import { ShaderTarget } from "./layout";
 import { reflectProgram } from "./reflect";
 import { Vec2f, Vec2i, Vec2u, Vec3f, Vec3i, Vec3u, Vec4f, Vec4i, Vec4u } from "./std";
@@ -33,6 +43,37 @@ export function shaderProgramRegister(
 		(index: int32): GPUShaderModuleDescriptor => descriptor,
 		[layoutId],
 	);
+}
+
+class StageBlob {
+	path: string = "";
+	missing: string = "";
+	error: string = "";
+}
+
+// The tracked blobs sit in shaders/ and the ones a build compiles in out/shaders/, both under the
+// directory msc runs in; an empty path with an empty `missing` is a language with no bytecode.
+export function stageBlob(
+	language: string,
+	stage: string,
+	code: string,
+	entry: string,
+	fxc: string,
+): StageBlob {
+	const blob = new StageBlob();
+	if (language == "hlsl5") {
+		const found = dxbcStage("shaders/dxbc", "out/shaders/dxbc",
+			fxc, stage == "vertex" ? "vs_5_0" : "ps_5_0", entry, code);
+		blob.path = found.path;
+		blob.error = found.error;
+		if (found.path == "" && found.error == "") { blob.missing = "fxc"; }
+	} else if (metalFlags(language).length > 0) {
+		const found = metallibStage("shaders/metallib", "out/shaders/metallib", language, entry, code);
+		blob.path = found.path;
+		blob.error = found.error;
+		blob.missing = found.missing;
+	}
+	return blob;
 }
 
 export macro vertexFormats(vertex: Node, fragment: Node): Node {
@@ -155,12 +196,13 @@ export macro shaderBuild(
 ): Node {
 	const kind = stringValue(product);
 	const base = stringValue(name);
-	function targetOf(): ShaderTarget {
-		for (const arm of targetArms()) {
-			for (const all of arm.anyOfAll) {
+	function armIndex(): int32 {
+		const arms = targetArms();
+		for (let i = 0; i < arms.length; i++) {
+			for (const all of arms[i].anyOfAll) {
 				let set = true;
 				for (const d of all) { if (define(d) == "") { set = false; } }
-				if (set) { return arm.target; }
+				if (set) { return i; }
 			}
 		}
 		error(kind + ": no shader target for this build's target", name);
@@ -232,11 +274,31 @@ export macro shaderBuild(
 
 	const module = programModule(stringValue(vertex), stringValue(fragment), []);
 	if (!module.ok) { refused(module.error); }
-	const target = targetOf();
+	const arm = targetArms()[armIndex()];
+	const target = arm.target;
 	const source = programSource(module.value, target);
 	if (!source.ok) { refused(source.error); }
 	const s = source.value;
 	if (s.refusal != "") { refused(s.refusal); }
+	const fxc = arm.language == "hlsl5" ? findFxc(define("fxc")) : "";
+	function blobBase64(stage: string, code: string): string {
+		const found = stageBlob(arm.language, stage, code, s.entryPoint, fxc);
+		if (found.error != "") { refused(found.error); }
+		if (found.path != "") { return bytesBase64(readFile(found.path)); }
+		if (found.missing == "") { return ""; }
+		const lacking = "no " + found.missing + " on this host";
+		if (define("requireShaderBytecode") != "") {
+			refused(stage + " has no " + arm.language + " bytecode: " + lacking);
+		}
+		warning(kind + " '" + base + "' " + stage + " keeps its " + arm.language + " text: " + lacking,
+			name);
+		return "";
+	}
+	const vertexBase64 = target == ShaderTarget.Spirv ? wordsBase64(s.vertexWords) :
+		blobBase64("vertex", s.vertexCode);
+	const fragmentBase64 = target == ShaderTarget.Spirv ? wordsBase64(s.fragmentWords) :
+		blobBase64("fragment", s.fragmentCode);
+	const keepText = arm.language == "metal_ios";
 	const bindings: Node[] = [];
 	for (const b of s.reflection.bindings) {
 		const bindingKind: string = b.kind;
@@ -304,20 +366,20 @@ export macro shaderBuild(
 	];
 	const descriptorValues = [
 		text(base),
-		text(s.vertexCode),
+		text(vertexBase64 != "" && !keepText ? "" : s.vertexCode),
 		text(s.entryPoint),
-		text(s.fragmentCode),
+		text(fragmentBase64 != "" && !keepText ? "" : s.fragmentCode),
 		text(s.entryPoint),
 		array(bindings),
 		array(attributes),
 	];
-	if (target == ShaderTarget.Spirv) {
+	if (vertexBase64 != "") {
 		descriptorKeys.push("vertexBytecode");
-		descriptorValues.push(called("shaderBytecodeFromBase64",
-			[text(wordsBase64(s.vertexWords))]));
+		descriptorValues.push(called("shaderBytecodeFromBase64", [text(vertexBase64)]));
+	}
+	if (fragmentBase64 != "") {
 		descriptorKeys.push("fragmentBytecode");
-		descriptorValues.push(called("shaderBytecodeFromBase64",
-			[text(wordsBase64(s.fragmentWords))]));
+		descriptorValues.push(called("shaderBytecodeFromBase64", [text(fragmentBase64)]));
 	}
 	if (s.reflection.readsVertexIndex) {
 		descriptorKeys.push("readsVertexIndex");

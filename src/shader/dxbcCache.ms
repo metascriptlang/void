@@ -1,5 +1,5 @@
 import { sha256 } from "std/crypto/sha256";
-import { exists, mkdir, remove, writeFile } from "std/fs";
+import { ensureDir, exists, readDir, remove, writeFile } from "std/fs";
 import { execFileResult } from "std/process";
 
 class DxbcStage {
@@ -38,7 +38,7 @@ export function dxbcStage(
 		return stage;
 	}
 	if (fxc == "") { return stage; }
-	const _dir = mkdir(fresh);
+	const _dir = ensureDir(fresh);
 	const source = fresh + "/" + stage.key + ".hlsl";
 	if (!writeFile(source, code).ok) {
 		stage.error = "cannot write " + source;
@@ -57,4 +57,28 @@ export function dxbcStage(
 	stage.path = made;
 	stage.compiled = true;
 	return stage;
+}
+
+function versionKey(version: string): string {
+	let key = "";
+	for (const part of version.split(".")) { key += "0000000000".slice(part.length) + part + "."; }
+	return key;
+}
+
+// The path `-d:fxc=` names, else the newest Windows Kit's; empty when this host has none. $FXC and
+// PATH wait on card 2026-10-26-macro-vm-extern-env-process, because a macro cannot read them.
+export function findFxc(named: string): string {
+	if (named != "") { return exists(named) ? named : ""; }
+	const kits = "C:/Program Files (x86)/Windows Kits/10/bin";
+	let best = "";
+	let bestKey = "";
+	for (const entry of readDir(kits)) {
+		const version = entry.replace("/", "");
+		const candidate = kits + "/" + version + "/x64/fxc.exe";
+		if (versionKey(version) > bestKey && exists(candidate)) {
+			best = candidate;
+			bestKey = versionKey(version);
+		}
+	}
+	return best;
 }

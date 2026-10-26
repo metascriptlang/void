@@ -1,5 +1,5 @@
 import { sha256 } from "std/crypto/sha256";
-import { exists, mkdir, writeFile } from "std/fs";
+import { ensureDir, exists, writeFile } from "std/fs";
 import { execFileResult } from "std/process";
 
 class MetallibStage {
@@ -27,14 +27,17 @@ export function metalFlags(language: string): string[] {
 	unreachable;
 }
 
-const SDKS: Map<string, boolean> = new Map();
+// Arrays, not a Map, until card 2026-10-22-macro-extension-call-on-class-field lands.
+const SDKS_ASKED: string[] = [];
+const SDKS_FOUND: boolean[] = [];
 
 function hasMetalSdk(sdk: string): boolean {
-	const known = SDKS.get(sdk);
-	if (known !== undefined) { return known; }
+	const asked = SDKS_ASKED.indexOf(sdk);
+	if (asked >= 0) { return SDKS_FOUND[asked]; }
 	const run = execFileResult("xcrun", ["-sdk", sdk, "-f", "metal"]);
 	const found = run.started && run.exitCode == 0;
-	SDKS.set(sdk, found);
+	SDKS_ASKED.push(sdk);
+	SDKS_FOUND.push(found);
 	return found;
 }
 
@@ -72,7 +75,7 @@ export function metallibStage(
 		stage.missing = "xcrun -sdk " + sdk + " metal";
 		return stage;
 	}
-	const _dir = mkdir(fresh);
+	const _dir = ensureDir(fresh);
 	const source = fresh + "/" + stage.key + ".metal";
 	const air = fresh + "/" + stage.key + ".air";
 	if (!writeFile(source, code).ok) {

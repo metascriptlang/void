@@ -47,7 +47,8 @@ shaderModule(picture, pictureVs, pictureFs);
 
 test "shaderModule declares the program's WebGPU shader module for this build's backend" {
 	assert (pictureModule.label ?? "") == "picture";
-	assert pictureModule.vertexCode.length > 0 && pictureModule.fragmentCode.length > 0;
+	assert pictureModule.vertexCode.length + pictureModule.vertexBytecode.length > 0;
+	assert pictureModule.fragmentCode.length + pictureModule.fragmentBytecode.length > 0;
 	assert pictureModule.vertexEntryPoint != "" && pictureModule.fragmentEntryPoint != "";
 	const kind: string = pictureModule.bindings[3].kind;
 	assert kind == "";
